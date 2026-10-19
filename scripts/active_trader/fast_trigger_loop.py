@@ -233,9 +233,16 @@ def _spread_bps(book: Optional[Mapping[str, Any]]) -> Optional[float]:
         return None
 
 
+CONTEXT_TTL_S = 60.0
+
+
 def ticker(cfg: Mapping[str, Any], *, base: Optional[Path] = None, send_fn=None,
-           now_fn: Callable[[], float] = time.time) -> Optional[Callable]:
-    """on_tick(now, symbols) for the microstructure recorder. None when disabled."""
+           now_fn: Callable[[], float] = time.time, conn_fn: Optional[Callable[[], Any]] = None) -> Optional[Callable]:
+    """on_tick(now, symbols) for the microstructure recorder. None when disabled.
+
+    ``conn_fn`` (2026-10-19): the recorder's DB connection (the one exit_watch reads through) for the
+    same-day pass context — RVOL, setup, float, today's Trade-AI verdict. SELECTs only, each read ended with a
+    rollback (exit_watch, the other consumer, only reads too). None = the 5-minute pass's journal only."""
     fcfg = FastLoopConfig.from_mapping(cfg.get("active_trader_fast_loop"))
     if not fcfg.enabled:
         return None
@@ -243,6 +250,25 @@ def ticker(cfg: Mapping[str, Any], *, base: Optional[Path] = None, send_fn=None,
     states: dict[str, SymbolState] = {}
     if send_fn is None and acfg.mode == "send":
         send_fn = ma.telegram_send
+    ctx_cache: dict[str, tuple] = {}      # symbol -> (day, fetched_at, context): bounded DB/journal reads
+
+    def _context(syms: Sequence[str], day: str, now: float) -> dict:
+        """Same-day 5-minute-pass values per symbol (momentum_alert_pass.pass5_context), cached CONTEXT_TTL_S."""
+        stale = [s for s in syms if not (s in ctx_cache and ctx_cache[s][0] == day
+                                         and now - ctx_cache[s][1] < CONTEXT_TTL_S)]
+        if stale:
+            try:
+                try:
+                    from active_trader import momentum_alert_pass as pas
+                except ModuleNotFoundError:  # pragma: no cover
+                    from scripts.active_trader import momentum_alert_pass as pas
+                conn = conn_fn() if conn_fn is not None else None
+                got = pas.pass5_context(conn, stale, day)
+            except Exception:  # noqa: BLE001 — context is display only; never costs the alert
+                got = {}
+            for s in stale:
+                ctx_cache[s] = (day, now, got.get(str(s).upper()) or {})
+        return {str(s).upper(): ctx_cache[s][2] for s in syms if s in ctx_cache and ctx_cache[s][0] == day}
 
     def on_tick(now: float, symbols: Sequence[str]) -> dict:
         if not in_window(now, fcfg.window_et) or (ma.journal_dir() / KILL_FILE).exists():
@@ -266,6 +292,14 @@ def ticker(cfg: Mapping[str, Any], *, base: Optional[Path] = None, send_fn=None,
                           zones=zones, spread_bps=_spread_bps(bk), day=day)
         rows = []
         if cands:
+            try:
+                try:
+                    from active_trader import momentum_alert_pass as pas
+                except ModuleNotFoundError:  # pragma: no cover
+                    from scripts.active_trader import momentum_alert_pass as pas
+                pas.apply_pass5_context(cands, _context(sorted({c.symbol for c in cands}), day, now))
+            except Exception:  # noqa: BLE001
+                pass
             rows = ma.evaluate_pass(
                 cands, cfg=acfg, now=now,
                 fetch_primary_book=lambda s: store.book(day, s, now=now, max_age_s=fcfg.max_store_age_s, base=base),

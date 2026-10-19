@@ -704,7 +704,8 @@ def _alert(sym, p, urg, price) -> bool:
         # sources as real links. The plain text above stays the fallback.
         try:
             from lib.telegram_rich import cio_entry_alert
-            rich = cio_entry_alert(_entry_item(sym, p, urg, price, held=_held(sym))).render()
+            rich = cio_entry_alert(_entry_item(sym, p, urg, price, held=_held(sym),
+                                               context=_alert_context(sym))).render()
         except Exception as exc:  # noqa: BLE001 -- formatting must never cost the alert
             print(f"  rich entry layout unavailable ({type(exc).__name__}); sending plain text")
     extra = ({"reply_markup": rich["reply_markup"], "link_preview_options": rich["link_preview_options"]}
@@ -753,9 +754,36 @@ def _held(sym: str) -> Optional[bool]:
         return None
 
 
-def _entry_item(sym, p, urg, price, held: Optional[bool] = None) -> dict:
+def _alert_context(sym: str) -> dict:
+    """Identity, catalyst and latest CIO decision for the entry card (operator 2026-10-19: every entry
+    alert said "identity data unavailable", "Catalyst: unavailable", "CIO review: unreviewed" while
+    symbol_profiles, watchlist_strategy_cards and cio_decisions held the facts). The same lookups as
+    cio_entry_state_runner (lib.entry_alert_context). Read-only; an empty dict on any failure, so a
+    failed lookup never costs the alert."""
+    try:
+        from db_adapter import _get_conn
+        from lib.entry_alert_context import entry_alert_context
+
+        conn = _get_conn()
+        cur = conn.cursor()
+        try:
+            return entry_alert_context(cur, sym)
+        finally:
+            try:
+                conn.rollback()   # end the read: no transaction stays open across the send
+            except Exception:  # noqa: BLE001
+                pass
+    except Exception as exc:  # noqa: BLE001
+        print(f"  {sym}: entry alert context unavailable ({type(exc).__name__})")
+        return {}
+
+
+def _entry_item(sym, p, urg, price, held: Optional[bool] = None, context: Optional[dict] = None) -> dict:
     prop = p.get("proposal") or {}
     lad = p.get("exit_ladder") or {}
+    ctx = context or {}
+    # The plan's own catalyst first, then the strategy card's; "unavailable" only when neither exists.
+    catalyst = p.get("catalyst") or p.get("catalyst_summary") or ctx.get("catalyst") or "unavailable"
     return {
         "symbol": sym, "state": "READY" if urg == "ready" else "NEAR-ENTRY", "setup": p.get("setup_type"),
         "price": price, "zone_low": p.get("entry_zone_low"), "zone_high": p.get("entry_zone_high"),
@@ -764,9 +792,15 @@ def _entry_item(sym, p, urg, price, held: Optional[bool] = None) -> dict:
         "thesis": str(p.get("entry_thesis") or "")[:280] or None,
         "invalidation": str(p.get("invalidation") or "")[:200] or None,
         "first_hard_block": str(p.get("invalidation") or "")[:200] or None,
-        "catalyst": p.get("catalyst") or p.get("catalyst_summary") or "unavailable",
+        "catalyst": catalyst,
         "next_action": "Review entry before allocating capital" if urg != "ready" else "Review BUY_READY setup",
-        "cio_review_status": "UNREVIEWED",
+        "company": ctx.get("company"), "sector": ctx.get("sector"), "industry": ctx.get("industry"),
+        # UNREVIEWED only when cio_decisions holds nothing for the symbol (lib.entry_alert_context.cio_review_fields).
+        "cio_review_status": ctx.get("cio_review_status") or "UNREVIEWED",
+        "cio_review_id": ctx.get("cio_review_id"),
+        "cio_decision_id": ctx.get("cio_decision_id"),
+        "cio_action": ctx.get("cio_action"),
+        # No options source exists for a planner alert; the review was genuinely not run.
         "options_status": "not evaluated",
         "advice": f"{prop.get('tag', 'WAIT')} — {str(prop.get('sizing_rationale', ''))[:100]}".rstrip(" —"),
         "exit_ladder": [f"{s['label']} ${s['px']} — {s['action']}" for s in (lad.get("steps") or [])],

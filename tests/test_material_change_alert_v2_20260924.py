@@ -144,7 +144,10 @@ def test_entry_class_decisions_are_excluded_like_the_runner_does():
     src = (ROOT / "scripts" / "notify_material_change.py").read_text(encoding="utf-8")
     assert "action_class IS DISTINCT FROM 'entry'" in src
     runner = (ROOT / "scripts" / "cio_entry_state_runner.py").read_text(encoding="utf-8")
-    assert "action_class <> 'entry'" in runner
+    # 2026-10-19: the runner's CIO lookup moved to the helper it shares with watchlist_entry_planner.
+    shared = (ROOT / "scripts" / "lib" / "entry_alert_context.py").read_text(encoding="utf-8")
+    assert "latest_cio_decisions(cur, syms)" in runner
+    assert "action_class <> 'entry'" in shared
 
 
 def test_plan_source_matches_the_runner_entry_plan_first():
