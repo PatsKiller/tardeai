@@ -735,6 +735,7 @@ GATES = [
             "tests/test_desk_spelled_ticker_levels_20260914.py",
             "tests/test_subject_dossier_pills_20260914.py",
             "tests/test_comms_editor_20260914.py",
+            "tests/test_notice_subject_words_20261019.py",
             "tests/test_comms_editor_transport_20260914.py",
             "tests/test_single_letter_tickers.py",
             "tests/test_tg_chat_routing_20260914.py",
@@ -1760,6 +1761,8 @@ GATES = [
             "tests/test_finviz_cookie_classification.py",
         ],
     ),
+    # Reject contradictory/off-scale analyst recommendations at cache and DB admission.
+    ("analyst_recom_data_quality_20261018", ["tests/test_analyst_recom_data_quality_20261018.py"]),
     # A dead FINVIZ_COOKIE with a working FINVIZ_API_TOKEN is healthy (rotation note),
     # never "screener empty"; degraded only when both fail; no secret in any record.
     (
