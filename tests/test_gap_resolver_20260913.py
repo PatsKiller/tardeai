@@ -424,17 +424,20 @@ def test_llm_curation_output_is_labelled_with_source_and_model_id(ctx, monkeypat
     assert out.answer["curated_from"] == ["search_results"]
 
 
-def test_llm_curation_uses_ollama_when_the_deepseek_window_is_closed(ctx, monkeypatch):
+def test_llm_curation_defers_when_the_deepseek_window_is_closed(ctx, monkeypatch):
+    # 2026-10-18: the Ollama fallback called an embedding model (nomic-embed-text)
+    # and got HTTP 400 every Sunday; local generative routing is retired, so a
+    # closed window is "deferred" with no model call at all.
     import scripts.lib.deepseek_offpeak as offpeak
 
     ctx.live = True
     monkeypatch.setattr(offpeak, "is_bulk_deepseek_window", lambda dt=None: False)
     monkeypatch.setattr(gr, "_curate_deepseek", lambda p: pytest.fail("window closed: DeepSeek must not run"))
-    monkeypatch.setattr(gr, "_curate_ollama", lambda p: ("local summary", "ollama:gemma3:12b"))
+    monkeypatch.setattr(gr, "_curate_ollama", lambda p: pytest.fail("local generative routing is retired"))
     g = gr.DataGap(domain="analyst_view", subject="WMT", question="q", evidence={"x": 1})
     out = gr._v_llm_curation(g, {}, ctx)
-    assert out.provider == "ollama" and out.model == "ollama:gemma3:12b"
-    assert out.answer["source"] == "llm_curation"
+    assert out.outcome == "deferred" and out.answer is None
+    assert "deferred_outside_bulk_window" in out.detail
 
 
 def test_evidence_gathered_by_search_flows_into_curation(ctx, gap):

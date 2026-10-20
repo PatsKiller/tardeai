@@ -88,6 +88,13 @@ GATES = [
     # expected_output, staged effect key); LaneRunReceipt@v2 produced / empty_allowed / fatal dependency_unavailable via
     # the real CLI; idempotent rerun; the operator packet against fake systemctl/docker/proc. Hermetic: tmp ledgers.
     ("comms_intent_consumer_live_20261017", ["tests/test_comms_intent_consumer_live_20261017.py"]),
+    # ANCHOR: DATA_INTEGRITY_FIXES_20261018 — operator-approved data-integrity fix PR: Finviz recom "%"/off-scale refused
+    # by writer, cache loader and consumers (JNUG "-95.44%" reproduction) + dry-run-default remediation (archive + NULL,
+    # never DELETE); no empty analyst_data_history payloads, readers say "unavailable"; ATR stop never <= 0; confidence
+    # clamps; NaN / int32 sentinels; plausibility band fingerprint + windows + retired_store; gap-resolution symbol
+    # touches, per-class fingerprints, digest routing; llm_curation deferred (no Ollama); both monitors as n8n canary
+    # lanes (dry live_arg first) with REVIEWED contracts, LaneRunReceipt@v2 and the operator packet. Hermetic.
+    ("data_integrity_fixes_20261018", ["tests/test_data_integrity_fixes_20261018.py"]),
     # ANCHOR: N8N_EVIDENCE_KIND_PARITY_20261019 — the runtime output verdict and the FW-M6 checker accept the same
     # N8nExpectedOutput@v1 evidence kinds (file_artifact, per N8N_CONTRACTS_DESIGN.md); before, "file" vs "file_artifact"
     # meant no contract could cite a file. Hermetic: committed contracts read only.

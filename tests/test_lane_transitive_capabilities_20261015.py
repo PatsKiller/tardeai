@@ -48,6 +48,14 @@ OPERATOR_RULING_DD01_REASON = (
     "broker reach accepted; trading lock refuses every order; direct_sender remains forbidden"
 )
 
+#: 2026-10-18 data-integrity fix PR (operator-approved; the two data monitors "within n8n with proper contracts"): the
+#: n8n entries of scripts/data_plausibility_monitor.py and scripts/check_gap_resolution.py reach broker_module /
+#: order_placement only through the same LAZY shared chains as heartbeat-watch (host_comms_intents ->
+#: n8n_coordination_gateway -> ... -> schwab_instrument_evidence; gap_resolver -> cio_operator_desk_loop -> ...).
+#: Read-only monitors; no direct_sender (the n8n entry scripts never reference the chokepoint; the dispatcher sender
+#: gate tests/test_agents_policy_7_0_0_advisory_market_data.py stays green). Reviewed addition, not a ruling widening.
+DATA_INTEGRITY_MONITORS_20261018 = frozenset({"n8n-data-plausibility-audit", "n8n-gap-resolution-audit"})
+
 FROZEN_20261015 = {
     "broker_module": frozenset(
         {
@@ -121,7 +129,8 @@ FROZEN_20261015 = {
             "watchlist-enrichment-sweep",
         }
     )
-    | OPERATOR_RULING_DD01_20261015,
+    | OPERATOR_RULING_DD01_20261015
+    | DATA_INTEGRITY_MONITORS_20261018,
     # 2026-10-15: trade-ai-scalp-live removed (DD01 fix, delivery only through send_telegram). Empty: no lane may
     # reach a direct sender.
     "direct_sender": frozenset(),
@@ -196,7 +205,8 @@ FROZEN_20261015 = {
             "watchlist-enrichment-sweep",
         }
     )
-    | OPERATOR_RULING_DD01_20261015,
+    | OPERATOR_RULING_DD01_20261015
+    | DATA_INTEGRITY_MONITORS_20261018,
 }
 
 
