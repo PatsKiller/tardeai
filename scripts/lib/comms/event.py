@@ -26,6 +26,28 @@ PROTECTED_FACT_REQUIRED_CLASSES = frozenset(
     }
 )
 
+class AssumedChannels(list):
+    """The dataclass default for ``CommunicationEvent.channels`` -- a channel nobody asked for.
+
+    It compares, iterates and serialises exactly like ``["telegram"]``, so every reader of ``event.channels`` sees
+    the same value it always did. What it adds is one fact: the producer did not name a channel. Measured 2026-10-20:
+    205 RESERVED delivery rows that nothing would ever settle, every one minted for an event built without
+    ``channels=`` -- 150 INBOUND operator callbacks (``comms.inbound.build_inbound_event``) and 55 post-send ledger
+    copies whose real send was ``send_telegram``'s own, already-settled event. A reservation is a claim that someone
+    will deliver; an assumed channel has no such someone (``client.publish_communication`` reserves only for a
+    channel that was asked for).
+    """
+
+
+def _assumed_telegram() -> list[str]:
+    return AssumedChannels(["telegram"])
+
+
+def channels_were_assumed(event: Any) -> bool:
+    """True when ``event.channels`` is still the untouched dataclass default (no producer chose it)."""
+    return isinstance(getattr(event, "channels", None), AssumedChannels)
+
+
 REQUIRED_ALWAYS = (
     "direction",
     "event_type",
@@ -90,7 +112,8 @@ class CommunicationEvent:
     created_at: datetime | None = None
     intended_action: str = "notify"
     observation_version: str = "1"
-    channels: list[str] = field(default_factory=lambda: ["telegram"])
+    # Default = AssumedChannels(["telegram"]): same value, but marked as not chosen (see AssumedChannels).
+    channels: list[str] = field(default_factory=_assumed_telegram)
     payload: dict[str, Any] = field(default_factory=dict)
     # CampaignInterfaces@v1 §5 — forward-only settlement / ownership / curation
     provider_message_id: str | None = None

@@ -904,6 +904,132 @@ def record_chunk(
         raise DeliveryGateError(f"record_chunk_failed:{type(e).__name__}") from e
 
 
+#: Stale-reservation reaper (2026-10-20). Status per case, and the error_taxonomy each carries.
+REAPER_STATUSES = {
+    "inbound": "CANCELLED",     # an INBOUND event never had an outbound delivery to make
+    "reserved": "EXPIRED",      # an outbound reservation nobody claimed inside the bound
+    "sending": "UNKNOWN",       # a send started and never reported: the outcome is genuinely unknown
+}
+REAPER_TAXONOMY = {
+    "inbound": "inbound_event_no_outbound_delivery",
+    "reserved": "reservation_unclaimed_stale",
+    "sending": "sending_stale_outcome_unknown",
+}
+#: Floor on the bound. Every settler (telegram_alert, channel_adapters, gateway_settlement) settles in the same call
+#: that reserved, within seconds; ten minutes cannot race a send in progress.
+REAPER_MIN_AGE_S = 600
+
+
+def _memory_event_direction(event_id: str) -> str | None:
+    try:
+        from scripts.lib.comms import client as client_mod
+
+        row = (getattr(client_mod, "_MEM", None) or {}).get(event_id) or {}
+        return row.get("direction")
+    except Exception:
+        return None
+
+
+def _reap_case(status: str, direction: str | None) -> str:
+    if status == "SENDING":
+        return "sending"
+    if str(direction or "").upper() == "INBOUND":
+        return "inbound"
+    return "reserved"
+
+
+def reap_stale_reservations(
+    *,
+    max_age_s: float = 3600,
+    apply: bool = False,
+    limit: int = 500,
+    direction_of: Any = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Settle RESERVED / SENDING delivery rows older than ``max_age_s`` that no owner settled. Never sends.
+
+    Measured 2026-10-20: 205 RESERVED rows (oldest 8 days) that no code path would ever settle -- reservations
+    minted by ``publish_communication`` for INBOUND events and for post-send ledger copies (fixed at the source in
+    ``client.should_reserve_delivery``). This is the bound for anything else that slips through: a process that
+    dies between publish and settle, or a producer written tomorrow. No provider I/O, no re-send, no provider id
+    invented: INBOUND -> CANCELLED, unclaimed outbound -> EXPIRED (visible as failed on the delivery-health strip,
+    because the ledger cannot say it was delivered), stale SENDING -> UNKNOWN. Each settle goes through
+    ``settle_delivery`` (transition table, completed_at, event settlement mirror). Dry run unless ``apply``.
+    """
+    if float(max_age_s) < REAPER_MIN_AGE_S:
+        raise ValueError(f"max_age_s {max_age_s} < {REAPER_MIN_AGE_S}: would race a send in progress")
+    now = now or datetime.now(timezone.utc)
+    cutoff = now.timestamp() - float(max_age_s)
+    lim = max(1, int(limit))
+    candidates: list[dict[str, Any]] = []
+
+    with _lock:
+        mem_rows = [dict(r) for r in _MEM.values()]
+    for r in mem_rows:
+        ra = r.get("reserved_at")
+        if r.get("status") in ("RESERVED", "SENDING") and isinstance(ra, datetime) and ra.timestamp() < cutoff:
+            ev = str(r.get("event_id") or "")
+            direction = direction_of(ev) if callable(direction_of) else _memory_event_direction(ev)
+            candidates.append({"delivery_id": r["delivery_id"], "event_id": ev, "status": r["status"],
+                               "reserved_at": ra, "direction": direction, "store": "memory",
+                               "provider_coordinates": dict(r.get("provider_coordinates") or {})})
+
+    conn = _db_conn() if len(candidates) < lim else None
+    if conn is not None:
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT d.delivery_id, d.event_id, d.status, d.reserved_at, e.direction, d.provider_coordinates
+                      FROM communication_deliveries d
+                      LEFT JOIN communication_events e ON e.event_id = d.event_id
+                     WHERE d.status IN ('RESERVED', 'SENDING')
+                       AND d.reserved_at < now() - make_interval(secs => %s)
+                     ORDER BY d.reserved_at
+                     LIMIT %s
+                    """,
+                    (float(max_age_s), lim - len(candidates)),
+                )
+                for delivery_id, event_id, status, reserved_at, direction, coords in cur.fetchall():
+                    if isinstance(coords, str):
+                        coords = json.loads(coords)
+                    candidates.append({"delivery_id": delivery_id, "event_id": event_id, "status": status,
+                                       "reserved_at": reserved_at, "direction": direction, "store": "db",
+                                       "provider_coordinates": dict(coords or {})})
+            conn.rollback()  # read-only so far; leave no transaction open on the shared thread-local connection
+        except Exception as exc:  # noqa: BLE001 -- an unreadable table is reported, never treated as "nothing stale"
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return {"mode": "APPLY" if apply else "DRY-RUN", "max_age_s": max_age_s, "planned": [], "settled": 0,
+                    "errors": [f"select_failed:{type(exc).__name__}: {str(exc)[:160]}"]}
+
+    planned = []
+    for c in candidates[:lim]:
+        case = _reap_case(str(c["status"]), c.get("direction"))
+        planned.append({**{k: v for k, v in c.items() if k != "provider_coordinates"}, "reserved_at": c["reserved_at"].isoformat() if isinstance(c["reserved_at"], datetime)
+                        else c["reserved_at"], "to_status": REAPER_STATUSES[case], "reason": REAPER_TAXONOMY[case]})
+    out: dict[str, Any] = {"mode": "APPLY" if apply else "DRY-RUN", "max_age_s": max_age_s, "planned": planned,
+                           "settled": 0, "errors": []}
+    if not apply:
+        return out
+    coords_of = {c["delivery_id"]: c.get("provider_coordinates") or {} for c in candidates}
+    for p in planned:
+        try:
+            settle_delivery(
+                p["delivery_id"],
+                status=p["to_status"],
+                error_taxonomy=p["reason"],
+                provider_coordinates={**coords_of.get(p["delivery_id"], {}), "settled_by": "reap_stale_reservations", "reaped_reason": p["reason"],
+                                      "reserved_at": p["reserved_at"], "max_age_s": max_age_s},
+            )
+            out["settled"] += 1
+        except Exception as exc:  # noqa: BLE001 -- one bad row never stops the rest; every failure is reported
+            out["errors"].append(f"{p['delivery_id']}: {type(exc).__name__}: {str(exc)[:160]}")
+    return out
+
+
 def memory_delivery_snapshot() -> dict[str, dict[str, Any]]:
     """Test helper: copy of in-memory delivery ledger."""
     with _lock:

@@ -132,6 +132,13 @@ GATES = [
     # held, actionable, directive backlog oldest-first, never-covered in a per-day rotation, fetched-within-20h last;
     # --dry-run read-only with no yfinance call. Hermetic: fake DB/modules, tmp ROOT.
     ("analyst_feed_stale_20261020", ["tests/test_analyst_feed_stale_20261020.py"]),
+    # ANCHOR: COMMS_STUCK_DELIVERIES_20261020 — deliveries/summary showed 205 RESERVED rows (oldest 8 days) nothing
+    # would settle: publish_communication reserved a Telegram delivery for every event left at the channels default —
+    # 150 INBOUND operator callbacks and 55 post-send_telegram ledger copies. Reservation now only for an OUTBOUND
+    # event that named its channel (AssumedChannels marker, default.outbound_telegram label); reap_stale_reservations
+    # (comms_lifecycle "reservations" step, >1 h, bounded, dry run default) settles CANCELLED/EXPIRED/UNKNOWN with no
+    # provider I/O. Hermetic: in-memory ledger, PG settlement stamp stubbed.
+    ("comms_stuck_deliveries_20261020", ["tests/test_comms_stuck_deliveries_20261020.py"]),
     # ANCHOR: DATA_PLAUSIBILITY_FOUR_20261020 — four plausibility BLOCKs still firing after the 2026-10-18 fixes were
     # served: scalp_critic_agent.validate_catalyst (second catalyst_confidence producer) reached 1.1/1.2, now clamped
     # to [0, 1]; etf_performance_enrich spent its 300 cap alphabetically so 11 NaN ytd rows (2026-08-29) were never
