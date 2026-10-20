@@ -29454,6 +29454,414 @@
     },
     {
       "schema": "N8nHealthContract@v1",
+      "id": "n8n-data-plausibility-audit",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
+      "purpose": {
+        "text": "Daily at 06:20 ET, measure every column declared in config/data_plausibility_contracts.json against its declared scale (range/min/finite/single_scale inside the window_policy window; retired_store for analyst_data_history) in a READ-ONLY database session; write LaneRunReceipt@v2 (produced = contracts measured). With the owner-switch argv (--alert) a changed (contract, column, rule, severity band) set queues ONE host comms intent data/data_plausibility_violation; it never sends.",
+        "business_function": "data-integrity",
+        "source": "scripts/n8n_data_plausibility_audit.py -> scripts/data_plausibility_monitor.py lane_main; operator 2026-10-18 data-integrity fix PR ('within n8n with proper contracts')"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/n8n_data_plausibility_audit.py (scripts/data_plausibility_monitor.py lane_main)",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_data_plausibility.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/n8n-data-plausibility-audit_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "PostgreSQL trade_ai (read-only session)",
+          "kind": "store",
+          "direction": "read",
+          "source": "conn.set_session(readonly=True); information_schema + SELECT count(*) only"
+        },
+        {
+          "name": "config/data_plausibility_contracts.json",
+          "kind": "config",
+          "direction": "read",
+          "source": "contracts, window_policy, alert_policy (re-read every run)"
+        },
+        {
+          "name": "config/host_comms_intent_routes.json -> scripts/n8n_comms_intent_consumer.py -> scripts/incident_notifier.py",
+          "kind": "consumer",
+          "direction": "write",
+          "source": "only with --alert (owner-switch argv): one host comms intent per changed finding set; the consumer and the notifier deliver (\u00a724.1)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "last_live_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live (coordination ledger runs, run ids d:n8n-data-plausibility-audit:live:<slot>)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/n8n-data-plausibility-audit_last.json ok_at advances on each successful live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at is within 48 h (2x of expected_cadence_hours 24)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 480 s (80% of timeout_s 600)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "when dispatched dry_run (relay demotion, stage clamp, rollback), --dry-run writes no receipt, no alert state and queues nothing"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = declared contracts measured (OK or VIOLATION; a violation IS output); at least 1 every run"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 48 h but younger than 72 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 480 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+        },
+        {
+          "check": "contract_skipped",
+          "text": "the receipt's skipped_reasons names a measurement that could not be taken (column_absent / check_failed / ledger_empty)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 72 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (empty_allowed), or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
+        },
+        {
+          "check": "alert_delivery_failed",
+          "text": "with --alert: the intent could not be queued (ledger absent, route refused, rate limited) -> exit 1, receipt ok false, the alert state does not advance and the next run retries"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 600,
+        "class": "monitor",
+        "computed_on": "2026-10-18",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 480.0
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "lane_registry.json row severity (a data-integrity monitor that stops running delays a finding; the systemd timer stays the alerting owner until c3)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends). Never PAGE: the P1 path does not depend on n8n (AGENTS.md \u00a724.1).",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after the owner-switch PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/n8n-data-plausibility-audit_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='n8n-data-plausibility-audit' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:n8n-data-plausibility-audit' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: data/runtime/n8n-data-plausibility-audit_last.json",
+          "jq '.summary' data/runtime/n8n-data-plausibility-audit_last.json  # checked, blocking, blocking_items, alert",
+          "bash docs/ops/packets/data-integrity-monitors-n8n-20261018/cutover.sh proof"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output derived 2026-10-18 from scripts/data_plausibility_monitor.py lane_output(): produced = contracts whose measurement completed (status OK or VIOLATION); COLUMN_ABSENT / CHECK_FAILED are named skips; a database that cannot be reached is dependency_unavailable (fatal, exit 1). Written via write_lane_receipt(output=...) so the executor reads the immutable attempt copy."
+      },
+      "review_by": "2026-10-25",
+      "state_note": "Owner REVIEWED 2026-10-18 for canary (operator: data monitors 'within n8n with proper contracts'; precedent n8n-comms-intent-consumer). DRY live_arg first ([]: measure + receipt, notify nobody); tradeai-data-plausibility.timer stays the alerting owner until the packet's c3 step. Requires TRADEAI_N8N_RELAY_LIVE_LANES to include n8n-data-plausibility-audit after promote (docs/ops/packets/data-integrity-monitors-n8n-20261018/cutover.sh relay). Sends nothing (\u00a724.1).",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "declared plausibility contracts measured (OK or VIOLATION)",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/n8n-data-plausibility-audit_last.json produced_count (LaneRunReceipt@v2 output fields; the executor reads the immutable attempt copy data/runtime/lane_attempts/n8n-data-plausibility-audit/<run_id>.json)"
+          },
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/data_plausibility_last_run.json (DataPlausibilityReport@v1, the systemd-era receipt, still written by a non-JSON run)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "n8n-gap-resolution-audit",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
+      "purpose": {
+        "text": "Every 30 minutes at :07/:37, measure the gap-resolution receipts against the gaps (OPEN_NO_ATTEMPT counting a symbol touch after created_at as an attempt, VECTOR_FAILING, RETIRED_RAN, REFUSED_NOWHERE) from files only; write LaneRunReceipt@v2 (produced = ledgers that held rows). With the owner-switch argv (--alert): RETIRED_RAN / VECTOR_FAILING changes queue data/gap_resolution_finding (DIGEST -> P2), OPEN_NO_ATTEMPT / REFUSED_NOWHERE changes queue data/gap_resolution_digest (DASHBOARD -> P3); it never sends.",
+        "business_function": "data-integrity",
+        "source": "scripts/n8n_gap_resolution_audit.py -> scripts/check_gap_resolution.py lane_main; operator 2026-10-18 data-integrity fix PR ('within n8n with proper contracts')"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/n8n_gap_resolution_audit.py (scripts/check_gap_resolution.py lane_main)",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_gap_resolution.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/n8n-gap-resolution-audit_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "data/cio/gap_resolution_receipts.jsonl, gap queue, data/cio/research_gaps.jsonl, data/cio/ticker_research_state.jsonl, data/cio/hermes_research_results.jsonl",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/check_gap_resolution.py collect() (read-only)"
+        },
+        {
+          "name": "config/host_comms_intent_routes.json -> scripts/n8n_comms_intent_consumer.py -> scripts/incident_notifier.py",
+          "kind": "consumer",
+          "direction": "write",
+          "source": "only with --alert (owner-switch argv): one host comms intent per changed finding set; the consumer and the notifier deliver (\u00a724.1)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "last_live_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live (coordination ledger runs, run ids d:n8n-gap-resolution-audit:live:<slot>)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/n8n-gap-resolution-audit_last.json ok_at advances on each successful live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at is within 1 h (2x of expected_cadence_hours 0.5)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 240 s (80% of timeout_s 300)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "when dispatched dry_run (relay demotion, stage clamp, rollback), --dry-run writes no receipt, no alert state and queues nothing"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = ledgers that held rows (receipts, gap queue, research gaps, search denials); zero is normal only with the allowed empty_reason ['no_new_input'] (no ledger has rows yet)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 1 h but younger than 1.5 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 240 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run ended RUN_SKIPPED_LOCK in two consecutive slots (another scheduler holds the lock)"
+        },
+        {
+          "check": "contract_skipped",
+          "text": "the receipt's skipped_reasons names a measurement that could not be taken (column_absent / check_failed / ledger_empty)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 1.5 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule (empty_allowed), or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
+        },
+        {
+          "check": "alert_delivery_failed",
+          "text": "with --alert: the intent could not be queued (ledger absent, route refused, rate limited) -> exit 1, receipt ok false, the alert state does not advance and the next run retries"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 1.0,
+        "freshness_failed_after_h": 1.5,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 300,
+        "class": "monitor",
+        "computed_on": "2026-10-18",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 240.0
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "lane_registry.json row severity (a data-integrity monitor that stops running delays a finding; the systemd timer stays the alerting owner until c3)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends). Never PAGE: the P1 path does not depend on n8n (AGENTS.md \u00a724.1).",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after the owner-switch PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/n8n-gap-resolution-audit_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='n8n-gap-resolution-audit' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:n8n-gap-resolution-audit' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: data/runtime/n8n-gap-resolution-audit_last.json",
+          "jq '.summary' data/runtime/n8n-gap-resolution-audit_last.json  # per-class finding counts, alert_sent",
+          "bash docs/ops/packets/data-integrity-monitors-n8n-20261018/cutover.sh proof"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output derived 2026-10-18 from scripts/check_gap_resolution.py lane_output(): produced = ledgers holding rows; none = no_new_input (allowed); a collect that raised = dependency_unavailable (fatal, exit 1). Written via write_lane_receipt(output=...)."
+      },
+      "review_by": "2026-10-25",
+      "state_note": "Owner REVIEWED 2026-10-18 for canary (operator: data monitors 'within n8n with proper contracts'; precedent n8n-comms-intent-consumer). DRY live_arg first ([]: measure + receipt, notify nobody); tradeai-gap-resolution.timer stays the alerting owner until the packet's c3 step. Requires TRADEAI_N8N_RELAY_LIVE_LANES to include n8n-gap-resolution-audit after promote (docs/ops/packets/data-integrity-monitors-n8n-20261018/cutover.sh relay). Sends nothing (\u00a724.1).",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "gap-resolution ledgers measured (receipts, gap queue, research gaps, search denials holding rows)",
+        "rule": "empty_allowed",
+        "min_produced": null,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/n8n-gap-resolution-audit_last.json produced_count (LaneRunReceipt@v2 output fields; the executor reads the immutable attempt copy data/runtime/lane_attempts/n8n-gap-resolution-audit/<run_id>.json)"
+          },
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/gap_resolution_last_run.json (GapResolutionReport@v1, written every non-dry run)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
       "id": "active-trader-motion-watchdog",
       "kind": "lane",
       "workflow_id": "dispatcher",

@@ -141,11 +141,14 @@ def test_null_counts_from_the_driver_are_tolerated():
 
 
 def test_the_motivating_contract_is_declared():
+    # 2026-10-18: the store is RETIRED (provider dead since 07-28, retired 09-13) and the writer no longer
+    # inserts empty payloads, so the contract became retired_store: it fails only on a NEW empty row
+    # (tests/test_data_integrity_fixes_20261018.py). The required_fields rule itself is still implemented.
     c = next(x for x in CONTRACTS if x["table"] == "analyst_data_history" and x["column"] == "payload")
-    assert c["rule"] == "required_fields"
+    assert c["rule"] == "retired_store"
     assert c["severity"] == "BLOCK"
     assert c["window_column"] == "as_of"
-    assert 0 < c["max_empty_pct"] < 100
+    assert c["retired_at"] == "2026-10-18"
     assert "18,772" in c["_why"]
 
 

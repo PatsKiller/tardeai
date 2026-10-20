@@ -47,7 +47,8 @@ def test_all_operative_baselines_have_applicable_fields_and_order():
     # + 1 (2026-10-16 process consolidation cohort 2: hermes-discovery-yield-on-learning) = 139.
     # + 1 (2026-10-17 comms-intent consumer live, D2: n8n-comms-intent-consumer REVIEWED at canary) = 140.
     # + 1 (2026-10-19 active-trader-motion-watchdog REVIEWED at canary; n8n owns motion supervision) = 141.
-    assert len(catalogue["contracts"]) == 141
+    # + 2 (2026-10-18 data-integrity monitors on n8n: n8n-data-plausibility-audit, n8n-gap-resolution-audit) = 143.
+    assert len(catalogue["contracts"]) == 143
     assert not {row["id"]: A.baseline_errors(row) for row in catalogue["contracts"] if A.baseline_errors(row)}
 
 
