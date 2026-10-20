@@ -88,6 +88,10 @@ GATES = [
     # expected_output, staged effect key); LaneRunReceipt@v2 produced / empty_allowed / fatal dependency_unavailable via
     # the real CLI; idempotent rerun; the operator packet against fake systemctl/docker/proc. Hermetic: tmp ledgers.
     ("comms_intent_consumer_live_20261017", ["tests/test_comms_intent_consumer_live_20261017.py"]),
+    # ANCHOR: N8N_EVIDENCE_KIND_PARITY_20261019 — the runtime output verdict and the FW-M6 checker accept the same
+    # N8nExpectedOutput@v1 evidence kinds (file_artifact, per N8N_CONTRACTS_DESIGN.md); before, "file" vs "file_artifact"
+    # meant no contract could cite a file. Hermetic: committed contracts read only.
+    ("n8n_evidence_kind_parity_20261019", ["tests/test_n8n_evidence_kind_parity_20261019.py"]),
     # ANCHOR: ACTIVE_TRADER_MOTION_WATCHDOG_20261019 — operator decision 2026-10-19: the motion loop stays a systemd
     # user unit (gate line fixed to /etc/tradeai/enable-active-trader-motion, no misspelt dir) and n8n owns its
     # supervision: lane active-trader-motion-watchdog dispatch-live */5 like the comms consumer (canary, own flock,
