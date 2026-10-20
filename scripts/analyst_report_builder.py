@@ -583,6 +583,15 @@ def _options_income_section(
     }
 
 
+def _recom_row_ok(row: dict) -> bool:
+    """True when an analyst_consensus_history row's recom is a real 1..5 rating."""
+    try:
+        from lib.analyst_recom_guard import recom_reject_reason
+    except ImportError:  # pragma: no cover - imported as scripts.<module>
+        from scripts.lib.analyst_recom_guard import recom_reject_reason
+    return recom_reject_reason(row.get("recom_raw"), row.get("recom_score")) is None
+
+
 def _analyst_commentary_section(symbol: str, pro: dict | None, enrich: dict, *, news: list[dict] | None = None,
                                 hermes: list[dict] | None = None) -> dict | None:
     """What Wall Street is saying — recent rating/target CHANGES + bull/bear synthesis."""
@@ -596,13 +605,15 @@ def _analyst_commentary_section(symbol: str, pro: dict | None, enrich: dict, *, 
         (sym,),
     ) or []
     rating = _db_query(
-        """SELECT snapshot_date, analyst_rating, recom_score, target_price
+        """SELECT snapshot_date, analyst_rating, recom_raw, recom_score, target_price
            FROM analyst_consensus_history WHERE symbol = %s
            ORDER BY snapshot_date DESC LIMIT 60""",
         (sym,),
     ) or []
     tgt = [dict(r) for r in tgt]
-    rating = [dict(r) for r in rating]
+    # 2026-10-18: drop rows whose recom is a percent / off the 1..5 scale --
+    # their analyst_rating was derived from a percent return and is fabricated.
+    rating = [r for r in (dict(x) for x in rating) if _recom_row_ok(r)]
     changes: list[str] = []
     # target-mean change (latest vs ~30 sessions back)
     if len(tgt) >= 2:
@@ -664,8 +675,9 @@ def _earnings_estimates_section(symbol: str, enrich: dict) -> dict | None:
     fwd_growth = ((eps_ny - eps_ttm) / abs(eps_ttm) * 100) if eps_ttm else None
     # estimate-revision trend from consensus history (recom_score: lower = more bullish)
     hist = _db_query(
-        "SELECT recom_score, snapshot_date FROM analyst_consensus_history WHERE symbol=%s AND recom_score IS NOT NULL ORDER BY snapshot_date DESC LIMIT 30",
+        "SELECT recom_raw, recom_score, snapshot_date FROM analyst_consensus_history WHERE symbol=%s AND recom_score IS NOT NULL ORDER BY snapshot_date DESC LIMIT 30",
         (symbol.upper(),)) or []
+    hist = [r for r in (dict(x) for x in hist) if _recom_row_ok(r)]
     trend = ""
     if len(hist) >= 2:
         cur, old = _f(dict(hist[0]).get("recom_score")), _f(dict(hist[-1]).get("recom_score"))

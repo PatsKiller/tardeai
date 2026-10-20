@@ -2197,14 +2197,22 @@ def _load_analyst_context(holdings_symbols: set[str]) -> dict[str, dict[str, Any
                 continue
             if sym not in result:
                 continue
+            # 2026-10-18: a recom_raw carrying "%" (e.g. "3.81%") is a percent
+            # return, not a rating, even when it happens to land in 1..5; and an
+            # off-scale score makes the stored analyst_rating fabricated too
+            # (JNUG "-95.44%" -> "Strong Buy"). Refuse both, rating included.
+            from lib.analyst_recom_guard import recom_reject_reason
+            if recom_reject_reason(c.get("recom_raw"), c.get("recom_score")) is not None:
+                continue
+            score = _f(c.get("recom_score"))
+            if score is None:
+                continue
             if not result[sym].get("consensus_rating"):
                 rating = str(c.get("analyst_rating") or "")
                 if rating:
                     result[sym]["consensus_rating"] = rating
-            score = _f(c.get("recom_score"))
-            if score is not None and 1.0 <= score <= 5.0:
-                result[sym]["consensus_score"] = score
-                result[sym]["rating_updated"] = str(c.get("snapshot_date", ""))[:10]
+            result[sym]["consensus_score"] = score
+            result[sym]["rating_updated"] = str(c.get("snapshot_date", ""))[:10]
 
         return result
 

@@ -35,6 +35,18 @@ if not __import__("os").getenv("DB_PASSWORD") and (ROOT / ".env").exists():
             __import__("os").environ.setdefault(_k.strip(), _v.strip().strip("'\""))
 
 
+
+def finite_or_none(v):
+    """Return ``v`` when it is a finite number, else None (NaN/inf are unknown)."""
+    import math as _math
+    if v is None:
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return v if _math.isfinite(f) else None
+
 def _arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--dry-run", action="store_true")
@@ -150,6 +162,9 @@ def enrich() -> dict:
                 pass
             if ytd is None and isinstance(info.get("ytdReturn"), (int, float)):
                 ytd = round(info["ytdReturn"] * 100, 2)   # fund total-return fallback
+            # 2026-10-18: a NaN close (or NaN ytdReturn) produced NaN ytd_return_pct
+            # (symbol_profiles finite contract, BLOCK). Not a number -> unknown.
+            ytd = finite_or_none(ytd)
             dy = _norm_yield(info.get("yield") or info.get("dividendYield") or info.get("trailingAnnualDividendYield"))
             div = info.get("trailingAnnualDividendRate")
             div = round(float(div), 4) if isinstance(div, (int, float)) and div > 0 else None

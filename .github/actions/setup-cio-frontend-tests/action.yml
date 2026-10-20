@@ -1,0 +1,41 @@
+name: Setup dependencies for registered frontend tests
+description: Install locked frontend dependencies only when this runner owns the real reader tests.
+inputs:
+  shard:
+    description: Existing CIO shard selector; empty means the complete registered suite.
+    required: false
+    default: ''
+runs:
+  using: composite
+  steps:
+    - id: frontend
+      shell: bash
+      env:
+        CIO_TEST_SHARD: ${{ inputs.shard }}
+      run: |
+        python3 - <<'PY'
+        import os
+        from pathlib import Path
+        from scripts import run_cio_hardening_ci as runner
+        from scripts.lib.ci_shards import parse_shard_arg, registered_files
+        selector = os.environ.get('CIO_TEST_SHARD', '')
+        if selector:
+            sid, count = parse_shard_arg(selector)
+            selected = runner.shard_plan(count)['shards'][sid]
+        else:
+            selected = registered_files(runner.GATES, lambda path: (runner.REPO / path).is_file())
+        required = 'tests/test_cc_reader_first_20261018.py' in selected
+        with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
+            output.write('required=' + str(required).lower() + '\n')
+        PY
+    - uses: actions/setup-node@v4
+      if: steps.frontend.outputs.required == 'true'
+      with:
+        node-version: '22'
+        cache: npm
+        cache-dependency-path: apps/command-center-v3/package-lock.json
+    - name: Install locked frontend test dependencies
+      if: steps.frontend.outputs.required == 'true'
+      shell: bash
+      working-directory: apps/command-center-v3
+      run: npm ci --silent

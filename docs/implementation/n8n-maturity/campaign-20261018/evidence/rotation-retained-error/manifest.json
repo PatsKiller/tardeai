@@ -1,0 +1,322 @@
+{
+  "schema": "CampaignEvidenceArchive@v1",
+  "source_sha": "8a80540fb1596ed97c71b1fe646942ea39971450",
+  "ci_sha": "d2b77a87227e5a772fb3222f384d6f0b2bd7368f",
+  "files": [
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/IntelligenceRotationTab.tsx",
+      "raw_sha256": "521119f9f4d4114725fb9f644ba38f697dd11138a53d8a63a2e53c59ae4a9093",
+      "raw_bytes": 9023,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/IntelligenceRotationTab.tsx.gz",
+      "gzip_sha256": "351cecbb5c33768144603e5f1dfd3497deb60725e2c1e97d12f55bfe1cb274ab",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/IntelligenceRotationTab.tsx.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/active-leases.json",
+      "raw_sha256": "58790164de20f7e21cbcdf1b6c5ce1825c6a19bbf99a070003bc97ffedb215a4",
+      "raw_bytes": 1609,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/active-leases.json.gz",
+      "gzip_sha256": "dfb18d45a5f753e91d3747c6ca2ab29754da2dcc6cd7fec8f0b26d079e8300e1",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/active-leases.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/baseline-component.tsx",
+      "raw_sha256": "b775d14b34b975caf5396f1bc7ed6dbfecfcc4036ce1d339fd9dc98c70f6bb31",
+      "raw_bytes": 8761,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/baseline-component.tsx.gz",
+      "gzip_sha256": "0df12c50b5f3318a923dcf57a83805f033542e70b8fe1763be8db45ab90eb4b8",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/baseline-component.tsx.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/baseline-inventory.json",
+      "raw_sha256": "d0c0512cdc3e668ac65b30cba799ba2c2689bcacd15aa1a90632b74371f3156a",
+      "raw_bytes": 717,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/baseline-inventory.json.gz",
+      "gzip_sha256": "f782ef039c79a4e2cc11b9ace137579602767984e18726f70c792e6c749d68c7",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/baseline-inventory.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/browser-test-initial-sync.mjs",
+      "raw_sha256": "2f0195a8a464e294eef026867fb7cee411fca1183c6c4c7ab221f154e48b35ac",
+      "raw_bytes": 6905,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/browser-test-initial-sync.mjs.gz",
+      "gzip_sha256": "33ee118171d361c62bd2358f88b1245a93afd86a3c45d3a25a33f8752a88bab4",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/browser-test-initial-sync.mjs.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/browser-test-sync-v2.mjs",
+      "raw_sha256": "e84c2e775e13def22d8bad1fbef0bf682e95cce5417347d0b4270b5f3c64d142",
+      "raw_bytes": 7105,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/browser-test-sync-v2.mjs.gz",
+      "gzip_sha256": "a6e61799e3d39934201b5c019718be1cd530952d5d85bbe1ada7b715cbc607b3",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/browser-test-sync-v2.mjs.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/candidate-source.diff",
+      "raw_sha256": "674004077ac7ecf02fb9ed25f2d8cffe10f56c3a9a968c14777a6a25bdbbfd44",
+      "raw_bytes": 1592,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/candidate-source.diff.gz",
+      "gzip_sha256": "d2828b1eab09d63dada7aaeebd72beab33ae5ce14b767b177b32ceb41b6be8ba",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/candidate-source.diff.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/exact-regression-0.log",
+      "raw_sha256": "6c691c9ba3ea49ac95a7d2724da8dcdb6438ea655fee97eaa340a3f85cf9cc17",
+      "raw_bytes": 46,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/exact-regression-0.log.gz",
+      "gzip_sha256": "8a466febc3c548d588ddbf78b2bc061e3ad1bd09f6740b22d320167d89a330cb",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/exact-regression-0.log.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/exact-regression-1.log",
+      "raw_sha256": "aafdc3e371582efe1fea8fc6ecd90807b378403b0872fb29e70e4a50da79ca77",
+      "raw_bytes": 43,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/exact-regression-1.log.gz",
+      "gzip_sha256": "258708611a8cdf394529a02a9ecccf295f30f2db6a836327bc6328812ec3b559",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/exact-regression-1.log.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/exact-regression-2.log",
+      "raw_sha256": "b063af417c36e8028e07ffc34193eb8f2fbec614aba1a141fe32ec51acd4c73c",
+      "raw_bytes": 604,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/exact-regression-2.log.gz",
+      "gzip_sha256": "bfcc7855e2013e94f0cdbb98224d002ccd8978b39859485663fc0ea9ff287530",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/exact-regression-2.log.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/exact-regression-3.log",
+      "raw_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "raw_bytes": 0,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/exact-regression-3.log.gz",
+      "gzip_sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/exact-regression-3.log.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/exact-regressions.json",
+      "raw_sha256": "c0f2bcbdb287c908653a354e0242b7939af7fff51aba8cda8da583eaa904c19a",
+      "raw_bytes": 1287,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/exact-regressions.json.gz",
+      "gzip_sha256": "7ae341becc0e25815b60530e2362feace5e7598b611076227dcf757eb008c774",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/exact-regressions.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/external-baseline.json",
+      "raw_sha256": "931b1d4e5d3c577f9eeedafdf879b4d54a9666808a44d649d1670da3c8da617e",
+      "raw_bytes": 1150,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/external-baseline.json.gz",
+      "gzip_sha256": "4666cf55ab6d46fc3214eb451c7a18ee4fd1659df4dec6eeaf215f64b4eb28bd",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/external-baseline.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/external-candidate.json",
+      "raw_sha256": "c74262570dde9dfaf8637bfa2f5ff7410daa54ef1fd2e468d07e11f34318af21",
+      "raw_bytes": 731,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/external-candidate.json.gz",
+      "gzip_sha256": "4e4e421cafc58028a5e9c07e424bb5394bcc8ed6f7de49d4a6dbc126cf3b2f50",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/external-candidate.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/external-exact-head.json",
+      "raw_sha256": "c17371a464fc1c9f1980a7d2074b5725cea6a483b6db51f12637b9861ed0f0df",
+      "raw_bytes": 731,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/external-exact-head.json.gz",
+      "gzip_sha256": "7bec86b7016fc5c0d4828bc39b2934b0cb4bf591a7b902f8b44b79730e766979",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/external-exact-head.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/external-test-frozen.cjs",
+      "raw_sha256": "0864c3de8dc0839bf22cce67a210668ae6906a9cc66b5ee1c86cd74845f163dc",
+      "raw_bytes": 2737,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/external-test-frozen.cjs.gz",
+      "gzip_sha256": "5eaeb5a61de79297f04acdd53578cd4c00177fc911ac7142ec205a364fea5479",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/external-test-frozen.cjs.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/final-source-parity.json",
+      "raw_sha256": "716b6fc3daa60d12bfa6c943bcbae3e3a6ccd8ebf82ceebcd16b48ae67e942b9",
+      "raw_bytes": 772,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/final-source-parity.json.gz",
+      "gzip_sha256": "99ad6b3a36a436f8d598c01e3af3801b80c476305fa267d6d5e9d8dd1466f19c",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/final-source-parity.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lease-release.json",
+      "raw_sha256": "0c16571c091aa8258a05073302a895ffc98d2dfd801ad7abc24c8c93faed39e1",
+      "raw_bytes": 107,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/lease-release.json.gz",
+      "gzip_sha256": "d48b37c1b46085f03dce1b0d93341ebbdd80adc040edd3f1ce163f245992b8ce",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/lease-release.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/native-baseline-final.json",
+      "raw_sha256": "4852abcc8044535878bea5cd4198520b8663ebcda288193dcbc2a44a3c311a5a",
+      "raw_bytes": 2051,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/native-baseline-final.json.gz",
+      "gzip_sha256": "20e6b137a83b078161ebe0590ad97eca549b8da9358dcf478e40d06d620b4906",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/native-baseline-final.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/native-baseline-v2.json",
+      "raw_sha256": "4852abcc8044535878bea5cd4198520b8663ebcda288193dcbc2a44a3c311a5a",
+      "raw_bytes": 2051,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/native-baseline-v2.json.gz",
+      "gzip_sha256": "20e6b137a83b078161ebe0590ad97eca549b8da9358dcf478e40d06d620b4906",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/native-baseline-v2.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/native-baseline.json",
+      "raw_sha256": "57ab391e74d5b033b211ad665a0b2bb26c3bb67cb2ed360f0a7318936b6ac4cb",
+      "raw_bytes": 2036,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/native-baseline.json.gz",
+      "gzip_sha256": "d62001eadfd4242ba1d0df0aa0cfe25802d87ed4a4963d42a7b7f6596feee756",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/native-baseline.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/native-candidate-final.json",
+      "raw_sha256": "f3eec613b1e7255f848cddfe6efa60ebe955b06af4e17d9c35bc53d530b3a132",
+      "raw_bytes": 1512,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/native-candidate-final.json.gz",
+      "gzip_sha256": "b3500897d4d55a18108599c543a24119c05e537192dcde97cc5bedbbad30c7bb",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/native-candidate-final.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/native-candidate-initial-sync.json",
+      "raw_sha256": "cb3f66975628a44e5729775a9a17f726a54b55d653ba754eaba26a996ae79d81",
+      "raw_bytes": 2064,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/native-candidate-initial-sync.json.gz",
+      "gzip_sha256": "bb669bff2942f953b7e9f149bb8938b79e1ef5df5ce0ebf5c894467f500962d8",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/native-candidate-initial-sync.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/native-candidate-v2.json",
+      "raw_sha256": "e0ff1b4d3b227de1f942a1d47c37231ea7855fb0d2c1bc4ed31b1b23e4d317d4",
+      "raw_bytes": 1759,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/native-candidate-v2.json.gz",
+      "gzip_sha256": "d44a3d0d3ca434bc77a1ae8224e440ee6a51186954de2189bb573383de2ce924",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/native-candidate-v2.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/native-candidate.json",
+      "raw_sha256": "cb3f66975628a44e5729775a9a17f726a54b55d653ba754eaba26a996ae79d81",
+      "raw_bytes": 2064,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/native-candidate.json.gz",
+      "gzip_sha256": "bb669bff2942f953b7e9f149bb8938b79e1ef5df5ce0ebf5c894467f500962d8",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/native-candidate.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/native-exact-head.json",
+      "raw_sha256": "f3eec613b1e7255f848cddfe6efa60ebe955b06af4e17d9c35bc53d530b3a132",
+      "raw_bytes": 1512,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/native-exact-head.json.gz",
+      "gzip_sha256": "b3500897d4d55a18108599c543a24119c05e537192dcde97cc5bedbbad30c7bb",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/native-exact-head.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/native-test-final-frozen.mjs",
+      "raw_sha256": "55c6f8910ae3efce939070a00b9390adceec49da6373c5f9c6788d016164dc11",
+      "raw_bytes": 7214,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/native-test-final-frozen.mjs.gz",
+      "gzip_sha256": "900cc1cb4c4fb827633d7849c50fbc2a2a3a877ff30e890133b79f4b4f8eaea3",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/native-test-final-frozen.mjs.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/native-test-selector-correction.json",
+      "raw_sha256": "ea0ef0ebe656584a3d42075837d5bf19aaa133c95eb3690917022705bab82616",
+      "raw_bytes": 446,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/native-test-selector-correction.json.gz",
+      "gzip_sha256": "6f800fdcd9a0a83b59799ed3d36022053054dc7a861ab44acda99e88f3d9ce55",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/native-test-selector-correction.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/native-test-sync-correction.json",
+      "raw_sha256": "926e3433cb9cd924d8e24e94f042dc6ddb4cd42c9618a668fba6e677e69629e5",
+      "raw_bytes": 549,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/native-test-sync-correction.json.gz",
+      "gzip_sha256": "5e8978f587503bcd39430bc060847530b99f9d2a476af4a57850a4581bb8e677",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/native-test-sync-correction.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/rotationRetainedError.browser.test.mjs",
+      "raw_sha256": "55c6f8910ae3efce939070a00b9390adceec49da6373c5f9c6788d016164dc11",
+      "raw_bytes": 7214,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/rotationRetainedError.browser.test.mjs.gz",
+      "gzip_sha256": "900cc1cb4c4fb827633d7849c50fbc2a2a3a877ff30e890133b79f4b4f8eaea3",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/rotationRetainedError.browser.test.mjs.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/sandbox-browser-failure.json",
+      "raw_sha256": "bcb020b5de0982b20d713a81909fcb6b28c821765562c8195fd734c17b605adb",
+      "raw_bytes": 425,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/sandbox-browser-failure.json.gz",
+      "gzip_sha256": "130f5af72d234d8c882ad0bb524b798367aad6fc9eb53dfde871c31255a4413c",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/sandbox-browser-failure.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/session.json",
+      "raw_sha256": "f4c5c70c86bc800c6e9157133e9e253ec39ec6a62b1cbcffd5ac8c54ba62a51a",
+      "raw_bytes": 3610,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/session.json.gz",
+      "gzip_sha256": "6e1c435530bcd138d281d8d30e65323c87736ecf50b6e62ba98b4f5045dadc88",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/session.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/shared-source-parity.json",
+      "raw_sha256": "84cc464159751b13b39c27ca92ecf1ba483581781a23f7a1f45e404a726b1e27",
+      "raw_bytes": 591,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/shared-source-parity.json.gz",
+      "gzip_sha256": "2aab4b2102e03a6d52c00f1b2b1bb0a63262715b220e2869a6797bc1084b1874",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/shared-source-parity.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/typecheck-interruption.json",
+      "raw_sha256": "8b9fd054080d3ccb11f2230d655496c477390adcd09ee534729784f7827f178d",
+      "raw_bytes": 364,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/typecheck-interruption.json.gz",
+      "gzip_sha256": "f2a9b67b6ce0a2df637c146466fd72be223ccb6d48c74965d3bbe6933c74b9b5",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/typecheck-interruption.json.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/worktree-inventory.txt",
+      "raw_sha256": "40f7fd999b8f264c28f73df8a7f903a30edeadd981379ff37420cf6e50524728",
+      "raw_bytes": 136738,
+      "gzip_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/lossless/worktree-inventory.txt.gz",
+      "gzip_sha256": "f84a1941c6ecd6ff42488aa8a001643c1a87ab6a7ed98606d448cecff474507f",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/worktree-inventory.txt.gz"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/author-review-packet.json",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/author__author-review-packet.json.gz",
+      "raw_sha256": "a79204f90cb117f4e89a7ad3550d3658e2ea672d9c352a5a61e2a5a20d87cca8",
+      "gzip_sha256": "096f6aa554dae3207e6b4c978e6273defb8bba55b27e9789ea46b62aca430038"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/author/artifact-manifest.json",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/author__artifact-manifest.json.gz",
+      "raw_sha256": "81de285edbf2d0de68b49105f1f08a6d54ffafaf9b3367b637db3581c6afbd9d",
+      "gzip_sha256": "e54f0d676953f660a27273fa2f807314252a57b71f2028c26f7d2935ebe2e54b"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/browser-test.cjs",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/browser-test.cjs.gz",
+      "raw_sha256": "0864c3de8dc0839bf22cce67a210668ae6906a9cc66b5ee1c86cd74845f163dc",
+      "gzip_sha256": "5eaeb5a61de79297f04acdd53578cd4c00177fc911ac7142ec205a364fea5479"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/baseline.json",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/baseline.json.gz",
+      "raw_sha256": "9ca1a3cd1fc4dee4ed07b523cf13e2bcc5d66ba23a7b7fa1f177a5c1a07655c4",
+      "gzip_sha256": "a68eee20a2b0f8167819e4e93c35adf8dd6eabe1f4234a705754aa03ed53f976"
+    },
+    {
+      "raw_path": "/tmp/n8n-campaign-20261018/rotation-retained-error/root-candidate8a8.json",
+      "stored_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-retained-error/root-candidate8a8.json.gz",
+      "raw_sha256": "6a6cd12f13a5b72ab6a56e7b8461b8b554919f3e9bd49e9f8988f65039a5ce28",
+      "gzip_sha256": "c29187636777757a71215baf8a3024df1d77eed2e03a184f93e9dc726d4eb2c2"
+    }
+  ],
+  "limits": [
+    "No full native/build on final integration yet",
+    "CI independent review pending; final evidence commit contains no source edits",
+    "No production browser identity, runtime effects or release"
+  ]
+}

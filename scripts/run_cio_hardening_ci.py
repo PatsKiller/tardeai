@@ -23,6 +23,27 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # Preserve existing SEC event identities while suppressing within-batch repeats.
+    (
+        "premarket_dedupe_within_batch_20261018",
+        ["tests/test_premarket_dedupe_within_batch_20261018.py"],
+    ),
+    # All ledger recovery consumers require the shared live useful-output verdict.
+    (
+        "n8n_siem_recovery_truth_20261018",
+        [
+            "tests/test_n8n_recovery_consistency_20261018.py",
+            "tests/test_n8n_siem_recovery_truth_20261018.py",
+        ],
+    ),
+    # Atomic bounded recovery reservations; critical enrollment survives diagnosis budget exhaustion.
+    ("n8n_supervisor_budget_20261018", ["tests/test_n8n_supervisor_budget_20261018.py"]),
+    ("self_heal_fix_acceptance_20261018", ["tests/test_self_heal_fix_acceptance_20261018.py"]),
+    # Staged reader preserves v2 evidence and refuses legacy worker effects on it.
+    (
+        "incident_notifier_state_compatibility_20261018",
+        ["tests/test_incident_notifier_state_compatibility_20261018.py"],
+    ),
     # Rotation publication: account-bound identity, real source clocks and grounded
     # stop claims; actual API/cache/digest/POST boundaries with fake external effects.
     ("rotation_publication_20261018", ["tests/test_rotation_publication_20261018.py"]),
@@ -73,6 +94,25 @@ GATES = [
     # conflict falls back to Trade-AI evidence for display; fast-loop alerts carry same-day pass RVOL/setup/float/Trade-AI;
     # STAND DOWN states last/entry/stop with no L2/all-n/a line; unstamped 0/5 AT evidence block dropped. Hermetic.
     ("active_trader_alert_completeness_20261019", ["tests/test_active_trader_alert_completeness_20261019.py"]),
+    # ANCHOR: DATA_INTEGRITY_FIXES_20261018 — operator-approved data-integrity fix PR: Finviz recom "%"/off-scale refused
+    # by writer, cache loader and consumers (JNUG "-95.44%" reproduction) + dry-run-default remediation (archive + NULL,
+    # never DELETE); no empty analyst_data_history payloads, readers say "unavailable"; ATR stop never <= 0; confidence
+    # clamps; NaN / int32 sentinels; plausibility band fingerprint + windows + retired_store; gap-resolution symbol
+    # touches, per-class fingerprints, digest routing; llm_curation deferred (no Ollama); both monitors as n8n canary
+    # lanes (dry live_arg first) with REVIEWED contracts, LaneRunReceipt@v2 and the operator packet. Hermetic.
+    ("data_integrity_fixes_20261018", ["tests/test_data_integrity_fixes_20261018.py"]),
+    # ANCHOR: N8N_EVIDENCE_KIND_PARITY_20261019 — the runtime output verdict and the FW-M6 checker accept the same
+    # N8nExpectedOutput@v1 evidence kinds (file_artifact, per N8N_CONTRACTS_DESIGN.md); before, "file" vs "file_artifact"
+    # meant no contract could cite a file. Hermetic: committed contracts read only.
+    ("n8n_evidence_kind_parity_20261019", ["tests/test_n8n_evidence_kind_parity_20261019.py"]),
+    # ANCHOR: ACTIVE_TRADER_MOTION_WATCHDOG_20261019 — operator decision 2026-10-19: the motion loop stays a systemd
+    # user unit (gate line fixed to /etc/tradeai/enable-active-trader-motion, no misspelt dir) and n8n owns its
+    # supervision: lane active-trader-motion-watchdog dispatch-live */5 like the comms consumer (canary, own flock,
+    # live_arg --apply, enforced env closure, REVIEWED contract); bands HEALTHY/STALE/DEGRADED/DOWN/DISABLED, trading-day
+    # window, band-change dedupe via the host comms-intent path, LaneRunReceipt@v2; the operator packet (grant id
+    # verified, CLOSED-session start, archive-not-delete). Hermetic: tmp heartbeat, fake /proc, clock, marker, systemctl.
+    ("active_trader_motion_watchdog_20261019", ["tests/test_active_trader_motion_watchdog_20261019.py"]),
+    ("fabric_grant_id_20261018", ["tests/test_fabric_grant_id_20261018.py"]),
     # Feedback's future queue-only capability does not enable its held sixth stage.
     # Exercise actual authenticated admission and executor stage clamping, with fake effects.
     ("hermes_feedback_hold_20261018", ["tests/test_hermes_feedback_hold_20261018.py"]),
@@ -5321,6 +5361,13 @@ GATES = [
         # Hermetic: fake host, tmp_path state; no git/gh/systemctl/guard ledger.
         "release_windows_20261016",
         ["tests/test_release_window_20261016.py"],
+    ),
+    (
+        "n8n_cc_reader_first_20261018",
+        [
+            "tests/test_cc_reader_first_20261018.py",
+            "tests/test_ci_frontend_dependencies_20261018.py",
+        ],
     ),
 ]
 

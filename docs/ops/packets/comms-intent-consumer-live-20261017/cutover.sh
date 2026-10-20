@@ -29,6 +29,7 @@ set -f
 REPO=${REPO:-$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild}
 PY=${PY:-$REPO/.venv/bin/python}
 SERVED=${SERVED:-$(readlink -f "$HOME/trade-ai-releases/portfolio-server/CURRENT")}
+GRANT_PY=${GRANT_PY:-$(cd "$(dirname "$0")/../../../.." && pwd)/scripts/lib/fabric_grant.py}
 STATE=${STATE:-$HOME/trade-ai-releases/persistent-state}
 LEDGER=${LEDGER:-$STATE/data/governance/n8n_coordination_ledger.sqlite}
 LIVE_LANES_ENV=${LIVE_LANES_ENV:-$HOME/.config/tradeai/n8n-live-lanes.env}
@@ -45,8 +46,37 @@ APPLY=0; SINCE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in --apply) APPLY=1; shift ;; --since) SINCE=${2:-}; shift 2 ;; *) fail "unknown arg $1" ;; esac
 done
-need_grant(){ [[ $APPLY == 0 || -n "${TRADEAI_FABRIC_GRANT:-}" ]] || fail "TRADEAI_FABRIC_GRANT not set"; }
+# Full primary ID in TRADEAI_FABRIC_GRANT; restarts additionally need TRADEAI_FABRIC_SERVICE_GRANT.
+# Reasons name this action, every lane, workflow ID and this packet's SHA256; service names both units + restart.
+# Checks are read-only; --consume rechecks/consumes all required finite grants atomically immediately before mutation.
+need_grant(){
+  [[ $APPLY == 0 ]] && return 0
+  [[ -n "${TRADEAI_FABRIC_GRANT:-}" ]] || fail "TRADEAI_FABRIC_GRANT not set"
+  local hit
+  hit=$("$PY" "$GRANT_PY" authorize "comms.$STEP" "$@") || fail "grant refused: $hit"
+  echo "  grant ok: $hit"
+}
 now_hm(){ echo "${NOW_HM:-$(TZ=America/New_York date +%H%M)}"; }
+# A live-list/owner change admits work even when no import is needed. Missing proof holds it.
+# Supply the immutable inactive import-form export and host framework evidence; a metadata ref is not proof.
+framework_ready(){
+  [[ -f "${N8N_WORKFLOW_EXPORT:-}" && -f "${N8N_FRAMEWORK_RUNTIME_EVIDENCE:-}" ]] \
+    || fail "framework evidence unavailable: N8N_WORKFLOW_EXPORT and N8N_FRAMEWORK_RUNTIME_EVIDENCE required"
+  "$PY" - "$SERVED" "$WID" "$N8N_WORKFLOW_EXPORT" <<'EOF' || fail "exported workflow graph differs from the served reviewed graph"
+import json, pathlib, sys
+root, wid, path = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+sys.path.insert(0, str(root / "scripts"))
+import n8n_workflow_templates as T
+exported = json.load(open(path))
+expected = json.load(open(root / "docs/implementation/n8n-maturity/workflows/tradeai-dispatcher.json"))
+assert exported["id"] == expected["id"] == wid
+assert T.graph_hash(exported) == T.graph_hash(expected)
+EOF
+  "$PY" "$SERVED/scripts/check_n8n_import_ready.py" "$N8N_WORKFLOW_EXPORT" \
+    --relay-url http://172.19.0.1:18092 --known-id tradeai-incident-router \
+    --framework-gate activation --runtime-evidence "$N8N_FRAMEWORK_RUNTIME_EVIDENCE" \
+    || fail "framework activation gate refused the exported workflow"
+}
 live_lanes(){ sed -n 's/^TRADEAI_N8N_RELAY_LIVE_LANES=//p' "$LIVE_LANES_ENV"; }
 in_live_list(){ [[ -f "$LIVE_LANES_ENV" ]] && live_lanes | tr ' ' '\n' | grep -qx -- "$LANE"; }
 
@@ -198,6 +228,8 @@ for w in d.get("would") or []:
       [[ $APPLY == 0 ]] || echo "  ACCEPT_DELIVERY_GAP=1: proceeding although the notifier cannot deliver now ($w)"
     fi
     [[ $APPLY == 1 ]] || { echo "  DRY RUN — live list unchanged, nothing restarted"; exit 0; }
+    framework_ready
+    need_grant --consume
     write_live_list "$NEW" comms-intent-consumer-live
     in_live_list || fail "READ-BACK FAILED: $LANE not in $LIVE_LANES_ENV"
     for l in "${CUR_A[@]}"; do live_lanes | tr ' ' '\n' | grep -qx -- "$l" || fail "READ-BACK FAILED: lost $l"; done
@@ -205,6 +237,7 @@ for w in d.get("would") or []:
     restart_units expect ;;
   publish)
     served_state || fail "serve the comms consumer live PR first"
+    framework_ready
     SERVED="$SERVED" "$PY" - "$WID" <<'EOF' || fail "served $WID graph differs from INDEX: regenerate (build-generic) and re-import before going live"
 import hashlib, json, os, sys
 root, wid = os.environ["SERVED"], sys.argv[1]
@@ -294,6 +327,7 @@ EOF
     for l in "${CUR_A[@]}"; do [[ "$l" == "$LANE" ]] || KEEP+=("$l"); done
     echo "  removes: $LANE; keeps ${#KEEP[@]} lanes"
     [[ $APPLY == 1 ]] || { echo "  DRY RUN — live list unchanged, nothing restarted"; exit 0; }
+    need_grant --consume
     write_live_list "${KEEP[*]}" comms-intent-consumer-rollback
     if in_live_list; then fail "READ-BACK FAILED: $LANE still in $LIVE_LANES_ENV"; fi
     for l in "${KEEP[@]}"; do live_lanes | tr ' ' '\n' | grep -qx -- "$l" || fail "READ-BACK FAILED: lost $l"; done

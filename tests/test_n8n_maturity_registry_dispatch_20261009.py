@@ -512,7 +512,10 @@ def test_registry_dispatch_errors_hook():
 N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor", "momentum-cache-reconcile",
                                "hermes-discovery-yield-on-learning"})
 #: 2026-10-17 + n8n-comms-intent-consumer (operator D2 "Queue reader first"; tests/support/comms_intent_consumer_live.py).
-N8N_NATIVE_CANARY = frozenset({"heartbeat-watch", "n8n-comms-intent-consumer"})
+#: 2026-10-19 + active-trader-motion-watchdog (n8n owns motion supervision; tests/support/active_trader_motion_watchdog.py).
+N8N_NATIVE_CANARY = frozenset({"heartbeat-watch", "n8n-comms-intent-consumer", "active-trader-motion-watchdog",
+                               # 2026-10-18 data-integrity monitors (tests/support/data_integrity_monitors_n8n.py)
+                               "n8n-data-plausibility-audit", "n8n-gap-resolution-audit"})
 #: lane repair 2026-10-15: a systemd-timer lane at shadow (its timer keeps the real work; dispatch.cron mirrors the
 #: timer's OnCalendar). tests/test_lane_repair_ri_hermes_litmus_20261015.py pins the row and its allowlist entry.
 SYSTEMD_TIMER_SHADOW = frozenset({"source-litmus-vs-yahoo"})
@@ -549,10 +552,11 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             assert mode == "live" and row["scheduler"].get("stage") == "canary", lane
             assert (row["scheduler"]["kind"], row["scheduler"]["expression"]) == ("n8n", "dispatcher"), lane
             assert allow[lane]["dry_run_arg"] == ["--dry-run"], lane
-            if lane in ("momentum-cache-reconcile", "n8n-comms-intent-consumer"):
+            if lane in ("momentum-cache-reconcile", "n8n-comms-intent-consumer", "active-trader-motion-watchdog"):
                 assert allow[lane]["live_arg"] == ["--apply"], lane
             else:
-                # heartbeat-watch: script default writes the receipt (live_arg []).
+                # heartbeat-watch: script default writes the receipt (live_arg []); so do the 2026-10-18
+                # data-integrity monitors (dry live_arg first: measure + LaneRunReceipt@v2, notify nobody).
                 assert allow[lane]["live_arg"] == [], lane
             assert LD.r1_class_admission(row, allow[lane])[0] is True, lane
             continue

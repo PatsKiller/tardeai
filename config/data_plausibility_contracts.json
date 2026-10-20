@@ -1,11 +1,36 @@
 {
   "schema": "DataPlausibilityContracts@v1",
   "_why": "A column's scale was never written down anywhere. Database-wide there are only five CHECK constraints mentioning confidence, and they use three different scales (1-5, 0-1, and a text enum); every other numeric column is undeclared. Nothing stopped a 0-1 producer and a 0-100 producer writing the same column, and nothing stopped a ten-year return percentage being stored as a 1-5 analyst rating for five months. This file is that missing declaration. It is deliberately data, not code, so a scale can be reviewed and corrected without a deploy.",
-
   "_how_to_use": "scripts/data_plausibility_monitor.py reads this, measures every declared column against its contract, and reports violations. It never writes to the tables it checks. A violation is not automatically a defect -- it may mean the contract is wrong -- but an undeclared, unmeasured column is how the Finviz shift survived 131,050 rows.",
-
   "_severity": "BLOCK means the value cannot be valid on its declared scale and a consumer acting on it is acting on fiction. WARN means implausible but conceivable, and wants a human look.",
-
+  "window_policy": {
+    "_why": "2026-10-18: range/min/max/finite/single_scale contracts measured the WHOLE table, so a row that went bad months ago (and was already quarantined or is frozen history) kept the contract violating forever and the daily run alerted every day. A contract is about what is being written NOW. Each windowed contract measures the last default_window_days by its window_column (explicit per contract), else the first of window_column_candidates the table actually has (information_schema); a table with none is measured whole and the detail says so. window_days: 0 on a contract opts it out.",
+    "default_window_days": 30,
+    "window_column_candidates": [
+      "created_at",
+      "snapshot_date",
+      "scanned_at",
+      "computed_at",
+      "updated_at",
+      "as_of"
+    ],
+    "rules": [
+      "range",
+      "min",
+      "max",
+      "finite",
+      "single_scale"
+    ]
+  },
+  "alert_policy": {
+    "_why": "2026-10-18: the alert fingerprint carried raw violation counts, so a count that moved by one row was a 'changed finding set' and re-alerted daily. The fingerprint is now (table.column:rule) -> severity:band; a column that starts or stops violating, changes severity, or crosses one of pct_bands_pct (percent of rows in the window) is news. min_realert_minutes is the heartbeat for an UNCHANGED open finding set: 10080 = weekly (the shared state machine default of 360 minutes made a daily monitor heartbeat every run). A steady violation is still restated, never silent forever.",
+    "pct_bands_pct": [
+      1.0,
+      10.0,
+      50.0
+    ],
+    "min_realert_minutes": 10080
+  },
   "contracts": [
     {
       "table": "analyst_consensus_history",
@@ -47,7 +72,6 @@
       "severity": "BLOCK",
       "_why": "28 rows store nan. Same failure mode as symbol_profiles.ytd_return_pct."
     },
-
     {
       "table": "trade_ai_scans",
       "column": "catalyst_confidence",
@@ -69,16 +93,14 @@
       "severity": "BLOCK",
       "_why": "4,462 rows above 1 and 12 in (0,1]. Here the minority is the 0-1 population -- the opposite of agent_recommendation_registry, which is exactly why a single global rule would be wrong."
     },
-
     {
       "table": "analyst_data_history",
       "column": "payload",
-      "rule": "required_fields",
+      "rule": "retired_store",
       "window_column": "as_of",
-      "window_days": 30,
-      "max_empty_pct": 50.0,
+      "retired_at": "2026-10-18",
       "severity": "BLOCK",
-      "_why": "EMPTY PAYLOADS THAT LOOK FRESH: 18,772 rows since 2026-08-01 carry payload = {}. Every row has a current as_of, so every freshness check read the table as live while it held nothing. A range rule cannot see this -- there is no value to be off-scale -- so this rule counts payloads that say nothing ({} / null / []) inside the window and fails when they are the majority. 50% is deliberately loose: a symbol with no analyst coverage legitimately yields an empty fetch, but not most of them, every day, for six weeks. analyst_data_history is a RETIRED store in config/data_source_authority.json (analyst_opinion.retired_stores); the contract is here so the rows it is still accumulating are measured, not assumed."
+      "_why": "RETIRED STORE (2026-10-18). The analyst-vote provider (Finnhub) died 2026-07-28 and was retired 2026-09-13 (config/data_source_authority.json analyst_opinion.retired_stores); every row since held payload = {} (18,772 by 2026-09-13, 100% empty). The former required_fields rule (max_empty_pct 50 over 30 days) therefore failed every day on frozen, known debt. scripts/asset_intelligence_pipeline.py mirror_to_db no longer inserts an empty analyst payload, and readers (api_v2 analyst map / pro-analyst detail, broker_proposal_intel) render the distribution as 'unavailable' (scripts/lib/analyst_vote_distribution.py). The contract now fails only if an EMPTY payload row is written on or after retired_at: the writer fix regressed."
     },
     {
       "table": "incubator_universe",
@@ -108,6 +130,5 @@
       "_why": "Range 32.1-77.4 across 3,066 rows: 0-100. An earlier sweep flagged this as '100% implausible' by assuming 0-1. The sweep's rule was wrong, not the data -- recorded so that mistake is not repeated."
     }
   ],
-
   "_not_declared_yet": "market_quotes.day_change_pct, schwab_basis_divergence.divergence_pct, strategy_backtest_results.max_drawdown_pct and market_quote_snapshots.spread_pct all carry extreme outliers (13,105%, 12,818%, 15,026%, 384,043%). They are NOT declared here because a penny stock or a thin spread can legitimately produce large percentages, and declaring a bound that has not been verified would manufacture false violations. They need a judgement call before they get a contract."
 }

@@ -1,0 +1,990 @@
+{
+  "schema": "N8nCampaignPairedRotationUiIntegration@v1",
+  "status": "SOURCE_TESTED_NOT_NATIVE_ACCEPTED_NOT_DEPLOYED",
+  "base_sha": "4b4464315189b1ff2b6a9969d16c67766cba4521",
+  "reused_source_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+  "original_reader_base": "1e31f83fcfde3b8603a634129239bb52a32c27a2",
+  "source_parity": {
+    "sources": [
+      {
+        "path": "apps/command-center-v3/package.json",
+        "candidate_sha256": "9f2165bcf66d695450276ae8837b5f93e3c7e6684263d20a5a78cca0081b8768",
+        "reused_sha256": "9f2165bcf66d695450276ae8837b5f93e3c7e6684263d20a5a78cca0081b8768",
+        "byte_identical": true
+      },
+      {
+        "path": "apps/command-center-v3/src/components/CentralIntelligencePages.tsx",
+        "candidate_sha256": "548aa7bb93f13a2e412b089ae18b3e9736707e3abdd625d28dcfdf1df551890e",
+        "reused_sha256": "548aa7bb93f13a2e412b089ae18b3e9736707e3abdd625d28dcfdf1df551890e",
+        "byte_identical": true
+      },
+      {
+        "path": "apps/command-center-v3/src/components/RotationPublicationNotice.tsx",
+        "candidate_sha256": "ba006d3e051509ff17bdef9f9b28518566690f006cfb464772a59f1060e83716",
+        "reused_sha256": "ba006d3e051509ff17bdef9f9b28518566690f006cfb464772a59f1060e83716",
+        "byte_identical": true
+      },
+      {
+        "path": "apps/command-center-v3/src/components/intelligence/IntelligenceRotationTab.tsx",
+        "candidate_sha256": "b775d14b34b975caf5396f1bc7ed6dbfecfcc4036ce1d339fd9dc98c70f6bb31",
+        "reused_sha256": "b775d14b34b975caf5396f1bc7ed6dbfecfcc4036ce1d339fd9dc98c70f6bb31",
+        "byte_identical": true
+      },
+      {
+        "path": "apps/command-center-v3/src/hooks/useRotationAvailability.ts",
+        "candidate_sha256": "ee47c686d91075f3787f4a39ea21c9570b588ecceacb7f3296c11226c08ea60f",
+        "reused_sha256": "ee47c686d91075f3787f4a39ea21c9570b588ecceacb7f3296c11226c08ea60f",
+        "byte_identical": true
+      },
+      {
+        "path": "apps/command-center-v3/src/lib/rotationExpiry.test.ts",
+        "candidate_sha256": "9bf88af6c66e2bde64ba2dc7830e6697ab2f32df4f279de3344392ac01feb88f",
+        "reused_sha256": "9bf88af6c66e2bde64ba2dc7830e6697ab2f32df4f279de3344392ac01feb88f",
+        "byte_identical": true
+      },
+      {
+        "path": "apps/command-center-v3/src/lib/rotationExpiry.ts",
+        "candidate_sha256": "c132bed1efec04ff9f1793f2892a17bb2f1af424e8187361e34c8de0ae0fa3ed",
+        "reused_sha256": "c132bed1efec04ff9f1793f2892a17bb2f1af424e8187361e34c8de0ae0fa3ed",
+        "byte_identical": true
+      },
+      {
+        "path": "apps/command-center-v3/src/lib/rotationPublication.test.ts",
+        "candidate_sha256": "f52133c210c8240f58fc4ac1cba98307700866ca5cab1035d686640e03f6c813",
+        "reused_sha256": "f52133c210c8240f58fc4ac1cba98307700866ca5cab1035d686640e03f6c813",
+        "byte_identical": true
+      },
+      {
+        "path": "apps/command-center-v3/src/lib/rotationPublication.ts",
+        "candidate_sha256": "5d3689484e217d8113b51e025ab5c14da15b9e2e7172a59358c5a510c260f4d6",
+        "reused_sha256": "5d3689484e217d8113b51e025ab5c14da15b9e2e7172a59358c5a510c260f4d6",
+        "byte_identical": true
+      },
+      {
+        "path": "apps/command-center-v3/src/lib/rotationPublication.view.test.mjs",
+        "candidate_sha256": "f60903fc78a26876c73e10ed8b60f36139e15919070b4a5300f57d4922f6152f",
+        "reused_sha256": "f60903fc78a26876c73e10ed8b60f36139e15919070b4a5300f57d4922f6152f",
+        "byte_identical": true
+      },
+      {
+        "path": "apps/command-center-v3/src/pages/PortfolioHub.tsx",
+        "candidate_sha256": "2532af1b73ed4cd149d2dc9e89148f65fc3ac72e5eff501d9cdc8f5e197e91d4",
+        "reused_sha256": "2532af1b73ed4cd149d2dc9e89148f65fc3ac72e5eff501d9cdc8f5e197e91d4",
+        "byte_identical": true
+      },
+      {
+        "path": "apps/command-center-v3/src/pages/RotationIntelligence.tsx",
+        "candidate_sha256": "aa1ff22fd81206efdddc796406c595ed15296bdabc4f53fc376d4a7f16f73a82",
+        "reused_sha256": "aa1ff22fd81206efdddc796406c595ed15296bdabc4f53fc376d4a7f16f73a82",
+        "byte_identical": true
+      }
+    ],
+    "all_source_bytes_equal": true,
+    "build_added": [
+      "node --experimental-strip-types src/lib/rotationPublication.test.ts",
+      "node --experimental-strip-types src/lib/rotationExpiry.test.ts",
+      "node src/lib/rotationPublication.view.test.mjs"
+    ],
+    "old_build_order_preserved": true,
+    "other_package_fields_unchanged": true,
+    "ci_byte_unchanged": true,
+    "release_readiness_workflow_unchanged": true
+  },
+  "tests": {
+    "frozen_actual_producer_reader_pair": "Final v3 same test SHA/actual producer fixtures/aware fixed hermetic clock: baseline baeda1expectedAssertionError+1READYcontrol => current2PASS",
+    "original_pair_history": "preserved unchanged; original positive lacks required publication; v2 draft bad SCHG visibility control preserved as harness design error, not claimed source failure",
+    "all_package_src_lib_test_commands": "38 executed;37directPASS; unchanged tableSort ESM dependency resolution failure preserved then byteexact scratch dependency fixturePASS; no source changes",
+    "actual_reader_python": 7,
+    "reader_component_source_regressions": 25,
+    "ci_dependency_tests": 15,
+    "external_actual_component_controls": 8,
+    "native_or_full_build": "NOT_RUN_NOT_AUTHORIZED",
+    "new_source_tests_or_gates": "No new semantic test source beyond exact reviewed ebc11; package already executes3existingreviewedrotation suites. CI/gates/release-readiness files remain base4b-byteexact."
+  },
+  "compatibility_holds": [
+    "Exact-head independent review and full native/full npm build required before any push/release.",
+    "Authenticated actual refreshed client must prove loaded bundle fullSHA/build identity, all4rotation surfaces explicitREADY/STALE/UNAVAILABLE, current source clock/coverage and retained-error behavior. Already-open old clients are not forced to refresh and remain unproven; no claim they were repaired by artifact pairing.",
+    "Current backend default v1 coordination/n8n-today/outbox behavior remains unchanged. Pending negotiated writer is not included or enabled.",
+    "No business-output recovery, provider delivery, MFA or observation-window proof is claimed.",
+    "Merge-tree against exact baeda must be recorded after final local commit; no production/config/owner/workflow mutation."
+  ],
+  "artifacts": [
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/README.md.gz"
+      },
+      "stored_path": "upstream/README.md.gz.gz",
+      "raw_sha256": "c6919d4d8f2a7588013f27eeaa6d616279d0e661ea66300776b5715b2d2ad0ae",
+      "raw_bytes": 1488,
+      "stored_sha256": "29a8f161bc9c9f7754e4a7bd97665fbcc08aa6ecd1103ada3b082caf987e61fe",
+      "stored_bytes": 1511
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/artifact-manifest.json.gz"
+      },
+      "stored_path": "upstream/artifact-manifest.json.gz.gz",
+      "raw_sha256": "debf734e91964591e14ebb975b94a160f4daa472f892bceebfe7a69ac8e7d7b0",
+      "raw_bytes": 1704,
+      "stored_sha256": "cdce64c0bedf3f988a058f46192e9794b79f7fee2cd770901ce750b4316eb2d0",
+      "stored_bytes": 1727
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/backend-fixture.json.gz"
+      },
+      "stored_path": "upstream/backend-fixture.json.gz.gz",
+      "raw_sha256": "71a58662b8a0d3448e32adb4b0afb701688cbc21b9ac591ea5f9fc8dee6bb7f3",
+      "raw_bytes": 376,
+      "stored_sha256": "634d19ba091f26b727442729afaaa9ffb11a8fb78a45efdb2a595539f67ddf2c",
+      "stored_bytes": 399
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/baseline-red.json.gz"
+      },
+      "stored_path": "upstream/baseline-red.json.gz.gz",
+      "raw_sha256": "10e4c799e05c9066a9a2f19d9abf60c76d5d059eeaefa16bb5cf89da4b89c2da",
+      "raw_bytes": 447,
+      "stored_sha256": "2cbdec80d6db3498d9a6fc9c63c0b125e293e1c5eeff9404107ef68736be154e",
+      "stored_bytes": 470
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/build.log.gz.gz"
+      },
+      "stored_path": "upstream/build.log.gz.gz.gz",
+      "raw_sha256": "524833e5be1daed69e434234cdfc32cb7ab9ccc9dc82a2d591d52a97eed3ccf1",
+      "raw_bytes": 8745,
+      "stored_sha256": "b347ba5b913aa1c17e936e58d28bfebdb00ac0f3beab742c48c90543452444aa",
+      "stored_bytes": 8768
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/candidate-green.json.gz"
+      },
+      "stored_path": "upstream/candidate-green.json.gz.gz",
+      "raw_sha256": "8f2e6978535a88317a3eec12558ff4d8aad5c0791d501f812c5032aed7cf1ede",
+      "raw_bytes": 248,
+      "stored_sha256": "29a99acf7795b24ef57e699c09d9e610df972d7ed74ecddc0dadbd9d7279f22f",
+      "stored_bytes": 271
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/contract-c2-baseline.json.gz"
+      },
+      "stored_path": "upstream/contract-c2-baseline.json.gz.gz",
+      "raw_sha256": "bc863dac4fa2b28c44de197db9386433539ea88fb8c35fee78e3078400a1acc7",
+      "raw_bytes": 561,
+      "stored_sha256": "f8eef43fc51c3518bb2fd82b13172b060c72f9490efaedc00ca74e3443e7fd69",
+      "stored_bytes": 584
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/contract-efd-candidate.json.gz"
+      },
+      "stored_path": "upstream/contract-efd-candidate.json.gz.gz",
+      "raw_sha256": "221571763cf07fcf4655161d3dc344d9462c049de05a25f768a344c00ffb6490",
+      "raw_bytes": 446,
+      "stored_sha256": "70a40b6277b8547744a409e903fb5b9868591d9464f5b7d5fa96725d5e4c0c99",
+      "stored_bytes": 469
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/expiry-clock-20b-baseline.txt.gz.gz"
+      },
+      "stored_path": "upstream/expiry-clock-20b-baseline.txt.gz.gz.gz",
+      "raw_sha256": "317e9f9b815ca14f10c43b7109b2a110fd86b05c2e348fb73f7250f4290e76b1",
+      "raw_bytes": 367,
+      "stored_sha256": "4f5c24db49901d64d00fc36002f068c0441cdc216e843c74ea9b8d831e698beb",
+      "stored_bytes": 390
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/expiry-invalid-clock-871-baseline.txt.gz.gz"
+      },
+      "stored_path": "upstream/expiry-invalid-clock-871-baseline.txt.gz.gz.gz",
+      "raw_sha256": "a8977a3372efc38f88e87e11ee8941e02354ffa69ce1c994314714eb79270100",
+      "raw_bytes": 409,
+      "stored_sha256": "db3e96d2283e419a3d49def5f72ea068dddd7e3ef337a3003a8af7f53953785b",
+      "stored_bytes": 432
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/final-complete-test.mjs.txt.gz.gz"
+      },
+      "stored_path": "upstream/final-complete-test.mjs.txt.gz.gz.gz",
+      "raw_sha256": "c5f44ba0691f2718fa45972dc51d4db521a3b0f123b2204bc01244dbabd5cbe6",
+      "raw_bytes": 1829,
+      "stored_sha256": "a7ebf2413831ac14393090d3f06b0738b4062ace2df46d5f7da5661ff576b20e",
+      "stored_bytes": 1852
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/independent-contract.mjs.gz.gz"
+      },
+      "stored_path": "upstream/independent-contract.mjs.gz.gz.gz",
+      "raw_sha256": "0f337334c0e4f15601727443779093f7659a9765b1baaaa97ef0d210129bee63",
+      "raw_bytes": 1498,
+      "stored_sha256": "b23b19c0fcfb9c36b524ce6614b0f3d50be8fbd4253dc803a4d740c9eaff8bcb",
+      "stored_bytes": 1521
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/independent-expiry-clock.mjs.gz.gz"
+      },
+      "stored_path": "upstream/independent-expiry-clock.mjs.gz.gz.gz",
+      "raw_sha256": "f0d384598417ec92c8a4560b4d0ae99acf7f45b705e6e8985d5c2e1e0e758984",
+      "raw_bytes": 974,
+      "stored_sha256": "3c3fefb85a4759b1c9a2699f743f886b598722bf7d98cf836d0e5d4cf4e5866a",
+      "stored_bytes": 997
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/independent-expiry-invalid-clock.mjs.gz.gz"
+      },
+      "stored_path": "upstream/independent-expiry-invalid-clock.mjs.gz.gz.gz",
+      "raw_sha256": "a7531415d0d5fd1b13752a7add410d7390c5229350e9f5f4de4d8858d5cce1dc",
+      "raw_bytes": 988,
+      "stored_sha256": "8de809d185a95b2860e2455d72e911fc62cae4e43239bbbb7451b599b92cf552",
+      "stored_bytes": 1011
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/independent-view.mjs.gz.gz"
+      },
+      "stored_path": "upstream/independent-view.mjs.gz.gz.gz",
+      "raw_sha256": "188ceaa2deecce2ff4ded8b23e01e1a357779aedcdf6469f08c3e9909d514de1",
+      "raw_bytes": 1958,
+      "stored_sha256": "a9874cb8c311057006437ade1b57b685cacdfbb4036ccb4ac8205e76480d087a",
+      "stored_bytes": 1981
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/manifest.json"
+      },
+      "stored_path": "upstream/manifest.json.gz",
+      "raw_sha256": "aaa7609aff4022f44ff2235c660b6f303e3ee73948a728701614212de14be552",
+      "raw_bytes": 13167,
+      "stored_sha256": "e4006c6767a51d1751ab851d6441409b91c60088a2a73e6060206aab4a5304e1",
+      "stored_bytes": 3720
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/review-20b-request-changes.json.gz"
+      },
+      "stored_path": "upstream/review-20b-request-changes.json.gz.gz",
+      "raw_sha256": "a0ef282c26c2a02dd470919fb86eb6cf72be078ebcdc97404eec98f7961f7831",
+      "raw_bytes": 1358,
+      "stored_sha256": "605fc8a877c1051470ff20a240e0bf5d707de20b86f006e99ed1e1c06f100d8a",
+      "stored_bytes": 1381
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/review-871-request-changes.json.gz"
+      },
+      "stored_path": "upstream/review-871-request-changes.json.gz.gz",
+      "raw_sha256": "e94946ddba0c9889d7877c8d031f80b5fa3af05ee4c2d93566cba83429086654",
+      "raw_bytes": 1214,
+      "stored_sha256": "3a07e2ba6d58c3e92c90bc464cc516bc1a84324785e9bc472120e47998b7aa4a",
+      "stored_bytes": 1237
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/review-c2-request-changes.json.gz"
+      },
+      "stored_path": "upstream/review-c2-request-changes.json.gz.gz",
+      "raw_sha256": "559ce9c4de3ba023394c66f7ad7b5b7cf0f1f56e1a60f88f9edfd6b844693885",
+      "raw_bytes": 1838,
+      "stored_sha256": "193bb132bd67f864afeea3639237d9ec1b76373a050b983a915793f0c0e40323",
+      "stored_bytes": 1861
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/review-efd-approve.json.gz"
+      },
+      "stored_path": "upstream/review-efd-approve.json.gz.gz",
+      "raw_sha256": "eb55845b902090027e06dd55de2363a3be92eaa7427881cbc221a0c79ff071f8",
+      "raw_bytes": 2156,
+      "stored_sha256": "4ced38da002f0eaa22b6ef2d7dc4eba73138418e9f3923977eb3fb6635c90488",
+      "stored_bytes": 2179
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/validation.json.gz"
+      },
+      "stored_path": "upstream/validation.json.gz.gz",
+      "raw_sha256": "05451147a812010131a5f8e0bb90e2b5d96c9e3cc7a129ab1ea8931bef5905f5",
+      "raw_bytes": 581,
+      "stored_sha256": "75b5abc2207ab91521f01a1db07909d18204f64d92b2cf7fb687e89e92d5d172",
+      "stored_bytes": 604
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/view-c2-baseline.json.gz"
+      },
+      "stored_path": "upstream/view-c2-baseline.json.gz.gz",
+      "raw_sha256": "3e98211976c9e32ce70155ec834309b2a824789df0d05395a18b8a061158f895",
+      "raw_bytes": 428,
+      "stored_sha256": "f693bc974e8832f2adeaa9ec5c43229880b387e7d120b7df0e51ffddc4f045c3",
+      "stored_bytes": 451
+    },
+    {
+      "source": {
+        "git_sha": "ebc4c6adfc4a1f4169e7aaff4e86584a88d668db",
+        "git_path": "docs/implementation/n8n-maturity/campaign-20261018/evidence/rotation-ui-reader-integration/view-efd-candidate.json.gz"
+      },
+      "stored_path": "upstream/view-efd-candidate.json.gz.gz",
+      "raw_sha256": "62dfa34e41f4656f8e993acb1ae9e9fa987b39490efc0e8a2d017e5d009fd627",
+      "raw_bytes": 292,
+      "stored_sha256": "b4754e24d85d74a4b30597a2d3fd60eae8ec4f8178651fe3ddc03e45292bc13a",
+      "stored_bytes": 315
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/actual-producer-pair.json"
+      },
+      "stored_path": "current/actual-producer-pair.json.gz",
+      "raw_sha256": "a5779b5988f137afd2542435a99f83595276de3c6db2fabd53a45fe7e2de6851",
+      "raw_bytes": 7126,
+      "stored_sha256": "5a5c5a031d7fea8f10174f0ce29c5f23ebb70bb71e539b1d0d062895088f4448",
+      "stored_bytes": 1661
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/actual-producer-reader-pair.mjs"
+      },
+      "stored_path": "current/actual-producer-reader-pair.mjs.gz",
+      "raw_sha256": "3ee6912bb31b66870d490343999052a3e7dd08289dcc92f8f50e1908f30808af",
+      "raw_bytes": 2751,
+      "stored_sha256": "0a37672c7b80778381b906bbfbc62a515ea7455117a4020c0171410329e4044b",
+      "stored_bytes": 1392
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/actual-producer-reader-pair-v3.mjs"
+      },
+      "stored_path": "current/actual-producer-reader-pair-v3.mjs.gz",
+      "raw_sha256": "df6ce142bf3e2c48a6ca639fc62c328c1bccffae8c269e1b6ae4540bef1f2dee",
+      "raw_bytes": 2750,
+      "stored_sha256": "21314a5d7be973d467c54aba4821c1801196453dcb69d270ebcd869296a9d826",
+      "stored_bytes": 1391
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/baseline-pair.json"
+      },
+      "stored_path": "current/baseline-pair.json.gz",
+      "raw_sha256": "1784b8fd94b814f82b4893f8b080ac4c2d80807489dea95f098e62e3053517bc",
+      "raw_bytes": 9982,
+      "stored_sha256": "a1734804b499ef40a46b107840b77f3a9d61dbd3a49e141d238401e602c12cc2",
+      "stored_bytes": 1104
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/baseline-v3-pair.json"
+      },
+      "stored_path": "current/baseline-v3-pair.json.gz",
+      "raw_sha256": "1246621d29ac9041f97f4bc38a673dee0dad4cbc116cf29c612b7bbf8390bcbf",
+      "raw_bytes": 7233,
+      "stored_sha256": "663a15cc1e21a8a4ca3004dcb277bc272a287e46fe3092b201a4ff6f20ee3c7f",
+      "stored_bytes": 1073
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/candidate-v3-pair.json"
+      },
+      "stored_path": "current/candidate-v3-pair.json.gz",
+      "raw_sha256": "5c0f927fa3c14578d1ef06648e3638295db44d4ee575ba45edf85e8722360fd2",
+      "raw_bytes": 3558,
+      "stored_sha256": "0f7bb41f9b1d9200da12018e27b38f38a083fe98b359165c60822021a69bb97e",
+      "stored_bytes": 1092
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/pair-classification.json"
+      },
+      "stored_path": "current/pair-classification.json.gz",
+      "raw_sha256": "dfe44172e0c26e7d1e43860e127ab40788e229d6096a09153bc4b6d81bc5bcc9",
+      "raw_bytes": 852,
+      "stored_sha256": "8669188be7379bb49c4f4f2f32a1d57e1b7e6eee416aea60156b29c590764e97",
+      "stored_bytes": 527
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-tests.json"
+      },
+      "stored_path": "current/frontend-source-tests.json.gz",
+      "raw_sha256": "c51e714e2868932adf87f3757a8b5f190768eb72be2cc44da72d99636a07f2b2",
+      "raw_bytes": 6791,
+      "stored_sha256": "2e2e44ee9ede3a982d268e8ae352978947da3ce94c8db7528ba4e649559505ff",
+      "stored_bytes": 887
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/tablesort-dependency-retry.json"
+      },
+      "stored_path": "current/tablesort-dependency-retry.json.gz",
+      "raw_sha256": "3a25e7f8ab12eca9c6fd0ce128e4b25ff4fd4f5b586d41a05a86818f3430b0d1",
+      "raw_bytes": 872,
+      "stored_sha256": "33b4ceefa3b6f9d8ecd14ee55c7b4602c7ecd26f8d7e5045226c0070e4e80b38",
+      "stored_bytes": 521
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/tablesort-dependency-retry.log"
+      },
+      "stored_path": "current/tablesort-dependency-retry.log.gz",
+      "raw_sha256": "425cfb9b73707b614e0c90a310fbd6753641545eb8d0983851ca328630469bd0",
+      "raw_bytes": 143,
+      "stored_sha256": "cf8cbf04297a1f8be74721d8ca7d3418ea52f2a9dce7fe36d5d33090de67f8a3",
+      "stored_bytes": 134
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/reader-pytest.xml"
+      },
+      "stored_path": "current/reader-pytest.xml.gz",
+      "raw_sha256": "b5ba8ce92033417d64cf36722513cf9da7be416aaeb1174d08feb5fe0d986b0e",
+      "raw_bytes": 1207,
+      "stored_sha256": "42c74e5aea7683d6fc22a232c5e7e3380a4dd86de0bdaabef90b8a90c3124125",
+      "stored_bytes": 450
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/reader-pytest.log"
+      },
+      "stored_path": "current/reader-pytest.log.gz",
+      "raw_sha256": "445b84b608bd3f5d201fed24766d92a9056803b79ebdb73d9321eb54ffe38738",
+      "raw_bytes": 98,
+      "stored_sha256": "4eb62656dc6770832ac3ada453de3e0407ac057649dc67a165f00b06201fa82a",
+      "stored_bytes": 51
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/ci-deps-pytest.xml"
+      },
+      "stored_path": "current/ci-deps-pytest.xml.gz",
+      "raw_sha256": "dfba7d7956d76b1a08be38c6e1ac86a80d6e9c78675b9de0e2499df671abf9ff",
+      "raw_bytes": 2550,
+      "stored_sha256": "d5fc75d41bede0366c95c5d28d763736d4f501d2f5f53685669b4663c4191a23",
+      "stored_bytes": 456
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/ui-regression.xml"
+      },
+      "stored_path": "current/ui-regression.xml.gz",
+      "raw_sha256": "5e5225efea31a7ef9c3e13a980479a7fd0ce00cff2b04b360d566ad44696d2a4",
+      "raw_bytes": 3788,
+      "stored_sha256": "b0b7e61b2c6a694450cf5992ae71f10ff9e1d88d13647d17bbb3c8fc0f0fcdda",
+      "stored_bytes": 986
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/source-parity.json"
+      },
+      "stored_path": "current/source-parity.json.gz",
+      "raw_sha256": "bb9516df29feeb09905fb89b8f8343c7ec92dcaad8ad7bb896340ee6b6d11859",
+      "raw_bytes": 4061,
+      "stored_sha256": "721da4ebc0a851604b2b5b2ebb2c8b2a58f4165f805ef9fcb5d339c43ab33e36",
+      "stored_bytes": 1009
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/base-conflict-preflight.json"
+      },
+      "stored_path": "current/base-conflict-preflight.json.gz",
+      "raw_sha256": "c4eb87b6c5f841b539f657fd1c3211bbb7af6d04855a3c2d6efaaad1300874c9",
+      "raw_bytes": 998,
+      "stored_sha256": "1bb1e885e0d3cead9e27a8b3efd449c67243cd8a79216b2720246cc33f33ce2d",
+      "stored_bytes": 311
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/independent-view-candidate.json"
+      },
+      "stored_path": "current/independent-view-candidate.json.gz",
+      "raw_sha256": "25bc46df373a09a6be4ac86bf9739954ef3c69178a76f580dd726e3414d79a80",
+      "raw_bytes": 791,
+      "stored_sha256": "7d9bee189188996b0c97ab4e0858f81b1c53c1ef0512d2e9f372df827613a0f9",
+      "stored_bytes": 304
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/session.json"
+      },
+      "stored_path": "current/session.json.gz",
+      "raw_sha256": "db88b47ddf3a6cb1d26a0672b154f283083042d4bad88747c890cba00fec4a04",
+      "raw_bytes": 5184,
+      "stored_sha256": "2d1a80fe8c61bcd05908dc635f012eb6b7ccad67b35d66d7f2ab41b0f536bfde",
+      "stored_bytes": 1343
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-00.log"
+      },
+      "stored_path": "current/frontend-source-test-00.log.gz",
+      "raw_sha256": "129960abf4ccf128aec8c6b2ae68dfca2914c24b0efa18c4d9a3132aba56c574",
+      "raw_bytes": 1559,
+      "stored_sha256": "9dc7783d473d55ab7eab115a3608f98dc54fd7787ba1e33492fec03cfbacde63",
+      "stored_bytes": 623
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-01.log"
+      },
+      "stored_path": "current/frontend-source-test-01.log.gz",
+      "raw_sha256": "b7379efea2b6f075c902988ed1c18fdb3416c28b394a1bb5c5888e884baff702",
+      "raw_bytes": 25,
+      "stored_sha256": "802607d526abff18c86d19be3b2309c82fee59df7023649e3e07617c96c31138",
+      "stored_bytes": 45
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-02.log"
+      },
+      "stored_path": "current/frontend-source-test-02.log.gz",
+      "raw_sha256": "4553dd60aca84545c8fd3b29ff5ce8254056dcb7c93ebacab88f486a806188c3",
+      "raw_bytes": 1986,
+      "stored_sha256": "6fb85549a757843c37457597e919aa9ff0ae819b884055b45d0c65b9ca136f2b",
+      "stored_bytes": 835
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-03.log"
+      },
+      "stored_path": "current/frontend-source-test-03.log.gz",
+      "raw_sha256": "6617b0410c1bfe0125cba2b6f53dffec83efa0b08833c5e0a2bd62ca780bbad4",
+      "raw_bytes": 2297,
+      "stored_sha256": "3b38bc931c137e58003cc6d7d0cbf458ed229750b6756acea32fb729f62b3bbb",
+      "stored_bytes": 898
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-04.log"
+      },
+      "stored_path": "current/frontend-source-test-04.log.gz",
+      "raw_sha256": "5a8495bd44b715bcd207f706d9c276ea516d2ad6cb41448b4c032bfb03785f6c",
+      "raw_bytes": 1090,
+      "stored_sha256": "a822db7421470692db70701bfcb75d0886cebb5836bc6509665a60d2c15118af",
+      "stored_bytes": 348
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-05.log"
+      },
+      "stored_path": "current/frontend-source-test-05.log.gz",
+      "raw_sha256": "c7353746b872aa8cdfffba3d83195ca0dbf1edb8429f97d0e58535ea61652eec",
+      "raw_bytes": 942,
+      "stored_sha256": "0e94b46b70e7bf0b73611a49b79c790a893d92fd1e3512fa100b8377b78b8af2",
+      "stored_bytes": 354
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-06.log"
+      },
+      "stored_path": "current/frontend-source-test-06.log.gz",
+      "raw_sha256": "fd2a495c653250f0fc0a2ea6fc743e273858f318b547a5ebe174823632db4916",
+      "raw_bytes": 1622,
+      "stored_sha256": "6aacacfea687e1c2c157cdb666c12f8256028b9d99023b0f0617229f549e9ffa",
+      "stored_bytes": 500
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-07.log"
+      },
+      "stored_path": "current/frontend-source-test-07.log.gz",
+      "raw_sha256": "6b9f18af149ee2f4e72354b67ea4076c13e15c3ef76302a6fc04aee4ac1e397b",
+      "raw_bytes": 1142,
+      "stored_sha256": "444553cc1607686381a38e238cd5b858b8bc97cc5804fa2ea1d4d6c8da7bcfd5",
+      "stored_bytes": 414
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-08.log"
+      },
+      "stored_path": "current/frontend-source-test-08.log.gz",
+      "raw_sha256": "3cb8cae205915dcbbf15ef2e6dc21c361582d69f8cd77892e19c5dfbb90b93d7",
+      "raw_bytes": 2438,
+      "stored_sha256": "00fa04ccfae9de5aeb08f706c5ea699b9a3c45ab9b07a3a91b834f09da8aa066",
+      "stored_bytes": 672
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-09.log"
+      },
+      "stored_path": "current/frontend-source-test-09.log.gz",
+      "raw_sha256": "ef66fa0cdb01deca615444908e999f7d2676a96891be73509c94a812493ded2b",
+      "raw_bytes": 2369,
+      "stored_sha256": "2d96737b3ff5d4c8dd136ce9335f000437fffec3f0052794bae5dcb9846b5189",
+      "stored_bytes": 729
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-10.log"
+      },
+      "stored_path": "current/frontend-source-test-10.log.gz",
+      "raw_sha256": "3cf3bf6f5d6731615b768f6ac53452abafcaacf850e2da1c32309ae77b34dbbf",
+      "raw_bytes": 570,
+      "stored_sha256": "364dfbc7febc494b051bec91fec38147c8720e305c5784237fee9f0dda02c300",
+      "stored_bytes": 260
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-11.log"
+      },
+      "stored_path": "current/frontend-source-test-11.log.gz",
+      "raw_sha256": "aa7900975f9b753663e5bcee3de02b7e337bbd6c776bb370d63585cf93f5d9c5",
+      "raw_bytes": 506,
+      "stored_sha256": "7803dcdf3e5d73f49b909a43ec17ed36a8a94d8026badec29e101e28650e0955",
+      "stored_bytes": 237
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-12.log"
+      },
+      "stored_path": "current/frontend-source-test-12.log.gz",
+      "raw_sha256": "eb56e362c32d7f011182d3334785a4888de0ace0c5e634e28f0f42b5ed451e57",
+      "raw_bytes": 195,
+      "stored_sha256": "66d1ad14fb1d66ed24cdc6dd5720b97bcf1a8afd1f1fd77e0001188fa9f2a91d",
+      "stored_bytes": 151
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-13.log"
+      },
+      "stored_path": "current/frontend-source-test-13.log.gz",
+      "raw_sha256": "6c5a072ff5d297af3656878eacc2be7943cefc88305586670c41b0fb7279e8e0",
+      "raw_bytes": 930,
+      "stored_sha256": "4467af7a5b27c7d8613cd01e74d76ec33ea4e59dd6ea525172cf5a4667326f4e",
+      "stored_bytes": 460
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-14.log"
+      },
+      "stored_path": "current/frontend-source-test-14.log.gz",
+      "raw_sha256": "faba9ebefe4a251ca0a208c19f9161e54faf057c350386727341a169e9e31baf",
+      "raw_bytes": 25,
+      "stored_sha256": "2e7cff8c42c31b8dec417c8436067287b32200c5a38e2bab352905684dc1bfdb",
+      "stored_bytes": 45
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-15.log"
+      },
+      "stored_path": "current/frontend-source-test-15.log.gz",
+      "raw_sha256": "34369099cfca0e173d6b346f0db3d353298fb3c75e6d69c7b7fd6050b0cbcccd",
+      "raw_bytes": 19,
+      "stored_sha256": "9a1d89725bb148446522ac5cf264944e748126d31b5e10e5b82f8303dff2f6be",
+      "stored_bytes": 39
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-16.log"
+      },
+      "stored_path": "current/frontend-source-test-16.log.gz",
+      "raw_sha256": "6e830611c3a91f9a4af929e9193b8b572a356916372e0f4267c6b0cce78b950a",
+      "raw_bytes": 20,
+      "stored_sha256": "2ccf48bcaadf595acd47e3aa7cb626093cf66fa9dbcb94d01a48016e95d61923",
+      "stored_bytes": 40
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-17.log"
+      },
+      "stored_path": "current/frontend-source-test-17.log.gz",
+      "raw_sha256": "dd63097d6036db0c5b906013181f5dc24238db9d8cc5c638eb269f9cadbcd6b2",
+      "raw_bytes": 22,
+      "stored_sha256": "f4a3355f472bb2ba8819516657aea1b35c50e92b167b223622c7b4a1181e6ffe",
+      "stored_bytes": 42
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-18.log"
+      },
+      "stored_path": "current/frontend-source-test-18.log.gz",
+      "raw_sha256": "2fde25c0572db11f283ebbfaa0167350c83af5ce742d849c521d16d40352b479",
+      "raw_bytes": 17,
+      "stored_sha256": "8290a052f23eee5c92f8f1a405686a4d27342468a44b1f779d0afed75d6f8c28",
+      "stored_bytes": 37
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-19.log"
+      },
+      "stored_path": "current/frontend-source-test-19.log.gz",
+      "raw_sha256": "961154281002c7389861abc05869ec21ead123751196e37ba75685fee2c7bc40",
+      "raw_bytes": 18,
+      "stored_sha256": "34be43c77e8b28b1a4ee3e04dbb47a5d4076bc5d7ac51f691b91a58b8f1d96e1",
+      "stored_bytes": 38
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-20.log"
+      },
+      "stored_path": "current/frontend-source-test-20.log.gz",
+      "raw_sha256": "13a947dcfa43bec03217c618e0973759427d438d411b250c39c837f1fabc6395",
+      "raw_bytes": 23,
+      "stored_sha256": "cf986b730064f67167f2d6148b76adf5804498a7e5c928ec4d98a04e35a3df17",
+      "stored_bytes": 43
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-21.log"
+      },
+      "stored_path": "current/frontend-source-test-21.log.gz",
+      "raw_sha256": "70bae30141ce7c2d1dc605533d8b9ff3b71366fa81d6d8475206db60271a1a12",
+      "raw_bytes": 159,
+      "stored_sha256": "bce89d59d09e4721695954553627b72b156f85388551b819ecdb6964eea7f63e",
+      "stored_bytes": 90
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-22.log"
+      },
+      "stored_path": "current/frontend-source-test-22.log.gz",
+      "raw_sha256": "464ae656a03b7e34beff17a9ccd2e8030963d7d7f97c00f4291a784f2414fe25",
+      "raw_bytes": 26,
+      "stored_sha256": "04f1adb68db33a432f53758eb651c6463e64a3e2789df6a84c665a6609523402",
+      "stored_bytes": 46
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-23.log"
+      },
+      "stored_path": "current/frontend-source-test-23.log.gz",
+      "raw_sha256": "1bf92601dc4166d75da28ec60db862d2bbb645c29a992dba782c5bb6540394c4",
+      "raw_bytes": 717,
+      "stored_sha256": "f1a1157f3a926a1c7bb0dbc4cbc37c291ce0a1aac01334e3d262b0d9c2d29eeb",
+      "stored_bytes": 368
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-24.log"
+      },
+      "stored_path": "current/frontend-source-test-24.log.gz",
+      "raw_sha256": "485a7ccdc738724b41ff72bcacf1c006a6aa410627cec29d2c0fe6b22784649f",
+      "raw_bytes": 26,
+      "stored_sha256": "690f3274eaabc1db4c2cf3714e02945570cfaeb5bd8db3a3b3096bfe45960d98",
+      "stored_bytes": 46
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-25.log"
+      },
+      "stored_path": "current/frontend-source-test-25.log.gz",
+      "raw_sha256": "c67976a998a2772419f1867a95e21c853e21c613c344155a8e1bc08e821aac9f",
+      "raw_bytes": 330,
+      "stored_sha256": "05ae40868343015c76c61f9080baddb4e3f726f808129f690100d7b43f3f22a0",
+      "stored_bytes": 168
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-26.log"
+      },
+      "stored_path": "current/frontend-source-test-26.log.gz",
+      "raw_sha256": "08432b116c4244ffd7302e617b640769f3fa9a78c07ec87fb0aa69a5b7110500",
+      "raw_bytes": 33,
+      "stored_sha256": "bc4125e642f45964b5661c87fb36558b2820f21055b5e2d695737ff867178c6f",
+      "stored_bytes": 53
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-27.log"
+      },
+      "stored_path": "current/frontend-source-test-27.log.gz",
+      "raw_sha256": "bf5c6389ca91ba7cd6cc632cfd248de226800f6823bc18c6df2e78f88932e173",
+      "raw_bytes": 1215,
+      "stored_sha256": "51336343b30bbadc0564342071f848c1c448dcce1dc83eea1cc0e78cb2277c1b",
+      "stored_bytes": 575
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-28.log"
+      },
+      "stored_path": "current/frontend-source-test-28.log.gz",
+      "raw_sha256": "8e6b6a66c676b8652c9777b7b4da92451d4b6f4bd339a0b8a4033a2dd1396ad5",
+      "raw_bytes": 976,
+      "stored_sha256": "8a8ddf2e3443dce522d6d7dd062cd1bdb4c6d481e9f3ddd8991529d94c7368a6",
+      "stored_bytes": 409
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-29.log"
+      },
+      "stored_path": "current/frontend-source-test-29.log.gz",
+      "raw_sha256": "407b01110edcb0726d0c4772272c65c074a85941fbd60c3af1f071efede81a20",
+      "raw_bytes": 522,
+      "stored_sha256": "b4895dffa899bac783210ef2d2dcacf11cc4eb40289ffd1b9199d4788f01f83a",
+      "stored_bytes": 316
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-30.log"
+      },
+      "stored_path": "current/frontend-source-test-30.log.gz",
+      "raw_sha256": "f2e6a4ade836bd0ec20f674cb86eb8267cd8ce44693758268c203e24b7ea5ddd",
+      "raw_bytes": 596,
+      "stored_sha256": "93af4043792925deea01b3f90aa7cf9a7bc8c5a9a04582f42525db07b575cb82",
+      "stored_bytes": 362
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-31.log"
+      },
+      "stored_path": "current/frontend-source-test-31.log.gz",
+      "raw_sha256": "f00794bf91a006eb0a58329edf7b170d528de16e7164510a9aaee30531a7bc82",
+      "raw_bytes": 37,
+      "stored_sha256": "b045082ee23e1debe07cefcc281f3555ee3a3f67f980fb14cff4e9c036e8465e",
+      "stored_bytes": 52
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-32.log"
+      },
+      "stored_path": "current/frontend-source-test-32.log.gz",
+      "raw_sha256": "74ef9cc42947977140db3e3dffdd1592184bf5a50d9acd8b430b3825288240bd",
+      "raw_bytes": 109,
+      "stored_sha256": "e8b228f49eeea87b6b8f0e31def8acfc8691104def82d7161d556f19adfa1eb3",
+      "stored_bytes": 116
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-33.log"
+      },
+      "stored_path": "current/frontend-source-test-33.log.gz",
+      "raw_sha256": "68e939169880fe71d92e519e0f8d32e37a322910191ef8cadf5272ae895ee336",
+      "raw_bytes": 97,
+      "stored_sha256": "725eae88952e93d766736cc5cb20be242eac3f1fd9be76255c47658140d5a26f",
+      "stored_bytes": 106
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-34.log"
+      },
+      "stored_path": "current/frontend-source-test-34.log.gz",
+      "raw_sha256": "03075d075c25c52a09ce682ab7449bc1c684422ef0d410a1c827c22c8047bfa8",
+      "raw_bytes": 99,
+      "stored_sha256": "18ca5816eea713a55cc5fcd8982a41929a0eb823cbccd8c18154f329eccbe389",
+      "stored_bytes": 101
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-35.log"
+      },
+      "stored_path": "current/frontend-source-test-35.log.gz",
+      "raw_sha256": "6c691c9ba3ea49ac95a7d2724da8dcdb6438ea655fee97eaa340a3f85cf9cc17",
+      "raw_bytes": 46,
+      "stored_sha256": "8a466febc3c548d588ddbf78b2bc061e3ad1bd09f6740b22d320167d89a330cb",
+      "stored_bytes": 61
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-36.log"
+      },
+      "stored_path": "current/frontend-source-test-36.log.gz",
+      "raw_sha256": "aafdc3e371582efe1fea8fc6ecd90807b378403b0872fb29e70e4a50da79ca77",
+      "raw_bytes": 43,
+      "stored_sha256": "258708611a8cdf394529a02a9ecccf295f30f2db6a836327bc6328812ec3b559",
+      "stored_bytes": 60
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/rotation-ui-current-reader-integration/frontend-source-test-37.log"
+      },
+      "stored_path": "current/frontend-source-test-37.log.gz",
+      "raw_sha256": "65c4f39d501ce852f0fef634b3fce7aee1561ae2e0a89847a83b3a9347e8547d",
+      "raw_bytes": 619,
+      "stored_sha256": "33899c10b360b87fa10ac59a449af1e5c1300de68e2df8da06eb780d62fbec66",
+      "stored_bytes": 258
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/cross-review/release-baeda/actual-unavailable-payload.json",
+        "preserved_original": true
+      },
+      "stored_path": "current/original-release-review/actual-unavailable-payload.json.gz",
+      "raw_sha256": "4e2c04f4dda8d824325836f2c39f1da0533c72d64d7c9371d3614df08be78f92",
+      "raw_bytes": 1113,
+      "stored_sha256": "1b967a14e333d0416c02e1eb0af9a2eabfc20ed8a33ecc1e15372dce3bfb2cea",
+      "stored_bytes": 512
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/cross-review/release-baeda/legacy-rotation-reader.mjs",
+        "preserved_original": true
+      },
+      "stored_path": "current/original-release-review/legacy-rotation-reader.mjs.gz",
+      "raw_sha256": "e9d36357cc551a3b0afffeda162817ab276e10f333fd2693f5b29a6e6799f719",
+      "raw_bytes": 2149,
+      "stored_sha256": "43eb159afe5908e6645f11ae7c69aaf4a437259e8d206d8a91e2dc4afbc88b68",
+      "stored_bytes": 1121
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/cross-review/release-baeda/legacy-rotation-reader-results.json",
+        "preserved_original": true
+      },
+      "stored_path": "current/original-release-review/legacy-rotation-reader-results.json.gz",
+      "raw_sha256": "19825c6eb93bd9c156eb023eb22b5033eca9facee0e834e7a4c1168a539ec1e7",
+      "raw_bytes": 4468,
+      "stored_sha256": "071929d5d4a3ca1c11bf60ce39e8a5e0782ab524b22c3e8072638235c1dc2a27",
+      "stored_bytes": 849
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/cross-review/release-baeda/release-baeda-independent-review.json",
+        "preserved_original": true
+      },
+      "stored_path": "current/original-release-review/release-baeda-independent-review.json.gz",
+      "raw_sha256": "7c49780632c12ff01509dfddee845f14bbe839f2ff6f23b7a8769c229fc84e20",
+      "raw_bytes": 6877,
+      "stored_sha256": "c7de9a7812f9866a56005721430855e859aab23ccdd2e28049268fea2ccd066b",
+      "stored_bytes": 3260
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/cross-review/rotation-ui/review-efd-approve.json"
+      },
+      "stored_path": "reviewed-source/review-efd-approve.json.gz",
+      "raw_sha256": "a04f581849cae91076641c813a02547e2e1ea18776219fdd796b16cf9f0e21bb",
+      "raw_bytes": 4434,
+      "stored_sha256": "eb55845b902090027e06dd55de2363a3be92eaa7427881cbc221a0c79ff071f8",
+      "stored_bytes": 2156
+    },
+    {
+      "source": {
+        "scratch_path": "/tmp/n8n-campaign-20261018/cross-review/rotation-ui/independent-view.mjs"
+      },
+      "stored_path": "reviewed-source/independent-view.mjs.gz",
+      "raw_sha256": "a043e45137bf9fd5611e78e489ed5dda8a9f4ad3af572ce50ada2f24485872f8",
+      "raw_bytes": 4718,
+      "stored_sha256": "a19b975fc1e2235d9fa83a084454d24a1dc2e3be6d58947e2e4384931abc9837",
+      "stored_bytes": 1935
+    }
+  ]
+}

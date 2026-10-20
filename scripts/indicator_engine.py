@@ -10,6 +10,7 @@ Non-fatal: all indicator failures return NEUTRAL, never crash caller.
 
 import json
 import logging
+import math
 import os
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -1153,6 +1154,35 @@ BADGE_NAMES = {
 
 # ── Confluence Engine ─────────────────────────────────────────────────────────
 
+#: Reason recorded when an ATR stop would sit at or below zero (2026-10-18).
+STOP_REASON_ATR_EXCEEDS_PRICE = "atr_exceeds_price"
+
+
+def atr_stop_target(current_price, atr_value, stop_mult, target_mult):
+    """ATR stop/target with no negative stop (2026-10-18).
+
+    ``price - mult*ATR`` has no floor: a volatile low-priced name (ATR >= price)
+    produced negative stops in indicator_confluence_cache (contract
+    stop_price >= 0, BLOCK). A stop at or below zero is not a stop -- return
+    ``(None, target, "atr_exceeds_price")`` rather than invent a floor value.
+    Returns (stop, target, reason); reason is None for a valid stop.
+    """
+    try:
+        price = float(current_price)
+        atr = float(atr_value)
+        sm = float(stop_mult)
+        tm = float(target_mult)
+    except (TypeError, ValueError):
+        return None, None, "atr_unparseable"
+    if not (math.isfinite(price) and math.isfinite(atr)) or price <= 0 or atr <= 0:
+        return None, None, "atr_unparseable"
+    target = round(price + tm * atr, 2)
+    stop = round(price - sm * atr, 2)
+    if atr >= price or stop <= 0:
+        return None, target, STOP_REASON_ATR_EXCEEDS_PRICE
+    return stop, target, None
+
+
 def analyze_confluence(symbol: str, profile: str = 'swing') -> dict:
     """Main entry point. Compute confluence for symbol using the given profile.
     Returns full result dict including score, badges, levels, stop/target.
@@ -1179,6 +1209,7 @@ def analyze_confluence(symbol: str, profile: str = 'swing') -> dict:
         bearish_badges = []
         key_levels = {}
         stop_price = None
+        stop_reason = None
         target_price = None
         atr_value = None
         adx_regime = None
@@ -1217,8 +1248,8 @@ def analyze_confluence(symbol: str, profile: str = 'swing') -> dict:
                     stop_mult = profile_cfg.get('stop_multiple', 1.0)
                     target_mult = profile_cfg.get('target_multiple', 2.0)
                     if atr_value:
-                        stop_price = round(current_price - (stop_mult * atr_value), 2)
-                        target_price = round(current_price + (target_mult * atr_value), 2)
+                        stop_price, target_price, stop_reason = atr_stop_target(
+                            current_price, atr_value, stop_mult, target_mult)
                 elif strat_name == 'adx':
                     adx_regime = details.get('regime')
                 elif strat_name == 'rsi':
@@ -1264,6 +1295,7 @@ def analyze_confluence(symbol: str, profile: str = 'swing') -> dict:
             'signals': signals,
             'key_levels': key_levels,
             'stop_price': stop_price,
+            'stop_reason': stop_reason,
             'target_price': target_price,
             'atr': atr_value,
             'adx_regime': adx_regime,

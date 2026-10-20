@@ -171,6 +171,7 @@ OUTCOMES = (
     "no_answer",        # ran (or dry-ran) and produced nothing
     "budget_denied",    # the day's attempts for this vector are spent
     "retired_skipped",  # the provider is retired in the registry; refused up front
+    "deferred",         # declined to run now (outside its cost window); a later pass retries
     "error",            # the vector raised; message in detail
 )
 WHYS = ("stale_hours", "no_producer", "no_coverage", "unanswerable")
@@ -534,7 +535,7 @@ def attempts_today(vector: str, *, path: Optional[Path] = None, now: Optional[da
             continue
         if str(r.get("started") or "")[:10] != day:
             continue
-        if r.get("outcome") in ("budget_denied", "retired_skipped"):
+        if r.get("outcome") in ("budget_denied", "retired_skipped", "deferred"):
             continue
         if goal_id is not None and str(r.get("goal_id") or "") != str(goal_id):
             continue
@@ -851,8 +852,14 @@ def _curate_ollama(prompt: str) -> tuple[Optional[str], Optional[str]]:
 
 def _v_llm_curation(gap: DataGap, entry: dict[str, Any], ctx: Context) -> VectorResult:
     """Curate what earlier vectors gathered. No evidence → no model call, full stop.
-    DeepSeek in its off-peak/bulk window; Ollama otherwise. The output is
-    labelled with the model that produced it and is never a fact source."""
+    DeepSeek in its off-peak/bulk window ONLY; outside it the vector is
+    ``deferred`` and makes no model call. The output is labelled with the model
+    that produced it and is never a fact source.
+
+    2026-10-18: the out-of-window branch used to call ``_curate_ollama`` with
+    the configured local model, which is ``nomic-embed-text`` -- an EMBEDDING
+    model -- so /api/chat returned HTTP 400 on every Sunday pass. Local
+    generative routing is retired; deferral is the honest outcome."""
     evidence = dict(gap.evidence or {})
     if not evidence:
         return VectorResult("no_answer", detail="no_evidence_to_curate: llm_curation never invents; nothing gathered")
@@ -860,14 +867,14 @@ def _v_llm_curation(gap: DataGap, entry: dict[str, Any], ctx: Context) -> Vector
         return VectorResult("no_answer", detail=f"dry_run: would curate {len(evidence)} evidence keys ({FLAG_LIVE} unset)")
     from scripts.lib.deepseek_offpeak import is_bulk_deepseek_window
 
+    if not is_bulk_deepseek_window(ctx.now()):
+        return VectorResult("deferred", provider="deepseek",
+                            detail="deferred_outside_bulk_window: no local generative fallback "
+                                   "(retired; the local model is an embedding model)")
     prompt = _curation_prompt(gap, evidence)
     try:
-        if is_bulk_deepseek_window(ctx.now()):
-            text, model = _curate_deepseek(prompt)
-            provider = "deepseek"
-        else:
-            text, model = _curate_ollama(prompt)
-            provider = "ollama"
+        text, model = _curate_deepseek(prompt)
+        provider = "deepseek"
     except Exception as exc:  # noqa: BLE001
         return VectorResult("error", provider="llm", detail=f"{type(exc).__name__}:{exc}")
     if not text:

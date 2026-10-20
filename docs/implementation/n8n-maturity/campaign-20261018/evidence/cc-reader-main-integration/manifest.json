@@ -1,0 +1,785 @@
+{
+  "INDEX_newMarkdown_generated_dist_changes": false,
+  "all_historical_stored_and_inner_original_digests_verified": true,
+  "artifacts": [
+    {
+      "bytes": 1551,
+      "decompressed_bytes": 2960,
+      "decompressed_sha256": "dd0f90d92f46a3bc93eaa0499d0f35c419e872714bd63a9dbe07d3d403f37d5f",
+      "kind": "Historical exact Git bytes; original inner artifact hashes verified",
+      "original": "1e31f83fcfde3b8603a634129239bb52a32c27a2:docs/implementation/n8n-maturity/campaign-20261018/cc-reader-first/README.md",
+      "path": "historical-1e31/README.md.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "d37caedcdd216e22763d6b136050218fa660d1c4d5b613f22c21ac9a892fcf1a"
+    },
+    {
+      "bytes": 1311,
+      "decompressed_bytes": 3926,
+      "decompressed_sha256": "eb07be4519acf2639a5d26183e31498019da455b5ff6178ed7150c7b7ccaccb2",
+      "kind": "Historical exact Git bytes; original inner artifact hashes verified",
+      "original": "1e31f83fcfde3b8603a634129239bb52a32c27a2:docs/implementation/n8n-maturity/campaign-20261018/cc-reader-first/artifact-manifest.json",
+      "path": "historical-1e31/artifact-manifest.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "2aa774a4c34e1a790893109f20b805023e704550595508218f3c409e0ffee680"
+    },
+    {
+      "bytes": 601,
+      "decompressed_bytes": 578,
+      "decompressed_sha256": "94e03b12207f3efebb2d97818872acfa018ba57084cc6d0c314b325e26d11cae",
+      "kind": "Historical exact Git bytes; original inner artifact hashes verified",
+      "original": "1e31f83fcfde3b8603a634129239bb52a32c27a2:docs/implementation/n8n-maturity/campaign-20261018/cc-reader-first/build-marker-old-assumption.xml.gz",
+      "path": "historical-1e31/build-marker-old-assumption.xml.gz.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "3943ca39ddcd2dacd7c9f8795e88aeb2fbe82d25c96ca6a77ae5d33179d302fd"
+    },
+    {
+      "bytes": 1004,
+      "decompressed_bytes": 981,
+      "decompressed_sha256": "994fa9da55460afbdb25ca8179f158a1c8140d966fffb0600cf43fd390f3645e",
+      "kind": "Historical exact Git bytes; original inner artifact hashes verified",
+      "original": "1e31f83fcfde3b8603a634129239bb52a32c27a2:docs/implementation/n8n-maturity/campaign-20261018/cc-reader-first/build-marker-regressions.xml.gz",
+      "path": "historical-1e31/build-marker-regressions.xml.gz.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "7213201df800a2af0f575c6aff4e7c12b352e2092f4d8dc47eabe2f2e4782ce7"
+    },
+    {
+      "bytes": 1239,
+      "decompressed_bytes": 1216,
+      "decompressed_sha256": "62c2cf18284ec2bbc0cb696992b8ab30e0dd5a684266006ba7ea114cdc64804d",
+      "kind": "Historical exact Git bytes; original inner artifact hashes verified",
+      "original": "1e31f83fcfde3b8603a634129239bb52a32c27a2:docs/implementation/n8n-maturity/campaign-20261018/cc-reader-first/independent-regressions.xml.gz",
+      "path": "historical-1e31/independent-regressions.xml.gz.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "115aecd2fe0317efe252d43cfc7017ec16993f05ed71bdf390cdd96124227c81"
+    },
+    {
+      "bytes": 892,
+      "decompressed_bytes": 1598,
+      "decompressed_sha256": "36767694a45aceeb02fe080c63580789ccd729c0dc9f742b08b8a6e82658d4af",
+      "kind": "Historical exact Git bytes; original inner artifact hashes verified",
+      "original": "1e31f83fcfde3b8603a634129239bb52a32c27a2:docs/implementation/n8n-maturity/campaign-20261018/cc-reader-first/independent-source-review.json",
+      "path": "historical-1e31/independent-source-review.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "03d7c1c8309c94a45b5d8c256328ef0d88589c88dd40d70b5ed0ea344c8831c7"
+    },
+    {
+      "bytes": 713,
+      "decompressed_bytes": 690,
+      "decompressed_sha256": "e7630c40753ff85ee95bb1e3a4bb7b4af3a6d7b735504a068098eb534e3c18b6",
+      "kind": "Historical exact Git bytes; original inner artifact hashes verified",
+      "original": "1e31f83fcfde3b8603a634129239bb52a32c27a2:docs/implementation/n8n-maturity/campaign-20261018/cc-reader-first/integration-ci-dependencies.xml.gz",
+      "path": "historical-1e31/integration-ci-dependencies.xml.gz.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "1ccaed4c02bad985a2408736f82e0eef14fade798724cde22a3384a47fa531c2"
+    },
+    {
+      "bytes": 869,
+      "decompressed_bytes": 1683,
+      "decompressed_sha256": "6426fa2deab61654d88722ce72d2c77e47430cb946da9d78c1b7b528df0a0861",
+      "kind": "Historical exact Git bytes; original inner artifact hashes verified",
+      "original": "1e31f83fcfde3b8603a634129239bb52a32c27a2:docs/implementation/n8n-maturity/campaign-20261018/cc-reader-first/integration-evidence.json",
+      "path": "historical-1e31/integration-evidence.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "6b08f42a4e43bb0d1f0e95d9e3cef375210e1efef912227df66668dcbb85508c"
+    },
+    {
+      "bytes": 245,
+      "decompressed_bytes": 434,
+      "decompressed_sha256": "c82f2efc727726e309e90fa114058145ef316b71718793b1a5f814c03699e78e",
+      "kind": "Historical exact Git bytes; original inner artifact hashes verified",
+      "original": "1e31f83fcfde3b8603a634129239bb52a32c27a2:docs/implementation/n8n-maturity/campaign-20261018/cc-reader-first/integration-scope.json",
+      "path": "historical-1e31/integration-scope.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "da07c841d7afcdff5c5c298e417178a824985dc3fff24e7d5e215d8389c1cba1"
+    },
+    {
+      "bytes": 1519,
+      "decompressed_bytes": 1496,
+      "decompressed_sha256": "e58caefe480028eb55e6392a9a1f2cc4085c3f3b4616a2175ba19c0d0d865845",
+      "kind": "Historical exact Git bytes; original inner artifact hashes verified",
+      "original": "1e31f83fcfde3b8603a634129239bb52a32c27a2:docs/implementation/n8n-maturity/campaign-20261018/cc-reader-first/reader-baseline-frozen.xml.gz",
+      "path": "historical-1e31/reader-baseline-frozen.xml.gz.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "360ffc10f2d616e49405afb656d3f7cf7a2cfc12803d59691a8073c375352d3a"
+    },
+    {
+      "bytes": 8428,
+      "decompressed_bytes": 8405,
+      "decompressed_sha256": "37611d3a30953b8278ffe818b555a1edcdfeafecd3ab4d0c0707c96b599f4846",
+      "kind": "Historical exact Git bytes; original inner artifact hashes verified",
+      "original": "1e31f83fcfde3b8603a634129239bb52a32c27a2:docs/implementation/n8n-maturity/campaign-20261018/cc-reader-first/reader-build.log.gz",
+      "path": "historical-1e31/reader-build.log.gz.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "a72aa9897a667d32fc699fb630682dc59e758e6a1ab98bf838823c4b197332b9"
+    },
+    {
+      "bytes": 479,
+      "decompressed_bytes": 456,
+      "decompressed_sha256": "29d8356d3b82ed2e037c46dbb6fecba2e1fb3a10b18812e009eec1f503c5a57b",
+      "kind": "Historical exact Git bytes; original inner artifact hashes verified",
+      "original": "1e31f83fcfde3b8603a634129239bb52a32c27a2:docs/implementation/n8n-maturity/campaign-20261018/cc-reader-first/reader-candidate.xml.gz",
+      "path": "historical-1e31/reader-candidate.xml.gz.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "af3770d41dd4c8b57366f40e6e0bd6973f63dc17ed97cfdae02aee0cac69d578"
+    },
+    {
+      "bytes": 350,
+      "decompressed_bytes": 680,
+      "decompressed_sha256": "1ded1bd07798dc7420451bec86a97841779f57e50cbdb39f221957e875a49ba6",
+      "kind": "Historical exact Git bytes; original inner artifact hashes verified",
+      "original": "1e31f83fcfde3b8603a634129239bb52a32c27a2:docs/implementation/n8n-maturity/campaign-20261018/cc-reader-first/reader-frozen-test.json",
+      "path": "historical-1e31/reader-frozen-test.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "7d707d0d184ad3fd493e5caedf820b363762cfaf138b3e9793b52e8e2588eef4"
+    },
+    {
+      "bytes": 1035,
+      "decompressed_bytes": 1012,
+      "decompressed_sha256": "b01279178dacd2be3d8714eab7e685b104dbda1757489ba5a842fa67ecbc2933",
+      "kind": "Historical exact Git bytes; original inner artifact hashes verified",
+      "original": "1e31f83fcfde3b8603a634129239bb52a32c27a2:docs/implementation/n8n-maturity/campaign-20261018/cc-reader-first/reader-regressions.xml.gz",
+      "path": "historical-1e31/reader-regressions.xml.gz.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "a920f8b549ea5ed7c6b6f32ce967ba9cabc122da83a4d8c0eb721a5cc8ee88f1"
+    },
+    {
+      "bytes": 3764,
+      "decompressed_bytes": 8302,
+      "decompressed_sha256": "3c9f897b9fed3c326d08dfe9a68967bbab8de3e163e4ea344474efb2b1fd3f8a",
+      "kind": "Historical exact Git bytes; original inner artifact hashes verified",
+      "original": "1e31f83fcfde3b8603a634129239bb52a32c27a2:docs/implementation/n8n-maturity/campaign-20261018/cc-reader-first/source-manifest.json",
+      "path": "historical-1e31/source-manifest.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "07aba0517f25a35b59e0ba04db30456956cafb45f1ace97e30e464a8a384797e"
+    },
+    {
+      "bytes": 3400,
+      "decompressed_bytes": 10709,
+      "decompressed_sha256": "33aef7753185615db5cb30343d86d317ca9b0f6fea9467d1c301b987e5f2799f",
+      "kind": "Original complete reviewed fixture before permitted formatting-only change",
+      "original": "1e31f83fcfde3b8603a634129239bb52a32c27a2:tests/test_stop_management_ui_hardening.py",
+      "path": "historical-1e31/test_stop_management_ui_hardening.py.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "dab0937421f3221a26bb1154222d44fec3470c9b729762d49cef1c0fe956ad5b"
+    },
+    {
+      "bytes": 1768,
+      "decompressed_bytes": 4833,
+      "decompressed_sha256": "ba7ecbd3adcdc8245c443c8f480ed48658275a20927e551d20ade4cd5ab44bd9",
+      "kind": "Historical native/compiled static-artifact proof only; not new-head or runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/reader-dq-native-hostbuild-20261018/reader-1e31f83fcfde3b8603a634129239bb52a32c27a2-result.json",
+      "path": "historical-1e31-native/reader-1e31f83fcfde3b8603a634129239bb52a32c27a2-result.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "6f2ab62f0a3640e6154db3be6d998192d1dcafe4376ca6271ac4a084156ad69c"
+    },
+    {
+      "bytes": 373,
+      "decompressed_bytes": 581,
+      "decompressed_sha256": "092858fad1f2f696c16a5ef1fb49848e8e2d3c5116fe0826a14a10c5224d01ae",
+      "kind": "Historical native/compiled static-artifact proof only; not new-head or runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/reader-dq-native-hostbuild-20261018/reader-native-result.json",
+      "path": "historical-1e31-native/reader-native-result.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "a3484888ede5de3536dc94cb4abb5156754f884b28123c8e963f6293e8b33b93"
+    },
+    {
+      "bytes": 12789,
+      "decompressed_bytes": 46519,
+      "decompressed_sha256": "66b174af639e31e4125b3476cabc6ccb1b0814c3c55cd84b99938a41ab9d3f36",
+      "kind": "Historical native/compiled static-artifact proof only; not new-head or runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/reader-dq-native-hostbuild-20261018/reader-native.log",
+      "path": "historical-1e31-native/reader-native.log.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "09f5722bfc6e587df373b505534a95a52f7073dc5fd0fc040f43539c8ede6a34"
+    },
+    {
+      "bytes": 396,
+      "decompressed_bytes": 639,
+      "decompressed_sha256": "6823b032a4cfe14da76cc77bdcf9a7b964148b94ddff1d0ac3f797bc924eb0e9",
+      "kind": "Historical native/compiled static-artifact proof only; not new-head or runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/reader-dq-native-hostbuild-20261018/reader-host-build-result.json",
+      "path": "historical-1e31-native/reader-host-build-result.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "5ee017484268b2509a48f450578cab9bdd26a585bc9e2d1571208a2474f66063"
+    },
+    {
+      "bytes": 8565,
+      "decompressed_bytes": 28623,
+      "decompressed_sha256": "93a764b25d11e90f41415827d9eadc04c28da6a7d3a86948440a70f46d749aa9",
+      "kind": "Historical native/compiled static-artifact proof only; not new-head or runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/reader-dq-native-hostbuild-20261018/reader-host-build.log",
+      "path": "historical-1e31-native/reader-host-build.log.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "38226822f814e38439ab62c7a0d9979a4e0a919132ff7777d67e56afb1b59a4c"
+    },
+    {
+      "bytes": 843,
+      "decompressed_bytes": 1729,
+      "decompressed_sha256": "34fec8729bc6cffa898db87b578b02f0fcdc2c09d22d09159990d3b38e085b90",
+      "kind": "Historical native/compiled static-artifact proof only; not new-head or runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/reader-dq-native-hostbuild-20261018/reader-build-evidence.json",
+      "path": "historical-1e31-native/reader-build-evidence.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "58468b1361100badf57f52bac9b328c643a5739baf78bcff06851e07afd7e384"
+    },
+    {
+      "bytes": 385,
+      "decompressed_bytes": 515,
+      "decompressed_sha256": "d58e111fadbd65fc7ce0e3b320fe18a4deebf8db3466be26ad065fa030488522",
+      "kind": "Historical native/compiled static-artifact proof only; not new-head or runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/reader-dq-native-hostbuild-20261018/reader-lease-invocation.json",
+      "path": "historical-1e31-native/reader-lease-invocation.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "9faa3c6742ae5e4f0322548277cef6d0afaf586ddee3403ba8d7a6a78d31d321"
+    },
+    {
+      "bytes": 8187,
+      "decompressed_bytes": 28751,
+      "decompressed_sha256": "95235d97098845d4a8c8fa875ca1674123bd1f55dcefbd155ffb236d3aee3b35",
+      "kind": "Historical exact-head wrapper or independent review receipt",
+      "original": "/tmp/n8n-campaign-20261018/run_reader_dq_acceptance_20261018.py",
+      "path": "historical-1e31-native/run_reader_dq_acceptance_20261018.py.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "28269a31025c6c6555154b00ca8ebafb9a23e0e850102a7d9b6561d1c8e6ab7c"
+    },
+    {
+      "bytes": 2594,
+      "decompressed_bytes": 5834,
+      "decompressed_sha256": "7112844436ece396c1955414b9c81b04ddb51ee2bd7aeb2e10aa4f12fafaa567",
+      "kind": "Historical exact-head wrapper or independent review receipt",
+      "original": "/tmp/n8n-campaign-20261018/cross-review/reader-dq-wrapper952-review.json",
+      "path": "historical-1e31-native/reader-dq-wrapper952-review.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "47c38417abe706371cd71a7fd3808f1db141a85013ffd1719b51d6c3787d0f93"
+    },
+    {
+      "bytes": 2089,
+      "decompressed_bytes": 3951,
+      "decompressed_sha256": "7c184a0d3649186b5daef38189202bc74e959b187b610d408dc7db26e8dba167",
+      "kind": "Historical exact-head wrapper or independent review receipt",
+      "original": "/tmp/n8n-campaign-20261018/cross-review/cc-reader-ci/review-1e31-approve.json",
+      "path": "historical-1e31-native/review-1e31-approve.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "c8c6407532575c5aee6385edac00d3767ea59efe55f5652d923ebe0b1e12957b"
+    },
+    {
+      "bytes": 691,
+      "decompressed_bytes": 3508,
+      "decompressed_sha256": "9a5cf8b7af2e618345a58fd2638bb9cc63f0235c851303ef28ea6e877dde8de3",
+      "kind": "Historical exact-head wrapper or independent review receipt",
+      "original": "/tmp/n8n-campaign-20261018/cross-review/cc-reader-ci/exact-1e31-integration.xml",
+      "path": "historical-1e31-native/exact-1e31-integration.xml.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "f09bf3fcb73f5e0e25a18ed5bfb583c7fbf742d8f187fc895dea5e278a731ca8"
+    },
+    {
+      "bytes": 1266,
+      "decompressed_bytes": 2856,
+      "decompressed_sha256": "d4a49825d821584d3002c518ccd8d0e68f96a249b5f85eaf19df018759d1e6ef",
+      "kind": "Historical campaign authorization/merge/checkpoint ledger only; never new CC acceptance or an active grant",
+      "original": "/tmp/n8n-campaign-20261018/checkpoint-20261019T0300-local.json",
+      "path": "historical-campaign-checkpoint/checkpoint-20261019T0300-local.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "e4fb955de0fc3ba8e3109ce799438ba991b5579c471e690edddc4e51f0ce8b49"
+    },
+    {
+      "bytes": 1452,
+      "decompressed_bytes": 2843,
+      "decompressed_sha256": "40f652d69c136bebca01401f011d964dc4f81895a786c706a7d321569ae31cea",
+      "kind": "Historical campaign authorization/merge/checkpoint ledger only; never new CC acceptance or an active grant",
+      "original": "/tmp/n8n-campaign-20261018/operator-alert-root-causes-status-20261019.json",
+      "path": "historical-campaign-checkpoint/operator-alert-root-causes-status-20261019.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "96661d82223378af9bd0df93e52fa63ecaa0009d0a5cc1f569185bb3bc565a73"
+    },
+    {
+      "bytes": 1466,
+      "decompressed_bytes": 4060,
+      "decompressed_sha256": "d9d5a88a373972857aaa99c0cdcebd1a70df25c52f1956093e6f881061fe541f",
+      "kind": "Historical campaign authorization/merge/checkpoint ledger only; never new CC acceptance or an active grant",
+      "original": "/tmp/n8n-campaign-20261018/corrective-three-push-manifest-20261019.json",
+      "path": "historical-campaign-checkpoint/corrective-three-push-manifest-20261019.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "7de8bcc9eb5fac1003cd5eb4e0d8479d3cb400235f405dff240d0fc29fa765db"
+    },
+    {
+      "bytes": 817,
+      "decompressed_bytes": 1846,
+      "decompressed_sha256": "32cfc9d36782c01d2ec42e52c0f0026cacc0205450f810a8a10a6dff3d79bbea",
+      "kind": "Historical campaign authorization/merge/checkpoint ledger only; never new CC acceptance or an active grant",
+      "original": "/tmp/n8n-campaign-20261018/corrective-three-grant-binding-20261019.json",
+      "path": "historical-campaign-checkpoint/corrective-three-grant-binding-20261019.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "e9b8f201a9201e047160758d9fd5a0a792cd212024251226ce610bd4820d6cff"
+    },
+    {
+      "bytes": 1698,
+      "decompressed_bytes": 22768,
+      "decompressed_sha256": "65201e815400bb6aa38754cacf45b0bdf27409796b4d085fb6415b2cef7567d7",
+      "kind": "Historical campaign authorization/merge/checkpoint ledger only; never new CC acceptance or an active grant",
+      "original": "/tmp/n8n-campaign-20261018/corrective-three-push-receipt-20261019.json",
+      "path": "historical-campaign-checkpoint/corrective-three-push-receipt-20261019.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "5a8ff2be4f33c31e5e9ec69b5304eccf40c71a614ae7509ccc42fb420d86b3a4"
+    },
+    {
+      "bytes": 1430,
+      "decompressed_bytes": 9244,
+      "decompressed_sha256": "57f9c449c914fefe78315414c46c7e3f59553f9fc5f8afe265b1b8e00314aacb",
+      "kind": "Historical campaign authorization/merge/checkpoint ledger only; never new CC acceptance or an active grant",
+      "original": "/tmp/n8n-campaign-20261018/pr1858-final-premerge-authorization.json",
+      "path": "historical-campaign-checkpoint/pr1858-final-premerge-authorization.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "2d370b08d47c4702ab712124d806d68e499e514a173eca918b081ebff47a8967"
+    },
+    {
+      "bytes": 167,
+      "decompressed_bytes": 203,
+      "decompressed_sha256": "27106e8cef89e7da8dcde9e3f898a6e6455ae9e6f96f4a4a2a6f93ae81adcca9",
+      "kind": "Historical campaign authorization/merge/checkpoint ledger only; never new CC acceptance or an active grant",
+      "original": "/tmp/n8n-campaign-20261018/pr1858-merge-receipt-20261019.json",
+      "path": "historical-campaign-checkpoint/pr1858-merge-receipt-20261019.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "4d06f583d07240e125b3d0e44951784f1ac90a40326769835a0326a481d15cae"
+    },
+    {
+      "bytes": 1345,
+      "decompressed_bytes": 8944,
+      "decompressed_sha256": "5e29c527622832a2bd8c4ad7996c93c526755faa0c7e2b3e42f61a48575c7828",
+      "kind": "Historical campaign authorization/merge/checkpoint ledger only; never new CC acceptance or an active grant",
+      "original": "/tmp/n8n-campaign-20261018/pr1859-final-premerge-authorization.json",
+      "path": "historical-campaign-checkpoint/pr1859-final-premerge-authorization.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "98ea49c3d6799c4b2f2e1ad03ad4c0052460e53b4c4d578705b5348980a182a3"
+    },
+    {
+      "bytes": 117,
+      "decompressed_bytes": 109,
+      "decompressed_sha256": "5950a607565f26cc4553ba4440ec789f8fe022fe0fd498a6852af33c3472d3d5",
+      "kind": "Historical campaign authorization/merge/checkpoint ledger only; never new CC acceptance or an active grant",
+      "original": "/tmp/n8n-campaign-20261018/pr1859-merge-receipt-20261019.json",
+      "path": "historical-campaign-checkpoint/pr1859-merge-receipt-20261019.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "82ae96713cf8d4de8f455ad4abefe179f6acd498f7bc90a621cb453342511b33"
+    },
+    {
+      "bytes": 1390,
+      "decompressed_bytes": 8997,
+      "decompressed_sha256": "b2f1595d924b9ca559e6b0509bf1d5e488c8ae103301a0599287b504b2ef68f9",
+      "kind": "Historical campaign authorization/merge/checkpoint ledger only; never new CC acceptance or an active grant",
+      "original": "/tmp/n8n-campaign-20261018/pr1860-final-premerge-authorization.json",
+      "path": "historical-campaign-checkpoint/pr1860-final-premerge-authorization.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "567b7acfdff172cdfa2f4d2547e5eca1bbd26eb8753a9748b38d58052f832219"
+    },
+    {
+      "bytes": 116,
+      "decompressed_bytes": 109,
+      "decompressed_sha256": "08a18bdb04bc584029cf7e4de0d032a9bbbc0e716cb0e1de9caaeabaa75a3525",
+      "kind": "Historical campaign authorization/merge/checkpoint ledger only; never new CC acceptance or an active grant",
+      "original": "/tmp/n8n-campaign-20261018/pr1860-merge-receipt-20261019.json",
+      "path": "historical-campaign-checkpoint/pr1860-merge-receipt-20261019.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "ff2ad6ce63945e6afb3c500afc33f2c97e059e920a78f90be926817a92567e06"
+    },
+    {
+      "bytes": 1102,
+      "decompressed_bytes": 3167,
+      "decompressed_sha256": "c29bd9bd9d3758fda37820ba96394d67aff78de299bc058156b9a44cc5dd8506",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-integration-base.json",
+      "path": "integration/cc-reader-main-integration-base.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "e88f6e371d63d577e81ae8453ea8bcdfccbd97de730bb9bda5e6000c1c304248"
+    },
+    {
+      "bytes": 1681,
+      "decompressed_bytes": 7639,
+      "decompressed_sha256": "0a7b3bfdbaa04c0ed5cfc626342357ed8fcb4040becc70d384d12f7311fa911b",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-integration-session.json",
+      "path": "integration/cc-reader-main-integration-session.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "c19a16136c0b67b6f8514a2372c5357fbe10da31da14cfac0eac9e138226c24a"
+    },
+    {
+      "bytes": 2444,
+      "decompressed_bytes": 5790,
+      "decompressed_sha256": "85e53fbc00b813658f5937a46e49c899e5a9ddad9dd1d2961c91c57aca6dccd0",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-source-parity.json",
+      "path": "integration/cc-reader-main-source-parity.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "3893eccba7f1015dcab7da01a5d68ee37b1c0adb51783f2459f25ea8135b0319"
+    },
+    {
+      "bytes": 507,
+      "decompressed_bytes": 887,
+      "decompressed_sha256": "e8e7ff1b9d84105f3b12b56cc52d8c2c51fb8d78ea1441813e770e49ec740b18",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-dependencies.json",
+      "path": "integration/cc-reader-main-dependencies.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "579cc80162bfd8a70edb0a9bd3a27c584993a084b2180be71e84fdacf7cdcd1a"
+    },
+    {
+      "bytes": 1474,
+      "decompressed_bytes": 7162,
+      "decompressed_sha256": "1c3faa4666c0082c2a0c451722caf3d5a3ad4251a708c9d46483a6a6162dd6c6",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-focused.xml",
+      "path": "integration/cc-reader-main-focused.xml.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "0e597ebff3fd6eb9aeedfe45b7e7aab4bc3803d7b72f1a5ecfba8f5146a6ae5a"
+    },
+    {
+      "bytes": 53,
+      "decompressed_bytes": 100,
+      "decompressed_sha256": "41f69dbb794c493e12eb1355f6451bd96f57fb0a6f0f79983cc659da607033b4",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-focused.log",
+      "path": "integration/cc-reader-main-focused.log.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "e9fd0ddf1b10724e1b1acd34e8ada8f9fa98fe46d3a3d7fe818ff47b14a2afeb"
+    },
+    {
+      "bytes": 985,
+      "decompressed_bytes": 3788,
+      "decompressed_sha256": "86ea954e21dca2afd21638735e5e9a41588998d52fad5f7d43b49540d9d79c09",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-formatted-fixture.xml",
+      "path": "integration/cc-reader-main-formatted-fixture.xml.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "f33c1c6bb1cefb37066a753fbe6083f8e3ae19c9822eec0349f25762b6ce6b0e"
+    },
+    {
+      "bytes": 52,
+      "decompressed_bytes": 99,
+      "decompressed_sha256": "ac018b331bb354607d8bbd1906b741be6066c0cb1bcdfe747d11403ebc2e44d8",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-formatted-fixture.log",
+      "path": "integration/cc-reader-main-formatted-fixture.log.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "61c8087ff033176eb1ea40d0e80299592837d96523a696693acf59c7ce59ea30"
+    },
+    {
+      "bytes": 483,
+      "decompressed_bytes": 1367,
+      "decompressed_sha256": "998ed3e5caddca57f0ef71b407677c0aca751178784c2d6c8a0f73c88ef460ff",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-ruff-format.log",
+      "path": "integration/cc-reader-main-ruff-format.log.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "d4fcb8515faf38e3e1f57d38c8385e2d647f9018b0a3ba1dd2cad2fe268f1f05"
+    },
+    {
+      "bytes": 39,
+      "decompressed_bytes": 19,
+      "decompressed_sha256": "413a709001976657cb743636fd34e48fc41d8d302d665460d3f874b3313da127",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-fixture-format.log",
+      "path": "integration/cc-reader-main-fixture-format.log.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "2283aea2b330488a006d79106f5f562181af4f1fab820fd23ed7f19cf203d3f9"
+    },
+    {
+      "bytes": 39,
+      "decompressed_bytes": 19,
+      "decompressed_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-final-ruff-check.log",
+      "path": "integration/cc-reader-main-final-ruff-check.log.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "f3af4d142827f5aad2eb0c72d556d325488a57fb6219aac10afeb51085667d53"
+    },
+    {
+      "bytes": 46,
+      "decompressed_bytes": 26,
+      "decompressed_sha256": "177f260a5645724013185e4b140c7045cc39e56c0c97b120f5cb23599f85f0de",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-final-ruff-format.log",
+      "path": "integration/cc-reader-main-final-ruff-format.log.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "ba6a52113bd42e9dcc835caee19b9c37a24f4dbc256f880d69ad837fd40e31d2"
+    },
+    {
+      "bytes": 1406,
+      "decompressed_bytes": 5769,
+      "decompressed_sha256": "92b5e0d1fc00ab9c2656535f7986b47e925774544c763e5a9e706be9bbdfed4e",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-selection.json",
+      "path": "integration/cc-reader-main-selection.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "6dfc5314150a938e8e459a9af563e5b3c58dc6b76318d09347b85ac2705f8fda"
+    },
+    {
+      "bytes": 179,
+      "decompressed_bytes": 205,
+      "decompressed_sha256": "5e8eb50662b778e716c978862f1f5d78fe3b3f7624431d9c8065890275c4ad73",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-selection.log",
+      "path": "integration/cc-reader-main-selection.log.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "68f1e394ffa4324fbc9995e16481238bb331f2a0661550ae5f4a2bff2437e8c4"
+    },
+    {
+      "bytes": 1268,
+      "decompressed_bytes": 2572,
+      "decompressed_sha256": "557e177a56dcff81c36a15c48b6d76e76d91cc44acdaad95a6e40ed5583b4dd7",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-validation.json",
+      "path": "integration/cc-reader-main-validation.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "b9e8e8aeedaaf121dd13ebf4ddee0ea73a0ea336cbe16c3a36aeb4f0d1227d3e"
+    },
+    {
+      "bytes": 3192,
+      "decompressed_bytes": 7865,
+      "decompressed_sha256": "f0aae93f2418a1b48ac68223ff2df34ed8b85be8a59319c8eff9a9c8ace847a9",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-fresh-main-integration-plan.json",
+      "path": "integration/cc-reader-fresh-main-integration-plan.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "efdeb14c7c493c79e414c34fbb962ce52aa95fcccf6ecdbb3121d8215776fcbf"
+    },
+    {
+      "bytes": 2636,
+      "decompressed_bytes": 10800,
+      "decompressed_sha256": "c7f17a7b212fd59e796870f1f675fdaf5c19a08f89b1f879f9f8ed8d8957f429",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-fresh-main-source-inventory.json",
+      "path": "integration/cc-reader-fresh-main-source-inventory.json.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "5c84e20c7baf9024db4cace3e341b4af9e839bddbb08f17810b8dd9258a44a6b"
+    },
+    {
+      "bytes": 575,
+      "decompressed_bytes": 1215,
+      "decompressed_sha256": "bf5c6389ca91ba7cd6cc632cfd248de226800f6823bc18c6df2e78f88932e173",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-coordinationEvents.log",
+      "path": "integration/cc-reader-main-coordinationEvents.log.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "51336343b30bbadc0564342071f848c1c448dcce1dc83eea1cc0e78cb2277c1b"
+    },
+    {
+      "bytes": 409,
+      "decompressed_bytes": 976,
+      "decompressed_sha256": "8e6b6a66c676b8652c9777b7b4da92451d4b6f4bd339a0b8a4033a2dd1396ad5",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-outboxProjection.log",
+      "path": "integration/cc-reader-main-outboxProjection.log.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "8a8ddf2e3443dce522d6d7dd062cd1bdb4c6d481e9f3ddd8991529d94c7368a6"
+    },
+    {
+      "bytes": 52,
+      "decompressed_bytes": 37,
+      "decompressed_sha256": "f00794bf91a006eb0a58329edf7b170d528de16e7164510a9aaee30531a7bc82",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-coordinationTruth.log",
+      "path": "integration/cc-reader-main-coordinationTruth.log.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "b045082ee23e1debe07cefcc281f3555ee3a3f67f980fb14cff4e9c036e8465e"
+    },
+    {
+      "bytes": 116,
+      "decompressed_bytes": 109,
+      "decompressed_sha256": "74ef9cc42947977140db3e3dffdd1592184bf5a50d9acd8b430b3825288240bd",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-n8nTodayProjection.log",
+      "path": "integration/cc-reader-main-n8nTodayProjection.log.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "e8b228f49eeea87b6b8f0e31def8acfc8691104def82d7161d556f19adfa1eb3"
+    },
+    {
+      "bytes": 106,
+      "decompressed_bytes": 97,
+      "decompressed_sha256": "68e939169880fe71d92e519e0f8d32e37a322910191ef8cadf5272ae895ee336",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-projectionReadProtocol.log",
+      "path": "integration/cc-reader-main-projectionReadProtocol.log.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "725eae88952e93d766736cc5cb20be242eac3f1fd9be76255c47658140d5a26f"
+    },
+    {
+      "bytes": 101,
+      "decompressed_bytes": 99,
+      "decompressed_sha256": "03075d075c25c52a09ce682ab7449bc1c684422ef0d410a1c827c22c8047bfa8",
+      "kind": "Current fresh-main source integration proof; no native/build/runtime acceptance",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-buildIdentity.log",
+      "path": "integration/cc-reader-main-buildIdentity.log.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "18ca5816eea713a55cc5fcd8982a41929a0eb823cbccd8c18154f329eccbe389"
+    },
+    {
+      "bytes": 144,
+      "decompressed_bytes": 127,
+      "decompressed_sha256": "bf6043ef0ea29adcc91c32597923c07e35faa9c6bcc098db167a6b0d20228de8",
+      "kind": "Current canonical read-only INDEX check after staging; no INDEX mutation",
+      "original": "/tmp/n8n-campaign-20261018/cc-reader-main-docs-index-check.log",
+      "path": "integration/cc-reader-main-docs-index-check.log.gz",
+      "plaintext_canonical_secret_patterns": 0,
+      "sha256": "6a9fc85b9ff5cf7e23049d308525c1988d8482100608027718eeff0639b5a2bf"
+    }
+  ],
+  "base_sha": "6f73d41442bab01c530022c61c9897da893a16de",
+  "created_at": "2026-10-19T03:17:38.067543+00:00",
+  "documentation_contract": "reader-first-contract.json",
+  "documentation_reconciliation_held": true,
+  "historical_1e31_native_and_compiled_identity": "Passed at exactly the historical1e31 head; retained receipt and artifact identity only. It is not acceptance for this new head or deployed/refreshed-client proof.",
+  "historical_campaign_checkpoint_artifacts": 11,
+  "historical_integration_sha": "1e31f83fcfde3b8603a634129239bb52a32c27a2",
+  "new_full_native_or_build": false,
+  "original_Git_document_count": 15,
+  "original_manifest_file_count": 14,
+  "remote_or_runtime_actions": false,
+  "reviewed_source_sha": "72ed52373a7b4ef4a3bedcd9ec3d3f3305177ed3",
+  "schema": "CcReaderFreshMainIntegrationManifest@v1",
+  "secrets_review": "Canonical credential patterns applied to every raw archive before compression with zero matches; no .env or credential read. Staged canonical scanner runs at commit.",
+  "source_parity": {
+    "CI": {
+      "all492_previous_values_and_order_preserved": true,
+      "base_count": 492,
+      "candidate_count": 493,
+      "new_tuple": [
+        "n8n_cc_reader_first_20261018",
+        [
+          "tests/test_cc_reader_first_20261018.py",
+          "tests/test_ci_frontend_dependencies_20261018.py"
+        ]
+      ],
+      "placement": "After existing release_windows_20261016 at tail",
+      "rest_AST_unchanged": true
+    },
+    "INDEX_and_AGENTS_unchanged": true,
+    "all27_byte_equal": false,
+    "base_sha": "6f73d41442bab01c530022c61c9897da893a16de",
+    "extra_reviewed_paths": {
+      ".github/actions/setup-cio-frontend-tests/action.yml": "d9cecaca8e1a66b2215636bb801a7f9729be71ece696ad0ab4d6125cde72b699",
+      "tests/test_ci_frontend_dependencies_20261018.py": "5be0e1617017f6588025ceb1655b0da840b0a17e4695ac1b65be0b6f24a9b9d1"
+    },
+    "formatting_exception": {
+      "authority": "Parent explicitly approved formatting-only exception after preserving Ruff0.16.2 failure.",
+      "formatted_sha256": "1c342a2f5e7a6f702aebea00e7bb911d70614370fd70ea4fc1cd4f676083b0b7",
+      "full_AST_including_all_assertions_unchanged": true,
+      "original_sha256": "33aef7753185615db5cb30343d86d317ca9b0f6fea9467d1c301b987e5f2799f",
+      "other26_blobs_byte_exact": true,
+      "path": "tests/test_stop_management_ui_hardening.py"
+    },
+    "package_byte_equal_reader": true,
+    "package_lock_byte_equal_base": true,
+    "reader_head": "1e31f83fcfde3b8603a634129239bb52a32c27a2",
+    "release_readiness_1858_workflow_byte_unchanged": true,
+    "reviewed27_paths": {
+      "apps/command-center-v3/src/App.tsx": "ab658293c895e78288d86bd676899fd8b42b0299f9dcc909b2d8bda9bca85ec2",
+      "apps/command-center-v3/src/lib/buildIdentity.test.ts": "3b754387500ebf0bc80a06781345a94ed067ed34c17eff747db3cae1ae4be00e",
+      "apps/command-center-v3/src/lib/buildIdentity.ts": "09e562f4b810053996542fdeeee7b0dc9572087bb68c718845c865bccbd46b65",
+      "apps/command-center-v3/src/lib/coordinationEvents.test.ts": "e346602199929bcb9654dd5886af431b39420b3f5b5789b8ebc7079564969a7d",
+      "apps/command-center-v3/src/lib/coordinationEvents.ts": "0b3b26cc4391440767b18a3bcd07f43f5740ed11162568d3d265074ab1df6a1b",
+      "apps/command-center-v3/src/lib/coordinationTruth.test.ts": "c036d51116cbc10eb4d843f7015ff9f4f8c215cfb46ff6bb23b4a825b2b7090f",
+      "apps/command-center-v3/src/lib/n8nTodayProjection.test.ts": "7d83daac0f539786d66ff5985e2384cbc67ed513cc1a6a9773af5fbecd21dafe",
+      "apps/command-center-v3/src/lib/n8nTodayProjection.ts": "6a80123bae00e3a93d81c2cb2e1cddd5b8dd2cf04a56b3a9c9841a6c3bae42c2",
+      "apps/command-center-v3/src/lib/outboxProjection.test.ts": "31d6713f13e38959dfc682c49427ae780c39d68006c79328d6a43df572b5ecce",
+      "apps/command-center-v3/src/lib/outboxProjection.ts": "25965cb1405e4c288e0728729e991f6d8617ac47d7f3a8493b4ab5e85eb6b8b0",
+      "apps/command-center-v3/src/lib/projectionReadProtocol.test.ts": "72bcf95302ade9d6c3719e4532184e88e53c71073c1e45600ae0e86e63f0b6c9",
+      "apps/command-center-v3/src/lib/projectionReadProtocol.ts": "167c989f433c5e50ebfb5e684400f773cd8f5ec3c7c688d641ed73fee2100311",
+      "apps/command-center-v3/src/pages/CoordinationPage.tsx": "a42081ec55dbb59ab5fb3188474b1524e37591614b9a11aad55c0c9f4fcde07c",
+      "apps/command-center-v3/src/pages/N8nToday.tsx": "d960f3e5d8a30d994f1bdcc1d7b1c1fa6155e19c7137ca5d435a48745c4a0590",
+      "apps/command-center-v3/vite.config.ts": "d8be8a48ba802aa3842cffc0a84cab6ce77db0cb79406b3a3836c6158e53be25",
+      "tests/fixtures/cc_client_compat_20261018/identity.json": "89a4c5b4222569a721c9283d1ca183bc4ae1a79b7cdb4dfe15ccd7047b0920ae",
+      "tests/fixtures/cc_client_compat_20261018/observations.json.gz": "67a520337d6d47aedd382870d6edd5be9da0b844d109164182b35fa6cc6d7aee",
+      "tests/fixtures/cc_client_compat_20261018/old/src/lib/approvalBoard.ts": "823c77c1a1a3fbf2667733136b7ec25d0d8e3f0316289cde3ff9290684eb6675",
+      "tests/fixtures/cc_client_compat_20261018/old/src/lib/coordinationEvents.ts": "37ede71f570edbab05e221cacc0ac901e6ed99a658f5c1556808ee4c3831f3b4",
+      "tests/fixtures/cc_client_compat_20261018/old/src/lib/designTokens.ts": "3f18f482e0a832b39a52d3154363f3776b8dd396f494fed961ebcbcb986fe1a1",
+      "tests/fixtures/cc_client_compat_20261018/old/src/lib/migrationBoard.ts": "1537446f9eec1b69a92e59e852617ad8f9f5d819ee65c90e91748e2f25e68a50",
+      "tests/fixtures/cc_client_compat_20261018/old/src/lib/outboxProjection.ts": "dea795f3d5a4114aace20825e65f921b9dfdbc0122e899ea2f75940d3c963601",
+      "tests/fixtures/cc_client_compat_20261018/old/src/pages/CoordinationPage.tsx": "217e68a6bc2f6a7ffcbbe789f05079e35bf76a8e3dc2588830ca607c60210d9d",
+      "tests/fixtures/cc_client_compat_20261018/old/src/pages/N8nToday.tsx": "c9b4d403f63c10ca533ed639a6b0b9f1d5fc54aedb3a07bd642d82cac5ca7977",
+      "tests/fixtures/cc_client_compat_20261018/probe.cjs": "52bad2e4ab30f9b39447f5c83ab4ac18bc4e9e62b594b7eadfcab7355a68b76a",
+      "tests/test_cc_reader_first_20261018.py": "abb25fd1aa9f6e52cdf0d3205fce86421a3b0b5122813033b1e7e7a737d80a65",
+      "tests/test_stop_management_ui_hardening.py": "33aef7753185615db5cb30343d86d317ca9b0f6fea9467d1c301b987e5f2799f"
+    },
+    "schema": "CcReaderMainSourceParity@v1",
+    "source_head": "72ed52373a7b4ef4a3bedcd9ec3d3f3305177ed3",
+    "workflow_changes": [
+      {
+        "added_action_calls": 3,
+        "added_separator_blank_lines": 0,
+        "all_other_bytes_equal_base": true,
+        "path": ".github/workflows/cio-full-suite-sharded.yml"
+      },
+      {
+        "added_action_calls": 2,
+        "added_separator_blank_lines": 1,
+        "all_other_bytes_equal_base": true,
+        "path": ".github/workflows/cio-production-hardening-ci.yml"
+      }
+    ],
+    "workflow_preflight_clarification": "Initial removal of only calls left one reviewed added blank separator; comparison now explicitly removes that separator too. All other bytes equal current main."
+  },
+  "status": "LOCAL_SOURCE_FOCUSED_TESTED_PENDING_FINAL_HEAD_REVIEW_AND_ACCEPTANCE",
+  "validation": {
+    "actual_CI_selector": "Real CLI selected new gate; zero deferred gates. Selection did not run all selected suites.",
+    "base_sha": "6f73d41442bab01c530022c61c9897da893a16de",
+    "docs_INDEX_check": {
+      "exit": 0,
+      "scope": "After staging every new JSON/gzip/source file, canonical inventory check passed with unchanged INDEX and no new Markdown. Existing missing-header count166 is unchanged repository debt."
+    },
+    "focused_before_fixture_format": {
+      "errors": 0,
+      "failures": 0,
+      "path": "/tmp/n8n-campaign-20261018/cc-reader-main-focused.xml",
+      "sha256": "1c3faa4666c0082c2a0c451722caf3d5a3ad4251a708c9d46483a6a6162dd6c6",
+      "skipped": 0,
+      "tests": 48
+    },
+    "formatted_fixture_recheck": {
+      "errors": 0,
+      "failures": 0,
+      "path": "/tmp/n8n-campaign-20261018/cc-reader-main-formatted-fixture.xml",
+      "sha256": "86ea954e21dca2afd21638735e5e9a41588998d52fad5f7d43b49540d9d79c09",
+      "skipped": 0,
+      "tests": 25
+    },
+    "frontend_dependency_tests": "Actual action Python snippet executes against the actual 493-gate shard_plan; real React SSR/esbuild fixture uses existing locked Node dependencies via NODE_PATH, no installation.",
+    "new_frontend_build_run": false,
+    "new_full_native_run": false,
+    "quality": {
+      "final_ruff_check_exit": 0,
+      "final_ruff_format_check_exit": 0,
+      "git_diff_check_exit": 0,
+      "initial_format_exit": 1,
+      "initial_format_failure": "Inherited quote wrapping in existing stop-management UI fixture only; preserved log."
+    },
+    "runtime_effects": false,
+    "schema": "CcReaderFreshMainValidation@v1",
+    "source_identity": "26 reviewed source/test blobs byte-identical; one existing fixture formatting-only with entire AST unchanged.",
+    "typescript_suites": {
+      "buildIdentity": {
+        "exit": 0,
+        "log_sha256": "03075d075c25c52a09ce682ab7449bc1c684422ef0d410a1c827c22c8047bfa8"
+      },
+      "coordinationEvents": {
+        "exit": 0,
+        "log_sha256": "bf5c6389ca91ba7cd6cc632cfd248de226800f6823bc18c6df2e78f88932e173"
+      },
+      "coordinationTruth": {
+        "exit": 0,
+        "log_sha256": "f00794bf91a006eb0a58329edf7b170d528de16e7164510a9aaee30531a7bc82"
+      },
+      "n8nTodayProjection": {
+        "exit": 0,
+        "log_sha256": "74ef9cc42947977140db3e3dffdd1592184bf5a50d9acd8b430b3825288240bd"
+      },
+      "outboxProjection": {
+        "exit": 0,
+        "log_sha256": "8e6b6a66c676b8652c9777b7b4da92451d4b6f4bd339a0b8a4033a2dd1396ad5"
+      },
+      "projectionReadProtocol": {
+        "exit": 0,
+        "log_sha256": "68e939169880fe71d92e519e0f8d32e37a322910191ef8cadf5272ae895ee336"
+      }
+    }
+  }
+}

@@ -242,6 +242,10 @@ def validate_catalyst_relevance(symbol: str, company_name: str, headline: str) -
         parts.append(f"company_match({matches}/{len(company_words)})")
 
     reason = ', '.join(parts) if parts else 'no_match'
+    # 2026-10-18: the additive score reached 1.1/1.2 (ticker 0.6 + company 0.5 +
+    # ...) and was stored in trade_ai_scans.catalyst_confidence, a 0..1 column
+    # (single_scale contract). Clamp to [0, 1]; the relevance test is unchanged.
+    score = max(0.0, min(1.0, round(score, 4)))
     return score >= 0.3, score, reason
 
 
