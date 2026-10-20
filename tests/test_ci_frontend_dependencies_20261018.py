@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ACTION_PATH = ROOT / ".github/actions/setup-cio-frontend-tests/action.yml"
 ACTION = yaml.safe_load(ACTION_PATH.read_text())
 USES = "./.github/actions/setup-cio-frontend-tests"
-READER = "tests/test_cc_reader_first_20261018.py"
+READERS = {"tests/test_cc_reader_first_20261018.py", "tests/test_comms_delivery_health_truth_20261020.py"}
 
 
 def actual_selector(tmp_path, monkeypatch, selector):
@@ -31,10 +31,11 @@ def test_complete_registered_suite_requires_real_frontend_dependencies(tmp_path,
 @pytest.mark.parametrize("shard", ["0", "1", "2", "3", "4", "5", "6", "7", "serial", "pg"])
 def test_only_actual_owning_shard_installs_frontend_dependencies(tmp_path, monkeypatch, shard):
     files = runner.shard_plan(8)["shards"][shard]
-    expected = "required=true\n" if READER in files else "required=false\n"
+    expected = "required=true\n" if READERS & set(files) else "required=false\n"
     assert actual_selector(tmp_path, monkeypatch, shard + "/8") == expected
-    owners = [sid for sid, paths in runner.shard_plan(8)["shards"].items() if READER in paths]
-    assert len(owners) == 1, "dependency setup cannot drop or duplicate the real reader test"
+    for reader in READERS:
+        owners = [sid for sid, paths in runner.shard_plan(8)["shards"].items() if reader in paths]
+        assert len(owners) == 1, "dependency setup cannot drop or duplicate a real reader test"
 
 
 @pytest.mark.parametrize("selector", ["unknown/8", "8/8", "0/0"])
