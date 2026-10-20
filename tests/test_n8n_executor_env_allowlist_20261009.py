@@ -638,7 +638,14 @@ def test_lane_mode_counts_match_the_pr():
     # 2026-10-15 (n8nfab/comms-intent-consumer-20261015): + n8n-comms-intent-consumer, enforced from its first entry
     # (shadow, live_arg null); its literal closure inventory is checked above. 11 + 1 = 12.
     assert LANES["n8n-comms-intent-consumer"]["env_allowlist_mode"] == "enforce"
+    # 2026-10-18 (feat/disk-hygiene-n8n-20261018): + disk-hygiene, enforced from its first entry; disk-usage-monitor
+    # stays report (its env reads TRADEAI_N8N_COORDINATION_LEDGER / TRADEAI_PERSISTENT_STATE_ROOT are listed, not
+    # yet enforced). 12 + 1 = 13.
+    assert LANES["disk-hygiene"]["env_allowlist_mode"] == "enforce"
+    # 2026-10-19 (/tmp inode incident, operator): + tmp-hygiene, enforced from its first entry (same reads as
+    # disk-hygiene: TRADEAI_DISK_HYGIENE_GRANT on the refused-under-executor apply path, the state-root path). 13 + 1 = 14.
+    assert LANES["tmp-hygiene"]["env_allowlist_mode"] == "enforce"
     # 2026-10-19: + active-trader-motion-watchdog, enforced from its first entry; its recursive closure and literal
-    # reads are pinned in _REVIEWED_NEW_MODULES / _REVIEWED_NEW_READS_BY_LANE. 12 + 1 = 13.
+    # reads are pinned in _REVIEWED_NEW_MODULES / _REVIEWED_NEW_READS_BY_LANE. 14 + 1 = 15.
     assert LANES["active-trader-motion-watchdog"]["env_allowlist_mode"] == "enforce"
-    assert modes.count("enforce") == 13 and modes.count("report") == len(LANES) - 13
+    assert modes.count("enforce") == 15 and modes.count("report") == len(LANES) - 15

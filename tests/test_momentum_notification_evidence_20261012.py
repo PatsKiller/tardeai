@@ -137,7 +137,9 @@ def test_acceptance_context_cannot_override_a_different_explicit_subject(tmp_pat
     out = send(token="synthetic", chat_id="fixture", text=original, primary_symbols=["ABCD"])
     payload = [c[1] for c in calls if c[0] == "raw"][0]
     assert out["ok"] and not out.get("suppressed")
-    assert "Momentum evidence (advisory): UNKNOWN" in payload["text"]
+    # Operator 2026-10-19 ("drop from the alert, why have a false positive"): with no current same-symbol
+    # evidence the appendix is omitted entirely — no "UNKNOWN" line. Nothing is borrowed either way.
+    assert "Momentum evidence (advisory)" not in payload["text"]
     assert "ABCD upgraded to BUY" not in payload["text"]
 
 

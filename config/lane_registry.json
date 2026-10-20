@@ -16609,6 +16609,117 @@
       "review_by": "2026-10-23"
     },
     {
+      "lane_id": "disk-usage-monitor",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/disk_usage_monitor.py",
+        "cadence": "*/15 * * * *",
+        "stage": "canary",
+        "wave": "W1"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "ACTIVE",
+      "state_since": "2026-10-18",
+      "state_reason": "Operator 2026-10-18: 'monitor when a threshold is over 80%, fix and move to n8n where monitored.' n8n-native host lane fired by tradeai-dispatcher every 15 min (precedent heartbeat-watch / n8n-comms-intent-consumer: stage canary = dispatch live, no cron line ever existed, scheduler.match names the script only for host-conflict detection). scripts/disk_usage_monitor.py --apply measures config/disk_hygiene_rules.json monitor.mounts df-style, bands ok/warn(>=80)/critical(>=90), and on a band CHANGE only queues one host comms intent (host/disk_usage_*; config/host_comms_intent_routes.json) that the comms-intent consumer turns into a fan-in incident and the incident notifier sends (DIGEST -> P2). Live only once the lane is in TRADEAI_N8N_RELAY_LIVE_LANES (docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh relay); until then the gateway demotes the fire to dry_run.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/disk-usage-monitor_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_disk_hygiene_20261018.py; docs/ops/packets/disk-hygiene-n8n-20261018/01_dry_run_20261019.txt",
+      "review_by": "2026-10-25",
+      "note": "Writes only data/runtime/disk_usage_monitor_state.json, one comms_intents row per band change and its LaneRunReceipt. Sends nothing, deletes nothing (AGENTS.md §24.1, §23.14). The host P1 backstop stays the systemd disk_pressure_guard (proposed at 95%, packet backstop step) because n8n's own Postgres fails when the disk is full. Exit 0 measured + queued; 1 rules/mount/intent/write failure (band not recorded: retried).",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "*/15 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W1",
+        "class": "monitor",
+        "priority": 1,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "disk-hygiene",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/disk_hygiene.py",
+        "cadence": "0 4 * * 0",
+        "stage": "canary",
+        "wave": "W1"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-18",
+      "state_reason": "Operator 2026-10-18: 'a script with rules that's repeatable, n8n should run this weekly.' n8n-native host lane fired by tradeai-dispatcher Sunday 04:00 ET. live_arg is --plan: rules G/R/C/never-touch from config/disk_hygiene_rules.json produce a DiskHygieneManifest@v1 (path, kind, size, rule evidence) and a LaneRunReceipt; it DELETES NOTHING. --apply is operator-only (TRADEAI_DISK_HYGIENE_GRANT, a manifest younger than apply.manifest_max_age_hours, per-item re-validation, item and byte caps) and refuses under the n8n executor (TRADEAI_RUN_ID): destructive retention never runs from n8n (allowlist never-list, AGENTS.md §23.14). Live only once in TRADEAI_N8N_RELAY_LIVE_LANES (docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh relay).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/disk-hygiene_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_disk_hygiene_20261018.py; docs/ops/packets/disk-hygiene-n8n-20261018/01_dry_run_20261019.txt",
+      "review_by": "2026-10-25",
+      "note": "Writes only <state root>/data/runtime/disk_hygiene/disk_hygiene_manifest_<ts>.json + _latest.json and the LaneRunReceipt. Read-only git (GIT_OPTIONAL_LOCKS=0) and du over the configured roots. Sends nothing. The monitor quotes the latest manifest's reclaimable estimate. Exit 0 manifest written; 1 rules/home unreadable or write failure.",
+      "severity": "Low",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "0 4 * * 0"
+        ],
+        "tz": "America/New_York",
+        "wave": "W1",
+        "class": "hygiene",
+        "priority": 3,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "tmp-hygiene",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/tmp_hygiene.py",
+        "cadence": "0 5 * * *",
+        "stage": "canary",
+        "wave": "W1"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-19",
+      "state_reason": "Operator 2026-10-19, after /tmp (tmpfs) hit 97% inodes with 20G bytes free and tools failed with ENOSPC: a daily /tmp plan on n8n. n8n-native host lane fired by tradeai-dispatcher 05:00 ET. live_arg is --plan: the tmp rules of config/disk_hygiene_rules.json (ended Claude session scratch dirs idle > 2 days with no cwd / open fd / live transcript; pytest temp older than 1 day; every other /tmp entry never touched) produce a DiskHygieneManifest@v1 scope tmp (path, kind, file_count, size, rule evidence) and a LaneRunReceipt; it DELETES NOTHING. --apply is operator-only (TRADEAI_DISK_HYGIENE_GRANT, a fresh manifest, per-item re-validation, item / byte / file caps) and refuses under the n8n executor (TRADEAI_RUN_ID): AGENTS.md §23.14. Live only once in TRADEAI_N8N_RELAY_LIVE_LANES (docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh relay).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/tmp-hygiene_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_tmp_hygiene_20261019.py; docs/ops/packets/disk-hygiene-n8n-20261018/02_tmp_dry_run_20261019.txt",
+      "review_by": "2026-10-26",
+      "note": "Writes only <state root>/data/runtime/disk_hygiene/tmp_hygiene_manifest_<ts>.json + tmp_hygiene_manifest_latest.json and the LaneRunReceipt. A bounded lstat walk of each matching /tmp entry, /proc/*/cwd and /proc/*/fd readlinks, read-only git (GIT_OPTIONAL_LOCKS=0) on git trees inside a scratch dir. Sends nothing. The disk-usage monitor quotes the latest manifest's reclaimable inodes on an inode alert. Exit 0 manifest written; 1 rules / tmp root unreadable or write failure.",
+      "severity": "Low",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "0 5 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W1",
+        "class": "hygiene",
+        "priority": 3,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {

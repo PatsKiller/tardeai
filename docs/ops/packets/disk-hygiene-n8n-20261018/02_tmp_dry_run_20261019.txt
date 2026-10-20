@@ -1,0 +1,254 @@
+# READ-ONLY dry run of scripts/tmp_hygiene.py against the real /tmp (writes nothing, deletes nothing).
+# 2026-10-19T18:04:54Z host ms01-openclaw, worktree of feat/disk-hygiene-n8n-20261018 at fc0159e66 + the uncommitted tmp-hygiene change (committed with this file)
+# command: .venv/bin/python scripts/tmp_hygiene.py --dry-run --report
+# taken after the operator's one-off manual cleanup of 2026-10-19 (/tmp back to ~55% inodes)
+# df -i /tmp before: tmpfs 1048576 574309 474267 55% /tmp
+
+DRY-RUN {"dry_run": true, "lane_id": "tmp-hygiene", "summary": {"totals": {"by_kind": {"S:tmp_claude_session": {"bytes": 362860544, "count": 16, "files": 8907}}, "candidates": 16, "excluded": 10, "excluded_by_reason": {"git_tree_dirty": {"bytes": 86016, "count": 1, "files": 1756}, "open_fd": {"bytes": 369074176, "count": 2, "files": 208}, "recent_activity": {"bytes": 480854016, "count": 9, "files": 55154}, "session_transcript_live": {"bytes": 15945728, "count": 1, "files": 195}}, "excluded_bytes": 480940032, "excluded_files": 56910, "reclaimable_bytes": 362860544, "reclaimable_files": 8907, "reclaimable_gb": 0.34, "unmeasured_candidates": 0, "untouched": 17991, "untouched_by_reason": {"never_touch_glob": 505, "no_tmp_rule": 17486}}}, "would_write": ["/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/disk_hygiene"], "would_write_receipt": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/tmp-hygiene_last.json"}
+tmp_hygiene plan  generated_at 2026-10-19T18:04:54.926220+00:00  host ms01-openclaw  root /tmp
+rules /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-afb379d5993bee102/config/disk_hygiene_rules.json sha256 6d3be9d8e2f7  process cwds 23  open paths 232
+filesystem inodes 574309 of 1048576 used (54.77%)
+
+CANDIDATES 16  reclaimable 8.9k inodes, 0.34 GB
+  S:tmp_claude_session          16       8.9k inodes     0.34 GB
+
+LARGEST 20 CANDIDATES BY INODES
+       5.7k    0.22 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw/243cdb2b-21d3-42c2-ad84-6729909f0f3d  idle 13.65d  registered worktrees 0
+       3.0k    0.12 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw/77a6de60-3513-40ce-9220-25d684930e93  idle 9.7d  registered worktrees 0
+       0.2k    0.00 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw/7b2cdc6a-222e-4d83-ad5b-5da06beee281  idle 25.87d  registered worktrees 0
+       0.0k    0.00 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw/5c08daaf-c46a-4c23-9c04-4a27c415f619  idle 9.71d  registered worktrees 0
+       0.0k    0.00 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw/432198b8-337f-4318-b5da-1c1cb6639e4b  idle 28.17d  registered worktrees 0
+       0.0k    0.00 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw/be7bf04e-0f63-458c-add4-d4eb0dd12af4  idle 16.21d  registered worktrees 0
+       0.0k    0.00 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw/1bdde23e-0969-41c0-b879-b775aad44e91  idle 29.79d  registered worktrees 0
+       0.0k    0.00 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw/0549bb07-87c6-4de8-9320-3bd573d0c2b7  idle 29.0d  registered worktrees 0
+       0.0k    0.00 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw/0a6ab8b7-457c-42a3-a55d-cefdc61008cd  idle 28.99d  registered worktrees 0
+       0.0k    0.00 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw/1b922dbb-6f1c-42c8-81cb-df2db8060b4d  idle 30.0d  registered worktrees 0
+       0.0k    0.00 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw/ad9377ea-283a-4e67-b2a9-f0b42331703c  idle 29.77d  registered worktrees 0
+       0.0k    0.00 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw/bcb28eef-16d1-4f6a-9d38-5161400fa341  idle 29.75d  registered worktrees 0
+       0.0k    0.00 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw/bd07ef9b-ae0c-4673-a0ed-d7a59de74ec5  idle 28.91d  registered worktrees 0
+       0.0k    0.00 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw/d218e811-b132-4aa4-bcb1-7c5009aa7709  idle 29.9d  registered worktrees 0
+       0.0k    0.00 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw-trade-ai-v12-rebuild-trade-ai-v12-rebuild/aac859e0-3e14-4f68-96ae-d6cca0f640a1  idle 27.04d  registered worktrees 0
+       0.0k    0.00 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw-tradeai-exact-main-20260827/c7990981-f14d-4d21-b14f-84d30578be0d  idle 9.65d  registered worktrees 0
+
+EXCLUDED 10  (56.9k inodes) by reason (an entry with several reasons counts under each)
+  recent_activity                9      55.2k inodes     0.45 GB
+  git_tree_dirty                 1       1.8k inodes     0.00 GB
+  open_fd                        2       0.2k inodes     0.34 GB
+  session_transcript_live        1       0.2k inodes     0.01 GB
+      53.1k  /tmp/pytest-of-johnclaw/pytest-182819  idle 0.12d  recent_activity
+       1.8k  /tmp/claude-1000/-home-johnclaw/20037685-f0d9-451f-8b42-2a0f86d3b2e0  idle 21.89d  git_tree_dirty
+       0.9k  /tmp/pytest-of-johnclaw/pytest-188642  idle 0.0d  recent_activity
+       0.3k  /tmp/pytest-of-johnclaw/pytest-188641  idle 0.0d  recent_activity
+       0.2k  /tmp/pytest-of-johnclaw/pytest-182257  idle 0.14d  recent_activity
+       0.2k  /tmp/pytest-of-johnclaw/pytest-182284  idle 0.14d  recent_activity
+       0.2k  /tmp/claude-1000/-home-johnclaw-trade-ai-v12-rebuild-trade-ai-v12-rebuild/2e7e1d01-52e9-4376-be3e-e7c5e9902aeb  idle 0.0d  open_fd,recent_activity,session_transcript_live
+       0.1k  /tmp/pytest-of-johnclaw/pytest-188643  idle 0.0d  recent_activity
+       0.0k  /tmp/pytest-of-johnclaw/pytest-188644  idle 0.0d  recent_activity
+       0.0k  /tmp/claude-1000/-home-johnclaw/229f45b3-bc93-4dbd-a915-8016c13fc9bf  idle 0.0d  open_fd,recent_activity
+
+UNTOUCHED /tmp ENTRIES 17991 (no rule matches: never scanned, never a candidate)
+  never_touch_glob             505
+  no_tmp_rule                17486
+  never-touch globs matched (200 listed):
+    never_touch_glob:.ICE-unix         /tmp/.ICE-unix
+    never_touch_glob:.X11-unix         /tmp/.X11-unix
+    never_touch_glob:momentum-*        /tmp/momentum-adversarial-xtpui6qe
+    never_touch_glob:momentum-*        /tmp/momentum-bounded-validation-20261013T225914Z.py
+    never_touch_glob:momentum-*        /tmp/momentum-bounded-validation.py
+    never_touch_glob:momentum-*        /tmp/momentum-containment-preflight-3mg_1sxp
+    never_touch_glob:momentum-*        /tmp/momentum-containment-preflight-kz0w8iij
+    never_touch_glob:momentum-*        /tmp/momentum-containment-preflight-rd4_56fy
+    never_touch_glob:momentum-*        /tmp/momentum-corrective-push-packet.py
+    never_touch_glob:momentum-*        /tmp/momentum-corrective-remote-proof.py
+    never_touch_glob:momentum-*        /tmp/momentum-integrated-public-regression-5b674ec4b.xml
+    never_touch_glob:momentum-*        /tmp/momentum-lifecycle-dry-run.json
+    never_touch_glob:momentum-*        /tmp/momentum-lifecycle-validation-code
+    never_touch_glob:momentum-*        /tmp/momentum-lifecycle-validation-fixture.json
+    never_touch_glob:momentum-*        /tmp/momentum-native-8nhimap8
+    never_touch_glob:momentum-*        /tmp/momentum-native-d08a12507-selection.json
+    never_touch_glob:momentum-*        /tmp/momentum-native-final-selection.json
+    never_touch_glob:momentum-*        /tmp/momentum-native-oysle_v_
+    never_touch_glob:momentum-*        /tmp/momentum-native-public-integration-selection.json
+    never_touch_glob:momentum-*        /tmp/momentum-native-retry-validation.py
+    never_touch_glob:momentum-*        /tmp/momentum-native-selection.json
+    never_touch_glob:momentum-*        /tmp/momentum-public-alarm-correction-check.py
+    never_touch_glob:momentum-*        /tmp/momentum-public-bootstrap-recheck.py
+    never_touch_glob:momentum-*        /tmp/momentum-public-failure-recheck-7504733c8.py
+    never_touch_glob:momentum-*        /tmp/momentum-public-failure-recheck.py
+    never_touch_glob:momentum-*        /tmp/momentum-public-integration-validation.xml
+    never_touch_glob:momentum-*        /tmp/momentum-public-lifecycle-final-check.py
+    never_touch_glob:momentum-*        /tmp/momentum-source-kbxwhn5_
+    never_touch_glob:momentum-*        /tmp/momentum-ui-browser-check.mjs
+    never_touch_glob:momentum-*        /tmp/momentum-ui-fixture.json
+    never_touch_glob:momentum-*        /tmp/momentum-ui-readbacks-20261013T150356Z.json
+    never_touch_glob:momentum-*        /tmp/momentum-ui-readbacks-public-integration.json
+    never_touch_glob:momentum-*        /tmp/momentum-ui-readbacks.json
+    never_touch_glob:n8n-campaign-*    /tmp/n8n-campaign-20261018
+    never_touch_glob:snap-private-tmp  /tmp/snap-private-tmp
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-ModemManager.service-6unXtr
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-bluetooth.service-LMx6uN
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-bolt.service-sw2zs9
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-chrony.service-GHZN6Y
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-colord.service-Am6D0X
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-fwupd.service-BEYQIW
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-lm-sensors.service-9FyOMU
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-polkit.service-5KuwUn
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-power-profiles-daemon.service-Rjvz2q
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-switcheroo-control.service-RS3Wjk
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-systemd-logind.service-hUf2Sa
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-trade-ai-lab-moomoo-opend.service-SUyP8S
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-tradeai-agent-runtime-producer.service-VkJUHN
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-tradeai-agent-runtime@alex.service-FwFyYX
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-tradeai-agent-runtime@morgan.service-3PCYY2
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-tradeai-cio-telegram.service-Z03WUc
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-ubuntu-insights-collect.service-whmRos
+    never_touch_glob:systemd-private-* /tmp/systemd-private-6f2050e725404734a5b90065ec568df3-upower.service-Ro0Jp0
+    never_touch_glob:tmux-*            /tmp/tmux-1000
+    never_touch_glob:tradeai-*         /tmp/tradeai-44-import-negative-prior-original.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-64-integration-export-normalization.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-acquire-scalp-health-handoff.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-add-final-main-review-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-agentic-memory-email-20260924
+    never_touch_glob:tradeai-*         /tmp/tradeai-all-requested-tasks-audit-20261009.md
+    never_touch_glob:tradeai-*         /tmp/tradeai-all-task-audit-20261009T131239Z
+    never_touch_glob:tradeai-*         /tmp/tradeai-all-task-runtime-audit.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-assigned-live-audit-20261009T131149Z.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-assigned-live-audit-20261009T131149Z.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-assigned-live-audit-n8n-20261009T131149Z.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-assigned-live-verdicts-20261009T132000Z.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-autonomy-watchdog.lock
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-archive-contract-20261009.md
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-backlog-supplement-20261009.md
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-readiness-supplement-20261009.md
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-replay-alias-overflow-final-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-replay-alias-overflow-prior-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-replay-alias-tests-20261009.txt
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-replay-dark-contracts-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-replay-data-authority-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-replay-doc-index-pending-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-replay-extra-tests-20261009.txt
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-replay-final-source-handoff-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-replay-focused-first-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-replay-negative-prior-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-replay-offset-negative-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-replay-regression-final-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-replay-source-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-replay-source-handoff-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-replay-test-coverage-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-cadi-replay-tests-20261009.txt
+    never_touch_glob:tradeai-*         /tmp/tradeai-check-final-docs-only-delta-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-cio-freshness
+    never_touch_glob:tradeai-*         /tmp/tradeai-close-final-canonical-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-close-published-validation-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-collect-publication-evidence.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-current-feature-coverage-20261009T150248Z.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-current-identity-bounded-read-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-current-identity-host-20261009T145200Z.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-current-identity-sandbox-20261009T145200Z.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-e7-intake-fix
+    never_touch_glob:tradeai-*         /tmp/tradeai-exact-push-native-request-616f47d102495cad-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-exact-push-publication-packet-c492e6eba-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-exec-explore
+    never_touch_glob:tradeai-*         /tmp/tradeai-fabric-20261014T204915
+    never_touch_glob:tradeai-*         /tmp/tradeai-fabric-20261014T211218
+    never_touch_glob:tradeai-*         /tmp/tradeai-fabric-hl-20261016T123709
+    never_touch_glob:tradeai-*         /tmp/tradeai-fabric-hl-verify-833120.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-fabric-probe-2505970.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-fabric-probe-2510954.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-final-canonical-acceptance-closure-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-final-ci-gate.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-final-docs-only-precommit-closure-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-final-physical-publication-identity-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-final-physical-publication-identity-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-final-production-review-76e83b03-20261009-v2.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-final-production-review-76e83b03-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-final-production-review-76e83b03-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-final-publication-source-review-8c72ea5e-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-finalize-published-pr-body-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-fix-executor-lock-fixture.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-fix-expected-services
+    never_touch_glob:tradeai-*         /tmp/tradeai-fix-expected-services-hermes
+    never_touch_glob:tradeai-*         /tmp/tradeai-full-package
+    never_touch_glob:tradeai-*         /tmp/tradeai-governed-research-dedupe-focused-cache-fixture-attempt.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-governed-research-dedupe-focused-final.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-governed-research-dedupe-host-path.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-governed-research-dedupe-negative-first-attempt.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-governed-research-dedupe-negative-prior.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-governed-research-dedupe-regression-final.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-governed-research-dedupe-remediation.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-governed-research-dedupe-secrets.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-governed-research-dedupe-source-authority.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-guardrail-source-edit-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-guardrail-tests-edit-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-hbw-20261011T182157
+    never_touch_glob:tradeai-*         /tmp/tradeai-hbw-20261011T182225
+    never_touch_glob:tradeai-*         /tmp/tradeai-hermes-audit-kahauy0n
+    never_touch_glob:tradeai-*         /tmp/tradeai-hermes-recovery-dry-run.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-historical-replay-aggregates-20261009T152000Z.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-historical-replay-feasibility-aggregate-queries-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-historical-replay-feasibility-assessment-20261009T154012Z.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-historical-replay-feasibility-read-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-historical-replay-feasibility-validated-queries-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-historical-replay-schema-20261009T151000Z.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-incoming-guardrail-final-tests-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-incoming-guardrail-format-final-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-incoming-guardrail-format-prior-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-incoming-guardrail-handoff-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-incoming-guardrail-negative-prior-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-incoming-guardrail-prior-20261009
+    never_touch_glob:tradeai-*         /tmp/tradeai-incoming-guardrail-ruff-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-incoming-main-d7ec9ac13-source-review-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-kernel-lock-fixture-review-a14d2fcbb-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-maturity-live-proof-20261009T131820Z.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-maturity-live-proof-20261009T131820Z.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-merge-a8f012
+    never_touch_glob:tradeai-*         /tmp/tradeai-momentum-lifecycle-candidate-live.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-momentum-lifecycle-candidate-published.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-momentum-lineage-20261013
+    never_touch_glob:tradeai-*         /tmp/tradeai-momentum-lineage-20261013-validation.xml
+    never_touch_glob:tradeai-*         /tmp/tradeai-momentum-lineage-lease.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-n1-intent-negative-prior.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-n1-intent-regression-final-2.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-n1-intent-regression-final.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-n1-reviewed-operational-registry-20261009
+    never_touch_glob:tradeai-*         /tmp/tradeai-n1-rollback-crontab-20261009.txt
+    never_touch_glob:tradeai-*         /tmp/tradeai-n1-rollback-rehearsal-20261009-5h4xwqm1
+    never_touch_glob:tradeai-*         /tmp/tradeai-n1-rollback-rehearsal-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-n1-runtime-state-read.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-n2-focused-final.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-n2-independent-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-n2-independent-final-76e83b03-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-n2-independent-final-76e83b03-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-n2-independent-results-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-n2-negative-prior.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-n2-parent-final.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-n2-template-relay-first.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-community-capability-security-review-20261009.md
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-frozen-main-integration-handoff-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-baseline-correction-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-cb-new-families-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-final-lease-acquire-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-final-routing-fixture-mismatch-prior-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-final-routing-guardrails-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-final-routing-guardrails-fixed-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-final-source-lease-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-governance-fixtures-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-handoff-write-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-introduced-lf-edit-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-lease-acquire-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-line-endings-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-line-endings-correction-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-ops-fixture-edit-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-ops-fixture-lease-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-positive-fixture-edit-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-routing-regression-approved-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-routing-regression-initial-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-source-lease-20261009.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-strict-route-gate-20261009.log
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-test-edit-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-integration-transport-edit-20261009.py
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-lab-watchdog.lock
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-live-gate-metadata-20261009-authorized.json
+    never_touch_glob:tradeai-*         /tmp/tradeai-n8n-live-gate-metadata-20261009.json
+
+# df -i /tmp after: tmpfs 1048576 574309 474267 55% /tmp

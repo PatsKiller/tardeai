@@ -92,6 +92,20 @@ GATES = [
     # stale-marked, absent when uncovered), Telegram HTML rendered through an allowlist (no innerHTML), every lifecycle
     # action explained, missing operator token asked for instead of a silent 403. Hermetic: injected DB read.
     ("comms_drawer_20261019", ["tests/test_comms_drawer_20261019.py"]),
+    # ANCHOR: DISK_HYGIENE_N8N_20261018 — rule-based disk hygiene (dry-run manifest by default; --apply needs a fresh
+    # manifest, re-validates every item, grant + caps) and the band-deduped disk-usage monitor, both as n8n lanes;
+    # never-touch list enforced in code. Hermetic: tmp git repos/worktrees, fake df/proc/crontab.
+    ("disk_hygiene_n8n_20261018", ["tests/test_disk_hygiene_20261018.py"]),
+    # ANCHOR: TMP_HYGIENE_20261019 — /tmp inode incident 2026-10-19: inode bands per (mount, metric) in the disk-usage
+    # monitor (top dirs by file count, bounded scan) and the daily tmp-hygiene plan lane (ended Claude session scratch,
+    # old pytest temp, never-touch for everything else; operator-gated apply). Hermetic: fake /tmp, /proc, statvfs.
+    ("tmp_hygiene_20261019", ["tests/test_tmp_hygiene_20261019.py"]),
+    # ANCHOR: ACTIVE_TRADER_ALERT_COMPLETENESS_20261019 — alerts that shipped blank/UNKNOWN: swing entry cards carry
+    # company/sector/catalyst/CIO decision (shared lib.entry_alert_context); one swing-entry sender (planner persists,
+    # cio_entry_state_runner pages; config/swing_entry_alerts.yaml rollback); AT conflict = latest verdict only, AT-internal
+    # conflict falls back to Trade-AI evidence for display; fast-loop alerts carry same-day pass RVOL/setup/float/Trade-AI;
+    # STAND DOWN states last/entry/stop with no L2/all-n/a line; unstamped 0/5 AT evidence block dropped. Hermetic.
+    ("active_trader_alert_completeness_20261019", ["tests/test_active_trader_alert_completeness_20261019.py"]),
     # ANCHOR: DATA_INTEGRITY_FIXES_20261018 — operator-approved data-integrity fix PR: Finviz recom "%"/off-scale refused
     # by writer, cache loader and consumers (JNUG "-95.44%" reproduction) + dry-run-default remediation (archive + NULL,
     # never DELETE); no empty analyst_data_history payloads, readers say "unavailable"; ATR stop never <= 0; confidence
@@ -1205,6 +1219,12 @@ GATES = [
     # Operator follow-ups 2026-10-16: Hermes scalp catalyst research also covers the Active Trader hot symbols
     # (data broker, capped) and lands in persistent state; premarket_watcher per-day dedupe; n8n-only registry row;
     # "what n8n did today" Command Center tab (/v3/coordination?tab=today, GET /api/v2/coordination/n8n-today).
+    (
+        # Read-only v2 CC observations: missing sources stay unavailable; aggregate windows are
+        # independent of bounded details. SQLite/fake PostgreSQL effects only; no live readers.
+        "n8n_cc_truth_20261018",
+        ["tests/test_n8n_cc_truth_20261018.py", "tests/test_n8n_outbox_truth_20261018.py"],
+    ),
     (
         "hermes_at_research_n8n_today_20261016",
         ["tests/test_hermes_at_research_premarket_dedupe_20261016.py", "tests/test_n8n_today_page_20261016.py"],
