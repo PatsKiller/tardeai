@@ -1,0 +1,187 @@
+{
+  "schema": "MaintenanceApplyPolicyClosure@v1",
+  "base_sha": "720fce06c09ca7e7c21224364ab789505be40f5a",
+  "recorded_at": "2026-10-20T14:23:57.312935+00:00",
+  "stage": "IMPLEMENTED_LOCAL_NOT_REVIEWED_NOT_NATIVE",
+  "scope": "All public destructive maintenance apply paths hard-held under unchanged ACTIVE14.0.0. Source safety restriction only; no disk-hygiene authority/tier, credentials, real ledger or runtime configuration changed.",
+  "source_sha256": {
+    "scripts/disk_hygiene.py": "75ad3f85c435f45b0c8ab6734793110be4245b4c8aa61f534deec67d105d47b8",
+    "scripts/tmp_hygiene.py": "8d095a78c51775f991936232d7816c3ac1d585c57bdcb7e3a9de80b20c0d42d7",
+    "docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh": "5550f4ab88ccdcc2b0b340377995cd2719ce3929cb7ce628ef0e698b24b5b3c8",
+    "docs/ops/packets/disk-hygiene-n8n-20261018/README.md": "e250c210bf889a68665f9c6eb62099b256b23354b6a3d549949b921277f11f30",
+    "tests/test_disk_hygiene_20261018.py": "2c9b85af86329fb3736c676221d8d8d7136e5b23a478953174a5d45e7ee08e8f",
+    "tests/test_tmp_hygiene_20261019.py": "a7f9366f1748ec41cd99b52fed903fe8387741b4e47b135c63b0e699ccb64949",
+    "scripts/run_cio_hardening_ci.py": "ad6586bb352e374fd9f6be244af0bc104612c0acc80d8494b01c651a0bf5410b",
+    "tests/test_maintenance_apply_policy_20261020.py": "e07b6e215c2a5f0737e57466d9063b1b6157bd989ec30025ecc137b3f95fc3b6"
+  },
+  "operations": {
+    "apply_apis": "Signatures/return-family retained; no manifest/context/removal admission; tokens cannot enable effects. Existing executor-specific refusal retained.",
+    "cli": "--apply recognized but always stdout refusal/nonzero1 before clock/rules/environment grant reads or durable writes. Parse errors2 remain.",
+    "packet": "Both --apply branches refuse before manifest/Python. No--apply previews and plan/default/dry/monitor behavior preserved.",
+    "legacy": "No script, timer, workflow, rollback or raw record removed. Existing independent enforcer/backstops untouched. Dormant remove_item/revalidate helpers retained, all58 unrelated production defs AST exact.",
+    "configuration": "All6main720configpaths and allotherpolicy/guard/source boundaries unchanged. Existing allowlistenv list remains conservative superset; not approval.",
+    "CI": "Only newtest member added to existingdisk gate; all511 gates/order/restAST preserved; shared runner lease released after minimal edit."
+  },
+  "tests": {
+    "frozen_actual_function_pair": {
+      "baseline": {
+        "tests": 3,
+        "failures": 2,
+        "errors": 0,
+        "skipped": 0
+      },
+      "candidate": {
+        "file": "maintenance-frozen-pair-green.xml",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "test_sha256": "2e81b17ec8ccb97ff42ccf63cac70306889ad7854c797ad494633032f80f67f4",
+      "meaning": "Actual frozen apply definitions, scratch JSON and fake effect leaves. Arbitrary token reached fake removal on720; same test now holds. No actual deletion."
+    },
+    "new_full_module_suite": {
+      "baseline": {
+        "file": "maintenance-apply-closed-baseline.xml",
+        "tests": 15,
+        "failures": 14,
+        "errors": 0,
+        "skipped": 0
+      },
+      "candidate": {
+        "file": "maintenance-apply-closed-green.xml",
+        "tests": 15,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      "history": "Same15case preformat test source;14 meaningful assertion failures+1control ->15pass. Tracked finalcopy Ruffformatted AST-equal; exact original preserved."
+    },
+    "requirement_migration": {
+      "old_tests_after_safety_fix": {
+        "file": "maintenance-old-contracts.xml",
+        "tests": 29,
+        "failures": 14,
+        "errors": 0,
+        "skipped": 0
+      },
+      "migrations": {
+        "tests/test_disk_hygiene_20261018.py": {
+          "test_apply_requires_the_grant_and_never_runs_under_the_executor": "test_public_apply_is_held_with_or_without_a_caller_token",
+          "test_apply_refuses_a_stale_manifest": "test_public_apply_holds_stale_manifests_without_writing_a_report",
+          "test_apply_removes_worktrees_with_git_worktree_remove_and_clones_and_releases": "test_public_apply_retains_worktrees_clones_releases_and_registration",
+          "test_apply_revalidates_and_skips_anything_that_changed": "test_read_only_revalidation_detects_changed_worktrees_while_apply_is_held",
+          "test_apply_skips_items_whose_fingerprint_moved": "test_read_only_revalidation_keeps_the_fingerprint_guard",
+          "test_apply_stops_at_the_item_and_byte_caps": "test_public_apply_cannot_be_enabled_by_item_or_byte_cap_settings",
+          "test_apply_rechecks_the_never_touch_list_even_for_a_tampered_manifest": "test_read_only_revalidation_keeps_never_touch_for_a_tampered_manifest",
+          "test_hygiene_apply_is_dry_by_default_and_needs_the_grant": "test_hygiene_preview_is_read_only_and_apply_is_unsupported"
+        },
+        "tests/test_tmp_hygiene_20261019.py": {
+          "test_a_registered_clean_worktree_is_removed_through_git_worktree_remove": "test_public_apply_retains_registered_clean_worktrees",
+          "test_an_unregistered_worktree_is_plain_files": "test_an_unregistered_worktree_is_planned_but_public_apply_stays_held",
+          "test_apply_refuses_a_tampered_manifest_item_outside_the_patterns": "test_read_only_tmp_revalidation_keeps_pattern_and_root_checks",
+          "test_apply_needs_the_grant_never_runs_under_the_executor_and_refuses_stale": "test_public_tmp_apply_is_held_for_missing_token_executor_and_stale_input",
+          "test_apply_skips_a_changed_item_and_stops_at_the_file_cap": "test_read_only_tmp_revalidation_detects_change_and_apply_ignores_file_caps",
+          "test_packet_tmp_apply_is_dry_by_default_and_needs_the_grant": "test_packet_tmp_preview_is_read_only_and_apply_is_unsupported"
+        }
+      },
+      "classification": "14 existing tests expected missing-token/stale/apply-report/removal success under invented tokens. Explicit requirement migration, not behavioral red-first credit. Old exact source +failures archived. Pure existing revalidation reasons retained; no unchecked apply helper/override introduced.94 unrelated test defs AST exact."
+    },
+    "focused_before_format": {
+      "file": "maintenance-focused.xml",
+      "tests": 108,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "formatted_adjacent": {
+      "file": "maintenance-final-focused.xml",
+      "tests": 456,
+      "failures": 0,
+      "errors": 6,
+      "skipped": 0
+    },
+    "isolated_loopback_rerun": {
+      "file": "maintenance-isolated-pg-host.xml",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "environment_classification": "Formatted adjacent450PASS+6PermissionError setup errors were sandbox socket restrictions in existing isolatedPG fixture, not source assertion failures. Same exact6 cases authorized host loopback rerun6PASS,86deselected. No productionSQL or native/fullsuite run."
+  },
+  "quality": [
+    {
+      "argv": [
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/ruff",
+        "check",
+        "scripts/disk_hygiene.py",
+        "scripts/tmp_hygiene.py",
+        "tests/test_disk_hygiene_20261018.py",
+        "tests/test_tmp_hygiene_20261019.py",
+        "tests/test_maintenance_apply_policy_20261020.py",
+        "scripts/run_cio_hardening_ci.py"
+      ],
+      "exit_code": 0,
+      "log": "quality-0.log"
+    },
+    {
+      "argv": [
+        "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/ruff",
+        "format",
+        "--check",
+        "scripts/disk_hygiene.py",
+        "scripts/tmp_hygiene.py",
+        "tests/test_disk_hygiene_20261018.py",
+        "tests/test_tmp_hygiene_20261019.py",
+        "tests/test_maintenance_apply_policy_20261020.py",
+        "scripts/run_cio_hardening_ci.py"
+      ],
+      "exit_code": 0,
+      "log": "quality-1.log"
+    },
+    {
+      "argv": [
+        "bash",
+        "-n",
+        "docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh"
+      ],
+      "exit_code": 0,
+      "log": "quality-2.log"
+    },
+    {
+      "argv": [
+        "shellcheck",
+        "docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh"
+      ],
+      "exit_code": 0,
+      "log": "quality-3.log"
+    },
+    {
+      "argv": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exit_code": 0,
+      "log": "quality-4.log"
+    }
+  ],
+  "formatter_parity": "All5 code ASTs unchanged by Ruff0.16.2; subsequently updated only2test module docstrings truthfully, code AST still exact. Source scope apply/main/docstrings only, remainingimports/constants/all58functiondefs exact baseline.",
+  "manifest_sha256": "ec2c82360dc868c9058d699f1736708c18891a2b4505b619e0f69f32aa26c4ee",
+  "chronology": [
+    "Root handed isolated720 session+exclusive9path lease; canonical heartbeat verified.",
+    "New actual full-module15case test frozen and baseline14assertionfail+1control captured before source edits. Independent original3case pair history preserved.",
+    "Registered newtest and released fulllease/reacquired8remainingpaths because API has no partialrelease; sharedCI now free, no subsequent runner edits.",
+    "Closed source/publicpacket entrypoints; new15casegreen and same frozen3green.",
+    "Captured14old requirement mismatches before narrowly migrating those tests; all108 focusedpassed.",
+    "Ruffformatted and proved codeAST parity, truthful module docs updated, adjacent450pass/sandbox6errors preserved then6hostgreen.",
+    "Local commit/independent root review/native/remote/mergedrelease remain later steps; final outerpacket will bind actual commitSHA."
+  ],
+  "remaining_holds": [
+    "Independent implementation review by root, exact local committed-head core rerun, whole candidate native/remote checks pending.",
+    "No real grant requested/read/issued/consumed and no production effect or deletion; destructive execution remains unavailable even if proposed1852 later merges.",
+    "Main720 writer/client/runtime/registry-four-falsegreen/attestation/effective7lanes/protected1868/ATR/motion scope holds separate.",
+    "No workflow/owner/schedule/live-list/state/retirement/soak/recovery proof or maturity uplift."
+  ]
+}

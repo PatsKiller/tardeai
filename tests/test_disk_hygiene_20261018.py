@@ -4,8 +4,8 @@
 fix and move to n8n where monitored." Pins every rule of scripts/disk_hygiene.py on hermetic tmp git repos and
 worktrees (dirty, untracked, unpushed, unmerged, in-use cwd, referenced by the crontab, recent activity, the hard
 never-touch list, ignored credential files, not-owned repos, release keep-N / previous served / hold_until, caches),
-the plan/dry-run/apply contract (manifest staleness, re-validation skip, item and byte caps, grant required, never
-under the n8n executor, `git worktree remove` for linked worktrees), scripts/disk_usage_monitor.py bands and
+the plan/dry-run contract and read-only revalidation. Public apply is held regardless of caller tokens;
+old removal/cap success expectations remain archived as dormant history. Also tests scripts/disk_usage_monitor.py bands and
 dedupe-by-band through a tmp coordination ledger, the n8n wiring (registry rows, allowlist entries, REVIEWED health
 contracts, host intent routes) and the operator packet against fakes.
 
@@ -126,17 +126,37 @@ class World:
         doc["git"]["size_workers"] = 2
         doc["releases"]["pointer_dir"] = f"{h}/rel/ps"
         doc["releases"]["roots"] = [
-            {"path": f"{h}/rel/ps", "entry_kind": "dir", "glob": "*-*", "keep_newest": 2, "previous_served": True,
-             "hold_until": None},
-            {"path": f"{h}/rel/archive", "entry_kind": "file", "glob": "*.tar.zst", "keep_newest": 1,
-             "previous_served": False, "hold_until": None},
-            {"path": f"{h}/rel", "entry_kind": "dir", "glob": "persistent-*", "keep_newest": 0, "previous_served": False,
-             "hold_until": None},
+            {
+                "path": f"{h}/rel/ps",
+                "entry_kind": "dir",
+                "glob": "*-*",
+                "keep_newest": 2,
+                "previous_served": True,
+                "hold_until": None,
+            },
+            {
+                "path": f"{h}/rel/archive",
+                "entry_kind": "file",
+                "glob": "*.tar.zst",
+                "keep_newest": 1,
+                "previous_served": False,
+                "hold_until": None,
+            },
+            {
+                "path": f"{h}/rel",
+                "entry_kind": "dir",
+                "glob": "persistent-*",
+                "keep_newest": 0,
+                "previous_served": False,
+                "hold_until": None,
+            },
         ]
-        doc["caches"]["rules"] = [{"path": f"{h}/.cache/pip", "older_than_days": 29, "item_depth": 1,
-                                   "enabled": False}]
-        doc["references"] = {"crontab_cmd": ["cat", str(self.crontab)], "systemd_unit_dirs": [str(self.units)],
-                             "proc_root": str(self.proc)}
+        doc["caches"]["rules"] = [{"path": f"{h}/.cache/pip", "older_than_days": 29, "item_depth": 1, "enabled": False}]
+        doc["references"] = {
+            "crontab_cmd": ["cat", str(self.crontab)],
+            "systemd_unit_dirs": [str(self.units)],
+            "proc_root": str(self.proc),
+        }
         mon = doc["monitor"]
         mon["consumer_categories"] = [{"category": "models", "path": f"{h}/llama-cpp-vulkan"}]
         doc["tmp"]["root"] = str(self.tmp / "tmproot")  # never the real /tmp (tests/test_tmp_hygiene_20261019.py)
@@ -163,8 +183,9 @@ class World:
         return path
 
     def plan(self, *extra: str, now: datetime = NOW) -> int:
-        return DH.main(["--rules", str(self.rules_path), "--state-root", str(self.state), "--now", now.isoformat(),
-                        *extra])
+        return DH.main(
+            ["--rules", str(self.rules_path), "--state-root", str(self.state), "--now", now.isoformat(), *extra]
+        )
 
     def manifest(self) -> dict:
         return json.loads((self.state / "data/runtime/disk_hygiene/disk_hygiene_manifest_latest.json").read_text())
@@ -181,8 +202,12 @@ class World:
 def world(tmp_path, monkeypatch):
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
-    for k, v in (("GIT_AUTHOR_NAME", "t"), ("GIT_AUTHOR_EMAIL", "t@e"), ("GIT_COMMITTER_NAME", "t"),
-                 ("GIT_COMMITTER_EMAIL", "t@e")):
+    for k, v in (
+        ("GIT_AUTHOR_NAME", "t"),
+        ("GIT_AUTHOR_EMAIL", "t@e"),
+        ("GIT_COMMITTER_NAME", "t"),
+        ("GIT_COMMITTER_EMAIL", "t@e"),
+    ):
         monkeypatch.setenv(k, v)
     for k in (DH.GRANT_ENV, DH.RUN_ID_ENV, "TRADEAI_STATE_ROOT", "TRADEAI_N8N_COORDINATION_LEDGER"):
         monkeypatch.delenv(k, raising=False)
@@ -251,7 +276,9 @@ def test_a_crontab_or_systemd_reference_excludes_it(world):
     world.crontab.write_text(f"*/5 * * * * cd {by_cron} && ./run.sh\n")
     (world.units / "x.service").write_text(f"[Service]\nWorkingDirectory={by_unit}\n")
     world.plan()
-    assert _reasons(world, by_cron) == {"referenced"} and world.result(by_cron)["evidence"]["referenced_by"] == "crontab"
+    assert (
+        _reasons(world, by_cron) == {"referenced"} and world.result(by_cron)["evidence"]["referenced_by"] == "crontab"
+    )
     assert _reasons(world, by_unit) == {"referenced"}
     # a path that only shares a prefix is not a reference
     assert DH.referenced_by(Path(f"{by_cron}-2"), [("crontab", world.crontab.read_text())]) is None
@@ -279,8 +306,15 @@ def test_the_never_touch_list_is_enforced_before_any_rule(world):
     assert _reasons(world, token) == {"never_touch_glob"}
     assert _reasons(world, backups) == {"never_touch_path"}
     rules = DH.load_rules(world.rules_path)
-    for p in ("rel/persistent-state/x", "llama-cpp-vulkan/models/a.gguf", "x/.ssh/id_rsa", "proj/.env",
-              "a/cookies.json", "a/credentials.json", ".config/systemd"):
+    for p in (
+        "rel/persistent-state/x",
+        "llama-cpp-vulkan/models/a.gguf",
+        "x/.ssh/id_rsa",
+        "proj/.env",
+        "a/cookies.json",
+        "a/credentials.json",
+        ".config/systemd",
+    ):
         assert DH.never_touch_reason(world.home / p, rules), p
     assert DH.never_touch_reason(world.home, rules).startswith("contains_never_touch_path")
     assert DH.never_touch_reason(world.home / "wt-ok", rules) is None
@@ -304,7 +338,11 @@ def test_another_applications_repo_is_never_owned(world):
 
 
 def test_a_standalone_clone_needs_every_branch_pushed_and_no_stash(world):
-    ok, branchy, stashy = world.clone("tradeai-clone-ok"), world.clone("tradeai-clone-b"), world.clone("tradeai-clone-s")
+    ok, branchy, stashy = (
+        world.clone("tradeai-clone-ok"),
+        world.clone("tradeai-clone-b"),
+        world.clone("tradeai-clone-s"),
+    )
     sh("git", "checkout", "-q", "-b", "side", cwd=branchy)
     (branchy / "s.txt").write_text("s\n")
     sh("git", "add", "s.txt", cwd=branchy)
@@ -381,7 +419,9 @@ def test_an_archive_hold_until_date_holds_every_entry(world):
     (arch / "README_TRIPWIRE.md").write_text("keep\n")
     world.plan()
     assert sorted(Path(r["path"]).name for r in world.manifest()["items"] if r["rule"] == "R") == [
-        "r0-20260800-120000.tar.zst", "r1-20260801-120000.tar.zst"]
+        "r0-20260800-120000.tar.zst",
+        "r1-20260801-120000.tar.zst",
+    ]
     world.rules["releases"]["roots"][1]["hold_until"] = (NOW + timedelta(days=1)).date().isoformat()
     world.write_rules()
     world.plan()
@@ -421,8 +461,13 @@ def test_dry_run_writes_nothing_and_plan_writes_manifest_and_v2_receipt(world, m
     assert rec["status"] == "ok" and rec["produced_count"] == 1 and rec["output_fields"] == "LaneRunReceipt@v2"
     att = json.loads(next((world.state / "data/runtime/lane_attempts/disk-hygiene").glob("*.json")).read_text())
     contract = {c["id"]: c for c in _load("n8n_health_contracts.json")["contracts"]}["disk-hygiene"]
-    v = OV.evaluate(contract["expected_output"], att, run_id="d:disk-hygiene:live:20261018T0400",
-                    lane_id="disk-hygiene", mode="live")
+    v = OV.evaluate(
+        contract["expected_output"],
+        att,
+        run_id="d:disk-hygiene:live:20261018T0400",
+        lane_id="disk-hygiene",
+        mode="live",
+    )
     assert v["verdict"] == "produced", v.get("why")
     m = world.manifest()
     assert m["schema"] == DH.MANIFEST_SCHEMA and m["totals"]["candidates"] >= 1
@@ -446,15 +491,16 @@ def test_human_summary_lists_largest_candidates_and_exclusion_totals(world):
     assert "CANDIDATES 1" in text and "wt-a" in text and "untracked" in text and "REPORT ONLY" in text
 
 
-# ── 4. apply: grant, staleness, re-validation, caps, removal ──────────────────────────────────────────────────────
+# ── 4. public apply hold and read-only revalidation ──────────────────────────────────────────────────────
 
 
 def _apply(world: World, now: datetime = NOW, **env) -> int:
     old = {k: os.environ.get(k) for k in env}
     os.environ.update(env)
     try:
-        return DH.main(["--apply", "--rules", str(world.rules_path), "--state-root", str(world.state), "--now",
-                        now.isoformat()])
+        return DH.main(
+            ["--apply", "--rules", str(world.rules_path), "--state-root", str(world.state), "--now", now.isoformat()]
+        )
     finally:
         for k, v in old.items():
             if v is None:
@@ -468,92 +514,90 @@ def _last_apply(world: World) -> dict:
     return json.loads(files[-1].read_text())
 
 
-def test_apply_requires_the_grant_and_never_runs_under_the_executor(world):
+def test_public_apply_is_held_with_or_without_a_caller_token(world):
     wt = world.worktree("wt-clean")
     world.plan()
-    assert _apply(world) == 1 and _last_apply(world)["refused"] == f"{DH.GRANT_ENV}_missing"
-    assert _apply(world, **{DH.GRANT_ENV: "g1", "TRADEAI_RUN_ID": "d:disk-hygiene:live:x"}) == 1
+    for env in ({}, {DH.GRANT_ENV: "g1"}, {DH.GRANT_ENV: "g1", "TRADEAI_RUN_ID": "d:disk-hygiene:live:x"}):
+        assert _apply(world, **env) == 1
     assert wt.exists()
+    assert list((world.state / "data/runtime/disk_hygiene").glob("disk_hygiene_apply_*.json")) == []
 
 
-def test_apply_refuses_a_stale_manifest(world):
+def test_public_apply_holds_stale_manifests_without_writing_a_report(world):
     wt = world.worktree("wt-clean")
     world.plan()
     hours = world.rules["apply"]["manifest_max_age_hours"]
     assert _apply(world, NOW + timedelta(hours=hours + 1), **{DH.GRANT_ENV: "g1"}) == 1
-    assert _last_apply(world)["refused"] == "manifest_stale" and wt.exists()
+    assert wt.exists()
+    assert list((world.state / "data/runtime/disk_hygiene").glob("disk_hygiene_apply_*.json")) == []
 
 
-def test_apply_removes_worktrees_with_git_worktree_remove_and_clones_and_releases(world):
+def test_public_apply_retains_worktrees_clones_releases_and_registration(world):
     wt, clone = world.worktree("wt-clean"), world.clone("tradeai-clone-ok")
     rel = _releases(world)
     world.plan()
-    assert _apply(world, **{DH.GRANT_ENV: "g1"}) == 0
-    rep = _last_apply(world)
-    assert {r["path"] for r in rep["removed"]} == {str(wt), str(clone), str(rel[0]), str(rel[1])}
-    assert {r["how"] for r in rep["removed"] if r["kind"] == "git_worktree"} == {"git worktree remove"}
-    assert not wt.exists() and not clone.exists() and not rel[0].exists() and rel[2].exists() and rel[3].exists()
-    assert str(wt) not in sh("git", "worktree", "list", "--porcelain", cwd=world.dev)  # no stale registration
-    assert rep["reclaimed_bytes"] == sum(r["bytes"] for r in rep["removed"]) and rep["grant"] == "g1"
-    assert world.dev.exists()
+    before = sh("git", "worktree", "list", "--porcelain", cwd=world.dev)
+    assert _apply(world, **{DH.GRANT_ENV: "g1"}) == 1
+    assert wt.exists() and clone.exists() and all(p.exists() for p in rel) and world.dev.exists()
+    assert sh("git", "worktree", "list", "--porcelain", cwd=world.dev) == before
 
 
-def test_apply_revalidates_and_skips_anything_that_changed(world):
+def test_read_only_revalidation_detects_changed_worktrees_while_apply_is_held(world):
     a, b = world.worktree("wt-a"), world.worktree("wt-b")
     world.plan()
-    (a / "late.txt").write_text("new work after the plan\n")  # now untracked
+    manifest = json.loads((world.state / "data/runtime/disk_hygiene/disk_hygiene_manifest_latest.json").read_text())
+    (a / "late.txt").write_text("new work after the plan\n")
     sh("git", "checkout", "-q", "--detach", "HEAD~0", cwd=b)
     t = (NOW - timedelta(hours=1)).timestamp()
-    os.utime(b / "README.md", (t, t))  # activity after the plan
-    assert _apply(world, **{DH.GRANT_ENV: "g1"}) == 0
-    rep = _last_apply(world)
-    why = {Path(s["path"]).name: s["why"] for s in rep["skipped"]}
-    assert why["wt-a"].startswith("rule_now_fails:untracked")
-    assert why["wt-b"].startswith("rule_now_fails:recent_activity")
-    assert a.exists() and b.exists() and rep["removed"] == []
+    os.utime(b / "README.md", (t, t))
+    rules = DH.load_rules(world.rules_path)
+    ctx = DH.build_context(rules, NOW)
+    verdicts = {Path(item["path"]).name: DH.revalidate(item, rules, ctx) for item in manifest["items"]}
+    assert verdicts["wt-a"][0] is False and verdicts["wt-a"][1].startswith("rule_now_fails:untracked")
+    assert verdicts["wt-b"][0] is False and verdicts["wt-b"][1].startswith("rule_now_fails:recent_activity")
+    assert _apply(world, **{DH.GRANT_ENV: "g1"}) == 1
+    assert a.exists() and b.exists()
 
 
-def test_apply_skips_items_whose_fingerprint_moved(world):
+def test_read_only_revalidation_keeps_the_fingerprint_guard(world):
     a = world.worktree("wt-a")
     world.plan()
     mpath = world.state / "data/runtime/disk_hygiene/disk_hygiene_manifest_latest.json"
     m = json.loads(mpath.read_text())
     m["items"][0]["fingerprint"]["head"] = "0" * 40
     mpath.write_text(json.dumps(m))
-    assert _apply(world, **{DH.GRANT_ENV: "g1"}) == 0
-    assert _last_apply(world)["skipped"] == [{"path": str(a), "why": "changed_since_manifest"}] and a.exists()
+    rules = DH.load_rules(world.rules_path)
+    assert DH.revalidate(m["items"][0], rules, DH.build_context(rules, NOW)) == (False, "changed_since_manifest")
+    assert _apply(world, **{DH.GRANT_ENV: "g1"}) == 1 and a.exists()
 
 
-def test_apply_stops_at_the_item_and_byte_caps(world):
-    for n in ("wt-1", "wt-2", "wt-3"):
-        world.worktree(n)
+def test_public_apply_cannot_be_enabled_by_item_or_byte_cap_settings(world):
+    items = [world.worktree(n) for n in ("wt-1", "wt-2", "wt-3")]
     world.plan()
     world.rules["apply"]["max_items_per_run"] = 1
     world.write_rules()
-    assert _apply(world, **{DH.GRANT_ENV: "g1"}) == 0
-    rep = _last_apply(world)
-    assert len(rep["removed"]) == 1 and [s["why"] for s in rep["skipped"]] == ["item_cap", "item_cap"]
-    world.plan()
+    assert _apply(world, **{DH.GRANT_ENV: "g1"}) == 1
     world.rules["apply"]["max_items_per_run"] = 10
     world.rules["apply"]["max_bytes_per_run"] = 1
     world.write_rules()
-    assert _apply(world, **{DH.GRANT_ENV: "g1"}) == 0
-    rep = _last_apply(world)
-    assert rep["removed"] == [] and {s["why"] for s in rep["skipped"]} == {"byte_cap"}
+    assert _apply(world, **{DH.GRANT_ENV: "g1"}) == 1
+    assert all(p.exists() for p in items)
 
 
-def test_apply_rechecks_the_never_touch_list_even_for_a_tampered_manifest(world):
+def test_read_only_revalidation_keeps_never_touch_for_a_tampered_manifest(world):
     world.worktree("wt-a")
     world.plan()
     mpath = world.state / "data/runtime/disk_hygiene/disk_hygiene_manifest_latest.json"
     m = json.loads(mpath.read_text())
     target = world.home / "db_backups"
     target.mkdir()
-    m["items"].append({**m["items"][0], "path": str(target), "kind": "git_clone"})
+    item = {**m["items"][0], "path": str(target), "kind": "git_clone"}
+    m["items"].append(item)
     mpath.write_text(json.dumps(m))
-    assert _apply(world, **{DH.GRANT_ENV: "g1"}) == 0
-    assert any(s["path"] == str(target) and s["why"].startswith("never_touch") for s in _last_apply(world)["skipped"])
-    assert target.exists()
+    rules = DH.load_rules(world.rules_path)
+    ok, why = DH.revalidate(item, rules, DH.build_context(rules, NOW))
+    assert ok is False and why.startswith("never_touch")
+    assert _apply(world, **{DH.GRANT_ENV: "g1"}) == 1 and target.exists()
 
 
 # ── 5. the monitor: bands, dedupe by band, intents through a tmp ledger ──────────────────────────────────────────
@@ -571,10 +615,15 @@ def mon(world, monkeypatch):
     pct = {"/": 50.0}
 
     def fake_measure(mount):
-        size = 1000 * 1024 ** 3
+        size = 1000 * 1024**3
         used = int(size * pct[mount] / 100)
-        return {"mount": mount, "used_pct": pct[mount], "used_bytes": used, "avail_bytes": size - used,
-                "size_bytes": size}
+        return {
+            "mount": mount,
+            "used_pct": pct[mount],
+            "used_bytes": used,
+            "avail_bytes": size - used,
+            "size_bytes": size,
+        }
 
     monkeypatch.setattr(DM, "measure", fake_measure)
     clock = {"t": NOW}
@@ -582,13 +631,27 @@ def mon(world, monkeypatch):
     def run(p: float, *extra: str) -> int:
         pct["/"] = p
         clock["t"] += timedelta(minutes=15)
-        return DM.main(["--apply", "--rules", str(world.rules_path), "--state-root", str(world.state), "--ledger",
-                        str(ledger), "--now", clock["t"].isoformat(), *extra])
+        return DM.main(
+            [
+                "--apply",
+                "--rules",
+                str(world.rules_path),
+                "--state-root",
+                str(world.state),
+                "--ledger",
+                str(ledger),
+                "--now",
+                clock["t"].isoformat(),
+                *extra,
+            ]
+        )
 
     def intents() -> list[tuple]:
         c = sqlite3.connect(f"file:{ledger}?mode=ro", uri=True)
         try:
-            return c.execute("SELECT domain, kind, subject, summary, workflow_id FROM comms_intents ORDER BY first_at").fetchall()
+            return c.execute(
+                "SELECT domain, kind, subject, summary, workflow_id FROM comms_intents ORDER BY first_at"
+            ).fetchall()
         except sqlite3.OperationalError:
             return []
         finally:
@@ -647,8 +710,19 @@ def test_a_queue_failure_does_not_record_the_band_so_the_next_run_retries(mon, t
 
 
 def test_monitor_dry_run_writes_and_queues_nothing(mon, capsys):
-    DM.main(["--dry-run", "--rules", str(mon.world.rules_path), "--state-root", str(mon.world.state), "--ledger",
-             str(mon.ledger), "--now", NOW.isoformat()])
+    DM.main(
+        [
+            "--dry-run",
+            "--rules",
+            str(mon.world.rules_path),
+            "--state-root",
+            str(mon.world.state),
+            "--ledger",
+            str(mon.ledger),
+            "--now",
+            NOW.isoformat(),
+        ]
+    )
     out = capsys.readouterr().out
     assert "DRY-RUN " in out and mon.intents() == []
     assert not (mon.world.state / "data/runtime/disk_usage_monitor_state.json").exists()
@@ -690,7 +764,10 @@ def test_registry_rows_are_dispatch_live_n8n_lanes_at_canary():
     for lane, (cron, klass, hours) in want.items():
         row = rows[lane]
         assert (row["scheduler"]["kind"], row["scheduler"]["expression"], row["scheduler"]["stage"]) == (
-            "n8n", "dispatcher", "canary")
+            "n8n",
+            "dispatcher",
+            "canary",
+        )
         assert row["dispatch"]["mode"] == "live" and row["dispatch"]["cron"] == [cron]
         assert row["dispatch"]["tz"] == "America/New_York" and row["expected_cadence_hours"] == hours
         assert LD.dispatch_eligible(row) == (True, "eligible"), lane
@@ -807,8 +884,14 @@ def pk(tmp_path):
     }
 
     def run(*args: str, **extra: str) -> subprocess.CompletedProcess:
-        return subprocess.run(["bash", str(SCRIPT), *args], env={**env, **extra}, capture_output=True, text=True,
-                              timeout=300, cwd=str(tmp_path))
+        return subprocess.run(
+            ["bash", str(SCRIPT), *args],
+            env={**env, **extra},
+            capture_output=True,
+            text=True,
+            timeout=300,
+            cwd=str(tmp_path),
+        )
 
     def grant(step: str, **kw) -> dict:
         doc = _bound_ledger(step, **kw)
@@ -821,22 +904,37 @@ def pk(tmp_path):
     def audit() -> list[dict]:
         return [json.loads(line) for line in audit_log.read_text().splitlines()] if audit_log.exists() else []
 
-    return types.SimpleNamespace(run=run, live=live, proc=proc, calls=calls, state=state, tmp=tmp_path,
-                                 grant=grant, ledger=ledger, audit=audit)
+    return types.SimpleNamespace(
+        run=run, live=live, proc=proc, calls=calls, state=state, tmp=tmp_path, grant=grant, ledger=ledger, audit=audit
+    )
 
 
 def _env_proc(pk, carries: bool) -> None:
     text = "PATH=/usr/bin\0TRADEAI_N8N_RELAY_LIVE_LANES=heartbeat-watch n8n-comms-intent-consumer"
     (pk.proc / "4242" / "environ").write_text(
-        text + (" disk-usage-monitor disk-hygiene tmp-hygiene\0" if carries else "\0"))
+        text + (" disk-usage-monitor disk-hygiene tmp-hygiene\0" if carries else "\0")
+    )
 
 
 def test_packet_is_dry_by_default_set_f_and_never_deletes_or_touches_cron_or_workflows():
     src = SCRIPT.read_text()
     assert src.startswith("#!/usr/bin/env bash") and "set -euo pipefail" in src and "\nset -f\n" in src
     code = "\n".join(line for line in src.splitlines() if not line.lstrip().startswith("#"))
-    for bad in ("rm ", "rm -", "crontab", "n8n import", "import:workflow", "update:workflow", "DELETE ", "DROP ",
-                "--force", "deactivate", "UPDATE ", "INSERT ", "rmtree"):
+    for bad in (
+        "rm ",
+        "rm -",
+        "crontab",
+        "n8n import",
+        "import:workflow",
+        "update:workflow",
+        "DELETE ",
+        "DROP ",
+        "--force",
+        "deactivate",
+        "UPDATE ",
+        "INSERT ",
+        "rmtree",
+    ):
         assert bad not in code, bad
     assert os.access(SCRIPT, os.X_OK)
 
@@ -863,12 +961,16 @@ def test_relay_apply_appends_both_backs_up_reads_back_and_restarts(pk):
     pk.grant("relay")
     p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT=GID)
     assert p.returncode == 0, p.stdout + p.stderr
-    assert pk.live.read_text() == ("# keep me\nTRADEAI_N8N_RELAY_LIVE_LANES=heartbeat-watch n8n-comms-intent-consumer "
-                                   "disk-usage-monitor disk-hygiene tmp-hygiene\n")
+    assert pk.live.read_text() == (
+        "# keep me\nTRADEAI_N8N_RELAY_LIVE_LANES=heartbeat-watch n8n-comms-intent-consumer "
+        "disk-usage-monitor disk-hygiene tmp-hygiene\n"
+    )
     assert oct(pk.live.stat().st_mode & 0o777) == "0o600"
     assert len(list(pk.tmp.glob("n8n-live-lanes.env.bak-*-disk-hygiene-n8n-live"))) == 1
     calls = pk.calls.read_text()
-    assert "restart tradeai-n8n-run-relay.service" in calls and "restart tradeai-n8n-coordination-gateway.service" in calls
+    assert (
+        "restart tradeai-n8n-run-relay.service" in calls and "restart tradeai-n8n-coordination-gateway.service" in calls
+    )
     p = pk.run("relay", "--apply", TRADEAI_FABRIC_GRANT=GID)
     assert p.returncode == 0 and "already has" in p.stdout
     # one consumed use of each tier for the effect; the no-op re-run checks read-only and spends nothing
@@ -913,17 +1015,20 @@ def test_relay_apply_consumes_exactly_one_use_with_the_packet_bindings(pk):
     assert {g["tier"]: g["grant_id"] for g in event["grants"]} == {"config-write": GID, "service": SERVICE_GID}
 
 
-@pytest.mark.parametrize("ledger_step,drop,extra", [
-    (None, "", {}),                                                          # no grant in the ledger
-    ("rollback", "", {}),                                                    # bound to another action
-    ("relay", "tmp-hygiene", {}),                                            # reason misses a lane
-    ("relay", "tradeai-dispatcher", {}),                                     # reason misses the workflow
-    ("relay", "tradeai-n8n-coordination-gateway.service", {}),               # service reason misses a unit
-    ("relay", "restart", {}),                                                # service reason misses the verb
-    ("relay", "", {"TRADEAI_FABRIC_GRANT": "g1"}),                           # a label, not the full id
-    ("relay", "", {"TRADEAI_FABRIC_GRANT": GID[:16]}),                       # a prefix, not the full id
-    ("relay", "", {"TRADEAI_FABRIC_SERVICE_GRANT": GID}),                    # wrong service id
-])
+@pytest.mark.parametrize(
+    "ledger_step,drop,extra",
+    [
+        (None, "", {}),  # no grant in the ledger
+        ("rollback", "", {}),  # bound to another action
+        ("relay", "tmp-hygiene", {}),  # reason misses a lane
+        ("relay", "tradeai-dispatcher", {}),  # reason misses the workflow
+        ("relay", "tradeai-n8n-coordination-gateway.service", {}),  # service reason misses a unit
+        ("relay", "restart", {}),  # service reason misses the verb
+        ("relay", "", {"TRADEAI_FABRIC_GRANT": "g1"}),  # a label, not the full id
+        ("relay", "", {"TRADEAI_FABRIC_GRANT": GID[:16]}),  # a prefix, not the full id
+        ("relay", "", {"TRADEAI_FABRIC_SERVICE_GRANT": GID}),  # wrong service id
+    ],
+)
 def test_relay_apply_refuses_unbound_grants_without_effect_or_consumption(pk, ledger_step, drop, extra):
     _env_proc(pk, carries=True)
     original = pk.grant(ledger_step, drop=drop) if ledger_step else None
@@ -962,8 +1067,13 @@ def test_the_disk_actions_are_registered_as_config_write_plus_service():
 
     for step in ("relay", "rollback"):
         spec = F.ACTIONS[f"disk-hygiene.{step}"]
-        assert spec == {"packet": "docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh", "lanes": PACKET_LANES,
-                        "workflow": "tradeai-dispatcher", "tiers": ("config-write", "service"), "units": F.UNITS}
+        assert spec == {
+            "packet": "docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh",
+            "lanes": PACKET_LANES,
+            "workflow": "tradeai-dispatcher",
+            "tiers": ("config-write", "service"),
+            "units": F.UNITS,
+        }
     assert not any(a.startswith("disk-hygiene.") and a.split(".", 1)[1] not in ("relay", "rollback") for a in F.ACTIONS)
     assert "docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh" in F.NO_CONSUMER_REASON
 
@@ -976,12 +1086,13 @@ def test_the_packet_authorizes_its_registered_actions_instead_of_accepting_any_v
     for step in ("relay", "rollback"):
         body = text.split(f"\n  {step})", 1)[1].split(";;\n", 1)[0]
         pre, post = body.split("DRY RUN", 1)
-        assert "need_grant\n" in pre, step                                   # read-only check before the dry run
+        assert "need_grant\n" in pre, step  # read-only check before the dry run
         assert post.index("need_grant --consume") < post.index("write_live_list"), step
     # every executed systemctl goes through the hook; the backstop step only PRINTS operator commands (a heredoc)
     head, rest = text.split("\n  backstop)", 1)
-    code = "\n".join(line for line in (head + rest.split("\n    ;;\n", 1)[1]).splitlines()
-                     if not line.lstrip().startswith("#"))
+    code = "\n".join(
+        line for line in (head + rest.split("\n    ;;\n", 1)[1]).splitlines() if not line.lstrip().startswith("#")
+    )
     assert "systemctl --user" not in code.replace('"$SYSTEMCTL_BIN" --user', "")
 
 
@@ -993,20 +1104,25 @@ def test_backstop_prints_the_95_percent_drop_in_and_runs_nothing(pk):
     assert not pk.calls.exists() and not (pk.tmp / ".config").exists()
 
 
-def test_hygiene_apply_is_dry_by_default_and_needs_the_grant(pk):
+def test_hygiene_preview_is_read_only_and_apply_is_unsupported(pk):
     p = pk.run("hygiene-apply")
     assert p.returncode == 1 and "no manifest" in p.stdout
     mdir = pk.state / "data/runtime/disk_hygiene"
     mdir.mkdir(parents=True)
-    (mdir / "disk_hygiene_manifest_latest.json").write_text(json.dumps(
-        {"generated_at": NOW.isoformat(), "items": [],
-         "totals": {"candidates": 0, "reclaimable_gb": 0.0, "by_kind": {}}}))
+    (mdir / "disk_hygiene_manifest_latest.json").write_text(
+        json.dumps(
+            {
+                "generated_at": NOW.isoformat(),
+                "items": [],
+                "totals": {"candidates": 0, "reclaimable_gb": 0.0, "by_kind": {}},
+            }
+        )
+    )
     p = pk.run("hygiene-apply")
-    assert p.returncode == 0 and "DRY RUN" in p.stdout and "0 candidates" in p.stdout
-    p = pk.run("hygiene-apply", "--apply")
-    assert p.returncode == 1 and "TRADEAI_DISK_HYGIENE_GRANT not set" in p.stdout
-    p = pk.run("hygiene-apply", "--apply", TRADEAI_DISK_HYGIENE_GRANT="g", TRADEAI_RUN_ID="d:x")
-    assert p.returncode == 1 and "never runs under the n8n executor" in p.stdout
+    assert p.returncode == 0 and "REPORT ONLY" in p.stdout and "0 candidates" in p.stdout
+    for env in ({}, {"TRADEAI_DISK_HYGIENE_GRANT": "g", "TRADEAI_RUN_ID": "d:x"}):
+        p = pk.run("hygiene-apply", "--apply", **env)
+        assert p.returncode == 1 and "destructive_apply_unsupported_by_active_policy" in p.stdout
 
 
 def test_publish_is_read_only_and_needs_no_import(pk):

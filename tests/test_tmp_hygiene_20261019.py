@@ -3,7 +3,7 @@
 Incident 2026-10-19 ~13:40 ET: /tmp (tmpfs, 1,048,576 inodes) hit 97% INODES with 20G of bytes free and tools failed
 with ENOSPC; the files sat in ended Claude sessions' scratch dirs and pytest temp, and the monitor checked bytes only.
 Pins scripts/disk_usage_monitor.py inode bands (statvfs f_files / f_ffree, separate thresholds, dedupe per (mount,
-metric), top dirs by file count from a bounded scan) and every rule of scripts/tmp_hygiene.py: session scratch idle,
+metric), top dirs by file count from a bounded scan) and planning rules of scripts/tmp_hygiene.py: session scratch idle,
 cwd inside, open fd inside, live transcript, registered worktree removal through `git worktree remove`, dirty /
 unregistered worktrees, pytest age, never-touch for every non-matching /tmp entry, manifest file_count and the
 inodes reclaimable totals, the operator-gated apply, the n8n wiring of lane tmp-hygiene and the packet steps.
@@ -131,8 +131,9 @@ class TmpWorld:
         os.symlink(str(target), self.proc / str(pid) / "cwd")
 
     def run(self, *extra: str, now: datetime = NOW) -> int:
-        return TH.main(["--rules", str(self.rules_path), "--state-root", str(self.state), "--now", now.isoformat(),
-                        *extra])
+        return TH.main(
+            ["--rules", str(self.rules_path), "--state-root", str(self.state), "--now", now.isoformat(), *extra]
+        )
 
     def manifest(self) -> dict:
         return json.loads((self.state / "data/runtime/disk_hygiene/tmp_hygiene_manifest_latest.json").read_text())
@@ -155,8 +156,12 @@ class TmpWorld:
 def tw(tmp_path, monkeypatch):
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", "/dev/null")
     monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
-    for k, v in (("GIT_AUTHOR_NAME", "t"), ("GIT_AUTHOR_EMAIL", "t@e"), ("GIT_COMMITTER_NAME", "t"),
-                 ("GIT_COMMITTER_EMAIL", "t@e")):
+    for k, v in (
+        ("GIT_AUTHOR_NAME", "t"),
+        ("GIT_AUTHOR_EMAIL", "t@e"),
+        ("GIT_COMMITTER_NAME", "t"),
+        ("GIT_COMMITTER_EMAIL", "t@e"),
+    ):
         monkeypatch.setenv(k, v)
     for k in (DH.GRANT_ENV, DH.RUN_ID_ENV, "TRADEAI_STATE_ROOT", "TRADEAI_N8N_COORDINATION_LEDGER"):
         monkeypatch.delenv(k, raising=False)
@@ -261,14 +266,15 @@ def _worktree(dev: Path, path: Path) -> Path:
     return path
 
 
-def test_a_registered_clean_worktree_is_removed_through_git_worktree_remove(tw, repo, monkeypatch):
+def test_public_apply_retains_registered_clean_worktrees(tw, repo, monkeypatch):
     s = tw.session()
     wt = _worktree(repo, s / "wt" / "agent-1")
     assert tw.run() == 0
     r = tw.result(s)
     assert r["candidate"] is True, r["reasons"]
     assert [(g["kind"], g["registered"]) for g in r["git_trees"]] == [("git_worktree", True)]
-    calls: list = []
+    before = sh("git", "worktree", "list", cwd=repo)
+    calls = []
     real_git = DH._git
 
     def spy(path, *args, **kw):
@@ -277,12 +283,9 @@ def test_a_registered_clean_worktree_is_removed_through_git_worktree_remove(tw, 
 
     monkeypatch.setattr(DH, "_git", spy)
     monkeypatch.setenv(DH.GRANT_ENV, "grant-t")
-    assert tw.run("--apply", now=NOW + timedelta(hours=1)) == 0
-    assert (str(repo), ("worktree", "remove")) in calls
-    assert not s.exists() and not wt.exists()
-    assert str(wt) not in sh("git", "worktree", "list", cwd=repo)  # git's own registry no longer lists it
-    rep = json.loads(sorted((tw.state / "data/runtime/disk_hygiene").glob("tmp_hygiene_apply_*.json"))[-1].read_text())
-    assert rep["removed"][0]["how"].startswith("git worktree remove x1") and rep["reclaimed_files"] == r["file_count"]
+    assert tw.run("--apply", now=NOW + timedelta(hours=1)) == 1
+    assert calls == [] and s.exists() and wt.exists()
+    assert sh("git", "worktree", "list", cwd=repo) == before
 
 
 def test_a_dirty_worktree_or_a_detached_commit_keeps_the_session(tw, repo):
@@ -298,7 +301,7 @@ def test_a_dirty_worktree_or_a_detached_commit_keeps_the_session(tw, repo):
     assert tw.reasons(s2) == {"git_unpushed_commits"}
 
 
-def test_an_unregistered_worktree_is_plain_files(tw):
+def test_an_unregistered_worktree_is_planned_but_public_apply_stays_held(tw, monkeypatch):
     s = tw.session()
     wt = s / "wt"
     wt.mkdir()
@@ -306,12 +309,9 @@ def test_an_unregistered_worktree_is_plain_files(tw):
     tw.run()
     r = tw.result(s)
     assert r["candidate"] is True and r["git_trees"][0]["registered"] is False
-    os.environ[DH.GRANT_ENV] = "g"
-    try:
-        assert tw.run("--apply", now=NOW + timedelta(hours=1)) == 0
-    finally:
-        del os.environ[DH.GRANT_ENV]
-    assert not s.exists()
+    monkeypatch.setenv(DH.GRANT_ENV, "g")
+    assert tw.run("--apply", now=NOW + timedelta(hours=1)) == 1
+    assert s.exists()
 
 
 # ── 3. rule P: pytest temp ────────────────────────────────────────────────────────────────────────────────────────
@@ -365,7 +365,7 @@ def test_every_non_matching_tmp_entry_is_never_scanned_nor_a_candidate(tw):
     assert u["total"] == 5 and [e["reason"].split(":")[0] for e in u["entries"]] == ["never_touch_glob"] * 2
 
 
-def test_apply_refuses_a_tampered_manifest_item_outside_the_patterns(tw):
+def test_read_only_tmp_revalidation_keeps_pattern_and_root_checks(tw):
     s = tw.session()
     camp = tw.root / "n8n-campaign-x"
     camp.mkdir()
@@ -374,13 +374,13 @@ def test_apply_refuses_a_tampered_manifest_item_outside_the_patterns(tw):
     m = json.loads(mp.read_text())
     m["items"] = [dict(m["items"][0], path=str(camp)), dict(m["items"][0], path=str(tw.home))]
     mp.write_text(json.dumps(m))
-    os.environ[DH.GRANT_ENV] = "g"
-    try:
-        assert tw.run("--apply", now=NOW + timedelta(hours=1)) == 0
-    finally:
-        del os.environ[DH.GRANT_ENV]
-    rep = json.loads(sorted((tw.state / "data/runtime/disk_hygiene").glob("tmp_hygiene_apply_*.json"))[-1].read_text())
-    assert rep["removed"] == [] and {x["why"] for x in rep["skipped"]} == {"pattern_mismatch", "outside_tmp_root"}
+    rules = DH.load_rules(tw.rules_path)
+    t = TH.tmp_rules(rules)
+    ctx = TH.build_context(rules, NOW + timedelta(hours=1))
+    results = [TH.revalidate(item, t, ctx) for item in m["items"]]
+    assert all(row[0] is False for row in results)
+    assert {row[1] for row in results} == {"pattern_mismatch", "outside_tmp_root"}
+    assert tw.run("--apply", now=NOW + timedelta(hours=1)) == 1
     assert camp.exists() and s.exists() and tw.home.exists()
 
 
@@ -398,44 +398,38 @@ def test_dry_run_writes_nothing_and_plan_writes_manifest_and_v2_receipt(tw, caps
     assert s.exists()  # the plan deletes nothing
 
 
-def test_apply_needs_the_grant_never_runs_under_the_executor_and_refuses_stale(tw):
+def test_public_tmp_apply_is_held_for_missing_token_executor_and_stale_input(tw, monkeypatch):
     s = tw.session()
     tw.run()
     assert tw.run("--apply") == 1
-    os.environ[DH.GRANT_ENV] = "g"
-    os.environ[DH.RUN_ID_ENV] = "d:tmp-hygiene:live:x"
-    try:
-        assert tw.run("--apply") == 1
-        del os.environ[DH.RUN_ID_ENV]
-        assert tw.run("--apply", now=NOW + timedelta(hours=25)) == 1
-        rep = json.loads(sorted((tw.state / "data/runtime/disk_hygiene").glob("tmp_hygiene_apply_*.json"))[-1]
-                         .read_text())
-        assert rep["refused"] == "manifest_stale"
-    finally:
-        os.environ.pop(DH.GRANT_ENV, None)
-        os.environ.pop(DH.RUN_ID_ENV, None)
+    monkeypatch.setenv(DH.GRANT_ENV, "g")
+    monkeypatch.setenv(DH.RUN_ID_ENV, "d:tmp-hygiene:live:x")
+    assert tw.run("--apply") == 1
+    monkeypatch.delenv(DH.RUN_ID_ENV)
+    assert tw.run("--apply", now=NOW + timedelta(hours=25)) == 1
+    assert list((tw.state / "data/runtime/disk_hygiene").glob("tmp_hygiene_apply_*.json")) == []
     assert s.exists()
 
 
-def test_apply_skips_a_changed_item_and_stops_at_the_file_cap(tw):
+def test_read_only_tmp_revalidation_detects_change_and_apply_ignores_file_caps(tw, monkeypatch):
     a = tw.session(SID, files=3)
     b = tw.session("1bdde23e-0969-41c0-b879-b775aad44e91", files=3)
     c = tw.session("229f45b3-bc93-4dbd-a915-8016c13fc9bf", files=3)
     tw.run()
-    (a / "scratchpad" / "late").write_text("x")  # changed since the manifest (new entry, still idle by mtime)
+    manifest = tw.manifest()
+    (a / "scratchpad" / "late").write_text("x")
     os.utime(a / "scratchpad" / "late", (0, 0))
     tw.rules["tmp"]["apply"]["max_files_per_run"] = 6
     tw.write_rules()
-    os.environ[DH.GRANT_ENV] = "g"
-    try:
-        tw.run("--apply", now=NOW + timedelta(hours=1))
-    finally:
-        del os.environ[DH.GRANT_ENV]
-    rep = json.loads(sorted((tw.state / "data/runtime/disk_hygiene").glob("tmp_hygiene_apply_*.json"))[-1].read_text())
-    why = {Path(x["path"]).name: x["why"] for x in rep["skipped"]}
-    assert why[a.name].startswith(("changed_since_manifest", "rule_now_fails")) and a.exists()
-    assert [Path(x["path"]).name for x in rep["removed"]] == [b.name] and not b.exists()
-    assert why[c.name] == "file_cap" and c.exists()
+    rules = DH.load_rules(tw.rules_path)
+    t = TH.tmp_rules(rules)
+    ctx = TH.build_context(rules, NOW + timedelta(hours=1))
+    item = next(item for item in manifest["items"] if item["path"] == str(a))
+    ok, why, _ = TH.revalidate(item, t, ctx)
+    assert ok is False and why.startswith(("changed_since_manifest", "rule_now_fails"))
+    monkeypatch.setenv(DH.GRANT_ENV, "g")
+    assert tw.run("--apply", now=NOW + timedelta(hours=1)) == 1
+    assert a.exists() and b.exists() and c.exists()
 
 
 # ── 6. the monitor: inode bands ───────────────────────────────────────────────────────────────────────────────────
@@ -454,16 +448,27 @@ def mon(tw, monkeypatch):
     ino_pct = {"/": 30.0, str(tw.root): 10.0}
 
     def fake_measure(mount):
-        size = 1000 * 1024 ** 3
+        size = 1000 * 1024**3
         used = int(size * byte_pct[mount] / 100)
-        return {"mount": mount, "used_pct": byte_pct[mount], "used_bytes": used, "avail_bytes": size - used,
-                "size_bytes": size}
+        return {
+            "mount": mount,
+            "used_pct": byte_pct[mount],
+            "used_bytes": used,
+            "avail_bytes": size - used,
+            "size_bytes": size,
+        }
 
     def fake_inodes(mount):
         total = 1_048_576
         used = int(total * ino_pct[mount] / 100)
-        return {"mount": mount, "inodes_used_pct": ino_pct[mount], "inodes_used": used, "inodes_total": total,
-                "inodes_free": total - used, "avail_bytes": 20 * 1024 ** 3}
+        return {
+            "mount": mount,
+            "inodes_used_pct": ino_pct[mount],
+            "inodes_used": used,
+            "inodes_total": total,
+            "inodes_free": total - used,
+            "avail_bytes": 20 * 1024**3,
+        }
 
     monkeypatch.setattr(DM, "measure", fake_measure)
     monkeypatch.setattr(DM, "measure_inodes", fake_inodes)
@@ -471,8 +476,20 @@ def mon(tw, monkeypatch):
 
     def run(*extra: str) -> int:
         clock["t"] += timedelta(minutes=15)
-        return DM.main(["--apply", "--rules", str(tw.rules_path), "--state-root", str(tw.state), "--ledger",
-                        str(ledger), "--now", clock["t"].isoformat(), *extra])
+        return DM.main(
+            [
+                "--apply",
+                "--rules",
+                str(tw.rules_path),
+                "--state-root",
+                str(tw.state),
+                "--ledger",
+                str(ledger),
+                "--now",
+                clock["t"].isoformat(),
+                *extra,
+            ]
+        )
 
     def intents() -> list[tuple]:
         c = sqlite3.connect(f"file:{ledger}?mode=ro", uri=True)
@@ -492,8 +509,7 @@ def test_measure_inodes_reads_statvfs_and_skips_a_filesystem_without_an_inode_li
     m = DM.measure_inodes("/tmp")
     assert m["inodes_used"] == 1_048_576 - 31_457 and m["inodes_used_pct"] == 97.0
     assert m["avail_bytes"] == 5_000_000 * 4096
-    monkeypatch.setattr(DM.os, "statvfs", lambda m: types.SimpleNamespace(f_files=0, f_ffree=0, f_bavail=1,
-                                                                          f_frsize=1))
+    monkeypatch.setattr(DM.os, "statvfs", lambda m: types.SimpleNamespace(f_files=0, f_ffree=0, f_bavail=1, f_frsize=1))
     assert DM.measure_inodes("/btrfs") is None
 
 
@@ -588,8 +604,16 @@ def test_top_file_dirs_descends_only_while_one_child_dominates_and_is_bounded(tm
 
 def test_monitor_and_tmp_hygiene_import_no_sender():
     src = (ROOT / "scripts" / "tmp_hygiene.py").read_text() + (ROOT / "scripts" / "disk_usage_monitor.py").read_text()
-    for bad in ("telegram_alert", "send_telegram", "requests", "urllib", "psycopg", "import host_comms_intents",
-                "lib.host_comms_intents import", "n8n_coordination_gateway import"):
+    for bad in (
+        "telegram_alert",
+        "send_telegram",
+        "requests",
+        "urllib",
+        "psycopg",
+        "import host_comms_intents",
+        "lib.host_comms_intents import",
+        "n8n_coordination_gateway import",
+    ):
         assert bad not in src, bad
 
 
@@ -616,7 +640,10 @@ def test_the_committed_rules_hold_the_operator_numbers():
 def test_registry_row_is_a_daily_dispatch_live_n8n_lane_at_canary():
     row = {r["lane_id"]: r for r in _load("lane_registry.json")["lanes"]}["tmp-hygiene"]
     assert (row["scheduler"]["kind"], row["scheduler"]["expression"], row["scheduler"]["stage"]) == (
-        "n8n", "dispatcher", "canary")
+        "n8n",
+        "dispatcher",
+        "canary",
+    )
     assert row["scheduler"]["match"] == "scripts/tmp_hygiene.py"
     assert row["dispatch"]["mode"] == "live" and row["dispatch"]["cron"] == ["0 5 * * *"]
     assert row["dispatch"]["tz"] == "America/New_York" and row["expected_cadence_hours"] == 24.0
@@ -645,8 +672,12 @@ def test_health_contract_is_reviewed_with_an_output_rule_matching_the_code():
     assert OV.validate_expected_output(eo) == [] and eo["rule"] == "min_produced" and eo["min_produced"] == 1
     assert hc["baseline"]["timeout_s"] == allow["timeout_s"]
     assert hc["baseline"]["freshness_degraded_after_h"] == 48.0
-    assert TH.lane_output({"totals": {"candidates": 0, "reclaimable_bytes": 0, "reclaimable_files": 0,
-                                      "excluded": 0}}, True)["produced_count"] == 1
+    assert (
+        TH.lane_output(
+            {"totals": {"candidates": 0, "reclaimable_bytes": 0, "reclaimable_files": 0, "excluded": 0}}, True
+        )["produced_count"]
+        == 1
+    )
     assert TH.lane_output(None, False)["skipped_reasons"] == {"dependency_unavailable": 1}
     res = H.check(_load("n8n_health_contracts.json"), _load("lane_registry.json"), H.load_json(H.GENERIC_INDEX_PATH))
     assert not [e for e in res["errors"] if "tmp-hygiene" in e]
@@ -657,14 +688,29 @@ def test_health_contract_is_reviewed_with_an_output_rule_matching_the_code():
 
 @pytest.fixture
 def pk(tw, tmp_path):
-    env = {"PATH": os.environ["PATH"], "HOME": str(tmp_path), "PY": sys.executable, "REPO": str(ROOT),
-           "SERVED": str(ROOT), "STATE": str(tw.state), "LIVE_LANES_ENV": str(tmp_path / "none.env"),
-           "SYSTEMCTL_BIN": "false", "DOCKER_BIN": "false", "PROC_ROOT": str(tw.proc),
-           "HYGIENE_EXTRA": f"--rules {tw.rules_path} --now {NOW.isoformat()}"}
+    env = {
+        "PATH": os.environ["PATH"],
+        "HOME": str(tmp_path),
+        "PY": sys.executable,
+        "REPO": str(ROOT),
+        "SERVED": str(ROOT),
+        "STATE": str(tw.state),
+        "LIVE_LANES_ENV": str(tmp_path / "none.env"),
+        "SYSTEMCTL_BIN": "false",
+        "DOCKER_BIN": "false",
+        "PROC_ROOT": str(tw.proc),
+        "HYGIENE_EXTRA": f"--rules {tw.rules_path} --now {NOW.isoformat()}",
+    }
 
     def run(*args: str, **extra: str) -> subprocess.CompletedProcess:
-        return subprocess.run(["bash", str(PACKET / "cutover.sh"), *args], env={**env, **extra}, capture_output=True,
-                              text=True, timeout=300, cwd=str(tmp_path))
+        return subprocess.run(
+            ["bash", str(PACKET / "cutover.sh"), *args],
+            env={**env, **extra},
+            capture_output=True,
+            text=True,
+            timeout=300,
+            cwd=str(tmp_path),
+        )
 
     return run
 
@@ -677,15 +723,14 @@ def test_packet_tmp_dry_scans_only_the_rules_root_and_writes_nothing(tw, pk):
     assert not tw.state.exists() and s.exists()
 
 
-def test_packet_tmp_apply_is_dry_by_default_and_needs_the_grant(tw, pk):
+def test_packet_tmp_preview_is_read_only_and_apply_is_unsupported(tw, pk):
     p = pk("tmp-apply")
     assert p.returncode == 1 and "no /tmp manifest" in p.stdout
     s = tw.session()
     tw.run()
     p = pk("tmp-apply")
-    assert p.returncode == 0 and "DRY RUN" in p.stdout and "1 candidates" in p.stdout and s.exists()
-    p = pk("tmp-apply", "--apply")
-    assert p.returncode == 1 and "TRADEAI_DISK_HYGIENE_GRANT not set" in p.stdout
-    p = pk("tmp-apply", "--apply", TRADEAI_DISK_HYGIENE_GRANT="g", TRADEAI_RUN_ID="d:x")
-    assert p.returncode == 1 and "never runs under the n8n executor" in p.stdout
+    assert p.returncode == 0 and "REPORT ONLY" in p.stdout and "1 candidates" in p.stdout and s.exists()
+    for env in ({}, {"TRADEAI_DISK_HYGIENE_GRANT": "g", "TRADEAI_RUN_ID": "d:x"}):
+        p = pk("tmp-apply", "--apply", **env)
+        assert p.returncode == 1 and "destructive_apply_unsupported_by_active_policy" in p.stdout
     assert s.exists()

@@ -23,19 +23,18 @@
 #                                           monitor state file, the latest manifest, and that its items still exist
 #   bash cutover.sh backstop                PRINT ONLY: the operator commands that move the systemd
 #                                           disk_pressure_guard to a 95% host backstop (never run by this script)
-#   bash cutover.sh hygiene-apply [--apply] OPERATOR ONLY, after reviewing the manifest: dry prints the latest
-#                                           manifest's counts; --apply needs TRADEAI_DISK_HYGIENE_GRANT and runs
-#                                           disk_hygiene.py --apply (re-validates every item, caps from config)
+#   bash cutover.sh hygiene-apply [--apply] READ-ONLY PREVIEW: prints the latest
+#                                           manifest's counts; --apply is unsupported under ACTIVE policy.
 #   bash cutover.sh tmp-dry                 read-only: tmp_hygiene.py --dry-run --report against the real /tmp
 #                                           (writes nothing; prints candidates, inodes / bytes reclaimable, exclusions)
-#   bash cutover.sh tmp-apply [--apply]     OPERATOR ONLY, after reviewing the /tmp manifest: dry prints its counts;
-#                                           --apply needs TRADEAI_DISK_HYGIENE_GRANT and runs tmp_hygiene.py --apply
+#   bash cutover.sh tmp-apply [--apply]     READ-ONLY PREVIEW: prints the /tmp manifest counts;
+#                                           --apply is unsupported under ACTIVE policy.
 #   bash cutover.sh rollback [--apply]      live list -= all three lanes (backup + read-back); restart relay AND gateway.
 #                                           NEVER deactivates tradeai-dispatcher (it fires every other live lane)
 #
 # Order: (merge + promote so CURRENT serves the PR) -> pre -> dry-manifest -> relay --apply -> publish -> wait one
 # */15 slot -> proof. The weekly hygiene lane first fires Sunday 04:00 ET; the operator reviews that manifest before
-# any hygiene-apply. This script never touches a broker, an order, a secret value, the crontab or an n8n workflow,
+# the read-only hygiene-apply preview. This script never touches a broker, an order, a secret value, the crontab or an n8n workflow,
 # and never runs systemctl except the relay/gateway restarts of relay/rollback --apply.
 #
 # Grants (main's bounded model, PR #1873): relay/rollback --apply go through scripts/lib/fabric_grant.py authorize
@@ -46,7 +45,7 @@
 #                                 disk-usage-monitor, disk-hygiene, tmp-hygiene, tradeai-dispatcher, this packet's SHA256
 #   TRADEAI_FABRIC_SERVICE_GRANT  service; the same reason tokens plus tradeai-n8n-run-relay.service,
 #                                 tradeai-n8n-coordination-gateway.service and restart (both units are restarted)
-# hygiene-apply / tmp-apply still take TRADEAI_DISK_HYGIENE_GRANT (presence check only); that tier awaits AGENTS #1852.
+# hygiene-apply / tmp-apply --apply always refuse. No caller token or proposed policy enables deletion.
 # Test hooks (hermetic tests only): SYSTEMCTL_BIN, DOCKER_BIN, PROC_ROOT, HYGIENE_EXTRA (extra disk_hygiene.py args),
 # RESTART_SETTLE_S, GUARD_APPROVALS_DIR and GUARD_AUDIT_LOG (read by fabric_grant.py).
 set -euo pipefail
@@ -296,6 +295,7 @@ EOF
 EOF
     ;;
   hygiene-apply)
+    [[ $APPLY == 0 ]] || fail "destructive_apply_unsupported_by_active_policy"
     MAN="$STATE/data/runtime/disk_hygiene/disk_hygiene_manifest_latest.json"
     [[ -f "$MAN" ]] || fail "no manifest at $MAN (dry-manifest --apply, or wait for the Sunday lane)"
     "$PY" - "$MAN" <<'EOF'
@@ -304,14 +304,12 @@ m = json.load(open(sys.argv[1])); t = m["totals"]
 print(f"  manifest {m['generated_at']}: {t['candidates']} candidates, {t['reclaimable_gb']} GB; by kind "
       + ", ".join(f"{k} {v['count']}" for k, v in sorted(t["by_kind"].items())))
 EOF
-    if [[ $APPLY == 0 ]]; then echo "  DRY RUN — nothing removed. Review the manifest, then: TRADEAI_DISK_HYGIENE_GRANT=<id> $0 hygiene-apply --apply"; exit 0; fi
-    [[ -n "${TRADEAI_DISK_HYGIENE_GRANT:-}" ]] || fail "TRADEAI_DISK_HYGIENE_GRANT not set"
-    [[ -z "${TRADEAI_RUN_ID:-}" ]] || fail "TRADEAI_RUN_ID is set: apply never runs under the n8n executor"
-    (cd "$SERVED" && "$PY" scripts/disk_hygiene.py --apply --manifest "$MAN" --state-root "$STATE" "${EXTRA_A[@]}") ;;
+    echo "  REPORT ONLY — destructive_apply_unsupported_by_active_policy" ;;
   tmp-dry)
     echo "  DRY RUN — tmp_hygiene --dry-run --report (writes nothing, deletes nothing)"
     (cd "$SERVED" && "$PY" scripts/tmp_hygiene.py --dry-run --report --state-root "$STATE" "${EXTRA_A[@]}") ;;
   tmp-apply)
+    [[ $APPLY == 0 ]] || fail "destructive_apply_unsupported_by_active_policy"
     MAN="$STATE/data/runtime/disk_hygiene/tmp_hygiene_manifest_latest.json"
     [[ -f "$MAN" ]] || fail "no /tmp manifest at $MAN (wait for the daily tmp-hygiene lane)"
     "$PY" - "$MAN" <<'EOF'
@@ -320,10 +318,7 @@ m = json.load(open(sys.argv[1])); t = m["totals"]
 print(f"  /tmp manifest {m['generated_at']}: {t['candidates']} candidates, {t['reclaimable_files']} inodes, "
       f"{t['reclaimable_gb']} GB; by kind " + ", ".join(f"{k} {v['count']}" for k, v in sorted(t["by_kind"].items())))
 EOF
-    if [[ $APPLY == 0 ]]; then echo "  DRY RUN — nothing removed. Review the manifest, then: TRADEAI_DISK_HYGIENE_GRANT=<id> $0 tmp-apply --apply"; exit 0; fi
-    [[ -n "${TRADEAI_DISK_HYGIENE_GRANT:-}" ]] || fail "TRADEAI_DISK_HYGIENE_GRANT not set"
-    [[ -z "${TRADEAI_RUN_ID:-}" ]] || fail "TRADEAI_RUN_ID is set: apply never runs under the n8n executor"
-    (cd "$SERVED" && "$PY" scripts/tmp_hygiene.py --apply --manifest "$MAN" --state-root "$STATE" "${EXTRA_A[@]}") ;;
+    echo "  REPORT ONLY — destructive_apply_unsupported_by_active_policy" ;;
   rollback)
     # R1 (this step, config-write + service grant): all three lanes leave the live list; the gateway then demotes every
     # dispatcher fire to dry_run (prints only). R2 (config): a PR that sets dispatch.mode dry_run / stage shadow and

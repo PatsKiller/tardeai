@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""disk_hygiene.py — repeatable, rule-based disk reclaim plan (and an operator-gated apply).
+"""disk_hygiene.py — repeatable, rule-based disk reclaim plan (destructive apply is unsupported).
 
 Operator, 2026-10-18: "a script with rules that's repeatable, n8n should run this weekly; and also monitor when a
 threshold is over 80%, fix and move to n8n where monitored." Measured that morning: root 89% (394G/468G); n8n was
@@ -26,7 +26,7 @@ RULES (a path is a candidate only when its rule says so; everything else is repo
   R  releases: keep the CURRENT target, every pointer-file target, the previous served release, the newest N, any
      in-use / referenced entry, and everything while an archive's ``hold_until`` date has not passed.
   C  caches (optional, default disabled): entries older than X days.
-  NEVER-TOUCH (enforced here, before every rule and again at apply time): db_backups, persistent-state,
+  NEVER-TOUCH (enforced here, before every planning rule and during read-only revalidation): db_backups, persistent-state,
      llama-cpp-vulkan (report only), .ssh, .config, docker / n8n volumes, and any .env / credential / cookie /
      token path.
 
@@ -34,14 +34,14 @@ MODES
     python3 scripts/disk_hygiene.py                     # plan (default): manifest JSON + LaneRunReceipt, deletes nothing
     python3 scripts/disk_hygiene.py --dry-run           # print the plan only: no manifest, no receipt, no write at all
     python3 scripts/disk_hygiene.py --report            # plan + a human summary on stdout
-    TRADEAI_DISK_HYGIENE_GRANT=<grant id> python3 scripts/disk_hygiene.py --apply [--manifest PATH]
+    python3 scripts/disk_hygiene.py --apply           # unsupported: refuses without reading rules or writing state
 
-``--apply`` requires a manifest written within apply.manifest_max_age_hours, a non-empty TRADEAI_DISK_HYGIENE_GRANT,
-re-validates every item at apply time (skips it if ANYTHING changed: HEAD, activity mtime, a rule outcome), and
-stops at apply.max_items_per_run / apply.max_bytes_per_run. It REFUSES to run under the n8n executor
-(TRADEAI_RUN_ID set): AGENTS.md §23.14 keeps destructive retention off n8n, so the weekly n8n lane is plan-only.
+ACTIVE policy supplies no destructive maintenance authority. ``--apply`` and the
+public ``apply()`` API always refuse; caller tokens cannot enable them. Plans and
+read-only verification remain available. A future policy decision alone does not
+re-enable deletion: it would require a separately reviewed authority implementation.
 
-Exit: 0 = plan written (or dry run printed, or apply finished within caps); 1 = rules / home unreadable, a write
+Exit: 0 = plan written (or dry run printed); 1 = rules / home unreadable, a write
 failed, or an apply refusal; 2 = usage.
 
 MBI_BEHAVIOR = 0. No broker, no network, no send, no DB. Never reads a credential file (credential-like names are
@@ -924,71 +924,19 @@ def remove_item(item: Mapping[str, Any]) -> tuple[bool, str]:
 def apply(
     manifest_path: Path, rules: Mapping[str, Any], now: datetime, *, grant: Optional[str], run_id: Optional[str]
 ) -> dict[str, Any]:
-    rep: dict[str, Any] = {
+    """Return a hold; ACTIVE policy supplies no destructive maintenance authority.
+
+    Keep the call signature for existing readers. A caller token, including a
+    real grant for an unrelated action, cannot enable this operation.
+    """
+    return {
         "schema": APPLY_SCHEMA,
         "started_at": now.isoformat(),
         "manifest": str(manifest_path),
         "removed": [],
         "skipped": [],
-        "refused": None,
+        "refused": "n8n_executor_never_applies" if run_id else "destructive_apply_unsupported_by_active_policy",
     }
-    if run_id:
-        rep["refused"] = "n8n_executor_never_applies"
-        return rep
-    if not grant:
-        rep["refused"] = f"{GRANT_ENV}_missing"
-        return rep
-    rep["grant"] = grant[:120]
-    try:
-        m = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        rep["refused"] = "manifest_unreadable"
-        return rep
-    if m.get("schema") != MANIFEST_SCHEMA:
-        rep["refused"] = "manifest_schema"
-        return rep
-    try:
-        gen = datetime.fromisoformat(m["generated_at"])
-    except (KeyError, ValueError):
-        rep["refused"] = "manifest_generated_at"
-        return rep
-    age_h = (now - gen).total_seconds() / 3600.0
-    rep["manifest_age_h"] = round(age_h, 2)
-    if age_h < 0 or age_h > float(rules["apply"]["manifest_max_age_hours"]):
-        rep["refused"] = "manifest_stale"
-        return rep
-    if m.get("home") != str(rules["_home"]):
-        rep["refused"] = "manifest_home_mismatch"
-        return rep
-    ctx = build_context(rules, now)
-    max_items = int(rules["apply"]["max_items_per_run"])
-    max_bytes = int(rules["apply"]["max_bytes_per_run"])
-    done_bytes = 0
-    for item in m.get("items") or []:
-        size = int(item.get("size_bytes") or 0)
-        if len(rep["removed"]) >= max_items:
-            rep["skipped"].append({"path": item["path"], "why": "item_cap"})
-            continue
-        if done_bytes + size > max_bytes:
-            rep["skipped"].append({"path": item["path"], "why": "byte_cap"})
-            continue
-        ok, why = revalidate(item, rules, ctx)
-        if not ok:
-            rep["skipped"].append({"path": item["path"], "why": why})
-            continue
-        try:
-            ok, how = remove_item(item)
-        except OSError as exc:
-            ok, how = False, f"error:{type(exc).__name__}"
-        if ok:
-            done_bytes += size
-            rep["removed"].append({"path": item["path"], "kind": item["kind"], "bytes": size, "how": how})
-        else:
-            rep["skipped"].append({"path": item["path"], "why": how})
-    rep["reclaimed_bytes"] = done_bytes
-    rep["reclaimed_gb"] = _gb(done_bytes)
-    rep["finished_at"] = datetime.now(timezone.utc).isoformat()
-    return rep
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -1009,7 +957,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--plan", action="store_true", help="the default: write the manifest + receipt, delete nothing")
     g.add_argument("--dry-run", action="store_true", help="print the plan only; writes nothing at all")
-    g.add_argument("--apply", action="store_true", help=f"delete manifest items (needs {GRANT_ENV}; never on n8n)")
+    g.add_argument(
+        "--apply", action="store_true", help="unsupported under ACTIVE policy; always refuses without effects"
+    )
     ap.add_argument("--report", action="store_true", help="also print the human summary")
     ap.add_argument("--manifest", help="--apply: manifest path (default: the latest)")
     ap.add_argument("--rules", help="rules file (default config/disk_hygiene_rules.json)")
@@ -1021,6 +971,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         a = ap.parse_args(argv)
     except SystemExit as exc:
         return 2 if exc.code else 0
+    if a.apply:
+        print(json.dumps({"mode": "apply", "ok": False, "refused": "destructive_apply_unsupported_by_active_policy"}))
+        return 1
     wall_start = datetime.now(timezone.utc)  # receipt started_at: the real start, not the injectable logical clock
     now = _parse_now(a.now)
     if now is None:
@@ -1043,36 +996,6 @@ def main(argv: Optional[list[str]] = None) -> int:
                 output=lane_output(None, False),
             )
         return 1
-
-    if a.apply:
-        mpath = Path(a.manifest) if a.manifest else manifest_dir(rules, state_root) / rules["manifest"]["latest_name"]
-        rep = apply(mpath, rules, now, grant=os.environ.get(GRANT_ENV), run_id=os.environ.get(RUN_ID_ENV))
-        from scripts.lib.atomic_json_store import atomic_write_json
-
-        if rep.get("refused") != "n8n_executor_never_applies":
-            stamp = now.strftime("%Y%m%dT%H%M%SZ")
-            atomic_write_json(manifest_dir(rules, state_root) / f"disk_hygiene_apply_{stamp}.json", rep, indent=1)
-            R.write_lane_receipt(
-                APPLY_LANE_ID,
-                ok=not rep.get("refused"),
-                exit_code=0 if not rep.get("refused") else 1,
-                started_at=wall_start,
-                script=SCRIPT,
-                summary={
-                    "refused": rep.get("refused"),
-                    "removed": len(rep["removed"]),
-                    "skipped": len(rep["skipped"]),
-                    "reclaimed_bytes": rep.get("reclaimed_bytes"),
-                },
-                path=R.receipt_path(APPLY_LANE_ID, state_root),
-            )
-        print(
-            json.dumps(
-                {k: rep.get(k) for k in ("refused", "manifest_age_h", "reclaimed_gb")}
-                | {"removed": len(rep["removed"]), "skipped": len(rep["skipped"])}
-            )
-        )
-        return 1 if rep.get("refused") else 0
 
     try:
         m = plan(rules, now, measure=not a.no_measure)

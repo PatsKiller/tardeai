@@ -13,11 +13,12 @@ threshold is over 80%". Operator 2026-10-19: keep the weekly lane on `--plan` (m
 
 - `--plan` writes a manifest and a receipt only. It is not `--dry-run`, which writes nothing at all. The monitor's
   "reclaimable GB" estimate reads the latest manifest, and the first real cleanup needs a manifest to review.
-- `--apply` (deletion) is never an n8n argv (AGENTS.md §23.14). `disk_hygiene.py` itself refuses `--apply` under
-  the n8n executor. It runs only from the operator step `hygiene-apply`, with `TRADEAI_DISK_HYGIENE_GRANT`, a
-  manifest written within the configured hours, a per-item re-validation, and the byte/item caps from
-  `config/disk_hygiene_rules.json`.
-- Automated deletion also needs AGENTS.md 15.0.0 (#1852), which is the operator's decision.
+- Destructive `--apply` is **unsupported under ACTIVE policy** in both Python APIs/CLIs and the
+  `hygiene-apply --apply` / `tmp-apply --apply` packet commands. They refuse before manifest/rule reads,
+  state writes or effects. No caller token, including `TRADEAI_DISK_HYGIENE_GRANT`, creates authority.
+- AGENTS.md §0 rule 6 and §17 still apply. Proposed 15.0.0 (#1852) is not active authority, and even a
+  future policy decision cannot enable these hard holds without a separately reviewed implementation.
+  The planning rules/caps and historical records remain available; this change authorizes no deletion.
 
 ## Incident 2026-10-19: /tmp ran out of inodes, not bytes
 
@@ -42,15 +43,15 @@ The operator approved a one-off manual cleanup (back to 55%) and this follow-up 
   - a session scratch dir is a candidate only if all of these hold: its whole tree is idle for more than 2 days;
     no process has its cwd inside; no process holds an open fd inside; its transcript
     `~/.claude/projects/<project>/<uuid>.jsonl` (when present) is older than 2 days; and every git tree inside is
-    safe to drop. A registered worktree must be clean with no commit reachable only from its HEAD, and apply removes
-    it with `git worktree remove` (never `--force`).
+    safe to drop. A registered worktree must be clean with no commit reachable only from its HEAD, and its registration is recorded in the plan. Existing low-level removal mechanics remain dormant; no public
+    apply path may invoke them.
   - a `pytest-of-<user>/pytest-*` dir is a candidate when it is older than 1 day and nothing has a cwd or open fd
     inside.
 
   Every other /tmp entry (`n8n-campaign-*`, `tradeai-*`, `momentum-*` and so on) is never scanned and never a
   candidate. The manifest records `file_count` per item and reports inodes reclaimable alongside bytes.
-- Deletion uses the same gate as the home rules: `cutover.sh tmp-apply --apply` with `TRADEAI_DISK_HYGIENE_GRANT`,
-  never under the n8n executor.
+- `/tmp` has the same unconditional public apply hold as the home rules. A candidate is planning evidence,
+  not deletion eligibility or authority.
 
 ## Order
 
@@ -60,9 +61,9 @@ The operator approved a one-off manual cleanup (back to 55%) and this follow-up 
 4. `bash cutover.sh relay --apply` (`TRADEAI_FABRIC_GRANT` + `TRADEAI_FABRIC_SERVICE_GRANT`; see Grants)
 5. `bash cutover.sh publish`
 6. Wait one `*/15` slot, then `bash cutover.sh proof`.
-7. After the first Sunday manifest: review it, then (operator only) `bash cutover.sh hygiene-apply --apply`.
+7. After the first Sunday manifest: review it with `bash cutover.sh hygiene-apply` (read-only preview).
 8. `/tmp`: `bash cutover.sh tmp-dry` (read-only) at any time. After the first daily `tmp-hygiene` manifest, review it,
-   then (operator only) `bash cutover.sh tmp-apply --apply`.
+   with `bash cutover.sh tmp-apply` (read-only preview).
 9. Rollback: `bash cutover.sh rollback --apply` (drops all three lanes from the live list; same two grants).
 
 ## Grants
@@ -81,9 +82,11 @@ failed step refunds nothing. Each variable holds the full 32-hex ledger id (`bin
 Every token must appear as a whole word. The action names the step, so a relay grant cannot authorize a rollback.
 Any edit to `cutover.sh` changes its SHA256, so a grant must be issued against the packet bytes that will run.
 
-`hygiene-apply --apply` and `tmp-apply --apply` are unchanged. They still need `TRADEAI_DISK_HYGIENE_GRANT`, which is
-a presence check only and is never consumed. That tier is not in `fabric_grant.py` because it awaits AGENTS #1852.
-Until #1852 lands, those two steps remain operator-only.
+`hygiene-apply --apply` and `tmp-apply --apply` now always refuse with
+`destructive_apply_unsupported_by_active_policy`. They never inspect or consume a grant. The earlier
+presence-only token was not a verified authority contract. No disk-hygiene grant tier is added here.
+Planning, monitor behavior, existing independent host backstops and historical receipts remain unchanged.
+Campaign workflow/live-list/owner cutover and release approval remain separate; this safety fix activates nothing.
 
 ## Evidence
 
