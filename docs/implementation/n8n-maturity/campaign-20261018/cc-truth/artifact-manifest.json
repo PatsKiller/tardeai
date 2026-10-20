@@ -1,0 +1,33 @@
+{
+  "integrity_only": true,
+  "artifacts": [
+    {
+      "path": "README.md",
+      "sha256": "9dd8db747121ace1ec292c0cda2fa8313ab70f34c486535126cabdbb207b3e39"
+    },
+    {
+      "path": "author-packet.json",
+      "sha256": "8ac0598744286442e4b1aabf3c01ed75ce7ba7504b1b279b1c2568e0735bcbbc"
+    },
+    {
+      "path": "cc4aede-root-independent.xml",
+      "sha256": "54d91a0064a75c9fca5d93b77917a57ddf7a9fe4e13a89833077e49f4715a49d"
+    },
+    {
+      "path": "independent-review.json",
+      "sha256": "93cbe55a5e9a5e1b8a81c863bd3e2e8287b27b019a6cd2104261c6d1e0602249"
+    },
+    {
+      "path": "outbox-corrected-baseline.txt",
+      "sha256": "ef89d98e07d97ca17123e8295c3192308ca11bb4c20385f1ab3845f7da48cb4b"
+    },
+    {
+      "path": "outbox-corrected-candidate.txt",
+      "sha256": "bf22e88f0e3a0e89eddb09d252b1661a48c9dfc4bd5aa177b5efca41f2700a18"
+    },
+    {
+      "path": "outbox-evidence-correction.json",
+      "sha256": "5522471adb9ef77166ab86b79423fb2d7029a052cd8afcc5247e6d5bd8263b25"
+    }
+  ]
+}

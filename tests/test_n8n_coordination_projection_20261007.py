@@ -13,9 +13,9 @@ from scripts.lib import n8n_coordination_projection as P  # noqa: E402
 from scripts.lib.n8n_coordination_ledger import CoordinationLedger, LedgerReceiptStore  # noqa: E402
 
 
-def test_no_ledger_is_an_honest_empty_page(tmp_path):
+def test_no_ledger_is_unknown_work(tmp_path):
     out = P.project(tmp_path / "absent.sqlite")
-    assert out["status"] == "NO_LEDGER" and out["count"] == 0
+    assert out["status"] == "UNAVAILABLE" and out["count"] is None
 
 
 def test_projection_reads_receipts_in_plain_language(tmp_path):
