@@ -1,0 +1,6 @@
+# Swing entry alerts (ENTRY APPROACHING / HIGH CONVICTION ENTRY) — operator 2026-10-19: ONE sender.
+#   true  -> watchlist_entry_planner persists its plans and sends nothing; cio_entry_state_runner reads the
+#            planner's alert-eligible plans and is the only sender (its per-symbol/state/day dedupe applies).
+#   false -> rollback: the planner pages its own entry alerts again (pre-2026-10-19 behaviour).
+# Read per run by scripts/lib/entry_alert_context.single_sender_enabled (no deploy needed).
+single_sender: true

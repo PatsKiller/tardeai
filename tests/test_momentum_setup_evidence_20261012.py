@@ -324,7 +324,9 @@ def test_missing_or_ambiguous_subject_does_not_borrow_other_catalyst(evidence, s
     out = evidence.enrich_active_trader_notification(
         message, primary_symbols=symbols, snapshot_loader=lambda: _snapshot(evidence), now=NOW
     )
-    assert "UNKNOWN" in out and _row()["catalyst"] not in out
+    # Operator 2026-10-19 ("drop from the alert, why have a false positive"): with no current same-symbol
+    # evidence the appendix is omitted entirely — no "UNKNOWN" line. Nothing is borrowed either way.
+    assert evidence.MARKER not in out and _row()["catalyst"] not in out
     assert "5/5" not in out
 
 
@@ -334,13 +336,17 @@ def test_notification_does_not_promote_yesterday_same_symbol_or_source_conflict(
     out = evidence.enrich_active_trader_notification(
         message, primary_symbols=["ABCD"], snapshot_loader=lambda: _snapshot(evidence, row), now=NOW
     )
-    assert "UNKNOWN" in out and "5/5" not in out
+    # Operator 2026-10-19 ("drop from the alert, why have a false positive"): with no current same-symbol
+    # evidence the appendix is omitted entirely — no "UNKNOWN" line. Nothing is borrowed either way.
+    assert evidence.MARKER not in out and "5/5" not in out
     snap = _snapshot(evidence)
     snap["candidates"][0]["conflicts"] = ["TRADE_AI_VERDICT_CONFLICT"]
     out = evidence.enrich_active_trader_notification(
         message, primary_symbols=["ABCD"], snapshot_loader=lambda: snap, now=NOW
     )
-    assert "UNKNOWN" in out and "5/5" not in out
+    # Operator 2026-10-19 ("drop from the alert, why have a false positive"): with no current same-symbol
+    # evidence the appendix is omitted entirely — no "UNKNOWN" line. Nothing is borrowed either way.
+    assert evidence.MARKER not in out and "5/5" not in out
 
 
 def test_existing_catalyst_is_not_duplicated_and_failed_loader_preserves_send_body(evidence):
@@ -356,7 +362,9 @@ def test_existing_catalyst_is_not_duplicated_and_failed_loader_preserves_send_bo
     out = evidence.enrich_active_trader_notification(
         message, primary_symbols=["ABCD"], snapshot_loader=unavailable, now=NOW
     )
-    assert out.startswith(message) and "UNKNOWN" in out
+    # Operator 2026-10-19 ("drop from the alert, why have a false positive"): with no current same-symbol
+    # evidence the appendix is omitted entirely — no "UNKNOWN" line. Nothing is borrowed either way.
+    assert out == message
 
 
 def test_notification_without_explicit_subject_uses_only_structured_header_binding(evidence):
@@ -365,7 +373,9 @@ def test_notification_without_explicit_subject_uses_only_structured_header_bindi
     assert _row()["catalyst"] in out
     ambiguous = "ACTIVE TRADER · SCALP ALERT\nSymbols: ABCD, WXYZ"
     out = evidence.enrich_active_trader_notification(ambiguous, snapshot_loader=lambda: _snapshot(evidence), now=NOW)
-    assert "UNKNOWN" in out and _row()["catalyst"] not in out
+    # Operator 2026-10-19 ("drop from the alert, why have a false positive"): with no current same-symbol
+    # evidence the appendix is omitted entirely — no "UNKNOWN" line. Nothing is borrowed either way.
+    assert evidence.MARKER not in out and _row()["catalyst"] not in out
 
 
 def test_explicit_scope_cannot_override_different_header_symbol(evidence):
@@ -373,7 +383,9 @@ def test_explicit_scope_cannot_override_different_header_symbol(evidence):
     out = evidence.enrich_active_trader_notification(
         message, primary_symbols=["ABCD"], snapshot_loader=lambda: _snapshot(evidence), now=NOW
     )
-    assert "UNKNOWN" in out and _row()["catalyst"] not in out
+    # Operator 2026-10-19 ("drop from the alert, why have a false positive"): with no current same-symbol
+    # evidence the appendix is omitted entirely — no "UNKNOWN" line. Nothing is borrowed either way.
+    assert evidence.MARKER not in out and _row()["catalyst"] not in out
 
 
 def test_run_identity_old_despite_current_timestamp_does_not_prove_five(evidence):
@@ -387,7 +399,9 @@ def test_run_identity_old_despite_current_timestamp_does_not_prove_five(evidence
         snapshot_loader=lambda: _snapshot(evidence, row),
         now=NOW,
     )
-    assert "UNKNOWN" in out and "5/5" not in out
+    # Operator 2026-10-19 ("drop from the alert, why have a false positive"): with no current same-symbol
+    # evidence the appendix is omitted entirely — no "UNKNOWN" line. Nothing is borrowed either way.
+    assert evidence.MARKER not in out and "5/5" not in out
 
 
 def test_malformed_explicit_policy_is_not_replaced_with_passing_defaults(evidence):
@@ -444,7 +458,9 @@ def test_friendly_trigger_cannot_override_stale_or_ambiguous_context(evidence, l
     out = evidence.enrich_active_trader_notification(
         message, primary_symbols=context, snapshot_loader=lambda: _snapshot(evidence), now=NOW
     )
-    assert "Momentum evidence (advisory): UNKNOWN" in out
+    # Operator 2026-10-19 ("drop from the alert, why have a false positive"): with no current same-symbol
+    # evidence the appendix is omitted entirely — no "UNKNOWN" line. Nothing is borrowed either way.
+    assert evidence.MARKER not in out
     assert _row()["catalyst"] not in out and "5/5" not in out
 
 
@@ -456,7 +472,9 @@ def test_friendly_trigger_multiple_explicit_header_symbols_remain_unknown(eviden
     message = f"ACTIVE TRADER · SCALP ALERT\n{label} · ABCD\nSymbols: ABCD, WXYZ"
     assert evidence._structured_subject(message) == ["ABCD", "WXYZ"]
     out = evidence.enrich_active_trader_notification(message, snapshot_loader=lambda: _snapshot(evidence), now=NOW)
-    assert "UNKNOWN" in out and _row()["catalyst"] not in out and "5/5" not in out
+    # Operator 2026-10-19 ("drop from the alert, why have a false positive"): with no current same-symbol
+    # evidence the appendix is omitted entirely — no "UNKNOWN" line. Nothing is borrowed either way.
+    assert evidence.MARKER not in out and _row()["catalyst"] not in out and "5/5" not in out
 
 
 @pytest.mark.parametrize("label", FRIENDLY_LABELS)
@@ -466,7 +484,9 @@ def test_friendly_trigger_does_not_promote_stale_same_symbol_cache(evidence, lab
     out = evidence.enrich_active_trader_notification(
         message, primary_symbols=["ABCD"], snapshot_loader=lambda: _snapshot(evidence, row), now=NOW
     )
-    assert "UNKNOWN" in out and _row()["catalyst"] not in out and "5/5" not in out
+    # Operator 2026-10-19 ("drop from the alert, why have a false positive"): with no current same-symbol
+    # evidence the appendix is omitted entirely — no "UNKNOWN" line. Nothing is borrowed either way.
+    assert evidence.MARKER not in out and _row()["catalyst"] not in out and "5/5" not in out
 
 
 @pytest.mark.parametrize(

@@ -98,6 +98,11 @@ def gather(cur) -> dict[str, dict]:
     cur.execute("""SELECT upper(symbol) s FROM watchlist_items WHERE status='active'
                    UNION SELECT upper(symbol) FROM paper_trade_proposals WHERE status='PENDING'""")
     tracked = {row[0] for row in cur.fetchall()} | set(ev)
+    # Swing entry alerts have ONE sender (operator 2026-10-19): watchlist_entry_planner persists its
+    # alert-eligible near-entry/ready plans and this runner pages them (lib.entry_alert_context).
+    from lib.entry_alert_context import planner_plan_symbols, single_sender_enabled
+    if single_sender_enabled():
+        tracked |= planner_plan_symbols(cur)
     syms = sorted(tracked)
     cur.execute("""SELECT DISTINCT ON (upper(symbol)) upper(symbol), entry_zone_low, entry_zone_high, stop_price,
                           target_price, created_at
@@ -116,18 +121,15 @@ def gather(cur) -> dict[str, dict]:
                      FROM watchlist_strategy_cards WHERE upper(symbol) = ANY(%s)
                     ORDER BY upper(symbol), updated_at DESC NULLS LAST""", (syms,))
     cards = {row[0]: row[1:] for row in cur.fetchall()}
-    cur.execute("""SELECT DISTINCT ON (upper(symbol)) upper(symbol), action FROM cio_decisions
-                    WHERE upper(symbol) = ANY(%s) AND action_class <> 'entry'
-                    ORDER BY upper(symbol), created_at DESC""", (syms,))
-    cio = {row[0]: row[1] for row in cur.fetchall()}
+    # Latest independent CIO decision and identity: shared with watchlist_entry_planner (lib.entry_alert_context).
+    from lib.entry_alert_context import cio_review_fields, latest_cio_decisions, symbol_profiles
+    cio_rows = latest_cio_decisions(cur, syms)
+    cio = {sym: row["action"] for sym, row in cio_rows.items()}
     # Identity. The alert used to name a bare ticker and a market-cap pill, so the
     # operator was asked to act on "ESE" with no idea it is Esco Technologies, a
     # Technology / Scientific & Technical Instruments name. symbol_profiles already
     # carries all three and was simply never read here.
-    cur.execute("""SELECT DISTINCT ON (upper(symbol)) upper(symbol), description_1s, sector, industry
-                     FROM symbol_profiles WHERE upper(symbol) = ANY(%s)
-                    ORDER BY upper(symbol), updated_at DESC NULLS LAST""", (syms,))
-    profiles = {row[0]: row[1:] for row in cur.fetchall()}
+    profiles = symbol_profiles(cur, syms)
     cur.execute("""SELECT upper(symbol), packet FROM decision_packets
                     WHERE superseded_by IS NULL AND upper(symbol) = ANY(%s)""", (syms,))
     packets = {row[0]: row[1] or {} for row in cur.fetchall()}
@@ -160,6 +162,10 @@ def gather(cur) -> dict[str, dict]:
         if not e.get("catalyst") and sym in cards:
             e["catalyst"] = cards[sym][5]
         e["cio_action"] = cio.get(sym)
+        # The card's "Review:" line: the latest CIO decision, named (an entry_review row is a review; any
+        # other decision is the CIO's stance on record). The runner's own fresh review overrides it.
+        for k, v in cio_review_fields(cio_rows.get(sym)).items():
+            e.setdefault(k, v)
         e["held"] = bool(e.get("held")) or sym in held
         if sym in profiles:
             # Conditional on purpose: symbol_profiles covers ~3,136 symbols, fewer than
@@ -494,8 +500,14 @@ def cio_card_payload(result: dict, evidence: dict, *, review: dict | None = None
             item["options_summary"] = str(alts[0].get("strategy") or "option alternative")
     except Exception as exc:  # noqa: BLE001 -- card must degrade to canonical entry facts
         item.setdefault("options_status", f"unavailable ({type(exc).__name__})")
-    item["cio_review_status"] = (review or evidence.get("cio_review") or {}).get("status") if isinstance((review or evidence.get("cio_review")), dict) else None
-    item["cio_review_id"] = (review or evidence.get("cio_review") or {}).get("decision_id") if isinstance((review or evidence.get("cio_review")), dict) else None
+    fresh = review or evidence.get("cio_review")
+    if isinstance(fresh, dict):
+        item["cio_review_status"] = fresh.get("status")
+        item["cio_review_id"] = fresh.get("decision_id")
+    else:
+        # No review this run: the latest CIO decision on record (gather), never a blank "unreviewed".
+        item["cio_review_status"] = (evidence or {}).get("cio_review_status")
+        item["cio_review_id"] = (evidence or {}).get("cio_review_id")
     item["next_action"] = "CIO review follow-up received" if review else item.get("next_action")
     return cio_entry_alert(item).render()
 
