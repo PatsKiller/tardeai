@@ -100,8 +100,8 @@ GATES = [
     # action explained, missing operator token asked for instead of a silent 403. Hermetic: injected DB read.
     ("comms_drawer_20261019", ["tests/test_comms_drawer_20261019.py"]),
     ("comms_delivery_health_truth_20261020", ["tests/test_comms_delivery_health_truth_20261020.py"]),
-    # ANCHOR: DISK_HYGIENE_N8N_20261018 — rule-based disk hygiene (dry-run manifest by default; --apply needs a fresh
-    # manifest, re-validates every item, grant + caps) and the band-deduped disk-usage monitor, both as n8n lanes;
+    # ANCHOR: DISK_HYGIENE_N8N_20261018 — disk hygiene plans and read-only revalidation; destructive --apply is
+    # unsupported under ACTIVE policy. The band-deduped disk-usage monitor remains a non-deleting n8n lane;
     # never-touch list enforced in code. Hermetic: tmp git repos/worktrees, fake df/proc/crontab.
     (
         "disk_hygiene_n8n_20261018",
@@ -109,7 +109,7 @@ GATES = [
     ),
     # ANCHOR: TMP_HYGIENE_20261019 — /tmp inode incident 2026-10-19: inode bands per (mount, metric) in the disk-usage
     # monitor (top dirs by file count, bounded scan) and the daily tmp-hygiene plan lane (ended Claude session scratch,
-    # old pytest temp, never-touch for everything else; operator-gated apply). Hermetic: fake /tmp, /proc, statvfs.
+    # old pytest temp, never-touch for everything else; destructive apply unsupported). Hermetic: fake /tmp, /proc, statvfs.
     ("tmp_hygiene_20261019", ["tests/test_tmp_hygiene_20261019.py"]),
     # ANCHOR: ACTIVE_TRADER_ALERT_COMPLETENESS_20261019 — alerts that shipped blank/UNKNOWN: swing entry cards carry
     # company/sector/catalyst/CIO decision (shared lib.entry_alert_context); one swing-entry sender (planner persists,
