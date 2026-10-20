@@ -126,6 +126,13 @@ GATES = [
     # held, actionable, directive backlog oldest-first, never-covered in a per-day rotation, fetched-within-20h last;
     # --dry-run read-only with no yfinance call. Hermetic: fake DB/modules, tmp ROOT.
     ("analyst_feed_stale_20261020", ["tests/test_analyst_feed_stale_20261020.py"]),
+    # ANCHOR: COMMS_STUCK_DELIVERIES_20261020 — deliveries/summary showed 205 RESERVED rows (oldest 8 days) nothing
+    # would settle: publish_communication reserved a Telegram delivery for every event left at the channels default —
+    # 150 INBOUND operator callbacks and 55 post-send_telegram ledger copies. Reservation now only for an OUTBOUND
+    # event that named its channel (AssumedChannels marker, default.outbound_telegram label); reap_stale_reservations
+    # (comms_lifecycle "reservations" step, >1 h, bounded, dry run default) settles CANCELLED/EXPIRED/UNKNOWN with no
+    # provider I/O. Hermetic: in-memory ledger, PG settlement stamp stubbed.
+    ("comms_stuck_deliveries_20261020", ["tests/test_comms_stuck_deliveries_20261020.py"]),
     # ANCHOR: N8N_EVIDENCE_KIND_PARITY_20261019 — the runtime output verdict and the FW-M6 checker accept the same
     # N8nExpectedOutput@v1 evidence kinds (file_artifact, per N8N_CONTRACTS_DESIGN.md); before, "file" vs "file_artifact"
     # meant no contract could cite a file. Hermetic: committed contracts read only.

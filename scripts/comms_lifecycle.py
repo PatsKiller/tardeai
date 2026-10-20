@@ -14,11 +14,16 @@ Steps (each idempotent; dry run unless --apply):
                 counted from created_at.
   2. expire   — status -> 'expired' where the effective expiry (greater of expires_at and retain_until) passed
                 and no legal hold. The portal hides expired rows by default, so this is only the record.
-  3. purge    — archive then delete expired rows (children first), in batches, one transaction per batch.
+  3. reservations — settle communication_deliveries rows left RESERVED/SENDING longer than an hour by an owner that
+                never settled them (lib.comms.delivery.reap_stale_reservations, 2026-10-20: 205 such rows, oldest 8
+                days). Never sends: INBOUND -> CANCELLED, unclaimed outbound -> EXPIRED, stale SENDING -> UNKNOWN.
+                Runs before purge so a settled row is archived with its final status.
+  4. purge    — archive then delete expired rows (children first), in batches, one transaction per batch.
 
   comms_lifecycle.py                 # dry run: counts per step
   comms_lifecycle.py --apply         # do it
   comms_lifecycle.py --apply --steps classify,expire
+  comms_lifecycle.py --steps reservations   # dry run: the stale reservations it would settle, and to what
 """
 from __future__ import annotations
 
@@ -111,7 +116,24 @@ def step_expire(cur, *, apply: bool) -> dict:
     return {"to_expire": n, "expired": n if apply else 0}
 
 
-# ── 3. purge (archive then delete) ──────────────────────────────────────────
+# ── 3. stale delivery reservations ──────────────────────────────────────────
+
+RESERVATION_MAX_AGE_S = 3600
+RESERVATION_LIMIT = 500
+
+
+def step_reservations(*, apply: bool, max_age_s: float = RESERVATION_MAX_AGE_S,
+                      limit: int = RESERVATION_LIMIT) -> dict:
+    from scripts.lib.comms.delivery import reap_stale_reservations
+    res = reap_stale_reservations(max_age_s=max_age_s, apply=apply, limit=limit)
+    by: dict[str, int] = {}
+    for p in res.get("planned") or []:
+        by[p["to_status"]] = by.get(p["to_status"], 0) + 1
+    return {"stale": len(res.get("planned") or []), "by_status": by, "settled": res.get("settled", 0),
+            "errors": res.get("errors") or [], "max_age_s": max_age_s, "limit": limit}
+
+
+# ── 4. purge (archive then delete) ──────────────────────────────────────────
 
 def _archive(cur, table: str, col: str, ids: list[str], stamp: str) -> tuple[int, str]:
     d = archive_root() / table
@@ -165,7 +187,7 @@ def step_purge(cur, *, apply: bool, batch: int = 2000, max_rows: int = 200000) -
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--apply", action="store_true")
-    ap.add_argument("--steps", default="classify,expire,purge")
+    ap.add_argument("--steps", default="classify,expire,reservations,purge")
     ap.add_argument("--batch", type=int, default=2000)
     a = ap.parse_args(argv)
     steps = [s.strip() for s in a.steps.split(",") if s.strip()]
@@ -176,6 +198,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             report["classify"] = step_classify(cur, apply=a.apply, batch=a.batch)
         if "expire" in steps:
             report["expire"] = step_expire(cur, apply=a.apply)
+        if "reservations" in steps:
+            report["reservations"] = step_reservations(apply=a.apply)
         if "purge" in steps:
             report["purge"] = step_purge(cur, apply=a.apply, batch=a.batch)
     conn.rollback()

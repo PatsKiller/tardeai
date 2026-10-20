@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from scripts.lib.comms.delivery import attach_delivery_reservation
-from scripts.lib.comms.event import CommunicationEvent, required_missing
+from scripts.lib.comms.event import CommunicationEvent, channels_were_assumed, required_missing
 from scripts.lib.comms.mode import get_gateway_mode
 from scripts.lib.comms.vocabulary import normalize_message_class
 
@@ -110,7 +110,10 @@ def _destination_policy_for(event: CommunicationEvent) -> tuple[list[str], str]:
     The default-outbound branch is the interesting one to be able to see: it
     means nobody asked for Telegram, it was assumed.
     """
-    if event.channels:
+    # An untouched dataclass default is not a choice (2026-10-20): it falls through to the cascade below, so an
+    # assumed outbound channel is labelled default.outbound_telegram (the label this function always meant for it)
+    # and an INBOUND event gets no outbound channel at all.
+    if event.channels and not channels_were_assumed(event):
         return list(event.channels), POLICY_EVENT_CHANNELS
     pol = event.delivery_policy or {}
     ch = pol.get("channels")
@@ -126,16 +129,33 @@ def _channels_for(event: CommunicationEvent) -> list[str]:
     return _destination_policy_for(event)[0]
 
 
+def should_reserve_delivery(event: CommunicationEvent, destination_policy_id: str | None) -> bool:
+    """A delivery reservation is a claim that someone will deliver this event and settle the row.
+
+    Measured 2026-10-20 (deliveries/summary: unsettled 205, oldest 8 days): every stuck row was a reservation with no
+    one behind it -- 150 INBOUND operator callbacks, and 55 post-send ledger copies (``send_watchpool_maturity_alerts``
+    and six other lanes) whose real send was ``send_telegram``'s own event, already settled. Every sender that settles
+    (``from_plain_message`` for telegram_alert, ``channel_adapters._build_event``, the agent gateway adapter) names
+    its channel; a channel only assumed by the dataclass default, or any INBOUND event, gets no reservation. The
+    ledger row, the outbox row and subject memory are written exactly as before.
+    """
+    if str(getattr(event, "direction", "") or "").upper() != "OUTBOUND":
+        return False
+    return destination_policy_id != POLICY_DEFAULT_OUTBOUND_TELEGRAM
+
+
 def _reserve_deliveries(
     result: PublishResult,
     channels: list[str],
     destination_policy_id: str | None = None,
+    *,
+    reserve: bool = True,
 ) -> PublishResult:
     """Phase 3: RESERVED stubs per channel. Never sends; never claims ownership."""
     # Stamp the decision before the guard: a result with no channels still made
     # a routing decision (POLICY_NONE_NOT_OUTBOUND), and that is worth reading back.
     result.destination_policy_id = destination_policy_id
-    if not result.ok or not result.event_id or not channels:
+    if not result.ok or not result.event_id or not channels or not reserve:
         return result
     delivery_ids: list[str] = []
     for ch in channels:
@@ -420,7 +440,8 @@ def publish_communication(event: CommunicationEvent) -> PublishResult:
 
     if result.ok and result.event_id and event.subject_key:
         _attach_subject_memory(event, result.event_id, channels)
-    return _reserve_deliveries(result, channels, destination_policy_id)
+    return _reserve_deliveries(result, channels, destination_policy_id,
+                               reserve=should_reserve_delivery(event, destination_policy_id))
 
 
 def _attach_subject_memory(
