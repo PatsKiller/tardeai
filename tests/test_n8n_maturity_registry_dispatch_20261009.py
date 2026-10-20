@@ -512,6 +512,7 @@ def test_registry_dispatch_errors_hook():
 N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor", "momentum-cache-reconcile",
                                "hermes-discovery-yield-on-learning"})
 #: 2026-10-17 + n8n-comms-intent-consumer (operator D2 "Queue reader first"; tests/support/comms_intent_consumer_live.py).
+#: 2026-10-19 + registry-runtime-truth (measure-only; tests/support/registry_runtime_truth_lane.py).
 #: 2026-10-18 + disk-usage-monitor and disk-hygiene (operator 2026-10-18: "a script with rules that's repeatable, n8n
 #: should run this weekly; and also monitor when a threshold is over 80%"; tests/support/disk_hygiene_n8n.py LIVE).
 from tests.support import disk_hygiene_n8n as _DH  # noqa: E402
@@ -519,7 +520,7 @@ from tests.support import disk_hygiene_n8n as _DH  # noqa: E402
 #: 2026-10-19 + active-trader-motion-watchdog (n8n owns motion supervision; tests/support/active_trader_motion_watchdog.py).
 N8N_NATIVE_CANARY = frozenset({"heartbeat-watch", "n8n-comms-intent-consumer", "active-trader-motion-watchdog",
                                # 2026-10-18 data-integrity monitors (tests/support/data_integrity_monitors_n8n.py)
-                               "n8n-data-plausibility-audit", "n8n-gap-resolution-audit", *_DH.LIVE})
+                               "n8n-data-plausibility-audit", "n8n-gap-resolution-audit", *_DH.LIVE, "registry-runtime-truth"})
 #: the reviewed live_arg of each n8n-native canary row whose live run is not the script default.
 #: disk-hygiene's live run is --plan (a manifest, never a deletion).
 N8N_NATIVE_CANARY_LIVE_ARG = {
@@ -530,6 +531,7 @@ N8N_NATIVE_CANARY_LIVE_ARG = {
     "disk-hygiene": ["--plan"],
     # 2026-10-19 operator (after /tmp hit 97% inodes): daily /tmp plan, a manifest, never a deletion.
     "tmp-hygiene": ["--plan"],
+    "registry-runtime-truth": ["--apply"],
 }
 #: lane repair 2026-10-15: a systemd-timer lane at shadow (its timer keeps the real work; dispatch.cron mirrors the
 #: timer's OnCalendar). tests/test_lane_repair_ri_hermes_litmus_20261015.py pins the row and its allowlist entry.

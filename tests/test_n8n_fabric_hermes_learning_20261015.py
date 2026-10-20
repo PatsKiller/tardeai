@@ -289,10 +289,12 @@ def test_runnable_step_is_a_shadow_lane_with_the_step_lock_and_timeout(sid):
     # match names the process step, never a crontab line: the script's retired cron row keeps its own line
     assert sched["process_step"] == sid and sched["match"] == f"{WID}:{sid}"
     assert "dispatch" not in row  # the generic dispatcher never emits a process step
-    assert row["state"] == "NEVER_SCHEDULED" and row["state_reason"] and row["output_signal"]["kind"]
+    # 2026-10-19 registry truth (packet docs/ops/packets/registry-runtime-truth-20261018/): the five steps n8n owns and
+    # runs live are ACTIVE (live RUN_DONE runs since 2026-10-17); the held feedback agent stays NEVER_SCHEDULED.
+    assert row["state"] == ("NEVER_SCHEDULED" if held else "ACTIVE") and row["state_reason"] and row["output_signal"]["kind"]
     assert C.clamp_mode(lane, "live", list(REG.values()))["effective_mode"] == ("dry_run" if held else "live")
     c = CONTRACTS[lane]
-    assert c["status"] == "REVIEWED" and c["stage"] == "shadow" and c["workflow_id"] == WID
+    assert c["status"] == "REVIEWED" and c["stage"] == ("shadow" if held else "canary") and c["workflow_id"] == WID
     fx = EFFECTS["lanes"][lane]
     assert fx == {
         "process": lane,

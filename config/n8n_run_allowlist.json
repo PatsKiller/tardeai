@@ -494,6 +494,32 @@
       "output_receipt": "v2"
     },
     {
+      "lane_id": "registry-runtime-truth",
+      "env_names": [
+        "TRADEAI_N8N_COORDINATION_LEDGER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "scripts/check_registry_runtime_truth.py reads TRADEAI_STATE_ROOT (executor base), TRADEAI_N8N_COORDINATION_LEDGER and TRADEAI_RUN_ID (executor attempt identity); lib/n8n_live_inventory.py shells `crontab -l` / `docker exec <n8n db> psql` SELECT (HOME/PATH from the base set); lib/lane_last_receipt.py reads TRADEAI_PERSISTENT_STATE_ROOT, a path; lib/host_comms_intents.py closure (n8n_fabric_store, n8n_coordination_ledger) reads no credential. No DB credential, no network, no send.",
+      "source": "n8n-native host lane (packet docs/ops/packets/registry-runtime-truth-20261018/): fired by tradeai-dispatcher daily 07:20 ET; no cron line, no unit, so the lock is the lane's own. CANARY: live_arg [\"--apply\"] writes the LaneRunReceipt@v2 and, only with contradictions, one DIGEST host comms intent (fabric/registry_runtime_contradiction); dry_run_arg --dry-run prints the report and writes nothing. Measure-only: reads the registry, contracts, allowlist, fabric spec, coordination ledger (mode=ro), relay live-lane names, crontab -l and n8n workflow_entity.",
+      "command": [
+        "$PY",
+        "scripts/check_registry_runtime_truth.py"
+      ],
+      "lock": "/tmp/tradeai_registry_runtime_truth.lock",
+      "lock_kind": "flock",
+      "timeout_s": 120,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/registry-runtime-truth_last.json",
+      "output_receipt": "v2"
+    },
+    {
       "lane_id": "n8n-data-plausibility-audit",
       "env_names": [
         "DB_HOST",

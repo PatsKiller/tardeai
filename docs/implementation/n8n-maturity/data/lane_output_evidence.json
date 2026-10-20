@@ -679,6 +679,11 @@
     "reason_confidence": "ESTABLISHED",
     "state_reason": "OS-shipped user unit (vendor preset enabled) that is not enabled in this user session: ActiveState inactive, LastTriggerUSec empty — it has never fired. Not a Trade AI producer.",
     "reason_evidence": "systemctl --user show systemd-tmpfiles-clean.timer (read-only) 2026-10-09; docs/audits/overnight/W2_UNDECLARED_CENSUS_2026-09-01.md (OS user timers)"
+   },
+   "declared_no_output": {
+    "reason": "SIGNAL_FREE_EXEMPT",
+    "evidence": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): systemd-tmpfiles-clean.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the operator's rulin",
+    "exempt_since": "2026-10-19"
    }
   },
   "topic-curator-at-30-9-13": {
@@ -802,6 +807,34 @@
    "verified_token": "valuation_supplement_cache.json",
    "source_file": "scripts/watch_valuation_backfill.py",
    "evidence": "scripts/watch_valuation_backfill.py:45 SUPPLEMENT written at :184; host mtime 2026-10-09T06:53:15"
+  },
+  "launchpadlib-cache-clean": {
+   "declared_no_output": {
+    "reason": "SIGNAL_FREE_EXEMPT",
+    "evidence": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): launchpadlib-cache-clean.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the operator's rul",
+    "exempt_since": "2026-10-19"
+   }
+  },
+  "snap-firmware-updater-firmware-notifier": {
+   "declared_no_output": {
+    "reason": "SIGNAL_FREE_EXEMPT",
+    "evidence": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): snap.firmware-updater.firmware-notifier.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the",
+    "exempt_since": "2026-10-19"
+   }
+  },
+  "ubuntu-insights-collect": {
+   "declared_no_output": {
+    "reason": "SIGNAL_FREE_EXEMPT",
+    "evidence": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): ubuntu-insights-collect.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the operator's ruli",
+    "exempt_since": "2026-10-19"
+   }
+  },
+  "ubuntu-insights-upload": {
+   "declared_no_output": {
+    "reason": "SIGNAL_FREE_EXEMPT",
+    "evidence": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): ubuntu-insights-upload.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the operator's rulin",
+    "exempt_since": "2026-10-19"
+   }
   }
  }
 }

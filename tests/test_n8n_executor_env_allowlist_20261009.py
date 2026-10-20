@@ -648,4 +648,7 @@ def test_lane_mode_counts_match_the_pr():
     # 2026-10-19: + active-trader-motion-watchdog, enforced from its first entry; its recursive closure and literal
     # reads are pinned in _REVIEWED_NEW_MODULES / _REVIEWED_NEW_READS_BY_LANE. 14 + 1 = 15.
     assert LANES["active-trader-motion-watchdog"]["env_allowlist_mode"] == "enforce"
-    assert modes.count("enforce") == 15 and modes.count("report") == len(LANES) - 15
+    # 2026-10-19 (registry-runtime-truth, tests/test_registry_runtime_truth_20261018.py): + registry-runtime-truth,
+    # enforced from its first entry; its literal closure inventory is checked above. 12 + 1 = 13.
+    assert LANES["registry-runtime-truth"]["env_allowlist_mode"] == "enforce"
+    assert modes.count("enforce") == 16 and modes.count("report") == len(LANES) - 16

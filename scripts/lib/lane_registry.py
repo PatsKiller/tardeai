@@ -150,6 +150,15 @@ def validate_row(row: dict[str, Any]) -> list[str]:
         )
     elif sig.get("kind") not in OUTPUT_SIGNAL_KINDS:
         errs.append(f"{lane_id}: output_signal.kind {sig.get('kind')!r} unknown")
+    elif sig.get("reason") == OUTPUT_SIGNAL_EXEMPT_REASON:
+        # 2026-10-19 (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): an explicit, reviewed exemption — the lane has no
+        # per-run artifact BY NATURE (an OS vendor unit, a one-shot reminder). It must say why and since when, and
+        # only a kind-none signal can be exempt (an exemption never hides a declared artifact).
+        if sig.get("kind") != "none":
+            errs.append(f"{lane_id}: output_signal exempt reason {OUTPUT_SIGNAL_EXEMPT_REASON} needs kind none")
+        if len(str(sig.get("detail") or "").strip()) < 20 or not sig.get("exempt_since"):
+            errs.append(f"{lane_id}: output_signal exempt reason {OUTPUT_SIGNAL_EXEMPT_REASON} needs detail (why) "
+                        "and exempt_since")
 
     if state != STATE_ACTIVE:
         if not row.get("state_reason"):
@@ -238,6 +247,9 @@ SCHEDULER_KINDS = ("cron", "systemd", "event", "none", SCHEDULER_N8N)
 #: Same set as lane_stage_clamp.DISPATCHER_EXPRESSIONS.
 DISPATCHER_ROW_EXPRESSIONS = frozenset({"dispatcher", "tradeai-dispatcher"})
 OUTPUT_SIGNAL_KINDS = ("file_mtime", "json_key", "db_max", "systemd_result", "none")
+#: output_signal {kind: none, reason: SIGNAL_FREE_EXEMPT, detail, exempt_since}: a reviewed, legitimately signal-free
+#: lane (validate_row). Other kind-none reasons (UNVERIFIED_OUTPUT, NO_DURABLE_OUTPUT) are backlog, not exemptions.
+OUTPUT_SIGNAL_EXEMPT_REASON = "SIGNAL_FREE_EXEMPT"
 
 
 def validate_registry(reg: dict[str, Any]) -> list[str]:
@@ -781,6 +793,22 @@ def n8n_generic_workflow_ids(path: Optional[Path] = None) -> dict[str, str]:
     return {str(w["id"]): f"generic:{w.get('kind') or '?'}" for w in doc.get("workflows") or [] if w.get("id")}
 
 
+#: 2026-10-19 (registry truth, packet docs/ops/packets/registry-runtime-truth-20261018/): the n8n fabric workflows
+#: (generator `n8n_workflow_templates.py build-fabric`: run-lane, error, probes, process workflows). Like the six
+#: generic workflows they are declared by their committed INDEX, not by a lane row; without this the host gate
+#: `check_lane_registry --n8n-live` reported the ACTIVE tradeai-fabric-run-lane / tradeai-fabric-error as
+#: UNDECLARED_N8N_WORKFLOW since they were published.
+FABRIC_WORKFLOW_INDEX = ROOT / "docs" / "implementation" / "n8n-maturity" / "workflows" / "fabric" / "INDEX.json"
+
+
+def n8n_fabric_workflow_ids(path: Optional[Path] = None) -> dict[str, str]:
+    """{workflow id: "fabric:<kind>"} for the committed fabric INDEX. Missing/foreign INDEX raises (CANNOT RUN)."""
+    doc = json.loads(Path(path or FABRIC_WORKFLOW_INDEX).read_text(encoding="utf-8"))
+    if doc.get("schema") != "N8nFabricManifest@v1":
+        raise ValueError(f"fabric workflow INDEX schema {doc.get('schema')!r}")
+    return {str(w["id"]): f"fabric:{w.get('kind') or '?'}" for w in doc.get("workflows") or [] if w.get("id")}
+
+
 def n8n_known_workflow_ids(
     index_path: Optional[Path] = None,
     generic_index_path: Optional[Path] = None,
@@ -795,6 +823,8 @@ def n8n_known_workflow_ids(
         from lib import n8n_live_inventory as inv  # type: ignore
     out = inv.known_workflow_ids(path=index_path)
     out.update(n8n_generic_workflow_ids(generic_index_path))
+    for wid, label in n8n_fabric_workflow_ids().items():
+        out.setdefault(wid, label)
     observers = n8n_read_only_workflow_ids(observer_index_path, observer_contracts_path, observer_workflow_directory)
     if set(observers) & set(out):
         raise ValueError("read-only workflow id collides with a requester workflow")

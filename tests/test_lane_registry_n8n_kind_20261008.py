@@ -27,6 +27,7 @@ sys.path.insert(0, str(ROOT))
 from scripts.lib import lane_registry as lr  # noqa: E402
 from tests.support import hermes_learning_cutover as HL  # noqa: E402
 from tests.support import comms_intent_consumer_live as CIL  # noqa: E402
+from tests.support import registry_runtime_truth_lane as RRT  # noqa: E402
 from tests.support import data_integrity_monitors_n8n as DIM  # noqa: E402
 from tests.support import active_trader_motion_watchdog as ATMW  # noqa: E402
 from scripts.lib import lane_state_drift as LD  # noqa: E402
@@ -367,10 +368,12 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
                         # 2026-10-18 data-integrity monitors on n8n: dispatcher rows at canary.
                         *DIM.LIVE,
                         # 2026-10-19 active-trader-motion-watchdog: n8n-native dispatcher row at canary.
-                        *ATMW.LIVE}
+                        *ATMW.LIVE,
+                        # 2026-10-19 registry-runtime-truth: n8n-native measure-only dispatcher row at canary.
+                        *RRT.LIVE}
     assert all(native[lane]["scheduler"]["expression"] == "dispatcher" for lane in n8n_native_lanes)
     # 2026-10-15: the step lanes of the n8n fabric process hermes-learning (AGENTS.md §23.23). Fired only by the
-    # process workflow, NEVER_SCHEDULED until it is published for shadow; `match` names the process step, so no
+    # process workflow, NEVER_SCHEDULED until it runs live (2026-10-19: the five HL.LIVE steps are ACTIVE); `match` names the process step, so no
     # host line maps to them (the scripts' retired cron rows keep their own lines).
     process_steps = {
         "hermes-learning-outcome-grader",
@@ -387,7 +390,8 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         assert s["expression"] == "tradeai-fabric-hermes-learning"
         assert s["stage"] == ("canary" if lane in HL.LIVE else "shadow")
         assert s["match"] == f"tradeai-fabric-hermes-learning:{s['process_step']}"
-        assert native[lane]["state"] == "NEVER_SCHEDULED"
+        # 2026-10-19 registry truth: the five n8n-owned steps run live (ACTIVE); the held feedback agent is not.
+        assert native[lane]["state"] == ("ACTIVE" if lane in HL.LIVE else "NEVER_SCHEDULED")
     assert set(native) == monitors | cutover | n8n_native_lanes | process_steps
     assert not reminders & set(native)
     assert all(native[lane]["state"] == "ACTIVE" for lane in cutover)

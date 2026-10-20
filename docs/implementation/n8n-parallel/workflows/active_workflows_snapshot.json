@@ -1,9 +1,9 @@
 {
  "schema": "N8nActiveWorkflowSnapshot@v1",
- "captured_at": "2026-10-11T13:42:28+00:00",
- "source": "docker exec m8m-n8n-db psql -U n8n -d n8n -tA (BEGIN; SET TRANSACTION READ ONLY; SELECT id, name FROM workflow_entity WHERE active)",
+ "captured_at": "2026-10-19T14:33:52+00:00",
+ "source": "docker exec m8m-n8n-db psql -U n8n -d n8n -tAc (SELECT, active only)",
  "authority": "READ_ONLY_ADVISORY",
- "count": 14,
+ "count": 19,
  "workflows": [
   {
    "id": "078e8fcbea0c5020",
@@ -58,8 +58,28 @@
    "name": "tradeai-event-router"
   },
   {
+   "id": "tradeai-fabric-error",
+   "name": "tradeai-fabric-error"
+  },
+  {
+   "id": "tradeai-fabric-hermes-learning",
+   "name": "tradeai-fabric-hermes-learning"
+  },
+  {
+   "id": "tradeai-fabric-run-lane",
+   "name": "tradeai-fabric-run-lane"
+  },
+  {
+   "id": "tradeai-heartbeat-watcher",
+   "name": "tradeai-heartbeat-watcher"
+  },
+  {
    "id": "tradeai-incident-router",
    "name": "tradeai-incident-router"
+  },
+  {
+   "id": "tradeai-momentum-lifecycle-candidate",
+   "name": "tradeai-momentum-lifecycle-candidate"
   }
  ]
 }

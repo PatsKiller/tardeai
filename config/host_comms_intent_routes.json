@@ -10,6 +10,13 @@
       "producer": "hermes_outcome_feedback_agent"
     },
     {
+      "domain": "fabric",
+      "kind": "registry_runtime_contradiction",
+      "tier": "DIGEST",
+      "runbook_id": "registry-runtime-truth",
+      "producer": "registry_runtime_truth"
+    },
+    {
       "domain": "host",
       "kind": "disk_usage_warn",
       "tier": "DIGEST",

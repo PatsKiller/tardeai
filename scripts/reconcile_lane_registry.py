@@ -736,8 +736,14 @@ def declared_no_output(entry: Optional[dict[str, Any]]) -> Optional[tuple[dict[s
     dn = (entry or {}).get("declared_no_output")
     if not isinstance(dn, dict) or not str(dn.get("evidence") or "").strip():
         return None
-    return ({"kind": "none", "reason": str(dn.get("reason") or "NO_DURABLE_OUTPUT"),
-             "detail": sanitize(str(dn["evidence"]))[:300]}, ["NO_DURABLE_OUTPUT"])
+    reason = str(dn.get("reason") or "NO_DURABLE_OUTPUT")
+    sig = {"kind": "none", "reason": reason, "detail": sanitize(str(dn["evidence"]))[:300]}
+    if reason == "SIGNAL_FREE_EXEMPT":
+        # 2026-10-19 (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): a reviewed exemption keeps its date so the
+        # regenerated row still passes lane_registry.validate_row; the flag names the exemption, not a defect.
+        sig["exempt_since"] = str(dn.get("exempt_since") or "")
+        return sig, [reason]
+    return sig, ["NO_DURABLE_OUTPUT"]
 
 
 # ── building rows ─────────────────────────────────────────────────────────────────────────────
@@ -960,7 +966,7 @@ def build_unit_rows(units: dict[str, Any], undeclared_units: set[str], f_rows: l
         log_path = None
         if stdout.startswith(("append:", "file:")):
             log_path = normalise_output_path(stdout.split(":", 1)[1], u.get("working_directory"))
-        sig, flags = _signal(receipt, log_path, "SYSTEMD_STDOUT_APPEND")
+        sig, flags = declared_no_output(ev) or _signal(receipt, log_path, "SYSTEMD_STDOUT_APPEND")
         cadence = u.get("expected_cadence_hours") if kind == "timer" else 1.0
         row: dict[str, Any] = {
             "lane_id": lid,

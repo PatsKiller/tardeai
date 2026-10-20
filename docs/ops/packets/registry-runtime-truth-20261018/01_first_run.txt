@@ -1,0 +1,40 @@
+registry/runtime truth  2026-10-19T15:21:25+00:00  (window 7 d, READ_ONLY_ADVISORY)
+  source coordination_ledger  ok           50 lanes with live RUN_DONE, 37 owners
+  source relay_live_lanes     ok           TRADEAI_N8N_RELAY_LIVE_LANES names only
+  source crontab              ok           338 active lines (text never written to the report)
+  source n8n_workflows        ok           19 active workflows (read-only SELECT)
+  declared: registry_rows 646, lane_contracts 131, allowlist_entries 117, fabric_processes 1
+contradictions: 29  fingerprint c299994c08c08c25
+  CONTRACT_STAGE_MISMATCH: 28
+  LIVE_LIST_REGISTRY_NOT_LIVE: 1
+  x CONTRACT_STAGE_MISMATCH aegis-social-sentiment: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH aegis-transcript-discovery: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH agent-outcome-scorer: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH build-symbol-profiles-at-0-19: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH commitment-outcome-sweep: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH daily-incubator-refresh: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH document-mentions-backfill: registry stage cutover but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH etf-analyst-enrich: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH etf-performance-enrich: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH feedback-loop-processor: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH finviz-enrichment: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH finviz-proactive-research: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH finviz-screener-runner: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH finviz-sector-research: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH hermes-momentum-catalyst-scalp: registry stage cutover but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH hermes-social-sentiment: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH identity-sweep-stage0: registry stage cutover but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH instrument-belief-writer: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH material-change-detector-stage1: registry stage cutover but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH news-to-catalyst: registry stage shadow but contract stage canary
+  x CONTRACT_STAGE_MISMATCH pattern-extractor: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH proposal-backtest-engine: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH record-decision-outcome: registry stage cutover but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH sec-data-ingest: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH sync-social-to-intelligence: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH trade-ai-scalp-live: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH weekly-incubator-builder: registry stage canary but contract stage shadow
+  x CONTRACT_STAGE_MISMATCH wire-advisory-lessons: registry stage cutover but contract stage shadow
+  x LIVE_LIST_REGISTRY_NOT_LIVE maturity-remeasure: on the relay live list but registry state ACTIVE stage 'shadow'
+accepted debt (not contradictions): LIVE_LIST_CONTRACT_GRANDFATHERED_DRAFT crontab-snapshot-for-health-agent, LIVE_LIST_CONTRACT_GRANDFATHERED_DRAFT maturity-remeasure, LIVE_LIST_CONTRACT_GRANDFATHERED_DRAFT n8n-incident-fanin, LIVE_LIST_CONTRACT_GRANDFATHERED_DRAFT n8n-pilot-dispatch, LIVE_LIST_CONTRACT_GRANDFATHERED_DRAFT n8n-research-intake-consumer
+DRY-RUN {"dry_run": true, "lane_id": "registry-runtime-truth", "summary": {"by_code": {"CONTRACT_STAGE_MISMATCH": 28, "LIVE_LIST_REGISTRY_NOT_LIVE": 1}, "contradiction_count": 29, "error": null, "fingerprint": "c299994c08c08c25", "not_measured": []}, "would_write": ["/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/registry-runtime-truth_last.json", "host comms intent fabric/registry_runtime_contradiction (DIGEST)"], "would_write_receipt": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/registry-runtime-truth_last.json"}

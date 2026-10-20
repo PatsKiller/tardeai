@@ -25310,8 +25310,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-fabric-hermes-learning",
       "status": "REVIEWED",
-      "target_reason": "n8n fabric process hermes-learning step outcome_grader (2026-10-15); stage shadow",
-      "stage": "shadow",
+      "target_reason": "n8n fabric process hermes-learning step outcome_grader (2026-10-15); stage canary (2026-10-19 registry truth: was shadow while the lane ran live)",
+      "stage": "canary",
       "purpose": {
         "text": "Outcome Spine: seed and grade every Hermes claim (promotions, external recommendations, research rows, closed trades) against money in hermes_outcome_ledger; pure SQL plus the daily-close cache, zero LLM",
         "business_function": "learning",
@@ -25495,7 +25495,8 @@
           "reason": "empty_output",
           "notifier_priority": "P2"
         }
-      }
+      },
+      "state_note": "2026-10-19 registry truth: stage shadow -> canary to match the registry row and the host (effect owner n8n, live RUN_DONE runs since 2026-10-17, relay live list). Fields otherwise unchanged; the output-proof gap (no LaneRunReceipt@v2 on the learn steps) is recorded in the registry row's reason_evidence."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -25503,8 +25504,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-fabric-hermes-learning",
       "status": "REVIEWED",
-      "target_reason": "n8n fabric process hermes-learning step outcome_learning (2026-10-15); stage shadow",
-      "stage": "shadow",
+      "target_reason": "n8n fabric process hermes-learning step outcome_learning (2026-10-15); stage canary (2026-10-19 registry truth: was shadow while the lane ran live)",
+      "stage": "canary",
       "purpose": {
         "text": "Outcome learning: calibrate factor weights, tune promotion thresholds inside their rails, curate sources and score lane usefulness from the graded outcome ledger",
         "business_function": "learning",
@@ -25688,7 +25689,8 @@
           "reason": "empty_output",
           "notifier_priority": "P2"
         }
-      }
+      },
+      "state_note": "2026-10-19 registry truth: stage shadow -> canary to match the registry row and the host (effect owner n8n, live RUN_DONE runs since 2026-10-17, relay live list). Fields otherwise unchanged; the output-proof gap (no LaneRunReceipt@v2 on the learn steps) is recorded in the registry row's reason_evidence."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -25696,8 +25698,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-fabric-hermes-learning",
       "status": "REVIEWED",
-      "target_reason": "n8n fabric process hermes-learning step config_governor (2026-10-15); stage shadow",
-      "stage": "shadow",
+      "target_reason": "n8n fabric process hermes-learning step config_governor (2026-10-15); stage canary (2026-10-19 registry truth: was shadow while the lane ran live)",
+      "stage": "canary",
       "purpose": {
         "text": "Hermes config governor: detect when the evidence says a RAIL itself is wrong (a cap, a budget, a clamp) and file a config_change_proposals row with evidence and rollback for the operator; zero LLM",
         "business_function": "learning",
@@ -25884,7 +25886,8 @@
           "reason": "empty_output",
           "notifier_priority": "P2"
         }
-      }
+      },
+      "state_note": "2026-10-19 registry truth: stage shadow -> canary to match the registry row and the host (effect owner n8n, live RUN_DONE runs since 2026-10-17, relay live list). Fields otherwise unchanged; the output-proof gap (no LaneRunReceipt@v2 on the learn steps) is recorded in the registry row's reason_evidence."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -25892,8 +25895,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-fabric-hermes-learning",
       "status": "REVIEWED",
-      "target_reason": "n8n fabric process hermes-learning step tag_engine (2026-10-15; unblocked 2026-10-15 (n8nfab/hermes-learning-unblock-20261015)); stage shadow",
-      "stage": "shadow",
+      "target_reason": "n8n fabric process hermes-learning step tag_engine (2026-10-15; unblocked 2026-10-15 (n8nfab/hermes-learning-unblock-20261015)); stage canary (2026-10-19 registry truth: was shadow while the lane ran live)",
+      "stage": "canary",
       "purpose": {
         "text": "Hermes tagging owner: strategy_tags on the strategy-registry vocabulary (config synonyms first, a governed cloud classifier refines undecided symbol-linked rows, capped per run), quality_score v2 and per-tag efficacy vs base rate (hermes_tag_efficacy)",
         "business_function": "learning",
@@ -26081,7 +26084,8 @@
           "reason": "empty_output",
           "notifier_priority": "P2"
         }
-      }
+      },
+      "state_note": "2026-10-19 registry truth: stage shadow -> canary to match the registry row and the host (effect owner n8n, live RUN_DONE runs since 2026-10-17, relay live list). Fields otherwise unchanged; the output-proof gap (no LaneRunReceipt@v2 on the learn steps) is recorded in the registry row's reason_evidence."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -26282,8 +26286,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-fabric-hermes-learning",
       "status": "REVIEWED",
-      "target_reason": "n8n fabric process hermes-learning step autonomous_self_tune (2026-10-15; unblocked 2026-10-15 (n8nfab/hermes-learning-unblock-20261015)); stage shadow; 2026-10-17 tune cutover: registry stage canary, both halves (graft + archive-first purge)",
-      "stage": "shadow",
+      "target_reason": "n8n fabric process hermes-learning step autonomous_self_tune (2026-10-15; unblocked 2026-10-15 (n8nfab/hermes-learning-unblock-20261015)); stage canary (2026-10-19 registry truth: was shadow while the lane ran live); 2026-10-17 tune cutover: registry stage canary, both halves (graft + archive-first purge)",
+      "stage": "canary",
       "purpose": {
         "text": "Hermes self-learning + self-purge (the whole tune step, both legs, since the 2026-10-17 cutover): graft outcome-gated calibration suggestions (hermes_weight_calibration OUTCOME_LEDGER rows) into the live factor weights, clamped per step and capped by weekly drift, then prune stale pipeline state archive-first (stale advisory queue, failed embeddings, aged score/research rows, the three dead legacy tables); every leg audited",
         "business_function": "learning",
@@ -26473,7 +26477,8 @@
           "reason": "empty_output",
           "notifier_priority": "P2"
         }
-      }
+      },
+      "state_note": "2026-10-19 registry truth: stage shadow -> canary to match the registry row and the host (effect owner n8n, live RUN_DONE runs since 2026-10-17, relay live list). Fields otherwise unchanged; the output-proof gap (no LaneRunReceipt@v2 on the learn steps) is recorded in the registry row's reason_evidence."
     },
     {
       "schema": "N8nHealthContract@v1",
@@ -29443,6 +29448,240 @@
           {
             "kind": "ledger_row",
             "ref": "data/governance/n8n_coordination_ledger.sqlite comms_intent_consumption (state DONE, done_at, incident_key per intent)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "registry-runtime-truth",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
+      "purpose": {
+        "text": "Daily, compare declared lane state (registry state/stage/kind, health-contract stage, allowlist live_arg, fabric process mode, parent-row effect_ownership) with host evidence (coordination ledger live RUN_DONE runs and effect_owners, relay live-lane names, crontab -l, n8n active workflows) and report every contradiction; queue one DIGEST host comms intent when any exist. Edits nothing it measures (AGENTS.md \u00a70 rule 5).",
+        "business_function": "alerts-ops",
+        "source": "scripts/check_registry_runtime_truth.py; docs/ops/packets/registry-runtime-truth-20261018/README.md; external review 2026-10-18"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/check_registry_runtime_truth.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_registry_runtime_truth.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/registry-runtime-truth_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt@v2 / allowlist output_signal"
+        },
+        {
+          "name": "config/lane_registry.json, config/n8n_health_contracts.json, config/n8n_run_allowlist.json, config/n8n_fabric_processes.json",
+          "kind": "config",
+          "direction": "read",
+          "source": "declared side, re-read every run"
+        },
+        {
+          "name": "data/governance/n8n_coordination_ledger.sqlite runs, effect_owners",
+          "kind": "store",
+          "direction": "read",
+          "source": "sqlite mode=ro + PRAGMA query_only"
+        },
+        {
+          "name": "data/governance/n8n_coordination_ledger.sqlite comms_intents",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/host_comms_intents.py queue_intent (one row per run with contradictions; dedupe + cap)"
+        },
+        {
+          "name": "~/.config/tradeai/n8n-live-lanes.env (TRADEAI_N8N_RELAY_LIVE_LANES names only)",
+          "kind": "config",
+          "direction": "read",
+          "source": "only that variable's lines are read"
+        },
+        {
+          "name": "crontab -l; docker exec m8m-n8n-db psql (SELECT active workflows)",
+          "kind": "service",
+          "direction": "read",
+          "source": "scripts/lib/n8n_live_inventory.py read_active_workflows"
+        },
+        {
+          "name": "scripts/n8n_comms_intent_consumer.py -> scripts/n8n_incident_fanin.py -> scripts/incident_notifier.py",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "route fabric/registry_runtime_contradiction (config/host_comms_intent_routes.json, DIGEST -> P2)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "last_live_run_done",
+          "text": "the daily dispatcher fire ends RUN_DONE in mode live (run ids d:registry-runtime-truth:live:<slot>)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/registry-runtime-truth_last.json ok_at advances on each successful live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at is within 48 h (2x of expected_cadence_hours 24)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 96.0 s (80% of timeout_s 120)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "a dry_run fire prints the report and writes no receipt and no intent"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count 1 (one complete report)"
+        },
+        {
+          "check": "all_sources_measured",
+          "text": "summary.sources all ok; not_measured is empty"
+        },
+        {
+          "check": "no_contradictions",
+          "text": "summary.contradiction_count is 0 (declared state matches the host)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 48 h but younger than 72 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 96.0 s"
+        },
+        {
+          "check": "not_measured",
+          "text": "a source (crontab, n8n DB, live-lane file) was unreadable: its rules are NOT_MEASURED (skipped_reasons not_measured_<source>)"
+        },
+        {
+          "check": "contradictions",
+          "text": "contradiction_count > 0: one DIGEST intent queued; the fix is a reviewed registry/contract PR or an operator host change, never this lane"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 72 h (3x cadence)"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced 0, or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] (registry or ledger unreadable) -> RUN_FAILED empty_output"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
+        },
+        {
+          "check": "intent_refused",
+          "text": "the alert intent was refused (skipped_reasons intent_<reason>): contradictions exist but cannot reach the operator"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 120,
+        "class": "monitor",
+        "computed_on": "2026-10-19",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 96.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "lane_registry.json row severity (ALERT_TAXONOMY.md \u00a72: a stale reconciliation report delays a DIGEST line; no money at risk)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends). Never PAGE: the P1 path does not depend on n8n (AGENTS.md \u00a724.1).",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": true,
+        "diagnosis_excluded": false,
+        "actions": [
+          {
+            "action_id": "rerun_dry_run",
+            "auto": true
+          },
+          {
+            "action_id": "reap_orphan_run",
+            "auto": true
+          }
+        ],
+        "default_action": "suggest_only",
+        "suggest_only_reason": null
+      },
+      "evidence": {
+        "receipt": "data/runtime/registry-runtime-truth_last.json",
+        "monitor": "scripts/n8n_incident_fanin.py comms intent findings (route fabric/registry_runtime_contradiction)",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='registry-runtime-truth' ORDER BY requested_at DESC LIMIT 10\"",
+          "stat / jq the receipt: data/runtime/registry-runtime-truth_last.json (summary.contradiction_count, summary.by_code, summary.not_measured)",
+          "python3 scripts/check_registry_runtime_truth.py --dry-run"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output derived 2026-10-19 from scripts/check_registry_runtime_truth.py lane_output(): produced 1 = one complete report (registry and ledger read); an unreadable registry or ledger is dependency_unavailable (fatal); an unreadable optional source is skipped_reasons not_measured_<source>."
+      },
+      "review_by": "2026-10-26",
+      "state_note": "Added 2026-10-19 REVIEWED at canary with its registry row (dispatch live daily 07:20 ET); live only after the operator adds the lane to the relay live list.",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "one complete registry/runtime reconciliation report (receipt summary carries the contradictions)",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/registry-runtime-truth_last.json produced_count (LaneRunReceipt@v2 output fields; the executor reads the immutable attempt copy data/runtime/lane_attempts/registry-runtime-truth/<run_id>.json)"
           }
         ],
         "on_violation": {
