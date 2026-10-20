@@ -120,6 +120,12 @@ GATES = [
     # touches, per-class fingerprints, digest routing; llm_curation deferred (no Ollama); both monitors as n8n canary
     # lanes (dry live_arg first) with REVIEWED contracts, LaneRunReceipt@v2 and the operator packet. Hermetic.
     ("data_integrity_fixes_20261018", ["tests/test_data_integrity_fixes_20261018.py"]),
+    # ANCHOR: TEST_ENV_REDACTION_20261020 — a failing `assert "DB_PASSWORD" not in os.environ` printed the whole host
+    # environment (live broker secrets) into a CI log. tests/conftest.py pytest_assertrepr_compare explains any
+    # comparison with os.environ by name only; the two retention fixtures clear an inherited DB_PASSWORD first.
+    # Hermetic: inner pytest runs with a minimal env and a canary value.
+    ("test_env_redaction_20261020", ["tests/test_env_redaction_20261020.py", "tests/test_retention_registry_20261007.py",
+                                     "tests/test_retention_hardening_20261011.py"]),
     # ANCHOR: N8N_EVIDENCE_KIND_PARITY_20261019 — the runtime output verdict and the FW-M6 checker accept the same
     # N8nExpectedOutput@v1 evidence kinds (file_artifact, per N8N_CONTRACTS_DESIGN.md); before, "file" vs "file_artifact"
     # meant no contract could cite a file. Hermetic: committed contracts read only.
