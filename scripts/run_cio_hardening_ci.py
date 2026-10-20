@@ -132,6 +132,12 @@ GATES = [
     # held, actionable, directive backlog oldest-first, never-covered in a per-day rotation, fetched-within-20h last;
     # --dry-run read-only with no yfinance call. Hermetic: fake DB/modules, tmp ROOT.
     ("analyst_feed_stale_20261020", ["tests/test_analyst_feed_stale_20261020.py"]),
+    # ANCHOR: DATA_PLAUSIBILITY_FOUR_20261020 — four plausibility BLOCKs still firing after the 2026-10-18 fixes were
+    # served: scalp_critic_agent.validate_catalyst (second catalyst_confidence producer) reached 1.1/1.2, now clamped
+    # to [0, 1]; etf_performance_enrich spent its 300 cap alphabetically so 11 NaN ytd rows (2026-08-29) were never
+    # revisited, now stalest perf_updated_at first; the batch indicators API upsert never refreshed stop_price on
+    # conflict, now every scalar column. Hermetic: sqlite + source text.
+    ("data_plausibility_four_20261020", ["tests/test_data_plausibility_four_20261020.py"]),
     # ANCHOR: N8N_EVIDENCE_KIND_PARITY_20261019 — the runtime output verdict and the FW-M6 checker accept the same
     # N8nExpectedOutput@v1 evidence kinds (file_artifact, per N8N_CONTRACTS_DESIGN.md); before, "file" vs "file_artifact"
     # meant no contract could cite a file. Hermetic: committed contracts read only.

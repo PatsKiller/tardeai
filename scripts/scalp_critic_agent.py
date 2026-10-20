@@ -116,7 +116,12 @@ def validate_catalyst(symbol: str, company: str, headline: str) -> tuple:
     matched = [w for w in words if w in hl]
     if matched:
         score += min(0.6, len(matched) * 0.3); parts.append(f"company({','.join(matched[:2])})")
-    return score >= 0.3, round(score, 2), ','.join(parts) or 'no_match'
+    # 2026-10-20: ticker 0.6 + company up to 0.6 reached 1.1/1.2 and was stored in
+    # trade_ai_scans.catalyst_confidence, a 0..1 column (single_scale BLOCK: 195 rows >1 in 30 days, all 1.1/1.2,
+    # newest written after scoring.validate_catalyst_relevance was clamped on 2026-10-18). Same clamp here;
+    # the relevance test (score >= 0.3) is unchanged.
+    score = max(0.0, min(1.0, round(score, 2)))
+    return score >= 0.3, score, ','.join(parts) or 'no_match'
 
 
 def yahoo_headline_fallback(symbol: str) -> str:
