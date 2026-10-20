@@ -23142,7 +23142,10 @@ def _indicator_batch_handler(body: dict) -> tuple:
         try:
             r = analyze_confluence(sym.upper(), profile)
             results[sym.upper()] = r
-            # Cache result
+            # Cache result. 2026-10-20: the conflict branch refreshes every scalar column, as the single-symbol
+            # path and indicator_universe_lane.UPSERT_SQL do. It used to update only score/tier/bullish/badges/
+            # full_result, so a negative stop_price from before the 2026-10-18 atr_stop_target floor survived
+            # every recompute while full_result said stop None (indicator_confluence_cache.stop_price min, BLOCK).
             if r.get("ok"):
                 try:
                     _db_write(
@@ -23157,7 +23160,16 @@ def _indicator_batch_handler(body: dict) -> tuple:
                              confluence_score=EXCLUDED.confluence_score,
                              confluence_tier=EXCLUDED.confluence_tier,
                              signals_bullish=EXCLUDED.signals_bullish,
+                             signals_bearish=EXCLUDED.signals_bearish,
+                             signals_neutral=EXCLUDED.signals_neutral,
                              strategy_badges=EXCLUDED.strategy_badges,
+                             bearish_badges=EXCLUDED.bearish_badges,
+                             key_levels=EXCLUDED.key_levels,
+                             stop_price=EXCLUDED.stop_price,
+                             target_price=EXCLUDED.target_price,
+                             atr=EXCLUDED.atr,
+                             adx_regime=EXCLUDED.adx_regime,
+                             entry_quality=EXCLUDED.entry_quality,
                              full_result=EXCLUDED.full_result,
                              computed_at=NOW(), expires_at=NOW()+INTERVAL '15 minutes'""",
                         (

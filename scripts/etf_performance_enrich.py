@@ -83,7 +83,11 @@ LANE_ID = "etf-performance-enrich"
 SYMBOL_CAP = 300
 _PERF_COLS = (("ytd_return_pct", "numeric"), ("dividend_yield_pct", "numeric"),
               ("ttm_dividend", "numeric"), ("perf_updated_at", "timestamptz"))
-_TARGET_SQL = "SELECT upper(symbol) FROM symbol_profiles WHERE instrument_type IN ('etf','fund','inverse_etf') ORDER BY 1"
+# Stalest first (2026-10-20). ``ORDER BY 1`` + SYMBOL_CAP=300 over 434 targets meant the alphabetical tail was never
+# refreshed: 11 rows (L..N, e.g. NBIZ/NVD/NLR) kept the NaN ytd_return_pct this lane wrote on 2026-08-29 before the
+# 2026-09-13 writer finite check, because nothing ever revisited them (symbol_profiles finite contract, BLOCK).
+_TARGET_SQL = ("SELECT upper(symbol) FROM symbol_profiles WHERE instrument_type IN ('etf','fund','inverse_etf') "
+               "ORDER BY perf_updated_at ASC NULLS FIRST, 1")
 
 
 def _receipt_lib():
@@ -193,7 +197,7 @@ def main(argv=None) -> int:
     args = _arguments(argv)
     lr = _receipt_lib()
     if args.dry_run or args.no_fetch:
-        target = args.symbols or "ETF/fund/inverse_etf symbols from symbol_profiles"
+        target = args.symbols or "ETF/fund/inverse_etf symbols from symbol_profiles, stalest perf_updated_at first"
         print(f"DRY-RUN {LANE_ID}: would select {target}; fetch at most {SYMBOL_CAP} symbols; "
               "ensure performance columns, persist through the symbol_profiles writer and write a live receipt; "
               "no DB, credential file or network opened")
