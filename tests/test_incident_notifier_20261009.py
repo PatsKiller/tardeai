@@ -185,7 +185,8 @@ def test_recovery_message_when_a_notified_incident_clears(tmp_path):
     _fanin(tmp_path, [_row("db_hygiene", "T:1", "P2")], as_of=t)
     rec = _run(tmp_path, now=t, sender=cap)
     assert [m["kind"] for m in rec["messages"]] == ["recovery"]
-    assert cap.calls[-1]["text"].startswith("TRADE AI SYSTEM RECOVERED — 1 incident(s)")
+    # 2026-10-18 review (N1): leaving the fan-in is settlement; RECOVERED needs validator-proved output
+    assert cap.calls[-1]["text"].startswith("TRADE AI SYSTEM NOTICE SETTLED — 1 incident(s) no longer reported")
     assert "MISSING:a.service" in cap.calls[-1]["text"]
     closed = _state(tmp_path)["notified"][N.incident_key("expected_services", "MISSING:a.service")]
     assert closed["open"] is False and closed["recovered_at"] == t.isoformat()  # kept, closed (flap guard)

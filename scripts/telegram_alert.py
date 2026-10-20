@@ -181,6 +181,9 @@ def with_provenance_footer(message: str, footer: Optional[str] = None) -> str:
 # Cleared at the START of every send, so a failed or suppressed send can never
 # be attributed the id of the previous one.
 _LAST_MESSAGE_IDS: list[str] = []
+#: Sentinel default for ``_best_effort_comms_publish(provider_message_id=...)``: "read the ambient store above" (this
+#: module's own send path only). Any explicit value — including None — is used as given (review 2026-10-18, N2).
+_AMBIENT_ID: Any = object()
 
 
 def reset_last_message_ids() -> None:
@@ -567,17 +570,23 @@ def record_operator_message(
     message_class: str = "report",
     delivered: bool | None = None,
     direction: str = "OUTBOUND",
-) -> None:
+    provider_message_id: Any = None,
+) -> dict | None:
     """Record a message that reached (or came from) the operator by a path other than send_telegram.
 
     Operator 2026-10-07: Communications is the single source of truth for message traffic — "nothing relevant
     should exist outside this centralized view". The CIO Desk bot, poller replies, the autonomy watchdog and Maria
     send through their own transports and never reached communication_events. Best-effort and never raises: a
     ledger write can never change what was sent. INBOUND rows (the operator's own messages) carry no delivery.
+
+    ``provider_message_id`` (review 2026-10-18, N2): these callers did NOT send through send_telegram, so the id is
+    the one their own transport returned — passed explicitly, never read from send_telegram's ambient store (None =
+    no id). OUTBOUND returns the reconciliation result ({ok, errors, status, settled, provider_message_id}) so the
+    caller can record a failed settlement next to its send.
     """
     if str(direction).upper() != "INBOUND":
-        _best_effort_comms_publish(message, message_class=message_class, producer=producer, delivered=delivered)
-        return
+        return _best_effort_comms_publish(message, message_class=message_class, producer=producer,
+                                          delivered=delivered, provider_message_id=provider_message_id)
     try:
         try:
             from scripts.lib.comms.adapters import from_plain_message
@@ -603,8 +612,14 @@ def _best_effort_comms_publish(
     message_class: str,
     producer: str = "telegram_alert.send_telegram",
     delivered: bool | None = None,
-) -> None:
+    provider_message_id: Any = _AMBIENT_ID,
+) -> dict:
     """Record CommunicationEvent without claiming delivery ownership (OFF/SHADOW).
+
+    ``provider_message_id``: omitted = this module's own send_telegram path, whose ids are in the ambient
+    ``last_message_ids()`` store; passed (even None) = the caller's transport's id, used as given (N2, 2026-10-18).
+    Returns {ok, errors, status, settled, provider_message_id}: a settle or record failure is reported, not only
+    printed.
 
     F1: `publish_communication` auto-reserves a ChannelDelivery stub; settle it
     here so the ledger never leaves a phantom in-flight RESERVED row that nothing
@@ -629,6 +644,7 @@ def _best_effort_comms_publish(
     None means genuinely unknown, and settles UNKNOWN rather than borrowing the
     flattering value.
     """
+    result: dict = {"ok": False, "errors": [], "status": None, "settled": 0, "provider_message_id": None}
     try:
         from scripts.lib.comms.adapters import from_plain_message
         from scripts.lib.comms.client import publish_communication
@@ -639,7 +655,8 @@ def _best_effort_comms_publish(
             from lib.comms.client import publish_communication  # type: ignore
             from lib.comms.delivery import settle_delivery  # type: ignore
         except ImportError:
-            return
+            result["errors"].append("comms_modules_unavailable")
+            return result
     try:
         # Record what the operator receives, not what the producer composed.
         # These two were allowed to differ and the ledger silently became a
@@ -675,10 +692,18 @@ def _best_effort_comms_publish(
         # visible here belongs to THIS message and cannot be inherited from the
         # previous one. Empty is the honest answer for a suppressed, digested,
         # or document send, and it is left empty rather than guessed.
-        mids = last_message_ids()
-        # One id per chat, comma-joined: the same shape channel_adapters records
-        # on the gateway path, so both paths read back identically.
-        provider_message_id = ",".join(mids) if mids else None
+        if provider_message_id is _AMBIENT_ID:
+            mids = last_message_ids()
+            # One id per chat, comma-joined: the same shape channel_adapters records
+            # on the gateway path, so both paths read back identically.
+            provider_message_id = ",".join(mids) if mids else None
+        else:
+            # External review 2026-10-18 (N2): a caller that sent through another
+            # transport (send_system -> deliver_text) passes the id it received.
+            # The ambient store belongs to send_telegram and may hold another
+            # message's id; an explicit None means "no id", never "go look".
+            provider_message_id = (str(provider_message_id)
+                                   if provider_message_id not in (None, "") else None)
         # Say what was observed, not what is convenient. SUPPRESSED and UNKNOWN
         # are already valid terminal statuses; using LEGACY_DELIVERED for all
         # three is what let the Communications page show a delivered alert the
@@ -700,6 +725,8 @@ def _best_effort_comms_publish(
             status = "SUPPRESSED"
         else:
             status = "UNKNOWN"
+        result["status"] = status
+        result["provider_message_id"] = provider_message_id
         for delivery_id in (published.delivery_ids or []):
             try:
                 settle_delivery(
@@ -710,16 +737,19 @@ def _best_effort_comms_publish(
                                           "observed_delivered": delivered},
                     delivery_owner="legacy",
                 )
+                result["settled"] += 1
             except Exception as e:
                 # Never swallow a settle failure silently (§7): a RESERVED stub
                 # left un-settled is a phantom in-flight row. Surface it rather
                 # than letting the ledger claim a queue that never drains.
-                print(
-                    f"[telegram] comms settle {status} failed for "
-                    f"{delivery_id}: {type(e).__name__}: {str(e)[:160]}"
-                )
-    except Exception:
-        return
+                msg = (f"settle {status} failed for {delivery_id}: "
+                       f"{type(e).__name__}: {str(e)[:160]}")
+                result["errors"].append(msg)
+                print(f"[telegram] comms {msg}")
+    except Exception as e:  # noqa: BLE001 — recording never changes the send
+        result["errors"].append(f"record_failed: {type(e).__name__}: {str(e)[:160]}")
+    result["ok"] = not result["errors"]
+    return result
 
 
 def _tag_outbound(published, message: str) -> None:

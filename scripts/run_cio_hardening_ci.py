@@ -4047,6 +4047,14 @@ GATES = [
         ],
     ),
     (
+        # External review 2026-10-18 false-green closure, notification findings (N1-N3): settlement is not
+        # recovery, explicit provider message id, server-side comms delivery health; plus the diagnosis-cadence doc
+        # truth. (M1-M3 and F1-F4 are gated by main's own suites.) Hermetic: tmp ledgers / state roots, DB doubles,
+        # fake transport.
+        "false_green_closure_20261018",
+        ["tests/test_false_green_closure_20261018.py"],
+    ),
+    (
         # Keep ownership admission fenced until actual child spawn; late effects remain epoch-fenced.
         # Hermetic threads, temporary ledgers and fake children; no production actions.
         "n8n_spawn_fence_20261018",
