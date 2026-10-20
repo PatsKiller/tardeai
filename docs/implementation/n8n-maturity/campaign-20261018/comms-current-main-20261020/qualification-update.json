@@ -1,0 +1,26 @@
+{
+  "source_sha": "c8516031cbd2d51fc607b058bcfa50596d8bbc1d",
+  "source_review": "APPROVED",
+  "browser_cases": 5,
+  "browser_pass": 5,
+  "actual_page_and_hook": true,
+  "external_requests": 0,
+  "native_build": "PENDING_FINAL_INDEX_HEAD",
+  "evidence": [
+    {
+      "source": "/tmp/n8n-campaign-20261018/comms-current-main-browser.json",
+      "sha256": "5af5efac794d988c3d9489a812a7b26a3901d257ac9b5046dfc5f22d20307067",
+      "archive": "5af5efac794d988c3d9489a812a7b26a3901d257ac9b5046dfc5f22d20307067.gz"
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/cross-review/comms-c851-integration/independent-review.json",
+      "sha256": "965a5b6e4052c11ef4ee76ed987a0d11e774d0d9be509d7c6d4eface85183db4",
+      "archive": "965a5b6e4052c11ef4ee76ed987a0d11e774d0d9be509d7c6d4eface85183db4.gz"
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/comms-current-private-dependency-preparation-20261020/result.json",
+      "sha256": "3c1ffc14a2e49de548db881268231d26a7b90361caca8c084578ada8bc7ca33e",
+      "archive": "3c1ffc14a2e49de548db881268231d26a7b90361caca8c084578ada8bc7ca33e.gz"
+    }
+  ]
+}
