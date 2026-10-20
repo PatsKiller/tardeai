@@ -431,6 +431,22 @@ def build_message(c: Candidate, kind: str, l2: dict, tape: dict, decision: dict)
     else:
         headline = f"🟡 ARMED · {c.symbol} · setting up — watch it"
     title = f"{AT_SCALP_ALERT_HEADER}\n{headline}"
+    if kind == STAND_DOWN:
+        # A closing note reads no book (evaluate_pass skips it on purpose), so it carries no L2/data-age line
+        # and states only the levels it has — never an all-"n/a" row (operator 2026-10-19, NCPL 10-16).
+        known = [(k, v) for k, v in (("last", c.last), ("entry", c.entry_ref), ("stop", c.stop_ref),
+                                     ("R", c.r_dollars)) if _num(v) is not None]
+        facts = [f"{k} {_fmt(v)}" for k, v in known]
+        ctx = [x for x in (f"float {_u(c.float_mm, 1, 'M')}" if _num(c.float_mm) is not None else None,
+                           f"RVOL {_u(c.rvol, 1, 'x')}" if _num(c.rvol) is not None else None,
+                           f"setup {c.setup_label or c.setup_id}" if (c.setup_label or c.setup_id) else None) if x]
+        lines = [NOT_AN_ORDER] + ([" · ".join(facts)] if facts else []) + ([" · ".join(ctx)] if ctx else [])
+        lines.append(trade_ai_line(c.trade_ai))
+        lines.append(catalyst_line(c.symbol, c.trade_ai, c.session_date))
+        base = _cc_base()
+        if base:
+            lines.append(f"Active Trader: {base}/v3/active-trader?tab=Alerts")
+        return title, "\n".join(lines)
     lines = [
         NOT_AN_ORDER,
         f"last {_fmt(c.last)} · entry {_fmt(c.entry_ref)} · stop {_fmt(c.stop_ref)} · R {_fmt(c.r_dollars)}",

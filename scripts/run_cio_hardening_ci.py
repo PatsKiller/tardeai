@@ -88,6 +88,12 @@ GATES = [
     # expected_output, staged effect key); LaneRunReceipt@v2 produced / empty_allowed / fatal dependency_unavailable via
     # the real CLI; idempotent rerun; the operator packet against fake systemctl/docker/proc. Hermetic: tmp ledgers.
     ("comms_intent_consumer_live_20261017", ["tests/test_comms_intent_consumer_live_20261017.py"]),
+    # ANCHOR: ACTIVE_TRADER_ALERT_COMPLETENESS_20261019 — alerts that shipped blank/UNKNOWN: swing entry cards carry
+    # company/sector/catalyst/CIO decision (shared lib.entry_alert_context); one swing-entry sender (planner persists,
+    # cio_entry_state_runner pages; config/swing_entry_alerts.yaml rollback); AT conflict = latest verdict only, AT-internal
+    # conflict falls back to Trade-AI evidence for display; fast-loop alerts carry same-day pass RVOL/setup/float/Trade-AI;
+    # STAND DOWN states last/entry/stop with no L2/all-n/a line; unstamped 0/5 AT evidence block dropped. Hermetic.
+    ("active_trader_alert_completeness_20261019", ["tests/test_active_trader_alert_completeness_20261019.py"]),
     # ANCHOR: DATA_INTEGRITY_FIXES_20261018 — operator-approved data-integrity fix PR: Finviz recom "%"/off-scale refused
     # by writer, cache loader and consumers (JNUG "-95.44%" reproduction) + dry-run-default remediation (archive + NULL,
     # never DELETE); no empty analyst_data_history payloads, readers say "unavailable"; ATR stop never <= 0; confidence

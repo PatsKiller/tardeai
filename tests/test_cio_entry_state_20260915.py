@@ -170,7 +170,10 @@ def test_runner_contracts():
     assert 'ap.add_argument("--apply"' in src and "conn.rollback()" in src
     assert "send_alerts(r, evidence" in src and src.index("if a.apply:") < src.index("send_alerts(r, evidence")
     assert 'CIOEventBus().emit("watch.new_signal"' in src
-    assert "action_class <> 'entry'" in src  # the CIO's own entry rows never block themselves
+    # the CIO's own entry rows never block themselves (the lookup lives in the shared helper since 2026-10-19)
+    assert "latest_cio_decisions(cur, syms)" in src
+    shared = (ROOT / "scripts" / "lib" / "entry_alert_context.py").read_text(encoding="utf-8")
+    assert "action_class <> 'entry'" in shared
     for forbidden in ("place_order", "submit_order", "/orders"):
         assert forbidden not in src
 

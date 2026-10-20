@@ -262,7 +262,10 @@ def test_shared_projection_keeps_conflicting_events_and_marks_disagreement(candi
     assert set(row["active_trader"]["verdicts"]) == {"ALERT", "VETO"}
     assert len(row["active_trader"]["observations"]) == 2
     assert "CROSS_SOURCE_DISAGREEMENT" in row["conflicts"]
-    assert "ACTIVE_TRADER_VERDICT_CONFLICT" in row["conflicts"]
+    # Operator 2026-10-19 (BETR): a source's verdict conflict is judged on its LATEST verdict only. The
+    # VETO here is later than the ALERT, so it is a change of mind, not an Active Trader internal conflict.
+    assert "ACTIVE_TRADER_VERDICT_CONFLICT" not in row["conflicts"]
+    assert row["active_trader"]["latest_verdict"] == "VETO"
 
 
 def test_shared_projection_friday_run_cannot_become_monday_by_session_anchor(candidate_projection):

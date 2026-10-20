@@ -64,6 +64,11 @@ def _source_view(observations, status, day):
     unique = {_digest(o): o for o in observations}
     rows = sorted(unique.values(), key=lambda o: (o.get("observed_at") or "", _digest(o)), reverse=True)
     dates = {o["session_date"] for o in rows if o.get("session_date")}
+    # The source's CURRENT verdict: the verdicts observed at its newest timestamp. A later ALERT after
+    # earlier VETOs (the fast loop journals a VETO every tick) is a change of mind, not a conflict;
+    # only two different verdicts at the same newest instant are (operator 2026-10-19, BETR).
+    newest = rows[0].get("observed_at") if rows else None
+    latest = sorted({o["verdict"] for o in rows if o.get("observed_at") == newest})
     state = "UNKNOWN" if not dates else "CURRENT_SESSION" if day in dates else "STALE_SESSION"
     if status in UNAVAILABLE:
         state = "UNKNOWN"
@@ -71,6 +76,8 @@ def _source_view(observations, status, day):
         "status": status if status in UNAVAILABLE else "OBSERVED" if rows else "MISSING",
         "session_state": state,
         "verdicts": sorted({o["verdict"] for o in rows}),
+        "latest_verdicts": latest,
+        "latest_verdict": latest[0] if len(latest) == 1 else None,
         "observations": rows,
     }
 
@@ -213,7 +220,7 @@ def build_candidate_projection(
         conflicts = []
         if len(ta["verdicts"]) > 1:
             conflicts.append("TRADE_AI_VERDICT_CONFLICT")
-        if len(at["verdicts"]) > 1:
+        if len(at["latest_verdicts"]) > 1:
             conflicts.append("ACTIVE_TRADER_VERDICT_CONFLICT")
         comparable = bool(scope[0] and not scope[0].startswith("unresolved:") and scope[1] and scope[3])
         if comparable and (

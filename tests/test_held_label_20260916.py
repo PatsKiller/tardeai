@@ -53,4 +53,5 @@ def test_producers_thread_held_from_holdings_universe():
     # Entry producer: _held() reads the same universe and stamps _entry_item.
     wl = (ROOT / "scripts" / "watchlist_entry_planner.py").read_text(encoding="utf-8")
     assert "from lib.holdings_universe import held_equity_tickers" in wl
-    assert '_entry_item(sym, p, urg, price, held=_held(sym))' in wl
+    # 2026-10-19: the call also passes context=_alert_context(sym) (identity/catalyst/CIO decision).
+    assert '_entry_item(sym, p, urg, price, held=_held(sym),' in wl
