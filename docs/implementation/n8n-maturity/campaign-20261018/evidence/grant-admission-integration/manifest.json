@@ -1,0 +1,150 @@
+{
+  "schema": "N8nCampaignIntegrationManifest@v1",
+  "status": "LOCAL_TESTED_NOT_DEPLOYED",
+  "base_sha": "d995b471ff5826b45cd1387c8a13d462662b467b",
+  "source_sha": "b14bfc542d481499d7bf1efcc4b8147de6332628",
+  "upstream_pr": {
+    "number": 1851,
+    "refreshed_head": "865a9a0b127a37454438389abdaddd1962b079d1",
+    "state": "OPEN",
+    "unchanged_upstream_held": true
+  },
+  "exact_source_and_test_files": [
+    {
+      "path": "bin/guard",
+      "sha256": "9454d90f7ef363e1b0feade21b1534acd1076c41cad67f6261b4aded5b0cd1d6"
+    },
+    {
+      "path": "scripts/lib/fabric_grant.py",
+      "sha256": "3e6dc657dfce32e2a943d57dbefb68c13e8cec93456689b1e460fb4e5639f8a8"
+    },
+    {
+      "path": "docs/ops/packets/comms-intent-consumer-live-20261017/cutover.sh",
+      "sha256": "5f6faf8cf15de61566105061fe55a823a36f196608b1f5cda7f8bcdb752c902d"
+    },
+    {
+      "path": "docs/ops/packets/hermes-feedback-cutover-20261017/cutover.sh",
+      "sha256": "37aa148c47abd26c69ff3e75dbc6167aa55be6788ab47487ef61cd6eb39314df"
+    },
+    {
+      "path": "docs/ops/packets/hermes-tune-cutover-20261017/cutover.sh",
+      "sha256": "2ce494e9fe52c9a05824d13c52b896b27672d8b26b58fc2107ec15ac885b0db0"
+    },
+    {
+      "path": "tests/test_fabric_grant_id_20261018.py",
+      "sha256": "c1de85dad45814077a1368b32c3fe236f76181b861d470399f77fb0bd7c79995"
+    },
+    {
+      "path": "tests/test_comms_intent_consumer_live_20261017.py",
+      "sha256": "09e12ba52faba547dda212709e0b0823d042c70231134a47b34470bc5e32a855"
+    }
+  ],
+  "merged_test_fixtures": [
+    "tests/test_hermes_feedback_cutover_20261017.py",
+    "tests/test_hermes_tune_cutover_20261017.py"
+  ],
+  "fixture_integration": "Preserve four learning plus one tune and held sixth stage from current base. Temporary future-ready feedback config reaches invalid grant rejection without altering actual config. Original failure retained; no production defect or red-first claim from fixture mismatch.",
+  "validation": {
+    "initial": "106 passed, 1 fixture-precondition assertion failure",
+    "final": "107 passed",
+    "production_source_unchanged_from_reviewed_b14": true
+  },
+  "gate_inventory": {
+    "before": 495,
+    "after": 496,
+    "existing_gates_unchanged": true
+  },
+  "artifacts": [
+    {
+      "original_path": "review/grant-followup-manifest.json",
+      "stored_path": "grant-followup-manifest.json.gz",
+      "raw_sha256": "4445fbf9f4aa6e82f6502221df83c63719ecffd4ede743ce656d6e4808cc36df",
+      "stored_sha256": "264aa9350ce4458837a7f13bcb55a77626938dbbe6b82e65554ad06d5ffde612"
+    },
+    {
+      "original_path": "review/test_independent_residuals.py",
+      "stored_path": "test_independent_residuals.py.gz",
+      "raw_sha256": "dc7d3e186ba2d52855f91018cf10ad87a51636a07785a6d8d78c5b5d5806473a",
+      "stored_sha256": "4d5fa132afef2ce20dbedfd9f2544dc06981b2a518999efbf61d7bbf447f032a"
+    },
+    {
+      "original_path": "review/candidate-residuals.xml",
+      "stored_path": "candidate-residuals.xml.gz",
+      "raw_sha256": "3e6ac0e874760f6f77b3c0629b7ec28487b97a9afac8391b4a96f7c44d72c2fe",
+      "stored_sha256": "0428d8451eab996bb1461c603e85d19cdd837ecb97a184efbf9ef1163f1e27bc"
+    },
+    {
+      "original_path": "review/grant-hard-hold-red-pair.xml",
+      "stored_path": "grant-hard-hold-red-pair.xml.gz",
+      "raw_sha256": "a52c7ee2bab691f796c7d0703ce967d50890bfa3a0262a3547d319aba2fe102c",
+      "stored_sha256": "b9ee539d817f283870aa3de6c94f6f524ed9f04a4bb4a125a765cd22537d9f62"
+    },
+    {
+      "original_path": "review/grant-hard-hold-exact.xml",
+      "stored_path": "grant-hard-hold-exact.xml.gz",
+      "raw_sha256": "1907cfd08a31b69943541c292d2410118922152712bb0cfddba1d7165b90a2fc",
+      "stored_sha256": "c4abe624de02e7c9c41bf599556a74ae9743f7c4ad8a8701d0326d4be0617523"
+    },
+    {
+      "original_path": "cross-review/grants-retirement.json",
+      "stored_path": "grants-retirement.json.gz",
+      "raw_sha256": "23ecbc99c3d68ab43d0f3b39ec0bfdd5a7e53bf646e636b403a1e98443b012fd",
+      "stored_sha256": "3ea8805309ef32496261edd2fe4c24c665bf851c7fed89136b6f1bdaf2e15eb4"
+    },
+    {
+      "original_path": "cross-review/grants-held-head-focused-tests.txt",
+      "stored_path": "grants-held-head-focused-tests.txt.gz",
+      "raw_sha256": "1cccd0b44621e455796836fecbc58e51fab6f9af8662181fa3d1085b5cf45bae",
+      "stored_sha256": "ac626cdfcc179a191a55c539a4b7250e41c5d822c6ee594ffeef7a281506da9f"
+    },
+    {
+      "original_path": "cross-review/grants-held-head-independent-tests.txt",
+      "stored_path": "grants-held-head-independent-tests.txt.gz",
+      "raw_sha256": "4e8b6c5a89da44bf05d17100903172be04033067c113a6831bdfafbd42b7da52",
+      "stored_sha256": "7d7fd250160a3ec7497012789cacf48404fd5066dac59e5a5f5ca0a5b6c1eb62"
+    },
+    {
+      "original_path": "cross-review/grants-held-api-independent.txt",
+      "stored_path": "grants-held-api-independent.txt.gz",
+      "raw_sha256": "f95bc839fff53087f6837dfb5f95e71b0d2ed34d90d0136334c109d14c9dece0",
+      "stored_sha256": "2ed7eda25cbbaf0c1802f5f55066221baf92aa07229365b6685705611de43949"
+    },
+    {
+      "original_path": "cross-review/test_grant_holds_api_independent.py",
+      "stored_path": "test_grant_holds_api_independent.py.gz",
+      "raw_sha256": "a686067856d5840a2c5a0092dae6333301a3dda1c1e9230439b5887b16ad8153",
+      "stored_sha256": "059c236fd5fa1445c2a28d73470cccec94c78dda982c8560b9d0126b6f6d29eb"
+    },
+    {
+      "original_path": "cross-review/test_grant_packets_independent.py",
+      "stored_path": "test_grant_packets_independent.py.gz",
+      "raw_sha256": "a6011878226b14d4c3fb4215ba28e440956439307122f9402c5837b7482238fb",
+      "stored_sha256": "66e2c0f953b765a512c17c156446560a5bea2896f7132da1189cda41944917a7"
+    },
+    {
+      "original_path": "cross-review/grant-race-held-exact.xml",
+      "stored_path": "grant-race-held-exact.xml.gz",
+      "raw_sha256": "d6bf5cb5ef8884728dccf50260de2f36bd4a0dc955b32f8230fa395ab44ad41b",
+      "stored_sha256": "b4418f369d82b1badf1acefd17051a18e2e0a59bd6b5c7aafbd8b2a3602bf225"
+    },
+    {
+      "original_path": "grant-admission-integration-focused.xml",
+      "stored_path": "grant-admission-integration-focused.xml.gz",
+      "raw_sha256": "d1f52921c7c16c14208cb7cd6f2fe443161e0f7ca36da5e268410feffdd4391f",
+      "stored_sha256": "e70489a3054b893dc0d22f27a6da7441a14be6899bc116f7b110cd8c8987a9b4"
+    },
+    {
+      "original_path": "grant-admission-integration-final-focused.xml",
+      "stored_path": "grant-admission-integration-final-focused.xml.gz",
+      "raw_sha256": "e2960787e0afd185b18d74732f7e7d3ec08b494fd099918ef8053bb66a450265",
+      "stored_sha256": "aa1bb7d30697d5ed23b9bcab9b85cda51f1d885d1ea237f2f1241333cce98069"
+    }
+  ],
+  "holds": [
+    "No real grant issued, consumed, altered or requested by these tests",
+    "Five legacy c2/c3/rollback ownership actions remain hard-held even with grant",
+    "No activation/cutover/release performed",
+    "Final native, independent integration review and hosted exact-head CI pending"
+  ],
+  "compatibility": "Full32hex authentic finite active grant ID required; scope labels, abbreviated IDs, corrupt/duplicate/symlink ledgers refused. Existing operator issuer and ledger unchanged. Exact action/lane/workflow/packet hash plus separately scoped unit authority required before atomic all-tier consumption."
+}

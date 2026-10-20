@@ -5,6 +5,7 @@ import SchedulerOperations from './SchedulerOperations'
 import N8nToday from './N8nToday'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { projectionReadPath } from '../lib/projectionReadProtocol'
 import { Chip, ChipRow, SortHeader, useSort } from '../components/primitives'
 import { RADIUS, TOKENS, TYPE, FONT } from '../lib/designTokens'
 import { projectCoordination, type CoordinationPayload, type CoordinationRow } from '../lib/coordinationEvents'
@@ -52,9 +53,9 @@ function getter(row: CoordinationRow, key: string): unknown {
 }
 
 export default function CoordinationPage() {
-  const { data, loading, error, transport, stale } = useApi<CoordinationPayload>('/api/v2/coordination/events?limit=200', 30_000)
+  const { data, loading, error, transport, stale } = useApi<CoordinationPayload>(projectionReadPath('events'), 30_000)
   const runsApi = useApi<{ schema?: string; status?: string; as_of?: string; items?: Array<Record<string, unknown>>; count?: number | null; total_count?: number | null; coverage?: { scope?: string; since?: string | null; through?: string | null; items_truncated?: boolean }; note?: string }>(
-    '/api/v2/coordination/events?source=runs&limit=40',
+    projectionReadPath('runs'),
     60_000,
   )
   const [laneFilter, setLaneFilter] = useState<string | null>(null)
@@ -79,7 +80,7 @@ export default function CoordinationPage() {
     const lanes = model.waveBLanes.length ? model.waveBLanes : ['research-intake', 'watch-refresh', 'incident-fanin']
     return lanes.map(lane => ({ lane, n: model.countsAvailable ? model.laneCounts[lane] || 0 : null }))
   }, [model.waveBLanes, model.laneCounts, model.countsAvailable])
-  const outboxApi = useApi<OutboxPayload>('/api/v2/coordination/outbox?hours=24', 60_000)
+  const outboxApi = useApi<OutboxPayload>(projectionReadPath('outbox'), 60_000)
   const outbox = useMemo(() => projectOutbox(outboxApi.loading && !outboxApi.data ? null : outboxApi.data, { error: !!outboxApi.error, stale: outboxApi.stale }), [outboxApi.data, outboxApi.loading, outboxApi.error, outboxApi.stale])
   const approvalsApi = useApi<ApprovalBoardPayload>('/api/v2/coordination/approvals', 60_000)
   const approvals = useMemo(() => projectApprovalBoard(approvalsApi.loading && !approvalsApi.data ? null : approvalsApi.data), [approvalsApi.data, approvalsApi.loading])

@@ -139,8 +139,8 @@ def test_13_internal_guard_copy_not_schwab_rejected_and_no_sample_code():
     src = read(UI) + read(LEGACY_UI)
     assert "Trade AI blocked submit before Schwab: missing evidence-bound approval. No broker order was sent." in src
     assert "approved, but Schwab rejected" not in src
-    assert "placeholder=\"6-digit code\"" in src
-    assert "placeholder=\"000000\"" not in src
+    assert 'placeholder="6-digit code"' in src
+    assert 'placeholder="000000"' not in src
 
 
 def test_14_operator_buttons_use_2fa_and_manual_ticket_copy():
@@ -157,9 +157,12 @@ def test_14_operator_buttons_use_2fa_and_manual_ticket_copy():
 
 def test_15_build_marker_visible_for_deployment_verification():
     src = read(APP)
-    # Build marker is served via build-meta.json ui_version (App.tsx boot path).
-    assert "ui_version" in src
-    assert "__ANALYST_UI_VERSION__" in src or "build-meta" in src
+    # Loaded bundle identity remains compiled; served metadata is compared separately.
+    identity = read(APP.parent / "lib" / "buildIdentity.ts")
+    assert "ui_version" in identity
+    assert "__ANALYST_UI_VERSION__" in identity and "__CC_BUNDLE_SOURCE_SHA__" in identity
+    assert "LOADED_BUILD" in src and "compareServedBuild(LOADED_BUILD, served)" in src
+    assert "build-meta" in src and "Loaded bundle:" in src
 
 
 def test_17_click_preflight_validates_before_2fa_and_manual():
@@ -232,7 +235,9 @@ def test_31_cash_rows_excluded_from_stop_placement_ui():
     protect = read(UI)
     pill = read(ROOT / "apps/command-center-v3/src/components/StopKindPill.tsx")
     assert "isCashHolding" in row
-    assert "protectionState: 'CASH'" in row or "protectionState: 'PROTECTED' | 'NO_STOP' | 'UNVERIFIABLE' | 'CASH'" in row
+    assert (
+        "protectionState: 'CASH'" in row or "protectionState: 'PROTECTED' | 'NO_STOP' | 'UNVERIFIABLE' | 'CASH'" in row
+    )
     assert "CASH — no protective stop" in protect
     assert "CASH:" in pill
 
@@ -241,7 +246,11 @@ def test_32_live_stops_degraded_does_not_fall_back_to_llm_read_ok():
     src = read(PORTFOLIO) + read(UI) + read(API)
     assert "liveStopsDegraded" in src
     assert "live_stops_exception" in src
-    assert "_brokerOkList" in src or "brokerOkList" in src or "Array.isArray(brokerStopReadOk) ? brokerStopReadOk : null" in src
+    assert (
+        "_brokerOkList" in src
+        or "brokerOkList" in src
+        or "Array.isArray(brokerStopReadOk) ? brokerStopReadOk : null" in src
+    )
 
 
 def test_34_policy_suggested_stop_wires_into_2fa_form():

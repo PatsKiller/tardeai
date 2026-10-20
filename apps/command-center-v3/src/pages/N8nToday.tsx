@@ -3,6 +3,7 @@
 // failures with reason, lock skips, heals and diagnoses, lanes cut over today. Receipts only.
 import type { CSSProperties } from 'react'
 import { useApi } from '../hooks/useApi'
+import { projectionReadPath } from '../lib/projectionReadProtocol'
 import { Chip, ChipRow } from '../components/primitives'
 import { RADIUS, TOKENS, TYPE, FONT } from '../lib/designTokens'
 
@@ -34,7 +35,7 @@ function Table({ label, heads, rows, emptyLabel }: { label: string; heads: strin
 }
 
 export default function N8nToday({ active = true }: { active?: boolean }) {
-  const api = useApi<N8nTodayPayload>('/api/v2/coordination/n8n-today', 60_000, { enabled: active })
+  const api = useApi<N8nTodayPayload>(projectionReadPath('today'), 60_000, { enabled: active })
   const model = projectN8nToday(api.data, { error: !!api.error, stale: api.stale })
   const d = model.data
   const live = model.available('runs') ? d?.runs?.by_mode_state?.live || {} : {}
