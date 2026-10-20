@@ -1,5 +1,6 @@
 /** Communications feed as decision cards (operator 2026-10-08): "🚨 DT · STOP HEALTH · Priority 98 · Review Stops ·
- *  4d remaining" — colour-coded by family, no extra metadata unless expanded (click → the detail drawer). */
+ *  4d remaining" — colour-coded by family; the card carries the decision facts (entry / stop / target / R:R, Street
+ *  consensus, catalyst) so the drawer is for the full message (operator 2026-10-19). */
 import { RADIUS, numStyle } from '../../lib/designTokens'
 import { SymbolLink } from '../opportunity/OpportunityContext'
 import { PANEL_ORDER, PANEL_PRESET, labelOf, ttlLabel } from '../comms/CommsHubParts'
@@ -29,12 +30,39 @@ export function PriceTag({ m }: { m?: any }) {
   )
 }
 
+/** "Catalyst: News: Navan Advances … (2026-10-16) · +2 more" → the first catalyst line, tags stripped. */
+export function catalystOf(body?: string | null): string | null {
+  if (!body) return null
+  const text = body.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  const m = text.match(/Catalyst:\s*(?:News:\s*)?([^\n]+)/i)
+  return m ? m[1].trim().slice(0, 160) : null
+}
+
+// ── Street view ─────────────────────────────────────────────────────────────
+export function AnalystLine({ a, size = 12 }: { a?: any; size?: number }) {
+  if (!a) return null
+  const parts: string[] = []
+  parts.push(a.rating ? `${a.rating}` : 'No consensus rating')
+  if (a.analyst_count) parts.push(`${a.analyst_count} analysts`)
+  if (a.target_mean != null) parts.push(`mean target ${usd(a.target_mean)}${a.upside_pct != null ? ` (${a.upside_pct >= 0 ? '+' : ''}${a.upside_pct}%)` : ''}`)
+  const color = /buy/i.test(a.rating || '') ? 'var(--success-color)' : /sell|underperform/i.test(a.rating || '') ? 'var(--danger-color)' : 'var(--text2)'
+  return (
+    <div data-testid="analyst-line" style={{ fontSize: size, color: 'var(--text2)', marginTop: 2 }}
+      title={`Street consensus (${a.source || 'analyst targets'}) as of ${a.as_of ? new Date(a.as_of).toLocaleDateString() : '—'}${a.target_low != null ? ` · range ${usd(a.target_low)}–${usd(a.target_high)}` : ''}`}>
+      <span style={{ color: 'var(--text3)' }}>Analysts </span>
+      <b style={{ color }}>{parts[0]}</b>{parts.length > 1 ? ` · ${parts.slice(1).join(' · ')}` : ''}
+      {a.stale && <span style={{ color: 'var(--warning-color)' }}> · {Math.round(a.age_days)}d old</span>}
+    </div>
+  )
+}
+
 /** "Entry $13.90–$14.50 · Target $22.00 · R:R 6.5" from the CIO opportunity levels, when the CIO has them. */
 export function LevelsLine({ l }: { l?: any }) {
   if (!l) return null
   const parts: string[] = []
   if (l.entry_zone && l.entry_zone[0] != null) parts.push(`Entry ${usd(l.entry_zone[0])}–${usd(l.entry_zone[1])}`)
   else if (l.entry_ref != null) parts.push(`Entry ${usd(l.entry_ref)}`)
+  if (l.invalidation_level != null) parts.push(`Stop ${usd(l.invalidation_level)}`)
   if (l.target != null) parts.push(`Target ${usd(l.target)}`)
   if (l.rr != null) parts.push(`R:R ${Number(l.rr).toFixed(1)}`)
   if (!parts.length) return null
@@ -50,11 +78,13 @@ export function FeedCard({ e, selected, picked, onPick, onOpen }: {
   // opportunity cards only: on a risk/stop card the urgency (priority) is the decision number
   const conv: number | null = fam === 'opportunity' && e.levels?.conviction != null && Number.isFinite(Number(e.levels.conviction)) ? Number(e.levels.conviction) : null
   const soon = e.ttl_remaining_s != null && e.ttl_remaining_s > 0 && e.ttl_remaining_s < 12 * 3600
+  const catalyst = catalystOf(e.sanitized_body)
+  const acked = e.lifecycle_status === 'acknowledged' || !!e.acknowledged_at
   return (
     <div data-feed-card={e.event_id} data-family={fam} onClick={onOpen}
       style={{ display: 'grid', gridTemplateColumns: '20px minmax(0,1fr) auto', gap: 10, alignItems: 'center', cursor: 'pointer',
         background: selected ? s.bg : 'var(--bg1)', border: `1px solid ${selected ? s.border : 'var(--border)'}`,
-        borderLeft: `5px solid ${s.border}`, borderRadius: RADIUS.md, padding: '8px 12px' }}>
+        borderLeft: `5px solid ${s.border}`, borderRadius: RADIUS.md, padding: '8px 12px', opacity: acked && !selected ? 0.75 : 1 }}>
       <input type="checkbox" checked={picked} onClick={(ev) => ev.stopPropagation()} onChange={onPick} aria-label="select" />
       <div style={{ minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
@@ -69,6 +99,8 @@ export function FeedCard({ e, selected, picked, onPick, onOpen }: {
           ? <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginTop: 2 }}>▶ {e.action_hint}</div>
           : <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{labelOf(e.category)} · informational</div>}
         <LevelsLine l={e.levels} />
+        <AnalystLine a={e.analyst} />
+        {catalyst && <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={catalyst}><span style={{ color: 'var(--text3)' }}>Catalyst </span>{catalyst}</div>}
       </div>
       <div style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
         {/* One number per ticker everywhere (operator 2026-10-08: "why confidence doesn't match"): the CIO conviction
@@ -89,6 +121,7 @@ export function FeedCard({ e, selected, picked, onPick, onOpen }: {
           </>
         )}
         <div style={{ fontSize: 11, color: soon ? 'var(--warning-color)' : 'var(--text3)' }}>{ttlLabel(e.ttl_remaining_s, e.legal_hold).replace('left', 'remaining')}</div>
+        {acked && <div style={{ fontSize: 10, color: 'var(--success-color)' }} title={e.acknowledged_by ? `acknowledged by ${e.acknowledged_by}` : undefined}>✓ seen</div>}
       </div>
     </div>
   )

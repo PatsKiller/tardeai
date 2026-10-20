@@ -95,6 +95,10 @@ GATES = [
     # writes LaneRunReceipt@v2 + one deduped DIGEST host intent, the registry-runtime-truth lane, and the
     # SIGNAL_FREE_EXEMPT output-signal exemptions. Hermetic: tmp ledgers/state roots, fixture repo roots.
     ("registry_runtime_truth_20261018", ["tests/test_registry_runtime_truth_20261018.py"]),
+    # ANCHOR: COMMS_DRAWER_20261019 — Communications drawer: Street consensus on ticker items (Yahoo targets store,
+    # stale-marked, absent when uncovered), Telegram HTML rendered through an allowlist (no innerHTML), every lifecycle
+    # action explained, missing operator token asked for instead of a silent 403. Hermetic: injected DB read.
+    ("comms_drawer_20261019", ["tests/test_comms_drawer_20261019.py"]),
     # ANCHOR: DISK_HYGIENE_N8N_20261018 — rule-based disk hygiene (dry-run manifest by default; --apply needs a fresh
     # manifest, re-validates every item, grant + caps) and the band-deduped disk-usage monitor, both as n8n lanes;
     # never-touch list enforced in code. Hermetic: tmp git repos/worktrees, fake df/proc/crontab.

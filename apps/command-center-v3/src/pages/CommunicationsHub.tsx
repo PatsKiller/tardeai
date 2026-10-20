@@ -6,7 +6,8 @@ import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel, hubStrip } from '../lib/terminalHubChrome'
 import { RADIUS, TOKENS } from '../lib/designTokens'
 import AdminConfirmModal, { type PendingAction } from '../components/AdminConfirmModal'
-import { CommsFilterModal, ItemBadges, ttlLabel, labelOf, CATEGORY_COLOR, PANEL_PRESET, REENTRY_COLOR, tint, type HubFilters } from '../components/comms/CommsHubParts'
+import { MessageDrawer, MESSAGE_ACTIONS } from '../components/comms/MessageDrawer'
+import { CommsFilterModal, labelOf, CATEGORY_COLOR, PANEL_PRESET, REENTRY_COLOR, tint, type HubFilters } from '../components/comms/CommsHubParts'
 
 type Tab = 'events' | 'deliveries' | 'subjects' | 'retention' | 'agents'
 
@@ -152,10 +153,10 @@ export default function CommunicationsHub() {
     if (presetParam && PANEL_PRESET[presetParam]) applyPreset(PANEL_PRESET[presetParam])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presetParam])
-  const bulk = (action: string, extra: Record<string, any> = {}, label?: string) => {
+  const bulk = (action: string, extra: Record<string, any> = {}, label?: string, explain?: string) => {
     if (!picked.size) return
     setPending({ path: '/api/v2/communications/events/bulk', body: { event_ids: Array.from(picked), action, ...extra },
-      label: label || `${labelOf(action)} ${picked.size} message(s)` })
+      label: label || `${labelOf(action)} ${picked.size} message(s)`, explain })
   }
   const deliveries: any[] = deliveriesPayload?.deliveries || []
   const subjects: any[] = subjectsPayload?.subjects || []
@@ -335,8 +336,8 @@ export default function CommunicationsHub() {
             {picked.size > 0 && (
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8, fontSize: 10 }}>
                 <b style={{ color: TEXT }}>{picked.size} selected</b>
-                {[['acknowledge', {}, 'Acknowledge'], ['retain', { retain_hours: 24 }, 'Keep +24h'], ['retain', { retain_hours: 168 }, 'Keep +7d'], ['retain', {}, 'Keep (no expiry)'], ['release', {}, 'Release hold'], ['expire', {}, 'Expire now']].map(([a, x, l]: any) => (
-                  <button key={l} type="button" onClick={() => bulk(a, x, `${l}: ${picked.size} message(s)`)} style={{ fontSize: 10, padding: '2px 8px', border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT, cursor: 'pointer' }}>{l}</button>
+                {[...MESSAGE_ACTIONS, { action: 'release', extra: {}, label: 'Release', help: 'Un-pins pinned messages: they go back to expiring on their normal timer.' }].map((x) => (
+                  <button key={x.label} type="button" title={x.help} onClick={() => bulk(x.action, x.extra, `${x.label} — ${picked.size} message(s)`, x.help)} style={{ fontSize: 10, padding: '2px 8px', border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT, cursor: 'pointer' }}>{x.label}</button>
                 ))}
                 <button type="button" onClick={() => setPicked(new Set())} style={{ fontSize: 10, padding: '2px 8px', border: 'none', background: 'transparent', color: MUTED, cursor: 'pointer' }}>clear</button>
               </div>
@@ -368,44 +369,8 @@ export default function CommunicationsHub() {
           || Object.values(board?.panels || {}).flatMap((p: any) => p.items || []).find((x: any) => x.event_id === selectedId)
           || detail
         return (
-          <div onClick={() => setSelectedId(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 900 }}>
-            <div onClick={(ev) => ev.stopPropagation()} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: 520, maxWidth: '96vw', background: 'var(--bg1)', borderLeft: `1px solid ${BORDER}`, padding: 16, overflowY: 'auto' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                <b style={{ color: TEXT, fontSize: 12 }}>{e?.headline || e?.short_summary || shortId(selectedId)}</b>
-                <button type="button" onClick={() => setSelectedId(null)} style={{ fontSize: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer', padding: '2px 6px' }}>Close</button>
-              </div>
-              {e && (
-                <>
-                  <div style={{ marginBottom: 8 }}><ItemBadges e={e} /></div>
-                  <div style={{ fontSize: 10, color: TEXT2, lineHeight: 1.6, marginBottom: 10 }}>
-                    {[
-                      ['Symbols', (e.symbols || []).join(', ') || '—'],
-                      ['CIO conviction', e.levels?.conviction != null ? `${Math.round(e.levels.conviction)}/100${e.levels.rank ? ` · rank #${e.levels.rank}` : ''} (same number as Home and the ticker view)` : '— (not scored by the CIO)'],
-                      ['Message priority', e.priority_score ?? '—'],
-                      ['Message confidence · Risk · Reward · Time', [e.confidence, e.risk_score, e.reward_score, e.time_sensitivity].map((v: any) => (v == null ? '—' : Number(v).toFixed(2))).join(' · ')],
-                      ['Status', e.lifecycle_status || '—'],
-                      ['TTL', `${ttlLabel(e.ttl_remaining_s, e.legal_hold)} · expires ${fmtWhen(e.expires_at)}`],
-                      ['Actionable', e.actionable ? `yes — ${e.action_hint || ''} (since ${fmtWhen(e.actionable_since)})` : 'no'],
-                      ['Source', e.producer || '—'],
-                      ['Created', fmtWhen(e.created_at)],
-                      ['Rule', e.classified_by || '—'],
-                    ].map(([k, v]) => (
-                      <div key={String(k)}><span style={{ color: MUTED }}>{k}: </span><span style={{ color: TEXT }}>{String(v)}</span></div>
-                    ))}
-                  </div>
-                  <pre style={{ fontSize: 10, color: TEXT, whiteSpace: 'pre-wrap', wordBreak: 'break-word', background: 'var(--bg0, transparent)', border: `1px solid ${BORDER}`, padding: 8, borderRadius: RADIUS.sm, fontFamily: MONO }}>
-                    {e.sanitized_body || e.short_summary || ''}
-                  </pre>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-                    {[['acknowledge', {}, 'Acknowledge'], ['retain', { retain_hours: 168 }, 'Keep +7d'], ['retain', {}, 'Keep (no expiry)'], ['expire', {}, 'Expire now']].map(([a, x, l]: any) => (
-                      <button key={l} type="button" onClick={() => setPending({ path: '/api/v2/communications/events/bulk', body: { event_ids: [selectedId], action: a, ...x }, label: `${l}: 1 message` })}
-                        style={{ fontSize: 10, padding: '2px 8px', border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT, cursor: 'pointer' }}>{l}</button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+          <MessageDrawer e={e} id={selectedId} onClose={() => setSelectedId(null)}
+            onAction={(a, x, l, help) => setPending({ path: '/api/v2/communications/events/bulk', body: { event_ids: [selectedId], action: a, ...x }, label: `${l} — 1 message`, explain: help })} />
         )
       })()}
 

@@ -181,6 +181,7 @@ def test_feed_items_carry_the_live_quote_and_cio_levels(monkeypatch, tmp_path):
         "entry_zone": [13.9, 14.5], "entry_ref": 14.1, "primary_target": 22.0, "rr": 6.1}}}}))
     monkeypatch.setattr(cs, "PROJECTION_PATH", proj)
     cp._PROJ_CACHE.update(mtime=None, items={})
+    monkeypatch.setattr(cp, "analyst_consensus", lambda syms: {})
     out = cp.attach_market([{"symbols": ["SWMR"]}, {"symbols": ["NOQ"]}, {"symbols": []}])
     assert out[0]["market"]["price"] == 13.45 and out[0]["levels"]["entry_zone"] == [13.9, 14.5]
     assert out[0]["levels"]["target"] == 22.0
