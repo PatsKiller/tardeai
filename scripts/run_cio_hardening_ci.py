@@ -126,6 +126,12 @@ GATES = [
     # Hermetic: inner pytest runs with a minimal env and a canary value.
     ("test_env_redaction_20261020", ["tests/test_env_redaction_20261020.py", "tests/test_retention_registry_20261007.py",
                                      "tests/test_retention_hardening_20261011.py"]),
+    # ANCHOR: ANALYST_FEED_STALE_20261020 — Communications "Analysts" fact showed 87-day-old Street targets: the
+    # pro_analyst_fetch universe (~2,340, mostly directive-watch) was an unordered DISTINCT cut at --max 250 with held
+    # positions appended last, so the same ~250 refetched daily and NVDA/PFLT/SPCX sat at 2026-07-25. prioritize():
+    # held, actionable, directive backlog oldest-first, never-covered in a per-day rotation, fetched-within-20h last;
+    # --dry-run read-only with no yfinance call. Hermetic: fake DB/modules, tmp ROOT.
+    ("analyst_feed_stale_20261020", ["tests/test_analyst_feed_stale_20261020.py"]),
     # ANCHOR: N8N_EVIDENCE_KIND_PARITY_20261019 — the runtime output verdict and the FW-M6 checker accept the same
     # N8nExpectedOutput@v1 evidence kinds (file_artifact, per N8N_CONTRACTS_DESIGN.md); before, "file" vs "file_artifact"
     # meant no contract could cite a file. Hermetic: committed contracts read only.
@@ -4045,6 +4051,14 @@ GATES = [
             "tests/test_n8n_gateway_closed_inputs_20261018.py",
             "tests/test_n8n_output_contract_truth_20261018.py",
         ],
+    ),
+    (
+        # External review 2026-10-18 false-green closure, notification findings (N1-N3): settlement is not
+        # recovery, explicit provider message id, server-side comms delivery health; plus the diagnosis-cadence doc
+        # truth. (M1-M3 and F1-F4 are gated by main's own suites.) Hermetic: tmp ledgers / state roots, DB doubles,
+        # fake transport.
+        "false_green_closure_20261018",
+        ["tests/test_false_green_closure_20261018.py"],
     ),
     (
         # Keep ownership admission fenced until actual child spawn; late effects remain epoch-fenced.

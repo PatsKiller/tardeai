@@ -239,7 +239,8 @@ def test_alert_path_recovers_once_cadence_returns_even_with_a_stale_fanin(tmp_pa
     _log(tmp_path, _minutes(3, end=NOW + timedelta(hours=2)))
     cap = Capture()
     rec = _run(tmp_path, NOW + timedelta(hours=2), cap)
-    assert [m["kind"] for m in rec["messages"]] == ["recovery"] and "RECOVERED" in cap.calls[0]["text"]
+    # 2026-10-18 review (N1): the alert path clearing is settlement (no lane output run proves it): NOTICE SETTLED
+    assert [m["kind"] for m in rec["messages"]] == ["recovery"] and "NOTICE SETTLED" in cap.calls[0]["text"]
 
 
 def test_no_relay_log_and_no_fanin_keeps_the_old_no_input_behaviour(tmp_path):

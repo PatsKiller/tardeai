@@ -11,7 +11,9 @@ host-side consumer reads the fan-in receipt and the ledger and sends:
           during quiet hours (22:00-07:00 America/New_York, zoneinfo, DST-safe); held P2s leave as one batch
           at the end of the window.
   * recovery — one message when incidents that were notified are no longer open (a P2-only recovery waits
-          out quiet hours).
+          out quiet hours). Leaving the fan-in is SETTLEMENT ("TRADE AI SYSTEM NOTICE SETTLED — ... no longer
+          reported"); the word RECOVERED is used only for incidents whose lane has a live run that
+          scripts/lib/recovery_validator proves met its output contract after the last notice (review 2026-10-18 N1).
 
 Dedupe is per incident key (source|item, day-independent) for TRADEAI_INCIDENT_NOTIFIER_DEDUPE_HOURS (24):
 an incident still open after the window is reminded once more; a worse severity re-notifies at once.
@@ -210,6 +212,55 @@ def read_ledger_acks(path: Optional[Path] = None, *, now: Optional[datetime] = N
         }
     )
     return {"status": str(proj.get("status")), "acked_event_ids": acked}
+
+
+#: Fan-in sources whose item is ``<lane>:<kind>`` (scripts/lib/n8n_siem_bridge.lane_kind).
+LANE_ITEM_SOURCES = ("runs", "breach_detector", "scalp_lane")
+
+
+def _record_lane(rec: dict) -> Optional[str]:
+    lane = rec.get("lane")
+    if lane:
+        return str(lane)
+    item = str(rec.get("item") or "")
+    if rec.get("source") in LANE_ITEM_SOURCES and ":" in item:
+        return item.rsplit(":", 1)[0] or None
+    return None
+
+
+def recovery_evidence(notified: dict[str, dict], keys: list[str], ledger_path: Optional[Path]) -> dict[str, Any]:
+    """External review 2026-10-18 (N1): a notified incident leaving the fan-in is SETTLEMENT (the notice expired, was
+    delivered and closed, was acknowledged, or the source stopped reporting it), not recovery. "Recovered" needs
+    business-output evidence: scripts/lib/recovery_validator.output_recovered over the coordination ledger's runs for
+    the incident's lane, live mode (the useful-output contract), finished after the incident was last notified as
+    open. Returns {key: evidence} for the keys that have it; everything else is settled-unverified. Read-only; an
+    unreadable ledger proves nothing (no key gets evidence)."""
+    lanes = {k: _record_lane(notified.get(k) or {}) for k in keys}
+    if not any(lanes.values()):
+        return {}
+    try:
+        from scripts.lib import recovery_validator as RV
+        from scripts.lib.n8n_coordination_projection import ledger_path as default_ledger_path
+        from scripts.lib.n8n_siem_bridge import read_ledger_runs
+
+        p = Path(ledger_path) if ledger_path is not None else default_ledger_path()
+        if not p.is_file():
+            return {}
+        runs = read_ledger_runs(p)
+    except Exception:  # noqa: BLE001 — no evidence, never a crash of the notifier
+        return {}
+    out: dict[str, Any] = {}
+    for k, lane in lanes.items():
+        if not lane:
+            continue
+        rec = notified.get(k) or {}
+        since = rec.get("last_notified_at") or rec.get("first_notified_at")
+        if not since:
+            continue
+        ev = RV.output_recovered(lane, since, {"mode": "live"}, runs=[r for r in runs if r.get("lane_id") == lane])
+        if ev is not None:
+            out[k] = ev
+    return out
 
 
 def open_incidents(fanin: dict[str, Any], acked_event_ids: set[str]) -> tuple[dict[str, dict], list[str]]:
@@ -475,6 +526,7 @@ def plan_messages(
     fanin: dict[str, Any],
     acked: Optional[set[str]] = None,
     policy: Optional[dict[str, Any]] = None,
+    recovery_ev: Optional[dict[str, Any]] = None,
 ) -> tuple[list[dict], dict[str, Any]]:
     """Pure: which messages this run sends, in priority order (P1, recovery, P2 batch). No I/O.
 
@@ -513,13 +565,17 @@ def plan_messages(
     )
     recovery: dict[str, Any] = {"pending": len(cleared), "held": None}
     if cleared:
+        ev = recovery_ev or {}
         rec = [
             {
                 "key": k,
                 "source": state["notified"][k].get("source"),
                 "item": state["notified"][k].get("item"),
                 "severity": state["notified"][k].get("severity"),
-                "detail": "",
+                # N1 (2026-10-18): only a validator-proved live output run earns "recovered" on a line
+                "detail": (f"recovered (verified run {str((ev[k].get('evidence') or ['run:?'])[0])[4:]})"
+                           if k in ev else ""),
+                "recovery_verified": k in ev,
             }
             for k in cleared
         ]
@@ -536,13 +592,22 @@ def plan_messages(
         ):
             recovery["held"] = "recovery_window"  # enforce: P2-only recoveries leave at most once per batch window
         else:
+            verified = sum(1 for r in rec if r["recovery_verified"])
+            if verified == len(rec):
+                header = f"TRADE AI SYSTEM RECOVERED — {len(rec)} incident(s) recovered (verified output)"
+            else:
+                # External review 2026-10-18 (N1): disappearance from the fan-in is settlement, not recovery.
+                header = (f"TRADE AI SYSTEM NOTICE SETTLED — {len(rec)} incident(s) no longer reported at P1/P2 "
+                          + (f"({verified} verified recovered)" if verified else "(recovery not verified)"))
             msgs.append(
                 {
                     "kind": "recovery",
                     "severity": "RECOVERY",
                     "incident_keys": cleared,
                     "incidents": rec,
-                    "header": f"TRADE AI SYSTEM RECOVERED — {len(rec)} incident(s) no longer open at P1/P2",
+                    "header": header,
+                    "settlement": {"verified_recovered": verified, "settled_unverified": len(rec) - verified},
+                    "verified_keys": sorted(r["key"] for r in rec if r["recovery_verified"]),
                 }
             )
     p2 = sorted(
@@ -632,10 +697,15 @@ def apply_result(state: dict, msg: dict, now: datetime) -> None:
             state["notified"][k]["flap_note_pending"] = False
     if msg["kind"] == "recovery":
         state["last_recovery_at"] = iso
+        verified = set(msg.get("verified_keys") or [])
         for k in msg["incident_keys"]:
             r = state["notified"].get(k)
             if r is not None:
-                r.update({"open": False, "recovered_at": iso, "recovery_count": int(r.get("recovery_count") or 0) + 1})
+                # ``recovered_at`` keeps its name (the flap cooldown and record TTL key on it); what it means is
+                # recorded beside it: settlement is not recovery unless the validator proved output (N1).
+                r.update({"open": False, "recovered_at": iso, "recovery_count": int(r.get("recovery_count") or 0) + 1,
+                          "settled_at": iso, "recovery_verified": k in verified,
+                          "settlement": "recovered_verified" if k in verified else "no_longer_reported"})
         return
     for inc in msg["incidents"]:
         prior = state["notified"].get(inc["key"]) or {}
@@ -647,6 +717,8 @@ def apply_result(state: dict, msg: dict, now: datetime) -> None:
             "open": True,
             "momentum_host_watch": inc.get("momentum_host_watch") is True,
             "host_watch": inc.get("host_watch") is True,
+            "lane": inc.get("lane") or prior.get("lane"),          # recovery evidence is looked up by lane (N1)
+            "event_type": inc.get("event_type") or prior.get("event_type"),
             "flapping": bool(prior.get("flapping")) if prior.get("open", True) else False,
             "first_notified_at": prior.get("first_notified_at") or iso,
             "last_notified_at": iso,
@@ -741,13 +813,20 @@ def run(
     receipt["acked_keys"] = acked
     receipt["open_notifiable"] = len(open_now)
     receipt["flaps"] = reconcile(open_now, set(acked), work, now, cfg)
-    msgs, batch = plan_messages(open_now, work, now, cfg, view, set(acked), policy=policy)
+    clearing = [k for k, r in work["notified"].items()
+                if r.get("open", True) and not r.get("flapping") and k not in open_now and k not in set(acked)]
+    rec_ev = recovery_evidence(work["notified"], clearing, ledger_path) if clearing else {}
+    receipt["recovery_evidence"] = {"clearing": len(clearing), "verified": sorted(rec_ev),
+                                    "basis": "recovery_validator.output_recovered(live) over ledger runs"}
+    msgs, batch = plan_messages(open_now, work, now, cfg, view, set(acked), policy=policy, recovery_ev=rec_ev)
     receipt["p2_batch"] = batch
     send = sender if sender is not None else (_default_sender() if live else None)
     preview = previewer if previewer is not None else (None if live else _default_previewer())
     failed = False
     for m in msgs:
         row = {k: m[k] for k in ("kind", "severity", "identity", "incident_keys")}
+        if "settlement" in m:
+            row["settlement"] = m["settlement"]
         row["lines"] = m["text"].count("\n") + 1
         row["text"] = m["text"]
         p1_bearing = m["kind"] == "p1" or any(i.get("severity") == "P1" for i in m["incidents"])

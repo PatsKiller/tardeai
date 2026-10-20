@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { BoardCards, FeedCard } from '../components/decision/FeedCards'
 import { useApi } from '../hooks/useApi'
+import { ageLabel, deliveryHealthFrom } from '../lib/commsDeliveryHealth'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel, hubStrip } from '../lib/terminalHubChrome'
 import { RADIUS, TOKENS } from '../lib/designTokens'
@@ -116,6 +117,12 @@ export default function CommunicationsHub() {
     '/api/v2/communications/deliveries?limit=500',
     60_000,
   )
+  // Delivery health counts come from a server-side aggregate over the whole table, never from the 500-row sample
+  // above (review 2026-10-18, N3); a missing / failed / old answer is UNAVAILABLE / STALE, never zero.
+  const { data: deliverySummary, loading: deliverySummaryLoading, error: deliverySummaryError } = useApi<any>(
+    '/api/v2/communications/deliveries/summary',
+    60_000,
+  )
   const { data: subjectsPayload, loading: subjectsLoading } = useApi<any>(
     '/api/v2/communications/subjects?limit=50',
     60_000,
@@ -170,17 +177,13 @@ export default function CommunicationsHub() {
 
   // P0 — delivery settlement health. A RESERVED/SENDING row with no settlement
   // is the signature of the F1 phantom-row defect; surface the count, don't
-  // bury it in a table the operator has to read row-by-row.
-  const deliveryHealth = useMemo(() => {
-    const counts: Record<string, number> = {}
-    for (const d of deliveries) {
-      const s = d.status || 'UNKNOWN'
-      counts[s] = (counts[s] || 0) + 1
-    }
-    const unsettled = (counts.RESERVED || 0) + (counts.SENDING || 0)
-    const failed = (counts.FAILED || 0) + (counts.BOUNCED || 0) + (counts.EXPIRED || 0)
-    return { counts, unsettled, failed }
-  }, [deliveries])
+  // bury it in a table the operator has to read row-by-row. Counted server-side over
+  // the whole table (review 2026-10-18, N3); null = not known, rendered UNAVAILABLE.
+  const deliveryHealth = deliveryHealthFrom(deliverySummary, {
+    error: deliverySummaryError, loading: deliverySummaryLoading, nowMs: Date.now(),
+  })
+  const healthKnown = deliveryHealth.state === 'OK' || deliveryHealth.state === 'STALE'
+  const countText = (n: number | null) => (n == null ? '—' : String(n))
 
   // P2 — retention rollup from the visible window, by class × knowledge status.
   const retentionCounts = useMemo(() => {
@@ -264,15 +267,29 @@ export default function CommunicationsHub() {
             : 'gateway does not own delivery while OFF/SHADOW'}
         </span>
         <span style={{ color: MUTED, fontWeight: 600 }}>
-          deliveries {deliveries.length} · un-settled{' '}
-          <span style={{ color: deliveryHealth.unsettled > 0 ? AMBER : TEXT2, fontWeight: 800 }}>
-            {deliveryHealth.unsettled}
-          </span>{' '}
-          · failed{' '}
-          <span style={{ color: deliveryHealth.failed > 0 ? RED : TEXT2, fontWeight: 800 }}>
-            {deliveryHealth.failed}
-          </span>
-          {deliveriesLoading ? ' · loading…' : ''}
+          {healthKnown ? (
+            <>
+              deliveries {countText(deliveryHealth.total)} · un-settled{' '}
+              <span style={{ color: (deliveryHealth.unsettled ?? 0) > 0 ? AMBER : TEXT2, fontWeight: 800 }}>
+                {countText(deliveryHealth.unsettled)}
+              </span>
+              {(deliveryHealth.unsettled ?? 0) > 0 && deliveryHealth.oldestUnsettledAgeS != null
+                ? ` (oldest ${ageLabel(deliveryHealth.oldestUnsettledAgeS)})` : ''}{' '}
+              · failed{' '}
+              <span style={{ color: (deliveryHealth.failed ?? 0) > 0 ? RED : TEXT2, fontWeight: 800 }}>
+                {countText(deliveryHealth.failed)}
+              </span>
+            </>
+          ) : deliveryHealth.state === 'LOADING' ? (
+            'delivery health loading…'
+          ) : (
+            <span style={{ color: AMBER, fontWeight: 800 }}>
+              delivery health UNAVAILABLE{deliveryHealth.reason ? ` · ${deliveryHealth.reason}` : ''}
+            </span>
+          )}
+          {deliveryHealth.state === 'STALE' && (
+            <span style={{ color: AMBER, fontWeight: 800 }}> · STALE{deliveryHealth.reason ? ` (${deliveryHealth.reason})` : ''}</span>
+          )}
         </span>
         {!deliveryOwned && (
           <span style={{ color: MUTED, fontWeight: 600 }}>· delivery_owned=false · mode={mode}</span>
@@ -511,9 +528,16 @@ export default function CommunicationsHub() {
       {tab === 'deliveries' && (
         <div className="cc-panel" style={hubPanel(terminalUi)}>
           <div style={{ fontSize: 10, color: MUTED, fontWeight: 800, marginBottom: 10, letterSpacing: '.06em', textTransform: 'uppercase' }}>
-            Deliveries ({deliveries.length}){deliveriesLoading ? ' · loading…' : ''} · source {deliveriesPayload?.source || '—'} ·{' '}
-            <span style={{ color: AMBER }}>un-settled {deliveryHealth.unsettled}</span> ·{' '}
-            <span style={{ color: RED }}>failed {deliveryHealth.failed}</span>
+            Deliveries (latest {deliveries.length} shown){deliveriesLoading ? ' · loading…' : ''} · source {deliveriesPayload?.source || '—'} ·{' '}
+            {healthKnown ? (
+              <>
+                <span style={{ color: AMBER }}>un-settled {countText(deliveryHealth.unsettled)} (all rows)</span> ·{' '}
+                <span style={{ color: RED }}>failed {countText(deliveryHealth.failed)} (all rows)</span>
+                {deliveryHealth.state === 'STALE' ? <span style={{ color: AMBER }}> · STALE</span> : null}
+              </>
+            ) : (
+              <span style={{ color: AMBER }}>counts {deliveryHealth.state === 'LOADING' ? 'loading…' : 'UNAVAILABLE'}</span>
+            )}
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 10 }}>

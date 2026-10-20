@@ -2031,7 +2031,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/live_proof_20260928/07-operator-summary.md` | 07 — Operator summary (redacted) | review_required | OK | `e4e6a058cde6` |
 | `docs/ops/measurements/n8n-cutover-20261016T172425Z/REPORT.md` | n8n cutover outcomes — 2026-10-16T17:24:25+00:00 | review_required | MISSING HEADER | `e02ee59902ba` |
 | `docs/ops/measurements/n8n-cutover-20261016T195110Z/REPORT.md` | n8n cutover outcomes — 2026-10-16T19:51:10+00:00 | review_required | OK | `04c9f08bfc36` |
-| `docs/ops/n8n_self_healing.md` | n8n self-healing: how a lane failure is handled, end to end (2026-10-16) | review_required | OK | `22e73197f35b` |
+| `docs/ops/n8n_self_healing.md` | n8n self-healing: how a lane failure is handled, end to end (2026-10-16) | review_required | OK | `89182083aeba` |
 | `docs/ops/openclaw_stage2_soul_patch_20260923.md` | OpenClaw Maria SOUL / skill patch — Stage 2 (specialist honesty) | review_required | OK | `d0a83ec99d47` |
 | `docs/ops/packets/active-trader-motion-n8n-20261019/AGENTS_PATCH_DRAFT.md` | DRAFT: AGENTS.md PATCH for the motion marker path (not applied) | review_required | OK | `cc380c6d4001` |
 | `docs/ops/packets/active-trader-motion-n8n-20261019/README.md` | Active Trader motion runtime back up, supervised by n8n (2026-10-19) | review_required | OK | `d66a2423213b` |
