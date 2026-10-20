@@ -1,0 +1,445 @@
+{
+  "approved_source_sha": "4eedd995a58d5979282a20171c2d0bdd63e90348",
+  "artifacts": [
+    {
+      "bytes": 2966,
+      "decompressed_bytes": 7878,
+      "decompressed_sha256": "ff4509e0e5b9c049b9e5d81b2c43c162cf79f5ad57286afd53aa720fce6bdf0a",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/author-review-packet.json",
+      "path": "historical-author/author-review-packet.json.gz",
+      "sha256": "49dce96f991cdd0ef327df4fbbea1049d46b88a6dd6c449d2f79529d599674ca"
+    },
+    {
+      "bytes": 512,
+      "decompressed_bytes": 1455,
+      "decompressed_sha256": "2ccbbb02a8328f93a88f990112f80b9e8552256cecfa549a67826a7a46f39a2a",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/baseline-ffead.log",
+      "path": "historical-author/baseline-ffead.log.gz",
+      "sha256": "4ce0a421e8af3246aadb8e199877d146467f602a36a171d643e639efff156c1f"
+    },
+    {
+      "bytes": 881,
+      "decompressed_bytes": 3695,
+      "decompressed_sha256": "86894ea924171cce77c13dca4dd592f631fea505e7dae7d8c614fade08ea6a2d",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/baseline-ffead.xml",
+      "path": "historical-author/baseline-ffead.xml.gz",
+      "sha256": "30524515de77723ee76c9745c09ac00d60088f9919ea59e54fe9ddea9b5743a1"
+    },
+    {
+      "bytes": 1530,
+      "decompressed_bytes": 3651,
+      "decompressed_sha256": "cd4079f9762cfd816fa1600f9ee9c240a023043c029b131fff256f7754693f45",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/baseline-helper-ffead.py",
+      "path": "historical-author/baseline-helper-ffead.py.gz",
+      "sha256": "014f6c8401587582231afd0631414d44601b184984fbddd957e15f6114c35ef7"
+    },
+    {
+      "bytes": 52,
+      "decompressed_bytes": 99,
+      "decompressed_sha256": "7a16feb8c93664cc7a068b3d42a9876c777899dcf75de1e562d130143b9213ae",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/candidate-functional.log",
+      "path": "historical-author/candidate-functional.log.gz",
+      "sha256": "74bdf59737b46f5fbd119e025040edbc7c5cf89073af80aef10c80a60c87bbc6"
+    },
+    {
+      "bytes": 510,
+      "decompressed_bytes": 2082,
+      "decompressed_sha256": "9125b453daae954a484542754bfba1740f81e981fbae1a80c3ae8cf4d81b0046",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/candidate-functional.xml",
+      "path": "historical-author/candidate-functional.xml.gz",
+      "sha256": "ffdb5aec34cf1b7ff4763db4c99bd66641d98197d3fcb7be4b9f2e2ac487c5f8"
+    },
+    {
+      "bytes": 52,
+      "decompressed_bytes": 99,
+      "decompressed_sha256": "c6761eb659e35e4b8c9ce4cc68d07b16c3d6e0aac235b1b50e0b8c9add4ccbaf",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/exact-head-candidate.log",
+      "path": "historical-author/exact-head-candidate.log.gz",
+      "sha256": "cc1b6c1f4d166283d336e3cda3b4264614d567c4d0dffe7c8c7885dcc512c6a3"
+    },
+    {
+      "bytes": 515,
+      "decompressed_bytes": 2082,
+      "decompressed_sha256": "5945d4c4feb4c484f81f01423fa72382fe9227bef27fb9a17302aeb241e738fe",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/exact-head-candidate.xml",
+      "path": "historical-author/exact-head-candidate.xml.gz",
+      "sha256": "179f731e22c3507d558839ee332a90f6b035d3339bd2f6ef1a523dec78111d39"
+    },
+    {
+      "bytes": 674,
+      "decompressed_bytes": 1840,
+      "decompressed_sha256": "e82b005711c421b1b03927b83c039a54b12193c80319f4bcb66c958ea72bb23d",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/final-immutable-pair.json",
+      "path": "historical-author/final-immutable-pair.json.gz",
+      "sha256": "8d8f3697e5968c11fbe3d992a42b76fa43be1dfd442ac65a5c4fee7ca5086b14"
+    },
+    {
+      "bytes": 511,
+      "decompressed_bytes": 1455,
+      "decompressed_sha256": "1089f162f517cd3f91c3f30584c9e08102be6dc6cc448efb440e1e94e88aa1c9",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/final-test-baseline-ffead.log",
+      "path": "historical-author/final-test-baseline-ffead.log.gz",
+      "sha256": "19a014bdb56249cf6160a0ccaa57c1787defe2ca886bc25c65da1ebdaecf5230"
+    },
+    {
+      "bytes": 880,
+      "decompressed_bytes": 3695,
+      "decompressed_sha256": "162a0f28343f62bddecad3f4d673c0c068a120eaa02055ab150f74a536312c8f",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/final-test-baseline-ffead.xml",
+      "path": "historical-author/final-test-baseline-ffead.xml.gz",
+      "sha256": "52c8306d0add8c33dce18215889e2388f423c030da10e8d2a76f31a5abe76109"
+    },
+    {
+      "bytes": 52,
+      "decompressed_bytes": 99,
+      "decompressed_sha256": "cce5f7ae517c87d398f4f08a4afa760295509221ab0510bd0958d9589474e324",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/final-test-candidate.log",
+      "path": "historical-author/final-test-candidate.log.gz",
+      "sha256": "55649719dcacab9796d1bcfe78a2b5c626b49f17ec6e5c0e29b1da143ca16b4c"
+    },
+    {
+      "bytes": 504,
+      "decompressed_bytes": 2082,
+      "decompressed_sha256": "9e4386f98b7146f4c626e08317de4959d520b716d8cb38ada466a327d1b572db",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/final-test-candidate.xml",
+      "path": "historical-author/final-test-candidate.xml.gz",
+      "sha256": "d7490bbf8dbb6cf0b72355c63c3ac84b4bf82ef653ecb5d2ac3318e5f78530db"
+    },
+    {
+      "bytes": 534,
+      "decompressed_bytes": 1387,
+      "decompressed_sha256": "210ad2461282fb3962fe1242734e44fa58ef73ebc85a6c74126719ce7b9b5ce6",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/functional-before-format.patch",
+      "path": "historical-author/functional-before-format.patch.gz",
+      "sha256": "ab2271576d8e6354584c806d44e37cb1e44b5330a787af728b5a9a3d29513e83"
+    },
+    {
+      "bytes": 1537,
+      "decompressed_bytes": 3715,
+      "decompressed_sha256": "156683310cb931b5d4503249a6acf5d5412436319b401b3795c1e1107d277a6d",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/functional-before-format.py",
+      "path": "historical-author/functional-before-format.py.gz",
+      "sha256": "f39c379eac070310413bf209df5dbf446e00c1d2b15c153541a231bb94f74700"
+    },
+    {
+      "bytes": 155,
+      "decompressed_bytes": 185,
+      "decompressed_sha256": "459446455b497ff0f55e58fc03cc42f963a75d76e800f305f6ddff53dd167126",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/lease-release.json",
+      "path": "historical-author/lease-release.json.gz",
+      "sha256": "c6149b2d1b373cef8217b0d9fdadfd01dec9e181cb8ef5fbb0debeddf4cb3908"
+    },
+    {
+      "bytes": 550,
+      "decompressed_bytes": 1545,
+      "decompressed_sha256": "b48736a8eb64e8ec2e2da7517331409a0ec80395ef4e39f70d8394f0bd7148de",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/quality-and-scope.json",
+      "path": "historical-author/quality-and-scope.json.gz",
+      "sha256": "61f5ae3ff1dde68b7a30d84b8442f620953854861e3b740b355eab680b8226b4"
+    },
+    {
+      "bytes": 995,
+      "decompressed_bytes": 2016,
+      "decompressed_sha256": "bdd8ef0ad48911ece05c5422d45d9e98ca3cac8547edfa40b5ff62c36bc3929b",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/reproduction.json",
+      "path": "historical-author/reproduction.json.gz",
+      "sha256": "497280fb49bf5cea1562f575d74b854b52e7a7b7d6ab67f39a0442b8630b969f"
+    },
+    {
+      "bytes": 1179,
+      "decompressed_bytes": 3690,
+      "decompressed_sha256": "3faff5850d020fbed865f59db648dfc2d9f34a2513e91a0ab3c99746e5932753",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/test-before-format.py",
+      "path": "historical-author/test-before-format.py.gz",
+      "sha256": "ee7023fbc293d3615f6ea77f1293fe6a8d902523c4586cdad245230677f13808"
+    },
+    {
+      "bytes": 1168,
+      "decompressed_bytes": 3670,
+      "decompressed_sha256": "83c250d8aa84411c8025fd166539efc4cb9987c3aefec50941810da0e75545c9",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/test_premarket_dedupe_within_batch_final_frozen.py",
+      "path": "historical-author/test_premarket_dedupe_within_batch_final_frozen.py.gz",
+      "sha256": "035ff2c33bbb4cfe0cce07a2db084754bf6a9e0392993eb953ea7f15b6d2e008"
+    },
+    {
+      "bytes": 1179,
+      "decompressed_bytes": 3690,
+      "decompressed_sha256": "3faff5850d020fbed865f59db648dfc2d9f34a2513e91a0ab3c99746e5932753",
+      "kind": "original_author_receipt_or_immutable_test",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe/test_premarket_dedupe_within_batch_frozen.py",
+      "path": "historical-author/test_premarket_dedupe_within_batch_frozen.py.gz",
+      "sha256": "ee7023fbc293d3615f6ea77f1293fe6a8d902523c4586cdad245230677f13808"
+    },
+    {
+      "bytes": 511,
+      "decompressed_bytes": 1455,
+      "decompressed_sha256": "b171cd857e0c445147b78d1aefefc368f31806034c65a2ec096e8fe4345a59e9",
+      "kind": "original_independent_review_or_reproduction",
+      "original": "/tmp/n8n-campaign-20261018/cross-review/sec4eed-independent-pair-baseline.log",
+      "path": "historical-independent/sec4eed-independent-pair-baseline.log.gz",
+      "sha256": "e963e7433e2d6b249f1ce60d7600268d19c51e57cdd8b10f1963df600fc15972"
+    },
+    {
+      "bytes": 871,
+      "decompressed_bytes": 3695,
+      "decompressed_sha256": "2834b47a2a1c5351faba7b60bbd4cbf48b16d8512adec17af6e1c3e11fbb0b63",
+      "kind": "original_independent_review_or_reproduction",
+      "original": "/tmp/n8n-campaign-20261018/cross-review/sec4eed-independent-pair-baseline.xml",
+      "path": "historical-independent/sec4eed-independent-pair-baseline.xml.gz",
+      "sha256": "aefa01dc13d08f2fe407fef416f838c632519e0603d3f2647f80686fb39e1377"
+    },
+    {
+      "bytes": 52,
+      "decompressed_bytes": 99,
+      "decompressed_sha256": "468e689e139b7e68ec038b0c54b35b37f60c211560f04d323bfedafe3d5c6b74",
+      "kind": "original_independent_review_or_reproduction",
+      "original": "/tmp/n8n-campaign-20261018/cross-review/sec4eed-independent-pair-candidate.log",
+      "path": "historical-independent/sec4eed-independent-pair-candidate.log.gz",
+      "sha256": "6218a14215814b9db9cea8d7492880b2232a2624118d31c06364042cdd9ed319"
+    },
+    {
+      "bytes": 496,
+      "decompressed_bytes": 2082,
+      "decompressed_sha256": "175232b013bec9dbc5cb593f5a35a987ef16ddeae3555c4cc18b7ea6b573dbb8",
+      "kind": "original_independent_review_or_reproduction",
+      "original": "/tmp/n8n-campaign-20261018/cross-review/sec4eed-independent-pair-candidate.xml",
+      "path": "historical-independent/sec4eed-independent-pair-candidate.xml.gz",
+      "sha256": "b9149522a6f82292753f80381c0a0c15e845c63da885abcb13405d1a44521cac"
+    },
+    {
+      "bytes": 852,
+      "decompressed_bytes": 2458,
+      "decompressed_sha256": "ce6f26296452adf1f447a0551dc7ccb05140ef0808543bb51ca05e3215318ef9",
+      "kind": "original_independent_review_or_reproduction",
+      "original": "/tmp/n8n-campaign-20261018/cross-review/sec4eed-independent-pair.json",
+      "path": "historical-independent/sec4eed-independent-pair.json.gz",
+      "sha256": "dea05452d6a6f4713d2e2a824ca935ac95b2ecfd722dbb6f4fb7bcfa5fc8cf89"
+    },
+    {
+      "bytes": 52,
+      "decompressed_bytes": 99,
+      "decompressed_sha256": "d08643ed23c666b0c0b1b6e4a64eb227b48c31d7b615fc917a236912688ed8aa",
+      "kind": "original_independent_review_or_reproduction",
+      "original": "/tmp/n8n-campaign-20261018/cross-review/sec4eed-independent.log",
+      "path": "historical-independent/sec4eed-independent.log.gz",
+      "sha256": "00ef850258789ad98e8c983eedfc46e57da3c1498ae3493410cb8bf2ee25dcfb"
+    },
+    {
+      "bytes": 813,
+      "decompressed_bytes": 3952,
+      "decompressed_sha256": "207a2770baa69553a54b07529bd59ecd70ddee053c987c12b8f2a1572a2d01c1",
+      "kind": "original_independent_review_or_reproduction",
+      "original": "/tmp/n8n-campaign-20261018/cross-review/sec4eed-independent.xml",
+      "path": "historical-independent/sec4eed-independent.xml.gz",
+      "sha256": "daa0a2040136163b74c904220db366b0e0d0842367edd1a957c89fed72dcb5f5"
+    },
+    {
+      "bytes": 2576,
+      "decompressed_bytes": 6462,
+      "decompressed_sha256": "b5beac4217e467165e9399504ee4d9cc99bb0596c803fe69518baf4f79989787",
+      "kind": "original_independent_review_or_reproduction",
+      "original": "/tmp/n8n-campaign-20261018/cross-review/sec4eed-source-review.json",
+      "path": "historical-independent/sec4eed-source-review.json.gz",
+      "sha256": "8a84c3746bad6222e59c842c6a69ff7022ca218e202c6fa32f05a04325de034c"
+    },
+    {
+      "bytes": 811,
+      "decompressed_bytes": 1474,
+      "decompressed_sha256": "b43f397f1e8012f80e1f554c865196504ff9e599df9f60ad0004b26dc7d668b4",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe-integration-base.json",
+      "path": "integration/sec-dedupe-integration-base.json.gz",
+      "sha256": "12bab2f45373a5fc8394f44d757fdaaa2689086832185524a75cbb7a2f0bd6e4"
+    },
+    {
+      "bytes": 52,
+      "decompressed_bytes": 99,
+      "decompressed_sha256": "101e6df6395827de2a59dc148c046844e8425741e230adf18dd7b959fdf808da",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe-integration-focused.log",
+      "path": "integration/sec-dedupe-integration-focused.log.gz",
+      "sha256": "4cb89f86fba30b0297827fc846a3c22553281ae3f106f4edb5e220d4b3112081"
+    },
+    {
+      "bytes": 813,
+      "decompressed_bytes": 3952,
+      "decompressed_sha256": "7e86158a1e0bb01246fdfdc92f2b00744bc3de61a0b40e9ce1b7a04bb74220ea",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe-integration-focused.xml",
+      "path": "integration/sec-dedupe-integration-focused.xml.gz",
+      "sha256": "96ddab8362a93e12abda780d63d8ada072dc3d66474063fc23a6a71007383576"
+    },
+    {
+      "bytes": 39,
+      "decompressed_bytes": 19,
+      "decompressed_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe-integration-ruff-check.log",
+      "path": "integration/sec-dedupe-integration-ruff-check.log.gz",
+      "sha256": "f3af4d142827f5aad2eb0c72d556d325488a57fb6219aac10afeb51085667d53"
+    },
+    {
+      "bytes": 46,
+      "decompressed_bytes": 26,
+      "decompressed_sha256": "eee76f865de5a9f2456950f710ae5d5f9b5bd0ea02aa54f614c5eed6642a0bfd",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe-integration-ruff-format.log",
+      "path": "integration/sec-dedupe-integration-ruff-format.log.gz",
+      "sha256": "f140afd39e06ad8a0462e6690dc99d04e26f90c8c3ded45d10199f0ca35805f6"
+    },
+    {
+      "bytes": 1419,
+      "decompressed_bytes": 5865,
+      "decompressed_sha256": "8bcceedf9ac5d379a25888eac216d483653fb7413fea9d10d0bfdc1afd05157d",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe-integration-selection.json",
+      "path": "integration/sec-dedupe-integration-selection.json.gz",
+      "sha256": "bd64d113e3ea1b0f0e88f93849b2fcac39f94215eda8686aa7772a2f1f605912"
+    },
+    {
+      "bytes": 178,
+      "decompressed_bytes": 205,
+      "decompressed_sha256": "063bd161928efc7633b173859f16278951dfad8ff3cf5d7efc6f73ee748798c6",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe-integration-selection.log",
+      "path": "integration/sec-dedupe-integration-selection.log.gz",
+      "sha256": "3e528ae9027be268a80f36c84e8aa086264875a766eee93c286431f8997a9c3d"
+    },
+    {
+      "bytes": 1221,
+      "decompressed_bytes": 3726,
+      "decompressed_sha256": "b274e52daad2f8255c964a2515dbccce98afeb8a8679f369f7a3f56d886a2c63",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe-integration-session.json",
+      "path": "integration/sec-dedupe-integration-session.json.gz",
+      "sha256": "aac50434ed6320d8ac668d31350b4b4ff3ea49e1451ad351220bb89be2f0a77c"
+    },
+    {
+      "bytes": 514,
+      "decompressed_bytes": 995,
+      "decompressed_sha256": "573477ff2a19e7ab2dc358771403c332320f6e0deac38beb56e39a85fede595f",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe-integration-source-gate.json",
+      "path": "integration/sec-dedupe-integration-source-gate.json.gz",
+      "sha256": "8b427f1562468a5315c52a5b1da071dd3b59a189ef3005711f9087d86269a4de"
+    },
+    {
+      "bytes": 789,
+      "decompressed_bytes": 1427,
+      "decompressed_sha256": "2f93358a74348a0af09438dfb060927d00fc79b88de53b2058390b2453ffa41d",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/sec-dedupe-integration-validation.json",
+      "path": "integration/sec-dedupe-integration-validation.json.gz",
+      "sha256": "d114b8cd5f731bbec350d2acfb82d2da1886ed928b5bc11e8689fff7c322196f"
+    }
+  ],
+  "base_sha": "5fef53c66becaefef2674548fba286153367dcd3",
+  "ci": {
+    "added_gate": [
+      "premarket_dedupe_within_batch_20261018",
+      [
+        "tests/test_premarket_dedupe_within_batch_20261018.py"
+      ]
+    ],
+    "final_gate_count": 500,
+    "prior_gate_count": 499,
+    "prior_gate_order_values_unchanged": true,
+    "rest_runner_AST_unchanged": true
+  },
+  "compatibility": {
+    "identity": "existing opaque event_id only; producer form+accession/fallback date behavior unchanged; distinct IDs sharing headline are preserved",
+    "missing_identity": "existing absent/falsy event-ID behavior retained; no headline-derived identity invented",
+    "only_functional_AST_change_from_baseline": "select_material incremental recording of selected existing truthy event IDs",
+    "prior_fix": "existing b5b9b33c1 cross-poll duplicate-alert fix remains intact",
+    "state_and_output_schema": "unchanged; symbols/events list and surge_count fields retain meaning; old persisted duplicate IDs remain readable"
+  },
+  "historical_baseline_sha": "ffead9ad232d021e30524c7ca6e252ea2b5f1b82",
+  "historical_pair": {
+    "author_packet": "historical-author/author-review-packet.json.gz",
+    "baseline": {
+      "errors": 0,
+      "failures": 1,
+      "skipped": 0,
+      "tests": 12
+    },
+    "baseline_assertion": "Repeated same truthy event ID within one item must appear once; actual baseline twice. Eleven controls passed; no collection/dependency/error result used as red evidence.",
+    "candidate": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 12
+    },
+    "independent_pair": "historical-independent/sec4eed-independent-pair.json.gz",
+    "independent_source_review": "historical-independent/sec4eed-source-review.json.gz",
+    "same_final_test_sha256": "83c250d8aa84411c8025fd166539efc4cb9987c3aefec50941810da0e75545c9"
+  },
+  "limits": [
+    "Observed repeated user alert headlines are not bound to actual SEC accession/provider receipts; no claim those messages had duplicate event IDs.",
+    "Pure selection dedupe does not prove exactly-once delivery, provider-success/crash/state reconciliation, concurrent sender safety or downstream useful-output acceptance.",
+    "No live watcher, SEC/provider fetch, Telegram send, broker/database effect, grant, workflow activation, push, deployment or full native acceptance performed.",
+    "Review, exact-head required native/hosted CI, authorized merge and canonical release remain separate gates."
+  ],
+  "schema": "SecDedupeReviewedSourceIntegration@v1",
+  "source_files": [
+    {
+      "byte_identical_to_approved_source": true,
+      "bytes": 3733,
+      "path": "scripts/lib/premarket_dedupe.py",
+      "sha256": "9643c82b7648f5f09a723dc115b52c50996b9be01a21efccdf32de5beeab52fd"
+    },
+    {
+      "byte_identical_to_approved_source": true,
+      "bytes": 3670,
+      "path": "tests/test_premarket_dedupe_within_batch_20261018.py",
+      "sha256": "83c250d8aa84411c8025fd166539efc4cb9987c3aefec50941810da0e75545c9"
+    }
+  ],
+  "status": "TESTED_LOCAL_INTEGRATION_PENDING_INDEPENDENT_REVIEW_AND_EXACT_HEAD_REQUIRED_ACCEPTANCE",
+  "validation": {
+    "actual_PR_selector_includes_new_gate": true,
+    "base_sha": "5fef53c66becaefef2674548fba286153367dcd3",
+    "command": "TRADE_AI_CI=1 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=.:scripts canonical .venv/bin/python -m pytest -q -p no:cacheprovider tests/test_premarket_dedupe_within_batch_20261018.py tests/test_hermes_at_research_premarket_dedupe_20261016.py --basetemp=/tmp/n8n-campaign-20261018/sec-dedupe-integration-testtmp --junitxml=/tmp/n8n-campaign-20261018/sec-dedupe-integration-focused.xml",
+    "deferred": [],
+    "focused": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 25
+    },
+    "git_diff_check_exit": 0,
+    "native_full_acceptance": false,
+    "optional_worktree_fetch": {
+      "exit_message": "fatal: unable to access https://github.com/PatsKiller/tardeai/: Could not resolve host: github.com",
+      "result": "canonical helper still successfully created worktree at exact locally available requested base; no remote freshness asserted"
+    },
+    "ruff_check_exit": 0,
+    "ruff_format_check_exit": 0,
+    "runtime_effects": false,
+    "schema": "SecDedupeIntegrationValidation@v1",
+    "selector_exit": 0,
+    "source_sha": "4eedd995a58d5979282a20171c2d0bdd63e90348",
+    "source_tree_test_binding": "new source/test blobs exact approved4eed; tested combined with unchanged existing regression file and staged CI gate",
+    "test_exit": 0,
+    "tested_head_before_commit": "5fef53c66becaefef2674548fba286153367dcd3"
+  }
+}

@@ -1,0 +1,134 @@
+{
+  "schema": "N8nCampaignIntegrationManifest@v1",
+  "status": "LOCAL_CANDIDATE_NOT_DEPLOYED",
+  "base_sha": "bcabf73fb089a7a6e68d18638d588483f7b6bf1f",
+  "source_sha": "3bed41c4fe9054d3a303c1699b68308d16fed243",
+  "sources": [
+    {
+      "path": "scripts/incident_notifier.py",
+      "sha256": "5f77353bea202ba61923af40bd2ed33226ba6f65690cc1e66a4771f80f8a2567"
+    },
+    {
+      "path": "tests/test_incident_notifier_state_compatibility_20261018.py",
+      "sha256": "1f512ff125845e48458268f1983972d89f8f5103b46d7141b80b28242f05fedb"
+    }
+  ],
+  "gate_inventory": {
+    "before": 494,
+    "after": 495,
+    "existing_gates_unchanged": true
+  },
+  "artifacts": [
+    {
+      "original_path": "docs/implementation/n8n-maturity/campaign-20261018/notifier-compat/README.md",
+      "source_sha": "3bed41c4fe9054d3a303c1699b68308d16fed243",
+      "stored_path": "README.md.gz",
+      "raw_sha256": "d8010b4e8e37d7185efb1269de7675fad2f638ce92465cd475b46383e157e1ad",
+      "stored_sha256": "e84df7803a03d1808d3bfb091b02eec61b80ba8e6ae80beb7cfa07a314c498f8"
+    },
+    {
+      "original_path": "docs/implementation/n8n-maturity/campaign-20261018/notifier-compat/artifact-manifest.json",
+      "source_sha": "3bed41c4fe9054d3a303c1699b68308d16fed243",
+      "stored_path": "artifact-manifest.json.gz",
+      "raw_sha256": "aae7a6b33fd5977e97e5cf1dfddd3ff8fe1867ed88ba9a701e98024269ee986d",
+      "stored_sha256": "2e0420c6857b19363d9b56f907513ee76c193f099d938533772a6c1ac4879dbf"
+    },
+    {
+      "original_path": "docs/implementation/n8n-maturity/campaign-20261018/notifier-compat/baseline-behavioral-pair.xml",
+      "source_sha": "3bed41c4fe9054d3a303c1699b68308d16fed243",
+      "stored_path": "baseline-behavioral-pair.xml.gz",
+      "raw_sha256": "097f7b6f906e338b294bd42dfb44222461cc8e0fef64e399920ec96a4753d49b",
+      "stored_sha256": "406dcc0abdc40e29e8a84e6ff856db4870540c74fddde7b80140db5d4d234821"
+    },
+    {
+      "original_path": "docs/implementation/n8n-maturity/campaign-20261018/notifier-compat/behavioral-pair.xml",
+      "source_sha": "3bed41c4fe9054d3a303c1699b68308d16fed243",
+      "stored_path": "behavioral-pair.xml.gz",
+      "raw_sha256": "7b207c919f1fcfabb300681c03686fb7bef47eac0dfb84cd6cab77944e1d40be",
+      "stored_sha256": "21e05d70742abd20f1f694509466afbb03d64ea3681c34b10c3e8848ea75ac82"
+    },
+    {
+      "original_path": "docs/implementation/n8n-maturity/campaign-20261018/notifier-compat/followup-baseline.xml",
+      "source_sha": "3bed41c4fe9054d3a303c1699b68308d16fed243",
+      "stored_path": "followup-baseline.xml.gz",
+      "raw_sha256": "e14a114d35c6441d2ab381b3d0dadfcf6fc31376cec1d236f5a6af14193942c9",
+      "stored_sha256": "d0d23544b1da48ec510ef82007ff0e50b38fbf634fb4864464c45363738dfcf6"
+    },
+    {
+      "original_path": "docs/implementation/n8n-maturity/campaign-20261018/notifier-compat/followup-candidate.xml",
+      "source_sha": "3bed41c4fe9054d3a303c1699b68308d16fed243",
+      "stored_path": "followup-candidate.xml.gz",
+      "raw_sha256": "a1f7fc226c5c96e8ac76b8b183eb111a48d91211537795ee0fcb2b7e8d20d198",
+      "stored_sha256": "50031332e4914f9e4e75b9c6fb68ba326d21c48c11a01b2262d39c2de105fbbe"
+    },
+    {
+      "original_path": "docs/implementation/n8n-maturity/campaign-20261018/notifier-compat/followup-exact-head.xml",
+      "source_sha": "3bed41c4fe9054d3a303c1699b68308d16fed243",
+      "stored_path": "followup-exact-head.xml.gz",
+      "raw_sha256": "0f638cddc05cdcc1534a80ee3087604d95e214e7402bcd2ad87186afe9e07dd1",
+      "stored_sha256": "ea757ec275e354708f8f9432c1b4c8c74fe7318c0145023a37196cab9d2ea00e"
+    },
+    {
+      "original_path": "docs/implementation/n8n-maturity/campaign-20261018/notifier-compat/followup-manifest.json",
+      "source_sha": "3bed41c4fe9054d3a303c1699b68308d16fed243",
+      "stored_path": "followup-manifest.json.gz",
+      "raw_sha256": "a01ddaa91ed4ee9481c95f60032aa869287549b1f92c2191f4d3f1bbbb86abce",
+      "stored_sha256": "ee9aa01b45ca80b82b6446570b11e649ea12ebce8a8a798eaa075c4aaa302783"
+    },
+    {
+      "original_path": "docs/implementation/n8n-maturity/campaign-20261018/notifier-compat/mutation-manifest.json",
+      "source_sha": "3bed41c4fe9054d3a303c1699b68308d16fed243",
+      "stored_path": "mutation-manifest.json.gz",
+      "raw_sha256": "13dcb4b73f248e01c3435ae3f2488d3f174f878db98d2ddc41d74d33e1357712",
+      "stored_sha256": "b461be29edd672240f25a15f87641222b8cdda75680bed7a527e5b8abd750f8a"
+    },
+    {
+      "original_path": "docs/implementation/n8n-maturity/campaign-20261018/notifier-compat/notifier774-root-independent.xml",
+      "source_sha": "3bed41c4fe9054d3a303c1699b68308d16fed243",
+      "stored_path": "notifier774-root-independent.xml.gz",
+      "raw_sha256": "72ac0949f25ce5774c1dc26249f3ab5e3dbe82df36e523a8faa863d1ae0a8ca8",
+      "stored_sha256": "12aaefcd21e84689ae6ea8b59f640776bcaeb083b0bea5a4d4f3d8aeea253123"
+    },
+    {
+      "original_path": "docs/implementation/n8n-maturity/campaign-20261018/notifier-compat/notifier774-root-review.json",
+      "source_sha": "3bed41c4fe9054d3a303c1699b68308d16fed243",
+      "stored_path": "notifier774-root-review.json.gz",
+      "raw_sha256": "1a4179d8fe126f01b971521d6adb8dcfd1ed3c2a2a4391c9bb899b06b7d42f40",
+      "stored_sha256": "8da0619b1e8de2b886bd2fd5321adce9373972d644a7713444f706f01816bb2b"
+    },
+    {
+      "original_path": "docs/implementation/n8n-maturity/campaign-20261018/notifier-compat/notifier8ef-review.json",
+      "source_sha": "3bed41c4fe9054d3a303c1699b68308d16fed243",
+      "stored_path": "notifier8ef-review.json.gz",
+      "raw_sha256": "7a3d0b9e349cb7ebe4cc3144d65f6612bc4ceb28d198413a162c860ccc236caf",
+      "stored_sha256": "4f38f41fdbcba6106a0c2132d0320cdc8f1921f355b786f6e6c0d0361b812e9b"
+    },
+    {
+      "original_path": "docs/implementation/n8n-maturity/campaign-20261018/notifier-compat/test_reader_migration_frozen.py",
+      "source_sha": "3bed41c4fe9054d3a303c1699b68308d16fed243",
+      "stored_path": "test_reader_migration_frozen.py.gz",
+      "raw_sha256": "29ea3b5dcc88ae0a6bf3c0bf36abc65cf83b33cda43d52eba1fd3481a6345ad6",
+      "stored_sha256": "87711b1540e1f2d79a574b6f6e632e23d3813b87590d46c7d3209d8cb5453bad"
+    }
+  ],
+  "contract": "Read v1/v2 losslessly; keep default writer v1. Legacy worker refuses ALL v2 state before effects or state writes. Unknown/malformed/duplicate/nonfinite state fails closed.",
+  "holds": [
+    "Full native and hosted exact-head checks pending",
+    "No live sends, callbacks or notifier state migration performed",
+    "New v2 writer/recovery semantics remain disarmed until compatible reader actually deployed and P1 continuity/rollback proven",
+    "Current a2 rollback is not a compatible v2 writer rollback target"
+  ],
+  "validation": {
+    "result": "64 passed",
+    "junit": "integration-focused64.xml.gz",
+    "raw_sha256": "ca5d8a8df0f72c58bdfe207e7da3b9d509a0156134f1e2ef09455e090312e4f5",
+    "stored_sha256": "f774dbd51360faab93b6aa66fe605119dccfd7a8922e2587d34f6205e5546afd"
+  },
+  "historical_manifest_correction": {
+    "source_manifest": "artifact-manifest.json.gz",
+    "finding": "Original3bed manifest retains pre-header README digest; immutable historical archive preserved as-is. This integration manifest binds actual3bed bytes for every artifact.",
+    "stale_readme_sha256_prefix": "05be31",
+    "actual_readme_sha256": "d8010b4e8e37d7185efb1269de7675fad2f638ce92465cd475b46383e157e1ad",
+    "other_original_entries": "11 match per independent inventory"
+  }
+}

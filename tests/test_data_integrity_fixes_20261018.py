@@ -88,7 +88,8 @@ def test_jnug_percent_recom_is_refused_by_the_guard():
     assert G.recom_reject_reason("3.81%", 3.81) == G.REASON_PERCENT
     assert G.recom_reject_reason("17.11", None) == G.REASON_OUT_OF_RANGE
     assert G.recom_reject_reason(None, 160.15) == G.REASON_SCORE_MISMATCH
-    assert G.recom_reject_reason(None, float("nan")) == G.REASON_UNPARSEABLE
+    # NaN is refused. The reviewed guard on main (#1870, classify_recom) reports it as off-scale, not unparseable.
+    assert G.recom_reject_reason(None, float("nan")) == G.REASON_SCORE_MISMATCH
     assert G.recom_reject_reason("2.10", 2.1) is None
     assert G.recom_reject_reason("buy", 2.0) is None  # hermes stores a label as recom_raw
     assert G.recom_reject_reason(None, None) is None and not G.is_valid_recom(None, None)

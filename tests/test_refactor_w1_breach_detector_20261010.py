@@ -43,6 +43,8 @@ def env(tmp_path, monkeypatch):
     state = tmp_path / "state"
     rt = state / "data" / "runtime"
     rt.mkdir(parents=True)
+    # Explicit known-empty action history; unavailable production history cannot authorize recovery.
+    (rt / "supervisor_recoveries.jsonl").write_text("")
     (code / "config" / "lane_registry.json").write_text(json.dumps({"lanes": [_lane("lane-a", "data/runtime/a.json")]}))
     (rt / "supervisor_sla_seed.json").write_text(json.dumps({"rows": [{"lane_id": "lane-a", "max_run_s": 60}]}))
     monkeypatch.setenv("TRADEAI_STATE_ROOT", str(state))

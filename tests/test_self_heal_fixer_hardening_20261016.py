@@ -12,6 +12,7 @@
 Hermetic: tmp git repos, stub CLIs (never a real model), tmp state roots, loopback-only sockets. The bwrap tests run
 where bubblewrap works (the host) and skip on a runner without it.
 """
+
 from __future__ import annotations
 
 import json
@@ -64,7 +65,7 @@ def _calls(sb) -> list[dict]:
 
 
 #: A stub CLI driven by an actions file: ``actions.py`` in its own dir is exec'd with ``cwd`` = the worktree.
-ACTION_CLAUDE = r'''#!{py}
+ACTION_CLAUDE = r"""#!{py}
 import json, os, pathlib, sys
 prompt = sys.stdin.read()
 here = pathlib.Path(__file__).resolve().parent
@@ -75,10 +76,10 @@ n = sum(1 for _ in calls.open())
 cwd = pathlib.Path.cwd()
 exec((here / "actions.py").read_text())
 print(json.dumps({{"type": "result", "is_error": False, "total_cost_usd": 0.5, "num_turns": 1, "result": "ok"}}))
-'''
+"""
 
 REG = '    # self-heal regression for buggy\n    ("self_heal_buggy", ["tests/test_self_heal_buggy.py"]),\n'
-FIX = 'def ratio(a, b):\n    return a / b if b else 0.0\n'
+FIX = "def ratio(a, b):\n    return a / b if b else 0.0\n"
 
 
 def _actions(sb, body: str) -> None:
@@ -88,20 +89,25 @@ def _actions(sb, body: str) -> None:
 
 def _fix_with_test(test_body: str) -> str:
     """actions.py source: write ``test_body`` as the regression test, fix buggy.py, register the test."""
-    return (f"(cwd / 'tests' / 'test_self_heal_buggy.py').write_text({test_body!r})\n"
-            f"(cwd / 'scripts' / 'buggy.py').write_text({FIX!r})\n"
-            "p = cwd / 'scripts' / 'run_cio_hardening_ci.py'\n"
-            f"p.write_text(p.read_text().replace('\\n]\\n', '\\n' + {REG!r} + ']\\n', 1))\n")
+    return (
+        f"(cwd / 'tests' / 'test_self_heal_buggy.py').write_text({test_body!r})\n"
+        f"(cwd / 'scripts' / 'buggy.py').write_text({FIX!r})\n"
+        "p = cwd / 'scripts' / 'run_cio_hardening_ci.py'\n"
+        f"p.write_text(p.read_text().replace('\\n]\\n', '\\n' + {REG!r} + ']\\n', 1))\n"
+    )
 
 
-GOOD_TEST = "def test_ratio_handles_zero():\n    from scripts.buggy import ratio\n    assert ratio(1, 0) == 0.0\n"
+GOOD_TEST = "def test_ratio_handles_zero():\n    from scripts.buggy import ratio\n    try:\n        actual = ratio(1, 0)\n    except ZeroDivisionError as exc:\n        actual = type(exc).__name__\n    assert actual == 0.0\n"
 
 
 def _cycle(sb, *, env=None, grant="self-heal-fixer test", gh=None):
-    return S.main(["--cycle", "--apply", "--config", str(sb["cfg"]), "--incident", str(sb["incident"])],
-                  now=lambda: NOW, environ=env or sb["env"],
-                  grant_reader=lambda tier: {"reason": grant, "grant_id": "a" * 32} if grant else None,
-                  gh=gh or (lambda cmd: {"rc": 1, "out": "", "err": "", "seconds": 0}))
+    return S.main(
+        ["--cycle", "--apply", "--config", str(sb["cfg"]), "--incident", str(sb["incident"])],
+        now=lambda: NOW,
+        environ=env or sb["env"],
+        grant_reader=lambda tier: {"reason": grant, "grant_id": "a" * 32} if grant else None,
+        gh=gh or (lambda cmd: {"rc": 1, "out": "", "err": "", "seconds": 0}),
+    )
 
 
 def _bwrap_works() -> bool:
@@ -147,7 +153,8 @@ MUTATE_WORKTREE = (
     "    except OSError:\n"
     "        pass\n"
     "    from scripts.buggy import ratio\n"
-    "    assert ratio(1, 0) == 0.0\n")
+    "    try:\n        actual = ratio(1, 0)\n    except ZeroDivisionError as exc:\n        actual = type(exc).__name__\n    assert actual == 0.0\n"
+)
 
 MUTATE_GIT = (
     "def test_ratio_handles_zero():\n"
@@ -159,7 +166,8 @@ MUTATE_GIT = (
     "    except OSError:\n"
     "        pass\n"
     "    from scripts.buggy import ratio\n"
-    "    assert ratio(1, 0) == 0.0\n")
+    "    try:\n        actual = ratio(1, 0)\n    except ZeroDivisionError as exc:\n        actual = type(exc).__name__\n    assert actual == 0.0\n"
+)
 
 
 @pytest.mark.parametrize("test_body", [MUTATE_WORKTREE, MUTATE_GIT], ids=["worktree", "git_admin"])
@@ -183,15 +191,17 @@ def test_sandboxed_harness_runs_cannot_write_the_checkout_or_git(sandbox):
     cfg = _cfg_of(sandbox)
     cfg["sandbox"]["enabled"] = True
     _write_cfg(sandbox, cfg)
-    must_fail = ("def test_ratio_handles_zero():\n"
-                 "    import pathlib, pytest\n"
-                 "    root = pathlib.Path(__file__).resolve().parents[1]\n"
-                 "    with pytest.raises(OSError):\n"
-                 "        (root / 'scripts' / 'planted.py').write_text('x')\n"
-                 "    with pytest.raises(OSError):\n"
-                 "        (root / '.git' / 'config').open('a').write('x')\n"
-                 "    from scripts.buggy import ratio\n"
-                 "    assert ratio(1, 0) == 0.0\n")
+    must_fail = (
+        "def test_ratio_handles_zero():\n"
+        "    import pathlib, pytest\n"
+        "    root = pathlib.Path(__file__).resolve().parents[1]\n"
+        "    with pytest.raises(OSError):\n"
+        "        (root / 'scripts' / 'planted.py').write_text('x')\n"
+        "    with pytest.raises(OSError):\n"
+        "        (root / '.git' / 'config').open('a').write('x')\n"
+        "    from scripts.buggy import ratio\n"
+        "    try:\n        actual = ratio(1, 0)\n    except ZeroDivisionError as exc:\n        actual = type(exc).__name__\n    assert actual == 0.0\n"
+    )
     _actions(sandbox, _fix_with_test(must_fail))
     assert _cycle(sandbox) == 0
     (job,) = _state(sandbox)["jobs"].values()
@@ -239,34 +249,50 @@ def test_prepush_guard_rerun_on_the_commit_tree_refuses(sandbox, monkeypatch):
 
 
 def test_ship_verdict_refuses_any_mismatch():
-    local = E.local_verdict({"tests_run": ["tests/t.py"], "red_first": True, "targeted_rc": 0, "ci_rc": 0,
-                             "refusals": [], **B.bound_facts(commit="c" * 40, tree="d" * 40)})
+    local = E.local_verdict(
+        {
+            "tests_run": ["tests/t.py"],
+            "red_first": True,
+            "targeted_rc": 0,
+            "ci_rc": 0,
+            "refusals": [],
+            **B.bound_facts(commit="c" * 40, tree="d" * 40),
+        }
+    )
     assert local["accepted"]
     ok = E.ship_verdict(local, commit_sha="c" * 40, tree_sha="d" * 40, prepush_refusals=[])
     assert ok["accepted"]
-    assert E.ship_verdict(local, commit_sha="e" * 40, tree_sha="d" * 40, prepush_refusals=[])["failed"] == \
-        ["commit_is_evaluated"]
-    assert E.ship_verdict(local, commit_sha="c" * 40, tree_sha="0" * 40, prepush_refusals=[])["failed"] == \
-        ["tree_is_evaluated"]
-    assert not E.ship_verdict(local, commit_sha="c" * 40, tree_sha="d" * 40,
-                              prepush_refusals=[{"code": "protected_path"}])["accepted"]
-    assert not E.ship_verdict(dict(local, accepted=False), commit_sha="c" * 40, tree_sha="d" * 40,
-                              prepush_refusals=[])["accepted"]
+    assert E.ship_verdict(local, commit_sha="e" * 40, tree_sha="d" * 40, prepush_refusals=[])["failed"] == [
+        "commit_is_evaluated"
+    ]
+    assert E.ship_verdict(local, commit_sha="c" * 40, tree_sha="0" * 40, prepush_refusals=[])["failed"] == [
+        "tree_is_evaluated"
+    ]
+    assert not E.ship_verdict(
+        local, commit_sha="c" * 40, tree_sha="d" * 40, prepush_refusals=[{"code": "protected_path"}]
+    )["accepted"]
+    assert not E.ship_verdict(dict(local, accepted=False), commit_sha="c" * 40, tree_sha="d" * 40, prepush_refusals=[])[
+        "accepted"
+    ]
 
 
-@pytest.mark.parametrize("mutate,why", [
-    (lambda f: f["test_runs"][1].update(checkout_sha="9" * 40), "targeted:not_bound_to_candidate"),
-    (lambda f: f["test_runs"][1].update(head_after="9" * 40), "targeted:not_bound_to_candidate"),
-    (lambda f: f["test_runs"][2].update(integrity_ok=False), "ci:checkout_or_git_mutated"),
-    (lambda f: f["test_runs"].pop(), "ci:missing"),
-    (lambda f: f["test_runs"][0].update(overlay_from="9" * 40), "red_first:overlay_not_from_candidate"),
-    (lambda f: f["guard"].update(tree_sha="9" * 40), None),
-])
+@pytest.mark.parametrize(
+    "mutate,why",
+    [
+        (lambda f: f["test_runs"][1].update(checkout_sha="9" * 40), "targeted:not_bound_to_candidate"),
+        (lambda f: f["test_runs"][1].update(head_after="9" * 40), "targeted:not_bound_to_candidate"),
+        (lambda f: f["test_runs"][2].update(integrity_ok=False), "ci:checkout_or_git_mutated"),
+        (lambda f: f["test_runs"].pop(), "ci:missing"),
+        (lambda f: f["test_runs"][0].update(overlay_from="9" * 40), "red_first:overlay_not_from_candidate"),
+        (lambda f: f["guard"].update(tree_sha="9" * 40), None),
+    ],
+)
 def test_local_verdict_refuses_runs_not_bound_to_the_candidate(mutate, why):
     facts = B.bound_facts()
     mutate(facts)
-    v = E.local_verdict({"tests_run": ["tests/t.py"], "red_first": True, "targeted_rc": 0, "ci_rc": 0,
-                         "refusals": [], **facts})
+    v = E.local_verdict(
+        {"tests_run": ["tests/t.py"], "red_first": True, "targeted_rc": 0, "ci_rc": 0, "refusals": [], **facts}
+    )
     assert not v["accepted"]
     if why:
         assert why in v["unbound"]
@@ -297,18 +323,42 @@ def _fake_probe(kinds: dict):
 
 def test_agent_sandbox_is_an_allowlist_rw_only_on_its_worktree():
     cfg = json.loads(json.dumps(CFG))
-    kinds = {"/usr": "dir", "/bin": "link:usr/bin", "/etc": "dir", "/lib": "link:usr/lib", "/r/.git": "dir",
-             "/r/.venv": "dir", "/opt/claude": "file", "/w/bin": "dir", "/w/eg": "dir",
-             "/h/.claude/.credentials.json": "file"}
+    kinds = {
+        "/usr": "dir",
+        "/bin": "link:usr/bin",
+        "/etc": "dir",
+        "/lib": "link:usr/lib",
+        "/r/.git": "dir",
+        "/r/.venv": "dir",
+        "/opt/claude": "file",
+        "/w/bin": "dir",
+        "/w/eg": "dir",
+        "/h/.claude/.credentials.json": "file",
+    }
     probe = _fake_probe(kinds)
     binds, why = F.agent_auth_binds(cfg, home="/h", agent_home="/w/home", probe=probe)
     assert why == "auth:credentials_file"
     assert binds == [("/h/.claude/.credentials.json", "/w/home/.claude/.credentials.json", True)]
-    env = F.agent_env({"HOME": "/h", "PATH": "/x", "USER": "u", "DB_PASSWORD": "p"}, cfg, scratch_state="/w/st",
-                      agent_home="/w/home", proxy_port=18977)
-    argv = F.agent_sandbox_prefix(cfg, home="/h", repo_root="/r", python_root="/r/.venv",
-                                  extra_ro=["/opt/claude", "/w/bin", "/w/eg"], fix_wt="/w/wt", agent_home="/w/home",
-                                  scratch="/w/st", auth_binds=binds, env=env, probe=probe)
+    env = F.agent_env(
+        {"HOME": "/h", "PATH": "/x", "USER": "u", "DB_PASSWORD": "p"},
+        cfg,
+        scratch_state="/w/st",
+        agent_home="/w/home",
+        proxy_port=18977,
+    )
+    argv = F.agent_sandbox_prefix(
+        cfg,
+        home="/h",
+        repo_root="/r",
+        python_root="/r/.venv",
+        extra_ro=["/opt/claude", "/w/bin", "/w/eg"],
+        fix_wt="/w/wt",
+        agent_home="/w/home",
+        scratch="/w/st",
+        auth_binds=binds,
+        env=env,
+        probe=probe,
+    )
     joined = " ".join(argv)
     assert argv[0] == cfg["agent_sandbox"]["bwrap"]
     for flag in ("--unshare-net", "--unshare-pid", "--new-session", "--clearenv", "--die-with-parent"):
@@ -316,30 +366,51 @@ def test_agent_sandbox_is_an_allowlist_rw_only_on_its_worktree():
     assert "--ro-bind / /" not in joined  # NOT the host view: an empty root
     pairs = [(argv[i], argv[i + 1], argv[i + 2]) for i in range(len(argv) - 2) if argv[i] in ("--bind", "--ro-bind")]
     rw = [(s, d) for f, s, d in pairs if f == "--bind"]
-    assert rw == [("/w/wt", "/w/wt"), ("/w/home", "/w/home"), ("/w/st", "/w/st"),
-                  ("/h/.claude/.credentials.json", "/w/home/.claude/.credentials.json")]
+    assert rw == [
+        ("/w/wt", "/w/wt"),
+        ("/w/home", "/w/home"),
+        ("/w/st", "/w/st"),
+        ("/h/.claude/.credentials.json", "/w/home/.claude/.credentials.json"),
+    ]
     ro = {s for f, s, d in pairs if f == "--ro-bind"}
     assert {"/usr", "/etc", "/r/.git", "/r/.venv", "/opt/claude", "/w/bin", "/w/eg"} <= ro
     assert "/r" not in ro and "/h" not in ro and not any(s.startswith("/h/") for s in ro)  # no repo tree, no $HOME
-    assert ["--symlink", "usr/bin", "/bin"] == argv[argv.index("/bin") - 2:argv.index("/bin") + 1]
+    assert ["--symlink", "usr/bin", "/bin"] == argv[argv.index("/bin") - 2 : argv.index("/bin") + 1]
     assert argv[-2:] == ["--chdir", "/w/wt"]
     # the env inside: throwaway HOME, the scoped config dir, the bridge proxy; nothing credential-shaped
     setenv = {argv[i + 1]: argv[i + 2] for i in range(len(argv) - 2) if argv[i] == "--setenv"}
     assert setenv["HOME"] == "/w/home" and setenv["CLAUDE_CONFIG_DIR"] == "/w/home/.claude"
     assert setenv["HTTPS_PROXY"] == "http://127.0.0.1:18977" and setenv["TRADE_AI_CI"] == "1"
     assert "DB_PASSWORD" not in setenv and "USER" not in setenv
-    assert F.agent_sandbox_prefix(B._cfg(agent_sandbox={"enabled": False}), home="/h", repo_root="/r",
-                                  python_root="/v", extra_ro=[], fix_wt="/w", agent_home="/a", scratch="/s",
-                                  auth_binds=[], env={}, probe=probe) == []
+    assert (
+        F.agent_sandbox_prefix(
+            B._cfg(agent_sandbox={"enabled": False}),
+            home="/h",
+            repo_root="/r",
+            python_root="/v",
+            extra_ro=[],
+            fix_wt="/w",
+            agent_home="/a",
+            scratch="/s",
+            auth_binds=[],
+            env={},
+            probe=probe,
+        )
+        == []
+    )
 
 
 def test_auth_bind_is_scoped_or_refused():
     probe = _fake_probe({})
     assert F.agent_auth_binds(CFG, home="/h", agent_home="/a", probe=probe) == ([], "auth_credentials_file_missing")
-    assert F.agent_auth_binds(B._cfg(claude={"auth": {"mode": "none"}}), home="/h", agent_home="/a",
-                              probe=probe) == ([], "auth:none")
-    assert F.agent_auth_binds(B._cfg(claude={"auth": {"mode": "whole_dir"}}), home="/h", agent_home="/a",
-                              probe=probe)[1] == "auth_mode_unknown:whole_dir"
+    assert F.agent_auth_binds(B._cfg(claude={"auth": {"mode": "none"}}), home="/h", agent_home="/a", probe=probe) == (
+        [],
+        "auth:none",
+    )
+    assert (
+        F.agent_auth_binds(B._cfg(claude={"auth": {"mode": "whole_dir"}}), home="/h", agent_home="/a", probe=probe)[1]
+        == "auth_mode_unknown:whole_dir"
+    )
 
 
 def test_model_pytest_wrapper_clears_the_agent_env():
@@ -350,9 +421,15 @@ def test_model_pytest_wrapper_clears_the_agent_env():
 
 def test_eval_sandbox_binds_the_checkout_read_only():
     kinds = {"/usr": "dir", "/r/.git": "dir", "/v": "dir", "/w/eval/c": "dir"}
-    argv = F.eval_sandbox_prefix(B._cfg(sandbox={"enabled": True}), repo_root="/r", python_root="/v",
-                                 checkout="/w/eval/c", scratch="/w/st", env={"HOME": "/w/st"},
-                                 probe=_fake_probe(kinds))
+    argv = F.eval_sandbox_prefix(
+        B._cfg(sandbox={"enabled": True}),
+        repo_root="/r",
+        python_root="/v",
+        checkout="/w/eval/c",
+        scratch="/w/st",
+        env={"HOME": "/w/st"},
+        probe=_fake_probe(kinds),
+    )
     pairs = [(argv[i], argv[i + 1]) for i in range(len(argv) - 1) if argv[i] in ("--bind", "--ro-bind")]
     assert ("--ro-bind", "/w/eval/c") in pairs and ("--ro-bind", "/r/.git") in pairs
     assert [s for f, s in pairs if f == "--bind"] == ["/w/st"] and "--unshare-net" in argv
@@ -372,8 +449,13 @@ def test_secret_shaped_literals_in_a_diff_are_hard_refusals():
     cfg = CFG
     added = "+TOKEN = 'sk-ant-oat01-abcdefghijklmnop'\n"
     u0 = f"diff --git a/scripts/x.py b/scripts/x.py\n--- a/scripts/x.py\n+++ b/scripts/x.py\n@@ -1,0 +1,1 @@\n{added}"
-    r = F.guard_diff(name_status="M\tscripts/x.py\nA\ttests/test_x.py\n", numstat="1\t0\tscripts/x.py\n",
-                     unified=u0, base_ci_text="", cfg=cfg)
+    r = F.guard_diff(
+        name_status="M\tscripts/x.py\nA\ttests/test_x.py\n",
+        numstat="1\t0\tscripts/x.py\n",
+        unified=u0,
+        base_ci_text="",
+        cfg=cfg,
+    )
     assert {"hard": True, "code": "secret_in_diff", "path": "scripts/x.py", "prefix": "sk-a..."} in r
     assert F.secret_like("x = 'Zm9vYmFyQmF6UXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWprbG1ub3BxcnN0'") is not None
     assert F.secret_like('"accessToken": "x"') is not None
@@ -443,22 +525,39 @@ def test_bridge_forwards_tcp_to_the_proxy_socket_and_returns_the_child_rc(tmp_pa
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         bport = probe.getsockname()[1]
-    child = ("import socket,sys\n"
-             f"s=socket.create_connection(('127.0.0.1',{bport}),timeout=5)\n"
-             f"s.sendall(b'CONNECT 127.0.0.1:{port} HTTP/1.1\\r\\n\\r\\n')\n"
-             "h=s.recv(1024)\n"
-             "s.sendall(b'hi'); d=s.recv(1024)\n"
-             "sys.exit(0 if b' 200 ' in h and d==b'echo:hi' else 3)\n")
+    child = (
+        "import socket,sys\n"
+        f"s=socket.create_connection(('127.0.0.1',{bport}),timeout=5)\n"
+        f"s.sendall(b'CONNECT 127.0.0.1:{port} HTTP/1.1\\r\\n\\r\\n')\n"
+        "h=s.recv(1024)\n"
+        "s.sendall(b'hi'); d=s.recv(1024)\n"
+        "sys.exit(0 if b' 200 ' in h and d==b'echo:hi' else 3)\n"
+    )
     with EG.EgressProxy(sock, [f"127.0.0.1:{port}"]):
-        p = subprocess.run([sys.executable, "-I", EG.__file__, "bridge", "--unix", sock, "--port", str(bport), "--",
-                            sys.executable, "-c", f"import time; time.sleep(0.3)\n{child}"], timeout=30)
+        p = subprocess.run(
+            [
+                sys.executable,
+                "-I",
+                EG.__file__,
+                "bridge",
+                "--unix",
+                sock,
+                "--port",
+                str(bport),
+                "--",
+                sys.executable,
+                "-c",
+                f"import time; time.sleep(0.3)\n{child}",
+            ],
+            timeout=30,
+        )
     srv.close()
     assert p.returncode == 0
 
 
 # ---- the boundary itself, with a stub CLI inside bwrap
 
-PROBE_CLAUDE = r'''#!{py}
+PROBE_CLAUDE = r"""#!{py}
 import json, os, pathlib, socket, subprocess, sys
 sys.stdin.read()
 P = json.loads({paths!r})
@@ -508,7 +607,7 @@ out["model_pytest_rc"] = r.returncode
 t.unlink()
 os.unlink(os.path.join(os.getcwd(), "agent_note.txt"))
 print(json.dumps({{"type": "result", "is_error": False, "total_cost_usd": 0.0, "result": json.dumps(out)}}))
-'''
+"""
 
 
 @pytest.mark.skipif(not _bwrap_works(), reason="bubblewrap unavailable on this runner (host-only proof)")
@@ -524,17 +623,27 @@ def test_agent_in_its_sandbox_cannot_read_env_or_write_outside_its_worktree(sand
     (home / "trade-ai-releases" / "GIT_SHA").write_text("x\n")
     (sandbox["repo"] / ".env").write_text("SCHWAB_SECRET=x\n")  # untracked, in the operator's working tree
     srv, port = _echo_server()
-    paths = {"repo_env": str(sandbox["repo"] / ".env"), "home_env": str(home / ".env"),
-             "ssh": str(home / ".ssh" / "id_ed25519"), "claude_history": str(home / ".claude" / "history.jsonl"),
-             "releases": str(home / "trade-ai-releases" / "GIT_SHA"), "home": str(home),
-             "repo_plant": str(sandbox["repo"] / "scripts" / "planted.py"),
-             "git_plant": str(sandbox["repo"] / ".git" / "planted"), "home_plant": str(home / "planted"),
-             "outside_plant": str(tmp / "outside" / "planted"), "host_port": port}
+    paths = {
+        "repo_env": str(sandbox["repo"] / ".env"),
+        "home_env": str(home / ".env"),
+        "ssh": str(home / ".ssh" / "id_ed25519"),
+        "claude_history": str(home / ".claude" / "history.jsonl"),
+        "releases": str(home / "trade-ai-releases" / "GIT_SHA"),
+        "home": str(home),
+        "repo_plant": str(sandbox["repo"] / "scripts" / "planted.py"),
+        "git_plant": str(sandbox["repo"] / ".git" / "planted"),
+        "home_plant": str(home / "planted"),
+        "outside_plant": str(tmp / "outside" / "planted"),
+        "host_port": port,
+    }
     B._exe(sandbox["bin"] / "claude", PROBE_CLAUDE.format(py=sys.executable, paths=json.dumps(paths)))
     cfg = _cfg_of(sandbox)
     cfg["agent_sandbox"].update(enabled=True, egress_allow=[f"127.0.0.1:{port}"], proxy_port=18977)
-    cfg["claude"]["auth"] = {"mode": "credentials_file", "credentials_file": "{home}/.claude/.credentials.json",
-                             "rw": False}
+    cfg["claude"]["auth"] = {
+        "mode": "credentials_file",
+        "credentials_file": "{home}/.claude/.credentials.json",
+        "rw": False,
+    }
     cfg["iteration"]["max_iterations"] = 1
     _write_cfg(sandbox, cfg)
     env = dict(sandbox["env"], HOME=str(home))
@@ -546,11 +655,22 @@ def test_agent_in_its_sandbox_cannot_read_env_or_write_outside_its_worktree(sand
     res = json.loads((ev / "backend_iter1.json").read_text())
     probes = json.loads(res["result"])
     assert probes == {
-        "read_repo_env": False, "read_home_env": False, "read_ssh": False, "read_claude_history": False,
-        "read_releases": False, "home_listing": False, "auth_visible": True,
-        "write_repo_tree": False, "write_repo_git": False, "write_home": False, "write_outside": False,
-        "write_worktree": True, "direct_host_port": False,
-        "proxy_allowed": probes["proxy_allowed"], "proxy_denied": probes["proxy_denied"], "model_pytest_rc": 0,
+        "read_repo_env": False,
+        "read_home_env": False,
+        "read_ssh": False,
+        "read_claude_history": False,
+        "read_releases": False,
+        "home_listing": False,
+        "auth_visible": True,
+        "write_repo_tree": False,
+        "write_repo_git": False,
+        "write_home": False,
+        "write_outside": False,
+        "write_worktree": True,
+        "direct_host_port": False,
+        "proxy_allowed": probes["proxy_allowed"],
+        "proxy_denied": probes["proxy_denied"],
+        "model_pytest_rc": 0,
     }, probes
     assert " 200 " in probes["proxy_allowed"] and probes["proxy_allowed"].endswith("echo:x")
     assert " 403 " in probes["proxy_denied"]
@@ -564,8 +684,17 @@ def test_agent_in_its_sandbox_cannot_read_env_or_write_outside_its_worktree(sand
 
 
 def _claim(db, key="lane|sig", job="j1", **kw):
-    args = dict(dedupe_key=key, job_id=job, day="2026-10-16", reserve_iterations=4, reserve_usd=12.0,
-                reserve_seconds=5400, lease_ttl_s=300, daily_job_cap=3, daily_usd_cap=24.0)
+    args = dict(
+        dedupe_key=key,
+        job_id=job,
+        day="2026-10-16",
+        reserve_iterations=4,
+        reserve_usd=12.0,
+        reserve_seconds=5400,
+        lease_ttl_s=300,
+        daily_job_cap=3,
+        daily_usd_cap=24.0,
+    )
     args.update(kw)
     return C.claim(db, **args)
 
@@ -640,7 +769,7 @@ def test_cycle_lock_lets_exactly_one_cycle_run(tmp_path):
     b.release()
 
 
-DRIVER = r'''
+DRIVER = r"""
 import json, sys
 from datetime import datetime, timezone
 sys.path.insert(0, {scripts!r})
@@ -651,7 +780,7 @@ rc = S.main(["--cycle", "--apply", "--config", sys.argv[2], "--incident", sys.ar
             grant_reader=lambda tier: {{"reason": "self-heal-fixer test", "grant_id": "a" * 32}},
             gh=lambda cmd: {{"rc": 1, "out": "", "err": "", "seconds": 0}})
 sys.exit(rc)
-'''
+"""
 
 
 def _driver(sb) -> list[str]:
@@ -663,9 +792,12 @@ def _driver(sb) -> list[str]:
 def test_concurrent_invocations_exactly_one_runs(sandbox):
     """A live cycle holds the lock while its backend runs; a second invocation exits busy and runs nothing."""
     gate = sandbox["bin"] / "release"
-    _actions(sandbox, f"import time, pathlib\n(here / 'started').touch()\n"
-                      f"t = time.time()\nwhile not pathlib.Path({str(gate)!r}).exists() and time.time() - t < 60:\n"
-                      f"    time.sleep(0.05)\n" + _fix_with_test(GOOD_TEST))
+    _actions(
+        sandbox,
+        f"import time, pathlib\n(here / 'started').touch()\n"
+        f"t = time.time()\nwhile not pathlib.Path({str(gate)!r}).exists() and time.time() - t < 60:\n"
+        f"    time.sleep(0.05)\n" + _fix_with_test(GOOD_TEST),
+    )
     a = subprocess.Popen(_driver(sandbox), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         t = time.time()
@@ -689,11 +821,16 @@ def test_crash_mid_attempt_is_reconciled_once_and_not_restarted(sandbox):
     """Iteration 1 completes (partial evidence recorded durably), then the fixer process is SIGKILLed during
     iteration 2. The next start marks the attempt fix_interrupted with that evidence; no backend call; the budget
     reservation is counted exactly once, however many times the fixer restarts."""
-    noprogress = ("(cwd / 'tests' / 'test_self_heal_buggy.py').write_text(" + repr(GOOD_TEST) + ")\n"
-                  "p = cwd / 'scripts' / 'run_cio_hardening_ci.py'\n"
-                  f"p.write_text(p.read_text().replace('\\n]\\n', '\\n' + {REG!r} + ']\\n', 1))\n")
-    _actions(sandbox, "import os, signal\nif n >= 2:\n    os.kill(os.getppid(), signal.SIGKILL)\n"
-                      "    raise SystemExit(0)\n" + noprogress)
+    noprogress = (
+        "(cwd / 'tests' / 'test_self_heal_buggy.py').write_text(" + repr(GOOD_TEST) + ")\n"
+        "p = cwd / 'scripts' / 'run_cio_hardening_ci.py'\n"
+        f"p.write_text(p.read_text().replace('\\n]\\n', '\\n' + {REG!r} + ']\\n', 1))\n"
+    )
+    _actions(
+        sandbox,
+        "import os, signal\nif n >= 2:\n    os.kill(os.getppid(), signal.SIGKILL)\n"
+        "    raise SystemExit(0)\n" + noprogress,
+    )
     p = subprocess.run(_driver(sandbox), capture_output=True, text=True, timeout=300)
     assert p.returncode == -signal.SIGKILL
     db = sandbox["state"] / CFG["state"]["claims_rel"]
@@ -714,8 +851,13 @@ def test_crash_mid_attempt_is_reconciled_once_and_not_restarted(sandbox):
     esc = [json.loads(x) for x in (sandbox["state"] / CFG["state"]["escalations_rel"]).read_text().splitlines()]
     assert [e["state"] for e in esc] == [F.FIX_INTERRUPTED]
     u1 = C.day_usage(db, F.et_day(NOW))
-    assert u1 == {"day": F.et_day(NOW), "jobs": 1, "usd": CFG["iteration"]["max_cost_usd"], "active": 0,
-                  "interrupted": 1}
+    assert u1 == {
+        "day": F.et_day(NOW),
+        "jobs": 1,
+        "usd": CFG["iteration"]["max_cost_usd"],
+        "active": 0,
+        "interrupted": 1,
+    }
     # and again: idempotent, nothing double-counted, still no restart; cooldown keeps the signature parked
     assert _cycle(sandbox) == 0
     assert C.day_usage(db, F.et_day(NOW)) == u1 and len(_calls(sandbox)) == 2
@@ -734,8 +876,9 @@ def test_claim_refusal_runs_no_backend(sandbox):
         pass
     cid, _ = _claim(db, key=key, job="elsewhere", day=F.et_day(NOW))
     with C.connect(db) as con:  # owned by another host: only its lease can expire it
-        con.execute("UPDATE claims SET owner_host='other-host', lease_expires_at=? WHERE claim_id=?",
-                    (time.time() + 600, cid))
+        con.execute(
+            "UPDATE claims SET owner_host='other-host', lease_expires_at=? WHERE claim_id=?", (time.time() + 600, cid)
+        )
     assert _cycle(sandbox) == 0
     (job,) = _state(sandbox)["jobs"].values()
     assert job["state"] == F.FIX_REQUESTED and _calls(sandbox) == []
@@ -749,28 +892,47 @@ def test_claim_refusal_runs_no_backend(sandbox):
 SINCE = NOW
 
 
-@pytest.mark.parametrize("over,why", [
-    ({}, None),
-    ({"verdict": "empty_allowed"}, None),
-    ({"finished": SINCE - timedelta(minutes=1)}, "not_after_since"),
-    ({"state": "RUN_FAILED"}, "not_run_done"),
-    ({"exit_code": 1}, "nonzero_or_unknown_exit"),
-    ({"mode": "dry_run"}, "effective_mode_not_live"),
-    ({"clamp": "dry_run"}, "effective_mode_not_live"),
-    ({"verdict": "empty_violation"}, "output_verdict:empty_violation"),
-    ({"verdict": "declared_not_enforced"}, "output_verdict:declared_not_enforced"),
-    ({"verdict": None}, "output_verdict:absent"),
-])
+@pytest.mark.parametrize(
+    "over,why",
+    [
+        ({}, None),
+        ({"verdict": "empty_allowed"}, None),
+        ({"finished": SINCE - timedelta(minutes=1)}, "not_after_since"),
+        ({"state": "RUN_FAILED"}, "not_run_done"),
+        ({"exit_code": 1}, "nonzero_or_unknown_exit"),
+        ({"mode": "dry_run"}, "effective_mode_not_live"),
+        ({"clamp": "dry_run"}, "effective_mode_not_live"),
+        ({"verdict": "empty_violation"}, "output_verdict:empty_violation"),
+        ({"verdict": "declared_not_enforced"}, "output_verdict:declared_not_enforced"),
+        ({"verdict": None}, "output_verdict:absent"),
+    ],
+)
 def test_receipt_meets_output_contract(over, why):
-    a = dict(finished=SINCE + timedelta(hours=1), state="RUN_DONE", mode="live", exit_code=0, verdict="produced",
-             clamp="live")
+    a = dict(
+        finished=SINCE + timedelta(hours=1),
+        state="RUN_DONE",
+        mode="live",
+        exit_code=0,
+        verdict="produced",
+        clamp="live",
+    )
     a.update(over)
-    rec = {"mode": a["mode"], "state": a["state"], "exit_code": a["exit_code"],
-           "finished_at": a["finished"].isoformat(), "stage_clamp": {"effective_mode": a["clamp"]}}
+    rec = {
+        "mode": a["mode"],
+        "state": a["state"],
+        "exit_code": a["exit_code"],
+        "finished_at": a["finished"].isoformat(),
+        "stage_clamp": {"effective_mode": a["clamp"]},
+    }
     if a["verdict"]:
         rec["output_verdict"] = {"verdict": a["verdict"]}
-    row = {"mode": a["mode"], "state": a["state"], "exit_code": a["exit_code"], "finished_at": rec["finished_at"],
-           "receipt": rec}
+    row = {
+        "mode": a["mode"],
+        "state": a["state"],
+        "exit_code": a["exit_code"],
+        "finished_at": rec["finished_at"],
+        "receipt": rec,
+    }
     assert F.receipt_meets_output_contract(row, SINCE) == why
 
 
@@ -804,9 +966,35 @@ def test_advance_goes_through_the_single_output_recovered_hook(monkeypatch, tmp_
         return {"recovered": True, "basis": "stub", "run_id": "r9", "finished_at": "2026-10-16T19:00:00+00:00"}
 
     monkeypatch.setattr(S, "output_recovered", hook)
-    job = {"job_id": "j", "lane": "lane-x", "state": F.FIX_DEPLOYED, "deployed_at": NOW.isoformat(), "history": []}
-    assert S.advance(job, cfg=CFG, now=NOW, diag_state=None, root=tmp_path, gh=lambda c: {}, repo=tmp_path) == \
-        F.OUTPUT_RECOVERED
+    head = "a" * 40
+    policy = CFG["acceptance"]
+    pr = E.pr_head_verdict(
+        {
+            "headRefOid": head,
+            "statusCheckRollup": [
+                {"name": n, "status": "COMPLETED", "conclusion": "SUCCESS"} for n in policy["required_checks"]
+            ],
+        },
+        expected_head=head,
+        required=policy["required_checks"],
+        policy_version=policy["version"],
+    )
+    acceptance = E.final_acceptance(B.local_acceptance(head), pr)
+    acceptance["pr_head"] = pr
+    job = {
+        "job_id": "j",
+        "lane": "lane-x",
+        "state": F.FIX_DEPLOYED,
+        "deployed_at": NOW.isoformat(),
+        "history": [],
+        "head_sha": head,
+        "acceptance": acceptance,
+        "deadline_at": (NOW + timedelta(hours=4)).isoformat(),
+    }
+    assert (
+        S.advance(job, cfg=CFG, now=NOW, diag_state=None, root=tmp_path, gh=lambda c: {}, repo=tmp_path)
+        == F.OUTPUT_RECOVERED
+    )
     assert seen == [("lane-x", NOW, "live_receipt_output_verdict@v1")] and job["output_run"] == "r9"
 
 
@@ -818,7 +1006,11 @@ def test_config_arms_the_boundaries_and_protects_the_new_modules():
     assert CFG["claude"]["auth"]["mode"] == "credentials_file"
     assert all(a.endswith(":443") for a in CFG["agent_sandbox"]["egress_allow"])
     assert CFG["arming"]["daily_cost_cap_usd"] >= CFG["iteration"]["max_cost_usd"]
-    for p in ("scripts/lib/self_heal_fixer_claims.py", "scripts/lib/self_heal_egress.py",
-              "scripts/lib/self_heal_fix_evaluator.py", "tests/test_self_heal_fixer_hardening_20261016.py"):
+    for p in (
+        "scripts/lib/self_heal_fixer_claims.py",
+        "scripts/lib/self_heal_egress.py",
+        "scripts/lib/self_heal_fix_evaluator.py",
+        "tests/test_self_heal_fixer_hardening_20261016.py",
+    ):
         assert F.lane_refusal("x", p, CFG) or F._match_any(p, CFG["diff_guard"]["refuse_paths"]), p
     assert F.FIX_INTERRUPTED in F.TERMINAL and F.FIX_INTERRUPTED not in F.HEALED

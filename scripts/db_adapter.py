@@ -24,6 +24,7 @@ Category-2 module output files (JSON on both platforms — not migrated):
   trade_journal.json, trade_notes.json, watchlist.json, etc.
   These are computed fresh every run and owned by their single module.
 """
+
 from __future__ import annotations
 import json
 import os
@@ -46,6 +47,7 @@ def _broker_env_audit_hook():
     try:  # by file path: sys.path is left untouched, so no other import resolves differently
         import importlib.util as _ilu
         import sys as _sys
+
         _lib = Path(__file__).resolve().parent / "lib"
         for _name in ("broker_env_audit", "env_bootstrap"):  # env_bootstrap's import installs the audit
             if _name not in _sys.modules:
@@ -72,10 +74,12 @@ def _load_dotenv_if_needed():
         return  # already set
     try:
         import sys as _sys
+
         _lib = str(Path(__file__).resolve().parent / "lib")
         if _lib not in _sys.path:
             _sys.path.insert(0, _lib)
         from env_bootstrap import bound_names, load_env
+
         load_env(names=DB_ENV_NAMES if bound_names() is not None else None)
         if os.getenv("DB_PASSWORD"):
             return
@@ -92,6 +96,7 @@ def _load_dotenv_if_needed():
                 if key.startswith("DB_") and key not in os.environ:
                     os.environ[key] = val
 
+
 _load_dotenv_if_needed()
 
 
@@ -100,10 +105,12 @@ def _ensure_pgappname() -> str:
     that pass no application_name — via libpq's PGAPPNAME fallback (see lib/pg_attribution)."""
     try:
         import sys as _sys
+
         _lib = str(Path(__file__).resolve().parent / "lib")
         if _lib not in _sys.path:
             _sys.path.insert(0, _lib)
         from pg_attribution import ensure_pgappname
+
         return ensure_pgappname()
     except Exception:
         return ""
@@ -116,12 +123,8 @@ def _db_enabled() -> bool:
     """Return True if running on Linux with DB credentials configured."""
     if platform.system() != "Linux":
         return False
-    return bool(
-        os.getenv("DB_HOST") and
-        os.getenv("DB_NAME") and
-        os.getenv("DB_USER") and
-        os.getenv("DB_PASSWORD")
-    )
+    return bool(os.getenv("DB_HOST") and os.getenv("DB_NAME") and os.getenv("DB_USER") and os.getenv("DB_PASSWORD"))
+
 
 USE_DB = _db_enabled()
 
@@ -135,9 +138,11 @@ import threading as _threading
 # persistent connection (their main thread's), so their behavior is unchanged.
 _tls = _threading.local()
 
+
 def _get_conn():
     """Get or create a THREAD-LOCAL PostgreSQL connection (lazy, one per thread)."""
     import time as _time
+
     conn = getattr(_tls, "conn", None)
     if conn is not None and not conn.closed:
         # Server-side disconnects (idle_session_timeout reaper, PG restart) leave
@@ -148,6 +153,7 @@ def _get_conn():
         # prerequisite for the role-level idle_session_timeout backstop).
         try:
             import psycopg2.extensions as _pgext
+
             _idle = _time.time() - getattr(_tls, "last_used", 0.0)
             if _idle > 60 and conn.get_transaction_status() == _pgext.TRANSACTION_STATUS_IDLE:
                 try:
@@ -170,6 +176,7 @@ def _get_conn():
         # all session on the affected worker thread). Roll back and hand out a clean txn.
         try:
             import psycopg2.extensions as _pgext
+
             if conn.get_transaction_status() == _pgext.TRANSACTION_STATUS_INERROR:
                 conn.rollback()
         except Exception:
@@ -180,6 +187,7 @@ def _get_conn():
         import psycopg2
         import psycopg2.extras
         import sys as _sys
+
         # application_name = calling script, so pg_stat_activity / PG-log victims are
         # attributable (the 2026-07-04 idle-in-transaction audit had to guess offenders).
         _app = (_ensure_pgappname() or os.path.basename(_sys.argv[0] or "python"))[:60] or "python"
@@ -220,8 +228,8 @@ def _get_conn():
         if os.getenv("DB_CONN_TRACE"):
             try:
                 import traceback as _tb, threading as _th, datetime as _dt2
-                _stack = " <- ".join(
-                    f"{fr.name}:{fr.lineno}" for fr in _tb.extract_stack()[-8:-1])
+
+                _stack = " <- ".join(f"{fr.name}:{fr.lineno}" for fr in _tb.extract_stack()[-8:-1])
                 with open(os.path.join(os.path.dirname(__file__), "..", "logs", "db_conn_trace.log"), "a") as _tf:
                     _tf.write(f"{_dt2.datetime.now():%H:%M:%S} OPEN  {_th.current_thread().name} :: {_stack}\n")
             except Exception:
@@ -229,6 +237,7 @@ def _get_conn():
         return conn
     except Exception as e:
         import datetime as _edt
+
         print(f"{_edt.datetime.now():%Y-%m-%d %H:%M:%S}  [db_adapter] PostgreSQL connection failed: {e}")
         print("  [db_adapter] Falling back to JSON")
         return None
@@ -247,6 +256,7 @@ def close_thread_conn():
         if os.getenv("DB_CONN_TRACE"):
             try:
                 import threading as _th, datetime as _dt2
+
                 with open(os.path.join(os.path.dirname(__file__), "..", "logs", "db_conn_trace.log"), "a") as _tf:
                     _tf.write(f"{_dt2.datetime.now():%H:%M:%S} CLOSE {_th.current_thread().name}\n")
             except Exception:
@@ -286,8 +296,10 @@ def ensure_conn():
 
 def _execute(sql: str, params=None, fetch: str = None):
     """Execute SQL. fetch='one'|'all'|None. Retries once on a closed connection."""
+
     def _run(conn):
         import psycopg2.extras
+
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(sql, params)
             if fetch == "one":
@@ -325,6 +337,7 @@ def _execute(sql: str, params=None, fetch: str = None):
 
 # ── HOLDINGS ─────────────────────────────────────────────────────────────────
 
+
 def load_holdings(state_dir: Path) -> Dict:
     """Load portfolio holdings from canonical holdings.json.
 
@@ -345,10 +358,12 @@ def save_holdings(portfolio: Dict, state_dir: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     # MANDATORY wipe-guard: never zero/overwrite a good holdings snapshot with a bad payload.
     from holdings_guard import protected_holdings_write
+
     protected_holdings_write(portfolio, source="db_adapter.save_holdings", target_path=str(path))
 
 
 # ── PRICE CACHE ───────────────────────────────────────────────────────────────
+
 
 def load_price_cache(state_dir: Path) -> Dict:
     """Load price cache. Returns {symbol: {date_str: price}} dict."""
@@ -358,7 +373,7 @@ def load_price_cache(state_dir: Path) -> Dict:
                FROM price_cache
                WHERE price_date >= CURRENT_DATE - INTERVAL '2 years'
                ORDER BY symbol, price_date""",
-            fetch="all"
+            fetch="all",
         )
         if rows:
             cache: Dict[str, Dict[str, float]] = {}
@@ -398,6 +413,7 @@ def save_price_cache(cache: Dict, state_dir: Path) -> None:
             if conn:
                 try:
                     import psycopg2.extras
+
                     with conn.cursor() as cur:
                         psycopg2.extras.execute_values(
                             cur,
@@ -405,7 +421,7 @@ def save_price_cache(cache: Dict, state_dir: Path) -> None:
                                VALUES %s
                                ON CONFLICT (symbol, price_date)
                                DO UPDATE SET close_price = EXCLUDED.close_price""",
-                            rows
+                            rows,
                         )
                     conn.commit()
                     return
@@ -416,20 +432,17 @@ def save_price_cache(cache: Dict, state_dir: Path) -> None:
     # JSON fallback
     cache_path = Path(state_dir) / "price_cache.json"
     cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(
-        json.dumps(cache, separators=(",", ":")),
-        encoding="utf-8"
-    )
+    cache_path.write_text(json.dumps(cache, separators=(",", ":")), encoding="utf-8")
 
 
 # ── SNAPSHOTS ─────────────────────────────────────────────────────────────────
+
 
 def load_snapshots(state_dir: Path) -> Dict[str, float]:
     """Load all portfolio snapshots. Returns {date_str: total_value}."""
     if USE_DB:
         rows = _execute(
-            "SELECT snapshot_date::text, total_value FROM portfolio_snapshots ORDER BY snapshot_date",
-            fetch="all"
+            "SELECT snapshot_date::text, total_value FROM portfolio_snapshots ORDER BY snapshot_date", fetch="all"
         )
         if rows is not None:
             return {row["snapshot_date"]: float(row["total_value"]) for row in rows}
@@ -461,16 +474,18 @@ def save_snapshot(snapshot: Dict, state_dir: Path) -> None:
     if USE_DB and date_str and total_value > 0:
         try:
             prev = _execute(
-                "SELECT total_value, data FROM portfolio_snapshots ORDER BY snapshot_date DESC LIMIT 1",
-                fetch="one"
+                "SELECT total_value, data FROM portfolio_snapshots ORDER BY snapshot_date DESC LIMIT 1", fetch="one"
             )
             if prev:
                 prev_val = float(prev.get("total_value", 0))
                 if prev_val > 0:
                     drift_pct = abs(total_value - prev_val) / prev_val * 100
                     if drift_pct > 30:
-                        print(f"  [db_adapter] ⛔ SNAPSHOT REJECTED: ${total_value:,.0f} vs prev ${prev_val:,.0f} ({drift_pct:.1f}% drift > 30% guard)")
+                        print(
+                            f"  [db_adapter] ⛔ SNAPSHOT REJECTED: ${total_value:,.0f} vs prev ${prev_val:,.0f} ({drift_pct:.1f}% drift > 30% guard)"
+                        )
                         return
+
                 # per-position zero-collapse guard
                 def _hv(data):
                     h = (data or {}).get("holdings") or (data or {}).get("positions") or {}
@@ -480,8 +495,9 @@ def save_snapshot(snapshot: Dict, state_dir: Path) -> None:
                             out[k] = float((v.get("market_value") if isinstance(v, dict) else v) or 0)
                     elif isinstance(h, list):
                         for p in h:
-                            out[f"{p.get('symbol')}:{p.get('account','')}"] = float(p.get("market_value") or 0)
+                            out[f"{p.get('symbol')}:{p.get('account', '')}"] = float(p.get("market_value") or 0)
                     return out
+
                 _pd = prev.get("data")
                 if isinstance(_pd, str):
                     try:
@@ -494,8 +510,10 @@ def save_snapshot(snapshot: Dict, state_dir: Path) -> None:
                     zeroed = [k for k, pv in prev_h.items() if pv > 500 and new_h.get(k, 0) <= 0.01]
                     if zeroed:
                         _lost = sum(prev_h[k] for k in zeroed)
-                        print(f"  [db_adapter] ⛔ SNAPSHOT REJECTED: {len(zeroed)} material position(s) collapsed to $0 "
-                              f"(≈${_lost:,.0f} — likely unpriced mutual funds/pre-market): {zeroed[:4]}")
+                        print(
+                            f"  [db_adapter] ⛔ SNAPSHOT REJECTED: {len(zeroed)} material position(s) collapsed to $0 "
+                            f"(≈${_lost:,.0f} — likely unpriced mutual funds/pre-market): {zeroed[:4]}"
+                        )
                         return
         except Exception:
             pass  # If we can't check, allow the write
@@ -508,7 +526,7 @@ def save_snapshot(snapshot: Dict, state_dir: Path) -> None:
                SET total_value = EXCLUDED.total_value,
                    source = EXCLUDED.source,
                    data = EXCLUDED.data""",
-            (date_str, total_value, source, json.dumps(snapshot, default=str))
+            (date_str, total_value, source, json.dumps(snapshot, default=str)),
         )
         if result is not None:
             return
@@ -531,7 +549,9 @@ def save_snapshot(snapshot: Dict, state_dir: Path) -> None:
             if _pv > 0:
                 _drift = abs(total_value - _pv) / _pv * 100
                 if _drift > 25:
-                    print(f"  [db_adapter] ⛔ JSON SNAPSHOT REJECTED: ${total_value:,.0f} vs prev ${_pv:,.0f} ({_drift:.1f}% drift > 25%)")
+                    print(
+                        f"  [db_adapter] ⛔ JSON SNAPSHOT REJECTED: ${total_value:,.0f} vs prev ${_pv:,.0f} ({_drift:.1f}% drift > 25%)"
+                    )
                     _json_ok = False
                 break
         except Exception:
@@ -543,11 +563,13 @@ def save_snapshot(snapshot: Dict, state_dir: Path) -> None:
 
 # ── PERFORMANCE DAILY ────────────────────────────────────────────────────────
 
+
 def save_performance_daily(perf: Dict) -> None:
     """Save today's computed period returns to performance_daily table."""
     if not USE_DB:
         return
     from datetime import date as _date
+
     snapshot_date = _date.today().isoformat()
     periods = perf.get("periods", {})
     total_value = perf.get("current_value", 0) or 0
@@ -567,15 +589,18 @@ def save_performance_daily(perf: Dict) -> None:
             change_ytd_pct = EXCLUDED.change_ytd_pct,
             change_1y_pct = EXCLUDED.change_1y_pct,
             data = EXCLUDED.data""",
-        (snapshot_date, total_value,
-         periods.get("1D", {}).get("change_pct"),
-         periods.get("1W", {}).get("change_pct"),
-         periods.get("1M", {}).get("change_pct"),
-         periods.get("3M", {}).get("change_pct"),
-         periods.get("6M", {}).get("change_pct"),
-         periods.get("YTD", {}).get("change_pct"),
-         periods.get("1Y", {}).get("change_pct"),
-         json.dumps(perf, default=str))
+        (
+            snapshot_date,
+            total_value,
+            periods.get("1D", {}).get("change_pct"),
+            periods.get("1W", {}).get("change_pct"),
+            periods.get("1M", {}).get("change_pct"),
+            periods.get("3M", {}).get("change_pct"),
+            periods.get("6M", {}).get("change_pct"),
+            periods.get("YTD", {}).get("change_pct"),
+            periods.get("1Y", {}).get("change_pct"),
+            json.dumps(perf, default=str),
+        ),
     )
     if result is not None:
         return
@@ -583,6 +608,7 @@ def save_performance_daily(perf: Dict) -> None:
 
 
 # ── INTEL BRIEFS ─────────────────────────────────────────────────────────────
+
 
 def save_intel_brief(brief: Dict) -> None:
     """Save a generated intel brief record to Postgres."""
@@ -597,13 +623,20 @@ def save_intel_brief(brief: Dict) -> None:
                          word_count = EXCLUDED.word_count,
                          sections = EXCLUDED.sections,
                          triggers = EXCLUDED.triggers""",
-        (brief['brief_date'], brief['brief_type'], brief['fund'],
-         brief.get('docx_path'), brief.get('word_count'),
-         json.dumps(brief.get('sections', {})), json.dumps(brief.get('triggers', {})))
+        (
+            brief["brief_date"],
+            brief["brief_type"],
+            brief["fund"],
+            brief.get("docx_path"),
+            brief.get("word_count"),
+            json.dumps(brief.get("sections", {})),
+            json.dumps(brief.get("triggers", {})),
+        ),
     )
 
 
 # ── ACTION SIGNALS HISTORY ───────────────────────────────────────────────────
+
 
 def save_signals_history(signals: list, signal_date: str) -> None:
     """Save today's per-ticker signals to action_signals_history table."""
@@ -611,23 +644,31 @@ def save_signals_history(signals: list, signal_date: str) -> None:
         return
     rows = []
     for s in signals:
-        rows.append((
-            signal_date,
-            s.get("symbol", ""),
-            s.get("signal", ""),
-            s.get("rule", ""),
-            s.get("portfolio_pct"),
-            s.get("market_value"),
-            json.dumps({k: v for k, v in s.items()
-                        if k not in ("symbol", "signal", "rule", "portfolio_pct", "market_value")},
-                       default=str)
-        ))
+        rows.append(
+            (
+                signal_date,
+                s.get("symbol", ""),
+                s.get("signal", ""),
+                s.get("rule", ""),
+                s.get("portfolio_pct"),
+                s.get("market_value"),
+                json.dumps(
+                    {
+                        k: v
+                        for k, v in s.items()
+                        if k not in ("symbol", "signal", "rule", "portfolio_pct", "market_value")
+                    },
+                    default=str,
+                ),
+            )
+        )
     if not rows:
         return
     conn = _get_conn()
     if conn:
         try:
             import psycopg2.extras
+
             with conn.cursor() as cur:
                 psycopg2.extras.execute_values(
                     cur,
@@ -640,7 +681,7 @@ def save_signals_history(signals: list, signal_date: str) -> None:
                                      portfolio_pct = EXCLUDED.portfolio_pct,
                                      market_value = EXCLUDED.market_value,
                                      data = EXCLUDED.data""",
-                    rows
+                    rows,
                 )
             conn.commit()
         except Exception as e:
@@ -649,6 +690,7 @@ def save_signals_history(signals: list, signal_date: str) -> None:
 
 
 # ── ADVISOR MEMORY (OpenClaw Phase A1) ───────────────────────────────────────
+
 
 def save_dividend_history(payers: list, record_date: str) -> None:
     """Save today's per-ticker dividend data to dividend_history table."""
@@ -666,20 +708,23 @@ def save_dividend_history(payers: list, record_date: str) -> None:
         by_sym[sym]["entries"].append(p)
     rows = []
     for sym, agg in by_sym.items():
-        rows.append((
-            record_date, sym,
-            agg["yield_pct"],
-            None,  # quarterly_amount
-            round(agg["annual_income"], 2),
-            None,  # ex_div_date
-            None,  # pay_date
-            json.dumps({"accounts": len(agg["entries"]),
-                        "entries": agg["entries"]}, default=str)
-        ))
+        rows.append(
+            (
+                record_date,
+                sym,
+                agg["yield_pct"],
+                None,  # quarterly_amount
+                round(agg["annual_income"], 2),
+                None,  # ex_div_date
+                None,  # pay_date
+                json.dumps({"accounts": len(agg["entries"]), "entries": agg["entries"]}, default=str),
+            )
+        )
     conn = _get_conn()
     if conn:
         try:
             import psycopg2.extras
+
             with conn.cursor() as cur:
                 psycopg2.extras.execute_values(
                     cur,
@@ -691,7 +736,7 @@ def save_dividend_history(payers: list, record_date: str) -> None:
                        DO UPDATE SET annual_yield_pct = EXCLUDED.annual_yield_pct,
                                      annual_income = EXCLUDED.annual_income,
                                      data = EXCLUDED.data""",
-                    rows
+                    rows,
                 )
             conn.commit()
         except Exception as e:
@@ -705,21 +750,24 @@ def save_advisor_observations(observations: list) -> None:
         return
     rows = []
     for o in observations:
-        rows.append((
-            o["observation_date"],
-            o.get("symbol") or "",  # empty string, not NULL (for UNIQUE constraint)
-            o["category"],
-            o["observation"],
-            json.dumps(o.get("evidence", {}), default=str),
-            o["source"],
-            o.get("confidence", 1.00),
-            o.get("model", "rule"),
-            o.get("freshness_hash"),
-        ))
+        rows.append(
+            (
+                o["observation_date"],
+                o.get("symbol") or "",  # empty string, not NULL (for UNIQUE constraint)
+                o["category"],
+                o["observation"],
+                json.dumps(o.get("evidence", {}), default=str),
+                o["source"],
+                o.get("confidence", 1.00),
+                o.get("model", "rule"),
+                o.get("freshness_hash"),
+            )
+        )
     conn = _get_conn()
     if conn:
         try:
             import psycopg2.extras
+
             with conn.cursor() as cur:
                 psycopg2.extras.execute_values(
                     cur,
@@ -731,7 +779,7 @@ def save_advisor_observations(observations: list) -> None:
                        DO UPDATE SET observation = EXCLUDED.observation,
                                      evidence = EXCLUDED.evidence,
                                      freshness_hash = EXCLUDED.freshness_hash""",
-                    rows
+                    rows,
                 )
             conn.commit()
         except Exception as e:
@@ -774,8 +822,18 @@ def save_ticker_snapshot_daily(snapshot_date: str, enrichment_cache: dict) -> No
             continue
         # Provenance/coverage block
         _all_fields = set(data.keys())
-        _expected = {"rsi","beta","sma20_pct","sma50_pct","sma200_pct","perf_week_pct",
-                     "perf_month_pct","perf_ytd_pct","week52_high_pct","week52_low_pct"}
+        _expected = {
+            "rsi",
+            "beta",
+            "sma20_pct",
+            "sma50_pct",
+            "sma200_pct",
+            "perf_week_pct",
+            "perf_month_pct",
+            "perf_ytd_pct",
+            "week52_high_pct",
+            "week52_low_pct",
+        }
         _present = _expected & _all_fields
         _missing = _expected - _all_fields
         _cached_at = data.get("cached_at", "")
@@ -793,21 +851,32 @@ def save_ticker_snapshot_daily(snapshot_date: str, enrichment_cache: dict) -> No
             "source_fields_missing": sorted(_missing) if _missing else [],
             "cache_age_seconds": _cache_age,
         }
-        rows.append((
-            snapshot_date, sym, "finviz",
-            _fit(data.get("rsi"), 1000), _fit(data.get("beta"), 1000),       # rsi numeric(5,2), beta numeric(6,3)
-            _fit(data.get("sma20_pct"), 10000), _fit(data.get("sma50_pct"), 10000), _fit(data.get("sma200_pct"), 10000),
-            _fit(data.get("perf_week_pct"), 10000), _fit(data.get("perf_month_pct"), 10000), _fit(data.get("perf_ytd_pct"), 10000),
-            _fit(data.get("week52_high_pct"), 10000), _fit(data.get("week52_low_pct"), 10000),   # all _pct numeric(6,2)
-            str(data.get("recom", ""))[:20] if data.get("recom") else None,
-            json.dumps(_clean_json(_full_data), default=str),
-        ))
+        rows.append(
+            (
+                snapshot_date,
+                sym,
+                "finviz",
+                _fit(data.get("rsi"), 1000),
+                _fit(data.get("beta"), 1000),  # rsi numeric(5,2), beta numeric(6,3)
+                _fit(data.get("sma20_pct"), 10000),
+                _fit(data.get("sma50_pct"), 10000),
+                _fit(data.get("sma200_pct"), 10000),
+                _fit(data.get("perf_week_pct"), 10000),
+                _fit(data.get("perf_month_pct"), 10000),
+                _fit(data.get("perf_ytd_pct"), 10000),
+                _fit(data.get("week52_high_pct"), 10000),
+                _fit(data.get("week52_low_pct"), 10000),  # all _pct numeric(6,2)
+                str(data.get("recom", ""))[:20] if data.get("recom") else None,
+                json.dumps(_clean_json(_full_data), default=str),
+            )
+        )
     if not rows:
         return
     conn = _get_conn()
     if conn:
         try:
             import psycopg2.extras
+
             with conn.cursor() as cur:
                 psycopg2.extras.execute_values(
                     cur,
@@ -828,7 +897,7 @@ def save_ticker_snapshot_daily(snapshot_date: str, enrichment_cache: dict) -> No
                                      week52_low_pct = EXCLUDED.week52_low_pct,
                                      analyst_recom = EXCLUDED.analyst_recom,
                                      data = EXCLUDED.data""",
-                    rows
+                    rows,
                 )
             conn.commit()
         except Exception as e:
@@ -840,10 +909,7 @@ def notification_already_logged(dedupe_key: str) -> bool:
     """Check if a notification with this dedupe_key already exists."""
     if not USE_DB:
         return False
-    result = _execute(
-        "SELECT COUNT(*) AS cnt FROM notification_log WHERE dedupe_key = %s",
-        (dedupe_key,), fetch="one"
-    )
+    result = _execute("SELECT COUNT(*) AS cnt FROM notification_log WHERE dedupe_key = %s", (dedupe_key,), fetch="one")
     return (result or {}).get("cnt", 0) > 0
 
 
@@ -862,13 +928,21 @@ def save_notification_log_entry(entry: dict) -> None:
             sent_at = EXCLUDED.sent_at,
             error = EXCLUDED.error,
             payload = EXCLUDED.payload""",
-        (entry["notification_date"], entry["notification_type"], entry["channel"],
-         entry.get("subject"), entry.get("body_summary"),
-         entry.get("recommendation_ids"), entry.get("escalation_ids"),
-         entry.get("observation_ids"),
-         json.dumps(entry.get("payload", {}), default=str),
-         entry.get("status", "queued"), entry["dedupe_key"],
-         entry.get("sent_at"), entry.get("error"))
+        (
+            entry["notification_date"],
+            entry["notification_type"],
+            entry["channel"],
+            entry.get("subject"),
+            entry.get("body_summary"),
+            entry.get("recommendation_ids"),
+            entry.get("escalation_ids"),
+            entry.get("observation_ids"),
+            json.dumps(entry.get("payload", {}), default=str),
+            entry.get("status", "queued"),
+            entry["dedupe_key"],
+            entry.get("sent_at"),
+            entry.get("error"),
+        ),
     )
 
 
@@ -877,6 +951,7 @@ def save_article_index(articles: list) -> None:
     if not USE_DB or not articles:
         return
     import hashlib
+
     rows = []
     for a in articles:
         url = a.get("url", "")
@@ -892,32 +967,52 @@ def save_article_index(articles: list) -> None:
         sym = a.get("symbol") or a.get("portfolio_symbol") or ""
         symbols = [sym] if sym else []
         # Build row
-        rows.append((
-            pub or None,
-            title,
-            url or None,
-            source,
-            a.get("provider"),
-            symbols if symbols else None,
-            a.get("portfolio_symbol"),
-            a.get("llm_score") or a.get("relevance_score"),
-            None,  # sentiment — not present in current pipeline
-            a.get("impact_tier"),
-            a.get("llm_category"),
-            a.get("llm_urgency"),
-            a.get("llm_summary") or a.get("summary"),
-            json.dumps({k: v for k, v in a.items()
-                        if k not in ("title", "url", "source", "provider", "published_at",
-                                     "portfolio_symbol", "llm_score", "impact_tier",
-                                     "llm_category", "llm_urgency", "llm_summary")}, default=str),
-            dk,
-        ))
+        rows.append(
+            (
+                pub or None,
+                title,
+                url or None,
+                source,
+                a.get("provider"),
+                symbols if symbols else None,
+                a.get("portfolio_symbol"),
+                a.get("llm_score") or a.get("relevance_score"),
+                None,  # sentiment — not present in current pipeline
+                a.get("impact_tier"),
+                a.get("llm_category"),
+                a.get("llm_urgency"),
+                a.get("llm_summary") or a.get("summary"),
+                json.dumps(
+                    {
+                        k: v
+                        for k, v in a.items()
+                        if k
+                        not in (
+                            "title",
+                            "url",
+                            "source",
+                            "provider",
+                            "published_at",
+                            "portfolio_symbol",
+                            "llm_score",
+                            "impact_tier",
+                            "llm_category",
+                            "llm_urgency",
+                            "llm_summary",
+                        )
+                    },
+                    default=str,
+                ),
+                dk,
+            )
+        )
     if not rows:
         return
     conn = _get_conn()
     if conn:
         try:
             import psycopg2.extras
+
             with conn.cursor() as cur:
                 psycopg2.extras.execute_values(
                     cur,
@@ -933,7 +1028,7 @@ def save_article_index(articles: list) -> None:
                                      llm_urgency = EXCLUDED.llm_urgency,
                                      summary = EXCLUDED.summary,
                                      data = EXCLUDED.data""",
-                    rows
+                    rows,
                 )
             conn.commit()
         except Exception as e:
@@ -947,24 +1042,27 @@ def save_advisor_recommendations(recommendations: list) -> None:
         return
     rows = []
     for r in recommendations:
-        rows.append((
-            r["recommendation_date"],
-            r.get("symbol"),
-            r["action"],
-            r["rationale"],
-            r["confidence"],
-            r.get("model", "rule"),
-            r.get("escalation_ids"),
-            r.get("observation_ids"),
-            json.dumps(r.get("evidence_summary", {}), default=str),
-            r.get("status", "draft"),
-            r.get("expires_at"),
-            r["dedupe_key"],
-        ))
+        rows.append(
+            (
+                r["recommendation_date"],
+                r.get("symbol"),
+                r["action"],
+                r["rationale"],
+                r["confidence"],
+                r.get("model", "rule"),
+                r.get("escalation_ids"),
+                r.get("observation_ids"),
+                json.dumps(r.get("evidence_summary", {}), default=str),
+                r.get("status", "draft"),
+                r.get("expires_at"),
+                r["dedupe_key"],
+            )
+        )
     conn = _get_conn()
     if conn:
         try:
             import psycopg2.extras
+
             with conn.cursor() as cur:
                 psycopg2.extras.execute_values(
                     cur,
@@ -977,7 +1075,7 @@ def save_advisor_recommendations(recommendations: list) -> None:
                        DO UPDATE SET rationale = EXCLUDED.rationale,
                                      confidence = EXCLUDED.confidence,
                                      evidence_summary = EXCLUDED.evidence_summary""",
-                    rows
+                    rows,
                 )
             conn.commit()
         except Exception as e:
@@ -991,24 +1089,27 @@ def save_yahoo_analyst_targets_history(snapshot_date: str, targets_payload: list
         return
     rows = []
     for t in targets_payload:
-        rows.append((
-            snapshot_date,
-            t["symbol"],
-            t.get("current_price"),
-            t.get("target_mean_price"),
-            t.get("target_high_price"),
-            t.get("target_low_price"),
-            t.get("target_median_price"),
-            t.get("recommendation_mean"),
-            t.get("recommendation_key"),
-            t.get("number_of_analyst_opinions"),
-            "yahoo",
-            json.dumps(t, default=str),
-        ))
+        rows.append(
+            (
+                snapshot_date,
+                t["symbol"],
+                t.get("current_price"),
+                t.get("target_mean_price"),
+                t.get("target_high_price"),
+                t.get("target_low_price"),
+                t.get("target_median_price"),
+                t.get("recommendation_mean"),
+                t.get("recommendation_key"),
+                t.get("number_of_analyst_opinions"),
+                "yahoo",
+                json.dumps(t, default=str),
+            )
+        )
     conn = _get_conn()
     if conn:
         try:
             import psycopg2.extras
+
             with conn.cursor() as cur:
                 psycopg2.extras.execute_values(
                     cur,
@@ -1028,7 +1129,7 @@ def save_yahoo_analyst_targets_history(snapshot_date: str, targets_payload: list
                                      recommendation_key = EXCLUDED.recommendation_key,
                                      number_of_analyst_opinions = EXCLUDED.number_of_analyst_opinions,
                                      data = EXCLUDED.data""",
-                    rows
+                    rows,
                 )
             conn.commit()
         except Exception as e:
@@ -1044,19 +1145,23 @@ def _recom_guard():
     return g
 
 
-def build_analyst_consensus_rows(snapshot_date: str, enrichment_cache: dict,
-                                 quote_cache: dict = None) -> tuple[list, dict]:
-    """Build analyst_consensus_history rows and a refusal receipt (no DB access).
+def build_analyst_consensus_rows(
+    snapshot_date: str, enrichment_cache: dict, quote_cache: dict = None
+) -> tuple[list, dict]:
+    """Prepare rows and refusal evidence without accessing a database.
 
-    A recom whose raw text carries "%" or whose value is outside 1..5 is NOT a
-    Finviz analyst recommendation (2026-10-18: stale pre-09-13 cache entries
-    replayed "-95.44%" as JNUG "Strong Buy" daily since 09-08). Such a record
-    keeps its target price row only if it has one; recom_raw/score/rating are
-    never written. Each refusal is counted by reason in the receipt.
+    Invalid recommendation fields are withheld. An independently present target
+    retains its existing value. Prepared rows are not reported as committed.
     """
     guard = _recom_guard()
-    receipt = {"considered": 0, "written": 0, "recom_refused": 0,
-               "refused_by_reason": {}, "refused_symbols": []}
+    receipt = {
+        "considered": 0,
+        "rows_prepared": 0,
+        "recom_refused": 0,
+        "refused_by_reason": {},
+        "refused_symbols": [],
+        "refused_records": [],
+    }
     rows = []
     _qc = quote_cache or {}
     for sym, data in (enrichment_cache or {}).items():
@@ -1066,11 +1171,21 @@ def build_analyst_consensus_rows(snapshot_date: str, enrichment_cache: dict,
         recom_raw = data.get("recom")
         recom_score = data.get("recom_score")
         analyst_rating = data.get("analyst_rating")
-        reason = guard.recom_reject_reason(recom_raw, recom_score)
+        reason = guard.sanitize_enrichment_record(dict(data))
         if reason is not None:
             receipt["recom_refused"] += 1
             receipt["refused_by_reason"][reason] = receipt["refused_by_reason"].get(reason, 0) + 1
             receipt["refused_symbols"].append(sym)
+            receipt["refused_records"].append(
+                {
+                    "symbol": sym,
+                    "reason": reason,
+                    "raw": repr(recom_raw),
+                    "score": repr(recom_score),
+                    "rating": repr(analyst_rating),
+                    "cached_at": data.get("cached_at"),
+                }
+            )
             recom_raw = recom_score = analyst_rating = None
         # Target price from quote cache if available
         target_price = None
@@ -1092,16 +1207,25 @@ def build_analyst_consensus_rows(snapshot_date: str, enrichment_cache: dict,
         }
         if reason is not None:
             _analyst_data["recom_reject_reason"] = reason
-        rows.append((
-            snapshot_date, sym,
-            str(recom_raw)[:50] if recom_raw else None,
-            float(recom_score) if recom_score is not None else None,
-            str(analyst_rating)[:30] if analyst_rating else None,
-            target_price,
-            "finviz",
-            json.dumps(_analyst_data, default=str),
-        ))
-    receipt["written"] = len(rows)
+            _analyst_data["recom_rejected_evidence"] = {
+                "raw": repr(data.get("recom")),
+                "score": repr(data.get("recom_score")),
+                "rating": repr(data.get("analyst_rating")),
+                "cached_at": data.get("cached_at"),
+            }
+        rows.append(
+            (
+                snapshot_date,
+                sym,
+                str(recom_raw)[:50] if recom_raw else None,
+                float(recom_score) if recom_score is not None else None,
+                str(analyst_rating)[:30] if analyst_rating else None,
+                target_price,
+                "finviz",
+                json.dumps(_analyst_data, default=str),
+            )
+        )
+    receipt["rows_prepared"] = len(rows)
     return rows, receipt
 
 
@@ -1110,16 +1234,21 @@ def save_analyst_consensus_history(snapshot_date: str, enrichment_cache: dict, q
     if not USE_DB or not enrichment_cache:
         return None
     rows, receipt = build_analyst_consensus_rows(snapshot_date, enrichment_cache, quote_cache)
+    receipt.update(storage_status="unavailable", rows_committed=None)
     if receipt["recom_refused"]:
-        print(f"  [analyst-consensus] recom refused for {receipt['recom_refused']} ticker(s) "
-              f"{receipt['refused_by_reason']} (not a 1-5 rating; first: "
-              f"{', '.join(receipt['refused_symbols'][:8])})")
+        print(
+            f"  [analyst-consensus] recom refused for {receipt['recom_refused']} ticker(s) "
+            f"{receipt['refused_by_reason']} (not a 1-5 rating; first: "
+            f"{', '.join(receipt['refused_symbols'][:8])})"
+        )
     if not rows:
+        receipt.update(storage_status="no_rows", rows_committed=0)
         return receipt
     conn = _get_conn()
     if conn:
         try:
             import psycopg2.extras
+
             with conn.cursor() as cur:
                 psycopg2.extras.execute_values(
                     cur,
@@ -1133,10 +1262,14 @@ def save_analyst_consensus_history(snapshot_date: str, enrichment_cache: dict, q
                                      analyst_rating = EXCLUDED.analyst_rating,
                                      target_price = EXCLUDED.target_price,
                                      data = EXCLUDED.data""",
-                    rows
+                    rows,
                 )
             conn.commit()
+            receipt.update(storage_status="committed", rows_committed=len(rows))
         except Exception as e:
+            # A commit error may be ambiguous. Prepared rows are not proof that
+            # the database committed them; do not report a recovered write.
+            receipt["storage_status"] = "unknown"
             conn.rollback()
             print(f"  [db_adapter] Analyst consensus history save failed: {e}")
     return receipt
@@ -1194,21 +1327,24 @@ def save_escalations(escalations: list) -> None:
         return
     rows = []
     for e in escalations:
-        rows.append((
-            e.get("observation_id"),
-            e.get("symbol"),
-            e["severity"],
-            e["category"],
-            e["trigger_rule"],
-            e["summary"],
-            json.dumps(e.get("evidence", {}), default=str),
-            e.get("status", "pending"),
-            e.get("expires_at"),
-        ))
+        rows.append(
+            (
+                e.get("observation_id"),
+                e.get("symbol"),
+                e["severity"],
+                e["category"],
+                e["trigger_rule"],
+                e["summary"],
+                json.dumps(e.get("evidence", {}), default=str),
+                e.get("status", "pending"),
+                e.get("expires_at"),
+            )
+        )
     conn = _get_conn()
     if conn:
         try:
             import psycopg2.extras
+
             with conn.cursor() as cur:
                 psycopg2.extras.execute_values(
                     cur,
@@ -1220,7 +1356,7 @@ def save_escalations(escalations: list) -> None:
                        DO UPDATE SET severity = EXCLUDED.severity,
                                      summary = EXCLUDED.summary,
                                      evidence = EXCLUDED.evidence""",
-                    rows
+                    rows,
                 )
             conn.commit()
         except Exception as e:
@@ -1230,42 +1366,57 @@ def save_escalations(escalations: list) -> None:
 
 # ── MAINTENANCE / QUERY HELPERS ────────────────────────────────────────────
 
+
 def expire_stale_escalations() -> list:
     """Mark pending escalations past their expires_at as expired. Returns list of expired rows."""
-    return _execute(
-        """UPDATE escalation_queue SET status = 'expired'
+    return (
+        _execute(
+            """UPDATE escalation_queue SET status = 'expired'
            WHERE status = 'pending' AND expires_at IS NOT NULL
            AND expires_at < CURRENT_DATE
            RETURNING id, symbol, trigger_rule""",
-        fetch="all"
-    ) or []
+            fetch="all",
+        )
+        or []
+    )
 
 
 def expire_stale_drafts() -> list:
     """Mark draft recommendations past their expires_at as expired. Returns list of expired rows."""
-    return _execute(
-        """UPDATE advisor_recommendations SET status = 'expired'
+    return (
+        _execute(
+            """UPDATE advisor_recommendations SET status = 'expired'
            WHERE status = 'draft' AND expires_at IS NOT NULL
            AND expires_at < CURRENT_DATE
            RETURNING id, symbol, action""",
-        fetch="all"
-    ) or []
+            fetch="all",
+        )
+        or []
+    )
 
 
 def expire_stale_ai_watchlist() -> list:
     """Mark active AI-generated watchlist items past their expires_at as expired. Returns list of expired rows."""
-    return _execute(
-        """UPDATE watchlist_items SET status = 'expired', updated_at = now()
+    return (
+        _execute(
+            """UPDATE watchlist_items SET status = 'expired', updated_at = now()
            WHERE source_type = 'ai_generated' AND status = 'active'
            AND data->>'expires_at' IS NOT NULL
            AND data->>'expires_at' < CURRENT_DATE::text
            RETURNING id, symbol""",
-        fetch="all"
-    ) or []
+            fetch="all",
+        )
+        or []
+    )
 
 
 _WATCHLIST_ACTIVE_STATUSES = (
-    "active", "researched", "review", "queued", "researching", "tracking",
+    "active",
+    "researched",
+    "review",
+    "queued",
+    "researching",
+    "tracking",
 )
 _WATCHLIST_SOURCE_ALIASES = {
     "ai_generated": "ai_discovered",
@@ -1295,31 +1446,37 @@ def get_active_watchlist_symbols(source_types: list | None = None) -> list:
         )
         params: tuple = tuple(statuses) + tuple(srcs)
     else:
-        sql = (
-            f"SELECT DISTINCT symbol FROM watchlist_items "
-            f"WHERE status IN ({ph_status}) AND symbol IS NOT NULL"
-        )
+        sql = f"SELECT DISTINCT symbol FROM watchlist_items WHERE status IN ({ph_status}) AND symbol IS NOT NULL"
         params = tuple(statuses)
     return _execute(sql, params, fetch="all") or []
 
 
 def get_escalations_by_date_severity(date_str: str, severity: int) -> list:
     """Return escalation rows for a given date and severity level."""
-    return _execute(
-        "SELECT id, symbol, severity, trigger_rule, summary, evidence FROM escalation_queue WHERE created_at::date = %s AND severity = %s",
-        (date_str, severity), fetch="all"
-    ) or []
+    return (
+        _execute(
+            "SELECT id, symbol, severity, trigger_rule, summary, evidence FROM escalation_queue WHERE created_at::date = %s AND severity = %s",
+            (date_str, severity),
+            fetch="all",
+        )
+        or []
+    )
 
 
 def get_high_confidence_drafts(date_str: str, min_confidence: float = 0.90) -> list:
     """Return recommendation drafts at or above confidence threshold for a given date."""
-    return _execute(
-        "SELECT id, symbol, action, rationale, confidence FROM advisor_recommendations WHERE recommendation_date = %s AND status = 'draft' AND confidence >= %s",
-        (date_str, min_confidence), fetch="all"
-    ) or []
+    return (
+        _execute(
+            "SELECT id, symbol, action, rationale, confidence FROM advisor_recommendations WHERE recommendation_date = %s AND status = 'draft' AND confidence >= %s",
+            (date_str, min_confidence),
+            fetch="all",
+        )
+        or []
+    )
 
 
 # ── ACTION QUEUE HELPERS ────────────────────────────────────────────────────
+
 
 def action_queue_already_exists(dedupe_key: str) -> bool:
     """Check if an action_queue item with this dedupe_key exists."""
@@ -1333,13 +1490,12 @@ def save_action_queue_entry(entry: dict) -> None:
     if action == "STOP_REVIEW":
         # Check if a pending STOP_REVIEW already exists
         existing = _execute(
-            "SELECT id FROM action_queue WHERE action='STOP_REVIEW' AND status='pending' LIMIT 1",
-            fetch="one"
+            "SELECT id FROM action_queue WHERE action='STOP_REVIEW' AND status='pending' LIMIT 1", fetch="one"
         )
         if existing:
             _execute(
                 "UPDATE action_queue SET rationale=%(rationale)s, confidence=%(confidence)s WHERE id=%(id)s",
-                {**entry, "id": existing["id"]}
+                {**entry, "id": existing["id"]},
             )
             return
     _execute(
@@ -1348,60 +1504,75 @@ def save_action_queue_entry(entry: dict) -> None:
            VALUES (%(recommendation_id)s, %(symbol)s, %(action)s, %(rationale)s, %(confidence)s,
                    %(urgency)s, %(status)s, %(expires_at)s, %(dedupe_key)s)
            ON CONFLICT (dedupe_key) DO NOTHING""",
-        entry
+        entry,
     )
 
 
 def get_pending_action_queue() -> list:
     """Return all pending action_queue items."""
-    return _execute(
-        """SELECT id, recommendation_id, symbol, action, rationale, confidence, urgency, status, expires_at, dedupe_key, created_at
+    return (
+        _execute(
+            """SELECT id, recommendation_id, symbol, action, rationale, confidence, urgency, status, expires_at, dedupe_key, created_at
            FROM action_queue WHERE status = 'pending'
            ORDER BY urgency = 'urgent' DESC, confidence DESC, created_at DESC""",
-        fetch="all"
-    ) or []
+            fetch="all",
+        )
+        or []
+    )
 
 
 # ── SERVER / API HELPERS ────────────────────────────────────────────────────
 
+
 def get_personal_snapshot_at_date(target_date: str) -> list:
     """Return the latest personal_history row per field as of target_date."""
-    return _execute(
-        """SELECT DISTINCT ON (field_name)
+    return (
+        _execute(
+            """SELECT DISTINCT ON (field_name)
                field_name, value, effective_date, recorded_at, note, source
            FROM personal_history
            WHERE effective_date <= %s
            ORDER BY field_name, effective_date DESC, recorded_at DESC""",
-        (target_date,), fetch="all"
-    ) or []
+            (target_date,),
+            fetch="all",
+        )
+        or []
+    )
 
 
 def get_personal_field_history(field_name: str) -> list:
     """Return all history rows for a single personal field, ordered by recorded_at."""
-    return _execute(
-        """SELECT value, effective_date, recorded_at, note, source
+    return (
+        _execute(
+            """SELECT value, effective_date, recorded_at, note, source
            FROM personal_history
            WHERE field_name = %s
            ORDER BY recorded_at ASC""",
-        (field_name,), fetch="all"
-    ) or []
+            (field_name,),
+            fetch="all",
+        )
+        or []
+    )
 
 
-def save_personal_history_entry(field_name: str, value, data_type: str, category: str,
-                                 effective_date: str, note: str, source: str = "modal_edit") -> bool:
+def save_personal_history_entry(
+    field_name: str, value, data_type: str, category: str, effective_date: str, note: str, source: str = "modal_edit"
+) -> bool:
     """Insert one personal_history row. Returns True on success."""
     result = _execute(
         """INSERT INTO personal_history
            (field_name, value, data_type, category, effective_date, note, source)
            VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-        (field_name, value, data_type, category, effective_date, note, source)
+        (field_name, value, data_type, category, effective_date, note, source),
     )
     return result is not None and result is not False
 
 
 def get_db_table_stats() -> list:
     """Return pg_stat_user_tables stats for the health endpoint."""
-    return _execute("""
+    return (
+        _execute(
+            """
         SELECT s.relname AS name,
                s.n_live_tup AS live_rows,
                s.n_dead_tup AS dead_rows,
@@ -1410,21 +1581,30 @@ def get_db_table_stats() -> list:
                s.last_autoanalyze::text
         FROM pg_stat_user_tables s
         ORDER BY pg_total_relation_size(s.schemaname||'.'||s.relname) DESC
-    """, fetch="all") or []
+    """,
+            fetch="all",
+        )
+        or []
+    )
 
 
 def get_recent_notifications(limit: int = 20) -> list:
     """Return recent notification_log rows for display."""
-    return _execute(
-        """SELECT notification_date, notification_type, channel, status, subject,
+    return (
+        _execute(
+            """SELECT notification_date, notification_type, channel, status, subject,
                   body_summary, sent_at::text, dedupe_key
            FROM notification_log
            ORDER BY created_at DESC LIMIT %s""",
-        (limit,), fetch="all"
-    ) or []
+            (limit,),
+            fetch="all",
+        )
+        or []
+    )
 
 
 # ── TRADE AI STATE (delta tracker) ───────────────────────────────────────────
+
 
 def load_state(state_file: Path) -> Dict:
     """Load Trade AI delta tracking state."""
@@ -1432,7 +1612,7 @@ def load_state(state_file: Path) -> Dict:
         rows = _execute(
             """SELECT ticker, data FROM trade_ai_state
                WHERE run_date = (SELECT MAX(run_date) FROM trade_ai_state)""",
-            fetch="all"
+            fetch="all",
         )
         if rows:
             state = {}
@@ -1455,14 +1635,18 @@ def save_state(state: Dict, state_file: Path) -> None:
     """Save Trade AI delta tracking state."""
     if USE_DB:
         from datetime import date
+
         run_date = date.today().isoformat()
         conn = _get_conn()
         if conn:
             try:
                 import psycopg2.extras
-                rows = [(run_date, ticker, json.dumps(data, default=str))
-                        for ticker, data in state.items()
-                        if isinstance(data, dict)]
+
+                rows = [
+                    (run_date, ticker, json.dumps(data, default=str))
+                    for ticker, data in state.items()
+                    if isinstance(data, dict)
+                ]
                 with conn.cursor() as cur:
                     # Clear today's state first
                     cur.execute("DELETE FROM trade_ai_state WHERE run_date = %s", (run_date,))
@@ -1471,7 +1655,7 @@ def save_state(state: Dict, state_file: Path) -> None:
                             cur,
                             """INSERT INTO trade_ai_state (run_date, ticker, data)
                                VALUES %s""",
-                            rows
+                            rows,
                         )
                 conn.commit()
                 return
@@ -1487,6 +1671,7 @@ def save_state(state: Dict, state_file: Path) -> None:
 
 # ── RUN SUMMARY ───────────────────────────────────────────────────────────────
 
+
 def load_run_summary(path: Path) -> Dict:
     """Load a run summary."""
     if USE_DB:
@@ -1498,7 +1683,7 @@ def load_run_summary(path: Path) -> Dict:
             row = _execute(
                 "SELECT data FROM run_summary WHERE run_date = %s AND run_label = %s",
                 (run_date, run_label),
-                fetch="one"
+                fetch="one",
             )
             if row and row.get("data"):
                 return row["data"]
@@ -1532,8 +1717,7 @@ def save_run_summary(summary: Dict, path: Path) -> None:
                    DO UPDATE SET go_count=EXCLUDED.go_count,
                                  wait_count=EXCLUDED.wait_count,
                                  data=EXCLUDED.data""",
-                (run_date, run_label, go_count, wait_count,
-                 json.dumps(summary, default=str))
+                (run_date, run_label, go_count, wait_count, json.dumps(summary, default=str)),
             )
             if result is not None:
                 # Also write JSON for dashboard_generator_v2.py compatibility
@@ -1548,6 +1732,7 @@ def save_run_summary(summary: Dict, path: Path) -> None:
 
 
 # ── Status helper ─────────────────────────────────────────────────────────────
+
 
 def db_status() -> str:
     """Return human-readable storage backend status."""
