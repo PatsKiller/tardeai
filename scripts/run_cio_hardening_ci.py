@@ -120,6 +120,12 @@ GATES = [
     # touches, per-class fingerprints, digest routing; llm_curation deferred (no Ollama); both monitors as n8n canary
     # lanes (dry live_arg first) with REVIEWED contracts, LaneRunReceipt@v2 and the operator packet. Hermetic.
     ("data_integrity_fixes_20261018", ["tests/test_data_integrity_fixes_20261018.py"]),
+    # ANCHOR: ANALYST_FEED_STALE_20261020 — Communications "Analysts" fact showed 87-day-old Street targets: the
+    # pro_analyst_fetch universe (~2,340, mostly directive-watch) was an unordered DISTINCT cut at --max 250 with held
+    # positions appended last, so the same ~250 refetched daily and NVDA/PFLT/SPCX sat at 2026-07-25. prioritize():
+    # held, actionable, directive backlog oldest-first, never-covered in a per-day rotation, fetched-within-20h last;
+    # --dry-run read-only with no yfinance call. Hermetic: fake DB/modules, tmp ROOT.
+    ("analyst_feed_stale_20261020", ["tests/test_analyst_feed_stale_20261020.py"]),
     # ANCHOR: N8N_EVIDENCE_KIND_PARITY_20261019 — the runtime output verdict and the FW-M6 checker accept the same
     # N8nExpectedOutput@v1 evidence kinds (file_artifact, per N8N_CONTRACTS_DESIGN.md); before, "file" vs "file_artifact"
     # meant no contract could cite a file. Hermetic: committed contracts read only.
