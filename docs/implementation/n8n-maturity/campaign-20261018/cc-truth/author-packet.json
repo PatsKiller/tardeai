@@ -1,0 +1,200 @@
+{
+  "schema": "CampaignReviewPacket@v1",
+  "campaign": "n8n-maturity-20261018",
+  "worktree": "/home/johnclaw/tradeai-wt-n8n-cc-truth-20261018",
+  "branch": "wt/n8n-cc-truth-20261018",
+  "baseline_sha": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+  "commits": [
+    "15850afef45f54d5e81341928da518891ec3e96b",
+    "4aede76600da4621e758af4c0d9c3727de184664"
+  ],
+  "head": "4aede76600da4621e758af4c0d9c3727de184664",
+  "files": [
+    "apps/command-center-v3/src/lib/coordinationEvents.test.ts",
+    "apps/command-center-v3/src/lib/coordinationEvents.ts",
+    "apps/command-center-v3/src/lib/coordinationTruth.test.ts",
+    "apps/command-center-v3/src/lib/n8nTodayProjection.test.ts",
+    "apps/command-center-v3/src/lib/n8nTodayProjection.ts",
+    "apps/command-center-v3/src/lib/outboxProjection.test.ts",
+    "apps/command-center-v3/src/lib/outboxProjection.ts",
+    "apps/command-center-v3/src/pages/CoordinationPage.tsx",
+    "apps/command-center-v3/src/pages/N8nToday.tsx",
+    "scripts/lib/data_broker/n8n_today.py",
+    "scripts/lib/n8n_coordination_projection.py",
+    "scripts/lib/notification_outbox_projection.py",
+    "tests/test_n8n_cc_truth_20261018.py",
+    "tests/test_n8n_coordination_projection_20261007.py",
+    "tests/test_n8n_coordination_runs_projection_20261008.py",
+    "tests/test_n8n_outbox_truth_20261018.py",
+    "tests/test_n8n_today_page_20261016.py",
+    "tests/test_notification_outbox_projection_20261008.py"
+  ],
+  "status": {
+    "implemented": true,
+    "independently_reviewed": false,
+    "merged": false,
+    "deployed": false,
+    "enabled": false,
+    "operational_proof": false
+  },
+  "validation": {
+    "cc_red_pair": "6 expected baseline assertion failures, identical 6 candidate pass",
+    "outbox_red_pair": "CORRECTED: frozen identical test3 expected assertion failures at actual isolated3af source; same3 pass exactfinal4aede. Prior alleged identical-pair logs superseded as incorrect source context; see cc-outbox-evidence-correction.json.",
+    "rendered_api_error": "2 baseline assertion failures; same 2 candidate pass",
+    "last_good_followup": {
+      "baseline_sha": "15850afef45f54d5e81341928da518891ec3e96b",
+      "red": "10 expected assertions fail; 3 retained-success controls pass",
+      "green": "13 unchanged checks pass incl actual rendered N8nToday",
+      "committed_ts_tests": "explicit null for UNAVAILABLE/STALE/OK with/without API error across all 3 models"
+    },
+    "python": "64 relevant tests pass; final adjacent outbox 13 pass after SQL normalization",
+    "typescript": "existing coordination30 and outbox9 plus new truth models and explicit-null cases pass",
+    "build": "Final4aede npm run build passed including registered UI checks, tsc and Vite; existing large-chunk warning only. No package/CI registration edited."
+  },
+  "compatibility": {
+    "supported_reader": "new frontend reads v1 conservatively and v2 with declared availability/coverage; unknown major UNAVAILABLE",
+    "unsupported": "old cached v1 frontend is not supported with new null/v2 writer; release must serve refreshed frontend",
+    "window": "coordination full retained ledger aggregate in one readonly snapshot, explicit no24h; outbox full declared-window aggregate separate <=500/table details; N8nToday bounded date-named receipts d/e/g/p coverage explicit"
+  },
+  "limits": [
+    "Source observation availability is separate from business health; no live output/notification/ack/retirement proof claimed.",
+    "No source/API dispatcher/CI registration edits; integrator must register new tests and verify native acceptance.",
+    "No deployment or authenticated CC live verification; no authority changes.",
+    "No invented identity/owner/SHA/mode where source lacks those fields."
+  ],
+  "artifacts": [
+    {
+      "path": "/tmp/n8n-campaign-20261018/cc-identical-baseline-red.txt",
+      "sha256": "09f73f8a4810029b8ba0e835d00f83cef8642acff4df38196c0d4321bce5de6c"
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/cc-identical-candidate-green.txt",
+      "sha256": "c2c6b596f6326dec34c3110029f10ae752a6b80ef7dd9f3d368c2793a9363a31"
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/cc-outbox-identical-baseline-red.txt",
+      "sha256": "e0a6ea218ea5d725ce7272da8d68d45a029e489423e03af6960c7bff0f7fe414",
+      "status": "SUPERSEDED_INVALID_BASELINE_CONTEXT",
+      "not_red_first_evidence": true
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/cc-outbox-identical-candidate-green.txt",
+      "sha256": "e0a6ea218ea5d725ce7272da8d68d45a029e489423e03af6960c7bff0f7fe414",
+      "status": "SUPERSEDED_INVALID_BASELINE_CONTEXT",
+      "not_red_first_evidence": true
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/cc-component-baseline-red.txt",
+      "sha256": "c11dcc5fe4b45006f3bb9e28a07c42f0aafb1caa97d1098b8dd86bab52583b14"
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/cc-component-candidate-green.txt",
+      "sha256": "6e8888a46081a6241fea5deedace5704902821d5c898babbf568a4ec48c73c5b"
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/cc-final-regression.txt",
+      "sha256": "1d138d138360a5a5cc713354670500f59eba5d1a4311effd4e2a9b62637d7552"
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/cc-outbox-regression.txt",
+      "sha256": "253171bb3f2a4faff9fe92722ee89bcbf90acf42c963e26bb549152758c26ffb"
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/cc-frontend-final-build.txt",
+      "sha256": "44918b6a264bb27a0da12a35bd99c5ea356a2b70c81385cc99013e81116c0a2f"
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/cc-last-good-red.txt",
+      "sha256": "28a8aeedcb096f13e1a1ad40251c7a0f6e787b1f5fb2edcddab5413dbc51361b"
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/cc-last-good-green.txt",
+      "sha256": "54ec7b59be981b146f594f454cb1cc95cf6ada8b8556de7029db53b47669d758"
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/cc-last-good-build.txt",
+      "sha256": "f08607b84e199cda973130e3a9dff73dc67f025992f1a3496e4b143c6f2cff49"
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/cc-outbox-corrected-baseline.txt",
+      "sha256": "ef89d98e07d97ca17123e8295c3192308ca11bb4c20385f1ab3845f7da48cb4b",
+      "source_sha": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+      "test_sha256": "f633a2c23b423390115732d0c08e5a9e01851dd3a1b9740d4f0004f771157910",
+      "status": "CORRECTED_VERIFIED_SOURCE_CONTEXT"
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/cc-outbox-corrected-candidate.txt",
+      "sha256": "bf22e88f0e3a0e89eddb09d252b1661a48c9dfc4bd5aa177b5efca41f2700a18",
+      "source_sha": "4aede76600da4621e758af4c0d9c3727de184664",
+      "test_sha256": "f633a2c23b423390115732d0c08e5a9e01851dd3a1b9740d4f0004f771157910",
+      "status": "CORRECTED_VERIFIED_SOURCE_CONTEXT"
+    },
+    {
+      "path": "/tmp/n8n-campaign-20261018/cc-outbox-evidence-correction.json",
+      "sha256": "5522471adb9ef77166ab86b79423fb2d7029a052cd8afcc5247e6d5bd8263b25"
+    }
+  ],
+  "evidence_corrections": [
+    {
+      "schema": "RegressionEvidenceCorrection@v1",
+      "incorrect_artifacts": [
+        "cc-outbox-identical-baseline-red.txt",
+        "cc-outbox-identical-candidate-green.txt"
+      ],
+      "incorrect_reason": "Both old logs show3passed and identicaldigest. Old alleged baseline source context is invalid and superseded; it is not red-first evidence. Preserve files; use independently verified isolated source rerun below.",
+      "test_identity_unchanged": true,
+      "verified_pair": [
+        {
+          "name": "baseline",
+          "root": "/tmp/n8n-campaign-20261018/baseline-review-3af",
+          "sha": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+          "source_clean": true,
+          "test": "/tmp/n8n-campaign-20261018/test_outbox_truth_red_pair.py",
+          "test_sha256": "f633a2c23b423390115732d0c08e5a9e01851dd3a1b9740d4f0004f771157910",
+          "command": [
+            "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+            "-m",
+            "pytest",
+            "--noconftest",
+            "-q",
+            "/tmp/n8n-campaign-20261018/test_outbox_truth_red_pair.py"
+          ],
+          "environment": {
+            "PYTHONPATH": "/tmp/n8n-campaign-20261018/baseline-review-3af:/tmp/n8n-campaign-20261018/baseline-review-3af/scripts",
+            "TRADE_AI_CI": "1"
+          },
+          "exit_code": 1,
+          "artifact": "/tmp/n8n-campaign-20261018/cc-outbox-corrected-baseline.txt",
+          "artifact_sha256": "ef89d98e07d97ca17123e8295c3192308ca11bb4c20385f1ab3845f7da48cb4b",
+          "module_path": "/tmp/n8n-campaign-20261018/baseline-review-3af/scripts/lib/notification_outbox_projection.py",
+          "module_sha256": "77e1c0ec9559eff2e97d02a496c8b2ebca2dcab13762b1995de264d42668e39d"
+        },
+        {
+          "name": "candidate",
+          "root": "/home/johnclaw/tradeai-wt-n8n-cc-truth-20261018",
+          "sha": "4aede76600da4621e758af4c0d9c3727de184664",
+          "source_clean": true,
+          "test": "/tmp/n8n-campaign-20261018/test_outbox_truth_red_pair.py",
+          "test_sha256": "f633a2c23b423390115732d0c08e5a9e01851dd3a1b9740d4f0004f771157910",
+          "command": [
+            "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+            "-m",
+            "pytest",
+            "--noconftest",
+            "-q",
+            "/tmp/n8n-campaign-20261018/test_outbox_truth_red_pair.py"
+          ],
+          "environment": {
+            "PYTHONPATH": "/home/johnclaw/tradeai-wt-n8n-cc-truth-20261018:/home/johnclaw/tradeai-wt-n8n-cc-truth-20261018/scripts",
+            "TRADE_AI_CI": "1"
+          },
+          "exit_code": 0,
+          "artifact": "/tmp/n8n-campaign-20261018/cc-outbox-corrected-candidate.txt",
+          "artifact_sha256": "bf22e88f0e3a0e89eddb09d252b1661a48c9dfc4bd5aa177b5efca41f2700a18",
+          "module_path": "/home/johnclaw/tradeai-wt-n8n-cc-truth-20261018/scripts/lib/notification_outbox_projection.py",
+          "module_sha256": "ca77bd335dc17545e1218e5c8c591f48fb1be36a3dab74bba059e0b30716e3f6"
+        }
+      ]
+    }
+  ]
+}

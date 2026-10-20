@@ -26,11 +26,11 @@ import data_plausibility_monitor as dpm  # noqa: E402
 
 CONTRACTS = json.loads((ROOT / "config" / "data_plausibility_contracts.json").read_text())["contracts"]
 
-VALID_RULES = {"range", "min", "max", "finite", "single_scale", "required_fields"}
+VALID_RULES = {"range", "min", "max", "finite", "single_scale", "required_fields", "retired_store"}  # retired_store: 2026-10-18
 # Rules that are a property of the population, not of any one row: they have no
 # per-row predicate. single_scale since 09-13 a.m.; required_fields since 09-13
 # p.m. (analyst_data_history: 18,772 `{}` payloads that looked fresh).
-POPULATION_RULES = {"single_scale", "required_fields"}
+POPULATION_RULES = {"single_scale", "required_fields", "retired_store"}
 VALID_SEVERITIES = {"BLOCK", "WARN"}
 
 
@@ -108,6 +108,8 @@ def test_column_names_are_quoted_so_a_reserved_word_cannot_break_the_sql():
             # no per-row predicate; the population query quotes the column itself
             if c["rule"] == "required_fields":
                 assert f'"{c["column"]}"' in dpm._required_fields_sql(c)
+            if c["rule"] == "retired_store":  # 2026-10-18
+                assert f'"{c["column"]}"' in dpm._retired_store_sql(c)
             continue
         assert f'"{c["column"]}"' in dpm._violation_predicate(c)
 

@@ -126,7 +126,11 @@ def _run(cfg, snapshot, *, send=True):
 
 def test_root_cause_premarket_watch_conflicts_with_itself():
     """The 08:30 conflict was the watch's own history: a VETO pass then an ALERT pass for the same
-    symbol-session is ACTIVE_TRADER_VERDICT_CONFLICT in the shared projection."""
+    symbol-session was ACTIVE_TRADER_VERDICT_CONFLICT in the shared projection.
+
+    Operator 2026-10-19 (BETR): a source's conflict is judged on its LATEST verdict only, so this history
+    is no longer a conflict. The gate outcome is unchanged: the watch's own observation proves no fact
+    (0 passed), so the heads-up is still UNVALIDATED."""
     def row(verdict, minute):
         return {"contract": ma.CONTRACT, "kind": pw.PREMARKET_WATCH, "verdict": verdict,
                 "ts_epoch": datetime(2026, 10, 14, 6, minute, tzinfo=ET).timestamp(),
@@ -134,6 +138,13 @@ def test_root_cause_premarket_watch_conflicts_with_itself():
     snap = build_candidate_projection({"tickers": []}, [row("VETO", 35), row("ALERT", 40), row("VETO", 45)],
                                       now=NOW_DT)
     found = mse.same_symbol_evidence("GLND", snap, now=NOW_DT)
+    assert found["conflicts"] == [] and found["status"] in ("CURRENT", "UNKNOWN")
+    assert not found["passed_count"]
+    gate = pw.momentum_gate("GLND", snap, cfg=pw.PremarketConfig(mode="send"), now=NOW)
+    assert gate["result"] == pw.UNVALIDATED
+    # A same-instant VETO/ALERT pair is still a conflict, and the gate still sees CONFLICT.
+    tie = build_candidate_projection({"tickers": []}, [row("VETO", 45), row("ALERT", 45)], now=NOW_DT)
+    found = mse.same_symbol_evidence("GLND", tie, now=NOW_DT)
     assert found["status"] == "CONFLICT" and found["conflicts"] == ["ACTIVE_TRADER_VERDICT_CONFLICT"]
     assert found["evidence"] is None
 

@@ -37,6 +37,27 @@ MAX_PRICE_MOVE_FROM_ENTRY_PCT = 2.0
 MIN_VOLUME = 100_000
 MAX_SPREAD_PCT = 1.0  # 1% max spread for execution eligibility
 
+_INT32_MAX = 2147483647
+
+
+def is_int32_sentinel(v, rel_tol: float = 1e-4) -> bool:
+    """True when ``v`` is the int32-max sentinel at any power-of-ten scale.
+
+    Providers emit 2147483647 (or a scaled 2147.483647 / 2147.48) for a missing
+    bid or ask. It is not a price. 2026-10-18.
+    """
+    try:
+        f = abs(float(v))
+    except (TypeError, ValueError):
+        return False
+    if f <= 0 or f != f:
+        return False
+    for k in range(0, 10):
+        ref = _INT32_MAX / (10 ** k)
+        if abs(f - ref) <= ref * rel_tol:
+            return True
+    return False
+
 READINESS_STATES = [
     "READY_FOR_PAPER_SUBMIT",
     "READY_ORB_CONFIRMED",
@@ -202,6 +223,11 @@ def assess_proposal(conn, proposal: dict) -> dict:
         ask = quote.get("ask")
         spread = quote.get("spread")
         spread_pct = quote.get("spread_pct")
+        # 2026-10-18: an int32-max sentinel bid/ask (2147483647 at any decimal
+        # scale, e.g. 2147.48) is "no quote", and produced spread_pct
+        # 2,147,479,900 (contract 0..1000, BLOCK). Treat it as unknown.
+        if is_int32_sentinel(bid) or is_int32_sentinel(ask) or is_int32_sentinel(spread_pct):
+            bid = ask = spread = spread_pct = None
         day_volume = quote.get("day_volume")
         quote_is_delayed = quote.get("is_delayed", True)
         quote_execution_eligible = quote.get("is_execution_eligible", False)

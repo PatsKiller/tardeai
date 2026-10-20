@@ -1,0 +1,171 @@
+{
+  "artifact_selfcheck": "All stored and decompressed hashes verified; no historical packet rewritten.",
+  "artifacts": [
+    {
+      "bytes": 989,
+      "decompressed_bytes": 2778,
+      "decompressed_sha256": "0a7da01ce79f6c28ce8c4976dc806a75b77a6a4654846f2869100c550f0401f7",
+      "original": "/tmp/n8n-campaign-20261018/dq-ci-placement-readonly-plan.json",
+      "path": "dq-ci-placement-readonly-plan.json.gz",
+      "sha256": "5939c0710eb58a654abb7019e361d61b89e3bdb296037bb6e31240e9b8e73734"
+    },
+    {
+      "bytes": 1204,
+      "decompressed_bytes": 3646,
+      "decompressed_sha256": "796dee1e16610f5414ff408652be3ea1e1166be9a96ecc3006b33a896a401ec0",
+      "original": "/tmp/n8n-campaign-20261018/dq-gate-followup-session.json",
+      "path": "dq-gate-followup-session.json.gz",
+      "sha256": "d04c2d3ddb52b71ecd3256f1fa1da88e617cc69b94387b50ed0030b2321ab263"
+    },
+    {
+      "bytes": 1365,
+      "decompressed_bytes": 11143,
+      "decompressed_sha256": "ae068809121cec5145f706e8da56b84bce3bc1afb2efb3fa0cf4583828994cff",
+      "original": "/tmp/n8n-campaign-20261018/dq-gate-source-head-focused.xml",
+      "path": "dq-gate-source-head-focused.xml.gz",
+      "sha256": "cc352d8ef71b251aa695c1757ebce34934db6dcb38258f84819280f58b384c2e"
+    },
+    {
+      "bytes": 240,
+      "decompressed_bytes": 348,
+      "decompressed_sha256": "c550af46b260332daf9aedda153c0f71fa38570b25753805b61b0fc620ee6318",
+      "original": "/tmp/n8n-campaign-20261018/dq-gate-source-head-focused.log",
+      "path": "dq-gate-source-head-focused.log.gz",
+      "sha256": "388eb2625127802e5ed11e619fc4eced2e248e51bf1669290070b1bf435137ab"
+    },
+    {
+      "bytes": 443,
+      "decompressed_bytes": 1329,
+      "decompressed_sha256": "8a33144eaba1c0f88a7ca58e71ba5b1310ad79a390f63267b538a244f01fd3a1",
+      "original": "/tmp/n8n-campaign-20261018/dq-gate-source-head-external.xml",
+      "path": "dq-gate-source-head-external.xml.gz",
+      "sha256": "4d8ac042637eccdcea47afbe7c9eca87dbfb2647f12b89782c6a424499277611"
+    },
+    {
+      "bytes": 65,
+      "decompressed_bytes": 112,
+      "decompressed_sha256": "dc6ef666510a3c17d927bf0ccdec88fccc9c830c219f071d4bddeee14c710de3",
+      "original": "/tmp/n8n-campaign-20261018/dq-gate-source-head-external.log",
+      "path": "dq-gate-source-head-external.log.gz",
+      "sha256": "abf5ed95d0228993c5c5dbd62c8a4dfa1c94c2dee60e69f9aceec244f6e26b56"
+    },
+    {
+      "bytes": 39,
+      "decompressed_bytes": 19,
+      "decompressed_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "original": "/tmp/n8n-campaign-20261018/dq-gate-followup-ruff-check.log",
+      "path": "dq-gate-followup-ruff-check.log.gz",
+      "sha256": "f3af4d142827f5aad2eb0c72d556d325488a57fb6219aac10afeb51085667d53"
+    },
+    {
+      "bytes": 45,
+      "decompressed_bytes": 25,
+      "decompressed_sha256": "fd2299c9f1c6dc869070883e281051bfe93aacf66c1a3b0069f45b4aa410ca50",
+      "original": "/tmp/n8n-campaign-20261018/dq-gate-followup-ruff-format.log",
+      "path": "dq-gate-followup-ruff-format.log.gz",
+      "sha256": "afdae4b86058000c02acc699088589b28fbfe2ead39a424c4435b13464b2f494"
+    },
+    {
+      "bytes": 1399,
+      "decompressed_bytes": 5743,
+      "decompressed_sha256": "7139fc88d6e969229eb43d9e8454379ad36f5b154a498ed29c4d725f14066fa3",
+      "original": "/tmp/n8n-campaign-20261018/dq-gate-followup-selection.json",
+      "path": "dq-gate-followup-selection.json.gz",
+      "sha256": "05e5b7bdd30b5703ed849fc788aedc5657ce41e81ff65c5f3eb690a75fdfc07b"
+    },
+    {
+      "bytes": 177,
+      "decompressed_bytes": 205,
+      "decompressed_sha256": "d0503d608bec9de2308be8162e94b7fd9c0807b33a365faa0f580922513633bd",
+      "original": "/tmp/n8n-campaign-20261018/dq-gate-followup-selection.log",
+      "path": "dq-gate-followup-selection.log.gz",
+      "sha256": "ff3eb3b384d6247443200d5618afb55db84a1308d9960ef6d3503fdf72db546e"
+    },
+    {
+      "bytes": 559,
+      "decompressed_bytes": 1120,
+      "decompressed_sha256": "d85d17f30a13feed95e0d11048128b1f23035e5de98b51df7b29d304e86f68d7",
+      "original": "/tmp/n8n-campaign-20261018/dq-gate-source-head-actual-merges.json",
+      "path": "dq-gate-source-head-actual-merges.json.gz",
+      "sha256": "8831097f998cdf5d2fe9a21ec7cc3b1934583ca586739a5b92649f6492edb2e9"
+    },
+    {
+      "bytes": 1129,
+      "decompressed_bytes": 2083,
+      "decompressed_sha256": "45cfe3918811ff09dd262effb5f131203182573a2efdd17c28d80967be8dd047",
+      "original": "/tmp/n8n-campaign-20261018/dq-gate-source-head-validation.json",
+      "path": "dq-gate-source-head-validation.json.gz",
+      "sha256": "e7d90aebe26899b8f79ecd10937f2589b868dd877d8366cb6d1df95401d77ace"
+    },
+    {
+      "bytes": 2955,
+      "decompressed_bytes": 14351,
+      "decompressed_sha256": "c1397bef789f9f97c3bf83c88f07c6c6a4bbd3a1c161d3112e0986c520965c39",
+      "original": "/tmp/n8n-campaign-20261018/dq-fresh-main-integration-author-packet.json",
+      "path": "dq-fresh-main-integration-author-packet.json.gz",
+      "sha256": "7443a4cc8538ddfb1c249075ae81d62a2fe55eccb357dd6c3fae44fc46c2b8d4"
+    },
+    {
+      "bytes": 548,
+      "decompressed_bytes": 793,
+      "decompressed_sha256": "718f6d1349600a1a07fa1848c7a6cbe40581504a6487a0fe2edd44dc1683ee5c",
+      "original": "/tmp/n8n-campaign-20261018/cross-review/dq11aff-integration-review.json",
+      "path": "dq11aff-integration-review.json.gz",
+      "sha256": "7459ee6506e55ef8a461448f240c96733c6e9bfdc82070bd04aa36f311af0fcb"
+    }
+  ],
+  "base_sha": "6f73d41442bab01c530022c61c9897da893a16de",
+  "created_at": "2026-10-19T03:10:31.201719+00:00",
+  "historical_native": "The prior archive preserves the historical 10b full-native result. It is not acceptance for this new source head.",
+  "previous_head": "11affdcef639bad79cfeaa0a30058c7e29b262ca",
+  "schema": "DqGatePlacementIntegration@v1",
+  "scope": "Move only the new DQ tuple beside the existing Finviz suite. Preserve all previous source and evidence bytes. No INDEX, new Markdown, generated files, runtime or remote action.",
+  "source_head": "c39f3c990f338952f659c3757baba36b16689e54",
+  "status": "LOCAL_SOURCE_RELOCATED_AND_FOCUSED_TESTED_PENDING_NEW_HEAD_REVIEW_NATIVE",
+  "validation": {
+    "APIemptyvote_case": "Explicitly out of scope and deselected; no nine-case closure claim.",
+    "CI": {
+      "CI_sha256": "09af7889cfed0885f9d2c2131707afbb457140c01edf8c5a745948e80c6a4e59",
+      "new_gate_immediately_after": "finviz_data_producers",
+      "prior492_values_and_order_unchanged": true,
+      "rest_runner_AST_equal": true,
+      "same493_tuple_multiset_as11aff": true
+    },
+    "all55_existing_evidence_files_byte_unchanged": true,
+    "focused": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 72
+    },
+    "four_source_test_blobs_unchanged": true,
+    "full_native": false,
+    "holds": [
+      "APIemptyvote detail/symbolcard consumer is not implemented by these4paths; remains separate held work.",
+      "Existing stored historical SQL/advisory/report rows remain unremediated; no destructive cleanup/quarantine/write authorized.",
+      "Numeric plausibility is not provider identity/freshness/coverage proof; fresh-source and dependency chains remain unproven.",
+      "No financial ranking/sizing/stop/target/portfolio formula, broker state, provider ingestion/send or authority policy changes.",
+      "No INDEX/newMarkdown/generated edits; new-head fullnative/hostedCI, review/merge/release/runtime activation remain separate."
+    ],
+    "immutable_scoped_external": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 8
+    },
+    "main_base": "6f73d41442bab01c530022c61c9897da893a16de",
+    "new_source_semantics": false,
+    "old_evidence_file_count": 55,
+    "previous_integration_head": "11affdcef639bad79cfeaa0a30058c7e29b262ca",
+    "quality": {
+      "git_diff_check_exit": 0,
+      "ruff_check_exit": 0,
+      "ruff_format_check_exit": 0
+    },
+    "runtime": false,
+    "schema": "DqGatePlacementValidation@v1",
+    "selector": "Actual CLI selected the new gate with zero deferred gates; this selection does not execute other gates.",
+    "source_head": "c39f3c990f338952f659c3757baba36b16689e54",
+    "test_effects": "Four attempted live-DSN reads were refused by the hermetic guard before libpq. No DB connection, provider, ingest, broker, send, or credential read."
+  }
+}

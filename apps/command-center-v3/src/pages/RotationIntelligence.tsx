@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import AdvisorChangesPanel from '../components/AdvisorChangesPanel'
+import RotationPublicationNotice from '../components/RotationPublicationNotice'
+import { useRotationAvailability } from '../hooks/useRotationAvailability'
 import { runRotationOversight } from '../lib/cloudLlmRun'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
@@ -215,19 +217,17 @@ export default function RotationIntelligence() {
   const [laneBusy, setLaneBusy] = useState(false)
   const [laneMsg, setLaneMsg] = useState('')
   const [drill, setDrill] = useState<string>('')   // active summary-card drill filter
+  const publication = useRotationAvailability(data, summaryWarn)
 
   async function loadSummary() {
-    setSummaryWarn('')
     try {
       const res = await fetch('/api/v2/rotation/summary')
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const json = await res.json()
       // ROUTES auto-wraps as { ok, data: {...} } — unwrap .data
       const inner: RotationData = json?.data ?? json
-      if (inner && inner.ok === false) {
-        setSummaryWarn(`Rotation summary unavailable: ${inner.error ?? 'review data not ready'}`)
-      }
       setData(inner ?? null)
+      setSummaryWarn('')
     } catch (err) {
       setSummaryWarn(`Rotation summary unavailable: ${err instanceof Error ? err.message : String(err)}`)
     }
@@ -535,7 +535,7 @@ export default function RotationIntelligence() {
         <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 5, fontWeight: 600 }}>
           Advisory only · human review required · no broker action
         </div>
-        {pageTab === 'Review' && data?.cache_age_sec != null && (
+        {pageTab === 'Review' && publication.ready && data?.cache_age_sec != null && (
           <div style={{ fontSize: 10, color: data?.stale ? '#f59e0b' : 'var(--text3)', marginTop: 4 }}>
             ⟳ refreshed {data.cache_age_sec < 60 ? `${data.cache_age_sec}s` : `${Math.round(data.cache_age_sec / 60)}m`} ago{data?.stale ? ' · stale, refreshing in background' : ''} · heavy engine pre-warmed every 8 min (no page wait)
           </div>
@@ -544,17 +544,11 @@ export default function RotationIntelligence() {
 
       {pageTab === 'Advisor Guide' && <AdvisorChangesPanel />}
 
-      {pageTab === 'Review' && (<>
+      {pageTab === 'Review' && <RotationPublicationNotice summary={data} error={summaryWarn} />}
+      {pageTab === 'Review' && !publication.ready && <button disabled={!!busy} onClick={loadSummary} style={btn(!!busy)}>Refresh Summary</button>}
+      {pageTab === 'Review' && publication.ready && (<>
 
       {/* B. Summary cards */}
-      {summaryWarn && (
-        <div style={{
-          marginBottom: 14, padding: '8px 12px', borderRadius: 8, fontSize: 11,
-          background: 'rgba(245,158,11,.08)', border: '1px solid rgba(245,158,11,.3)', color: '#f59e0b',
-        }}>
-          {summaryWarn} — page remains usable; counts shown as “—”.
-        </div>
-      )}
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 20 }}>
         <SummaryCard label="Trim Review" value={s.trim_review ?? '—'} color="#ef4444" active={drill === 'TRIM_REVIEW'} onClick={() => clickDrill('TRIM_REVIEW', 'review-candidates')} />
         <SummaryCard label="Add Review" value={s.add_review ?? '—'} color="#22c55e" active={drill === 'ADD_REVIEW'} onClick={() => clickDrill('ADD_REVIEW', 'review-candidates')} />

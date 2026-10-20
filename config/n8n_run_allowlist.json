@@ -520,6 +520,88 @@
       "output_receipt": "v2"
     },
     {
+      "lane_id": "n8n-data-plausibility-audit",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_ALERT_EVENT_DB",
+        "TRADEAI_N8N_COORDINATION_LEDGER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/data_plausibility_monitor.py _db_env(): DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD from the env, else /run/user/1000/tradeai/env (read-only session); lib/alert_transition.py TRADEAI_ALERT_EVENT_DB; lib/lane_last_receipt.py TRADEAI_STATE_ROOT (executor base) + TRADEAI_PERSISTENT_STATE_ROOT; lib/host_comms_intents.py -> n8n_coordination_gateway.default_ledger_path TRADEAI_N8N_COORDINATION_LEDGER.",
+      "env_report_reason": "the import closure (alert_transition -> alert_condition_state / alert_event_writer, lane_last_receipt, host_comms_intents -> n8n_fabric_store / n8n_coordination_ledger) exceeds the 10-module bound under which an enforce inventory is accepted; report until it is re-inventoried. No broker credential name is read.",
+      "source": "systemd tradeai-data-plausibility.timer (OnCalendar 06:20) -> tradeai-data-plausibility.service ExecStart .venv/bin/python scripts/data_plausibility_monitor.py --alert (WorkingDirectory CURRENT; SuccessExitStatus=0 1; TimeoutStartSec=600; read with systemctl --user cat equivalent, unit file 2026-10-18). The unit takes no lock, so this lane's lock is its own. Operator 2026-10-18 ('within n8n with proper contracts'; packet docs/ops/packets/data-integrity-monitors-n8n-20261018). CANARY with a DRY live_arg first: [] (scripts/n8n_data_plausibility_audit.py -> scripts/data_plausibility_monitor.py lane_main: measure + LaneRunReceipt@v2, notify nobody) while the timer keeps alerting; the owner switch (c3) needs a follow-up PR setting live_arg to [\"--alert\"] (queues a host comms intent; never a sender). dry_run_arg --dry-run writes nothing.",
+      "command": [
+        "$PY",
+        "scripts/n8n_data_plausibility_audit.py"
+      ],
+      "lock": "/tmp/tradeai_data_plausibility.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [],
+      "market_gate": false,
+      "output_signal": "data/runtime/n8n-data-plausibility-audit_last.json",
+      "output_receipt": "v2"
+    },
+    {
+      "lane_id": "n8n-gap-resolution-audit",
+      "env_names": [
+        "TRADEAI_N8N_COORDINATION_LEDGER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/check_gap_resolution.py reads files only (gap_resolution_receipts.jsonl, gap queue, research_gaps, ticker_research_state, hermes_research_results, search budget denials); lib/lane_last_receipt.py TRADEAI_STATE_ROOT + TRADEAI_PERSISTENT_STATE_ROOT; lib/host_comms_intents.py TRADEAI_N8N_COORDINATION_LEDGER. No DB, no network, no subprocess.",
+      "env_report_reason": "the import closure (alert_transition -> alert_condition_state / alert_event_writer, lane_last_receipt, host_comms_intents -> n8n_fabric_store / n8n_coordination_ledger) exceeds the 10-module bound under which an enforce inventory is accepted; report until it is re-inventoried. No broker credential name is read.",
+      "source": "systemd tradeai-gap-resolution.timer (OnCalendar *:07,37) -> tradeai-gap-resolution.service ExecStart .venv/bin/python scripts/check_gap_resolution.py --alert (WorkingDirectory CURRENT; SuccessExitStatus=0 1; TimeoutStartSec=300; read with systemctl --user cat equivalent, unit file 2026-10-18). The unit takes no lock, so this lane's lock is its own. Operator 2026-10-18 ('within n8n with proper contracts'; packet docs/ops/packets/data-integrity-monitors-n8n-20261018). CANARY with a DRY live_arg first: [] (scripts/n8n_gap_resolution_audit.py -> scripts/check_gap_resolution.py lane_main: measure + LaneRunReceipt@v2, notify nobody) while the timer keeps alerting; the owner switch (c3) needs a follow-up PR setting live_arg to [\"--alert\"] (queues a host comms intent; never a sender). dry_run_arg --dry-run writes nothing.",
+      "command": [
+        "$PY",
+        "scripts/n8n_gap_resolution_audit.py"
+      ],
+      "lock": "/tmp/tradeai_gap_resolution.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [],
+      "market_gate": false,
+      "output_signal": "data/runtime/n8n-gap-resolution-audit_last.json",
+      "output_receipt": "v2"
+    },
+    {
+      "lane_id": "active-trader-motion-watchdog",
+      "env_names": [
+        "TRADEAI_N8N_COORDINATION_LEDGER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "scripts/check_active_trader_motion_heartbeat.py reads TRADEAI_STATE_ROOT (executor base) and TRADEAI_N8N_COORDINATION_LEDGER; lib/persistent_state_root.py (via lane_last_receipt) reads TRADEAI_PERSISTENT_STATE_ROOT, a path; the comms intent is queued through lib/n8n_fabric_store.py CommsIntentStore directly (stdlib only, no env read), not lib/host_comms_intents.py, so the gateway closure (and TRADEAI_GOVERNED_BRIDGE_URL) is not reached; exact closure pinned in tests/test_n8n_executor_env_allowlist_20261009.py _REVIEWED_NEW_MODULES. No credential is read. Reads the motion heartbeat file, /proc/<pid>/cmdline (never environ) and the existence of /etc/tradeai/enable-active-trader-motion. No DB, no network, no subprocess, no send, no systemctl.",
+      "source": "n8n-native host lane (operator decision 2026-10-19: n8n owns the supervision of the motion runtime; packet docs/ops/packets/active-trader-motion-n8n-20261019): fired by tradeai-dispatcher at */5; no cron line, no unit, so the lock is the lane's own. CANARY: live_arg [\"--apply\"] (state file + LaneRunReceipt + one comms_intents row per band change); dry_run_arg --dry-run (prints the verdict, writes nothing) kept for clamp/rollback. Sends nothing; restarts nothing.",
+      "command": [
+        "$PY",
+        "scripts/check_active_trader_motion_heartbeat.py"
+      ],
+      "lock": "/tmp/tradeai_active_trader_motion_watchdog.lock",
+      "lock_kind": "flock",
+      "timeout_s": 60,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/active-trader-motion-watchdog_last.json",
+      "output_receipt": "v2"
+    },
+    {
       "lane_id": "backup-verify",
       "env_names": [
         "DB_HOST",
@@ -3890,6 +3972,85 @@
       "live_arg": null,
       "market_gate": false,
       "output_signal": "data/runtime/hermes-discovery-yield-builder_last.json"
+    },
+    {
+      "lane_id": "disk-usage-monitor",
+      "env_names": [
+        "TRADEAI_N8N_COORDINATION_LEDGER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/disk_usage_monitor.py reads TRADEAI_RUN_ID (base, the executor's attempt id) and TRADEAI_N8N_COORDINATION_LEDGER; its closure reads TRADEAI_STATE_ROOT (base), TRADEAI_PERSISTENT_STATE_ROOT (lane_last_receipt -> persistent_state_root), and, through scripts/lib/host_comms_intents.py -> n8n_coordination_gateway.default_ledger_path, the ledger path names; no credential. No DB, no network, no send; one subprocess (du, read-only) on a band change.",
+      "env_report_reason": "the import closure (host_comms_intents -> n8n_fabric_store / n8n_coordination_gateway / n8n_coordination_ledger) is over the 10-module bound under which an enforce inventory is accepted; report until it is re-inventoried (precedent heartbeat-watch).",
+      "source": "n8n-native host lane (operator 2026-10-18; packet docs/ops/packets/disk-hygiene-n8n-20261018): fired by tradeai-dispatcher at */15 * * * *; no cron line, no unit, so the lock is the lane's own. CANARY: live_arg [\"--apply\"]; dry_run_arg --dry-run (prints only, writes nothing) kept for clamp/rollback. Sends nothing: a band change queues one host comms intent.",
+      "command": [
+        "$PY",
+        "scripts/disk_usage_monitor.py"
+      ],
+      "lock": "/tmp/tradeai_disk_usage_monitor.lock",
+      "lock_kind": "flock",
+      "timeout_s": 180,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--apply"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/disk-usage-monitor_last.json",
+      "output_receipt": "v2"
+    },
+    {
+      "lane_id": "disk-hygiene",
+      "env_names": [
+        "TRADEAI_DISK_HYGIENE_GRANT",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "scripts/disk_hygiene.py reads TRADEAI_RUN_ID (base) and TRADEAI_DISK_HYGIENE_GRANT, the latter ONLY on the --apply path, which refuses before reading it whenever TRADEAI_RUN_ID is set (every executor child): it is listed so the enforce inventory covers the literal read, not because n8n may apply (live_arg --plan; the executor's own env carries no such grant). Closure lib/lane_last_receipt.py -> persistent_state_root (TRADEAI_PERSISTENT_STATE_ROOT, a path), atomic_json_store; no credential. Subprocesses: git (read-only, GIT_OPTIONAL_LOCKS=0), du, crontab -l. No DB, no network, no send.",
+      "source": "n8n-native host lane (operator 2026-10-18; packet docs/ops/packets/disk-hygiene-n8n-20261018): fired by tradeai-dispatcher at 0 4 * * 0; no cron line, no unit, so the lock is the lane's own. CANARY: live_arg [\"--plan\"]; dry_run_arg --dry-run (prints only, writes nothing) kept for clamp/rollback. --apply (deletion) is never an argv here: AGENTS.md §23.14.",
+      "command": [
+        "$PY",
+        "scripts/disk_hygiene.py"
+      ],
+      "lock": "/tmp/tradeai_disk_hygiene.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1800,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--plan"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/disk-hygiene_last.json",
+      "output_receipt": "v2"
+    },
+    {
+      "lane_id": "tmp-hygiene",
+      "env_names": [
+        "TRADEAI_DISK_HYGIENE_GRANT",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "scripts/tmp_hygiene.py reads TRADEAI_RUN_ID (base) and TRADEAI_DISK_HYGIENE_GRANT, the latter ONLY on the --apply path, which refuses before reading it whenever TRADEAI_RUN_ID is set (every executor child): it is listed so the enforce inventory covers the literal read, not because n8n may apply (live_arg --plan; the executor's own env carries no such grant). Closure: scripts/disk_hygiene.py (same reads), lib/lane_last_receipt.py -> persistent_state_root (TRADEAI_PERSISTENT_STATE_ROOT, a path), atomic_json_store; no credential. Subprocesses: git (read-only, GIT_OPTIONAL_LOCKS=0) on git trees inside a scratch dir. Reads /proc/*/cwd and /proc/*/fd link targets (never file contents). No DB, no network, no send.",
+      "source": "n8n-native host lane (operator 2026-10-19 after the /tmp inode incident; packet docs/ops/packets/disk-hygiene-n8n-20261018): fired by tradeai-dispatcher at 0 5 * * *; no cron line, no unit, so the lock is the lane's own. CANARY: live_arg [\"--plan\"]; dry_run_arg --dry-run (prints only, writes nothing) kept for clamp/rollback. --apply (deletion) is never an argv here: AGENTS.md §23.14.",
+      "command": [
+        "$PY",
+        "scripts/tmp_hygiene.py"
+      ],
+      "lock": "/tmp/tradeai_tmp_hygiene.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1800,
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": [
+        "--plan"
+      ],
+      "market_gate": false,
+      "output_signal": "data/runtime/tmp-hygiene_last.json",
+      "output_receipt": "v2"
     }
   ],
   "blocked_reasons": {

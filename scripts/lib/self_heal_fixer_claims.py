@@ -18,6 +18,7 @@ durable side of an attempt:
 Budget accounting: a claim counts ``reserved_usd`` while active or interrupted and ``spent_usd`` once settled. Each
 claim is one row, so nothing can be counted twice; ``reconcile`` is idempotent.
 """
+
 from __future__ import annotations
 
 import fcntl
@@ -145,20 +146,37 @@ def _counted_usd(row: sqlite3.Row) -> float:
 
 def usage(con: sqlite3.Connection, day: str) -> dict:
     rows = con.execute("SELECT * FROM claims WHERE day=?", (day,)).fetchall()
-    return {"day": day, "jobs": len(rows), "usd": round(sum(_counted_usd(r) for r in rows), 4),
-            "active": sum(1 for r in rows if r["state"] == ACTIVE),
-            "interrupted": sum(1 for r in rows if r["state"] == INTERRUPTED)}
+    return {
+        "day": day,
+        "jobs": len(rows),
+        "usd": round(sum(_counted_usd(r) for r in rows), 4),
+        "active": sum(1 for r in rows if r["state"] == ACTIVE),
+        "interrupted": sum(1 for r in rows if r["state"] == INTERRUPTED),
+    }
 
 
-def claim(db: Path, *, dedupe_key: str, job_id: str, day: str, reserve_iterations: int, reserve_usd: float,
-          reserve_seconds: float, lease_ttl_s: float, daily_job_cap: int, daily_usd_cap: float,
-          evidence_dir: Optional[str] = None, now_ts: Optional[float] = None,
-          pid: Optional[int] = None) -> tuple[Optional[str], str]:
+def claim(
+    db: Path,
+    *,
+    dedupe_key: str,
+    job_id: str,
+    day: str,
+    reserve_iterations: int,
+    reserve_usd: float,
+    reserve_seconds: float,
+    lease_ttl_s: float,
+    daily_job_cap: int,
+    daily_usd_cap: float,
+    evidence_dir: Optional[str] = None,
+    now_ts: Optional[float] = None,
+    pid: Optional[int] = None,
+) -> tuple[Optional[str], str]:
     """Atomically claim ``dedupe_key`` and reserve the job's whole budget. (claim_id, "claimed") or (None, why)."""
     t = time.time() if now_ts is None else now_ts
     with connect(db) as con:
-        held = con.execute("SELECT claim_id, job_id FROM claims WHERE dedupe_key=? AND state=?",
-                           (dedupe_key, ACTIVE)).fetchone()
+        held = con.execute(
+            "SELECT claim_id, job_id FROM claims WHERE dedupe_key=? AND state=?", (dedupe_key, ACTIVE)
+        ).fetchone()
         if held:
             return None, f"claimed_elsewhere:{held['job_id']}"
         u = usage(con, day)
@@ -172,8 +190,23 @@ def claim(db: Path, *, dedupe_key: str, job_id: str, day: str, reserve_iteration
                 "INSERT INTO claims (claim_id, dedupe_key, job_id, state, owner_host, owner_pid, day, claimed_at, "
                 "heartbeat_at, lease_expires_at, reserved_iterations, reserved_usd, reserved_seconds, evidence_dir) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (cid, dedupe_key, job_id, ACTIVE, _host(), int(pid or os.getpid()), day, t, t, t + float(lease_ttl_s),
-                 int(reserve_iterations), float(reserve_usd), float(reserve_seconds), evidence_dir))
+                (
+                    cid,
+                    dedupe_key,
+                    job_id,
+                    ACTIVE,
+                    _host(),
+                    int(pid or os.getpid()),
+                    day,
+                    t,
+                    t,
+                    t + float(lease_ttl_s),
+                    int(reserve_iterations),
+                    float(reserve_usd),
+                    float(reserve_seconds),
+                    evidence_dir,
+                ),
+            )
         except sqlite3.IntegrityError:
             return None, "claimed_elsewhere:race"
     return cid, "claimed"
@@ -182,31 +215,54 @@ def claim(db: Path, *, dedupe_key: str, job_id: str, day: str, reserve_iteration
 def heartbeat(db: Path, claim_id: str, *, lease_ttl_s: float, now_ts: Optional[float] = None) -> bool:
     t = time.time() if now_ts is None else now_ts
     with connect(db) as con:
-        cur = con.execute("UPDATE claims SET heartbeat_at=?, lease_expires_at=? WHERE claim_id=? AND state=?",
-                          (t, t + float(lease_ttl_s), claim_id, ACTIVE))
+        cur = con.execute(
+            "UPDATE claims SET heartbeat_at=?, lease_expires_at=? WHERE claim_id=? AND state=?",
+            (t, t + float(lease_ttl_s), claim_id, ACTIVE),
+        )
         return cur.rowcount == 1
 
 
-def record_progress(db: Path, claim_id: str, *, iterations_done: int, spent_usd: float,
-                    partial: Optional[dict] = None) -> None:
+def record_progress(
+    db: Path, claim_id: str, *, iterations_done: int, spent_usd: Optional[float], partial: Optional[dict] = None
+) -> None:
+    from lib.self_heal_fixer import reported_cost
+
+    spent = reported_cost(spent_usd)
+    facts = dict(partial or {})
+    if spent is None:
+        facts["cost_status"] = "unknown"
     with connect(db) as con:
-        con.execute("UPDATE claims SET iterations_done=?, spent_usd=?, partial_json=? WHERE claim_id=? AND state=?",
-                    (int(iterations_done), float(spent_usd), json.dumps(partial or {}, default=str, sort_keys=True),
-                     claim_id, ACTIVE))
+        con.execute(
+            "UPDATE claims SET iterations_done=?, spent_usd=COALESCE(?,spent_usd), partial_json=? WHERE claim_id=? AND state=?",
+            (int(iterations_done), spent, json.dumps(facts, default=str, sort_keys=True), claim_id, ACTIVE),
+        )
 
 
-def settle(db: Path, claim_id: str, *, outcome: str, spent_usd: float, iterations_done: int,
-           now_ts: Optional[float] = None) -> bool:
+def settle(
+    db: Path,
+    claim_id: str,
+    *,
+    outcome: str,
+    spent_usd: Optional[float],
+    iterations_done: int,
+    now_ts: Optional[float] = None,
+) -> bool:
     t = time.time() if now_ts is None else now_ts
+    from lib.self_heal_fixer import reported_cost
+
+    spent = reported_cost(spent_usd)
+    state = SETTLED if spent is not None else INTERRUPTED
+    outcome = outcome if spent is not None else "cost_unknown"
     with connect(db) as con:
-        cur = con.execute("UPDATE claims SET state=?, outcome=?, spent_usd=?, iterations_done=?, ended_at=? "
-                          "WHERE claim_id=? AND state=?",
-                          (SETTLED, outcome, float(spent_usd), int(iterations_done), t, claim_id, ACTIVE))
+        cur = con.execute(
+            "UPDATE claims SET state=?, outcome=?, spent_usd=COALESCE(?,spent_usd), iterations_done=?, ended_at=? "
+            "WHERE claim_id=? AND state=?",
+            (state, outcome, spent, int(iterations_done), t, claim_id, ACTIVE),
+        )
         return cur.rowcount == 1
 
 
-def reconcile(db: Path, *, now_ts: Optional[float] = None,
-              alive: Callable[[int], bool] = pid_alive) -> list[dict]:
+def reconcile(db: Path, *, now_ts: Optional[float] = None, alive: Callable[[int], bool] = pid_alive) -> list[dict]:
     """Mark every dead active claim ``interrupted`` (lease expired, or owner pid on this host gone). Returns them,
     with their recorded partial evidence. Idempotent: an already-interrupted claim is never touched again."""
     t = time.time() if now_ts is None else now_ts
@@ -219,18 +275,30 @@ def reconcile(db: Path, *, now_ts: Optional[float] = None,
             if not (expired or dead):
                 continue
             why = "lease_expired" if expired else "owner_pid_dead"
-            con.execute("UPDATE claims SET state=?, outcome=?, ended_at=? WHERE claim_id=? AND state=?",
-                        (INTERRUPTED, why, t, r["claim_id"], ACTIVE))
+            con.execute(
+                "UPDATE claims SET state=?, outcome=?, ended_at=? WHERE claim_id=? AND state=?",
+                (INTERRUPTED, why, t, r["claim_id"], ACTIVE),
+            )
             try:
                 partial = json.loads(r["partial_json"] or "{}")
             except ValueError:
                 partial = {}
-            out.append({"claim_id": r["claim_id"], "job_id": r["job_id"], "dedupe_key": r["dedupe_key"], "why": why,
-                        "owner_pid": r["owner_pid"], "owner_host": r["owner_host"],
-                        "heartbeat_at": datetime.fromtimestamp(r["heartbeat_at"], tz=timezone.utc).isoformat(),
-                        "iterations_done": r["iterations_done"], "spent_usd_recorded": r["spent_usd"],
-                        "reserved_usd_counted": r["reserved_usd"], "evidence_dir": r["evidence_dir"],
-                        "partial": partial})
+            out.append(
+                {
+                    "claim_id": r["claim_id"],
+                    "job_id": r["job_id"],
+                    "dedupe_key": r["dedupe_key"],
+                    "why": why,
+                    "owner_pid": r["owner_pid"],
+                    "owner_host": r["owner_host"],
+                    "heartbeat_at": datetime.fromtimestamp(r["heartbeat_at"], tz=timezone.utc).isoformat(),
+                    "iterations_done": r["iterations_done"],
+                    "spent_usd_recorded": r["spent_usd"],
+                    "reserved_usd_counted": r["reserved_usd"],
+                    "evidence_dir": r["evidence_dir"],
+                    "partial": partial,
+                }
+            )
     return out
 
 

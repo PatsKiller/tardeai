@@ -194,8 +194,16 @@ def score_symbol(symbol: str, asset_type: str, merged: Dict[str, Any]) -> Dict[s
     return {"score": round(score, 3), "bucket": bucket, "reasons": reasons}
 
 
+def analyst_payload_is_observation(analyst: Any) -> bool:
+    """True only when an analyst payload carries at least one non-empty value."""
+    if not isinstance(analyst, dict) or not analyst:
+        return False
+    return any(v not in (None, "", {}, [], 0) for v in analyst.values())
+
+
 def mirror_to_db(rows: List[Dict[str, Any]], env: Dict[str, str]) -> None:
     # Optional. Avoid hard dependency on psycopg2.
+    skipped_empty = 0
     if not all(env.get(k) for k in ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")):
         return
     try:
@@ -207,11 +215,20 @@ def mirror_to_db(rows: List[Dict[str, Any]], env: Dict[str, str]) -> None:
                     "INSERT INTO asset_intelligence_history (symbol, asset_type, payload) VALUES (%s, %s, %s::jsonb)",
                     (r["symbol"], r["asset_type"], json.dumps(r))
                 )
-                cur.execute(
-                    "INSERT INTO analyst_data_history (symbol, asset_type, payload) VALUES (%s, %s, %s::jsonb)",
-                    (r["symbol"], r["asset_type"], json.dumps(r.get("analyst", {})))
-                )
+                # 2026-10-18: the analyst provider (Finnhub) was retired 2026-09-13
+                # and the payload has been {} on 100% of rows since 2026-07-28.
+                # An empty payload is not an observation -- never insert one.
+                if analyst_payload_is_observation(r.get("analyst")):
+                    cur.execute(
+                        "INSERT INTO analyst_data_history (symbol, asset_type, payload) VALUES (%s, %s, %s::jsonb)",
+                        (r["symbol"], r["asset_type"], json.dumps(r.get("analyst")))
+                    )
+                else:
+                    skipped_empty += 1
         conn.close()
+        if skipped_empty:
+            print(f"[asset-intel] analyst_data_history: {skipped_empty} empty analyst payload(s) "
+                  f"not inserted (reason=analyst_provider_retired)")
     except Exception as e:
         print(f"[asset-intel] WARN: DB mirror skipped: {e}")
 
