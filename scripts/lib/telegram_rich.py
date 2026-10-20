@@ -428,7 +428,13 @@ def cio_entry_alert(item: dict[str, Any]) -> RichMessage:
         evidence.append(f"Thesis: {_card_text(item['thesis'])}")
     if item.get("opposing_case"):
         evidence.append(f"Strongest opposing line: {item['opposing_case']}")
-    evidence.extend(["CIO review id: " + str(item["cio_review_id"])] if item.get("cio_review_id") else ["CIO review: unreviewed"])
+    if item.get("cio_review_id"):
+        evidence.append("CIO review id: " + str(item["cio_review_id"]))
+    elif item.get("cio_decision_id"):
+        # A CIO decision on record that is not an entry review (2026-10-19): named, never shown as a review.
+        evidence.append(f"CIO decision on record: {item.get('cio_action') or '?'} · {item['cio_decision_id']}")
+    else:
+        evidence.append("CIO review: unreviewed")
     evidence.append("Advisory only — nothing queued, nothing executed; no order, size or stop is created from this alert.")
 
     company = _card_text(item.get("company"), limit=100)

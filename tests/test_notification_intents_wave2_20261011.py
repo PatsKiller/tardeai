@@ -324,7 +324,7 @@ MIGRATED_WAVE2 = {
     "scripts/system_freshness_monitor.py": {"P1"},
     "scripts/run_proactive_quote_refresh.py": {"P3"},
     "scripts/agent_event_router.py": {"P1", "P3"},
-    "scripts/check_gap_resolution.py": {"P2"},
+    "scripts/check_gap_resolution.py": {"P2", "P3"},  # 2026-10-18: OPEN_NO_ATTEMPT / REFUSED_NOWHERE -> digest P3
     "scripts/check_operator_answer_quality.py": {"P2"},
     "scripts/freshness_watchdog_heartbeat.py": {"P1"},
     "scripts/hermes_score_alerts.py": {"P3"},

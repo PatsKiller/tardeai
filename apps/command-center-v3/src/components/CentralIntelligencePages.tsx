@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useApi } from '../hooks/useApi'
+import { useRotationAvailability } from '../hooks/useRotationAvailability'
+import RotationPublicationNotice from './RotationPublicationNotice'
 import type { DrillContext } from './DetailDrawer'
 import { EnsembleValidationInline } from './EnsembleValidationCard'
 import SynthesizedReportCard from './SynthesizedReportCard'
@@ -153,7 +155,8 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
   const { data: research } = useApi<any>('/api/v2/research-topics', 120_000)
   const { data: hermes } = useApi<any>('/api/v2/hermes/health', 120_000)
   const { data: inference } = useApi<any>('/api/v2/inference/latest', 120_000)
-  const { data: rotation } = useApi<any>('/api/v2/rotation/summary', 300_000)
+  const { data: rotation, error: rotationError } = useApi<any>('/api/v2/rotation/summary', 300_000)
+  const rotationPublication = useRotationAvailability(rotation, rotationError)
   const [source, setSource] = useState('all')
   const [sev, setSev] = useState('all')
   const [special, setSpecial] = useState<Special>('all')
@@ -229,7 +232,7 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
         severity: 'positive', confidence: Math.min(0.9, 0.6 + (iwmCh - spyCh) / 3), raw: { spy, iwm }, action: 'review rotation / watchlist',
       })
     }
-    const rotIdeas = (rotation?.top_rotation_ideas ?? rotation?.research_rotation_ideas ?? []).slice(0, 6)
+    const rotIdeas = rotationPublication.ready ? (rotation?.top_rotation_ideas ?? rotation?.research_rotation_ideas ?? []).slice(0, 6) : []
     rotIdeas.forEach((p: any, i: number) => add({
       source: '/api/v2/rotation/summary', type: 'setup', symbol: p.into || p.to || p.symbol,
       title: p.label || p.idea || `Rotation idea ${i + 1}`,
@@ -237,7 +240,7 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
       severity: 'info', confidence: 0.62, raw: p, action: 'rotation review',
     }))
     return out.sort(sortByPriority)
-  }, [risk, cmd, brief, reportIntel, market, tradeAi, watchlist, openTrades, research, inference, overview, rotation])
+  }, [risk, cmd, brief, reportIntel, market, tradeAi, watchlist, openTrades, research, inference, overview, rotation, rotationError, rotationPublication.ready])
 
   const applyKpi = (next: { source?: string; sev?: string; special?: Special; search?: string; view?: ViewPreset }) => { setSource(next.source ?? 'all'); setSev(next.sev ?? 'all'); setSpecial(next.special ?? 'all'); setSearch(next.search ?? ''); if (next.view) setViewPreset(next.view) }
   const filtered = items.filter(it => (source === 'all' || it.type === source || it.source.includes(source)) && (sev === 'all' || it.severity === sev) && (special === 'all' || (special === 'actionable' && !!it.action) || (special === 'highError' && estError(it) > .35) || (special === 'stale' && (it.freshnessH ?? 999) > 24)) && (!search || `${it.symbol ?? ''} ${it.title} ${it.summary ?? ''} ${it.action ?? ''}`.toLowerCase().includes(search.toLowerCase())))
@@ -282,6 +285,7 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
   }
 
   if (mode === 'quality') return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    {!rotationPublication.ready && <RotationPublicationNotice summary={rotation} error={rotationError} />}
     <div style={{ ...panel, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}><div><div style={{ fontSize: 21, fontWeight: 950, color: TEXT0 }}>Signal Quality & Error-Rate Board</div><div style={{ fontSize: 11, color: MUTED }}>Click the KPI cards to focus the board. Low-quality cards now show verification steps.</div></div><div style={{ color: avgQ > .7 ? GREEN : avgQ > .5 ? AMBER : RED, fontWeight: 950 }}>avg quality {(avgQ * 100).toFixed(0)}%</div></div>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10 }}><KPI label="Signals reviewed" value={items.length} active={special === 'all' && sev === 'all'} onClick={() => applyKpi({})} /><KPI label="High error-rate" value={highErr} color={highErr ? RED : GREEN} sub="click to focus" active={special === 'highError'} onClick={() => applyKpi({ special: 'highError' })} /><KPI label="Stale items" value={stale} color={stale ? AMBER : GREEN} sub="needs refresh" active={special === 'stale'} onClick={() => applyKpi({ special: 'stale' })} /><KPI label="Hermes/RAG" value={hermes?.coordinator_active ? `${hermes?.rag_pipeline?.coverage_pct ?? 0}%` : 'check'} color={hermes?.coordinator_active ? GREEN : AMBER} sub={hermes?.embedding_queue?.pending ? `${hermes.embedding_queue.pending} embed pending` : 'click LM reports'} active={source === 'external-lm-report'} onClick={() => applyKpi({ source: 'external-lm-report' })} /></div>
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}><div style={panel}><div style={{ color: TEXT0, fontWeight: 900, marginBottom: 8 }}>Severity mix</div><ResponsiveContainer width="100%" height={220}><PieChart><Pie data={bySeverity} dataKey="value" nameKey="name" outerRadius={78}>{bySeverity.map((x, i) => <Cell key={i} fill={x.color} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer></div><div style={panel}><div style={{ color: TEXT0, fontWeight: 900, marginBottom: 8 }}>Source volume</div><ResponsiveContainer width="100%" height={220}><BarChart data={bySource}><CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,.12)" /><XAxis dataKey="name" tick={{ fill: MUTED, fontSize: 9 }} /><YAxis tick={{ fill: MUTED, fontSize: 9 }} /><Tooltip contentStyle={{ background: '#0f172a', border: '1px solid #334155' }} /><Bar dataKey="value" fill={BLUE} /></BarChart></ResponsiveContainer></div></div>
@@ -290,6 +294,7 @@ export default function CentralIntelligencePages({ mode, onDrill }: Props) {
   </div>
 
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    {!rotationPublication.ready && <RotationPublicationNotice summary={rotation} error={rotationError} />}
     <div style={{ ...panel, display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
       <div>
         <div style={{ fontSize: 21, fontWeight: 950, color: TEXT0 }}>Consolidated Intelligence Command</div>

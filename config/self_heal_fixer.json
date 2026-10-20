@@ -1,5 +1,14 @@
 {
   "schema": "SelfHealFixerConfig@v1",
+  "acceptance": {
+    "schema": "SelfHealCiAcceptancePolicy@v1",
+    "version": "2026-10-18.1",
+    "required_checks": [
+      "cio-hardening",
+      "agent-governance",
+      "release-readiness"
+    ]
+  },
   "_why": "Operator 2026-10-16: \"with the self-fixing in some of these procedures, I just don't want the regular LLM routing. I want it to connect into Claude Code to fix it in iterations.\" A self-heal diagnosis with failure_class code_error becomes ONE fix job per failure signature. scripts/self_heal_fixer.py runs headless Claude Code in an isolated worktree off origin/main, iterates (failing test first -> fix -> targeted tests + run_cio_hardening_ci.py --profile pr), and on success opens a PR labelled self-heal-fix. A fix PR is not a heal: the job closes only at incident_resolved (deployed code + recovered output). Design: docs/ops/self_heal_claude_fixer.md.",
   "arming": {
     "_why": "DISARMED by default. --apply needs ALL of: an ACTIVE guard grant of grant_tier whose reason names grant_reason_token (peek only, never consumed: bin/guard grant git-push --for 8h --uses 4 --reason 'self-heal-fixer ...'), and fewer than daily_job_cap jobs started today (ET). The model's output never arms anything. Budget (architect review 2026-10-16, finding 3): every attempt durably RESERVES its whole budget (iteration.max_iterations, max_cost_usd, max_minutes) in the claims db before the backend is launched; daily_job_cap and daily_cost_cap_usd are checked against reservations, so a crash can never let the day overspend and an interrupted attempt is counted exactly once.",
@@ -270,13 +279,6 @@
     "repair_memory_rel": "data/runtime/self_heal_fixer/repair_memory.jsonl",
     "claims_rel": "data/runtime/self_heal_fixer_claims.sqlite",
     "lock_rel": "data/runtime/self_heal_fixer.lock"
-  },
-  "acceptance": {
-    "_why": "External review 2026-10-18 (F1/F2): PR-head acceptance needs a versioned required-check profile. Every name below must be present on the exact evaluated head SHA and conclude SUCCESS (SKIPPED / NEUTRAL is not a pass); no profile = no acceptance. The names are the required contexts of AGENTS.md / AI_WORK_POLICY.md. advance() attributes a merge (fix_deployed) only with final acceptance accepted=true on that head; a merge with rejected acceptance closes the job as merged_without_acceptance. Changing this list is a config PR that bumps version.",
-    "required_checks": {
-      "version": "self-heal-required-checks@2026-10-18",
-      "names": ["agent-governance", "cio-hardening", "release-readiness"]
-    }
   },
   "lifecycle": {
     "release_current_sha_file": "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/GIT_SHA"

@@ -7,7 +7,7 @@ function check(name: string, cond: boolean) {
 
 const NOW = Date.parse('2026-10-07T15:00:00Z')
 const noLedger = projectCoordination({ schema: 'N8nCoordinationProjection@v1', as_of: '2026-10-07T14:04:17+00:00', items: [], count: 0, status: 'NO_LEDGER', note: 'nothing is waiting' }, { nowMs: NOW })
-check('NO_LEDGER is an explicit state, not an empty success', noLedger.status === 'NO_LEDGER' && noLedger.statusLabel === 'NO LEDGER')
+check('NO_LEDGER is an explicit state, not an empty success', noLedger.status === 'NO_LEDGER' && noLedger.statusLabel === 'NO LEDGER · UNAVAILABLE')
 check('NO_LEDGER carries a warning tone', noLedger.statusTone === 'warning')
 check('NO_LEDGER keeps the server note', noLedger.note === 'nothing is waiting')
 check('a dated projection is not UNDATED', noLedger.asOfLabel.startsWith('projected '))
@@ -31,7 +31,7 @@ const ok = projectCoordination({
     { state: 'ACCEPTED', lane_id: 'incident-fanin', event_id: 'evt-d', idempotency_key: 'inc-1', recorded_at: NOW / 1000 - 60 },
     { state: 'ACCEPTED', lane_id: 'research-intake', event_id: 'evt-e', idempotency_key: 'rq-1', recorded_at: NOW / 1000 - 30, artifact: { store: 'data/runtime', ref: 'n8n_research_intake/requests/rq-1.json' } },
   ],
-}, { nowMs: NOW, transport: 'RETAINED', stale: true })
+}, { nowMs: NOW, transport: 'RETAINED', stale: false })
 check('OK status', ok.status === 'OK' && ok.statusTone === 'success')
 check('rows are projected', ok.rows.length === 5)
 check('counts partition by phase', ok.counts.consumed === 1 && ok.counts.artifact === 1 && ok.counts.refused === 1 && ok.counts.waiting === 2)
@@ -43,7 +43,7 @@ check('artifact ref renders store:ref', ok.rows[0].artifact === 'data/runtime:ap
 check('artifact alias (projection field) renders', ok.rows[4].artifact === 'data/runtime:n8n_research_intake/requests/rq-1.json')
 check('origin sha is shortened', ok.rows[0].originSha === '60863d207')
 check('refusal reason is kept verbatim', ok.rows[2].reason === 'typed_refusal:live_notifier_stays_in_code')
-check('stale retained transport is labelled', ok.transportLabel === 'STALE · RETAINED')
+check('stale retained transport is labelled', projectCoordination({ status: 'OK', items: [] }, { nowMs: NOW, transport: 'RETAINED', stale: true }).status === 'STALE')
 check('wave B spotlights project', ok.spotlights.length === 1 && ok.spotlights[0].lane === 'research-intake')
 const filtered = projectCoordination({
   status: 'OK', items: [

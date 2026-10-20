@@ -201,12 +201,134 @@ def _attach_day_catalyst(conn, out: dict[str, dict], day: str) -> None:
             }
 
 
+# ── same-day pass context for the fast loop (operator 2026-10-19, BETR 10:38) ───────────────────────────
+# The fast loop builds its candidates from the recorder store only (symbol / state / last / quote time), so
+# its alerts printed "float n/a · RVOL n/a · setup n/a" and "Trade-AI: NO_SAME_DAY_SCAN" although BETR had a
+# 09:01 WAIT scan. These read what THIS pass already persisted for the same symbol and session day.
+
+PASS5_FIELDS = ("rvol", "setup_id", "setup_label", "float_mm", "trade_ai")
+
+
+def _journal_pass5(symbols: Sequence[str], day: str, *, path=None, max_bytes: int = 2_000_000) -> dict[str, dict]:
+    """Newest non-empty value per field from this session day's 5-minute-pass journal rows (bounded tail)."""
+    import json
+    from zoneinfo import ZoneInfo
+
+    want = {str(s).upper() for s in symbols if s}
+    p = path or (ma.journal_dir() / "momentum_alerts.jsonl")
+    try:
+        size = p.stat().st_size
+        with p.open("rb") as fh:
+            if size > max_bytes:
+                fh.seek(size - max_bytes)
+                fh.readline()
+            lines = fh.read(max_bytes).decode("utf-8", "replace").splitlines()
+    except OSError:
+        return {}
+    et = ZoneInfo("America/New_York")
+    out: dict[str, dict] = {}
+    for line in reversed(lines):                       # newest first
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        c = row.get("candidate") if isinstance(row, dict) else None
+        if not isinstance(c, dict) or str(c.get("symbol") or "").upper() not in want:
+            continue
+        if (row.get("source") or c.get("source")) != "pass5" or c.get("session_date") != day:
+            continue
+        ts = row.get("ts_epoch")
+        if not isinstance(ts, (int, float)) or datetime.fromtimestamp(ts, et).date().isoformat() != day:
+            continue                                   # stale guard: the same session day only
+        got = out.setdefault(str(c["symbol"]).upper(), {})
+        for k in PASS5_FIELDS:
+            if got.get(k) is None and c.get(k) not in (None, "", {}):
+                got[k] = c[k]
+    return out
+
+
+def _ignition_today(conn, symbols: Sequence[str], day: str) -> dict[str, dict]:
+    """RVOL and setup from this session day's newest scalp_ignition_events row (what the pass persists for
+    every scored symbol, not only the ones it alerted on). SELECT only; never raises."""
+    syms = sorted({s for s in symbols if s})
+    if conn is None or not syms:
+        return {}
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""SELECT DISTINCT ON (symbol) symbol, rvol_tod, primary_setup_id, primary_setup_label, fired_at
+                             FROM scalp_ignition_events WHERE session_date = %s AND symbol = ANY(%s)
+                            ORDER BY symbol, fired_at DESC""", (day, syms))
+            rows = cur.fetchall()
+        conn.rollback()
+    except Exception:  # noqa: BLE001
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        return {}
+    out = {}
+    for r in rows:
+        vals = [r.get(k) for k in ("symbol", "rvol_tod", "primary_setup_id", "primary_setup_label")] \
+            if isinstance(r, Mapping) else list(r)[:4]
+        sym, rvol, sid, slabel = (vals + [None] * 4)[:4]
+        out[str(sym).upper()] = {k: v for k, v in (("rvol", rvol), ("setup_id", sid), ("setup_label", slabel))
+                                 if v is not None}
+    return out
+
+
+def pass5_context(conn, symbols: Sequence[str], day: str, *, journal_path=None) -> dict[str, dict]:
+    """{SYM: {rvol, setup_id, setup_label, float_mm, trade_ai}} — the newest same-day values the 5-minute pass
+    produced: its journal first, then (read-only DB) scalp_ignition_events, the pass's float lookup and
+    trade_ai_today(). A field nobody produced today is absent; nothing is invented, no provider is called."""
+    syms = sorted({str(s).upper() for s in symbols if s})
+    out = {s: dict(v) for s, v in _journal_pass5(syms, day, path=journal_path).items()}
+
+    def missing(field):
+        return [s for s in syms if (out.get(s) or {}).get(field) is None]
+
+    if conn is not None:
+        need = sorted(set(missing("rvol")) | set(missing("setup_label")))
+        for sym, vals in _ignition_today(conn, need, day).items():
+            for k, v in vals.items():
+                out.setdefault(sym, {}).setdefault(k, v)
+        floats = float_lookup(conn)
+        for sym in missing("float_mm"):
+            try:
+                f = floats(sym)
+            except Exception:  # noqa: BLE001
+                f = None
+            finally:
+                try:
+                    conn.rollback()
+                except Exception:  # noqa: BLE001
+                    pass
+            if f is not None:
+                out.setdefault(sym, {})["float_mm"] = f
+        for sym, t in trade_ai_today(conn, missing("trade_ai"), day).items():
+            out.setdefault(str(sym).upper(), {})["trade_ai"] = t
+    return {s: v for s, v in out.items() if v}
+
+
+def apply_pass5_context(candidates: Sequence[ma.Candidate], ctx: Mapping[str, Mapping[str, Any]]) -> None:
+    """Fill only the fields a candidate does not already carry."""
+    for c in candidates:
+        for k, v in (ctx.get(str(c.symbol).upper()) or {}).items():
+            if k in PASS5_FIELDS and getattr(c, k, None) is None and v is not None:
+                setattr(c, k, v)
+
+
 def stand_down_candidates(throttle_state: Mapping[str, Any], trigger_states: Mapping[str, str],
                           trigger_info: Mapping[str, Mapping[str, Any]], fired: set, *, now: float,
-                          cfg: "ma.AlertConfig", day: str) -> list[ma.Candidate]:
+                          cfg: "ma.AlertConfig", day: str, trig_cfg: Optional[Mapping[str, Any]] = None,
+                          prices: Optional[Mapping[str, Any]] = None,
+                          trade_ai: Optional[Mapping[str, dict]] = None) -> list[ma.Candidate]:
     """An ARMED leg that was SENT within stand_down_window_min and has since gone stale (ARMED past
     armed_max_bars) or left ARMED without firing gets one STAND_DOWN (2026-10-09: 18 of 19 ARMED alerts
-    simply went quiet). Never twice for the same leg."""
+    simply went quiet). Never twice for the same leg.
+
+    2026-10-19 (NCPL 10-16 10:15 "last n/a · entry n/a · stop n/a"): the note states what is known —
+    last from this pass's scored price, entry/stop from the trigger state machine while it still describes
+    the SAME leg (a broken-down leg's levels belong to a different setup), and today's Trade-AI verdict."""
     last = dict((throttle_state or {}).get("last") or {})
     out = []
     for key, ts in last.items():
@@ -226,8 +348,13 @@ def stand_down_candidates(throttle_state: Mapping[str, Any], trigger_states: Map
         reason = ("the setup went stale — no break after "
                   f"{info.get('armed_bars')} min" if state == "ARMED" and same_leg
                   else "the setup broke down without triggering")
+        lv = armed_levels(info, trig_cfg) if same_leg else {}
+        last_px = (prices or {}).get(sym)
         out.append(ma.Candidate(symbol=sym, lane="", ign=0.0, fsm_state=state, kind_hint=ma.STAND_DOWN,
-                                level_key=lvl, stand_down_reason=reason, session_date=day))
+                                level_key=lvl, stand_down_reason=reason, session_date=day,
+                                last=float(last_px) if isinstance(last_px, (int, float)) else None,
+                                entry_ref=lv.get("entry_ref"), stop_ref=lv.get("stop_ref"),
+                                trade_ai=(trade_ai or {}).get(sym)))
     return out
 
 
@@ -244,8 +371,10 @@ def run_from_logger(conn, cfg: Mapping[str, Any], results, trigger_fires, trigge
     interesting.sort(key=lambda c: (ma.alert_kind(c, now=now, cfg=acfg) != ma.TRIGGERED, -c.ign))
     interesting = interesting[:MAX_CANDIDATES]
     fired = {f.get("symbol") for f in trigger_fires if f.get("symbol")}
+    prices = {r.get("symbol"): r.get("entry_ref") for r in results if r.get("symbol")}   # entry_ref == scored price
     interesting += stand_down_candidates(ma.load_throttle_state() if not dry_run else {}, trigger_states,
-                                         trigger_info or {}, fired, now=now, cfg=acfg, day=day)
+                                         trigger_info or {}, fired, now=now, cfg=acfg, day=day,
+                                         trig_cfg=cfg.get("trigger"), prices=prices, trade_ai=tai)
     if not interesting:
         res = {"evaluated": 0, "alerts": 0, "sent": 0, "vetoes": 0, "mode": acfg.mode}
         if not dry_run:

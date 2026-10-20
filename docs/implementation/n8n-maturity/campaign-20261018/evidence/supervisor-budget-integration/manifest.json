@@ -1,0 +1,126 @@
+{
+  "schema": "N8nCampaignIntegrationManifest@v1",
+  "status": "LOCAL_TESTED_NOT_DEPLOYED",
+  "base_sha": "ffead9ad232d021e30524c7ca6e252ea2b5f1b82",
+  "source_sha": "afab1a474dfa52509d57ebd9e9b7923ee2d14352",
+  "exact_source_files": {
+    "scripts/supervisor_breach_detector.py": "af39a5fdbf44a648c8bac0e6eb4b00c96732823ad25d0ce97d06609ec85df05f",
+    "scripts/n8n_failure_diagnosis.py": "9a8391dd0fa5a7de2ca3c8a1199e122493a2dce077e2c3932597b663e35a64c4",
+    "tests/test_n8n_supervisor_budget_20261018.py": "d25439c8bcdfcf9af30a33e0c71d3c0ac140df1df7042227bcf6e1c1c290b855",
+    "tests/test_wave5_maturity.py": "dc850683081a05300cc5c9b455768d8f2f6f6d97c8cb044151165506bdd99297",
+    "tests/test_refactor_w1_breach_detector_20261010.py": "e018dc2600d8fd23c5585ea3c0138303037d826f3907bad51980183b75c456e1"
+  },
+  "validation": {
+    "integration": "49 passed, six focused suites",
+    "source_red_first": "Nine expected baseline assertions, same nine green; source-era332pass1skip retained separately",
+    "review": "Prior source opinion reused; current integration review pending"
+  },
+  "gate_inventory": {
+    "before": 496,
+    "after": 497,
+    "existing_gates_unchanged": true
+  },
+  "contract": {
+    "authority": "unchanged existing registered L1 restart/L2 alternate action catalogue; no live activation",
+    "budget": "single stable cross-process flock, validate history/cap/window, fsync attempt reservation before subprocess, dedup reservation/result by attempt id; prior legacy failures and interrupted reservations consume same per-lane cap",
+    "critical_enrollment": "existing episode persistence and shared _enroll_critical called independently of not_this_cycle diagnosis-budget skip; existing dedup/page identity preserved",
+    "metrics": [
+      "p1_enrolled_new",
+      "p1_open"
+    ],
+    "recovery_truth": "business_recovered=false for every supervisor action record, including exit0; useful-output validator still owns recovery"
+  },
+  "compatibility": {
+    "history": "Existing Recovery@v1 executed rows and legacy live exception rows remain readable and count conservatively; absent/malformed/future history holds. New optional attempt fields are consumed by current read-only outcome reporter without closed-reader schema change. Existing executed semantics preserved.",
+    "rollout": "Do not run concurrent old/new supervisor action writers; old code does not enforce atomic reservations. No budget reset, live rollout, or policy change performed.",
+    "fixtures": "Two existing temp fixtures explicitly create known-empty histories so their original known-budget assertions remain meaningful."
+  },
+  "artifacts": [
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/supervisor-budget/baseline-red.txt",
+      "stored_path": "baseline-red.txt.gz",
+      "raw_sha256": "ed77f782304aefb78deb178a11bd10759c5fc763bbea024e01e7490b627a7fbe",
+      "stored_sha256": "39af454308b94841bcab69e3b4939cfa41df151aa53d0e6d14b603d60e056ddd"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/supervisor-budget/baseline-red-final-test-identity.txt",
+      "stored_path": "baseline-red-final-test-identity.txt.gz",
+      "raw_sha256": "13aacd4eebb31f6ef4bccb004b4e3930aa662ed237825889407c3bffe4326d93",
+      "stored_sha256": "2c54530958629e4f58758a8e9ce30060bed0e70ec0325e4b7b646594ec76679f"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/supervisor-budget/candidate-green-identical-test.txt",
+      "stored_path": "candidate-green-identical-test.txt.gz",
+      "raw_sha256": "deb596887103bcbc05998a7fb06f2b33a903e76c95a4e469969d2834f23a9ae3",
+      "stored_sha256": "f1aaa9cde0eca3ebfff7279d73ee3cc4a452f4433ea46dc4038019a7bad37f55"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/supervisor-budget/candidate-regression-final.txt",
+      "stored_path": "candidate-regression-final.txt.gz",
+      "raw_sha256": "63a87c700f1fb658a40d49cefb62d8a6eae82af97daf8098bbef06a4b872e7af",
+      "stored_sha256": "8935cc77a416b36a320f8762c830fd877a51fc43eb7e4714e20c2c980458bc8f"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/supervisor-budget/candidate.patch",
+      "stored_path": "candidate.patch.gz",
+      "raw_sha256": "fab8830524175cd61ebc7a862956b941556d729c71afb2f6ac1aa509805dbfeb",
+      "stored_sha256": "34e64dda51ee7ade7b88a9d64fd76eb33ce11f4316edde55c01aaa4ae2f569cc"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/supervisor-budget/run_baseline.py",
+      "stored_path": "run_baseline.py.gz",
+      "raw_sha256": "d443f1ae60dd231b12ed4f64adbd8df3fda3ca069c31b9148877d323a23ac90b",
+      "stored_sha256": "e629d6c528c866d5d8d33287db607142be58ce2e155d014b869a9d1889953619"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/supervisor-budget/baseline-supervisor_breach_detector.py",
+      "stored_path": "baseline-supervisor_breach_detector.py.gz",
+      "raw_sha256": "77b5cf89cbf6b24afec3b8e92afe86042a5681c2110027e8bd108af80cafaa34",
+      "stored_sha256": "1849ef96556cb0eaa094cb8771e01e78a9e85bc926d176be828f2e743085a760"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/supervisor-budget/baseline-n8n_failure_diagnosis.py",
+      "stored_path": "baseline-n8n_failure_diagnosis.py.gz",
+      "raw_sha256": "3e2c83f15cb1e8bcc1528687e807813730c712e502c6f6597f966184890a9bb3",
+      "stored_sha256": "4965878c22301809dea56bb71886a9ceaf9bb3fdea1d69fe9ad0b479f0b05131"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/supervisor-budget/test_n8n_supervisor_budget_20261018.py",
+      "stored_path": "test_n8n_supervisor_budget_20261018.py.gz",
+      "raw_sha256": "d25439c8bcdfcf9af30a33e0c71d3c0ac140df1df7042227bcf6e1c1c290b855",
+      "stored_sha256": "2227010c7a97aa9ea241e375fb8937958db8bd64fa56109f16f724c62fd63266"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/supervisor-budget/implementation-evidence.json",
+      "stored_path": "implementation-evidence.json.gz",
+      "raw_sha256": "fa0563504b3c7c7ece492a45b80297e0a4c78e2674b8b0a3ed774a42c5091632",
+      "stored_sha256": "72d718b2f84b19d8c277a504ae0e193f63a1d9ae7af86d085d5318f7421f7e5d"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/supervisor-budget-integration-focused.xml",
+      "stored_path": "supervisor-budget-integration-focused.xml.gz",
+      "raw_sha256": "2254335dcef89ac36a77e1ee682748d76c92a3420bc59ebd7ba5004db55deacf",
+      "stored_sha256": "7220817a029793c45241dfc87b50534434a7339f6099ccb0742a7019b0ab614f"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/cross-review/supervisor-independent.txt",
+      "stored_path": "supervisor-independent.txt.gz",
+      "raw_sha256": "e1a7b9f259334d9a41251d6e44b415ba818b54b29ab45f6343ecfc62cfc4faab",
+      "stored_sha256": "ba6dc14e7c099a0d81bf535d46c82f0027a311c0a98bbfc2fb034d664b37e328"
+    },
+    {
+      "source_path": "/tmp/n8n-campaign-20261018/cross-review/recovery675-review.json",
+      "stored_path": "recovery675-review.json.gz",
+      "raw_sha256": "f7bf559f2a7fb07d6b95a6dda6f966b7e23cc03de27522e8fcde3d9c15421397",
+      "stored_sha256": "74c04acd1d4da9a9e927a27585f4fc1e5f15a385fd79c29b96476e30b7ec9c6f"
+    }
+  ],
+  "holds": [
+    "No live restart, diagnosis or notification performed",
+    "Unknown or unavailable recovery budget fails closed",
+    "Deployment must drain old supervisor action writers before new atomic reservation writers run",
+    "No business recovery from process restart or exit0",
+    "Full native acceptance, exact-head CI and runtime verification pending"
+  ],
+  "excluded_from_integration": "Broader675 notifier v2, repair, and SIEM changes are separate; retaining its review artifact is not acceptance of unintegrated scope."
+}

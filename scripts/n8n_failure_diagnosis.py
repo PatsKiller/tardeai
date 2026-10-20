@@ -1064,24 +1064,21 @@ def apply_results(diag: dict, pending_events: list[dict], state: dict, rows_by_i
     """The only function that executes actions or writes a diagnosis. Reached after the dry-run branch returned.
     Writes the diagnoser's own store only — never system_health_events (the SIEM bridge folds the records)."""
     done: dict[str, Any] = {"executed": 0, "diagnoses_appended": 0, "errors": []}
+    p1_before = {key for key, value in (state.get("escalations") or {}).items() if value.get("priority") == "P1"}
     today = day_bucket(state, now)
     day = now.astimezone(timezone.utc).date().isoformat()
     records: list[dict[str, Any]] = []
     for res in diag["results"]:
-        if res.get("outcome") == "not_this_cycle":
-            # External review 2026-10-18 (M2): the per-cycle / daily diagnosis cap is a MODEL budget, never a
-            # visibility budget. A capped CRITICAL/URGENT incident is still enrolled as exactly one P1 record before
-            # it is skipped (nothing else is written: it is retried next cycle and stays undiagnosed).
-            _enroll_critical(state, res, now)
-            if _p1_floor(res.get("severity")) and not res.get("escalation"):
-                esc = (state.get("escalations") or {}).get(escalation_key(res)) or {}
-                res["escalation"] = f"P1:{esc.get('reason') or 'critical_unresolved'}"
-            continue
         dec = res.get("decision") or {}
         sig = res.get("signature")
         if sig and res.get("_episode") is not None:
             state.setdefault("episodes", {})[sig] = {**res["_episode"], "lead_siem_id": res.get("siem_id"),
                                                      "lane": res.get("lane")}
+        if res.get("outcome") == "not_this_cycle":
+            # Diagnosis caps control AI expenditure, never critical enrollment/page visibility. Persist the
+            # episode before enrolling so repeats attach to the same generation without spending or acting.
+            _enroll_critical(state, res, now)
+            continue
         if dec.get("kind") == "carry":
             _enroll_critical(state, res, now)   # a CRITICAL/URGENT occurrence keeps exactly one P1 record (finding 3)
             continue          # cached diagnosis: nothing new to write; its escalation and lifecycle are untouched
@@ -1205,6 +1202,9 @@ def apply_results(diag: dict, pending_events: list[dict], state: dict, rows_by_i
         done["diagnoses_appended"] = len(records)
     except OSError as exc:
         done["errors"].append(f"diagnoses:{type(exc).__name__}:{str(exc)[:200]}")
+    p1_after = {key for key, value in (state.get("escalations") or {}).items() if value.get("priority") == "P1"}
+    diag["_p1_enrollment"] = {"p1_enrolled_new": len(p1_after - p1_before), "p1_open": len(p1_after)}
+    done.update(diag["_p1_enrollment"])
     return done
 
 
@@ -1273,6 +1273,10 @@ def counts(diag: dict, pending_events: list[dict]) -> dict[str, int]:
     res = diag["results"]
     heal = [r.get("heal_state") for r in res] + [e.get("heal_state") for e in pending_events]
     return {
+        # These count actual open/enrolled episodes, including enrollment outside the diagnosis/action branch.
+        # A dry-run has not enrolled anything; the existing decision counters remain separate projections.
+        "p1_enrolled_new": int((diag.get("_p1_enrollment") or {}).get("p1_enrolled_new") or 0),
+        "p1_open": int((diag.get("_p1_enrollment") or {}).get("p1_open") or 0),
         "eligible": len(res), "skipped": len(diag["skipped"]),
         "model_called": sum(1 for r in res if r.get("model_called")),
         "diagnosed": sum(1 for r in res if r.get("verdict")),

@@ -23,6 +23,27 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    # Preserve existing SEC event identities while suppressing within-batch repeats.
+    (
+        "premarket_dedupe_within_batch_20261018",
+        ["tests/test_premarket_dedupe_within_batch_20261018.py"],
+    ),
+    # All ledger recovery consumers require the shared live useful-output verdict.
+    (
+        "n8n_siem_recovery_truth_20261018",
+        [
+            "tests/test_n8n_recovery_consistency_20261018.py",
+            "tests/test_n8n_siem_recovery_truth_20261018.py",
+        ],
+    ),
+    # Atomic bounded recovery reservations; critical enrollment survives diagnosis budget exhaustion.
+    ("n8n_supervisor_budget_20261018", ["tests/test_n8n_supervisor_budget_20261018.py"]),
+    ("self_heal_fix_acceptance_20261018", ["tests/test_self_heal_fix_acceptance_20261018.py"]),
+    # Staged reader preserves v2 evidence and refuses legacy worker effects on it.
+    (
+        "incident_notifier_state_compatibility_20261018",
+        ["tests/test_incident_notifier_state_compatibility_20261018.py"],
+    ),
     # Rotation publication: account-bound identity, real source clocks and grounded
     # stop claims; actual API/cache/digest/POST boundaries with fake external effects.
     ("rotation_publication_20261018", ["tests/test_rotation_publication_20261018.py"]),
@@ -67,6 +88,50 @@ GATES = [
     # expected_output, staged effect key); LaneRunReceipt@v2 produced / empty_allowed / fatal dependency_unavailable via
     # the real CLI; idempotent rerun; the operator packet against fake systemctl/docker/proc. Hermetic: tmp ledgers.
     ("comms_intent_consumer_live_20261017", ["tests/test_comms_intent_consumer_live_20261017.py"]),
+    # ANCHOR: REGISTRY_RUNTIME_TRUTH_20261018 — external review 2026-10-18: five Hermes fabric steps declared
+    # NEVER_SCHEDULED while n8n ran them live. Pins the reconciliation (ACTIVE at canary, contracts canary, feedback held,
+    # parent effect_ownership), the fabric INDEX known ids, scripts/check_registry_runtime_truth.py's contradiction rules
+    # (pre-fix shape caught, dual-state not flagged, unreadable source NOT_MEASURED), dry run writes nothing, apply
+    # writes LaneRunReceipt@v2 + one deduped DIGEST host intent, the registry-runtime-truth lane, and the
+    # SIGNAL_FREE_EXEMPT output-signal exemptions. Hermetic: tmp ledgers/state roots, fixture repo roots.
+    ("registry_runtime_truth_20261018", ["tests/test_registry_runtime_truth_20261018.py"]),
+    # ANCHOR: COMMS_DRAWER_20261019 — Communications drawer: Street consensus on ticker items (Yahoo targets store,
+    # stale-marked, absent when uncovered), Telegram HTML rendered through an allowlist (no innerHTML), every lifecycle
+    # action explained, missing operator token asked for instead of a silent 403. Hermetic: injected DB read.
+    ("comms_drawer_20261019", ["tests/test_comms_drawer_20261019.py"]),
+    # ANCHOR: DISK_HYGIENE_N8N_20261018 — rule-based disk hygiene (dry-run manifest by default; --apply needs a fresh
+    # manifest, re-validates every item, grant + caps) and the band-deduped disk-usage monitor, both as n8n lanes;
+    # never-touch list enforced in code. Hermetic: tmp git repos/worktrees, fake df/proc/crontab.
+    ("disk_hygiene_n8n_20261018", ["tests/test_disk_hygiene_20261018.py"]),
+    # ANCHOR: TMP_HYGIENE_20261019 — /tmp inode incident 2026-10-19: inode bands per (mount, metric) in the disk-usage
+    # monitor (top dirs by file count, bounded scan) and the daily tmp-hygiene plan lane (ended Claude session scratch,
+    # old pytest temp, never-touch for everything else; operator-gated apply). Hermetic: fake /tmp, /proc, statvfs.
+    ("tmp_hygiene_20261019", ["tests/test_tmp_hygiene_20261019.py"]),
+    # ANCHOR: ACTIVE_TRADER_ALERT_COMPLETENESS_20261019 — alerts that shipped blank/UNKNOWN: swing entry cards carry
+    # company/sector/catalyst/CIO decision (shared lib.entry_alert_context); one swing-entry sender (planner persists,
+    # cio_entry_state_runner pages; config/swing_entry_alerts.yaml rollback); AT conflict = latest verdict only, AT-internal
+    # conflict falls back to Trade-AI evidence for display; fast-loop alerts carry same-day pass RVOL/setup/float/Trade-AI;
+    # STAND DOWN states last/entry/stop with no L2/all-n/a line; unstamped 0/5 AT evidence block dropped. Hermetic.
+    ("active_trader_alert_completeness_20261019", ["tests/test_active_trader_alert_completeness_20261019.py"]),
+    # ANCHOR: DATA_INTEGRITY_FIXES_20261018 — operator-approved data-integrity fix PR: Finviz recom "%"/off-scale refused
+    # by writer, cache loader and consumers (JNUG "-95.44%" reproduction) + dry-run-default remediation (archive + NULL,
+    # never DELETE); no empty analyst_data_history payloads, readers say "unavailable"; ATR stop never <= 0; confidence
+    # clamps; NaN / int32 sentinels; plausibility band fingerprint + windows + retired_store; gap-resolution symbol
+    # touches, per-class fingerprints, digest routing; llm_curation deferred (no Ollama); both monitors as n8n canary
+    # lanes (dry live_arg first) with REVIEWED contracts, LaneRunReceipt@v2 and the operator packet. Hermetic.
+    ("data_integrity_fixes_20261018", ["tests/test_data_integrity_fixes_20261018.py"]),
+    # ANCHOR: N8N_EVIDENCE_KIND_PARITY_20261019 — the runtime output verdict and the FW-M6 checker accept the same
+    # N8nExpectedOutput@v1 evidence kinds (file_artifact, per N8N_CONTRACTS_DESIGN.md); before, "file" vs "file_artifact"
+    # meant no contract could cite a file. Hermetic: committed contracts read only.
+    ("n8n_evidence_kind_parity_20261019", ["tests/test_n8n_evidence_kind_parity_20261019.py"]),
+    # ANCHOR: ACTIVE_TRADER_MOTION_WATCHDOG_20261019 — operator decision 2026-10-19: the motion loop stays a systemd
+    # user unit (gate line fixed to /etc/tradeai/enable-active-trader-motion, no misspelt dir) and n8n owns its
+    # supervision: lane active-trader-motion-watchdog dispatch-live */5 like the comms consumer (canary, own flock,
+    # live_arg --apply, enforced env closure, REVIEWED contract); bands HEALTHY/STALE/DEGRADED/DOWN/DISABLED, trading-day
+    # window, band-change dedupe via the host comms-intent path, LaneRunReceipt@v2; the operator packet (grant id
+    # verified, CLOSED-session start, archive-not-delete). Hermetic: tmp heartbeat, fake /proc, clock, marker, systemctl.
+    ("active_trader_motion_watchdog_20261019", ["tests/test_active_trader_motion_watchdog_20261019.py"]),
+    ("fabric_grant_id_20261018", ["tests/test_fabric_grant_id_20261018.py"]),
     # Feedback's future queue-only capability does not enable its held sixth stage.
     # Exercise actual authenticated admission and executor stage clamping, with fake effects.
     ("hermes_feedback_hold_20261018", ["tests/test_hermes_feedback_hold_20261018.py"]),
@@ -729,6 +794,7 @@ GATES = [
             "tests/test_desk_spelled_ticker_levels_20260914.py",
             "tests/test_subject_dossier_pills_20260914.py",
             "tests/test_comms_editor_20260914.py",
+            "tests/test_notice_subject_words_20261019.py",
             "tests/test_comms_editor_transport_20260914.py",
             "tests/test_single_letter_tickers.py",
             "tests/test_tg_chat_routing_20260914.py",
@@ -1160,6 +1226,12 @@ GATES = [
     # Operator follow-ups 2026-10-16: Hermes scalp catalyst research also covers the Active Trader hot symbols
     # (data broker, capped) and lands in persistent state; premarket_watcher per-day dedupe; n8n-only registry row;
     # "what n8n did today" Command Center tab (/v3/coordination?tab=today, GET /api/v2/coordination/n8n-today).
+    (
+        # Read-only v2 CC observations: missing sources stay unavailable; aggregate windows are
+        # independent of bounded details. SQLite/fake PostgreSQL effects only; no live readers.
+        "n8n_cc_truth_20261018",
+        ["tests/test_n8n_cc_truth_20261018.py", "tests/test_n8n_outbox_truth_20261018.py"],
+    ),
     (
         "hermes_at_research_n8n_today_20261016",
         ["tests/test_hermes_at_research_premarket_dedupe_20261016.py", "tests/test_n8n_today_page_20261016.py"],
@@ -1754,6 +1826,8 @@ GATES = [
             "tests/test_finviz_cookie_classification.py",
         ],
     ),
+    # Reject contradictory/off-scale analyst recommendations at cache and DB admission.
+    ("analyst_recom_data_quality_20261018", ["tests/test_analyst_recom_data_quality_20261018.py"]),
     # A dead FINVIZ_COOKIE with a working FINVIZ_API_TOKEN is healthy (rotation note),
     # never "screener empty"; degraded only when both fail; no secret in any record.
     (
@@ -3967,11 +4041,10 @@ GATES = [
         ],
     ),
     (
-        # External review 2026-10-18 false-green closure: SIEM resolution via the shared recovery validator,
-        # capped critical incidents still enrolled at P1, supervisor restart cap reserved per action, settlement is
-        # not recovery, explicit provider message id, server-side comms delivery health, fixer acceptance (required
-        # check profile, accepted-only attribution, red-first validity, unknown usage keeps the reservation).
-        # Hermetic: tmp ledgers / state roots, DB doubles, fake subprocess / transport.
+        # External review 2026-10-18 false-green closure, notification findings (N1-N3): settlement is not
+        # recovery, explicit provider message id, server-side comms delivery health; plus the diagnosis-cadence doc
+        # truth. (M1-M3 and F1-F4 are gated by main's own suites.) Hermetic: tmp ledgers / state roots, DB doubles,
+        # fake transport.
         "false_green_closure_20261018",
         ["tests/test_false_green_closure_20261018.py"],
     ),
@@ -5321,6 +5394,13 @@ GATES = [
         # Hermetic: fake host, tmp_path state; no git/gh/systemctl/guard ledger.
         "release_windows_20261016",
         ["tests/test_release_window_20261016.py"],
+    ),
+    (
+        "n8n_cc_reader_first_20261018",
+        [
+            "tests/test_cc_reader_first_20261018.py",
+            "tests/test_ci_frontend_dependencies_20261018.py",
+        ],
     ),
 ]
 

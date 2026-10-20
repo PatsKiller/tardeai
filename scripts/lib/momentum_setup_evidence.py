@@ -469,13 +469,21 @@ def load_cached_snapshot():
 UNVALIDATED_MARK = "⚠️ UNVALIDATED —"
 
 
-def same_symbol_evidence(symbol, snapshot, *, now=None):
+#: A conflict that lives entirely inside the Active Trader source says nothing about Trade-AI's evidence.
+AT_INTERNAL_CONFLICTS = frozenset({"ACTIVE_TRADER_VERDICT_CONFLICT"})
+
+
+def same_symbol_evidence(symbol, snapshot, *, now=None, trade_ai_on_at_conflict=False):
     """Current same-symbol MomentumSetupEvidence from a candidate snapshot, with WHY when there is none.
 
     status: CURRENT (evidence returned) · CONFLICT (the candidate carries conflicts) · AMBIGUOUS (more than
     one current-session candidate) · UNKNOWN (no current observation with current evidence) ·
     SNAPSHOT_UNAVAILABLE. Candidates from another known session can never be current evidence and are
     ignored, so yesterday's row for the same ticker does not make today's ambiguous. Read-only, never raises.
+
+    ``trade_ai_on_at_conflict`` (display only, operator 2026-10-19): when every conflict is internal to
+    the Active Trader source, look at the Trade-AI observation instead of giving up; the conflicts stay
+    in ``conflicts``. Gates (premarket_watch.momentum_gate) keep the default and still see CONFLICT.
     """
     now = now or datetime.now(timezone.utc)
     sym = str(symbol or "").strip().upper()
@@ -499,12 +507,15 @@ def same_symbol_evidence(symbol, snapshot, *, now=None):
     for source in ("trade_ai", "active_trader"):
         view = row.get(source) if isinstance(row.get(source), dict) else {}
         out["observations"][source] = len(view.get("observations") or [])
+    sources = ("trade_ai", "active_trader")
     if row.get("conflicts"):
         out["status"] = "CONFLICT"
         out["conflicts"] = [str(c) for c in row["conflicts"]]
-        return out
+        if not (trade_ai_on_at_conflict and set(out["conflicts"]) <= AT_INTERNAL_CONFLICTS):
+            return out
+        sources = ("trade_ai",)
     try:
-        for source in ("trade_ai", "active_trader"):
+        for source in sources:
             observations = (row.get(source) or {}).get("observations") or []
             if not observations:
                 continue
@@ -527,6 +538,20 @@ def same_symbol_evidence(symbol, snapshot, *, now=None):
     except (ValueError, TypeError, AttributeError):
         out["status"] = "UNKNOWN"
     return out
+
+
+def _displayable_evidence(evidence):
+    """Display rule for the alert appendix only (never a gate input).
+
+    None → nothing to show (the old "UNKNOWN — current same-symbol evidence unavailable" line). An
+    ACTIVE_TRADER evidence block whose pillars are all UNKNOWN (its candidates carry no observed_at, so
+    no fact can be verified) printed "0/5 source facts" over five UNKNOWN rows: dropped too. Any block
+    with a verified fact (PASSED or FAILED) — Trade-AI's included — is shown unchanged."""
+    if not isinstance(evidence, dict):
+        return False
+    if str(evidence.get("source_name") or "").upper() != "ACTIVE_TRADER":
+        return True
+    return any(str((p or {}).get("status")).upper() in {"PASSED", "FAILED"} for p in evidence.get("pillars") or [])
 
 
 def enrich_active_trader_notification(
@@ -556,7 +581,11 @@ def enrich_active_trader_notification(
             snapshot = (snapshot_loader or _cached_snapshot)()
         except (OSError, ValueError, TypeError, AttributeError):
             snapshot = None
-        evidence = same_symbol_evidence(symbols[0], snapshot, now=now)["evidence"]
+        evidence = same_symbol_evidence(symbols[0], snapshot, now=now, trade_ai_on_at_conflict=True)["evidence"]
+    if not _displayable_evidence(evidence):
+        # Operator 2026-10-19: "drop from the alert, why have a false positive". No same-symbol evidence,
+        # or Active Trader evidence with not one verified fact, adds no information — the message goes as is.
+        return message
     has_catalyst = bool(re.search(r"(?mi)^\s*[^A-Za-z0-9]*catalyst\s*:", plain))
     appendix = format_notification_evidence(evidence, include_catalyst=not has_catalyst)
     if re.search(r"</?(?:b|i|a|blockquote|code)\b", message):

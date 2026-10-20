@@ -47,6 +47,7 @@ import argparse
 import fcntl
 import hashlib
 import json
+import math
 import os
 import sys
 from datetime import datetime, timedelta, timezone
@@ -298,20 +299,92 @@ def open_incidents(fanin: dict[str, Any], acked_event_ids: set[str]) -> tuple[di
 
 
 def load_state(path: Path) -> dict[str, Any]:
-    doc = _load(path) or {}
-    if doc.get("schema") != STATE_SCHEMA:
-        doc = {}
-    return {
+    """Read both deployed state versions without relabelling or discarding evidence.
+
+    Missing state starts the existing v1 writer. An existing unreadable, ambiguous, or
+    unsupported state must stop notification rather than reset delivery deduplication.
+    v2-only fields are retained, not interpreted as v1 acknowledgement authority.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        doc: dict[str, Any] = {}
+    except (OSError, UnicodeError) as exc:
+        raise NotifierStateUnavailable("state_unreadable") from exc
+    else:
+        try:
+            doc = json.loads(raw, object_pairs_hook=_state_object, parse_constant=_state_constant,
+                             parse_float=_state_float)
+        except (ValueError, RecursionError) as exc:
+            raise NotifierStateUnavailable("state_invalid_json") from exc
+        if not isinstance(doc, dict) or doc.get("schema") not in {"IncidentNotifierState@v1", "IncidentNotifierState@v2"}:
+            raise NotifierStateUnavailable("state_unsupported_schema")
+        _validate_state_fields(doc)
+    defaults = {
         "schema": STATE_SCHEMA,
-        "notified": dict(doc.get("notified") or {}),
-        "last_p2_batch_at": doc.get("last_p2_batch_at"),
-        "last_recovery_at": doc.get("last_recovery_at"),
-        "sends_by_day": dict(doc.get("sends_by_day") or {}),
+        "notified": {},
+        "last_p2_batch_at": None,
+        "last_recovery_at": None,
+        "sends_by_day": {},
         # 2026-10-15 flood policy: P1-bearing sends per day (kept apart from the P2 cap when enforcing) and the
         # P2 batches each source triggered per day (the per-source budget).
-        "p1_sends_by_day": dict(doc.get("p1_sends_by_day") or {}),
-        "source_triggers_by_day": dict(doc.get("source_triggers_by_day") or {}),
+        "p1_sends_by_day": {},
+        "source_triggers_by_day": {},
     }
+    return {**defaults, **doc}
+
+
+class NotifierStateUnavailable(ValueError):
+    """A persisted state cannot safely be used or replaced by this notifier."""
+
+
+def _state_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in out:
+            raise NotifierStateUnavailable("state_duplicate_field")
+        out[key] = value
+    return out
+
+
+def _state_constant(_value: str) -> None:
+    raise NotifierStateUnavailable("state_nonfinite_number")
+
+
+def _state_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise NotifierStateUnavailable("state_nonfinite_number")
+    return parsed
+
+
+def _validate_state_fields(doc: dict[str, Any]) -> None:
+    # Validate the fields this reader actually uses. Extensions remain opaque and
+    # survive the existing atomic save; they do not acquire any authority here.
+    for field in ("notified", "sends_by_day", "p1_sends_by_day", "source_triggers_by_day", "recording_pending"):
+        if field in doc and not isinstance(doc[field], dict):
+            raise NotifierStateUnavailable(f"state_invalid_{field}")
+    for field in ("sends_by_day", "p1_sends_by_day"):
+        if any(type(count) is not int or count < 0 for count in doc.get(field, {}).values()):
+            raise NotifierStateUnavailable(f"state_invalid_{field}")
+    for counts in doc.get("source_triggers_by_day", {}).values():
+        if not isinstance(counts, dict) or any(type(count) is not int or count < 0 for count in counts.values()):
+            raise NotifierStateUnavailable("state_invalid_source_triggers_by_day")
+    for field in ("last_p2_batch_at", "last_recovery_at"):
+        if doc.get(field) is not None and (not isinstance(doc[field], str) or _parse_ts(doc[field]) is None):
+            raise NotifierStateUnavailable(f"state_invalid_{field}")
+    for record in doc.get("notified", {}).values():
+        if not isinstance(record, dict):
+            raise NotifierStateUnavailable("state_invalid_notified_record")
+        for field in ("notify_count", "recovery_count", "flap_count"):
+            if field in record and (type(record[field]) is not int or record[field] < 0):
+                raise NotifierStateUnavailable(f"state_invalid_{field}")
+        for field in ("open", "flapping", "flap_note_pending"):
+            if field in record and type(record[field]) is not bool:
+                raise NotifierStateUnavailable(f"state_invalid_{field}")
+        for field in ("first_notified_at", "last_notified_at", "recovered_at", "last_flap_at"):
+            if record.get(field) is not None and (not isinstance(record[field], str) or _parse_ts(record[field]) is None):
+                raise NotifierStateUnavailable(f"state_invalid_{field}")
 
 
 def _local(now: datetime, cfg: dict[str, Any]) -> datetime:
@@ -676,6 +749,14 @@ def run(
         else {"status": "not_read", "acked_event_ids": []}
     )
     state = load_state(root / STATE_REL)
+    if state["schema"] != STATE_SCHEMA:
+        # This staged reader preserves v2 bytes but its worker still has v1 generation
+        # and recovery semantics. Rollback must hold, never reinterpret or rewrite v2.
+        raise NotifierStateUnavailable("state_requires_v2_worker")
+    if state.get("recording_pending"):
+        # Only the v2 writer knows how to reconcile provider-success/recorder-failure.
+        # Retain the evidence and hold before any send or state write on this reader.
+        raise NotifierStateUnavailable("state_recording_pending_requires_v2_worker")
     policy = FP.load_policy(env)
     p1_in_cap = FP.p1_counts_toward_cap(policy)
     rec_in_cap = FP.recoveries_count_toward_cap(policy)

@@ -15,9 +15,7 @@ Command Center SIEM"). The n8n chain (relay, gateway, executor, incident fan-in,
 One active row per (component ``n8n:<lane_id>``, event_type) — the dedupe key. A repeat with the same severity and
 message is skipped; a changed one updates the open row in place; a finding that clears is resolved
 (``lifecycle_state='resolved'``, the convention of ``/api/v2/admin/alert/resolve``) only when its source is healthy:
-ledger kinds only when scripts/lib/recovery_validator proves a later run of the failed run's lane did the required
-work in the failure's effective mode (and slot) under its output contract (``ledger_recovery``; external review
-2026-10-18, M1), fan-in kinds when the fan-in receipt is fresh.
+ledger kinds when the lane's latest finished run is good, fan-in kinds when the fan-in receipt is fresh.
 
 Severity is stored in the table's own vocabulary (CRITICAL / URGENT / WARN / INFO; measured 2026-10-09: 884
 CRITICAL, 782 WARN, 231 INFO, 26 legacy P1). Source: the lane registry row ``severity`` (Critical/High/Medium/Low)
@@ -53,7 +51,7 @@ RECEIPT_REL = "data/runtime/n8n_siem_bridge_last.json"
 FANIN_LANE = "n8n-incident-fanin"
 DIAGNOSES_REL = "data/runtime/n8n_diagnoses/diagnoses.jsonl"
 DIAGNOSIS_SCHEMA = "N8nLaneDiagnosis@v1"
-DIAGNOSES_TAIL_BYTES = 4 * 1024 * 1024   # the newest records only; one diagnosis per incident, a few per day
+DIAGNOSES_TAIL_BYTES = 4 * 1024 * 1024  # the newest records only; one diagnosis per incident, a few per day
 FANIN_MAX_AGE_H = 1.0  # fan-in runs */5; an hour without a receipt means the SIEM feed is blind
 
 SEVERITY_RANK = {"CRITICAL": 0, "URGENT": 1, "WARN": 2, "INFO": 3}
@@ -61,7 +59,7 @@ REGISTRY_SEVERITY = {"critical": "CRITICAL", "high": "URGENT", "medium": "WARN",
 PRIORITY_SEVERITY = {"P0": "CRITICAL", "P1": "CRITICAL", "P2": "WARN", "P3": "INFO"}
 OPEN_STATES = ("active", "acknowledged")
 
-# Kinds decided by the coordination ledger: resolved only through recovery_validator (ledger_recovery).
+# Kinds decided by the coordination ledger: resolved only when the lane's latest finished run is good.
 LEDGER_KINDS = frozenset({"RUN_FAILED", "RUN_TIMEOUT", "RUN_REFUSED", "NO_RECEIPT", "STALE_OUTPUT"})
 RUN_FAILURE_STATES = frozenset({"RUN_FAILED", "RUN_TIMEOUT", "RUN_REFUSED"})
 RUN_NEUTRAL_STATES = frozenset({"RUN_SKIPPED_LOCK", "REQUESTED", "RUN_REQUESTED", "RUNNING", "RUN_RUNNING"})
@@ -72,7 +70,7 @@ ISO_TS_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[+-]\d{
 
 DEFAULT_REMEDIATION = {
     "RUN_FAILED": "Read the RunReceipt stderr_tail for this run, fix the lane runner, then prove recovery with a "
-    "dry_run via coordination/run before the next live slot.",
+    "fresh effective-live contracted business output after the incident; dry-run validation alone cannot close it.",
     "RUN_TIMEOUT": "Lane exceeded its allowlist timeout_s: check for a hung dependency or lock, profile the runner, "
     "and raise timeout_s only with evidence.",
     "RUN_REFUSED": "Executor refused the run (allowlist/mode/env). Check config/n8n_run_allowlist.json for the lane "
@@ -271,13 +269,20 @@ def _finding(
     }
 
 
-def ledger_findings(latest: dict[str, dict[str, Any]], registry: dict[str, dict]) -> tuple[list[dict], set[str]]:
-    """(findings, good lanes) from the latest decisive run per lane."""
-    found, good = [], set()
+def ledger_findings(latest: dict[str, dict[str, Any]], registry: dict[str, dict]) -> tuple[list[dict], dict[str, dict]]:
+    """(findings, candidate recovery runs) from the latest decisive run per lane.
+
+    Internal interface v2 carries the actual run, never just a lane-name assertion. The only production
+    consumer, scripts/n8n_siem_bridge.py, forwards it to plan; historical lane sets cannot authorize closure.
+    Dry successful runs need not page, but cannot replace live business proof.
+    """
+    found, good = [], {}
     for lane, row in sorted(latest.items()):
         kind, excerpt = run_verdict(row)
         if kind is None:
-            good.add(lane)
+            proven, _ = RV.validate(row, mode="live", lane=lane)
+            if proven:
+                good[lane] = row
             continue
         wf, ex = parse_run_id(row.get("run_id"), row.get("requested_by"))
         found.append(
@@ -432,7 +437,7 @@ def read_diagnoses(path: Path, tail_bytes: int = DIAGNOSES_TAIL_BYTES) -> tuple[
         with p.open("rb") as fh:
             if size > tail_bytes:
                 fh.seek(size - tail_bytes)
-                fh.readline()                       # drop the partial first line
+                fh.readline()  # drop the partial first line
             raw = fh.read().decode("utf-8", errors="replace")
     except FileNotFoundError:
         return {}, "diagnoses:none"
@@ -453,7 +458,7 @@ def read_diagnoses(path: Path, tail_bytes: int = DIAGNOSES_TAIL_BYTES) -> tuple[
             continue
         slot = out.setdefault(str(rec["incident_key"]), {"diagnosis": None, "remediation": None})
         if rec.get("kind") == "diagnosis":
-            slot["diagnosis"], slot["remediation"] = rec, None      # a newer diagnosis restarts the story
+            slot["diagnosis"], slot["remediation"] = rec, None  # a newer diagnosis restarts the story
         elif rec.get("kind") == "remediation":
             slot["remediation"] = rec
         else:
@@ -472,10 +477,15 @@ def diagnosis_suffix(view: dict[str, Any]) -> str:
 
     cost = d.get("cost_usd")
     parts = [
-        f'cause="{q(d.get("cause"))}"', f"conf={d.get('confidence')}", f"action={d.get('action_id')}",
-        f"outcome={d.get('outcome')}", f"model={d.get('provider') or 'n/a'}/{d.get('model_id') or 'n/a'}",
-        f"cost_usd={'n/a' if cost is None else f'{float(cost):.4f}'}", f"latency_ms={d.get('latency_ms')}",
-        f"cites={','.join(str(c) for c in d.get('citations') or [])[:200]}", f"key={d.get('incident_key')}",
+        f'cause="{q(d.get("cause"))}"',
+        f"conf={d.get('confidence')}",
+        f"action={d.get('action_id')}",
+        f"outcome={d.get('outcome')}",
+        f"model={d.get('provider') or 'n/a'}/{d.get('model_id') or 'n/a'}",
+        f"cost_usd={'n/a' if cost is None else f'{float(cost):.4f}'}",
+        f"latency_ms={d.get('latency_ms')}",
+        f"cites={','.join(str(c) for c in d.get('citations') or [])[:200]}",
+        f"key={d.get('incident_key')}",
     ]
     if d.get("escalation"):
         parts.append(f"escalated={d['escalation']}")
@@ -497,11 +507,10 @@ def plan(
     open_rows: list[dict[str, Any]],
     *,
     env: str,
-    good_lanes: set[str],
+    good_lanes: dict[str, dict],
     ledger_ok: bool,
     fanin_ok: bool,
     diagnoses: Optional[dict[str, dict]] = None,
-    ledger_runs: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, list[dict]]:
     """Pure diff of wanted findings against the open n8n rows -> {insert, update, resolve, skip, hold}.
 
@@ -539,11 +548,16 @@ def plan(
         if diagnoses is None:
             old = str(ex.get("message") or "")
             if finding_text(old) == finding_text(msg):
-                desired = msg + old[len(strip_diagnosis(old)):]
+                desired = msg + old[len(strip_diagnosis(old)) :]
         elif ikey in diagnoses:
             desired, folded = msg + diagnosis_suffix(diagnoses[ikey]), ikey
-        row = {**row, "message": desired, "incident_key": ikey, "diagnosis_folded": folded,
-               "action_note": diagnosis_action(diagnoses[ikey]) if folded else None}
+        row = {
+            **row,
+            "message": desired,
+            "incident_key": ikey,
+            "diagnosis_folded": folded,
+            "action_note": diagnosis_action(diagnoses[ikey]) if folded else None,
+        }
         if ex.get("severity") == f["severity"] and stable_text(ex.get("message")) == stable_text(desired):
             out["skip"].append({**row, "id": ex.get("id")})
         else:
@@ -553,58 +567,38 @@ def plan(
             continue
         comp, kind = key
         lane = comp[len(COMPONENT_PREFIX) :]
+        if kind in LEDGER_KINDS:
+            ok, why = False, "live_output_recovery_unproven"
+        else:
+            ok, why = fanin_ok, "fanin_finding_cleared"
         for r in rows:
             if kind in LEDGER_KINDS:
-                # External review 2026-10-18 (M1): "the lane's latest decisive run is good" is not recovery — a
-                # later diagnostic dry run, or a live request the stage clamp executed dry, made a live RUN_FAILED
-                # disappear. Only the shared recovery validator decides, for THIS failed run's lane, effective mode,
-                # slot and time, under the useful-output contract. good_lanes no longer resolves anything.
-                if lane == FANIN_LANE and fanin_ok:  # the fan-in's own receipt is fresh again
-                    ok, why = True, "fanin_receipt_fresh"
-                elif ledger_ok and ledger_runs is not None:
-                    ok, why = ledger_recovery(lane, r, ledger_runs)
+                # The incident's host timestamp is the lower bound, not the latest run's own assertion.
+                # Missing/naive clocks hold. Each duplicate open episode is evaluated independently.
+                try:
+                    value = r.get("created_at")
+                    opened = (
+                        value
+                        if isinstance(value, datetime)
+                        else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+                    )
+                except (TypeError, ValueError, OverflowError):
+                    opened = None
+                candidate = good_lanes.get(lane) if isinstance(good_lanes, dict) else None
+                if ledger_ok and opened is not None and opened.tzinfo is not None:
+                    ok, detail = RV.validate(candidate, mode="live", lane=lane, since=opened.timestamp())
+                    why = "latest_run_good:verified_business_output" if ok else detail
                 else:
-                    ok, why = False, "ledger_unavailable"
-            else:
-                ok, why = fanin_ok, ("fanin_finding_cleared" if fanin_ok else "fanin_unhealthy")
+                    ok, why = False, "incident_time_or_recovery_source_unavailable"
             item = {
                 "id": r.get("id"),
                 "component": comp,
                 "event_type": kind,
                 "severity": r.get("severity"),
-                "reason": why if ok else f"not_recovered:{why}",
+                "reason": why if ok else "source_unhealthy_or_lane_not_good:" + why,
             }
             out["resolve" if ok else "hold"].append(item)
     return out
-
-
-_RUN_REF_RE = re.compile(r"\brun=(\S+)")
-
-
-def ledger_recovery(lane: str, row: dict[str, Any], runs: Iterable[dict[str, Any]]) -> tuple[bool, str]:
-    """(recovered, reason) for one open ledger-kind SIEM row, decided by scripts/lib/recovery_validator only.
-
-    The failed run is the one the row names (``run=<run_id>``). The required mode is that run's EFFECTIVE mode
-    (receipt / stage clamp), else its requested mode, else ``live`` (fail closed). The evidence must be another run
-    of the same lane, finished after the failure, in the failure's semantic slot when it has one, and — for a live
-    failure — carrying an output verdict that met the lane's contract. "The latest good run" never counts."""
-    runs = [r for r in runs if str(r.get("lane_id") or "") == lane]
-    m = _RUN_REF_RE.search(strip_diagnosis(row.get("message")))
-    failed_id = m.group(1) if m and m.group(1) != "n/a" else None
-    failed = next((r for r in runs if failed_id and r.get("run_id") == failed_id), None)
-    if failed is not None:
-        mode = RV.effective_mode(failed) or (failed.get("mode") if failed.get("mode") in RV.MODES else "live")
-        since = failed.get("finished_at") or failed.get("requested_at")
-        slot = RV.semantic_slot(failed)
-    else:
-        mode, since, slot = "live", row.get("created_at"), None
-    if since is None:
-        return False, "failure_time_unknown"
-    ev = RV.output_recovered(lane, since, {"mode": mode, "slot": list(slot) if slot else None}, runs=runs,
-                             exclude_run=failed_id)
-    if ev is None:
-        return False, f"no_validated_run:mode={mode}"
-    return True, f"recovery_validator:{ev['basis']}:{','.join(ev['evidence'])}:mode={mode}"
 
 
 def counts(p: dict[str, list[dict]]) -> dict[str, Any]:

@@ -1,0 +1,27 @@
+{
+  "schema": "N8nCampaignIndependentSourceReview@v1",
+  "source_head": "4aede76600da4621e758af4c0d9c3727de184664",
+  "reviewer": "root integrator; production source authored by contracts_routes agent",
+  "disposition": "APPROVED_SCOPED_SOURCE_ONLY",
+  "findings": [],
+  "validation": {
+    "python": "45 independent tests passed in2.21s",
+    "junit": "cc4aede-root-independent.xml",
+    "typescript": "all4 affected committed files pass via node --experimental-strip-types; existing30coordination +9outbox plus newtruth/version/last-good assertions",
+    "build": "author full npm build/tsc/Vite passed; supporting evidence, not repeated by reviewer"
+  },
+  "reviewed": [
+    "full retained SQLite aggregates in one read-only transaction; detail cap500 cannot become total or a24h window",
+    "outbox SQL counts exact UTC window independently from per-source500detail bounds; readonly repeatable-read transaction and bounded totaldeadline",
+    "missing/unreadable/malformed/future/unknownmode receipt sources remain partial/unavailable with explicit namespaces, dates and bounds",
+    "UI dualreads legacy v1 as sample/unverified, v2 declares coverage; unknown major unavailable; errors/stale retain last actual good age and never invent zero or age0",
+    "first live slot name is explicitly retained filename observation, not cutover proof; repair/recovery action is not recovered business output",
+    "owned readmodels only; no route/authority, queue writes or provider effects introduced"
+  ],
+  "evidence_correction": "Reviewer detected identical passing alleged red/green outbox logs. Incorrect artifacts retained and superseded; same test identity now has verified actual3af source3expectedAssertionError failures and final4aede3pass. See outbox-evidence-correction.json.",
+  "compatibility_holds": [
+    "Old cached v1 frontend with newv2writer unsupported; canonical release must deploy refreshed backend and frontend together",
+    "Observed backend availability is not business health or downstream consumption proof",
+    "No authenticated live CC/session/MFA proof, continuous coverage, delivery or business recovery implied"
+  ]
+}

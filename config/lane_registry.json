@@ -80,7 +80,10 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "Read-only observation 2026-10-08: OpenClaw jobs.json contains enabled legacy job 676c2212-f18a-4913-b96d-e7790b7b173c, but cron/runs has no matching receipt. Generated workflow INDEX.json maps the uninstalled n8n replacement alias to a9b4aece7a8b7c95. This state describes only the replacement, not the enabled legacy job.",
       "output_signal": {
-        "kind": "none"
+        "kind": "none",
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "exempt_since": "2026-10-19",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): a calendar reminder fired by the OpenClaw scheduler (kind event); its only effect is the delivered reminder message, recorded by OpenClaw itself (jobs.json lastDeliveryStatus). No Trade AI artifact exists or is needed."
       },
       "note": "Read-only OpenClaw jobs.json/runs observation 2026-10-08: job 676c2212-f18a-4913-b96d-e7790b7b173c enabled. Generated INDEX.json alias openclaw-claude-plan-reminder-week-before, id a9b4aece7a8b7c95; canonical packet/tranche lane openclaw-reminder-claude-plan-1 differs from generated request lane and must be aligned before import. monthly on day 24; legacy state reports lastRunStatus=ok, lastDeliveryStatus=not-requested. Legacy job has not been disabled; registration is not a cutover or a delivery receipt. N6 retained on the OpenClaw scheduler by operator decision 2026-10-09 (AGENTS.md §23.3: n8n must not trigger a sender). Registry has no openclaw scheduler kind; kind event = no host cron/systemd entry to discover (the OpenClaw gateway's internal scheduler fires it), so the lane monitor cannot report it ORPHANED. The generated n8n workflow is never imported."
     },
@@ -101,7 +104,10 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "Read-only observation 2026-10-08: OpenClaw jobs.json contains enabled legacy job 0775cd6b-2186-40fb-9b56-a3e36f6faf14, but cron/runs has no matching receipt. Generated workflow INDEX.json maps the uninstalled n8n replacement alias to 1675d3c97ed9a3d6; its day-28 schedule does not reproduce the legacy last-day schedule.",
       "output_signal": {
-        "kind": "none"
+        "kind": "none",
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "exempt_since": "2026-10-19",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): a calendar reminder fired by the OpenClaw scheduler (kind event); its only effect is the delivered reminder message, recorded by OpenClaw itself (jobs.json lastDeliveryStatus). No Trade AI artifact exists or is needed."
       },
       "note": "Read-only OpenClaw jobs.json/runs observation 2026-10-08: job 0775cd6b-2186-40fb-9b56-a3e36f6faf14 enabled. Generated INDEX.json alias openclaw-claude-plan-reminder-last-day, id 1675d3c97ed9a3d6; canonical packet/tranche lane openclaw-reminder-claude-plan-2 differs from generated request lane and must be aligned before import. legacy cadence is 0 9 L * *; generated day 28 is APPROXIMATE, not equivalent; do not activate it as a last-day replacement. Legacy job has not been disabled; registration is not a cutover or a delivery receipt. N6 retained on the OpenClaw scheduler by operator decision 2026-10-09 (AGENTS.md §23.3: n8n must not trigger a sender). Registry has no openclaw scheduler kind; kind event = no host cron/systemd entry to discover (the OpenClaw gateway's internal scheduler fires it), so the lane monitor cannot report it ORPHANED. The generated n8n workflow is never imported."
     },
@@ -122,7 +128,10 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "Read-only observation 2026-10-08: OpenClaw jobs.json contains enabled one-shot legacy job 9a26d34d-b940-4185-9fe1-32403c0b3bc1, but cron/runs has no matching receipt. Generated workflow INDEX.json maps the uninstalled n8n replacement alias to c08d72aee9fba3c1; its annual schedule is not a single-fire replacement.",
       "output_signal": {
-        "kind": "none"
+        "kind": "none",
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "exempt_since": "2026-10-19",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): a calendar reminder fired by the OpenClaw scheduler (kind event); its only effect is the delivered reminder message, recorded by OpenClaw itself (jobs.json lastDeliveryStatus). No Trade AI artifact exists or is needed."
       },
       "note": "Read-only OpenClaw jobs.json/runs observation 2026-10-08: job 9a26d34d-b940-4185-9fe1-32403c0b3bc1 enabled. Generated INDEX.json alias openclaw-supergrok-promo-expiry, id c08d72aee9fba3c1; canonical packet/tranche lane openclaw-reminder-supergrok-expiry differs from generated request lane and must be aligned before import. legacy at 2026-10-20T14:00:00Z; generated annual cron needs an explicit one-shot/deactivation guard. Legacy job has not been disabled; registration is not a cutover or a delivery receipt. N6 retained on the OpenClaw scheduler by operator decision 2026-10-09 (AGENTS.md §23.3: n8n must not trigger a sender). Registry has no openclaw scheduler kind; kind event = no host cron/systemd entry to discover (the OpenClaw gateway's internal scheduler fires it), so the lane monitor cannot report it ORPHANED. The generated n8n workflow is never imported."
     },
@@ -143,7 +152,10 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "Read-only observation 2026-10-08: OpenClaw jobs.json contains enabled one-shot legacy job a9c337e0-7a4d-4a83-8089-5aa3bf5f5059, but cron/runs has no matching receipt. Generated workflow INDEX.json maps the uninstalled n8n replacement alias to d28ad5e4adcb021a; its annual schedule is not a single-fire replacement.",
       "output_signal": {
-        "kind": "none"
+        "kind": "none",
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "exempt_since": "2026-10-19",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): a calendar reminder fired by the OpenClaw scheduler (kind event); its only effect is the delivered reminder message, recorded by OpenClaw itself (jobs.json lastDeliveryStatus). No Trade AI artifact exists or is needed."
       },
       "note": "Read-only OpenClaw jobs.json/runs observation 2026-10-08: job a9c337e0-7a4d-4a83-8089-5aa3bf5f5059 enabled. Generated INDEX.json alias openclaw-sentinelone-earnings-reminder, id d28ad5e4adcb021a; canonical packet/tranche lane openclaw-reminder-sentinelone-earnings differs from generated request lane and must be aligned before import. legacy at 2026-12-07T13:00:00Z; generated annual cron needs an explicit one-shot/deactivation guard. Legacy job has not been disabled; registration is not a cutover or a delivery receipt. N6 retained on the OpenClaw scheduler by operator decision 2026-10-09 (AGENTS.md §23.3: n8n must not trigger a sender). Registry has no openclaw scheduler kind; kind event = no host cron/systemd entry to discover (the OpenClaw gateway's internal scheduler fires it), so the lane monitor cannot report it ORPHANED. The generated n8n workflow is never imported."
     },
@@ -7067,7 +7079,7 @@
         "path": "data/runtime/pipeline_hermes_learning_learn_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "Pending: the first natural --apply run's data/runtime/pipeline_hermes_learning_learn_last.json (overall_status, per-step rc) — the natural-run proof required before the next manifest flips. Dry-run 2026-10-10 against the C1-synced manifest: 6 step(s) planned, ids and commands identical to the live lines.",
+      "reason_evidence": "Natural --apply runs proven: data/runtime/pipeline_hermes_learning_learn_last.json run_ts_utc 2026-10-18T15:20:13Z overall_status ok, 6/6 step receipts (outcome_grader, tag_engine, outcome_learning, config_governor skipped_effect rc 75 under n8n effect ownership; outcome_feedback_agent and score_history_retention ok rc 0). Was: 'Pending: the first natural --apply run' (stale since 2026-10-11). Dry-run 2026-10-10 against the C1-synced manifest: 6 step(s) planned, ids and commands identical to the live lines.",
       "value_class": "Technical Debt",
       "recommendation": "PIPELINE:P06",
       "rationalization": {
@@ -7080,7 +7092,22 @@
         "event_driven_candidate": false,
         "f_evidence": "pipeline runs --dry-run daily while its ~86 member lines still run standalone (double scheduling by design, never cut over)"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "effect_ownership": {
+        "as_of": "2026-10-19",
+        "source": "coordination ledger effect_owners + effect_claims (mode=ro) and data/runtime/pipeline_hermes_learning_learn_last.json 2026-10-18 (read-only)",
+        "n8n_owned_steps": {
+          "outcome_grader": "hermes-learning-outcome-grader",
+          "tag_engine": "hermes-learning-tag-engine",
+          "outcome_learning": "hermes-learning-outcome-learning",
+          "config_governor": "hermes-learning-config-governor"
+        },
+        "cron_owned_steps": {
+          "outcome_feedback_agent": "hermes-learning-outcome-feedback-agent (effect owner cron epoch 1; HELD at shadow)",
+          "score_history_retention": "no fabric lane (cron-only step)"
+        },
+        "note": "PARTIAL OWNERSHIP: this cron line still fires daily at 11:20 ET and still RUNS outcome_feedback_agent and score_history_retention; for the four n8n-owned steps it records skipped_effect (rc 75) because the n8n fabric (tradeai-fabric-hermes-learning, 10:50 ET) already ran them under the same effect key. Retiring this line is NOT implied: two steps still depend on it."
+      }
     },
     {
       "lane_id": "hermes-learning-pipeline-tune",
@@ -7100,7 +7127,7 @@
         "path": "data/runtime/pipeline_hermes_learning_tune_last.json"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "Pending: the first natural --apply run's data/runtime/pipeline_hermes_learning_tune_last.json (overall_status, per-step rc) — the natural-run proof required before the next manifest flips. Dry-run 2026-10-10 against the C1-synced manifest: 1 step(s) planned, ids and commands identical to the live lines.",
+      "reason_evidence": "Natural --apply runs proven: data/runtime/pipeline_hermes_learning_tune_last.json run_ts_utc 2026-10-18T21:20:03Z overall_status ok, executed_any false: autonomous_self_tune skipped_effect rc 75 (effect owner n8n since 2026-10-17T05:58Z). Was: 'Pending: the first natural --apply run' (stale since 2026-10-11). Dry-run 2026-10-10 against the C1-synced manifest: 1 step(s) planned, ids and commands identical to the live lines.",
       "value_class": "Technical Debt",
       "recommendation": "PIPELINE:P06",
       "rationalization": {
@@ -7113,7 +7140,16 @@
         "event_driven_candidate": false,
         "f_evidence": "pipeline runs --dry-run daily while its ~86 member lines still run standalone (double scheduling by design, never cut over)"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "effect_ownership": {
+        "as_of": "2026-10-19",
+        "source": "coordination ledger effect_owners + effect_claims (mode=ro) and data/runtime/pipeline_hermes_learning_tune_last.json 2026-10-18 (read-only)",
+        "n8n_owned_steps": {
+          "autonomous_self_tune": "hermes-learning-autonomous-self-tune"
+        },
+        "cron_owned_steps": {},
+        "note": "FENCED FALLBACK: the stage's only step is n8n-owned, so this cron line fires at 17:20 ET and runs nothing (executed_any false, step skipped_effect rc 75). It stays as the clock fallback that takes over only if the effect owner is switched back to cron; retiring it is an operator decision."
+      }
     },
     {
       "lane_id": "hermes-overnight-pipeline-night",
@@ -7720,6 +7756,154 @@
       "reason_evidence": "tests/test_comms_intent_consumer_live_20261017.py; tests/test_n8n_comms_intent_consumer_20261015.py; --dry-run against the live ledger 2026-10-17T17:05Z (mode=ro): 4 QUEUED fabric/workflow_error intents of tradeai-fabric-hermes-learning would fold into ONE P2 incident wferr:tradeai-fabric-hermes-learning (inc-f6a7fd5438b5afe0dd74), the expired 10-15 probe incident would close; downstream verified the same minute: n8n_incident_fanin_last.json as_of 17:05Z served 7b07774ad comms_intent_source 'dlq:ok:...queued_stale=3', incident_notifier_last.json 17:05Z mode live status OK.",
       "review_by": "2026-10-24",
       "note": "Writes only comms_intents.state and two additive ledger tables (comms_intent_consumption, comms_intent_incidents). Sends nothing: the fan-in reads the open incidents and the incident notifier's P2 batch is the only sender (AGENTS.md §24.1). Dead letters (FAILED 3x or refused; QUEUED > 2 h) are one aggregated P2 fan-in finding each (source n8n_comms_intent_dlq). Exit 0 completed, 1 source/write failure or a transient intent failure; ok_at advances only on success.",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "*/5 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W1",
+        "class": "monitor",
+        "priority": 1,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "registry-runtime-truth",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/check_registry_runtime_truth.py",
+        "cadence": "20 7 * * *",
+        "stage": "canary",
+        "wave": "W1"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-19",
+      "state_reason": "n8n-native measure-only host lane (packet docs/ops/packets/registry-runtime-truth-20261018/; 2026-10-18 external review: five Hermes fabric steps were declared NEVER_SCHEDULED while n8n ran them live and every gate was green). Fired by tradeai-dispatcher daily 07:20 ET (precedent n8n-comms-intent-consumer / heartbeat-watch: stage canary = dispatch live, no cron line ever existed, scheduler.match names the script only for host-conflict detection). scripts/check_registry_runtime_truth.py --apply compares declared registry / contract / allowlist / fabric-process state with host evidence (coordination ledger runs + effect_owners mode=ro, relay live-lane names, crontab -l, n8n workflow_entity SELECT) and writes LaneRunReceipt@v2; when contradictions exist it queues ONE host comms intent (fabric/registry_runtime_contradiction, DIGEST -> P2 via the comms-intent consumer and the incident notifier). It edits nothing it measures. Live only once the operator adds the lane to TRADEAI_N8N_RELAY_LIVE_LANES; until then the relay demotes each fire to dry_run.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/registry-runtime-truth_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_registry_runtime_truth_20261018.py; first read-only run against the host 2026-10-19 (docs/ops/packets/registry-runtime-truth-20261018/01_first_run.txt); the same checker run against the pre-fix configs of baeda8d16 reports the five Hermes steps as DECLARED_OFF_BUT_RUNS_LIVE / EFFECT_OWNER_N8N_NOT_LIVE / LIVE_LIST_REGISTRY_NOT_LIVE / PROCESS_LIVE_STEP_NOT_ACTIVE (docs/ops/packets/registry-runtime-truth-20261018/02_pre_fix_replay.txt).",
+      "review_by": "2026-10-26",
+      "note": "Reads only. Writes: its receipt, and at most one comms_intents row per run through scripts/lib/host_comms_intents.py (producer registry_runtime_truth; the store's dedupe window and hourly cap apply). Never a sender, never the registry, never the crontab, never n8n (AGENTS.md §0 rule 5: report both sides). Exit 0 completed (contradictions are findings), 1 registry/ledger unreadable (fatal dependency_unavailable). An unreadable crontab / n8n DB / live-lane file is NOT_MEASURED in the receipt, never clean.",
+      "severity": "Low",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "20 7 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W1",
+        "class": "monitor",
+        "priority": 5,
+        "retry_policy": "none"
+      }
+    },
+    {
+      "lane_id": "n8n-data-plausibility-audit",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/n8n_data_plausibility_audit.py",
+        "cadence": "20 6 * * *",
+        "stage": "canary",
+        "wave": "W4"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-18",
+      "state_reason": "Operator 2026-10-18 (one data-integrity fix PR, 'within n8n with proper contracts'): n8n dispatcher row for scripts/data_plausibility_monitor.py at the systemd timer's own cadence (OnCalendar *-*-* 06:20:00 ET). tradeai-dispatcher fires it once the lane is in TRADEAI_N8N_RELAY_LIVE_LANES (packet docs/ops/packets/data-integrity-monitors-n8n-20261018/cutover.sh relay); until then the gateway demotes the fire to dry_run (--dry-run: read-only, writes nothing). CANARY with a DRY live_arg first: the live argv is [] (the entry script's lane_main measures, writes its LaneRunReceipt@v2 and notifies NOBODY), so the systemd timer tradeai-data-plausibility.timer (lane data-plausibility-audit) stays the alerting owner. The packet's c3 step is the owner switch: it refuses until the served allowlist live_arg is [\"--alert\"] (queue a host comms intent; a follow-up registry/allowlist PR) and a live n8n run is proven, then PRINTS the operator command that disables tradeai-data-plausibility.timer (agents never run systemctl here).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/n8n-data-plausibility-audit_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_data_integrity_fixes_20261018.py (registry/allowlist/contract pins, LaneRunReceipt@v2 output via the real CLI, packet against fakes); systemd unit read 2026-10-18: tradeai-data-plausibility.timer -> OnCalendar *-*-* 06:20:00 ET.",
+      "review_by": "2026-10-25",
+      "note": "Entry scripts/n8n_data_plausibility_audit.py runs scripts/data_plausibility_monitor.py lane_main, which never references the chokepoint send (dispatcher sender gate). Read-only against the database (readonly session) and the ledgers; writes only its receipts and, with --alert, its alert state. Never calls a sender from n8n (lane_main has no chokepoint reference): with --alert it queues a host comms intent (config/host_comms_intent_routes.json domain data) that the comms-intent consumer turns into an incident and the incident notifier sends (AGENTS.md §24.1). Exit 0 when the run completed (findings are output); 1 only when its inputs could not be read (fatal dependency_unavailable).",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "20 6 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "monitor",
+        "priority": 5,
+        "retry_policy": "none"
+      }
+    },
+    {
+      "lane_id": "n8n-gap-resolution-audit",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/n8n_gap_resolution_audit.py",
+        "cadence": "7,37 * * * *",
+        "stage": "canary",
+        "wave": "W4"
+      },
+      "expected_cadence_hours": 0.5,
+      "state": "ACTIVE",
+      "state_since": "2026-10-18",
+      "state_reason": "Operator 2026-10-18 (one data-integrity fix PR, 'within n8n with proper contracts'): n8n dispatcher row for scripts/check_gap_resolution.py at the systemd timer's own cadence (OnCalendar *-*-* *:07,37:00). tradeai-dispatcher fires it once the lane is in TRADEAI_N8N_RELAY_LIVE_LANES (packet docs/ops/packets/data-integrity-monitors-n8n-20261018/cutover.sh relay); until then the gateway demotes the fire to dry_run (--dry-run: read-only, writes nothing). CANARY with a DRY live_arg first: the live argv is [] (the entry script's lane_main measures, writes its LaneRunReceipt@v2 and notifies NOBODY), so the systemd timer tradeai-gap-resolution.timer (lane gap-resolution-audit) stays the alerting owner. The packet's c3 step is the owner switch: it refuses until the served allowlist live_arg is [\"--alert\"] (queue a host comms intent; a follow-up registry/allowlist PR) and a live n8n run is proven, then PRINTS the operator command that disables tradeai-gap-resolution.timer (agents never run systemctl here).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/n8n-gap-resolution-audit_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_data_integrity_fixes_20261018.py (registry/allowlist/contract pins, LaneRunReceipt@v2 output via the real CLI, packet against fakes); systemd unit read 2026-10-18: tradeai-gap-resolution.timer -> OnCalendar *-*-* *:07,37:00.",
+      "review_by": "2026-10-25",
+      "note": "Entry scripts/n8n_gap_resolution_audit.py runs scripts/check_gap_resolution.py lane_main, which never references the chokepoint send (dispatcher sender gate). Read-only against the database (readonly session) and the ledgers; writes only its receipts and, with --alert, its alert state. Never calls a sender from n8n (lane_main has no chokepoint reference): with --alert it queues a host comms intent (config/host_comms_intent_routes.json domain data) that the comms-intent consumer turns into an incident and the incident notifier sends (AGENTS.md §24.1). Exit 0 when the run completed (findings are output); 1 only when its inputs could not be read (fatal dependency_unavailable).",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "7,37 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "monitor",
+        "priority": 5,
+        "retry_policy": "none"
+      }
+    },
+    {
+      "lane_id": "active-trader-motion-watchdog",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/check_active_trader_motion_heartbeat.py",
+        "cadence": "*/5 * * * *",
+        "stage": "canary",
+        "wave": "W1"
+      },
+      "expected_cadence_hours": 0.0833,
+      "state": "ACTIVE",
+      "state_since": "2026-10-19",
+      "state_reason": "Operator decision 2026-10-19: the 5/10/30 s Active Trader motion loop stays a systemd user service (tradeai-active-trader-motion.service; n8n's minimum schedule is 1 min and its runs are stateless processes, so the loop itself cannot run on n8n) and n8n OWNS its supervision. n8n-native host lane fired by tradeai-dispatcher every 5 min (precedent n8n-comms-intent-consumer: stage canary = dispatch live, no cron line ever existed, scheduler.match names the script only for host-conflict detection). scripts/check_active_trader_motion_heartbeat.py --apply reads the motion heartbeat (active-trader-motion-runtime-heartbeat-v1), /proc/<pid>/cmdline and the operator marker /etc/tradeai/enable-active-trader-motion (existence only), bands HEALTHY/STALE/DEGRADED/DOWN/DISABLED inside the trading-day window 07:00 ET to the official close (scripts/lib/cio_market_session.py), and queues ONE host comms intent (config/host_comms_intent_routes.json host/active_trader_motion_watchdog, DIGEST -> P2) per band change and one on recovery. Never restarts anything. Live only once the lane is in TRADEAI_N8N_RELAY_LIVE_LANES (packet docs/ops/packets/active-trader-motion-n8n-20261019/cutover.sh relay); until then the gateway demotes the fire to dry_run.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/active-trader-motion-watchdog_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_active_trader_motion_watchdog_20261019.py; read-only --dry-run against the real host 2026-10-19 (docs/ops/packets/active-trader-motion-n8n-20261019/01_first_run.txt): band DISABLED (marker /etc/tradeai/enable-active-trader-motion absent, heartbeat pid 484546 dead, last cycle 209263 at 2026-10-10 21:43 ET).",
+      "review_by": "2026-10-26",
+      "note": "Supervises lane tradeai-active-trader-motion-service. Writes only its receipt, data/runtime/active_trader_motion_watchdog_state.json (band-change dedupe) and, on a band change inside the window, one comms_intents row through CommsIntentStore directly (the host comms-intent path; not via scripts/lib/host_comms_intents.py, whose gateway import closure reaches broker modules). Sends nothing (AGENTS.md §24.1): the comms-intent consumer and the incident notifier's P2 batch deliver. Exit 0 completed (the band is the output), 1 config/state/intent failure; ok_at advances only on success. No broker, order, credential or unit action.",
       "severity": "Medium",
       "dispatch": {
         "mode": "live",
@@ -15544,18 +15728,24 @@
         "process_step": "outcome_grader"
       },
       "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-15",
-      "state_reason": "Step lane of the n8n fabric process hermes-learning (2026-10-15, AGENTS.md §23.23; packet docs/ops/packets/n8n-hermes-learning-flow-20261015/). Generated inactive: workflow tradeai-fabric-hermes-learning is not imported. The real work still runs as step outcome_grader of hermes-learning-pipeline-learn (cron, --apply). Becomes ACTIVE at stage shadow when the operator publishes tradeai-fabric-hermes-learning for the 5-run dry-run shadow (packet step 03); its cutover is a separate act under the §23.21 standard with the effect-key owner switch.",
+      "state": "ACTIVE",
+      "state_since": "2026-10-17",
+      "state_reason": "REGISTRY TRUTH 2026-10-19 (packet docs/ops/packets/registry-runtime-truth-20261018/): this row said NEVER_SCHEDULED ('workflow not imported') while the host ran it live. tradeai-fabric-hermes-learning is ACTIVE in n8n (workflow_entity, read-only SELECT 2026-10-19), the lane is on the relay live list, effect_owners[hermes-learning-outcome-grader] = n8n 2026-10-16T17:20:08Z epoch 2 (operator, 'hermes-learning cutover c3 (4 live lanes; feedback agent held)'), and the coordination ledger holds live RUN_DONE runs by n8n:workflow:tradeai-fabric-run-lane since 2026-10-17. Stage stays canary, not cutover: the parent cron line hermes-learning-pipeline-learn still fires and records skipped_effect (rc 75) for step outcome_grader through the effect-key fence instead of being retired.",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "config/pipelines/hermes_learning.json step outcome_grader (command, lock, timeout); config/n8n_fabric_processes.json; generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-hermes-learning.json (INDEX.json graph hash).",
+      "reason_evidence": "Read-only 2026-10-19: coordination ledger runs (mode=ro) p:hermes-learning-outcome-grader:live:20261017T1050, p:hermes-learning-outcome-grader:live:20261017T1200, p:hermes-learning-outcome-grader:live:20261018T1050: state RUN_DONE, exit 0, mode live; effect_claims fx:hermes-learning-outcome-grader:<slot>:v1 state DONE scheduler n8n epoch 2 for the same slots; data/runtime/pipeline_hermes_learning_learn_last.json 2026-10-18 step outcome_grader status skipped_effect rc 75 (the cron copy stood down). Output verdict on these runs is declared_not_enforced (allowlist output_receipt is not v2 for this step, so produced_count is not measured; exit 0 alone is not proof): the stdout summaries in the run receipts show the work (grades / tag efficacy / lane hit rates / governor proposals) and is the open output-proof gap.",
       "output_signal": {
         "kind": "db_max",
         "table": "hermes_outcome_ledger",
         "column": "graded_at"
       },
       "severity": "Medium",
-      "note": "Fired only by the process workflow tradeai-fabric-hermes-learning through Run Lane (process_step outcome_grader); no dispatch block, so the generic dispatcher never emits it. Class learn (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-learn) is unchanged."
+      "note": "Fired only by the process workflow tradeai-fabric-hermes-learning (ACTIVE in n8n since 2026-10-17) through Run Lane (process_step outcome_grader); no dispatch block, so the generic dispatcher never emits it. Class learn (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-learn) is unchanged.",
+      "canary": {
+        "wave": "hermes-learning-cutover-20261016",
+        "since": "2026-10-17",
+        "evidence": "Read-only 2026-10-19: coordination ledger runs (mode=ro) p:hermes-learning-outcome-grader:live:20261017T1050, p:hermes-learning-outcome-grader:live:20261017T1200, p:hermes-learning-outcome-grader:live:20261018T1050: state RUN_DONE, exit 0, mode live; effect_claims fx:hermes-learning-outcome-grader:<slot>:v1 state DONE scheduler n8n epoch 2 for the same slots; data/runtime/pipeline_hermes_learning_learn_last.json 2026-10-18 step outcome_grader status skipped_effect rc 75 (the cron copy stood down). Output verdict on these runs is declared_not_enforced (allowlist output_receipt is not v2 for this step, so produced_count is not measured; exit 0 alone is not proof): the stdout summaries in the run receipts show the work (grades / tag efficacy / lane hit rates / governor proposals) and is the open output-proof gap.",
+        "rollback": "operator: switch effect_owners back to cron (the cron stage step then runs again), remove the lane from TRADEAI_N8N_RELAY_LIVE_LANES; then revert this row to stage shadow (the registry follows the host, never the reverse)"
+      }
     },
     {
       "lane_id": "hermes-learning-outcome-learning",
@@ -15570,18 +15760,24 @@
         "process_step": "outcome_learning"
       },
       "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-15",
-      "state_reason": "Step lane of the n8n fabric process hermes-learning (2026-10-15, AGENTS.md §23.23; packet docs/ops/packets/n8n-hermes-learning-flow-20261015/). Generated inactive: workflow tradeai-fabric-hermes-learning is not imported. The real work still runs as step outcome_learning of hermes-learning-pipeline-learn (cron, --apply). Becomes ACTIVE at stage shadow when the operator publishes tradeai-fabric-hermes-learning for the 5-run dry-run shadow (packet step 03); its cutover is a separate act under the §23.21 standard with the effect-key owner switch.",
+      "state": "ACTIVE",
+      "state_since": "2026-10-17",
+      "state_reason": "REGISTRY TRUTH 2026-10-19 (packet docs/ops/packets/registry-runtime-truth-20261018/): this row said NEVER_SCHEDULED ('workflow not imported') while the host ran it live. tradeai-fabric-hermes-learning is ACTIVE in n8n (workflow_entity, read-only SELECT 2026-10-19), the lane is on the relay live list, effect_owners[hermes-learning-outcome-learning] = n8n 2026-10-16T17:20:08Z epoch 2 (operator, 'hermes-learning cutover c3 (4 live lanes; feedback agent held)'), and the coordination ledger holds live RUN_DONE runs by n8n:workflow:tradeai-fabric-run-lane since 2026-10-17. Stage stays canary, not cutover: the parent cron line hermes-learning-pipeline-learn still fires and records skipped_effect (rc 75) for step outcome_learning through the effect-key fence instead of being retired.",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "config/pipelines/hermes_learning.json step outcome_learning (command, lock, timeout); config/n8n_fabric_processes.json; generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-hermes-learning.json (INDEX.json graph hash).",
+      "reason_evidence": "Read-only 2026-10-19: coordination ledger runs (mode=ro) p:hermes-learning-outcome-learning:live:20261017T1050, p:hermes-learning-outcome-learning:live:20261017T1200, p:hermes-learning-outcome-learning:live:20261018T1050: state RUN_DONE, exit 0, mode live; effect_claims fx:hermes-learning-outcome-learning:<slot>:v1 state DONE scheduler n8n epoch 2 for the same slots; data/runtime/pipeline_hermes_learning_learn_last.json 2026-10-18 step outcome_learning status skipped_effect rc 75 (the cron copy stood down). Output verdict on these runs is declared_not_enforced (allowlist output_receipt is not v2 for this step, so produced_count is not measured; exit 0 alone is not proof): the stdout summaries in the run receipts show the work (grades / tag efficacy / lane hit rates / governor proposals) and is the open output-proof gap.",
       "output_signal": {
         "kind": "db_max",
         "table": "hermes_weight_calibration",
         "column": "created_at"
       },
       "severity": "Medium",
-      "note": "Fired only by the process workflow tradeai-fabric-hermes-learning through Run Lane (process_step outcome_learning); no dispatch block, so the generic dispatcher never emits it. Class learn (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-learn) is unchanged."
+      "note": "Fired only by the process workflow tradeai-fabric-hermes-learning (ACTIVE in n8n since 2026-10-17) through Run Lane (process_step outcome_learning); no dispatch block, so the generic dispatcher never emits it. Class learn (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-learn) is unchanged.",
+      "canary": {
+        "wave": "hermes-learning-cutover-20261016",
+        "since": "2026-10-17",
+        "evidence": "Read-only 2026-10-19: coordination ledger runs (mode=ro) p:hermes-learning-outcome-learning:live:20261017T1050, p:hermes-learning-outcome-learning:live:20261017T1200, p:hermes-learning-outcome-learning:live:20261018T1050: state RUN_DONE, exit 0, mode live; effect_claims fx:hermes-learning-outcome-learning:<slot>:v1 state DONE scheduler n8n epoch 2 for the same slots; data/runtime/pipeline_hermes_learning_learn_last.json 2026-10-18 step outcome_learning status skipped_effect rc 75 (the cron copy stood down). Output verdict on these runs is declared_not_enforced (allowlist output_receipt is not v2 for this step, so produced_count is not measured; exit 0 alone is not proof): the stdout summaries in the run receipts show the work (grades / tag efficacy / lane hit rates / governor proposals) and is the open output-proof gap.",
+        "rollback": "operator: switch effect_owners back to cron (the cron stage step then runs again), remove the lane from TRADEAI_N8N_RELAY_LIVE_LANES; then revert this row to stage shadow (the registry follows the host, never the reverse)"
+      }
     },
     {
       "lane_id": "hermes-learning-config-governor",
@@ -15596,18 +15792,24 @@
         "process_step": "config_governor"
       },
       "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-15",
-      "state_reason": "Step lane of the n8n fabric process hermes-learning (2026-10-15, AGENTS.md §23.23; packet docs/ops/packets/n8n-hermes-learning-flow-20261015/). Generated inactive: workflow tradeai-fabric-hermes-learning is not imported. The real work still runs as step config_governor of hermes-learning-pipeline-learn (cron, --apply). Becomes ACTIVE at stage shadow when the operator publishes tradeai-fabric-hermes-learning for the 5-run dry-run shadow (packet step 03); its cutover is a separate act under the §23.21 standard with the effect-key owner switch.",
+      "state": "ACTIVE",
+      "state_since": "2026-10-17",
+      "state_reason": "REGISTRY TRUTH 2026-10-19 (packet docs/ops/packets/registry-runtime-truth-20261018/): this row said NEVER_SCHEDULED ('workflow not imported') while the host ran it live. tradeai-fabric-hermes-learning is ACTIVE in n8n (workflow_entity, read-only SELECT 2026-10-19), the lane is on the relay live list, effect_owners[hermes-learning-config-governor] = n8n 2026-10-16T17:20:08Z epoch 2 (operator, 'hermes-learning cutover c3 (4 live lanes; feedback agent held)'), and the coordination ledger holds live RUN_DONE runs by n8n:workflow:tradeai-fabric-run-lane since 2026-10-17. Stage stays canary, not cutover: the parent cron line hermes-learning-pipeline-learn still fires and records skipped_effect (rc 75) for step config_governor through the effect-key fence instead of being retired.",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "config/pipelines/hermes_learning.json step config_governor (command, lock, timeout); config/n8n_fabric_processes.json; generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-hermes-learning.json (INDEX.json graph hash).",
+      "reason_evidence": "Read-only 2026-10-19: coordination ledger runs (mode=ro) p:hermes-learning-config-governor:live:20261017T1050, p:hermes-learning-config-governor:live:20261017T1200, p:hermes-learning-config-governor:live:20261018T1050: state RUN_DONE, exit 0, mode live; effect_claims fx:hermes-learning-config-governor:<slot>:v1 state DONE scheduler n8n epoch 2 for the same slots; data/runtime/pipeline_hermes_learning_learn_last.json 2026-10-18 step config_governor status skipped_effect rc 75 (the cron copy stood down). Output verdict on these runs is declared_not_enforced (allowlist output_receipt is not v2 for this step, so produced_count is not measured; exit 0 alone is not proof): the stdout summaries in the run receipts show the work (grades / tag efficacy / lane hit rates / governor proposals) and is the open output-proof gap.",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/hermes_config_governor_last.json",
         "key": "ok_at"
       },
       "severity": "Medium",
-      "note": "Fired only by the process workflow tradeai-fabric-hermes-learning through Run Lane (process_step config_governor); no dispatch block, so the generic dispatcher never emits it. Class report (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-learn) is unchanged."
+      "note": "Fired only by the process workflow tradeai-fabric-hermes-learning (ACTIVE in n8n since 2026-10-17) through Run Lane (process_step config_governor); no dispatch block, so the generic dispatcher never emits it. Class report (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-learn) is unchanged.",
+      "canary": {
+        "wave": "hermes-learning-cutover-20261016",
+        "since": "2026-10-17",
+        "evidence": "Read-only 2026-10-19: coordination ledger runs (mode=ro) p:hermes-learning-config-governor:live:20261017T1050, p:hermes-learning-config-governor:live:20261017T1200, p:hermes-learning-config-governor:live:20261018T1050: state RUN_DONE, exit 0, mode live; effect_claims fx:hermes-learning-config-governor:<slot>:v1 state DONE scheduler n8n epoch 2 for the same slots; data/runtime/pipeline_hermes_learning_learn_last.json 2026-10-18 step config_governor status skipped_effect rc 75 (the cron copy stood down). Output verdict on these runs is declared_not_enforced (allowlist output_receipt is not v2 for this step, so produced_count is not measured; exit 0 alone is not proof): the stdout summaries in the run receipts show the work (grades / tag efficacy / lane hit rates / governor proposals) and is the open output-proof gap.",
+        "rollback": "operator: switch effect_owners back to cron (the cron stage step then runs again), remove the lane from TRADEAI_N8N_RELAY_LIVE_LANES; then revert this row to stage shadow (the registry follows the host, never the reverse)"
+      }
     },
     {
       "lane_id": "hermes-learning-tag-engine",
@@ -15622,18 +15824,24 @@
         "process_step": "tag_engine"
       },
       "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-15",
-      "state_reason": "Step lane of the n8n fabric process hermes-learning (2026-10-15, AGENTS.md §23.23; packet docs/ops/packets/n8n-hermes-learning-flow-20261015/). Generated inactive: workflow tradeai-fabric-hermes-learning is not imported. The real work still runs as step tag_engine of hermes-learning-pipeline-learn (cron, --apply). Becomes ACTIVE at stage shadow when the operator publishes tradeai-fabric-hermes-learning for the 5-run dry-run shadow (packet step 03); its cutover is a separate act under the §23.21 standard with the effect-key owner switch.",
+      "state": "ACTIVE",
+      "state_since": "2026-10-17",
+      "state_reason": "REGISTRY TRUTH 2026-10-19 (packet docs/ops/packets/registry-runtime-truth-20261018/): this row said NEVER_SCHEDULED ('workflow not imported') while the host ran it live. tradeai-fabric-hermes-learning is ACTIVE in n8n (workflow_entity, read-only SELECT 2026-10-19), the lane is on the relay live list, effect_owners[hermes-learning-tag-engine] = n8n 2026-10-16T17:20:08Z epoch 2 (operator, 'hermes-learning cutover c3 (4 live lanes; feedback agent held)'), and the coordination ledger holds live RUN_DONE runs by n8n:workflow:tradeai-fabric-run-lane since 2026-10-17. Stage stays canary, not cutover: the parent cron line hermes-learning-pipeline-learn still fires and records skipped_effect (rc 75) for step tag_engine through the effect-key fence instead of being retired.",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "config/pipelines/hermes_learning.json step tag_engine (command, lock, timeout); config/n8n_fabric_processes.json; generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-hermes-learning.json (INDEX.json graph hash).",
+      "reason_evidence": "Read-only 2026-10-19: coordination ledger runs (mode=ro) p:hermes-learning-tag-engine:live:20261017T1050, p:hermes-learning-tag-engine:live:20261017T1200, p:hermes-learning-tag-engine:live:20261018T1050: state RUN_DONE, exit 0, mode live; effect_claims fx:hermes-learning-tag-engine:<slot>:v1 state DONE scheduler n8n epoch 2 for the same slots; data/runtime/pipeline_hermes_learning_learn_last.json 2026-10-18 step tag_engine status skipped_effect rc 75 (the cron copy stood down). Output verdict on these runs is declared_not_enforced (allowlist output_receipt is not v2 for this step, so produced_count is not measured; exit 0 alone is not proof): the stdout summaries in the run receipts show the work (grades / tag efficacy / lane hit rates / governor proposals) and is the open output-proof gap.",
       "output_signal": {
         "kind": "db_max",
         "table": "hermes_tag_efficacy",
         "column": "updated_at"
       },
       "severity": "Medium",
-      "note": "Fired only by the process workflow tradeai-fabric-hermes-learning through Run Lane (process_step tag_engine); no dispatch block, so the generic dispatcher never emits it. Class learn (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-learn) is unchanged. Shadow runs --dry-run: no model call (the live leg is llm-class and needs an llm_route before cutover)."
+      "note": "Fired only by the process workflow tradeai-fabric-hermes-learning (ACTIVE in n8n since 2026-10-17) through Run Lane (process_step tag_engine); no dispatch block, so the generic dispatcher never emits it. Class learn (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-learn) is unchanged. Shadow runs --dry-run: no model call (the live leg is llm-class and needs an llm_route before cutover).",
+      "canary": {
+        "wave": "hermes-learning-cutover-20261016",
+        "since": "2026-10-17",
+        "evidence": "Read-only 2026-10-19: coordination ledger runs (mode=ro) p:hermes-learning-tag-engine:live:20261017T1050, p:hermes-learning-tag-engine:live:20261017T1200, p:hermes-learning-tag-engine:live:20261018T1050: state RUN_DONE, exit 0, mode live; effect_claims fx:hermes-learning-tag-engine:<slot>:v1 state DONE scheduler n8n epoch 2 for the same slots; data/runtime/pipeline_hermes_learning_learn_last.json 2026-10-18 step tag_engine status skipped_effect rc 75 (the cron copy stood down). Output verdict on these runs is declared_not_enforced (allowlist output_receipt is not v2 for this step, so produced_count is not measured; exit 0 alone is not proof): the stdout summaries in the run receipts show the work (grades / tag efficacy / lane hit rates / governor proposals) and is the open output-proof gap.",
+        "rollback": "operator: switch effect_owners back to cron (the cron stage step then runs again), remove the lane from TRADEAI_N8N_RELAY_LIVE_LANES; then revert this row to stage shadow (the registry follows the host, never the reverse)"
+      }
     },
     {
       "lane_id": "hermes-learning-outcome-feedback-agent",
@@ -15674,18 +15882,24 @@
         "process_step": "autonomous_self_tune"
       },
       "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
-      "state_since": "2026-10-15",
-      "state_reason": "Step lane of the n8n fabric process hermes-learning (2026-10-15, AGENTS.md §23.23; packet docs/ops/packets/n8n-hermes-learning-flow-20261015/). Generated inactive: workflow tradeai-fabric-hermes-learning is not imported. The real work still runs as step autonomous_self_tune of hermes-learning-pipeline-tune (cron, --apply). Becomes ACTIVE at stage shadow when the operator publishes tradeai-fabric-hermes-learning for the 5-run dry-run shadow (packet step 03); its cutover is a separate act under the §23.21 standard with the effect-key owner switch.",
+      "state": "ACTIVE",
+      "state_since": "2026-10-17",
+      "state_reason": "REGISTRY TRUTH 2026-10-19 (packet docs/ops/packets/registry-runtime-truth-20261018/): this row said NEVER_SCHEDULED ('workflow not imported') while the host ran it live. tradeai-fabric-hermes-learning is ACTIVE in n8n (workflow_entity, read-only SELECT 2026-10-19), the lane is on the relay live list, effect_owners[hermes-learning-autonomous-self-tune] = n8n 2026-10-17T05:58:26Z epoch 2 (operator, 'hermes tune cutover c3 (autonomous_self_tune, both halves)'), and the coordination ledger holds live RUN_DONE runs by n8n:workflow:tradeai-fabric-run-lane since 2026-10-17. Stage stays canary, not cutover: the parent cron line hermes-learning-pipeline-tune still fires and records skipped_effect (rc 75) for step autonomous_self_tune through the effect-key fence instead of being retired.",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "config/pipelines/hermes_learning.json step autonomous_self_tune (command, lock, timeout); config/n8n_fabric_processes.json; generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-hermes-learning.json (INDEX.json graph hash).",
+      "reason_evidence": "Read-only 2026-10-19: coordination ledger runs (mode=ro) p:hermes-learning-autonomous-self-tune:live:20261017T1200, p:hermes-learning-autonomous-self-tune:live:20261017T1700, p:hermes-learning-autonomous-self-tune:live:20261018T1700: state RUN_DONE, exit 0, mode live; effect_claims fx:hermes-learning-autonomous-self-tune:<slot>:v1 state DONE scheduler n8n epoch 2 for the same slots; data/runtime/pipeline_hermes_learning_tune_last.json 2026-10-18 step autonomous_self_tune status skipped_effect rc 75 (the cron copy stood down). Output verdict: 2026-10-18T1700 produced (produced_count 7, LaneRunReceipt@v2); 10-17 slots empty_allowed nothing_due.",
       "output_signal": {
         "kind": "db_max",
         "table": "hermes_autotune_audit",
         "column": "run_at"
       },
       "severity": "Medium",
-      "note": "Fired only by the process workflow tradeai-fabric-hermes-learning through Run Lane (process_step autonomous_self_tune); no dispatch block, so the generic dispatcher never emits it. Class learn (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-tune) is unchanged. The LEARN half only (--learn: auto-graft; the purge helpers refuse in that mode). Output is event-driven: an audit row exists only when a graft clears its persistence and drift gates, so the RunReceipt is the per-run evidence. The purge half (--purge) stays on host cron as destructive retention. | 2026-10-17 TUNE CUTOVER (operator 2026-10-17 00:25 ET \"do a dry run now, it works no errors, make active now\"; n8n cutover directive 2026-10-15: all families to n8n, F41 retention approved for n8n; packet docs/ops/packets/hermes-tune-cutover-20261017/cutover.sh): the lane now runs the cron step's own argv, BOTH halves (auto-graft + self-purge): command drops --learn, live_arg [--apply] = the spec's cutover_live_arg, registry stage canary, effect key cron_claim true. Reason: once n8n owns the effect key the cron step is skipped whole, so a learn-only lane would silently stop the purge. The destructive purge is archive-first (lib.retention_archive.managed_purge: archive + manifest + tripwire before each DELETE). --dry-run wins over --apply (read-only session, purge legs only count). output_receipt v2: a real run writes LaneRunReceipt@v2 produced_count = grafts applied + retention rows acted on."
+      "note": "Fired only by the process workflow tradeai-fabric-hermes-learning (ACTIVE in n8n since 2026-10-17) through Run Lane (process_step autonomous_self_tune); no dispatch block, so the generic dispatcher never emits it. Class learn (AGENTS.md §23.18). Its RETIRED cron-era row (superseded by hermes-learning-pipeline-tune) is unchanged. The LEARN half only (--learn: auto-graft; the purge helpers refuse in that mode). Output is event-driven: an audit row exists only when a graft clears its persistence and drift gates, so the RunReceipt is the per-run evidence. The purge half (--purge) stays on host cron as destructive retention. | 2026-10-17 TUNE CUTOVER (operator 2026-10-17 00:25 ET \"do a dry run now, it works no errors, make active now\"; n8n cutover directive 2026-10-15: all families to n8n, F41 retention approved for n8n; packet docs/ops/packets/hermes-tune-cutover-20261017/cutover.sh): the lane now runs the cron step's own argv, BOTH halves (auto-graft + self-purge): command drops --learn, live_arg [--apply] = the spec's cutover_live_arg, registry stage canary, effect key cron_claim true. Reason: once n8n owns the effect key the cron step is skipped whole, so a learn-only lane would silently stop the purge. The destructive purge is archive-first (lib.retention_archive.managed_purge: archive + manifest + tripwire before each DELETE). --dry-run wins over --apply (read-only session, purge legs only count). output_receipt v2: a real run writes LaneRunReceipt@v2 produced_count = grafts applied + retention rows acted on.",
+      "canary": {
+        "wave": "hermes-tune-cutover-20261017",
+        "since": "2026-10-17",
+        "evidence": "Read-only 2026-10-19: coordination ledger runs (mode=ro) p:hermes-learning-autonomous-self-tune:live:20261017T1200, p:hermes-learning-autonomous-self-tune:live:20261017T1700, p:hermes-learning-autonomous-self-tune:live:20261018T1700: state RUN_DONE, exit 0, mode live; effect_claims fx:hermes-learning-autonomous-self-tune:<slot>:v1 state DONE scheduler n8n epoch 2 for the same slots; data/runtime/pipeline_hermes_learning_tune_last.json 2026-10-18 step autonomous_self_tune status skipped_effect rc 75 (the cron copy stood down). Output verdict: 2026-10-18T1700 produced (produced_count 7, LaneRunReceipt@v2); 10-17 slots empty_allowed nothing_due.",
+        "rollback": "operator: switch effect_owners back to cron (the cron stage step then runs again), remove the lane from TRADEAI_N8N_RELAY_LIVE_LANES; then revert this row to stage shadow (the registry follows the host, never the reverse)"
+      }
     },
     {
       "lane_id": "hermes-discovery-yield-on-learning",
@@ -16496,6 +16710,117 @@
       "note": "Enforced state machine (candidate -> evidence_ok -> protected -> drained -> applied -> reconciled; failure = held:<reason>; shared control failure stops the cohort). Retires (comments, never deletes) the primary cron line of at most max_lanes_per_night approved 23.25 lanes per night. config/nightly_cutover_controller.json.",
       "value_class": "Operationally Important",
       "review_by": "2026-10-23"
+    },
+    {
+      "lane_id": "disk-usage-monitor",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/disk_usage_monitor.py",
+        "cadence": "*/15 * * * *",
+        "stage": "canary",
+        "wave": "W1"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "ACTIVE",
+      "state_since": "2026-10-18",
+      "state_reason": "Operator 2026-10-18: 'monitor when a threshold is over 80%, fix and move to n8n where monitored.' n8n-native host lane fired by tradeai-dispatcher every 15 min (precedent heartbeat-watch / n8n-comms-intent-consumer: stage canary = dispatch live, no cron line ever existed, scheduler.match names the script only for host-conflict detection). scripts/disk_usage_monitor.py --apply measures config/disk_hygiene_rules.json monitor.mounts df-style, bands ok/warn(>=80)/critical(>=90), and on a band CHANGE only queues one host comms intent (host/disk_usage_*; config/host_comms_intent_routes.json) that the comms-intent consumer turns into a fan-in incident and the incident notifier sends (DIGEST -> P2). Live only once the lane is in TRADEAI_N8N_RELAY_LIVE_LANES (docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh relay); until then the gateway demotes the fire to dry_run.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/disk-usage-monitor_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_disk_hygiene_20261018.py; docs/ops/packets/disk-hygiene-n8n-20261018/01_dry_run_20261019.txt",
+      "review_by": "2026-10-25",
+      "note": "Writes only data/runtime/disk_usage_monitor_state.json, one comms_intents row per band change and its LaneRunReceipt. Sends nothing, deletes nothing (AGENTS.md §24.1, §23.14). The host P1 backstop stays the systemd disk_pressure_guard (proposed at 95%, packet backstop step) because n8n's own Postgres fails when the disk is full. Exit 0 measured + queued; 1 rules/mount/intent/write failure (band not recorded: retried).",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "*/15 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W1",
+        "class": "monitor",
+        "priority": 1,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "disk-hygiene",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/disk_hygiene.py",
+        "cadence": "0 4 * * 0",
+        "stage": "canary",
+        "wave": "W1"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-18",
+      "state_reason": "Operator 2026-10-18: 'a script with rules that's repeatable, n8n should run this weekly.' n8n-native host lane fired by tradeai-dispatcher Sunday 04:00 ET. live_arg is --plan: rules G/R/C/never-touch from config/disk_hygiene_rules.json produce a DiskHygieneManifest@v1 (path, kind, size, rule evidence) and a LaneRunReceipt; it DELETES NOTHING. --apply is operator-only (TRADEAI_DISK_HYGIENE_GRANT, a manifest younger than apply.manifest_max_age_hours, per-item re-validation, item and byte caps) and refuses under the n8n executor (TRADEAI_RUN_ID): destructive retention never runs from n8n (allowlist never-list, AGENTS.md §23.14). Live only once in TRADEAI_N8N_RELAY_LIVE_LANES (docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh relay).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/disk-hygiene_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_disk_hygiene_20261018.py; docs/ops/packets/disk-hygiene-n8n-20261018/01_dry_run_20261019.txt",
+      "review_by": "2026-10-25",
+      "note": "Writes only <state root>/data/runtime/disk_hygiene/disk_hygiene_manifest_<ts>.json + _latest.json and the LaneRunReceipt. Read-only git (GIT_OPTIONAL_LOCKS=0) and du over the configured roots. Sends nothing. The monitor quotes the latest manifest's reclaimable estimate. Exit 0 manifest written; 1 rules/home unreadable or write failure.",
+      "severity": "Low",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "0 4 * * 0"
+        ],
+        "tz": "America/New_York",
+        "wave": "W1",
+        "class": "hygiene",
+        "priority": 3,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "tmp-hygiene",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/tmp_hygiene.py",
+        "cadence": "0 5 * * *",
+        "stage": "canary",
+        "wave": "W1"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-19",
+      "state_reason": "Operator 2026-10-19, after /tmp (tmpfs) hit 97% inodes with 20G bytes free and tools failed with ENOSPC: a daily /tmp plan on n8n. n8n-native host lane fired by tradeai-dispatcher 05:00 ET. live_arg is --plan: the tmp rules of config/disk_hygiene_rules.json (ended Claude session scratch dirs idle > 2 days with no cwd / open fd / live transcript; pytest temp older than 1 day; every other /tmp entry never touched) produce a DiskHygieneManifest@v1 scope tmp (path, kind, file_count, size, rule evidence) and a LaneRunReceipt; it DELETES NOTHING. --apply is operator-only (TRADEAI_DISK_HYGIENE_GRANT, a fresh manifest, per-item re-validation, item / byte / file caps) and refuses under the n8n executor (TRADEAI_RUN_ID): AGENTS.md §23.14. Live only once in TRADEAI_N8N_RELAY_LIVE_LANES (docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh relay).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/tmp-hygiene_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_tmp_hygiene_20261019.py; docs/ops/packets/disk-hygiene-n8n-20261018/02_tmp_dry_run_20261019.txt",
+      "review_by": "2026-10-26",
+      "note": "Writes only <state root>/data/runtime/disk_hygiene/tmp_hygiene_manifest_<ts>.json + tmp_hygiene_manifest_latest.json and the LaneRunReceipt. A bounded lstat walk of each matching /tmp entry, /proc/*/cwd and /proc/*/fd readlinks, read-only git (GIT_OPTIONAL_LOCKS=0) on git trees inside a scratch dir. Sends nothing. The disk-usage monitor quotes the latest manifest's reclaimable inodes on an inode alert. Exit 0 manifest written; 1 rules / tmp root unreadable or write failure.",
+      "severity": "Low",
+      "dispatch": {
+        "mode": "live",
+        "cron": [
+          "0 5 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W1",
+        "class": "hygiene",
+        "priority": 3,
+        "retry_policy": "transient-2"
+      }
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",
@@ -22344,8 +22669,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): launchpadlib-cache-clean.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the operator's rul",
+        "exempt_since": "2026-10-19"
       },
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
@@ -22366,7 +22692,7 @@
       "cadence_basis": "unknown schedule: placeholder 168 h",
       "exec_start": "find ~/.launchpadlib/api.launchpad.net/cache -type f -mtime +30 -delete",
       "flags": [
-        "UNVERIFIED_OUTPUT"
+        "SIGNAL_FREE_EXEMPT"
       ]
     },
     {
@@ -22454,8 +22780,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): snap.firmware-updater.firmware-notifier.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the",
+        "exempt_since": "2026-10-19"
       },
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
@@ -22476,7 +22803,7 @@
       "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
       "exec_start": "/usr/bin/snap run --timer=00:00-24:00/8 firmware-updater.firmware-notifier",
       "flags": [
-        "UNVERIFIED_OUTPUT"
+        "SIGNAL_FREE_EXEMPT"
       ]
     },
     {
@@ -22490,8 +22817,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): systemd-tmpfiles-clean.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the operator's rulin",
+        "exempt_since": "2026-10-19"
       },
       "value_class": "OS",
       "recommendation": "KEEP_ON_CRON",
@@ -22525,7 +22853,7 @@
         "source": "operating-system unit"
       },
       "flags": [
-        "UNVERIFIED_OUTPUT"
+        "SIGNAL_FREE_EXEMPT"
       ]
     },
     {
@@ -23108,8 +23436,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): ubuntu-insights-collect.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the operator's ruli",
+        "exempt_since": "2026-10-19"
       },
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
@@ -23130,7 +23459,7 @@
       "cadence_basis": "unknown schedule: placeholder 168 h",
       "exec_start": "/usr/bin/ubuntu-insights collect -p=2629743",
       "flags": [
-        "UNVERIFIED_OUTPUT"
+        "SIGNAL_FREE_EXEMPT"
       ]
     },
     {
@@ -23144,8 +23473,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): ubuntu-insights-upload.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the operator's rulin",
+        "exempt_since": "2026-10-19"
       },
       "value_class": "Operationally Important",
       "recommendation": "KEEP_ON_CRON",
@@ -23166,7 +23496,7 @@
       "cadence_basis": "unknown schedule: placeholder 168 h",
       "exec_start": "/usr/bin/ubuntu-insights upload -r",
       "flags": [
-        "UNVERIFIED_OUTPUT"
+        "SIGNAL_FREE_EXEMPT"
       ]
     },
     {
@@ -23557,7 +23887,8 @@
         "class": "daemon",
         "token": "tradeai-active-trader-motion.service",
         "source": "long-running user service"
-      }
+      },
+      "evidence_note": "Supervised by n8n lane active-trader-motion-watchdog (operator decision 2026-10-19; scripts/check_active_trader_motion_heartbeat.py, */5 via tradeai-dispatcher): reads this lane's heartbeat, pid and marker read-only, alerts once per band change through the host comms-intent path, never restarts. The loop itself stays this systemd user service (5/10/30 s cadence; n8n's minimum schedule is 1 min). Start gate: ConditionPathExists=/etc/tradeai/enable-active-trader-motion (root-owned, operator-created); the copy installed 2026-10-10 named a misspelt /etc directory that never existed, so the unit could not restart after its clean stop 2026-10-10 21:43 ET. Install/start/proof: docs/ops/packets/active-trader-motion-n8n-20261019."
     },
     {
       "lane_id": "tradeai-cio-telegram-service",

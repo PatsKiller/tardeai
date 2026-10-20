@@ -137,7 +137,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_evidence/runtime-convergence/20261008T215341Z/21-validation.md` | Source validation — 2026-10-08 | review_required | MISSING HEADER | `746c0fb2e84e` |
 | `docs/_findings/ACTIVE_TRADER_LIVE_MOTION_UI_v1.md` | Active Trader Live Motion UI v1 — Findings | review_required | OK | `717dc60f22b3` |
 | `docs/_findings/ACTIVE_TRADER_MOTION_ENDPOINT_v1.md` | Active Trader Live Motion Endpoint — v1 | review_required | OK | `94039d627891` |
-| `docs/_findings/ACTIVE_TRADER_MOTION_RUNTIME_v1.md` | Active Trader Motion Runtime v1 | review_required | OK | `46e9810a264c` |
+| `docs/_findings/ACTIVE_TRADER_MOTION_RUNTIME_v1.md` | Active Trader Motion Runtime v1 | review_required | OK | `0a0c1764527f` |
 | `docs/_findings/ALEX_AUTONOMY_GROUND_TRUTH_2026-08-21.md` | Phase 0 Ground Truth — Alex Autonomy Maturation | review_required | OK | `e28efc326b18` |
 | `docs/_findings/BETA_WATCHLIST_TRUST_INCIDENT_2026-07-20.md` | BETA Watchlist Trust Incident — 2026-07-20 | review_required | OK | `e0ab2cb96346` |
 | `docs/_findings/CSCO_COVERED_CALL_INCIDENT_2026-07-20.md` | CSCO Covered-Call Incident — 2026-07-20 | review_required | OK | `e13df056b408` |
@@ -1465,6 +1465,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/WAVE_B_CC_ORCHESTRATE_2026-10-11.md` | Wave B — CC orchestrate (research-intake + watch-refresh) | review_required | OK | `67cb1506248f` |
 | `docs/implementation/n8n-maturity/WAVE_C_HEAVY_JOBS_2026-10-11.md` | Wave C — heavy CC jobs (advisory / analyst / brief / legacy Run) | review_required | OK | `b487224d891b` |
 | `docs/implementation/n8n-maturity/campaign-20261018/README.md` | n8n operational maturity campaign — 2026-10-18 | review_required | OK | `4bdd12e24da0` |
+| `docs/implementation/n8n-maturity/campaign-20261018/cc-truth/README.md` | Truthful CC observations — October 18, 2026 | review_required | MISSING HEADER | `9dd8db747121` |
 | `docs/implementation/n8n-maturity/campaign-20261018/checkpoint-20261018T2351Z.md` | Campaign checkpoint after release rejection and evidence merge | review_required | OK | `47c15565d38c` |
 | `docs/implementation/n8n-maturity/campaign-20261018/contracts-enforcement/README.md` | Gateway admission and output evidence enforcement | review_required | OK | `f239f9b6cfa2` |
 | `docs/implementation/n8n-maturity/campaign-20261018/feedback-source-hold/README.md` | Preserve the held Hermes feedback stage | review_required | OK | `a6f09db62db3` |
@@ -1920,6 +1921,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/OPERATOR_CLOSE_BRIEF_AEC_MATURITY_2026-09-20.md` | Operator close brief — Trade AI AEC maturity goal | review_required | OK | `563472683d55` |
 | `docs/ops/OPERATOR_DEPLOYMENT_REQUIRED.md` | OPERATOR_DEPLOYMENT_REQUIRED | review_required | OK | `ad67ce75eb83` |
 | `docs/ops/OPTIONS_SCAN_CAPACITY_2026-10-05.md` | Options coverage and scan capacity — 2026-10-05 | review_required | OK | `caa0b49b7f1d` |
+| `docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md` | Output-signal coverage — ACTIVE lanes with no output signal (2026-10-18 review, recounted 2026-10-19) | review_required | OK | `9beb66364332` |
 | `docs/ops/PHASE189D_HEALTH_AGENT_MISSING_STOP_FAILURE_ANALYSIS.md` | PHASE 189D — Health-Agent Missing-Stop Failure Analysis | review_required | OK | `57b472ac277f` |
 | `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix | review_required | OK | `8f174ca4e015` |
 | `docs/ops/PHONE_OPS_20261009.md` | Phone operations for the operator on ms01-openclaw (2026-10-09) | review_required | OK | `d836347d0b19` |
@@ -2031,10 +2033,13 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/measurements/n8n-cutover-20261016T195110Z/REPORT.md` | n8n cutover outcomes — 2026-10-16T19:51:10+00:00 | review_required | OK | `04c9f08bfc36` |
 | `docs/ops/n8n_self_healing.md` | n8n self-healing: how a lane failure is handled, end to end (2026-10-16) | review_required | OK | `89182083aeba` |
 | `docs/ops/openclaw_stage2_soul_patch_20260923.md` | OpenClaw Maria SOUL / skill patch — Stage 2 (specialist honesty) | review_required | OK | `d0a83ec99d47` |
+| `docs/ops/packets/active-trader-motion-n8n-20261019/AGENTS_PATCH_DRAFT.md` | DRAFT: AGENTS.md PATCH for the motion marker path (not applied) | review_required | OK | `cc380c6d4001` |
+| `docs/ops/packets/active-trader-motion-n8n-20261019/README.md` | Active Trader motion runtime back up, supervised by n8n (2026-10-19) | review_required | OK | `d66a2423213b` |
 | `docs/ops/packets/comms-intent-consumer-live-20261017/README.md` | comms-intent consumer LIVE on the n8n fabric (2026-10-17) | review_required | OK | `b0c1cc0322ae` |
 | `docs/ops/packets/consolidation-health-audit-c3-20261015/README.md` | consolidation-health-audit-c3-20261015: CONSOLIDATE wave C3, operator packet | review_required | MISSING HEADER | `5ec104b01e81` |
 | `docs/ops/packets/cron-effect-claim-wrap-20261016/README.md` | Cron effect-claim wrap 2026-10-16: the cron copy refuses itself when n8n owns the lane | review_required | OK | `92fe7e6c08fc` |
 | `docs/ops/packets/cutover-fail-closed-txn-20261016/README.md` | Cutover fail-closed + controller transactions (2026-10-16) | review_required | MISSING HEADER | `1fc916506a76` |
+| `docs/ops/packets/disk-hygiene-n8n-20261018/README.md` | Disk hygiene + disk-usage monitor on n8n (PR #1863) | review_required | MISSING HEADER | `686ff72c5aae` |
 | `docs/ops/packets/hermes-learning-cutover-20261015/README.md` | hermes-learning on the n8n fabric: cutover packet (learn stage) | review_required | OK | `f332e5a5f082` |
 | `docs/ops/packets/hermes-worker-pool-wire-20261015/README.md` | hermes-research-worker-pool — real lane runners + fail closed on zero output (2026-10-15) | review_required | MISSING HEADER | `1232e0f775a0` |
 | `docs/ops/packets/lane-repair-indicator-engine-20261015/README.md` | Lane repair 2026-10-15: build-symbol-profiles, watchlist entry planner, indicator-engine | review_required | OK | `5f8cf669d6e3` |
@@ -2054,13 +2059,15 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/n8n-process-consolidation-cohort2-20261016/README.md` | n8n process consolidation, cohort 2 (2026-10-16): Hermes learning consumers fire on verified learning | review_required | MISSING HEADER | `2596f2ae9efb` |
 | `docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/README.md` | n8n shadow wave LD-W1 (2026-10-15): operator packet | review_required | MISSING HEADER | `1bb88e10b921` |
 | `docs/ops/packets/nightly-cutover-controller-20261016/README.md` | Nightly cutover controller 2026-10-16: an enforced state machine for the approved n8n cutover | review_required | OK | `f5b06ec19aa4` |
+| `docs/ops/packets/registry-runtime-truth-20261018/README.md` | Registry / runtime truth — packet (review 2026-10-18, built 2026-10-19) | review_required | OK | `9aaceb5508f9` |
 | `docs/ops/packets/release-windows-20261016/README.md` | Release windows, 12:00 and 17:30 America/New_York | review_required | OK | `3d2b28b4d9b6` |
 | `docs/ops/packets/research-insights-unique-index-20261015/README.md` | Packet: UNIQUE index on research_insights(source_reference) (DDL, NOT APPLIED) | review_required | MISSING HEADER | `f53f51854f25` |
 | `docs/ops/packets/run-from-release-cohort1-20261015/03_apply.md` | Apply cohort 1 (operator) | review_required | MISSING HEADER | `d4a73a6cda5c` |
 | `docs/ops/packets/run-from-release-cohort1-20261015/04_rollback.md` | Roll back cohort 1 (operator) | review_required | MISSING HEADER | `f3d25844a007` |
 | `docs/ops/packets/run-from-release-cohort1-20261015/README.md` | Run from the release: cohort 1 operator packet (2026-10-15) | review_required | MISSING HEADER | `e65023d6a400` |
+| `docs/ops/packets/swing-alert-single-sender-20261019/README.md` | Swing entry alerts: one sender (2026-10-19) | review_required | MISSING HEADER | `ba85274fb928` |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution | review_required | OK | `df44cfc4ee62` |
-| `docs/ops/self_heal_claude_fixer.md` | Self-heal Claude Code fixer — code defects fixed in iterations, shipped as a tested PR | review_required | OK | `2775d406c0e3` |
+| `docs/ops/self_heal_claude_fixer.md` | Self-heal Claude Code fixer — code defects fixed in iterations, shipped as a tested PR | review_required | OK | `b90fcb9c0c1d` |
 | `docs/ops/telegram_channel_diligence_20260916/00_EXECUTIVE_SUMMARY.md` | Telegram Channel Diligence — Executive Summary | review_required | OK | `19050e08a848` |
 | `docs/ops/telegram_channel_diligence_20260916/01_CHANNEL_INVENTORY_SOURCE_MAP.md` | Phase 1 — Channel Inventory & Source Mapping | review_required | OK | `6be06281ea6d` |
 | `docs/ops/telegram_channel_diligence_20260916/02_ROUTING_GOVERNANCE_PROPOSAL.md` | Phase 2 — Message Routing & Governance Proposal | review_required | OK | `4bf845d22d7f` |

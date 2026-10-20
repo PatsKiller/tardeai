@@ -140,13 +140,11 @@ def build(now: datetime, root: Path, registry_path: Path, release_link: Path, co
         registry = {}
         notes["registry"] = f"unavailable:{type(exc).__name__}"
     ledger_ok = True
-    ledger_runs: Optional[list] = None
     try:
-        ledger_runs = B.read_ledger_runs(ledger_path(root))
-        latest = B.latest_runs(ledger_runs)
+        latest = B.latest_runs(B.read_ledger_runs(ledger_path(root)))
         notes["ledger"] = f"ok:lanes={len(latest)}"
     except Exception as exc:  # noqa: BLE001
-        latest, ledger_ok, ledger_runs = {}, False, None
+        latest, ledger_ok = {}, False
         notes["ledger"] = f"unavailable:{type(exc).__name__}:{str(exc)[:120]}"
     led, good = B.ledger_findings(latest, registry)
     fan, fanin_ok, notes["fanin"] = B.fanin_findings(_load_json(root / B.FANIN_RECEIPT_REL), now, registry, latest)
@@ -162,7 +160,7 @@ def build(now: datetime, root: Path, registry_path: Path, release_link: Path, co
         notes["db"] = f"unavailable:{type(exc).__name__}:{str(exc)[:120]}"
     diagnoses, notes["diagnoses"] = B.read_diagnoses(root / B.DIAGNOSES_REL)
     plan = B.plan(findings, open_rows, env=env, good_lanes=good, ledger_ok=ledger_ok, fanin_ok=fanin_ok,
-                  diagnoses=diagnoses, ledger_runs=ledger_runs)
+                  diagnoses=diagnoses)
     return {
         "plan": plan,
         "notes": notes,

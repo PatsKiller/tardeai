@@ -368,12 +368,25 @@ def test_timestamp_only_change_is_skipped_but_severity_change_updates_in_place()
 
 
 def _diag_line(key, *, siem_id, kind="diagnosis", **kw):
-    rec = {"schema": B.DIAGNOSIS_SCHEMA, "kind": kind, "incident_key": key, "siem_id": siem_id,
-           "at": "2026-10-10T04:01:00+00:00"}
+    rec = {
+        "schema": B.DIAGNOSIS_SCHEMA,
+        "kind": kind,
+        "incident_key": key,
+        "siem_id": siem_id,
+        "at": "2026-10-10T04:01:00+00:00",
+    }
     if kind == "diagnosis":
-        rec.update(cause="lane-b exited 1 on a refused DB connection", confidence=0.85, action_id="rerun_dry_run",
-                   outcome="requested:dry_run:rem-x-dry_run", provider="grok", model_id="grok-fast", cost_usd=0.0012,
-                   latency_ms=900, citations=["siem:1", "run:n8n-wf-wfB-1"])
+        rec.update(
+            cause="lane-b exited 1 on a refused DB connection",
+            confidence=0.85,
+            action_id="rerun_dry_run",
+            outcome="requested:dry_run:rem-x-dry_run",
+            provider="grok",
+            model_id="grok-fast",
+            cost_usd=0.0012,
+            latency_ms=900,
+            citations=["siem:1", "run:n8n-wf-wfB-1"],
+        )
     rec.update(kw)
     return json.dumps(rec) + "\n"
 
@@ -381,8 +394,13 @@ def _diag_line(key, *, siem_id, kind="diagnosis", **kw):
 def test_bridge_folds_a_diagnosis_into_the_right_row_once_and_rerun_is_idempotent(env):
     """2026-10-10 (§9.4 one writer): the diagnoser writes data/runtime/n8n_diagnoses/diagnoses.jsonl; the bridge
     folds the record into the n8n:<lane> row whose incident key it names — and into no other row — exactly once."""
-    env["setup"]([run_row(1, "lane-a", "RUN_FAILED", minutes_ago=6, wf="wfA"),
-                  run_row(2, "lane-b", "RUN_FAILED", minutes_ago=5, wf="wfB")], fanin_doc([]))
+    env["setup"](
+        [
+            run_row(1, "lane-a", "RUN_FAILED", minutes_ago=6, wf="wfA"),
+            run_row(2, "lane-b", "RUN_FAILED", minutes_ago=5, wf="wfB"),
+        ],
+        fanin_doc([]),
+    )
     db = FakeDB()
     assert env["run"](db, "--apply") == 0
     rows = {r["component"]: r for r in db.rows}
@@ -391,19 +409,23 @@ def test_bridge_folds_a_diagnosis_into_the_right_row_once_and_rerun_is_idempoten
     store = env["state"] / B.DIAGNOSES_REL
     store.parent.mkdir(parents=True, exist_ok=True)
     key_b = B.incident_key(b["id"], b["severity"], b["message"])
-    store.write_text(_diag_line(key_b, siem_id=b["id"]) + "not json\n"
-                     + _diag_line("siem999-000000000000", siem_id=999))      # a stale incident: ignored
+    store.write_text(
+        _diag_line(key_b, siem_id=b["id"]) + "not json\n" + _diag_line("siem999-000000000000", siem_id=999)
+    )  # a stale incident: ignored
     n_sql = len(db.sql)
     assert env["run"](db, "--apply") == 0
     writes = [q for q in db.sql[n_sql:] if q.lstrip().upper().startswith(("INSERT", "UPDATE"))]
-    assert len(writes) == 1 and len(db.rows) == 2                             # one UPDATE, onto lane-b only
+    assert len(writes) == 1 and len(db.rows) == 2  # one UPDATE, onto lane-b only
     assert a["message"] == msg_a
     assert B.DIAG_MARKER in b["message"] and "action=rerun_dry_run" in b["message"]
     assert 'cause="lane-b exited 1 on a refused DB connection"' in b["message"]
     assert "model=grok/grok-fast" in b["message"] and "cost_usd=0.0012" in b["message"]
     assert f"key={key_b}" in b["message"] and "cites=siem:1,run:n8n-wf-wfB-1" in b["message"]
     assert b["action_taken"].startswith("n8n_siem_bridge: diagnosis folded (n8n_failure_diagnosis: rerun_dry_run")
-    assert B.strip_diagnosis(b["message"]) in b["message"] and B.incident_key(b["id"], b["severity"], b["message"]) == key_b
+    assert (
+        B.strip_diagnosis(b["message"]) in b["message"]
+        and B.incident_key(b["id"], b["severity"], b["message"]) == key_b
+    )
     rec = json.loads((env["state"] / B.RECEIPT_REL).read_text())
     assert rec["diagnoses_folded"] == 1 and rec["source_notes"]["diagnoses"] == "diagnoses:ok:2:bad_lines=1"
     # idempotent: the same store again writes nothing
@@ -423,15 +445,31 @@ def test_bridge_folds_a_diagnosis_into_the_right_row_once_and_rerun_is_idempoten
 
 def test_changed_finding_drops_the_old_diagnosis_and_unreadable_store_keeps_it():
     def plan_for(detail, rows, diagnoses):
-        f = B._finding("lane-b", "RUN_FAILED", priority="P2", source="ledger", detail=detail,
-                       detected_at="2026-10-10T03:00:00+00:00", registry={}, workflow_id=None, execution_id=None,
-                       run_id=None)
-        return B.plan(B.merge([f]), rows, env="release:r", good_lanes=set(), ledger_ok=True, fanin_ok=True,
-                      diagnoses=diagnoses), B.message(f, "release:r")
+        f = B._finding(
+            "lane-b",
+            "RUN_FAILED",
+            priority="P2",
+            source="ledger",
+            detail=detail,
+            detected_at="2026-10-10T03:00:00+00:00",
+            registry={},
+            workflow_id=None,
+            execution_id=None,
+            run_id=None,
+        )
+        return B.plan(
+            B.merge([f]), rows, env="release:r", good_lanes=set(), ledger_ok=True, fanin_ok=True, diagnoses=diagnoses
+        ), B.message(f, "release:r")
 
     _, base = plan_for("exit=1", [], {})
-    row = {"id": 4, "component": "n8n:lane-b", "event_type": "RUN_FAILED", "severity": "WARN", "message": base,
-           "lifecycle_state": "active"}
+    row = {
+        "id": 4,
+        "component": "n8n:lane-b",
+        "event_type": "RUN_FAILED",
+        "severity": "WARN",
+        "message": base,
+        "lifecycle_state": "active",
+    }
     key = B.incident_key(4, "WARN", base)
     diags = {key: {"diagnosis": json.loads(_diag_line(key, siem_id=4)), "remediation": None}}
     p, _ = plan_for("exit=1", [row], diags)
@@ -444,7 +482,9 @@ def test_changed_finding_drops_the_old_diagnosis_and_unreadable_store_keeps_it()
     p, _ = plan_for("exit=2", [row], diags)
     assert B.DIAG_MARKER not in p["update"][0]["message"] and p["update"][0]["diagnosis_folded"] is None
     # the workaround is gone: stable_text compares the whole message, suffix included
-    assert B.stable_text(row["message"]) != B.stable_text(base) and B.finding_text(row["message"]) == B.finding_text(base)
+    assert B.stable_text(row["message"]) != B.stable_text(base) and B.finding_text(row["message"]) == B.finding_text(
+        base
+    )
     assert B.read_diagnoses(Path("/nonexistent/diagnoses.jsonl")) == ({}, "diagnoses:none")
 
 
@@ -498,20 +538,21 @@ def test_good_latest_run_resolves_the_open_failure(env):
     db = FakeDB()
     env["run"](db, "--apply")
     assert db.rows[0]["lifecycle_state"] == "active"
-    good = run_row(2, "lane-b", "RUN_DONE", minutes_ago=1, wf="wfB")
-    # 2026-10-18 review (M1): resolution is the shared recovery validator — a later live run that met its output
-    # contract, not merely "the latest run is good" (tests/test_false_green_closure_20261018.py).
-    good["receipt"]["output_verdict"] = {"verdict": "produced"}
+    # The next observation cycle occurs after enrollment. Its completed run must be newer
+    # than that episode and carry an enforced useful-output verdict, not merely exit 0.
+    db.rows[0]["created_at"] = NOW - timedelta(minutes=2)
+    recovered = run_row(2, "lane-b", "RUN_DONE", minutes_ago=1, wf="wfB")
+    recovered["receipt"]["output_verdict"] = {"verdict": "produced", "contract_id": "lane-b"}
     env["setup"](
         [
             run_row(1, "lane-b", "RUN_FAILED", minutes_ago=10, wf="wfB"),
-            good,
+            recovered,
         ],
         fanin_doc([]),
     )
     assert env["run"](db, "--apply") == 0
     assert db.rows[0]["lifecycle_state"] == "resolved" and db.rows[0]["resolved_by"] == "n8n_siem_bridge"
-    assert "recovery_validator" in db.rows[0]["action_taken"]
+    assert "latest_run_good" in db.rows[0]["action_taken"]
 
 
 def test_lock_skip_after_failure_does_not_resolve(env):
@@ -537,8 +578,16 @@ def test_cleared_fanin_finding_resolves_only_when_fanin_is_fresh(env):
     assert env["run"](db, "--apply") == 0
     assert db.rows[0]["lifecycle_state"] == "active"
     assert any(r["component"] == "n8n:n8n-incident-fanin" and r["event_type"] == "STALE_OUTPUT" for r in db.rows)
-    # fresh again: both the cleared incident and the fan-in staleness resolve
+    # A fresh snapshot clears the reported finding, but is not live run/output proof for
+    # the fan-in's own failed episode. Its old staleness stays held until real proof arrives.
     env["setup"]([], fanin_doc([]))
+    env["run"](db, "--apply")
+    assert db.rows[0]["lifecycle_state"] == "resolved"
+    assert db.rows[1]["lifecycle_state"] == "active"
+    db.rows[1]["created_at"] = NOW - timedelta(minutes=2)
+    recovered = run_row(3, B.FANIN_LANE, "RUN_DONE", minutes_ago=1)
+    recovered["receipt"]["output_verdict"] = {"verdict": "produced", "contract_id": B.FANIN_LANE}
+    env["setup"]([recovered], fanin_doc([]))
     env["run"](db, "--apply")
     assert {r["lifecycle_state"] for r in db.rows} == {"resolved"}
 

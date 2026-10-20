@@ -344,7 +344,9 @@ def main(argv=None) -> int:
             from active_trader import fast_trigger_loop as ftl
         except ModuleNotFoundError:  # pragma: no cover
             from scripts.active_trader import fast_trigger_loop as ftl
-        fl = ftl.ticker(cfg, base=None)
+        # Same-day pass context (RVOL / setup / float / Trade-AI verdict): SELECTs on the same connection
+        # exit_watch reads through (2026-10-19).
+        fl = ftl.ticker(cfg, base=None, conn_fn=(live_conn if conn is not None else None))
         if fl is not None:
             ticks.append(fl)
 

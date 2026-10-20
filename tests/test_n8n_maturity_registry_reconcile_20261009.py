@@ -428,8 +428,10 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     for r in gen:
         sig = r["output_signal"]
         if sig.get("kind") == "none":
-            # UNVERIFIED_OUTPUT, or (registry-ops-crons 2026-10-09) a written declaration that no artifact exists
-            assert sig.get("reason") in (R.UNVERIFIED_OUTPUT, "NO_DURABLE_OUTPUT"), r["lane_id"]
+            # UNVERIFIED_OUTPUT, or (registry-ops-crons 2026-10-09) a written declaration that no artifact exists, or
+            # (2026-10-19, docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md) a reviewed SIGNAL_FREE_EXEMPT declared in the
+            # evidence overlay (declared_no_output), which the reconciler now keeps on the systemd path too
+            assert sig.get("reason") in (R.UNVERIFIED_OUTPUT, "NO_DURABLE_OUTPUT", "SIGNAL_FREE_EXEMPT"), r["lane_id"]
             assert sig["reason"] in r.get("flags", []), r["lane_id"]
         else:
             assert sig.get("evidence") in ("SCRIPT_RECEIPT", "CRON_LOG_REDIRECT", "SYSTEMD_STDOUT_APPEND"), r["lane_id"]

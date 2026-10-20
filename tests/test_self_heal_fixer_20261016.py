@@ -13,6 +13,7 @@ Pins the design in docs/ops/self_heal_claude_fixer.md:
 
 Hermetic: TRADE_AI_CI=1, tmp_path repos/state, fake claude and gh binaries. Never calls a real model.
 """
+
 from __future__ import annotations
 
 import json
@@ -65,8 +66,13 @@ def test_lifecycle_only_legal_edges_and_pr_is_not_a_heal():
     F.transition(job, F.OUTPUT_RECOVERED, NOW)
     assert F.is_healed(job)
     F.transition(job, F.INCIDENT_RESOLVED, NOW)
-    assert [h["state"] for h in job["history"]] == [F.FIX_ATTEMPTING, F.FIX_PR_OPENED, F.FIX_DEPLOYED,
-                                                    F.OUTPUT_RECOVERED, F.INCIDENT_RESOLVED]
+    assert [h["state"] for h in job["history"]] == [
+        F.FIX_ATTEMPTING,
+        F.FIX_PR_OPENED,
+        F.FIX_DEPLOYED,
+        F.OUTPUT_RECOVERED,
+        F.INCIDENT_RESOLVED,
+    ]
     with pytest.raises(F.TransitionError):
         F.transition(job, F.FIX_ATTEMPTING, NOW)  # terminal
 
@@ -75,18 +81,35 @@ def test_lifecycle_only_legal_edges_and_pr_is_not_a_heal():
 
 
 def _inc(lane="daily-incubator-refresh", **kw):
-    return {"key": f"{lane}|k", "lane": lane, "route": "fix_pr_release",
-            "stderr_tail": "Traceback\npsycopg2.InterfaceError: connection already closed\n", **kw}
+    return {
+        "key": f"{lane}|k",
+        "lane": lane,
+        "route": "fix_pr_release",
+        "stderr_tail": "Traceback\npsycopg2.InterfaceError: connection already closed\n",
+        **kw,
+    }
 
 
-def _producer_defect(lane="daily-incubator-refresh", stderr="psycopg2.InterfaceError: connection already closed",
-                     run="d:x:live:1", episode=1):
+def _producer_defect(
+    lane="daily-incubator-refresh",
+    stderr="psycopg2.InterfaceError: connection already closed",
+    run="d:x:live:1",
+    episode=1,
+):
     """The PRODUCER's own record (scripts/n8n_failure_diagnosis.code_defect_hook, PR #1828) — not a hand copy."""
     import n8n_failure_diagnosis as D
     from lib import n8n_self_heal as H
-    res = {"lane": lane, "signature": H.signature(lane, "RUN_FAILED", stderr), "episode": episode,
-           "failure_kind": H.failure_kind(stderr), "failure_class": H.classify_failure(stderr), "siem_id": 7,
-           "incident_key": f"siem:{lane}", "event_type": "RUN_FAILED"}
+
+    res = {
+        "lane": lane,
+        "signature": H.signature(lane, "RUN_FAILED", stderr),
+        "episode": episode,
+        "failure_kind": H.failure_kind(stderr),
+        "failure_class": H.classify_failure(stderr),
+        "siem_id": 7,
+        "incident_key": f"siem:{lane}",
+        "event_type": "RUN_FAILED",
+    }
     return D.code_defect_hook(res, {"run": run})
 
 
@@ -95,8 +118,12 @@ def test_consumer_reads_the_producers_n8n_code_defect_contract():
     assert d["schema"] == F.CODE_DEFECT_SCHEMA and d["consumer"] == F.CODE_DEFECT_CONSUMER
     other = dict(d, defect_id="cd-other", consumer="someone_else")
     wrong = dict(d, defect_id="cd-wrong", schema="N8nCodeDefect@v0")
-    records = [{"at": "2", "code_defect": d}, {"at": "1", "code_defect": other}, {"at": "1", "code_defect": wrong},
-               {"at": "0", "outcome": "diagnosed"}]
+    records = [
+        {"at": "2", "code_defect": d},
+        {"at": "1", "code_defect": other},
+        {"at": "1", "code_defect": wrong},
+        {"at": "0", "outcome": "diagnosed"},
+    ]
     diag = {"escalations": {"daily-incubator-refresh|" + d["signature"]: {"fix_path": d, "at": "2"}}}
     got = F.code_defects(records, diag, CFG)
     assert [g["defect_id"] for g in got] == [d["defect_id"]]  # deduped by defect_id; other consumers ignored
@@ -134,12 +161,15 @@ def test_one_active_job_per_signature_then_cooldown():
     assert why5 == "admitted" and later["job_id"].endswith("-2")
 
 
-@pytest.mark.parametrize("lane,script,held", [
-    ("schwab-positions-sync", "scripts/schwab_sync.py", None),
-    ("stop-guard", "scripts/x.py", None),
-    ("benign", "scripts/order_router.py", None),
-    ("coder-dispatch", "scripts/coder_dispatch.py", {"coder-dispatch": "operator_hold_20261016"}),
-])
+@pytest.mark.parametrize(
+    "lane,script,held",
+    [
+        ("schwab-positions-sync", "scripts/schwab_sync.py", None),
+        ("stop-guard", "scripts/x.py", None),
+        ("benign", "scripts/order_router.py", None),
+        ("coder-dispatch", "scripts/coder_dispatch.py", {"coder-dispatch": "operator_hold_20261016"}),
+    ],
+)
 def test_broker_class_and_held_lanes_are_refused_at_intake(lane, script, held):
     state = {"jobs": {}}
     job, why = F.admit(state, _inc(lane=lane, script=script), now=NOW, cfg=CFG, held=held)
@@ -149,7 +179,7 @@ def test_broker_class_and_held_lanes_are_refused_at_intake(lane, script, held):
 # ---------------------------------------------------------------- 3. diff guard
 
 
-def _guard(name_status, numstat, unified, ci="GATES = [\n    (\"a\", [\"tests/test_a.py\"]),\n]\n"):
+def _guard(name_status, numstat, unified, ci='GATES = [\n    ("a", ["tests/test_a.py"]),\n]\n'):
     return F.guard_diff(name_status=name_status, numstat=numstat, unified=unified, base_ci_text=ci, cfg=CFG)
 
 
@@ -157,55 +187,83 @@ def _codes(refusals):
     return {r["code"] for r in refusals}
 
 
-GOOD_U = ("diff --git a/scripts/lane.py b/scripts/lane.py\n--- a/scripts/lane.py\n+++ b/scripts/lane.py\n"
-          "@@ -3 +3 @@\n-    conn.rollback()\n+    _safe_rollback(conn)\n"
-          "diff --git a/tests/test_self_heal_lane.py b/tests/test_self_heal_lane.py\n--- /dev/null\n"
-          "+++ b/tests/test_self_heal_lane.py\n@@ -0,0 +1,2 @@\n+def test_x():\n+    assert True\n")
+GOOD_U = (
+    "diff --git a/scripts/lane.py b/scripts/lane.py\n--- a/scripts/lane.py\n+++ b/scripts/lane.py\n"
+    "@@ -3 +3 @@\n-    conn.rollback()\n+    _safe_rollback(conn)\n"
+    "diff --git a/tests/test_self_heal_lane.py b/tests/test_self_heal_lane.py\n--- /dev/null\n"
+    "+++ b/tests/test_self_heal_lane.py\n@@ -0,0 +1,2 @@\n+def test_x():\n+    assert True\n"
+)
 
 
 def test_guard_accepts_a_minimal_fix_with_a_regression_test():
-    r = _guard("M\tscripts/lane.py\nA\ttests/test_self_heal_lane.py\n",
-               "1\t1\tscripts/lane.py\n2\t0\ttests/test_self_heal_lane.py\n", GOOD_U)
+    r = _guard(
+        "M\tscripts/lane.py\nA\ttests/test_self_heal_lane.py\n",
+        "1\t1\tscripts/lane.py\n2\t0\ttests/test_self_heal_lane.py\n",
+        GOOD_U,
+    )
     assert r == []
 
 
-@pytest.mark.parametrize("path", ["AGENTS.md", ".cursor/hooks/guard_ledger.py", ".githooks/pre-push",
-                                  "config/memory_chokepoint_baseline.json", "config/n8n_run_allowlist.json",
-                                  "scripts/check_provider_chokepoint.py", "config/crontab_backup.txt",
-                                  "config/systemd/tradeai-x.service", "scripts/schwab_client.py",
-                                  "scripts/lib/order_router.py", ".env", "config/lane_registry.json",
-                                  "scripts/self_heal_fixer.py", ".github/workflows/ci.yml",
-                                  "sql/migrations/2026_x.sql", "tests/conftest.py"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "AGENTS.md",
+        ".cursor/hooks/guard_ledger.py",
+        ".githooks/pre-push",
+        "config/memory_chokepoint_baseline.json",
+        "config/n8n_run_allowlist.json",
+        "scripts/check_provider_chokepoint.py",
+        "config/crontab_backup.txt",
+        "config/systemd/tradeai-x.service",
+        "scripts/schwab_client.py",
+        "scripts/lib/order_router.py",
+        ".env",
+        "config/lane_registry.json",
+        "scripts/self_heal_fixer.py",
+        ".github/workflows/ci.yml",
+        "sql/migrations/2026_x.sql",
+        "tests/conftest.py",
+    ],
+)
 def test_guard_refuses_protected_paths_hard(path):
-    r = _guard(f"M\t{path}\nA\ttests/test_self_heal_lane.py\n", f"1\t1\t{path}\n1\t0\ttests/test_self_heal_lane.py\n",
-               "")
+    r = _guard(
+        f"M\t{path}\nA\ttests/test_self_heal_lane.py\n", f"1\t1\t{path}\n1\t0\ttests/test_self_heal_lane.py\n", ""
+    )
     assert any(x["hard"] and x["code"] == "protected_path" and x["path"] == path for x in r)
 
 
 def test_guard_refuses_test_deletion_skip_and_assert_removal():
     assert "test_deleted" in _codes(_guard("D\ttests/test_a.py\n", "0\t9\ttests/test_a.py\n", ""))
-    skip_u = ("diff --git a/tests/test_a.py b/tests/test_a.py\n+++ b/tests/test_a.py\n@@ -1 +1,2 @@\n"
-              "+@pytest.mark.skip(reason='flaky')\n")
+    skip_u = (
+        "diff --git a/tests/test_a.py b/tests/test_a.py\n+++ b/tests/test_a.py\n@@ -1 +1,2 @@\n"
+        "+@pytest.mark.skip(reason='flaky')\n"
+    )
     assert "test_weakened:skip_or_xfail" in _codes(_guard("M\ttests/test_a.py\n", "1\t0\ttests/test_a.py\n", skip_u))
-    rm_u = ("diff --git a/tests/test_a.py b/tests/test_a.py\n+++ b/tests/test_a.py\n@@ -4,2 +4 @@\n"
-            "-    assert x == 1\n-    assert y == 2\n+    assert x\n")
+    rm_u = (
+        "diff --git a/tests/test_a.py b/tests/test_a.py\n+++ b/tests/test_a.py\n@@ -4,2 +4 @@\n"
+        "-    assert x == 1\n-    assert y == 2\n+    assert x\n"
+    )
     assert "test_weakened:asserts_removed" in _codes(_guard("M\ttests/test_a.py\n", "1\t2\ttests/test_a.py\n", rm_u))
-    gone_u = ("diff --git a/tests/test_a.py b/tests/test_a.py\n+++ b/tests/test_a.py\n@@ -1,2 +0,0 @@\n"
-              "-def test_one():\n-    pass\n")
+    gone_u = (
+        "diff --git a/tests/test_a.py b/tests/test_a.py\n+++ b/tests/test_a.py\n@@ -1,2 +0,0 @@\n"
+        "-def test_one():\n-    pass\n"
+    )
     assert "test_weakened:test_removed" in _codes(_guard("M\ttests/test_a.py\n", "0\t2\ttests/test_a.py\n", gone_u))
 
 
 def test_ci_registration_is_append_only_inside_gates():
-    ci = "import os\nGATES = [\n    (\"a\", [\"tests/test_a.py\"]),\n]\nPASS = 1\n"
-    ok_u = ("diff --git a/scripts/run_cio_hardening_ci.py b/scripts/run_cio_hardening_ci.py\n"
-            "+++ b/scripts/run_cio_hardening_ci.py\n@@ -3,0 +4,2 @@\n"
-            "+    # self-heal regression for lane x\n+    (\"self_heal_x\", [\"tests/test_self_heal_x.py\"]),\n")
+    ci = 'import os\nGATES = [\n    ("a", ["tests/test_a.py"]),\n]\nPASS = 1\n'
+    ok_u = (
+        "diff --git a/scripts/run_cio_hardening_ci.py b/scripts/run_cio_hardening_ci.py\n"
+        "+++ b/scripts/run_cio_hardening_ci.py\n@@ -3,0 +4,2 @@\n"
+        '+    # self-heal regression for lane x\n+    ("self_heal_x", ["tests/test_self_heal_x.py"]),\n'
+    )
     ns = "M\tscripts/run_cio_hardening_ci.py\nA\ttests/test_self_heal_x.py\n"
     st = "2\t0\tscripts/run_cio_hardening_ci.py\n3\t0\ttests/test_self_heal_x.py\n"
     assert _guard(ns, st, ok_u, ci) == []
     code_u = ok_u.replace('+    ("self_heal_x", ["tests/test_self_heal_x.py"]),', "+PASS_CODES = frozenset({0, 1, 5})")
     assert "append_only:non_registration_line" in _codes(_guard(ns, st, code_u, ci))
-    rm_u = ok_u + "@@ -3 +0,0 @@\n-    (\"a\", [\"tests/test_a.py\"]),\n"
+    rm_u = ok_u + '@@ -3 +0,0 @@\n-    ("a", ["tests/test_a.py"]),\n'
     assert "append_only:lines_removed" in _codes(_guard(ns, st, rm_u, ci))
     out_u = ok_u.replace("@@ -3,0 +4,2 @@", "@@ -5,0 +6,2 @@")
     assert "append_only:outside_gates_list" in _codes(_guard(ns, st, out_u, ci))
@@ -237,22 +295,39 @@ def test_claude_argv_is_dontask_with_an_allowlist_and_denies_push():
 
 
 def test_child_env_carries_no_credentials():
-    env = F.child_env({"HOME": "/h", "PATH": "/bin", "DB_PASSWORD": "x", "ANTHROPIC_API_KEY": "k",
-                       "SCHWAB_APP_SECRET": "s", "TRADEAI_REMOTE_PUSH_AUTHORIZED": "1"}, CFG, scratch_state="/tmp/s")
+    env = F.child_env(
+        {
+            "HOME": "/h",
+            "PATH": "/bin",
+            "DB_PASSWORD": "x",
+            "ANTHROPIC_API_KEY": "k",
+            "SCHWAB_APP_SECRET": "s",
+            "TRADEAI_REMOTE_PUSH_AUTHORIZED": "1",
+        },
+        CFG,
+        scratch_state="/tmp/s",
+    )
     assert set(env) == {"HOME", "PATH", "TRADE_AI_CI", "TRADEAI_STATE_ROOT", "PYTHONDONTWRITEBYTECODE"}
     assert env["TRADE_AI_CI"] == "1"
 
 
 def test_parse_claude_result_reads_cost_and_final_json_line():
-    out = json.dumps({"type": "result", "is_error": False, "total_cost_usd": 1.25, "num_turns": 9,
-                      "result": "done\n{\"root_cause\": \"rollback on closed conn\", \"confidence\": 0.8}"})
+    out = json.dumps(
+        {
+            "type": "result",
+            "is_error": False,
+            "total_cost_usd": 1.25,
+            "num_turns": 9,
+            "result": 'done\n{"root_cause": "rollback on closed conn", "confidence": 0.8}',
+        }
+    )
     r = F.parse_claude_result(out)
     assert r["ok"] and r["cost_usd"] == 1.25 and r["summary"]["root_cause"] == "rollback on closed conn"
     assert F.parse_claude_result("garbage")["is_error"]
 
 
 def test_redact_strips_credentials_but_keeps_tracebacks():
-    s = F.redact("DB_PASSWORD=hunter2 postgres://u:pw@h/db File \"/x/94ee3770a-main-exact-phase2-20261015-234752/a.py\"")
+    s = F.redact('DB_PASSWORD=hunter2 postgres://u:pw@h/db File "/x/94ee3770a-main-exact-phase2-20261015-234752/a.py"')
     assert "hunter2" not in s and "u:pw" not in s and "94ee3770a-main-exact-phase2" in s
 
 
@@ -266,17 +341,20 @@ def test_rails_are_section_0_verbatim_from_agents():
 
 def test_sandbox_prefix_denies_network_and_hides_credentials():
     kinds = {"/h/.claude": "dir", "/h/.pgpass": "file", "/r/.env": "file"}
-    argv = F.sandbox_prefix(CFG, home="/h", repo_root="/r", writable=["/tmp/wt/a", "/tmp/wt/a-state"],
-                            existing=kinds.get)
+    argv = F.sandbox_prefix(
+        CFG, home="/h", repo_root="/r", writable=["/tmp/wt/a", "/tmp/wt/a-state"], existing=kinds.get
+    )
     assert argv[0] == CFG["sandbox"]["bwrap"] and "--unshare-net" in argv
-    assert argv[argv.index("--ro-bind") + 1:argv.index("--ro-bind") + 3] == ["/", "/"]
-    assert ["--tmpfs", "/run"] == argv[argv.index("/run") - 1:argv.index("/run") + 1]
-    assert ["--tmpfs", "/h/.claude"] == argv[argv.index("/h/.claude") - 1:argv.index("/h/.claude") + 1]
-    assert ["/dev/null", "/r/.env"] == argv[argv.index("/r/.env") - 1:argv.index("/r/.env") + 1]
+    assert argv[argv.index("--ro-bind") + 1 : argv.index("--ro-bind") + 3] == ["/", "/"]
+    assert ["--tmpfs", "/run"] == argv[argv.index("/run") - 1 : argv.index("/run") + 1]
+    assert ["--tmpfs", "/h/.claude"] == argv[argv.index("/h/.claude") - 1 : argv.index("/h/.claude") + 1]
+    assert ["/dev/null", "/r/.env"] == argv[argv.index("/r/.env") - 1 : argv.index("/r/.env") + 1]
     assert "/h/.ssh" not in argv  # absent paths are skipped
     assert argv[-6:] == ["--bind", "/tmp/wt/a", "/tmp/wt/a", "--bind", "/tmp/wt/a-state", "/tmp/wt/a-state"]
-    assert F.sandbox_prefix(_cfg(sandbox={"enabled": False}), home="/h", repo_root="/r", writable=[],
-                            existing=kinds.get) == []
+    assert (
+        F.sandbox_prefix(_cfg(sandbox={"enabled": False}), home="/h", repo_root="/r", writable=[], existing=kinds.get)
+        == []
+    )
 
 
 def _bwrap_works() -> bool:
@@ -284,8 +362,12 @@ def _bwrap_works() -> bool:
     if not os.access(bw, os.X_OK):
         return False
     try:
-        return subprocess.run([bw, "--ro-bind", "/", "/", "--unshare-net", "true"], capture_output=True,
-                              timeout=10).returncode == 0
+        return (
+            subprocess.run(
+                [bw, "--ro-bind", "/", "/", "--unshare-net", "true"], capture_output=True, timeout=10
+            ).returncode
+            == 0
+        )
     except (OSError, subprocess.TimeoutExpired):
         return False
 
@@ -324,17 +406,52 @@ def test_policy_gate_blocks_push_until_amendment_active():
 def bound_facts(commit="c" * 40, tree="d" * 40, base="b" * 40):
     """The binding facts the harness records (architect review 2026-10-16): one candidate commit, the guard on its
     tree, and every test run in a fresh, unmutated checkout of it."""
-    run = lambda kind, sha, **kw: {"run_id": f"{kind}-1", "kind": kind, "checkout_sha": sha, "head_after": sha,
-                                   "integrity_ok": True, **kw}
-    return {"candidate": {"commit_sha": commit, "tree_sha": tree, "base_sha": base},
-            "guard": {"tree_sha": tree, "refusals": []},
-            "test_runs": [run("red_first", base, overlay_from=commit), run("targeted", commit), run("ci", commit)]}
+    run = lambda kind, sha, **kw: {
+        "run_id": f"{kind}-1",
+        "kind": kind,
+        "checkout_sha": sha,
+        "head_after": sha,
+        "integrity_ok": True,
+        "rc": 1 if kind == "red_first" else 0,
+        "test_command": ["pytest", "tests/test_x.py"],
+        "pytest_proof": {
+            "assertion_failures": ["tests.test_x::test_expected"] if kind == "red_first" else [],
+            "passed": ["tests.test_x::test_expected"] if kind == "targeted" else [],
+            "errors": 0,
+            "report_sha256": "a" * 64,
+        },
+        **kw,
+    }
+    return {
+        "candidate": {"commit_sha": commit, "tree_sha": tree, "base_sha": base},
+        "guard": {"tree_sha": tree, "refusals": []},
+        "test_runs": [run("red_first", base, overlay_from=commit), run("targeted", commit), run("ci", commit)],
+    }
+
+
+def local_acceptance(commit="c" * 40):
+    return E.local_verdict(
+        {
+            "tests_run": ["tests/test_x.py"],
+            "red_first": True,
+            "targeted_rc": 0,
+            "ci_rc": 0,
+            "refusals": [],
+            **bound_facts(commit=commit),
+        }
+    )
 
 
 def test_evaluator_ignores_backend_claims():
-    claims_pass = {"backend_result": {"summary": {"root_cause": "fixed", "confidence": 1.0}, "ok": True},
-                   "tests_run": ["tests/test_x.py"], "red_first": True, "targeted_rc": 1, "ci_rc": None,
-                   "refusals": [], **bound_facts()}
+    claims_pass = {
+        "backend_result": {"summary": {"root_cause": "fixed", "confidence": 1.0}, "ok": True},
+        "tests_run": ["tests/test_x.py"],
+        "red_first": True,
+        "targeted_rc": 1,
+        "ci_rc": None,
+        "refusals": [],
+        **bound_facts(),
+    }
     v = E.local_verdict(claims_pass)
     assert not v["accepted"] and v["failed"] == ["ci_pr_profile_green", "green_with_fix"]
     good = dict(claims_pass, targeted_rc=0, ci_rc=0, backend_result={"ok": False, "summary": None})
@@ -343,33 +460,38 @@ def test_evaluator_ignores_backend_claims():
     assert not E.local_verdict(dict(good, refusals=[{"code": "x"}]))["accepted"]
 
 
-@pytest.mark.parametrize("rollup,verdict", [
-    ([{"__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS"}], "pass"),
-    ([{"__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "FAILURE"}], "fail"),
-    ([{"__typename": "CheckRun", "name": "ci", "status": "IN_PROGRESS", "conclusion": ""}], "pending"),
-    ([{"__typename": "StatusContext", "context": "ci", "state": "SUCCESS"}], "pass"),
-    ([], "pending"),
-])
+@pytest.mark.parametrize(
+    "rollup,verdict",
+    [
+        ([{"__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS"}], "pass"),
+        ([{"__typename": "CheckRun", "name": "ci", "status": "COMPLETED", "conclusion": "FAILURE"}], "fail"),
+        ([{"__typename": "CheckRun", "name": "ci", "status": "IN_PROGRESS", "conclusion": ""}], "pending"),
+        ([{"__typename": "StatusContext", "context": "ci", "state": "SUCCESS"}], "pass"),
+        ([], "pending"),
+    ],
+)
 def test_pr_head_ci_verdict(rollup, verdict):
-    # 2026-10-18 review (F1): verdicts are judged against a required-check profile; without one nothing passes
-    # (tests/test_false_green_closure_20261018.py).
-    assert E.pr_head_verdict({"headRefOid": "abc123def4567", "statusCheckRollup": rollup},
-                             expected_head="abc123def4567", required=["ci"])["verdict"] == verdict
-    if verdict == "pass":
-        assert E.pr_head_verdict({"headRefOid": "abc123def4567", "statusCheckRollup": rollup},
-                                 expected_head="abc123def4567")["verdict"] == "no_required_profile"
+    assert (
+        E.pr_head_verdict(
+            {"headRefOid": "a" * 40, "statusCheckRollup": rollup},
+            expected_head="a" * 40,
+            required=["ci"],
+            policy_version="2026-10-18.1",
+        )["verdict"]
+        == verdict
+    )
 
 
 def test_pr_head_moved_is_not_acceptance():
     pr = {"headRefOid": "f" * 40, "statusCheckRollup": [{"name": "ci", "status": "COMPLETED", "conclusion": "SUCCESS"}]}
-    v = E.pr_head_verdict(pr, expected_head="a" * 40, required=["ci"])
+    v = E.pr_head_verdict(pr, expected_head="a" * 40)
     assert v["verdict"] == "head_moved"
     assert not E.final_acceptance({"accepted": True, "commit_sha": "a" * 40}, v)["accepted"]
-    ok = E.pr_head_verdict(pr, expected_head="f" * 40, required=["ci"])
-    assert E.final_acceptance({"accepted": True, "commit_sha": "f" * 40}, ok)["accepted"]
+    ok = E.pr_head_verdict(pr, expected_head="f" * 40, required=["ci"], policy_version="2026-10-18.1")
+    assert E.final_acceptance(local_acceptance("f" * 40), ok)["accepted"]
     assert not E.final_acceptance({"accepted": False, "commit_sha": "f" * 40}, ok)["accepted"]
     # 2026-10-16 review: a prefix match is not the evaluated commit; green CI on another head is not acceptance
-    assert E.pr_head_verdict(pr, expected_head="f" * 12, required=["ci"])["verdict"] == "head_moved"
+    assert E.pr_head_verdict(pr, expected_head="f" * 12)["verdict"] == "head_moved"
     assert not E.final_acceptance({"accepted": True, "commit_sha": "e" * 40}, ok)["accepted"]
 
 
@@ -385,19 +507,21 @@ def test_selector_is_static_and_refuses_unqualified_backends():
 
 
 def test_shadow_router_records_but_never_selects():
-    rows = [{"event": "iteration", "backend": "claude_code", "failure_kind": "code_error:KeyError",
-             "accepted_local": False}] * 3 + \
-           [{"event": "iteration", "backend": "codex_cli", "failure_kind": "code_error:KeyError",
-             "accepted_local": True}] * 2
-    r = F.shadow_route(rows, failure_kind="code_error:KeyError", backends=["claude_code", "codex_cli"],
-                       chosen="claude_code")
+    rows = [
+        {"event": "iteration", "backend": "claude_code", "failure_kind": "code_error:KeyError", "accepted_local": False}
+    ] * 3 + [
+        {"event": "iteration", "backend": "codex_cli", "failure_kind": "code_error:KeyError", "accepted_local": True}
+    ] * 2
+    r = F.shadow_route(
+        rows, failure_kind="code_error:KeyError", backends=["claude_code", "codex_cli"], chosen="claude_code"
+    )
     assert r["mode"] == "shadow" and r["used"] is False and r["recommended"] == "codex_cli" and not r["agrees"]
     assert r["basis"] == "same_failure_kind" and r["scores"]["claude_code"]["attempts"] == 3
 
 
 # ---------------------------------------------------------------- 5. the loop against a tmp repo + mocked claude
 
-FAKE_CLAUDE = r'''#!{py}
+FAKE_CLAUDE = r"""#!{py}
 import json, os, sys, pathlib
 prompt = sys.stdin.read()
 here = pathlib.Path(__file__).resolve().parent
@@ -408,7 +532,7 @@ with calls.open("a") as fh:
                          "env": sorted(os.environ)}}) + "\n")
 n = sum(1 for _ in calls.open())
 cwd = pathlib.Path.cwd()
-TEST = "def test_ratio_handles_zero():\n    from scripts.buggy import ratio\n    assert ratio(1, 0) == 0.0\n"
+TEST = "def test_ratio_handles_zero():\n    from scripts.buggy import ratio\n    try:\n        actual = ratio(1, 0)\n    except ZeroDivisionError as exc:\n        actual = type(exc).__name__\n    assert actual == 0.0\n"
 REG = '    # self-heal regression for buggy\n    ("self_heal_buggy", ["tests/test_self_heal_buggy.py"]),\n'
 def register():
     p = cwd / "scripts" / "run_cio_hardening_ci.py"
@@ -438,9 +562,9 @@ if (here / "text_output").exists():
 else:
     print(json.dumps({{"type": "result", "is_error": False, "total_cost_usd": 0.5, "num_turns": 3,
                       "result": 'ok\n{{"root_cause": "division by zero", "fix": "guard b == 0", "confidence": 0.9}}'}}))
-'''
+"""
 
-FAKE_GH = r'''#!/bin/sh
+FAKE_GH = r"""#!/bin/sh
 # Records every call. "pr create" remembers --head; "pr view" reports the head GitHub would: the pushed branch tip on
 # origin (or, when gh_head_override exists, a different head: the branch moved after the push).
 here="$(dirname "$0")"
@@ -453,7 +577,7 @@ if [ "$2" = "view" ]; then
 fi
 while [ $# -gt 0 ]; do [ "$1" = "--head" ] && echo "$2" > "$here/gh_head_branch"; shift; done
 echo "https://github.com/PatsKiller/tardeai/pull/4242"
-'''
+"""
 
 CI_STUB = 'GATES = [\n    ("a", ["tests/test_a.py"]),\n]\nprint("ci ok")\n'
 
@@ -473,7 +597,12 @@ def sandbox(tmp_path):
     _sh("git", "init", "-q", "--bare", "-b", "main", str(origin))
     repo = tmp_path / "repo"
     _sh("git", "clone", "-q", str(origin), str(repo))
-    for k, v in (("user.name", "t"), ("user.email", "t@t"), ("commit.gpgsign", "false"), ("core.hooksPath", "/dev/null")):
+    for k, v in (
+        ("user.name", "t"),
+        ("user.email", "t@t"),
+        ("commit.gpgsign", "false"),
+        ("core.hooksPath", "/dev/null"),
+    ):
         _sh("git", "-C", str(repo), "config", k, v)
     (repo / "scripts").mkdir()
     (repo / "tests").mkdir()
@@ -491,26 +620,54 @@ def sandbox(tmp_path):
     _exe(bindir / "claude", FAKE_CLAUDE.format(py=sys.executable))
     _exe(bindir / "gh", FAKE_GH)
     state = tmp_path / "state"
-    cfg = _cfg(repo={"repo_root": str(repo), "worktree_root": str(tmp_path / "wt"), "python": sys.executable},
-               claude={"bin": str(bindir / "claude"), "env_names": ["HOME", "PATH"], "auth": {"mode": "none"}},
-               sandbox={"enabled": False}, agent_sandbox={"enabled": False},
-               iteration={"ci_argv": ["{python}", "scripts/run_cio_hardening_ci.py"], "test_timeout_s": 120,
-                          "ci_timeout_s": 120},
-               lifecycle={"release_current_sha_file": str(tmp_path / "GIT_SHA")})
+    cfg = _cfg(
+        repo={"repo_root": str(repo), "worktree_root": str(tmp_path / "wt"), "python": sys.executable},
+        claude={"bin": str(bindir / "claude"), "env_names": ["HOME", "PATH"], "auth": {"mode": "none"}},
+        sandbox={"enabled": False},
+        agent_sandbox={"enabled": False},
+        iteration={
+            "ci_argv": ["{python}", "scripts/run_cio_hardening_ci.py"],
+            "test_timeout_s": 120,
+            "ci_timeout_s": 120,
+        },
+        lifecycle={"release_current_sha_file": str(tmp_path / "GIT_SHA")},
+    )
     cfg_path = tmp_path / "cfg.json"
     cfg_path.write_text(json.dumps(cfg))
     incident = tmp_path / "incident.json"
     defect = _producer_defect(lane="buggy-lane", stderr="ZeroDivisionError: division by zero", run="r1")
-    incident.write_text(json.dumps({"code_defect": defect,
-                                    "receipt": {"run_id": "r1", "argv": ["$PY", "scripts/buggy.py"],
-                                                "stderr_tail": "Traceback\nZeroDivisionError: division by zero\n"},
-                                    "registry_row": {"lane_id": "buggy-lane", "output_signal": {
-                                        "kind": "json_key", "path": "data/runtime/buggy-lane_last.json",
-                                        "key": "ok_at"}}}))
-    env = {"HOME": os.environ.get("HOME", str(tmp_path)), "PATH": f"{bindir}:{os.environ['PATH']}",
-           "TRADEAI_STATE_ROOT": str(state), "TRADE_AI_CI": "1"}
-    return {"repo": repo, "origin": origin, "bin": bindir, "state": state, "cfg": cfg_path, "incident": incident,
-            "env": env, "tmp": tmp_path}
+    incident.write_text(
+        json.dumps(
+            {
+                "code_defect": defect,
+                "receipt": {
+                    "run_id": "r1",
+                    "argv": ["$PY", "scripts/buggy.py"],
+                    "stderr_tail": "Traceback\nZeroDivisionError: division by zero\n",
+                },
+                "registry_row": {
+                    "lane_id": "buggy-lane",
+                    "output_signal": {"kind": "json_key", "path": "data/runtime/buggy-lane_last.json", "key": "ok_at"},
+                },
+            }
+        )
+    )
+    env = {
+        "HOME": os.environ.get("HOME", str(tmp_path)),
+        "PATH": f"{bindir}:{os.environ['PATH']}",
+        "TRADEAI_STATE_ROOT": str(state),
+        "TRADE_AI_CI": "1",
+    }
+    return {
+        "repo": repo,
+        "origin": origin,
+        "bin": bindir,
+        "state": state,
+        "cfg": cfg_path,
+        "incident": incident,
+        "env": env,
+        "tmp": tmp_path,
+    }
 
 
 def _run_cycle(sb, scenario, *, agents_marker=False, grant="self-heal-fixer test"):
@@ -521,15 +678,21 @@ def _run_cycle(sb, scenario, *, agents_marker=False, grant="self-heal-fixer test
         p.write_text(p.read_text() + f"\n{marker} (13.0.0, ACTIVE)\n")
         _sh("git", "-C", str(sb["repo"]), "commit", "-qam", "amend")
         _sh("git", "-C", str(sb["repo"]), "push", "-q", "origin", "main")
-    rc = S.main(["--cycle", "--apply", "--config", str(sb["cfg"]), "--incident", str(sb["incident"])],
-                now=lambda: NOW, environ=sb["env"],
-                grant_reader=lambda tier: {"reason": grant, "grant_id": "a" * 32} if grant else None,
-                gh=lambda cmd: {"rc": 1, "out": "", "err": "", "seconds": 0})
+    rc = S.main(
+        ["--cycle", "--apply", "--config", str(sb["cfg"]), "--incident", str(sb["incident"])],
+        now=lambda: NOW,
+        environ=sb["env"],
+        grant_reader=lambda tier: {"reason": grant, "grant_id": "a" * 32} if grant else None,
+        gh=lambda cmd: {"rc": 1, "out": "", "err": "", "seconds": 0},
+    )
     assert rc == 0
     st = json.loads((sb["state"] / CFG["state"]["state_rel"]).read_text())
     (job,) = st["jobs"].values()
-    calls = [json.loads(x) for x in (sb["bin"] / "calls.jsonl").read_text().splitlines()] \
-        if (sb["bin"] / "calls.jsonl").exists() else []
+    calls = (
+        [json.loads(x) for x in (sb["bin"] / "calls.jsonl").read_text().splitlines()]
+        if (sb["bin"] / "calls.jsonl").exists()
+        else []
+    )
     return job, calls
 
 
@@ -564,25 +727,40 @@ def test_repair_memory_is_durable_per_signature(sandbox):
     assert it1["diff_sha256"] != it2["diff_sha256"] and Path(it2["patch"]).exists()
     assert rows[3]["shadow_route"]["used"] is False and rows[3]["state"] == F.FIX_READY_LOCAL
     # a second cycle appends; nothing is rewritten
-    S.main(["--cycle", "--apply", "--config", str(sandbox["cfg"]), "--incident", str(sandbox["incident"])],
-           now=lambda: NOW, environ=sandbox["env"], grant_reader=lambda t: None,
-           gh=lambda cmd: {"rc": 1, "out": "", "err": "", "seconds": 0})
+    S.main(
+        ["--cycle", "--apply", "--config", str(sandbox["cfg"]), "--incident", str(sandbox["incident"])],
+        now=lambda: NOW,
+        environ=sandbox["env"],
+        grant_reader=lambda t: None,
+        gh=lambda cmd: {"rc": 1, "out": "", "err": "", "seconds": 0},
+    )
     again = (sandbox["state"] / CFG["state"]["repair_memory_rel"]).read_text().splitlines()
     assert again[:4] == [json.dumps(r, sort_keys=True, default=str) for r in rows]
 
 
-def test_a_second_backend_kind_passes_the_same_acceptance_scenario(sandbox):
+def test_a_second_backend_without_cost_evidence_is_held(sandbox):
     """Backend qualification shape: the same scenario, judged by the same evaluator, through the generic
-    cli_stdin contract (plain-text output, no cost JSON) instead of the Claude CLI."""
+    cli_stdin contract. Plain-text output supplies no actual cost; its full budget reservation must be retained."""
     cfg = json.loads(sandbox["cfg"].read_text())
-    cfg["backends"]["candidate"] = {"kind": "cli_stdin", "bin": str(sandbox["bin"] / "claude"),
-                                    "argv_template": ["{bin}"], "enabled": True, "qualified": True}
+    cfg["backends"]["candidate"] = {
+        "kind": "cli_stdin",
+        "bin": str(sandbox["bin"] / "claude"),
+        "argv_template": ["{bin}"],
+        "enabled": True,
+        "qualified": True,
+    }
     cfg["selector"]["backend"] = "candidate"
     sandbox["cfg"].write_text(json.dumps(cfg))
     (sandbox["bin"] / "text_output").write_text("1")
     job, calls = _run_cycle(sandbox, "fix")
-    assert job["backend"] == "candidate" and job["state"] == F.FIX_READY_LOCAL
+    assert job["backend"] == "candidate" and job["state"] == F.FIX_FAILED
+    assert job["reason"] == "cost_unknown" and job["cost_usd"] is None
     assert job["iterations"][0]["acceptance"]["accepted"] and calls[0]["argv"] == []
+    claim_db = sandbox["state"] / cfg["state"]["claims_rel"]
+    from scripts.lib import self_heal_fixer_claims as claims
+
+    assert claims.rows(claim_db)[0]["state"] == claims.INTERRUPTED
+    assert claims.day_usage(claim_db, F.et_day(NOW))["usd"] == cfg["iteration"]["max_cost_usd"]
     assert job["shadow_route"]["chosen_static"] == "candidate"
 
 
@@ -613,8 +791,9 @@ def test_same_failing_set_twice_stops_early_and_escalates_p1_once(sandbox):
     assert job["branch"] not in _sh("git", "-C", str(sandbox["repo"]), "branch", "--list")
 
 
-@pytest.mark.parametrize("scenario,code", [("protected", "guard:protected_path"),
-                                           ("skip", "guard:test_weakened:skip_or_xfail")])
+@pytest.mark.parametrize(
+    "scenario,code", [("protected", "guard:protected_path"), ("skip", "guard:test_weakened:skip_or_xfail")]
+)
 def test_authority_breach_refuses_the_job(sandbox, scenario, code):
     job, calls = _run_cycle(sandbox, scenario, agents_marker=True)
     assert job["state"] == F.FIX_REFUSED and job["reason"] == "guard_refused"
@@ -629,11 +808,18 @@ def test_sandboxed_loop_runs_tests_without_network(sandbox):
     cfg["sandbox"]["enabled"] = True
     sandbox["cfg"].write_text(json.dumps(cfg))
     # the regression test also proves the sandbox: no route to a localhost port from inside it
-    probe = ("    import socket\n    s = socket.socket(); s.settimeout(1)\n"
-             "    assert s.connect_ex(('127.0.0.1', 5432)) != 0\n")
-    fake = (sandbox["bin"] / "claude").read_text().replace(
-        'TEST = "def test_ratio_handles_zero():\\n',
-        'TEST = "def test_ratio_handles_zero():\\n' + probe.replace("\n", "\\n"))
+    probe = (
+        "    import socket\n    s = socket.socket(); s.settimeout(1)\n"
+        "    assert s.connect_ex(('127.0.0.1', 5432)) != 0\n"
+    )
+    fake = (
+        (sandbox["bin"] / "claude")
+        .read_text()
+        .replace(
+            'TEST = "def test_ratio_handles_zero():\\n',
+            'TEST = "def test_ratio_handles_zero():\\n' + probe.replace("\n", "\\n"),
+        )
+    )
     assert "connect_ex" in fake
     (sandbox["bin"] / "claude").write_text(fake)
     job, calls = _run_cycle(sandbox, "fix")
@@ -650,23 +836,45 @@ def test_not_armed_runs_no_model(sandbox):
 # ---------------------------------------------------------------- 6. lifecycle advance
 
 
-def ledger_row(root, cfg, run_id, *, finished, lane="buggy-lane", state="RUN_DONE", mode="live", exit_code=0,
-               verdict="produced", clamp="live"):
+def ledger_row(
+    root,
+    cfg,
+    run_id,
+    *,
+    finished,
+    lane="buggy-lane",
+    state="RUN_DONE",
+    mode="live",
+    exit_code=0,
+    verdict="produced",
+    clamp="live",
+):
     """One coordination-ledger run row (the n8n_coordination_ledger runs schema) with its receipt."""
     import sqlite3
 
     path = root / cfg["intake"]["ledger_rel"]
     path.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(str(path))
-    con.execute("CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, lane_id TEXT NOT NULL, mode TEXT NOT NULL, "
-                "state TEXT NOT NULL, requested_at TEXT NOT NULL, finished_at TEXT, exit_code INTEGER, "
-                "receipt_json TEXT)")
-    rec = {"run_id": run_id, "lane_id": lane, "mode": mode, "state": state, "exit_code": exit_code,
-           "finished_at": finished.isoformat(), "output_verdict": {"verdict": verdict}}
+    con.execute(
+        "CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, lane_id TEXT NOT NULL, mode TEXT NOT NULL, "
+        "state TEXT NOT NULL, requested_at TEXT NOT NULL, finished_at TEXT, exit_code INTEGER, "
+        "receipt_json TEXT)"
+    )
+    rec = {
+        "run_id": run_id,
+        "lane_id": lane,
+        "mode": mode,
+        "state": state,
+        "exit_code": exit_code,
+        "finished_at": finished.isoformat(),
+        "output_verdict": {"verdict": verdict},
+    }
     if clamp:
         rec["stage_clamp"] = {"requested_mode": "live", "effective_mode": clamp}
-    con.execute("INSERT INTO runs VALUES (?,?,?,?,?,?,?,?)", (run_id, lane, mode, state, finished.isoformat(),
-                                                              finished.isoformat(), exit_code, json.dumps(rec)))
+    con.execute(
+        "INSERT INTO runs VALUES (?,?,?,?,?,?,?,?)",
+        (run_id, lane, mode, state, finished.isoformat(), finished.isoformat(), exit_code, json.dumps(rec)),
+    )
     con.commit()
     con.close()
 
@@ -676,18 +884,39 @@ def test_advance_merged_released_recovered_resolved(sandbox, monkeypatch):
     head = _sh("git", "-C", str(repo), "rev-parse", "HEAD").strip()
     (sandbox["tmp"] / "GIT_SHA").write_text(head + "\n")
     cfg = json.loads(sandbox["cfg"].read_text())
-    monkeypatch.setattr(S, "registry_row", lambda lane: {"output_signal": {
-        "kind": "json_key", "path": "data/runtime/buggy-lane_last.json", "key": "ok_at"}})
-    job = {"job_id": "j", "lane": "buggy-lane", "state": F.FIX_PR_OPENED, "pr_number": 9, "escalation_key": "k",
-           "history": []}
+    monkeypatch.setattr(
+        S,
+        "registry_row",
+        lambda lane: {
+            "output_signal": {"kind": "json_key", "path": "data/runtime/buggy-lane_last.json", "key": "ok_at"}
+        },
+    )
+    job = {
+        "job_id": "j",
+        "lane": "buggy-lane",
+        "state": F.FIX_PR_OPENED,
+        "pr_number": 9,
+        "escalation_key": "k",
+        "history": [],
+        "deadline_at": (NOW + timedelta(hours=4)).isoformat(),
+    }
     job["head_sha"] = head
-    job["iterations"] = [{"passed": True, "acceptance": {"accepted": True, "commit_sha": head}}]
-    gh = lambda cmd: {"rc": 0, "out": json.dumps({"state": "MERGED", "mergeCommit": {"oid": head},
-                                                  "mergedAt": "2026-10-16T17:00:00Z", "headRefOid": head,
-                                                  # 2026-10-18 (F1/F2): the config's required-check profile
-                                                  "statusCheckRollup": [{"name": n, "status": "COMPLETED",
-                                                                         "conclusion": "SUCCESS"}
-                                                                        for n in E.required_checks(cfg)["names"]]})}
+    job["iterations"] = [{"passed": True, "acceptance": local_acceptance(head)}]
+    gh = lambda cmd: {
+        "rc": 0,
+        "out": json.dumps(
+            {
+                "state": "MERGED",
+                "mergeCommit": {"oid": head},
+                "mergedAt": "2026-10-16T17:00:00Z",
+                "headRefOid": head,
+                "statusCheckRollup": [
+                    {"name": name, "status": "COMPLETED", "conclusion": "SUCCESS"}
+                    for name in cfg["acceptance"]["required_checks"]
+                ],
+            }
+        ),
+    }
     root = sandbox["state"]
     assert S.advance(job, cfg=cfg, now=NOW, diag_state=None, root=root, gh=gh, repo=repo) == F.FIX_DEPLOYED
     assert job["acceptance"]["accepted"] and job["acceptance"]["pr_head_ci"] == "pass"  # independent evaluator
@@ -705,21 +934,25 @@ def test_advance_merged_released_recovered_resolved(sandbox, monkeypatch):
     assert job["output_run"] == "r-good" and job["recovery_basis"] == "live_receipt_output_verdict"
     diag_open = {"escalations": {"k": {"heal_state": "recovery_requested"}}}
     assert S.advance(job, cfg=cfg, now=later, diag_state=diag_open, root=root, gh=gh, repo=repo) is None
-    assert S.advance(job, cfg=cfg, now=later, diag_state={"escalations": {}}, root=root, gh=gh,
-                     repo=repo) == F.INCIDENT_RESOLVED
+    assert (
+        S.advance(job, cfg=cfg, now=later, diag_state={"escalations": {}}, root=root, gh=gh, repo=repo)
+        == F.INCIDENT_RESOLVED
+    )
 
 
 def test_advance_unreleased_merge_stays_pr_opened(sandbox):
     cfg = json.loads(sandbox["cfg"].read_text())
     (sandbox["tmp"] / "GIT_SHA").write_text("0" * 40)
-    # 2026-10-18 (F2): only an ACCEPTED merge is a deployment candidate; this one is accepted but not released.
-    job = {"job_id": "j", "lane": "l", "state": F.FIX_PR_OPENED, "pr_number": 9, "history": [], "head_sha": "e" * 40,
-           "iterations": [{"passed": True, "acceptance": {"accepted": True, "commit_sha": "e" * 40}}]}
-    rollup = [{"name": n, "status": "COMPLETED", "conclusion": "SUCCESS"} for n in E.required_checks(cfg)["names"]]
-    gh = lambda cmd: {"rc": 0, "out": json.dumps({"state": "MERGED", "mergeCommit": {"oid": "f" * 40},
-                                                  "headRefOid": "e" * 40, "statusCheckRollup": rollup})}
-    assert S.advance(job, cfg=cfg, now=NOW, diag_state=None, root=sandbox["state"], gh=gh,
-                     repo=sandbox["repo"]) is None
+    job = {
+        "job_id": "j",
+        "lane": "l",
+        "state": F.FIX_PR_OPENED,
+        "pr_number": 9,
+        "history": [],
+        "deadline_at": (NOW + timedelta(hours=4)).isoformat(),
+    }
+    gh = lambda cmd: {"rc": 0, "out": json.dumps({"state": "MERGED", "mergeCommit": {"oid": "f" * 40}})}
+    assert S.advance(job, cfg=cfg, now=NOW, diag_state=None, root=sandbox["state"], gh=gh, repo=sandbox["repo"]) is None
     assert job["state"] == F.FIX_PR_OPENED and job["merged_sha"] == "f" * 40
 
 
@@ -736,9 +969,12 @@ def test_dry_run_on_daily_incubator_refresh_calls_no_model_and_writes_no_state(s
     cfg_path.write_text(json.dumps(cfg))
     out = tmp_path / "out"
     state = tmp_path / "state_dry"
-    rc = S.main(["--cycle", "--config", str(cfg_path), "--incident", str(FIXTURE), "--out", str(out)],
-                now=lambda: NOW, environ={"TRADEAI_STATE_ROOT": str(state), "HOME": "/h", "PATH": "/bin"},
-                grant_reader=lambda tier: None)
+    rc = S.main(
+        ["--cycle", "--config", str(cfg_path), "--incident", str(FIXTURE), "--out", str(out)],
+        now=lambda: NOW,
+        environ={"TRADEAI_STATE_ROOT": str(state), "HOME": "/h", "PATH": "/bin"},
+        grant_reader=lambda tier: None,
+    )
     assert rc == 0 and not marker.exists() and not state.exists()
     assert not (sandbox["tmp"] / "wt").exists()  # no worktree in a dry run
     plan = json.loads((out / "plan.json").read_text())

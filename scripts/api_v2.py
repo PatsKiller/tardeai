@@ -35522,10 +35522,13 @@ def _analyst_detail(query=None):
         )
         or []
     )
+    # 2026-10-18: payload is {} on every row since 2026-07-28 (provider retired 09-13);
+    # an empty payload is "unavailable", never an empty/zero vote distribution.
+    from lib.analyst_vote_distribution import vote_distribution as _vote_distribution
+
     dist = {}
     for r in dist_rows:
-        p = r["payload"] if isinstance(r["payload"], dict) else {}
-        dist[r["s"]] = p
+        dist[r["s"]] = _vote_distribution(r["payload"])
 
     def _f(v):
         try:
@@ -35550,7 +35553,7 @@ def _analyst_detail(query=None):
         _lq = _ad_live.get(s) or {}
         live_px = _f(_lq.get("price"))
         cur = live_px or snap_px
-        d = dist.get(s, {})
+        d = dist.get(s) or _vote_distribution(None)
         out[s] = {
             "rec": r["recommendation_key"],
             "n": r["number_of_analyst_opinions"],
@@ -35566,9 +35569,10 @@ def _analyst_detail(query=None):
             "price_at_snapshot": snap_px,
             "upside": (round((mean - cur) / cur * 100, 1) if (mean and cur) else None),
             "as_of": str(r["snapshot_date"]) if r["snapshot_date"] else None,
-            "dist": {k: d.get(k) for k in ("strong_buy", "buy", "hold", "sell", "strong_sell") if d.get(k) is not None},
-            "dist_period": d.get("recommendation_period"),
-            "dist_source": d.get("provider"),
+            "dist": d["distribution"],
+            "dist_status": d["status"],
+            "dist_unavailable_reason": d["reason"],
+            "dist_source": d["provider"],
         }
     if want_map or not sym:
         return {"ok": True, "advisory_only": True, "count": len(out), "map": out}
@@ -39535,11 +39539,10 @@ def _symbol_cards_build():
         )
         or []
     )
-    dist_map = {}
-    for r in dist:
-        p = r["payload"] if isinstance(r["payload"], dict) else {}
-        if any(p.get(k) for k in ("strong_buy", "buy", "hold", "sell", "strong_sell")):
-            dist_map[r["symbol"]] = {k: p.get(k) for k in ("strong_buy", "buy", "hold", "sell", "strong_sell")}
+    # 2026-10-18: empty payloads (provider retired 09-13) are "unavailable", not zero votes.
+    from lib.analyst_vote_distribution import vote_distribution as _vote_distribution
+
+    dist_map = {r["symbol"]: _vote_distribution(r["payload"]) for r in dist}
     for a in an:
         s = a["symbol"]
         if s in out:
@@ -39554,7 +39557,9 @@ def _symbol_cards_build():
                 "upside_pct": round((float(tm) - float(cp)) / float(cp) * 100, 1)
                 if tm and cp and float(cp) > 0
                 else None,
-                "distribution": dist_map.get(s),
+                "distribution": (dist_map.get(s) or _vote_distribution(None))["distribution"],
+                "distribution_status": (dist_map.get(s) or _vote_distribution(None))["status"],
+                "distribution_unavailable_reason": (dist_map.get(s) or _vote_distribution(None))["reason"],
                 "sources": ["yahoo"],
             }
     # ETFs/funds don't get sell-side price targets; expose the holdings LOOK-THROUGH analyst upside as the

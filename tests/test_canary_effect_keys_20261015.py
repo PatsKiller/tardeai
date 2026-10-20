@@ -32,6 +32,10 @@ if str(ROOT / "tests") not in sys.path:
 from support import n8n_cutover_waves as CW  # noqa: E402
 from tests.support import hermes_learning_cutover as HL  # noqa: E402
 from tests.support import comms_intent_consumer_live as CIL  # noqa: E402
+from tests.support import registry_runtime_truth_lane as RRT  # noqa: E402
+from tests.support import disk_hygiene_n8n as DHN  # noqa: E402
+from tests.support import data_integrity_monitors_n8n as DIM  # noqa: E402
+from tests.support import active_trader_motion_watchdog as ATMW  # noqa: E402
 
 from scripts import n8n_run_executor as X  # noqa: E402
 from scripts.lib import effect_claim as E  # noqa: E402
@@ -125,6 +129,20 @@ def _scope() -> set[str]:
     # comms-intent consumer live 2026-10-17 (tests/support/comms_intent_consumer_live.py): n8n-native, no cron side,
     # idempotent per intent; reviewed by tests/test_comms_intent_consumer_live_20261017.py, not keyed.
     canary -= set(CIL.LIVE)
+    # registry-runtime-truth 2026-10-19 (tests/support/registry_runtime_truth_lane.py): n8n-native, measure-only, no cron
+    # side; reviewed by tests/test_registry_runtime_truth_20261018.py, not keyed.
+    canary -= set(RRT.LIVE)
+    # disk hygiene + disk-usage monitor 2026-10-18 (tests/support/disk_hygiene_n8n.py; operator approval 2026-10-18:
+    # "a script with rules that's repeatable, n8n should run this weekly; and also monitor when a threshold is over
+    # 80%"): n8n-native, no cron side to fence; the monitor's intent is deduped by the store, the plan writes only a
+    # manifest. Reviewed by tests/test_disk_hygiene_20261018.py, not keyed.
+    canary -= set(DHN.LIVE)
+    # data-integrity monitors on n8n 2026-10-18 (tests/support/data_integrity_monitors_n8n.py): read-only monitors
+    # with a dry live_arg first (--lane-receipt, notify nobody); reviewed by tests/test_data_integrity_fixes_20261018.py.
+    canary -= set(DIM.LIVE)
+    # 2026-10-19 active-trader-motion-watchdog (tests/support/active_trader_motion_watchdog.py): n8n-native, no cron
+    # side, one intent per band change; reviewed by tests/test_active_trader_motion_watchdog_20261019.py, not keyed.
+    canary -= set(ATMW.LIVE)
     return set(RELAY_LIVE) | set(TIER_A) | set(TIER_B) | canary
 
 

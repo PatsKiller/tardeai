@@ -20,7 +20,7 @@ NOW = datetime(2026, 10, 16, 15, 0, tzinfo=timezone.utc)  # 11:00 ET
 def _receipt(root: Path, lane: str, mode: str, slot: str, **doc) -> None:
     d = root / "data" / "runtime" / "n8n_runs"
     d.mkdir(parents=True, exist_ok=True)
-    (d / f"d:{lane}:{mode}:{slot}.json").write_text(json.dumps({"run_id": f"d:{lane}:{mode}:{slot}", **doc}))
+    (d / f"d:{lane}:{mode}:{slot}.json").write_text(json.dumps({"run_id": f"d:{lane}:{mode}:{slot}", "mode": mode, "lane_id": lane, **doc}))
 
 
 def _jsonl(path: Path, rows) -> None:
@@ -62,10 +62,10 @@ def _fixture(root: Path) -> Path:
 
 def test_runs_failures_lock_skips(tmp_path):
     d = nt.build(_fixture(tmp_path), NOW)
-    assert d["schema"] == "N8nToday@v1" and d["day"] == "2026-10-16" and d["status"] == "OK"
+    assert d["schema"] == "N8nToday@v2" and d["day"] == "2026-10-16" and d["status"] == "OK"
     assert d["runs"]["by_mode_state"]["live"] == {"RUN_DONE": 1, "RUN_SKIPPED_LOCK": 2, "RUN_FAILED": 1}
     assert d["runs"]["by_mode_state"]["dry_run"] == {"RUN_DONE": 1}
-    assert d["failures"] == [{"lane": "daily-incubator-refresh", "mode": "live", "slot": "20261016T0815",
+    assert [{k:r[k] for k in ("lane","mode","slot","state","reason","exit_code","finished_at","run_id")} for r in d["failures"]] == [{"lane": "daily-incubator-refresh", "mode": "live", "slot": "20261016T0815",
                               "state": "RUN_FAILED", "reason": "exit_1", "exit_code": 1, "finished_at": None,
                               "run_id": "d:daily-incubator-refresh:live:20261016T0815"}]
     assert d["lock_skips"] == [{"lane": "hermes-momentum-catalyst-scalp", "mode": "live", "count": 2}]
@@ -83,14 +83,15 @@ def test_cutovers_today(tmp_path):
     d = nt.build(_fixture(tmp_path), NOW)
     got = {(c["lane"], c["source"]) for c in d["cutovers_today"]}
     assert ("research-insight-extractor", "cutover_receipt") in got
-    assert ("hermes-momentum-catalyst-scalp", "first_live_receipt_today") in got
-    assert ("daily-incubator-refresh", "first_live_receipt_today") in got
+    assert got == {("research-insight-extractor", "cutover_receipt")}
+    observed = {r["lane"] for r in d["first_live_observed_today"]}
+    assert {"hermes-momentum-catalyst-scalp", "daily-incubator-refresh"} <= observed
     assert not any(c["lane"] in ("old-lane", "heartbeat-watch") for c in d["cutovers_today"])
 
 
 def test_empty_root_is_honest(tmp_path):
     d = nt.build(tmp_path, NOW)
-    assert d["status"] == "NO_RECEIPTS" and d["runs"]["totals"] == {"live": 0, "dry_run": 0}
+    assert d["status"] == "UNAVAILABLE" and d["runs"]["totals"] == {"live": None, "dry_run": None, "unknown": None}
     assert d["failures"] == [] and d["heals"] == [] and d["cutovers_today"] == []
 
 

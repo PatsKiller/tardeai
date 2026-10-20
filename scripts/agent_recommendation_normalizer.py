@@ -65,6 +65,24 @@ def _redact(payload):
     return {k: "***" if any(s in k.lower() for s in SECRET_KEYS) else v
             for k, v in payload.items()}
 
+def _conf01(v):
+    """Confidence on the registry's 0..1 scale (2026-10-18).
+
+    agent_recommendation_registry.confidence is a 0..1 column (single_scale
+    contract: 464,089 rows in (0,1], 18 above 1). Source values above 1 or below
+    0 are clamped; NaN/unparseable becomes None (unknown), never a number.
+    """
+    if v is None:
+        return None
+    try:
+        c = float(v)
+    except (TypeError, ValueError):
+        return None
+    if c != c or c in (float("inf"), float("-inf")):
+        return None
+    return max(0.0, min(1.0, c))
+
+
 def _confidence_bucket(conf):
     if conf is None:
         return "unknown"
@@ -121,8 +139,8 @@ def normalize_watchlist_results(conn, agent_filter=None, symbol_filter=None):
             "strategy_id": None,
             "recommendation_type": rec_type,
             "recommendation_action": rec_action,
-            "confidence": _f(row[4]),
-            "confidence_bucket": _confidence_bucket(row[4]),
+            "confidence": _conf01(row[4]),
+            "confidence_bucket": _confidence_bucket(_conf01(row[4])),
             "time_horizon": "swing",
             "recommendation_time": row[5],
         })
@@ -154,8 +172,8 @@ def normalize_cio_decisions(conn, agent_filter=None, symbol_filter=None):
             "symbol": row[1],
             "recommendation_type": rec_type,
             "recommendation_action": rec_action,
-            "confidence": _f(row[3]),
-            "confidence_bucket": _confidence_bucket(row[3]),
+            "confidence": _conf01(row[3]),
+            "confidence_bucket": _confidence_bucket(_conf01(row[3])),
             "time_horizon": "swing",
             "recommendation_time": row[5],
         })
@@ -189,8 +207,8 @@ def normalize_debates(conn, agent_filter=None, symbol_filter=None):
             "symbol": row[1],
             "recommendation_type": rec_type,
             "recommendation_action": rec_action,
-            "confidence": _f(row[4]),
-            "confidence_bucket": _confidence_bucket(row[4]),
+            "confidence": _conf01(row[4]),
+            "confidence_bucket": _confidence_bucket(_conf01(row[4])),
             "time_horizon": "swing",
             "recommendation_time": row[5],
         })

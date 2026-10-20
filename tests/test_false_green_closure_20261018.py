@@ -3,183 +3,33 @@
 One section per finding. Each section's first test reproduces the reviewer's case against the pre-fix code (red),
 then pins the fixed behaviour (green).
 
-M1  SIEM bridge resolved a live RUN_FAILED on "latest decisive run is good" — a later diagnostic dry run, or a live
-    request the stage clamp executed dry, closed it. Resolution now goes through scripts/lib/recovery_validator with
-    the failed run's lane, effective mode, slot, time and the useful-output contract.
-M2  Failure diagnosis: an incident marked ``not_this_cycle`` (per-cycle / daily cap) skipped critical P1 enrollment.
-M3  Supervisor L1 restart cap read the window once and never counted restarts issued in the same cycle.
+This file covers the notification findings only. M1 (SIEM resolution), M2 (critical enrollment past the cap), M3
+(supervisor restart budget) and F1-F4 (Claude fixer acceptance) were closed on main by separately reviewed
+implementations (0fa3ea614, d06f7a11b, 5fef53c66) with their own suites; they are not re-tested here.
+
 N1  Incident notifier: fan-in disappearance (e.g. a delivered comms notice expiring) was announced "SYSTEM RECOVERED"
     without business-output evidence.
 N2  send_system recorded only ``delivered`` in Communications; the provider message id came from an ambient store.
 N3  Communications delivery health was counted from the latest 500 rows; a missing payload rendered zero.
-F1  Fixer PR-head acceptance: no required checks by default; SKIPPED/NEUTRAL passed.
-F2  advance() moved a merged PR to fix_deployed although acceptance was rejected.
-F3  Red-first accepted any non-zero pytest exit (collection error, timeout, usage error). Now: a valid run (exit 1, no
-    ERROR entries) where a changed test failed on its assertion or on the defect's own exception — never on its
-    scaffolding (ImportError / NameError / SyntaxError / missing fixture / a module attribute only the fix adds).
-F4  Missing / malformed CLI usage became zero cost.
+Doc truth: the diagnosis cadence in docs/ops/n8n_self_healing.md matches the declared schedule.
 
-Hermetic: tmp ledgers / state roots, in-memory DB doubles, monkeypatched subprocess / transport. No network, no
-live DB, no broker, no Telegram.
+Hermetic: tmp ledgers / state roots, in-memory DB doubles, monkeypatched transport. No network, no live DB, no
+broker, no Telegram.
 """
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-
-import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 for _p in (str(ROOT), str(ROOT / "scripts")):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from scripts.lib import n8n_siem_bridge as B  # noqa: E402
-from tests.test_n8n_siem_bridge_20261010 import NOW as SIEM_NOW, FakeDB, env, fanin_doc, run_row  # noqa: E402,F401
-
-assert env  # the imported pytest fixture (used by name below)
-
-
-# ══ M1 — SIEM bridge resolution through the shared recovery validator ═══════════════════════════════════════════════
-
-def _siem_run(n, *, state="RUN_DONE", mode="live", receipt, minutes_ago, lane="lane-b", wf="wfB"):
-    ts = (SIEM_NOW - timedelta(minutes=minutes_ago)).isoformat()
-    return {"run_id": f"n8n-wf-{wf}-{n}", "lane_id": lane, "mode": mode, "state": state,
-            "requested_by": f"n8n:workflow:{wf}", "requested_at": ts, "finished_at": ts,
-            "exit_code": 0 if state == "RUN_DONE" else 1, "duration_s": 1.0, "receipt": receipt}
-
-
-CLAMPED_DRY = {"mode": "dry_run", "requested_mode": "live", "output_verdict": {"verdict": "produced"},
-               "stage_clamp": {"requested_mode": "live", "effective_mode": "dry_run", "stage": "shadow",
-                               "clamped": True}}
+#: A live run whose receipt met its useful-output contract (scripts/lib/recovery_validator).
 LIVE_PRODUCED = {"mode": "live", "output_verdict": {"verdict": "produced"}}
-
-
-def _open_failure(env):
-    env["setup"]([run_row(1, "lane-b", "RUN_FAILED", minutes_ago=10, wf="wfB")], fanin_doc([]))
-    db = FakeDB()
-    env["run"](db, "--apply")
-    assert [(r["event_type"], r["lifecycle_state"]) for r in db.rows] == [("RUN_FAILED", "active")]
-    return db
-
-
-@pytest.mark.parametrize("later", [
-    _siem_run(2, receipt=CLAMPED_DRY, minutes_ago=1),                                  # live request, executed dry
-    _siem_run(2, mode="dry_run", receipt={"mode": "dry_run", "output_verdict": {"verdict": "produced"}},
-              minutes_ago=1),                                                          # a diagnostic dry run
-    _siem_run(2, receipt={"mode": "live"}, minutes_ago=1),                             # live, output contract unproven
-], ids=["clamped_live_request", "diagnostic_dry_run", "live_without_output_verdict"])
-def test_M1_reviewer_case_a_later_dry_or_unproven_run_never_resolves_a_live_run_failed(env, later):
-    db = _open_failure(env)
-    env["setup"]([run_row(1, "lane-b", "RUN_FAILED", minutes_ago=10, wf="wfB"), later], fanin_doc([]))
-    assert env["run"](db, "--apply") == 0
-    assert db.rows[0]["lifecycle_state"] == "active", db.rows[0]
-
-
-def test_M1_a_live_run_that_met_its_output_contract_resolves_it_and_names_the_validator(env):
-    db = _open_failure(env)
-    env["setup"]([run_row(1, "lane-b", "RUN_FAILED", minutes_ago=10, wf="wfB"),
-                  _siem_run(2, receipt=LIVE_PRODUCED, minutes_ago=1)], fanin_doc([]))
-    assert env["run"](db, "--apply") == 0
-    assert db.rows[0]["lifecycle_state"] == "resolved"
-    assert "recovery_validator" in db.rows[0]["action_taken"] and "n8n-wf-wfB-2" in db.rows[0]["action_taken"]
-
-
-def test_M1_a_good_run_older_than_the_failure_never_resolves_it():
-    failed = _siem_run(5, state="RUN_FAILED", receipt={"mode": "live"}, minutes_ago=5)
-    older = _siem_run(4, receipt=LIVE_PRODUCED, minutes_ago=30)
-    row = {"id": 7, "component": "n8n:lane-b", "event_type": "RUN_FAILED", "severity": "WARN",
-           "message": "[n8n] lane=lane-b kind=RUN_FAILED run=n8n-wf-wfB-5 at=x", "lifecycle_state": "active"}
-    for r in (failed, older):
-        r["receipt_json"] = json.dumps(r.pop("receipt"))
-    p = B.plan({}, [row], env="e", good_lanes={"lane-b"}, ledger_ok=True, fanin_ok=True,
-               ledger_runs=[failed, older])
-    assert p["resolve"] == [] and p["hold"][0]["reason"].startswith("not_recovered:")
-    # the plan without ledger runs (no evidence) resolves nothing: fail closed
-    p = B.plan({}, [row], env="e", good_lanes={"lane-b"}, ledger_ok=True, fanin_ok=True)
-    assert p["resolve"] == []
-
-
-# ══ M2 — critical enrollment independent of the diagnosis cap ═══════════════════════════════════════════════════════
-
-def test_M2_reviewer_case_a_capped_critical_incident_is_still_enrolled_at_p1(tmp_path):
-    from scripts import n8n_failure_diagnosis as D
-
-    now = datetime(2026, 10, 18, 20, 0, tzinfo=timezone.utc)
-    capped = {"lane": "lane-x", "signature": "sig-c", "episode": 1, "incident_key": "kc9", "siem_id": 91,
-              "severity": "CRITICAL", "event_type": "RUN_FAILED", "outcome": "not_this_cycle",
-              "reason": "process_daily_cap"}
-    warn = {**capped, "incident_key": "kw9", "siem_id": 92, "signature": "sig-w", "severity": "WARN",
-            "reason": "max_incidents"}
-    state = D.empty_state()
-    D.apply_results({"results": [capped, warn]}, [], state, {}, now=now, store_factory=object, allowlist={},
-                    root=tmp_path)
-    p1 = [e for e in (state.get("escalations") or {}).values() if e["priority"] == "P1"]
-    assert len(p1) == 1 and p1[0]["siem_ids"] == [91] and p1[0]["route"] == "operator_once"
-    assert p1[0]["reason"].startswith("critical_unresolved:")
-    assert capped["escalation"].startswith("P1:")
-    # the capped incident is NOT marked diagnosed (it is retried next cycle) and the WARN one is not paged
-    assert "kc9" not in (state.get("diagnosed") or {}) and "kw9" not in (state.get("diagnosed") or {})
-    # idempotent: the next capped cycle keeps ONE record with its original time (no repeat page)
-    first_at = p1[0]["at"]
-    D.apply_results({"results": [dict(capped)]}, [], state, {}, now=now + timedelta(minutes=15),
-                    store_factory=object, allowlist={}, root=tmp_path)
-    p1 = [e for e in state["escalations"].values() if e["priority"] == "P1"]
-    assert len(p1) == 1 and p1[0]["at"] == first_at
-
-
-# ══ M3 — supervisor L1 restart cap is reserved per action ═══════════════════════════════════════════════════════════
-
-def _sbd():
-    import supervisor_breach_detector as sbd
-    return sbd
-
-
-def test_M3_reviewer_case_two_breaches_and_one_prior_attempt_issue_only_one_restart(tmp_path, monkeypatch):
-    sbd = _sbd()
-    now = datetime(2026, 10, 18, 12, 0, tzinfo=timezone.utc)
-    rt = tmp_path / "rt"
-    rt.mkdir()
-    prior = {"schema": "Recovery@v1", "ts": (now - timedelta(minutes=3)).isoformat(), "lane_id": "L",
-             "level": 1, "executed": True, "rc": 0}
-    (rt / "supervisor_recoveries.jsonl").write_text(json.dumps(prior) + "\n")
-    calls = []
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: calls.append(a) or
-                        type("CP", (), {"returncode": 0, "stderr": ""})())
-    lanes = [{"lane_id": "L", "state": "ACTIVE", "scheduler": {"kind": "systemd", "expression": "tradeai-l.timer"}}]
-    rows = [{"breach_id": "b1", "lane_id": "L", "kind": "SILENT"}, {"breach_id": "b2", "lane_id": "L", "kind": "HUNG"}]
-    out = sbd._self_heal_l1_l2(rows, lanes, {}, now, rt, live=True)
-    assert len(calls) == 1 and out["l1_executed"] == 1           # 1 prior + 1 now = the cap of 2 per window
-    recs = [json.loads(x) for x in (rt / "supervisor_recoveries.jsonl").read_text().splitlines()][1:]
-    assert [r["would_execute"] for r in recs] == [True, False]
-    assert recs[1]["executed"] is False and recs[1]["requested"] is False and recs[1]["cap_reason"].startswith("cap")
-    # requested / command-succeeded / output-recovered are three separate facts
-    assert recs[0]["requested"] is True and recs[0]["command_succeeded"] is True
-    assert recs[0]["output_recovered"] is None and recs[0]["output_recovered_basis"] == "not_verified_by_supervisor"
-
-
-def test_M3_a_failed_restart_command_counts_against_the_cap_and_is_not_success(tmp_path, monkeypatch):
-    sbd = _sbd()
-    now = datetime(2026, 10, 18, 12, 0, tzinfo=timezone.utc)
-    rt = tmp_path / "rt"
-    rt.mkdir()
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: type("CP", (), {"returncode": 1, "stderr": "boom"})())
-    lanes = [{"lane_id": "L", "state": "ACTIVE", "scheduler": {"kind": "systemd", "expression": "tradeai-l.service"}}]
-    rows = [{"breach_id": f"b{i}", "lane_id": "L", "kind": "SILENT"} for i in range(3)]
-    sbd._self_heal_l1_l2(rows, lanes, {}, now, rt, live=True)
-    recs = [json.loads(x) for x in (rt / "supervisor_recoveries.jsonl").read_text().splitlines()]
-    assert [r["requested"] for r in recs] == [True, True, False]
-    assert all(r.get("command_succeeded") is False for r in recs[:2])
-    # shadow mode reserves the same way (what WOULD run respects the cap within the cycle)
-    rt2 = tmp_path / "rt2"
-    rt2.mkdir()
-    sbd._self_heal_l1_l2(rows, lanes, {}, now, rt2, live=False)
-    recs = [json.loads(x) for x in (rt2 / "supervisor_recoveries.jsonl").read_text().splitlines()]
-    assert [r["would_execute"] for r in recs] == [True, True, False]
-
 
 # ══ N1 — notification settlement is not recovery ════════════════════════════════════════════════════════════════════
 
@@ -430,201 +280,6 @@ def test_N3_route_and_frontend_use_the_summary_not_the_500_row_sample():
     assert "counts.RESERVED" not in page                  # no client-side count over the latest-500 sample
     pkg = (ROOT / "apps/command-center-v3/package.json").read_text(encoding="utf-8")
     assert "src/lib/commsDeliveryHealth.test.ts" in pkg
-
-
-# ══ F1-F4 — Claude fixer acceptance ═════════════════════════════════════════════════════════════════════════════════
-
-from scripts import self_heal_fixer as S  # noqa: E402
-
-# The fixer imports its libraries as ``lib.*`` (scripts/ on sys.path): use THOSE module objects so a monkeypatch
-# reaches the code under test.
-E = S.E
-F = S.F
-
-CFG = json.loads((ROOT / "config" / "self_heal_fixer.json").read_text())
-H = "a" * 40
-
-
-def _chk(name, conclusion="SUCCESS", status="COMPLETED"):
-    return {"__typename": "CheckRun", "name": name, "status": status, "conclusion": conclusion}
-
-
-def test_F1_reviewer_case_no_required_profile_and_skipped_checks_are_not_a_pass():
-    pr = {"headRefOid": H, "statusCheckRollup": [_chk("lint", "SKIPPED")]}
-    assert E.pr_head_verdict(pr, expected_head=H)["verdict"] != "pass"          # no profile: never green
-    req = ["cio-hardening"]
-    skipped = {"headRefOid": H, "statusCheckRollup": [_chk("cio-hardening", "SKIPPED")]}
-    neutral = {"headRefOid": H, "statusCheckRollup": [_chk("cio-hardening", "NEUTRAL")]}
-    assert E.pr_head_verdict(skipped, expected_head=H, required=req)["verdict"] != "pass"
-    assert E.pr_head_verdict(neutral, expected_head=H, required=req)["verdict"] != "pass"
-    ok = {"headRefOid": H, "statusCheckRollup": [_chk("cio-hardening"), _chk("optional-x", "SKIPPED")]}
-    assert E.pr_head_verdict(ok, expected_head=H, required=req)["verdict"] == "pass"
-
-
-def test_F1_the_required_check_profile_is_versioned_config():
-    prof = E.required_checks(CFG)
-    assert prof["version"] and prof["names"] == ["agent-governance", "cio-hardening", "release-readiness"]
-    with pytest.raises(ValueError):
-        E.required_checks({"acceptance": {"required_checks": {"version": "x", "names": []}}})
-    with pytest.raises(ValueError):
-        E.required_checks({})
-
-
-def _merged_job(tmp_path, monkeypatch, rollup):
-    merge = "b" * 40
-    cur = tmp_path / "GIT_SHA"
-    cur.write_text(merge + "\n")
-    cfg = json.loads(json.dumps(CFG))
-    cfg["lifecycle"]["release_current_sha_file"] = str(cur)
-    monkeypatch.setattr(S, "git", lambda repo, *a, **k: {"rc": 0, "out": "", "err": ""})
-    job = {"job_id": "j", "lane": "l", "state": F.FIX_PR_OPENED, "pr_number": 9, "history": [], "head_sha": H,
-           "iterations": [{"passed": True, "acceptance": {"accepted": True, "commit_sha": H}}]}
-    doc = {"state": "MERGED", "mergeCommit": {"oid": merge}, "mergedAt": "2026-10-18T17:00:00Z", "headRefOid": H,
-           "statusCheckRollup": rollup}
-    gh = lambda cmd: {"rc": 0, "out": json.dumps(doc)}
-    return job, cfg, gh
-
-
-ALL_REQUIRED = [_chk("agent-governance"), _chk("cio-hardening"), _chk("release-readiness")]
-
-
-def test_F2_reviewer_case_merged_with_rejected_acceptance_is_never_attributed(tmp_path, monkeypatch):
-    job, cfg, gh = _merged_job(tmp_path, monkeypatch, [_chk("agent-governance"), _chk("cio-hardening", "FAILURE"),
-                                                       _chk("release-readiness")])
-    got = S.advance(job, cfg=cfg, now=datetime(2026, 10, 18, tzinfo=timezone.utc), diag_state=None, root=tmp_path,
-                    gh=gh, repo=tmp_path)
-    assert got != F.FIX_DEPLOYED and job["state"] != F.FIX_DEPLOYED
-    assert job["state"] == F.FIX_CLOSED and job["reason"].startswith("merged_without_acceptance")
-
-
-def test_F2_pending_required_checks_wait_and_full_acceptance_deploys(tmp_path, monkeypatch):
-    now = datetime(2026, 10, 18, tzinfo=timezone.utc)
-    job, cfg, gh = _merged_job(tmp_path, monkeypatch, [_chk("agent-governance"), _chk("cio-hardening")])
-    assert S.advance(job, cfg=cfg, now=now, diag_state=None, root=tmp_path, gh=gh, repo=tmp_path) is None
-    assert job["state"] == F.FIX_PR_OPENED                         # release-readiness missing: wait, not deploy
-    job, cfg, gh = _merged_job(tmp_path, monkeypatch, ALL_REQUIRED)
-    assert S.advance(job, cfg=cfg, now=now, diag_state=None, root=tmp_path, gh=gh, repo=tmp_path) == F.FIX_DEPLOYED
-    assert job["acceptance"]["accepted"] is True and job["acceptance"]["required_profile"]
-
-
-def _fake_attempt(tmp_path, monkeypatch, *, red, agent_out="{}"):
-    monkeypatch.setattr(F, "build_prompt", lambda *a, **k: "prompt")
-    monkeypatch.setattr(F, "backend_argv", lambda *a, **k: ["agent"])
-    a = S.Attempt.__new__(S.Attempt)
-    a.cfg, a.ev, a.dir, a.backend, a.boundary = CFG, {}, tmp_path, "claude_code", {}
-    a.pytest_cmd, a.py, a.base, a.eval_root = "pytest", "python3", "c" * 40, tmp_path / "ev"
-    cand = {"commit_sha": H, "tree_sha": "d" * 40, "base_sha": a.base}
-    a.run_agent = lambda argv, prompt: ({"rc": 0, "out": agent_out, "err": ""}, None)
-    a.candidate = lambda: cand
-    a.commit_diff = lambda c: {"name_status": "M\ttests/test_bug.py\nM\tscripts/bug.py\n",
-                               "numstat": "1\t0\ttests/test_bug.py\n1\t0\tscripts/bug.py\n", "unified": "",
-                               "full": "diff"}
-    a.guard = lambda d: []
-    a.tree_of = lambda c: "d" * 40
-    a._blob = lambda c, p: b""
-    a.checkout = lambda name, sha, overlay=None: tmp_path
-
-    def eval_run(kind, co, expect, argv, timeout, overlay_from=None):
-        base = {"run_id": f"{kind}-1", "kind": kind, "integrity_ok": True, "checkout_sha": expect,
-                "head_after": expect, "overlay_from": overlay_from, "seconds": 0.1}
-        if kind == "red_first":
-            return {**base, **red}
-        return {**base, "rc": 0, "out": "1 passed", "err": ""}
-    a.eval_run = eval_run
-    return a
-
-
-@pytest.mark.parametrize("red,why", [
-    ({"rc": 2, "out": "ERROR tests/test_bug.py - ImportError: cannot import name 'x'\n1 error", "err": ""},
-     "collection_error"),
-    ({"rc": 124, "out": "", "err": "timeout after 900s"}, "timeout"),
-    ({"rc": 4, "out": "ERROR: file or directory not found: tests/test_bug.py", "err": ""}, "usage"),
-    ({"rc": 1, "out": "FAILED tests/test_other.py::test_unrelated - assert 0", "err": ""}, "other_test"),
-    ({"rc": 1, "out": "FAILED tests/test_bug.py::test_bug - ModuleNotFoundError: No module named 'q'", "err": ""},
-     "not_an_assertion"),
-])
-def test_F3_reviewer_case_red_first_needs_the_expected_tests_own_failure(tmp_path, monkeypatch, red, why):
-    a = _fake_attempt(tmp_path, monkeypatch, red=red)
-    rec = a.iterate(1, None, "rails", 0.0)
-    assert rec["red_first"] is False, why
-    assert "red_first:test_passes_on_base" in rec["failing"] or any(f.startswith("red_first:")
-                                                                    for f in rec["failing"])
-
-
-def test_F3_a_real_assertion_failure_of_the_changed_test_is_red_first(tmp_path, monkeypatch):
-    red = {"rc": 1, "out": "FAILED tests/test_bug.py::test_bug - assert 1 == 2\n1 failed", "err": ""}
-    rec = _fake_attempt(tmp_path, monkeypatch, red=red).iterate(1, None, "rails", 0.0)
-    assert rec["red_first"] is True and not any(f.startswith("red_first:") for f in rec["failing"])
-    ok, why = F.red_first_verdict(red, ["tests/test_bug.py"])
-    assert ok and why == "assertion_failed:tests/test_bug.py::test_bug"
-    # the defect's own exception in the code under test reproduces it (the seeded ZeroDivisionError scenario of
-    # tests/test_self_heal_fixer_20261016.py); the test's scaffolding failing on base does not
-    crash = {"rc": 1, "out": "FAILED tests/test_bug.py::test_bug - ZeroDivisionError: division by zero", "err": ""}
-    assert F.red_first_verdict(crash, ["tests/test_bug.py"]) == (
-        True, "defect_exception:ZeroDivisionError:tests/test_bug.py::test_bug")
-    for reason in ("AttributeError: module 'scripts.bug' has no attribute 'new_fn'", "NameError: name 'x' is not "
-                   "defined", "ImportError: cannot import name 'y'"):
-        bad = {"rc": 1, "out": f"FAILED tests/test_bug.py::test_bug - {reason}", "err": ""}
-        assert F.red_first_verdict(bad, ["tests/test_bug.py"])[0] is False, reason
-
-
-REAL_RED = """F                                                                        [100%]
-=================================== FAILURES ===================================
-___________________________ test_ratio_handles_zero ____________________________
-
-    def test_ratio_handles_zero():
-        from scripts.buggy import ratio
->       assert ratio(1, 0) == 0.0
-               ^^^^^^^^^^^
-
-tests/test_self_heal_buggy.py:3:
-_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
-
-a = 1, b = 0
-
-    def ratio(a, b):
->       return a / b
-               ^^^^^
-E       ZeroDivisionError: division by zero
-
-scripts/buggy.py:2: ZeroDivisionError
-=========================== short test summary info ============================
-FAILED tests/test_self_heal_buggy.py::test_ratio_handles_zero - ZeroDivisionE...
-1 failed in 0.02s
-"""
-
-
-def test_F3_real_pytest_output_with_a_width_truncated_summary_is_judged_from_its_failure_section():
-    """Captured from the seeded-defect scenario of tests/test_self_heal_fixer_20261016.py on this host: the summary
-    reason is cut to 80 columns; the FAILURES section carries the real exception."""
-    t = ["tests/test_self_heal_buggy.py"]
-    assert F.red_first_verdict({"rc": 1, "out": REAL_RED}, t) == (
-        True, "defect_exception:ZeroDivisionError:tests/test_self_heal_buggy.py::test_ratio_handles_zero")
-    scaffold = REAL_RED.replace("ZeroDivisionError: division by zero", "ImportError: cannot import name 'ratio'") \
-        .replace("scripts/buggy.py:2: ZeroDivisionError", "tests/test_self_heal_buggy.py:2: ImportError")
-    assert F.red_first_verdict({"rc": 1, "out": scaffold}, t)[0] is False
-    # what this host's harness actually produced before the fix: "No module named pytest" (exit 1) was "red"
-    assert F.red_first_verdict({"rc": 1, "out": "", "err": "/usr/bin/python3: No module named pytest"}, t) == (
-        False, "no_failed_test_reported")
-
-
-@pytest.mark.parametrize("out", ["garbage, not json", json.dumps({"type": "result", "is_error": False}),
-                                 json.dumps({"type": "result", "total_cost_usd": "n/a"})])
-def test_F4_reviewer_case_unknown_usage_keeps_the_conservative_reservation(tmp_path, monkeypatch, out):
-    r = F.parse_claude_result(out)
-    assert r["cost_usd"] is None and r["cost_known"] is False
-    red = {"rc": 1, "out": "FAILED tests/test_bug.py::test_bug - assert 0", "err": ""}
-    rec = _fake_attempt(tmp_path, monkeypatch, red=red, agent_out=out).iterate(1, None, "rails", 0.0)
-    budget = float(CFG["iteration"]["per_iteration_budget_usd"])
-    assert rec["cost_unknown"] is True and rec["charged_usd"] == budget
-    assert S.iteration_charge(rec) == budget
-
-
-def test_F4_known_usage_is_charged_as_reported(tmp_path, monkeypatch):
-    out = json.dumps({"type": "result", "is_error": False, "total_cost_usd": 0.5, "result": "ok"})
-    red = {"rc": 1, "out": "FAILED tests/test_bug.py::test_bug - assert 0", "err": ""}
-    rec = _fake_attempt(tmp_path, monkeypatch, red=red, agent_out=out).iterate(1, None, "rails", 0.0)
-    assert rec["cost_unknown"] is False and rec["charged_usd"] == 0.5 and S.iteration_charge(rec) == 0.5
 
 
 # ══ Doc truth — the diagnosis cadence ═══════════════════════════════════════════════════════════════════════════════

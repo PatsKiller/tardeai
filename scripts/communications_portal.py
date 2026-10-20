@@ -607,7 +607,50 @@ def attach_market(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
             e.setdefault("levels", {"conviction": a.get("conviction"), "rank": a.get("rank")})
             e["levels"]["low_conviction"] = True
             e["levels"]["conviction_floor"] = floor
+    analyst = analyst_consensus(syms)
+    for e in events:
+        sym = (e.get("symbols") or [None])[0]
+        if sym and analyst.get(sym):
+            e["analyst"] = dict(analyst[sym])
+            px, tm = (e.get("market") or {}).get("price"), analyst[sym].get("target_mean")
+            if px and tm:
+                e["analyst"]["upside_pct"] = round((float(tm) / float(px) - 1) * 100, 1)
     return events
+
+
+ANALYST_STALE_DAYS = 30
+_RATING_LABEL = {"strong_buy": "Strong Buy", "buy": "Buy", "hold": "Hold", "underperform": "Underperform",
+                 "sell": "Sell", "strong_sell": "Strong Sell"}
+
+
+def analyst_consensus(symbols: list[str], db_query=None) -> dict[str, dict[str, Any]]:
+    """Operator 2026-10-19 ("I don't see any analyst ratings"): Street consensus per ticker from the Yahoo targets
+    store (data broker analyst_detail — not the Finviz Recom field, which is corrupt since 09-08). Read-only; a
+    missing row stays absent; a row older than ANALYST_STALE_DAYS is marked stale rather than shown as current."""
+    if not symbols:
+        return {}
+    try:
+        from lib.data_broker.analyst_detail import _db_query, get_analyst_targets
+
+        rows = get_analyst_targets(db_query or _db_query, list(symbols)) or {}
+    except Exception:
+        return {}
+    from datetime import datetime as _dt, timezone as _tz
+
+    out: dict[str, dict[str, Any]] = {}
+    for sym, r in rows.items():
+        def _f(k: str):
+            return float(r[k]) if r.get(k) is not None else None
+        key = str(r.get("recommendation_key") or "").lower()
+        ts = r.get("created_at")
+        age_d = None
+        if ts is not None and hasattr(ts, "astimezone"):
+            age_d = round((_dt.now(_tz.utc) - ts.astimezone(_tz.utc)).total_seconds() / 86400, 1)
+        out[sym] = {"rating": _RATING_LABEL.get(key), "analyst_count": r.get("analyst_count"),
+                    "target_mean": _f("target_mean"), "target_low": _f("target_low"), "target_high": _f("target_high"),
+                    "as_of": _iso(ts) if ts is not None else None, "age_days": age_d,
+                    "stale": age_d is not None and age_d > ANALYST_STALE_DAYS, "source": "yahoo_analyst_targets"}
+    return out
 
 
 def hub_events(filters: dict[str, Any]) -> dict[str, Any] | None:
@@ -776,6 +819,11 @@ def get_event(event_id: str) -> dict[str, Any]:
 
     db_row = _db_get_event(eid)
     if db_row is not None:
+        # a deep link (?event=<id>) opens the drawer from this row: same quote / levels / analyst view as the feed
+        try:
+            attach_market([db_row])
+        except Exception:
+            pass
         return {"ok": True, "event": db_row, "source": "db"}
 
     for row in _memory_events():

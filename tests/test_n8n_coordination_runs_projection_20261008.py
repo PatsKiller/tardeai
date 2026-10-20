@@ -34,13 +34,13 @@ def row(run_id, lane, mode, state, *, exit_code=0, finished="2026-10-08T12:30:00
             finished, exit_code, 4.5, "{}")
 
 
-def test_absent_ledger_and_absent_table_are_empty_pages_not_errors(tmp_path):
+def test_absent_ledger_and_absent_table_are_unavailable_not_observed_zero(tmp_path):
     out = P.project(tmp_path / "absent.sqlite", source="runs", now=NOW)
-    assert out["status"] == "NO_LEDGER" and out["items"] == [] and out["schema"] == P.RUNS_SCHEMA
+    assert out["status"] == "UNAVAILABLE" and out["items"] == [] and out["schema"] == P.RUNS_SCHEMA
     p = tmp_path / "old.sqlite"
     sqlite3.connect(p).execute("CREATE TABLE receipts(x)").connection.commit()
     out = P.project(p, source="runs", now=NOW)
-    assert out["status"] == "OK" and out["count"] == 0 and "no runs table" in out["note"]
+    assert out["status"] == "UNAVAILABLE" and out["count"] is None and "runs table unavailable" in out["note"]
 
 
 def test_runs_items_carry_the_contract_fields_newest_first_and_filter(tmp_path):
@@ -63,7 +63,7 @@ def test_runs_items_carry_the_contract_fields_newest_first_and_filter(tmp_path):
 def test_other_sources_are_untouched_by_the_runs_table(tmp_path):
     p = make_ledger(tmp_path / "l.sqlite", [row("r1", "x", "live", "RUN_DONE")])
     out = P.project(p, now=NOW)       # default source: the receipts table, which this ledger lacks
-    assert out["schema"] == P.SCHEMA and out["status"].startswith("UNREADABLE") and "source" not in out
+    assert out["schema"] == P.SCHEMA and out["status"] == "UNAVAILABLE" and "source" not in out
 
 
 def test_api_routes_pass_source_through_and_serve_the_board_file_read_only():

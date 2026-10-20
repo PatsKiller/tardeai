@@ -126,11 +126,7 @@ fix_requested ─▶ fix_attempting (k=1..N) ─▶ fix_pr_opened ─(operator m
   1. diff guard (§6) on `git diff <base> <commit>` (from the object store, not the worktree) — a hard refusal ends
      the job as `fix_refused`;
   2. **red-first**: a fresh `git clone --shared` at the base, with the changed tests overlaid **from the commit
-     object** (`git cat-file blob <commit>:<path>`); they must FAIL there — in a VALID run (pytest exit 1, no
-     `ERROR` entries) where a changed test failed on its assertion or on the defect's own exception, judged from the
-     failure's traceback section (`lib/self_heal_fixer.red_first_verdict`; review 2026-10-18 F3). A collection error,
-     timeout, usage error, "No module named pytest", or a scaffolding failure (ImportError / NameError / SyntaxError /
-     missing fixture / a module attribute only the fix adds) is not red-first;
+     object** (`git cat-file blob <commit>:<path>`); they must FAIL there;
   3. targeted tests (the changed test files) must pass in a fresh shared clone checked out at `<commit>`;
   4. `run_cio_hardening_ci.py --profile pr --base <base_sha> --include-worktree --no-tail` must pass in that clone.
   Each run gets a run id; the clone (files AND its own `.git`, only `.git/index` excluded) is digested before and
@@ -138,9 +134,7 @@ fix_requested ─▶ fix_attempting (k=1..N) ─▶ fix_pr_opened ─(operator m
   `integrity:checkout_or_git_mutated`; a changed commit tree = `integrity:candidate_tree_changed`.
 - Iteration k+1 gets iteration k's failing set, guard refusals, red-first verdict and test output tail.
 - Stops: pass; `max_iterations` (4); `max_minutes` (90); `max_cost_usd` ($12; each call capped at
-  `min($4, remaining)`); **no progress** = the same non-empty failing set twice in a row. A backend result with
-  missing or malformed usage (`total_cost_usd` absent / non-numeric, or no JSON) is charged that iteration's whole
-  reservation (`charged_usd`, `cost_unknown`), never $0 (review 2026-10-18 F4).
+  `min($4, remaining)`); **no progress** = the same non-empty failing set twice in a row.
 - Per-iteration evidence in the job and in `data/runtime/self_heal_fixer/<job_id>/`: diff stat, tests run, red-first,
   targeted/CI exit codes, failing set, cost, seconds, prompt, claude result, test log; `fix.patch` and `pr_body.md`
   on success.
@@ -180,16 +174,11 @@ fix_requested ─▶ fix_attempting (k=1..N) ─▶ fix_pr_opened ─(operator m
   `backend_result` and is never read by the evaluator.
 - **Ship** (`SelfHealShipCheck@v1`): right before the branch update / push, the commit is the evaluated commit, its
   tree is the evaluated tree, and the re-run guard is clean. Any mismatch refuses.
-- **PR head** (`SelfHealPrHeadAcceptance@v1`): `gh pr view --json headRefOid,statusCheckRollup`; `pass` only when no
-  reported check failed or is pending, the head **equals** (full sha, no prefix match) the evaluated commit
-  (`head_moved` otherwise), and every check of the versioned required-check profile
-  (`config/self_heal_fixer.json` `acceptance.required_checks`: agent-governance, cio-hardening, release-readiness) is
-  present and concluded SUCCESS — SKIPPED / NEUTRAL is `required_not_run`, no profile is `no_required_profile`
-  (review 2026-10-18 F1).
+- **PR head** (`SelfHealPrHeadAcceptance@v1`): `gh pr view --json headRefOid,statusCheckRollup`; `pass` only when every
+  reported check passed, at least one ran, and the head **equals** (full sha, no prefix match) the evaluated commit
+  (`head_moved` otherwise).
 - **Final** (`SelfHealAcceptance@v1`) = local accepted AND PR-head CI `pass` AND PR head == the evaluated commit.
-  Recorded on the job at every advance. A merged PR becomes `fix_deployed` only with final `accepted=true`; required
-  checks still running wait; any other merge closes the job `merged_without_acceptance:*` and is never attributed to
-  the fix (review 2026-10-18 F2).
+  Recorded on the job at every advance.
   The operator still merges; acceptance is evidence for that review, not a merge trigger.
 
 ## 5c. Repair memory and the shadow router

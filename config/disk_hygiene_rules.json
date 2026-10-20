@@ -1,0 +1,319 @@
+{
+  "schema": "DiskHygieneRules@v1",
+  "as_of": "2026-10-18",
+  "authority": "operator 2026-10-18: 'a script with rules that's repeatable, n8n should run this weekly; and also monitor when a threshold is over 80%, fix and move to n8n where monitored.' Readers: scripts/disk_hygiene.py (rules A), scripts/disk_usage_monitor.py (monitor B), scripts/tmp_hygiene.py (tmp, operator 2026-10-19 after the /tmp inode incident). Packet docs/ops/packets/disk-hygiene-n8n-20261018/. Changed only by reviewed PR.",
+  "_paths": "'~' expands to the running user's home. Every threshold, path and keep-count lives here; the scripts hold no defaults of their own beyond refusing to run without this file.",
+  "home": "~",
+  "protected_paths": {
+    "_why": "Never a candidate under any rule: the dev repo (cron and units execute from it), the release-prep clone, the served release pointers. A candidate equal to, inside, or containing one of these is excluded.",
+    "paths": [
+      "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+      "~/tradeai-exact-main-20260827",
+      "~/trade-ai-releases/portfolio-server/CURRENT"
+    ]
+  },
+  "never_touch": {
+    "_why": "HARD list, enforced in code before any rule runs and again at apply time. A path equal to / inside one of `paths`, with a path component in `names`, or with a name matching `name_globs` is never a candidate. `report_only` paths are measured and printed, never deleted.",
+    "paths": [
+      "~/db_backups",
+      "~/trade-ai-releases/persistent-state",
+      "~/llama-cpp-vulkan",
+      "~/.ssh",
+      "~/.config",
+      "~/.docker",
+      "~/.gnupg",
+      "~/.aws",
+      "~/m8m-bakeoff-lab",
+      "~/n8n-agent-hardening",
+      "/var/lib/docker"
+    ],
+    "names": [
+      "db_backups",
+      "persistent-state",
+      "llama-cpp-vulkan",
+      ".ssh",
+      ".config",
+      ".docker",
+      "docker",
+      ".gnupg",
+      ".aws",
+      ".n8n",
+      "n8n_data",
+      "n8n-data"
+    ],
+    "name_globs": [
+      ".env",
+      ".env.*",
+      "*.env",
+      "*credential*",
+      "*cookie*",
+      "*token*",
+      "*secret*",
+      "*.pem",
+      "*.key",
+      "id_rsa*",
+      "id_ed25519*"
+    ],
+    "report_only": [
+      {
+        "path": "~/llama-cpp-vulkan",
+        "category": "models",
+        "why": "local model weights: report only"
+      },
+      {
+        "path": "~/db_backups",
+        "category": "db_backups",
+        "why": "owned by backup_enforcer: report only"
+      },
+      {
+        "path": "~/.cache",
+        "category": "cache",
+        "why": "cache root, report only unless a cache rule is enabled"
+      },
+      {
+        "path": "~/.npm",
+        "category": "cache",
+        "why": "npm cache root, report only unless a cache rule is enabled"
+      }
+    ]
+  },
+  "git": {
+    "_why": "Rule G: a linked worktree or standalone clone is a candidate ONLY if every check passes (scripts/disk_hygiene.py evaluate_git). Linked worktrees are removed with `git -C <main repo> worktree remove <path>` (never --force, never rm -rf); standalone clones are removed only under the same checks.",
+    "roots": [
+      {
+        "path": "~",
+        "depth": 1
+      },
+      {
+        "path": "~/worktrees",
+        "depth": 1
+      },
+      {
+        "path": "~/wt",
+        "depth": 1
+      },
+      {
+        "path": "~/trade-ai-worktrees",
+        "depth": 1
+      },
+      {
+        "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees",
+        "depth": 1
+      }
+    ],
+    "owned_remote_patterns": [
+      "github\\.com[:/]PatsKiller/tardeai(\\.git)?/?$",
+      "github\\.com[:/]PatsKiller/trade-ai[A-Za-z0-9_.-]*(\\.git)?/?$"
+    ],
+    "main_ref": "origin/main",
+    "idle_days": 7,
+    "git_timeout_s": 60,
+    "ignored_listing_max_lines": 200000,
+    "ignored_scan_skip_dirs": [
+      "node_modules",
+      ".venv",
+      "venv",
+      "site-packages",
+      "__pycache__",
+      "pytest-of-*",
+      ".pytest_cache",
+      ".mypy_cache",
+      ".ruff_cache"
+    ],
+    "ignored_scan_skip_suffixes": [
+      ".pyc",
+      ".pyo"
+    ],
+    "size_workers": 6,
+    "size_timeout_s": 600
+  },
+  "releases": {
+    "_why": "Rule R: keep the CURRENT target, every pointer-file target, the previous served release (newest older than CURRENT by name timestamp), and the newest `keep_newest`. `hold_until` honours an archive's own tripwire README (no candidate before that date).",
+    "pointer_dir": "~/trade-ai-releases/portfolio-server",
+    "pointer_symlinks": [
+      "CURRENT"
+    ],
+    "pointer_files": [
+      "EXPECTED_RELEASE",
+      "ACTIVE_RELEASE"
+    ],
+    "sort_key_regex": "(\\d{8}-\\d{6})",
+    "roots": [
+      {
+        "path": "~/trade-ai-releases/portfolio-server",
+        "entry_kind": "dir",
+        "glob": "*-*",
+        "keep_newest": 3,
+        "previous_served": true,
+        "hold_until": null
+      },
+      {
+        "path": "~/trade-ai-releases/archive/releases_20260915",
+        "entry_kind": "file",
+        "glob": "*.tar.zst",
+        "keep_newest": 3,
+        "previous_served": false,
+        "hold_until": "2026-12-14",
+        "hold_reason": "archive/releases_20260915/README_TRIPWIRE.md: 'Delete after 2026-12-14 (90 days) unless something here is still needed' (operator approved 2026-09-15)"
+      }
+    ]
+  },
+  "caches": {
+    "_why": "Rule C: optional, default disabled. An entry `item_depth` levels under `path` whose newest mtime is older than `older_than_days` is a candidate.",
+    "rules": [
+      {
+        "path": "~/.cache/pip",
+        "older_than_days": 30,
+        "item_depth": 1,
+        "enabled": false
+      },
+      {
+        "path": "~/.npm/_cacache",
+        "older_than_days": 30,
+        "item_depth": 1,
+        "enabled": false
+      }
+    ]
+  },
+  "references": {
+    "_why": "A candidate whose absolute path appears in any of these texts is excluded (crontab, systemd units and drop-ins, release pointer files).",
+    "crontab_cmd": [
+      "crontab",
+      "-l"
+    ],
+    "systemd_unit_dirs": [
+      "~/.config/systemd/user",
+      "/etc/systemd/system"
+    ],
+    "proc_root": "/proc"
+  },
+  "manifest": {
+    "dir": "data/runtime/disk_hygiene",
+    "latest_name": "disk_hygiene_manifest_latest.json",
+    "top_n": 20
+  },
+  "apply": {
+    "_why": "--apply needs a manifest written within `manifest_max_age_hours`, a non-empty TRADEAI_DISK_HYGIENE_GRANT (the env name is fixed in code so the n8n env allowlist can be checked statically), and re-validates every item; it stops at the caps. Never runs under the n8n executor (TRADEAI_RUN_ID set): AGENTS.md §23.14 keeps destructive retention off n8n.",
+    "manifest_max_age_hours": 24,
+    "max_items_per_run": 150,
+    "max_bytes_per_run": 107374182400,
+    "kinds_enabled": [
+      "git_worktree",
+      "git_clone",
+      "release_dir",
+      "release_file",
+      "cache_entry"
+    ]
+  },
+  "tmp": {
+    "_why": "Incident 2026-10-19 ~13:40 ET: /tmp (tmpfs, 1,048,576 inodes) hit 97% INODES with 20G bytes free; ended Claude sessions' scratch dirs and pytest temp held the files. scripts/tmp_hygiene.py, n8n lane tmp-hygiene (daily 05:00 ET, --plan: manifest only). Only claude_scratch and pytest entries are ever evaluated; every other /tmp entry is never a candidate and never scanned. Deletion is --apply with TRADEAI_DISK_HYGIENE_GRANT, never under the n8n executor, exactly like the home rules.",
+    "root": "/tmp",
+    "claude_scratch": {
+      "_why": "<root>/<dir_name>/<project>/<session uuid>/: candidate only if idle (newest mtime of the whole tree, bounded scan) > idle_days AND no /proc/*/cwd and no /proc/*/fd inside AND its transcript <transcripts_dir>/<project>/<uuid>.jsonl, when present, is older than transcript_idle_days AND every git tree inside is safe to drop (registered worktrees go through `git worktree remove`, never --force).",
+      "enabled": true,
+      "dir_name": "claude-{uid}",
+      "session_regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+      "idle_days": 2,
+      "transcripts_dir": "~/.claude/projects",
+      "transcript_idle_days": 2,
+      "worktree_search_depth": 3
+    },
+    "pytest": {
+      "_why": "<root>/<dir_name>/<entry_glob> (never the pytest-current symlink): candidate if the newest mtime of the tree is older than older_than_days and no cwd / open fd is inside.",
+      "enabled": true,
+      "dir_name": "pytest-of-{user}",
+      "entry_glob": "pytest-*",
+      "older_than_days": 1
+    },
+    "never_touch_globs": [
+      "n8n-campaign-*",
+      "tradeai-*",
+      "momentum-*",
+      "systemd-private-*",
+      ".X11-unix",
+      ".ICE-unix",
+      "tmux-*",
+      "ssh-*",
+      "snap-private-tmp"
+    ],
+    "scan": {
+      "_why": "per-tree bounded lstat walk; a tree the cap stops is never a candidate (idleness unproven)",
+      "time_cap_s": 120,
+      "max_entries": 3000000
+    },
+    "manifest_latest_name": "tmp_hygiene_manifest_latest.json",
+    "untouched_list_max": 200,
+    "apply": {
+      "manifest_max_age_hours": 24,
+      "max_items_per_run": 200,
+      "max_bytes_per_run": 21474836480,
+      "max_files_per_run": 2000000
+    }
+  },
+  "monitor": {
+    "_why": "scripts/disk_usage_monitor.py, n8n lane disk-usage-monitor (*/15). Band = ok | warn | critical by df-style used% (used / (used + available)). One host comms intent per band CHANGE (dedupe by band, never by raw percent). Inodes (operator 2026-10-19, after /tmp hit 97% inodes with bytes free): every mount is also banded by inode use% (statvfs f_files / f_ffree) with its own thresholds; dedupe is per (mount, metric) band.",
+    "mounts": [
+      "/",
+      "/tmp"
+    ],
+    "warn_pct": 80.0,
+    "critical_pct": 90.0,
+    "host_backstop_pct": 95.0,
+    "state_name": "disk_usage_monitor_state.json",
+    "producer": "disk_usage_monitor",
+    "intent_domain": "host",
+    "intent_kinds": {
+      "warn": "disk_usage_warn",
+      "critical": "disk_usage_critical",
+      "ok": "disk_usage_recovered"
+    },
+    "consumer_categories": [
+      {
+        "category": "models",
+        "path": "~/llama-cpp-vulkan"
+      },
+      {
+        "category": "db_backups",
+        "path": "~/db_backups"
+      },
+      {
+        "category": "releases_archive",
+        "path": "~/trade-ai-releases/archive"
+      },
+      {
+        "category": "releases",
+        "path": "~/trade-ai-releases/portfolio-server"
+      },
+      {
+        "category": "worktrees_home",
+        "path": "~/worktrees"
+      },
+      {
+        "category": "cache",
+        "path": "~/.cache"
+      },
+      {
+        "category": "cache",
+        "path": "~/.npm"
+      }
+    ],
+    "measure_consumers_on": "alert",
+    "du_timeout_s": 90,
+    "top_consumers": 5,
+    "inodes": {
+      "_why": "inode bands, separate from the byte bands; a filesystem reporting f_files = 0 has no inode limit and is not banded. On an inode alert the summary names the top dirs by file count (bounded scan) for top_dirs.mounts, and the latest tmp_hygiene manifest's reclaimable inodes.",
+      "warn_pct": 80.0,
+      "critical_pct": 90.0,
+      "top_dirs": {
+        "mounts": [
+          "/tmp"
+        ],
+        "max_depth": 3,
+        "dominant_share": 0.5,
+        "time_cap_s": 20,
+        "max_entries": 3000000,
+        "top_n": 3
+      }
+    }
+  }
+}

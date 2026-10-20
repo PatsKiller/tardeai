@@ -1,0 +1,652 @@
+{
+  "CI": {
+    "added_gate": [
+      "analyst_recom_data_quality_20261018",
+      [
+        "tests/test_analyst_recom_data_quality_20261018.py"
+      ]
+    ],
+    "all492_prior_values_and_order_unchanged": true,
+    "base_gates": 492,
+    "candidate_gates": 493,
+    "rest_runner_AST_unchanged": true
+  },
+  "artifacts": [
+    {
+      "bytes": 1555,
+      "decompressed_bytes": 3051,
+      "decompressed_sha256": "c41e4da6b18898ba9e57fe451c3389902923b95ccb97687be0693bc93ba3f2c6",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/README.md",
+      "path": "historical-10b/README.md.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "7e7d30cd347ac632d54da6e74b9029e8396bcd5485098eab4c90b8b2b42e3c05"
+    },
+    {
+      "bytes": 491,
+      "decompressed_bytes": 1940,
+      "decompressed_sha256": "9d342d632aaba41b74458cbc629ef37412a1484243d2115b6704546953abeff1",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/author-label-6de-baseline.txt",
+      "path": "historical-10b/author-label-6de-baseline.txt.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "a17a1ad68fc76db20a35ef90d28510d2c35da234933dc1f4b09970745add47b0"
+    },
+    {
+      "bytes": 625,
+      "decompressed_bytes": 2423,
+      "decompressed_sha256": "003da30377ff6b5de647ec19812c9644ed3a7833e20b898260f63311799f6745",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/author-label-6de-baseline.xml",
+      "path": "historical-10b/author-label-6de-baseline.xml.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "d0d54d336cf707608d901cbc864d8de846e2d7363bce385f1a9edc4a5adde5c3"
+    },
+    {
+      "bytes": 3273,
+      "decompressed_bytes": 3250,
+      "decompressed_sha256": "4fcfbc8645feab7d7caa90981ea62a6b5b1308d08e4addf78fbaf63ac4a8166c",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/author-review-packet.json.gz",
+      "path": "historical-10b/author-review-packet.json.gz.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "e40f050741945c9d32e880a68df0dd2290f91fc8731a2928e9b66eb0cca17db5"
+    },
+    {
+      "bytes": 1065,
+      "decompressed_bytes": 1042,
+      "decompressed_sha256": "04b54a170b4e64ae05efde77cada4415bfa45820cb4a1e8a214a6bd7a5b40161",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/baseline-scoped-unchanged-pair.txt.gz",
+      "path": "historical-10b/baseline-scoped-unchanged-pair.txt.gz.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "0ce45734be6569d0c1c17d30ad56bce46325de076d46b4f507ce87b89d2cdb04"
+    },
+    {
+      "bytes": 1204,
+      "decompressed_bytes": 1181,
+      "decompressed_sha256": "1d9d39020239c15b40cd438e9b12459112f42802c179db948e86463eb21c08b8",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/baseline-scoped-unchanged-pair.xml.gz",
+      "path": "historical-10b/baseline-scoped-unchanged-pair.xml.gz.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "981734b70ac91ddf07298d9360f0b958a2141508bb7dcd12cca321136167aae3"
+    },
+    {
+      "bytes": 236,
+      "decompressed_bytes": 336,
+      "decompressed_sha256": "c6e59f6dbf39ec3941cb1e7521f9cb582cceff441da710b359eab40c15bfb8ba",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/candidate-6de-focused.txt",
+      "path": "historical-10b/candidate-6de-focused.txt.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "185f29584406a450a89fe942904bdaaf035f4c30229894985a7eb9293df0c7b6"
+    },
+    {
+      "bytes": 1251,
+      "decompressed_bytes": 1228,
+      "decompressed_sha256": "5c2d8e1262d8a6d65b7b77627d0493c627b7819253c0735857e39accf6901fc1",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/candidate-6de-focused.xml.gz",
+      "path": "historical-10b/candidate-6de-focused.xml.gz.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "e09e27a22733efc09299055943b7c2bed75399dadb516345590dea446eda25f6"
+    },
+    {
+      "bytes": 66,
+      "decompressed_bytes": 112,
+      "decompressed_sha256": "df4c00de0cdd7a06d743ee85b053bef8701525eb47b55c41e01f2b5c9b88c483",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/candidate-6de-scoped-unchanged-pair.txt",
+      "path": "historical-10b/candidate-6de-scoped-unchanged-pair.txt.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "ab6a980e9cbc3708214b5d27eb4f3154b8af967f07ea2cb5549a621a71f6851f"
+    },
+    {
+      "bytes": 336,
+      "decompressed_bytes": 750,
+      "decompressed_sha256": "14d64964e9a44d8a8b43c40ffc1a61a4e212db0630c480fee9ff961fd0ee8001",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/candidate-6de-scoped-unchanged-pair.xml",
+      "path": "historical-10b/candidate-6de-scoped-unchanged-pair.xml.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "59a09a26b9e4f7c01521949fe249cda0531c8a9712834270a892a61c2013ed61"
+    },
+    {
+      "bytes": 3180,
+      "decompressed_bytes": 3157,
+      "decompressed_sha256": "83ea53bd4db0546b06a0d77bbc90171f15536afa05d552fac5cc42dfa3c03720",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/ci-doc-integration-inventory.json.gz",
+      "path": "historical-10b/ci-doc-integration-inventory.json.gz.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "c037d209a7409c00d585803f3d42df1639aeac1138873d0f9d877d64cb6d7e95"
+    },
+    {
+      "bytes": 1495,
+      "decompressed_bytes": 1472,
+      "decompressed_sha256": "c01986b583830d6d31a14b76840f1638eca5ec5edfd907d15865024fbb751df9",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/data-quality6fbd-root-review.json.gz",
+      "path": "historical-10b/data-quality6fbd-root-review.json.gz.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "2920a15b414de149d6f5f11756bfbd5fca909a03f16b9b4684404e1709961db0"
+    },
+    {
+      "bytes": 2146,
+      "decompressed_bytes": 2123,
+      "decompressed_sha256": "1f7fd47b1b451e07c4e489d3c2bcb337da4010cf23e0271b48db1948d6272ce0",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/disposition-audit.json.gz",
+      "path": "historical-10b/disposition-audit.json.gz.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "658687657977dadeb4c052450d97ee4f3e6478e9d1b8baedeef9848d9eabeb0b"
+    },
+    {
+      "bytes": 305,
+      "decompressed_bytes": 500,
+      "decompressed_sha256": "d63122da5a301693c4b0dd6ec79f225bdace6f5bac9149511b0a790c986af9ef",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/formatting-ast-parity.json",
+      "path": "historical-10b/formatting-ast-parity.json.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "ab49a6e49cb9528ef2add2634d1bf4fc88651cad052be6477a22955ab8e01541"
+    },
+    {
+      "bytes": 3081,
+      "decompressed_bytes": 3058,
+      "decompressed_sha256": "03fd19618af6005387b995c55b0b6836b5ab158d642c9f377b5a447fc0e60e48",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/functional-before-format.patch.gz",
+      "path": "historical-10b/functional-before-format.patch.gz.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "34b659e500643c6e6a4e23680518491fafa473a8984b9dd4761e32f8f5980258"
+    },
+    {
+      "bytes": 234,
+      "decompressed_bytes": 336,
+      "decompressed_sha256": "2e883c0a5082dd44d04f27c17952c82201123d8db640ab962686c2d51179568d",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/label-6fb-frozen-focused.txt",
+      "path": "historical-10b/label-6fb-frozen-focused.txt.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "4f897614a18b520ebd06b29b1f13ef8bae7ccfbb2ed11199ee6f66834bd75167"
+    },
+    {
+      "bytes": 1388,
+      "decompressed_bytes": 1365,
+      "decompressed_sha256": "6c752b840a96e7f476673381e4330c5aafab0f431f9b151e086da3f1f89adf0f",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/label-6fb-frozen-focused.xml.gz",
+      "path": "historical-10b/label-6fb-frozen-focused.xml.gz.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "680f1a2799ee100091a5133d495761ec47b2765fed1b8f594fb8fc3affd0c43b"
+    },
+    {
+      "bytes": 66,
+      "decompressed_bytes": 112,
+      "decompressed_sha256": "dd00824c969d406290b8719517acb8bd01863c1f8e96b3f1fd299d907656cfa8",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/label-6fb-frozen-original-pair.txt",
+      "path": "historical-10b/label-6fb-frozen-original-pair.txt.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "5483905faa0c87fb3cb0c1706d7fabc8b67cfc57d067cd6f175264c6ea19c447"
+    },
+    {
+      "bytes": 335,
+      "decompressed_bytes": 750,
+      "decompressed_sha256": "c3dea837abf73780d3d4e7566b19a488d445dbf269284d12f460c13381f041ea",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/label-6fb-frozen-original-pair.xml",
+      "path": "historical-10b/label-6fb-frozen-original-pair.xml.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "101fed35d2fe930962a235b876962c45f14cbd022af90295a630c754cc93a5df"
+    },
+    {
+      "bytes": 52,
+      "decompressed_bytes": 98,
+      "decompressed_sha256": "4250d1f2029068ddc50a143f438d48c0e151e05c734fe713ffea94436ecf9381",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/label-6fb-frozen.txt",
+      "path": "historical-10b/label-6fb-frozen.txt.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "a48deb18b2fd6d65eb7cd1197593c717a3ec49ac2772e96483b98c6bd584ced2"
+    },
+    {
+      "bytes": 313,
+      "decompressed_bytes": 828,
+      "decompressed_sha256": "36c1cccfe33d5a1d4f852ce01c422391c2a06e08190304b8117303082e158d30",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/label-6fb-frozen.xml",
+      "path": "historical-10b/label-6fb-frozen.xml.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "5bca4c90991441361fca8b18041109f0b1c3d99cc466ab39171f3243ec55865b"
+    },
+    {
+      "bytes": 2024,
+      "decompressed_bytes": 2001,
+      "decompressed_sha256": "2e5cc75a72811e83815cb12eb232dc81c7c2b40983568ba8ed211cfb8c129b13",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/label-followup-author-packet.json.gz",
+      "path": "historical-10b/label-followup-author-packet.json.gz.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "a736233881664aee81dda6c853d9a09981375d979f17f9ccb8b72cd49f4e206b"
+    },
+    {
+      "bytes": 1320,
+      "decompressed_bytes": 1297,
+      "decompressed_sha256": "4e5324e9cd1322317c2dd5124e739db6aa8091e38c4976006662e206b6cd5dfe",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/main-b52-residuals.txt.gz",
+      "path": "historical-10b/main-b52-residuals.txt.gz.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "87d2f003617c9766215a67ecac832f54810e0dee8dd41bee3c455cc5f5b69981"
+    },
+    {
+      "bytes": 1476,
+      "decompressed_bytes": 1453,
+      "decompressed_sha256": "f8fc52084156dc25f11f1f6ff6b5e6e6c137933aff9d928248ec6723dcd520f8",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/main-b52-residuals.xml.gz",
+      "path": "historical-10b/main-b52-residuals.xml.gz.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "677c48317832a4150ccc8325332502b6600126eba43f33a7ba65ea8c21e14a0b"
+    },
+    {
+      "bytes": 2934,
+      "decompressed_bytes": 12816,
+      "decompressed_sha256": "05ffb82d77c2f4a753eb1703fc03ed3417ebfd1bda9c126694f0393506dccc74",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/manifest.json",
+      "path": "historical-10b/manifest.json.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "2e0e4f61d1c01b7354cba5a06e22e68b43bdd7a003596dadac3b5c484291927a"
+    },
+    {
+      "bytes": 51,
+      "decompressed_bytes": 98,
+      "decompressed_sha256": "3f9154a76cc58f1b28c1e8acf5c51dc2f0a25ce073b847f0d80b5593920e7633",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/pr1853-safe-reuse.txt",
+      "path": "historical-10b/pr1853-safe-reuse.txt.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "4a62e1fbab190a166f08613c9231ba01efefa0e2fdb3efa227676a49e35c96dd"
+    },
+    {
+      "bytes": 374,
+      "decompressed_bytes": 872,
+      "decompressed_sha256": "2ede03685552686475197d34e38c37cd1e381abdcc2feb1c5bf8ea6a5724f81b",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/pr1853-safe-reuse.xml",
+      "path": "historical-10b/pr1853-safe-reuse.xml.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "05ed3eb59c474ce6ebe1c8f25c40dbe921a95b1816400dd4da69864525518ef8"
+    },
+    {
+      "bytes": 1385,
+      "decompressed_bytes": 1362,
+      "decompressed_sha256": "bf2d33251fca9875ac3c98a9987710892011a3cf4497b22fa1565b56fe148371",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/root-6fbd-focused.xml.gz",
+      "path": "historical-10b/root-6fbd-focused.xml.gz.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "d76c7e5f3f7098adadfd6ce085b962ca64f90104545b49565db2580e40b1cf97"
+    },
+    {
+      "bytes": 313,
+      "decompressed_bytes": 828,
+      "decompressed_sha256": "976f554e51ea2aa5c4b713de09e0623405f7c0f923366e40a01389f9a97f2456",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/root-6fbd-label-green.xml",
+      "path": "historical-10b/root-6fbd-label-green.xml.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "93bb08eafcf8a22986eadd3893cc354cb55e556454c2d70d4eee89ba70a5d180"
+    },
+    {
+      "bytes": 339,
+      "decompressed_bytes": 750,
+      "decompressed_sha256": "269019e888588511e7ccc34c0ef6fb5a1493470f4f5a74c0da53fd27c724b4e6",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/root-6fbd-original-green.xml",
+      "path": "historical-10b/root-6fbd-original-green.xml.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "78d4ec8b7f6678018c243a7061b5b82e84a4e67e5dc8a3419d40ea77c081fe07"
+    },
+    {
+      "bytes": 656,
+      "decompressed_bytes": 2503,
+      "decompressed_sha256": "c80cdce9101e50eb04a9277eef582bf82ed0e28216bc5f7d2ac033b575dbfbce",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/root-label-6de-red.xml",
+      "path": "historical-10b/root-label-6de-red.xml.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "5cbed69e898f683ef9538eb86bd0316066a964d089a5e4af81384bf60977de27"
+    },
+    {
+      "bytes": 1778,
+      "decompressed_bytes": 1755,
+      "decompressed_sha256": "87e48b5092de55c8599cc6c7cb94467b8377a395a1da6c204b267fe2b068f0f3",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/test_data_quality_residuals.py.gz",
+      "path": "historical-10b/test_data_quality_residuals.py.gz.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "e7e44c2a5d9f5913827fa83641d7e5e951ab8e2ab5ee94d96dd0561d56c8bd88"
+    },
+    {
+      "bytes": 657,
+      "decompressed_bytes": 1423,
+      "decompressed_sha256": "53d8266bb29700c586df433558abc9639f051d1dfaf50bd09588d72d749bb5c2",
+      "kind": "exact_prior_commit_artifact_bytes",
+      "original": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68:docs/implementation/n8n-maturity/campaign-20261018/data-quality/test_label_consistency_root.py",
+      "path": "historical-10b/test_label_consistency_root.py.gz",
+      "prior_manifest_originals_verified": true,
+      "sha256": "df03e94c15817aa230f1b371f309abdde75e48673c49700f8afefc55f266a7e7"
+    },
+    {
+      "bytes": 684,
+      "decompressed_bytes": 1847,
+      "decompressed_sha256": "2b5a5fb328834a45901df7463cd613eb311a31f17e6cd4674d8e7c14eca61183",
+      "kind": "historical_native_at_10b_only",
+      "original": "/tmp/n8n-campaign-20261018/reader-dq-native-hostbuild-20261018/data-quality-10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68-result.json",
+      "path": "historical-10b-native/data-quality-10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68-result.json.gz",
+      "sha256": "909068de4f2b7cc01708988da49b6eb451a469a4088d71a180f8da9d40724049"
+    },
+    {
+      "bytes": 422,
+      "decompressed_bytes": 596,
+      "decompressed_sha256": "3e9e1a12c8da7bbecdf12ded8b079b81f45ef7cc1d2f0f7f65313adc6e9be996",
+      "kind": "historical_native_at_10b_only",
+      "original": "/tmp/n8n-campaign-20261018/reader-dq-native-hostbuild-20261018/data-quality-acquire-intent.json",
+      "path": "historical-10b-native/data-quality-acquire-intent.json.gz",
+      "sha256": "3dc7b32adcf52828bc4c3b3bd6530c2196d4d22386c89ee20ebefbd993a7bd25"
+    },
+    {
+      "bytes": 366,
+      "decompressed_bytes": 486,
+      "decompressed_sha256": "bd2d90a0c543d585191912302339dc236e247785de943323a3e738d461a9816b",
+      "kind": "historical_native_at_10b_only",
+      "original": "/tmp/n8n-campaign-20261018/reader-dq-native-hostbuild-20261018/data-quality-lease-invocation.json",
+      "path": "historical-10b-native/data-quality-lease-invocation.json.gz",
+      "sha256": "d8dc550b500b1724264236e1c043fb401741f4012b04f59566c231ca4fe68601"
+    },
+    {
+      "bytes": 381,
+      "decompressed_bytes": 595,
+      "decompressed_sha256": "42e4e041a8b21b244032544151def2efe4a99716a6527e47e76bce62175a5a1a",
+      "kind": "historical_native_at_10b_only",
+      "original": "/tmp/n8n-campaign-20261018/reader-dq-native-hostbuild-20261018/data-quality-native-result.json",
+      "path": "historical-10b-native/data-quality-native-result.json.gz",
+      "sha256": "9b70ffa43788927e42ee21f2292c7381a3fbcddc75d657c205ab0b638479631b"
+    },
+    {
+      "bytes": 200,
+      "decompressed_bytes": 247,
+      "decompressed_sha256": "5f2e465d088d32f8e9477a3648323a67cbb9bccddfb92b192bffbab278cbae05",
+      "kind": "historical_native_at_10b_only",
+      "original": "/tmp/n8n-campaign-20261018/reader-dq-native-hostbuild-20261018/data-quality-native-started.json",
+      "path": "historical-10b-native/data-quality-native-started.json.gz",
+      "sha256": "430589fb066b1b0d365bbf30d7ff24cbc7b8736fbbb049685e92d718e2f8a729"
+    },
+    {
+      "bytes": 12732,
+      "decompressed_bytes": 46508,
+      "decompressed_sha256": "f13eb2cc6ba8334964599b05df075a2bd8c19172a752cb39f930e53912b5bf92",
+      "kind": "historical_native_at_10b_only",
+      "original": "/tmp/n8n-campaign-20261018/reader-dq-native-hostbuild-20261018/data-quality-native.log",
+      "path": "historical-10b-native/data-quality-native.log.gz",
+      "sha256": "49fec088a696e94c1eb14e5b529f98f2b19fe5bd50969f96641c2e5179ea48ef"
+    },
+    {
+      "bytes": 1153,
+      "decompressed_bytes": 3470,
+      "decompressed_sha256": "481e223afbcc27f19cdbe2a855bb83c352f8ec11ca6ecc7d8fb8a0bacc0f4fc3",
+      "kind": "historical_native_at_10b_only",
+      "original": "/tmp/n8n-campaign-20261018/reader-dq-native-hostbuild-20261018/data-quality-session.json",
+      "path": "historical-10b-native/data-quality-session.json.gz",
+      "sha256": "371efc109758d37c04c4002816d2e6e36afc02deaa8c3006f3ce8870b75169f3"
+    },
+    {
+      "bytes": 8187,
+      "decompressed_bytes": 28751,
+      "decompressed_sha256": "95235d97098845d4a8c8fa875ca1674123bd1f55dcefbd155ffb236d3aee3b35",
+      "kind": "historical_native_wrapper_source_not_executed",
+      "original": "/tmp/n8n-campaign-20261018/run_reader_dq_acceptance_20261018.py",
+      "path": "historical-10b-native/run_reader_dq_acceptance_20261018.py.gz",
+      "sha256": "28269a31025c6c6555154b00ca8ebafb9a23e0e850102a7d9b6561d1c8e6ab7c"
+    },
+    {
+      "bytes": 2594,
+      "decompressed_bytes": 5834,
+      "decompressed_sha256": "7112844436ece396c1955414b9c81b04ddb51ee2bd7aeb2e10aa4f12fafaa567",
+      "kind": "historical_native_wrapper_independent_review",
+      "original": "/tmp/n8n-campaign-20261018/cross-review/reader-dq-wrapper952-review.json",
+      "path": "historical-10b-native/reader-dq-wrapper952-review.json.gz",
+      "sha256": "47c38417abe706371cd71a7fd3808f1db141a85013ffd1719b51d6c3787d0f93"
+    },
+    {
+      "bytes": 751,
+      "decompressed_bytes": 1654,
+      "decompressed_sha256": "adbb51914e71fa30e36e5172f1bad63c8d04216c6068b12132921a9336354856",
+      "kind": "new_base_focused_integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/dq-fresh-main-integration-base.json",
+      "path": "integration/dq-fresh-main-integration-base.json.gz",
+      "sha256": "5cbf2bf9be07dd38612adecb3efe4d8446cff202fde0712b2411b8e933ce02c8"
+    },
+    {
+      "bytes": 241,
+      "decompressed_bytes": 348,
+      "decompressed_sha256": "885b69322f14e94f9f3b9625158f45691e2b16e8a315a105c280d53370dd7db4",
+      "kind": "new_base_focused_integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/dq-fresh-main-integration-focused.log",
+      "path": "integration/dq-fresh-main-integration-focused.log.gz",
+      "sha256": "4bd20b1c089312d194b7ab43a220031d0053525d223b8517f64eaa97408716b2"
+    },
+    {
+      "bytes": 1406,
+      "decompressed_bytes": 11143,
+      "decompressed_sha256": "53f5127b19727a6f86eca43afc6d4dae29e0577afc278688fab21c43842dd0f2",
+      "kind": "new_base_focused_integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/dq-fresh-main-integration-focused.xml",
+      "path": "integration/dq-fresh-main-integration-focused.xml.gz",
+      "sha256": "2973993735af84c44c609b21b79cc9f5b4faa6538b6284d4be90b61c968ca664"
+    },
+    {
+      "bytes": 65,
+      "decompressed_bytes": 112,
+      "decompressed_sha256": "a9d3d9e8e074727600f60f6d40e5ff5d0483867f6bb549a8b358689a02018ec6",
+      "kind": "new_base_focused_integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/dq-fresh-main-integration-frozen-pairs.log",
+      "path": "integration/dq-fresh-main-integration-frozen-pairs.log.gz",
+      "sha256": "4ede6c6aa3a70979590bffb075fc89052375e90c0e6a78199a2c10eae56a62b4"
+    },
+    {
+      "bytes": 446,
+      "decompressed_bytes": 1329,
+      "decompressed_sha256": "243f25f5447b2a73115ffbb489de8a92267537287028a9eacaa9a871c26fd99e",
+      "kind": "new_base_focused_integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/dq-fresh-main-integration-frozen-pairs.xml",
+      "path": "integration/dq-fresh-main-integration-frozen-pairs.xml.gz",
+      "sha256": "67b8128ea6081342f65d4782be0ec796a2a07e26a38d00b624664f6d1d0048f9"
+    },
+    {
+      "bytes": 39,
+      "decompressed_bytes": 19,
+      "decompressed_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "kind": "new_base_focused_integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/dq-fresh-main-integration-ruff-check.log",
+      "path": "integration/dq-fresh-main-integration-ruff-check.log.gz",
+      "sha256": "f3af4d142827f5aad2eb0c72d556d325488a57fb6219aac10afeb51085667d53"
+    },
+    {
+      "bytes": 46,
+      "decompressed_bytes": 26,
+      "decompressed_sha256": "f114d83b30c5c657ee43a847a45bafccaea255d82673feb87c26d252c61e29c1",
+      "kind": "new_base_focused_integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/dq-fresh-main-integration-ruff-format.log",
+      "path": "integration/dq-fresh-main-integration-ruff-format.log.gz",
+      "sha256": "93adb7412eb9635fee4387257d796f293b46413ac45d3a10258f5ef54a693dfd"
+    },
+    {
+      "bytes": 1399,
+      "decompressed_bytes": 5743,
+      "decompressed_sha256": "031ccb1d1b07bffe0346233f6ac63441a92ff03179c8ba0b404243f36a57c5f9",
+      "kind": "new_base_focused_integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/dq-fresh-main-integration-selection.json",
+      "path": "integration/dq-fresh-main-integration-selection.json.gz",
+      "sha256": "f1477c2baaf35242282d313b358b90a85325e5536b75650cbcebb04247fc8b58"
+    },
+    {
+      "bytes": 177,
+      "decompressed_bytes": 205,
+      "decompressed_sha256": "a57f78bd74ac4a7cfe6433dd6b1e88364f2becdfd46786a777b72fa0461c7474",
+      "kind": "new_base_focused_integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/dq-fresh-main-integration-selection.log",
+      "path": "integration/dq-fresh-main-integration-selection.log.gz",
+      "sha256": "dbcb9ecbbe9c656d0dc2b55e08212383025730df432d21a5865b5bde120f49ff"
+    },
+    {
+      "bytes": 1252,
+      "decompressed_bytes": 3931,
+      "decompressed_sha256": "153e9a04427b2c317b96001c9acf8870f7303c6f30d791274d29e1b1579fcec0",
+      "kind": "new_base_focused_integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/dq-fresh-main-integration-session.json",
+      "path": "integration/dq-fresh-main-integration-session.json.gz",
+      "sha256": "fa0b7563a7097a18d3af1e24936f88b226464dab306ce947a388049e86fadd49"
+    },
+    {
+      "bytes": 686,
+      "decompressed_bytes": 1445,
+      "decompressed_sha256": "d8914c9221284645b87bc887cb5edb7462a2b1874509b3c8ca5f23c016d5b086",
+      "kind": "new_base_focused_integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/dq-fresh-main-integration-source-gate.json",
+      "path": "integration/dq-fresh-main-integration-source-gate.json.gz",
+      "sha256": "296b9e7769880a0b55531b804358dcecef9c9d2a588ac2f39bf85b6789666f96"
+    },
+    {
+      "bytes": 932,
+      "decompressed_bytes": 1971,
+      "decompressed_sha256": "1824bc53603ac55a065ab2bbf945da68c8c0cec676fdb94f023001fa98d0ffa9",
+      "kind": "new_base_focused_integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/dq-fresh-main-integration-validation.json",
+      "path": "integration/dq-fresh-main-integration-validation.json.gz",
+      "sha256": "b9a953b5f9aad739b438e365a472484d5bc1d25983643ce6ecca0cb7445f2bc8"
+    }
+  ],
+  "base_sha": "6f73d41442bab01c530022c61c9897da893a16de",
+  "compatibility": {
+    "actual_shared_verdict": "analyst_recom_guard invokes original _classify_recom; parser/cache/replay semantic owner shared; financial mapping thresholds unchanged",
+    "database_adapter": "Pure row builder keeps existing SQLtuple/target values; fake transaction receipts distinguish prepared from committed/unknown; no liveSQL or oldrow cleanup",
+    "supported_legacy": "Validlegacyrawlabel/numeric records preserved when consistent; unknown raw fields/provenance retained; malformed/offscale/percent/nonfinite/contradictory derived values withheld rather than coerced tozero"
+  },
+  "historical_evidence": {
+    "all_prior_stored_and_original_digests_verified": true,
+    "archived_README": "Historical10bREADME exactbytes retained asgzip; not a new current-status Markdown or sourceapproval.",
+    "preserved_failure_meanings": [
+      "Original3assertionreds+2controls include heldAPIcase; scopedimplementedpair2assertionreds+2controls ->same4green.",
+      "Original6de contradictory-label pair2AssertionErrors+2validcontrols retained; corrected6fb same4green; earlierauthorpacket notrewritten.",
+      "PR1853safehunks proof and oldsource disposition remain historical reuse only."
+    ],
+    "prior_artifact_count": 31,
+    "prior_manifest": "historical-10b/manifest.json.gz"
+  },
+  "historical_native": {
+    "head": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68",
+    "log_verified": true,
+    "new_candidate_acceptance": false,
+    "passed_at_that_head": true,
+    "receipt": "historical-10b-native/data-quality-10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68-result.json.gz"
+  },
+  "holds": [
+    "APIemptyvote detail/symbolcard consumer is not implemented by these4paths; remains separate held work.",
+    "Existing stored historical SQL/advisory/report rows remain unremediated; no destructive cleanup/quarantine/write authorized.",
+    "Numeric plausibility is not provider identity/freshness/coverage proof; fresh-source and dependency chains remain unproven.",
+    "No financial ranking/sizing/stop/target/portfolio formula, broker state, provider ingestion/send or authority policy changes.",
+    "No INDEX/newMarkdown/generated edits; new-head fullnative/hostedCI, review/merge/release/runtime activation remain separate."
+  ],
+  "reviewed_source_sha": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68",
+  "schema": "DqFreshMainScopedIntegration@v1",
+  "scope": "Scoped source-only applicable nonfinancial data-quality extraction; never wholePR1853 merge. NewCIregistration and lossless historical evidence only.",
+  "semantic_source_sha": "6fbdad88f37f02b024b0556ba6370add3a886f1e",
+  "source_parity": [
+    {
+      "byte_exact_to_10b_and_6fb": true,
+      "path": "scripts/db_adapter.py",
+      "sha256": "3f6ba12ba94261e78bc53971c740e19c0c0bf578355363a08fadd00378620654"
+    },
+    {
+      "byte_exact_to_10b_and_6fb": true,
+      "path": "scripts/finviz_enrichment.py",
+      "sha256": "67d3a919b1c4985f206184274e5e84f4c55a4315f9f1cad8c865002867794dd1"
+    },
+    {
+      "byte_exact_to_10b_and_6fb": true,
+      "path": "scripts/lib/analyst_recom_guard.py",
+      "sha256": "bdb7a152f75ae2243a9f01a07f253ee30d7774b9d7ff2d76bb1f0c113a7ed2a8"
+    },
+    {
+      "byte_exact_to_10b_and_6fb": true,
+      "path": "tests/test_analyst_recom_data_quality_20261018.py",
+      "sha256": "9ed6e8242f8de1e195ff2aa06d63b25f62dddf11ba385b8ae485a6bebc12db20"
+    }
+  ],
+  "status": "LOCAL_FOCUSED_TESTED_PENDING_INDEPENDENT_INTEGRATION_REVIEW_AND_NEW_HEAD_ACCEPTANCE",
+  "validation": {
+    "actual_PR_selector": "new gate selected; no gates deferred; CLI selection only, no suites executed by selector",
+    "base_sha": "6f73d41442bab01c530022c61c9897da893a16de",
+    "commands": [
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-q",
+          "-p",
+          "no:cacheprovider",
+          "tests/test_analyst_recom_data_quality_20261018.py",
+          "tests/test_finviz_recom_plausibility_20260913.py",
+          "tests/test_finviz_enrichment_default_universe.py"
+        ],
+        "exit": 0
+      },
+      {
+        "DQ_SOURCE_ROOT": "/home/johnclaw/tradeai-wt-n8n-data-quality-main-integration-20261019",
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-q",
+          "-p",
+          "no:cacheprovider",
+          "/tmp/n8n-campaign-20261018/data-quality/test_data_quality_residuals.py",
+          "/tmp/n8n-campaign-20261018/data-quality/test_label_consistency_root.py",
+          "-k",
+          "not empty_vote_payload"
+        ],
+        "exit": 0
+      }
+    ],
+    "focused": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 72
+    },
+    "frozen_pair_scope": "Originalcache/replay4+label4 passed unchanged. One historicalAPIemptyvote test explicitlydeselected because APIconsumer remainsoutofscope; no full9case closure claimed.",
+    "frozen_scoped_pairs": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 8
+    },
+    "guarded_effects": "Existing default-universe tests can attempt configuredSQL reads; repository hermetic guard refuses liveDSNs beforelibpq. No liveDBconnection, ingestion, broker/provider call or credentials read. Other test effects fake/temp.",
+    "new_head_full_native_run": false,
+    "quality": {
+      "git_diff_check": 0,
+      "ruff_check": 0,
+      "ruff_format_check": 0
+    },
+    "reviewed_source_sha": "10bfe5ba5cc9bf76acee8163a54cdb2cb31acb68",
+    "schema": "DqFreshMainIntegrationValidation@v1",
+    "source_blobs": "four byte-identical approved10b/6fb files; no semantic edits"
+  }
+}
