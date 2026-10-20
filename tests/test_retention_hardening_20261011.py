@@ -44,6 +44,8 @@ def isolated_retention_sources(tmp_path, monkeypatch):
     (source / "scripts").mkdir(parents=True)
     dotenv = source / ".env"
     dotenv.write_text("")
+    # The host shell may export DB_PASSWORD; the check is that db_retention never SETS it.
+    monkeypatch.delenv("DB_PASSWORD", raising=False)
     assert "DB_PASSWORD" not in os.environ
     reads = []
     read_text = Path.read_text

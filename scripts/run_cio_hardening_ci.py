@@ -120,6 +120,12 @@ GATES = [
     # touches, per-class fingerprints, digest routing; llm_curation deferred (no Ollama); both monitors as n8n canary
     # lanes (dry live_arg first) with REVIEWED contracts, LaneRunReceipt@v2 and the operator packet. Hermetic.
     ("data_integrity_fixes_20261018", ["tests/test_data_integrity_fixes_20261018.py"]),
+    # ANCHOR: TEST_ENV_REDACTION_20261020 — a failing `assert "DB_PASSWORD" not in os.environ` printed the whole host
+    # environment (live broker secrets) into a CI log. tests/conftest.py pytest_assertrepr_compare explains any
+    # comparison with os.environ by name only; the two retention fixtures clear an inherited DB_PASSWORD first.
+    # Hermetic: inner pytest runs with a minimal env and a canary value.
+    ("test_env_redaction_20261020", ["tests/test_env_redaction_20261020.py", "tests/test_retention_registry_20261007.py",
+                                     "tests/test_retention_hardening_20261011.py"]),
     # ANCHOR: ANALYST_FEED_STALE_20261020 — Communications "Analysts" fact showed 87-day-old Street targets: the
     # pro_analyst_fetch universe (~2,340, mostly directive-watch) was an unordered DISTINCT cut at --max 250 with held
     # positions appended last, so the same ~250 refetched daily and NVDA/PFLT/SPCX sat at 2026-07-25. prioritize():
