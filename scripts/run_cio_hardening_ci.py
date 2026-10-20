@@ -2675,6 +2675,10 @@ GATES = [
         [
             "tests/test_cio_entry_state_20260915.py",
             "tests/test_cio_entry_state_alarm_fires_20260915.py",
+            "tests/test_cio_entry_card_pipeline_20261019.py",
+            "tests/test_cio_entry_card_projection_20261019.py",
+            "tests/test_entry_card_price_basis_truth_20261019.py",
+            "tests/test_entry_card_main_compatibility_20261020.py",
             # 2026-09-24 operator "build options": BUY_READY packet = per-unit options
             # alternatives + portfolio facts + validated CIO review; wake subject bound.
             "tests/test_buy_ready_options_20260924.py",
