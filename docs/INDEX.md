@@ -1465,6 +1465,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/WAVE_B_CC_ORCHESTRATE_2026-10-11.md` | Wave B — CC orchestrate (research-intake + watch-refresh) | review_required | OK | `67cb1506248f` |
 | `docs/implementation/n8n-maturity/WAVE_C_HEAVY_JOBS_2026-10-11.md` | Wave C — heavy CC jobs (advisory / analyst / brief / legacy Run) | review_required | OK | `b487224d891b` |
 | `docs/implementation/n8n-maturity/campaign-20261018/README.md` | n8n operational maturity campaign — 2026-10-18 | review_required | OK | `4bdd12e24da0` |
+| `docs/implementation/n8n-maturity/campaign-20261018/cc-truth/README.md` | Truthful CC observations — October 18, 2026 | review_required | MISSING HEADER | `9dd8db747121` |
 | `docs/implementation/n8n-maturity/campaign-20261018/checkpoint-20261018T2351Z.md` | Campaign checkpoint after release rejection and evidence merge | review_required | OK | `47c15565d38c` |
 | `docs/implementation/n8n-maturity/campaign-20261018/contracts-enforcement/README.md` | Gateway admission and output evidence enforcement | review_required | OK | `f239f9b6cfa2` |
 | `docs/implementation/n8n-maturity/campaign-20261018/feedback-source-hold/README.md` | Preserve the held Hermes feedback stage | review_required | OK | `a6f09db62db3` |
