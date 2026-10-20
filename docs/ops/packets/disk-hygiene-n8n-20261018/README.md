@@ -1,5 +1,14 @@
 # Disk hygiene + disk-usage monitor on n8n (PR #1863)
 
+```
+Status:      LIVE 2026-10-20 — disk-usage-monitor, disk-hygiene (--plan) and tmp-hygiene (--plan) added to
+             TRADEAI_N8N_RELAY_LIVE_LANES 09:58:37 ET (backup n8n-live-lanes.env.bak-20261020T135837Z-disk-hygiene-n8n-live).
+             Evidence: disk-usage-monitor_last.json run d:disk-usage-monitor:live:20261020T1430 (code_sha f6f56e365,
+             produced_count 2). disk-hygiene first live slot Sun 2026-10-25 04:00 ET and tmp-hygiene 2026-10-21 05:00 ET:
+             PENDING. Neither lane deletes anything. Summary: docs/ops/LIVE_CHANGES_20261020.md §3
+as_of:       2026-10-20
+```
+
 Operator 2026-10-18: "a script with rules that's repeatable, n8n should run this weekly; and also monitor when a
 threshold is over 80%". Operator 2026-10-19: keep the weekly lane on `--plan` (manifest), not `--dry-run`.
 

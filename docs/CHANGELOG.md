@@ -1,8 +1,45 @@
 # Changelog
 
 Status:      ACTIVE
-as_of:       2026-09-23T10:00:00-04:00
-Measured at: 88eddef0e (origin/main = release CURRENT = dev tree) + fix/watchlist-directive-union
+as_of:       2026-10-20T14:40:00-04:00
+Measured at: origin/main 1d00a5181 / served CURRENT f6f56e365 (latest entry); each entry carries its own measurement
+
+## 2026-10-20 — Analyst feed order, plausibility writers, comms reservations, notifier settlement, five n8n lanes live
+
+Full record with status and evidence: `docs/ops/LIVE_CHANGES_20261020.md`. Releases promoted: `720fce06c` 08:58 ET,
+`f6f56e365` 12:52 ET (served). `1d00a5181` (#1883–#1885) is pending promotion.
+
+- **Analyst feed (#1882, LIVE).** Communications cards showed analyst targets up to 87 days stale. `pro_analyst_fetch.py
+  --max 250` (06:10) took the first 250 rows of an unordered `SELECT DISTINCT` over about 2,340 symbols, with held
+  positions appended last, so it fetched the same symbols every day. `prioritize()` now orders the batch: held, then
+  actionable (paper trades in 30 d, PENDING/APPROVED proposals, today's GO/WAIT scans, active watchlist), then
+  directive-watch oldest fetch first, then never-fetched directive symbols in a per-day hash rotation, and last
+  anything fetched within `DUE_AFTER_HOURS` = 20. The cap, schedule, table and output are unchanged. The dry run adds
+  `held_in_batch`, `actionable_in_batch`, `directive_in_batch`, `oldest_fetch_in_batch` and
+  `never_fetched_in_batch`. Gate `analyst_feed_stale_20261020`.
+- **Tests never print the environment (#1883, test-only).** `tests/conftest.py` `pytest_assertrepr_compare` explains
+  any comparison that has `os.environ` as an operand by name only ("os.environ contents redacted"). Before,
+  `assert "DB_PASSWORD" not in os.environ` failing on the host rendered every exported secret into the log. Gate
+  `test_env_redaction_20261020`.
+- **Plausibility BLOCK writers (#1884, merged, not yet served).** `scalp_critic_agent.validate_catalyst` clamps
+  `catalyst_confidence` to [0, 1]. It reached 1.1/1.2, and the relevance threshold of 0.3 is unchanged. The
+  `/api/v2/indicators/batch` upsert now refreshes every scalar column on conflict (signals, badges, `key_levels`,
+  `stop_price`, `target_price`, `atr`, `adx_regime`, `entry_quality`), matching `indicator_universe_lane.UPSERT_SQL`.
+  `etf_performance_enrich` selects targets `ORDER BY perf_updated_at ASC NULLS FIRST`, so the 300 cap no longer
+  starves the alphabetical tail. Existing rows wait for the archive-first correction after the deploy. Gate
+  `data_plausibility_four_20261020`.
+- **Comms (#1866 N1–N3 LIVE; #1885 merged, not yet served).** The notifier sends SETTLED rather than RECOVERED unless the
+  validator proves output. The Telegram provider id is explicit. There is a delivery-summary API and a hub strip.
+  Reservations are made only for OUTBOUND events with an explicit channel, and an opt-in stale-reservation reaper was
+  added (`comms_lifecycle.py --steps reservations`, not in the hourly defaults). Docs:
+  `docs/ALERT_INCIDENT_RESOLUTION.md`, `docs/ops/COMMS_HUB_2026-10-07.md`, `docs/runbooks/DB_RETENTION.md`.
+- **n8n relay live list +5.** `disk-usage-monitor`, `disk-hygiene` (`--plan`), `tmp-hygiene` (`--plan`),
+  `active-trader-motion-watchdog` and `registry-runtime-truth` were added. The Active Trader motion unit was installed
+  with the `/etc/tradeai` marker path and started 10:00 ET (operator `--force-open-hours`); proof PASS. Packets:
+  `docs/ops/packets/{disk-hygiene-n8n-20261018,active-trader-motion-n8n-20261019,registry-runtime-truth-20261018}/`.
+- **Operator remediations (archive-first, `archive/db_trim/TRIPWIRE.jsonl`).** 531 empty `analyst_data_history` rows
+  were archived (`20261020T165931Z`). 205 stuck `communication_deliveries` were settled (`20261020T173035Z`:
+  CANCELLED 150, SUPPRESSED 52, SENT 3).
 
 ## 2026-09-26 — Options desk: thesis bar, CIO review, Schwab Validate, income screen, truthful cards, Aegis lanes
 

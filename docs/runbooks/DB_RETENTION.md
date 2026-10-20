@@ -86,6 +86,14 @@ A P1 or P2 finding also makes the hygiene lane exit 1.
 - `tripwire files`: `archive/db_trim/TRIPWIRE.jsonl`, 46 records, 0 unreadable.
 - Findings: **0**.
 
+**Update 2026-10-20: two operator db_trim-convention records.** Both are archive-first and recorded in
+`archive/db_trim/TRIPWIRE.jsonl`. Detail is in `docs/ops/LIVE_CHANGES_20261020.md` §4.
+- `20261020T165931Z`, `kind rows`: 531 empty-payload `analyst_data_history` rows (`as_of >= 2026-10-18`, written
+  by pre-fix dev-checkout code), archived to `db_trim/20261020T165931Z/rows_analyst_data_history.jsonl.gz`.
+- `20261020T173035Z`, `kind rows_settled`: 205 stuck `communication_deliveries` reservations were settled, not
+  deleted: CANCELLED 150, SUPPRESSED 52, SENT 3. The pre-image is archived to
+  `db_trim/20261020T173035Z/rows_communication_deliveries_stuck.jsonl.gz`.
+
 ## 3. `archive_first` on DELETE rows (all of them now)
 
 Each DELETE row carries `archive_first`. When it is `true`, the row goes through the same path as
@@ -280,7 +288,7 @@ rendering of it.
 | `prune_protection_proposals_retention.py` | `run_protection_pipeline.sh`, cron every 30 min | `paper_protection_adjustment_proposals` SUPERSEDED >30 d | archive-first | MANAGED |
 | `research_critique_pipeline.retention_purge` | hermes coordinator */15 → curator `--apply` | `watch_directives` curator-archived >60 d; `hermes_research_intelligence` archived >45 d; `hermes_directive_hits_staging` drained >14 d | archive-first. The dry run used to EXECUTE the DELETEs uncommitted; it now only counts | MANAGED (45 d vs 180 d window: D5) |
 | `hermes_autonomous_self_tune.self_purge` | stage manifests `hermes_learning.json`, `after_close.json` | failed embed queue >7 d; score_history >30 d; research rejected/superseded/expired >180 d; external_research >180 d; 3 dead tables | archive-first; an archived DELETE replaces TRUNCATE (the dead tables held 0 rows) | MANAGED |
-| `comms_lifecycle.py` | cron `17 * * * *` | `communication_*` rows past TTL | its own jsonl.gz archive, count-checked | MANAGED_OWN_ARCHIVE (deletes `communication_thread_membership`, which is KEEP_FOREVER: D5) |
+| `comms_lifecycle.py` | cron `17 * * * *` | `communication_*` rows past TTL. Since #1885 (merged 2026-10-20, not yet served) there is also an opt-in `--steps reservations` step. It settles `communication_deliveries` left RESERVED/SENDING for over an hour (INBOUND → CANCELLED, unclaimed outbound → EXPIRED, SENDING → UNKNOWN; at most 500 per run). It changes only the delivery status. It **deletes nothing and sends nothing**. It is **not** in the cron's default `classify,expire,purge` steps until the cron-inventory row is approved. | its own jsonl.gz archive, count-checked | MANAGED_OWN_ARCHIVE (deletes `communication_thread_membership`, which is KEEP_FOREVER: D5) |
 | `db_trim.py` | operator-run | backup tables, duplicate indexes, row trims | pg_dump / jsonl.gz + `db_trim/TRIPWIRE.jsonl` | MANAGED_OWN_ARCHIVE (no grant check: D7) |
 | quarantine / scrub / `purge_error_synthesis` / `archive_trade_closed_probe_rows` | manual | condition rows | quarantine table or json | MANAGED_OWN_ARCHIVE |
 | `options_desk_enterprise.py` | cron 15:45 `options_iv_snapshot.py` + inline on every API persist | `options_chain_snapshots` >45 d | **none** | UNARCHIVED_DECISION. The registry says ARCHIVE_THEN_DELETE 365 d, but this 45 d delete runs first (D3) |

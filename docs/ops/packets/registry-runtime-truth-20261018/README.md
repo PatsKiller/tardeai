@@ -1,6 +1,10 @@
 # Registry / runtime truth — packet (review 2026-10-18, built 2026-10-19)
 
-Status: built 2026-10-19, awaiting operator review. Authority: READ_ONLY_ADVISORY.
+Status: LIVE 2026-10-20 — merged (#1867, served from release `720fce06c` 08:58 ET, then `f6f56e365`); lane
+`registry-runtime-truth` added to `TRADEAI_N8N_RELAY_LIVE_LANES` 10:23:28 ET (backup
+`n8n-live-lanes.env.bak-20261020T142328Z-registry-truth`). First live run PENDING: the next `20 7 * * *` dispatcher
+slot; no `data/runtime/registry-runtime-truth_last.json` existed at 14:35 ET. Built 2026-10-19. Authority:
+READ_ONLY_ADVISORY. Summary: `docs/ops/LIVE_CHANGES_20261020.md` §3.
 
 Branch `fix/registry-truth-evidence-v2-20261019` (base `origin/main` `baeda8d16`). Nothing here changes the host: no
 crontab, systemd, n8n, relay live-list or effect-owner change; no DB write; the coordination ledger was read
@@ -63,9 +67,10 @@ Overlap check against main (`git log -p 3af0a8bdd..origin/main -- config/ script
   fabric spec): the five Hermes steps each fire `DECLARED_OFF_BUT_RUNS_LIVE`, `EFFECT_OWNER_N8N_NOT_LIVE`,
   `LIVE_LIST_REGISTRY_NOT_LIVE` and `PROCESS_LIVE_STEP_NOT_ACTIVE` (20) — the finding would have been caught.
 
-## 4. Operator steps (not done; propose and stop)
+## 4. Operator steps (propose and stop)
 
-* Add `registry-runtime-truth` to `TRADEAI_N8N_RELAY_LIVE_LANES` and restart the relay (same procedure as
+* DONE 2026-10-20 10:23 ET (the relay and gateway were also restarted by the 12:52 ET promote): add
+  `registry-runtime-truth` to `TRADEAI_N8N_RELAY_LIVE_LANES` and restart the relay (same procedure as
   `docs/ops/packets/comms-intent-consumer-live-20261017/cutover.sh relay`). Until then the dispatcher's fires are
   demoted to dry_run and nothing is written.
 * Decide the 28 stale contract stages (a reviewed contract PR per wave) and `maturity-remeasure` (promote its row or
