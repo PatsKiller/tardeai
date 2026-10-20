@@ -158,12 +158,15 @@ def test_alarm_fires_names_the_retired_provider_and_routes_as_an_interrupt(wired
 
 
 def test_alarm_names_unattended_gaps_and_failing_vectors(wired):
+    # 2026-10-18: VECTOR_FAILING is the immediate message (sentinel); OPEN_NO_ATTEMPT goes to the digest (no
+    # sentinel). Both are still named, in their own message.
     cgr._alert(_report(
         OPEN_NO_ATTEMPT=[{"gap_id": "g", "domain": "quote_price", "subject": "WMT", "age_hours": 3.0, "origin": "gap_queue"}],
         VECTOR_FAILING=[{"vector": "governed_search", "errors_today": 4}],
     ))
-    body = wired.sent[0]
-    assert "quote_price:WMT" in body and "governed_search: 4 errors" in body
+    immediate, digest = wired.sent
+    assert "governed_search: 4 errors" in immediate and immediate.startswith(cgr.SENTINEL)
+    assert "quote_price:WMT" in digest and cgr.SENTINEL not in digest
 
 
 def test_an_unchanged_finding_set_stays_silent(wired):
@@ -175,8 +178,13 @@ def test_an_unchanged_finding_set_stays_silent(wired):
 
 
 def test_recovery_is_reported_once(wired):
+    # 2026-10-18: a VECTOR_FAILING set that empties (every UTC midnight, the count is per day) is NOT news;
+    # a RETIRED_RAN that clears is a real repair and is said once. The legacy flat state shape still reads.
     cgr.STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     cgr.STATE_PATH.write_text(json.dumps({"fingerprint": {"vector:v": "VECTOR_FAILING"}}))
+    cgr._alert(_report())
+    assert wired.sent == []
+    cgr.STATE_PATH.write_text(json.dumps({"fingerprint": {"retired:backup_provider:fmp": "RETIRED_RAN"}}))
     cgr._alert(_report())
     assert len(wired.sent) == 1 and "✅" in wired.sent[0] and wired.sent[0].startswith(cgr.SENTINEL)
     cgr._alert(_report())

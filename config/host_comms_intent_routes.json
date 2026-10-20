@@ -29,6 +29,35 @@
       "tier": "DIGEST",
       "runbook_id": "disk-usage-band",
       "producer": "disk_usage_monitor"
+    },
+    {
+      "domain": "data",
+      "kind": "data_plausibility_violation",
+      "tier": "DIGEST",
+      "runbook_id": "data-plausibility-audit",
+      "producer": "data_plausibility_monitor"
+    },
+    {
+      "domain": "data",
+      "kind": "gap_resolution_finding",
+      "tier": "DIGEST",
+      "runbook_id": "gap-resolution-audit",
+      "producer": "check_gap_resolution"
+    },
+    {
+      "domain": "data",
+      "kind": "gap_resolution_digest",
+      "tier": "DASHBOARD",
+      "runbook_id": "gap-resolution-audit",
+      "producer": "check_gap_resolution"
+    },
+    {
+      "domain": "host",
+      "kind": "active_trader_motion_watchdog",
+      "tier": "DIGEST",
+      "runbook_id": "active-trader-motion-watchdog",
+      "producer": "active_trader_motion_watchdog"
     }
-  ]
+  ],
+  "_comment_20261018": "2026-10-18 (data-integrity fix PR, operator: the two data monitors 'within n8n with proper contracts'): lanes n8n-data-plausibility-audit and n8n-gap-resolution-audit run with --notify queue once their allowlist live_arg carries it, so they may not call a sender. data/data_plausibility_violation and data/gap_resolution_finding (RETIRED_RAN, VECTOR_FAILING) are DIGEST -> P2 incidents; data/gap_resolution_digest (OPEN_NO_ATTEMPT, REFUSED_NOWHERE) is DASHBOARD -> P3, never an interrupt. The systemd units keep the chokepoint send (--notify send, the default) until the packet's c3 step."
 }

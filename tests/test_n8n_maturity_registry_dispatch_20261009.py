@@ -516,12 +516,16 @@ N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor", "momentum-cache-rec
 #: should run this weekly; and also monitor when a threshold is over 80%"; tests/support/disk_hygiene_n8n.py LIVE).
 from tests.support import disk_hygiene_n8n as _DH  # noqa: E402
 
-N8N_NATIVE_CANARY = frozenset({"heartbeat-watch", "n8n-comms-intent-consumer", *_DH.LIVE})
+#: 2026-10-19 + active-trader-motion-watchdog (n8n owns motion supervision; tests/support/active_trader_motion_watchdog.py).
+N8N_NATIVE_CANARY = frozenset({"heartbeat-watch", "n8n-comms-intent-consumer", "active-trader-motion-watchdog",
+                               # 2026-10-18 data-integrity monitors (tests/support/data_integrity_monitors_n8n.py)
+                               "n8n-data-plausibility-audit", "n8n-gap-resolution-audit", *_DH.LIVE})
 #: the reviewed live_arg of each n8n-native canary row whose live run is not the script default.
 #: disk-hygiene's live run is --plan (a manifest, never a deletion).
 N8N_NATIVE_CANARY_LIVE_ARG = {
     "momentum-cache-reconcile": ["--apply"],
     "n8n-comms-intent-consumer": ["--apply"],
+    "active-trader-motion-watchdog": ["--apply"],
     "disk-usage-monitor": ["--apply"],
     "disk-hygiene": ["--plan"],
     # 2026-10-19 operator (after /tmp hit 97% inodes): daily /tmp plan, a manifest, never a deletion.
@@ -566,7 +570,8 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             if lane in N8N_NATIVE_CANARY_LIVE_ARG:
                 assert allow[lane]["live_arg"] == N8N_NATIVE_CANARY_LIVE_ARG[lane], lane
             else:
-                # heartbeat-watch: script default writes the receipt (live_arg []).
+                # heartbeat-watch: script default writes the receipt (live_arg []); so do the 2026-10-18
+                # data-integrity monitors (dry live_arg first: measure + LaneRunReceipt@v2, notify nobody).
                 assert allow[lane]["live_arg"] == [], lane
             assert LD.r1_class_admission(row, allow[lane])[0] is True, lane
             continue

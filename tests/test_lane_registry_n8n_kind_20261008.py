@@ -27,6 +27,8 @@ sys.path.insert(0, str(ROOT))
 from scripts.lib import lane_registry as lr  # noqa: E402
 from tests.support import hermes_learning_cutover as HL  # noqa: E402
 from tests.support import comms_intent_consumer_live as CIL  # noqa: E402
+from tests.support import data_integrity_monitors_n8n as DIM  # noqa: E402
+from tests.support import active_trader_motion_watchdog as ATMW  # noqa: E402
 from scripts.lib import lane_state_drift as LD  # noqa: E402
 from scripts.lib import n8n_lane_host_conflict as HC  # noqa: E402
 
@@ -361,7 +363,11 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
                         # the systemd disk_pressure_guard stays as the host backstop and is not flipped.
                         "disk-hygiene", "disk-usage-monitor",
                         # 2026-10-19 /tmp hygiene (daily, --plan; operator after the /tmp inode incident).
-                        "tmp-hygiene"}
+                        "tmp-hygiene",
+                        # 2026-10-18 data-integrity monitors on n8n: dispatcher rows at canary.
+                        *DIM.LIVE,
+                        # 2026-10-19 active-trader-motion-watchdog: n8n-native dispatcher row at canary.
+                        *ATMW.LIVE}
     assert all(native[lane]["scheduler"]["expression"] == "dispatcher" for lane in n8n_native_lanes)
     # 2026-10-15: the step lanes of the n8n fabric process hermes-learning (AGENTS.md §23.23). Fired only by the
     # process workflow, NEVER_SCHEDULED until it is published for shadow; `match` names the process step, so no

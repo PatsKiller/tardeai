@@ -24,6 +24,10 @@ on:
       - 'apps/command-center-v3/src/lib/advisory*.ts'
       - 'apps/command-center-v3/src/lib/research*.ts'
       - 'apps/command-center-v3/src/hooks/useApi.ts'
+      - 'apps/command-center-v3/src/hooks/useRotationAvailability.ts'
+      - 'apps/command-center-v3/src/components/intelligence/IntelligenceRotationTab.tsx'
+      - 'apps/command-center-v3/src/components/RotationPublicationNotice.tsx'
+      - 'apps/command-center-v3/src/lib/rotation*'
       - '.github/workflows/cio-truth-gates-ui-validation.yml'
   workflow_dispatch:
 
@@ -48,6 +52,8 @@ jobs:
         run: npm ci
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
+      - name: Rotation retained-response contract (actual hook and browser)
+        run: node src/lib/rotationRetainedError.browser.test.mjs ../.. /tmp/rotation-retained-error.json
       - name: Build UI
         run: npm run build
       - name: Start preview
@@ -78,4 +84,5 @@ jobs:
             docs/_evidence/autonomous_advisory_loop/cio_truth_gates
             docs/_evidence/cio_completion/browser
             /tmp/cio-truth-gates-ui-preview.log
+            /tmp/rotation-retained-error.json
           if-no-files-found: warn

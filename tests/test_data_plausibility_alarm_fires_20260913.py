@@ -105,11 +105,13 @@ def test_a_known_open_violation_does_not_escalate(wired, tmp_path):
     state is the one the shared state machine actually keeps.
     """
     first = _violation("trade_ai_scans", "catalyst_confidence", 900, 5311)
-    dpm._alert([first], [first])
+    dpm._alert([first], [first], bands_pct=[1.0, 10.0, 50.0])
     wired.sent.clear()
 
-    bad = _violation("trade_ai_scans", "catalyst_confidence", 915, 5311)
-    dpm._alert([bad], [bad])
+    # 2026-10-18: the fingerprint is the severity BAND, not the raw count, so 900 -> 915 of 5311 (same 10-50%
+    # band) is no longer news; a band crossing (here to >=50%) is the re-alert this test is about.
+    bad = _violation("trade_ai_scans", "catalyst_confidence", 2700, 5311)
+    dpm._alert([bad], [bad], bands_pct=[1.0, 10.0, 50.0])
 
     body = wired.sent[0]["message"]
     assert "CRITICAL" not in body, "a known-open violation must not interrupt"
@@ -119,11 +121,12 @@ def test_a_known_open_violation_does_not_escalate(wired, tmp_path):
 
 def test_a_changed_count_is_news_and_re_alerts(wired):
     """A violation going from 8 rows to 900 is not 'unchanged'."""
+    # 2026-10-18: 8 -> 900 of 2945 crosses the configured bands (<1% -> 10-50%); that is what re-alerts now.
     dpm._alert([_violation("symbol_profiles", "ytd_return_pct", 8, 2945)],
-               [_violation("symbol_profiles", "ytd_return_pct", 8, 2945)])
+               [_violation("symbol_profiles", "ytd_return_pct", 8, 2945)], bands_pct=[1.0, 10.0, 50.0])
     wired.sent.clear()
     worse = _violation("symbol_profiles", "ytd_return_pct", 900, 2945)
-    dpm._alert([worse], [worse])
+    dpm._alert([worse], [worse], bands_pct=[1.0, 10.0, 50.0])
     assert len(wired.sent) == 1, "a materially changed count must speak"
 
 
@@ -161,7 +164,8 @@ def test_state_is_recorded_so_the_next_run_can_compare(wired):
 
     doc = json.loads(dpm.STATE_PATH.read_text())
     condition = doc["conditions"][dpm.CONDITION_KEY]
-    assert json.loads(condition["state"]) == {"proposal_agent_reviews.confidence": 12}
+    # 2026-10-18: (table.column:rule) -> severity:band, not the raw count (no bands configured here: "any").
+    assert json.loads(condition["state"]) == {"proposal_agent_reviews.confidence:?": "BLOCK:any"}
     assert condition["alertable"] is True
 
 

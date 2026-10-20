@@ -50,7 +50,9 @@ def test_all_operative_baselines_have_applicable_fields_and_order():
     # canary; tests/support/disk_hygiene_n8n.py, tests/test_disk_hygiene_20261018.py) = 142.
     # + 1 (2026-10-19 /tmp hygiene, operator after the /tmp inode incident: tmp-hygiene REVIEWED at canary;
     # tests/test_tmp_hygiene_20261019.py) = 143.
-    assert len(catalogue["contracts"]) == 143
+    # + 1 (2026-10-19 active-trader-motion-watchdog REVIEWED at canary; n8n owns motion supervision) = 144.
+    # + 2 (2026-10-18 data-integrity monitors on n8n: n8n-data-plausibility-audit, n8n-gap-resolution-audit) = 146.
+    assert len(catalogue["contracts"]) == 146
     assert not {row["id"]: A.baseline_errors(row) for row in catalogue["contracts"] if A.baseline_errors(row)}
 
 

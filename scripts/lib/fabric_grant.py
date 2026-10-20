@@ -3,8 +3,10 @@
 ``id`` and ``verify`` inspect the canonical guard ledger. Mutations instead use
 ``authorize ACTION --consume``: every required tier must name the exact action,
 lane(s), workflow and packet SHA256 in its reason. Restart grants also name both
-units and ``restart``. The primary ID is TRADEAI_FABRIC_GRANT; the separate service
-ID is TRADEAI_FABRIC_SERVICE_GRANT. IDs are full 32-hex ledger IDs, never labels.
+units and ``restart``. execution-ops grants (AGENTS.md §24.10) also name the
+broker-execution unit and the verb (``daemon-reload`` or ``restart``). The primary
+ID is TRADEAI_FABRIC_GRANT; the separate service ID is TRADEAI_FABRIC_SERVICE_GRANT.
+IDs are full 32-hex ledger IDs, never labels.
 
 Uses are checked and consumed together under the existing guard transaction lock.
 Nothing here issues, renews or restores grants. Refused/failed actions never refund
@@ -28,8 +30,9 @@ NO_CONSUMER_REASON = (
     "Host CLI entrypoint: bin/guard id and the need_grant functions in "
     "docs/ops/packets/comms-intent-consumer-live-20261017/cutover.sh, "
     "docs/ops/packets/hermes-feedback-cutover-20261017/cutover.sh, "
-    "docs/ops/packets/hermes-tune-cutover-20261017/cutover.sh and "
-    "docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh invoke this file "
+    "docs/ops/packets/hermes-tune-cutover-20261017/cutover.sh, "
+    "docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh and "
+    "docs/ops/packets/active-trader-motion-n8n-20261019/cutover.sh invoke this file "
     "through host Python. check_dark_contracts indexes scripts/**/*.py callers; "
     "these shell CLI callers are outside that corpus, so no Python importer "
     "is expected."
@@ -68,6 +71,19 @@ for _step in ("relay", "rollback"):
         "workflow": "tradeai-dispatcher",
         "tiers": ("config-write", "service"),
         "units": UNITS,
+    }
+# Active Trader motion watchdog (2026-10-19). The motion unit's own operations are AGENTS.md §24.10 execution-ops
+# (per incident, finite, reason naming the unit and the verb; the packet refuses unless the session is CLOSED).
+# The live-list steps restart relay + gateway exactly like comms: config-write + service.
+MOTION_UNIT = "tradeai-active-trader-motion.service"
+for _step, _verb in (("install", "daemon-reload"), ("start", "restart"), ("relay", None), ("rollback", None)):
+    ACTIONS[f"active-trader-motion.{_step}"] = {
+        "packet": "docs/ops/packets/active-trader-motion-n8n-20261019/cutover.sh",
+        "lanes": ("active-trader-motion-watchdog",),
+        "workflow": "tradeai-dispatcher",
+        "tiers": ("execution-ops",) if _verb else ("config-write", "service"),
+        "units": (MOTION_UNIT,) if _verb else UNITS,
+        "verbs": (_verb,) if _verb else (),
     }
 
 
@@ -142,7 +158,12 @@ def authorize(action: str, *, consume: bool = False, environ=None) -> dict:
                     raise Refused(f"{key} is not the full active {tier} grant id")
                 if row.get("expires", 0) <= now or row.get("uses", 0) <= 0:
                     raise Refused(f"{tier} grant expired, exhausted or not finite")
-                tokens = (*required, *spec["units"], "restart") if tier == "service" else required
+                if tier == "service":
+                    tokens = (*required, *spec["units"], "restart")
+                elif tier == "execution-ops":
+                    tokens = (*required, *spec["units"], *spec["verbs"])
+                else:
+                    tokens = required
                 reason = str(row.get("reason") or "")
                 missing = [token for token in tokens if not _names(reason, token)]
                 if missing:
