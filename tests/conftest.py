@@ -149,6 +149,18 @@ def pytest_configure(config) -> None:
     config.addinivalue_line("markers", "trading_locked: run with the production trading-lock default (no unlock file)")
 
 
+def pytest_assertrepr_compare(config, op, left, right):
+    """Never print os.environ in an assertion failure (2026-10-20).
+
+    `assert "DB_PASSWORD" not in os.environ` failing rendered the whole environment, which on the host carries live
+    broker secrets, into the pytest log. Any comparison with os.environ as an operand is explained by name only.
+    """
+    if isinstance(left, os._Environ) or isinstance(right, os._Environ):
+        name = lambda v: "os.environ" if isinstance(v, os._Environ) else repr(v)[:120]  # noqa: E731
+        return [f"{name(left)} {op} {name(right)}", "(os.environ contents redacted: secrets never reach test output)"]
+    return None
+
+
 _HERMETIC_COLLECTION: list[dict] = []
 
 
