@@ -88,6 +88,13 @@ GATES = [
     # expected_output, staged effect key); LaneRunReceipt@v2 produced / empty_allowed / fatal dependency_unavailable via
     # the real CLI; idempotent rerun; the operator packet against fake systemctl/docker/proc. Hermetic: tmp ledgers.
     ("comms_intent_consumer_live_20261017", ["tests/test_comms_intent_consumer_live_20261017.py"]),
+    # ANCHOR: ACTIVE_TRADER_MOTION_WATCHDOG_20261019 — operator decision 2026-10-19: the motion loop stays a systemd
+    # user unit (gate line fixed to /etc/tradeai/enable-active-trader-motion, no misspelt dir) and n8n owns its
+    # supervision: lane active-trader-motion-watchdog dispatch-live */5 like the comms consumer (canary, own flock,
+    # live_arg --apply, enforced env closure, REVIEWED contract); bands HEALTHY/STALE/DEGRADED/DOWN/DISABLED, trading-day
+    # window, band-change dedupe via the host comms-intent path, LaneRunReceipt@v2; the operator packet (grant id
+    # verified, CLOSED-session start, archive-not-delete). Hermetic: tmp heartbeat, fake /proc, clock, marker, systemctl.
+    ("active_trader_motion_watchdog_20261019", ["tests/test_active_trader_motion_watchdog_20261019.py"]),
     ("fabric_grant_id_20261018", ["tests/test_fabric_grant_id_20261018.py"]),
     # Feedback's future queue-only capability does not enable its held sixth stage.
     # Exercise actual authenticated admission and executor stage clamping, with fake effects.

@@ -38,10 +38,18 @@ Write scope is limited to:
 The unit contains:
 
 ```text
-ConditionPathExists=/etc/tardeai/enable-active-trader-motion
+ConditionPathExists=/etc/tradeai/enable-active-trader-motion
 ```
 
 Therefore copying or enabling the unit does not start the producer until an operator deliberately creates the marker.
+
+> **Correction 2026-10-19.** This document originally named `/etc/tardeai/...`, a misspelling of `/etc/tradeai`
+> (the root-owned directory that already holds `agent_runtime_enabled`). `/etc/tardeai` never existed, so after the
+> unit's clean stop on 2026-10-10 21:43 ET its `ConditionPathExists` could never be met. The unit is a **user** unit
+> (`~/.config/systemd/user/`), not a system unit, and its env file is the user-owned
+> `~/.config/tradeai/active-trader-motion.env`. The current install, start and proof procedure, with n8n supervision
+> (lane `active-trader-motion-watchdog`), is `docs/ops/packets/active-trader-motion-n8n-20261019/`. The original
+> system-unit commands below are kept for history with the corrected directory.
 
 Installation commands for an authorized host operator:
 
@@ -49,7 +57,7 @@ Installation commands for an authorized host operator:
 sudo install -m 0644 config/systemd/tradeai-active-trader-motion.service \
   /etc/systemd/system/tradeai-active-trader-motion.service
 sudo install -m 0640 config/systemd/active-trader-motion.env.example \
-  /etc/tardeai/active-trader-motion.env
+  /etc/tradeai/active-trader-motion.env
 sudo systemctl daemon-reload
 ```
 
@@ -60,8 +68,8 @@ Do not create the enable marker or start the service until configuration paths a
 After review:
 
 ```bash
-sudo install -d -m 0750 /etc/tardeai
-sudo touch /etc/tardeai/enable-active-trader-motion
+sudo install -d -m 0755 /etc/tradeai
+sudo touch /etc/tradeai/enable-active-trader-motion
 sudo systemctl enable --now tradeai-active-trader-motion.service
 sudo systemctl status --no-pager tradeai-active-trader-motion.service
 ```
@@ -99,7 +107,8 @@ A PASS proves the new process loaded a valid checkpoint, has a different PID, pr
 
 ```bash
 sudo systemctl disable --now tradeai-active-trader-motion.service
-sudo rm -f /etc/tardeai/enable-active-trader-motion
+sudo mv /etc/tradeai/enable-active-trader-motion \
+  /etc/tradeai/enable-active-trader-motion.archived-$(date +%Y%m%d)   # archive, never delete (AGENTS.md §0 rule 6)
 ```
 
 Removing the unit does not alter the policy modules or endpoint contract. Runtime JSON/JSONL files may be retained for forensic review or removed separately after the service is stopped.

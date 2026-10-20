@@ -176,7 +176,8 @@ def test_guard_show_prints_ids_and_guard_id_exists():
 def test_live_packets_authorize_registered_actions_instead_of_accepting_any_value():
     for rel in ("docs/ops/packets/comms-intent-consumer-live-20261017/cutover.sh",
                 "docs/ops/packets/hermes-tune-cutover-20261017/cutover.sh",
-                "docs/ops/packets/hermes-feedback-cutover-20261017/cutover.sh"):
+                "docs/ops/packets/hermes-feedback-cutover-20261017/cutover.sh",
+                "docs/ops/packets/active-trader-motion-n8n-20261019/cutover.sh"):
         text = (ROOT / rel).read_text(encoding="utf-8")
         assert '"$GRANT_PY" authorize ' in text and "need_grant --consume" in text, rel
         assert '[[ $APPLY == 0 || -n "${TRADEAI_FABRIC_GRANT:-}" ]]' not in text, rel
@@ -186,7 +187,8 @@ def test_every_live_packet_gates_relay_apply_and_restarts_only_via_the_hook():
     """10-18: the tune and feedback relay --apply had no grant check and called the real systemctl."""
     for rel in ("docs/ops/packets/comms-intent-consumer-live-20261017/cutover.sh",
                 "docs/ops/packets/hermes-tune-cutover-20261017/cutover.sh",
-                "docs/ops/packets/hermes-feedback-cutover-20261017/cutover.sh"):
+                "docs/ops/packets/hermes-feedback-cutover-20261017/cutover.sh",
+                "docs/ops/packets/active-trader-motion-n8n-20261019/cutover.sh"):
         text = (ROOT / rel).read_text(encoding="utf-8")
         relay = text.split("\n  relay)", 1)[1].split("\n  ;;", 1)[0].split(";;\n", 1)[0]
         after_dry = relay.split("DRY RUN", 1)[1]

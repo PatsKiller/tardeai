@@ -8,6 +8,13 @@
       "tier": "DIGEST",
       "runbook_id": "hermes-closed-loop-alert",
       "producer": "hermes_outcome_feedback_agent"
+    },
+    {
+      "domain": "host",
+      "kind": "active_trader_motion_watchdog",
+      "tier": "DIGEST",
+      "runbook_id": "active-trader-motion-watchdog",
+      "producer": "active_trader_motion_watchdog"
     }
   ]
 }

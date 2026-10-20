@@ -6,6 +6,9 @@ Audit 2026-09-26 (K-04): `tradeai-active-trader-motion.service` loads
 does not exist) and `tradeai-advisory-shadow-session.service` names a missing
 `~/.config/tradeai/advisory-shadow.env`. The leading `-` makes systemd skip a
 missing file silently, so both services run on defaults and nothing says so.
+(The repo unit has named `%h/.config/tradeai/active-trader-motion.env` since 2026-10-04 and, from 2026-10-19, the
+root-owned marker `/etc/tradeai/enable-active-trader-motion`; the installed copy keeps the misspelt path until the
+operator installs the fixed unit: docs/ops/packets/active-trader-motion-n8n-20261019/.)
 
 Pure parser + injectable `exists` so tests never touch the host. Exit 0 clean,
 1 when a referenced file is missing. Health-agent collector format.
