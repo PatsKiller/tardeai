@@ -55,29 +55,50 @@ import {
 } from './pages/control-plane'
 import SurfaceModeBanner from './components/truth/SurfaceModeBanner'
 import RouteErrorBoundary from './components/truth/RouteErrorBoundary'
+import { compareServedBuild, LOADED_BUILD } from './lib/buildIdentity'
 
-
-declare const __ANALYST_UI_VERSION__: string
-declare const __BUILD_DATE__: string
-const BUILD_MARKER_FALLBACK = `cc-v3 ${__ANALYST_UI_VERSION__} · built ${__BUILD_DATE__}`
 
 function BuildMarker() {
-  const [label, setLabel] = useState(BUILD_MARKER_FALLBACK)
+  const [served, setServed] = useState<unknown>(null)
   useEffect(() => {
-    fetch('/v3/build-meta.json', { cache: 'no-store' })
-      .then(r => r.json())
-      .then(m => {
-        const v = m?.ui_version || __ANALYST_UI_VERSION__
-        const d = (m?.built_at || '').slice(0, 10) || __BUILD_DATE__
-        // Build identity from the served artifact: the commit this bundle was
-        // built from, never a fabricated or stale SHA (cc-header-truth-v2 Phase 2 G).
-        const sha = m?.git_sha || m?.source_commit || m?.build_sha
-        const shaPart = sha ? ` · ${String(sha).slice(0, 12)}` : ''
-        setLabel(`cc-v3 ${v} · built ${d}${shaPart}`)
-      })
-      .catch(() => { /* keep fallback — build-time defines of the served bundle */ })
+    let cancelled = false
+    let inFlight = false
+    let controller: AbortController | null = null
+    const check = async () => {
+      if (inFlight) return
+      inFlight = true
+      controller = new AbortController()
+      const timer = window.setTimeout(() => controller?.abort(), 5000)
+      try {
+        const response = await fetch('/v3/build-meta.json', { cache: 'no-store', signal: controller.signal })
+        if (!response.ok) throw new Error('build metadata unavailable')
+        const metadata: unknown = await response.json()
+        if (!cancelled) setServed(metadata)
+      } catch {
+        if (!cancelled) setServed(null)
+      } finally {
+        window.clearTimeout(timer)
+        inFlight = false
+      }
+    }
+    const visible = () => { if (document.visibilityState === 'visible') void check() }
+    void check()
+    const interval = window.setInterval(() => { if (document.visibilityState === 'visible') void check() }, 60_000)
+    document.addEventListener('visibilitychange', visible)
+    return () => {
+      cancelled = true
+      controller?.abort()
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', visible)
+    }
   }, [])
-  return <span>Build: {label}</span>
+  const comparison = compareServedBuild(LOADED_BUILD, served)
+  return <span data-testid="cc-loaded-build" data-source-sha={LOADED_BUILD.sourceSha ?? 'UNAVAILABLE'}>
+    Loaded bundle: {LOADED_BUILD.uiVersion ?? 'UNAVAILABLE'} · built {LOADED_BUILD.builtAt ?? 'UNAVAILABLE'} · source {LOADED_BUILD.sourceSha?.slice(0, 12) ?? 'UNAVAILABLE'}
+    {' · '}{comparison === 'SAME' ? 'matches served artifact' : comparison === 'UNAVAILABLE' ? 'served build comparison UNAVAILABLE' : <>
+      newer or different artifact available · <button type="button" onClick={() => window.location.reload()}>Reload Command Center</button>
+    </>}
+  </span>
 }
 
 function ReconnectingBar() {

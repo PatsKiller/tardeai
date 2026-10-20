@@ -67,6 +67,10 @@ jobs:
           # Attestation tests require the production-locked Ed25519 backend.
           pip install -c requirements.lock.txt cryptography
           pip install python-docx || true
+      - name: Install registered frontend test dependencies
+        uses: ./.github/actions/setup-cio-frontend-tests
+        with:
+          shard: ${{ matrix.shard }}/${{ env.CIO_SHARDS }}
       - name: Shard ${{ matrix.shard }} of ${{ env.CIO_SHARDS }}
         env:
           SHARD: ${{ matrix.shard }}
@@ -100,6 +104,10 @@ jobs:
           python3 -m pip install --upgrade pip
           pip install pytest pyyaml requests "ruff==0.16.2"
           pip install python-docx || true
+      - name: Install registered frontend test dependencies
+        uses: ./.github/actions/setup-cio-frontend-tests
+        with:
+          shard: serial/${{ env.CIO_SHARDS }}
       - name: Serial shard (shared-state files, one at a time)
         run: |
           python3 scripts/run_cio_hardening_ci.py \
@@ -156,6 +164,10 @@ jobs:
         run: |
           python3 scripts/ensure_m2_test_database.py --name "$M2_TEST_DATABASE"
           python3 scripts/ensure_m2_test_database.py --name m2_shadow_test_alerts
+      - name: Install registered frontend test dependencies
+        uses: ./.github/actions/setup-cio-frontend-tests
+        with:
+          shard: pg/${{ env.CIO_SHARDS }}
       - name: Postgres shard (one pytest process + fresh alert database per file)
         run: |
           python3 scripts/run_cio_hardening_ci.py \
