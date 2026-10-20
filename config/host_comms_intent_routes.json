@@ -10,6 +10,27 @@
       "producer": "hermes_outcome_feedback_agent"
     },
     {
+      "domain": "host",
+      "kind": "disk_usage_warn",
+      "tier": "DIGEST",
+      "runbook_id": "disk-usage-band",
+      "producer": "disk_usage_monitor"
+    },
+    {
+      "domain": "host",
+      "kind": "disk_usage_critical",
+      "tier": "DIGEST",
+      "runbook_id": "disk-usage-band",
+      "producer": "disk_usage_monitor"
+    },
+    {
+      "domain": "host",
+      "kind": "disk_usage_recovered",
+      "tier": "DIGEST",
+      "runbook_id": "disk-usage-band",
+      "producer": "disk_usage_monitor"
+    },
+    {
       "domain": "data",
       "kind": "data_plausibility_violation",
       "tier": "DIGEST",

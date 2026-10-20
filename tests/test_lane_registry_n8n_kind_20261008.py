@@ -359,6 +359,11 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
                         "hermes-discovery-yield-on-learning",
                         # 2026-10-17 comms-intent consumer live (D2): n8n-native dispatcher row at canary.
                         *CIL.LIVE,
+                        # 2026-10-18 disk hygiene (weekly, dry-run) + disk-usage monitor (*/15): n8n-native rows;
+                        # the systemd disk_pressure_guard stays as the host backstop and is not flipped.
+                        "disk-hygiene", "disk-usage-monitor",
+                        # 2026-10-19 /tmp hygiene (daily, --plan; operator after the /tmp inode incident).
+                        "tmp-hygiene",
                         # 2026-10-18 data-integrity monitors on n8n: dispatcher rows at canary.
                         *DIM.LIVE,
                         # 2026-10-19 active-trader-motion-watchdog: n8n-native dispatcher row at canary.

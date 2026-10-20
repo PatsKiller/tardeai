@@ -2038,6 +2038,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/consolidation-health-audit-c3-20261015/README.md` | consolidation-health-audit-c3-20261015: CONSOLIDATE wave C3, operator packet | review_required | MISSING HEADER | `5ec104b01e81` |
 | `docs/ops/packets/cron-effect-claim-wrap-20261016/README.md` | Cron effect-claim wrap 2026-10-16: the cron copy refuses itself when n8n owns the lane | review_required | OK | `92fe7e6c08fc` |
 | `docs/ops/packets/cutover-fail-closed-txn-20261016/README.md` | Cutover fail-closed + controller transactions (2026-10-16) | review_required | MISSING HEADER | `1fc916506a76` |
+| `docs/ops/packets/disk-hygiene-n8n-20261018/README.md` | Disk hygiene + disk-usage monitor on n8n (PR #1863) | review_required | MISSING HEADER | `686ff72c5aae` |
 | `docs/ops/packets/hermes-learning-cutover-20261015/README.md` | hermes-learning on the n8n fabric: cutover packet (learn stage) | review_required | OK | `f332e5a5f082` |
 | `docs/ops/packets/hermes-worker-pool-wire-20261015/README.md` | hermes-research-worker-pool — real lane runners + fail closed on zero output (2026-10-15) | review_required | MISSING HEADER | `1232e0f775a0` |
 | `docs/ops/packets/lane-repair-indicator-engine-20261015/README.md` | Lane repair 2026-10-15: build-symbol-profiles, watchlist entry planner, indicator-engine | review_required | OK | `5f8cf669d6e3` |

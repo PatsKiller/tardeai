@@ -29454,6 +29454,633 @@
     },
     {
       "schema": "N8nHealthContract@v1",
+      "id": "disk-usage-monitor",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
+      "purpose": {
+        "text": "Every 15 minutes, measure the configured mounts df-style and record the band (ok / warn >= 80% / critical >= 90%); on a band change only, queue ONE host comms intent (host/disk_usage_*) carrying the top consumers and the latest hygiene manifest's reclaimable estimate. Sends nothing, deletes nothing (AGENTS.md \u00a724.1).",
+        "business_function": "platform-ops",
+        "source": "scripts/disk_usage_monitor.py; config/disk_hygiene_rules.json; operator 2026-10-18"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/disk_usage_monitor.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_disk_usage_monitor.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/disk-usage-monitor_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "config/disk_hygiene_rules.json",
+          "kind": "config",
+          "direction": "read",
+          "source": "every threshold, path and keep-count, re-read every run"
+        },
+        {
+          "name": "data/runtime/disk_usage_monitor_state.json",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "last band per mount (dedupe by band)"
+        },
+        {
+          "name": "data/governance/n8n_coordination_ledger.sqlite comms_intents",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/host_comms_intents.queue_intent, one row per band change"
+        },
+        {
+          "name": "scripts/n8n_comms_intent_consumer.py -> scripts/n8n_incident_fanin.py -> scripts/incident_notifier.py",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "DIGEST -> P2 incident; the notifier is the only sender"
+        },
+        {
+          "name": "data/runtime/disk_hygiene/disk_hygiene_manifest_latest.json",
+          "kind": "store",
+          "direction": "read",
+          "source": "reclaimable estimate (lane disk-hygiene)"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "last_live_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live (run ids d:disk-usage-monitor:live:<slot>)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/disk-usage-monitor_last.json ok_at advances on each successful live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at is within 0.5 h (2x of expected_cadence_hours 0.25)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 144.0 s (80% of timeout_s 180)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "when dispatched dry_run (relay demotion, stage clamp, rollback), the state/manifest files and the receipt are unchanged (prints only)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = mounts measured (>= 1)"
+        },
+        {
+          "check": "one_intent_per_band_change",
+          "text": "at most one comms intent per (mount, band change); staying in a band queues nothing"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 0.5 h but younger than 0.75 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 144.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy transient-2) or ended RUN_SKIPPED_LOCK in two consecutive slots"
+        },
+        {
+          "check": "band_warn",
+          "text": "a mount is in the warn band (>= monitor.warn_pct): the intent says so"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 0.75 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced below min_produced 1, or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
+        },
+        {
+          "check": "intent_not_queued",
+          "text": "a band change whose intent could not be queued (receipt summary intent_error; exit 1, retried)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 0.5,
+        "freshness_failed_after_h": 0.75,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 180,
+        "class": "monitor",
+        "computed_on": "2026-10-18",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 144.0
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "lane_registry.json row severity (a silent disk monitor delays a P2 band line; the host P1 backstop is the systemd disk_pressure_guard)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends). Never PAGE: the P1 path does not depend on n8n (AGENTS.md \u00a724.1).",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after the allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/disk-usage-monitor_last.json",
+        "monitor": "data/runtime/disk_usage_monitor_state.json bands + comms_intents host/disk_usage_*",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='disk-usage-monitor' ORDER BY requested_at DESC LIMIT 10\"",
+          "stat / jq the receipt: data/runtime/disk-usage-monitor_last.json",
+          "bash docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh proof"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output derived 2026-10-18 from scripts/disk_usage_monitor.py run(): produced = mounts measured (statvfs); an unmeasurable mount or unreadable rules is dependency_unavailable (fatal)."
+      },
+      "review_by": "2026-10-25",
+      "state_note": "Owner REVIEWED 2026-10-18 for canary (operator 2026-10-18; precedent n8n-comms-intent-consumer). Requires TRADEAI_N8N_RELAY_LIVE_LANES to include disk-usage-monitor after promote (docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh relay). Sends nothing (\u00a724.1).",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "mounts measured",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/disk-usage-monitor_last.json produced_count (LaneRunReceipt@v2 output fields; the executor reads the immutable attempt copy data/runtime/lane_attempts/disk-usage-monitor/<run_id>.json; its output_evidence names the file data/runtime/disk_usage_monitor_state.json)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "disk-hygiene",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
+      "purpose": {
+        "text": "Weekly (Sun 04:00 ET), evaluate the disk-hygiene rules (git clones/worktrees, release archive keep-N, optional caches, hard never-touch list) and write a DiskHygieneManifest@v1 of candidates with size and rule evidence plus the excluded-with-reason set. Deletes nothing: --apply is operator-only and refuses under the executor (AGENTS.md \u00a723.14).",
+        "business_function": "platform-ops",
+        "source": "scripts/disk_hygiene.py; config/disk_hygiene_rules.json; operator 2026-10-18"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/disk_hygiene.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_disk_hygiene.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/disk-hygiene_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "config/disk_hygiene_rules.json",
+          "kind": "config",
+          "direction": "read",
+          "source": "every threshold, path and keep-count, re-read every run"
+        },
+        {
+          "name": "data/runtime/disk_hygiene/disk_hygiene_manifest_<ts>.json + _latest.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "DiskHygieneManifest@v1 (atomic replace)"
+        },
+        {
+          "name": "git (read-only, GIT_OPTIONAL_LOCKS=0), du, crontab -l, systemd unit files, /proc/*/cwd",
+          "kind": "host",
+          "direction": "read",
+          "source": "rule evidence"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "last_live_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live (run ids d:disk-hygiene:live:<slot>)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/disk-hygiene_last.json ok_at advances on each successful live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at is within 336.0 h (2x of expected_cadence_hours 168.0)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 1440.0 s (80% of timeout_s 1800)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "when dispatched dry_run (relay demotion, stage clamp, rollback), the state/manifest files and the receipt are unchanged (prints only)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = 1 (the manifest written)"
+        },
+        {
+          "check": "deletes_nothing",
+          "text": "a live (--plan) run removes no path: the manifest's items are still on disk after the run"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 336.0 h but younger than 504.0 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 1440.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy transient-2) or ended RUN_SKIPPED_LOCK in two consecutive slots"
+        },
+        {
+          "check": "unmeasured",
+          "text": "totals.unmeasured_candidates > 0 (du timed out on a candidate)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 504.0 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced below min_produced 1, or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
+        },
+        {
+          "check": "deleted_something",
+          "text": "any path removed by a dispatcher run (never allowed)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 336.0,
+        "freshness_failed_after_h": 504.0,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 1800,
+        "class": "hygiene",
+        "computed_on": "2026-10-18",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 1440.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "lane_registry.json row severity (a missed weekly plan only delays the operator's review; nothing is deleted by this lane)",
+        "failed": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends). Never PAGE: the P1 path does not depend on n8n (AGENTS.md \u00a724.1).",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after the allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/disk-hygiene_last.json",
+        "monitor": "data/runtime/disk_hygiene/disk_hygiene_manifest_latest.json totals",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='disk-hygiene' ORDER BY requested_at DESC LIMIT 10\"",
+          "stat / jq the receipt: data/runtime/disk-hygiene_last.json",
+          "bash docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh proof"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output derived 2026-10-18 from scripts/disk_hygiene.py lane_output(): produced = 1 manifest written per plan run (zero candidates is still a manifest); unreadable rules / home or a failed write is dependency_unavailable (fatal)."
+      },
+      "review_by": "2026-10-25",
+      "state_note": "Owner REVIEWED 2026-10-18 for canary (operator 2026-10-18; precedent n8n-comms-intent-consumer). Requires TRADEAI_N8N_RELAY_LIVE_LANES to include disk-hygiene after promote (docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh relay). Deletes nothing: --apply stays operator-gated (\u00a723.14).",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "hygiene manifests written",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/disk-hygiene_last.json produced_count (LaneRunReceipt@v2 output fields; the executor reads the immutable attempt copy data/runtime/lane_attempts/disk-hygiene/<run_id>.json; its output_evidence names the file data/runtime/disk_hygiene/disk_hygiene_manifest_latest.json)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "tmp-hygiene",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:canary",
+      "stage": "canary",
+      "purpose": {
+        "text": "Daily (05:00 ET), evaluate the /tmp rules (ended Claude session scratch dirs idle > 2 days with no cwd, no open fd and no live transcript; pytest temp older than 1 day; every other /tmp entry never touched) and write a DiskHygieneManifest@v1 scope tmp of candidates with file_count (inodes), size and rule evidence plus the excluded-with-reason set. Deletes nothing: --apply is operator-only and refuses under the executor (AGENTS.md \u00a723.14).",
+        "business_function": "platform-ops",
+        "source": "scripts/tmp_hygiene.py; config/disk_hygiene_rules.json tmp; operator 2026-10-19 (/tmp inode incident)"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/tmp_hygiene.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_tmp_hygiene.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "data/runtime/tmp-hygiene_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "config/disk_hygiene_rules.json",
+          "kind": "config",
+          "direction": "read",
+          "source": "tmp section: every pattern, threshold and cap, re-read every run"
+        },
+        {
+          "name": "data/runtime/disk_hygiene/tmp_hygiene_manifest_<ts>.json + tmp_hygiene_manifest_latest.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "DiskHygieneManifest@v1 (atomic replace)"
+        },
+        {
+          "name": "lstat walk of matching /tmp entries, /proc/*/cwd and /proc/*/fd link targets, git (read-only, GIT_OPTIONAL_LOCKS=0) on git trees inside a scratch dir",
+          "kind": "host",
+          "direction": "read",
+          "source": "rule evidence"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "last_live_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live (run ids d:tmp-hygiene:live:<slot>)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/tmp-hygiene_last.json ok_at advances on each successful live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at is within 48.0 h (2x of expected_cadence_hours 24.0)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 1440.0 s (80% of timeout_s 1800)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "when dispatched dry_run (relay demotion, stage clamp, rollback), the state/manifest files and the receipt are unchanged (prints only)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = 1 (the manifest written)"
+        },
+        {
+          "check": "deletes_nothing",
+          "text": "a live (--plan) run removes no path: the manifest's items are still on disk after the run"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 48.0 h but younger than 72.0 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 1440.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy transient-2) or ended RUN_SKIPPED_LOCK in two consecutive slots"
+        },
+        {
+          "check": "unmeasured",
+          "text": "an excluded item carries scan_incomplete (the bounded walk hit its time or entry cap)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 72.0 h (3x cadence)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced below min_produced 1, or skipped for a fatal reason ['no_runner', 'dependency_unavailable'] -> RUN_FAILED empty_output"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
+        },
+        {
+          "check": "deleted_something",
+          "text": "any path removed by a dispatcher run (never allowed)"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 1800,
+        "class": "hygiene",
+        "computed_on": "2026-10-19",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "fewer than 14 finished live runs in the coordination ledger (0); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence, any RUN_FAILED/RUN_TIMEOUT/RUN_REFUSED failed",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 1440.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "lane_registry.json row severity (a missed daily /tmp plan only delays the operator's review; nothing is deleted by this lane; the inode bands of disk-usage-monitor alert independently)",
+        "failed": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends). Never PAGE: the P1 path does not depend on n8n (AGENTS.md \u00a724.1).",
+        "enforced": "partial source integration: scripts/n8n_incident_fanin.py _wferr_severity() consumes a workflow contract's failed.notifier_priority to raise the workflow-error priority floor. scripts/lib/n8n_siem_bridge.py severity_for() uses registry severity, else the fan-in priority. Full per-lane baseline, notification and diagnosis enforcement is not established by these declarations; runtime coverage remains NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after the allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/tmp-hygiene_last.json",
+        "monitor": "data/runtime/disk_hygiene/tmp_hygiene_manifest_latest.json totals",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='tmp-hygiene' ORDER BY requested_at DESC LIMIT 10\"",
+          "stat / jq the receipt: data/runtime/tmp-hygiene_last.json",
+          "bash docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh proof"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "expected_output_basis": "expected_output derived 2026-10-19 from scripts/tmp_hygiene.py lane_output(): produced = 1 manifest written per plan run (zero candidates is still a manifest); unreadable rules / tmp root or a failed write is dependency_unavailable (fatal)."
+      },
+      "review_by": "2026-10-26",
+      "state_note": "Owner REVIEWED 2026-10-19 for canary (operator 2026-10-19 after the /tmp inode incident; precedent disk-hygiene). Requires TRADEAI_N8N_RELAY_LIVE_LANES to include tmp-hygiene after promote (docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh relay). Deletes nothing: --apply stays operator-gated (\u00a723.14).",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "tmp hygiene manifests written",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/tmp-hygiene_last.json produced_count (LaneRunReceipt@v2 output fields; the executor reads the immutable attempt copy data/runtime/lane_attempts/tmp-hygiene/<run_id>.json; its output_evidence names the file data/runtime/disk_hygiene/tmp_hygiene_manifest_latest.json)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
       "id": "n8n-data-plausibility-audit",
       "kind": "lane",
       "workflow_id": "dispatcher",

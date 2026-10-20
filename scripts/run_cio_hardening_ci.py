@@ -88,6 +88,14 @@ GATES = [
     # expected_output, staged effect key); LaneRunReceipt@v2 produced / empty_allowed / fatal dependency_unavailable via
     # the real CLI; idempotent rerun; the operator packet against fake systemctl/docker/proc. Hermetic: tmp ledgers.
     ("comms_intent_consumer_live_20261017", ["tests/test_comms_intent_consumer_live_20261017.py"]),
+    # ANCHOR: DISK_HYGIENE_N8N_20261018 — rule-based disk hygiene (dry-run manifest by default; --apply needs a fresh
+    # manifest, re-validates every item, grant + caps) and the band-deduped disk-usage monitor, both as n8n lanes;
+    # never-touch list enforced in code. Hermetic: tmp git repos/worktrees, fake df/proc/crontab.
+    ("disk_hygiene_n8n_20261018", ["tests/test_disk_hygiene_20261018.py"]),
+    # ANCHOR: TMP_HYGIENE_20261019 — /tmp inode incident 2026-10-19: inode bands per (mount, metric) in the disk-usage
+    # monitor (top dirs by file count, bounded scan) and the daily tmp-hygiene plan lane (ended Claude session scratch,
+    # old pytest temp, never-touch for everything else; operator-gated apply). Hermetic: fake /tmp, /proc, statvfs.
+    ("tmp_hygiene_20261019", ["tests/test_tmp_hygiene_20261019.py"]),
     # ANCHOR: ACTIVE_TRADER_ALERT_COMPLETENESS_20261019 — alerts that shipped blank/UNKNOWN: swing entry cards carry
     # company/sector/catalyst/CIO decision (shared lib.entry_alert_context); one swing-entry sender (planner persists,
     # cio_entry_state_runner pages; config/swing_entry_alerts.yaml rollback); AT conflict = latest verdict only, AT-internal
