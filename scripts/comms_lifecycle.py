@@ -17,7 +17,8 @@ Steps (each idempotent; dry run unless --apply):
   3. reservations — settle communication_deliveries rows left RESERVED/SENDING longer than an hour by an owner that
                 never settled them (lib.comms.delivery.reap_stale_reservations, 2026-10-20: 205 such rows, oldest 8
                 days). Never sends: INBOUND -> CANCELLED, unclaimed outbound -> EXPIRED, stale SENDING -> UNKNOWN.
-                Runs before purge so a settled row is archived with its final status.
+                Runs before purge so a settled row is archived with its final status. OPT-IN (not in the default
+                steps) until the comms-lifecycle cron row's inventory approval covers it.
   4. purge    — archive then delete expired rows (children first), in batches, one transaction per batch.
 
   comms_lifecycle.py                 # dry run: counts per step
@@ -187,7 +188,9 @@ def step_purge(cur, *, apply: bool, batch: int = 2000, max_rows: int = 200000) -
 def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--apply", action="store_true")
-    ap.add_argument("--steps", default="classify,expire,reservations,purge")
+    # reservations is opt-in: adding it to the hourly cron run changes that job and waits on the cron-inventory
+    # approval (operator freeze 2026-10-09). Run it explicitly with --steps reservations.
+    ap.add_argument("--steps", default="classify,expire,purge")
     ap.add_argument("--batch", type=int, default=2000)
     a = ap.parse_args(argv)
     steps = [s.strip() for s in a.steps.split(",") if s.strip()]

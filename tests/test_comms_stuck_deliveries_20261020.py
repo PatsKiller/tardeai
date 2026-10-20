@@ -189,10 +189,12 @@ def test_reaper_refuses_a_bound_shorter_than_a_send():
         dl.reap_stale_reservations(max_age_s=60, apply=False)
 
 
-def test_comms_lifecycle_runs_the_reaper_step_by_default():
-    """The hourly comms-lifecycle lane (existing cron row, unchanged) is where the reaper runs."""
+def test_comms_lifecycle_reaper_step_is_opt_in():
+    """The reaper is a comms-lifecycle step, but NOT in the hourly cron run's defaults: that would change a frozen
+    cron job (operator freeze 2026-10-09) before its inventory approval. Run with --steps reservations."""
     src = (ROOT / "scripts" / "comms_lifecycle.py").read_text(encoding="utf-8")
-    assert 'default="classify,expire,reservations,purge"' in src
+    assert 'default="classify,expire,purge"' in src
+    assert '"reservations" in steps' in src
     assert "reap_stale_reservations" in src
 
 
