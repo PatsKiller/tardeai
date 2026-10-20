@@ -1202,6 +1202,12 @@ GATES = [
     # (data broker, capped) and lands in persistent state; premarket_watcher per-day dedupe; n8n-only registry row;
     # "what n8n did today" Command Center tab (/v3/coordination?tab=today, GET /api/v2/coordination/n8n-today).
     (
+        # Read-only v2 CC observations: missing sources stay unavailable; aggregate windows are
+        # independent of bounded details. SQLite/fake PostgreSQL effects only; no live readers.
+        "n8n_cc_truth_20261018",
+        ["tests/test_n8n_cc_truth_20261018.py", "tests/test_n8n_outbox_truth_20261018.py"],
+    ),
+    (
         "hermes_at_research_n8n_today_20261016",
         ["tests/test_hermes_at_research_premarket_dedupe_20261016.py", "tests/test_n8n_today_page_20261016.py"],
     ),
