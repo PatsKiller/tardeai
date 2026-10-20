@@ -1,0 +1,30 @@
+{
+  "schema": "ActiveTraderMotionWatchdog@v1",
+  "_comment": "Operator decision 2026-10-19: the 5/10/30 s motion loop stays a systemd user service (tradeai-active-trader-motion.service; n8n's minimum schedule is 1 min and its runs are stateless processes), and n8n OWNS its supervision through lane active-trader-motion-watchdog (*/5, tradeai-dispatcher) running scripts/check_active_trader_motion_heartbeat.py. The checker is read-only towards the runtime: it reads the heartbeat, /proc/<pid>/cmdline and the marker's existence, and never restarts, stops or edits anything. Alerts only through the host comms-intent path (config/host_comms_intent_routes.json host/active_trader_motion_watchdog, DIGEST -> P2), once per band change. Changed only by reviewed PR.",
+  "heartbeat_path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/data/active_trader/motion_runtime_heartbeat.json",
+  "heartbeat_path_basis": "the host env file ~/.config/tradeai/active-trader-motion.env points ACTIVE_TRADER_MOTION_HEARTBEAT at the dev tree (config/lane_registry.json row tradeai-active-trader-motion-service output_signal); the release-relative default does not exist",
+  "heartbeat_contract": "active-trader-motion-runtime-heartbeat-v1",
+  "marker_path": "/etc/tradeai/enable-active-trader-motion",
+  "process_match": "active_trader.motion_runtime",
+  "stale_after_s": 120,
+  "stale_basis": "the runtime rewrites the heartbeat every cycle: 5 s active, 10 s near-fire, 30 s idle, bounded backoff max 30 s (config/systemd/active-trader-motion.env.example); 120 s is four idle cycles",
+  "degraded_consecutive_failures": 3,
+  "window": {
+    "tz": "America/New_York",
+    "trading_days_only": true,
+    "start": "07:00",
+    "end": "official_close",
+    "basis": "the runtime itself runs around the clock; motion evidence is consumed by the Active Trader desk from the pre-market scan through the close. Trading days and the official close (13:00 on early-close days) come from scripts/lib/cio_market_session.py, the repo's NYSE calendar. Outside the window a verdict is computed and reported but never alerts."
+  },
+  "alert": {
+    "domain": "host",
+    "kind": "active_trader_motion_watchdog",
+    "tier": "DIGEST",
+    "producer": "active_trader_motion_watchdog",
+    "alert_bands": ["STALE", "DOWN", "DEGRADED"],
+    "recovery_band": "HEALTHY",
+    "quiet_bands": ["HEALTHY", "DISABLED"],
+    "dedupe": "band change only: an alert band is queued once when the band first differs from the last alerted band; HEALTHY after an alert band queues one recovery line; DISABLED (operator gate) never alerts"
+  },
+  "state_rel": "data/runtime/active_trader_motion_watchdog_state.json"
+}

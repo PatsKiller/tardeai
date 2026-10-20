@@ -1,0 +1,444 @@
+{
+  "schema": "CampaignRepairIntegrationEvidence@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "dependency_sha": "0fa3ea614dbc5b2523e584a9093da74d4a54f978",
+  "reviewed_source_sha": "96a2c119602cf694155366b148110bf5187cc642",
+  "source_proof": [
+    {
+      "path": "config/self_heal_fixer.json",
+      "source_sha256": "582102cc652b0155aa661f049d74099a12da25e1caeb8e4a77651ffd0cd19b2b",
+      "candidate_sha256": "582102cc652b0155aa661f049d74099a12da25e1caeb8e4a77651ffd0cd19b2b",
+      "comparison": "exact bytes",
+      "equal": true
+    },
+    {
+      "path": "scripts/lib/self_heal_fix_evaluator.py",
+      "source_sha256": "d45b59988ef44ddc19a060fbd94bddb6d3e9324adfc30640f7eff7acde8aa79f",
+      "candidate_sha256": "19f8679f8086634913a0704773aad6894a4562829e077cd68be0e21115c85cb5",
+      "comparison": "whole-module AST",
+      "equal": true
+    },
+    {
+      "path": "scripts/lib/self_heal_fixer.py",
+      "source_sha256": "eaff28285d886f3a416761715ac50adca7bc6af26d24af27d9b198003f6f63c0",
+      "candidate_sha256": "f48129260a13d976c75adaab049156ea3537a8bc9e65f8e5eedc042843cda9bc",
+      "comparison": "whole-module AST",
+      "equal": true
+    },
+    {
+      "path": "scripts/lib/self_heal_fixer_claims.py",
+      "source_sha256": "baf9582361df3618945f14a4eede27d9aa02b66cf0bfde7ce2690dad02fc8b82",
+      "candidate_sha256": "b1ee57a5a29982b062de214edb554132f1857c0e79157613735637d1a8fc1f37",
+      "comparison": "whole-module AST",
+      "equal": true
+    },
+    {
+      "path": "scripts/self_heal_fixer.py",
+      "source_sha256": "ba12156db61c9b703b409c3980af6366c8bdaa3b7ba581347f982ae664578e48",
+      "candidate_sha256": "700ab0fa54fd9466ed65c0edfdcde9a391c9a47349eb33c80929765fe2df547a",
+      "comparison": "whole-module AST",
+      "equal": true
+    },
+    {
+      "path": "tests/test_self_heal_fix_acceptance_20261018.py",
+      "source_sha256": "789a15475d9ab9ab0a80cdbba18fe29b86ae62b2f619a1a04cddf067bdfe54ab",
+      "candidate_sha256": "7c68bbd13b9afe75d549a02d7c89315f1780066ab1c4a82bc98e5f2abc8694ca",
+      "comparison": "whole-module AST",
+      "equal": true
+    },
+    {
+      "path": "tests/test_self_heal_fixer_20261016.py",
+      "source_sha256": "7672575cc3fd50d6f6e18f77b4c82c5bf02cfe22ae4d30b95da38fe579247a30",
+      "candidate_sha256": "3b94228a90aa8ea4f4459bc6a88e6797bd8ce8d5addf93fdb6d3bba6f0f0fd07",
+      "comparison": "whole-module AST",
+      "equal": true
+    },
+    {
+      "path": "tests/test_self_heal_fixer_hardening_20261016.py",
+      "source_sha256": "5abdbf06620e99eceacd752ddb85c4e2d1c0aa0f4135d84964a74b42d7666292",
+      "candidate_sha256": "67fe5b90bc7cace662476f98ad223d410b841612cf459b053ebe9aaca7e7c60b",
+      "comparison": "whole-module AST",
+      "equal": true
+    }
+  ],
+  "gates": {
+    "before": 498,
+    "after": 499,
+    "prior_order_and_values_unchanged": true
+  },
+  "validation": {
+    "host_final": "142 passed; zero failures/errors/skips after SIEM dependency",
+    "sandbox_initial": "137 passed,3 skipped,2 PermissionError socket failures; environment failure only",
+    "host_long_path": "141 passed,1 missing artifact after AF_UNIX path too long; retained; corrected only temporary test root",
+    "host_pre_siem": "142 passed; retained separately",
+    "baseline": "Frozen15 assertion pair on exact3af and same15green preserved; original residual/optional-control pairs preserve their original scope"
+  },
+  "full_native": "PENDING",
+  "runtime": "DISARMED; not deployed or enabled; no unattended repair proof",
+  "holds": [
+    "Full native acceptance and independent integration review",
+    "Exact-head hosted CI and authorized release",
+    "No legacy v1 acceptance requalification inferred",
+    "Actual executor qualification, known cost/provider, deadline and recovered output required",
+    "Policy13 remains proposed; no unattended remote authority inferred"
+  ],
+  "artifacts": [
+    {
+      "path": "original-source/config/self_heal_fixer.json.gz",
+      "source": "96a2c119602cf694155366b148110bf5187cc642:config/self_heal_fixer.json",
+      "raw_bytes": 14911,
+      "raw_sha256": "582102cc652b0155aa661f049d74099a12da25e1caeb8e4a77651ffd0cd19b2b",
+      "stored_sha256": "0af09230ca40775cbf8fd888c3aff6bf7fd9b4535d96f18a98cd161fcfd3ec04"
+    },
+    {
+      "path": "original-source/scripts/lib/self_heal_fix_evaluator.py.gz",
+      "source": "96a2c119602cf694155366b148110bf5187cc642:scripts/lib/self_heal_fix_evaluator.py",
+      "raw_bytes": 12212,
+      "raw_sha256": "d45b59988ef44ddc19a060fbd94bddb6d3e9324adfc30640f7eff7acde8aa79f",
+      "stored_sha256": "7505eac903daa9b44f1456d9290cece0a31a9b4f7e61562423d79241b541d597"
+    },
+    {
+      "path": "original-source/scripts/lib/self_heal_fixer.py.gz",
+      "source": "96a2c119602cf694155366b148110bf5187cc642:scripts/lib/self_heal_fixer.py",
+      "raw_bytes": 52372,
+      "raw_sha256": "eaff28285d886f3a416761715ac50adca7bc6af26d24af27d9b198003f6f63c0",
+      "stored_sha256": "ebf5575fdb9a69e09ffc738d9ec47913b7c0d20ce82911c3bcb7a69efc3bd7fd"
+    },
+    {
+      "path": "original-source/scripts/lib/self_heal_fixer_claims.py.gz",
+      "source": "96a2c119602cf694155366b148110bf5187cc642:scripts/lib/self_heal_fixer_claims.py",
+      "raw_bytes": 12203,
+      "raw_sha256": "baf9582361df3618945f14a4eede27d9aa02b66cf0bfde7ce2690dad02fc8b82",
+      "stored_sha256": "36da9e17b6af16d06dbf2e1ee3d88a25f5cea5e3d2b63ce72cb6a0b63303b63e"
+    },
+    {
+      "path": "original-source/scripts/self_heal_fixer.py.gz",
+      "source": "96a2c119602cf694155366b148110bf5187cc642:scripts/self_heal_fixer.py",
+      "raw_bytes": 68197,
+      "raw_sha256": "ba12156db61c9b703b409c3980af6366c8bdaa3b7ba581347f982ae664578e48",
+      "stored_sha256": "452641fc2703d2e3093324122bbca121e407787427448fe434a7458954e75cd7"
+    },
+    {
+      "path": "original-source/tests/test_self_heal_fix_acceptance_20261018.py.gz",
+      "source": "96a2c119602cf694155366b148110bf5187cc642:tests/test_self_heal_fix_acceptance_20261018.py",
+      "raw_bytes": 12313,
+      "raw_sha256": "789a15475d9ab9ab0a80cdbba18fe29b86ae62b2f619a1a04cddf067bdfe54ab",
+      "stored_sha256": "a32f8f9dd08f8761eb37b2d86ab0b21b6053b6ca5a5c7ae0125bd5304f96dcb9"
+    },
+    {
+      "path": "original-source/tests/test_self_heal_fixer_20261016.py.gz",
+      "source": "96a2c119602cf694155366b148110bf5187cc642:tests/test_self_heal_fixer_20261016.py",
+      "raw_bytes": 44205,
+      "raw_sha256": "7672575cc3fd50d6f6e18f77b4c82c5bf02cfe22ae4d30b95da38fe579247a30",
+      "stored_sha256": "e73c7729293ab1d1b7c17909842bf2a7c146bacf772a7c70b4ca5d295773703a"
+    },
+    {
+      "path": "original-source/tests/test_self_heal_fixer_hardening_20261016.py.gz",
+      "source": "96a2c119602cf694155366b148110bf5187cc642:tests/test_self_heal_fixer_hardening_20261016.py",
+      "raw_bytes": 43428,
+      "raw_sha256": "5abdbf06620e99eceacd752ddb85c4e2d1c0aa0f4135d84964a74b42d7666292",
+      "stored_sha256": "f2954cf4b3a7822acc78882f80dd4f4abc2ff1c712ddd6a8b3b5acb8c0646c7f"
+    },
+    {
+      "path": "historical/baseline-final-exact3af.txt.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/baseline-final-exact3af.txt",
+      "raw_bytes": 15206,
+      "raw_sha256": "bf066afdb032675e157ba599a004e1570e774a7ebc236477d87a58b42529b71c",
+      "stored_sha256": "e2b6d60a4a75cc25c3fb68f948506d0aa4c1a02b2db6d7af02d4663acb6eb40e"
+    },
+    {
+      "path": "historical/baseline-final-exact3af.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/baseline-final-exact3af.xml",
+      "raw_bytes": 15229,
+      "raw_sha256": "e663351b32907a8922cf42d2ad404cf5362e48c86d557d95a6e374285e3d22a2",
+      "stored_sha256": "2a603933baf21cf971983ec7f69491b7a50746fd624aa93d273273bc2ec76294"
+    },
+    {
+      "path": "historical/baseline-final.txt.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/baseline-final.txt",
+      "raw_bytes": 15215,
+      "raw_sha256": "187d476f1cc45720856dec066ff2fe5ae68aea4dcc2f6160de260397439c3cc9",
+      "stored_sha256": "1b5f2f712f897cfae183d1271d3f4879348166057740469f77f43ae15a08819c"
+    },
+    {
+      "path": "historical/baseline-final.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/baseline-final.xml",
+      "raw_bytes": 15184,
+      "raw_sha256": "de9df1245e893931c665a792108b5ffff70bd4b1af65abf46f83221c6e28af2c",
+      "stored_sha256": "48195c81822bb2e0b8403e1bf206e0ea8756194659f1a1b729b7c0b1b41e9e3d"
+    },
+    {
+      "path": "historical/baseline-pair-final.py.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/baseline-pair-final.py",
+      "raw_bytes": 5438,
+      "raw_sha256": "5507d4aa9d22428a0cbcfdd149068f2fb7b6988d9733ea63d2d432c627059d42",
+      "stored_sha256": "579e5db665f014628d7d54051098b21ad3276eb22fc004cabc379039cae7099a"
+    },
+    {
+      "path": "historical/baseline-test-pair.py.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/baseline-test-pair.py",
+      "raw_bytes": 5350,
+      "raw_sha256": "6e8e13e81820e2a3cdfdc3aacecd73014b08e7b8b35f6cf97662ed79ef226591",
+      "stored_sha256": "c16db66d14d540841ed540148aff8a2c8b16817d5a97ad3e14df1afc7194e2fc"
+    },
+    {
+      "path": "historical/baseline.txt.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/baseline.txt",
+      "raw_bytes": 14652,
+      "raw_sha256": "3bebc12604350d7d50bafa98b31af157a9947df127d10fe7075ecc8519553c63",
+      "stored_sha256": "8c7f8e81230a26d1ef63602916a04b67725471b2fdd78bde1b54e049b4c77dc1"
+    },
+    {
+      "path": "historical/baseline.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/baseline.xml",
+      "raw_bytes": 15286,
+      "raw_sha256": "b44f34e7bb1dd89efbbedb66a53e2007d3394ae8c218035d9781f7deafb6970f",
+      "stored_sha256": "803334bb88ced58af4c0af90a7afbab1427509b6543701658c492338278325e0"
+    },
+    {
+      "path": "historical/candidate-first.txt.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/candidate-first.txt",
+      "raw_bytes": 21192,
+      "raw_sha256": "18a5a2a2b7f5a149c79a1084e13a0caf7fb8650f054ff790d2e8df0fd066667f",
+      "stored_sha256": "c4488b9d7baff03795db0500bc7e5d1a61ec48bfbe74a00fac4543119b359c2f"
+    },
+    {
+      "path": "historical/candidate-first.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/candidate-first.xml",
+      "raw_bytes": 39330,
+      "raw_sha256": "2c614440d9120dd32e5e6591516af88a835a44ca6361fe35f3dc68bd9347f3d3",
+      "stored_sha256": "1f1b8827e3e39341eb60ff2c0dd436d7f392c5a1cf81caed43726d13172603af"
+    },
+    {
+      "path": "historical/candidate-full.txt.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/candidate-full.txt",
+      "raw_bytes": 181,
+      "raw_sha256": "b274d61d0edc713df5bce85b86d3691156a1a7d541b6d62d1811bdc313ed5523",
+      "stored_sha256": "b12c9ba1590c8111847cb76890207ebe2d1152e4adee83b8b220b7338d80b9cf"
+    },
+    {
+      "path": "historical/candidate-full.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/candidate-full.xml",
+      "raw_bytes": 19384,
+      "raw_sha256": "4bcb8c98754d0459cc6ccafd21ae9449e9e8789621749c1b090cc024079a64c4",
+      "stored_sha256": "2c0e22ad366c1bf6340e2b143054d9a6e4d0464d77ffcc18d09387f89549cebd"
+    },
+    {
+      "path": "historical/candidate-pair-final.txt.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/candidate-pair-final.txt",
+      "raw_bytes": 99,
+      "raw_sha256": "64c5b6193505bb9c57ec66aee092bae206d5b02e559a456546311d9e60e7d43d",
+      "stored_sha256": "cbb151f18875bbc306c1389e9074aedeb337845ee268c167450fa88c6a43612d"
+    },
+    {
+      "path": "historical/candidate-pair-final.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/candidate-pair-final.xml",
+      "raw_bytes": 2182,
+      "raw_sha256": "11291bf182ca69161185e1c9424ec837dbad567c98c7dceab079e00ba12fc7fd",
+      "stored_sha256": "820703506098683b71c199f0a0f7a5024d507230217d3f7f88e23b3d9932f602"
+    },
+    {
+      "path": "historical/candidate-second.txt.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/candidate-second.txt",
+      "raw_bytes": 1218,
+      "raw_sha256": "0a6b05eb09c885b34a8932558eb345fe0d3511e7f1375fd1b2015f0e2a8628b0",
+      "stored_sha256": "100ab249038027a79cd52a9b0effbfc8f9def1c70510e71c404138fe391637b7"
+    },
+    {
+      "path": "historical/candidate-second.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/candidate-second.xml",
+      "raw_bytes": 20152,
+      "raw_sha256": "dca2787dee0ac3dd2d7cb9eac96d2f9d7f45c1910a49654add398f422503d6cf",
+      "stored_sha256": "06ab1e2eececb003c035d9cb2011a7bcbd2fd5017d1e1717f1736f84227e94cf"
+    },
+    {
+      "path": "historical/candidate-v2.txt.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/candidate-v2.txt",
+      "raw_bytes": 181,
+      "raw_sha256": "0e176d66dc005b4689cfe819fa8cf3463a685270312c31ab2227ccd06f767de8",
+      "stored_sha256": "95ea4fc0314c9f4439539edd17d8582f65fe7a587d6eb6d63e9dba8e4935eda2"
+    },
+    {
+      "path": "historical/candidate-v2.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/candidate-v2.xml",
+      "raw_bytes": 19384,
+      "raw_sha256": "b31128b7868d5cc78a05603a9161f472442751e926d3e18bcf45eb9c86794a6a",
+      "stored_sha256": "30b46e4a4cb8e58702e7a5152a19c5942fcbcefbedfb6e8d94e66ec6300e33ef"
+    },
+    {
+      "path": "historical/final-focused.txt.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/final-focused.txt",
+      "raw_bytes": 99,
+      "raw_sha256": "92f52bc91c2beeef7952c8d482a89535dfee721099d05707c075f000c6fac924",
+      "stored_sha256": "5077102ad513696b99444f66f86073159006fdb15f777e8be0f4219af8d9bc4d"
+    },
+    {
+      "path": "historical/final-focused.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/final-focused.xml",
+      "raw_bytes": 4586,
+      "raw_sha256": "d6fb58a60fe2846b390e6ae6e92bcd178484c55e343faade9b483ebc18d59baf",
+      "stored_sha256": "4fc5335552633a97d546ae2a1b587ed19a98ba2e0b4e1abee589dbcec25fa0bf"
+    },
+    {
+      "path": "historical/mutation-manifest.json.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/mutation-manifest.json",
+      "raw_bytes": 5764,
+      "raw_sha256": "646b84276edbf6c599f6d0a089ea37a7ce760cc61fe05f1d70446054462ca82c",
+      "stored_sha256": "88bea1d0989b89aa419b4f2d56e96a12be12590e21674856b6d02d30f937fe16"
+    },
+    {
+      "path": "historical/optional-green.txt.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/optional-green.txt",
+      "raw_bytes": 194,
+      "raw_sha256": "3fb16ffada9c21b18ee7f254f8822c0c9136f935a82d4a5d978103a8de8367df",
+      "stored_sha256": "2522f4db71b4a129fb27042994a0692935683aaa6f5eea6d05049a8e38874cee"
+    },
+    {
+      "path": "historical/optional-green.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/optional-green.xml",
+      "raw_bytes": 14461,
+      "raw_sha256": "aa44babb12873521ec487b7ae9486c4e5c53ff343835cd18b8f9f906b3fa3c45",
+      "stored_sha256": "73be04e22a56c77b60372866c74f97280e3a3dd795e78699c63a20566ced86a3"
+    },
+    {
+      "path": "historical/optional-red.txt.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/optional-red.txt",
+      "raw_bytes": 1347,
+      "raw_sha256": "3e14cb4ce43ab529d3e70234a9736d20997c6ab48e7e56ff16b9922159cdd69d",
+      "stored_sha256": "4b5f5b8c3e40e95162d74a55b3cd2de9df78548b8ff7b988b8b0fac319c2a491"
+    },
+    {
+      "path": "historical/optional-red.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/optional-red.xml",
+      "raw_bytes": 1353,
+      "raw_sha256": "dc3b39678f7a32e7ea214492557527d82c947a8c78d9228ec04aaedd26a41daa",
+      "stored_sha256": "f6d6c6facf42071c4b6abd0519319ee487b723518201578f0f4f5683947140cb"
+    },
+    {
+      "path": "historical/residual-final.txt.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/residual-final.txt",
+      "raw_bytes": 99,
+      "raw_sha256": "5709e9079e5e9aed2191399a8c6c47246b6de36784c5791b8a683c5f42dc1e97",
+      "stored_sha256": "4423f23ea0953060d21ee7d64bc636faf9ca0e05ebe753d8a61e2b58d544969a"
+    },
+    {
+      "path": "historical/residual-final.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/residual-final.xml",
+      "raw_bytes": 5667,
+      "raw_sha256": "60fa94c17b7570ceddc00bdbb43bf4bc07a4b3c878b35ce0ff5782ae5f86ad5f",
+      "stored_sha256": "e8849caad62ce9aa62a8610e4a1c5a3e60533babcb7c78ac1fad3c16dc5de10d"
+    },
+    {
+      "path": "historical/residual-full.txt.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/residual-full.txt",
+      "raw_bytes": 181,
+      "raw_sha256": "7ca2cb5a7e61f106fc146a25e56b915cda3548f77124c63824beda59a789853f",
+      "stored_sha256": "9c5f9e29f322f0c18ddec0d6f67fc45418f35b86b09b2668f552a0f8191a9bf5"
+    },
+    {
+      "path": "historical/residual-full.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/residual-full.xml",
+      "raw_bytes": 19861,
+      "raw_sha256": "daebf4085262431d221124e947148c93790546372ae0c9e7b03fb268ac556481",
+      "stored_sha256": "c197e6901c4307afa6de688f59ff122b34cf16dc77a6c094cd77982f2b0fb9bf"
+    },
+    {
+      "path": "historical/residual-green.txt.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/residual-green.txt",
+      "raw_bytes": 99,
+      "raw_sha256": "4a8e5e2a9be15591898d5e05af8c4eaf8ac7966f8bda6e2449a67b7d11aeaaec",
+      "stored_sha256": "64e8b511d3a256f189309412bd5c6fd923753130cffc6c1c915b2ec5498ef774"
+    },
+    {
+      "path": "historical/residual-green.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair/residual-green.xml",
+      "raw_bytes": 4910,
+      "raw_sha256": "9162e81cbb0c436d97a7daa3e9bf932f8a14c5cae5d000033ad6bfe1bfca1b7d",
+      "stored_sha256": "ea03c8f75ba2a929d3c1a8a167731d16e202f665da448248ced755156ada6331"
+    },
+    {
+      "path": "integration/repair-integration-final-session.json.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair-integration-final-session.json",
+      "raw_bytes": 5612,
+      "raw_sha256": "b5a93dd0384a2c928f523b2c14d2fe6c6ea42087c8d0b7b806821841f7764840",
+      "stored_sha256": "6040b38318a552b18733fe66d14438623d8d2e3c8015ec967fb4d96c60227a83"
+    },
+    {
+      "path": "integration/repair-integration-focused.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair-integration-focused.xml",
+      "raw_bytes": 24991,
+      "raw_sha256": "80689fc8abdf0e08a99b1b98d97586652dc4704354ceede4dfdfda3059ed7f48",
+      "stored_sha256": "38674272551237593b06bc8b510adcd7cd020fe5998736197229a8c5cd6aa170"
+    },
+    {
+      "path": "integration/repair-integration-format-proof.json.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair-integration-format-proof.json",
+      "raw_bytes": 2048,
+      "raw_sha256": "205cd905d5f342348393ac45397e6eb576bbdbcbb37b6eb92fc90689d3828b50",
+      "stored_sha256": "38c604d5571c6337a15b5803e4f49b4cb1044ba2555f445fa15dddfdba3d5b50"
+    },
+    {
+      "path": "integration/repair-integration-format-session.json.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair-integration-format-session.json",
+      "raw_bytes": 4878,
+      "raw_sha256": "3d4e407f25f5923ac0cc44161fa4da3430e624e51c791b2aa34672b1764f4ac0",
+      "stored_sha256": "df3259eae1202b4c2f1be09dc406de05cb8d5d90c836c2456e8f96f42237cd1a"
+    },
+    {
+      "path": "integration/repair-integration-host-final.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair-integration-host-final.xml",
+      "raw_bytes": 20977,
+      "raw_sha256": "8b4d96be6fc7a729f1e38b40dd058735c243c07a0f0a84ee8fd2d0d50ca34d90",
+      "stored_sha256": "f9ee82ffe617bed6f03d77d7ab4eaef448cb912201394b8143a94a053a6f4d36"
+    },
+    {
+      "path": "integration/repair-integration-host-focused.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair-integration-host-focused.xml",
+      "raw_bytes": 25363,
+      "raw_sha256": "3bd5bfa5924a5e4a2ab46c01ded70a5decb8858fd953d9a08a74bf342528c112",
+      "stored_sha256": "3ab7df78def1f0f448ba38fed9022fa34c394205fdc41f68f910b6f4a379f2f8"
+    },
+    {
+      "path": "integration/repair-integration-host-pre-siem.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair-integration-host-pre-siem.xml",
+      "raw_bytes": 20977,
+      "raw_sha256": "98c07f688e5eddfaacdc7cd082a6a6d54639061e53df0a719cbc231d121eef44",
+      "stored_sha256": "9fb4a3a6f47186e65d86ffc8f8d700d05d9c319e5657db6e6f911cd3ed7cf077"
+    },
+    {
+      "path": "integration/repair-integration-selection.txt.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair-integration-selection.txt",
+      "raw_bytes": 176,
+      "raw_sha256": "3de53ce50797ef8e2fc4666c65dfda71c1df1cfec22bb77c40eed5daf3ee4de9",
+      "stored_sha256": "03f31ec9c5a4b17c73888cdb64d04bc656625f2be59397d60aa7155623019d21"
+    },
+    {
+      "path": "integration/repair-integration-session.json.gz",
+      "source": "/tmp/n8n-campaign-20261018/repair-integration-session.json",
+      "raw_bytes": 4098,
+      "raw_sha256": "e6ab24af2bef56370b2b512eb77721c2e86ecb653624a4e7b474acf7352e69ff",
+      "stored_sha256": "1ff894f20e1d3060f010c3407b350bd64424b44c5cd2047f0b170a45518ea943"
+    },
+    {
+      "path": "historical-independent/test_repair_residual_independent.py.gz",
+      "source": "/tmp/n8n-campaign-20261018/cross-review/test_repair_residual_independent.py",
+      "raw_bytes": 1387,
+      "raw_sha256": "7f0705b72e23c1104715b517d6ac227a818f1e144ca214b65901ffa741d33fa3",
+      "stored_sha256": "a6d066774e891a5ee77720e416b084510f408fd6f99f17ea96ab6c5206f238cf"
+    },
+    {
+      "path": "historical-independent/test_repair_optional_check_independent.py.gz",
+      "source": "/tmp/n8n-campaign-20261018/cross-review/test_repair_optional_check_independent.py",
+      "raw_bytes": 732,
+      "raw_sha256": "5b99752772e2bc4f1c4afaeb01087809e2af2c8c6d34d3c2555c8c9b53e8510c",
+      "stored_sha256": "a8ef44d16afbec4b28435e8a33563894b2e73615eef1d88b878cccb041ca42a5"
+    },
+    {
+      "path": "historical-independent/repair-residual-baseline.xml.gz",
+      "source": "/tmp/n8n-campaign-20261018/cross-review/repair-residual-baseline.xml",
+      "raw_bytes": 3496,
+      "raw_sha256": "a7b6bb12d77877995ddcdec652f3cdfa582937f8190da7e55f79a381f8a6c643",
+      "stored_sha256": "cad714bf2fc184bc8c80c91fe79982efd8f58fb8ab7e7d3617d8f9470f979df8"
+    }
+  ]
+}

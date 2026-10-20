@@ -74,21 +74,19 @@ def _analyst_intel(sym: str, live_price: float | None = None) -> dict | None:
         "SELECT payload, as_of FROM analyst_data_history WHERE symbol=%s ORDER BY as_of DESC LIMIT 1",
         (sym,), one=True,
     )
-    dist = {}
-    dist_provider = None
-    dist_as_of = None
-    if dist_row and dist_row.get("payload"):
-        p = dist_row["payload"]
-        if isinstance(p, str):
-            try:
-                p = json.loads(p)
-            except Exception:
-                p = {}
-        if isinstance(p, dict):
-            dist_provider = p.get("provider")
-            dist_as_of = str(dist_row.get("as_of") or "")[:10] or None
-            if any(p.get(k) is not None for k in ("strong_buy", "buy", "hold", "sell", "strong_sell")):
-                dist = {k: int(p.get(k) or 0) for k in ("strong_buy", "buy", "hold", "sell", "strong_sell")}
+    # 2026-10-18: analyst_data_history.payload is {} on every row since 2026-07-28
+    # (vote provider retired 2026-09-13). Empty / all-zero is "unavailable", never
+    # a zero-vote distribution.
+    try:
+        from lib.analyst_vote_distribution import vote_distribution
+    except ImportError:  # pragma: no cover - imported as scripts.<module>
+        from scripts.lib.analyst_vote_distribution import vote_distribution
+    _vd = vote_distribution((dist_row or {}).get("payload") if dist_row else None)
+    dist = _vd["distribution"] or {}
+    dist_provider = _vd["provider"]
+    dist_status = _vd["status"]
+    dist_reason = _vd["reason"]
+    dist_as_of = (str(dist_row.get("as_of") or "")[:10] or None) if dist and dist_row else None
 
     enrich = _load_enrichment_cache(sym)
     pill = _load_pro_analyst_pill(sym)
@@ -122,6 +120,8 @@ def _analyst_intel(sym: str, live_price: float | None = None) -> dict | None:
             "live_price": float(live_price) if live_price else None,
             "as_of": str(an.get("snapshot_date") or "")[:10] or None,
             "distribution": dist or None,
+            "distribution_status": dist_status,
+            "distribution_unavailable_reason": dist_reason,
             "distribution_provider": dist_provider,
             "distribution_as_of": dist_as_of,
         }
@@ -136,7 +136,12 @@ def _analyst_intel(sym: str, live_price: float | None = None) -> dict | None:
         rs_f = float(rs) if rs is not None else None
     except Exception:
         rs_f = None
-    if rs_f is not None and 1.0 <= rs_f <= 5.0:
+    try:
+        from lib.analyst_recom_guard import recom_reject_reason
+    except ImportError:  # pragma: no cover - imported as scripts.<module>
+        from scripts.lib.analyst_recom_guard import recom_reject_reason
+    # 2026-10-18: a percent recom ("3.81%") parses into 1..5 and used to pass; refuse it with its rating.
+    if rs_f is not None and recom_reject_reason(enrich.get("recom"), rs_f) is None:
         finviz = {
             "source": "finviz",
             "rating": enrich.get("analyst_rating"),
@@ -200,6 +205,8 @@ def _analyst_intel(sym: str, live_price: float | None = None) -> dict | None:
         "target_low": primary.get("target_low"),
         "upside_pct": primary.get("upside_pct"),
         "distribution": primary.get("distribution") or dist or None,
+        "distribution_status": "available" if (primary.get("distribution") or dist) else "unavailable",
+        "distribution_unavailable_reason": None if (primary.get("distribution") or dist) else dist_reason,
         "primary_source": primary.get("source") or "yahoo",
         "sources": sources,
         "quality": {

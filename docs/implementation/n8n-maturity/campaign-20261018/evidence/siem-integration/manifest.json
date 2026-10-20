@@ -1,0 +1,519 @@
+{
+  "approved_source_sha": "b0f8e62c1490324c94b607a8e3ab8dbd6ff688f2",
+  "artifacts": [
+    {
+      "bytes": 1428,
+      "decompressed_bytes": 15361,
+      "decompressed_sha256": "c40700778beca19bd475f0e88ac193982952728174e5193baafa536d6ca5dd0d",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-baseline-red.txt",
+      "path": "historical/siem-baseline-red.txt.gz",
+      "sha256": "73b33837d4847e0c5823b1616003b06228566c68fc2d4967a587bd48c7414e5d"
+    },
+    {
+      "bytes": 1557,
+      "decompressed_bytes": 17287,
+      "decompressed_sha256": "1775b529e7870d1318baffafe3491fe2e40158d42cd7fa0f242477fd81278941",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-baseline-red.xml",
+      "path": "historical/siem-baseline-red.xml.gz",
+      "sha256": "4d61fab263dcf9cf43e3ca4f37000ffe0fba2a48bf2765536356324322c2edf8"
+    },
+    {
+      "bytes": 829,
+      "decompressed_bytes": 2341,
+      "decompressed_sha256": "93f1de6c1dd5426b2ac88606481634c0aaa025e157d5322e2e40f321447a8171",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-baseline-review-session.json",
+      "path": "historical/siem-baseline-review-session.json.gz",
+      "sha256": "8e43f3d7ad999e73b5b2c4ef1c2c4d34b5b68cbb2c2bb087352ef00e44b8f6eb"
+    },
+    {
+      "bytes": 52,
+      "decompressed_bytes": 99,
+      "decompressed_sha256": "346093af6f707e94da60d1ca3edce9a29eb5184305cd17f739211d96b82df6a7",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-candidate-green.txt",
+      "path": "historical/siem-candidate-green.txt.gz",
+      "sha256": "2e05102d73b32b2285f134f4c5a1197f4ef965570a451c326ad74a44681606c9"
+    },
+    {
+      "bytes": 1409,
+      "decompressed_bytes": 7709,
+      "decompressed_sha256": "1565af41d782cd27a7ce6f3fb2cfb6f186f318b7f82fe1d9cdd345924bf2c853",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-candidate-green.xml",
+      "path": "historical/siem-candidate-green.xml.gz",
+      "sha256": "25f96a2e8cbbdeb727793f96bbf4baf303d70d5da33f90bb98e4438b6ddcd971"
+    },
+    {
+      "bytes": 68,
+      "decompressed_bytes": 260,
+      "decompressed_sha256": "a1ad09cd1b0cfaf5c02d370fd1cfcff898e6afdc1e843f4f0a214071e566750d",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-consistency-candidate.txt",
+      "path": "historical/siem-consistency-candidate.txt.gz",
+      "sha256": "b9ddad3f956ead822a8075e2416c92c5d911a7b79afd8c5467edd5b0707bbdc6"
+    },
+    {
+      "bytes": 4633,
+      "decompressed_bytes": 31641,
+      "decompressed_sha256": "1730a0e956ffb9363600fe5d3d957ecc4ae9bebde6567e61388a8f400a27bad1",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-consistency-candidate.xml",
+      "path": "historical/siem-consistency-candidate.xml.gz",
+      "sha256": "e5679f77f4220bb58e5135cd69adcd0ccd85a1bd911c6f88ec39a44aa1d6d2f9"
+    },
+    {
+      "bytes": 1119,
+      "decompressed_bytes": 3514,
+      "decompressed_sha256": "9e2a11c8fb200ccafd3fd0beee113d3b497f27ea29ac5f832d624d5f98919591",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-consistency-session.json",
+      "path": "historical/siem-consistency-session.json.gz",
+      "sha256": "c93a66c220a435356011de37a1a9048a87ee65545a589b6976e62fc00233935b"
+    },
+    {
+      "bytes": 82,
+      "decompressed_bytes": 271,
+      "decompressed_sha256": "f40965f4da53daf87b97c5f82b6b11c58b9b3c1eacec5fb5b79a8e3f8de8d1ee",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-final-focused-regression.txt",
+      "path": "historical/siem-final-focused-regression.txt.gz",
+      "sha256": "4380ed7d20be791de046a73224a054432488de3eefb5cceadd6507a936b9f6a7"
+    },
+    {
+      "bytes": 1594,
+      "decompressed_bytes": 9148,
+      "decompressed_sha256": "b217c4500c87289ea07559726023f7d4ecf634a59f05fa790f6894e1542ce8d3",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-final-focused.xml",
+      "path": "historical/siem-final-focused.xml.gz",
+      "sha256": "15d2d16a36feb57cff0afa0f38531e2a58ef4d7fbd2eea23e7c3f7a526942653"
+    },
+    {
+      "bytes": 52,
+      "decompressed_bytes": 99,
+      "decompressed_sha256": "e5b7adefc8e674d5b281ef3bc0e114f5b3ed953389645ee9902bc296839828f5",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-final-new-adversarial.txt",
+      "path": "historical/siem-final-new-adversarial.txt.gz",
+      "sha256": "c4e2401587d54246c69c81d1c24805c1e7a5b58a1b9d49505eb422bb4d9d6b03"
+    },
+    {
+      "bytes": 51,
+      "decompressed_bytes": 98,
+      "decompressed_sha256": "1af40c49f25815cc43199390723eca0ea305a38da96d85981d7ae68d66a97f6f",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-final-original-adversarial.txt",
+      "path": "historical/siem-final-original-adversarial.txt.gz",
+      "sha256": "47cc020deb8c0f2be8b729528d2cd8e0d1d4890df24c3e5f3f110c04c5e96c25"
+    },
+    {
+      "bytes": 849,
+      "decompressed_bytes": 2514,
+      "decompressed_sha256": "db2f07ddb797d87b0f73761970d951016ef01077a07b1bd7f3c8bddf6b23be10",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-final-review-session.json",
+      "path": "historical/siem-final-review-session.json.gz",
+      "sha256": "ba3a6ee11c738c4c4909c44579d2d3bee41d21874704c4957963fa06979d2e18"
+    },
+    {
+      "bytes": 2057,
+      "decompressed_bytes": 4124,
+      "decompressed_sha256": "49ed3a426cb7d1e9e7a8831a6e499e378d69d0c903c1e558214dbdf23530a899",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-final-review.json",
+      "path": "historical/siem-final-review.json.gz",
+      "sha256": "25e09bfb0db9ae1de0447f79acd53aacf4df685cf675ed8abda96b05f78b912a"
+    },
+    {
+      "bytes": 52,
+      "decompressed_bytes": 99,
+      "decompressed_sha256": "9d654135ba3bf594058219bcaaa06da677575cbe043405d16b46cf508233d573",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-focused-review.txt",
+      "path": "historical/siem-focused-review.txt.gz",
+      "sha256": "15bb8a82e4c237f35e008c99ba4f69d0e73a071426cedc7075d9b531b642f51a"
+    },
+    {
+      "bytes": 1001,
+      "decompressed_bytes": 7099,
+      "decompressed_sha256": "78f3ab9e81eb8f86c2752f2fe69d31a4518c641c41b888adb15ff1fb39dcdc0a",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-independent-baseline.txt",
+      "path": "historical/siem-independent-baseline.txt.gz",
+      "sha256": "27d999305d42d834866c2dc9c509ef2d247bc14a280f3440bd8cb2c35ddbe83e"
+    },
+    {
+      "bytes": 998,
+      "decompressed_bytes": 7095,
+      "decompressed_sha256": "850ab7204099706fd12782cf4fd6e829d2ae2aae0035c26c41f1d280723740d8",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-independent.txt",
+      "path": "historical/siem-independent.txt.gz",
+      "sha256": "445b1b0bc8f5e3654a456703c1f4741226b5af5549e5c40cdd09c070063bf8e1"
+    },
+    {
+      "bytes": 865,
+      "decompressed_bytes": 2534,
+      "decompressed_sha256": "489c44030d360335f8947b8f358bf504181a40e1289c0053cf3db4e860326f9b",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-review-session.json",
+      "path": "historical/siem-review-session.json.gz",
+      "sha256": "e6b53e1cb59f0568e0d03295426395d7c63bbaa20017effa186e1cb1894dc4cd"
+    },
+    {
+      "bytes": 2185,
+      "decompressed_bytes": 4548,
+      "decompressed_sha256": "bec2bf6ab0ca66bfa49ab433e1f05a0b1ff44f45e5000f56baef2003aee7a546",
+      "kind": "historical_source_review_or_test_receipt",
+      "original": "/tmp/n8n-campaign-20261018/siem-review.json",
+      "path": "historical/siem-review.json.gz",
+      "sha256": "d34989a478246765d56a7b081ba0a0d1d6f2f60cc65d63e8f3fb845b0d2e9f04"
+    },
+    {
+      "bytes": 1021,
+      "decompressed_bytes": 2589,
+      "decompressed_sha256": "981f158193337b0d771fd195dac12bd24cb1beedb6fcf2814af980536f4480dd",
+      "kind": "immutable_external_test",
+      "original": "/tmp/n8n-campaign-20261018/test_siem_independent.py",
+      "path": "historical/test_siem_independent.py.gz",
+      "sha256": "a4e2ff2d15e2354090d3a67b96401bb20018bb89a2f202447fecafa7421efb98"
+    },
+    {
+      "bytes": 1502,
+      "decompressed_bytes": 3683,
+      "decompressed_sha256": "23ac5d5b256409dfb4043cdaef8cdd67805bba922d1053ae9de6ce7c9bb9d850",
+      "kind": "immutable_external_test",
+      "original": "/tmp/n8n-campaign-20261018/test_siem_final_adversarial.py",
+      "path": "historical/test_siem_final_adversarial.py.gz",
+      "sha256": "c3d3855cb8f872d486aae93241e466e006af4113ad47a52a40165d3b464eb6d3"
+    },
+    {
+      "bytes": 52,
+      "decompressed_bytes": 99,
+      "decompressed_sha256": "9a3f28904df773ad1477e6dac9f20b7fa2164f8f85481d1cab04da13290a81e0",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/siem-integration-adversarial68.txt",
+      "path": "integration/siem-integration-adversarial68.txt.gz",
+      "sha256": "ddd0d39ccac22111d13485fcff36bf7e1a6e184a3db87be7c7e23c7d833c2b0b"
+    },
+    {
+      "bytes": 837,
+      "decompressed_bytes": 12254,
+      "decompressed_sha256": "6a6045ffeff2b4601e37ec0a09e3752db2347a5c9a97209da41395c66ee579d8",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/siem-integration-adversarial68.xml",
+      "path": "integration/siem-integration-adversarial68.xml.gz",
+      "sha256": "0cb3966bac1ce486d05412b277a5ae923da67a112a9c3d0f9cea1fab9686c5a8"
+    },
+    {
+      "bytes": 600,
+      "decompressed_bytes": 1548,
+      "decompressed_sha256": "901cfdfff62346004aab9b897ad2a2ab646c39ef885dd456a05da85ec906ab8b",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/siem-integration-base-check.json",
+      "path": "integration/siem-integration-base-check.json.gz",
+      "sha256": "81b426b5aeb7e88772355b380f400497dd3d4a6c5c6872d7d5651333b7f83a0f"
+    },
+    {
+      "bytes": 20,
+      "decompressed_bytes": 0,
+      "decompressed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/siem-integration-final-diff-check.txt",
+      "path": "integration/siem-integration-final-diff-check.txt.gz",
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "bytes": 69,
+      "decompressed_bytes": 260,
+      "decompressed_sha256": "dd0ca1b94bad8ccadf512a3dd56db22c56f640170c8bd6b25e581ac17c8b3096",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/siem-integration-final-focused.txt",
+      "path": "integration/siem-integration-final-focused.txt.gz",
+      "sha256": "3e78cbe543babc14e649bb3543b8f305729258318fa4feab44856225c5f65a77"
+    },
+    {
+      "bytes": 4647,
+      "decompressed_bytes": 31731,
+      "decompressed_sha256": "765801dc129c4ddb055bc947f45e21c20fbc4c0a8e8e5ccd34dc23e47db41e73",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/siem-integration-final-focused.xml",
+      "path": "integration/siem-integration-final-focused.xml.gz",
+      "sha256": "9b3b29fc7d2f50bf44df1ee2e82036de35055ad5fab4259c590aa68bdba57433"
+    },
+    {
+      "bytes": 39,
+      "decompressed_bytes": 19,
+      "decompressed_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/siem-integration-final-ruff-check.txt",
+      "path": "integration/siem-integration-final-ruff-check.txt.gz",
+      "sha256": "f3af4d142827f5aad2eb0c72d556d325488a57fb6219aac10afeb51085667d53"
+    },
+    {
+      "bytes": 46,
+      "decompressed_bytes": 26,
+      "decompressed_sha256": "ef7d13d02214e98ca902b05257cdbe6a8e84f3b4714508efdc19766460b54209",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/siem-integration-final-ruff-format.txt",
+      "path": "integration/siem-integration-final-ruff-format.txt.gz",
+      "sha256": "3ace4f87d343f5d6719e893bf1ba723a40fec1daacb40b308ff9a817030739fb"
+    },
+    {
+      "bytes": 69,
+      "decompressed_bytes": 260,
+      "decompressed_sha256": "48c81aa8885d2ac7c38ab182a0b5b10fdc858e0a2b5019a25da712bc47745719",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/siem-integration-focused.txt",
+      "path": "integration/siem-integration-focused.txt.gz",
+      "sha256": "9c72eb2616b40f6d601073ed8ff7829697bc7d8ef945ea47f17ab179aff64af3"
+    },
+    {
+      "bytes": 4589,
+      "decompressed_bytes": 31731,
+      "decompressed_sha256": "46adc51073e6ac2433b6f2d5a88f968da80aa4c35f0da8e4171c96135802c34f",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/siem-integration-focused.xml",
+      "path": "integration/siem-integration-focused.xml.gz",
+      "sha256": "ed158dd3cde82e125fecdf0258c9d7c8f19029d3d1ff4211e2a9b1d12d8ce810"
+    },
+    {
+      "bytes": 989,
+      "decompressed_bytes": 2663,
+      "decompressed_sha256": "0148d7cae8b2e9b9439e9be508e18be4730f24c3313a63d991668e799690e9b6",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/siem-integration-format-parity.json",
+      "path": "integration/siem-integration-format-parity.json.gz",
+      "sha256": "daf728a5e115faf74684560a78483514773ec13ddb50b414cc43a65b2d98456a"
+    },
+    {
+      "bytes": 574,
+      "decompressed_bytes": 2017,
+      "decompressed_sha256": "0f16017b7e31f7e438b4a7337ce3ebe6bcf0095cfdfa857e3d7232288422c114",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/siem-integration-quality-and-gate.json",
+      "path": "integration/siem-integration-quality-and-gate.json.gz",
+      "sha256": "ed6ffc6aa564dae5eb14075982568926082d78ba0914d4ed186b5a2852badb52"
+    },
+    {
+      "bytes": 39,
+      "decompressed_bytes": 19,
+      "decompressed_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/siem-integration-ruff-check.txt",
+      "path": "integration/siem-integration-ruff-check.txt.gz",
+      "sha256": "f3af4d142827f5aad2eb0c72d556d325488a57fb6219aac10afeb51085667d53"
+    },
+    {
+      "bytes": 6066,
+      "decompressed_bytes": 23210,
+      "decompressed_sha256": "8d266b46f67e4397143bd4e772da3423f7acf9f5cbfcb9b30977dd98def7d580",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/siem-integration-ruff-format.txt",
+      "path": "integration/siem-integration-ruff-format.txt.gz",
+      "sha256": "0fdac1da0c5e20725931d96861250490d0223cd6a7680cf584f408e355b86947"
+    },
+    {
+      "bytes": 1429,
+      "decompressed_bytes": 5955,
+      "decompressed_sha256": "29ba3e27443d916366a6d0e01ddcc6e33dc0cabdce1644f2f4083e8826ce0882",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/siem-integration-selection.json",
+      "path": "integration/siem-integration-selection.json.gz",
+      "sha256": "62c2f2d18be951d04be948d8f70a7c4f7037191a14f779d23603f17d6c51a000"
+    },
+    {
+      "bytes": 178,
+      "decompressed_bytes": 205,
+      "decompressed_sha256": "76b52a131cf61cc8312e4c51ead0ab14626d8152be9360b500fc81aad212d0cd",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/siem-integration-selection.txt",
+      "path": "integration/siem-integration-selection.txt.gz",
+      "sha256": "3f6c1f9fbdd794bba61239ccc38bb385d1eab3465be957c5899ecf4c3eed34dd"
+    },
+    {
+      "bytes": 1231,
+      "decompressed_bytes": 3976,
+      "decompressed_sha256": "10c1c4a3f210f745f3f8d1ddf0d5b367d6e3460cd7b46765b7305764a2b24719",
+      "kind": "integration_validation",
+      "original": "/tmp/n8n-campaign-20261018/siem-integration-session.json",
+      "path": "integration/siem-integration-session.json.gz",
+      "sha256": "91e553edc940a1504b1748aab493e671358ebf5ac38d715e0bd80e953f358025"
+    },
+    {
+      "bytes": 9519,
+      "decompressed_bytes": 27668,
+      "decompressed_sha256": "9945dd43a33348d257de467da6458b5e6b43207074c461ef2fb1dc051313c7d6",
+      "kind": "exact_approved_preformat_git_blob",
+      "original": "b0f8e62c1490324c94b607a8e3ab8dbd6ff688f2:scripts/lib/n8n_siem_bridge.py",
+      "path": "original-source/scripts/lib/n8n_siem_bridge.py.gz",
+      "sha256": "3ac25839df1a9077faaecde9117905258b1759f27655c25e3f767902085c15ae"
+    },
+    {
+      "bytes": 4357,
+      "decompressed_bytes": 12502,
+      "decompressed_sha256": "3b8f4f18d996f281c3752be0b2d23ff1fed0e564d2e49558d1b4ba39ca2af226",
+      "kind": "exact_approved_preformat_git_blob",
+      "original": "b0f8e62c1490324c94b607a8e3ab8dbd6ff688f2:scripts/lib/recovery_validator.py",
+      "path": "original-source/scripts/lib/recovery_validator.py.gz",
+      "sha256": "b32a6ef90e499c8a378bd1b8e9b6525f8edf86d678809432944d4ae9a4f5f093"
+    },
+    {
+      "bytes": 1021,
+      "decompressed_bytes": 2589,
+      "decompressed_sha256": "981f158193337b0d771fd195dac12bd24cb1beedb6fcf2814af980536f4480dd",
+      "kind": "exact_approved_preformat_git_blob",
+      "original": "b0f8e62c1490324c94b607a8e3ab8dbd6ff688f2:tests/test_n8n_recovery_consistency_20261018.py",
+      "path": "original-source/tests/test_n8n_recovery_consistency_20261018.py.gz",
+      "sha256": "a4e2ff2d15e2354090d3a67b96401bb20018bb89a2f202447fecafa7421efb98"
+    },
+    {
+      "bytes": 1387,
+      "decompressed_bytes": 3609,
+      "decompressed_sha256": "ea10159857624018db4d3b22b5b7f5cebaca17d2b62b32be47cd0761ca3282f3",
+      "kind": "exact_approved_preformat_git_blob",
+      "original": "b0f8e62c1490324c94b607a8e3ab8dbd6ff688f2:tests/test_n8n_siem_recovery_truth_20261018.py",
+      "path": "original-source/tests/test_n8n_siem_recovery_truth_20261018.py.gz",
+      "sha256": "3c31c4e4814bfa014daeb9301235ea9e42931d4b42fa470b7171d6039f3e40c1"
+    },
+    {
+      "bytes": 8419,
+      "decompressed_bytes": 29747,
+      "decompressed_sha256": "95f2c12caa46c311984b437eaa53efab1ed73fd2ad7c361ec7f35f8a290bedcf",
+      "kind": "exact_approved_preformat_git_blob",
+      "original": "b0f8e62c1490324c94b607a8e3ab8dbd6ff688f2:tests/test_n8n_siem_bridge_20261010.py",
+      "path": "original-source/tests/test_n8n_siem_bridge_20261010.py.gz",
+      "sha256": "4f91215600996ad5e8dd7f89e7fdd91544802faa172abbefcaa4aae9491ee728"
+    }
+  ],
+  "base_sha": "d06f7a11bcdd6a21d999d8c7daea53cd600750ef",
+  "ci": {
+    "actual_PR_selector_includes_gate": true,
+    "added_gate": "n8n_siem_recovery_truth_20261018",
+    "all_prior_gate_order_and_values_unchanged": true,
+    "base_gate_count": 497,
+    "deferred": [],
+    "file": "scripts/run_cio_hardening_ci.py",
+    "final_gate_count": 498,
+    "proof": "integration/siem-integration-quality-and-gate.json.gz",
+    "rest_runner_AST_unchanged": true,
+    "tests": [
+      "tests/test_n8n_recovery_consistency_20261018.py",
+      "tests/test_n8n_siem_recovery_truth_20261018.py"
+    ]
+  },
+  "compatibility": {
+    "ledger_good_lanes": "internal Python carrier is candidate receipt mapping, not historical set; sole production CLI forwards mapping; old set is held, wire report lane-name shape preserved",
+    "manual_dry_run": "later dry or requested-live/effective-dry run cannot clear ledger live failure",
+    "optional_identity_fields": "supported absence remains compatible when authoritative fields agree; present contradictory lane/run/attempt/state/exit evidence fails closed",
+    "shared_verdict_owner": "scripts/lib/recovery_validator.py validate",
+    "time_evidence": "missing/naive/nonfinite/future finish timestamps cannot establish live useful-output recovery"
+  },
+  "formatting": {
+    "after": "Ruff format only; complete module AST identical for each; final bytes differ",
+    "before": "exact five approved source Git blobs archived losslessly",
+    "initial_failure_preserved": "integration/siem-integration-ruff-format.txt.gz",
+    "proof": "integration/siem-integration-format-parity.json.gz"
+  },
+  "historical_baseline_sha": "3af0a8bdd659e02bf6f493c071800c6a227ae292",
+  "historical_test_meanings": {
+    "baseline_12_pair": {
+      "baseline": {
+        "errors": 0,
+        "failures": 10,
+        "skipped": 0,
+        "tests": 12
+      },
+      "candidate_suite_including_40_existing_bridge_cases": {
+        "errors": 0,
+        "failures": 0,
+        "skipped": 0,
+        "tests": 52
+      },
+      "source_test_identity": "tests/test_n8n_siem_recovery_truth_20261018.py at source b0 equals original truth test; original preformat bytes preserved"
+    },
+    "historical_final_adversarial_txt": "9 original and 68 new passed, as recorded",
+    "historical_final_focused_xml": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 61
+    },
+    "historical_final_regression_txt": "186 passed, 1 pre-existing skip, as recorded; distinct suite from 61-case XML; skipped case is not acceptance evidence",
+    "intermediate_review": "siem-review.json preserves REQUEST_CHANGES and 8 assertion failures plus one valid episode-time control; final source review closes these with unchanged 9-case test"
+  },
+  "independent_source_review": "historical/siem-final-review.json.gz",
+  "kind": "tested_local_source_integration_only",
+  "limits": [
+    "No deployment, activation, production grants, Telegram sends, provider/broker/database effects or automatic recovery canary performed.",
+    "Generation/CAS across in-place episode updates and plan/apply races remains unchanged and unproven.",
+    "Non-ledger fan-in retains existing fresh-source/finding-cleared semantics and is not business-output recovery proof.",
+    "Durable evidence authenticity, exact code/config/input/artifact provenance and downstream consumption are not proven by these modules.",
+    "Original source was independently approved; this integration requires independent nonauthor review and exact-head required acceptance before any push or runtime mutation."
+  ],
+  "schema": "SiemRecoverySourceIntegration@v1",
+  "source_integration": [
+    {
+      "AST_identical": true,
+      "approved_source_sha256": "9945dd43a33348d257de467da6458b5e6b43207074c461ef2fb1dc051313c7d6",
+      "byte_identical": false,
+      "final_sha256": "f0ad92cfe3519299379dd5cb719895d97c3cba5ad2ecaef26c2734c9a703a3e8",
+      "path": "scripts/lib/n8n_siem_bridge.py"
+    },
+    {
+      "AST_identical": true,
+      "approved_source_sha256": "3b8f4f18d996f281c3752be0b2d23ff1fed0e564d2e49558d1b4ba39ca2af226",
+      "byte_identical": false,
+      "final_sha256": "12489ebcf156b548b4352bb7c43f5d107e77d170387644ff547c556bc02731a2",
+      "path": "scripts/lib/recovery_validator.py"
+    },
+    {
+      "AST_identical": true,
+      "approved_source_sha256": "981f158193337b0d771fd195dac12bd24cb1beedb6fcf2814af980536f4480dd",
+      "byte_identical": false,
+      "final_sha256": "108cf47cfbe310efb6a511a8414497f6979c9974ace60b524bee6a42774df987",
+      "path": "tests/test_n8n_recovery_consistency_20261018.py"
+    },
+    {
+      "AST_identical": true,
+      "approved_source_sha256": "ea10159857624018db4d3b22b5b7f5cebaca17d2b62b32be47cd0761ca3282f3",
+      "byte_identical": false,
+      "final_sha256": "7adb26b76f2de9462b303710dedabe341824e87a8afd84fea7b3866df374c1a1",
+      "path": "tests/test_n8n_siem_recovery_truth_20261018.py"
+    },
+    {
+      "AST_identical": true,
+      "approved_source_sha256": "95f2c12caa46c311984b437eaa53efab1ed73fd2ad7c361ec7f35f8a290bedcf",
+      "byte_identical": false,
+      "final_sha256": "f05947d86b944ae0550a8021d581d208c5a3cb98ad02a7c63dc21dc7e838f257",
+      "path": "tests/test_n8n_siem_bridge_20261010.py"
+    }
+  ],
+  "validation": {
+    "diff_check": 0,
+    "final_focused": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 208
+    },
+    "full_native_run": false,
+    "immutable_adversarial": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 68
+    },
+    "preformat_focused": {
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "tests": 208
+    },
+    "ruff_check": 0,
+    "ruff_format_check": 0
+  }
+}

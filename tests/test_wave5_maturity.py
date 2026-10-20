@@ -88,6 +88,8 @@ def test_remeasure_cli_writes_latest(tmp_path):
 def test_self_heal_shadow_records_without_restarting(tmp_path, monkeypatch):
     import supervisor_breach_detector as sbd
     rt = tmp_path / "data" / "runtime"; rt.mkdir(parents=True)
+    # An explicit known-empty fixture history; absent/unreadable production history is an unknown budget.
+    (rt / "supervisor_recoveries.jsonl").write_text("")
     calls = []
     import subprocess
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: calls.append(a) or type("CP", (), {"returncode": 0, "stderr": ""})())
