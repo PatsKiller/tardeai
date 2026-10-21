@@ -20,16 +20,25 @@ export type SchedulerPayload = {
   schema: 'SchedulerOperations@v1'; status: string; as_of: string | null; source_sha?: string | null
   rows: SchedulerRow[]; sources?: Record<string, { measured?: boolean; as_of?: string | null; reason?: string | null }>
 }
-export const SCHEDULER_FILTERS = ['All', 'Problems', 'cron', 'systemd', 'n8n', 'OpenClaw', 'event', 'CIO', 'Hermes', 'Broker/Safety', 'Maintenance'] as const
+export const SCHEDULER_FILTERS = ['All', 'Problems', 'Not measured', 'cron', 'systemd', 'n8n', 'OpenClaw', 'event', 'CIO', 'Hermes', 'Broker/Safety', 'Maintenance'] as const
 export type SchedulerFilter = typeof SCHEDULER_FILTERS[number]
+// Problems = something an operator can act on (audit 2026-10-21: the old "anything not LIVE" rule put
+// ~509 of 716 rows here, mostly NOT_MEASURED). NOT_MEASURED has its own filter; EXPECTED_SILENT and
+// n8n INFRASTRUCTURE are never problems. NO_SIGNAL only counts when no reason was declared for it.
+export const ACTIONABLE_STATES = ['RUN_FAILED', 'SILENT', 'DRIFT', 'ORPHANED', 'SLOW', 'RUN_SKIPPED_LOCK'] as const
+const NEVER_PROBLEM_STATES = ['NOT_MEASURED', 'EXPECTED_SILENT', 'INFRASTRUCTURE']
+export const NO_SIGNAL_UNDECLARED = 'NO_SIGNAL_WITH_REASON missing'
 export function schedulerProblems(row: SchedulerRow): boolean {
-  return !['LIVE', 'EXPECTED_SILENT'].includes(row.runtime_state)
-    || row.duplicate_scheduler === true || row.scheduler_drift === true
+  if (NEVER_PROBLEM_STATES.includes(row.runtime_state)) return false
+  if ((ACTIONABLE_STATES as readonly string[]).includes(row.runtime_state)) return true
+  if (row.runtime_state === 'NO_SIGNAL') return (row.health_reason ?? '').startsWith(NO_SIGNAL_UNDECLARED)
+  return row.duplicate_scheduler === true || row.scheduler_drift === true
     || (row.slo_verdict != null && row.slo_verdict !== 'NOT_MEASURED' && row.slo_verdict !== 'OK')
 }
 export function filterSchedulerRows(rows: SchedulerRow[], filter: SchedulerFilter): SchedulerRow[] {
   if (filter === 'All') return rows
   if (filter === 'Problems') return rows.filter(schedulerProblems)
+  if (filter === 'Not measured') return rows.filter(r => r.runtime_state === 'NOT_MEASURED')
   if (['cron', 'systemd', 'n8n', 'OpenClaw', 'event'].includes(filter)) return rows.filter(r => r.scheduler_type.toLowerCase() === filter.toLowerCase())
   const patterns: Record<string, RegExp> = {
     CIO: /cio/i, Hermes: /hermes/i, 'Broker/Safety': /broker|order|stop|risk|safety|watchdog|reaper|protection/i,

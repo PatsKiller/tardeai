@@ -45,6 +45,33 @@ RECEIPT_KEYS = (
     "code_sha",
     "code_root",
 )
+# RunReceipt@v2 (executor v2, n8n maturity B5.5) and @v3 (v2 + an evaluated output verdict,
+# scripts/n8n_run_executor.py RECEIPT_SCHEMA_V3) are strict supersets of v1's fields.
+RECEIPT_SCHEMAS = ("RunReceipt@v1", "RunReceipt@v2", "RunReceipt@v3")
+# A registry n8n expression is a workflow id, except the shared dispatcher: 25+ lanes say "dispatcher"
+# and are fired by the one `tradeai-dispatcher` workflow (audit 2026-10-21: they read ORPHANED).
+N8N_EXPRESSION_ALIASES = {"dispatcher": "tradeai-dispatcher"}
+# n8n infrastructure: workflows that route, dispatch or supervise lanes rather than being a lane. They are
+# registered here (not in the lane registry) and project as INFRASTRUCTURE, never as an unowned ORPHANED.
+INFRA_WORKFLOWS = frozenset(
+    {
+        "tradeai-dispatcher",
+        "tradeai-event-router",
+        "tradeai-incident-router",
+        "tradeai-approval-router",
+        "tradeai-heartbeat-watcher",
+        "tradeai-digest-scheduler",
+    }
+)
+INFRA_WORKFLOW_PREFIXES = ("tradeai-fabric-",)
+SHADOW_WORKFLOW_SUFFIX = "-shadow"
+
+
+def is_infra_workflow(workflow: dict[str, Any]) -> bool:
+    keys = {str(workflow.get("id") or ""), str(workflow.get("name") or "")}
+    return any(k in INFRA_WORKFLOWS or k.startswith(INFRA_WORKFLOW_PREFIXES) for k in keys if k)
+
+
 UNIT_PROPS = (
     "Id",
     "LoadState",
@@ -377,8 +404,7 @@ def read_lock_metrics(path: Path, now: datetime) -> dict[str, Any]:
 
 def receipt_proves_run(run: dict[str, Any], now: datetime) -> bool:
     receipt = run.get("receipt")
-    # RunReceipt@v2 (executor v2, n8n maturity B5.5) is a strict superset of v1's fields.
-    if not isinstance(receipt, dict) or receipt.get("schema") not in ("RunReceipt@v1", "RunReceipt@v2"):
+    if not isinstance(receipt, dict) or receipt.get("schema") not in RECEIPT_SCHEMAS:
         return False
     if not run.get("run_id") or not run.get("lane_id"):
         return False
@@ -601,11 +627,14 @@ def build_projection(
                     row["health_reason"] = "running unit definition is missing; restart/recovery is not proven"
             row["duplicate_scheduler"] = bool(host_matches) if measured and cron.get("measured") else None
         elif kind == "n8n":
-            workflow = workflow_by_id.get(str(sched.get("expression")))
+            expression = str(sched.get("expression"))
+            workflow = workflow_by_id.get(N8N_EXPRESSION_ALIASES.get(expression, expression))
             measured = bool(n8n.get("measured"))
             present = bool(workflow and workflow.get("active")) if measured else None
             if workflow:
-                row["schedule"] = schedule_label(workflow.get("schedules"))
+                if expression not in N8N_EXPRESSION_ALIASES:
+                    # A shared dispatcher's trigger is not this lane's cadence; keep the declared one.
+                    row["schedule"] = schedule_label(workflow.get("schedules"))
                 claimed_workflows.add(str(workflow["id"]))
                 row["scheduler_observations"] = [{"id": workflow["id"], "kind": "n8n", "active": workflow["active"]}]
             row["duplicate_scheduler"] = bool(host_matches) if cron.get("measured") else None
@@ -818,8 +847,46 @@ def build_projection(
             health_reason="active/failed unit has no lane row",
         )
         rows.append(row)
+    rows_by_lane = {str(r["lane_id"]): r for r in rows}
     for workflow in n8n.get("workflows") or []:
+        name = str(workflow.get("name") or "")
+        if is_infra_workflow(workflow):
+            row = _base_row(
+                {
+                    "lane_id": "n8n-infra-" + str(workflow.get("id")),
+                    "owner": "platform",
+                    "state": "ACTIVE" if workflow.get("active") else "INACTIVE",
+                    "scheduler": {"kind": "n8n", "expression": schedule_label(workflow.get("schedules"))},
+                }
+            )
+            row.update(
+                runtime_state="INFRASTRUCTURE" if workflow.get("active") else "EXPECTED_SILENT",
+                declared_in_registry=False,
+                infrastructure=True,
+                evidence_class="OBSERVED_N8N",
+                scheduler_drift=False,
+                scheduler_observations=[
+                    {
+                        "id": workflow.get("id"),
+                        "kind": "n8n",
+                        "name": workflow.get("name"),
+                        "active": workflow.get("active"),
+                        "schedules": workflow.get("schedules"),
+                    }
+                ],
+                health_reason="n8n infrastructure workflow (dispatch/route/supervise); lane rows carry the run evidence",
+            )
+            rows.append(row)
+            continue
         if str(workflow.get("id")) in claimed_workflows:
+            continue
+        shadow_of = name[: -len(SHADOW_WORKFLOW_SUFFIX)] if name.endswith(SHADOW_WORKFLOW_SUFFIX) else None
+        if shadow_of and shadow_of in rows_by_lane:
+            # A lane's dry-run shadow workflow: dry_run receipts never prove a business run, so it is shown on
+            # the lane it shadows (still visible, e.g. left active after cutover), not as an unowned workflow.
+            rows_by_lane[shadow_of]["scheduler_observations"].append(
+                {"id": workflow.get("id"), "kind": "n8n-shadow", "name": name, "active": workflow.get("active")}
+            )
             continue
         row = _base_row(
             {

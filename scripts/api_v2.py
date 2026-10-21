@@ -54810,27 +54810,19 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
     # Migration board (n8n scheduler-of-record program, stream G, 2026-10-08): per lane the
-    # scheduler of record, phase, last run, output-signal age, rollback readiness and risk flags, as
-    # written by scripts/n8n_migration_board.py --write. Serves the receipt file; computes nothing.
+    # scheduler of record, phase, last run, output-signal age, rollback readiness and risk flags, plus
+    # the registry's dispatcher stage counts (scheduler.stage). Computed live, read-only, 60 s cache
+    # (audit 2026-10-21: the served --write receipt was 13 days old and nothing schedules it); the
+    # receipt file is only a FILE_FALLBACK, flagged stale by age. No cron/timer (cron freeze).
     if base_path == "/api/v2/coordination/migration-board":
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
         try:
-            from lib.n8n_pilot_observations import state_root as _mb_root
+            from scripts.n8n_migration_board import served_board as _mb_served
 
-            _mb = _mb_root() / "data" / "runtime" / "n8n_migration_board_last.json"
-            if not _mb.is_file():
-                return 200, {
-                    "ok": True,
-                    "data": {
-                        "schema": "N8nMigrationBoard@v1",
-                        "status": "NO_BOARD",
-                        "note": "scripts/n8n_migration_board.py --write has not run here",
-                        "lanes": [],
-                        "summary": {},
-                    },
-                }
-            return 200, {"ok": True, "data": json.loads(_mb.read_text(encoding="utf-8"))}
+            return 200, {"ok": True, "data": _mb_served()}
         except Exception as e:
-            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+            return 500, {"ok": False, "error": type(e).__name__}
 
     # What n8n did today (operator 2026-10-16): runs by state (live / dry_run), failures with reason, lock skips,
     # heals and diagnoses, lanes cut over today. Receipts only (lib/data_broker/n8n_today.py), cached 60 s.

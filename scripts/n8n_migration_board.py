@@ -17,7 +17,10 @@ Phase per lane: NOT_STARTED | SHADOW (a dry_run RunReceipt exists) | CANARY (a l
 while the registry still says cron/systemd) | CUT_OVER (registry scheduler.kind == n8n) |
 ROLLED_BACK (the last cutover receipt is a rollback) | RETAINED (the lane's tranche carries
 `status: RETAINED_BY_POLICY`: it stays on its current scheduler and is out of the program's scope;
-2026-10-09 N6, AGENTS.md §23.3). Served by GET /api/v2/coordination/migration-board.
+2026-10-09 N6, AGENTS.md §23.3). Served by GET /api/v2/coordination/migration-board, which computes it
+live per request (served_board, 60 s cache) and also carries the dispatcher stage counts from the
+registry (`scheduler.stage` shadow/canary/cutover). The --write receipt is only a flagged fallback
+(audit 2026-10-21: the served file was 13 days old; no cron/timer is added — cron freeze).
 
 AUTHORITY: READ_ONLY_ADVISORY. No cutover, no rollback, no send, no write except its own receipt.
 """
@@ -42,9 +45,8 @@ SCHEMA = "N8nMigrationBoard@v1"
 TRANCHES_SCHEMA = "N8nMigrationTranches@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 NO_CONSUMER_REASON = (
-    "Operator-run board for the n8n scheduler-of-record program; its receipt is served by "
-    "GET /api/v2/coordination/migration-board (scripts/api_v2.py reads the file, not this module). "
-    "No cron line until the operator installs one."
+    "Operator-run board for the n8n scheduler-of-record program. GET /api/v2/coordination/migration-board "
+    "computes it live (served_board); the --write receipt is only that route's fallback. No cron line."
 )
 TRANCHES_PATH = ROOT / "config" / "n8n_migration_tranches.json"
 BOARD_REL = "data/runtime/n8n_migration_board_last.json"
@@ -54,6 +56,10 @@ READINESS_REL = "data/runtime/n8n_lane_readiness_last.json"
 # Kept as a literal so this reader does not import the executor entrypoint; the drift test
 # tests/test_n8n_migration_board_20261008.py asserts executor, board and fan-in agree.
 EXECUTOR_LAST_REL = "data/runtime/n8n_run_executor_last.json"
+DISPATCH_STAGES = ("shadow", "canary", "cutover")
+STALE_AFTER_H = 24.0        # the page shows a STALE banner past this (CoordinationPage, migrationBoard.ts)
+SERVE_CACHE_S = 60.0
+_SERVE_CACHE: dict[str, Any] = {}
 PHASES = ("NOT_STARTED", "SHADOW", "CANARY", "CUT_OVER", "ROLLED_BACK", "RETAINED")
 # A tranche with this status is closed by policy: its lanes stay on their current scheduler, are
 # shown RETAINED (never NOT_STARTED) and are not counted in the program's in-scope total.
@@ -352,6 +358,58 @@ def build_board(*, root: Optional[Path] = None, registry: Optional[dict[str, Any
                     "open_risk_count": len(open_risks), "no_registry_row": sum(1 for r in lanes if not r["registry_row"])},
         "lanes": lanes,
     }
+
+
+def dispatch_stage_summary(registry: dict[str, Any]) -> dict[str, Any]:
+    """Dispatcher program stage per lane, straight from the registry's `scheduler.stage`. Pure."""
+    lanes = []
+    for r in registry.get("lanes") or []:
+        sched = r.get("scheduler") or {}
+        stage = sched.get("stage")
+        if stage in DISPATCH_STAGES:
+            lanes.append({"lane_id": r.get("lane_id"), "stage": stage, "scheduler_kind": sched.get("kind"),
+                          "scheduler_expression": sched.get("expression"), "registry_state": r.get("state"),
+                          "wave": sched.get("cutover_wave") or sched.get("wave")})
+    return {"source": "config/lane_registry.json scheduler.stage",
+            "by_stage": {st: sum(1 for x in lanes if x["stage"] == st) for st in DISPATCH_STAGES},
+            "lanes": lanes}
+
+
+def _age_h(as_of: Any, now: datetime) -> Optional[float]:
+    return _hours_since(as_of, now)
+
+
+def served_board(*, root: Optional[Path] = None, now: Optional[datetime] = None,
+                 registry: Optional[dict[str, Any]] = None, tranches: Optional[dict[str, Any]] = None,
+                 ledger: Optional[Path] = None, host: bool = False, cache: bool = True) -> dict[str, Any]:
+    """The board for GET /api/v2/coordination/migration-board: computed live (read-only), cached SERVE_CACHE_S.
+    If the live build fails, the last --write receipt is served flagged FILE_FALLBACK and stale by its age.
+    host=False by default: the API route never shells out (crontab/systemctl), so DOUBLE_SCHEDULER reads
+    unverifiable there (sources.crontab_read false); the Automation tab's duplicate_scheduler covers it."""
+    now = now or datetime.now(timezone.utc)
+    root = Path(root) if root else state_root()
+    hit = _SERVE_CACHE.get("board") if cache else None
+    if hit and (now - hit[0]).total_seconds() < SERVE_CACHE_S and hit[1].get("state_root") == str(root):
+        return hit[1]
+    reg = registry if registry is not None else LR.load_registry()
+    try:
+        cron_text, units = _host_probe() if host else (None, None)
+        board = build_board(root=root, registry=reg, tranches=tranches, now=now, ledger=ledger,
+                            cron_text=cron_text, units=units)
+        board["computed"] = "LIVE"
+    except Exception as exc:  # noqa: BLE001 — never echo exception text; serve the receipt, flagged
+        board = _load_json(root / BOARD_REL) or {"schema": SCHEMA, "status": "NO_BOARD", "lanes": [], "summary": {},
+                                                 "note": "live board failed and no --write receipt exists"}
+        board["computed"] = "FILE_FALLBACK"
+        board["fallback_reason"] = type(exc).__name__
+    age = _age_h(board.get("as_of"), now)
+    board["age_h"] = age
+    board["stale"] = age is None or age > STALE_AFTER_H
+    board["stale_after_h"] = STALE_AFTER_H
+    board["dispatch_stages"] = dispatch_stage_summary(reg)
+    if cache:
+        _SERVE_CACHE["board"] = (now, board)
+    return board
 
 
 def render_markdown(board: dict[str, Any]) -> str:

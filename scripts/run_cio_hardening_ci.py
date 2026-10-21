@@ -5427,6 +5427,13 @@ GATES = [
             "tests/test_ci_frontend_dependencies_20261018.py",
         ],
     ),
+    # ANCHOR: CC_COORDINATION_TRUTH_20261021 — /v3/coordination audit: n8n lanes with expression "dispatcher"
+    # resolve to the tradeai-dispatcher workflow and RunReceipt@v3 proves a run (they read ORPHANED); routers,
+    # heartbeat, digest and tradeai-fabric-* workflows project INFRASTRUCTURE and `<lane>-shadow` workflows attach
+    # to their lane, so only unowned workflows stay ORPHANED. The migration board is computed live (served_board,
+    # registry scheduler.stage counts; the 13-day-old --write file is a flagged FILE_FALLBACK only). Problems
+    # filter + STALE banner: src/lib/schedulerOperations.test.ts, migrationBoard.test.ts. Hermetic: tmp_path.
+    ("cc_coordination_truth_20261021", ["tests/test_cc_coordination_truth_20261021.py"]),
 ]
 
 
