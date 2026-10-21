@@ -12,7 +12,7 @@ process for urgent fixes." Packet: docs/ops/packets/release-windows-20261016/REA
 
 One window, one candidate:
   * the candidate is the origin/main head at the window, and ONLY if every push/main workflow on that exact SHA
-    (and both REQUIRED_PUSH_WORKFLOWS) is completed/success. No older green SHA is substituted; no CI wait.
+    (and every REQUIRED_PUSH_WORKFLOWS entry) is completed/success. No older green SHA is substituted; no CI wait.
     A merge after selection waits for the next window.
   * `prepare` runs on that SHA (cio_phase2_exact_main_deploy.sh requires release-checkout HEAD == origin/main), then
     `promote <prepared dir>` promotes THAT artifact (promote reads its BUILD_SHA and re-checks exact-SHA CI).

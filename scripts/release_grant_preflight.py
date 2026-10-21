@@ -49,9 +49,13 @@ def consume_release_grant(*, tier: str = "release-write", runner=None) -> dict:
 
 
 # Always-on post-merge workflows. PR runs do not execute the same test profile.
+# 2026-10-21 (alignment audit M6): one workflow per context branch protection requires on main
+# (cio-hardening, agent-governance, release-readiness; AGENTS §23.13, AI_WORK_POLICY §11).
+# release-readiness was missing, so a manual `promote` accepted a SHA whose release proof was red.
 REQUIRED_PUSH_WORKFLOWS = frozenset({
     ".github/workflows/cio-production-hardening-ci.yml",
     ".github/workflows/agent-governance.yml",
+    ".github/workflows/release-readiness.yml",
 })
 
 
