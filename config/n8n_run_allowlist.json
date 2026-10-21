@@ -3181,6 +3181,40 @@
       "source": "OBSERVED_HOST scoped approved crontab snapshot 2026-10-11T17:05:28.513179+00:00; SOURCE_ONLY DRAFT proposal; no runtime deployment or scheduling change."
     },
     {
+      "lane_id": "hermes-watchlist-scorer",
+      "command": [
+        "$PY",
+        "scripts/hermes_watchlist_scorer.py",
+        "--once"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/hermes_scorer.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/hermes-watchlist-scorer_last.json",
+      "env_names": [
+        "DB_CONN_TRACE",
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "HERMES_WEIGHTS_PROFILE",
+        "LOCAL_API_BASE",
+        "PROJECT_ROOT",
+        "TRADEAI_PERSISTENT_STATE_ROOT",
+        "TRADEAI_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "db_adapter legacy unbound cron loader and the telegram_alert notification-intent closure need integrator review. No model or broker credentials are named.",
+      "env_evidence": "SOURCE_ONLY import-closure audit; --dry-run sends nothing and writes nothing (TEST_ONLY fakes).",
+      "source": "OBSERVED_HOST crontab L451 2026-10-21 (unchanged, cron freeze); SOURCE_ONLY shadow proposal; no runtime deployment or scheduling change."
+    },
+    {
       "lane_id": "advisory-desk-run-now",
       "env_names": [
         "ADVISORY_DESK_V1",
