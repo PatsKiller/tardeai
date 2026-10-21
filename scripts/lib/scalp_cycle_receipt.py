@@ -102,22 +102,42 @@ def append(doc: dict[str, Any], root: Optional[Path] = None) -> Path:
 
 
 def prune(directory: Path, *, keep_days: int = RETENTION_DAYS, today: Optional[str] = None) -> list[str]:
-    """Delete daily ledger files whose date is more than keep_days before `today` (retention; files only)."""
+    """Archive, then remove, daily ledger files whose date is more than keep_days before `today` (files only).
+
+    2026-10-21 (operator D8.5, registry-owned retention): an evidence ledger is never unlinked bare. The old
+    files go through retention_archive.archive_prune (tar.gz + per-member sha256 manifest + tripwire under
+    the file-prune archive root (label scalp_cycle_receipts), re-read and verified) and are unlinked only after that;
+    a failed archive removes nothing and the cycle carries on (the next new day retries)."""
     from datetime import date, timedelta
 
     try:
         cutoff = (date.fromisoformat(today) if today else date.today()) - timedelta(days=keep_days)
     except ValueError:
         return []
-    removed = []
-    for f in directory.glob("*.jsonl"):
+    old = []
+    for f in sorted(directory.glob("*.jsonl")):
         try:
             if date.fromisoformat(f.stem) < cutoff:
-                f.unlink()
-                removed.append(f.name)
-        except (ValueError, OSError):
+                old.append(f)
+        except ValueError:
             continue          # foreign file names are never touched
-    return removed
+    if not old:
+        return []
+    try:
+        try:
+            from lib.retention_archive import archive_prune
+        except ImportError:   # imported with scripts/lib (not scripts/) on sys.path
+            from retention_archive import archive_prune
+        # The archive lives under the ledger's own state root (the file-prune archive tree under that root), which in production is
+        # the persistent-state root the tripwire reader scans; a test's tmp root keeps its archive in tmp.
+        root = directory.parents[len(Path(LEDGER_REL).parts) - 1] if directory.as_posix().endswith(LEDGER_REL) else None
+        res = archive_prune(old, base_dir=directory, label="scalp_cycle_receipts", writer="scalp_cycle_receipt",
+                            archive_dir=(root / "archive" / "file_prune" / "scalp_cycle_receipts") if root else None)
+    except Exception:         # noqa: BLE001 -- retention must never break a scalp cycle; nothing was removed
+        return []
+    if res.get("error") or not res.get("unlinked"):
+        return []
+    return [f.name for f in old]
 
 
 def read_day(day: str, root: Optional[Path] = None) -> list[dict[str, Any]]:

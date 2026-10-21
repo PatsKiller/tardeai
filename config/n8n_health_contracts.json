@@ -23618,8 +23618,8 @@
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
       "status": "REVIEWED",
-      "target_reason": "operator_approved_shadow_20261021",
-      "stage": "shadow",
+      "target_reason": "operator_waiver_canary_20261021",
+      "stage": "canary",
       "purpose": {
         "text": "Score every watchlist name in this tick's scope tiers (+ pending events) into one Hermes composite + rank and its per-factor intel card.",
         "business_function": "research",
@@ -23672,8 +23672,8 @@
       ],
       "healthy": [
         {
-          "check": "shadow_dry_run_done",
-          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+          "check": "canary_live_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode live, or RUN_SKIPPED_LOCK while the cron twin holds the shared flock (coordination ledger)"
         },
         {
           "check": "dry_run_writes_nothing",
@@ -23791,7 +23791,13 @@
         "prepared_by": "agent draft (scorer hardening 2026-10-21)",
         "status": "REVIEWED",
         "reviewed_by": "operator PatsKiller 2026-10-21 (\"approve the hermes-watchlist-scorer contract\")",
-        "reviewed_on": "2026-10-21"
+        "reviewed_on": "2026-10-21",
+        "stage_rereview": {
+          "on": "2026-10-21",
+          "by": "agent (hermes-scorer canary PR); operator words recorded verbatim",
+          "evidence": "registry cron canary, dispatch.mode live; live fire pending the live-list add",
+          "operator_words": "Operator decision 2026-10-21 ~13:05 ET, verbatim: \"push live now\" (promote shadow -> canary today, waiving the usual 3-market-day shadow evidence wait); 2026-10-21, verbatim: \"comment out whats working now this can be a fallback\" (retire cron L451 after the first live n8n RUN_DONE; the commented line is the fallback). Shadow evidence at promotion: RUN_DONE dry_run fires 12:55 and 13:00 ET, exit 0, 1408 items, 812 scored, 0 errored; shadow released in a6ac0ebbe (PR #1899)."
+        }
       },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
@@ -23825,7 +23831,8 @@
           "reason": "empty_output",
           "notifier_priority": "P2"
         }
-      }
+      },
+      "state_note": "HS-20261021 2026-10-21: stage canary (n8n_cutover_wave.py); cron twin present until the wave's cron act."
     },
     {
       "schema": "N8nHealthContract@v1",

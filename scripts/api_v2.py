@@ -8003,7 +8003,7 @@ def journal():
         rows = _db_query(
             """SELECT tc.symbol, tc.account, tc.open_date::text, tc.close_date::text, tc.trade_type,
                       tc.shares, tc.buy_price, tc.sell_price, tc.cost_basis, tc.proceeds,
-                      tc.pnl, tc.pnl_pct, tc.hold_days,
+                      tc.pnl, tc.pnl_pct, tc.hold_days, tc.dedupe_key,
                       srt.strategy_tag, srt.classification,
                       COALESCE(eq.entry_time, srt.entry_time)::text AS entry_time,
                       COALESCE(eq.exit_time, srt.exit_time)::text AS exit_time
@@ -8062,6 +8062,16 @@ def journal():
     # Enrich with entry/exit grades from backtest grading (join on trade_key)
     _attach_backtest_grades(trades)
 
+    # Learning loop PR1 (2026-10-21): the recommendation each trade came from (rec_id, source, link confidence, plan
+    # entry/stop/target, R achieved, planned R:R) or origin=operator_initiated. "unavailable" until the migration
+    # migrations/2026_10_21_learning_loop_pr1.sql is applied — then every trade carries recommendation=None.
+    try:
+        from lib.trade_recommendation_linkage import attach_recommendation_links
+
+        rec_link_status = attach_recommendation_links(trades, _db_query)
+    except Exception:
+        rec_link_status = "unavailable"
+
     real_trades = [t for t in trades if (t.get("pnl") or 0) != 0]
 
     # Compute stats from DB data
@@ -8100,6 +8110,7 @@ def journal():
         ),
         "trade_count": len(trades),
         "real_trade_count": len(real_trades),
+        "recommendation_link_status": rec_link_status,
         "trades": [
             {
                 "trade_key": f"{t.get('symbol', '')}:{t.get('account', '')}:{t.get('close_date', '')}",

@@ -129,8 +129,24 @@ def headline_matches_symbol(
     return False, "no_symbol_or_company_match"
 
 
+def _archived_delete(conn, table: str, ids: list, *, key: str, label: str) -> int:
+    """2026-10-21 (operator D3.3, registry-owned retention): archive-first through the shared helper
+    (lib.retention_archive.managed_purge: jsonl.gz + sha256 manifest + tripwire, re-read and count-checked,
+    then the delete of exactly those rows). Each verified batch commits on its own; a failed verify rolls back
+    and raises, so nothing is deleted unarchived."""
+    if not ids:
+        return 0
+    try:
+        from lib.retention_archive import managed_purge
+    except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+        from retention_archive import managed_purge
+    r = managed_purge(conn, table=table, where_sql=f"t.{key} = ANY(%s)", params=(list(ids),),
+                      label=label, writer="news_symbol_guard", apply=True, archive=True)
+    return int(r.get("deleted") or 0)
+
+
 def purge_mismatched_for_symbol(conn, symbol: str, *, apply: bool = True, auto_commit: bool = True) -> dict:
-    """Remove news_articles + catalyst_events that fail the symbol guard."""
+    """Remove news_articles + catalyst_events that fail the symbol guard (archived first, 2026-10-21)."""
     sym = symbol.upper().strip()
     cur = conn.cursor()
     cur.execute(
@@ -150,8 +166,6 @@ def purge_mismatched_for_symbol(conn, symbol: str, *, apply: bool = True, auto_c
         if ok:
             continue
         news_del.append(nid)
-        if apply:
-            cur.execute("DELETE FROM news_articles WHERE id=%s", (nid,))
 
     cur.execute(
         "SELECT id, headline, description FROM catalyst_events WHERE upper(symbol)=%s",
@@ -162,17 +176,26 @@ def purge_mismatched_for_symbol(conn, symbol: str, *, apply: bool = True, auto_c
         if ok:
             continue
         cat_del.append(cid)
-        if apply:
-            # catalyst_symbol_impact.catalyst_event_id references catalyst_events.id
-            # without ON DELETE CASCADE. Deleting the parent first raised
-            # ForeignKeyViolation on every auto-remediation run (2,447 times by
-            # 2026-09-26) and the mismatch finding never cleared. Children first.
-            cur.execute("DELETE FROM catalyst_symbol_impact WHERE catalyst_event_id=%s", (cid,))
-            cur.execute("DELETE FROM catalyst_events WHERE id=%s", (cid,))
 
-    if apply and auto_commit and (news_del or cat_del):
-        conn.commit()
+    if apply and (news_del or cat_del):
+        # Archive-first (2026-10-21). catalyst_symbol_impact.catalyst_event_id references catalyst_events.id
+        # without ON DELETE CASCADE. Deleting the parent first raised ForeignKeyViolation on every
+        # auto-remediation run (2,447 times by 2026-09-26) and the mismatch finding never cleared. Children first.
+        # The archived batches commit as they verify, so ``auto_commit`` no longer defers these deletes.
+        _archived_delete(conn, "news_articles", news_del, key="id", label="symbol_guard_news")
+        if cat_del:
+            _archived_delete(conn, "catalyst_symbol_impact", _impact_ids(cur, cat_del), key="id",
+                             label="symbol_guard_impact")
+            _archived_delete(conn, "catalyst_events", cat_del, key="id", label="symbol_guard_catalyst")
+        if auto_commit:
+            conn.commit()
     return {"symbol": sym, "news_removed": len(news_del), "catalyst_removed": len(cat_del)}
+
+
+def _impact_ids(cur, catalyst_ids: list) -> list:
+    """catalyst_symbol_impact rows of these catalyst events (archived and deleted before their parents)."""
+    cur.execute("SELECT id FROM catalyst_symbol_impact WHERE catalyst_event_id = ANY(%s)", (list(catalyst_ids),))
+    return [r[0] for r in cur.fetchall()]
 
 
 def _rated_watchlist_symbols(cur) -> list[str]:

@@ -1,0 +1,46 @@
+{
+ "schema": "DataSourceAuthorityProposal@v1",
+ "authority": "READ_ONLY_ADVISORY",
+ "created": "2026-10-21",
+ "status": "PROPOSED — not applied to config/data_source_authority.json. Adding a writer of an authoritative store is operator-only (AGENTS.md §17, §7A): the operator records the grant in each row's approval.",
+ "operator_direction": {
+  "quote": "Approve learning-loop plan and begin PR1 immediately. Stable recommendation IDs, trade linkage, and R-multiple attribution provide the highest long-term value and should be implemented before calibration.",
+  "on": "2026-10-21",
+  "via": "operator to the learning-loop PR1 session brief",
+  "what_it_grants": "the plan and the build. Whether these two derived stores become registry domains (and so count against WRITER_COUNT_ROSE) is the decision below."
+ },
+ "why_not_in_the_registry_yet": "A domain row without a complete approval fails check_data_source_authority.py with UNAPPROVED_SOURCE. Both stores are new tables created by migrations/2026_10_21_learning_loop_pr1.sql, which is itself not applied yet; every writer is SAVEPOINT-guarded and skips while the tables are absent, so the code can merge before either decision.",
+ "changes": [
+  {
+   "id": "L1",
+   "kind": "domain_add",
+   "row": {
+    "domain": "recommendation_registry",
+    "class": "derived",
+    "store": {"table": "recommendation_registry"},
+    "writer": "scripts/lib/recommendation_registry.py",
+    "how_written": "upsert_recs (SAVEPOINT) — called by scripts/cio_opportunity_curator.py --apply (every 30 min 09:00-16:30 ET) and scripts/recommendation_registry_sync.py --apply (backfill, then the proposed 18:25 ET chain)",
+    "derived_from": ["data/cio/cio_opportunity_assessments.jsonl", "paper_trade_proposals", "trade_ai_scans", "scalp_scan_results", "alert_events"],
+    "required_fields": ["rec_id", "source", "symbol", "direction", "created_at", "expires_at"],
+    "no_coverage": "say_so",
+    "approval": "TO BE RECORDED BY THE OPERATOR"
+   }
+  },
+  {
+   "id": "L2",
+   "kind": "domain_add",
+   "row": {
+    "domain": "trade_recommendation_links",
+    "class": "derived",
+    "store": {"table": "trade_recommendation_links"},
+    "writer": "scripts/trade_recommendation_linker.py",
+    "how_written": "--apply after the journal build (proposed 18:25 ET chain); one row per schwab_round_trips.dedupe_key; idempotent upsert",
+    "derived_from": ["schwab_round_trips", "trade_closed.stop_used", "recommendation_registry"],
+    "read_by": ["/api/v2/journal (scripts/lib/trade_recommendation_linkage.attach_recommendation_links)"],
+    "required_fields": ["round_trip_key", "origin", "link_confidence", "link_method", "stop_source"],
+    "no_coverage": "say_so",
+    "approval": "TO BE RECORDED BY THE OPERATOR"
+   }
+  }
+ ]
+}

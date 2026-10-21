@@ -1864,7 +1864,6 @@ def persist_chain_snapshot(symbol: str, chain: dict, vol: dict) -> None:
         "expiration_count": len(chain.get("expirations") or []),
         "note": "summary only — full chain not persisted (size/retention)",
     }
-    keep_days = int(os.getenv("OPTIONS_SNAPSHOT_RETENTION_DAYS", "45"))
     try:
         cur = conn.cursor()
         cur.execute(
@@ -1872,11 +1871,10 @@ def persist_chain_snapshot(symbol: str, chain: dict, vol: dict) -> None:
                VALUES (%s, %s::jsonb, %s::jsonb, NOW())""",
             (sym, json.dumps(chain_meta), json.dumps(vol, default=str)),
         )
-        # Bounded retention — uses idx_options_chain_snap_sym_time; cheap per-symbol prune.
-        cur.execute(
-            "DELETE FROM options_chain_snapshots WHERE symbol=%s AND captured_at < NOW() - (%s || ' days')::interval",
-            (sym, str(keep_days)),
-        )
+        # 2026-10-21 (operator D3.1): no inline prune here. db_retention owns options_chain_snapshots
+        # (config/data_retention_policy.json: ARCHIVE_THEN_DELETE 45 d), so every aged row is archived
+        # (jsonl.gz + manifest + tripwire) before it is deleted. The per-persist 45 d delete ran first and
+        # left the archive nothing to see.
         conn.commit()
     except Exception:
         try:
@@ -1886,28 +1884,14 @@ def persist_chain_snapshot(symbol: str, chain: dict, vol: dict) -> None:
 
 
 def prune_chain_snapshots(keep_days: Optional[int] = None) -> dict:
-    """Global retention sweep across all symbols. Run from a daily cron so symbols
-    that stop receiving new snapshots still get their tail pruned (the per-insert
-    prune in persist_chain_snapshot only touches the symbol being written)."""
-    days = int(keep_days if keep_days is not None else os.getenv("OPTIONS_SNAPSHOT_RETENTION_DAYS", "45"))
-    conn = _conn()
-    if not conn:
-        return {"ok": False, "error": "no_db"}
-    try:
-        cur = conn.cursor()
-        cur.execute(
-            "DELETE FROM options_chain_snapshots WHERE captured_at < NOW() - (%s || ' days')::interval",
-            (str(days),),
-        )
-        deleted = cur.rowcount
-        conn.commit()
-        return {"ok": True, "deleted": deleted, "keep_days": days}
-    except Exception as e:
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        return {"ok": False, "error": str(e)[:160]}
+    """RETIRED 2026-10-21 (operator D3.1): deletes nothing.
+
+    The 15:45 IV-snapshot cron (options_iv_snapshot.py) still calls this; it now only reports the owner.
+    db_retention (nightly, registry row options_chain_snapshots ARCHIVE_THEN_DELETE 45 d) archives every
+    aged row before deleting it, which this unarchived sweep used to pre-empt."""
+    days = int(keep_days if keep_days is not None else 45)
+    return {"ok": True, "deleted": 0, "keep_days": days, "retired": True,
+            "owner": "db_retention (config/data_retention_policy.json options_chain_snapshots, archive-first)"}
 
 
 def build_enterprise_summary(

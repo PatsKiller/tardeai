@@ -152,6 +152,7 @@ def plan_releases(cfg: dict) -> dict:
             continue
         delete.append(str(d))
 
+    cur = root / "CURRENT"
     return {
         "root": str(root),
         "keep_n": keep_n,
@@ -160,7 +161,60 @@ def plan_releases(cfg: dict) -> dict:
         "keep": keep,
         "delete": delete,
         "would_delete_count": len(delete),
+        # 2026-10-21 (D8.3): release-local files are compared against the release CURRENT points at.
+        "reference": str(cur.resolve()) if cur.is_symlink() and cur.resolve().is_dir() else None,
     }
+
+
+# ── Release-local data (2026-10-21, operator D8.3; AGENTS.md §0 rule 6) ──────────────────────────────────
+# A release dir is not only code: data/ and state/ hold real directories (data/portfolios/reports ~113 MB,
+# data/raw, data/merged, state/hermes.release-local-*). They die with the release. Before a release is removed,
+# every real file under those trees that the reference release (CURRENT) does not hold byte-identically is
+# archived (tar.gz + per-member sha256 manifest + tripwire under the file-prune archive root (label release_local_data),
+# re-read and verified) and unlinked; only then is the tree removed. A failed archive skips the release (kept,
+# reported in errors). Files byte-identical to CURRENT's copy are not archived (CURRENT still holds them, and
+# is itself compared against its successor before it is ever removed), so archive growth is only what differs.
+RELEASE_LOCAL_TREES = ("data", "state")
+
+
+def release_local_unique_files(release: Path, reference: Path | None) -> list[Path]:
+    """Real files under <release>/data and <release>/state (symlinked dirs not followed) that ``reference`` does not
+    hold byte-identically at the same relative path."""
+    import filecmp
+
+    out: list[Path] = []
+    for top in RELEASE_LOCAL_TREES:
+        base = release / top
+        if base.is_symlink() or not base.is_dir():
+            continue
+        for dirpath, _dirs, files in os.walk(base, followlinks=False):
+            for name in files:
+                fp = Path(dirpath) / name
+                if fp.is_symlink() or not fp.is_file():
+                    continue
+                ref = (reference / fp.relative_to(release)) if reference else None
+                try:
+                    same = (ref is not None and ref.is_file() and ref.stat().st_size == fp.stat().st_size
+                            and filecmp.cmp(fp, ref, shallow=False))
+                except OSError:
+                    same = False
+                if not same:
+                    out.append(fp)
+    return sorted(out)
+
+
+def archive_release_local(release: Path, reference: Path | None, *, dry_run: bool) -> dict:
+    """Archive-then-unlink the release-local files CURRENT does not hold. Raises on a failed archive."""
+    uniq = release_local_unique_files(release, reference)
+    out = {"files": len(uniq), "bytes": sum(f.stat().st_size for f in uniq), "archive": None}
+    if dry_run or not uniq:
+        return out
+    from lib.retention_archive import archive_files_then_unlink, file_archive_root
+
+    res = archive_files_then_unlink(uniq, base_dir=release, archive_dir=file_archive_root() / "release_local_data",
+                                    label=f"release_local_{release.name}", writer="disk_hygiene_enforcer")
+    out["archive"] = res.get("archive")
+    return out
 
 
 def _dir_size_bytes(path: Path) -> int:
@@ -182,19 +236,27 @@ def apply_release_deletes(plan: dict, *, dry_run: bool) -> dict:
     deleted: list[dict] = []
     errors: list[str] = []
     bytes_reclaimed = 0
+    reference = Path(plan["reference"]) if plan.get("reference") else None
     for p in plan.get("delete") or []:
         path = Path(p)
         if not path.exists():
+            continue
+        # 2026-10-21 (D8.3): release-local data CURRENT does not hold is archived first; a failed archive keeps
+        # the whole release (nothing removed) and is reported.
+        try:
+            local = archive_release_local(path, reference, dry_run=dry_run)
+        except Exception as e:  # noqa: BLE001 -- archive failed: keep the release, report it
+            errors.append(f"{p}: release-local archive failed, release kept: {str(e)[:200]}")
             continue
         # Size walks across hundreds of release trees are too slow for dry-run;
         # measure only when actually deleting (or sample is enough for ops).
         size = 0 if dry_run else _dir_size_bytes(path)
         if dry_run:
-            deleted.append({"path": p, "bytes": size, "action": "would_delete"})
+            deleted.append({"path": p, "bytes": size, "action": "would_delete", "release_local": local})
             continue
         try:
             shutil.rmtree(path)
-            deleted.append({"path": p, "bytes": size, "action": "deleted"})
+            deleted.append({"path": p, "bytes": size, "action": "deleted", "release_local": local})
             bytes_reclaimed += size
         except OSError as e:
             errors.append(f"{p}: {e}")

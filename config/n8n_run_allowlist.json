@@ -3190,7 +3190,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "lock": "/tmp/hermes_scorer.lock",
       "lock_kind": "flock",
       "timeout_s": 600,
@@ -3212,7 +3212,7 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "db_adapter legacy unbound cron loader and the telegram_alert notification-intent closure need integrator review. No model or broker credentials are named.",
       "env_evidence": "SOURCE_ONLY import-closure audit; --dry-run sends nothing and writes nothing (TEST_ONLY fakes).",
-      "source": "OBSERVED_HOST crontab L451 2026-10-21 (unchanged, cron freeze); SOURCE_ONLY shadow proposal; no runtime deployment or scheduling change."
+      "source": "OBSERVED_HOST crontab L451 2026-10-21 (unchanged, cron freeze); SOURCE_ONLY shadow proposal; no runtime deployment or scheduling change. | HS-20261021 2026-10-21 (operator waiver \"push live now\"): canary - live_arg [] so the live argv equals the cron line's argv ($PY scripts/hermes_watchlist_scorer.py --once), lock = the cron flock lock /tmp/hermes_scorer.lock (shared: the lock proves no double run)."
     },
     {
       "lane_id": "advisory-desk-run-now",

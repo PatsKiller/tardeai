@@ -365,11 +365,10 @@ def test_graft_gated_and_nothing_to_purge_is_a_verified_empty(tune, capsys):
     assert doc["empty_reason"] == "nothing_due" and doc["skipped_reasons"] == {"graft_gated_weekly_drift_cap": 1}
     out = LPC.check(tune.root, LANE, tune.run_id, produced=0, expect="empty_allowed")
     assert out["output_verdict"]["empty_reason"] == "nothing_due"
+    # 2026-10-21 (operator D4.2 / D5.4): hermes_score_history / hermes_external_research are db_retention's alone.
     assert [t for t, _ in tune.purges] == [
         "hermes_embedding_queue",
-        "hermes_score_history",
         "hermes_research_intelligence",
-        "hermes_external_research",
         "watchlist_research_results",
         "watchlist_research_queue",
         "proposal_research_packets",
@@ -385,11 +384,11 @@ def test_applied_grafts_are_produced(tune):
 
 def test_purged_rows_alone_are_produced(tune):
     tune.use(GATED, update_rows=3)  # 3 stale advisory events expired + 3 failed embeddings re-queued
-    tune.deleted = 2  # each of the 7 archived purges removed 2 rows
+    tune.deleted = 2  # each of the 5 archived purges removed 2 rows (2026-10-21: was 7, D4.2 / D5.4)
     assert ST.main(["--apply"]) == 0
     doc = LPC.attempt_receipt(tune.root, LANE, tune.run_id)
-    assert doc["output_evidence"][0]["purged_rows"] == 3 + 3 + 2 * 7
-    LPC.check(tune.root, LANE, tune.run_id, produced=20, expect="produced")
+    assert doc["output_evidence"][0]["purged_rows"] == 3 + 3 + 2 * 5
+    LPC.check(tune.root, LANE, tune.run_id, produced=16, expect="produced")
 
 
 def test_no_outcome_suggestions_is_no_new_input(tune):

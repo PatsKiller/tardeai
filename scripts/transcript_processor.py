@@ -354,15 +354,19 @@ def set_purge_dates():
 
 
 def purge_expired():
-    """Delete transcripts past their purge date."""
+    """Delete transcripts past their purge date -- archive-first (2026-10-21, operator D3.2).
+
+    Delegates to purge_youtube_transcripts.purge, the one owner of youtube_transcripts (archive + manifest +
+    tripwire before the delete), so this manual path no longer deletes without an archive."""
+    import purge_youtube_transcripts as pyt
+
     conn = _get_conn()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM youtube_transcripts WHERE purge_after IS NOT NULL AND purge_after < CURRENT_DATE")
-    deleted = cur.rowcount
-    conn.commit()
-    conn.close()
-    print(f"[purge] Deleted {deleted} expired transcripts")
-    return deleted
+    try:
+        res = pyt.purge(conn, apply=True)
+    finally:
+        conn.close()
+    print(f"[purge] Deleted {res['deleted']} expired transcripts (archived first: {res['archived']})")
+    return res["deleted"]
 
 
 # ── Main pipeline ────────────────────────────────────────────────────

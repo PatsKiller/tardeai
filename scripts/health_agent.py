@@ -4300,16 +4300,9 @@ def enqueue_escalations(policy: dict, findings_flat: list[dict]):
 
 # ── persistence + alerting ───────────────────────────────────────────────────────────────────────────
 
-def prune_old_snapshots(policy: dict):
-    """Drop snapshots older than retention_days (keeps DB/API history bounded)."""
-    days = int((policy.get("history") or {}).get("retention_days", 90))
-    if days <= 0:
-        return
-    try:
-        _db("DELETE FROM health_agent_snapshots WHERE captured_at < now() - (%s * interval '1 day')",
-            (days,), fetch=None)
-    except Exception:
-        pass
+# 2026-10-21 (operator D4.1): persist() no longer prunes health_agent_snapshots. db_retention is the one
+# owner (config/data_retention_policy.json: DELETE 30 d, archive_first) and archives every aged row before
+# deleting it; the inline 90 d delete here never matched a row and was a second, unarchived owner.
 
 
 def persist(snapshot: dict, policy: dict | None = None):
@@ -4319,8 +4312,6 @@ def persist(snapshot: dict, policy: dict | None = None):
         (snapshot["overall_score"], snapshot["status"],
          json.dumps(snapshot["category_scores"]), json.dumps(snapshot["findings"]),
          snapshot["mode"]), fetch=None)
-    if policy:
-        prune_old_snapshots(policy)
     try:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         STATUS_FILE.write_text(json.dumps(snapshot, indent=2, default=str))

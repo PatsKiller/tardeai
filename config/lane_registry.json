@@ -12014,7 +12014,7 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "state_since": "2026-10-11",
       "superseded_by": "hermes-learning-pipeline-learn",
-      "state_reason": "Superseded by hermes-learning-pipeline-learn on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L650 commented (`# RETIRED 2026-10-11 c1-manifest hermes_learning `), the command runs verbatim as step score_history_retention with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+      "state_reason": "2026-10-21 (operator D4.2, retention registry-owned): the step's thinning is retired -- scripts/hermes_score_history_retention.py counts only and deletes nothing; db_retention is the only owner of hermes_score_history (config/data_retention_policy.json DELETE 21 d, archive_first). The manifest step id stays because the deployed n8n fabric workflow names it. Was: Superseded by hermes-learning-pipeline-learn on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L650 commented (`# RETIRED 2026-10-11 c1-manifest hermes_learning `), the command runs verbatim as step score_history_retention with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
       "reason_confidence": "CORRELATED",
       "reason_evidence": "packets/c1-manifest-flips/hermes_learning/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step score_history_retention of config/pipelines/hermes_learning.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step score_history_retention rc=0 (CORRELATED until then; ESTABLISHED after).",
       "inventory_id": "cron:L650",
@@ -16829,9 +16829,10 @@
         "kind": "cron",
         "expression": "*/15 * * * *",
         "match": "scripts/hermes_watchlist_scorer.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "R2-10",
-        "command_text": "cd $PROJ && flock -n /tmp/hermes_scorer.lock $PY scripts/hermes_watchlist_scorer.py --once >> logs/hermes_scorer.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_scorer.lock $PY scripts/hermes_watchlist_scorer.py --once >> logs/hermes_scorer.log 2>&1",
+        "cutover_wave": "HS-20261021"
       },
       "expected_cadence_hours": 0.25,
       "state": "ACTIVE",
@@ -16855,10 +16856,10 @@
         "f_evidence": "core advisory/protection/data path; healthy logs today"
       },
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. 2026-10-21: n8n shadow (dry_run health probe) alongside cron; the live write path is still the cron line.",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. 2026-10-21: n8n shadow (dry_run health probe) alongside cron; the live write path is still the cron line. 2026-10-21 (operator waiver): n8n canary - dispatch.mode live alongside the unchanged cron line L451 under the one flock /tmp/hermes_scorer.lock; Operator decision 2026-10-21 ~13:05 ET, verbatim: \"push live now\" (promote shadow -> canary today, waiving the usual 3-market-day shadow evidence wait); 2026-10-21, verbatim: \"comment out whats working now this can be a fallback\" (retire cron L451 after the first live n8n RUN_DONE; the commented line is the fallback). Shadow evidence at promotion: RUN_DONE dry_run fires 12:55 and 13:00 ET, exit 0, 1408 items, 812 scored, 0 errored; shadow released in a6ac0ebbe (PR #1899).",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "*/15 * * * *"
         ],
@@ -16870,7 +16871,36 @@
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-21",
-      "adopted_reason": "Operator-approved 2026-10-21 shadow onboarding (scorer hardening PR): n8n dispatcher dry_run alongside the unchanged cron line L451 (cron freeze). Cron stays the live scheduler; contract DRAFT."
+      "adopted_reason": "Operator-approved 2026-10-21 shadow onboarding (scorer hardening PR): n8n dispatcher dry_run alongside the unchanged cron line L451 (cron freeze). Cron stays the live scheduler; contract DRAFT.",
+      "canary": {
+        "wave": "HS-20261021",
+        "since": "2026-10-21",
+        "evidence": "coordination ledger 2026-10-21 (as reported by the operator session): dispatcher dry_run fires 12:55 and 13:00 ET RUN_DONE exit 0, 1408 items, 812 scored, 0 errored. The usual 3-market-day shadow evidence wait is WAIVED by the operator (operator_waiver).",
+        "operator_waiver": "Operator decision 2026-10-21 ~13:05 ET, verbatim: \"push live now\" (promote shadow -> canary today, waiving the usual 3-market-day shadow evidence wait); 2026-10-21, verbatim: \"comment out whats working now this can be a fallback\" (retire cron L451 after the first live n8n RUN_DONE; the commented line is the fallback). Shadow evidence at promotion: RUN_DONE dry_run fires 12:55 and 13:00 ET, exit 0, 1408 items, 812 scored, 0 errored; shadow released in a6ac0ebbe (PR #1899).",
+        "lock_proof": "scheduler.command_text == the live cron line L451 command; its only flock lock /tmp/hermes_scorer.lock == allowlist lock (lock_kind flock): r1_canary_lock_matches",
+        "rollback": "revert this registry/allowlist/contract commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null; remove the lane from TRADEAI_N8N_RELAY_LIVE_LANES (docs/ops/packets/hermes-scorer-canary-20261021/README.md)",
+        "next": "cutover: after the first live n8n RUN_DONE with rows written, 02_retire_cron_line.sh comments L451 (cron grant) and the follow-up registry PR flips this row with `n8n_cutover_wave.py cutover --lanes hermes-watchlist-scorer`"
+      }
+    },
+    {
+      "lane_id": "archive-offbox-sync",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-archive-offbox-sync.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-21",
+      "state_reason": "PROPOSED host lane (operator D9 = (a), 2026-10-21: copy the retention archives off-box to Google Drive over the existing Drive path). Packet docs/ops/packets/archive-offbox-20261021/ holds the systemd user service + timer (daily 03:30 America/New_York) and install.sh (dry run by default); not installed. A new systemd entry is operator-only (AGENTS.md §17): the operator runs install.sh --apply, then flips this row to ACTIVE. Host job, never n8n: it reads the Drive/gpg credential files (by path) and egresses encrypted archive blobs.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/archive-offbox-sync_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_archive_offbox_sync_20261021.py (fake uploader/encryptor: dry-run writes nothing, incremental, verify-before-record, never-delete, byte bound resumes); read-only dry run 2026-10-21 quoted in docs/ops/packets/archive-offbox-20261021/README.md.",
+      "note": "scripts/archive_offbox_sync.py --apply: incremental by manifest data/runtime/archive_offbox_manifest.json (ArchiveOffboxManifest@v1: path, sha256, size, uploaded_at, Drive id); gpg AES256 symmetric + gog drive upload exactly as scripts/backup_secrets_state.sh (same Trade_AI_Backups folder id, account, passphrase and keyring files by path); Drive layout Trade_AI_Backups/archive/<area>/<YYYYMM>/; every upload is read back (size, md5Checksum when reported) before it is recorded; bounded 1 GiB / 1500 files per run, resumes next run; one failure never stops the rest; never deletes locally or on Drive. Receipt LaneRunReceipt@v2 (produced_count = files uploaded and verified). Allowlisted in scripts/lib/retention_tripwire.py as the archive copier."
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",

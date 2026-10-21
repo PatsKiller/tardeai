@@ -4828,6 +4828,20 @@ GATES = [
         ["tests/test_retention_all_managed_20261011.py"],
     ),
     (
+        # ANCHOR: RETENTION_REGISTRY_OWNED — operator rulings 2026-10-21 ("approve all archive-first conversions, remove
+        # duplicate/rogue deleters, standardize on registry-owned retention"): options_chain_snapshots 45 d ATD with
+        # the inline deletes removed (D3.1); youtube / news guard / RSS stubs / reports purge archive-first (D3.2-3.5);
+        # health_agent, score-history thinning, finviz movers and two self-tune purges retired to db_retention
+        # (D4.1-4.3, D5.4); siem alert_events 30 d, research critique 180 d created_at (D5.1-5.2); log heads, release-
+        # local data, portfolio reports and scalp receipts archived before removal (D8.1, D8.3-8.5); dead file_prune
+        # row gone (D8.6); check_retention_policy rule 10 (a RETIRED owner must not delete).
+        "retention_registry_owned_20261021",
+        [
+            "tests/test_retention_registry_owned_20261021.py",
+            "tests/test_research_critique_pipeline.py",
+        ],
+    ),
+    (
         # Cron crash fixes (operator 2026-10-09: "fix the broken cron jobs"): failed --user units detected,
         # econfirm finds gog outside cron PATH, disarmed retries not counted as retried, bridge refusal code kept
         # in 503 errors, alert-quality registry row matches the host.
@@ -5532,6 +5546,34 @@ GATES = [
         # SOURCE document's age (join per source type), still disabled. Hermetic: no DB, no subprocess.
         "retention_priority_20261021",
         ["tests/test_retention_priority_20261021.py"],
+    ),
+    (
+        # ANCHOR: HERMES_SCORER_N8N_CANARY_20261021 — operator waiver 2026-10-21 ("push live now"; "comment out
+        # whats working now this can be a fallback"): hermes-watchlist-scorer shadow -> CANARY. Cron row stage
+        # canary, dispatch.mode live, allowlist live_arg [] (live argv == cron argv), lock == cron L451's flock lock,
+        # REVIEWED contract at canary, and the dry-run-default operator packet. Hermetic: config + packet text only.
+        "hermes_scorer_n8n_canary_20261021",
+        ["tests/test_hermes_scorer_n8n_canary_20261021.py"],
+    ),
+    (
+        # ANCHOR: ARCHIVE_OFFBOX_SYNC_20261021 — operator D9 = (a): the retention archives get an off-box copy on
+        # Google Drive (Trade_AI_Backups/archive/<area>/<YYYYMM>/) via the backup_secrets_state.sh mechanism (gog +
+        # gpg AES256, credential files by path only). Proves: dry run is the default and writes nothing; --apply is
+        # incremental by manifest, verifies each upload (size/md5) before recording it, isolates per-file failures,
+        # honours the byte bound and resumes; never deletes a local archive; tripwire allowlists only this copier.
+        # Hermetic: fake uploader + fake encryptor in tmp_path; no gog, no gpg, no Drive, no credentials.
+        "archive_offbox_sync_20261021",
+        ["tests/test_archive_offbox_sync_20261021.py"],
+    ),
+    (
+        # ANCHOR: LEARNING_LOOP_PR1_20261021 — operator 2026-10-21 "Approve learning-loop plan and begin PR1
+        # immediately": deterministic rec_id for CIO opportunities (same plan → same id across versions), proposals,
+        # scalp GO and entry alerts (recommendation_registry, SAVEPOINT-guarded single writer + curator hook);
+        # trade_recommendation_links (exact / zone / window_only, unmatched = operator_initiated, idempotent);
+        # R multiple incl. shorts and missing stop; /api/v2/journal recommendation block; dry runs READ ONLY;
+        # additive migration. Hermetic: fake cursors, temp files, no DB.
+        "learning_loop_pr1_20261021",
+        ["tests/test_learning_loop_pr1_20261021.py"],
     ),
 ]
 

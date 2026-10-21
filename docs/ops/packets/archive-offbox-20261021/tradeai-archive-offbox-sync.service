@@ -1,0 +1,16 @@
+[Unit]
+Description=TradeAI archive off-box sync — gpg-encrypted incremental copy of the retention archives to Drive (D9=a)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PYTHONUNBUFFERED=1
+# Bounded per run (1 GiB plaintext / 1500 files); the backlog drains over a few nights.
+TimeoutStartSec=10800
+Nice=10
+IOSchedulingClass=idle
+WorkingDirectory=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/archive_offbox_sync.py --apply
+StandardOutput=append:/home/johnclaw/trade-ai-releases/persistent-state/logs/archive_offbox_sync.log
+StandardError=append:/home/johnclaw/trade-ai-releases/persistent-state/logs/archive_offbox_sync.log

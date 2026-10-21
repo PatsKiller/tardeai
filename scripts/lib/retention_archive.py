@@ -302,6 +302,25 @@ def archive_files_then_unlink(files: Sequence[Path], *, base_dir: Path, archive_
     return out
 
 
+def archive_prune(files: Sequence[Path], *, base_dir: Path, label: str, writer: str,
+                  archive_dir: Path | None = None) -> dict:
+    """2026-10-21 (registry-owned retention, D8.4/D8.5): the one call an inline file prune makes instead of
+    ``unlink()``. Archive-then-unlink under ``<state>/archive/file_prune/<label>/`` (tar.gz + per-member sha256
+    manifest + tripwire, re-read and verified); any failure unlinks NOTHING and is returned, never raised, so
+    a report or a scalp cycle is never broken by its own retention. Returns {label, files, unlinked, archive,
+    error?}."""
+    files = [Path(f) for f in files if Path(f).is_file()]
+    if not files:
+        return {"label": label, "files": 0, "unlinked": 0, "archive": None}
+    try:
+        return archive_files_then_unlink(files, base_dir=Path(base_dir),
+                                         archive_dir=Path(archive_dir) if archive_dir else file_archive_root() / label,
+                                         label=label, writer=writer)
+    except Exception as exc:  # noqa: BLE001 -- the archive failed: keep every file, report it
+        return {"label": label, "files": len(files), "unlinked": 0, "archive": None,
+                "error": f"{type(exc).__name__}: {exc}"[:200]}
+
+
 def verify_file_archive(path: Path, *, expected_sha256: str, members: Sequence[dict]) -> tuple[bool, str]:
     """Re-read the tar from disk: archive sha256, member set, and every member's sha256."""
     import tarfile
@@ -424,9 +443,19 @@ def managed_purge(conn, *, table: str, where_sql: str, params: Sequence[Any] = (
     if not apply or eligible == 0:
         return out
     if archive:
-        res = archive_then_delete_batches(conn, table=table, where_sql=where_sql, params=params, label=label,
-                                          archive_dir=Path(archive_dir) if archive_dir else archive_root() / table,
-                                          batch_rows=batch_rows, max_rows=max_rows, key=key, writer=writer)
+        # 2026-10-21: a caller on an autocommit connection (hermes_source_curation) gets a real transaction per
+        # batch -- FOR UPDATE and the server-side archive cursor need one -- and its autocommit back afterwards.
+        restore_autocommit = getattr(conn, "autocommit", None) is True
+        if restore_autocommit:
+            conn.autocommit = False
+        try:
+            res = archive_then_delete_batches(conn, table=table, where_sql=where_sql, params=params, label=label,
+                                              archive_dir=Path(archive_dir) if archive_dir else archive_root() / table,
+                                              batch_rows=batch_rows, max_rows=max_rows, key=key, writer=writer)
+        finally:
+            if restore_autocommit:
+                conn.rollback()  # every verified batch is already committed; nothing else is pending
+                conn.autocommit = True
         out.update(deleted=res["rows_deleted"], archived=res["rows_archived"], batches=len(res["batches"]),
                    cap_reached=res.get("cap_reached", False),
                    archives=[b["path"] for b in res["batches"]])

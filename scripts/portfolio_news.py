@@ -381,13 +381,30 @@ Respond with ONLY a JSON object: {{"score": <number>, "category": "<one of: earn
     return scored
 
 
+def _archive_prune(files, base_dir, label: str, writer: str) -> dict:
+    """2026-10-21 (operator D8.4, registry-owned retention): archive (tar.gz + sha256 manifest + tripwire under
+    the file-prune archive root (<state>/archive, file_prune/<label>/)) and only then unlink. A failed archive unlinks nothing. Registered in
+    config/data_retention_policy.json purge_paths portfolio_report_rotation."""
+    import sys as _s
+    _scripts = str(Path(__file__).resolve().parent)
+    if _scripts not in _s.path:
+        _s.path.insert(0, _scripts)
+    from lib.retention_archive import archive_prune
+
+    res = archive_prune(list(files), base_dir=base_dir, label=label, writer=writer)
+    if res.get("error"):
+        print(f"[{writer}] retention archive failed, nothing removed: {res['error']}")
+    return res
+
+
 def _prune_history(history_dir: Path):
-    """Remove snapshots older than HISTORY_DAYS."""
+    """Archive, then remove, snapshots older than HISTORY_DAYS (2026-10-21, D8.4: was a bare unlink)."""
     cutoff = datetime.now() - timedelta(days=HISTORY_DAYS)
     cutoff_str = cutoff.strftime("%Y-%m-%d")
-    for f in history_dir.glob("*.json"):
-        if f.stem < cutoff_str:
-            f.unlink()
+    old = sorted(f for f in history_dir.glob("*.json") if f.stem < cutoff_str)
+    if not old:
+        return {"files": 0, "unlinked": 0}
+    return _archive_prune(old, history_dir, "portfolio_news_history", "portfolio_news")
 
 
 # ═══════════════════════════════════════════════════════════════════

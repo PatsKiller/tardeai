@@ -1,0 +1,11 @@
+[Unit]
+Description=TradeAI archive off-box sync — daily 03:30 ET, after the 02:30 backup cadence and the 01:15 retention step
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 America/New_York
+Persistent=true
+RandomizedDelaySec=120
+Unit=tradeai-archive-offbox-sync.service
+
+[Install]
+WantedBy=timers.target
