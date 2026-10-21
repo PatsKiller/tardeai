@@ -5462,6 +5462,15 @@ GATES = [
         "freshness_slo_hermes_scorer_20261021",
         ["tests/test_freshness_slo_hermes_scorer_20261021.py"],
     ),
+    (
+        # ANCHOR: BACKUP_CADENCE_TAR_CHANGED_20261021 — tradeai-portfolio-backup-cadence failed 2026-10-21 02:52 ET on
+        # "tar: data/cio: file changed as we read it" (GNU tar rc=1). backup_secrets_state.sh treats tar rc=1 as a
+        # warning (gzip -t verified, corrupt fails closed; rc>=2 fatal) and run_weekly_gated always returns 0 so a
+        # failed weekly step records degraded instead of set -e aborting db_offsite/apps and the summary.
+        # Hermetic: scratch HOME/PROJ, fake gpg/gog/tar on PATH; no Drive, no credentials.
+        "backup_cadence_tar_changed_20261021",
+        ["tests/test_portfolio_cadence_tar_rc1_20261021.py"],
+    ),
 ]
 
 
