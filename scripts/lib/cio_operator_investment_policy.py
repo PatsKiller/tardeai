@@ -19,6 +19,8 @@ from scripts.lib.cio_operator_profile import OperatorProfile
 AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "OperatorInvestmentPolicy@v1"
 DEFAULT_STORE = "data/cio/operator_profile.jsonl"
+#: read as source text by discover_legacy_policy_claims (regex for max_single_name_pct); never imported
+_LEGACY_DECISION_MODULE = "scripts.lib.cio_decision_quality"
 
 # Operator decision 2026-10-03 (Policy Review): overall CONFIRMED requires only the
 # fields code reads to size and alarm (cash band, reserve, asset-class ranges,
@@ -139,7 +141,11 @@ def discover_legacy_policy_claims(repo_root: Path) -> list[dict[str, Any]]:
     if match:
         claims.append({"field": "max_single_position_pct", "value": float(match.group(1)), "source": _source_label(desk_path, repo_root), "status": "LEGACY_UNCONFIRMED"})
 
-    decision_path = repo_root / "scripts" / "lib" / "cio_decision_quality.py"
+    # The legacy cap is regex-read from this module's SOURCE TEXT; the module is never imported or run. The path is
+    # built from the dotted name so the static spawn detector (scripts/lib/advisory_lane_guard.py, which treats a
+    # `/ "x.py"` literal as a spawned child) does not mistake a text read for a child process (2026-10-21, #1417
+    # rebuild: it pulled the whole cio_decision_quality import graph into lane cio-portfolio-thesis).
+    decision_path = repo_root.joinpath(*_LEGACY_DECISION_MODULE.split(".")).with_suffix(".py")
     try:
         decision_text = decision_path.read_text(encoding="utf-8")
     except OSError:

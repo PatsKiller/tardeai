@@ -4085,6 +4085,60 @@
       "market_gate": false,
       "output_signal": "data/runtime/tmp-hygiene_last.json",
       "output_receipt": "v2"
+    },
+    {
+      "lane_id": "cio-portfolio-thesis",
+      "command": [
+        "$PY",
+        "scripts/materialize_cio_portfolio_thesis.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/cio_portfolio_thesis.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/cio-portfolio-thesis_last.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/lib/cio_market_context_state.connect_trade_ai_readonly reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD from os.environ (no dotenv; session READ ONLY); scripts/lib/lane_last_receipt.py reads TRADEAI_STATE_ROOT (an executor base name). No model, provider or broker credential.",
+      "source": "operator 2026-10-21 'yes rebuild 1417' (rebuild of closed PR #1417 as n8n dispatcher lanes; cron freeze 2026-10-09 in force, no crontab line). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run. No cron line exists, so the lock is new (a dry run takes <lock>.dryrun). Canary live_arg (separate PR): [].",
+      "env_report_reason": "report until the import closure is re-inventoried for enforce: 13 local modules (over the P7 10-module bar) through the CIO policy/portfolio/canon libraries; the only credential names read are DB_* (cio_market_context_state.connect_trade_ai_readonly, READ ONLY session). No model, provider or broker name."
+    },
+    {
+      "lane_id": "advisory-maturity-evidence",
+      "command": [
+        "$PY",
+        "scripts/refresh_advisory_maturity_evidence.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/advisory_maturity_evidence.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/advisory-maturity-evidence_last.json",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/refresh_advisory_maturity_evidence.py _env_values copies only the literal _ENV_KEYS (DB_*) from the environment, then from the release .env for a missing name; scripts/lib/lane_last_receipt.py reads TRADEAI_STATE_ROOT (an executor base name). No model, provider or broker credential.",
+      "source": "operator 2026-10-21 'yes rebuild 1417' (rebuild of closed PR #1417 as n8n dispatcher lanes; cron freeze 2026-10-09 in force, no crontab line). SHADOW ONLY: live_arg null, registry dispatch.mode dry_run. No cron line exists, so the lock is new (a dry run takes <lock>.dryrun). Canary live_arg (separate PR): [].",
+      "env_report_reason": "report until the collectors' closure (scripts/ops_tree_pin_audit.py, scripts/lib/current_pin_integrity.py, scripts/audit_no_local_generative_routing.py) is re-inventoried for enforce; the script's own reads are the literal _ENV_KEYS (DB_*). No model, provider or broker name."
     }
   ],
   "blocked_reasons": {

@@ -5537,6 +5537,13 @@ GATES = [
         ["tests/test_hermes_scorer_n8n_shadow_20261021.py"],
     ),
     (
+        # ANCHOR: REBUILD_1417_20261021 — operator "yes rebuild 1417": premarket cio_draft_plan_hygiene step runs
+        # --apply --expire-stale (append-only expiry); cio-portfolio-thesis and advisory-maturity-evidence as n8n-native
+        # SHADOW dispatcher lanes (write-free --dry-run, live_arg null, DRAFT contracts, no forbidden closure).
+        "rebuild_1417_20261021",
+        ["tests/test_cio_portfolio_thesis_lane_20261021.py"],
+    ),
+    (
         # ANCHOR: RETENTION_PRIORITY_20261021 — operator rulings 2026-10-21 (OPERATOR_DECISION, priority set),
         # one test per ruling: D6 weekly_disk_cleanup_notify runs no dev-tree db_retention/librarian step
         # (platform-maintenance-nightly from CURRENT is the only owner); D8.2 run_pg_backup.sh .part + size +

@@ -16903,6 +16903,100 @@
       "note": "scripts/archive_offbox_sync.py --apply: incremental by manifest data/runtime/archive_offbox_manifest.json (ArchiveOffboxManifest@v1: path, sha256, size, uploaded_at, Drive id); gpg AES256 symmetric + gog drive upload exactly as scripts/backup_secrets_state.sh (same Trade_AI_Backups folder id, account, passphrase and keyring files by path); Drive layout Trade_AI_Backups/archive/<area>/<YYYYMM>/; every upload is read back (size, md5Checksum when reported) before it is recorded; bounded 1 GiB / 1500 files per run, resumes next run; one failure never stops the rest; never deletes locally or on Drive. Receipt LaneRunReceipt@v2 (produced_count = files uploaded and verified). Allowlisted in scripts/lib/retention_tripwire.py as the archive copier."
     },
     {
+      "lane_id": "cio-portfolio-thesis",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/materialize_cio_portfolio_thesis.py",
+        "cadence": "47 17 * * 1-5",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 24.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-21",
+      "state_reason": "operator 2026-10-21 'yes rebuild 1417' (rebuild of closed PR #1417 as n8n dispatcher lanes; cron freeze 2026-10-09 in force, no crontab line). SHADOW: dispatch mode dry_run, allowlist live_arg null; a fire runs --dry-run (builds the candidate, classifies it against the latest published thesis, writes nothing). Nothing scheduled this script before (only a test referenced it); canary is a later registry PR after the owner marks the health contract REVIEWED.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/materialize_cio_portfolio_thesis.py --dry-run (write-free; tests/test_cio_portfolio_thesis_lane_20261021.py); inputs read through scripts/lib/cio_portfolio_thesis_inputs.py instead of api_v3_cio, whose closure reached api_v2 broker/order modules (tests/test_lane_transitive_capabilities_20261015.py, no baseline exception).",
+      "review_by": "2026-11-04",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/cio-portfolio-thesis_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Medium",
+      "note": "Deterministic CIOPortfolioThesis@v1 materializer (no LLM, no provider, no send). Weekdays 17:47 ET, after the 16:05 regime refresh and 16:45 prices (#1417 cadence). Live run appends at most one PORTFOLIO_THESIS_PUBLISHED record to data/cio/cio_portfolio_theses.jsonl (NO_NEW_INFO publishes nothing: idempotent) and writes its LaneRunReceipt.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "47 17 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "report",
+        "priority": 5,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "advisory-maturity-evidence",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/refresh_advisory_maturity_evidence.py",
+        "cadence": "17 6 * * *",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 24.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-21",
+      "state_reason": "operator 2026-10-21 'yes rebuild 1417' (rebuild of closed PR #1417 as n8n dispatcher lanes; cron freeze 2026-10-09 in force, no crontab line). SHADOW: dispatch mode dry_run, allowlist live_arg null; a fire runs --dry-run (the four read-only collectors, no snapshot, no receipt). config/cio_known_dark_classification.json keeps it WIRE until canary writes the snapshots.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/refresh_advisory_maturity_evidence.py --dry-run (write-free; tests/test_refresh_advisory_maturity_evidence.py); .env read narrowed to _ENV_KEYS (DB_* only); DB session READ ONLY.",
+      "review_by": "2026-11-04",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/advisory-maturity-evidence_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Low",
+      "note": "Read-only collectors (no provider/model calls) feeding MaturityScorecard@v1 (7-day TTL). Daily 06:17 ET (#1417 cadence). A live run atomically rewrites data/cio/{rag_freshness,pin_integrity,gpu_policy,ops_tree_pin_audit}_latest.json under the release root and writes its LaneRunReceipt.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "17 6 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "monitor",
+        "priority": 5,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {

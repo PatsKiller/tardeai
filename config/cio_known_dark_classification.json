@@ -88,8 +88,8 @@
       "cio_relevant": true,
       "census_state": "INHERITED_DARK",
       "classification": "WIRE",
-      "reason": "Refreshes the read-only evidence that MaturityScorecard@v1 consumes, but nothing schedules it, so the scorecard reads stale snapshots. Wiring needs a crontab entry plus a lane_registry update, which is an operator change.",
-      "consumer_or_successor": "cron (operator) -> MaturityScorecard@v1",
+      "reason": "Refreshes the read-only evidence that MaturityScorecard@v1 consumes. 2026-10-21 (operator 'yes rebuild 1417'; cron freeze, so no crontab line): declared as n8n dispatcher lane advisory-maturity-evidence (config/lane_registry.json, daily 06:17 ET) at stage shadow, so its fires run --dry-run and still write no snapshot; the scorecard reads stale snapshots until the lane reaches canary (after its DRAFT health contract is REVIEWED), when this becomes ALREADY_WIRED.",
+      "consumer_or_successor": "n8n dispatcher lane advisory-maturity-evidence (shadow 2026-10-21; canary pending) -> MaturityScorecard@v1",
       "action_status": "PROPOSED"
     },
     {

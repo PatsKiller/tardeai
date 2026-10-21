@@ -510,7 +510,10 @@ def test_registry_dispatch_errors_hook():
 #: 2026-10-16 process consolidation cohort 2: the Hermes discovery yield builder's event-trigger lane (no host line of
 #: its own; the night-stage step is the clock fallback). tests/test_n8n_consolidation_cohort2_20261016.py.
 N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor", "momentum-cache-reconcile",
-                               "hermes-discovery-yield-on-learning"})
+                               "hermes-discovery-yield-on-learning",
+                               # 2026-10-21 operator "yes rebuild 1417": two never-scheduled scripts onboarded as
+                               # n8n-native shadow lanes (no cron line; tests/test_cio_portfolio_thesis_lane_20261021.py).
+                               "cio-portfolio-thesis", "advisory-maturity-evidence"})
 #: 2026-10-17 + n8n-comms-intent-consumer (operator D2 "Queue reader first"; tests/support/comms_intent_consumer_live.py).
 #: 2026-10-19 + registry-runtime-truth (measure-only; tests/support/registry_runtime_truth_lane.py).
 #: 2026-10-18 + disk-usage-monitor and disk-hygiene (operator 2026-10-18: "a script with rules that's repeatable, n8n
