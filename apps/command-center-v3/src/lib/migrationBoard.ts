@@ -1,7 +1,9 @@
 // Migration board projection (GET /api/v2/coordination/migration-board) → page model. Pure, testable.
 // 2026-10-08 n8n scheduler-of-record program, stream G: per lane the scheduler of record, phase
 // (NOT_STARTED → SHADOW → CANARY → CUT_OVER | ROLLED_BACK), last run, output-signal age, readiness
-// and risk flags, as written by scripts/n8n_migration_board.py. Read-only: nothing here cuts over.
+// and risk flags, computed live by scripts/n8n_migration_board.py served_board (2026-10-21), plus the
+// registry's dispatcher stage counts. A board older than 24 h is STALE and the page says so in a banner.
+// Read-only: nothing here cuts over.
 import type { Tone } from './designTokens'
 
 export type MigrationPhase = 'NOT_STARTED' | 'SHADOW' | 'CANARY' | 'CUT_OVER' | 'ROLLED_BACK'
@@ -49,6 +51,21 @@ export interface MigrationBoardPayload {
     no_registry_row?: number
   }
   lanes?: MigrationLane[]
+  computed?: 'LIVE' | 'FILE_FALLBACK' | string
+  stale?: boolean
+  age_h?: number | null
+  fallback_reason?: string
+  dispatch_stages?: { source?: string; by_stage?: Record<string, number> }
+}
+
+export const BOARD_STALE_AFTER_H = 24
+export const DISPATCH_STAGES = ['shadow', 'canary', 'cutover'] as const
+
+// True when the board is older than 24 h, undated, or the server already says so.
+export function boardStale(asOf: string | null | undefined, nowMs: number, serverStale?: boolean): boolean {
+  if (serverStale === true) return true
+  const t = asOf ? Date.parse(asOf) : NaN
+  return !Number.isFinite(t) || nowMs - t > BOARD_STALE_AFTER_H * 3_600_000
 }
 
 export interface MigrationRow {
@@ -85,6 +102,10 @@ export interface MigrationBoardModel {
   openRiskCount: number
   noRegistryRow: number
   rows: MigrationRow[]
+  stale: boolean
+  staleLabel: string
+  computed: string
+  dispatchStages: Array<{ stage: string; n: number; tone: Tone }>
 }
 
 export function toneForPhase(phase: string): Tone {
@@ -131,13 +152,21 @@ export function lastRunLabel(run: MigrationLastRun | null | undefined): string {
   return bits.join(' · ')
 }
 
-export function projectMigrationBoard(payload: MigrationBoardPayload | null | undefined): MigrationBoardModel {
+export function projectMigrationBoard(payload: MigrationBoardPayload | null | undefined, nowMs: number = Date.now()): MigrationBoardModel {
   if (!payload || typeof payload !== 'object') {
     return {
       status: 'UNAVAILABLE', statusLabel: 'UNAVAILABLE', statusTone: 'danger', asOfLabel: 'UNDATED',
       note: 'the board did not answer', byPhase: [], tranches: [], openRiskCount: 0, noRegistryRow: 0, rows: [],
+      stale: false, staleLabel: '', computed: '', dispatchStages: [],
     }
   }
+  const stale = payload.status !== 'NO_BOARD' && boardStale(payload.as_of, nowMs, payload.stale)
+  const ageH = payload.as_of ? (nowMs - Date.parse(String(payload.as_of))) / 3_600_000 : NaN
+  const staleLabel = !stale ? '' : Number.isFinite(ageH)
+    ? `STALE: board as of ${String(payload.as_of).slice(0, 16).replace('T', ' ')} is ${ageH >= 48 ? `${(ageH / 24).toFixed(1)} d` : `${ageH.toFixed(1)} h`} old${payload.computed === 'FILE_FALLBACK' ? ' (live build failed; serving the last --write receipt)' : ''}`
+    : 'STALE: board is undated'
+  const stagesRaw = payload.dispatch_stages?.by_stage
+  const dispatchStages = stagesRaw ? DISPATCH_STAGES.map(st => ({ stage: st, n: Number(stagesRaw[st] ?? 0), tone: (st === 'cutover' ? 'success' : st === 'canary' ? 'info' : 'ai') as Tone })) : []
   const status: MigrationBoardModel['status'] = payload.status === 'OK' ? 'OK' : payload.status === 'NO_BOARD' ? 'NO_BOARD' : 'UNAVAILABLE'
   const lanes = Array.isArray(payload.lanes) ? payload.lanes : []
   const rows: MigrationRow[] = lanes.map(l => {
@@ -179,6 +208,6 @@ export function projectMigrationBoard(payload: MigrationBoardPayload | null | un
     note: String(payload.note ?? ''),
     byPhase, tranches, openRiskCount,
     noRegistryRow: Number(payload.summary?.no_registry_row ?? rows.filter(r => !r.registryRow).length),
-    rows,
+    rows, stale, staleLabel, computed: String(payload.computed ?? ''), dispatchStages,
   }
 }

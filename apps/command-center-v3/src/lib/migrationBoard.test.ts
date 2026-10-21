@@ -1,4 +1,4 @@
-import { projectMigrationBoard, signalAgeLabel, lastRunLabel, toneForPhase, toneForRunState } from './migrationBoard.ts'
+import { projectMigrationBoard, signalAgeLabel, lastRunLabel, toneForPhase, toneForRunState, boardStale } from './migrationBoard.ts'
 declare const process: { exit(code?: number): never }
 let pass = 0, fail = 0
 function check(name: string, cond: boolean) {
@@ -39,6 +39,19 @@ check('readiness tones', ok.rows[0].readinessTone === 'success' && ok.rows[2].re
 check('rollback and registry flags', ok.rows[0].rollbackReady === true && ok.rows[1].registryRow === false && ok.rows[2].riskLabel === 'OUTPUT_SIGNAL_STALE')
 check('tranche chips: a risk is danger, all cut over is success', ok.tranches.map(t => `${t.tranche}:${t.tone}`).join(',') === 'N1:info,N2:danger' && ok.openRiskCount === 1 && ok.noRegistryRow === 1)
 check('helpers without a run', lastRunLabel(null) === 'no run' && signalAgeLabel(30) === '30.0 h')
+
+// 2026-10-21: a board older than 24 h shows a STALE banner; the live board carries the registry's dispatcher stages.
+const T0 = Date.parse('2026-10-21T13:00:00Z')
+const old = projectMigrationBoard({ schema: 'N8nMigrationBoard@v1', status: 'OK', as_of: '2026-10-08T16:16:52+00:00', lanes: [], summary: {} }, T0)
+check('a 13-day-old board is STALE with its age in the banner', old.stale === true && old.staleLabel.startsWith('STALE: board as of 2026-10-08 16:16') && old.staleLabel.includes('12.9 d'))
+const live = projectMigrationBoard({ schema: 'N8nMigrationBoard@v1', status: 'OK', as_of: '2026-10-21T12:59:00+00:00', computed: 'LIVE', lanes: [], summary: {},
+  dispatch_stages: { by_stage: { shadow: 47, canary: 47, cutover: 13 } } }, T0)
+check('a fresh live board is not stale and shows 13 cutover / 47 canary / 47 shadow', live.stale === false && live.staleLabel === '' && live.computed === 'LIVE'
+  && live.dispatchStages.map(s => `${s.stage}:${s.n}`).join(',') === 'shadow:47,canary:47,cutover:13')
+check('boundary: exactly 24 h is fresh, just over is stale', boardStale('2026-10-20T13:00:00Z', T0) === false && boardStale('2026-10-20T12:59:00Z', T0) === true)
+check('undated or server-flagged boards are stale', boardStale(null, T0) === true && boardStale('2026-10-21T12:59:00Z', T0, true) === true)
+const fallback = projectMigrationBoard({ schema: 'N8nMigrationBoard@v1', status: 'OK', as_of: '2026-10-08T16:16:52+00:00', computed: 'FILE_FALLBACK', stale: true, lanes: [], summary: {} }, T0)
+check('a file fallback says the live build failed', fallback.stale && fallback.staleLabel.includes('live build failed'))
 
 console.log(`migrationBoard: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
