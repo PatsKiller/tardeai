@@ -5460,6 +5460,27 @@ GATES = [
         ["tests/test_release_train_20261021.py"],
     ),
     (
+        # ANCHOR: RELEASE_TRAIN_AUTHORITY_20261021 — Release Train v2 Phase 2 (operator D1/D3 2026-10-21), libraries
+        # only, wired into nothing: ReleaseDelegation@v1 loader (fail closed: missing/corrupt/unknown status/PAUSED/
+        # REVOKED/in-repo path/never-delegable class = not authorized), the HMAC phase-capability issuer (build/publish
+        # cannot merge or promote; merge/promote bind delegation+digest+epochs, repo/env/train/base, ordered PR heads,
+        # candidate+artifact+evidence digests, services, window, budget, rollback target; verify-then-reserve under
+        # the one global release lock with an intent record; refusals consume nothing; UNCERTAIN blocks until
+        # reconciled) and the ReleaseControl@v1 STOP/pause/resume/revoke machine (release_window STOP.json latch,
+        # ABSENT/SET/UNREADABLE fail closed; new epoch on resume; CC may only request STOP or pause). Hermetic:
+        # tmp_path state, temp key, fixed clock, one subprocess crash.
+        "release_train_authority_20261021",
+        ["tests/test_release_train_authority_20261021.py"],
+    ),
+    (
+        # ANCHOR: AGENTS_POLICY_17_0_0_RELEASE_TRAIN — PROPOSED amendment (operator-applied patch, agents never edit
+        # AGENTS.md / AI_WORK_POLICY.md): agents queue and never merge, push main or train/*, or release; standing
+        # delegation; 00/06/08/18 ET windows + merge freeze; STOP semantics; §17 additions; train pushes are the only
+        # automated remote sync. RED UNTIL THE OPERATOR APPLIES the 17.0.0 patch on this branch (by design).
+        "agents_policy_17_0_0_release_train",
+        ["tests/test_agents_policy_17_0_0_release_train.py"],
+    ),
+    (
         "n8n_cc_reader_first_20261018",
         [
             "tests/test_cc_reader_first_20261018.py",
