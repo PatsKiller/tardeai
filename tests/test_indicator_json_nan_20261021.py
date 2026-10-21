@@ -11,6 +11,7 @@ import types
 from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -137,6 +138,33 @@ def _api_module(monkeypatch):
     return api_v2
 
 
+def _isolated_alert_database(dsn: str) -> str | None:
+    """Accept only the repository's local throwaway PostgreSQL endpoint."""
+    try:
+        parsed = urlsplit(dsn)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        return None
+    if parsed.scheme not in {"postgres", "postgresql"} or hostname != "127.0.0.1" or port != 55432:
+        return None
+    from scripts.lib.m2_live_shadow_guard import dsn_database
+
+    return dsn_database(dsn)
+
+
+def test_alert_test_dsn_must_use_local_isolated_endpoint():
+    assert _isolated_alert_database("postgresql://user:secret@127.0.0.1:55432/m2_shadow_test") == "m2_shadow_test"
+    for dsn in (
+        "postgresql://user:secret@localhost:55432/m2_shadow_test",
+        "postgresql://user:secret@192.0.2.10:55432/m2_shadow_test",
+        "postgresql://user:secret@127.0.0.1:5432/m2_shadow_test",
+        "postgresql://user:secret@127.0.0.1/m2_shadow_test",
+        "postgresql://user:secret@[invalid:55432/m2_shadow_test",
+    ):
+        assert _isolated_alert_database(dsn) is None
+
+
 def _indicator_result():
     return {
         "ok": True,
@@ -183,11 +211,11 @@ def test_postgres_jsonb_round_trip_accepts_normalized_cache_fields():
     if not dsn:
         pytest.skip("explicit ALERT_TEST_DSN integration fixture is absent; PostgreSQL proof is unmeasured")
 
-    from scripts.lib.m2_live_shadow_guard import TEST_DATABASE_RE, dsn_database, refuse_live_shadow_under_pytest
+    from scripts.lib.m2_live_shadow_guard import TEST_DATABASE_RE, refuse_live_shadow_under_pytest
 
-    database = dsn_database(dsn)
-    if not TEST_DATABASE_RE.fullmatch(database):
-        pytest.fail("ALERT_TEST_DSN must name an isolated m2_shadow_test database; refusing connection")
+    database = _isolated_alert_database(dsn)
+    if database is None or not TEST_DATABASE_RE.fullmatch(database):
+        pytest.fail("ALERT_TEST_DSN must use 127.0.0.1:55432 and name an isolated m2_shadow_test database")
     psycopg2 = pytest.importorskip("psycopg2")
     try:
         conn = psycopg2.connect(refuse_live_shadow_under_pytest(dsn), connect_timeout=3)
