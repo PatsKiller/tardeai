@@ -4298,6 +4298,16 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: ONBOARD_DRYRUN_B4_20261015 — n8n onboarding batch B4 (lane disposition 2026-10-15, MIGRATE_N8N, no
+        # allowlist entry, no --dry-run before), risk tier 3 senders: telegram-smart-alerts, eod-open-trade-alert,
+        # journal-annotation-reminder, social-scalp-scanner, run-warrior-weekly-audit, overnight-batch-tax, youtube-
+        # channel-discovery. Offline --dry-run wins over --telegram/--send (in-process record-and-raise proof, fake
+        # send_telegram never called, no sender module imported); static capability audit pins chokepoint_send and no
+        # direct_sender for every live path. Listing it schedules nothing.
+        "onboard_dryrun_b4_20261015",
+        ["tests/test_onboard_dryrun_b4_20261015.py"],
+    ),
+    (
         # ANCHOR: N8N_MATURITY_B5_FOLLOWUPS (2026-10-09): heartbeat watcher alarms only once heartbeat-watch is
         # dispatched (node-executed Code node), breach-detector cron deadlines via last_fire_at_or_before (DST),
         # fan-in P2 per dead letter / open breaker, CI rails: dispatch class vs retry_policy, dispatch.cron vs
