@@ -10,6 +10,7 @@
 import { useCallback, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import { RADIUS } from '../lib/designTokens'
 
 type TokenHealth = {
   ok?: boolean
@@ -30,6 +31,49 @@ type TokenHealth = {
   last_error?: string | null
   message?: string
   live_probe?: { live_ok?: boolean; needs_reauth?: boolean; error?: string | null } | null
+  // 2026-10-21: config/cc_auth.yaml gates reauth-url + exchange-code behind step-up, and TOTP
+  // step-up is not enabled, so this page cannot complete; the server says so and names the CLI.
+  cc_reauth_blocked?: boolean
+  cc_reauth_blocked_reason?: string | null
+  reauth_command?: string
+  exchange_command?: string
+  telegram_paste_supported?: boolean
+}
+
+/** A cc_auth step-up refusal (scripts/lib/cc_auth.py denial_body: {ok:false, auth:'step_up'}). */
+function isStepUpRefusal(status: number, j: any): boolean {
+  return status === 403 && (j?.auth === 'step_up' || /step-up required/i.test(String(j?.error || '')))
+}
+
+function StepUpFallback({ h, reason }: { h: TokenHealth | null; reason: string }) {
+  const key = h?.token_key || 'schwab_taxable'
+  const step1 = h?.reauth_command || `python3 scripts/schwab_token_manager.py reauth-url ${key}`
+  const step2 = h?.exchange_command || `python3 scripts/schwab_token_manager.py exchange-code ${key} "<FULL redirect URL>"`
+  const mono = { fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all' as const, color: 'var(--text0)' }
+  return (
+    <section data-testid="schwab-reauth-stepup-fallback" style={{
+      padding: 14, borderRadius: RADIUS.lg, marginBottom: 14,
+      background: 'var(--amber-dim)', border: '1px solid var(--amber)',
+    }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--amber)', marginBottom: 6 }}>
+        Command Center renewal is blocked by step-up
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text1)', lineHeight: 1.5, marginBottom: 8 }}>
+        {reason}. Steps 1 and 3 below are refused by design until operator TOTP step-up exists — nothing
+        was sent to Schwab. Renew from the host instead (run from the Trade AI checkout):
+      </div>
+      <ol style={{ margin: 0, paddingLeft: 18, fontSize: 11.5, color: 'var(--text1)', lineHeight: 1.6 }}>
+        <li>Get the authorize link: <div style={mono}>{step1}</div></li>
+        <li>Open <code>authorize_url</code> on your phone, log in and approve Schwab 2FA; copy the full <code>https://127.0.0.1/?code=…</code> address-bar URL (expires in ~5 min).</li>
+        <li>
+          Save the token: <div style={mono}>{step2}</div>
+          {h?.telegram_paste_supported !== false && (
+            <span> — or paste that redirect URL to the Trade AI Telegram bot, which runs the same exchange.</span>
+          )}
+        </li>
+      </ol>
+    </section>
+  )
 }
 
 function fmtTs(v?: string | null): string {
@@ -67,6 +111,7 @@ export default function SchwabReauthHub() {
   const [reqBusy, setReqBusy] = useState(false)
   const [reqErr, setReqErr] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [stepUpSeen, setStepUpSeen] = useState<string | null>(null)
 
   const [redirectUrl, setRedirectUrl] = useState('')
   const [submitBusy, setSubmitBusy] = useState(false)
@@ -87,6 +132,7 @@ export default function SchwabReauthHub() {
       const r = await fetch('/api/v2/brokers/schwab/reauth-url', { cache: 'no-store' })
       const j = await r.json()
       const d = j?.data ?? j
+      if (isStepUpRefusal(r.status, j)) setStepUpSeen(String(j?.error || 'step-up required'))
       if (!r.ok || d?.ok === false) {
         setReqErr(d?.error || d?.reason || `HTTP ${r.status}`)
         setAuthUrl(null)
@@ -131,6 +177,7 @@ export default function SchwabReauthHub() {
       })
       const j = await r.json()
       const d = j?.data && j.ok !== false && j.refresh_expires_at == null ? j.data : j
+      if (isStepUpRefusal(r.status, j)) setStepUpSeen(String(j?.error || 'step-up required'))
       if (!r.ok || d?.ok === false) {
         setSubmitErr(d?.error || d?.reason || `HTTP ${r.status}`)
         return
@@ -203,6 +250,10 @@ export default function SchwabReauthHub() {
           <div style={{ marginTop: 10, fontSize: 10.5, color: 'var(--red)' }}>Last error: {h.last_error}</div>
         )}
       </div>
+
+      {(h?.cc_reauth_blocked || stepUpSeen) && (
+        <StepUpFallback h={h} reason={stepUpSeen || h?.cc_reauth_blocked_reason || 'step-up required'} />
+      )}
 
       {submitOk && (
         <div style={{

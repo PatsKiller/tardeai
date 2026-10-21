@@ -5575,6 +5575,15 @@ GATES = [
         "learning_loop_pr1_20261021",
         ["tests/test_learning_loop_pr1_20261021.py"],
     ),
+    (
+        # ANCHOR: SCHWAB_REAUTH_STEPUP_FALLBACK_20261021 — execution-engineering grant 69fb2866: the CC Schwab
+        # reauth page offered a flow the step-up gate always refuses ("TOTP unlock not yet enabled") with no
+        # path forward, and token-health said "renew via Command Center". Gate UNCHANGED (still refuses);
+        # token-health reports cc_reauth_blocked + the CLI/Telegram paths; the page renders that fallback.
+        # Hermetic: temp cc_auth config + source text; no DB, no network, no credential, no authorize URL.
+        "schwab_reauth_stepup_fallback_20261021",
+        ["tests/test_schwab_reauth_stepup_fallback_20261021.py"],
+    ),
 ]
 
 

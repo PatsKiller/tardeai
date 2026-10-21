@@ -148,6 +148,12 @@ F5  Step-up blocks, until TOTP exists: the CC's manual Schwab reauth fallback pa
     /api/v2/holdings/protective-stop). Schwab AUTO-reauth calls the token manager directly and is
     unaffected. Temporary relief, if ever needed: step_up.mode report_only (logs, allows) — a
     deliberate operator decision.
+    2026-10-21: token-health now returns cc_reauth_blocked + reauth_command/exchange_command, and the
+    reauth page shows that host-CLI path (and the Telegram redirect-URL paste) instead of only the raw
+    refusal. Sanctioned manual renewal while step-up has no TOTP, from the Trade AI checkout:
+      python3 scripts/schwab_token_manager.py reauth-url schwab_taxable        # prints authorize_url
+      python3 scripts/schwab_token_manager.py exchange-code schwab_taxable "<FULL redirect URL>"
+    (or paste the redirect URL to the Telegram bot: run_telegram_callback_poller.py exchanges it).
 F6  n8n monitor workflow fetches http://172.19.0.1:7777/v3/build-meta.json; the server binds loopback,
     so it cannot reach it today; the path is token-exempt if the bind ever changes.
 
