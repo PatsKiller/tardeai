@@ -1,0 +1,8 @@
+{
+  "schema": "CiGate@v1",
+  "name": "decision_semantics",
+  "files": [
+    "tests/test_cio_decision_semantics.py",
+    "tests/test_cio_office_consistency.py"
+  ]
+}

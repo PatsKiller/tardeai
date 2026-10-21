@@ -27,6 +27,8 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable, Mapping, Optional
 
+from scripts.lib import recovery_validator as RV
+
 try:
     from zoneinfo import ZoneInfo
 
@@ -430,8 +432,11 @@ def build_prompt(
         f"code error (not a transient failure). The harness, not you, will commit, push and open the PR.",
         "## Rails (AGENTS.md section 0, verbatim; they bind you)\n" + rails,
         "## Hard limits enforced by code on your diff (a breach refuses the whole job)\n"
-        f"- Never edit: {refuse}. `scripts/run_cio_hardening_ci.py` is append-only: you may ONLY add your new test "
-        'file to the GATES list (a new `("name", ["tests/test_x.py"]),` entry with a comment); no other edit.\n'
+        f"- Never edit: {refuse}. CI registration is add-only: register your new test by ADDING ONE new file "
+        "`config/ci_gates/<name>.json` = "
+        '`{"schema": "CiGate@v1", "name": "<name>", "files": ["tests/test_x.py"], "comment": ["why"]}` '
+        "(name == file stem); never modify or remove an existing gate file, never edit "
+        "`scripts/run_cio_hardening_ci.py`.\n"
         "- Never delete, skip, xfail, deselect or weaken a test; never remove an assert. Tests must stay hermetic: "
         "TRADE_AI_CI=1 is set; fake connections, tmp_path state; no DB, network, broker, Telegram, n8n or .env.\n"
         "- Never run the lane, a live script, git commit/push, gh, crontab, systemctl, psql or curl. Allowed shell: "
@@ -446,7 +451,7 @@ def build_prompt(
         "below with fakes. The harness copies your test onto the base commit and REQUIRES it to fail there.\n"
         "2. Fix the defect in the lane's code.\n"
         f"3. Run `{py} <your test> -q` until it passes; run the neighbouring tests of the file you changed.\n"
-        "4. Register the new test file in scripts/run_cio_hardening_ci.py GATES (append-only).\n"
+        "4. Register the new test file: add config/ci_gates/<name>.json (one new file; add-only).\n"
         '5. Finish with ONE line of JSON: {"root_cause": "...", "fix": "...", "tests": ["tests/..."], '
         '"confidence": 0.0-1.0}. If you cannot fix it safely, change nothing and say why in that JSON.',
         "## Evidence pack\n```json\n" + json.dumps(evidence, indent=1, sort_keys=True) + "\n```",
@@ -743,37 +748,34 @@ def model_pytest_wrapper(*, python: str, env: Mapping[str, str], sandbox: list[s
 
 
 # ---------------------------------------------------------------- output contract (review finding 4)
-#: n8n_output_verdict verdicts that mean "the lane's declared output was produced" (same as lib/n8n_self_heal).
-OUTPUT_MET = frozenset({"produced", "empty_allowed"})
+#: Shared owner; the fixer must not maintain another list or recovery decision.
+OUTPUT_MET = RV.OUTPUT_MET
 
 
-def receipt_meets_output_contract(row: Mapping[str, Any], since: Optional[datetime]) -> Optional[str]:
-    """None when one ledger row (state, exit_code, finished_at, receipt) proves the lane's output contract after
-    ``since``, else why not. Conservative: a LIVE RUN_DONE, exit 0, whose EFFECTIVE mode is live (the stage clamp did
-    not downgrade it), finished after ``since``, with output_verdict produced / empty_allowed. A newer file mtime or
-    JSON timestamp alone never counts."""
-    rec = row.get("receipt") if isinstance(row.get("receipt"), Mapping) else {}
+def receipt_meets_output_contract(
+    row: Mapping[str, Any], since: Optional[datetime], *, lane: Optional[str] = None
+) -> Optional[str]:
+    """Compatibility adapter: None on the shared live recovery verdict, else a refusal reason.
+
+    Existing two-argument callers remain supported. The host ledger reader supplies the exact required lane;
+    callers with a complete row use its authoritative lane. Legacy reason text is presentation only: every
+    nonempty decision below comes from RecoveryVerdict.validate, never another success predicate.
+    """
     if since is None:
         return "no_since"
-    fin = _parse(row.get("finished_at") or rec.get("finished_at"))
-    if not fin or fin <= since:
-        return "not_after_since"
-    if (row.get("state") or rec.get("state")) != "RUN_DONE":
+    ok, reason = RV.validate(row, mode="live", lane=lane if lane is not None else row.get("lane_id"), since=since)
+    if ok:
+        return None
+    if reason.startswith("state:"):
         return "not_run_done"
-    ec = row.get("exit_code") if row.get("exit_code") is not None else rec.get("exit_code")
-    if ec not in (0, "0"):
+    if reason.startswith("exit:"):
         return "nonzero_or_unknown_exit"
-    clamp = rec.get("stage_clamp") if isinstance(rec.get("stage_clamp"), Mapping) else {}
-    if (
-        rec.get("mode") != "live"
-        or (row.get("mode") not in (None, "live"))
-        or (clamp and clamp.get("effective_mode") != "live")
-    ):
+    if reason in ("effective_mode_unknown", "requested_live_executed_dry") or reason.startswith("mode_mismatch:"):
         return "effective_mode_not_live"
-    ov = rec.get("output_verdict") if isinstance(rec.get("output_verdict"), Mapping) else {}
-    if str(ov.get("verdict") or "") not in OUTPUT_MET:
-        return f"output_verdict:{ov.get('verdict') or 'absent'}"
-    return None
+    if reason.startswith("output_contract_unproven:"):
+        value = reason.split(":", 1)[1]
+        return "output_verdict:" + ("absent" if value == "none" else value)
+    return reason
 
 
 # ---------------------------------------------------------------- secrets in a diff (the repo is PUBLIC)
@@ -1055,9 +1057,13 @@ def guard_diff(
     weak_re = re.compile(g["weakening_added_re"])
     line_re = re.compile(g["append_only_line_re"])
     append_only = set(g.get("append_only_paths") or [])
+    # 2026-10-21: gates are one file per gate (config/ci_gates/<name>.json). Registering a test
+    # = ADDING one such file; modifying, renaming or deleting an existing one is a hard refusal.
+    add_only_dirs = tuple(g.get("append_only_dirs") or ())
+    added_in_dir = {p for s, p in changes if s == "A" and p.startswith(add_only_dirs)} if add_only_dirs else set()
     paths = sorted({p for _s, p in changes} | set(stats))
     for p in paths:
-        if p in append_only:
+        if p in append_only or p in added_in_dir:
             continue
         hit = _match_any(p, g["refuse_paths"])
         if hit:
@@ -1065,6 +1071,16 @@ def guard_diff(
     for status, p in changes:
         if status == "D" and test_re.match(p):
             out.append({"hard": True, "code": "test_deleted", "path": p})
+        if add_only_dirs and p.startswith(add_only_dirs) and status != "A":
+            out.append({"hard": True, "code": "append_only:gate_file_changed", "path": p})
+    for p in sorted(added_in_dir):
+        from . import ci_gates
+
+        body = files.get(p) or {"added": []}
+        try:
+            ci_gates.validate(json.loads("\n".join(body["added"])), stem=p.rsplit("/", 1)[-1].removesuffix(".json"))
+        except (ValueError, ci_gates.GateRegistryError) as exc:
+            out.append({"hard": True, "code": "append_only:invalid_gate_file", "path": p, "why": str(exc)[:200]})
     for p, body in files.items():
         leak = next((h for h in (secret_like(s) for s in body["added"]) if h), None)
         if leak:

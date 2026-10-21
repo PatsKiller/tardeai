@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "r13_institutional",
+  "files": [
+    "tests/test_r13_institution.py",
+    "tests/test_r13_goldens_properties_faults.py",
+    "tests/test_cio_brain_frontend.py",
+    "tests/test_cio_brain_snapshot.py"
+  ]
+}

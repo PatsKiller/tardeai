@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "sector_taxonomy",
+  "files": [
+    "tests/test_cio_sector_opportunity.py"
+  ]
+}

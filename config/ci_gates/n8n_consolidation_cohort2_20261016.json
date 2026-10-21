@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_consolidation_cohort2_20261016",
+  "files": [
+    "tests/test_n8n_consolidation_cohort2_20261016.py"
+  ],
+  "anchor": "N8N_CONSOLIDATION_COHORT2_20261016",
+  "comment": [
+    "ANCHOR: N8N_CONSOLIDATION_COHORT2_20261016 — process consolidation cohort 2 (operator 2026-10-16): the Hermes",
+    "learning consumers (discovery yield builder, tag-lift discovery) fire on the VERIFIED completion of outcome",
+    "learning (yield-builder event lane, run_done + require_verdict, shadow; tag-lift lane awaits DD01 ruling) and consume each learning watermark once",
+    "(scripts/lib/learning_watermark.py): no fire on an unverified or missing upstream (with a reason), no double",
+    "consumption across event plus clock, the clock fallback runs on a stale watermark. Hermetic: tmp ledger/state."
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lane_useful_output_proof_20261016",
+  "files": [
+    "tests/test_lane_useful_output_proof_20261016.py"
+  ],
+  "anchor": "LANE_USEFUL_OUTPUT_PROOF_20261016",
+  "comment": [
+    "ANCHOR: LANE_USEFUL_OUTPUT_PROOF_20261016 — the 5 lanes #1831 dropped from \"proven\" (crontab snapshot, incident",
+    "fan-in, pilot dispatch, research intake, insight extractor) write LaneRunReceipt@v2 produced_count and opt in;",
+    "watchlist-enrichment-sweep starts no batch after its budget (deadline_deferred). Hermetic: state root = tmp."
+  ]
+}

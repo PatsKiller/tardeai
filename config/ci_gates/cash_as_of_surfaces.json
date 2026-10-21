@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cash_as_of_surfaces",
+  "files": [
+    "tests/test_cash_as_of_three_surfaces.py"
+  ],
+  "comment": [
+    "Cash age is the age of the dollars. PP2 (the cash letter) and PP4 (provenance)",
+    "stopped borrowing a clock; PP3 (the freshness board) is reported, not changed."
+  ]
+}

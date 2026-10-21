@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "notification_receipts",
+  "files": [
+    "tests/test_notification_receipts.py"
+  ]
+}

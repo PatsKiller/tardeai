@@ -53,8 +53,10 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        # AWS ECR Public mirror of the official image: unauthenticated hub pulls hit toomanyrequests (2026-10-09).
-        image: public.ecr.aws/docker/library/postgres:17
+        # GCR mirror of the official PG17 image: ECR Public hit its data limit (2026-10-20/21, 9 of 30 runs).
+        # Same registry cio-full-suite-sharded / bitemporal-memory-correctness-ci pull from without failures.
+        # Change taken from #1887 (shipped alone so the flaky backend job stops failing now).
+        image: mirror.gcr.io/library/postgres:17
         env: { POSTGRES_PASSWORD: ci, POSTGRES_DB: trade_ai_test }
         ports: ['5432:5432']
         options: >-

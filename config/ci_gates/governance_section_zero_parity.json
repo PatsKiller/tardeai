@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "governance_section_zero_parity",
+  "files": [
+    "tests/test_agents_section_zero_parity.py"
+  ]
+}

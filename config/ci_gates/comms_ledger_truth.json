@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "comms_ledger_truth",
+  "files": [
+    "tests/test_comms_ledger_says_what_happened.py",
+    "tests/test_comms_repeat_alerts_20260914.py"
+  ],
+  "comment": [
+    "The Communications ledger must not report a delivery that did not",
+    "happen. Two adjacent rows both read LEGACY_DELIVERED: one arrived,",
+    "one was router-suppressed and never did.",
+    "2026-09-14: repeated alerts collided with the first event ever sent."
+  ]
+}

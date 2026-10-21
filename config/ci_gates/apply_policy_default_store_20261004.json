@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "apply_policy_default_store_20261004",
+  "files": [
+    "tests/test_apply_policy_default_store_20261004.py"
+  ],
+  "comment": [
+    "Policy apply script ratifies into production state, not the running tree (2026-10-04)."
+  ]
+}

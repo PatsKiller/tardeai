@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "recovery_attempt_budget_20261019",
+  "files": [
+    "tests/test_recovery_attempt_budget_20261019.py"
+  ]
+}

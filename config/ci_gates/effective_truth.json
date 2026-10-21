@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "effective_truth",
+  "files": [
+    "tests/test_effective_truth.py"
+  ],
+  "comment": [
+    "cc-whole-site-residual-v1 (2026-09-03): a configured intention is not a",
+    "running fact. Feature flags the loader coerces, timers that are disabled",
+    "or whose last run failed, and a Finviz store whose \"no data\" has three",
+    "unrelated causes -- each reported DECLARED next to EFFECTIVE."
+  ]
+}

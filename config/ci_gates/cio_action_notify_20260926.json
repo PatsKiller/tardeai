@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_action_notify_20260926",
+  "files": [
+    "tests/test_cio_action_notify_20260926.py",
+    "tests/test_cio_checkin_only_with_action_20260914.py"
+  ],
+  "comment": [
+    "2026-09-26 -- CIO Desk: material actions only, one readable message, once per window."
+  ]
+}

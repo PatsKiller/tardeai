@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cron_venv_resolver_20261009",
+  "files": [
+    "tests/test_cron_venv_resolver_20261009.py"
+  ],
+  "comment": [
+    "Cron interpreter resolution (operator 2026-10-09 \"fix the broken cron jobs\"): release dirs ship no .venv, so",
+    "rotation_autopilot died on `import dotenv` every 15 min and hermes_coordinator's child steps hit \"No such file\"."
+  ]
+}

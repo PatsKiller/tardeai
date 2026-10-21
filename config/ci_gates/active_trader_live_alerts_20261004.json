@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "active_trader_live_alerts_20261004",
+  "files": [
+    "tests/test_active_trader_live_alerts_20261004.py"
+  ],
+  "comment": [
+    "Active Trader alerts live: comms-editor exemption (missing-CIO hold only), Telegram path, feed API."
+  ]
+}

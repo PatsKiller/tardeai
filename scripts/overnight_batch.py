@@ -8,6 +8,28 @@ and records daily performance metrics.
 Usage:
     python3 scripts/overnight_batch.py [--telegram]
 """
+import sys as _dr_sys
+
+if __name__ == "__main__" and "--dry-run" in _dr_sys.argv[1:]:
+    # n8n onboarding (lane disposition 2026-10-15, MIGRATE_N8N): --dry-run is an OFFLINE plan and wins over every
+    # live flag (--tax-sweep / --telegram). It returns here, before the .env load, any DB/LLM/network/sender import and any file
+    # write; it prints the plan and one LaneOutput@v1 line on stderr (produced 0, empty_reason dry_run).
+    import os as _dr_os
+
+    _dr_sys.path.insert(0, _dr_os.path.join(_dr_os.path.dirname(_dr_os.path.abspath(__file__))))
+    from lib.lane_output import emit as _dr_emit, output_block as _dr_block
+
+    _dr_lane = "overnight-batch-tax" if "--tax-sweep" in _dr_sys.argv else "overnight-batch"
+    _dr_would = (
+        "for --tax-sweep queue priority-1 tax_agent jobs for the holdings that need a tax review (other modes"
+        " queue research / outcomes / proactive / embedding work) and, with --telegram, send the batch "
+        "summary through send_telegram"
+    )
+    print(f"DRY-RUN {_dr_lane}: would {_dr_would}; argv={_dr_sys.argv[1:]!r}; dry-run wins over live flags; "
+          "nothing read from env/DB/network, no model call, no send, no file write")
+    _dr_emit(_dr_lane, "dry_run", _dr_block(produced=0, attempted=0, empty_reason="dry_run", unit="agent_job"))
+    raise SystemExit(0)
+
 import json, sys, uuid
 from datetime import datetime, timedelta
 from pathlib import Path

@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "learning_operator_remediation",
+  "files": [
+    "tests/test_learning_operator_remediation.py"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "dashboard_no_embedded_key",
+  "files": [
+    "tests/test_dashboard_never_embeds_a_key.py"
+  ],
+  "comment": [
+    "Both sides added gates. Keeping both: a conflict in a gate LIST is never",
+    "resolved by choosing a side, because each side is a check something needs."
+  ]
+}

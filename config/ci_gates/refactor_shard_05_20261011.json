@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "refactor_shard_05_20261011",
+  "files": [
+    "tests/test_refactor_shard_05_20261011.py"
+  ],
+  "anchor": "REFACTOR_SHARD_05_20261011",
+  "comment": [
+    "ANCHOR: REFACTOR_SHARD_05_20261011 — offline previews and exact cron argv, fake-only work."
+  ]
+}

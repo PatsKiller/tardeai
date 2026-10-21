@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overnight_g1_resolution",
+  "files": [
+    "tests/test_overnight_g1_resolution.py"
+  ]
+}

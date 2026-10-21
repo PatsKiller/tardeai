@@ -173,5 +173,6 @@ def test_g4_report_is_quiet_with_the_first_operator_approved_batch():
 
 
 def test_g4_ci_allowlist_names_this_suite():
-    text = (ROOT / "scripts" / "run_cio_hardening_ci.py").read_text(encoding="utf-8")
+    from scripts.lib import ci_gates  # gates: one file per gate (2026-10-21)
+    text = ci_gates.registry_text(ROOT)
     assert "tests/test_overnight_g4_archive_mechanism.py" in text

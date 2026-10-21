@@ -1,0 +1,327 @@
+{
+  "schema": "FixerSharedRecoveryIntegrationEvidence@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "recorded_at": "2026-10-19T02:46:02.561819+00:00",
+  "base_sha": "1afc0908bc6fa2501c0540ce29074e09134a5f15",
+  "reviewed_source_sha": "74ca44d5128934bfce380ab81b2193e84861105c",
+  "kind": "local_source_CI_evidence_integration_only",
+  "source_parity": [
+    {
+      "path": "scripts/self_heal_fixer.py",
+      "sha256": "d1a5e5477a8190b7a285ee20d5d529db03977e87ee365373be9a50e81f69e4e6",
+      "byte_identical_to_reviewed_source": true
+    },
+    {
+      "path": "scripts/lib/self_heal_fixer.py",
+      "sha256": "3c9a08883fea8876ba6ed4abf9db9221d32d16cf6c0e085ebe81828aeff209c7",
+      "byte_identical_to_reviewed_source": true
+    },
+    {
+      "path": "tests/test_self_heal_recovery_shared_20261019.py",
+      "sha256": "7c7482a59a12b14a8f595b6912e2cd9c6ae742967d19cc8377a11b41e5612324",
+      "byte_identical_to_reviewed_source": true
+    }
+  ],
+  "independent_source_review": {
+    "path": "historical-independent/fixer74ca-root-review.json.gz",
+    "verdict": "APPROVE_SCOPED_SHARED_RECOVERY_DELEGATION",
+    "reviewer": "root; nonauthor of74ca",
+    "sha256": "36f5c05aa8d46103374368cc47bf66ad4b8aa98b07fd033270a92c1504924933"
+  },
+  "artifacts": [
+    {
+      "path": "historical-author/baseline-capture.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared/baseline-capture.json",
+      "kind": "original_author_source_test_or_infrastructure_evidence",
+      "bytes": 606,
+      "sha256": "827a63b642bb8aef8cdfc8a226309535af013530e2609e1683ff0a77f22a5afe",
+      "decompressed_bytes": 1068,
+      "decompressed_sha256": "86289d8e267c18dd34ce1742e405a0295e87fb413aff3d2e73d5260e025345eb"
+    },
+    {
+      "path": "historical-author/baseline-lib-self_heal_fixer.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared/baseline-lib-self_heal_fixer.py",
+      "kind": "original_author_source_test_or_infrastructure_evidence",
+      "bytes": 17599,
+      "sha256": "d718cdc95edaef54c182ab4b4ec220e779a8474f1899e9fb8db3a3fa6adc1bbd",
+      "decompressed_bytes": 53646,
+      "decompressed_sha256": "f48129260a13d976c75adaab049156ea3537a8bc9e65f8e5eedc042843cda9bc"
+    },
+    {
+      "path": "historical-author/baseline-scripts-self_heal_fixer.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared/baseline-scripts-self_heal_fixer.py",
+      "kind": "original_author_source_test_or_infrastructure_evidence",
+      "bytes": 20643,
+      "sha256": "7b6f7313fbda5b81958775a2dd4cb68a81a7b3ce49dbc1b38857b1704332161f",
+      "decompressed_bytes": 73299,
+      "decompressed_sha256": "700ab0fa54fd9466ed65c0edfdcde9a391c9a47349eb33c80929765fe2df547a"
+    },
+    {
+      "path": "historical-author/baseline.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared/baseline.xml",
+      "kind": "original_author_source_test_or_infrastructure_evidence",
+      "bytes": 1767,
+      "sha256": "05e7ac34b77a88e19700eb7d7ae9e121ab6546e0623e62dace4731a7c9b2dc65",
+      "decompressed_bytes": 28983,
+      "decompressed_sha256": "64f3137332dbfb65a11cffe613772285c995524c1c2ce87abbea249a3a319148"
+    },
+    {
+      "path": "historical-author/candidate.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared/candidate.xml",
+      "kind": "original_author_source_test_or_infrastructure_evidence",
+      "bytes": 632,
+      "sha256": "7b6339b16762039892198ff299dd53b085adc96d6e6e31890e8874cf899ab6ad",
+      "decompressed_bytes": 5807,
+      "decompressed_sha256": "0ef40189f86b8870ca1db2cec1d423cdb0f0b66baa49e5542592c3dac2c87814"
+    },
+    {
+      "path": "historical-author/exact-head.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared/exact-head.txt",
+      "kind": "original_author_source_test_or_infrastructure_evidence",
+      "bytes": 52,
+      "sha256": "c3e6aedaddc579015e004e0e3224bcb5c847ab1e395368574e6c1e723107c0a6",
+      "decompressed_bytes": 99,
+      "decompressed_sha256": "9d6e49d2e564b43e4a03cf87969cac96c697d477dcbec5a036209dbd42fca7cb"
+    },
+    {
+      "path": "historical-author/exact-head.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared/exact-head.xml",
+      "kind": "original_author_source_test_or_infrastructure_evidence",
+      "bytes": 625,
+      "sha256": "4a6ff4c13eea513450d5fcb4fa7fa5e5425c5b7a61bac825207aacfeab3a7b18",
+      "decompressed_bytes": 5807,
+      "decompressed_sha256": "5ac8c716eee94295e105e965be28b09c917c199657762b015391ab8f6c44d14f"
+    },
+    {
+      "path": "historical-author/focused.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared/focused.txt",
+      "kind": "original_author_source_test_or_infrastructure_evidence",
+      "bytes": 76,
+      "sha256": "9fa157586ca0ec3d47d1218a9159c65800389f4e52594014ab19a97b5338bfb2",
+      "decompressed_bytes": 191,
+      "decompressed_sha256": "3c68eee7661ab2dc28362ec834555df64023b376f047f23e451326fb350ca457"
+    },
+    {
+      "path": "historical-author/focused.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared/focused.xml",
+      "kind": "original_author_source_test_or_infrastructure_evidence",
+      "bytes": 2910,
+      "sha256": "9d1687a87cb59ce3c8c354b055aa1b032429d4d9624f8ce07ad92f8d90362a08",
+      "decompressed_bytes": 20555,
+      "decompressed_sha256": "43c2bc7b835186e312bd579017485ef8966125f7e90d11103607062e695054ac"
+    },
+    {
+      "path": "historical-author/frozen_test.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared/frozen_test.py",
+      "kind": "original_author_source_test_or_infrastructure_evidence",
+      "bytes": 1775,
+      "sha256": "bbecc9859e3fe3afe13270701e9f8d9de3241f3b8ea4c2ba8f37d15dc8f81723",
+      "decompressed_bytes": 5280,
+      "decompressed_sha256": "7c7482a59a12b14a8f595b6912e2cd9c6ae742967d19cc8377a11b41e5612324"
+    },
+    {
+      "path": "historical-author/implementation-evidence.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared/implementation-evidence.json",
+      "kind": "original_author_source_test_or_infrastructure_evidence",
+      "bytes": 3418,
+      "sha256": "cefa85962e6e6f866b903762a5febb206757fba6170d7866df9756c3aa590608",
+      "decompressed_bytes": 8796,
+      "decompressed_sha256": "16c84f400fec939b605e07c968d88d721b65170c8f591cf5f32c6735f4ce65ba"
+    },
+    {
+      "path": "historical-author/infrastructure-missing-parent.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared/infrastructure-missing-parent.xml",
+      "kind": "original_author_source_test_or_infrastructure_evidence",
+      "bytes": 2783,
+      "sha256": "7bc18b6dc2ff62c17c9130475530497ba36058c2a6d981317af810570ff5c4a6",
+      "decompressed_bytes": 102130,
+      "decompressed_sha256": "07df534e6adb17fb32cf05719a5c5d0444ce9d9ef362f9d9e7b4a3b4beae4c56"
+    },
+    {
+      "path": "historical-author/regression.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared/regression.xml",
+      "kind": "original_author_source_test_or_infrastructure_evidence",
+      "bytes": 835,
+      "sha256": "04a0e05c6f1d5bb809a608108ec54fe67e9752a733af5971687116462ff79c82",
+      "decompressed_bytes": 7623,
+      "decompressed_sha256": "af431f7420483f25f28926b6bf3a7cbb26ee191ed19f481b16d344bfb5832582"
+    },
+    {
+      "path": "historical-independent/fixer74ca-root-review.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/cross-review/fixer74ca-root-review.json",
+      "kind": "nonauthor_root_source_review",
+      "bytes": 792,
+      "sha256": "01562d22632b1f30bbcfcda15e4600cf28ef8212ec1750047b3e2251be7ca714",
+      "decompressed_bytes": 1370,
+      "decompressed_sha256": "36f5c05aa8d46103374368cc47bf66ad4b8aa98b07fd033270a92c1504924933"
+    },
+    {
+      "path": "original-source/scripts/self_heal_fixer.py.gz",
+      "original": "74ca44d5128934bfce380ab81b2193e84861105c:scripts/self_heal_fixer.py",
+      "kind": "exact_reviewed_git_blob",
+      "bytes": 20438,
+      "sha256": "8988f17c80a4abd0de3aeada14cd6a4e97aebf136e5b301fc1e60d13becac833",
+      "decompressed_bytes": 72619,
+      "decompressed_sha256": "d1a5e5477a8190b7a285ee20d5d529db03977e87ee365373be9a50e81f69e4e6"
+    },
+    {
+      "path": "original-source/scripts/lib/self_heal_fixer.py.gz",
+      "original": "74ca44d5128934bfce380ab81b2193e84861105c:scripts/lib/self_heal_fixer.py",
+      "kind": "exact_reviewed_git_blob",
+      "bytes": 17543,
+      "sha256": "01a732472a8c975e081f52d850d2bd163d4bce8f826af7d83e8c37fc7a8df0ac",
+      "decompressed_bytes": 53350,
+      "decompressed_sha256": "3c9a08883fea8876ba6ed4abf9db9221d32d16cf6c0e085ebe81828aeff209c7"
+    },
+    {
+      "path": "original-source/tests/test_self_heal_recovery_shared_20261019.py.gz",
+      "original": "74ca44d5128934bfce380ab81b2193e84861105c:tests/test_self_heal_recovery_shared_20261019.py",
+      "kind": "exact_reviewed_git_blob",
+      "bytes": 1775,
+      "sha256": "bbecc9859e3fe3afe13270701e9f8d9de3241f3b8ea4c2ba8f37d15dc8f81723",
+      "decompressed_bytes": 5280,
+      "decompressed_sha256": "7c7482a59a12b14a8f595b6912e2cd9c6ae742967d19cc8377a11b41e5612324"
+    },
+    {
+      "path": "integration/source-parity.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared-integration/source-parity.json",
+      "kind": "integration_test_or_readonly_quality_evidence",
+      "bytes": 369,
+      "sha256": "dfcdb58b84f8c5ce8c9f4527d38a48f06977150269ee74331862b66149ad252f",
+      "decompressed_bytes": 731,
+      "decompressed_sha256": "752a77361e36b923445495d320bf9e648bccf0caa2c1c619cb2f0560077c023c"
+    },
+    {
+      "path": "integration/gates-and-selector.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared-integration/gates-and-selector.json",
+      "kind": "integration_test_or_readonly_quality_evidence",
+      "bytes": 880,
+      "sha256": "f1ac66be7631c175a2af6dbacf3d6791ef0eda1ebfa842640950f3a272d5770a",
+      "decompressed_bytes": 1903,
+      "decompressed_sha256": "0af9cf72b4f4f726fe01492ad6b1c99313923e1061368de9053f0b41d5c357e1"
+    },
+    {
+      "path": "integration/quality.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared-integration/quality.json",
+      "kind": "integration_test_or_readonly_quality_evidence",
+      "bytes": 347,
+      "sha256": "736049d3434ad0373545e6d345e9eba028835ab547c2c6e43e9e403d9b588f2e",
+      "decompressed_bytes": 1560,
+      "decompressed_sha256": "4344c2400068ddc3b6120baeff77a175b4ec98ce50b7df0d64f55f2bf83b178c"
+    },
+    {
+      "path": "integration/ruff-check.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared-integration/ruff-check.txt",
+      "kind": "integration_test_or_readonly_quality_evidence",
+      "bytes": 39,
+      "sha256": "f3af4d142827f5aad2eb0c72d556d325488a57fb6219aac10afeb51085667d53",
+      "decompressed_bytes": 19,
+      "decompressed_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "integration/ruff-format.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared-integration/ruff-format.txt",
+      "kind": "integration_test_or_readonly_quality_evidence",
+      "bytes": 46,
+      "sha256": "ba6a52113bd42e9dcc835caee19b9c37a24f4dbc256f880d69ad837fd40e31d2",
+      "decompressed_bytes": 26,
+      "decompressed_sha256": "177f260a5645724013185e4b140c7045cc39e56c0c97b120f5cb23599f85f0de"
+    },
+    {
+      "path": "integration/diff-check.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared-integration/diff-check.txt",
+      "kind": "integration_test_or_readonly_quality_evidence",
+      "bytes": 20,
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "decompressed_bytes": 0,
+      "decompressed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "integration/isolated-cli-help.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared-integration/isolated-cli-help.txt",
+      "kind": "integration_test_or_readonly_quality_evidence",
+      "bytes": 409,
+      "sha256": "89558a97f07243cb1db74762d85a7ec96ffc34095a6a1adb1025c47395a1cc2d",
+      "decompressed_bytes": 734,
+      "decompressed_sha256": "e9abfcc3d042e49dc435f06071103a8f352dda36e3519a89c28d6a509a9dd663"
+    },
+    {
+      "path": "integration/focused.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared-integration/focused.txt",
+      "kind": "integration_test_or_readonly_quality_evidence",
+      "bytes": 83,
+      "sha256": "f043f17f4f6af0663dc4bd4381b3190fa6f35f72659f51cb8f1e12e48c88182b",
+      "decompressed_bytes": 272,
+      "decompressed_sha256": "775deb697164d45545b5f8f890801e6e6f7b864ea149b4b2cfc22c2b6f65d672"
+    },
+    {
+      "path": "integration/focused.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/fixer-shared-integration/focused.xml",
+      "kind": "integration_test_or_readonly_quality_evidence",
+      "bytes": 4186,
+      "sha256": "ebe99b33686616f1e94bcdd5ccf9443c310d39f92c264ec07598f2239369dd3d",
+      "decompressed_bytes": 29457,
+      "decompressed_sha256": "11b382c4994e9ece7addcc60d02ebf157ba41de5b38de3dc72e0b9a19d1ca872"
+    },
+    {
+      "path": "integration/session-start.json.gz",
+      "original": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.git/tradeai-agent-coordination/receipts/621d679c-6ca4-46de-8ecd-ddfd05371cba.json",
+      "kind": "canonical_session_receipt_at_start_not_runtime_grant",
+      "bytes": 1244,
+      "sha256": "51117bad7aadf0efd32531cbb4a9858d2389c03cf570edcd0d673063d96e966c",
+      "decompressed_bytes": 3759,
+      "decompressed_sha256": "48cbc1978ae544413fe0f6627bf8a5481c683e515cbf82eb2d0a5a5728ff2bf3"
+    }
+  ],
+  "CI": {
+    "base_count": 500,
+    "candidate_count": 501,
+    "new_gate": [
+      "self_heal_recovery_shared_20261019",
+      [
+        "tests/test_self_heal_recovery_shared_20261019.py"
+      ]
+    ],
+    "all_prior_order_values_unchanged": true,
+    "rest_runner_AST_equal": true,
+    "actual_PR_selector_includes_gate": true,
+    "proof": "integration/gates-and-selector.json.gz"
+  },
+  "validation": {
+    "focused_counts": {
+      "tests": 197,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1
+    },
+    "skips": [
+      {
+        "test": "test_sandboxed_loop_runs_tests_without_network",
+        "reason": "bubblewrap unavailable on this runner (host-only proof)"
+      }
+    ],
+    "skip_not_acceptance_proof": true,
+    "quality_checks": "Ruff check/format, diff check, isolated CLI help exit0",
+    "original_pair": "Exact5fef baseline22AssertionErrors+12controls; identical frozen34test bytes/names pass74ca; root independently reran34. Original invalid34setup-errors XML retained with no red-first credit.",
+    "current_tests": "Same shared-verdict34, acceptance/deadline/core controls and SIEM current consumers in197-case focused run.196passed,1 unavailable-bubblewrap skip.",
+    "native_acceptance": "NOT_RUN; pending root integration review and assigned exact-head native/remote gates"
+  },
+  "compatibility": [
+    "Actual durable row preserves lane/run/attempt fields for shared RV comparisons; old optionalattempt/noattempt ledger remains readable as explicitly tested.",
+    "Both recovery adapters delegate sharedRV; old reason strings are translations of refusal only. Existing bool/basis/contract kind consumers retain shape.",
+    "Config and all preexisting CI/arming/deadline/cost/release control files remain exactbase, apart from these approved recovery adapters and one gate."
+  ],
+  "scope_limits": [
+    "Author integrates own already independently approved source; no self-independent approval is asserted.",
+    "No INDEX, generated files or Markdown added/edited. No native/full build executed.",
+    "No runtime activation, fixer arming, qualification change, authority/policy/grant/key, remote sync, release, broker/Telegram/provider or live database effects.",
+    "RV provenance/incident generation/attestation/downstream consumption limitations remain. No unattended repair/recovery or sustained-operation proof.",
+    "Full native and exact-head required remote CI are pending; do not treat focused tests or registration as operational acceptance."
+  ],
+  "lease": {
+    "lease_id": "c4539fb8-2958-46ab-9976-971b15b10053",
+    "session_id": "621d679c-6ca4-46de-8ecd-ddfd05371cba",
+    "status": "owned active during packaging; exact release recorded in final external packet"
+  },
+  "worktree_helper": "Exactlocalbase verified. Optional fetch DNS unavailable; helper succeeded; no new remote refs relied upon."
+}

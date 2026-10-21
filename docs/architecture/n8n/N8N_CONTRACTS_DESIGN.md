@@ -738,3 +738,11 @@ observation coverage and prevents unavailable owner/config/cron inputs from prod
 Its old-v1 reader compatibility is explicit; new v2 writers do not silently assume old closed readers accept them.
 Retirement evaluation is an eligibility-only projection. Until trusted interval evidence and a rollback receipt
 prove the requirements, its CLI reports HELD. Deletion execution is always disabled.
+
+## Dated implementation status amendment — 2026-10-21
+
+This proposal's original measured-at and E/P inventory remain historical. A later v4 snapshot at `51bc97595582aa8ea0d6dcfd44fba6a848595e0e` has separate evidence of 1,136 author tests, one schema assertion, and 509 independent tests. These results do not establish a v5 runtime implementation.
+
+The C3 runtime-wiring worktree has a locally tested private protocol primitive, but it is not integrated into the production Popen paths. The current host qualification source does not provide the episode/effect-owner transaction context needed for the worker. DueResponse@v1 refuses effective C3 inputs; a reviewed DueResponse@v2 proposal and closed source/profile pins are prerequisites. Keep C3 workflow rows PAUSED/off with live arguments null. Do not treat candidate test primitives as host runtime proof.
+
+For the separate ready-three Communications release, the production identity observed on 2026-10-21 is #1888/main `ef085ce76be4512da71a58e65ef4feb25d156206`. Candidate `641e3a23c7eb1fea6df2615450657af02415949a` is pushed as PR #1887. As of 03:42 UTC the PR was OPEN / CLEAN (mergeable); all required and non-skipped hosted checks passed, including cio-hardening (10m56s), while cio-hardening-full and main-red-alert were skipped by PR-event rules. It is not merged, deployed, or live-verified; separate exact-SHA release authority and deployment/production lease are still required. See the [dated readiness dossier](../../ops/ready-three-2026-10-21/README.md) for run links and status source.

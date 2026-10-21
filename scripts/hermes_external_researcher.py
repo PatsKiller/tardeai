@@ -10,6 +10,14 @@ stored, logged, or returned. DRY-RUN by default (shows exactly what WOULD be sen
   python3 scripts/hermes_external_researcher.py --lane claude --question "..." --apply               # send
 Redaction (hard): strips $ amounts, account numbers, API keys/tokens, .env content, broker creds, emails,
 long digit runs — and only a whitelisted, high-level context is ever assembled.
+
+Governed bridge (2026-10-15, n8n llm lane batch 3): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
+the allowlist ``llm_route`` of lanes hermes-top20-external-intel / due-diligence-questions, inherited by this child)
+``call_external`` ignores ``--lane`` and makes ONE governed-bridge request as process ``hermes_external_research``
+(grok -> chatgpt -> DeepSeek server-side, operator D10): no API key, codex CLI, xAI proxy or llm_lane is reachable.
+The paid ``claude`` lane is refused there (SKIP_GATED CLAUDE_NOT_ON_GOVERNED_BRIDGE), the per-lane capability cache
+is not consulted (the bridge, not a lane, serves), and the stored row says lane_used ``bridge``. A refusal is the
+existing ``error`` row (no recommendation). Without --apply nothing is sent. The cron path is unchanged.
 """
 import os, sys, re, json, argparse, atexit, urllib.request
 from pathlib import Path
@@ -388,7 +396,22 @@ def call_governed_deepseek(model, prompt, max_tokens=1500):
     return str(text or "").strip()
 
 
+#: The n8n path's registered process + governed-bridge route (advisory_desk / hermes_external_research).
+BRIDGE_PROCESS_ID = "hermes_external_research"
+BRIDGE_LANE = "bridge"
+
+
+def via_bridge() -> bool:
+    """The flag the n8n run executor binds from the allowlist llm_route; read directly."""
+    return os.environ.get("TRADEAI_LLM_VIA_BRIDGE", "off").strip().lower() in {"1", "on", "bridge"}
+
+
 def call_external(lane, model, prompt, max_tokens=1500):
+    if via_bridge():
+        from lib.llm_bridge_route import require_text_via_bridge
+
+        _account_from_env("ATTEMPTED", reason="governed_bridge", attempt_no=1)
+        return require_text_via_bridge(BRIDGE_PROCESS_ID, prompt, timeout_s=240, max_tokens=max_tokens)
     cfg = LANE_CFG[lane]
     if cfg["kind"] == "codex_cli":
         return call_codex_cli(model, prompt)
@@ -560,10 +583,16 @@ def main():
     # deliberate paid (claude) oversight lane is operator-authorized and not auto-blocked here; the
     # "no paid fallback" rule is enforced where automated lane-selection happens (the budget guard).
     args.budget_decision = "ALLOW"
+    if via_bridge() and args.lane == "claude":
+        print("\n[governed-bridge] the paid claude lane is not a bridge provider — no call (n8n path)")
+        account("SKIP_GATED", reason="CLAUDE_NOT_ON_GOVERNED_BRIDGE")
+        return
     try:
         from hermes_research_budget_guard import decide as _bdecide
         _trig = (args.trigger or "manual").split(":")[0]   # normalize 'paper_postmortem:13' -> 'paper_postmortem'
         _lk = "cloud_paid" if args.lane in ("claude", "deepseek") else "cloud_" + args.lane
+        if via_bridge():
+            _lk = "cloud_grok"  # the bridge route is OAuth first (grok); the caller does not pick the provider
         _gd = _bdecide(symbol=args.symbol or "_", trigger_source=_trig, research_type="external_research",
                        lane=_lk, urgency=args.priority)
         args.budget_decision = _gd["decision"]
@@ -664,7 +693,7 @@ def main():
 
     # Capability-cache gate: don't re-run a known-blocked lane (e.g. Codex headless) on every call.
     cap = read_capability(args.lane)
-    if cache_blocks_lane(cap, args.force_retest):
+    if not via_bridge() and cache_blocks_lane(cap, args.force_retest):
         reason = cap.get("reason_code", "unavailable")
         status = cap.get("headless_status", "unavailable")
         guidance = cap.get("guidance") or f"{args.lane} headless is {status} ({reason}); see capability cache."
@@ -756,7 +785,8 @@ def main():
          parsed.get("recommendation"), json.dumps(parsed.get("evidence", []), default=str), parsed.get("dissent"),
          parsed.get("confidence"), json.dumps(parsed.get("risk_flags")), parsed.get("learning_candidate"),
          parsed.get("operator_action"),
-         (args.trigger or "manual").split(":")[0], getattr(args, "budget_decision", "ALLOW"), args.lane,
+         (args.trigger or "manual").split(":")[0], getattr(args, "budget_decision", "ALLOW"),
+         BRIDGE_LANE if via_bridge() else args.lane,
          str(raw)[:16000], research_guid, prior_research_guid))
     rid = cur.fetchone()[0]; c.commit(); c.close()
     print(f"\nstored hermes_external_research id={rid} status={status}")

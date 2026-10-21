@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "deploy_ff_dev_tree",
+  "files": [
+    "tests/test_ff_dev_tree_20260914.py"
+  ],
+  "comment": [
+    "2026-09-14: promote left the dev tree, where cron and the units run, on the old commit, and a",
+    "refused fast-forward was reported as success."
+  ]
+}

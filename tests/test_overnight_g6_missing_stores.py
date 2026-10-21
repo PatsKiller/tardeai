@@ -97,7 +97,8 @@ def test_g6_audit_doc_and_allowlist_present():
     assert "notifications.outbox" in text
     assert "learning.weekly" in text
     assert "CREATE" in text or "created" in text.lower()
-    hardening = HARDENING.read_text(encoding="utf-8")
+    from scripts.lib import ci_gates  # gates: one file per gate (2026-10-21)
+    hardening = ci_gates.registry_text(ROOT)
     assert "overnight_g6_missing_stores" in hardening
     assert "tests/test_overnight_g6_missing_stores.py" in hardening
 

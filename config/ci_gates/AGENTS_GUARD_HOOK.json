@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "AGENTS_GUARD_HOOK",
+  "files": [
+    "tests/test_agents_guard_hook_20261009.py"
+  ],
+  "anchor": "AGENTS_GUARD_HOOK",
+  "comment": [
+    "ANCHOR: AGENTS_GUARD_HOOK — 2026-10-09 Claude Code PreToolUse hook enforcing the AGENTS.md hard rails",
+    "(broker, delete, remote routing, secrets, live ops behind guard grants, governed served paths); log-only",
+    "first week, fail-open on its own errors, redacted AgentsGuardDecision@v1 log. Hermetic: tmp HOME/state/ledger."
+  ]
+}

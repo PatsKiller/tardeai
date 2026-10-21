@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "active_trader_momentum_alerts_20261004",
+  "files": [
+    "tests/test_active_trader_momentum_alerts_20261004.py"
+  ],
+  "comment": [
+    "Active Trader Phase 1: ARMED/TRIGGERED alerts on moomoo L2 + tape; fail closed; no order path (2026-10-04)."
+  ]
+}

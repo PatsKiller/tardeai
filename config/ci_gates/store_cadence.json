@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "store_cadence",
+  "files": [
+    "tests/test_store_cadence.py"
+  ],
+  "comment": [
+    "C5: declared cadence vs observed output for stores feeding operator surfaces.",
+    "strategy_signals stopped advancing 2026-08-07 and nothing watched the date."
+  ]
+}

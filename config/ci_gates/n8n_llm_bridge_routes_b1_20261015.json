@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_llm_bridge_routes_b1_20261015",
+  "files": [
+    "tests/test_n8n_llm_bridge_routes_b1_20261015.py"
+  ],
+  "comment": [
+    "n8n llm lanes on the governed bridge, batch 1 (2026-10-15; AGENTS.md §23.4/§23.18/§23.25, operator D10 OAuth",
+    "first). Per lane (entry planner limit/scope, holdings-llm-refresh, hermes-cross-source-synthesizer,",
+    "incubator-llm-screener, directive-keyword-enhancer, journal-review-builder, RI overnight): route on both",
+    "sides + bridge-acceptable registry caps + n8n_oauth_first routing row; with the executor binding the lane",
+    "calls ONLY the bridge (llm_lane poisoned), a refusal writes nothing and never falls back, the dry run makes",
+    "no model call. Infra: llm_route.process_ids (compound lane SET, executor + R1 admission + bridge client)",
+    "and lib.governed_cloud_generation's bridge branch. Hermetic: fake _call_bridge, fake DB; no network."
+  ]
+}

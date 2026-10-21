@@ -3,8 +3,8 @@ name: cio-full-suite-sharded
 # Operator-approved 2026-10-09 (docs/architecture/ci/cio-hardening-design-audit-20261009.md,
 # "Medium-term" items 1 and 3, "Proposed optimized workflow" Stage 2).
 #
-# EVERY registered test file (GATES in scripts/run_cio_hardening_ci.py) runs on every PR --
-# nothing is deferred -- split across 8 duration-balanced shards x 4 workers, a serial shard
+# EVERY registered test file (GATES in scripts/run_cio_hardening_ci.py) runs on every PR and
+# nightly on main (since 2026-10-21) -- nothing is deferred -- split across 8 duration-balanced shards x 4 workers, a serial shard
 # (shared-state files, one pytest process per file) and a Postgres shard (the m2_conn/psycopg2/
 # alert-DSN files that SKIP on a runner without a database; one process and, for ALERT_TEST_DSN,
 # one fresh database per file). The `integrity` job carries the rails the
@@ -22,10 +22,17 @@ name: cio-full-suite-sharded
 on:
   pull_request:
   workflow_dispatch:
+  # 2026-10-21 (alignment audit H1): the NIGHTLY full-suite run of main. Replaces the serial
+  # `cio-hardening-full` nightly in cio-production-hardening-ci.yml, which hit its 40-minute
+  # timeout on 8 of the last 10 nights without alerting. A red, cancelled or timed-out nightly
+  # opens or updates the `ci-main-red` issue (job nightly-red-alert).
+  schedule:
+    - cron: "17 7 * * *"
 
+# The nightly has its own group and is never cancelled by a dispatch on main (or vice versa).
 concurrency:
-  group: cio-full-suite-sharded-${{ github.ref }}
-  cancel-in-progress: true
+  group: cio-full-suite-sharded-${{ github.ref }}${{ github.event_name == 'schedule' && '-nightly' || '' }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 permissions:
   contents: read
@@ -300,3 +307,35 @@ jobs:
           name: ci-gate-attestation
           path: ${{ runner.temp }}/attestation/
           if-no-files-found: ignore
+
+  # 2026-10-21 (alignment audit H1): the nightly alarm. Any job of the scheduled run that failed,
+  # was cancelled (a job past timeout-minutes reports `cancelled`) or timed out opens or updates the
+  # same `ci-main-red` issue cio-production-hardening-ci.yml uses. PR and dispatch runs never alert.
+  nightly-red-alert:
+    needs: [shard, serial, pg, integrity, ci-gate]
+    if: >-
+      always() && github.event_name == 'schedule' &&
+      (contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') ||
+       contains(needs.*.result, 'timed_out'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SHA: ${{ github.sha }}
+      RESULTS: ${{ toJSON(needs) }}
+    steps:
+      - name: Open or update the ci-main-red issue
+        run: |
+          gh label create ci-main-red --color B60205 --description "cio-hardening red on main (post-merge/nightly)" --force
+          summary="$(printf '%s' "$RESULTS" | jq -r 'to_entries | map("\(.key)=\(.value.result)") | join(", ")')"
+          body="nightly cio-full-suite-sharded red (failed, cancelled or timed out) on main at $SHA: $RUN_URL ($summary)"
+          n="$(gh issue list --label ci-main-red --state open --json number --jq '.[0].number')"
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body "$body"
+          else
+            gh issue create --label ci-main-red --title "cio-hardening red on main" --body "$body"
+          fi

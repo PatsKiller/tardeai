@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_venv_p0_20261015",
+  "files": [
+    "tests/test_release_venv_p0_20261015.py"
+  ],
+  "comment": [
+    "Run-from-release P0 (2026-10-15): prepare builds or reuses a shared venv keyed by",
+    "py<X.Y.Z>-sha12(requirements.lock.txt) and links <release>/.venv to it. Pins: hash keying; reuse runs",
+    "no pip; a failed install/smoke leaves no partial venv and the previous one untouched; the link and",
+    "RELEASE_VENV_PYTHON; refusals (interpreter minor, freeze drift, real .venv dir); the dry venv-plan",
+    "writes nothing; prepare moves no cron/unit and keeps VENV_PYTHON. Hermetic: stub interpreter + pip."
+  ]
+}

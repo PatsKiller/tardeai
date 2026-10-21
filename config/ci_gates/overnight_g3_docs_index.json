@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overnight_g3_docs_index",
+  "files": [
+    "tests/test_overnight_g3_docs_index.py"
+  ]
+}

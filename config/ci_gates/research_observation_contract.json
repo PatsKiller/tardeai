@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "research_observation_contract",
+  "files": [
+    "tests/test_research_observation_contract.py",
+    "tests/test_research_eligibility_policy.py",
+    "tests/test_research_observation_join.py",
+    "tests/test_research_consumer_gate.py"
+  ]
+}

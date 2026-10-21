@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "options_order_gates_20260927",
+  "files": [
+    "tests/test_options_order_gates_20260927.py"
+  ],
+  "comment": [
+    "2026-09-27 -- options order gates (operator work order, PR 3): the submit-mode risk",
+    "evaluator fails closed on an input the desk does not have (quote/chain age, session,",
+    "buying power, liquidity); approvals are pinned to the legs and expire; archived",
+    "ideas lose their approved row; preflight_desk_gate runs before any broker call."
+  ]
+}

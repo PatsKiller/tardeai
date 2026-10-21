@@ -182,7 +182,8 @@ def test_api_route_calls_the_projection_read_only_and_the_page_has_the_panel():
     assert "/api/v2/coordination/approvals" in page and 'data-testid="coordination-approvals"' in page
     chain = (ROOT / "apps" / "command-center-v3" / "package.json").read_text(encoding="utf-8")
     assert "src/lib/approvalBoard.test.ts" in chain
-    reg = (ROOT / "scripts" / "run_cio_hardening_ci.py").read_text(encoding="utf-8")
+    from scripts.lib import ci_gates  # gates: one file per gate (2026-10-21)
+    reg = ci_gates.registry_text(ROOT)
     assert '"tests/test_approval_board_20261008.py"' in reg
 
 

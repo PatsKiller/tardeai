@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "contradiction_incremental_20260927",
+  "files": [
+    "tests/test_contradiction_incremental_20260927.py",
+    "tests/test_research_metadata_contradiction.py"
+  ],
+  "comment": [
+    "2026-09-27 -- contradiction candidates derived incrementally (only the new",
+    "delta's pairs; ids equal the full O(n^2) derivation, which took 31 s per accept)."
+  ]
+}

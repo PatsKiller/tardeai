@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "scalp_advisory_20261003",
+  "files": [
+    "tests/test_scalp_advisory_20261003.py"
+  ],
+  "comment": [
+    "Momentum scalps are advisory alerts, 06:00-12:00 ET, one 8% spread limit (operator 2026-10-03)."
+  ]
+}

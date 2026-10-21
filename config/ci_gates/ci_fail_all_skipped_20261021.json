@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ci_fail_all_skipped_20261021",
+  "files": [
+    "tests/test_ci_fail_all_skipped_20261021.py"
+  ],
+  "anchor": "CI_FAIL_ALL_SKIPPED_20261021",
+  "comment": [
+    "ANCHOR: CI_FAIL_ALL_SKIPPED_20261021 — CIO-hardening alignment audit C2/M8: a unit in which no test ran",
+    "(every test skipped / none collected) fails unless every file is in config/ci_skip_tolerant_units.json",
+    "with a reason; a registered-but-missing file fails; an unknown mandatory tier gate fails. Hermetic."
+  ]
+}

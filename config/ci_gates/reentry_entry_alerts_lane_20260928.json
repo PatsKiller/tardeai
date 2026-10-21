@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "reentry_entry_alerts_lane_20260928",
+  "files": [
+    "tests/test_buy_ready_packets_index_20260928.py"
+  ],
+  "comment": [
+    "2026-09-28: the Telegram BUY_READY / ENTRY_NEAR packets get one list endpoint and a lane on",
+    "the Re-Entry page: zone position, plan R:R vs R:R at quote (entry price stated), options",
+    "alternative outcome, and a desk disposition (proposal | not built: reason | not scanned)."
+  ]
+}

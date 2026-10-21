@@ -1,0 +1,20 @@
+{
+  "schema": "CiGate@v1",
+  "name": "refactor_w1_w2_20261010",
+  "files": [
+    "tests/test_refactor_w1_llm_spend_20261010.py",
+    "tests/test_refactor_w1_finviz_health_20261010.py",
+    "tests/test_refactor_w1_job_coverage_20261010.py",
+    "tests/test_refactor_w1_strategy_cards_20261010.py",
+    "tests/test_refactor_w1_oauth_keepalive_20261010.py",
+    "tests/test_refactor_w1_breach_detector_20261010.py",
+    "tests/test_refactor_w1_distributions_20261010.py"
+  ],
+  "comment": [
+    "n8n refactor wave 1 bucket W2 (operator 2026-10-09 ~23:00 ET \"start with refactoring ... dry run and unit",
+    "test\"): --dry-run that cannot reach the write/send/LLM, LaneRunReceipt@v1 / ok_at receipts, honest exit",
+    "codes, state-root paths for llm_spend_report, finviz_health_check, job_coverage_monitor,",
+    "materialize_watchlist_strategy_cards, oauth_lane_keepalive, supervisor_breach_detector,",
+    "distributions_enrich. Hermetic: tmp state roots, fake DB/yfinance/Telegram/LLM."
+  ]
+}

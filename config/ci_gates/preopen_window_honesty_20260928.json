@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "preopen_window_honesty_20260928",
+  "files": [
+    "tests/test_preopen_window_honesty_20260928.py"
+  ],
+  "comment": [
+    "2026-09-28 — pre-open window honesty: 0400/0700 run two screeners by design and",
+    "were labelled UNIVERSE_TOO_SMALL every day; per-window floors + PREOPEN_WINDOW_BY_DESIGN",
+    "(status/auto-proposal gate unchanged); unenriched injects → MANUAL_REVIEW, never scored."
+  ]
+}

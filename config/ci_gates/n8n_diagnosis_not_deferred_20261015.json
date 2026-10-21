@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_diagnosis_not_deferred_20261015",
+  "files": [
+    "tests/test_n8n_diagnosis_not_deferred_20261015.py",
+    "tests/test_n8n_diagnosis_deepseek_route_20261015.py"
+  ],
+  "comment": [
+    "2026-10-15: n8n_lane_failure_diagnosis offpeak_tier critical (OAuth first, $0.05/call, $0.10/day) — with",
+    "deferral armed, a failure outside the window is diagnosed now, not escalated as `conf=None; cause=`; an",
+    "escalation without a verdict says why and whether it retries; a later handled cycle clears the stale one.",
+    "n8n diagnosis end to end through the real bridge route walk: DeepSeek serves when it is the selected",
+    "lane (OAuth lanes failing, or no OAuth transport enabled on the host). Fake providers; no network."
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "analyst_feed_stale_20261020",
+  "files": [
+    "tests/test_analyst_feed_stale_20261020.py"
+  ],
+  "anchor": "ANALYST_FEED_STALE_20261020",
+  "comment": [
+    "ANCHOR: ANALYST_FEED_STALE_20261020 — Communications \"Analysts\" fact showed 87-day-old Street targets: the",
+    "pro_analyst_fetch universe (~2,340, mostly directive-watch) was an unordered DISTINCT cut at --max 250 with held",
+    "positions appended last, so the same ~250 refetched daily and NVDA/PFLT/SPCX sat at 2026-07-25. prioritize():",
+    "held, actionable, directive backlog oldest-first, never-covered in a per-day rotation, fetched-within-20h last;",
+    "--dry-run read-only with no yfinance call. Hermetic: fake DB/modules, tmp ROOT."
+  ]
+}

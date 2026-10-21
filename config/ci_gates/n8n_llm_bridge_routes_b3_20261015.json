@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_llm_bridge_routes_b3_20261015",
+  "files": [
+    "tests/test_n8n_llm_bridge_routes_b3_20261015.py"
+  ],
+  "comment": [
+    "n8n llm lanes on the governed bridge, batch 3 (2026-10-15): hermes_external_researcher bridge mode (lane",
+    "ignored, paid claude lane refused, capability cache bypassed) for hermes-top20-external-intel (one call per",
+    "symbol) and due-diligence-questions (curation = ONE bridge request as due_diligence_questions, no ladder or",
+    "escalation; --route one researcher call per question); llm-deferred-drain (leases only the bound process",
+    "set, never honours a row's lane/model); shadow-batch-generator (blind pass = one bridge request,",
+    "SINGLE_LANE). Hermetic: fake _call_bridge, poison provider modules, fake queue/DB/subprocess."
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "atm_cursor_txn_scope_20261005",
+  "files": [
+    "tests/test_atm_cursor_txn_scope_20261005.py"
+  ],
+  "comment": [
+    "2026-10-05 — ATM approver must not reuse a cursor after its decision",
+    "commit, and must not hold the read transaction across submit HTTP.",
+    "The protection quote helper releases its own read before quote HTTP."
+  ]
+}

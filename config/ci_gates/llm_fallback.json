@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "llm_fallback",
+  "files": [
+    "tests/test_llm_fallback.py"
+  ],
+  "comment": [
+    "If one LLM lane fails the next must be tried, and the substitution",
+    "said out loud. chatgpt failed 11/11 on 2026-09-05 while grok was",
+    "healthy and never asked, because generate() takes one lane."
+  ]
+}

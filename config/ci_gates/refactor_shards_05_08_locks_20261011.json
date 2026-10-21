@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "refactor_shards_05_08_locks_20261011",
+  "files": [
+    "tests/test_refactor_shards_05_08_locks_20261011.py"
+  ],
+  "anchor": "REFACTOR_SHARDS_05_08_LOCKS_20261011",
+  "comment": [
+    "ANCHOR: REFACTOR_SHARDS_05_08_LOCKS_20261011 — exact cron PID/OS lock identity, source only."
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "self_heal_fixer_hardening_20261016",
+  "files": [
+    "tests/test_self_heal_fixer_hardening_20261016.py"
+  ],
+  "comment": [
+    "Architect review of #1830 (2026-10-16): acceptance bound to ONE immutable candidate commit (sha + tree; fresh",
+    "read-only checkouts digested before/after each run; pre-push guard re-run; PR head == evaluated commit); the",
+    "Claude process itself in an allowlist bwrap sandbox (rw only its worktree, one scoped auth bind, CONNECT-",
+    "allowlist egress); durable flock + sqlite claims with the budget reserved before launch, heartbeat leases and",
+    "restart reconciliation to fix_interrupted; output_recovered = the output contract on a live receipt. Stub CLIs."
+  ]
+}

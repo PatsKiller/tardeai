@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "etf_analyst_enrich_arg_order_20261010",
+  "files": [
+    "tests/test_etf_analyst_enrich_arg_order_20261010.py"
+  ],
+  "comment": [
+    "etf_analyst_enrich pass 2 (API overlap Q10, 2026-10-10): save_yahoo_analyst_targets_history is called",
+    "(snapshot_date, targets_payload) by keyword; reversed positional order discarded every constituent .info call.",
+    "Pins the real signature (ast) and constituents_fetched == fetched. Hermetic fakes."
+  ]
+}

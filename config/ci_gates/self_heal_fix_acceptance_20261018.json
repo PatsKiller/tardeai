@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "self_heal_fix_acceptance_20261018",
+  "files": [
+    "tests/test_self_heal_fix_acceptance_20261018.py"
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "db_retention_hardening_20261011",
+  "files": [
+    "tests/test_retention_hardening_20261011.py"
+  ],
+  "comment": [
+    "DB retention hardening 2026-10-11 (overnight report findings 1, 4, 6): row-archive tripwire record +",
+    "nightly reader via report_db_hygiene -> incident fan-in; junk-purge --apply needs a verified db-write",
+    "grant id (TRADEAI_DB_WRITE_GRANT) recorded in the receipt; db_retention sole owner of the",
+    "content_embeddings 90 d rail (librarian defers), archive_first registry flag default OFF."
+  ]
+}

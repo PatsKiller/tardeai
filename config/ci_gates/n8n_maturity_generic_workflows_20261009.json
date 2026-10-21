@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_maturity_generic_workflows_20261009",
+  "files": [
+    "tests/test_n8n_maturity_generic_workflows_20261009.py"
+  ],
+  "anchor": "N8N_MATURITY_GENERIC_WORKFLOWS",
+  "comment": [
+    "ANCHOR: N8N_MATURITY_GENERIC_WORKFLOWS (2026-10-09, design 02 §11, B5.6): the six generic",
+    "registry-driven workflows (build-generic). Static only: byte-determinism, node allowlist, /run body keys,",
+    "bridge-IP relay, errorWorkflow, no lane constants beyond SYSTEM_FILTER_LANES. Imports nothing into n8n."
+  ]
+}

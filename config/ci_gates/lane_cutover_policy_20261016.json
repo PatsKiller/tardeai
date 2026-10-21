@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lane_cutover_policy_20261016",
+  "files": [
+    "tests/test_lane_cutover_policy_20261016.py"
+  ],
+  "anchor": "LANE_CUTOVER_POLICY_20261016",
+  "comment": [
+    "ANCHOR: LANE_CUTOVER_POLICY_20261016 — AGENTS 12.0.0 §23.25 gate alignment (operator approval 2026-10-16):",
+    "config/lane_cutover_policy.json lifts stay_on_cron / KEEP_ON_CRON / soft wrapper+sender tokens for approved",
+    "families only (exactly the reviewed 49 ACTIVE lanes); holds, hard tokens, F07 and systemd still refuse; direct",
+    "senders are errors; p1_last lanes plan last and keep cron one trading day after proof. Hermetic: tmp ledgers."
+  ]
+}

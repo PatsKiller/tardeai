@@ -71,8 +71,23 @@
       "tier": "DIGEST",
       "runbook_id": "hermes-watchlist-scorer-failure",
       "producer": "hermes_watchlist_scorer"
+    },
+    {
+      "domain": "agents",
+      "kind": "pr_hygiene_findings",
+      "tier": "DIGEST",
+      "runbook_id": "pr-hygiene-audit",
+      "producer": "pr_hygiene_audit"
+    },
+    {
+      "domain": "agents",
+      "kind": "pr_hygiene_weekly_digest",
+      "tier": "DIGEST",
+      "runbook_id": "pr-hygiene-audit",
+      "producer": "pr_hygiene_audit"
     }
   ],
   "_comment_20261018": "2026-10-18 (data-integrity fix PR, operator: the two data monitors 'within n8n with proper contracts'): lanes n8n-data-plausibility-audit and n8n-gap-resolution-audit run with --notify queue once their allowlist live_arg carries it, so they may not call a sender. data/data_plausibility_violation and data/gap_resolution_finding (RETIRED_RAN, VECTOR_FAILING) are DIGEST -> P2 incidents; data/gap_resolution_digest (OPEN_NO_ATTEMPT, REFUSED_NOWHERE) is DASHBOARD -> P3, never an interrupt. The systemd units keep the chokepoint send (--notify send, the default) until the packet's c3 step.",
-  "_comment_20261021": "2026-10-21 (PR #1899, n8n shadow lane hermes-watchlist-scorer): the scorer's loud-failure alert (OUTAGE: nothing landed; DEGRADED: >20% of names errored) is queued as research/hermes_watchlist_scorer_failure (DIGEST -> P2) instead of a send_telegram call, because a dispatched lane may not send (tests/test_agents_policy_7_0_0_advisory_market_data.py). The scorer keeps its own 12h per-condition cooldown (data/runtime/hermes_watchlist_scorer_alert_state.json) on top of the store dedupe."
+  "_comment_20261021": "2026-10-21 (PR #1899, n8n shadow lane hermes-watchlist-scorer): the scorer's loud-failure alert (OUTAGE: nothing landed; DEGRADED: >20% of names errored) is queued as research/hermes_watchlist_scorer_failure (DIGEST -> P2) instead of a send_telegram call, because a dispatched lane may not send (tests/test_agents_policy_7_0_0_advisory_market_data.py). The scorer keeps its own 12h per-condition cooldown (data/runtime/hermes_watchlist_scorer_alert_state.json) on top of the store dedupe.",
+  "_comment_20261021_pr_hygiene": "2026-10-21 (operator process plan: PR hygiene audited every iteration and alerted back): the n8n shadow lane pr-hygiene-audit (scripts/pr_hygiene_audit.py) queues agents/pr_hygiene_findings only when its alertable finding set GAINED a finding (state data/runtime/pr_hygiene_audit_alert_state.json, on top of the store dedupe) and agents/pr_hygiene_weekly_digest once per ISO week; both DIGEST -> P2, never a sender (the #1899 direct intent-store pattern)."
 }

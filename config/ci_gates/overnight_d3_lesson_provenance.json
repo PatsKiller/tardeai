@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overnight_d3_lesson_provenance",
+  "files": [
+    "tests/test_overnight_d3_lesson_provenance.py"
+  ]
+}

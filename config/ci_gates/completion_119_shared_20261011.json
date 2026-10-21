@@ -1,0 +1,8 @@
+{
+  "schema": "CiGate@v1",
+  "name": "completion_119_shared_20261011",
+  "files": [
+    "tests/test_hermetic_test_guard_20261011.py",
+    "tests/test_completion_119_shared_20261011.py"
+  ]
+}

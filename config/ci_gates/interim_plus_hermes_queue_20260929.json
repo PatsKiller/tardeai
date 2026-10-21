@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "interim_plus_hermes_queue_20260929",
+  "files": [
+    "tests/test_interim_plus_hermes_queue_20260929.py"
+  ],
+  "comment": [
+    "2026-09-29 — NFLX: thin llm_curation + Hermes queue must open a pending",
+    "so try_fulfill can deliver the completed thesis (not answered-only)."
+  ]
+}

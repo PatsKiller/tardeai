@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "protection_truth",
+  "files": [
+    "tests/test_protection_truth.py"
+  ],
+  "comment": [
+    "cc-whole-site-residual-v1 (2026-09-03): stop coverage over ONE population.",
+    "The served Risk surface published 0.39% while the same rows it returns say",
+    "11.92%: four broker-held stops read as NO STOP, and the percentage divided",
+    "by the whole portfolio rather than the population it summed."
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "refactor_shard_01",
+  "files": [
+    "tests/test_refactor_shard_01_20261011.py"
+  ],
+  "comment": [
+    "2026-10-11: shard 01 offline CLI plans, original cron argv and scratch lane receipts."
+  ]
+}

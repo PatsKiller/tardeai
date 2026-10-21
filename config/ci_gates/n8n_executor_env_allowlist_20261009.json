@@ -1,0 +1,25 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_executor_env_allowlist_20261009",
+  "files": [
+    "tests/test_n8n_executor_env_allowlist_20261009.py",
+    "tests/test_env_bootstrap_narrow_20261011.py",
+    "tests/test_broker_env_audit_20261011.py"
+  ],
+  "anchor": "N8N_EXECUTOR_ENV_ALLOWLIST",
+  "comment": [
+    "ANCHOR: N8N_EXECUTOR_ENV_ALLOWLIST — n8n maturity P7 (2026-10-09, supersedes #1561): per-lane child env",
+    "allowlist (TRADEAI_EXECUTOR_ENV_ALLOWLIST off|report|enforce), one builder for the v1 drain and v2 workers,",
+    "fail-closed on a missing env_names list or unknown mode, names-only receipts, enforced-lane drift guard.",
+    "Hermetic: tmp_path ledgers/state, synthetic values, fake runners + one tiny real child.",
+    "Env-file loader narrowing (canary blocker, 2026-10-11): env_bootstrap.load_env(names=...) and the",
+    "executor-set TRADEAI_ENV_BOUND_NAMES bound (only bound names, never a broker name; db_adapter asks for",
+    "DB_* only and its connection params still resolve), unbound legacy default pinned unchanged, the",
+    "per-script .env loops of the enforced lanes copy only _ENV_KEYS and _ENV_KEYS covers every name their",
+    "closure reads. Hermetic: fake render/.env in tmp_path, psycopg2 stubbed, synthetic values only.",
+    "Broker env-name read audit (operator 2026-10-11, step 1 of 3; log only): TRADEAI_BROKER_ENV_AUDIT=1",
+    "records which process/module reads each broker NAME (never a value), no-op when unset, recorder",
+    "failures swallowed, throttled per (process, name, caller), bulk copies tagged, report aggregation.",
+    "Hermetic: subprocesses with synthetic values and a tmp state root."
+  ]
+}

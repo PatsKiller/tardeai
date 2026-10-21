@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "options_proposal_cache_cadence_20260929",
+  "files": [
+    "tests/test_options_proposal_cache_cadence_20260929.py"
+  ],
+  "comment": [
+    "2026-09-29 — options proposal cache: a non-force read outside REGULAR",
+    "serves the last snapshot at any age. The regular session still rebuilds",
+    "a snapshot older than 10 minutes. force=1 still rebuilds."
+  ]
+}

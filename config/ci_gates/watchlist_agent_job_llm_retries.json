@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watchlist_agent_job_llm_retries",
+  "files": [
+    "tests/test_watchlist_agent_job_llm_retries_20260915.py"
+  ],
+  "comment": [
+    "2026-09-15: capped / circuit-open / input-limit agent jobs were marked failed and never retried."
+  ]
+}

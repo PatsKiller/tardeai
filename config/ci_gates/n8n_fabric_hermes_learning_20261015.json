@@ -1,0 +1,27 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_fabric_hermes_learning_20261015",
+  "files": [
+    "tests/test_n8n_fabric_hermes_learning_20261015.py",
+    "tests/test_hermes_learning_unblock_20261015.py",
+    "tests/test_hermes_learning_prereqs_20261015.py"
+  ],
+  "anchor": "N8N_FABRIC_HERMES_LEARNING",
+  "comment": [
+    "ANCHOR: N8N_FABRIC_HERMES_LEARNING — 2026-10-15 the first business process on the fabric (AGENTS.md §23.23):",
+    "tradeai-fabric-hermes-learning (learn -> tune) generated from config/n8n_fabric_processes.json + the",
+    "hermes_learning manifest; each step -> Execute Workflow -> Run Lane in dependency order, Merge fan-in,",
+    "stop-on-failure, BLOCKED steps as data. Host side: three shadow step lanes (allowlist dry run only,",
+    "registry rows with no dispatch block, REVIEWED contracts, effect keys) and the stage runner's effect-key",
+    "claim (OFF unless PIPELINE_EFFECT_CLAIM=1 and cron_claim true). Hermetic: tmp_path ledgers and sandboxed",
+    "runner, node.js interprets the generated graph. Imports nothing into n8n, touches no crontab or unit.",
+    "2026-10-15 unblock: tag_engine --dry-run (no model call), outcome_feedback_agent declared chokepoint",
+    "intents (--notify record: no sender), autonomous_self_tune --learn (purge helpers refuse; historical",
+    "flags byte-identical). Hermetic: recording DB fakes, stub chokepoint module, tmp_path files.",
+    "2026-10-15 cutover prerequisites G3-G5: gateway validation of p: process-step keys (+ the executor's",
+    "validated-marker effect claim), the executor's off-peak gate (offpeak_gate = the cron wrapper), the",
+    "tag engine's governed-bridge llm_route, and outcome_feedback_agent --notify queue (host comms intent ->",
+    "consumer -> P2 incident; no sender, fabric policy hash unchanged). Hermetic: tmp_path ledgers, stub",
+    "bridge transport and chokepoint, pinned clocks. Everything stays inert (spec dry_run, live_arg null)."
+  ]
+}

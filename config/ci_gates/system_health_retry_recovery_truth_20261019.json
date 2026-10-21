@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "system_health_retry_recovery_truth_20261019",
+  "files": [
+    "tests/test_system_health_retry_recovery_truth_20261019.py"
+  ]
+}

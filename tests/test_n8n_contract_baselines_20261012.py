@@ -55,7 +55,11 @@ def test_all_operative_baselines_have_applicable_fields_and_order():
     # + 1 (2026-10-19 registry-runtime-truth REVIEWED at canary, tests/support/registry_runtime_truth_lane.py) = 141.
     # + 1 (2026-10-21 hermes-watchlist-scorer n8n shadow, PR #1899: REVIEWED at shadow by the operator;
     # tests/test_hermes_scorer_n8n_shadow_20261021.py) = 148.
-    assert len(catalogue["contracts"]) == 148
+    # + 2 (2026-10-21 operator "yes rebuild 1417": cio-portfolio-thesis and advisory-maturity-evidence n8n shadow,
+    # DRAFT pending owner REVIEW; tests/test_cio_portfolio_thesis_lane_20261021.py) = 150.
+    # + 1 (2026-10-21 pr-hygiene-audit n8n-native shadow: REVIEWED by the operator 2026-10-21;
+    # tests/test_pr_hygiene_audit_20261021.py) = 151 (release-1 integration: both sides add distinct contracts).
+    assert len(catalogue["contracts"]) == 151
     assert not {row["id"]: A.baseline_errors(row) for row in catalogue["contracts"] if A.baseline_errors(row)}
 
 

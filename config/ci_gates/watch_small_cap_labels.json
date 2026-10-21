@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_small_cap_labels",
+  "files": [
+    "tests/test_watch_small_cap_labels_20260915.py"
+  ],
+  "comment": [
+    "2026-09-15 operator decision: small caps are in scope and labeled, not quarantined by the $500M floor."
+  ]
+}

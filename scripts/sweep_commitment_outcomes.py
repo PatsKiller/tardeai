@@ -71,10 +71,15 @@ def _run(args) -> int:
     from scripts.lib.commitment_price_observation import make_price_observation_provider
     from scripts.resolve_due_checkpoints import _price_lookup_factory
 
-    provider = make_price_observation_provider(price_lookup=_price_lookup_factory())
-    res = sweep_due_commitments(commitments, ledger=ledger, now=datetime.now(timezone.utc),
+    # #1633 (2026-10-09): --as-of simulates the sweep at another instant (report only).
+    when = getattr(args, "when", None) or datetime.now(timezone.utc)
+    provider = make_price_observation_provider(price_lookup=_price_lookup_factory(), now=when)
+    res = sweep_due_commitments(commitments, ledger=ledger, now=when,
                                 observation_provider=provider)
     report = res.to_dict()
+    if getattr(args, "when", None) is not None:
+        # Only on an --as-of simulation: the live report stays byte-identical (frozen entrypoint, shard 05).
+        report["as_of"] = when.isoformat()
     report["state_root"] = str(root)
     report["applied"] = bool(args.apply)
     report["commitments_path"] = str(root / COMMITMENTS)
@@ -100,11 +105,28 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--apply", action="store_true", help="append outcomes and lesson candidates")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--dry-run", action="store_true", help="offline plan; wins over --apply")
+    ap.add_argument(
+        "--as-of",
+        default=None,
+        help="simulate the sweep at this ISO instant (report only; refused with --apply)",
+    )
     args = ap.parse_args(argv)
     if args.dry_run:
         print(f"DRY-RUN commitment-outcome-sweep: would score due commitments under {args.state_root} "
               "and append outcomes/PROPOSED lessons plus a lane receipt; inputs NOT_MEASURED")
         return 0
+    args.when = None
+    if args.as_of:
+        if args.apply:
+            # A backdated or future-dated evaluated_at must never reach the ledger.
+            print(json.dumps({"ok": False, "outcome": "AS_OF_REFUSED_WITH_APPLY"}, indent=2))
+            return 2
+        try:
+            when = datetime.fromisoformat(str(args.as_of).replace("Z", "+00:00"))
+        except ValueError:
+            print(json.dumps({"ok": False, "outcome": "AS_OF_UNPARSEABLE", "as_of": args.as_of}, indent=2))
+            return 2
+        args.when = when if when.tzinfo else when.replace(tzinfo=timezone.utc)
     from scripts.lib.lane_last_receipt import now_iso, write_lane_receipt
     started = now_iso()
     LAST_SUMMARY.clear()

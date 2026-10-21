@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "searxng_engine_pool",
+  "files": [
+    "tests/test_searxng_engine_pool.py"
+  ],
+  "comment": [
+    "Every SearXNG engine in the pool was verified by query before being",
+    "listed. The pool had six declared engines and one that worked; google",
+    "failed SILENTLY (0 results, no error) and read as healthy."
+  ]
+}

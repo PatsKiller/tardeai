@@ -26,6 +26,11 @@ pending / unknown, all as data) for the Run Lane sub-workflow's poll. POST /inte
 send-INTENT {domain, kind, subject, summary, workflow_id, execution_id, node}, cleans and bounds the text, and
 forwards one `comms/intent` claim (scope comms_intent); the host queues it for the comms gateway, which alone sends.
 n8n holds no bot token and the relay sends nothing.
+
+Environment (B2-D2, 2026-10-09): the unit loads only the allowlisted secrets (scripts/render_n8n_relay_env.py
+renders them as ExecStartPre). At startup main() runs scripts/lib/n8n_relay_env.enforce(): with
+RELAY_STRICT_ENV=1 any broker, provider, or other credential name outside the allowlist exits 3 (names only on
+stdout); then os.environ is scrubbed to the allowlist. The relay never spawns, so no child needs the rest.
 """
 
 from __future__ import annotations
@@ -69,6 +74,7 @@ from scripts.lib.n8n_due import MAX_LANE_FILTER as DUE_MAX_LANES  # noqa: E402
 from scripts.lib.n8n_due import MAX_LIMIT as DUE_MAX_LIMIT  # noqa: E402
 from scripts.lib.n8n_due import SOURCES as DUE_SOURCES  # noqa: E402
 from scripts.lib.n8n_due import LIVE_LANES_ENV, RelayLiveLanesMissing, parse_relay_live_lanes  # noqa: E402
+from scripts.lib.n8n_relay_env import enforce as enforce_relay_env  # noqa: E402
 from scripts.n8n_coordination_gateway import (  # noqa: E402
     BLOCKED_PORTS,
     DEFAULT_RUN_ALLOWLIST,
@@ -997,6 +1003,10 @@ def main() -> int:
     if args.routes:
         print(json.dumps({"schema": ROUTES_SCHEMA, "routes": [{"method": m, "path": p} for m, p in ROUTES]}))
         return 0
+    env_report = enforce_relay_env(os.environ)
+    if not env_report["ok"]:
+        print(json.dumps(env_report, separators=(",", ":")), flush=True)
+        return 3
     try:
         guard_bind(args.host, args.port)
         relay = Relay(allowlist=run_allowlist_source(args.run_allowlist))

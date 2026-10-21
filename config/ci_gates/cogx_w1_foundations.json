@@ -1,0 +1,27 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cogx_w1_foundations",
+  "files": [
+    "tests/test_intelligence_client_facade.py",
+    "tests/test_memory_chokepoint_ratchet.py",
+    "tests/test_supervisor_foundations.py",
+    "tests/test_approval_package_ledger.py",
+    "tests/test_gir_projector_and_breach_detector.py",
+    "tests/test_approval_package_reminder.py",
+    "tests/test_memory_compliance.py",
+    "tests/test_memory_ring2.py",
+    "tests/test_containment_cleared_state.py",
+    "tests/test_indicator_engine_rate_limit.py",
+    "tests/test_research_write_path_and_fanout.py",
+    "tests/test_sec_filings_feed.py",
+    "tests/test_wave3_cognition.py",
+    "tests/test_wave4_unification.py",
+    "tests/test_wave5_maturity.py",
+    "tests/test_m2_substrate_check.py",
+    "tests/test_earnings_gate_vocabulary_20260928.py",
+    "tests/test_lane_registry_bare_schedule_20260928.py",
+    "tests/test_lane_registry_drift_events_20261008.py",
+    "tests/test_lane_governance_packet_20261008.py",
+    "tests/test_ops_summary_model_job_live_wiring_20261008.py"
+  ]
+}

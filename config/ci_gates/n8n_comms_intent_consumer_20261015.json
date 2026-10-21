@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_comms_intent_consumer_20261015",
+  "files": [
+    "tests/test_n8n_comms_intent_consumer_20261015.py"
+  ],
+  "anchor": "N8N_COMMS_INTENT_CONSUMER",
+  "comment": [
+    "ANCHOR: N8N_COMMS_INTENT_CONSUMER — 2026-10-15 the host consumer of the queued comms/intent rows (operator:",
+    "the incident fan-in route). Claim QUEUED -> CLAIMED -> DONE/FAILED (compare-and-set), route-table mapping to a",
+    "fan-in incident at the route's tier (DIGEST -> P2) deduped per workflow and kind, the fan-in merge into the",
+    "relay's wferr:<workflow> incident, the dead-letter rule (FAILED 3x / refused, QUEUED > 2 h), the per-run cap,",
+    "a write-free dry run, a no-sender import ratchet, the lane row (dispatch live since 2026-10-17) and the",
+    "health-contract draft. Hermetic: tmp_path ledgers and state roots; the Telegram chokepoints are stubs."
+  ]
+}

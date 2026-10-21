@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "capital_ledger",
+  "files": [
+    "tests/test_cio_capital_plan.py"
+  ]
+}

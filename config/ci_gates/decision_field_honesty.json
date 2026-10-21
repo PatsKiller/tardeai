@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "decision_field_honesty",
+  "files": [
+    "tests/test_decision_field_honesty.py"
+  ]
+}

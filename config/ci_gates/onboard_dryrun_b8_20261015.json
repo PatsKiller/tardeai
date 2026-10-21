@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "onboard_dryrun_b8_20261015",
+  "files": [
+    "tests/test_onboard_dryrun_b8_20261015.py"
+  ],
+  "anchor": "ONBOARD_DRYRUN_B8_20261015",
+  "comment": [
+    "ANCHOR: ONBOARD_DRYRUN_B8_20261015 — n8n onboarding batch B8 (lane disposition 2026-10-15, MIGRATE_N8N, no",
+    "allowlist entry, no --dry-run before): run-ensemble-worker and run-governed-symbol-thesis-acquisition (LLM;",
+    "Python worker + shell launcher both guarded), cio-entry-state and cio-opportunity-curator (deterministic).",
+    "Offline --dry-run wins over --apply/--run: no model call, no DB, network, lock, log or send (in-process",
+    "record-and-raise proof for Python, PATH-of-recording-stubs proof for the launchers); static capability audit",
+    "pins chokepoint_send and no direct_sender. Listing it schedules nothing."
+  ]
+}

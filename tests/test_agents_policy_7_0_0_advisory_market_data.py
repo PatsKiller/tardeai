@@ -210,6 +210,67 @@ def test_spawned_child_scripts_are_in_reach_but_docstrings_are_not(tmp_path):
     assert not G.scan_entry(str(d / "lane_mentions.py")).account_reads
 
 
+#: 2026-10-21 (#1417 rebuild review): a `/ "x.py"` path join that is provably only READ is not a spawned child;
+#: every use that could run, import or hand the path on stays a spawn (scripts/lib/advisory_lane_guard.py
+#: _read_only_path_literals). The child below reads an account, so "in reach" == account_reads non-empty.
+_READ_ONLY = {
+    "direct_read_text": "def f(root):\n    return len((root / 'fxchild_sub.py').read_text())\n",
+    "direct_exists_stat": "def f(root):\n    return (root / 'fxchild_sub.py').exists() and (root / 'fxchild_sub.py').stat()\n",
+    "open_read_mode": "def f(root):\n    with open(root / 'fxchild_sub.py', 'r') as fh:\n        return len(fh.read())\n",
+    "path_open_rb": "def f(root):\n    with (root / 'fxchild_sub.py').open('rb') as fh:\n        return len(fh.read())\n",
+    # the shape of cio_operator_investment_policy.discover_legacy_policy_claims: alias read + a label helper
+    "alias_read_and_label_helper": (
+        "import re\n"
+        "def _label(path, root):\n    try:\n        return str(path.relative_to(root))\n"
+        "    except ValueError:\n        return path.name\n"
+        "def f(root):\n    p = root / 'scripts' / 'fxchild_sub.py'\n    try:\n        t = p.read_text(encoding='utf-8')\n"
+        "    except OSError:\n        t = ''\n    m = re.search(r'x', t)\n    return {'source': _label(p, root), 'm': bool(m)}\n"),
+}
+_STILL_SPAWN = {
+    "subprocess_of_literal": "import subprocess, sys\ndef f(root):\n    subprocess.run([sys.executable, root / 'fxchild_sub.py'])\n",
+    "alias_then_subprocess": ("import subprocess, sys\ndef f(root):\n    p = root / 'fxchild_sub.py'\n"
+                              "    subprocess.run([sys.executable, str(p)])\n"),
+    "alias_then_from_import_run": ("from subprocess import run as go\nimport sys\ndef f(root):\n"
+                                   "    p = root / 'fxchild_sub.py'\n    go([sys.executable, p])\n"),
+    "read_in_a_spawning_function": ("import subprocess\ndef f(root):\n    p = root / 'fxchild_sub.py'\n    p.read_text()\n"
+                                    "    subprocess.run(['true'])\n"),
+    "exec_of_read_text": "def f(root):\n    exec((root / 'fxchild_sub.py').read_text())\n",
+    "runpy": "import runpy\ndef f(root):\n    runpy.run_path(str(root / 'fxchild_sub.py'))\n",
+    "importlib_by_path": ("import importlib.util\ndef f(root):\n"
+                          "    return importlib.util.spec_from_file_location('m', root / 'fxchild_sub.py')\n"),
+    "open_write_mode": "def f(root):\n    open(root / 'fxchild_sub.py', 'w')\n",
+    "module_level_read": "from pathlib import Path\nTEXT = (Path('.') / 'fxchild_sub.py').read_text()\n",
+    "alias_to_unknown_callee": "import shlex\ndef f(root):\n    p = root / 'fxchild_sub.py'\n    return shlex.quote(str(p))\n",
+    "alias_to_spawning_helper": ("import subprocess, sys\ndef _go(path):\n    subprocess.run([sys.executable, str(path)])\n"
+                                 "def f(root):\n    p = root / 'fxchild_sub.py'\n    _go(p)\n"),
+    "alias_reassigned": "def f(root):\n    p = root / 'fxchild_sub.py'\n    p.read_text()\n    q = p\n    return q\n",
+    "alias_in_fstring": "def f(root):\n    p = root / 'fxchild_sub.py'\n    p.read_text()\n    return f'{p}'\n",
+    "global_alias": ("P = None\ndef f(root):\n    global P\n    P = root / 'fxchild_sub.py'\n    P.read_text()\n"),
+}
+_CHILD = {"fxchild_sub.py": "def go(api):\n    api.get_account()\n"}
+
+
+@pytest.mark.parametrize("case", sorted(_READ_ONLY))
+def test_read_only_path_literal_is_not_a_spawn(tmp_path, case):
+    d = _write(tmp_path, {**_CHILD, "lane_reads.py": _READ_ONLY[case]})
+    (d / "scripts").mkdir(exist_ok=True)
+    (d / "scripts" / "fxchild_sub.py").write_text(_CHILD["fxchild_sub.py"])
+    assert not G.scan_entry(str(d / "lane_reads.py")).account_reads, case
+
+
+@pytest.mark.parametrize("case", sorted(_STILL_SPAWN))
+def test_run_import_or_handed_on_path_literal_stays_a_spawn(tmp_path, case):
+    d = _write(tmp_path, {**_CHILD, "lane_spawns_path.py": _STILL_SPAWN[case]})
+    assert G.scan_entry(str(d / "lane_spawns_path.py")).account_reads, case
+
+
+def test_the_policy_library_text_read_is_not_a_spawn_and_was_not_rewritten():
+    src = (ROOT / "scripts" / "lib" / "cio_operator_investment_policy.py").read_text(encoding="utf-8")
+    assert 'decision_path = repo_root / "scripts" / "lib" / "cio_decision_quality.py"' in src
+    rep = G.scan_entry("scripts/lib/cio_operator_investment_policy.py")
+    assert "scripts/lib/cio_decision_quality.py" not in rep.scanned and not rep.is_sender and not rep.problems()
+
+
 def test_sends_through_the_chokepoint_and_bypass_sites(tmp_path):
     d = _write(tmp_path, {"lane_send.py": (
         "from telegram_alert import send_telegram\n"

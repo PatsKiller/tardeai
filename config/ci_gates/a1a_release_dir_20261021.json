@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "a1a_release_dir_20261021",
+  "files": [
+    "tests/test_a1a_release_dir_20261021.py"
+  ],
+  "anchor": "A1A_RELEASE_DIR_20261021",
+  "comment": [
+    "ANCHOR: A1A_RELEASE_DIR_20261021 — a1a_compliance FAILED 2026-10-21 07:40 with errors=[]: release dirs",
+    "carry no .git, so check_a1a_compliance.py's `git diff HEAD~1 HEAD` raised CalledProcessError and the",
+    "wrapper recorded a reasonless failure. Now diffs the BUILD_STAMP source_sha in DEV_ROOT, reports an",
+    "unresolvable change set as errors (exit 2, no traceback), and the wrapper passes errors= to telemetry.",
+    "Hermetic: temp git repo + temp release dir."
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_links_reports",
+  "files": [
+    "tests/test_release_links_reports_dir.py"
+  ]
+}

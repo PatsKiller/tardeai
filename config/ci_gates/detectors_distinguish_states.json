@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "detectors_distinguish_states",
+  "files": [
+    "tests/test_detectors_distinguish_states.py"
+  ],
+  "comment": [
+    "Two detectors that could not tell two states apart: the docs inventory counted",
+    "gitignored artifacts (tracked 2274 vs filesystem 2276, reddening a required",
+    "gate), and signal_flow_audit read OK when nothing had been scanned."
+  ]
+}

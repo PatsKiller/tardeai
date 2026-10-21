@@ -83,7 +83,8 @@ def test_researcher_insert_sql_mentions_raw_response():
     # Always-on store is on the parsed INSERT, not only the empty-rec fallback.
     assert "raw_response, research_guid, prior_research_guid)" in src
     # Capability-cache path may leave raw_response NULL (column omitted) but still records lineage.
-    cache_insert = src.split("if cache_blocks_lane", 1)[1].split("return", 1)[0]
+    # (#1806: the gate reads `if not via_bridge() and cache_blocks_lane(...)` — the bridge path skips the cache.)
+    cache_insert = src.split("cache_blocks_lane(cap, args.force_retest)", 1)[1].split("return", 1)[0]
     assert "INSERT INTO hermes_external_research" in cache_insert
     assert "raw_response" not in cache_insert
     assert "research_guid" in cache_insert

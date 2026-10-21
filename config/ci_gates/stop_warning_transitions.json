@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "stop_warning_transitions",
+  "files": [
+    "tests/test_stop_warning_transitions.py"
+  ]
+}

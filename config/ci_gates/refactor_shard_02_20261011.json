@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "refactor_shard_02_20261011",
+  "files": [
+    "tests/test_refactor_shard_02_20261011.py"
+  ],
+  "comment": [
+    "R2-02: structural dry runs, exact cron argv, failed-ok_at carry, no broker env."
+  ]
+}

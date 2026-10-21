@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "signal_flow_regression",
+  "files": [
+    "tests/test_signal_sync_onconflict_regression.py"
+  ],
+  "comment": [
+    "Pins the 2026-08-08 -> 2026-08-31 Strategy Desk outage: an ON CONFLICT clause",
+    "naming a constraint that does not exist (every signal insert raised), and the",
+    "alarms that reported it to nobody by importing a send_alert that has never existed."
+  ]
+}

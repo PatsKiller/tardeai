@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overnight_b6_reentry_scope",
+  "files": [
+    "tests/test_overnight_b6_reentry_scope.py"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "residual_surfaces",
+  "files": [
+    "tests/test_residual_surfaces.py"
+  ],
+  "comment": [
+    "cc-whole-site-residual-v1 (2026-09-03): the five surfaces that still lied.",
+    "Watch counts now come from one population and never render authoritative",
+    "while the list is unresolved; Closed Loop's four circulations age on their",
+    "own clocks; stale research is not missing research; a MANUAL writer is",
+    "never shown as if a schedule mints it; and a re-entry row finally carries",
+    "one canonical status instead of gates a consumer has to interpret."
+  ]
+}

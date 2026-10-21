@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "advisory_provenance",
+  "files": [
+    "tests/test_cio_advisory_provenance.py"
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "preflight_release_readiness_20261021",
+  "files": [
+    "tests/test_preflight_release_readiness_20261021.py"
+  ],
+  "anchor": "PREFLIGHT_RELEASE_READINESS_20261021",
+  "comment": [
+    "ANCHOR: PREFLIGHT_RELEASE_READINESS_20261021 — alignment audit M6: the promote gate's REQUIRED_PUSH_WORKFLOWS",
+    "matches the three contexts branch protection requires (release-readiness was missing). Hermetic."
+  ]
+}

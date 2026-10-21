@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "options_exposure_earnings_20260928",
+  "files": [
+    "tests/test_options_exposure_earnings_20260928.py"
+  ],
+  "comment": [
+    "Reviewer 2026-09-28: combined same-symbol exposure includes the shares held (by account),",
+    "reports options-only / shares / whole-position P/L per row and groups rows by expiration;",
+    "the earnings gate blocks debit spreads and long puts and names its trigger."
+  ]
+}

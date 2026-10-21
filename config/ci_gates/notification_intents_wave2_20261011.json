@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "notification_intents_wave2_20261011",
+  "files": [
+    "tests/test_notification_intents_wave2_20261011.py"
+  ],
+  "comment": [
+    "Notification intents wave 2 (SND2, 2026-10-11): the 40 highest-volume non-broker senders that sent with",
+    "no priority declare P1/P2/P3; P3 (FYI) is archived per producer and folded by the digest, delivered",
+    "if the archive fails. Shrink-only gates: undeclared sends (check_notification_intents.py) and the",
+    "Telegram/provider chokepoint baselines. Transport captured, never sent; tmp state; no .env read."
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_scorecard_live_counts_20261003",
+  "files": [
+    "tests/test_cio_scorecard_live_counts_20261003.py"
+  ],
+  "comment": [
+    "CIO Desk cards read live outcome counts and keep measured lane counts (2026-10-03)."
+  ]
+}

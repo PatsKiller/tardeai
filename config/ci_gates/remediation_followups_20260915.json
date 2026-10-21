@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "remediation_followups_20260915",
+  "files": [
+    "tests/test_health_llm_spend_receipt_20260915.py",
+    "tests/test_telegram_enable_flag_values_20260915.py"
+  ],
+  "comment": [
+    "2026-09-15 remediation follow-ups: CIO desk delivery receipt, daily LLM spend cap proven (E-10)."
+  ]
+}

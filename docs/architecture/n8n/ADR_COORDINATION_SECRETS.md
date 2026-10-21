@@ -28,6 +28,11 @@ n8n Header-Auth credential and presented only to `tradeai-n8n-run-relay.service`
 relay to request a run of a lane in `config/n8n_run_allowlist.json` in `dry_run` or `live` mode. The gateway
 HMAC key for that path, `TRADEAI_N8N_GATEWAY_HMAC_KEY_N8N` (caller `n8n-relay`, scope `coordination_run`),
 is read by the relay from the rendered tmpfs env (`/run/user/1000/tradeai/env`) and **never enters n8n**;
+since 2026-10-21 (B2-D2, #1599) the relay scrubs its environment to an allowlist at startup
+(`scripts/lib/n8n_relay_env.py`), and the operator packet `docs/ops/packets/n8n-relay-env-allowlist-20261021/`
+moves the unit to an allowlisted copy, `%t/tradeai/n8n-relay-secrets.env`, rendered by
+`scripts/render_n8n_relay_env.py` as ExecStartPre, with `RELAY_STRICT_ENV=1` (exit 3 if any broker, provider or
+other credential name reaches it) — until the packet is installed the unit still loads the full env;
 the existing `TRADEAI_N8N_GATEWAY_HMAC_KEY` (caller `tradeai-dispatch`, scope `coordination_read`) is
 unchanged. Both values are minted in Bitwarden Secrets Manager (project `trade-ai-prod`), delivered by
 `scripts/secrets/render_env.py`, named in `config/secret_registry.yaml` with `max_age_days: 7`, and rotated

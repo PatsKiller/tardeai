@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_health_contracts_20261010",
+  "files": [
+    "tests/test_n8n_health_contracts_20261010.py",
+    "tests/test_draft_health_contracts_20261012.py"
+  ],
+  "anchor": "N8N_HEALTH_CONTRACTS",
+  "comment": [
+    "ANCHOR: N8N_HEALTH_CONTRACTS (2026-10-10, operator ~16:45 ET): every n8n lane / generic workflow / host",
+    "monitor has an N8nHealthContract@v1 in config/n8n_health_contracts.json (purpose, connects_to, healthy /",
+    "degraded / failed, baseline, alerting, remediation); scripts/check_n8n_health_contracts.py fails a lane that",
+    "enters shadow/canary/cutover without one, and canary/cutover need a REVIEWED contract. Hermetic: tmp ledger.",
+    "2026-10-12: the 66 grandfathered DRAFT contracts are tested in place. Status stays DRAFT."
+  ]
+}

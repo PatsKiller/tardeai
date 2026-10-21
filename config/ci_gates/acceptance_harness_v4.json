@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "acceptance_harness_v4",
+  "files": [
+    "tests/test_cio_acceptance_v4.py"
+  ]
+}

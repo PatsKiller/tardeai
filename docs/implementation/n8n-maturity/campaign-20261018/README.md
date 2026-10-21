@@ -183,3 +183,13 @@ original red-test XML records as deterministic gzip. Decompressed bytes and thei
 SHA256 digests are unchanged; the artifact manifest records both compressed and
 original digests. This preserves the original evidence, including whitespace,
 while satisfying the complete PR diff check. Production source is unchanged.
+
+## Dated release and C3 update — 2026-10-21
+
+This amendment preserves the historical campaign record above. The ready-three Communications candidate is pushed at PR #1887 head `641e3a23c7eb1fea6df2615450657af02415949a`; current production is still #1888/main `ef085ce76be4512da71a58e65ef4feb25d156206`. At 2026-10-21 03:42 UTC, PR #1887 was OPEN / CLEAN (mergeable). All required and non-skipped hosted checks passed, including cio-hardening (10m56s); cio-hardening-full and main-red-alert were skipped by PR-event rules. [The test report](../../../ops/ready-three-2026-10-21/TEST_RESULTS.md) links run IDs and records the observation source. Merge, deployment, and post-deploy checks are not evidenced. The separate local full native hardening run was incomplete and must not be described as passing; hosted cio-hardening passed. No merge/deployment is evidenced; release requires separate exact-SHA authority and deployment/production lease.
+
+A separate indicator JSON remediation exists at local commit `0b5ff40692b739bd6135c4776eae11e8dcab2ae0` on branch `fix/indicator-json-nonfinite-20261021` (parent `3828695f`). Author suite 45/45 passed in 11.31 seconds; independent review approved 9/9, including longdouble edge cases and Fraction/NumPy legacy serialization. It has no DB/runtime integration, PR, hosted CI, push, or deployment. It is independent of PR #1887 and does not yet establish that the production indicator failure is resolved.
+
+The C3 v4 snapshot separately identified at `51bc97595582aa8ea0d6dcfd44fba6a848595e0e` has reported 1,136 author tests, one separate schema assertion, and 509 independent tests. These do not qualify C3 v5 runtime wiring. The private protocol primitive has local tests but is not wired into production Popen paths; the episode/effect-owner context and DueResponse@v2 contract remain unresolved. Keep C3 rows PAUSED/off and live arguments null.
+
+The dated, detailed evidence record is [Ready-three evidence and readiness](../../../ops/ready-three-2026-10-21/README.md). It distinguishes local tests from deployed behavior and records production health concerns, incomplete checks, and release gates.

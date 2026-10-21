@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "campaign_closeout",
+  "files": [
+    "tests/test_campaign_closeout.py"
+  ],
+  "comment": [
+    "Phase 5 release discipline. READY must be earned by every item; absent",
+    "evidence blocks rather than abstains. A closeout that reads green",
+    "because nobody looked is worse than none, because it ends the looking."
+  ]
+}

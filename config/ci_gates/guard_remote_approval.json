@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "guard_remote_approval",
+  "files": [
+    "tests/test_guard_remote_approval.py"
+  ],
+  "comment": [
+    "Remote (Telegram) operator approval for guard scopes. The operator",
+    "types APPROVE on their phone; the agent never does. Every refusal path",
+    "is pinned here because the refusals are what make it safe."
+  ]
+}

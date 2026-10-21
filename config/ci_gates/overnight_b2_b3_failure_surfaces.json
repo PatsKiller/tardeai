@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overnight_b2_b3_failure_surfaces",
+  "files": [
+    "tests/test_overnight_b2_b3_failure_surfaces.py"
+  ]
+}

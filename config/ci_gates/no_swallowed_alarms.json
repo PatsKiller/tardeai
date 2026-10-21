@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "no_swallowed_alarms",
+  "files": [
+    "tests/test_no_swallowed_alarms.py"
+  ],
+  "comment": [
+    "C3: an alarm whose delivery failure is swallowed is worse than no alarm.",
+    "Shrink-only baseline of named inherited debt; new swallows fail the build."
+  ]
+}

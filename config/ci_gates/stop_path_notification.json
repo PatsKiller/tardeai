@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "stop_path_notification",
+  "files": [
+    "tests/test_stop_path_notification_imports.py"
+  ]
+}

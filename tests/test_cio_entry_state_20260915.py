@@ -1,7 +1,12 @@
 """Operator decisions 2026-09-15: the CIO owns entry state / BUY; operator and CIO are alerted; small caps labeled."""
+
 from __future__ import annotations
 
+import ast
+import copy
+import re
 import sys
+import types
 import json
 from datetime import date
 from pathlib import Path
@@ -45,11 +50,25 @@ def isolated_packet_inputs(tmp_path, monkeypatch):
 
 
 def ev(**kw):
-    base = {"symbol": "ACHV", "price": 7.0, "quote_age_h": 0.2, "entry_low": 6.9, "entry_high": 7.15,
-            "stop": 6.6, "target": 9.5, "atr": 0.40, "quality_state": "ADMITTED", "cio_action": "RESEARCH_MORE",
-            "wash_blocked": False, "held": False, "earnings_date": "2026-11-05",
-            "market_cap_label": cap_label(744), "catalyst": "Frazier Life Sciences buys new stake", "plan_source": "reentry_desk",
-            "portfolio_facts": dict(PORTFOLIO_UNAVAILABLE)}
+    base = {
+        "symbol": "ACHV",
+        "price": 7.0,
+        "quote_age_h": 0.2,
+        "entry_low": 6.9,
+        "entry_high": 7.15,
+        "stop": 6.6,
+        "target": 9.5,
+        "atr": 0.40,
+        "quality_state": "ADMITTED",
+        "cio_action": "RESEARCH_MORE",
+        "wash_blocked": False,
+        "held": False,
+        "earnings_date": "2026-11-05",
+        "market_cap_label": cap_label(744),
+        "catalyst": "Frazier Life Sciences buys new stake",
+        "plan_source": "reentry_desk",
+        "portfolio_facts": dict(PORTFOLIO_UNAVAILABLE),
+    }
     base.update(kw)
     return base
 
@@ -112,9 +131,14 @@ def test_operator_message_names_the_company_and_sector():
     never queried that table.
     """
     r = ces.evaluate(ev(), today=TODAY)
-    msg = ces.render_operator(r, ev(
-        company="Esco Technologies Inc — Scientific & Technical Instruments.",
-        sector="Technology", industry="Scientific & Technical Instruments"))
+    msg = ces.render_operator(
+        r,
+        ev(
+            company="Esco Technologies Inc — Scientific & Technical Instruments.",
+            sector="Technology",
+            industry="Scientific & Technical Instruments",
+        ),
+    )
     assert "Esco Technologies Inc" in msg
     assert "Technology" in msg
     # description_1s already ends with the industry, so it must not be repeated
@@ -130,7 +154,7 @@ def test_identity_line_is_omitted_when_no_profile_exists():
     case is normal and must render nothing rather than an empty or dangling separator.
     """
     r = ces.evaluate(ev(), today=TODAY)
-    msg = ces.render_operator(r, ev())          # ev() carries no company/sector/industry
+    msg = ces.render_operator(r, ev())  # ev() carries no company/sector/industry
     lines = msg.split("\n")
     assert all(ln.strip() not in {"", "·", "—"} for ln in lines), lines
     # the line after the header is the cap pill, not an empty identity slot
@@ -139,8 +163,7 @@ def test_identity_line_is_omitted_when_no_profile_exists():
 
 def test_identity_falls_back_to_sector_and_industry_without_a_company_name():
     r = ces.evaluate(ev(), today=TODAY)
-    msg = ces.render_operator(r, ev(company=None, sector="Energy",
-                                    industry="Oil & Gas Equipment & Services"))
+    msg = ces.render_operator(r, ev(company=None, sector="Energy", industry="Oil & Gas Equipment & Services"))
     assert "Energy · Oil & Gas Equipment & Services" in msg
 
 
@@ -151,6 +174,7 @@ def test_operator_message_routes_immediate_and_router_does_not_suppress():
     assert event.alert_type == "cio_entry_state"
     assert policy.route_event(event).route_mode == policy.ROUTE_IMMEDIATE
     import telegram_alert_router as router
+
     assert router.classify_alert(msg) == "P0_INTERRUPT"
 
 
@@ -165,15 +189,14 @@ def test_transition_key_is_per_symbol_state_day():
     assert ces.transition_key(r, TODAY) == "cio_entry:ACHV:BUY_READY:2026-09-15"
 
 
-def test_runner_contracts():
+def test_runner_contracts(monkeypatch):
     src = (ROOT / "scripts" / "cio_entry_state_runner.py").read_text(encoding="utf-8")
     assert 'ap.add_argument("--apply"' in src and "conn.rollback()" in src
     assert "send_alerts(r, evidence" in src and src.index("if a.apply:") < src.index("send_alerts(r, evidence")
-    assert 'CIOEventBus().emit("watch.new_signal"' in src
-    # the CIO's own entry rows never block themselves (the lookup lives in the shared helper since 2026-10-19)
+    _assert_runner_signal(_runner(), monkeypatch)
     assert "latest_cio_decisions(cur, syms)" in src
-    shared = (ROOT / "scripts" / "lib" / "entry_alert_context.py").read_text(encoding="utf-8")
-    assert "action_class <> 'entry'" in shared
+    shared = (ROOT / "scripts/lib/entry_alert_context.py").read_text(encoding="utf-8")
+    assert "action_class <> 'entry'" in shared  # shared lookup excludes the runner's own entry rows
     for forbidden in ("place_order", "submit_order", "/orders"):
         assert forbidden not in src
 
@@ -186,10 +209,180 @@ def test_digest_message_routes_like_single_alerts():
     assert policy.route_event(policy.classify_legacy_message(text)).route_mode == policy.ROUTE_IMMEDIATE
 
 
-def test_runner_digests_past_the_cap_and_marks_them_alerted():
-    src = (ROOT / "scripts" / "cio_entry_state_runner.py").read_text(encoding="utf-8")
-    assert "digest = pending[max(0, a.max_alerts):]" in src
-    assert '"via": "digest"' in src and "ces.render_digest(digest)" in src
+@pytest.mark.parametrize("cap", [-1, 0, 1, 3, 8])
+def test_runner_digests_past_the_cap_and_marks_them_alerted(monkeypatch, tmp_path, cap):
+    _assert_runner_digest(_runner(), monkeypatch, tmp_path, cap=cap)
+
+
+def _assert_runner_signal(runner, monkeypatch):
+    """Run the real alert function; all transport and store leaves are contained fakes."""
+    from scripts.lib import advice_digest, cio_event_bus
+
+    emitted = []
+
+    class Bus:
+        def emit(self, event, payload, **metadata):
+            emitted.append((event, payload, metadata))
+
+    monkeypatch.setattr(cio_event_bus, "CIOEventBus", Bus)
+    monkeypatch.setattr(advice_digest, "hold", lambda _name: True)
+    monkeypatch.setattr(runner, "cio_card_payload", lambda *_args: {"text": "fixture card"})
+    monkeypatch.setattr(runner, "stamp_cio_stance", lambda text, *_args, **_kwargs: text)
+    monkeypatch.setattr(runner, "operator_send", lambda *_args, **_kwargs: {"operator": True})
+    result = ces.evaluate(ev(), today=TODAY)
+    outcome = runner.send_alerts(result, ev())
+    assert len(emitted) == 1, "entry must emit exactly one wake event"
+    event, payload, metadata = emitted[0]
+    assert event == "watch.new_signal"
+    assert payload["symbol"] == result["symbol"] and payload["symbols"] == [result["symbol"]]
+    assert payload["state"] == result["state"] and payload["signal"] == "cio_entry_state"
+    assert metadata == {"source": "cio_entry_state_runner", "semantic_event_key": ces.transition_key(result)}
+    assert outcome["cio_bus"] is True
+
+
+def _assert_runner_digest(runner, monkeypatch, tmp_path, *, cap=1):
+    """Exercise actual main slicing, digest rendering, and recorded alerted flags."""
+    executed, direct, rendered, delivered = [], [], [], []
+
+    class Cursor:
+        def execute(self, sql, parameters=None):
+            executed.append((sql, parameters))
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+        def commit(self):
+            pass
+
+        def rollback(self):
+            pytest.fail("apply fixture must not enter dry rollback")
+
+    evidence = {symbol: ev(symbol=symbol) for symbol in ("AA", "BB", "CC", "DD")}
+    results = {symbol: ces.evaluate(item, today=TODAY) for symbol, item in evidence.items()}
+    monkeypatch.setattr(runner, "_conn", Connection)
+    monkeypatch.setattr(runner, "gather", lambda _cursor: evidence)
+    monkeypatch.setattr(runner, "last_states", lambda _cursor: {s: "BUY_READY" for s in evidence})
+    monkeypatch.setattr(runner, "alerted_today", lambda *_args: set())
+    monkeypatch.setattr(runner, "starred_symbols", lambda _cursor: set())
+    monkeypatch.setattr(runner.ces, "evaluate", lambda item: results[item["symbol"]])
+    monkeypatch.setattr(runner.ces, "render_cio", lambda *_args: "fixture rationale")
+
+    def render_digest(items):
+        rendered.append([item["symbol"] for item in items])
+        return "fixture digest"
+
+    def send_single(result, _evidence):
+        direct.append(result["symbol"])
+        return {"operator": True}
+
+    def send_digest(text, *, primary_symbols):
+        delivered.append((text, primary_symbols))
+        return {"operator": True}
+
+    monkeypatch.setattr(runner.ces, "render_digest", render_digest)
+    monkeypatch.setattr(runner, "prepare_packet_inputs", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(runner, "record_review", lambda *_args: None)
+    monkeypatch.setattr(runner, "save_packet", lambda *_args: None)
+    monkeypatch.setattr(runner, "follow_up_pending_reviews", lambda *_args: [])
+    monkeypatch.setattr(runner, "send_alerts", send_single)
+    monkeypatch.setattr(runner, "operator_send", send_digest)
+    monkeypatch.setattr(runner, "stamp_cio_stance", lambda text, *_args, **_kwargs: text)
+    monkeypatch.setattr(runner, "RECEIPT", tmp_path / "fixture-receipt.json")
+    monkeypatch.setattr(sys, "argv", ["fixture-entry", "--apply", "--max-alerts", str(cap)])
+    assert runner.main() == 0
+    symbols = list(evidence)
+    expected_direct, expected_digest = symbols[: max(0, cap)], symbols[max(0, cap) :]
+    assert direct == expected_direct, "direct alerts must honor the nonnegative cap"
+    assert rendered == ([expected_digest] if expected_digest else []), "digest must contain exactly the remainder"
+    assert delivered == ([("fixture digest", expected_digest)] if expected_digest else [])
+    digest_rows = [
+        (sql, parameters)
+        for sql, parameters in executed
+        if parameters
+        and isinstance(parameters[-1], str)
+        and parameters[-1].startswith("{")
+        and json.loads(parameters[-1]).get("via") == "digest"
+    ]
+    assert [parameters[0] for _, parameters in digest_rows] == expected_digest
+    for sql, parameters in digest_rows:
+        assert re.search(r"VALUES\s*\(\s*%s\s*,\s*%s\s*,\s*%s\s*,\s*true\s*,", sql, re.IGNORECASE), (
+            "digest rows must be marked alerted"
+        )
+        assert parameters[1:3] == ("BUY_READY", "BUY_READY")
+
+
+def _mutated_runner(mutation):
+    """Compile one actual function with a deliberate defect, never edit production source."""
+    original = _runner()
+    name = "send_alerts" if mutation == "deleted_emit" else "main"
+    tree = ast.parse((ROOT / "scripts/cio_entry_state_runner.py").read_text())
+    function = copy.deepcopy(
+        next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == name)
+    )
+
+    class BreakContract(ast.NodeTransformer):
+        changed = 0
+
+        def visit_Expr(self, node):
+            if mutation == "deleted_emit" and isinstance(node.value, ast.Call):
+                call = node.value
+                if (
+                    isinstance(call.func, ast.Attribute)
+                    and call.func.attr == "emit"
+                    and call.args
+                    and isinstance(call.args[0], ast.Constant)
+                    and call.args[0].value == "watch.new_signal"
+                ):
+                    self.changed += 1
+                    return ast.copy_location(ast.Pass(), node)
+            return self.generic_visit(node)
+
+        def visit_Assign(self, node):
+            if mutation == "wrong_slice" and any(isinstance(t, ast.Name) and t.id == "digest" for t in node.targets):
+                assert isinstance(node.value, ast.Subscript) and isinstance(node.value.slice, ast.Slice)
+                node.value.slice.upper, node.value.slice.lower = node.value.slice.lower, None
+                self.changed += 1
+            return self.generic_visit(node)
+
+        def visit_Constant(self, node):
+            if (
+                mutation == "unmarked_digest"
+                and isinstance(node.value, str)
+                and "INSERT INTO cio_entry_states" in node.value
+                and "%s,%s,%s,true,%s::jsonb" in node.value
+            ):
+                self.changed += 1
+                return ast.copy_location(
+                    ast.Constant(node.value.replace("%s,%s,%s,true,%s::jsonb", "%s,%s,%s,false,%s::jsonb")), node
+                )
+            return node
+
+    breaker = BreakContract()
+    function = breaker.visit(function)
+    assert breaker.changed >= 1
+    mutant = types.ModuleType("fixture_mutated_entry")
+    mutant.__dict__.update(original.__dict__)
+    exec(
+        compile(
+            ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[])), "contained-entry-mutant", "exec"
+        ),
+        mutant.__dict__,
+    )
+    return mutant
+
+
+def test_signal_contract_rejects_deleted_emit(monkeypatch):
+    with pytest.raises(AssertionError, match="exactly one wake event"):
+        _assert_runner_signal(_mutated_runner("deleted_emit"), monkeypatch)
+
+
+@pytest.mark.parametrize(
+    "mutation,reason", [("wrong_slice", "exactly the remainder"), ("unmarked_digest", "marked alerted")]
+)
+def test_digest_contract_rejects_broken_effects(monkeypatch, tmp_path, mutation, reason):
+    with pytest.raises(AssertionError, match=reason):
+        _assert_runner_digest(_mutated_runner(mutation), monkeypatch, tmp_path)
 
 
 # ── operator decision 2026-09-21: only page when it is time to purchase ──────
@@ -204,6 +397,7 @@ def test_runner_digests_past_the_cap_and_marks_them_alerted():
 
 def _runner():
     import cio_entry_state_runner as runner
+
     return runner
 
 
@@ -225,16 +419,14 @@ def test_getting_close_does_not_page_for_an_unstarred_symbol():
 def test_getting_close_still_pages_for_a_starred_symbol():
     """Starring is the operator's opt-in, so it must survive the new gate."""
     r = _runner()
-    out = r.alert_worthy([_near("ANET"), _near("GNL")], prior={}, done=set(),
-                         starred={"ANET"})
+    out = r.alert_worthy([_near("ANET"), _near("GNL")], prior={}, done=set(), starred={"ANET"})
     assert [x["symbol"] for x in out] == ["ANET"]
 
 
 def test_buy_ready_always_pages_starred_or_not():
     """'Time to purchase' is exactly what the operator asked to keep."""
     r = _runner()
-    out = r.alert_worthy([_ready("GNL"), _ready("ANET")], prior={}, done=set(),
-                         starred={"ANET"})
+    out = r.alert_worthy([_ready("GNL"), _ready("ANET")], prior={}, done=set(), starred={"ANET"})
     assert [x["symbol"] for x in out] == ["GNL", "ANET"]
 
 
@@ -248,8 +440,7 @@ def test_the_older_downgrade_suppression_still_applies_to_a_starred_name():
     """A starred symbol must not reopen the 2026-09-15 defect: ENTRY_NEAR after
     a same-day BUY_READY is still not news."""
     r = _runner()
-    out = r.alert_worthy([_near("ANET")], prior={"ANET": "BUY_READY"}, done=set(),
-                         starred={"ANET"})
+    out = r.alert_worthy([_near("ANET")], prior={"ANET": "BUY_READY"}, done=set(), starred={"ANET"})
     assert out == []
 
 
@@ -267,9 +458,17 @@ def test_an_unreadable_star_store_fails_quiet_not_loud():
 def test_held_alert_leads_with_add_decision_and_quote_rr():
     from scripts.lib import cio_entry_state as ces
 
-    ev = {"symbol": "AXTI", "price": 78.17, "entry_low": 71.5, "entry_high": 74.5,
-          "stop": 67.5, "target": 96.5, "held": True, "catalyst": None,
-          "portfolio_facts": dict(PORTFOLIO_UNAVAILABLE)}
+    ev = {
+        "symbol": "AXTI",
+        "price": 78.17,
+        "entry_low": 71.5,
+        "entry_high": 74.5,
+        "stop": 67.5,
+        "target": 96.5,
+        "held": True,
+        "catalyst": None,
+        "portfolio_facts": dict(PORTFOLIO_UNAVAILABLE),
+    }
     result = ces.evaluate(ev)
     text = ces.render_operator(result, ev)
     assert result["rr"] == 3.14

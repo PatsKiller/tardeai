@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "opportunity_actions_20261009",
+  "files": [
+    "tests/test_opportunity_actions_20261009.py"
+  ],
+  "comment": [
+    "Opportunity actions (operator 2026-10-09): Request CIO review (symbol-thesis priority queue; operator flags and the",
+    "CIO's top-ranked names served first), Add to watchlist, CIO-memory fallback, quote-page news filter."
+  ]
+}

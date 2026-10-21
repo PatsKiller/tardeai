@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "completion_119_lanes_20261011",
+  "files": [
+    "tests/test_completion_119_01_03_20261011.py",
+    "tests/test_completion_119_04_06_20261011.py",
+    "tests/test_refactor_shard_05_20261011.py",
+    "tests/test_refactor_shard_06_20261011.py",
+    "tests/test_completion_119_shards_07_08_20261011.py",
+    "tests/test_completion_119_candidates_20261011.py"
+  ]
+}

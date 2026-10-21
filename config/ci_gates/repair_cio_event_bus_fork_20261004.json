@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "repair_cio_event_bus_fork_20261004",
+  "files": [
+    "tests/test_repair_cio_event_bus_fork_20261004.py"
+  ],
+  "comment": [
+    "CIO event bus fork repair: re-link without loss/reorder, byte-exact archive, idempotent (2026-10-04)."
+  ]
+}

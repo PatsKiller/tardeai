@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "wake_research_persist_hits",
+  "files": [
+    "tests/test_wake_research_persist_hits.py"
+  ]
+}

@@ -59,9 +59,11 @@ from typing import Any, Callable, Iterable, Mapping
 
 from scripts.lib.governed_commitment import (
     OUTCOME_SCHEMA,
+    UNSCOREABLE,
     durable_outcome_ledger_append,
     evaluate_outcome,
     claim_is_falsifiable,
+    horizon_closes_at,
     is_prediction,  # public compatibility import
 
 )
@@ -71,6 +73,10 @@ LESSON_SCHEMA = "LessonCandidate@v1"
 SWEEP_SCHEMA = "CommitmentOutcomeSweep@v1"
 
 SETTLED = ("CONFIRMED", "REFUTED", "EXPIRED")
+#: Outcomes after which a commitment is never re-evaluated. UNSCOREABLE is
+#: terminal but is not a score: it never counts toward `scored`, calibration or
+#: lessons (2026-10-09; 883 template rows were re-evaluated nightly forever).
+TERMINAL = SETTLED + (UNSCOREABLE,)
 
 #: A claim that only asserts its own occurrence cannot be contradicted by any
 #: later observation. Matched on the live template, not invented: 96 of 224
@@ -155,6 +161,8 @@ class SweepResult:
     already_settled: int = 0
     scored: int = 0
     unfalsifiable: int = 0
+    unscoreable: int = 0
+    horizon_guarded: int = 0
     outcomes: list[dict[str, Any]] = field(default_factory=list)
     lessons: list[dict[str, Any]] = field(default_factory=list)
     by_outcome: dict[str, int] = field(default_factory=dict)
@@ -169,6 +177,8 @@ class SweepResult:
             "already_settled": self.already_settled,
             "scored": self.scored,
             "unfalsifiable": self.unfalsifiable,
+            "unscoreable": self.unscoreable,
+            "horizon_guarded": self.horizon_guarded,
             "by_outcome": dict(self.by_outcome),
             "lessons_proposed": len(self.lessons),
             "financial_action": False,
@@ -201,44 +211,68 @@ def sweep_due_commitments(
     settled_ids = {
         str(row.get("commitment_id"))
         for row in led
-        if str(row.get("outcome") or "") in SETTLED
+        if str(row.get("outcome") or "") in TERMINAL
     }
     res = SweepResult()
 
     for commitment in commitments:
         res.scanned += 1
         due = _parse_ts(commitment.get("due_at"))
-        if due is None or due > when:
+        if due is None:
+            continue
+        # 2026-10-09: never close a window before created_at + horizon. The
+        # cortex producer minted due_at = now+7d whatever the horizon, so a 14d
+        # claim (XLB, gcmt_c300f64e4756a9b68285d474) was due at half-time. The
+        # frozen row is not rewritten; the sweep reads the later of the two.
+        closes = horizon_closes_at(commitment)
+        effective_due = max(due, closes) if closes is not None else due
+        if effective_due > when:
+            if due <= when:
+                res.horizon_guarded += 1
             continue
         res.due += 1
         cid = str(commitment.get("commitment_id") or "")
         if cid in settled_ids:
             res.already_settled += 1
             continue
+        # Provider and evaluator see the effective window close (an in-memory
+        # view; the commitment itself is never mutated).
+        scoring_view: Mapping[str, Any] = commitment
+        if effective_due != due:
+            scoring_view = {**commitment, "due_at": _iso(effective_due),
+                            "minted_due_at": commitment.get("due_at")}
 
         ok, reason = claim_is_falsifiable(commitment)
+        marker = commitment.get("scoreability")
+        unscoreable_reason = None
         if not ok:
-            res.unfalsifiable += 1
+            unscoreable_reason = f"claim_not_falsifiable:{reason}"
+        elif isinstance(marker, Mapping) and str(marker.get("state") or "") == UNSCOREABLE:
+            unscoreable_reason = f"unscoreable_at_mint:{marker.get('reason') or 'unspecified'}"
+        if unscoreable_reason is not None:
+            # Terminal and append-only: one row, then the commitment is in
+            # settled_ids and is never re-evaluated. A legacy
+            # INSUFFICIENT_EVIDENCE/claim_not_falsifiable row is left untouched.
             outcome = {
                 "schema_version": OUTCOME_SCHEMA,
                 "commitment_id": cid,
-                "outcome": "INSUFFICIENT_EVIDENCE",
-                "errors": [f"claim_not_falsifiable:{reason}"],
+                "outcome": UNSCOREABLE,
+                "errors": [unscoreable_reason],
                 "evaluated_at": _iso(when),
                 "evaluator_identity": evaluator_identity,
                 "authority": AUTHORITY,
                 "mbi_behavior": 0,
                 "idempotency_key": hashlib.sha256(
-                    f"{cid}|unfalsifiable|{reason}".encode()
+                    f"{cid}|{UNSCOREABLE}|{unscoreable_reason}".encode()
                 ).hexdigest()[:32],
             }
         else:
             try:
-                observation = provider(commitment)
+                observation = provider(scoring_view)
             except Exception as exc:
                 observation = {"available": False, "reason": "observation_provider_unavailable:" + type(exc).__name__}
             outcome = evaluate_outcome(
-                dict(commitment),
+                dict(scoring_view),
                 observation=observation,
                 now=when,
                 evaluator_identity=evaluator_identity,
@@ -250,7 +284,15 @@ def sweep_due_commitments(
             res.outcomes.append(outcome)
             verdict = str(outcome.get("outcome") or "")
             res.by_outcome[verdict] = res.by_outcome.get(verdict, 0) + 1
+            if verdict == UNSCOREABLE:
+                settled_ids.add(cid)
+                res.unscoreable += 1
+                # Counted after dedupe (was before it: the same 883 rows were
+                # re-counted "unfalsifiable" every night with nothing appended).
+                if not ok:
+                    res.unfalsifiable += 1
             if verdict in SETTLED:
+                settled_ids.add(cid)
                 res.scored += 1
             # A lesson is proposed only where something was actually learned:
             # a prediction that closed against a real observable.

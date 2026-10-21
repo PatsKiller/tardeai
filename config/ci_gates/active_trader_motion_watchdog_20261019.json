@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "active_trader_motion_watchdog_20261019",
+  "files": [
+    "tests/test_active_trader_motion_watchdog_20261019.py"
+  ],
+  "anchor": "ACTIVE_TRADER_MOTION_WATCHDOG_20261019",
+  "comment": [
+    "ANCHOR: ACTIVE_TRADER_MOTION_WATCHDOG_20261019 — operator decision 2026-10-19: the motion loop stays a systemd",
+    "user unit (gate line fixed to /etc/tradeai/enable-active-trader-motion, no misspelt dir) and n8n owns its",
+    "supervision: lane active-trader-motion-watchdog dispatch-live */5 like the comms consumer (canary, own flock,",
+    "live_arg --apply, enforced env closure, REVIEWED contract); bands HEALTHY/STALE/DEGRADED/DOWN/DISABLED, trading-day",
+    "window, band-change dedupe via the host comms-intent path, LaneRunReceipt@v2; the operator packet (grant id",
+    "verified, CLOSED-session start, archive-not-delete). Hermetic: tmp heartbeat, fake /proc, clock, marker, systemctl."
+  ]
+}

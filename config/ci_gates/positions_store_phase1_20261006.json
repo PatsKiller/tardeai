@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "positions_store_phase1_20261006",
+  "files": [
+    "tests/test_positions_store_phase1_20261006.py"
+  ],
+  "comment": [
+    "Positions store phase 1 (shadow, one writer positions_sync.py) + the 2026-10-06 Schwab validation fixes:",
+    "per-account basis check that applies broker basis, CSV lot no longer outranks the broker, reinvestment",
+    "drift auto-applied, every holdings.json read-modify-write under the shared lock (operator 2026-10-06)."
+  ]
+}

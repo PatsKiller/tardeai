@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "run_from_release_20261015",
+  "files": [
+    "tests/test_run_from_release_20261015.py"
+  ],
+  "comment": [
+    "Run-from-release tooling (WS7-01 / WS8-14, 2026-10-15): cron $PY and most user units execute the dev",
+    "checkout's .venv. Candidate crontab per cohort (strippable prefix, $PY -> $RPY, exact revert round",
+    "trip, lane-registry gate), unit drop-ins with blockers, sandboxed --help / import-probe verifier,",
+    "forced-run probe script, write-path scan. Hermetic: fake trees, fake runner; no crontab/systemctl/bwrap."
+  ]
+}

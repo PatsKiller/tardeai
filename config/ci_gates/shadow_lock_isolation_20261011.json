@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "shadow_lock_isolation_20261011",
+  "files": [
+    "tests/test_shadow_lock_isolation_20261011.py"
+  ],
+  "comment": [
+    "Shadow lock isolation (2026-10-11, Agent LK, LOCK_STEAL finding): a dry_run fire takes <lock>.dryrun and",
+    "never the lane's live lock (a same-minute shadow fire used to make the real cron `flock -n` skip: 8 real",
+    "runs on 6 lanes in ~17 h); a live fire still contends on the shared lock; the receipt records the lock.",
+    "Hermetic: tmp locks, real flock and safe_flock.sh, /bin/echo as the command."
+  ]
+}

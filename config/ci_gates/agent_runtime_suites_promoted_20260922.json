@@ -1,0 +1,27 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agent_runtime_suites_promoted_20260922",
+  "files": [
+    "tests/test_agent_context_envelope.py",
+    "tests/test_agent_decision_payload.py",
+    "tests/test_agent_replay_harness.py",
+    "tests/test_agent_run_trace.py",
+    "tests/test_agent_runtime_critics.py",
+    "tests/test_agent_runtime_deadlines.py",
+    "tests/test_agent_runtime_instrumentation.py",
+    "tests/test_agent_runtime_knowledge.py",
+    "tests/test_agent_runtime_migration_contract.py",
+    "tests/test_agent_runtime_missing_modules.py"
+  ],
+  "comment": [
+    "2026-09-22 P6 — ten suites promoted out of UNLISTED_BASELINE.",
+    "",
+    "Measured before this entry: 1,461 test files, 506 run by CI (34.6%), with",
+    "949 files sitting in check_test_coverage.UNLISTED_BASELINE as inherited",
+    "debt. That baseline makes the gap visible and may only shrink; these ten",
+    "shrink it. Each was run on 2026-09-22 and passes hermetically in under a",
+    "second with no database, network or broker — chosen for that reason, so",
+    "registering them adds real coverage without adding a flaky gate that",
+    "someone would later disable."
+  ]
+}

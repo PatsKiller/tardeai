@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "trading_read_only_lock_20261014",
+  "files": [
+    "tests/test_trading_lock_20261014.py",
+    "tests/test_trading_lock_coverage_20261014.py"
+  ],
+  "anchor": "TRADING_READ_ONLY_LOCK_20261014",
+  "comment": [
+    "ANCHOR: TRADING_READ_ONLY_LOCK_20261014 — incident SPCX: every broker place/replace/cancel path is",
+    "dominated by assert_trading_unlocked (static scan + mutation proof) and refuses with stubbed clients."
+  ]
+}

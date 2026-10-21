@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_home_memory_20261003",
+  "files": [
+    "tests/test_cio_home_memory_20261003.py"
+  ],
+  "comment": [
+    "/v3/cio/home memory: stream the action ledger, tail-read logs, one plan-store load (2026-10-03)."
+  ]
+}

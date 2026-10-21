@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "command_center",
+  "files": [
+    "tests/test_cio_command_center.py"
+  ]
+}

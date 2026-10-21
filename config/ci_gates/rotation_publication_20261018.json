@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "rotation_publication_20261018",
+  "files": [
+    "tests/test_rotation_publication_20261018.py"
+  ],
+  "comment": [
+    "Rotation publication: account-bound identity, real source clocks and grounded",
+    "stop claims; actual API/cache/digest/POST boundaries with fake external effects."
+  ]
+}

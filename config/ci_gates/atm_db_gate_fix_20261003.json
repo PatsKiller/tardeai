@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "atm_db_gate_fix_20261003",
+  "files": [
+    "tests/test_atm_db_gate_fix_20261003.py"
+  ],
+  "comment": [
+    "Auto-approver survives a dropped DB connection (fail-closed); market_day_gate runs its check (2026-10-03)."
+  ]
+}

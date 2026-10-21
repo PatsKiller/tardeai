@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "scheduler_operations",
+  "files": [
+    "tests/test_scheduler_operations.py",
+    "tests/test_n8n_release_rebind.py",
+    "tests/test_scheduler_launcher_roots.py"
+  ],
+  "comment": [
+    "Runtime convergence: denied observations, unregistered schedulers, lock skips,",
+    "shadow/live separation and release rebind coverage."
+  ]
+}

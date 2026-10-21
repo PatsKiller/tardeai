@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "catalyst_alpaca_mode_gate_20261014",
+  "files": [
+    "tests/test_catalyst_alpaca_mode_gate_20261014.py"
+  ],
+  "anchor": "CATALYST_ALPACA_MODE_GATE_20261014",
+  "comment": [
+    "ANCHOR: CATALYST_ALPACA_MODE_GATE_20261014 — catalyst_momentum_engine --generate-proposals",
+    "refuses only an explicit non-paper ALPACA_MODE; unset proceeds (G8 stopped copying it from",
+    ".env and the old equals-paper gate aborted every proposal run). Hermetic: _run stubbed."
+  ]
+}

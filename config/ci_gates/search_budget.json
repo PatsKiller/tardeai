@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "search_budget",
+  "files": [
+    "tests/test_search_budget_and_health.py"
+  ]
+}

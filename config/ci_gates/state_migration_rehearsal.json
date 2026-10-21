@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "state_migration_rehearsal",
+  "files": [
+    "tests/test_state_migration_rehearsal.py"
+  ],
+  "comment": [
+    "cc-whole-site-residual-v1 (2026-09-03): the guarded migration door. Every",
+    "rail is exercised against an ISOLATED byte-copied replica -- wrong SHA,",
+    "wrong manifest, changed hashes, missing/corrupt backup, no disk, active",
+    "writer, bad schema, interrupted write, financial conflict -- and every",
+    "failure proves the target's bytes came back unchanged. Financial truth",
+    "stores fail closed; recency never decides a financial value."
+  ]
+}

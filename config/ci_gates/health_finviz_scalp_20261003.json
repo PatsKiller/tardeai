@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "health_finviz_scalp_20261003",
+  "files": [
+    "tests/test_health_finviz_scalp_20261003.py"
+  ],
+  "comment": [
+    "Health criticals: Finviz cookie honours the API-token backstop; scalp policy skips are policy (2026-10-03)."
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "N8N_LANE_KIND",
+  "files": [
+    "tests/test_lane_registry_n8n_kind_20261008.py",
+    "tests/test_n8n_lane_cutover_20261008.py",
+    "tests/test_cutover_multiline_20261010.py",
+    "tests/test_n8n_lane_readiness_20261008.py"
+  ],
+  "comment": [
+    "2026-10-08 — lane registry scheduler kind `n8n` (scheduler-of-record program):",
+    "validation, ledger/receipt-proven presence, the double-scheduler conflicts,",
+    "the per-line `_cutover.py --lane` cutover/rollback against a fake crontab, and",
+    "the per-lane readiness verdicts. Hermetic; no registry row is flipped here.",
+    "2026-10-10 (D-3): one lane cutover retires up to 8 cron slots (list match, or string match with",
+    "--expect-lines); per-line tags, one write, re-read of every line, count-checked rollback. Hermetic."
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "social_inject_source_priority_20260928",
+  "files": [
+    "tests/test_social_inject_and_source_priority_20260928.py"
+  ],
+  "comment": [
+    "2026-09-28 — scanner social overlay was silently dead (_execute without fetch",
+    "returns True → 'bool' object is not iterable every live cycle) and source labels",
+    "were alphabetical (ai_discovered outranked screener); fixed + priority from config."
+  ]
+}

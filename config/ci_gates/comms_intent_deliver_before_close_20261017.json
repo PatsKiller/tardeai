@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "comms_intent_deliver_before_close_20261017",
+  "files": [
+    "tests/test_comms_intent_deliver_before_close_20261017.py"
+  ],
+  "anchor": "COMMS_INTENT_DELIVER_BEFORE_CLOSE_20261017",
+  "comment": [
+    "ANCHOR: COMMS_INTENT_DELIVER_BEFORE_CLOSE_20261017 — a comms-intent incident past its window closes only on the",
+    "incident notifier's own delivery evidence; undelivered (CAPPED / quiet-held) it is DEFERRED, still presented by",
+    "the fan-in, sent once in the next allowed batch (07:00 ET / cap reset), then closed. Hermetic: tmp ledgers, the",
+    "real consumer CLI, fan-in reader and notifier run() with a capture sender."
+  ]
+}

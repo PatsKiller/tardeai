@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "institutional_sizing",
+  "files": [
+    "tests/test_cio_institutional_sizing.py"
+  ]
+}

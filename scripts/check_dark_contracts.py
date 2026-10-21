@@ -248,6 +248,17 @@ def audit() -> dict[str, Any]:
         if not ok:
             uncompilable.append({"module": rel, "error": why})
 
+    # 2026-10-21 (release-1 integration of ci/deconflict-gates-index): the GATES list moved out of
+    # scripts/run_cio_hardening_ci.py into config/ci_gates/<name>.json (gate names, files and the
+    # comments kept verbatim). That list was part of this corpus as runner source, and gate names
+    # such as `alert_curation` counted as references. Read the registry text (added after the
+    # compile check: it is JSON, not a module), so the move alone changes no verdict. Whether a CI
+    # gate should count as a consumer at all is a separate decision for this guard's owner.
+    gates_dir = REPO / "config" / "ci_gates"
+    if gates_dir.is_dir():
+        corpus["config/ci_gates"] = "".join(
+            p.read_text(encoding="utf-8", errors="ignore") for p in sorted(gates_dir.glob("*.json")))
+
     names = {Path(rel).stem for rel in defs}
     all_lits = {lit for lits in defs.values() for lit in lits}
     index = build_reference_index(corpus, names, all_lits)

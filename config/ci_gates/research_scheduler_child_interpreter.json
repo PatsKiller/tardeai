@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "research_scheduler_child_interpreter",
+  "files": [
+    "tests/test_research_scheduler_child_interpreter.py"
+  ]
+}

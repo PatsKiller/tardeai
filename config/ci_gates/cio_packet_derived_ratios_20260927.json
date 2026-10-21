@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_packet_derived_ratios_20260927",
+  "files": [
+    "tests/test_cio_packet_derived_ratios_20260927.py"
+  ],
+  "comment": [
+    "2026-09-27 -- the options CIO packet supplies the spread ratios a reviewer derives",
+    "(loss:credit 2.15 refused the DELL MONITOR_ONLY review); the traceability rail is",
+    "unchanged and still refuses a number that is not in the facts."
+  ]
+}

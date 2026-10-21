@@ -119,7 +119,8 @@ def test_g3_lane_registry_row_has_output_signal():
 
 
 def test_g3_on_hardening_ci_allowlist():
-    src = HARDENING.read_text(encoding="utf-8")
+    from scripts.lib import ci_gates  # gates: one file per gate (2026-10-21)
+    src = HARDENING.read_text(encoding="utf-8") + ci_gates.registry_text(ROOT)
     assert "tests/test_overnight_g3_docs_index.py" in src
     assert "overnight_g3_docs_index" in src
     assert "docs_index_drift" in src or "--check-index" in src

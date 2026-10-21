@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "schwab_paused_fail_loud_20261014",
+  "files": [
+    "tests/test_schwab_paused_proof_20261014.py",
+    "tests/test_schwab_paused_stops_20261014.py",
+    "tests/test_schwab_paused_surfaces_20261014.py"
+  ],
+  "comment": [
+    "Schwab paused (incident 2026-10-14): the pause switch + fail-loud readers (A-H; operator plan items 3+4)."
+  ]
+}

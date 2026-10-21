@@ -1,0 +1,24 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cc_header_truth_v2",
+  "files": [
+    "tests/test_setup_run_contract.py",
+    "tests/test_cc_header_truth_v2_api.py",
+    "tests/test_quote_selection_contract.py",
+    "tests/test_api_v2_ruff_quality_corrections.py",
+    "tests/test_portfolio_aggregate_contract.py",
+    "tests/test_header_truth_regression.py",
+    "tests/test_design_features.py"
+  ],
+  "comment": [
+    "cc-header-truth-v2 (2026-09-03): one canonical GO/WAIT/NOGO summary,",
+    "VIX source+observation, ALL-ACCOUNTS portfolio aggregate, journal",
+    "basis/window/scope — all wired into the served endpoints, not just",
+    "defined and left unused.",
+    "The 2026-09-04 live capture: the Sep-3/Sep-4 clock contradiction",
+    "and the 48/60/0 count contradiction, pinned against verbatim",
+    "production fixtures in tests/fixtures/header_truth/.",
+    "Design toggles, and the fault signals the loader refuses to make",
+    "configurable — the exemption is the thing under test."
+  ]
+}
