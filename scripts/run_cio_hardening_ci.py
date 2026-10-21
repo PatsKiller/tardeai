@@ -36,6 +36,9 @@ GATES = [
             "tests/test_n8n_siem_recovery_truth_20261018.py",
         ],
     ),
+    # ANCHOR: CI_DURATION_HINTS_20261021 — alignment audit H5: config/ci_shard_duration_hints.json refreshed from
+    # ci-gate run 39661659376's cio-shard-timings artifact; fails when >10% of registered files lack a hint.
+    ("ci_duration_hints_20261021", ["tests/test_ci_duration_hints_20261021.py"]),
     # Atomic bounded recovery reservations; critical enrollment survives diagnosis budget exhaustion.
     ("n8n_supervisor_budget_20261018", ["tests/test_n8n_supervisor_budget_20261018.py"]),
     ("self_heal_fix_acceptance_20261018", ["tests/test_self_heal_fix_acceptance_20261018.py"]),
@@ -5937,6 +5940,18 @@ def write_duration_hints(*, jobs: int) -> int:
 
 #: Per-file seconds measured by the sharded run (overlays DURATION_HINTS_PATH for balancing).
 SHARD_HINTS_PATH = REPO / "config" / "ci_shard_duration_hints.json"
+
+
+#: 2026-10-21 (alignment audit H5): 346 of 1,236 registered files had no shard hint and were
+#: weighted at DEFAULT_FILE_SECONDS, so shard balance and estimates were fiction. More than this
+#: fraction missing fails tests/test_ci_duration_hints_20261021.py.
+HINT_MISSING_MAX_FRACTION = 0.10
+
+
+def hint_coverage(gates, hints: dict[str, float]) -> tuple[list[str], int]:
+    """(registered existing files with no hint, number of registered existing files)."""
+    files = sorted({p for _n, ps in gates for p in ps if (REPO / p).is_file()})
+    return [p for p in files if p not in hints], len(files)
 
 
 def shard_hints() -> dict[str, float]:
