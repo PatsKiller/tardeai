@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+from decimal import Decimal
 
 import pytest
 
@@ -80,3 +81,20 @@ def test_finite_numeric_values_remain_finite():
 
     assert _strict_loads(encoded) == {"integer": 2, "float": 1.5}
     assert math.isfinite(_strict_loads(encoded)["float"])
+
+
+def test_decimal_normalization_preserves_finite_precision_and_nulls_nonfinite():
+    precise = Decimal("12345678901234567890.12345678901234567890")
+    result = {
+        "key_levels": {},
+        "precise_value": precise,
+        "nonfinite_values": [Decimal("NaN"), Decimal("Infinity"), Decimal("-Infinity")],
+    }
+
+    _, full_result = indicator_cache_json_fields(result)
+
+    assert _strict_loads(full_result) == {
+        "key_levels": {},
+        "precise_value": str(precise),
+        "nonfinite_values": [None, None, None],
+    }

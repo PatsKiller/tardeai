@@ -25,8 +25,7 @@ def normalize_nonfinite_json(value: Any) -> Any:
         number = float(value)
         return number if math.isfinite(number) else None
     if isinstance(value, Decimal):
-        number = float(value)
-        return number if math.isfinite(number) else None
+        return value if value.is_finite() else None
     if isinstance(value, Mapping):
         return {normalize_nonfinite_json(key): normalize_nonfinite_json(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
