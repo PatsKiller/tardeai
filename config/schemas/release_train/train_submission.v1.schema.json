@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tradeai:release-train/TrainSubmission.schema.json",
+  "title": "TrainSubmission@v1",
+  "description": "An agent's request that a published PR head be considered for a release train (Release Train v2 Phase 1, enhanced design section 4 'Submitted'). Publishing a branch is recorded here; it is never a merge or a deploy. Program rules (scripts/lib/release_train_contracts.py): submission_id = rts-<pr>-<head_sha[:12]>; a PR may not depend on itself.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "submission_id",
+    "repo",
+    "pr_number",
+    "head_sha",
+    "head_ref",
+    "base_ref",
+    "agent",
+    "submitted_at"
+  ],
+  "properties": {
+    "schema": {
+      "const": "TrainSubmission@v1"
+    },
+    "submission_id": {
+      "type": "string",
+      "pattern": "^rts-[0-9]{1,7}-[0-9a-f]{12}$"
+    },
+    "repo": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$"
+    },
+    "pr_number": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9999999
+    },
+    "head_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "head_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "base_ref": {
+      "const": "main"
+    },
+    "agent": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "submitted_at": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40
+    },
+    "depends_on": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9999999
+      },
+      "uniqueItems": true,
+      "maxItems": 200
+    },
+    "requested_window": {
+      "enum": [
+        "00:00",
+        "06:00",
+        "08:00",
+        "18:00",
+        null
+      ]
+    },
+    "changed_paths": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 400
+      },
+      "maxItems": 5000
+    },
+    "local_evidence": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "$ref": "#/$defs/local_evidence"
+      }
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 2000
+    }
+  },
+  "$defs": {
+    "local_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "ref",
+        "passed"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "test_run",
+            "dry_run",
+            "lint",
+            "ci_run",
+            "other"
+          ]
+        },
+        "ref": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 400
+        },
+        "sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "passed": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

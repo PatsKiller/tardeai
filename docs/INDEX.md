@@ -1959,6 +1959,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/R23_ADMIN_OBSERVABILITY_CLOSEOUT.md` | R23 Research, Data, Identity, and Notification Observability | review_required | OK | `724dbd33da08` |
 | `docs/ops/R24_LEARNING_MATURITY_AUDIT_CLOSEOUT.md` | R24 Learning, Maturity, and Audit Closeout | review_required | OK | `ca6b73be475c` |
 | `docs/ops/R9_2_PORTFOLIO_BRAIN_LIVE_CLOSEOUT_2026-08-23.md` | Trade AI v12 R9.2 - Portfolio Brain Live Closeout | review_required | OK | `456bfc103b56` |
+| `docs/ops/RELEASE_TRAIN_API.md` | Release train: read-only Command Center API (Phase 1) | review_required | OK | `a2974f07ca4e` |
 | `docs/ops/RESEARCH_COVERAGE_SNAPSHOT_2026-08-22.md` | Research coverage snapshot — 2026-08-22 10:24 ET | review_required | OK | `99a27d3b83ac` |
 | `docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md` | Research engine Flash-first failure — 2026-08-20 | review_required | OK | `f096edc0e822` |
 | `docs/ops/RESEARCH_LANE_HEALTH.md` | Research lane health + P0 outage (2026-08-21) | review_required | OK | `6c3418e95711` |

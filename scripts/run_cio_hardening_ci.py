@@ -5588,6 +5588,18 @@ GATES = [
         "schwab_reauth_stepup_fallback_20261021",
         ["tests/test_schwab_reauth_stepup_fallback_20261021.py"],
     ),
+    (
+        # ANCHOR: RELEASE_TRAIN_QUEUE_20261021 — Release Train v2 Phase 1 (build-only, nothing armed): six versioned
+        # contracts (TrainSubmission/Candidate/Evidence, ReleaseControl, TrainEvent, TrainOutcome @v1;
+        # config/schemas/release_train), the append-only release_queue_events store + rebuildable release_queue
+        # projection (migration written, NOT applied), the risk classifier (config/release_train_policy.json, seeded
+        # from ci_risk_tiers; unknown = held, broker always held, more restrictive wins; a positive control per
+        # class), the PR-hygiene census (exclusive buckets, open = sum or INCOMPLETE) and the read-only GET
+        # /api/v2/coordination/release-train[/queue|/trains|/trains/{id}|/events] (docs/ops/RELEASE_TRAIN_API.md).
+        # Hermetic: fake db_query / DB-API connections (psycopg2 stubbed when absent), tmp receipts and latches.
+        "release_train_queue_20261021",
+        ["tests/test_release_train_queue_20261021.py"],
+    ),
 ]
 
 
