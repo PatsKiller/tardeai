@@ -31,6 +31,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 
+from lib.json_safety import indicator_cache_json_fields
+
 LANE_ID = "indicator-engine"
 UNIT = "indicator_confluence_cache rows upserted"
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "indicator_strategies.yaml"
@@ -132,13 +134,14 @@ def stale_symbols(cur, symbols: Iterable[str], profile: str, stale_after_hours: 
 
 
 def upsert_params(symbol: str, profile: str, r: dict, ttl_minutes: int) -> tuple:
+    key_levels_json, full_result_json = indicator_cache_json_fields(r)
     return (symbol, profile, r.get("confluence_score", 0), r.get("confluence_tier"),
             r.get("signals_bullish", 0), r.get("signals_bearish", 0), r.get("signals_neutral", 0),
             r.get("strategy_badges", []), r.get("bearish_badges", []),
-            json.dumps(r.get("key_levels", {})),
+            key_levels_json,
             r.get("stop_price"), r.get("target_price"),
             r.get("atr"), r.get("adx_regime"), r.get("entry_quality"),
-            json.dumps(r, default=str), int(ttl_minutes))
+            full_result_json, int(ttl_minutes))
 
 
 def proxy_codes() -> frozenset[str]:

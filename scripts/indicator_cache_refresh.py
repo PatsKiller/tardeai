@@ -27,6 +27,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 logger = logging.getLogger(__name__)
 
 from indicator_engine import analyze_confluence
+from lib.json_safety import indicator_cache_json_fields
 
 try:
     import psycopg2
@@ -91,6 +92,8 @@ try:
                         "new_state": new_state, "affiliation": aff,
                     })
 
+                key_levels_json, full_result_json = indicator_cache_json_fields(r)
+
                 cur.execute(
                     """INSERT INTO indicator_confluence_cache
                        (symbol, profile, confluence_score, confluence_tier,
@@ -120,10 +123,10 @@ try:
                      r.get('signals_bullish', 0), r.get('signals_bearish', 0),
                      r.get('signals_neutral', 0),
                      r.get('strategy_badges', []), r.get('bearish_badges', []),
-                     json.dumps(r.get('key_levels', {})),
+                     key_levels_json,
                      r.get('stop_price'), r.get('target_price'),
                      r.get('atr'), r.get('adx_regime'), r.get('entry_quality'),
-                     json.dumps(r))
+                     full_result_json)
                 )
                 conn.commit()
                 success += 1
