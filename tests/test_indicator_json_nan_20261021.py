@@ -44,26 +44,53 @@ def test_json_boundary_normalizes_nested_nonfinite_values(bad_number):
     assert "NaN" not in encoded and "Infinity" not in encoded
 
 
-def test_indicator_universe_writer_serializes_both_json_columns_strictly():
+def test_indicator_universe_upsert_params_normalize_json_and_scalar_fields():
     result = {
         "ok": True,
+        "confluence_score": float("nan"),
+        "signals_bullish": float("inf"),
+        "signals_bearish": float("-inf"),
+        "signals_neutral": float("nan"),
+        "stop_price": float("nan"),
+        "target_price": 14.25,
+        "atr": float("inf"),
         "key_levels": {"ema": {"value": float("nan")}},
         "nested": [float("inf"), {"atr": float("-inf")}],
     }
 
     params = upsert_params("TEST", "swing", result, ttl_minutes=60)
 
+    assert {index: params[index] for index in (2, 4, 5, 6, 10, 12)} == {
+        index: None for index in (2, 4, 5, 6, 10, 12)
+    }
+    assert params[11] == 14.25
     assert _strict_loads(params[9]) == {"ema": {"value": None}}
     assert _strict_loads(params[15]) == {
         "ok": True,
+        "confluence_score": None,
+        "signals_bullish": None,
+        "signals_bearish": None,
+        "signals_neutral": None,
+        "stop_price": None,
+        "target_price": 14.25,
+        "atr": None,
         "key_levels": {"ema": {"value": None}},
         "nested": [None, {"atr": None}],
     }
 
 
+def test_active_indicator_cache_refresh_uses_shared_writer_params():
+    source = (ROOT / "scripts" / "indicator_cache_refresh.py").read_text(encoding="utf-8")
+    assert "from lib.indicator_universe_lane import upsert_params" in source
+    assert "upsert_params(s, 'swing', r, ttl_minutes=60)" in source
+    insert = source.split("INSERT INTO indicator_confluence_cache", 1)[1].split("ON CONFLICT", 1)[0]
+    assert insert.count("%s") == len(upsert_params("TEST", "swing", _indicator_result(), ttl_minutes=60)) == 17
+    assert upsert_params("TEST", "swing", _indicator_result(), ttl_minutes=60)[-1] == 60
+
+
 def test_legacy_cache_writer_serialization_contract_handles_nested_nonfinite():
-    # indicator_cache_refresh uses these same two serialization calls at its DB
-    # boundary; keeping both fields strict prevents a partial fix of key_levels only.
+    # Both refresh jobs route through the same serialization calls; keeping both
+    # fields strict prevents a partial fix of key_levels only.
     result = {
         "key_levels": {"ema": {"value": float("nan")}},
         "full_result": [float("inf"), {"signal": float("-inf")}],
@@ -199,8 +226,14 @@ def test_alert_test_connection_pins_effective_libpq_destination():
 def _indicator_result():
     return {
         "ok": True,
-        "confluence_score": 7.25,
+        "confluence_score": float("nan"),
+        "signals_bullish": float("inf"),
+        "signals_bearish": float("-inf"),
+        "signals_neutral": float("nan"),
         "key_levels": {"ema": {"value": float("nan")}, "atr": [float("inf"), 12.5]},
+        "stop_price": float("nan"),
+        "target_price": 12.5,
+        "atr": float("-inf"),
         "metrics": {"outer": [float("-inf"), {"finite": 4}]},
         "signals": {},
     }
@@ -227,11 +260,21 @@ def test_confluence_handlers_write_strict_cache_json(monkeypatch, handler_name):
 
     cache_write = next(call for call in writes if "indicator_confluence_cache" in call[0])
     params = cache_write[1]
+    assert {index: params[index] for index in (2, 4, 5, 6, 10, 12)} == {
+        index: None for index in (2, 4, 5, 6, 10, 12)
+    }
+    assert params[11] == 12.5
     assert _strict_loads(params[9]) == {"ema": {"value": None}, "atr": [None, 12.5]}
     assert _strict_loads(params[15]) == {
         "ok": True,
-        "confluence_score": 7.25,
+        "confluence_score": None,
+        "signals_bullish": None,
+        "signals_bearish": None,
+        "signals_neutral": None,
         "key_levels": {"ema": {"value": None}, "atr": [None, 12.5]},
+        "stop_price": None,
+        "target_price": 12.5,
+        "atr": None,
         "metrics": {"outer": [None, {"finite": 4}]},
         "signals": {},
     }
@@ -273,7 +316,8 @@ def test_postgres_jsonb_round_trip_accepts_normalized_cache_fields():
             stored_levels, stored_result = cursor.fetchone()
         assert stored_levels == {"ema": {"value": None}, "atr": [None, 12.5]}
         assert stored_result["metrics"] == {"outer": [None, {"finite": 4}]}
-        assert stored_result["confluence_score"] == 7.25
+        assert stored_result["confluence_score"] is None
+        assert stored_result["target_price"] == 12.5
     finally:
         conn.rollback()
         conn.close()

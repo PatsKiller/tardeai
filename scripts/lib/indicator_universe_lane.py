@@ -31,7 +31,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 
-from lib.json_safety import indicator_cache_json_fields
+from lib.json_safety import indicator_cache_json_fields, indicator_cache_scalar_fields
 
 LANE_ID = "indicator-engine"
 UNIT = "indicator_confluence_cache rows upserted"
@@ -135,12 +135,13 @@ def stale_symbols(cur, symbols: Iterable[str], profile: str, stale_after_hours: 
 
 def upsert_params(symbol: str, profile: str, r: dict, ttl_minutes: int) -> tuple:
     key_levels_json, full_result_json = indicator_cache_json_fields(r)
-    return (symbol, profile, r.get("confluence_score", 0), r.get("confluence_tier"),
-            r.get("signals_bullish", 0), r.get("signals_bearish", 0), r.get("signals_neutral", 0),
+    scalar_fields = indicator_cache_scalar_fields(r)
+    return (symbol, profile, scalar_fields["confluence_score"], r.get("confluence_tier"),
+            scalar_fields["signals_bullish"], scalar_fields["signals_bearish"], scalar_fields["signals_neutral"],
             r.get("strategy_badges", []), r.get("bearish_badges", []),
             key_levels_json,
-            r.get("stop_price"), r.get("target_price"),
-            r.get("atr"), r.get("adx_regime"), r.get("entry_quality"),
+            scalar_fields["stop_price"], scalar_fields["target_price"],
+            scalar_fields["atr"], r.get("adx_regime"), r.get("entry_quality"),
             full_result_json, int(ttl_minutes))
 
 

@@ -27,7 +27,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 logger = logging.getLogger(__name__)
 
 from indicator_engine import analyze_confluence
-from lib.json_safety import indicator_cache_json_fields
+from lib.indicator_universe_lane import upsert_params
 
 try:
     import psycopg2
@@ -92,8 +92,6 @@ try:
                         "new_state": new_state, "affiliation": aff,
                     })
 
-                key_levels_json, full_result_json = indicator_cache_json_fields(r)
-
                 cur.execute(
                     """INSERT INTO indicator_confluence_cache
                        (symbol, profile, confluence_score, confluence_tier,
@@ -101,7 +99,7 @@ try:
                         strategy_badges, bearish_badges, key_levels,
                         stop_price, target_price, atr, adx_regime, entry_quality,
                         full_result, computed_at, expires_at)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),NOW()+INTERVAL '1 hour')
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW(),NOW()+make_interval(mins => %s))
                        ON CONFLICT (symbol,profile) DO UPDATE SET
                          confluence_score=EXCLUDED.confluence_score,
                          confluence_tier=EXCLUDED.confluence_tier,
@@ -118,15 +116,8 @@ try:
                          entry_quality=EXCLUDED.entry_quality,
                          full_result=EXCLUDED.full_result,
                          computed_at=NOW(),
-                         expires_at=NOW()+INTERVAL '1 hour'""",
-                    (s, 'swing', r.get('confluence_score', 0), r.get('confluence_tier'),
-                     r.get('signals_bullish', 0), r.get('signals_bearish', 0),
-                     r.get('signals_neutral', 0),
-                     r.get('strategy_badges', []), r.get('bearish_badges', []),
-                     key_levels_json,
-                     r.get('stop_price'), r.get('target_price'),
-                     r.get('atr'), r.get('adx_regime'), r.get('entry_quality'),
-                     full_result_json)
+                         expires_at=EXCLUDED.expires_at""",
+                    upsert_params(s, 'swing', r, ttl_minutes=60)
                 )
                 conn.commit()
                 success += 1

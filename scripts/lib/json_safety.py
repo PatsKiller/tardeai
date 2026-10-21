@@ -53,6 +53,20 @@ def json_dumps_for_postgres(value: Any, *, default: Callable[[Any], Any] | None 
     return json.dumps(normalize_nonfinite_json(value), default=default, allow_nan=False)
 
 
+def indicator_cache_scalar_fields(result: Mapping[str, Any]) -> dict[str, Any]:
+    """Normalize numeric scalar columns alongside the indicator cache JSON fields."""
+    defaults = {
+        "confluence_score": 0,
+        "signals_bullish": 0,
+        "signals_bearish": 0,
+        "signals_neutral": 0,
+        "stop_price": None,
+        "target_price": None,
+        "atr": None,
+    }
+    return {name: normalize_nonfinite_json(result.get(name, default)) for name, default in defaults.items()}
+
+
 def indicator_cache_json_fields(result: Mapping[str, Any]) -> tuple[str, str]:
     """Serialize the ``key_levels`` and full-result JSON columns for indicator cache writers."""
     return (
