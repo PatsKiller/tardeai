@@ -425,11 +425,11 @@
         },
         "hermes_external_research": {
           "primary": {
-            "provider": "deepseek",
+            "provider": "grok",
             "policy": "FAST"
           },
           "secondary": {
-            "provider": "deepseek",
+            "provider": "chatgpt",
             "policy": "FAST"
           },
           "fallback": {
@@ -438,7 +438,13 @@
           },
           "health_gate": true,
           "latency_budget_ms": 150000,
-          "cost_ceiling_usd": 0.3
+          "cost_ceiling_usd": 0.3,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
         },
         "hermes_golden_judge": {
           "primary": {
@@ -1557,6 +1563,52 @@
           }
         },
         "analyst_report_critique": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
+        },
+        "due_diligence_questions": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "chatgpt",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "deepseek",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05,
+          "transport_failover": true,
+          "route_profile": "n8n_oauth_first",
+          "reasoning_lane": {
+            "provider": "deepseek",
+            "policy": "PRO_THINK"
+          }
+        },
+        "blind_review_runner": {
           "primary": {
             "provider": "grok",
             "policy": "FAST"

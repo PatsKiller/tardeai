@@ -5239,6 +5239,16 @@ GATES = [
         ["tests/test_n8n_llm_bridge_routes_b2_20261015.py"],
     ),
     (
+        # n8n llm lanes on the governed bridge, batch 3 (2026-10-15): hermes_external_researcher bridge mode (lane
+        # ignored, paid claude lane refused, capability cache bypassed) for hermes-top20-external-intel (one call per
+        # symbol) and due-diligence-questions (curation = ONE bridge request as due_diligence_questions, no ladder or
+        # escalation; --route one researcher call per question); llm-deferred-drain (leases only the bound process
+        # set, never honours a row's lane/model); shadow-batch-generator (blind pass = one bridge request,
+        # SINGLE_LANE). Hermetic: fake _call_bridge, poison provider modules, fake queue/DB/subprocess.
+        "n8n_llm_bridge_routes_b3_20261015",
+        ["tests/test_n8n_llm_bridge_routes_b3_20261015.py"],
+    ),
+    (
         # Run-from-release P0 (2026-10-15): prepare builds or reuses a shared venv keyed by
         # py<X.Y.Z>-sha12(requirements.lock.txt) and links <release>/.venv to it. Pins: hash keying; reuse runs
         # no pip; a failed install/smoke leaves no partial venv and the previous one untouched; the link and

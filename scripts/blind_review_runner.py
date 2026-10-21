@@ -36,6 +36,15 @@ author a price, a payoff, or an eligibility decision — those stay in
 deterministic code. This module only ever writes into the packet's HORIZON
 dimensions (thesis, direction, timing, confidence), never into a family's
 mechanics or state.
+
+GOVERNED BRIDGE (n8n path, 2026-10-15, llm lane batch 3)
+--------------------------------------------------------
+With TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from the allowlist ``llm_route`` of lane
+shadow-batch-generator-at-15-10, process blind_review_runner) the pass is ONE governed-bridge request (lane
+``bridge``): §23.4 lets no request choose a provider, so N "independent" requests through one route would only
+correlate. The result is therefore SINGLE_LANE by the rule above (never a consensus), disclosed in the badge.
+llm_lane is never imported on that path; a refusal is an incomplete lane (mode UNAVAILABLE). The cron path is
+unchanged.
 """
 from __future__ import annotations
 
@@ -44,6 +53,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -60,7 +70,20 @@ LANE_MODEL = {"chatgpt": "gpt-5.4", "grok": "grok-3-mini", "deepseek-flash": "de
 # back to gpt-4o-mini, i.e. another OpenAI model, which correlates with the
 # chatgpt lane and inflates apparent agreement while adding ~240s of timeout
 # ladder. Add `local` via BLIND_REVIEW_LANES only when Ollama is healthy.
+BRIDGE_LANE = "bridge"
+#: The n8n path's registered process + governed-bridge route (advisory_desk / blind_review_runner).
+BRIDGE_PROCESS_ID = "blind_review_runner"
+LANE_MODEL[BRIDGE_LANE] = "governed-bridge"
+
+
+def _via_bridge():
+    """The flag the n8n run executor binds from the allowlist llm_route; read directly."""
+    return os.environ.get("TRADEAI_LLM_VIA_BRIDGE", "off").strip().lower() in {"1", "on", "bridge"}
+
+
 def _default_lanes():
+    if _via_bridge():
+        return (BRIDGE_LANE,)
     raw = os.getenv("BLIND_REVIEW_LANES", "deepseek-flash,grok,chatgpt")
     return tuple(x.strip().lower() for x in raw.split(",") if x.strip())
 
@@ -146,7 +169,19 @@ def _sanitise(out: dict) -> dict:
 def run_one_lane(lane: str, facts: dict, *, timeout: int = BLIND_TIMEOUT) -> dict:
     """Call one lane blind. Returns {ok, lane, model, output|error}. Never raises
     — a lane failure must degrade the pass, not abort it."""
-    import llm_lane
+    via_bridge = _via_bridge()
+    if via_bridge:
+        from lib.llm_bridge_route import require_text_via_bridge
+
+        if lane != BRIDGE_LANE:
+            return {"ok": False, "lane": lane, "model": LANE_MODEL.get(lane),
+                    "error": "not on the governed-bridge path (the bridge chooses the provider)"}
+        llm_lane = SimpleNamespace(
+            available=lambda _lane: True,
+            generate=lambda prompt, lane=None, timeout=90, model=None, process_id=None: require_text_via_bridge(
+                BRIDGE_PROCESS_ID, prompt, timeout_s=timeout))
+    else:
+        import llm_lane
     result = {"ok": False, "lane": lane, "model": LANE_MODEL.get(lane)}
     try:
         if not llm_lane.available(lane):
@@ -207,7 +242,7 @@ def run_blind_pass(facts: dict, *, lanes=None, timeout: int = BLIND_TIMEOUT) -> 
     Returns a model_review block matching the packet contract, with the
     per-lane raw results attached for audit.
     """
-    lanes = tuple(lanes) if lanes else _default_lanes()
+    lanes = (BRIDGE_LANE,) if _via_bridge() else (tuple(lanes) if lanes else _default_lanes())
 
     # One assert_blind up front gives a single, clear failure if the facts carry
     # an anchor, rather than N identical per-lane failures.

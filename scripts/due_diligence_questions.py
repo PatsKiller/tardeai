@@ -57,6 +57,16 @@ to invent will still occasionally invent, and this system has paid for that befo
     python3 scripts/due_diligence_questions.py                 # dry run
     python3 scripts/due_diligence_questions.py --apply
     python3 scripts/due_diligence_questions.py --apply --route  # + request research
+
+GOVERNED BRIDGE (n8n path, 2026-10-15, llm lane batch 3)
+--------------------------------------------------------
+With TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from the allowlist ``llm_route`` of lane
+due-diligence-questions, process SET due_diligence_questions + hermes_external_research) the curation ladder above is
+replaced by ONE governed-bridge request as process ``due_diligence_questions``: the bridge walks grok -> chatgpt ->
+DeepSeek itself (operator D10), so this module neither picks a lane nor reaches the researcher's provider clients, and
+there is no operator-escalation step (a refusal is "model call failed" for that change: no narrative, no questions).
+--route asks the researcher ONCE per question (first ranked lane as the label); the child inherits the binding and
+calls only the bridge as process hermes_external_research. Grounding is enforced exactly as on the cron path.
 """
 from __future__ import annotations
 
@@ -471,10 +481,28 @@ def _curate_via_oauth(prompt: str) -> dict | None:
     return None
 
 
+#: The n8n path's curation process + governed-bridge route (advisory_desk / due_diligence_questions).
+BRIDGE_PROCESS_ID = "due_diligence_questions"
+
+
+def via_bridge() -> bool:
+    """The flag the n8n run executor binds from the allowlist llm_route; read directly."""
+    return os.environ.get("TRADEAI_LLM_VIA_BRIDGE", "off").strip().lower() in {"1", "on", "bridge"}
+
+
+def _curate_via_bridge(prompt: str) -> dict:
+    """ONE governed-bridge request; raises on a refusal (never a provider client, never an escalation)."""
+    from lib.llm_bridge_route import require_text_via_bridge
+
+    text = require_text_via_bridge(BRIDGE_PROCESS_ID, prompt, timeout_s=180, max_tokens=1500)
+    return {"text": text, "lane": "bridge", "model": "governed-bridge"}
+
+
 def ask_model(change: dict, items: list[dict]) -> dict:
     """One call, two outputs. Flash first, OAuth as escalation, then STOP.
 
-    Inverted from the house default on purpose — see the module docstring.
+    Inverted from the house default on purpose — see the module docstring. On the governed-bridge (n8n) path it is
+    ONE bridge request instead (see GOVERNED BRIDGE above).
     """
     ev = "\n".join(
         f'  {i["id"]}  ({i["date"]})'
@@ -486,6 +514,12 @@ def ask_model(change: dict, items: list[dict]) -> dict:
             f'{change["observed_at"]}')
     prompt = PROMPT.format(change=desc, evidence=ev)
 
+    if via_bridge():
+        res = _curate_via_bridge(prompt)
+        text = (res.get("text") or "").strip()
+        if text.startswith("```"):
+            text = text.split("```", 2)[1].lstrip("json").strip()
+        return {"parsed": json.loads(text), "lane": res["lane"], "model": res["model"]}
     # 1 flash -> 2 free OAuth -> 3 deepseek pro -> 4 ASK. Each step is tried once;
     # a lane that refuses (cap, circuit breaker, rate limit) is skipped, not retried.
     res = (_curate_via_deepseek(prompt, CURATION_MODEL)
@@ -682,6 +716,8 @@ def route(cur, limit: int) -> dict:
             LIMIT %s FOR UPDATE OF q SKIP LOCKED""", (limit,))
     rows = cur.fetchall()
     lanes = rank_research_lanes(cur)
+    if via_bridge():
+        lanes = lanes[:1]  # the governed bridge chooses the provider: one researcher call per question
     out = {"routed": 0, "failed": 0, "lanes_ranked": [l[0] for l in lanes], "detail": []}
     if not lanes:
         out["detail"].append("no research lane met the minimum success rate")
