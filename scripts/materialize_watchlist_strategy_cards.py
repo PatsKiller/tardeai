@@ -90,11 +90,32 @@ def _get_conn():
     return psycopg2.connect(host="localhost", dbname="trade_ai", user="trade_ai", password=pw)
 
 
+def _level(value):
+    """A finite float, or None. NaN/Infinity/None/garbage never become a card level (2026-10-21).
+
+    ticker_prices held close_price='NaN' for BHVN 2026-08-28 (yfinance). compute_support_resistance took it
+    as `latest`; NaN is truthy, so the enrichment fallback never ran and the 52-week fallback multiplied it
+    into support/resistance/stop/target/entry. The card was upserted with 'NaN' in six numeric columns and
+    hermes_watchlist_scorer crashed on every run from 2026-10-19 07:45 ET (decimal.InvalidOperation)."""
+    try:
+        from lib.json_finite import finite_or_none
+    except ImportError:  # pragma: no cover - scripts/ not on sys.path
+        from scripts.lib.json_finite import finite_or_none
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return finite_or_none(float(value))
+    except (TypeError, ValueError, ArithmeticError):
+        return None
+
+
 def compute_support_resistance(conn, symbol: str) -> dict:
-    """Compute support/resistance from recent price history in ticker_prices."""
+    """Compute support/resistance from recent price history in ticker_prices.
+
+    Non-finite closes are dropped (a single 'NaN' close made every level of the BHVN card NaN, 2026-10-21)."""
     cur = conn.cursor()
     cur.execute("SELECT close_price FROM ticker_prices WHERE symbol=%s AND price_date >= CURRENT_DATE - 60 ORDER BY price_date", (symbol,))
-    prices = [float(r[0]) for r in cur.fetchall()]
+    prices = [p for p in (_level(r[0]) for r in cur.fetchall()) if p is not None]
     cur.close()
 
     if len(prices) < 10:
@@ -343,14 +364,14 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
 
         # Price/support/resistance from DB
         sr = compute_support_resistance(conn, sym)
-        latest_price = sr.get("latest")
+        latest_price = _level(sr.get("latest"))
 
         # If no DB price, try enrichment
         if not latest_price:
-            latest_price = e.get("price")
+            latest_price = _level(e.get("price"))
 
-        support = sr.get("support")
-        resistance = sr.get("resistance")
+        support = _level(sr.get("support"))
+        resistance = _level(sr.get("resistance"))
 
         # Fallback: estimate support/resistance from enrichment 52-week range
         if not support and latest_price:
@@ -369,7 +390,7 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
         sma20 = e.get("sma20_pct")
         sma50 = e.get("sma50_pct")
         sma200 = e.get("sma200_pct")
-        atr = e.get("atr")
+        atr = _level(e.get("atr"))
         beta = e.get("beta")
 
         # Strategy type — from DB classification (no hard-coded ticker logic)
@@ -399,7 +420,7 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
             print(f"  [strategy-cards] WARNING: {sym} has no DB classification — using default core_holding")
 
         # Compute entry/stop/target
-        stop_loss = stop_data.get("stop_price")
+        stop_loss = _level(stop_data.get("stop_price"))
         if not stop_loss and support and atr:
             stop_loss = round(support - float(atr), 2)
         elif not stop_loss and support:
@@ -440,6 +461,11 @@ def materialize(symbols: list[str] | None = None, *, dry_run: bool = False):
         if not tech_summary: tech_summary = "No technical data"
 
         catalyst_summary, catalyst_items = summarize_catalysts(catalysts_by_sym.get(str(sym).upper(), []))
+
+        # Last line of defence: every numeric level is finite or NULL, never 'NaN' (2026-10-21, BHVN).
+        latest_price, support, resistance, ideal_entry, stop_loss, target_price, risk_reward = (
+            _level(v) for v in (latest_price, support, resistance, ideal_entry, stop_loss, target_price, risk_reward))
+        confidence = _level(confidence)
 
         # Upsert — queued here, written after the loop; a dry run never reaches the write (AGENTS.md §6).
         pending.append((sym, strategy_type, latest_price, support, resistance,
