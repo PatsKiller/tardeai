@@ -154,6 +154,176 @@ def _top_imports(tree: ast.Module) -> dict[str, tuple]:
     return out
 
 
+# ── read-only path literals (2026-10-21, #1417 rebuild review) ──────────────────────────────────────────────────
+# A `/ "x.py"` path literal is a spawned child by default. It is a READ, and not followed, only when every use of the
+# path is provably a read inside one function that has no spawn / exec / import-by-path capability at all:
+#   * the path expression is the receiver of .read_text() / .read_bytes() / .exists() / .is_file() / .stat(), or of
+#     .open(<read-only mode literal>), or is the first argument of open(<path>, <read-only mode literal>);
+#   * or it is assigned ONCE to a plain local name whose every other use is one of the reads above, or a positional /
+#     keyword argument of a same-module helper whose parameter is itself used only as such a read receiver or for
+#     path metadata (.relative_to(), .name, .as_posix()) and which has no spawn capability either.
+# Anything else (a subprocess / runpy / importlib / exec use, a module-level assignment, a global / nonlocal name, a
+# second assignment, an f-string, a list element, a return, any other call argument) keeps the literal a spawn.
+_READ_METHODS = frozenset({"read_text", "read_bytes", "exists", "is_file", "stat"})
+_META_ATTRS = frozenset({"relative_to", "name", "as_posix"})
+_SPAWN_MODULES = frozenset({"subprocess", "runpy", "importlib", "pty", "multiprocessing", "asyncio", "os", "ctypes"})
+_SPAWN_BARE = frozenset({"exec", "eval", "compile", "__import__", "execfile"})
+_SPAWN_ATTRS = frozenset({"Popen", "run", "call", "check_call", "check_output", "system", "popen", "startfile",
+                          "spec_from_file_location", "module_from_spec", "exec_module", "run_path", "run_module",
+                          "import_module", "load_module", "create_subprocess_exec", "create_subprocess_shell"})
+_SPAWN_ROOTS = frozenset({"subprocess", "runpy", "importlib", "pty", "multiprocessing"})
+_FUNC_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+def _read_only_mode(node: Optional[ast.AST]) -> bool:
+    return (isinstance(node, ast.Constant) and isinstance(node.value, str) and bool(node.value)
+            and set(node.value) <= set("rbt"))
+
+
+def _dotted(func: ast.AST) -> list[str]:
+    parts: list[str] = []
+    while isinstance(func, ast.Attribute):
+        parts.append(func.attr)
+        func = func.value
+    if isinstance(func, ast.Name):
+        parts.append(func.id)
+    return parts[::-1]
+
+
+def _spawn_capable(scope: ast.AST, imports: dict) -> bool:
+    """True when the scope could run, spawn or import-by-path anything (conservative: any such call or import)."""
+    for n in ast.walk(scope):
+        if isinstance(n, ast.Import) and any(a.name.split(".")[0] in _SPAWN_MODULES for a in n.names):
+            return True
+        if isinstance(n, ast.ImportFrom) and (n.module or "").split(".")[0] in _SPAWN_MODULES:
+            return True
+        if not isinstance(n, ast.Call):
+            continue
+        parts = _dotted(n.func)
+        if not parts:
+            return True  # a computed callee (getattr(...)(), a call result) cannot be cleared
+        if len(parts) == 1:
+            name = parts[0]
+            if name in _SPAWN_BARE:
+                return True
+            spec = imports.get(name)
+            if spec and spec[0] == "from":
+                mod_root, attr = (spec[1] or "").split(".")[0], spec[2] or ""
+                if mod_root in _SPAWN_ROOTS or attr in _SPAWN_ATTRS:
+                    return True
+                if mod_root == "os" and (attr.startswith(("exec", "spawn", "posix_spawn"))
+                                         or attr in {"system", "popen", "startfile"}):
+                    return True
+                if mod_root == "asyncio" and attr.startswith("create_subprocess"):
+                    return True
+            continue
+        root, attr = parts[0], parts[-1]
+        if root in _SPAWN_ROOTS or attr in _SPAWN_ATTRS and root not in {"re", "json"}:
+            return True
+        if root == "os" and (attr.startswith(("exec", "spawn", "posix_spawn")) or attr in {"system", "popen", "startfile"}):
+            return True
+        if root == "asyncio" and attr.startswith("create_subprocess"):
+            return True
+    return False
+
+
+def _read_receiver(expr: ast.AST, parents: dict[int, ast.AST]) -> bool:
+    """`expr` is used only as the receiver of a read method call, or as open()'s path with a read-only mode."""
+    par = parents.get(id(expr))
+    if isinstance(par, ast.Attribute) and par.value is expr:
+        call = parents.get(id(par))
+        if not (isinstance(call, ast.Call) and call.func is par):
+            return False
+        if par.attr in _READ_METHODS:
+            return True
+        if par.attr == "open":
+            mode = call.args[0] if call.args else next((k.value for k in call.keywords if k.arg == "mode"), None)
+            return _read_only_mode(mode)
+        return False
+    if isinstance(par, ast.Call) and isinstance(par.func, ast.Name) and par.func.id == "open" and par.args \
+            and par.args[0] is expr:
+        mode = par.args[1] if len(par.args) > 1 else next((k.value for k in par.keywords if k.arg == "mode"), None)
+        return _read_only_mode(mode)
+    return False
+
+
+def _helper_param_is_metadata_only(helper: ast.AST, call: ast.Call, expr: ast.AST, imports: dict) -> bool:
+    if not isinstance(helper, _FUNC_SCOPES) or _spawn_capable(helper, imports):
+        return False
+    params = [a.arg for a in helper.args.posonlyargs + helper.args.args]
+    if any(isinstance(a, ast.Starred) for a in call.args):
+        return False
+    if expr in call.args:
+        idx = call.args.index(expr)
+        if idx >= len(params):
+            return False
+        pname = params[idx]
+    else:
+        kw = next((k for k in call.keywords if k.value is expr), None)
+        if kw is None or kw.arg not in params:
+            return False
+        pname = kw.arg
+    hparents = {id(c): p for p in ast.walk(helper) for c in ast.iter_child_nodes(p)}
+    uses = [n for n in ast.walk(helper) if isinstance(n, ast.Name) and n.id == pname]
+    for n in uses:
+        if not isinstance(n.ctx, ast.Load):
+            return False
+        par = hparents.get(id(n))
+        if _read_receiver(n, hparents):
+            continue
+        if isinstance(par, ast.Attribute) and par.value is n and par.attr in _META_ATTRS:
+            continue
+        return False
+    return True
+
+
+def _read_only_path_literals(node: ast.AST, defs: dict, imports: dict) -> set[int]:
+    """ids of `/ "x.py"` literals in ``node`` whose path is provably only read (see the block comment above)."""
+    parents = {id(c): p for p in ast.walk(node) for c in ast.iter_child_nodes(p)}
+    out: set[int] = set()
+    for lit in ast.walk(node):
+        if not (isinstance(lit, ast.Constant) and isinstance(lit.value, str) and _PY_LITERAL.match(lit.value)):
+            continue
+        expr: ast.AST = lit
+        while isinstance(parents.get(id(expr)), ast.BinOp) and isinstance(parents[id(expr)].op, ast.Div):
+            expr = parents[id(expr)]
+        if expr is lit:
+            continue  # not a path join: the existing rules apply unchanged
+        scope = parents.get(id(expr))
+        while scope is not None and not isinstance(scope, _FUNC_SCOPES):
+            scope = parents.get(id(scope))
+        if scope is None or _spawn_capable(scope, imports):
+            continue  # module level, or a function that can spawn / exec: stays a spawn
+        if _read_receiver(expr, parents):
+            out.add(id(lit))
+            continue
+        assign = parents.get(id(expr))
+        if not (isinstance(assign, ast.Assign) and assign.value is expr and len(assign.targets) == 1
+                and isinstance(assign.targets[0], ast.Name)):
+            continue
+        name = assign.targets[0].id
+        if any(isinstance(n, (ast.Global, ast.Nonlocal)) and name in n.names for n in ast.walk(scope)):
+            continue
+        ok = True
+        for n in ast.walk(scope):
+            if not (isinstance(n, ast.Name) and n.id == name) or n is assign.targets[0]:
+                continue
+            if not isinstance(n.ctx, ast.Load):
+                ok = False  # a second assignment or a del
+                break
+            if _read_receiver(n, parents):
+                continue
+            call = parents.get(id(n))
+            if (isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id in defs
+                    and _helper_param_is_metadata_only(defs[call.func.id], call, n, imports)):
+                continue
+            ok = False
+            break
+        if ok:
+            out.add(id(lit))
+    return out
+
+
 class _Scanner:
     def __init__(self) -> None:
         self.report: Optional[GuardReport] = None
@@ -233,6 +403,8 @@ class _Scanner:
                         spawn_literals.update({id(el.left), id(el.right)})
             elif isinstance(sub, ast.BinOp) and isinstance(sub.op, ast.Div):
                 spawn_literals.update({id(sub.left), id(sub.right)})
+        # A path join that is provably only READ (never run, imported or handed on) is not a spawned child.
+        spawn_literals -= _read_only_path_literals(node, defs, imports)
         for sub in ast.walk(node):
             if isinstance(sub, ast.Import):
                 for a in sub.names:
