@@ -471,6 +471,16 @@ GATES = [
             "tests/test_holding_llm_curation.py",
         ],
     ),
+    (
+        # ANCHOR: ONBOARD_DRYRUN_B5_20261015 — n8n onboarding batch B5 (lane disposition 2026-10-15, MIGRATE_N8N, no
+        # allowlist entry, no --dry-run before), risk tier 3 senders: advice-digest, alert-daily-digest, rotation-
+        # rebalance-digest, hermes-score-alerts, screener-go-alerts, watch-alerts-eval, watch-directive-hygiene.
+        # Offline --dry-run wins over --send and over the always-send lanes (in-process record-and-raise proof, no
+        # sender module imported); static capability audit pins chokepoint_send and no direct_sender. Listing it
+        # schedules nothing.
+        "onboard_dryrun_b5_20261015",
+        ["tests/test_onboard_dryrun_b5_20261015.py"],
+    ),
     # Cash age is the age of the dollars. PP2 (the cash letter) and PP4 (provenance)
     # stopped borrowing a clock; PP3 (the freshness board) is reported, not changed.
     (
