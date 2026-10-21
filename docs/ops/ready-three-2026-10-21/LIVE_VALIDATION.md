@@ -1,7 +1,7 @@
 # Live validation — 2026-10-21
 
-**Status:** Production was rechecked at 2026-10-21 03:42:26 UTC; candidate remains undeployed.
-**Updated:** 2026-10-21 03:45 UTC
+**Current evidence status (2026-10-21 04:23 UTC):** Direct production audit at 04:21:28 UTC confirms production remains on `ef085ce76be4512da71a58e65ef4feb25d156206` (`main`); health 78/degraded with three criticals including global SPCX kill switch, stale SETUPS session, and six underfilled 0700 runs; `indicator_engine` unrecovered and orchestrator false. PR #1889 `7c187363191ade3c574c7a77bde8e0b3885ff370` is pushed but not deployed; no production validation of it is evidenced.
+**Historical observation below:** 2026-10-21 03:42:26 UTC; see the timestamped 03:52 audit and latest-evidence addendum for later observations.
 
 ## Current observed production state
 
@@ -31,3 +31,30 @@ After a separately authorized release, append a new dated record with:
 7. Rollback target and the actual rollback/forward verification results if invoked.
 
 Preserve sanitized raw outputs with hashes in a durable evidence bundle. Do not treat a dashboard strip, a successful aggregate endpoint, or a service-active state alone as production acceptance.
+
+
+## Fresh production audit — 2026-10-21 03:52 UTC
+
+- Served production remains `ef085ce76be4512da71a58e65ef4feb25d156206` (#1888/main); neither candidate is deployed.
+- Health remains degraded at 78/100 with the same criticals: SPCX kill-switch containment and six underfilled screener runs. The indicator incident remains unrecovered.
+- Communications endpoint audit reports database reachable, `CANARY`, `delivery_owned` operations, phase 7. The endpoint still does not expose ready-three schema or coverage/window/clock fields.
+- The aggregate counters 0 unsettled / 0 failed / 6 reaped / 2024 total belong only to the earlier 03:42 snapshot; no newer aggregate counts are asserted here.
+- No merge or deployment occurred. This is a fresh audit of production state, not proof that either candidate is live.
+
+## Latest available production evidence — 2026-10-21 03:56 UTC (historical at report time)
+
+- The last verified live snapshot available for this update is timestamped 03:56 UTC. Served production remains `ef085ce76be4512da71a58e65ef4feb25d156206` (#1888/main).
+- Health is degraded at 78/100; `indicator_engine` remains unrecovered. The remediation probe reported `EFFECT_NOT_OBSERVED`, `unrecovered_keys:["indicator_engine"]`, `orchestrator_process_alive:false`, and `root_cause=unknown`. These generic probe fields do not establish that the indicator cron writer failed: the active writer is the weekday 08:00 `scripts/indicator_engine.py --universe` cron lane, while n8n remains shadow/dry-run.
+- This evidence is historical and was not freshly collected at the 04:09 UTC documentation update. No claim is made that either PR is deployed, that production has recovered, or that the current release is healthy.
+
+## Fresh production probe — 2026-10-21 04:10 UTC
+
+- `CURRENT`/`BUILD_SHA` remains `ef085ce76be4512da71a58e65ef4feb25d156206` on `main`; neither candidate is deployed.
+- Health captured at 04:09 UTC is 78/degraded, `healthy=false`, with 3 criticals and 23 warnings. SPCX kill switch remains active. The 04:08:34 UTC remediation probe returned `EFFECT_NOT_OBSERVED`, with `indicator_engine` unrecovered.
+- The indicator log mtime is Oct 20 08:00 ET. The last recorded run was Oct 19 12:00 UTC: 26 attempted, 1 upserted, 25 skipped for `no_ohlcv`. The current day's weekday 08:00 ET cron was not yet due at the probe time. Historic NaN errors establish an earlier failure mode only; they do not prove the present incident's root cause.
+- Communications health at about 04:10 UTC reports the database reachable, `CANARY`, owned operations, phase 7. This endpoint does not establish ready-three behavior or deployment.
+- This is a fresh observation at the stated times. Continue treating production as degraded and the indicator incident as open; do not infer candidate readiness or causality from the older NaN logs.
+
+## Candidate status update — 2026-10-21 04:23 UTC
+
+PR #1889 exact head `7c187363191ade3c574c7a77bde8e0b3885ff370` was pushed around 04:22 UTC. Hosted checks restarted and no results were available at this update. Local validation (82 passed / 3 skipped, coverage `NEW=0`, `py_compile`, diff checks, full-tree secret scan) is not production verification. The direct live evidence at 04:21:28 UTC confirms the old build remains active and degraded. Historical NaN traceback does not prove the current incident's root cause. No candidate is claimed as live or production-ready.

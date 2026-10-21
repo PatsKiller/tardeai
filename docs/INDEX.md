@@ -2070,14 +2070,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/run-from-release-cohort1-20261015/README.md` | Run from the release: cohort 1 operator packet (2026-10-15) | review_required | MISSING HEADER | `e65023d6a400` |
 | `docs/ops/packets/swing-alert-single-sender-20261019/README.md` | Swing entry alerts: one sender (2026-10-19) | review_required | MISSING HEADER | `ba85274fb928` |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution | review_required | OK | `df44cfc4ee62` |
-| `docs/ops/ready-three-2026-10-21/AGENT_HANDOFF.md` | Agent handoff — 2026-10-21 | review_required | OK | `999ffc1e1589` |
-| `docs/ops/ready-three-2026-10-21/CHANGELOG.md` | Change and release log — 2026-10-21 | review_required | OK | `8560ca30611b` |
-| `docs/ops/ready-three-2026-10-21/DEPLOYMENT_AND_ROLLBACK.md` | Deployment and rollback gates — 2026-10-21 | review_required | OK | `e9829c86e5e1` |
-| `docs/ops/ready-three-2026-10-21/EXECUTIVE_REPORT.md` | Executive gap and readiness report — 2026-10-21 | review_required | OK | `fff7187e57ab` |
-| `docs/ops/ready-three-2026-10-21/LIVE_VALIDATION.md` | Live validation — 2026-10-21 | review_required | OK | `0951970a23e3` |
-| `docs/ops/ready-three-2026-10-21/README.md` | Ready-three evidence and readiness — 2026-10-21 | review_required | OK | `7679b92615f6` |
-| `docs/ops/ready-three-2026-10-21/SYSTEM_INVENTORY.md` | System inventory snapshot — 2026-10-21 | review_required | OK | `2ba3231aa62c` |
-| `docs/ops/ready-three-2026-10-21/TEST_RESULTS.md` | Test results — 2026-10-21 | review_required | OK | `f7cc54f1f075` |
+| `docs/ops/ready-three-2026-10-21/AGENT_HANDOFF.md` | Agent handoff — 2026-10-21 | review_required | OK | `3ce9f2b87dbe` |
+| `docs/ops/ready-three-2026-10-21/CHANGELOG.md` | Change and release log — 2026-10-21 | review_required | OK | `c7dc2268bf1f` |
+| `docs/ops/ready-three-2026-10-21/DEPLOYMENT_AND_ROLLBACK.md` | Deployment and rollback gates — 2026-10-21 | review_required | OK | `e5ad8b54043e` |
+| `docs/ops/ready-three-2026-10-21/EXECUTIVE_REPORT.md` | Executive gap and readiness report — 2026-10-21 | review_required | OK | `95ad6fe8d9d7` |
+| `docs/ops/ready-three-2026-10-21/LIVE_VALIDATION.md` | Live validation — 2026-10-21 | review_required | MISSING HEADER | `fde6005b2a01` |
+| `docs/ops/ready-three-2026-10-21/README.md` | Ready-three evidence and readiness — 2026-10-21 | review_required | OK | `caa296012859` |
+| `docs/ops/ready-three-2026-10-21/SYSTEM_INVENTORY.md` | System inventory snapshot — 2026-10-21 | review_required | OK | `e817c2e4676f` |
+| `docs/ops/ready-three-2026-10-21/TEST_RESULTS.md` | Test results — 2026-10-21 | review_required | OK | `0d0117bceda9` |
 | `docs/ops/self_heal_claude_fixer.md` | Self-heal Claude Code fixer — code defects fixed in iterations, shipped as a tested PR | review_required | OK | `b90fcb9c0c1d` |
 | `docs/ops/telegram_channel_diligence_20260916/00_EXECUTIVE_SUMMARY.md` | Telegram Channel Diligence — Executive Summary | review_required | OK | `19050e08a848` |
 | `docs/ops/telegram_channel_diligence_20260916/01_CHANNEL_INVENTORY_SOURCE_MAP.md` | Phase 1 — Channel Inventory & Source Mapping | review_required | OK | `6be06281ea6d` |

@@ -1,7 +1,7 @@
 # Test results — 2026-10-21
 
-**Status:** PR #1887 required/non-skipped checks passed. PR #1889 run 39540242917 has an integrity-rails failure and isolated PG pass; other jobs remain in progress. PR-event skips are listed separately.
-**Updated:** 2026-10-21 03:48 UTC
+**Current status (2026-10-21 04:23 UTC):** PR #1887 exact head `e5ebdc6` active checks passed; `cio-hardening-full` and `main-red-alert` were skipped. PR #1889 exact head `7c187363191ade3c574c7a77bde8e0b3885ff370` was pushed around 04:22 UTC; hosted CI restarted with no results yet. Local broad regression on 7c: 82 passed / 3 skipped, coverage `NEW=0`, `py_compile`, diff checks, and full-tree secret scan passed. These are local results, not hosted checks.
+**Updated:** 2026-10-21 04:23 UTC
 **Candidate SHA:** 641e3a23c7eb1fea6df2615450657af02415949a (pushed PR #1887 head).
 
 ## Completed checks
@@ -77,3 +77,56 @@ These are coordinator-reported local test/review results; exact logs/commands we
 ### Superseding hosted status — 2026-10-21 03:47:45 UTC
 
 The exact push grant was activated/consumed; commit `8d14cb07f1b161ad2509a34e7d7d8e98ce6b49bf` is now pushed as PR #1889 exact head. Hosted CI restarted for that SHA at 03:47:45 UTC; results are pending. The earlier run 39540242917 applies to prior SHA `0b5ff406…` and its integrity-rails coverage failure / PG-shard pass are retained as RCA evidence. Local focused tests for the correction were 7 passed, 2 skipped; hosted CI has not yet validated this commit. PR #1889 remains unmerged/undeployed. PR #1887 remains green at its recorded exact head; this dossier is local and not part of PR #1887.
+
+
+## Exact-head hosted CI refresh — 2026-10-21 03:52 UTC
+
+The following matrices are partial observations, not full passes. Results are coordinator-reported for the stated exact SHA; pending jobs remain pending. Full hardening was skipped for both PRs.
+
+| PR / exact head | Passed at 03:52 UTC | Pending at 03:52 UTC | Skipped |
+|---|---|---|---|
+| PR #1887 / `e5ebdc6` | Governance, focused Playwright, options backend, provider cost, shard 6, PG shard, integrity rails | AIF integration, cio-hardening, release readiness, shards 0–5 and 7, serial shard | Full hardening |
+| PR #1889 / `8d14cb0` | Governance, AIF integration, provider cost, release readiness, shards 3, 4, and 6, PG shard, integrity rails | cio-hardening, shards 0–2, 5, and 7, serial shard | Full hardening |
+
+Neither matrix is complete; passing selected jobs does not mean the PR passed hosted CI. No merge or deployment is evidenced.
+
+## Production audit boundary
+
+The fresh 03:52 UTC audit confirms production build `ef085ce76be4512da71a58e65ef4feb25d156206`, degraded health 78/100 with the same SPCX kill-switch critical and six underfilled screener runs, and the indicator incident still unrecovered. The communications endpoint reports database reachable, `CANARY`, `delivery_owned` operations, phase 7, but does not expose ready-three, coverage/window, or clock fields. Aggregate counters 0/0/6/2024 are from 03:42 only; this refresh does not reuse them as current.
+
+## Exact-head status refresh — 2026-10-21 04:09 UTC
+
+| Workstream | Evidence | Qualification |
+|---|---|---|
+| PR #1887 `e5ebdc6` | Active hosted checks passed, including `cio-hardening`; `cio-hardening-full` and `main-red-alert` were skipped. | Hosted CI pass for this exact head, subject to the listed skips. Not a deployment or live test. |
+| PR #1889 remote `8d14cb0` | Hosted checks passed. | Does not validate the later local candidate. |
+| PR #1889 `acbb9944ce65d6edf00c7f8c80f8c47987819d35` | Pushed ~04:10 UTC; exact-head checks started. Integrity rails and provider-cost passed; other active jobs pending; `cio-hardening-full` skipped. | Validation is in progress; earlier `8d14cb0` checks do not qualify this SHA. |
+| Production | Last evidence at 03:56 UTC: build `ef085ce76be4512da71a58e65ef4feb25d156206`, degraded health 78/100, indicator incident unrecovered. | Historical snapshot, not freshly probed at 04:09 UTC. No production verification of either PR. |
+
+Earlier sections and addenda retain their original timestamps and describe the state at those times. They are not current where superseded above.
+
+## PR #1889 exact-head CI update — 2026-10-21 04:11 UTC
+
+The local candidate `acbb9944ce65d6edf00c7f8c80f8c47987819d35` was pushed to PR #1889 around 04:10 UTC. Exact-head checks have started; integrity rails and provider-cost passed, remaining active jobs are pending, and `cio-hardening-full` was skipped. The prior remote `8d14cb0` hosted pass does not validate this newer SHA. No merge/deployment is evidenced.
+
+## Production verification refresh — 2026-10-21 04:10 UTC
+
+The fresh probe confirms production remains on build `ef085ce76be4512da71a58e65ef4feb25d156206` (`main`). Health captured at 04:09 UTC is 78/degraded, `healthy=false`, with 3 criticals and 23 warnings; SPCX kill switch is active. The 04:08:34 UTC remediation probe was ineffective and `indicator_engine` remains unrecovered. Its last run (Oct 19 12:00 UTC) attempted 26, upserted 1, and skipped 25 for `no_ohlcv`; the weekday 08:00 ET cron for Oct 21 had not yet fired. Historic NaN log evidence is not proof of current causality. Communications health at ~04:10 reports DB reachable, `CANARY`, owned operations, phase 7. This does not validate either candidate or indicate production recovery.
+
+## Local remediation and latest hosted status — 2026-10-21 04:18 UTC
+
+| SHA / lane | Result | Qualification |
+|---|---|---|
+| #1889 remote `acbb9944ce65d6edf00c7f8c80f8c47987819d35` | At direct poll ~04:18 UTC: agent-governance, both AIF checks, ci-gate, integrity rails, provider-cost, release-readiness, shards 0–7, serial, and PG passed; `cio-hardening` pending; `cio-hardening-full` skipped. | Hosted state applies to remote acbb only. |
+| Local `9a88c665fa314e79117fd8c6bf9d8716708138fc` | Broader regression: 81 passed, 3 skipped; custom coverage gate `NEW=0`; `py_compile` and diff checks clean; reviewed. | Local evidence only. Not pushed or hosted-validated because no active exact-SHA `git-push` grant is present in the repository guard. |
+
+Follow-up: a separate raw `indicator_signal_history.details` JSON writer remains unqualified. Its column type, active usage, and need for strict normalization are unknown; inspect schema and writer activity before deciding whether to change it. Do not claim 9a88 CI or validation of that history writer.
+
+## PR #1889 pushed head verification — 2026-10-21 04:19 UTC
+
+
+## PR #1889 final code head — 2026-10-21 04:23 UTC
+
+Commit `7c187363191ade3c574c7a77bde8e0b3885ff370` was pushed around 04:22 UTC. Exact-head hosted CI restarted and no result was available at this update. Local broader regression: 82 passed / 3 skipped; custom coverage `NEW=0`; `py_compile`, diff checks, and full-tree secret scan passed. These are local results, not hosted CI. The fix scope adds normalization for cached, fresh, and batch API responses and signal-history values/JSON alongside the four cache writers. No merge or deployment occurred.
+
+Production audit refreshed at 04:21:28 UTC: `CURRENT` remains `ef085ce76be4512da71a58e65ef4feb25d156206`; health is 78/degraded with three criticals including global SPCX kill switch, stale SETUPS session, and six underfilled 0700 runs; indicator unrecovered and orchestrator false. Historic NaN traceback is not proof of the current incident's root cause.

@@ -1,11 +1,11 @@
 # Ready-three evidence and readiness — 2026-10-21
 
-**Status:** PR #1887 is OPEN / CLEAN at exact head 641e3a23 with required/non-skipped checks passed as of 03:42 UTC. PR #1889 is now at pushed exact head 8d14cb07 with hosted CI restarted/pending as of 03:47:45 UTC; prior-head run 39540242917 recorded the coverage failure RCA and isolated PG pass.
-**Updated:** 2026-10-21 03:45 UTC
+**Current status (2026-10-21 04:23 UTC):** PR #1887 active checks passed at `e5ebdc6` with event skips. PR #1889 exact head `7c187363191ade3c574c7a77bde8e0b3885ff370` was pushed around 04:22 UTC; exact-head hosted CI restarted with no results yet. Local broad suite: 82 passed / 3 skipped, coverage `NEW=0`, `py_compile`, diff checks, and full-tree secret scan passed. Production remains on `ef085ce76be4512da71a58e65ef4feb25d156206`, degraded/unhealthy; no merge or deployment.
+**Updated:** 2026-10-21 04:23 UTC
 **Scope:** Communications ready-three candidate, currently deployed #1888 baseline, and related C3 readiness.
-Ready-three candidate is pushed and all required hosted CI checks passed. The separate indicator fix is pushed in PR #1889 with hosted checks pending. Neither PR is merged or deployed; neither change is live. The documentation changes in this local worktree are not part of pushed head 641.
+Historical 03:45 status superseded by the 04:23 addendum below: PR #1887 now has active checks passed with event skips; PR #1889 is at pushed SHA 7c187363191ade3c574c7a77bde8e0b3885ff370 with exact-head CI pending. Neither PR is merged or deployed; current production remains degraded on ef085ce76be4512da71a58e65ef4feb25d156206.
 
-## State that can be proven
+## Historical state that was proven — 03:45 UTC (superseded by current update below)
 
 | Item | Verified state | Evidence boundary |
 |---|---|---|
@@ -18,7 +18,7 @@ Ready-three candidate is pushed and all required hosted CI checks passed. The se
 
 PR #1887 is [OPEN](https://github.com/PatsKiller/tardeai/pull/1887), exact head 641e3a23, merge state CLEAN/mergeable (parent-observed at 03:42 UTC). All required and all non-skipped hosted checks for PR #1887 passed, including cio-hardening (10m56s), all 8 parallel shards, PG and serial shards, integrity rails, aggregate ci-gate, options lifecycle/backend/frontend, agent governance, AIF integration, focused Playwright, provider-cost, and release readiness. cio-hardening-full and main-red-alert were skipped by PR-event rules. Separately, PR #1889 is OPEN at exact SHA 0b5ff406; hosted exact-head checks including the PG shard are running, with results pending. Run links and detail are in [Test results](TEST_RESULTS.md). These checks validate pushed SHA 641 only; this local documentation amendment is not included in it. Neither PR is merged or deployed; no post-deployment verification is evidenced. Deployment authority remains exact-SHA-specific and no deployment lease/grant is present.
 
-## Open issues that affect readiness
+## Open issues recorded at 03:45 UTC (reassessed below)
 
 1. The health critical for the SPCX kill switch is an active containment state since 2026-10-14. The incident record says contained, not resolved. Preserve the switch; resolution criteria remain outstanding.
 2. The 0700 screener had six retries within the 2026-10-20 scheduled morning, each with 15–16 symbols against a configured floor of 20 and reason UNIVERSE_TOO_SMALL. Source-screen yields were not retained in the evidence reviewed. Do not lower the floor to silence the alert; inspect source yields and confirm whether the alert counts retries or distinct windows.
@@ -47,3 +47,11 @@ The exact-head hosted run for PR #1889, run [39540242917](https://github.com/Pat
 ### Superseding update — 2026-10-21 03:47:45 UTC
 
 The exact push grant was activated/consumed and fix `8d14cb07f1b161ad2509a34e7d7d8e98ce6b49bf` is now pushed as PR #1889 head. Hosted CI restarted against this exact SHA at 03:47:45 UTC and is pending. The preceding coverage failure RCA and local 7-pass/2-skip verification remain valid; those checks are not hosted results. PR #1889 is not merged or deployed. PR #1887 remains green at its recorded exact head; these documentation edits remain local in its worktree. No production change; latest live evidence is still the 03:42:26 snapshot pending a fresh audit.
+
+## Latest status and remaining gaps — 2026-10-21 04:23 UTC
+
+- PR #1887 is at `e5ebdc656b9d26d9b58bb77c14d22611d7584b2b`; active hosted checks passed, with `cio-hardening-full` and `main-red-alert` skipped.
+- PR #1889 is at pushed SHA `7c187363191ade3c574c7a77bde8e0b3885ff370` (around 04:22 UTC). Exact-head CI restarted; no results yet. Local validation: 82 passed / 3 skipped, coverage `NEW=0`, `py_compile`, diff checks, full-tree secret scan passed. These are local checks, not hosted CI.
+- Scope now includes strict normalization across all four known cache writers, cached/fresh/batch API responses, and signal-history values/details on the covered API path. A distinct raw `indicator_signal_history.details` writer remains unverified for schema and current use; inspect before deciding on further remediation.
+- Production was directly audited at 04:21:28 UTC: `CURRENT` remains `ef085ce76be4512da71a58e65ef4feb25d156206`; health 78/degraded with 3 criticals including the global SPCX kill switch, stale SETUPS session, and six underfilled 0700 runs. `indicator_engine` remains unrecovered and orchestrator false. Historic NaN traceback is not evidence of the current root cause.
+- The weekday 08:00 ET indicator cron had not fired at the 04:10 UTC check; await the natural scheduled run and inspect receipt/log/output. Do not invoke the live writer manually for qualification. Production is not ready and no candidate is live.

@@ -1,7 +1,9 @@
 # Change and release log — 2026-10-21
 
-**Status:** PR #1887 OPEN / CLEAN (mergeable) at exact head 641e3a23; all required and non-skipped hosted checks passed. No merge/deployment.
-**Updated:** 2026-10-21 03:48 UTC
+**Current status (2026-10-21 04:23 UTC):** PR #1887 `e5ebdc6` active checks passed with full-hardening and main-red-alert skipped. PR #1889 is pushed at `7c187363191ade3c574c7a77bde8e0b3885ff370`; exact-head hosted CI restarted with no results yet. Local broader regression: 82 passed / 3 skipped, coverage `NEW=0`, `py_compile` and diff checks passed. Production remains on #1888 and degraded; no merge/deployment.
+**Updated:** 2026-10-21 04:23 UTC
+
+The change rows below are the original 03:48 baseline; the timestamped addenda below supersede their PR #1889 status.
 
 | Change | Reason / expected impact | Validation | Release status |
 |---|---|---|---|
@@ -30,3 +32,19 @@ PR #1889 hosted run 39540242917 remained in progress; integrity rails failed due
 ### Superseding status — 2026-10-21 03:47:45 UTC
 
 Coverage correction `8d14cb07f1b161ad2509a34e7d7d8e98ce6b49bf` was pushed to PR #1889 after exact push grant activation/consumption. Hosted CI restarted on exact SHA 8d14cb07 at 03:47:45 UTC and is pending. Prior run 39540242917 on 0b5ff406 remains the coverage failure RCA (new test omitted from `GATES`; PG shard passed). No merge, deployment, or production change.
+
+## Indicator remediation update — 2026-10-21 04:20 UTC
+
+- PR #1889 exact head `9a88c665fa314e79117fd8c6bf9d8716708138fc` was pushed around 04:19:38 UTC under the one-use repository guard. This change expands strict non-finite scalar normalization across all four known `indicator_confluence_cache` writers.
+- Local validation on 9a88: broader regression 81 passed / 3 skipped, custom coverage guard `NEW=0`, `py_compile` and diff checks clean, full-tree secret scan passed; independent review was reported complete. These results do not constitute hosted CI.
+- Exact-head hosted CI restarted; latest observation shows AIF queued. Final exact-head results are pending. Previous acbb and 8d CI results do not qualify 9a88.
+- The separate raw `indicator_signal_history.details` writer remains a follow-up. Column type, current activity, and normalization requirement are unverified; inspect schema and writer use before changing it.
+- Production remains on `ef085ce76be4512da71a58e65ef4feb25d156206`; health evidence from 04:09 UTC remains degraded/unhealthy at 78 with 3 criticals / 23 warnings and the indicator incident unrecovered. This is not a production-ready result. No merge, deployment, or live fix is claimed.
+
+## API response/history scope and final code commit — 2026-10-21 04:23 UTC
+
+- Commit `7c187363191ade3c574c7a77bde8e0b3885ff370` was pushed to PR #1889 around 04:22 UTC. It extends the shared non-finite normalization through cached/fresh/batch indicator API responses and the single-symbol signal-history scalar/details write, in addition to cache-writer normalization across the four known `indicator_confluence_cache` writers.
+- Local validation on 7c: 82 passed / 3 skipped, coverage `NEW=0`, `py_compile`, diff checks, and full-tree secret scan passed.
+- Exact-head CI for 7c restarted; no hosted results were available at this update. Earlier CI results on 9a88, acbb, or 8d do not qualify 7c.
+- Separate raw `indicator_signal_history.details` writers outside the covered API path retain schema/current-activity uncertainty and require follow-up validation.
+- Production remains unchanged on `ef085ce76be4512da71a58e65ef4feb25d156206`. Direct audit at 04:21:28 UTC reports health 78/degraded with 3 criticals (global SPCX kill switch, stale SETUPS session, six underfilled 0700 runs); indicator unrecovered and orchestrator false. No merge, deployment, or production readiness is claimed.

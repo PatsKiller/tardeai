@@ -1,9 +1,9 @@
 # Agent handoff — 2026-10-21
 
-**Status:** PR #1887 is OPEN / CLEAN (mergeable) at pushed SHA 641e3a23; all required and non-skipped hosted checks passed. No merge/deploy.
-**Updated:** 2026-10-21 03:48 UTC
+**Current status (2026-10-21 04:23 UTC):** PR #1887 active checks passed on `e5ebdc6` (full hardening and main-red-alert skipped). PR #1889 is pushed at `7c187363191ade3c574c7a77bde8e0b3885ff370`; exact-head hosted CI restarted with no results yet. Local validation: 82 passed / 3 skipped, coverage `NEW=0`, `py_compile` and diff checks passed. Production remains on `ef085ce76be4512da71a58e65ef4feb25d156206`, degraded/unhealthy; no merge or deployment.
+**Updated:** 2026-10-21 04:23 UTC
 
-## Verified candidate state
+## Historical candidate state — 2026-10-21 03:48 UTC (superseded by latest handoff below)
 
 - Integration worktree: /home/johnclaw/tradeai-wt-n8n-live-fix-integration-20261020
 - Branch: wt/n8n-live-fix-integration-20261020
@@ -46,3 +46,22 @@ A status email was sent earlier to the user. BizChat posting was unavailable bec
 - Commit `8d14cb07f1b161ad2509a34e7d7d8e98ce6b49bf` is now pushed to PR #1889 after exact push grant activation/consumption; hosted CI restarted on this exact SHA at 03:47:45 UTC and is pending.
 - Run 39540242917 and the coverage failure RCA refer to prior SHA `0b5ff406…`; isolated PG shard passed. The fix's 7 passed / 2 skipped are local results only.
 - No merge/deployment or production change. PR #1887 remains green at its recorded exact head; this documentation update remains local in the PR #1887 worktree.
+
+## Historical handoff — 2026-10-21 04:20 UTC (superseded below)
+
+- **PR #1887:** Remote head is `e5ebdc656b9d26d9b58bb77c14d22611d7584b2b`. Active hosted checks passed, including `cio-hardening`; `cio-hardening-full` and `main-red-alert` were skipped. This proves CI for that exact SHA only, not production behavior.
+- **PR #1889:** Remote head is `9a88c665fa314e79117fd8c6bf9d8716708138fc`, pushed around 04:19:38 UTC under the one-use guard. Local validation: 81 passed / 3 skipped, coverage `NEW=0`, `py_compile` and diff checks clean, full-tree secret scan passed, review reported complete. Exact-head hosted CI restarted; AIF was queued at the latest observation. No hosted result is yet documented for 9a88.
+- **Production:** Latest evidence is the 04:10 UTC probe: build `ef085ce76be4512da71a58e65ef4feb25d156206` on main; health captured at 04:09 was 78/degraded, `healthy=false`, 3 criticals / 23 warnings; indicator unrecovered. Retry at 04:08:34 was ineffective. Communications reported DB reachable, `CANARY`, owned operations, phase 7. No candidate is live based on this evidence.
+- **Scheduled cron gap:** The weekday 08:00 ET `scripts/indicator_engine.py --universe` production cron had not yet fired at the 04:10 UTC observation (about 00:10 ET). Last run evidence was Oct 19 12:00 UTC: 26 attempted, 1 upserted, 25 skipped for `no_ohlcv`; log mtime Oct 20 08:00 ET. Wait for the scheduled run and inspect its receipt/log/output after execution. Do not manually invoke the live writer merely to validate this fix.
+- **Causality caveat:** Historical logs show a prior NaN serialization failure on the universe lane, but do not prove that this is the current unrecovered incident's cause. The n8n indicator lane remains shadow/dry-run; it is not the active cron writer.
+- **Remaining writer follow-up:** `indicator_signal_history.details` has a raw JSON writer; column type and current activity are unverified. Inspect schema and writer use before deciding on remediation.
+- **Next actions:** Complete exact 9a88 CI when available, including isolated PG evidence; disposition the history writer; capture the natural scheduled cron result; continue to preserve the SPCX kill switch and screener floor. Do not merge/deploy until exact-SHA CI and incident/risk gates are satisfied, then obtain separate release authority and lease.
+
+## Historical code handoff — 2026-10-21 04:23 UTC (superseded by current header)
+
+- PR #1889 is now at pushed exact SHA `7c187363191ade3c574c7a77bde8e0b3885ff370` (pushed around 04:22 UTC). This commit extends non-finite normalization to cached/fresh/batch indicator API responses and signal-history scalar/details writes in addition to the four known cache writers.
+- Local broad regression: 82 passed / 3 skipped; coverage `NEW=0`; `py_compile`, diff checks, and full-tree secret scan passed on 7c.
+- Exact-head hosted CI restarted, with no results available at the 04:23 update. Prior 9a88 and acbb CI results do not qualify 7c.
+- Production is unchanged on the last evidenced build, `ef085ce76be4512da71a58e65ef4feb25d156206`; latest health evidence is the direct 04:21:28 UTC degraded/unhealthy snapshot (78/degraded; three criticals; indicator unrecovered; orchestrator false). Do not claim live remediation.
+- Cron validation remains open: await the natural weekday 08:00 ET universe run and inspect its receipt/log/output after execution; do not manually invoke the live production writer for a test. Historic NaN evidence does not prove current causality. The separate history writer/schema uncertainty also remains a follow-up.
+- Do not merge/deploy until exact 7c CI, isolated PostgreSQL result, cron evidence, and incident/risk disposition are available, with separate release authority/lease.

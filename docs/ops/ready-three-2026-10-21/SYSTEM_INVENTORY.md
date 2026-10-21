@@ -1,7 +1,7 @@
 # System inventory snapshot — 2026-10-21
 
-**Status:** Coordinator-reported live recheck at 03:42:26 UTC; production remains on #1888 and candidate is not deployed.
-**Updated:** 2026-10-21 03:45 UTC
+**Status:** Base service inventory below is the coordinator-reported 03:42:26 UTC snapshot. Direct release/health evidence at 04:21:28 UTC still identifies #1888 and degraded status. PR #1889 is pushed at `7c187363191ade3c574c7a77bde8e0b3885ff370`, with hosted checks pending; no production change is evidenced. Service states, process paths, listeners, and full counters were not refreshed after 03:42.
+**Updated:** 2026-10-21 04:23 UTC
 
 ## Release and service state observed
 
@@ -21,3 +21,17 @@
 - C3 v4 evidence at 51bc97595582aa8ea0d6dcfd44fba6a848595e0e is separate; v5 runtime wiring is incomplete, and C3 rows stay PAUSED/off.
 
 Refresh this inventory after any release or material configuration change, preserving timestamp, source commands, and sanitized raw evidence.
+
+## Partial latest production observation — 2026-10-21 04:10 UTC
+
+- `CURRENT` / `BUILD_SHA`: `ef085ce76be4512da71a58e65ef4feb25d156206` on `main`; neither PR candidate is deployed.
+- Health captured at 04:09 UTC: 78/degraded, `healthy=false`, 3 criticals / 23 warnings; SPCX kill switch active; `indicator_engine` unrecovered.
+- Remediation probe at 04:08:34 UTC was ineffective (`EFFECT_NOT_OBSERVED`, unrecovered key `indicator_engine`). This is a symptom/status result, not proof of current root cause. Historical NaN errors establish a prior failure mode only.
+- Indicator cron evidence: last run Oct 19 12:00 UTC, 26 attempted / 1 upserted / 25 skipped (`no_ohlcv`); log mtime Oct 20 08:00 ET. The Oct 21 weekday 08:00 ET run had not occurred by the observation. Wait for the natural schedule and inspect receipt/logs; do not invoke the production writer solely for a test.
+- Communications health around 04:10 UTC: DB reachable, `CANARY`, owned operations, phase 7. Complete counters/schema were not refreshed in this partial probe.
+- Core unit states, working directories, network listeners, firewall state, and external reachability remain represented only by the earlier 03:42 snapshot and were not reverified here.
+- PR #1889 was pushed at `9a88c665fa314e79117fd8c6bf9d8716708138fc`; exact hosted CI was restarted and AIF was queued at that observation. This inventory contains no evidence that the commit is deployed or production-ready.
+
+## Latest candidate status — 2026-10-21 04:23 UTC
+
+PR #1889's current exact head is `7c187363191ade3c574c7a77bde8e0b3885ff370`, pushed around 04:22 UTC. Its hosted checks restarted and had no results at this update. Local broad regression was 82 passed / 3 skipped; coverage `NEW=0`; `py_compile`, diff checks, and full-tree secret scan passed. Direct production audit at 04:21:28 UTC confirms build `ef085ce76be4512da71a58e65ef4feb25d156206`, health 78/degraded with 3 criticals (global SPCX kill switch, stale SETUPS session, six underfilled 0700 runs), indicator unrecovered and orchestrator false. No deployment is evidenced. Full service and network inventory has not been refreshed since the timestamped baseline above.
