@@ -21,7 +21,7 @@ def _rows(comm, tg):
         if 'GROUP BY' in sql:
             from collections import Counter
             a=Counter(str(r[3] or 'unknown').lower() for r in comm)
-            b=Counter('sent' if r[5] is True else 'failed' if r[5] is False else 'unknown' for r in tg)
+            b=Counter(P.tg_state(r[5], r[6]) for r in tg)
             return [('communication_outbox',st,n) for st,n in a.items()]+[('telegram_outbox',st,n) for st,n in b.items()]
         return comm if sql.startswith("SELECT outbox_id") else tg
     return q

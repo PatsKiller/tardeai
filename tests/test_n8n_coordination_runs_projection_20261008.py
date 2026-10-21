@@ -73,5 +73,7 @@ def test_api_routes_pass_source_through_and_serve_the_board_file_read_only():
     assert 'source=q.get("source") or None' in block and "sqlite" not in block
     j = src.index('base_path == "/api/v2/coordination/migration-board"')
     block = src[j:j + 1200]
-    assert "n8n_migration_board_last.json" in block and '"NO_BOARD"' in block and "n8n_migration_board import" not in block
+    # 2026-10-21 (test_cc_coordination_truth_20261021): the route computes the board live via served_board
+    # (read-only; the --write receipt is only its flagged fallback) and still never shells out.
+    assert "from scripts.n8n_migration_board import served_board" in block and "_mb_served()" in block
     assert "subprocess" not in block and "crontab" not in block

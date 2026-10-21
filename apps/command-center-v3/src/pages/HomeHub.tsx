@@ -17,6 +17,7 @@ import { fmt$, fmtPct } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 import RiskGauge from '../components/risk/RiskGauge'
 import OperatorInboxPanel from '../components/OperatorInboxPanel'
+import NeedsActionCard from '../components/home/NeedsActionCard'
 import { healthFindingCta } from '../lib/healthCta'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
@@ -183,6 +184,9 @@ export default function HomeHub({ onDrill }: Props) {
           background: 'rgba(96,165,250,.12)', color: '#60a5fa', border: '1px solid rgba(96,165,250,.35)',
         }}>Morning brief → Reports</Link>
       </div>
+
+      {/* Needs action (audit 2026-10-21): failures from every source, one card; empty only when all answered */}
+      <NeedsActionCard />
 
       {/* Decision-first (operator 2026-10-08): what needs action, highest risk, highest opportunity */}
       <HomeDecision overview={overview} winRate={tradingWr} />

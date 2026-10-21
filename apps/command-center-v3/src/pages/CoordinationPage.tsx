@@ -7,7 +7,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { projectionReadPath } from '../lib/projectionReadProtocol'
 import { Chip, ChipRow, SortHeader, useSort } from '../components/primitives'
-import { RADIUS, TOKENS, TYPE, FONT } from '../lib/designTokens'
+import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../lib/designTokens'
 import { projectCoordination, type CoordinationPayload, type CoordinationRow } from '../lib/coordinationEvents'
 import { projectOutbox, type OutboxPayload } from '../lib/outboxProjection'
 import { projectApprovalBoard, type ApprovalBoardPayload } from '../lib/approvalBoard'
@@ -110,6 +110,18 @@ export default function CoordinationPage() {
           <div style={{ fontSize: TYPE.lg, fontWeight: 800, color: TOKENS.text[0] }}>Migration board</div>
           <div style={label}>n8n as scheduler of record · shadow → canary → cutover → rollback · the registry and the receipts decide, this page only shows</div>
         </div>
+        {board.stale ? (
+          <div role="alert" data-testid="migration-board-stale" style={{ marginTop: 8, padding: '8px 10px', borderRadius: RADIUS.sm, fontSize: TYPE.sm, fontWeight: 700, color: toneVars('warning').color, background: toneVars('warning').bg, border: `1px solid ${toneVars('warning').border}` }}>
+            {board.staleLabel} · counts below may not reflect the registry or receipts now
+          </div>
+        ) : null}
+        {board.dispatchStages.length ? (
+          <ChipRow style={{ marginTop: 8 }}>
+            <span style={label}>dispatcher stages (lane registry)</span>
+            {board.dispatchStages.map(s => <Chip key={s.stage} tone={s.n > 0 ? s.tone : 'neutral'} title={`lanes with scheduler.stage ${s.stage}`}>{s.stage} {s.n}</Chip>)}
+            {board.computed ? <Chip tone={board.computed === 'LIVE' ? 'neutral' : 'warning'} title="LIVE = computed on this request; FILE_FALLBACK = last --write receipt">{board.computed.toLowerCase().replace('_', ' ')}</Chip> : null}
+          </ChipRow>
+        ) : null}
         <ChipRow style={{ marginTop: 8 }}>
           <Chip tone={board.statusTone} title="board status">{board.statusLabel}</Chip>
           <Chip tone="neutral" title="board clock">{board.asOfLabel}</Chip>
@@ -155,7 +167,7 @@ export default function CoordinationPage() {
               ))}
               {boardSort.rows.length === 0 ? (
                 <tr><td colSpan={9} style={{ ...cell, color: TOKENS.text[3] }}>
-                  {board.status === 'NO_BOARD' ? 'no board yet: scripts/n8n_migration_board.py --write has not run on this host' : board.status === 'UNAVAILABLE' ? 'migration board unavailable' : 'no program lanes'}
+                  {board.status === 'NO_BOARD' ? 'no board: the live build failed and no --write receipt exists on this host' : board.status === 'UNAVAILABLE' ? 'migration board unavailable' : 'no program lanes'}
                 </td></tr>
               ) : null}
             </tbody>

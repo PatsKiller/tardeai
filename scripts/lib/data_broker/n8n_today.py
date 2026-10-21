@@ -108,6 +108,7 @@ def build(state_root:Optional[Path]=None,now:Optional[datetime]=None)->dict[str,
     day,since=_day_bounds(now);frag=day.replace('-','')+'T'
     by_mode={mode:collections.Counter() for mode in ('live','dry_run','unknown')}
     failures=[];skips=collections.Counter();lanes=set();live_lanes=set();first_live={};namespaces=collections.Counter()
+    lane_states=collections.defaultdict(collections.Counter)  # per live lane: state -> n (needs-action, 2026-10-21)
     matching=[];invalid=0;read_bytes=0
     source={'status':'UNAVAILABLE','complete':False,'candidate_files':None,'read_files':0,'invalid_files':0,
             'max_files':MAX_RUN_FILES,'max_bytes':MAX_RUN_BYTES,'time_basis':'semantic slot date in America/New_York'}
@@ -136,7 +137,7 @@ def build(state_root:Optional[Path]=None,now:Optional[datetime]=None)->dict[str,
         try:mode=RV.effective_mode({'mode':requested,'receipt':doc}) or 'unknown'
         except (TypeError,ValueError):mode='unknown'
         state=str(doc.get('state') or 'UNKNOWN');by_mode[mode][state]+=1;lanes.add(lane)
-        if mode=='live':live_lanes.add(lane)
+        if mode=='live':live_lanes.add(lane);lane_states[lane][state]+=1
         if state=='RUN_SKIPPED_LOCK':skips[(lane,mode)]+=1
         elif state in ('RUN_FAILED','RUN_REFUSED','RUN_TIMEOUT') or state.endswith('FAILED'):
             failures.append({'lane':lane,'mode':mode,'requested_mode':requested,'slot':slot,'state':state,'reason':doc.get('reason'),
@@ -191,6 +192,7 @@ def build(state_root:Optional[Path]=None,now:Optional[datetime]=None)->dict[str,
                 'lanes_active':len(lanes) if full_runs else None,'lanes_live':len(live_lanes) if full_runs else None},
         'failures':failures[:MAX_LIST],'failures_total':len(failures) if full_runs else None,
         'failures_returned':min(len(failures),MAX_LIST),'failures_truncated':len(failures)>MAX_LIST,
+        'live_lane_states':{lane:dict(c) for lane,c in sorted(lane_states.items())},
         'lock_skips':[{'lane':lane,'mode':mode,'count':n} for (lane,mode),n in sorted(skips.items(),key=lambda kv:(-kv[1],kv[0]))],
         'relay':{'counts':dict(relay) if relay_meta['complete'] else None,'observed_counts':dict(relay),'truncated':relay_meta['truncated'],'workflow_errors':workflow_errors[-MAX_LIST:]},
         'diagnoses':{'counts':dict(diag_by) if diag_meta['complete'] else None,'by_lane':dict(collections.Counter(str(r.get('lane')) for r in diagnoses).most_common(30)),
