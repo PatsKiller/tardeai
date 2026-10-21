@@ -146,7 +146,13 @@ def _isolated_alert_database(dsn: str) -> str | None:
         port = parsed.port
     except ValueError:
         return None
-    if parsed.scheme not in {"postgres", "postgresql"} or hostname != "127.0.0.1" or port != 55432:
+    if (
+        parsed.scheme not in {"postgres", "postgresql"}
+        or hostname != "127.0.0.1"
+        or port != 55432
+        or parsed.query
+        or parsed.fragment
+    ):
         return None
     from scripts.lib.m2_live_shadow_guard import dsn_database
 
@@ -161,6 +167,12 @@ def test_alert_test_dsn_must_use_local_isolated_endpoint():
         "postgresql://user:secret@127.0.0.1:5432/m2_shadow_test",
         "postgresql://user:secret@127.0.0.1/m2_shadow_test",
         "postgresql://user:secret@[invalid:55432/m2_shadow_test",
+        "postgresql://user:secret@127.0.0.1:55432/m2_shadow_test?host=192.0.2.10",
+        "postgresql://user:secret@127.0.0.1:55432/m2_shadow_test?hostaddr=192.0.2.10",
+        "postgresql://user:secret@127.0.0.1:55432/m2_shadow_test?port=5432",
+        "postgresql://user:secret@127.0.0.1:55432/m2_shadow_test?dbname=trade_ai",
+        "postgresql://user:secret@127.0.0.1:55432/m2_shadow_test?service=production",
+        "postgresql://user:secret@127.0.0.1:55432/m2_shadow_test#host=192.0.2.10",
     ):
         assert _isolated_alert_database(dsn) is None
 
