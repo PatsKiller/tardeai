@@ -19,10 +19,10 @@
         "n8n-nodes-base.scheduleTrigger",
         "n8n-nodes-base.switch"
       ],
-      "policy_sha256": "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f",
+      "policy_sha256": "4b1ee926f4fd46d60715ba4ba4739bd40fb2e91aecc0476f1dd29a0d55696229",
       "relay_calls": [],
       "runbook": "RUNBOOK_tradeai-reference-mature-workflow.md",
-      "sha256": "082b057116f588d7abb9cc312f36104da87b14a5f03275f979ac9249ba8e390f"
+      "sha256": "af121b5f9303a5a87254e1d92beb8a15caad8e7d2363a2a1845010514d8b7124"
     }
   ]
 }

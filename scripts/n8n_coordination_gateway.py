@@ -210,6 +210,10 @@ def _finite_json_number(text: str) -> float:
     return value
 
 
+#: 2026-10-21 (Release Train v2 Phase 4): read-only projections the release_train_window operation answers with.
+RELEASE_TRAIN_VIEW_SCHEMAS = frozenset({"ReleaseTrainReadiness@v1", "ReleaseTrainWindowView@v1"})
+
+
 def dispatch_http(
     method: str,
     target: str,
@@ -232,6 +236,7 @@ def dispatch_http(
     momentum_provider: Any = None,
     outcome_store: Any = None,
     intent_store: Any = None,
+    release_train_provider: Any = None,
 ) -> tuple[int, dict]:
     """One HTTP decision. Proxy headers are not copied into the claim check."""
     del headers  # identity is the HMAC claim; forwarded headers are not read
@@ -282,11 +287,14 @@ def dispatch_http(
         momentum_provider=momentum_provider,
         outcome_store=outcome_store,
         intent_store=intent_store,
+        release_train_provider=release_train_provider,
     )
     if result.get("schema") == "DueResponse@v1" and result.get("ok") is True:
         return 200, result  # closed schema (additionalProperties: false); nothing was written
     if result.get("schema") == "N8nMomentumLifecycle@v1":
         return 200, result  # authenticated server-owned health projection; no state transition
+    if result.get("schema") in RELEASE_TRAIN_VIEW_SCHEMAS and result.get("state") == "OK":
+        return 200, result  # 2026-10-21 release-train read-only projection (Phase 4); nothing was written
     result["proxy_headers_used_as_auth"] = False
     if result.get("state") == "REFUSED":
         result["durable"] = False  # nothing was written for a refusal
@@ -309,6 +317,7 @@ def make_handler(
     due_sources: Any = None,
     momentum_provider: Any = None,
     intent_routes_path: Path | None = None,
+    release_train_provider: Any = None,
 ):
     nonce_store: Any = LedgerNonceStore(ledger) if ledger is not None else {}
     idempotency_store: Any = LedgerReceiptStore(ledger) if ledger is not None else {}
@@ -368,6 +377,7 @@ def make_handler(
                 momentum_provider=momentum_provider,
                 outcome_store=outcome_store,
                 intent_store=intent_store,
+                release_train_provider=release_train_provider,
             )
             self._send(status, payload)
 
@@ -426,6 +436,19 @@ def serve(
             return {"state": "REFUSED", "reason": "momentum_lifecycle_no_durable_store"}
         return durable_view(code_root, state_root, now=now)
 
+    def release_train_provider(query, now):
+        # 2026-10-21 (Release Train v2 Phase 4; docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md §4, §8): read-only. The
+        # gateway holds no database credential, so the readiness view's queue fields read UNAVAILABLE, never zero.
+        # Its module is stdlib-only and reads no environment; the release-window state dir is the default one
+        # under this gateway's own state root (an operator TRADEAI_RELEASE_WINDOW_STATE_DIR override must equal it).
+        from scripts.lib.release_train_window_view import gateway_answer
+
+        if state_root is None:
+            return {"state": "REFUSED", "reason": "release_train_window_no_state_root"}
+        runtime = state_root / "data" / "runtime"
+        return gateway_answer(query, now, state_dir=runtime / "release_window",
+                              census_path=runtime / "pr-hygiene-audit_last.json")
+
     httpd = GatewayServer(
         (host, port),
         make_handler(
@@ -441,6 +464,7 @@ def serve(
             due_sources=due,
             momentum_provider=momentum_provider,
             intent_routes_path=code_root / INTENT_ROUTES_REL,
+            release_train_provider=release_train_provider,
         ),
     )
     httpd.coordination_ledger = ledger  # type: ignore[attr-defined]
