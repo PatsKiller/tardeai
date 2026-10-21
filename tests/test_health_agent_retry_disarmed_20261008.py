@@ -44,7 +44,7 @@ def retry_process(monkeypatch, tmp_path):
         returncode = 0
 
         def communicate(self, *, timeout):
-            assert timeout == 300
+            assert 0 < timeout <= 300
             # Controlled completion artifact, not proof of interpreter execution.
             state["marker"].write_text("x", encoding="utf-8")
             return "fixture child completed", ""
@@ -95,10 +95,42 @@ def test_armed_rewrites_the_dev_venv_interpreter_to_the_running_one(monkeypatch,
     comp = {"component": "arm-test", "retry_cmd": f".venv/bin/python -c \"open('{marker}','w').write('x')\""}
     expected = f"{sys.executable} -c \"open('{marker}','w').write('x')\""
     retry_process.update(expected=expected, marker=marker)
-    assert agent._attempt_retry(comp, _NoConn()) is True
-    assert marker.read_text() == "x"  # controlled completion artifact
+    # Arming does not create a known budget when DB history is unavailable.
+    assert agent._attempt_retry(comp, _NoConn()) is False
+    assert not marker.exists() and retry_process["calls"] == []
+    assert retry_process["events"] == [("arm-test", "RETRY_BUDGET_HELD", "WARN", None, False)]
+
+
+def test_known_fixture_budget_preserves_the_running_interpreter(monkeypatch, tmp_path, retry_process):
+    import system_health_agent as agent
+
+    class KnownConn:
+        def cursor(self):
+            return self
+
+        def execute(self, *args):
+            pass
+
+        def fetchone(self):
+            return (0,)
+
+        def commit(self):
+            pass
+
+    state = tmp_path / "fixture-state"
+    (state / "data/runtime").mkdir(parents=True)
+    (state / "data/runtime/health_retry_attempts.jsonl").write_text("")
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(state))
+    monkeypatch.setattr(agent, "_health_retry_history", lambda path, now: path.read_text())
+    monkeypatch.setenv("TRADEAI_HEALTH_AGENT_RETRY", "1")
+    marker = tmp_path / "known-ran.txt"
+    cmd = f".venv/bin/python -c \"open('{marker}','w').write('x')\""
+    expected = cmd.replace(".venv/bin/python", sys.executable, 1)
+    retry_process.update(expected=expected, marker=marker)
+    assert agent._attempt_retry({"component": "known-arm-test", "retry_cmd": cmd}, KnownConn()) is True
+    assert marker.read_text() == "x"  # fake completion; never business-output proof
     assert retry_process["calls"] == [expected]
-    assert retry_process["events"] == [("arm-test", "RETRY", "INFO", expected[:100], True)]
+    assert retry_process["events"] == [("known-arm-test", "RETRY", "INFO", expected[:100], True)]
 
 
 def test_every_dev_venv_retry_cmd_is_rewritten_before_execution():

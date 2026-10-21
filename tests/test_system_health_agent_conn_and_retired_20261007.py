@@ -85,11 +85,10 @@ def test_a_dead_connection_does_not_crash_the_retry_path(monkeypatch, tmp_path):
     monkeypatch.setattr(agent.os, "system", refuse)
     monkeypatch.setattr(agent, "_log_event", event)
     comp = {"component": "unit-test", "retry_cmd": "true"}
-    assert (
-        agent._attempt_retry(comp, _DeadConn()) is True
-    )  # The controlled child exits 0; the dead count query is not fatal.
-    assert calls == ["true"] and not unexpected
-    assert events == [("unit-test", "RETRY", "INFO", "true", True)]
+    # Unknown accounting now holds safely; the original no-UnboundLocalError guarantee remains.
+    assert agent._attempt_retry(comp, _DeadConn()) is False
+    assert calls == [] and not unexpected
+    assert events == [("unit-test", "RETRY_BUDGET_HELD", "WARN", None, False)]
 
 
 def test_retries_today_is_bound_before_the_query_can_fail():

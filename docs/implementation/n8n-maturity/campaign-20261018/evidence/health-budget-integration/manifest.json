@@ -1,0 +1,784 @@
+{
+  "schema": "RecoveryBudgetIntegrationEvidence@v1",
+  "campaign_id": "n8n-maturity-20261018",
+  "base_sha": "8f75c3137983b129e7ab543c0423ce4f3151afb5",
+  "approved_source_sha": "612c0f1b0026bb18c182d8f70481bfb722758c8d",
+  "source_parity": {
+    "scripts/lib/recovery_attempt_budget.py": {
+      "sha256": "8404eb7dd0546cf2aa5c89eeef92bc35c953ca5a0f37be5b72f2527473fd040e",
+      "git_blob": "f019b4a33e46c85de5ff7a4297d99f3ef0f358d3",
+      "byte_exact": true
+    },
+    "scripts/supervisor_breach_detector.py": {
+      "sha256": "b2f011d01d33ad947b88de80688ae3a1f0ac3f0a8122c3505f2125b4f57fecdb",
+      "git_blob": "6e160538eb4ad88b456623c056f3862fcb65d248",
+      "byte_exact": true
+    },
+    "scripts/system_health_agent.py": {
+      "sha256": "5c53d803f4fab3e41773e176baa425445c9499a9562b3aa34c961692c0ef7c92",
+      "git_blob": "fc5b2a968c6037f962a8e529d227728754854a04",
+      "byte_exact": true
+    },
+    "tests/test_health_agent_retry_disarmed_20261008.py": {
+      "sha256": "08d6b98aecb68d3a7dc5ae6e00e66f320292904a672d80343a12cda50c94a43c",
+      "git_blob": "45d435de555b3319decaa23ba648a06218225992",
+      "byte_exact": true
+    },
+    "tests/test_recovery_attempt_budget_20261019.py": {
+      "sha256": "3d5985e923ff87ebe4c8e058713990f1dd18e3aa6324995537148c3049b80792",
+      "git_blob": "699e4542a20d805e95cdf354e11dae549d2c7ab7",
+      "byte_exact": true
+    },
+    "tests/test_system_health_agent_conn_and_retired_20261007.py": {
+      "sha256": "8fea677b5f68df22fa86d87b25b6f2b7ecb2f3be2b95c7c5fe32c5e47d843e2d",
+      "git_blob": "a5795bf228a76b1d604af68eb086deb284b79f5b",
+      "byte_exact": true
+    },
+    "tests/test_system_health_retry_recovery_truth_20261019.py": {
+      "sha256": "aeb10a6a53d8581f628742603a70d5359489b67b6cc1afac0e6da82940551029",
+      "git_blob": "d51678055c8f398a85e8a0d38757eb6a595beedc",
+      "byte_exact": true
+    }
+  },
+  "independent_source_review": "historical-independent/health-budget612-root-review.json.gz",
+  "CI": {
+    "before": 502,
+    "after": 503,
+    "all_prior_order_values_preserved": true,
+    "other_runner_AST_unchanged": true,
+    "gate": [
+      "recovery_attempt_budget_20261019",
+      [
+        "tests/test_recovery_attempt_budget_20261019.py"
+      ]
+    ]
+  },
+  "actual_selector": "integration/actual-selector.json.gz",
+  "actual_gate_runner": "integration/actual-gate-runner.json.gz",
+  "focused": {
+    "tests": 151,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "reproduction_classification": {
+    "baseline.xml": "Exact8f75 original17:15 real expected AssertionErrors plus2passing controls;0errors/0skips. Frozenhashb033 preserved.",
+    "frozen-green.xml": "Original byte-identical17green before extra candidate controls.",
+    "frozen-exact-head.xml": "Same frozen17 bytes independently executed against exact612;17green.",
+    "exact-head.xml": "Final expanded43budget cases allgreen at exact612.",
+    "candidate-first.xml": "Candidate behavior refused14 old positive-launch fixtures with no trusted history and2 old deadDB-launch expectations; not credited as baseline red. Captured before authorized fixture migration.",
+    "adapted.xml": "Intermediate fixture mkdir FileExistsError, preserved as test-infrastructure failure; not behavioralred.",
+    "fixture_migration": "Original15recovery assertions retained; explicitly fake completehistory readiness added for intended positivecases and one UNINITIALIZED/noattempt control. Two deadDB cases now require noPopen; a separate knownfakehistory interpreter positive retains interpreter/remainingtimeout coverage."
+  },
+  "limitations": [
+    "Health production _health_retry_history returnsNone unconditionally:UNINITIALIZED, no legitimate complete-history provenance source/initializer exists. Fake temp source tests qualify accounting mechanics only. Existing PG event dedup means PG count alone is incomplete.",
+    "Default disarmed state and actual action catalogue/caps remain unchanged. No runtime retries, provider sends, broker effects, service actions, deployment, grant use, activation or observation proof.",
+    "Existing supervisor2/600s history semantics preserved by12baseline reader comparisons; old/new worker drain/fencing and actual trustedhistory/rollback reconciliation required before runtime use. No deployed compatibility claimed.",
+    "Full native and exact integrated remoteCI not run; this packet carries focused151passes and actual selected new43case gate execution only. Parent must independently review integration and arrange final acceptance.",
+    "No INDEX, newMarkdown, generated configuration, policy/arming/config edits, remote writes or own-source independent approval. Historical parent health-retry packet holds remain historical; this source closes local accounting gaps but production health remains held."
+  ],
+  "artifacts": [
+    {
+      "path": "historical-author/adapt_fixtures.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/adapt_fixtures.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 1716,
+      "sha256": "07c506312502c24da8ec577daf704ed5333f859fa61f8652251e500a25192fec",
+      "decompressed_bytes": 4961,
+      "decompressed_sha256": "4431da99fb96c7e8a04430655329037b01acd8eb05c824f03fa3e80b2682a8f0"
+    },
+    {
+      "path": "historical-author/adapted.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/adapted.xml",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 2967,
+      "sha256": "d56b3a82c8af7a4431b3328ca829d9212d397bac87fafed67a4430ab494dd7ec",
+      "decompressed_bytes": 61303,
+      "decompressed_sha256": "8ead57b26d67f8c8613bd5e8bf07e8ece4ba0b43bd2b327e629622202fb715aa"
+    },
+    {
+      "path": "historical-author/adapted2.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/adapted2.xml",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 1067,
+      "sha256": "6602c8dc57fb30f64aa5534826ca7d0676d36d9e5f91b6ab514a561c9390505d",
+      "decompressed_bytes": 6971,
+      "decompressed_sha256": "961e3d94166ac7a95c07e9bbfeaf05c159783e23920d58f46d315a052afd15b4"
+    },
+    {
+      "path": "historical-author/baseline-capture.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/baseline-capture.json",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 344,
+      "sha256": "93daab49336c4dc4160d9a6939cd4bbb9a5e1d39680ac7a9371f4f5153859e8b",
+      "decompressed_bytes": 513,
+      "decompressed_sha256": "6ec453f565ccae15e86bc185dbce7c4da79635a44e3dc0f7faa64a14ed747706"
+    },
+    {
+      "path": "historical-author/baseline-supervisor_breach_detector.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/baseline-supervisor_breach_detector.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 13481,
+      "sha256": "265bb65425480af4e865063387e39a95448002d394a366ef0470f5ef764dba1c",
+      "decompressed_bytes": 43356,
+      "decompressed_sha256": "af39a5fdbf44a648c8bac0e6eb4b00c96732823ad25d0ce97d06609ec85df05f"
+    },
+    {
+      "path": "historical-author/baseline-system_health_agent.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/baseline-system_health_agent.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 29450,
+      "sha256": "dc0d7188b4804fa757eca04cd940c079c035d8bbb3242ae2c7ff933213e8629a",
+      "decompressed_bytes": 111334,
+      "decompressed_sha256": "73d6c918190d6159430675266ca2f8981d71bc04a96e868a4778f153bce8df33"
+    },
+    {
+      "path": "historical-author/baseline.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/baseline.txt",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 2191,
+      "sha256": "9cb8c08f314a6bbf252ee92989471ff3ed6a7f6e7ae888974b3ac3498f9915fc",
+      "decompressed_bytes": 27441,
+      "decompressed_sha256": "614315bf71063ba2ca72e0038e78a870c86dbde32adf0007bc6a958b6d6adccf"
+    },
+    {
+      "path": "historical-author/baseline.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/baseline.xml",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 2497,
+      "sha256": "a6f032c7b0cc40fede86f133855ec3aca0f919e75d4b17cb9c2380c079d5908d",
+      "decompressed_bytes": 37319,
+      "decompressed_sha256": "ea3e210ea0e48d12efc0ad41fbc59cfa1c60930b0ccfff2ac34102066b16f8ec"
+    },
+    {
+      "path": "historical-author/candidate-first.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/candidate-first.xml",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 5109,
+      "sha256": "f02e5ebd2d59364d5c93be931241ed8f07a74e25876a1a36bc4ebcc0f1fcea76",
+      "decompressed_bytes": 100521,
+      "decompressed_sha256": "1590123c37b1c8d9b72ff97135b26c65e859e52dfabb0115f73ea230054aeca8"
+    },
+    {
+      "path": "historical-author/candidate-recovery_attempt_budget.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/candidate-recovery_attempt_budget.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 2857,
+      "sha256": "5d68bb833fef1bb8b6a2e89a7deb6a62a51b18fe8fa41f999031f12a2db5a464",
+      "decompressed_bytes": 9208,
+      "decompressed_sha256": "8404eb7dd0546cf2aa5c89eeef92bc35c953ca5a0f37be5b72f2527473fd040e"
+    },
+    {
+      "path": "historical-author/candidate-supervisor_breach_detector.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/candidate-supervisor_breach_detector.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 12904,
+      "sha256": "9f05be7ed69726a24858e87180200c4f3be0fedfe5b7cec3166572ebcd02e643",
+      "decompressed_bytes": 43367,
+      "decompressed_sha256": "b2f011d01d33ad947b88de80688ae3a1f0ac3f0a8122c3505f2125b4f57fecdb"
+    },
+    {
+      "path": "historical-author/candidate-system_health_agent.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/candidate-system_health_agent.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 30201,
+      "sha256": "5301a80ba38537f75dac489269880ed02a95e7eb9819d82f591e98caa7b15cee",
+      "decompressed_bytes": 113988,
+      "decompressed_sha256": "5c53d803f4fab3e41773e176baa425445c9499a9562b3aa34c961692c0ef7c92"
+    },
+    {
+      "path": "historical-author/candidate-test_health_agent_retry_disarmed_20261008.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/candidate-test_health_agent_retry_disarmed_20261008.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 2188,
+      "sha256": "e2bf28d50ee8240c72bda5f943f3811b62e86e03a1cd7a95823ec5bb7430dfa3",
+      "decompressed_bytes": 6047,
+      "decompressed_sha256": "08d6b98aecb68d3a7dc5ae6e00e66f320292904a672d80343a12cda50c94a43c"
+    },
+    {
+      "path": "historical-author/candidate-test_recovery_attempt_budget_20261019.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/candidate-test_recovery_attempt_budget_20261019.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 3448,
+      "sha256": "d70749b966d535904285c6f5590d12a3d6a64e127baea3718cfa6e2ad307ad45",
+      "decompressed_bytes": 12074,
+      "decompressed_sha256": "3d5985e923ff87ebe4c8e058713990f1dd18e3aa6324995537148c3049b80792"
+    },
+    {
+      "path": "historical-author/candidate-test_system_health_agent_conn_and_retired_20261007.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/candidate-test_system_health_agent_conn_and_retired_20261007.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 2186,
+      "sha256": "4d288cce3101baeed5fa2710142d20a8c9dd86075fa74c744bf7b68a102289e1",
+      "decompressed_bytes": 5405,
+      "decompressed_sha256": "8fea677b5f68df22fa86d87b25b6f2b7ecb2f3be2b95c7c5fe32c5e47d843e2d"
+    },
+    {
+      "path": "historical-author/candidate-test_system_health_retry_recovery_truth_20261019.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/candidate-test_system_health_retry_recovery_truth_20261019.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 2346,
+      "sha256": "cf1be77d825218b3b1ab2cc60427745629a259386112a4310398c71e5c0accfc",
+      "decompressed_bytes": 6558,
+      "decompressed_sha256": "aeb10a6a53d8581f628742603a70d5359489b67b6cc1afac0e6da82940551029"
+    },
+    {
+      "path": "historical-author/diff-check.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/diff-check.txt",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 20,
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "decompressed_bytes": 0,
+      "decompressed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "historical-author/exact-head-commands.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/exact-head-commands.json",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 388,
+      "sha256": "ea6a5765803d3b7750bb0b66db0bed15658e8af922f2cfcb1c6c7f0a4ff17a0e",
+      "decompressed_bytes": 1138,
+      "decompressed_sha256": "4ca912a6448c162393b96ac851b29130408b7d4e557da1928dc6d281c22d99b9"
+    },
+    {
+      "path": "historical-author/exact-head.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/exact-head.txt",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 52,
+      "sha256": "e0f13a0de11e8299a425223b9d811e69915772ceba7fe86dcc3c7f5f641125b5",
+      "decompressed_bytes": 99,
+      "decompressed_sha256": "cbc867e8a36c4d06fd51222f743fbb8bd332d555ba6ab82440811b5f6bb61c8a"
+    },
+    {
+      "path": "historical-author/exact-head.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/exact-head.xml",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 974,
+      "sha256": "2054535b57fbbb42098ecd03168c380f68a8581eb9a73cc58b1423981f41788e",
+      "decompressed_bytes": 7704,
+      "decompressed_sha256": "f621e3250288a7a2923d0009de99a599a699f91261e9e50eb97551ce30ab14b8"
+    },
+    {
+      "path": "historical-author/final-focused-command.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/final-focused-command.json",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 360,
+      "sha256": "ef956979726aa73f315d077412ad2c6c6c014833e77195db425d8bdba6086f49",
+      "decompressed_bytes": 874,
+      "decompressed_sha256": "1302da2718992942dd4d7daa6fc279aeaa19b1b6189aedf253c614ac5437855e"
+    },
+    {
+      "path": "historical-author/final-focused.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/final-focused.txt",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 68,
+      "sha256": "d2dfd9b0322832fe844d52e557d2bd0383b53b39a922363bc04653cc2c6d4009",
+      "decompressed_bytes": 260,
+      "decompressed_sha256": "8de9d17501718cb54532d632d7539bf64870d1b9f7f07ebf99cff8e0b47425dd"
+    },
+    {
+      "path": "historical-author/final-focused.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/final-focused.xml",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 2999,
+      "sha256": "9044c97391915e9caad1c2403b33d19d5f0aa4052bf8ff53fac8e9eab881a75a",
+      "decompressed_bytes": 24914,
+      "decompressed_sha256": "ddade248f21b9dbb55e1bb41a358db3c7d0143f0e00b81dcb00b47def4d1046a"
+    },
+    {
+      "path": "historical-author/fixture-lease.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/fixture-lease.json",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 404,
+      "sha256": "07726eb0699f07f573bcfe21a1c6176158a8bc29b59ca8a38d47156e9e41e2f4",
+      "decompressed_bytes": 780,
+      "decompressed_sha256": "b5124b38835f583019ecac87b984d7e79148a83efef14975520dd3a9e09c0597"
+    },
+    {
+      "path": "historical-author/fixture-migration-before.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/fixture-migration-before.json",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 835,
+      "sha256": "b63cfe2e028f5d0e4e2ba301b71bf18fcedbd5269ac6799135693d2b1533fabc",
+      "decompressed_bytes": 3938,
+      "decompressed_sha256": "43c17f7aa3a1d975f42661bc626d8e66b3cc3d358844bf337a3daa92a96c6076"
+    },
+    {
+      "path": "historical-author/focused-command.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/focused-command.json",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 338,
+      "sha256": "22d9bb57594347966007667881715e28951dc75e7c1da1e3de0b795e53cfccb1",
+      "decompressed_bytes": 746,
+      "decompressed_sha256": "190146207bb60bd3b911aec4ced8a614ecaf8ddf57dfae94fb86c258add94eed"
+    },
+    {
+      "path": "historical-author/focused.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/focused.txt",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 76,
+      "sha256": "37f46b341058a55c8854b7673bd6374262001b3e9d1bade085df225618f25eb3",
+      "decompressed_bytes": 194,
+      "decompressed_sha256": "ad5772af29ea98ebc72edb6f8416ef23ec790b4ecfb4f3743e444e3cd0882f91"
+    },
+    {
+      "path": "historical-author/focused.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/focused.xml",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 2591,
+      "sha256": "345886c4d4def9a9252ca7179cf4aefa8226a1e438a57fd63675b2ffb3becce3",
+      "decompressed_bytes": 21165,
+      "decompressed_sha256": "e31f09ab18a296cd7a76638042f864f674769770c316ed41088f38f148c090b4"
+    },
+    {
+      "path": "historical-author/format-ast-parity.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/format-ast-parity.json",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 181,
+      "sha256": "e5e9ce23be8125b474081a804096a92a7c6b6d9535fa88b4e328e9eaa55a03da",
+      "decompressed_bytes": 404,
+      "decompressed_sha256": "c71f5c61f30529a7ef4d4ea880925aa04558450e39903915ed8150d438404276"
+    },
+    {
+      "path": "historical-author/frozen-exact-head.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/frozen-exact-head.txt",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 52,
+      "sha256": "e770ccd4f96810c0e05d067fa1c8e9c1d25000ef3d2bc834e5a6eb78e6ebe20c",
+      "decompressed_bytes": 99,
+      "decompressed_sha256": "751009237cb136138bd4966b50712f31286556eeb92ffee68fe0594d4a01ccc6"
+    },
+    {
+      "path": "historical-author/frozen-exact-head.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/frozen-exact-head.xml",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 541,
+      "sha256": "1260332257c286e53d3013b20d36a6c2cf020b2727cbd668b00935e97d7653d2",
+      "decompressed_bytes": 2583,
+      "decompressed_sha256": "aaeeda47ea56c1cc04d91ee66d84228127c6e8fae11e61d44fbba55d3c76f6db"
+    },
+    {
+      "path": "historical-author/frozen-green-command.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/frozen-green-command.json",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 300,
+      "sha256": "e0191b7469f026092e18b87210add577f5e76e811ae5947f30a4f1882412bc2f",
+      "decompressed_bytes": 493,
+      "decompressed_sha256": "5d6adfac6650484e33f5b4ccae12f01f472bea5582122c1da7ba025729dda85c"
+    },
+    {
+      "path": "historical-author/frozen-green.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/frozen-green.txt",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 52,
+      "sha256": "60ac89d3851d25d878ae0aa6eeae0682c889877c70f9cfd40672627fa00b39fa",
+      "decompressed_bytes": 99,
+      "decompressed_sha256": "88b2f2c72fac2a529f764277f537feb7dcc4fb445a076c3af0066b209ddf89ba"
+    },
+    {
+      "path": "historical-author/frozen-green.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/frozen-green.xml",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 558,
+      "sha256": "310e56e04c66c9cd7a36ba9b02521eb4f011cbf53cd0cab0f8c339e6a9cfbd38",
+      "decompressed_bytes": 2685,
+      "decompressed_sha256": "490e2e68ceb7c5fb00a55638d27f6b7b4d466a82a000a0c84c3f56eb7a5137a5"
+    },
+    {
+      "path": "historical-author/frozen-test.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/frozen-test.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 2366,
+      "sha256": "8f12358b9f5e4470068862d9399e9a4a6602377d3403cbbc6097f4aaedf1f50c",
+      "decompressed_bytes": 6912,
+      "decompressed_sha256": "b033b36b93ab35f460a98d4569ef3fa5ebb064ae6759bf35999fc7741c87a6a1"
+    },
+    {
+      "path": "historical-author/full-focused-command.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/full-focused-command.json",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 360,
+      "sha256": "98c2a2ab7439bcb3060ebdac86cd56ff6ee3cc1bbb76604837698b6cb3d8d783",
+      "decompressed_bytes": 872,
+      "decompressed_sha256": "8096fce5a6181cacfe8259a6d9415e105391346f371f4f602fd75fb3f89c73d3"
+    },
+    {
+      "path": "historical-author/full-focused.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/full-focused.txt",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 69,
+      "sha256": "c4cb557ca5a94cd5c041915de112a33e4ad9310a1aeeea351aa76443c2f4dd43",
+      "decompressed_bytes": 260,
+      "decompressed_sha256": "2a51e13697de98e1262217f233cabaa2262cd680e27e08757d461a511f0cb9a6"
+    },
+    {
+      "path": "historical-author/full-focused.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/full-focused.xml",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 2932,
+      "sha256": "d86070b356f7419e00f775df4b47df37e775d7fe928ab49bcccc05b801f5440e",
+      "decompressed_bytes": 23139,
+      "decompressed_sha256": "d41ee180ac6d1ef0bf567124146948176ad8757076f94e486ba41e0567f5bf7e"
+    },
+    {
+      "path": "historical-author/implement.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/implement.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 4702,
+      "sha256": "db1d05f619e8b4883a3f701f1ef1a4b5c4fb0ea4374708380503e0b1c3aaf550",
+      "decompressed_bytes": 15605,
+      "decompressed_sha256": "e183ead10ba1a00e2e8b4f07e43953b31bfe2a256601816880e837bd7c0ceea5"
+    },
+    {
+      "path": "historical-author/implementation-evidence.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/implementation-evidence.json",
+      "kind": "source_author_packet",
+      "bytes": 6929,
+      "sha256": "a443e878f36c6bd70bcdce9aca1153640cfe89d1fbb64ff500a1ce868bfd4647",
+      "decompressed_bytes": 23526,
+      "decompressed_sha256": "e5a7dcdc10c9cff6c8ea8dc78f80a01959db7f8b2a6d5bf8ac259e19eab6177d"
+    },
+    {
+      "path": "historical-author/lease-release.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/lease-release.json",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 169,
+      "sha256": "32f5e10bd798f51f7356eadf667e3d6e93ca5ef178a96a6b5428fcbc7ec46586",
+      "decompressed_bytes": 207,
+      "decompressed_sha256": "45a57dc783579a1ba0099500f107ac9b4b7b7bf9c42d511712dd4aec79221b88"
+    },
+    {
+      "path": "historical-author/original-test_health_agent_retry_disarmed_20261008.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/original-test_health_agent_retry_disarmed_20261008.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 1857,
+      "sha256": "35ab9d4978236b4ca1cbd0dd9274a62d1ea7cf2ec11cfaacfda35a902b594ba5",
+      "decompressed_bytes": 4715,
+      "decompressed_sha256": "5db2f858fd85ea3b0ffd5e3db0bca1930c2137ff6c646bbc96d68f5bfdd366cf"
+    },
+    {
+      "path": "historical-author/original-test_system_health_agent_conn_and_retired_20261007.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/original-test_system_health_agent_conn_and_retired_20261007.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 2158,
+      "sha256": "39c5622947f830cd0e01be1c51c131ffa1d9971fcb2921fe81a260a4130901b2",
+      "decompressed_bytes": 5387,
+      "decompressed_sha256": "c0b2f7a7d21d61073ded902c3dcd6a74768332577087c1b30490c5f9d69c4831"
+    },
+    {
+      "path": "historical-author/original-test_system_health_retry_recovery_truth_20261019.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/original-test_system_health_retry_recovery_truth_20261019.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 2074,
+      "sha256": "ef15f5cbf74ef21ce3cc8138ed586ff0b2170ded019df0b19af45e10858803a1",
+      "decompressed_bytes": 5757,
+      "decompressed_sha256": "3e8a83cb348f07af549725f74dcfedd2fa644c6a5a39e2dbb7766628c66e9ca3"
+    },
+    {
+      "path": "historical-author/precommit-result.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/precommit-result.txt",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 152,
+      "sha256": "a92b856e0720bd8fba81be7e7bcae1301d47fa332b78b238f787c523789c5973",
+      "decompressed_bytes": 165,
+      "decompressed_sha256": "2384c9018b76770399c3664d1d9018a8c8590d116494f30b086c8e0e88f3845f"
+    },
+    {
+      "path": "historical-author/preformat-recovery_attempt_budget.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/preformat-recovery_attempt_budget.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 2786,
+      "sha256": "195b4392c4ae3068668721ca59326a8679493c1f5a24f645e1fe3bf0dc187eac",
+      "decompressed_bytes": 8801,
+      "decompressed_sha256": "0a108a6eac828508b6725722ef1666f9850af745a0535bfb059721cbc6ea4951"
+    },
+    {
+      "path": "historical-author/preformat-supervisor_breach_detector.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/preformat-supervisor_breach_detector.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 12586,
+      "sha256": "990e9a5fdc9d463071319e5b92ddeaed2474d988bf9895e01a6bbfaad1745e19",
+      "decompressed_bytes": 40332,
+      "decompressed_sha256": "43688acd582c48ab932dbcfe4dd68aaf5a7265bb7c266d07d0f0c228b4f5a638"
+    },
+    {
+      "path": "historical-author/preformat-system_health_agent.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/preformat-system_health_agent.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 30150,
+      "sha256": "3408251a21e7efc22d1e387a962d4dbbd1dfb3692b97bfabb90ffb55a33b5de1",
+      "decompressed_bytes": 113650,
+      "decompressed_sha256": "95f3c15883124d1d4c4b43482b58489fea218dca7a5f9c3fa41f5f58448cc531"
+    },
+    {
+      "path": "historical-author/preformat-test_health_agent_retry_disarmed_20261008.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/preformat-test_health_agent_retry_disarmed_20261008.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 2188,
+      "sha256": "e2bf28d50ee8240c72bda5f943f3811b62e86e03a1cd7a95823ec5bb7430dfa3",
+      "decompressed_bytes": 6047,
+      "decompressed_sha256": "08d6b98aecb68d3a7dc5ae6e00e66f320292904a672d80343a12cda50c94a43c"
+    },
+    {
+      "path": "historical-author/preformat-test_recovery_attempt_budget_20261019.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/preformat-test_recovery_attempt_budget_20261019.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 3390,
+      "sha256": "8b11c9591248a2517d16c0f3249dcd79efa23524a81a36046a2cc846a089393f",
+      "decompressed_bytes": 11691,
+      "decompressed_sha256": "280d1024e92b3edf584193018a82dd4b3f1d0e27e07f3929ea32e9ef59023683"
+    },
+    {
+      "path": "historical-author/preformat-test_system_health_agent_conn_and_retired_20261007.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/preformat-test_system_health_agent_conn_and_retired_20261007.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 2186,
+      "sha256": "4d288cce3101baeed5fa2710142d20a8c9dd86075fa74c744bf7b68a102289e1",
+      "decompressed_bytes": 5405,
+      "decompressed_sha256": "8fea677b5f68df22fa86d87b25b6f2b7ecb2f3be2b95c7c5fe32c5e47d843e2d"
+    },
+    {
+      "path": "historical-author/preformat-test_system_health_retry_recovery_truth_20261019.py.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/preformat-test_system_health_retry_recovery_truth_20261019.py",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 2346,
+      "sha256": "cf1be77d825218b3b1ab2cc60427745629a259386112a4310398c71e5c0accfc",
+      "decompressed_bytes": 6558,
+      "decompressed_sha256": "aeb10a6a53d8581f628742603a70d5359489b67b6cc1afac0e6da82940551029"
+    },
+    {
+      "path": "historical-author/process.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/process.xml",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 259,
+      "sha256": "7ae5c58f9d902d143a06faae795fa3c26f72b1bd37013a7f17e06af718c8cc38",
+      "decompressed_bytes": 394,
+      "decompressed_sha256": "b429dbb8827d941d6bf732266651b8c7cf74a1ebc8eca490bb8536a42d984536"
+    },
+    {
+      "path": "historical-author/quality.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/quality.json",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 324,
+      "sha256": "669bcb4fa962a3eabdca49115a0c376b9f2202edfcbce3b688a29129160bd56a",
+      "decompressed_bytes": 1318,
+      "decompressed_sha256": "050e969a3eac7d82fd16767dbaafc0a4f9c75ed20aa84ab6c37120d9084b1464"
+    },
+    {
+      "path": "historical-author/ruff-check.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/ruff-check.txt",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 39,
+      "sha256": "f3af4d142827f5aad2eb0c72d556d325488a57fb6219aac10afeb51085667d53",
+      "decompressed_bytes": 19,
+      "decompressed_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "historical-author/ruff-format-check.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/ruff-format-check.txt",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 46,
+      "sha256": "1555138f16fdad6e80ea2757bcf718bab24f7a930ed5b14c9f6ebe45f3afad5a",
+      "decompressed_bytes": 26,
+      "decompressed_sha256": "0321fffcb91606a42c0a19d8c1121d5c544379d663821fce616c71a7bb62f6b5"
+    },
+    {
+      "path": "historical-author/ruff-format.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/ruff-format.txt",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 59,
+      "sha256": "9f187d16cdc190fa366264366547fdb2a7b90c3218395ff2db18984dab497bd0",
+      "decompressed_bytes": 44,
+      "decompressed_sha256": "a4b2ffcbcbdc7c1faf12b5b8b806d20a4917bbb6ae045999e469cb8539b7d567"
+    },
+    {
+      "path": "historical-author/semantic-parity-fixture.jsonl.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/semantic-parity-fixture.jsonl",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 132,
+      "sha256": "323a02d59427921bce287103be204c6c6bc4130c239b6370dbfa77565876af6b",
+      "decompressed_bytes": 137,
+      "decompressed_sha256": "1c4cdd9f2705869ab6530e0282710a98519a7bd79fd7b0210f34243120d1dac0"
+    },
+    {
+      "path": "historical-author/source-blobs.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/source-blobs.json",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 674,
+      "sha256": "65e0539327f0deca0c0d0760c30196dba1cae10cd90b7de9fabd1d349fa7e299",
+      "decompressed_bytes": 1398,
+      "decompressed_sha256": "3c5a19f565e93659ec3c03c64f396aeaa4bbf8e874ef67bd55b2c3afa0eb2c9f"
+    },
+    {
+      "path": "historical-author/source-scope.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/source-scope.json",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 225,
+      "sha256": "d8ce7b6d7554a7dcb56917fc7090641ddba21d378f1a31c200ab186c1600d83a",
+      "decompressed_bytes": 553,
+      "decompressed_sha256": "7741d1850230f21a419b0dfbe26c9234cb352e7676360b3d1c5959d2304ced91"
+    },
+    {
+      "path": "historical-author/supervisor-history-parity.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/supervisor-history-parity.json",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 525,
+      "sha256": "6a8b44c41322b8aea09bd8f163ef879a02e7ec95990baf39ed2f82150bc7d27b",
+      "decompressed_bytes": 2818,
+      "decompressed_sha256": "d407b1126c23d52e547cb34e6a2331713c12515264e4eee9743dd20037f2efe8"
+    },
+    {
+      "path": "historical-author/supervisor.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-retry-budget/supervisor.xml",
+      "kind": "source_reproduction_validation_or_implementation",
+      "bytes": 723,
+      "sha256": "33e3104057421392a05e7a44d25f14ab29da1202c962209887255d1e134e4362",
+      "decompressed_bytes": 3471,
+      "decompressed_sha256": "594efb48da0198f4d0564ead149b99167e824eccd8ed4ced91bca6690eae26c0"
+    },
+    {
+      "path": "historical-independent/health-budget612-root-review.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/cross-review/health-budget612-root-review.json",
+      "kind": "independent_source_approval_with_holds",
+      "bytes": 690,
+      "sha256": "16e3680bc84dca0ae5097ea1dc0b74bf4f1ba1d164f1f0c550b747364d11cacd",
+      "decompressed_bytes": 1066,
+      "decompressed_sha256": "026379b09b5d6eb7ec904391da3255352880c02c5b81968447be1b729a94f53b"
+    },
+    {
+      "path": "integration/actual-gate-runner.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-budget-integration/actual-gate-runner.json",
+      "kind": "integration_validation",
+      "bytes": 150,
+      "sha256": "9485c9c91c5445fa70bde6c021f4e4d39bcc7b45df591d037b82b99a2a4ad802",
+      "decompressed_bytes": 201,
+      "decompressed_sha256": "1282e0a17ae490f218d4574abb4933c0ab598f736b4a4300da99a51bd3a7b713"
+    },
+    {
+      "path": "integration/actual-gate-runner.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-budget-integration/actual-gate-runner.txt",
+      "kind": "integration_validation",
+      "bytes": 85,
+      "sha256": "b85542338e7876935e447762103b3e475fdb0f8cdc4e889765706791bdf3f91f",
+      "decompressed_bytes": 128,
+      "decompressed_sha256": "6f77eb7be115f0ae1af19d6a1abd0b95f67841775dd0a2f507f1283c0f2a7459"
+    },
+    {
+      "path": "integration/actual-selector.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-budget-integration/actual-selector.json",
+      "kind": "integration_validation",
+      "bytes": 1358,
+      "sha256": "9ce85c30e3b456c90a0fb6b53a4f32ebddfc8d0f8688069a5e5355b603684ebc",
+      "decompressed_bytes": 6429,
+      "decompressed_sha256": "7ee99ec9e1ff38189dbeeca057f64229f13b4528c460c8b848063230078f575f"
+    },
+    {
+      "path": "integration/actual-selector.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-budget-integration/actual-selector.txt",
+      "kind": "integration_validation",
+      "bytes": 178,
+      "sha256": "583504ccc4e13baf20e5d8253a9986e60042cacdfaf3eeb9e58624fc629a5934",
+      "decompressed_bytes": 205,
+      "decompressed_sha256": "2af8b736d0b2d0318fc8e9935204b2c11ed579c8149374a56e135ab1df7f7093"
+    },
+    {
+      "path": "integration/ci-parity.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-budget-integration/ci-parity.json",
+      "kind": "integration_validation",
+      "bytes": 172,
+      "sha256": "4c236087e6c9e5d01f3400b4eb73733465cf2d820b693a21c1cd01ab9b4f240e",
+      "decompressed_bytes": 242,
+      "decompressed_sha256": "1310fad3bf9f363d38c845682faeea75569f28450968eb55a8a1a00c71e0e479"
+    },
+    {
+      "path": "integration/diff-check.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-budget-integration/diff-check.txt",
+      "kind": "integration_validation",
+      "bytes": 20,
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "decompressed_bytes": 0,
+      "decompressed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "integration/focused-command.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-budget-integration/focused-command.json",
+      "kind": "integration_validation",
+      "bytes": 360,
+      "sha256": "cb902e79aabb4fe3277a7c591dab1f5375d2002806f45abb2ae0c779a8a4c816",
+      "decompressed_bytes": 874,
+      "decompressed_sha256": "cde0930c9b83a497961aec8bde6542ffa3f2f056746c38c195ffffb3e315d005"
+    },
+    {
+      "path": "integration/focused.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-budget-integration/focused.txt",
+      "kind": "integration_validation",
+      "bytes": 69,
+      "sha256": "610eed188aac6dd229290a03886b67a580ef6a920789ab9f3a427e53cf46756d",
+      "decompressed_bytes": 261,
+      "decompressed_sha256": "48dc1090bad0507d11a66ff09cf7e9a3d80d15082b08e89e8995b12f85e5dc10"
+    },
+    {
+      "path": "integration/focused.xml.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-budget-integration/focused.xml",
+      "kind": "integration_validation",
+      "bytes": 3083,
+      "sha256": "eb42d8e10f42c21c619cb5402da93ae32122eb8eec736e7dd18fa7dc1df356e9",
+      "decompressed_bytes": 24915,
+      "decompressed_sha256": "0e49ea7620dbec22a9e95c9c5d29b6898d4b941a3df0448154ce6026cba3b147"
+    },
+    {
+      "path": "integration/quality.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-budget-integration/quality.json",
+      "kind": "integration_validation",
+      "bytes": 325,
+      "sha256": "c73a3cf2e1a7cf6355a8726013dd59b49c4a4b07db535a1658ac380cd9c31611",
+      "decompressed_bytes": 1371,
+      "decompressed_sha256": "9bfcef135db374196119dbc1934ea4927e88b02895f72cca787e8cd297bf48e7"
+    },
+    {
+      "path": "integration/ruff-check.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-budget-integration/ruff-check.txt",
+      "kind": "integration_validation",
+      "bytes": 39,
+      "sha256": "f3af4d142827f5aad2eb0c72d556d325488a57fb6219aac10afeb51085667d53",
+      "decompressed_bytes": 19,
+      "decompressed_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "integration/ruff-format-check.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-budget-integration/ruff-format-check.txt",
+      "kind": "integration_validation",
+      "bytes": 46,
+      "sha256": "837154397e0c114f710fe0366b52c5369639a194f97a63e7faa0921639b6f76a",
+      "decompressed_bytes": 26,
+      "decompressed_sha256": "8e93d18ae56550d4eef2feac77e6630617c7e169246e56e39c75d58b46167985"
+    },
+    {
+      "path": "integration/session-start-stderr.txt.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-budget-integration/session-start-stderr.txt",
+      "kind": "integration_validation",
+      "bytes": 20,
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64",
+      "decompressed_bytes": 0,
+      "decompressed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "integration/session-start-stdout.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-budget-integration/session-start-stdout.json",
+      "kind": "integration_validation",
+      "bytes": 1334,
+      "sha256": "00338d45623811c5284c7d79f29aab5145c5ffb17b1a036783db4da47a802d61",
+      "decompressed_bytes": 4392,
+      "decompressed_sha256": "9d4bf72cd0700904fa967f8caf170b368695b06c1eb383cab5e2dc67d46da23e"
+    },
+    {
+      "path": "integration/source-parity.json.gz",
+      "original": "/tmp/n8n-campaign-20261018/health-budget-integration/source-parity.json",
+      "kind": "integration_validation",
+      "bytes": 690,
+      "sha256": "a31a9a7fc52b37757897b7dd06f256bf689e9f41fd88b41af351146cf11ff3d8",
+      "decompressed_bytes": 1566,
+      "decompressed_sha256": "6c37a2d936ff4aa91d0f7239c77e6eac45891b09d8baffd28a133d0bb1beea94"
+    }
+  ]
+}
