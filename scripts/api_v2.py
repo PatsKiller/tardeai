@@ -23834,7 +23834,7 @@ def _pipeline_health():
     stats = (
         _db_query(
             """SELECT COUNT(*) as total, COUNT(CASE WHEN status='success' THEN 1 END) as success,
-        COUNT(CASE WHEN status='failed' THEN 1 END) as failed, COUNT(CASE WHEN run_type='retry' THEN 1 END) as retries
+        COUNT(CASE WHEN status='failed' THEN 1 END) as failed, COUNT(CASE WHEN run_label='retry' THEN 1 END) as retries
         FROM pipeline_runs WHERE started_at > NOW()-INTERVAL '24 hours'""",
             fetch="one",
         )
@@ -30453,7 +30453,8 @@ def _global_alerts():
 def _queue_summary():
     from datetime import datetime, timedelta
 
-    rows = _db_query("SELECT status, count(*) as cnt FROM deep_overnight_llm_queue GROUP BY status") or []
+    raw_rows = _db_query("SELECT status, count(*) as cnt FROM deep_overnight_llm_queue GROUP BY status")
+    rows = raw_rows or []
     by_status = {r["status"]: r["cnt"] for r in rows}
     tier_rows = (
         _db_query(
@@ -30478,6 +30479,9 @@ def _queue_summary():
     next_hrs = max(0, (window_start - now).total_seconds() / 3600) if now.hour >= 3 else 0
     will_run = min(pending, cap)
     return {
+        # False when the queue table could not be read (db_adapter returns None): the zeros below are then not
+        # measurements. GET /api/v2/needs-action reports the source unavailable instead (2026-10-21).
+        "measured": raw_rows is not None,
         "pending": pending,
         "done_today": done_today,
         "failed": by_status.get("failed", 0),
@@ -30499,6 +30503,69 @@ def _queue_summary():
             "wont_run_tonight": max(0, pending - cap),
         },
     }
+
+
+def _system_data_plausibility():
+    """GET /api/v2/system/data-plausibility — the latest data_plausibility_monitor.py run receipt: checked /
+    violations / blocking and one row per rule; NO_RECEIPT / UNAVAILABLE / STALE, never an empty green (2026-10-21)."""
+    from lib.data_plausibility_view import load_view as _dpv_load
+    from lib.n8n_pilot_observations import state_root as _dpv_root
+
+    return _dpv_load(_dpv_root())
+
+
+def _system_pipeline_failures(query=None):
+    """GET /api/v2/system/pipeline-failures?hours=24 — pipeline_runs failures grouped by pipeline (count, last
+    failure, last error). UNAVAILABLE with null counts when pipeline_runs cannot be read (2026-10-21)."""
+    from lib.pipeline_failures import load as _pf_load
+
+    q = query or {}
+    try:
+        hours = int(q.get("hours") or 24)
+    except (TypeError, ValueError):
+        hours = 24
+    return _pf_load(hours=hours)
+
+
+_NEEDS_ACTION_CACHE: dict = {}
+
+
+def _needs_action(query=None):
+    """GET /api/v2/needs-action — one inbox of what needs the operator, every source probed independently with a
+    timeout; an unreadable source is an item, never omitted (scripts/lib/needs_action.py, 2026-10-21). Read-only.
+    Cached 30 s so the Home card's poll never fans out more than twice a minute."""
+    import time as _t
+
+    hit = _NEEDS_ACTION_CACHE.get("v")
+    if hit and _t.monotonic() - hit[0] < 30:
+        return hit[1]
+    from lib import needs_action as _na
+
+    def _n8n():
+        from lib.data_broker.n8n_today import get_n8n_today as _nt
+        from lib.n8n_pilot_observations import state_root as _r
+
+        return _nt(_r())
+
+    def _approvals():
+        from lib.approval_board_projection import load_board as _lb
+
+        return _lb()
+
+    probes = {
+        "health": _health_agent_dashboard,
+        "systemd": _na.probe_failed_units,
+        "n8n": _n8n,
+        "approvals": _approvals,
+        "queue": _queue_summary,
+        "data_plausibility": _system_data_plausibility,
+        "data_sources": lambda: _data_source_health({}),
+        "comms": _communications_delivery_summary,
+        "pipelines": lambda: _system_pipeline_failures({}),
+    }
+    out = _na.aggregate(probes)
+    _NEEDS_ACTION_CACHE["v"] = (_t.monotonic(), out)
+    return out
 
 
 def _queue_pending():
@@ -48327,6 +48394,9 @@ ROUTES = {
     },
     "/api/v2/proposal-quality-review": lambda: _proposal_quality_review_api(),
     "/api/v2/queue/summary": lambda: _queue_summary(),
+    "/api/v2/system/data-plausibility": lambda: _system_data_plausibility(),
+    "/api/v2/system/pipeline-failures": lambda: _system_pipeline_failures(_current_query),
+    "/api/v2/needs-action": lambda: _needs_action(),
     "/api/v2/queue/pending": lambda: _queue_pending(),
     "/api/v2/queue/completed": lambda: _queue_completed(),
     "/api/v2/queue/failed": lambda: _queue_failed(),

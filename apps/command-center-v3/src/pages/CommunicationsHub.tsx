@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { BoardCards, FeedCard } from '../components/decision/FeedCards'
 import { useApi } from '../hooks/useApi'
-import { ageLabel, deliveryHealthFrom } from '../lib/commsDeliveryHealth'
+import { ageLabel, deliveryHealthFrom, telegramFailedDetail } from '../lib/commsDeliveryHealth'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel, hubStrip } from '../lib/terminalHubChrome'
 import { RADIUS, TOKENS } from '../lib/designTokens'
@@ -280,6 +280,16 @@ export default function CommunicationsHub() {
                 {countText(deliveryHealth.failed)}
               </span>
               {(deliveryHealth.reapedUnclaimed ?? 0) > 0 ? ` · reaped ${deliveryHealth.reapedUnclaimed} (unclaimed copies, not failures)` : ''}
+              {' '}· Telegram sends failed 24h{' '}
+              <span
+                data-testid="telegram-outbox-failed-24h"
+                title={deliveryHealth.telegramError ?? 'telegram_outbox ledger (send chokepoint) — separate from deliveries'}
+                style={{ color: deliveryHealth.telegramFailed24h == null ? AMBER : deliveryHealth.telegramFailed24h > 0 ? RED : TEXT2, fontWeight: 800 }}
+              >
+                {deliveryHealth.telegramFailed24h == null ? 'unavailable' : countText(deliveryHealth.telegramFailed24h)}
+              </span>
+              {telegramFailedDetail(deliveryHealth) ? ` (${telegramFailedDetail(deliveryHealth)})` : ''}
+              {deliveryHealth.telegramHeld24h != null ? ` · held for digest ${deliveryHealth.telegramHeld24h} (archived, not failures)` : ''}
             </>
           ) : deliveryHealth.state === 'LOADING' ? (
             'delivery health loading…'
