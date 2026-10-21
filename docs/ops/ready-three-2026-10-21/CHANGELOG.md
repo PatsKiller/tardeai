@@ -1,7 +1,7 @@
 # Change and release log — 2026-10-21
 
-**Current status (2026-10-21 04:35 UTC):** The authoritative current matrix is in [CURRENT_STATUS.md](CURRENT_STATUS.md). PR #1889 exact 7c checks are almost complete with only `cio-hardening` pending; PR #1887 documentation checks are running on a015. Production remains degraded on ef085ce; neither PR is deployed.
-**Updated:** 2026-10-21 04:35 UTC
+**Current status (2026-10-21 04:43 UTC):** The authoritative current matrix is in [CURRENT_STATUS.md](CURRENT_STATUS.md). PR #1889 exact 7c active checks all passed; PR #1887 documentation checks are running on c457. Production remains degraded on ef085ce; neither PR is deployed.
+**Updated:** 2026-10-21 04:43 UTC
 
 The change rows below are the original 03:48 baseline; the timestamped addenda below supersede their PR #1889 status.
 

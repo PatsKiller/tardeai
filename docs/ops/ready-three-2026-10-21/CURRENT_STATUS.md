@@ -39,3 +39,12 @@ Do not merge or deploy at this point. Complete exact-head required CI first, the
 - PR #1887: https://github.com/PatsKiller/tardeai/pull/1887
 - PR #1889: https://github.com/PatsKiller/tardeai/pull/1889
 - Production audit evidence: `LIVE_VALIDATION.md`; test details: `TEST_RESULTS.md`; release controls: `DEPLOYMENT_AND_ROLLBACK.md`.
+
+## Latest evidence addendum — 2026-10-21 04:43 UTC
+
+- PR #1889 remains OPEN/CLEAN at exact `7c187363191ade3c574c7a77bde8e0b3885ff370`; all active checks passed, including `cio-hardening`, `ci-gate`, all shards, serial, PostgreSQL, governance, AIF, integrity rails, provider-cost, and release-readiness. `cio-hardening-full` and `main-red-alert` are event-skipped. Not merged or deployed.
+- PR #1887 is OPEN/BLOCKED at exact docs head `c45739801a55d3c9371b83c4f7dc528cb8902b88`. Backend, frontend, integrity rails, and provider-cost passed at latest poll; governance, AIF, CIO hardening, focused Playwright, release-readiness, shards, PG, and serial were pending.
+- Production GET at 04:38:41 UTC remains build `ef085ce76be4512da71a58e65ef4feb25d156206` on main; health 78/degraded, 3 critical, 23 warnings, 26 actionable. `indicator_engine` remediation at 04:38:17 was verified ineffective. Communications is reachable in CANARY, which is not readiness evidence.
+- RCA: Oct 20 receipt records `InvalidTextRepresentation`; Oct 18 traceback proves `NaN` was rejected in nested JSON, and served code still uses unsafe JSON serialization. Non-finite JSON is the high-confidence failure class; exact Oct 20 value is not retained.
+- Final report email sent at 04:43 UTC to the authenticated account (Gmail ID `1a15cc57dc6ab758`). BizChat was not posted because no Teams/BizChat connector is available; paste-ready feedback is in the email and chat report.
+- No production writes, merge, or deployment occurred. Preserve the SPCX kill switch and observe the natural 08:00 ET cron; do not manually invoke the live writer.

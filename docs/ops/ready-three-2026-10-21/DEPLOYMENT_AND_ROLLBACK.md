@@ -1,7 +1,7 @@
 # Deployment and rollback gates — 2026-10-21
 
-**Current status (2026-10-21 04:35 UTC):** No deployment. See [CURRENT_STATUS.md](CURRENT_STATUS.md) for exact PR heads and remaining CI. PR #1889 still has `cio-hardening` pending; PR #1887 documentation CI is in progress. Production remains degraded on ef085ce with the indicator lane unrecovered. Do not promote either candidate until CI and operational risk gates are satisfied.
-**Updated:** 2026-10-21 04:35 UTC
+**Current status (2026-10-21 04:43 UTC):** No deployment. See [CURRENT_STATUS.md](CURRENT_STATUS.md) for exact PR heads and remaining CI. PR #1889 active checks all passed; PR #1887 documentation CI is in progress. Production remains degraded on ef085ce with the indicator lane unrecovered. Do not promote either candidate until operational risk gates and production validation are satisfied.
+**Updated:** 2026-10-21 04:43 UTC
 
 This document records release criteria; it does not authorize a release.
 

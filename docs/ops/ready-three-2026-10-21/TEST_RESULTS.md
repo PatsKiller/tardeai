@@ -1,7 +1,7 @@
 # Test results — 2026-10-21
 
-**Current status (2026-10-21 04:35 UTC):** Local 7c regression remains 82 passed / 3 skipped; coverage `NEW=0`, `py_compile`, diff checks, and full-tree secret scan passed. Docs index test passed 7/7. See [CURRENT_STATUS.md](CURRENT_STATUS.md) for exact hosted states: PR #1889 only `cio-hardening` remains pending; PR #1887 docs CI is still running. No deployment evidence.
-**Updated:** 2026-10-21 04:35 UTC
+**Current status (2026-10-21 04:43 UTC):** Local 7c regression remains 82 passed / 3 skipped; coverage `NEW=0`, `py_compile`, diff checks, and full-tree secret scan passed. Docs index test passed 7/7. Hosted CI for PR #1889 exact 7c is fully green among active checks; PR #1887 docs head c457 checks remain in progress. No deployment evidence.
+**Updated:** 2026-10-21 04:43 UTC
 **Candidate SHA:** 641e3a23c7eb1fea6df2615450657af02415949a (pushed PR #1887 head).
 
 ## Completed checks
@@ -130,3 +130,9 @@ Follow-up: a separate raw `indicator_signal_history.details` JSON writer remains
 Commit `7c187363191ade3c574c7a77bde8e0b3885ff370` was pushed around 04:22 UTC. Exact-head hosted CI restarted and no result was available at this update. Local broader regression: 82 passed / 3 skipped; custom coverage `NEW=0`; `py_compile`, diff checks, and full-tree secret scan passed. These are local results, not hosted CI. The fix scope adds normalization for cached, fresh, and batch API responses and signal-history values/JSON alongside the four cache writers. No merge or deployment occurred.
 
 Production audit refreshed at 04:21:28 UTC: `CURRENT` remains `ef085ce76be4512da71a58e65ef4feb25d156206`; health is 78/degraded with three criticals including global SPCX kill switch, stale SETUPS session, and six underfilled 0700 runs; indicator unrecovered and orchestrator false. Historic NaN traceback is not proof of the current incident's root cause.
+
+## Exact-head CI completion — 2026-10-21 04:42 UTC
+
+PR #1889 exact head `7c187363191ade3c574c7a77bde8e0b3885ff370` is OPEN/CLEAN. Direct `gh pr checks` confirms every active check passed: governance, both AIF checks, provider-cost, release-readiness, integrity rails, aggregate `ci-gate`, shards 0–7, serial, PostgreSQL shard, and `cio-hardening` (17m13s). `cio-hardening-full` and `main-red-alert` were skipped by event rules. This qualifies hosted CI for this exact code head, but does not prove production schema nullability or runtime recovery. No merge or deployment.
+
+PR #1887 documentation head `c45739801a55d3c9371b83c4f7dc528cb8902b88` has a fresh exact-head CI run. At 04:42 UTC backend, frontend, integrity rails, and provider-cost passed; other active checks were pending. Earlier e5/a015 results do not validate c457.

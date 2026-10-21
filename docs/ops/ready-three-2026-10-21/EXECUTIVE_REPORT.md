@@ -1,7 +1,7 @@
 # Executive gap and readiness report — 2026-10-21
 
-**Current status (2026-10-21 04:35 UTC):** See [CURRENT_STATUS.md](CURRENT_STATUS.md) for the exact PR matrices and 04:33 production probe. PR #1889 has passed its integration, PostgreSQL, serial, aggregate, and other named checks; `cio-hardening` is pending. PR #1887 docs checks are running. Local tests passed 82/3 with coverage `NEW=0`, compilation, diff, and full-tree secret scan; documentation index test passed 7/7. Production remains degraded on ef085ce and is not ready. Neither candidate is live.
-**Updated:** 2026-10-21 04:35 UTC
+**Current status (2026-10-21 04:43 UTC):** See [CURRENT_STATUS.md](CURRENT_STATUS.md) for exact PR matrices and production evidence. PR #1889 exact 7c active checks all passed; PR #1887 docs head c457 checks are running. Local code tests: 82 passed / 3 skipped; coverage `NEW=0`; compilation/diff/secret scans passed; docs index suite 7/7. Production remains on ef085ce, degraded and not ready. Neither candidate is live.
+**Updated:** 2026-10-21 04:43 UTC
 **Historical evidence cutoff:** Earlier sections record observations at 03:42–03:52 UTC and must be read as timestamped snapshots. GitHub/live states in this dossier are coordinator-reported; this documentation worker did not independently poll those systems.
 
 ## Executive summary — current disposition as of 2026-10-21 04:23 UTC

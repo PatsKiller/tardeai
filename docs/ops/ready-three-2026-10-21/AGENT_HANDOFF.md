@@ -1,7 +1,7 @@
 # Agent handoff — 2026-10-21
 
-**Current status (2026-10-21 04:35 UTC):** See [CURRENT_STATUS.md](CURRENT_STATUS.md) for current exact-head CI and live evidence. PR #1889 has one required job (`cio-hardening`) still pending; PR #1887 docs checks are in progress. Production remains on ef085ce, degraded, and not production-ready. No merge or deployment.
-**Updated:** 2026-10-21 04:35 UTC
+**Current status (2026-10-21 04:43 UTC):** See [CURRENT_STATUS.md](CURRENT_STATUS.md) for current exact-head CI and live evidence. PR #1889 exact 7c active checks all passed; PR #1887 docs head c457 checks are in progress. Production remains on ef085ce, degraded, and not production-ready. No merge or deployment.
+**Updated:** 2026-10-21 04:43 UTC
 
 ## Historical candidate state — 2026-10-21 03:48 UTC (superseded by latest handoff below)
 
@@ -65,3 +65,11 @@ A status email was sent earlier to the user. BizChat posting was unavailable bec
 - Production is unchanged on the last evidenced build, `ef085ce76be4512da71a58e65ef4feb25d156206`; latest health evidence is the direct 04:21:28 UTC degraded/unhealthy snapshot (78/degraded; three criticals; indicator unrecovered; orchestrator false). Do not claim live remediation.
 - Cron validation remains open: await the natural weekday 08:00 ET universe run and inspect its receipt/log/output after execution; do not manually invoke the live production writer for a test. Historic NaN evidence does not prove current causality. The separate history writer/schema uncertainty also remains a follow-up.
 - Do not merge/deploy until exact 7c CI, isolated PostgreSQL result, cron evidence, and incident/risk disposition are available, with separate release authority/lease.
+
+## Latest handoff — 2026-10-21 04:43 UTC
+
+- PR #1889 at `7c187363191ade3c574c7a77bde8e0b3885ff370` is OPEN/CLEAN; all active hosted checks passed. No merge/deploy.
+- PR #1887 docs head `c45739801a55d3c9371b83c4f7dc528cb8902b88` is OPEN/BLOCKED with exact-head checks in progress; see `CURRENT_STATUS.md` for the latest pass/pending matrix.
+- Direct production health at 04:38:41 UTC remains 78/degraded on `ef085ce76…`; indicator retry ineffective. Oct 20 receipt reports `InvalidTextRepresentation`; non-finite JSON is high-confidence failure class, exact value not retained. Preserve SPCX kill switch.
+- Final email sent at 04:43 UTC, Gmail ID `1a15cc57dc6ab758`. BizChat unavailable; no post sent.
+- Observe the next natural 08:00 ET cron; do not manually invoke the live writer. Operator disposition of trading-safety findings, representative DB schema round-trip, UAT/performance/failover/security validation remain release gates.
