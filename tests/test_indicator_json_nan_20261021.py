@@ -159,6 +159,16 @@ def _isolated_alert_database(dsn: str) -> str | None:
     return dsn_database(dsn)
 
 
+def _isolated_alert_connect_kwargs(database: str) -> dict[str, object]:
+    """Pin libpq's effective destination even when PG* defaults are set."""
+    return {
+        "host": "127.0.0.1",
+        "hostaddr": "127.0.0.1",
+        "port": 55432,
+        "dbname": database,
+    }
+
+
 def test_alert_test_dsn_must_use_local_isolated_endpoint():
     assert _isolated_alert_database("postgresql://user:secret@127.0.0.1:55432/m2_shadow_test") == "m2_shadow_test"
     for dsn in (
@@ -175,6 +185,15 @@ def test_alert_test_dsn_must_use_local_isolated_endpoint():
         "postgresql://user:secret@127.0.0.1:55432/m2_shadow_test#host=192.0.2.10",
     ):
         assert _isolated_alert_database(dsn) is None
+
+
+def test_alert_test_connection_pins_effective_libpq_destination():
+    assert _isolated_alert_connect_kwargs("m2_shadow_test") == {
+        "host": "127.0.0.1",
+        "hostaddr": "127.0.0.1",
+        "port": 55432,
+        "dbname": "m2_shadow_test",
+    }
 
 
 def _indicator_result():
@@ -230,7 +249,11 @@ def test_postgres_jsonb_round_trip_accepts_normalized_cache_fields():
         pytest.fail("ALERT_TEST_DSN must use 127.0.0.1:55432 and name an isolated m2_shadow_test database")
     psycopg2 = pytest.importorskip("psycopg2")
     try:
-        conn = psycopg2.connect(refuse_live_shadow_under_pytest(dsn), connect_timeout=3)
+        conn = psycopg2.connect(
+            refuse_live_shadow_under_pytest(dsn),
+            **_isolated_alert_connect_kwargs(database),
+            connect_timeout=3,
+        )
     except Exception:
         pytest.fail("explicit isolated ALERT_TEST_DSN could not be reached (connection details suppressed)")
 
