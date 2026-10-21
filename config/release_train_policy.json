@@ -25,7 +25,11 @@
       "memory_sql": "needs_operator",
       "deploy_and_release": "needs_operator",
       "schedule": "needs_operator",
-      "ci_control_surface": "needs_operator"
+      "ci_control_surface": "needs_operator",
+      "cc_auth": "needs_operator",
+      "portfolio_server_api": "needs_operator",
+      "telegram_routing": "needs_operator",
+      "n8n_executor_relay_gateway": "needs_operator"
     },
     "unmapped_high_category_class": "held",
     "low_class": "eligible"
