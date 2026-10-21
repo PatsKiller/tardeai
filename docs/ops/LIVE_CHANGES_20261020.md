@@ -2,8 +2,8 @@
 
 ```
 Status:      ACTIVE (dated record; superseded by any later measurement)
-as_of:       2026-10-20T14:40:00-04:00
-Measured at: origin/main 1d00a5181; served CURRENT f6f56e365-main-exact-phase2-20261020-125112
+as_of:       2026-10-20T20:50:00-04:00
+Measured at: origin/main 1d00a5181; served CURRENT 1d00a5181-main-exact-phase2-20261020-204411
 Authority:   READ_ONLY_ADVISORY · MBI_BEHAVIOR = 0
 ```
 
@@ -18,8 +18,8 @@ Status words: **LIVE** = in the served release, or applied on the host and obser
 | Commit | Promoted (ET) | Release dir | Status |
 |---|---|---|---|
 | `720fce06c` (merge of #1867, registry truth) | 08:58 | `720fce06c-main-exact-phase2-20261020-085604` | LIVE until 12:52, then superseded |
-| `f6f56e365` (merge of #1866; includes #1882) | 12:52 | `f6f56e365-main-exact-phase2-20261020-125112` | **LIVE** (`portfolio-server/CURRENT` → this dir, link written 12:52:24 ET) |
-| `1d00a5181` (merge of #1885; includes #1883, #1884) | — | — | **PENDING** promotion |
+| `f6f56e365` (merge of #1866; includes #1882) | 12:52 | `f6f56e365-main-exact-phase2-20261020-125112` | LIVE until 20:45, then superseded |
+| `1d00a5181` (merge of #1885; includes #1883, #1884) | 20:45 | `1d00a5181-main-exact-phase2-20261020-204411` | **LIVE** (`PROMOTE OK live=1d00a5181`; portfolio-server, health-agent, governed-bridge, cio-telegram, callback-poller, n8n gateway/relay/executor re-resolved; CURRENT-pinned crons report SERVED sha=1d00a5181) |
 
 The relay and coordination gateway restarted with the 12:52 promote (`ActiveEnterTimestamp` 12:52:45 / 12:52:42 ET).
 
@@ -29,9 +29,9 @@ The relay and coordination gateway restarted with the 12:52 promote (`ActiveEnte
 |---|---|---|---|---|
 | #1882 | 11:15 | `scripts/pro_analyst_fetch.py` `prioritize()`: the 250/day cap goes to held → actionable → directive-watch oldest fetch first → never-fetched directive symbols in a per-day rotation → anything fetched in the last 20 h last. Cap 250 and the 06:10 schedule are unchanged. | LIVE (`f6f56e365`) | `docs/CHANGELOG.md` 2026-10-20 |
 | #1866 | 11:15 | Trimmed to N1–N3. N1: the notifier says `NOTICE SETTLED`, not `RECOVERED`, unless `recovery_validator.output_recovered` proves a live output run. N2: Telegram settlements carry an explicit provider message id. N3: `GET /api/v2/communications/deliveries/summary` and the Comms hub delivery-health strip (UNAVAILABLE/STALE instead of 0). | LIVE (`f6f56e365`) | `docs/ALERT_INCIDENT_RESOLUTION.md` "Update 2026-10-20"; `docs/ops/COMMS_HUB_2026-10-07.md` "Update 2026-10-20"; `docs/ops/n8n_self_healing.md` (diagnosis cadence, updated by #1866) |
-| #1883 | 13:06 | `tests/conftest.py` `pytest_assertrepr_compare`: a failing assertion with `os.environ` as an operand prints the name only, never the environment's contents. | MERGED-NOT-SERVED (test-only, no runtime effect) | `docs/CHANGELOG.md` 2026-10-20 |
-| #1884 | 14:15 | Plausibility BLOCK writers: `scalp_critic_agent.validate_catalyst` clamps `catalyst_confidence` to [0, 1]; `/api/v2/indicators/batch` upsert refreshes every scalar column on conflict (incl. `stop_price`); `etf_performance_enrich` selects targets stalest `perf_updated_at` first. | MERGED-NOT-SERVED | `docs/CHANGELOG.md` 2026-10-20 |
-| #1885 | 14:27 | Comms: a delivery is reserved only for an OUTBOUND event that named its channel (`AssumedChannels`, `should_reserve_delivery`); new `reap_stale_reservations()`; `comms_lifecycle.py --steps reservations` is **opt-in** and **not** in the hourly defaults. | MERGED-NOT-SERVED | `docs/ops/COMMS_HUB_2026-10-07.md` "Update 2026-10-20"; `docs/runbooks/DB_RETENTION.md` |
+| #1883 | 13:06 | `tests/conftest.py` `pytest_assertrepr_compare`: a failing assertion with `os.environ` as an operand prints the name only, never the environment's contents. | LIVE (`1d00a5181`; test-only, no runtime effect) | `docs/CHANGELOG.md` 2026-10-20 |
+| #1884 | 14:15 | Plausibility BLOCK writers: `scalp_critic_agent.validate_catalyst` clamps `catalyst_confidence` to [0, 1]; `/api/v2/indicators/batch` upsert refreshes every scalar column on conflict (incl. `stop_price`); `etf_performance_enrich` selects targets stalest `perf_updated_at` first. | LIVE (`1d00a5181`) | `docs/CHANGELOG.md` 2026-10-20 |
+| #1885 | 14:27 | Comms: a delivery is reserved only for an OUTBOUND event that named its channel (`AssumedChannels`, `should_reserve_delivery`); new `reap_stale_reservations()`; `comms_lifecycle.py --steps reservations` is **opt-in** and **not** in the hourly defaults. | LIVE (`1d00a5181`) | `docs/ops/COMMS_HUB_2026-10-07.md` "Update 2026-10-20"; `docs/runbooks/DB_RETENTION.md` |
 
 ## 3. n8n lanes added to the relay live list
 
@@ -78,8 +78,8 @@ the 55 outbound copies EXPIRED.
 
 ## 5. Open after today (operator)
 
-- Promote `1d00a5181` (serves #1883, #1884, #1885).
-- After that promote, run #1884's archive-first in-place correction for existing rows. Its dry run gave: scans 720 →
+- ~~Promote `1d00a5181`~~ done 20:45 ET. Post-promote checks: `/api/health` 200, dashboard 200; delivery summary unsettled 7, oldest 13:30 ET, all older than 1 h (reaper dry run: `stale 7` = EXPIRED 6, CANCELLED 1), so none were reserved after the promote; plausibility dry run still shows the 4 BLOCKs, because the writers are fixed and the existing rows are not yet corrected.
+- Now run #1884's archive-first in-place correction for existing rows. Its dry run gave: scans 720 →
   1.0, stops 34 → NULL, ytd 11 NaN → NULL.
 - Add `reservations` to the hourly `comms-lifecycle` steps only after the cron-inventory row for `comms-lifecycle` is
   approved (operator freeze 2026-10-09).

@@ -24,7 +24,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/BROKER_TRADE_PLAN_GATE.md` | Broker Trade Plan Gate — No Gambling on Generic 2×R | review_required | OK | `e73e70a22a5c` |
 | `docs/CC_V3_ACTIONABILITY_SPRINT_20260702.md` | CC v3 Actionability Sprint — Layered Document | review_required | OK | `26d05fe916e7` |
 | `docs/CC_V3_HOME_TRUST_HARDENING_20260726.md` | CC v3 Home Trust Hardening — 2026-07-26 | review_required | OK | `401363e962e2` |
-| `docs/CHANGELOG.md` | Changelog | review_required | OK | `00909c521081` |
+| `docs/CHANGELOG.md` | Changelog | review_required | OK | `1bad7f2b4d16` |
 | `docs/CHEAT_SHEET.md` | Trade AI v12 -- Operator Cheat Sheet | active_keep | OK | `5fbf6fb2ebe7` |
 | `docs/CIO_AS_IS_2026-09-19-1352.md` | CIO / AEC AS-IS — 2026-09-19 13:52 ET | review_required | OK | `ede8abe935f8` |
 | `docs/CIO_AS_IS_2026-09-20-0604.md` | CIO / AEC AS-IS — 2026-09-20 06:04 ET | review_required | OK | `0d40294364bc` |
@@ -1878,7 +1878,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/COGX_WAVES_3_5_OPERATOR_HANDOFF_2026-09-28.md` | COGX Waves 3–5 — operator handoff (merge order, grants, deploy, installs, first runs, flips) | review_required | OK | `b40fbe0c732f` |
 | `docs/ops/COMMAND_CENTER_MATURITY_TRUTH.md` | Command Center maturity truth (live runtime) | review_required | MISSING HEADER | `de97ccca2b56` |
 | `docs/ops/COMMS_GATEWAY_GO_LIVE_RUNBOOK.md` | Communications Gateway — Go-Live Runbook (single consolidated operator prompt) | review_required | OK | `7ded3894288a` |
-| `docs/ops/COMMS_HUB_2026-10-07.md` | Communications hub — decision support, re-entry focus, enforced TTL (2026-10-07) | review_required | MISSING HEADER | `aaa1d0fdba13` |
+| `docs/ops/COMMS_HUB_2026-10-07.md` | Communications hub — decision support, re-entry focus, enforced TTL (2026-10-07) | review_required | MISSING HEADER | `502541d5d273` |
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 | review_required | OK | `e11d852dddbb` |
 | `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` | CURRENT cutover — execute after 2026-08-27 close | review_required | OK | `ff4d8004bf21` |
 | `docs/ops/DECISION_PAYLOAD_LANDING_2026-08-21.md` | DecisionPayload landing check — 2026-08-21 19:31 ET | review_required | OK | `f3951cc5a623` |
@@ -1906,7 +1906,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Lane Quality Bake-Off — 2026-08-21 | review_required | OK | `cd49b9ce53e7` |
 | `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` | Blind ranking sheet — Lane bake-off 2026-08-21 | review_required | OK | `f88b31c995fa` |
 | `docs/ops/LANE_REGISTRY_AND_RETIREMENT_CONVENTION.md` | Lane registry and the retirement convention | review_required | OK | `fa5390b09ee7` |
-| `docs/ops/LIVE_CHANGES_20261020.md` | Live changes — 2026-10-20 | review_required | OK | `75ab881618e7` |
+| `docs/ops/LIVE_CHANGES_20261020.md` | Live changes — 2026-10-20 | review_required | OK | `559a79c8c09e` |
 | `docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md` | LIVE-cio-stance-governance — 24/7 universal CIO stance maturity | review_required | OK | `25f9efd74675` |
 | `docs/ops/LLM_OFFPEAK_ROUTING.md` | LLM Off-Peak Routing — operator guide | review_required | MISSING HEADER | `f87f06023478` |
 | `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` | How LLMs, Hermes, SearXNG, and ticker data actually work | review_required | OK | `3b36a08165b8` |
@@ -2350,7 +2350,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/runbooks/BARE_METAL_RECOVERY.md` | Bare-Metal Recovery Runbook (2026-07-17 backup-scope audit) | review_required | OK | `80d205a4c45f` |
 | `docs/runbooks/BRIDGE_OAUTH_TRANSPORTS_ACTIVATION.md` | Governed bridge: enabling the Grok and ChatGPT OAuth transports | review_required | MISSING HEADER | `8ef0ccbd18e0` |
 | `docs/runbooks/DB_HANG_PREVENTION.md` | DB-induced dashboard hang — prevention & recovery | review_required | OK | `4105584e570c` |
-| `docs/runbooks/DB_RETENTION.md` | DB retention — owners, archive + tripwire, grants | review_required | OK | `51c0c9e390dd` |
+| `docs/runbooks/DB_RETENTION.md` | DB retention — owners, archive + tripwire, grants | review_required | OK | `3df397be2fb3` |
 | `docs/runbooks/FINNHUB_KEY_ROTATION.md` | Finnhub API Key Rotation Runbook | review_required | OK | `b3f47d44596c` |
 | `docs/runbooks/INCIDENT_RESPONSE.md` | Incident response runbook — Trade AI on ms01 | review_required | OK | `1e34cd5ab633` |
 | `docs/runbooks/KEY_ROTATION.md` | Key Rotation Runbook (2026-07-18) | review_required | OK | `986b4883e260` |

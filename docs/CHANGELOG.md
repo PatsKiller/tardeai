@@ -2,12 +2,12 @@
 
 Status:      ACTIVE
 as_of:       2026-10-20T14:40:00-04:00
-Measured at: origin/main 1d00a5181 / served CURRENT f6f56e365 (latest entry); each entry carries its own measurement
+Measured at: origin/main 1d00a5181 / served CURRENT 1d00a5181 (latest entry); each entry carries its own measurement
 
 ## 2026-10-20 — Analyst feed order, plausibility writers, comms reservations, notifier settlement, five n8n lanes live
 
 Full record with status and evidence: `docs/ops/LIVE_CHANGES_20261020.md`. Releases promoted: `720fce06c` 08:58 ET,
-`f6f56e365` 12:52 ET (served). `1d00a5181` (#1883–#1885) is pending promotion.
+`f6f56e365` 12:52 ET. `1d00a5181` (#1883–#1885) 20:45 ET (served).
 
 - **Analyst feed (#1882, LIVE).** Communications cards showed analyst targets up to 87 days stale. `pro_analyst_fetch.py
   --max 250` (06:10) took the first 250 rows of an unordered `SELECT DISTINCT` over about 2,340 symbols, with held
