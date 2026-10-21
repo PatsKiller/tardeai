@@ -34,5 +34,10 @@ for (const [name, payload] of Object.entries({
   window: { ...ok, coverage: { ...ok.coverage, window_end: null } },
 })) check(`${name} is unavailable`, deliveryHealthFrom(payload, { nowMs: now }).state === 'UNAVAILABLE')
 
+const asOf = new Date(now).toISOString()
+const reaped = deliveryHealthFrom({ ...ok, failed: 0, reaped_unclaimed: 6, as_of: asOf,
+  coverage: { ...ok.coverage, window_end: asOf } }, { nowMs: now })
+check('reaped unclaimed copies are their own count, not failed', reaped.state === 'OK' && reaped.failed === 0 && reaped.reapedUnclaimed === 6)
+check('an older summary without the field is still OK, reaped unknown', good.state === 'OK' && good.reapedUnclaimed === null)
 console.log(`commsDeliveryHealth: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

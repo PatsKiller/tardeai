@@ -12,6 +12,8 @@ export interface DeliveryHealth {
   state: DeliveryHealthState
   unsettled: number | null
   failed: number | null
+  // EXPIRED by the stale-reservation reaper: an unclaimed shadow-ledger copy, not a failed send (2026-10-20).
+  reapedUnclaimed: number | null
   total: number | null
   oldestUnsettledAgeS: number | null
   asOf: string | null
@@ -23,7 +25,7 @@ export interface DeliveryHealth {
 
 const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0
 
-const EMPTY = { unsettled: null, failed: null, total: null, oldestUnsettledAgeS: null, asOf: null, lastGoodAgeS: null, windowStart: null, windowEnd: null }
+const EMPTY = { unsettled: null, failed: null, reapedUnclaimed: null, total: null, oldestUnsettledAgeS: null, asOf: null, lastGoodAgeS: null, windowStart: null, windowEnd: null }
 
 /** Project the summary payload. `error` / `loading` come from the fetch hook; `nowMs` is the render clock. */
 export function deliveryHealthFrom(
@@ -44,6 +46,7 @@ export function deliveryHealthFrom(
   const base = {
     unsettled: payload.unsettled as number,
     failed: payload.failed as number,
+    reapedUnclaimed: isCount(payload.reaped_unclaimed) ? (payload.reaped_unclaimed as number) : null,
     total: isCount(payload.total) ? (payload.total as number) : null,
     oldestUnsettledAgeS: isCount(payload.oldest_unsettled_age_s) ? (payload.oldest_unsettled_age_s as number) : null,
     asOf: typeof payload.as_of === 'string' ? payload.as_of : null,

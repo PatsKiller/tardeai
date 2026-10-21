@@ -14,6 +14,7 @@ def valid():
     return dict(
         unsettled=17,
         failed=9,
+        reaped_unclaimed=0,
         total=1234,
         oldest_unsettled_at=NOW - timedelta(minutes=10),
         as_of=NOW,
@@ -164,4 +165,4 @@ def test_real_typescript_summary_projection():
         env={**os.environ, "NODE_OPTIONS": ""},
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "19 passed, 0 failed" in result.stdout
+    assert "21 passed, 0 failed" in result.stdout

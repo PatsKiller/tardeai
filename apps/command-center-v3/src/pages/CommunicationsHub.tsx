@@ -279,6 +279,7 @@ export default function CommunicationsHub() {
               <span style={{ color: (deliveryHealth.failed ?? 0) > 0 ? RED : TEXT2, fontWeight: 800 }}>
                 {countText(deliveryHealth.failed)}
               </span>
+              {(deliveryHealth.reapedUnclaimed ?? 0) > 0 ? ` · reaped ${deliveryHealth.reapedUnclaimed} (unclaimed copies, not failures)` : ''}
             </>
           ) : deliveryHealth.state === 'LOADING' ? (
             'delivery health loading…'
