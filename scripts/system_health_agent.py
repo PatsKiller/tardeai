@@ -1180,7 +1180,7 @@ def _retry_armed() -> bool:
 
 
 def _attempt_retry(comp, conn):
-    """Attempt automatic retry of a failed component. Max 2 retries per day."""
+    """Attempt a retry. True means process exit zero, never accepted business recovery."""
     cmd = comp.get("retry_cmd")
     if not cmd:
         return False
@@ -1315,6 +1315,50 @@ def _attempt_retry(comp, conn):
     except Exception as e:
         _log_event(conn, component, "RETRY_ERROR", "WARN", str(e)[:200], action=cmd[:100], success=False)
         return False
+
+
+def _retry_recovery_evidence(comp, since):
+    """Read the latest host-ledger result for an existing explicit receipt-lane binding.
+
+    Log freshness, v1 last-success files, stdout and monitor_lane_ids (schedule display) never establish
+    useful-output recovery. No mapping is inferred and no receipt is manufactured for the legacy retry.
+    """
+    import sqlite3
+
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    from scripts.lib import recovery_validator as RV
+
+    lane = comp.get("receipt_lane_id")
+    result = {"recovered": False, "validator": RV.SCHEMA, "reason": "recovery_lane_binding_unavailable"}
+    if not isinstance(lane, str) or not lane:
+        return result
+    root = Path(os.environ.get("TRADEAI_STATE_ROOT") or (Path.home() / "trade-ai-releases" / "persistent-state"))
+    path = Path(
+        os.environ.get("TRADEAI_N8N_COORDINATION_LEDGER") or root / "data/governance/n8n_coordination_ledger.sqlite"
+    )
+    try:
+        conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=3)
+        try:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM runs WHERE lane_id=? AND finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1",
+                (lane,),
+            ).fetchone()
+        finally:
+            conn.close()
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        return dict(result, reason="recovery_ledger_unavailable:" + type(exc).__name__)
+    row = dict(row) if row is not None else None
+    ok, reason = RV.validate(row, mode="live", lane=lane, since=since, now=datetime.now(timezone.utc))
+    return dict(
+        result,
+        recovered=ok,
+        reason=reason,
+        lane_id=lane,
+        run_id=row.get("run_id") if row else None,
+        attempt=row.get("attempt") if row else None,
+    )
 
 
 def _is_portfolio_market_hours(now_et) -> bool:
@@ -1728,25 +1772,38 @@ def run_health_check(dry_run=True, verbose=False):
                     check["action_taken"] = "retry_disarmed_escalated"
                     report["summary"]["escalated"] += 1
             elif comp.get("retry_cmd"):
+                retry_started = datetime.now(timezone.utc)
                 success = _attempt_retry(comp, conn)
                 check["action_taken"] = "retry_success" if success else "retry_failed"
                 report["summary"]["retried"] += 1
-                if success:
+                proof = (
+                    _retry_recovery_evidence(comp, retry_started)
+                    if success
+                    else {"recovered": False, "reason": "retry_process_failed"}
+                )
+                check["recovery_evidence"] = proof
+                check["recovery_reason"] = proof["reason"]
+                if proof["recovered"]:
                     check["status"] = "RECOVERED"
                     _log_event(
                         conn,
                         component,
                         "RECOVERED",
                         "INFO",
-                        "Self-healed via retry",
+                        "Fresh effective-live business output verified after retry started: "
+                        + str(proof.get("run_id")),
                         action=comp["retry_cmd"][:100],
                         success=True,
                     )
                 else:
+                    if success:
+                        check["action_taken"] = "retry_completed_unproven"
                     # Escalate
                     if comp.get("critical"):
                         _escalate(comp, check, conn)
-                        check["action_taken"] = "retry_failed_escalated"
+                        check["action_taken"] = (
+                            "retry_completed_unproven_escalated" if success else "retry_failed_escalated"
+                        )
                         report["summary"]["escalated"] += 1
             elif comp.get("critical"):
                 # No retry cmd but critical — escalate immediately
@@ -2353,7 +2410,11 @@ def run_health_check(dry_run=True, verbose=False):
     _escalation_items = []
     # Collect failed retries
     for check in report.get("checks", []):
-        if check.get("action_taken") in ("retry_failed_escalated", "escalated_no_retry"):
+        if check.get("action_taken") in (
+            "retry_failed_escalated",
+            "retry_completed_unproven_escalated",
+            "escalated_no_retry",
+        ):
             _escalation_items.append(
                 {
                     "component": check.get("component"),
