@@ -5522,6 +5522,16 @@ GATES = [
         "hermes_scorer_n8n_shadow_20261021",
         ["tests/test_hermes_scorer_n8n_shadow_20261021.py"],
     ),
+    (
+        # ANCHOR: LEARNING_LOOP_PR1_20261021 — operator 2026-10-21 "Approve learning-loop plan and begin PR1
+        # immediately": deterministic rec_id for CIO opportunities (same plan → same id across versions), proposals,
+        # scalp GO and entry alerts (recommendation_registry, SAVEPOINT-guarded single writer + curator hook);
+        # trade_recommendation_links (exact / zone / window_only, unmatched = operator_initiated, idempotent);
+        # R multiple incl. shorts and missing stop; /api/v2/journal recommendation block; dry runs READ ONLY;
+        # additive migration. Hermetic: fake cursors, temp files, no DB.
+        "learning_loop_pr1_20261021",
+        ["tests/test_learning_loop_pr1_20261021.py"],
+    ),
 ]
 
 

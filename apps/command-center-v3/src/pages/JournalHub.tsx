@@ -20,6 +20,8 @@ import BehavioralPanel from '../components/tradeinview/BehavioralPanel'
 import SavedFilterBar, { type FilterPayload } from '../components/tradeinview/SavedFilterBar'
 import TradeLogTable from '../components/tradeinview/TradeLogTable'
 import TradeInViewDetail from '../components/tradeinview/TradeInViewDetail'
+import { RecommendationOriginChip } from '../components/tradeinview/RecommendationOrigin'
+import type { RecBlock } from '../lib/recommendationOrigin'
 import CsvImportPanel from '../components/tradeinview/CsvImportPanel'
 import ManualEntryPanel from '../components/tradeinview/ManualEntryPanel'
 import OptionsJournalPanel from '../components/tradeinview/OptionsJournalPanel'
@@ -62,6 +64,7 @@ interface UT {
   exitReason: string | null; strat: string | null; status: string
   entryDate: string | null; exitDate: string | null; source: 'paper' | 'schwab'
   eg: string | null; xg: string | null; entryTimeFull: string | null; r: number | null
+  rec?: RecBlock | null; recStatus?: string | null   // learning loop PR1 (schwab rows)
 }
 const EXEC_C: Record<string, string> = { good: '#22c55e', ok: '#84cc16', weak: '#f59e0b', poor: '#ef4444' }
 
@@ -302,7 +305,9 @@ export default function JournalHub({ onDrill }: Props) {
         eg: t.entry_grade ?? null, xg: t.exit_grade ?? null,
         entryTimeFull: t.entry_time ?? null,
         exitTimeFull: t.exit_time ?? null,
-        r: null,
+        // learning loop PR1: R achieved against the linked recommendation's plan stop (null when unknown)
+        r: t.recommendation?.r_achieved != null ? Number(t.recommendation.r_achieved) : null,
+        rec: t.recommendation ?? null, recStatus: schwabJournal?.recommendation_link_status ?? null,
       } as any)
     }
     return result.sort((a, b) => (b.exitDate ?? b.entryDate ?? '').localeCompare(a.exitDate ?? a.entryDate ?? ''))
@@ -791,6 +796,7 @@ export default function JournalHub({ onDrill }: Props) {
                     {/* pills: strategy, grades, execution */}
                     <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginTop: 8 }}>
                       <span style={{ fontSize: 8, fontWeight: 600, padding: '2px 7px', borderRadius: 4, background: 'var(--bg1)', color: 'var(--text2)' }}>{t.strat ?? 'unclassified'}</span>
+                      {t.source === 'schwab' && <RecommendationOriginChip rec={t.rec} status={t.recStatus} />}
                       {(t.eg || t.xg) && <span title={gradeExplain(t, eq)} style={{ fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: 'var(--bg1)', cursor: 'help' }}><span style={{ color: 'var(--text3)' }}>E</span><span style={{ color: gradeColor(t.eg) }}>{t.eg ?? '·'}</span> <span style={{ color: 'var(--text3)' }}>X</span><span style={{ color: gradeColor(t.xg) }}>{t.xg ?? '·'}</span> ⓘ</span>}
                       {eq && <span title={eq.grok_what_to_do_next_time || eq.computed_summary || ''} style={{ fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 4, background: (EXEC_C[eq.execution_grade] || 'var(--text3)') + '22', color: EXEC_C[eq.execution_grade] || 'var(--text3)' }}>{eq.execution_grade} cap{Math.round((eq.capture_ratio ?? 0) * 100)}%{eq.missed_opportunity_grade === 'severe' ? ' ⚠' : ''}</span>}
                       {crit?.has_critique && (

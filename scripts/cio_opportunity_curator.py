@@ -69,6 +69,20 @@ def file_review_requests(symbols: list[str], run_id: str) -> int:
     return len(symbols)
 
 
+def register_recommendations(store, assessments: list, lines: list) -> dict:
+    """Learning loop PR1 (operator 2026-10-21): every published plan gets a stable rec_id in recommendation_registry
+    (scripts/lib/recommendation_registry.py — same lineage rule as the backfill). SAVEPOINT-guarded and kill-switched
+    (TRADEAI_REC_REGISTRY_WRITE=0); before the migration is applied it reports status 'skipped'. Never fails the run."""
+    try:
+        from db_adapter import _get_conn
+        from scripts.lib.recommendation_registry import register_opportunities_after_curation
+
+        return register_opportunities_after_curation(
+            _get_conn(), store.event_path, [a["symbol"] for a in assessments], [ln["symbol"] for ln in lines])
+    except Exception as e:  # noqa: BLE001 — the registry never blocks curation
+        return {"status": "error", "error": f"{type(e).__name__}: {str(e)[:200]}"}
+
+
 def run(apply: bool, limit_print: int = 10) -> dict:
     from lib.data_broker import opportunity as op
     from scripts.lib.cio_opportunity_store import CIOOpportunityStore
@@ -105,6 +119,7 @@ def run(apply: bool, limit_print: int = 10) -> dict:
         report["cio_review_requested"] = file_review_requests(review, run_id)
         report["appended"] = store.append(lines, provenance)
         store.write_projection(assessments, {"as_of": report["at"], "run_id": run_id, "provenance": provenance})
+        report["rec_registry"] = register_recommendations(store, assessments, lines)
         RECEIPT.parent.mkdir(parents=True, exist_ok=True)
         RECEIPT.write_text(json.dumps(report, indent=1, default=str), encoding="utf-8")
     return report
