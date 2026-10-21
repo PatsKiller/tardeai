@@ -53,8 +53,8 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        # AWS ECR Public mirror of the official image: unauthenticated hub pulls hit toomanyrequests (2026-10-09).
-        image: public.ecr.aws/docker/library/postgres:17
+        # GCR mirror of the official PG17 image: ECR Public hit its data limit (2026-10-20).
+        image: mirror.gcr.io/library/postgres:17
         env: { POSTGRES_PASSWORD: ci, POSTGRES_DB: trade_ai_test }
         ports: ['5432:5432']
         options: >-
