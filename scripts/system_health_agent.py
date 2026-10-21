@@ -1179,8 +1179,19 @@ def _retry_armed() -> bool:
     return os.environ.get("TRADEAI_HEALTH_AGENT_RETRY", "0") == "1"
 
 
-def _attempt_retry(comp, conn):
-    """Attempt automatic retry of a failed component. Max 2 retries per day."""
+def _health_retry_history(path, now):
+    """UNINITIALIZED: no reviewed complete host-history source is installed.
+
+    Legacy PG events are deduplicated and cannot establish complete attempt history. Neither a file,
+    environment flag nor a caller-supplied initialized boolean creates this missing provenance.
+    """
+    return None
+
+
+def _attempt_retry(comp, conn, *, attempt_state=None):
+    """Attempt a retry. True means process exit zero, never accepted business recovery."""
+    if attempt_state is not None:
+        attempt_state.update(attempted=False, budget_status="not_evaluated")
     cmd = comp.get("retry_cmd")
     if not cmd:
         return False
@@ -1198,37 +1209,74 @@ def _attempt_retry(comp, conn):
             log.info(f"[retry] {component} — RETRY_DISARMED (set TRADEAI_HEALTH_AGENT_RETRY=1 to arm): {cmd[:80]}")
         return False
 
-    # Check retry count today. Default FIRST: when the shared connection is closed or aborted the
-    # SELECT raises, and the name must still exist below (2026-10-07: 1,082 UnboundLocalError
-    # tracebacks in logs/system_health_agent.log; every --apply run died at the first retry).
+    import hashlib
+    import math
+    import time
+    from lib import recovery_attempt_budget as budget
+
+    def hold(reason):
+        if attempt_state is not None:
+            attempt_state["budget_status"] = reason
+        _log_event(conn, component, "RETRY_BUDGET_HELD", "WARN", reason, success=False)
+        return False
+
+    # Include contention and DB inspection in this attempt's absolute process deadline.
+    timeout_s = comp.get("max_runtime_sec", 300)
+    try:
+        valid_timeout = type(timeout_s) in (int, float) and math.isfinite(timeout_s) and timeout_s > 0
+    except (TypeError, ValueError, OverflowError):
+        valid_timeout = False
+    if type(MAX_RETRIES) is not int or MAX_RETRIES < 0 or not valid_timeout:
+        return hold("unavailable")
+    deadline = time.monotonic() + timeout_s
     retries_today = 0
     try:
         cur = conn.cursor()
         cur.execute(
             """SELECT COUNT(*) FROM system_health_events
-            WHERE component=%s AND event_type='RETRY' AND created_at > NOW() - INTERVAL '24 hours'""",
+            WHERE component=%s AND event_type IN ('RETRY', 'RETRY_TIMEOUT', 'RETRY_ERROR')
+            AND created_at > NOW() - INTERVAL '24 hours'""",
             [component],
         )
-        retries_today = cur.fetchone()[0] or 0
-        # Release the read txn NOW — the retry subprocess below blocks for up to max_runtime_sec
-        # (300s+) while db_adapter kills idle-in-transaction at 120s, taking this shared conn with it
-        # (the agent was logging idle-txn kills it caused itself, 1-2 per */15 run).
-        conn.commit()
-        if retries_today >= MAX_RETRIES:
-            _log_event(
-                conn,
-                component,
-                "RETRY_EXHAUSTED",
-                "CRITICAL",
-                f"Max retries ({MAX_RETRIES}) exhausted today",
-                success=False,
-            )
-            return False
+        retries_today = cur.fetchone()[0]
+        conn.commit()  # never retain an idle read transaction through a subprocess
+        if type(retries_today) is not int or retries_today < 0:
+            return hold("unavailable")
     except Exception:
         try:
-            conn.rollback()  # an aborted txn held through the subprocess dies the same way
+            conn.rollback()
         except Exception:
             pass
+        return hold("unavailable")
+
+    state_root = Path(os.environ.get("TRADEAI_STATE_ROOT") or (Path.home() / "trade-ai-releases" / "persistent-state"))
+    journal = state_root / "data/runtime/health_retry_attempts.jsonl"
+    reservation = {
+        "schema": "HealthRetryAttempt@v1",
+        "namespace": budget.HEALTH,
+        "component": component,
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "command_digest": hashlib.sha256(cmd.encode("utf-8")).hexdigest(),
+    }
+    allowed, status = budget.reserve(
+        journal,
+        reservation,
+        datetime.now(timezone.utc),
+        limit=MAX_RETRIES,
+        window_s=86400,
+        namespace=budget.HEALTH,
+        live=True,
+        history_source=_health_retry_history,
+        deadline=deadline,
+        observed_count=retries_today,
+    )
+    if not allowed:
+        return hold("exhausted" if status == "known" else status)
+    if attempt_state is not None:
+        attempt_state.update(budget_status="known", attempt_id=reservation["attempt_id"])
+    # Reservation is irrevocable, including a crash or deadline expiry before spawn.
+    if time.monotonic() >= deadline:
+        return hold("deadline_exhausted")
 
     # Clear stale lock ONLY when the PID is genuinely dead. (Do NOT pre-clear before running — that
     # defeated the lock and let every cycle spawn another heavy orchestrator: the 2026-06-25 pile-up
@@ -1260,11 +1308,14 @@ def _attempt_retry(comp, conn):
         run_cmd = f"bash {PROJECT_ROOT}/scripts/safe_flock.sh {lock_file} {cmd}"
 
     log.info(f"[retry] {component} — attempt {retries_today + 1}/{MAX_RETRIES}")
-    timeout_s = comp.get("max_runtime_sec", 300)
     proc = None
     try:
         # new session so a timeout kills the WHOLE tree (heavy orchestrator child included), not just
         # the shell — the old subprocess.run(timeout) orphaned the python child to keep loading the host.
+        if time.monotonic() >= deadline:
+            return hold("deadline_exhausted")
+        if attempt_state is not None:
+            attempt_state["attempted"] = True
         proc = subprocess.Popen(
             run_cmd,
             shell=True,
@@ -1275,7 +1326,7 @@ def _attempt_retry(comp, conn):
             start_new_session=True,
         )
         try:
-            out, err = proc.communicate(timeout=timeout_s)
+            out, err = proc.communicate(timeout=max(0, deadline - time.monotonic()))
         except subprocess.TimeoutExpired:
             try:
                 import signal as _sig
@@ -1315,6 +1366,50 @@ def _attempt_retry(comp, conn):
     except Exception as e:
         _log_event(conn, component, "RETRY_ERROR", "WARN", str(e)[:200], action=cmd[:100], success=False)
         return False
+
+
+def _retry_recovery_evidence(comp, since):
+    """Read the latest host-ledger result for an existing explicit receipt-lane binding.
+
+    Log freshness, v1 last-success files, stdout and monitor_lane_ids (schedule display) never establish
+    useful-output recovery. No mapping is inferred and no receipt is manufactured for the legacy retry.
+    """
+    import sqlite3
+
+    if str(PROJECT_ROOT) not in sys.path:
+        sys.path.insert(0, str(PROJECT_ROOT))
+    from scripts.lib import recovery_validator as RV
+
+    lane = comp.get("receipt_lane_id")
+    result = {"recovered": False, "validator": RV.SCHEMA, "reason": "recovery_lane_binding_unavailable"}
+    if not isinstance(lane, str) or not lane:
+        return result
+    root = Path(os.environ.get("TRADEAI_STATE_ROOT") or (Path.home() / "trade-ai-releases" / "persistent-state"))
+    path = Path(
+        os.environ.get("TRADEAI_N8N_COORDINATION_LEDGER") or root / "data/governance/n8n_coordination_ledger.sqlite"
+    )
+    try:
+        conn = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=3)
+        try:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM runs WHERE lane_id=? AND finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 1",
+                (lane,),
+            ).fetchone()
+        finally:
+            conn.close()
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        return dict(result, reason="recovery_ledger_unavailable:" + type(exc).__name__)
+    row = dict(row) if row is not None else None
+    ok, reason = RV.validate(row, mode="live", lane=lane, since=since, now=datetime.now(timezone.utc))
+    return dict(
+        result,
+        recovered=ok,
+        reason=reason,
+        lane_id=lane,
+        run_id=row.get("run_id") if row else None,
+        attempt=row.get("attempt") if row else None,
+    )
 
 
 def _is_portfolio_market_hours(now_et) -> bool:
@@ -1728,25 +1823,52 @@ def run_health_check(dry_run=True, verbose=False):
                     check["action_taken"] = "retry_disarmed_escalated"
                     report["summary"]["escalated"] += 1
             elif comp.get("retry_cmd"):
-                success = _attempt_retry(comp, conn)
-                check["action_taken"] = "retry_success" if success else "retry_failed"
-                report["summary"]["retried"] += 1
-                if success:
+                retry_started = datetime.now(timezone.utc)
+                attempt_state = {}
+                success = _attempt_retry(comp, conn, attempt_state=attempt_state)
+                attempted = attempt_state.get("attempted") is True
+                check["retry_admission"] = attempt_state
+                check["action_taken"] = ("retry_success" if success else "retry_failed") if attempted else "retry_held"
+                report["summary"]["retried"] += int(attempted)
+                if not attempted:
+                    report["summary"]["retry_held"] = report["summary"].get("retry_held", 0) + 1
+                proof = (
+                    _retry_recovery_evidence(comp, retry_started)
+                    if success
+                    else {
+                        "recovered": False,
+                        "reason": "retry_process_failed"
+                        if attempted
+                        else "retry_budget_" + attempt_state.get("budget_status", "unavailable"),
+                    }
+                )
+                check["recovery_evidence"] = proof
+                check["recovery_reason"] = proof["reason"]
+                if proof["recovered"]:
                     check["status"] = "RECOVERED"
                     _log_event(
                         conn,
                         component,
                         "RECOVERED",
                         "INFO",
-                        "Self-healed via retry",
+                        "Fresh effective-live business output verified after retry started: "
+                        + str(proof.get("run_id")),
                         action=comp["retry_cmd"][:100],
                         success=True,
                     )
                 else:
+                    if success:
+                        check["action_taken"] = "retry_completed_unproven"
                     # Escalate
                     if comp.get("critical"):
                         _escalate(comp, check, conn)
-                        check["action_taken"] = "retry_failed_escalated"
+                        check["action_taken"] = (
+                            "retry_completed_unproven_escalated"
+                            if success
+                            else "retry_failed_escalated"
+                            if attempted
+                            else "retry_held_escalated"
+                        )
                         report["summary"]["escalated"] += 1
             elif comp.get("critical"):
                 # No retry cmd but critical — escalate immediately
@@ -2353,7 +2475,12 @@ def run_health_check(dry_run=True, verbose=False):
     _escalation_items = []
     # Collect failed retries
     for check in report.get("checks", []):
-        if check.get("action_taken") in ("retry_failed_escalated", "escalated_no_retry"):
+        if check.get("action_taken") in (
+            "retry_failed_escalated",
+            "retry_held_escalated",
+            "retry_completed_unproven_escalated",
+            "escalated_no_retry",
+        ):
             _escalation_items.append(
                 {
                     "component": check.get("component"),
