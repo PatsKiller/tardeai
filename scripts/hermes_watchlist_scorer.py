@@ -25,28 +25,6 @@ data/runtime/hermes-watchlist-scorer_last.json on a real run, and a write-free -
 import), and the DB connection is a plain psycopg2 connect, not db_adapter (whose closure reaches broker modules).
 """
 from __future__ import annotations
-import sys as _dr_sys
-
-if __name__ == "__main__" and "--dry-run" in _dr_sys.argv[1:]:
-    # n8n onboarding (lane disposition 2026-10-15, MIGRATE_N8N): --dry-run is an OFFLINE plan and wins over every
-    # live flag (--once). It returns here, before the .env load, any DB/LLM/network/sender import and any file
-    # write; it prints the plan and one LaneOutput@v1 line on stderr (produced 0, empty_reason dry_run).
-    import os as _dr_os
-
-    _dr_sys.path.insert(0, _dr_os.path.join(_dr_os.path.dirname(_dr_os.path.abspath(__file__))))
-    from lib.lane_output import emit as _dr_emit, output_block as _dr_block
-
-    _dr_lane = "hermes-watchlist-scorer"
-    _dr_would = (
-        "score the due tier of watchlist names from existing intelligence (weights in "
-        "config/hermes_score_weights.yaml, missing factors dropped), store composite + hermes_rank + "
-        "components and score history (no model call)"
-    )
-    print(f"DRY-RUN {_dr_lane}: would {_dr_would}; argv={_dr_sys.argv[1:]!r}; dry-run wins over live flags; "
-          "nothing read from env/DB/network, no model call, no send, no file write")
-    _dr_emit(_dr_lane, "dry_run", _dr_block(produced=0, attempted=0, empty_reason="dry_run", unit="watchlist_symbol"))
-    raise SystemExit(0)
-
 try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
     from lib.cc_client import cc_urlopen as _cc_urlopen
 except ImportError:  # pragma: no cover - scripts/ not on sys.path

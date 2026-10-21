@@ -1,8 +1,9 @@
 """n8n onboarding batch B6 (lane disposition 2026-10-15, MIGRATE_N8N, no allowlist entry, no --dry-run before):
-an offline ``--dry-run`` for 6 lane(s). Mixed tier 3/4 (a sender, a status reader, a deterministic scorer, the portfolio AI analyst, the proposal auto-enrichment runner that shells out to an AI review, and the urgent analyst refresh that regenerates reports and emails).
+an offline ``--dry-run`` for 5 lane(s). (hermes-watchlist-scorer was dropped at integration 2026-10-21: main's
+scorer already has a real read-only ``--dry-run`` -- ``run(dry_run=True)`` -- that the #1899 n8n lane depends on.) Mixed tier 3/4 (a sender, a status reader, the portfolio AI analyst, the proposal auto-enrichment runner that shells out to an AI review, and the urgent analyst refresh that regenerates reports and emails).
 
 COVERS = ["scripts/agent_watchlist_engine.py", "scripts/analyst_urgent_refresh.py", "scripts/auto_enrichment_runner.py",
-    "scripts/hermes_watchlist_scorer.py", "scripts/notify_material_change.py", "scripts/portfolio_orchestrator.py"]
+    "scripts/notify_material_change.py", "scripts/portfolio_orchestrator.py"]
 
 Proof (hermetic, in-process): each script runs as ``__main__`` (runpy) with the LIVE cron argv plus ``--dry-run`` in
 both orders ("--dry-run wins over --apply/--send"), while every write/send/network/subprocess primitive is replaced by
@@ -37,7 +38,6 @@ ROOT = Path(__file__).resolve().parents[1]
 LANES = {
     "material-change-notifier-stage2": ("scripts/notify_material_change.py", ["--apply"]),
     "agent-watchlist-engine": ("scripts/agent_watchlist_engine.py", ["--status"]),
-    "hermes-watchlist-scorer": ("scripts/hermes_watchlist_scorer.py", ["--once"]),
     "portfolio-ai-analyst": ("scripts/portfolio_orchestrator.py", []),
     "auto-enrichment-runner": ("scripts/auto_enrichment_runner.py", ["--limit", "40"]),
     "analyst-urgent-refresh": ("scripts/analyst_urgent_refresh.py", []),

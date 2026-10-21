@@ -3981,8 +3981,8 @@ GATES = [
     ),
     (
         # ANCHOR: ONBOARD_DRYRUN_B6_20261015 — n8n onboarding batch B6 (lane disposition 2026-10-15, MIGRATE_N8N, no
-        # allowlist entry, no --dry-run before): material-change-notifier-stage2, agent-watchlist-engine, hermes-
-        # watchlist-scorer, portfolio-ai-analyst, auto-enrichment-runner, analyst-urgent-refresh. Offline --dry-run
+        # allowlist entry, no --dry-run before): material-change-notifier-stage2, agent-watchlist-engine,
+        # portfolio-ai-analyst (hermes-watchlist-scorer dropped 2026-10-21: main keeps its real read-only --dry-run), auto-enrichment-runner, analyst-urgent-refresh. Offline --dry-run
         # wins over --apply/--telegram and the always-on paths (in-process record-and-raise proof: no DB, network,
         # model call, subprocess or sender import); static capability audit pins chokepoint_send and no direct_sender.
         # Listing it schedules nothing.
