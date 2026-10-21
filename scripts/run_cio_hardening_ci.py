@@ -5427,6 +5427,13 @@ GATES = [
             "tests/test_ci_frontend_dependencies_20261018.py",
         ],
     ),
+    (
+        # Indicator JSON safety (2026-10-21): non-finite float/Decimal/NumPy
+        # values normalize to JSON null while finite numeric values retain their
+        # existing serialization. Hermetic writer-path coverage; no live DB.
+        "indicator_json_nan_20261021",
+        ["tests/test_indicator_json_nan_20261021.py"],
+    ),
 ]
 
 
