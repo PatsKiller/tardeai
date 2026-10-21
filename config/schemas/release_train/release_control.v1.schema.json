@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tradeai:release-train/ReleaseControl.schema.json",
+  "title": "ReleaseControl@v1",
+  "description": "A release control command and its state (enhanced design section 7): stop, pause, resume, revoke, hold, cancel. Phase 1 defines the record only; no endpoint accepts it. The actor is server-derived, never caller-supplied. Program rules: resume/revoke need a reason; acknowledged/settling/stopped carry their timestamps in order; only stop reaches 'stopped'; refused carries refusal_reason.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "control_id",
+    "command",
+    "actor",
+    "actor_source",
+    "requested_at",
+    "idempotency_key",
+    "expected_control_version",
+    "state"
+  ],
+  "properties": {
+    "schema": {
+      "const": "ReleaseControl@v1"
+    },
+    "control_id": {
+      "type": "string",
+      "pattern": "^rtc-[A-Za-z0-9._:-]{4,100}$"
+    },
+    "command": {
+      "enum": [
+        "stop",
+        "pause",
+        "resume",
+        "revoke",
+        "hold",
+        "cancel"
+      ]
+    },
+    "actor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "actor_source": {
+      "enum": [
+        "host_cli",
+        "command_center",
+        "telegram"
+      ]
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 200
+    },
+    "expected_control_version": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "state": {
+      "enum": [
+        "requested",
+        "acknowledged",
+        "settling",
+        "stopped",
+        "applied",
+        "refused"
+      ]
+    },
+    "reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 500
+    },
+    "epoch": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "acknowledged_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "maxLength": 40
+    },
+    "settled_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "maxLength": 40
+    },
+    "stopped_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "maxLength": 40
+    },
+    "target": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "train_id": {
+          "type": "string",
+          "pattern": "^rt-[0-9]{8}-[0-9]{4}-[a-z0-9]{4,12}$"
+        },
+        "pr_number": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9999999
+        }
+      }
+    },
+    "refusal_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 500
+    }
+  }
+}
