@@ -54,14 +54,15 @@ def test_indicator_universe_upsert_params_normalize_json_and_scalar_fields():
         "stop_price": float("nan"),
         "target_price": 14.25,
         "atr": float("inf"),
+        "entry_quality": float("-inf"),
         "key_levels": {"ema": {"value": float("nan")}},
         "nested": [float("inf"), {"atr": float("-inf")}],
     }
 
     params = upsert_params("TEST", "swing", result, ttl_minutes=60)
 
-    assert {index: params[index] for index in (2, 4, 5, 6, 10, 12)} == {
-        index: None for index in (2, 4, 5, 6, 10, 12)
+    assert {index: params[index] for index in (2, 4, 5, 6, 10, 12, 14)} == {
+        index: None for index in (2, 4, 5, 6, 10, 12, 14)
     }
     assert params[11] == 14.25
     assert _strict_loads(params[9]) == {"ema": {"value": None}}
@@ -74,6 +75,7 @@ def test_indicator_universe_upsert_params_normalize_json_and_scalar_fields():
         "stop_price": None,
         "target_price": 14.25,
         "atr": None,
+        "entry_quality": None,
         "key_levels": {"ema": {"value": None}},
         "nested": [None, {"atr": None}],
     }
@@ -234,8 +236,15 @@ def _indicator_result():
         "stop_price": float("nan"),
         "target_price": 12.5,
         "atr": float("-inf"),
+        "entry_quality": float("nan"),
         "metrics": {"outer": [float("-inf"), {"finite": 4}]},
-        "signals": {},
+        "signals": {
+            "ema": {
+                "signal": "BULLISH",
+                "value": float("nan"),
+                "details": {"score": float("nan"), "bands": [float("inf"), 0.75]},
+            }
+        },
     }
 
 
@@ -260,8 +269,8 @@ def test_confluence_handlers_write_strict_cache_json(monkeypatch, handler_name):
 
     cache_write = next(call for call in writes if "indicator_confluence_cache" in call[0])
     params = cache_write[1]
-    assert {index: params[index] for index in (2, 4, 5, 6, 10, 12)} == {
-        index: None for index in (2, 4, 5, 6, 10, 12)
+    assert {index: params[index] for index in (2, 4, 5, 6, 10, 12, 14)} == {
+        index: None for index in (2, 4, 5, 6, 10, 12, 14)
     }
     assert params[11] == 12.5
     assert _strict_loads(params[9]) == {"ema": {"value": None}, "atr": [None, 12.5]}
@@ -275,9 +284,55 @@ def test_confluence_handlers_write_strict_cache_json(monkeypatch, handler_name):
         "stop_price": None,
         "target_price": 12.5,
         "atr": None,
+        "entry_quality": None,
         "metrics": {"outer": [None, {"finite": 4}]},
-        "signals": {},
+        "signals": {
+            "ema": {
+                "signal": "BULLISH",
+                "value": None,
+                "details": {"score": None, "bands": [None, 0.75]},
+            }
+        },
     }
+    response_result = payload["data"] if handler_name == "_indicator_confluence_handler" else payload["results"]["TEST"]
+    serialized_response = json.dumps(response_result, allow_nan=False)
+    decoded_response = _strict_loads(serialized_response)
+    assert decoded_response["metrics"] == {"outer": [None, {"finite": 4}]}
+    assert decoded_response["confluence_score"] is None
+    assert decoded_response["target_price"] == 12.5
+    assert decoded_response["signals"]["ema"]["details"] == {
+        "score": None,
+        "bands": [None, 0.75],
+    }
+    if handler_name == "_indicator_confluence_handler":
+        history_write = next(call for call in writes if "indicator_signal_history" in call[0])
+        assert history_write[1][3] is None
+        assert _strict_loads(history_write[1][4]) == {"score": None, "bands": [None, 0.75]}
+
+
+def test_confluence_cached_response_normalizes_nested_nonfinite_values(monkeypatch):
+    api = _api_module(monkeypatch)
+    cached_result = {
+        "score": float("nan"),
+        "levels": [float("inf"), {"floor": float("-inf"), "finite": 2.5}],
+    }
+    monkeypatch.setattr(api, "_db_query", lambda *_args, **_kwargs: {"full_result": cached_result})
+    monkeypatch.setattr(
+        api,
+        "_db_write",
+        lambda *_args, **_kwargs: pytest.fail("cache hit must not write or recompute"),
+    )
+
+    status, payload = api._indicator_confluence_handler({"symbol": "TEST"})
+
+    assert status == 200
+    assert payload["cached"] is True
+    assert payload["data"] == {
+        "score": None,
+        "levels": [None, {"floor": None, "finite": 2.5}],
+    }
+    serialized = json.dumps(payload["data"], allow_nan=False)
+    assert _strict_loads(serialized) == payload["data"]
 
 
 def test_postgres_jsonb_round_trip_accepts_normalized_cache_fields():

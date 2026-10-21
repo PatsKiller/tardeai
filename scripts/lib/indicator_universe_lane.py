@@ -141,7 +141,7 @@ def upsert_params(symbol: str, profile: str, r: dict, ttl_minutes: int) -> tuple
             r.get("strategy_badges", []), r.get("bearish_badges", []),
             key_levels_json,
             scalar_fields["stop_price"], scalar_fields["target_price"],
-            scalar_fields["atr"], r.get("adx_regime"), r.get("entry_quality"),
+            scalar_fields["atr"], r.get("adx_regime"), scalar_fields["entry_quality"],
             full_result_json, int(ttl_minutes))
 
 

@@ -63,6 +63,7 @@ def indicator_cache_scalar_fields(result: Mapping[str, Any]) -> dict[str, Any]:
         "stop_price": None,
         "target_price": None,
         "atr": None,
+        "entry_quality": None,
     }
     return {name: normalize_nonfinite_json(result.get(name, default)) for name, default in defaults.items()}
 

@@ -14,9 +14,19 @@ from pathlib import Path
 from typing import Any, Optional
 
 try:
-    from lib.json_safety import indicator_cache_json_fields, indicator_cache_scalar_fields
+    from lib.json_safety import (
+        indicator_cache_json_fields,
+        indicator_cache_scalar_fields,
+        json_dumps_for_postgres,
+        normalize_nonfinite_json,
+    )
 except ImportError:  # pragma: no cover - imported as scripts.api_v2
-    from scripts.lib.json_safety import indicator_cache_json_fields, indicator_cache_scalar_fields
+    from scripts.lib.json_safety import (
+        indicator_cache_json_fields,
+        indicator_cache_scalar_fields,
+        json_dumps_for_postgres,
+        normalize_nonfinite_json,
+    )
 
 log = logging.getLogger(__name__)
 logger = log  # alias used by YAML tuning + john_decide handlers
@@ -23048,7 +23058,11 @@ def _indicator_confluence_handler(query: dict) -> tuple:
             fetch="one",
         )
         if cached and cached.get("full_result"):
-            return 200, {"ok": True, "data": cached["full_result"], "cached": True}
+            return 200, {
+                "ok": True,
+                "data": normalize_nonfinite_json(cached["full_result"]),
+                "cached": True,
+            }
 
     # Compute fresh
     try:
@@ -23105,7 +23119,7 @@ def _indicator_confluence_handler(query: dict) -> tuple:
                     scalar_fields["target_price"],
                     scalar_fields["atr"],
                     result.get("adx_regime"),
-                    result.get("entry_quality"),
+                    scalar_fields["entry_quality"],
                     full_result_json,
                 ),
             )
@@ -23119,14 +23133,14 @@ def _indicator_confluence_handler(query: dict) -> tuple:
                         symbol,
                         strat_name,
                         sig_data.get("signal", "NEUTRAL"),
-                        sig_data.get("value"),
-                        json.dumps(sig_data.get("details", {})),
+                        normalize_nonfinite_json(sig_data.get("value")),
+                        json_dumps_for_postgres(sig_data.get("details", {})),
                     ),
                 )
         except Exception as cache_err:
             print(f"  [indicators] Cache write failed (non-fatal): {cache_err}")
 
-        return 200, {"ok": True, "data": result, "cached": False}
+        return 200, {"ok": True, "data": normalize_nonfinite_json(result), "cached": False}
     except Exception as e:
         return 500, {"ok": False, "error": str(e)}
 
@@ -23148,7 +23162,7 @@ def _indicator_batch_handler(body: dict) -> tuple:
     for sym in symbols:
         try:
             r = analyze_confluence(sym.upper(), profile)
-            results[sym.upper()] = r
+            results[sym.upper()] = normalize_nonfinite_json(r)
             # Cache result. 2026-10-20: the conflict branch refreshes every scalar column, as the single-symbol
             # path and indicator_universe_lane.UPSERT_SQL do. It used to update only score/tier/bullish/badges/
             # full_result, so a negative stop_price from before the 2026-10-18 atr_stop_target floor survived
@@ -23196,7 +23210,7 @@ def _indicator_batch_handler(body: dict) -> tuple:
                             scalar_fields["target_price"],
                             scalar_fields["atr"],
                             r.get("adx_regime"),
-                            r.get("entry_quality"),
+                            scalar_fields["entry_quality"],
                             full_result_json,
                         ),
                     )
