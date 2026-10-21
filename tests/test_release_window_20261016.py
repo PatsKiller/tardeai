@@ -34,7 +34,9 @@ def grant(reason=GOOD_REASON, uses=3, expires_in=7200, gid="g-window-1200"):
 def green(sha=HEAD):
     return {"ok": True, "candidate_sha": sha, "errors": [], "checks": [
         {"path": ".github/workflows/cio-production-hardening-ci.yml", "status": "completed", "conclusion": "success"},
-        {"path": ".github/workflows/agent-governance.yml", "status": "completed", "conclusion": "success"}]}
+        {"path": ".github/workflows/agent-governance.yml", "status": "completed", "conclusion": "success"},
+        # 2026-10-21 release train: all three branch-protection contexts must be success (train_ci_verdict).
+        {"path": ".github/workflows/release-readiness.yml", "status": "completed", "conclusion": "success"}]}
 
 
 def pending(sha=HEAD):
@@ -89,6 +91,19 @@ class FakeHost:
     def ci_evidence(self, sha):
         self.calls.append(("ci", sha))
         return self.ci
+
+    def first_parent_chain(self, head, base, limit):
+        return [head]                    # 2026-10-21 fallback: none here (tests/test_release_train_20261021.py)
+
+    def http_get(self, url):
+        if url.endswith("/api/v2/system/platform-health"):
+            return 200, '{"schema": "PlatformHealth@v1", "status": "OK", "overall": "OK"}'
+        if url.endswith("/api/v2/needs-action"):
+            return 200, '{"schema": "NeedsAction@v1", "counts": {}, "total": 0}'
+        return 200, "<!doctype html>"
+
+    def notify(self, message, priority):
+        return {"accepted": True, "priority": priority}
 
     def grants(self):
         return list(self._grants)

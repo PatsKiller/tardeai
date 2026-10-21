@@ -16,6 +16,11 @@ A fresh green receipt for the same SHA (``--ci-receipt``, written by the deploy
 script's own early ``--ci-only`` check, #1558 Q9) is reused instead of a second
 GitHub query. ``--skip-ci-gate`` exists only for the CI-outage emergency path,
 which proves the outage itself before activation.
+
+``--no-consume`` (release train, 2026-10-21) decides only: no CI read, no use.
+The deploy's promote calls it first, then runs conformance and the exact-SHA
+``--ci-only`` re-query (which writes the receipt), then the consuming call,
+whose CI gate reuses that receipt. One use, consumed only after all of them.
 """
 from __future__ import annotations
 
@@ -235,6 +240,9 @@ def main() -> int:
     ap.add_argument("--sha", required=True)
     ap.add_argument("--pr", type=int, default=None)
     ap.add_argument("--campaign", default=os.environ.get("TRADEAI_RELEASE_CAMPAIGN") or None)
+    ap.add_argument("--no-consume", action="store_true",
+                    help="decide only; consume no use (the deploy checks the binding before the exact-SHA CI "
+                         "re-query and consumes only immediately before activation — 2026-10-21)")
     ap.add_argument("--backstop-check", action="store_true",
                     help="read the push/main run of a tree-attested release; exit 3 when it is red")
     ap.add_argument("--backstop-receipt", type=Path, default=BACKSTOP_RECEIPT)
@@ -255,7 +263,10 @@ def main() -> int:
     mode = (os.environ.get("TRADEAI_RELEASE_GRANT_BINDING") or "enforce").lower()
     v = decide_from_disk(ReleaseAction(action=args.action, target_sha=args.sha, pr_number=args.pr, campaign=args.campaign))
     out = {**v.to_dict(), "mode": mode, "action": args.action, "sha": args.sha, "pr": args.pr}
-    if v.allowed and args.action == "promote" and not args.skip_ci_gate:
+    # The CI gate guards the consume. A --no-consume call (the deploy script's early binding verdict) consumes
+    # nothing, so it reads no CI; the deploy's own exact-SHA re-query and this gate on the consuming call do
+    # (release-1 integration of #1628 + release train, 2026-10-21: one use, consumed only after CI).
+    if v.allowed and args.action == "promote" and not args.skip_ci_gate and not args.no_consume:
         gate = promote_ci_gate(args.sha, args.ci_receipt)
         out["ci_gate"] = gate
         if not gate["ok"]:
@@ -268,7 +279,10 @@ def main() -> int:
         # C-10 (2026-09-26): the deploy path never consumed a grant use, so the
         # ledger under-counted every Claude Code promote (both P1 grants showed
         # unconsumed uses after being exercised). One use per release action.
-        out["consumed"] = consume_release_grant()
+        # 2026-10-21: a promote refused by the exact-SHA CI re-query had already
+        # consumed its use (71df62acc, post_merge_ci_refused). cmd_promote now
+        # decides with --no-consume first and consumes only after CI passed.
+        out["consumed"] = {"skipped": "no_consume"} if args.no_consume else consume_release_grant()
     print(json.dumps(out, sort_keys=True))
     if v.allowed:
         return 0

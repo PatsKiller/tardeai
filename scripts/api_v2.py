@@ -30606,6 +30606,8 @@ def _needs_action(query=None):
         "pipelines": lambda: _system_pipeline_failures({}),
         # 2026-10-21: the pr-hygiene-audit lane's receipt (read-only; scripts/pr_hygiene_audit.py)
         "pr_hygiene": _na.probe_pr_hygiene,
+        # Release train 2026-10-21: a failed release window (STOP latch / last receipt) is an inbox item.
+        "release_window": _na.read_release_window_state,
     }
     out = _na.aggregate(probes)
     _NEEDS_ACTION_CACHE["v"] = (_t.monotonic(), out)

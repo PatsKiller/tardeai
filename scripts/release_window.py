@@ -10,15 +10,23 @@ process for urgent fixes." Packet: docs/ops/packets/release-windows-20261016/REA
   status                                      STOP latch + last receipt
   clear-stop --reason TEXT                    operator: archive the STOP latch (never deleted)
 
-One window, one candidate:
-  * the candidate is the origin/main head at the window, and ONLY if every push/main workflow on that exact SHA
-    (and both REQUIRED_PUSH_WORKFLOWS) is completed/success. No older green SHA is substituted; no CI wait.
-    A merge after selection waits for the next window.
-  * `prepare` runs on that SHA (cio_phase2_exact_main_deploy.sh requires release-checkout HEAD == origin/main), then
-    `promote <prepared dir>` promotes THAT artifact (promote reads its BUILD_SHA and re-checks exact-SHA CI).
+One window, one candidate (release train, operator plan approved 2026-10-21):
+  * the candidate is the origin/main head at the window when every push/main workflow on that exact SHA is
+    completed/success AND all three branch-protection contexts (REQUIRED_TRAIN_WORKFLOWS: cio-hardening,
+    agent-governance, release-readiness) are present with conclusion == "success" (train_ci_verdict; anything else
+    is not green, the 2026-10-21 fix of the weak "not failure" reading). Otherwise the candidate is the NEWEST
+    commit on main's first-parent chain since the served release whose exact-SHA CI is green (selected_by
+    "fallback_newest_green"); the deploy prepares it under TRADEAI_RELEASE_TRAIN_SHA. No CI wait.
+  * `prepare` runs on that SHA (cio_phase2_exact_main_deploy.sh requires HEAD == origin/main, or for a train SHA a
+    clean first-parent main commit with green exact-SHA CI), then `promote <prepared dir>` promotes THAT artifact
+    (promote reads its BUILD_SHA and re-checks exact-SHA CI; a CI refusal consumes no grant use).
   * verification: promote exit 0, CURRENT -> prepared dir, BUILD_SHA == candidate, units that were active stay
-    active, /api/health 200, served-copy check (scripts/check_served_copy_split.py) exit 0.
+    active, /api/health 200, Command Center pages 200 (VERIFY_PAGES), /api/v2/system/platform-health 200 and
+    measured, /api/v2/needs-action 200 and parseable, served-copy check (scripts/check_served_copy_split.py) exit 0.
   * a failed verification rolls back with the deploy script's own `rollback <prev>` and LATCHES a STOP.
+  * one receipt per window; a failed window also leaves a Needs-action item (scripts/lib/needs_action.py
+    rule_release_window reads the latch and last.json) and sends ONE notification intent (P1 rollback or prepare
+    failure, P2 CI red or main moved) through the communications gateway (telegram_alert.send_telegram).
 
 Authorization is the existing guard ledger only: an active `release-write` grant whose reason carries the window
 token (see WINDOW_TOKEN_HELP) and matches scripts/lib/release_grant_binding.py by campaign id. The runner reads
@@ -29,7 +37,7 @@ emergency flag, a warn mode or a bypass, and refuses to start when one is set in
 Exit codes: 0 released / nothing new / already ran; 2 refused before any release action (disarmed, latched,
 off-window, bypass env, busy); 3 window stopped without a release (CI not green, main moved, prepare failed);
 4 verification failed and the rollback succeeded (STOP latched); 5 rollback failed (STOP latched, page operator).
-No broker, no credential read, no send, no crontab/systemd edit.
+No broker, no credential read, no crontab/systemd edit; the only send is the failure intent above (never in plan).
 """
 from __future__ import annotations
 
@@ -40,6 +48,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -61,11 +70,27 @@ GRACE_MIN = int(os.environ.get("TRADEAI_RELEASE_WINDOW_GRACE_MIN", "45"))
 TIER = "release-write"
 TOKEN = "RELEASE_WINDOW"
 STOP_NAMES = ("verify_failed", "rolled_back", "ci_not_green")
-CAMPAIGN_RE = re.compile(r"\brelease-window-(\d{8})-(\d{4})\b")
 WINDOW_TOKEN_HELP = (
     "RELEASE_WINDOW release-window-<YYYYMMDD>-<HHMM> actions=prepare,promote,verify,rollback "
     "stop=verify_failed,rolled_back,ci_not_green")
 MIN_GRANT_USES = 2            # prepare + promote each consume one use (release_grant_preflight.py)
+# Branch protection on main requires these three contexts (gh api .../branches/main/protection, 2026-10-21:
+# cio-hardening, agent-governance, release-readiness). release_grant_preflight.REQUIRED_PUSH_WORKFLOWS names only
+# the first two, so its `ok` can be true while release-readiness is missing or still running.
+REQUIRED_TRAIN_WORKFLOWS = (
+    ".github/workflows/cio-production-hardening-ci.yml",
+    ".github/workflows/agent-governance.yml",
+    ".github/workflows/release-readiness.yml",
+)
+FALLBACK_MAX = int(os.environ.get("TRADEAI_RELEASE_WINDOW_FALLBACK_MAX", "15"))   # first-parent SHAs queried
+CC_BASE = os.environ.get("TRADEAI_RELEASE_WINDOW_CC_BASE", "http://127.0.0.1:7777")
+VERIFY_PAGES = tuple(os.environ.get("TRADEAI_RELEASE_WINDOW_PAGES", "/v3/ /v3/system /v3/cio").split())
+PLATFORM_HEALTH_PATH = "/api/v2/system/platform-health"
+NEEDS_ACTION_PATH = "/api/v2/needs-action"
+# Outcome -> notification-intent priority. STOP_CI_PENDING, NO_CHANGE and DISARMED are routine: the next window
+# picks the train up, so they page nobody (the receipt and Needs-action still show them).
+ALERT_PRIORITY = {"ROLLBACK_FAILED": "P1", "ROLLED_BACK": "P1", "STOP_PREPARE_FAILED": "P1",
+                  "STOP_CI_NOT_GREEN": "P2", "STOP_MAIN_MOVED": "P2"}
 MIN_GRANT_REMAINING_S = 15 * 60
 
 # Policy switches. A grant naming more than one window (a daily or standing grant) is outside AGENTS §24.8
@@ -83,6 +108,8 @@ GUARDED_ENV: dict[str, frozenset[str]] = {
     "TRADEAI_TREE_ATTESTED_PROMOTE": frozenset({"0"}),
     "CIO_DEPLOY_FF_DEV_TREE": frozenset({"1"}),
     "TRADEAI_GUARD_CONSUME": frozenset({"1"}),
+    # Set by the runner itself for a fallback candidate only (deploy_env); never accepted from outside.
+    "TRADEAI_RELEASE_TRAIN_SHA": frozenset(),
 }
 
 HOME = Path.home()
@@ -172,7 +199,8 @@ def grant_verdict(window: Window, sha: str, grants: list[dict[str, Any]], *, now
     missing = [s for s in STOP_NAMES if s not in reason]
     if missing:
         out["errors"].append("grant reason does not state the stop conditions: " + ",".join(missing))
-    named = sorted({f"release-window-{d}-{t}" for d, t in CAMPAIGN_RE.findall(reason)})
+    from scripts.lib.release_grant_binding import window_campaigns
+    named = window_campaigns(reason)
     out["windows_named"] = named
     if window.campaign not in named:
         out["errors"].append(f"grant reason does not name {window.campaign}")
@@ -216,6 +244,30 @@ def prs_from_messages(messages: list[str]) -> list[int]:
     return seen
 
 
+def train_ci_verdict(evidence: dict) -> str:
+    """GREEN only when the evidence is ok AND each REQUIRED_TRAIN_WORKFLOWS run is completed with conclusion
+    exactly "success". A required run in flight or not yet started is STOP_CI_PENDING; any other state (neutral,
+    skipped, cancelled, null, unavailable, a red optional workflow) is STOP_CI_NOT_GREEN. Never "not failure"."""
+    pending_states = {"queued", "in_progress", "pending", "waiting", "requested"}
+    by_path = {c.get("path"): c for c in evidence.get("checks") or []}
+    missing, hard = [], []
+    for path in REQUIRED_TRAIN_WORKFLOWS:
+        c = by_path.get(path)
+        if c is None:
+            missing.append(path)
+        elif c.get("status") != "completed":
+            if str(c.get("status")) not in pending_states:
+                hard.append(path)
+        elif c.get("conclusion") != "success":
+            hard.append(path)
+    base = ci_outcome(evidence)
+    if hard or base == "STOP_CI_NOT_GREEN":
+        return "STOP_CI_NOT_GREEN"
+    if missing or base == "STOP_CI_PENDING" or not evidence.get("ok"):
+        return "STOP_CI_PENDING"
+    return "GREEN"
+
+
 def ci_outcome(evidence: dict) -> Optional[str]:
     """None when green; STOP_CI_PENDING when only runs in flight / not yet started; else STOP_CI_NOT_GREEN."""
     if evidence.get("ok"):
@@ -242,9 +294,12 @@ def guarded_env_violations(env: dict[str, str]) -> list[str]:
     return bad
 
 
-def deploy_env(base: dict[str, str], window: Window, pr: Optional[int]) -> dict[str, str]:
+def deploy_env(base: dict[str, str], window: Window, pr: Optional[int],
+               train_sha: Optional[str] = None) -> dict[str, str]:
     env = {k: v for k, v in base.items() if k not in GUARDED_ENV}
     env["TRADEAI_RELEASE_CAMPAIGN"] = window.campaign
+    if train_sha:
+        env["TRADEAI_RELEASE_TRAIN_SHA"] = train_sha
     if pr is not None:
         env["TRADEAI_RELEASE_PR"] = str(pr)
     else:
@@ -307,6 +362,53 @@ class Host:
     def ci_evidence(self, sha: str) -> dict:
         from scripts.release_grant_preflight import collect_push_checks
         return collect_push_checks(sha)
+
+    def first_parent_chain(self, head: str, base: str, limit: int) -> Optional[list[str]]:
+        """main's first-parent commits from `head` (inclusive) back to `base` (exclusive), newest first, read from
+        the GitHub API (no fetch, no ref moved). None when `base` is not reached within `limit` first parents."""
+        repo = self._repository()
+        parent: dict[str, str] = {}
+        chain, cur = [], head
+        for page in range(1, 6):
+            rc, out = self._run(["gh", "api", f"repos/{repo}/commits?sha={head}&per_page=100&page={page}",
+                                 "--jq", "[.[] | [.sha, (.parents[0].sha // \"\")]]"], timeout=60)
+            if rc != 0:
+                raise RuntimeError("commit list unavailable")
+            rows = json.loads(out or "[]")
+            parent.update({s: p for s, p in rows})
+            while cur in parent and len(chain) < limit:
+                if cur == base:
+                    return chain
+                chain.append(cur)
+                cur = parent[cur]
+            if cur == base:
+                return chain
+            if len(chain) >= limit or not rows:
+                return None
+        return None
+
+    def http_get(self, url: str) -> tuple[int, str]:
+        """GET a loopback Command Center URL through scripts/cc_curl.sh (it adds the service-token header without
+        putting it in argv; this process never reads the token). Body capped at 2 MB."""
+        tool = self.canonical / "scripts" / "cc_curl.sh"
+        with tempfile.NamedTemporaryFile(prefix="release-window-", suffix=".body") as fh:
+            rc, out = self._run(["bash", str(tool), "-sS", "-m", "15", "-o", fh.name, "-w", "%{http_code}", url],
+                                timeout=30, env={**os.environ, "TRADEAI_PYTHON": str(self.python)})
+            try:
+                code = int(out.strip().splitlines()[-1]) if rc == 0 and out.strip() else 0
+            except ValueError:
+                code = 0
+            body = Path(fh.name).read_bytes()[:2_000_000].decode("utf-8", "replace")
+        return code, body
+
+    def notify(self, message: str, priority: str) -> dict:
+        """One notification intent through the communications gateway (AGENTS §24.1); fail-soft, recorded."""
+        try:
+            from telegram_alert import send_telegram
+            ok = send_telegram(message, priority=priority, dedupe_minutes=0, producer="release_window")
+            return {"accepted": bool(ok), "priority": priority}
+        except Exception as exc:  # noqa: BLE001 — the reason goes in the receipt
+            return {"accepted": False, "priority": priority, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
 
     def grants(self) -> list[dict]:
         from scripts.lib import release_grant_binding as B
@@ -376,6 +478,21 @@ class State:
         except (OSError, ValueError):
             return None
 
+    def read_latch(self) -> tuple[str, Optional[dict]]:
+        """The STOP latch, fail closed. ("ABSENT", None) only when no path exists at all; ("SET", body) for a
+        readable JSON object; ("UNREADABLE", {"error": ...}) when the path exists but cannot be read or parsed
+        (corrupt, permission denied, a directory, a non-object). Present-but-unreadable is a STOP (2026-10-21)."""
+        p = self.latch
+        if not os.path.lexists(p):
+            return "ABSENT", None
+        try:
+            body = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return "UNREADABLE", {"error": f"{type(exc).__name__}: {str(exc)[:160]}", "path": str(p)}
+        if not isinstance(body, dict):
+            return "UNREADABLE", {"error": f"latch is {type(body).__name__}, not an object", "path": str(p)}
+        return "SET", body
+
     def write(self, path: Path, body: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
@@ -401,25 +518,47 @@ class Runner:
         cur = self.host.current_release()
         base = self.host.build_sha(cur)
         rec["current"] = {"release": str(cur), "build_sha": base}
-        rec["candidate"] = {"sha": head, "short": head[:9]}
+        rec["candidate"] = {"sha": head, "short": head[:9], "head": head}
         if head == base:
             rec["outcome"] = "NO_CHANGE"
             return EXIT_OK
+        # ── pick: head if green on all three required checks, else the newest green first-parent commit ──
+        evidence = self.host.ci_evidence(head)      # read-only; recorded even when disarmed
+        head_verdict = train_ci_verdict(evidence)
+        tried = [{"sha": head, "verdict": head_verdict}]
+        rec["candidate"].update(head_ci_verdict=head_verdict, selected_by="head_green", tried=tried)
+        sha, stop = head, (None if head_verdict == "GREEN" else head_verdict)
+        if stop:
+            rec["head_ci"] = evidence
+            try:
+                chain = self.host.first_parent_chain(head, base, FALLBACK_MAX) if base else None
+            except (RuntimeError, ValueError) as exc:
+                chain, rec["candidate"]["fallback_unavailable"] = None, f"{type(exc).__name__}: {str(exc)[:160]}"
+            if chain is None:
+                rec["candidate"].setdefault(
+                    "fallback_unavailable",
+                    f"served release {base[:9] or '?'} not within {FALLBACK_MAX} first parents of main's head")
+            for older in (chain or [])[1:]:
+                ev = self.host.ci_evidence(older)
+                verdict = train_ci_verdict(ev)
+                tried.append({"sha": older, "verdict": verdict})
+                if verdict == "GREEN":
+                    sha, stop, evidence = older, None, ev
+                    rec["candidate"].update(sha=older, short=older[:9], selected_by="fallback_newest_green")
+                    break
+        rec["ci"] = evidence
+        rec["ci_verdict"] = stop or "GREEN"
         try:
-            prs = prs_from_messages(self.host.commit_messages(base, head)) if base else []
+            prs = prs_from_messages(self.host.commit_messages(base, sha)) if base else []
             rec["candidate"].update(prs=prs, compare_base=base)
         except (RuntimeError, ValueError) as exc:
             rec["candidate"].update(prs=None, prs_error=str(exc)[:200], compare_base=base)
         prs = rec["candidate"].get("prs") or []
         pr = max(prs) if prs else None
         rec["candidate"]["release_pr"] = pr
-        grant = grant_verdict(window, head, self.host.grants(), now_ts=now_ts, pr_number=pr,
+        grant = grant_verdict(window, sha, self.host.grants(), now_ts=now_ts, pr_number=pr,
                               requests=self.host.requests())
         rec["grant"] = grant
-        evidence = self.host.ci_evidence(head)      # read-only; recorded even when disarmed
-        rec["ci"] = evidence
-        stop = ci_outcome(evidence)
-        rec["ci_verdict"] = stop or "GREEN"
         if not grant["ok"]:
             rec["outcome"] = "DISARMED"
             return EXIT_REFUSED
@@ -438,8 +577,12 @@ class Runner:
         if bad:
             return None, {"outcome": "REFUSED_BYPASS_ENV", "names": bad,
                           "detail": "emergency/warn/bypass variables are never used by a release window"}
-        latch = self.state.read(self.state.latch)
-        if latch:
+        latch_state, latch = self.state.read_latch()
+        if latch_state == "UNREADABLE":
+            return None, {"outcome": "REFUSED_STOP_UNREADABLE", "latch": latch,
+                          "detail": "STOP.json exists but cannot be read or parsed; treated as STOP (fail closed). "
+                                    "Operator: inspect and archive it, then clear-stop"}
+        if latch_state == "SET":
             return None, {"outcome": "REFUSED_STOP_LATCHED", "latch": latch,
                           "detail": "operator: scripts/release_window.py clear-stop --reason ..."}
         w = open_window(now, requested)
@@ -484,12 +627,28 @@ class Runner:
             code = self._window(w, now, rec)
             rec["exit_code"] = code
             rec["finished_at"] = utc_iso(self.host.now().timestamp())
+            self._alert(w, rec)
             if rec.get("outcome") != "DISARMED":       # a disarmed window leaves no receipt to block a re-run
                 self.state.write(self.state.receipt_path(w), rec)
             self.state.write(self.state.last, rec)
             return code, rec
         finally:
             lock.close()
+
+    def _alert(self, w: Window, rec: dict) -> None:
+        """A failed window: one Needs-action item (in the receipt; rule_release_window shows it) + one intent."""
+        priority = ALERT_PRIORITY.get(str(rec.get("outcome")))
+        if not priority:
+            return
+        cand = rec.get("candidate") or {}
+        title = f"Release window {w.window_id} {rec['outcome']}"
+        why = (f"candidate {str(cand.get('sha') or '')[:9]} ({cand.get('selected_by') or '?'}); served "
+               f"{str((rec.get('current') or {}).get('build_sha') or '')[:9]}"
+               + ("; STOP latched: later windows refuse until clear-stop" if rec.get("stop_latched") else ""))
+        rec["needs_action_item"] = {"severity": priority, "title": title, "why": why, "where": "/v3/system?tab=Jobs",
+                                    "source": "release_window", "since": rec.get("finished_at")}
+        rec["notification"] = self.host.notify(f"{title}: {why}. Receipt: release_window/windows/{w.window_id}.json",
+                                               priority)
 
     def _event(self, rec: dict, step: str, **kw: Any) -> None:
         rec["events"].append({"at": utc_iso(self.host.now().timestamp()), "step": step, **kw})
@@ -529,7 +688,8 @@ class Runner:
                 return code
             return self._stop(w, rec, code, latch=False)          # CI not green / pending: stop this window
         sha = rec["candidate"]["sha"]
-        env = deploy_env(self.env, w, rec["candidate"].get("release_pr"))
+        train_sha = sha if rec["candidate"].get("selected_by") == "fallback_newest_green" else None
+        env = deploy_env(self.env, w, rec["candidate"].get("release_pr"), train_sha)
         if not self.host.checkout_clean():
             rec["outcome"] = "STOP_PREPARE_FAILED"
             self._event(rec, "checkout", ok=False, detail="release checkout is dirty")
@@ -603,22 +763,53 @@ class Runner:
         checks["units"] = {"ok": not dropped, "inactive_after_promote": dropped, "after": after}
         rc, out = self.host.served_copy(cur)
         checks["served_copy"] = {"ok": rc == 0, "rc": rc, "tail": "\n".join(out.strip().splitlines()[-3:])}
+        checks.update(self._verify_surfaces())
         return checks
 
+    def _verify_surfaces(self) -> dict[str, dict]:
+        """Command Center pages 200; platform-health 200 and measured; needs-action 200 and parseable."""
+        base = CC_BASE.rstrip("/")
+        pages = {p: self.host.http_get(base + p)[0] for p in VERIFY_PAGES}
+        out: dict[str, dict] = {"pages": {"ok": all(c == 200 for c in pages.values()), "status": pages}}
+        code, body = self.host.http_get(base + PLATFORM_HEALTH_PATH)
+        ph = _json_or_none(body)
+        ph_ok = code == 200 and isinstance(ph, dict) and ph.get("status") != "UNAVAILABLE"
+        out["platform_health"] = {"ok": ph_ok, "http": code,
+                                  "status": (ph or {}).get("status") if isinstance(ph, dict) else None,
+                                  "overall": (ph or {}).get("overall") if isinstance(ph, dict) else None}
+        code, body = self.host.http_get(base + NEEDS_ACTION_PATH)
+        na = _json_or_none(body)
+        if isinstance(na, dict) and isinstance(na.get("data"), dict) and "ok" in na:
+            na = na["data"]
+        out["needs_action"] = {"ok": code == 200 and isinstance(na, dict), "http": code,
+                               "counts": (na or {}).get("counts") if isinstance(na, dict) else None,
+                               "total": (na or {}).get("total") if isinstance(na, dict) else None}
+        return out
+
     def clear_stop(self, reason: str) -> tuple[int, dict]:
-        latch = self.state.read(self.state.latch)
-        if not latch:
+        latch_state, latch = self.state.read_latch()
+        if latch_state == "ABSENT":
             return EXIT_OK, {"outcome": "NO_LATCH"}
         stamp = self.host.now().strftime("%Y%m%dT%H%M%SZ")
         archived = self.state.windows / f"STOP-cleared-{stamp}.json"
-        self.state.write(archived, {**latch, "cleared_at": stamp, "cleared_reason": reason})
+        self.state.write(archived, {**(latch or {}), "latch_state": latch_state, "cleared_at": stamp,
+                                    "cleared_reason": reason})
+        # Archived by rename (a file, an unreadable file or a directory alike); never deleted.
         self.state.latch.rename(self.state.windows / f"STOP-{stamp}.json.archived")
-        return EXIT_OK, {"outcome": "STOP_CLEARED", "archived": str(archived)}
+        return EXIT_OK, {"outcome": "STOP_CLEARED", "archived": str(archived), "latch_state": latch_state}
 
     def status(self) -> tuple[int, dict]:
-        return EXIT_OK, {"latch": self.state.read(self.state.latch), "last": self.state.read(self.state.last),
+        latch_state, latch = self.state.read_latch()
+        return EXIT_OK, {"latch_state": latch_state, "latch": latch, "last": self.state.read(self.state.last),
                          "multi_window_grant_status": MULTI_WINDOW_GRANT_STATUS, "windows_et": sorted(WINDOWS),
                          "grace_min": GRACE_MIN, "grant_token": WINDOW_TOKEN_HELP}
+
+
+def _json_or_none(text: str) -> Any:
+    try:
+        return json.loads(text)
+    except (TypeError, ValueError):
+        return None
 
 
 def _parse_now(text: Optional[str]) -> Optional[datetime]:
