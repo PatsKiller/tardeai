@@ -112,11 +112,17 @@ run_weekly_gated() {
   [ -f "$stamp" ] && age=$(( ( $(date +%s) - $(stat -c %Y "$stamp") ) / 86400 ))
   if [ "$age" -ge 6 ]; then
     pm_step "$step" "BACKUP_WEEKLY_GATED" bash "$PROJ/scripts/backup_secrets_state.sh" "$target"
-    [ "${STEP_STATUS[${#STEP_STATUS[@]}-1]}" = "ok" ] && { mkdir -p "$(dirname "$stamp")"; touch "$stamp"; }
+    if [ "${STEP_STATUS[${#STEP_STATUS[@]}-1]}" = "ok" ]; then
+      mkdir -p "$(dirname "$stamp")"; touch "$stamp"
+    fi
   else
     echo "  ---- GATED_SKIP: $step (last success ${age}d ago, <6d) ----"
     STEP_NAMES+=("$step"); STEP_STATUS+=("GATED_SKIP_FRESH"); STEP_MS+=(0); STEP_LABEL+=("BACKUP_WEEKLY_GATED")
   fi
+  # 2026-10-21: always 0. A failed step is already recorded FAILED with overall=1 (degraded) by
+  # pm_step; returning the `[ ok ] &&` status made set -e kill the pipeline before db_offsite/apps
+  # and the summary (unit exit 1, test_portfolio_cadence_tar_rc1_20261021.py).
+  return 0
 }
 
 run_backup() {
