@@ -3,6 +3,10 @@
   "note": "Path risk tiers for the PR fast core (scripts/run_cio_hardening_ci.py --profile pr). HIGH: the named gates run IN FULL regardless of budget, plus impacted tests and every gate of <= expand_gate_max_seconds holding a direct test, and the job summary flags independent review. LOW (every changed path LOW): smoke set only. Anything else: MEDIUM, impacted tests within budget. Every CODEOWNERS path must classify HIGH (tests/test_ci_risk_tiers_20260925.py). The full suite runs after merge regardless of tier. budget_seconds is summed per-file duration hints (CPU-bound, ~4 run concurrently on a GitHub runner): 540 is about 150-170 s of wall clock in CI.",
   "budget_seconds": 540,
   "expand_gate_max_seconds": 60,
+  "unknown_impact": {
+    "action": "fast",
+    "note": "2026-10-21 (alignment audit, Release Train v2 Phase 0): a changed MEDIUM path from which no registered test is reachable in the static map has UNKNOWN impact, so the pr profile runs the broader suite (every gate, profile fast) instead of the smoke set. Registered test files, HIGH and LOW paths never trigger it. Measured over the last 80 main merges: 23 would have triggered it, mostly apps/** TypeScript."
+  },
   "smoke_gates": [
     "governance_section_zero_parity",
     "agents_type_vocabulary",
@@ -147,6 +151,73 @@
         "gate_honesty_p6_20260922",
         "test_host_paths_ratchet_20260925",
         "overnight_g3_docs_index"
+      ]
+    },
+    "cc_auth": {
+      "globs": [
+        "config/cc_auth.yaml",
+        "scripts/lib/cc_auth.py",
+        "scripts/*cc_auth*",
+        "scripts/lib/*cc_auth*"
+      ],
+      "gates": [
+        "cc_tailscale_identity_auth_20261014",
+        "schwab_reauth_stepup_fallback_20261021"
+      ]
+    },
+    "portfolio_server_api": {
+      "globs": [
+        "scripts/portfolio_server.py",
+        "scripts/portfolio_server_*",
+        "scripts/api_v2.py",
+        "scripts/api_v2_*.py"
+      ],
+      "gates": [
+        "cc_tailscale_identity_auth_20261014",
+        "cc_header_truth_v2",
+        "cc_v3_boot_no_reload_loop",
+        "cc_runtime_harness",
+        "cc_needs_action_20261021"
+      ]
+    },
+    "telegram_routing": {
+      "globs": [
+        "scripts/telegram_alert.py",
+        "scripts/telegram_alert_router.py",
+        "scripts/telegram_alert_routing_policy.py",
+        "scripts/telegram_agent_router_bridge.py",
+        "scripts/operator_alert_policy_v2.py",
+        "scripts/alert_outbox.py",
+        "scripts/lib/cio_telegram_transport.py",
+        "scripts/lib/telegram_send_idempotency.py",
+        "config/cio_notification_policy.json",
+        "config/telegram_chokepoint_baseline.json"
+      ],
+      "gates": [
+        "telegram_notification_normalization",
+        "telegram_chokepoint_ratchet",
+        "SYSTEM_TELEGRAM_INTERDICT_SCOPE",
+        "notification_intents_20261010"
+      ]
+    },
+    "n8n_executor_relay_gateway": {
+      "globs": [
+        "scripts/n8n_run_executor.py",
+        "scripts/n8n_run_relay.py",
+        "scripts/n8n_coordination_gateway.py",
+        "scripts/n8n_coordination_gateway_run.sh",
+        "scripts/lib/n8n_coordination_gateway.py",
+        "scripts/lib/n8n_gateway_client.py",
+        "config/n8n_executor.json",
+        "config/n8n_run_allowlist.json"
+      ],
+      "gates": [
+        "N8N_RUN_ROUTE",
+        "N8N_RUN_RELAY",
+        "n8n_w0_relay_fix_20261010",
+        "n8n_executor_env_allowlist_20261009",
+        "n8n_maturity_executor_v2_20261009",
+        "n8n_fabric_phase1_20261014"
       ]
     }
   },

@@ -334,6 +334,18 @@ def select(
         if d == 0:
             chosen.add(f)
 
+    # 2026-10-21: a MEDIUM path from which no registered test is reachable has UNKNOWN impact
+    # (it is not "safe", it is unmeasured). tiers["unknown_impact"]["action"] == "fast" tells the
+    # caller to run the broader suite (every gate) instead of this selection.
+    unknown_impact = sorted(
+        p
+        for p in changed
+        if tier_of[p] == "medium"
+        and p not in registered
+        and not any(f in registered for f in impacted_tests([p], impact_map))
+    )
+    unknown_action = str(((tiers.get("unknown_impact") or {}).get("action")) or "smoke")
+
     def w(p: str) -> float:
         return hints.get(p, default_seconds)
 
@@ -376,4 +388,6 @@ def select(
         "mandatory_estimate_seconds": round(mandatory_estimate, 1),
         "budget_seconds": budget,
         "unknown_gates": unknown_gates,
+        "unknown_impact": unknown_impact,
+        "broaden_to_fast": bool(unknown_impact) and unknown_action == "fast",
     }

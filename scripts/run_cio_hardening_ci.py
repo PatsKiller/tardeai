@@ -28,6 +28,9 @@ GATES = [
         "premarket_dedupe_within_batch_20261018",
         ["tests/test_premarket_dedupe_within_batch_20261018.py"],
     ),
+    # ANCHOR: CI_RISK_TIERS_REFRESH_20261021 — Release Train v2 Phase 0: CC auth, portfolio server / api_v2,
+    # Telegram routing and the n8n executor/relay/gateway are HIGH; unknown impact runs every gate. Hermetic.
+    ("ci_risk_tiers_refresh_20261021", ["tests/test_ci_risk_tiers_refresh_20261021.py"]),
     # All ledger recovery consumers require the shared live useful-output verdict.
     (
         "n8n_siem_recovery_truth_20261018",
@@ -5862,6 +5865,26 @@ def select_pr_gates(
         )
     if sel["unknown_gates"]:
         print(f"[select] WARNING tier config names unknown gates: {sel['unknown_gates']}", flush=True)
+    if sel.get("broaden_to_fast"):
+        # 2026-10-21: unknown impact is not "no impact". config/ci_risk_tiers.json unknown_impact.
+        unknown = sel["unknown_impact"]
+        print(
+            f"[select] UNKNOWN IMPACT ({len(unknown)} path(s) reach no registered test: "
+            f"{', '.join(unknown[:8])}{' ...' if len(unknown) > 8 else ''}) -> BROADER SUITE (fast, every gate)",
+            flush=True,
+        )
+        summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary:
+            try:
+                with open(summary, "a", encoding="utf-8") as fh:
+                    fh.write(
+                        "## cio-hardening (pr profile)\n- unknown impact: "
+                        + ", ".join(f"`{p}`" for p in unknown[:50])
+                        + "\n- ran the broader suite: every gate (fast profile)\n"
+                    )
+            except OSError:
+                pass
+        return GATES, "fast"
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         lines = [
