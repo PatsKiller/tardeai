@@ -1907,6 +1907,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Lane Quality Bake-Off — 2026-08-21 | review_required | OK | `cd49b9ce53e7` |
 | `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` | Blind ranking sheet — Lane bake-off 2026-08-21 | review_required | OK | `f88b31c995fa` |
 | `docs/ops/LANE_REGISTRY_AND_RETIREMENT_CONVENTION.md` | Lane registry and the retirement convention | review_required | OK | `fa5390b09ee7` |
+| `docs/ops/LEARNING_LOOP_PR1_2026-10-21.md` | Learning loop PR1 — stable recommendation ids, trade linkage, R attribution (2026-10-21) | review_required | OK | `292eb279b015` |
 | `docs/ops/LIVE_CHANGES_20261020.md` | Live changes — 2026-10-20 | review_required | OK | `559a79c8c09e` |
 | `docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md` | LIVE-cio-stance-governance — 24/7 universal CIO stance maturity | review_required | OK | `25f9efd74675` |
 | `docs/ops/LLM_OFFPEAK_ROUTING.md` | LLM Off-Peak Routing — operator guide | review_required | MISSING HEADER | `f87f06023478` |
