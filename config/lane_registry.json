@@ -16829,9 +16829,10 @@
         "kind": "cron",
         "expression": "*/15 * * * *",
         "match": "scripts/hermes_watchlist_scorer.py",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "R2-10",
-        "command_text": "cd $PROJ && flock -n /tmp/hermes_scorer.lock $PY scripts/hermes_watchlist_scorer.py --once >> logs/hermes_scorer.log 2>&1"
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_scorer.lock $PY scripts/hermes_watchlist_scorer.py --once >> logs/hermes_scorer.log 2>&1",
+        "cutover_wave": "HS-20261021"
       },
       "expected_cadence_hours": 0.25,
       "state": "ACTIVE",
@@ -16855,10 +16856,10 @@
         "f_evidence": "core advisory/protection/data path; healthy logs today"
       },
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. 2026-10-21: n8n shadow (dry_run health probe) alongside cron; the live write path is still the cron line.",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. 2026-10-21: n8n shadow (dry_run health probe) alongside cron; the live write path is still the cron line. 2026-10-21 (operator waiver): n8n canary - dispatch.mode live alongside the unchanged cron line L451 under the one flock /tmp/hermes_scorer.lock; Operator decision 2026-10-21 ~13:05 ET, verbatim: \"push live now\" (promote shadow -> canary today, waiving the usual 3-market-day shadow evidence wait); 2026-10-21, verbatim: \"comment out whats working now this can be a fallback\" (retire cron L451 after the first live n8n RUN_DONE; the commented line is the fallback). Shadow evidence at promotion: RUN_DONE dry_run fires 12:55 and 13:00 ET, exit 0, 1408 items, 812 scored, 0 errored; shadow released in a6ac0ebbe (PR #1899).",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "*/15 * * * *"
         ],
@@ -16870,7 +16871,16 @@
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-21",
-      "adopted_reason": "Operator-approved 2026-10-21 shadow onboarding (scorer hardening PR): n8n dispatcher dry_run alongside the unchanged cron line L451 (cron freeze). Cron stays the live scheduler; contract DRAFT."
+      "adopted_reason": "Operator-approved 2026-10-21 shadow onboarding (scorer hardening PR): n8n dispatcher dry_run alongside the unchanged cron line L451 (cron freeze). Cron stays the live scheduler; contract DRAFT.",
+      "canary": {
+        "wave": "HS-20261021",
+        "since": "2026-10-21",
+        "evidence": "coordination ledger 2026-10-21 (as reported by the operator session): dispatcher dry_run fires 12:55 and 13:00 ET RUN_DONE exit 0, 1408 items, 812 scored, 0 errored. The usual 3-market-day shadow evidence wait is WAIVED by the operator (operator_waiver).",
+        "operator_waiver": "Operator decision 2026-10-21 ~13:05 ET, verbatim: \"push live now\" (promote shadow -> canary today, waiving the usual 3-market-day shadow evidence wait); 2026-10-21, verbatim: \"comment out whats working now this can be a fallback\" (retire cron L451 after the first live n8n RUN_DONE; the commented line is the fallback). Shadow evidence at promotion: RUN_DONE dry_run fires 12:55 and 13:00 ET, exit 0, 1408 items, 812 scored, 0 errored; shadow released in a6ac0ebbe (PR #1899).",
+        "lock_proof": "scheduler.command_text == the live cron line L451 command; its only flock lock /tmp/hermes_scorer.lock == allowlist lock (lock_kind flock): r1_canary_lock_matches",
+        "rollback": "revert this registry/allowlist/contract commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null; remove the lane from TRADEAI_N8N_RELAY_LIVE_LANES (docs/ops/packets/hermes-scorer-canary-20261021/README.md)",
+        "next": "cutover: after the first live n8n RUN_DONE with rows written, 02_retire_cron_line.sh comments L451 (cron grant) and the follow-up registry PR flips this row with `n8n_cutover_wave.py cutover --lanes hermes-watchlist-scorer`"
+      }
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",

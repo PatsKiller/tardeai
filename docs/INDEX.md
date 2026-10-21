@@ -2043,6 +2043,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/cutover-fail-closed-txn-20261016/README.md` | Cutover fail-closed + controller transactions (2026-10-16) | review_required | MISSING HEADER | `1fc916506a76` |
 | `docs/ops/packets/disk-hygiene-n8n-20261018/README.md` | Disk hygiene + disk-usage monitor on n8n (PR #1863) | review_required | OK | `715203be1111` |
 | `docs/ops/packets/hermes-learning-cutover-20261015/README.md` | hermes-learning on the n8n fabric: cutover packet (learn stage) | review_required | OK | `f332e5a5f082` |
+| `docs/ops/packets/hermes-scorer-canary-20261021/README.md` | hermes-watchlist-scorer: n8n canary → cutover, 2026-10-21 (operator packet) | review_required | OK | `f9fcdfcae3a3` |
 | `docs/ops/packets/hermes-worker-pool-wire-20261015/README.md` | hermes-research-worker-pool — real lane runners + fail closed on zero output (2026-10-15) | review_required | MISSING HEADER | `1232e0f775a0` |
 | `docs/ops/packets/lane-repair-indicator-engine-20261015/README.md` | Lane repair 2026-10-15: build-symbol-profiles, watchlist entry planner, indicator-engine | review_required | OK | `5f8cf669d6e3` |
 | `docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/03_apply.md` | Apply the RI overnight crontab changes (operator) | review_required | MISSING HEADER | `4123418bbb73` |

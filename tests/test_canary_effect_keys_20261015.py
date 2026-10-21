@@ -36,6 +36,7 @@ from tests.support import registry_runtime_truth_lane as RRT  # noqa: E402
 from tests.support import disk_hygiene_n8n as DHN  # noqa: E402
 from tests.support import data_integrity_monitors_n8n as DIM  # noqa: E402
 from tests.support import active_trader_motion_watchdog as ATMW  # noqa: E402
+from tests.support import hermes_scorer_canary as HSC  # noqa: E402
 
 from scripts import n8n_run_executor as X  # noqa: E402
 from scripts.lib import effect_claim as E  # noqa: E402
@@ -156,7 +157,11 @@ def test_scope_is_the_68_lanes_and_partition_is_complete():
     scope = _scope()
     assert len(set(TIER_A)) == 21 and len(set(TIER_B)) == 40
     assert set(NOT_KEYED_OVERWRITE_ONLY) <= scope
-    assert len(scope) == 68 and len(STAGED) == 50
+    # + 1 / + 1: 2026-10-21 hermes-watchlist-scorer cron canary (operator waiver "push live now";
+    # tests/support/hermes_scorer_canary.py). It appends hermes_score_history rows, so it stays IN scope with a
+    # STAGED key (cron_claim false, n8n_claim false) that its cutover arms: 69 lanes, 51 staged.
+    assert len(scope) == 68 + len(HSC.LIVE) and len(STAGED) == 50 + len(HSC.LIVE)
+    assert set(HSC.LIVE) <= set(STAGED)
 
 
 @pytest.mark.parametrize("lane", STAGED)

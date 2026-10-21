@@ -5522,6 +5522,14 @@ GATES = [
         "hermes_scorer_n8n_shadow_20261021",
         ["tests/test_hermes_scorer_n8n_shadow_20261021.py"],
     ),
+    (
+        # ANCHOR: HERMES_SCORER_N8N_CANARY_20261021 — operator waiver 2026-10-21 ("push live now"; "comment out
+        # whats working now this can be a fallback"): hermes-watchlist-scorer shadow -> CANARY. Cron row stage
+        # canary, dispatch.mode live, allowlist live_arg [] (live argv == cron argv), lock == cron L451's flock lock,
+        # REVIEWED contract at canary, and the dry-run-default operator packet. Hermetic: config + packet text only.
+        "hermes_scorer_n8n_canary_20261021",
+        ["tests/test_hermes_scorer_n8n_canary_20261021.py"],
+    ),
 ]
 
 

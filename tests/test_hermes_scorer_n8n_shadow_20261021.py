@@ -3,6 +3,10 @@
 Cron L451 `*/15 * * * *` stays the live scheduler (cron freeze). The dispatcher fires the lane in dry_run only:
 `--dry-run` is write-free (tests/test_hermes_scorer_hardening_20261021.py proves it), live_arg is null, and the
 health contract is DRAFT until the owner reviews it. Hermetic: reads config only.
+
+2026-10-21 ~13:05 ET: the operator promoted the lane to CANARY ("push live now"), waiving the 3-market-day shadow
+wait. The stage assertions below now pin canary (dispatch.mode live, live_arg [], the cron line's own lock); the
+canary specifics are in tests/test_hermes_scorer_n8n_canary_20261021.py.
 """
 from __future__ import annotations
 
@@ -30,21 +34,23 @@ def _allowlist_entry():
     return a, next(x for x in a["lanes"] if x["lane_id"] == LANE)
 
 
-def test_registry_row_is_cron_shadow_dry_run():
+def test_registry_row_is_cron_canary_live():
+    # 2026-10-21 operator waiver "push live now": shadow/dry_run -> canary/live; the cron row shape is kept (4.4.0).
     row = _registry_row()
     sch, d = row["scheduler"], row["dispatch"]
-    assert sch["kind"] == "cron" and sch["expression"] == "*/15 * * * *" and sch["stage"] == "shadow"
+    assert sch["kind"] == "cron" and sch["expression"] == "*/15 * * * *" and sch["stage"] == "canary"
     assert "flock -n /tmp/hermes_scorer.lock" in sch["command_text"]
-    assert d["mode"] == "dry_run" and d["cron"] == ["*/15 * * * *"] and d["tz"] == "America/New_York"
+    assert d["mode"] == "live" and d["cron"] == ["*/15 * * * *"] and d["tz"] == "America/New_York"
     sig = row["output_signal"]
     assert (sig["kind"], sig["path"], sig["key"]) == ("json_key", RECEIPT, "ok_at")
     assert "generated_by" not in row and row["adopted_from_generator"] == "reconcile_lane_registry@v1"
 
 
-def test_allowlist_entry_is_shadow_and_not_never_listed():
+def test_allowlist_entry_is_canary_and_not_never_listed():
     a, e = _allowlist_entry()
     assert e["command"] == ["$PY", "scripts/hermes_watchlist_scorer.py", "--once"]
-    assert e["dry_run_arg"] == ["--dry-run"] and e["live_arg"] is None
+    # 2026-10-21 canary: live_arg [] (was null at shadow) -> the live argv is the cron argv exactly
+    assert e["dry_run_arg"] == ["--dry-run"] and e["live_arg"] == []
     # the executor derives <lock>.dryrun for a dry_run fire; the allowlist names the cron line's own lock
     assert e["lock"] == "/tmp/hermes_scorer.lock" and not e["lock"].endswith(".dryrun") and e["lock_kind"] == "flock"
     assert e["output_signal"] == RECEIPT
@@ -57,11 +63,12 @@ def test_receipt_path_agrees_with_the_scorer():
     assert hws.LANE_ID == LANE and RECEIPT == f"data/runtime/{hws.LANE_ID}_last.json"
 
 
-def test_health_contract_is_shadow_reviewed_with_expected_output():
+def test_health_contract_is_canary_reviewed_with_expected_output():
     c = json.loads((ROOT / "config" / "n8n_health_contracts.json").read_text())
     k = next(x for x in c["contracts"] if x["id"] == LANE)
     # Operator reviewed the contract 2026-10-21 ("approve the hermes-watchlist-scorer contract"); an agent may not.
-    assert k["stage"] == "shadow" and k["status"] == "REVIEWED" and k["evidence"]["receipt"] == RECEIPT
+    # 2026-10-21 canary: stage shadow -> canary; the operator's waiver words are kept verbatim in stage_rereview
+    assert k["stage"] == "canary" and k["status"] == "REVIEWED" and k["evidence"]["receipt"] == RECEIPT
     assert k["review"]["status"] == "REVIEWED" and k["review"]["reviewed_by"].startswith("operator ")
     eo = k["expected_output"]
     assert eo["produced_field"] == "produced_count" and "nothing_due" in eo["empty_allowed_reasons"]
