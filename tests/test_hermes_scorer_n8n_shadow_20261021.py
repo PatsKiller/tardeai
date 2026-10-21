@@ -57,10 +57,12 @@ def test_receipt_path_agrees_with_the_scorer():
     assert hws.LANE_ID == LANE and RECEIPT == f"data/runtime/{hws.LANE_ID}_last.json"
 
 
-def test_health_contract_is_shadow_draft_with_expected_output():
+def test_health_contract_is_shadow_reviewed_with_expected_output():
     c = json.loads((ROOT / "config" / "n8n_health_contracts.json").read_text())
     k = next(x for x in c["contracts"] if x["id"] == LANE)
-    assert k["stage"] == "shadow" and k["status"] == "DRAFT" and k["evidence"]["receipt"] == RECEIPT
+    # Operator reviewed the contract 2026-10-21 ("approve the hermes-watchlist-scorer contract"); an agent may not.
+    assert k["stage"] == "shadow" and k["status"] == "REVIEWED" and k["evidence"]["receipt"] == RECEIPT
+    assert k["review"]["status"] == "REVIEWED" and k["review"]["reviewed_by"].startswith("operator ")
     eo = k["expected_output"]
     assert eo["produced_field"] == "produced_count" and "nothing_due" in eo["empty_allowed_reasons"]
 

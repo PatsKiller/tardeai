@@ -23617,7 +23617,7 @@
       "id": "hermes-watchlist-scorer",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "operator_approved_shadow_20261021",
       "stage": "shadow",
       "purpose": {
@@ -23789,7 +23789,9 @@
       "review_by": "2026-11-04",
       "review": {
         "prepared_by": "agent draft (scorer hardening 2026-10-21)",
-        "status": "DRAFT"
+        "status": "REVIEWED",
+        "reviewed_by": "operator PatsKiller 2026-10-21 (\"approve the hermes-watchlist-scorer contract\")",
+        "reviewed_on": "2026-10-21"
       },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
