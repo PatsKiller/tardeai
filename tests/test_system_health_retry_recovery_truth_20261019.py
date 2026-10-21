@@ -35,6 +35,8 @@ LANE = "finviz-screener-runner"
         "disarmed",
         "nonzero",
         "uninitialized",
+        "sigterm_failed",
+        "sigterm_exit_done",
     ],
 )
 def test_retry_exit_zero_requires_shared_fresh_business_output(agent, monkeypatch, tmp_path, case):
@@ -128,6 +130,13 @@ def test_retry_exit_zero_requires_shared_fresh_business_output(agent, monkeypatc
                     rec["lock_skipped"] = True
                 if case == "empty_allowed":
                     rec["output_verdict"]["verdict"] = "empty_allowed"
+                if case.startswith("sigterm_"):
+                    # #1892: a PipelineRun killed by SIGTERM closes as a failure with exit 128+15 and
+                    # terminated_by_signal; even a "produced" verdict on that row must never prove recovery.
+                    rec.update(exit_code=143, terminated_by_signal=15, error="terminated by SIGTERM")
+                    row["exit_code"] = 143
+                    if case == "sigterm_failed":
+                        rec["state"] = row["state"] = "RUN_FAILED"
                 with sqlite3.connect(path) as db:
                     db.execute(
                         "CREATE TABLE runs (lane_id TEXT, run_id TEXT, attempt INTEGER, mode TEXT, state TEXT, exit_code INTEGER, finished_at TEXT, receipt_json TEXT)"
@@ -157,3 +166,7 @@ def test_retry_exit_zero_requires_shared_fresh_business_output(agent, monkeypatc
         assert journal.read_text() == ""
     if not recovered:
         assert check["recovery_reason"], "attempt completion must leave a useful refusal reason"
+    if case == "sigterm_failed":
+        assert check["recovery_reason"] == "state:RUN_FAILED"
+    if case == "sigterm_exit_done":
+        assert check["recovery_reason"] == "exit:143"
