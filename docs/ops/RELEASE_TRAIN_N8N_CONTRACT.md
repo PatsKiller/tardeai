@@ -21,7 +21,8 @@ readiness gained `shadow_coverage`; §14 is the runbook (`release-train-n8n`).
 **Revision 3 (Phase 3 controller request):** C9 gained `RECONCILE_REQUIRED`, `QUARANTINED_LINEAGE` and
 `CONTROLLER_ERROR`; C12 (receipts mode 0600, same-user read) and C13 (controller intents in `train_intents.jsonl`) added.
 The schemas are `config/schemas/release_train/train_window_{request,receipt}.v1.schema.json`; the validator is
-`scripts/lib/release_train_window.py` (`validate_request`, `validate_receipt`).
+`scripts/lib/release_train_window_view.py` (`validate_request`, `validate_receipt`; re-exported by
+`scripts/lib/release_train_window.py`).
 
 This document is the contract between the n8n workflow `tradeai-fabric-release-train` and the host release
 controller. It defines two versioned records, `TrainWindowRequest@v1` (n8n asks for a window) and
@@ -91,9 +92,14 @@ P1 rollback / rollback-failed: host notifier only, from the controller. n8n repo
 ## 4. `ReleaseTrainReadiness@v1` (relay `GET /release-train-window?view=readiness`)
 
 Served by the gateway's read-only operation `release_train_window` (route `coordination/status`, read-scope claim),
-built by `scripts/lib/release_train_window.py:readiness_view()` from the Phase 1 summary
-(`release_train_view.build_summary`; no database credential in the gateway, so queue fields degrade to
-`UNAVAILABLE`, never to zero) plus the delegation verdict and `config/release_train_n8n.json`.
+built by `scripts/lib/release_train_window_view.py:readiness_from_files()` from host files only: the STOP latch
+(same fail-closed semantics as Phase 1's reader), `config/release_train_policy.json`, the delegation file, the
+PR-hygiene receipt (census) and `config/release_train_n8n.json`. That module is stdlib-only and reads no environment,
+because the gateway's import closure is part of other lanes' reviewed env inventories; the gateway passes
+`<its state root>/data/runtime/release_window` as the state dir (an operator `TRADEAI_RELEASE_WINDOW_STATE_DIR`
+override must equal it). The gateway holds no database credential, so `queue_counts`, `current_train` and
+`last_outcome` are `null` with `queue_freshness: UNAVAILABLE`, never zero: the Command Center API (Phase 1) remains
+the place for queue detail.
 
 ```json
 {
@@ -121,7 +127,9 @@ built by `scripts/lib/release_train_window.py:readiness_view()` from the Phase 1
   (the read failed or timed out). `effective_stop` is `true` for every state except `ABSENT`.
 - `delegation.state` is `ACTIVE`, `PAUSED`, `REVOKED`, `NOT_CONFIGURED`, `INVALID` or `UNAVAILABLE`. With Phase 2's
   `release_delegation.load()` importable: `AUTHORIZED` -> `ACTIVE`, `MISSING` -> `NOT_CONFIGURED`, `PAUSED`,
-  `REVOKED`, and `INVALID` / `UNREADABLE` / `IN_REPO` -> `INVALID`. Otherwise the Phase 1 `standing_policy` state.
+  `REVOKED`, and `INVALID` / `UNREADABLE` / `IN_REPO` -> `INVALID` (the request lane uses this). The gateway view
+  reads the delegation file's DECLARED `status` only (`NOT_CONFIGURED` when the file is absent, `INVALID` when it is
+  unreadable or names no known status): advisory, like the rest of n8n's gate.
 - `shadow_coverage` lists, per slot, the newest `shadow: true` request and its receipt state (read from the spool).
   The manual run uses it to choose the window to force (§10).
 - A relay or gateway failure is HTTP non-200 or `state != "OK"`; n8n treats it as STOP (`readiness_unavailable`).
