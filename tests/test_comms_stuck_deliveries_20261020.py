@@ -206,3 +206,51 @@ def test_settled_rows_leave_the_unsettled_count():
     for st in dl.REAPER_STATUSES.values():
         assert st not in UNSETTLED_STATUSES
         assert st in dl.DELIVERY_STATUSES
+
+
+def test_summary_counts_reaped_unclaimed_copies_apart_from_failed(monkeypatch):
+    """After the 21:17 reaper run (2026-10-20) the strip read "failed 6": the six EXPIRED rows were unclaimed
+    shadow-ledger copies whose own deliveries had settled. They are reaped_unclaimed, not failed. A real EXPIRED
+    (any other or NULL error_taxonomy) still counts as failed -- checked against a real SQL engine below."""
+    import sqlite3
+
+    import communications_portal as CP
+    from scripts.lib.comms import delivery as dl
+
+    assert CP.REAPED_UNCLAIMED_TAXONOMY == dl.REAPER_TAXONOMY["reserved"]
+    assert dl.REAPER_STATUSES["reserved"] == "EXPIRED"
+
+    db = sqlite3.connect(":memory:")
+    db.execute("CREATE TABLE communication_deliveries (status TEXT, error_taxonomy TEXT, reserved_at TEXT)")
+    db.executemany("INSERT INTO communication_deliveries VALUES (?, ?, NULL)", [
+        ("EXPIRED", "reservation_unclaimed_stale")] * 6 + [
+        ("EXPIRED", None), ("EXPIRED", "provider_ttl"), ("FAILED", "reservation_unclaimed_stale"),
+        ("SENT", None), ("RESERVED", None)])
+
+    class _Cur:
+        description = None
+
+        def execute(self, sql, params=None):
+            sql = sql.replace("now() AS as_of", "NULL AS as_of")  # SQLite has no now(); as_of is not under test
+            self._c = db.execute(sql)
+            self.description = self._c.description
+
+        def fetchone(self):
+            return self._c.fetchone()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    class _Conn:
+        def cursor(self):
+            return _Cur()
+
+    monkeypatch.setattr(CP, "_deliveries_db_conn", lambda: _Conn())
+    s = CP.delivery_summary()
+    assert s["status"] == "OK", s
+    assert s["reaped_unclaimed"] == 6
+    assert s["failed"] == 3, "a NULL-taxonomy EXPIRED, a provider EXPIRED and a FAILED are real failures"
+    assert s["unsettled"] == 1 and s["total"] == 11

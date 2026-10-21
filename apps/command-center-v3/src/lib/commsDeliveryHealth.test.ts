@@ -24,5 +24,8 @@ const refreshFailed = deliveryHealthFrom(ok, { nowMs: now, error: 'timeout' })
 check('a failed refresh over a kept payload is STALE', refreshFailed.state === 'STALE' && refreshFailed.reason === 'refresh failed: timeout')
 check('age labels', ageLabel(45) === '45s' && ageLabel(720) === '12m' && ageLabel(10800) === '3h' && ageLabel(null) === '—')
 
+const reaped = deliveryHealthFrom({ ...ok, failed: 0, reaped_unclaimed: 6, as_of: new Date(now).toISOString() }, { nowMs: now })
+check('reaped unclaimed copies are their own count, not failed', reaped.state === 'OK' && reaped.failed === 0 && reaped.reapedUnclaimed === 6)
+check('an older summary without the field is still OK, reaped unknown', good.state === 'OK' && good.reapedUnclaimed === null)
 console.log(`commsDeliveryHealth: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
