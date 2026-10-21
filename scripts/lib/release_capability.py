@@ -89,7 +89,9 @@ APPLIED_STATES = frozenset({SUCCEEDED, RECONCILED_APPLIED})
 
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
-TRAIN_RE = re.compile(r"^train-\d{8}-\d{4}(-[a-z0-9]{1,12})?$")
+#: ``train-YYYYMMDD-HHMM[-x]`` (Phase 2 original) or ``rt-YYYYMMDD-HHMM-<suffix>``, the id the Phase 1 store and the
+#: read-only Command Center view use (docs/ops/RELEASE_TRAIN_API.md §6). The controller issues ``rt-`` ids.
+TRAIN_RE = re.compile(r"^(?:train-\d{8}-\d{4}(?:-[a-z0-9]{1,12})?|rt-\d{8}-\d{4}-[a-z0-9]{4,12})$")
 
 
 class CapabilityRefused(RC.ControlRefused):
@@ -231,12 +233,27 @@ class CapabilityAuthority:
 
     def issue_promote(self, train_id: str, *, expected_base_sha: str, pr_heads: list[dict], candidate_sha: str,
                       artifact_digest: str, evidence: dict, rollback_target: dict, services: list[str],
-                      actions: list[str], ttl_s: Optional[int] = None, attempts: int = 1) -> str:
+                      actions: list[str], ttl_s: Optional[int] = None, attempts: int = 1,
+                      batch_candidate_sha: Optional[str] = None, batch_evidence: Optional[dict] = None) -> str:
+        """Qualification v1 (plan Phase 3): the batch PR head ``batch_candidate_sha`` carries every required check
+        including the batch qualifier (``ci-gate``, a pull_request-only workflow), and the resulting main commit
+        ``candidate_sha`` carries the exact-SHA push/main checks. When both are given, the main evidence must cover
+        every required check except the batch qualifier and the batch evidence must cover all of them; both digests
+        are bound. Without them, ``evidence`` alone must cover every required check (unchanged behaviour). This is
+        not a tree-equivalence fallback: each SHA is qualified by runs on exactly that SHA."""
         if not services:
             raise CapabilityRefused("SERVICES_REQUIRED", "a promote capability names the services it restarts")
         binding = self._evidence_binding(expected_base_sha, candidate_sha, artifact_digest, evidence,
                                          rollback_target, services=services)
-        return self._issue(PHASE_PROMOTE, train_id, pr_heads, actions, ttl_s, attempts, binding, evidence=evidence)
+        if (batch_candidate_sha is None) != (batch_evidence is None):
+            raise CapabilityRefused("BATCH_EVIDENCE_INCOMPLETE", "batch_candidate_sha and batch_evidence go together")
+        if batch_candidate_sha is not None:
+            if not isinstance(batch_evidence, dict):
+                raise CapabilityRefused("EVIDENCE_MISSING", "batch evidence must be an object")
+            binding["batch_candidate_sha"] = _sha(batch_candidate_sha, "batch_candidate_sha")
+            binding["batch_evidence_digest"] = evidence_digest(batch_evidence)
+        return self._issue(PHASE_PROMOTE, train_id, pr_heads, actions, ttl_s, attempts, binding, evidence=evidence,
+                           batch_evidence=batch_evidence)
 
     def _evidence_binding(self, base: str, cand: str, artifact: str, evidence: dict, rollback: dict,
                           services: list[str]) -> dict:
@@ -253,7 +270,8 @@ class CapabilityAuthority:
                                                                   "release": rollback.get("release")}}
 
     def _issue(self, phase: str, train_id: str, pr_heads: Any, actions: Any, ttl_s: Optional[int],
-               attempts: int, binding: dict, *, evidence: Optional[dict] = None) -> str:
+               attempts: int, binding: dict, *, evidence: Optional[dict] = None,
+               batch_evidence: Optional[dict] = None) -> str:
         key = load_key(self.key_path)
         if not (isinstance(train_id, str) and TRAIN_RE.match(train_id)):
             raise CapabilityRefused("TRAIN_ID_INVALID", str(train_id)[:60])
@@ -274,7 +292,13 @@ class CapabilityAuthority:
         if binding.get("services") and not set(binding["services"]) <= set(lim["named_services"]):
             raise CapabilityRefused("SERVICE_NOT_NAMED", f"{sorted(set(binding['services']) - set(lim['named_services']))}")
         if phase in EVIDENCE_PHASES:
-            errs = check_evidence(evidence, binding["candidate_sha"], d["verification_policy"]["required_checks"])
+            required = list(d["verification_policy"]["required_checks"])
+            if binding.get("batch_candidate_sha"):
+                qualifier = d["verification_policy"]["batch_qualifier"]
+                errs = check_evidence(batch_evidence, binding["batch_candidate_sha"], required)
+                errs += check_evidence(evidence, binding["candidate_sha"], [c for c in required if c != qualifier])
+            else:
+                errs = check_evidence(evidence, binding["candidate_sha"], required)
             if errs:
                 raise CapabilityRefused("EVIDENCE_NOT_QUALIFYING", "; ".join(errs)[:400])
         now = self.clock()
