@@ -1483,7 +1483,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/cron-inventory/CRON_INVENTORY.md` | Cron Inventory & Migration Assessment — 2026-10-10 | review_required | OK | `2dd3d2e143bf` |
 | `docs/implementation/n8n-maturity/cron-inventory/DEPENDENCY_MAP.md` | Dependency map — Trade AI scheduled work (cron · systemd · health-tick · n8n) | review_required | OK | `a3390307a390` |
 | `docs/implementation/n8n-maturity/cron-inventory/GOVERNANCE_ANALYSIS.md` | Schedule and dependency governance — overlaps, duplicates, consolidation | review_required | OK | `c53a89cf1d07` |
-| `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `707e8d8cbd76` |
+| `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `d5210e1b6202` |
 | `docs/implementation/n8n-maturity/cron-inventory/REMEDIATION_PLAN.md` | Cron / n8n Remediation Plan — from the verified inventory | review_required | OK | `8a262ee95293` |
 | `docs/implementation/n8n-maturity/cron-inventory/SCHEMA.md` | Cron inventory — system of record: column specification (v1, 2026-10-09 21:55 ET) | review_required | OK | `8a3b490c4467` |
 | `docs/implementation/n8n-maturity/reconciliation-20261012/MOMENTUM_LIFECYCLE_CANDIDATE.md` | Momentum lifecycle implementation and activation packet | review_required | OK | `0abd4d2f7cb1` |
@@ -1960,7 +1960,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/R24_LEARNING_MATURITY_AUDIT_CLOSEOUT.md` | R24 Learning, Maturity, and Audit Closeout | review_required | OK | `ca6b73be475c` |
 | `docs/ops/R9_2_PORTFOLIO_BRAIN_LIVE_CLOSEOUT_2026-08-23.md` | Trade AI v12 R9.2 - Portfolio Brain Live Closeout | review_required | OK | `456bfc103b56` |
 | `docs/ops/RELEASE_TRAIN_API.md` | Release train: read-only Command Center API (Phase 1) | review_required | OK | `a2974f07ca4e` |
-| `docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md` | Release train: n8n coordination contract (Phase 4) | review_required | OK | `62244981f5cc` |
+| `docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md` | Release train: n8n coordination contract (Phase 4) | review_required | OK | `2ef9feeddf3e` |
 | `docs/ops/RESEARCH_COVERAGE_SNAPSHOT_2026-08-22.md` | Research coverage snapshot — 2026-08-22 10:24 ET | review_required | OK | `99a27d3b83ac` |
 | `docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md` | Research engine Flash-first failure — 2026-08-20 | review_required | OK | `f096edc0e822` |
 | `docs/ops/RESEARCH_LANE_HEALTH.md` | Research lane health + P0 outage (2026-08-21) | review_required | OK | `6c3418e95711` |

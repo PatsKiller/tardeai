@@ -1,0 +1,246 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tradeai:release-train/TrainWindowReceipt.schema.json",
+  "title": "TrainWindowReceipt@v1",
+  "description": "The host release controller's answer to one TrainWindowRequest@v1 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md section 7). Written only by the controller into <state_dir>/train_requests/receipts/<request_id>.json (tmp + fsync + rename); a terminal receipt is never rewritten. Program rules: shadow=true requires mode=simulate; COMPLETED requires an outcome and no refusal; REFUSED/EXPIRED/FAILED require a refusal and no outcome; ACKNOWLEDGED has neither and no finished_at; terminal states need finished_at >= acknowledged_at; p1_alert.sent_by is always host_notifier (n8n never pages).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "request_id",
+    "window_id",
+    "window_slot",
+    "shadow",
+    "mode",
+    "state",
+    "acknowledged_at",
+    "finished_at",
+    "controller",
+    "train_id",
+    "outcome",
+    "refusal",
+    "members",
+    "candidate_sha",
+    "main_sha",
+    "served_sha",
+    "needs_action",
+    "simulated_effects",
+    "injected_failures",
+    "p1_alert",
+    "evidence_refs"
+  ],
+  "$defs": {
+    "sha_or_null": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{40}$"
+    }
+  },
+  "properties": {
+    "schema": {
+      "const": "TrainWindowReceipt@v1"
+    },
+    "request_id": {
+      "type": "string",
+      "pattern": "^rtw-[0-9]{8}-(0000|0600|0800|1800)-(win|f[0-9a-f]{6})$"
+    },
+    "window_id": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T(00|06|08|18):00[+-][0-9]{2}:[0-9]{2}$"
+    },
+    "window_slot": {
+      "enum": ["0000", "0600", "0800", "1800"]
+    },
+    "shadow": {
+      "type": "boolean"
+    },
+    "mode": {
+      "enum": ["simulate", "live"]
+    },
+    "state": {
+      "enum": ["ACKNOWLEDGED", "COMPLETED", "REFUSED", "EXPIRED", "FAILED"]
+    },
+    "acknowledged_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "controller": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "code_sha", "host"],
+      "properties": {
+        "version": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "code_sha": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{7,40}$"
+        },
+        "host": {
+          "type": ["string", "null"],
+          "maxLength": 64
+        }
+      }
+    },
+    "train_id": {
+      "type": ["string", "null"],
+      "pattern": "^rt-[0-9]{8}-[0-9]{4}-[a-z0-9]{4,12}$"
+    },
+    "outcome": {
+      "enum": [
+        null,
+        "NO_OP",
+        "FAILED_PRE_MERGE",
+        "MERGED_NOT_LIVE",
+        "RELEASED_VERIFIED",
+        "RELEASED_OBSERVING",
+        "ROLLED_BACK",
+        "ROLLBACK_FAILED",
+        "STOPPED",
+        "CANCELLED"
+      ]
+    },
+    "refusal": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["code", "detail"],
+      "properties": {
+        "code": {
+          "enum": [
+            "INVALID_REQUEST",
+            "EXPIRED",
+            "DUPLICATE_WINDOW",
+            "STOP_SET",
+            "STOP_UNREADABLE",
+            "NOT_ARMED",
+            "DELEGATION_NOT_ACTIVE",
+            "WINDOW_NOT_ENABLED",
+            "OUTSIDE_WINDOW",
+            "CONTROLLER_BUILD_ONLY",
+            "LOCK_HELD",
+            "SHADOW_LIVE_MISMATCH",
+            "CONTROLLER_FAILED",
+            "CONTROLLER_ERROR",
+            "RECONCILE_REQUIRED",
+            "QUARANTINED_LINEAGE"
+          ]
+        },
+        "detail": {
+          "type": "string",
+          "maxLength": 200
+        }
+      }
+    },
+    "members": {
+      "type": "array",
+      "maxItems": 60,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["pr", "head_sha"],
+        "properties": {
+          "pr": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "head_sha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          }
+        }
+      }
+    },
+    "candidate_sha": {
+      "$ref": "#/$defs/sha_or_null"
+    },
+    "main_sha": {
+      "$ref": "#/$defs/sha_or_null"
+    },
+    "served_sha": {
+      "$ref": "#/$defs/sha_or_null"
+    },
+    "needs_action": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "pr", "text"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9_]{1,47}$"
+          },
+          "pr": {
+            "type": ["integer", "null"],
+            "minimum": 1
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 160
+          }
+        }
+      }
+    },
+    "simulated_effects": {
+      "type": "array",
+      "maxItems": 40,
+      "items": {
+        "type": "string",
+        "maxLength": 80
+      }
+    },
+    "injected_failures": {
+      "type": "array",
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "phase", "behaved"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "phase": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "behaved": {
+            "enum": ["AS_SPECIFIED", "NOT_AS_SPECIFIED", "NOT_REACHED"]
+          }
+        }
+      }
+    },
+    "p1_alert": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["sent_by", "incident_key", "at"],
+      "properties": {
+        "sent_by": {
+          "const": "host_notifier"
+        },
+        "incident_key": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "maxItems": 40,
+      "items": {
+        "type": "string",
+        "maxLength": 300
+      }
+    }
+  }
+}

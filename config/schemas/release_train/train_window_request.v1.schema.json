@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tradeai:release-train/TrainWindowRequest.schema.json",
+  "title": "TrainWindowRequest@v1",
+  "description": "One n8n-coordinated request that the host release controller consider a train window (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md section 5). Written only by scripts/release_train_window_request.py --append into <state_dir>/train_requests/pending/. A request is never authority: it names no SHA, PR, train id, capability or command, and the controller re-validates every gate (contract C1-C4). Program rules: shadow=false needs tick=on_window and shadow_reason=null; shadow=true needs a shadow_reason; an off_window request is always shadow; request_id date/time equal the window's local date/time; the suffix is 'win' exactly when tick=on_window; expires_at > requested_at.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "request_id",
+    "window_slot",
+    "window_id",
+    "window_start",
+    "tick",
+    "shadow",
+    "shadow_reason",
+    "requested_at",
+    "expires_at",
+    "requested_by",
+    "readiness",
+    "authority",
+    "note"
+  ],
+  "properties": {
+    "schema": {
+      "const": "TrainWindowRequest@v1"
+    },
+    "request_id": {
+      "type": "string",
+      "pattern": "^rtw-[0-9]{8}-(0000|0600|0800|1800)-(win|f[0-9a-f]{6})$"
+    },
+    "window_slot": {
+      "enum": ["0000", "0600", "0800", "1800"]
+    },
+    "window_id": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T(00|06|08|18):00[+-][0-9]{2}:[0-9]{2}$"
+    },
+    "window_start": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "tick": {
+      "enum": ["on_window", "off_window"]
+    },
+    "shadow": {
+      "type": "boolean"
+    },
+    "shadow_reason": {
+      "enum": [
+        null,
+        "off_window",
+        "shadow_only_lane",
+        "train_not_armed",
+        "delegation_not_active",
+        "window_not_enabled"
+      ]
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "requested_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lane_id", "run_id", "attempt", "run_mode", "code_sha"],
+      "properties": {
+        "lane_id": {
+          "type": "string",
+          "pattern": "^release-train-request-(0000|0600|0800|1800)$"
+        },
+        "run_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "attempt": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "run_mode": {
+          "enum": ["live", "dry_run", null]
+        },
+        "code_sha": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{7,40}$"
+        }
+      }
+    },
+    "readiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stop_state", "armed", "shadow_enabled", "delegation_state", "window_enabled", "policy_version"],
+      "properties": {
+        "stop_state": {
+          "const": "ABSENT"
+        },
+        "armed": {
+          "type": "boolean"
+        },
+        "shadow_enabled": {
+          "type": "boolean"
+        },
+        "delegation_state": {
+          "enum": ["ACTIVE", "PAUSED", "REVOKED", "NOT_CONFIGURED", "INVALID", "UNAVAILABLE"]
+        },
+        "window_enabled": {
+          "type": "boolean"
+        },
+        "policy_version": {
+          "type": ["string", "null"],
+          "maxLength": 64
+        }
+      }
+    },
+    "authority": {
+      "const": "REQUEST_ONLY"
+    },
+    "note": {
+      "type": "string",
+      "maxLength": 200
+    }
+  }
+}

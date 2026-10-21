@@ -2,7 +2,7 @@
 
 ```
 Status:      DRAFT (branch feat/release-train-n8n-20261021; build-only, nothing imported, nothing armed)
-as_of:       2026-10-21T22:30:00-04:00 (revision 1)
+as_of:       2026-10-22T00:20:00-04:00 (revision 3)
 Measured at: not measured (interface contract; base origin/main 8fd1500fc + Phase 1 72d62fddc)
 Owner:       platform
 Authority:   READ_ONLY_ADVISORY · MBI_BEHAVIOR = 0 · a request is never authority
@@ -10,6 +10,18 @@ Plan:        Release Train v2, Phase 4 (n8n coordination)
 Design:      Aiden_Release_Train_Enhanced_Design_2026-10-21 §2 (trust boundaries), §6 (windows), §7 (STOP), §9
 Consumers:   Phase 3 controller (feat/release-train-controller-20261021) implements §6–§8 against this file
 ```
+
+**Revision 2 (2026-10-21, same day, while building the workflow against revision 1):** one window per execution
+(the manual run picks the window with the oldest shadow coverage instead of looping over all four, so a refusal stays
+data and a failure reaches the error route, AGENTS §23.24 FW-A4); a Run Lane `failed` now fails the execution into
+`tradeai-fabric-error` (its intent is the P2) instead of a needs-action intent; the spool gained an append-only
+`journal/` (the O_EXCL record; `pending/` is a hard link to it); refusal code `CONTROLLER_FAILED` added to C9;
+readiness gained `shadow_coverage`; §14 is the runbook (`release-train-n8n`).
+
+**Revision 3 (Phase 3 controller request):** C9 gained `RECONCILE_REQUIRED`, `QUARANTINED_LINEAGE` and
+`CONTROLLER_ERROR`; C12 (receipts mode 0600, same-user read) and C13 (controller intents in `train_intents.jsonl`) added.
+The schemas are `config/schemas/release_train/train_window_{request,receipt}.v1.schema.json`; the validator is
+`scripts/lib/release_train_window.py` (`validate_request`, `validate_receipt`).
 
 This document is the contract between the n8n workflow `tradeai-fabric-release-train` and the host release
 controller. It defines two versioned records, `TrainWindowRequest@v1` (n8n asks for a window) and
@@ -40,7 +52,7 @@ phase capabilities (Phase 2), never under the request. **A request grants nothin
 ## 2. Flow
 
 ```
-n8n schedule tick (W-90 request | W+75 report | manual = forced shadow, all four windows)
+n8n schedule tick (W-90 request | W+75 report | manual = forced shadow, the least-covered window)
   -> GET relay /release-train-window?view=readiness          ReleaseTrainReadiness@v1   (read-only)
   -> gate (n8n, advisory):  STOP set / unreadable / unknown -> NO_OP;  not armed and shadow disabled -> NO_OP
   -> Run Lane: lane release-train-request-<HHMM>, mode dry_run|live (RunRequested@v1 -> executor)
@@ -100,7 +112,8 @@ built by `scripts/lib/release_train_window.py:readiness_view()` from the Phase 1
   "queue_freshness": "UNAVAILABLE",
   "census": {"status": "COMPLETE", "open_prs": 30},
   "current_train": null,
-  "last_outcome": null
+  "last_outcome": null,
+  "shadow_coverage": [{"slot": "1800", "last_requested_at": null, "request_id": null, "receipt_state": null}]
 }
 ```
 
@@ -109,6 +122,8 @@ built by `scripts/lib/release_train_window.py:readiness_view()` from the Phase 1
 - `delegation.state` is `ACTIVE`, `PAUSED`, `REVOKED`, `NOT_CONFIGURED`, `INVALID` or `UNAVAILABLE`. With Phase 2's
   `release_delegation.load()` importable: `AUTHORIZED` -> `ACTIVE`, `MISSING` -> `NOT_CONFIGURED`, `PAUSED`,
   `REVOKED`, and `INVALID` / `UNREADABLE` / `IN_REPO` -> `INVALID`. Otherwise the Phase 1 `standing_policy` state.
+- `shadow_coverage` lists, per slot, the newest `shadow: true` request and its receipt state (read from the spool).
+  The manual run uses it to choose the window to force (§10).
 - A relay or gateway failure is HTTP non-200 or `state != "OK"`; n8n treats it as STOP (`readiness_unavailable`).
 
 ## 5. `TrainWindowRequest@v1`
@@ -160,7 +175,8 @@ no-op (a `comms_intents` row keyed by workflow and execution).
 **Spool** (under the release-window state dir, resolved exactly as `release_train_view.resolve_state_dir`):
 
 ```
-<state_dir>/train_requests/pending/<request_id>.json     lane: created with O_EXCL (tmp file + link), fsync, mode 0644
+<state_dir>/train_requests/journal/<request_id>.json     lane: created with O_EXCL, written, fsynced (append-only record)
+<state_dir>/train_requests/pending/<request_id>.json     lane: hard link to the journal file, made after the body is durable
 <state_dir>/train_requests/claimed/<request_id>.json     controller: os.rename(pending -> claimed); the rename is the claim
 <state_dir>/train_requests/receipts/<request_id>.json     controller: TrainWindowReceipt@v1, tmp + fsync + rename
 ```
@@ -179,9 +195,11 @@ Nothing in the spool is ever deleted (§0 rule 6). Retention is an archive with 
 | C6 | **Expiry.** At claim time, `now > expires_at` is `REFUSED` / `EXPIRED`. A late request never starts a train. |
 | C7 | **One train per window.** The controller's per-day, per-slot claim file stays the guard; a second live request for the same `window_id` is `REFUSED` / `DUPLICATE_WINDOW`. |
 | C8 | **Receipts.** Written atomically (tmp + fsync + rename). `ACKNOWLEDGED` may be replaced by later states; a terminal receipt (`COMPLETED`, `REFUSED`, `EXPIRED`, `FAILED`) is never rewritten. |
-| C9 | **Refusal codes** (closed set): `INVALID_REQUEST`, `EXPIRED`, `DUPLICATE_WINDOW`, `STOP_SET`, `STOP_UNREADABLE`, `NOT_ARMED`, `DELEGATION_NOT_ACTIVE`, `WINDOW_NOT_ENABLED`, `OUTSIDE_WINDOW`, `CONTROLLER_BUILD_ONLY`, `LOCK_HELD`, `SHADOW_LIVE_MISMATCH`. |
+| C9 | **Refusal codes** (closed set): `INVALID_REQUEST`, `EXPIRED`, `DUPLICATE_WINDOW`, `STOP_SET`, `STOP_UNREADABLE`, `NOT_ARMED`, `DELEGATION_NOT_ACTIVE`, `WINDOW_NOT_ENABLED`, `OUTSIDE_WINDOW`, `CONTROLLER_BUILD_ONLY`, `LOCK_HELD`, `SHADOW_LIVE_MISMATCH`, `CONTROLLER_FAILED` and `CONTROLLER_ERROR` (with `state: FAILED`), `RECONCILE_REQUIRED` (a non-terminal train or an ambiguous effect must be reconciled first), `QUARANTINED_LINEAGE` (the base or a member descends from a quarantined artifact). Revision 3 added the last three at the Phase 3 controller's request (`feat/release-train-controller-20261021` @ 1b1215270, `train-claim`). |
 | C10 | **P1 stays on the host.** A rollback, a failed rollback, or an unacknowledged STOP is paged by the host notifier from the controller at the moment it happens. The receipt records the page (`p1_alert`); n8n only mentions it in the next digest. |
 | C11 | **No authority flows back.** Nothing in a receipt is read by the controller later as input. |
+| C12 | **File ownership.** The controller writes receipts mode 0600 as the portfolio-server user. The relay's `GET /release-train-window` reads them through the gateway, and the gateway runs as that same user, so no group or world read bit is needed or allowed. A receipt the gateway cannot read is `receipt_problem: receipt_unreadable`, never a missing receipt. |
+| C13 | **Intent records.** `TrainEvent@v1` has no intent/effect event type, so the controller keeps its intent-before-effect rows in a local `<state_dir>/train_intents.jsonl` (append-only). This contract does not read that file; it is the controller's own reconciliation record. |
 
 ## 7. `TrainWindowReceipt@v1`
 
@@ -244,7 +262,7 @@ n8n polls with bounded backoff (5 s doubling to 60 s):
 |---|---|---|---|
 | request (W-90) | `receipt.state` is not null (acknowledged or terminal) | 300 s | P2 needs-action `controller_unacknowledged` |
 | report (W+75) | terminal | 900 s | digest reports `IN_PROGRESS` (not a failure) |
-| manual (forced shadow) | terminal | 600 s per slot | digest reports `IN_PROGRESS` |
+| manual (forced shadow) | terminal | 600 s | digest reports `IN_PROGRESS` |
 
 A lane run in `dry_run` appends nothing, so its view is `NOT_FOUND`; the digest says `DRY_RUN` and n8n does not wait.
 
@@ -256,15 +274,17 @@ gateway decides delivery, dedupe, caps and quiet hours (§24.1). n8n holds no bo
 | kind | tier | when | subject (<= 120) |
 |---|---|---|---|
 | `release_train_window_digest` | DIGEST | every request, report and forced tick, including no-ops | `release train <window_id> <phase>: <REQUESTED\|NO_OP\|DRY_RUN\|outcome\|IN_PROGRESS> (<reason>)` |
-| `release_train_needs_action` | DIGEST (P2) | receipt `needs_action` non-empty; lane `failed` / `refused_policy`; controller unacknowledged; readiness unavailable | `release train <window_id>: needs action (<n> items)` |
+| `release_train_needs_action` | DIGEST (P2) | receipt `needs_action` non-empty; controller unacknowledged; readiness unavailable; receipt invalid | `release train <window_id>: needs action (<n> items)` |
 | `release_train_delegation_reminder` | DIGEST | delegation `PAUSED` or `NOT_CONFIGURED`, on the 18:00 report tick and on manual runs | `release train delegation <state>: routine releases are off` |
 
 - DIGEST becomes a P2 fan-in incident and reaches Telegram through `incident_notifier.py`'s P2 batch (held 22:00–07:00
   ET). **Email delivery of these kinds is not wired today:** the incident notifier does not email. Adding email is a
   host comms routing change (operator item O6), not a workflow change.
 - **P1 rollback and rollback-failed alerts are never n8n's** (C10). The intent table has no PAGE row.
-- Intents share the table's `max_per_hour: 30` budget with fabric error intents. A manual run of all four windows
-  posts at most 12.
+- A Run Lane `refused_policy` or `skipped_lock` is data: one `release_train_window_digest` naming the refusal, posted
+  without an asserting node (§23.23 governance (5)). A Run Lane `failed` fails the execution on purpose, and
+  `tradeai-fabric-error` posts its `workflow_error` intent (DIGEST, P2).
+- Intents share the table's `max_per_hour: 30` budget with fabric error intents. One execution posts at most 3.
 
 ## 10. Shadow mode and forcing ticks
 
@@ -276,10 +296,12 @@ armed, every request is `shadow: true`.
 Shadow ends when its proof passes, with no calendar wait (operator, 2026-10-21): every window type has run cleanly
 once and every injected failure behaved as specified. **Forcing ticks** compresses it to hours:
 
-1. **All four windows at once, through n8n** (preferred: it also proves the coordination path). The workflow's
-   `Manual run` trigger requests all four slots in sequence; every request is `off_window`, therefore `shadow: true`.
+1. **Through n8n** (preferred: it also proves the coordination path). Each run of the workflow's `Manual run`
+   trigger forces one window: the one whose newest shadow request is oldest (never-requested windows first, in the
+   order 18:00, 00:00, 06:00, 08:00), read from readiness `shadow_coverage`. Four manual runs cover all four windows;
+   each request is `off_window`, therefore `shadow: true`, and is requested, collected and digested in that run.
    On the host, under the import packet's CLI wrapper (a `cron` grant naming `tradeai-fabric-release-train`):
-   `n8n execute --id=tradeai-fabric-release-train`. Each slot is requested, collected and digested in turn.
+   `n8n execute --id=tradeai-fabric-release-train`, four times.
 2. **One window, on the host, without n8n** (for the controller's own tests): `python3 scripts/release_train_window_request.py --window 0600 --dry-run`
    prints the row; with `--append --shadow-only` it appends an `off_window` shadow request (operator, under the same
    grant). This does not exercise n8n.
@@ -304,8 +326,8 @@ The four request lanes are fired only by this workflow through Run Lane (registr
 |---|---|---|
 | relay or gateway down at readiness | NO_OP `readiness_unavailable` + P2 needs-action | none |
 | STOP set or unreadable | NO_OP `stop_set` / `stop_unreadable` | lane re-checks and appends nothing |
-| Run Lane `refused_policy` / `skipped_lock` | digest + P2 needs-action | ledger row is the record |
-| Run Lane `failed` | digest + P2 needs-action | executor dead letter |
+| Run Lane `refused_policy` / `skipped_lock` | digest naming the refusal (data, no error) | ledger row is the record |
+| Run Lane `failed` | the execution fails -> `tradeai-fabric-error` intent (P2) | executor dead letter |
 | controller does not acknowledge in 300 s | P2 needs-action `controller_unacknowledged` | the controller's independent watchdog (Phase 3) |
 | receipt not terminal at the report deadline | digest `IN_PROGRESS` | the next tick's readiness `current_train` |
 | receipt `ROLLED_BACK` / `ROLLBACK_FAILED` | digest mentions it | host notifier paged P1 when it happened (C10) |
@@ -325,3 +347,22 @@ The four request lanes are fired only by this workflow through Run Lane (registr
   restart under the operator's unit grant).
 - **O6** Email delivery for the DIGEST kinds (host comms routing).
 - **O7** Install the controller's systemd path + timer units (Phase 3).
+
+## 14. Runbook (`release-train-n8n`)
+
+Every intent this workflow posts carries runbook id `release-train-n8n`; this section is that runbook.
+
+| symptom (digest subject) | check, read-only | action |
+|---|---|---|
+| `NO_OP (stop_set)` / `(stop_unreadable)` | `python3 scripts/release_control_cli.py status` on the host (Phase 2), or read `<state_dir>/STOP.json` | intended while STOP is latched; resuming is an operator act (design §7) |
+| `NO_OP (readiness_unavailable)` | relay log `data/runtime/n8n_relay/relay_log.jsonl` rows `op: release_train_window`; gateway health | restore the relay/gateway (operator unit); n8n treats it as STOP meanwhile |
+| `NO_OP (not_armed)` | `config/release_train_n8n.json` `shadow.enabled`, `config/release_train_policy.json` `armed`, the delegation state | expected until shadow or arming; both are operator acts |
+| `DRY_RUN` | the lane receipt `data/runtime/release-train-request-<HHMM>_last.json` is NOT written by a dry run; the DRY-RUN line is in the executor's run receipt | expected while `live_arg` is null (§11) |
+| `UNACKNOWLEDGED` / needs action `controller unacknowledged` | `<state_dir>/train_requests/pending/` still holds the request; the controller path unit's journal | start or repair the controller units (operator, O7); never edit the spool by hand |
+| `REFUSED (<code>)` | the receipt's `refusal`; C9 | act on the code; `INVALID_REQUEST` is a finding against the lane |
+| `REFUSED_POLICY` / `SKIPPED_LOCK` | coordination ledger `runs` row for the run id | a lane not allowlisted / not on the live list, or a second fire holding the lock |
+| `workflow_error` intent from `tradeai-fabric-error` | n8n execution (error saved) + ledger row | a Run Lane failure or an unaccepted intent; the error intent itself is the P2 |
+| `ROLLED_BACK` / `ROLLBACK_FAILED` in a digest | the P1 already sent by the host notifier (`p1_alert`) | follow the incident runbook (`docs/runbooks/INCIDENT_RESPONSE.md`); n8n does nothing more |
+
+Rollback of this workflow: unpublish it (`docs/ops/ROLLBACK_COMMANDS.md`); nothing host-side needs undoing. The
+manual release path (operator grant + `cio_phase2_exact_main_deploy.sh`) is the fallback throughout.
