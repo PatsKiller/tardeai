@@ -1,0 +1,62 @@
+{
+  "schema": "ReleaseDelegation@v1",
+  "delegation_id": "rtd-example-not-armed",
+  "status": "PAUSED",
+  "repository": "PatsKiller/tardeai",
+  "environment": "production",
+  "revocation_epoch": 1,
+  "operator": {
+    "github_login": "PatsKiller",
+    "approved_at": "YYYY-MM-DDTHH:MM:SS-04:00",
+    "approved_via": "host_cli"
+  },
+  "permitted_classes": [
+    "docs",
+    "tests",
+    "ci_config",
+    "frontend",
+    "low_risk_code"
+  ],
+  "windows": {
+    "timezone": "America/New_York",
+    "catch_up": false,
+    "slots": [
+      {"window_id": "1800", "start_et": "18:00", "duration_min": 90, "enabled": false, "role": "canary"},
+      {"window_id": "0000", "start_et": "00:00", "duration_min": 120, "enabled": false, "role": "general"},
+      {"window_id": "0600", "start_et": "06:00", "duration_min": 60, "enabled": false,
+       "role": "requires_drain_or_non_disruptive_path"},
+      {"window_id": "0800", "start_et": "08:00", "duration_min": 30, "enabled": false, "role": "last_enabled",
+       "latest_start_et": "08:10", "skip_on_macro_days": true}
+    ]
+  },
+  "merge_freeze": {
+    "starts_min_before_window": 30,
+    "ends": "train_terminal",
+    "applies_to": "all_non_train_merges_to_main"
+  },
+  "limits": {
+    "max_prs_per_train": 12,
+    "max_trains_per_window": 1,
+    "max_changed_files_per_train": 400,
+    "capability_ttl_s": 900,
+    "max_attempts_per_capability": 1,
+    "named_services": [
+      "portfolio-server.service",
+      "cio-governed-bridge.service",
+      "tradeai-n8n-coordination-gateway.service",
+      "tradeai-n8n-run-relay.service",
+      "tradeai-n8n-run-executor.service"
+    ]
+  },
+  "verification_policy": {
+    "required_checks": ["cio-hardening", "agent-governance", "release-readiness", "ci-gate"],
+    "batch_qualifier": "ci-gate",
+    "conclusion_required": "success",
+    "exact_sha": true,
+    "tree_equivalence_fallback": false,
+    "post_promote": ["api_health", "cc_pages", "platform_health", "needs_action", "served_copy"],
+    "rollback_on_failure": true,
+    "latch_stop_on_rollback": true
+  },
+  "notes": "EXAMPLE ONLY. The real record is operator-created on the host at ~/.config/tradeai/release_train/delegation.json (mode 600, outside the repo) and takes effect only after `scripts/release_control_cli.py arm` accepts its digest (host CLI, decision D3). Status PAUSED and every window disabled here: nothing is armed by this file."
+}
