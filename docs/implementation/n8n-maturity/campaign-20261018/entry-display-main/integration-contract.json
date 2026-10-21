@@ -1,0 +1,64 @@
+{
+  "schema": "EntryDisplayCompatibilityIntegration@v1",
+  "status": "IMPLEMENTED_FOCUSED_TESTED_PENDING_INDEPENDENT_REVIEW",
+  "base_sha": "720fce06c09ca7e7c21224364ab789505be40f5a",
+  "reviewed_reuse_sha": "221967c5559ff1945861cf4d191d207290d48e12",
+  "scope": [
+    "canonical existing packet field readers",
+    "explicit current and ideal price-basis display",
+    "upstream source and test compatibility"
+  ],
+  "unchanged_boundaries": [
+    "entry eligibility and all shared facts",
+    "sender consolidation and notification routing",
+    "on-record CIO review fallback",
+    "protected active-trader sources",
+    "all config/CI/generated assets",
+    "financial and runtime authority"
+  ],
+  "source_test_sha256": {
+    "scripts/lib/telegram_cards.py": "3904e7ab980df2a42eb5d5045e4fb9c44f1a06873a036b3b8944b6a53ac9a535",
+    "scripts/cio_entry_state_runner.py": "75bcb7d782eec81b1f40cad1169a1194d10c2402747e61cd469c68b6966c3e83",
+    "tests/test_cio_entry_state_20260915.py": "35bf58d0154a7bfc22620d99a199e8f1791c1af7c20f5140f3011c4e3cc53454",
+    "tests/test_cio_entry_card_pipeline_20261019.py": "0803e3d6c12c7fbd6fdf257e46cf10ca54dcd49cab646128b0bb919a2150e12d",
+    "tests/test_cio_entry_card_projection_20261019.py": "d566ff22302ebe0b8c91d3af4c95433b445c68769ba4205f6d21bec79e7287e1",
+    "tests/test_entry_card_price_basis_truth_20261019.py": "83dc67d0c0dccb26b3ce5a40b55bed880568e7293ab28b95c0a7604dde98da7a",
+    "tests/test_entry_card_main_compatibility_20261020.py": "39226769c74b8aeb1cd74eb48d6bb96c70fe79e637089b826a412cdecdd9647b"
+  },
+  "baseline": {
+    "tests": 35,
+    "failures": 28,
+    "errors": 0,
+    "skipped": 0
+  },
+  "candidate_pair": {
+    "tests": 35,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "regressions": {
+    "tests": 61,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "upstream_sender": {
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "required_CI_integration_test_files": [
+    "tests/test_cio_entry_card_pipeline_20261019.py",
+    "tests/test_cio_entry_card_projection_20261019.py",
+    "tests/test_entry_card_price_basis_truth_20261019.py",
+    "tests/test_entry_card_main_compatibility_20261020.py"
+  ],
+  "holds": [
+    "Independent implementation/integration review",
+    "Shared CI registration by integrator",
+    "Exact final-head native and hosted acceptance",
+    "No deployment or operational proof claimed"
+  ]
+}

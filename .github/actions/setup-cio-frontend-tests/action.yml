@@ -24,7 +24,8 @@ runs:
             selected = runner.shard_plan(count)['shards'][sid]
         else:
             selected = registered_files(runner.GATES, lambda path: (runner.REPO / path).is_file())
-        required = 'tests/test_cc_reader_first_20261018.py' in selected
+        required = bool({'tests/test_cc_reader_first_20261018.py',
+                         'tests/test_comms_delivery_health_truth_20261020.py'} & set(selected))
         with Path(os.environ['GITHUB_OUTPUT']).open('a') as output:
             output.write('required=' + str(required).lower() + '\n')
         PY

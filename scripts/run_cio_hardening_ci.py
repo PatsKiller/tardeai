@@ -99,6 +99,7 @@ GATES = [
     # stale-marked, absent when uncovered), Telegram HTML rendered through an allowlist (no innerHTML), every lifecycle
     # action explained, missing operator token asked for instead of a silent 403. Hermetic: injected DB read.
     ("comms_drawer_20261019", ["tests/test_comms_drawer_20261019.py"]),
+    ("comms_delivery_health_truth_20261020", ["tests/test_comms_delivery_health_truth_20261020.py"]),
     # ANCHOR: DISK_HYGIENE_N8N_20261018 — rule-based disk hygiene (dry-run manifest by default; --apply needs a fresh
     # manifest, re-validates every item, grant + caps) and the band-deduped disk-usage monitor, both as n8n lanes;
     # never-touch list enforced in code. Hermetic: tmp git repos/worktrees, fake df/proc/crontab.
@@ -2687,6 +2688,10 @@ GATES = [
         [
             "tests/test_cio_entry_state_20260915.py",
             "tests/test_cio_entry_state_alarm_fires_20260915.py",
+            "tests/test_cio_entry_card_pipeline_20261019.py",
+            "tests/test_cio_entry_card_projection_20261019.py",
+            "tests/test_entry_card_price_basis_truth_20261019.py",
+            "tests/test_entry_card_main_compatibility_20261020.py",
             # 2026-09-24 operator "build options": BUY_READY packet = per-unit options
             # alternatives + portfolio facts + validated CIO review; wake subject bound.
             "tests/test_buy_ready_options_20260924.py",

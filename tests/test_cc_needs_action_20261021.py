@@ -85,8 +85,8 @@ class _Cur:
             self._rows = self.conn.tg_rows
         else:
             self.description = [(c,) for c in ("unsettled", "failed", "reaped_unclaimed", "total",
-                                               "oldest_unsettled_at", "as_of")]
-            self._row = (0, 0, 6, 2015, None, NOW)
+                                               "oldest_unsettled_at", "as_of", "window_start", "invalid_clocks")]
+            self._row = (0, 0, 6, 2015, None, NOW, NOW - timedelta(days=3), 0)
 
     def fetchone(self):
         return self._row
@@ -114,6 +114,7 @@ def test_delivery_summary_carries_telegram_outbox_failures_as_their_own_figure(m
     assert s["telegram_outbox_failed_24h"] == 4
     assert s["telegram_outbox_failed_24h_by_channel"] == {"telegram": 3, "telegram_document": 1}
     assert s["telegram_outbox_held_24h"] == 149 and s["telegram_outbox_sent_24h"] == 20
+    assert s["coverage"]["complete"] is True and conn.rolled_back == 2  # both reads end their transaction (#1887)
 
 
 def test_unreadable_telegram_outbox_is_null_with_reason_never_zero(monkeypatch):
@@ -121,8 +122,9 @@ def test_unreadable_telegram_outbox_is_null_with_reason_never_zero(monkeypatch):
     monkeypatch.setattr(CP, "_deliveries_db_conn", lambda: conn)
     s = CP.delivery_summary()
     assert s["status"] == "OK" and s["total"] == 2015       # the main summary survives
+    assert s["schema"] == "CommunicationsDeliverySummary@v1" and s["coverage"]["complete"] is True  # #1887 coverage
     assert s["telegram_outbox_failed_24h"] is None and "telegram_outbox" in s["telegram_outbox_error"]
-    assert conn.rolled_back == 1
+    assert conn.rolled_back == 2  # #1887 ends the aggregate read transaction; the outbox error rolls back too
     monkeypatch.setattr(CP, "_deliveries_db_conn", lambda: None)
     assert CP.delivery_summary()["telegram_outbox_failed_24h"] is None
 

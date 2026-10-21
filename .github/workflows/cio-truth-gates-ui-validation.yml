@@ -24,6 +24,10 @@ on:
       - 'apps/command-center-v3/src/lib/advisory*.ts'
       - 'apps/command-center-v3/src/lib/research*.ts'
       - 'apps/command-center-v3/src/hooks/useApi.ts'
+      - 'apps/command-center-v3/src/pages/CommunicationsHub.tsx'
+      - 'apps/command-center-v3/src/lib/commsDeliveryHealth*'
+      - 'scripts/communications_portal.py'
+      - 'scripts/api_v2.py'
       - 'apps/command-center-v3/src/hooks/useRotationAvailability.ts'
       - 'apps/command-center-v3/src/components/intelligence/IntelligenceRotationTab.tsx'
       - 'apps/command-center-v3/src/components/RotationPublicationNotice.tsx'
@@ -54,6 +58,11 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Rotation retained-response contract (actual hook and browser)
         run: node src/lib/rotationRetainedError.browser.test.mjs ../.. /tmp/rotation-retained-error.json
+      - name: Communications aggregate and retained-response contract (actual hook and browser)
+        env:
+          COMMS_REVIEW_ROOT: ${{ github.workspace }}
+          COMMS_REVIEW_RESULT: /tmp/comms-delivery-health.json
+        run: node src/lib/commsDeliveryHealth.browser.test.cjs
       - name: Build UI
         run: npm run build
       - name: Start preview
@@ -85,4 +94,5 @@ jobs:
             docs/_evidence/cio_completion/browser
             /tmp/cio-truth-gates-ui-preview.log
             /tmp/rotation-retained-error.json
+            /tmp/comms-delivery-health.json
           if-no-files-found: warn

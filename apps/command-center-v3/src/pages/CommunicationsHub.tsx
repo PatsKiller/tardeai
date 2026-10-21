@@ -119,7 +119,7 @@ export default function CommunicationsHub() {
   )
   // Delivery health counts come from a server-side aggregate over the whole table, never from the 500-row sample
   // above (review 2026-10-18, N3); a missing / failed / old answer is UNAVAILABLE / STALE, never zero.
-  const { data: deliverySummary, loading: deliverySummaryLoading, error: deliverySummaryError } = useApi<any>(
+  const { data: deliverySummary, loading: deliverySummaryLoading, error: deliverySummaryError, stale: deliverySummaryStale } = useApi<any>(
     '/api/v2/communications/deliveries/summary',
     60_000,
   )
@@ -180,7 +180,7 @@ export default function CommunicationsHub() {
   // bury it in a table the operator has to read row-by-row. Counted server-side over
   // the whole table (review 2026-10-18, N3); null = not known, rendered UNAVAILABLE.
   const deliveryHealth = deliveryHealthFrom(deliverySummary, {
-    error: deliverySummaryError, loading: deliverySummaryLoading, nowMs: Date.now(),
+    error: deliverySummaryError, loading: deliverySummaryLoading, stale: deliverySummaryStale, nowMs: Date.now(),
   })
   const healthKnown = deliveryHealth.state === 'OK' || deliveryHealth.state === 'STALE'
   const countText = (n: number | null) => (n == null ? '—' : String(n))
@@ -269,7 +269,7 @@ export default function CommunicationsHub() {
         <span style={{ color: MUTED, fontWeight: 600 }}>
           {healthKnown ? (
             <>
-              deliveries {countText(deliveryHealth.total)} · un-settled{' '}
+              deliveries {countText(deliveryHealth.total)} · all retained rows · un-settled{' '}
               <span style={{ color: (deliveryHealth.unsettled ?? 0) > 0 ? AMBER : TEXT2, fontWeight: 800 }}>
                 {countText(deliveryHealth.unsettled)}
               </span>
@@ -298,8 +298,9 @@ export default function CommunicationsHub() {
               delivery health UNAVAILABLE{deliveryHealth.reason ? ` · ${deliveryHealth.reason}` : ''}
             </span>
           )}
+          {healthKnown && <span> · observed {deliveryHealth.asOf} · retained window {deliveryHealth.windowStart || 'empty'} → {deliveryHealth.windowEnd}</span>}
           {deliveryHealth.state === 'STALE' && (
-            <span style={{ color: AMBER, fontWeight: 800 }}> · STALE{deliveryHealth.reason ? ` (${deliveryHealth.reason})` : ''}</span>
+            <span style={{ color: AMBER, fontWeight: 800 }}> · delivery health STALE · last good {ageLabel(deliveryHealth.lastGoodAgeS)} ago{deliveryHealth.reason ? ` (${deliveryHealth.reason})` : ''}</span>
           )}
         </span>
         {!deliveryOwned && (

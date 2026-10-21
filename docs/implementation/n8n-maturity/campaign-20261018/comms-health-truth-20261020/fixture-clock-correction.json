@@ -1,0 +1,18 @@
+{
+  "parent_sha": "d1b209678311b5cec0d2981cfda8466b022c10df",
+  "production_source_changed": false,
+  "deterministic_check": {
+    "mode": "split",
+    "as_of": "2026-10-20T15:00:00.000Z",
+    "window_end": "2026-10-20T15:00:00.000Z",
+    "state": "OK",
+    "reason": null,
+    "actual_fixture": true,
+    "actual_projector": true,
+    "external_calls": 0
+  },
+  "browser_scenarios_passed": 5,
+  "browser_receipt": "comms-health-clock-correction-browser.json.gz",
+  "receipt_sha256": "d48794ee5c3c402d40455cc0a620212ae9a1e334d8382e303b17ede456fcabd5",
+  "original_frozen_pair_unchanged": true
+}
