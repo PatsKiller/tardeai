@@ -21,6 +21,8 @@ hermes_rank + hermes_score_components (the per-factor breakdown = the H-2 intel 
 aborts the run; all items failing exits 1), NaN/Inf numerics are "missing" in every factor, a P2 notification
 intent when >20% of items error or nothing lands (deduped: once per condition), LaneRunReceipt@v2 receipt
 data/runtime/hermes-watchlist-scorer_last.json on a real run, and a write-free --dry-run (n8n shadow lane).
+2026-10-21 (PR #1899, n8n shadow lane): the alert is a QUEUED host comms intent, never a send (no telegram_alert
+import), and the DB connection is a plain psycopg2 connect, not db_adapter (whose closure reaches broker modules).
 """
 from __future__ import annotations
 try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
@@ -46,7 +48,7 @@ from lib.watchlist_priority import (
     sql_scoring_priority_exists,
     sql_daily_priority_exists,
 )
-from lib.two_way_curation import REVERSE_FACTORS, calibrated_reverse_weight
+from lib.reverse_factor_reliability import REVERSE_FACTORS, calibrated_reverse_weight  # pure; not two_way_curation (db_adapter reach)
 PILLS = PROJECT_ROOT / "data" / "runtime" / "pro_analyst_pills_latest.json"
 WEIGHTS_FILE = PROJECT_ROOT / "config" / "hermes_score_weights.yaml"
 SCALP_WEIGHTS_FILE = PROJECT_ROOT / "config" / "hermes_score_weights_scalp.yaml"
@@ -56,9 +58,37 @@ SECTOR_ETF = {"Technology": "XLK", "Financials": "XLF", "Energy": "XLE", "Health
               "Communication Services": "XLC"}
 
 
+#: The DB names this lane reads (db_adapter.DB_ENV_NAMES minus its trace flag).
+DB_ENV_NAMES = ("DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD")
+
+
 def _conn():
-    from db_adapter import _get_conn
-    return _get_conn()
+    """A plain psycopg2 connection with db_adapter's parameters and its three per-connection safety nets.
+
+    Not ``db_adapter._get_conn`` (2026-10-21, PR #1899): db_adapter's import closure reaches holdings_guard ->
+    schwab_position_sync -> schwab_transport (broker_module / order_placement), and an n8n-dispatched lane must not
+    (tests/test_lane_transitive_capabilities_20261015.py; AGENTS.md §23.14). Credentials: the process env, else
+    lib.env_bootstrap.load_env (tmpfs render, then the checkout .env) limited to DB_ENV_NAMES — never a broker name."""
+    if not os.getenv("DB_PASSWORD"):
+        from lib.env_bootstrap import load_env
+        load_env(names=DB_ENV_NAMES)
+    import psycopg2
+    conn = psycopg2.connect(
+        host=os.getenv("DB_HOST", "localhost"),
+        port=int(os.getenv("DB_PORT", "5432")),
+        dbname=os.getenv("DB_NAME", "trade_ai"),
+        user=os.getenv("DB_USER", "trade_ai"),
+        password=os.getenv("DB_PASSWORD", ""),
+        connect_timeout=10,
+        application_name="hermes_watchlist_scorer",
+    )
+    conn.autocommit = False
+    with conn.cursor() as c:  # docs/runbooks/DB_HANG_PREVENTION.md (same values as db_adapter)
+        c.execute("SET idle_in_transaction_session_timeout = '120s'")
+        c.execute("SET lock_timeout = '3s'")
+        c.execute("SET statement_timeout = '180s'")
+    conn.commit()
+    return conn
 
 
 def _weights():
@@ -455,10 +485,19 @@ def _fetch_watchlist_rows(cur, limit=None, off_hours=False):
 LANE_ID = "hermes-watchlist-scorer"
 #: Loud-failure threshold (2026-10-21): the NaN-card outage aborted every run for ~2 days and nothing paged.
 ERROR_RATIO_ALERT = 0.20
-#: One page per condition: telegram_alert_router dedupes on the exact body (durably, across processes), so the
-#: bodies below are fixed text — counts and symbols go to the log, never into the message.
+#: One alert per condition per 12h. A dispatched lane may not send (AGENTS.md §23.3 "No sends from n8n";
+#: tests/test_agents_policy_7_0_0_advisory_market_data.py), so the alert is a HOST COMMS INTENT queued in the
+#: coordination ledger (config/host_comms_intent_routes.json research/hermes_watchlist_scorer_failure, DIGEST -> P2);
+#: the host comms-intent consumer turns it into an incident and the incident notifier sends it. Dedupe is two-layer:
+#: the store folds an identical (domain, kind, subject) inside its window, and ALERT_STATE_PATH holds the last
+#: queue time per condition so one condition is queued at most once per ALERT_DEDUPE_MINUTES.
 ALERT_DEDUPE_MINUTES = 720
 ALERT_PRODUCER = "hermes_watchlist_scorer"
+ALERT_DOMAIN = "research"
+ALERT_KIND = "hermes_watchlist_scorer_failure"
+ALERT_STATE_PATH = PROJECT_ROOT / "data" / "runtime" / "hermes_watchlist_scorer_alert_state.json"
+ALERT_OUTAGE_SUBJECT = "Hermes watchlist scorer OUTAGE: no scores written"
+ALERT_DEGRADED_SUBJECT = "Hermes watchlist scorer DEGRADED: >20% of names failed"
 ALERT_OUTAGE = ("Hermes watchlist scorer OUTAGE: a run wrote no scores because every name failed with an "
                 "error. Watchlist ranks are going stale. Check logs/hermes_scorer.log for '[hermes-scorer] error'.")
 ALERT_DEGRADED = ("Hermes watchlist scorer DEGRADED: more than 20% of names failed to score in a run; the rest "
@@ -514,19 +553,124 @@ def failure_condition(summary):
     return None
 
 
-def emit_failure_alert(summary, *, send=None):
-    """One P2 notification intent through the host chokepoint (telegram_alert.send_telegram -> router/gateway).
-    Fixed body per condition + a 12h dedupe window = it pages once per condition, not every 15 minutes."""
+def _ledger_path(environ=None):
+    """Same resolution as scripts/n8n_coordination_gateway.default_ledger_path (not imported: its closure reaches
+    broker modules; tests/test_hermes_scorer_n8n_shadow_20261021.py pins the two equal)."""
+    source = os.environ if environ is None else environ
+    explicit = source.get("TRADEAI_N8N_COORDINATION_LEDGER")
+    if explicit:
+        return Path(explicit)
+    root = source.get("TRADEAI_STATE_ROOT") or str(Path.home() / "trade-ai-releases" / "persistent-state")
+    return Path(root) / "data" / "governance" / "n8n_coordination_ledger.sqlite"
+
+
+class _LedgerConn:
+    """The two attributes CommsIntentStore uses (``_conn``, ``lock``) on a plain sqlite connection to an EXISTING
+    ledger — the scripts/disk_usage_monitor.py / check_registry_runtime_truth.py pattern, because
+    lib/host_comms_intents.queue_intent's closure (via scripts/n8n_coordination_gateway.py) reaches broker modules."""
+
+    read_only = False
+
+    def __init__(self, path):
+        import sqlite3
+        import threading
+        self.lock = threading.RLock()  # CommsIntentStore re-enters it (accept -> _receipt -> get)
+        self._conn = sqlite3.connect(str(path), timeout=10, isolation_level=None)
+        self._conn.row_factory = sqlite3.Row
+
+    def close(self):
+        self._conn.close()
+
+
+def _queue_host_intent(*, subject, summary, execution_id, ledger_path=None, now=None):
+    """Queue ONE host comms intent (never a send). Raises ValueError(<reason>): producer_refused, intent_unrouted,
+    intent_rate_limited, intent_routes_unreadable, ledger_absent (a lane never creates the ledger),
+    intent_store_unavailable. Same rows, dedupe and hourly cap as lib/host_comms_intents.queue_intent."""
+    import sqlite3
+    import time
+    from lib.n8n_fabric_store import (SUBJECT_MAX, SUMMARY_MAX, CommsIntentStore, FabricStoreError,
+                                      load_host_intent_routes, load_intent_routes, merged_intent_routes)
+    try:
+        hosts = load_host_intent_routes()
+        routes = merged_intent_routes(load_intent_routes(), hosts)
+    except FabricStoreError as exc:
+        raise ValueError(getattr(exc, "reason", "intent_routes_unreadable")) from exc
+    route = hosts["routes"].get((ALERT_DOMAIN, ALERT_KIND))
+    if route is None:
+        raise ValueError("intent_unrouted")
+    if route.get("producer") != ALERT_PRODUCER:
+        raise ValueError("producer_refused")
+    path = Path(ledger_path) if ledger_path is not None else _ledger_path()
+    if not path.exists():
+        raise ValueError("ledger_absent")
+
+    def clean(text, limit):
+        flat = " ".join("".join(" " if ord(ch) < 32 or ord(ch) == 127 else ch for ch in str(text or "")).split())
+        return flat if len(flat) <= limit else flat[: max(0, limit - 1)] + "…"
+
+    request = {"domain": ALERT_DOMAIN, "kind": ALERT_KIND, "subject": clean(subject, SUBJECT_MAX),
+               "summary": clean(summary, SUMMARY_MAX), "workflow_id": f"host.{ALERT_PRODUCER}",
+               "execution_id": str(execution_id)[:40], "node": LANE_ID}
+    try:
+        ledger = _LedgerConn(path)
+    except (sqlite3.Error, OSError) as exc:
+        raise ValueError("intent_store_unavailable") from exc
+    try:
+        store = CommsIntentStore(ledger, routes=routes)
+        return dict(store.accept(request, caller_id=f"host:{ALERT_PRODUCER}",
+                                 now=time.time() if now is None else now))
+    except FabricStoreError as exc:
+        raise ValueError(getattr(exc, "reason", "intent_store_unavailable")) from exc
+    except sqlite3.Error as exc:
+        raise ValueError("intent_store_unavailable") from exc
+    finally:
+        ledger.close()
+
+
+def _execution_id():
+    import re as _re
+    raw = os.environ.get("TRADEAI_RUN_ID") or f"manual-{datetime.now(timezone.utc):%Y%m%dT%H%M%S}"
+    return (_re.sub(r"[^A-Za-z0-9_-]", "-", raw)[-40:].strip("-_")) or "host"
+
+
+def emit_failure_alert(summary, *, queue=None, state_path=None, now=None):
+    """Queue one host comms intent per failure condition, at most once per ALERT_DEDUPE_MINUTES (never a send).
+
+    Fixed subject/body per condition (counts and symbols go to the log). A queued or store-folded intent stamps
+    the cooldown; a refused one leaves it alone so the next run tries again. Never raises: an alert failure must
+    never mask the run's own result. Returns the condition ('outage' | 'degraded') or None."""
     cond = failure_condition(summary)
     if cond is None:
         return None
-    msg = ALERT_OUTAGE if cond == "outage" else ALERT_DEGRADED
+    subject, body = (ALERT_OUTAGE_SUBJECT, ALERT_OUTAGE) if cond == "outage" else (ALERT_DEGRADED_SUBJECT,
+                                                                                    ALERT_DEGRADED)
+    queue = queue or _queue_host_intent
+    path = Path(state_path) if state_path is not None else ALERT_STATE_PATH
+    ts = (now or datetime.now(timezone.utc)).timestamp()
     try:
-        if send is None:
-            from telegram_alert import send_telegram as send
-        send(msg, priority="P2", dedupe_minutes=ALERT_DEDUPE_MINUTES, producer=ALERT_PRODUCER)
+        state = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(state, dict):
+            state = {}
+    except (OSError, ValueError):
+        state = {}
+    last = (state.get("last_queued") or {}).get(cond)
+    if isinstance(last, (int, float)) and ts - last < ALERT_DEDUPE_MINUTES * 60:
+        print(f"[hermes-scorer] failure alert {cond} deduped (queued {int((ts - last) // 60)} min ago)", flush=True)
+        return cond
+    try:
+        receipt = queue(subject=subject, summary=body, execution_id=_execution_id())
     except Exception as exc:  # an alert failure must never mask the run's own result
-        print(f"[hermes-scorer] failure alert not emitted: {type(exc).__name__}", flush=True)
+        print(f"[hermes-scorer] failure alert not queued: {type(exc).__name__}: {exc}", flush=True)
+        return cond
+    try:
+        state.setdefault("last_queued", {})[cond] = ts
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+        tmp.replace(path)
+    except OSError as exc:
+        print(f"[hermes-scorer] alert dedupe state not written: {type(exc).__name__}", flush=True)
+    print(f"[hermes-scorer] failure alert {cond} queued: {(receipt or {}).get('intent_id')}", flush=True)
     return cond
 
 

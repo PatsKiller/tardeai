@@ -71,3 +71,36 @@ def test_lane_dispatch_admits_the_row():
     from lib.lane_dispatch import dispatch_eligible
     ok = dispatch_eligible(_registry_row())
     assert (ok[0] if isinstance(ok, tuple) else ok), ok
+
+
+# ── PR #1899 policy gates: the dispatched lane reaches no sender and no broker module ──────────────────────
+
+def test_scorer_closure_has_no_sender_broker_or_order_reach():
+    """tests/test_lane_transitive_capabilities_20261015.py + the 7.0.0 dispatcher sender gate, pinned for this lane:
+    no db_adapter (-> holdings_guard -> schwab_*), no two_way_curation (-> db_adapter), no telegram_alert."""
+    import audit_lane_transitive_capabilities as cap
+    res = cap.Resolver()
+    order, _ = res.closure(ROOT / "scripts" / "hermes_watchlist_scorer.py")
+    rels = {res.info(m).path for m in order}
+    assert not rels & {"scripts/db_adapter.py", "scripts/lib/two_way_curation.py", "scripts/telegram_alert.py",
+                       "scripts/holdings_guard.py", "scripts/lib/host_comms_intents.py"}, rels
+    caps = set().union(*(res.info(m).caps for m in order))
+    assert not caps & {"direct_sender", "broker_module", "order_placement", "chokepoint_send"}, caps
+
+
+def test_scorer_ledger_path_matches_the_gateway():
+    import hermes_watchlist_scorer as hws
+    sys.path.insert(0, str(ROOT))
+    from scripts.n8n_coordination_gateway import default_ledger_path
+    for env in ({}, {"TRADEAI_STATE_ROOT": "/x"}, {"TRADEAI_N8N_COORDINATION_LEDGER": "/y/l.sqlite"}):
+        assert hws._ledger_path(env) == default_ledger_path(env)
+
+
+def test_scorer_alert_route_is_a_host_digest_route_it_owns():
+    import hermes_watchlist_scorer as hws
+    sys.path.insert(0, str(ROOT))
+    from scripts.lib.n8n_fabric_store import load_host_intent_routes, load_intent_routes, merged_intent_routes
+    hosts = load_host_intent_routes()
+    merged_intent_routes(load_intent_routes(), hosts)  # one owner per route: raises on a clash with an n8n route
+    r = hosts["routes"][(hws.ALERT_DOMAIN, hws.ALERT_KIND)]
+    assert r["producer"] == hws.ALERT_PRODUCER and r["tier"] == "DIGEST"

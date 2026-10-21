@@ -64,7 +64,15 @@
       "tier": "DIGEST",
       "runbook_id": "active-trader-motion-watchdog",
       "producer": "active_trader_motion_watchdog"
+    },
+    {
+      "domain": "research",
+      "kind": "hermes_watchlist_scorer_failure",
+      "tier": "DIGEST",
+      "runbook_id": "hermes-watchlist-scorer-failure",
+      "producer": "hermes_watchlist_scorer"
     }
   ],
-  "_comment_20261018": "2026-10-18 (data-integrity fix PR, operator: the two data monitors 'within n8n with proper contracts'): lanes n8n-data-plausibility-audit and n8n-gap-resolution-audit run with --notify queue once their allowlist live_arg carries it, so they may not call a sender. data/data_plausibility_violation and data/gap_resolution_finding (RETIRED_RAN, VECTOR_FAILING) are DIGEST -> P2 incidents; data/gap_resolution_digest (OPEN_NO_ATTEMPT, REFUSED_NOWHERE) is DASHBOARD -> P3, never an interrupt. The systemd units keep the chokepoint send (--notify send, the default) until the packet's c3 step."
+  "_comment_20261018": "2026-10-18 (data-integrity fix PR, operator: the two data monitors 'within n8n with proper contracts'): lanes n8n-data-plausibility-audit and n8n-gap-resolution-audit run with --notify queue once their allowlist live_arg carries it, so they may not call a sender. data/data_plausibility_violation and data/gap_resolution_finding (RETIRED_RAN, VECTOR_FAILING) are DIGEST -> P2 incidents; data/gap_resolution_digest (OPEN_NO_ATTEMPT, REFUSED_NOWHERE) is DASHBOARD -> P3, never an interrupt. The systemd units keep the chokepoint send (--notify send, the default) until the packet's c3 step.",
+  "_comment_20261021": "2026-10-21 (PR #1899, n8n shadow lane hermes-watchlist-scorer): the scorer's loud-failure alert (OUTAGE: nothing landed; DEGRADED: >20% of names errored) is queued as research/hermes_watchlist_scorer_failure (DIGEST -> P2) instead of a send_telegram call, because a dispatched lane may not send (tests/test_agents_policy_7_0_0_advisory_market_data.py). The scorer keeps its own 12h per-condition cooldown (data/runtime/hermes_watchlist_scorer_alert_state.json) on top of the store dedupe."
 }
