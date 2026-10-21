@@ -31176,6 +31176,419 @@
           "notifier_priority": "P2"
         }
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "cio-portfolio-thesis",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "operator_approved_shadow_20261021",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Materialize one governed CIOPortfolioThesis@v1 per weekday from the operator policy, holdings, market context, seasonality, symbol theses and ratified methodology; publish only when the semantic delta is new.",
+        "business_function": "cio",
+        "source": "scripts/materialize_cio_portfolio_thesis.py module docstring"
+      },
+      "owner": "cio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/materialize_cio_portfolio_thesis.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/cio_portfolio_thesis.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock (no cron line exists; a dry_run fire takes /tmp/cio_portfolio_thesis.lock.dryrun)"
+        },
+        {
+          "name": "data/runtime/cio-portfolio-thesis_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt@v2 / allowlist output_signal (live run only)"
+        },
+        {
+          "name": "data/cio/operator_profile.jsonl, data/portfolios/state/holdings.json, data/cio/portfolio_cash_evidence.json, data/cio/cio_theses_projection.json, data/cio/canon_claims.jsonl",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/cio_portfolio_thesis_inputs.py"
+        },
+        {
+          "name": "Postgres market_regime_snapshots, FRED rows, daily bars for SPY + 11 sector ETFs (READ ONLY session)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/cio_market_context_state.py, scripts/lib/cio_seasonality_state.py"
+        },
+        {
+          "name": "data/cio/cio_portfolio_theses.jsonl PORTFOLIO_THESIS_PUBLISHED (append, live run only, none on NO_NEW_INFO)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/lib/cio_portfolio_thesis_v1.py reconcile_portfolio_thesis"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before for data/runtime/cio-portfolio-thesis_last.json (a dry run writes nothing, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 240.0 s (80% of timeout_s 300)"
+        },
+        {
+          "check": "inputs_loaded",
+          "text": "the DRY-RUN summary carries a thesis state and posture; the market context and seasonality carry no load_error (DB reachable)"
+        },
+        {
+          "check": "output_produced",
+          "text": "once live: every weekday run publishes a new thesis version (produced_count 1) or carries empty_reason no_new_input (the delta is NO_NEW_INFO, so nothing is appended)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 48 h (2x cadence) once live"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 240.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy transient-2) or ended RUN_SKIPPED_LOCK in two consecutive slots"
+        },
+        {
+          "check": "upstream_stale",
+          "text": "market context or seasonality loaded with load_error, or holdings.json is empty (the candidate is built from degraded inputs; not machine-checked yet)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 72 h (3x cadence) once the lane runs live"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing without the allowed empty_reason no_new_input, or skipped for a fatal reason ['no_runner', 'disabled', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 300,
+        "class": "report",
+        "computed_on": "2026-10-21",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED: the lane has never been scheduled (no cron line, no timer, no prior dispatcher run); source class defaults only.",
+        "runs_considered": null,
+        "duration_degraded_above_s": 240.0
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "registry value_class Operationally Important; cio function",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/cio-portfolio-thesis_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='cio-portfolio-thesis' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:cio-portfolio-thesis' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: data/runtime/cio-portfolio-thesis_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "evidence_class": "SOURCE_ONLY",
+        "expected_output_basis": "expected_output derived 2026-10-21 from scripts/materialize_cio_portfolio_thesis.py main(): produced_count = 1 when a thesis version was published, 0 with empty_reason no_new_input when the delta is unchanged (idempotent second run)."
+      },
+      "review_by": "2026-11-04",
+      "review": {
+        "prepared_by": "agent draft (rebuild of #1417, 2026-10-21)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator PatsKiller 2026-10-21 (\"approve both contracts and the 395 plan expiry\")",
+        "reviewed_on": "2026-10-21"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "portfolio thesis versions published",
+        "rule": "empty_allowed",
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/cio-portfolio-thesis_last.json produced_count (LaneRunReceipt@v2; the executor reads the immutable attempt copy data/runtime/lane_attempts/cio-portfolio-thesis/<run_id>.json)"
+          },
+          {
+            "kind": "store_rows",
+            "ref": "data/cio/cio_portfolio_theses.jsonl PORTFOLIO_THESIS_PUBLISHED append via scripts/lib/cio_portfolio_thesis_v1.py reconcile_portfolio_thesis"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "advisory-maturity-evidence",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "operator_approved_shadow_20261021",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Refresh the four read-only evidence snapshots MaturityScorecard@v1 consumes (RAG freshness, pin integrity, GPU policy, ops-tree pin audit) so the scorecard stops reading stale or absent files.",
+        "business_function": "platform",
+        "source": "scripts/refresh_advisory_maturity_evidence.py module docstring; config/cio_known_dark_classification.json"
+      },
+      "owner": "cio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/refresh_advisory_maturity_evidence.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/advisory_maturity_evidence.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock (no cron line exists; a dry_run fire takes /tmp/advisory_maturity_evidence.lock.dryrun)"
+        },
+        {
+          "name": "data/runtime/advisory-maturity-evidence_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt@v2 / allowlist output_signal (live run only)"
+        },
+        {
+          "name": "Postgres content_embeddings (COUNT/MAX, READ ONLY session)",
+          "kind": "store",
+          "direction": "read",
+          "source": "collect_rag_freshness"
+        },
+        {
+          "name": "ollama list / ollama ps, crontab -l, systemctl --user show, read-only VCS queries on the release and dev trees",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "collect_gpu_policy, collect_tree (scripts/ops_tree_pin_audit.py), collect_pin (scripts/lib/current_pin_integrity.py)"
+        },
+        {
+          "name": "data/cio/{rag_freshness,pin_integrity,gpu_policy,ops_tree_pin_audit}_latest.json (atomic replace, live run only)",
+          "kind": "store",
+          "direction": "write",
+          "source": "refresh() -> scripts/lib/maturity_scorecard.py readers"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before for data/runtime/advisory-maturity-evidence_last.json (a dry run writes nothing, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 240.0 s (80% of timeout_s 300)"
+        },
+        {
+          "check": "collectors_answer",
+          "text": "the DRY-RUN summary carries rag_query_ok true and a gpu_mode; every score is a number"
+        },
+        {
+          "check": "output_produced",
+          "text": "once live: every run writes all four snapshots (produced_count 4 of attempted_count 4)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 48 h (2x cadence) once live"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 240.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy transient-2) or ended RUN_SKIPPED_LOCK in two consecutive slots"
+        },
+        {
+          "check": "collector_degraded",
+          "text": "rag_query_ok false (DB unreachable) or ollama/crontab/systemctl returned non-zero; the snapshot is written with a 0.0 score (not machine-checked yet)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 72 h (3x cadence) once the lane runs live"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run wrote fewer than 4 snapshots, or skipped for a fatal reason ['no_runner', 'disabled', 'dependency_unavailable'] -> RUN_FAILED empty_output, P2"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0,
+        "freshness_rule": "degraded beyond 2x cadence (lane_registry.evaluate_lane SLOW), failed beyond 3x (incident fan-in stale threshold)",
+        "timeout_s": 300,
+        "class": "monitor",
+        "computed_on": "2026-10-21",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED: the lane has never been scheduled (no cron line, no timer, no prior dispatcher run); source class defaults only.",
+        "runs_considered": null,
+        "duration_degraded_above_s": 240.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "registry value_class Operationally Important; evidence for an advisory scorecard (7-day TTL)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN). Wiring the bridge, notifier and diagnoser to this contract is the next build item (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/advisory-maturity-evidence_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='advisory-maturity-evidence' ORDER BY requested_at DESC LIMIT 10\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:advisory-maturity-evidence' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: data/runtime/advisory-maturity-evidence_last.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "evidence_class": "SOURCE_ONLY",
+        "expected_output_basis": "expected_output derived 2026-10-21 from scripts/refresh_advisory_maturity_evidence.py main(): produced_count = snapshots written (4 on every successful live run), attempted_count = 4."
+      },
+      "review_by": "2026-11-04",
+      "review": {
+        "prepared_by": "agent draft (rebuild of #1417, 2026-10-21)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator PatsKiller 2026-10-21 (\"approve both contracts and the 395 plan expiry\")",
+        "reviewed_on": "2026-10-21"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "maturity evidence snapshots written",
+        "rule": "min_produced",
+        "min_produced": 4,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/advisory-maturity-evidence_last.json produced_count (LaneRunReceipt@v2; the executor reads the immutable attempt copy data/runtime/lane_attempts/advisory-maturity-evidence/<run_id>.json)"
+          },
+          {
+            "kind": "file_artifact",
+            "ref": "data/cio/pin_integrity_latest.json and the three sibling snapshots (atomic replace in refresh())"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
     }
   ]
 }
