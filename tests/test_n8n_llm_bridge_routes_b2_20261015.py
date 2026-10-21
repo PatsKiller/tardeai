@@ -414,5 +414,6 @@ def test_analyst_reports_dry_run_makes_no_model_call(bridge, poison, monkeypatch
 
 
 def test_registered_in_the_cio_hardening_gates():
-    text = (ROOT / "scripts" / "run_cio_hardening_ci.py").read_text(encoding="utf-8")
+    from scripts.lib import ci_gates  # gates: one file per gate under config/ci_gates/ (2026-10-21)
+    text = ci_gates.registry_text(ROOT)
     assert "tests/test_n8n_llm_bridge_routes_b2_20261015.py" in text

@@ -373,7 +373,10 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
                         *RRT.LIVE,
                         # 2026-10-21 operator "yes rebuild 1417": two never-scheduled scripts as n8n-native shadow
                         # dispatcher rows (no host line ever existed; tests/test_cio_portfolio_thesis_lane_20261021.py).
-                        "cio-portfolio-thesis", "advisory-maturity-evidence"}
+                        "cio-portfolio-thesis", "advisory-maturity-evidence",
+                        # 2026-10-21 pr-hygiene-audit: n8n-native dispatcher row at shadow, daily 06:30 dry_run (no
+                        # host line; tests/test_pr_hygiene_audit_20261021.py). Added in the release-1 integration.
+                        "pr-hygiene-audit"}
     assert all(native[lane]["scheduler"]["expression"] == "dispatcher" for lane in n8n_native_lanes)
     # 2026-10-15: the step lanes of the n8n fabric process hermes-learning (AGENTS.md §23.23). Fired only by the
     # process workflow, NEVER_SCHEDULED until it runs live (2026-10-19: the five HL.LIVE steps are ACTIVE); `match` names the process step, so no

@@ -32,8 +32,12 @@ from scripts.lib import needs_action as NA  # noqa: E402
 from scripts.lib import release_grant_binding as B  # noqa: E402
 from tests.test_release_window_20261016 import BASE, HEAD, NOON, FakeHost, deploys, grant, runner  # noqa: E402
 
+# Firing coverage (tests/test_alarm_coverage.py): scripts/release_window.py has ONE send_telegram site, Host.notify;
+# test_failed_window_alarm_reaches_the_transport drives a rollback through the real Host.notify. Release-1 integration.
+COVERS = ["scripts/release_window.py"]
+
 ET = RW.TZ
-MID = "5f0ea5b8c0000000000000000000000000000001"     # first-parent commit between BASE and HEAD
+MID ="5f0ea5b8c0000000000000000000000000000001"     # first-parent commit between BASE and HEAD
 OLDER = "5f0ea5b8c0000000000000000000000000000002"
 WF_CIO = ".github/workflows/cio-production-hardening-ci.yml"
 WF_GOV = ".github/workflows/agent-governance.yml"
@@ -250,6 +254,28 @@ def test_ci_red_window_is_a_p2_intent(tmp_path):
     host = TrainHost(tmp_path, ci_by_sha={HEAD: evidence(HEAD, [run(WF_RR, "completed", "failure")])}, chain=[HEAD])
     code, rec = train_runner(tmp_path, host).run("1200")
     assert rec["outcome"] == "STOP_CI_NOT_GREEN" and [p for p, _ in host.notified] == ["P2"]
+
+
+class GatewayHost(TrainHost):
+    """TrainHost with the REAL Host.notify, so the alarm goes through telegram_alert.send_telegram."""
+
+    notify = RW.Host.notify
+
+
+def test_failed_window_alarm_reaches_the_transport(tmp_path, monkeypatch):
+    # FIRING test: inject the condition (promote health fails -> rollback) and observe the message at the gateway.
+    import telegram_alert
+
+    sent = []
+    monkeypatch.setattr(telegram_alert, "send_telegram", lambda msg, *a, **k: sent.append((msg, k)) or True)
+    host = GatewayHost(tmp_path, health=(502,))
+    code, rec = train_runner(tmp_path, host).run("1200")
+    assert code == RW.EXIT_ROLLED_BACK
+    assert len(sent) == 1, "the operator was never told the window rolled back"
+    msg, kw = sent[0]
+    assert "ROLLED_BACK" in msg and HEAD[:9] in msg
+    assert kw == {"priority": "P1", "dedupe_minutes": 0, "producer": "release_window"}
+    assert rec["notification"] == {"accepted": True, "priority": "P1"}
 
 
 def test_needs_action_rule_is_quiet_after_a_release_and_when_never_run(tmp_path):
