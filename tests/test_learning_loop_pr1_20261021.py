@@ -36,6 +36,20 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from scripts.lib import recommendation_registry as reg  # noqa: E402
 from scripts.lib import trade_recommendation_linkage as lk  # noqa: E402
 
+@pytest.fixture(autouse=True)
+def _stub_psycopg2(monkeypatch):
+    """CI has no psycopg2. The writers import psycopg2.extras lazily (RealDictCursor, execute_values) and every
+    test hands them a fake connection, so a stub module keeps these tests hermetic on any runner."""
+    import types
+
+    pg = types.ModuleType("psycopg2")
+    pg.extras = types.ModuleType("psycopg2.extras")
+    pg.extras.RealDictCursor = object
+    pg.extras.execute_values = lambda *a, **k: None
+    monkeypatch.setitem(sys.modules, "psycopg2", pg)
+    monkeypatch.setitem(sys.modules, "psycopg2.extras", pg.extras)
+
+
 T0 = datetime(2026, 10, 8, 14, 0, tzinfo=timezone.utc)
 
 
