@@ -146,9 +146,11 @@ cc_auth:
       - action: stop_change
         methods: [POST]
         pattern: /api/v2/(holdings/(protective-stop|protective-stop/(confirm|cancel)|synthetic-stop|synthetic-stop/cancel)|atm/stop-trailing-control|stop-confirmations/respond|defense/intent/2fa)
-      - action: schwab_reauth
-        methods: [GET, POST]
-        pattern: /api/v2/brokers/schwab/(exchange-code|reauth-url)
+      # schwab_reauth (GET/POST /api/v2/brokers/schwab/(exchange-code|reauth-url)) is deliberately NOT here.
+      # Operator decision 2026-10-21 ("Exempt reauth only"): TOTP step-up was never built, so this gate made
+      # Command Center renewal impossible. The two routes stay behind Tailscale identity auth + CSRF, and the
+      # renewal itself still needs the operator's Schwab login + Schwab 2FA. Every other step-up route keeps
+      # its gate. Restore this entry once TOTP enrollment/verification exists.
       - action: credential_change
         methods: [POST]
         pattern: /api/v2/(admin/(secrets|validate-secret|broker-account/api|brokers)|snaptrade/credentials|broker-accounts/api-read-toggle)

@@ -400,6 +400,20 @@ def require_step_up(request: Any, action: str) -> Decision:
     return Decision(allowed=False, status=403, reason=STEP_UP_MESSAGE, step_up_action=action, kind="step_up")
 
 
+def step_up_blocks_route(cfg: CCAuthConfig, method: str, path: str) -> str | None:
+    """The step-up action that WILL refuse ``method path`` from a Command Center browser, else None.
+
+    Read-only mirror of the step-up branch of :func:`evaluate_request`, for surfaces that must tell
+    the operator up front that a CC action is blocked and where the sanctioned path is (2026-10-21,
+    Schwab reauth: the page offered a flow it could never complete). It changes no decision. A
+    browser never holds the service token, so ``service_token_bypass`` does not unblock it here.
+    """
+    action = step_up_action(cfg, method, path)
+    if not action or cfg.step_up_mode != "enforce" or not cfg.enforce:
+        return None
+    return None if require_step_up(None, action).allowed else action
+
+
 def _token_presented(cfg: CCAuthConfig, headers: Any) -> str:
     vals = _header_values(headers, cfg.token_header)
     if len(vals) == 1 and vals[0].strip():

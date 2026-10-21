@@ -43998,6 +43998,9 @@ def _schwab_token_health(query=None):
             else "Schwab token healthy."
         )
     )
+    _paths = _schwab_reauth_operator_paths(key or "schwab_taxable")  # hardcode-ok: canonical OAuth token row
+    if _paths["cc_reauth_blocked"] and proactive and not needs_reauth and not _access["schwab_paused"]:
+        msg = "Schwab login renewal window — renew from the host CLI or Telegram before true expiry (CC step-up not enabled)."
     return {
         "ok": not needs_reauth,
         "broker": "schwab",
@@ -44021,7 +44024,6 @@ def _schwab_token_health(query=None):
             if probe
             else None
         ),
-        "reauth_command": f"python3 scripts/schwab_token_manager.py reauth-url {key or 'schwab_taxable'}",
         "manual_reauth_path": "/v3/system/schwab-reauth",
         "show_banner": banner,
         "proactive_due": proactive,
@@ -44031,7 +44033,42 @@ def _schwab_token_health(query=None):
         "proactive_due_at": sched.get("proactive_due_at"),
         "days_to_true_expiry": sched.get("days_to_true_expiry"),
         "message": msg,
+        **_paths,
         **_access,
+    }
+
+
+_SCHWAB_REAUTH_CC_ROUTES = (
+    ("GET", "/api/v2/brokers/schwab/reauth-url"),
+    ("POST", "/api/v2/brokers/schwab/exchange-code"),
+)
+
+
+def _schwab_reauth_operator_paths(key: str) -> dict:
+    """Which renewal paths the operator can actually use (2026-10-21).
+
+    config/cc_auth.yaml puts reauth-url and exchange-code behind step-up, and step-up has no TOTP
+    yet, so the CC reauth page can never complete; the host CLI (token manager) and the Telegram
+    redirect-URL paste are the sanctioned paths. Read-only: evaluates the loaded policy, changes no
+    decision and builds no authorize URL. Fails toward reporting the CC path blocked."""
+    blocked_reason = None
+    try:
+        try:
+            from lib import cc_auth as _cca
+        except ImportError:
+            from scripts.lib import cc_auth as _cca
+        _cfg = _cca.load_config()
+        blocked = [a for m, p in _SCHWAB_REAUTH_CC_ROUTES if (a := _cca.step_up_blocks_route(_cfg, m, p))]
+        if blocked:
+            blocked_reason = _cca.STEP_UP_MESSAGE
+    except Exception as exc:  # unknown policy: assume blocked so the page still shows the CLI path
+        blocked_reason = f"cc_auth policy unreadable ({type(exc).__name__})"
+    return {
+        "cc_reauth_blocked": blocked_reason is not None,
+        "cc_reauth_blocked_reason": blocked_reason,
+        "reauth_command": f"python3 scripts/schwab_token_manager.py reauth-url {key}",
+        "exchange_command": f'python3 scripts/schwab_token_manager.py exchange-code {key} "<FULL redirect URL>"',
+        "telegram_paste_supported": True,
     }
 
 

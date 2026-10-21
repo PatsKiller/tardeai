@@ -119,10 +119,6 @@ STEP_UP_EXPECTED = {
     ("POST", "/api/v2/atm/stop-trailing-control"): "stop_change",
     ("POST", "/api/v2/stop-confirmations/respond"): "stop_change",
     ("POST", "/api/v2/defense/intent/2fa"): "stop_change",
-    ("POST", "/api/v2/brokers/schwab/exchange-code"): "schwab_reauth",
-    ("GET", "/api/v2/brokers/schwab/exchange-code"): "schwab_reauth",
-    ("GET", "/api/v2/brokers/schwab/reauth-url"): "schwab_reauth",
-    ("POST", "/api/v2/brokers/schwab/reauth-url"): "schwab_reauth",
     ("POST", "/api/v2/admin/secrets"): "credential_change",
     ("POST", "/api/v2/admin/validate-secret"): "credential_change",
     ("POST", "/api/v2/admin/broker-account/api"): "credential_change",
@@ -139,6 +135,9 @@ STEP_UP_EXPECTED = {
 }
 
 NOT_STEP_UP = [
+    # Operator 2026-10-21 "Exempt reauth only": Schwab reauth left step-up (TOTP was never built).
+    ("GET", "/api/v2/brokers/schwab/reauth-url"),
+    ("POST", "/api/v2/brokers/schwab/exchange-code"),
     ("GET", "/api/v2/broker-orders/pilot/status"),
     ("POST", "/api/v2/broker-orders/pilot/preflight"),
     ("POST", "/api/v2/broker-orders/pilot/disarm"),  # safe direction stays available
