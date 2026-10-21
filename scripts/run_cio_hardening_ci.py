@@ -4038,6 +4038,16 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: ONBOARD_DRYRUN_B7_20261015 — n8n onboarding batch B7 (lane disposition 2026-10-15, MIGRATE_N8N, no
+        # allowlist entry, no --dry-run before), risk tier 4 LLM agents: auto-research, iterate-research-topics,
+        # watch-directives-service, hermes-think-tank, research-intelligence-queue, aegis-synthesis. Offline --dry-run
+        # wins over --apply/--telegram/--drain: no model call, no bridge/router/provider import, no network, no DB, no
+        # send (in-process record-and-raise proof); static capability audit pins chokepoint_send and no direct_sender.
+        # Listing it schedules nothing.
+        "onboard_dryrun_b7_20261015",
+        ["tests/test_onboard_dryrun_b7_20261015.py"],
+    ),
+    (
         # ANCHOR: N8N_WORKFLOW_FRAMEWORK_20261015 — AGENTS.md §23.24 framework checker
         # (scripts/check_n8n_workflow_framework.py: every workflow scored per element, pass/partial/fail with a
         # reason; FW-M6 fails a contract with no expected_output rule — exit 0 with nothing produced is a FAILURE),
