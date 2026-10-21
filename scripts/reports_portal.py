@@ -1066,8 +1066,16 @@ def purge(category: str | None = None, older_than_days: int = 90, apply: bool = 
     def _do(table, where, params, ts_col):
         tcut = f"{ts_col} < NOW() - INTERVAL '{int(older_than_days)} days'"
         if apply:
-            cur.execute(f"DELETE FROM {table} WHERE {where} AND {tcut}", params)
-            return cur.rowcount
+            # 2026-10-21 (operator D3.5, registry-owned retention): archive-first through the shared helper
+            # (lib.retention_archive.managed_purge: jsonl.gz + sha256 manifest + tripwire under
+            # the row-archive root (one directory per table), re-read and count-checked before the delete of exactly those rows).
+            # telegram_outbox is ARCHIVE_THEN_DELETE in the registry; the operator purge no longer bypasses it.
+            from lib.retention_archive import managed_purge
+
+            r = managed_purge(conn, table=table, where_sql=f"({where}) AND t.{tcut}", params=tuple(params),
+                              label=f"reports_portal_{int(older_than_days)}d", writer="reports_portal",
+                              apply=True, archive=True)
+            return int(r.get("deleted") or 0)
         cur.execute(f"SELECT count(*) FROM {table} WHERE {where} AND {tcut}", params)
         return cur.fetchone()[0]
 

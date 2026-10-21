@@ -113,16 +113,25 @@ def load_auto_approval_audit() -> dict:
         return {}
 
 
+#: The stale duplicate RSS connector stub (hermes_rss_ingest vaporware row); alias ``t`` for managed_purge.
+ORPHAN_RSS_WHERE = ("t.source_type = 'rss' AND t.source_name = 'RSS feeds' "
+                    "AND (t.notes ILIKE '%%hermes_rss_ingest%%' OR t.active = false)")
+
+
 def cleanup_orphan_rss_rows(cur) -> int:
-    """Remove stale duplicate RSS connector stub (hermes_rss_ingest vaporware row)."""
-    cur.execute(
-        """DELETE FROM research_sources
-           WHERE source_type = 'rss'
-             AND source_name = 'RSS feeds'
-             AND (notes ILIKE '%hermes_rss_ingest%' OR active = false)
-           RETURNING id"""
-    )
-    return len(cur.fetchall())
+    """Remove stale duplicate RSS connector stub (hermes_rss_ingest vaporware row).
+
+    2026-10-21 (operator D3.4, registry-owned retention): archive-first through the shared helper
+    (lib.retention_archive.managed_purge: jsonl.gz + sha256 manifest + tripwire under
+    the row-archive root (research_sources), re-read and count-checked before the delete). The archived batch
+    commits on the cursor's connection."""
+    try:
+        from lib.retention_archive import managed_purge
+    except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+        from retention_archive import managed_purge
+    r = managed_purge(cur.connection, table="research_sources", where_sql=ORPHAN_RSS_WHERE, label="orphan_rss_stub",
+                      writer="hermes_source_registry", apply=True, archive=True)
+    return int(r.get("deleted") or 0)
 
 
 def enrich_source_rows(rows: list[dict]) -> dict:

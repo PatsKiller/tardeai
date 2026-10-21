@@ -335,7 +335,8 @@ def test_blocked_reasons_match_the_scripts():
     # learn half of autonomous_self_tune are shadow lanes now. score_history_retention stays EXCLUDED: destructive
     # retention on cron, an operator decision.
     src = {sid: (ROOT / _step_argv(STEPS[sid][1]["command"])[0]).read_text(encoding="utf-8") for sid in BLOCKED}
-    assert "DELETE FROM hermes_score_history" in src["score_history_retention"]
+    # 2026-10-21 (operator D4.2): the step's script is RETIRED and deletes nothing; db_retention owns the table.
+    assert "RETIRED" in src["score_history_retention"] and "DELETE FROM" not in src["score_history_retention"]
     assert "OPERATOR DECISION" in SPEC["steps"]["score_history_retention"]["blocked"]
     assert set(BLOCKED) == {"score_history_retention"}
     assert set(RUNNABLE) == {

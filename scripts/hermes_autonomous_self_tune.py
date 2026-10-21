@@ -84,9 +84,8 @@ def _archive_graft(doc: dict):
         return None
 
 # retention windows (days) — env override
-SCORE_HISTORY_DAYS = int(os.getenv("HERMES_SCORE_HISTORY_RETENTION_DAYS", "30"))
+# (2026-10-21: the score-history and external-research windows were removed; db_retention owns those tables.)
 RESEARCH_DAYS = int(os.getenv("HERMES_RESEARCH_RETENTION_DAYS", "180"))
-EXTERNAL_DAYS = int(os.getenv("HERMES_EXTERNAL_RETENTION_DAYS", "180"))
 EMBED_DROP_DAYS = int(os.getenv("HERMES_EMBED_DROP_DAYS", "7"))
 QUEUE_STALE_DAYS = int(os.getenv("HERMES_QUEUE_STALE_DAYS", "7"))
 DEAD_TABLES = [t.strip() for t in os.getenv(
@@ -257,13 +256,15 @@ def self_purge(cur, apply: bool) -> dict:
               (EMBED_DROP_DAYS,), apply)
     out["embeddings_requeued"], out["embeddings_dropped"] = rq, dr
     # 3. aged rows
-    out["score_history_purged"] = _archived_purge(cur, "score_hist", "hermes_score_history",
-        "t.scored_at < NOW() - (%s||' days')::interval", (SCORE_HISTORY_DAYS,), apply)
+    #    2026-10-21 (operator D4.2 / D5.4): hermes_score_history and hermes_external_research are owned by
+    #    db_retention alone (config/data_retention_policy.json: 21 d archive-first / ARCHIVE_THEN_DELETE 90 d).
+    #    The self-tune purges of those two tables are retired; the counters stay (always 0) so the lane receipt
+    #    keeps its shape.
+    out["score_history_purged"] = 0
     out["research_purged"] = _archived_purge(cur, "research", "hermes_research_intelligence",
         "t.created_at < NOW() - (%s||' days')::interval AND t.status IN ('rejected','superseded','expired')",
         (RESEARCH_DAYS,), apply)
-    out["external_purged"] = _archived_purge(cur, "external", "hermes_external_research",
-        "t.created_at < NOW() - (%s||' days')::interval", (EXTERNAL_DAYS,), apply)
+    out["external_purged"] = 0
     # 4. dead legacy tables -- 2026-10-11: archived DELETE of every row instead of TRUNCATE (rule 6); the
     #    tables held 0 rows when measured, so this is the same no-op until something writes to them again.
     out["dead_tables_truncated"] = []

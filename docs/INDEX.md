@@ -2351,7 +2351,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/runbooks/BARE_METAL_RECOVERY.md` | Bare-Metal Recovery Runbook (2026-07-17 backup-scope audit) | review_required | OK | `80d205a4c45f` |
 | `docs/runbooks/BRIDGE_OAUTH_TRANSPORTS_ACTIVATION.md` | Governed bridge: enabling the Grok and ChatGPT OAuth transports | review_required | MISSING HEADER | `8ef0ccbd18e0` |
 | `docs/runbooks/DB_HANG_PREVENTION.md` | DB-induced dashboard hang — prevention & recovery | review_required | OK | `4105584e570c` |
-| `docs/runbooks/DB_RETENTION.md` | DB retention — owners, archive + tripwire, grants | review_required | OK | `3df397be2fb3` |
+| `docs/runbooks/DB_RETENTION.md` | DB retention — owners, archive + tripwire, grants | review_required | OK | `29d41f42fdd3` |
 | `docs/runbooks/FINNHUB_KEY_ROTATION.md` | Finnhub API Key Rotation Runbook | review_required | OK | `b3f47d44596c` |
 | `docs/runbooks/INCIDENT_RESPONSE.md` | Incident response runbook — Trade AI on ms01 | review_required | OK | `1e34cd5ab633` |
 | `docs/runbooks/KEY_ROTATION.md` | Key Rotation Runbook (2026-07-18) | review_required | OK | `986b4883e260` |

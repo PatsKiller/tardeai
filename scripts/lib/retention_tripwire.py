@@ -40,7 +40,8 @@ SCHEMA = "RetentionArchiveTripwire@v1"
 TRIPWIRE_NAME = "TRIPWIRE.jsonl"
 
 #: Path fragments that identify an archived store. Any live reference to one of these is a read.
-NEEDLES: tuple[str, ...] = ("archive/db_retention", "archive/db_trim", "archive/file_prune")
+#: 2026-10-21: + archive/logs (rotate_runtime_logs.sh archives log heads there instead of discarding them).
+NEEDLES: tuple[str, ...] = ("archive/db_retention", "archive/db_trim", "archive/file_prune", "archive/logs")
 
 #: Repo files that legitimately name the archive: its writers, this reader, and the registries that
 #: document where the archive lives. Relative to the repo root.
@@ -50,6 +51,7 @@ ALLOWLIST_REL: frozenset[str] = frozenset({
     "scripts/report_db_hygiene.py",
     "scripts/lib/retention_archive.py",
     "scripts/lib/retention_tripwire.py",
+    "scripts/rotate_runtime_logs.sh",
     "config/data_retention_policy.json",
     "config/lane_registry.json",
 })
@@ -68,6 +70,10 @@ def tripwire_files(state_root: Path) -> list[Path]:
     trim = base / "db_trim" / TRIPWIRE_NAME
     if trim.is_file():
         out.append(trim)
+    # 2026-10-21: archived log heads / surplus tail archives (scripts/rotate_runtime_logs.sh).
+    logs = base / "logs" / TRIPWIRE_NAME
+    if logs.is_file():
+        out.append(logs)
     return out
 
 

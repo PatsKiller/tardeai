@@ -988,6 +988,22 @@ def _generate_html(date_str: str, perf_data: Dict, tech_data: Dict,
 </html>"""
 
 
+def _archive_prune(files, base_dir, label: str, writer: str) -> dict:
+    """2026-10-21 (operator D8.4, registry-owned retention): archive (tar.gz + sha256 manifest + tripwire under
+    the file-prune archive root (<state>/archive, file_prune/<label>/)) and only then unlink. A failed archive unlinks nothing. Registered in
+    config/data_retention_policy.json purge_paths portfolio_report_rotation."""
+    import sys as _s
+    _scripts = str(Path(__file__).resolve().parent)
+    if _scripts not in _s.path:
+        _s.path.insert(0, _scripts)
+    from lib.retention_archive import archive_prune
+
+    res = archive_prune(list(files), base_dir=base_dir, label=label, writer=writer)
+    if res.get("error"):
+        print(f"[{writer}] retention archive failed, nothing removed: {res['error']}")
+    return res
+
+
 def run_weekly_report(project_root: str = ".") -> Optional[Path]:
     """Main entry point. Generate weekly report and send Telegram summary."""
     global PROJECT_ROOT, STATE_DIR, WEEKLY_DIR
@@ -1125,13 +1141,13 @@ def run_weekly_report(project_root: str = ".") -> Optional[Path]:
         print(f"[weekly-report] CC update skipped: {e}")
 
     # Cleanup old weekly reports (keep last 8)
+    # 2026-10-21 (D8.4): archive-then-unlink (LLM output that cannot be regenerated), never a bare unlink.
     old_reports = sorted(WEEKLY_DIR.glob("weekly_*.html"))
-    for old in old_reports[:-8]:
-        old.unlink()
-        old_json = old.with_suffix(".json")
-        if old_json.exists():
-            old_json.unlink()
-        print(f"[weekly-report] Cleaned up {old.name}")
+    _old = [f for old in old_reports[:-8] for f in (old, old.with_suffix(".json")) if f.exists()]
+    if _old:
+        _res = _archive_prune(_old, WEEKLY_DIR, "portfolio_weekly_reports", "portfolio_weekly_report")
+        if _res.get("unlinked"):
+            print(f"[weekly-report] Archived + cleaned up {_res['unlinked']} file(s) -> {_res.get('archive')}")
 
     # Send Telegram summary (re-validate action — never ship unheld tickers / bad prices)
     from portfolio_report_llm import build_grounding, sanitize_action_text
