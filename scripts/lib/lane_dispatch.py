@@ -1107,8 +1107,9 @@ def r1_class_admission(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]
       * output_signal is the LaneRunReceipt@v1 (json_key ok_at on data/runtime/<x>_last.json) and the allowlist
         entry's output_signal is the same path;
       * no broker credential name in the entry's env_names (ruling 3);
-      * llm only: entry.llm_route == {"via": "cio-governed-bridge", "process_id": <registered process>} and no argv
-        token that picks a provider or model (§23.4). The spend cap (§12) and deferral ride the bridge."""
+      * llm only: entry.llm_route == {"via": "cio-governed-bridge", "process_id": <registered process>} (or, for a
+        compound lane, "process_ids": [<registered process>, ...]) and no argv token that picks a provider or model
+        (§23.4). The spend cap (§12) and deferral ride the bridge."""
     lane = str(row.get("lane_id") or "?")
     try:
         block = parse_dispatch_block(row)
@@ -1171,10 +1172,17 @@ def r1_class_admission(row: Mapping[str, Any], entry: Optional[Mapping[str, Any]
         route = entry.get("llm_route")
         if not isinstance(route, Mapping) or route.get("via") != GOVERNED_LLM_ROUTE:
             return False, f"llm_route_not_governed_bridge:{route!r}"
-        pid = route.get("process_id")
+        # 2026-10-15: a compound lane declares the SET of processes its steps call (process_ids); every one must be
+        # registered. Exactly one of process_id / process_ids (the executor's validate_entry checks the same shape).
+        if route.get("process_id") is not None and route.get("process_ids") is not None:
+            return False, f"llm_route_shape:{route!r}"
+        pids = route.get("process_ids") if route.get("process_ids") is not None else [route.get("process_id")]
+        if not isinstance(pids, list) or not pids:
+            return False, f"llm_route_shape:{route!r}"
         known = frozenset(process_ids) if process_ids is not None else load_llm_process_ids()
-        if not isinstance(pid, str) or pid not in known:
-            return False, f"llm_process_unregistered:{pid!r}"
+        for pid in pids:
+            if not isinstance(pid, str) or pid not in known:
+                return False, f"llm_process_unregistered:{pid!r}"
         for key in ("command", "dry_run_arg", "live_arg"):
             for tok in entry.get(key) or []:
                 low = str(tok).lower()

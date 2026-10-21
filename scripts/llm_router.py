@@ -9,6 +9,13 @@ Usage:
     from llm_router import get_llm_response
     result = get_llm_response("agent_narrative", prompt, high_impact=False)
     result = get_llm_response("agent_debate", prompt, high_impact=True)
+
+Governed bridge (2026-10-15, n8n llm lane batch 4): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
+an allowlist ``llm_route``) get_llm_response makes ONE governed-bridge request as the task's registered process
+(lib.agent_flash_governance.process_for_task, e.g. agent_debate -> watchlist_agent_debate_flash); the bridge walks
+grok -> chatgpt -> DeepSeek (operator D10). No provider table entry, governed-flash client, llm_lane or API key is
+reached; a refusal (or a process outside the bound set) is ``success: False`` with BRIDGE_ROUTE_REFUSED and no
+further provider is tried. Without the flag the routing below is unchanged.
 """
 import json, os, sys, time, urllib.request
 from datetime import datetime
@@ -184,6 +191,25 @@ _PROVIDERS = {
 }
 
 
+def _bridge_response(task_type: str, prompt: str, *, max_tokens: int, high_impact: bool) -> dict:
+    """ONE governed-bridge request as the task's registered process (see the module docstring)."""
+    t0 = time.time()
+    try:
+        from lib.agent_flash_governance import process_for_task
+        from lib.llm_bridge_route import require_text_via_bridge
+
+        process_id = process_for_task(task_type or "default")
+        text = require_text_via_bridge(process_id, prompt, timeout_s=180, max_tokens=max_tokens)
+    except Exception as e:  # noqa: BLE001 -- refused / unreachable: no other provider is tried
+        return {"model_used": "none", "provider": "bridge", "response": "", "success": False,
+                "latency": round(time.time() - t0, 2), "error": f"BRIDGE_ROUTE_REFUSED: {str(e)[:200]}",
+                "task_type": task_type, "high_impact": high_impact, "total_cost": None, "cost_estimate": None,
+                "fallback_reasons": []}
+    return {"model_used": "governed-bridge", "provider": "bridge", "response": text, "success": True,
+            "latency": round(time.time() - t0, 2), "task_type": task_type, "high_impact": high_impact,
+            "process_id": process_id, "cost_estimate": None, "total_cost": None, "fallback_reasons": []}
+
+
 def get_llm_response(
     task_type: str,
     prompt: str,
@@ -209,6 +235,9 @@ def get_llm_response(
     Returns:
         dict with: model_used, provider, response, latency, cost_estimate, fallback_reason
     """
+    if os.environ.get("TRADEAI_LLM_VIA_BRIDGE", "off").strip().lower() in {"1", "on", "bridge"}:
+        return _bridge_response(task_type, prompt, max_tokens=max_tokens, high_impact=high_impact)
+
     # Thread task context into governed DeepSeek provider
     _call_openai._current_task_type = task_type or "agent_narrative"  # type: ignore[attr-defined]
     _call_openai._current_metadata = metadata  # type: ignore[attr-defined]

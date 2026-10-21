@@ -14,9 +14,15 @@ skip ledger or starting hermes_external_researcher (the no-flag form still appen
 events, as before). A real --apply run writes data/runtime/hermes_top20_external_intel_last.json
 (LaneRunReceipt@v1; ok_at only on success) under the persistent state root and exits 1 when the run
 failed or every researcher call it started failed.
+
+Governed bridge (2026-10-15, n8n llm lane batch 3): with TRADEAI_LLM_VIA_BRIDGE=1 (bound by the n8n run executor from
+the allowlist ``llm_route`` of lane hermes-top20-external-intel, process hermes_external_research) the per-lane fan-out
+collapses to ONE researcher call per symbol (the first requested lane is the bookkeeping label): the caller cannot
+pick a provider on the bridge, so asking it once per lane would only repeat the same OAuth-first route. The child
+hermes_external_researcher inherits the binding and calls only the bridge. --dry-run starts no researcher.
 """
 from __future__ import annotations
-import argparse, json, subprocess, sys
+import argparse, json, os, subprocess, sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -151,6 +157,8 @@ def _trigger_for(r, ctx):
 def run(top=20, lanes=("chatgpt", "grok"), apply=False, symbols=None, *, run_id=None, dry_run=False):
     if dry_run:
         apply = False  # --dry-run wins over --apply
+    if os.environ.get("TRADEAI_LLM_VIA_BRIDGE", "off").strip().lower() in {"1", "on", "bridge"}:
+        lanes = tuple(lanes)[:1]  # the governed bridge chooses the provider: one request per symbol
     producer = "hermes_top20_external_intel"
     family = "B"
     accounting_run_id = run_id or new_run_id(producer)
