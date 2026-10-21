@@ -49,6 +49,10 @@ from scripts.lib import release_delegation as RD  # noqa: E402
 from scripts.lib import release_train_contracts as TC  # noqa: E402
 from scripts.lib import release_train_controller as T  # noqa: E402
 
+#: Alarm coverage (tests/test_alarm_coverage.py): release_window.Host.notify's send_telegram site (ops branch
+#: 58bf60cf3) is fired by test_failed_window_alert_reaches_the_transport.
+COVERS = ["scripts/release_window.py"]
+
 ET = ZoneInfo("America/New_York")
 NOW = datetime(2026, 10, 21, 18, 5, tzinfo=ET)
 CHECKS = ("cio-hardening", "agent-governance", "release-readiness", "ci-gate")
@@ -1462,3 +1466,21 @@ def test_a_busy_claimer_does_nothing(tmp_path):
         lock.release()
     assert out["outcome"] == "CLAIMER_BUSY"
     assert (w.state_dir / "train_requests" / "pending" / "rtw-20261021-1800-win.json").exists()
+
+
+# ── alarm firing (release_window.Host.notify -> telegram_alert.send_telegram) ─────────────────────
+
+def test_failed_window_alert_reaches_the_transport(tmp_path, monkeypatch):
+    sent = []
+    fake = types.ModuleType("telegram_alert")
+    fake.send_telegram = lambda msg, **kw: sent.append((msg, kw)) or True
+    monkeypatch.setitem(sys.modules, "telegram_alert", fake)
+    runner = RW.Runner(RW.Host(checkout=tmp_path, releases=tmp_path, canonical=tmp_path), RW.State(tmp_path / "s"))
+    w = RW.window_for(NOW, "1730")
+    rec = {"outcome": "ROLLED_BACK", "candidate": {"sha": "c" * 40, "selected_by": "head_green"},
+           "current": {"build_sha": "b" * 40}, "finished_at": "2026-10-21T22:00:00Z", "stop_latched": {"x": 1}}
+    runner._alert(w, rec)
+    assert rec["notification"] == {"accepted": True, "priority": "P1"}
+    assert len(sent) == 1 and "ROLLED_BACK" in sent[0][0]
+    assert sent[0][1]["priority"] == "P1" and sent[0][1]["dedupe_minutes"] == 0
+    assert rec["needs_action_item"]["severity"] == "P1"

@@ -53,7 +53,10 @@ def test_c10_preflight_consumes_one_use_only_when_allowed(monkeypatch, tmp_path)
     monkeypatch.setattr(pf, "GUARD_LEDGER", ledger)
     assert pf.consume_release_grant(runner=boom)["ok"] is False
     src = (ROOT / "scripts" / "release_grant_preflight.py").read_text(encoding="utf-8")
-    assert 'out["consumed"] = consume_release_grant()' in src
+    # 2026-10-21 (ops/release-train-20261021 58bf60cf3): promote decides with --no-consume before CI and consumes
+    # immediately before activation, so the call is now conditional on --no-consume; it must still be there.
+    assert ('out["consumed"] = consume_release_grant()' in src
+            or 'out["consumed"] = {"skipped": "no_consume"} if args.no_consume else consume_release_grant()' in src)
 
 
 def test_c10_pre_push_consumes_unless_shell_guard_did():
