@@ -1,0 +1,19 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_authority_20261021",
+  "files": [
+    "tests/test_release_train_authority_20261021.py"
+  ],
+  "anchor": "RELEASE_TRAIN_AUTHORITY_20261021",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_AUTHORITY_20261021 — Release Train v2 Phase 2 (operator D1/D3 2026-10-21), libraries",
+    "only, wired into nothing: ReleaseDelegation@v1 loader (fail closed: missing/corrupt/unknown status/PAUSED/",
+    "REVOKED/in-repo path/never-delegable class = not authorized), the HMAC phase-capability issuer (build/publish",
+    "cannot merge or promote; merge/promote bind delegation+digest+epochs, repo/env/train/base, ordered PR heads,",
+    "candidate+artifact+evidence digests, services, window, budget, rollback target; verify-then-reserve under",
+    "the one global release lock with an intent record; refusals consume nothing; UNCERTAIN blocks until",
+    "reconciled) and the ReleaseControl@v1 STOP/pause/resume/revoke machine (release_window STOP.json latch,",
+    "ABSENT/SET/UNREADABLE fail closed; new epoch on resume; CC may only request STOP or pause). Hermetic:",
+    "tmp_path state, temp key, fixed clock, one subprocess crash."
+  ]
+}
