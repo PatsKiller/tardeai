@@ -38,6 +38,13 @@ except ImportError:
         def __exit__(self, *a): pass
         def rows(self, n): pass
 
+# 2026-10-21: NaN/±Inf -> None on the result every indicator_confluence_cache writer serialises (a bare NaN is not
+# JSON; Postgres rejected GP's NaN weekly pivots and the 08:00 lane failed 2026-10-20 and 2026-10-21).
+try:
+    from lib.json_finite import json_safe
+except ImportError:  # imported as scripts.indicator_engine
+    from scripts.lib.json_finite import json_safe
+
 logger = logging.getLogger(__name__)
 
 # Load config once at module import
@@ -1281,7 +1288,7 @@ def analyze_confluence(symbol: str, profile: str = 'swing') -> dict:
             tier = 'NONE'
             pillar_score = 0
 
-        return {
+        return json_safe({
             'ok': True,
             'symbol': symbol,
             'profile': profile,
@@ -1302,7 +1309,7 @@ def analyze_confluence(symbol: str, profile: str = 'swing') -> dict:
             'entry_quality': entry_quality,
             'confluence_v2': analyze_confluence_v2(signals, strategy_cfgs),
             'computed_at': datetime.now(timezone.utc).isoformat(),
-        }
+        })
 
     except Exception as e:
         logger.error(f"analyze_confluence failed for {symbol}: {e}")
