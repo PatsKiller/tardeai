@@ -2,7 +2,7 @@
 
 ```
 Status:      DRAFT (branch feat/release-train-queue-20261021; build-only, nothing armed)
-as_of:       2026-10-21T17:30:00-04:00
+as_of:       2026-10-21T19:10:00-04:00 (revision 2)
 Measured at: not measured (shape contract; base origin/main 7faa8cddf)
 Owner:       platform
 Authority:   READ_ONLY_ADVISORY · MBI_BEHAVIOR = 0
@@ -10,12 +10,23 @@ Plan:        Release Train v2, Phase 1 (queue + read-only Command Center)
 Design:      Aiden_Release_Train_Enhanced_Design_2026-10-21 §4, §7, §9
 ```
 
-This document is the response contract for the four read-only routes under
-`/api/v2/coordination/release-train`. The Command Center "Release train" tab (Coordination) and the Home card
+This document is the response contract for the five read-only GET routes under
+`/api/v2/coordination/release-train`: the summary, `/queue`, `/trains`, `/trains/{id}` and `/events`. The Command Center "Release train" tab (Coordination) and the Home card
 build against it. The backend is `scripts/lib/release_train_view.py`, wired in `scripts/api_v2.py`.
 
-Nothing here writes, merges, pushes, releases or arms anything. There is no command endpoint in Phase 1: STOP, pause,
-resume and revoke are Phase 2 and get their own typed endpoint and document.
+Nothing here writes, merges, pushes, releases or arms anything. The STOP command and its read-back
+(`GET` / `POST .../release-train/stop`) and every other non-GET under `/release-train` belong to the STOP block of
+branch `feat/release-train-cc-20261021` (`scripts/lib/release_train_stop.py`,
+`docs/ops/RELEASE_TRAIN_UI_CONTRACT.md`). This view never answers them: its handler returns nothing for them, so the
+request falls through to that block.
+
+**Revision 2 (2026-10-21, coordinator request from the frontend build):**
+
+- added `summary.current_train`, `summary.last_verified` and `summary.state_dir`;
+- added `GET .../trains` (paginated list);
+- `stop.value.state` now uses the `release_window.State.read_latch` vocabulary, `ABSENT` / `SET` / `UNREADABLE`.
+  It replaces `CLEAR` / `LATCHED` / `UNREADABLE`;
+- non-GET requests no longer get a `405` from this view.
 
 ## 1. Rules every consumer must follow
 
@@ -28,9 +39,9 @@ resume and revoke are Phase 2 and get their own typed endpoint and document.
 4. **`armed` is `false` in Phase 1** and `standing_policy.value.state` is `"NOT_CONFIGURED"`. Show both plainly;
    a window time is a permitted opportunity, not a scheduled deployment.
 5. **HTTP status.** `200` with `{"ok": true, "data": ...}` whenever the handler ran, including when every source is
-   UNAVAILABLE. `400` bad parameter, `404` train not found (only when the store was readable), `405` any method other
-   than GET, `500` handler failure (`error` is an exception type name, never a trace). Error bodies are
-   `{"ok": false, "error": "<code>", "detail": "<text or absent>"}`.
+   UNAVAILABLE. `400` bad parameter, `404` train not found (only when the store was readable), `500` handler failure (`error` is an exception type name, never a trace). Error bodies are
+   `{"ok": false, "error": "<code>", "detail": "<text or absent>"}`. This view is GET-only. A non-GET request, or
+   any request for `.../stop`, is not answered here and falls through to the STOP block (see above).
 6. **Timeouts.** Each source is read off the request thread in a worker pool with its own deadline. The whole
    response waits at most `timeout_s` (3.0 s). A source that misses its deadline is `UNAVAILABLE` with
    `reason: "timeout"`. Responses are cached for 15 s per route and query.
@@ -116,6 +127,19 @@ No query parameters.
       "value": {"ready": 2, "held": 5, "needs_operator": 3, "blocked": 1, "in_train": 0, "other": 0, "total": 11},
       "as_of": "2026-10-21T21:30:00+00:00", "freshness": "OK", "source": "postgres:release_queue", "reason": null
     },
+    "current_train": {
+      "value": {"train_id": "rt-20261021-1800-a1b2c3", "phase": "integrating", "member_count": 2,
+                "window_id": "2026-10-21T18:00-04:00", "started_at": "2026-10-21T20:30:00+00:00"},
+      "as_of": "2026-10-21T21:30:00+00:00", "freshness": "OK", "source": "postgres:release_queue_events",
+      "reason": null
+    },
+    "last_verified": {
+      "value": {"train_id": "rt-20261020-1800-9f8e7d", "served_sha": "<40 hex>",
+                "verified_at": "2026-10-20T22:41:07+00:00", "outcome": "RELEASED_VERIFIED",
+                "window_id": "2026-10-20T18:00-04:00"},
+      "as_of": "2026-10-21T21:30:00+00:00", "freshness": "OK", "source": "postgres:release_queue_events",
+      "reason": null
+    },
     "last_outcome": {
       "value": {
         "train_id": "rt-20261021-1800-a1b2c3",
@@ -132,17 +156,24 @@ No query parameters.
     },
     "stop": {
       "value": {
-        "state": "CLEAR",
+        "state": "ABSENT",
         "effective_stop": false,
         "latched_at": null,
         "window_id": null,
         "latch_reason": null,
         "reader": "file",
-        "path": "<state root>/data/runtime/release_window/STOP.json",
+        "path": "<state dir>/STOP.json",
+        "state_dir": "<state dir>",
+        "state_dir_source": "release_window.STATE_DIR",
         "note": "Release STOP only. The trading kill switch is separate."
       },
       "as_of": "2026-10-21T21:30:00+00:00", "freshness": "OK", "source": "file:release_window/STOP.json",
       "reason": null
+    },
+    "state_dir": {
+      "value": {"path": "/home/<user>/trade-ai-releases/persistent-state/data/runtime/release_window",
+                "source": "release_window.STATE_DIR"},
+      "as_of": "2026-10-21T21:30:00+00:00", "freshness": "OK", "source": "release_window.STATE_DIR", "reason": null
     },
     "census": {"value": "<Census, section 4>", "as_of": "2026-10-21T10:30:12+00:00", "freshness": "OK",
                "source": "receipt:pr-hygiene-audit", "reason": null},
@@ -168,14 +199,32 @@ No query parameters.
 Details:
 
 - `status` is `"OK"` when every `Field` is `OK`, else `"DEGRADED"`.
-- `stop.value.state` is one of:
-  - `"CLEAR"`: no latch file;
-  - `"LATCHED"`: a readable latch;
-  - `"UNREADABLE"`: the file exists but cannot be read or parsed. This is a STOP, so `effective_stop` is `true`.
+- `stop.value.state` uses the `release_window.State.read_latch` vocabulary, the same one `GET .../stop` returns:
+  - `"ABSENT"`: no latch path exists;
+  - `"SET"`: a readable latch;
+  - `"UNREADABLE"`: the path exists but cannot be read or parsed. This is a STOP, so `effective_stop` is `true`. Any
+    other verdict from a reader is also reported as `UNREADABLE`.
+
+  `effective_stop` is `true` for every state except `ABSENT`.
 
   `reader` is `"release_window.State.read_latch"` when main's `release_window.py` has that method, else `"file"`
   (same fail-closed semantics). `latched_at`, `window_id` and `latch_reason` are copied from the latch body when it
   is readable.
+- `state_dir` and `stop.value.state_dir` are the release-window state directory. It is resolved exactly as
+  `scripts/release_window.py` and `release_train_stop.state_dir()` resolve it:
+  - `TRADEAI_RELEASE_WINDOW_STATE_DIR` when it is set (read at call time);
+  - else `release_window.STATE_DIR` (`$TRADEAI_STATE_ROOT/data/runtime/release_window`, default
+    `~/trade-ai-releases/persistent-state/data/runtime/release_window`);
+  - else the same formula, computed locally when `release_window` cannot be imported.
+
+  `source` names the branch that was used: `env:TRADEAI_RELEASE_WINDOW_STATE_DIR`, `release_window.STATE_DIR` or
+  `fallback:release_window formula`. Compare it with the runner's own `status` output.
+- `current_train` is the newest train with no outcome recorded yet. Its `value` is `null` with `freshness: "OK"` and
+  `reason: "no_train_in_progress"` when no train is running. The value is authoritative, so do not derive it from
+  `/queue`.
+- `last_verified` is the newest outcome whose immediate acceptance passed, `RELEASED_VERIFIED` or
+  `RELEASED_OBSERVING`. `verified_at` is that outcome's `finished_at`. Its `value` is `null` with `freshness: "OK"` and
+  `reason: "no_verified_release"` when there is none yet.
 - `stop.freshness` is `UNAVAILABLE` (and `value` `null`) only when the read itself timed out or failed. Render that
   as STOPPED (rule 3).
 - `queue_counts` groups projection states:
@@ -327,6 +376,52 @@ Row `as_of` is the time of the PR's last queue event. `title` and `census_bucket
 `null` when the census is unavailable or does not list the PR. Rows are ordered by state, most actionable first
 (`blocked`, `needs_operator`, `held`, `ready`, the in-train states, the rest), then by PR number.
 
+## 5a. `GET /api/v2/coordination/release-train/trains` — train history (paginated)
+
+Query parameters:
+
+| parameter | type | default | rule |
+|---|---|---|---|
+| `limit` | integer | 20 | 1 to 100; otherwise `400 bad_limit`. |
+| `before_seq` | integer | (newest) | ≥ 1; otherwise `400 bad_before_seq`. Pass the previous page's `next_before_seq`. |
+
+Trains are ordered newest first, by the `seq` of their first event.
+
+```json
+{
+  "ok": true,
+  "data": {
+    "schema": "ReleaseTrainList@v1",
+    "authority": "READ_ONLY_ADVISORY",
+    "generated_at": "2026-10-21T21:30:00+00:00",
+    "as_of": "2026-10-21T21:30:00+00:00",
+    "freshness": "OK",
+    "source": "postgres:release_queue_events",
+    "reason": null,
+    "trains": [
+      {
+        "train_id": "rt-20261021-1800-a1b2c3",
+        "window_id": "2026-10-21T18:00-04:00",
+        "phase": "observing",
+        "member_count": 2,
+        "outcome": "RELEASED_OBSERVING",
+        "history_class": "observing",
+        "started_at": "2026-10-21T20:30:00+00:00",
+        "finished_at": "2026-10-21T22:41:07+00:00"
+      }
+    ],
+    "next_before_seq": 118
+  }
+}
+```
+
+- `history_class` uses the section 6 vocabulary: `in_progress`, `not_shipped`, `merged_not_live`, `verified`,
+  `observing`, `rolled_back` and `rollback_failed`.
+- `outcome` is `null` while the train is in progress.
+- `next_before_seq` is `null` on the last page.
+- When the store is unreadable, `trains` and `next_before_seq` are `null` and `freshness` is `"UNAVAILABLE"`.
+- A readable store with no trains returns `"trains": []`. That is a real empty.
+
 ## 6. `GET /api/v2/coordination/release-train/trains/{train_id}`
 
 `train_id` must match `^rt-[0-9]{8}-[0-9]{4}-[a-z0-9]{4,12}$`; otherwise `400 bad_train_id`.
@@ -469,5 +564,5 @@ When several rules match, the most restrictive class wins.
 - `TrainEvent@v1`
 - `TrainOutcome@v1`
 
-The response wrappers above (`ReleaseTrainSummary@v1`, `ReleaseTrainQueue@v1`, `ReleaseTrainDetail@v1` and
-`ReleaseTrainEvents@v1`) are view shapes defined by this document.
+The response wrappers above (`ReleaseTrainSummary@v1`, `ReleaseTrainQueue@v1`, `ReleaseTrainList@v1`,
+`ReleaseTrainDetail@v1` and `ReleaseTrainEvents@v1`) are view shapes defined by this document.
