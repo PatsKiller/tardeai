@@ -50,6 +50,17 @@ RULE_2_EXCEPTION_14_0_0 = (
     "\n   read; it never sees a credential value, re-authenticates, changes a flag or reaches an order"
     "\n   route (AGENTS.md §24.11)."
 )
+# AGENTS.md 15.0.0 (ACTIVE 2026-10-21, ratified APPROVE_AGENTS_POLICY_15_0_0 1852 fc5672896): §0 rule 6 gains this one
+# sentence and §17 this one entry. Stripped before hashing like the 5.0.0 and 14.0.0 sentences; both and the new
+# digests are pinned by tests/test_agents_policy_15_0_0_disk_hygiene.py.
+RULE_6_EXCEPTION_15_0_0 = (
+    "\n   One exception, binding only once AGENTS.md 15.0.0 is ACTIVE: the n8n lane `disk-hygiene` may"
+    "\n   remove the reclaimable items its reviewed rules select (scripts/disk_hygiene.py,"
+    "\n   config/disk_hygiene_rules.json), and nothing else (AGENTS.md §24.12)."
+)
+S17_ENTRY_15_0_0 = (
+    " **changing the disk-hygiene rules or never-touch list** (§24.12 — a `config-write` grant and a reviewed PR) ·"
+)
 PINNED_SECTIONS = {
     "§0": (
         "# 0 · If you read nothing else",
@@ -89,6 +100,7 @@ def _section(text: str, start: str, end: str) -> str:
     block = text[s.start() : s.start() + 1 + e.start()]
     block = block.replace(RULE_2_EXCEPTION_5_0_0, "")  # operator-requested amendment 5.0.0; see the constant
     block = block.replace(RULE_2_EXCEPTION_14_0_0, "")  # operator-requested amendment 14.0.0; see the constant
+    block = block.replace(RULE_6_EXCEPTION_15_0_0, "").replace(S17_ENTRY_15_0_0, "")  # 15.0.0; see the constants
     # §7A embeds a GENERATED table (render_source_of_truth.py); mask it so only rule text is pinned — same mask as
     # the 4.1.0/4.3.0/4.4.0 pins (operator 2026-10-10 'Yes, from one to six', item 5; PR #1678).
     return re.sub(
@@ -137,8 +149,9 @@ def test_banner_states_the_numbering_dependency_and_the_class_reasoning():
     assert "PR #1666" in f and "dd8f4cff1" in f and "settled at ratification" in f and "becomes 5.0.0" in f
     assert "316700266" in f
     # 4.6.0 supersedes 4.5.0; 5.0.0 (#1686) supersedes 4.6.0; 5.1.0 supersedes 5.0.0; 5.2.0 (PROPOSED) supersedes 5.1.0;
-    # 10.0.0 (ACTIVE, ratified on #1736) supersedes 7.0.0; 14.0.0 (ratified on #1838) supersedes 12.0.0.
-    supersedes = {(4, 6, 0): "4.5.0", (5, 0, 0): "4.6.0", (5, 1, 0): "5.0.0", (5, 2, 0): "5.1.0", (10, 0, 0): "7.0.0", (11, 0, 0): "10.0.0", (12, 0, 0): "11.0.0", (14, 0, 0): "12.0.0"}
+    # 10.0.0 (ACTIVE, ratified on #1736) supersedes 7.0.0; 14.0.0 (ratified on #1838) supersedes 12.0.0;
+    # 15.0.0 (ratified on #1852) supersedes 14.0.0.
+    supersedes = {(4, 6, 0): "4.5.0", (5, 0, 0): "4.6.0", (5, 1, 0): "5.0.0", (5, 2, 0): "5.1.0", (10, 0, 0): "7.0.0", (11, 0, 0): "10.0.0", (12, 0, 0): "11.0.0", (14, 0, 0): "12.0.0", (15, 0, 0): "14.0.0"}
     assert _control("Supersedes") == supersedes.get(_version(), "5.1.0")
     assert f"{TOKEN} <pr_number> <head_sha>" in f
 
@@ -168,7 +181,10 @@ def test_23_14_is_byte_identical():
 
 def test_claude_md_adapter_restates_no_new_rule():
     # The adapter repeats §0 verbatim, so once 5.0.0 is ratified it carries the rule 2 sentence; not a new rule.
-    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8").replace(RULE_2_EXCEPTION_5_0_0, "").replace(RULE_2_EXCEPTION_14_0_0, "")
+    text = (
+        (ROOT / "CLAUDE.md").read_text(encoding="utf-8").replace(RULE_2_EXCEPTION_5_0_0, "").replace(RULE_2_EXCEPTION_14_0_0, "")
+        .replace(RULE_6_EXCEPTION_15_0_0, "")
+    )
     assert "n8n" not in text.lower() and "§24" not in text
 
 
@@ -179,8 +195,9 @@ def test_24_has_nine_subsections_each_citing_its_cause():
     s = _s24()
     nums = re.findall(r"^## (24\.\d+) ", s, re.M)
     # 5.0.0 (PROPOSED, operator-requested 2026-10-10) appends §24.10; 14.0.0 (PROPOSED, operator-requested
-    # 2026-10-16) appends §24.11; 4.6.0 still owns exactly 24.1–24.9.
-    assert nums in [[f"24.{i}" for i in range(1, n)] for n in (10, 11, 12)], nums
+    # 2026-10-16) appends §24.11; 15.0.0 (PROPOSED, operator-directed 2026-10-18) appends §24.12; 4.6.0 still owns
+    # exactly 24.1–24.9.
+    assert nums in [[f"24.{i}" for i in range(1, n)] for n in (10, 11, 12, 13)], nums
     for part in re.split(r"^## 24\.\d+ ", s, flags=re.M)[1:]:
         bullets = re.split(r"\n- ", part)[1:]
         assert bullets, part[:80]

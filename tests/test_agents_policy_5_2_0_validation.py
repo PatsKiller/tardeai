@@ -40,7 +40,9 @@ TOKEN = "APPROVE_AGENTS_POLICY_5_2_0"
 # Same digests as tests/test_agents_policy_5_1_0_notification_intents.py (5.0.0 ACTIVE, 5.1.0 merged at 26cf80f60).
 # AGENTS.md 14.0.0 ratified 2026-10-16: §0 rule 2 gained one sentence (pinned in
 # tests/test_agents_policy_14_0_0_broker_read.py); before it, §0 hashed to d7ce297890a8….
-SECTION_0_SHA256 = "86ab4957123f59a846cdeab39dfda8b96f69950a9031ff870228aa9942de79f3"
+# AGENTS.md 15.0.0 ratified 2026-10-21: §0 rule 6 gained one sentence and §17 one entry (pinned in
+# tests/test_agents_policy_15_0_0_disk_hygiene.py); before it, §0 hashed to 86ab4957123f… and §17 to f61b30d24833….
+SECTION_0_SHA256 = "d10461625959d3de2f520419dbb67c1763e46d6b5905784b6aa185795ac10549"
 SECTION_23_14_SHA256 = "bb8722f69b8e54a8582011bdbe266d55ea7c2c0c6b120d123a1d4e43394311e7"
 PINNED_SECTIONS = {
     "§0": ("# 0 · If you read nothing else", "# 1 · Identity and responsibilities", SECTION_0_SHA256),
@@ -50,7 +52,7 @@ PINNED_SECTIONS = {
     "§17": (
         "# 17 · Operator-only decisions",
         "# 17A ·",
-        "f61b30d248331b2ee11e950cc8f455a273608d52d1eba3de6fca191b98e5f2f5",
+        "2eeb550129d0054a2526907cd8fc5a482caf59ab03ac97cd51a60cdea90ea238",
     ),
 }
 ADAPTERS = ("CLAUDE.md", ".cursor/rules/00-tradeai-work-policy.mdc", ".github/copilot-instructions.md", ".goosehints")

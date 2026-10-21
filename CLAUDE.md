@@ -44,6 +44,9 @@ agent that reads fifteen lines and stops must still know them.
 5. **Never auto-remediate divergent copies of an authoritative store.** Report both paths, hashes
    and timestamps. A machine picking one can destroy the other.
 6. **Never delete.** Archive with a tripwire that fires if anything reads the archived path.
+   One exception, binding only once AGENTS.md 15.0.0 is ACTIVE: the n8n lane `disk-hygiene` may
+   remove the reclaimable items its reviewed rules select (scripts/disk_hygiene.py,
+   config/disk_hygiene_rules.json), and nothing else (AGENTS.md §24.12).
 7. **Dry-run before any live run** that writes durable state, sends to an operator surface, spends
    money, or touches a scheduled job. Quote the dry run's output.
 8. **Exit code 0 is not evidence of work.** Prove by a durable artifact that would not exist if the

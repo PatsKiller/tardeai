@@ -270,7 +270,14 @@ def test_agents_12_states_the_cron_wide_offpeak_arming():
 
 def test_claude_md_adapter_restates_no_n8n_rule():
     """CLAUDE.md is an adapter (AGENTS.md §19): it must not grow n8n rules of its own."""
-    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    # AGENTS.md 15.0.0 (ratified 2026-10-21, #1852): §0 rule 6 names the n8n lane `disk-hygiene`; the adapter repeats
+    # §0 verbatim (tests/test_agents_section_zero_parity.py), so that sentence is not a rule of its own.
+    rule_6_exception_15_0_0 = (
+        "\n   One exception, binding only once AGENTS.md 15.0.0 is ACTIVE: the n8n lane `disk-hygiene` may"
+        "\n   remove the reclaimable items its reviewed rules select (scripts/disk_hygiene.py,"
+        "\n   config/disk_hygiene_rules.json), and nothing else (AGENTS.md §24.12)."
+    )
+    text = (ROOT / "CLAUDE.md").read_text(encoding="utf-8").replace(rule_6_exception_15_0_0, "")
     assert "n8n" not in text.lower()
 
 

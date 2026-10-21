@@ -58,7 +58,9 @@ def _flat(text: str) -> str:
 
 
 def _sec0() -> str:
-    return T5._section(AGENTS, "# 0 · If you read nothing else", "# 1 · Identity and responsibilities")
+    # 15.0.0 (ratified 2026-10-21) adds a rule 6 sentence, pinned by tests/test_agents_policy_15_0_0_disk_hygiene.py.
+    sec0 = T5._section(AGENTS, "# 0 · If you read nothing else", "# 1 · Identity and responsibilities")
+    return sec0.replace(T5.RULE_6_EXCEPTION_15_0_0, "")
 
 
 def _row() -> re.Match:
@@ -146,7 +148,8 @@ def test_adapters_follow_section_0(adapter):
 @pytest.mark.parametrize("name", list(T5.UNCHANGED_SECTIONS))
 def test_other_rail_sections_are_byte_identical(name):
     start, end, digest = T5.UNCHANGED_SECTIONS[name]
-    assert hashlib.sha256(T5._section(AGENTS, start, end).encode("utf-8")).hexdigest() == digest, f"{name} changed"
+    block = T5._section(AGENTS, start, end).replace(T5.S17_ENTRY_15_0_0, "")  # 15.0.0's §17 entry
+    assert hashlib.sha256(block.encode("utf-8")).hexdigest() == digest, f"{name} changed"
 
 
 def test_proposed_sentence_is_quoted_verbatim_in_24_11():
