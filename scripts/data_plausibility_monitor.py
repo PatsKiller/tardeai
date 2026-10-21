@@ -570,6 +570,31 @@ def _alert_core(results: list[dict], blocking: list[dict], *, deliver, channel: 
     return {"notified": True, "action": t.action, "channel": notify}
 
 
+def receipt_detail(results: list[dict], blocking: list[dict]) -> dict:
+    """Receipt body beyond checked/off: the blocking items, the violation count and one row per rule (2026-10-21).
+
+    GET /api/v2/system/data-plausibility serves this file; without the per-rule rows a page could only say "0 off".
+    Samples are left out (they are row values, and the page needs the rule, not the data). Pure."""
+    rules = [
+        {
+            "table": r.get("table"),
+            "column": r.get("column"),
+            "status": r.get("status"),
+            "severity": r.get("severity"),
+            "violations": r.get("violations"),
+            "total": r.get("total"),
+            "detail": str(r.get("detail") or "")[:240],
+        }
+        for r in results
+    ]
+    return {
+        "blocking_items": [f"{r['table']}.{r['column']}" for r in blocking],
+        "violations": sum(1 for r in results if r.get("status") == "VIOLATION"),
+        "blocking": len(blocking),
+        "results": rules,
+    }
+
+
 def _write_run_receipt(checked: int, off: int, detail: dict) -> None:
     """Prove this ran, every run, whether or not it found anything.
 
@@ -810,7 +835,7 @@ def _run(args, *, connect=None, deliver) -> int:
 
     if not args.json:
         _write_run_receipt(
-            len(results), len(blocking), {"blocking_items": [f"{r['table']}.{r['column']}" for r in blocking]}
+            len(results), len(blocking), receipt_detail(results, blocking)
         )
 
     alert = None

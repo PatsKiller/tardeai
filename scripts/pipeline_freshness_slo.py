@@ -12,7 +12,8 @@ Checks (source → table, recency window, baseline window):
   hermes_research       — non-backlog rows last 24h vs trailing-7d
   news_articles         — rows last 12h vs trailing-7d
   paper proposals       — last 48h vs trailing-14d
-  schwab_stream_book    — rows last 2h during market hours (expects >0 when open)
+  schwab_stream_book    — rows last 2h during market hours (expects >0 when open; PRODUCER_UNSCHEDULED when the
+                          operator has the stream daemon's cron line commented out or its kill switch set)
   hermes_score_history  — snapshots last 2h (the 30-min scorer cron)
 
 Alert policy: WARN at <40% of baseline, CRITICAL at 0 when baseline >0. Telegram + stdout. Read-only.
@@ -87,6 +88,47 @@ MARKET_OPEN, MARKET_CLOSED, MARKET_UNKNOWN = "OPEN", "CLOSED", "UNKNOWN"
 SCHWAB_FED_CHECKS = {"schwab_stream_book_2h", "options_chain_snapshots_2h"}
 
 
+# Market-hours checks whose producer is a cron-scheduled daemon. When the operator has taken that producer OFF
+# the schedule (its crontab line commented out — e.g. "# PAUSED 2026-10-14 schwab-app-deactivated" for the
+# stream daemon, still commented after Schwab reads were re-enabled 2026-10-16) or set its documented kill
+# switch, zero rows is the EXPECTED result, not an outage: report PRODUCER_UNSCHEDULED / PRODUCER_KILL_SWITCH
+# (visible in the JSON, no red page). Unreadable crontab → fall through to the normal count check (conservative).
+SCHEDULED_PRODUCERS = {
+    "schwab_stream_book_2h": {"match": "scripts/schwab_stream_daemon.py",
+                              "kill_file": ROOT / "data" / "state" / "STREAM_DISABLED"},
+}
+
+
+def _active_cron_lines(text):
+    return [ln for ln in (text or "").splitlines() if ln.strip() and not ln.lstrip().startswith("#")]
+
+
+def _producer_state(name, crontab_text=None):
+    """None = producer scheduled (or unknown) → run the check; else (status, note) for an intentionally-off producer."""
+    spec = SCHEDULED_PRODUCERS.get(name)
+    if not spec:
+        return None
+    kill = spec.get("kill_file")
+    if kill is not None and Path(kill).exists():
+        return ("PRODUCER_KILL_SWITCH", f"kill switch present: {kill}")
+    if crontab_text is None:
+        return None
+    if any(spec["match"] in ln for ln in _active_cron_lines(crontab_text)):
+        return None
+    return ("PRODUCER_UNSCHEDULED",
+            f"no active crontab line runs {spec['match']} (commented/paused by operator) — silence expected; "
+            "re-enabling the producer is an operator decision")
+
+
+def _read_crontab_text():
+    try:
+        from lib.crontab_snapshot import read_crontab
+        cr = read_crontab()
+        return cr.text if cr.ok else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _market_state():
     """OPEN / CLOSED from Schwab market hours; UNKNOWN when Schwab errors, answers without a flag, or is paused.
 
@@ -137,11 +179,16 @@ def run(telegram=False):
         schwab_paused = _sam.is_paused()
     except Exception:  # noqa: BLE001
         schwab_paused = False
+    crontab_text = _read_crontab_text() if include_market else None
     findings, report = [], []
     for name, recent_q, base_q, factor in checks:
         if schwab_paused and name in SCHWAB_FED_CHECKS:
             report.append({"check": name, "status": "SCHWAB_PAUSED",
                            "note": "producer reads Schwab; operator pause (config/schwab_access_mode.yaml)"})
+            continue
+        producer = _producer_state(name, crontab_text)
+        if producer:
+            report.append({"check": name, "status": producer[0], "note": producer[1]})
             continue
         try:
             cur.execute(recent_q); recent = cur.fetchone()[0] or 0

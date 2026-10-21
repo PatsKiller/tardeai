@@ -1734,6 +1734,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/BRIDGE_PIN_ALIGNMENT.md` | Governed bridge pin alignment | review_required | OK | `72a5c993261d` |
 | `docs/ops/CANONICAL_OBSERVATION_CONTRACT.md` | Canonical observation contract | review_required | OK | `f1efae3e4863` |
 | `docs/ops/CANON_SOURCE_ACQUISITION_QUEUE_2026-08-23.md` | Canon Source Acquisition Queue - 2026-08-23 | review_required | OK | `a49f0fc9b389` |
+| `docs/ops/CC_NEEDS_ACTION_2026-10-21.md` | Command Center — the "Needs action" inbox and the failures that had no page (2026-10-21) | review_required | OK | `027fe88c6cc5` |
 | `docs/ops/CIO_ADVISORY_TRUTH_HARDENING_CLOSEOUT_2026-08-20.md` | CIO/Advisory truth + presentation hardening — closeout 2026-08-20 | review_required | OK | `1661c226ddf4` |
 | `docs/ops/CIO_AFTERNOON_FIVE_2026-09-01.md` | Afternoon five — closeout | review_required | OK | `58bb7c12e239` |
 | `docs/ops/CIO_BANNER_DATA_ASOF_2026-09-01.md` | PORTFOLIO chip — freshness is `data_as_of`, not the loader run | review_required | OK | `e52ceb650854` |
@@ -1878,7 +1879,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/COGX_WAVES_3_5_OPERATOR_HANDOFF_2026-09-28.md` | COGX Waves 3–5 — operator handoff (merge order, grants, deploy, installs, first runs, flips) | review_required | OK | `b40fbe0c732f` |
 | `docs/ops/COMMAND_CENTER_MATURITY_TRUTH.md` | Command Center maturity truth (live runtime) | review_required | MISSING HEADER | `de97ccca2b56` |
 | `docs/ops/COMMS_GATEWAY_GO_LIVE_RUNBOOK.md` | Communications Gateway — Go-Live Runbook (single consolidated operator prompt) | review_required | OK | `7ded3894288a` |
-| `docs/ops/COMMS_HUB_2026-10-07.md` | Communications hub — decision support, re-entry focus, enforced TTL (2026-10-07) | review_required | MISSING HEADER | `e0b203d62207` |
+| `docs/ops/COMMS_HUB_2026-10-07.md` | Communications hub — decision support, re-entry focus, enforced TTL (2026-10-07) | review_required | MISSING HEADER | `d3f04f94e47f` |
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 | review_required | OK | `e11d852dddbb` |
 | `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` | CURRENT cutover — execute after 2026-08-27 close | review_required | OK | `ff4d8004bf21` |
 | `docs/ops/DECISION_PAYLOAD_LANDING_2026-08-21.md` | DecisionPayload landing check — 2026-08-21 19:31 ET | review_required | OK | `f3951cc5a623` |

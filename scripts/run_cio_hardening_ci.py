@@ -139,12 +139,25 @@ GATES = [
     # (comms_lifecycle "reservations" step, >1 h, bounded, dry run default) settles CANCELLED/EXPIRED/UNKNOWN with no
     # provider I/O. Hermetic: in-memory ledger, PG settlement stamp stubbed.
     ("comms_stuck_deliveries_20261020", ["tests/test_comms_stuck_deliveries_20261020.py"]),
+    # ANCHOR: CC_NEEDS_ACTION_20261021 — audit 2026-10-21: failures hidden or scattered across the Command Center.
+    # telegram_outbox reports_archive ok=false rows are digest HOLDS (archive_message stores ok = not suppressed), now
+    # `held` not `failed`; real Telegram failures are a separate figure on the comms delivery summary; data
+    # plausibility view + per-rule receipt rows; pipeline_runs failures grouped (and pipeline-health stats filter on
+    # run_label, not the missing run_type); GET /api/v2/needs-action probes nine sources independently with a timeout
+    # and turns an unreadable source into an item, never an omission. Hermetic: stub rows, fake cursor, tmp roots.
+    ("cc_needs_action_20261021", ["tests/test_cc_needs_action_20261021.py"]),
     # ANCHOR: DATA_PLAUSIBILITY_FOUR_20261020 — four plausibility BLOCKs still firing after the 2026-10-18 fixes were
     # served: scalp_critic_agent.validate_catalyst (second catalyst_confidence producer) reached 1.1/1.2, now clamped
     # to [0, 1]; etf_performance_enrich spent its 300 cap alphabetically so 11 NaN ytd rows (2026-08-29) were never
     # revisited, now stalest perf_updated_at first; the batch indicators API upsert never refreshed stop_price on
     # conflict, now every scalar column. Hermetic: sqlite + source text.
     ("data_plausibility_four_20261020", ["tests/test_data_plausibility_four_20261020.py"]),
+    # ANCHOR: INDICATOR_ENGINE_NAN_JSON_20261021 — indicator_engine --universe failed 08:00 ET 2026-10-20 and
+    # 2026-10-21: GP's NaN weekly pivots were json.dumps'd as the bare token NaN and Postgres rejected the json
+    # (22P02), which escaped run() and aborted the rest of the batch. lib.json_finite.json_safe (NaN/±Inf, numpy too,
+    # nested) -> None on analyze_confluence's result; the lane serialises allow_nan=False, stores non-finite scalars
+    # as NULL, and skips a row Postgres rejects as data (SQLSTATE 22) as row_rejected. Hermetic: fake conn.
+    ("indicator_engine_nan_json_20261021", ["tests/test_indicator_engine_nan_json_20261021.py"]),
     # ANCHOR: N8N_EVIDENCE_KIND_PARITY_20261019 — the runtime output verdict and the FW-M6 checker accept the same
     # N8nExpectedOutput@v1 evidence kinds (file_artifact, per N8N_CONTRACTS_DESIGN.md); before, "file" vs "file_artifact"
     # meant no contract could cite a file. Hermetic: committed contracts read only.
@@ -5434,6 +5447,55 @@ GATES = [
     # registry scheduler.stage counts; the 13-day-old --write file is a flagged FILE_FALLBACK only). Problems
     # filter + STALE banner: src/lib/schedulerOperations.test.ts, migrationBoard.test.ts. Hermetic: tmp_path.
     ("cc_coordination_truth_20261021", ["tests/test_cc_coordination_truth_20261021.py"]),
+    (
+        # ANCHOR: PIPELINE_ZOMBIE_RUNS_20261021 — pipeline_runs rows left 'running' then flipped to
+        # failed/{"errors": []} by the zombie sweep paged "Pipeline FAILED ... Error: []". Shared cause:
+        # the run was KILLED (health_tick orphan SIGTERM of pipeline_watchdog's symbol_enrichment
+        # children, process_reaper SIGTERM of orchestrator dups, momentum-scalp lane SIGKILL of
+        # finviz_screener_runner calls) before PipelineRun.__exit__ ran. PipelineRun / finviz runner
+        # now close a SIGTERM'd run as "terminated by SIGTERM"; the lane runner SIGTERMs before SIGKILL
+        # and does not spawn a call the deadline already exhausted. Hermetic: stubbed writers, no DB.
+        "pipeline_zombie_runs_20261021",
+        ["tests/test_pipeline_zombie_runs_20261021.py"],
+    ),
+    (
+        # ANCHOR: A1A_RELEASE_DIR_20261021 — a1a_compliance FAILED 2026-10-21 07:40 with errors=[]: release dirs
+        # carry no .git, so check_a1a_compliance.py's `git diff HEAD~1 HEAD` raised CalledProcessError and the
+        # wrapper recorded a reasonless failure. Now diffs the BUILD_STAMP source_sha in DEV_ROOT, reports an
+        # unresolvable change set as errors (exit 2, no traceback), and the wrapper passes errors= to telemetry.
+        # Hermetic: temp git repo + temp release dir.
+        "a1a_release_dir_20261021",
+        ["tests/test_a1a_release_dir_20261021.py"],
+    ),
+    (
+        # ANCHOR: ORCH_ROWS_PRODUCED_20261021 — alert "produced NOTHING while reporting success:
+        # trade_ai_orchestrator -- 27 runs with rows_produced=0": the orchestrator never called
+        # PipelineRun.rows() (235 successes/7d all null) and the only explicit counts were
+        # remediate_pipeline_failures' synthetic health_recovery rows writing 0, while trade_ai_scans
+        # and strategy_signals were being written. db_persist now records committed trade_ai_scans rows
+        # and __main__ reports them; the synthetic row writes null. Hermetic: no DB.
+        "orchestrator_rows_produced_20261021",
+        ["tests/test_orchestrator_rows_produced_20261021.py"],
+    ),
+    (
+        # ANCHOR: FRESHNESS_SLO_HERMES_SCORER_20261021 — pipeline freshness SLO red 2026-10-21:
+        # hermes_score_snapshots_2h was a REAL outage (watchlist_strategy_cards BHVN target/stop = 'NaN';
+        # Decimal('NaN') in _f_rr `px <= stop` raised InvalidOperation and aborted every scorer run since
+        # 2026-10-19 07:45 ET) — _f_rr now drops non-finite levels. schwab_stream_book_2h was a FALSE POSITIVE
+        # (daemon cron line commented "PAUSED 2026-10-14" while access mode is read_only) — the SLO reports
+        # PRODUCER_UNSCHEDULED / PRODUCER_KILL_SWITCH; unreadable crontab stays conservative. Hermetic: no DB.
+        "freshness_slo_hermes_scorer_20261021",
+        ["tests/test_freshness_slo_hermes_scorer_20261021.py"],
+    ),
+    (
+        # ANCHOR: BACKUP_CADENCE_TAR_CHANGED_20261021 — tradeai-portfolio-backup-cadence failed 2026-10-21 02:52 ET on
+        # "tar: data/cio: file changed as we read it" (GNU tar rc=1). backup_secrets_state.sh treats tar rc=1 as a
+        # warning (gzip -t verified, corrupt fails closed; rc>=2 fatal) and run_weekly_gated always returns 0 so a
+        # failed weekly step records degraded instead of set -e aborting db_offsite/apps and the summary.
+        # Hermetic: scratch HOME/PROJ, fake gpg/gog/tar on PATH; no Drive, no credentials.
+        "backup_cadence_tar_changed_20261021",
+        ["tests/test_portfolio_cadence_tar_rc1_20261021.py"],
+    ),
 ]
 
 

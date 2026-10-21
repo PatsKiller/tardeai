@@ -892,7 +892,9 @@ def delivery_summary() -> dict[str, Any]:
     out: dict[str, Any] = {"ok": False, "status": "UNAVAILABLE", "source": "db", "basis": "server_side_aggregate",
                            "unsettled": None, "failed": None, "reaped_unclaimed": None, "total": None, "oldest_unsettled_at": None,
                            "oldest_unsettled_age_s": None, "as_of": None,
-                           "unsettled_statuses": list(UNSETTLED_STATUSES), "failed_statuses": list(FAILED_STATUSES)}
+                           "unsettled_statuses": list(UNSETTLED_STATUSES), "failed_statuses": list(FAILED_STATUSES),
+                           "telegram_outbox_failed_24h": None, "telegram_outbox_failed_24h_by_channel": None,
+                           "telegram_outbox_held_24h": None, "telegram_outbox_sent_24h": None}
     conn = _deliveries_db_conn()
     if conn is None:
         out["error"] = "communications DB unavailable"
@@ -926,7 +928,52 @@ def delivery_summary() -> dict[str, Any]:
                reaped_unclaimed=int(rec.get("reaped_unclaimed") or 0),
                total=int(rec.get("total") or 0), oldest_unsettled_at=_iso(oldest), oldest_unsettled_age_s=age,
                as_of=_iso(as_of))
+    out.update(telegram_outbox_summary(conn))
     return out
+
+
+#: telegram_outbox rows with ok=false on this channel were HELD for the digest (report_capture.archive_message),
+#: never attempted -- they are not failed sends (2026-10-21).
+TELEGRAM_ARCHIVE_CHANNEL = "reports_archive"
+
+
+def telegram_outbox_summary(conn, hours: int = 24) -> dict[str, Any]:
+    """The send-chokepoint ledger (``telegram_outbox``), counted separately from communication_deliveries.
+
+    It is a different ledger: ``telegram_alert`` records ok true/false per Telegram send. A failed send there never
+    reaches communication_deliveries, so the strip showed ``failed 0`` while sends failed (audit 2026-10-21). The
+    reports_archive channel is excluded from failures and counted as ``held``. An unreadable table gives nulls and
+    ``telegram_outbox_error`` -- never zero, and never fails the delivery summary."""
+    res: dict[str, Any] = {"telegram_outbox_failed_24h": None, "telegram_outbox_failed_24h_by_channel": None,
+                           "telegram_outbox_held_24h": None, "telegram_outbox_sent_24h": None,
+                           "telegram_outbox_window_h": int(hours)}
+    sql = ("SELECT COALESCE(channel, '') AS channel, "
+           "COUNT(*) FILTER (WHERE ok IS FALSE) AS not_ok, COUNT(*) FILTER (WHERE ok IS TRUE) AS sent "
+           "FROM public.telegram_outbox WHERE sent_at > now() - make_interval(hours => %s) GROUP BY 1")  # schema-qualified
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (int(hours),))
+            rows = cur.fetchall()
+    except Exception as exc:  # noqa: BLE001 — unreadable is a named null, never zero
+        res["telegram_outbox_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        return res
+    failed, held, sent, by_channel = 0, 0, 0, {}
+    for r in rows or []:
+        ch, not_ok, ok_n = (r["channel"], r["not_ok"], r["sent"]) if isinstance(r, dict) else (r[0], r[1], r[2])
+        not_ok, ok_n = int(not_ok or 0), int(ok_n or 0)
+        sent += ok_n
+        if ch == TELEGRAM_ARCHIVE_CHANNEL:
+            held += not_ok
+        elif not_ok:
+            failed += not_ok
+            by_channel[ch or "(none)"] = not_ok
+    res.update(telegram_outbox_failed_24h=failed, telegram_outbox_failed_24h_by_channel=by_channel,
+               telegram_outbox_held_24h=held, telegram_outbox_sent_24h=sent)
+    return res
 
 
 def list_subjects(limit: int = 50) -> dict[str, Any]:
