@@ -151,7 +151,13 @@ def coverage(monkeypatch):
             {"symbol": "MRLN", "description_1s": "Marlin Inc.", "industry": "biotech"}
         ],
     )
-    monkeypatch.setitem(sys.modules, "psycopg2.extras", types.SimpleNamespace(RealDictCursor=object))
+    # Required CI has no psycopg2: stand in for the package too (per test, so nothing leaks to later modules).
+    _extras = types.SimpleNamespace(RealDictCursor=object)
+    if "psycopg2" not in sys.modules:
+        monkeypatch.setitem(sys.modules, "psycopg2", types.SimpleNamespace(extras=_extras))
+    elif not hasattr(sys.modules["psycopg2"], "extras"):  # another module's stand-in (e.g. seed-sync tests)
+        monkeypatch.setattr(sys.modules["psycopg2"], "extras", _extras, raising=False)
+    monkeypatch.setitem(sys.modules, "psycopg2.extras", _extras)
     return conn
 
 

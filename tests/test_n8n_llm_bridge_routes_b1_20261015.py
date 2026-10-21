@@ -46,6 +46,9 @@ except ModuleNotFoundError:  # pragma: no cover
     _pg.connect = lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError("psycopg2 stub"))
     sys.modules.setdefault("psycopg2", _pg)
     sys.modules.setdefault("psycopg2.extras", _pg_extras)
+    _PG_STUB = (_pg, _pg_extras)
+else:  # pragma: no cover
+    _PG_STUB = None
 
 import directive_keyword_enhancer as dke  # noqa: E402
 import hermes_cross_source_synthesizer as hcs  # noqa: E402
@@ -61,6 +64,22 @@ from lib import llm_bridge_route as LBR  # noqa: E402
 from scripts import n8n_run_executor as X  # noqa: E402
 from scripts.lib import governed_process_routes as R  # noqa: E402
 from scripts.lib import lane_dispatch as LD  # noqa: E402
+
+# The stub must not outlive this module's imports: a later module in the same process (e.g.
+# tests/test_n8n_ops_lanes_20261009.py) runs pytest.importorskip("psycopg2") and then `from psycopg2 import sql`,
+# which a leaked stub turns from a skip into an ImportError. Drop it now; re-install it per test below.
+if _PG_STUB is not None:
+    for _name, _mod in (("psycopg2", _PG_STUB[0]), ("psycopg2.extras", _PG_STUB[1])):
+        if sys.modules.get(_name) is _mod:
+            del sys.modules[_name]
+
+
+@pytest.fixture(autouse=True)
+def _psycopg2_stub_for_this_module(monkeypatch):
+    if _PG_STUB is not None and "psycopg2" not in sys.modules:
+        monkeypatch.setitem(sys.modules, "psycopg2", _PG_STUB[0])
+        monkeypatch.setitem(sys.modules, "psycopg2.extras", _PG_STUB[1])
+
 
 REGISTRY = {p["id"]: p for p in json.loads((ROOT / "config/llm_process_registry.json").read_text())["processes"]}
 ROUTING = json.loads((ROOT / "config/llm_routing_policy.json").read_text())["policies"]["default"]["processes"]
