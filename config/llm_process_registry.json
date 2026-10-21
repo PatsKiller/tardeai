@@ -868,12 +868,15 @@
         "deepseek-flash",
         "deepseek-flash",
         "fast",
-        "fast_think"
+        "fast_think",
+        "grok",
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
         "FAST",
-        "FAST_THINK"
+        "FAST_THINK",
+        "PRO_THINK"
       ],
       "max_input_tokens": 4000,
       "max_output_tokens": 1000,
@@ -882,7 +885,9 @@
       "tools_allowed": false,
       "fallback_allowed": false,
       "advisory_only": true,
-      "notes": "FAST by default; FAST_THINK only when deterministic escalation reason is set (PR #284)"
+      "notes": "2026-10-15 (n8n LLM bridge routes batch 4): routed through cio_governed_model_bridge (8766) as caller advisory_desk task watchlist_agent_debate_flash when the n8n run executor binds the llm_route of lane run-watchlist-agent-jobs-offpeak / agent-event-router (process set) (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: existing caps kept (the cron agent-jobs path calls this process in-process through lib.agent_flash_governance / llm_consumption on DeepSeek Flash, which never reads the bridge routing row). allowed_lanes gains grok + chatgpt so the bridge does not skip its OAuth lanes; the cron callers request only deepseek-flash / fast for this id (the cron OAuth fallback uses the separate maria_oauth_priority process ids), so no cron call changes. | FAST by default; FAST_THINK only when deterministic escalation reason is set (PR #284)",
+      "reasoning_tier": "standard",
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
     },
     {
       "id": "watchlist_agent_flash_extract",
@@ -894,11 +899,14 @@
       "allowed_lanes": [
         "deepseek-flash",
         "deepseek-flash",
-        "fast"
+        "fast",
+        "grok",
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
-        "FAST"
+        "FAST",
+        "PRO_THINK"
       ],
       "max_input_tokens": 2000,
       "max_output_tokens": 400,
@@ -906,7 +914,10 @@
       "daily_cost_cap_usd": 0.75,
       "tools_allowed": false,
       "fallback_allowed": false,
-      "advisory_only": true
+      "advisory_only": true,
+      "notes": "2026-10-15 (n8n LLM bridge routes batch 4): routed through cio_governed_model_bridge (8766) as caller advisory_desk task watchlist_agent_flash_extract when the n8n run executor binds the llm_route of lane run-watchlist-agent-jobs-offpeak / agent-event-router (process set) (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: existing caps kept (the cron agent-jobs path calls this process in-process through lib.agent_flash_governance / llm_consumption on DeepSeek Flash, which never reads the bridge routing row). allowed_lanes gains grok + chatgpt so the bridge does not skip its OAuth lanes; the cron callers request only deepseek-flash / fast for this id (the cron OAuth fallback uses the separate maria_oauth_priority process ids), so no cron call changes.",
+      "reasoning_tier": "standard",
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
     },
     {
       "id": "watchlist_cio_synthesis",
@@ -938,13 +949,14 @@
       "deepseek_allowed_policies": [
         "FAST_THINK",
         "PRO_THINK",
-        "PRO_MAX"
+        "PRO_MAX",
+        "FAST"
       ],
       "requires_operator_cost_confirmation_for": [
         "PRO_MAX"
       ],
       "output_schema": "cio_synthesis.v1",
-      "notes": " | 2026-09-10: alias so organic cron Flash votes do not PROCESS_NOT_REGISTERED | 2026-09-13: max_input_tokens 16000 to 32000, operator approved in session. DXCM synthesis failed 26 times on 2026-08-29/30 with prompts of 39k-44.5k tokens because run_synthesis included every stored agent result; the prompt now keeps the newest 2 results per agent within a 40000-character budget (SYNTHESIS_RESULTS_PER_AGENT, SYNTHESIS_NARRATIVE_CHAR_BUDGET). Peak cost per call at full input about $0.0096 to $0.0144; daily_cost_cap_usd 0.5 unchanged.",
+      "notes": "2026-10-15 (n8n LLM bridge routes batch 4): routed through cio_governed_model_bridge (8766) as caller advisory_desk task watchlist_cio_synthesis_cron when the n8n run executor binds the llm_route of lane run-watchlist-agent-jobs-offpeak / agent-event-router (process set) (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: existing caps kept (the cron agent-jobs path calls this process in-process through lib.agent_flash_governance / llm_consumption on DeepSeek Flash, which never reads the bridge routing row). allowed_lanes gains grok + chatgpt so the bridge does not skip its OAuth lanes; the cron callers request only deepseek-flash / fast for this id (the cron OAuth fallback uses the separate maria_oauth_priority process ids), so no cron call changes. |  | 2026-09-10: alias so organic cron Flash votes do not PROCESS_NOT_REGISTERED | 2026-09-13: max_input_tokens 16000 to 32000, operator approved in session. DXCM synthesis failed 26 times on 2026-08-29/30 with prompts of 39k-44.5k tokens because run_synthesis included every stored agent result; the prompt now keeps the newest 2 results per agent within a 40000-character budget (SYNTHESIS_RESULTS_PER_AGENT, SYNTHESIS_NARRATIVE_CHAR_BUDGET). Peak cost per call at full input about $0.0096 to $0.0144; daily_cost_cap_usd 0.5 unchanged.",
       "allowed_lanes": [
         "grok",
         "chatgpt",
@@ -957,7 +969,9 @@
       "tools_allowed": false,
       "fallback_allowed": true,
       "advisory_only": true,
-      "circuit_breaker": true
+      "circuit_breaker": true,
+      "reasoning_tier": "standard",
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
     },
     {
       "id": "watchlist_entry_planner",
@@ -984,11 +998,14 @@
       "allowed_lanes": [
         "deepseek-flash",
         "deepseek-flash",
-        "fast"
+        "fast",
+        "grok",
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
-        "FAST"
+        "FAST",
+        "PRO_THINK"
       ],
       "max_input_tokens": 8000,
       "max_output_tokens": 800,
@@ -998,7 +1015,9 @@
       "fallback_allowed": false,
       "advisory_only": true,
       "output_schema": "watch_narrative.v1",
-      "notes": " | 2026-08-20: daily_soft_cap 120→240 after overnight request-cap exhaustion; containment re-armed + offpeak wrapper now overrides containment (issue #283). cost cap unchanged 2.0. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session."
+      "notes": "2026-10-15 (n8n LLM bridge routes batch 4): routed through cio_governed_model_bridge (8766) as caller advisory_desk task watchlist_maria_flash_narrative when the n8n run executor binds the llm_route of lane run-watchlist-agent-jobs-offpeak / agent-event-router (process set) (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: existing caps kept (the cron agent-jobs path calls this process in-process through lib.agent_flash_governance / llm_consumption on DeepSeek Flash, which never reads the bridge routing row). allowed_lanes gains grok + chatgpt so the bridge does not skip its OAuth lanes; the cron callers request only deepseek-flash / fast for this id (the cron OAuth fallback uses the separate maria_oauth_priority process ids), so no cron call changes. |  | 2026-08-20: daily_soft_cap 120→240 after overnight request-cap exhaustion; containment re-armed + offpeak wrapper now overrides containment (issue #283). cost cap unchanged 2.0. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session.",
+      "reasoning_tier": "standard",
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
     },
     {
       "id": "watchlist_maria_priority",
@@ -1040,20 +1059,25 @@
       "allowed_lanes": [
         "deepseek-flash",
         "deepseek-flash",
-        "fast"
+        "fast",
+        "grok",
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
-        "FAST"
+        "FAST",
+        "PRO_THINK"
       ],
       "max_input_tokens": 8000,
-      "notes": "2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session. | 2026-09-19: daily_soft_cap 60→220 after PR #1088 gave this pool its own traffic. Measured demand (distinct symbols/day, 7d peak): risk 171 + tax 21, steph 155; settled cost $0.0015/call, so 220 calls ≈ $0.33/day. daily_cost_cap_usd stays 1.0 and remains the binding guard. Operator approved in session (full demand, $2/day §12 cap unchanged).",
+      "notes": "2026-10-15 (n8n LLM bridge routes batch 4): routed through cio_governed_model_bridge (8766) as caller advisory_desk task watchlist_risk_flash_narrative when the n8n run executor binds the llm_route of lane run-watchlist-agent-jobs-offpeak / agent-event-router (process set) (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: existing caps kept (the cron agent-jobs path calls this process in-process through lib.agent_flash_governance / llm_consumption on DeepSeek Flash, which never reads the bridge routing row). allowed_lanes gains grok + chatgpt so the bridge does not skip its OAuth lanes; the cron callers request only deepseek-flash / fast for this id (the cron OAuth fallback uses the separate maria_oauth_priority process ids), so no cron call changes. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session. | 2026-09-19: daily_soft_cap 60→220 after PR #1088 gave this pool its own traffic. Measured demand (distinct symbols/day, 7d peak): risk 171 + tax 21, steph 155; settled cost $0.0015/call, so 220 calls ≈ $0.33/day. daily_cost_cap_usd stays 1.0 and remains the binding guard. Operator approved in session (full demand, $2/day §12 cap unchanged).",
       "max_output_tokens": 800,
       "daily_soft_cap": 220,
       "daily_cost_cap_usd": 1.0,
       "tools_allowed": false,
       "fallback_allowed": false,
-      "advisory_only": true
+      "advisory_only": true,
+      "reasoning_tier": "standard",
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
     },
     {
       "id": "watchlist_steph_flash_narrative",
@@ -1065,11 +1089,14 @@
       "allowed_lanes": [
         "deepseek-flash",
         "deepseek-flash",
-        "fast"
+        "fast",
+        "grok",
+        "chatgpt"
       ],
       "deepseek_default_policy": "FAST",
       "deepseek_allowed_policies": [
-        "FAST"
+        "FAST",
+        "PRO_THINK"
       ],
       "max_input_tokens": 8000,
       "max_output_tokens": 3200,
@@ -1079,7 +1106,9 @@
       "fallback_allowed": false,
       "advisory_only": true,
       "output_schema": "cio_synthesis.v1",
-      "notes": "2026-10-09: max_output_tokens 1600→3200 — symbol-thesis synthesis replies (summary + evidence-id lists) were again truncated mid-object (parse:no_json_object, 17 of 315 acquisition runs 2026-10-04..09; HPE/TELO raw replies end mid-sentence). Same remedy as 2026-08-20. daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded; operator asked to fix the thesis job in session. | 2026-08-20: max_output_tokens 800→1600 — living-thesis synthesis JSON (11 keys + cited evidence lists) was being truncated mid-object at 800 tokens, causing parse:no_json_object. Cost cap unchanged 1.0. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session. | 2026-09-19: daily_soft_cap 40→180 after PR #1088 gave this pool its own traffic. Measured demand (distinct symbols/day, 7d peak): risk 171 + tax 21, steph 155; settled cost $0.0015/call, so 180 calls ≈ $0.27/day. daily_cost_cap_usd stays 1.0 and remains the binding guard. Operator approved in session (full demand, $2/day §12 cap unchanged)."
+      "notes": "2026-10-15 (n8n LLM bridge routes batch 4): routed through cio_governed_model_bridge (8766) as caller advisory_desk task watchlist_steph_flash_narrative when the n8n run executor binds the llm_route of lane run-watchlist-agent-jobs-offpeak / agent-event-router (process set) (TRADEAI_LLM_VIA_BRIDGE=1); the lane then calls ONLY lib.llm_bridge_route (a refusal is no output, never an in-process provider call). tools_allowed false and advisory_only true like every bridge-mapped row. Caps: existing caps kept (the cron agent-jobs path calls this process in-process through lib.agent_flash_governance / llm_consumption on DeepSeek Flash, which never reads the bridge routing row). allowed_lanes gains grok + chatgpt so the bridge does not skip its OAuth lanes; the cron callers request only deepseek-flash / fast for this id (the cron OAuth fallback uses the separate maria_oauth_priority process ids), so no cron call changes. | 2026-10-09: max_output_tokens 1600→3200 — symbol-thesis synthesis replies (summary + evidence-id lists) were again truncated mid-object (parse:no_json_object, 17 of 315 acquisition runs 2026-10-04..09; HPE/TELO raw replies end mid-sentence). Same remedy as 2026-08-20. daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded; operator asked to fix the thesis job in session. | 2026-08-20: max_output_tokens 800→1600 — living-thesis synthesis JSON (11 keys + cited evidence lists) was being truncated mid-object at 800 tokens, causing parse:no_json_object. Cost cap unchanged 1.0. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session. | 2026-09-19: daily_soft_cap 40→180 after PR #1088 gave this pool its own traffic. Measured demand (distinct symbols/day, 7d peak): risk 171 + tax 21, steph 155; settled cost $0.0015/call, so 180 calls ≈ $0.27/day. daily_cost_cap_usd stays 1.0 and remains the binding guard. Operator approved in session (full demand, $2/day §12 cap unchanged).",
+      "reasoning_tier": "standard",
+      "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
     },
     {
       "id": "cio_operator_reply",
