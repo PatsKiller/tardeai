@@ -138,8 +138,10 @@ def test_lane_is_n8n_native_shadow_dry_run(lane):
     assert not any(n.startswith(("SCHWAB", "ALPACA", "SNAPTRADE", "MOOMOO", "IBKR")) for n in entry["env_names"])
 
     contract = next(c for c in _json("config/n8n_health_contracts.json")["contracts"] if c["id"] == lane)
-    # DRAFT until the owner reviews it (AGENTS.md §23.19); the operator moves it to REVIEWED.
-    assert contract["status"] == "DRAFT" and contract["stage"] == "shadow" and contract["owner"] == "cio"
+    # Operator reviewed both contracts 2026-10-21 ("approve both contracts and the 395 plan expiry"); an agent may not.
+    assert contract["status"] == "REVIEWED" and contract["stage"] == "shadow" and contract["owner"] == "cio"
+    assert contract["review"]["status"] == "REVIEWED" and contract["review"]["reviewed_by"].startswith("operator ")
+    assert contract["review"]["reviewed_on"] == "2026-10-21"
 
 
 def test_cadences_match_1417():
