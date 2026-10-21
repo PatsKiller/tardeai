@@ -48738,6 +48738,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         # Future: auth + paper_trade_proposals insert only — never orders
         return 501, {"ok": False, "error": "tradingview ingress not implemented (stub)", "enabled": True}
 
+    # Release Train v2, Phase 1 (2026-10-21): read-only view. GET /api/v2/coordination/release-train (summary),
+    # /queue, /trains, /trains/{id}, /events — contract docs/ops/RELEASE_TRAIN_API.md. Every source is read in a
+    # worker pool with its own deadline (scripts/lib/release_train_view.py, the needs-action / platform-health
+    # pattern); missing data is null + UNAVAILABLE, never 0/green. GET only: non-GET and .../stop fall through
+    # (handle() returns None for them) to the STOP block, which owns them.
+    if method == "GET" and base_path.rstrip("/").startswith("/api/v2/coordination/release-train"):
+        try:
+            try:
+                from lib import release_train_view as _rtv
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import release_train_view as _rtv
+            _rtv_out = _rtv.handle(base_path, method, query or {}, _db_query)
+            if _rtv_out is not None:
+                return _rtv_out
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
     # Inference Layers routes (delegated to inference_api module; read-only)
     if base_path.startswith("/api/v2/inference"):
         try:

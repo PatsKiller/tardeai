@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tradeai:release-train/TrainEvidence.schema.json",
+  "title": "TrainEvidence@v1",
+  "description": "One piece of qualifying evidence bound to an exact candidate SHA (enhanced design sections 4 'Qualified' and 5). Only conclusion 'success' qualifies; skipped and neutral are not passes (evidence_qualifies()).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "evidence_id",
+    "train_id",
+    "candidate_sha",
+    "kind",
+    "name",
+    "conclusion",
+    "collected_at"
+  ],
+  "properties": {
+    "schema": {
+      "const": "TrainEvidence@v1"
+    },
+    "evidence_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]{8,120}$"
+    },
+    "train_id": {
+      "type": "string",
+      "pattern": "^rt-[0-9]{8}-[0-9]{4}-[a-z0-9]{4,12}$"
+    },
+    "candidate_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "kind": {
+      "enum": [
+        "ci_run",
+        "local_test",
+        "artifact",
+        "host_preflight",
+        "verification",
+        "business_output"
+      ]
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "conclusion": {
+      "enum": [
+        "success",
+        "failure",
+        "cancelled",
+        "timed_out",
+        "skipped",
+        "neutral",
+        "action_required",
+        "pending",
+        "error"
+      ]
+    },
+    "collected_at": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40
+    },
+    "workflow": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 200
+    },
+    "run_id": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "run_attempt": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "check_manifest_version": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 60
+    },
+    "url": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 500
+    },
+    "digest": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

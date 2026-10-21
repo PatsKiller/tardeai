@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tradeai:release-train/TrainOutcome.schema.json",
+  "title": "TrainOutcome@v1",
+  "description": "The terminal result of one train window (enhanced design sections 7 and 9). Keeps merged-not-live, verified, observing, rolled-back and rollback-failed apart. Program rules: NO_OP has no members; RELEASED_* need main_sha and served_sha; MERGED_NOT_LIVE needs main_sha; ROLLED_BACK/ROLLBACK_FAILED need rollback_target; finished_at >= started_at; failure attribution names members only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "train_id",
+    "window_id",
+    "outcome",
+    "members",
+    "started_at",
+    "finished_at"
+  ],
+  "properties": {
+    "schema": {
+      "const": "TrainOutcome@v1"
+    },
+    "train_id": {
+      "type": "string",
+      "pattern": "^rt-[0-9]{8}-[0-9]{4}-[a-z0-9]{4,12}$"
+    },
+    "window_id": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T(00|06|08|18):00[+-][0-9]{2}:[0-9]{2}$"
+    },
+    "outcome": {
+      "enum": [
+        "NO_OP",
+        "FAILED_PRE_MERGE",
+        "MERGED_NOT_LIVE",
+        "RELEASED_VERIFIED",
+        "RELEASED_OBSERVING",
+        "ROLLED_BACK",
+        "ROLLBACK_FAILED",
+        "STOPPED",
+        "CANCELLED"
+      ]
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 9999999
+      },
+      "uniqueItems": true,
+      "maxItems": 200
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40
+    },
+    "base_sha": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "candidate_sha": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "main_sha": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "served_sha": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "artifact_digest": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "rollback_target": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 400
+    },
+    "evidence_refs": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 400
+      }
+    },
+    "report_ref": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 400
+    },
+    "failure_attribution": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "attributed": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9999999
+          },
+          "uniqueItems": true,
+          "maxItems": 200
+        },
+        "unknown": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9999999
+          },
+          "uniqueItems": true,
+          "maxItems": 200
+        },
+        "pending_investigation": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9999999
+          },
+          "uniqueItems": true,
+          "maxItems": 200
+        }
+      }
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 2000
+    }
+  }
+}
