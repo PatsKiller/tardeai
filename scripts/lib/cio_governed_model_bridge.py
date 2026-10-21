@@ -113,6 +113,16 @@ CALLER_TASK_PROCESS_MAP: dict[str, dict[str, str]] = {
         "topic_ingestion": "topic_ingestion",
         "ri_narrative_enrich": "ri_narrative_enrich",
         "topic_research_synthesizer": "topic_research_synthesizer",
+        # 2026-10-15 (n8n LLM bridge routes batch 2): n8n llm lanes on the governed bridge (allowlist
+        # llm_route). Each its own process id, so the registry caps bind server-side and a caller cannot
+        # relabel into another process.
+        "portfolio_lookthrough_themes": "portfolio_lookthrough_themes",
+        "hermes_analyst_coverage": "hermes_analyst_coverage",
+        "hermes_usefulness_score_n8n": "hermes_usefulness_score_n8n",
+        "proposal_llm_review": "proposal_llm_review",
+        "defense_weekly_oversight": "defense_weekly_oversight",
+        "analyst_report_editorial": "analyst_report_editorial",
+        "analyst_report_critique": "analyst_report_critique",
     },
 }
 
