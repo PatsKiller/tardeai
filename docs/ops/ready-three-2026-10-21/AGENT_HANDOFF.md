@@ -1,7 +1,7 @@
 # Agent handoff — 2026-10-21
 
-**Current status (2026-10-21 04:23 UTC):** PR #1887 active checks passed on `e5ebdc6` (full hardening and main-red-alert skipped). PR #1889 is pushed at `7c187363191ade3c574c7a77bde8e0b3885ff370`; exact-head hosted CI restarted with no results yet. Local validation: 82 passed / 3 skipped, coverage `NEW=0`, `py_compile` and diff checks passed. Production remains on `ef085ce76be4512da71a58e65ef4feb25d156206`, degraded/unhealthy; no merge or deployment.
-**Updated:** 2026-10-21 04:23 UTC
+**Current status (2026-10-21 04:35 UTC):** See [CURRENT_STATUS.md](CURRENT_STATUS.md) for current exact-head CI and live evidence. PR #1889 has one required job (`cio-hardening`) still pending; PR #1887 docs checks are in progress. Production remains on ef085ce, degraded, and not production-ready. No merge or deployment.
+**Updated:** 2026-10-21 04:35 UTC
 
 ## Historical candidate state — 2026-10-21 03:48 UTC (superseded by latest handoff below)
 

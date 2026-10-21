@@ -1,6 +1,6 @@
 # Live validation — 2026-10-21
 
-**Current evidence status (2026-10-21 04:23 UTC):** Direct production audit at 04:21:28 UTC confirms production remains on `ef085ce76be4512da71a58e65ef4feb25d156206` (`main`); health 78/degraded with three criticals including global SPCX kill switch, stale SETUPS session, and six underfilled 0700 runs; `indicator_engine` unrecovered and orchestrator false. PR #1889 `7c187363191ade3c574c7a77bde8e0b3885ff370` is pushed but not deployed; no production validation of it is evidenced.
+**Current evidence status (2026-10-21 04:35 UTC):** Direct GETs at 04:33 UTC confirm production remains on `ef085ce76be4512da71a58e65ef4feb25d156206` (`main`), health 78/degraded and `healthy=false`, with 3 criticals, 23 warnings, and 26 actionable findings. The indicator lane remains unrecovered; neither PR is deployed. Communications is reachable in CANARY but does not prove ready-three behavior. Full evidence and limits are in [CURRENT_STATUS.md](CURRENT_STATUS.md).
 **Historical observation below:** 2026-10-21 03:42:26 UTC; see the timestamped 03:52 audit and latest-evidence addendum for later observations.
 
 ## Current observed production state

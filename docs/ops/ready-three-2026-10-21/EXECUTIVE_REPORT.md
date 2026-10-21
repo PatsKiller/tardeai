@@ -1,7 +1,7 @@
 # Executive gap and readiness report — 2026-10-21
 
-**Current status (2026-10-21 04:23 UTC):** PR #1887 `e5ebdc6` active checks passed; `cio-hardening-full` and `main-red-alert` were skipped. PR #1889 exact head is `7c187363191ade3c574c7a77bde8e0b3885ff370`, pushed around 04:22 UTC; hosted checks restarted with no results yet. Local broad regression on 7c: 82 passed / 3 skipped, coverage `NEW=0`, `py_compile`, diff checks, and full-tree secret scan passed. The fix covers all four known cache writers plus cached/fresh/batch API responses and signal-history values/details. Direct production evidence at 04:21:28 UTC: `CURRENT` remains `ef085ce76be4512da71a58e65ef4feb25d156206`; health 78/degraded with 3 criticals including global SPCX kill switch, stale SETUPS session, and six underfilled 0700 runs; `indicator_engine` unrecovered and orchestrator false. Neither candidate is live; production is not ready.
-**Updated:** 2026-10-21 04:23 UTC
+**Current status (2026-10-21 04:35 UTC):** See [CURRENT_STATUS.md](CURRENT_STATUS.md) for the exact PR matrices and 04:33 production probe. PR #1889 has passed its integration, PostgreSQL, serial, aggregate, and other named checks; `cio-hardening` is pending. PR #1887 docs checks are running. Local tests passed 82/3 with coverage `NEW=0`, compilation, diff, and full-tree secret scan; documentation index test passed 7/7. Production remains degraded on ef085ce and is not ready. Neither candidate is live.
+**Updated:** 2026-10-21 04:35 UTC
 **Historical evidence cutoff:** Earlier sections record observations at 03:42–03:52 UTC and must be read as timestamped snapshots. GitHub/live states in this dossier are coordinator-reported; this documentation worker did not independently poll those systems.
 
 ## Executive summary — current disposition as of 2026-10-21 04:23 UTC

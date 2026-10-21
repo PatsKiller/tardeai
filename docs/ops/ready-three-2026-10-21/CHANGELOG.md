@@ -1,7 +1,7 @@
 # Change and release log — 2026-10-21
 
-**Current status (2026-10-21 04:23 UTC):** PR #1887 `e5ebdc6` active checks passed with full-hardening and main-red-alert skipped. PR #1889 is pushed at `7c187363191ade3c574c7a77bde8e0b3885ff370`; exact-head hosted CI restarted with no results yet. Local broader regression: 82 passed / 3 skipped, coverage `NEW=0`, `py_compile` and diff checks passed. Production remains on #1888 and degraded; no merge/deployment.
-**Updated:** 2026-10-21 04:23 UTC
+**Current status (2026-10-21 04:35 UTC):** The authoritative current matrix is in [CURRENT_STATUS.md](CURRENT_STATUS.md). PR #1889 exact 7c checks are almost complete with only `cio-hardening` pending; PR #1887 documentation checks are running on a015. Production remains degraded on ef085ce; neither PR is deployed.
+**Updated:** 2026-10-21 04:35 UTC
 
 The change rows below are the original 03:48 baseline; the timestamped addenda below supersede their PR #1889 status.
 

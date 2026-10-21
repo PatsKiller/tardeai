@@ -1,7 +1,7 @@
 # Deployment and rollback gates — 2026-10-21
 
-**Current status (2026-10-21 04:23 UTC):** No deployment. PR #1887 active checks passed at `e5ebdc6` subject to event skips. PR #1889 `7c187363191ade3c574c7a77bde8e0b3885ff370` is pushed; exact-head hosted CI restarted with no results yet. Local validation (82 passed / 3 skipped, coverage `NEW=0`, `py_compile`, diff checks) is not release qualification. Production remains degraded and indicator unrecovered. Do not promote either candidate.
-**Updated:** 2026-10-21 04:23 UTC
+**Current status (2026-10-21 04:35 UTC):** No deployment. See [CURRENT_STATUS.md](CURRENT_STATUS.md) for exact PR heads and remaining CI. PR #1889 still has `cio-hardening` pending; PR #1887 documentation CI is in progress. Production remains degraded on ef085ce with the indicator lane unrecovered. Do not promote either candidate until CI and operational risk gates are satisfied.
+**Updated:** 2026-10-21 04:35 UTC
 
 This document records release criteria; it does not authorize a release.
 

@@ -1,7 +1,7 @@
 # Ready-three evidence and readiness — 2026-10-21
 
-**Current status (2026-10-21 04:23 UTC):** PR #1887 active checks passed at `e5ebdc6` with event skips. PR #1889 exact head `7c187363191ade3c574c7a77bde8e0b3885ff370` was pushed around 04:22 UTC; exact-head hosted CI restarted with no results yet. Local broad suite: 82 passed / 3 skipped, coverage `NEW=0`, `py_compile`, diff checks, and full-tree secret scan passed. Production remains on `ef085ce76be4512da71a58e65ef4feb25d156206`, degraded/unhealthy; no merge or deployment.
-**Updated:** 2026-10-21 04:23 UTC
+**Current status (2026-10-21 04:35 UTC):** See [CURRENT_STATUS.md](CURRENT_STATUS.md) for the latest exact-head CI matrix and direct production evidence. PR #1889 `7c187363…` has passed its integration shards, serial, PostgreSQL, aggregate gate, and other named checks; `cio-hardening` remains pending. PR #1887 docs head `a015331a…` has checks in progress. Production remains on `ef085ce76be4512da71a58e65ef4feb25d156206`, degraded and not production-ready. Neither candidate is live.
+**Updated:** 2026-10-21 04:35 UTC
 **Scope:** Communications ready-three candidate, currently deployed #1888 baseline, and related C3 readiness.
 Historical 03:45 status superseded by the 04:23 addendum below: PR #1887 now has active checks passed with event skips; PR #1889 is at pushed SHA 7c187363191ade3c574c7a77bde8e0b3885ff370 with exact-head CI pending. Neither PR is merged or deployed; current production remains degraded on ef085ce76be4512da71a58e65ef4feb25d156206.
 

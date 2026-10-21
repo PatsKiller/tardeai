@@ -1,7 +1,7 @@
 # System inventory snapshot — 2026-10-21
 
-**Status:** Base service inventory below is the coordinator-reported 03:42:26 UTC snapshot. Direct release/health evidence at 04:21:28 UTC still identifies #1888 and degraded status. PR #1889 is pushed at `7c187363191ade3c574c7a77bde8e0b3885ff370`, with hosted checks pending; no production change is evidenced. Service states, process paths, listeners, and full counters were not refreshed after 03:42.
-**Updated:** 2026-10-21 04:23 UTC
+**Status:** Base service inventory below remains the 03:42:26 UTC snapshot. Direct build metadata and health GETs at 04:33 UTC confirm #1888/ef085ce remains active and degraded. Current PR heads, CI, and explicit inventory limits are in [CURRENT_STATUS.md](CURRENT_STATUS.md). Service states, process paths, listeners, and full counters were not refreshed after 03:42.
+**Updated:** 2026-10-21 04:35 UTC
 
 ## Release and service state observed
 

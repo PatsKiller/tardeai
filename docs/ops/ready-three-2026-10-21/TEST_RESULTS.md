@@ -1,7 +1,7 @@
 # Test results — 2026-10-21
 
-**Current status (2026-10-21 04:23 UTC):** PR #1887 exact head `e5ebdc6` active checks passed; `cio-hardening-full` and `main-red-alert` were skipped. PR #1889 exact head `7c187363191ade3c574c7a77bde8e0b3885ff370` was pushed around 04:22 UTC; hosted CI restarted with no results yet. Local broad regression on 7c: 82 passed / 3 skipped, coverage `NEW=0`, `py_compile`, diff checks, and full-tree secret scan passed. These are local results, not hosted checks.
-**Updated:** 2026-10-21 04:23 UTC
+**Current status (2026-10-21 04:35 UTC):** Local 7c regression remains 82 passed / 3 skipped; coverage `NEW=0`, `py_compile`, diff checks, and full-tree secret scan passed. Docs index test passed 7/7. See [CURRENT_STATUS.md](CURRENT_STATUS.md) for exact hosted states: PR #1889 only `cio-hardening` remains pending; PR #1887 docs CI is still running. No deployment evidence.
+**Updated:** 2026-10-21 04:35 UTC
 **Candidate SHA:** 641e3a23c7eb1fea6df2615450657af02415949a (pushed PR #1887 head).
 
 ## Completed checks
