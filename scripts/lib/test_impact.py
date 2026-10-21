@@ -431,6 +431,17 @@ def select(
             if d == 1 and f in registered and f not in doc_pinned:
                 doc_pinned.append(f)
     chosen.update(doc_pinned)
+    # 2026-10-21: a MEDIUM path from which no registered test is reachable has UNKNOWN impact
+    # (it is not "safe", it is unmeasured). tiers["unknown_impact"]["action"] == "fast" tells the
+    # caller to run the broader suite (every gate) instead of this selection.
+    unknown_impact = sorted(
+        p
+        for p in changed
+        if tier_of[p] == "medium"
+        and p not in registered
+        and not any(f in registered for f in impacted_tests([p], impact_map))
+    )
+    unknown_action = str(((tiers.get("unknown_impact") or {}).get("action")) or "smoke")
 
     def w(p: str) -> float:
         return hints.get(p, default_seconds)
@@ -475,4 +486,6 @@ def select(
         "budget_seconds": budget,
         "unknown_gates": unknown_gates,
         "doc_pinned": sorted(doc_pinned),
+        "unknown_impact": unknown_impact,
+        "broaden_to_fast": bool(unknown_impact) and unknown_action == "fast",
     }

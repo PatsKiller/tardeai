@@ -411,6 +411,26 @@ def select_pr_gates(
         # nothing and pass. Fail closed instead of warning.
         print(f"[FAIL] tier config names unknown mandatory gates: {sel['unknown_gates']}", flush=True)
         raise UnknownMandatoryGatesError(sel["unknown_gates"])
+    if sel.get("broaden_to_fast"):
+        # 2026-10-21: unknown impact is not "no impact". config/ci_risk_tiers.json unknown_impact.
+        unknown = sel["unknown_impact"]
+        print(
+            f"[select] UNKNOWN IMPACT ({len(unknown)} path(s) reach no registered test: "
+            f"{', '.join(unknown[:8])}{' ...' if len(unknown) > 8 else ''}) -> BROADER SUITE (fast, every gate)",
+            flush=True,
+        )
+        summary = os.environ.get("GITHUB_STEP_SUMMARY")
+        if summary:
+            try:
+                with open(summary, "a", encoding="utf-8") as fh:
+                    fh.write(
+                        "## cio-hardening (pr profile)\n- unknown impact: "
+                        + ", ".join(f"`{p}`" for p in unknown[:50])
+                        + "\n- ran the broader suite: every gate (fast profile)\n"
+                    )
+            except OSError:
+                pass
+        return GATES, "fast"
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         lines = [
