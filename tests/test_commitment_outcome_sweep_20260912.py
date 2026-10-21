@@ -141,7 +141,9 @@ def test_an_unfalsifiable_claim_is_reported_not_scored_as_a_success():
     res = sweep_due_commitments([c], observation_provider=lambda _x: {"confirmed": True, "observed": True, "source_refs": ["filing:fixture"], "commitment_id": _x["commitment_id"]}, now=NOW)
     assert res.unfalsifiable == 1
     assert res.scored == 0
-    assert res.by_outcome == {"INSUFFICIENT_EVIDENCE": 1}
+    # Terminal since 2026-10-09 (was a non-terminal INSUFFICIENT_EVIDENCE that
+    # was re-evaluated nightly forever).
+    assert res.by_outcome == {"UNSCOREABLE": 1}
     assert res.lessons == []
     assert "claim_not_falsifiable" in res.outcomes[0]["errors"][0]
 
@@ -202,7 +204,7 @@ def test_mixed_batch_counts_every_category_separately():
     ]
     res = sweep_due_commitments(batch, now=NOW)
     assert (res.scanned, res.due, res.unfalsifiable) == (3, 2, 1)
-    assert res.by_outcome == {"EXPIRED": 1, "INSUFFICIENT_EVIDENCE": 1}
+    assert res.by_outcome == {"EXPIRED": 1, "UNSCOREABLE": 1}
 
 
 # ---------------------------------------------------------------------------

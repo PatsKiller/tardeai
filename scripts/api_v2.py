@@ -23060,6 +23060,35 @@ def _scalp_live_poll():
 # ── Indicator Engine Endpoints ─────────────────────────────────────────────
 
 
+def _indicator_cache_params(symbol: str, profile: str, r: dict) -> tuple:
+    """indicator_confluence_cache UPSERT params with every non-finite float as NULL (2026-10-21, #1889 rework).
+
+    ``json.dumps`` emitted the bare token ``NaN`` for a NaN pivot and Postgres rejected the json (the lane writer
+    was fixed by #1890 via lib.json_finite; these API writers were not). ``json_finite.dumps`` is
+    ``allow_nan=False``, so anything the sanitiser misses raises here instead of at the server.
+    """
+    from lib.json_finite import dumps as _finite_dumps, finite_or_none as _f
+
+    return (
+        symbol,
+        profile,
+        _f(r.get("confluence_score", 0)),
+        r.get("confluence_tier"),
+        _f(r.get("signals_bullish", 0)),
+        _f(r.get("signals_bearish", 0)),
+        _f(r.get("signals_neutral", 0)),
+        r.get("strategy_badges", []),
+        r.get("bearish_badges", []),
+        _finite_dumps(r.get("key_levels", {})),
+        _f(r.get("stop_price")),
+        _f(r.get("target_price")),
+        _f(r.get("atr")),
+        r.get("adx_regime"),
+        _f(r.get("entry_quality")),
+        _finite_dumps(r, default=str),
+    )
+
+
 def _indicator_confluence_handler(query: dict) -> tuple:
     """GET /api/v2/indicators/confluence?symbol=X&profile=swing&force=true"""
     symbol = (query.get("symbol") or "").upper()
@@ -23089,6 +23118,8 @@ def _indicator_confluence_handler(query: dict) -> tuple:
         if not result.get("ok"):
             return 200, {"ok": False, "error": result.get("error", "analysis failed"), "symbol": symbol}
 
+        from lib.json_finite import dumps as _finite_dumps, finite_or_none as _finite_or_none, json_safe
+
         # UPSERT into cache
         try:
             _db_write(
@@ -23116,24 +23147,7 @@ def _indicator_confluence_handler(query: dict) -> tuple:
                      full_result=EXCLUDED.full_result,
                      computed_at=NOW(),
                      expires_at=NOW()+INTERVAL '15 minutes'""",
-                (
-                    symbol,
-                    profile,
-                    result.get("confluence_score", 0),
-                    result.get("confluence_tier"),
-                    result.get("signals_bullish", 0),
-                    result.get("signals_bearish", 0),
-                    result.get("signals_neutral", 0),
-                    result.get("strategy_badges", []),
-                    result.get("bearish_badges", []),
-                    json.dumps(result.get("key_levels", {})),
-                    result.get("stop_price"),
-                    result.get("target_price"),
-                    result.get("atr"),
-                    result.get("adx_regime"),
-                    result.get("entry_quality"),
-                    json.dumps(result),
-                ),
+                _indicator_cache_params(symbol, profile, result),
             )
 
             # Log signals to history
@@ -23145,14 +23159,14 @@ def _indicator_confluence_handler(query: dict) -> tuple:
                         symbol,
                         strat_name,
                         sig_data.get("signal", "NEUTRAL"),
-                        sig_data.get("value"),
-                        json.dumps(sig_data.get("details", {})),
+                        _finite_or_none(sig_data.get("value")),
+                        _finite_dumps(sig_data.get("details", {}), default=str),
                     ),
                 )
         except Exception as cache_err:
             print(f"  [indicators] Cache write failed (non-fatal): {cache_err}")
 
-        return 200, {"ok": True, "data": result, "cached": False}
+        return 200, {"ok": True, "data": json_safe(result), "cached": False}
     except Exception as e:
         return 500, {"ok": False, "error": str(e)}
 
@@ -23169,12 +23183,13 @@ def _indicator_batch_handler(body: dict) -> tuple:
 
     _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     from indicator_engine import analyze_confluence
+    from lib.json_finite import json_safe
 
     results = {}
     for sym in symbols:
         try:
             r = analyze_confluence(sym.upper(), profile)
-            results[sym.upper()] = r
+            results[sym.upper()] = json_safe(r)
             # Cache result. 2026-10-20: the conflict branch refreshes every scalar column, as the single-symbol
             # path and indicator_universe_lane.UPSERT_SQL do. It used to update only score/tier/bullish/badges/
             # full_result, so a negative stop_price from before the 2026-10-18 atr_stop_target floor survived
@@ -23205,24 +23220,7 @@ def _indicator_batch_handler(body: dict) -> tuple:
                              entry_quality=EXCLUDED.entry_quality,
                              full_result=EXCLUDED.full_result,
                              computed_at=NOW(), expires_at=NOW()+INTERVAL '15 minutes'""",
-                        (
-                            sym.upper(),
-                            profile,
-                            r.get("confluence_score", 0),
-                            r.get("confluence_tier"),
-                            r.get("signals_bullish", 0),
-                            r.get("signals_bearish", 0),
-                            r.get("signals_neutral", 0),
-                            r.get("strategy_badges", []),
-                            r.get("bearish_badges", []),
-                            json.dumps(r.get("key_levels", {})),
-                            r.get("stop_price"),
-                            r.get("target_price"),
-                            r.get("atr"),
-                            r.get("adx_regime"),
-                            r.get("entry_quality"),
-                            json.dumps(r),
-                        ),
+                        _indicator_cache_params(sym.upper(), profile, r),
                     )
                 except Exception:
                     pass
@@ -27884,6 +27882,21 @@ def _state_root_divergence(query=None):
         }
 
 
+def _isolated_truth_block(module, schema, fn_name, kwargs):
+    """Compute a truth contract in a child process under a deadline (n8nmat reliability).
+
+    These contracts scan stores, crontab and the bundle. In-process, one slow scan
+    held a server thread and ~800 MB of the API heap until the watchdog SIGKILLed
+    :7777. lib.request_isolation kills the child at the deadline and returns an
+    honest TIMEOUT body; the API keeps serving.
+    """
+    from lib.request_isolation import run_isolated
+
+    body = run_isolated(module, fn_name, kwargs)
+    body.setdefault("schema", schema)
+    return body
+
+
 def _whole_site_truth_block(fn_name, **kwargs):
     """Shared read-only wrapper for the whole-site truth contracts.
 
@@ -27891,9 +27904,7 @@ def _whole_site_truth_block(fn_name, **kwargs):
     reason, never as an empty report that reads like a healthy one.
     """
     try:
-        from lib import whole_site_truth as _wst
-
-        return getattr(_wst, fn_name)(**kwargs)
+        return _isolated_truth_block("lib.whole_site_truth", "WholeSiteTruth@v1", fn_name, kwargs)
     except Exception as e:  # noqa: BLE001
         return {
             "schema": "WholeSiteTruth@v1",
@@ -27951,9 +27962,7 @@ def _effective_truth_block(fn_name, **kwargs):
     empty report that reads like a healthy one.
     """
     try:
-        from lib import effective_truth as _et
-
-        return getattr(_et, fn_name)(**kwargs)
+        return _isolated_truth_block("lib.effective_truth", "EffectiveTruth@v1", fn_name, kwargs)
     except Exception as e:  # noqa: BLE001
         return {
             "schema": "EffectiveTruth@v1",

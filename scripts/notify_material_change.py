@@ -56,6 +56,28 @@ proposal") could suppress all the others (179 suppressed runs, 2026-09-22..24).
 
 from __future__ import annotations
 
+import sys as _dr_sys
+
+if __name__ == "__main__" and "--dry-run" in _dr_sys.argv[1:]:
+    # n8n onboarding (lane disposition 2026-10-15, MIGRATE_N8N): --dry-run is an OFFLINE plan and wins over every
+    # live flag (--apply / --digest --apply). It returns here, before the .env load, any DB/LLM/network/sender import and any file
+    # write; it prints the plan and one LaneOutput@v1 line on stderr (produced 0, empty_reason dry_run).
+    import os as _dr_os
+
+    _dr_sys.path.insert(0, _dr_os.path.join(_dr_os.path.dirname(_dr_os.path.abspath(__file__))))
+    from lib.lane_output import emit as _dr_emit, output_block as _dr_block
+
+    _dr_lane = "material-change-notifier-stage2"
+    _dr_would = (
+        "route each new stage-1 material change (PAGE / DIGEST / COMMAND_CENTER) on fresh quotes and "
+        "holdings, and with --apply send the pages (or the --digest) through the Telegram chokepoint / comms "
+        "gateway and mark each change_guid notified only on an accepted send"
+    )
+    print(f"DRY-RUN {_dr_lane}: would {_dr_would}; argv={_dr_sys.argv[1:]!r}; dry-run wins over live flags; "
+          "nothing read from env/DB/network, no model call, no send, no file write")
+    _dr_emit(_dr_lane, "dry_run", _dr_block(produced=0, attempted=0, empty_reason="dry_run", unit="material_change"))
+    raise SystemExit(0)
+
 import argparse
 import hashlib
 import json

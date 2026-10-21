@@ -158,6 +158,11 @@ GATES = [
     # nested) -> None on analyze_confluence's result; the lane serialises allow_nan=False, stores non-finite scalars
     # as NULL, and skips a row Postgres rejects as data (SQLSTATE 22) as row_rejected. Hermetic: fake conn.
     ("indicator_engine_nan_json_20261021", ["tests/test_indicator_engine_nan_json_20261021.py"]),
+    # ANCHOR: INDICATOR_JSON_NAN_WRITERS_20261021 (#1889 reworked onto json_finite) — the two writers #1890 did not
+    # cover: the /indicator-confluence API upserts (single + batch, api_v2._indicator_cache_params) and
+    # indicator_cache_refresh.py. Non-finite -> NULL / json null via lib.json_finite (allow_nan=False); responses
+    # json_safe. Hermetic: recorder _db_write, fake indicator_engine, source text.
+    ("indicator_json_nan_writers_20261021", ["tests/test_indicator_json_nan_writers_20261021.py"]),
     # ANCHOR: N8N_EVIDENCE_KIND_PARITY_20261019 — the runtime output verdict and the FW-M6 checker accept the same
     # N8nExpectedOutput@v1 evidence kinds (file_artifact, per N8N_CONTRACTS_DESIGN.md); before, "file" vs "file_artifact"
     # meant no contract could cite a file. Hermetic: committed contracts read only.
@@ -470,6 +475,16 @@ GATES = [
             # refusal fail-closed, curation lineage GUIDs + prior-grounding.
             "tests/test_holding_llm_curation.py",
         ],
+    ),
+    (
+        # ANCHOR: ONBOARD_DRYRUN_B5_20261015 — n8n onboarding batch B5 (lane disposition 2026-10-15, MIGRATE_N8N, no
+        # allowlist entry, no --dry-run before), risk tier 3 senders: advice-digest, alert-daily-digest, rotation-
+        # rebalance-digest, hermes-score-alerts, screener-go-alerts, watch-alerts-eval, watch-directive-hygiene.
+        # Offline --dry-run wins over --send and over the always-send lanes (in-process record-and-raise proof, no
+        # sender module imported); static capability audit pins chokepoint_send and no direct_sender. Listing it
+        # schedules nothing.
+        "onboard_dryrun_b5_20261015",
+        ["tests/test_onboard_dryrun_b5_20261015.py"],
     ),
     # Cash age is the age of the dollars. PP2 (the cash letter) and PP4 (provenance)
     # stopped borrowing a clock; PP3 (the freshness board) is reported, not changed.
@@ -1441,6 +1456,16 @@ GATES = [
             # 2026-10-10 optional: trade-ai-scalp-live excluded from the LLM diagnosis catalogue (operator decision pending).
             "tests/test_n8n_diagnosis_exclude_scalp_20261010.py",
         ],
+    ),
+    (
+        # ANCHOR: ONBOARD_DRYRUN_B8_20261015 — n8n onboarding batch B8 (lane disposition 2026-10-15, MIGRATE_N8N, no
+        # allowlist entry, no --dry-run before): run-ensemble-worker and run-governed-symbol-thesis-acquisition (LLM;
+        # Python worker + shell launcher both guarded), cio-entry-state and cio-opportunity-curator (deterministic).
+        # Offline --dry-run wins over --apply/--run: no model call, no DB, network, lock, log or send (in-process
+        # record-and-raise proof for Python, PATH-of-recording-stubs proof for the launchers); static capability audit
+        # pins chokepoint_send and no direct_sender. Listing it schedules nothing.
+        "onboard_dryrun_b8_20261015",
+        ["tests/test_onboard_dryrun_b8_20261015.py"],
     ),
     # 2026-10-15: n8n_lane_failure_diagnosis offpeak_tier critical (OAuth first, $0.05/call, $0.10/day) — with
     # deferral armed, a failure outside the window is diagnosed now, not escalated as `conf=None; cause=`; an
@@ -2843,6 +2868,9 @@ GATES = [
         [
             "tests/test_whole_site_truth.py",
             "tests/test_operator_control_contract.py",
+            # n8nmat reliability (2026-10-09): these truth contracts run in a
+            # child process under a deadline so one slow scan cannot wedge :7777.
+            "tests/test_api_request_isolation.py",
         ],
     ),
     (
@@ -3960,6 +3988,16 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: ONBOARD_DRYRUN_B6_20261015 — n8n onboarding batch B6 (lane disposition 2026-10-15, MIGRATE_N8N, no
+        # allowlist entry, no --dry-run before): material-change-notifier-stage2, agent-watchlist-engine,
+        # portfolio-ai-analyst (hermes-watchlist-scorer dropped 2026-10-21: main keeps its real read-only --dry-run), auto-enrichment-runner, analyst-urgent-refresh. Offline --dry-run
+        # wins over --apply/--telegram and the always-on paths (in-process record-and-raise proof: no DB, network,
+        # model call, subprocess or sender import); static capability audit pins chokepoint_send and no direct_sender.
+        # Listing it schedules nothing.
+        "onboard_dryrun_b6_20261015",
+        ["tests/test_onboard_dryrun_b6_20261015.py"],
+    ),
+    (
         # N8N_RUN_ROUTE — 2026-10-08 n8n scheduler-of-record tranche N1: the gateway `run` operation
         # (per-caller keys, coordination_run scope, config/n8n_run_allowlist.json), the ledger `runs`
         # table, the executor (fake runner, lock skip, timeout, receipt) and the allowlist safety test.
@@ -4026,6 +4064,16 @@ GATES = [
             # bridge transport and chokepoint, pinned clocks. Everything stays inert (spec dry_run, live_arg null).
             "tests/test_hermes_learning_prereqs_20261015.py",
         ],
+    ),
+    (
+        # ANCHOR: ONBOARD_DRYRUN_B7_20261015 — n8n onboarding batch B7 (lane disposition 2026-10-15, MIGRATE_N8N, no
+        # allowlist entry, no --dry-run before), risk tier 4 LLM agents: auto-research, iterate-research-topics,
+        # watch-directives-service, hermes-think-tank, research-intelligence-queue, aegis-synthesis. Offline --dry-run
+        # wins over --apply/--telegram/--drain: no model call, no bridge/router/provider import, no network, no DB, no
+        # send (in-process record-and-raise proof); static capability audit pins chokepoint_send and no direct_sender.
+        # Listing it schedules nothing.
+        "onboard_dryrun_b7_20261015",
+        ["tests/test_onboard_dryrun_b7_20261015.py"],
     ),
     (
         # ANCHOR: N8N_WORKFLOW_FRAMEWORK_20261015 — AGENTS.md §23.24 framework checker
@@ -4298,6 +4346,16 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: ONBOARD_DRYRUN_B4_20261015 — n8n onboarding batch B4 (lane disposition 2026-10-15, MIGRATE_N8N, no
+        # allowlist entry, no --dry-run before), risk tier 3 senders: telegram-smart-alerts, eod-open-trade-alert,
+        # journal-annotation-reminder, social-scalp-scanner, run-warrior-weekly-audit, overnight-batch-tax, youtube-
+        # channel-discovery. Offline --dry-run wins over --telegram/--send (in-process record-and-raise proof, fake
+        # send_telegram never called, no sender module imported); static capability audit pins chokepoint_send and no
+        # direct_sender for every live path. Listing it schedules nothing.
+        "onboard_dryrun_b4_20261015",
+        ["tests/test_onboard_dryrun_b4_20261015.py"],
+    ),
+    (
         # ANCHOR: N8N_MATURITY_B5_FOLLOWUPS (2026-10-09): heartbeat watcher alarms only once heartbeat-watch is
         # dispatched (node-executed Code node), breach-detector cron deadlines via last_fire_at_or_before (DST),
         # fan-in P2 per dead letter / open breaker, CI rails: dispatch class vs retry_policy, dispatch.cron vs
@@ -4423,8 +4481,10 @@ GATES = [
         # ANCHOR: N8N_OPS_LANES — 2026-10-09 operator "add the lanes": storage-watch, backup-verify (dump dir
         # config-driven), monthly trade-ai-restore-drill (throwaway DB only; drop guard pinned), N7 shadow
         # workflows. Hermetic: tmp_path dumps/stamps, fake runners, fake DB connections that record SQL.
+        # 2026-10-09 n8nmat/restore-drill-guard: adversarial dumps vs the line guard, psql swapped for a
+        # byte sink (real gzip producer), dedicated-role / 0600 credentials / psql \restrict preflight.
         "n8n_ops_lanes_20261009",
-        ["tests/test_n8n_ops_lanes_20261009.py"],
+        ["tests/test_n8n_ops_lanes_20261009.py", "tests/test_restore_drill_guard_20261009.py"],
     ),
     (
         # ANCHOR: N8N_MATURITY_RETRY_DLQ — n8n maturity B5.4 (design 02 §3.3/§3.4, F8/F9): N8nRetryPolicies@v1
@@ -4883,6 +4943,8 @@ GATES = [
             "tests/test_registry_ops_crons_20261009.py",
             # siem-diagnoser-schedule 2026-10-10: n8n-siem-bridge + n8n-failure-diagnosis host-cron rows, PAUSED pending install.
             "tests/test_registry_siem_diagnoser_crons_20261010.py",
+            # commitment-horizon-due 2026-10-09: due = created+horizon; sweep horizon guard + terminal UNSCOREABLE.
+            "tests/test_commitment_horizon_due_20261009.py",
         ],
     ),
     (

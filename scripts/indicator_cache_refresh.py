@@ -27,6 +27,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
 logger = logging.getLogger(__name__)
 
 from indicator_engine import analyze_confluence
+# 2026-10-21 (#1889 rework): non-finite floats -> NULL; dumps is allow_nan=False (bare NaN broke the jsonb insert).
+from lib.json_finite import dumps as _finite_dumps, finite_or_none as _f
 
 try:
     import psycopg2
@@ -116,14 +118,14 @@ try:
                          full_result=EXCLUDED.full_result,
                          computed_at=NOW(),
                          expires_at=NOW()+INTERVAL '1 hour'""",
-                    (s, 'swing', r.get('confluence_score', 0), r.get('confluence_tier'),
-                     r.get('signals_bullish', 0), r.get('signals_bearish', 0),
-                     r.get('signals_neutral', 0),
+                    (s, 'swing', _f(r.get('confluence_score', 0)), r.get('confluence_tier'),
+                     _f(r.get('signals_bullish', 0)), _f(r.get('signals_bearish', 0)),
+                     _f(r.get('signals_neutral', 0)),
                      r.get('strategy_badges', []), r.get('bearish_badges', []),
-                     json.dumps(r.get('key_levels', {})),
-                     r.get('stop_price'), r.get('target_price'),
-                     r.get('atr'), r.get('adx_regime'), r.get('entry_quality'),
-                     json.dumps(r))
+                     _finite_dumps(r.get('key_levels', {})),
+                     _f(r.get('stop_price')), _f(r.get('target_price')),
+                     _f(r.get('atr')), r.get('adx_regime'), _f(r.get('entry_quality')),
+                     _finite_dumps(r, default=str))
                 )
                 conn.commit()
                 success += 1

@@ -506,6 +506,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/agent-contracts.md` | Agent Consumption Contracts — AgentConsumptionReceipt@v1 | archive_superseded | OK | `f8b7769839f4` |
 | `docs/architecture/agent-memory-view-proposal.md` | Command Center — Agent Memory view (proposal) | review_required | OK | `7b90f4d8e3d6` |
 | `docs/architecture/channel-adapters.md` | Gateway Channel Adapters — Phase 10 | review_required | OK | `2457155850f5` |
+| `docs/architecture/ci/cio-hardening-design-audit-20261009.md` | CI design audit: the CIO hardening process, end to end (2026-10-09) | review_required | MISSING HEADER | `298d8c54565b` |
+| `docs/architecture/ci/cio-hardening-due-diligence-20261009.md` | CIO hardening due diligence — executive summary (2026-10-09) | review_required | OK | `7abe42abe057` |
+| `docs/architecture/ci/cio-hardening-timing-evidence-20261009.md` | CI timing evidence: why `cio-hardening` takes ~15 minutes (2026-10-09) | review_required | MISSING HEADER | `75d4326834c4` |
 | `docs/architecture/cio-cognition-tranche3-20260925.md` | CIO cognition tranche 3 — prompt event-driven cognition and the closed learning chain | review_required | OK | `4593665c031d` |
 | `docs/architecture/cio/ADR_ALEX_AUTHORITY_MANIFEST.md` | ADR: Alex Authority Manifest | review_required | OK | `8bf7e2366689` |
 | `docs/architecture/cio/ADR_CIO_STATE_ARCHITECTURE.md` | ADR: CIO State Architecture | review_required | OK | `78b3c731e31d` |
@@ -1520,7 +1523,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-parallel/audits/guardrail-audit-a-config-20261009.md` | Guardrail Audit A — Config/Data guardrails vs the n8n path | review_required | MISSING HEADER | `83561a170728` |
 | `docs/implementation/n8n-parallel/audits/guardrail-audit-b-code-20261009.md` | Guardrail Audit B: code and runtime enforcement (2026-10-09) | review_required | MISSING HEADER | `a5936ee4f201` |
 | `docs/implementation/n8n-parallel/audits/guardrail-audit-c-policy-n8n-20261009.md` | Guardrail Audit C: policy and procedure rails, and n8n-side controls | review_required | OK | `b463c91f9e86` |
-| `docs/implementation/n8n-parallel/lanes/ops-lanes-20261009.md` | Ops lanes 2026-10-09 — storage-watch, backup-verify, trade-ai-restore-drill (tranche N7) | review_required | OK | `e136f2e0d04a` |
+| `docs/implementation/n8n-parallel/lanes/ops-lanes-20261009.md` | Ops lanes 2026-10-09 — storage-watch, backup-verify, trade-ai-restore-drill (tranche N7) | review_required | OK | `f0a0afd5df78` |
 | `docs/implementation/n8n-parallel/lanes/scalp-lane-20261009.md` | trade-ai-scalp-live as an n8n-driven lane — 2026-10-09 | review_required | MISSING HEADER | `48b1c1808e26` |
 | `docs/implementation/n8n-parallel/ledgers/cron_cutover_20261007.md` | Cron cutover ledger — 2026-10-07 (ranks 3–4 + tranche C install) | review_required | MISSING HEADER | `9d5cc13f4722` |
 | `docs/implementation/n8n-parallel/ledgers/window_runtimes_20261007.md` | Window runtimes — fixed-minute cron lines in 05:30–08:00 and 16:00–18:40 (7 days to 2026-10-07) | review_required | OK | `fc4884189c2f` |
