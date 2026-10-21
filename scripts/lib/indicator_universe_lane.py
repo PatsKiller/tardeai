@@ -31,6 +31,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 
+from .json_finite import dumps as _dumps, finite_or_none, json_safe  # noqa: F401 -- json_safe re-exported
+
 LANE_ID = "indicator-engine"
 UNIT = "indicator_confluence_cache rows upserted"
 CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "indicator_strategies.yaml"
@@ -132,13 +134,23 @@ def stale_symbols(cur, symbols: Iterable[str], profile: str, stale_after_hours: 
 
 
 def upsert_params(symbol: str, profile: str, r: dict, ttl_minutes: int) -> tuple:
-    return (symbol, profile, r.get("confluence_score", 0), r.get("confluence_tier"),
-            r.get("signals_bullish", 0), r.get("signals_bearish", 0), r.get("signals_neutral", 0),
+    """2026-10-21: a NaN pivot (GP, short history) went out as the bare token NaN and Postgres rejected the json.
+    Every non-finite float becomes NULL (json null / SQL NULL); ``_dumps`` is ``allow_nan=False`` so anything the
+    sanitiser misses raises here instead of at the server."""
+    f = finite_or_none
+    return (symbol, profile, f(r.get("confluence_score", 0)), r.get("confluence_tier"),
+            f(r.get("signals_bullish", 0)), f(r.get("signals_bearish", 0)), f(r.get("signals_neutral", 0)),
             r.get("strategy_badges", []), r.get("bearish_badges", []),
-            json.dumps(r.get("key_levels", {})),
-            r.get("stop_price"), r.get("target_price"),
-            r.get("atr"), r.get("adx_regime"), r.get("entry_quality"),
-            json.dumps(r, default=str), int(ttl_minutes))
+            _dumps(r.get("key_levels", {})),
+            f(r.get("stop_price")), f(r.get("target_price")),
+            f(r.get("atr")), r.get("adx_regime"), r.get("entry_quality"),
+            _dumps(r, default=str), int(ttl_minutes))
+
+
+def _is_row_data_error(exc: BaseException) -> bool:
+    """Postgres rejected this row's values (SQLSTATE class 22, e.g. 22P02 invalid json): skip the row, keep the
+    batch. Any other error (schema, permission, connection) still propagates."""
+    return str(getattr(exc, "pgcode", None) or "").startswith("22")
 
 
 def proxy_codes() -> frozenset[str]:
@@ -252,6 +264,16 @@ def run(*, dry_run: bool = False, limit: Optional[int] = None, symbols: Optional
                     close_thread_conn()
                 except Exception:  # noqa: BLE001
                     pass
+            except Exception as exc:  # noqa: BLE001 -- only a data error is absorbed; everything else re-raises
+                if not _is_row_data_error(exc):
+                    raise
+                # 2026-10-20/21: one bad row (NaN json) used to escape run() and abort every later symbol.
+                reason = "row_rejected"
+                try:
+                    c.rollback()
+                except Exception:  # noqa: BLE001
+                    pass
+                break
         if reason:
             skipped[reason] = skipped.get(reason, 0) + 1
             continue

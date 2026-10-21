@@ -145,6 +145,12 @@ GATES = [
     # revisited, now stalest perf_updated_at first; the batch indicators API upsert never refreshed stop_price on
     # conflict, now every scalar column. Hermetic: sqlite + source text.
     ("data_plausibility_four_20261020", ["tests/test_data_plausibility_four_20261020.py"]),
+    # ANCHOR: INDICATOR_ENGINE_NAN_JSON_20261021 — indicator_engine --universe failed 08:00 ET 2026-10-20 and
+    # 2026-10-21: GP's NaN weekly pivots were json.dumps'd as the bare token NaN and Postgres rejected the json
+    # (22P02), which escaped run() and aborted the rest of the batch. lib.json_finite.json_safe (NaN/±Inf, numpy too,
+    # nested) -> None on analyze_confluence's result; the lane serialises allow_nan=False, stores non-finite scalars
+    # as NULL, and skips a row Postgres rejects as data (SQLSTATE 22) as row_rejected. Hermetic: fake conn.
+    ("indicator_engine_nan_json_20261021", ["tests/test_indicator_engine_nan_json_20261021.py"]),
     # ANCHOR: N8N_EVIDENCE_KIND_PARITY_20261019 — the runtime output verdict and the FW-M6 checker accept the same
     # N8nExpectedOutput@v1 evidence kinds (file_artifact, per N8N_CONTRACTS_DESIGN.md); before, "file" vs "file_artifact"
     # meant no contract could cite a file. Hermetic: committed contracts read only.
@@ -5437,6 +5443,25 @@ GATES = [
         # and does not spawn a call the deadline already exhausted. Hermetic: stubbed writers, no DB.
         "pipeline_zombie_runs_20261021",
         ["tests/test_pipeline_zombie_runs_20261021.py"],
+    ),
+    (
+        # ANCHOR: A1A_RELEASE_DIR_20261021 — a1a_compliance FAILED 2026-10-21 07:40 with errors=[]: release dirs
+        # carry no .git, so check_a1a_compliance.py's `git diff HEAD~1 HEAD` raised CalledProcessError and the
+        # wrapper recorded a reasonless failure. Now diffs the BUILD_STAMP source_sha in DEV_ROOT, reports an
+        # unresolvable change set as errors (exit 2, no traceback), and the wrapper passes errors= to telemetry.
+        # Hermetic: temp git repo + temp release dir.
+        "a1a_release_dir_20261021",
+        ["tests/test_a1a_release_dir_20261021.py"],
+    ),
+    (
+        # ANCHOR: ORCH_ROWS_PRODUCED_20261021 — alert "produced NOTHING while reporting success:
+        # trade_ai_orchestrator -- 27 runs with rows_produced=0": the orchestrator never called
+        # PipelineRun.rows() (235 successes/7d all null) and the only explicit counts were
+        # remediate_pipeline_failures' synthetic health_recovery rows writing 0, while trade_ai_scans
+        # and strategy_signals were being written. db_persist now records committed trade_ai_scans rows
+        # and __main__ reports them; the synthetic row writes null. Hermetic: no DB.
+        "orchestrator_rows_produced_20261021",
+        ["tests/test_orchestrator_rows_produced_20261021.py"],
     ),
 ]
 

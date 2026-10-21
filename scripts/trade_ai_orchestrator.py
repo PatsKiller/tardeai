@@ -122,6 +122,21 @@ def _ensure(path: Path) -> Path:
 # `rate_limit_hits=`; failing runs historically stored only `{"errors": "2"}`.
 _STAGE_ERRORS: list[dict] = []
 
+# rows_produced for this run's pipeline_runs row: trade_ai_scans rows actually written by
+# db_persist. None = not measured (market closed, db_persist never ran or raised) and is
+# stored as JSON null. 2026-10-21: the orchestrator never called PipelineRun.rows(), so all
+# 235 cron successes in 7 days carried rows_produced=null while the only explicit values
+# were remediate_pipeline_failures' synthetic 0s -- alert_dispatcher_unified then reported
+# "produced NOTHING while reporting success" for a pipeline writing trade_ai_scans hourly.
+_RUN_METRICS: dict = {"rows_produced": None}
+
+
+def report_rows_produced(run) -> None:
+    """Hand the measured row count to the PipelineRun (no-op when not measured)."""
+    n = _RUN_METRICS.get("rows_produced")
+    if n is not None:
+        run.rows(int(n))
+
 
 def _ok(s, m):
     print(f"  \u2705  {s:<24}  {m}")
@@ -308,6 +323,7 @@ def run_pipeline(
     allow_underfilled=False,
 ):
     _STAGE_ERRORS.clear()
+    _RUN_METRICS["rows_produced"] = None
     print(f"\n{'=' * 66}")
     print(f"  \u26a1 Trade AI v12  |  Run {run_label}  |  {date_str}")
     print(f"{'=' * 66}\n")
@@ -976,7 +992,9 @@ def run_pipeline(
             sym = t.get("symbol", "")
             soc = social_data.get(sym, {}) if social_data else {}
             _aware = awareness_persist_values(t)
-            _execute(
+            # _execute returns True on commit and None on an SQL error it swallowed;
+            # only committed rows count toward rows_produced.
+            _wrote = _execute(
                 f"""
                 INSERT INTO trade_ai_scans (
                     run_id, run_date, run_label, run_type, symbol, score, grade, decision,
@@ -1074,7 +1092,9 @@ def run_pipeline(
                     *_aware,
                 ),
             )
-            _inserted += 1
+            if _wrote:
+                _inserted += 1
+        _RUN_METRICS["rows_produced"] = _inserted
         _ok("db_persist", f"{_inserted} rows → trade_ai_scans")
     except Exception as exc:
         _err("db_persist", str(exc))
@@ -1594,6 +1614,7 @@ if __name__ == "__main__":
             )
             raise SystemExit(_diag) from _exc
         if _result in (0, None):
+            report_rows_produced(_run)
             raise SystemExit(0)
         # Non-zero / diagnostic string from run_pipeline (already formatted).
         raise SystemExit(_enrich_opaque_exit(_result, _root_guess))
