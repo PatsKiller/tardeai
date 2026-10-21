@@ -5515,6 +5515,13 @@ GATES = [
         "hermes_scorer_hardening_20261021",
         ["tests/test_hermes_scorer_hardening_20261021.py"],
     ),
+    (
+        # ANCHOR: HERMES_SCORER_N8N_SHADOW_20261021 — operator-approved n8n SHADOW onboarding of
+        # hermes-watchlist-scorer: registry dispatch dry_run */15 (stage shadow, cron L451 unchanged), allowlist
+        # entry (--dry-run, live_arg null, lock = the cron flock), DRAFT health contract. Hermetic: config only.
+        "hermes_scorer_n8n_shadow_20261021",
+        ["tests/test_hermes_scorer_n8n_shadow_20261021.py"],
+    ),
 ]
 
 

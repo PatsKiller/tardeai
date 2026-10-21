@@ -16823,6 +16823,56 @@
       }
     },
     {
+      "lane_id": "hermes-watchlist-scorer",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/15 * * * *",
+        "match": "scripts/hermes_watchlist_scorer.py",
+        "stage": "shadow",
+        "wave": "R2-10",
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_scorer.lock $PY scripts/hermes_watchlist_scorer.py --once >> logs/hermes_scorer.log 2>&1"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/hermes-watchlist-scorer_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/hermes_watchlist_scorer.py main() writes LaneRunReceipt@v2 on a real run (fake-tested, tests/test_hermes_scorer_hardening_20261021.py); runtime NOT_MEASURED until the release carrying it is deployed"
+      },
+      "value_class": "Business Critical",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L449",
+        "pipeline": "P10",
+        "value_class": "Business Critical",
+        "recommendation": "KEEP_ON_CRON",
+        "f_recommendation": "KEEP (inside its pipeline)",
+        "event_driven_candidate": false,
+        "f_evidence": "core advisory/protection/data path; healthy logs today"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. 2026-10-21: n8n shadow (dry_run health probe) alongside cron; the live write path is still the cron line.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/15 * * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "pipeline",
+        "priority": 4,
+        "retry_policy": "transient-2"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-21",
+      "adopted_reason": "Operator-approved 2026-10-21 shadow onboarding (scorer hardening PR): n8n dispatcher dry_run alongside the unchanged cron line L451 (cron freeze). Cron stays the live scheduler; contract DRAFT."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -19072,38 +19122,6 @@
         "f_recommendation": "CONSOLIDATE-into P10",
         "event_driven_candidate": false,
         "f_evidence": "Unverified use: no consumer check run for this line"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "hermes-watchlist-scorer",
-      "owner": "research",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "*/15 * * * *",
-        "match": "scripts/hermes_watchlist_scorer.py"
-      },
-      "expected_cadence_hours": 0.25,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/hermes_scorer.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Business Critical",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L449",
-        "pipeline": "P10",
-        "value_class": "Business Critical",
-        "recommendation": "KEEP_ON_CRON",
-        "f_recommendation": "KEEP (inside its pipeline)",
-        "event_driven_candidate": false,
-        "f_evidence": "core advisory/protection/data path; healthy logs today"
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",

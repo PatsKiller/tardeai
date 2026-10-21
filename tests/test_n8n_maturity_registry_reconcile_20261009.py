@@ -405,7 +405,9 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # run-research-intelligence-overnight-archive unchanged to keep its lane_id (else re-derived as -2): 214 left.
     # Shadow wave LD-W1 (2026-10-15, #1761) adopts 4 generated rows with dispatch blocks (hermes-discovery-scorecard,
     # wire-advisory-lessons, incubator-rolloff-engine, pattern-extractor); merged 2026-10-15 (DD01 ruling PR): 214 - 4 = 210.
-    assert len(gen) >= 210
+    # Scorer hardening 2026-10-21 adopts hermes-watchlist-scorer (operator-approved n8n shadow, dispatch dry_run;
+    # tests/test_hermes_scorer_hardening_20261021.py): 210 - 1 = 209.
+    assert len(gen) >= 209
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
     # build-symbol-profiles-at-0-19, social-ingest-stocktwits and overnight-batch-tax are adopted unchanged only to keep

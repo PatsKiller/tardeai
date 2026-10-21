@@ -7,12 +7,13 @@ ideal_entry) = 'NaN'. hermes_watchlist_scorer aborted EVERY run from 2026-10-19 
   1. per-item isolation: an exception scoring one symbol is logged + counted; the run continues; all items
      failing exits non-zero.
   2. every factor treats NaN/Inf/None numerics as missing (a NaN RSI used to clamp to a perfect 100).
-  3. loud failure: one P2 notification intent (fixed body, 12h dedupe) when >20% error or nothing lands.
+  3. loud failure: one queued host comms intent (fixed body, 12h dedupe; DIGEST -> P2) when >20% error or nothing
+     lands. Never a send (PR #1899: a dispatched lane may not reach send_telegram).
   4. source fix: materialize_watchlist_strategy_cards drops a 'NaN' close (ticker_prices BHVN 2026-08-28,
      yfinance) and never upserts a non-finite level.
   5. --dry-run: READ ONLY session, writes nothing, sends nothing, no receipt.
 
-Hermetic: fake DB connection, fake sender, no network, no Telegram.
+Hermetic: fake DB connection, fake intent queue (or a temp ledger), no network, no Telegram.
 """
 from __future__ import annotations
 
@@ -102,7 +103,7 @@ class _Conn:
 
 
 @pytest.fixture
-def env(monkeypatch):
+def env(monkeypatch, tmp_path):
     sent = []
     # main()'s G2 dual-import guard sees modules OTHER test files loaded as scripts.lib.X in this process; the
     # guard is exercised by its own tests, not here.
@@ -114,9 +115,9 @@ def env(monkeypatch):
     monkeypatch.setattr(hws, "_sector_momentum", lambda conn: {})
     monkeypatch.setattr(hws, "_vix", lambda conn: 20.0)
     monkeypatch.setattr(hws, "_weights", lambda: {"technical_momentum": .3, "setup_quality": .3, "risk_reward": .4})
-    fake_tg = type(sys)("telegram_alert")
-    fake_tg.send_telegram = lambda msg, **kw: sent.append((msg, kw)) or True
-    monkeypatch.setitem(sys.modules, "telegram_alert", fake_tg)
+    # the alert is a queued host comms intent (never a send): capture the queue seam, isolate the cooldown state
+    monkeypatch.setattr(hws, "_queue_host_intent", lambda **kw: sent.append((kw["summary"], kw)) or {"intent_id": "i1"})
+    monkeypatch.setattr(hws, "ALERT_STATE_PATH", tmp_path / "alert_state.json")
 
     def use(rows, **kw):
         conn = _Conn(rows, **kw)
@@ -181,7 +182,7 @@ def test_all_items_failing_exits_nonzero(env, monkeypatch):
     assert ei.value.code not in (0, None)
     assert receipts[-1]["ok"] is False and receipts[-1]["output"]["produced_count"] == 0
     assert receipts[-1]["output"]["skipped_reasons"] == {"score:KeyError": 2}
-    assert len(sent) == 1 and sent[0][0] == hws.ALERT_OUTAGE and sent[0][1]["priority"] == "P2"
+    assert len(sent) == 1 and sent[0][0] == hws.ALERT_OUTAGE and sent[0][1]["subject"] == hws.ALERT_OUTAGE_SUBJECT
 
 
 class _FakeRun:
@@ -262,22 +263,60 @@ def test_failure_condition(summary, cond):
     assert hws.failure_condition(summary) == cond
 
 
-def test_alert_body_is_stable_so_router_dedupes_it():
-    sent = []
-    for n in (3, 4, 9):
-        hws.emit_failure_alert({"items": 10, "errored": n, "landed": 10 - n},
-                               send=lambda m, **k: sent.append((m, k)))
-    assert len({m for m, _ in sent}) == 1
-    assert all(k == {"priority": "P2", "dedupe_minutes": 720, "producer": "hermes_watchlist_scorer"}
-               for _, k in sent)
-    from telegram_alert_router import intent_dedupe_key
-    assert len({intent_dedupe_key(m) for m, _ in sent}) == 1
+def test_alert_is_queued_once_per_condition_per_12h(tmp_path):
+    from datetime import datetime, timedelta, timezone
+    queued = []
+    state = tmp_path / "s.json"
+    t0 = datetime(2026, 10, 21, 14, 0, tzinfo=timezone.utc)
+
+    def q(**kw):
+        queued.append(kw)
+        return {"intent_id": f"i{len(queued)}"}
+    for n, dt in ((3, 0), (4, 15), (9, 600)):  # three DEGRADED runs inside 10h -> one intent
+        assert hws.emit_failure_alert({"items": 10, "errored": n, "landed": 10 - n}, queue=q, state_path=state,
+                                      now=t0 + timedelta(minutes=dt)) == "degraded"
+    assert len(queued) == 1 and queued[0]["subject"] == hws.ALERT_DEGRADED_SUBJECT
+    assert queued[0]["summary"] == hws.ALERT_DEGRADED
+    # a different condition is its own dedupe key
+    hws.emit_failure_alert({"items": 4, "errored": 4, "landed": 0}, queue=q, state_path=state, now=t0)
+    assert [k["subject"] for k in queued] == [hws.ALERT_DEGRADED_SUBJECT, hws.ALERT_OUTAGE_SUBJECT]
+    # after 12h the same condition queues again
+    hws.emit_failure_alert({"items": 10, "errored": 3, "landed": 7}, queue=q, state_path=state,
+                           now=t0 + timedelta(minutes=hws.ALERT_DEDUPE_MINUTES + 1))
+    assert len(queued) == 3
 
 
-def test_alert_sender_failure_never_masks_run():
-    def boom(*a, **k):
-        raise OSError("gateway down")
-    assert hws.emit_failure_alert({"items": 4, "errored": 4, "landed": 0}, send=boom) == "outage"
+def test_alert_queue_failure_never_masks_run_and_keeps_retrying(tmp_path):
+    calls = []
+
+    def boom(**kw):
+        calls.append(kw)
+        raise ValueError("ledger_absent")
+    state = tmp_path / "s.json"
+    for _ in range(2):
+        assert hws.emit_failure_alert({"items": 4, "errored": 4, "landed": 0}, queue=boom, state_path=state) == "outage"
+    assert len(calls) == 2 and not state.exists()  # a refused queue never stamps the cooldown
+
+
+def test_queue_host_intent_writes_one_intent_row_and_folds_duplicates(tmp_path, monkeypatch):
+    """The real seam against a real (temp) coordination ledger: one QUEUED row on the scorer's own route."""
+    sys.path.insert(0, str(ROOT))
+    from scripts.lib.n8n_coordination_ledger import CoordinationLedger
+    from scripts.lib.n8n_fabric_store import CommsIntentStore, load_intent_routes
+    ledger = tmp_path / "ledger.sqlite"
+    led = CoordinationLedger(ledger)
+    CommsIntentStore(led, routes=load_intent_routes())  # creates comms_intents, as the consumer/gateway do
+    getattr(led, "close", lambda: None)()
+    r1 = hws._queue_host_intent(subject=hws.ALERT_OUTAGE_SUBJECT, summary=hws.ALERT_OUTAGE, execution_id="t1",
+                                ledger_path=ledger)
+    r2 = hws._queue_host_intent(subject=hws.ALERT_OUTAGE_SUBJECT, summary=hws.ALERT_OUTAGE, execution_id="t2",
+                                ledger_path=ledger)
+    assert r1.get("intent_id") and r2.get("duplicate") is True
+    import sqlite3
+    rows = sqlite3.connect(str(ledger)).execute("SELECT domain, kind, workflow_id FROM comms_intents").fetchall()
+    assert rows == [(hws.ALERT_DOMAIN, hws.ALERT_KIND, "host.hermes_watchlist_scorer")]
+    with pytest.raises(ValueError, match="ledger_absent"):
+        hws._queue_host_intent(subject="x", summary="y", execution_id="t3", ledger_path=tmp_path / "missing.sqlite")
 
 
 # ── 4. the NaN writer, at the source ──────────────────────────────────────────
