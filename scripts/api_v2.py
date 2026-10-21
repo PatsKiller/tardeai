@@ -30604,6 +30604,8 @@ def _needs_action(query=None):
         "data_sources": lambda: _data_source_health({}),
         "comms": _communications_delivery_summary,
         "pipelines": lambda: _system_pipeline_failures({}),
+        # 2026-10-21: the pr-hygiene-audit lane's receipt (read-only; scripts/pr_hygiene_audit.py)
+        "pr_hygiene": _na.probe_pr_hygiene,
     }
     out = _na.aggregate(probes)
     _NEEDS_ACTION_CACHE["v"] = (_t.monotonic(), out)

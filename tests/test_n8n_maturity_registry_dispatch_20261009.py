@@ -509,8 +509,10 @@ def test_registry_dispatch_errors_hook():
 # (relay refused live, failing every dispatcher run).
 #: 2026-10-16 process consolidation cohort 2: the Hermes discovery yield builder's event-trigger lane (no host line of
 #: its own; the night-stage step is the clock fallback). tests/test_n8n_consolidation_cohort2_20261016.py.
+#: 2026-10-21 + pr-hygiene-audit (operator-approved process plan: PR hygiene audited every iteration; n8n-native,
+#: daily 06:30 dry_run until the operator promotes it; tests/test_pr_hygiene_audit_20261021.py).
 N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor", "momentum-cache-reconcile",
-                               "hermes-discovery-yield-on-learning",
+                               "hermes-discovery-yield-on-learning", "pr-hygiene-audit",
                                # 2026-10-21 operator "yes rebuild 1417": two never-scheduled scripts onboarded as
                                # n8n-native shadow lanes (no cron line; tests/test_cio_portfolio_thesis_lane_20261021.py).
                                "cio-portfolio-thesis", "advisory-maturity-evidence"})
