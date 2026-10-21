@@ -2060,6 +2060,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/n8n-cutover-wave-2-20261015/README.md` | n8n cutover CW2 (2026-10-15): operator packet | review_required | MISSING HEADER | `76fe045246aa` |
 | `docs/ops/packets/n8n-cutover-wave-3-20261015/README.md` | n8n cutover CW3 (2026-10-15): operator packet | review_required | MISSING HEADER | `0a42567e80e4` |
 | `docs/ops/packets/n8n-dd12-outside-deadman-20261015/README.md` | DD12 outside dead-man + business heartbeat — operator packet (2026-10-15) | review_required | MISSING HEADER | `e4fcc98a618b` |
+| `docs/ops/packets/n8n-llm-bridge-routes-20261021/README.md` | n8n LLM lanes on the governed bridge, batches 1–4: operator steps (operator packet, 2026-10-21) | review_required | OK | `e08238599f83` |
 | `docs/ops/packets/n8n-process-consolidation-cohort1-20261016/README.md` | n8n process consolidation, cohort 1 (2026-10-16) | review_required | MISSING HEADER | `0d10455d4ee5` |
 | `docs/ops/packets/n8n-process-consolidation-cohort2-20261016/README.md` | n8n process consolidation, cohort 2 (2026-10-16): Hermes learning consumers fire on verified learning | review_required | MISSING HEADER | `2596f2ae9efb` |
 | `docs/ops/packets/n8n-relay-env-allowlist-20261021/README.md` | n8n run relay: allowlisted secrets env, strict fail-closed (operator packet, 2026-10-21) | review_required | OK | `ba9d93f06e57` |
