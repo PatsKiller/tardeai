@@ -4897,6 +4897,7 @@ GATES = [
             "tests/test_n8n_platform_maturity_scheduling_20261009.py",
             "tests/test_n8n_platform_maturity_signal_20261009.py",
             "tests/test_n8n_platform_maturity_healing_20261009.py",
+            "tests/test_n8n_maturity_recovery_truth_20261019.py",
             "tests/test_n8n_platform_maturity_governance_20261009.py",
         ],
     ),
