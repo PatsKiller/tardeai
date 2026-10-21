@@ -19,9 +19,14 @@ on:
   schedule:
     - cron: "17 7 * * *"
 
-# A new push to a PR branch supersedes the run in flight; main runs never cancel.
+# A new push to a PR branch supersedes the run in flight (group per ref, cancel-in-progress).
+# Push-to-main runs get ONE GROUP PER SHA (2026-10-21, alignment audit H2). With a group per ref,
+# cancel-in-progress=false only protects the RUNNING run: GitHub keeps one PENDING run per group,
+# so a third merge cancelled the queued one (main runs 39617949518, 39609079036, 39608294713 were
+# cancelled 1-5 min after creation) and that merged SHA never got main CI evidence. Schedule and
+# dispatch keep the per-ref group.
 concurrency:
-  group: cio-hardening-${{ github.workflow }}-${{ github.ref }}
+  group: cio-hardening-${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

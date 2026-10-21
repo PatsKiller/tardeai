@@ -47,6 +47,9 @@ GATES = [
     # Rotation publication: account-bound identity, real source clocks and grounded
     # stop claims; actual API/cache/digest/POST boundaries with fake external effects.
     ("rotation_publication_20261018", ["tests/test_rotation_publication_20261018.py"]),
+    # ANCHOR: CI_PUSH_RUN_PER_SHA_20261021 — alignment audit H2: the push-to-main cio-hardening concurrency group
+    # carries the SHA, so a queued main run is never cancelled by the next merge; PR grouping unchanged.
+    ("ci_push_run_per_sha_20261021", ["tests/test_ci_push_run_per_sha_20261021.py"]),
     # ANCHOR: TRADING_READ_ONLY_LOCK_20261014 — incident SPCX: every broker place/replace/cancel path is
     # dominated by assert_trading_unlocked (static scan + mutation proof) and refuses with stubbed clients.
     (
