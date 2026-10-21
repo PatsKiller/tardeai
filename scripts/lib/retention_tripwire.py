@@ -52,6 +52,10 @@ ALLOWLIST_REL: frozenset[str] = frozenset({
     "scripts/lib/retention_tripwire.py",
     "config/data_retention_policy.json",
     "config/lane_registry.json",
+    # 2026-10-21 operator D9 = (a): the off-box COPIER. It reads archive bytes only to hash and gpg-encrypt them
+    # for Google Drive; it never parses rows back into a live store, never deletes, and the local copy stays
+    # authoritative and tripwired. Any other reader still fires ARCHIVE_TRIPWIRE.
+    "scripts/archive_offbox_sync.py",
 })
 
 SCAN_DIRS: tuple[str, ...] = ("scripts", "config", "linux_launchers")
