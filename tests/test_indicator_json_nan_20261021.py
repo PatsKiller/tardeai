@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 from decimal import Decimal
+from fractions import Fraction
 
 import pytest
 
@@ -71,9 +72,11 @@ def test_legacy_cache_writer_serialization_contract_handles_nested_nonfinite():
 
 def test_numpy_nonfinite_scalars_are_normalized_when_numpy_is_available():
     np = pytest.importorskip("numpy")
-    encoded = json_dumps_for_postgres({"nested": [np.float32("nan"), np.float64("inf")]})
+    encoded = json_dumps_for_postgres(
+        {"nested": [np.float32("nan"), np.float64("inf"), np.longdouble("nan"), np.longdouble("inf")]}
+    )
 
-    assert _strict_loads(encoded) == {"nested": [None, None]}
+    assert _strict_loads(encoded) == {"nested": [None, None, None, None]}
 
 
 def test_finite_numeric_values_remain_finite():
@@ -98,3 +101,23 @@ def test_decimal_normalization_preserves_finite_precision_and_nulls_nonfinite():
         "precise_value": str(precise),
         "nonfinite_values": [None, None, None],
     }
+
+
+def test_finite_fraction_and_numpy_scalars_match_legacy_default_str():
+    np = pytest.importorskip("numpy")
+    result = {
+        "key_levels": {},
+        "fraction": Fraction(1, 3),
+        "numpy_int64": np.int64(1234567890123456789),
+        "numpy_longdouble": np.longdouble("1.2345678901234567890123456789"),
+        "large_finite_longdouble": np.longdouble("1e4000"),
+    }
+
+    _, full_result = indicator_cache_json_fields(result)
+
+    assert full_result == json.dumps(result, default=str, allow_nan=False)
+    decoded = _strict_loads(full_result)
+    assert decoded["fraction"] == "1/3"
+    assert decoded["numpy_int64"] == str(result["numpy_int64"])
+    assert decoded["numpy_longdouble"] == str(result["numpy_longdouble"])
+    assert decoded["large_finite_longdouble"] == str(result["large_finite_longdouble"])

@@ -6,7 +6,7 @@ import json
 import math
 from collections.abc import Mapping
 from decimal import Decimal
-from numbers import Integral, Real
+from numbers import Real
 from typing import Any, Callable
 
 
@@ -14,16 +14,20 @@ def normalize_nonfinite_json(value: Any) -> Any:
     """Return JSON-compatible containers with NaN and infinities represented as null.
 
     Python's JSON encoder emits the non-standard tokens ``NaN`` and ``Infinity`` by
-    default. PostgreSQL's JSON parser rejects those tokens. NumPy scalar numbers are
-    handled through their ``Real``/``Integral`` ABCs as well.
+    default. PostgreSQL's JSON parser rejects those tokens. Real values are checked
+    without coercion so the existing ``default=str`` output retains their type and
+    precision (for example Fraction and NumPy scalar representations).
     """
     if value is None or isinstance(value, (str, bool)):
         return value
-    if isinstance(value, Integral):
-        return int(value)
     if isinstance(value, Real):
-        number = float(value)
-        return number if math.isfinite(number) else None
+        # Compare in the value's own numeric domain. Coercing to float would round
+        # Fractions, change NumPy integer output, and overflow finite longdouble.
+        try:
+            nonfinite = bool(value != value or value == math.inf or value == -math.inf)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise TypeError(f"could not determine whether {type(value).__name__} is finite") from exc
+        return None if nonfinite else value
     if isinstance(value, Decimal):
         return value if value.is_finite() else None
     if isinstance(value, Mapping):
