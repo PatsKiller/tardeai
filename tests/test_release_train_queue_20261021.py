@@ -746,7 +746,11 @@ def test_windows_are_new_york_wall_clock_and_dst_safe():
 
 def test_stop_latch_vocabulary_and_fail_closed(tmp_path):
     s = V.read_stop(tmp_path)
-    assert s["state"] == "ABSENT" and s["effective_stop"] is False and s["reader"] == "file"
+    # The controller branch merges ops/release-train-20261021 (9dde41745), whose release_window.State has
+    # read_latch, so the view uses it; on a tree without it the reader is "file" (same fail-closed semantics).
+    expected_reader = "release_window.State.read_latch" if hasattr(__import__("release_window").State,
+                                                                    "read_latch") else "file"
+    assert s["state"] == "ABSENT" and s["effective_stop"] is False and s["reader"] == expected_reader
     (tmp_path / "STOP.json").write_text(json.dumps({"latched_at": TS, "window_id": "w", "reason": "verify_failed"}))
     s = V.read_stop(tmp_path)
     assert s["state"] == "SET" and s["effective_stop"] and s["latch_reason"] == "verify_failed"

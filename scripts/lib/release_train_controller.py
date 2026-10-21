@@ -77,11 +77,15 @@ try:
     from scripts.lib import release_capability as CAP
     from scripts.lib import release_control as RC
     from scripts.lib import release_delegation as RD
+    from scripts.lib import release_train_contracts as TC
+    from scripts.lib import release_train_queue as Q
 except ImportError:  # pragma: no cover - scripts/ on sys.path
     import release_window as RW  # type: ignore[no-redef]
     from lib import release_capability as CAP  # type: ignore[no-redef]
     from lib import release_control as RC  # type: ignore[no-redef]
     from lib import release_delegation as RD  # type: ignore[no-redef]
+    from lib import release_train_contracts as TC  # type: ignore[no-redef]
+    from lib import release_train_queue as Q  # type: ignore[no-redef]
 
 CONTROLLER_VERSION = "release_train_controller/1"
 SCHEMA_MANIFEST = "TrainCandidate@v1"
@@ -487,72 +491,159 @@ class HygieneReceiptGhQueueSource:
 
 
 class Phase1StoreQueueSource:
-    """The Phase 1 store (``release_queue`` projection) plugs in here once ``scripts/lib/release_queue_store.py``
-    exists (branch feat/release-train-queue-20261021). Until then it reports itself unavailable (fail closed)."""
+    """The Phase 1 store: ``release_queue`` projection rows (``release_train_queue.read_queue``) in a riding state
+    (submitted / classified / ready). The controller re-classifies every row itself and re-reads each head from
+    GitHub at freeze. NOT_MIGRATED / DB_UNAVAILABLE give an incomplete snapshot whose reason starts with
+    ``store:`` so ``FallbackQueueSource`` can tell "store absent" from "store empty"."""
 
     name = "phase1:release_queue"
+    RIDING = ("submitted", "classified", "ready")
+
+    def __init__(self, conn_factory: Optional[Callable[[], Any]] = None) -> None:
+        self.conn_factory = conn_factory or default_conn_factory
 
     def snapshot(self) -> QueueSnapshot:
         try:
-            from scripts.lib import release_queue_store as S  # type: ignore[attr-defined]
-        except ImportError:
-            return QueueSnapshot(self.name, None, False, [], ["phase1_store_not_built"])
+            conn = self.conn_factory()
+        except Exception as exc:  # noqa: BLE001
+            return QueueSnapshot(self.name, None, False, [], [f"store:db_unavailable:{type(exc).__name__}"])
+
+        def dbq(sql: str, params: Any = None, fetch: str = "all") -> Any:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                return cur.fetchone() if fetch == "one" else cur.fetchall()
+
         try:
-            return S.queue_snapshot()  # type: ignore[attr-defined]
-        except Exception as exc:  # noqa: BLE001 - a store failure is an incomplete snapshot
-            return QueueSnapshot(self.name, None, False, [], [f"phase1_store_error:{type(exc).__name__}"])
+            res = Q.read_queue(dbq, limit=500)
+        except Exception as exc:  # noqa: BLE001
+            return QueueSnapshot(self.name, None, False, [], [f"store:error:{type(exc).__name__}"])
+        finally:
+            try:
+                conn.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+        if res.get("store_state") != Q.OK:
+            return QueueSnapshot(self.name, res.get("as_of"), False, [],
+                                 [f"store:{res.get('reason') or str(res.get('store_state')).lower()}"])
+        entries = []
+        for r in res.get("rows") or []:
+            if r.get("state") not in self.RIDING:
+                continue
+            entries.append(QueueEntry(pr=int(r["pr_number"]), head_sha=str(r.get("head_sha") or ""),
+                                      depends_on=tuple(int(d) for d in (r.get("depends_on") or [])),
+                                      census={"queue_state": r.get("state"), "risk_class": r.get("risk_class")}))
+        reasons = ["possible_truncation"] if len(res.get("rows") or []) >= 500 else []
+        return QueueSnapshot(self.name, res.get("as_of"), not reasons, entries, reasons)
+
+
+class FallbackQueueSource:
+    """Phase 1 store first; when it is NOT_MIGRATED or unreachable (reason ``store:*``), the PR-hygiene receipt +
+    gh source. A readable store that is empty is a real empty and never falls back."""
+
+    def __init__(self, primary: QueueSource, fallback: QueueSource) -> None:
+        self.primary, self.fallback = primary, fallback
+        self.name = f"{primary.name}|{fallback.name}"
+
+    def snapshot(self) -> QueueSnapshot:
+        snap = self.primary.snapshot()
+        if snap.complete or not any(str(r).startswith("store:") for r in snap.reasons):
+            return snap
+        fb = self.fallback.snapshot()
+        fb.reasons = list(fb.reasons)
+        fb.source = f"{fb.source} (fallback: {self.primary.name} {';'.join(snap.reasons)})"
+        return fb
 
 
 def default_queue_source() -> QueueSource:
-    try:
-        from scripts.lib import release_queue_store  # type: ignore[attr-defined]  # noqa: F401
-        return Phase1StoreQueueSource()
-    except ImportError:
-        return HygieneReceiptGhQueueSource()
+    return FallbackQueueSource(Phase1StoreQueueSource(), HygieneReceiptGhQueueSource())
 
 
 class Classifier(Protocol):
     version: str
+    policy_version: Optional[str]
 
-    def classify(self, entry: QueueEntry) -> tuple[str, list[str]]: ...
+    def classify(self, entry: QueueEntry, change: Optional[dict]) -> tuple[str, list[str]]: ...
 
 
 class HoldAllClassifier:
-    """Interface stub until the Phase 1 classifier (``scripts/lib/release_train_classify.py``) exists: every PR is
-    HELD (unknown risk is held; enhanced design §4)."""
+    """Fallback when the Phase 1 classifier cannot be loaded or its policy is invalid: every PR is HELD (unknown risk
+    is held; enhanced design §4)."""
 
     version = "hold-all-stub/1"
+    policy_version: Optional[str] = None
 
-    def classify(self, entry: QueueEntry) -> tuple[str, list[str]]:  # noqa: ARG002
-        return "held", ["classifier not built (Phase 1, feat/release-train-queue-20261021): unknown risk is held"]
+    def __init__(self, why: str = "classifier unavailable") -> None:
+        self.why = why
+
+    def classify(self, entry: QueueEntry, change: Optional[dict]) -> tuple[str, list[str]]:  # noqa: ARG002
+        return "held", [f"{self.why}: unknown risk is held"]
 
 
-class ModuleClassifier:
-    """Adapter for the Phase 1 classifier module: ``classify(entry) -> (risk_class, reasons)`` and ``VERSION``.
-    Any exception or unknown class is HELD."""
+class PolicyClassifier:
+    """The Phase 1 classifier: ``scripts/lib/release_train_classify.classify_change`` with
+    ``config/release_train_policy.json``. No change set (files unknown) is HELD; a classifier error is HELD."""
 
-    def __init__(self, module: Any) -> None:
-        self.m = module
-        self.version = str(getattr(module, "VERSION", "release_train_classify/unknown"))
+    def __init__(self, module: Any, policy: dict, tiers: Any, impact_map: Any) -> None:
+        self.m, self.policy, self.tiers, self.impact_map = module, policy, tiers, impact_map
+        self.version = str(getattr(module, "CLASSIFIER_VERSION", "release_train_classify/?"))
+        self.policy_version = (str(policy.get("policy_version") or "")[:40]) or None
 
-    def classify(self, entry: QueueEntry) -> tuple[str, list[str]]:
+    def classify(self, entry: QueueEntry, change: Optional[dict]) -> tuple[str, list[str]]:  # noqa: ARG002
+        if not change or not change.get("paths"):
+            return "held", ["no change set (changed files unknown): held"]
         try:
-            risk, reasons = self.m.classify(entry)
-        except Exception as exc:  # noqa: BLE001
+            res = self.m.classify_change(change, self.policy, tiers=self.tiers, impact_map=self.impact_map)
+        except Exception as exc:  # noqa: BLE001 - a classifier failure never admits a change
             return "held", [f"classifier error {type(exc).__name__}: held"]
-        if risk not in ("eligible", "needs_operator", "held", "blocked"):
-            return "held", [f"classifier returned unknown class {risk!r}: held"]
-        return risk, list(reasons or [])
+        cls = res.get("class")
+        if cls not in TC.RISK_CLASSES:
+            return "held", [f"classifier returned {cls!r}: held"]
+        reasons = [f"{r.get('rule')}:{r.get('path')}" for r in (res.get("reasons") or [])][:6]
+        if change.get("approximate"):
+            reasons.append("approximate change set (gh file list; dry run only)")
+        return cls, reasons
 
 
-def load_classifier() -> Classifier:
+def load_classifier(*, closure: bool = True) -> Classifier:
     try:
-        from scripts.lib import release_train_classify as M  # type: ignore[attr-defined]
-    except ImportError:
-        return HoldAllClassifier()
-    if not callable(getattr(M, "classify", None)):
-        return HoldAllClassifier()
-    return ModuleClassifier(M)
+        from scripts.lib import release_train_classify as M
+    except ImportError as exc:
+        return HoldAllClassifier(f"release_train_classify not importable ({type(exc).__name__})")
+    try:
+        policy = M.load_policy()
+        errs = M.validate_policy(policy)
+        if errs:
+            return HoldAllClassifier("config/release_train_policy.json invalid: " + "; ".join(errs)[:160])
+        tiers = M.TI.load_tiers()
+        imap = M.load_impact_map(edges=policy["import_closure"].get("edges", "imports")) if closure else None
+    except Exception as exc:  # noqa: BLE001
+        return HoldAllClassifier(f"classifier inputs unavailable ({type(exc).__name__})")
+    return PolicyClassifier(M, policy, tiers, imap)
+
+
+def change_from_files(entry: QueueEntry) -> Optional[dict]:
+    """Dry-run approximation from the gh file list: every path as modified (deletions and semantic JSON keys are
+    unknown). The live run always classifies from git."""
+    if entry.files is None:
+        return None
+    return {"paths": [{"path": f, "status": "M"} for f in entry.files], "head_sha": entry.head_sha,
+            "approximate": True}
+
+
+def change_from_git(repo: Path, base: str, entry: QueueEntry) -> Optional[dict]:
+    """Fetch the PR head into the release checkout (refs/train-scratch/pr-N) and read base...head from git."""
+    rc, _ = _run(["git", "-C", str(repo), "fetch", "-q", "origin",
+                  f"+refs/pull/{entry.pr}/head:refs/train-scratch/pr-{entry.pr}"], timeout=600)
+    if rc != 0:
+        return None
+    try:
+        from scripts.lib import release_train_classify as M
+        ch = M.changeset_from_git(base, entry.head_sha, root=repo)
+    except Exception:  # noqa: BLE001
+        return None
+    if ch is None or ch.get("head_sha") != entry.head_sha:
+        return None
+    return ch
 
 
 def order_members(entries: list[QueueEntry]) -> tuple[list[QueueEntry], dict[int, str]]:
@@ -955,9 +1046,19 @@ class EventSink(Protocol):
     def append(self, event: dict) -> dict: ...
 
 
+class InvalidTrainEvent(ValueError):
+    pass
+
+
+def validate_event(event: dict) -> None:
+    errs = TC.validate_as(TC.TRAIN_EVENT, event)
+    if errs:
+        raise InvalidTrainEvent("; ".join(errs)[:500])
+
+
 class JsonlEventSink:
-    """Append-only ``train_events.jsonl``: one TrainEvent@v1 per line, monotonically increasing ``seq``, fsync per
-    row, flock-serialized. Never rewritten, never truncated."""
+    """Append-only ``train_events.jsonl``: one TrainEvent@v1 per line (validated), monotonically increasing ``seq``,
+    fsync per row, flock-serialized. Never rewritten, never truncated. The local fallback of the Phase 1 store."""
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
@@ -979,64 +1080,88 @@ class JsonlEventSink:
         return 0
 
     def append(self, event: dict) -> dict:
+        validate_event(event)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with open(self.path.with_name(self.path.name + ".lock"), "a+") as lk:
             fcntl.flock(lk.fileno(), fcntl.LOCK_EX)
             try:
-                row = {**event, "seq": self._last_seq() + 1}
+                row = {**event, "seq": self._last_seq() + 1, "recorded_at": event["occurred_at"]}
                 RC._append_jsonl(self.path, row)
             finally:
                 fcntl.flock(lk.fileno(), fcntl.LOCK_UN)
-        return row
+        return {**row, "store": "jsonl"}
 
 
 class MemoryEventSink:
+    """Dry run: validated rows kept in memory and printed; nothing is written."""
+
     def __init__(self) -> None:
         self.rows: list[dict] = []
 
     def append(self, event: dict) -> dict:
-        row = {**event, "seq": len(self.rows) + 1}
+        validate_event(event)
+        row = {**event, "seq": len(self.rows) + 1, "store": "memory"}
         self.rows.append(row)
         return row
 
 
-class Phase1StoreSink:
-    """Interface to the Phase 1 store (``release_queue_events``). Once ``scripts/lib/release_queue_store.py`` exists
-    it becomes the authoritative writer and the JSONL becomes its derived mirror (one authoritative store)."""
-
-    def __init__(self) -> None:
-        try:
-            from scripts.lib import release_queue_store as S  # type: ignore[attr-defined]
-            self.store: Any = S
-        except ImportError:
-            self.store = None
-
-    @property
-    def available(self) -> bool:
-        return self.store is not None and callable(getattr(self.store, "append_event", None))
-
-    def append(self, event: dict) -> dict:
-        if not self.available:
-            raise RuntimeError("phase1_store_not_built")
-        return self.store.append_event(event)
+def default_conn_factory() -> Any:
+    from scripts.session13_db import get_conn
+    return get_conn()
 
 
-class CompositeSink:
-    """The JSONL is written first (durable before the side effect); a Phase 1 mirror failure is recorded, never
-    silently dropped, and never blocks the safety record."""
+class StoreEventSink:
+    """The Phase 1 store (``release_queue_events``) through ``release_train_queue.append_event``. The store is probed
+    once; when it reads NOT_MIGRATED or DB_UNAVAILABLE (or an append fails), the row goes to the JSONL fallback so
+    the safety record is never lost. ``finish`` rebuilds the ``release_queue`` projection when the store is OK."""
 
-    def __init__(self, primary: EventSink, mirrors: tuple = ()) -> None:
-        self.primary, self.mirrors = primary, mirrors
-        self.mirror_errors: list[str] = []
+    def __init__(self, conn_factory: Callable[[], Any], fallback: JsonlEventSink) -> None:
+        self.conn_factory, self.fallback = conn_factory, fallback
+        self.store_state: Optional[str] = None
+        self.conn: Any = None
+        self.errors: list[str] = []
 
-    def append(self, event: dict) -> dict:
-        row = self.primary.append(event)
-        for m in self.mirrors:
+    def _dbq(self, sql: str, params: Any = None, fetch: str = "all") -> Any:
+        with self.conn.cursor() as cur:
+            cur.execute(sql, params)
+            return cur.fetchone() if fetch == "one" else cur.fetchall()
+
+    def probe(self) -> str:
+        if self.store_state is None:
             try:
-                m.append(row)
+                self.conn = self.conn_factory()
+                self.store_state = Q.probe(self._dbq)["state"]
+                try:
+                    self.conn.rollback()
+                except Exception:  # noqa: BLE001
+                    pass
+            except Exception as exc:  # noqa: BLE001 - an unreachable store is DB_UNAVAILABLE, never empty
+                self.store_state = Q.DB_UNAVAILABLE
+                self.errors.append(f"connect:{type(exc).__name__}")
+        return self.store_state
+
+    def append(self, event: dict) -> dict:
+        validate_event(event)
+        if self.probe() == Q.OK:
+            try:
+                seq = Q.append_event(self.conn, event)
+                return {**event, "seq": seq, "store": "postgres"}
             except Exception as exc:  # noqa: BLE001
-                self.mirror_errors.append(f"{type(m).__name__}:{type(exc).__name__}")
-        return row
+                self.errors.append(f"append:{type(exc).__name__}")
+                try:
+                    self.conn.rollback()
+                except Exception:  # noqa: BLE001
+                    pass
+        return self.fallback.append(event)
+
+    def finish(self) -> Optional[int]:
+        if self.store_state != Q.OK:
+            return None
+        try:
+            return Q.rebuild_projection(self.conn)
+        except Exception as exc:  # noqa: BLE001
+            self.errors.append(f"projection:{type(exc).__name__}")
+            return None
 
 
 # ── the controller ────────────────────────────────────────────────────────────────────────────────
@@ -1080,8 +1205,11 @@ class TrainController:
             raise ValueError("a dry run never holds a real writer")
         self.tester = tester or LocalTester(python=str(getattr(host, "python", "python3")))
         self.events: EventSink = events if events is not None else (
-            CompositeSink(JsonlEventSink(state.root / "train_events.jsonl"), (Phase1StoreSink(),)) if live
+            StoreEventSink(default_conn_factory, JsonlEventSink(state.root / "train_events.jsonl")) if live
             else MemoryEventSink())
+        self.changeset: Callable[[QueueEntry, str], Optional[dict]] = (
+            lambda e, base: change_from_git(host.checkout, base, e) if (live or self.cfg.dry_run_integrate)
+            else change_from_files(e))
         self.delegation_path = delegation_path
         self.key_path = key_path
         self.allow_repo_delegation = allow_repo_delegation
@@ -1099,6 +1227,7 @@ class TrainController:
         self.would_refuse: list[str] = []
         self.epoch_at_claim: Optional[int] = None
         self._train_lock: Any = None
+        self.event_errors: list[str] = []
 
     # -- small helpers -------------------------------------------------------------------------------
     def _ts(self) -> float:
@@ -1110,27 +1239,71 @@ class TrainController:
     def _train_dir(self) -> Path:
         return self.state.root / "trains" / str(self.train_id)
 
-    def _event(self, event_type: str, state_after: str, payload: Optional[dict] = None, *,
+    _LEGACY = {"claimed": "selected", "outcome": "outcome_recorded"}
+    _JOURNAL_ONLY = frozenset({"intent", "effect", "uncertain", "reconciled"})
+    _PHASE_EVENT = {"frozen": ("frozen", "selected"), "integrating": ("integrating", "integrating"),
+                    "tested": ("integrating", "integrating"), "waiting_window": ("waiting_window", "waiting_window"),
+                    "qualifying": ("integrating", "integrating"), "qualified": ("qualified", "qualified"),
+                    "merging": ("qualified", "qualified"), "merged": ("merged", "merged"),
+                    "promoting": ("promoting", "promoting"), "verifying": ("verifying", "promoting")}
+    _OUTCOME_STATE = {RELEASED_VERIFIED: "released", "RELEASED_OBSERVING": "observing", ROLLED_BACK: "rolled_back",
+                      ROLLBACK_FAILED: "rollback_failed", MERGED_NOT_LIVE: "merged", STOPPED: "cancelled",
+                      CANCELLED: "cancelled", FAILED_PRE_MERGE: "cancelled", NO_OP: None}
+
+    def _event(self, event_type: str, state_after: Optional[str], payload: Optional[dict] = None, *,
                subject_kind: str = "train", pr: Optional[int] = None, idem: Optional[str] = None) -> dict:
-        now = utc_iso(self._ts())
-        ev = {"schema": SCHEMA_EVENT, "event_id": f"rte-{uuid.uuid4().hex[:16]}", "event_type": event_type,
-              "subject_kind": subject_kind, "subject_id": f"pr:{pr}" if pr is not None else f"train:{self.train_id}",
-              "pr_number": pr, "train_id": self.train_id, "state_after": state_after, "actor": ACTOR.identity,
-              "policy_version": self.tstate.get("policy_digest"), "epoch": self.epoch_at_claim,
-              "idempotency_key": idem or f"{self.train_id}:{event_type}:{pr or ''}:{uuid.uuid4().hex[:8]}",
-              "occurred_at": now, "recorded_at": now, "payload": payload or {},
-              "evidence_refs": [], "mode": "live" if self.live else "dry_run"}
-        return self.events.append(ev)
+        """One TrainEvent@v1 (validated) to the store / JSONL / memory sink. A PR state event's event_type is its
+        state_after (contract rule). Intents and effects go to the local intent journal, not the event store
+        (TrainEvent@v1 has no intent type; see the packet README)."""
+        payload = json.loads(json.dumps(payload or {}, default=str))
+        if event_type in self._JOURNAL_ONLY:
+            self._journal({"kind": event_type, "train_id": self.train_id, "pr": pr, "state": state_after,
+                           "idempotency_key": idem, **payload})
+            return {}
+        if not self.train_id or not TC.TRAIN_ID_RE.match(str(self.train_id)):
+            return {}
+        if subject_kind == "pr" and pr is not None:
+            if state_after not in TC.QUEUE_STATES:
+                return {}
+            et = state_after
+            payload.setdefault("step", event_type)
+        else:
+            subject_kind, et = "train", self._LEGACY.get(event_type, event_type)
+            if state_after not in TC.QUEUE_STATES:
+                state_after = None
+        now = datetime.fromtimestamp(self._ts(), timezone.utc).isoformat(timespec="seconds")
+        ev = {"schema": SCHEMA_EVENT, "event_id": f"rte-{uuid.uuid4().hex}", "event_type": et,
+              "subject_kind": subject_kind,
+              "subject_id": f"pr:{pr}" if subject_kind == "pr" else f"train:{self.train_id}",
+              "pr_number": pr if subject_kind == "pr" else None, "train_id": self.train_id,
+              "state_after": state_after, "actor": ACTOR.identity,
+              "policy_version": self.tstate.get("classifier_policy_version"), "epoch": self.epoch_at_claim,
+              "idempotency_key": idem if idem and len(idem) <= 200 else
+              f"{self.train_id}:{et}:{pr or 'train'}:{uuid.uuid4().hex[:12]}",
+              "occurred_at": now, "payload": payload, "evidence_refs": []}
+        try:
+            return self.events.append(ev)
+        except InvalidTrainEvent as exc:
+            # A contract defect must never strand a train mid-release: journal it, count it (tests assert zero).
+            self.event_errors.append(f"{et}: {exc}"[:300])
+            self._journal({"kind": "invalid_event", "errors": str(exc)[:500], "event": ev})
+            return {}
+
+    def _journal(self, row: dict) -> None:
+        if not self.live:
+            return
+        RC._append_jsonl(self.state.root / "train_intents.jsonl", {"at": utc_iso(self._ts()), **row})
 
     def _save_state(self, **kw: Any) -> None:
         self.tstate.update(kw)
         if not self.live or not self.train_id:
             return
         self.tstate["updated_at"] = utc_iso(self._ts())
-        RC._atomic_write_json(self._train_dir() / "state.json", {"schema": SCHEMA_STATE, **self.tstate})
+        body = {k: v for k, v in self.tstate.items() if not k.startswith("_")}
+        RC._atomic_write_json(self._train_dir() / "state.json", {"schema": SCHEMA_STATE, **body})
 
     def _intent(self, action: str, detail: dict) -> str:
-        """Persist the intent BEFORE the side effect (event row + train state)."""
+        """Persist the intent BEFORE the side effect (fsynced intent journal + train state)."""
         key = f"{self.train_id}:{action}:{uuid.uuid4().hex[:8]}"
         intents = list(self.tstate.get("intents") or [])
         intents.append({"key": key, "action": action, "status": "INTENT", "at": utc_iso(self._ts()), **detail})
@@ -1149,7 +1322,20 @@ class TrainController:
 
     def _phase(self, phase: str, payload: Optional[dict] = None) -> None:
         self._save_state(phase=phase)
-        self._event(f"phase_{phase}", phase, payload)
+        et, st = self._PHASE_EVENT.get(phase, ("integrating", None))
+        self._event(et, st, {"step": phase, **(payload or {})})
+
+    def _members_event(self, state_after: str, prs: list, payload: Optional[dict] = None) -> None:
+        for pr in prs:
+            self._event(state_after, state_after, payload, subject_kind="pr", pr=int(pr))
+
+    def _evidence(self, sha: str, kind: str, name: str, conclusion: str, **extra: Any) -> None:
+        doc = {"schema": TC.TRAIN_EVIDENCE, "evidence_id": f"rtev-{uuid.uuid4().hex[:24]}",
+               "train_id": self.train_id, "candidate_sha": sha, "kind": kind, "name": name[:200],
+               "conclusion": conclusion,
+               "collected_at": datetime.fromtimestamp(self._ts(), timezone.utc).isoformat(timespec="seconds"),
+               "check_manifest_version": "rt-checks/1", **extra}
+        self._event("evidence_recorded", None, doc)
 
     def _boundary(self, label: str, *, in_flight: bool = False) -> None:
         """A mutation boundary: STOP latch / STOP request / revoke / pause / epoch change stop the train here."""
@@ -1194,12 +1380,13 @@ class TrainController:
             self.window = w
             self.train_id = w.train_id(uuid.uuid4().hex[:6])
             rec["train_id"] = self.train_id
-            self._rules(w, now, rec)
+            self.tstate["started_at"] = rec["started_at"]
             if self.live:
                 self._claim(w, dv)
                 claimed = True
             else:
                 self.say(f"WOULD claim window {w.window_id} (claim key {w.claim_key}, O_EXCL) and train {self.train_id}")
+            self._rules(w, now, rec)
             members, excluded = self._select(rec)
             manifest = self._freeze(w, members, dv, rec)
             cand = self._integrate_and_test(manifest, rec)
@@ -1222,10 +1409,14 @@ class TrainController:
                 self._train_lock.release()
         rec["exit_code"] = code
         rec["would_refuse"] = self.would_refuse
+        rec["event_errors"] = self.event_errors
         rec["steps"] = self.steps
         rec["finished_at"] = utc_iso(self._ts())
         if isinstance(self.events, MemoryEventSink):
             rec["events"] = self.events.rows
+        if isinstance(self.events, StoreEventSink):
+            rec["event_store"] = {"state": self.events.store_state, "errors": self.events.errors,
+                                  "projection_rows": self.events.finish()}
         return code, rec
 
     # -- preconditions -------------------------------------------------------------------------------
@@ -1381,7 +1572,9 @@ class TrainController:
             raise Halt("REFUSED", f"REFUSED_{exc.code}", exc.detail, refusal=True) from exc
         self.epoch_at_claim = res["epoch"]
         self._save_state(train_id=self.train_id, window_id=w.window_id, claim_key=w.claim_key, phase="claimed",
-                         policy_digest=dv.digest, epoch=res["epoch"], intents=[], outcome=None)
+                         policy_digest=dv.digest, epoch=res["epoch"], intents=[], outcome=None,
+                         started_at=self.tstate.get("started_at"),
+                         classifier_policy_version=getattr(self.classifier, "policy_version", None))
         self._event("claimed", "claimed", {"window_id": w.window_id, "claim_key": w.claim_key})
         self.say(f"claimed {w.claim_key} as {self.train_id} (epoch {res['epoch']})")
 
@@ -1400,13 +1593,34 @@ class TrainController:
             self.say("NOTE: --simulate-classifier allow (dry run only): every clean PR treated as eligible")
             classifier = _AllowForPreview()
         rec["classifier_version"] = classifier.version
+        self.tstate["classifier_version"] = classifier.version
+        self.tstate["classifier_policy_version"] = getattr(classifier, "policy_version", None)
+        try:
+            base = self.github.main_head()
+        except (RuntimeError, ValueError) as exc:
+            raise Halt(NO_OP, "MAIN_UNREADABLE", str(exc)[:160]) from exc
+        self.tstate["select_base"] = base
         eligible, excluded = [], {}
         for e in sorted(snap.entries, key=lambda e: e.pr):
             why = self._pre_exclusion(e)
             if why:
                 excluded[e.pr] = why
                 continue
-            risk, reasons = classifier.classify(e)
+            change = self.changeset(e, base)
+            if change and any(is_protected(str(p.get("path"))) for p in change.get("paths") or []):
+                excluded[e.pr] = "BLOCKED_SELF_MODIFICATION"
+                self._event("classified", "classified", {"risk_class": "blocked",
+                                                         "reasons": ["touches the train's own verifier"]},
+                            subject_kind="pr", pr=e.pr)
+                self._event("blocked", "blocked", {"reason": "BLOCKED_SELF_MODIFICATION"}, subject_kind="pr",
+                            pr=e.pr)
+                continue
+            risk, reasons = classifier.classify(e, change)
+            self._event("classified", "classified", {"risk_class": risk, "reasons": reasons[:6],
+                                                     "head_sha": e.head_sha, "classifier": classifier.version},
+                        subject_kind="pr", pr=e.pr)
+            self._event({"eligible": "ready"}.get(risk, risk), {"eligible": "ready"}.get(risk, risk),
+                        {"risk_class": risk}, subject_kind="pr", pr=e.pr)
             if risk != "eligible":
                 excluded[e.pr] = f"{risk}:{'; '.join(reasons)[:160]}"
                 continue
@@ -1419,6 +1633,7 @@ class TrainController:
             ordered = [e for e in ordered[: self.cfg.max_prs]]
             ordered, more = order_members(ordered)
             excluded.update(more)
+        self.tstate["select_excluded"] = {str(k): v for k, v in excluded.items()}
         rec["selection"] = {"members": [e.pr for e in ordered], "excluded": {str(k): v for k, v in excluded.items()}}
         self.say(f"select: {len(ordered)} eligible {[e.pr for e in ordered]}; {len(excluded)} not riding")
         held = sum(1 for v in excluded.values() if v.startswith("held:"))
@@ -1447,6 +1662,8 @@ class TrainController:
 
     def _freeze(self, w: TrainWindow, members: list[QueueEntry], dv: RD.DelegationVerdict, rec: dict) -> dict:
         base = self.github.main_head()
+        if base != self.tstate.get("select_base"):
+            raise Halt(NO_OP, "MAIN_MOVED_AT_FREEZE", f"{str(self.tstate.get('select_base'))[:9]} -> {base[:9]}")
         heads = []
         for e in members:
             cur = self.github.pr_head(e.pr)
@@ -1465,14 +1682,29 @@ class TrainController:
             "frozen_at": utc_iso(self._ts()),
         }
         manifest["manifest_digest"] = digest({k: v for k, v in manifest.items() if k != "frozen_at"})
+        tc = {"schema": TC.TRAIN_CANDIDATE, "train_id": self.train_id, "window_id": w.window_id,
+              "repo": getattr(self.github, "repository", RD.REPOSITORY), "base_sha": base,
+              "members": [{"pr_number": e.pr, "head_sha": e.head_sha, "risk_class": "eligible", "order": i + 1}
+                          for i, e in enumerate(heads)],
+              "dependency_graph": {str(e.pr): sorted(set(e.depends_on)) for e in heads if e.depends_on},
+              "policy_version": self.tstate.get("classifier_policy_version") or "none",
+              "classifier_version": str(rec.get("classifier_version") or "none")[:60],
+              "check_manifest": list(REQUIRED_CHECKS), "frozen_at": datetime.fromtimestamp(
+                  self._ts(), timezone.utc).isoformat(timespec="seconds"), "candidate_sha": None}
+        errs = TC.validate_as(TC.TRAIN_CANDIDATE, tc)
+        if errs:
+            raise Halt(NO_OP, "CANDIDATE_CONTRACT_INVALID", "; ".join(errs)[:300])
+        manifest["train_candidate"] = tc
+        self.tstate["members_frozen"] = [e.pr for e in heads]
+        self.tstate["base_sha"] = base
         rec["manifest"] = manifest
         if self.live:
             path = self._train_dir() / "manifest.json"
             if os.path.lexists(path):
                 raise Halt(FAILED_PRE_MERGE, "MANIFEST_EXISTS", str(path))
             RC._atomic_write_json(path, manifest)
-        self._phase("frozen", {"manifest_digest": manifest["manifest_digest"], "base_sha": base,
-                               "members": manifest["members"]})
+        self._phase("frozen", {"manifest_digest": manifest["manifest_digest"], "train_candidate": tc})
+        self._members_event("selected", [e.pr for e in heads], {"train_id": self.train_id})
         self.say(f"freeze: base {base[:12]}, members " +
                  ", ".join(f"#{m['pr']}@{m['head_sha'][:9]}" for m in manifest["members"]) +
                  f"; checks {list(REQUIRED_CHECKS)}; manifest {manifest['manifest_digest'][:19]}")
@@ -1604,6 +1836,9 @@ class TrainController:
                 attempts.append({"label": label, "prs": [m["pr"] for m in subset], "result": "integrate_failed"})
                 return False
             res = self.tester.run(ws.path, base, timeout=t_end - self._ts(), scratch=scratch, now=self._ts)
+            if SHA_RE.match(sha or ""):
+                self._evidence(sha, "local_test", f"local_test:{label}:{[m['pr'] for m in subset]}"[:200],
+                               "success" if res.ok else "failure")
             attempts.append({"label": label, "prs": [m["pr"] for m in subset], "sha": sha, "ok": res.ok,
                              "rc": res.rc, "seconds": round(res.seconds, 1), "tail": res.tail[-200:]})
             self.say(f"local test [{label}] {[m['pr'] for m in subset]} @ {sha[:12]}: "
@@ -1643,6 +1878,7 @@ class TrainController:
                         f"prefix {hi} fails, prefix {lo} passes")
             rest = [m for m in kept if m["pr"] not in ejected]
             r = test(rest, "without-culprit") if rest else None
+            rec["failure_attribution"] = {"attributed": [culprit["pr"]]}
             if r:
                 return {"sha": ws.head(), "members": rest, "attributed": culprit["pr"]}
             safe = [m for m in kept[:lo] if m["pr"] not in ejected]
@@ -1652,6 +1888,8 @@ class TrainController:
             pending = [m["pr"] for m in kept[lo:hi]] + [m["pr"] for m in kept[hi:]]
         for pr in pending:
             self._pending(next(m for m in kept if m["pr"] == pr), "UNATTRIBUTED_FAILURE")
+        attributed = [int(k) for k, v in ejected.items() if str(v).startswith("LOCAL_TEST_FAILED_ATTRIBUTED")]
+        rec["failure_attribution"] = {"attributed": attributed, "pending_investigation": pending}
         if not safe:
             raise Halt(FAILED_PRE_MERGE, "LOCAL_TEST_UNATTRIBUTED", f"pending investigation: {pending}")
         sha = self._integrate_subset(ws, base, safe)
@@ -1801,6 +2039,12 @@ class TrainController:
             verdict, errs = evidence_verdict(ev, required)
             if verdict == "GREEN":
                 self.say(f"{label} checks GREEN on {sha[:12]}: {[c['name'] for c in ev['checks']]}")
+                if label != "batch_recheck":
+                    for c in ev["checks"]:
+                        rid = c.get("id")
+                        if isinstance(rid, int) and not isinstance(rid, bool) and rid > 0:
+                            self._evidence(sha, "ci_run", f"{label}:{c['name']}", "success", workflow=c["name"],
+                                           run_id=rid)
                 return ev
             if verdict == "RED":
                 raise Halt(fail_outcome, f"CI_RED_{label.upper()}", ";".join(errs)[:300])
@@ -1852,6 +2096,7 @@ class TrainController:
             self._latch(f"merge commit {merged[:12]} parents {parents} != [base {base[:12]}, candidate {sha[:12]}]")
             raise Halt(MERGED_NOT_LIVE, "MAIN_MOVED_AT_MERGE", f"parents {parents}")
         self._phase("merged", {"main_sha": merged})
+        self._members_event("merged", [h["pr"] for h in heads], {"main_sha": merged})
         self.say(f"merged: main is {merged[:12]} (parents base {base[:12]} + candidate {sha[:12]})")
         return merged
 
@@ -1977,6 +2222,7 @@ class TrainController:
             self._effect(key, "SUCCEEDED", {"verified": True})
             self.measure.append(timing)
             self._save_state(in_flight=False, served_sha=merged)
+            self._members_event("released", [h["pr"] for h in heads], {"served_sha": merged})
             self.say(f"verified: CURRENT {prepared} serves {merged[:12]}")
             self._settle_if_stopping()
             raise Halt(RELEASED_VERIFIED, "VERIFIED", merged[:12], code=EXIT_OK)
@@ -1994,6 +2240,8 @@ class TrainController:
         self.measure.append(timing)
         res.succeeded({"verified": False, "rolled_back": rb_ok, "failed": failed})
         self._effect(key, "ROLLED_BACK" if rb_ok else "ROLLBACK_FAILED", {"failed": failed, **rb})
+        self._members_event("rolled_back" if rb_ok else "rollback_failed", [h["pr"] for h in heads],
+                            {"failed": failed})
         self._quarantine(merged, art, prepared, failed)
         self._latch(f"verification failed {failed}; rollback {'ok' if rb_ok else 'FAILED'}")
         self._save_state(in_flight=False, served_sha=prev_sha if rb_ok else None)
@@ -2033,6 +2281,30 @@ class TrainController:
         self._event("quarantined", "quarantined", row)
 
     # -- terminal --------------------------------------------------------------------------------------
+    def outcome_doc(self, outcome: str, reason: Any, detail: Any, attribution: Optional[dict] = None) -> dict:
+        """TrainOutcome@v1 (validated). Members are the frozen membership (NO_OP has none)."""
+        def sha(k: str) -> Optional[str]:
+            v = self.tstate.get(k)
+            return v if isinstance(v, str) and SHA_RE.match(v) else None
+
+        rt = self.tstate.get("rollback_target") or {}
+        members = [] if outcome == NO_OP else list(dict.fromkeys(self.tstate.get("members_frozen") or []))
+        art = self.tstate.get("artifact_digest")
+        body = {"schema": SCHEMA_OUTCOME, "train_id": self.train_id,
+                "window_id": self.tstate.get("window_id") or (self.window.window_id if self.window else ""),
+                "outcome": outcome, "members": members,
+                "started_at": str(self.tstate.get("started_at") or utc_iso(self._ts())),
+                "finished_at": utc_iso(self._ts()), "base_sha": sha("base_sha"), "candidate_sha": sha("candidate"),
+                "main_sha": sha("main_sha"), "served_sha": sha("served_sha"),
+                "artifact_digest": art if isinstance(art, str) and art.startswith("sha256:") else None,
+                "rollback_target": (str(rt.get("release"))[:400] if rt.get("release") else None),
+                "failure_attribution": attribution or None,
+                "notes": f"{reason}: {detail}"[:2000] if reason else None}
+        errs = TC.validate_as(TC.TRAIN_OUTCOME, body)
+        if errs:
+            body["notes"] = (f"{body['notes'] or ''} [contract: {'; '.join(errs)}]")[:2000]
+        return body
+
     def _terminal(self, rec: dict) -> None:
         outcome = rec.get("outcome")
         if outcome == "UNCERTAIN":
@@ -2040,17 +2312,12 @@ class TrainController:
             self._event("uncertain", "uncertain", {"reason": rec.get("reason"), "detail": rec.get("detail")})
             return            # stays non-terminal: train-reconcile resolves it before anything else runs
         if outcome not in TERMINAL_OUTCOMES:
-            outcome = CANCELLED if not outcome or outcome == "REFUSED" else outcome
+            outcome = CANCELLED
             rec["outcome"] = outcome
-        body = {"schema": SCHEMA_OUTCOME, "train_id": self.train_id, "outcome": outcome,
-                "reason": rec.get("reason"), "detail": rec.get("detail"),
-                "window_id": self.window.window_id if self.window else None,
-                "candidate_sha": self.tstate.get("candidate"), "main_sha": self.tstate.get("main_sha"),
-                "served_sha": self.tstate.get("served_sha"), "batch_pr": self.tstate.get("batch_pr"),
-                "finished_at": utc_iso(self._ts())}
+        body = self.outcome_doc(outcome, rec.get("reason"), rec.get("detail"), rec.get("failure_attribution"))
         self._save_state(phase="terminal", outcome=body)
         RC._atomic_write_json(self._train_dir() / "outcome.json", body)
-        self._event("outcome", outcome.lower(), body)
+        self._event("outcome", self._OUTCOME_STATE.get(outcome), body)
         try:
             self.control.train_terminal(ACTOR, str(self.train_id), outcome)
         except RC.ControlRefused as exc:
@@ -2064,8 +2331,9 @@ class TrainController:
 
 class _AllowForPreview:
     version = "simulated-allow/dry-run-only"
+    policy_version = "dry-run-preview"
 
-    def classify(self, entry: QueueEntry) -> tuple[str, list[str]]:  # noqa: ARG002
+    def classify(self, entry: QueueEntry, change: Optional[dict]) -> tuple[str, list[str]]:  # noqa: ARG002
         return "eligible", ["dry-run preview only"]
 
 
@@ -2183,16 +2451,22 @@ class Reconciler:
         c = self.c
         c.train_id = st.get("train_id")
         c.tstate = dict(st)
+        ledger_intents = self._ledger_intents(str(c.train_id))
         for d in decision["intents"]:
-            capid = d.get("capability_intent")
             disp = d["disposition"]
-            if capid and disp != "AMBIGUOUS":
+            # The train intent may predate its capability reservation (crash between them): match the ledger's
+            # open intents for this train and action too, so nothing stays UNCERTAIN and blocks every train.
+            capids = {d.get("capability_intent")} | {i for i, r in ledger_intents.items()
+                                                    if r.get("action") == d.get("action")}
+            for capid in sorted(x for x in capids if x):
+                if disp == "AMBIGUOUS":
+                    continue
                 try:
                     c.authority.reconcile(capid, disposition="EFFECT_APPLIED" if disp.startswith("EFFECT_APPLIED")
                                           else "EFFECT_ABSENT", observed_evidence=obs,
                                           reconciled_by="release_window.train-reconcile")
                 except RC.ControlRefused as exc:
-                    d["capability_reconcile"] = exc.code
+                    d.setdefault("capability_reconcile", []).append(exc.code)
             c._event("reconciled", "reconciled", {"intent": d.get("intent"), "disposition": disp, "observed": obs})
         if decision["disposition"] == "AMBIGUOUS":
             c._latch(f"restart with an ambiguous effect in {c.train_id}: {decision['intents']}")
@@ -2201,19 +2475,28 @@ class Reconciler:
         if any(d["disposition"] == "EFFECT_APPLIED_UNVERIFIED" for d in decision["intents"]):
             c._latch(f"{c.train_id}: promote applied before the restart but never verified; operator verifies "
                      "or rolls back")
-        body = {"schema": SCHEMA_OUTCOME, "train_id": c.train_id, "outcome": decision["outcome"],
-                "reason": "RECONCILED_AFTER_RESTART", "detail": decision["intents"],
-                "main_sha": obs["main_sha"] if decision["outcome"] == MERGED_NOT_LIVE else st.get("main_sha"),
-                "finished_at": utc_iso(c._ts())}
+        if decision["outcome"] == MERGED_NOT_LIVE and not c.tstate.get("main_sha"):
+            c.tstate["main_sha"] = obs["main_sha"]
+        c.epoch_at_claim = st.get("epoch")
+        body = c.outcome_doc(decision["outcome"], "RECONCILED_AFTER_RESTART",
+                             json.dumps(decision["intents"], default=str))
         intents = [dict(i, status="RECONCILED") if i.get("status") in ("INTENT", "UNCERTAIN") else i
                    for i in st.get("intents") or []]
         c._save_state(phase="terminal", outcome=body, intents=intents, pending_intent=None)
         RC._atomic_write_json(c._train_dir() / "outcome.json", body)
-        c._event("outcome", str(decision["outcome"]).lower(), body)
+        c._event("outcome", c._OUTCOME_STATE.get(decision["outcome"]), body)
         try:
             c.control.train_terminal(ACTOR, str(c.train_id), str(decision["outcome"]))
         except RC.ControlRefused:
             pass
+
+    def _ledger_intents(self, train_id: str) -> dict:
+        try:
+            ledger = self.c.authority._load_ledger(create=False)
+        except RC.ControlRefused:
+            return {}
+        return {i: r for i, r in ledger["intents"].items()
+                if r.get("train_id") == train_id and r.get("status") in (CAP.RESERVED, CAP.UNCERTAIN)}
 
 
 def status(state: RW.State) -> dict:
@@ -2252,3 +2535,357 @@ def resolve_quarantine(state: RW.State, sha: str, reason: str, evidence: str, *,
         return EXIT_OK, {"outcome": "WOULD_RESOLVE", "row": row}
     RC._append_jsonl(state.root / "quarantine.jsonl", row)
     return EXIT_OK, {"outcome": "RESOLVED", "row": row}
+
+
+# ── CLI (called by scripts/release_window.py train-*) ─────────────────────────────────────────────
+
+def build_controller(*, live: bool, config: Optional[TrainConfig] = None, host: Optional[RW.Host] = None,
+                     state: Optional[RW.State] = None) -> TrainController:
+    host = host or RW.Host()
+    state = state or RW.State()
+    reader = GhCliReader(host)
+    writer = GhCliWriter(host, reader) if live else None    # raises WriterNotArmed until D2 + 17.0.0
+    return TrainController(host=host, state=state, github=reader, queue=default_queue_source(),
+                           classifier=load_classifier(), live=live, writer=writer, config=config)
+
+
+def render(code: int, body: dict) -> str:
+    lines = list(body.get("steps") or [])
+    lines.append(f"outcome: {body.get('outcome')} reason: {body.get('reason')} exit: {code}")
+    if body.get("would_refuse"):
+        lines.append("a live run would refuse: " + " | ".join(body["would_refuse"]))
+    return "\n".join(lines)
+
+
+def cli(args: Any) -> int:
+    live = bool(getattr(args, "live", False))
+    if live and TRAIN_CONTROLLER_STATUS != "ACTIVE":
+        body = {"outcome": "REFUSED_BUILD_ONLY", "controller_status": TRAIN_CONTROLLER_STATUS,
+                "detail": "the train controller is built, not armed; arming (delegation, capability key, control "
+                          "arm, GitHub App, AGENTS 17.0.0, timer) is an operator act. Run without --live for a "
+                          "dry run."}
+        print(json.dumps(body, indent=2))
+        return EXIT_REFUSED
+    if args.cmd == "train-status":
+        print(json.dumps(status(RW.State()), indent=2, sort_keys=True, default=str))
+        return EXIT_OK
+    if args.cmd == "train-claim":
+        return cli_claim(args)
+    if args.cmd == "train-quarantine-resolve":
+        code, body = resolve_quarantine(RW.State(), args.sha, args.reason, args.evidence, live=live)
+        print(json.dumps(body, indent=2, default=str))
+        return code
+    if args.cmd == "train-reconcile":
+        try:
+            ctl = build_controller(live=live)
+        except WriterNotArmed as exc:
+            print(json.dumps({"outcome": "REFUSED_WRITER_NOT_ARMED", "detail": str(exc)}, indent=2))
+            return EXIT_REFUSED
+        code, body = Reconciler(ctl).run()
+        print(json.dumps(body, indent=2, default=str))
+        return code
+    cfg = TrainConfig(dry_run_integrate=bool(args.integrate), dry_run_local_test=bool(args.local_test),
+                      simulate_classifier=args.simulate_classifier)
+    now = RW._parse_now(args.now) if getattr(args, "now", None) else None
+    if now is not None and live:
+        print(json.dumps({"outcome": "REFUSED", "detail": "--now is for dry runs only"}))
+        return EXIT_REFUSED
+    try:
+        ctl = build_controller(live=live, config=cfg)
+    except WriterNotArmed as exc:
+        print(json.dumps({"outcome": "REFUSED_WRITER_NOT_ARMED", "detail": str(exc)}, indent=2))
+        return EXIT_REFUSED
+    code, body = ctl.run(now)
+    print(json.dumps(body, indent=2, sort_keys=True, default=str) if args.json else render(code, body))
+    return code
+
+
+# ── n8n window requests (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md rev 1, branch feat/release-train-n8n-20261021) ──
+# The controller half of TrainWindowRequest@v1 / TrainWindowReceipt@v1 (C1-C11). The request schema and validator
+# (config/schemas/release_train/train_window_request.v1.schema.json, scripts/lib/release_train_window.py) are not on
+# this branch yet, so validate_request() below implements the contract's §5 table strictly; swap it for the shared
+# validator when that lands. A request is never authority: everything is re-derived on the host.
+
+REQUEST_SCHEMA, RECEIPT_SCHEMA = "TrainWindowRequest@v1", "TrainWindowReceipt@v1"
+REQUEST_ID_RE = re.compile(r"^rtw-[0-9]{8}-[0-9]{4}-(win|f[0-9a-f]{6})$")
+REQUEST_KEYS_REQUIRED = frozenset({"schema", "request_id", "window_slot", "window_id", "window_start", "tick",
+                                   "shadow", "requested_at", "expires_at", "requested_by", "authority"})
+REQUEST_KEYS_OPTIONAL = frozenset({"shadow_reason", "readiness", "note"})
+REFUSAL_CODES = frozenset({"INVALID_REQUEST", "EXPIRED", "DUPLICATE_WINDOW", "STOP_SET", "STOP_UNREADABLE",
+                           "NOT_ARMED", "DELEGATION_NOT_ACTIVE", "WINDOW_NOT_ENABLED", "OUTSIDE_WINDOW",
+                           "CONTROLLER_BUILD_ONLY", "LOCK_HELD", "SHADOW_LIVE_MISMATCH"})
+TERMINAL_RECEIPT_STATES = frozenset({"COMPLETED", "REFUSED", "EXPIRED", "FAILED"})
+#: The controller's precise refusal -> the contract's closed set (C9). The contract has no code for a reconcile-first,
+#: quarantined-lineage, bypass-environment or corrupt-control refusal; they map to the closest fail-closed code and
+#: the precise reason travels in ``refusal.detail`` (reported as a contract gap in the packet README).
+REFUSAL_MAP = {
+    "REFUSED_STOP_LATCHED": "STOP_SET", "REFUSED_STOP_UNREADABLE": "STOP_UNREADABLE",
+    "REFUSED_CONTROL_UNARMED": "NOT_ARMED", "REFUSED_CONTROL_CORRUPT": "NOT_ARMED", "REFUSED_REVOKED": "NOT_ARMED",
+    "REFUSED_PAUSED": "NOT_ARMED", "REFUSED_STOPPED": "STOP_SET", "REFUSED_POLICY_NOT_ACCEPTED": "NOT_ARMED",
+    "REFUSED_WINDOW_DISABLED": "WINDOW_NOT_ENABLED", "REFUSED_OFF_WINDOW": "OUTSIDE_WINDOW",
+    "REFUSED_WINDOW_ALREADY_CLAIMED": "DUPLICATE_WINDOW", "REFUSED_TRAIN_BUSY": "LOCK_HELD",
+    "REFUSED_TRAIN_ALREADY_CLAIMED": "LOCK_HELD", "REFUSED_RECONCILE_FIRST": "STOP_SET",
+    "REFUSED_QUARANTINED_LINEAGE": "STOP_SET", "REFUSED_BYPASS_ENV": "NOT_ARMED",
+}
+
+
+def _parse_ts(v: Any) -> Optional[datetime]:
+    try:
+        d = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return d if d.tzinfo else None
+
+
+def validate_request(body: Any, filename: str) -> list[str]:
+    """TrainWindowRequest@v1 (contract §5), strict: unknown keys are invalid (a request that names a SHA, PR, train
+    id, capability or command is invalid), and every identity field must agree with the others."""
+    if not isinstance(body, dict):
+        return ["request is not an object"]
+    errs = []
+    keys = set(body)
+    if REQUEST_KEYS_REQUIRED - keys:
+        errs.append(f"missing {sorted(REQUEST_KEYS_REQUIRED - keys)}")
+    extra = keys - REQUEST_KEYS_REQUIRED - REQUEST_KEYS_OPTIONAL
+    if extra:
+        errs.append(f"unknown fields {sorted(extra)} (a request carries no SHA, PR, train id or command)")
+    if errs:
+        return errs
+    if body["schema"] != REQUEST_SCHEMA:
+        errs.append("schema")
+    rid = body["request_id"]
+    if not (isinstance(rid, str) and REQUEST_ID_RE.match(rid)):
+        errs.append("request_id pattern")
+    elif filename != f"{rid}.json":
+        errs.append("request_id disagrees with the file name")
+    slot = body["window_slot"]
+    if slot not in ("0000", "0600", "0800", "1800"):
+        errs.append("window_slot")
+    start = _parse_ts(body["window_start"])
+    if start is None:
+        errs.append("window_start")
+    else:
+        local = start.astimezone(TZ)
+        if local.strftime("%H%M") != slot or local.isoformat(timespec="minutes") != body["window_id"]:
+            errs.append("window_id / window_start / window_slot disagree")
+        if isinstance(rid, str) and REQUEST_ID_RE.match(rid) and rid[4:17] != local.strftime("%Y%m%d-%H%M"):
+            errs.append("request_id date/slot disagree with the window")
+    if body["tick"] not in ("on_window", "off_window"):
+        errs.append("tick")
+    if not isinstance(body["shadow"], bool):
+        errs.append("shadow must be a boolean")
+    if body["tick"] == "off_window" and body["shadow"] is not True:
+        errs.append("an off-window request is always shadow")
+    if isinstance(rid, str) and rid.endswith("-win") != (body["tick"] == "on_window"):
+        errs.append("request_id suffix disagrees with tick")
+    if _parse_ts(body["requested_at"]) is None or _parse_ts(body["expires_at"]) is None:
+        errs.append("requested_at / expires_at")
+    if body["authority"] != "REQUEST_ONLY":
+        errs.append("authority must be REQUEST_ONLY")
+    rb = body["requested_by"]
+    if not (isinstance(rb, dict) and isinstance(rb.get("lane_id"), str) and isinstance(rb.get("run_id"), str)):
+        errs.append("requested_by")
+    elif isinstance(slot, str) and rb["lane_id"] != f"release-train-request-{slot}":
+        errs.append("requested_by.lane_id is not this slot's lane")
+    return errs
+
+
+class RequestSpool:
+    """<state_dir>/train_requests/{pending,claimed,receipts}. Claim = os.rename(pending -> claimed) (C2). Nothing
+    is ever deleted; a terminal receipt is never rewritten (C8)."""
+
+    def __init__(self, state_root: Path) -> None:
+        self.root = Path(state_root) / "train_requests"
+        self.pending, self.claimed, self.receipts = self.root / "pending", self.root / "claimed", self.root / "receipts"
+
+    def pending_files(self) -> list[Path]:
+        try:
+            return sorted(p for p in self.pending.iterdir() if p.is_file())
+        except OSError:
+            return []
+
+    def claim(self, p: Path) -> Optional[Path]:
+        self.claimed.mkdir(parents=True, exist_ok=True)
+        dest = self.claimed / p.name
+        if os.path.lexists(dest):
+            return None                                   # a file of that name was already claimed: duplicate
+        try:
+            os.rename(p, dest)
+        except FileNotFoundError:
+            return None                                   # another claimer won the rename
+        return dest
+
+    def receipt(self, request_id: str) -> Optional[dict]:
+        try:
+            return json.loads((self.receipts / f"{request_id}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    def write_receipt(self, request_id: str, body: dict) -> bool:
+        prior = self.receipt(request_id)
+        if prior and prior.get("state") in TERMINAL_RECEIPT_STATES:
+            return False
+        RC._atomic_write_json(self.receipts / f"{request_id}.json", body)
+        return True
+
+
+def _receipt(req: dict, *, state: str, mode: str, now: float, acknowledged_at: Optional[str] = None,
+             refusal: Optional[dict] = None, rec: Optional[dict] = None, outcome: Optional[str] = None) -> dict:
+    rec = rec or {}
+    sel = rec.get("selection") or {}
+    needs = [{"code": "NOT_RIDING", "pr": int(k), "text": str(v)[:160]} for k, v in
+             list((sel.get("excluded") or {}).items())[:16]]
+    needs += [{"code": "LIVE_WOULD_REFUSE", "pr": None, "text": str(x)[:160]} for x in rec.get("would_refuse") or []]
+    manifest = rec.get("manifest") or {}
+    members = [{"pr": m["pr"], "head_sha": m["head_sha"]} for m in manifest.get("members") or []]
+    sims = [a["action"] for a in (rec.get("simulated_writes") or [])]
+    if rec.get("outcome") == "DRY_RUN_COMPLETE":
+        sims += ["prepare", "promote", "verify"]
+    notif = rec.get("notification") or {}
+    return {"schema": RECEIPT_SCHEMA, "request_id": req.get("request_id"), "window_id": req.get("window_id"),
+            "window_slot": req.get("window_slot"), "shadow": req.get("shadow"), "mode": mode, "state": state,
+            "acknowledged_at": acknowledged_at, "finished_at": utc_iso(now) if state in TERMINAL_RECEIPT_STATES
+            else None,
+            "controller": {"version": CONTROLLER_VERSION, "code_sha": None, "host": os.uname().nodename},
+            "train_id": rec.get("train_id") if T_ID_RE.match(str(rec.get("train_id") or "")) else None,
+            "outcome": outcome if state == "COMPLETED" else None, "refusal": refusal, "members": members,
+            "candidate_sha": (rec.get("batch") or {}).get("candidate"),
+            "main_sha": (rec.get("merge") or {}).get("main_sha"), "served_sha": None,
+            "needs_action": needs[:20], "simulated_effects": list(dict.fromkeys(sims)) if mode == "simulate" else [],
+            "injected_failures": [],
+            "p1_alert": ({"sent_by": "host_notifier", "incident_key": f"release-train:{rec.get('train_id')}",
+                          "at": rec.get("finished_at")} if notif.get("priority") == "P1" else None),
+            "evidence_refs": []}
+
+
+T_ID_RE = re.compile(r"^rt-[0-9]{8}-[0-9]{4}-[a-z0-9]{4,12}$")
+
+
+def _refusal(code: str, detail: str) -> dict:
+    return {"code": code if code in REFUSAL_CODES else "INVALID_REQUEST", "detail": str(detail)[:200]}
+
+
+def process_requests(state: RW.State, factory: Callable[[bool], TrainController], *, apply: bool,
+                     now: Optional[Callable[[], float]] = None, live_status: Optional[str] = None) -> tuple[int, dict]:
+    """Claim and answer pending TrainWindowRequest@v1 files (C1-C11). Without ``apply``: list what would be claimed
+    and answered, run nothing, write nothing. With ``apply``: claim by rename, acknowledge, run the train (shadow ->
+    dry run only, C3; live -> refused while the controller is BUILD_ONLY), write the terminal receipt."""
+    clock = now or time.time
+    spool = RequestSpool(state.root)
+    out: dict = {"schema": "ReleaseTrainClaimRun@v1", "mode": "apply" if apply else "dry_run", "requests": []}
+    status_ = live_status or TRAIN_CONTROLLER_STATUS
+    lock = None
+    if apply:
+        lock = RC._Flock(spool.root / ".claimer.lock", 0.0)
+        try:
+            lock.acquire()
+        except RC.ControlRefused:
+            out["outcome"] = "CLAIMER_BUSY"
+            return EXIT_OK, out
+    try:
+        files = spool.pending_files()
+        bodies = []
+        for p in files:
+            try:
+                body = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                body = None
+            bodies.append((p, body))
+        bodies.sort(key=lambda pb: (str((pb[1] or {}).get("requested_at") or ""), pb[0].name)
+                    if isinstance(pb[1], dict) else ("", pb[0].name))
+        for p, body in bodies:
+            out["requests"].append(_answer(spool, p, body, factory, apply=apply, clock=clock, status_=status_))
+    finally:
+        if lock is not None:
+            lock.release()
+    return EXIT_OK, out
+
+
+def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], TrainController], *, apply: bool,
+            clock: Callable[[], float], status_: str) -> dict:
+    name = p.name
+    rid = (body or {}).get("request_id") if isinstance(body, dict) else None
+    rid = rid if isinstance(rid, str) and REQUEST_ID_RE.match(rid) and name == f"{rid}.json" else name[:-5]
+    item: dict = {"file": name, "request_id": rid}
+    errs = validate_request(body, name)
+    req = body if isinstance(body, dict) else {}
+    if not apply:
+        item["would"] = ("REFUSE INVALID_REQUEST: " + "; ".join(errs)) if errs else (
+            f"claim; {'simulate (shadow)' if req.get('shadow') else 'live -> ' + ('refused: CONTROLLER_BUILD_ONLY' if status_ != 'ACTIVE' else 'run live')}")
+        return item
+    claimed = spool.claim(p)
+    if claimed is None:
+        item["result"] = "NOT_CLAIMED (another claimer, or a duplicate name already claimed)"
+        if os.path.lexists(p) and os.path.lexists(spool.claimed / name):
+            spool.write_receipt(rid, _receipt(req, state="REFUSED", mode="simulate", now=clock(),
+                                              refusal=_refusal("DUPLICATE_WINDOW", "request already claimed")))
+            item["result"] = "REFUSED DUPLICATE_WINDOW"
+        return item
+    shadow = req.get("shadow") is True
+    mode = "simulate" if shadow or errs else "live"
+    if errs:
+        spool.write_receipt(rid, _receipt(req, state="REFUSED", mode="simulate", now=clock(),
+                                          refusal=_refusal("INVALID_REQUEST", "; ".join(errs))))
+        item["result"] = "REFUSED INVALID_REQUEST"
+        return item
+    if clock() > _parse_ts(req["expires_at"]).timestamp():
+        spool.write_receipt(rid, _receipt(req, state="EXPIRED", mode=mode, now=clock(),
+                                          refusal=_refusal("EXPIRED", f"expired at {req['expires_at']}")))
+        item["result"] = "EXPIRED"
+        return item
+    ack = utc_iso(clock())
+    spool.write_receipt(rid, _receipt(req, state="ACKNOWLEDGED", mode=mode, now=clock(), acknowledged_at=ack))
+    if not shadow and status_ != "ACTIVE":
+        spool.write_receipt(rid, _receipt(req, state="REFUSED", mode="live", now=clock(), acknowledged_at=ack,
+                                          refusal=_refusal("CONTROLLER_BUILD_ONLY",
+                                                           f"TRAIN_CONTROLLER_STATUS={status_}")))
+        item["result"] = "REFUSED CONTROLLER_BUILD_ONLY"
+        return item
+    try:
+        ctl = factory(not shadow)
+        if shadow and ctl.live:
+            raise Halt("REFUSED", "SHADOW_LIVE_MISMATCH", "a shadow request produced a live controller", refusal=True)
+        start = _parse_ts(req["window_start"])
+        at = start + timedelta(minutes=1) if (shadow and req["tick"] == "off_window") else None
+        code, rec = ctl.run(at)
+    except Halt as h:
+        spool.write_receipt(rid, _receipt(req, state="REFUSED", mode=mode, now=clock(), acknowledged_at=ack,
+                                          refusal=_refusal(h.reason, h.detail)))
+        item["result"] = f"REFUSED {h.reason}"
+        return item
+    except Exception as exc:  # noqa: BLE001 - the controller itself failed: FAILED, exception type only
+        spool.write_receipt(rid, _receipt(req, state="FAILED", mode=mode, now=clock(), acknowledged_at=ack,
+                                          # C9 has no controller-error code (contract gap, packet README):
+                                          # LOCK_HELD for a busy lock, else NOT_ARMED; detail = exception type.
+                                          refusal={"code": "LOCK_HELD" if isinstance(exc, RC.LockBusy)
+                                                   else "NOT_ARMED", "detail": type(exc).__name__}))
+        item["result"] = f"FAILED {type(exc).__name__}"
+        return item
+    if isinstance(ctl.writer, SimulatedGitHubWriter):
+        rec["simulated_writes"] = ctl.writer.actions
+    got = (rec.get("window") or {}).get("window_id")
+    if rec.get("refused"):
+        code9 = REFUSAL_MAP.get(str(rec.get("reason")), "NOT_ARMED")
+        receipt = _receipt(req, state="REFUSED", mode=mode, now=clock(), acknowledged_at=ack, rec=rec,
+                           refusal=_refusal(code9, f"{rec.get('reason')}: {rec.get('detail') or ''}"))
+    elif got != req["window_id"]:
+        receipt = _receipt(req, state="REFUSED", mode=mode, now=clock(), acknowledged_at=ack, rec=rec,
+                           refusal=_refusal("OUTSIDE_WINDOW", f"the host derived window {got}, not {req['window_id']}"))
+    else:
+        oc = rec.get("outcome")
+        if shadow and oc not in (NO_OP, FAILED_PRE_MERGE, STOPPED, CANCELLED):
+            oc = NO_OP                                  # simulate: never a release, never a fake success (§7)
+        receipt = _receipt(req, state="COMPLETED", mode=mode, now=clock(), acknowledged_at=ack, rec=rec,
+                           outcome=oc if oc in TERMINAL_OUTCOMES else CANCELLED)
+    spool.write_receipt(rid, receipt)
+    item["result"] = f"{receipt['state']} {receipt.get('outcome') or (receipt.get('refusal') or {}).get('code')}"
+    item["train_id"] = rec.get("train_id")
+    return item
+
+
+def cli_claim(args: Any) -> int:
+    def factory(live: bool) -> TrainController:
+        return build_controller(live=live)
+    code, body = process_requests(RW.State(), factory, apply=bool(getattr(args, "apply", False)))
+    print(json.dumps(body, indent=2, default=str))
+    return code

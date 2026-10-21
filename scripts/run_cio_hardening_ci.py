@@ -5473,6 +5473,21 @@ GATES = [
         ["tests/test_release_train_authority_20261021.py"],
     ),
     (
+        # ANCHOR: RELEASE_TRAIN_CONTROLLER_20261021 — Release Train v2 Phase 3, BUILD_ONLY (refuses --live):
+        # release_window.py train-* -> scripts/lib/release_train_controller.py. select (QueueSource: Phase 1 store,
+        # else PR-hygiene receipt + gh; Phase 1 classifier, unknown = held) -> freeze (TrainCandidate@v1) ->
+        # scratch-worktree --no-ff integration (conflict ejects PR + dependents) -> allowlist-env local test with
+        # bounded bisect -> build/publish capability (train/<id> + batch PR) -> all 4 checks exactly success on the
+        # candidate -> merge capability with STOP/epoch/expected-base recheck -> promote capability through the
+        # deploy script -> release_window verification -> rollback + STOP latch + quarantine. Adversarial §10:
+        # competing trains, manual/emergency collision, main/CURRENT/heads moving, wrong/missing/revoked/replayed
+        # capability, forged/stale/wrong-SHA/skipped/neutral CI, self-modifying candidate, STOP before merge and
+        # during promotion, corrupt state, restart with an ambiguous effect, DST, stale macro calendar, failed-
+        # artifact redeploy. Hermetic: tmp git repo, fake GitHub + deploy host, temp key/delegation/control.
+        "release_train_controller_20261021",
+        ["tests/test_release_train_controller_20261021.py"],
+    ),
+    (
         # ANCHOR: AGENTS_POLICY_17_0_0_RELEASE_TRAIN — PROPOSED amendment (operator-applied patch, agents never edit
         # AGENTS.md / AI_WORK_POLICY.md): agents queue and never merge, push main or train/*, or release; standing
         # delegation; 00/06/08/18 ET windows + merge freeze; STOP semantics; §17 additions; train pushes are the only

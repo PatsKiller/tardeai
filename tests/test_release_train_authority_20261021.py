@@ -858,9 +858,14 @@ def test_key_fails_closed(w, what, code):
 
 def test_libraries_are_wired_into_nothing():
     names = ("release_capability", "release_control", "release_delegation", "release_control_cli")
+    # Phase 3 (feat/release-train-controller-20261021): the train controller is the one intended consumer; it is
+    # BUILD_ONLY (TRAIN_CONTROLLER_STATUS), refuses --live, and no timer/unit/n8n lane invokes it.
     allowed = {"scripts/lib/release_capability.py", "scripts/lib/release_control.py",
                "scripts/lib/release_delegation.py", "scripts/release_control_cli.py",
-               "tests/test_release_train_authority_20261021.py", "config/release_train_delegation.example.json"}
+               "tests/test_release_train_authority_20261021.py", "config/release_train_delegation.example.json",
+               "scripts/lib/release_train_controller.py",
+               # Phase 1 contracts name the schema file release_control.v1.schema.json (a filename, not an import)
+               "scripts/lib/release_train_contracts.py"}
     hits = []
     for base in ("scripts", "config", "deploy", "systemd", "n8n", "src", "bin"):
         root = ROOT / base

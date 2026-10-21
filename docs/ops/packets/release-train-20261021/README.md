@@ -2,6 +2,7 @@
 
 ```
 Status:      DRAFT (code in this branch; nothing scheduled, granted, released or changed on GitHub)
+Phase 3:     §11 train controller (BUILD_ONLY), branch feat/release-train-controller-20261021
 as_of:       2026-10-21T19:56:00Z
 Measured at: origin/main 7faa8cddf (#1906); served CURRENT 7faa8cddf (7faa8cddf-main-exact-phase2-20261021-154546)
 ```
@@ -360,5 +361,217 @@ The audit found no gap, so no code change was needed for 9.2. All of these tests
 
 ## 10. Not done, deliberately
 
-No push, release, grant, promote, crontab, systemd, n8n or GitHub-setting change. No `AGENTS.md` or adapter edit;
+No push, release, grant, promote, crontab, systemd, n8n or GitHub-setting change (§11 adds only proposed unit files). No `AGENTS.md` or adapter edit;
 the policy text is in §4.4 only. The `lane_registry.json` row stays `NEVER_SCHEDULED` until the timer is installed.
+
+## 11. Release Train v2 Phase 3: the train controller (branch `feat/release-train-controller-20261021`)
+
+```
+Status:      BUILD_ONLY (TRAIN_CONTROLLER_STATUS; --live refused; GitHub writer refuses while GITHUB_WRITES_STATUS != ACTIVE)
+as_of:       2026-10-21T23:30:00-04:00
+Measured at: base origin/main 7faa8cddf + ops 9dde41745 + authority 8c5d5bc22 + Phase 1 queue 72d62fddc (origin/main
+             has since moved to 8fd1500fc; not rebased)
+```
+
+`scripts/release_window.py` stays the one deployer and the one entry point. Its new `train-*` commands call
+`scripts/lib/release_train_controller.py`. Every production effect goes through `release_window.Host`, and so
+through `cio_phase2_exact_main_deploy.sh` `prepare` / `promote` / `rollback`. Every release is verified by
+`release_window.Runner._verify`. The commands `plan`, `run`, `status` and `clear-stop` are unchanged. They remain the
+operator's fallback, together with a grant and the deploy script.
+
+### 11.1 Pipeline
+
+| step | what happens | fails closed when |
+|---|---|---|
+| select | `QueueSource`. The source is the Phase 1 store (`release_train_queue.read_queue`), or the PR-hygiene receipt + `gh pr list` (read-only) when the store reads NOT_MIGRATED or is unreachable. Each PR is classified by the Phase 1 classifier (`release_train_classify.classify_change` + `config/release_train_policy.json`). Live runs classify from git `base...head`; a dry run uses the gh file list (approximate). | the snapshot is incomplete (no receipt, stale > 36 h, gh failure, possible truncation); the classifier cannot load (then `HoldAllClassifier`); a PR is not `eligible`; a PR touches `PROTECTED_SURFACES` |
+| freeze | Builds a `TrainCandidate@v1` (validated): base main SHA, full head SHAs in dependency order, policy version, classifier version, the four-check manifest and the window id (`YYYY-MM-DDTHH:MM±HH:MM`). Written once to `trains/<id>/manifest.json`. | main or a head moved since select |
+| integrate | Runs in a scratch worktree under `$TRADEAI_RELEASE_TRAIN_SCRATCH` (default `~/.cache/rtc`). Each PR is merged `git merge --no-ff` in order, then the generated files are regenerated once (`scripts/regenerate_generated_files.sh`, plus a GATES registry check). The candidate's own hooks never run: the trusted `core.hooksPath` of the release checkout is pinned, and the environment comes from an allowlist. | a conflict or a protected path ejects that PR and its dependents, with a reason; the final diff `base..candidate` touches a protected path |
+| local test | Runs `run_cio_hardening_ci.py --profile pr --base <base>` with an environment built from an allowlist (PATH, LANG, LC_ALL, TZ, TERM, plus fixed CI flags). HOME and TMPDIR are scratch, and no `.env`, `DB_*`, token or key is passed. RLIMIT_CPU is set. On failure it bisects over prefixes, bounded by `test_attempts` (6) and `test_budget_s` (2700). | the culprit is attributed and ejected; the uncertain remainder is marked `pending_investigation` (a `ready` event; still queued, not ejected); a red base blames nobody |
+| wait for window | Integration and local test may start `lead_min` (90) before the window opens. Every GitHub write happens inside the window. | the window closes (no catch-up) |
+| qualify | A build/publish capability is issued per action. It can only push `refs/heads/train/<id>` and open/update the batch PR. Qualification waits until cio-hardening, agent-governance, release-readiness and ci-gate all read exactly `success` on the candidate SHA: the latest run, from app `github-actions`. There is no tree-equivalence fallback. | a check is red, neutral, skipped or cancelled (RED); a check is missing or still running at the timeout (PENDING); forged-app or wrong-SHA runs are ignored |
+| merge | Re-reads the checks, then issues a merge capability bound to: expected base, ordered PR heads, candidate, manifest digest, evidence digest and rollback target. STOP, control epoch, delegation epoch and digest, `main == base` and the PR heads are re-checked immediately before the merge. The merge goes through `merge_method=merge` with `sha=<candidate>`. | main or a head moved; STOP/revoke/epoch; the resulting commit's parents are not `[base, candidate]` (STOP latched, `MERGED_NOT_LIVE`) |
+| promote | Waits for the exact-SHA push/main checks on the merge commit, then runs `prepare` under a prepare capability. A promote capability then binds the prepared artifact's digest, services, rollback target (= CURRENT) and the batch evidence. CURRENT, the latest start, STOP and epoch are re-checked at activation, then `promote` runs. | main moved after the merge; CURRENT moved; the artifact or merge commit is quarantined; STOP before activation |
+| verify | `release_window` verification: promote exit, CURRENT, BUILD_SHA, units, /api/health, served copy, CC pages, platform-health, needs-action. | any check fails: roll back to the bound target, latch STOP, quarantine the artifact and its lineage, send a P1 through the host notifier |
+| outcome | Writes a `TrainOutcome@v1` (validated); `control.train_terminal`. | |
+
+**Windows** (America/New_York). 18:00 and 00:00 are general windows. 06:00 is skipped until a drain is proven
+(`DrainProbe`; none is). 08:00 has a latest activation start of 09:00 minus the measured promote, verify and
+rollback times (the worst of the last 10 `train_measurements.jsonl` rows), minus a 10-minute buffer, capped by the
+delegation's `latest_start_et`. It is checked at the start, before the merge and at activation, and the window is
+skipped when any of the three times is unmeasured. 08:00 is also skipped on an 08:30 macro-release day, or when the
+calendar is missing or stale.
+
+**There is no macro-calendar provider in this repo.** `scripts/economic_calendar.py` declares the gap (FMP retired
+2026-09-13). `MacroCalendar` reads an operator-supplied `~/.config/tradeai/release_train/macro_calendar.json`
+(`MacroReleaseCalendar@v1`); while it is absent, 08:00 is always skipped (fail closed).
+
+A window can be claimed only from `start - 90 min` until `start + 15 min`. The claim is
+`claims/<YYYYMMDD>-<slot>.json`, created O_EXCL, so a repeated local hour cannot activate twice. Window starts use
+`fold=0`, and a non-existent local time is skipped.
+
+### 11.2 Durability, locks, restart
+
+- **Events.** Every step is a `TrainEvent@v1` (validated against the Phase 1 contract). It is written through
+  `release_train_queue.append_event` when the store probes OK. When the store reads NOT_MIGRATED or
+  DB_UNAVAILABLE, or an append fails, the row goes to `train_events.jsonl` (append-only, fsync, seq). The
+  projection is rebuilt at the end of a run when the store is OK.
+- **Intents** are written to `train_intents.jsonl` and `trains/<id>/state.json` before the capability is reserved
+  and before every side effect.
+- **Locks.** `train.lock` means one train at a time. The window claim means one train per window.
+  `control.claim_train` covers the control state. `.lock` is the one global release lock that a manual
+  `release_window.py run` also holds, so a manual release and a train mutation exclude each other. A busy lock is
+  a refusal that consumes nothing.
+- **Restart.** A non-terminal train makes the next run refuse with `REFUSED_RECONCILE_FIRST`.
+  `train-reconcile` reads GitHub main, CURRENT and the units and decides each pending intent: ABSENT, APPLIED,
+  APPLIED_UNVERIFIED (STOP latched) or AMBIGUOUS (STOP latched, train left open). It reconciles the capability
+  ledger, including an orphan reservation left by a crash between intent and reserve.
+- **Quarantine.** `quarantine.jsonl` is append-only. While an unresolved quarantined SHA is in main's lineage, every
+  train refuses (`REFUSED_QUARANTINED_LINEAGE`), until `train-quarantine-resolve` records how main was reconciled.
+
+### 11.3 Commands (dry run is the default everywhere)
+
+```bash
+python3 scripts/release_window.py train-plan [--now ISO] [--json]          # read-only
+python3 scripts/release_window.py train-run [--integrate [--local-test]] [--simulate-classifier allow] [--json]
+python3 scripts/release_window.py train-run --live                          # REFUSED_BUILD_ONLY today
+python3 scripts/release_window.py train-status
+python3 scripts/release_window.py train-reconcile [--live]
+python3 scripts/release_window.py train-quarantine-resolve --sha S --reason R --evidence E [--live]
+python3 scripts/release_window.py train-claim [--apply]                     # n8n requests; lists unless --apply
+```
+
+`--integrate` really fetches PR refs into the release checkout (`refs/train-scratch/pr-N`) and adds a scratch
+worktree there. It is opt-in, and the only dry-run flag that writes anything outside stdout.
+
+### 11.4 Dry run on this host, 2026-10-21 (quoted; read-only: `gh pr list`, `git ls-remote`, a store probe)
+
+```
+$ TMPDIR=~/.cache/rtc python scripts/release_window.py train-plan --now 2026-10-21T17:00
+release train DRY RUN at 2026-10-21T17:00:00-04:00
+LIVE WOULD REFUSE: control CONTROL_UNARMED
+LIVE WOULD REFUSE: delegation MISSING: /home/johnclaw/.config/tradeai/release_train/delegation.json does not exist (never armed)
+preconditions: latch ABSENT, control UNARMED epoch None, delegation MISSING
+window 2026-10-21T18:00-04:00 slot 1800 (canary) lead; enabled=False
+LIVE WOULD REFUSE: window 1800 is disabled in the delegation
+WOULD claim window 2026-10-21T18:00-04:00 (claim key 20261021-1800, O_EXCL) and train rt-20261021-1800-9445f1
+window rules: pass
+select: pr-hygiene-receipt+gh-pr-list (fallback: phase1:release_queue store:not_migrated): 29 open, complete=False ['no_receipt:/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/pr-hygiene-audit_last.json']
+=> NO_OP (QUEUE_INCOMPLETE: no_receipt:...pr-hygiene-audit_last.json)
+outcome: NO_OP reason: QUEUE_INCOMPLETE exit: 0
+```
+
+The real host stops at select: the PR-hygiene lane has not written a receipt, and the store is not migrated.
+
+The full pipeline below comes from the test fixture world: a temp git repo, a fake GitHub and deploy host, and an
+armed temp control and delegation. Three PRs are queued; #1904 edits `scripts/release_window.py`:
+
+```
+release train DRY RUN at 2026-10-21T18:05:00-04:00
+preconditions: latch ABSENT, control RUNNING epoch 1, delegation AUTHORIZED
+window 2026-10-21T18:00-04:00 slot 1800 (canary) open; enabled=True
+WOULD claim window 2026-10-21T18:00-04:00 (claim key 20261021-1800, O_EXCL) and train rt-20261021-1800-9033d1
+window rules: pass
+select: test-queue: 3 open, complete=True 
+select: 2 eligible [1901, 1903]; 1 not riding
+freeze: base 11d15a11d5b4, members #1901@d87bf0637, #1903@c82398be7; checks ['cio-hardening', 'agent-governance', 'release-readiness', 'ci-gate']; manifest sha256:e05405195954
+WOULD merge --no-ff #1901 d87bf0637230 in a scratch worktree (conflict ejects it and its dependents)
+WOULD merge --no-ff #1903 c82398be7b50 in a scratch worktree (conflict ejects it and its dependents)
+WOULD regenerate once: noop
+WOULD run local tests: /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -c import os,sys; sys.exit(1 if os.path.exists('FAIL_MARKER') else 0) (worker env from allowlist ['PATH', 'LANG', 'LC_ALL', 'TZ', 'TERM']; bisect budget 6 runs / 2700s)
+WOULD issue build_publish capabilities (push_train_ref, open_batch_pr) bound to base 11d15a11d5b4, 2 PR heads, output ref refs/heads/train/rt-20261021-1800-9033d1
+WOULD push <candidate> -> refs/heads/train/rt-20261021-1800-9033d1 (the only ref the build capability allows)
+WOULD open/update batch PR head=train/rt-20261021-1800-9033d1 base=main title='Release train rt-20261021-1800-9033d1 (2 PRs)'
+WOULD wait <= 600s for ['cio-hardening', 'agent-governance', 'release-readiness', 'ci-gate'] to read exactly 'success' (latest run, app github-actions) on <candidate>; neutral/skipped/cancelled/missing never pass; no tree-equivalence fallback
+WOULD re-read the 4 checks on the candidate, then issue a merge capability (expected base 11d15a11d5b4, candidate, artifact sha256:e05405195954, evidence digest, rollback target main_ref 11d15a11d5b4)
+WOULD re-check STOP / control epoch / delegation epoch+digest / main == base / PR heads immediately before the merge
+WOULD merge batch PR (merge_method=merge, sha=<candidate> so a moved head is refused)
+WOULD record the resulting main SHA and require parents == [base, candidate]
+WOULD wait <= 600s for exact-SHA push/main checks ['cio-hardening', 'agent-governance', 'release-readiness'] on the merge commit
+WOULD refuse if the merge commit or its prepared artifact is quarantined, or CURRENT moved
+WOULD git -C <tmp>/checkout fetch + checkout --detach <merge commit>; then bash <tmp>/deploy.sh prepare (TRADEAI_RELEASE_CAMPAIGN=release-train-rt-20261021-1800-9033d1, TRADEAI_RELEASE_PR=<batch PR>) under a prepare capability
+WOULD issue a promote capability: artifact digest of the prepared dir, services ['portfolio-server.service', 'cio-governed-bridge.service', 'tradeai-n8n-coordination-gateway.service', 'tradeai-n8n-run-relay.service', 'tradeai-n8n-run-executor.service'], rollback target = CURRENT (<tmp>/releases/prev), batch evidence bound
+WOULD re-check STOP + epoch at activation, then bash cio_phase2_exact_main_deploy.sh promote <prepared dir>
+WOULD verify: promote exit, CURRENT, BUILD_SHA, units, /api/health, served copy, CC pages ['/v3/', '/v3/system', '/v3/cio'], platform-health, needs-action
+WOULD on failure: rollback <bound target>, latch STOP, quarantine the artifact
+=> DRY_RUN_COMPLETE (DRY_RUN_COMPLETE: nothing was claimed, issued, pushed or written)
+outcome: DRY_RUN_COMPLETE reason: DRY_RUN_COMPLETE exit: 0
+```
+
+### 11.5 Capability library changes (`scripts/lib/release_capability.py`)
+
+- `TRAIN_RE` now also accepts the Phase 1 id `rt-YYYYMMDD-HHMM-<4..12>`. This is the id used by the store, the view
+  and the contracts. `train-…` ids still validate.
+- `issue_promote(..., batch_candidate_sha, batch_evidence)` adds qualification v1. `ci-gate` is a
+  pull_request-only workflow, so it never runs on the merge commit. The batch evidence must carry all four checks on
+  the batch PR head, and the main evidence must carry the other three on the merge commit. Both digests are bound.
+  Each SHA is qualified by runs on exactly that SHA, so this is not a tree-equivalence fallback.
+
+### 11.6 n8n window requests (contract `docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md` rev 1, `5a230186a`)
+
+`train-claim` is the controller half of C1–C11:
+
+- **C1–C2.** Strict validation (unknown keys are invalid, so a request that names a SHA, PR, train id or command is
+  refused). The claim is `os.rename(pending -> claimed)`, processed in `requested_at` order under
+  `.claimer.lock`.
+- **C3.** Shadow runs a dry run only: simulated writer, no capability, no window claim, no STOP or epoch write. An
+  off-window shadow request is evaluated as at its window start.
+- **C4.** A live request is re-validated on the host. While BUILD_ONLY it is refused with `CONTROLLER_BUILD_ONLY`.
+- **C5.** An ACKNOWLEDGED receipt is written before the run.
+- **C6–C8.** Expiry, duplicate window and terminal-receipt immutability are enforced.
+- **C9.** The closed refusal set is used.
+
+The proposed units (`tradeai-release-train-claim.{path,timer,service}.proposed`) are in this packet and are not
+installed (operator item O7).
+
+**Contract gaps (reported, not diverged from):**
+
+- **(a) C9 is missing codes.** The closed set has no code for a reconcile-first, quarantined-lineage,
+  bypass-environment or corrupt-control refusal, or for a controller exception (FAILED). These map to the nearest
+  fail-closed code (`STOP_SET` / `NOT_ARMED` / `LOCK_HELD`), with the precise reason in `refusal.detail`. Proposed
+  new codes: `RECONCILE_REQUIRED`, `QUARANTINED_LINEAGE`, `CONTROLLER_ERROR`.
+- **(b) Schema and validator files are absent.** `train_window_request.v1.schema.json` and
+  `release_train_window.py` are not on that branch yet, so `validate_request` implements §5's table. Swap it for the
+  shared validator when they land.
+- **(c) Simulated outcomes.** A simulate run that got through every step reports `NO_OP` plus `simulated_effects`,
+  per §7 ("never a release").
+- **(d) Receipt file mode.** Receipts are written 0600 by `_atomic_write_json`. The relay must read them as the same
+  uid; if it does not, the mode is a decision for O5.
+
+### 11.7 What still needs Phase 1, Phase 4 or the operator
+
+**Phase 1**
+
+- Apply `migrations/2026_10_21_release_queue.sql` (operator). Until then, events go to JSONL and the queue is the
+  receipt + gh.
+- The submission path: something must append `submitted` events, or the store queue stays empty.
+- A PR-hygiene receipt on the host (the lane is at SHADOW and writes none).
+- TrainEvent@v1 has no intent/effect type. Intents live in `train_intents.jsonl`. Propose `intent_recorded` /
+  `effect_recorded` if they should be in the store.
+- Ride approvals for `needs_operator` are not consumed (those PRs never ride in v1).
+
+**Phase 4**
+
+- The request lane, the schema files and the relay view (§11.6 gaps).
+- Install and activate the n8n workflow (O5).
+
+**Operator**
+
+- Write the delegation record (`~/.config/tradeai/release_train/delegation.json`) and the capability key (mode 600).
+- `release_control_cli.py arm`.
+- Enable windows in the order 18:00, 00:00, 06:00, 08:00.
+- An 08:30 macro calendar.
+- A proven 06:00 drain.
+- The GitHub App and token minting (D2). `GITHUB_WRITES_STATUS` stays PROPOSED until D2 and the AGENTS 17.0.0
+  amendment are in force.
+- `ci-gate` as a required context (D4).
+- Flip `TRAIN_CONTROLLER_STATUS` by reviewed PR.
+- Install the claimer units (O7).
+- **The deploy script's release-grant binding.** `cio_phase2_exact_main_deploy.sh` still requires a guard
+  `release-write` grant naming the PR, SHA or campaign. The train passes campaign `release-train-<id>` and the batch
+  PR. A standing-delegation release therefore needs either a reviewed change so that `release_grant_preflight.py`
+  accepts a capability reservation (that file is a protected surface), or an operator grant per train. It is not
+  changed here.
+- **Test-worker isolation is environment-level only.** A separate uid or cgroup (`systemd-run --user --scope`) is
+  the stronger boundary the design asks for (§2).
+- Scratch worktrees are never removed by the controller (§0 rule 6). Each is a full checkout of the repo, so
+  retention under `~/.cache/rtc` needs an archive-with-tripwire rule.
