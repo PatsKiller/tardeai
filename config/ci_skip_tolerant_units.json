@@ -17,6 +17,14 @@
     "tests/test_options_workflow_submission.py": {
       "reason": "Database-gated: defines the isolated_database_only autouse fixture (skips unless DB_NAME ends in _test) and needs psycopg2 through ephemeral_db. Skips in every CI job. Measured all-skip in ci-gate runs 39657900455 and 39661659376 (shard 5, '1 skipped'). Tolerated so the gate stays green, but it is UNCOVERED in CI: follow-up to route it to the pg shard.",
       "measured": "2026-10-21 runs 39657900455, 39661659376"
+    },
+    "tests/test_indicator_engine_rate_limit.py": {
+      "reason": "Dependency-gated: module-level pytest.importorskip('pandas') and importorskip('yfinance') (indicator_engine needs both). No CI job installs either (cio-production-hardening-ci.yml installs pytest pyyaml requests cryptography python-docx ruff; cio-full-suite-sharded.yml shards install pytest pyyaml requests ruff plus, per shard, cryptography, python-docx or psycopg2-binary), so the file skips whole in CI ('1 skipped'). It runs only where pandas and yfinance are installed (the host venv). Tolerated so a unit made only of it does not fail; it is UNCOVERED in CI.",
+      "measured": "2026-10-21 workflow install lists (release-1 integration); local run without pandas: '1 skipped'"
+    },
+    "tests/test_phase1_pi_untrusted_20260918.py": {
+      "reason": "Dependency-gated: module-level pytest.importorskip('numpy') (scripts/rag_retrieval imports numpy). No CI job installs numpy (cio-production-hardening-ci.yml installs pytest pyyaml requests cryptography python-docx ruff; cio-full-suite-sharded.yml shards install pytest pyyaml requests ruff plus, per shard, cryptography, python-docx or psycopg2-binary), so the file skips whole in CI ('1 skipped'). It runs only where numpy is installed (the host venv). Tolerated so a unit made only of it does not fail; it is UNCOVERED in CI.",
+      "measured": "2026-10-21 workflow install lists (release-1 integration); local run without numpy: '1 skipped'"
     }
   }
 }
