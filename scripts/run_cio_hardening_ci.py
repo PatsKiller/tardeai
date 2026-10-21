@@ -387,7 +387,8 @@ def select_pr_gates(
     n_files = sum(len(f) for _n, f in sel["gates"])
     print(
         f"[select] base={base} changed={len(changed)} tier={sel['tier']} map={status} "
-        f"impacted={sel['impacted']} selected_files={n_files} gates={len(sel['gates'])} "
+        f"impacted={sel['impacted']} doc_pinned={len(sel.get('doc_pinned') or [])} "
+        f"selected_files={n_files} gates={len(sel['gates'])} "
         f"estimate={sel['estimate_seconds']}s (mandatory {sel['mandatory_estimate_seconds']}s, "
         f"budget {sel['budget_seconds']}s) deferred={len(sel['deferred'])} "
         f"select_secs={time.monotonic() - t0:.1f}",
@@ -395,6 +396,8 @@ def select_pr_gates(
     )
     for cat, paths in sorted(sel["high"].items()):
         print(f"[select] HIGH {cat}: {', '.join(paths[:8])}{' ...' if len(paths) > 8 else ''}", flush=True)
+    for f in sel.get("doc_pinned") or []:
+        print(f"[select] DOC-PINNED (reads a changed document; mandatory): {f}", flush=True)
     for f in sel["deferred"][:25]:
         print(f"[select] DEFERRED to post-merge full run: {f}", flush=True)
     if len(sel["deferred"]) > 25:
