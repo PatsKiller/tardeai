@@ -158,6 +158,11 @@ GATES = [
     # nested) -> None on analyze_confluence's result; the lane serialises allow_nan=False, stores non-finite scalars
     # as NULL, and skips a row Postgres rejects as data (SQLSTATE 22) as row_rejected. Hermetic: fake conn.
     ("indicator_engine_nan_json_20261021", ["tests/test_indicator_engine_nan_json_20261021.py"]),
+    # ANCHOR: INDICATOR_JSON_NAN_WRITERS_20261021 (#1889 reworked onto json_finite) — the two writers #1890 did not
+    # cover: the /indicator-confluence API upserts (single + batch, api_v2._indicator_cache_params) and
+    # indicator_cache_refresh.py. Non-finite -> NULL / json null via lib.json_finite (allow_nan=False); responses
+    # json_safe. Hermetic: recorder _db_write, fake indicator_engine, source text.
+    ("indicator_json_nan_writers_20261021", ["tests/test_indicator_json_nan_writers_20261021.py"]),
     # ANCHOR: N8N_EVIDENCE_KIND_PARITY_20261019 — the runtime output verdict and the FW-M6 checker accept the same
     # N8nExpectedOutput@v1 evidence kinds (file_artifact, per N8N_CONTRACTS_DESIGN.md); before, "file" vs "file_artifact"
     # meant no contract could cite a file. Hermetic: committed contracts read only.
