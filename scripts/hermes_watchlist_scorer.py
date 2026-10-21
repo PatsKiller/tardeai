@@ -15,7 +15,12 @@ Each factor normalized 0-100; weights from config/hermes_score_weights.yaml; mis
 DROPPED and the remaining weights re-normalized (never a fabricated neutral). Stores composite +
 hermes_rank + hermes_score_components (the per-factor breakdown = the H-2 intel card). Advisory only.
 
-  python3 scripts/hermes_watchlist_scorer.py [--once] [--limit N]
+  python3 scripts/hermes_watchlist_scorer.py [--once] [--limit N] [--dry-run]
+
+2026-10-21 hardening: per-item isolation (one bad symbol/card is logged + counted as skipped_errors, never
+aborts the run; all items failing exits 1), NaN/Inf numerics are "missing" in every factor, a P2 notification
+intent when >20% of items error or nothing lands (deduped: once per condition), LaneRunReceipt@v2 receipt
+data/runtime/hermes-watchlist-scorer_last.json on a real run, and a write-free --dry-run (n8n shadow lane).
 """
 from __future__ import annotations
 try:  # cc_auth (2026-10-14): service token for loopback Command Center (:7777) calls
@@ -26,7 +31,7 @@ except ImportError:  # pragma: no cover - scripts/ not on sys.path
     _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
     from lib.cc_client import cc_urlopen as _cc_urlopen
 
-import argparse, json, sys
+import argparse, json, math, sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -72,6 +77,23 @@ def _clamp(x):
     return max(0.0, min(100.0, float(x)))
 
 
+def _finite(v):
+    """float(v) when it is a real finite number, else None.
+
+    numeric columns can hold 'NaN' (watchlist_strategy_cards BHVN 2026-10-21): psycopg2 returns
+    Decimal('NaN'), which is truthy and makes `px <= stop` raise decimal.InvalidOperation — one bad
+    card aborted every scorer run from 2026-10-19 07:45 ET (hermes_score_history went silent).
+    Every factor reads its numerics through this, so NaN/Inf is "missing", never a score (a NaN RSI used
+    to clamp to 100)."""
+    if v is None or isinstance(v, bool):
+        return None
+    try:
+        f = float(v)
+    except (TypeError, ValueError, ArithmeticError):
+        return None
+    return f if math.isfinite(f) else None
+
+
 def _pills_map():
     try:
         return {p["symbol"].upper(): p for p in json.loads(PILLS.read_text()).get("pills", [])}
@@ -83,14 +105,15 @@ def _sector_momentum(conn):
     """sector → (momentum_str, score0-100). Leading sectors score high."""
     cur = conn.cursor()
     cur.execute("SELECT day_change_pct FROM market_quotes WHERE symbol='SPY' ORDER BY fetched_at DESC LIMIT 1")
-    r = cur.fetchone(); spy = float(r[0]) if r and r[0] is not None else 0.0
+    r = cur.fetchone(); spy = (_finite(r[0]) if r else None) or 0.0
     out = {}
     for sec, etf in SECTOR_ETF.items():
         cur.execute("SELECT day_change_pct FROM market_quotes WHERE symbol=%s ORDER BY fetched_at DESC LIMIT 1", (etf,))
         rr = cur.fetchone()
-        if not rr or rr[0] is None:
+        etf_chg = _finite(rr[0]) if rr else None
+        if etf_chg is None:
             out[sec] = ("unknown", None); continue
-        rel = float(rr[0]) - spy
+        rel = etf_chg - spy
         mom = "leading" if rel > 0.15 else "lagging" if rel < -0.15 else "neutral"
         out[sec] = (mom, _clamp(55 + rel * 25))
     return out
@@ -98,7 +121,8 @@ def _sector_momentum(conn):
 
 # ── per-factor scorers → (score0-100 or None, detail string) ──────────────────────
 def _f_technical(wi, ie):
-    rsi = wi.get("rsi"); trend = wi.get("trend"); rvol = (ie or {}).get("rvol"); conf = (ie or {}).get("confluence_score")
+    rsi = _finite(wi.get("rsi")); trend = wi.get("trend")
+    rvol = _finite((ie or {}).get("rvol")); conf = _finite((ie or {}).get("confluence_score"))
     if rsi is None and trend is None and rvol is None:
         return None, None
     parts, det = [], []
@@ -115,7 +139,7 @@ def _f_technical(wi, ie):
 
 
 def _f_setup(wi):
-    sc = wi.get("score")
+    sc = _finite(wi.get("score"))
     if sc is None:
         return None, None
     s = _clamp(float(sc) + (12 if wi.get("watch_score_kind") == "strategy_qualified" else 0))
@@ -126,7 +150,8 @@ def _f_setup(wi):
 def _f_analyst(pill):
     if not pill or not pill.get("has_professional_coverage"):
         return None, None
-    rm = pill.get("recommendation_mean"); up = pill.get("upside_to_mean_target_pct"); div = pill.get("divergence")
+    rm = _finite(pill.get("recommendation_mean")); up = _finite(pill.get("upside_to_mean_target_pct"))
+    div = pill.get("divergence")
     parts, det = [], []
     if rm is not None:
         parts.append(_clamp((5 - float(rm)) / 4 * 100)); det.append(f"{pill.get('recommendation_key', '')} ({float(rm):.2f})")
@@ -142,7 +167,7 @@ def _f_analyst(pill):
 def _f_social(ie):
     if not ie:
         return None, None
-    ss = ie.get("social_score"); sd = ie.get("social_sentiment")
+    ss = _finite(ie.get("social_score")); sd = ie.get("social_sentiment")
     if ss is None and not sd:
         return None, None
     parts, det = [], []
@@ -169,7 +194,7 @@ def _f_catalyst(ie):
 
 
 def _f_rr(wi):
-    px = wi.get("price"); tgt = wi.get("target_price"); stop = wi.get("stop_loss")
+    px = _finite(wi.get("price")); tgt = _finite(wi.get("target_price")); stop = _finite(wi.get("stop_loss"))
     if not (px and tgt and stop) or px <= stop:
         return None, None
     rr = (float(tgt) - float(px)) / (float(px) - float(stop)) if (float(px) - float(stop)) > 0 else None
@@ -181,7 +206,7 @@ def _f_rr(wi):
 def _f_hermes_research(wi):
     """Reverse-edge factor: Hermes research intelligence folded back onto the name.
     Absent (not yet written) → factor DROPPED, never a fabricated neutral."""
-    s = wi.get("hermes_research_score")
+    s = _finite(wi.get("hermes_research_score"))
     if s is None:
         return None, None
     return _clamp(float(s)), f"hermes research {float(s):.0f}"
@@ -190,7 +215,7 @@ def _f_hermes_research(wi):
 def _f_options_edge(wi):
     """Reverse-edge factor: options paper-outcome edge folded onto the UNDERLYING symbol.
     Absent (no closed options outcomes yet) → factor DROPPED, never a fabricated neutral."""
-    s = wi.get("options_edge_score")
+    s = _finite(wi.get("options_edge_score"))
     if s is None:
         return None, None
     return _clamp(float(s)), f"options edge {float(s):.0f}"
@@ -427,8 +452,101 @@ def _fetch_watchlist_rows(cur, limit=None, off_hours=False):
                 (dp[0], dp[1], dp[2], dp[3], *dp, WATCHLIST_TOP_N, cap, cap))
 
 
-def run(limit=None):
-    conn = _conn(); cur = conn.cursor()
+LANE_ID = "hermes-watchlist-scorer"
+#: Loud-failure threshold (2026-10-21): the NaN-card outage aborted every run for ~2 days and nothing paged.
+ERROR_RATIO_ALERT = 0.20
+#: One page per condition: telegram_alert_router dedupes on the exact body (durably, across processes), so the
+#: bodies below are fixed text — counts and symbols go to the log, never into the message.
+ALERT_DEDUPE_MINUTES = 720
+ALERT_PRODUCER = "hermes_watchlist_scorer"
+ALERT_OUTAGE = ("Hermes watchlist scorer OUTAGE: a run wrote no scores because every name failed with an "
+                "error. Watchlist ranks are going stale. Check logs/hermes_scorer.log for '[hermes-scorer] error'.")
+ALERT_DEGRADED = ("Hermes watchlist scorer DEGRADED: more than 20% of names failed to score in a run; the rest "
+                  "were written. Check logs/hermes_scorer.log for '[hermes-scorer] error'.")
+
+_WI_KEYS = ("symbol", "rsi", "trend", "score", "watch_score_kind", "price",
+            "target_price", "stop_loss", "hermes_research_score", "options_edge_score",
+            "realized_outcome", "thesis_win",
+            "thesis_outcome_n", "options_edge_n", "hermes_research_n")
+_IE_KEYS = ("social_score", "social_sentiment", "rvol", "confluence_score", "catalyst", "catalyst_verified", "sector")
+
+
+def _dumps(obj):
+    """Components JSON for a jsonb column: non-finite floats become null (a bare NaN token aborts the txn)."""
+    from lib.json_finite import dumps
+    return dumps(obj, default=str)
+
+
+def _score_row(r, pills, secmap, weights, regime, vix):
+    wi = {k: r.get(k) for k in _WI_KEYS}
+    ie = {k: r.get(k) for k in _IE_KEYS}
+    comp, components = score_symbol(wi, ie, pills.get(str(r["symbol"]).upper()), secmap, weights)
+    if comp is not None:
+        components = {**components, "_regime": regime, "_vix": vix}
+    return comp, components
+
+
+def _record_error(errors, sym, stage, exc):
+    """Per-item isolation: one bad symbol/card is logged + counted, never aborts the run."""
+    import traceback
+    reason = f"{stage}:{type(exc).__name__}"
+    errors["reasons"][reason] = errors["reasons"].get(reason, 0) + 1
+    errors["symbols"].append(str(sym))
+    frames = traceback.extract_tb(exc.__traceback__)
+    where = " <- ".join(f"{Path(f.filename).name}:{f.lineno} {f.name}" for f in reversed(frames[-3:]))
+    print(f"[hermes-scorer] error {stage} {sym}: {type(exc).__name__}: {str(exc)[:200]} @ {where}", flush=True)
+
+
+def failure_condition(summary):
+    """'outage' | 'degraded' | None for one run's summary.
+
+    outage   : items were attempted, at least one errored, and NOTHING landed (every name failed).
+    degraded : more than ERROR_RATIO_ALERT of the attempted items errored (some still landed).
+    A name with no usable factor is "unscored", not an error — it never pages."""
+    items = int(summary.get("items") or 0)
+    errored = int(summary.get("errored") or 0)
+    if items <= 0 or errored <= 0:
+        return None
+    if int(summary.get("landed") or 0) == 0:
+        return "outage"
+    if errored / items > ERROR_RATIO_ALERT:
+        return "degraded"
+    return None
+
+
+def emit_failure_alert(summary, *, send=None):
+    """One P2 notification intent through the host chokepoint (telegram_alert.send_telegram -> router/gateway).
+    Fixed body per condition + a 12h dedupe window = it pages once per condition, not every 15 minutes."""
+    cond = failure_condition(summary)
+    if cond is None:
+        return None
+    msg = ALERT_OUTAGE if cond == "outage" else ALERT_DEGRADED
+    try:
+        if send is None:
+            from telegram_alert import send_telegram as send
+        send(msg, priority="P2", dedupe_minutes=ALERT_DEDUPE_MINUTES, producer=ALERT_PRODUCER)
+    except Exception as exc:  # an alert failure must never mask the run's own result
+        print(f"[hermes-scorer] failure alert not emitted: {type(exc).__name__}", flush=True)
+    return cond
+
+
+def _empty_summary(**kw):
+    out = {"items": 0, "scored": 0, "unscored": 0, "written": 0, "skipped_unchanged": 0, "landed": 0,
+           "errored": 0, "skipped_errors": {}, "error_symbols": [], "top": [], "dry_run": False}
+    out.update(kw)
+    return out
+
+
+def run(limit=None, *, dry_run=False):
+    """Score the universe. Returns the run summary (items attempted, scored, landed, errored + reasons).
+
+    ``dry_run``: the DB session is READ ONLY at the server, every score is computed and NOTHING is written,
+    committed or sent; the summary carries ``would_alert``. That makes the dry run the lane's health probe."""
+    conn = _conn()
+    if dry_run:
+        from lib.lane_last_receipt import enforce_readonly
+        enforce_readonly(conn)
+    cur = conn.cursor()
     off_hours = is_off_hours_et()
 
     # Tier mode (Phase 1): when the scope governor has populated scope_tier, the universe is
@@ -441,7 +559,9 @@ def run(limit=None):
     tiers = _tier_plan() if tier_mode else []
     if tier_mode and not tiers and not event_syms:
         print("[hermes-scorer] tier-plan: nothing due this tick (off-hours, no pending events)")
-        return {"scored": 0, "skipped_unchanged": 0, "top": []}
+        if dry_run:
+            conn.rollback()
+        return _empty_summary(dry_run=dry_run, empty_reason="nothing_due")
 
     pills = _pills_map(); secmap = _sector_momentum(conn); weights = _weights()
     vix = _vix(conn)
@@ -455,30 +575,18 @@ def run(limit=None):
         _fetch_watchlist_rows(cur, limit=limit, off_hours=use_capped_fetch)
     cols = [d[0] for d in cur.description]
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
-    scored = []
+    errors = {"reasons": {}, "symbols": []}
+    scored, unscored = [], 0
     for r in rows:
-        wi = {k: r[k] for k in ("symbol", "rsi", "trend", "score", "watch_score_kind", "price",
-                                "target_price", "stop_loss", "hermes_research_score", "options_edge_score",
-                                "realized_outcome", "thesis_win",
-                                "thesis_outcome_n", "options_edge_n", "hermes_research_n")
-              if k in r or k in ("symbol", "rsi", "trend", "score", "watch_score_kind", "price",
-                                 "target_price", "stop_loss", "hermes_research_score", "options_edge_score",
-                                 "realized_outcome", "thesis_win",
-                                 "thesis_outcome_n", "options_edge_n", "hermes_research_n")}
-        # ensure keys exist even if SELECT older path omitted them
-        wi.setdefault("realized_outcome", r.get("realized_outcome"))
-        wi.setdefault("thesis_win", r.get("thesis_win"))
-        wi.setdefault("hermes_research_score", r.get("hermes_research_score"))
-        wi.setdefault("options_edge_score", r.get("options_edge_score"))
-        wi.setdefault("thesis_outcome_n", r.get("thesis_outcome_n"))
-        wi.setdefault("options_edge_n", r.get("options_edge_n"))
-        wi.setdefault("hermes_research_n", r.get("hermes_research_n"))
-        ie = {k: r[k] for k in ("social_score", "social_sentiment", "rvol", "confluence_score", "catalyst", "catalyst_verified", "sector")}
-        comp, components = score_symbol(wi, ie, pills.get(str(r["symbol"]).upper()), secmap, weights)
+        try:
+            comp, components = _score_row(r, pills, secmap, weights, _regime, vix)
+        except Exception as exc:  # per-item isolation (2026-10-21): one bad card never aborts the run
+            _record_error(errors, r.get("symbol"), "score", exc)
+            continue
         if comp is not None:
-            components = {**components, "_regime": _regime, "_vix": vix}
-        if comp is not None:
-            scored.append((r["symbol"], comp, components, r.get("price")))
+            scored.append((r["symbol"], comp, components, _finite(r.get("price"))))
+        else:
+            unscored += 1
     scored.sort(key=lambda x: -x[1])
     # dedup by symbol (watchlist_items can hold multiple rows per symbol) — clean 1-per-symbol ranks
     _seen, _dedup = set(), []
@@ -504,6 +612,26 @@ def run(limit=None):
         penalized.append((s_, c_, comp_, px_))
     penalized.sort(key=lambda x: -x[1])
     scored = penalized
+    if tier_mode:
+        mode = "tiers[%s]+events(%d)%s" % (",".join(tiers) or "-", len(event_syms),
+                                           "-frozen-ranks" if off_hours else "")
+    elif use_capped_fetch:
+        mode = "capped-top%d%s" % (limit or WATCHLIST_TOP_N, "-frozen-ranks" if off_hours else "")
+    else:
+        mode = "full"
+
+    if dry_run:
+        conn.rollback()
+        summary = _empty_summary(
+            dry_run=True, mode=mode, items=len(rows), scored=len(scored), unscored=unscored,
+            landed=len(scored), errored=len(errors["symbols"]), skipped_errors=dict(errors["reasons"]),
+            error_symbols=errors["symbols"][:20], top=[(s, round(c, 1)) for s, c, *_ in scored[:10]])
+        summary["would_alert"] = failure_condition(summary)
+        print(f"[hermes-scorer] DRY-RUN {mode}: {summary['items']} items, {summary['scored']} scored, "
+              f"{summary['unscored']} unscored, {summary['errored']} errored {summary['skipped_errors']} "
+              f"— nothing written, nothing sent (would_alert={summary['would_alert']})", flush=True)
+        return summary
+
     # No-change write skip: 98.6% (market hours) to 100% (off-hours) of history INSERTs were
     # byte-identical to the prior run. Skip the INSERT when composite+rank are unchanged, but
     # always write a heartbeat row once per ~20h so per-symbol freshness stays provable.
@@ -517,64 +645,153 @@ def run(limit=None):
         conn.rollback()  # skip-optimization is best-effort; never block scoring
     from datetime import timedelta
     hb_cutoff = datetime.now(timezone.utc) - timedelta(hours=20)
-    skipped = 0
+    skipped = written = 0
     for rank, (sym, comp, components, px) in enumerate(scored, 1):
-        prev = last_hist.get(sym)
-        if prev is not None and prev[0] is not None and abs(float(prev[0]) - comp) < 0.05 \
-                and (off_hours or prev[1] == rank):
-            prev_at = prev[2]
-            cutoff = hb_cutoff if (prev_at is not None and prev_at.tzinfo) else hb_cutoff.replace(tzinfo=None)
-            if prev_at is not None and prev_at >= cutoff:
-                # unchanged and recent → refresh the live row only, no history append
-                cur.execute("""UPDATE watchlist_items SET hermes_scored_at=NOW(), updated_at=NOW()
-                               WHERE symbol=%s AND status IN ('active','researched')""", (sym,))
-                skipped += 1
-                continue
-        if off_hours:
-            # Off-hours: refresh composite only — frozen global ranks prevent tail rank-jump spam.
-            cur.execute("""UPDATE watchlist_items SET hermes_composite_score=%s,
-                             hermes_score_components=%s::jsonb, hermes_scored_at=NOW(), updated_at=NOW()
-                           WHERE symbol=%s AND status IN ('active','researched')""",
-                        (comp, json.dumps(components), sym))
-            cur.execute("""INSERT INTO hermes_score_history (symbol, composite_score, rank, components, price)
-                           SELECT %s, %s, hermes_rank, %s::jsonb, %s FROM watchlist_items
-                           WHERE symbol=%s AND status IN ('active','researched') LIMIT 1""",
-                        (sym, comp, json.dumps(components), px, sym))
+        # Per-symbol SAVEPOINT: a failed write rolls back only this symbol, not the whole transaction.
+        cur.execute("SAVEPOINT hermes_sym")
+        try:
+            outcome = _write_symbol(cur, sym, rank, comp, components, px, last_hist.get(sym),
+                                    off_hours=off_hours, hb_cutoff=hb_cutoff)
+            cur.execute("RELEASE SAVEPOINT hermes_sym")
+        except Exception as exc:
+            cur.execute("ROLLBACK TO SAVEPOINT hermes_sym")
+            _record_error(errors, sym, "write", exc)
+            continue
+        if outcome == "unchanged":
+            skipped += 1
         else:
-            cur.execute("""UPDATE watchlist_items SET hermes_composite_score=%s, hermes_rank=%s,
-                             hermes_score_components=%s::jsonb, hermes_scored_at=NOW(), updated_at=NOW()
-                           WHERE symbol=%s AND status IN ('active','researched')""",
-                        (comp, rank, json.dumps(components), sym))
-            cur.execute("""INSERT INTO hermes_score_history (symbol, composite_score, rank, components, price)
-                           VALUES (%s, %s, %s, %s::jsonb, %s)""",
-                        (sym, comp, rank, json.dumps(components), px))
+            written += 1
     if tier_mode and event_syms:
         # drain everything we attempted — an unscoreable symbol must not wedge its queue slot
         cur.execute("""UPDATE hermes_score_event_queue SET processed_at=NOW()
                        WHERE processed_at IS NULL AND UPPER(symbol) = ANY(%s)""",
                     ([s.upper() for s in event_syms],))
     conn.commit()
-    if tier_mode:
-        mode = "tiers[%s]+events(%d)%s" % (",".join(tiers) or "-", len(event_syms),
-                                           "-frozen-ranks" if off_hours else "")
-    elif use_capped_fetch:
-        mode = "capped-top%d%s" % (limit or WATCHLIST_TOP_N, "-frozen-ranks" if off_hours else "")
-    else:
-        mode = "full"
+    errored = len(errors["symbols"])
     print(f"[hermes-scorer] {mode}: scored {len(scored)} watchlist names, "
-          f"{skipped} unchanged (history-skip) (top: " +
-          ", ".join(f"{s}={round(c,1)}" for s, c, *_ in scored[:5]) + ")")
-    return {"scored": len(scored), "skipped_unchanged": skipped,
-            "top": [(s, round(c, 1)) for s, c, *_ in scored[:10]]}
+          f"{skipped} unchanged (history-skip), {errored} errored {dict(errors['reasons'])} of {len(rows)} items "
+          f"(top: " + ", ".join(f"{s}={round(c,1)}" for s, c, *_ in scored[:5]) + ")", flush=True)
+    return _empty_summary(
+        mode=mode, items=len(rows), scored=len(scored), unscored=unscored, written=written,
+        skipped_unchanged=skipped, landed=written + skipped, errored=errored,
+        skipped_errors=dict(errors["reasons"]), error_symbols=errors["symbols"][:20],
+        top=[(s, round(c, 1)) for s, c, *_ in scored[:10]])
 
 
-def main():
+def _write_symbol(cur, sym, rank, comp, components, px, prev, *, off_hours, hb_cutoff):
+    """Persist one symbol's score. Returns 'unchanged' (live row refreshed only) or 'written'."""
+    if prev is not None and prev[0] is not None and abs(float(prev[0]) - comp) < 0.05 \
+            and (off_hours or prev[1] == rank):
+        prev_at = prev[2]
+        cutoff = hb_cutoff if (prev_at is not None and prev_at.tzinfo) else hb_cutoff.replace(tzinfo=None)
+        if prev_at is not None and prev_at >= cutoff:
+            # unchanged and recent → refresh the live row only, no history append
+            cur.execute("""UPDATE watchlist_items SET hermes_scored_at=NOW(), updated_at=NOW()
+                           WHERE symbol=%s AND status IN ('active','researched')""", (sym,))
+            return "unchanged"
+    body = _dumps(components)
+    if off_hours:
+        # Off-hours: refresh composite only — frozen global ranks prevent tail rank-jump spam.
+        cur.execute("""UPDATE watchlist_items SET hermes_composite_score=%s,
+                         hermes_score_components=%s::jsonb, hermes_scored_at=NOW(), updated_at=NOW()
+                       WHERE symbol=%s AND status IN ('active','researched')""",
+                    (comp, body, sym))
+        cur.execute("""INSERT INTO hermes_score_history (symbol, composite_score, rank, components, price)
+                       SELECT %s, %s, hermes_rank, %s::jsonb, %s FROM watchlist_items
+                       WHERE symbol=%s AND status IN ('active','researched') LIMIT 1""",
+                    (sym, comp, body, px, sym))
+    else:
+        cur.execute("""UPDATE watchlist_items SET hermes_composite_score=%s, hermes_rank=%s,
+                         hermes_score_components=%s::jsonb, hermes_scored_at=NOW(), updated_at=NOW()
+                       WHERE symbol=%s AND status IN ('active','researched')""",
+                    (comp, rank, body, sym))
+        cur.execute("""INSERT INTO hermes_score_history (symbol, composite_score, rank, components, price)
+                       VALUES (%s, %s, %s, %s::jsonb, %s)""",
+                    (sym, comp, rank, body, px))
+    return "written"
+
+
+def all_failed(summary):
+    """Every attempted item errored and nothing landed: a real outage -> non-zero exit."""
+    return int(summary.get("items") or 0) > 0 and int(summary.get("errored") or 0) > 0 \
+        and int(summary.get("landed") or 0) == 0
+
+
+def _receipt_fields(summary):
+    keys = ("mode", "items", "scored", "unscored", "written", "skipped_unchanged", "errored", "skipped_errors")
+    return {k: summary[k] for k in keys if k in summary}
+
+
+def _empty_reason(summary):
+    """Why a clean run produced nothing: off-hours tick with nothing due, or names with no usable factor."""
+    if summary.get("empty_reason"):
+        return summary["empty_reason"]
+    if int(summary.get("landed") or 0) == 0 and not int(summary.get("errored") or 0):
+        return "no_new_input"
+    return None
+
+
+def _pipeline_run():
+    try:
+        from pipeline_registry import PipelineRun
+        return PipelineRun("hermes_watchlist_scorer")
+    except Exception:  # pragma: no cover - registry unavailable: the run itself still proceeds
+        import contextlib
+
+        class _NoRun(contextlib.AbstractContextManager):
+            def rows(self, n):
+                pass
+
+            def __exit__(self, *exc):
+                return False
+        return _NoRun()
+
+
+def main(argv=None):
     # G2: after imports settle — refuse dual lib.X / scripts.lib.X identity
     from lib import assert_single_import_identity
     assert_single_import_identity()
-    ap = argparse.ArgumentParser(); ap.add_argument("--once", action="store_true"); ap.add_argument("--limit", type=int)
-    a = ap.parse_args(); run(limit=a.limit)
+    ap = argparse.ArgumentParser(allow_abbrev=False)
+    ap.add_argument("--once", action="store_true")
+    ap.add_argument("--limit", type=int)
+    ap.add_argument("--dry-run", action="store_true",
+                    help="compute every score on a READ ONLY session; write no rows, no receipt, send nothing")
+    a = ap.parse_args(argv)
+    if a.dry_run:
+        from lib.lane_last_receipt import dry_run_report
+        summary = run(limit=a.limit, dry_run=True)
+        dry_run_report(LANE_ID, _receipt_fields(summary) | {"would_alert": summary.get("would_alert")},
+                       would_write=["watchlist_items.hermes_*", "hermes_score_history",
+                                    "hermes_score_event_queue.processed_at", "pipeline_runs"])
+        return 1 if all_failed(summary) else 0
+
+    from lib.lane_last_receipt import now_iso, write_lane_receipt
+    started_at = now_iso()
+    with _pipeline_run() as prun:
+        try:
+            summary = run(limit=a.limit)
+        except Exception as exc:
+            write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started_at,
+                               script="hermes_watchlist_scorer.py", error=f"{type(exc).__name__}: {exc}",
+                               output={"produced_count": 0, "attempted_count": 0,
+                                       "skipped_reasons": {"dependency_unavailable": 1}})
+            raise
+        if summary.get("items"):
+            prun.rows(int(summary.get("landed") or 0))
+        emit_failure_alert(summary)
+        rc = 1 if all_failed(summary) else 0
+        write_lane_receipt(LANE_ID, ok=rc == 0, exit_code=rc, started_at=started_at,
+                           script="hermes_watchlist_scorer.py", summary=_receipt_fields(summary),
+                           error=(f"all {summary['items']} items errored: {summary['skipped_errors']}" if rc else None),
+                           output={"produced_count": int(summary.get("landed") or 0),
+                                   "attempted_count": int(summary.get("items") or 0),
+                                   "skipped_reasons": summary.get("skipped_errors") or {},
+                                   "empty_reason": _empty_reason(summary)})
+        if rc:
+            # SystemExit(str) exits 1 and PipelineRun records the run failed with this reason.
+            raise SystemExit(f"[hermes-scorer] all {summary['items']} items errored: {summary['skipped_errors']}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

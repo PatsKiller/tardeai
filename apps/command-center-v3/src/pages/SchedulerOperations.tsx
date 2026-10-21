@@ -32,7 +32,7 @@ export default function SchedulerOperations({ active = true }: { active?: boolea
       </ChipRow>
       {api.error ? <p role="alert" style={{ color: TOKENS.text[2], fontSize: TYPE.sm }}>Scheduler observations unavailable. No current counts are reported.</p> : null}
       <nav aria-label="Scheduler filters" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
-        {SCHEDULER_FILTERS.map(f => <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)} style={{ background: filter === f ? TOKENS.bg[2] : TOKENS.bg[1], color: TOKENS.text[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.sm, padding: '6px 8px', fontSize: TYPE.sm, cursor: 'pointer' }}>{f}</button>)}
+        {SCHEDULER_FILTERS.map(f => <button key={f} type="button" aria-pressed={filter === f} onClick={() => setFilter(f)} style={{ background: filter === f ? TOKENS.bg[2] : TOKENS.bg[1], color: TOKENS.text[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.sm, padding: '6px 8px', fontSize: TYPE.sm, cursor: 'pointer' }}>{f === 'Problems' || f === 'Not measured' ? `${f} (${filterSchedulerRows(payload?.rows || [], f).length})` : f}</button>)}
       </nav>
     </div>
     <div style={{ ...panel, overflowX: 'auto' }}>
@@ -41,7 +41,7 @@ export default function SchedulerOperations({ active = true }: { active?: boolea
         <tbody>{rows.map(row => <tr key={row.lane_id} data-testid={`scheduler-row-${row.lane_id}`} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }}>
           <td style={cell}><button type="button" onClick={() => setSelected(row.lane_id)} aria-label={`Inspect ${row.lane_id}`} style={{ background: 'transparent', color: TOKENS.text[0], border: 0, padding: 0, cursor: 'pointer', fontSize: TYPE.sm, textAlign: 'left' }}>{row.lane_id}</button></td>
           <td style={cell}>{missing(row.domain)}</td><td style={cell}>{missing(row.owner)}</td><td style={cell}>{row.scheduler_type}</td>
-          <td style={cell}><Chip tone={schedulerProblems(row) || stale ? 'warning' : row.runtime_state === 'LIVE' ? 'success' : 'neutral'}>{status(row)}</Chip></td>
+          <td style={cell}><Chip tone={schedulerProblems(row) || stale ? 'warning' : row.runtime_state === 'LIVE' ? 'success' : row.runtime_state === 'INFRASTRUCTURE' ? 'info' : 'neutral'}>{status(row)}</Chip></td>
           <td style={cell}>{operatorTime(row.last_completed)}</td><td style={mono}>{measuredNumber(row.duration, 's')}</td>
           <td style={{ ...mono, maxWidth: 220, overflowWrap: 'anywhere' }}>{row.output_signal?.path || row.output_signal?.table || (row.output_signal?.kind === 'none' ? 'NO_SIGNAL' : 'NOT_MEASURED')}</td>
           <td style={cell}>{stale ? 'NOT_MEASURED' : row.freshness}<div style={{ fontSize: TYPE.xs }}>{measuredNumber(row.output_age == null ? null : Math.round(row.output_age / 60), 'm')}</div></td>

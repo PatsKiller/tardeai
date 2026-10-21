@@ -32,7 +32,12 @@ MAX_ITEMS = 500
 
 COMM_WHERE = " FROM communication_outbox WHERE created_at >= %s AND created_at <= %s"
 TG_WHERE = " FROM telegram_outbox WHERE sent_at >= %s AND sent_at <= %s"
-TG_STATE = "CASE WHEN ok IS TRUE THEN 'sent' WHEN ok IS FALSE THEN 'failed' ELSE 'unknown' END"
+# A reports_archive row with ok=false is a message the router HELD for the digest (report_capture.archive_message
+# stores ok = not suppressed): it was never attempted to Telegram, so it is `held`, not `failed` (2026-10-21; it
+# used to show ~150 "failed sends"/day). Only a non-archive ok=false row is a failed delivery.
+ARCHIVE_CHANNEL = "reports_archive"
+TG_STATE = ("CASE WHEN ok IS TRUE THEN 'sent' WHEN ok IS FALSE AND channel = 'reports_archive' THEN 'held' "
+            "WHEN ok IS FALSE THEN 'failed' ELSE 'unknown' END")
 COMM_SQL = "SELECT outbox_id,event_id,channel,status,attempt_count,last_error,created_at,updated_at"
 TG_SQL = "SELECT id,sent_at,report_type,title,char_len,ok,channel"
 COUNTS_SQL = ("SELECT 'communication_outbox',LOWER(COALESCE(NULLIF(status,''),'unknown')),COUNT(*)"+COMM_WHERE+
@@ -61,6 +66,15 @@ def _age_min(v: Any, now: datetime) -> Optional[float]:
         return None
 
 
+def tg_state(ok: Any, channel: Any) -> str:
+    """Python mirror of TG_STATE (one telegram_outbox row)."""
+    if ok is True:
+        return "sent"
+    if ok is False:
+        return "held" if str(channel or "") == ARCHIVE_CHANNEL else "failed"
+    return "unknown"
+
+
 def project_outbox(db_query: DbQuery, *, hours: int = 24, now: Optional[datetime] = None,
                    state: Optional[str] = None, limit: int = MAX_ITEMS) -> dict[str, Any]:
     """One fixed UTC window; full SQL aggregates and independently bounded detail rows.
@@ -86,8 +100,8 @@ def project_outbox(db_query: DbQuery, *, hours: int = 24, now: Optional[datetime
                 "attempts":int(attempts) if attempts is not None else None,"created_at":_iso(created),"updated_at":_iso(updated),"age_min":_age_min(created,now)})
         for r in db_query(TG_SQL+TG_WHERE+tg_filter+" ORDER BY sent_at DESC LIMIT %s",params):
             tid,sent,report,title,chars,ok,channel=r
-            st='sent' if ok is True else 'failed' if ok is False else 'unknown'
-            items.append({"outbox":"telegram_outbox","id":str(tid),"state":st,"reason":"" if ok is True else "delivery status unavailable" if ok is None else f"ok=false char_len={chars}",
+            st=tg_state(ok,channel)
+            items.append({"outbox":"telegram_outbox","id":str(tid),"state":st,"reason":"" if ok is True else "delivery status unavailable" if ok is None else "held for digest (archived, not sent by design)" if st=="held" else f"ok=false char_len={chars}",
                 "channel":str(channel or ""),"subject":str(report or title or "")[:120],"attempts":1,
                 "created_at":_iso(sent),"updated_at":_iso(sent),"age_min":_age_min(sent,now)})
     total=sum(sum(c.values()) for c in counts.values())
@@ -124,7 +138,7 @@ def anomalies(model: dict[str, Any]) -> list[dict[str, Any]]:
     counts=model.get("counts") or {}
     total=sum(sum(c.values()) for c in counts.values())
     sent=sum(c.get("sent",0) for c in counts.values())
-    known_states={"sent","failed","suppressed","withdrawn","recorded",*PENDING_STATES}
+    known_states={"sent","failed","held","suppressed","withdrawn","recorded",*PENDING_STATES}
     unknown=sum(n for c in counts.values() for st,n in c.items() if st not in known_states)
     if complete and total >= SILENT_SENDERS_MIN_ROWS and sent == 0 and unknown == 0:
         out.append({"source": "outbox", "item": "silent_senders", "severity": "P2",

@@ -25,6 +25,7 @@ import ExecutionStatePanel from '../components/ExecutionStatePanel'
 import PlatformHealthPanel from '../components/PlatformHealthPanel'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
+import { OvernightQueuePanel, DataPlausibilityPanel, PipelineFailuresPanel } from '../components/system/HiddenFailurePanels'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = ['Platform', 'Pipeline', 'Control Plane', 'Data Sources', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Admin', 'Brokers', 'Crons', 'LLM', 'Hermes', 'OpenClaw', 'TradeAI'] as const
@@ -153,6 +154,7 @@ export default function SystemHub({ onDrill }: Props) {
       {/* Platform health (2026-10-21): n8n, always-on units, disk/CPU/memory, backup, main Postgres. */}
       {tab === 'Platform' && <PlatformHealthPanel />}
 
+      {tab === 'Pipeline' && <PipelineFailuresPanel />}
       {tab === 'Pipeline' && (() => {
         const d = pipe?.data ?? pipe ?? {}
         const ing = d.ingestion ?? {}, cur = d.curation ?? {}, lm = d.llm ?? {}, rag = d.rag ?? {}, jb = d.jobs ?? {}
@@ -280,6 +282,7 @@ export default function SystemHub({ onDrill }: Props) {
         </>
       )}
 
+      {tab === 'Data Sources' && <DataPlausibilityPanel />}
       {tab === 'Data Sources' && <DataSourceHealth />}
 
       {tab === 'Hermes' && <HermesPanel />}
@@ -432,6 +435,7 @@ export default function SystemHub({ onDrill }: Props) {
         )
       })()}
 
+      {tab === 'Jobs' && <OvernightQueuePanel />}
       {tab === 'Jobs' && (() => {
         const j = jobs?.data ?? jobs ?? {}
         const timers = j.timers ?? {}
