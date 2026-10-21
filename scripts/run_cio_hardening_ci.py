@@ -44,6 +44,9 @@ GATES = [
         "incident_notifier_state_compatibility_20261018",
         ["tests/test_incident_notifier_state_compatibility_20261018.py"],
     ),
+    # ANCHOR: CI_DOC_PINNED_SELECTION_20261021 — alignment audit H4: test_impact follows constant path joins and
+    # document strings; a test reading a changed .md is mandatory in the pr selection, in every tier.
+    ("ci_doc_pinned_selection_20261021", ["tests/test_ci_doc_pinned_selection_20261021.py"]),
     # Rotation publication: account-bound identity, real source clocks and grounded
     # stop claims; actual API/cache/digest/POST boundaries with fake external effects.
     ("rotation_publication_20261018", ["tests/test_rotation_publication_20261018.py"]),
@@ -5844,7 +5847,8 @@ def select_pr_gates(
     n_files = sum(len(f) for _n, f in sel["gates"])
     print(
         f"[select] base={base} changed={len(changed)} tier={sel['tier']} map={status} "
-        f"impacted={sel['impacted']} selected_files={n_files} gates={len(sel['gates'])} "
+        f"impacted={sel['impacted']} doc_pinned={len(sel.get('doc_pinned') or [])} "
+        f"selected_files={n_files} gates={len(sel['gates'])} "
         f"estimate={sel['estimate_seconds']}s (mandatory {sel['mandatory_estimate_seconds']}s, "
         f"budget {sel['budget_seconds']}s) deferred={len(sel['deferred'])} "
         f"select_secs={time.monotonic() - t0:.1f}",
@@ -5852,6 +5856,8 @@ def select_pr_gates(
     )
     for cat, paths in sorted(sel["high"].items()):
         print(f"[select] HIGH {cat}: {', '.join(paths[:8])}{' ...' if len(paths) > 8 else ''}", flush=True)
+    for f in sel.get("doc_pinned") or []:
+        print(f"[select] DOC-PINNED (reads a changed document; mandatory): {f}", flush=True)
     for f in sel["deferred"][:25]:
         print(f"[select] DEFERRED to post-merge full run: {f}", flush=True)
     if len(sel["deferred"]) > 25:

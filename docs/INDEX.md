@@ -1868,7 +1868,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_WAVE3D_FLASH_2026-08-29.md` | CIO Wave 3D-flash — **STOPPED at step 1: zero flash-eligible** | review_required | OK | `df9fb2572aae` |
 | `docs/ops/CIO_WAVE3D_HOP_2026-08-29.md` | Wave 3D — the one live hop, executed (2026-08-29) | review_required | OK | `02ef350a1efb` |
 | `docs/ops/CIO_WAVE3E_2026-08-29.md` | CIO Wave 3E — notification decisions on the Command Center (2026-08-29) | review_required | OK | `6fd2ce532756` |
-| `docs/ops/CI_FAST_CORE_20260925.md` | CI fast core, risk tiers and digest-free evidence (2026-09-25) | review_required | MISSING HEADER | `0848756e5ca9` |
+| `docs/ops/CI_FAST_CORE_20260925.md` | CI fast core, risk tiers and digest-free evidence (2026-09-25) | review_required | MISSING HEADER | `f3d43349297b` |
 | `docs/ops/CLOSE_OPERATOR_GAPS_TO_100_2026-08-19.md` | Close remaining operator gaps to 100% | review_required | OK | `9f9aada669d7` |
 | `docs/ops/COGNITIVE_MEMORY_PRODUCTION_RUNBOOK.md` | Cognitive memory in production: runbook | review_required | OK | `720ebe9b2fee` |
 | `docs/ops/COGX_WAVE1_APPROVAL_PACKAGE_2026-09-27.md` | COGX Wave 1 approval package — pkg-20260927-cogx-w1-d9e1 | review_required | OK | `07d135121c55` |
