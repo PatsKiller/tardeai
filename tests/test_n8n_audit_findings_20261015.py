@@ -948,7 +948,8 @@ def test_dd08_policy_file_reads_once_per_change(tmp_path):
 
 
 def test_dd14_one_route_definition_and_eight_handlers():
-    assert len(R.ROUTES) == 8 and ("GET", "/momentum-lifecycle") in R.ROUTES
+    # 2026-10-21: + GET /release-train-window (Release Train v2 Phase 4, read-only) = nine routes.
+    assert len(R.ROUTES) == 9 and ("GET", "/momentum-lifecycle") in R.ROUTES
     assert set(R.ROUTE_HANDLERS) == set(R.ROUTES)
     for name in R.ROUTE_HANDLERS.values():
         assert callable(getattr(R.Relay, name)), name

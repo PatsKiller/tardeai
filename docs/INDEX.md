@@ -627,7 +627,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/n8n/N8N_DECISION_LEDGER.md` | n8n decision ledger — D1–D11 | review_required | OK | `12551696169c` |
 | `docs/architecture/n8n/N8N_HITL_CONTRACT_SPEC.md` | Approval / HITL authority contract — specification | review_required | OK | `e9c14b9f23c1` |
 | `docs/architecture/n8n/N8N_LLM_STEP_ROUTE_SPEC.md` | n8n → LLM step route — specification and proof list | review_required | OK | `6b7f8e1ee9e8` |
-| `docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md` | n8n reference architecture — Trade AI automation fabric | review_required | OK | `ff2f29559514` |
+| `docs/architecture/n8n/N8N_REFERENCE_ARCHITECTURE.md` | n8n reference architecture — Trade AI automation fabric | review_required | OK | `fb8ea94c339b` |
 | `docs/architecture/n8n/N8N_THREAT_MODEL.md` | n8n automation fabric — threat model | review_required | OK | `6314ba32bd41` |
 | `docs/architecture/narrative-subject-identity.md` | NarrativeSubjectLink@v1 — Architecture | review_required | OK | `3ee93de9443e` |
 | `docs/architecture/retention.md` | Librarian Retention — RetentionDecision@v1 (Phase 6) | review_required | OK | `ca8630975a92` |
@@ -1446,7 +1446,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/MIGRATION_RECONCILIATION_20261012.md` | TradeAI migration reconciliation | review_required | OK | `b6e056759869` |
 | `docs/implementation/n8n-maturity/MOMENTUM_LINEAGE_IMPLEMENTATION_20261013.md` | Momentum lineage and lifecycle implementation | review_required | OK | `a8a7fb2c8c0c` |
 | `docs/implementation/n8n-maturity/MONITOR_FOLD_COVERAGE_W1-9.md` | Monitor fold coverage (W1-9): freshness contracts, input starvation and design notes for the rest | review_required | OK | `527bdf9c7d0f` |
-| `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `d1ee098aec9a` |
+| `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) | review_required | OK | `9334295cd2ea` |
 | `docs/implementation/n8n-maturity/N8N_FRAMEWORK_SCORECARD_20261015.md` | n8n workflow framework scorecard — STATIC CONFORMANCE measured by `scripts/check_n8n_workflow_framework.py` (2026-10-15) | review_required | OK | `afc601ef2c78` |
 | `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` | Final gap assessment and maturity review — platform, n8n and the mandatory workflow framework (2026-10-14) | review_required | OK | `2463bbcc784d` |
 | `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | N8N monitoring, SIEM, Telegram and LLM auto-remediation standard — per lane | review_required | OK | `fb93127b9fe6` |
@@ -1960,7 +1960,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/R24_LEARNING_MATURITY_AUDIT_CLOSEOUT.md` | R24 Learning, Maturity, and Audit Closeout | review_required | OK | `ca6b73be475c` |
 | `docs/ops/R9_2_PORTFOLIO_BRAIN_LIVE_CLOSEOUT_2026-08-23.md` | Trade AI v12 R9.2 - Portfolio Brain Live Closeout | review_required | OK | `456bfc103b56` |
 | `docs/ops/RELEASE_TRAIN_API.md` | Release train: read-only Command Center API (Phase 1) | review_required | OK | `a2974f07ca4e` |
-| `docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md` | Release train: n8n coordination contract (Phase 4) | review_required | OK | `2ef9feeddf3e` |
+| `docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md` | Release train: n8n coordination contract (Phase 4) | review_required | OK | `7a20a70496dc` |
 | `docs/ops/RESEARCH_COVERAGE_SNAPSHOT_2026-08-22.md` | Research coverage snapshot — 2026-08-22 10:24 ET | review_required | OK | `99a27d3b83ac` |
 | `docs/ops/RESEARCH_ENGINE_FLASH_FIRST_FAILURE_2026-08-20.md` | Research engine Flash-first failure — 2026-08-20 | review_required | OK | `f096edc0e822` |
 | `docs/ops/RESEARCH_LANE_HEALTH.md` | Research lane health + P0 outage (2026-08-21) | review_required | OK | `6c3418e95711` |

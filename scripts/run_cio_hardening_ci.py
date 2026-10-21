@@ -5600,6 +5600,17 @@ GATES = [
         "release_train_queue_20261021",
         ["tests/test_release_train_queue_20261021.py"],
     ),
+    (
+        # ANCHOR: RELEASE_TRAIN_N8N_20261021 — Release Train v2 Phase 4 (build-only, nothing imported): the n8n
+        # coordination contract (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md; TrainWindowRequest/Receipt@v1 schemas and
+        # scripts/lib/release_train_window.py), the request lane (dry-run writes nothing; --append = one O_EXCL
+        # request; STOP or not armed = no-op; off-window always shadow), relay GET /release-train-window + gateway
+        # read op, workflow tradeai-fabric-release-train (no credential but the relay's, no merge/promote/push, no
+        # sender node, only Run Lane for the four lanes), framework check, registry/allowlist rows, DRAFT health
+        # contracts (their gate failure asserted), transitive capabilities. Hermetic: tmp state, psycopg2 stubbed.
+        "release_train_n8n_20261021",
+        ["tests/test_release_train_n8n_20261021.py"],
+    ),
 ]
 
 

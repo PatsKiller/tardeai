@@ -26,6 +26,11 @@ pending / unknown, all as data) for the Run Lane sub-workflow's poll. POST /inte
 send-INTENT {domain, kind, subject, summary, workflow_id, execution_id, node}, cleans and bounds the text, and
 forwards one `comms/intent` claim (scope comms_intent); the host queues it for the comms gateway, which alone sends.
 n8n holds no bot token and the relay sends nothing.
+
+2026-10-21 (Release Train v2 Phase 4; docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md): GET /release-train-window with exactly one
+of ``view=readiness`` / ``run_id=`` / ``slot=`` forwards one read-scope ``release_train_window`` claim (route
+coordination/status, like /momentum-lifecycle) and returns ReleaseTrainReadiness@v1 or ReleaseTrainWindowView@v1. It
+runs, writes, merges, promotes and sends nothing.
 """
 
 from __future__ import annotations
@@ -118,6 +123,7 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/run_outcome"),
     ("POST", "/intent"),
     ("GET", "/momentum-lifecycle"),
+    ("GET", "/release-train-window"),
 )
 #: 2026-10-15 (audit DD14): the handler dispatches ONLY through this map, keyed by the ROUTES entries, and the
 #: import-time check below makes them one definition (eight served handlers = eight ROUTES rows; before, GET
@@ -132,6 +138,7 @@ ROUTE_HANDLERS: dict[tuple[str, str], str] = {
     ("GET", "/run_outcome"): "run_outcome",
     ("POST", "/intent"): "intent",
     ("GET", "/momentum-lifecycle"): "momentum_lifecycle",
+    ("GET", "/release-train-window"): "release_train_window",
 }
 if set(ROUTE_HANDLERS) != set(ROUTES) or len(ROUTES) != len(set(ROUTES)):  # pragma: no cover - import-time guard
     raise RuntimeError("relay ROUTES and ROUTE_HANDLERS disagree")
@@ -147,6 +154,11 @@ RUN_BODY_KEYS = frozenset({"lane_id", "mode", "idempotency_key", "workflow_id", 
 #: (relay_bad_run_id), so the gateway can treat it as relay-minted (scripts/lib/n8n_coordination_gateway.py
 #: RELAY_DERIVED_KEY_PREFIX) and admit it for LIVE runs.
 RELAY_DERIVED_PREFIX = "n8n-wf-"
+#: GET /release-train-window (2026-10-21, Release Train v2 Phase 4): the only query keys (exactly one per request),
+#: the slot alphabet and the read-only schemas the gateway answers with (scripts/lib/release_train_window.py).
+RELEASE_TRAIN_WINDOW_KEYS = ("view", "run_id", "slot")
+_RELEASE_TRAIN_SLOT_RE = re.compile(r"^(0000|0600|0800|1800)$")
+RELEASE_TRAIN_WINDOW_SCHEMAS = frozenset({"ReleaseTrainReadiness@v1", "ReleaseTrainWindowView@v1"})
 ROUTES_SCHEMA = "N8nRunRelayRoutes@v1"
 #: POST /event (design 02 §8): the only lane, the exact body keys, and the bounds.
 EVENT_LANE = "n8n-workflow-error"
@@ -404,6 +416,7 @@ class Relay:
             "events": 0,
             "run_outcomes": 0,
             "intents": 0,
+            "release_train_window": 0,
         }
         self.last: dict[str, Any] | None = None
         root = Path(self.environ.get("TRADEAI_STATE_ROOT") or (Path.home() / "trade-ai-releases" / "persistent-state"))
@@ -900,6 +913,58 @@ class Relay:
             }
         )
         return (200 if ok else status if isinstance(status, int) and status >= 400 else 403), reply
+
+    def release_train_window(self, authorization: str | None, query: str = "") -> tuple[int, dict[str, Any]]:
+        """GET /release-train-window (Release Train v2 Phase 4; docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md §4, §8): one
+        read-scope ``release_train_window`` claim to the gateway. Exactly one query key: ``view=readiness``,
+        ``run_id=<run id>`` or ``slot=<0000|0600|0800|1800>``. Read-only: nothing is run, written, merged, promoted or
+        sent, and no caller value reaches a path or a command (the gateway re-validates every key)."""
+        if not self._auth(authorization):
+            self.counts["auth_failures"] += 1
+            return self._refuse("relay_bad_bearer", 401, op="release_train_window")
+        try:
+            params = parse_qs(query, keep_blank_values=True, strict_parsing=True)
+        except ValueError:
+            return self._refuse("relay_bad_query", 400, op="release_train_window")
+        if len(params) != 1 or set(params) - set(RELEASE_TRAIN_WINDOW_KEYS):
+            return self._refuse("relay_bad_query", 400, op="release_train_window")
+        key, values = next(iter(params.items()))
+        value = values[0] if len(values) == 1 else None
+        ok_value = (
+            (key == "view" and value == "readiness")
+            or (key == "run_id" and _safe_run_id(value) is not None)
+            or (key == "slot" and isinstance(value, str) and _RELEASE_TRAIN_SLOT_RE.fullmatch(value) is not None)
+        )
+        if not ok_value:
+            return self._refuse("relay_bad_query", 400, op="release_train_window")
+        claim = self._claim(SCOPE_READ)
+        payload = {
+            "route": "coordination/status",
+            "operation": "release_train_window",
+            "claim": claim,
+            "signature": sign_claim(claim, self.key),
+            key: value,
+        }
+        self.counts["release_train_window"] += 1
+        try:
+            gateway_status, reply = self.transport(self.gateway_url + "/v1/coordination", payload)
+        except (OSError, urllib.error.URLError, TimeoutError):
+            self.counts["gateway_unreachable"] += 1
+            return self._refuse("relay_gateway_unreachable", 502, op="release_train_window")
+        ok = reply.get("schema") in RELEASE_TRAIN_WINDOW_SCHEMAS and reply.get("state") == "OK"
+        self._log(
+            {
+                "at": datetime.now(timezone.utc).isoformat(),
+                "op": "release_train_window",
+                "query_key": key,
+                "state": "OK" if ok else "REFUSED",
+                "reason": None if ok else str(reply.get("reason") or "")[:64],
+                "gateway_http_status": gateway_status,
+            }
+        )
+        if ok:
+            return 200, reply
+        return (gateway_status if isinstance(gateway_status, int) and gateway_status >= 400 else 403), reply
 
     def last_run(self, authorization: str | None, lane_id: str, query: str = "") -> tuple[int, dict[str, Any]]:
         """Read-only newest runs row for one lane. Never calls the gateway and never runs a command.

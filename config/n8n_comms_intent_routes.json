@@ -6,6 +6,9 @@
   "routes": [
     {"domain": "fabric", "kind": "workflow_error", "tier": "DIGEST", "runbook_id": "n8n-workflow-error"},
     {"domain": "fabric", "kind": "run_lane_dead_letter", "tier": "DIGEST", "runbook_id": "n8n-dlq"},
-    {"domain": "fabric", "kind": "run_lane_outcome_lost", "tier": "DIGEST", "runbook_id": "n8n-run-lost"}
+    {"domain": "fabric", "kind": "run_lane_outcome_lost", "tier": "DIGEST", "runbook_id": "n8n-run-lost"},
+    {"domain": "fabric", "kind": "release_train_window_digest", "tier": "DIGEST", "runbook_id": "release-train-n8n"},
+    {"domain": "fabric", "kind": "release_train_needs_action", "tier": "DIGEST", "runbook_id": "release-train-n8n"},
+    {"domain": "fabric", "kind": "release_train_delegation_reminder", "tier": "DIGEST", "runbook_id": "release-train-n8n"}
   ]
 }

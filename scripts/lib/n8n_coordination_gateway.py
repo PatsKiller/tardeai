@@ -259,9 +259,19 @@ REFUSAL_REASONS = frozenset(
         # 2026-10-15 (audit DD03): a LIVE run from the n8n relay caller whose key is in no host-validated namespace
         # (d:/e:/g: server-minted, p: manifest-validated). Free-form keys stay available to dry runs and to host callers.
         "run_key_namespace_refused",
+        # 2026-10-21 (Release Train v2 Phase 4; docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md §4/§8): the read-only
+        # release_train_window operation without a configured provider, with a bad query, or whose source failed.
+        "release_train_window_not_configured",
+        "release_train_window_bad_query",
+        "release_train_window_source_unavailable",
+        # the gateway was started without a ledger, so it has no state root to find the release-window spool in
+        "release_train_window_no_state_root",
     }
 )
 REFUSAL_PREFIXES = ("illegal_transition:", "typed_refusal:", "forbidden_route:")
+#: 2026-10-21 (Release Train v2 Phase 4): the only request keys the read-only ``release_train_window`` operation takes
+#: beyond route/operation/claim/signature (scripts/lib/release_train_window.py QUERY_KEYS); exactly one per request.
+RELEASE_TRAIN_WINDOW_QUERY_KEYS = ("view", "run_id", "slot")
 ARTIFACT_REF_FIELDS = frozenset({"store", "ref", "sha256", "as_of"})
 ARTIFACT_BYTES_KEYS = frozenset({"content", "bytes", "body", "data", "base64", "payload"})
 MAX_ARTIFACT_REF_BYTES = 4096
@@ -377,6 +387,7 @@ def handle_request(
     run_allowlist: frozenset[str] | set[str] | None = None,
     due_sources: Any = None,
     momentum_provider: Any = None,
+    release_train_provider: Any = None,
     outcome_store: Any = None,
     intent_store: Any = None,
     process_sources: Any = None,
@@ -460,6 +471,27 @@ def handle_request(
             return momentum_provider(datetime.fromtimestamp(_unix(now), timezone.utc))
         except (OSError, ValueError, TypeError):
             return _refused(None, "momentum_lifecycle_source_unavailable", peer_ignored=peer)
+    if operation == "release_train_window":
+        # 2026-10-21 (Release Train v2 Phase 4): a fixed read-only projection, like momentum_lifecycle. Exactly one
+        # of view=readiness / run_id / slot; nothing here runs, writes, merges, promotes or sends.
+        extra = set(request) - {"route", "operation", "claim", "signature"}
+        if route.strip().lower() != "coordination/status" or not extra <= set(RELEASE_TRAIN_WINDOW_QUERY_KEYS):
+            return _refused(None, "unexpected_field", peer_ignored=peer)
+        if len(extra) != 1 or not isinstance(request.get(next(iter(extra))), str):
+            return _refused(None, "release_train_window_bad_query", peer_ignored=peer)
+        if release_train_provider is None:
+            return _refused(None, "release_train_window_not_configured", peer_ignored=peer)
+        try:
+            answer = release_train_provider(
+                {k: request[k] for k in extra}, datetime.fromtimestamp(_unix(now), timezone.utc)
+            )
+        except (OSError, ValueError, TypeError):
+            return _refused(None, "release_train_window_source_unavailable", peer_ignored=peer)
+        if not isinstance(answer, dict):
+            return _refused(None, "release_train_window_source_unavailable", peer_ignored=peer)
+        if answer.get("state") == "REFUSED" and answer.get("reason") == "release_train_window_bad_query":
+            return _refused(None, "release_train_window_bad_query", peer_ignored=peer)
+        return answer
     if operation == "due" or route.strip().lower() == DUE_ROUTE:
         if operation != "due" or route.strip().lower() != DUE_ROUTE:
             return _refused(None, "unknown_operation", peer_ignored=peer)

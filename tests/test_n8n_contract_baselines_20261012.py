@@ -55,7 +55,9 @@ def test_all_operative_baselines_have_applicable_fields_and_order():
     # + 1 (2026-10-19 registry-runtime-truth REVIEWED at canary, tests/support/registry_runtime_truth_lane.py) = 141.
     # + 1 (2026-10-21 hermes-watchlist-scorer n8n shadow, PR #1899: REVIEWED at shadow by the operator;
     # tests/test_hermes_scorer_n8n_shadow_20261021.py) = 148.
-    assert len(catalogue["contracts"]) == 148
+    # + 4 (2026-10-21 Release Train v2 Phase 4: release-train-request-{1800,0000,0600,0800}, DRAFT at shadow until the
+    # operator reviews them; tests/test_release_train_n8n_20261021.py) = 152.
+    assert len(catalogue["contracts"]) == 152
     assert not {row["id"]: A.baseline_errors(row) for row in catalogue["contracts"] if A.baseline_errors(row)}
 
 

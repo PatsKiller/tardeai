@@ -50,12 +50,14 @@ def _node(wf: dict, name: str) -> dict:
 
 #: Process workflows (2026-10-15, config/n8n_fabric_processes.json; tests/test_n8n_fabric_hermes_learning_20261015.py).
 PROCESS_IDS = ("tradeai-fabric-hermes-learning",)
+#: 2026-10-21 Release Train v2 Phase 4: coordination workflows rendered by FABRIC_BUILDERS after the four primitives.
+COORD_IDS = (T.RELEASE_TRAIN_ID,)
 
 
 def test_committed_fabric_files_equal_a_fresh_render():
     assert T.main(["build-fabric", "--check"]) == 0
     assert sorted(p.name for p in FABRIC_DIR.iterdir()) == sorted(
-        [f"{i}.json" for i in IDS + PROCESS_IDS] + ["INDEX.json"]
+        [f"{i}.json" for i in IDS + COORD_IDS + PROCESS_IDS] + ["INDEX.json"]
     )
 
 
@@ -172,7 +174,7 @@ def test_manifest_hashes_match_the_files():
         idx["policy"]["intent_routes_sha256"]
         == hashlib.sha256((ROOT / "config" / "n8n_comms_intent_routes.json").read_bytes()).hexdigest()
     )
-    assert [r["id"] for r in idx["workflows"]] == list(IDS + PROCESS_IDS)
+    assert [r["id"] for r in idx["workflows"]] == list(IDS + COORD_IDS + PROCESS_IDS)
     for row in idx["workflows"]:
         text = (FABRIC_DIR / row["file"]).read_bytes()
         wf = json.loads(text)
@@ -334,6 +336,7 @@ def test_manual_trigger_is_the_run_lane_probe_start_node_and_nowhere_else():
     # 2026-10-15: a process workflow also carries one Manual Trigger, for the operator's CLI proof run.
     assert [w for w, r in rows.items() if "n8n-nodes-base.manualTrigger" in r["node_types"]] == [
         T.FABRIC_PROBE_ID,
+        *COORD_IDS,  # 2026-10-21: the release-train Manual Trigger is the forced shadow tick (contract §10)
         *PROCESS_IDS,
     ]
 
@@ -350,6 +353,9 @@ GRAPH_PINS = {
     # never imported yet, so no imported copy stops verifying.
     # hermes-learning cutover PR-2 (2026-10-15): spec MODE live; still never imported, so nothing stops verifying.
     "tradeai-fabric-hermes-learning": "f1d0984c64b06191020008af6d09f8b26a9c5a0ba5789f8e97ddb0e45215ebe4",
+    # 2026-10-21 Release Train v2 Phase 4 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md); never imported. Adding it moves
+    # none of the pins above.
+    T.RELEASE_TRAIN_ID: "9b18e2e4c38ac2605c847a82a422b8cc1cc222c99b2d1efa0aa4a56217cc11c3",
 }
 
 

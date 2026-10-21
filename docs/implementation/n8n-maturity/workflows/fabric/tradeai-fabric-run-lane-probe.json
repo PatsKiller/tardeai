@@ -41,7 +41,7 @@
     "generator": "scripts/n8n_workflow_templates.py build-fabric",
     "graph_sha256": "4dc071b31eaaa3788522ffae581a95be66918f3b6a4d24fff68931de484b9510",
     "kind": "probe",
-    "policy_sha256": "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f"
+    "policy_sha256": "4b1ee926f4fd46d60715ba4ba4739bd40fb2e91aecc0476f1dd29a0d55696229"
   },
   "name": "tradeai-fabric-run-lane-probe",
   "nodes": [
