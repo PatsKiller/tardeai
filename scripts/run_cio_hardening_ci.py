@@ -5427,6 +5427,15 @@ GATES = [
             "tests/test_ci_frontend_dependencies_20261018.py",
         ],
     ),
+    (
+        # ANCHOR: CC_PLATFORM_HEALTH_20261021 — GET /api/v2/system/platform-health (scripts/lib/platform_health.py):
+        # n8n containers/healthz/active workflows/dispatcher, always-on tradeai-* units + failed units, disk bands
+        # from config/disk_hygiene_rules.json, CPU/memory, backup age + cadence unit, main Postgres. A failed,
+        # denied or slow probe is UNKNOWN (value None), never OK or zero; probes <=2 s, total <=5 s, cache 30 s.
+        # Hermetic: fake runner/disk/DB/HTTP/clock, tmp_path ledger and backup dir.
+        "cc_platform_health_20261021",
+        ["tests/test_platform_health_20261021.py"],
+    ),
 ]
 
 

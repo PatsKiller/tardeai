@@ -327,3 +327,42 @@ v3 Home Snapshot tab enriched to v2 Command Center parity from `/api/v2/command`
 
 - **Win-rate unified:** MetricStrip + Home tile now both show the journal win rate (overview.journal: 55.3% / 121 trades) instead of the strip using paper-readiness (45.8% / 24). Paper-readiness win rate remains in the Trading/readiness context. They no longer disagree.
 - **System → Admin (READ-ONLY audit):** displays live-trading gate (4 gates), risk settings (heat vs 5% threshold, max-per-trade/strategy/sector, daily-loss kills), ATM global config, and per-account ATM-enabled state. ZERO write controls — no toggles/inputs/save. Prominent banner: setting CHANGES go through a separate guarded flow (Telegram for ATM enable/risk), never the dashboard. Level 7 prohibited preserved.
+
+## v3 System → Platform health + Home Platform card (2026-10-21)
+
+A read-only answer to "is the machinery up?". It replaces checking `docker ps`, `systemctl --user` and `df` by hand.
+
+- **Endpoint:** `GET /api/v2/system/platform-health` → `PlatformHealth@v1` (`scripts/lib/platform_health.py`;
+  thin handler `_system_platform_health` in `scripts/api_v2.py`). Top level: `schema, status, as_of, overall,
+  counts{OK,WARN,CRIT,UNKNOWN}, elapsed_ms, cache_ttl_s, cached, items[]`. Each item is
+  `{id, group, label, status: OK|WARN|CRIT|UNKNOWN, value, as_of, source, reason, detail}`.
+- **Probes (all read-only, argv lists, no shell):**
+  - **n8n.** `docker inspect` of `m8m-n8n` and `m8m-n8n-db` (state, healthcheck, uptime); `GET 127.0.0.1:5678/healthz`;
+    the active workflow count, read by a single SELECT through `n8n_live_inventory.run_select`; and the last
+    dispatcher run from `data/governance/n8n_coordination_ledger.sqlite` `runs`, opened `mode=ro`
+    (WARN > 15 min, CRIT > 60 min; the largest gap measured 2026-10-17..21 was 5 min).
+  - **Host services.** `systemctl --user show` of the always-on units by their real ids: `portfolio-server` plus the
+    `tradeai-` units cio-telegram, health-agent, ops-agent, telegram-callback-poller, active-trader-motion,
+    n8n-coordination-gateway, n8n-run-relay, n8n-run-executor and lab-postgres. The bare names are not-found
+    and read UNKNOWN. The probe also counts `systemctl --user list-units --failed 'tradeai*'` and names the failed units.
+  - **Disk, CPU and memory.** Disk is checked for `/` and the persistent-state root. Its bands come from
+    `config/disk_hygiene_rules.json` `monitor.warn_pct` / `critical_pct` (80 / 90), the same numbers
+    `disk_usage_monitor.py` alerts on. CPU is the 5-min load per CPU (WARN ≥ 1.5, CRIT ≥ 3.0). Memory is
+    `MemAvailable` (WARN < 15 %, CRIT < 5 %).
+  - **Backup.** The age of the newest `~/db_backups/trade_ai_*.sql.gz` (WARN > 26 h, CRIT > 50 h) and the last result of
+    `tradeai-portfolio-backup-cadence.service`.
+  - **Main Postgres.** One read-only SELECT through the app's `_db_query`, with `SET LOCAL statement_timeout`:
+    `pg_database_size` and connections against `max_connections` (WARN ≥ 80 %, CRIT ≥ 95 %).
+- **Timing and honesty.** Each probe is capped at 2 s and the whole collection at 5 s; the response is cached for 30 s.
+  The DB probe runs on its own single worker thread, because db_adapter's connect_timeout is 10 s. A probe that fails,
+  times out or is denied comes back **UNKNOWN with `value: null` and a reason**. It is never shown as OK or as 0.
+- **UI.** On Home, a compact **Platform** card above the operator inbox shows the overall pill, the counts and the rows
+  that are not OK, with a link to System → Platform. `/v3/system?tab=Platform` lists every row by group with its reason,
+  source and as-of time. The projection is `apps/command-center-v3/src/lib/platformHealth.ts`, tested by
+  `platformHealth.test.ts`, which is in the build chain. UNKNOWN renders as UNKNOWN. A reading older than 2 min, or a
+  payload kept after a failed refresh, renders as STALE.
+- **Tests.** `tests/test_platform_health_20261021.py` is hermetic. It is gate `cc_platform_health_20261021`
+  (ANCHOR `CC_PLATFORM_HEALTH_20261021`) in `scripts/run_cio_hardening_ci.py`.
+- **First local run (2026-10-21 13:20Z).** 21 OK, 2 WARN, 0 UNKNOWN, in 301 ms. The two WARN rows are both
+  `tradeai-portfolio-backup-cadence.service`, which ended `exit-code` (status 1) at 02:52 EDT. The 02:30 dump
+  `trade_ai_20261021_023000.sql.gz` (2.7 GB) did complete. The surface exposes this as a hidden failure; nothing here repairs it.

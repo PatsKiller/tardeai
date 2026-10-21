@@ -2192,6 +2192,23 @@ def _communications_delivery_summary(query=None):
     return _cp.delivery_summary()
 
 
+def _system_platform_health(query=None):
+    """GET /api/v2/system/platform-health — PlatformHealth@v1: is the machinery up? n8n containers + /healthz +
+    active workflows + dispatcher last run, always-on user units and failed tradeai* units, disk/CPU/memory, last
+    backup, main Postgres. Read-only probes, each <=2 s, total <=5 s, cached 30 s; a failed probe is UNKNOWN
+    with a reason, never OK or zero (scripts/lib/platform_health.py, 2026-10-21)."""
+    import sys as _s
+
+    _s.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    try:
+        from lib import platform_health as _ph
+
+        return _ph.get_platform_health(_db_query)
+    except Exception as exc:
+        return {"schema": "PlatformHealth@v1", "status": "UNAVAILABLE", "overall": "UNKNOWN", "items": [],
+                "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+
+
 def _communications_subjects(query=None):
     """GET /api/v2/communications/subjects?limit= — subject/thread projections."""
     import sys as _s
@@ -48558,6 +48575,7 @@ ROUTES = {
         "jobs": sorted(__import__("admin_write_guard").NON_TRADING_CRON_ALLOWLIST)
     },
     "/api/v2/system/pipeline-health": lambda: _system_pipeline_health(),
+    "/api/v2/system/platform-health": _system_platform_health,
     "/api/v2/system/siem": lambda: _system_siem_dashboard(),
     "/api/v2/inbox": lambda: _inbox(),
     "/api/v2/weekly-learning": lambda: _weekly_learning(),

@@ -22,11 +22,12 @@ import OpenClawPanel from '../components/OpenClawPanel'
 import TradeAIPanel from '../components/TradeAIPanel'
 import DataSourceHealth from '../components/DataSourceHealth'
 import ExecutionStatePanel from '../components/ExecutionStatePanel'
+import PlatformHealthPanel from '../components/PlatformHealthPanel'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Pipeline', 'Control Plane', 'Data Sources', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Admin', 'Brokers', 'Crons', 'LLM', 'Hermes', 'OpenClaw', 'TradeAI'] as const
+const TABS = ['Platform', 'Pipeline', 'Control Plane', 'Data Sources', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Admin', 'Brokers', 'Crons', 'LLM', 'Hermes', 'OpenClaw', 'TradeAI'] as const
 
 // Freshness color for an ISO timestamp vs a max-age (hours)
 function ageColor(iso: string | null | undefined, maxH: number): string {
@@ -148,6 +149,9 @@ export default function SystemHub({ onDrill }: Props) {
           Focused from Reports: <b style={{ fontFamily: 'monospace', color: 'var(--text0)' }}>{dlQuery}</b> — review it on the <b>{tab}</b> tab.
         </div>
       )}
+
+      {/* Platform health (2026-10-21): n8n, always-on units, disk/CPU/memory, backup, main Postgres. */}
+      {tab === 'Platform' && <PlatformHealthPanel />}
 
       {tab === 'Pipeline' && (() => {
         const d = pipe?.data ?? pipe ?? {}

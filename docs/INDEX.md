@@ -34,7 +34,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/CIO_GAP_2026-09-20-0604.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-20 06:04 ET | review_required | OK | `1e304f682a26` |
 | `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` | CIO Prompt & Input Audit — 2026-07-01 | review_required | OK | `927dbe10051c` |
 | `docs/CLAUDE_CHALLENGER_AND_ANALYST_LANES.md` | Claude Challenger Cohort (A/B) + Analyst Lanes | review_required | OK | `3159e054b153` |
-| `docs/COMMAND_CENTER_PAGE_MATRIX.md` | Command Center — Complete Page Matrix | review_required | OK | `3620582300fa` |
+| `docs/COMMAND_CENTER_PAGE_MATRIX.md` | Command Center — Complete Page Matrix | review_required | OK | `b1797df836a0` |
 | `docs/COMMAND_CENTER_RISK_VISUALIZATIONS.md` | Command Center v3 — Risk Visualizations | review_required | OK | `b5a273fe9b22` |
 | `docs/COMMAND_CENTER_V3_WATCHLIST.md` | Command Center v3 — Watchlist Hub | review_required | OK | `4340447ae480` |
 | `docs/CONSOLIDATION_CHECKPOINT_2026_06_04.md` | Consolidation & Verification Checkpoint — 2026-06-04 | review_required | OK | `6e1fbd7c7d43` |
