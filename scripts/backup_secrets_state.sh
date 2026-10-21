@@ -56,6 +56,21 @@ trap 'rm -rf "$TMP"' EXIT
 TAR="$TMP/${PREFIX}_${STAMP}.tar.gz"
 ENC="$TAR.gpg"
 
+# run_tar ARGS... — GNU tar exits 1 ("some files differ") when a live writer changes a file or
+# directory while it is read (2026-10-21: "tar: data/cio: file changed as we read it" killed the
+# weekly data backup under set -e). The archive is still complete as of the read, so rc=1 is a
+# WARNING: verify the gzip stream and continue; a corrupt archive still fails closed. rc>=2 is fatal.
+run_tar() {
+  local rc=0
+  tar "$@" || rc=$?
+  if [ "$rc" -eq 1 ]; then
+    echo "[backup:$TARGET] WARN: tar rc=1 (files changed during read) — verifying archive" >&2
+    gzip -t "$TAR" || { echo "FATAL: archive failed gzip -t after tar rc=1: $TAR" >&2; exit 1; }
+  elif [ "$rc" -ne 0 ]; then
+    echo "FATAL: tar failed rc=$rc" >&2; exit "$rc"
+  fi
+}
+
 if [ "$TARGET" = "db" ]; then
   # newest local pg dump (written by run_pg_backup.sh, integrity-tested at creation);
   # no re-tar — gpg the .sql.gz directly.
@@ -88,13 +103,13 @@ elif [ "$TARGET" = "ops" ]; then
   cp "$HOME"/.config/gogcli/config.json "$HOME"/.config/gogcli/credentials.json "$OPS_DIR/gogcli/" 2>/dev/null || true
   cp -r "$HOME"/.config/gogcli/keyring "$OPS_DIR/gogcli/keyring" 2>/dev/null || true
   echo "[backup:ops] bundling crontab + $(ls "$OPS_DIR/systemd_user" | wc -l) unit file(s) + manifests + pg/gog config"
-  tar czf "$TAR" -C "$TMP" ops_state
+  run_tar czf "$TAR" -C "$TMP" ops_state
 elif [ "$TARGET" = "apps" ]; then
   LIST=()
   for s in "${SOURCES[@]}"; do [ -e "$TAR_BASE/$s" ] && LIST+=("$s"); done
   [ ${#LIST[@]} -gt 0 ] || { echo "FATAL: nothing to back up for target 'apps'" >&2; exit 1; }
   echo "[backup:apps] bundling ${#LIST[@]} path(s) (excl. venv/caches): ${LIST[*]}"
-  tar czf "$TAR" -C "$TAR_BASE" \
+  run_tar czf "$TAR" -C "$TAR_BASE" \
       --exclude='.venv' --exclude='node_modules' --exclude='__pycache__' \
       --exclude='*.pyc' --exclude='.git/objects/pack/*.pack.tmp' \
       "${LIST[@]}"
@@ -125,7 +140,7 @@ else
     # runtime/ is excluded: 5.4G of ephemeral logs, 9.6G -> 4.2G dereferenced without it.
     data) TAR_FLAGS="czhf"; EXCLUDES=(--exclude=data/runtime) ;;
   esac
-  tar "$TAR_FLAGS" "$TAR" -C "$TAR_BASE" "${EXCLUDES[@]}" "${LIST[@]}"
+  run_tar "$TAR_FLAGS" "$TAR" -C "$TAR_BASE" "${EXCLUDES[@]}" "${LIST[@]}"
 fi
 
 # Encrypt (AES-256, symmetric). Plaintext tar is deleted with $TMP on exit.
