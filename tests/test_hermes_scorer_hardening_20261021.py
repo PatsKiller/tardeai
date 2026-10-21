@@ -319,7 +319,14 @@ def test_level_helper():
 
 def test_materialize_never_upserts_nan_levels(monkeypatch):
     """Full writer path for the BHVN shape: NaN close + 52w-range fallback + ATR (enrichment price None)."""
-    import psycopg2.extras  # noqa: F401 - materialize imports it
+    # materialize() does `import psycopg2.extras` for RealDictCursor; CI has no psycopg2, and the fake
+    # cursor ignores the factory, so a stub module keeps this test hermetic everywhere.
+    import types
+    pg = types.ModuleType("psycopg2")
+    pg.extras = types.ModuleType("psycopg2.extras")
+    pg.extras.RealDictCursor = object
+    monkeypatch.setitem(sys.modules, "psycopg2", pg)
+    monkeypatch.setitem(sys.modules, "psycopg2.extras", pg.extras)
 
     class Cur:
         def __init__(self, conn):
