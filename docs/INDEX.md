@@ -2072,7 +2072,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution | review_required | OK | `df44cfc4ee62` |
 | `docs/ops/ready-three-2026-10-21/AGENT_HANDOFF.md` | Agent handoff — 2026-10-21 | review_required | OK | `3ce9f2b87dbe` |
 | `docs/ops/ready-three-2026-10-21/CHANGELOG.md` | Change and release log — 2026-10-21 | review_required | OK | `c7dc2268bf1f` |
-| `docs/ops/ready-three-2026-10-21/CURRENT_STATUS.md` | Current execution status — 2026-10-21 04:29 UTC | review_required | OK | `2649a3634e00` |
+| `docs/ops/ready-three-2026-10-21/CURRENT_STATUS.md` | Current execution status — 2026-10-21 04:34 UTC | review_required | OK | `84dc249e3531` |
 | `docs/ops/ready-three-2026-10-21/DEPLOYMENT_AND_ROLLBACK.md` | Deployment and rollback gates — 2026-10-21 | review_required | OK | `e5ad8b54043e` |
 | `docs/ops/ready-three-2026-10-21/EXECUTIVE_REPORT.md` | Executive gap and readiness report — 2026-10-21 | review_required | OK | `95ad6fe8d9d7` |
 | `docs/ops/ready-three-2026-10-21/LIVE_VALIDATION.md` | Live validation — 2026-10-21 | review_required | MISSING HEADER | `fde6005b2a01` |
