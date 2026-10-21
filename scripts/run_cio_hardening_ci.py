@@ -4933,6 +4933,8 @@ GATES = [
             "tests/test_registry_ops_crons_20261009.py",
             # siem-diagnoser-schedule 2026-10-10: n8n-siem-bridge + n8n-failure-diagnosis host-cron rows, PAUSED pending install.
             "tests/test_registry_siem_diagnoser_crons_20261010.py",
+            # commitment-horizon-due 2026-10-09: due = created+horizon; sweep horizon guard + terminal UNSCOREABLE.
+            "tests/test_commitment_horizon_due_20261009.py",
         ],
     ),
     (
