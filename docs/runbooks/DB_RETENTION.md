@@ -1,8 +1,8 @@
 # DB retention — owners, archive + tripwire, grants
 
 Status:      ACTIVE
-as_of:       2026-10-21T00:00:00-04:00
-Measured at: branch n8nmat/retention-all-managed (on 03b3fb362 + af5b1ef36) / live pin 464524b1b, not changed by this document
+as_of:       2026-10-21T14:00:00-04:00 (operator rulings 2026-10-21 applied: priority set, registry-owned retention, §5.1 off-box)
+Measured at: branch n8nmat/retention-all-managed (on 03b3fb362 + af5b1ef36) / live pin 464524b1b, not changed by this document; 2026-10-21 PRs #1900, #1902 and the registry-owned retention batch
 
 **2026-10-11 retention-all-managed.** The operator asked, verbatim: *"Add, enable, and manage all deletes
 and purges."* Every delete and purge on this host is now handled one of three ways:
@@ -220,9 +220,84 @@ oldest and newest files, and bytes written in the last 30 days. The report raise
 **What is not automated.**
 - **No job deletes or rotates an archive** (AGENTS §0 rule 6).
 - An **off-box copy** of the archive (and of `persistent-state`) is an operator decision (AGENTS §17,
-  §18), listed as D9.
+  §18), listed as D9. **Update 2026-10-21:** the operator ruled D9 = (a) for the archive. The copier is
+  built (§5.1); its timer is proposed, not installed. Off-box backup of the rest of `persistent-state` is
+  still open.
 - If disk pressure ever needs archive space back, the operator chooses: move the archive off-box, then
   delete the local copy under a grant.
+
+### 5.1 Off-box copy to Google Drive (D9 = (a), 2026-10-21)
+
+The operator ruled on 2026-10-21 that the archives are copied off-box to Google Drive over the existing Drive
+path. `scripts/archive_offbox_sync.py` does this. Lane `archive-offbox-sync` in `config/lane_registry.json`
+is `NEVER_SCHEDULED` until the operator installs the timer. Install packet:
+`docs/ops/packets/archive-offbox-20261021/`.
+
+**Mechanism.** It uses the same mechanism as `scripts/backup_secrets_state.sh`:
+- `gog drive` with the same account and the same `Trade_AI_Backups` folder id.
+- `gpg --cipher-algo AES256 -c` with `--passphrase-file`.
+
+Both credential files are passed **by path**. gpg reads the passphrase file itself. gog's keyring password is
+read inside a `bash -c` child. Neither value enters the Python process, an argv, a log or the receipt.
+Plaintext never leaves the box: each archive file becomes one `.gpg` blob.
+
+**Layout.** `Trade_AI_Backups/archive/<area>/<YYYYMM of file mtime>/<path within area, '/'→'__'>.gpg`.
+
+**Manifest.** `<state>/data/runtime/archive_offbox_manifest.json` (`ArchiveOffboxManifest@v1`) holds one
+entry per archive file, keyed by its path under `<state>/archive`. Each entry has:
+- sha256, size, mtime_ns and `uploaded_at`;
+- the Drive file id, name and folder;
+- the ciphertext size and md5, and `verified_by`.
+
+A file whose bytes change (an appended `TRIPWIRE.jsonl`) is uploaded again under a sha-suffixed name. The
+earlier entry is kept in `versions`.
+
+**Guarantees** (each one is tested in `tests/test_archive_offbox_sync_20261021.py`, gate
+`archive_offbox_sync_20261021`):
+- **Dry run by default.** It writes nothing: no manifest, no receipt, no lock, no gog or gpg call.
+- **Verify before record.** After each upload it runs `gog drive get`. Drive's size must equal the
+  ciphertext size, and Drive's `md5Checksum`, when reported, must equal the ciphertext md5. If Drive reports
+  neither, the upload counts as a failure and is retried next run.
+- **Never deletes.** It never deletes a local archive or anything on Drive. The local copy stays
+  authoritative and tripwired.
+- **Bounded.** Each run is capped at 1 GiB of plaintext and 1500 files. It stops at the first file that does
+  not fit, except that the first file of a run always goes. The next run resumes.
+- **In-flight and symlink guards.** Files modified in the last 15 minutes are skipped. Symlinks are skipped,
+  never followed.
+- **Per-file failures.** One file failing never stops the others. Each failure is written to the receipt as
+  `{path, stage, error type}`, and the run exits 1.
+- **Receipt.** `data/runtime/archive-offbox-sync_last.json` (LaneRunReceipt@v2). `produced_count` is the
+  number of files uploaded and verified.
+
+**Tripwire.** `scripts/archive_offbox_sync.py` is in `retention_tripwire.ALLOWLIST_REL`, with its reason. It
+reads archive bytes only to hash and encrypt them. It never parses rows back into a live store. The
+installed `.service` unit does not name an archive path, so the nightly reference scan stays clean.
+
+**Read-only dry run, 2026-10-21 (live state root, this branch):**
+
+```
+$ .venv/bin/python scripts/archive_offbox_sync.py
+[archive-offbox-sync] DRY RUN — nothing uploaded, nothing written. archive=/home/johnclaw/trade-ai-releases/persistent-state/archive
+[archive-offbox-sync] already uploaded: 0 file(s); pending: 4757 file(s), 1022354984 bytes (0.952 GiB); new 4757, changed 0
+[archive-offbox-sync]   abandoned-branches-20261009              72 file(s)      235805600 bytes
+[archive-offbox-sync]   comms_lifecycle                        1580 file(s)       34039505 bytes
+[archive-offbox-sync]   db_retention                           2990 file(s)      714751422 bytes
+[archive-offbox-sync]   db_trim                                  35 file(s)        8786683 bytes
+[archive-offbox-sync]   file_prune                               74 file(s)       28969066 bytes
+[archive-offbox-sync]   retired-units-20261009                    6 file(s)           2708 bytes
+[archive-offbox-sync] would upload this run (bound 1073741824 bytes / 1500 files): 1500 file(s), 269629097 bytes (0.251 GiB); deferred to later runs: 3257
+[archive-offbox-sync] skipped: {'too_new': 8}
+```
+
+After the run, neither `archive_offbox_manifest.json` nor `archive-offbox-sync_last.json` existed, so the dry
+run wrote nothing. At 1500 files a night, the backlog of about 4,757 files drains in four runs.
+
+**Not yet proven** (`[DOC-CLAIM]` until the first observed `--apply`):
+- The JSON shape of `gog drive get`. The verifier looks for `size` and `md5Checksum` anywhere in the document.
+  If gog omits both, every upload fails closed as `verify`, and nothing is recorded.
+- How many gog calls fit in the unit timeout.
+
+The packet README gives the observed first run (`--max-files 3`).
 
 ## 6. File prunes: archive-then-unlink
 

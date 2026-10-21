@@ -5541,6 +5541,16 @@ GATES = [
         "hermes_scorer_n8n_canary_20261021",
         ["tests/test_hermes_scorer_n8n_canary_20261021.py"],
     ),
+    (
+        # ANCHOR: ARCHIVE_OFFBOX_SYNC_20261021 — operator D9 = (a): the retention archives get an off-box copy on
+        # Google Drive (Trade_AI_Backups/archive/<area>/<YYYYMM>/) via the backup_secrets_state.sh mechanism (gog +
+        # gpg AES256, credential files by path only). Proves: dry run is the default and writes nothing; --apply is
+        # incremental by manifest, verifies each upload (size/md5) before recording it, isolates per-file failures,
+        # honours the byte bound and resumes; never deletes a local archive; tripwire allowlists only this copier.
+        # Hermetic: fake uploader + fake encryptor in tmp_path; no gog, no gpg, no Drive, no credentials.
+        "archive_offbox_sync_20261021",
+        ["tests/test_archive_offbox_sync_20261021.py"],
+    ),
 ]
 
 

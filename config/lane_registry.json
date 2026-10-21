@@ -16883,6 +16883,26 @@
       }
     },
     {
+      "lane_id": "archive-offbox-sync",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-archive-offbox-sync.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-21",
+      "state_reason": "PROPOSED host lane (operator D9 = (a), 2026-10-21: copy the retention archives off-box to Google Drive over the existing Drive path). Packet docs/ops/packets/archive-offbox-20261021/ holds the systemd user service + timer (daily 03:30 America/New_York) and install.sh (dry run by default); not installed. A new systemd entry is operator-only (AGENTS.md §17): the operator runs install.sh --apply, then flips this row to ACTIVE. Host job, never n8n: it reads the Drive/gpg credential files (by path) and egresses encrypted archive blobs.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/archive-offbox-sync_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_archive_offbox_sync_20261021.py (fake uploader/encryptor: dry-run writes nothing, incremental, verify-before-record, never-delete, byte bound resumes); read-only dry run 2026-10-21 quoted in docs/ops/packets/archive-offbox-20261021/README.md.",
+      "note": "scripts/archive_offbox_sync.py --apply: incremental by manifest data/runtime/archive_offbox_manifest.json (ArchiveOffboxManifest@v1: path, sha256, size, uploaded_at, Drive id); gpg AES256 symmetric + gog drive upload exactly as scripts/backup_secrets_state.sh (same Trade_AI_Backups folder id, account, passphrase and keyring files by path); Drive layout Trade_AI_Backups/archive/<area>/<YYYYMM>/; every upload is read back (size, md5Checksum when reported) before it is recorded; bounded 1 GiB / 1500 files per run, resumes next run; one failure never stops the rest; never deletes locally or on Drive. Receipt LaneRunReceipt@v2 (produced_count = files uploaded and verified). Allowlisted in scripts/lib/retention_tripwire.py as the archive copier."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
