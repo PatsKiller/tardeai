@@ -137,8 +137,14 @@ def test_banner_explains_class_number_and_scope():
     for frag in ("Why MAJOR:", "weakest guarantee", "14.0.0", "12.1.0", "13.0.0", DIRECTIVE,
                  f"{TOKEN} <pr_number> <head_sha>", "`disk-hygiene`", "scripts/disk_hygiene.py",
                  "config/disk_hygiene_rules.json", "feat/disk-hygiene-n8n-20261018", "89%", "byte-identical",
-                 "it is not the §20 token", "Supersedes` will be the last ACTIVE version, 14.0.0"):
+                 "it is not the §20 token"):
         assert frag in banner, frag
+    if _ratified():
+        # Ratified 2026-10-21 (APPROVE_AGENTS_POLICY_15_0_0 1852 fc5672896, PR #1852 comment 6324859562).
+        assert "Supersedes` is the last ACTIVE version, 14.0.0" in banner
+        assert re.search(rf"{TOKEN} 1852 [0-9a-f]{{7,40}}", banner) and "6324859562" in banner
+    else:
+        assert "Supersedes` will be the last ACTIVE version, 14.0.0" in banner
 
 
 # --------------------------------------------------------------------------------------- §0, §17, adapters

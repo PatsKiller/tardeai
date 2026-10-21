@@ -56,6 +56,17 @@ RULE_2_EXCEPTION_14_0_0 = (
     "\n   read; it never sees a credential value, re-authenticates, changes a flag or reaches an order"
     "\n   route (AGENTS.md §24.11)."
 )
+# AGENTS.md 15.0.0 (ACTIVE 2026-10-21, ratified APPROVE_AGENTS_POLICY_15_0_0 1852 fc5672896): §0 rule 6 gains this one
+# sentence and §17 this one entry. Stripped before hashing like the 5.0.0 and 14.0.0 sentences; both and the new
+# digests are pinned by tests/test_agents_policy_15_0_0_disk_hygiene.py.
+RULE_6_EXCEPTION_15_0_0 = (
+    "\n   One exception, binding only once AGENTS.md 15.0.0 is ACTIVE: the n8n lane `disk-hygiene` may"
+    "\n   remove the reclaimable items its reviewed rules select (scripts/disk_hygiene.py,"
+    "\n   config/disk_hygiene_rules.json), and nothing else (AGENTS.md §24.12)."
+)
+S17_ENTRY_15_0_0 = (
+    " **changing the disk-hygiene rules or never-touch list** (§24.12 — a `config-write` grant and a reviewed PR) ·"
+)
 SECTION_0_WITHOUT_SENTENCE_SHA256 = "61fe9dfbeaa3c61cf354e42ed1cdc6f7006a105b46d538cd79a74407f349af32"
 SECTION_0_WITH_SENTENCE_SHA256 = "d7ce297890a85a125b2b0d7dc8234a0e4e679ffd6bae6d7820b2076a0267ec29"
 SECTION_23_14_SHA256 = "bb8722f69b8e54a8582011bdbe266d55ea7c2c0c6b120d123a1d4e43394311e7"
@@ -143,6 +154,7 @@ def test_state_checker_passes_on_branch_and_on_main():
 def test_section_0_changes_by_exactly_one_sentence_inside_rule_2():
     sec0 = _section(AGENTS, "# 0 · If you read nothing else", "# 1 · Identity and responsibilities")
     sec0 = sec0.replace(RULE_2_EXCEPTION_14_0_0, "")  # 14.0.0's sentence is pinned by its own test
+    sec0 = sec0.replace(RULE_6_EXCEPTION_15_0_0, "")  # 15.0.0's sentence is pinned by its own test
     assert sec0.count(RULE_2_EXCEPTION_5_0_0) == 1
     rule2 = sec0[sec0.index("2. **Broker code is buildable") : sec0.index("3. **Never route")]
     assert RULE_2_EXCEPTION_5_0_0 in rule2
@@ -162,7 +174,8 @@ def test_rule_2_still_forbids_everything_else():
 @pytest.mark.parametrize("name", list(UNCHANGED_SECTIONS))
 def test_other_rail_sections_are_byte_identical(name):
     start, end, digest = UNCHANGED_SECTIONS[name]
-    assert hashlib.sha256(_section(AGENTS, start, end).encode("utf-8")).hexdigest() == digest, f"{name} changed"
+    block = _section(AGENTS, start, end).replace(S17_ENTRY_15_0_0, "")  # 15.0.0's §17 entry, pinned by its own test
+    assert hashlib.sha256(block.encode("utf-8")).hexdigest() == digest, f"{name} changed"
 
 
 def test_23_14_is_byte_identical():

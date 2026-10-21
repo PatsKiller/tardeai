@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      14.0.0
+Policy-Version:      15.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
-Effective-Date:      2026-10-16
-Last-Reviewed:       2026-10-16T18:44:55-04:00
+Effective-Date:      2026-10-21
+Last-Reviewed:       2026-10-21T15:37:58-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          12.0.0
+Supersedes:          14.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -111,14 +111,17 @@ asks the operator to decide needs `dedupe_minutes=0`; #1685 sets it only for `ap
 operator classifies it before #1685 merges. **Numbering:** follows 5.0.0 (ACTIVE, PR #1686, merged `0ec320486`);
 `Supersedes` is 5.0.0. Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>`.
 
-**15.0.0 is PROPOSED (MAJOR) — one automated deletion: the weekly n8n lane `disk-hygiene` may remove the
-reclaimable items its reviewed rules select, and nothing else (§24.12; one sentence proposed for §0 rule 6).**
-Awaiting the operator's `APPROVE_AGENTS_POLICY_15_0_0 <pr_number> <head_sha>` (§20); until it is ratified and merged,
-nothing here binds and §0 rule 6 governs unchanged — nothing is deleted automatically, and `scripts/disk_hygiene.py`
-may run only as a dry run (a manifest, no removal). Operator directive 2026-10-18, verbatim: "i approve automatic
-deletion would need an AGENTS.md amendment". The directive approves drafting this amendment; it is not the §20 token,
-which is a per-PR word because the ratifying edit changes §0 and §17. Context, measured 2026-10-18: the root disk is
-at 89%, with about 100 GB in stale repository clones and worktrees and 36 GB in old releases. Once ACTIVE, only
+**15.0.0 is ACTIVE (MAJOR) — one automated deletion: the weekly n8n lane `disk-hygiene` may remove the
+reclaimable items its reviewed rules select, and nothing else (§24.12; one sentence added to §0 rule 6).**
+Ratified by the operator 2026-10-21 (`APPROVE_AGENTS_POLICY_15_0_0 1852 fc56728962fd51c94b3dc8cfd67e2df334eda88f`,
+§20; PR #1852 comment by PatsKiller 2026-10-21T19:37:58Z, https://github.com/PatsKiller/tardeai/pull/1852#issuecomment-6324859562, verbatim:
+"APPROVE_AGENTS_POLICY_15_0_0 1852 fc56728962fd51c94b3dc8cfd67e2df334eda88f"); ratified by this edit on #1852's
+branch, which set the header block to 15.0.0 ACTIVE with `Supersedes` 14.0.0, inserted the §0 rule 6 sentence in
+`AGENTS.md` and the four adapters, and inserted the §17 entry. Approval phrase as proposed:
+`APPROVE_AGENTS_POLICY_15_0_0 <pr_number> <head_sha>`. Operator directive 2026-10-18, verbatim: "i approve automatic
+deletion would need an AGENTS.md amendment". The directive approved drafting this amendment; it is not the §20 token,
+which was a per-PR word because the ratifying edit changes §0 and §17. Context, measured 2026-10-18: the root disk is
+at 89%, with about 100 GB in stale repository clones and worktrees and 36 GB in old releases. Only
 `scripts/disk_hygiene.py` under `config/disk_hygiene_rules.json`, run by the `disk-hygiene` lane or by the operator,
 may remove anything: a git clone or worktree only when it is clean, has no untracked files and no unpushed commits, is
 merged into `origin/main`, is referenced by nothing and holds no process cwd, and has been idle past the rule's
@@ -129,12 +132,11 @@ first live apply follows the operator's review of a manifest. Data, backups, dat
 "Never delete". **Why MAJOR:** it narrows §0 rule 6 "Never delete" for one lane, so the weakest guarantee after the
 change is weaker (version policy: classify by the weakest guarantee; precedent 5.0.0 and 14.0.0, each narrowing §0
 rule 2 by one sentence). §0 changes by exactly that one sentence and §17 by one entry ("changing the disk-hygiene
-rules or never-touch list"); everything else in §0, and §2, §2A, §7A and §22, is byte-identical. This branch does not
-edit §0, §17 or the four adapters — the ratifying edit does (§24.12, "Ratifying edit"). The script and rules file
-come in their own PR (branch `feat/disk-hygiene-n8n-20261018`); ratifying 15.0.0 neither merges nor activates it.
-**Numbering:** after 14.0.0 (ACTIVE); 12.1.0 and 13.0.0 stay PROPOSED with their own tokens, and ratifying 15.0.0
-ratifies neither. `Supersedes` will be the last ACTIVE version, 14.0.0. Operator approval phrase (§20):
-`APPROVE_AGENTS_POLICY_15_0_0 <pr_number> <head_sha>`.
+rules or never-touch list"); everything else in §0, and §2, §2A, §7A and §22, is byte-identical. The script and rules
+file come in their own PR (branch `feat/disk-hygiene-n8n-20261018`); ratifying 15.0.0 neither merges nor activates
+it, and until it merges and its lane is allowlisted nothing is removed. **Numbering:** after 14.0.0 (ACTIVE); 12.1.0
+and 13.0.0 stay PROPOSED with their own tokens, and ratifying 15.0.0 ratifies neither. `Supersedes` is the last
+ACTIVE version, 14.0.0.
 
 **14.0.0 is ACTIVE (MAJOR) — agents may run the read-only broker sync, and only it, under a `broker-read`
 grant (§24.11; one sentence added to §0 rule 2).** Ratified by the operator 2026-10-16
@@ -513,6 +515,9 @@ agent that reads fifteen lines and stops must still know them.
 5. **Never auto-remediate divergent copies of an authoritative store.** Report both paths, hashes
    and timestamps. A machine picking one can destroy the other.
 6. **Never delete.** Archive with a tripwire that fires if anything reads the archived path.
+   One exception, binding only once AGENTS.md 15.0.0 is ACTIVE: the n8n lane `disk-hygiene` may
+   remove the reclaimable items its reviewed rules select (scripts/disk_hygiene.py,
+   config/disk_hygiene_rules.json), and nothing else (AGENTS.md §24.12).
 7. **Dry-run before any live run** that writes durable state, sends to an operator surface, spends
    money, or touches a scheduled job. Quote the dry run's output.
 8. **Exit code 0 is not evidence of work.** Prove by a durable artifact that would not exist if the
@@ -3871,7 +3876,7 @@ a dispatcher row** (§23.11 — the merged reviewed registry-row PR is the decis
 token** (§23.8, §23.10 — a grant naming the workflow id; ACTIVE in 3.0.0) · branch-protection or
 required-context changes ·
 provisioning or funding any model or data
-plan · deleting anything · live broker authority (A4/A5): live flags, live sessions, 2FA, credentials, the
+plan · deleting anything · **changing the disk-hygiene rules or never-touch list** (§24.12 — a `config-write` grant and a reviewed PR) · live broker authority (A4/A5): live flags, live sessions, 2FA, credentials, the
 Stage 14 canary, and any change to `DETERMINISTIC_ENTRY_POINTS`, session-grant limits or the grant contract.
 
 **The deferred list should shrink each wave.** The escalate-never-resolve rule exists for cases
@@ -5757,12 +5762,13 @@ places, replaces or cancels an order, never writes a stop and never holds A4 or 
   §0; until then §0 and its four copies stay byte-identical, so an agent reading only the adapters is never told a
   PROPOSED exception is in force.*
 
-## 24.12 Disk hygiene: the only automated deletion (15.0.0, PROPOSED; narrows §0 rule 6, extends §9.3, §17)
+## 24.12 Disk hygiene: the only automated deletion (15.0.0, ACTIVE; narrows §0 rule 6, extends §9.3, §17)
 
-**Status: PROPOSED (MAJOR).** Binds nothing until the operator posts `APPROVE_AGENTS_POLICY_15_0_0 <pr_number>
-<head_sha>` (§20) and the ratifying edit merges; until then §0 rule 6 is unchanged, nothing is deleted
-automatically, and `scripts/disk_hygiene.py` may run as a dry run only (it writes a manifest and removes nothing).
-Once ACTIVE this is the only automated deletion this file permits; whatever the reviewed rules do not select stays
+**Status: ACTIVE (MAJOR), ratified `APPROVE_AGENTS_POLICY_15_0_0 1852 fc56728962fd51c94b3dc8cfd67e2df334eda88f`
+(§20; PR #1852, operator comment 2026-10-21, https://github.com/PatsKiller/tardeai/pull/1852#issuecomment-6324859562).** §0 rule 6 carries the one sentence and §17
+the one entry quoted under "Ratifying edit". An agent may still run `scripts/disk_hygiene.py` as a dry run only (it
+writes a manifest and removes nothing); removal happens only through the lane or the operator, as below. This is the
+only automated deletion this file permits; whatever the reviewed rules do not select stays
 under "Never delete. Archive with a tripwire".
 
 - **Scope: one script, two callers, no hand deletion.** Only `scripts/disk_hygiene.py`, reading
@@ -5827,9 +5833,10 @@ under "Never delete. Archive with a tripwire".
   then, the kill switch stops removal at once, and archiving `scripts/disk_hygiene.py` with a tripwire and removing
   the lane from n8n stops it for good; neither needs a grant beyond `config-write` for the live list. *Cause (§20):
   §20; every exception in §0 keeps a way back.*
-- **Ratifying edit.** On the operator's token the ratifying edit: sets this status to ACTIVE and the header block to
-  15.0.0 ACTIVE with `Supersedes` 14.0.0; flips the banner and the version row; appends, directly after rule 6's
-  first sentence ("…reads the archived path."), exactly this sentence, and repeats it byte for byte in `CLAUDE.md`,
+- **Ratifying edit (done 2026-10-21, after `APPROVE_AGENTS_POLICY_15_0_0 1852 fc56728962fd51c94b3dc8cfd67e2df334eda88f`).**
+  The ratifying edit set this status to ACTIVE and the header block to
+  15.0.0 ACTIVE with `Supersedes` 14.0.0; flipped the banner and the version row; appended, directly after rule 6's
+  first sentence ("…reads the archived path."), exactly this sentence, and repeated it byte for byte in `CLAUDE.md`,
   `.cursor/rules/00-tradeai-work-policy.mdc`, `.github/copilot-instructions.md` and `.goosehints`
   (`tests/test_agents_section_zero_parity.py`; `CLAUDE.md` is the operator's file):
 
@@ -5839,13 +5846,13 @@ under "Never delete. Archive with a tripwire".
      config/disk_hygiene_rules.json), and nothing else (AGENTS.md §24.12).
   ```
 
-  inserts into §17, directly after "deleting anything ·", exactly this entry:
+  inserted into §17, directly after "deleting anything ·", exactly this entry:
 
   ```
    **changing the disk-hygiene rules or never-touch list** (§24.12 — a `config-write` grant and a reviewed PR) ·
   ```
 
-  and makes the §0 and §17 pins strip them the way they strip the 5.0.0 and 14.0.0 sentences
+  and made the §0 and §17 pins strip them the way they strip the 5.0.0 and 14.0.0 sentences
   (`tests/test_agents_policy_4_1_0_amendment.py`, `4_3_0`, `4_4_0`, `4_6_0`, `5_0_0`, `14_0_0`; `5_1_0` and `5_2_0`
   take the new §0 digest, which `tests/test_agents_policy_15_0_0_disk_hygiene.py` computes). *Cause (§20): §20 — the
   operator approves any change to §0 and §17; until then §0 and its four copies stay byte-identical, so an agent
@@ -5857,7 +5864,7 @@ under "Never delete. Archive with a tripwire".
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 15.0.0 | 2026-10-18 | PROPOSED | MAJOR | §24.12 "Disk hygiene: the only automated deletion" added, one sentence proposed for §0 rule 6 and one entry proposed for §17 (both inserted by the ratifying edit; §0, §17 and the four adapters are byte-identical on this branch). Operator-directed 2026-10-18, verbatim: "i approve automatic deletion would need an AGENTS.md amendment" (root disk 89%; about 100 GB of stale clones/worktrees and 36 GB of old releases). Once ACTIVE, the weekly n8n lane `disk-hygiene` (or the operator at the CLI) may run ONLY `scripts/disk_hygiene.py` under `config/disk_hygiene_rules.json` to remove: git clones/worktrees that are clean, have no untracked files and no unpushed commits, are merged into `origin/main`, are referenced by no CURRENT release, unit or crontab line, hold no process cwd and are idle past N days; and release directories other than CURRENT, the previous release and the newest N. A code-enforced never-touch list (db_backups, persistent-state, models, .env/credential/cookie/token paths, .ssh, .config, Docker and n8n volumes) holds over every rule; changing the rules or the list is an operator config change (config-write grant + reviewed PR; new §17 entry "changing the disk-hygiene rules or never-touch list"). Every apply needs a fresh manifest, re-validates each item, respects per-run byte/item caps and writes a `LaneRunReceipt@v2` with each removed path, size and rule evidence; the first live apply follows the operator's review of a manifest; kill switch = remove the lane from `TRADEAI_N8N_RELAY_LIVE_LANES` or set `auto_apply` false. No agent deletes by hand; data, backups, DB rows and credentials stay under "Never delete". Open gap: `scripts/disk_hygiene_enforcer.py` (release and backup removal) is not covered and is retired or folded by its own PR. MAJOR: it narrows §0 rule 6 for one lane (version policy; precedent 5.0.0, 14.0.0). Tests: `tests/test_agents_policy_15_0_0_disk_hygiene.py`. | PENDING — operator approval `APPROVE_AGENTS_POLICY_15_0_0 <pr_number> <head_sha>` (§20); per-PR word, because the ratifying edit changes `AGENTS.md` §0 and §17. |
+| 15.0.0 | 2026-10-18 | ACTIVE | MAJOR | §24.12 "Disk hygiene: the only automated deletion" added, one sentence added to §0 rule 6 and one entry added to §17 (both inserted by the ratifying edit in `AGENTS.md`, the four adapters and §17; absent while PROPOSED). Operator-directed 2026-10-18, verbatim: "i approve automatic deletion would need an AGENTS.md amendment" (root disk 89%; about 100 GB of stale clones/worktrees and 36 GB of old releases). Once ACTIVE, the weekly n8n lane `disk-hygiene` (or the operator at the CLI) may run ONLY `scripts/disk_hygiene.py` under `config/disk_hygiene_rules.json` to remove: git clones/worktrees that are clean, have no untracked files and no unpushed commits, are merged into `origin/main`, are referenced by no CURRENT release, unit or crontab line, hold no process cwd and are idle past N days; and release directories other than CURRENT, the previous release and the newest N. A code-enforced never-touch list (db_backups, persistent-state, models, .env/credential/cookie/token paths, .ssh, .config, Docker and n8n volumes) holds over every rule; changing the rules or the list is an operator config change (config-write grant + reviewed PR; new §17 entry "changing the disk-hygiene rules or never-touch list"). Every apply needs a fresh manifest, re-validates each item, respects per-run byte/item caps and writes a `LaneRunReceipt@v2` with each removed path, size and rule evidence; the first live apply follows the operator's review of a manifest; kill switch = remove the lane from `TRADEAI_N8N_RELAY_LIVE_LANES` or set `auto_apply` false. No agent deletes by hand; data, backups, DB rows and credentials stay under "Never delete". Open gap: `scripts/disk_hygiene_enforcer.py` (release and backup removal) is not covered and is retired or folded by its own PR. MAJOR: it narrows §0 rule 6 for one lane (version policy; precedent 5.0.0, 14.0.0). Tests: `tests/test_agents_policy_15_0_0_disk_hygiene.py`. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_15_0_0 1852 fc56728962fd51c94b3dc8cfd67e2df334eda88f` (operator, PR #1852 comment by PatsKiller 2026-10-21T19:37:58Z, https://github.com/PatsKiller/tardeai/pull/1852#issuecomment-6324859562, verbatim: "APPROVE_AGENTS_POLICY_15_0_0 1852 fc56728962fd51c94b3dc8cfd67e2df334eda88f"); ratified by this edit on #1852's branch; ratifying edit inserts the §0 rule 6 sentence in `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/00-tradeai-work-policy.mdc`, `.github/copilot-instructions.md` and `.goosehints`, and the §17 entry; approval phrase as proposed `APPROVE_AGENTS_POLICY_15_0_0 <pr_number> <head_sha>`; per-PR word, because it changes `AGENTS.md` §0 and §17. Effective 2026-10-21. |
 | 14.0.0 | 2026-10-16 | ACTIVE | MAJOR | §24.11 "Read-only broker sync — the `broker-read` grant" added, and one sentence added to §0 rule 2 (inserted by the ratifying edit in `AGENTS.md` and the four adapters; it was absent while PROPOSED). Operator request 2026-10-16: "make that bash so agents can run, make amendment, not trading just reading, update agents.md". With an active operator `broker-read` guard grant (≤ 4 h, one use per run, remotely grantable, revocable), an agent may invoke ONLY `scripts/ops/broker_read_sync.sh` — the repo form of the operator's `sync_all_readonly.sh`: a closed eight-step allowlist (`broker_read_sync_policy.STEPS`) of Schwab, Alpaca, moomoo and SnapTrade position and transaction reads into our own stores, dry run by default, `--apply` to write, `--plan` contacting no broker. It refuses unless the trading lock is LOCKED for every broker, the Schwab access mode resolves to `read_only` for the run, the static capability audit of every step's effective import closure is clean, and it runs from the served release. `.env` is sourced only inside each step's own shell and never printed; output is scrubbed. Re-auth, token refresh, 2FA and flags are unreachable (runtime stubs, broker-host non-GET refusal); no token → `needs_operator_reauth`, stop. Stop managers, stop sync, options lifecycle, defense execution, order pilots, approval/2FA, order transports, the API server and active trader are excluded and refused at import; CI pins it (`tests/test_broker_read_sync_20261016.py`). Receipt `BrokerReadSyncReceipt@v1`. Guard scope `broker-read` in `bin/guard` and `.cursor/hooks/guard-lib.sh` (operator-only guard configuration, carried in the PR for review). MAJOR: it narrows §0 rule 2 for one read-only purpose (version policy; precedent 5.0.0). Numbered 14.0.0 because 12.1.0 (nightly cutover controller) and 13.0.0 (PR #1830) are claimed. Tests: `tests/test_agents_policy_14_0_0_broker_read.py`. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_14_0_0 1838 0d4940cda` (operator, PR #1838 comment by PatsKiller 2026-10-16T22:44:55Z, verbatim: "APPROVE_AGENTS_POLICY_14_0_0 1838 0d4940cda"); merged #1838 as `0c5998042` (operator-merged 2026-10-16T22:44:57Z) while PROPOSED; ratifying edit inserts the §0 rule 2 sentence in `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/00-tradeai-work-policy.mdc`, `.github/copilot-instructions.md` and `.goosehints`; per-PR word, because it changes `AGENTS.md` §0. Effective 2026-10-16. |
 | 12.0.0 | 2026-10-15 | ACTIVE | MAJOR | Operator directive 2026-10-15 "N8N Cutover Decision": every lane family cuts over to n8n except F07 (long-running daemons, @reboot) and registry_systemd assets (deferred this iteration). §23.25 added; for the approved families it supersedes the §23.14 scheduling restriction and the §24.1 P0/P1 placement by reference (§23.14 and §24.1 text unchanged); host-side placement rationales are not blockers; F07w and F10 keep independent backstops. Grants nothing beyond scheduling. §0, §2, §2A, §7A, §17 and §22 byte-identical. Tests: `tests/test_agents_policy_12_0_0_cutover_directive.py`. The ratifying edit set the header to 12.0.0 ACTIVE, `Supersedes` 11.0.0. | **RATIFIED 2026-10-15** (`APPROVE_AGENTS_POLICY_12_0_0 1779 4aeb8cf4e`, §20; PR #1779 comment by PatsKiller 2026-10-15T21:12:48Z); merged #1779 as `818d6d9c4`, ratified by this edit. |
 | 11.0.0 | 2026-10-14 | ACTIVE | MAJOR | Operator-directed 2026-10-14: n8n is the primary orchestration and automation layer, with "a mandatory standard framework for every n8n workflow, contract, integration and automation". §23.24 "Mandatory n8n workflow framework" added: every workflow in `m8m-n8n` declares a class (business-critical, resilience, AI/LLM, monitoring/compliance) and an owner, and meets six areas, each element with a check that exists (E) or is proposed (P): Monitoring (success joined by `run_id`, failure = error workflow, performance = timeout + p95 bound, capacity = class caps + start lag, dependency = `connects_to`); Alerting (failure, SLA breach watched outside n8n, performance degradation, integration failure routed by class with refusals as data, AI/LLM exception, `runbook_id` on every page; delivery stays with the host comms gateway, P0/P1 never via n8n); Logging (execution, error, audit with a non-superuser n8n DB role, security, change = generated from git + scheduled drift check paging P1); Recovery (one retry owner = Run Lane once built, half-open breakers, declared fallback, dead-letter, manual-recovery runbook, semantic effect key); Security (authN, authZ with one reconciled live authority, secrets, data protection, audit trail); AI/LLM governance (registered template, process id only, caps, closed schema, host re-check and grounding, output guardrails, HITL with host-record authority). Activation bar once ACTIVE: no activation or stage promotion without passing; active non-compliant workflows remediated or archived within 30 days; proposed check `scripts/check_n8n_workflow_framework.py`. Reference documents listed in §23.24 (informational). Measured 2026-10-14: 16 active workflows, none compliant in any area (39% of checks partly met); re-measured 2026-10-15: 18, none compliant (40%). Grants nothing. §0, §2, §2A, §7A, §17, §22, §23.14 and §23.23 byte-identical. Tests: `tests/test_agents_policy_11_0_0_workflow_framework.py`. Numbered 11.0.0 after 10.0.0 (#1736; ACTIVE by #1740); renumbers to 10.1.0 if ruled MINOR; the ratifying edit set the header to 11.0.0 ACTIVE, `Supersedes` 10.0.0. | **RATIFIED 2026-10-15** (`APPROVE_AGENTS_POLICY_11_0_0 1747 89fb642cd`, §20; PR #1747 comment by PatsKiller 2026-10-15T11:51:39Z); content merged via #1754 (`94601ff69`), ratified by this edit. |

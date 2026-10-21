@@ -78,6 +78,17 @@ RULE_2_EXCEPTION_14_0_0 = (
     "\n   read; it never sees a credential value, re-authenticates, changes a flag or reaches an order"
     "\n   route (AGENTS.md §24.11)."
 )
+# AGENTS.md 15.0.0 (ACTIVE 2026-10-21, ratified APPROVE_AGENTS_POLICY_15_0_0 1852 fc5672896): §0 rule 6 gains this one
+# sentence and §17 this one entry. Stripped before hashing like the 5.0.0 and 14.0.0 sentences; both and the new
+# digests are pinned by tests/test_agents_policy_15_0_0_disk_hygiene.py.
+RULE_6_EXCEPTION_15_0_0 = (
+    "\n   One exception, binding only once AGENTS.md 15.0.0 is ACTIVE: the n8n lane `disk-hygiene` may"
+    "\n   remove the reclaimable items its reviewed rules select (scripts/disk_hygiene.py,"
+    "\n   config/disk_hygiene_rules.json), and nothing else (AGENTS.md §24.12)."
+)
+S17_ENTRY_15_0_0 = (
+    " **changing the disk-hygiene rules or never-touch list** (§24.12 — a `config-write` grant and a reviewed PR) ·"
+)
 PINNED_SECTIONS = {
     "§0": (
         "# 0 · If you read nothing else",
@@ -116,6 +127,7 @@ def _section(text: str, start: str, end: str) -> str:
     block = text[s.start() : s.start() + 1 + e.start()]
     block = block.replace(RULE_2_EXCEPTION_5_0_0, "")  # operator-requested amendment 5.0.0; see the constant
     block = block.replace(RULE_2_EXCEPTION_14_0_0, "")  # operator-requested amendment 14.0.0; see the constant
+    block = block.replace(RULE_6_EXCEPTION_15_0_0, "").replace(S17_ENTRY_15_0_0, "")  # 15.0.0; see the constants
     # §7A embeds a GENERATED table (render_source_of_truth.py); mask it so only rule text is pinned.
     # Operator 2026-10-10 ~18:40 ET ("Yes, from one to six", item 5); §20 PATCH.
     return re.sub(
