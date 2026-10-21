@@ -11,6 +11,7 @@ import TradePlanPicker from './TradePlanPicker'
 import ExitTypePicker from './ExitTypePicker'
 import StopContextPanel from './StopContextPanel'
 import TagChipGrid from './TagChipGrid'
+import RecommendationOriginCard from './RecommendationOrigin'
 import {
   SETUP_TYPE_GROUPS, SETUP_TYPE_CONFIG, MISTAKE_CONFIG, STRENGTH_CONFIG,
   MISTAKE_DEFAULTS, STRENGTH_DEFAULTS, EXIT_SIGNAL_ITEMS, EXIT_SIGNAL_CONFIG,
@@ -156,6 +157,7 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
         <div style={{ padding: 18 }}>
           {tab === 'Overview' && (
             <>
+            {trade.source === 'schwab' && <RecommendationOriginCard rec={trade.rec} status={trade.recStatus} />}
             <TradeReportReadiness score={tagScore} />
             <AiTradeCritique tradeKey={tradeKey} symbol={trade.symbol} />
             <StopIntelligencePanel tradeId={trade.id ?? trade.trade_instance_id ?? trade.trade_id} />
