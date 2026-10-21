@@ -15,9 +15,11 @@ on:
     # would let unrelated PRs skip the job and leave the check "Pending",
     # blocking merge. Run on every PR so the required check is always reported.
   workflow_dispatch:
-  # Nightly isolation run of the FULL (serial) profile -- see cio-hardening-full.
-  schedule:
-    - cron: "17 7 * * *"
+  # 2026-10-21 (alignment audit H1): the nightly moved to cio-full-suite-sharded.yml (schedule
+  # "17 7 * * *"). The serial `full` profile was cancelled at its 40-minute timeout on 8 of the
+  # last 10 nights (e.g. run 39563068389) and nothing alerted; the sharded suite covers every
+  # registered file plus the Postgres shard in a median 6 minutes. cio-hardening-full stays
+  # available on workflow_dispatch as the isolation reference.
 
 # A new push to a PR branch supersedes the run in flight; main runs never cancel.
 concurrency:
@@ -233,9 +235,9 @@ jobs:
   # The historical one-gate-at-a-time run. Same gates, same tail checks, as the
   # isolation reference: a test green in one profile and red in the other has a
   # hidden dependency on ordering or shared state. Not required (it is the slow
-  # one); nightly and on demand.
+  # one); on demand only since 2026-10-21 (the nightly is the sharded suite).
   cio-hardening-full:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -266,11 +268,15 @@ jobs:
   # A red post-merge or nightly run must be SEEN without blocking every open PR:
   # open (or comment on) one `ci-main-red` issue. The PR check stays fast; main
   # carries the full suite and this alarm.
+  # 2026-10-21 (alignment audit H1): a CANCELLED or TIMED-OUT main run is not green either. A
+  # job that hits timeout-minutes reports `cancelled` to `needs`, so the old failure-only test
+  # let 8 of 10 nightly timeouts pass silently. `timed_out` is listed too in case GitHub reports it.
   main-red-alert:
     needs: [cio-hardening, cio-hardening-full]
     if: >-
       always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' &&
-      (needs.cio-hardening.result == 'failure' || needs.cio-hardening-full.result == 'failure')
+      (contains(fromJSON('["failure","cancelled","timed_out"]'), needs.cio-hardening.result) ||
+       contains(fromJSON('["failure","cancelled","timed_out"]'), needs.cio-hardening-full.result))
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -280,11 +286,13 @@ jobs:
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       SHA: ${{ github.sha }}
       EVENT_NAME: ${{ github.event_name }}
+      R_FAST: ${{ needs.cio-hardening.result }}
+      R_FULL: ${{ needs.cio-hardening-full.result }}
     steps:
       - name: Open or update the ci-main-red issue
         run: |
           gh label create ci-main-red --color B60205 --description "cio-hardening red on main (post-merge/nightly)" --force
-          body="cio-hardening failed on main ($EVENT_NAME) at $SHA: $RUN_URL"
+          body="cio-hardening failed, timed out or was cancelled on main ($EVENT_NAME) at $SHA: $RUN_URL (cio-hardening=$R_FAST, cio-hardening-full=$R_FULL)"
           n="$(gh issue list --label ci-main-red --state open --json number --jq '.[0].number')"
           if [ -n "$n" ]; then
             gh issue comment "$n" --body "$body"
