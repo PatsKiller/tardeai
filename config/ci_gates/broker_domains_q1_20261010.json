@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "broker_domains_q1_20261010",
+  "files": [
+    "tests/test_broker_domains_q1_20261010.py"
+  ],
+  "anchor": "BROKER_DOMAINS_Q1",
+  "comment": [
+    "ANCHOR: BROKER_DOMAINS_Q1 — 2026-10-10 operator decisions CONSOLIDATION_PLAN §D (2)(3)(5)(6)(7)(13)(14):",
+    "registry rows finviz_enrichment / scalp_list / social_posts / yfinance_info_snapshot with the operator's",
+    "grant; StockTwits rate limit; latest_quote projection; quote-only get_best_quote (stored first, first",
+    "fresh provider, never the fan-out; legacy mode unchanged for execution-readiness callers); the Data",
+    "Broker's dead fallback revived bounded; yfinance_info_snapshot single writer; enrichment-cache merge tool",
+    "(dry run read-only; apply through the single writer, archive + tripwire + alias). Hermetic: fake DB,",
+    "stub providers, tmp_path stores. Listing it schedules nothing."
+  ]
+}

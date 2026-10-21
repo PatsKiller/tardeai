@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "test_host_paths_ratchet_20260925",
+  "files": [
+    "tests/test_check_test_host_paths_20260925.py",
+    "tests/test_cio_ci_profiles_20260925.py",
+    "tests/test_ci_pr_selection_20260925.py",
+    "tests/test_ci_shards_tree_attest_20261009.py"
+  ],
+  "comment": [
+    "2026-09-25 -- CI speed + evidence redesign: no new live-host paths in tests",
+    "(a test reading /home/johnclaw/trade-ai-releases broke #1234 on a deploy).",
+    "2026-10-09 -- sharded full suite (plan complete/disjoint/balanced, ci-gate",
+    "completeness) + tree-attested promote with a fake gh/git layer (flag off by default)."
+  ]
+}

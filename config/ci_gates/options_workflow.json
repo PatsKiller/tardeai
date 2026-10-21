@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "options_workflow",
+  "files": [
+    "tests/test_options_workflow.py",
+    "tests/test_options_workflow_execution.py",
+    "tests/test_options_workflow_journal.py",
+    "tests/test_options_workflow_submission.py",
+    "tests/test_options_workflow_entry.py"
+  ]
+}

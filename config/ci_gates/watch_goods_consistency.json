@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_goods_consistency",
+  "files": [
+    "tests/test_watch_goods_consistency_20260915.py"
+  ],
+  "comment": [
+    "2026-09-15 operator: goods tracked consistently across the watchlist and proposals."
+  ]
+}

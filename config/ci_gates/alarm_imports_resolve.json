@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "alarm_imports_resolve",
+  "files": [
+    "tests/test_alarm_imports_resolve.py"
+  ],
+  "comment": [
+    "C2: every symbol imported on an alarm path must resolve. Two incidents months",
+    "apart -- send_alert (never existed) and telegram_bot (module never existed) --",
+    "both sat in bare excepts and reported to nobody."
+  ]
+}

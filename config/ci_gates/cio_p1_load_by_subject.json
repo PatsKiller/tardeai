@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_p1_load_by_subject",
+  "files": [
+    "tests/test_cio_p1_load_by_subject.py"
+  ]
+}

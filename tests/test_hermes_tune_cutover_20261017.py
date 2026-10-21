@@ -662,5 +662,6 @@ def test_proof_fails_on_a_bad_verdict_or_a_cron_run(tmp_path, verdict, cron):
 
 
 def test_registered_in_the_cio_hardening_gates():
-    text = (ROOT / "scripts" / "run_cio_hardening_ci.py").read_text(encoding="utf-8")
+    from scripts.lib import ci_gates  # gates: one file per gate (2026-10-21)
+    text = ci_gates.registry_text(ROOT)
     assert "tests/test_hermes_tune_cutover_20261017.py" in text

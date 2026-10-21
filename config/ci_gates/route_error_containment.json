@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "route_error_containment",
+  "files": [
+    "tests/test_route_error_boundary.py"
+  ],
+  "comment": [
+    "cc-whole-site-residual-v1 (2026-09-03): the browser/state matrix caught",
+    "/v3/strategy throwing and rendering the ENTIRE shell blank. Every route is",
+    "now wrapped so one page's failure is contained and stated."
+  ]
+}

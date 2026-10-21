@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "local_llm_compat_20260927",
+  "files": [
+    "tests/test_local_llm_compat_registered_20260927.py"
+  ],
+  "comment": [
+    "2026-09-27 -- local_llm_compat registered with a hard cap; the shim logs",
+    "refusals instead of silently returning \"\" to its 18 importers."
+  ]
+}

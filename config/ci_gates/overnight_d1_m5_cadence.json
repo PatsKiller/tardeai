@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overnight_d1_m5_cadence",
+  "files": [
+    "tests/test_overnight_d1_m5_cadence.py"
+  ]
+}

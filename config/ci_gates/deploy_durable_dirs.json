@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "deploy_durable_dirs",
+  "files": [
+    "tests/test_deploy_durable_dirs.py"
+  ],
+  "comment": [
+    "Durable data directories must survive a promote. data/audit held a",
+    "39KB receipt written the same day and was a real dir inside the",
+    "release, so every deploy discarded it and the lane read SILENT."
+  ]
+}

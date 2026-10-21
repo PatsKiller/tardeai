@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "options_broker_gates_20260927",
+  "files": [
+    "tests/test_options_broker_gates_20260927.py"
+  ],
+  "comment": [
+    "2026-09-27 -- broker-layer order gate proofs for the options desk (per-task",
+    "execution-engineering grant): 2FA, kill switch, submit-time re-check, leg pin (strict",
+    "xfail: spec_from_intent rebuilds from the cache), stale quote (strict xfail: missing",
+    "age passes when a data_source is named), LLM cannot unlock."
+  ]
+}

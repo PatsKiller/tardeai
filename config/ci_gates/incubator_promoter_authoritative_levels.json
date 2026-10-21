@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "incubator_promoter_authoritative_levels",
+  "files": [
+    "tests/test_incubator_promoter_authoritative_levels_20260915.py"
+  ],
+  "comment": [
+    "2026-09-15: the incubator promoter proposed flat 2R geometry that the gate refused; nothing promoted since 07-01."
+  ]
+}

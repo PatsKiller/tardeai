@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "iris_fixes_20261009",
+  "files": [
+    "tests/test_iris_fixes_20261009.py"
+  ],
+  "comment": [
+    "Iris (operator 2026-10-09 \"fix\"): --freshness remediation runs an allowlisted argv via venv_python (was a",
+    "shell string, exit 127 in every release) and exits non-zero on failure; proposals de-duplicated (4,058",
+    "pending retire_channel rows were 32 channels); weekly scan --dry-run (no LLM, no writes) for the n8n shadow."
+  ]
+}

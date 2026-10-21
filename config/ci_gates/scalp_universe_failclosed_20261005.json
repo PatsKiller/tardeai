@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "scalp_universe_failclosed_20261005",
+  "files": [
+    "tests/test_scalp_universe_failclosed_20261005.py"
+  ],
+  "comment": [
+    "Momentum-scalp universe fails closed on unknown float/price (looked up first); min stop distance (2026-10-05)."
+  ]
+}

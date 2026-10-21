@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "research_reaches_surface",
+  "files": [
+    "tests/test_research_reaches_surface.py"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cron_hygiene_20260915",
+  "files": [
+    "tests/test_check_cron_sanity_resolves_like_cron_20260915.py"
+  ],
+  "comment": [
+    "2026-09-15 cron hygiene: dead-script check resolves like cron (cd dir, absolute paths)."
+  ]
+}

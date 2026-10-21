@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "operator_control_isolated_db",
+  "files": [
+    "tests/test_operator_control_isolated_db.py"
+  ],
+  "comment": [
+    "cc-whole-site-residual-v1 (2026-09-03): operator controls proven against a",
+    "DISPOSABLE PostgreSQL cluster -- its own initdb data directory in a temp",
+    "path, loopback-only on a dynamic port, test-only role and database,",
+    "destroyed afterwards. The real admin_write guard runs its full",
+    "ACCESS -> CONFIRM -> APPLY -> AUDIT chain; nothing is mocked. Skips",
+    "cleanly on a host without PostgreSQL server binaries."
+  ]
+}

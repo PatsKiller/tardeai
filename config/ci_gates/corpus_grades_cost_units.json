@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "corpus_grades_cost_units",
+  "files": [
+    "tests/test_corpus_grades_and_cost_units.py"
+  ]
+}

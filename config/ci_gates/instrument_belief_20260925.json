@@ -1,0 +1,23 @@
+{
+  "schema": "CiGate@v1",
+  "name": "instrument_belief_20260925",
+  "files": [
+    "tests/test_checkpoint_subject_binding_20260925.py",
+    "tests/test_outcome_settlement_20260930.py",
+    "tests/test_outcome_resolution.py",
+    "tests/test_cio_instrument_record.py",
+    "tests/test_instrument_belief_mutation_20260925.py",
+    "tests/test_wake_subject_selector.py",
+    "tests/test_decide_consults_wake_hits.py"
+  ],
+  "comment": [
+    "2026-09-24 — agentic-memory tranche 1 (docs/agentic-memory-gap D2).",
+    "Slice 1: outcome checkpoints bind a registry subject + subject_key and a",
+    "real due_at at mint; legacy null-due event-relative rows project to",
+    "created_at+30d; one InstrumentRecord store path. Slice 2 adds the",
+    "belief block + mutation test to this same gate.",
+    "Slice 2: beliefs on the record (rail + writer) and the mutation",
+    "test: with vs without a belief, the gate route / next question and",
+    "the wake commitment differ; no behaviour key anywhere in either."
+  ]
+}

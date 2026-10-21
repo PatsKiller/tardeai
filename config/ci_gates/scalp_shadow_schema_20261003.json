@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "scalp_shadow_schema_20261003",
+  "files": [
+    "tests/test_scalp_shadow_logger_schema_20261003.py"
+  ],
+  "comment": [
+    "Shadow ignition engine skips startup DDL when its schema exists (crashed on lock timeouts from 09-17)."
+  ]
+}

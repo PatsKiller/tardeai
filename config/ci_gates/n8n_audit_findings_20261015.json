@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_audit_findings_20261015",
+  "files": [
+    "tests/test_n8n_audit_findings_20261015.py"
+  ],
+  "anchor": "N8N_AUDIT_FINDINGS_20261015",
+  "comment": [
+    "ANCHOR: N8N_AUDIT_FINDINGS_20261015 — third-party n8n architecture audit (pinned e355be188), gap register",
+    "DD03-DD08 + DD14, each reproduced from the auditor's probes and fixed: request identity (a replayed key never",
+    "returns another lane/mode/workflow's row; live relay runs need a validated namespace; every executor path",
+    "refuses an unvalidated p: row), one retry owner per key namespace with a typed retry block and a durable",
+    "dead letter on v1 and v2, FAILED effect claims held unless proven pre-effect, the assert_fence late-write",
+    "fence and late-completion incident, the attempt-bound output verdict (immutable LaneRunReceipt@v2), per-",
+    "request policy reload, and the relay route table/body strictness. Hermetic: tmp_path ledgers and files,",
+    "fake runners; no lane process, network, secret or broker."
+  ]
+}

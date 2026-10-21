@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "grok_g10_g12_20261011",
+  "files": [
+    "tests/test_grok_g10_g12_20261011.py"
+  ],
+  "anchor": "GROK_G10_G12_20261011",
+  "comment": [
+    "ANCHOR: GROK_G10_G12_20261011 — honest non-zero exits, lockup and hermes weights off the",
+    "release tree, and --alert/--send/--telegram as sender tokens. The n8n: SIEM skip is the",
+    "g11 implementation; its own test is on the n8n_siem_bridge gate. Hermetic: tmp paths,",
+    "psycopg2 stubbed only when the driver is absent."
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ci_alert_cancelled_timeout_20261021",
+  "files": [
+    "tests/test_ci_alert_cancelled_timeout_20261021.py"
+  ],
+  "anchor": "CI_ALERT_CANCELLED_TIMEOUT_20261021",
+  "comment": [
+    "ANCHOR: CI_ALERT_CANCELLED_TIMEOUT_20261021 — alignment audit H1: main-red-alert fires on failure, cancelled",
+    "or timed_out; the nightly is cio-full-suite-sharded on schedule with its own nightly-red-alert."
+  ]
+}

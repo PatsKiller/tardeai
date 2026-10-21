@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lane_produced_count_cw_1_20261015",
+  "files": [
+    "tests/test_lane_produced_count_cw_1_20261015.py"
+  ],
+  "anchor": "LANE_PRODUCED_COUNT_CW_1_20261015",
+  "comment": [
+    "ANCHOR: LANE_PRODUCED_COUNT_CW_1_20261015 — cutover wave 1 lanes (batch 1 of 6) write LaneRunReceipt@v2",
+    "produced_count via write_lane_receipt(output=...) and opt into the executor output verdict (allowlist",
+    "output_receipt v2). Each lane's real main() runs in a fake n8n attempt with its DB/provider work stubbed:",
+    "produced / empty_allowed / RUN_FAILED empty_output on a fatal skip. Hermetic: TRADEAI_STATE_ROOT = tmp."
+  ]
+}

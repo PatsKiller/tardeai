@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "youtube_cookie_path_20261014",
+  "files": [
+    "tests/test_youtube_cookie_path_20261014.py"
+  ],
+  "anchor": "YOUTUBE_COOKIE_PATH_20261014",
+  "comment": [
+    "ANCHOR: YOUTUBE_COOKIE_PATH_20261014 — the YouTube cookie jar resolves through lib.youtube_cookie_path:",
+    "canonical ~/.config/tradeai/youtube_cookies.txt (TRADEAI_YOUTUBE_COOKIE_FILE override), legacy release-dir",
+    "config/youtube_cookies.txt read-only fallback flagged amber; Ops UI writer writes canonical 0600.",
+    "Hermetic: tmp HOME / tmp project roots / synthetic cookie rows, fake db_adapter."
+  ]
+}

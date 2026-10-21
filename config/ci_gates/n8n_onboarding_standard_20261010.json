@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_onboarding_standard_20261010",
+  "files": [
+    "tests/test_n8n_onboarding_standard_20261010.py"
+  ],
+  "anchor": "N8N_ONBOARDING_STANDARD",
+  "comment": [
+    "ANCHOR: N8N_ONBOARDING_STANDARD (2026-10-10, operator ~16:35/16:40/16:50 ET): the n8n configuration reference,",
+    "onboarding standard and monitoring/remediation standard exist with headers, carry the 2026-10-10 rules",
+    "(RC1-RC10), quote numbers equal to the code (relay ROUTES, notifier defaults, diagnoser caps, class caps,",
+    "dispatcher naming), stale statements stay gone, and AGENTS.md points at the standard. Static reads only."
+  ]
+}

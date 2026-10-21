@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "legacy_send_captures_message_id",
+  "files": [
+    "tests/test_legacy_send_captures_message_id_20260922.py"
+  ],
+  "comment": [
+    "A DELIVERED message must not discard its provider id. _legacy_send called",
+    "the bool wrapper instead of _raw_send_telegram_result, and only the result",
+    "variant populates _LAST_MESSAGE_IDS -- so all 121 LEGACY_DELIVERED messages",
+    "in 24h reached Telegram with the id thrown away one frame later, and",
+    "attach_telegram_message_id honestly no-opped at all 7 wired call sites."
+  ]
+}

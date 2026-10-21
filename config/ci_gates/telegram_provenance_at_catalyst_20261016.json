@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "telegram_provenance_at_catalyst_20261016",
+  "files": [
+    "tests/test_telegram_provenance_and_at_catalyst_20261016.py"
+  ],
+  "comment": [
+    "Telegram provenance footer (\"· via n8n <lane> <HH:MM>\" / \"· via cron <lane>\") + an explicit catalyst line on",
+    "every Active Trader alert via the data broker (operator 2026-10-16: \"how do i know whats n8n did\", \"some",
+    "scalp and active traders didn't have catalyst\")."
+  ]
+}

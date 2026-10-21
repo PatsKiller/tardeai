@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "decision_quality",
+  "files": [
+    "tests/test_cio_decision_quality_pr1.py"
+  ]
+}

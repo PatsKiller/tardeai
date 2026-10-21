@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "momentum_scalp_proposal_contract_20260928",
+  "files": [
+    "tests/test_momentum_scalp_proposal_contract_20260928.py"
+  ],
+  "comment": [
+    "2026-09-28 — momentum-scalp proposal contract: the $3 momentum floor, the",
+    "analyst gate and the shared 5% spread ceiling discarded every scalp GO since",
+    "2026-07-13; the strategy YAML now carries a paper-only proposal_contract."
+  ]
+}

@@ -691,7 +691,8 @@ def test_cutover_live_args_are_declared_and_applied():
 
 
 def test_registered_in_the_cio_hardening_gates():
-    text = (ROOT / "scripts" / "run_cio_hardening_ci.py").read_text(encoding="utf-8")
+    from scripts.lib import ci_gates  # gates: one file per gate (2026-10-21)
+    text = ci_gates.registry_text(ROOT)
     assert "tests/test_hermes_learning_prereqs_20261015.py" in text
 
 

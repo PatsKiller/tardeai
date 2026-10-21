@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "advice_digests_20261008",
+  "files": [
+    "tests/test_advice_digests_20261008.py"
+  ],
+  "comment": [
+    "Advice digests (operator 2026-10-08): entry alerts / CIO advisory notes / thesis updates / watchlist BUY_READY",
+    "held for the 10/15/17 ET HTML digests; scalps, approvals and stop/protection stay immediate."
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ledger_transfer_direction_20261006",
+  "files": [
+    "tests/test_ledger_transfer_direction_20261006.py"
+  ],
+  "comment": [
+    "Schwab ledger keeps transfer/journal direction; >1y fetch chunked; dry run never pages (2026-10-06)."
+  ]
+}

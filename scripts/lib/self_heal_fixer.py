@@ -432,8 +432,11 @@ def build_prompt(
         f"code error (not a transient failure). The harness, not you, will commit, push and open the PR.",
         "## Rails (AGENTS.md section 0, verbatim; they bind you)\n" + rails,
         "## Hard limits enforced by code on your diff (a breach refuses the whole job)\n"
-        f"- Never edit: {refuse}. `scripts/run_cio_hardening_ci.py` is append-only: you may ONLY add your new test "
-        'file to the GATES list (a new `("name", ["tests/test_x.py"]),` entry with a comment); no other edit.\n'
+        f"- Never edit: {refuse}. CI registration is add-only: register your new test by ADDING ONE new file "
+        "`config/ci_gates/<name>.json` = "
+        '`{"schema": "CiGate@v1", "name": "<name>", "files": ["tests/test_x.py"], "comment": ["why"]}` '
+        "(name == file stem); never modify or remove an existing gate file, never edit "
+        "`scripts/run_cio_hardening_ci.py`.\n"
         "- Never delete, skip, xfail, deselect or weaken a test; never remove an assert. Tests must stay hermetic: "
         "TRADE_AI_CI=1 is set; fake connections, tmp_path state; no DB, network, broker, Telegram, n8n or .env.\n"
         "- Never run the lane, a live script, git commit/push, gh, crontab, systemctl, psql or curl. Allowed shell: "
@@ -448,7 +451,7 @@ def build_prompt(
         "below with fakes. The harness copies your test onto the base commit and REQUIRES it to fail there.\n"
         "2. Fix the defect in the lane's code.\n"
         f"3. Run `{py} <your test> -q` until it passes; run the neighbouring tests of the file you changed.\n"
-        "4. Register the new test file in scripts/run_cio_hardening_ci.py GATES (append-only).\n"
+        "4. Register the new test file: add config/ci_gates/<name>.json (one new file; add-only).\n"
         '5. Finish with ONE line of JSON: {"root_cause": "...", "fix": "...", "tests": ["tests/..."], '
         '"confidence": 0.0-1.0}. If you cannot fix it safely, change nothing and say why in that JSON.',
         "## Evidence pack\n```json\n" + json.dumps(evidence, indent=1, sort_keys=True) + "\n```",
@@ -1054,9 +1057,13 @@ def guard_diff(
     weak_re = re.compile(g["weakening_added_re"])
     line_re = re.compile(g["append_only_line_re"])
     append_only = set(g.get("append_only_paths") or [])
+    # 2026-10-21: gates are one file per gate (config/ci_gates/<name>.json). Registering a test
+    # = ADDING one such file; modifying, renaming or deleting an existing one is a hard refusal.
+    add_only_dirs = tuple(g.get("append_only_dirs") or ())
+    added_in_dir = {p for s, p in changes if s == "A" and p.startswith(add_only_dirs)} if add_only_dirs else set()
     paths = sorted({p for _s, p in changes} | set(stats))
     for p in paths:
-        if p in append_only:
+        if p in append_only or p in added_in_dir:
             continue
         hit = _match_any(p, g["refuse_paths"])
         if hit:
@@ -1064,6 +1071,16 @@ def guard_diff(
     for status, p in changes:
         if status == "D" and test_re.match(p):
             out.append({"hard": True, "code": "test_deleted", "path": p})
+        if add_only_dirs and p.startswith(add_only_dirs) and status != "A":
+            out.append({"hard": True, "code": "append_only:gate_file_changed", "path": p})
+    for p in sorted(added_in_dir):
+        from . import ci_gates
+
+        body = files.get(p) or {"added": []}
+        try:
+            ci_gates.validate(json.loads("\n".join(body["added"])), stem=p.rsplit("/", 1)[-1].removesuffix(".json"))
+        except (ValueError, ci_gates.GateRegistryError) as exc:
+            out.append({"hard": True, "code": "append_only:invalid_gate_file", "path": p, "why": str(exc)[:200]})
     for p, body in files.items():
         leak = next((h for h in (secret_like(s) for s in body["added"]) if h), None)
         if leak:

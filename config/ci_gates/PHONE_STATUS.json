@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "PHONE_STATUS",
+  "files": [
+    "tests/test_phone_status_endpoint_20261009.py"
+  ],
+  "comment": [
+    "PHONE_STATUS — 2026-10-09: read-only Tailscale-only phone status endpoint; hermetic tests only",
+    "(bind refusal, HMAC/envelope auth, window, replay, rate, <= 2 KB, no secrets in output)."
+  ]
+}

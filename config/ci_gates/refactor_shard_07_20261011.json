@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "refactor_shard_07_20261011",
+  "files": [
+    "tests/test_refactor_shard_07_20261011.py"
+  ]
+}

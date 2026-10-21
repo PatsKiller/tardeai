@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "falsifiable_calls_20261003",
+  "files": [
+    "tests/test_falsifiable_calls_20261003.py"
+  ],
+  "comment": [
+    "P1 every call is falsifiable + P4 per-agent calibration (operator 2026-10-03)."
+  ]
+}

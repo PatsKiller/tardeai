@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "thesis_evidence_not_circular_20260927",
+  "files": [
+    "tests/test_thesis_evidence_not_circular_20260927.py"
+  ],
+  "comment": [
+    "2026-09-27 -- thesis evidence excludes the house's own conclusions",
+    "(cio_decision etc.) and rows that do not name the symbol/company."
+  ]
+}

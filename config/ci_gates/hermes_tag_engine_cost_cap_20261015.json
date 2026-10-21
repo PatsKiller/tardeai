@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermes_tag_engine_cost_cap_20261015",
+  "files": [
+    "tests/test_hermes_tag_engine_cost_cap_20261015.py"
+  ],
+  "comment": [
+    "hermes_tag_engine dollar cap (2026-10-15): the registry row had no daily_cost_cap_usd, so check_cost_cap",
+    "logged llm_lane_unregistered and enforced no process cap. Pins: the row declares $0.05; the warning no",
+    "longer fires; with mocked ledger spend, spend + projection over the cap is refused COST_CAP_EXCEEDED",
+    "scope=process; an uncapped control id still warns. Hermetic: no DB, ledger replaced."
+  ]
+}

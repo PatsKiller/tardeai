@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "gog_broker_approval",
+  "files": [
+    "tests/test_gog_broker_approval.py"
+  ],
+  "comment": [
+    "The gog credential broker: an unapproved agent must be refused ON APPROVAL,",
+    "and the broker must never read the operator-only ~/.openclaw/credentials path."
+  ]
+}

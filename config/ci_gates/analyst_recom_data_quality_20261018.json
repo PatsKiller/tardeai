@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "analyst_recom_data_quality_20261018",
+  "files": [
+    "tests/test_analyst_recom_data_quality_20261018.py"
+  ],
+  "comment": [
+    "Reject contradictory/off-scale analyst recommendations at cache and DB admission."
+  ]
+}

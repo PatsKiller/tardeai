@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_evidence_gates_20261018",
+  "files": [
+    "tests/test_n8n_evidence_attestation_20261018.py",
+    "tests/test_n8n_retirement_eligibility_20261018.py"
+  ],
+  "comment": [
+    "Host signatures and exact semantic snapshots; eligibility observes real elapsed slots only.",
+    "Ephemeral in-memory keys, fake host reads and temporary artifacts; no runtime grants or effects."
+  ]
+}

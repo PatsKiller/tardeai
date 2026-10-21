@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overnight_d2_pending_data",
+  "files": [
+    "tests/test_overnight_d2_pending_data.py"
+  ]
+}

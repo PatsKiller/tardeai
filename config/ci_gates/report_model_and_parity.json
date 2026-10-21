@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "report_model_and_parity",
+  "files": [
+    "tests/test_cio_report_v2.py",
+    "tests/test_cio_report_architecture.py",
+    "tests/test_cio_report_analytics.py",
+    "tests/test_cio_report_charts.py",
+    "tests/test_cio_report_pipeline.py"
+  ]
+}

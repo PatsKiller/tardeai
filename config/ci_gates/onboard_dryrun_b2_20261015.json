@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "onboard_dryrun_b2_20261015",
+  "files": [
+    "tests/test_onboard_dryrun_b2_20261015.py"
+  ],
+  "anchor": "ONBOARD_DRYRUN_B2_20261015",
+  "comment": [
+    "ANCHOR: ONBOARD_DRYRUN_B2_20261015 — n8n onboarding batch B2 (lane disposition 2026-10-15, MIGRATE_N8N, no",
+    "allowlist entry, no --dry-run before): an offline --dry-run that wins over --apply for 7 appender/writer",
+    "lanes (deepseek-balance-snapshot, plan-drift-revalidator, enrich-proposal-technicals, reclassify-momentum-",
+    "proposals, active-trader-session-review, active-trader-signal-calibration, proposal-lifecycle). Hermetic in-",
+    "process proof: write/send/network/subprocess primitives recorded, zero calls, one LaneOutput@v1 line.",
+    "Listing it schedules nothing."
+  ]
+}

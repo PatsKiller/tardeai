@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lane_produced_count_cw_3_20261015",
+  "files": [
+    "tests/test_lane_produced_count_cw_3_20261015.py"
+  ],
+  "anchor": "LANE_PRODUCED_COUNT_CW_3_20261015",
+  "comment": [
+    "ANCHOR: LANE_PRODUCED_COUNT_CW_3_20261015 — cutover wave 1 lanes (batch 3: identity sweep, journal tilt,",
+    "material change, strategy cards, proposal backtest, SEC Form 4, source attribution, agent performance) write",
+    "LaneRunReceipt@v2 produced_count and opt into the executor output verdict (allowlist output_receipt v2). Real",
+    "entry point per lane in a fake n8n attempt, DB/provider stubbed: produced / empty_allowed / RUN_FAILED",
+    "empty_output on a fatal skip; established receipt paths pinned. Hermetic: TRADEAI_STATE_ROOT = tmp."
+  ]
+}

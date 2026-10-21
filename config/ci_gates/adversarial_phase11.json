@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "adversarial_phase11",
+  "files": [
+    "tests/test_cio_phase11_adversarial.py"
+  ]
+}

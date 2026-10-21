@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "financial_reconciliation",
+  "files": [
+    "tests/test_financial_reconciliation.py"
+  ],
+  "comment": [
+    "cc-whole-site-residual-v1 (2026-09-03): record-level reconciliation. A",
+    "store-level \"these two files disagree\" is true but blunt. Each divergent",
+    "record is decided against the authority that governs it -- broker positions",
+    "for lot totals, live broker order state for stops -- and a verdict may never",
+    "cite recency. What no authority can settle stays UNRESOLVED and keeps both",
+    "originals; nothing disputed is ever handed a value."
+  ]
+}

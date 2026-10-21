@@ -1,0 +1,22 @@
+{
+  "schema": "CiGate@v1",
+  "name": "refactor_w1_bucket_w3_20261010",
+  "files": [
+    "tests/test_refactor_w1_lane_receipt_20261010.py",
+    "tests/test_refactor_w1_regime_collector_20261010.py",
+    "tests/test_refactor_w1_symbol_profiles_20261010.py",
+    "tests/test_refactor_w1_hermes_config_governor_20261010.py",
+    "tests/test_refactor_w1_llm_retry_monitor_20261010.py",
+    "tests/test_refactor_w1_maturity_remeasure_20261010.py",
+    "tests/test_refactor_w1_watchlist_sync_20261010.py"
+  ],
+  "anchor": "REFACTOR_W1_BUCKET_W3",
+  "comment": [
+    "ANCHOR: REFACTOR_W1_BUCKET_W3 — 2026-10-10 cron->n8n refactor wave 1, bucket W3: --dry-run that",
+    "cannot reach a write (READ ONLY session / no connection / return-before-write, source-order",
+    "pinned), LaneRunReceipt@v1 <state_root>/data/runtime/<script>_last.json with ok_at on success",
+    "only, honest exit codes. Scripts: market_regime_collector, build_symbol_profiles,",
+    "refresh_symbol_cards, fund_technicals_enrich, hermes_config_governor, llm_retry_monitor,",
+    "maturity_remeasure, sync_watchlist_items_to_db. Hermetic: fake DB, tmp state root. Schedules nothing."
+  ]
+}

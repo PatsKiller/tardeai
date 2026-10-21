@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "refactor_w3_bucket_x2_20261010",
+  "files": [
+    "tests/test_refactor_w3_hermes_aegis_lanes_20261010.py"
+  ],
+  "anchor": "REFACTOR_W3_BUCKET_X2",
+  "comment": [
+    "ANCHOR: REFACTOR_W3_BUCKET_X2 — 2026-10-10 cron -> n8n refactor wave 3, bucket X2 (cron L289 L291 L308 L684 L685 L686 L832 L835 — aegis_*, hermes_* discovery, hermes_discovery_scorecard, siem_to_hermes_backlog):",
+    "--dry-run cannot reach a write/send/paid call (READ ONLY session + return-before-write, source order",
+    "pinned); real runs leave LaneRunReceipt@v1 via lib.lane_last_receipt (ok_at only on success); honest",
+    "exit codes. Hermetic: fake connections/modules, TRADEAI_STATE_ROOT = tmp. Listing them schedules nothing."
+  ]
+}

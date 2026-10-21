@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_manifest",
+  "files": [
+    "tests/test_cio_release_manifest.py"
+  ]
+}

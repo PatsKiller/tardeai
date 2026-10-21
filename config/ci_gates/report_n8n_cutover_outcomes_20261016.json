@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "report_n8n_cutover_outcomes_20261016",
+  "files": [
+    "tests/test_report_n8n_cutover_outcomes_20261016.py"
+  ],
+  "anchor": "REPORT_N8N_CUTOVER_OUTCOMES_20261016",
+  "comment": [
+    "ANCHOR: REPORT_N8N_CUTOVER_OUTCOMES_20261016 — read-only cutover outcomes packet: counting definitions (rows vs",
+    "lanes vs lines), one status per lane, PARALLEL needs a live n8n run, exit 0 without a verdict is not useful,",
+    "REQUESTED is not a heal, UNKNOWN provenance never guessed, unwrapped cron is not fenced. Fixtures only."
+  ]
+}

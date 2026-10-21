@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_evidence_kind_parity_20261019",
+  "files": [
+    "tests/test_n8n_evidence_kind_parity_20261019.py"
+  ],
+  "anchor": "N8N_EVIDENCE_KIND_PARITY_20261019",
+  "comment": [
+    "ANCHOR: N8N_EVIDENCE_KIND_PARITY_20261019 — the runtime output verdict and the FW-M6 checker accept the same",
+    "N8nExpectedOutput@v1 evidence kinds (file_artifact, per N8N_CONTRACTS_DESIGN.md); before, \"file\" vs \"file_artifact\"",
+    "meant no contract could cite a file. Hermetic: committed contracts read only."
+  ]
+}

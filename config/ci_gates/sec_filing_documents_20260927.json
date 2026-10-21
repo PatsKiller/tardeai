@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "sec_filing_documents_20260927",
+  "files": [
+    "tests/test_sec_filing_documents_20260927.py",
+    "tests/test_sec_ingest_since_days_20260927.py"
+  ],
+  "comment": [
+    "2026-09-27 -- Dell 8-K EX-99.1 primary evidence: the earnings-release exhibit is",
+    "fetched, parsed into dated dollar-figure facts (backlog, orders, guidance ...),",
+    "stored on (accession, exhibit), and reaches the thesis catalog / synthesis prompt",
+    "(with url + date) and the options CIO packet (with real per-leg liquidity,",
+    "fundamentals and the RPO-is-not-backlog note); web queries keep \"AI\" and ask sec.gov.",
+    "--since-days: one-off wider 8-K window (DELL Q1 FY27 release on 2026-05-28)"
+  ]
+}

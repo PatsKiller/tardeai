@@ -56,6 +56,10 @@ BASE_BRANCH = "main"
 WATCHED_PATHS = (
     ".github/workflows",
     "scripts/run_cio_hardening_ci.py",
+    # 2026-10-21: the gate registry moved out of the runner into one file per gate; the
+    # tree object of the directory pins exactly the registered set the shards ran.
+    "config/ci_gates",
+    "scripts/lib/ci_gates.py",
     "scripts/lib/ci_shards.py",
     "config/ci_shard_duration_hints.json",
 )

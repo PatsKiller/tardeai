@@ -1,0 +1,8 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_cc_reader_first_20261018",
+  "files": [
+    "tests/test_cc_reader_first_20261018.py",
+    "tests/test_ci_frontend_dependencies_20261018.py"
+  ]
+}

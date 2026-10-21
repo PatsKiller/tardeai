@@ -234,8 +234,11 @@ CLAUDE.md / AI_WORK_POLICY.md, `.cursor/ .claude/ .githooks/ .github/ bin/`, the
 `*ratchet*`, `*permission*`, `*approval*` file, the lane registry / cutover policy / `config/n8n_*`, crontab and
 systemd files, `.env`/credential/secret/cookie files, broker/order/execution/2FA paths, the behaviour rail
 (`cio_instrument_record.py`), SQL/migrations, and pytest configuration; or when a test is deleted, a test function
-removed, an assert removed (net), or a skip/xfail/deselect/importorskip added. `scripts/run_cio_hardening_ci.py` is
-**append-only inside `GATES`**: only string/bracket/comment lines, no removals. Soft refusals (empty diff, no
+removed, an assert removed (net), or a skip/xfail/deselect/importorskip added. CI registration is **add-only**
+(2026-10-21): the fixer registers its test by ADDING one valid `config/ci_gates/<name>.json` (`CiGate@v1`, name ==
+file stem; else `append_only:invalid_gate_file`); modifying, renaming or deleting an existing gate file is
+`append_only:gate_file_changed`. `scripts/run_cio_hardening_ci.py` no longer holds an inline list, so any edit to it is
+refused (`append_only:outside_gates_list`). Soft refusals (empty diff, no
 regression test, > 8 files or > 600 lines) go back to the model as feedback. Also hard (the repo is PUBLIC): a
 credential-shaped literal on any added line (`sk-ant-…`, GitHub/AWS/Slack token shapes, private-key headers,
 `"accessToken"`/`"refreshToken"` keys, or a 48+ character mixed-case alphanumeric token) → `secret_in_diff`.

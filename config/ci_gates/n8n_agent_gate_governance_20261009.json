@@ -1,0 +1,34 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_agent_gate_governance_20261009",
+  "files": [
+    "tests/test_n8n_registry_first_20261009.py",
+    "tests/test_n8n_workflow_drift_20261009.py",
+    "tests/test_n8n_activation_grants_20261009.py",
+    "tests/test_n8n_agent_identity_parity_20261009.py",
+    "tests/test_n8n_incident_fanin_governance_20261009.py",
+    "tests/test_n8n_incident_fanin_workflow_error_20261010.py",
+    "tests/test_n8n_alert_path_watch_20261010.py",
+    "tests/test_heartbeat_watch_lane_20261011.py",
+    "tests/test_heartbeat_watcher_contract_20261011.py"
+  ],
+  "anchor": "N8N_AGENT_GATE_GOVERNANCE",
+  "comment": [
+    "ANCHOR: N8N_AGENT_GATE_GOVERNANCE — 2026-10-09 AGENTS.md 3.0.0 §23.10 preconditions before any n8n",
+    "Agent node: P16 activation attribution (n8n publish evidence vs guard grants naming the workflow id),",
+    "P17 registry-first (active n8n workflows are a lane-registry discovery source; UNDECLARED_N8N_WORKFLOW",
+    "fails --fail-on-new), P18 git-vs-live workflow drift, P20 n8n identity rows + gateway denylist parity",
+    "with agent_runtime_mvl global_denied_tools. Hermetic: fixtures under tmp_path, fake psql runner.",
+    "incident fan-in sources n8n_activation_grants (P1 live ungranted) + n8n_workflow_drift (P2)",
+    "2026-10-10 (gap 11): fan-in reader for gateway events on lane n8n-workflow-error (ledger receipts, key",
+    "wferr-<wf>-<exec>): one incident per workflow, P1 only for the dispatcher, else contract/P2 (WARN);",
+    "notifier plan + SIEM n8n:<workflow> row from the same rows. Hermetic: tmp_path ledgers and relay logs.",
+    "2026-10-10 operator \"Yes to everything\": host-side alert-path watch (relay log only) — P1 when the",
+    "incident router errors or stops, or n8n's schedule stops; the notifier (host cron) sends it even with a",
+    "stale fan-in, without declaring fan-in recoveries; the relay logs the /due lane filter for attribution.",
+    "2026-10-11 heartbeat-watch lane (scripts/heartbeat_watch.py): health-plane dead-man at 2x cadence (cron rows",
+    "by their last scheduled fire, active_days in New York), STALE_2X OPEN/CLEARED rows the fan-in reads as P1,",
+    "--dry-run writes nothing; and the tradeai-heartbeat-watcher contract pinned to its builder and the",
+    "registry. Hermetic: tmp_path state roots, pinned clock."
+  ]
+}

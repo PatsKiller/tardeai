@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ci_push_run_per_sha_20261021",
+  "files": [
+    "tests/test_ci_push_run_per_sha_20261021.py"
+  ],
+  "anchor": "CI_PUSH_RUN_PER_SHA_20261021",
+  "comment": [
+    "ANCHOR: CI_PUSH_RUN_PER_SHA_20261021 — alignment audit H2: the push-to-main cio-hardening concurrency group",
+    "carries the SHA, so a queued main run is never cancelled by the next merge; PR grouping unchanged."
+  ]
+}

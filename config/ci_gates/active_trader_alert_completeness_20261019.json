@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "active_trader_alert_completeness_20261019",
+  "files": [
+    "tests/test_active_trader_alert_completeness_20261019.py"
+  ],
+  "anchor": "ACTIVE_TRADER_ALERT_COMPLETENESS_20261019",
+  "comment": [
+    "ANCHOR: ACTIVE_TRADER_ALERT_COMPLETENESS_20261019 — alerts that shipped blank/UNKNOWN: swing entry cards carry",
+    "company/sector/catalyst/CIO decision (shared lib.entry_alert_context); one swing-entry sender (planner persists,",
+    "cio_entry_state_runner pages; config/swing_entry_alerts.yaml rollback); AT conflict = latest verdict only, AT-internal",
+    "conflict falls back to Trade-AI evidence for display; fast-loop alerts carry same-day pass RVOL/setup/float/Trade-AI;",
+    "STAND DOWN states last/entry/stop with no L2/all-n/a line; unstamped 0/5 AT evidence block dropped. Hermetic."
+  ]
+}

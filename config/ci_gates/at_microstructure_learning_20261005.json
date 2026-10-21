@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "at_microstructure_learning_20261005",
+  "files": [
+    "tests/test_at_microstructure_learning_20261005.py"
+  ],
+  "comment": [
+    "Active Trader microstructure recorder, entry/exit signals (moomoo + Schwab), trade replay, exit watch,",
+    "learning memory + calibration proposals; Schwab stream subscribes the scalp names (2026-10-05)."
+  ]
+}

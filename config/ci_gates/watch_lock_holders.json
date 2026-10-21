@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_lock_holders",
+  "files": [
+    "tests/test_watch_lock_holders_20260915.py",
+    "tests/test_watch_idle_txn_20260924.py",
+    "tests/test_watch_review_automation.py"
+  ],
+  "comment": [
+    "2026-09-15: hermes_subject_enhance and the directive service sat idle in transaction holding row",
+    "locks; the directive service and Finviz screener writes failed on lock timeouts."
+  ]
+}

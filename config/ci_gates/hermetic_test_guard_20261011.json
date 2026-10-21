@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermetic_test_guard_20261011",
+  "files": [
+    "tests/test_hermetic_test_guard_20261011.py"
+  ],
+  "comment": [
+    "Hermetic test bootstrap (2026-10-11, AGENTS §24.6; SHARDS_01_04_HANDOFF \"not fully isolated\"): under pytest",
+    "env loaders resolve to an empty fixture (env_bootstrap TRADEAI_ENV_BOOTSTRAP_FILES, live_project_root",
+    "TRADEAI_LIVE_PROJECT_ROOT, dotenv wrapped), an audit hook refuses ~/trade-ai-releases/**, /run/user/*/tradeai",
+    "and .env files and fails the test naming the caller, live-DSN connects raise, M2 bootstrap needs M2_TEST_DB=1."
+  ]
+}

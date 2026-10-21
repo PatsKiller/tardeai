@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "alert_curation",
+  "files": [
+    "tests/test_alert_curation.py"
+  ],
+  "comment": [
+    "A curated alert must be more useful than the JSON and never less true.",
+    "The alert that prompted this had a `Fix:` section restating its own",
+    "trigger, and showed 2 of 6 firing lanes."
+  ]
+}

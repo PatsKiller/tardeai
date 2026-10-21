@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overnight_f5_model_cost",
+  "files": [
+    "tests/test_overnight_f5_model_cost.py"
+  ]
+}

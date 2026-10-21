@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "trade_ai_scalp_5min_20261009",
+  "files": [
+    "tests/test_trade_ai_scalp_5min_20261009.py"
+  ],
+  "comment": [
+    "Trade-AI scalp scan every 5 min + one feed for Trade-AI and Active Trader + runner GO with catalyst",
+    "(operator 2026-10-09)."
+  ]
+}

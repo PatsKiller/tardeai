@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_hygiene_n8n_20261018",
+  "files": [
+    "tests/test_disk_hygiene_20261018.py"
+  ],
+  "anchor": "DISK_HYGIENE_N8N_20261018",
+  "comment": [
+    "ANCHOR: DISK_HYGIENE_N8N_20261018 — rule-based disk hygiene (dry-run manifest by default; --apply needs a fresh",
+    "manifest, re-validates every item, grant + caps) and the band-deduped disk-usage monitor, both as n8n lanes;",
+    "never-touch list enforced in code. Hermetic: tmp git repos/worktrees, fake df/proc/crontab."
+  ]
+}

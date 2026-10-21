@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "comms_stuck_deliveries_20261020",
+  "files": [
+    "tests/test_comms_stuck_deliveries_20261020.py"
+  ],
+  "anchor": "COMMS_STUCK_DELIVERIES_20261020",
+  "comment": [
+    "ANCHOR: COMMS_STUCK_DELIVERIES_20261020 — deliveries/summary showed 205 RESERVED rows (oldest 8 days) nothing",
+    "would settle: publish_communication reserved a Telegram delivery for every event left at the channels default —",
+    "150 INBOUND operator callbacks and 55 post-send_telegram ledger copies. Reservation now only for an OUTBOUND",
+    "event that named its channel (AssumedChannels marker, default.outbound_telegram label); reap_stale_reservations",
+    "(comms_lifecycle \"reservations\" step, >1 h, bounded, dry run default) settles CANCELLED/EXPIRED/UNKNOWN with no",
+    "provider I/O. Hermetic: in-memory ledger, PG settlement stamp stubbed."
+  ]
+}

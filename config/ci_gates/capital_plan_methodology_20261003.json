@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "capital_plan_methodology_20261003",
+  "files": [
+    "tests/test_capital_plan_methodology_20261003.py"
+  ],
+  "comment": [
+    "A failed producer must never overwrite good cached content. Registered here",
+    "so the guard runs behind the required context: the 2026-09-01 data loss was",
+    "invisible precisely because a fail-open write and a fail-closed write are",
+    "indistinguishable on a successful run.",
+    "Capital-plan decisions keep the versioned sizing policy through aggregation",
+    "(canon_frameworks methodology_ref) without churning decision ids."
+  ]
+}

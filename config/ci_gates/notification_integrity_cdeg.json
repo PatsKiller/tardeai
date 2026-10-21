@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "notification_integrity_cdeg",
+  "files": [
+    "tests/test_notification_integrity_waves_cdeg.py"
+  ]
+}

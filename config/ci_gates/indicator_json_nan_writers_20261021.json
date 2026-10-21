@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "indicator_json_nan_writers_20261021",
+  "files": [
+    "tests/test_indicator_json_nan_writers_20261021.py"
+  ],
+  "anchor": "INDICATOR_JSON_NAN_WRITERS_20261021",
+  "comment": [
+    "ANCHOR: INDICATOR_JSON_NAN_WRITERS_20261021 (#1889 reworked onto json_finite) — the two writers #1890 did not",
+    "cover: the /indicator-confluence API upserts (single + batch, api_v2._indicator_cache_params) and",
+    "indicator_cache_refresh.py. Non-finite -> NULL / json null via lib.json_finite (allow_nan=False); responses",
+    "json_safe. Hermetic: recorder _db_write, fake indicator_engine, source text."
+  ]
+}

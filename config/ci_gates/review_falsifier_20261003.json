@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "review_falsifier_20261003",
+  "files": [
+    "tests/test_review_falsifier_20261003.py"
+  ]
+}

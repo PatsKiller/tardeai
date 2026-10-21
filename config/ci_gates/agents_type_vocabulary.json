@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agents_type_vocabulary",
+  "files": [
+    "tests/test_agents_type_vocabulary.py"
+  ]
+}

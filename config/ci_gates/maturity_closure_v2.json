@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "maturity_closure_v2",
+  "files": [
+    "tests/test_cio_maturity_closure_v2.py"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_oauth_first_routing_20261015",
+  "files": [
+    "tests/test_n8n_oauth_first_routing_20261015.py"
+  ],
+  "comment": [
+    "n8n OAuth-first routing (operator decision 2026-10-15: \"in terms of n8n, then, we should try OAuth first.",
+    "And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\"). Pins, through the",
+    "real bridge with fake transports: OAuth success makes no DeepSeek call; grok fails -> chatgpt; both fail",
+    "(or not enabled) -> DeepSeek; a schema-invalid / empty OAuth answer falls through; reasoning_tier high ->",
+    "DeepSeek PRO_THINK first, OAuth as fallback; a low-confidence OAuth answer escalates exactly once",
+    "(<rid>:esc1, own reservation), over cap / ceiling -> escalation_skipped_cap; route decision in the",
+    "llm_step audit and the model-job receipt; registry and routing policy agree. No network, no paid call."
+  ]
+}

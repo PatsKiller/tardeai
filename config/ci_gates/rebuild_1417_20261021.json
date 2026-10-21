@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "rebuild_1417_20261021",
+  "files": [
+    "tests/test_cio_portfolio_thesis_lane_20261021.py"
+  ],
+  "anchor": "REBUILD_1417_20261021",
+  "comment": [
+    "ANCHOR: REBUILD_1417_20261021 — operator \"yes rebuild 1417\": premarket cio_draft_plan_hygiene step runs",
+    "--apply --expire-stale (append-only expiry); cio-portfolio-thesis and advisory-maturity-evidence as n8n-native",
+    "SHADOW dispatcher lanes (write-free --dry-run, live_arg null, DRAFT contracts, no forbidden closure)."
+  ]
+}

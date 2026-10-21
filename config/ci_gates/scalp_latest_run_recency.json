@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "scalp_latest_run_recency",
+  "files": [
+    "tests/test_scalp_latest_run_is_most_recent.py"
+  ],
+  "comment": [
+    "\"latest\" must mean most recent, not biggest."
+  ]
+}

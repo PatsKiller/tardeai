@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "decision_field_parity",
+  "files": [
+    "tests/test_cio_decision_parity.py"
+  ]
+}

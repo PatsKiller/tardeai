@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "holdings_data_clock",
+  "files": [
+    "tests/test_holdings_data_clock.py"
+  ],
+  "comment": [
+    "A freshness field must describe the DATA, not the run that wrote it."
+  ]
+}

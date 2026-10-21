@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermes_feedback_cutover_20261017",
+  "files": [
+    "tests/test_hermes_feedback_cutover_20261017.py"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "at_premarket_watch_20261005",
+  "files": [
+    "tests/test_at_premarket_watch_20261005.py"
+  ],
+  "comment": [
+    "Active Trader premarket watch: heads-up 07:00-09:29 with PM high / PM VWAP for the open; replay-safe,",
+    "fail-closed float, shadow by default, AT alert path only, no trade context (2026-10-05)."
+  ]
+}

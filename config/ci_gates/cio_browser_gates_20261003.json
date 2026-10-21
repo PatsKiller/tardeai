@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_browser_gates_20261003",
+  "files": [
+    "tests/test_cio_browser_gates_20261003.py"
+  ],
+  "comment": [
+    "Decisions card degrades only for plans overdue under the expiry rule (2026-10-03)."
+  ]
+}

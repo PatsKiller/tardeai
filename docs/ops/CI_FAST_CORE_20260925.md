@@ -40,7 +40,77 @@ running every registered test cannot go below about 5 to 6 minutes, however it i
 
 All three profiles run the same tail checks: docs index drift, committed release manifest, and candidate
 manifest. Registration is unchanged: a test file is covered only if it appears in `GATES`, and
-`check_test_coverage.py` enforces that.
+`check_test_coverage.py` enforces that. Since 2026-10-21 `GATES` is loaded from one file per gate; see
+[Adding a gate](#adding-a-gate-one-file-per-gate-2026-10-21).
+
+## Adding a gate: one file per gate (2026-10-21)
+
+Operator-approved process plan, 2026-10-21. Nearly every PR conflict that day came from two shared files every
+PR edited: the 533-entry `GATES` list in `scripts/run_cio_hardening_ci.py` and the content hashes in
+`docs/INDEX.md`. Both are now conflict-free by construction.
+
+**To register a test, add one file** `config/ci_gates/<name>.json`. Do not edit `run_cio_hardening_ci.py`; it no
+longer holds a list (`GATES = _ci_gates.load_gates(REPO)`), and
+`tests/test_ci_gates_registry_20261021.py` fails if an inline list comes back.
+
+```json
+{
+  "schema": "CiGate@v1",
+  "name": "my_change_20261021",
+  "files": [
+    "tests/test_my_change_20261021.py"
+  ],
+  "anchor": "MY_CHANGE_20261021",
+  "comment": [
+    "ANCHOR: MY_CHANGE_20261021 — what the gate proves, and why it is hermetic."
+  ]
+}
+```
+
+* `name` must equal the file stem (`[A-Za-z0-9_.-]+`). `files` is a non-empty list of repo-relative pytest files,
+  run in that order. `comment` replaces the old `# ANCHOR: ...` comment lines above a tuple; `anchor` (optional)
+  repeats the ANCHOR id. No other keys are allowed.
+* Write it canonically: 2-space JSON plus a trailing newline, keys in the order above. The output of
+  `scripts.lib.ci_gates.render(make_record(name, files, comment))` is canonical. The registry test checks this.
+* Loading (`scripts/lib/ci_gates.py`) sorts gates by name. Order never decided what runs. The fast/pr pools
+  re-sort by duration and the shard plan sorts by path. Order only set the serial `full` sequence and which gate
+  labels a file registered in two gates. A malformed or unreadable gate file raises; a gate is never silently
+  dropped.
+* Changing an existing gate means editing its own file, so only PRs that touch the *same gate* can conflict.
+* "Is my test registered?" assertions: use `ci_gates.registry_text(ROOT)` (the raw text of every gate file),
+  not the runner's source.
+* A new gate file is a `ci_control_surface` HIGH path (`config/ci_gates/**` in `config/ci_risk_tiers.json`), as
+  an edit to the runner was. `tree_attested_promote.WATCHED_PATHS` pins the `config/ci_gates` tree object
+  between the PR head and the merge commit.
+* The self-heal fixer registers its regression test the same way: it may add one valid gate file and never
+  change one (`docs/ops/self_heal_claude_fixer.md`).
+
+**Migration and the pre-merge re-run.** `scripts/ci_gates_migrate.py` moved the 533 inline entries, keeping every
+comment line (2,250) and ANCHOR id (123). It is re-runnable. If PRs merged to main while this change was open
+still add inline gates, re-run it on main's runner right before merging:
+
+```bash
+git fetch origin && git merge origin/main        # take main's runner when it conflicts: next line
+git checkout origin/main -- scripts/run_cio_hardening_ci.py
+python3 scripts/ci_gates_migrate.py               # dry run: what it would write
+python3 scripts/ci_gates_migrate.py --apply       # writes new gate files, rewrites GATES to the loader
+python3 scripts/ci_gates_migrate.py --verify-against origin/main --allow-extra  # EQUIVALENT or exit 1
+```
+
+A gate file that already exists with different content is a conflict, and the script writes nothing. Pass
+`--overwrite` and main's inline entry wins. A gate file whose name is not in main's list is reported and
+never deleted.
+
+### `docs/INDEX.md`: presence and title, not hashes
+
+Rows are `| path | title |` only. The `status_guess`, `header` and `sha12` columns left the committed file, so
+editing a doc no longer touches the index. A row changes only when a doc is added, removed, renamed or retitled.
+`report_docs_inventory.py --check-index` (the `docs_index_drift` tail check here, and the sharded `ci-gate`
+job) fails on a tracked doc with no row, a row for an untracked doc, a wrong title, a duplicate row, a changed
+preamble or a stray line. Row order is not checked, because `docs/INDEX.md` is `merge=union` in
+`.gitattributes`: when two PRs add docs in the same place, git keeps both rows. Run `--write-index` to re-sort.
+The dropped columns, the counts and the tree fingerprint are still printed by `--verbose`,
+`--output-json` and `--check-index`.
 
 **What counts as a pass (2026-10-21, alignment audit C2/M8).** A unit passes only if pytest succeeded **and at
 least one test ran**. A unit in which every test skipped, or nothing was collected, fails. Main push run

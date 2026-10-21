@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "premarket_dedupe_within_batch_20261018",
+  "files": [
+    "tests/test_premarket_dedupe_within_batch_20261018.py"
+  ],
+  "comment": [
+    "Preserve existing SEC event identities while suppressing within-batch repeats."
+  ]
+}

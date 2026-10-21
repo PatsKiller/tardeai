@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "at_alert_outcomes_20261005",
+  "files": [
+    "tests/test_at_alert_outcomes_20261005.py"
+  ],
+  "comment": [
+    "Active Trader alert audit: outcomes from the price you could pay, stop-first is a miss, exits,",
+    "below-stop veto, supply evidence, your fills tagged to the alert before them (2026-10-05)."
+  ]
+}

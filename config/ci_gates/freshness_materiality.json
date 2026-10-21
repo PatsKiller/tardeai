@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "freshness_materiality",
+  "files": [
+    "tests/test_cio_freshness_materiality_gate.py"
+  ]
+}

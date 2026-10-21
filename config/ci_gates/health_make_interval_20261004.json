@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "health_make_interval_20261004",
+  "files": [
+    "tests/test_health_make_interval_20261004.py"
+  ],
+  "comment": [
+    "Health agent: make_interval(hours => int) - a float raised on every run (2026-10-04)."
+  ]
+}

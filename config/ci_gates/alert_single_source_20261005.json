@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "alert_single_source_20261005",
+  "files": [
+    "tests/test_alert_single_source_20261005.py"
+  ],
+  "comment": [
+    "Alerts read the Command Center (data broker / CC API), never their own sources; producer ratchet;",
+    "material-change digest priced by the broker and concise; CIO entry plan sanity (2026-10-05)."
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "schema": "CiGate@v1",
+  "name": "strategy_seasonality",
+  "files": [
+    "tests/test_cio_strategy_seasonality.py",
+    "tests/test_cio_research_brain.py"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "alpha_vantage_pacing_20261004",
+  "files": [
+    "tests/test_alpha_vantage_pacing_20261004.py"
+  ],
+  "comment": [
+    "Alpha Vantage fundamentals paced (1 req/s free tier), fund exclusion; ET/API chrome not tickers."
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "p2_report_honesty_20260926",
+  "files": [
+    "tests/test_p2_report_honesty_20260926.py"
+  ],
+  "comment": [
+    "2026-09-26 — P2 audit remediation: the cadence reports fail LOUDLY.",
+    "Weekly (NoneType format) and monthly (undefined total_val) had failed",
+    "on every run for months while the launcher said \"skipped (non-fatal)\"",
+    "and the pipeline recorded status=ok."
+  ]
+}

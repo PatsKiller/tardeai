@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lane_breaker_unavailable_20260927",
+  "files": [
+    "tests/test_lane_breaker_unavailable_20260927.py"
+  ],
+  "comment": [
+    "2026-09-27 -- the Hermes external lane breaker also trips on 'unavailable'",
+    "(ChatGPT CODEX_HEADLESS), not only HTTP 401/403."
+  ]
+}

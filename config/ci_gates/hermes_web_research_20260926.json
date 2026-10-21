@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermes_web_research_20260926",
+  "files": [
+    "tests/test_hermes_web_research_20260926.py",
+    "tests/test_options_thesis_lifecycle_20260926.py",
+    "tests/test_research_heartbeat_20260914.py"
+  ],
+  "comment": [
+    "2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the",
+    "Brave router), answers cite supplied urls only, and CIO follow-ups are research",
+    "tasks (a symbol with no thesis also gets the four thesis questions)."
+  ]
+}

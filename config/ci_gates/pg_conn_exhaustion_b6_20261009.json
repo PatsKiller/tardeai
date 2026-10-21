@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "pg_conn_exhaustion_b6_20261009",
+  "files": [
+    "tests/test_pg_conn_exhaustion_b6_20261009.py"
+  ],
+  "comment": [
+    "Postgres connection-slot hygiene (n8nmat/b6 2026-10-09): PGAPPNAME attribution for raw connects, tests never use",
+    "the stale ~/.pgpass, batched price counts, reconcile KeyError + real rc in run_protection_pipeline.sh."
+  ]
+}

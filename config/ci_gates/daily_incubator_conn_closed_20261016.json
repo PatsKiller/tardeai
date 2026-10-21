@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "daily_incubator_conn_closed_20261016",
+  "files": [
+    "tests/test_daily_incubator_refresh_conn_closed_20261016.py"
+  ],
+  "comment": [
+    "2026-10-16: daily-incubator-refresh live 08:15 ET died on a closed connection and the except handler's rollback()",
+    "masked the real error; guarded rollback/close, original exception logged, reconnect before the scan commit."
+  ]
+}

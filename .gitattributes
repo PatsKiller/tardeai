@@ -5,7 +5,14 @@
 # a hash that matches nothing; a line-merged index describes neither tree.
 #
 # Enable once per clone:   bash scripts/setup_merge_drivers.sh
-docs/INDEX.md                                                        merge=regenerate
+#
+# docs/INDEX.md moved to merge=union on 2026-10-21 (operator-approved process plan). Its rows
+# are now `path | title` only, and `report_docs_inventory.py --check-index` checks presence and
+# title per doc, not row order or content hashes. So two PRs that add docs in the same place
+# union-merge to both rows (git built-in, no per-clone config), and the check still fails on a
+# missing, stale, duplicated or mistitled row. merge=regenerate needed a local driver that
+# GitHub's server-side merge never runs.
+docs/INDEX.md                                                        merge=union
 
 # Append-only wave log: union-merge so concurrent sessions appending at the same
 # time do not conflict. 5 of 12 commits in two hours touched the ledger on

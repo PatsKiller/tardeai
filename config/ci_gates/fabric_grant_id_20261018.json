@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "fabric_grant_id_20261018",
+  "files": [
+    "tests/test_fabric_grant_id_20261018.py"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_card_catalysts",
+  "files": [
+    "tests/test_strategy_card_catalysts_20260915.py",
+    "tests/test_catalyst_symbol_impact_writer_20260915.py"
+  ],
+  "comment": [
+    "2026-09-15: every active strategy card had catalyst_summary NULL; catalyst_symbol_impact had 0 rows ever."
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "meme_squeeze_gate_20261003",
+  "files": [
+    "tests/test_meme_squeeze_gate_20261003.py"
+  ],
+  "comment": [
+    "Blocked-idea ledger counts each idea once per strategy; meme-squeeze gate kept (2026-10-03)."
+  ]
+}

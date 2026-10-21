@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "identity_custodian",
+  "files": [
+    "tests/test_identity_health.py"
+  ],
+  "comment": [
+    "Nothing watched the GUID spine at all until 2026-09-06. Pins that",
+    "the custodian stays deterministic (no model, no network), that its",
+    "freshness grace survives a weekend, and that a commented cron does",
+    "not count as scheduled."
+  ]
+}

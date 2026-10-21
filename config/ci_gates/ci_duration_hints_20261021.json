@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ci_duration_hints_20261021",
+  "files": [
+    "tests/test_ci_duration_hints_20261021.py"
+  ],
+  "anchor": "CI_DURATION_HINTS_20261021",
+  "comment": [
+    "ANCHOR: CI_DURATION_HINTS_20261021 — alignment audit H5: config/ci_shard_duration_hints.json refreshed from",
+    "ci-gate run 39661659376's cio-shard-timings artifact; fails when >10% of registered files lack a hint."
+  ]
+}

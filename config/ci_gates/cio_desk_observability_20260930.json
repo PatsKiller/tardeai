@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_desk_observability_20260930",
+  "files": [
+    "tests/test_cio_observability.py"
+  ],
+  "comment": [
+    "2026-09-30 — CIO Desk observability: executive health contract,",
+    "fail-closed status calculation, and remediation evidence projection."
+  ]
+}

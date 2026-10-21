@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_maturity_retry_dlq_20261009",
+  "files": [
+    "tests/test_n8n_maturity_retry_dlq_20261009.py"
+  ],
+  "anchor": "N8N_MATURITY_RETRY_DLQ",
+  "comment": [
+    "ANCHOR: N8N_MATURITY_RETRY_DLQ — n8n maturity B5.4 (design 02 §3.3/§3.4, F8/F9): N8nRetryPolicies@v1",
+    "+ program rules, verdict table, additive ledger schema (runs dispatch columns, dead_letters, breakers,",
+    "event_cursors), DLQ + breaker after 3, n8n_dlq.py list/release receipts. Hermetic tmp_path ledgers."
+  ]
+}

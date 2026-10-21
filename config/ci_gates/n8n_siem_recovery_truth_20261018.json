@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_siem_recovery_truth_20261018",
+  "files": [
+    "tests/test_n8n_recovery_consistency_20261018.py",
+    "tests/test_n8n_siem_recovery_truth_20261018.py"
+  ],
+  "comment": [
+    "All ledger recovery consumers require the shared live useful-output verdict."
+  ]
+}

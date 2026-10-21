@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "wake_operator_turn_selection_20261005",
+  "files": [
+    "tests/test_wake_operator_turn_selection_20261005.py"
+  ],
+  "comment": [
+    "2026-10-05 — an unanswered operator turn for its own subject is a wake",
+    "candidate even when research would fill the limit. Memory influence",
+    "stays off; the turn is not attached to a different subject."
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "schema": "CiGate@v1",
+  "name": "architect_remediation_20260915",
+  "files": [
+    "tests/test_audit_ledger_isolation_forks_20260915.py",
+    "tests/test_retired_provider_health_20260915.py",
+    "tests/test_research_discovery_refresh_20260915.py",
+    "tests/test_health_headline_20260915.py",
+    "tests/test_rag_borrowed_conn_txn_20260915.py",
+    "tests/test_offpeak_drain_lock_wait_20260915.py",
+    "tests/test_opportunity_queue_drained_state_20260915.py",
+    "tests/test_research_lane_state_recovery_20260915.py",
+    "tests/test_health_decision_store_integrity_20260915.py",
+    "tests/test_watchlist_bridge_recreate_cooldown_20260915.py",
+    "tests/test_system_health_retired_component_20260915.py",
+    "tests/test_system_health_agent_conn_and_retired_20261007.py",
+    "tests/test_system_health_freshness_identity_20261012.py",
+    "tests/test_orchestrator_market_context_rendering_20261012.py",
+    "tests/test_persistent_state_root_import_20261008.py",
+    "tests/test_scheduled_wrappers_resolve_own_tree_20261007.py",
+    "tests/test_units_execute_served_tree_20261008.py",
+    "tests/test_expected_services_lane_states_20261008.py",
+    "tests/test_health_agent_retry_disarmed_20261008.py",
+    "tests/test_health_agent_no_broker_remediation_20261014.py",
+    "tests/test_agent_auto_queue_valid_symbols_20260915.py"
+  ],
+  "comment": [
+    "2026-09-15 architect remediation: ledger test isolation + pinned fork (R-01), retired-provider",
+    "health (R-02), research discovery refresh (R-02), health headline (E-03)."
+  ]
+}

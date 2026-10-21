@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "symbol_news_curation_20260927",
+  "files": [
+    "tests/test_symbol_news_curation_20260927.py",
+    "tests/test_options_thesis_lifecycle_20260926.py"
+  ],
+  "comment": [
+    "2026-09-27 -- symbol-news curation with an SLA: gap-driven approval of a",
+    "symbol's company news (topic_curator never reviewed it), priority",
+    "acquisition requests from the options CIO loop, SLA breach reporting."
+  ]
+}

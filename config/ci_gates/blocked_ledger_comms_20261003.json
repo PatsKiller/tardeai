@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "blocked_ledger_comms_20261003",
+  "files": [
+    "tests/test_blocked_ledger_comms_20261003.py"
+  ],
+  "comment": [
+    "Blocked-idea counterfactual ledger + comms editor word-ticker / approval-request fix (2026-10-03)."
+  ]
+}

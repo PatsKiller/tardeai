@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "useapi_route_audit",
+  "files": [
+    "tests/test_useapi_route_audit.py"
+  ],
+  "comment": [
+    "cc-whole-site-residual-v1 (2026-09-03): F12.15, the per-route audit. The",
+    "401/403 classification only protects reads that go through useApi; this",
+    "enumerates the ones that do not (100 reads across 49 files, pre-existing)",
+    "and pins that this campaign's own five surfaces are not among them."
+  ]
+}
