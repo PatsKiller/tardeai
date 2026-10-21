@@ -2205,8 +2205,13 @@ def _system_platform_health(query=None):
 
         return _ph.get_platform_health(_db_query)
     except Exception as exc:
-        return {"schema": "PlatformHealth@v1", "status": "UNAVAILABLE", "overall": "UNKNOWN", "items": [],
-                "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+        return {
+            "schema": "PlatformHealth@v1",
+            "status": "UNAVAILABLE",
+            "overall": "UNKNOWN",
+            "items": [],
+            "error": f"{type(exc).__name__}: {str(exc)[:160]}",
+        }
 
 
 def _communications_subjects(query=None):
