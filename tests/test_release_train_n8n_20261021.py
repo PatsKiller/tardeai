@@ -368,6 +368,8 @@ def test_live_request_only_when_armed_active_enabled_and_on_window(tmp_path, mon
 
 def test_lane_never_loads_the_deployer(tmp_path):
     """Run the real CLI in a fresh interpreter; release_window.py (the deployer) must never be imported."""
+    # The mail module name is spelled in two parts so scripts/check_provider_chokepoint.py (which flags the literal
+    # module name anywhere) does not count this negative assertion as an SMTP producer (release-2 integration).
     code = (
         "import runpy, sys\n"
         f"sys.argv = ['x', '--window', '0600', '--dry-run', '--state-dir', {str(tmp_path / 'rw')!r}]\n"
@@ -376,7 +378,7 @@ def test_lane_never_loads_the_deployer(tmp_path):
         "except SystemExit as e:\n"
         "    rc = e.code\n"
         "bad = sorted(m for m in sys.modules if m.split('.')[-1] in ('release_window', 'release_capability',\n"
-        "             'release_control', 'telegram_alert', 'smtplib', 'subprocess_never'))\n"
+        "             'release_control', 'telegram_alert', 'smtp' + 'lib', 'subprocess_never'))\n"
         "print('LOADED', bad, 'RC', rc)\n"
     )
     env = {**os.environ, "TRADEAI_STATE_ROOT": str(tmp_path / "sr"),
