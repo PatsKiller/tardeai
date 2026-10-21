@@ -1,0 +1,62 @@
+# PROPOSED, NOT APPLIED (release train 2026-10-21). Operator decision: it changes the required context and the
+# release evidence (AGENTS §17 "branch-protection or required-context changes"), so it lands as its own PR.
+#
+# Measured 2026-10-21 (gh run list, runs created that day): cio-production-hardening-ci on push/main
+# avg 29 / max 32 min (n=4); on pull_request avg 9 / max 16 min (n=10, PR profile = affected tests);
+# cio-full-suite-sharded on pull_request avg 6 / max 7 min (n=10, EVERY registered test, 8 shards + serial + pg).
+# The 30-minute wait on main is the single-job FAST profile. The same full suite already runs sharded in ~7 min.
+#
+# Change: (1) the sharded full suite runs on push/main and merge_group (the train), not on every PR;
+# (2) PRs keep only the affected-tests profile in `cio-hardening`; (3) on push/main `cio-hardening` keeps only its
+# rails (the gates move to the sharded run), so it reports in minutes; (4) release evidence requires the sharded
+# workflow. Steps (1)-(3) are YAML below; step (4) is a one-line change in two Python files, shown at the end.
+# Preconditions: the operator switches the required context `cio-hardening` -> `ci-gate` (the rollout the
+# sharded workflow's header already plans after 3-5 PRs show parity), and AGENTS/packet text follows.
+
+--- a/.github/workflows/cio-full-suite-sharded.yml
++++ b/.github/workflows/cio-full-suite-sharded.yml
+@@ on:
+-  pull_request:
++  # Release train: the full suite runs on the train (main + merge-queue groups), not on every PR push.
++  push:
++    branches: [main]
++  merge_group:
+   workflow_dispatch:
+
+ concurrency:
+-  group: cio-full-suite-sharded-${{ github.ref }}
+-  cancel-in-progress: true
++  group: cio-full-suite-sharded-${{ github.ref }}-${{ github.sha }}
++  cancel-in-progress: ${{ github.event_name != 'push' }}   # main runs never cancel (release evidence)
+
+--- a/.github/workflows/cio-production-hardening-ci.yml
++++ b/.github/workflows/cio-production-hardening-ci.yml
+@@ jobs.cio-hardening.steps["CIO hardening gates (unit + manifest)"]
+         run: |
+           if [ "$EVENT_NAME" = "pull_request" ]; then
+             python3 scripts/run_cio_hardening_ci.py --profile pr --base "origin/$BASE_REF"
++          elif [ "$EVENT_NAME" = "push" ] || [ "$EVENT_NAME" = "merge_group" ]; then
++            # Release train: every registered gate runs in cio-full-suite-sharded (ci-gate). This job keeps
++            # its rails (adversarial suite, dark contracts, retention, line endings, coverage, host paths).
++            echo "FAST profile delegated to cio-full-suite-sharded (ci-gate) on $EVENT_NAME"
+           else
+             python3 scripts/run_cio_hardening_ci.py --profile fast
+           fi
+
+--- a/scripts/release_grant_preflight.py
++++ b/scripts/release_grant_preflight.py
+ REQUIRED_PUSH_WORKFLOWS = frozenset({
+-    ".github/workflows/cio-production-hardening-ci.yml",
++    ".github/workflows/cio-production-hardening-ci.yml",   # rails only on push after this change
++    ".github/workflows/cio-full-suite-sharded.yml",        # every registered gate (ci-gate)
+     ".github/workflows/agent-governance.yml",
+ })
+
+--- a/scripts/release_window.py
++++ b/scripts/release_window.py
+ REQUIRED_TRAIN_WORKFLOWS = (
+     ".github/workflows/cio-production-hardening-ci.yml",
++    ".github/workflows/cio-full-suite-sharded.yml",
+     ".github/workflows/agent-governance.yml",
+     ".github/workflows/release-readiness.yml",
+ )

@@ -30595,6 +30595,8 @@ def _needs_action(query=None):
         "data_sources": lambda: _data_source_health({}),
         "comms": _communications_delivery_summary,
         "pipelines": lambda: _system_pipeline_failures({}),
+        # Release train 2026-10-21: a failed release window (STOP latch / last receipt) is an inbox item.
+        "release_window": _na.read_release_window_state,
     }
     out = _na.aggregate(probes)
     _NEEDS_ACTION_CACHE["v"] = (_t.monotonic(), out)

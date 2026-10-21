@@ -187,6 +187,9 @@ def main() -> int:
     ap.add_argument("--sha", required=True)
     ap.add_argument("--pr", type=int, default=None)
     ap.add_argument("--campaign", default=os.environ.get("TRADEAI_RELEASE_CAMPAIGN") or None)
+    ap.add_argument("--no-consume", action="store_true",
+                    help="decide only; consume no use (the deploy checks the binding before the exact-SHA CI "
+                         "re-query and consumes only immediately before activation — 2026-10-21)")
     ap.add_argument("--backstop-check", action="store_true",
                     help="read the push/main run of a tree-attested release; exit 3 when it is red")
     ap.add_argument("--backstop-receipt", type=Path, default=BACKSTOP_RECEIPT)
@@ -209,7 +212,10 @@ def main() -> int:
         # C-10 (2026-09-26): the deploy path never consumed a grant use, so the
         # ledger under-counted every Claude Code promote (both P1 grants showed
         # unconsumed uses after being exercised). One use per release action.
-        out["consumed"] = consume_release_grant()
+        # 2026-10-21: a promote refused by the exact-SHA CI re-query had already
+        # consumed its use (71df62acc, post_merge_ci_refused). cmd_promote now
+        # decides with --no-consume first and consumes only after CI passed.
+        out["consumed"] = {"skipped": "no_consume"} if args.no_consume else consume_release_grant()
     print(json.dumps(out, sort_keys=True))
     if v.allowed:
         return 0

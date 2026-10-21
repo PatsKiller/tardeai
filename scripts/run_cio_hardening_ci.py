@@ -5448,6 +5448,18 @@ GATES = [
         ["tests/test_release_window_20261016.py"],
     ),
     (
+        # ANCHOR: RELEASE_TRAIN_20261021 — operator plan 2026-10-21: merge green PRs, release main in the 12:00/17:30
+        # windows. release_window.py picks main's head only if all THREE required checks are literally "success" on
+        # that exact SHA, else the newest green first-parent main commit since the served release (deploy prepares
+        # it under TRADEAI_RELEASE_TRAIN_SHA: clean, first-parent, exact-SHA CI green); verifies CC pages,
+        # platform-health and needs-action; a failed window leaves a Needs-action item and one intent. A promote
+        # refused by exact-SHA CI consumes no release-write use (--no-consume before CI, consume before activation).
+        # "RELEASE_WINDOW <date> <window>" binds as the window campaign. Hermetic: fake host, tmp HOME/state, tmp git
+        # repo, fake interpreter.
+        "release_train_20261021",
+        ["tests/test_release_train_20261021.py"],
+    ),
+    (
         "n8n_cc_reader_first_20261018",
         [
             "tests/test_cc_reader_first_20261018.py",

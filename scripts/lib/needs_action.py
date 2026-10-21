@@ -285,10 +285,61 @@ def rule_pipelines(p: Any, now: datetime) -> list[dict]:
             for r in d["pipelines"]]
 
 
+RELEASE_WINDOW_RECENT_H = 36.0
+# Mirrors scripts/release_window.py ALERT_PRIORITY (a failed window; routine stops are not items).
+RELEASE_WINDOW_SEVERITY = {"ROLLBACK_FAILED": "P0", "ROLLED_BACK": "P1", "STOP_PREPARE_FAILED": "P1",
+                           "STOP_CI_NOT_GREEN": "P2", "STOP_MAIN_MOVED": "P2"}
+
+
+def read_release_window_state(root: Any = None) -> dict:
+    """The release-window runner's STOP latch and last receipt (scripts/release_window.py; release train
+    2026-10-21). A runner that never ran has neither file: that is an empty state, not an unavailable source."""
+    import json
+    import os
+    from pathlib import Path
+
+    if root is None:
+        state_root = os.environ.get("TRADEAI_STATE_ROOT",
+                                    str(Path.home() / "trade-ai-releases" / "persistent-state"))
+        root = os.environ.get("TRADEAI_RELEASE_WINDOW_STATE_DIR",
+                              str(Path(state_root) / "data" / "runtime" / "release_window"))
+    root = Path(root)
+    out: dict[str, Any] = {"latch": None, "last": None}
+    for key, name in (("latch", "STOP.json"), ("last", "last.json")):
+        p = root / name
+        if p.exists():
+            out[key] = json.loads(p.read_text(encoding="utf-8"))     # unreadable -> raises -> source unavailable
+    return out
+
+
+def rule_release_window(p: Any, now: datetime) -> list[dict]:
+    p = p or {}
+    items: list[dict] = []
+    latch = p.get("latch")
+    if isinstance(latch, dict):
+        items.append(item("P1", "Release windows halted: STOP latched",
+                          f"window {latch.get('window_id')} ended {latch.get('outcome')} for candidate "
+                          f"{str(latch.get('candidate') or '')[:9]}; every later window refuses until the operator "
+                          "reviews the receipt and runs scripts/release_window.py clear-stop",
+                          R_SYSTEM_JOBS, "release_window", latch.get("latched_at"), latch))
+    last = p.get("last")
+    if isinstance(last, dict):
+        sev = RELEASE_WINDOW_SEVERITY.get(str(last.get("outcome")))
+        at = _parse(last.get("finished_at") or last.get("started_at"))
+        if sev and at and now - at <= timedelta(hours=RELEASE_WINDOW_RECENT_H):
+            cand = last.get("candidate") or {}
+            items.append(item(sev, f"Release window {last.get('window_id')} {last.get('outcome')}",
+                              f"candidate {str(cand.get('sha') or '')[:9]} ({cand.get('selected_by') or '?'}); "
+                              "the next window retries unless STOP is latched",
+                              R_SYSTEM_JOBS, "release_window", at.isoformat(),
+                              {"window_id": last.get("window_id"), "outcome": last.get("outcome")}))
+    return items
+
+
 RULES: dict[str, Callable[[Any, datetime], list[dict]]] = {
     "health": rule_health, "systemd": rule_systemd, "n8n": rule_n8n, "approvals": rule_approvals,
     "queue": rule_queue, "data_plausibility": rule_plausibility, "data_sources": rule_data_sources,
-    "comms": rule_comms, "pipelines": rule_pipelines,
+    "comms": rule_comms, "pipelines": rule_pipelines, "release_window": rule_release_window,
 }
 
 _EXECUTOR: Optional[cf.ThreadPoolExecutor] = None
