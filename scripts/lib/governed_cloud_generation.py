@@ -45,7 +45,7 @@ def generate_cloud(
     if via_bridge():
         from lib.llm_bridge_route import text_via_bridge
 
-        text = text_via_bridge(process_id, prompt, timeout_s=float(timeout))
+        text = text_via_bridge(process_id, prompt, timeout_s=float(timeout), max_tokens=max_tokens)
         if text is None or not str(text).strip():
             raise RuntimeError(
                 f"CLOUD_GENERATION_FAILED_CLOSED: {process_id}: BRIDGE_ROUTE_REFUSED: governed bridge returned no text"

@@ -116,8 +116,9 @@ class FakeBridge:
         self.reply = "{}"
         self.refuse = False
 
-    def __call__(self, messages, *, process_id, timeout_s):
+    def __call__(self, messages, *, process_id, timeout_s, max_tokens=None):
         self.calls.append({"process_id": process_id, "timeout_s": timeout_s, "prompt": messages[0]["content"]})
+        self.max_tokens = max_tokens
         if self.refuse:
             return {"error": {"code": "COST_CAP_EXCEEDED"}, "governance_pass": False}
         return {
@@ -415,6 +416,7 @@ def test_cross_source_via_bridge_and_refusal(bridge, poison, monkeypatch):
     bridge.reply = json.dumps([{"topic": "t", "summary": "s", "thesis": "x"}])
     briefs = hcs.synthesize({"sources": {"news": [1, 2]}})
     assert briefs[0]["_source_lane"] == "bridge"
+    assert bridge.max_tokens == 3000  # the cron path's budget reaches the bridge (it clamps to the registry row)
     assert [c["process_id"] for c in bridge.calls] == ["hermes_cross_source_synthesizer"]
     bridge.refuse = True
     assert hcs.synthesize({"sources": {}}) == [] and len(bridge.calls) == 2
