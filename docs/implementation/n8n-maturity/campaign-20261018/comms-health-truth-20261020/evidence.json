@@ -1,0 +1,96 @@
+{
+  "schema": "CampaignValidationEvidence@v1",
+  "scope": "Communications delivery aggregate and refresh truth",
+  "baseline_sha": "720fce06c09ca7e7c21224364ab789505be40f5a",
+  "candidate_identity": "source commit containing this packet; final exact-head validation pending",
+  "reuse": {
+    "pr": 1866,
+    "head": "8dc305afec0718a595629ecdc47354b4b458f364",
+    "selection": "summary owner/route and delivery UI only; additional schema, clock, coverage and stale-hook validation"
+  },
+  "red_first": {
+    "fixture": "comms-health-browser-frozen.cjs",
+    "baseline": "4 expected AssertionErrors and 1 passing control",
+    "candidate": "5 passing actual-component/hook Chromium scenarios",
+    "sandbox_attempt": "Chromium launch exit 2 is infrastructure failure, not red-first"
+  },
+  "tests": {
+    "related_python": 75,
+    "typescript_assertions": 19,
+    "browser_scenarios": 5,
+    "release_equivalent": "PENDING",
+    "independent_review": "PENDING"
+  },
+  "preservation": {
+    "existing_portal_definitions_ast_equal": 35,
+    "format_only_ast_proof": "comms-health-format-evidence--result.json.gz"
+  },
+  "compatibility": {
+    "new_ui_old_server": "UNAVAILABLE; no missing endpoint -> zero fallback",
+    "old_ui_new_server": "existing list endpoint unchanged; old browser retains prior UI until reload",
+    "persistence": "no schema migration or writes; SELECT and read-transaction rollback only"
+  },
+  "runtime_status": {
+    "merged": false,
+    "deployed": false,
+    "enabled": false,
+    "proven": false,
+    "observation_hours": 0
+  },
+  "artifacts": [
+    {
+      "source": "/tmp/n8n-campaign-20261018/comms-health-related-initial.xml",
+      "artifact": "comms-health-related-initial.xml.gz",
+      "sha256": "86694d746262d3b6757c46611816074468b017c7e563347e7ccb7c3de9d286c6",
+      "bytes": 11619
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/comms-health-backend-initial.xml",
+      "artifact": "comms-health-backend-initial.xml.gz",
+      "sha256": "943fa53ca1acd856a74042067893884ace3fe7e3763b3dbef47884b548a98dc3",
+      "bytes": 3379
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/comms-health-candidate-host.json",
+      "artifact": "comms-health-candidate-host.json.gz",
+      "sha256": "d48794ee5c3c402d40455cc0a620212ae9a1e334d8382e303b17ede456fcabd5",
+      "bytes": 7335
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/comms-health-candidate-host.log",
+      "artifact": "comms-health-candidate-host.log.gz",
+      "sha256": "0b2c7a5f087131411f03623fc8a44175436e205ddcc49b48fa3bfd8d1fd7a914",
+      "bytes": 3702
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/comms-health-baseline720-host.json",
+      "artifact": "comms-health-baseline720-host.json.gz",
+      "sha256": "476c4a50c803ce5532f35a961276c7c61bd252969372bf03c133927fe5ebd138",
+      "bytes": 11109
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/comms-health-baseline720-host.log",
+      "artifact": "comms-health-baseline720-host.log.gz",
+      "sha256": "4a793db59379e4d4823aa0d79a47955a0134b96ea6423272d18aa3bdb232b5db",
+      "bytes": 6059
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/comms-health-baseline720.log",
+      "artifact": "comms-health-baseline720.log.gz",
+      "sha256": "a1628fc349d0721b6de55eb61444df77b24257955fad1bcda6400e47b196d4c4",
+      "bytes": 6704
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/comms-health-browser-frozen.cjs",
+      "artifact": "comms-health-browser-frozen.cjs.gz",
+      "sha256": "9f866fd4bfc09b8696ec1f27e417336997d5beaedc9e1493eb392180b92d5499",
+      "bytes": 4442
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/comms-health-format-evidence/result.json",
+      "artifact": "comms-health-format-evidence--result.json.gz",
+      "sha256": "2378492ceb1de6d9d746c4042603c89607c65e4af63dffe19aa41c0b312d604b",
+      "bytes": 509
+    }
+  ]
+}

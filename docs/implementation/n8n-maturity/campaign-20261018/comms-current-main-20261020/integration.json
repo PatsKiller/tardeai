@@ -1,0 +1,57 @@
+{
+  "status": "SOURCE_INTEGRATION_PENDING_REVIEW_AND_GENERATED_INDEX",
+  "as_of": "2026-10-20T15:57:09.167303+00:00",
+  "base": "f6f56e36577f71b2fe1d7147f520f56938ba089d",
+  "reviewed_source": "1a100b4a22aff388bf869c962e4b5b22ba270dc8",
+  "source_delta": "Reuse reviewed helper/UI and exact delivery_summary AST only; preserve all other portal functions, API/package, merged notifier/Telegram/analyst fixes. Preserve all513 main CI gates in order, addone reviewed Communications gate.",
+  "tests": {
+    "initial": "51passed/1failed: newly merged N3 fake aggregate omitted coverage columns and rollback",
+    "fixture_iteration": "51passed/1failed: aggregate assertions pass; old exception-class error assertion conflicts with sanitized typed public error",
+    "final_targeted": "N3 passes with coverage-aware fixture and exact public error/no private detail assertions",
+    "prior_reviewed_browser": "Preserved lossless1a evidence; no new integration browser/native/build result yet"
+  },
+  "test_migration": {
+    "file": "tests/test_false_green_closure_20261018.py",
+    "changed_definitions": [
+      "_Conn",
+      "test_N3_counts_and_oldest_age_come_from_one_server_side_aggregate"
+    ],
+    "unchanged_definitions": 17,
+    "preserved": "Original counts, oldest-age, all-row SQL and UNAVAILABLE/null assertions.",
+    "changed": "Replace RuntimeError-substring assertion with exact delivery_summary_query_unavailable and private exception exclusion; add schema/coverage assertions."
+  },
+  "checks": [
+    "Ruff PASS",
+    "git diff --check PASS",
+    "Portal AST equivalence to reviewed source; other definitions equalmain",
+    "All513 main gates preserved+1",
+    "Main API/package/notifier/Telegram/analyst byte parity"
+  ],
+  "holds": [
+    "INDEX generation awaits exclusive generated lease after current native batch.",
+    "Independent integration review and exact final native/build/browser qualification required.",
+    "No grant request/push/release/activation or operational proof by this source integration."
+  ],
+  "evidence": [
+    {
+      "source": "/tmp/n8n-campaign-20261018/comms-current-main-focused.xml",
+      "sha256": "a12538c7dd0db87f939b6b551912f974048e128d518b1cbd11d157e05d5bf0d6",
+      "archive": "a12538c7dd0db87f939b6b551912f974048e128d518b1cbd11d157e05d5bf0d6.gz"
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/comms-current-main-fixture-green.xml",
+      "sha256": "6381456c6260087c4746fe57de6d641d1f913ebba48c5e45044bf1b153e0075e",
+      "archive": "6381456c6260087c4746fe57de6d641d1f913ebba48c5e45044bf1b153e0075e.gz"
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/comms-current-main-n3-fixture-final.xml",
+      "sha256": "19fbee21e41fdcd93b0280614e4b3ac2d99fd4a1ef4e32c5df21abff4a660e23",
+      "archive": "19fbee21e41fdcd93b0280614e4b3ac2d99fd4a1ef4e32c5df21abff4a660e23.gz"
+    },
+    {
+      "source": "/tmp/n8n-campaign-20261018/cross-review/comms1a-preflight/preflight-and-remediation-plan.json",
+      "sha256": "514c50c4fec10c310d9f291ee240b3900699e5b562a34dc2524db8ebb84c78d9",
+      "archive": "514c50c4fec10c310d9f291ee240b3900699e5b562a34dc2524db8ebb84c78d9.gz"
+    }
+  ]
+}

@@ -21,19 +21,45 @@ texts (whole-text regexes, no DOTALL). Machine words stay on ONE line ("STOP HEA
 are listed in those matchers, and tests/test_decision_cards_20261008.py proves old and new text route identically.
 Advisory only (MBI_BEHAVIOR = 0): levels are references, never orders. Rollback: config/telegram_cards.yaml.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import isfinite
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import quote
 
 try:
-    from scripts.lib.telegram_rich import (MAX_TEXT, _card_money, _card_pct, _card_ratio, _card_text, cc_base,
-                                           cc_symbol_url, cc_trading_url, chart_image_url, esc, link, safe_url)
+    from scripts.lib.telegram_rich import (
+        MAX_TEXT,
+        _card_money,
+        _card_pct,
+        _card_ratio,
+        _card_text,
+        cc_base,
+        cc_symbol_url,
+        cc_trading_url,
+        chart_image_url,
+        esc,
+        link,
+        safe_url,
+    )
 except ImportError:  # pragma: no cover - flat import layout
-    from lib.telegram_rich import (MAX_TEXT, _card_money, _card_pct, _card_ratio, _card_text, cc_base,  # type: ignore
-                                   cc_symbol_url, cc_trading_url, chart_image_url, esc, link, safe_url)
+    from lib.telegram_rich import (
+        MAX_TEXT,
+        _card_money,
+        _card_pct,
+        _card_ratio,
+        _card_text,
+        cc_base,  # type: ignore
+        cc_symbol_url,
+        cc_trading_url,
+        chart_image_url,
+        esc,
+        link,
+        safe_url,
+    )
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = ROOT / "config" / "telegram_cards.yaml"
@@ -94,12 +120,12 @@ class Card:
     header: str
     marker: str
     symbol: str
-    blocks: list[list[str]]                 # groups of pre-rendered HTML blocks, separated by RULE
+    blocks: list[list[str]]  # groups of pre-rendered HTML blocks, separated by RULE
     buttons: list[tuple[str, str]] = field(default_factory=list)
     ttl: Optional[str] = None
     evidence: list[str] = field(default_factory=list)
     chart: bool = True
-    ticker_url: Optional[str] = None        # where the $TICKER line links (default: the Watch dossier)
+    ticker_url: Optional[str] = None  # where the $TICKER line links (default: the Watch dossier)
     authority: str = "READ_ONLY_ADVISORY"
     symbols: list[str] = field(default_factory=list)
 
@@ -130,17 +156,46 @@ class Card:
             text = text[: MAX_TEXT - 1] + "…"
         btns = [(label, url) for label, url in self.buttons if safe_url(url)][:3]
         markup = {"inline_keyboard": [[{"text": label, "url": url} for label, url in btns]]} if btns else None
-        preview = ({"url": chart_image_url(sym), "prefer_large_media": True, "show_above_text": True}
-                   if self.chart and sym else {"is_disabled": True})
-        return {"text": text, "parse_mode": "HTML", "reply_markup": markup, "link_preview_options": preview,
-                "authority": self.authority}
+        preview = (
+            {"url": chart_image_url(sym), "prefer_large_media": True, "show_above_text": True}
+            if self.chart and sym
+            else {"is_disabled": True}
+        )
+        return {
+            "text": text,
+            "parse_mode": "HTML",
+            "reply_markup": markup,
+            "link_preview_options": preview,
+            "authority": self.authority,
+        }
 
 
 # ── CIO entry alert ─────────────────────────────────────────────────────────
 
 
-def entry_card(item: dict[str, Any], *, marker: str, state: str, stance: str, held: Optional[bool],
-               review_status: str, next_action: str, hard_block: Any, evidence: list[str]) -> Card:
+def _entry_ratio(value: Any) -> str:
+    """Display a supplied ratio; never derive one from the advisory price levels."""
+    if isinstance(value, bool):
+        return "unavailable"
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return "unavailable"
+    return _card_ratio(number) if isfinite(number) else "unavailable"
+
+
+def entry_card(
+    item: dict[str, Any],
+    *,
+    marker: str,
+    state: str,
+    stance: str,
+    held: Optional[bool],
+    review_status: str,
+    next_action: str,
+    hard_block: Any,
+    evidence: list[str],
+) -> Card:
     sym = str(item.get("symbol") or "").upper()
     if marker == "🔴":
         header = "ENTRY BLOCKED"
@@ -162,16 +217,21 @@ def entry_card(item: dict[str, Any], *, marker: str, state: str, stance: str, he
     except (TypeError, ValueError):
         risk = reward = None
     status_icon = {"🟢": "🟢", "🔴": "🔴"}.get(marker, "🟡")
-    status = [_block(status_icon, "STATUS", [state.replace("_", " ")]),
-              _block("⚠️", "ACTION REQUIRED", [next_action])]
+    status = [_block(status_icon, "STATUS", [state.replace("_", " ")]), _block("⚠️", "ACTION REQUIRED", [next_action])]
     zone = f"Zone: {_card_money(low)} - {_card_money(high)}" if low is not None and high is not None else ""
     note = item.get("price_note") or ("inside entry zone" if state in {"BUY_READY", "READY"} else "")
     levels = [
         _block("💰", "ENTRY", [f"Current: {_card_money(price)}" + (f" · {note}" if note else ""), zone]),
-        _block("🛑", "STOP", [_card_money(stop) + (f" · risk to stop {_card_money(risk)}" if risk is not None else "")]),
-        _block("🎯", "TARGET", [_card_money(target) + (f" · reward to target {_card_money(reward)}" if reward is not None else "")]),
-        f"<b>R:R {esc(_card_ratio(rr if rr is not None else ideal_rr))}</b>"
-        + (f" · ideal-zone {esc(_card_ratio(ideal_rr))}" if rr is not None and ideal_rr is not None else "")
+        _block(
+            "🛑", "STOP", [_card_money(stop) + (f" · risk to stop {_card_money(risk)}" if risk is not None else "")]
+        ),
+        _block(
+            "🎯",
+            "TARGET",
+            [_card_money(target) + (f" · reward to target {_card_money(reward)}" if reward is not None else "")],
+        ),
+        f"<b>R:R {esc(_entry_ratio(rr))} at current price</b>"
+        + f" · ideal-zone {esc(_entry_ratio(ideal_rr))}"
         + (f" · distance {esc(_card_pct(item.get('distance_pct')))}" if item.get("distance_pct") is not None else ""),
     ]
     company = _card_text(item.get("company"), limit=100)
@@ -185,8 +245,10 @@ def entry_card(item: dict[str, Any], *, marker: str, state: str, stance: str, he
     horizon = _card_text(item.get("time_horizon") or item.get("dte"), limit=60)
     if horizon:
         verdict.append(f"Time horizon: {horizon}")
-    context = [_block("🏢", "COMPANY", [company or f"{sym} · identity data unavailable", industry]),
-               _block("⚡", "CIO VERDICT", verdict)]
+    context = [
+        _block("🏢", "COMPANY", [company or f"{sym} · identity data unavailable", industry]),
+        _block("⚡", "CIO VERDICT", verdict),
+    ]
     # Context that used to be its own section stays available, collapsed (catalyst, options review).
     extra = []
     if _card_text(item.get("catalyst")):
@@ -194,10 +256,19 @@ def entry_card(item: dict[str, Any], *, marker: str, state: str, stance: str, he
     if _card_text(item.get("options_status") or item.get("options_summary")):
         extra.append(f"Options review: {_card_text(item.get('options_status') or item.get('options_summary'))}")
     return Card(
-        header=header, marker=marker, symbol=sym, symbols=[sym] if sym else [], ticker_url=cc_trading_url(sym) if sym else None,
+        header=header,
+        marker=marker,
+        symbol=sym,
+        symbols=[sym] if sym else [],
+        ticker_url=cc_trading_url(sym) if sym else None,
         blocks=[status, levels, context],
-        buttons=[("Open Research", cc_symbol_url(sym)), ("Open Trading View", trading_view_url(sym)),
-                 ("Review Position", opportunity_url(sym))] if sym else [],
+        buttons=[
+            ("Open Research", cc_symbol_url(sym)),
+            ("Open Trading View", trading_view_url(sym)),
+            ("Review Position", opportunity_url(sym)),
+        ]
+        if sym
+        else [],
         ttl=ttl_text("high_conviction_opportunity" if header == "HIGH CONVICTION ENTRY" else "reward"),
         evidence=extra + list(evidence),
     )
@@ -223,7 +294,9 @@ def stop_health_card(alerts: list[dict[str, Any]]) -> dict[str, Any]:
             syms.append(s)
     single = len(syms) == 1
     marker = "🚨" if urgent else "⚠️"
-    header = ("CRITICAL STOP ALERT" if urgent else "STOP WARNING") + ("" if len(alerts) == 1 else f" · {len(alerts)} alerts")
+    header = ("CRITICAL STOP ALERT" if urgent else "STOP WARNING") + (
+        "" if len(alerts) == 1 else f" · {len(alerts)} alerts"
+    )
     blocks: list[list[str]] = []
     if single:
         counts = [f"Urgent alerts: {urgent}", f"Total alerts: {len(alerts)}"]
@@ -242,17 +315,29 @@ def stop_health_card(alerts: list[dict[str, Any]]) -> dict[str, Any]:
             mine = [a for a in alerts if str(a.get("symbol") or "").upper() == s]
             u = sum(1 for a in mine if a.get("severity") == "urgent")
             conds = ", ".join(sorted({str(a.get("condition") or "").upper().replace("_", " ") for a in mine}))
-            rows.append(f"{'🚨' if u else '⚠️'} <b>{link('$' + s, cc_symbol_url(s))}</b> — STOP HEALTH — {esc(conds)}"
-                        + (f" · {u} urgent" if u else ""))
+            rows.append(
+                f"{'🚨' if u else '⚠️'} <b>{link('$' + s, cc_symbol_url(s))}</b> — STOP HEALTH — {esc(conds)}"
+                + (f" · {u} urgent" if u else "")
+            )
             for a in mine[:3]:
                 if a.get("line"):
                     rows.append(f"   {esc(a['line'])}")
         blocks.append(["\n".join(rows), esc(f"Urgent alerts: {urgent} · Total alerts: {len(alerts)}")])
         blocks.append([_block("👉", "ACTION", ["Review the flagged stops — urgent ones first."])])
-    card = Card(header=header, marker=marker, symbol=syms[0] if single else "", symbols=syms, blocks=blocks,
-                buttons=([("Open Position", opportunity_url(syms[0])), ("Check Stops", stops_url(syms[0]))]
-                         if single else [("Check Stops", f"{cc_base()}/v3/portfolio?tab={quote('Stop Management')}")]),
-                ttl=ttl_text("threat"), chart=False)
+    card = Card(
+        header=header,
+        marker=marker,
+        symbol=syms[0] if single else "",
+        symbols=syms,
+        blocks=blocks,
+        buttons=(
+            [("Open Position", opportunity_url(syms[0])), ("Check Stops", stops_url(syms[0]))]
+            if single
+            else [("Check Stops", f"{cc_base()}/v3/portfolio?tab={quote('Stop Management')}")]
+        ),
+        ttl=ttl_text("threat"),
+        chart=False,
+    )
     out = card.render()
     out["symbols"] = syms
     return out

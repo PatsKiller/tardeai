@@ -889,12 +889,28 @@ def delivery_summary() -> dict[str, Any]:
     the un-settled and failed counts, the total, and the oldest un-settled row's age. When the database cannot be
     read the answer is ``status: UNAVAILABLE`` with null counts — never zero; the in-process memory snapshot is a
     subset and is not used for the count."""
-    out: dict[str, Any] = {"ok": False, "status": "UNAVAILABLE", "source": "db", "basis": "server_side_aggregate",
-                           "unsettled": None, "failed": None, "reaped_unclaimed": None, "total": None, "oldest_unsettled_at": None,
-                           "oldest_unsettled_age_s": None, "as_of": None,
-                           "unsettled_statuses": list(UNSETTLED_STATUSES), "failed_statuses": list(FAILED_STATUSES),
-                           "telegram_outbox_failed_24h": None, "telegram_outbox_failed_24h_by_channel": None,
-                           "telegram_outbox_held_24h": None, "telegram_outbox_sent_24h": None}
+    out: dict[str, Any] = {
+        "schema": "CommunicationsDeliverySummary@v1",
+        "ok": False,
+        "status": "UNAVAILABLE",
+        "source": "db",
+        "basis": "server_side_aggregate",
+        "unsettled": None,
+        "failed": None,
+        "reaped_unclaimed": None,
+        "total": None,
+        "oldest_unsettled_at": None,
+        "oldest_unsettled_age_s": None,
+        "as_of": None,
+        "unsettled_statuses": list(UNSETTLED_STATUSES),
+        "failed_statuses": list(FAILED_STATUSES),
+        "coverage": {"scope": "all_retained_rows", "complete": False, "window_start": None, "window_end": None},
+        # telegram_outbox (#1895): a different ledger, counted separately; null = not measured, never zero.
+        "telegram_outbox_failed_24h": None,
+        "telegram_outbox_failed_24h_by_channel": None,
+        "telegram_outbox_held_24h": None,
+        "telegram_outbox_sent_24h": None,
+    }
     conn = _deliveries_db_conn()
     if conn is None:
         out["error"] = "communications DB unavailable"
@@ -902,32 +918,69 @@ def delivery_summary() -> dict[str, Any]:
     uns = ", ".join(f"'{s}'" for s in UNSETTLED_STATUSES)
     fail = ", ".join(f"'{s}'" for s in FAILED_STATUSES)
     reaped = f"status = 'EXPIRED' AND error_taxonomy IS NOT DISTINCT FROM '{REAPED_UNCLAIMED_TAXONOMY}'"
-    sql = (f"SELECT COUNT(*) FILTER (WHERE status IN ({uns})) AS unsettled, "
-           f"COUNT(*) FILTER (WHERE status IN ({fail}) AND NOT ({reaped})) AS failed, "
-           f"COUNT(*) FILTER (WHERE {reaped}) AS reaped_unclaimed, COUNT(*) AS total, "
-           f"MIN(reserved_at) FILTER (WHERE status IN ({uns})) AS oldest_unsettled_at, now() AS as_of "
-           f"FROM communication_deliveries")
+    sql = (
+        f"SELECT COUNT(*) FILTER (WHERE status IN ({uns})) AS unsettled, "
+        f"COUNT(*) FILTER (WHERE status IN ({fail}) AND NOT ({reaped})) AS failed, "
+        f"COUNT(*) FILTER (WHERE {reaped}) AS reaped_unclaimed, COUNT(*) AS total, "
+        f"MIN(reserved_at) FILTER (WHERE status IN ({uns})) AS oldest_unsettled_at, now() AS as_of, "
+        "MIN(reserved_at) AS window_start, "
+        "COUNT(*) FILTER (WHERE reserved_at IS NULL OR reserved_at > now()) AS invalid_clocks "
+        f"FROM communication_deliveries"
+    )
     try:
         with conn.cursor() as cur:
             cur.execute(sql)
             cols = [d[0] for d in cur.description]
             row = cur.fetchone()
         rec = dict(zip(cols, row)) if row is not None and not isinstance(row, dict) else dict(row or {})
-    except Exception as exc:  # noqa: BLE001 — an unreadable table is UNAVAILABLE, with the reason
-        out["error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+        conn.rollback()  # end the read transaction; never retain a stale transaction clock
+    except Exception:  # noqa: BLE001 — an unreadable table is UNAVAILABLE
+        out["error"] = "delivery_summary_query_unavailable"
         try:
-            conn.rollback()   # same connection handling as _db_list_deliveries (not closed: it may be shared)
+            conn.rollback()  # same connection handling as _db_list_deliveries (not closed: it may be shared)
         except Exception:  # noqa: BLE001
             pass
         return out
-    oldest, as_of = rec.get("oldest_unsettled_at"), rec.get("as_of")
+    counts = [rec.get(k) for k in ("unsettled", "failed", "total", "invalid_clocks")]
+    reaped_count = rec.get("reaped_unclaimed", 0)
+    if (any(type(n) is not int or n < 0 for n in counts) or type(reaped_count) is not int or reaped_count < 0
+            or counts[0] + counts[1] + reaped_count > counts[2] or counts[3] != 0):
+        out["error"] = "delivery_summary_invalid_counts_or_coverage"
+        return out
+    oldest, as_of, first = rec.get("oldest_unsettled_at"), rec.get("as_of"), rec.get("window_start")
+
+    def aware(value):
+        return isinstance(value, datetime) and value.tzinfo is not None and value.utcoffset() is not None
+
+    if (
+        not aware(as_of)
+        or (counts[2] > 0 and (not aware(first) or first > as_of))
+        or (counts[2] == 0 and first is not None)
+        or (counts[0] > 0 and (not aware(oldest) or oldest > as_of))
+        or (counts[0] == 0 and oldest is not None)
+    ):
+        out["error"] = "delivery_summary_invalid_clock"
+        return out
     age = None
     if isinstance(oldest, datetime) and isinstance(as_of, datetime):
         age = int(round((as_of - oldest).total_seconds()))
-    out.update(ok=True, status="OK", unsettled=int(rec.get("unsettled") or 0), failed=int(rec.get("failed") or 0),
-               reaped_unclaimed=int(rec.get("reaped_unclaimed") or 0),
-               total=int(rec.get("total") or 0), oldest_unsettled_at=_iso(oldest), oldest_unsettled_age_s=age,
-               as_of=_iso(as_of))
+    out.update(
+        ok=True,
+        status="OK",
+        unsettled=counts[0],
+        failed=counts[1],
+        reaped_unclaimed=reaped_count,
+        total=counts[2],
+        oldest_unsettled_at=_iso(oldest),
+        oldest_unsettled_age_s=age,
+        as_of=_iso(as_of),
+        coverage={
+            "scope": "all_retained_rows",
+            "complete": True,
+            "window_start": _iso(first),
+            "window_end": _iso(as_of),
+        },
+    )
     out.update(telegram_outbox_summary(conn))
     return out
 
@@ -954,6 +1007,7 @@ def telegram_outbox_summary(conn, hours: int = 24) -> dict[str, Any]:
         with conn.cursor() as cur:
             cur.execute(sql, (int(hours),))
             rows = cur.fetchall()
+        conn.rollback()  # end the read transaction (#1887): a shared connection must not keep a stale now()
     except Exception as exc:  # noqa: BLE001 — unreadable is a named null, never zero
         res["telegram_outbox_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
         try:

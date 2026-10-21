@@ -251,25 +251,36 @@ class _Conn:
     def close(self):
         pass
 
+    def rollback(self):
+        # The aggregate owner ends its read transaction after the single query.
+        pass
+
 
 def test_N3_counts_and_oldest_age_come_from_one_server_side_aggregate(monkeypatch):
     import communications_portal as CP
 
     as_of = datetime(2026, 10, 18, 12, 0, tzinfo=timezone.utc)
-    cols = ["unsettled", "failed", "total", "oldest_unsettled_at", "as_of"]
-    cur = _Cur((1234, 7, 90000, as_of - timedelta(hours=3), as_of), cols)
+    cols = ["unsettled", "failed", "total", "oldest_unsettled_at", "as_of", "window_start", "invalid_clocks"]
+    cur = _Cur((1234, 7, 90000, as_of - timedelta(hours=3), as_of, as_of - timedelta(days=30), 0), cols)
     monkeypatch.setattr(CP, "_deliveries_db_conn", lambda: _Conn(cur))
     s = CP.delivery_summary()
     assert s["status"] == "OK" and s["unsettled"] == 1234 and s["failed"] == 7 and s["total"] == 90000
     assert s["oldest_unsettled_age_s"] == 3 * 3600 and s["basis"] == "server_side_aggregate"
+    assert s["schema"] == "CommunicationsDeliverySummary@v1"
+    assert s["coverage"] == {
+        "scope": "all_retained_rows", "complete": True,
+        "window_start": (as_of - timedelta(days=30)).isoformat(), "window_end": as_of.isoformat(),
+    }
     assert "LIMIT" not in cur.sql.upper() and "COUNT(*)" in cur.sql.upper()
-    # a failing query is UNAVAILABLE with the error, never zero
+    # A failing query is UNAVAILABLE with a typed public error, never zero or private DB detail.
     class _Boom(_Cur):
         def execute(self, sql, params=None):
             raise RuntimeError("relation does not exist")
     monkeypatch.setattr(CP, "_deliveries_db_conn", lambda: _Conn(_Boom(None, cols)))
     s = CP.delivery_summary()
-    assert s["status"] == "UNAVAILABLE" and s["unsettled"] is None and "RuntimeError" in s["error"]
+    assert s["status"] == "UNAVAILABLE" and s["unsettled"] is None
+    assert s["error"] == "delivery_summary_query_unavailable"
+    assert "relation does not exist" not in str(s) and "RuntimeError" not in str(s)
 
 
 def test_N3_route_and_frontend_use_the_summary_not_the_500_row_sample():

@@ -222,7 +222,7 @@ def test_summary_counts_reaped_unclaimed_copies_apart_from_failed(monkeypatch):
 
     db = sqlite3.connect(":memory:")
     db.execute("CREATE TABLE communication_deliveries (status TEXT, error_taxonomy TEXT, reserved_at TEXT)")
-    db.executemany("INSERT INTO communication_deliveries VALUES (?, ?, NULL)", [
+    db.executemany("INSERT INTO communication_deliveries VALUES (?, ?, '2026-10-20T10:00:00+00:00')", [
         ("EXPIRED", "reservation_unclaimed_stale")] * 6 + [
         ("EXPIRED", None), ("EXPIRED", "provider_ttl"), ("FAILED", "reservation_unclaimed_stale"),
         ("SENT", None), ("RESERVED", None)])
@@ -231,12 +231,17 @@ def test_summary_counts_reaped_unclaimed_copies_apart_from_failed(monkeypatch):
         description = None
 
         def execute(self, sql, params=None):
-            sql = sql.replace("now() AS as_of", "NULL AS as_of")  # SQLite has no now(); as_of is not under test
+            sql = sql.replace("now()", "'2026-10-20T12:00:00+00:00'")  # deterministic timezone-aware SQL clock
             self._c = db.execute(sql)
             self.description = self._c.description
 
         def fetchone(self):
-            return self._c.fetchone()
+            row = list(self._c.fetchone())
+            for index, column in enumerate(self.description):
+                name = column[0]
+                if name in {"oldest_unsettled_at", "as_of", "window_start"} and row[index] is not None:
+                    row[index] = datetime.fromisoformat(row[index])
+            return tuple(row)
 
         def __enter__(self):
             return self
@@ -247,6 +252,9 @@ def test_summary_counts_reaped_unclaimed_copies_apart_from_failed(monkeypatch):
     class _Conn:
         def cursor(self):
             return _Cur()
+
+        def rollback(self):
+            pass
 
     monkeypatch.setattr(CP, "_deliveries_db_conn", lambda: _Conn())
     s = CP.delivery_summary()
