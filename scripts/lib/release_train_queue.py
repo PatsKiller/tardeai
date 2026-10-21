@@ -74,7 +74,7 @@ def _now() -> datetime:
 
 def _iso(v: Any) -> Any:
     if isinstance(v, datetime):
-        return (v if v.tzinfo else v.replace(tzinfo=timezone.utc)).isoformat()
+        return (v if v.tzinfo else v.replace(tzinfo=timezone.utc)).astimezone(timezone.utc).isoformat()
     return v
 
 
