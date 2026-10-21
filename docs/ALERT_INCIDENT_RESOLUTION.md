@@ -15,6 +15,27 @@ PR-OPEN, BRANCH-ONLY, PLANNED, POLICY-ONLY (defined in
 `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` §0). The sections after this one
 are the 2026-09-21 record of the alert outbox and recovery chain and remain accurate for that plane.
 
+### Update 2026-10-20 — settlement is not recovery; delivery health (LIVE in `f6f56e365`)
+
+- **N1, incident notifier (#1866).** When a notified incident leaves the fan-in, the notifier sends `TRADE AI SYSTEM
+  NOTICE SETTLED — N incident(s) no longer reported at P1/P2 (recovery not verified)`. It sends `TRADE AI SYSTEM
+  RECOVERED` only when every key has validator evidence. Evidence means `recovery_validator.output_recovered(lane,
+  since, {"mode": "live"})`, read from the coordination ledger's runs: a live run that met its output contract after
+  the incident was last notified. Each state record gets `settled_at`, `recovery_verified` and `settlement`
+  (`recovered_verified` | `no_longer_reported`). `recovered_at` keeps its name, because the flap cooldown and TTL key
+  on it. The run receipt carries `recovery_evidence {clearing, verified, basis}`.
+- **N2, Telegram provider id (#1866).** `record_operator_message` takes an explicit `provider_message_id` from callers
+  on other transports, such as the autonomy watchdog's `send_system`. It never borrows `send_telegram`'s ambient id.
+- **N3, delivery health (#1866).** `GET /api/v2/communications/deliveries/summary` and the Comms hub strip.
+  Unreadable means UNAVAILABLE, never 0. See `docs/ops/COMMS_HUB_2026-10-07.md` "Update 2026-10-20".
+- **Stuck reservations (#1885, merged 14:27 ET, not yet served).** 205 RESERVED deliveries had no owner. They were
+  settled by the operator, archive-first. The source is fixed: a reservation is made only for an OUTBOUND event with an
+  explicit channel. An opt-in reaper was added.
+- `analyst_data_history` empty payloads. The 12,636-row `data_integrity` finding below is the 2026-09-21
+  measurement and was not re-measured for this update. On 2026-10-20 the operator archived the 531 empty-payload rows
+  written since 2026-10-18 by pre-fix dev-checkout code (`archive/db_trim/20261020T165931Z`, tripwire recorded).
+  Record: `docs/ops/LIVE_CHANGES_20261020.md`.
+
 ### Routing path (LIVE)
 
 ```
@@ -37,7 +58,7 @@ SIEM: n8n_siem_bridge.py (cron 1-59/5) ─► system_health_events; siem-critica
 | Intent P1 | never capped or quiet-held; exact-body dedupe 60 min unless `dedupe_minutes=0` (operator-action messages) | `route_intent`; AGENTS.md §9.1 (5.1.0) |
 | Intent P2 | held 22:00–07:00 ET to the Reports archive, folded into the advice digest; delivered if the archive write fails | `route_intent`, `_intent_send` |
 | Legacy P0 daily budget | 30 non-ops sends | `telegram_alert_router.DAILY_SEND_BUDGET` |
-| Incident notifier | P1 immediate, uncapped; P2 batched every 30 min, quiet-held; daily cap 24 messages; dedupe 24 h; flap cooldown 60 min; P3 never sends | `scripts/incident_notifier.py` |
+| Incident notifier | P1 immediate, uncapped; P2 batched every 30 min, quiet-held; daily cap 24 messages; dedupe 24 h; flap cooldown 60 min; P3 never sends; clearing is `NOTICE SETTLED` unless validator-proved `RECOVERED` (2026-10-20) | `scripts/incident_notifier.py` |
 | Digests | advice digest 10:00 / 15:00 / 17:00 ET weekdays (P2 intent); `alert_daily_digest.py` 17:55 | crontab; `config/advice_digest.yaml` |
 | Schwab paused | `STOP HEALTH — DEGRADED` P1 once per ET day while `config/schwab_access_mode.yaml` says `forbidden`; health agent `schwab_token_revoked` (#1733) | LIVE |
 | Ratchets | `config/telegram_chokepoint_baseline.json` (files empty), `config/provider_chokepoint_baseline.json` (empty), `config/notification_intent_baseline.json` (49 sends without a declared priority) | `scripts/check_comms_gateway_enforcement.py` |
