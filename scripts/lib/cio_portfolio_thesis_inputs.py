@@ -38,7 +38,13 @@ def operator_policy_store() -> Path:
 
 
 def holdings_path() -> Path:
-    return _path("TRADEAI_HOLDINGS_JSON", "data", "portfolios", "state", "holdings.json")
+    # The store's relative path comes from scripts/lib/portfolio_positions.STORE_REL, the position store's one
+    # definition, not a holdings-file literal here (tests/test_portfolio_price_truth_20261005.py ratchets direct
+    # readers; the document is still read by cio_portfolio_state_v1.load_holdings_document). Same resolved path as
+    # before: TRADEAI_HOLDINGS_JSON, else under PROJECT_ROOT. Release-1 integration fix, 2026-10-21.
+    from scripts.lib.portfolio_positions import STORE_REL
+
+    return _path("TRADEAI_HOLDINGS_JSON", *STORE_REL)
 
 
 def cash_evidence_path() -> Path:
