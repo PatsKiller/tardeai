@@ -865,7 +865,12 @@ def test_libraries_are_wired_into_nothing():
                "tests/test_release_train_authority_20261021.py", "config/release_train_delegation.example.json",
                "scripts/lib/release_train_controller.py",
                # Phase 1 contracts name the schema file release_control.v1.schema.json (a filename, not an import)
-               "scripts/lib/release_train_contracts.py"}
+               "scripts/lib/release_train_contracts.py",
+               # Phase 4 (feat/release-train-n8n-20261021; release-2 integration): release_train_window.py calls only
+               # release_delegation.load() (read-only validation of the standing delegation, fail closed when absent);
+               # the other three name the libraries in docstrings or in the workflow's forbidden-text denylist.
+               "scripts/lib/release_train_window.py", "scripts/lib/release_train_window_view.py",
+               "scripts/release_train_window_request.py", "scripts/n8n_workflow_templates.py"}
     hits = []
     for base in ("scripts", "config", "deploy", "systemd", "n8n", "src", "bin"):
         root = ROOT / base
