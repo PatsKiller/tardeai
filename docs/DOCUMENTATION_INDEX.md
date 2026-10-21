@@ -1,5 +1,5 @@
 # Trade AI v12 — Documentation Index
-**Updated:** 2026-10-14 (platform documentation refresh section added); 2026-08-27 (audit finding M9 — backfilled 22 missing 2026-08-20/21/22 closeout doc entries; prior update 2026-08-24, R10.3 CIO persistent-cognition consumption source PR)
+**Updated:** 2026-10-20 (live changes of 2026-10-20 section added); 2026-10-14 (platform documentation refresh section added); 2026-08-27 (audit finding M9 — backfilled 22 missing 2026-08-20/21/22 closeout doc entries; prior update 2026-08-24, R10.3 CIO persistent-cognition consumption source PR)
 **Protocol:** All doc changes follow `docs/A1A.md`. Do not add a doc without updating this index.
 **Scope:** Project root = `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`
 
@@ -30,6 +30,12 @@ ACTIVE; 11.0.0 (§23.24) is PROPOSED.
 | Disaster recovery and failover | `docs/RESTORE_GUIDE.md` §0 | Active |
 | Workflow development standards | `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` §0 | Active |
 | Production readiness checklist | `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` "Production readiness checklist" | Active |
+
+## Live changes (2026-10-20)
+
+| Document | Purpose | Status |
+|----------|---------|--------|
+| `docs/ops/LIVE_CHANGES_20261020.md` | Everything merged or made live on 2026-10-20: PRs #1882, #1866 (N1–N3), #1883, #1884 and #1885; five n8n lanes added to the relay live list; the Active Trader motion unit back up; the two archive-first operator remediations; releases `720fce06c` and `f6f56e365`. Links the subsystem docs it updated | Active (dated) |
 
 ## Cognitive transformation package (2026-09-27) — PROPOSED
 

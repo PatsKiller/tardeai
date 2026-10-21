@@ -1,9 +1,13 @@
 # Active Trader motion runtime back up, supervised by n8n (2026-10-19)
 
 ```
-Status:      PACKET (unit fix + watchdog code/config + tests in the PR; marker, unit install, start, live list and
-             relay restarts are NOT done: operator)
-as_of:       2026-10-19
+Status:      LIVE 2026-10-20 (operator applied: marker /etc/tradeai/enable-active-trader-motion 2026-10-19 11:18 ET;
+             unit installed with the fixed gate line and started 2026-10-20 10:00:33 ET under --force-open-hours; proof
+             PASS; lane on TRADEAI_N8N_RELAY_LIVE_LANES 09:58:42 ET, backup n8n-live-lanes.env.bak-20261020T135842Z-
+             motion-watchdog-live). Evidence 14:35 ET: unit active/running, ConditionResult=yes; receipt
+             active-trader-motion-watchdog_last.json run d:active-trader-motion-watchdog:live:20261020T1435, band
+             HEALTHY since 14:05:02Z. Summary: docs/ops/LIVE_CHANGES_20261020.md §3
+as_of:       2026-10-20 (packet built 2026-10-19)
 Authority:   operator decision 2026-10-19 (keep the loop on systemd; n8n owns its supervision); AGENTS.md §0 rules 2/7,
              §23.3, §23.23, §24.1, §24.10
 Targets:     ~/.config/systemd/user/tradeai-active-trader-motion.service (gate line fix), /etc/tradeai marker (operator),
@@ -132,6 +136,20 @@ and the packet's SHA256 as whole words. A dry run consumes nothing. A refused or
 
 `install` and `start` both refuse unless the session is `CLOSED`, because §24.10 binds every mutation of the unit.
 
+## Applied 2026-10-20 (operator)
+
+| Step | When (ET) | Evidence (read back 2026-10-20 14:35 ET) |
+|---|---|---|
+| marker | 2026-10-19 11:18 | `/etc/tradeai/enable-active-trader-motion`, root-owned, mode 0600 |
+| install | 2026-10-20 10:00:31 | installed unit has `ConditionPathExists=/etc/tradeai/enable-active-trader-motion`; old copy archived as `tradeai-active-trader-motion.service.archived-20261020T140031Z` |
+| start (`--force-open-hours`, operator override; session was open) | 10:00:33 | `systemctl --user show`: `ActiveState=active`, `SubState=running`, `ConditionResult=yes` |
+| proof | after start | PASS (operator session) |
+| relay | 09:58:42 | lane on `TRADEAI_N8N_RELAY_LIVE_LANES`; backup `n8n-live-lanes.env.bak-20261020T135842Z-motion-watchdog-live` |
+| first live watchdog slots | from 10:05 | `data/runtime/active-trader-motion-watchdog_last.json` run `d:active-trader-motion-watchdog:live:20261020T1435`; state `last_band HEALTHY` since 14:05:02Z, heartbeat age 28.8 s, `cycle_count` 209,816 |
+
+The relay step went ahead of install/start (09:58 vs 10:00). The watchdog's first slots could therefore observe the
+runtime still down. The band was HEALTHY from 14:05:02Z (10:05 ET), the first slot after the start.
+
 ## Rollback
 
 - `bash $P rollback --apply` removes the watchdog from the live list (with backup and read-back) and restarts relay
@@ -151,8 +169,8 @@ AGENTS.md §24.10 still records the misspelt marker path twice:
 - item 4, as a measurement of 2026-10-10. `tests/test_agents_policy_5_0_0_execution_ops.py` pins that text.
 
 Changing either one is a PATCH, and it is **not applied here**. A PATCH needs a Policy-Version bump, a changelog row
-and the operator's per-PR word to merge AGENTS.md (§23.13). It also stays true until the operator installs the fixed
-unit. The draft is `AGENTS_PATCH_DRAFT.md`.
+and the operator's per-PR word to merge AGENTS.md (§23.13). Its precondition, the operator installing the fixed unit, was met
+on 2026-10-20 10:00 ET. The draft is `AGENTS_PATCH_DRAFT.md` and is still not applied.
 
 ## Files
 
