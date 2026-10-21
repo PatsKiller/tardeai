@@ -26,7 +26,7 @@ except ImportError:  # pragma: no cover - scripts/ not on sys.path
     _cc_sys.path.insert(0, str(next(p for p in _CcPath(__file__).resolve().parents if p.name == "scripts")))
     from lib.cc_client import cc_urlopen as _cc_urlopen
 
-import argparse, json, sys
+import argparse, json, math, sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -168,8 +168,21 @@ def _f_catalyst(ie):
     return _clamp(s), ("verified catalyst" if ie.get("catalyst_verified") else "catalyst") + f": {str(ie['catalyst'])[:50]}"
 
 
+def _finite(v):
+    """float(v) when it is a real finite number, else None.
+
+    numeric columns can hold 'NaN' (watchlist_strategy_cards BHVN 2026-10-21): psycopg2 returns
+    Decimal('NaN'), which is truthy and makes `px <= stop` raise decimal.InvalidOperation — one bad
+    card aborted every scorer run from 2026-10-19 07:45 ET (hermes_score_history went silent)."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError, ArithmeticError):
+        return None
+    return f if math.isfinite(f) else None
+
+
 def _f_rr(wi):
-    px = wi.get("price"); tgt = wi.get("target_price"); stop = wi.get("stop_loss")
+    px = _finite(wi.get("price")); tgt = _finite(wi.get("target_price")); stop = _finite(wi.get("stop_loss"))
     if not (px and tgt and stop) or px <= stop:
         return None, None
     rr = (float(tgt) - float(px)) / (float(px) - float(stop)) if (float(px) - float(stop)) > 0 else None

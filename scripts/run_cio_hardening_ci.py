@@ -5452,6 +5452,16 @@ GATES = [
         "orchestrator_rows_produced_20261021",
         ["tests/test_orchestrator_rows_produced_20261021.py"],
     ),
+    (
+        # ANCHOR: FRESHNESS_SLO_HERMES_SCORER_20261021 — pipeline freshness SLO red 2026-10-21:
+        # hermes_score_snapshots_2h was a REAL outage (watchlist_strategy_cards BHVN target/stop = 'NaN';
+        # Decimal('NaN') in _f_rr `px <= stop` raised InvalidOperation and aborted every scorer run since
+        # 2026-10-19 07:45 ET) — _f_rr now drops non-finite levels. schwab_stream_book_2h was a FALSE POSITIVE
+        # (daemon cron line commented "PAUSED 2026-10-14" while access mode is read_only) — the SLO reports
+        # PRODUCER_UNSCHEDULED / PRODUCER_KILL_SWITCH; unreadable crontab stays conservative. Hermetic: no DB.
+        "freshness_slo_hermes_scorer_20261021",
+        ["tests/test_freshness_slo_hermes_scorer_20261021.py"],
+    ),
 ]
 
 
