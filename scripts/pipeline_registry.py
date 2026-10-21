@@ -97,6 +97,91 @@ def run_fail(run_id: Optional[int], error_message: str = ''):
         pass
 
 
+def run_terminated(run_id: Optional[int], signum: int):
+    """Close a run that a supervisor killed with a catchable signal.
+
+    2026-10-21 (zombie runs): every 'running' row that remediate_pipeline_failures later
+    flipped to failed/{"errors": []} was a process killed by SIGTERM -- process_reaper
+    (pile-up / runtime cap on trade_ai_orchestrator), health_tick's orphan cleanup
+    (pipeline_watchdog's detached symbol_enrichment children), a wrapper `timeout`. Python's
+    default SIGTERM disposition exits WITHOUT unwinding, so PipelineRun.__exit__ never ran
+    and the row stayed 'running' until the zombie sweep paged "Pipeline FAILED ... Error: []".
+    A kill is a real failure and still pages, but now it says what happened.
+    """
+    if not run_id:
+        return
+    try:
+        import signal as _signal
+        name = _signal.Signals(signum).name
+    except Exception:
+        name = f"signal {signum}"
+    try:
+        conn = _get_conn()
+        if not conn:
+            return
+        cur = conn.cursor()
+        cur.execute("""UPDATE pipeline_runs SET status='failed', finished_at=NOW(),
+            duration_seconds=EXTRACT(EPOCH FROM (NOW()-started_at)),
+            summary=jsonb_build_object('errors', %s, 'terminated_by_signal', %s::int)
+            WHERE id=%s AND status='running'""",
+            [f"terminated by {name} (killed by a supervisor before the run could close)",
+             int(signum), run_id])
+        conn.commit(); conn.close()
+    except Exception:
+        pass
+
+
+class PipelineRunTerminated(SystemExit):
+    """Raised inside a PipelineRun block when the process receives SIGTERM/SIGHUP.
+
+    A SystemExit (not an Exception) so a script's `except Exception` cannot swallow it;
+    exit code is 128+signum, what the shell reports for a signal death."""
+
+    def __init__(self, signum: int):
+        super().__init__(128 + int(signum))
+        self.signum = int(signum)
+
+
+#: Signals a supervisor uses to stop a batch job. SIGKILL cannot be caught -- callers that
+#: enforce a timeout must SIGTERM first (see momentum_scalp_early_lane_runner._run).
+TERMINATION_SIGNALS = ("SIGTERM", "SIGHUP")
+
+
+def _install_termination_handlers() -> dict:
+    """Turn SIGTERM/SIGHUP into PipelineRunTerminated while a run is open.
+
+    Only replaces the DEFAULT disposition (a script's own handler or SIG_IGN is left alone)
+    and only in the main thread (signal.signal raises elsewhere). Returns what to restore."""
+    import signal as _signal
+    import threading
+    previous = {}
+    if threading.current_thread() is not threading.main_thread():
+        return previous
+
+    def _raise(signum, _frame):
+        raise PipelineRunTerminated(signum)
+
+    for name in TERMINATION_SIGNALS:
+        sig = getattr(_signal, name, None)
+        if sig is None:
+            continue
+        try:
+            if _signal.getsignal(sig) is _signal.SIG_DFL:
+                previous[sig] = _signal.signal(sig, _raise)
+        except (ValueError, OSError):
+            continue
+    return previous
+
+
+def _restore_handlers(previous: dict) -> None:
+    import signal as _signal
+    for sig, handler in (previous or {}).items():
+        try:
+            _signal.signal(sig, handler)
+        except (ValueError, OSError):
+            pass
+
+
 class PipelineRun:
     def __init__(self, script_name: str, run_label: str = None, triggered_by: str = None):
         self.script_name = script_name
@@ -110,15 +195,23 @@ class PipelineRun:
         self.run_id = None
         #: None = not measured. Do NOT default this to 0 — see run_complete().
         self._rows = None
+        self._prev_handlers = {}
 
     def __enter__(self):
         self.run_id = run_start(self.script_name, self.run_label, self.triggered_by)
+        if self.run_id:
+            self._prev_handlers = _install_termination_handlers()
         return self
 
     def rows(self, count: int):
         self._rows = count
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        _restore_handlers(self._prev_handlers)
+        self._prev_handlers = {}
+        if exc_type is not None and issubclass(exc_type, PipelineRunTerminated):
+            run_terminated(self.run_id, getattr(exc_val, "signum", 15))
+            return False
         # SystemExit(0)/SystemExit(None) is a CLEAN success, not a failure. The idiom
         # `with PipelineRun(...): raise SystemExit(main())` was recording every exit-0 success as
         # failed with errors="0", flooding pipeline_critical alerts. Real failures (sys.exit(non-zero)
