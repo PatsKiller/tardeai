@@ -645,7 +645,7 @@ def _handle_personal_write(handler, raw_body: bytes):
                 _sf = _sd / _stale
                 if _sf.exists():
                     _sf.unlink()
-            print(f"  [personal] Invalidated AI caches (Roth + analysis)")
+            print("  [personal] Invalidated AI caches (Roth + analysis)")
         except Exception:
             pass
 
@@ -1683,6 +1683,8 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         treated as the stricter service listener.
         """
         listener = getattr(self.server, "cc_listener_role", _cc_auth.LISTENER_SERVICE)
+        # Operator command handlers (release STOP) re-check same-origin from this, never from report_only.
+        _cc_auth.set_request_context(listener, self.headers)
         try:
             d = _cc_auth.evaluate_request(CC_AUTH_CONFIG, listener, self.command, self.path,
                                           self.headers, CC_AUTH_TOKENS, request=self)

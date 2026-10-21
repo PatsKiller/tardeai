@@ -5448,6 +5448,16 @@ GATES = [
         ["tests/test_release_window_20261016.py"],
     ),
     (
+        # ANCHOR: RELEASE_TRAIN_CC_STOP_20261021 — Release Train v2, Phase 2 STOP pulled forward: POST
+        # /api/v2/coordination/release-train/stop SETS release_window.py's STOP.json (scripts/lib/release_train_stop.py).
+        # Tailnet operator principal only, CSRF enforced (gate hard route + handler command_csrf_check, never
+        # report_only), no step-up, actor from the server, set-only (clear/resume refused; resume is host-CLI-only,
+        # D3), idempotent per key, append-only audit, latch read by Runner as REFUSED_STOP_LATCHED. Hermetic: tmp
+        # state dir, temp cc_auth config, ephemeral loopback listeners; psycopg2/dotenv stubbed.
+        "release_train_cc_stop_20261021",
+        ["tests/test_release_train_stop_20261021.py"],
+    ),
+    (
         "n8n_cc_reader_first_20261018",
         [
             "tests/test_cc_reader_first_20261018.py",

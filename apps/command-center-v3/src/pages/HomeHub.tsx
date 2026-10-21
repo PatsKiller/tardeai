@@ -19,6 +19,7 @@ import RiskGauge from '../components/risk/RiskGauge'
 import OperatorInboxPanel from '../components/OperatorInboxPanel'
 import PlatformHealthPanel from '../components/PlatformHealthPanel'
 import NeedsActionCard from '../components/home/NeedsActionCard'
+import ReleaseTrainCard from '../components/home/ReleaseTrainCard'
 import { healthFindingCta } from '../lib/healthCta'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
@@ -188,6 +189,9 @@ export default function HomeHub({ onDrill }: Props) {
 
       {/* Needs action (audit 2026-10-21): failures from every source, one card; empty only when all answered */}
       <NeedsActionCard />
+
+      {/* Release train (Release Train v2, 2026-10-21): next window, ready/held, current train, policy, STOP RELEASES */}
+      <ReleaseTrainCard />
 
       {/* Decision-first (operator 2026-10-08): what needs action, highest risk, highest opportunity */}
       <HomeDecision overview={overview} winRate={tradingWr} />
