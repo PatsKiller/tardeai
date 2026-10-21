@@ -17,6 +17,7 @@ import { fmt$, fmtPct } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
 import RiskGauge from '../components/risk/RiskGauge'
 import OperatorInboxPanel from '../components/OperatorInboxPanel'
+import PlatformHealthPanel from '../components/PlatformHealthPanel'
 import NeedsActionCard from '../components/home/NeedsActionCard'
 import { healthFindingCta } from '../lib/healthCta'
 import { useTerminalUi } from '../lib/terminalUi'
@@ -648,6 +649,9 @@ export default function HomeHub({ onDrill }: Props) {
             )}
             <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/risk + /api/v2/paper-proposals</div>
           </div>
+
+          {/* Platform health (2026-10-21): is the machinery up? Compact card; full panel on System → Platform. */}
+          <PlatformHealthPanel compact />
 
           <OperatorInboxPanel />
 
