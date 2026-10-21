@@ -150,8 +150,8 @@ def test_banner_states_the_numbering_dependency_and_the_class_reasoning():
     assert "316700266" in f
     # 4.6.0 supersedes 4.5.0; 5.0.0 (#1686) supersedes 4.6.0; 5.1.0 supersedes 5.0.0; 5.2.0 (PROPOSED) supersedes 5.1.0;
     # 10.0.0 (ACTIVE, ratified on #1736) supersedes 7.0.0; 14.0.0 (ratified on #1838) supersedes 12.0.0;
-    # 15.0.0 (ratified on #1852) supersedes 14.0.0.
-    supersedes = {(4, 6, 0): "4.5.0", (5, 0, 0): "4.6.0", (5, 1, 0): "5.0.0", (5, 2, 0): "5.1.0", (10, 0, 0): "7.0.0", (11, 0, 0): "10.0.0", (12, 0, 0): "11.0.0", (14, 0, 0): "12.0.0", (15, 0, 0): "14.0.0"}
+    # 15.0.0 (ratified on #1852) supersedes 14.0.0; 16.0.0 (PROPOSED, header block set by its patch) supersedes 15.0.0.
+    supersedes = {(4, 6, 0): "4.5.0", (5, 0, 0): "4.6.0", (5, 1, 0): "5.0.0", (5, 2, 0): "5.1.0", (10, 0, 0): "7.0.0", (11, 0, 0): "10.0.0", (12, 0, 0): "11.0.0", (14, 0, 0): "12.0.0", (15, 0, 0): "14.0.0", (16, 0, 0): "15.0.0"}
     assert _control("Supersedes") == supersedes.get(_version(), "5.1.0")
     assert f"{TOKEN} <pr_number> <head_sha>" in f
 

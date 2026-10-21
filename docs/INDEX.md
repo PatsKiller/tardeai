@@ -1447,6 +1447,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/LANE_DISPOSITION_20261015.md` | Lane disposition, 2026-10-15 |
 | `docs/implementation/n8n-maturity/LANE_TRANSITIVE_CAPABILITIES_20261015.md` | Lane transitive capabilities (2026-10-15) |
 | `docs/implementation/n8n-maturity/MIGRATION_RECONCILIATION_20261012.md` | TradeAI migration reconciliation |
+| `docs/implementation/n8n-maturity/MIGRATION_STATE_20261021.md` | Cron → n8n migration state — 2026-10-21 |
 | `docs/implementation/n8n-maturity/MOMENTUM_LINEAGE_IMPLEMENTATION_20261013.md` | Momentum lineage and lifecycle implementation |
 | `docs/implementation/n8n-maturity/MONITOR_FOLD_COVERAGE_W1-9.md` | Monitor fold coverage (W1-9): freshness contracts, input starvation and design notes for the rest |
 | `docs/implementation/n8n-maturity/N8N_CONFIGURATION.md` | N8N configuration — ms01-openclaw (the entry point) |
@@ -1454,6 +1455,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/N8N_GAP_ASSESSMENT_AND_MATURITY_REVIEW_20261014.md` | Final gap assessment and maturity review — platform, n8n and the mandatory workflow framework (2026-10-14) |
 | `docs/implementation/n8n-maturity/N8N_MONITORING_AND_REMEDIATION_STANDARD.md` | N8N monitoring, SIEM, Telegram and LLM auto-remediation standard — per lane |
 | `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` | N8N onboarding standard — the mandatory procedure for adding anything to n8n |
+| `docs/implementation/n8n-maturity/N8N_RUNTIME_ARCHITECTURE.md` | N8N runtime architecture — cron vs n8n dispatch, relay, gateway, executor, locks, effect keys, ledger |
 | `docs/implementation/n8n-maturity/PROGRAM_TRACKER_20261015.md` | n8n fabric program — WHAT'S DONE / WHAT'S LEFT (2026-10-15) |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARDS_05_08_SOURCE_INTEGRATION_20261011.md` | Refactor shards 05–08 local source integration |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_01_20261011.md` | Refactor shard 01 — offline CLI plans and durable receipts |
@@ -1464,6 +1466,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_06_20261011.md` | Shard06 cron writer preview and receipt proposal (2026-10-11) |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_07_20261011.md` | Shard 07 source refactor |
 | `docs/implementation/n8n-maturity/REFACTOR_SHARD_08_20261011.md` | Refactor shard 08 |
+| `docs/implementation/n8n-maturity/RUNBOOK_CUTOVER_ROLLBACK.md` | Runbook — cut a lane over from cron to n8n, and roll it back |
 | `docs/implementation/n8n-maturity/SEARCH_SOURCE_ROUTING.md` | Search source routing — which source answers what, and what it may spend |
 | `docs/implementation/n8n-maturity/WAVE_B_CC_ORCHESTRATE_2026-10-11.md` | Wave B — CC orchestrate (research-intake + watch-refresh) |
 | `docs/implementation/n8n-maturity/WAVE_C_HEAVY_JOBS_2026-10-11.md` | Wave C — heavy CC jobs (advisory / analyst / brief / legacy Run) |

@@ -90,8 +90,11 @@ def _s2320() -> str:
 def test_header_row_and_status_constant_agree():
     # 11.0.0 (ratified 2026-10-15, #1747 comment) moved the header date; 7.0.0 and 10.0.0 were 2026-10-14;
     # 14.0.0 (ratified 2026-10-16, #1838 comment) and 15.0.0 (ratified 2026-10-21, #1852 comment) moved it again.
-    assert _control("Status") == "ACTIVE" and _control("Effective-Date") in (
-        "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-21")
+    # 16.0.0 (PROPOSED 2026-10-21) sets the header block to 16.0.0 PROPOSED, Effective-Date PENDING, until ratified.
+    later_proposed = (tuple(int(x) for x in _control("Policy-Version").split(".")) >= (16, 0, 0)
+                      and _control("Status") == "PROPOSED" and _control("Effective-Date") == "PENDING")
+    assert later_proposed or (_control("Status") == "ACTIVE" and _control("Effective-Date") in (
+        "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-21"))
     status = _row().group(1)
     if _control("Policy-Version") == "7.0.0":
         assert _control("Status") == status and _control("Supersedes") == "5.1.0"
