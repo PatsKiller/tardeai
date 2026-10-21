@@ -599,6 +599,13 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             assert mode == "live" and row["scheduler"].get("stage") in ("canary", "cutover"), lane
             assert row["scheduler"]["kind"] == "n8n" or LD.r1_canary_lock_matches(row, allow[lane])[0], lane
             continue
+        if lane in _HSC.LIVE:
+            # 2026-10-21 operator waiver ("push live now"): hermes-watchlist-scorer shadow -> cron canary, mode live,
+            # live_arg [] (live argv == cron argv), allowlist lock == cron L451's flock lock
+            # (tests/support/hermes_scorer_canary.py; tests/test_hermes_scorer_n8n_canary_20261021.py).
+            assert mode == "live" and row["scheduler"].get("stage") == "canary", lane
+            assert allow[lane]["live_arg"] == [] and LD.r1_canary_lock_matches(row, allow[lane])[0], lane
+            continue
         assert mode in ("off", "dry_run"), lane
         if mode == "off":
             continue
@@ -655,10 +662,12 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # + 6: shadow wave LD-W1 (lane disposition 2026-10-15; tests/test_shadow_wave_ld_w1_20261015.py).
     # + 1: hermes-watchlist-scorer n8n shadow (2026-10-21, PR #1899; cron stays live, dispatch dry_run, live_arg
     # null; tests/test_hermes_scorer_n8n_shadow_20261021.py).
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2 - len(CANARY_WAVE_20261014) + 2 + len(SYSTEMD_TIMER_SHADOW) + 6 - len(CW_NEW) + 1, shadow
+    # - len(_HSC.LIVE): 2026-10-21 operator waiver "push live now" moves hermes-watchlist-scorer shadow -> canary
+    # (tests/support/hermes_scorer_canary.py).
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2 - len(CANARY_WAVE_20261014) + 2 + len(SYSTEMD_TIMER_SHADOW) + 6 - len(CW_NEW) + 1 - len(_HSC.LIVE), shadow
     # heartbeat-watch moved shadow → canary (N8N_NATIVE_CANARY) 2026-10-11.
     assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(
-        CANARY_ROWS | N8N_NATIVE_CANARY | set(CANARY_WAVE_20261014) | CW_NEW
+        CANARY_ROWS | N8N_NATIVE_CANARY | set(CANARY_WAVE_20261014) | CW_NEW | set(_HSC.LIVE)  # + 2026-10-21 scorer canary
     )
 
 
@@ -667,6 +676,7 @@ CANARY_ROWS = frozenset({"research-insight-extractor"})
 #: canary-wave-20261014 (stage canary, mode live, cron flock lock == allowlist lock); single source in its own test.
 from tests.test_canary_wave_20261014 import CANARY_WAVE_20261014  # noqa: E402
 from tests.support import n8n_cutover_waves as _CW  # noqa: E402
+from tests.support import hermes_scorer_canary as _HSC  # noqa: E402
 
 #: 2026-10-15 cutover waves: lanes promoted to canary that no earlier wave set already counts.
 CW_NEW = frozenset(_CW.PROMOTED) - set(CANARY_WAVE_20261014) - CANARY_ROWS
