@@ -569,11 +569,12 @@ def test_allowlist_entry_is_shadow_and_names_no_secret():
     assert LANE not in json.dumps(a.get("never"))
 
 
-def test_health_contract_is_draft_awaiting_platform_review():
+def test_health_contract_is_shadow_reviewed_by_the_operator():
     c = json.loads((ROOT / "config" / "n8n_health_contracts.json").read_text())
     k = next(x for x in c["contracts"] if x["id"] == LANE)
-    # An agent may not mark it REVIEWED (AGENTS.md §23.19): the platform owner does.
-    assert k["status"] == "DRAFT" and k["owner"] == "platform" and k["stage"] == "shadow"
+    # Operator reviewed the contract 2026-10-21 ("yes approve pr-hygiene-audit too"); an agent may not.
+    assert k["status"] == "REVIEWED" and k["owner"] == "platform" and k["stage"] == "shadow"
+    assert k["review"]["status"] == "REVIEWED" and k["review"]["reviewed_by"].startswith("operator ")
     assert k["evidence"]["receipt"] == RECEIPT and k["expected_output"]["empty_allowed_reasons"] == ["no_new_input"]
 
 

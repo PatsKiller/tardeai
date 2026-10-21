@@ -1,7 +1,7 @@
 # PR hygiene — the daily audit and the pre-build overlap check
 
 ```
-Status:      PROPOSED (branch feat/pr-hygiene-audit-20261021; lane at SHADOW, contract DRAFT)
+Status:      PROPOSED (branch feat/pr-hygiene-audit-20261021; lane at SHADOW, contract REVIEWED by the operator 2026-10-21)
 as_of:       2026-10-21T16:10:00-04:00
 Owner:       platform
 Authority:   READ_ONLY_ADVISORY · MBI_BEHAVIOR = 0
@@ -111,8 +111,8 @@ See [`CC_NEEDS_ACTION_2026-10-21.md`](CC_NEEDS_ACTION_2026-10-21.md).
 - **Allowlist:** argv `$PY scripts/pr_hygiene_audit.py`, `dry_run_arg ["--dry-run"]`, `live_arg null`, and its own
   flock `/tmp/tradeai_pr_hygiene_audit.lock`. `env_names` holds no secret and no broker name. The gh CLI reads its
   own config under `HOME` (a base name).
-- **Health contract:** **DRAFT**, owner platform. Under AGENTS.md §23.19 the owner must mark it REVIEWED before the
-  registry change merges. Until then, `check_n8n_health_contracts` reports `DRAFT_NOT_GRANDFATHERED pr-hygiene-audit`.
+- **Health contract:** **REVIEWED** by the operator 2026-10-21 ("yes approve pr-hygiene-audit too"), owner platform
+  (AGENTS.md §23.19). The lane stays at shadow until the operator promotes it.
 - **Reach:** the lane reaches no sender and no broker. `tests/test_lane_transitive_capabilities_20261015.py` and
   `tests/test_agents_policy_7_0_0_advisory_market_data.py` pass with no new exception, and this file's tests pin the
   closure.

@@ -30953,7 +30953,7 @@
       "id": "pr-hygiene-audit",
       "kind": "lane",
       "workflow_id": "dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "stage:shadow",
       "stage": "shadow",
       "purpose": {
@@ -31127,7 +31127,13 @@
         "expected_output_basis": "expected_output 2026-10-21 from scripts/pr_hygiene_audit.py main(): produced = open PRs audited; none = no_new_input (allowed); GitHub unreadable = dependency_unavailable (fatal, exit 1)."
       },
       "review_by": "2026-10-28",
-      "state_note": "DRAFT, agent-written 2026-10-21; awaiting the platform owner's REVIEWED (AGENTS.md \u00a723.19: a new lane's contract is REVIEWED by its owner before its registry PR merges; check_n8n_health_contracts reports DRAFT_NOT_GRANDFATHERED until then). Promotion to live is the operator's word; it also needs TRADEAI_PR_HYGIENE_REPO set in the executor env for the merge-tree and unpushed scans (host change, operator).",
+      "review": {
+        "prepared_by": "agent draft (pr hygiene audit 2026-10-21)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator PatsKiller 2026-10-21 (\"yes approve pr-hygiene-audit too\")",
+        "reviewed_on": "2026-10-21"
+      },
+      "state_note": "Agent-written 2026-10-21; REVIEWED by the operator 2026-10-21 (\"yes approve pr-hygiene-audit too\"). Lane stays at SHADOW: promotion to live is the operator's word and also needs TRADEAI_PR_HYGIENE_REPO set in the executor env for the merge-tree and unpushed scans (host change, operator).",
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "open PRs audited",
