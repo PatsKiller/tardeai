@@ -5584,6 +5584,17 @@ GATES = [
         "schwab_reauth_stepup_fallback_20261021",
         ["tests/test_schwab_reauth_stepup_fallback_20261021.py"],
     ),
+    (
+        # ANCHOR: PR_HYGIENE_AUDIT_20261021 — operator-approved process plan: a 59-PR backlog built up unnoticed and
+        # caused a duplicate fix (#1906 vs #1836). scripts/pr_hygiene_audit.py audits every open PR read-only (gh
+        # list/view + GET-only api, read-only git; CONFLICT / SUPERSEDED / DUPLICATE / STACKED / STALE_HOLD, local
+        # unpushed branches), receipt read by GET /api/v2/needs-action (source pr_hygiene), one DIGEST host intent
+        # only when the finding set gains a finding + a weekly digest (direct intent-store write, no sender reach);
+        # n8n-native lane pr-hygiene-audit at SHADOW (daily 06:30, DRAFT contract); scripts/pr_overlap_check.py.
+        # Hermetic: fake gh JSON, tmp git repos, tmp state root and ledger.
+        "pr_hygiene_audit_20261021",
+        ["tests/test_pr_hygiene_audit_20261021.py"],
+    ),
 ]
 
 

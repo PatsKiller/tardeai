@@ -43,6 +43,15 @@ R_SYSTEM_DATA = "/v3/system?tab=Data%20Sources"
 R_COMMS = "/v3/communications"
 R_COORD = "/v3/coordination"
 R_HEALTH = "/v3/health"
+R_PR_HYGIENE = R_COORD
+
+# PR hygiene (2026-10-21, operator process plan): the lane pr-hygiene-audit (scripts/pr_hygiene_audit.py, n8n
+# dispatcher daily 06:30) writes its LaneRunReceipt; this source only reads it.
+PR_HYGIENE_LANE = "pr-hygiene-audit"
+PR_HYGIENE_STALE_H = 36.0
+PR_HYGIENE_ITEMS_MAX = 12
+PR_HYGIENE_TITLES = {"CONFLICT": "conflicts with main", "SUPERSEDED": "looks superseded", "DUPLICATE": "duplicate work",
+                     "STACKED": "stacked on a moved base", "STALE_HOLD": "stale hold"}
 
 
 class SourceUnavailable(Exception):
@@ -285,10 +294,84 @@ def rule_pipelines(p: Any, now: datetime) -> list[dict]:
             for r in d["pipelines"]]
 
 
+def rule_pr_hygiene(p: Any, now: datetime) -> list[dict]:
+    """p = the pr-hygiene-audit LaneRunReceipt (or {"status": "NO_RECEIPT"} from :func:`probe_pr_hygiene`).
+
+    CONFLICT / SUPERSEDED / DUPLICATE -> P2, STACKED / STALE_HOLD -> P3 (one item each for the first
+    PR_HYGIENE_ITEMS_MAX, then one rollup); local unpushed branches -> one P3 rollup. Each item's evidence carries the
+    PR url. No receipt yet -> one P3 (at shadow the lane runs dry and writes nothing); failed or stale -> P2."""
+    if not isinstance(p, dict):
+        raise SourceUnavailable("pr hygiene receipt is not an object")
+    if p.get("status") == "NO_RECEIPT":
+        return [item("P3", "PR hygiene audit has no receipt yet",
+                     "The pr-hygiene-audit lane has not completed a real run (at shadow it runs dry and writes nothing); "
+                     "run `python3 scripts/pr_hygiene_audit.py --report` for a read-only view.",
+                     R_PR_HYGIENE, "pr_hygiene", None, {"receipt": p.get("path")})]
+    if p.get("lane_id") != PR_HYGIENE_LANE:
+        raise SourceUnavailable("pr hygiene receipt names another lane")
+    out: list[dict] = []
+    if p.get("status") != "ok":
+        out.append(item("P2", "PR hygiene audit failed", str(p.get("error") or "the last run failed")[:240],
+                        R_PR_HYGIENE, "pr_hygiene", p.get("finished_at"), {"ok_at": p.get("ok_at")}))
+    ok_at = _parse(p.get("ok_at"))
+    if ok_at is None or (now - ok_at).total_seconds() / 3600.0 > PR_HYGIENE_STALE_H:
+        age = "never" if ok_at is None else f"{(now - ok_at).total_seconds() / 3600.0:.0f} h ago"
+        out.append(item("P2", f"PR hygiene audit is stale (last ok {age})",
+                        f"The daily audit has not completed for more than {PR_HYGIENE_STALE_H:g} h; PR findings may be out of date.",
+                        R_PR_HYGIENE, "pr_hygiene", p.get("ok_at"), {"ok_at": p.get("ok_at")}))
+    summary = p.get("summary") if isinstance(p.get("summary"), dict) else {}
+    since = summary.get("as_of") or p.get("finished_at")
+    findings = [f for f in summary.get("findings") or [] if isinstance(f, dict)]
+    prs = [f for f in findings if f.get("kind") in PR_HYGIENE_TITLES]
+    p2 = ("CONFLICT", "SUPERSEDED", "DUPLICATE")
+    prs.sort(key=lambda f: (f.get("kind") not in p2, str(f.get("kind")), str(f.get("key"))))
+    for f in prs[:PR_HYGIENE_ITEMS_MAX]:
+        conf = f" (confidence {f['confidence']})" if f.get("confidence") else ""
+        out.append(item("P2" if f.get("kind") in p2 else "P3", str(f.get("title") or f.get("key"))[:160],
+                        f"PR hygiene: {PR_HYGIENE_TITLES[f['kind']]}{conf}. Open the PR and merge, rebase, close or "
+                        "release the hold; the audit never acts on a PR.",
+                        R_PR_HYGIENE, "pr_hygiene", since,
+                        {"url": f.get("url"), "prs": f.get("prs"), "kind": f.get("kind"), "key": f.get("key")}))
+    if len(prs) > PR_HYGIENE_ITEMS_MAX:
+        out.append(item("P2", f"{len(prs) - PR_HYGIENE_ITEMS_MAX} more PR hygiene findings",
+                        "See the pr-hygiene-audit receipt (summary.findings) for the full list.", R_PR_HYGIENE,
+                        "pr_hygiene", since, {"total": len(prs)}))
+    unpushed = [f for f in findings if f.get("kind") == "UNPUSHED"]
+    if unpushed:
+        names = ", ".join(str((f.get("detail") or {}).get("branch")) for f in unpushed[:5])
+        out.append(item("P3", f"{len(unpushed)} local branch(es) hold commits on no remote",
+                        f"Unpushed agent work: {names}{' …' if len(unpushed) > 5 else ''}. Push it on purpose or archive it.",
+                        R_PR_HYGIENE, "pr_hygiene", since, {"branches": len(unpushed)}))
+    return out
+
+
+def probe_pr_hygiene(path: Any = None) -> dict:
+    """Read the pr-hygiene-audit receipt (read-only). Missing -> {"status": "NO_RECEIPT"}; unreadable -> raises."""
+    import json
+    from pathlib import Path
+
+    if path is None:
+        try:
+            from lib.lane_last_receipt import receipt_path
+        except ImportError:  # pragma: no cover - repo root on sys.path instead of scripts/
+            from scripts.lib.lane_last_receipt import receipt_path  # type: ignore[no-redef]
+        path = receipt_path(PR_HYGIENE_LANE)
+    p = Path(path)
+    if not p.exists():
+        return {"status": "NO_RECEIPT", "path": str(p)}
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise SourceUnavailable(f"pr hygiene receipt unreadable: {type(exc).__name__}") from exc
+    if not isinstance(doc, dict):
+        raise SourceUnavailable("pr hygiene receipt is not an object")
+    return doc
+
+
 RULES: dict[str, Callable[[Any, datetime], list[dict]]] = {
     "health": rule_health, "systemd": rule_systemd, "n8n": rule_n8n, "approvals": rule_approvals,
     "queue": rule_queue, "data_plausibility": rule_plausibility, "data_sources": rule_data_sources,
-    "comms": rule_comms, "pipelines": rule_pipelines,
+    "comms": rule_comms, "pipelines": rule_pipelines, "pr_hygiene": rule_pr_hygiene,
 }
 
 _EXECUTOR: Optional[cf.ThreadPoolExecutor] = None
@@ -346,7 +429,7 @@ def aggregate(probes: dict[str, Callable[[], Any]], *, now: Optional[datetime] =
 def _source_where(name: str) -> str:
     return {"health": R_HEALTH, "systemd": R_SYSTEM_JOBS, "n8n": R_COORD, "approvals": R_COORD,
             "queue": R_SYSTEM_JOBS, "data_plausibility": R_SYSTEM_DATA, "data_sources": R_SYSTEM_DATA,
-            "comms": R_COMMS, "pipelines": R_SYSTEM_PIPELINE}.get(name, "/v3/system")
+            "comms": R_COMMS, "pipelines": R_SYSTEM_PIPELINE, "pr_hygiene": R_PR_HYGIENE}.get(name, "/v3/system")
 
 
 def parse_failed_units(text: str) -> list[dict]:

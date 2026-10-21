@@ -7881,6 +7881,46 @@
       }
     },
     {
+      "lane_id": "pr-hygiene-audit",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/pr_hygiene_audit.py",
+        "cadence": "30 6 * * *",
+        "stage": "shadow",
+        "wave": "W4",
+        "timezone": "America/New_York"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-21",
+      "state_reason": "Operator-approved process plan 2026-10-21 (59-PR backlog built up unnoticed; duplicate fix #1906 vs #1836): PR hygiene audited on every iteration and alerted back. n8n-native dispatcher lane at stage SHADOW, daily 06:30 ET plus on-demand (coordination/run): the stage clamp runs it --dry-run (prints, writes nothing, queues nothing). No cron line exists or is added (cron freeze). The operator says when it is promoted to live.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/pr-hygiene-audit_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/pr_hygiene_audit.py main() writes LaneRunReceipt (v2 output fields) on a real run (tests/test_pr_hygiene_audit_20261021.py); at shadow no real run happens, so runtime is NOT_MEASURED"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_pr_hygiene_audit_20261021.py (detectors on fake gh JSON and tmp git repos, receipt, alert-on-change, needs-action source, registry/allowlist/contract pins, closure: no sender/broker/order reach).",
+      "review_by": "2026-10-28",
+      "note": "Read-only: GitHub through gh (pr list/view, GET-only gh api; every argv checked by _assert_read_only_gh) and the local clone through read-only git (merge-tree writes only unreferenced objects). Never merges, closes, comments, pushes or deletes. A real run writes its receipt, its alert state and, only when the alertable finding set gained a finding (or once per ISO week), ONE host comms intent agents/pr_hygiene_findings | agents/pr_hygiene_weekly_digest (config/host_comms_intent_routes.json, DIGEST -> P2) straight into the coordination ledger (the #1899 pattern; never a sender). GET /api/v2/needs-action reads the receipt (source pr_hygiene). Exit 0 = audit completed (findings are output); 1 = GitHub unreadable.",
+      "severity": "Low",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "30 6 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "monitor",
+        "priority": 6,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
       "lane_id": "active-trader-motion-watchdog",
       "owner": "scalp",
       "scheduler": {

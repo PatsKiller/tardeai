@@ -1483,7 +1483,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/cron-inventory/CRON_INVENTORY.md` | Cron Inventory & Migration Assessment — 2026-10-10 | review_required | OK | `2dd3d2e143bf` |
 | `docs/implementation/n8n-maturity/cron-inventory/DEPENDENCY_MAP.md` | Dependency map — Trade AI scheduled work (cron · systemd · health-tick · n8n) | review_required | OK | `a3390307a390` |
 | `docs/implementation/n8n-maturity/cron-inventory/GOVERNANCE_ANALYSIS.md` | Schedule and dependency governance — overlaps, duplicates, consolidation | review_required | OK | `c53a89cf1d07` |
-| `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `707e8d8cbd76` |
+| `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `18a738d720de` |
 | `docs/implementation/n8n-maturity/cron-inventory/REMEDIATION_PLAN.md` | Cron / n8n Remediation Plan — from the verified inventory | review_required | OK | `8a262ee95293` |
 | `docs/implementation/n8n-maturity/cron-inventory/SCHEMA.md` | Cron inventory — system of record: column specification (v1, 2026-10-09 21:55 ET) | review_required | OK | `8a3b490c4467` |
 | `docs/implementation/n8n-maturity/reconciliation-20261012/MOMENTUM_LIFECYCLE_CANDIDATE.md` | Momentum lifecycle implementation and activation packet | review_required | OK | `0abd4d2f7cb1` |
@@ -1734,7 +1734,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/BRIDGE_PIN_ALIGNMENT.md` | Governed bridge pin alignment | review_required | OK | `72a5c993261d` |
 | `docs/ops/CANONICAL_OBSERVATION_CONTRACT.md` | Canonical observation contract | review_required | OK | `f1efae3e4863` |
 | `docs/ops/CANON_SOURCE_ACQUISITION_QUEUE_2026-08-23.md` | Canon Source Acquisition Queue - 2026-08-23 | review_required | OK | `a49f0fc9b389` |
-| `docs/ops/CC_NEEDS_ACTION_2026-10-21.md` | Command Center — the "Needs action" inbox and the failures that had no page (2026-10-21) | review_required | OK | `027fe88c6cc5` |
+| `docs/ops/CC_NEEDS_ACTION_2026-10-21.md` | Command Center — the "Needs action" inbox and the failures that had no page (2026-10-21) | review_required | OK | `f87c81b53e62` |
 | `docs/ops/CIO_ADVISORY_TRUTH_HARDENING_CLOSEOUT_2026-08-20.md` | CIO/Advisory truth + presentation hardening — closeout 2026-08-20 | review_required | OK | `1661c226ddf4` |
 | `docs/ops/CIO_AFTERNOON_FIVE_2026-09-01.md` | Afternoon five — closeout | review_required | OK | `58bb7c12e239` |
 | `docs/ops/CIO_BANNER_DATA_ASOF_2026-09-01.md` | PORTFOLIO chip — freshness is `data_as_of`, not the loader run | review_required | OK | `e52ceb650854` |
@@ -1938,6 +1938,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md` | APPROVED RETIRE — operator settle (AGENTS.md §17 / §9.3) | review_required | OK | `211e36d63272` |
 | `docs/ops/PROPOSED_VERIFY_SCREENER_GO_ALERTS_CRON_2026-09-20.md` | CONFIRMED — live crontab verified (AGENTS.md §9.3) | review_required | OK | `daa12f930371` |
 | `docs/ops/PROPOSED_WAKE_L3_CRON_FLAGS_2026-09-19.md` | PROPOSED — enable WAKE_L3 flags on the **L3 consumer** cron | review_required | OK | `a4a573fe18a8` |
+| `docs/ops/PR_HYGIENE.md` | PR hygiene — the daily audit and the pre-build overlap check | review_required | OK | `e0dbe79fa43b` |
 | `docs/ops/QUOTE_SNAPSHOTS_RETIREMENT_PLAN_2026-10-10.md` | Retiring the `market_quote_snapshots` writes (cron L92 / L128) — plan, not executed | review_required | OK | `5be80145a2fd` |
 | `docs/ops/R11_AUTONOMOUS_INVESTMENT_OFFICE_OPERATOR_VALUE_CLOSEOUT_2026-08-25.md` | R11 — Autonomous Investment Office Operator-Value Closeout | review_required | OK | `0539b80504f0` |
 | `docs/ops/R12_OPERATOR_INTELLIGENCE_NATURAL_NOTIFICATION_CLOSEOUT_2026-08-25.md` | R12 — Operator-intelligence natural notification closeout | review_required | OK | `dbcce083dfc0` |

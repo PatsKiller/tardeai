@@ -30950,6 +30950,213 @@
     },
     {
       "schema": "N8nHealthContract@v1",
+      "id": "pr-hygiene-audit",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "DRAFT",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Daily at 06:30 ET (and on demand), audit every open PR read-only: age, last update, draft, hold markers (DO-NOT-MERGE / PROPOSED), commits behind main, mergeability (git merge-tree), required checks on the head; findings CONFLICT, SUPERSEDED and DUPLICATE (P2), STACKED and STALE_HOLD (P3), plus local branches with commits on no remote (P3 rollup). A live run writes the receipt that GET /api/v2/needs-action reads, and queues one DIGEST host intent only when the finding set gained a finding, plus a weekly digest. It never acts on a PR.",
+        "business_function": "engineering-hygiene",
+        "source": "scripts/pr_hygiene_audit.py; operator-approved process plan 2026-10-21 (59-PR backlog, duplicate fix #1906 vs #1836)"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/pr_hygiene_audit.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_pr_hygiene_audit.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "GitHub API through the gh CLI (pr list/view, GET-only api; the host's existing gh auth)",
+          "kind": "external_api",
+          "direction": "read",
+          "source": "scripts/pr_hygiene_audit.py Gh (_assert_read_only_gh)"
+        },
+        {
+          "name": "local git clone (TRADEAI_PR_HYGIENE_REPO): merge-tree, rev-list, for-each-ref, worktree list",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/pr_hygiene_audit.py Git (_assert_read_only_git); without a clone the compare API and GitHub mergeable are used"
+        },
+        {
+          "name": "data/runtime/pr-hygiene-audit_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "data/runtime/pr_hygiene_audit_alert_state.json",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "alert-on-change fingerprint + weekly digest week"
+        },
+        {
+          "name": "config/host_comms_intent_routes.json agents/pr_hygiene_* -> scripts/n8n_comms_intent_consumer.py -> scripts/incident_notifier.py",
+          "kind": "consumer",
+          "direction": "write",
+          "source": "live runs only: one host comms intent on a gained finding / weekly; the consumer and notifier deliver (\u00a724.1)"
+        },
+        {
+          "name": "GET /api/v2/needs-action (scripts/lib/needs_action.py source pr_hygiene)",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "reads the receipt; P2 conflict/superseded/duplicate, P3 stacked/stale/unpushed"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no receipt, no alert state, no intent"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/pr-hygiene-audit_last.json ok_at advances on each successful live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at is within 48 h (2x of expected_cadence_hours 24)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 480 s (80% of timeout_s 600)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = open PRs audited; zero only with empty_reason no_new_input"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 48 h but younger than 72 h (2x-3x cadence)"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 480 s"
+        },
+        {
+          "check": "partial",
+          "text": "skipped_reasons names pr_files_unreadable (some PR diffs could not be read; duplicates may be missed)"
+        },
+        {
+          "check": "no_local_clone",
+          "text": "mergeability = github_mergeable (no TRADEAI_PR_HYGIENE_REPO clone): superseded-by-files and the unpushed scan are NOT_MEASURED"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 72 h (3x cadence); needs-action shows P2 after 36 h"
+        },
+        {
+          "check": "github_unreadable",
+          "text": "gh pr list and the REST fallback both failed -> exit 1, receipt ok false (dependency_unavailable), ok_at carried forward"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule -> RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 3x",
+        "timeout_s": 600,
+        "class": "monitor",
+        "computed_on": "2026-10-21",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs yet (shadow); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence; the --report runs of 2026-10-21 took about 1-2 minutes for 30 PRs",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 480.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "lane_registry.json row severity (an engineering-hygiene monitor; a missed day delays a finding, never a trade)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; findings reach the operator as host comms intents (DIGEST -> P2) through the comms-intent consumer and scripts/incident_notifier.py, and on Home through GET /api/v2/needs-action. Never PAGE.",
+        "enforced": "partial: the change alert and digest are queued by the script (tested); SIEM/notifier coverage of this lane is NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue). Findings are remedied by a person (merge, rebase, close, release a hold); the lane never acts. Runbook: docs/ops/PR_HYGIENE.md (runbook_id pr-hygiene-audit)."
+      },
+      "evidence": {
+        "receipt": "data/runtime/pr-hygiene-audit_last.json",
+        "verify": [
+          "python3 scripts/pr_hygiene_audit.py --report   # read-only; prints the summary counts",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='pr-hygiene-audit' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.summary.counts, .produced_count' data/runtime/pr-hygiene-audit_last.json",
+          "curl -s :7777/api/v2/needs-action | jq '.sources.pr_hygiene, [.items[] | select(.source==\"pr_hygiene\")]'"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; prove work with the ledger and the receipt",
+        "expected_output_basis": "expected_output 2026-10-21 from scripts/pr_hygiene_audit.py main(): produced = open PRs audited; none = no_new_input (allowed); GitHub unreadable = dependency_unavailable (fatal, exit 1)."
+      },
+      "review_by": "2026-10-28",
+      "state_note": "DRAFT, agent-written 2026-10-21; awaiting the platform owner's REVIEWED (AGENTS.md \u00a723.19: a new lane's contract is REVIEWED by its owner before its registry PR merges; check_n8n_health_contracts reports DRAFT_NOT_GRANDFATHERED until then). Promotion to live is the operator's word; it also needs TRADEAI_PR_HYGIENE_REPO set in the executor env for the merge-tree and unpushed scans (host change, operator).",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "open PRs audited",
+        "rule": "empty_allowed",
+        "min_produced": null,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/pr-hygiene-audit_last.json produced_count (LaneRunReceipt@v2 output fields; the executor reads the immutable attempt copy data/runtime/lane_attempts/pr-hygiene-audit/<run_id>.json)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
       "id": "active-trader-motion-watchdog",
       "kind": "lane",
       "workflow_id": "dispatcher",

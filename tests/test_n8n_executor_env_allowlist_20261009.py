@@ -651,4 +651,7 @@ def test_lane_mode_counts_match_the_pr():
     # 2026-10-19 (registry-runtime-truth, tests/test_registry_runtime_truth_20261018.py): + registry-runtime-truth,
     # enforced from its first entry; its literal closure inventory is checked above. 12 + 1 = 13.
     assert LANES["registry-runtime-truth"]["env_allowlist_mode"] == "enforce"
-    assert modes.count("enforce") == 16 and modes.count("report") == len(LANES) - 16
+    # 2026-10-21 (feat/pr-hygiene-audit-20261021, tests/test_pr_hygiene_audit_20261021.py): + pr-hygiene-audit,
+    # enforced from its first entry (no .env loader, no DB; literal reads declared). 16 + 1 = 17.
+    assert LANES["pr-hygiene-audit"]["env_allowlist_mode"] == "enforce"
+    assert modes.count("enforce") == 17 and modes.count("report") == len(LANES) - 17
