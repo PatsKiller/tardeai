@@ -875,6 +875,10 @@ def list_deliveries(event_id: str | None = None, limit: int = 200) -> dict[str, 
 #: ChannelDelivery statuses the Communications delivery-health strip counts (same sets the page used client-side).
 UNSETTLED_STATUSES = ("RESERVED", "SENDING")
 FAILED_STATUSES = ("FAILED", "BOUNCED", "EXPIRED")
+#: An EXPIRED row the stale-reservation reaper settled (``delivery.REAPER_TAXONOMY["reserved"]``) is not a failed send:
+#: it is the shadow-ledger copy of a message whose own delivery already settled (2026-10-20: 6 of the 7 reaped). It is
+#: counted as ``reaped_unclaimed``, not ``failed``. A real EXPIRED from a sender still counts as failed.
+REAPED_UNCLAIMED_TAXONOMY = "reservation_unclaimed_stale"
 
 
 def delivery_summary() -> dict[str, Any]:
@@ -886,7 +890,7 @@ def delivery_summary() -> dict[str, Any]:
     read the answer is ``status: UNAVAILABLE`` with null counts — never zero; the in-process memory snapshot is a
     subset and is not used for the count."""
     out: dict[str, Any] = {"ok": False, "status": "UNAVAILABLE", "source": "db", "basis": "server_side_aggregate",
-                           "unsettled": None, "failed": None, "total": None, "oldest_unsettled_at": None,
+                           "unsettled": None, "failed": None, "reaped_unclaimed": None, "total": None, "oldest_unsettled_at": None,
                            "oldest_unsettled_age_s": None, "as_of": None,
                            "unsettled_statuses": list(UNSETTLED_STATUSES), "failed_statuses": list(FAILED_STATUSES)}
     conn = _deliveries_db_conn()
@@ -895,8 +899,10 @@ def delivery_summary() -> dict[str, Any]:
         return out
     uns = ", ".join(f"'{s}'" for s in UNSETTLED_STATUSES)
     fail = ", ".join(f"'{s}'" for s in FAILED_STATUSES)
+    reaped = f"status = 'EXPIRED' AND error_taxonomy IS NOT DISTINCT FROM '{REAPED_UNCLAIMED_TAXONOMY}'"
     sql = (f"SELECT COUNT(*) FILTER (WHERE status IN ({uns})) AS unsettled, "
-           f"COUNT(*) FILTER (WHERE status IN ({fail})) AS failed, COUNT(*) AS total, "
+           f"COUNT(*) FILTER (WHERE status IN ({fail}) AND NOT ({reaped})) AS failed, "
+           f"COUNT(*) FILTER (WHERE {reaped}) AS reaped_unclaimed, COUNT(*) AS total, "
            f"MIN(reserved_at) FILTER (WHERE status IN ({uns})) AS oldest_unsettled_at, now() AS as_of "
            f"FROM communication_deliveries")
     try:
@@ -917,6 +923,7 @@ def delivery_summary() -> dict[str, Any]:
     if isinstance(oldest, datetime) and isinstance(as_of, datetime):
         age = int(round((as_of - oldest).total_seconds()))
     out.update(ok=True, status="OK", unsettled=int(rec.get("unsettled") or 0), failed=int(rec.get("failed") or 0),
+               reaped_unclaimed=int(rec.get("reaped_unclaimed") or 0),
                total=int(rec.get("total") or 0), oldest_unsettled_at=_iso(oldest), oldest_unsettled_age_s=age,
                as_of=_iso(as_of))
     return out
