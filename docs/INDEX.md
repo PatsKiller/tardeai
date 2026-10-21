@@ -623,7 +623,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md` | ADR: coordination secrets for the n8n lab | review_required | OK | `bc91d85ff25f` |
 | `docs/architecture/n8n/AUDIT_20261015_FINDINGS.md` | Independent n8n architecture audit 2026-10-15 — findings tracker | review_required | OK | `e11277d4e2bc` |
 | `docs/architecture/n8n/ENV_ENFORCE_READINESS_20261015.md` | n8n executor env-allowlist enforce readiness (generated) | review_required | MISSING HEADER | `1b6ea3934bc0` |
-| `docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md` | n8n contracts — design architecture | review_required | OK | `66eaff439d0f` |
+| `docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md` | n8n contracts — design architecture | review_required | OK | `42125af613bd` |
 | `docs/architecture/n8n/N8N_DECISION_LEDGER.md` | n8n decision ledger — D1–D11 | review_required | OK | `12551696169c` |
 | `docs/architecture/n8n/N8N_HITL_CONTRACT_SPEC.md` | Approval / HITL authority contract — specification | review_required | OK | `e9c14b9f23c1` |
 | `docs/architecture/n8n/N8N_LLM_STEP_ROUTE_SPEC.md` | n8n → LLM step route — specification and proof list | review_required | OK | `6b7f8e1ee9e8` |
@@ -1464,7 +1464,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/SEARCH_SOURCE_ROUTING.md` | Search source routing — which source answers what, and what it may spend | review_required | OK | `633c3aab392f` |
 | `docs/implementation/n8n-maturity/WAVE_B_CC_ORCHESTRATE_2026-10-11.md` | Wave B — CC orchestrate (research-intake + watch-refresh) | review_required | OK | `67cb1506248f` |
 | `docs/implementation/n8n-maturity/WAVE_C_HEAVY_JOBS_2026-10-11.md` | Wave C — heavy CC jobs (advisory / analyst / brief / legacy Run) | review_required | OK | `b487224d891b` |
-| `docs/implementation/n8n-maturity/campaign-20261018/README.md` | n8n operational maturity campaign — 2026-10-18 | review_required | OK | `4bdd12e24da0` |
+| `docs/implementation/n8n-maturity/campaign-20261018/README.md` | n8n operational maturity campaign — 2026-10-18 | review_required | OK | `c791670729a8` |
 | `docs/implementation/n8n-maturity/campaign-20261018/cc-truth/README.md` | Truthful CC observations — October 18, 2026 | review_required | MISSING HEADER | `9dd8db747121` |
 | `docs/implementation/n8n-maturity/campaign-20261018/checkpoint-20261018T2351Z.md` | Campaign checkpoint after release rejection and evidence merge | review_required | OK | `47c15565d38c` |
 | `docs/implementation/n8n-maturity/campaign-20261018/comms-health-truth-20261020/README.md` | Communications delivery health truth | review_required | OK | `37cc2e74acc8` |
@@ -2070,6 +2070,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/run-from-release-cohort1-20261015/README.md` | Run from the release: cohort 1 operator packet (2026-10-15) | review_required | MISSING HEADER | `e65023d6a400` |
 | `docs/ops/packets/swing-alert-single-sender-20261019/README.md` | Swing entry alerts: one sender (2026-10-19) | review_required | MISSING HEADER | `ba85274fb928` |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution | review_required | OK | `df44cfc4ee62` |
+| `docs/ops/ready-three-2026-10-21/AGENT_HANDOFF.md` | Agent handoff — 2026-10-21 | review_required | OK | `999ffc1e1589` |
+| `docs/ops/ready-three-2026-10-21/CHANGELOG.md` | Change and release log — 2026-10-21 | review_required | OK | `8560ca30611b` |
+| `docs/ops/ready-three-2026-10-21/DEPLOYMENT_AND_ROLLBACK.md` | Deployment and rollback gates — 2026-10-21 | review_required | OK | `e9829c86e5e1` |
+| `docs/ops/ready-three-2026-10-21/EXECUTIVE_REPORT.md` | Executive gap and readiness report — 2026-10-21 | review_required | OK | `fff7187e57ab` |
+| `docs/ops/ready-three-2026-10-21/LIVE_VALIDATION.md` | Live validation — 2026-10-21 | review_required | OK | `0951970a23e3` |
+| `docs/ops/ready-three-2026-10-21/README.md` | Ready-three evidence and readiness — 2026-10-21 | review_required | OK | `7679b92615f6` |
+| `docs/ops/ready-three-2026-10-21/SYSTEM_INVENTORY.md` | System inventory snapshot — 2026-10-21 | review_required | OK | `2ba3231aa62c` |
+| `docs/ops/ready-three-2026-10-21/TEST_RESULTS.md` | Test results — 2026-10-21 | review_required | OK | `f7cc54f1f075` |
 | `docs/ops/self_heal_claude_fixer.md` | Self-heal Claude Code fixer — code defects fixed in iterations, shipped as a tested PR | review_required | OK | `b90fcb9c0c1d` |
 | `docs/ops/telegram_channel_diligence_20260916/00_EXECUTIVE_SUMMARY.md` | Telegram Channel Diligence — Executive Summary | review_required | OK | `19050e08a848` |
 | `docs/ops/telegram_channel_diligence_20260916/01_CHANNEL_INVENTORY_SOURCE_MAP.md` | Phase 1 — Channel Inventory & Source Mapping | review_required | OK | `6be06281ea6d` |
