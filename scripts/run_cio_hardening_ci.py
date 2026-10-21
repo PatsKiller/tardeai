@@ -45,6 +45,9 @@ GATES = [
     # or timed_out; the nightly is cio-full-suite-sharded on schedule with its own nightly-red-alert.
     ("ci_alert_cancelled_timeout_20261021", ["tests/test_ci_alert_cancelled_timeout_20261021.py"]),
     ("self_heal_fix_acceptance_20261018", ["tests/test_self_heal_fix_acceptance_20261018.py"]),
+    # ANCHOR: PREFLIGHT_RELEASE_READINESS_20261021 — alignment audit M6: the promote gate's REQUIRED_PUSH_WORKFLOWS
+    # matches the three contexts branch protection requires (release-readiness was missing). Hermetic.
+    ("preflight_release_readiness_20261021", ["tests/test_preflight_release_readiness_20261021.py"]),
     # Staged reader preserves v2 evidence and refuses legacy worker effects on it.
     (
         "incident_notifier_state_compatibility_20261018",
