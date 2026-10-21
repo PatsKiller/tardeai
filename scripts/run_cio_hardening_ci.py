@@ -5433,6 +5433,25 @@ GATES = [
             "tests/test_ci_frontend_dependencies_20261018.py",
         ],
     ),
+    (
+        # ANCHOR: A1A_RELEASE_DIR_20261021 — a1a_compliance FAILED 2026-10-21 07:40 with errors=[]: release dirs
+        # carry no .git, so check_a1a_compliance.py's `git diff HEAD~1 HEAD` raised CalledProcessError and the
+        # wrapper recorded a reasonless failure. Now diffs the BUILD_STAMP source_sha in DEV_ROOT, reports an
+        # unresolvable change set as errors (exit 2, no traceback), and the wrapper passes errors= to telemetry.
+        # Hermetic: temp git repo + temp release dir.
+        "a1a_release_dir_20261021",
+        ["tests/test_a1a_release_dir_20261021.py"],
+    ),
+    (
+        # ANCHOR: ORCH_ROWS_PRODUCED_20261021 — alert "produced NOTHING while reporting success:
+        # trade_ai_orchestrator -- 27 runs with rows_produced=0": the orchestrator never called
+        # PipelineRun.rows() (235 successes/7d all null) and the only explicit counts were
+        # remediate_pipeline_failures' synthetic health_recovery rows writing 0, while trade_ai_scans
+        # and strategy_signals were being written. db_persist now records committed trade_ai_scans rows
+        # and __main__ reports them; the synthetic row writes null. Hermetic: no DB.
+        "orchestrator_rows_produced_20261021",
+        ["tests/test_orchestrator_rows_produced_20261021.py"],
+    ),
 ]
 
 
