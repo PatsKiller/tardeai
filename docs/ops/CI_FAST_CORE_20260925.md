@@ -24,8 +24,11 @@ running every registered test cannot go below about 5 to 6 minutes, however it i
 * **PRs** run a *selection* (the `pr` profile). The selection always includes the governance smoke set and the
   full suites of any high-risk area touched.
 * **Every test** still runs after merge, on each push to main (`fast` profile, parallel). It also runs nightly
-  in the serial `full` profile, and on demand.
-* A red post-merge or nightly run opens or updates one `ci-main-red` issue. It does not block open PRs.
+  on main as the sharded suite (`cio-full-suite-sharded.yml` on `schedule`, Postgres shard included; moved there
+  from the serial `full` profile on 2026-10-21), and on demand.
+* A red, cancelled or timed-out post-merge or nightly run opens or updates one `ci-main-red` issue. It does not
+  block open PRs. The alert used to fire on `failure` only. That let 8 of 10 nightly serial runs time out at
+  40 minutes without any alert (alignment audit H1, 2026-10-21).
 
 ## Profiles (`scripts/run_cio_hardening_ci.py --profile ...`)
 
@@ -33,7 +36,7 @@ running every registered test cannot go below about 5 to 6 minutes, however it i
 |---|---|---|
 | `pr` | required `cio-hardening` on `pull_request` | the smoke gates, the named gates of every HIGH tier touched, changed tests, then impacted tests nearest-first within `budget_seconds`; the rest are DEFERRED and listed |
 | `fast` | `cio-hardening` on push to main and on dispatch; `ai_local_acceptance.sh` default | every registered gate, in a worker pool; shared-state files run afterwards, one at a time |
-| `full` | `cio-hardening-full`, nightly and on dispatch; `ai_local_acceptance.sh --full` | the historical serial loop, as the isolation reference |
+| `full` | `cio-hardening-full`, on dispatch (nightly until 2026-10-21); `ai_local_acceptance.sh --full` | the historical serial loop, as the isolation reference |
 
 All three profiles run the same tail checks: docs index drift, committed release manifest, and candidate
 manifest. Registration is unchanged: a test file is covered only if it appears in `GATES`, and

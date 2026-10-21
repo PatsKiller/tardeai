@@ -41,6 +41,9 @@ GATES = [
     ),
     # Atomic bounded recovery reservations; critical enrollment survives diagnosis budget exhaustion.
     ("n8n_supervisor_budget_20261018", ["tests/test_n8n_supervisor_budget_20261018.py"]),
+    # ANCHOR: CI_ALERT_CANCELLED_TIMEOUT_20261021 — alignment audit H1: main-red-alert fires on failure, cancelled
+    # or timed_out; the nightly is cio-full-suite-sharded on schedule with its own nightly-red-alert.
+    ("ci_alert_cancelled_timeout_20261021", ["tests/test_ci_alert_cancelled_timeout_20261021.py"]),
     ("self_heal_fix_acceptance_20261018", ["tests/test_self_heal_fix_acceptance_20261018.py"]),
     # Staged reader preserves v2 evidence and refuses legacy worker effects on it.
     (
@@ -5756,8 +5759,9 @@ GATES = [
 #         a Postgres test database) run afterwards, one at a time.
 #   full: the historical behaviour -- one gate at a time, in declared order. It is
 #         the isolation reference (a test that only passes in `fast` or only in
-#         `full` has a hidden dependency) and runs on push to main, nightly, and on
-#         workflow_dispatch in `cio-hardening-full`.
+#         `full` has a hidden dependency) and runs on workflow_dispatch in
+#         `cio-hardening-full`. (2026-10-21: the nightly moved to the sharded
+#         suite, cio-full-suite-sharded.yml on schedule; the serial nightly timed out.)
 #
 #   pr:   the required `cio-hardening` context on pull requests (operator budget:
 #         5 minutes wall clock including runner setup). Runs a SELECTION, in the
