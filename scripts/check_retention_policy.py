@@ -96,6 +96,13 @@ def validate(doc: dict) -> list[str]:
                     errs.append(f"{t}: source_windows[{src}] must be an int >= 7")
                 elif isinstance(r.get("window_days"), int) and days >= r["window_days"]:
                     errs.append(f"{t}: source_windows[{src}] {days} d is not shorter than window_days")
+                # D10 (2026-10-21): the window measures the SOURCE document's age; every source names its table.
+                spec = (r.get("source_windows_source_tables") or {}).get(src)
+                if not isinstance(spec, dict) or not all(spec.get(k) for k in ("table", "key", "ts_column")):
+                    errs.append(f"{t}: source_windows[{src}] needs source_windows_source_tables[{src}] "
+                                "{table, key, ts_column} (D10: age of the source document)")
+            if not r.get("source_key_column"):
+                errs.append(f"{t}: source_windows requires source_key_column (D10)")
             for k in ("source_windows_batch_rows", "source_windows_max_rows_per_run"):
                 v = r.get(k)
                 if v is not None and (not isinstance(v, int) or isinstance(v, bool) or v <= 0):

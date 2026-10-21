@@ -5522,6 +5522,17 @@ GATES = [
         "hermes_scorer_n8n_shadow_20261021",
         ["tests/test_hermes_scorer_n8n_shadow_20261021.py"],
     ),
+    (
+        # ANCHOR: RETENTION_PRIORITY_20261021 — operator rulings 2026-10-21 (OPERATOR_DECISION, priority set),
+        # one test per ruling: D6 weekly_disk_cleanup_notify runs no dev-tree db_retention/librarian step
+        # (platform-maintenance-nightly from CURRENT is the only owner); D8.2 run_pg_backup.sh .part + size +
+        # gzip -t + atomic rename, enforcer skips .part and < 2 h; D7 db_trim --apply refuses (exit 2) without
+        # an active TRADEAI_DB_WRITE_GRANT, before any DB call; D5.3 comms_lifecycle never purges
+        # communication_thread_membership (KEEP_FOREVER); D10 content_embeddings source windows measure the
+        # SOURCE document's age (join per source type), still disabled. Hermetic: no DB, no subprocess.
+        "retention_priority_20261021",
+        ["tests/test_retention_priority_20261021.py"],
+    ),
 ]
 
 

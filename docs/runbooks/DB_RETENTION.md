@@ -1,7 +1,7 @@
 # DB retention — owners, archive + tripwire, grants
 
 Status:      ACTIVE
-as_of:       2026-10-11T10:30:00-04:00
+as_of:       2026-10-21T00:00:00-04:00
 Measured at: branch n8nmat/retention-all-managed (on 03b3fb362 + af5b1ef36) / live pin 464524b1b, not changed by this document
 
 **2026-10-11 retention-all-managed.** The operator asked, verbatim: *"Add, enable, and manage all deletes
@@ -26,7 +26,7 @@ persona. Retention was never part of Iris's implementation (study §3).
 |---|---|---|---|
 | `scripts/db_retention.py` | systemd `tradeai-platform-maintenance-nightly.timer` 01:15, which runs `CURRENT/scripts/pipelines/run_platform_maintenance_pipeline.sh` step `db_retention` (`add_step db_retention 30m /tmp/db_retention.lock …`). It has **no crontab line**: `crontab -l` has only a comment that mentions it. | Every DELETE and ARCHIVE_THEN_DELETE row of `config/data_retention_policy.json`, plus four file globs | ARCHIVE_THEN_DELETE rows always; DELETE rows with `archive_first: true` (93 of 96 since 2026-10-11, §3); file globs archive-then-unlink (§6). |
 | `scripts/run_hermes_librarian_retention.py --apply` → `scripts/lib/hermes_librarian/retention.py` | systemd `hermes-librarian-retention.timer` 05:10 (+≤180 s). The service `cd`s into CURRENT. It has **no crontab line**. | `hermes_research_intelligence` lifecycle, failed `hermes_embedding_queue` rows, orphan `content_embeddings` (news and hermes_research) | **yes, since 2026-10-11** (`archive_first: true` in the librarian policy; receipt per run) |
-| `scripts/db_trim.py --apply` | operator-run only | duplicate indexes, backup tables and schemas, row trims | yes: `archive/db_trim/<stamp>/` plus `TRIPWIRE.jsonl` |
+| `scripts/db_trim.py --apply` | operator-run only, under a db-write grant (§4, D7) | duplicate indexes, backup tables and schemas, row trims | yes: `archive/db_trim/<stamp>/` plus `TRIPWIRE.jsonl` |
 
 **The `content_embeddings` 90-day age rail has one owner: `db_retention`.** Until 2026-10-11, both
 jobs ran a 90-day hard DELETE on this table, and neither archived. The librarian's `purge_by_age`
@@ -183,6 +183,16 @@ way `guard_push_auth` checks `git-push`. It never consumes a use.
 - The dry run (no `--apply`) needs no grant.
 - The nightly registry run takes no flag and needs no grant.
 
+**`db_trim.py --apply` (D7, 2026-10-21).** The same check (`scripts/lib/db_write_grant.py`) gates every
+`db_trim.py <action> --apply`. Without an active db-write grant it prints `db_trim: REFUSED --apply: db-write
+grant: <reason>` to stderr and exits **2** before any `psql` call. The verdict is written under `grant` in
+`data/runtime/db_trim_last.json`. `inventory` and the dry run (no `--apply`) need no grant.
+
+```
+python3 scripts/db_trim.py purge-dead-queues                                   # dry run, quote it
+TRADEAI_DB_WRITE_GRANT=<id> python3 scripts/db_trim.py purge-dead-queues --apply
+```
+
 ```
 python3 scripts/db_retention.py --junk-fused-signal-embeddings                 # dry run, quote it
 TRADEAI_DB_WRITE_GRANT=<id> python3 scripts/db_retention.py --junk-fused-signal-embeddings --apply
@@ -282,14 +292,14 @@ rendering of it.
 
 | owner (script) | scheduler (live) | deletes | archive | state |
 |---|---|---|---|---|
-| `db_retention.py` | platform-maintenance-nightly 01:15 (CURRENT). **Also** `tradeai-weekly-disk-cleanup.timer` Sun 06:30, which runs it from the **dev tree** (D6) | 125 registry rows + 4 file globs; 64,656 rows would go tonight (dry run, §8) | archive-first on 122 of 125 rows; files archive-then-unlink | MANAGED |
-| `lib/hermes_librarian/retention.py` via `run_hermes_librarian_retention.py` | `hermes-librarian-retention.timer` 05:10 (also run by the weekly disk cleanup) | `hermes_research_intelligence` archived >180 d; `hermes_embedding_queue` failed >14 d; `content_embeddings` news + hermes_research orphans. The 90 d rail defers to db_retention | archive-first (`archive_first: true` in `config/hermes_librarian_policy.yaml`); receipt `data/runtime/hermes_librarian_retention_last.json` | MANAGED |
+| `db_retention.py` | platform-maintenance-nightly 01:15 (CURRENT), the **only** scheduler. (Until 2026-10-21 the Sun 06:30 weekly disk cleanup also ran it from the dev tree; removed, D6, §10.) | 125 registry rows + 4 file globs; 64,656 rows would go tonight (dry run, §8) | archive-first on 122 of 125 rows; files archive-then-unlink | MANAGED |
+| `lib/hermes_librarian/retention.py` via `run_hermes_librarian_retention.py` | `hermes-librarian-retention.timer` 05:10 (no longer also run by the weekly disk cleanup: D6, §10) | `hermes_research_intelligence` archived >180 d; `hermes_embedding_queue` failed >14 d; `content_embeddings` news + hermes_research orphans. The 90 d rail defers to db_retention | archive-first (`archive_first: true` in `config/hermes_librarian_policy.yaml`); receipt `data/runtime/hermes_librarian_retention_last.json` | MANAGED |
 | `siem_retention_purge.py` | platform-maintenance-nightly | `system_health_events` and `alert_events` >14 d | archive-first (`--no-archive` lever) | MANAGED (14 d vs 30 d window: D5) |
 | `prune_protection_proposals_retention.py` | `run_protection_pipeline.sh`, cron every 30 min | `paper_protection_adjustment_proposals` SUPERSEDED >30 d | archive-first | MANAGED |
 | `research_critique_pipeline.retention_purge` | hermes coordinator */15 → curator `--apply` | `watch_directives` curator-archived >60 d; `hermes_research_intelligence` archived >45 d; `hermes_directive_hits_staging` drained >14 d | archive-first. The dry run used to EXECUTE the DELETEs uncommitted; it now only counts | MANAGED (45 d vs 180 d window: D5) |
 | `hermes_autonomous_self_tune.self_purge` | stage manifests `hermes_learning.json`, `after_close.json` | failed embed queue >7 d; score_history >30 d; research rejected/superseded/expired >180 d; external_research >180 d; 3 dead tables | archive-first; an archived DELETE replaces TRUNCATE (the dead tables held 0 rows) | MANAGED |
-| `comms_lifecycle.py` | cron `17 * * * *` | `communication_*` rows past TTL. Since #1885 (served in `1d00a5181`, 2026-10-20 20:45 ET) there is also an opt-in `--steps reservations` step. It settles `communication_deliveries` left RESERVED/SENDING for over an hour (INBOUND → CANCELLED, unclaimed outbound → EXPIRED, SENDING → UNKNOWN; at most 500 per run). It changes only the delivery status. It **deletes nothing and sends nothing**. It is **not** in the cron's default `classify,expire,purge` steps until the cron-inventory row is approved. | its own jsonl.gz archive, count-checked | MANAGED_OWN_ARCHIVE (deletes `communication_thread_membership`, which is KEEP_FOREVER: D5) |
-| `db_trim.py` | operator-run | backup tables, duplicate indexes, row trims | pg_dump / jsonl.gz + `db_trim/TRIPWIRE.jsonl` | MANAGED_OWN_ARCHIVE (no grant check: D7) |
+| `comms_lifecycle.py` | cron `17 * * * *` | `communication_*` rows past TTL. Since #1885 (served in `1d00a5181`, 2026-10-20 20:45 ET) there is also an opt-in `--steps reservations` step. It settles `communication_deliveries` left RESERVED/SENDING for over an hour (INBOUND → CANCELLED, unclaimed outbound → EXPIRED, SENDING → UNKNOWN; at most 500 per run). It changes only the delivery status. It **deletes nothing and sends nothing**. It is **not** in the cron's default `classify,expire,purge` steps until the cron-inventory row is approved. | its own jsonl.gz archive, count-checked | MANAGED_OWN_ARCHIVE (`communication_thread_membership` is exempt and never purged, KEEP_FOREVER: D5.3, §10) |
+| `db_trim.py` | operator-run | backup tables, duplicate indexes, row trims | pg_dump / jsonl.gz + `db_trim/TRIPWIRE.jsonl` | MANAGED_OWN_ARCHIVE (`--apply` requires `TRADEAI_DB_WRITE_GRANT`, else exit 2: D7, §4) |
 | quarantine / scrub / `purge_error_synthesis` / `archive_trade_closed_probe_rows` | manual | condition rows | quarantine table or json | MANAGED_OWN_ARCHIVE |
 | `options_desk_enterprise.py` | cron 15:45 `options_iv_snapshot.py` + inline on every API persist | `options_chain_snapshots` >45 d | **none** | UNARCHIVED_DECISION. The registry says ARCHIVE_THEN_DELETE 365 d, but this 45 d delete runs first (D3) |
 | `finviz_market_movers.py` | cron */15 06–16 M–F | `market_movers` >7 d | none | UNARCHIVED_DECISION. No registry row (D4) |
@@ -312,8 +322,8 @@ rendering of it.
 | `db_retention.py` `file_prune` (4) | as db_retention | §6 | archive-then-unlink | MANAGED |
 | `hermes_universe_history_retention.py` | platform-maintenance-nightly | thinned universe snapshots, ~43 MB/day | archive-then-unlink, ~25× | MANAGED |
 | `rotate_runtime_logs.sh` | platform-maintenance-nightly step 1 | logs ≥100 MB: keeps the last 25 MB gzipped, **discards the head**, keeps 2 `.gz` per log | partial | UNARCHIVED_DECISION (D8) |
-| `disk_hygiene_enforcer.py`, `weekly_disk_cleanup_notify.py` | timers 04:15 daily, Sun 06:30 | release dirs (keep 2, and **release-local data dirs die with them**); `~/backups` >45/60 d; preclean dirs | none | UNARCHIVED_DECISION (D8) |
-| `backup_enforcer.py`, `run_pg_backup.sh`, `n8n_lab_backup.sh`, `backup_secrets_state.sh` | hourly; 02:30; nightly | pg_dump keep 1 (plus partials <1.5 GB **at any age**); n8n keep 14; Drive families | rotation of backups | UNARCHIVED_DECISION (D8: the hourly enforcer can unlink a dump that is still being written) |
+| `disk_hygiene_enforcer.py`, `weekly_disk_cleanup_notify.py` | timers 04:15 daily, Sun 06:30 | release dirs (keep 2, and **release-local data dirs die with them**); `~/backups` >45/60 d; preclean dirs. The weekly job runs **no DB retention** since D6 (§10) | none | UNARCHIVED_DECISION (D8) |
+| `backup_enforcer.py`, `run_pg_backup.sh`, `n8n_lab_backup.sh`, `backup_secrets_state.sh` | hourly; 02:30; nightly | pg_dump keep 1 (partials <1.5 GB older than 2 h are moved to `archive/`); n8n keep 14; Drive families | rotation of backups | UNARCHIVED_DECISION (D8.2 fixed: `.part` + size + `gzip -t` + atomic rename; the enforcer skips `.part` and anything younger than 2 h, §10) |
 | `portfolio_news.py`, `portfolio_weekly_report.py`, `portfolio_monthly_report.py`, `portfolio_monthly_synthesis.py` | portfolio cadences | news history >90 d; keep 8 weekly / 6 monthly LLM reports | none | UNARCHIVED_DECISION (D8) |
 | `lib/scalp_cycle_receipt.py` | scalp-live cron | day ledgers >30 d (directory absent today) | none | UNARCHIVED_DECISION (D8) |
 | `docs_retention.sh`, `artifacts_retention.sh`, `docs_hygiene.py` | weekly / manual | dry-run docs, Playwright artifacts | none | UNARCHIVED_DECISION (D8) |
@@ -354,7 +364,33 @@ rc=0
 The operator decisions D1–D9 are in
 `~/n8n-maturity-verification/packets/retention-all-managed/OPERATOR_DECISION.md`.
 
-Two items are still unchanged from earlier:
-- `source_windows_enabled: false` (`social_post` / `fused_signal` at 30 d; the `created_at` loop bug).
+Still open:
+- `source_windows_enabled: false` (`social_post` / `fused_signal` at 30 d). The `created_at` loop bug is
+  fixed (D10, §10); enabling is a separate operator ruling.
 - The 48 junk-purge archives from 2026-10-11 have no tripwire records. A backfill needs a `state-write`
   grant.
+
+## 10. Operator rulings 2026-10-21, priority set (D6, D8.2, D7, D5.3, D10)
+
+The operator approved all leans on 2026-10-21 and set the priority order D6, D8.2, D7, D5.3, D10
+(`OPERATOR_DECISION.md`, bottom). Tests: `tests/test_retention_priority_20261021.py`, CI gate
+`retention_priority_20261021` (ANCHOR `RETENTION_PRIORITY_20261021`). Each takes effect at the next release,
+except D6, which the Sunday timer picks up from the dev tree as soon as this lands there.
+
+| # | Change | Where |
+|---|---|---|
+| D6 | `weekly_disk_cleanup_notify.py` no longer runs `run_hermes_librarian_retention.py` or `db_retention.py`. It keeps disk hygiene and the preclean-dir cleanup. Row retention has one owner per table: platform-maintenance-nightly from CURRENT, and `hermes-librarian-retention.timer` (CURRENT) for its own scope. The Telegram summary says so instead of reporting `DB rows deleted: 0`. | `scripts/weekly_disk_cleanup_notify.py`; `purge_paths` `db_retention`, `hermes_librarian_retention`, `disk_hygiene_enforcer` |
+| D8.2 | `run_pg_backup.sh` writes `<name>.part`, keeps the size check, adds `gzip -t`, then renames in the same directory (atomic). A failed or corrupt dump is moved to `archive/` (`.incomplete`, `.corrupt`, `.failed` from an `EXIT` trap), never unlinked. `backup_enforcer.py` (already on main since `ba371f978`) skips `.part`/`.partial` and anything younger than 2 h, and moves older partials to `archive/`. | `linux_launchers/run_pg_backup.sh`; `scripts/backup_enforcer.py`; `purge_paths` `backup_rotation` |
+| D7 | `db_trim.py <action> --apply` requires `TRADEAI_DB_WRITE_GRANT` (§4), else exit 2 before any DB call. | `scripts/db_trim.py`; `purge_paths` `db_trim` |
+| D5.3 | `comms_lifecycle.py` purge no longer archives or deletes `communication_thread_membership` (`KEPT_TABLES`). Threads are kept; the registry row stays KEEP_FOREVER. Deliveries, outbox and entity links keep their archive-first purge. The table has no FK to `communication_events`, so an event purge leaves membership rows intact. | `scripts/comms_lifecycle.py`; `docs/ops/COMMS_HUB_2026-10-07.md`; `purge_paths` `comms_lifecycle` |
+| D10 | The `content_embeddings` source-window predicate measures the **source document's** age: `EXISTS (SELECT 1 FROM <source table> s WHERE s.<key> = t.source_id AND s.<ts> < now() - <days>)`. The registry row names the source per type in `source_windows_source_tables` (`fused_signal` → `fused_signals.created_at`, `social_post` → `social_posts.ingested_at`) and `source_key_column: source_id`. A missing or malformed mapping is a config error (fail closed), and `check_retention_policy.py` rejects it. An embedding whose source row is gone is not selected; the 90 d rail owns it. **`source_windows_enabled` stays `false`**: no source-window row runs. | `scripts/db_retention.py` (`_source_table_spec`, `source_window_predicate`); `scripts/check_retention_policy.py`; `config/data_retention_policy.json` |
+
+**Host change for D6 (operator, not made by the agent).** The code change removes the DB steps whatever
+tree the unit runs from. The unit's `WorkingDirectory` is still the dev tree; the proposal in the commit message (PR body)
+moves it to CURRENT. Until then the Sunday job runs disk hygiene from dev-tree code.
+
+**Dry run.** Not re-run for this change: the read-only `--dry-run` from the worktree could not open a DB
+session (the worktree has no `.env`, so `db_retention.py` refused with `DB_PASSWORD is empty`), and supplying
+the credential another way was denied. The hermetic test `test_d10_still_disabled_so_nothing_runs` shows
+the disabled source windows reach no cursor. The operator or a session with credential access should run
+`db_retention.py --dry-run` from CURRENT and from this branch and compare the totals; they should be equal.

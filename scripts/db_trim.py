@@ -265,11 +265,31 @@ def act_purge_dead_queues(apply: bool, stamp: str) -> dict:
     return receipt
 
 
+def _verify_db_write_grant() -> dict:
+    """--apply authority (OPERATOR_DECISION D7, 2026-10-21): the same db-write grant check as
+    db_retention.py --junk-fused-signal-embeddings --apply. Read-only ledger peek; no credential."""
+    scripts_dir = str(Path(__file__).resolve().parent)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    from lib import db_write_grant
+    return db_write_grant.verify(os.environ.get(db_write_grant.ENV))
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("action", choices=["inventory", "drop-duplicate-indexes", "archive-drop-tables", "purge-dead-queues"])
-    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--apply", action="store_true",
+                    help="drop/trim for real. Requires TRADEAI_DB_WRITE_GRANT=<active db-write grant id>")
     a = ap.parse_args(argv)
+    grant: dict | None = None
+    if a.apply and a.action != "inventory":
+        # D7: refuse before any DB connection; the refusal names the grant check's reason.
+        grant = _verify_db_write_grant()
+        if not grant.get("ok"):
+            print(f"db_trim: REFUSED --apply: db-write grant: {grant.get('reason')}. "
+                  "Set TRADEAI_DB_WRITE_GRANT to the operator's active db-write grant id, "
+                  "or run without --apply for a dry run.", file=sys.stderr)
+            return 2
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     size_before = psql("SELECT pg_database_size(current_database())")
     if a.action == "inventory":
@@ -284,7 +304,7 @@ def main(argv=None) -> int:
     size_after = psql("SELECT pg_database_size(current_database())")
     receipt = {"schema": SCHEMA, "action": a.action, "mode": "apply" if a.apply else "dry-run", "as_of": stamp,
                "db_bytes_before": int(size_before), "db_bytes_after": int(size_after), "result": result,
-               "ok": not result.get("errors")}
+               "ok": not result.get("errors"), "grant": grant}
     if a.apply:
         p = state_root() / "data" / "runtime" / "db_trim_last.json"
         p.parent.mkdir(parents=True, exist_ok=True)

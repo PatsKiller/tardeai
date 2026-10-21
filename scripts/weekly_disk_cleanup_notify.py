@@ -5,8 +5,8 @@ Runs (apply by default when invoked from the weekly timer):
   1. disk_hygiene_enforcer --apply  (releases keep-N + stale backup *files*)
   2. Explicit cleanup of stale ~/backups/deploy-tree-preclean-* dirs (hygiene
      only deletes files, not directories — 2026-09-18 gap)
-  3. Hermes librarian retention --apply
-  4. db_retention.py (row purge)
+  (3-4 removed 2026-10-21, OPERATOR_DECISION D6: librarian + db_retention row purges
+   are owned by the CURRENT release's nightly timers, never by this dev-tree job)
 
 Always sends one Telegram summary (operator request 2026-09-18): disk free
 before/after, bytes/rows reclaimed, per-step ok/fail.
@@ -175,11 +175,8 @@ def build_telegram(summary: dict) -> str:
     for s in summary["steps"]:
         lines.append(_step_line(s["name"], s["ok"], s["detail"]))
     lines.append("")
-    lines.append(
-        f"Total reclaim (est): *{_fmt_bytes(summary.get('bytes_reclaimed_est') or 0)}* · "
-        f"DB rows deleted: *{summary.get('db_rows_deleted') or 0}* · "
-        f"Librarian affected: *{summary.get('librarian_affected') or 0}*"
-    )
+    lines.append(f"Total reclaim (est): *{_fmt_bytes(summary.get('bytes_reclaimed_est') or 0)}*")
+    lines.append("DB row retention: owned by the nightly CURRENT timers (not this job, D6)")
     if not summary.get("ok"):
         lines.append("")
         lines.append("⚠️ One or more steps failed — check logs/weekly_disk_cleanup.log")
@@ -229,36 +226,13 @@ def run(*, apply: bool, notify: bool) -> dict:
         "raw": preclean,
     })
 
-    # 3) Librarian
-    argv = [py, str(ROOT / "scripts" / "run_hermes_librarian_retention.py")]
-    argv.append("--apply" if apply else "--dry-run")
-    ok, payload = _run_json(argv, timeout=1800)
-    if isinstance(payload, dict):
-        librarian_affected = int(payload.get("total_affected") or 0)
-        detail = f"affected={librarian_affected}"
-        # soft-ok even if total 0
-        ok = ok and bool(payload.get("ok", True))
-    else:
-        detail = str(payload)[:180]
-        ok = False
-    steps.append({"name": "librarian_retention", "ok": ok, "detail": detail, "raw": payload if isinstance(payload, dict) else None})
-
-    # 4) DB retention
-    argv = [py, str(ROOT / "scripts" / "db_retention.py")]
-    if dry:
-        argv.append("--dry-run")
-    ok, payload = _run_json(argv, timeout=3600)
-    # db_retention prints a table, not JSON — parse "Total deleted:" / "Total would delete:"
-    text = payload if isinstance(payload, str) else json.dumps(payload)
-    import re
-    m = re.search(r"Total (?:would delete|deleted):\s*([0-9,]+)\s*rows", text)
-    if m:
-        db_rows = int(m.group(1).replace(",", ""))
-        detail = f"rows={db_rows}"
-    else:
-        detail = (text or "")[-160:].replace("\n", " ")
-        # still ok if process exited 0
-    steps.append({"name": "db_retention", "ok": ok, "detail": detail, "raw": None})
+    # Steps 3-4 (Hermes librarian retention + db_retention.py) were REMOVED 2026-10-21
+    # (OPERATOR_DECISION D6). This timer's cwd is the DEV tree, so it ran the dev tree's
+    # registry and purge code against the live DB on Sundays: a second, unreleased
+    # retention owner. Row retention is owned only by tradeai-platform-maintenance-nightly
+    # (CURRENT) and hermes-librarian-retention.timer. Do not re-add a DB purge here; the
+    # D6 gate (tests/test_retention_priority_20261021.py) fails if run() invokes either.
+    # db_rows_deleted / librarian_affected stay 0 for receipt-schema stability.
 
     disk_after = _disk()
     summary = {

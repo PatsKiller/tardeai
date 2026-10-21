@@ -266,8 +266,11 @@ def test_run_source_windows_dry_run_and_apply(monkeypatch, tmp_path, capsys):
                                           + [("social_post", 31)] * 3 + [("news", 60)] * 4, start=1)]
     t = _Table(rows, _window_match)
     conn = _Conn(t)
+    # D10 (2026-10-21): windows carry the source table; the fake matcher stands in for the source-age join.
     ws = [{"table": "content_embeddings", "ts_column": "created_at", "source_column": "source_type", "source": s,
-           "days": 30, "batch_rows": 2, "max_rows": 4} for s in ("fused_signal", "social_post")]
+           "source_key_column": "source_id", "source_table": tbl, "source_table_key": "id", "source_table_ts": ts,
+           "days": 30, "batch_rows": 2, "max_rows": 4}
+          for s, tbl, ts in (("fused_signal", "fused_signals", "created_at"), ("social_post", "social_posts", "ingested_at"))]
     total, failed = dr.run_source_windows(conn.cursor(), conn, ws, dry_run=True)
     assert (total, failed) == (4 + 3, []) and t.deletes_executed == 0
     assert "source window, archive-first" in capsys.readouterr().out

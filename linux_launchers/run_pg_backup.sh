@@ -44,6 +44,15 @@ fi
 
 BACKUP_FILE="$BACKUP_DIR/${DB_NAME}_$TIMESTAMP.sql.gz"
 PART_FILE="${BACKUP_FILE}.part"
+# D8.2: a pg_dump that dies under `set -e` would leave the .part behind forever (the enforcer's
+# trade_ai_*.sql.gz glob never matches it). Park any leftover .part in archive/ on exit; never unlink.
+_park_part() {
+    if [ -f "$PART_FILE" ]; then
+        mkdir -p "$BACKUP_DIR/archive"
+        mv -f -- "$PART_FILE" "$BACKUP_DIR/archive/$(basename "$PART_FILE").failed" || true
+    fi
+}
+trap _park_part EXIT
 PARTIAL_MIN_BYTES=$((1500 * 1024 * 1024))  # full dumps ~2–2.5G; <1.5GB = incomplete thrash
 # Policy (2026-08-11): single local dump only — see config/backup_policy.yaml
 # Interval 20h so daily cadence @02:30 is the only writer; health-agent cannot storm.
@@ -94,6 +103,15 @@ fi
         mv -f -- "$PART_FILE" "$BACKUP_DIR/archive/$(basename "$PART_FILE").incomplete"
         exit 1
     fi
+    # D8.2 (2026-10-21): verify the gzip stream end to end before the .part becomes a trade_ai_*.sql.gz.
+    # A truncated or corrupt stream is moved aside (never unlinked, AGENTS.md §0 rule 6), not renamed.
+    if ! gzip -t -- "$PART_FILE"; then
+        echo "[$(date)] ERROR: gzip -t failed on $PART_FILE — moving it to archive/ as .corrupt"
+        mkdir -p "$BACKUP_DIR/archive"
+        mv -f -- "$PART_FILE" "$BACKUP_DIR/archive/$(basename "$PART_FILE").corrupt"
+        exit 1
+    fi
+    # Atomic: same directory, same filesystem. The final name appears only for a verified dump.
     mv -f -- "$PART_FILE" "$BACKUP_FILE"
     echo "[$(date)] Backup complete: $BACKUP_FILE ($SIZE)"
 
