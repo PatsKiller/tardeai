@@ -39,6 +39,18 @@ All three profiles run the same tail checks: docs index drift, committed release
 manifest. Registration is unchanged: a test file is covered only if it appears in `GATES`, and
 `check_test_coverage.py` enforces that.
 
+**What counts as a pass (2026-10-21, alignment audit C2/M8).** A unit passes only if pytest succeeded **and at
+least one test ran**. A unit in which every test skipped, or nothing was collected, fails. Main push run
+39660558060 had reported `[PASS] telegram_notification_normalization (2 files) 2 skipped`. The one exception
+is a unit whose every file is listed in `config/ci_skip_tolerant_units.json`, each entry with a reason naming
+the environment gate. That list is HIGH tier (`config/ci_*.json`) and was seeded only from measured all-skip
+units: the two `*_db.py` alert files and the two DB-gated options-workflow files. The options-workflow files
+run in no CI job today. Two further conditions now fail the run:
+
+* a registered `GATES` file is missing. This fails every profile and `ci-gate`.
+* a gate that `config/ci_risk_tiers.json` names as mandatory does not exist in `GATES`. This fails the `pr`
+  profile; it was a warning before.
+
 ### Test-impact selection (`scripts/lib/test_impact.py`)
 
 The selection works from a static reverse-dependency map over `scripts/` and `tests/`. It follows three kinds
