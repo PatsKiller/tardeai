@@ -17,6 +17,12 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+NO_CONSUMER_REASON = (
+    "HermesLibrarianRetentionReceipt@v1 is an audit receipt (data/runtime/hermes_librarian_retention_last.json) for the "
+    "05:10 hermes-librarian-retention.timer run. Its only reader was the Sun 06:30 weekly disk cleanup, which no longer "
+    "runs librarian retention (operator ruling D6, 2026-10-21); operators and the retention runbook read it directly."
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
