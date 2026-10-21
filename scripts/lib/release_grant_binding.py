@@ -49,6 +49,20 @@ REQUESTS_PATH = Path(os.environ.get("TRADEAI_GUARD_REQUESTS_PATH", str(Path.home
 _PR_RE = re.compile(r"(?:PR\s*)?#(\d{3,6})\b", re.IGNORECASE)
 _SHA_RE = re.compile(r"\b([0-9a-f]{9,40})\b")
 _ACTION_RE = re.compile(r"\b(prepare|promote|rollback|roll back|verify)\b", re.IGNORECASE)
+# Release-window campaign (2026-10-16 runner; second spelling 2026-10-21 release train). A grant reason may name a
+# window as the campaign id itself ("release-window-20261021-1200") or as "RELEASE_WINDOW <date> <window>"
+# ("RELEASE_WINDOW 20261021 1200" / "RELEASE_WINDOW 2026-10-21 12:00"). Both normalize to the same campaign id;
+# the id only binds when the action runs under that campaign (TRADEAI_RELEASE_CAMPAIGN, set by
+# scripts/release_window.py), so a window grant never authorizes a release outside its window.
+_WINDOW_ID_RE = re.compile(r"\brelease-window-(\d{8})-(\d{4})\b", re.IGNORECASE)
+_WINDOW_TOKEN_RE = re.compile(r"\bRELEASE_WINDOW\s+(\d{4})-?(\d{2})-?(\d{2})\s+(\d{2}):?(\d{2})\b")
+
+
+def window_campaigns(text: str) -> list[str]:
+    """Every release-window campaign id a grant reason names, in either spelling, sorted and de-duplicated."""
+    ids = {f"release-window-{d}-{t}" for d, t in _WINDOW_ID_RE.findall(text or "")}
+    ids |= {f"release-window-{y}{m}{d}-{hh}{mm}" for y, m, d, hh, mm in _WINDOW_TOKEN_RE.findall(text or "")}
+    return sorted(ids)
 
 
 @dataclass
@@ -125,7 +139,7 @@ def _names_action(reason: str, act: ReleaseAction) -> list[str]:
             if sha.startswith(cand[:9]) or cand.startswith(sha[:9]):
                 hit.append(f"sha:{cand[:12]}")
                 break
-    if act.campaign and act.campaign.lower() in text.lower():
+    if act.campaign and (act.campaign.lower() in text.lower() or act.campaign.lower() in window_campaigns(text)):
         hit.append(f"campaign:{act.campaign}")
     return hit
 
@@ -211,4 +225,4 @@ def decide_from_disk(act: ReleaseAction, *, grants_path: Path = GRANTS_PATH,
 
 
 __all__ = ["SCHEMA", "TIER", "ACTIONS", "ReleaseAction", "Verdict", "decide", "decide_from_disk",
-           "load_grants", "load_requests", "pending_requests_for"]
+           "load_grants", "load_requests", "pending_requests_for", "window_campaigns"]

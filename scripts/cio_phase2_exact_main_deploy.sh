@@ -49,7 +49,19 @@ source "${ROOT}/scripts/lib/release_venv.sh"
 # requires a live Actions incident, required jobs that never started, local replay evidence bound to
 # the commit's tree, a release-emergency grant naming the SHA + incident, and the commit rule.
 EMERGENCY_SHA="${TRADEAI_EMERGENCY_RELEASE_SHA:-}"
-git_sha() { if [[ -n "$EMERGENCY_SHA" ]]; then echo "$EMERGENCY_SHA"; else git -C "$ROOT" rev-parse origin/main; fi; }
+# Release train (2026-10-21). TRADEAI_RELEASE_TRAIN_SHA names a commit OLDER than origin/main that
+# scripts/release_window.py picked because main's head was not yet green: the newest commit on
+# origin/main's FIRST-PARENT chain whose exact-SHA push/main CI is green. prepare accepts it only if
+# HEAD is that commit, the tree is clean, it is on the first-parent chain of a freshly fetched
+# origin/main (never a side-branch or dev commit: the hybrid rule still holds) and its exact-SHA CI is
+# green now. It grants nothing: the release-write binding and promote's CI re-query are unchanged.
+# The window runner refuses to start when this is set in its own environment (GUARDED_ENV).
+TRAIN_SHA="${TRADEAI_RELEASE_TRAIN_SHA:-}"
+git_sha() {
+  if [[ -n "$EMERGENCY_SHA" ]]; then echo "$EMERGENCY_SHA"
+  elif [[ -n "$TRAIN_SHA" ]]; then echo "$TRAIN_SHA"
+  else git -C "$ROOT" rev-parse origin/main; fi
+}
 git_sha_short() { git -C "$ROOT" rev-parse --short "$(git_sha)"; }
 
 emergency_check() {
@@ -64,6 +76,22 @@ require_head_is_origin_main() {
   local head origin_main
   head="$(git -C "$ROOT" rev-parse HEAD)"
   origin_main="$(git -C "$ROOT" rev-parse origin/main)"
+  if [[ -n "$EMERGENCY_SHA" && -n "$TRAIN_SHA" ]]; then
+    die "TRADEAI_EMERGENCY_RELEASE_SHA and TRADEAI_RELEASE_TRAIN_SHA are both set — refuse (one release path at a time)"
+  fi
+  if [[ -n "$TRAIN_SHA" ]]; then
+    [[ "$TRAIN_SHA" =~ ^[0-9a-f]{40}$ ]] || die "TRADEAI_RELEASE_TRAIN_SHA must be a full 40-hex SHA"
+    [[ "$head" == "$TRAIN_SHA" ]] || die "ROOT HEAD $head != train SHA $TRAIN_SHA — check out the train commit first"
+    [[ -z "$(git -C "$ROOT" status --porcelain)" ]] || die "ROOT working tree dirty — refuse train prepare"
+    local first_parent
+    first_parent="$(git -C "$ROOT" rev-list --first-parent --max-count=500 "$origin_main")"
+    grep -qx "$TRAIN_SHA" <<<"$first_parent" \
+      || die "train SHA $TRAIN_SHA is not on origin/main's first-parent history (origin/main $origin_main) — refuse hybrid promote"
+    "$VENV_PYTHON" "${ROOT}/scripts/release_grant_preflight.py" --ci-only --sha "$TRAIN_SHA" >/dev/null \
+      || die "train SHA $TRAIN_SHA: exact-SHA CI is not green — refuse train prepare"
+    log "TRAIN: preparing $TRAIN_SHA (origin/main is $origin_main; newest green first-parent main commit)"
+    return 0
+  fi
   if [[ -n "$EMERGENCY_SHA" ]]; then
     [[ "$EMERGENCY_SHA" =~ ^[0-9a-f]{40}$ ]] || die "TRADEAI_EMERGENCY_RELEASE_SHA must be a full 40-hex SHA"
     [[ "$head" == "$EMERGENCY_SHA" ]] || die "ROOT HEAD $head != emergency SHA $EMERGENCY_SHA — check out the emergency commit first"
@@ -543,13 +571,14 @@ run_pin_check() {
 # degrades visibly during the transition. No credential is read.
 release_grant_preflight() {
   local action="$1" sha="$2"
+  local extra=("${@:3}")   # e.g. --no-consume
   local pr_arg=()
   [[ -n "${TRADEAI_RELEASE_PR:-}" ]] && pr_arg=(--pr "${TRADEAI_RELEASE_PR}")
   if [[ ! -f "${CANONICAL_SOURCE}/scripts/release_grant_preflight.py" ]]; then
     log "release grant preflight script absent in ${CANONICAL_SOURCE}; skipping (pre-binding tree)"
     return 0
   fi
-  if ! "$VENV_PYTHON" "${CANONICAL_SOURCE}/scripts/release_grant_preflight.py" --action "$action" --sha "$sha" "${pr_arg[@]}"; then
+  if ! "$VENV_PYTHON" "${CANONICAL_SOURCE}/scripts/release_grant_preflight.py" --action "$action" --sha "$sha" "${pr_arg[@]}" "${extra[@]}"; then
     die "release grant binding refused ${action} of ${sha} (set TRADEAI_RELEASE_PR / obtain a grant naming this PR or SHA)"
   fi
 }
@@ -695,7 +724,9 @@ cmd_promote() {
   PREV_RELEASE="$(current_release)"
   NEW_RELEASE="$dir"
   CONTENT_SHA="$sha"
-  release_grant_preflight promote "$sha"
+  # Binding verdict only: a promote refused below (conformance, exact-SHA CI) must not cost a
+  # release-write use (2026-10-21: 71df62acc was refused by CI after its use was consumed).
+  release_grant_preflight promote "$sha" --no-consume
   conformance_gate "$sha"
   # Re-query immediately before activation. Pending, missing, failed or unavailable
   # push/main evidence cannot be substituted with PR CI or an old receipt.
@@ -710,6 +741,8 @@ cmd_promote() {
       die "exact-SHA push-to-main checks are not completed successfully; activation refused"
     fi
   fi
+  # Every gate passed: re-decide and consume the use immediately before activation.
+  release_grant_preflight promote "$sha"
   release_pin_step plan "$dir"
   write_state
   activate_release "$dir" "$sha"
