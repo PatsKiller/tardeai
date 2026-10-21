@@ -5496,6 +5496,16 @@ GATES = [
         "backup_cadence_tar_changed_20261021",
         ["tests/test_portfolio_cadence_tar_rc1_20261021.py"],
     ),
+    (
+        # ANCHOR: HERMES_SCORER_HARDENING_20261021 — one bad card (BHVN 'NaN' levels) aborted every
+        # hermes_watchlist_scorer run for ~2 days and nothing paged. Per-item isolation (score + per-symbol
+        # SAVEPOINT write; skipped_errors counted; all items failing exits 1), NaN/Inf = missing in every factor,
+        # one deduped P2 intent when >20% error or nothing lands, LaneRunReceipt@v2. Source fix: materialize_
+        # watchlist_strategy_cards drops a 'NaN' ticker_prices close and never upserts a non-finite level. Write-free
+        # --dry-run (READ ONLY session; no receipt, no send). Hermetic: no DB.
+        "hermes_scorer_hardening_20261021",
+        ["tests/test_hermes_scorer_hardening_20261021.py"],
+    ),
 ]
 
 
