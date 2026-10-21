@@ -495,11 +495,51 @@ def main(argv=None) -> int:
     from lib.lane_last_receipt import now_iso, write_lane_receipt
     started = now_iso()
     _run_id = None
+    _prev_handlers = {}
     try:
         from pipeline_registry import run_start, run_complete, run_fail
         _run_id = run_start('finviz_screener_runner')
     except Exception:
         pass
+    try:
+        # 2026-10-21 zombie runs: the momentum-scalp lane's per-call timeout killed this
+        # process mid-run and the row stayed 'running'. A SIGTERM now unwinds through the
+        # handler below and closes the row as "terminated by SIGTERM".
+        from pipeline_registry import _install_termination_handlers
+        if _run_id:
+            _prev_handlers = _install_termination_handlers()
+    except Exception:
+        pass
+
+    try:
+        return _run_tracked(args, started, _run_id)
+    except SystemExit as _term:
+        if type(_term).__name__ == "PipelineRunTerminated":
+            try:
+                from pipeline_registry import run_terminated
+                run_terminated(_run_id, getattr(_term, "signum", 15))
+            except Exception:
+                pass
+            write_lane_receipt("finviz-screener-runner", ok=False, exit_code=int(_term.code or 143),
+                               started_at=started, script="finviz_screener_runner.py",
+                               error="terminated",
+                               output={"produced_count": 0, "attempted_count": 0,
+                                       "skipped_reasons": {"terminated": 1}})
+        raise
+    finally:
+        try:
+            from pipeline_registry import _restore_handlers
+            _restore_handlers(_prev_handlers)
+        except Exception:
+            pass
+
+
+def _run_tracked(args, started, _run_id) -> int:
+    from lib.lane_last_receipt import write_lane_receipt
+    try:
+        from pipeline_registry import run_complete, run_fail
+    except Exception:
+        run_complete = run_fail = lambda *a, **k: None
 
     try:
         result = run_screener(screener_id=args.screener, dry_run=False)

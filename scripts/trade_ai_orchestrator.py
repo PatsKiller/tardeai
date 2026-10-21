@@ -1576,6 +1576,11 @@ if __name__ == "__main__":
         try:
             _result = main()
         except SystemExit as _se:
+            # A supervisor kill (process_reaper / timeout SIGTERM) arrives as
+            # pipeline_registry.PipelineRunTerminated; let PipelineRun close it as
+            # "terminated by SIGTERM" instead of re-wrapping it as exit_143 (2026-10-21).
+            if type(_se).__name__ == "PipelineRunTerminated":
+                raise
             # argparse exits 2 before run_pipeline; enrich so the row is legible.
             _code = _se.code
             if _code in (0, None):

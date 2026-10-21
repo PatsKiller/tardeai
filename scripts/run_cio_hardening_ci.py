@@ -5427,6 +5427,17 @@ GATES = [
             "tests/test_ci_frontend_dependencies_20261018.py",
         ],
     ),
+    (
+        # ANCHOR: PIPELINE_ZOMBIE_RUNS_20261021 — pipeline_runs rows left 'running' then flipped to
+        # failed/{"errors": []} by the zombie sweep paged "Pipeline FAILED ... Error: []". Shared cause:
+        # the run was KILLED (health_tick orphan SIGTERM of pipeline_watchdog's symbol_enrichment
+        # children, process_reaper SIGTERM of orchestrator dups, momentum-scalp lane SIGKILL of
+        # finviz_screener_runner calls) before PipelineRun.__exit__ ran. PipelineRun / finviz runner
+        # now close a SIGTERM'd run as "terminated by SIGTERM"; the lane runner SIGTERMs before SIGKILL
+        # and does not spawn a call the deadline already exhausted. Hermetic: stubbed writers, no DB.
+        "pipeline_zombie_runs_20261021",
+        ["tests/test_pipeline_zombie_runs_20261021.py"],
+    ),
 ]
 
 

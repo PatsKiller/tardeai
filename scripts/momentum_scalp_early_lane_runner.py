@@ -75,17 +75,37 @@ def is_trading_day(t: datetime) -> bool:
     return t.weekday() < 5     # Mon-Fri (holidays handled by the scan being a safe no-op)
 
 
+#: 2026-10-21 zombie runs: subprocess.run(timeout=) SIGKILLs the child, which cannot be
+#: caught, so finviz_screener_runner's pipeline_runs row stayed 'running' (16 rows on 10-21,
+#: every one a "timeout after Ns" call in this lane's receipt) until the zombie sweep paged
+#: "Pipeline FAILED ... Error: []". SIGTERM first, so the child closes its own row.
+TERM_GRACE_S = 5
+#: A call whose clamped timeout is below this cannot finish; it is skipped, not spawned
+#: (the 07:20 run on 10-21 spawned a 1-second call that only manufactured a zombie row).
+MIN_CALL_TIMEOUT_S = 10
+
+
 def _run(cmd: list, timeout: int = STAGE_TIMEOUT) -> dict:
-    """Run a subprocess, capturing rc/stdout tail/latency. Never raises."""
+    """Run a subprocess, capturing rc/stdout tail/latency. Never raises.
+
+    On timeout the child gets SIGTERM and TERM_GRACE_S to unwind before SIGKILL."""
     t0 = time.monotonic()
     try:
-        p = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=timeout)
-        out = (p.stdout or "").strip()
+        p = subprocess.Popen(cmd, cwd=str(ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            out, err = p.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            p.terminate()
+            try:
+                p.communicate(timeout=TERM_GRACE_S)
+            except subprocess.TimeoutExpired:
+                p.kill()
+                p.communicate()
+            return {"rc": 124, "latency_ms": int((time.monotonic() - t0) * 1000),
+                    "stdout_tail": "", "stderr_tail": f"timeout after {timeout}s"}
+        out = (out or "").strip()
         return {"rc": p.returncode, "latency_ms": int((time.monotonic() - t0) * 1000),
-                "stdout_tail": out[-600:], "stderr_tail": (p.stderr or "").strip()[-300:]}
-    except subprocess.TimeoutExpired:
-        return {"rc": 124, "latency_ms": int((time.monotonic() - t0) * 1000),
-                "stdout_tail": "", "stderr_tail": f"timeout after {timeout}s"}
+                "stdout_tail": out[-600:], "stderr_tail": (err or "").strip()[-300:]}
     except Exception as e:
         return {"rc": 1, "latency_ms": int((time.monotonic() - t0) * 1000),
                 "stdout_tail": "", "stderr_tail": str(e)[:300]}
@@ -215,6 +235,14 @@ def stage_finviz_scan(dry_run: bool, deadline_s: float | None = None, started_mo
     calls = [[_py(), runner, "--screener", sid] for sid in ids] or [[_py(), runner, "--run"]]
     for cmd in calls:
         t_out = stage_timeout(FINVIZ_TIMEOUT, deadline_s, started_monotonic)
+        if deadline_s is not None and t_out < MIN_CALL_TIMEOUT_S:
+            # Outer deadline exhausted: record the call as not run (still a failed refresh,
+            # rc 124) instead of spawning a process that is killed before it can finish.
+            rc_worst = max(rc_worst, 124)
+            results.append({"cmd": cmd[-2:], "rc": 124, "latency_ms": 0, "timeout_s": t_out,
+                            "skipped": "outer_deadline_exhausted",
+                            "stderr": f"skipped: {t_out}s left of the outer deadline"})
+            continue
         r = _run(cmd, timeout=t_out)
         rc_worst = max(rc_worst, int(r["rc"]))
         rows_total += sum(int(x) for x in _ROWS_RE.findall(r.get("stdout_tail") or ""))
