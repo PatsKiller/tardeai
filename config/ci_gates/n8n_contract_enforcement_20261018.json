@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_contract_enforcement_20261018",
+  "files": [
+    "tests/test_n8n_gateway_closed_inputs_20261018.py",
+    "tests/test_n8n_output_contract_truth_20261018.py"
+  ],
+  "comment": [
+    "2026-10-18 campaign: strict authority-bearing JSON and immutable output truth.",
+    "Hermetic ledgers, signed fixture claims and fake output effects only."
+  ]
+}

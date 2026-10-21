@@ -1,0 +1,19 @@
+{
+  "schema": "CiGate@v1",
+  "name": "publish_chokepoint_identity",
+  "files": [
+    "tests/test_publish_chokepoint_identity_20260922.py"
+  ],
+  "comment": [
+    "communication_events.subject_guid was written by exactly ONE caller",
+    "(telegram_alert._tag_outbound), as an UPDATE after publish. Every other",
+    "producer — the gateway-owned path and ~40 direct publish_communication",
+    "call sites — wrote a row with no subject: 8,786 of 54,676 OUTBOUND events",
+    "carried one on 2026-09-22 (16.1%). The stamp now happens inside",
+    "publish_communication, before persist. That is only safe while the",
+    "2026-09-21 template guards hold — one alert's boilerplate (\"After <n>",
+    "retries\") had become 57.5% of the identity spine — so the wiring and the",
+    "guards are gated by the same suite, against a registry in which the",
+    "template words ARE registered entities."
+  ]
+}

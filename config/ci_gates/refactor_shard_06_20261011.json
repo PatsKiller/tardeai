@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "refactor_shard_06_20261011",
+  "files": [
+    "tests/test_refactor_shard_06_20261011.py"
+  ],
+  "comment": [
+    "Shard06 source-only previews: exact approved cron argv against frozen old entrypoints;",
+    "no auth/DB/provider work or state writes in previews; fake real receipts retain prior ok_at",
+    "on failure. Seven DRAFT admissions, no broker env, existing reviewed rows preserved."
+  ]
+}

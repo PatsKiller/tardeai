@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "tmp_scratch_cleanup_20261013",
+  "files": [
+    "tests/test_tmp_scratch_cleanup_20261013.py"
+  ],
+  "comment": [
+    "/tmp inode exhaustion (2026-10-13): weekly sweep of leaked pytest scratch. Removes only empty matching",
+    "dirs older than a day, archives non-empty ones older than a week, never follows symlinks or touches",
+    "anything unmatched, and alarms (exit 3) when inode use stays above 80%. tmp_path roots only."
+  ]
+}

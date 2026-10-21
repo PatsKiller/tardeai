@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "wake_consult_reaches_the_row",
+  "files": [
+    "tests/test_wake_consult_reaches_the_row.py"
+  ]
+}

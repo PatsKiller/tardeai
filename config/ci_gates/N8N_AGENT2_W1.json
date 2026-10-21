@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "N8N_AGENT2_W1",
+  "files": [
+    "tests/test_n8n_w1_registry_20261008.py"
+  ],
+  "comment": [
+    "N8N_AGENT2_W1 — 2026-10-08: observed registry rows, safe routing and durable legacy-job receipts."
+  ]
+}

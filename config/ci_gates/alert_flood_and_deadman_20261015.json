@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "alert_flood_and_deadman_20261015",
+  "files": [
+    "tests/test_incident_flood_policy_20261015.py",
+    "tests/test_offbox_deadman_20261015.py",
+    "tests/test_telegram_delivery_outcome_20261015.py"
+  ],
+  "anchor": "ALERT_FLOOD_AND_DEADMAN_20261015",
+  "comment": [
+    "ANCHOR: ALERT_FLOOD_AND_DEADMAN_20261015 — WS1-09/WS3-10/WS3-35 incident-flood rules behind a report_only",
+    "flag (drop diagnoser policy refusals and lock skips, auto-resolve on lane success, collapse per lane and",
+    "failure class, per-source P2 budget, P1/recoveries off the P2 cap), pinned so no P0/P1 stop, broker or",
+    "safety finding (SPCX cases) is ever suppressed; WS3-18 off-box dead-man sender (dry run opens nothing);",
+    "WS3-21 send_telegram no longer returns True for an undelivered transport attempt. Hermetic: tmp state",
+    "roots, tmp sqlite, stub sender/requester/transport. Listing them here schedules nothing."
+  ]
+}

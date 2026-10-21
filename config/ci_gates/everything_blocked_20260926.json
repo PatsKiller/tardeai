@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "everything_blocked_20260926",
+  "files": [
+    "tests/test_everything_blocked_20260926.py"
+  ],
+  "comment": [
+    "2026-09-26 -- \"everything BLOCKED\": income ideas screened before a card is built,",
+    "Aegis worker heartbeat + stall alarm, Watch refresh workers outside the scheduler cgroup."
+  ]
+}

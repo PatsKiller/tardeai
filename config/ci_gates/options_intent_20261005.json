@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "options_intent_20261005",
+  "files": [
+    "tests/test_options_intent_20261005.py"
+  ],
+  "comment": [
+    "Operator options intents: standing memory on the ticker directive, proactive Schwab contract",
+    "matcher (shadow default, throttled digest), generic covered calls obey the intent floor (2026-10-05)."
+  ]
+}

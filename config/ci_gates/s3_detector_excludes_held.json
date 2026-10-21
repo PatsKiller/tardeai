@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "s3_detector_excludes_held",
+  "files": [
+    "tests/test_s3_detector_excludes_held.py"
+  ],
+  "comment": [
+    "A held position is never a re-entry candidate.",
+    "A directory a served surface reads must be linked into the release."
+  ]
+}

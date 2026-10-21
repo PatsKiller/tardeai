@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "paper_venv_resolver_20261009",
+  "files": [
+    "tests/test_paper_venv_resolver_20261009.py"
+  ],
+  "comment": [
+    "Paper/broker-adjacent child steps use the same resolver; telegram run_promoter no longer shadows os (F823).",
+    "Code-only, under execution-engineering grant dc66eb4b6db5107e (operator 2026-10-09)."
+  ]
+}

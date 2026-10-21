@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overnight_g2_import_normalise",
+  "files": [
+    "tests/test_overnight_g2_import_normalise.py"
+  ]
+}

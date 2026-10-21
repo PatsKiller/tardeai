@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "lineage_run_hermes_join_20261003",
+  "files": [
+    "tests/test_lineage_run_hermes_join_20261003.py"
+  ],
+  "comment": [
+    "Hermes research joins the options review that asked for it (MORE_RESEARCH follow-up)."
+  ]
+}

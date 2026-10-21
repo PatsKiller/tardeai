@@ -1,0 +1,26 @@
+{
+  "schema": "CiGate@v1",
+  "name": "gate_honesty_p6_20260922",
+  "files": [
+    "tests/test_independence_reviewer_scorer_20260922.py",
+    "tests/test_alarm_fires_batch6_20260922.py"
+  ],
+  "comment": [
+    "2026-09-22 P6 — two gates that were green for the wrong reason.",
+    "",
+    "reviewer != scorer was enforced from the SCORING side only, and only in",
+    "one insertion order: record_score asked the durable agent_reviews rows",
+    "whether the scorer had already reviewed, while nothing asked agent_scores",
+    "whether the reviewer had already scored. Score-then-review by one agent",
+    "was accepted; review-then-score by the same agent was refused. Review",
+    "also carried no scorer_agent_id, so the contract answered the same",
+    "question differently depending on which record the caller built. Both",
+    "sides and both orders are pinned now.",
+    "",
+    "The alarm batch is the other half: ten send_telegram sites that were",
+    "lines in config/alarm_firing_baseline.txt — named, counted, unproven —",
+    "are now driven to the transport and REMOVED from that file. The ratchet",
+    "number moved because the alarms were tested, not because the baseline",
+    "absorbed them, which is the only direction that file may move."
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "alert_quality_producer_20261003",
+  "files": [
+    "tests/test_alert_quality_producer_20261003.py"
+  ],
+  "comment": [
+    "AlertQuality@v1 scored from the real alert ledgers, persisted via operator artifacts (2026-10-03)."
+  ]
+}

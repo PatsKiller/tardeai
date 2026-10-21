@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "wake_writer_stamp",
+  "files": [
+    "tests/test_wake_writer_stamp.py"
+  ]
+}

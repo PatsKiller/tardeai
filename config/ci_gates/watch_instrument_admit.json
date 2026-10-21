@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_instrument_admit",
+  "files": [
+    "tests/test_cio_watch_instrument_admit.py"
+  ]
+}

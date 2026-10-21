@@ -1,0 +1,19 @@
+{
+  "schema": "CiGate@v1",
+  "name": "refactor_w1_20261010",
+  "files": [
+    "tests/test_refactor_shard_04_20261011.py",
+    "tests/test_refactor_w1_data_gap_resolver_20261010.py",
+    "tests/test_refactor_w1_health_monitors_20261010.py",
+    "tests/test_refactor_w1_materializers_20261010.py"
+  ],
+  "anchor": "REFACTOR_W1_20261010",
+  "comment": [
+    "ANCHOR: REFACTOR_W1_20261010 — n8n refactor wave 1: --dry-run that cannot reach a write/send",
+    "(read-only DB session or return-before-writer, asserted by source ordering), LaneRunReceipt@v1",
+    "<state_root>/data/runtime/<lane_id>_last.json with ok_at only on success, findings exit 0 /",
+    "failed check exits non-zero. data_gap_resolver, crawl_v3_dashboard, hermes_pipeline_health,",
+    "materialize_income_engine, classifier_health_check, sector_rs_daily, youtube_cookie_health_check.",
+    "Hermetic: fake conns / fake db_adapter / fake sender modules, tmp TRADEAI_STATE_ROOT."
+  ]
+}

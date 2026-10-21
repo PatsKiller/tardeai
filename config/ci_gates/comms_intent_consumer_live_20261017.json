@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "comms_intent_consumer_live_20261017",
+  "files": [
+    "tests/test_comms_intent_consumer_live_20261017.py"
+  ],
+  "anchor": "COMMS_INTENT_CONSUMER_LIVE_20261017",
+  "comment": [
+    "ANCHOR: COMMS_INTENT_CONSUMER_LIVE_20261017 — operator decision D2 \"Queue reader first\": n8n-comms-intent-consumer",
+    "dispatch-live at */5 like heartbeat-watch (stage canary, own flock, live_arg --apply, REVIEWED health contract with",
+    "expected_output, staged effect key); LaneRunReceipt@v2 produced / empty_allowed / fatal dependency_unavailable via",
+    "the real CLI; idempotent rerun; the operator packet against fake systemctl/docker/proc. Hermetic: tmp ledgers."
+  ]
+}

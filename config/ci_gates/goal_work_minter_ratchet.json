@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "goal_work_minter_ratchet",
+  "files": [
+    "tests/test_goal_work_minter_ratchet.py"
+  ]
+}

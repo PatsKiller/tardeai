@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_review_retry_20260927",
+  "files": [
+    "tests/test_cio_review_retry_20260927.py"
+  ],
+  "comment": [
+    "2026-09-27 -- a failed options CIO review is retryable (attempt-suffixed job key),",
+    "the router's dedupe skip is classified, raw response heads are kept for diagnosis,",
+    "and failed attempts are capped (max_review_failures) and named on the card."
+  ]
+}

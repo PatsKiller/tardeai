@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "finviz_token_backstop_20261003",
+  "files": [
+    "tests/test_finviz_token_backstop_20261003.py"
+  ],
+  "comment": [
+    "A dead FINVIZ_COOKIE with a working FINVIZ_API_TOKEN is healthy (rotation note),",
+    "never \"screener empty\"; degraded only when both fail; no secret in any record."
+  ]
+}

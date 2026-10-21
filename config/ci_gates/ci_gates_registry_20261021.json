@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ci_gates_registry_20261021",
+  "files": [
+    "tests/test_ci_gates_registry_20261021.py"
+  ],
+  "anchor": "CI_GATES_REGISTRY_20261021",
+  "comment": [
+    "ANCHOR: CI_GATES_REGISTRY_20261021 — operator-approved process plan: one JSON file per gate under",
+    "config/ci_gates/ (GATES loads them sorted by name; malformed file fails closed), the re-runnable",
+    "migration (dry run default, comments/ANCHOR kept, conflict unless --overwrite), docs/INDEX.md",
+    "checked by presence + title (merge=union), self-heal add-only gate files, and two branches each",
+    "adding a gate and a doc merging with no conflict. Hermetic: tmp roots, tmp git repo."
+  ]
+}

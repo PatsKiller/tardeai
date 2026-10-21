@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_deploy_receipt_truth_20261018",
+  "files": [
+    "tests/test_cio_deploy_receipt_truth_20261018.py"
+  ],
+  "comment": [
+    "Actual CURRENT identity, strict release receipt readers, and rollback/prepare truth.",
+    "Temporary artifacts and fake shell actions only."
+  ]
+}

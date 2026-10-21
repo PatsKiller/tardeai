@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "intelligence_lineage",
+  "files": [
+    "tests/test_cio_intelligence_lineage.py"
+  ]
+}

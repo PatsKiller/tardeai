@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overnight_f4_search_health",
+  "files": [
+    "tests/test_overnight_f4_search_health.py"
+  ]
+}

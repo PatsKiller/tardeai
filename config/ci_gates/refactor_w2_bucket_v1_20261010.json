@@ -1,0 +1,19 @@
+{
+  "schema": "CiGate@v1",
+  "name": "refactor_w2_bucket_v1_20261010",
+  "files": [
+    "tests/test_refactor_shard_08_20261011.py",
+    "tests/test_refactor_w2_signal_fusion_20261010.py",
+    "tests/test_refactor_w2_learning_lanes_20261010.py",
+    "tests/test_refactor_w2_ingest_alert_lanes_20261010.py"
+  ],
+  "anchor": "REFACTOR_W2_BUCKET_V1",
+  "comment": [
+    "ANCHOR: REFACTOR_W2_BUCKET_V1 — 2026-10-10 cron->n8n refactor wave 2, bucket V1: --dry-run that",
+    "cannot reach a write/send/paid call (READ ONLY session + return-before-write, source-order",
+    "pinned), LaneRunReceipt@v1 <state_root>/data/runtime/<script>_last.json with ok_at on success",
+    "only, honest exit codes. Scripts: signal_fusion (full/active), agent_recommendation_normalizer,",
+    "update_agent_performance, catalyst_calibration, backtest_history_snapshot, holdings_llm_refresh,",
+    "hermes_directive_discovery, earnings_enrich, ipo_lockup_alert. Hermetic: fake DB, tmp state root."
+  ]
+}

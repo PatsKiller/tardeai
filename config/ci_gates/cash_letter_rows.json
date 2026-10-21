@@ -1,0 +1,8 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cash_letter_rows",
+  "files": [
+    "tests/test_cash_letter_rows.py",
+    "tests/test_cio_cc_record_narrative_slice_c.py"
+  ]
+}

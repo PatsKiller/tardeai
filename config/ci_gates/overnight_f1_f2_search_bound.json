@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overnight_f1_f2_search_bound",
+  "files": [
+    "tests/test_overnight_f1_f2_search_bound.py"
+  ]
+}

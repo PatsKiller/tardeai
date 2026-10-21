@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "learning_outcome_governance",
+  "files": [
+    "tests/test_learning_outcome_governance.py"
+  ]
+}

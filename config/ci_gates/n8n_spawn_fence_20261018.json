@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_spawn_fence_20261018",
+  "files": [
+    "tests/test_n8n_cutover_transaction_20261018.py"
+  ],
+  "comment": [
+    "Keep ownership admission fenced until actual child spawn; late effects remain epoch-fenced.",
+    "Hermetic threads, temporary ledgers and fake children; no production actions."
+  ]
+}

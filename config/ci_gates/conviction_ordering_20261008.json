@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "conviction_ordering_20261008",
+  "files": [
+    "tests/test_conviction_ordering_20261008.py"
+  ],
+  "comment": [
+    "Advice ranked by CIO conviction (operator 2026-10-08): Communications conviction sort + reward board, below-floor",
+    "names last and tagged; advice digest entry/re-entry ordered by conviction, below-floor collapsed, CIO notes uncapped."
+  ]
+}

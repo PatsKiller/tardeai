@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "comms_drawer_20261019",
+  "files": [
+    "tests/test_comms_drawer_20261019.py"
+  ],
+  "anchor": "COMMS_DRAWER_20261019",
+  "comment": [
+    "ANCHOR: COMMS_DRAWER_20261019 — Communications drawer: Street consensus on ticker items (Yahoo targets store,",
+    "stale-marked, absent when uncovered), Telegram HTML rendered through an allowlist (no innerHTML), every lifecycle",
+    "action explained, missing operator token asked for instead of a silent 403. Hermetic: injected DB read."
+  ]
+}

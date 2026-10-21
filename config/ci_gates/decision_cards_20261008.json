@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "decision_cards_20261008",
+  "files": [
+    "tests/test_decision_cards_20261008.py"
+  ],
+  "comment": [
+    "Decision-speed redesign (operator 2026-10-08): Telegram decision cards route exactly like the old layout;",
+    "Home/Communications/Watch answer action-risk-opportunity first with strict colour families."
+  ]
+}

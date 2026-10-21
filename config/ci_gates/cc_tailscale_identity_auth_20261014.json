@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cc_tailscale_identity_auth_20261014",
+  "files": [
+    "tests/test_cc_tailscale_identity_auth_20261014.py"
+  ],
+  "anchor": "CC_TAILSCALE_IDENTITY_AUTH_20261014",
+  "comment": [
+    "ANCHOR: CC_TAILSCALE_IDENTITY_AUTH_20261014 — CC auth: tailnet identity on the serve socket,",
+    "service token on :7777, step-up refusal on order/stop/credential/risk routes. Hermetic."
+  ]
+}

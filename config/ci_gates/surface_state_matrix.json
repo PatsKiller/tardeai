@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "surface_state_matrix",
+  "files": [
+    "tests/test_surface_state_matrix.py"
+  ],
+  "comment": [
+    "cc-whole-site-residual-v1 (2026-09-03): every surface in every state it can",
+    "reach -- populated, empty, partial, stale, malformed, disconnected,",
+    "unauthorized, forbidden, error. A surface tested only with good data is only",
+    "known to work in the case that never needed it. Failure must never report a",
+    "count: an outage and a quiet market must not render identically."
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_scalp_lane_20261009",
+  "files": [
+    "tests/test_n8n_scalp_lane_20261009.py",
+    "tests/test_agents_policy_4_0_0_scalp_lane.py"
+  ],
+  "anchor": "N8N_SCALP_LANE",
+  "comment": [
+    "ANCHOR: N8N_SCALP_LANE — 2026-10-09 operator \"n8n drives a governed lane\": trade-ai-scalp-live",
+    "shadow-only allowlist entry (no live_arg), --dry-run writes nothing, per-run receipt, registry",
+    "output_signal resolvable (no '~'), fan-in STALLED source. Hermetic: tmp state root, fake clocks."
+  ]
+}

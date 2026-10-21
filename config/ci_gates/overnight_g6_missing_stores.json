@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overnight_g6_missing_stores",
+  "files": [
+    "tests/test_overnight_g6_missing_stores.py"
+  ]
+}

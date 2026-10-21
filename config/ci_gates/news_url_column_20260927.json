@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "news_url_column_20260927",
+  "files": [
+    "tests/test_news_url_column_20260927.py"
+  ],
+  "comment": [
+    "2026-09-27 -- news_articles has source_url, not url: the thesis evidence",
+    "gate never counted approved news for any symbol (since 2026-08-19)."
+  ]
+}

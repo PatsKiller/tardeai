@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cc_needs_action_20261021",
+  "files": [
+    "tests/test_cc_needs_action_20261021.py"
+  ],
+  "anchor": "CC_NEEDS_ACTION_20261021",
+  "comment": [
+    "ANCHOR: CC_NEEDS_ACTION_20261021 — audit 2026-10-21: failures hidden or scattered across the Command Center.",
+    "telegram_outbox reports_archive ok=false rows are digest HOLDS (archive_message stores ok = not suppressed), now",
+    "`held` not `failed`; real Telegram failures are a separate figure on the comms delivery summary; data",
+    "plausibility view + per-rule receipt rows; pipeline_runs failures grouped (and pipeline-health stats filter on",
+    "run_label, not the missing run_type); GET /api/v2/needs-action probes nine sources independently with a timeout",
+    "and turns an unreadable source into an item, never an omission. Hermetic: stub rows, fake cursor, tmp roots."
+  ]
+}

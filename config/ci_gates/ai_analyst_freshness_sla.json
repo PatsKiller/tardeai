@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ai_analyst_freshness_sla",
+  "files": [
+    "tests/test_ai_analyst_freshness.py"
+  ]
+}

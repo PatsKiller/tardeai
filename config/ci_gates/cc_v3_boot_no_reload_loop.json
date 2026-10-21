@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cc_v3_boot_no_reload_loop",
+  "files": [
+    "tests/test_cc_v3_boot_no_reload_loop.py"
+  ],
+  "comment": [
+    "2026-07-28 /v3 blank-page reload loop. This file was named test_*.py,",
+    "lived in tests/, defined no test function, and was listed in no gate —",
+    "so its eleven assertions ran only when someone typed the path."
+  ]
+}

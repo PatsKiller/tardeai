@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_maturity_cron_tz_20261009",
+  "files": [
+    "tests/test_n8n_maturity_cron_tz_20261009.py"
+  ],
+  "anchor": "N8N_MATURITY_CRON_TZ",
+  "comment": [
+    "ANCHOR: N8N_MATURITY_CRON_TZ — 2026-10-09 n8n-maturity B5.1 (design 02 §3.2 step 1, F11):",
+    "DST-safe fires_between / is_sub_hourly / last_fire_at_or_before in scripts/lib/cron_schedule.py.",
+    "Pure and hermetic: explicit instants only, no clock, no I/O."
+  ]
+}

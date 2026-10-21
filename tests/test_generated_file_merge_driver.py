@@ -124,7 +124,10 @@ def test_every_file_that_conflicted_is_covered():
                  "CONTROL7_WORKFLOW_PROOF.txt", "CONTROL7_LOCAL_EQUIVALENT.txt"):
         assert name in attrs, f"{name} conflicted 6/6 and is not covered"
         line = next(l for l in attrs.splitlines() if name in l and not l.startswith("#"))
-        assert "merge=regenerate" in line
+        # 2026-10-21: docs/INDEX.md is merge=union -- its rows are path|title and the
+        # checker is order-insensitive (tests/test_ci_gates_registry_20261021.py).
+        want = "merge=union" if name == "docs/INDEX.md" else "merge=regenerate"
+        assert want in line, f"{name}: {line!r}"
 
 
 def test_agents_md_is_deliberately_not_covered():

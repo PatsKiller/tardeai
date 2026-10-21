@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "onboard_dryrun_b1_20261015",
+  "files": [
+    "tests/test_onboard_dryrun_b1_20261015.py"
+  ],
+  "anchor": "ONBOARD_DRYRUN_B1_20261015",
+  "comment": [
+    "ANCHOR: ONBOARD_DRYRUN_B1_20261015 — n8n onboarding batch B1 (lane disposition 2026-10-15, MIGRATE_N8N lanes",
+    "with no allowlist entry and no --dry-run): an offline --dry-run that wins over --apply for 8 read-",
+    "only/overwrite lanes (deploy-detect/recompute/monitor, three outcome reconcilers, trade-integrity-audit,",
+    "tmp-scratch-cleanup). Hermetic in-process proof: every write/send/network/subprocess primitive recorded,",
+    "zero calls, one LaneOutput@v1 line. Listing it schedules nothing."
+  ]
+}

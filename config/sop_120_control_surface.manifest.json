@@ -19,6 +19,7 @@
     "scripts/lib/agent_session_receipt.py",
     "scripts/lib/agent_worktree_identity.py",
     "scripts/lib/agents_drive_mirror_policy.py",
+    "scripts/lib/ci_gates.py",
     "scripts/lib/sop_attestation_base.py",
     "scripts/lib/sop_evidence_integrity.py",
     "scripts/lib/sop_toolchain.py",

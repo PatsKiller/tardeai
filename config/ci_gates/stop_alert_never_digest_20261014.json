@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "stop_alert_never_digest_20261014",
+  "files": [
+    "tests/test_stop_alert_never_digest_20261014.py"
+  ],
+  "anchor": "STOP_ALERT_NEVER_DIGEST_20261014",
+  "comment": [
+    "ANCHOR: STOP_ALERT_NEVER_DIGEST_20261014 — SPCX incident: stop_health NEAR_TRIGGER/TRIGGERED warnings",
+    "were classified P1_DIGEST by the policy router and suppressed; they now interrupt and skip the P0 budget."
+  ]
+}

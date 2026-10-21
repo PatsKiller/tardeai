@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ai_analyst_cache_fail_closed",
+  "files": [
+    "tests/test_ai_analyst_cache_fails_closed.py"
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "notification_signal_over_spam",
+  "files": [
+    "tests/test_cio_notification_signal.py"
+  ]
+}

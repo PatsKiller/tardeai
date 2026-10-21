@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overnight_wave_e_catalyst",
+  "files": [
+    "tests/test_overnight_wave_e_catalyst.py"
+  ]
+}

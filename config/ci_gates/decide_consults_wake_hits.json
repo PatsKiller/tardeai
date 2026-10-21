@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "decide_consults_wake_hits",
+  "files": [
+    "tests/test_decide_consults_wake_hits.py"
+  ]
+}

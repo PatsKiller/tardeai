@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "alert_chrome_stopwords_20260929",
+  "files": [
+    "tests/test_alert_chrome_stopwords_20260929.py"
+  ],
+  "comment": [
+    "2026-09-29 — READY ENTRY ALERT chrome must never resolve ENTRY/ALERT as",
+    "tickers (Telegram footers / Symbol Intelligence ALERT dossier)."
+  ]
+}

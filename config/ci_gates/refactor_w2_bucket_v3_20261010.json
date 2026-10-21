@@ -1,0 +1,22 @@
+{
+  "schema": "CiGate@v1",
+  "name": "refactor_w2_bucket_v3_20261010",
+  "files": [
+    "tests/test_refactor_w2_calibration_lanes_20261010.py",
+    "tests/test_refactor_w2_proposal_lanes_20261010.py",
+    "tests/test_refactor_w2_research_lanes_20261010.py",
+    "tests/test_refactor_w2_portfolio_lanes_20261010.py"
+  ],
+  "anchor": "REFACTOR_W2_BUCKET_V3",
+  "comment": [
+    "ANCHOR: REFACTOR_W2_BUCKET_V3 — 2026-10-10 cron->n8n refactor wave 2, bucket V3: --dry-run that",
+    "cannot reach a write / model call / yfinance fetch / send (READ ONLY session or",
+    "return-before-write, pinned by fakes that fail on a write), LaneRunReceipt@v1",
+    "<state_root>/data/runtime/<script>_last.json with ok_at on success only, honest exit codes.",
+    "Scripts: run_afterhours_candidate_preparation.{sh,py}, agent_calibration_engine,",
+    "enterprise_backtester, setup_quality_prior, multi_tier_trade_reviewer, research_insight_extractor,",
+    "pro_analyst_fetch / build_pro_analyst_read_model / pro_analyst_monitor + run_pro_analyst_chain,",
+    "technicals_gap_backfill, classify_instruments, backtest_results_aggregator,",
+    "hermes_discovery_ingestors. Hermetic: fake DB/modules, tmp state root. Schedules nothing."
+  ]
+}

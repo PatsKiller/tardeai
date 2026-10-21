@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "nightly_cutover_controller_20261016",
+  "files": [
+    "tests/test_nightly_cutover_controller_20261016.py"
+  ],
+  "anchor": "NIGHTLY_CUTOVER_CONTROLLER",
+  "comment": [
+    "ANCHOR: NIGHTLY_CUTOVER_CONTROLLER — 2026-10-16 operator-approved bounded nightly n8n cutover: ONE evaluator",
+    "(scripts/lib/nightly_cutover.py) for plan/dry-run/apply; per-lane states candidate -> evidence_ok -> protected",
+    "-> drained -> applied -> reconciled, held:<reason> on any failed check, cohort STOP on a shared control failure;",
+    "the narrow crontab edit capability (lock, hash, backup, byte-exact read-back, rollback); arming = a cron grant",
+    "naming the controller (read-only); P1 = one COMPLETED NYSE session after proof (also fixes n8n_cutover_wave)."
+  ]
+}

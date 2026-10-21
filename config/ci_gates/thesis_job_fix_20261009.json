@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "thesis_job_fix_20261009",
+  "files": [
+    "tests/test_thesis_job_fix_20261009.py"
+  ],
+  "comment": [
+    "Symbol-thesis job repair (operator 2026-10-09 \"fix the thesis job\"): 6 PUBLISHED of 315 runs in 5 days. Blocked-loop",
+    "backoff, no off-peak deferral that loses the answer, DEDUPE_SKIP release + one retry, 3200-token replies."
+  ]
+}

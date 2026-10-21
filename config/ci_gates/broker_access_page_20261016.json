@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "broker_access_page_20261016",
+  "files": [
+    "tests/test_broker_access_page_20261016.py"
+  ],
+  "comment": [
+    "Broker Access & Sync CC page (operator 2026-10-16): access mode + trading lock, Schwab token state (metadata",
+    "only), per-broker sync freshness OK/STALE/DEGRADED/PAUSED/NEEDS_REAUTH from receipts/logs, stop health,",
+    "re-login steps, operator-run sync command with no run control (GET /api/v2/system/broker-access)."
+  ]
+}

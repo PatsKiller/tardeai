@@ -1027,14 +1027,16 @@ def all_test_files() -> set[str]:
 
 
 def gated_files() -> set[str]:
-    """Files named by the hardening runner's GATES, read from source."""
-    sys.path.insert(0, str(REPO / "scripts"))
-    try:
-        import run_cio_hardening_ci as runner
-    except Exception:
-        return set()
+    """Files named by the hardening runner's GATES (config/ci_gates/*.json since 2026-10-21).
+
+    Read through the same loader the runner uses. A malformed gate file raises (fail closed)
+    instead of reporting an empty registry."""
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from scripts.lib import ci_gates
+
     out: set[str] = set()
-    for _name, paths in getattr(runner, "GATES", []):
+    for _name, paths in ci_gates.load_gates(REPO):
         out.update(paths)
     return out
 
@@ -1086,7 +1088,8 @@ def main() -> int:
 
     if args.fail_on_new and r["unlisted_new"]:
         print("\nFAIL: a new test file is not run by CI and not explained.\n"
-              "Add it to a gate in scripts/run_cio_hardening_ci.py, or to DENY here\n"
+              "Add a gate file config/ci_gates/<name>.json naming it (see\n"
+              "docs/ops/CI_FAST_CORE_20260925.md 'Adding a gate'), or add it to DENY here\n"
               "with the reason it cannot be collected.", file=sys.stderr)
         return 1
     return 0

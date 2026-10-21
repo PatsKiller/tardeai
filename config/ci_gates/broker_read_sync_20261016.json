@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "broker_read_sync_20261016",
+  "files": [
+    "tests/test_broker_read_sync_20261016.py"
+  ],
+  "anchor": "BROKER_READ_SYNC_20261016",
+  "comment": [
+    "ANCHOR: BROKER_READ_SYNC_20261016 — operator 2026-10-16 \"make that bash so agents can run ... not trading just",
+    "reading\": scripts/ops/broker_read_sync.sh, a closed 8-step allowlist (dry run default, --apply, --plan); refuses",
+    "without a broker-read grant, with the trading lock unlocked, with Schwab mode != read_only, outside the served",
+    "release, or when the static capability audit of any step's effective closure finds an order write, order",
+    "route, stop writer, re-auth/refresh or direct sender; runtime guards in each step process; output scrubbed;",
+    "needs_operator_reauth stops. Never calls a broker."
+  ]
+}

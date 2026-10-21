@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cutover_fail_closed_txn_20261016",
+  "files": [
+    "tests/test_cutover_fail_closed_txn_20261016.py"
+  ],
+  "anchor": "CUTOVER_FAIL_CLOSED_TXN_20261016",
+  "comment": [
+    "ANCHOR: CUTOVER_FAIL_CLOSED_TXN_20261016 — architect review before anything runs unattended: (D1) the cron",
+    "wrapper FAILS CLOSED for a lane handed over to n8n when ownership cannot be established (ledger unreachable,",
+    "handover manifest unreadable, manifest/ledger disagree): nothing runs, skipped_ownership_unknown, P1 through",
+    "the incident notifier (host cron) and fan-in; never-handed-over lanes still fail open; the durable handover",
+    "manifest written only by set-owner (atomic, safe write order), never auto-reconciled; (D2) durable per-ET-night",
+    "quota across invocations; (D3) fresh grant/owner/version/in-flight checks before EACH lane inside the fenced",
+    "handover; (D4) write-ahead transaction record + crash-injected, idempotent recovery. Hermetic."
+  ]
+}

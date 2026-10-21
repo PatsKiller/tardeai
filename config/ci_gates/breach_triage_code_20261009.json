@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "breach_triage_code_20261009",
+  "files": [
+    "tests/test_breach_triage_code_20261009.py"
+  ],
+  "anchor": "BREACH_TRIAGE_CODE",
+  "comment": [
+    "ANCHOR: BREACH_TRIAGE_CODE (2026-10-09 breach triage): one shared cron extractor (cron_schedule.cron_fields /",
+    "cron_schedules) for detector, cron_last_fire, job coverage, scheduler operations and source clocks;",
+    "symbol-cards timeout + retry from config; topic curator ensemble without a DB connection across LLM calls",
+    "plus its own receipt; stop health per-run heartbeat. Hermetic: tmp_path outputs, fake DB, no network."
+  ]
+}

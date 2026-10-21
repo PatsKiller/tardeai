@@ -1,0 +1,32 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agentic_memory_tranche2_20260925",
+  "files": [
+    "tests/test_options_manual_close_identity_20260925.py",
+    "tests/test_cross_agent_memory_agreement_20260925.py",
+    "tests/test_agent_memory_shadow_measure.py",
+    "tests/test_memory_shadow_measure_honesty.py",
+    "tests/test_options_pipeline_validation.py",
+    "tests/test_live_schwab_options_desk_stage_abc.py",
+    "tests/test_options_credit_spread_rr_floor_20260925.py",
+    "tests/test_recommendation_comparison_20260925.py",
+    "tests/test_options_decision_stages_20260925.py",
+    "tests/test_options_universe_census_20260925.py",
+    "tests/test_options_research_universe_v2.py",
+    "tests/test_options_desk_complete.py",
+    "tests/test_options_full_chain.py"
+  ],
+  "comment": [
+    "2026-09-25 — agentic-memory tranche 2 (D2 Slices 4 + 6). Slice 4: the",
+    "daily memory shadow measure gains cross_agent_memory_agreement — do",
+    "CIO / Hermes / Advisory read the same durable memory ids for one",
+    "subject in one window (G8), reported honestly incl. UNAVAILABLE.",
+    "Slice 6: options outcomes join the identity spine (contract identity",
+    "from the OCC symbol at record time; settled paper outcomes feed the",
+    "scoped options envelope and the belief writer). The two shadow-measure",
+    "suites leave UNLISTED_BASELINE and run here.",
+    "Live Schwab Options Desk Stage A–E + Alpaca retirement (2026-09-25).",
+    "Credit-spread R:R floor — refuse $66 vs $1,184 Ideas (2026-09-25).",
+    "Stock-versus-options comparison contract (2026-09-25)."
+  ]
+}

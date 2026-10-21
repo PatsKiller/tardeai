@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "scalp_followups_b4_20261009",
+  "files": [
+    "tests/test_scalp_followups_b4_20261009.py"
+  ],
+  "comment": [
+    "SCALP_FOLLOWUPS_B4 — 2026-10-09: a GO is marked alerted only after its line built and the send was",
+    "accepted (pre-alert save keeps it un-alerted; one bad trigger is isolated; rejected send rolls back);",
+    "a release-dir TRADEAI_ROOT never becomes the state root. Hermetic: stubbed send, tmp home."
+  ]
+}

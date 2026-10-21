@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "incident_notifier_state_compatibility_20261018",
+  "files": [
+    "tests/test_incident_notifier_state_compatibility_20261018.py"
+  ],
+  "comment": [
+    "Staged reader preserves v2 evidence and refuses legacy worker effects on it."
+  ]
+}

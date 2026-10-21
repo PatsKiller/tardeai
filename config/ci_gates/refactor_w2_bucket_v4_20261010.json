@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "refactor_w2_bucket_v4_20261010",
+  "files": [
+    "tests/test_refactor_w2_topic_curation_20261010.py",
+    "tests/test_refactor_w2_catalysts_20261010.py",
+    "tests/test_refactor_w2_backtests_20261010.py",
+    "tests/test_refactor_w2_portfolio_reports_20261010.py"
+  ],
+  "anchor": "REFACTOR_W2_BUCKET_V4",
+  "comment": [
+    "ANCHOR: REFACTOR_W2_BUCKET_V4 — 2026-10-10 cron->n8n refactor wave 2, bucket V4 (11 scripts, cron",
+    "L300 L318 L352 L381 L406 L420 L447 L484 L549 L606 L683): --dry-run cannot reach a DB write, file",
+    "write, LLM call or subprocess (READ ONLY session + patched writers that raise); real runs leave",
+    "LaneRunReceipt@v1 via lib.lane_last_receipt (ok_at only on success); honest exit codes.",
+    "Hermetic: fake connections/modules, TRADEAI_STATE_ROOT = tmp. Listing them schedules nothing."
+  ]
+}

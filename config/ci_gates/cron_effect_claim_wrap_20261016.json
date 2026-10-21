@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cron_effect_claim_wrap_20261016",
+  "files": [
+    "tests/test_cron_effect_claim_wrap_20261016.py"
+  ],
+  "anchor": "CRON_EFFECT_CLAIM_WRAP",
+  "comment": [
+    "ANCHOR: CRON_EFFECT_CLAIM_WRAP — 2026-10-16 the cron copy of a lane respects effect ownership: the wrapper",
+    "scripts/effect_claim_cron.sh exits 0 (event skipped_effect, no claim row) when n8n owns the process, runs the",
+    "command when cron owns it, and FAILS OPEN when the ledger is unreachable (effect_claim.py owner, read-only;",
+    "run --decision-out); the packet docs/ops/packets/cron-effect-claim-wrap-20261016/ plan (fixture crontab:",
+    "every wrap and skip reason, byte preservation, unwrap = rollback, a wrapped line run end to end) and its",
+    "apply/rollback against a fake crontab (dry run default, diff count = planned, cmp read-back). Hermetic."
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ci_fixture_immutability",
+  "files": [
+    "tests/test_ci_fixture_immutability.py"
+  ],
+  "comment": [
+    "cc-whole-site-residual-v1 (2026-09-03): validation must never dirty the",
+    "candidate worktree, the committed ledger is the expectation rather than a",
+    "file the run just wrote, and no control may carry a hardcoded commit SHA."
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "false_green_closure_20261018",
+  "files": [
+    "tests/test_false_green_closure_20261018.py"
+  ],
+  "comment": [
+    "External review 2026-10-18 false-green closure, notification findings (N1-N3): settlement is not",
+    "recovery, explicit provider message id, server-side comms delivery health; plus the diagnosis-cadence doc",
+    "truth. (M1-M3 and F1-F4 are gated by main's own suites.) Hermetic: tmp ledgers / state roots, DB doubles,",
+    "fake transport."
+  ]
+}

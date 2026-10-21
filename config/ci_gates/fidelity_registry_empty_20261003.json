@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "fidelity_registry_empty_20261003",
+  "files": [
+    "tests/test_fidelity_registry_empty_20261003.py",
+    "tests/test_fidelity_stop_sync.py"
+  ],
+  "comment": [
+    "Optional falsifier in the options / buy-ready CIO reviews (operator-approved 2026-10-03).",
+    "Empty Fidelity stop registry retires its stops; no baked-in fallback (2026-10-03)."
+  ]
+}

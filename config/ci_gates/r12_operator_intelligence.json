@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "r12_operator_intelligence",
+  "files": [
+    "tests/test_r12_policy_provenance.py",
+    "tests/test_cio_policy_field_advisor.py",
+    "tests/test_r12_situation_matrix.py",
+    "tests/test_r12_dedupe_message_samebrain.py",
+    "tests/test_r12_chokepoint_outbox.py",
+    "tests/test_r12_acceptance_scenarios.py",
+    "tests/test_r12_properties.py"
+  ],
+  "comment": [
+    "Capital Policy field modal: DeepSeek help on its own registered process, server-built prompt."
+  ]
+}

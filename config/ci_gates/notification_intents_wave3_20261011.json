@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "notification_intents_wave3_20261011",
+  "files": [
+    "tests/test_notification_intents_wave3_20261011.py",
+    "tests/test_claude_escalation_env_20261011.py"
+  ],
+  "anchor": "NOTIFICATION_INTENTS_WAVE3_20261011",
+  "comment": [
+    "Sender wave 3: the next 40 BELOW_CAP files declare P1/P2/P3. The escalation",
+    "handler's import no longer reads a release .env. Static only for the 40;",
+    "claude_escalation_handler is imported only by its own env test, under TRADE_AI_CI.",
+    "ANCHOR: NOTIFICATION_INTENTS_WAVE3_20261011"
+  ]
+}

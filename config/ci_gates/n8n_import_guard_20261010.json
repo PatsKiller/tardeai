@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_import_guard_20261010",
+  "files": [
+    "tests/test_n8n_import_guard_20261010.py"
+  ],
+  "comment": [
+    "n8n pre-import guard (install audit V8 F3, 2026-10-10): premarket-data-pipeline-shadow was imported with the",
+    "RELAY_HOST placeholder and a lane outside the run allowlist; manual run 1554 failed EAI_AGAIN relay_host."
+  ]
+}

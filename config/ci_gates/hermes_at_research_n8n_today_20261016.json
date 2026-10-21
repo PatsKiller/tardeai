@@ -1,0 +1,8 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermes_at_research_n8n_today_20261016",
+  "files": [
+    "tests/test_hermes_at_research_premarket_dedupe_20261016.py",
+    "tests/test_n8n_today_page_20261016.py"
+  ]
+}

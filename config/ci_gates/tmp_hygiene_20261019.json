@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "tmp_hygiene_20261019",
+  "files": [
+    "tests/test_tmp_hygiene_20261019.py"
+  ],
+  "anchor": "TMP_HYGIENE_20261019",
+  "comment": [
+    "ANCHOR: TMP_HYGIENE_20261019 — /tmp inode incident 2026-10-19: inode bands per (mount, metric) in the disk-usage",
+    "monitor (top dirs by file count, bounded scan) and the daily tmp-hygiene plan lane (ended Claude session scratch,",
+    "old pytest temp, never-touch for everything else; operator-gated apply). Hermetic: fake /tmp, /proc, statvfs."
+  ]
+}

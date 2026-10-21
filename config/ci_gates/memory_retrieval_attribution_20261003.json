@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "memory_retrieval_attribution_20261003",
+  "files": [
+    "tests/test_memory_retrieval_attribution_20261003.py"
+  ],
+  "comment": [
+    "Memory retrieval receipts carry the agent/wake/trace/decision a caller knew (operator-approved 2026-10-03)."
+  ]
+}

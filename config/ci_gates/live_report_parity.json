@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "live_report_parity",
+  "files": [
+    "tests/test_cio_live_report_parity.py"
+  ]
+}

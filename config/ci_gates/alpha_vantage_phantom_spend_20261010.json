@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "alpha_vantage_phantom_spend_20261010",
+  "files": [
+    "tests/test_alpha_vantage_phantom_spend_20261010.py"
+  ],
+  "comment": [
+    "Alpha Vantage phantom spend (API overlap Q5, 2026-10-10): _fetch_alpha_vantage checks the",
+    "ENABLE_ALPHA_VANTAGE_CATALYST flag and key before api_budget.spend(), and spend() checks the cap",
+    "before incrementing (refusals are not counted). Hermetic fakes."
+  ]
+}

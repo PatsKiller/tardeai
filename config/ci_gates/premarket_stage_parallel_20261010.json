@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "premarket_stage_parallel_20261010",
+  "files": [
+    "tests/test_premarket_stage_parallel_20261010.py"
+  ],
+  "comment": [
+    "Premarket stage bounded concurrency (2026-10-10, before C1 flip 4): groups = cron minutes with a",
+    "barrier between them, <= max_concurrency per group, same-lock steps never share a group; a stage",
+    "without `parallel` stays serial. Hermetic sleep/echo manifests + the real premarket --dry-run."
+  ]
+}

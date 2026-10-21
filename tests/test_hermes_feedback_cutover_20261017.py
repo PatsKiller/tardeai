@@ -131,7 +131,8 @@ def test_relay_dry_run_changes_nothing(tmp_path):
 
 
 def test_registered_in_the_cio_hardening_gates():
-    text = (ROOT / "scripts" / "run_cio_hardening_ci.py").read_text(encoding="utf-8")
+    from scripts.lib import ci_gates  # gates: one file per gate (2026-10-21)
+    text = ci_gates.registry_text(ROOT)
     assert "tests/test_hermes_feedback_cutover_20261017.py" in text
 
 

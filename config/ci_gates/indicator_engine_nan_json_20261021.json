@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "indicator_engine_nan_json_20261021",
+  "files": [
+    "tests/test_indicator_engine_nan_json_20261021.py"
+  ],
+  "anchor": "INDICATOR_ENGINE_NAN_JSON_20261021",
+  "comment": [
+    "ANCHOR: INDICATOR_ENGINE_NAN_JSON_20261021 — indicator_engine --universe failed 08:00 ET 2026-10-20 and",
+    "2026-10-21: GP's NaN weekly pivots were json.dumps'd as the bare token NaN and Postgres rejected the json",
+    "(22P02), which escaped run() and aborted the rest of the batch. lib.json_finite.json_safe (NaN/±Inf, numpy too,",
+    "nested) -> None on analyze_confluence's result; the lane serialises allow_nan=False, stores non-finite scalars",
+    "as NULL, and skips a row Postgres rejects as data (SQLSTATE 22) as row_rejected. Hermetic: fake conn."
+  ]
+}

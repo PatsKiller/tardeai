@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cross_asset_decision_intelligence_phase1_20260929",
+  "files": [
+    "tests/test_cross_asset_decision_intelligence.py"
+  ],
+  "comment": [
+    "2026-09-29 — cross-asset decision intelligence Phase 1: canonical",
+    "signal-to-expression contract and append-only shadow store."
+  ]
+}

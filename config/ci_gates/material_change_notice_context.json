@@ -1,0 +1,23 @@
+{
+  "schema": "CiGate@v1",
+  "name": "material_change_notice_context",
+  "files": [
+    "tests/test_material_change_notice_context_20260915.py",
+    "tests/test_plan_state_not_stale_20260921.py",
+    "tests/test_material_change_alert_v2_20260924.py",
+    "tests/test_material_change_sql_placeholders_20260915.py",
+    "tests/test_maturity_runtime_evidence_per_agent_20260915.py",
+    "tests/test_material_change_notice_position_20260915.py",
+    "tests/test_producer_cursor_holds_on_capacity_drop_20260915.py",
+    "tests/test_agent_runtime_lease_rebuild_20260915.py",
+    "tests/test_agent_stale_window_exceeds_lease_interval_20260915.py"
+  ],
+  "comment": [
+    "2026-09-15 operator: material-change notices said a name moved but not which way, quoted web-page",
+    "titles as catalysts and gave no watchlist origin, strategy, plan or CIO view.",
+    "2026-09-21 operator: \"plan is stale\" was emitted for a plan 93% of the way",
+    "to its target AND for one 31% through its stop — abs() erased the sign.",
+    "2026-09-24 maturity review: page only held names / fresh CIO BUY_READY, one daily",
+    "digest, one reconciled CIO verdict, editor holds are not deliveries."
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "weekend_aware_liquidity_20260927",
+  "files": [
+    "tests/test_weekend_aware_liquidity_20260927.py"
+  ],
+  "comment": [
+    "2026-09-27 -- closed-market quotes are not a liquidity verdict: ideas are kept",
+    "and labelled \"awaiting live quotes\" instead of dropped as NO_LIQUID_CONTRACT."
+  ]
+}

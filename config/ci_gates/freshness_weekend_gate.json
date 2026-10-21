@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "freshness_weekend_gate",
+  "files": [
+    "tests/test_freshness_weekend_gate.py"
+  ],
+  "comment": [
+    "A weekday-only freshness check must not page for the weekend. Second",
+    "fix in the same gate: G1 asked whether TODAY was Saturday; this one",
+    "counted calendar weekday hours instead of hours the writer could run."
+  ]
+}

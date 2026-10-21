@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "at_alert_sync_20261005",
+  "files": [
+    "tests/test_at_alert_sync_20261005.py"
+  ],
+  "comment": [
+    "Active Trader alert sync: sub-minute APPROACHING / intrabar TRIGGERED / EXTENDED + buy zone,",
+    "state-aware throttle, latency journaled; fast loop reads only the Command Center store (2026-10-05)."
+  ]
+}

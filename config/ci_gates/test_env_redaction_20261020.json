@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "test_env_redaction_20261020",
+  "files": [
+    "tests/test_env_redaction_20261020.py",
+    "tests/test_retention_registry_20261007.py",
+    "tests/test_retention_hardening_20261011.py"
+  ],
+  "anchor": "TEST_ENV_REDACTION_20261020",
+  "comment": [
+    "ANCHOR: TEST_ENV_REDACTION_20261020 — a failing `assert \"DB_PASSWORD\" not in os.environ` printed the whole host",
+    "environment (live broker secrets) into a CI log. tests/conftest.py pytest_assertrepr_compare explains any",
+    "comparison with os.environ by name only; the two retention fixtures clear an inherited DB_PASSWORD first.",
+    "Hermetic: inner pytest runs with a minimal env and a canary value."
+  ]
+}

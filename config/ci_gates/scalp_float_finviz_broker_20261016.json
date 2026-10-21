@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "scalp_float_finviz_broker_20261016",
+  "files": [
+    "tests/test_scalp_float_finviz_broker_20261016.py"
+  ],
+  "comment": [
+    "Scalp float via Finviz broker (operator 2026-10-16 option A): scalp_float_lookup reads Finviz Shs Float through",
+    "lib.data_broker.finviz_enrichment_snapshot (no Finviz export, no Alpha Vantage); missing/stale/zero float ->",
+    "explicit \"float: unavailable (<reason>)\"; the owner refuses OVERVIEW (premium on this key) with",
+    "premium_endpoint_unavailable and no HTTP call; the premium notice is classified; data_source_health shows",
+    "alpha_vantage idle (no active callers) / premium, not failing, while a real failure stays a failure. Hermetic."
+  ]
+}

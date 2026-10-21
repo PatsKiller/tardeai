@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "at_premarket_alert_integrity_20261014",
+  "files": [
+    "tests/test_at_premarket_alert_integrity_20261014.py"
+  ],
+  "comment": [
+    "Active Trader premarket alert integrity (operator 2026-10-14, GLND): the sender gates on same-symbol",
+    "momentum evidence (UNVALIDATED downgrade, config), \"RE-ENTER\" never narrows to RE/MAX (RMAX leak),",
+    "and the CIO line shows its as-of time (legit 09:00 rescore read as a contradiction)."
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "book_map_day_pl_20260928",
+  "files": [
+    "tests/test_book_map_rows_20260928.py"
+  ],
+  "comment": [
+    "2026-09-28 — home book map. A zero day_change uses today's broker_day_pl.",
+    "Cash is reported beside the map and is not a tile. Unpriced rows stay",
+    "in the payload and are not drawn."
+  ]
+}

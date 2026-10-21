@@ -243,6 +243,9 @@
     "append_only_paths": [
       "scripts/run_cio_hardening_ci.py"
     ],
+    "append_only_dirs": [
+      "config/ci_gates/"
+    ],
     "append_only_line_re": "^\\s*(?:\"[^\"\\\\]*\"|[()\\[\\],\\s])*(#.*)?$",
     "test_path_re": "^tests/.*\\.py$",
     "weakening_added_re": "(pytest\\.mark\\.(skip|skipif|xfail)|pytest\\.skip\\(|pytest\\.xfail\\(|unittest\\.skip|@skip|importorskip|--deselect|-k\\s+not\\b)",

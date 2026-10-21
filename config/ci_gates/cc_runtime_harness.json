@@ -1,0 +1,8 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cc_runtime_harness",
+  "files": [
+    "tests/test_cc_runtime_harness.py",
+    "tests/test_command_center_live_truth_tranche.py"
+  ]
+}

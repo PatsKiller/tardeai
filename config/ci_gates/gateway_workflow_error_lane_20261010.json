@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "gateway_workflow_error_lane_20261010",
+  "files": [
+    "tests/test_gateway_workflow_error_lane_20261010.py"
+  ],
+  "comment": [
+    "Coordination gateway allows the relay POST /event lane n8n-workflow-error (RC8, W0 rollback",
+    "2026-10-10); existing extra lanes kept. Static unit-file check."
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "buy_ready_packet_verdict_20260928",
+  "files": [
+    "tests/test_buy_ready_packet_verdict_20260928.py"
+  ],
+  "comment": [
+    "Failed acceptance 2026-09-28 (490735fba rolled back): the index served a pre-fix AXTI packet as",
+    "OPTIONS_ALT_OK / qualified 1 from the file's own flag. Verdicts now go through packet_view",
+    "(STALE_PRE_FIX) or fail closed (PACKET_UNVERIFIED); a unit counts only when current, known,",
+    "earnings-cleared and gate-stamped; the single-symbol handler is the live-proof hunk."
+  ]
+}

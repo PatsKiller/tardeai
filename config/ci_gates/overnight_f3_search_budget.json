@@ -1,0 +1,7 @@
+{
+  "schema": "CiGate@v1",
+  "name": "overnight_f3_search_budget",
+  "files": [
+    "tests/test_overnight_f3_search_budget.py"
+  ]
+}

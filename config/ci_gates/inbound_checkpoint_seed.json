@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "inbound_checkpoint_seed",
+  "files": [
+    "tests/test_inbound_checkpoint_seed.py"
+  ],
+  "comment": [
+    "An uninitialised inbound checkpoint returned 0, so replay-denial could",
+    "never say no — on a path carrying approve/reject callbacks."
+  ]
+}

@@ -302,49 +302,53 @@ def tree_fingerprint(inventory: list[dict]) -> str:
     return hashlib.sha256(blob).hexdigest()
 
 
-def render_index_md(inventory: list[dict], summary: dict) -> str:
-    """Deterministic INDEX.md body — no wall-clock as_of (avoids spurious drift)."""
-    rows = [
-        e for e in inventory
-        if e["ext"] == ".md" and e["path"] != INDEX_RELPATH
-    ]
-    rows.sort(key=lambda e: e["path"])
+#: The committed table: one row per tracked markdown doc, PATH AND TITLE ONLY.
+INDEX_TABLE_HEADER = ("| Path | Title |", "|------|-------|")
+_ROW_RE = re.compile(r"^\| `(?P<path>[^`]+)` \| (?P<title>.*) \|$")
 
-    # 2026-09-25: the committed file carries ONLY per-document rows. The tree
-    # fingerprint and the counts tables were the two global sections, and every
-    # PR that added or edited any doc rewrote them, so two docs-touching PRs
-    # conflicted by construction (and every PR rewrote the digest-bearing
-    # evidence docs). Rows change only for the docs a PR actually touches, which
-    # git merges line by line. The fingerprint and counts are still computed and
-    # printed by --check-index / --verbose (and CI logs them); the drift gate
-    # still compares the whole rendered file.
-    lines = [
+
+def _index_rows(inventory: list[dict]) -> list[tuple[str, str]]:
+    rows = [e for e in inventory if e["ext"] == ".md" and e["path"] != INDEX_RELPATH]
+    rows.sort(key=lambda e: e["path"])
+    return [(e["path"], (e.get("title") or e["filename"]).replace("|", "\\|")) for e in rows]
+
+
+def _index_preamble() -> list[str]:
+    return [
         GENERATOR_BANNER,
         "# Docs Index",
         "",
         "**Generator:** `python3 scripts/report_docs_inventory.py --write-index`",
-        "**Counts and tree fingerprint:** printed by "
-        "`python3 scripts/report_docs_inventory.py --check-index` (not committed: they "
-        "change on every docs PR and made concurrent PRs conflict).",
+        "**Counts (files, MISSING HEADER, duplicates), per-doc status/header/sha and the tree "
+        "fingerprint:** printed by `python3 scripts/report_docs_inventory.py --check-index` / "
+        "`--verbose` / `--output-json` (not committed: they change on every docs PR and made "
+        "concurrent PRs conflict).",
         "",
         "Hand-maintained narrative indexes remain authoritative for *what is current*:",
         "`docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.",
         "This file is the regenerable tree listing from `report_docs_inventory.py`.",
-    ]
-    lines.extend([
         "",
         "## Markdown tree",
         "",
-        "| Path | Title | status_guess | header | sha12 |",
-        "|------|-------|--------------|--------|------|",
-    ])
-    for e in rows:
-        title = (e.get("title") or e["filename"]).replace("|", "\\|")
-        path = e["path"]
-        lines.append(
-            f"| `{path}` | {title} | {e['status_guess']} | {e['header_status']} | "
-            f"`{e['sha256'][:12]}` |"
-        )
+        *INDEX_TABLE_HEADER,
+    ]
+
+
+def render_index_md(inventory: list[dict], summary: dict) -> str:
+    """Deterministic INDEX.md body — no wall-clock as_of (avoids spurious drift).
+
+    History of what the committed file carries, and why:
+      * 2026-09-25: the tree fingerprint and counts tables left the file (every docs PR
+        rewrote them, so two docs PRs conflicted by construction).
+      * 2026-10-21 (operator-approved process plan): the per-row ``status_guess``,
+        ``header`` and ``sha12`` columns left too. sha12 changed on EVERY edit of a doc, so
+        any two PRs that edited docs re-hashed the same file and collided. A row is now
+        ``path | title``: it changes only when a doc is added, removed, renamed or retitled.
+        The dropped columns are still computed and printed (``--verbose``,
+        ``--output-json``), never committed.
+    """
+    lines = _index_preamble()
+    lines += [f"| `{path}` | {title} |" for path, title in _index_rows(inventory)]
     lines.append("")
     return "\n".join(lines)
 
@@ -356,31 +360,64 @@ def write_index(inventory: list[dict], summary: dict) -> Path:
     return INDEX_PATH
 
 
+def index_problems(actual: str, inventory: list[dict]) -> tuple[list[str], bool]:
+    """Compare a committed INDEX.md with the inventory by PRESENCE AND TITLE.
+
+    Returns (problems, canonical_order). Fails on: a tracked doc with no row, a row for
+    a doc that is not tracked, a row whose title differs, a doc listed twice, a changed
+    preamble, or any other line in the table. Row ORDER is not a failure: ``docs/INDEX.md``
+    is ``merge=union`` (.gitattributes), so two PRs that add rows in the same place merge
+    as both rows, possibly unsorted; ``--write-index`` re-sorts.
+    """
+    problems: list[str] = []
+    pre = _index_preamble()
+    lines = actual.splitlines()
+    if lines[: len(pre)] != pre:
+        first = next((i for i, (a, b) in enumerate(zip(lines, pre)) if a != b), min(len(lines), len(pre)))
+        problems.append(f"preamble differs from the generator at line {first + 1}")
+        return problems, False
+    want = dict(_index_rows(inventory))
+    seen: dict[str, str] = {}
+    order: list[str] = []
+    for n, line in enumerate(lines[len(pre):], start=len(pre) + 1):
+        if not line.strip():
+            continue
+        m = _ROW_RE.match(line)
+        if not m:
+            problems.append(f"line {n}: not an index row: {line[:120]!r}")
+            continue
+        path, title = m.group("path"), m.group("title")
+        if path in seen:
+            problems.append(f"duplicate row for {path}")
+            continue
+        seen[path] = title
+        order.append(path)
+    for path in sorted(set(want) - set(seen)):
+        problems.append(f"missing row: {path} (tracked doc not listed)")
+    for path in sorted(set(seen) - set(want)):
+        problems.append(f"stale row: {path} (not a tracked doc)")
+    for path in sorted(set(want) & set(seen)):
+        if want[path] != seen[path]:
+            problems.append(f"title differs: {path}: index {seen[path]!r} != doc {want[path]!r}")
+    return problems, order == sorted(order)
+
+
 def check_index(inventory: list[dict], summary: dict) -> int:
-    expected = render_index_md(inventory, summary)
     if not INDEX_PATH.is_file():
         print(f"[FAIL] {INDEX_RELPATH} missing — run with --write-index", file=sys.stderr)
         return 1
     actual = INDEX_PATH.read_text(encoding="utf-8")
-    if actual == expected:
+    problems, canonical = index_problems(actual, inventory)
+    if not problems:
         print(
-            f"[PASS] {INDEX_RELPATH} matches inventory "
+            f"[PASS] {INDEX_RELPATH} lists every tracked doc with its title "
             f"(MISSING HEADER={summary['missing_header']}, "
             f"md={summary['markdown_total']}, files={summary['total']}, "
             f"duplicate_groups={summary['duplicate_groups']}, "
             f"fingerprint={tree_fingerprint(inventory)[:12]})"
+            + ("" if canonical else " [rows not in path order; --write-index re-sorts]")
         )
         return 0
-    import difflib
-    diff = "".join(
-        difflib.unified_diff(
-            actual.splitlines(keepends=True),
-            expected.splitlines(keepends=True),
-            fromfile=f"a/{INDEX_RELPATH}",
-            tofile=f"b/{INDEX_RELPATH} (regenerated)",
-            n=3,
-        )
-    )
     # The index is built from `git ls-files`, so a NEW doc that is still
     # untracked is invisible to --write-index: regenerating before `git add`
     # produces an index that passes locally and drifts the moment the file is
@@ -389,9 +426,10 @@ def check_index(inventory: list[dict], summary: dict) -> int:
     print(f"[FAIL] {INDEX_RELPATH} drift — regenerate with --write-index "
           "AFTER `git add` (the index is built from git ls-files, so untracked "
           "docs are not in it yet)", file=sys.stderr)
-    print(diff[:4000], file=sys.stderr)
-    if len(diff) > 4000:
-        print(f"... diff truncated ({len(diff)} bytes total)", file=sys.stderr)
+    for p in problems[:40]:
+        print(f"  {p}", file=sys.stderr)
+    if len(problems) > 40:
+        print(f"  ... and {len(problems) - 40} more", file=sys.stderr)
     return 1
 
 

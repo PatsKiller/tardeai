@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "canary_effect_keys_20261015",
+  "files": [
+    "tests/test_canary_effect_keys_20261015.py"
+  ],
+  "anchor": "CANARY_EFFECT_KEYS",
+  "comment": [
+    "ANCHOR: CANARY_EFFECT_KEYS — 2026-10-15 canary double-effect audit (arch-review-20261014): every live, canary",
+    "or canary-wave lane that appends, sends or calls an LLM carries a STAGED effect key (cron_claim false,",
+    "n8n_claim false: neither side claims, executor view unchanged); the cron-side wrapper",
+    "scripts/effect_claim_cron.sh (off unless TRADEAI_EFFECT_CLAIM=<lane>; refusals exit 75/65 and run nothing; 10-16: owner n8n exits 0);",
+    "the maturity-remeasure live-list packet; the research_insights(source_reference) unique-index migration,",
+    "parsed and applied twice on a disposable PostgreSQL cluster. Hermetic: tmp_path ledgers and files."
+  ]
+}

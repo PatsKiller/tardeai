@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "comms_hub_20261007",
+  "files": [
+    "tests/test_comms_hub_20261007.py"
+  ],
+  "comment": [
+    "Communications hub (operator 2026-10-07): categories, scores, re-entry status, actionability, TTL by category,",
+    "supersede, decision board, filters, bulk actions; lifecycle archive-then-delete refuses a short archive."
+  ]
+}

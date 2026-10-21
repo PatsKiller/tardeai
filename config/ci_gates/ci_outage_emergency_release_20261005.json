@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ci_outage_emergency_release_20261005",
+  "files": [
+    "tests/test_ci_outage_emergency_release_20261005.py"
+  ],
+  "comment": [
+    "CI-provider outage emergency release: outage proof (incident + never-started jobs; real red stays red),",
+    "local replay evidence bound to the tree, release-emergency grant, commit rule, reconciliation (2026-10-05)."
+  ]
+}

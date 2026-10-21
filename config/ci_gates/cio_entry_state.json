@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_entry_state",
+  "files": [
+    "tests/test_cio_entry_state_20260915.py",
+    "tests/test_cio_entry_state_alarm_fires_20260915.py",
+    "tests/test_buy_ready_options_20260924.py"
+  ],
+  "comment": [
+    "2026-09-15 operator decisions: CIO owns entry state / BUY, operator and CIO alerted, small caps labeled.",
+    "2026-09-24 operator \"build options\": BUY_READY packet = per-unit options",
+    "alternatives + portfolio facts + validated CIO review; wake subject bound."
+  ]
+}

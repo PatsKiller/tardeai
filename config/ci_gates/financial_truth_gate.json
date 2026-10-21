@@ -1,0 +1,8 @@
+{
+  "schema": "CiGate@v1",
+  "name": "financial_truth_gate",
+  "files": [
+    "tests/test_cio_financial_truth_gate.py",
+    "tests/test_cio_canonical_quote.py"
+  ]
+}

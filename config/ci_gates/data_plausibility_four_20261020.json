@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "data_plausibility_four_20261020",
+  "files": [
+    "tests/test_data_plausibility_four_20261020.py"
+  ],
+  "anchor": "DATA_PLAUSIBILITY_FOUR_20261020",
+  "comment": [
+    "ANCHOR: DATA_PLAUSIBILITY_FOUR_20261020 — four plausibility BLOCKs still firing after the 2026-10-18 fixes were",
+    "served: scalp_critic_agent.validate_catalyst (second catalyst_confidence producer) reached 1.1/1.2, now clamped",
+    "to [0, 1]; etf_performance_enrich spent its 300 cap alphabetically so 11 NaN ytd rows (2026-08-29) were never",
+    "revisited, now stalest perf_updated_at first; the batch indicators API upsert never refreshed stop_price on",
+    "conflict, now every scalar column. Hermetic: sqlite + source text."
+  ]
+}

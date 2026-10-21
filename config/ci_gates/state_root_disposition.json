@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "state_root_disposition",
+  "files": [
+    "tests/test_state_root_disposition.py"
+  ],
+  "comment": [
+    "cc-whole-site-residual-v1 (2026-09-03): detection is not resolution. Every",
+    "audited store gets one verdict from a closed taxonomy, Command Center",
+    "criticality is derived from the surface, and each open fork carries an",
+    "executable migration plan this lane is forbidden to run (AGENTS.md rule 5)."
+  ]
+}
