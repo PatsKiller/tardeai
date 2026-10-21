@@ -620,7 +620,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_reconciliation_20260917/CIO_AS_IS_2026-09-17-rev8.md` | CIO / goal-loop AS-IS — Revision 8 (2026-09-17) | review_required | OK | `dcfca094e363` |
 | `docs/architecture/maturity_reconciliation_20260917/HONEST_MATURITY_ASSESSMENT_2026-09-17-rev8.md` | Honest maturity assessment — Revision 8 (2026-09-17) | review_required | OK | `ede40d194307` |
 | `docs/architecture/maturity_reconciliation_20260917/REVISION_LEDGER_2026-09-17-rev8.md` | Revision ledger — which revision is canonical, and what is still published | review_required | OK | `2abe45079289` |
-| `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md` | ADR: coordination secrets for the n8n lab | review_required | OK | `bc91d85ff25f` |
+| `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md` | ADR: coordination secrets for the n8n lab | review_required | OK | `68bcdfd348b8` |
 | `docs/architecture/n8n/AUDIT_20261015_FINDINGS.md` | Independent n8n architecture audit 2026-10-15 — findings tracker | review_required | OK | `e11277d4e2bc` |
 | `docs/architecture/n8n/ENV_ENFORCE_READINESS_20261015.md` | n8n executor env-allowlist enforce readiness (generated) | review_required | MISSING HEADER | `1b6ea3934bc0` |
 | `docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md` | n8n contracts — design architecture | review_required | OK | `b296c0c3755e` |
@@ -2062,6 +2062,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/n8n-dd12-outside-deadman-20261015/README.md` | DD12 outside dead-man + business heartbeat — operator packet (2026-10-15) | review_required | MISSING HEADER | `e4fcc98a618b` |
 | `docs/ops/packets/n8n-process-consolidation-cohort1-20261016/README.md` | n8n process consolidation, cohort 1 (2026-10-16) | review_required | MISSING HEADER | `0d10455d4ee5` |
 | `docs/ops/packets/n8n-process-consolidation-cohort2-20261016/README.md` | n8n process consolidation, cohort 2 (2026-10-16): Hermes learning consumers fire on verified learning | review_required | MISSING HEADER | `2596f2ae9efb` |
+| `docs/ops/packets/n8n-relay-env-allowlist-20261021/README.md` | n8n run relay: allowlisted secrets env, strict fail-closed (operator packet, 2026-10-21) | review_required | OK | `ba9d93f06e57` |
 | `docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/README.md` | n8n shadow wave LD-W1 (2026-10-15): operator packet | review_required | MISSING HEADER | `1bb88e10b921` |
 | `docs/ops/packets/nightly-cutover-controller-20261016/README.md` | Nightly cutover controller 2026-10-16: an enforced state machine for the approved n8n cutover | review_required | OK | `f5b06ec19aa4` |
 | `docs/ops/packets/registry-runtime-truth-20261018/README.md` | Registry / runtime truth — packet (review 2026-10-18, built 2026-10-19) | review_required | OK | `618734a1d7b8` |
