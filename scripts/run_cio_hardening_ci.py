@@ -3400,6 +3400,13 @@ GATES = [
         ],
     ),
     (
+        # ANCHOR: CI_FAIL_ALL_SKIPPED_20261021 — CIO-hardening alignment audit C2/M8: a unit in which no test ran
+        # (every test skipped / none collected) fails unless every file is in config/ci_skip_tolerant_units.json
+        # with a reason; a registered-but-missing file fails; an unknown mandatory tier gate fails. Hermetic.
+        "ci_fail_all_skipped_20261021",
+        ["tests/test_ci_fail_all_skipped_20261021.py"],
+    ),
+    (
         # 2026-09-26 -- CIO Desk: material actions only, one readable message, once per window.
         "cio_action_notify_20260926",
         ["tests/test_cio_action_notify_20260926.py", "tests/test_cio_checkin_only_with_action_20260914.py"],
@@ -5789,16 +5796,85 @@ SHARED_STATE_PATTERNS = (
 )
 _SHARED_STATE_RE = re.compile("|".join(SHARED_STATE_PATTERNS))
 
-#: pytest exit 5 = "no tests collected": a unit whose every module skips at import
-#: (e.g. the Postgres-only files split out of a gate when psycopg2 is absent). The
-#: serial `full` profile never saw it because those files shared one invocation
-#: with runnable tests.
-#: Only when pytest reports skips -- a unit that collects nothing at all still fails.
+#: pytest exit codes a unit may end with: 0 = tests ran and passed (or all skipped),
+#: 5 = "no tests collected" (e.g. every module skips at import). Neither is enough on its
+#: own: _unit_passed() also requires that at least one test actually ran, unless every
+#: file of the unit is declared skip-tolerant (see SKIP_TOLERANT_PATH).
 PASS_CODES = frozenset({0, 5})
 
+#: 2026-10-21 (CIO-hardening alignment audit C2): a unit in which every test was skipped,
+#: or none was collected, used to count as PASS -- main push run 39660558060 reported
+#: `[PASS] telegram_notification_normalization (2 files) 2 skipped`. Such a unit now FAILS
+#: unless every one of its files is listed, each with a reviewed reason, in this file.
+SKIP_TOLERANT_PATH = REPO / "config" / "ci_skip_tolerant_units.json"
 
-def _unit_passed(rc: int, out: str) -> bool:
-    return rc == 0 or (rc == 5 and " skipped" in out)
+_SUMMARY_COUNT_RE = re.compile(r"(\d+) (passed|failed|errors?|skipped|xfailed|xpassed|deselected)\b")
+_SUMMARY_LINE_RE = re.compile(r"\bin \d+(?:\.\d+)?s\b")
+
+
+class SkipTolerantConfigError(ValueError):
+    """The skip-tolerant list is unreadable or an entry lacks a reason (fail closed)."""
+
+
+def load_skip_tolerant(path: Path | None = None) -> dict[str, str]:
+    """Return {file: reason}. Raises SkipTolerantConfigError on any malformed entry."""
+    import json
+
+    path = SKIP_TOLERANT_PATH if path is None else path
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as exc:
+        raise SkipTolerantConfigError(f"{path.name}: unreadable ({type(exc).__name__})") from exc
+    if not isinstance(doc, dict) or doc.get("schema") != "CiSkipTolerantFiles@v1":
+        raise SkipTolerantConfigError(f"{path.name}: schema must be CiSkipTolerantFiles@v1")
+    files = doc.get("files")
+    if not isinstance(files, dict):
+        raise SkipTolerantConfigError(f"{path.name}: 'files' must be an object")
+    out: dict[str, str] = {}
+    for f, entry in files.items():
+        reason = entry.get("reason") if isinstance(entry, dict) else None
+        if not isinstance(reason, str) or not reason.strip():
+            raise SkipTolerantConfigError(f"{path.name}: {f} has no reason")
+        out[str(f)] = reason.strip()
+    return out
+
+
+def pytest_outcome_counts(out: str) -> dict[str, int] | None:
+    """Counts from pytest's final summary line ("3 passed, 2 skipped in 1.0s"); None if absent."""
+    for line in reversed((out or "").strip().splitlines()):
+        if _SUMMARY_LINE_RE.search(line) and (_SUMMARY_COUNT_RE.search(line) or "no tests ran" in line):
+            counts: dict[str, int] = {}
+            for n, kind in _SUMMARY_COUNT_RE.findall(line):
+                kind = "errors" if kind.startswith("error") else kind
+                counts[kind] = counts.get(kind, 0) + int(n)
+            return counts
+    return None
+
+
+def _unit_passed(rc: int, out: str, files=(), tolerant: dict[str, str] | None = None) -> bool:
+    """A unit passes when pytest succeeded AND at least one test ran.
+
+    Every-test-skipped and nothing-collected are failures, except when every file of the
+    unit is in the skip-tolerant list (each entry carries a reviewed reason).
+    """
+    if rc not in PASS_CODES:
+        return False
+    counts = pytest_outcome_counts(out)
+    if rc == 0 and counts and (counts.get("failed") or counts.get("errors")):
+        return False
+    ran = sum((counts or {}).get(k, 0) for k in ("passed", "xfailed", "xpassed"))
+    if rc == 0 and ran > 0:
+        return True
+    tolerant = load_skip_tolerant() if tolerant is None else tolerant
+    return bool(files) and all(f in tolerant for f in files)
+
+
+def missing_registered_files(gates) -> list[tuple[str, str]]:
+    """(gate, file) for every registered file that does not exist. A deleted test file must
+    fail CI (audit M8), never silently drop out of every plan."""
+    return [(name, p) for name, paths in gates for p in paths if not (REPO / p).is_file()]
 
 
 #: Files proven to need the serial tail even though no pattern marks them.
@@ -5886,19 +5962,36 @@ def _run_unit(unit):
 
 
 def run_gates(gates, *, profile: str, jobs: int) -> list[str]:
-    """Run every gate; return the names of failed gates."""
+    """Run every gate; return the names of failed gates.
+
+    A gate FAILS when one of its registered files is missing, or when a unit of it ran no
+    test (all skipped / none collected) and is not declared skip-tolerant.
+    """
     failed: list[str] = []
+    tolerant = load_skip_tolerant()
+    for name, path in missing_registered_files(gates):
+        print(f"[FAIL] {name}: registered test file is missing: {path}", flush=True)
+        if name not in failed:
+            failed.append(name)
     if profile == "full" or jobs <= 1:
         for name, paths in gates:
             existing = [p for p in paths if (REPO / p).is_file()]
             if not existing:
-                print(f"[SKIP] {name}: no test files", flush=True)
-                continue
+                continue  # every file missing: already FAILED above
             print(f"[RUN]  {name}: {' '.join(existing)}", flush=True)
-            r = subprocess.run([sys.executable, "-m", "pytest", "-q", "--tb=line", *existing], cwd=str(REPO))
-            if r.returncode != 0:
-                failed.append(name)
-                print(f"[FAIL] {name}", flush=True)
+            r = subprocess.run(
+                [sys.executable, "-m", "pytest", "-q", "--tb=line", *existing],
+                cwd=str(REPO),
+                capture_output=True,
+                text=True,
+            )
+            out = (r.stdout or "") + (r.stderr or "")
+            print(out, end="" if out.endswith("\n") else "\n", flush=True)
+            if not _unit_passed(r.returncode, out, existing, tolerant):
+                if name not in failed:
+                    failed.append(name)
+                why = "" if r.returncode not in PASS_CODES else " (no test ran: every test skipped or none collected)"
+                print(f"[FAIL] {name}{why}", flush=True)
             else:
                 print(f"[PASS] {name}", flush=True)
         return failed
@@ -5911,9 +6004,11 @@ def run_gates(gates, *, profile: str, jobs: int) -> list[str]:
         name, files, rc, out, secs = res
         results.setdefault(name, []).append(res)
         tail = (out.strip().splitlines() or [""])[-1]
-        status = "PASS" if _unit_passed(rc, out) else "FAIL"
-        print(f"[{status}] {name} ({len(files)} files, {secs:.1f}s) {tail[-100:]}", flush=True)
-        if not _unit_passed(rc, out):
+        ok = _unit_passed(rc, out, files, tolerant)
+        status = "PASS" if ok else "FAIL"
+        why = "" if ok or rc not in PASS_CODES else " [no test ran: every test skipped or none collected]"
+        print(f"[{status}] {name} ({len(files)} files, {secs:.1f}s) {tail[-100:]}{why}", flush=True)
+        if not ok:
             print(out[-6000:], flush=True)
 
     with ThreadPoolExecutor(max_workers=jobs) as pool:
@@ -5924,7 +6019,7 @@ def run_gates(gates, *, profile: str, jobs: int) -> list[str]:
 
     declared = [n for n, _ in gates]
     for name in declared:
-        if any(not _unit_passed(r[2], r[3]) for r in results.get(name, [])) and name not in failed:
+        if any(not _unit_passed(r[2], r[3], r[1], tolerant) for r in results.get(name, [])) and name not in failed:
             failed.append(name)
     return failed
 
@@ -5943,6 +6038,14 @@ def _touches_alarm_sites(changed: list[str]) -> bool:
         except OSError:
             continue
     return False
+
+
+class UnknownMandatoryGatesError(RuntimeError):
+    """config/ci_risk_tiers.json names a mandatory gate that is not in GATES."""
+
+    def __init__(self, names):
+        self.names = list(names)
+        super().__init__(f"unknown mandatory gates: {self.names}")
 
 
 def select_pr_gates(
@@ -6004,7 +6107,10 @@ def select_pr_gates(
             flush=True,
         )
     if sel["unknown_gates"]:
-        print(f"[select] WARNING tier config names unknown gates: {sel['unknown_gates']}", flush=True)
+        # 2026-10-21 (audit C2/M8): a mandatory gate the tiers name but GATES lacks would run
+        # nothing and pass. Fail closed instead of warning.
+        print(f"[FAIL] tier config names unknown mandatory gates: {sel['unknown_gates']}", flush=True)
+        raise UnknownMandatoryGatesError(sel["unknown_gates"])
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         lines = [
@@ -6163,11 +6269,11 @@ def _run_unit_junit(job):
         "gate": name,
         "files": list(files),
         "rc": r.returncode,
-        # A registered file with no test functions (e.g. a script-style check) collects nothing:
-        # pytest exit 5 "no tests ran". In the fast/full profiles it shares an invocation with
-        # its gate's other files and is accepted there; a shard may run it alone, so accept it
-        # the same way and record it. Collection errors (exit 2) still fail.
-        "passed": _unit_passed(r.returncode, out) or (r.returncode == 5 and "no tests ran" in out),
+        # 2026-10-21: a unit in which no test ran (every test skipped, or nothing collected --
+        # pytest exit 5 "no tests ran") FAILS unless every file of it is declared in
+        # config/ci_skip_tolerant_units.json with a reason, as in the fast/full profiles.
+        # Collection errors (exit 2) always fail.
+        "passed": _unit_passed(r.returncode, out, files),
         "no_tests": r.returncode == 5 and "no tests ran" in out,
         "seconds": round(secs, 1),
         "skipped": skipped,
@@ -6312,6 +6418,7 @@ def verify_shards(
         except (OSError, ValueError):
             manifests.append({"schema": "unreadable", "shard": p.name})
     expected = ci_shards.registered_files(GATES, lambda p: (REPO / p).is_file())
+    missing = missing_registered_files(GATES)
     needs = json.loads(os.environ.get("CI_GATE_NEEDS") or "null")
     res = ci_shards.verify_manifests(
         manifests,
@@ -6321,6 +6428,9 @@ def verify_shards(
         expected_digest=shard_plan(n)["digest"],
         needs=needs if isinstance(needs, dict) else None,
     )
+    if missing:
+        res["ok"] = False
+        res["errors"] = list(res.get("errors") or []) + [f"registered_file_missing:{p}" for _n, p in missing]
     print(json.dumps({k: v for k, v in res.items() if k not in ("missing_files", "extra_files")}, sort_keys=True))
     for f in res["missing_files"][:50]:
         print(f"[ci-gate] MISSING (registered, not run by any shard): {f}")
@@ -6329,9 +6439,7 @@ def verify_shards(
     for m in manifests:
         for u in m.get("units") or []:
             if u.get("no_tests"):
-                print(
-                    f"[ci-gate] NOTE no test functions collected (accepted, as in the fast profile): {u.get('files')}"
-                )
+                print(f"[ci-gate] NOTE no test collected (passes only if skip-tolerant): {u.get('files')}")
     if timings_out:
         timings_out.parent.mkdir(parents=True, exist_ok=True)
         timings_out.write_text(
@@ -6432,12 +6540,23 @@ def main(argv: list[str] | None = None) -> int:
     t0 = time.monotonic()
     gates, profile = GATES, args.profile
     if profile == "pr":
-        gates, profile = select_pr_gates(
-            args.base, include_worktree=args.include_worktree, budget=args.budget, changed=args.changed
-        )
+        try:
+            gates, profile = select_pr_gates(
+                args.base, include_worktree=args.include_worktree, budget=args.budget, changed=args.changed
+            )
+        except UnknownMandatoryGatesError as exc:
+            print(f"\nCIO HARDENING CI FAILED: ['risk_tiers_unknown_gates'] {exc.names}")
+            return 1
         if args.print_selection:
             return 0
     failed = run_gates(gates, profile=profile, jobs=args.jobs)
+    # Every profile (the pr selection included) fails on a registered-but-missing file anywhere
+    # in GATES: deleting a test file must not silently drop its coverage (audit M8).
+    missing_all = missing_registered_files(GATES)
+    for name, path in missing_all:
+        print(f"[FAIL] registered_files_missing: {name}: {path}", flush=True)
+    if missing_all:
+        failed.append("registered_files_missing")
     print(f"[timing] gates profile={args.profile} jobs={args.jobs} wall={time.monotonic() - t0:.0f}s", flush=True)
 
     if args.no_tail:
