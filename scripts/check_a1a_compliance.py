@@ -6,7 +6,7 @@ No mutations. No secrets exposed. No trading changes.
 Usage:
     .venv/bin/python scripts/check_a1a_compliance.py --last-commit --verbose
 """
-import argparse, json, subprocess, sys
+import argparse, json, os, re, subprocess, sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,9 +18,63 @@ REQUIRED_DOCS = ["docs/project/PROJECT_DOC_INDEX.md", "docs/v4_1_deployment_log.
                  "docs/A1A.md", "docs/RESTORE_GUIDE.md"]
 
 
-def _git(cmd):
-    return subprocess.check_output(f"git {cmd}", shell=True, cwd=str(PROJ),
+def _git(cmd, cwd=None):
+    return subprocess.check_output(f"git {cmd}", shell=True, cwd=str(cwd or PROJ),
                                    stderr=subprocess.DEVNULL).decode().strip()
+
+
+def _source_repo() -> Path:
+    """The checkout that holds the git objects for a release with no .git of its own."""
+    try:
+        sys.path.insert(0, str(PROJ / "scripts"))
+        from lib.live_project_root import DEV_ROOT
+        return Path(DEV_ROOT)
+    except Exception:
+        return Path(os.environ.get("TRADEAI_DEV_ROOT")
+                    or "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild")
+
+
+def _stamped_sha():
+    """The commit a release was built from (BUILD_STAMP.json source_sha, else SOURCE_COMMIT)."""
+    try:
+        sha = json.loads((PROJ / "BUILD_STAMP.json").read_text()).get("source_sha") or ""
+    except Exception:
+        sha = ""
+    if not sha:
+        try:
+            sha = (PROJ / "SOURCE_COMMIT").read_text().strip()
+        except Exception:
+            sha = ""
+    return sha if re.fullmatch(r"[0-9a-f]{7,40}", sha or "") else ""
+
+
+def resolve_changes(last_commit: bool):
+    """Return (changed_files, head_label, error).
+
+    2026-10-21: release dirs no longer carry .git (the exact-main overlay
+    excludes it), so `git diff HEAD~1 HEAD` in PROJ raised CalledProcessError,
+    the 07:40 run died with a traceback, and pipeline_runs got status=failed
+    with errors=[]. A release is now checked against the commit it was stamped
+    from, read out of the source checkout; when neither works the reason comes
+    back as an error string instead of a traceback.
+    """
+    try:
+        _git("rev-parse --is-inside-work-tree")
+        rng = "HEAD~1 HEAD" if last_commit else "HEAD"
+        return _git(f"diff --name-only {rng}").splitlines(), _git("rev-parse --short HEAD"), None
+    except Exception:
+        pass
+    sha = _stamped_sha()
+    if not sha:
+        return [], None, f"{PROJ} is not a git work tree and has no BUILD_STAMP.json/SOURCE_COMMIT sha"
+    if not last_commit:
+        return [], sha[:9], None  # a release has no working-tree diff by construction
+    repo = _source_repo()
+    try:
+        return _git(f"diff --name-only {sha}~1 {sha}", cwd=repo).splitlines(), sha[:9], None
+    except Exception as e:
+        return [], sha[:9], (f"cannot diff stamped commit {sha[:9]} in source repo {repo}: "
+                             f"{type(e).__name__}")
 
 
 def main():
@@ -32,13 +86,13 @@ def main():
     args = p.parse_args()
 
     findings = []
+    errors = []
     now = datetime.now(timezone.utc)
 
-    # Get changed files from last commit
-    if args.last_commit:
-        changed = _git("diff --name-only HEAD~1 HEAD").splitlines()
-    else:
-        changed = _git("diff --name-only HEAD").splitlines()
+    # Get changed files from last commit (or from the release's stamped commit)
+    changed, git_head, err = resolve_changes(args.last_commit)
+    if err:
+        errors.append(err)
 
     # Check 1: Unsafe files in commit
     for f in changed:
@@ -84,9 +138,12 @@ def main():
         by_sev[f["severity"]] = by_sev.get(f["severity"], 0) + 1
 
     status = "healthy" if not findings else "warning" if not by_sev.get("P0") else "attention_required"
+    if errors:
+        status = "check_error"
     report = {
         "generated_at": now.isoformat(),
-        "git_head": _git("rev-parse --short HEAD"),
+        "git_head": git_head,
+        "errors": errors,
         "files_checked": len(changed),
         "findings_count": len(findings),
         "by_severity": by_sev,
@@ -98,6 +155,8 @@ def main():
         print(f"A1A Compliance: {status} ({len(findings)} findings)")
         for f in findings:
             print(f"  [{f['severity']}] {f['check']}: {f['message']}")
+    for e in errors:
+        print(f"A1A ERROR: {e}")
 
     if args.output_json:
         Path(args.output_json).write_text(json.dumps(report, indent=2, default=str))
@@ -105,10 +164,13 @@ def main():
         md = [f"# A1A Compliance — {status}", f"\nFindings: {len(findings)}", ""]
         for f in findings:
             md.append(f"- **[{f['severity']}]** {f['check']}: {f['message']}")
-        if not findings:
+        for e in errors:
+            md.append(f"- **[ERROR]** check could not run fully: {e}")
+        if not findings and not errors:
             md.append("No findings. Documentation appears compliant.")
         Path(args.output_md).write_text("\n".join(md))
+    return 2 if errors else 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
