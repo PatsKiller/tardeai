@@ -13,6 +13,11 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any, Optional
 
+try:
+    from lib.json_safety import indicator_cache_json_fields
+except ImportError:  # pragma: no cover - imported as scripts.api_v2
+    from scripts.lib.json_safety import indicator_cache_json_fields
+
 log = logging.getLogger(__name__)
 logger = log  # alias used by YAML tuning + john_decide handlers
 
@@ -23058,6 +23063,7 @@ def _indicator_confluence_handler(query: dict) -> tuple:
 
         # UPSERT into cache
         try:
+            key_levels_json, full_result_json = indicator_cache_json_fields(result)
             _db_write(
                 """INSERT INTO indicator_confluence_cache
                    (symbol, profile, confluence_score, confluence_tier,
@@ -23093,13 +23099,13 @@ def _indicator_confluence_handler(query: dict) -> tuple:
                     result.get("signals_neutral", 0),
                     result.get("strategy_badges", []),
                     result.get("bearish_badges", []),
-                    json.dumps(result.get("key_levels", {})),
+                    key_levels_json,
                     result.get("stop_price"),
                     result.get("target_price"),
                     result.get("atr"),
                     result.get("adx_regime"),
                     result.get("entry_quality"),
-                    json.dumps(result),
+                    full_result_json,
                 ),
             )
 
@@ -23148,6 +23154,7 @@ def _indicator_batch_handler(body: dict) -> tuple:
             # every recompute while full_result said stop None (indicator_confluence_cache.stop_price min, BLOCK).
             if r.get("ok"):
                 try:
+                    key_levels_json, full_result_json = indicator_cache_json_fields(r)
                     _db_write(
                         """INSERT INTO indicator_confluence_cache
                            (symbol, profile, confluence_score, confluence_tier,
@@ -23182,13 +23189,13 @@ def _indicator_batch_handler(body: dict) -> tuple:
                             r.get("signals_neutral", 0),
                             r.get("strategy_badges", []),
                             r.get("bearish_badges", []),
-                            json.dumps(r.get("key_levels", {})),
+                            key_levels_json,
                             r.get("stop_price"),
                             r.get("target_price"),
                             r.get("atr"),
                             r.get("adx_regime"),
                             r.get("entry_quality"),
-                            json.dumps(r),
+                            full_result_json,
                         ),
                     )
                 except Exception:

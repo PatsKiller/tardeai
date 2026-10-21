@@ -5430,7 +5430,8 @@ GATES = [
     (
         # Indicator JSON safety (2026-10-21): non-finite float/Decimal/NumPy
         # values normalize to JSON null while finite numeric values retain their
-        # existing serialization. Hermetic writer-path coverage; no live DB.
+        # existing serialization. Includes an ALERT_TEST_DSN-only isolated
+        # PostgreSQL jsonb round-trip; source classifier places this file in pg.
         "indicator_json_nan_20261021",
         ["tests/test_indicator_json_nan_20261021.py"],
     ),

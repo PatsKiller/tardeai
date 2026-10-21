@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import json
 import math
+import os
+import sys
+import time
+import types
 from decimal import Decimal
 from fractions import Fraction
+from pathlib import Path
 
 import pytest
 
 from scripts.lib.indicator_universe_lane import upsert_params
 from scripts.lib.json_safety import json_dumps_for_postgres, indicator_cache_json_fields
+
+ROOT = Path(__file__).resolve().parent.parent
 
 
 def _strict_loads(value: str):
@@ -121,3 +128,89 @@ def test_finite_fraction_and_numpy_scalars_match_legacy_default_str():
     assert decoded["numpy_int64"] == str(result["numpy_int64"])
     assert decoded["numpy_longdouble"] == str(result["numpy_longdouble"])
     assert decoded["large_finite_longdouble"] == str(result["large_finite_longdouble"])
+
+
+def _api_module(monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / "scripts"))
+    import api_v2
+
+    return api_v2
+
+
+def _indicator_result():
+    return {
+        "ok": True,
+        "confluence_score": 7.25,
+        "key_levels": {"ema": {"value": float("nan")}, "atr": [float("inf"), 12.5]},
+        "metrics": {"outer": [float("-inf"), {"finite": 4}]},
+        "signals": {},
+    }
+
+
+@pytest.mark.parametrize("handler_name", ["_indicator_confluence_handler", "_indicator_batch_handler"])
+def test_confluence_handlers_write_strict_cache_json(monkeypatch, handler_name):
+    api = _api_module(monkeypatch)
+    result = _indicator_result()
+    engine = types.ModuleType("indicator_engine")
+    engine.analyze_confluence = lambda *_args: result
+    monkeypatch.setitem(sys.modules, "indicator_engine", engine)
+    writes = []
+    monkeypatch.setattr(api, "_db_query", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(api, "_db_write", lambda *args, **_kwargs: writes.append(args))
+    monkeypatch.setattr(time, "sleep", lambda *_args: None)
+
+    if handler_name == "_indicator_confluence_handler":
+        status, payload = api._indicator_confluence_handler({"symbol": "TEST", "force": "true"})
+        assert status == 200 and payload["ok"] is True
+    else:
+        status, payload = api._indicator_batch_handler({"symbols": ["TEST"]})
+        assert status == 200 and payload["ok"] is True
+
+    cache_write = next(call for call in writes if "indicator_confluence_cache" in call[0])
+    params = cache_write[1]
+    assert _strict_loads(params[9]) == {"ema": {"value": None}, "atr": [None, 12.5]}
+    assert _strict_loads(params[15]) == {
+        "ok": True,
+        "confluence_score": 7.25,
+        "key_levels": {"ema": {"value": None}, "atr": [None, 12.5]},
+        "metrics": {"outer": [None, {"finite": 4}]},
+        "signals": {},
+    }
+
+
+def test_postgres_jsonb_round_trip_accepts_normalized_cache_fields():
+    dsn = os.environ.get("ALERT_TEST_DSN", "").strip()
+    if not dsn:
+        pytest.skip("explicit ALERT_TEST_DSN integration fixture is absent; PostgreSQL proof is unmeasured")
+
+    from scripts.lib.m2_live_shadow_guard import TEST_DATABASE_RE, dsn_database, refuse_live_shadow_under_pytest
+
+    database = dsn_database(dsn)
+    if not TEST_DATABASE_RE.fullmatch(database):
+        pytest.fail("ALERT_TEST_DSN must name an isolated m2_shadow_test database; refusing connection")
+    psycopg2 = pytest.importorskip("psycopg2")
+    try:
+        conn = psycopg2.connect(refuse_live_shadow_under_pytest(dsn), connect_timeout=3)
+    except Exception:
+        pytest.fail("explicit isolated ALERT_TEST_DSN could not be reached (connection details suppressed)")
+
+    result = _indicator_result()
+    key_levels, full_result = indicator_cache_json_fields(result)
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "CREATE TEMP TABLE indicator_json_boundary_test "
+                "(key_levels jsonb NOT NULL, full_result jsonb NOT NULL) ON COMMIT DROP"
+            )
+            cursor.execute(
+                "INSERT INTO indicator_json_boundary_test (key_levels, full_result) VALUES (%s::jsonb, %s::jsonb)",
+                (key_levels, full_result),
+            )
+            cursor.execute("SELECT key_levels, full_result FROM indicator_json_boundary_test")
+            stored_levels, stored_result = cursor.fetchone()
+        assert stored_levels == {"ema": {"value": None}, "atr": [None, 12.5]}
+        assert stored_result["metrics"] == {"outer": [None, {"finite": 4}]}
+        assert stored_result["confluence_score"] == 7.25
+    finally:
+        conn.rollback()
+        conn.close()
