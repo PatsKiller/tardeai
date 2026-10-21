@@ -623,10 +623,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_reconciliation_20260917/CIO_AS_IS_2026-09-17-rev8.md` | CIO / goal-loop AS-IS — Revision 8 (2026-09-17) | review_required | OK | `dcfca094e363` |
 | `docs/architecture/maturity_reconciliation_20260917/HONEST_MATURITY_ASSESSMENT_2026-09-17-rev8.md` | Honest maturity assessment — Revision 8 (2026-09-17) | review_required | OK | `ede40d194307` |
 | `docs/architecture/maturity_reconciliation_20260917/REVISION_LEDGER_2026-09-17-rev8.md` | Revision ledger — which revision is canonical, and what is still published | review_required | OK | `2abe45079289` |
-| `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md` | ADR: coordination secrets for the n8n lab | review_required | OK | `bc91d85ff25f` |
+| `docs/architecture/n8n/ADR_COORDINATION_SECRETS.md` | ADR: coordination secrets for the n8n lab | review_required | OK | `68bcdfd348b8` |
 | `docs/architecture/n8n/AUDIT_20261015_FINDINGS.md` | Independent n8n architecture audit 2026-10-15 — findings tracker | review_required | OK | `e11277d4e2bc` |
 | `docs/architecture/n8n/ENV_ENFORCE_READINESS_20261015.md` | n8n executor env-allowlist enforce readiness (generated) | review_required | MISSING HEADER | `1b6ea3934bc0` |
-| `docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md` | n8n contracts — design architecture | review_required | OK | `b296c0c3755e` |
+| `docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md` | n8n contracts — design architecture | review_required | OK | `b0cf82d18e6a` |
 | `docs/architecture/n8n/N8N_DECISION_LEDGER.md` | n8n decision ledger — D1–D11 | review_required | OK | `12551696169c` |
 | `docs/architecture/n8n/N8N_HITL_CONTRACT_SPEC.md` | Approval / HITL authority contract — specification | review_required | OK | `e9c14b9f23c1` |
 | `docs/architecture/n8n/N8N_LLM_STEP_ROUTE_SPEC.md` | n8n → LLM step route — specification and proof list | review_required | OK | `6b7f8e1ee9e8` |
@@ -917,7 +917,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/CIO_CROSS_SURFACE_LINKS.md` | CIO / Hermes / Research Intelligence links | review_required | MISSING HEADER | `25634e4c8927` |
 | `docs/cio/CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md` | CIO Decision Lineage — Operator Surface | review_required | OK | `41fa3994e3fc` |
 | `docs/cio/CIO_DESK_OPERATING_PACKET.md` | Trade AI — CIO Desk Operating Packet | review_required | OK | `6d3c1e290b04` |
-| `docs/cio/CIO_KNOWN_DARK_CLASSIFICATION.md` | CIO KNOWN_DARK Classification | review_required | OK | `bcf3a5a5c4fc` |
+| `docs/cio/CIO_KNOWN_DARK_CLASSIFICATION.md` | CIO KNOWN_DARK Classification | review_required | OK | `212aadb93642` |
 | `docs/cio/CIO_NOTIFICATION_POLICY.md` | CIO Notification Policy — Signal over Spam | review_required | OK | `40a0bb623a7c` |
 | `docs/cio/CIO_NOTIFICATION_REPLAY_ACCEPTANCE.md` | CIO Notification Replay Acceptance | review_required | OK | `76573f672e2d` |
 | `docs/cio/CIO_NOTIFICATION_RUNTIME_TOPOLOGY.md` | CIO Notification Runtime Topology | review_required | OK | `ab46eaffc931` |
@@ -1467,10 +1467,12 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/SEARCH_SOURCE_ROUTING.md` | Search source routing — which source answers what, and what it may spend | review_required | OK | `633c3aab392f` |
 | `docs/implementation/n8n-maturity/WAVE_B_CC_ORCHESTRATE_2026-10-11.md` | Wave B — CC orchestrate (research-intake + watch-refresh) | review_required | OK | `67cb1506248f` |
 | `docs/implementation/n8n-maturity/WAVE_C_HEAVY_JOBS_2026-10-11.md` | Wave C — heavy CC jobs (advisory / analyst / brief / legacy Run) | review_required | OK | `b487224d891b` |
-| `docs/implementation/n8n-maturity/campaign-20261018/README.md` | n8n operational maturity campaign — 2026-10-18 | review_required | OK | `4bdd12e24da0` |
+| `docs/implementation/n8n-maturity/campaign-20261018/README.md` | n8n operational maturity campaign — 2026-10-18 | review_required | OK | `c791670729a8` |
 | `docs/implementation/n8n-maturity/campaign-20261018/cc-truth/README.md` | Truthful CC observations — October 18, 2026 | review_required | MISSING HEADER | `9dd8db747121` |
 | `docs/implementation/n8n-maturity/campaign-20261018/checkpoint-20261018T2351Z.md` | Campaign checkpoint after release rejection and evidence merge | review_required | OK | `47c15565d38c` |
+| `docs/implementation/n8n-maturity/campaign-20261018/comms-health-truth-20261020/README.md` | Communications delivery health truth | review_required | OK | `37cc2e74acc8` |
 | `docs/implementation/n8n-maturity/campaign-20261018/contracts-enforcement/README.md` | Gateway admission and output evidence enforcement | review_required | OK | `f239f9b6cfa2` |
+| `docs/implementation/n8n-maturity/campaign-20261018/entry-display-main/README.md` | Entry display compatibility on refreshed main | review_required | OK | `3822e6e22489` |
 | `docs/implementation/n8n-maturity/campaign-20261018/feedback-source-hold/README.md` | Preserve the held Hermes feedback stage | review_required | OK | `a6f09db62db3` |
 | `docs/implementation/n8n-maturity/campaign-20261018/release-1854/README.md` | PR 1854 release acceptance and rollback | review_required | OK | `2c377277770f` |
 | `docs/implementation/n8n-maturity/campaign-20261018/rotation-publication/README.md` | Rotation digest root cause and publication contract | review_required | OK | `5a627347e21d` |
@@ -1486,7 +1488,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/n8n-maturity/cron-inventory/CRON_INVENTORY.md` | Cron Inventory & Migration Assessment — 2026-10-10 | review_required | OK | `2dd3d2e143bf` |
 | `docs/implementation/n8n-maturity/cron-inventory/DEPENDENCY_MAP.md` | Dependency map — Trade AI scheduled work (cron · systemd · health-tick · n8n) | review_required | OK | `a3390307a390` |
 | `docs/implementation/n8n-maturity/cron-inventory/GOVERNANCE_ANALYSIS.md` | Schedule and dependency governance — overlaps, duplicates, consolidation | review_required | OK | `c53a89cf1d07` |
-| `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `707e8d8cbd76` |
+| `docs/implementation/n8n-maturity/cron-inventory/README.md` | Cron inventory — system of record | review_required | OK | `602d10509e93` |
 | `docs/implementation/n8n-maturity/cron-inventory/REMEDIATION_PLAN.md` | Cron / n8n Remediation Plan — from the verified inventory | review_required | OK | `8a262ee95293` |
 | `docs/implementation/n8n-maturity/cron-inventory/SCHEMA.md` | Cron inventory — system of record: column specification (v1, 2026-10-09 21:55 ET) | review_required | OK | `8a3b490c4467` |
 | `docs/implementation/n8n-maturity/reconciliation-20261012/MOMENTUM_LIFECYCLE_CANDIDATE.md` | Momentum lifecycle implementation and activation packet | review_required | OK | `0abd4d2f7cb1` |
@@ -1737,7 +1739,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/BRIDGE_PIN_ALIGNMENT.md` | Governed bridge pin alignment | review_required | OK | `72a5c993261d` |
 | `docs/ops/CANONICAL_OBSERVATION_CONTRACT.md` | Canonical observation contract | review_required | OK | `f1efae3e4863` |
 | `docs/ops/CANON_SOURCE_ACQUISITION_QUEUE_2026-08-23.md` | Canon Source Acquisition Queue - 2026-08-23 | review_required | OK | `a49f0fc9b389` |
-| `docs/ops/CC_NEEDS_ACTION_2026-10-21.md` | Command Center — the "Needs action" inbox and the failures that had no page (2026-10-21) | review_required | OK | `027fe88c6cc5` |
+| `docs/ops/CC_NEEDS_ACTION_2026-10-21.md` | Command Center — the "Needs action" inbox and the failures that had no page (2026-10-21) | review_required | OK | `f87c81b53e62` |
 | `docs/ops/CIO_ADVISORY_TRUTH_HARDENING_CLOSEOUT_2026-08-20.md` | CIO/Advisory truth + presentation hardening — closeout 2026-08-20 | review_required | OK | `1661c226ddf4` |
 | `docs/ops/CIO_AFTERNOON_FIVE_2026-09-01.md` | Afternoon five — closeout | review_required | OK | `58bb7c12e239` |
 | `docs/ops/CIO_BANNER_DATA_ASOF_2026-09-01.md` | PORTFOLIO chip — freshness is `data_as_of`, not the loader run | review_required | OK | `e52ceb650854` |
@@ -1871,7 +1873,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_WAVE3D_FLASH_2026-08-29.md` | CIO Wave 3D-flash — **STOPPED at step 1: zero flash-eligible** | review_required | OK | `df9fb2572aae` |
 | `docs/ops/CIO_WAVE3D_HOP_2026-08-29.md` | Wave 3D — the one live hop, executed (2026-08-29) | review_required | OK | `02ef350a1efb` |
 | `docs/ops/CIO_WAVE3E_2026-08-29.md` | CIO Wave 3E — notification decisions on the Command Center (2026-08-29) | review_required | OK | `6fd2ce532756` |
-| `docs/ops/CI_FAST_CORE_20260925.md` | CI fast core, risk tiers and digest-free evidence (2026-09-25) | review_required | MISSING HEADER | `0848756e5ca9` |
+| `docs/ops/CI_FAST_CORE_20260925.md` | CI fast core, risk tiers and digest-free evidence (2026-09-25) | review_required | MISSING HEADER | `3d7cbe4c00e7` |
 | `docs/ops/CLOSE_OPERATOR_GAPS_TO_100_2026-08-19.md` | Close remaining operator gaps to 100% | review_required | OK | `9f9aada669d7` |
 | `docs/ops/COGNITIVE_MEMORY_PRODUCTION_RUNBOOK.md` | Cognitive memory in production: runbook | review_required | OK | `720ebe9b2fee` |
 | `docs/ops/COGX_WAVE1_APPROVAL_PACKAGE_2026-09-27.md` | COGX Wave 1 approval package — pkg-20260927-cogx-w1-d9e1 | review_required | OK | `07d135121c55` |
@@ -1941,6 +1943,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md` | APPROVED RETIRE — operator settle (AGENTS.md §17 / §9.3) | review_required | OK | `211e36d63272` |
 | `docs/ops/PROPOSED_VERIFY_SCREENER_GO_ALERTS_CRON_2026-09-20.md` | CONFIRMED — live crontab verified (AGENTS.md §9.3) | review_required | OK | `daa12f930371` |
 | `docs/ops/PROPOSED_WAKE_L3_CRON_FLAGS_2026-09-19.md` | PROPOSED — enable WAKE_L3 flags on the **L3 consumer** cron | review_required | OK | `a4a573fe18a8` |
+| `docs/ops/PR_HYGIENE.md` | PR hygiene — the daily audit and the pre-build overlap check | review_required | OK | `6ff737125683` |
 | `docs/ops/QUOTE_SNAPSHOTS_RETIREMENT_PLAN_2026-10-10.md` | Retiring the `market_quote_snapshots` writes (cron L92 / L128) — plan, not executed | review_required | OK | `5be80145a2fd` |
 | `docs/ops/R11_AUTONOMOUS_INVESTMENT_OFFICE_OPERATOR_VALUE_CLOSEOUT_2026-08-25.md` | R11 — Autonomous Investment Office Operator-Value Closeout | review_required | OK | `0539b80504f0` |
 | `docs/ops/R12_OPERATOR_INTELLIGENCE_NATURAL_NOTIFICATION_CLOSEOUT_2026-08-25.md` | R12 — Operator-intelligence natural notification closeout | review_required | OK | `dbcce083dfc0` |
@@ -2063,11 +2066,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/n8n-cutover-wave-2-20261015/README.md` | n8n cutover CW2 (2026-10-15): operator packet | review_required | MISSING HEADER | `76fe045246aa` |
 | `docs/ops/packets/n8n-cutover-wave-3-20261015/README.md` | n8n cutover CW3 (2026-10-15): operator packet | review_required | MISSING HEADER | `0a42567e80e4` |
 | `docs/ops/packets/n8n-dd12-outside-deadman-20261015/README.md` | DD12 outside dead-man + business heartbeat — operator packet (2026-10-15) | review_required | MISSING HEADER | `e4fcc98a618b` |
+| `docs/ops/packets/n8n-llm-bridge-routes-20261021/README.md` | n8n LLM lanes on the governed bridge, batches 1–4: operator steps (operator packet, 2026-10-21) | review_required | OK | `e08238599f83` |
 | `docs/ops/packets/n8n-process-consolidation-cohort1-20261016/README.md` | n8n process consolidation, cohort 1 (2026-10-16) | review_required | MISSING HEADER | `0d10455d4ee5` |
 | `docs/ops/packets/n8n-process-consolidation-cohort2-20261016/README.md` | n8n process consolidation, cohort 2 (2026-10-16): Hermes learning consumers fire on verified learning | review_required | MISSING HEADER | `2596f2ae9efb` |
+| `docs/ops/packets/n8n-relay-env-allowlist-20261021/README.md` | n8n run relay: allowlisted secrets env, strict fail-closed (operator packet, 2026-10-21) | review_required | OK | `ba9d93f06e57` |
 | `docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/README.md` | n8n shadow wave LD-W1 (2026-10-15): operator packet | review_required | MISSING HEADER | `1bb88e10b921` |
 | `docs/ops/packets/nightly-cutover-controller-20261016/README.md` | Nightly cutover controller 2026-10-16: an enforced state machine for the approved n8n cutover | review_required | OK | `f5b06ec19aa4` |
 | `docs/ops/packets/registry-runtime-truth-20261018/README.md` | Registry / runtime truth — packet (review 2026-10-18, built 2026-10-19) | review_required | OK | `618734a1d7b8` |
+| `docs/ops/packets/release-train-20261021/README.md` | Release train: merge when green, release main in the 12:00 and 17:30 windows | review_required | OK | `5848ac8ebf0c` |
 | `docs/ops/packets/release-windows-20261016/README.md` | Release windows, 12:00 and 17:30 America/New_York | review_required | OK | `3d2b28b4d9b6` |
 | `docs/ops/packets/research-insights-unique-index-20261015/README.md` | Packet: UNIQUE index on research_insights(source_reference) (DDL, NOT APPLIED) | review_required | MISSING HEADER | `f53f51854f25` |
 | `docs/ops/packets/run-from-release-cohort1-20261015/03_apply.md` | Apply cohort 1 (operator) | review_required | MISSING HEADER | `d4a73a6cda5c` |
@@ -2075,6 +2081,15 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/run-from-release-cohort1-20261015/README.md` | Run from the release: cohort 1 operator packet (2026-10-15) | review_required | MISSING HEADER | `e65023d6a400` |
 | `docs/ops/packets/swing-alert-single-sender-20261019/README.md` | Swing entry alerts: one sender (2026-10-19) | review_required | MISSING HEADER | `ba85274fb928` |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution | review_required | OK | `df44cfc4ee62` |
+| `docs/ops/ready-three-2026-10-21/AGENT_HANDOFF.md` | Agent handoff — 2026-10-21 | review_required | OK | `d36517d7aa97` |
+| `docs/ops/ready-three-2026-10-21/CHANGELOG.md` | Change and release log — 2026-10-21 | review_required | OK | `ab4013b943fe` |
+| `docs/ops/ready-three-2026-10-21/CURRENT_STATUS.md` | Current execution status — 2026-10-21 04:35 UTC | review_required | OK | `5a64113f88c2` |
+| `docs/ops/ready-three-2026-10-21/DEPLOYMENT_AND_ROLLBACK.md` | Deployment and rollback gates — 2026-10-21 | review_required | OK | `2ba66c12fe43` |
+| `docs/ops/ready-three-2026-10-21/EXECUTIVE_REPORT.md` | Executive gap and readiness report — 2026-10-21 | review_required | OK | `cf3cb37e98ef` |
+| `docs/ops/ready-three-2026-10-21/LIVE_VALIDATION.md` | Live validation — 2026-10-21 | review_required | MISSING HEADER | `409a78d00be5` |
+| `docs/ops/ready-three-2026-10-21/README.md` | Ready-three evidence and readiness — 2026-10-21 | review_required | OK | `119013332215` |
+| `docs/ops/ready-three-2026-10-21/SYSTEM_INVENTORY.md` | System inventory snapshot — 2026-10-21 | review_required | OK | `4248d23f4e03` |
+| `docs/ops/ready-three-2026-10-21/TEST_RESULTS.md` | Test results — 2026-10-21 | review_required | OK | `369835295303` |
 | `docs/ops/self_heal_claude_fixer.md` | Self-heal Claude Code fixer — code defects fixed in iterations, shipped as a tested PR | review_required | OK | `b90fcb9c0c1d` |
 | `docs/ops/telegram_channel_diligence_20260916/00_EXECUTIVE_SUMMARY.md` | Telegram Channel Diligence — Executive Summary | review_required | OK | `19050e08a848` |
 | `docs/ops/telegram_channel_diligence_20260916/01_CHANNEL_INVENTORY_SOURCE_MAP.md` | Phase 1 — Channel Inventory & Source Mapping | review_required | OK | `6be06281ea6d` |
