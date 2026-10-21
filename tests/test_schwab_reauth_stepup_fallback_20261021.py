@@ -48,14 +48,21 @@ def _write_cfg(tmp_path, step_up_mode: str) -> Path:
     return p
 
 
-def test_gate_itself_still_refuses_schwab_reauth():
-    """The fix must not weaken step-up: the committed policy still gates both reauth routes."""
+def test_reauth_exempt_but_step_up_still_enforced_elsewhere():
+    """Operator 2026-10-21 "Exempt reauth only": the two Schwab reauth routes are not step-up gated (TOTP was
+    never built, so the gate made CC renewal impossible); the gate stays in enforce mode for every other class."""
     cfg = cc_auth.load_config(ROOT / "config" / "cc_auth.yaml")
     assert cfg.step_up_mode == "enforce"
     for m, p in (REAUTH, EXCHANGE):
-        assert cc_auth.step_up_action(cfg, m, p) == "schwab_reauth"
-        assert cc_auth.step_up_blocks_route(cfg, m, p) == "schwab_reauth"
-    d = cc_auth.require_step_up(None, "schwab_reauth")
+        assert cc_auth.step_up_action(cfg, m, p) is None
+        assert cc_auth.step_up_blocks_route(cfg, m, p) is None
+    for m, p, action in (("POST", "/api/v2/broker-orders/approve", "order_pilot"),
+                         ("POST", "/api/v2/holdings/protective-stop", "stop_change"),
+                         ("POST", "/api/v2/admin/secrets", "credential_change"),
+                         ("POST", "/api/v2/live-trading-gate", "risk_control_change")):
+        assert cc_auth.step_up_action(cfg, m, p) == action
+        assert cc_auth.step_up_blocks_route(cfg, m, p) == action
+    d = cc_auth.require_step_up(None, "credential_change")
     assert not d.allowed and d.status == 403 and d.reason == cc_auth.STEP_UP_MESSAGE
 
 
@@ -71,18 +78,26 @@ def test_step_up_blocks_route_is_a_faithful_mirror(tmp_path):
 
 def test_token_health_reports_cc_path_blocked_and_names_cli(monkeypatch, tmp_path):
     import api_v2
+    import yaml
 
+    # committed policy (reauth exempt): the CC path is open
     monkeypatch.setenv(cc_auth.CONFIG_ENV, str(_write_cfg(tmp_path, "enforce")))
     out = api_v2._schwab_reauth_operator_paths("schwab_taxable")
-    assert out["cc_reauth_blocked"] is True
-    assert out["cc_reauth_blocked_reason"] == cc_auth.STEP_UP_MESSAGE
+    assert out["cc_reauth_blocked"] is False and out["cc_reauth_blocked_reason"] is None
     assert out["reauth_command"] == "python3 scripts/schwab_token_manager.py reauth-url schwab_taxable"
     assert out["exchange_command"].startswith("python3 scripts/schwab_token_manager.py exchange-code schwab_taxable ")
     assert out["telegram_paste_supported"] is True
 
-    monkeypatch.setenv(cc_auth.CONFIG_ENV, str(_write_cfg(tmp_path, "off")))
+    # if a future policy re-gates reauth (e.g. once TOTP exists but before enrollment), the page is told
+    p = _write_cfg(tmp_path, "enforce")
+    raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+    raw["cc_auth"]["step_up"]["routes"].append({"action": "schwab_reauth", "methods": ["GET", "POST"],
+                                               "pattern": "/api/v2/brokers/schwab/(exchange-code|reauth-url)"})
+    p.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    monkeypatch.setenv(cc_auth.CONFIG_ENV, str(p))
     out = api_v2._schwab_reauth_operator_paths("schwab_taxable")
-    assert out["cc_reauth_blocked"] is False and out["cc_reauth_blocked_reason"] is None
+    assert out["cc_reauth_blocked"] is True
+    assert out["cc_reauth_blocked_reason"] == cc_auth.STEP_UP_MESSAGE
 
 
 def test_token_health_wires_operator_paths_and_honest_message():
