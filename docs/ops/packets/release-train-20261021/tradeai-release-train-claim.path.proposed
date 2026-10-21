@@ -1,0 +1,11 @@
+# PROPOSED, NOT INSTALLED (operator item O7). Starts the claimer when n8n's request lane
+# writes into the spool; the 1-minute timer below is the fallback (C5: acknowledge <= 120 s).
+[Unit]
+Description=Trade AI release train: watch the n8n request spool
+
+[Path]
+PathChanged=%h/trade-ai-releases/persistent-state/data/runtime/release_window/train_requests/pending
+Unit=tradeai-release-train-claim.service
+
+[Install]
+WantedBy=default.target

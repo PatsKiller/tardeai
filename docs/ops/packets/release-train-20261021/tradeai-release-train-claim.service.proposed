@@ -1,0 +1,15 @@
+# PROPOSED, NOT INSTALLED (operator item O7, docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md C5).
+# Answers n8n TrainWindowRequest@v1 files: claim by rename, acknowledge, run the train
+# (shadow = simulate only), write TrainWindowReceipt@v1. While TRAIN_CONTROLLER_STATUS is
+# BUILD_ONLY every live request is refused CONTROLLER_BUILD_ONLY; nothing is pushed,
+# merged or promoted. Dry run first: `python3 scripts/release_window.py train-claim` (no --apply).
+[Unit]
+Description=Trade AI release train: answer n8n window requests (shadow = simulate)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+ExecStart=%h/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python scripts/release_window.py train-claim --apply
+TimeoutStartSec=3h
+Nice=10
