@@ -478,6 +478,21 @@ class State:
         except (OSError, ValueError):
             return None
 
+    def read_latch(self) -> tuple[str, Optional[dict]]:
+        """The STOP latch, fail closed. ("ABSENT", None) only when no path exists at all; ("SET", body) for a
+        readable JSON object; ("UNREADABLE", {"error": ...}) when the path exists but cannot be read or parsed
+        (corrupt, permission denied, a directory, a non-object). Present-but-unreadable is a STOP (2026-10-21)."""
+        p = self.latch
+        if not os.path.lexists(p):
+            return "ABSENT", None
+        try:
+            body = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return "UNREADABLE", {"error": f"{type(exc).__name__}: {str(exc)[:160]}", "path": str(p)}
+        if not isinstance(body, dict):
+            return "UNREADABLE", {"error": f"latch is {type(body).__name__}, not an object", "path": str(p)}
+        return "SET", body
+
     def write(self, path: Path, body: dict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".tmp")
@@ -562,8 +577,12 @@ class Runner:
         if bad:
             return None, {"outcome": "REFUSED_BYPASS_ENV", "names": bad,
                           "detail": "emergency/warn/bypass variables are never used by a release window"}
-        latch = self.state.read(self.state.latch)
-        if latch:
+        latch_state, latch = self.state.read_latch()
+        if latch_state == "UNREADABLE":
+            return None, {"outcome": "REFUSED_STOP_UNREADABLE", "latch": latch,
+                          "detail": "STOP.json exists but cannot be read or parsed; treated as STOP (fail closed). "
+                                    "Operator: inspect and archive it, then clear-stop"}
+        if latch_state == "SET":
             return None, {"outcome": "REFUSED_STOP_LATCHED", "latch": latch,
                           "detail": "operator: scripts/release_window.py clear-stop --reason ..."}
         w = open_window(now, requested)
@@ -768,17 +787,20 @@ class Runner:
         return out
 
     def clear_stop(self, reason: str) -> tuple[int, dict]:
-        latch = self.state.read(self.state.latch)
-        if not latch:
+        latch_state, latch = self.state.read_latch()
+        if latch_state == "ABSENT":
             return EXIT_OK, {"outcome": "NO_LATCH"}
         stamp = self.host.now().strftime("%Y%m%dT%H%M%SZ")
         archived = self.state.windows / f"STOP-cleared-{stamp}.json"
-        self.state.write(archived, {**latch, "cleared_at": stamp, "cleared_reason": reason})
+        self.state.write(archived, {**(latch or {}), "latch_state": latch_state, "cleared_at": stamp,
+                                    "cleared_reason": reason})
+        # Archived by rename (a file, an unreadable file or a directory alike); never deleted.
         self.state.latch.rename(self.state.windows / f"STOP-{stamp}.json.archived")
-        return EXIT_OK, {"outcome": "STOP_CLEARED", "archived": str(archived)}
+        return EXIT_OK, {"outcome": "STOP_CLEARED", "archived": str(archived), "latch_state": latch_state}
 
     def status(self) -> tuple[int, dict]:
-        return EXIT_OK, {"latch": self.state.read(self.state.latch), "last": self.state.read(self.state.last),
+        latch_state, latch = self.state.read_latch()
+        return EXIT_OK, {"latch_state": latch_state, "latch": latch, "last": self.state.read(self.state.last),
                          "multi_window_grant_status": MULTI_WINDOW_GRANT_STATUS, "windows_et": sorted(WINDOWS),
                          "grace_min": GRACE_MIN, "grant_token": WINDOW_TOKEN_HELP}
 

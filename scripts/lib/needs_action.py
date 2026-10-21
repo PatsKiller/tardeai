@@ -305,10 +305,17 @@ def read_release_window_state(root: Any = None) -> dict:
                               str(Path(state_root) / "data" / "runtime" / "release_window"))
     root = Path(root)
     out: dict[str, Any] = {"latch": None, "last": None}
-    for key, name in (("latch", "STOP.json"), ("last", "last.json")):
-        p = root / name
-        if p.exists():
-            out[key] = json.loads(p.read_text(encoding="utf-8"))     # unreadable -> raises -> source unavailable
+    latch = root / "STOP.json"
+    if os.path.lexists(latch):
+        # Present but unreadable is a STOP (the runner refuses REFUSED_STOP_UNREADABLE), never "no latch".
+        try:
+            body = json.loads(latch.read_text(encoding="utf-8"))
+            out["latch"] = body if isinstance(body, dict) else {"unreadable": f"not an object: {type(body).__name__}"}
+        except (OSError, ValueError) as exc:
+            out["latch"] = {"unreadable": f"{type(exc).__name__}: {str(exc)[:160]}"}
+    last = root / "last.json"
+    if last.exists():
+        out["last"] = json.loads(last.read_text(encoding="utf-8"))     # unreadable -> raises -> source unavailable
     return out
 
 
@@ -316,7 +323,12 @@ def rule_release_window(p: Any, now: datetime) -> list[dict]:
     p = p or {}
     items: list[dict] = []
     latch = p.get("latch")
-    if isinstance(latch, dict):
+    if isinstance(latch, dict) and "unreadable" in latch:
+        items.append(item("P1", "Release windows halted: STOP latch unreadable",
+                          f"STOP.json exists but cannot be read ({latch['unreadable']}); every window refuses "
+                          "(REFUSED_STOP_UNREADABLE) until the operator inspects it and runs clear-stop",
+                          R_SYSTEM_JOBS, "release_window", None, latch))
+    elif isinstance(latch, dict):
         items.append(item("P1", "Release windows halted: STOP latched",
                           f"window {latch.get('window_id')} ended {latch.get('outcome')} for candidate "
                           f"{str(latch.get('candidate') or '')[:9]}; every later window refuses until the operator "

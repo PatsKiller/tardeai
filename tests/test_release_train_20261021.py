@@ -444,3 +444,187 @@ def test_prepare_refuses_train_and_emergency_together(tmp_path):
     p = subprocess.run(["bash", str(root / "scripts" / "cio_phase2_exact_main_deploy.sh"), "prepare"],
                        env=env, capture_output=True, text=True, timeout=60)
     assert p.returncode != 0 and "both set" in p.stderr, p.stderr
+
+
+# ── 8. fail-closed STOP latch (Release Train v2 Phase 0, 2026-10-21) ─────────────────────────────
+
+def _damage_latch(state_root: Path, kind: str) -> Path:
+    state_root.mkdir(parents=True, exist_ok=True)
+    latch = state_root / "STOP.json"
+    if kind == "corrupt":
+        latch.write_text('{"latched_at": "2026-10-21T18:00:00Z", "outcome": "ROLLED_BA', encoding="utf-8")
+    elif kind == "non_object":
+        latch.write_text('["ROLLED_BACK"]', encoding="utf-8")
+    elif kind == "unreadable":
+        latch.write_text('{"outcome": "ROLLED_BACK"}', encoding="utf-8")
+        latch.chmod(0o000)
+    elif kind == "directory":
+        latch.mkdir()
+    else:
+        raise AssertionError(kind)
+    return latch
+
+
+@pytest.mark.parametrize("kind", ["corrupt", "non_object", "unreadable", "directory"])
+def test_unreadable_stop_latch_refuses_every_mutating_path(tmp_path, kind):
+    latch = _damage_latch(tmp_path / "state", kind)
+    try:
+        if kind == "unreadable" and os.access(latch, os.R_OK):
+            pytest.skip("running as a user that can read a mode-000 file (root)")
+        host = TrainHost(tmp_path)
+        r = train_runner(tmp_path, host)
+        code, body = r.run("1200")
+        assert code == RW.EXIT_REFUSED and body["outcome"] == "REFUSED_STOP_UNREADABLE", body
+        assert host.calls == [] and deploys(host) == [] and host.notified == []     # no prepare, no promote
+        code, body = r.plan("1200")
+        assert code == RW.EXIT_REFUSED and body["outcome"] == "REFUSED_STOP_UNREADABLE"
+        _, st = r.status()
+        assert st["latch_state"] == "UNREADABLE" and st["latch"]["error"]
+        items = NA.rule_release_window(NA.read_release_window_state(tmp_path / "state"),
+                                       NOON.astimezone(timezone.utc))
+        assert [i["severity"] for i in items] == ["P1"] and "unreadable" in items[0]["title"]
+    finally:
+        if latch.exists() and not latch.is_dir():
+            latch.chmod(0o600)
+
+
+def test_missing_latch_is_no_stop_and_readable_latch_is_stop(tmp_path):
+    r = train_runner(tmp_path, TrainHost(tmp_path))
+    assert r.state.read_latch() == ("ABSENT", None)
+    assert r.status()[1]["latch_state"] == "ABSENT"
+    (tmp_path / "state").mkdir()
+    (tmp_path / "state" / "STOP.json").write_text('{"outcome": "ROLLED_BACK"}', encoding="utf-8")
+    assert r.state.read_latch() == ("SET", {"outcome": "ROLLED_BACK"})
+    assert r.run("1200")[1]["outcome"] == "REFUSED_STOP_LATCHED"
+
+
+def test_clear_stop_archives_an_unreadable_latch(tmp_path):
+    _damage_latch(tmp_path / "state", "directory")
+    r = train_runner(tmp_path, TrainHost(tmp_path))
+    code, body = r.clear_stop("operator inspected the damaged latch")
+    assert body["outcome"] == "STOP_CLEARED" and body["latch_state"] == "UNREADABLE"
+    assert not (tmp_path / "state" / "STOP.json").exists()
+    assert list((tmp_path / "state" / "windows").glob("STOP-*.json.archived"))       # archived, not deleted
+    assert r.state.read_latch() == ("ABSENT", None)
+
+
+# ── 9. TRADEAI_RELEASE_TRAIN_SHA identifies, never authorizes ─────────────────────────────────────
+#
+# Audit (2026-10-21): the variable is read in exactly two deploy-script functions, git_sha (which SHA prepare
+# stamps) and require_head_is_origin_main (which ADDS checks: 40-hex, HEAD match, clean tree, first-parent of
+# origin/main, exact-SHA CI green, never with the emergency SHA). The release-write binding (prepare and both
+# promote calls), conformance and promote's CI re-query never read it. release_window.py only refuses it from
+# its own environment (GUARDED_ENV) and sets it for a fallback candidate it already qualified.
+
+REAL_PY_SHIM = r"""#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FAKE_LOG"
+case " $* " in
+  *" --ci-only "*) exit "${FAKE_CI_RC:-2}" ;;
+esac
+if [[ "$*" == *release_grant_preflight.py* ]]; then exec "$REAL_PY" "$@"; fi
+exit 0
+"""
+
+
+def _real_binding_sandbox(tmp_path, grants: dict):
+    """The deploy sandbox, but the release-write binding is the REAL preflight against a tmp grant ledger."""
+    root, env, log, new, rel = _deploy_sandbox(tmp_path)
+    canonical = Path(env["CANONICAL_SOURCE"])
+    (canonical / "scripts" / "lib").mkdir(parents=True, exist_ok=True)
+    shutil.copy2(ROOT / "scripts" / "release_grant_preflight.py", canonical / "scripts")
+    shutil.copy2(ROOT / "scripts" / "lib" / "release_grant_binding.py", canonical / "scripts" / "lib")
+    (canonical / "scripts" / "lib" / "__init__.py").write_text("", encoding="utf-8")
+    shim = Path(env["VENV_PYTHON"])
+    shim.write_text(REAL_PY_SHIM, encoding="utf-8")
+    shim.chmod(0o755)
+    _write_grants(tmp_path, grants)
+    env.update(REAL_PY=sys.executable, TRADEAI_GUARD_GRANTS_PATH=str(tmp_path / "grants.json"),
+               TRADEAI_GUARD_REQUESTS_PATH=str(tmp_path / "no-requests.json"))
+    return root, env, log, new, rel
+
+
+def _write_grants(tmp_path, grants: dict):
+    import json as _json
+
+    (tmp_path / "grants.json").write_text(_json.dumps(grants), encoding="utf-8")
+
+
+def _run_deploy(root, env, *args):
+    return subprocess.run(["bash", str(root / "scripts" / "cio_phase2_exact_main_deploy.sh"), *args],
+                          env=env, capture_output=True, text=True, timeout=120)
+
+
+def _grant_naming(text):
+    return {"release-write": {"expires": 99999999999, "uses": 3, "grant_id": "g-test", "reason": text}}
+
+
+def test_train_sha_with_no_grant_is_refused_at_prepare(tmp_path):
+    root, env, log, _new, _rel = _real_binding_sandbox(tmp_path, {})
+    c1, c2, side, head = _train_repo(tmp_path, root)
+    _git(root, "checkout", "-q", "--detach", c2)
+    env.update(TRADEAI_RELEASE_TRAIN_SHA=c2, FAKE_CI_RC="0")          # qualified commit, CI green, NO grant
+    p = _run_deploy(root, env, "prepare")
+    assert p.returncode != 0 and "release grant binding refused prepare of " + c2 in p.stderr, p.stderr
+    assert '"allowed": false' in p.stdout and "PREPARE OK" not in p.stdout
+
+
+def test_train_sha_with_a_grant_for_another_release_is_refused(tmp_path):
+    root, env, log, _new, _rel = _real_binding_sandbox(
+        tmp_path, _grant_naming("Operator: release PR #1906 sha 7faa8cddf37c prepare promote"))
+    c1, c2, side, head = _train_repo(tmp_path, root)
+    _git(root, "checkout", "-q", "--detach", c2)
+    env.update(TRADEAI_RELEASE_TRAIN_SHA=c2, FAKE_CI_RC="0")
+    p = _run_deploy(root, env, "prepare")
+    assert p.returncode != 0 and "release grant binding refused prepare" in p.stderr, p.stderr
+
+
+@pytest.mark.parametrize("which,ci_rc,needle", [
+    ("c2", "2", "exact-SHA CI is not green"),
+    ("side", "0", "not on origin/main's first-parent history"),
+])
+def test_train_sha_with_a_valid_grant_still_needs_green_ci_and_first_parent(tmp_path, which, ci_rc, needle):
+    root, env, log, _new, _rel = _real_binding_sandbox(tmp_path, {})
+    c1, c2, side, head = _train_repo(tmp_path, root)
+    sha = {"c2": c2, "side": side}[which]
+    _write_grants(tmp_path, _grant_naming(f"release sha {sha} prepare promote"))
+    _git(root, "checkout", "-q", "--detach", sha)
+    env.update(TRADEAI_RELEASE_TRAIN_SHA=sha, FAKE_CI_RC=ci_rc)
+    p = _run_deploy(root, env, "prepare")
+    assert p.returncode != 0 and needle in p.stderr, p.stderr
+    assert not [c for c in _calls(log) if "--action prepare" in c]     # refused before the binding is consulted
+
+
+@pytest.mark.parametrize("grant_named,ci_rc,needle", [
+    (False, "0", "release grant binding refused promote"),
+    (True, "2", "activation refused"),
+])
+def test_train_sha_in_the_environment_does_not_relax_promote(tmp_path, grant_named, ci_rc, needle):
+    # promote never reads the variable: binding (before CI), conformance and the exact-SHA CI re-query all run.
+    root, env, log, new, rel = _real_binding_sandbox(tmp_path, {})
+    if grant_named:
+        _write_grants(tmp_path, _grant_naming(f"release sha {HEAD} prepare promote"))
+    env.update(TRADEAI_RELEASE_TRAIN_SHA=HEAD, FAKE_CI_RC=ci_rc)
+    p = _run_deploy(root, env, "promote", str(new))
+    assert p.returncode != 0 and needle in p.stderr, p.stderr
+    assert os.readlink(rel / "CURRENT").endswith("prev")
+
+
+def test_train_sha_is_read_only_by_git_sha_and_require_head():
+    """Static audit: no other function of the deploy script reads TRAIN_SHA / TRADEAI_RELEASE_TRAIN_SHA."""
+    import re as _re
+
+    text = (ROOT / "scripts" / "cio_phase2_exact_main_deploy.sh").read_text(encoding="utf-8")
+    func = None
+    readers = set()
+    for line in text.splitlines():
+        m = _re.match(r"^([a-z_]+)\(\) *\{", line)
+        if m:
+            func = m.group(1)
+        code = line.split("#", 1)[0]
+        if _re.search(r"\$\{?TRAIN_SHA|TRADEAI_RELEASE_TRAIN_SHA:-", code):
+            readers.add(func)
+        if line.startswith("}") or (m and line.rstrip().endswith("}")):
+            func = None
+    assert readers == {None, "git_sha", "require_head_is_origin_main"}, readers     # None = the one assignment
+    rw = (ROOT / "scripts" / "release_window.py").read_text(encoding="utf-8")
+    assert rw.count('"TRADEAI_RELEASE_TRAIN_SHA"') == 2       # GUARDED_ENV (refuse from outside) + deploy_env (set)

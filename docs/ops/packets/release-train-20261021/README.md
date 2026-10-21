@@ -291,7 +291,74 @@ evidence, and both are operator decisions (§17). Expected main CI: about 7 min 
 5. Use `gh pr merge --auto --merge` for green PRs. Optionally apply the CI split (§6), then switch the required
    context.
 
-## 9. Not done, deliberately
+## 9. Phase 0 rules (Release Train v2, approved 2026-10-21)
+
+### 9.1 The STOP latch fails closed
+
+- If `release_window/STOP.json` is **missing**, there is no STOP.
+- If it is **present but unreadable**, that is a STOP. Unreadable covers:
+  - corrupt JSON;
+  - a non-object value;
+  - permission denied;
+  - a directory in its place.
+
+`State.read_latch()` returns `ABSENT`, `SET` or `UNREADABLE`.
+- `run` and `plan` refuse with `REFUSED_STOP_UNREADABLE`, exit 2. Nothing is prepared, promoted or sent.
+- `status` reports `latch_state: UNREADABLE` with the read error.
+- Needs-action shows a P1 item, "Release windows halted: STOP latch unreadable".
+- `clear-stop` archives whatever is at the path, by rename; it never deletes.
+
+Before this change, `State.read` returned `None` for a damaged latch, so it read as "no STOP".
+
+Tests: `test_unreadable_stop_latch_refuses_every_mutating_path` (corrupt, non_object, unreadable mode 000,
+directory), `test_missing_latch_is_no_stop_and_readable_latch_is_stop`,
+`test_clear_stop_archives_an_unreadable_latch`. Against `58bf60cf3`: 6 failed. After this change: 54 passed.
+
+### 9.2 `TRADEAI_RELEASE_TRAIN_SHA` identifies a commit; it never authorizes one
+
+The variable only says which already-qualified commit `prepare` stamps. Setting it never skips the release-write
+grant binding, the exact-SHA CI check or the conformance gate. It never widens the set of commits that can be
+released.
+
+**Audit (`58bf60cf3`).**
+
+`scripts/cio_phase2_exact_main_deploy.sh` reads the variable in exactly two functions:
+- `git_sha` uses it to choose the SHA.
+- `require_head_is_origin_main` only **adds** refusals. It refuses unless all of these hold:
+  - the value is 40 hex characters;
+  - HEAD is that SHA;
+  - the tree is clean;
+  - the SHA is on a freshly fetched origin/main's first-parent chain;
+  - its exact-SHA CI is green;
+  - the emergency SHA is not also set.
+
+`cmd_prepare` then still runs the release-write binding on that SHA.
+
+`cmd_promote` never reads the variable. Its sequence is the same with or without it:
+1. it reads `BUILD_SHA`;
+2. it runs the binding with `--no-consume`;
+3. it runs conformance;
+4. it re-queries exact-SHA CI;
+5. it runs the consuming binding.
+
+`scripts/release_window.py` handles it in two places only:
+- `GUARDED_ENV` refuses to start when the variable is set from outside.
+- `deploy_env` sets it only for a fallback candidate the runner already qualified, with all three required checks
+  `success` on that exact SHA.
+
+**Tests.** Each runs the real `release_grant_preflight.py` binding against a tmp grant ledger and a tmp git repo:
+
+| Test | What it proves |
+|---|---|
+| `test_train_sha_with_no_grant_is_refused_at_prepare` | A qualified, green, first-parent commit with **no grant** is refused. |
+| `test_train_sha_with_a_grant_for_another_release_is_refused` | A grant naming another PR or SHA does not cover the train SHA. |
+| `test_train_sha_with_a_valid_grant_still_needs_green_ci_and_first_parent` | **CI red** is refused, and so is a **side-branch commit** not on main's first-parent chain. Both are refused before the binding is consulted. |
+| `test_train_sha_in_the_environment_does_not_relax_promote` | promote with the variable set is refused for no grant, and for CI red. |
+| `test_train_sha_is_read_only_by_git_sha_and_require_head` | Static audit: no other deploy function reads the variable, and `release_window.py` names it exactly twice. |
+
+The audit found no gap, so no code change was needed for 9.2. All of these tests also pass against `58bf60cf3`.
+
+## 10. Not done, deliberately
 
 No push, release, grant, promote, crontab, systemd, n8n or GitHub-setting change. No `AGENTS.md` or adapter edit;
 the policy text is in §4.4 only. The `lane_registry.json` row stays `NEVER_SCHEDULED` until the timer is installed.
