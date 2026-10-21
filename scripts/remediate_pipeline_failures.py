@@ -168,7 +168,11 @@ def close_unrecovered_orchestrator(note: str = "health recovery after rate-limit
             (
                 run_id,
                 json.dumps({
-                    "rows_produced": 0,
+                    # Bookkeeping, not a run: it measured nothing, so null (not
+                    # measured), never 0. Its 0s were the only explicit
+                    # rows_produced values under trade_ai_orchestrator and fired
+                    # pipeline_zero_rows ("produced NOTHING") on 2026-10-21.
+                    "rows_produced": None,
                     "note": note,
                     "errors": [],
                     "recovery": True,

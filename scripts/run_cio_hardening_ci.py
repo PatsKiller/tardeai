@@ -5436,6 +5436,16 @@ GATES = [
         "a1a_release_dir_20261021",
         ["tests/test_a1a_release_dir_20261021.py"],
     ),
+    (
+        # ANCHOR: ORCH_ROWS_PRODUCED_20261021 — alert "produced NOTHING while reporting success:
+        # trade_ai_orchestrator -- 27 runs with rows_produced=0": the orchestrator never called
+        # PipelineRun.rows() (235 successes/7d all null) and the only explicit counts were
+        # remediate_pipeline_failures' synthetic health_recovery rows writing 0, while trade_ai_scans
+        # and strategy_signals were being written. db_persist now records committed trade_ai_scans rows
+        # and __main__ reports them; the synthetic row writes null. Hermetic: no DB.
+        "orchestrator_rows_produced_20261021",
+        ["tests/test_orchestrator_rows_produced_20261021.py"],
+    ),
 ]
 
 
