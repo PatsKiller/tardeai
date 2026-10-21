@@ -135,8 +135,8 @@ def _deletes(t: _Table) -> int:
 # ── registry ─────────────────────────────────────────────────────────────────────────────────
 def test_every_delete_row_archives_first_except_the_declared_holds():
     rows = [r for r in REG["policies"] if r["class"] == "DELETE"]
-    assert len(rows) == 96
-    off = {r["table"] for r in rows if r.get("archive_first") is not True}
+    assert len(rows) == 97  # 2026-10-21: + market_movers (D4.3, archive_first)
+    off ={r["table"] for r in rows if r.get("archive_first") is not True}
     assert off == HOLDS
     for r in rows:
         if r["table"] in HOLDS:
@@ -147,8 +147,9 @@ def test_enforced_policies_route_rows_through_archive_first():
     import db_retention as dr
 
     enforced = dr.enforced_policies(REG)
-    assert len(enforced) == 125
-    assert sum(1 for *_x, af in enforced if af) == 122  # 93 DELETE + 29 ARCHIVE_THEN_DELETE
+    # 2026-10-21 (registry-owned retention, D4.3): + market_movers (DELETE 7 d, archive_first) -> 126 / 123.
+    assert len(enforced) == 126
+    assert sum(1 for *_x, af in enforced if af) == 123  # 94 DELETE + 29 ARCHIVE_THEN_DELETE
     assert {t for t, _c, _d, af in enforced if not af} == HOLDS
 
 
@@ -156,7 +157,8 @@ def test_archive_cap_and_file_prune_rows_are_declared():
     assert REG["archive_growth_cap_gb_month"] == 2.0
     assert REG["archive_total_budget_gb"] > 0
     fp = {r["id"]: r for r in REG["file_prune"]}
-    assert set(fp) == {"raw_snapshots", "ticker_snapshot_history", "ingestion_summaries", "catalyst_cache"}
+    # 2026-10-21 (operator D8.6): the dead ingestion_summaries glob (0 matches) is removed.
+    assert set(fp) == {"raw_snapshots", "ticker_snapshot_history", "catalyst_cache"}
     assert all(r["archive"] is True for r in fp.values())
 
 
@@ -475,7 +477,8 @@ def test_legacy_file_prune_without_registry_rows_stays_unarchived():
 
     rows = dr.file_prune_policies({"policies": []})
     assert len(rows) == 4 and all(r["archive"] is False for r in rows)
-    assert {r["id"] for r in dr.file_prune_policies(REG)} == {r["id"] for r in rows}
+    # 2026-10-21 (operator D8.6): the registry drops the dead ingestion_summaries glob the legacy list still names.
+    assert {r["id"] for r in dr.file_prune_policies(REG)} == {r["id"] for r in rows} - {"ingestion_summaries"}
 
 
 class _ProjCur:

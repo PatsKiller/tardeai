@@ -242,6 +242,12 @@ def test_finviz_frozen_cron_argv_and_receipt(state, monkeypatch, capsys):
     old_snapshot = mod.SNAP.read_bytes()
     conn.calls.clear()
     assert mod.main([]) == 0
+    # 2026-10-21 (operator D4.3, registry-owned retention): the frozen entrypoint's inline 7 d market_movers delete
+    # (and the commit after it) is retired -- db_retention owns the table, archive-first. Everything else is equal.
+    i = next(n for n, c in enumerate(old_calls) if isinstance(c, tuple) and str(c[0]).startswith("DELETE FROM market_movers"))
+    assert old_calls[i + 1] == "commit"
+    old_calls = old_calls[:i] + old_calls[i + 2:]
+    assert not [c for c in conn.calls if isinstance(c, tuple) and str(c[0]).startswith("DELETE")]
     assert conn.calls == old_calls
     assert capsys.readouterr().out == old_stdout
     assert mod.SNAP.read_bytes() == old_snapshot

@@ -446,12 +446,15 @@ def test_dry_run_on_a_database_without_the_audit_table(tune_env, capsys, monkeyp
 #: The statement sequence (verb + first table) each historical flag combination executes, measured on the
 #: pre-split script (origin/main 57d8fc3ff, the code the cron line runs today) against these fakes. The split
 #: must reproduce it exactly: the cron line (--apply) and every other existing combination are unchanged.
+#: 2026-10-21 (operator D4.2 / D5.4, registry-owned retention): the self-purges of hermes_score_history and
+#: hermes_external_research are retired (db_retention is their one owner), so those two DELETEs are gone; every other
+#: statement and its order is unchanged.
 HISTORICAL = {
     ("--apply",): [
         "CREATE hermes_autotune_audit", "SELECT hermes_weight_calibration", "SELECT hermes_autotune_audit",
         "SELECT hermes_weight_calibration", "INSERT hermes_autotune_audit", "UPDATE hermes_advisory_events",
-        "UPDATE hermes_embedding_queue", "DELETE hermes_embedding_queue", "DELETE hermes_score_history",
-        "DELETE hermes_research_intelligence", "DELETE hermes_external_research", "SELECT to_regclass",
+        "UPDATE hermes_embedding_queue", "DELETE hermes_embedding_queue",
+        "DELETE hermes_research_intelligence", "SELECT to_regclass",
         "DELETE watchlist_research_results", "SELECT to_regclass", "DELETE watchlist_research_queue",
         "SELECT to_regclass", "DELETE proposal_research_packets", "INSERT hermes_autotune_audit",
     ],
@@ -461,8 +464,8 @@ HISTORICAL = {
     ],
     ("--purge", "--apply"): [
         "CREATE hermes_autotune_audit", "UPDATE hermes_advisory_events", "UPDATE hermes_embedding_queue",
-        "DELETE hermes_embedding_queue", "DELETE hermes_score_history", "DELETE hermes_research_intelligence",
-        "DELETE hermes_external_research", "SELECT to_regclass", "DELETE watchlist_research_results",
+        "DELETE hermes_embedding_queue", "DELETE hermes_research_intelligence",
+        "SELECT to_regclass", "DELETE watchlist_research_results",
         "SELECT to_regclass", "DELETE watchlist_research_queue", "SELECT to_regclass",
         "DELETE proposal_research_packets", "INSERT hermes_autotune_audit",
     ],

@@ -53,11 +53,17 @@ def test_r04_catalyst_children_are_deleted_before_the_parent(monkeypatch):
     monkeypatch.setattr(g, "_company_description", lambda *a, **k: "", raising=False)
     cur = _Cur([(42, "Pasqal quantum start-up", "")])
     conn = _Conn(cur)
+    # 2026-10-21 (registry-owned retention, D3.3): the deletes are archive-first through _archived_delete
+    # (lib.retention_archive.managed_purge); the child-before-parent order is what this test pins.
+    calls = []
+    monkeypatch.setattr(g, "_archived_delete", lambda c, table, ids, **k: calls.append((table, list(ids))) or len(ids))
+    monkeypatch.setattr(g, "_impact_ids", lambda c, cids: [7] if cids == [42] else [])
     out = g.purge_mismatched_for_symbol(conn, "MRLN", apply=True, auto_commit=True)
     assert out["catalyst_removed"] == 1
-    deletes = [s for s, _ in cur.sql if s.startswith("DELETE")]
-    assert deletes[0].startswith("DELETE FROM catalyst_symbol_impact WHERE catalyst_event_id=")
-    assert deletes[1].startswith("DELETE FROM catalyst_events WHERE id=")
+    assert not [s for s, _ in cur.sql if s.startswith("DELETE")]
+    tables = [t for t, ids in calls if ids]
+    assert tables == ["catalyst_symbol_impact", "catalyst_events"]
+    assert calls[-1] == ("catalyst_events", [42])
     assert conn.commits == 1
 
 

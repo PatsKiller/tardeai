@@ -56,7 +56,10 @@ LOW_CONFIDENCE = 0.35
 
 CURATOR_CREATORS = frozenset({"think_tank", "sector_universe"})
 RETENTION_DIRECTIVE_DAYS = 60
-RETENTION_RESEARCH_DAYS = 45
+#: 2026-10-21 (operator D5.2): archived hermes_research_intelligence rows follow the librarian policy, 180 d by
+#: created_at (config/hermes_librarian_policy.yaml archived_purge_days); it was 45 d by updated_at, which made
+#: the effective window 45 d. tests/test_retention_registry_owned_20261021.py pins the two together.
+RETENTION_RESEARCH_DAYS = 180
 RETENTION_STAGING_DAYS = 14
 RETENTION_FINDING_DAYS = 30
 #: Rows one retention pass may archive+delete per table. The purge was blocked by a foreign-key error from
@@ -566,7 +569,7 @@ def retention_purge(conn, *, apply: bool, archive: bool = True) -> dict:
                       max_rows=RETENTION_MAX_ROWS_PER_PASS)
     purged["directives"] = r["deleted"] if apply else r["eligible"]
     r = managed_purge(conn, table="hermes_research_intelligence", label=f"archived_{RETENTION_RESEARCH_DAYS}d",
-                      where_sql="t.status='archived' AND t.updated_at < NOW() - %s * INTERVAL '1 day'"
+                      where_sql="t.status='archived' AND t.created_at < NOW() - %s * INTERVAL '1 day'"
                                 + _unreferenced("hermes_research_intelligence"),
                       params=(RETENTION_RESEARCH_DAYS,), writer=w, apply=apply, archive=archive,
                       max_rows=RETENTION_MAX_ROWS_PER_PASS)

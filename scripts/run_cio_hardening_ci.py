@@ -4828,6 +4828,20 @@ GATES = [
         ["tests/test_retention_all_managed_20261011.py"],
     ),
     (
+        # ANCHOR: RETENTION_REGISTRY_OWNED — operator rulings 2026-10-21 ("approve all archive-first conversions, remove
+        # duplicate/rogue deleters, standardize on registry-owned retention"): options_chain_snapshots 45 d ATD with
+        # the inline deletes removed (D3.1); youtube / news guard / RSS stubs / reports purge archive-first (D3.2-3.5);
+        # health_agent, score-history thinning, finviz movers and two self-tune purges retired to db_retention
+        # (D4.1-4.3, D5.4); siem alert_events 30 d, research critique 180 d created_at (D5.1-5.2); log heads, release-
+        # local data, portfolio reports and scalp receipts archived before removal (D8.1, D8.3-8.5); dead file_prune
+        # row gone (D8.6); check_retention_policy rule 10 (a RETIRED owner must not delete).
+        "retention_registry_owned_20261021",
+        [
+            "tests/test_retention_registry_owned_20261021.py",
+            "tests/test_research_critique_pipeline.py",
+        ],
+    ),
+    (
         # Cron crash fixes (operator 2026-10-09: "fix the broken cron jobs"): failed --user units detected,
         # econfirm finds gog outside cron PATH, disarmed retries not counted as retried, bridge refusal code kept
         # in 503 errors, alert-quality registry row matches the host.

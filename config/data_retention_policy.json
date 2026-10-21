@@ -648,7 +648,7 @@
    "window_days": null,
    "archive": false,
    "owner": "hermes",
-   "reason": "hermes librarian: staged 90 d → archived → purged 180 d",
+   "reason": "hermes librarian: staged 90 d \u2192 archived \u2192 purged 180 d",
    "since": "2026-10-07"
   },
   {
@@ -814,6 +814,17 @@
    "archive_first": true
   },
   {
+   "table": "market_movers",
+   "ts_column": "captured_at",
+   "class": "DELETE",
+   "window_days": 7,
+   "archive": false,
+   "owner": "platform",
+   "reason": "Finviz signal-board captures (every 15 min, 06-16 M-F). 2026-10-21 operator D4.3: was deleted at 7 d inline by finviz_market_movers.py with no archive and no registry row; db_retention now owns it, archive-first",
+   "since": "2026-10-21",
+   "archive_first": true
+  },
+  {
    "table": "market_ohlcv_bars",
    "ts_column": "bar_time",
    "class": "ARCHIVE_THEN_DELETE",
@@ -844,7 +855,7 @@
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
    "since": "2026-10-07",
    "archive_first": false,
-   "archive_first_hold": "OVER_CAP: projected 0.19 GB/month archived (~94k rows/day of quote churn, 66 B/row gz) — the largest non-embedding row; operator decision (packets/retention-all-managed/OPERATOR_DECISION.md D1)"
+   "archive_first_hold": "OVER_CAP: projected 0.19 GB/month archived (~94k rows/day of quote churn, 66 B/row gz) \u2014 the largest non-embedding row; operator decision (packets/retention-all-managed/OPERATOR_DECISION.md D1)"
   },
   {
    "table": "narrative_subjects",
@@ -882,11 +893,11 @@
    "table": "options_chain_snapshots",
    "ts_column": "captured_at",
    "class": "ARCHIVE_THEN_DELETE",
-   "window_days": 365,
+   "window_days": 45,
    "archive": true,
    "owner": "options",
-   "reason": "chain snapshots; 1 y hot",
-   "since": "2026-10-07"
+   "reason": "chain snapshots (vol surface summary); 45 d hot, archived before delete. 2026-10-21 operator D3.1: was 365 d here while options_desk_enterprise deleted at 45 d inline with no archive; the inline deletes are removed, db_retention is the one owner",
+   "since": "2026-10-21"
   },
   {
    "table": "overnight_actionable_outcomes",
@@ -1059,7 +1070,7 @@
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
    "since": "2026-10-07",
    "archive_first": false,
-   "archive_first_hold": "BROKER-ADJACENT: Schwab stream table, out of scope without an execution grant (AGENTS §0 rule 2); hard DELETE 7 d unchanged; operator decision D2"
+   "archive_first_hold": "BROKER-ADJACENT: Schwab stream table, out of scope without an execution grant (AGENTS \u00a70 rule 2); hard DELETE 7 d unchanged; operator decision D2"
   },
   {
    "table": "schwab_stream_quotes",
@@ -1071,7 +1082,7 @@
    "reason": "inherited from db_retention.POLICIES (2026-10-07 registry seed)",
    "since": "2026-10-07",
    "archive_first": false,
-   "archive_first_hold": "BROKER-ADJACENT: Schwab stream table, out of scope without an execution grant (AGENTS §0 rule 2); hard DELETE 7 d unchanged; operator decision D2"
+   "archive_first_hold": "BROKER-ADJACENT: Schwab stream table, out of scope without an execution grant (AGENTS \u00a70 rule 2); hard DELETE 7 d unchanged; operator decision D2"
   },
   {
    "table": "scope_governor_audit",
@@ -1459,8 +1470,8 @@
    "window_days": null,
    "archive": false,
    "owner": "research",
-   "reason": "monthly purge_after cron (0 3 1 * *) owns this table",
-   "since": "2026-10-07"
+   "reason": "purge_youtube_transcripts.py (monthly platform-maintenance step) owns this table by purge_after, archive-first since 2026-10-21 (operator D3.2); the inline crontab purge line is retired by the operator",
+   "since": "2026-10-21"
   },
   {
    "table": "enrichment_log",
@@ -1511,7 +1522,7 @@
    "window_days": null,
    "archive": false,
    "owner": "platform",
-   "reason": "pruned by scripts/prune_document_mentions.py (nightly maintenance step 10) per SOURCE table window — a mention outlives nothing its source row outlives; 249,765 rows, 172 MB; hygiene UNCOVERED_TABLE",
+   "reason": "pruned by scripts/prune_document_mentions.py (nightly maintenance step 10) per SOURCE table window \u2014 a mention outlives nothing its source row outlives; 249,765 rows, 172 MB; hygiene UNCOVERED_TABLE",
    "since": "2026-10-08"
   },
   {
@@ -1528,7 +1539,7 @@
  ],
  "archive_growth_cap_gb_month": 2.0,
  "archive_total_budget_gb": 25.0,
- "archive_policy_note": "2026-10-11 retention-all-managed (operator: 'Add, enable, and manage all deletes and purges'): every DELETE row archives first (archive_first true) except the rows carrying archive_first_hold. Projection at 2026-10-11 09:51 ET (db_retention.py --archive-projection, read-only): archive-first rows total ~1.96 GB/month against archive_growth_cap_gb_month 2.0 (content_embeddings alone ~1.57). report_db_hygiene raises ARCHIVE_GROWTH when the last-30-day archive rate exceeds the cap or the archive exceeds archive_total_budget_gb. Archives are never deleted by any job; an off-box copy is an operator decision (AGENTS §17).",
+ "archive_policy_note": "2026-10-11 retention-all-managed (operator: 'Add, enable, and manage all deletes and purges'): every DELETE row archives first (archive_first true) except the rows carrying archive_first_hold. Projection at 2026-10-11 09:51 ET (db_retention.py --archive-projection, read-only): archive-first rows total ~1.96 GB/month against archive_growth_cap_gb_month 2.0 (content_embeddings alone ~1.57). report_db_hygiene raises ARCHIVE_GROWTH when the last-30-day archive rate exceeds the cap or the archive exceeds archive_total_budget_gb. Archives are never deleted by any job; an off-box copy is an operator decision (AGENTS \u00a717).",
  "file_prune": [
   {
    "id": "raw_snapshots",
@@ -1553,17 +1564,6 @@
    "since": "2026-10-11"
   },
   {
-   "id": "ingestion_summaries",
-   "dir": "data/logs",
-   "pattern": "ingestion_summary_*.json",
-   "days": 7,
-   "archive": true,
-   "class": "LOG",
-   "owner": "db_retention",
-   "reason": "inherited FILE_PRUNE glob (db_retention.py); ingestion run summaries; archive-then-unlink since 2026-10-11",
-   "since": "2026-10-11"
-  },
-  {
    "id": "catalyst_cache",
    "dir": "data",
    "pattern": "catalyst_cache_*.json",
@@ -1585,9 +1585,9 @@
    "kind": "DB_PURGE",
    "targets": "every DELETE / ARCHIVE_THEN_DELETE row of policies[] + file_prune[]",
    "scheduler": "systemd tradeai-platform-maintenance-nightly.timer 01:15 (CURRENT) -- the ONLY scheduler (D6 2026-10-21: the Sun 06:30 weekly disk cleanup's dev-tree db_retention step was removed)",
-   "archive": "archive_first per row (93 of 96 DELETE rows + all 29 ARCHIVE_THEN_DELETE); file_prune archive-then-unlink",
+   "archive": "archive_first per row (all DELETE rows except the 3 archive_first_hold rows + every ARCHIVE_THEN_DELETE row); file_prune archive-then-unlink",
    "state": "MANAGED",
-   "note": "the one owner of table age rails"
+   "note": "the one owner of table age rails; 2026-10-21 (registry-owned retention): sole owner of options_chain_snapshots (45 d), health_agent_snapshots, hermes_score_history, hermes_external_research and market_movers"
   },
   {
    "id": "retention_archive_lib",
@@ -1620,11 +1620,11 @@
     "scripts/siem_retention_purge.py"
    ],
    "kind": "DB_PURGE",
-   "targets": "system_health_events, alert_events created_at >14 d",
+   "targets": "system_health_events created_at >14 d (--days); alert_events at the registry's window (30 d, read from policies[])",
    "scheduler": "systemd tradeai-platform-maintenance-nightly.timer 01:15 (CURRENT)",
    "archive": "archive_first (managed_purge; --no-archive lever)",
    "state": "MANAGED",
-   "note": "alert_events window 14 d here vs 30 d in policies[] -- effective 14 d; OPERATOR_DECISION D5"
+   "note": "2026-10-21 operator D5.1: alert_events aligned to the registry's 30 d (was 14 d here)"
   },
   {
    "id": "prune_protection_proposals_retention",
@@ -1644,11 +1644,11 @@
     "scripts/research_critique_pipeline.py"
    ],
    "kind": "DB_PURGE",
-   "targets": "watch_directives curator-archived >60 d; hermes_research_intelligence archived (updated_at) >45 d; hermes_directive_hits_staging drained >14 d",
+   "targets": "watch_directives curator-archived >60 d; hermes_research_intelligence archived (created_at) >180 d; hermes_directive_hits_staging drained >14 d",
    "scheduler": "cron */15 hermes_coordinator -> hermes_research_curator.py --apply",
    "archive": "archive_first (managed_purge); dry run now counts only",
    "state": "MANAGED",
-   "note": "45 d research window conflicts with the librarian's 180 d; OPERATOR_DECISION D5"
+   "note": "2026-10-21 operator D5.2: archived research follows the librarian policy (180 d, created_at); was 45 d by updated_at"
   },
   {
    "id": "hermes_self_tune_purge",
@@ -1656,11 +1656,11 @@
     "scripts/hermes_autonomous_self_tune.py"
    ],
    "kind": "DB_PURGE",
-   "targets": "hermes_embedding_queue failed >7 d; hermes_score_history >30 d; hermes_research_intelligence rejected/superseded/expired >180 d; hermes_external_research >180 d; dead tables (archived DELETE replaces TRUNCATE)",
+   "targets": "hermes_embedding_queue failed >7 d; hermes_research_intelligence rejected/superseded/expired >180 d; dead tables (archived DELETE replaces TRUNCATE)",
    "scheduler": "stage manifest config/pipelines/hermes_learning.json (tune) + after_close.json",
    "archive": "archive_first (managed_purge)",
    "state": "MANAGED",
-   "note": "score_history and external_research windows are looser than db_retention's (21 d / ATD 90 d), so in practice db_retention deletes first"
+   "note": "2026-10-21 operator D4.2/D5.4: the hermes_score_history and hermes_external_research purges are retired (counters stay 0); db_retention owns both tables"
   },
   {
    "id": "comms_lifecycle",
@@ -1716,11 +1716,11 @@
     "scripts/options_desk_enterprise.py"
    ],
    "kind": "DB_PURGE",
-   "targets": "options_chain_snapshots captured_at >45 d (inline per persist + options_iv_snapshot.py cron 15:45)",
-   "scheduler": "cron 45 15 * * 1-5 + API persist",
-   "archive": "none",
-   "state": "UNARCHIVED_DECISION",
-   "note": "policies[] says ARCHIVE_THEN_DELETE 365 d; this 45 d delete runs first so the archive never sees a row. D3"
+   "targets": "none since 2026-10-21 (options_chain_snapshots is owned by db_retention, ARCHIVE_THEN_DELETE 45 d)",
+   "scheduler": "cron 45 15 * * 1-5 (options_iv_snapshot.py still calls the retired prune_chain_snapshots: a no-op) + API persist",
+   "archive": "n/a (deletes nothing)",
+   "state": "RETIRED",
+   "note": "2026-10-21 operator D3.1: both inline 45 d deletes removed (persist_chain_snapshot and prune_chain_snapshots)"
   },
   {
    "id": "health_agent_snapshot_prune",
@@ -1728,11 +1728,11 @@
     "scripts/health_agent.py"
    ],
    "kind": "DB_PURGE",
-   "targets": "health_agent_snapshots captured_at >90 d",
+   "targets": "none since 2026-10-21 (health_agent_snapshots is owned by db_retention, DELETE 30 d archive_first)",
    "scheduler": "systemd tradeai-health-agent.timer",
-   "archive": "none",
-   "state": "DEFERS_IN_PRACTICE",
-   "note": "db_retention archives+deletes at 30 d first; this 90 d delete matches nothing. D4 (remove it)"
+   "archive": "n/a (deletes nothing)",
+   "state": "RETIRED",
+   "note": "2026-10-21 operator D4.1: persist()'s 90 d inline delete removed"
   },
   {
    "id": "finviz_market_movers_prune",
@@ -1740,11 +1740,11 @@
     "scripts/finviz_market_movers.py"
    ],
    "kind": "DB_PURGE",
-   "targets": "market_movers captured_at >7 d",
+   "targets": "none since 2026-10-21 (market_movers is owned by db_retention, DELETE 7 d archive_first)",
    "scheduler": "cron */15 06-16 M-F",
-   "archive": "none",
-   "state": "UNARCHIVED_DECISION",
-   "note": "table has no policies[] row. D4 (register + defer to db_retention)"
+   "archive": "n/a (deletes nothing)",
+   "state": "RETIRED",
+   "note": "2026-10-21 operator D4.3: registry row added, inline 7 d delete removed"
   },
   {
    "id": "hermes_score_history_retention",
@@ -1752,11 +1752,11 @@
     "scripts/hermes_score_history_retention.py"
    ],
    "kind": "DB_PURGE",
-   "targets": "hermes_score_history >21 d thinned to hourly",
+   "targets": "none since 2026-10-21 (hermes_score_history is owned by db_retention, DELETE 21 d archive_first)",
    "scheduler": "stage manifest config/pipelines/hermes_learning.json",
-   "archive": "none",
-   "state": "DEFERS_IN_PRACTICE",
-   "note": "db_retention archives+deletes everything >21 d; third owner of the table. D4"
+   "archive": "n/a (deletes nothing)",
+   "state": "RETIRED",
+   "note": "2026-10-21 operator D4.2: thinning retired; the script only counts. The manifest step id stays (the deployed n8n fabric workflow names it); lane registry row hermes-score-history-retention RETIRED"
   },
   {
    "id": "prune_document_mentions",
@@ -1778,10 +1778,10 @@
    ],
    "kind": "DB_PURGE",
    "targets": "youtube_transcripts purge_after < today",
-   "scheduler": "monthly pipeline tradeai-platform-maintenance-monthly.timer AND live crontab line 28 (inline python, reads .env) -- two schedulers",
-   "archive": "none",
-   "state": "UNARCHIVED_DECISION",
-   "note": "D3: archive-first + retire the inline cron line (cron freeze: operator)"
+   "scheduler": "monthly pipeline tradeai-platform-maintenance-monthly.timer (step youtube_transcript_purge). The live crontab inline `python -c` purge line (inventory cron:L156, `crontab -l` line 158 on 2026-10-21) is NOT this code: retiring it is an operator crontab edit under the cron freeze",
+   "archive": "archive_first (managed_purge, archive/db_retention/youtube_transcripts); transcript_processor --purge-expired delegates to the same path",
+   "state": "MANAGED",
+   "note": "2026-10-21 operator D3.2: archive-first; the inline crontab line is outside the repo and must be retired by the operator (it also never authenticates: its list-comprehension exec cannot rebind pw)"
   },
   {
    "id": "news_symbol_guard",
@@ -1791,9 +1791,9 @@
    "kind": "DB_PURGE",
    "targets": "news_articles / catalyst_events / catalyst_symbol_impact rows whose headline does not match the symbol",
    "scheduler": "API + health_agent remediation",
-   "archive": "none",
-   "state": "UNARCHIVED_DECISION",
-   "note": "condition purge of mis-tagged rows; D3"
+   "archive": "archive_first (managed_purge by id: news_articles, catalyst_symbol_impact children first, catalyst_events)",
+   "state": "MANAGED",
+   "note": "2026-10-21 operator D3.3: archive-first"
   },
   {
    "id": "hermes_source_registry_cleanup",
@@ -1803,9 +1803,9 @@
    "kind": "DB_PURGE",
    "targets": "research_sources RSS stub rows",
    "scheduler": "cron 23:30 hermes_source_curation",
-   "archive": "none",
-   "state": "UNARCHIVED_DECISION",
-   "note": "a few rows; D3"
+   "archive": "archive_first (managed_purge, archive/db_retention/research_sources)",
+   "state": "MANAGED",
+   "note": "2026-10-21 operator D3.4: archive-first"
   },
   {
    "id": "librarian_graph_edges",
@@ -1827,9 +1827,9 @@
    "kind": "OPERATOR_ACTION",
    "targets": "notification_log / alert_events / telegram_outbox / ai_reports older than N days",
    "scheduler": "API POST /api/v2/reports/purge (operator)",
-   "archive": "none",
-   "state": "UNARCHIVED_DECISION",
-   "note": "deletes telegram_outbox (ATD 90 in policies[]) without archive; D3"
+   "archive": "archive_first (managed_purge per table: notification_log, alert_events, telegram_outbox, ai_reports)",
+   "state": "MANAGED",
+   "note": "2026-10-21 operator D3.5: archive-first; telegram_outbox (ARCHIVE_THEN_DELETE 90 in policies[]) is no longer deleted unarchived"
   },
   {
    "id": "market_quotes_downsample",
@@ -1938,7 +1938,7 @@
    "scheduler": "cron",
    "archive": "not investigated",
    "state": "BROKER_OUT_OF_SCOPE",
-   "note": "AGENTS §0 rule 2: listed only, not modified"
+   "note": "AGENTS \u00a70 rule 2: listed only, not modified"
   },
   {
    "id": "rotate_runtime_logs",
@@ -1946,11 +1946,11 @@
     "scripts/rotate_runtime_logs.sh"
    ],
    "kind": "FILE_PRUNE",
-   "targets": "logs/*.log >=100 MB: tail 25 MB gzipped, head discarded, keep 2 .gz",
+   "targets": "logs/*.log >=100 MB: head gzipped to <state>/archive/logs/<name>.<stamp>.gz (verified, tripwire), tail 25 MB kept beside the log, tail archives beyond 2 moved to archive/logs",
    "scheduler": "systemd tradeai-platform-maintenance-nightly.timer 01:15 (CURRENT)",
-   "archive": "partial (tail only)",
-   "state": "UNARCHIVED_DECISION",
-   "note": "LOG; D8"
+   "archive": "archive-then-truncate (archive/logs/TRIPWIRE.jsonl, read by lib/retention_tripwire.py)",
+   "state": "MANAGED",
+   "note": "2026-10-21 operator D8.1: the head is archived, never discarded; nothing is removed"
   },
   {
    "id": "disk_hygiene_enforcer",
@@ -1959,11 +1959,11 @@
     "scripts/weekly_disk_cleanup_notify.py"
    ],
    "kind": "FILE_PRUNE",
-   "targets": "old release dirs (keep 2), ~/backups >45/60 d, preclean dirs >7 d",
+   "targets": "old release dirs (keep 2; release-local data/ + state/ files CURRENT does not hold byte-identically are archived first), ~/backups >45/60 d, preclean dirs >7 d",
    "scheduler": "systemd tradeai-disk-hygiene-enforcer.timer 04:15 + tradeai-weekly-disk-cleanup.timer Sun 06:30",
-   "archive": "none",
+   "archive": "release-local data: archive-then-unlink to archive/file_prune/release_local_data (D8.3); stale backup piles: none",
    "state": "UNARCHIVED_DECISION",
-   "note": "DEPLOY/BACKUP; release-local data dirs die with a release; D8; D6 2026-10-21: weekly_disk_cleanup_notify.py runs NO DB retention (its librarian + db_retention steps were removed; it runs from the dev tree)"
+   "note": "2026-10-21 operator D8.3: release-local data archived before a release is removed (a failed archive keeps the release); backup piles unchanged (DEPLOY/BACKUP); D6 2026-10-21: weekly_disk_cleanup_notify.py runs NO DB retention (its librarian + db_retention steps were removed)"
   },
   {
    "id": "backup_rotation",
@@ -2005,9 +2005,9 @@
    "kind": "FILE_PRUNE",
    "targets": "news history >90 d; weekly keep 8; monthly keep 6",
    "scheduler": "portfolio orchestrator / weekly / monthly cadences",
-   "archive": "none",
-   "state": "UNARCHIVED_DECISION",
-   "note": "LLM output that cannot be regenerated; D8"
+   "archive": "archive-then-unlink (retention_archive.archive_prune: archive/file_prune/portfolio_news_history, portfolio_weekly_reports, portfolio_monthly_reports, portfolio_monthly_synthesis)",
+   "state": "MANAGED",
+   "note": "2026-10-21 operator D8.4: LLM output archived before it is removed"
   },
   {
    "id": "scalp_cycle_receipts",
@@ -2017,9 +2017,9 @@
    "kind": "FILE_PRUNE",
    "targets": "scalp_cycle_receipts/<day>.jsonl >30 d",
    "scheduler": "scalp-live cron */5",
-   "archive": "none",
-   "state": "UNARCHIVED_DECISION",
-   "note": "evidence ledger (dir absent today); D8"
+   "archive": "archive-then-unlink (retention_archive.archive_prune: <state>/archive/file_prune/scalp_cycle_receipts)",
+   "state": "MANAGED",
+   "note": "2026-10-21 operator D8.5: evidence ledger archived first; a failed archive removes nothing"
   },
   {
    "id": "agent_worktree_retention",
@@ -2034,5 +2034,5 @@
    "note": "DEPLOY"
   }
  ],
- "purge_paths_note": "2026-10-11 retention-all-managed: every script that deletes or purges data is declared here (one entry per owner). check_retention_policy.py --fail-on-new fails on a script with a DELETE FROM / TRUNCATE / managed_purge / archive_then_delete_batches / archive_files_then_unlink call that no entry names. state: MANAGED (archive-first, this registry's mechanism), MANAGED_OWN_ARCHIVE, DEFERS_IN_PRACTICE, UNARCHIVED_BY_RULE, UNARCHIVED_DECISION (listed in the operator decision packet; unchanged), UNSCHEDULED, NOT_RETENTION, NOT_DATA, BROKER_OUT_OF_SCOPE (AGENTS §0 rule 2, listed only)."
+ "purge_paths_note": "2026-10-11 retention-all-managed: every script that deletes or purges data is declared here (one entry per owner). check_retention_policy.py --fail-on-new fails on a script with a DELETE FROM / TRUNCATE / managed_purge / archive_then_delete_batches / archive_files_then_unlink call that no entry names. state: MANAGED (archive-first, this registry's mechanism), MANAGED_OWN_ARCHIVE, DEFERS_IN_PRACTICE, UNARCHIVED_BY_RULE, UNARCHIVED_DECISION (listed in the operator decision packet; unchanged), UNSCHEDULED, NOT_RETENTION, NOT_DATA, BROKER_OUT_OF_SCOPE (AGENTS \u00a70 rule 2, listed only). 2026-10-21 registry-owned retention: RETIRED = a former owner whose delete was removed; the gate fails a RETIRED entry whose script still deletes (unless another entry owns it)."
 }

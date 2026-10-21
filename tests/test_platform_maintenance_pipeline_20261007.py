@@ -348,19 +348,33 @@ def test_purge_dry_run_counts_only():
     assert not any(sql.startswith("DELETE") for sql in conn.cur.executed)
 
 
-def test_purge_apply_stamps_deletes_commits_and_writes_receipt(tmp_path):
+def test_purge_apply_stamps_deletes_commits_and_writes_receipt(tmp_path, monkeypatch):
     sys.path.insert(0, str(ROOT / "scripts"))
     import purge_youtube_transcripts as p
+    from lib import retention_archive as ra
 
     state = {"undated": 5, "expired": 3}
 
     def fake_set_purge_dates():
         state["undated"] = 1  # 4 rows got a date
 
+    # 2026-10-21 (operator D3.2): the delete is archive-first through lib.retention_archive.managed_purge; the
+    # archive mechanics are tested in tests/test_retention_registry_owned_20261021.py, so this stub only proves
+    # the step routes there (and never runs a bare DELETE).
+    calls = []
+
+    def fake_managed_purge(conn, **kw):
+        calls.append(kw)
+        n, state["expired"] = state["expired"], 0
+        return {"deleted": n, "archived": n, "archives": ["a.jsonl.gz"]}
+
+    monkeypatch.setattr(ra, "managed_purge", fake_managed_purge)
     conn = _FakeConn(state)
     res = p.purge(conn, apply=True, set_purge_dates=fake_set_purge_dates)
-    assert res["stamped"] == 4 and res["deleted"] == 3 and conn.commits == 1
-    assert [s for s in conn.cur.executed if s.startswith("DELETE")] == [p.SQL_DELETE_EXPIRED]
+    assert res["stamped"] == 4 and res["deleted"] == res["archived"] == 3 and conn.commits == 1
+    assert not [s for s in conn.cur.executed if s.startswith("DELETE")]
+    assert calls[0]["table"] == "youtube_transcripts" and calls[0]["archive"] is True
+    assert calls[0]["where_sql"] == p.EXPIRED_WHERE
     receipt = tmp_path / "runtime" / "youtube_transcript_purge_last.json"
     p.write_receipt(res, receipt)
     on_disk = json.loads(receipt.read_text())

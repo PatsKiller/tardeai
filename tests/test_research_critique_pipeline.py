@@ -135,7 +135,8 @@ def test_curator_creators_constant():
 def test_retention_constants_ordered():
     mod = _load()
     assert mod.RETENTION_STAGING_DAYS < mod.RETENTION_RESEARCH_DAYS
-    assert mod.RETENTION_RESEARCH_DAYS <= mod.RETENTION_DIRECTIVE_DAYS
+    # 2026-10-21 (operator D5.2): archived research follows the librarian's 180 d, longer than the directive window.
+    assert mod.RETENTION_RESEARCH_DAYS == 180
 
 
 def test_research_stale_freshness():

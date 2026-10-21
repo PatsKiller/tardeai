@@ -20,6 +20,10 @@ Rules (exit 1 on violation, 2 if the gate cannot run):
   9. Every script under scripts/ or linux_launchers/ with a DELETE FROM / TRUNCATE statement, or a call to
      managed_purge / archive_then_delete_batches / archive_files_then_unlink, is named by a purge_paths
      entry -- a new deleter cannot land unregistered.
+ 10. (2026-10-21, registry-owned retention) a purge_paths entry in state RETIRED names scripts that no longer
+     delete: a RETIRED script that still matches the deleter scan, and that no other (non-RETIRED) entry owns,
+     fails -- a retired duplicate owner cannot quietly come back. archive_prune (the inline file-prune helper)
+     counts as a deleter call.
 Same shape as check_lane_registry.py: declare, gate, let it only shrink.
 """
 from __future__ import annotations
@@ -115,10 +119,10 @@ def validate(doc: dict) -> list[str]:
 
 
 PURGE_STATES = {"MANAGED", "MANAGED_OWN_ARCHIVE", "DEFERS_IN_PRACTICE", "UNARCHIVED_BY_RULE", "UNARCHIVED_DECISION",
-                "UNSCHEDULED", "NOT_RETENTION", "NOT_DATA", "BROKER_OUT_OF_SCOPE"}
+                "UNSCHEDULED", "NOT_RETENTION", "NOT_DATA", "BROKER_OUT_OF_SCOPE", "RETIRED"}
 PURGE_KINDS = {"DB_PURGE", "FILE_PRUNE", "LIBRARY", "OPERATOR_ACTION", "REBUILD", "TEST", "BROKER", "HOUSEKEEPING"}
 DELETER_RE = re.compile(r'\bDELETE\s+FROM\s+[\w{"]|\bTRUNCATE\s+(?:TABLE\s+)?[\w{"]'
-                        r"|\b(?:managed_purge|archive_then_delete_batches|archive_files_then_unlink)\(")
+                        r"|\b(?:managed_purge|archive_then_delete_batches|archive_files_then_unlink|archive_prune)\(")
 SCAN_ROOTS = ("scripts", "linux_launchers")
 SELF_REL = "scripts/check_retention_policy.py"  # names the patterns; deletes nothing
 
@@ -194,6 +198,21 @@ def unregistered_deleters(doc: dict, root: Path = ROOT) -> list[str]:
             for rel in scan_deleters(root) if rel not in named]
 
 
+def retired_still_deleting(doc: dict, root: Path = ROOT) -> list[str]:
+    """Rule 10: a RETIRED owner's script must not delete, unless a live entry owns that script."""
+    live = {sp for e in doc.get("purge_paths") or [] if e.get("state") != "RETIRED" for sp in (e.get("scripts") or [])}
+    deleters = set(scan_deleters(root))
+    out = []
+    for e in doc.get("purge_paths") or []:
+        if e.get("state") != "RETIRED":
+            continue
+        for sp in e.get("scripts") or []:
+            if sp in deleters and sp not in live:
+                out.append(f"purge_paths {e.get('id')}: RETIRED but {sp} still deletes/purges data (remove the delete "
+                           f"or re-register the owner)")
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--fail-on-new", action="store_true")
@@ -208,6 +227,7 @@ def main() -> int:
     errs = validate(doc)
     if doc.get("purge_paths") is not None:
         errs.extend(unregistered_deleters(doc))
+        errs.extend(retired_still_deleting(doc))
     rows = doc.get("policies") or []
     summary = {"rows": len(rows), "keep_forever": sum(1 for r in rows if r.get("class") == "KEEP_FOREVER"),
                "archive_then_delete": sum(1 for r in rows if r.get("class") == "ARCHIVE_THEN_DELETE"),

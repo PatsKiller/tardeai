@@ -11,6 +11,12 @@ is the cron's behaviour (stamp, delete, commit) and writes the durable receipt
 ran, which the inline cron never produced. The connection is `transcript_processor._get_conn()`, the
 same localhost/trade_ai connection the inline program built by hand; no second credential path.
 
+2026-10-21 (operator D3.2, registry-owned retention): the delete is archive-first through the shared helper
+(lib.retention_archive.managed_purge: jsonl.gz + sha256 manifest + tripwire under
+the row-archive root (youtube_transcripts), re-read and count-checked before the delete of exactly those rows).
+This step is the ONE owner of youtube_transcripts; transcript_processor.py --purge-expired delegates here. The
+inline `python -c` crontab line that still deletes without an archive is retired by the operator (cron freeze).
+
 Runner: scripts/pipelines/run_platform_maintenance_pipeline.sh --cadence monthly (step youtube_transcript_purge).
 AUTHORITY: platform maintenance only. No broker, no LLM, no network beyond the local Postgres.
 """
@@ -36,9 +42,8 @@ SQL_COUNT_UNDATED = "SELECT count(*) FROM youtube_transcripts WHERE purge_after 
 SQL_COUNT_EXPIRED = (
     "SELECT count(*) FROM youtube_transcripts WHERE purge_after IS NOT NULL AND purge_after < CURRENT_DATE"
 )
-SQL_DELETE_EXPIRED = (
-    "DELETE FROM youtube_transcripts WHERE purge_after IS NOT NULL AND purge_after < CURRENT_DATE"
-)
+#: The expired predicate for managed_purge (alias ``t``); the same rows SQL_COUNT_EXPIRED counts.
+EXPIRED_WHERE = "t.purge_after IS NOT NULL AND t.purge_after < CURRENT_DATE"
 
 
 def _connect():
@@ -68,15 +73,23 @@ def purge(conn, *, apply: bool, set_purge_dates=None) -> dict:
         "expired_before": expired_before,
         "stamped": None,
         "deleted": 0,
+        "archived": 0,
     }
     if not apply:
         return result
     if set_purge_dates is not None:
         set_purge_dates()  # the cron's first program; it commits on its own connection
         result["stamped"] = undated_before - _count(cur, SQL_COUNT_UNDATED)
-    cur.execute(SQL_DELETE_EXPIRED)
-    result["deleted"] = int(cur.rowcount if cur.rowcount is not None and cur.rowcount >= 0 else 0)
-    conn.commit()
+    conn.commit()  # end the counting transaction before the archived batches open their own
+    try:
+        from lib.retention_archive import managed_purge
+    except ImportError:  # imported with scripts/lib, not scripts/, on sys.path
+        from retention_archive import managed_purge
+    r = managed_purge(conn, table="youtube_transcripts", where_sql=EXPIRED_WHERE, label="purge_after_expired",
+                      writer="purge_youtube_transcripts", apply=True, archive=True)
+    result["deleted"] = int(r.get("deleted") or 0)
+    result["archived"] = int(r.get("archived") or 0)
+    result["archives"] = r.get("archives") or []
     return result
 
 
@@ -104,11 +117,12 @@ def main(argv=None) -> int:
         receipt = Path(args.receipt)
         result["receipt"] = str(receipt)
         write_receipt(result, receipt)
-        print(f"Purged {result['deleted']} expired transcripts (stamped {result['stamped']}); receipt {receipt}")
+        print(f"Purged {result['deleted']} expired transcripts (archived first: {result['archived']}; "
+              f"stamped {result['stamped']}); receipt {receipt}")
     else:
         print(
             f"[DRY_RUN] would stamp {result['undated_before']} undated rows and delete "
-            f"{result['expired_before']} expired transcripts; nothing written"
+            f"{result['expired_before']} expired transcripts (archive-first); nothing written"
         )
     return 0
 

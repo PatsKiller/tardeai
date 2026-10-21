@@ -177,12 +177,8 @@ def _execute() -> int:
             msg = redact(e, cookie, token)[:120]
             snap["errors"][key] = f"{type(e).__name__}: {msg}"
             print(f"[movers] {key} FAILED: {msg}")
-    # retention: keep 7 days of captures
-    try:
-        cur.execute("DELETE FROM market_movers WHERE captured_at < now() - interval '7 days'")
-        conn.commit()
-    except Exception:
-        conn.rollback()
+    # retention: 2026-10-21 (operator D4.3) db_retention owns market_movers (config/data_retention_policy.json:
+    # DELETE 7 d, archive_first) and archives each aged capture before deleting it. No inline delete here.
     SNAP.parent.mkdir(parents=True, exist_ok=True)
     tmp = SNAP.with_suffix(".tmp")
     tmp.write_text(json.dumps(snap, default=str))

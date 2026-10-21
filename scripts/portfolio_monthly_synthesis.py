@@ -305,6 +305,22 @@ def _send_telegram(message: str) -> None:
         print("  [monthly-synthesis] Telegram not sent")
 
 
+def _archive_prune(files, base_dir, label: str, writer: str) -> dict:
+    """2026-10-21 (operator D8.4, registry-owned retention): archive (tar.gz + sha256 manifest + tripwire under
+    the file-prune archive root (<state>/archive, file_prune/<label>/)) and only then unlink. A failed archive unlinks nothing. Registered in
+    config/data_retention_policy.json purge_paths portfolio_report_rotation."""
+    import sys as _s
+    _scripts = str(Path(__file__).resolve().parent)
+    if _scripts not in _s.path:
+        _s.path.insert(0, _scripts)
+    from lib.retention_archive import archive_prune
+
+    res = archive_prune(list(files), base_dir=base_dir, label=label, writer=writer)
+    if res.get("error"):
+        print(f"[{writer}] retention archive failed, nothing removed: {res['error']}")
+    return res
+
+
 def run_monthly_synthesis(project_root: str = ".") -> Optional[Path]:
     """Main entry point."""
     global PROJECT_ROOT, STATE_DIR, WEEKLY_DIR, MONTHLY_DIR
@@ -341,10 +357,12 @@ def run_monthly_synthesis(project_root: str = ".") -> Optional[Path]:
     }, indent=2))
 
     # Cleanup old monthly HTMLs (keep last 6)
+    # 2026-10-21 (D8.4): archive-then-unlink (LLM output that cannot be regenerated), never a bare unlink.
     old_reports = sorted(MONTHLY_DIR.glob("monthly_*.html"))
-    for old in old_reports[:-6]:
-        old.unlink()
-        print(f"[monthly-synthesis] Cleaned up {old.name}")
+    if old_reports[:-6]:
+        _res = _archive_prune(old_reports[:-6], MONTHLY_DIR, "portfolio_monthly_synthesis", "portfolio_monthly_synthesis")
+        if _res.get("unlinked"):
+            print(f"[monthly-synthesis] Archived + cleaned up {_res['unlinked']} file(s) -> {_res.get('archive')}")
 
     # Telegram
     holdings = current.get("holdings", {})
