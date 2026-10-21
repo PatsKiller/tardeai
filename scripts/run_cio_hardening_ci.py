@@ -145,6 +145,12 @@ GATES = [
     # revisited, now stalest perf_updated_at first; the batch indicators API upsert never refreshed stop_price on
     # conflict, now every scalar column. Hermetic: sqlite + source text.
     ("data_plausibility_four_20261020", ["tests/test_data_plausibility_four_20261020.py"]),
+    # ANCHOR: INDICATOR_ENGINE_NAN_JSON_20261021 — indicator_engine --universe failed 08:00 ET 2026-10-20 and
+    # 2026-10-21: GP's NaN weekly pivots were json.dumps'd as the bare token NaN and Postgres rejected the json
+    # (22P02), which escaped run() and aborted the rest of the batch. lib.json_finite.json_safe (NaN/±Inf, numpy too,
+    # nested) -> None on analyze_confluence's result; the lane serialises allow_nan=False, stores non-finite scalars
+    # as NULL, and skips a row Postgres rejects as data (SQLSTATE 22) as row_rejected. Hermetic: fake conn.
+    ("indicator_engine_nan_json_20261021", ["tests/test_indicator_engine_nan_json_20261021.py"]),
     # ANCHOR: N8N_EVIDENCE_KIND_PARITY_20261019 — the runtime output verdict and the FW-M6 checker accept the same
     # N8nExpectedOutput@v1 evidence kinds (file_artifact, per N8N_CONTRACTS_DESIGN.md); before, "file" vs "file_artifact"
     # meant no contract could cite a file. Hermetic: committed contracts read only.
