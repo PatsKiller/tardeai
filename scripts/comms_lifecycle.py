@@ -5,9 +5,10 @@ Operator 2026-10-07: every Command Center message has an enforceable TTL by cate
 security/market/securities 96 h, intelligence 1 week — config/comms_categories.yaml). Expired messages leave
 every active view without manual work, then are archived and removed. Decisions: approvals, protection incidents
 and broker facts follow the same TTLs; removal is ARCHIVE-THEN-DELETE (AGENTS.md §0 rule 6) — every row and its
-delivery/outbox/link/thread rows are written to
+delivery/outbox/link rows are written to
 <state root>/archive/comms_lifecycle/<table>/<UTC stamp>.jsonl.gz and the delete runs only when the archived
-counts equal the rows selected. Admin override: legal_hold (keep indefinitely) or retain_until (keep until).
+counts equal the rows selected. communication_thread_membership is never purged (KEEP_FOREVER, D5.3:
+threads are kept). Admin override: legal_hold (keep indefinitely) or retain_until (keep until).
 
 Steps (each idempotent; dry run unless --apply):
   1. classify — rows written before 2026-10-07 (category IS NULL) get category/priority/scores and their TTL
@@ -61,7 +62,11 @@ def grace_hours() -> float:
         return 24.0
 # (table, key column) — children first; communication_entity_links would cascade, archived anyway for the record.
 CHILDREN = (("communication_deliveries", "event_id"), ("communication_outbox", "event_id"),
-            ("communication_entity_links", "event_id"), ("communication_thread_membership", "event_id"))
+            ("communication_entity_links", "event_id"))
+# Never archived or deleted here (OPERATOR_DECISION D5.3, 2026-10-21): communication_thread_membership is
+# KEEP_FOREVER in config/data_retention_policy.json — threads are kept. It has no FK to communication_events
+# (only subject_key -> communication_subjects ON DELETE CASCADE), so an event purge leaves its membership row.
+KEPT_TABLES = ("communication_thread_membership",)
 
 
 def _conn():

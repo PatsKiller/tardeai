@@ -372,13 +372,26 @@
    "archive": false,
    "archive_first": true,
    "owner": "platform",
-   "reason": "db_retention is the SOLE owner of the 90 d age rail (2026-10-11: the hermes librarian's duplicate 90 d purge defers to it, config/hermes_librarian_policy.yaml content_embeddings.max_age_owner); archive_first=true (operator 2026-10-11: archive the 90 d rows, then delete): every 90 d delete is archived + manifested + tripwired first; false restores the inherited hard DELETE (takes effect at the next release); source_windows (fused_signal/social_post 30 d) declared but OFF (source_windows_enabled=false, 2026-10-09 audit F: windows on embedding created_at loop; social_post deletion not approved); the one-time junk fused_signal purge stays manual under a db-write grant (TRADEAI_DB_WRITE_GRANT)",
+   "reason": "db_retention is the SOLE owner of the 90 d age rail (2026-10-11: the hermes librarian's duplicate 90 d purge defers to it, config/hermes_librarian_policy.yaml content_embeddings.max_age_owner); archive_first=true (operator 2026-10-11: archive the 90 d rows, then delete): every 90 d delete is archived + manifested + tripwired first; false restores the inherited hard DELETE (takes effect at the next release); source_windows (fused_signal/social_post 30 d) declared but OFF (source_windows_enabled=false; 2026-10-09 audit F found windows on the embedding's created_at loop: archive, delete, re-embed; D10 2026-10-21 fix-first: the window now measures the SOURCE document's age via source_windows_source_tables; enabling, i.e. social_post deletion at 30 d, is a separate operator ruling); the one-time junk fused_signal purge stays manual under a db-write grant (TRADEAI_DB_WRITE_GRANT)",
    "since": "2026-10-07",
    "source_windows": {
     "fused_signal": 30,
     "social_post": 30
    },
    "source_column": "source_type",
+   "source_key_column": "source_id",
+   "source_windows_source_tables": {
+    "fused_signal": {
+     "table": "fused_signals",
+     "key": "id",
+     "ts_column": "created_at"
+    },
+    "social_post": {
+     "table": "social_posts",
+     "key": "id",
+     "ts_column": "ingested_at"
+    }
+   },
    "source_windows_class": "ARCHIVE_THEN_DELETE",
    "source_windows_batch_rows": 20000,
    "source_windows_max_rows_per_run": 100000,
@@ -1571,7 +1584,7 @@
    ],
    "kind": "DB_PURGE",
    "targets": "every DELETE / ARCHIVE_THEN_DELETE row of policies[] + file_prune[]",
-   "scheduler": "systemd tradeai-platform-maintenance-nightly.timer 01:15 (CURRENT); ALSO Sun 06:30 tradeai-weekly-disk-cleanup.timer runs it from the DEV tree (second scheduler, OPERATOR_DECISION D6)",
+   "scheduler": "systemd tradeai-platform-maintenance-nightly.timer 01:15 (CURRENT) -- the ONLY scheduler (D6 2026-10-21: the Sun 06:30 weekly disk cleanup's dev-tree db_retention step was removed)",
    "archive": "archive_first per row (93 of 96 DELETE rows + all 29 ARCHIVE_THEN_DELETE); file_prune archive-then-unlink",
    "state": "MANAGED",
    "note": "the one owner of table age rails"
@@ -1599,7 +1612,7 @@
    "scheduler": "systemd hermes-librarian-retention.timer 05:10",
    "archive": "archive_first (config/hermes_librarian_policy.yaml archive_first: true); receipt data/runtime/hermes_librarian_retention_last.json",
    "state": "MANAGED",
-   "note": "EXTERNAL_POLICY owner of hermes_research_intelligence"
+   "note": "EXTERNAL_POLICY owner of hermes_research_intelligence; D6 2026-10-21: no longer also run from the dev tree by the Sun 06:30 weekly disk cleanup"
   },
   {
    "id": "siem_retention_purge",
@@ -1655,11 +1668,11 @@
     "scripts/comms_lifecycle.py"
    ],
    "kind": "DB_PURGE",
-   "targets": "communication_events + children past TTL, not legal_hold",
+   "targets": "communication_events + deliveries/outbox/entity_links past TTL, not legal_hold; communication_thread_membership is never purged (KEEP_FOREVER)",
    "scheduler": "cron 17 * * * * --apply",
    "archive": "own archive (jsonl.gz, count-checked) under archive/comms_lifecycle",
    "state": "MANAGED_OWN_ARCHIVE",
-   "note": "deletes communication_thread_membership which policies[] marks KEEP_FOREVER -- OPERATOR_DECISION D5"
+   "note": "D5.3 2026-10-21: communication_thread_membership exempted (KEPT_TABLES); threads are kept, matching policies[] KEEP_FOREVER"
   },
   {
    "id": "cio_provider_journal_rotate",
@@ -1695,7 +1708,7 @@
    "scheduler": "operator-run only",
    "archive": "own archive (pg_dump / jsonl.gz) + archive/db_trim/TRIPWIRE.jsonl",
    "state": "MANAGED_OWN_ARCHIVE",
-   "note": "one-off; should require a db-write grant like --junk-fused-signal-embeddings (OPERATOR_DECISION D7)"
+   "note": "one-off; --apply requires TRADEAI_DB_WRITE_GRANT (active db-write grant, same check as db_retention --junk-fused-signal-embeddings) or refuses with exit 2 (D7 2026-10-21)"
   },
   {
    "id": "options_chain_snapshot_prune",
@@ -1950,7 +1963,7 @@
    "scheduler": "systemd tradeai-disk-hygiene-enforcer.timer 04:15 + tradeai-weekly-disk-cleanup.timer Sun 06:30",
    "archive": "none",
    "state": "UNARCHIVED_DECISION",
-   "note": "DEPLOY/BACKUP; release-local data dirs die with a release; D8"
+   "note": "DEPLOY/BACKUP; release-local data dirs die with a release; D8; D6 2026-10-21: weekly_disk_cleanup_notify.py runs NO DB retention (its librarian + db_retention steps were removed; it runs from the dev tree)"
   },
   {
    "id": "backup_rotation",
@@ -1961,11 +1974,11 @@
     "scripts/backup_secrets_state.sh"
    ],
    "kind": "FILE_PRUNE",
-   "targets": "pg_dump keep 1 (+ partials <1.5 GB at any age), n8n dumps keep 14, Drive families",
+   "targets": "pg_dump keep 1 (+ partials <1.5 GB older than 2 h, moved to archive/), n8n dumps keep 14, Drive families",
    "scheduler": "hourly enforcer + 02:30 backup cadence + PMN",
    "archive": "n/a (rotation of backups)",
    "state": "UNARCHIVED_DECISION",
-   "note": "backup_enforcer can unlink a dump still being written; only one pg_dump kept; D8"
+   "note": "D8.2 2026-10-21: run_pg_backup.sh writes <name>.part, checks size + gzip -t, then renames; backup_enforcer skips .part and anything younger than 2 h; only one pg_dump kept"
   },
   {
    "id": "docs_and_artifacts_retention",

@@ -192,6 +192,11 @@ def test_purge_archives_then_deletes_children_first(tmp_path, monkeypatch):
     out = lc.step_purge(cur, apply=True)
     assert cur.deleted[-1] == "communication_events" and cur.deleted[0] == "communication_deliveries"
     assert out["archived"]["communication_events"] == 2 and cur.connection.commits == 1
+    # D5.3 (2026-10-21): thread membership is KEEP_FOREVER; 3 children + events, membership untouched.
+    assert cur.deleted == ["communication_deliveries", "communication_outbox",
+                           "communication_entity_links", "communication_events"]
+    assert "communication_thread_membership" not in out["deleted"]
+    assert "communication_thread_membership" not in out["archived"]
     f = next((tmp_path / "archive" / "comms_lifecycle" / "communication_events").glob("*.jsonl.gz"))
     assert len(gzip.open(f, "rt").read().splitlines()) == 2
 

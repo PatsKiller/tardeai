@@ -26,6 +26,7 @@ if not _os.getenv("DB_PASSWORD"):
     except Exception: pass
 import os
 import pathlib
+import re
 import sys
 from datetime import datetime
 
@@ -269,15 +270,39 @@ DEFAULT_SOURCE_BATCH_ROWS = 20000
 DEFAULT_SOURCE_MAX_ROWS_PER_RUN = 100000
 
 
+_SQL_IDENT_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
+_SOURCE_SPEC_KEYS = ("source_column", "source_key_column", "source_table", "source_table_key", "source_table_ts")
+
+
+def _source_table_spec(r: dict, source: str) -> dict:
+    """D10 (2026-10-21, operator: fix-first): a source window measures the SOURCE document's age, not the
+    embedding's created_at. Measuring the embedding looped: archive, delete, then rag_indexer re-embeds the
+    still-present source row (its NOT EXISTS check), archive, delete again. Every source value must name its
+    table, key and timestamp in `source_windows_source_tables`; a missing or malformed entry is a config
+    error (fail closed), never a fallback to the embedding's own age."""
+    spec = (r.get("source_windows_source_tables") or {}).get(source)
+    if not isinstance(spec, dict) or not r.get("source_key_column"):
+        raise SystemExit(f"ERROR: registry row {r.get('table')} source_windows[{source}] needs "
+                         f"source_windows_source_tables[{source}] {{table, key, ts_column}} and source_key_column "
+                         "(D10: the window measures the source document's age)")
+    out = {"source_key_column": r.get("source_key_column"), "source_table": spec.get("table"),
+           "source_table_key": spec.get("key"), "source_table_ts": spec.get("ts_column")}
+    for k, v in out.items():
+        if not isinstance(v, str) or not _SQL_IDENT_RE.match(v):
+            raise SystemExit(f"ERROR: registry row {r.get('table')} source_windows[{source}] {k}={v!r} "
+                             "is not a plain SQL identifier")
+    return out
+
+
 def enforced_source_windows(doc: dict) -> list[dict]:
     out = []
     for r in doc["policies"]:
         sw = r.get("source_windows")
         if not sw or r.get("class") in ("KEEP_FOREVER", "EXTERNAL_POLICY"):
             continue
-        # 2026-10-09 due-diligence audit F: windows measured on the embedding's created_at re-embed,
-        # re-archive and re-delete the same source rows every window, and social_post deletion was not
-        # operator-approved. Declared-but-off until both are resolved; the junk purge stays manual.
+        # 2026-10-09 due-diligence audit F: social_post deletion is not operator-approved. Declared-but-off;
+        # D10 (2026-10-21) fixed the predicate first (source-document age) and keeps enabling a separate
+        # operator ruling. The junk purge stays manual.
         if r.get("source_windows_enabled") is False:
             continue
         if r.get("source_windows_class") != "ARCHIVE_THEN_DELETE" or not r.get("source_column"):
@@ -285,14 +310,23 @@ def enforced_source_windows(doc: dict) -> list[dict]:
                              "source_windows_class ARCHIVE_THEN_DELETE")
         for value, days in sorted(sw.items()):
             out.append({"table": r["table"], "ts_column": r["ts_column"], "source_column": r["source_column"],
-                        "source": value, "days": int(days),
+                        "source": value, "days": int(days), **_source_table_spec(r, value),
                         "batch_rows": int(r.get("source_windows_batch_rows") or DEFAULT_SOURCE_BATCH_ROWS),
                         "max_rows": int(r.get("source_windows_max_rows_per_run") or DEFAULT_SOURCE_MAX_ROWS_PER_RUN)})
     return out
 
 
 def source_window_predicate(w: dict, guard: str = "") -> tuple[str, tuple]:
-    return (f't."{w["source_column"]}" = %s AND t."{w["ts_column"]}" < now() - make_interval(days => %s){guard}',
+    """Rows of `source` whose SOURCE document is older than the window (D10). The embedding's own
+    created_at is not consulted. An embedding whose source row no longer exists is not selected here:
+    it cannot be re-embedded, and the row's own age rail (window_days) owns it."""
+    for k in _SOURCE_SPEC_KEYS:
+        if not _SQL_IDENT_RE.match(str(w.get(k) or "")):
+            raise ValueError(f"source window {w.get('table')}.{w.get('source')}: {k}={w.get(k)!r} is not a plain "
+                             "SQL identifier (D10: windows measure the source document's age)")
+    return (f't."{w["source_column"]}" = %s AND EXISTS (SELECT 1 FROM "{w["source_table"]}" s '
+            f'WHERE s."{w["source_table_key"]}" = t."{w["source_key_column"]}" '
+            f'AND s."{w["source_table_ts"]}" < now() - make_interval(days => %s)){guard}',
             (w["source"], int(w["days"])))
 
 
@@ -305,10 +339,11 @@ def run_source_windows(cur, conn, windows: list[dict], dry_run: bool) -> tuple[i
         try:
             guard = fk_guard(cur, w["table"])
             where, params = source_window_predicate(w, guard)
+            basis = f"{w['source_table']}.{w['source_table_ts']}"  # D10: the age is the source document's
             if dry_run:
                 cur.execute(f"SELECT count(*) FROM {w['table']} t WHERE {where}", params)
                 n = cur.fetchone()[0]
-                print(f"  {label:<43} {w['ts_column']:<18} {w['days']:>5}  {n:>8}  (source window, archive-first;"
+                print(f"  {label:<43} {basis:<18} {w['days']:>5}  {n:>8}  (source window, archive-first;"
                       f" per-run cap {w['max_rows']:,})")
                 total += min(n, w["max_rows"])
                 continue
@@ -317,7 +352,7 @@ def run_source_windows(cur, conn, windows: list[dict], dry_run: bool) -> tuple[i
                 label=f"source_window_{w['source']}", archive_dir=archive_root() / w["table"],
                 batch_rows=w["batch_rows"], max_rows=w["max_rows"])
             total += res["rows_deleted"]
-            print(f"  {label:<43} {w['ts_column']:<18} {w['days']:>5}  {res['rows_deleted']:>8}  (archived "
+            print(f"  {label:<43} {basis:<18} {w['days']:>5}  {res['rows_deleted']:>8}  (archived "
                   f"{res['rows_archived']:,} in {len(res['batches'])} verified batch(es)"
                   f"{'; per-run cap reached' if res.get('cap_reached') else ''})")
         except Exception as e:
