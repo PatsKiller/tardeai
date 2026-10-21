@@ -23,6 +23,7 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    ("self_heal_recovery_shared_20261019", ["tests/test_self_heal_recovery_shared_20261019.py"]),
     # Preserve existing SEC event identities while suppressing within-batch repeats.
     (
         "premarket_dedupe_within_batch_20261018",

@@ -43,6 +43,8 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -50,6 +52,7 @@ from lib import self_heal_fix_evaluator as E  # noqa: E402
 from lib import self_heal_egress as EG  # noqa: E402
 from lib import self_heal_fixer as F  # noqa: E402
 from lib import self_heal_fixer_claims as C  # noqa: E402
+from scripts.lib import recovery_validator as RV  # noqa: E402
 
 CONFIG = ROOT / "config" / "self_heal_fixer.json"
 REGISTRY = ROOT / "config" / "lane_registry.json"
@@ -966,16 +969,13 @@ def recovery_contract(cfg: dict, root: Path) -> dict:
 def output_recovered(lane: str, since: Optional[datetime], contract: dict) -> dict:
     """Did ``lane``'s OUTPUT recover after ``since`` by its contract? The ONLY recovery check the fixer makes.
 
-    TODO(recovery-validator): one shared recovery validator is being built in ``scripts/lib/recovery_validator.py``
-    (architect review 2026-10-16, finding 4). It was not on main when this landed. When it is, replace this body with
-    a call to it; every caller already goes through this one function, so the swap is one edit here.
-
-    Until then, conservatively: a LIVE ``RUN_DONE`` receipt in the coordination ledger (opened read-only), exit 0,
-    effective mode live (no stage-clamp downgrade), finished after ``since``, whose ``output_verdict`` is produced or
-    empty_allowed (lib/self_heal_fixer.receipt_meets_output_contract). A newer file mtime or JSON timestamp never
-    counts. A lane with no such receipt (for example one still run by host cron) stays ``fix_deployed``."""
+    Reads the coordination ledger without mutation and delegates every decision to the existing shared
+    RecoveryVerdict owner through lib/self_heal_fixer.receipt_meets_output_contract. Keep the full durable row:
+    projecting away lane/attempt would prevent the validator from detecting a conflicting embedded receipt.
+    A lane with no qualifying live output remains ``fix_deployed``.
+    """
     base = {
-        "validator": "self_heal_fixer.output_recovered@conservative-v1",
+        "validator": "self_heal_fixer.output_recovered@shared-v2",
         "contract": contract.get("kind"),
         "lane": lane,
         "since": since.isoformat() if since else None,
@@ -988,10 +988,10 @@ def output_recovered(lane: str, since: Optional[datetime], contract: dict) -> di
         return {**base, "why": "ledger_missing"}
     try:
         con = sqlite3.connect(f"file:{ledger}?mode=ro", uri=True, timeout=5)
+        con.row_factory = sqlite3.Row
         try:
             rows = con.execute(
-                "SELECT run_id, mode, state, exit_code, finished_at, receipt_json FROM runs "
-                "WHERE lane_id=? AND finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 200",
+                "SELECT * FROM runs WHERE lane_id=? AND finished_at IS NOT NULL ORDER BY finished_at DESC LIMIT 200",
                 (lane,),
             ).fetchall()
         finally:
@@ -999,29 +999,17 @@ def output_recovered(lane: str, since: Optional[datetime], contract: dict) -> di
     except sqlite3.Error as exc:
         return {**base, "why": f"ledger_unreadable:{type(exc).__name__}"}
     reasons: dict[str, int] = {}
-    for run_id, mode, state, exit_code, finished_at, receipt_json in rows:
-        try:
-            rec = json.loads(receipt_json) if receipt_json else {}
-        except ValueError:
-            rec = {}
-        why = F.receipt_meets_output_contract(
-            {
-                "run_id": run_id,
-                "mode": mode,
-                "state": state,
-                "exit_code": exit_code,
-                "finished_at": finished_at,
-                "receipt": rec if isinstance(rec, dict) else {},
-            },
-            since,
-        )
+    for durable_row in rows:
+        row = dict(durable_row)
+        why = F.receipt_meets_output_contract(row, since, lane=lane)
         if why is None:
+            rec = RV.receipt_of(row)
             return {
                 **base,
                 "recovered": True,
                 "basis": "live_receipt_output_verdict",
-                "run_id": run_id,
-                "finished_at": finished_at,
+                "run_id": row["run_id"],
+                "finished_at": row["finished_at"],
                 "output_verdict": (rec.get("output_verdict") or {}).get("verdict"),
             }
         reasons[why] = reasons.get(why, 0) + 1

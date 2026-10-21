@@ -27,6 +27,8 @@ import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Iterable, Mapping, Optional
 
+from scripts.lib import recovery_validator as RV
+
 try:
     from zoneinfo import ZoneInfo
 
@@ -743,37 +745,34 @@ def model_pytest_wrapper(*, python: str, env: Mapping[str, str], sandbox: list[s
 
 
 # ---------------------------------------------------------------- output contract (review finding 4)
-#: n8n_output_verdict verdicts that mean "the lane's declared output was produced" (same as lib/n8n_self_heal).
-OUTPUT_MET = frozenset({"produced", "empty_allowed"})
+#: Shared owner; the fixer must not maintain another list or recovery decision.
+OUTPUT_MET = RV.OUTPUT_MET
 
 
-def receipt_meets_output_contract(row: Mapping[str, Any], since: Optional[datetime]) -> Optional[str]:
-    """None when one ledger row (state, exit_code, finished_at, receipt) proves the lane's output contract after
-    ``since``, else why not. Conservative: a LIVE RUN_DONE, exit 0, whose EFFECTIVE mode is live (the stage clamp did
-    not downgrade it), finished after ``since``, with output_verdict produced / empty_allowed. A newer file mtime or
-    JSON timestamp alone never counts."""
-    rec = row.get("receipt") if isinstance(row.get("receipt"), Mapping) else {}
+def receipt_meets_output_contract(
+    row: Mapping[str, Any], since: Optional[datetime], *, lane: Optional[str] = None
+) -> Optional[str]:
+    """Compatibility adapter: None on the shared live recovery verdict, else a refusal reason.
+
+    Existing two-argument callers remain supported. The host ledger reader supplies the exact required lane;
+    callers with a complete row use its authoritative lane. Legacy reason text is presentation only: every
+    nonempty decision below comes from RecoveryVerdict.validate, never another success predicate.
+    """
     if since is None:
         return "no_since"
-    fin = _parse(row.get("finished_at") or rec.get("finished_at"))
-    if not fin or fin <= since:
-        return "not_after_since"
-    if (row.get("state") or rec.get("state")) != "RUN_DONE":
+    ok, reason = RV.validate(row, mode="live", lane=lane if lane is not None else row.get("lane_id"), since=since)
+    if ok:
+        return None
+    if reason.startswith("state:"):
         return "not_run_done"
-    ec = row.get("exit_code") if row.get("exit_code") is not None else rec.get("exit_code")
-    if ec not in (0, "0"):
+    if reason.startswith("exit:"):
         return "nonzero_or_unknown_exit"
-    clamp = rec.get("stage_clamp") if isinstance(rec.get("stage_clamp"), Mapping) else {}
-    if (
-        rec.get("mode") != "live"
-        or (row.get("mode") not in (None, "live"))
-        or (clamp and clamp.get("effective_mode") != "live")
-    ):
+    if reason in ("effective_mode_unknown", "requested_live_executed_dry") or reason.startswith("mode_mismatch:"):
         return "effective_mode_not_live"
-    ov = rec.get("output_verdict") if isinstance(rec.get("output_verdict"), Mapping) else {}
-    if str(ov.get("verdict") or "") not in OUTPUT_MET:
-        return f"output_verdict:{ov.get('verdict') or 'absent'}"
-    return None
+    if reason.startswith("output_contract_unproven:"):
+        value = reason.split(":", 1)[1]
+        return "output_verdict:" + ("absent" if value == "none" else value)
+    return reason
 
 
 # ---------------------------------------------------------------- secrets in a diff (the repo is PUBLIC)
