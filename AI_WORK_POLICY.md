@@ -655,11 +655,11 @@ It does **not** authorize:
 
 ---
 
-# 28. RELEASE TRAIN PUSHES (AGENTS.md 17.0.0, PROPOSED)
+# 28. RELEASE TRAIN PUSHES (AGENTS.md 17.0.0, ACTIVE)
 
-Binding only once AGENTS.md 17.0.0 is ACTIVE and the operator has armed the
-standing release delegation at the host. Until both hold, sections 1-27 govern
-alone and nothing below authorizes anything.
+AGENTS.md 17.0.0 is ACTIVE (ratified 2026-10-21, PR #1914). Binding only once the
+operator has also armed the standing release delegation at the host. Until then,
+sections 1-27 govern alone and nothing below authorizes anything.
 
 The release train is the only automated remote synchronization in this
 repository. Concretely, the host release service — not a coding agent, not a
