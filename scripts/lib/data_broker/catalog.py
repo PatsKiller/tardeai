@@ -529,6 +529,22 @@ PROJECTIONS: list[dict[str, Any]] = [
         "consumers": ["scripts/catalyst_enrichment.py (alpha_vantage slot)",
                       "scripts/external_market_data_ingest.py --news-sentiment"],
     },
+    {
+        "id": "cio_prospect",
+        "module": "lib.data_broker.cio_prospect",
+        "entrypoints": ["get_prospects", "get_prospect"],
+        "http": [],
+        "domain": "cio_prospect",
+        "authority_domain": "cio_prospect (PROPOSED 2026-10-22, AGENTS.md §26; operator grant pending)",
+        "description": "The CIO prospect — one record per security_guid (stage, conviction + components, stance, "
+                       "next trigger, what's missing, next action, conflicts, evidence_at/expires_at). Reads the "
+                       "cio_prospect store only when it is live (row granted + flag + table); otherwise the shadow "
+                       "build, labelled SHADOW; say_so on gap; per-row stale after expires_at",
+        "read_only": True,
+        "provider_calls": 0,
+        "envelope": "BrokerReadEnvelope@v1",
+        "consumers": [],
+    },
 ]
 
 

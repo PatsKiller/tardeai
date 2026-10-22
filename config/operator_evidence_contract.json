@@ -22,7 +22,7 @@
     }
   },
   "broker_projections_observed": {
-    "_source": "scripts/lib/data_broker/catalog.py PROJECTIONS ids (35)",
+    "_source": "scripts/lib/data_broker/catalog.py PROJECTIONS ids (36)",
     "ids": [
       "market_quote", "quote_batch", "symbol_profile", "analyst_rollup", "analyst_detail", "catalyst_record",
       "indicator_snapshot", "portfolio_snapshot", "entry_plan", "reentry_decision_desk", "watch_intelligence",
@@ -30,7 +30,7 @@
       "market_regime", "daily_bars", "subject_research", "agent_opinion", "option_chain", "watch_discovery",
       "active_trader_microstructure", "price_stats", "ohlc_bars", "positions_context", "opportunity",
       "earnings_calendar", "news_sentiment",
-      "finviz_enrichment_snapshot", "scalp_list", "latest_quote", "social_feed", "yfinance_info"
+      "finviz_enrichment_snapshot", "scalp_list", "latest_quote", "social_feed", "yfinance_info", "cio_prospect"
     ]
   },
   "fact_spec_format": {
@@ -167,6 +167,7 @@
       "retirement": "Retirement roadmap (Roth ladder, golden window, income floor) is a planning surface; no operator-desk intent asks it today. Claim it under a retirement intent when one exists -- do not fold it into freeform, where a model would restate it."
     },
     "broker_projections": {
+      "cio_prospect": "CIO prospect data foundation P1 (2026-10-22, AGENTS.md \u00a726): the per-security prospect projection serves the SHADOW build until the operator grants the cio_prospect row and the migration (\u00a717). No operator-desk intent reads it yet; claim it under the reentry/attention/analyst intents when the reader batches of \u00a77 P3 move a surface onto it.",
       "watch_decision_desk": "catalog status 'legacy'; watch_intelligence supersedes it and is claimed by reentry/attention.",
       "opportunity": "Investment Command Center (2026-10-08): the curated conviction / R:R ranking in CIO memory is read by the Watch > Opportunities page, the opportunity modal and the Telegram opportunity line. No operator-desk intent reads it yet; claim it under the reentry/attention/analyst intents when the desk does (PR-B investment brief).",
       "price_stats": "Investment Command Center (2026-10-08): 52-week range, period changes, SMA200 and volume feed the opportunity engine and modal. Desk answers keep using indicator_snapshot numbers today; claim it under the analyst intent when a desk answer needs these fields.",

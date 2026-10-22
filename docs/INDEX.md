@@ -334,6 +334,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_GAP_2026-09-29-2107.md` | CIO Persistent Agent — GAP (2026-09-29 21:07 ET) |
 | `docs/architecture/CIO_GAP_2026-09-29-2153.md` | CIO Persistent Agent — GAP (2026-09-29 21:53 ET) |
 | `docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md` | CIO prospect data foundation — one store, one writer, the CIO as integrator |
+| `docs/architecture/CIO_PROSPECT_SHADOW_COMPARISON_2026-10-22.md` | CIO prospect shadow build — comparison vs today's surfaces (2026-10-22) |
 | `docs/architecture/COST_BASIS_FEED_CORRECTION_2026_06_05.md` | Cost Basis Feed Correction (2026-06-05) |
 | `docs/architecture/DATA_DICTIONARY.md` | Data dictionary — one source for every fact |
 | `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` | Decision Packet Operator Card + RTH Few-Hour Refresh |
