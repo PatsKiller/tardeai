@@ -37,7 +37,7 @@ MIGRATED_WAVE3 = {
     "scripts/data_plausibility_monitor.py": {"P1"},
     "scripts/pro_analyst_monitor.py": {"P2"},
     "scripts/youtube_cookie_health_check.py": {"P1", "P2"},
-    "scripts/audit_enrichment_coverage.py": {"P2"},
+    "scripts/audit_enrichment_coverage.py": {"P3"},  # 2026-10-22 rescope: digest, deduped (operator-approved)
     "scripts/audit_position_basis.py": {"P2"},
     "scripts/auto_research.py": {"P3"},
     "scripts/continuous_runner.py": {"P1"},

@@ -1590,7 +1590,7 @@
       "target_reason": "stage:shadow",
       "stage": "shadow",
       "purpose": {
-        "text": "Weekday 16:45: audit every enrichment surface (technicals, analyst pill, news, LLM coverage) across the canonical watch universe; alert on gaps",
+        "text": "Weekday 16:45: audit the curated Watch membership (cio_prospect store when granted; interim watchlist active + held + operator ticker directives) against the funded enrichment policy; P3 digest alert only when the gap count rises or a new gap appears; full list in a capped manifest (rescoped 2026-10-22, operator-approved)",
         "business_function": "monitoring",
         "source": "inventory cron:L472"
       },
@@ -1627,7 +1627,7 @@
           "source": "config/lane_registry.json output_signal"
         },
         {
-          "name": "Postgres, pro_analyst_pills_latest.json, holdings.json, telegram_alert, flock",
+          "name": "Postgres (watchlist_items, paper_trade_proposals, ticker_snapshot_daily, news_articles, hermes_external_research, hermes_research_intelligence, watchlist_final_synthesis), watch_directives via lib.data_broker.watch_intelligence, held via lib.data_broker.watch_domains.membership_held, pro_analyst_pills_latest.json, lane receipts (hermes_top20_external_intel, technicals-gap-backfill), telegram_alert (P3), flock",
           "kind": "inventory_text",
           "direction": "read",
           "source": "inventory cron:L472 dependencies (DRAFT: free text)"
@@ -1639,7 +1639,7 @@
           "source": "inventory cron:L472 triggers_inputs (DRAFT: free text)"
         },
         {
-          "name": "report + Telegram (--alert, digest-suppressed)",
+          "name": "report summary to the log; data/runtime/audit-enrichment-coverage_manifest.json (capped 500); data/runtime/audit-enrichment-coverage_state.json (dedupe); P3 notification intent (digest) with --alert",
           "kind": "inventory_text",
           "direction": "write",
           "source": "inventory cron:L472 outputs_downstream (DRAFT: free text)"
@@ -1664,7 +1664,7 @@
         },
         {
           "check": "output_produced",
-          "text": "a live run reports produced_count (Telegram alerts sent for directive enrichment gaps); zero is normal only with an allowed empty_reason ['no_new_input']"
+          "text": "a live run reports produced_count = curated Watch members audited (LaneRunReceipt@v2); zero is normal only with an allowed empty_reason ['no_new_input']"
         }
       ],
       "degraded": [
@@ -1765,12 +1765,12 @@
           "stat / jq the receipt: data/runtime/audit-enrichment-coverage_last.json"
         ],
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
-        "expected_output_basis": "expected_output derived 2026-10-15 from Weekdays 16:45: audit-only, writes no store; sends one P2 Telegram via send_telegram only when --alert and directive_gaps exist (audit_enrichment_coverage.py:118-119, :142-143); a clean audit sends nothing; receipt summary 'directive_gaps' (:181-183). produced_count emission: NOT YET - the lane writes LaneRunReceipt@v1 without produced_count; until it does, a live run is output_unverifiable"
+        "expected_output_basis": "expected_output re-derived 2026-10-22 (rescope): audit-only; writes the capped manifest and the dedupe state under data/runtime; sends one P3 notification intent (digest) via send_telegram only with --alert and only when the gap count rises or a new (symbol, surface) gap appears. produced_count = curated Watch members audited, written by write_lane_receipt (v2) with allowlist output_receipt v2."
       },
       "review_by": "2026-10-25",
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
-        "unit": "Telegram alerts sent for directive enrichment gaps",
+        "unit": "curated Watch members audited",
         "rule": "empty_allowed",
         "min_produced": null,
         "window_h": null,
@@ -1785,7 +1785,7 @@
         "evidence": [
           {
             "kind": "receipt_field",
-            "ref": "data/runtime/audit-enrichment-coverage_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/audit-enrichment-coverage/<run_id>.json); today the v1 receipt reports this unit as summary.directive_gaps"
+            "ref": "data/runtime/audit-enrichment-coverage_last.json produced_count (LaneRunReceipt@v2 top-level field; the executor reads the immutable attempt copy data/runtime/lane_attempts/audit-enrichment-coverage/<run_id>.json)"
           }
         ],
         "on_violation": {
