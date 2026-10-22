@@ -82,9 +82,11 @@ if [[ -n "${RTARM_SANDBOX:-}" ]]; then
   SANDBOX="$(realpath -e -- "$RTARM_SANDBOX" 2>/dev/null)" || refuse "RTARM_SANDBOX does not exist"
   [[ -f "$SANDBOX/.rtarm-sandbox" ]] || refuse "RTARM_SANDBOX has no .rtarm-sandbox marker"
   tmp_root="$(realpath -e -- "${TMPDIR:-/tmp}")"
+  # Only the active temp root ($TMPDIR, or /tmp when unset) -- not /tmp as a second root, so a sandbox
+  # outside $TMPDIR is refused on every host (CI's pytest dirs live under /tmp).
   case "$SANDBOX/" in
-    "$tmp_root"/*|/tmp/*) ;;
-    *) refuse "RTARM_SANDBOX must be under \$TMPDIR ($tmp_root) or /tmp" ;;
+    "$tmp_root"/*) ;;
+    *) refuse "RTARM_SANDBOX must be under \$TMPDIR ($tmp_root)" ;;
   esac
   [[ "$SANDBOX" != "$tmp_root" ]] || refuse "RTARM_SANDBOX must be a dir below \$TMPDIR, not \$TMPDIR itself"
   export HOME="$SANDBOX/home"
