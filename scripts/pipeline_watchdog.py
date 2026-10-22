@@ -18,12 +18,47 @@ PROJECT_ROOT = os.environ.get('TRADEAI_DEV_ROOT') or '/home/johnclaw/trade-ai-v1
 MAX_RETRIES = 3
 # Enrichment attempts per entity per week before backing off to weekly.
 MAX_ENRICH_ATTEMPTS = int(os.getenv('WATCHDOG_MAX_ENRICH_ATTEMPTS', '6'))
-# The health_tick deadline is 300s. Keep this batch below it so the watchdog
-# can terminate and reap children, then return a receipt, before health_tick's
-# own deadline. Children run in their own sessions so the parent can supervise
-# their process trees without health_tick mistaking them for abandoned orphans.
+# TIME SETTINGS — docs/ops/PIPELINE_TIME_SETTINGS.md. Do not lower without
+# measured runtime evidence (pipeline_runs, pipeline_key='symbol_enrichment').
+#
+# symbol_enrichment.py takes p50 136s / p90 209s / p95 241s / max 419s
+# (3,178 uncensored successes 2026-09-20..10-07, before the health tick). From
+# 2026-10-08 the tick reaped these children after orphan_wait_s=30: 224 failed
+# / 1 succeeded in the 36h to 2026-10-22, every failure at 29-33s.
+#
+# The watchdog now owns its children (own sessions, so health_tick's orphan
+# reaper never sees them) and waits for them. The batch is bounded by
+# ENRICHMENT_BATCH_TIMEOUT_S (240s = measured p95) AND by what the health tick
+# left this step (HEALTH_TICK_STEP_TIMEOUT_S, exported by health_tick.run_step)
+# minus ENRICHMENT_RESERVE_S, so the watchdog terminates, reaps and records its
+# children itself instead of being killed by the tick (tick_deadline_s=300,
+# unit TimeoutStartSec=330).
 ENRICHMENT_BATCH_TIMEOUT_S = max(1, int(os.getenv('WATCHDOG_ENRICHMENT_BATCH_TIMEOUT_S', '240')))
 ENRICHMENT_TERM_GRACE_S = 5.0
+# SIGTERM grace (5s) + SIGKILL reap wait (2s) + post-batch receipts/log_action (8s).
+ENRICHMENT_RESERVE_S = 15.0
+_STEP_STARTED_MONO = time.monotonic()
+
+
+def _enrichment_batch_timeout_s(now=None):
+    """Seconds the enrichment batch may still wait, measured from now.
+
+    min(ENRICHMENT_BATCH_TIMEOUT_S, step budget left - ENRICHMENT_RESERVE_S),
+    never below 1s. Without HEALTH_TICK_STEP_TIMEOUT_S (cron, manual run) only
+    the fixed bound applies.
+    """
+    budget = float(ENRICHMENT_BATCH_TIMEOUT_S)
+    raw = os.getenv('HEALTH_TICK_STEP_TIMEOUT_S')
+    if raw:
+        try:
+            step_timeout = float(raw)
+        except ValueError:
+            step_timeout = None
+        if step_timeout is not None and step_timeout > 0:
+            now = time.monotonic() if now is None else now
+            left = step_timeout - (now - _STEP_STARTED_MONO) - ENRICHMENT_RESERVE_S
+            budget = min(budget, left)
+    return max(1.0, budget)
 
 
 class _EnrichmentInterrupted(Exception):
@@ -78,7 +113,7 @@ def _terminate_enrichment_groups(children, grace_s=ENRICHMENT_TERM_GRACE_S):
 
 
 @contextmanager
-def _supervise_enrichment_batch(children, timeout_s=ENRICHMENT_BATCH_TIMEOUT_S, outcomes=None):
+def _supervise_enrichment_batch(children, timeout_s=None, outcomes=None):
     """Bound the batch and always clean up its children on exit.
 
     A SIGTERM/SIGHUP to the watchdog is converted into an exception so this
@@ -95,6 +130,9 @@ def _supervise_enrichment_batch(children, timeout_s=ENRICHMENT_BATCH_TIMEOUT_S, 
             old_handlers[sig] = signal.getsignal(sig)
             signal.signal(sig, interrupted)
         yield
+        if timeout_s is None:
+            # Measured after every child is spawned, against the step's real budget.
+            timeout_s = _enrichment_batch_timeout_s()
         deadline = time.monotonic() + timeout_s
         pending = list(children)
         while pending and time.monotonic() < deadline:
