@@ -1,4 +1,10 @@
-# Test results — current provisional checkpoint 2026-10-22 21:15 UTC
+# Test results — current provisional checkpoint 2026-10-22 21:16 UTC
+
+## Profile progress after 21:15 UTC
+
+The exact candidate profile is still live (session `86134`), so these are gate-local results, not a terminal profile result. Since 21:15 UTC, `n8n_cc_reader_first_20261018` passed 22 tests; `n8n_cc_truth` passed 23; `n8n_comms_intent_consumer` passed 27; n8n consolidation cohorts passed 26 and 28; `n8n_contract_enforcement_20261018` passed 72; and subsequent gates passed 27 (`n8n_cutover_wave`), 36 (desk-truth), 10 (diagnosis-not-deferred), and 6 (dry-run invariant). `n8n_evidence_gates_20261018` was running at the latest poll. The last observed aggregate remains 291 PASS / 3 FAIL; no terminal count, exit code, or manifest result has been observed.
+
+The operator reports that open PR #1947 addresses the two known failure causes. Read-only GitHub verification shows it remains OPEN at head `ff2f7b4d42e935334c93cc714ecedfcea227d8c9`, based on `b9804fa577e6d2793f4539c7458452707a350f61`; shard 7 and aggregate `ci-gate` are failing, CIO hardening is pending, and full hardening is skipped. This evidence does not qualify the fixes on main. Do not add an exemption or candidate workaround; rebase and rerun only after the upstream PR merges.
 
 ## Provisional exact-SHA full-profile update — 2026-10-22 21:15 UTC
 

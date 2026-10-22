@@ -1,4 +1,11 @@
-# Current execution status — 2026-10-22 21:15 UTC
+# Current execution status — 2026-10-22 21:16 UTC
+
+## Coordination and profile refresh — 2026-10-22 21:16 UTC
+
+- The exact candidate profile session `86134` was verified live by its owning integration agent. Since the 21:15 UTC checkpoint, `n8n_cc_reader_first_20261018` passed 22 tests, `n8n_cc_truth` passed 23, `n8n_comms_intent_consumer` passed 27, consolidation cohorts passed 26 and 28, `n8n_contract_enforcement_20261018` passed 72, and subsequent gates passed with counts 27 (`n8n_cutover_wave`), 36 (desk-truth), 10 (diagnosis-not-deferred), and 6 (dry-run invariant). `n8n_evidence_gates_20261018` was running at the latest agent poll. The profile still has no terminal summary; the last aggregate remains 291 PASS / 3 FAIL and is provisional.
+- Operator coordination says the two observed failure causes are addressed by PR #1947 and must not be worked around locally. Direct GitHub verification at this checkpoint shows #1947 is **OPEN**, head `ff2f7b4d42e935334c93cc714ecedfcea227d8c9`, based on main `b9804fa577e6d2793f4539c7458452707a350f61`; its `shard 7` and aggregate `ci-gate` are failing, CIO hardening is pending, and full hardening is skipped. Therefore neither its merge nor its fix is yet qualified on main. Recheck exact checks and main after the PR changes.
+- Operator directed a hold on `review/pipeline-lock-hardening-20261022` until an incoming PR carrying commits `481d10dc1c8ef4645d34a727152be46537ef8a55` and `30a70e59af4ff80f5cfd10b9d7162bca6bf26c8d` merges. A fresh open-PR listing found no such PR yet. Those commits are not in current main and overlap pipeline branch files; `30a70e59a` also overlaps nine documentation paths. The n8n evidence branch has no path overlap. Do not push pipeline work or rebase any branch until the relevant upstream merge and an active push grant; after merge, drop duplicate pipeline changes, preserve the pinned runtime limits unless measured evidence supports changing them, and rerun focused tests.
+- The existing n8n evidence and docs branches remain local pending the operator `git-push` grant. Dependency and lockfile changes remain deferred until the open Command Center PRs merge. No deployment or release was attempted; C3 remains disabled.
 
 ## Provisional execution update — 2026-10-22 21:15 UTC
 
