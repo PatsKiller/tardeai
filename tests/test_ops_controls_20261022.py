@@ -240,8 +240,12 @@ def test_policy_state_reads_the_19_row_and_fails_closed(tmp_path):
     assert C.policy_state(tmp_path / "missing.md")["state"] == "UNREADABLE"
 
 
-def test_repository_agents_md_is_not_19_active_so_the_surface_is_inert_on_this_branch():
-    assert C.policy_state(ROOT / "AGENTS.md")["state"] != "ACTIVE"
+def test_repository_agents_md_is_19_active_so_the_surface_may_answer_after_setup():
+    # Flipped 2026-10-22 when the operator ratified AGENTS.md 19.0.0 (PR #1962, token comment 6352416425).
+    # Operator, verbatim, approving this flip: "Approved both". The policy gate now opens; the surface still
+    # refuses every risky action until its own setup exists (deps, migration, applier HMAC key, an enrolled
+    # passkey): see the PASSKEY_REQUIRED / step-up tests in this file, which stay unchanged.
+    assert C.policy_state(ROOT / "AGENTS.md")["state"] == "ACTIVE"
 
 
 POST_ROUTES = ["/requests", "/requests/opsreq_" + "0" * 20 + "/approve",
