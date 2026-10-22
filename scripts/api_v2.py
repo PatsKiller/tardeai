@@ -48929,6 +48929,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "fallback": "host: python3 scripts/lib/release_train_stop.py stop --reason TEXT",
             }
 
+    # Ops -> Controls (AGENTS.md 19.0.0 §27.2-§27.3, PROPOSED; docs/ops/OPS_CONTROLS_API.md). Every POST refuses
+    # POLICY_NOT_ACTIVE until 19.0.0 is ACTIVE (read at request time); only the operator's tailnet identity is
+    # answered (the service token -- agents, n8n, cron -- is refused); host changes are applied only by
+    # scripts/ops/operator_controls_applier.py, never by this process.
+    if base_path.rstrip("/") == "/api/v2/ops/controls" or base_path.startswith("/api/v2/ops/controls/"):
+        try:
+            try:
+                from lib import ops_controls_api as _oca
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import ops_controls_api as _oca
+            _oca_out = _oca.handle(base_path, method, body, query)
+            if _oca_out is not None:
+                return _oca_out
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
     # TradingView webhook ingress (R5) — dormant; returns 503 unless explicitly enabled.
     if base_path == "/api/v2/ingress/tradingview":
         import os as _os_tv

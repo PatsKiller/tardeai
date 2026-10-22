@@ -221,6 +221,10 @@
     {
       "url": "/v3/system/releases",
       "path": "system/releases"
+    },
+    {
+      "url": "/v3/system/ops-controls",
+      "path": "system/ops-controls"
     }
   ],
   "spa_routes": [
@@ -380,6 +384,9 @@
     },
     {
       "route": "/v3/system/releases"
+    },
+    {
+      "route": "/v3/system/ops-controls"
     }
   ],
   "apis": [

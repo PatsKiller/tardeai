@@ -35,6 +35,7 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
       { to: '/coordination', label: 'Coordination' },
       { to: '/system/broker-access', label: 'Broker Access' },
       { to: '/system/releases', label: 'Releases & Schedules' },
+      { to: '/system/ops-controls', label: 'Ops Controls' },
       { to: '/system', label: 'System', exact: true },
     ],
   },
