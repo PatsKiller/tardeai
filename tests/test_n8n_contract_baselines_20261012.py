@@ -59,7 +59,9 @@ def test_all_operative_baselines_have_applicable_fields_and_order():
     # DRAFT pending owner REVIEW; tests/test_cio_portfolio_thesis_lane_20261021.py) = 150.
     # + 1 (2026-10-21 pr-hygiene-audit n8n-native shadow: REVIEWED by the operator 2026-10-21;
     # tests/test_pr_hygiene_audit_20261021.py) = 151 (release-1 integration: both sides add distinct contracts).
-    assert len(catalogue["contracts"]) == 151
+    # + 1 (2026-10-21 macro-calendar-refresh n8n-native ingest shadow: DRAFT, awaiting the platform owner's review;
+    # tests/test_macro_calendar_20261021.py) = 152.
+    assert len(catalogue["contracts"]) == 152
     assert not {row["id"]: A.baseline_errors(row) for row in catalogue["contracts"] if A.baseline_errors(row)}
 
 

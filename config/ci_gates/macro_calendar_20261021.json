@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "macro_calendar_20261021",
+  "files": [
+    "tests/test_macro_calendar_20261021.py"
+  ],
+  "anchor": "MACRO_CALENDAR_20261021",
+  "comment": [
+    "ANCHOR: MACRO_CALENDAR_20261021 — operator ruling 2026-10-21: the release train's 08:00 ET window needs a",
+    "macro calendar. FRED primary (scripts/macro_calendar_refresh.py: /fred/releases id verification, /fred/releases/dates,",
+    "08:30 ET mapping for jobs, CPI, PPI, retail sales, GDP, weekly claims, PCE, durable goods, housing starts) plus",
+    "config/macro_calendar_overrides.json (FOMC 2026-2027 at 14:00, operator add/remove with reasons); MacroCalendar@v1",
+    "written atomically to data/runtime/macro_calendar.json. Reader scripts/lib/macro_calendar.py skip_0800 /",
+    "ReleaseTrainCalendar.verdict fails closed (missing, corrupt, > 72 h, uncovered); needs-action source macro_calendar",
+    "(P2); n8n-native ingest lane macro-calendar-refresh at SHADOW (daily 05:05 ET, DRAFT contract). Hermetic: FRED",
+    "faked at the fetcher seam, urlopen refused, tmp state roots."
+  ]
+}

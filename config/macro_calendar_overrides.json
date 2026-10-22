@@ -1,0 +1,35 @@
+{
+  "schema": "MacroCalendarOverrides@v1",
+  "as_of": "2026-10-21",
+  "owner": "operator",
+  "_why": "Operator ruling 2026-10-21: FRED is the primary macro-release source for the release train's 08:00 ET window, plus this yearly file for FOMC and operator overrides. scripts/macro_calendar_refresh.py merges it into data/runtime/macro_calendar.json (MacroCalendar@v1). An add or remove without a reason makes the whole file invalid and the refresh writes nothing (fail closed).",
+  "_how": "add: {date, event, name, time_et, skips_0800 (default true when time_et is 08:30), reason, added_by, added_on}. remove: {date, event (an event key, or * for every event that day), reason, removed_by, removed_on}. Dates are ET calendar dates. Review once a year: replace fomc.decision_dates when the Federal Reserve publishes the next year's schedule.",
+  "fomc": {
+    "event": "fomc_decision",
+    "name": "FOMC rate decision (statement)",
+    "time_et": "14:00",
+    "skips_0800": false,
+    "skips_0800_note": "Recorded, not skipped: the decision is at 2:00 p.m. ET. The operator may set skips_0800 true.",
+    "source": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm, fetched 2026-10-21 (2026 and 2027 panels). The decision date is the last day of each meeting; * marks a Summary of Economic Projections meeting.",
+    "decision_dates": [
+      {"date": "2026-01-28", "meeting": "January 27-28", "sep": false},
+      {"date": "2026-03-18", "meeting": "March 17-18", "sep": true},
+      {"date": "2026-04-29", "meeting": "April 28-29", "sep": false},
+      {"date": "2026-06-17", "meeting": "June 16-17", "sep": true},
+      {"date": "2026-07-29", "meeting": "July 28-29", "sep": false},
+      {"date": "2026-09-16", "meeting": "September 15-16", "sep": true},
+      {"date": "2026-10-28", "meeting": "October 27-28", "sep": false},
+      {"date": "2026-12-09", "meeting": "December 8-9", "sep": true},
+      {"date": "2027-01-27", "meeting": "January 26-27", "sep": false},
+      {"date": "2027-03-17", "meeting": "March 16-17", "sep": true},
+      {"date": "2027-04-28", "meeting": "April 27-28", "sep": false},
+      {"date": "2027-06-09", "meeting": "June 8-9", "sep": true},
+      {"date": "2027-07-28", "meeting": "July 27-28", "sep": false},
+      {"date": "2027-09-15", "meeting": "September 14-15", "sep": true},
+      {"date": "2027-10-27", "meeting": "October 26-27", "sep": false},
+      {"date": "2027-12-08", "meeting": "December 7-8", "sep": true}
+    ]
+  },
+  "add": [],
+  "remove": []
+}

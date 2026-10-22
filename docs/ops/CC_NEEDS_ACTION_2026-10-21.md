@@ -39,10 +39,11 @@ Each view shows UNAVAILABLE / NO_RECEIPT / STALE when its source can't answer. N
 | comms | delivery summary | un-settled for more than 15 min → P1; failed deliveries → P2; Telegram sends failed → P2; telegram_outbox unreadable → P2 |
 | pipelines | pipeline-failures | each failing pipeline → P2 |
 | pr_hygiene (added 2026-10-21, [`PR_HYGIENE.md`](PR_HYGIENE.md)) | the `pr-hygiene-audit` lane receipt `data/runtime/pr-hygiene-audit_last.json` (`needs_action.probe_pr_hygiene`, read-only) | CONFLICT / SUPERSEDED / DUPLICATE → P2, STACKED / STALE_HOLD → P3 (first 12, then a rollup; evidence carries the PR url); local unpushed branches → one P3 rollup; no receipt yet → P3; failed run or ok_at older than 36 h → P2 |
+| macro_calendar (added 2026-10-21, [`MACRO_CALENDAR.md`](MACRO_CALENDAR.md)) | `needs_action.probe_macro_calendar`: the verdict of `scripts/lib/macro_calendar.py` for the next 08:00 ET window (reads `data/runtime/macro_calendar.json`, no network) | calendar missing / corrupt → P2 "08:00 release window skipped: calendar missing"; older than 72 h or not covering the day → P2 "08:00 release window skipped: calendar stale"; an 08:30 release day is an expected skip, no item |
 
 **Never silently dropped.** Every probe runs on its own worker with a 5 s budget. A probe that raises, times out or
 answers UNAVAILABLE becomes one P2 item, "source X unavailable", and sets `sources.X.status = UNAVAILABLE`.
-`all_sources_answered` is true only when every source answered (ten since the 2026-10-21 `pr_hygiene` source). The Home card (`components/home/NeedsActionCard.tsx`,
+`all_sources_answered` is true only when every source answered (ten since the 2026-10-21 `pr_hygiene` source; twelve with the release train's `release_window` and the `macro_calendar` source). The Home card (`components/home/NeedsActionCard.tsx`,
 `lib/needsAction.ts`) shows "Nothing needs action" only in that case. A fetch error, a missing payload or a partial
 answer is shown as UNAVAILABLE or STALE, never as all-clear.
 

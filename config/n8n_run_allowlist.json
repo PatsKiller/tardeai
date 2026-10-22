@@ -606,6 +606,30 @@
       "source": "Operator-approved process plan 2026-10-21 (PR hygiene audited every iteration). n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run prints only."
     },
     {
+      "lane_id": "macro-calendar-refresh",
+      "command": [
+        "$PY",
+        "scripts/macro_calendar_refresh.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_macro_calendar_refresh.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/macro-calendar-refresh_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "FRED_API_KEY",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "Literal reads across the 5-module import closure (scripts/macro_calendar_refresh.py, lib/macro_calendar.py, lib/lane_last_receipt.py, lib/persistent_state_root.py, lib/atomic_json_store.py): FRED_API_KEY (macro_calendar_refresh.resolve_key, process env only; no env-file loader in the closure); TRADEAI_PERSISTENT_STATE_ROOT (lib/persistent_state_root.py); TRADEAI_STATE_ROOT, TRADEAI_RUN_ID, TRADEAI_RUN_ATTEMPT, TRADEAI_RUN_MODE, TRADEAI_CODE_SHA are executor base names. No DB, no model, no broker name.",
+      "source": "Operator ruling 2026-10-21 (macro calendar for the release train's 08:00 ET window: FRED primary, yearly overrides file, n8n-managed, fail closed). n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run fetches FRED read-only and prints only."
+    },
+    {
       "lane_id": "active-trader-motion-watchdog",
       "env_names": [
         "TRADEAI_N8N_COORDINATION_LEDGER",

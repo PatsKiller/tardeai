@@ -1920,6 +1920,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/M2_DARK_READ_PARITY_2026-08-24.md` | M2 dark-read parity |
 | `docs/ops/M2_PRODUCTION_MEMORY_SHADOW_CLOSEOUT_2026-08-24.md` | M2 production memory shadow — R10.10 closeout |
 | `docs/ops/M3_SHADOW_LEARNING_SOAK_2026-08-24.md` | M3 shadow learning soak |
+| `docs/ops/MACRO_CALENDAR.md` | Macro calendar — may the release train use the 08:00 ET window? |
 | `docs/ops/MATURATION_G1_I0_A1_B1_2026-08-21.md` | Maturation slices G.1 + I.0 + A.1 + B.1 — 2026-08-21 |
 | `docs/ops/MATURE_INVESTMENT_OFFICE_LIVE_CONVERGENCE_2026-08-23.md` | Trade AI v12 R9.1 - Mature Investment Office Live Convergence |
 | `docs/ops/MATURITY_GAP_CLOSEOUT_2026-09-20-1445.md` | Maturity gap closeout — 2026-09-20 14:45 ET |
