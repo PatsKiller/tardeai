@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_github_app_writer_20261021",
+  "files": [
+    "tests/test_release_train_github_app_writer_20261021.py"
+  ],
+  "anchor": "RELEASE_TRAIN_GITHUB_APP_WRITER_20261021",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_GITHUB_APP_WRITER_20261021 — release-train arming finding 3 (decision D2 (a)).",
+    "GitHubAppWriter mints a fresh 1-hour installation token per write (JWT RS256 signed with cryptography from",
+    "~/.config/tradeai/release_train/github-app.pem, mode 600, never logged; narrowed permissions; a wider token is",
+    "refused); git push publishes only the bound refs/heads/train/<id> with the token as an http.extraheader in",
+    "the child's GIT_CONFIG_* env (never argv or a config file); PR open/merge via the REST API. GITHUB_WRITES_STATUS",
+    "stays PROPOSED. Hermetic: test RSA key in tmp_path, mocked GitHub API, local bare repo."
+  ]
+}

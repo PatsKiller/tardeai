@@ -1017,6 +1017,251 @@ class GhCliWriter:
         return out.strip()
 
 
+#: GitHub App (decision D2 (a), docs/ops/RELEASE_TRAIN_GITHUB_APP.md §5): the key and the non-secret identifiers live
+#: outside the repository, mode 600, owned by the release user. Agents never read the key (AGENTS §24.7).
+APP_KEY_PATH = HOST_CONFIG / "github-app.pem"
+APP_CONFIG_PATH = HOST_CONFIG / "github-app.json"
+GITHUB_API = "https://api.github.com"
+#: The narrowed installation-token request for the build/publish and merge phases (App doc §5 step 2).
+APP_TOKEN_PERMISSIONS = {"contents": "write", "pull_requests": "write", "checks": "read", "metadata": "read"}
+def is_train_ref(ref: str) -> bool:
+    """refs/heads/train/<a valid train id>, nothing else."""
+    p = "refs/heads/train/"
+    return isinstance(ref, str) and ref.startswith(p) and bool(CAP.TRAIN_RE.match(ref[len(p):]))
+
+
+class AppTokenError(RuntimeError):
+    """Minting failed. The message never carries the key, the JWT or a token."""
+
+
+class AppToken:
+    """An installation token held in memory for ONE writer call. ``repr`` never shows the value."""
+
+    __slots__ = ("_value", "expires_at", "permissions")
+
+    def __init__(self, value: str, expires_at: str, permissions: dict) -> None:
+        self._value, self.expires_at, self.permissions = value, expires_at, dict(permissions)
+
+    @property
+    def value(self) -> str:
+        return self._value
+
+    def __repr__(self) -> str:
+        return f"AppToken(expires_at={self.expires_at!r}, permissions={self.permissions!r}, value=<redacted>)"
+
+    __str__ = __repr__
+
+
+HttpFn = Callable[[str, str, dict, Optional[bytes]], tuple[int, bytes]]
+
+
+def _urllib_http(method: str, url: str, headers: dict, body: Optional[bytes]) -> tuple[int, bytes]:
+    import urllib.error  # noqa: PLC0415
+    import urllib.request  # noqa: PLC0415
+
+    if not url.startswith(GITHUB_API + "/"):
+        raise AppTokenError("refusing a request outside api.github.com")
+    req = urllib.request.Request(url, data=body, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 - fixed https origin checked above
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read() if exc.fp else b""
+
+
+def _read_private_file(path: Path, what: str) -> bytes:
+    """A regular file (not a symlink), owned by this uid, mode 600; else refused. The content is never logged."""
+    try:
+        st = os.lstat(path)
+    except OSError as exc:
+        raise AppTokenError(f"{what} {path} unavailable: {type(exc).__name__}") from None
+    import stat as _stat  # noqa: PLC0415
+
+    if not _stat.S_ISREG(st.st_mode):
+        raise AppTokenError(f"{what} {path} is not a regular file (symlinks are refused)")
+    if st.st_uid != os.getuid():
+        raise AppTokenError(f"{what} {path} is not owned by this user")
+    if st.st_mode & 0o077:
+        raise AppTokenError(f"{what} {path} must be mode 600 (is {oct(st.st_mode & 0o777)})")
+    with open(path, "rb") as fh:
+        return fh.read()
+
+
+class GitHubAppTokenMinter:
+    """Mints a 1-hour installation token: a JWT signed RS256 with the App's private key (``iat`` now-60, ``exp``
+    now+540, ``iss`` the client id or app id), then ``POST /app/installations/<id>/access_tokens`` with the narrowed
+    body. The key, the JWT and the token are never logged, written or put in an exception; only ``expires_at`` and
+    the granted ``permissions`` are kept (``audit``)."""
+
+    def __init__(self, *, key_path: Path = APP_KEY_PATH, config_path: Path = APP_CONFIG_PATH,
+                 http: Optional[HttpFn] = None, clock: Callable[[], float] = time.time) -> None:
+        self.key_path, self.config_path = Path(key_path), Path(config_path)
+        self.http = http or _urllib_http
+        self.clock = clock
+        self.audit: list[dict] = []
+
+    def config(self) -> dict:
+        try:
+            cfg = json.loads(_read_private_file(self.config_path, "App config").decode("utf-8"))
+        except ValueError:
+            raise AppTokenError("App config is not JSON") from None
+        iss = cfg.get("client_id") or cfg.get("app_id")
+        inst, repo = cfg.get("installation_id"), cfg.get("repository")
+        if not iss or not isinstance(inst, int) or not isinstance(repo, str) or repo.count("/") != 1:
+            raise AppTokenError("App config needs client_id (or app_id), an integer installation_id and owner/repo")
+        return {"iss": str(iss), "installation_id": inst, "repository": repo}
+
+    def jwt(self, iss: str) -> str:
+        """RS256 JWT (RFC 7515/7519) signed with ``cryptography`` directly: RSASSA-PKCS1-v1_5 over SHA-256. The
+        release venv also carries PyJWT, but cryptography is the one library both it and CI install
+        (requirements.lock.txt), so the signer has a single dependency."""
+        import base64  # noqa: PLC0415
+
+        try:
+            from cryptography.hazmat.primitives import hashes, serialization  # noqa: PLC0415
+            from cryptography.hazmat.primitives.asymmetric import padding, rsa  # noqa: PLC0415
+        except ImportError:
+            raise AppTokenError("cryptography is not installed in this interpreter; RS256 unavailable") from None
+
+        def b64(data: bytes) -> str:
+            return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+        now = int(self.clock())
+        pem = _read_private_file(self.key_path, "App private key")
+        try:
+            key = serialization.load_pem_private_key(pem, password=None)
+        except Exception:  # noqa: BLE001 - never echo the key or the library's message
+            raise AppTokenError("App private key unreadable (PEM, unencrypted RSA expected)") from None
+        if not isinstance(key, rsa.RSAPrivateKey):
+            raise AppTokenError("App private key is not an RSA key")
+        head = b64(json.dumps({"alg": "RS256", "typ": "JWT"}, separators=(",", ":")).encode())
+        body = b64(json.dumps({"iat": now - 60, "exp": now + 540, "iss": iss}, separators=(",", ":")).encode())
+        sig = key.sign(f"{head}.{body}".encode("ascii"), padding.PKCS1v15(), hashes.SHA256())
+        return f"{head}.{body}.{b64(sig)}"
+
+    def mint(self, action: str) -> AppToken:
+        cfg = self.config()
+        body = json.dumps({"repositories": [cfg["repository"].split("/")[1]],
+                           "permissions": APP_TOKEN_PERMISSIONS}).encode()
+        headers = {"Authorization": f"Bearer {self.jwt(cfg['iss'])}", "Accept": "application/vnd.github+json",
+                   "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json"}
+        status, raw = self.http("POST", f"{GITHUB_API}/app/installations/{cfg['installation_id']}/access_tokens",
+                                headers, body)
+        if status != 201:
+            raise AppTokenError(f"installation token refused: HTTP {status}")
+        try:
+            doc = json.loads(raw.decode("utf-8"))
+            tok, exp, perms = str(doc["token"]), str(doc["expires_at"]), dict(doc.get("permissions") or {})
+        except (ValueError, KeyError, TypeError, AttributeError):
+            raise AppTokenError("installation token response unreadable") from None
+        wider = {k: v for k, v in perms.items() if k not in APP_TOKEN_PERMISSIONS
+                 or (v == "write" and APP_TOKEN_PERMISSIONS[k] != "write")}
+        if wider:
+            raise AppTokenError(f"installation token is wider than requested: {sorted(wider)}")
+        self.audit.append({"action": action, "expires_at": exp, "permissions": perms, "at": utc_iso(self.clock())})
+        return AppToken(tok, exp, perms)
+
+
+class GitHubAppWriter:
+    """The live writer under decision D2 (a): every GitHub write is made with a fresh 1-hour GitHub App installation
+    token (never the host's gh user). ``git push`` publishes ONLY ``refs/heads/train/<train id>``; the token reaches
+    git as an ``http.extraheader`` through ``GIT_CONFIG_COUNT``/``GIT_CONFIG_KEY_0``/``GIT_CONFIG_VALUE_0`` in that one
+    child's environment (never argv, never a git config file, never a credential store). The PR calls go to the REST
+    API with the token in the request header. Refuses to construct while GITHUB_WRITES_STATUS is not ACTIVE."""
+
+    simulated = False
+
+    def __init__(self, host: RW.Host, reader: GhCliReader, *, minter: Optional[GitHubAppTokenMinter] = None,
+                 status: Optional[str] = None, remote_url: Optional[str] = None,
+                 runner: Optional[Callable[..., tuple[int, str]]] = None, http: Optional[HttpFn] = None) -> None:
+        if (status or GITHUB_WRITES_STATUS) != "ACTIVE":
+            raise WriterNotArmed(f"GitHub writes are {status or GITHUB_WRITES_STATUS}: decision D2 and the AGENTS "
+                                 "17.0.0 amendment are not in force")
+        self.host, self.reader = host, reader
+        self.minter = minter or GitHubAppTokenMinter()
+        self.http = http or self.minter.http
+        self.remote_url = remote_url
+        self.runner = runner or _run
+
+    # -- helpers ---------------------------------------------------------------------------------------
+    @staticmethod
+    def _scrub(text: str, token: AppToken) -> str:
+        import base64  # noqa: PLC0415
+
+        b64 = base64.b64encode(f"x-access-token:{token.value}".encode()).decode()
+        return str(text).replace(token.value, "***").replace(b64, "***")
+
+    def _repo(self) -> str:
+        return self.minter.config()["repository"]
+
+    def _api(self, token: AppToken, method: str, path: str, body: Optional[dict] = None) -> tuple[int, Any]:
+        headers = {"Authorization": f"token {token.value}", "Accept": "application/vnd.github+json",
+                   "X-GitHub-Api-Version": "2022-11-28"}
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode()
+            headers["Content-Type"] = "application/json"
+        status, raw = self.http(method, f"{GITHUB_API}/{path}", headers, data)
+        try:
+            doc = json.loads(raw.decode("utf-8")) if raw else None
+        except ValueError:
+            doc = None
+        return status, doc
+
+    def _push(self, sha: str, ref: str, *, bound_ref: str, token: AppToken) -> dict:
+        """The one git write. Refused unless ``ref`` IS the bound train ref (a train ref pattern and equal to it)."""
+        if ref != bound_ref or not is_train_ref(ref) or not SHA_RE.match(sha or ""):
+            raise PermissionError(f"refused: push to {ref!r} (only the bound {bound_ref!r} with a full SHA)")
+        import base64  # noqa: PLC0415
+
+        header = "AUTHORIZATION: basic " + base64.b64encode(f"x-access-token:{token.value}".encode()).decode()
+        url = self.remote_url or f"https://github.com/{self._repo()}.git"
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_CONFIG_")}
+        env.update({"GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_COUNT": "2",
+                    "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader", "GIT_CONFIG_VALUE_0": header,
+                    "GIT_CONFIG_KEY_1": "credential.helper", "GIT_CONFIG_VALUE_1": ""})
+        if self.remote_url:                         # tests: a local bare repo; the header is scoped to github.com
+            env["GIT_CONFIG_KEY_0"] = "http.extraheader"
+        rc, out = self.runner(["git", "-C", str(self.host.checkout), "push", "--porcelain", url, f"{sha}:{ref}"],
+                              env=env, timeout=600)
+        if rc != 0:
+            raise RuntimeError(f"push refused rc={rc}: {self._scrub(out, token).strip()[-200:]}")
+        return {"ref": ref, "sha": sha, "token_expires_at": token.expires_at}
+
+    # -- the GitHubWriter protocol ----------------------------------------------------------------------
+    def push_train_ref(self, train_id: str, sha: str) -> dict:
+        if not CAP.TRAIN_RE.match(train_id or ""):
+            raise ValueError("train id")
+        ref = f"refs/heads/train/{train_id}"
+        token = self.minter.mint("push_train_ref")
+        return self._push(sha, ref, bound_ref=ref, token=token)
+
+    def open_or_update_batch_pr(self, train_id: str, sha: str, title: str, body: str) -> int:
+        if not CAP.TRAIN_RE.match(train_id or ""):
+            raise ValueError("train id")
+        token = self.minter.mint("open_batch_pr")
+        repo = self._repo()
+        head = f"train/{train_id}"
+        status, doc = self._api(token, "GET", f"repos/{repo}/pulls?head={repo.split('/')[0]}:{head}&state=open")
+        if status == 200 and isinstance(doc, list) and doc:
+            return int(doc[0]["number"])
+        status, doc = self._api(token, "POST", f"repos/{repo}/pulls",
+                                {"title": title, "head": head, "base": "main", "body": body})
+        if status != 201 or not isinstance(doc, dict):
+            raise RuntimeError(f"open PR failed: HTTP {status}")
+        return int(doc["number"])
+
+    def merge_batch_pr(self, pr: int, expected_head_sha: str, message: str) -> str:
+        if not SHA_RE.match(expected_head_sha or ""):
+            raise ValueError("expected head sha")
+        token = self.minter.mint("merge_batch_pr")
+        status, doc = self._api(token, "PUT", f"repos/{self._repo()}/pulls/{int(pr)}/merge",
+                                {"sha": expected_head_sha, "merge_method": "merge", "commit_title": message})
+        if status != 200 or not isinstance(doc, dict) or not SHA_RE.match(str(doc.get("sha") or "")):
+            raise RuntimeError(f"merge refused: HTTP {status}")
+        return str(doc["sha"])
+
+
 class SimulatedGitHubWriter:
     """Dry run: records exactly what would be written; writes nothing."""
 
@@ -2687,7 +2932,9 @@ def build_controller(*, live: bool, config: Optional[TrainConfig] = None, host: 
     host = host or RW.Host()
     state = state or RW.State()
     reader = GhCliReader(host)
-    writer = GhCliWriter(host, reader) if live else None    # raises WriterNotArmed until D2 + 17.0.0
+    # D2 (a): the live writer is the GitHub App writer (1-hour installation tokens), never the host gh user.
+    # Raises WriterNotArmed while GITHUB_WRITES_STATUS is not ACTIVE (D2 + AGENTS 17.0.0).
+    writer = GitHubAppWriter(host, reader) if live else None
     return TrainController(host=host, state=state, github=reader, queue=default_queue_source(),
                            classifier=load_classifier(), live=live, writer=writer, config=config)
 

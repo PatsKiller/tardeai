@@ -642,6 +642,16 @@ The fallback holds through every phase.
 3. **`GITHUB_WRITES_STATUS` does not deliver D2.** `GhCliWriter` uses `git push origin` and the host `gh` token.
    There is no App token minting anywhere ("Phase 3 code and is not shipped", App doc §5). The `train/**` ruleset
    that bypasses only the App would refuse those pushes.
+   **Status: FIXED (built, not armed)** (branch `fix/release-train-arming-blockers-20261021`). `GitHubAppWriter`
+   (in `release_train_controller.py`, beside `GhCliWriter`) is now the live writer `build_controller` constructs.
+   For each write it mints a fresh 1-hour installation token: a JWT signed RS256 with `cryptography` (in the
+   release venv and in CI; PyJWT is not needed) with `~/.config/tradeai/release_train/github-app.pem`, using the identifiers in `github-app.json`
+   (both mode 600; refused otherwise; never logged). The token request is narrowed to `tardeai` and contents/PR
+   write, and a wider grant is refused. `git push` publishes only the bound `refs/heads/train/<id>` to
+   `https://github.com/<repo>.git`. The token goes in an `http.extraheader` passed through that one child's
+   `GIT_CONFIG_*` environment (never argv, never a git config file; credential helpers off). PR open and merge use the
+   REST API. Only `expires_at` and `permissions` are kept. `GITHUB_WRITES_STATUS` stays `PROPOSED`, so the writer
+   still refuses to construct. I.4 PR 2 remains the operator's flip.
 4. **`release_window.py status` reports no `state_dir`.** UI contract §6 says "the operator confirms that
    `GET /stop`'s `state_dir` equals the path `release_window.py status` reads". `Runner.status()` returns
    `latch_state`, `latch`, `last`, `multi_window_grant_status`, `windows_et`, `grace_min` and `grant_token`, and no
