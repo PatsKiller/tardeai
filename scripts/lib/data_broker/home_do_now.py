@@ -300,7 +300,7 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime) -> tuple[l
         "heat_limit_pct": HEAT_LIMIT_PCT,
         "heat_basis": "risk_management.json portfolio_heat_pct via the risk snapshot: summed loss-to-stop as % of book",
         "as_of": as_of,
-        "positions_source": "holdings.json via data_broker.risk_snapshot (positions_current is not approved for Home)",
+        "positions_source": "the holdings file (holdings.json) via data_broker.risk_snapshot (positions_current is not approved for Home)",
     }
     return out, numbers
 

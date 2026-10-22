@@ -29,7 +29,7 @@ function doNow() {
     rolled_up: { raw_items: 19, after_dedupe: 13, inbox_total: 135, needs_action_total: 18 },
     numbers: { status: 'OK', unprotected_positions: 8, unprotected_value_usd: 410000, unprotected_basis: 'no stop on record (risk snapshot); working-stop coverage not measured',
       unprotected_source: 'risk', heat_pct: 0.1, heat_limit_pct: 5, heat_basis: 'risk_management.json portfolio_heat_pct', as_of: iso(30_000),
-      positions_source: 'holdings.json via data_broker.risk_snapshot (positions_current is not approved for Home)', stale: false },
+      positions_source: 'holdings file via data_broker.risk_snapshot (positions_current is not approved for Home)', stale: false },
     sources: Object.fromEntries(['needs_action', 'inbox', 'risk', 'desk_truth', 'proposals', 'deploy'].map(n => [n,
       { status: n === 'desk_truth' ? 'NO_RECEIPT' : 'OK', as_of: iso(), as_of_basis: 'read_at', age_s: 5, stale: false, ms: 10 }])),
   }

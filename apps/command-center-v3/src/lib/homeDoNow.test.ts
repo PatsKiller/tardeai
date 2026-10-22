@@ -17,7 +17,7 @@ const ok = {
     desk_truth: { status: 'NO_RECEIPT', as_of_basis: 'no receipt', stale: false } },
   items: [it('stop:SPCX', 'protect', 'P1', 116000), ...Array.from({ length: 9 }, (_, i) => it(`fix${i}`, 'fix', 'P2')), it('d', 'decide', 'P2'), it('junk', 'other', 'P9')],
   rolled_up: { raw_items: 20, after_dedupe: 11, inbox_total: 135, needs_action_total: 18 },
-  numbers: { status: 'OK', unprotected_positions: 8, unprotected_value_usd: 300000, unprotected_basis: 'no stop on record', heat_pct: 0.1, heat_limit_pct: 5, positions_source: 'holdings.json via risk_snapshot', as_of: 'x', stale: false },
+  numbers: { status: 'OK', unprotected_positions: 8, unprotected_value_usd: 300000, unprotected_basis: 'no stop on record', heat_pct: 0.1, heat_limit_pct: 5, positions_source: 'holdings file via risk_snapshot', as_of: 'x', stale: false },
 }
 const m = doNowFrom(ok, { nowMs: now })
 check('ITEMS; junk category/severity dropped; server order kept', m.state === 'ITEMS' && m.items.length === 11 && m.items[0].id === 'stop:SPCX')
@@ -45,7 +45,7 @@ check('routerPath', routerPath('/v3/communications') === '/communications' && ro
 const ov = (observed: string | null, status = 'FRESH') => ({ observation: { envelopes: { holdings: { observed_at: observed, freshness: { status } } } } })
 check('market hours detection', inMarketHours(now) && !inMarketHours(Date.parse('2026-10-24T15:00:00Z')) && !inMarketHours(Date.parse('2026-10-22T21:00:00Z')))
 const f50 = positionsFreshness(ov('2026-10-22T14:10:00Z'), now)
-check('50 min old in market hours is STALE', f50.stale && f50.label === 'Positions 50 min old · STALE' && f50.tip.includes('holdings.json'))
+check('50 min old in market hours is STALE', f50.stale && f50.label === 'Positions 50 min old · STALE' && f50.tip.includes('holdings'))
 check('10 min old is fresh', !positionsFreshness(ov('2026-10-22T14:50:00Z'), now).stale)
 check('server STALE wins', positionsFreshness(ov('2026-10-22T14:55:00Z', 'STALE'), now).stale)
 check('no observation time is STALE', positionsFreshness({}, now).stale && positionsFreshness({}, now).label.includes('age unknown'))
