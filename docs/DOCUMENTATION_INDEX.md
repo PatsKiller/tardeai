@@ -31,6 +31,13 @@ ACTIVE; 11.0.0 (§23.24) is PROPOSED.
 | Workflow development standards | `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` §0 | Active |
 | Production readiness checklist | `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` "Production readiness checklist" | Active |
 
+## Ops → Controls (2026-10-22) — BUILT INERT, awaits AGENTS.md 19.0.0
+
+| Document | Purpose | Status |
+|----------|---------|--------|
+| `docs/ops/OPS_CONTROLS.md` | The operator Controls surface and its one governed host applier: components, threat model, change kinds (and the NOT_SUPPORTED ones with reasons), data-dictionary coordination with the 19.0.0 package, the operator activation steps (migration, approval key, applier unit, TOTP recovery, passkey enrollment) and rollback | Draft (branch feat/ops-controls-20261022) |
+| `docs/ops/OPS_CONTROLS_API.md` | Response contract for `/api/v2/ops/controls/*` (state read model, request lifecycle, WebAuthn step-up, undo) | Draft |
+
 ## Live changes (2026-10-20)
 
 | Document | Purpose | Status |
