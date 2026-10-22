@@ -91,6 +91,8 @@
         "latch_stop_on_rollback": {"const": true}
       }
     },
-    "notes": {"type": "string"}
+    "notes": {"type": "string"},
+    "phase": {"enum": ["shadow", "canary", "expand"],
+              "description": "Optional rollout phase (arming finding 8). Only 'canary' admits an operator-forced off-window run, and only with the controller policy's canary flag; absent means no phase-gated behaviour."}
   }
 }

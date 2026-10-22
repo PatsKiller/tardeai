@@ -512,10 +512,43 @@ act that accepts a digest: `arm` stores the record's digest as `accepted_policy_
 # PR 2 — scripts/lib/release_train_controller.py (after the App token writer, I.1 item 3)
 -GITHUB_WRITES_STATUS = "PROPOSED"
 +GITHUB_WRITES_STATUS = "ACTIVE"
+
+# PR 3 — config/release_train_policy.json (finding 8: operator-forced off-window canary runs; shipped false)
+-    "operator_forced_off_window": false,
++    "operator_forced_off_window": true,
 ```
 
-**I.5 Proofs.** One live train runs per 18:00 window, so the proofs take one window each (finding 8). Each proof's
-evidence is the receipt plus `train_events.jsonl` (or the store) plus the served SHA, never an exit code.
+Also, at I.3, add `"phase": "canary"` to the delegation together with the 1800 slot, so one `change-scope` covers
+both. Forced runs exist only while the delegation says `canary`. At J, set `"phase": "expand"` with the next
+`change-scope`, which ends them.
+
+**I.5 Proofs — in one evening, with operator-forced canary runs (finding 8).** On-window, one live train runs per
+18:00 window. To avoid that calendar floor, the operator runs each proof at the host TTY as a forced run, back to
+back:
+
+```bash
+# dry run first (writes nothing, needs no TTY):
+cd $CUR && $PY scripts/release_window.py train-run --force-window 1800 --operator-forced \
+    --operator-ref "canary proof 1 success" --forced-n 1
+# live (TTY; type the printed phrase "FORCE WINDOW 1800 RUN 1 EPOCH <e>"):
+cd $CUR && $PY scripts/release_window.py train-run --live --force-window 1800 --operator-forced \
+    --operator-ref "canary proof 1 success" --forced-n 1
+```
+
+- Each proof uses a new `--forced-n` (1, 2, 3, …). A repeated n is refused with `REFUSED_WINDOW_ALREADY_CLAIMED`,
+  so a forced run is idempotent per n.
+- Only the window timing is overridden. These still apply: the latch (STOP refuses), the armed control and its
+  epoch, the ACTIVE delegation with 1800 enabled in scope, the accepted digest, reconcile-first, quarantine,
+  capabilities (the capability authority checks the forced record, the `canary` phase and the policy flag itself),
+  the four checks, self-modification blocking and verification.
+- Each run is recorded with `forced_by: operator`, `operator_ref` and `window_gate_overridden: true`, under the key
+  `rtw:1800:<date>:live:forced:<n>`. The record is in the `TrainEvent` `selected` payload, in
+  `trains/<id>/forced.json`, in the outcome notes (`[OPERATOR-FORCED …]`) and in the CC train history (`forced` and
+  `forced_ref`).
+- It is refused outside phase `canary`, while the policy flag is false, without a TTY, on a wrong phrase, and while
+  the controller is BUILD_ONLY. n8n and the CC cannot reach it.
+
+Each proof's evidence is the receipt plus `train_events.jsonl` (or the store) plus the served SHA, never an exit code.
 
 | # | Proof | How | Expected artifact |
 |---|---|---|---|
@@ -724,6 +757,14 @@ The fallback holds through every phase.
 8. **"No minimum number of days" versus one train per window.** Live requests are on-window only (an off-window
    request is always shadow), and there is one train per window. With only 18:00 enabled, the canary's 5 proofs (STOP
    in 4 phases) need about 8 separate 18:00 windows. That is a calendar floor the plan says does not exist.
+   **Status: ADDRESSED — built, not enabled** (branch `fix/release-train-arming-blockers-20261021`). The coordinator
+   relayed an operator ruling of 2026-10-21 ("approve off-window canary runs"); this agent did not verify it
+   independently. The change adds operator-forced off-window canary runs: `release_window.py train-run --live
+   --force-window 1800 --operator-forced --operator-ref <ref> --forced-n <n>`, from the host TTY with a typed phrase
+   (I.5). They are allowed only while the delegation carries `"phase": "canary"` (a new optional, validated field)
+   and the controller policy's `canary.operator_forced_off_window` is true. **That flag ships false**, and flipping
+   it is I.4 PR 3. The capability authority re-checks the forced record, the phase and the flag on its own, and
+   every other gate is unchanged. With the flag on, the canary's proofs can run in one evening.
 9. **C9 refusal codes are out of date in the controller.** Contract rev 3 and the receipt schema add
    `RECONCILE_REQUIRED`, `QUARANTINED_LINEAGE`, `CONTROLLER_ERROR` and `CONTROLLER_FAILED`. The controller's
    `REFUSAL_CODES` and `REFUSAL_MAP` still map those cases to `STOP_SET`, `NOT_ARMED` or `LOCK_HELD`. The packet

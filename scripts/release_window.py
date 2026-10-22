@@ -871,6 +871,12 @@ def main(argv: Optional[list[str]] = None) -> int:
             t.add_argument("--inject", choices=["red-check", "conflict", "stop-midrun", "corrupt-latch", "crash"],
                            help="dry run only: simulate one failure and record how the controller behaved "
                                 "(refused with --live)")
+            # Arming finding 8: an operator-forced off-window CANARY run. Host CLI only (TTY + typed phrase when
+            # --live); needs the delegation phase "canary" and the policy canary flag; overrides only the timing.
+            t.add_argument("--force-window", choices=["1800", "0000", "0600", "0800"], default=None)
+            t.add_argument("--operator-forced", action="store_true")
+            t.add_argument("--operator-ref", default=None)
+            t.add_argument("--forced-n", type=int, default=None)
     sub.add_parser("train-status")
     r = sub.add_parser("train-reconcile")
     r.add_argument("--live", action="store_true")

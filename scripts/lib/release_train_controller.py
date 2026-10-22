@@ -212,15 +212,19 @@ class TrainWindow:
     enabled: bool
     latest_start_et: Optional[str] = None
     skip_on_macro_days: bool = False
+    forced_n: Optional[int] = None          # an operator-forced canary run (finding 8): its own claim per n
+    nominal_start: Optional[datetime] = None  # forced: the slot's own start (its identity); ``start`` is the timing
 
     @property
     def window_id(self) -> str:
-        """ISO local start with its UTC offset: unambiguous across DST (a repeated hour has two offsets)."""
-        return self.start.isoformat(timespec="minutes")
+        """ISO local start with its UTC offset: unambiguous across DST (a repeated hour has two offsets). A forced run
+        keeps its slot's identity (the nominal start); only its timing (``start``) is overridden."""
+        return (self.nominal_start or self.start).isoformat(timespec="minutes")
 
     @property
     def claim_key(self) -> str:
-        return f"{self.start.strftime('%Y%m%d')}-{self.slot}"
+        base = f"{(self.nominal_start or self.start).strftime('%Y%m%d')}-{self.slot}"
+        return f"{base}-forced-{self.forced_n}" if self.forced_n is not None else base
 
     @property
     def end(self) -> datetime:
@@ -1400,6 +1404,39 @@ class TrainConfig:
     dry_run_local_test: bool = False
     simulate_classifier: Optional[str] = None     # dry run only: "allow" previews the pipeline past the stub
     inject: Optional[str] = None                  # dry run / shadow only: one of INJECTIONS (arming finding 5)
+    force_window: Optional[str] = None            # operator-forced canary run (finding 8): the slot whose timing
+    forced_n: Optional[int] = None                #   is overridden, the run number (idempotent per n),
+    operator_ref: Optional[str] = None            #   the operator's reference,
+    forced_confirmed: bool = False                #   and the host-CLI TTY + typed-phrase proof (cli() sets it)
+
+
+# ── operator-forced off-window canary runs (arming finding 8) ──────────────────────────────────────────────────
+#: The forced-run key: the rtw: namespace with a distinct marker. Host-only: the gateway's RUN_KEY_RE
+#: (rtw:<slot>:<date>:(shadow|live)) never matches it, so n8n cannot name a forced run.
+FORCED_KEY_RE = re.compile(r"^rtw:(0000|0600|0800|1800):([0-9]{8}):live:forced:([1-9][0-9]{0,2})$")
+
+
+def forced_key(slot: str, day: date, n: int) -> str:
+    return f"rtw:{slot}:{day.strftime('%Y%m%d')}:live:forced:{int(n)}"
+
+
+def forced_canary_policy(path: Optional[Path] = None) -> dict:
+    """The controller policy's canary block (``config/release_train_policy.json`` ``canary``), fail closed: anything
+    missing or malformed reads as not allowed."""
+    try:
+        body = json.loads(Path(path or WV.POLICY_PATH).read_text(encoding="utf-8"))
+        c = body.get("canary") if isinstance(body, dict) else None
+    except (OSError, ValueError):
+        c = None
+    if not isinstance(c, dict):
+        return {"operator_forced_off_window": False, "slots": []}
+    slots = [str(s) for s in c.get("slots") or [] if str(s) in ("0000", "0600", "0800", "1800")]
+    return {"operator_forced_off_window": c.get("operator_forced_off_window") is True, "slots": slots}
+
+
+def forced_phrase(slot: str, n: int, epoch: Optional[int]) -> str:
+    """The phrase the operator re-types at the TTY for a forced run (names the slot, the run number and the epoch)."""
+    return f"FORCE WINDOW {slot} RUN {int(n)} EPOCH {int(epoch or 0)}"
 
 
 #: Injected-failure drills (arming finding 5). Shadow / dry run only; a live controller refuses every one. Each is
@@ -1465,6 +1502,7 @@ class TrainController:
         self._train_lock: Any = None
         self.event_errors: list[str] = []
         self.would_halt: Optional[dict] = None
+        self.forced: Optional[dict] = None             # an operator-forced canary run's record (finding 8)
         self.inject: Optional[str] = None
         self._inject_fired: Optional[str] = None      # the phase where the injection was exercised
         self._inject_detail: dict = {}
@@ -1815,7 +1853,10 @@ class TrainController:
     # -- window ----------------------------------------------------------------------------------------
     def _window(self, now: datetime, dv: RD.DelegationVerdict, rec: dict) -> tuple[TrainWindow, str]:
         slots = slots_from(dv.delegation)
-        w, phase = window_at(now, slots, lead_min=self.cfg.lead_min, grace_min=self.cfg.grace_min)
+        if self.cfg.force_window:
+            w, phase = self._forced_window(now, dv, slots, rec), "forced"
+        else:
+            w, phase = window_at(now, slots, lead_min=self.cfg.lead_min, grace_min=self.cfg.grace_min)
         rec["next_windows"] = next_windows(now, slots)
         if w is None:
             raise Halt("REFUSED", "REFUSED_OFF_WINDOW",
@@ -1828,6 +1869,46 @@ class TrainController:
                 raise Halt("REFUSED", "REFUSED_WINDOW_DISABLED", w.slot, refusal=True)
             self._would(f"window {w.slot} is disabled in the delegation")
         return w, phase
+
+    def _forced_window(self, now: datetime, dv: RD.DelegationVerdict, slots: list[dict], rec: dict) -> TrainWindow:
+        """Operator-forced canary run (finding 8): overrides ONLY the window timing. Allowed only when the controller
+        policy's canary flag allows the slot AND the delegation carries ``phase: canary`` AND (live) the host CLI
+        took a TTY + typed phrase. Everything else (latch, armed control, ACTIVE delegation, slot enabled in scope,
+        epoch, capabilities, the 4 checks, self-modification blocking, quarantine) is unchanged."""
+        slot, n, ref = str(self.cfg.force_window), self.cfg.forced_n, " ".join(str(self.cfg.operator_ref or "").split())
+        pol = forced_canary_policy()
+        if not pol["operator_forced_off_window"] or slot not in pol["slots"]:
+            raise Halt("REFUSED", "REFUSED_FORCE_NOT_ALLOWED",
+                       f"config/release_train_policy.json canary.operator_forced_off_window/slots do not allow {slot}",
+                       refusal=True)
+        phase = (dv.delegation or {}).get("phase")
+        if phase != "canary":
+            raise Halt("REFUSED", "REFUSED_FORCE_NOT_CANARY",
+                       f"the delegation phase is {phase!r}; forced runs exist only in phase 'canary'", refusal=True)
+        if not (isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= 999) or len(ref) < 3:
+            raise Halt("REFUSED", "REFUSED_FORCE_INVALID", "--forced-n 1..999 and an --operator-ref are required",
+                       refusal=True)
+        if self.live and not self.cfg.forced_confirmed:
+            raise Halt("REFUSED", "REFUSED_FORCE_UNCONFIRMED",
+                       "a live forced run needs the host CLI's TTY and the typed phrase", refusal=True)
+        spec = next((s for s in slots if str(s.get("window_id")) == slot), None)
+        if spec is None:
+            raise Halt("REFUSED", "REFUSED_FORCE_NOT_ALLOWED", f"slot {slot} is not in the delegation", refusal=True)
+        local = now.astimezone(TZ).replace(second=0, microsecond=0)
+        nominal = local_start(local.date(), slot)
+        if nominal is None:
+            raise Halt("REFUSED", "REFUSED_FORCE_INVALID", f"slot {slot} does not exist on {local.date()}",
+                       refusal=True)
+        w = TrainWindow(slot, str(spec.get("role") or ""), local, int(spec.get("duration_min") or 60),
+                        bool(spec.get("enabled")), spec.get("latest_start_et"), bool(spec.get("skip_on_macro_days")),
+                        forced_n=n, nominal_start=nominal)
+        self.forced = {"forced_by": "operator", "operator_ref": ref[:120], "window_gate_overridden": True,
+                       "forced_slot": slot, "forced_n": n, "forced_key": forced_key(slot, local.date(), n),
+                       "at": utc_iso(now.timestamp())}
+        rec["forced"] = dict(self.forced)
+        self.say(f"OPERATOR-FORCED canary run {self.forced['forced_key']} (ref {ref[:60]}): window timing overridden; "
+                 "every other gate applies")
+        return w
 
     def _rules(self, w: TrainWindow, now: datetime, rec: dict) -> None:
         if w.slot == "0600":
@@ -1886,7 +1967,14 @@ class TrainController:
                          policy_digest=dv.digest, epoch=res["epoch"], intents=[], outcome=None,
                          started_at=self.tstate.get("started_at"),
                          classifier_policy_version=getattr(self.classifier, "policy_version", None))
-        self._event("claimed", "claimed", {"window_id": w.window_id, "claim_key": w.claim_key})
+        if self.forced:
+            self._save_state(forced=dict(self.forced))
+            RC._atomic_write_json(self._train_dir() / "forced.json",
+                                  {"schema": "TrainForcedRun@v1", "train_id": self.train_id, "window_id": w.window_id,
+                                   "claim_key": w.claim_key, **self.forced})
+        self._event("claimed", "claimed", {"window_id": w.window_id, "claim_key": w.claim_key,
+                                           **({"forced": dict(self.forced)} if self.forced else {})},
+                    idem=(f"{self.forced['forced_key']}:claimed" if self.forced else None))
         self.say(f"claimed {w.claim_key} as {self.train_id} (epoch {res['epoch']})")
 
     # -- select / freeze -------------------------------------------------------------------------------
@@ -2671,6 +2759,9 @@ class TrainController:
             outcome = CANCELLED
             rec["outcome"] = outcome
         body = self.outcome_doc(outcome, rec.get("reason"), rec.get("detail"), rec.get("failure_attribution"))
+        if self.forced:     # visible in every history view that shows the outcome notes
+            body["notes"] = (f"[OPERATOR-FORCED {self.forced['forced_key']} ref {self.forced['operator_ref']}; "
+                             f"window gate overridden] {body.get('notes') or ''}")[:2000]
         self._save_state(phase="terminal", outcome=body)
         RC._atomic_write_json(self._train_dir() / "outcome.json", body)
         self._event("outcome", self._OUTCOME_STATE.get(outcome), body)
@@ -2921,7 +3012,32 @@ def render(code: int, body: dict) -> str:
     return "\n".join(lines)
 
 
-def cli(args: Any) -> int:
+def _forced_cli_check(args: Any, live: bool, stdin: Any) -> Optional[dict]:
+    """Host-CLI gate for an operator-forced canary run (finding 8). None = proceed; else the refusal body. The run
+    must name --operator-forced, --operator-ref and --forced-n; a LIVE forced run needs stdin to be a TTY and the
+    operator to re-type ``forced_phrase`` (slot, run number, current epoch), the release_control_cli.py arm pattern.
+    n8n and the Command Center never reach this: it is only an argparse path of release_window.py train-run."""
+    import sys  # noqa: PLC0415
+
+    slot, n = getattr(args, "force_window", None), getattr(args, "forced_n", None)
+    if not getattr(args, "operator_forced", False) or not getattr(args, "operator_ref", None) or n is None:
+        return {"outcome": "REFUSED", "code": "REFUSED_FORCE_INVALID",
+                "detail": "--force-window needs --operator-forced, --operator-ref <ref> and --forced-n <n>"}
+    if not live:
+        return None                                     # a dry run previews it; nothing is written
+    stdin = stdin if stdin is not None else sys.stdin
+    if not (hasattr(stdin, "isatty") and stdin.isatty()):
+        return {"outcome": "REFUSED", "code": "REFUSED_FORCE_NO_TTY",
+                "detail": "a live forced run is typed by the operator at the host TTY (never n8n, never the CC)"}
+    phrase = forced_phrase(str(slot), int(n), RC.ReleaseControl(RW.State().root).view().epoch)
+    print(f"Type exactly: {phrase}", file=sys.stderr)
+    typed = (stdin.readline() or "").strip()
+    if typed != phrase:
+        return {"outcome": "REFUSED", "code": "REFUSED_FORCE_PHRASE", "detail": "the typed phrase did not match"}
+    return None
+
+
+def cli(args: Any, *, stdin: Any = None) -> int:
     live = bool(getattr(args, "live", False))
     if live and getattr(args, "inject", None):
         print(json.dumps({"outcome": "REFUSED", "detail": "--inject is for shadow / dry runs only; refused with --live"}))
@@ -2955,8 +3071,16 @@ def cli(args: Any) -> int:
         code, body = Reconciler(ctl).run()
         print(json.dumps(body, indent=2, default=str))
         return code
+    forced = getattr(args, "force_window", None)
+    if forced:
+        refused = _forced_cli_check(args, live, stdin)
+        if refused:
+            print(json.dumps(refused, indent=2))
+            return EXIT_REFUSED
     cfg = TrainConfig(dry_run_integrate=bool(args.integrate), dry_run_local_test=bool(args.local_test),
-                      simulate_classifier=args.simulate_classifier, inject=getattr(args, "inject", None))
+                      simulate_classifier=args.simulate_classifier, inject=getattr(args, "inject", None),
+                      force_window=forced, forced_n=getattr(args, "forced_n", None),
+                      operator_ref=getattr(args, "operator_ref", None), forced_confirmed=bool(forced and live))
     now = RW._parse_now(args.now) if getattr(args, "now", None) else None
     if now is not None and live:
         print(json.dumps({"outcome": "REFUSED", "detail": "--now is for dry runs only"}))
