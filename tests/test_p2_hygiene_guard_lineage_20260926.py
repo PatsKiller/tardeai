@@ -52,9 +52,18 @@ def test_c10_preflight_consumes_one_use_only_when_allowed(monkeypatch, tmp_path)
     boom = lambda *a, **k: (_ for _ in ()).throw(OSError("no exec"))  # noqa: E731
     monkeypatch.setattr(pf, "GUARD_LEDGER", ledger)
     assert pf.consume_release_grant(runner=boom)["ok"] is False
+    # 2026-10-21: the use is taken from the verdict's exact grant, and --no-consume decides only.
+    calls.clear()
+    pf.consume_release_grant(runner=runner, grant_id="ab" * 16)
+    assert calls[0][1:] == [str(ledger), "consume", "--tier", "release-write", "--grant-id", "ab" * 16]
+    calls.clear()
+    monkeypatch.setattr(pf, "_CONSUME_GRANT_ID", "cd" * 16)  # what main() binds from the verdict
+    pf.consume_release_grant(runner=runner)
+    assert calls[0][-2:] == ["--grant-id", "cd" * 16]
     src = (ROOT / "scripts" / "release_grant_preflight.py").read_text(encoding="utf-8")
     # 2026-10-21 (release train + #1628, release-1 integration): promote decides with --no-consume first and
     # consumes once, only after conformance and the exact-SHA CI re-query; --no-consume decides only.
+    assert '_bind_consume_grant(v.grant_id)' in src
     assert 'out["consumed"] = {"skipped": "no_consume"} if args.no_consume else consume_release_grant()' in src
 
 
@@ -62,9 +71,14 @@ def test_c10_pre_push_consumes_unless_shell_guard_did():
     src = (ROOT / ".githooks" / "pre-push").read_text(encoding="utf-8")
     assert "guard_ledger.py consume --tier git-push" in src
     assert "TRADEAI_GUARD_CONSUMED_BY_SHELL" in src and 'TRADEAI_GUARD_CONSUME:-1' in src
-    # the consume sits inside the guard_ok branch, after override=1
-    branch = src.split('if [[ "$guard_ok" == "1" ]]; then', 1)[1].split("\nfi\n", 1)[0]
-    assert "override=1" in branch and "consume --tier git-push" in branch
+    # 2026-10-21: the consume sits inside a guard_ok branch AFTER the budget decision and the
+    # secrets scan, and names the exact grant; a refused push costs no use.
+    consume_at = src.index("consume --tier git-push")
+    assert src.index("decide_push(") < consume_at
+    assert src.index("check_no_secrets.py") < consume_at
+    assert src.index("record_authorized_push") > consume_at
+    branch = src[:consume_at].rsplit('if [[ "$guard_ok" == "1"', 1)[1]
+    assert "TRADEAI_GUARD_CONSUMED_BY_SHELL" in branch and "--grant-id" in src[consume_at - 200:consume_at + 200]
 
 
 def test_c05_maria_exchange_receipt_written_with_desk_text_not_rewrite(tmp_path):

@@ -128,7 +128,10 @@ Notes on individual rules:
   allowed.
 - **liveops.service:** read-only verbs such as `status`, `show` and `cat` are always allowed. Units and containers
   outside `prod_unit_regex` and `docker_prod_container_regex` are allowed. A grant is "active" when
-  `expires > now` and `uses != 0` in `~/.cursor/approvals/grants.json` (or `$GUARD_APPROVALS_DIR`). The rule does
+  `expires > now` and `uses != 0` in `~/.cursor/approvals/grants.json` (or `$GUARD_APPROVALS_DIR`). Since the
+  2026-10-21 ledger schema v2 the file holds one row per grant, keyed `<tier>@<grant_id>` with a `status`
+  (`active` / `revoked` / `replaced`); a v1 `<tier>` entry is still read. A tier with more than one active row is
+  `ambiguous_active_grants` and counts as no grant (`bin/guard doctor` reports it). The rule does
   not check whether the grant's **reason** names this PR or SHA; that stays the agent's own duty and the release
   script's binding.
 - **governed.served_edit:** governed paths are `AGENTS.md`, `AI_WORK_POLICY.md`, `CLAUDE.md`,

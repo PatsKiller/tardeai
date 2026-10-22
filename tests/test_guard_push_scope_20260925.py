@@ -122,7 +122,8 @@ def test_expired_grant_never_authorizes(tmp_path: Path):
 
     ledger = next(adir.glob("*.json"))
     doc = json.loads(ledger.read_text())
-    doc["git-push"]["expires"] = int(time.time()) - 5
+    key = next(k for k in doc if k == "git-push" or k.startswith("git-push@"))  # ledger v1 or v2 key
+    doc[key]["expires"] = int(time.time()) - 5
     ledger.write_text(json.dumps(doc))
     assert G.push_authorized_by_guard_scoped(branch="wt/x", head_sha=SHA, adir=adir)["ok"] is False
 

@@ -853,6 +853,11 @@ def _handle_guard_approval(msg, text, chat_id):
                   "from_username": frm.get("username"),
                   "text": text[:200]},
     )
+    if not out.get("ok") and out.get("reason") == "ACTIVE_GRANT_EXISTS":
+        # One active grant per tier: a phone approval never replaces one (operator 2026-10-21).
+        _send_reply(chat_id, reply_to, out["message"])
+        log.warning(f"guard approval refused: active {out['active_grant'].get('tier')} grant exists")
+        return
     if not out.get("ok"):
         _send_reply(chat_id, reply_to, f"❌ Not approved: {out.get('reason')}")
         log.warning(f"guard approval refused: {out.get('reason')}")

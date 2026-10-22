@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "guard_grant_mechanics_20261021",
+  "files": [
+    "tests/test_guard_grant_mechanics_20261021.py",
+    "tests/test_guard_grant_finalize_20261021.py",
+    "tests/test_push_budget_common_dir_20261021.py"
+  ],
+  "comment": [
+    "Release Train v2 Phase 0 item 3 (2026-10-21): guard ledger rows by grant_id, one active grant per tier",
+    "(--replace), exact-id consumption, scope/tier request normalization, consume after gates (prepare,",
+    "pre-push); push budget keyed on git common dir + pushed branch. Operator rulings 2026-10-21: a remote",
+    "approval never replaces an active grant; rows closed > 90 days move to the append-only archive;",
+    "install-guardrails.sh installs guard-lib.sh only from the canonical file."
+  ]
+}

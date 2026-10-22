@@ -141,7 +141,78 @@ def _load() -> dict[str, Any]:
     if not isinstance(doc, dict):
         return {"schema": SCHEMA, "requests": [], "corrupt": True}
     doc.setdefault("requests", [])
+    if not isinstance(doc["requests"], list):
+        return {"schema": SCHEMA, "requests": [], "corrupt": True}
+    doc["requests"] = [normalize_request(r) for r in doc["requests"] if isinstance(r, dict)]
     return doc
+
+
+# ── field normalization (2026-10-21) ─────────────────────────────────────────
+# This store wrote `scope` and `request_id`; the guard ledger, release_grant_binding
+# and release_grant_preflight read `tier` (and some readers `id`). Measured on the
+# live store 2026-10-21: 200 of 200 rows carried `scope` and `request_id`, 0 carried
+# `tier` or `id`, so `release_grant_binding.pending_requests_for` (which filtered on
+# `tier`) could never see a pending release-write request. Rows are now written with
+# BOTH `scope` and `tier`, and every reader goes through normalize_request(): the
+# fields are copied, never renamed (old readers keep `scope`/`request_id`). A row whose
+# `scope` and `tier` DISAGREE is unusable: it matches nothing and is refused on settle.
+
+def normalize_request(r: dict[str, Any]) -> dict[str, Any]:
+    """Additive in place: scope<->tier and request_id<-id. Returns the same dict."""
+    scope, tier = r.get("scope"), r.get("tier")
+    if scope is not None and tier is not None and str(scope).strip() != str(tier).strip():
+        r["scope_conflict"] = True
+    elif scope is not None or tier is not None:
+        value = str(scope if scope is not None else tier).strip()
+        r["scope"] = value
+        r["tier"] = value
+    if not r.get("request_id") and r.get("id"):
+        r["request_id"] = str(r["id"])
+    return r
+
+
+def request_scope(r: dict[str, Any]) -> Optional[str]:
+    """The request's one scope, or None when it has none or `scope` and `tier` disagree."""
+    if r.get("scope_conflict"):
+        return None
+    value = r.get("scope") if r.get("scope") is not None else r.get("tier")
+    return str(value).strip() if value is not None and str(value).strip() else None
+
+
+def request_id_of(r: dict[str, Any]) -> str:
+    return str(r.get("request_id") or r.get("id") or "").strip()
+
+
+def _rrid_from_reason(reason: str) -> Optional[str]:
+    """The callback paths append "[remote_request_id=<id> ...]" to the grant reason."""
+    import re
+    m = re.search(r"\[remote_request_id=([0-9A-Za-z_-]{4,64})\b", reason or "")
+    return m.group(1) if m else None
+
+
+#: Rows the store keeps inline; older rows move to the archive file, never dropped (AGENTS.md §0 rule 6).
+MAX_INLINE_REQUESTS = 200
+
+
+def archive_path() -> Path:
+    return approvals_dir() / "remote_requests.archive.jsonl"
+
+
+def _archive_overflow(doc: dict[str, Any]) -> None:
+    """Move rows beyond MAX_INLINE_REQUESTS to the append-only archive before trimming."""
+    overflow = doc["requests"][:-MAX_INLINE_REQUESTS] if len(doc["requests"]) > MAX_INLINE_REQUESTS else []
+    if not overflow:
+        return
+    ap = archive_path()
+    ap.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(ap), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    try:
+        for r in overflow:
+            os.write(fd, (json.dumps(r, sort_keys=True) + "\n").encode("utf-8"))
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+    doc["requests"] = doc["requests"][-MAX_INLINE_REQUESTS:]
 
 
 def _save(doc: dict[str, Any]) -> None:
@@ -205,6 +276,7 @@ def mint_request(scope: str, *, seconds: int, uses: int, reason: str,
     rec: dict[str, Any] = {
         "request_id": secrets.token_hex(8),
         "scope": scope,
+        "tier": scope,          # same value; the ledger and release binding read `tier`
         "seconds": seconds,
         "uses": uses,
         "reason": str(reason),
@@ -219,11 +291,13 @@ def mint_request(scope: str, *, seconds: int, uses: int, reason: str,
     # Supersede any other pending request for the same scope: two live codes for
     # one scope means an operator cannot tell which they are approving.
     for r in doc["requests"]:
-        if r.get("status") == "PENDING" and r.get("scope") == scope:
+        if r.get("status") != "PENDING":
+            continue
+        if request_scope(r) == scope or (r.get("scope_conflict") and scope in (r.get("scope"), r.get("tier"))):
             r["status"] = "SUPERSEDED"
             r["superseded_by"] = rec["request_id"]
     doc["requests"].append(rec)
-    doc["requests"] = doc["requests"][-200:]
+    _archive_overflow(doc)
     _save(doc)
     return {**rec, "code": code}
 
@@ -234,6 +308,83 @@ def find_pending(code: str) -> Optional[dict[str, Any]]:
         if r.get("status") == "PENDING" and r.get("code_sha256") == fp:
             return r
     return None
+
+
+# ── one active grant per tier: a remote approval never replaces (operator 2026-10-21) ──────────
+# `bin/guard grant` refuses a second active grant of a tier unless --replace is given, and
+# --replace is a keyboard decision. A Telegram approval for a tier that already has an active
+# grant is therefore REFUSED before the request is settled: the request stays PENDING (the code
+# or button still works once the operator revokes or replaces at the machine), and the reply
+# names the active grant and the exact CLI that would replace it.
+
+GUARD_BIN = Path(__file__).resolve().parents[2] / "bin" / "guard"
+
+
+def _guard_ledger_module():
+    import importlib.util
+    path = Path(__file__).resolve().parents[2] / ".cursor" / "hooks" / "guard_ledger.py"
+    spec = importlib.util.spec_from_file_location("_gra_guard_ledger", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
+
+
+def active_grant_for(scope: str) -> Optional[dict[str, Any]]:
+    """The tier's active grant (or its ambiguous active ids), read-only; None when there is none."""
+    try:
+        listed = _guard_ledger_module().ledger_list(approvals_dir())
+    except Exception:
+        return None  # an unreadable ledger is reported by the grant path itself, which refuses
+    if scope in (listed.get("ambiguous") or []):
+        return {"tier": scope, "ambiguous": True, "grant_id": "", "uses": 0, "expires": 0,
+                "reason": (listed.get("grants") or {}).get(scope, {}).get("reason", "")}
+    rec = (listed.get("active") or {}).get(scope)
+    if not isinstance(rec, dict):
+        return None
+    return {"tier": scope, "grant_id": str(rec.get("grant_id") or ""), "uses": int(rec.get("uses") or 0),
+            "expires": int(rec.get("expires") or 0), "reason": str(rec.get("reason") or "")}
+
+
+def active_grant_refusal_text(rec: dict[str, Any], active: dict[str, Any], *, chat_id: Any = "",
+                              via: str = "", now: Optional[int] = None) -> str:
+    """Operator-facing reply: which grant blocks the approval, and the exact command that replaces it."""
+    import shlex
+    from datetime import datetime
+    now = _now() if now is None else now
+    tier = active["tier"]
+    reason = f"{rec.get('reason') or ''} [remote_request_id={request_id_of(rec)} chat={chat_id}" \
+             f"{' via=' + via if via else ''}]"
+    cmd = (f"{GUARD_BIN} grant {shlex.quote(tier)} --for {int(rec.get('seconds') or 0)} "
+           f"--uses {int(rec.get('uses') or 0)} --reason {shlex.quote(reason)} --replace")
+    if active.get("ambiguous"):
+        head = (f"⛔ Not granted: `{tier}` has MORE THAN ONE active grant (ambiguous; nothing is consumed "
+                f"from it). Run `{GUARD_BIN} doctor` and revoke all but one with "
+                f"`{GUARD_BIN} revoke {tier} --grant-id <id>`.")
+    else:
+        exp = int(active.get("expires") or 0)
+        left_min = max(0, (exp - now) // 60)
+        uses = int(active.get("uses") or 0)
+        head = (f"⛔ Not granted: an active `{tier}` grant already exists.\n"
+                f"  id: {active.get('grant_id')}\n"
+                f"  uses left: {'unlimited' if uses < 0 else uses}\n"
+                f"  expires: {datetime.fromtimestamp(exp).astimezone().strftime('%Y-%m-%d %H:%M %Z')} "
+                f"({left_min} min left)\n"
+                f"A remote approval never replaces a grant. Request {request_id_of(rec)} stays PENDING; "
+                f"approve it again after revoking (`{GUARD_BIN} revoke {tier} --grant-id {active.get('grant_id')}`).")
+    return f"{head}\nTo replace it now, at the machine:\n`{cmd}`"
+
+
+def _refuse_if_active_grant(doc: dict[str, Any], rec: dict[str, Any], *, chat_id: Any,
+                            via: str = "") -> Optional[dict[str, Any]]:
+    scope = request_scope(rec) or ""
+    active = active_grant_for(scope)
+    if not active:
+        return None
+    rec["last_refusal"] = {"reason": "ACTIVE_GRANT_EXISTS", "at": _now(),
+                           "active_grant_id": active.get("grant_id") or "", "ambiguous": bool(active.get("ambiguous"))}
+    _save(doc)  # the request stays PENDING; only the refusal is recorded
+    return {"ok": False, "reason": "ACTIVE_GRANT_EXISTS", "active_grant": active, "request": rec,
+            "message": active_grant_refusal_text(rec, active, chat_id=chat_id, via=via)}
 
 
 def verify_and_consume(code: str, *, chat_id: Any, allowed_chats: Any,
@@ -284,11 +435,20 @@ def verify_and_consume(code: str, *, chat_id: Any, allowed_chats: Any,
         _save(doc)
         return {"ok": False, "reason": "CODE_EXPIRED"}
 
-    if rec.get("scope") in REMOTE_FORBIDDEN_SCOPES:
+    if request_scope(rec) is None:
+        # scope and tier disagree (or neither is set): the operator cannot know what they approve.
+        rec["status"] = "DENIED_SCOPE_UNRESOLVED"
+        _save(doc)
+        return {"ok": False, "reason": "SCOPE_UNRESOLVED"}
+    if request_scope(rec) in REMOTE_FORBIDDEN_SCOPES:
         # Belt and braces: the scope list could have changed since minting.
         rec["status"] = "DENIED_FORBIDDEN_SCOPE"
         _save(doc)
         return {"ok": False, "reason": "SCOPE_FORBIDDEN_REMOTELY"}
+
+    refused = _refuse_if_active_grant(doc, rec, chat_id=chat)
+    if refused:
+        return refused
 
     rec["status"] = "APPROVED"
     rec["approved_at"] = _now()
@@ -332,8 +492,8 @@ def settle_by_request_id(request_id: str, *, approve: bool, chat_id: Any,
     doc = _load()
     if doc.get("corrupt"):
         return {"ok": False, "reason": "REQUEST_STORE_CORRUPT"}
-    rec = next((r for r in doc["requests"]
-                if r.get("request_id") == str(request_id).strip()), None)
+    want = str(request_id).strip()
+    rec = next((r for r in doc["requests"] if want and request_id_of(r) == want), None)
     if rec is None:
         return {"ok": False, "reason": "UNKNOWN_REQUEST"}
     if rec.get("status") != "PENDING":
@@ -342,10 +502,18 @@ def settle_by_request_id(request_id: str, *, approve: bool, chat_id: Any,
         rec["status"] = "EXPIRED"
         _save(doc)
         return {"ok": False, "reason": "REQUEST_EXPIRED"}
-    if rec.get("scope") in REMOTE_FORBIDDEN_SCOPES:
+    if approve and request_scope(rec) is None:
+        rec["status"] = "DENIED_SCOPE_UNRESOLVED"
+        _save(doc)
+        return {"ok": False, "reason": "SCOPE_UNRESOLVED"}
+    if request_scope(rec) in REMOTE_FORBIDDEN_SCOPES:
         rec["status"] = "DENIED_FORBIDDEN_SCOPE"
         _save(doc)
         return {"ok": False, "reason": "SCOPE_FORBIDDEN_REMOTELY"}
+    if approve:
+        refused = _refuse_if_active_grant(doc, rec, chat_id=chat, via="button")
+        if refused:
+            return refused
 
     rec["status"] = "APPROVED" if approve else "DENIED_BY_OPERATOR"
     rec["approved_at" if approve else "denied_at"] = _now()
@@ -384,13 +552,15 @@ def unprovenanced_grants(grants: list[dict[str, Any]]) -> list[dict[str, Any]]:
     request from an allowlisted chat. One that matches neither is worth asking
     about.
     """
-    approved = {r.get("request_id") for r in _load()["requests"]
-                if r.get("status") == "APPROVED"}
+    approved = {request_id_of(r) for r in _load()["requests"]
+                if r.get("status") == "APPROVED"} - {""}
     out = []
     for g in grants or []:
         if g.get("origin") == "interactive":
             continue
-        if g.get("remote_request_id") in approved:
+        # The ledger row carries remote_request_id (schema v2); older rows only in the reason text.
+        rrid = g.get("remote_request_id") or _rrid_from_reason(str(g.get("reason") or ""))
+        if rrid in approved:
             continue
         out.append(g)
     return out

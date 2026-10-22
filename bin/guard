@@ -8,10 +8,14 @@
 #   guard request <tier> [opts]         ask the operator by TELEGRAM (agent-callable;
 #                                       grants nothing — they reply /approve <CODE>)
 #   guard plan <file.md> [opts]         approve a plan: display it, grant its scopes
-#   guard revoke <tier> | --all         cancel
+#   guard revoke <tier> [--grant-id ID] | --all   cancel (one exact grant, or the tier)
 #   guard log [n]                       what ran under auto-accept
+#   guard doctor                        validate the ledger: schema, one active grant per tier
+#   guard archive [--dry-run]           move rows closed > 90 days ago to grants.archive.jsonl
+#   guard lookup <grant_id>             active | inactive | archived | missing
 #
 # Options: --for 30m|2h   --uses N (default 10, -1 = unlimited)   --reason "..."
+#          --replace  (grant) supersede the tier's ACTIVE grant; without it a second grant is refused
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(git -C "$HERE" rev-parse --show-toplevel 2>/dev/null || dirname "$HERE")"
@@ -84,22 +88,38 @@ cmd_show() {
     fi
   done
   [[ $any -eq 0 ]] && echo "  ${GRN}none — every consequential action will prompt${OFF}"
+  local amb; amb=$(_ledger list 2>/dev/null | jq -r '(.ambiguous // []) | join(" ")')
+  if [[ -n "$amb" ]]; then
+    echo "${RED}AMBIGUOUS — more than one active grant, nothing is consumed from:${OFF} $amb"
+    echo "  resolve: bin/guard doctor; bin/guard revoke <tier> --grant-id <id>"
+  fi
 }
 
 cmd_grant() {
   _ledger_require_valid
   local tier="$1"; shift
-  local dur=1800 uses=10 reason="(no reason given)" yes=0
+  local dur=1800 uses=10 reason="(no reason given)" yes=0 replace=0
   while [[ $# -gt 0 ]]; do case "$1" in
     --for)    dur=$(parse_dur "$2"); shift 2;;
     --uses)   uses="$2"; shift 2;;
     --reason) reason="$2"; shift 2;;
     --yes)    yes=1; shift;;
+    --replace) replace=1; shift;;
     *) echo "unknown option: $1"; exit 1;;
   esac; done
 
   case " $ALL_TIERS " in *" $tier "*) ;; *)
     echo "${RED}'$tier' is not grantable.${OFF} Run: guard scopes"; exit 1;; esac
+
+  # One active grant per tier (2026-10-21). A second grant used to replace the first silently;
+  # now it is refused before anything is displayed, unless --replace says so. The ledger
+  # re-checks under its lock, so a race between two grants still cannot union them.
+  local existing; existing=$(grant_id_of "$tier")
+  if [[ -n "$existing" && $replace -eq 0 ]]; then
+    echo "${RED}an active $tier grant exists (id=${existing:0:8}).${OFF} Refusing to replace it silently."
+    echo "  supersede it:  guard grant $tier ... --replace      or revoke it:  guard revoke $tier --grant-id $existing"
+    exit 1
+  fi
 
   # AGENTS.md 5.0.0 §24.10: execution-ops is per incident and at most 6 h, at the keyboard or by Telegram.
   if [[ "$tier" == "execution-ops" && "$dur" -gt 21600 ]]; then
@@ -118,6 +138,7 @@ cmd_grant() {
   echo "${BOLD}Window:${OFF}  $(( dur / 60 )) minutes"
   echo "${BOLD}Uses:${OFF}    $([[ $uses -lt 0 ]] && echo 'unlimited' || echo "$uses")"
   echo "${BOLD}Reason:${OFF}  $reason"
+  [[ -n "$existing" ]] && echo "${BOLD}${RED}Replaces:${OFF} the active grant ${existing:0:8} (closed as 'replaced', kept in the ledger)"
   echo
   echo "Every command in this scope will run ${BOLD}without prompting${OFF} until it expires."
   echo "Each one is still logged; review with: guard log"
@@ -134,12 +155,20 @@ cmd_grant() {
     fi
   fi
 
-  local exp=$(( $(now) + dur ))
-  if ! _ledger grant --tier "$tier" --expires "$exp" --uses "$uses" --reason "$reason" >/dev/null; then
-    echo "${RED}grant failed (ledger corrupt or write error).${OFF}  bin/guard doctor"; exit 2
+  local exp=$(( $(now) + dur )) gout
+  local _rep=()
+  [[ $replace -eq 1 ]] && _rep=(--replace)
+  if ! gout=$(_ledger grant --tier "$tier" --expires "$exp" --uses "$uses" --reason "$reason" "${_rep[@]}"); then
+    echo "${RED}grant failed:${OFF} $(printf '%s' "$gout" | jq -r '"\(.error // "error"): \(.detail // "ledger corrupt or write error")"' 2>/dev/null)"
+    echo "  bin/guard doctor"; exit 2
   fi
+  local gid; gid=$(printf '%s' "$gout" | jq -r '.grant_id // ""')
   audit_line "$(jq -nc --arg ts "$(date -Is)" --arg t "$tier" --arg r "$reason" --argjson d "$dur" \
-    '{ts:$ts, event:"grant-issued", tier:$t, reason:$r, seconds:$d}')"
+    --arg g "$gid" --argjson rep "$(printf '%s' "$gout" | jq -c '.replaced // []')" \
+    '{ts:$ts, event:"grant-issued", tier:$t, reason:$r, seconds:$d, grant_id:$g, replaced:$rep}')"
+  echo "grant id: $gid"
+  # Housekeeping, fail-soft: rows closed > 90 days ago move to the append-only archive (never deleted).
+  _ledger archive >/dev/null 2>&1 || true
   echo "${GRN}granted.${OFF}  revoke with: guard revoke $tier"
   if [[ "$tier" == "git-push" ]]; then
     echo "Agents may git push (or bin/agent-push) until this grant expires or uses run out."
@@ -198,9 +227,15 @@ cmd_revoke() {
     echo "${GRN}all grants revoked${OFF}"
     return
   fi
-  _ledger revoke --tier "$1" >/dev/null || { echo "${RED}APPROVAL_LEDGER_CORRUPT${OFF}"; exit 2; }
-  audit_line "$(jq -nc --arg ts "$(date -Is)" --arg t "$1" '{ts:$ts, event:"revoke", tier:$t}')"
-  echo "${GRN}revoked: $1${OFF}"
+  local tier="$1" gid="" rout
+  shift
+  [[ "${1:-}" == "--grant-id" ]] && gid="${2:?usage: guard revoke <tier> --grant-id <id>}"
+  local _g=()
+  [[ -n "$gid" ]] && _g=(--grant-id "$gid")
+  rout=$(_ledger revoke --tier "$tier" "${_g[@]}") || {
+    echo "${RED}revoke failed:${OFF} $(printf '%s' "$rout" | jq -r '"\(.error // "error"): \(.detail // "")"' 2>/dev/null)"; exit 2; }
+  audit_line "$(jq -nc --arg ts "$(date -Is)" --arg t "$tier" --arg g "$gid" '{ts:$ts, event:"revoke", tier:$t, grant_id:$g}')"
+  echo "${GRN}revoked: $tier${gid:+ (grant ${gid:0:8})}${OFF}"
 }
 
 cmd_doctor() {
@@ -236,5 +271,7 @@ case "${1:-show}" in
   revoke) shift; cmd_revoke "$@" ;;
   log)    shift; cmd_log   "$@" ;;
   doctor) cmd_doctor ;;
-  *) sed -n '2,12p' "$0" ;;
+  archive) shift; _ledger_require_valid; _ledger archive "$@" ;;
+  lookup)  shift; _ledger lookup --grant-id "${1:?usage: guard lookup <grant_id>}" ;;
+  *) sed -n '2,17p' "$0" ;;
 esac

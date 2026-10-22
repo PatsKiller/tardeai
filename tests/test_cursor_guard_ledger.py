@@ -131,7 +131,10 @@ def test_uses_decrement_and_remove(adir):
     assert gl.ledger_consume_grant("cron", adir=adir)["uses_left"] == 1
     assert gl.ledger_consume_grant("cron", adir=adir)["uses_left"] == 0
     assert gl.ledger_consume_grant("cron", adir=adir)["consumed"] is False
-    assert gl.ledger_list(adir)["grants"] == {}
+    # Schema v2: the exhausted row is kept as attribution evidence, never active.
+    listed = gl.ledger_list(adir)
+    assert listed["active"] == {}
+    assert [r["uses"] for r in listed["rows"].values()] == [0]
 
 
 def test_revoke_and_revoke_all(adir):
@@ -139,11 +142,15 @@ def test_revoke_and_revoke_all(adir):
     gl.ledger_create_grant("cron", expires=now, uses=3, reason="a", adir=adir)
     gl.ledger_create_grant("git-push", expires=now, uses=3, reason="b", adir=adir)
     gl.ledger_revoke("cron", adir=adir)
-    assert "cron" not in gl.ledger_list(adir)["grants"]
-    assert "git-push" in gl.ledger_list(adir)["grants"]
+    assert "cron" not in gl.ledger_list(adir)["active"]
+    assert "git-push" in gl.ledger_list(adir)["active"]
     gl.ledger_revoke_all(adir)
-    assert gl.ledger_list(adir)["grants"] == {}
-    assert gl.classify_ledger(gl.ledger_path(adir)) == gl.VALID_EMPTY
+    listed = gl.ledger_list(adir)
+    assert listed["active"] == {}
+    # Revoked rows are kept (status revoked, uses 0), not dropped.
+    assert sorted((r["tier"], r["status"], r["uses"]) for r in listed["rows"].values()) == [
+        ("cron", "revoked", 0), ("git-push", "revoked", 0)]
+    assert gl.classify_ledger(gl.ledger_path(adir)) == gl.VALID_NONEMPTY
 
 
 def test_parallel_grants_no_lost_update(adir):
@@ -176,7 +183,7 @@ def test_one_use_two_consumers(adir):
     assert results.count(True) == 1
     assert results.count(False) == 1
     doc = json.loads(gl.ledger_path(adir).read_text())
-    assert doc == {}
+    assert [r["uses"] for r in doc.values()] == [0]
     assert gl.ledger_path(adir).stat().st_size > 0
 
 
@@ -196,7 +203,8 @@ def test_multi_use_stress_20_on_10(adir):
     assert len(no) == 10
     cids = [o["consumption_id"] for o in ok]
     assert len(set(cids)) == 10
-    assert json.loads(gl.ledger_path(adir).read_text()) == {}
+    assert len({o["grant_id"] for o in ok}) == 1
+    assert [r["uses"] for r in json.loads(gl.ledger_path(adir).read_text()).values()] == [0]
 
 
 def test_grant_revoke_race(adir):
@@ -223,8 +231,9 @@ def test_grant_revoke_race(adir):
     # wall-clock "after" across threads without the flag; the flag is set
     # after revoke returns, so any consume that started after that is denied.
     assert consumed_after_revoke == []
-    assert json.loads(gl.ledger_path(adir).read_text()) == {}
-    assert gl.classify_ledger(gl.ledger_path(adir)) == gl.VALID_EMPTY
+    assert gl.ledger_list(adir)["active"] == {}
+    # Kept, closed or exhausted (revoke may land after the last use): either way uses 0.
+    assert [r["uses"] for r in json.loads(gl.ledger_path(adir).read_text()).values()] == [0]
 
 
 def test_crash_before_rename_leaves_previous(adir):
@@ -236,7 +245,7 @@ def test_crash_before_rename_leaves_previous(adir):
                      "--uses", "1", "--reason", "x", env_extra=env)
     assert cp.returncode != 0
     assert gl.ledger_path(adir).read_text() == before
-    assert json.loads(before)["cron"]["reason"] == "keep"
+    assert [r["reason"] for k, r in json.loads(before).items() if k.startswith("cron@")] == ["keep"]
     leftovers = list(adir.glob(".grants.json.tmp.*"))
     # temp should be cleaned on crash-after-write-before-rename in except path
     # (SystemExit may skip cleanup if raised after close — acceptable leftover)
@@ -334,7 +343,7 @@ def test_zero_byte_stress_loop(adir):
     def grantor():
         for i in range(15):
             try:
-                gl.ledger_create_grant("git-push", expires=exp, uses=3, reason=str(i), adir=adir)
+                gl.ledger_create_grant("git-push", expires=exp, uses=3, reason=str(i), adir=adir, replace=True)
             except Exception as e:
                 stop["err"] = e
 
@@ -436,7 +445,7 @@ def test_hook_shell_git_push_lifecycle(adir):
     c = _hook("guard-shell.sh", {"command": "git push origin main"}, adir)
     assert c.get("permission") == "deny"
     gl.ledger_revoke_all(adir)
-    assert json.loads(gl.ledger_path(adir).read_text()) == {}
+    assert gl.ledger_list(adir)["active"] == {}
 
 
 def test_hook_strreplace_write_edit(adir):

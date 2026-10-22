@@ -23,7 +23,7 @@ case " $* " in
   *" --ci-only "*) exit "${FAKE_CI_RC:-2}" ;;
 esac
 if [[ "$*" == *release_grant_preflight.py* ]]; then
-  if [[ "$*" == *"--no-consume"* ]]; then exit 0; fi
+  if [[ "$*" == *"--no-consume"* ]]; then exit "${FAKE_DECIDE_RC:-0}"; fi
   exit 2
 fi
 exit 0
@@ -136,6 +136,9 @@ def test_prepare_with_a_stale_canonical_source_is_refused_before_the_grant_and_t
 
 def test_prepare_with_the_canonical_source_at_the_sha_reaches_the_binding(tmp_path):
     root, env, log, canonical, old, new_sha, new, rel = _sandbox(tmp_path)
+    # The binding refuses the decide-only call too: prepare decides with --no-consume first (grant
+    # mechanics 2026-10-21) and must stop there, before a build.
+    env["FAKE_DECIDE_RC"] = "2"
     p = _run(root, env, "prepare")                                         # the fake binding refuses: stop there
     assert p.returncode != 0 and "release grant binding refused prepare of " + new_sha in p.stderr, p.stderr
     assert [c for c in _preflight_calls(log) if "--action prepare" in c]

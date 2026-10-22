@@ -816,7 +816,8 @@ def pk(tmp_path):
         return doc
 
     def ledger() -> dict:
-        return json.loads((approvals / "grants.json").read_text())
+        # Guard ledger v2 keys rows "<tier>@<grant_id>"; these packets hold one row per tier.
+        return {k.split("@", 1)[0]: v for k, v in json.loads((approvals / "grants.json").read_text()).items()}
 
     def audit() -> list[dict]:
         return [json.loads(line) for line in audit_log.read_text().splitlines()] if audit_log.exists() else []
