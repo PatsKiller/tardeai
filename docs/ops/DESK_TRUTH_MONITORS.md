@@ -96,7 +96,7 @@ never queues an ensemble job, calls an LLM or uses the GPU.
 - **Request budget.** On 2026-10-22 the desk held 5 cards in 4 `(symbol, expiration)` groups, so 4 reads per run. At
   10 runs per morning (09:35–11:50 every 15 min) that is about 40 reads. The cadence is one expression,
   `5,20,35,50 9-11 * * 1-5` ET. Its 09:05 and 09:20 fires, and any fire outside NYSE regular hours (holiday, DST),
-  read nothing (`outside_session`). Host dry run, 2026-10-22: `cards 5  groups 4  requests planned 4/25`. The per-run cap is `--max-requests` (default
+  read nothing (`empty_reason: market_closed`). Host dry run, 2026-10-22: `cards 5  groups 4  requests planned 4/25`. The per-run cap is `--max-requests` (default
   25, ceiling 60), and groups over the cap keep their old quotes (`request_budget_exhausted`). For comparison, the
   full build makes on the order of hundreds of chain reads per tick.
 - **GPU-window rationale.** The full build moved to noon on 2026-07-17 because its ensemble queue fed the local

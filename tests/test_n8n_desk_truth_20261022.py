@@ -401,7 +401,7 @@ def test_access_mode_other_than_read_only_refuses_before_any_read(tmp_path):
         rep = QR.run(proposals=p, apply=True, max_requests=25, now=NOW,
                      chain_fn=lambda *a, **k: pytest.fail("no read"), mode_fn=lambda m=mode: m)
         assert rep["error"] == f"schwab_access_mode_not_read_only:{mode}"
-        assert QR.lane_output(rep)["skipped_reasons"] == {"access_mode_refused": 1}
+        assert QR.lane_output(rep)["skipped_reasons"] == {"disabled": 1}  # closed FATAL_SKIP_REASONS vocabulary
 
 
 def test_concurrent_rebuild_wins(tmp_path):
@@ -427,7 +427,7 @@ def test_outside_regular_hours_reads_nothing(tmp_path):
                  datetime(2026, 12, 2, 14, 20, tzinfo=timezone.utc)):   # 09:20 EST: the coarse -4h label says REGULAR
         rep = QR.run(proposals=p, apply=True, max_requests=25, now=when, mode_fn=lambda: "read_only",
                      chain_fn=lambda *a, **k: pytest.fail("no read outside RTH"))
-        assert rep["empty_reason"] == "outside_session" and rep["requests_made"] == 0, when
+        assert rep["empty_reason"] == "market_closed" and rep["requests_made"] == 0, when
     assert p.read_text() == before
     from scripts.lib.desk_session import market_session
 

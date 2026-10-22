@@ -32963,6 +32963,10 @@
         {
           "check": "duration_within_baseline",
           "text": "duration <= 240 s (80% of timeout_s 300)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count >= 1 (one completed check)"
         }
       ],
       "degraded": [
@@ -32995,6 +32999,10 @@
         {
           "check": "source_unreadable",
           "text": "a required source unreadable -> exit 1, receipt ok false (dependency_unavailable), ok_at carried forward"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule -> RUN_FAILED empty_output"
         }
       ],
       "baseline": {
@@ -33050,8 +33058,8 @@
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "one completed check (produced_count 1)",
-        "rule": "empty_allowed",
-        "min_produced": null,
+        "rule": "min_produced",
+        "min_produced": 1,
         "window_h": null,
         "produced_field": "produced_count",
         "fatal_skip_reasons": [
@@ -33156,6 +33164,10 @@
         {
           "check": "duration_within_baseline",
           "text": "duration <= 240 s (80% of timeout_s 300)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count >= 1 (one completed check)"
         }
       ],
       "degraded": [
@@ -33188,6 +33200,10 @@
         {
           "check": "source_unreadable",
           "text": "a required source unreadable -> exit 1, receipt ok false (dependency_unavailable), ok_at carried forward"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule -> RUN_FAILED empty_output"
         }
       ],
       "baseline": {
@@ -33243,8 +33259,8 @@
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "one completed check (produced_count 1)",
-        "rule": "empty_allowed",
-        "min_produced": null,
+        "rule": "min_produced",
+        "min_produced": 1,
         "window_h": null,
         "produced_field": "produced_count",
         "fatal_skip_reasons": [
@@ -33355,6 +33371,10 @@
         {
           "check": "duration_within_baseline",
           "text": "duration <= 240 s (80% of timeout_s 300)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count >= 1 (one completed check)"
         }
       ],
       "degraded": [
@@ -33387,6 +33407,10 @@
         {
           "check": "source_unreadable",
           "text": "a required source unreadable -> exit 1, receipt ok false (dependency_unavailable), ok_at carried forward"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule -> RUN_FAILED empty_output"
         }
       ],
       "baseline": {
@@ -33442,8 +33466,8 @@
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "one completed check (produced_count 1)",
-        "rule": "empty_allowed",
-        "min_produced": null,
+        "rule": "min_produced",
+        "min_produced": 1,
         "window_h": null,
         "produced_field": "produced_count",
         "fatal_skip_reasons": [
@@ -33473,7 +33497,7 @@
       "target_reason": "staged:f09 (not yet a registry target; written ahead of the activation PR)",
       "stage": null,
       "purpose": {
-        "text": "Quote-only refresh of the options desk 09:35-11:50 ET (cadence 5,20,35,50 9-11 weekdays; the 09:05 / 09:20 fires read nothing): one read-only expiration-pinned Schwab option-chain read per (symbol, expiration) of the cards already on the desk (cap 25/run, measured 4), live_quote per card and a quote_refresh session stamp; card economics and generated_at untouched; no LLM, no ensemble queue, no GPU (the reason the full build runs from 12:00). Runs only in schwab_access_mode read_only. STAGED INERT: not dispatchable until the operator admits read-only Schwab reads (f09_staged).",
+        "text": "Quote-only refresh of the options desk 09:35-11:50 ET (cadence 5,20,35,50 9-11 weekdays; the 09:05 / 09:20 fires read nothing): one read-only expiration-pinned Schwab option-chain read per (symbol, expiration) of the cards already on the desk (cap 25/run, measured 4), live_quote per card and a quote_refresh session stamp; card economics and generated_at untouched; no LLM, no ensemble queue, no GPU (the reason the full build runs from 12:00). Runs only in schwab_access_mode read_only. STAGED INERT: gated on AGENTS.md 18.0.0 ACTIVE (broker READ-ONLY lanes on n8n).",
         "business_function": "portfolio-truth",
         "source": "scripts/options_desk_quote_refresh.py; operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\")"
       },
@@ -33536,6 +33560,10 @@
         {
           "check": "duration_within_baseline",
           "text": "duration <= 192 s (80% of timeout_s 240)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = cards re-quoted; zero only with an allowed empty_reason ['no_new_input', 'market_closed']"
         }
       ],
       "degraded": [
@@ -33568,6 +33596,10 @@
         {
           "check": "source_unreadable",
           "text": "a required source unreadable -> exit 1, receipt ok false (dependency_unavailable), ok_at carried forward"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule -> RUN_FAILED empty_output"
         }
       ],
       "baseline": {
@@ -33629,11 +33661,11 @@
         "fatal_skip_reasons": [
           "no_runner",
           "dependency_unavailable",
-          "access_mode_refused"
+          "disabled"
         ],
         "empty_allowed_reasons": [
           "no_new_input",
-          "outside_session"
+          "market_closed"
         ],
         "evidence": [
           {
@@ -33657,7 +33689,7 @@
       "target_reason": "staged:f09 (not yet a registry target; written ahead of the activation PR)",
       "stage": null,
       "purpose": {
-        "text": "Scheduled holdings.json writer: read-only Schwab positions + cash for the three Schwab accounts -> holdings.json through protected_holdings_write (7,22,37,52 9-16 weekdays). Cron line 501 commented since 2026-10-15 (row PAUSED). STAGED for n8n (f09_staged): not dispatchable until the operator admits read-only Schwab reads; never by a re-enabled cron line.",
+        "text": "Scheduled holdings.json writer: read-only Schwab positions + cash for the three Schwab accounts -> holdings.json through protected_holdings_write (7,22,37,52 9-16 weekdays). Host cron line 501 until AGENTS.md 18.0.0 (broker READ-ONLY lanes on n8n) is ACTIVE; the line is resumed by the operator's cron resume packet. The n8n lane (f09_staged) is inert until then.",
         "business_function": "portfolio-truth",
         "source": "scripts/schwab_position_sync.py; operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\")"
       },
@@ -33720,6 +33752,10 @@
         {
           "check": "duration_within_baseline",
           "text": "duration <= 480 s (80% of timeout_s 600)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = accounts synced; zero only with an allowed empty_reason []"
         }
       ],
       "degraded": [
@@ -33752,6 +33788,10 @@
         {
           "check": "source_unreadable",
           "text": "a required source unreadable -> exit 1, receipt ok false (dependency_unavailable), ok_at carried forward"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule -> RUN_FAILED empty_output"
         }
       ],
       "baseline": {
@@ -33805,14 +33845,14 @@
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "accounts synced",
-        "rule": "empty_allowed",
-        "min_produced": null,
+        "rule": "min_produced",
+        "min_produced": 1,
         "window_h": null,
         "produced_field": "produced_count",
         "fatal_skip_reasons": [
           "no_runner",
           "dependency_unavailable",
-          "access_mode_refused"
+          "disabled"
         ],
         "empty_allowed_reasons": [],
         "evidence": [

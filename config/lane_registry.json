@@ -17464,7 +17464,7 @@
       ],
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-10-22",
-      "state_reason": "operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\"): quote-only refresh of the options desk 09:35-11:50 ET (the full build runs from 12:00 to stay out of the morning GPU window). Staged inert (dispatch off, no allowlist entry): its reach is the Schwab transport (one expiration-pinned option-chain read per (symbol, expiration)), which the dispatcher's broker gates refuse (tests/test_agents_policy_7_0_0_advisory_market_data.py reach scan; tests/test_lane_transitive_capabilities_20261015.py frozen baseline). Admitting it is an operator decision (f09_staged.activation_needs).",
+      "state_reason": "operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\"): quote-only refresh of the options desk 09:35-11:50 ET (the full build runs from 12:00 to stay out of the morning GPU window). Staged inert (dispatch off, no allowlist entry): its reach is the Schwab transport (one expiration-pinned option-chain read per (symbol, expiration)), which the dispatcher's broker gates refuse (tests/test_agents_policy_7_0_0_advisory_market_data.py reach scan; tests/test_lane_transitive_capabilities_20261015.py frozen baseline). Gated on AGENTS.md 18.0.0 ACTIVE (operator-directed 2026-10-22, not yet ratified: broker READ-ONLY lanes on n8n).",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/options-desk-quote-refresh_last.json",
@@ -17544,11 +17544,18 @@
           ]
         },
         "activation_needs": [
-          "OPERATOR DECISION: admit read-only Schwab option-chain reads to a dispatched lane (named ceiling in lib/lane_dispatch.py + a reviewed entry in the transitive-capability baseline / the 7.0.0 reach-scan baseline), the same decision as schwab-position-sync and PR #1795's read/sync lanes",
+          "AGENTS.md 18.0.0 ACTIVE (broker READ-ONLY lanes on n8n: read_only mode + trading lock LOCKED + read-only allowlist) and the code that implements it, reviewed in its own PR; nothing here weakens the forbidden-token check or the broker-module reach gates before then",
           "the owner's REVIEWED health contract (config/n8n_health_contracts.json options-desk-quote-refresh)",
           "live env: the host executor renders TRADEAI_ENV (report mode) so schwab_token_manager reads its token on the host; no broker credential in n8n (§23.23 C5)",
           "move activation_allowlist_entry into the allowlist and set the activation_registry fields in one registry PR (§23.11)"
-        ]
+        ],
+        "gated_on": {
+          "policy": "AGENTS.md 18.0.0 (operator-directed 2026-10-22: n8n may schedule broker READ-ONLY lanes under read_only mode + trading lock LOCKED + a read-only allowlist)",
+          "status_required": "ACTIVE",
+          "status_today": "NOT RATIFIED (2026-10-22)",
+          "until_then": "this lane stays inert: no allowlist entry, no dispatch, and the forbidden-token rule (pipeline_manifest.FORBIDDEN_COMMAND_TOKENS, lane_dispatch.EXTRA_FORBIDDEN_WORDS) is NOT weakened"
+        },
+        "trading_lock_condition": "the lane already refuses unless schwab_access_mode is read_only; the 18.0.0 activation adds the trading-lock LOCKED preflight"
       }
     },
     {

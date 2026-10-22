@@ -120,6 +120,8 @@ REVIEWED_NOW_ALLOWED: dict[str, tuple[frozenset[str], str]] = {
     "n8n-incident-fanin": (frozenset({"2fa"}), "workflow id 722fac0e... collapsed"),
     # shadow wave LD-W1 (2026-10-15): this corpus's own "allowlist:" id prefix + "opening" collapses to "listopening".
     "opening-intelligence-render": (frozenset({"stop"}), "corpus id 'allowlist:opening...' -> 'listopening'"),
+    # desk truth 2026-10-22: the same corpus-prefix artifact, 'allowlist:options...' -> 'listoptions'.
+    "options-desk-staleness-monitor": (frozenset({"stop"}), "corpus id 'allowlist:options...' -> 'listoptions'"),
     # crontab_backup.txt lines, keyed by script
     "topic_curator.py": (frozenset({"stop"}), "topic"),
     "hermes_topic_monitor_bridge.py": (frozenset({"stop"}), "topic"),

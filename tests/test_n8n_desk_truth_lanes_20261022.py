@@ -66,7 +66,9 @@ def test_staged_lanes_are_inert_and_carry_their_activation_record():
         rec = row["f09_staged"]
         assert rec["activation_allowlist_entry"]["lane_id"] == lane
         assert rec["activation_allowlist_entry"]["live_arg"] is None
-        assert any("OPERATOR DECISION" in n for n in rec["activation_needs"])
+        # broker READ-ONLY lanes on n8n wait for AGENTS.md 18.0.0 (operator-directed 2026-10-22, not yet ratified)
+        assert "18.0.0" in rec["gated_on"]["policy"] and rec["gated_on"]["status_required"] == "ACTIVE"
+        assert rec["activation_needs"][0].startswith("AGENTS.md 18.0.0 ACTIVE")
     qr = REG["options-desk-quote-refresh"]
     # kind none until admitted: a kind-n8n dispatcher row must have an allowlist entry (4.1.0 amendment test)
     assert qr["state"] == "NEVER_SCHEDULED" and qr["scheduler"]["kind"] == "none"
