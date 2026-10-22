@@ -1319,7 +1319,9 @@ def request(slot="1800", day="20261021", tick="on_window", shadow=True, **over):
             "expires_at": (start + timedelta(minutes=15)).isoformat(),
             "requested_by": {"lane_id": f"release-train-request-{slot}", "run_id": "rtw:x:live:1", "attempt": 1,
                              "run_mode": "live", "code_sha": None},
-            "readiness": {"stop_state": "ABSENT"}, "authority": "REQUEST_ONLY", "note": "not authority"}
+            "readiness": {"stop_state": "ABSENT", "armed": False, "shadow_enabled": True,
+                          "delegation_state": "PAUSED", "window_enabled": False, "policy_version": None},
+            "authority": "REQUEST_ONLY", "note": "not authority"}
     body.update(over)
     return body
 
@@ -1360,7 +1362,8 @@ def test_shadow_request_is_simulate_only_and_completes(tmp_path):
 
 def test_off_window_shadow_request_is_evaluated_at_its_window(tmp_path):
     w = World(tmp_path, now=datetime(2026, 10, 21, 11, 0, tzinfo=ET))
-    req = request(tick="off_window", expires_at=(datetime(2026, 10, 21, 12, 0, tzinfo=ET)).isoformat())
+    req = request(tick="off_window", requested_at=(datetime(2026, 10, 21, 10, 59, tzinfo=ET)).isoformat(),
+                  expires_at=(datetime(2026, 10, 21, 12, 0, tzinfo=ET)).isoformat())
     put(w, req)
     claim(w)
     r = receipt(w, req["request_id"])
@@ -1388,8 +1391,8 @@ def test_live_request_when_active_re_validates_on_the_host(tmp_path):
 
 
 @pytest.mark.parametrize("mutate,needle", [
-    (lambda b: b.update(candidate_sha="a" * 40), "unknown fields"),
-    (lambda b: b.update(train_id="rt-20261021-1800-abcd"), "unknown fields"),
+    (lambda b: b.update(candidate_sha="a" * 40), "unknown key"),
+    (lambda b: b.update(train_id="rt-20261021-1800-abcd"), "unknown key"),
     (lambda b: b.update(window_slot="1200"), "window_slot"),
     (lambda b: b.update(authority="GRANT"), "authority"),
     (lambda b: b.update(tick="off_window"), "suffix"),

@@ -506,7 +506,7 @@ outcome: DRY_RUN_COMPLETE reason: DRY_RUN_COMPLETE exit: 0
   the batch PR head, and the main evidence must carry the other three on the merge commit. Both digests are bound.
   Each SHA is qualified by runs on exactly that SHA, so this is not a tree-equivalence fallback.
 
-### 11.6 n8n window requests (contract `docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md` rev 1, `5a230186a`)
+### 11.6 n8n window requests (contract `docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md` rev 1 `5a230186a` when built; now rev 3)
 
 `train-claim` is the controller half of C1–C11:
 
@@ -525,13 +525,17 @@ installed (operator item O7).
 
 **Contract gaps (reported, not diverged from):**
 
-- **(a) C9 is missing codes.** The closed set has no code for a reconcile-first, quarantined-lineage,
-  bypass-environment or corrupt-control refusal, or for a controller exception (FAILED). These map to the nearest
-  fail-closed code (`STOP_SET` / `NOT_ARMED` / `LOCK_HELD`), with the precise reason in `refusal.detail`. Proposed
-  new codes: `RECONCILE_REQUIRED`, `QUARANTINED_LINEAGE`, `CONTROLLER_ERROR`.
-- **(b) Schema and validator files are absent.** `train_window_request.v1.schema.json` and
-  `release_train_window.py` are not on that branch yet, so `validate_request` implements §5's table. Swap it for the
-  shared validator when they land.
+- **(a) C9 codes — RESOLVED (contract revision 3; controller updated 2026-10-21, branch
+  `fix/release-train-arming-blockers-20261021`, arming finding 9).** The controller's `REFUSAL_CODES` now equal the
+  receipt schema's closed set. A reconcile-first refusal is `RECONCILE_REQUIRED`, a quarantined lineage is
+  `QUARANTINED_LINEAGE`, a corrupt control state or an unreadable main is `CONTROLLER_ERROR` and a controller
+  exception is `CONTROLLER_FAILED` (both with `state: FAILED`); a busy lock stays `LOCK_HELD`, a bypass environment
+  `NOT_ARMED`. The precise reason still travels in `refusal.detail`.
+- **(b) Schema and validator — RESOLVED.** Release 2 ships `config/schemas/release_train/train_window_{request,receipt}.v1.schema.json`
+  and `scripts/lib/release_train_window_view.py`. The controller's temporary §5 validator is gone: `train-claim` uses
+  `validate_request` (plus the host rule that the file is named `<request_id>.json`) and validates every receipt
+  with `validate_receipt` before writing it (a valid request whose receipt fails the contract gets a FAILED
+  `CONTROLLER_ERROR` receipt instead).
 - **(c) Simulated outcomes.** A simulate run that got through every step reports `NO_OP` plus `simulated_effects`,
   per §7 ("never a release").
 - **(d) Receipt file mode.** Receipts are written 0600 by `_atomic_write_json`. The relay must read them as the same

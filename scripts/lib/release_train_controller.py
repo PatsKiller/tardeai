@@ -79,6 +79,7 @@ try:
     from scripts.lib import release_delegation as RD
     from scripts.lib import release_train_contracts as TC
     from scripts.lib import release_train_queue as Q
+    from scripts.lib import release_train_window_view as WV
 except ImportError:  # pragma: no cover - scripts/ on sys.path
     import release_window as RW  # type: ignore[no-redef]
     from lib import release_capability as CAP  # type: ignore[no-redef]
@@ -86,6 +87,7 @@ except ImportError:  # pragma: no cover - scripts/ on sys.path
     from lib import release_delegation as RD  # type: ignore[no-redef]
     from lib import release_train_contracts as TC  # type: ignore[no-redef]
     from lib import release_train_queue as Q  # type: ignore[no-redef]
+    from lib import release_train_window_view as WV  # type: ignore[no-redef]
 
 CONTROLLER_VERSION = "release_train_controller/1"
 SCHEMA_MANIFEST = "TrainCandidate@v1"
@@ -2615,33 +2617,47 @@ def cli(args: Any) -> int:
     return code
 
 
-# ── n8n window requests (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md rev 1, branch feat/release-train-n8n-20261021) ──
-# The controller half of TrainWindowRequest@v1 / TrainWindowReceipt@v1 (C1-C11). The request schema and validator
-# (config/schemas/release_train/train_window_request.v1.schema.json, scripts/lib/release_train_window.py) are not on
-# this branch yet, so validate_request() below implements the contract's §5 table strictly; swap it for the shared
-# validator when that lands. A request is never authority: everything is re-derived on the host.
+# ── n8n window requests (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md rev 3) ──────────────────────────────────────────
+# The controller half of TrainWindowRequest@v1 / TrainWindowReceipt@v1 (C1-C13). Both records are validated by the
+# shipped schemas and validator (config/schemas/release_train/train_window_{request,receipt}.v1.schema.json,
+# scripts/lib/release_train_window_view.py validate_request / validate_receipt); the controller adds only the
+# host-side file-name rule. A request is never authority: everything is re-derived on the host.
 
-REQUEST_SCHEMA, RECEIPT_SCHEMA = "TrainWindowRequest@v1", "TrainWindowReceipt@v1"
-REQUEST_ID_RE = re.compile(r"^rtw-[0-9]{8}-[0-9]{4}-(win|f[0-9a-f]{6})$")
-REQUEST_KEYS_REQUIRED = frozenset({"schema", "request_id", "window_slot", "window_id", "window_start", "tick",
-                                   "shadow", "requested_at", "expires_at", "requested_by", "authority"})
-REQUEST_KEYS_OPTIONAL = frozenset({"shadow_reason", "readiness", "note"})
+REQUEST_SCHEMA, RECEIPT_SCHEMA = WV.TRAIN_WINDOW_REQUEST, WV.TRAIN_WINDOW_RECEIPT
+REQUEST_ID_RE = WV.REQUEST_ID_RE
+#: Contract C9 (rev 3), the closed set; equal to the receipt schema's ``refusal.code`` enum (pinned by a test).
 REFUSAL_CODES = frozenset({"INVALID_REQUEST", "EXPIRED", "DUPLICATE_WINDOW", "STOP_SET", "STOP_UNREADABLE",
                            "NOT_ARMED", "DELEGATION_NOT_ACTIVE", "WINDOW_NOT_ENABLED", "OUTSIDE_WINDOW",
-                           "CONTROLLER_BUILD_ONLY", "LOCK_HELD", "SHADOW_LIVE_MISMATCH"})
-TERMINAL_RECEIPT_STATES = frozenset({"COMPLETED", "REFUSED", "EXPIRED", "FAILED"})
-#: The controller's precise refusal -> the contract's closed set (C9). The contract has no code for a reconcile-first,
-#: quarantined-lineage, bypass-environment or corrupt-control refusal; they map to the closest fail-closed code and
-#: the precise reason travels in ``refusal.detail`` (reported as a contract gap in the packet README).
+                           "CONTROLLER_BUILD_ONLY", "LOCK_HELD", "SHADOW_LIVE_MISMATCH", "CONTROLLER_FAILED",
+                           "CONTROLLER_ERROR", "RECONCILE_REQUIRED", "QUARANTINED_LINEAGE"})
+#: C9: these two are written with ``state: FAILED`` (the controller itself failed, or its own state is in error).
+FAILED_CODES = frozenset({"CONTROLLER_FAILED", "CONTROLLER_ERROR"})
+TERMINAL_RECEIPT_STATES = frozenset(WV.TERMINAL_RECEIPT_STATES)
+#: The controller's precise refusal -> the contract's closed set (C9, rev 3). The precise reason always travels in
+#: ``refusal.detail``; an unmapped reason fails closed to NOT_ARMED.
 REFUSAL_MAP = {
     "REFUSED_STOP_LATCHED": "STOP_SET", "REFUSED_STOP_UNREADABLE": "STOP_UNREADABLE",
-    "REFUSED_CONTROL_UNARMED": "NOT_ARMED", "REFUSED_CONTROL_CORRUPT": "NOT_ARMED", "REFUSED_REVOKED": "NOT_ARMED",
-    "REFUSED_PAUSED": "NOT_ARMED", "REFUSED_STOPPED": "STOP_SET", "REFUSED_POLICY_NOT_ACCEPTED": "NOT_ARMED",
+    "REFUSED_STOPPED": "STOP_SET", "REFUSED_STOP_LATCH_UNREADABLE": "STOP_UNREADABLE",
+    "REFUSED_CONTROL_UNARMED": "NOT_ARMED", "REFUSED_REVOKED": "NOT_ARMED", "REFUSED_PAUSED": "NOT_ARMED",
+    "REFUSED_PAUSED_AFTER_CURRENT": "NOT_ARMED", "REFUSED_POLICY_NOT_ACCEPTED": "NOT_ARMED",
+    "REFUSED_BYPASS_ENV": "NOT_ARMED",
+    "REFUSED_CONTROL_CORRUPT": "CONTROLLER_ERROR", "REFUSED_CONTROL_MODE_UNKNOWN": "CONTROLLER_ERROR",
+    "REFUSED_MAIN_UNREADABLE": "CONTROLLER_ERROR",
     "REFUSED_WINDOW_DISABLED": "WINDOW_NOT_ENABLED", "REFUSED_OFF_WINDOW": "OUTSIDE_WINDOW",
     "REFUSED_WINDOW_ALREADY_CLAIMED": "DUPLICATE_WINDOW", "REFUSED_TRAIN_BUSY": "LOCK_HELD",
-    "REFUSED_TRAIN_ALREADY_CLAIMED": "LOCK_HELD", "REFUSED_RECONCILE_FIRST": "STOP_SET",
-    "REFUSED_QUARANTINED_LINEAGE": "STOP_SET", "REFUSED_BYPASS_ENV": "NOT_ARMED",
+    "REFUSED_TRAIN_ALREADY_CLAIMED": "LOCK_HELD",
+    "REFUSED_RECONCILE_FIRST": "RECONCILE_REQUIRED", "REFUSED_QUARANTINED_LINEAGE": "QUARANTINED_LINEAGE",
 }
+
+
+def refusal_code(reason: Any) -> str:
+    """The C9 code for a controller refusal reason (``REFUSED_DELEGATION_<code>`` -> DELEGATION_NOT_ACTIVE)."""
+    r = str(reason or "")
+    if r in REFUSAL_CODES:
+        return r
+    if r.startswith("REFUSED_DELEGATION_"):
+        return "DELEGATION_NOT_ACTIVE"
+    return REFUSAL_MAP.get(r, "NOT_ARMED")
 
 
 def _parse_ts(v: Any) -> Optional[datetime]:
@@ -2653,55 +2669,15 @@ def _parse_ts(v: Any) -> Optional[datetime]:
 
 
 def validate_request(body: Any, filename: str) -> list[str]:
-    """TrainWindowRequest@v1 (contract §5), strict: unknown keys are invalid (a request that names a SHA, PR, train
-    id, capability or command is invalid), and every identity field must agree with the others."""
-    if not isinstance(body, dict):
-        return ["request is not an object"]
-    errs = []
-    keys = set(body)
-    if REQUEST_KEYS_REQUIRED - keys:
-        errs.append(f"missing {sorted(REQUEST_KEYS_REQUIRED - keys)}")
-    extra = keys - REQUEST_KEYS_REQUIRED - REQUEST_KEYS_OPTIONAL
-    if extra:
-        errs.append(f"unknown fields {sorted(extra)} (a request carries no SHA, PR, train id or command)")
-    if errs:
-        return errs
-    if body["schema"] != REQUEST_SCHEMA:
-        errs.append("schema")
-    rid = body["request_id"]
-    if not (isinstance(rid, str) and REQUEST_ID_RE.match(rid)):
-        errs.append("request_id pattern")
-    elif filename != f"{rid}.json":
+    """TrainWindowRequest@v1 through the shipped schema and validator (``release_train_window_view.validate_request``:
+    unknown keys are invalid, so a request that names a SHA, PR, train id, capability or command is refused), plus the
+    host rule that the spool file is named ``<request_id>.json``."""
+    try:
+        errs = list(WV.validate_request(body))
+    except Exception as exc:  # noqa: BLE001 - a validator crash is an invalid request, never a pass
+        return [f"validator error: {type(exc).__name__}"]
+    if isinstance(body, dict) and isinstance(body.get("request_id"), str) and filename != f"{body['request_id']}.json":
         errs.append("request_id disagrees with the file name")
-    slot = body["window_slot"]
-    if slot not in ("0000", "0600", "0800", "1800"):
-        errs.append("window_slot")
-    start = _parse_ts(body["window_start"])
-    if start is None:
-        errs.append("window_start")
-    else:
-        local = start.astimezone(TZ)
-        if local.strftime("%H%M") != slot or local.isoformat(timespec="minutes") != body["window_id"]:
-            errs.append("window_id / window_start / window_slot disagree")
-        if isinstance(rid, str) and REQUEST_ID_RE.match(rid) and rid[4:17] != local.strftime("%Y%m%d-%H%M"):
-            errs.append("request_id date/slot disagree with the window")
-    if body["tick"] not in ("on_window", "off_window"):
-        errs.append("tick")
-    if not isinstance(body["shadow"], bool):
-        errs.append("shadow must be a boolean")
-    if body["tick"] == "off_window" and body["shadow"] is not True:
-        errs.append("an off-window request is always shadow")
-    if isinstance(rid, str) and rid.endswith("-win") != (body["tick"] == "on_window"):
-        errs.append("request_id suffix disagrees with tick")
-    if _parse_ts(body["requested_at"]) is None or _parse_ts(body["expires_at"]) is None:
-        errs.append("requested_at / expires_at")
-    if body["authority"] != "REQUEST_ONLY":
-        errs.append("authority must be REQUEST_ONLY")
-    rb = body["requested_by"]
-    if not (isinstance(rb, dict) and isinstance(rb.get("lane_id"), str) and isinstance(rb.get("run_id"), str)):
-        errs.append("requested_by")
-    elif isinstance(slot, str) and rb["lane_id"] != f"release-train-request-{slot}":
-        errs.append("requested_by.lane_id is not this slot's lane")
     return errs
 
 
@@ -2777,7 +2753,40 @@ T_ID_RE = re.compile(r"^rt-[0-9]{8}-[0-9]{4}-[a-z0-9]{4,12}$")
 
 
 def _refusal(code: str, detail: str) -> dict:
-    return {"code": code if code in REFUSAL_CODES else "INVALID_REQUEST", "detail": str(detail)[:200]}
+    return {"code": code if code in REFUSAL_CODES else refusal_code(code), "detail": str(detail)[:200]}
+
+
+def _refused_state(refusal: dict) -> str:
+    """C9: CONTROLLER_FAILED / CONTROLLER_ERROR are FAILED receipts; every other refusal is REFUSED."""
+    return "FAILED" if refusal.get("code") in FAILED_CODES else "REFUSED"
+
+
+def checked_receipt(doc: dict, *, request_valid: bool) -> tuple[dict, list[str]]:
+    """Validate a receipt with the shipped validator before it is written. A terminal receipt is an acknowledgement
+    too, so a missing ``acknowledged_at`` is set to ``finished_at``. A receipt for a VALID request that still fails the
+    contract is replaced by a FAILED / CONTROLLER_ERROR receipt (fail closed; the defect is in ``refusal.detail``).
+    A receipt for an invalid request may be unrepresentable (its request_id is not an id); it is written as built and
+    the contract errors are returned to the caller's output, never silently passed."""
+    if doc.get("acknowledged_at") is None and doc.get("state") in TERMINAL_RECEIPT_STATES:
+        doc["acknowledged_at"] = doc.get("finished_at")
+    try:
+        errs = list(WV.validate_receipt(doc))
+    except Exception as exc:  # noqa: BLE001
+        errs = [f"validator error: {type(exc).__name__}"]
+    if not errs or not request_valid:
+        return doc, errs
+    fixed = dict(doc, state="FAILED", outcome=None, finished_at=doc.get("finished_at") or doc.get("acknowledged_at"),
+                 refusal={"code": "CONTROLLER_ERROR", "detail": ("receipt contract: " + "; ".join(errs))[:200]})
+    ack_ts, fin_ts = _parse_ts(fixed.get("acknowledged_at")), _parse_ts(fixed.get("finished_at"))
+    if ack_ts is not None and (fin_ts is None or fin_ts < ack_ts):
+        fixed["finished_at"] = fixed["acknowledged_at"]
+    if fixed["mode"] == "live" and fixed.get("shadow") is True:
+        fixed["mode"] = "simulate"
+    try:
+        again = list(WV.validate_receipt(fixed))
+    except Exception as exc:  # noqa: BLE001
+        again = [f"validator error: {type(exc).__name__}"]
+    return fixed, errs + again
 
 
 def process_requests(state: RW.State, factory: Callable[[bool], TrainController], *, apply: bool,
@@ -2828,32 +2837,38 @@ def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], T
         item["would"] = ("REFUSE INVALID_REQUEST: " + "; ".join(errs)) if errs else (
             f"claim; {'simulate (shadow)' if req.get('shadow') else 'live -> ' + ('refused: CONTROLLER_BUILD_ONLY' if status_ != 'ACTIVE' else 'run live')}")
         return item
+    def put(doc: dict) -> dict:
+        doc, cerrs = checked_receipt(doc, request_valid=not errs)
+        if cerrs:
+            item["receipt_contract_errors"] = cerrs[:5]
+        spool.write_receipt(rid, doc)
+        return doc
+
     claimed = spool.claim(p)
     if claimed is None:
         item["result"] = "NOT_CLAIMED (another claimer, or a duplicate name already claimed)"
         if os.path.lexists(p) and os.path.lexists(spool.claimed / name):
-            spool.write_receipt(rid, _receipt(req, state="REFUSED", mode="simulate", now=clock(),
-                                              refusal=_refusal("DUPLICATE_WINDOW", "request already claimed")))
+            put(_receipt(req, state="REFUSED", mode="simulate", now=clock(),
+                         refusal=_refusal("DUPLICATE_WINDOW", "request already claimed")))
             item["result"] = "REFUSED DUPLICATE_WINDOW"
         return item
     shadow = req.get("shadow") is True
     mode = "simulate" if shadow or errs else "live"
     if errs:
-        spool.write_receipt(rid, _receipt(req, state="REFUSED", mode="simulate", now=clock(),
-                                          refusal=_refusal("INVALID_REQUEST", "; ".join(errs))))
+        put(_receipt(req, state="REFUSED", mode="simulate", now=clock(),
+                     refusal=_refusal("INVALID_REQUEST", "; ".join(errs))))
         item["result"] = "REFUSED INVALID_REQUEST"
         return item
     if clock() > _parse_ts(req["expires_at"]).timestamp():
-        spool.write_receipt(rid, _receipt(req, state="EXPIRED", mode=mode, now=clock(),
-                                          refusal=_refusal("EXPIRED", f"expired at {req['expires_at']}")))
+        put(_receipt(req, state="EXPIRED", mode=mode, now=clock(),
+                     refusal=_refusal("EXPIRED", f"expired at {req['expires_at']}")))
         item["result"] = "EXPIRED"
         return item
     ack = utc_iso(clock())
-    spool.write_receipt(rid, _receipt(req, state="ACKNOWLEDGED", mode=mode, now=clock(), acknowledged_at=ack))
+    put(_receipt(req, state="ACKNOWLEDGED", mode=mode, now=clock(), acknowledged_at=ack))
     if not shadow and status_ != "ACTIVE":
-        spool.write_receipt(rid, _receipt(req, state="REFUSED", mode="live", now=clock(), acknowledged_at=ack,
-                                          refusal=_refusal("CONTROLLER_BUILD_ONLY",
-                                                           f"TRAIN_CONTROLLER_STATUS={status_}")))
+        put(_receipt(req, state="REFUSED", mode="live", now=clock(), acknowledged_at=ack,
+                     refusal=_refusal("CONTROLLER_BUILD_ONLY", f"TRAIN_CONTROLLER_STATUS={status_}")))
         item["result"] = "REFUSED CONTROLLER_BUILD_ONLY"
         return item
     try:
@@ -2864,25 +2879,24 @@ def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], T
         at = start + timedelta(minutes=1) if (shadow and req["tick"] == "off_window") else None
         code, rec = ctl.run(at)
     except Halt as h:
-        spool.write_receipt(rid, _receipt(req, state="REFUSED", mode=mode, now=clock(), acknowledged_at=ack,
-                                          refusal=_refusal(h.reason, h.detail)))
-        item["result"] = f"REFUSED {h.reason}"
+        ref = _refusal(refusal_code(h.reason), f"{h.reason}: {h.detail}")
+        put(_receipt(req, state=_refused_state(ref), mode=mode, now=clock(), acknowledged_at=ack, refusal=ref))
+        item["result"] = f"{_refused_state(ref)} {h.reason}"
         return item
     except Exception as exc:  # noqa: BLE001 - the controller itself failed: FAILED, exception type only
-        spool.write_receipt(rid, _receipt(req, state="FAILED", mode=mode, now=clock(), acknowledged_at=ack,
-                                          # C9 has no controller-error code (contract gap, packet README):
-                                          # LOCK_HELD for a busy lock, else NOT_ARMED; detail = exception type.
-                                          refusal={"code": "LOCK_HELD" if isinstance(exc, RC.LockBusy)
-                                                   else "NOT_ARMED", "detail": type(exc).__name__}))
+        # C9 rev 3: CONTROLLER_FAILED (state FAILED); a busy lock stays LOCK_HELD. Detail = exception type only.
+        code9 = "LOCK_HELD" if isinstance(exc, RC.LockBusy) else "CONTROLLER_FAILED"
+        put(_receipt(req, state="FAILED", mode=mode, now=clock(), acknowledged_at=ack,
+                     refusal={"code": code9, "detail": type(exc).__name__}))
         item["result"] = f"FAILED {type(exc).__name__}"
         return item
     if isinstance(ctl.writer, SimulatedGitHubWriter):
         rec["simulated_writes"] = ctl.writer.actions
     got = (rec.get("window") or {}).get("window_id")
     if rec.get("refused"):
-        code9 = REFUSAL_MAP.get(str(rec.get("reason")), "NOT_ARMED")
-        receipt = _receipt(req, state="REFUSED", mode=mode, now=clock(), acknowledged_at=ack, rec=rec,
-                           refusal=_refusal(code9, f"{rec.get('reason')}: {rec.get('detail') or ''}"))
+        ref = _refusal(refusal_code(rec.get("reason")), f"{rec.get('reason')}: {rec.get('detail') or ''}")
+        receipt = _receipt(req, state=_refused_state(ref), mode=mode, now=clock(), acknowledged_at=ack, rec=rec,
+                           refusal=ref)
     elif got != req["window_id"]:
         receipt = _receipt(req, state="REFUSED", mode=mode, now=clock(), acknowledged_at=ack, rec=rec,
                            refusal=_refusal("OUTSIDE_WINDOW", f"the host derived window {got}, not {req['window_id']}"))
@@ -2892,7 +2906,7 @@ def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], T
             oc = NO_OP                                  # simulate: never a release, never a fake success (§7)
         receipt = _receipt(req, state="COMPLETED", mode=mode, now=clock(), acknowledged_at=ack, rec=rec,
                            outcome=oc if oc in TERMINAL_OUTCOMES else CANCELLED)
-    spool.write_receipt(rid, receipt)
+    receipt = put(receipt)
     item["result"] = f"{receipt['state']} {receipt.get('outcome') or (receipt.get('refusal') or {}).get('code')}"
     item["train_id"] = rec.get("train_id")
     return item

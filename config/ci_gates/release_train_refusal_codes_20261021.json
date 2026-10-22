@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_refusal_codes_20261021",
+  "files": [
+    "tests/test_release_train_refusal_codes_20261021.py"
+  ],
+  "anchor": "RELEASE_TRAIN_REFUSAL_CODES_20261021",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_REFUSAL_CODES_20261021 — release-train arming finding 9. The controller's C9",
+    "REFUSAL_CODES equal contract rev 3 and the shipped TrainWindowReceipt@v1 enum (RECONCILE_REQUIRED,",
+    "QUARANTINED_LINEAGE, CONTROLLER_ERROR, CONTROLLER_FAILED; the last two with state FAILED); train-claim",
+    "validates requests and receipts with release_train_window_view.validate_request / validate_receipt",
+    "(the temporary private validator is gone). Hermetic: the controller test world under tmp_path."
+  ]
+}

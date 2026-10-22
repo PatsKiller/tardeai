@@ -650,6 +650,9 @@ The fallback holds through every phase.
    `REFUSAL_CODES` and `REFUSAL_MAP` still map those cases to `STOP_SET`, `NOT_ARMED` or `LOCK_HELD`. The packet
    README §11.6 (b) still says the schemas and the validator are absent, but Release 2 ships both
    (`config/schemas/release_train/train_window_*.v1.schema.json`, `scripts/lib/release_train_window_view.py`).
+   **Status: FIXED** (branch `fix/release-train-arming-blockers-20261021`). `REFUSAL_CODES` equals the schema's
+   closed set, `REFUSAL_MAP` uses the rev 3 codes, `train-claim` validates with `validate_request` /
+   `validate_receipt`, and the old packet's §11.6 (a) and (b) are marked resolved.
 10. **STOP vocabulary drift.** UI contract item 5 says `summary.stop` uses `CLEAR`/`LATCHED`/`UNREADABLE`. API
     revision 2 replaced that with `ABSENT`/`SET`/`UNREADABLE`.
 11. **The served release is Release 1.** CURRENT (`d55da84d0`) has no `train-claim` and no `/release-train-window`.
