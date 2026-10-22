@@ -12,7 +12,9 @@ Pins:
     switch resolves read_only;
   * order, stop-write, cancel, replace, preflight, 2FA, place_order, live/paper, sender, wrapper and extra-argument
     commands are refused whatever the status;
-  * the market-data reads pass the real §24.11 audit.
+  * the market-data reads pass the real §24.11 audit;
+  * the lock and access-mode readers (broker_read_sync) live in n8n_broker_read_carveout_runtime, never in the
+    carve-out or pipeline_manifest (both are in every lane's import closure); a reader not supplied refuses.
 
 Hermetic: no broker, no network, no lock or switch file is read (locks and mode are injected). TRADE_AI_CI=1.
 """
@@ -31,6 +33,7 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
 
 from lib import broker_read_sync_policy as P  # noqa: E402
 from lib import n8n_broker_read_carveout as C  # noqa: E402
+from lib import n8n_broker_read_carveout_runtime as R  # noqa: E402
 from scripts.pipelines import pipeline_manifest as PM  # noqa: E402
 
 LOCKED = {b: {"locked": True, "reason": "no operator unlock file (default: locked)"} for b in P.LOCK_BROKERS}
@@ -269,20 +272,83 @@ def test_the_operator_switch_is_read_without_the_per_process_force(monkeypatch):
             seen.update(env)
             return {"mode": "normal"}
 
-    monkeypatch.setattr(C, "_broker_read_sync", lambda: FakeBRS)
+    monkeypatch.setattr(R, "_broker_read_sync", lambda: FakeBRS)
     monkeypatch.setenv("TRADEAI_SCHWAB_ACCESS_MODE", "read_only")
     monkeypatch.setenv("TRADEAI_SCHWAB_ACCESS_MODE_PATH", "/tmp/fake.yaml")
-    assert C.operator_access_mode() == {"mode": "normal"}
+    assert R.operator_access_mode() == {"mode": "normal"}
     assert "TRADEAI_SCHWAB_ACCESS_MODE" not in seen and "TRADEAI_SCHWAB_ACCESS_MODE_PATH" not in seen
-    assert C.runtime_refusals(status="ACTIVE", lock_fn=lambda: LOCKED) == ["schwab_access_mode_not_read_only"]
+    assert R.runtime_refusals(status="ACTIVE", lock_fn=lambda: LOCKED) == ["schwab_access_mode_not_read_only"]
+
+
+def test_the_runtime_module_supplies_the_broker_read_sync_readers(monkeypatch):
+    class FakeBRS:
+        @staticmethod
+        def lock_states():
+            return LOCKED
+
+        @staticmethod
+        def resolved_child_mode(env):
+            return READ_ONLY
+
+    monkeypatch.setattr(R, "_broker_read_sync", lambda: FakeBRS)
+    assert R.default_lock_states() == LOCKED
+    assert R.runtime_refusals(status="ACTIVE") == []
+    cmd = "$PY scripts/positions_sync.py --apply"
+    assert R.admit(cmd, status="ACTIVE", audit_fn=ok_audit)["admitted"] is True
+    for status in ("PROPOSED", ""):
+        assert R.runtime_refusals(status=status) == ["carveout_not_active"]
+        assert R.admit(cmd, status=status, audit_fn=no_audit)["refusals"] == ["carveout_not_active"]
+
+
+def test_a_missing_reader_refuses_in_the_carveout_itself():
+    """The carve-out takes its readers as parameters; one not supplied is unreadable state (fail closed)."""
+    r = C.runtime_refusals(status="ACTIVE")
+    assert "trading_lock_unreadable:LookupError" in r and "schwab_access_mode_unreadable:LookupError" in r
+    assert all(f"trading_lock_not_locked:{b}" in r for b in P.LOCK_BROKERS)
+    assert "schwab_access_mode_not_read_only" in r
+    assert C.runtime_refusals(status="ACTIVE", lock_fn=lambda: LOCKED) == [
+        "schwab_access_mode_unreadable:LookupError", "schwab_access_mode_not_read_only"]
+    assert C.runtime_refusals(status="ACTIVE", mode_fn=lambda: READ_ONLY)[0] == "trading_lock_unreadable:LookupError"
+    v = C.admit("$PY scripts/positions_sync.py --apply", status="ACTIVE", audit_fn=ok_audit)
+    assert v["admitted"] is False
 
 
 def test_lock_states_and_mode_reuse_broker_read_sync():
     src = (ROOT / "scripts" / "lib" / "n8n_broker_read_carveout.py").read_text(encoding="utf-8")
-    assert ".lock_states()" in src and ".resolved_child_mode(" in src and "policy.audit(" in src
+    rt = (ROOT / "scripts" / "lib" / "n8n_broker_read_carveout_runtime.py").read_text(encoding="utf-8")
+    assert ".lock_states()" in rt and ".resolved_child_mode(" in rt and "policy.audit(" in src
     assert "excluded_family" in src and "runtime_denied" in src
-    for forbidden in ("open(\".env", "dotenv", "schwab_transport", "place_order(", "requests.", "urllib"):
-        assert forbidden not in src.replace("``place_order``", "").replace("\"place_order\"", ""), forbidden
+    for text in (src, rt):
+        for forbidden in ("open(\".env", "dotenv", "schwab_transport", "place_order(", "requests.", "urllib"):
+            assert forbidden not in text.replace("``place_order``", "").replace("\"place_order\"", ""), forbidden
+
+
+def _imported_modules(path: Path) -> set[str]:
+    import ast
+
+    out: set[str] = set()
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, ast.Import):
+            out |= {a.name for a in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            out |= {node.module, *(f"{node.module}.{a.name}" for a in node.names)}
+    return out
+
+
+def test_the_carveout_and_the_manifest_import_nothing_broker_adjacent():
+    """pipeline_manifest is in the closure of every lane that reaches lane_dispatch / n8n_process_keys, and it imports
+    the carve-out: neither may import (even lazily) broker_read_sync, the trading lock or the access-mode switch, or
+    every such lane gains broker_module reach (tests/test_lane_transitive_capabilities_20261015.py) and a sender in
+    its env closure (tests/test_n8n_executor_env_allowlist_20261009.py). Only the runtime module imports them."""
+    banned = ("broker_read_sync", "trading_lock", "schwab_access_mode", "n8n_broker_read_carveout_runtime")
+    for rel in ("scripts/lib/n8n_broker_read_carveout.py", "scripts/pipelines/pipeline_manifest.py"):
+        mods = _imported_modules(ROOT / rel)
+        hits = sorted(m for m in mods for b in banned if m.split(".")[-1] == b)
+        assert not hits, (rel, hits)
+        text = (ROOT / rel).read_text(encoding="utf-8")
+        assert "importlib" not in text and "__import__" not in text, rel
+    rt = _imported_modules(ROOT / "scripts" / "lib" / "n8n_broker_read_carveout_runtime.py")
+    assert "ops.broker_read_sync" in rt
 
 
 # ------------------------------------------------------------------------------------------- the real audit

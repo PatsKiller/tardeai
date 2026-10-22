@@ -9,7 +9,8 @@ only while every broker trading lock is LOCKED and the Schwab access mode is ``r
 place that says which commands that covers and which preconditions must hold. It reuses the 14.0.0 read-only sync
 (§24.11) wholesale: the same closed step set (``broker_read_sync_policy.STEPS``), the same exclusions
 (``excluded_family`` / ``runtime_denied``), the same static capability audit (``audit()``), and the same lock and
-access-mode readers (``scripts/ops/broker_read_sync.py`` ``lock_states()`` / ``resolved_child_mode()``).
+access-mode readers (``scripts/ops/broker_read_sync.py`` ``lock_states()`` / ``resolved_child_mode()``), which
+``scripts/lib/n8n_broker_read_carveout_runtime.py`` supplies to ``runtime_refusals`` / ``admit``.
 
 Status. ``CARVEOUT_STATUS`` is ``"PROPOSED"`` and only the 19.0.0 ratifying edit (the operator's
 ``build_ratify19.py``) sets it to ``"ACTIVE"``. While it is not ``ACTIVE`` every admission refuses with
@@ -22,14 +23,15 @@ What it never admits, whatever the status: an order, a stop write, cancel, repla
 (``NEVER_TOKENS`` and the exact-argv match). Changing a read lane into one that writes is an operator-only decision
 (AGENTS.md §17); adding a lane is a reviewed PR to ``READ_LANES``.
 
-Pure of brokers: reads repository source (the audit) and, for ``runtime_refusals``, the trading-lock files and the
-access-mode switch. Never imports a step, a broker module or a credential; never opens ``.env``.
+Pure of brokers: reads repository source (the audit) only. It never imports scripts/ops/broker_read_sync.py, the
+trading lock, the access-mode switch, a step, a broker module or a credential, and never opens ``.env``: it is in the
+import closure of every lane that reaches pipeline_manifest, so the runtime readers are injected by
+``n8n_broker_read_carveout_runtime`` (the host path that evaluates a carve-out lane) and absent readers refuse.
 """
 
 from __future__ import annotations
 
 import functools
-import os
 import re
 import shlex
 import sys
@@ -172,44 +174,30 @@ def static_refusals(command: Command, *, status: Optional[str] = None,
 
 
 # ------------------------------------------------------------------------------------------- runtime preconditions
-
-def _broker_read_sync():
-    try:
-        from ops import broker_read_sync as brs  # scripts/ on sys.path
-    except ImportError:
-        import importlib.util
-
-        name = "_n8n_carveout_broker_read_sync"
-        if name in sys.modules:
-            return sys.modules[name]
-        spec = importlib.util.spec_from_file_location(name, ROOT / "scripts" / "ops" / "broker_read_sync.py")
-        brs = importlib.util.module_from_spec(spec)
-        sys.modules[name] = brs
-        spec.loader.exec_module(brs)  # type: ignore[union-attr]
-    return brs
-
-
-def default_lock_states() -> dict[str, dict[str, Any]]:
-    return _broker_read_sync().lock_states()
-
-
-def operator_access_mode() -> dict[str, Any]:
-    """The Schwab access mode the operator's switch resolves, WITHOUT the per-process read_only force the step
-    processes get: the carve-out runs only while the operator's own switch says read_only."""
-    env = {k: v for k, v in os.environ.items()
-           if k not in ("TRADEAI_SCHWAB_ACCESS_MODE", "TRADEAI_SCHWAB_ACCESS_MODE_PATH")}
-    return _broker_read_sync().resolved_child_mode(env)
-
+#
+# The lock and access-mode READERS live in scripts/lib/n8n_broker_read_carveout_runtime.py, not here. This module is
+# imported by scripts/pipelines/pipeline_manifest.py, which every lane that touches lane_dispatch / n8n_process_keys
+# imports; importing scripts/ops/broker_read_sync.py from here (even lazily) put broker_read_sync ->
+# lib/schwab_access_mode (broker_module) and lib/trading_lock -> telegram_alert in the static import closure of every
+# such lane (tests/test_lane_transitive_capabilities_20261015.py, tests/test_n8n_executor_env_allowlist_20261009.py).
+# Only the host path that evaluates a carve-out lane imports the runtime module; here the readers are parameters and
+# a missing reader refuses (fail closed).
 
 def runtime_refusals(*, status: Optional[str] = None,
                      lock_fn: Optional[Callable[[], dict[str, dict[str, Any]]]] = None,
                      mode_fn: Optional[Callable[[], dict[str, Any]]] = None) -> list[str]:
-    """Preconditions checked immediately before a carve-out lane runs on the host. Fail closed."""
+    """Preconditions checked immediately before a carve-out lane runs on the host. Fail closed.
+
+    ``lock_fn`` / ``mode_fn`` are the readers (``n8n_broker_read_carveout_runtime.default_lock_states`` /
+    ``operator_access_mode`` -- ``broker_read_sync.lock_states()`` / ``resolved_child_mode()``); a reader that is not
+    supplied is unreadable state and refuses, so this module never needs to import a broker-adjacent module."""
     if not is_active(status):
         return ["carveout_not_active"]
     refusals: list[str] = []
     try:
-        locks = (lock_fn or default_lock_states)() or {}
+        if lock_fn is None:
+            raise LookupError("no lock reader supplied")
+        locks = lock_fn() or {}
     except Exception as exc:  # noqa: BLE001 — unreadable lock state refuses
         locks = {}
         refusals.append(f"trading_lock_unreadable:{type(exc).__name__}")
@@ -218,7 +206,9 @@ def runtime_refusals(*, status: Optional[str] = None,
         if not isinstance(st, dict) or st.get("locked") is not True:
             refusals.append(f"trading_lock_not_locked:{broker}")
     try:
-        mode = (mode_fn or operator_access_mode)() or {}
+        if mode_fn is None:
+            raise LookupError("no access-mode reader supplied")
+        mode = mode_fn() or {}
     except Exception as exc:  # noqa: BLE001
         mode = {}
         refusals.append(f"schwab_access_mode_unreadable:{type(exc).__name__}")
