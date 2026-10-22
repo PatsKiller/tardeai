@@ -37,6 +37,7 @@ from tests.support import disk_hygiene_n8n as DHN  # noqa: E402
 from tests.support import data_integrity_monitors_n8n as DIM  # noqa: E402
 from tests.support import active_trader_motion_watchdog as ATMW  # noqa: E402
 from tests.support import hermes_scorer_canary as HSC  # noqa: E402
+from tests.support import release_train_h0 as RTH0  # noqa: E402
 
 from scripts import n8n_run_executor as X  # noqa: E402
 from scripts.lib import effect_claim as E  # noqa: E402
@@ -144,6 +145,9 @@ def _scope() -> set[str]:
     # 2026-10-19 active-trader-motion-watchdog (tests/support/active_trader_motion_watchdog.py): n8n-native, no cron
     # side, one intent per band change; reviewed by tests/test_active_trader_motion_watchdog_20261019.py, not keyed.
     canary -= set(ATMW.LIVE)
+    # 2026-10-22 release train H.0 shadow-enable (tests/support/release_train_h0.py): n8n-native request lanes and
+    # pr-hygiene-audit, no cron side to fence; a request is one O_EXCL file per window id. Not keyed.
+    canary -= set(RTH0.LIVE)
     return set(RELAY_LIVE) | set(TIER_A) | set(TIER_B) | canary
 
 

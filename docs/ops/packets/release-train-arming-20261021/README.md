@@ -364,6 +364,15 @@ This PR also needs:
 - the operator to mark the `pr-hygiene-audit` health contract REVIEWED (plan, Phase 0 list);
 - the registry and allowlist tests to be updated in the same PR.
 
+**Status (2026-10-22): built** on branch `feat/release-train-h0-shadow-enable-20261022`, with one deliberate deviation:
+the four request lanes move to stage `canary` but keep `state: NEVER_SCHEDULED`, because F is refused by the §23.24
+import gate today and the operator chose host-only shadow first (H.1(b)). The `pr-hygiene-audit` health contract was
+already REVIEWED by the operator on 2026-10-21. Still open: the workflow's `RELEASE_TRAIN_MODE` stays `dry_run`
+(`scripts/n8n_workflow_templates.py`), so H.1(a) needs a follow-up PR that flips it and regenerates the workflow
+before F; and a live `pr-hygiene-audit` run from n8n needs the lane on the relay live list (E) and
+`TRADEAI_PR_HYGIENE_REPO` in the executor env (both host changes, operator). Finding 13 (§23.24 and lane stages) is
+still the operator's ruling.
+
 Without a PR-hygiene receipt, every train stops at select with `NO_OP (QUEUE_INCOMPLETE: no_receipt)`, and shadow
 then proves only the tick path. `--shadow-only` makes a request lane write `shadow: true` whatever the delegation says.
 

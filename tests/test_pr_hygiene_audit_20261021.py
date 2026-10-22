@@ -546,11 +546,12 @@ def _row():
                 if r["lane_id"] == LANE)
 
 
-def test_registry_row_is_n8n_native_shadow_daily_0630():
+def test_registry_row_is_n8n_native_canary_live_daily_0630():
     row = _row()
     sch, d = row["scheduler"], row["dispatch"]
-    assert (sch["kind"], sch["expression"], sch["stage"]) == ("n8n", "dispatcher", "shadow")
-    assert d["mode"] == "dry_run" and d["cron"] == ["30 6 * * *"] and d["tz"] == "America/New_York"
+    # H.0 shadow-enable PR (docs/ops/packets/release-train-arming-20261021 H.0): shadow -> canary, dispatch live.
+    assert (sch["kind"], sch["expression"], sch["stage"]) == ("n8n", "dispatcher", "canary")
+    assert d["mode"] == "live" and d["cron"] == ["30 6 * * *"] and d["tz"] == "America/New_York"
     assert d["class"] == "monitor" and row["owner"] == "platform"
     assert (row["output_signal"]["path"], row["output_signal"]["key"]) == (RECEIPT, "ok_at")
     from scripts.lib.lane_dispatch import dispatch_eligible
@@ -558,11 +559,11 @@ def test_registry_row_is_n8n_native_shadow_daily_0630():
     assert ok[0] if isinstance(ok, tuple) else ok
 
 
-def test_allowlist_entry_is_shadow_and_names_no_secret():
+def test_allowlist_entry_is_live_with_no_extra_args_and_names_no_secret():
     a = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())
     e = next(x for x in a["lanes"] if x["lane_id"] == LANE)
     assert e["command"] == ["$PY", "scripts/pr_hygiene_audit.py"]
-    assert e["dry_run_arg"] == ["--dry-run"] and e["live_arg"] is None
+    assert e["dry_run_arg"] == ["--dry-run"] and e["live_arg"] == []
     assert e["lock_kind"] == "flock" and not e["lock"].endswith(".dryrun") and e["output_signal"] == RECEIPT
     assert not any(any(t in n for t in ("TOKEN", "SECRET", "PASSWORD", "KEY", "SCHWAB", "ALPACA", "SNAPTRADE",
                                         "MOOMOO", "IBKR")) for n in e["env_names"])

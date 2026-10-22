@@ -584,7 +584,7 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [],
       "lock": "/tmp/tradeai_pr_hygiene_audit.lock",
       "lock_kind": "flock",
       "timeout_s": 600,
@@ -4213,7 +4213,10 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--append",
+        "--shadow-only"
+      ],
       "lock": "/tmp/tradeai_release_train_request_1800.lock",
       "lock_kind": "safe_flock",
       "timeout_s": 60,
@@ -4225,7 +4228,7 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "New lane (2026-10-21): report until one dry-run RunReceipt env_allowlist block confirms that enforce would drop nothing the lane reads. Base names cover TRADEAI_STATE_ROOT, HOME (delegation file) and the run identity.",
       "env_evidence": "SOURCE_ONLY read of scripts/release_train_window_request.py and its closure: os.environ reads are TRADEAI_RELEASE_WINDOW_STATE_DIR and TRADEAI_STATE_ROOT (scripts/lib/release_train_view.resolve_state_dir), TRADEAI_PERSISTENT_STATE_ROOT only when TRADEAI_STATE_ROOT is unset (lane_last_receipt fallback) and the executor-set TRADEAI_RUN_ID/ATTEMPT/MODE and TRADEAI_CODE_SHA. No DB, broker, model, messaging or GitHub credential name; release_window.py is never imported (NO_RELEASE_WINDOW sentinel).",
-      "source": "Release Train v2 Phase 4 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md): request lane for the 18:00 ET window. Called only by tradeai-fabric-release-train through Run Lane. SHADOW ONLY: live_arg null until the train-shadow PR sets [\"--append\", \"--shadow-only\"] (contract §11); --dry-run builds and validates the request and writes nothing. With --append its only effect is one O_EXCL TrainWindowRequest@v1 file (journal + pending link) and its LaneRunReceipt. Not a release-deploy lane: no merge, push, promote, rollback, capability, STOP write, credential or send (AGENTS.md §23.3/§23.14 never-list unchanged)."
+      "source": "Release Train v2 Phase 4 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md): request lane for the 18:00 ET window. Called only by tradeai-fabric-release-train through Run Lane. SHADOW ONLY: live_arg [\"--append\", \"--shadow-only\"] since the H.0 shadow-enable PR (2026-10-22; contract §11 train-shadow step), so a live run appends only shadow: true (simulate-only) requests whatever the delegation says; --dry-run builds and validates the request and writes nothing. With --append its only effect is one O_EXCL TrainWindowRequest@v1 file (journal + pending link) and its LaneRunReceipt. Not a release-deploy lane: no merge, push, promote, rollback, capability, STOP write, credential or send (AGENTS.md §23.3/§23.14 never-list unchanged)."
     },
     {
       "lane_id": "release-train-request-0000",
@@ -4238,7 +4241,10 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--append",
+        "--shadow-only"
+      ],
       "lock": "/tmp/tradeai_release_train_request_0000.lock",
       "lock_kind": "safe_flock",
       "timeout_s": 60,
@@ -4250,7 +4256,7 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "New lane (2026-10-21): report until one dry-run RunReceipt env_allowlist block confirms that enforce would drop nothing the lane reads. Base names cover TRADEAI_STATE_ROOT, HOME (delegation file) and the run identity.",
       "env_evidence": "SOURCE_ONLY read of scripts/release_train_window_request.py and its closure: os.environ reads are TRADEAI_RELEASE_WINDOW_STATE_DIR and TRADEAI_STATE_ROOT (scripts/lib/release_train_view.resolve_state_dir), TRADEAI_PERSISTENT_STATE_ROOT only when TRADEAI_STATE_ROOT is unset (lane_last_receipt fallback) and the executor-set TRADEAI_RUN_ID/ATTEMPT/MODE and TRADEAI_CODE_SHA. No DB, broker, model, messaging or GitHub credential name; release_window.py is never imported (NO_RELEASE_WINDOW sentinel).",
-      "source": "Release Train v2 Phase 4 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md): request lane for the 00:00 ET window. Called only by tradeai-fabric-release-train through Run Lane. SHADOW ONLY: live_arg null until the train-shadow PR sets [\"--append\", \"--shadow-only\"] (contract §11); --dry-run builds and validates the request and writes nothing. With --append its only effect is one O_EXCL TrainWindowRequest@v1 file (journal + pending link) and its LaneRunReceipt. Not a release-deploy lane: no merge, push, promote, rollback, capability, STOP write, credential or send (AGENTS.md §23.3/§23.14 never-list unchanged)."
+      "source": "Release Train v2 Phase 4 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md): request lane for the 00:00 ET window. Called only by tradeai-fabric-release-train through Run Lane. SHADOW ONLY: live_arg [\"--append\", \"--shadow-only\"] since the H.0 shadow-enable PR (2026-10-22; contract §11 train-shadow step), so a live run appends only shadow: true (simulate-only) requests whatever the delegation says; --dry-run builds and validates the request and writes nothing. With --append its only effect is one O_EXCL TrainWindowRequest@v1 file (journal + pending link) and its LaneRunReceipt. Not a release-deploy lane: no merge, push, promote, rollback, capability, STOP write, credential or send (AGENTS.md §23.3/§23.14 never-list unchanged)."
     },
     {
       "lane_id": "release-train-request-0600",
@@ -4263,7 +4269,10 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--append",
+        "--shadow-only"
+      ],
       "lock": "/tmp/tradeai_release_train_request_0600.lock",
       "lock_kind": "safe_flock",
       "timeout_s": 60,
@@ -4275,7 +4284,7 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "New lane (2026-10-21): report until one dry-run RunReceipt env_allowlist block confirms that enforce would drop nothing the lane reads. Base names cover TRADEAI_STATE_ROOT, HOME (delegation file) and the run identity.",
       "env_evidence": "SOURCE_ONLY read of scripts/release_train_window_request.py and its closure: os.environ reads are TRADEAI_RELEASE_WINDOW_STATE_DIR and TRADEAI_STATE_ROOT (scripts/lib/release_train_view.resolve_state_dir), TRADEAI_PERSISTENT_STATE_ROOT only when TRADEAI_STATE_ROOT is unset (lane_last_receipt fallback) and the executor-set TRADEAI_RUN_ID/ATTEMPT/MODE and TRADEAI_CODE_SHA. No DB, broker, model, messaging or GitHub credential name; release_window.py is never imported (NO_RELEASE_WINDOW sentinel).",
-      "source": "Release Train v2 Phase 4 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md): request lane for the 06:00 ET window. Called only by tradeai-fabric-release-train through Run Lane. SHADOW ONLY: live_arg null until the train-shadow PR sets [\"--append\", \"--shadow-only\"] (contract §11); --dry-run builds and validates the request and writes nothing. With --append its only effect is one O_EXCL TrainWindowRequest@v1 file (journal + pending link) and its LaneRunReceipt. Not a release-deploy lane: no merge, push, promote, rollback, capability, STOP write, credential or send (AGENTS.md §23.3/§23.14 never-list unchanged)."
+      "source": "Release Train v2 Phase 4 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md): request lane for the 06:00 ET window. Called only by tradeai-fabric-release-train through Run Lane. SHADOW ONLY: live_arg [\"--append\", \"--shadow-only\"] since the H.0 shadow-enable PR (2026-10-22; contract §11 train-shadow step), so a live run appends only shadow: true (simulate-only) requests whatever the delegation says; --dry-run builds and validates the request and writes nothing. With --append its only effect is one O_EXCL TrainWindowRequest@v1 file (journal + pending link) and its LaneRunReceipt. Not a release-deploy lane: no merge, push, promote, rollback, capability, STOP write, credential or send (AGENTS.md §23.3/§23.14 never-list unchanged)."
     },
     {
       "lane_id": "release-train-request-0800",
@@ -4288,7 +4297,10 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--append",
+        "--shadow-only"
+      ],
       "lock": "/tmp/tradeai_release_train_request_0800.lock",
       "lock_kind": "safe_flock",
       "timeout_s": 60,
@@ -4300,7 +4312,7 @@
       "env_allowlist_mode": "report",
       "env_report_reason": "New lane (2026-10-21): report until one dry-run RunReceipt env_allowlist block confirms that enforce would drop nothing the lane reads. Base names cover TRADEAI_STATE_ROOT, HOME (delegation file) and the run identity.",
       "env_evidence": "SOURCE_ONLY read of scripts/release_train_window_request.py and its closure: os.environ reads are TRADEAI_RELEASE_WINDOW_STATE_DIR and TRADEAI_STATE_ROOT (scripts/lib/release_train_view.resolve_state_dir), TRADEAI_PERSISTENT_STATE_ROOT only when TRADEAI_STATE_ROOT is unset (lane_last_receipt fallback) and the executor-set TRADEAI_RUN_ID/ATTEMPT/MODE and TRADEAI_CODE_SHA. No DB, broker, model, messaging or GitHub credential name; release_window.py is never imported (NO_RELEASE_WINDOW sentinel).",
-      "source": "Release Train v2 Phase 4 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md): request lane for the 08:00 ET window. Called only by tradeai-fabric-release-train through Run Lane. SHADOW ONLY: live_arg null until the train-shadow PR sets [\"--append\", \"--shadow-only\"] (contract §11); --dry-run builds and validates the request and writes nothing. With --append its only effect is one O_EXCL TrainWindowRequest@v1 file (journal + pending link) and its LaneRunReceipt. Not a release-deploy lane: no merge, push, promote, rollback, capability, STOP write, credential or send (AGENTS.md §23.3/§23.14 never-list unchanged)."
+      "source": "Release Train v2 Phase 4 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md): request lane for the 08:00 ET window. Called only by tradeai-fabric-release-train through Run Lane. SHADOW ONLY: live_arg [\"--append\", \"--shadow-only\"] since the H.0 shadow-enable PR (2026-10-22; contract §11 train-shadow step), so a live run appends only shadow: true (simulate-only) requests whatever the delegation says; --dry-run builds and validates the request and writes nothing. With --append its only effect is one O_EXCL TrainWindowRequest@v1 file (journal + pending link) and its LaneRunReceipt. Not a release-deploy lane: no merge, push, promote, rollback, capability, STOP write, credential or send (AGENTS.md §23.3/§23.14 never-list unchanged)."
     }
   ],
   "blocked_reasons": {

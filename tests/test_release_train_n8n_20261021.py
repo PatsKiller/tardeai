@@ -134,9 +134,10 @@ def receipt(req, **kw):
 # ── config and windows ──────────────────────────────────────────────────────────────────────────────────────
 
 
-def test_committed_config_is_valid_and_shadow_is_off_at_merge(cfg):
+def test_committed_config_is_valid_and_shadow_is_on_since_h0(cfg):
+    # false at merge; the H.0 shadow-enable PR (docs/ops/packets/release-train-arming-20261021 H.0) flipped it.
     assert W.validate_config(cfg) == []
-    assert cfg["shadow"]["enabled"] is False
+    assert cfg["shadow"]["enabled"] is True
     assert [s["lane_id"] for s in cfg["slots"]] == list(LANES)
 
 
@@ -338,9 +339,17 @@ def test_stop_latch_means_no_request(tmp_path, monkeypatch, cfg, latch, reason):
 
 
 def test_not_armed_without_shadow_is_a_recorded_no_op(tmp_path, monkeypatch, cfg):
-    assert _run(tmp_path, monkeypatch, ["--append"], cfg_override=cfg) == 0
+    assert _run(tmp_path, monkeypatch, ["--append"], cfg_override=shadow_cfg(cfg, enabled=False)) == 0
     assert not (tmp_path / "rw/train_requests").exists()
     assert json.loads((tmp_path / "receipt.json").read_text())["summary"]["no_op_reason"] == "not_armed"
+
+
+def test_committed_config_not_armed_appends_a_shadow_request(tmp_path, monkeypatch, cfg):
+    """Since H.0 the committed config has shadow on: an unarmed on-window tick appends a simulate-only request."""
+    assert _run(tmp_path, monkeypatch, ["--append"], cfg_override=cfg) == 0
+    (path,) = list((tmp_path / "rw/train_requests/pending").iterdir())
+    doc = json.loads(path.read_text())
+    assert doc["shadow"] is True and doc["shadow_reason"] == "train_not_armed"
 
 
 def test_forced_off_window_tick_is_always_shadow_even_when_armed(tmp_path, monkeypatch, cfg):
@@ -653,25 +662,27 @@ def test_framework_check_has_no_failing_element(wf):
 # ── registry, allowlist, health contracts, capabilities ─────────────────────────────────────────────────────
 
 
-def test_allowlist_entries_are_dry_run_only_with_minimal_env():
+def test_allowlist_entries_are_shadow_only_with_minimal_env():
     entries = {e["lane_id"]: e for e in json.loads((ROOT / "config/n8n_run_allowlist.json").read_text())["lanes"]}
     for slot, lane in zip(("1800", "0000", "0600", "0800"), LANES):
         e = entries[lane]
         assert e["command"] == ["$PY", "scripts/release_train_window_request.py", "--window", slot]
-        assert e["dry_run_arg"] == ["--dry-run"] and e["live_arg"] is None
+        # H.0: a live run appends only shadow requests (--shadow-only); live --append alone is the canary step (I).
+        assert e["dry_run_arg"] == ["--dry-run"] and e["live_arg"] == ["--append", "--shadow-only"]
         assert e["env_allowlist_mode"] == "report" and e["env_names"] == ["TRADEAI_RELEASE_WINDOW_STATE_DIR"]
         assert e["output_signal"] == f"data/runtime/{lane}_last.json" and e["market_gate"] is False
-        argv = " ".join(e["command"] + e["dry_run_arg"])
+        argv = " ".join(e["command"] + e["dry_run_arg"] + e["live_arg"])
         assert G.forbidden_route_token(argv) is None and G.forbidden_route_token(lane) is None
         assert not any(tok in argv for tok in FORBIDDEN_COMMAND_TOKENS)
 
 
-def test_registry_rows_are_n8n_shadow_with_no_dispatch_block():
+def test_registry_rows_are_n8n_canary_never_scheduled_with_no_dispatch_block():
     rows = {r["lane_id"]: r for r in json.loads((ROOT / "config/lane_registry.json").read_text())["lanes"]}
     for lane in LANES:
         r = rows[lane]
         assert r["scheduler"]["kind"] == "n8n" and r["scheduler"]["expression"] == T.RELEASE_TRAIN_ID
-        assert r["scheduler"]["stage"] == "shadow" and "dispatch" not in r
+        # H.0 moved the stage to canary; state stays NEVER_SCHEDULED until step F publishes the workflow.
+        assert r["scheduler"]["stage"] == "canary" and "dispatch" not in r
         assert r["state"] == "NEVER_SCHEDULED" and r["output_signal"]["path"] == f"data/runtime/{lane}_last.json"
 
 

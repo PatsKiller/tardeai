@@ -7888,14 +7888,14 @@
         "expression": "dispatcher",
         "match": "scripts/pr_hygiene_audit.py",
         "cadence": "30 6 * * *",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W4",
         "timezone": "America/New_York"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "state_since": "2026-10-21",
-      "state_reason": "Operator-approved process plan 2026-10-21 (59-PR backlog built up unnoticed; duplicate fix #1906 vs #1836): PR hygiene audited on every iteration and alerted back. n8n-native dispatcher lane at stage SHADOW, daily 06:30 ET plus on-demand (coordination/run): the stage clamp runs it --dry-run (prints, writes nothing, queues nothing). No cron line exists or is added (cron freeze). The operator says when it is promoted to live.",
+      "state_reason": "Operator-approved process plan 2026-10-21 (59-PR backlog built up unnoticed; duplicate fix #1906 vs #1836): PR hygiene audited on every iteration and alerted back. n8n-native dispatcher lane, daily 06:30 ET plus on-demand (coordination/run). Promoted shadow -> canary, dispatch live, by the H.0 shadow-enable PR (2026-10-22, docs/ops/packets/release-train-arming-20261021 H.0; allowlist live_arg []): a real run writes data/runtime/pr-hygiene-audit_last.json, the release train census input. Live from n8n only once it is in TRADEAI_N8N_RELAY_LIVE_LANES (arming step E, operator). No cron line exists or is added (cron freeze).",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/pr-hygiene-audit_last.json",
@@ -7909,7 +7909,7 @@
       "note": "Read-only: GitHub through gh (pr list/view, GET-only gh api; every argv checked by _assert_read_only_gh) and the local clone through read-only git (merge-tree writes only unreferenced objects). Never merges, closes, comments, pushes or deletes. A real run writes its receipt, its alert state and, only when the alertable finding set gained a finding (or once per ISO week), ONE host comms intent agents/pr_hygiene_findings | agents/pr_hygiene_weekly_digest (config/host_comms_intent_routes.json, DIGEST -> P2) straight into the coordination ledger (the #1899 pattern; never a sender). GET /api/v2/needs-action reads the receipt (source pr_hygiene). Exit 0 = audit completed (findings are output); 1 = GitHub unreadable.",
       "severity": "Low",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "30 6 * * *"
         ],
@@ -17084,14 +17084,14 @@
         "expression": "tradeai-fabric-release-train",
         "match": "tradeai-fabric-release-train:1800",
         "cadence": "30 16 * * *",
-        "stage": "shadow"
+        "stage": "canary"
       },
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-10-21",
-      "state_reason": "Release Train v2 Phase 4 request lane for the 18:00 ET window (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md). Generated inactive: workflow tradeai-fabric-release-train is not imported (operator import and activation under a cron grant naming it, AGENTS.md §23.2). Becomes ACTIVE at stage shadow when the operator publishes the workflow; it then runs --dry-run only (allowlist live_arg null; the executor's stage clamp also forces dry_run at shadow).",
+      "state_reason": "Release Train v2 Phase 4 request lane for the 18:00 ET window (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md). Generated inactive: workflow tradeai-fabric-release-train is not imported (operator import and activation under a cron grant naming it, AGENTS.md §23.2). Stage canary since the H.0 shadow-enable PR (2026-10-22, docs/ops/packets/release-train-arming-20261021 H.0; contract §11 train-shadow step): allowlist live_arg [--append, --shadow-only], so a live run appends only shadow: true (simulate-only) requests. State stays NEVER_SCHEDULED until step F publishes the workflow (the §23.24 import gate refuses it today; the operator chose host-only shadow first, H.1(b)).",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "config/n8n_run_allowlist.json entry (argv, --dry-run, live_arg null); config/release_train_n8n.json (slot 1800, request tick W-90 = 30 16 * * *); generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json (INDEX.json graph hash).",
+      "reason_evidence": "config/n8n_run_allowlist.json entry (argv, --dry-run, live_arg [--append, --shadow-only]); config/release_train_n8n.json (slot 1800, request tick W-90 = 30 16 * * *); generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json (INDEX.json graph hash).",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/release-train-request-1800_last.json",
@@ -17108,14 +17108,14 @@
         "expression": "tradeai-fabric-release-train",
         "match": "tradeai-fabric-release-train:0000",
         "cadence": "30 22 * * *",
-        "stage": "shadow"
+        "stage": "canary"
       },
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-10-21",
-      "state_reason": "Release Train v2 Phase 4 request lane for the 00:00 ET window (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md). Generated inactive: workflow tradeai-fabric-release-train is not imported (operator import and activation under a cron grant naming it, AGENTS.md §23.2). Becomes ACTIVE at stage shadow when the operator publishes the workflow; it then runs --dry-run only (allowlist live_arg null; the executor's stage clamp also forces dry_run at shadow).",
+      "state_reason": "Release Train v2 Phase 4 request lane for the 00:00 ET window (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md). Generated inactive: workflow tradeai-fabric-release-train is not imported (operator import and activation under a cron grant naming it, AGENTS.md §23.2). Stage canary since the H.0 shadow-enable PR (2026-10-22, docs/ops/packets/release-train-arming-20261021 H.0; contract §11 train-shadow step): allowlist live_arg [--append, --shadow-only], so a live run appends only shadow: true (simulate-only) requests. State stays NEVER_SCHEDULED until step F publishes the workflow (the §23.24 import gate refuses it today; the operator chose host-only shadow first, H.1(b)).",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "config/n8n_run_allowlist.json entry (argv, --dry-run, live_arg null); config/release_train_n8n.json (slot 0000, request tick W-90 = 30 22 * * *); generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json (INDEX.json graph hash).",
+      "reason_evidence": "config/n8n_run_allowlist.json entry (argv, --dry-run, live_arg [--append, --shadow-only]); config/release_train_n8n.json (slot 0000, request tick W-90 = 30 22 * * *); generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json (INDEX.json graph hash).",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/release-train-request-0000_last.json",
@@ -17132,14 +17132,14 @@
         "expression": "tradeai-fabric-release-train",
         "match": "tradeai-fabric-release-train:0600",
         "cadence": "30 4 * * *",
-        "stage": "shadow"
+        "stage": "canary"
       },
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-10-21",
-      "state_reason": "Release Train v2 Phase 4 request lane for the 06:00 ET window (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md). Generated inactive: workflow tradeai-fabric-release-train is not imported (operator import and activation under a cron grant naming it, AGENTS.md §23.2). Becomes ACTIVE at stage shadow when the operator publishes the workflow; it then runs --dry-run only (allowlist live_arg null; the executor's stage clamp also forces dry_run at shadow).",
+      "state_reason": "Release Train v2 Phase 4 request lane for the 06:00 ET window (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md). Generated inactive: workflow tradeai-fabric-release-train is not imported (operator import and activation under a cron grant naming it, AGENTS.md §23.2). Stage canary since the H.0 shadow-enable PR (2026-10-22, docs/ops/packets/release-train-arming-20261021 H.0; contract §11 train-shadow step): allowlist live_arg [--append, --shadow-only], so a live run appends only shadow: true (simulate-only) requests. State stays NEVER_SCHEDULED until step F publishes the workflow (the §23.24 import gate refuses it today; the operator chose host-only shadow first, H.1(b)).",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "config/n8n_run_allowlist.json entry (argv, --dry-run, live_arg null); config/release_train_n8n.json (slot 0600, request tick W-90 = 30 4 * * *); generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json (INDEX.json graph hash).",
+      "reason_evidence": "config/n8n_run_allowlist.json entry (argv, --dry-run, live_arg [--append, --shadow-only]); config/release_train_n8n.json (slot 0600, request tick W-90 = 30 4 * * *); generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json (INDEX.json graph hash).",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/release-train-request-0600_last.json",
@@ -17156,14 +17156,14 @@
         "expression": "tradeai-fabric-release-train",
         "match": "tradeai-fabric-release-train:0800",
         "cadence": "30 6 * * *",
-        "stage": "shadow"
+        "stage": "canary"
       },
       "expected_cadence_hours": 24.0,
       "state": "NEVER_SCHEDULED",
       "state_since": "2026-10-21",
-      "state_reason": "Release Train v2 Phase 4 request lane for the 08:00 ET window (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md). Generated inactive: workflow tradeai-fabric-release-train is not imported (operator import and activation under a cron grant naming it, AGENTS.md §23.2). Becomes ACTIVE at stage shadow when the operator publishes the workflow; it then runs --dry-run only (allowlist live_arg null; the executor's stage clamp also forces dry_run at shadow).",
+      "state_reason": "Release Train v2 Phase 4 request lane for the 08:00 ET window (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md). Generated inactive: workflow tradeai-fabric-release-train is not imported (operator import and activation under a cron grant naming it, AGENTS.md §23.2). Stage canary since the H.0 shadow-enable PR (2026-10-22, docs/ops/packets/release-train-arming-20261021 H.0; contract §11 train-shadow step): allowlist live_arg [--append, --shadow-only], so a live run appends only shadow: true (simulate-only) requests. State stays NEVER_SCHEDULED until step F publishes the workflow (the §23.24 import gate refuses it today; the operator chose host-only shadow first, H.1(b)).",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "config/n8n_run_allowlist.json entry (argv, --dry-run, live_arg null); config/release_train_n8n.json (slot 0800, request tick W-90 = 30 6 * * *); generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json (INDEX.json graph hash).",
+      "reason_evidence": "config/n8n_run_allowlist.json entry (argv, --dry-run, live_arg [--append, --shadow-only]); config/release_train_n8n.json (slot 0800, request tick W-90 = 30 6 * * *); generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json (INDEX.json graph hash).",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/release-train-request-0800_last.json",
