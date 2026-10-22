@@ -10,6 +10,6 @@
     "monitoring\": holdings-drift-monitor, options-desk-staleness-monitor, held-exit-coverage-monitor as n8n-native",
     "dispatcher rows at SHADOW (dry-run allowlist entries, own locks); options-desk-quote-refresh and",
     "schwab-position-sync staged inert (dispatch off, no allowlist entry, f09_staged activation record); every new",
-    "health contract DRAFT until its owner REVIEWs it."
+    "health contract REVIEWED by the operator 2026-10-22 (fresh PR replacing #1928; inert lanes stay gated)."
   ]
 }

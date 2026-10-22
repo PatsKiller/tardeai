@@ -6,7 +6,9 @@ Pins the registry PR that puts the scripts of tests/test_n8n_desk_truth_20261022
   * the quote-only options refresh and the holdings writer (schwab-position-sync) are STAGED INERT: dispatch off, no
     allowlist entry, an f09_staged record with the activation entry and needs — the dispatcher refuses their broker
     reach until the operator admits it;
-  * every new contract is DRAFT until its owner REVIEWs it (no agent self-certifies);
+  * every new contract was DRAFT until its owner REVIEWed it (no agent self-certifies); the operator REVIEWED all
+    five on 2026-10-22 ("You just start executing immediately with multiple agents for everything that's not built
+    and not live", replying to "#1928: OK for a fresh PR, and approve its 5 contracts?");
   * no crontab line: schwab-position-sync stays PAUSED with its line commented.
 """
 
@@ -66,9 +68,9 @@ def test_staged_lanes_are_inert_and_carry_their_activation_record():
         rec = row["f09_staged"]
         assert rec["activation_allowlist_entry"]["lane_id"] == lane
         assert rec["activation_allowlist_entry"]["live_arg"] is None
-        # broker READ-ONLY lanes on n8n wait for AGENTS.md 18.0.0 (operator-directed 2026-10-22, not yet ratified)
-        assert "18.0.0" in rec["gated_on"]["policy"] and rec["gated_on"]["status_required"] == "ACTIVE"
-        assert rec["activation_needs"][0].startswith("AGENTS.md 18.0.0 ACTIVE")
+        # broker READ-ONLY lanes on n8n wait for AGENTS.md 19.0.0 (operator-directed 2026-10-22, not yet ratified)
+        assert "19.0.0" in rec["gated_on"]["policy"] and rec["gated_on"]["status_required"] == "ACTIVE"
+        assert rec["activation_needs"][0].startswith("AGENTS.md 19.0.0 ACTIVE")
     qr = REG["options-desk-quote-refresh"]
     # kind none until admitted: a kind-n8n dispatcher row must have an allowlist entry (4.1.0 amendment test)
     assert qr["state"] == "NEVER_SCHEDULED" and qr["scheduler"]["kind"] == "none"
@@ -82,10 +84,13 @@ def test_staged_lanes_are_inert_and_carry_their_activation_record():
     assert sps["f09_staged"]["cron_lines"][0]["text"].startswith("# PAUSED 2026-10-15")
 
 
-def test_every_new_contract_is_draft_owned_and_awaits_review():
+def test_every_new_contract_is_owned_and_operator_reviewed():
     for lane in (*MONITORS, *STAGED):
         c = CONTRACTS[lane]
-        assert c["status"] == "DRAFT" and c["review"]["reviewed_by"] is None, lane
+        assert c["status"] == "REVIEWED" and c["review"]["status"] == "REVIEWED", lane
+        assert c["review"]["reviewed_by"].startswith("operator PatsKiller 2026-10-22"), lane
+        assert "approve its 5 contracts" in c["review"]["reviewed_by"], lane
+        assert c["review"]["reviewed_on"] == "2026-10-22", lane
         assert c["owner"] and c["expected_output"]["schema"] == "N8nExpectedOutput@v1"
         assert c["alerting"]["failed"]["notifier_priority"] == "P2"
     assert CONTRACTS["options-desk-quote-refresh"]["purpose"]["text"].count("GPU") == 1
