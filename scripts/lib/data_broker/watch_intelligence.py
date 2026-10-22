@@ -696,36 +696,17 @@ def _enrich_card_semantics(card: dict, *, enrich: dict, held_source: str) -> dic
     return c
 
 
-def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
-    """GET /api/v3/data-broker/watch-intelligence — broker projection compose path.
+def compose_universe(*, view: str = "all", page_size: int = 80) -> dict[str, Any]:
+    """The Watch universe as broker items with cards, membership, held and the decision block attached.
 
-    Dependency direction (target):
-      watch_domains + existing broker modules → this projection → API → React
-
-    Still uses list_intelligence for Trade AI / street / quote assembly until those
-    domains are fully split; membership, ranking, near-trigger, review auth, and
-    quality live in watch_domains.
+    Shared by list_watch_intelligence (paged, filtered, ranked) and the Watch prospects adapter
+    (lib/data_broker/watch_prospects.py), so both read one composition. Zero provider calls.
     """
     from lib.watchlist_intelligence import list_intelligence
-    from lib.data_broker.watch_domains import (
-        rank_top_ideas,
-        content_snapshot_id,
-        assess_data_quality,
-        enrichment_batch,
-        DIRECT_DEPENDENCIES,
-        RANK_VERSION,
-    )
-
-    q = dict(query or {})
-    view = (q.get("view") or "top_ideas").lower()
-    if view not in VIEWS:
-        view = "top_ideas"
-    page = max(1, int(q.get("page") or 1))
-    page_size = min(100, max(1, int(q.get("page_size") or q.get("limit") or 40)))
-    sort = str(q.get("sort") or "watch_rank")
+    from lib.data_broker.watch_domains import enrichment_batch
 
     # Universe from membership domains — not DEFAULT_PRIORITY as production rank
-    syms = _universe_symbols(view="all" if view == "top_ideas" else view, page_size=max(page_size, 80))
+    syms = _universe_symbols(view=view, page_size=page_size)
     raw = list_intelligence(symbols=syms, limit=len(syms) or 1, priority_only=False, offset=0)
     cards = raw.get("cards") or []
 
@@ -770,6 +751,42 @@ def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
     _wd.attach([i["card"] for i in items])
     for i in items:
         i["domains"]["WatchDecision"] = {"decision": field(i["card"].get("decision"), source=_wd.DECISION_VERSION)}
+    return {"items": items, "starred": starred, "screener": screener, "held": held,
+            "held_source": held_source, "held_detail": held_detail}
+
+
+def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
+    """GET /api/v3/data-broker/watch-intelligence — broker projection compose path.
+
+    Dependency direction (target):
+      watch_domains + existing broker modules → this projection → API → React
+
+    Still uses list_intelligence for Trade AI / street / quote assembly until those
+    domains are fully split; membership, ranking, near-trigger, review auth, and
+    quality live in watch_domains.
+    """
+    from lib.data_broker.watch_domains import (
+        rank_top_ideas,
+        content_snapshot_id,
+        assess_data_quality,
+        DIRECT_DEPENDENCIES,
+        RANK_VERSION,
+    )
+
+    q = dict(query or {})
+    view = (q.get("view") or "top_ideas").lower()
+    if view not in VIEWS:
+        view = "top_ideas"
+    page = max(1, int(q.get("page") or 1))
+    page_size = min(100, max(1, int(q.get("page_size") or q.get("limit") or 40)))
+    sort = str(q.get("sort") or "watch_rank")
+
+    from lib.data_broker import watch_decision as _wd
+
+    composed = compose_universe(view="all" if view == "top_ideas" else view, page_size=max(page_size, 80))
+    items = composed["items"]
+    starred, screener, held = composed["starred"], composed["screener"], composed["held"]
+    held_source, held_detail = composed["held_source"], composed["held_detail"]
     # The re-entry tile carries the desk's own READY/NEAR count (the desk rows are already cached by attach()).
     decision_board = _wd.board([i["card"] for i in items], desk=_wd.reentry_desk_counts())
     dq = dict(q)

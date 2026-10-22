@@ -202,6 +202,24 @@ PROJECTIONS: list[dict[str, Any]] = [
         "consumers": ["Re-Entry", "Watch"],
     },
     {
+        "id": "watch_prospects",
+        "module": "lib.data_broker.watch_prospects",
+        "entrypoints": ["list_watch_prospects", "build_watch_prospects", "from_cio_prospect"],
+        "http": ["GET /api/v3/data-broker/watch-prospects"],
+        "domain": "watch",
+        "description": (
+            "Watch prospect lanes (Actionable now / Setup forming / Re-entry near / Manage / Expired): one row per "
+            "security with conviction + components, stance, conflicts shown never resolved, next trigger (reference "
+            "level) and one next step. Reads the cio_prospect projection when it is live; until then an interim "
+            "adapter over cio_opportunity_projection, watch_decision.v1, the Trade AI decision projection, the "
+            "Watch held reader and the re-entry desk, labelled interim."
+        ),
+        "contract_version": "WatchProspects@v1",
+        "read_only": True,
+        "provider_calls": 0,
+        "consumers": ["Watch (/v3/watch)"],
+    },
+    {
         "id": "watch_intelligence",
         "module": "lib.data_broker.watch_intelligence",
         "entrypoints": [
