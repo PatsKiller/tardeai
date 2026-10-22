@@ -496,7 +496,9 @@ def test_dry_run_of_an_unarmed_host_lists_what_live_would_refuse(tmp_path):
     assert any("delegation MISSING" in x for x in rec["would_refuse"])
 
 
-def test_cli_live_is_refused_while_build_only(capsys):
+def test_cli_live_is_refused_while_build_only(capsys, monkeypatch):
+    # Arming packet I.4 PR 1 flipped the module constant to ACTIVE; the BUILD_ONLY refusal stays pinned here.
+    monkeypatch.setattr(T, "TRAIN_CONTROLLER_STATUS", "BUILD_ONLY")
     assert RW.main(["train-run", "--live"]) == T.EXIT_REFUSED
     assert "REFUSED_BUILD_ONLY" in capsys.readouterr().out
 
@@ -1625,10 +1627,11 @@ def test_off_window_shadow_request_is_evaluated_at_its_window(tmp_path):
 
 
 def test_live_request_is_refused_while_build_only(tmp_path):
+    # Arming packet I.4 PR 1 flipped the module constant to ACTIVE; the BUILD_ONLY refusal stays pinned here.
     w = World(tmp_path)
     req = request(shadow=False, shadow_reason=None)
     put(w, req)
-    claim(w)
+    claim(w, status="BUILD_ONLY")
     r = receipt(w, req["request_id"])
     assert r["state"] == "REFUSED" and r["refusal"]["code"] == "CONTROLLER_BUILD_ONLY" and r["mode"] == "live"
     assert w.writer.calls == []

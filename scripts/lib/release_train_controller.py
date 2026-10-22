@@ -100,7 +100,7 @@ SCHEMA_RUN = "ReleaseTrainRun@v1"
 SCHEMA_STATE = "ReleaseTrainState@v1"
 
 #: The CLI refuses --live while this is BUILD_ONLY. Arming is an operator act (plan "Not in scope of approval").
-TRAIN_CONTROLLER_STATUS = "BUILD_ONLY"
+TRAIN_CONTROLLER_STATUS = "ACTIVE"
 #: The real GitHub writer refuses until D2 (GitHub App) and the AGENTS 17.0.0 amendment are ACTIVE.
 GITHUB_WRITES_STATUS = "PROPOSED"
 
