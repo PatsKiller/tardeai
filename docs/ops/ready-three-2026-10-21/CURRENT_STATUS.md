@@ -1,4 +1,8 @@
-# Current execution status — 2026-10-22 21:39 UTC
+# Current execution status — 2026-10-22 21:40 UTC
+
+## Profile update — 2026-10-22 21:40 UTC
+
+The same exact profile session `86134` remains live. At 17:40:40 EDT / 21:40:40 UTC, the aggregate was **492 PASS / 4 FAIL** with `rotation_publication_20261018` running; the preceding rotation/research/registry gates listed in the prior status all passed. No new failure; terminal status remains unavailable.
 
 ## Latest profile and PR checks — 2026-10-22 21:39 UTC
 

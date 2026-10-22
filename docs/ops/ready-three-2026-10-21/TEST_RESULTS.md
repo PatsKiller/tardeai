@@ -1,4 +1,8 @@
-# Test results — current provisional checkpoint 2026-10-22 21:39 UTC
+# Test results — current provisional checkpoint 2026-10-22 21:40 UTC
+
+## Profile progress — 21:40 UTC
+
+The full-profile session `86134` remained live at 17:40:40 EDT / 21:40:40 UTC with **492 PASS / 4 FAIL**, running `rotation_publication_20261018`. No new failure was reported. No terminal summary, final exit code, or manifest is available.
 
 ## Aggregate and upstream checks — 21:39 UTC
 

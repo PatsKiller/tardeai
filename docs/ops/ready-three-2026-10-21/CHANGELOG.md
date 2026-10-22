@@ -2,6 +2,11 @@
 
 # Change and release log — 2026-10-21
 
+## 2026-10-22 21:40 UTC — full-profile progress
+
+- The same exact profile session remains live at **492 PASS / 4 FAIL**; `rotation_publication_20261018` was running. No new failure or terminal result was reported.
+- The active upstream constraints remain: wait for #1947 to merge before rebase; keep the pipeline branch held behind #1956, whose current hosted checks have failed shards; no push/release/deploy without the required canonical grant. Production service state remains inactive/unverified as recorded above.
+
 ## 2026-10-22 21:39 UTC — profile, upstream sequencing, and production service status
 
 - Exact profile session `86134` remains live at **462 PASS / 4 FAIL gates** (17:38:23 EDT / 21:38:23 UTC); `release_train_email_mirror_20261021` was running. No terminal aggregate exists.
