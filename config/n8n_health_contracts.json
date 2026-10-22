@@ -32014,7 +32014,7 @@
       "id": "macro-calendar-refresh",
       "kind": "lane",
       "workflow_id": "dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "stage:shadow",
       "stage": "shadow",
       "purpose": {
@@ -32192,8 +32192,14 @@
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; prove work with the ledger, the receipt and the calendar's fetched_at",
         "expected_output_basis": "expected_output 2026-10-21 from scripts/macro_calendar_refresh.py main(): produced = 08:00 skip days in coverage (at least the weekly claims Thursdays, so never 0 on a good run). Fatal (exit 1, no calendar written; the failure kind is in the receipt summary failure_kind): FRED unavailable / non-JSON / short read = dependency_unavailable; a release id failed verification or the overrides file is invalid = unconfigured; FRED_API_KEY absent = no_credentials."
       },
+      "review": {
+        "prepared_by": "agent draft (macro calendar, feat/macro-calendar-20261021)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator PatsKiller 2026-10-21 (\"approve macro-calendar contract\")",
+        "reviewed_on": "2026-10-21"
+      },
       "review_by": "2026-10-28",
-      "state_note": "DRAFT, agent-written 2026-10-21; awaiting the platform owner's REVIEWED (AGENTS.md \u00a723.19: a new lane's contract is REVIEWED by its owner before its registry PR merges; check_n8n_health_contracts reports DRAFT_NOT_GRANDFATHERED until then). Promotion to live is the operator's word; it also needs FRED_API_KEY present in the executor's environment (host change, operator; the agent did not read or check the rendered env file).",
+      "state_note": "REVIEWED by the operator 2026-10-21 (\"approve macro-calendar contract\"); agent-written 2026-10-21. Previously awaiting the platform owner's REVIEWED (AGENTS.md \u00a723.19: a new lane's contract is REVIEWED by its owner before its registry PR merges; check_n8n_health_contracts reports DRAFT_NOT_GRANDFATHERED until then). Promotion to live is the operator's word; it also needs FRED_API_KEY present in the executor's environment (host change, operator; the agent did not read or check the rendered env file).",
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "08:00 skip days in the calendar's coverage",
