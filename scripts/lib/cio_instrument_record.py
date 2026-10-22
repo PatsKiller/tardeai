@@ -351,8 +351,12 @@ class InstrumentRecordStore:
     def upsert_prospect(self, record: dict[str, Any], *,
                         backend: Optional["ProspectPgBackend"] = None,
                         registry: Optional[dict[str, Any]] = None,
-                        env: Optional[dict[str, str]] = None) -> dict[str, Any]:
+                        env: Optional[dict[str, str]] = None,
+                        lifecycle_events: Iterable[dict[str, Any]] = ()) -> dict[str, Any]:
         """The single write path for a CIO prospect (AGENTS.md §26.1).
+
+        ``lifecycle_events`` (``cio_prospect_lifecycle.lifecycle_events``) are appended to ``cio_prospect_events`` in
+        the same transaction, one idempotent row per fact (entry fill, observed stop change, exit fill, review ...).
 
         jsonl append first (the store of record in P1), then the Postgres dual-write when —
         and only when — ``prospect_store_status`` is live (row granted + operator flag + table
@@ -371,7 +375,7 @@ class InstrumentRecordStore:
         if status["live"] and backend is not None:
             event = prospect_event(prospect_row(prior) if is_prospect_record(prior) else None, table_row)
             try:
-                pg.update(backend.write(table_row, event))
+                pg.update(backend.write(table_row, event, list(lifecycle_events)))
             except Exception as exc:  # noqa: BLE001
                 pg.update({"ok": False, "error": f"{type(exc).__name__}: {exc}"[:200]})
         return {"row": stored, "pg": pg}
@@ -871,10 +875,20 @@ CONVICTION_COMPONENTS = (
     "opportunity_score", "hermes_score", "scanner_score",
 )
 PROSPECT_FIELDS = (
-    "security_guid", "issuer_guid", "aliases", "stage", "stage_changed_at", "stage_evidence",
+    "security_guid", "issuer_guid", "aliases", "stage", "stage_phase", "stage_changed_at", "stage_evidence",
     "conviction", "conviction_components", "stance", "catalyst_grade", "next_trigger", "whats_missing",
     "next_action", "research", "position_ref", "watchlist", "conflicts", "evidence_at", "expires_at",
     "provenance",
+    # Operator 2026-10-22 (NAVN): where a position came from, its lifecycle, why it ended and when to get back in —
+    # on the same record (scripts/lib/cio_prospect_lifecycle.py builds them; observed facts, never behaviour).
+    "origin", "position_lifecycle", "post_exit_review", "reentry_advice",
+)
+# held -> exit (exit_review) -> re_entry (re_entry_watch): display phases inside the §26.1 stages.
+PROSPECT_STAGE_PHASES = ("exit_review", "re_entry_watch")
+PROSPECT_EVENT_TYPES = (
+    "mint", "update", "stage_change", "conflict_opened", "conflict_resolved", "rollback",
+    "origin_attributed", "entry_fill", "stop_change", "conviction_change", "excursion", "exit_fill",
+    "exit_review", "reentry_advice",
 )
 # The fields a prospect write must carry (DATA_DICTIONARY.md CIOProspect, "Required").
 PROSPECT_REQUIRED = ("security_guid", "issuer_guid", "stage", "conviction", "stance", "evidence_at", "expires_at")
@@ -1002,6 +1016,12 @@ def _validate_prospect(rec: dict[str, Any]) -> None:
                 raise ProspectInvalid("each conflicting value names its source")
     if not isinstance(rec.get("whats_missing") or [], list):
         raise ProspectInvalid("whats_missing must be a list")
+    if rec.get("stage_phase") is not None and rec.get("stage_phase") not in PROSPECT_STAGE_PHASES:
+        raise ProspectInvalid(f"stage_phase must be one of {PROSPECT_STAGE_PHASES}")
+    origin = rec.get("origin")
+    if origin is not None and (not isinstance(origin, dict) or origin.get("classification") not in (
+            "internal", "operator_initiated")):
+        raise ProspectInvalid("origin.classification is internal or operator_initiated — never null (learning loop)")
 
 
 def apply_prospect(
@@ -1099,6 +1119,11 @@ def prospect_row(record: dict[str, Any]) -> dict[str, Any]:
         "research": record.get("research"),
         "position_ref": record.get("position_ref"),
         "watchlist": record.get("watchlist"),
+        "stage_phase": record.get("stage_phase"),
+        "origin": record.get("origin"),
+        "position_lifecycle": record.get("position_lifecycle"),
+        "post_exit_review": record.get("post_exit_review"),
+        "reentry_advice": record.get("reentry_advice"),
         "conflicts": record.get("conflicts") or [],
         "cognition": cognition,
         "provenance": record.get("provenance") or {},
@@ -1133,6 +1158,7 @@ def prospect_event(prior: Optional[dict[str, Any]], row: dict[str, Any]) -> dict
         "at": row["as_of"],
         "writer": PROSPECT_WRITER,
         "event_type": etype,
+        "event_key": f"rev:{row['revision']}",
         "change": change,
         "evidence": row.get("stage_evidence"),
         "revision": row["revision"],
@@ -1205,11 +1231,13 @@ def prospect_store_status(*, registry: Optional[dict[str, Any]] = None,
 UPSERT_PROSPECT_SQL = (
     "INSERT INTO cio_prospect (security_guid, issuer_guid, symbol, subject_key, aliases, stage, stage_changed_at, "
     "stage_evidence, conviction, conviction_components, stance, catalyst_grade, next_trigger, whats_missing, "
-    "next_action, thesis_ref, research, position_ref, watchlist, conflicts, cognition, provenance, evidence_at, "
+    "next_action, thesis_ref, research, position_ref, watchlist, stage_phase, origin, position_lifecycle, "
+    "post_exit_review, reentry_advice, conflicts, cognition, provenance, evidence_at, "
     "expires_at, as_of, writer, revision) VALUES (%(security_guid)s, %(issuer_guid)s, %(symbol)s, %(subject_key)s, "
     "%(aliases)s, %(stage)s, %(stage_changed_at)s, %(stage_evidence)s, %(conviction)s, %(conviction_components)s, "
     "%(stance)s, %(catalyst_grade)s, %(next_trigger)s, %(whats_missing)s, %(next_action)s, %(thesis_ref)s, "
-    "%(research)s, %(position_ref)s, %(watchlist)s, %(conflicts)s, %(cognition)s, %(provenance)s, %(evidence_at)s, "
+    "%(research)s, %(position_ref)s, %(watchlist)s, %(stage_phase)s, %(origin)s, %(position_lifecycle)s, "
+    "%(post_exit_review)s, %(reentry_advice)s, %(conflicts)s, %(cognition)s, %(provenance)s, %(evidence_at)s, "
     "%(expires_at)s, %(as_of)s, %(writer)s, %(revision)s) "
     "ON CONFLICT (security_guid) DO UPDATE SET issuer_guid = EXCLUDED.issuer_guid, symbol = EXCLUDED.symbol, "
     "subject_key = EXCLUDED.subject_key, aliases = EXCLUDED.aliases, stage = EXCLUDED.stage, "
@@ -1218,19 +1246,22 @@ UPSERT_PROSPECT_SQL = (
     "stance = EXCLUDED.stance, catalyst_grade = EXCLUDED.catalyst_grade, next_trigger = EXCLUDED.next_trigger, "
     "whats_missing = EXCLUDED.whats_missing, next_action = EXCLUDED.next_action, thesis_ref = EXCLUDED.thesis_ref, "
     "research = EXCLUDED.research, position_ref = EXCLUDED.position_ref, watchlist = EXCLUDED.watchlist, "
+    "stage_phase = EXCLUDED.stage_phase, origin = EXCLUDED.origin, position_lifecycle = EXCLUDED.position_lifecycle, "
+    "post_exit_review = EXCLUDED.post_exit_review, reentry_advice = EXCLUDED.reentry_advice, "
     "conflicts = EXCLUDED.conflicts, cognition = EXCLUDED.cognition, provenance = EXCLUDED.provenance, "
     "evidence_at = EXCLUDED.evidence_at, expires_at = EXCLUDED.expires_at, as_of = EXCLUDED.as_of, "
     "writer = EXCLUDED.writer, revision = EXCLUDED.revision "
     "WHERE cio_prospect.revision < EXCLUDED.revision"
 )
 INSERT_PROSPECT_EVENT_SQL = (
-    "INSERT INTO cio_prospect_events (security_guid, at, writer, event_type, change, evidence, revision) "
-    "VALUES (%(security_guid)s, %(at)s, %(writer)s, %(event_type)s, %(change)s, %(evidence)s, %(revision)s) "
-    "ON CONFLICT (security_guid, revision) DO NOTHING"
+    "INSERT INTO cio_prospect_events (security_guid, at, writer, event_type, event_key, change, evidence, revision) "
+    "VALUES (%(security_guid)s, %(at)s, %(writer)s, %(event_type)s, %(event_key)s, %(change)s, %(evidence)s, "
+    "%(revision)s) ON CONFLICT (security_guid, event_key) DO NOTHING"
 )
 _JSON_COLUMNS = ("aliases", "stage_evidence", "conviction_components", "catalyst_grade", "next_trigger",
                  "whats_missing", "next_action", "research", "position_ref", "watchlist", "conflicts",
-                 "cognition", "provenance", "change", "evidence")
+                 "cognition", "provenance", "change", "evidence", "origin", "position_lifecycle",
+                 "post_exit_review", "reentry_advice")
 
 
 def _jsonify(row: dict[str, Any]) -> dict[str, Any]:
@@ -1261,7 +1292,8 @@ class ProspectPgBackend:
         finally:
             conn.close()
 
-    def write(self, row: dict[str, Any], event: dict[str, Any]) -> dict[str, Any]:
+    def write(self, row: dict[str, Any], event: dict[str, Any],
+              lifecycle: Iterable[dict[str, Any]] = ()) -> dict[str, Any]:
         conn = self._connect()
         try:
             with conn.cursor() as cur:
@@ -1269,6 +1301,10 @@ class ProspectPgBackend:
                 upserted = cur.rowcount
                 cur.execute(INSERT_PROSPECT_EVENT_SQL, _jsonify(event))
                 appended = cur.rowcount
+                for ev in lifecycle:          # idempotent: one row per fact (event_key)
+                    cur.execute(INSERT_PROSPECT_EVENT_SQL, _jsonify(
+                        {"evidence": None, "revision": row["revision"], **ev}))
+                    appended += cur.rowcount
             conn.commit()
             return {"ok": True, "upserted": upserted, "event_appended": appended}
         except Exception:

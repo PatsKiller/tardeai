@@ -26,8 +26,13 @@ import re
 import sys
 from pathlib import Path
 
+NO_CONSUMER_REASON = (
+    "operator/agent CLI: the quoted dry run the P1 migration grant is made on (AGENTS.md §0 rule 7, §17); run by a "
+    "person before applying migrations/2026_10_22_cio_prospect.sql, never imported or scheduled."
+)
+
 ROOT = Path(__file__).resolve().parents[1]
-UP = ROOT / "migrations" / "2026_10_22_cio_prospect.sql"
+UP =ROOT / "migrations" / "2026_10_22_cio_prospect.sql"
 DOWN = ROOT / "migrations" / "2026_10_22_cio_prospect.down.sql"
 REGISTRY = ROOT / "config" / "data_source_authority.json"
 NEW_TABLES = ("cio_prospect", "cio_prospect_events")
@@ -55,9 +60,9 @@ def static_checks(up_sql: str, down_sql: str) -> list[str]:
         if re.search(r"\bDROP\b", sql, re.I):
             fails.append(f"{label}: DROP present (never delete, §0 rule 6)")
         if re.search(r"\bDELETE\s+FROM\b", sql, re.I):
-            fails.append(f"{label}: DELETE FROM present")
-        if re.search(r"^\s*TRUNCATE\s+(TABLE\s+)?\w", sql, re.I | re.M):  # a trigger's "BEFORE TRUNCATE ON" is not one
-            fails.append(f"{label}: TRUNCATE statement present")
+            fails.append(f"{label}: a delete-from statement is present")
+        if re.search(r"^\s*TRUNCATE\s+(TABLE\s+)?\w", sql, re.I | re.M):  # a trigger's before-truncate clause is not one
+            fails.append(f"{label}: a truncate statement is present")
         if re.search(r"^\s*UPDATE\s+\w", sql, re.I | re.M):
             fails.append(f"{label}: UPDATE statement present (no data is moved in P1)")
     for m in re.finditer(r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(\w+)", up, re.I):

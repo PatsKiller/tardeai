@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
 
 from scripts.lib import cio_instrument_record as ir
+from scripts.lib import cio_prospect_lifecycle as lcm
 from scripts.lib import cio_prospect_watchlist_rules as wl_rules
 
 SCHEMA = "CioProspectShadowBuild@v1"
@@ -71,6 +72,9 @@ FILES = {
     "reentry": "data/runtime/reentry_decision_desk_latest.json",
     "hermes": "data/runtime/hermes_watchlist_lifecycle.json",
     "scanner_cache": "data/runtime/trade_ai_cache.json",
+    "assessment_versions": "data/cio/cio_opportunity_assessments.jsonl",
+    "cio_events": "data/cio/cio_events.jsonl",
+    "indicators": "data/portfolios/state/data_broker/indicator_snapshot.json",
 }
 
 _BUY = {"ADD", "BUY", "BUY_SETUP", "RE_ENTER", "STRONG_BUY", "ACCUMULATE", "BUY_READY", "ENTRY_NEAR", "LONG"}
@@ -219,6 +223,49 @@ def load_file_inputs(state_root: Path) -> dict[str, dict[str, Any]]:
                     sym = str(r["symbol"]).upper()
                     if str(r.get("observed_at") or "") >= str((scans.get(sym) or {}).get("observed_at") or ""):
                         scans[sym] = r
+    # position lifecycle inputs (operator 2026-10-22, NAVN): the curator's versioned assessments (what Home and
+    # Telegram showed, when) and the cio_entry_state signals (the HIGH CONVICTION ENTRY card source)
+    versions: dict[str, list[dict]] = {}
+    signals: dict[str, list[dict]] = {}
+    err_v = err_e = None
+    try:
+        with open(root / FILES["assessment_versions"], encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if r.get("symbol"):
+                    versions.setdefault(str(r["symbol"]).upper(), []).append(r)
+    except FileNotFoundError:
+        err_v = "missing"
+    except OSError as exc:
+        err_v = f"unreadable:{type(exc).__name__}"
+    try:
+        with open(root / FILES["cio_events"], encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if '"watch.new_signal"' not in line or "cio_entry_state" not in line:
+                    continue
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                sym = str((r.get("payload") or {}).get("symbol") or "").upper()
+                if sym:
+                    signals.setdefault(sym, []).append(r)
+    except FileNotFoundError:
+        err_e = "missing"
+    except OSError as exc:
+        err_e = f"unreadable:{type(exc).__name__}"
+    out["assessment_versions"] = _source("assessment_versions", FILES["assessment_versions"], versions,
+                                         max((v[-1].get("written_at") or "" for v in versions.values()), default=None),
+                                         err_v)
+    out["entry_signals"] = _source("entry_signals", FILES["cio_events"], signals,
+                                   max((s[-1].get("timestamp") or "" for s in signals.values()), default=None), err_e)
+    doc, err = _read_json(root / FILES["indicators"])
+    ind = {str(k).upper(): v for k, v in ((doc or {}).get("by_symbol") or {}).items() if isinstance(v, dict)}
+    out["indicators"] = _source("indicators", FILES["indicators"], ind, (doc or {}).get("computed_at"), err)
+
     out["scanner"] = _source("scanner", FILES["scanner_cache"], scans,
                              (doc or {}).get("latest_run_timestamp") if isinstance(doc, dict) else None, err)
     return out
@@ -247,6 +294,66 @@ _DB_TIME = {"decision_packets": "generated_at", "cio_decisions": "created_at", "
             "scanner_db": "scanned_at", "watchlist_items": "updated_at", "starred": "created_at"}
 
 
+# List-valued, read-only lifecycle inputs (per symbol, many rows). schwab_round_trips is the journal's round-trip
+# store (the learning-loop linker reads it); trade_transactions (proposed domain `transactions`) and stop_lifecycle
+# (proposed domain `broker_stops`, an observation) are read only, never positions_current. A reader batch for this
+# lane is PROPOSED in docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md §11 — the operator grants it (§17).
+LIFECYCLE_QUERIES = {
+    "round_trips": (
+        "SELECT 'srt:' || s.id AS round_trip_key, s.account, upper(s.symbol) AS symbol, s.entry_time, s.exit_time, "
+        "s.entry_price, s.exit_price, s.net_pnl, s.classification, tc.stop_used AS journal_stop "
+        "FROM schwab_round_trips s LEFT JOIN trade_closed tc ON tc.dedupe_key = 'srt:' || s.id "
+        "WHERE s.entry_time IS NOT NULL AND s.exit_time > now() - interval '45 days' "
+        "AND s.basis_status IS NULL AND s.canary IS NOT TRUE ORDER BY s.exit_time"),
+    "fills": (
+        "SELECT upper(symbol) AS symbol, account, lower(action) AS action, price AS fill_price, trade_date, "
+        "trade_time, dedupe_key FROM trade_transactions WHERE trade_date > now() - interval '120 days' "
+        "AND (lower(action) LIKE 'buy%%' OR lower(action) LIKE 'sell%%') ORDER BY trade_date, trade_time"),
+    "stop_history": (
+        "SELECT upper(symbol) AS symbol, account, order_id, order_type, status, stop_price, snapshot_at, id AS seq "
+        "FROM stop_lifecycle WHERE stop_price IS NOT NULL ORDER BY symbol, id"),
+    "rec_links": (
+        "SELECT l.round_trip_key, l.rec_id, l.rec_source, l.link_confidence, l.origin, l.plan_stop, l.plan_target, "
+        "l.r_multiple, l.planned_rr FROM trade_recommendation_links l "
+        "WHERE to_regclass('public.trade_recommendation_links') IS NOT NULL"),
+}
+
+
+def load_lifecycle_inputs(db_query: Optional[Callable[..., list[dict]]],
+                          captured: Optional[dict[str, Any]] = None) -> dict[str, dict[str, Any]]:
+    """Per-symbol lists for the lifecycle. ``captured`` (``--captured-inputs``) supplies the same rows captured
+    read-only elsewhere (a report run where this process may not open the database), labelled as such."""
+    out: dict[str, dict[str, Any]] = {}
+    for name, sql in LIFECYCLE_QUERIES.items():
+        rows: Optional[list[dict]] = None
+        status = "not_read (no read-only db_query injected)"
+        path = f"db:{name}"
+        if captured is not None and name in captured:
+            rows, status, path = list(captured[name] or []), "ok", f"captured:{name}"
+        elif db_query is not None:
+            try:
+                rows, status = list(db_query(sql) or []), "ok"
+            except Exception as exc:  # noqa: BLE001
+                status = f"error:{type(exc).__name__}"
+        by: dict[str, list[dict]] = {}
+        key = "round_trip_key" if name == "rec_links" else "symbol"
+        for r in rows or []:
+            k = str(r.get(key) or "")
+            if k:
+                by.setdefault(k.upper() if key == "symbol" else k, []).append(dict(r))
+        out[name] = _source(name, path, by, None, status)
+    bars = (captured or {}).get("bars")
+    out["bars"] = _source("bars", "captured:bars" if bars is not None else "db:ticker_prices",
+                          {str(k).upper(): v for k, v in (bars or {}).items()}, None,
+                          "ok" if bars is not None else ("deferred" if db_query is not None else
+                                                         "not_read (no read-only db_query injected)"))
+    return out
+
+
+BARS_SQL = ("SELECT price_date AS time, close_price AS close FROM ticker_prices WHERE upper(symbol) = %s "
+            "AND price_date > now() - interval '120 days' ORDER BY price_date")
+
+
 def load_db_inputs(db_query: Optional[Callable[[str], list[dict]]]) -> dict[str, dict[str, Any]]:
     """Bulk read-only SELECTs through an injected ``db_query(sql) -> rows``. No positions_current."""
     out: dict[str, dict[str, Any]] = {}
@@ -266,9 +373,6 @@ def load_db_inputs(db_query: Optional[Callable[[str], list[dict]]]) -> dict[str,
     return out
 
 
-HOLDINGS_REL = "data/portfolios/state/holdings.json"
-
-
 def _positions_context_held(state_root: Path) -> dict:
     """Held set through the registered ``positions_context`` projection (the reader the architecture names for
     stage ``held``), which reads holdings through ``lib/portfolio_positions`` — the approved holdings_accounts
@@ -280,13 +384,12 @@ def _positions_context_held(state_root: Path) -> dict:
     except ImportError:  # scripts/ (not the repo root) on sys.path
         from lib import portfolio_positions as pp  # type: ignore
         from lib.data_broker.positions_context import get_positions_context  # type: ignore
-    path = Path(state_root) / HOLDINGS_REL
-    doc = pp.load_store(path) or {}
+    doc = pp.load_store() or {}
     syms = sorted({str(h.get("symbol") or "").upper() for h in doc.get("holdings") or [] if isinstance(h, dict)} - {""})
-    ctx = get_positions_context(None, syms, holdings_path=path) if syms else {}
+    ctx = get_positions_context(None, syms) if syms else {}
     return {"symbols": {s for s, o in ctx.items() if o.get("owned")},
             "source": "positions_context (holdings_accounts via lib.portfolio_positions)",
-            "as_of": doc.get("as_of") or doc.get("data_as_of") or doc.get("updated_at")}
+            "as_of": doc.get("updated_at") or doc.get("as_of") or doc.get("data_as_of")}
 
 
 def load_held(state_root: Path, held_reader: Optional[Callable[[], dict]] = None) -> dict[str, Any]:
@@ -352,6 +455,129 @@ def rank_key(row: dict[str, Any]) -> tuple:
     return (not assessed, -float(row.get("conviction") or 0.0), str(row.get("symbol") or ""))
 
 
+def _home_bar() -> dict[str, Any]:
+    import yaml
+
+    try:
+        cfg = yaml.safe_load(OPPORTUNITY_CONFIG.read_text(encoding="utf-8")) or {}
+    except (OSError, ValueError):
+        cfg = {}
+    return (cfg.get("presets") or {}).get("top5") or {"min_conviction": 80, "min_rr": 2.0, "min_coverage": 0.8,
+                                                       "limit": 5}
+
+
+def lifecycle_for(sym: str, inputs: dict[str, dict[str, Any]], *, is_held: bool, held: dict[str, Any],
+                  identity: dict[str, Any], opp: Optional[dict], thesis: Optional[dict], decision: Optional[dict],
+                  now: datetime) -> Optional[dict[str, Any]]:
+    """The position lifecycle on the prospect (operator 2026-10-22, NAVN): origin, fills, observed stops,
+    excursion, exit cause, post-exit review, re-entry advice — or None when the security has no position history
+    in the window. A closed round trip newer than the last buy fill means the position is closed even when the
+    holdings file still lists it; that disagreement is recorded as a conflict, never resolved silently (§26.5)."""
+    rows = lambda name: (inputs.get(name) or {}).get("rows", {}).get(sym) or []  # noqa: E731
+    rts = sorted(rows("round_trips"), key=lambda r: str(r.get("exit_time") or ""))
+    fills = rows("fills")
+    buys = sorted((f for f in fills if str(f.get("action") or "").startswith("buy")),
+                  key=lambda f: str(f.get("trade_time") or f.get("trade_date") or ""))
+    last_rt = rts[-1] if rts else None
+    last_buy_at = lcm._ts(buys[-1].get("trade_time") or buys[-1].get("trade_date")) if buys else None
+    closed = bool(last_rt and lcm._ts(last_rt.get("exit_time")) and (
+        last_buy_at is None or lcm._ts(last_rt.get("exit_time")) >= last_buy_at))
+    if last_rt and closed and now - lcm._ts(last_rt["exit_time"]) > timedelta(days=lcm.REENTRY_WATCH_DAYS):
+        closed, last_rt = False, None
+    if not closed and not is_held:
+        return None
+    if closed:
+        rt = dict(last_rt)
+    elif buys:
+        b = buys[-1]
+        rt = {"round_trip_key": f"open:{sym}:{b.get('dedupe_key') or b.get('trade_date')}", "symbol": sym,
+              "account": b.get("account"), "entry_time": b.get("trade_time") or b.get("trade_date"),
+              "entry_price": b.get("fill_price"), "exit_time": None, "exit_price": None}
+    else:
+        return {"stage": None, "conflicts": [], "events": [], "origin": None, "review": None, "advice": None,
+                "life": {"status": "open", "entry_fill": None,
+                         "note": "held, but no buy fill in the window this lane read (fills not read or older)"}}
+    acct = rt.get("account")
+    versions = rows("assessment_versions")
+    recs = lcm.recommendations_from_records(sym, versions, rows("entry_signals"))
+    link = ((inputs.get("rec_links") or {}).get("rows") or {}).get(str(rt.get("round_trip_key") or ""))
+    origin = lcm.attribute_origin(rt, recs, link_row=(link[0] if link else None), home_bar=_home_bar(),
+                                  decisions=[decision] if decision else [])
+    stop_rows = [r for r in rows("stop_history") if not acct or not r.get("account") or r.get("account") == acct]
+    stops = lcm.stop_path(stop_rows)
+    bars = list(rows("bars"))
+    entry_at, exit_at = rt.get("entry_time"), rt.get("exit_time")
+    exc = lcm.excursion(rt.get("entry_price"), entry_at, exit_at or now, bars)
+    t0, t1 = lcm._ts(entry_at), lcm._ts(exit_at) or now
+    while_held = []
+    for v in sorted(versions, key=lambda v: str(v.get("written_at") or "")):
+        at = lcm._ts(v.get("written_at"))
+        if at and t0 and t0 <= at <= t1:
+            a = v.get("assessment") or {}
+            while_held.append({"at": lcm._iso(at), "conviction": a.get("conviction"), "stance": a.get("stance"),
+                               "rank": a.get("rank"), "record": f"{FILES['assessment_versions']} {sym}:v{v.get('version')}",
+                               "changes": v.get("change_reasons")})
+    life: dict[str, Any] = {
+        "schema": lcm.SCHEMA, "status": "closed" if closed else "open", "round_trip_key": rt.get("round_trip_key"),
+        "account": acct, "entry_fill": {"at": lcm._iso(entry_at), "price": lcm._f(rt.get("entry_price"))},
+        "fills": [{"at": lcm._iso(f.get("trade_time") or f.get("trade_date")), "side": str(f.get("action") or ""),
+                   "fill_price": lcm._f(f.get("fill_price")), "ref": f.get("dedupe_key")}
+                  for f in fills if (lcm._ts(f.get("trade_time") or f.get("trade_date")) or now) >= (t0 or now)],
+        "observed_stops": stops, "excursion": exc, "conviction_while_held": while_held,
+        "hold_days": None if not t0 else (t1.date() - t0.date()).days,
+    }
+    review = advice = None
+    conflicts: list[dict[str, Any]] = []
+    stage = stage_phase = stance = None
+    why: dict[str, Any] = {}
+    plan_target = (origin.get("linkage") or {}).get("plan_target")
+    if closed:
+        life["exit_fill"] = {"at": lcm._iso(exit_at), "price": lcm._f(rt.get("exit_price"))}
+        life["exit_cause"] = lcm.classify_exit(rt.get("exit_price"), rt.get("entry_price"), stops, plan_target)
+        ent_px, ex_px = rt.get("entry_price"), rt.get("exit_price")
+        plan_inval = next((r.get("plan_stop") for r in sorted(recs, key=lambda r: r["created_at"], reverse=True)
+                           if r["source"] == "cio_opportunity_curator" and lcm._ts(r["created_at"]) <= lcm._ts(entry_at)
+                           and r.get("plan_stop") is not None), None)
+        life["pnl"] = {"net_pnl_usd": lcm._f(rt.get("net_pnl")),
+                       "pnl_pct": lcm._pct(lcm._f(ex_px), lcm._f(ent_px)),
+                       "r_multiple": (origin.get("linkage") or {}).get("r_multiple"),
+                       "r_basis": "linked plan_stop (learning-loop rule); null when the linked recommendation has none",
+                       "r_on_initial_observed_stop": lcm.lk.r_multiple(ent_px, ex_px, stops.get("initial"))[0],
+                       "r_on_plan_invalidation_at_entry": lcm.lk.r_multiple(ent_px, ex_px, plan_inval)[0],
+                       "plan_invalidation_at_entry": plan_inval}
+        review = lcm.post_exit_review(entry_price=rt.get("entry_price"), exit_price=rt.get("exit_price"),
+                                      exit_at=exit_at, bars=bars, stops=stops, exc=exc, exit_cause=life["exit_cause"])
+        latest = recs and max((r for r in recs if r["source"] == "cio_opportunity_curator"),
+                              key=lambda r: r["created_at"], default=None)
+        rk = (opp or {}).get("risk_reward") or {}
+        ind = ((inputs.get("indicators") or {}).get("rows") or {}).get(sym) or {}
+        advice = lcm.reentry_advice(
+            symbol=sym, security_guid=identity["security_guid"], round_trip_key=rt.get("round_trip_key"),
+            exit_price=rt.get("exit_price"), exit_at=exit_at, entry_price=rt.get("entry_price"),
+            net_pnl=rt.get("net_pnl"), price=rk.get("current_price"), price_as_of=(opp or {}).get("as_of"),
+            rsi=ind.get("rsi"), entry_zone=rk.get("entry_zone") or ([latest["entry_low"], latest["entry_high"]]
+                                                                    if latest else None),
+            resistance=None, conviction=(opp or {}).get("conviction"),
+            thesis_status=(thesis or {}).get("status"), now=now)
+        stage, stage_phase = lcm.stage_phase_for(exit_at, now)
+        stance = "WATCH"
+        why = {"source": "schwab_round_trips", "event": "exit_fill", "round_trip_key": rt.get("round_trip_key"),
+               "at": lcm._iso(exit_at), "cause": life["exit_cause"]["class"]}
+        if is_held:
+            conflicts.append(_conflict(
+                "held", ("held", f"positions[{held.get('source')}]", held.get("as_of")),
+                ("closed", f"schwab_round_trips {rt.get('round_trip_key')} exit fill", lcm._iso(exit_at)),
+                note="the round trip closed after the last buy fill but the holdings file still lists it"))
+        if posture((opp or {}).get("stance")) in ("buy", "hold") and (opp or {}).get("position_status") == "owned":
+            conflicts.append(_conflict(
+                "stance_after_exit", ((opp or {}).get("stance"), "cio_opportunity_projection", (opp or {}).get("as_of")),
+                ("exited", f"schwab_round_trips {rt.get('round_trip_key')}", lcm._iso(exit_at)),
+                note="the curator still treats the position as owned"))
+    events = lcm.lifecycle_events(identity["security_guid"], origin, life, review, advice)
+    return {"stage": stage, "stage_phase": stage_phase, "stance": stance, "why": why, "origin": origin,
+            "life": life, "review": review, "advice": advice, "conflicts": conflicts, "events": events}
+
+
 def assemble(sym: str, inputs: dict[str, dict[str, Any]], held: dict[str, Any], identity: dict[str, Any],
              *, now: datetime, rules: dict[str, Any]) -> dict[str, Any]:
     """One prospect record (InstrumentRecord@v1 extended) for ``sym``, through ``apply_prospect``."""
@@ -399,6 +625,14 @@ def assemble(sym: str, inputs: dict[str, dict[str, Any]], held: dict[str, Any], 
         stance_src = "cio_theses"
     else:
         stance, stance_src = ("HOLD" if is_held else "WATCH"), "default"
+
+    # ---- position lifecycle (origin, fills, stops, exit, review, re-entry) ----
+    lc = lifecycle_for(sym, inputs, is_held=is_held, held=held, identity=identity, opp=opp, thesis=thesis,
+                       decision=decision, now=now)
+    stage_phase = None
+    if lc and lc.get("stage"):
+        stage, why, stage_phase = lc["stage"], lc["why"], lc.get("stage_phase")
+        stance, stance_src = lc["stance"], "position_lifecycle"
 
     # ---- conviction components ----
     W = COMPONENT_WEIGHTS
@@ -468,6 +702,9 @@ def assemble(sym: str, inputs: dict[str, dict[str, Any]], held: dict[str, Any], 
                                                         (inputs.get("hermes") or {}).get("as_of")),
                                    (opp_stance, "cio_opportunity_projection", opp_at)))
 
+    if lc:
+        conflicts.extend(lc.get("conflicts") or [])
+
     # ---- evidence / expiry ----
     times = [_ts(x) for x in (opp_at, (spine or {}).get("as_of"), t_at, (irec or {}).get("updated_ts"),
                               (inputs.get("hermes") or {}).get("as_of") if hermes else None,
@@ -479,7 +716,12 @@ def assemble(sym: str, inputs: dict[str, dict[str, Any]], held: dict[str, Any], 
 
     # ---- trigger / missing / action ----
     rrl = (opp or {}).get("risk_reward") or {}
-    if stage in ("held",):
+    advice = (lc or {}).get("advice")
+    if advice:
+        next_trigger = {"kind": "reentry", "state": advice["state"], "alert_levels": advice["alert_levels"],
+                        "observed_by": "cio-prospect-shadow (re-entry desk rules)",
+                        "note": "references for a person, never orders"}
+    elif stage in ("held",):
         next_trigger = {"kind": "reference_level", "invalidation_level": rrl.get("invalidation_level"),
                         "observed_by": "cio-opportunity-curator", "note": "information, never an order"}
     elif rrl.get("entry_zone") or rrl.get("entry_ref"):
@@ -501,7 +743,12 @@ def assemble(sym: str, inputs: dict[str, dict[str, Any]], held: dict[str, Any], 
     for name in ("hermes_score", "thesis_quality", "scanner_score"):
         if comps[name]["value"] is None:
             missing.append(f"conviction component {name} has no value")
-    if conflicts:
+    if advice:
+        cause = (((lc or {}).get("life") or {}).get("exit_cause") or {}).get("class")
+        next_action = {"who": "operator", "what": f"read the post-exit review ({cause}); re-entry: "
+                                                  f"{advice['state']} — {advice['action']}",
+                       "conflicts_to_resolve": sorted({c['field'] for c in conflicts})}
+    elif conflicts:
         next_action = {"who": "cio", "what": f"resolve {len(conflicts)} conflict(s) with a recorded reason",
                        "fields": sorted({c['field'] for c in conflicts})}
     elif stage == "actionable":
@@ -530,7 +777,10 @@ def assemble(sym: str, inputs: dict[str, dict[str, Any]], held: dict[str, Any], 
     if posture(thesis_stance) in ("buy", "watch", "hold"):
         cands.append({"origin": "cio_thesis", "reason": f"thesis {(thesis or {}).get('thesis_version')} "
                                                         f"stance {thesis_stance.lower()}", "at": t_at})
-    if stage == "re_entry":
+    if advice:
+        cands.append({"origin": "reentry_desk", "reason": f"exited {why.get('at')} ({why.get('cause')}); "
+                                                          f"re-entry watch: {advice['state']}", "at": why.get("at")})
+    elif stage == "re_entry":
         cands.append({"origin": "reentry_desk", "reason": f"re-entry desk {re_state or opp_stance}", "at": why.get("at")})
     if posture((scan_db or scan or {}).get("decision")) == "buy" or str((scan or {}).get("decision") or "").upper() == "GO":
         cands.append({"origin": "scanner_verdict", "reason": f"scanner {(scan_db or scan).get('decision')}",
@@ -573,11 +823,15 @@ def assemble(sym: str, inputs: dict[str, dict[str, Any]], held: dict[str, Any], 
         "provenance": {"builder": BUILDER, "mode": "shadow", "class": "D", "stance_source": stance_src,
                        "sources": sources_used, "conviction_reproducible": conviction is not None},
     }
+    if lc:
+        block.update({"stage_phase": stage_phase, "origin": lc.get("origin"), "position_lifecycle": lc.get("life"),
+                      "post_exit_review": lc.get("review"), "reentry_advice": lc.get("advice")})
     if conviction is None:
         block["conviction_components"] = {k: v for k, v in comps.items() if v.get("value") is None}
         block["whats_missing"] = missing + ["no conviction component has a value (conviction rendered 0, unknown)"]
         block["provenance"]["conviction_unknown"] = True
     rec, _ = ir.apply_prospect(base, prospect=block)
+    rec["_lifecycle_events"] = (lc or {}).get("events") or []     # the events table rows; not a record field
     return rec
 
 
@@ -585,20 +839,33 @@ def build(state_root: Path, *, db_query: Optional[Callable[[str], list[dict]]] =
           held_reader: Optional[Callable[[], dict]] = None,
           identity_resolver: Optional[Callable[[str], dict]] = None,
           symbols: Optional[Iterable[str]] = None, now: Optional[datetime] = None,
-          rules: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-    """Assemble every prospect. Pure with respect to stores: reads, never writes."""
+          rules: Optional[dict[str, Any]] = None,
+          captured: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """Assemble every prospect. Pure with respect to stores: reads, never writes. ``captured`` supplies the
+    lifecycle rows (round trips, fills, observed stops, links, bars) captured read-only elsewhere."""
     now = now or datetime.now(timezone.utc)
     rules = rules if rules is not None else wl_rules.load_rules()
     inputs = load_file_inputs(Path(state_root))
     inputs.update(load_db_inputs(db_query))
+    inputs.update(load_lifecycle_inputs(db_query, captured))
     held = load_held(Path(state_root), held_reader)
+    if inputs["bars"]["status"] == "deferred" and db_query is not None:
+        want = set(held["symbols"]) | set(inputs["round_trips"]["rows"].keys())
+        bars: dict[str, list] = {}
+        try:
+            for s in sorted(want):
+                bars[s] = list(db_query(BARS_SQL, (s,)) or [])
+            inputs["bars"].update(rows=bars, count=len(bars), status="ok")
+        except Exception as exc:  # noqa: BLE001
+            inputs["bars"].update(status=f"error:{type(exc).__name__}")
     if identity_resolver is None:
         from scripts.lib.identity_carriage import resolve_security_identity
 
         def identity_resolver(s: str) -> dict:
             return resolve_security_identity(s, root=Path(state_root))
     universe: set[str] = set(held["symbols"])
-    for name in ("opportunity", "theses", "instrument_records", "reentry", "watchlist_items", "starred"):
+    for name in ("opportunity", "theses", "instrument_records", "reentry", "watchlist_items", "starred",
+                 "round_trips"):
         universe |= set((inputs.get(name) or {}).get("rows", {}).keys())
     if symbols is not None:
         universe = {str(s).upper() for s in symbols}
@@ -626,7 +893,7 @@ def build(state_root: Path, *, db_query: Optional[Callable[[str], list[dict]]] =
         except Exception as exc:  # noqa: BLE001 — one bad security never sinks the build; it is reported
             errors.append({"symbol": sym, "error": f"{type(exc).__name__}: {exc}"[:240]})
 
-    rows = [ir.prospect_row(p) for p in prospects]
+    rows = [{**ir.prospect_row(p), "lifecycle_events": p.get("_lifecycle_events") or []} for p in prospects]
     curation = wl_rules.curate(rows, rules, now=now)
     for r in rows:
         d = curation["decisions"].get(r["security_guid"])
@@ -653,7 +920,13 @@ def build(state_root: Path, *, db_query: Optional[Callable[[str], list[dict]]] =
         "counts": {"universe": len(universe), "prospects": len(rows), "identity_unresolved": len(unresolved),
                    "duplicate_guid": len(duplicates), "errors": len(errors),
                    "with_conflicts": sum(1 for r in rows if r["conflicts"]),
-                   "conflicts": sum(len(r["conflicts"]) for r in rows), "by_stage": stage_counts},
+                   "conflicts": sum(len(r["conflicts"]) for r in rows), "by_stage": stage_counts,
+                   "with_position_lifecycle": sum(1 for r in rows if r.get("position_lifecycle")),
+                   "exited_in_window": sum(1 for r in rows if (r.get("position_lifecycle") or {}).get("status")
+                                           == "closed"),
+                   "origin": {k: sum(1 for r in rows if (r.get("origin") or {}).get("classification") == k)
+                              for k in ("internal", "operator_initiated")},
+                   "lifecycle_events": sum(len(r["lifecycle_events"]) for r in rows)},
         "watchlist_curation": {k: v for k, v in curation.items() if k != "decisions"},
         "prospects": rows,
         "identity_unresolved": unresolved,

@@ -18,6 +18,10 @@
 --                         extended, §13.5). Writer: InstrumentRecordStore ONLY (writer column is CHECKed).
 --   cio_prospect_events   append-only change log, same writer. A trigger refuses UPDATE, DELETE and TRUNCATE for
 --                         every role, including the owner (§0 rule 6: never delete; append a compensating event).
+--                         One row per fact, idempotent by (security_guid, event_key): record changes (rev:<n>) and
+--                         the position lifecycle — origin attributed, entry fill, every observed stop change,
+--                         conviction/stance changes while held, excursion, exit fill + cause, exit review, re-entry
+--                         advice (operator 2026-10-22, NAVN: "all on the same data backend").
 --
 -- MBI_BEHAVIOR = 0: no column holds a size, an order, a stop, a weight or an execution. Stance is posture and
 -- priority only; next_trigger holds a reference level, never an order (§0 rule 1, §26.1).
@@ -50,6 +54,11 @@ CREATE TABLE IF NOT EXISTS cio_prospect (
     research               JSONB,
     position_ref           JSONB,
     watchlist              JSONB,
+    stage_phase            TEXT,
+    origin                 JSONB,
+    position_lifecycle     JSONB,
+    post_exit_review       JSONB,
+    reentry_advice         JSONB,
     conflicts              JSONB NOT NULL DEFAULT '[]'::jsonb,
     cognition              JSONB,
     provenance             JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -61,6 +70,9 @@ CREATE TABLE IF NOT EXISTS cio_prospect (
     CONSTRAINT cio_prospect_writer_ck CHECK (writer = 'InstrumentRecordStore'),
     CONSTRAINT cio_prospect_stage_ck CHECK (stage IN (
         'watching', 'setup_forming', 'actionable', 'proposed', 'held', 'exit', 're_entry')),
+    CONSTRAINT cio_prospect_phase_ck CHECK (stage_phase IS NULL OR stage_phase IN ('exit_review', 're_entry_watch')),
+    CONSTRAINT cio_prospect_origin_ck CHECK (origin IS NULL OR origin->>'classification' IN (
+        'internal', 'operator_initiated')),
     CONSTRAINT cio_prospect_stance_ck CHECK (stance IN (
         'BUY_SETUP', 'ADD', 'HOLD', 'TRIM_REVIEW', 'EXIT_REVIEW', 'WATCH', 'AVOID')),
     CONSTRAINT cio_prospect_conviction_ck CHECK (conviction >= 0 AND conviction <= 100),
@@ -89,15 +101,18 @@ CREATE TABLE IF NOT EXISTS cio_prospect_events (
     at             TIMESTAMPTZ NOT NULL,
     writer         TEXT NOT NULL,
     event_type     TEXT NOT NULL,
+    event_key      TEXT NOT NULL,
     change         JSONB NOT NULL,
     evidence       JSONB,
     revision       BIGINT NOT NULL,
     recorded_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT cio_prospect_events_writer_ck CHECK (writer = 'InstrumentRecordStore'),
     CONSTRAINT cio_prospect_events_type_ck CHECK (event_type IN (
-        'mint', 'update', 'stage_change', 'conflict_opened', 'conflict_resolved', 'rollback')),
+        'mint', 'update', 'stage_change', 'conflict_opened', 'conflict_resolved', 'rollback',
+        'origin_attributed', 'entry_fill', 'stop_change', 'conviction_change', 'excursion', 'exit_fill',
+        'exit_review', 'reentry_advice')),
     CONSTRAINT cio_prospect_events_change_ck CHECK (jsonb_typeof(change) = 'object'),
-    CONSTRAINT cio_prospect_events_revision_uq UNIQUE (security_guid, revision)
+    CONSTRAINT cio_prospect_events_key_uq UNIQUE (security_guid, event_key)
 );
 
 CREATE INDEX IF NOT EXISTS cio_prospect_events_guid_idx ON cio_prospect_events (security_guid, id);

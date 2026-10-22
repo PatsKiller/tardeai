@@ -4176,36 +4176,6 @@
       "env_report_reason": "report until the import closure is re-inventoried for enforce: 13 local modules (over the P7 10-module bar) through the CIO policy/portfolio/canon libraries; the only credential names read are DB_* (cio_market_context_state.connect_trade_ai_readonly, READ ONLY session). No model, provider or broker name."
     },
     {
-      "lane_id": "cio-prospect-shadow",
-      "command": [
-        "$PY",
-        "scripts/cio_prospect_shadow_build.py",
-        "--with-db"
-      ],
-      "dry_run_arg": [
-        "--dry-run"
-      ],
-      "live_arg": null,
-      "lock": "/tmp/tradeai_cio_prospect_shadow.lock",
-      "lock_kind": "flock",
-      "timeout_s": 600,
-      "market_gate": false,
-      "output_signal": "data/runtime/cio-prospect-shadow_last.json",
-      "output_receipt": "v2",
-      "env_names": [
-        "DB_HOST",
-        "DB_NAME",
-        "DB_PASSWORD",
-        "DB_PORT",
-        "DB_USER",
-        "TRADEAI_PERSISTENT_STATE_ROOT"
-      ],
-      "env_allowlist_mode": "report",
-      "env_evidence": "scripts/session13_db.get_conn reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD through env_bootstrap.load_env(names=DB_*) and the session is set READ ONLY (lane_last_receipt.enforce_readonly); canonical_store_registry.production_state_root reads TRADEAI_PERSISTENT_STATE_ROOT / TRADEAI_STATE_ROOT (executor base name). No model, provider or broker credential.",
-      "env_report_reason": "report until the import closure is re-inventoried for enforce: the builder reads through the CIO, identity and data-broker libraries (positions_context projection for the held set); the only credential names read are DB_* on a READ ONLY session. No model, provider or broker name.",
-      "source": "Operator directive 2026-10-22 ('start executing immediately ... everything that's not built and not live'; the CIO prospect foundation, AGENTS.md §26). n8n-native lane: no cron line, no systemd unit; the lock is new (a dry run takes <lock>.dryrun). SHADOW ONLY: live_arg null, registry dispatch mode dry_run; dry_run_arg --dry-run prints only. Canary live_arg (separate PR): [\"--write-shadow\"]."
-    },
-    {
       "lane_id": "advisory-maturity-evidence",
       "command": [
         "$PY",

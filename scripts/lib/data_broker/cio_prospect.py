@@ -41,7 +41,8 @@ SHADOW_ENV = "TRADEAI_CIO_PROSPECT_SHADOW_PATH"
 STORE_COLUMNS = (
     "security_guid, issuer_guid, symbol, subject_key, aliases, stage, stage_changed_at, conviction, "
     "conviction_components, stance, catalyst_grade, next_trigger, whats_missing, next_action, thesis_ref, research, "
-    "position_ref, watchlist, conflicts, evidence_at, expires_at, as_of, revision")
+    "position_ref, watchlist, stage_phase, origin, position_lifecycle, post_exit_review, reentry_advice, conflicts, "
+    "evidence_at, expires_at, as_of, revision")
 
 
 def _ir():
@@ -90,7 +91,8 @@ def _row_view(r: dict[str, Any], now: datetime) -> dict[str, Any]:
         "security_guid", "issuer_guid", "symbol", "subject_key", "aliases", "stage", "stage_changed_at", "conviction",
         "conviction_components", "stance", "catalyst_grade", "next_trigger", "whats_missing", "next_action",
         "thesis_ref", "research", "position_ref", "watchlist", "conflicts", "evidence_at", "expires_at", "as_of",
-        "revision", "shadow_rank", "rankable")}
+        "revision", "shadow_rank", "rankable", "stage_phase", "origin", "position_lifecycle", "post_exit_review",
+        "reentry_advice", "lifecycle_events")}
     for k in ("evidence_at", "expires_at", "as_of", "stage_changed_at"):
         if isinstance(out.get(k), datetime):
             out[k] = out[k].isoformat()
@@ -179,4 +181,26 @@ def get_prospect(symbol_or_guid: str, **kw: Any) -> dict[str, Any]:
     res["prospect"] = rows[0] if rows else None
     if not rows:
         res["reason"] = "no prospect: identity unresolved or not covered by the build"
+    return res
+
+
+def get_position_view(symbol_or_guid: str, **kw: Any) -> dict[str, Any]:
+    """The one record TradeInView, Open Trades and Watch read for a position (operator 2026-10-22, NAVN): where it
+    came from (``origin``: internal vs operator-initiated, the surfaces and values at the entry fill), what happened
+    (``position_lifecycle``: fills, every observed stop, excursion, exit cause, P/L), why it ended
+    (``post_exit_review``) and when to get back in (``reentry_advice``), with the append-only ``events`` — all from the
+    same cio_prospect record, never a second store. ``position`` is None when the security has no position history."""
+    res = get_prospect(symbol_or_guid, **kw)
+    p = res.pop("prospect", None) or {}
+    view = None
+    if p.get("position_lifecycle") or p.get("origin"):
+        view = {"symbol": p.get("symbol"), "security_guid": p.get("security_guid"), "stage": p.get("stage"),
+                "stage_phase": p.get("stage_phase"), "stance": p.get("stance"), "conviction": p.get("conviction"),
+                "origin": p.get("origin"), "lifecycle": p.get("position_lifecycle"),
+                "post_exit_review": p.get("post_exit_review"), "reentry_advice": p.get("reentry_advice"),
+                "events": p.get("lifecycle_events") or [], "conflicts": p.get("conflicts") or [],
+                "next_action": p.get("next_action"), "stale": p.get("stale"), "age_hours": p.get("age_hours")}
+    res["position"] = view
+    if view is None and "reason" not in res:
+        res["reason"] = "no position history for this security in the window the lane reads"
     return res

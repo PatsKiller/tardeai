@@ -10,7 +10,8 @@ operator grants the cio_prospect registry row and the P1 migration (§17):
    conviction reproducible from components, unified edge persisted with its inputs, the dual-write inert by default.
 3. The shadow builder: one prospect per security_guid, conflicts recorded never resolved, identity unresolved gets no
    prospect, no stop/target copied, writes nothing; the watchlist curation rules.
-4. The n8n lane cio-prospect-shadow at SHADOW (registry, allowlist, DRAFT contract).
+4. The n8n lane cio-prospect-shadow is registered in the stacked PR (its DRAFT contract awaits the owner's
+   REVIEW, §23.19); this file pins the builder it runs.
 5. The read-only data-broker projection cio_prospect (shadow labelled, say_so on gap, per-row stale).
 """
 from __future__ import annotations
@@ -84,8 +85,14 @@ def _bin() -> Path | None:
 
 
 BIN = _bin()
+try:
+    import psycopg2  # noqa: F401
+    HAVE_PSYCOPG2 = True
+except ImportError:  # CI image without the driver: the static checks still run
+    HAVE_PSYCOPG2 = False
 PSQL = shutil.which("psql") or (str(BIN / "psql") if BIN and (BIN / "psql").is_file() else None)
-NEEDS_PG = pytest.mark.skipif(BIN is None or PSQL is None, reason="no PostgreSQL server binaries on this host")
+NEEDS_PG = pytest.mark.skipif(BIN is None or PSQL is None or not HAVE_PSYCOPG2,
+                              reason="no PostgreSQL server binaries or psycopg2 on this host")
 
 
 @pytest.fixture(scope="module")
@@ -261,7 +268,7 @@ def test_dual_write_is_inert_by_default_and_never_probes_an_ungranted_store(tmp_
         def table_present(self):
             return True
 
-        def write(self, row, event):
+        def write(self, row, event, lifecycle=()):
             self.calls.append((row, event))
             return {"ok": True}
 
@@ -443,28 +450,6 @@ def test_builder_never_reads_positions_current_or_reaches_a_sender():
         assert "InstrumentRecordStore(" not in src and "upsert_prospect" not in src, path   # the shadow is not the store
 
 
-# ── 4. the n8n lane ─────────────────────────────────────────────────────────
-
-
-def _row(path: str, key: str, lane: str, coll: str = "lanes") -> dict:
-    return next(r for r in json.loads((ROOT / path).read_text())[coll] if r.get(key) == lane)
-
-
-def test_lane_is_registered_at_shadow_and_dry_run_only():
-    reg = _row("config/lane_registry.json", "lane_id", "cio-prospect-shadow")
-    assert reg["scheduler"]["kind"] == "n8n" and reg["scheduler"]["expression"] == "dispatcher"
-    assert reg["scheduler"]["stage"] == "shadow" and reg["dispatch"]["mode"] == "dry_run"
-    assert reg["dispatch"]["class"] == "report" and reg["scheduler"]["match"] == "scripts/cio_prospect_shadow_build.py"
-    al = _row("config/n8n_run_allowlist.json", "lane_id", "cio-prospect-shadow")
-    assert al["live_arg"] is None and al["dry_run_arg"] == ["--dry-run"]
-    assert al["command"] == ["$PY", "scripts/cio_prospect_shadow_build.py", "--with-db"]
-    assert not any(n.startswith(("SCHWAB", "ALPACA", "SNAPTRADE", "MOOMOO", "IBKR", "TELEGRAM"))
-                   for n in al["env_names"])
-    c = _row("config/n8n_health_contracts.json", "id", "cio-prospect-shadow", "contracts")
-    assert c["status"] == "DRAFT" and c["stage"] == "shadow" and c["workflow_id"] == "dispatcher"
-    assert c["healthy"][0]["check"] == "dry_run_writes_nothing"
-
-
 # ── 5. the projection ───────────────────────────────────────────────────────
 
 
@@ -513,3 +498,154 @@ def test_gate_file_registers_this_test():
     doc = json.loads((ROOT / "config/ci_gates/cio_prospect_foundation_20261022.json").read_text())
     assert doc["anchor"] == "CIO_PROSPECT_FOUNDATION_20261022"
     assert "tests/test_cio_prospect_foundation_20261022.py" in doc["files"]
+
+
+# ── 6. position lifecycle on the same record — NAVN worked example (operator 2026-10-22) ──────────────────
+
+NAVN = json.loads((ROOT / "tests/fixtures/cio_prospect/navn_20261022.json").read_text())
+NAVN_NOW = datetime(2026, 10, 22, 20, 35, tzinfo=timezone.utc)
+
+
+def _navn_state(tmp: Path, *, with_records: bool = True) -> Path:
+    (tmp / "data/cio").mkdir(parents=True)
+    (tmp / "data/runtime").mkdir(parents=True)
+    (tmp / "data/cio/cio_opportunity_projection.json").write_text(json.dumps(
+        {"as_of": NAVN["opportunity_now"]["as_of"], "items": {"NAVN": NAVN["opportunity_now"]}}))
+    (tmp / "data/cio/cio_theses_projection.json").write_text(json.dumps(
+        {"current": {"symbol_navn": NAVN["thesis"]}}))
+    if with_records:
+        (tmp / "data/cio/cio_opportunity_assessments.jsonl").write_text(
+            "".join(json.dumps(v) + "\n" for v in NAVN["assessment_versions"]))
+        (tmp / "data/cio/cio_events.jsonl").write_text(json.dumps(NAVN["entry_signal"]) + "\n")
+    return tmp
+
+
+def _navn_build(tmp: Path, now: datetime = NAVN_NOW, **kw) -> dict:
+    ident = NAVN["identity"]
+    return B.build(tmp, held_reader=lambda: {"symbols": {"NAVN"}, "source": "test_holdings (still lists NAVN)",
+                                             "as_of": NAVN["holdings"]["updated_at"]},
+                   identity_resolver=lambda s: ident if s == "NAVN" else _identity(s), now=now,
+                   captured=NAVN["captured"], **kw)
+
+
+def _navn(doc: dict) -> dict:
+    return next(r for r in doc["prospects"] if r["symbol"] == "NAVN")
+
+
+def test_navn_origin_is_internal_with_the_surfaces_at_entry(tmp_path):
+    p = _navn(_navn_build(_navn_state(tmp_path)))
+    o = p["origin"]
+    assert o["classification"] == "internal"
+    lk = o["linkage"]
+    assert lk["rec_id"] == "entry:evt-cb6ad4a5e735" and lk["link_confidence"] == "window_only"
+    assert lk["distance_pct"] == 2.151 and lk["plan_entry_zone"] == [24.8, 25.1]
+    assert o["at_entry"]["entry_fill_at"] == "2026-10-19T15:01:04+00:00" and o["at_entry"]["entry_fill_price"] == 25.64
+    s = {x["surface"].split(" ·")[0].split(" (")[0]: x for x in o["at_entry"]["surfaces"]}
+    assert s["Home"]["shown"] and s["Home"]["rank"] == 4 and s["Home"]["conviction"] == 85.6 and s["Home"]["rr"] == 4.81
+    assert s["Home"]["record"].endswith("NAVN:v26")
+    assert s["Telegram"]["text"].startswith("Conviction 86/100 · #4")
+    assert s["CIO entry state"]["state"] == "BUY_READY" and s["CIO entry state"]["at"].startswith("2026-10-16T17:40")
+
+
+def test_navn_lifecycle_stops_excursion_exit_cause_and_pnl(tmp_path):
+    p = _navn(_navn_build(_navn_state(tmp_path)))
+    life = p["position_lifecycle"]
+    assert life["status"] == "closed" and life["round_trip_key"] == "srt:607228" and life["hold_days"] == 3
+    st = life["observed_stops"]
+    assert [x["stop_price_observed"] for x in st["path"]] == [24.31, 24.59, 24.70, 24.97, 25.51, 25.61, 26.02]
+    assert st["ratchets_up"] == 6 and st["filled"] == 26.02
+    assert life["exit_cause"]["class"] == "trailing_ratchet" and life["exit_cause"]["in_profit"] is True
+    exc = life["excursion"]
+    assert (exc["basis"], exc["mfe_price"], exc["mfe_pct"], exc["mae_price"], exc["mae_pct"]) == (
+        "daily_close", 26.625, 3.84, 25.67, 0.12)
+    pnl = life["pnl"]
+    assert pnl["net_pnl_usd"] == 189.73 and pnl["pnl_pct"] == 1.48
+    assert pnl["r_on_initial_observed_stop"] == 0.286 and pnl["r_on_plan_invalidation_at_entry"] == 0.218
+    assert [c["stance"] for c in life["conviction_while_held"]] == ["ADD"]          # v27: WATCH→ADD, #1, on exit day
+
+
+def test_navn_stage_review_reentry_and_conflicts(tmp_path):
+    root = _navn_state(tmp_path)
+    p = _navn(_navn_build(root))
+    assert (p["stage"], p["stage_phase"], p["stance"]) == ("exit", "exit_review", "WATCH")
+    assert sorted(c["field"] for c in p["conflicts"]) == ["held", "stance_after_exit"]   # shown, never resolved
+    rev = p["post_exit_review"]
+    assert rev["noise_vs_trend"]["verdict"] == "noise" and rev["prose"] is None and rev["provenance"] == "D"
+    assert rev["facts"]["giveback_from_peak_pct"] == 2.27 and rev["facts"]["exit_day_close"] == 26.03
+    adv = p["reentry_advice"]
+    assert adv["classifier"].startswith("reentry_rules.derive_intel_state")
+    assert {a["reference"]: a["level"] for a in adv["alert_levels"]} == {"near_entry": 25.853, "in_zone": 25.1,
+                                                                         "reclaim": 26.02}
+    assert {c["id"]: c["met"] for c in adv["conditions"]}["conviction_floor"] is True
+    assert adv["one_alert"]["dedupe_key"] == "reentry_near:1b1fd2bf-78cf-5755-bdea-9248cd007907:srt:607228"
+    assert p["next_action"]["who"] == "operator" and "trailing_ratchet" in p["next_action"]["what"]
+    later = _navn(_navn_build(root, now=NAVN_NOW + timedelta(days=3)))
+    assert (later["stage"], later["stage_phase"]) == ("re_entry", "re_entry_watch")
+    blob = json.dumps({k: p[k] for k in ("origin", "position_lifecycle", "post_exit_review", "reentry_advice")})
+    for k in ir.BEHAVIOR_FIELDS:                                   # observed facts, never behaviour keys
+        assert f'"{k}":' not in blob, k
+    ir.prospect_row(p)
+
+
+def test_navn_events_one_per_fact_and_idempotent_keys(tmp_path):
+    p = _navn(_navn_build(_navn_state(tmp_path)))
+    ev = p["lifecycle_events"]
+    types = [e["event_type"] for e in ev]
+    assert types.count("stop_change") == 7 and {"origin_attributed", "entry_fill", "exit_fill", "exit_review",
+                                                  "reentry_advice", "excursion", "conviction_change"} <= set(types)
+    assert len({e["event_key"] for e in ev}) == len(ev)
+    assert set(types) <= set(ir.PROSPECT_EVENT_TYPES)
+
+
+def test_operator_initiated_when_no_internal_recommendation_was_active(tmp_path):
+    p = _navn(_navn_build(_navn_state(tmp_path, with_records=False)))
+    assert p["origin"]["classification"] == "operator_initiated"
+    assert p["origin"]["linkage"]["link_confidence"] == "none"
+
+
+def test_position_view_is_the_same_record(tmp_path):
+    from lib.data_broker import cio_prospect as cp
+    doc = _navn_build(_navn_state(tmp_path / "s"))
+    art = tmp_path / "shadow.json"
+    art.write_text(json.dumps(doc))
+    v = cp.get_position_view("NAVN", shadow_base=art, now=NAVN_NOW, market_closed=True)
+    pos = v["position"]
+    assert v["source"]["kind"] == "shadow" and pos["origin"]["classification"] == "internal"
+    assert pos["lifecycle"]["exit_cause"]["class"] == "trailing_ratchet" and len(pos["events"]) == 14
+    assert pos["reentry_advice"]["one_alert"]["kind"] == "reentry_near"
+    assert cp.get_position_view("ACME", shadow_base=art, now=NAVN_NOW)["position"] is None
+
+
+def test_reentry_rules_are_the_desk_rules_not_a_copy():
+    from lib.data_broker import reentry_decision_desk as desk
+    from lib import reentry_rules as rules
+    assert desk.derive_intel_state.__code__ is rules.derive_intel_state.__code__ or \
+        desk.derive_intel_state.__module__.endswith("reentry_rules")
+    assert (desk.NEAR_PCT, desk.RSI_READY_LOW, desk.RSI_READY_HIGH, desk.WASH_DAYS) == (3.0, 40.0, 70.0, 30)
+    src = (ROOT / "scripts/lib/data_broker/reentry_decision_desk.py").read_text()
+    assert "def derive_intel_state" not in src                     # one implementation
+
+
+@NEEDS_PG
+def test_lifecycle_events_append_idempotently_on_the_cluster(cluster, tmp_path):
+    psql = cluster
+    assert psql("cpx_admin", "postgres", "CREATE DATABASE cpx_life")[0] == 0
+    assert psql("cpx_admin", "cpx_life", "GRANT USAGE, CREATE ON SCHEMA public TO trade_ai")[0] == 0
+    rc, out = psql("cpx_admin", "cpx_life", file=UP)
+    assert rc == 0, out
+    import psycopg2
+
+    backend = ir.ProspectPgBackend(lambda: psycopg2.connect(host=str(psql.sock), port=55433, user="trade_ai",
+                                                            dbname="cpx_life"))
+    p = _navn(_navn_build(_navn_state(tmp_path)))
+    rec = {k: v for k, v in p.items() if k not in ("lifecycle_events", "shadow_rank", "rankable")}
+    row = ir.prospect_row({**rec, "symbols": ["NAVN"], "prospect_revision": 1, "updated_ts": NAVN_NOW.isoformat(),
+                           "subject_key": "HELD:NAVN"})
+    res = backend.write(row, ir.prospect_event(None, row), p["lifecycle_events"])
+    assert res["upserted"] == 1 and res["event_appended"] == 1 + 14
+    assert backend.write(row, ir.prospect_event(None, row), p["lifecycle_events"])["event_appended"] == 0
+    rc, out = psql("cpx_admin", "cpx_life", "SELECT stage || ':' || stage_phase || ':' || (origin->>'classification') "
+                                            "FROM cio_prospect")
+    assert out == "exit:exit_review:internal", out
+    rc, out = psql("cpx_admin", "cpx_life", "SELECT count(*) FROM cio_prospect_events WHERE event_type = 'stop_change'")
+    assert out == "7"

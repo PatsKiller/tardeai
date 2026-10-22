@@ -532,14 +532,15 @@ PROJECTIONS: list[dict[str, Any]] = [
     {
         "id": "cio_prospect",
         "module": "lib.data_broker.cio_prospect",
-        "entrypoints": ["get_prospects", "get_prospect"],
+        "entrypoints": ["get_prospects", "get_prospect", "get_position_view"],
         "http": [],
         "domain": "cio_prospect",
         "authority_domain": "cio_prospect (PROPOSED 2026-10-22, AGENTS.md §26; operator grant pending)",
         "description": "The CIO prospect — one record per security_guid (stage, conviction + components, stance, "
                        "next trigger, what's missing, next action, conflicts, evidence_at/expires_at). Reads the "
                        "cio_prospect store only when it is live (row granted + flag + table); otherwise the shadow "
-                       "build, labelled SHADOW; say_so on gap; per-row stale after expires_at",
+                       "build, labelled SHADOW; say_so on gap; per-row stale after expires_at. get_position_view: "
+                       "origin, lifecycle, post-exit review and re-entry advice for TradeInView / Open Trades / Watch",
         "read_only": True,
         "provider_calls": 0,
         "envelope": "BrokerReadEnvelope@v1",

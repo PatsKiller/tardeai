@@ -61,12 +61,13 @@ def _readonly_db_query():
 
     conn = enforce_readonly(get_conn())
 
-    def q(sql: str) -> list[dict]:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql)
-            rows = [dict(r) for r in cur.fetchall()]
-        conn.rollback()
-        return rows
+    def q(sql: str, params: tuple | None = None) -> list[dict]:
+        try:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(sql, params)
+                return [dict(r) for r in cur.fetchall()]
+        finally:
+            conn.rollback()          # every read ends its transaction, so one failed SELECT never poisons the next
     return q, conn
 
 
@@ -158,8 +159,68 @@ def render_md(doc: dict, cmp: dict) -> str:
         t_s = r["telegram"].get("conviction_line") or f"none ({r['telegram'].get('why')})"
         v = "agree" if r["agrees"] else "; ".join(r["differences"])
         L.append(f"| {r['symbol']} | {sh_s} | {h_s} | {w_s} | {t_s} | {v} |")
+    L += position_sections(doc)
     L += ["", "MBI_BEHAVIOR = 0: stance is posture and priority; reference levels are information, never orders.", ""]
     return "\n".join(L)
+
+
+def position_sections(doc: dict) -> list[str]:
+    """Exited positions in full (origin, lifecycle, review, re-entry); held positions in one line each."""
+    rows = [r for r in doc["prospects"] if r.get("position_lifecycle")]
+    if not rows:
+        return []
+    L = ["", "## Positions — origin, lifecycle, post-exit review, re-entry (same record)", ""]
+    for r in [r for r in rows if r["position_lifecycle"].get("status") == "closed"]:
+        o, life = r.get("origin") or {}, r["position_lifecycle"]
+        rev, adv = r.get("post_exit_review") or {}, r.get("reentry_advice") or {}
+        lk = o.get("linkage") or {}
+        L += [f"### {r['symbol']} — stage `{r['stage']}` / `{r.get('stage_phase')}`, stance {r['stance']}", "",
+              f"- **Origin: {o.get('classification')}** — {o.get('summary')}. Link: `{lk.get('rec_id')}` "
+              f"({lk.get('link_confidence')}, {lk.get('distance_pct')}% from the plan zone {lk.get('plan_entry_zone')}).",
+              "- What the surfaces showed before the entry fill "
+              f"({(o.get('at_entry') or {}).get('entry_fill_at')} at {(o.get('at_entry') or {}).get('entry_fill_price')}):"]
+        for s in (o.get("at_entry") or {}).get("surfaces") or []:
+            vals = ", ".join(f"{k} {s[k]}" for k in ("rank", "conviction", "rr", "stance", "state", "entry_zone",
+                                                     "price", "text") if s.get(k) is not None)
+            L.append(f"  - {s['surface']}: {'shown' if s.get('shown') else 'not shown'} — {vals} "
+                     f"(`{s.get('record')}`, {s.get('at')})")
+        st = life.get("observed_stops") or {}
+        exc = life.get("excursion") or {}
+        pnl = life.get("pnl") or {}
+        ef, xf = life.get("entry_fill") or {}, life.get("exit_fill") or {}
+        L += [f"- Fills: entry {ef.get('price')} at {ef.get('at')} → exit {xf.get('price')} at {xf.get('at')} "
+              f"({life.get('hold_days')} days); "
+              f"P/L ${pnl.get('net_pnl_usd')} ({pnl.get('pnl_pct')}%); R {pnl.get('r_multiple')} on the linked plan, "
+              f"{pnl.get('r_on_initial_observed_stop')} on the initial observed stop, "
+              f"{pnl.get('r_on_plan_invalidation_at_entry')} on the plan invalidation at entry "
+              f"({pnl.get('plan_invalidation_at_entry')}).",
+              f"- Observed stops: {' → '.join(str(p['stop_price_observed']) for p in st.get('path') or [])} "
+              f"({st.get('ratchets_up')} ratchets; last {'FILLED' if st.get('filled') else 'not filled'}).",
+              f"- Excursion ({exc.get('basis')}): MFE {exc.get('mfe_pct')}% ({exc.get('mfe_price')} on "
+              f"{exc.get('mfe_at')}), MAE {exc.get('mae_pct')}% ({exc.get('mae_price')} on {exc.get('mae_at')}).",
+              "- Conviction while held: " + "; ".join(f"{c['at']} {c['stance']} {c['conviction']} #{c['rank']}"
+                                                       for c in life.get("conviction_while_held") or []) + ".",
+              f"- **Exit cause: {(life.get('exit_cause') or {}).get('class')}** — "
+              f"{(life.get('exit_cause') or {}).get('evidence')}.",
+              f"- **Post-exit review: {(rev.get('noise_vs_trend') or {}).get('verdict')}** — "
+              f"{(rev.get('noise_vs_trend') or {}).get('basis')}. Prose: {rev.get('prose_status')}.",
+              f"- **Re-entry: {adv.get('state')}** ({adv.get('action')}). Conditions: "
+              + "; ".join(f"{c['id']} {'met' if c['met'] else ('not met' if c['met'] is False else 'unknown')}"
+                          for c in adv.get("conditions") or [])
+              + ". Alert levels: " + ", ".join(f"{a['reference']} {a['level']}" for a in adv.get("alert_levels") or [])
+              + f". Lane: {adv.get('lane')}; one alert `{(adv.get('one_alert') or {}).get('dedupe_key')}` (not sent).",
+              "- Conflicts on the record: " + "; ".join(
+                  f"{c['field']}: " + " vs ".join(f"{v['value']} ({v['source']})" for v in c["values"])
+                  for c in r.get("conflicts") or []) + ".",
+              f"- Events (append-only, one per fact): {len(r.get('lifecycle_events') or [])} — "
+              + ", ".join(sorted({e['event_type'] for e in r.get('lifecycle_events') or []})) + ".", ""]
+    held = [r for r in rows if r["position_lifecycle"].get("status") == "open"]
+    if held:
+        L.append(f"Held positions with a lifecycle on the record: {len(held)} — "
+                 + ", ".join(f"{r['symbol']} ({(r.get('origin') or {}).get('classification') or 'origin n/a'})"
+                             for r in held[:30]) + ". An open position's origin needs its buy fill "
+                 "(trade_transactions, read with --with-db); 'origin n/a' means the fills were not read in this run.")
+    return L
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -171,6 +232,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--with-db", action="store_true", help="also read DB inputs through a READ ONLY session")
     ap.add_argument("--compare", action="store_true", help="add the comparison vs Home / Watch / Telegram")
     ap.add_argument("--watch-surface-json", help="a captured Watch top-ideas response to compare against")
+    ap.add_argument("--captured-inputs", help="JSON of lifecycle rows captured read-only elsewhere (round_trips, "
+                    "fills, stop_history, rec_links, bars) — a report run where this process opens no database")
     ap.add_argument("--top", type=int, default=50)
     ap.add_argument("--out", help="write the full build JSON to this path (a report, not a store)")
     ap.add_argument("--report-md", help="write the comparison as Markdown to this path")
@@ -183,7 +246,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.with_db:
             db_query, conn = _readonly_db_query()
         try:
-            doc = builder.build(state_root, db_query=db_query, now=now)
+            captured = json.loads(Path(args.captured_inputs).read_text(encoding="utf-8")) \
+                if args.captured_inputs else None
+            doc = builder.build(state_root, db_query=db_query, now=now, captured=captured)
         finally:
             if conn is not None:
                 conn.close()
