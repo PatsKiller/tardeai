@@ -138,6 +138,9 @@ CALLER_TASK_PROCESS_MAP: dict[str, dict[str, str]] = {
         "watchlist_steph_flash_narrative": "watchlist_steph_flash_narrative",
         "watchlist_agent_flash_extract": "watchlist_agent_flash_extract",
         "watchlist_cio_synthesis_cron": "watchlist_cio_synthesis_cron",
+        # 2026-10-22 (incident SPCX resume, operator "switch on after your fix"): the Grok stop review on its own
+        # process with a grok-only routing row (no fallback); used only when TRADEAI_LLM_VIA_BRIDGE routes it here.
+        "grok_stop_review": "grok_stop_review",
         # 2026-10-22: the options-desk CIO thesis review on its own process (was Steph's via cio_synthesis,
         # refused POLICY_NOT_ALLOWED on FAST_THINK); used only when TRADEAI_LLM_VIA_BRIDGE routes it here.
         "options_thesis_cio_review": "options_thesis_cio_review",
