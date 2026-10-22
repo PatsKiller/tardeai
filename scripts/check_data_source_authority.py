@@ -26,6 +26,14 @@ CHECKS
     WRITER_MISSING        a domain's declared writer file does not exist
     WRITER_UNDECLARED     a domain has no writer and does not declare UNCONSOLIDATED + a target
     PROJECTION_MISSING    a domain's declared projection is not in the broker catalog
+    UNAPPROVED_READER     a domain with a `reader_gate` (positions_store: "no reader until the
+                          operator approves each phase-3 reader batch", AGENTS.md §7A) is read
+                          (FROM/JOIN <gated table>) by a file under scripts/ that is not its
+                          writer, an `approved_readers[].files` entry, or a
+                          `reader_gate.measured_unbatched_readers` key
+    READER_GRANT_INVALID  an `approved_readers[]` entry lacks batch/reader/files/tables or a
+                          complete operator approval, names a file that does not exist, or
+                          names a file that no longer reads any of its tables
     WRITER_COUNT_ROSE     more files write a declared store than the recorded baseline
     DIRECT_READ_ROSE      more hub handlers read a declared store directly than baseline
     LANE_DIRECT_READ_ROSE more scheduled-lane files read a projection-owned store directly
@@ -212,6 +220,60 @@ def check_approvals(auth: dict) -> list[dict]:
         if missing:
             findings.append({"check": "UNAPPROVED_SOURCE", "kind": "domain", "name": d.get("domain"), "missing": missing,
                              "action": "operator-only (AGENTS.md §17): propose the approval record in a PR; do not use the source until granted"})
+    return findings
+
+
+def _reads_table(text: str, tables) -> bool:
+    return any(re.search(rf"\b(FROM|JOIN)\s+{re.escape(t)}\b", text, re.I) for t in tables)
+
+
+def check_readers(auth: dict, files: list[Path]) -> list[dict]:
+    """Reader batches for gated stores (positions_store phase 3, AGENTS.md §7A).
+
+    A gated store has no reader until the operator approves a reader batch; the grant is the
+    approved_readers[] entry (batch, reader, files, tables, approval). A file that reads a gated
+    table without being the writer, an approved reader or a measured pre-batch reader fails.
+    """
+    findings: list[dict] = []
+    for d in auth.get("domains", []):
+        gate = d.get("reader_gate")
+        readers = d.get("approved_readers") or []
+        if not isinstance(gate, dict) and not readers:
+            continue
+        name = d.get("domain")
+        tables = list((gate or {}).get("tables") or [(d.get("store") or {}).get("table")])
+        approved_files: set[str] = set()
+        for i, r in enumerate(readers):
+            missing = [k for k in ("batch", "reader", "files", "tables") if not r.get(k)]
+            missing += [f"approval.{k}" for k in _approval_missing(r, APPROVAL_KEYS_ACTIVE)]
+            if missing:
+                findings.append({"check": "READER_GRANT_INVALID", "domain": name, "entry": i, "missing": missing})
+                continue
+            for f in r["files"]:
+                p = PROJECT_ROOT / f
+                if not p.is_file():
+                    findings.append({"check": "READER_GRANT_INVALID", "domain": name, "entry": i, "file": f,
+                                     "why": "file does not exist"})
+                elif not _reads_table(p.read_text(encoding="utf-8", errors="replace"), r["tables"]):
+                    findings.append({"check": "READER_GRANT_INVALID", "domain": name, "entry": i, "file": f,
+                                     "why": f"file no longer reads {r['tables']}; remove or correct the entry"})
+                approved_files.add(f)
+        if not isinstance(gate, dict):
+            continue
+        allowed = approved_files | set(gate.get("measured_unbatched_readers") or {}) | {d.get("writer")}
+        for p in files:
+            rel = _rel(p)
+            if rel in allowed or rel == "scripts/check_data_source_authority.py":
+                continue
+            try:
+                text = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if _reads_table(text, tables):
+                findings.append({"check": "UNAPPROVED_READER", "domain": name, "file": rel,
+                                 "action": "operator-only (AGENTS.md §7A, §17): a reader of this store needs an "
+                                           "approved phase-3 reader batch recorded in approved_readers[]; until "
+                                           "then read it through its approved accessor"})
     return findings
 
 
@@ -501,6 +563,7 @@ def main() -> int:
     undeclared_baseline = set(baseline.get("undeclared_hosts", []))
     findings += [u for u in undeclared if u["host"] not in undeclared_baseline]
     findings += check_approvals(auth)
+    findings += check_readers(auth, files)
     findings += check_domains(auth)
     findings += check_routing_policy(auth)
     findings += compare_baseline("WRITER_COUNT_ROSE", writers, baseline.get("writers", {}))

@@ -96,10 +96,16 @@ board:
 
 # Held flag — the one reader is lib/data_broker/watch_domains.held_positions() (2026-10-22 Watch audit).
 # positions_store_reader: read held names from positions_current (broker-synced, positions_sync freshness contract)
-#   before holdings.json. Ships FALSE: config/data_source_authority.json says the positions_store has no reader until
-#   the operator approves a phase-3 reader batch (AGENTS.md §7A, §17). Setting it true IS that operator grant —
-#   record it in the positions_store registry row's approval in the same PR.
+#   before holdings.json. ON since 2026-10-22: the operator approved positions_store phase-3 reader batch #1 = the
+#   Watch held flag ("I take your recommendations on above", reply to "Use the broker-synced store for 'held' on
+#   Watch: Watch becomes positions batch #1 … Recommend: yes"). The grant is recorded in
+#   config/data_source_authority.json, domain positions_store, approved_readers[batch 1] (AGENTS.md §7A, §17).
+# positions_store_reader_surfaces: the callers that may read the store. Only "watch" (batch #1). A held_positions()
+#   caller with no surface (advice digest, opportunity) reads holdings.json only. Adding a surface is a new reader
+#   batch — an operator grant, recorded in the registry in the same PR.
+# A stale, empty or unreadable store falls back to holdings.json with an explicit fallback_reason, never silently.
 # holdings_stale_after_hours: holdings.json older than this is served with stale=true (registry stale_after_hours).
 held:
-  positions_store_reader: false
+  positions_store_reader: true
+  positions_store_reader_surfaces: [watch]
   holdings_stale_after_hours: 24

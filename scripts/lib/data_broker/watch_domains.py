@@ -94,15 +94,19 @@ def membership_screener() -> set[str]:
 # Now: held_positions() is the one reader, with an explicit freshness verdict and CUSIP rows resolved through the
 # identity registry (or reported as unresolved, never counted as a held card).
 #   1. positions_store (positions_current, broker-synced) — ONLY when config/watch_decision_standards.yaml
-#      held.positions_store_reader is true. The registry (config/data_source_authority.json, domain positions_store)
-#      says that store has no reader until the operator approves a phase-3 reader batch (AGENTS.md §7A, §17), so
-#      the switch ships OFF and flipping it is the operator's grant. When on and fresh (the positions_sync freshness
-#      contract: 30 min in session, 72 h closed) it wins; when stale the verdict says so and step 2 serves.
+#      held.positions_store_reader is true AND the caller's surface is in held.positions_store_reader_surfaces.
+#      The registry (config/data_source_authority.json, domain positions_store, approved_readers) lists each
+#      operator-approved phase-3 reader batch (AGENTS.md §7A, §17). Batch #1 = the Watch held flag (operator
+#      2026-10-22): surface "watch" only. Other membership_held() callers (advice digest, opportunity) pass no
+#      surface and keep reading step 2 until a later batch names them. When on and fresh (the positions_sync
+#      freshness contract: 30 min in session, 72 h closed) the store wins; when stale, empty or unreadable the
+#      verdict carries fallback_reason and step 2 serves — never silently.
 #   2. holdings_accounts (holdings.json through lib/portfolio_positions.load_store, the approved accessor), with
 #      its own freshness (holdings_stale_after_hours, default 24 = the registry's stale_after_hours).
 
 HELD_CACHE_S = 60
-_held_cache: dict[str, Any] = {"at": 0.0, "val": None}
+_held_cache: dict[str, Any] = {}          # surface -> {"at": monotonic, "val": verdict}
+WATCH_SURFACE = "watch"                   # positions_store reader batch #1 (operator 2026-10-22)
 _NOT_POSITIONS = ("CASH", "SPAXX", "FDRXX")
 
 
@@ -213,23 +217,34 @@ def _num(v: Any) -> float:
         return 0.0
 
 
+def store_reader_on(cfg: dict, surface: str | None) -> bool:
+    """True only when the switch is on AND this caller's surface is an approved reader batch surface.
+    A missing surface list is empty (fail closed): a surface reads positions_current only by name."""
+    if not cfg.get("positions_store_reader") or not surface:
+        return False
+    return surface in {str(x) for x in (cfg.get("positions_store_reader_surfaces") or ())}
+
+
 def held_positions(*, db_query=None, holdings_path: Path | None = None, registry: dict | None = None,
-                   now: datetime | None = None, cfg: dict | None = None) -> dict[str, Any]:
-    """{symbols, source, as_of, age_s, stale_after_s, stale, resolved, unresolved, fallback_reason} — the one held
-    reader (see the block comment above). Cached HELD_CACHE_S seconds when called with no injected inputs."""
+                   now: datetime | None = None, cfg: dict | None = None,
+                   surface: str | None = None) -> dict[str, Any]:
+    """{symbols, source, as_of, age_s, stale_after_s, stale, resolved, unresolved, fallback_reason, surface} — the
+    one held reader (see the block comment above). Cached HELD_CACHE_S seconds per surface when called with no
+    injected inputs."""
     import time as _time
     injected = any(x is not None for x in (db_query, holdings_path, registry, now, cfg))
     if not injected:
-        hit = _held_cache.get("val")
-        if hit is not None and _time.monotonic() - _held_cache["at"] < HELD_CACHE_S:
-            return hit
+        hit = _held_cache.get(surface or "")
+        if hit is not None and _time.monotonic() - hit["at"] < HELD_CACHE_S:
+            return hit["val"]
     now = now or _now()
     cfg = _held_cfg() if cfg is None else cfg
+    reader_on = store_reader_on(cfg, surface)
     fallback_reason = None
     raw: list[dict] = []
     source, as_of = "unavailable", None
     fresh: dict[str, Any] = {"stale": True, "age_s": None, "limit_s": None}
-    if cfg.get("positions_store_reader"):
+    if reader_on:
         try:
             rows, last = _positions_store_rows(db_query or _db_query)
             fresh = _store_freshness(last, now)
@@ -266,23 +281,25 @@ def held_positions(*, db_query=None, holdings_path: Path | None = None, registry
         "resolved": resolved,
         "unresolved": sorted(cusips - set(resolved)),
         "fallback_reason": fallback_reason,
-        "positions_store_reader": bool(cfg.get("positions_store_reader")),
+        "positions_store_reader": reader_on,
+        "surface": surface,
     }
     if not injected:
-        _held_cache.update(at=_time.monotonic(), val=out)
+        _held_cache[surface or ""] = {"at": _time.monotonic(), "val": out}
     return out
 
 
 def held_detail_public(h: dict[str, Any] | None = None) -> dict[str, Any]:
     """JSON-safe held verdict for payloads (symbols as a count, never a list of positions sizes)."""
-    h = h if h is not None else held_positions()
+    h = h if h is not None else held_positions(surface=WATCH_SURFACE)
     return {k: (len(v) if k == "symbols" else v) for k, v in h.items()} | {"count": len(h.get("symbols") or ())}
 
 
-def membership_held() -> tuple[set[str], str]:
-    """Return (held symbols, source label) from held_positions() — the one held reader for every Watch layer."""
+def membership_held(surface: str | None = None) -> tuple[set[str], str]:
+    """Return (held symbols, source label) from held_positions() — the one held reader for every Watch layer.
+    Watch layers pass surface=WATCH_SURFACE (reader batch #1); a caller with no surface reads holdings.json only."""
     try:
-        h = held_positions()
+        h = held_positions(surface=surface)
     except Exception:
         return set(), "unavailable"
     label = h["source"] + (":stale" if h.get("stale") and h["source"] != "unavailable" else "")
