@@ -385,18 +385,22 @@ def advance(
         # (OI 0, 185% spread) is not researched or reviewed (2026-09-26 dry test).
         ent_blocks = [b for b in ((p.get("enterprise") or {}).get("blocks") or [])
                       if not str((b or {}).get("code", "") if isinstance(b, dict) else b).startswith(("thesis_", "awaiting_cio"))]
+        # 2026-10-22: the abandon window runs BEFORE the liquidity skip. An idea blocked on
+        # liquidity used to skip this check on every pass, so it was never archived and its
+        # incomplete thesis sat on the desk indefinitely.
+        if missing and not rereview and age >= float(s["abandon_after_hours"]):
+            step.update(action="ABANDON", reason=f"no complete thesis within {s['abandon_after_hours']}h; "
+                                                  f"still missing: {', '.join(missing)}"
+                                                  + ("; also blocked for liquidity or risk" if ent_blocks else ""))
+            if apply:
+                store.append_event(guid, "OPTIONS_THESIS_ABANDONED", reason=step["reason"], missing=missing)
+            report.append(step)
+            continue
         if ent_blocks:
             step.update(action="SKIP_ENTERPRISE_BLOCK", reason="blocked for liquidity or risk; research cannot clear it")
             report.append(step)
             continue
         if missing and not rereview:
-            if age >= float(s["abandon_after_hours"]):
-                step.update(action="ABANDON", reason=f"no complete thesis within {s['abandon_after_hours']}h; "
-                                                      f"still missing: {', '.join(missing)}")
-                if apply:
-                    store.append_event(guid, "OPTIONS_THESIS_ABANDONED", reason=step["reason"], missing=missing)
-                report.append(step)
-                continue
             req = life.get("research_request")
             done = life.get("research")
             if req and not done:

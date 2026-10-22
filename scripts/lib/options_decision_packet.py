@@ -10,8 +10,12 @@ from datetime import datetime, timezone
 
 try:
     from scripts.lib.recommendation_comparison import build_recommendation_comparison
+    from scripts.lib import options_desk_accuracy as _acc
 except ImportError:  # api_v2 puts scripts/ on sys.path
     from lib.recommendation_comparison import build_recommendation_comparison  # type: ignore
+    from lib import options_desk_accuracy as _acc  # type: ignore
+
+_STALE_CODES = {"quote_stale", "option_chain_stale", "quote_age_unknown", "chain_age_unknown"}
 
 SCHEMA = "OptionsDecisionPacket@v1"
 
@@ -38,8 +42,15 @@ def review_workflow(proposal: dict[str, Any], *, now: datetime | None = None) ->
     blocks = list(ent.get("blocks") or []) + list(proposal.get("thesis_blocks") or [])
     texts = [str(b.get("code", "")) + " " + str(b.get("reason", "")) if isinstance(b, dict) else str(b)
              for b in blocks]
+    # 2026-10-22: Next/Owner follow the lifecycle stage and the session NOW. An idea whose
+    # CIO review stopped after three policy refusals said "Review the exact strategy" forever.
+    now = now or datetime.now(timezone.utc)
+    life = _acc.lifecycle_stage(proposal)
+    session_now = _acc.session_at(now)
+
     def result(state: str, reason: str, action: str, owner: str) -> dict[str, Any]:
         return {"state": state, "reason": reason, "next_action": action, "owner": owner,
+                "lifecycle_stage": life["stage"], "market_session": session_now,
                 "live_submit": False, "decision_guid": dec.get("decision_guid"),
                 "proposal_id": proposal.get("id"), "option_strategy_guid": proposal.get("option_strategy_guid"),
                 "options_thesis_pin": thesis.get("pin"),
@@ -48,22 +59,30 @@ def review_workflow(proposal: dict[str, Any], *, now: datetime | None = None) ->
     expired = False
     if expiration:
         try:
-            expired = datetime.fromisoformat(expiration).date() < (now or datetime.now(timezone.utc)).date()
+            expired = datetime.fromisoformat(expiration).date() < now.date()
         except ValueError:
             pass  # Missing/bad dates cannot grant execution eligibility.
     if proposal.get("thesis_abandoned") or stage.startswith("ARCHIVED") or outcome in {"REJECT", "EXPIRED"} or expired:
         return result("REJECTED_OR_EXPIRED", outcome or ("contract expired" if expired else stage) or "archived", "Reconsider only with new evidence", "CIO / operator")
+    if life["stage"] == "REVIEW_FAILURE_CAP" and not outcome:
+        return result("BLOCKED", f"CIO review failed {life['review_failures']} times"
+                      + (f" ({life['review_failure_reason']})" if life.get("review_failure_reason") else ""),
+                      _acc.review_cap_text(life), "Operator")
     if missing or not thesis.get("pin") or outcome in {"MORE_RESEARCH", "RESEARCH_MORE"}:
         reason = "Missing: " + ", ".join(missing) if missing else (outcome or "Options thesis is not recorded")
         return result("NEEDS_RESEARCH", reason, "Complete the existing thesis and research gaps", "Research / CIO")
     # A pending decision is the purpose of this queue. Quote and policy failures remain visible.
     other = [t for t in texts if not ("awaiting_cio_decision" in t.lower() or "cio decision pending" in t.lower())]
     liquidity = ent.get("liquidity") or {}
+    requote = ("Re-quote now" if session_now == "REGULAR" else
+               f"Re-quote after the open (market {str(session_now or 'unknown').lower().replace('_', ' ')})")
     if liquidity.get("pass") is False:
         return result("NEEDS_DATA", "; ".join(map(str, liquidity.get("issues") or ["Quote/liquidity failed"])),
-                      "Validate quotes during the regular session", "Quote validation")
+                      requote, "Quote validation")
     quote_words = ("awaiting live quotes", "quote", "liquidity", "spread_too_wide", "market closed", "market_closed")
-    hard = [t for t in other if not any(w in t.lower() for w in quote_words)]
+    stale = [b for b in blocks if isinstance(b, dict) and b.get("code") in _STALE_CODES]
+    stale_texts = {str(b.get("code", "")) + " " + str(b.get("reason", "")) for b in stale}
+    hard = [t for t in other if t not in stale_texts and not any(w in t.lower() for w in quote_words)]
     if hard:
         return result("BLOCKED", "; ".join(hard), "Resolve the recorded policy or evidence block", "CIO / operator")
     if outcome == "APPROVE":
@@ -71,6 +90,9 @@ def review_workflow(proposal: dict[str, Any], *, now: datetime | None = None) ->
             return result("READY_FOR_PREFLIGHT", "CIO approval recorded for this idea", "Fresh preflight and per-order 2FA", "Operator")
         return result("APPROVED_AWAITING_QUOTES", "; ".join(other) or "Execution checks remain outstanding",
                       "Validate quotes and recheck all existing gates", "Quote validation / operator")
+    if stale:
+        return result("NEEDS_DATA", "; ".join(str(b.get("reason") or b.get("code")) for b in stale[:2]),
+                      requote, "Quote validation")
     if liquidity.get("pass") is not True:
         return result("NEEDS_DATA", "Quote/liquidity assessment is missing", "Validate the captured contract quotes", "Quote validation")
     if proposal.get("max_loss") is None or proposal.get("premium") is None:
