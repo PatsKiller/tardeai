@@ -180,8 +180,7 @@ def test_banner_states_the_numbering_dependency_and_the_class_reasoning():
     # 17.0.0 (PROPOSED, header block set by its patch) supersedes the last ACTIVE version: 15.0.0 while 16.0.0 is
     # PROPOSED, 16.0.0 once it is ratified.
     # 18.0.0 (PROPOSED, header block set by its operator-applied patch) supersedes 17.0.0 (ACTIVE, #1914).
-    # 18.1.0 (PROPOSED MINOR, §7 time-settings trap, operator-applied patch) supersedes 18.0.0.
-    allowed = {(17, 0, 0): {"15.0.0", "16.0.0"}, (18, 0, 0): {"17.0.0"}, (18, 1, 0): {"18.0.0"}}.get(
+    allowed = {(17, 0, 0): {"15.0.0", "16.0.0"}, (18, 0, 0): {"17.0.0"}}.get(
         _version(), {supersedes.get(_version(), "5.1.0")})
     assert _control("Supersedes") in allowed
     assert f"{TOKEN} <pr_number> <head_sha>" in f

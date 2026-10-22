@@ -3,8 +3,7 @@
   "name": "pipeline_time_settings_20261022",
   "files": [
     "tests/test_pipeline_time_settings_20261022.py",
-    "tests/test_process_reaper_orchestrator_runtime.py",
-    "tests/test_agents_policy_18_1_0_time_settings.py"
+    "tests/test_process_reaper_orchestrator_runtime.py"
   ],
   "anchor": "PIPELINE_TIME_SETTINGS_20261022",
   "comment": [
@@ -12,7 +11,6 @@
     "(docs/ops/PIPELINE_TIME_SETTINGS.md): orchestrator reaper cap >= 1377s censored market-hours",
     "floor + 300s and < continuous_runner 2700s; health tick 300s deadline + 10s kill grace inside",
     "TimeoutStartSec=330; watchdog enrichment wait min(240s, step budget - 15s), watchdog step last;",
-    "a 45s enrichment child is not killed; 'Error: []' zombie alert names the clearer.",
-    "AGENTS.md 18.1.0 (PROPOSED) §7 trap pins the same settings once the operator applies its patch."
+    "a 45s enrichment child is not killed; 'Error: []' zombie alert names the clearer."
   ]
 }
