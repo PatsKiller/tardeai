@@ -44,12 +44,14 @@ def app(tmp_path):
     d = tmp_path / "release_train"
     d.mkdir(mode=0o700)
     pem = d / "github-app.pem"
-    pem.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
-                                      serialization.NoEncryption()))
+    pem.write_bytes(
+        key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+    )
     os.chmod(pem, 0o600)
     cfg = d / "github-app.json"
-    cfg.write_text(json.dumps({"app_id": 42, "client_id": "Iv1.test", "installation_id": 7,
-                               "repository": "PatsKiller/tardeai"}))
+    cfg.write_text(
+        json.dumps({"app_id": 42, "client_id": "Iv1.test", "installation_id": 7, "repository": "PatsKiller/tardeai"})
+    )
     os.chmod(cfg, 0o600)
     return {"key": key, "pem": pem, "cfg": cfg}
 
@@ -63,8 +65,9 @@ class FakeApi:
     def __call__(self, method, url, headers, body):
         self.calls.append((method, url, dict(headers), body))
         if url.endswith("/access_tokens"):
-            return self.token_status, json.dumps({"token": TOKEN, "expires_at": "2026-10-21T23:00:00Z",
-                                                  "permissions": self.perms}).encode()
+            return self.token_status, json.dumps(
+                {"token": TOKEN, "expires_at": "2026-10-21T23:00:00Z", "permissions": self.perms}
+            ).encode()
         if method == "GET" and "/pulls?" in url:
             return 200, b"[]"
         if method == "POST" and url.endswith("/pulls"):
@@ -108,8 +111,12 @@ def test_minting_signs_an_rs256_jwt_and_narrows_the_token(app):
     except ImportError:
         pyjwt = None
     if pyjwt is not None:
-        assert pyjwt.decode(jwt, app["key"].public_key(), algorithms=["RS256"],
-                            options={"verify_exp": False, "verify_iat": False}) == claims
+        assert (
+            pyjwt.decode(
+                jwt, app["key"].public_key(), algorithms=["RS256"], options={"verify_exp": False, "verify_iat": False}
+            )
+            == claims
+        )
     assert json.loads(body) == {"repositories": ["tardeai"], "permissions": T.APP_TOKEN_PERMISSIONS}
 
 
@@ -164,8 +171,9 @@ def test_push_publishes_only_the_bound_train_ref_with_no_token_in_argv_or_config
         return T._run(argv, env=env, timeout=timeout)
 
     api = FakeApi()
-    w = T.GitHubAppWriter(_Host(work), None, minter=_minter(app, api), status="ACTIVE",
-                          remote_url=f"file://{origin}", runner=runner)
+    w = T.GitHubAppWriter(
+        _Host(work), None, minter=_minter(app, api), status="ACTIVE", remote_url=f"file://{origin}", runner=runner
+    )
     out = w.push_train_ref(TRAIN, sha)
     assert out == {"ref": f"refs/heads/train/{TRAIN}", "sha": sha, "token_expires_at": "2026-10-21T23:00:00Z"}
     refs = git(origin, "for-each-ref", "--format=%(refname)")
@@ -192,12 +200,19 @@ def test_production_push_url_scopes_the_header_to_github(app, tmp_path):
     assert "push" in seen["argv"] and "config" not in seen["argv"] and "origin" not in seen["argv"]
 
 
-@pytest.mark.parametrize("ref", ["refs/heads/main", "refs/heads/train/rt-20261021-1800-zzzzzz",
-                                 "refs/tags/v1", "refs/heads/train/../main", "main"])
+@pytest.mark.parametrize(
+    "ref",
+    ["refs/heads/main", "refs/heads/train/rt-20261021-1800-zzzzzz", "refs/tags/v1", "refs/heads/train/../main", "main"],
+)
 def test_any_other_ref_is_refused_before_git_runs(app, tmp_path, ref):
     ran = []
-    w = T.GitHubAppWriter(_Host(tmp_path), None, minter=_minter(app, FakeApi()), status="ACTIVE",
-                          runner=lambda *a, **k: ran.append(a) or (0, ""))
+    w = T.GitHubAppWriter(
+        _Host(tmp_path),
+        None,
+        minter=_minter(app, FakeApi()),
+        status="ACTIVE",
+        runner=lambda *a, **k: ran.append(a) or (0, ""),
+    )
     tok = w.minter.mint("x")
     with pytest.raises(PermissionError, match="refused"):
         w._push("a" * 40, ref, bound_ref=f"refs/heads/train/{TRAIN}", token=tok)
@@ -206,8 +221,9 @@ def test_any_other_ref_is_refused_before_git_runs(app, tmp_path, ref):
 
 @pytest.mark.parametrize("train_id", ["../main", "rt-1", "main", "rt-20261021-1800-abc123/../../main"])
 def test_a_bad_train_id_is_refused(app, tmp_path, train_id):
-    w = T.GitHubAppWriter(_Host(tmp_path), None, minter=_minter(app, FakeApi()), status="ACTIVE",
-                          runner=lambda *a, **k: (0, ""))
+    w = T.GitHubAppWriter(
+        _Host(tmp_path), None, minter=_minter(app, FakeApi()), status="ACTIVE", runner=lambda *a, **k: (0, "")
+    )
     with pytest.raises(ValueError):
         w.push_train_ref(train_id, "a" * 40)
 
@@ -216,8 +232,13 @@ def test_a_failed_push_scrubs_the_token(app, tmp_path):
     import base64
 
     b64 = base64.b64encode(f"x-access-token:{TOKEN}".encode()).decode()
-    w = T.GitHubAppWriter(_Host(tmp_path), None, minter=_minter(app, FakeApi()), status="ACTIVE",
-                          runner=lambda *a, **k: (128, f"fatal: header {b64} token {TOKEN} rejected"))
+    w = T.GitHubAppWriter(
+        _Host(tmp_path),
+        None,
+        minter=_minter(app, FakeApi()),
+        status="ACTIVE",
+        runner=lambda *a, **k: (128, f"fatal: header {b64} token {TOKEN} rejected"),
+    )
     with pytest.raises(RuntimeError) as e:
         w.push_train_ref(TRAIN, "a" * 40)
     assert TOKEN not in str(e.value) and b64 not in str(e.value) and "***" in str(e.value)
@@ -234,16 +255,20 @@ def test_pr_open_and_merge_use_the_app_token_through_the_api(app, tmp_path, capl
     assert all(c[2]["Authorization"] == f"token {TOKEN}" for c in api_calls)
     assert json.loads(api_calls[1][3])["head"] == f"train/{TRAIN}" and json.loads(api_calls[1][3])["base"] == "main"
     assert json.loads(api_calls[2][3]) == {"sha": "b" * 40, "merge_method": "merge", "commit_title": "Release train"}
-    assert sum(1 for c in api.calls if "/access_tokens" in c[1]) == 2          # a fresh token per write call
+    assert sum(1 for c in api.calls if "/access_tokens" in c[1]) == 2  # a fresh token per write call
     assert TOKEN not in caplog.text and TOKEN not in json.dumps(w.minter.audit)
 
 
 def test_no_token_reaches_a_train_receipt_or_run_record(app, tmp_path):
     """The writer returns no token; the claim receipt and run record are built from return values only."""
-    w = T.GitHubAppWriter(_Host(tmp_path), None, minter=_minter(app, FakeApi()), status="ACTIVE",
-                          runner=lambda *a, **k: (0, ""))
-    rec = {"push": w.push_train_ref(TRAIN, "a" * 40), "pr": w.open_or_update_batch_pr(TRAIN, "a" * 40, "t", "b"),
-           "audit": w.minter.audit}
+    w = T.GitHubAppWriter(
+        _Host(tmp_path), None, minter=_minter(app, FakeApi()), status="ACTIVE", runner=lambda *a, **k: (0, "")
+    )
+    rec = {
+        "push": w.push_train_ref(TRAIN, "a" * 40),
+        "pr": w.open_or_update_batch_pr(TRAIN, "a" * 40, "t", "b"),
+        "audit": w.minter.audit,
+    }
     assert TOKEN not in json.dumps(rec)
 
 
@@ -255,7 +280,7 @@ def test_release_venv_libraries_are_the_ones_used():
 
 def test_packet_finding_3_is_marked_fixed():
     text = (ROOT / "docs/ops/packets/release-train-arming-20261021/README.md").read_text(encoding="utf-8")
-    seg = text[text.index("3. **`GITHUB_WRITES_STATUS` does not deliver D2.**"):]
+    seg = text[text.index("3. **`GITHUB_WRITES_STATUS` does not deliver D2.**") :]
     assert "**Status: FIXED (built, not armed)**" in seg[:1400]
 
 

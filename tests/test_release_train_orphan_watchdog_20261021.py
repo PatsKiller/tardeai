@@ -42,19 +42,26 @@ def _orphan_setup(w, *, owner=None, ack_min_ago=400):
     spool.claimed.mkdir(parents=True)
     (spool.claimed / f"{req['request_id']}.json").write_text(json.dumps(req))
     ack = T.utc_iso(w.clock.t - ack_min_ago * 60)
-    spool.write_receipt(req["request_id"], T._receipt(req, state="ACKNOWLEDGED", mode="simulate", now=w.clock.t,
-                                                      acknowledged_at=ack))
-    T.RC._atomic_write_json(spool.owners / f"{req['request_id']}.json",
-                            {**(owner or {"pid": 999999, "start_ticks": 1, "host": os.uname().nodename}),
-                             "claimed_at": ack})
+    spool.write_receipt(
+        req["request_id"], T._receipt(req, state="ACKNOWLEDGED", mode="simulate", now=w.clock.t, acknowledged_at=ack)
+    )
+    T.RC._atomic_write_json(
+        spool.owners / f"{req['request_id']}.json",
+        {**(owner or {"pid": 999999, "start_ticks": 1, "host": os.uname().nodename}), "claimed_at": ack},
+    )
     return req, spool
 
 
 def _claim(w, **kw):
     sent = []
-    code, out = T.process_requests(w.state, lambda live: w.controller(live=live), apply=kw.pop("apply", True),
-                                   now=lambda: w.clock.t, notify=lambda m, p: sent.append((p, m)) or {"accepted": True},
-                                   **kw)
+    code, out = T.process_requests(
+        w.state,
+        lambda live: w.controller(live=live),
+        apply=kw.pop("apply", True),
+        now=lambda: w.clock.t,
+        notify=lambda m, p: sent.append((p, m)) or {"accepted": True},
+        **kw,
+    )
     return out, sent
 
 
@@ -79,8 +86,8 @@ def test_an_old_dead_claim_is_orphaned_with_one_p2_and_never_rerun(tmp_path):
     assert [o["result"] for o in out["orphans"]] == ["ORPHANED"]
     assert (spool.orphaned / f"{req['request_id']}.json").exists()
     assert not (spool.claimed / f"{req['request_id']}.json").exists()
-    assert not (spool.pending / f"{req['request_id']}.json").exists()           # never re-queued
-    assert receipt(w, req["request_id"])["state"] == "ACKNOWLEDGED"             # the watchdog writes no receipt
+    assert not (spool.pending / f"{req['request_id']}.json").exists()  # never re-queued
+    assert receipt(w, req["request_id"])["state"] == "ACKNOWLEDGED"  # the watchdog writes no receipt
     assert len(sent) == 1 and sent[0][0] == "P2" and "reconcile" in sent[0][1]
     rows = [json.loads(x) for x in (spool.root / "orphaned.jsonl").read_text().splitlines()]
     assert rows[0]["kind"] == "orphaned" and rows[0]["request_id"] == req["request_id"]
@@ -99,7 +106,7 @@ def test_a_young_claim_is_left_alone(tmp_path):
 
 def test_a_claim_with_a_live_owner_is_left_alone(tmp_path):
     w = World(tmp_path, now=LEAD)
-    req, spool = _orphan_setup(w, owner=T.claim_owner())          # this very process: pid + start time match
+    req, spool = _orphan_setup(w, owner=T.claim_owner())  # this very process: pid + start time match
     out, sent = _claim(w)
     assert out["orphans"][0]["result"].startswith("LIVE_OWNER") and sent == []
     assert (spool.claimed / f"{req['request_id']}.json").exists()
@@ -115,8 +122,17 @@ def test_a_recycled_pid_is_not_a_live_owner(tmp_path):
 def test_a_terminal_claim_is_never_orphaned(tmp_path):
     w = World(tmp_path, now=LEAD)
     req, spool = _orphan_setup(w)
-    spool.write_receipt(req["request_id"], T._receipt(req, state="COMPLETED", mode="simulate", now=w.clock.t,
-                                                      acknowledged_at=T.utc_iso(w.clock.t - 60), outcome="NO_OP"))
+    spool.write_receipt(
+        req["request_id"],
+        T._receipt(
+            req,
+            state="COMPLETED",
+            mode="simulate",
+            now=w.clock.t,
+            acknowledged_at=T.utc_iso(w.clock.t - 60),
+            outcome="NO_OP",
+        ),
+    )
     out, _ = _claim(w)
     assert out["orphans"] == []
 
@@ -146,16 +162,18 @@ def test_needs_action_shows_the_orphan_until_resolved(tmp_path):
     items = NA.rule_release_window(st, datetime.now(ET))
     assert [i["severity"] for i in items] == ["P2"] and req["request_id"] in items[0]["title"]
     # resolve: dry run first, then apply
-    code, body = T.resolve_orphan(w.state, req["request_id"], "claimer killed in drill; nothing to reconcile",
-                                  apply=False, now=lambda: w.clock.t)
+    code, body = T.resolve_orphan(
+        w.state, req["request_id"], "claimer killed in drill; nothing to reconcile", apply=False, now=lambda: w.clock.t
+    )
     assert body["outcome"] == "WOULD_RESOLVE" and receipt(w, req["request_id"])["state"] == "ACKNOWLEDGED"
-    code, body = T.resolve_orphan(w.state, req["request_id"], "claimer killed in drill; nothing to reconcile",
-                                  apply=True, now=lambda: w.clock.t)
+    code, body = T.resolve_orphan(
+        w.state, req["request_id"], "claimer killed in drill; nothing to reconcile", apply=True, now=lambda: w.clock.t
+    )
     assert body["outcome"] == "RESOLVED"
     r = receipt(w, req["request_id"])
     assert r["state"] == "FAILED" and r["refusal"]["code"] == "CONTROLLER_FAILED" and WV.validate_receipt(r) == []
     assert NA.rule_release_window(NA.read_release_window_state(w.state_dir), datetime.now(ET)) == []
-    assert (spool.orphaned / f"{req['request_id']}.json").exists()                # kept, never deleted
+    assert (spool.orphaned / f"{req['request_id']}.json").exists()  # kept, never deleted
 
 
 def test_resolve_is_refused_until_trains_are_reconciled(tmp_path):
@@ -178,7 +196,7 @@ def test_resolve_refuses_an_unknown_request(tmp_path):
 
 def test_packet_finding_6_is_marked_fixed():
     text = (ROOT / "docs/ops/packets/release-train-arming-20261021/README.md").read_text(encoding="utf-8")
-    seg = text[text.index("6. **No watchdog for an orphaned claim.**"):]
+    seg = text[text.index("6. **No watchdog for an orphaned claim.**") :]
     assert "**Status: FIXED**" in seg[:1400]
 
 

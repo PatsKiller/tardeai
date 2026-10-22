@@ -26,6 +26,7 @@ A request is REQUEST_ONLY: the controller re-validates every gate (contract C1-C
 Exit: 0 = the run completed (a no-op or a duplicate is a result, not a failure); 1 = config/policy unusable or the
 append failed; 2 = usage. MBI_BEHAVIOR = 0. AUTHORITY: READ_ONLY_ADVISORY.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -54,9 +55,13 @@ def _parser() -> argparse.ArgumentParser:
     mode.add_argument("--dry-run", action="store_true", help="print the request; write nothing (default)")
     mode.add_argument("--append", action="store_true", help="append the request to the spool")
     ap.add_argument("--shadow-only", action="store_true", help="never request a live train (shadow phase lanes)")
-    ap.add_argument("--inject", choices=list(W.INJECTIONS), default=None,
-                    help="operator drill, SHADOW requests only (refused for a live one): the claimer simulates this "
-                         "failure and records it in the receipt's injected_failures. Never in the n8n lane argv.")
+    ap.add_argument(
+        "--inject",
+        choices=list(W.INJECTIONS),
+        default=None,
+        help="operator drill, SHADOW requests only (refused for a live one): the claimer simulates this "
+        "failure and records it in the receipt's injected_failures. Never in the n8n lane argv.",
+    )
     ap.add_argument("--state-dir", default=None, help="release-window state dir (default: resolved like the runner)")
     ap.add_argument("--config", default=None, help=argparse.SUPPRESS)
     return ap
@@ -84,17 +89,31 @@ def run(
     try:
         cfg = W.load_config(Path(a.config) if a.config else None)
     except W.ContractError as exc:
-        return _finish(lane_id, append, False, {"disposition": "error", "reason": str(exc)[:160]}, started,
-                       receipt_path, exit_code=1)
-    snapshot = W.host_snapshot(now, a.window, cfg, stop_dir=state_dir, policy=policy,
-                               delegation_loader=delegation_loader)
+        return _finish(
+            lane_id,
+            append,
+            False,
+            {"disposition": "error", "reason": str(exc)[:160]},
+            started,
+            receipt_path,
+            exit_code=1,
+        )
+    snapshot = W.host_snapshot(
+        now, a.window, cfg, stop_dir=state_dir, policy=policy, delegation_loader=delegation_loader
+    )
     start = W.window_start(a.window, now, cfg)
     tick = W.tick_kind(start, now, cfg)
     decision = W.decide(snapshot, tick, shadow_only=bool(a.shadow_only))
     summary: dict[str, Any] = {
-        "slot": a.window, "window_id": W.window_id(start), "tick": tick, "disposition": decision["disposition"],
-        "no_op_reason": decision["no_op_reason"], "shadow": decision["shadow"],
-        "shadow_reason": decision["shadow_reason"], "readiness": snapshot, "request_id": None,
+        "slot": a.window,
+        "window_id": W.window_id(start),
+        "tick": tick,
+        "disposition": decision["disposition"],
+        "no_op_reason": decision["no_op_reason"],
+        "shadow": decision["shadow"],
+        "shadow_reason": decision["shadow_reason"],
+        "readiness": snapshot,
+        "request_id": None,
         "append": append,
     }
     if decision["disposition"] == "no_op":
@@ -102,17 +121,32 @@ def run(
     run_id = env.get(LR.RUN_ID_ENV) or f"manual-{lane_id}-{now.strftime('%Y%m%dT%H%M%S')}"
     attempt_raw = env.get(LR.RUN_ATTEMPT_ENV) or ""
     try:
-        doc = W.build_request(a.window, now, cfg, snapshot, decision, run_id=run_id,
-                              attempt=int(attempt_raw) if attempt_raw.isdigit() else None,
-                              run_mode=env.get(LR.RUN_MODE_ENV) or None, code_sha=env.get(LR.CODE_SHA_ENV) or None)
+        doc = W.build_request(
+            a.window,
+            now,
+            cfg,
+            snapshot,
+            decision,
+            run_id=run_id,
+            attempt=int(attempt_raw) if attempt_raw.isdigit() else None,
+            run_mode=env.get(LR.RUN_MODE_ENV) or None,
+            code_sha=env.get(LR.CODE_SHA_ENV) or None,
+        )
     except W.ContractError as exc:
         summary.update({"disposition": "error", "reason": str(exc)[:160]})
         return _finish(lane_id, append, False, summary, started, receipt_path, exit_code=1)
     summary["request_id"] = doc["request_id"]
     if a.inject:
         if doc.get("shadow") is not True:
-            print(json.dumps({"lane_id": lane_id, "disposition": "refused",
-                              "reason": "--inject is for shadow requests only; this request would be live"}))
+            print(
+                json.dumps(
+                    {
+                        "lane_id": lane_id,
+                        "disposition": "refused",
+                        "reason": "--inject is for shadow requests only; this request would be live",
+                    }
+                )
+            )
             return 2
         summary["inject"] = a.inject
     if not append:
@@ -127,31 +161,67 @@ def run(
         return _finish(lane_id, True, False, summary, started, receipt_path, exit_code=1)
     summary["disposition"] = "requested" if result == "appended" else "duplicate"
     summary["spool_path"] = str(path)
-    return _finish(lane_id, True, True, summary, started, receipt_path,
-                   produced=1 if result == "appended" else 0, evidence_path=str(path))
+    return _finish(
+        lane_id,
+        True,
+        True,
+        summary,
+        started,
+        receipt_path,
+        produced=1 if result == "appended" else 0,
+        evidence_path=str(path),
+    )
 
 
-def _finish(lane_id: str, append: bool, ok: bool, summary: dict, started: str, receipt_path: Optional[Path], *,
-            exit_code: int = 0, produced: int = 0, evidence_path: Optional[str] = None) -> int:
+def _finish(
+    lane_id: str,
+    append: bool,
+    ok: bool,
+    summary: dict,
+    started: str,
+    receipt_path: Optional[Path],
+    *,
+    exit_code: int = 0,
+    produced: int = 0,
+    evidence_path: Optional[str] = None,
+) -> int:
     if not append:
-        LR.dry_run_report(lane_id, summary, would_write=["train_requests/journal/<request_id>.json",
-                                                         "train_requests/pending/<request_id>.json"],
-                          receipt=receipt_path)
+        LR.dry_run_report(
+            lane_id,
+            summary,
+            would_write=["train_requests/journal/<request_id>.json", "train_requests/pending/<request_id>.json"],
+            receipt=receipt_path,
+        )
         return exit_code
     output = {
         "produced_count": produced,
         "attempted_count": 1 if summary.get("disposition") in ("requested", "duplicate") else 0,
-        "skipped_reasons": {summary["disposition"]: 1} if summary.get("disposition") not in (None, "requested")
-        else {},
+        "skipped_reasons": {summary["disposition"]: 1} if summary.get("disposition") not in (None, "requested") else {},
         "empty_reason": None if produced else "nothing_due",
         "output_evidence": [{"kind": "file_artifact", "path": evidence_path}] if evidence_path else [],
     }
-    LR.write_lane_receipt(lane_id, ok=ok, exit_code=exit_code, started_at=started, script=SCRIPT,
-                          summary={k: v for k, v in summary.items() if k != "would_append"},
-                          path=receipt_path, output=output)
-    print(json.dumps({"lane_id": lane_id, **{k: summary.get(k) for k in
-                      ("disposition", "request_id", "shadow", "shadow_reason", "no_op_reason", "tick")}},
-                     sort_keys=True))
+    LR.write_lane_receipt(
+        lane_id,
+        ok=ok,
+        exit_code=exit_code,
+        started_at=started,
+        script=SCRIPT,
+        summary={k: v for k, v in summary.items() if k != "would_append"},
+        path=receipt_path,
+        output=output,
+    )
+    print(
+        json.dumps(
+            {
+                "lane_id": lane_id,
+                **{
+                    k: summary.get(k)
+                    for k in ("disposition", "request_id", "shadow", "shadow_reason", "no_op_reason", "tick")
+                },
+            },
+            sort_keys=True,
+        )
+    )
     return exit_code
 
 

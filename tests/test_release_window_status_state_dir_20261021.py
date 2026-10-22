@@ -23,11 +23,16 @@ from tests.test_release_train_arming_20261021 import Sandbox  # noqa: E402
 
 
 def _status(env_over: dict) -> dict:
-    env = {k: v for k, v in os.environ.items()
-           if k not in ("TRADEAI_STATE_ROOT", "TRADEAI_RELEASE_WINDOW_STATE_DIR")}
+    env = {k: v for k, v in os.environ.items() if k not in ("TRADEAI_STATE_ROOT", "TRADEAI_RELEASE_WINDOW_STATE_DIR")}
     env.update(env_over)
-    p = subprocess.run([sys.executable, str(ROOT / "scripts" / "release_window.py"), "status"], cwd=str(ROOT),
-                       env=env, capture_output=True, text=True, timeout=60)
+    p = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "release_window.py"), "status"],
+        cwd=str(ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
     assert p.returncode == 0, p.stderr
     return json.loads(p.stdout)
 
@@ -47,8 +52,9 @@ def test_status_names_the_state_root_source(tmp_path):
 
 def test_status_names_the_default(tmp_path):
     body = _status({"HOME": str(tmp_path)})
-    assert body["state_dir"] == str(tmp_path / "trade-ai-releases" / "persistent-state" / "data" / "runtime"
-                                    / "release_window")
+    assert body["state_dir"] == str(
+        tmp_path / "trade-ai-releases" / "persistent-state" / "data" / "runtime" / "release_window"
+    )
     assert body["state_dir_source"] == "default"
 
 
@@ -83,7 +89,7 @@ def test_step_g_reads_the_runner_dir_from_status(sb):
 
 def test_packet_finding_4_is_marked_fixed():
     text = (ROOT / "docs/ops/packets/release-train-arming-20261021/README.md").read_text(encoding="utf-8")
-    seg = text[text.index("4. **`release_window.py status` reports no `state_dir`.**"):]
+    seg = text[text.index("4. **`release_window.py status` reports no `state_dir`.**") :]
     assert "**Status: FIXED**" in seg[:1200]
 
 

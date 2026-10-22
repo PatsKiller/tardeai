@@ -31,15 +31,35 @@ PENDING = ROOT / "docs/ops/packets/release-train-arming-20261021/framework_pendi
 
 
 def _framework():
-    p = subprocess.run([sys.executable, "scripts/check_n8n_workflow_framework.py", "--workflow", WF, "--json"],
-                       cwd=str(ROOT), capture_output=True, text=True, timeout=300)
+    p = subprocess.run(
+        [sys.executable, "scripts/check_n8n_workflow_framework.py", "--workflow", WF, "--json"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
     return json.loads(p.stdout)
 
 
 def _gate():
-    p = subprocess.run([sys.executable, "scripts/check_n8n_import_ready.py", WF, "--relay-url",
-                        "http://172.19.0.1:18092", "--known-id", "tradeai-fabric-error", "--framework-gate",
-                        "activation", "--json"], cwd=str(ROOT), capture_output=True, text=True, timeout=300)
+    p = subprocess.run(
+        [
+            sys.executable,
+            "scripts/check_n8n_import_ready.py",
+            WF,
+            "--relay-url",
+            "http://172.19.0.1:18092",
+            "--known-id",
+            "tradeai-fabric-error",
+            "--framework-gate",
+            "activation",
+            "--json",
+        ],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
     return p.returncode, json.loads(p.stdout)
 
 
@@ -53,8 +73,11 @@ def test_every_workflow_element_passes(fw):
 
     w = fw["workflows"][0]
     assert w["failing"] == []
-    bad = {k: v["status"] for k, v in w["elements"].items() if v["status"] == "fail"
-           or (v["status"] == "partial" and k in F.CRITICAL_ELEMENTS)}
+    bad = {
+        k: v["status"]
+        for k, v in w["elements"].items()
+        if v["status"] == "fail" or (v["status"] == "partial" and k in F.CRITICAL_ELEMENTS)
+    }
     assert bad == {}
     for k in ("FW-M2", "FW-A1", "FW-R1", "FW-R2", "FW-R6", "FW-C3", "FW-A6", "FW-L1", "FW-L2", "FW-M6"):
         assert w["elements"][k]["status"] == "pass", k
@@ -74,8 +97,9 @@ def test_pending_evidence_equals_the_checkers_obligations(fw):
     w = fw["workflows"][0]
     assert doc["schema"] == "N8nFrameworkPendingEvidence@v1" and doc["status"] == "PENDING"
     assert doc["workflow_id"] == w["id"] == "tradeai-fabric-release-train"
-    assert [(o["id"], o["evidence_required"]) for o in doc["runtime_pending"]] == \
-        [(o["id"], o["evidence_required"]) for o in w["runtime"]]
+    assert [(o["id"], o["evidence_required"]) for o in doc["runtime_pending"]] == [
+        (o["id"], o["evidence_required"]) for o in w["runtime"]
+    ]
     assert all(o["collect_at"] for o in doc["runtime_pending"])
     assert set(doc["platform_blocking"]) == {k for k, v in fw["platform"].items() if v["status"] != "pass"}
     assert doc["static_elements"]["failing"] == []
@@ -83,11 +107,27 @@ def test_pending_evidence_equals_the_checkers_obligations(fw):
 
 
 def test_pending_evidence_is_not_accepted_by_the_gate_as_evidence():
-    p = subprocess.run([sys.executable, "scripts/check_n8n_import_ready.py", WF, "--relay-url",
-                        "http://172.19.0.1:18092", "--known-id", "tradeai-fabric-error", "--framework-gate",
-                        "activation", "--runtime-evidence", str(PENDING), "--json"], cwd=str(ROOT),
-                       capture_output=True, text=True, timeout=300)
-    assert p.returncode != 0                                              # never a pass, never an exception
+    p = subprocess.run(
+        [
+            sys.executable,
+            "scripts/check_n8n_import_ready.py",
+            WF,
+            "--relay-url",
+            "http://172.19.0.1:18092",
+            "--known-id",
+            "tradeai-fabric-error",
+            "--framework-gate",
+            "activation",
+            "--runtime-evidence",
+            str(PENDING),
+            "--json",
+        ],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert p.returncode != 0  # never a pass, never an exception
 
 
 def test_no_gate_exception_or_weakening_was_added():
@@ -96,7 +136,7 @@ def test_no_gate_exception_or_weakening_was_added():
     assert "tradeai-fabric-release-train" not in src
     assert "tradeai-fabric-release-train" not in (ROOT / "scripts/check_n8n_import_ready.py").read_text()
     facts = json.loads((ROOT / "docs/implementation/n8n-maturity/data/n8n_platform_facts_20261015.json").read_text())
-    assert facts["facts"]["host_dead_man_outside_n8n"]["value"] is not True    # unchanged platform facts
+    assert facts["facts"]["host_dead_man_outside_n8n"]["value"] is not True  # unchanged platform facts
 
 
 @pytest.fixture
@@ -127,7 +167,7 @@ def test_step_f_apply_with_evidence_still_meets_the_real_gate(sb, tmp_path):
 
 def test_packet_finding_2_records_the_result():
     text = (ROOT / "docs/ops/packets/release-train-arming-20261021/README.md").read_text(encoding="utf-8")
-    seg = text[text.index("2. **F is blocked by AGENTS §23.24.**"):]
+    seg = text[text.index("2. **F is blocked by AGENTS §23.24.**") :]
     assert "**Status: WORKFLOW CONFORMS; STILL BLOCKED (platform + runtime)**" in seg[:2600]
 
 

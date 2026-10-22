@@ -80,30 +80,91 @@ class Release:
 #: FRED release ids that publish at 08:30 ET. Each id is checked against ``GET /fred/releases`` on every run
 #: (name must match ``name_re``); the ids and the reasons are documented in docs/ops/MACRO_CALENDAR.md §2.
 RELEASE_MAP: tuple[Release, ...] = (
-    Release(50, "employment_situation", "Employment Situation (jobs report)", r"^employment situation$", "08:30",
-            "BLS", "FRED release 50 'Employment Situation' (PAYEMS, UNRATE); BLS publishes at 08:30 ET"),
-    Release(10, "cpi", "Consumer Price Index", r"^consumer price index$", "08:30",
-            "BLS", "FRED release 10 'Consumer Price Index' (CPIAUCSL); BLS publishes at 08:30 ET"),
-    Release(46, "ppi", "Producer Price Index", r"^producer price index$", "08:30",
-            "BLS", "FRED release 46 'Producer Price Index' (PPIFIS); BLS publishes at 08:30 ET"),
-    Release(9, "retail_sales", "Advance Retail Sales", r"advance monthly sales for retail and food services",
-            "08:30", "Census", "FRED release 9 'Advance Monthly Sales for Retail and Food Services' (RSAFS); "
-            "Census publishes at 08:30 ET"),
-    Release(53, "gdp", "Gross Domestic Product", r"^gross domestic product$", "08:30",
-            "BEA", "FRED release 53 'Gross Domestic Product' (GDP; advance, second and third estimates); "
-            "BEA publishes at 08:30 ET"),
-    Release(180, "jobless_claims", "Unemployment Insurance Weekly Claims", r"unemployment insurance weekly claims",
-            "08:30", "DOL", "FRED release 180 'Unemployment Insurance Weekly Claims Report' (ICSA); DOL publishes "
-            "Thursdays at 08:30 ET, the day before on a Thursday holiday week (FRED carries the actual date)"),
-    Release(54, "pce", "Personal Income and Outlays (PCE)", r"^personal income and outlays$", "08:30",
-            "BEA", "FRED release 54 'Personal Income and Outlays' (PCE, PCEPI); BEA publishes at 08:30 ET"),
-    Release(95, "durable_goods", "Durable Goods (Manufacturers' Shipments, Inventories, and Orders)",
-            r"manufacturers'? shipments,? inventories,? (and|&) orders|durable goods", "08:30", "Census",
-            "FRED release 95 'Manufacturers' Shipments, Inventories, and Orders' (DGORDER). Census publishes the "
-            "advance durable-goods report at 08:30 ET and the full M3 report at 10:00 ET; FRED dates may include "
-            "both, so this can over-skip (the safe direction), never under-skip"),
-    Release(27, "housing_starts", "Housing Starts (New Residential Construction)", r"^new residential construction$",
-            "08:30", "Census", "FRED release 27 'New Residential Construction' (HOUST); Census publishes at 08:30 ET"),
+    Release(
+        50,
+        "employment_situation",
+        "Employment Situation (jobs report)",
+        r"^employment situation$",
+        "08:30",
+        "BLS",
+        "FRED release 50 'Employment Situation' (PAYEMS, UNRATE); BLS publishes at 08:30 ET",
+    ),
+    Release(
+        10,
+        "cpi",
+        "Consumer Price Index",
+        r"^consumer price index$",
+        "08:30",
+        "BLS",
+        "FRED release 10 'Consumer Price Index' (CPIAUCSL); BLS publishes at 08:30 ET",
+    ),
+    Release(
+        46,
+        "ppi",
+        "Producer Price Index",
+        r"^producer price index$",
+        "08:30",
+        "BLS",
+        "FRED release 46 'Producer Price Index' (PPIFIS); BLS publishes at 08:30 ET",
+    ),
+    Release(
+        9,
+        "retail_sales",
+        "Advance Retail Sales",
+        r"advance monthly sales for retail and food services",
+        "08:30",
+        "Census",
+        "FRED release 9 'Advance Monthly Sales for Retail and Food Services' (RSAFS); Census publishes at 08:30 ET",
+    ),
+    Release(
+        53,
+        "gdp",
+        "Gross Domestic Product",
+        r"^gross domestic product$",
+        "08:30",
+        "BEA",
+        "FRED release 53 'Gross Domestic Product' (GDP; advance, second and third estimates); "
+        "BEA publishes at 08:30 ET",
+    ),
+    Release(
+        180,
+        "jobless_claims",
+        "Unemployment Insurance Weekly Claims",
+        r"unemployment insurance weekly claims",
+        "08:30",
+        "DOL",
+        "FRED release 180 'Unemployment Insurance Weekly Claims Report' (ICSA); DOL publishes "
+        "Thursdays at 08:30 ET, the day before on a Thursday holiday week (FRED carries the actual date)",
+    ),
+    Release(
+        54,
+        "pce",
+        "Personal Income and Outlays (PCE)",
+        r"^personal income and outlays$",
+        "08:30",
+        "BEA",
+        "FRED release 54 'Personal Income and Outlays' (PCE, PCEPI); BEA publishes at 08:30 ET",
+    ),
+    Release(
+        95,
+        "durable_goods",
+        "Durable Goods (Manufacturers' Shipments, Inventories, and Orders)",
+        r"manufacturers'? shipments,? inventories,? (and|&) orders|durable goods",
+        "08:30",
+        "Census",
+        "FRED release 95 'Manufacturers' Shipments, Inventories, and Orders' (DGORDER). Census publishes the "
+        "advance durable-goods report at 08:30 ET and the full M3 report at 10:00 ET; FRED dates may include "
+        "both, so this can over-skip (the safe direction), never under-skip",
+    ),
+    Release(
+        27,
+        "housing_starts",
+        "Housing Starts (New Residential Construction)",
+        r"^new residential construction$",
+        "08:30",
+        "Census",
+        "FRED release 27 'New Residential Construction' (HOUST); Census publishes at 08:30 ET",
+    ),
 )
 
 
@@ -139,8 +200,9 @@ def _scrub(text: str, key: str) -> str:
 def urllib_fetch(path: str, params: dict[str, Any], key: str) -> bytes:
     """GET ``FRED_BASE + path`` with ``params`` and the key. Errors carry the status only, never the URL."""
     q = urllib.parse.urlencode({**params, "api_key": key, "file_type": "json"})
-    req = urllib.request.Request(f"{FRED_BASE}{path}?{q}", headers={"Accept": "application/json",
-                                                                   "User-Agent": "tradeai-macro-calendar/1"})
+    req = urllib.request.Request(
+        f"{FRED_BASE}{path}?{q}", headers={"Accept": "application/json", "User-Agent": "tradeai-macro-calendar/1"}
+    )
     try:
         with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT_S) as resp:  # noqa: S310 — fixed https host
             return resp.read()
@@ -164,8 +226,10 @@ def fred_json(fetch: Fetcher, path: str, params: dict[str, Any], key: str) -> di
     if not isinstance(body, dict):
         raise RefreshError("dependency_unavailable", f"FRED {path} answered a non-object")
     if "error_code" in body or "error_message" in body:
-        raise RefreshError("dependency_unavailable",
-                           _scrub(f"FRED {path} error {body.get('error_code')}: {body.get('error_message')}"[:240], key))
+        raise RefreshError(
+            "dependency_unavailable",
+            _scrub(f"FRED {path} error {body.get('error_code')}: {body.get('error_message')}"[:240], key),
+        )
     return body
 
 
@@ -199,11 +263,21 @@ def verify_release_ids(releases: list[dict]) -> list[dict]:
         row = by_id.get(rel.release_id)
         name = str((row or {}).get("name") or "")
         ok = bool(row) and re.search(rel.name_re, name.strip(), re.I) is not None
-        out.append({"release_id": rel.release_id, "event": rel.event, "fred_name": name or None,
-                    "press_release": (row or {}).get("press_release"), "ok": ok})
+        out.append(
+            {
+                "release_id": rel.release_id,
+                "event": rel.event,
+                "fred_name": name or None,
+                "press_release": (row or {}).get("press_release"),
+                "ok": ok,
+            }
+        )
         if not ok:
-            bad.append(f"{rel.release_id} ({rel.event}): FRED name {name!r}" if row else
-                       f"{rel.release_id} ({rel.event}): not in /fred/releases")
+            bad.append(
+                f"{rel.release_id} ({rel.event}): FRED name {name!r}"
+                if row
+                else f"{rel.release_id} ({rel.event}): not in /fred/releases"
+            )
     if bad:
         raise RefreshError("verification_failed", "release ids failed verification: " + "; ".join(bad))
     return out
@@ -264,8 +338,16 @@ def _event(event: str, name: str, time_et: str, skips: bool, source: str, **extr
     return {"event": event, "name": name, "time_et": time_et, "skips_0800": skips, "source": source, **extra}
 
 
-def build_calendar(release_rows: list[dict], verified: list[dict], overrides: dict, *, today: date, horizon_end: date,
-                   fetched_at: datetime, receipts: list[dict]) -> dict:
+def build_calendar(
+    release_rows: list[dict],
+    verified: list[dict],
+    overrides: dict,
+    *,
+    today: date,
+    horizon_end: date,
+    fetched_at: datetime,
+    receipts: list[dict],
+) -> dict:
     """Pure: FRED rows + verification + overrides -> the MacroCalendar@v1 body. Raises when coverage is unknown."""
     by_id = {r.release_id: r for r in RELEASE_MAP}
     per_release: dict[int, set[date]] = {rid: set() for rid in by_id}
@@ -276,13 +358,17 @@ def build_calendar(release_rows: list[dict], verified: list[dict], overrides: di
         try:
             d = date.fromisoformat(str(row.get("date")))
         except ValueError:
-            raise RefreshError("dependency_unavailable", f"FRED release {rid} has a bad date {row.get('date')!r}") from None
+            raise RefreshError(
+                "dependency_unavailable", f"FRED release {rid} has a bad date {row.get('date')!r}"
+            ) from None
         if today <= d <= horizon_end:
             per_release[rid].add(d)
     missing = [f"{rid} ({by_id[rid].event})" for rid, ds in per_release.items() if not ds]
     if missing:
-        raise RefreshError("dependency_unavailable",
-                           f"no scheduled dates in {today}..{horizon_end} for {', '.join(missing)}: coverage unknown")
+        raise RefreshError(
+            "dependency_unavailable",
+            f"no scheduled dates in {today}..{horizon_end} for {', '.join(missing)}: coverage unknown",
+        )
     last = {rid: max(ds) for rid, ds in per_release.items()}
     valid_through = min([horizon_end, *last.values()])
     bounded_by = sorted(by_id[rid].event for rid, d in last.items() if d == valid_through)
@@ -291,21 +377,38 @@ def build_calendar(release_rows: list[dict], verified: list[dict], overrides: di
     for rid, ds in per_release.items():
         rel = by_id[rid]
         for d in ds:
-            events.setdefault(d, []).append(_event(rel.event, rel.label, rel.time_et, rel.time_et == "08:30", "fred",
-                                                   release_id=rid, agency=rel.agency))
+            events.setdefault(d, []).append(
+                _event(
+                    rel.event, rel.label, rel.time_et, rel.time_et == "08:30", "fred", release_id=rid, agency=rel.agency
+                )
+            )
     fomc = overrides["fomc"]
     for row in fomc["decision_dates"]:
         d = date.fromisoformat(str(row.get("date") if isinstance(row, dict) else row))
-        events.setdefault(d, []).append(_event(str(fomc.get("event") or "fomc_decision"),
-                                               str(fomc.get("name") or "FOMC rate decision"), fomc["time_et"],
-                                               bool(fomc["skips_0800"]), "overrides:fomc",
-                                               sep=bool(row.get("sep")) if isinstance(row, dict) else None))
+        events.setdefault(d, []).append(
+            _event(
+                str(fomc.get("event") or "fomc_decision"),
+                str(fomc.get("name") or "FOMC rate decision"),
+                fomc["time_et"],
+                bool(fomc["skips_0800"]),
+                "overrides:fomc",
+                sep=bool(row.get("sep")) if isinstance(row, dict) else None,
+            )
+        )
     applied = {"added": [], "removed": []}
     for row in overrides.get("add", []):
         d = date.fromisoformat(row["date"])
         skips = row.get("skips_0800", row["time_et"] == "08:30")
-        events.setdefault(d, []).append(_event(row["event"], str(row.get("name") or row["event"]), row["time_et"],
-                                               bool(skips), "overrides:add", reason=row["reason"]))
+        events.setdefault(d, []).append(
+            _event(
+                row["event"],
+                str(row.get("name") or row["event"]),
+                row["time_et"],
+                bool(skips),
+                "overrides:add",
+                reason=row["reason"],
+            )
+        )
         applied["added"].append({"date": d.isoformat(), "event": row["event"], "reason": row["reason"]})
     for row in overrides.get("remove", []):
         d = date.fromisoformat(row["date"])
@@ -316,17 +419,20 @@ def build_calendar(release_rows: list[dict], verified: list[dict], overrides: di
             events[d] = keep
         else:
             events.pop(d, None)
-        applied["removed"].append({"date": d.isoformat(), "event": row["event"], "reason": row["reason"],
-                                   "matched": gone})
+        applied["removed"].append(
+            {"date": d.isoformat(), "event": row["event"], "reason": row["reason"], "matched": gone}
+        )
 
     dates = {}
     for d in sorted(events):
         if today <= d <= valid_through:
             evs = sorted(events[d], key=lambda e: (e["time_et"], e["event"]))
-            dates[d.isoformat()] = {"weekday": d.strftime("%a"),
-                                    "has_0830": any(e["time_et"] == "08:30" for e in evs),
-                                    "skip_0800": any(e["skips_0800"] for e in evs),
-                                    "events": evs}
+            dates[d.isoformat()] = {
+                "weekday": d.strftime("%a"),
+                "has_0830": any(e["time_et"] == "08:30" for e in evs),
+                "skip_0800": any(e["skips_0800"] for e in evs),
+                "events": evs,
+            }
     return {
         "schema": SCHEMA,
         "lane_id": LANE_ID,
@@ -337,13 +443,22 @@ def build_calendar(release_rows: list[dict], verified: list[dict], overrides: di
         "valid_through_bounded_by": bounded_by,
         "horizon_end": horizon_end.isoformat(),
         "rule_0800": "skip the 08:00 ET window on a date whose entry has skip_0800 true (an event with skips_0800: "
-                     "every 08:30 FRED release; FOMC only if the operator sets it); skip, failing closed, when this "
-                     "file is missing, corrupt, older than 72 h or does not cover the date (scripts/lib/macro_calendar.py)",
+        "every 08:30 FRED release; FOMC only if the operator sets it); skip, failing closed, when this "
+        "file is missing, corrupt, older than 72 h or does not cover the date (scripts/lib/macro_calendar.py)",
         "release_days_0830": [k for k, v in dates.items() if v["has_0830"]],
         "skip_days_0800": [k for k, v in dates.items() if v["skip_0800"]],
         "dates": dates,
-        "release_map": [{"release_id": r.release_id, "event": r.event, "label": r.label, "time_et": r.time_et,
-                         "agency": r.agency, "last_scheduled": last[r.release_id].isoformat()} for r in RELEASE_MAP],
+        "release_map": [
+            {
+                "release_id": r.release_id,
+                "event": r.event,
+                "label": r.label,
+                "time_et": r.time_et,
+                "agency": r.agency,
+                "last_scheduled": last[r.release_id].isoformat(),
+            }
+            for r in RELEASE_MAP
+        ],
         "verification": verified,
         "fomc_decisions": [str(r.get("date") if isinstance(r, dict) else r) for r in fomc["decision_dates"]],
         "overrides_applied": applied,
@@ -370,8 +485,14 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def refresh(key: str, *, fetch: Optional[Fetcher] = None, overrides_path: Path = ROOT / OVERRIDES_REL,
-            now: Optional[datetime] = None, horizon_days: int = DEFAULT_HORIZON_DAYS) -> dict:
+def refresh(
+    key: str,
+    *,
+    fetch: Optional[Fetcher] = None,
+    overrides_path: Path = ROOT / OVERRIDES_REL,
+    now: Optional[datetime] = None,
+    horizon_days: int = DEFAULT_HORIZON_DAYS,
+) -> dict:
     """Fetch, verify, merge. Returns the calendar body; raises ``RefreshError``. Writes nothing."""
     if not key:
         raise RefreshError("no_credentials", f"{KEY_ENV} is not configured")
@@ -382,20 +503,37 @@ def refresh(key: str, *, fetch: Optional[Fetcher] = None, overrides_path: Path =
     overrides, ov_sha = load_overrides(overrides_path)
     releases, rmeta = fred_paged(fetch, "/releases", {"order_by": "release_id", "sort_order": "asc"}, key, "releases")
     verified = verify_release_ids(releases)
-    params = {"realtime_start": today.isoformat(), "realtime_end": horizon_end.isoformat(),
-              "include_release_dates_with_no_data": "true", "order_by": "release_date", "sort_order": "asc"}
+    params = {
+        "realtime_start": today.isoformat(),
+        "realtime_end": horizon_end.isoformat(),
+        "include_release_dates_with_no_data": "true",
+        "order_by": "release_date",
+        "sort_order": "asc",
+    }
     rows, dmeta = fred_paged(fetch, "/releases/dates", params, key, "release_dates")
     rows_sha = hashlib.sha256(json.dumps(rows, sort_keys=True).encode()).hexdigest()
     receipts = [
-        {"source": "fred", "endpoint": "/fred/releases", "fetched_at": now.isoformat(), "count": rmeta.get("count"),
-         "rows": len(releases)},
-        {"source": "fred", "endpoint": "/fred/releases/dates", "fetched_at": now.isoformat(), **{
-            k: dmeta.get(k) for k in ("realtime_start", "realtime_end", "count")},
-         "params": dict(params), "rows": len(rows), "rows_sha256": rows_sha},
+        {
+            "source": "fred",
+            "endpoint": "/fred/releases",
+            "fetched_at": now.isoformat(),
+            "count": rmeta.get("count"),
+            "rows": len(releases),
+        },
+        {
+            "source": "fred",
+            "endpoint": "/fred/releases/dates",
+            "fetched_at": now.isoformat(),
+            **{k: dmeta.get(k) for k in ("realtime_start", "realtime_end", "count")},
+            "params": dict(params),
+            "rows": len(rows),
+            "rows_sha256": rows_sha,
+        },
         {"source": "overrides", "path": OVERRIDES_REL, "sha256": ov_sha, "as_of": overrides.get("as_of")},
     ]
-    return build_calendar(rows, verified, overrides, today=today, horizon_end=horizon_end, fetched_at=now,
-                          receipts=receipts)
+    return build_calendar(
+        rows, verified, overrides, today=today, horizon_end=horizon_end, fetched_at=now, receipts=receipts
+    )
 
 
 # ── output ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -404,11 +542,17 @@ def refresh(key: str, *, fetch: Optional[Fetcher] = None, overrides_path: Path =
 def summary_lines(cal: dict, *, upcoming: int = 25) -> list[str]:
     out = ["release id verification (GET /fred/releases):"]
     for v in cal["verification"]:
-        out.append(f"  {'OK ' if v['ok'] else 'BAD'} {v['release_id']:>4}  {v['event']:<22} FRED name: {v['fred_name']}")
-    out.append(f"coverage: {cal['covers_from']} .. {cal['valid_through']} (bounded by "
-               f"{', '.join(cal['valid_through_bounded_by'])}; horizon {cal['horizon_end']})")
-    out.append(f"08:30 ET release days in coverage: {len(cal['release_days_0830'])}; "
-               f"08:00 skip days: {len(cal['skip_days_0800'])}")
+        out.append(
+            f"  {'OK ' if v['ok'] else 'BAD'} {v['release_id']:>4}  {v['event']:<22} FRED name: {v['fred_name']}"
+        )
+    out.append(
+        f"coverage: {cal['covers_from']} .. {cal['valid_through']} (bounded by "
+        f"{', '.join(cal['valid_through_bounded_by'])}; horizon {cal['horizon_end']})"
+    )
+    out.append(
+        f"08:30 ET release days in coverage: {len(cal['release_days_0830'])}; "
+        f"08:00 skip days: {len(cal['skip_days_0800'])}"
+    )
     shown = 0
     for d, entry in cal["dates"].items():
         if shown >= upcoming:
@@ -418,8 +562,10 @@ def summary_lines(cal: dict, *, upcoming: int = 25) -> list[str]:
         out.append(f"  {d} {entry['weekday']}  {flag}  {evs}")
         shown += 1
     ov = cal["overrides_applied"]
-    out.append(f"overrides: {len(cal['fomc_decisions'])} FOMC dates on file, {len(ov['added'])} added, "
-               f"{len(ov['removed'])} removed")
+    out.append(
+        f"overrides: {len(cal['fomc_decisions'])} FOMC dates on file, {len(ov['added'])} added, "
+        f"{len(ov['removed'])} removed"
+    )
     return out
 
 
@@ -442,14 +588,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     try:
         cal = refresh(key, overrides_path=Path(a.overrides), horizon_days=a.horizon_days)
     except RefreshError as exc:
-        print(f"[macro-calendar] FAILED ({exc.reason}): {_scrub(str(exc), key)} — no calendar written; the 08:00 "
-              "window stays skipped once the previous calendar goes stale", file=sys.stderr)
+        print(
+            f"[macro-calendar] FAILED ({exc.reason}): {_scrub(str(exc), key)} — no calendar written; the 08:00 "
+            "window stays skipped once the previous calendar goes stale",
+            file=sys.stderr,
+        )
         if not a.dry_run:
-            write_lane_receipt(LANE_ID, ok=False, exit_code=1, started_at=started, script="macro_calendar_refresh.py",
-                               error=f"RefreshError: {exc.reason}",
-                               summary={"failure_kind": exc.reason, "detail": _scrub(str(exc), key)[:300]},
-                               output={"produced_count": 0, "attempted_count": len(RELEASE_MAP),
-                                       "skipped_reasons": {exc.skip_reason: 1}})
+            write_lane_receipt(
+                LANE_ID,
+                ok=False,
+                exit_code=1,
+                started_at=started,
+                script="macro_calendar_refresh.py",
+                error=f"RefreshError: {exc.reason}",
+                summary={"failure_kind": exc.reason, "detail": _scrub(str(exc), key)[:300]},
+                output={
+                    "produced_count": 0,
+                    "attempted_count": len(RELEASE_MAP),
+                    "skipped_reasons": {exc.skip_reason: 1},
+                },
+            )
         return 1
     for line in summary_lines(cal):
         print(line)
@@ -457,23 +615,41 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(json.dumps(cal, indent=1, sort_keys=True))
     target = receipt_path(LANE_ID).parent / FILE_NAME
     if a.dry_run:
-        dry_run_report(LANE_ID, {"covers_from": cal["covers_from"], "valid_through": cal["valid_through"],
-                                 "release_days_0830": len(cal["release_days_0830"]),
-                                 "skip_days_0800": len(cal["skip_days_0800"]),
-                                 "verified_ids": [v["release_id"] for v in cal["verification"] if v["ok"]]},
-                       would_write=[str(target), f"data/runtime/{LANE_ID}_last.json"])
+        dry_run_report(
+            LANE_ID,
+            {
+                "covers_from": cal["covers_from"],
+                "valid_through": cal["valid_through"],
+                "release_days_0830": len(cal["release_days_0830"]),
+                "skip_days_0800": len(cal["skip_days_0800"]),
+                "verified_ids": [v["release_id"] for v in cal["verification"] if v["ok"]],
+            },
+            would_write=[str(target), f"data/runtime/{LANE_ID}_last.json"],
+        )
         return 0
     from lib.atomic_json_store import atomic_write_json
 
     atomic_write_json(target, cal, indent=1)
     n = len(cal["skip_days_0800"])
-    write_lane_receipt(LANE_ID, ok=True, exit_code=0, started_at=started, script="macro_calendar_refresh.py",
-                       summary={"calendar": str(target), "covers_from": cal["covers_from"],
-                                "valid_through": cal["valid_through"], "skip_days_0800": n,
-                                "fetched_at": cal["fetched_at"]},
-                       output={"produced_count": n, "attempted_count": len(RELEASE_MAP),
-                               "output_evidence": [{"kind": "file_artifact", "ref": str(target),
-                                                    "fetched_at": cal["fetched_at"]}]})
+    write_lane_receipt(
+        LANE_ID,
+        ok=True,
+        exit_code=0,
+        started_at=started,
+        script="macro_calendar_refresh.py",
+        summary={
+            "calendar": str(target),
+            "covers_from": cal["covers_from"],
+            "valid_through": cal["valid_through"],
+            "skip_days_0800": n,
+            "fetched_at": cal["fetched_at"],
+        },
+        output={
+            "produced_count": n,
+            "attempted_count": len(RELEASE_MAP),
+            "output_evidence": [{"kind": "file_artifact", "ref": str(target), "fetched_at": cal["fetched_at"]}],
+        },
+    )
     print(f"[macro-calendar] wrote {target} ({n} 08:00 skip days, valid through {cal['valid_through']})")
     return 0
 

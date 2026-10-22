@@ -31,7 +31,7 @@ from scripts.lib import release_train_window_view as WV  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 ET = ZoneInfo("America/New_York")
-LEAD = datetime(2026, 10, 21, 16, 35, tzinfo=ET)          # the W-90 request tick for the 18:00 window
+LEAD = datetime(2026, 10, 21, 16, 35, tzinfo=ET)  # the W-90 request tick for the 18:00 window
 
 
 @pytest.fixture(autouse=True)
@@ -46,8 +46,17 @@ def _hermetic(tmp_path, monkeypatch):
 def _marker(w, rid, name):
     d = w.state_dir / "train_requests" / "injections"
     d.mkdir(parents=True, exist_ok=True)
-    (d / f"{rid}.json").write_text(json.dumps({"schema": "TrainInjection@v1", "request_id": rid, "inject": name,
-                                               "created_at": "2026-10-21T20:30:00Z", "created_by": "operator_cli"}))
+    (d / f"{rid}.json").write_text(
+        json.dumps(
+            {
+                "schema": "TrainInjection@v1",
+                "request_id": rid,
+                "inject": name,
+                "created_at": "2026-10-21T20:30:00Z",
+                "created_by": "operator_cli",
+            }
+        )
+    )
 
 
 def _drill(tmp_path, name):
@@ -81,7 +90,7 @@ def test_stop_midrun_halts_shadow_at_the_next_boundary(tmp_path):
     assert r["state"] == "COMPLETED" and r["outcome"] == "STOPPED"
     assert r["injected_failures"] == [{"name": "stop-midrun", "phase": "select", "behaved": "AS_SPECIFIED"}]
     assert "WOULD_HALT" in _codes(r) and "simulate" not in str(json.loads(w.ctl.path.read_text()).get("mode"))
-    assert RC.ReleaseControl(w.state_dir).view().mode == RC.RUNNING          # control file untouched
+    assert RC.ReleaseControl(w.state_dir).view().mode == RC.RUNNING  # control file untouched
 
 
 def test_red_check_fails_pre_merge(tmp_path):
@@ -93,7 +102,7 @@ def test_red_check_fails_pre_merge(tmp_path):
 def test_conflict_ejects_the_pr(tmp_path):
     w, r, _ = _drill(tmp_path, "conflict")
     assert r["injected_failures"] == [{"name": "conflict", "phase": "integrate", "behaved": "AS_SPECIFIED"}]
-    assert r["state"] == "COMPLETED" and r["outcome"] == "NO_OP"          # #12 rides on; shadow never releases
+    assert r["state"] == "COMPLETED" and r["outcome"] == "NO_OP"  # #12 rides on; shadow never releases
 
 
 def test_crash_is_a_failed_controller_with_reconcile_noted(tmp_path):
@@ -106,8 +115,10 @@ def test_crash_is_a_failed_controller_with_reconcile_noted(tmp_path):
 
 def test_an_injection_that_is_not_reached_says_so(tmp_path):
     w = World(tmp_path, now=LEAD)
-    c = w.controller(live=False, queue=__import__("tests.test_release_train_controller_20261021",
-                                                  fromlist=["StaticQueue"]).StaticQueue([]))
+    c = w.controller(
+        live=False,
+        queue=__import__("tests.test_release_train_controller_20261021", fromlist=["StaticQueue"]).StaticQueue([]),
+    )
     c.set_injection("red-check")
     code, rec = c.run(LEAD)
     assert rec["reason"] == "NOTHING_ELIGIBLE"
@@ -122,7 +133,7 @@ def test_a_real_set_latch_halts_shadow(tmp_path):
     T.process_requests(w.state, lambda live: w.controller(live=live), apply=True, now=lambda: w.clock.t)
     r = receipt(w, req["request_id"])
     assert r["state"] == "REFUSED" and r["refusal"]["code"] == "STOP_SET" and _codes(r)[0] == "WOULD_HALT"
-    assert r["members"] == [] and "push_train_ref" not in r["simulated_effects"]   # it never reached qualify
+    assert r["members"] == [] and "push_train_ref" not in r["simulated_effects"]  # it never reached qualify
 
 
 def test_a_real_corrupt_latch_halts_shadow(tmp_path):
@@ -130,13 +141,13 @@ def test_a_real_corrupt_latch_halts_shadow(tmp_path):
     w.state.latch.write_text("{corrupt")
     code, rec = w.controller(live=False).run(LEAD)
     assert rec["reason"] == "REFUSED_STOP_UNREADABLE" and rec["would_halt"]["at"] == "preconditions"
-    assert w.state.latch.read_text() == "{corrupt"                          # never repaired, never removed
+    assert w.state.latch.read_text() == "{corrupt"  # never repaired, never removed
 
 
 def test_stop_mode_without_a_latch_halts_shadow_like_live(tmp_path):
     w = World(tmp_path, now=LEAD)
     w.ctl.request_stop(HOST_ACTOR, "drill")
-    os.rename(w.state.latch, w.state_dir / "STOP.json.archived-test")         # leave only the control STOP mode
+    os.rename(w.state.latch, w.state_dir / "STOP.json.archived-test")  # leave only the control STOP mode
     code, rec = w.controller(live=False).run(LEAD)
     # live refuses REFUSED_STOPPED at the preconditions; shadow now does the same (simulated)
     assert rec["reason"] == "REFUSED_STOPPED" and rec["refused"] and rec["would_halt"]["at"] == "preconditions"
@@ -166,11 +177,15 @@ def test_claimer_refuses_a_live_request_with_a_marker(tmp_path):
     req = request(shadow=False, shadow_reason=None)
     put(w, req)
     _marker(w, req["request_id"], "crash")
-    T.process_requests(w.state, lambda live: w.controller(live=live), apply=True, now=lambda: w.clock.t,
-                       live_status="ACTIVE")
+    T.process_requests(
+        w.state, lambda live: w.controller(live=live), apply=True, now=lambda: w.clock.t, live_status="ACTIVE"
+    )
     r = receipt(w, req["request_id"])
-    assert r["state"] == "REFUSED" and r["refusal"]["code"] == "INVALID_REQUEST" and "shadow-only" in \
-        r["refusal"]["detail"]
+    assert (
+        r["state"] == "REFUSED"
+        and r["refusal"]["code"] == "INVALID_REQUEST"
+        and "shadow-only" in r["refusal"]["detail"]
+    )
     assert w.writer.calls == [] and w.host.calls == []
 
 
@@ -196,8 +211,15 @@ def test_request_writer_inject_writes_the_marker_first_for_shadow(tmp_path, monk
 
 def test_request_writer_refuses_inject_for_a_live_request(tmp_path, monkeypatch, cfg):
     from tests.test_release_train_n8n_20261021 import deleg  # noqa: F401
-    rc = _run(tmp_path, monkeypatch, ["--append", "--inject", "crash"], cfg_override=cfg,
-              pol=policy(armed=True, enabled=("1800",)), code="AUTHORIZED")
+
+    rc = _run(
+        tmp_path,
+        monkeypatch,
+        ["--append", "--inject", "crash"],
+        cfg_override=cfg,
+        pol=policy(armed=True, enabled=("1800",)),
+        code="AUTHORIZED",
+    )
     assert rc == 2
     assert not (tmp_path / "rw/train_requests").exists() or not any((tmp_path / "rw/train_requests").rglob("*.json"))
 
@@ -212,7 +234,7 @@ def test_write_injection_refuses_live_and_unknown():
 
 def test_packet_finding_5_is_marked_fixed():
     text = (ROOT / "docs/ops/packets/release-train-arming-20261021/README.md").read_text(encoding="utf-8")
-    seg = text[text.index("5. **The `injected_failures` receipt field is always `[]`.**"):]
+    seg = text[text.index("5. **The `injected_failures` receipt field is always `[]`.**") :]
     assert "**Status: FIXED**" in seg[:1600]
 
 

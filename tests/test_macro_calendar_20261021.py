@@ -10,6 +10,7 @@ Hermetic: FRED is a canned fake at the fetcher seam and ``urllib.request.urlopen
 nothing here can reach the network. Tmp state roots only. The fixture release dates are SYNTHETIC (shaped like the
 real schedules, not copied from FRED).
 """
+
 from __future__ import annotations
 
 import json
@@ -39,9 +40,15 @@ import macro_calendar_refresh as MCR  # noqa: E402
 from scripts.lib import macro_calendar as MC  # noqa: E402
 from scripts.lib import needs_action as NA  # noqa: E402
 
-COVERS = ["scripts/macro_calendar_refresh.py", "scripts/lib/macro_calendar.py", "scripts/lib/needs_action.py",
-          "config/macro_calendar_overrides.json", "config/lane_registry.json", "config/n8n_run_allowlist.json",
-          "config/n8n_health_contracts.json"]
+COVERS = [
+    "scripts/macro_calendar_refresh.py",
+    "scripts/lib/macro_calendar.py",
+    "scripts/lib/needs_action.py",
+    "config/macro_calendar_overrides.json",
+    "config/lane_registry.json",
+    "config/n8n_run_allowlist.json",
+    "config/n8n_health_contracts.json",
+]
 
 LANE = "macro-calendar-refresh"
 RECEIPT = f"data/runtime/{LANE}_last.json"
@@ -100,8 +107,11 @@ SCHEDULE = {
 
 def _date_rows(schedule=None) -> list[dict]:
     names = {r["id"]: r["name"] for r in RELEASES}
-    rows = [{"release_id": rid, "release_name": names.get(rid, "x"), "date": d}
-            for rid, ds in (schedule or SCHEDULE).items() for d in ds]
+    rows = [
+        {"release_id": rid, "release_name": names.get(rid, "x"), "date": d}
+        for rid, ds in (schedule or SCHEDULE).items()
+        for d in ds
+    ]
     return sorted(rows, key=lambda r: (r["date"], r["release_id"]))
 
 
@@ -122,9 +132,14 @@ class FakeFred:
             return self.raw[path]
         data = {"/releases": ("releases", self.releases), "/releases/dates": ("release_dates", self.rows)}[path]
         off, lim = int(params.get("offset", 0)), int(params.get("limit", 1000))
-        body = {"realtime_start": params.get("realtime_start", "2026-10-21"),
-                "realtime_end": params.get("realtime_end", "9999-12-31"), "count": len(data[1]) + self.count_skew,
-                "offset": off, "limit": lim, data[0]: data[1][off:off + lim]}
+        body = {
+            "realtime_start": params.get("realtime_start", "2026-10-21"),
+            "realtime_end": params.get("realtime_end", "9999-12-31"),
+            "count": len(data[1]) + self.count_skew,
+            "offset": off,
+            "limit": lim,
+            data[0]: data[1][off : off + lim],
+        }
         return json.dumps(body).encode()
 
 
@@ -163,6 +178,7 @@ def test_urllib_fetch_builds_the_url_with_key_and_json_but_errors_carry_no_url(m
     def fake_urlopen(req, timeout):
         seen["url"] = req.full_url
         import urllib.error
+
         raise urllib.error.HTTPError(req.full_url, 503, "busy", {}, None)
 
     monkeypatch.setattr(MCR.urllib.request, "urlopen", fake_urlopen)
@@ -182,10 +198,16 @@ def test_every_mapped_id_is_verified_by_name():
     assert all(r.time_et == "08:30" and r.why for r in MCR.RELEASE_MAP)
 
 
-@pytest.mark.parametrize("releases, needle", [
-    ([r for r in RELEASES if r["id"] != 10], "10 (cpi): not in /fred/releases"),
-    ([{**r, "name": "Consumer Credit"} if r["id"] == 10 else r for r in RELEASES], "10 (cpi): FRED name 'Consumer Credit'"),
-])
+@pytest.mark.parametrize(
+    "releases, needle",
+    [
+        ([r for r in RELEASES if r["id"] != 10], "10 (cpi): not in /fred/releases"),
+        (
+            [{**r, "name": "Consumer Credit"} if r["id"] == 10 else r for r in RELEASES],
+            "10 (cpi): FRED name 'Consumer Credit'",
+        ),
+    ],
+)
 def test_a_missing_or_renamed_id_fails_closed(releases, needle):
     with pytest.raises(MCR.RefreshError) as ei:
         _refresh(fake=FakeFred(releases=releases))
@@ -207,8 +229,10 @@ def test_fred_error_json_is_a_failure_and_the_key_is_scrubbed():
 
 
 def test_paging_reads_every_row_and_a_short_read_fails():
-    noise = [{"release_id": 999, "release_name": "H.10", "date": (date(2026, 10, 21) + timedelta(days=i % 120)).isoformat()}
-             for i in range(1600)]
+    noise = [
+        {"release_id": 999, "release_name": "H.10", "date": (date(2026, 10, 21) + timedelta(days=i % 120)).isoformat()}
+        for i in range(1600)
+    ]
     fake = FakeFred(rows=_date_rows() + noise)
     cal = _refresh(fake=fake)
     offsets = [int(p["offset"]) for path, p in fake.calls if path == "/releases/dates"]
@@ -232,8 +256,15 @@ def test_mapping_flags_0830_days_and_ignores_unmapped_releases():
     assert cal["valid_through"] == "2027-01-20" and cal["valid_through_bounded_by"] == ["housing_starts"]
     cpi = cal["dates"]["2026-11-10"]
     assert cpi["has_0830"] and cpi["skip_0800"] and [e["event"] for e in cpi["events"]] == ["cpi"]
-    assert cpi["events"][0] == {"event": "cpi", "name": "Consumer Price Index", "time_et": "08:30", "skips_0800": True,
-                                "source": "fred", "release_id": 10, "agency": "BLS"}
+    assert cpi["events"][0] == {
+        "event": "cpi",
+        "name": "Consumer Price Index",
+        "time_et": "08:30",
+        "skips_0800": True,
+        "source": "fred",
+        "release_id": 10,
+        "agency": "BLS",
+    }
     assert "2026-12-16" not in cal["dates"]  # release 13 (G.17) is not mapped
     assert all(d <= "2027-01-20" for d in cal["dates"])  # nothing past coverage
     assert set(cal["skip_days_0800"]) == {k for k, v in cal["dates"].items() if v["skip_0800"]}
@@ -249,8 +280,16 @@ def test_thanksgiving_week_claims_follow_fred_to_wednesday():
 def test_fomc_is_recorded_at_1400_and_does_not_skip_unless_the_operator_says_so(tmp_path):
     cal = _refresh()
     fomc = cal["dates"]["2026-10-28"]
-    assert fomc["events"] == [{"event": "fomc_decision", "name": "FOMC rate decision (statement)", "time_et": "14:00",
-                               "skips_0800": False, "source": "overrides:fomc", "sep": False}]
+    assert fomc["events"] == [
+        {
+            "event": "fomc_decision",
+            "name": "FOMC rate decision (statement)",
+            "time_et": "14:00",
+            "skips_0800": False,
+            "source": "overrides:fomc",
+            "sep": False,
+        }
+    ]
     assert not fomc["skip_0800"] and not fomc["has_0830"]
     assert "2027-12-08" in cal["fomc_decisions"]
     ov = _overrides()
@@ -261,12 +300,29 @@ def test_fomc_is_recorded_at_1400_and_does_not_skip_unless_the_operator_says_so(
 
 def test_operator_add_and_remove_overrides_apply_with_reasons(tmp_path):
     ov = _overrides(
-        add=[{"date": "2026-11-02", "event": "ism_manufacturing_moved", "name": "ad hoc", "time_et": "08:30",
-              "reason": "agency moved a release to 08:30", "added_by": "operator", "added_on": "2026-10-21"},
-             {"date": "2026-11-03", "event": "treasury_refunding", "time_et": "08:30", "skips_0800": False,
-              "reason": "record only"}],
-        remove=[{"date": "2026-10-29", "event": "jobless_claims", "reason": "test: claims cancelled"},
-                {"date": "2026-11-06", "event": "*", "reason": "test: shutdown, nothing publishes"}])
+        add=[
+            {
+                "date": "2026-11-02",
+                "event": "ism_manufacturing_moved",
+                "name": "ad hoc",
+                "time_et": "08:30",
+                "reason": "agency moved a release to 08:30",
+                "added_by": "operator",
+                "added_on": "2026-10-21",
+            },
+            {
+                "date": "2026-11-03",
+                "event": "treasury_refunding",
+                "time_et": "08:30",
+                "skips_0800": False,
+                "reason": "record only",
+            },
+        ],
+        remove=[
+            {"date": "2026-10-29", "event": "jobless_claims", "reason": "test: claims cancelled"},
+            {"date": "2026-11-06", "event": "*", "reason": "test: shutdown, nothing publishes"},
+        ],
+    )
     cal = _refresh(tmp_path, overrides=ov)
     assert cal["dates"]["2026-11-02"]["skip_0800"]
     assert cal["dates"]["2026-11-03"]["has_0830"] and not cal["dates"]["2026-11-03"]["skip_0800"]
@@ -278,14 +334,17 @@ def test_operator_add_and_remove_overrides_apply_with_reasons(tmp_path):
     assert applied["removed"][1]["matched"] == ["employment_situation"]
 
 
-@pytest.mark.parametrize("bad, needle", [
-    ({"add": [{"date": "2026-11-02", "event": "x_event", "time_et": "08:30"}]}, "no reason"),
-    ({"remove": [{"date": "2026-11-02", "event": "cpi", "reason": "  "}]}, "no reason"),
-    ({"add": [{"date": "2026-11-02", "event": "Bad Key", "time_et": "08:30", "reason": "r"}]}, "not an event key"),
-    ({"add": [{"date": "2026-13-02", "event": "x_event", "time_et": "08:30", "reason": "r"}]}, "bad date"),
-    ({"add": [{"date": "2026-11-02", "event": "x_event", "time_et": "8:30am", "reason": "r"}]}, "HH:MM"),
-    ({"schema": "Other@v1"}, "schema"),
-])
+@pytest.mark.parametrize(
+    "bad, needle",
+    [
+        ({"add": [{"date": "2026-11-02", "event": "x_event", "time_et": "08:30"}]}, "no reason"),
+        ({"remove": [{"date": "2026-11-02", "event": "cpi", "reason": "  "}]}, "no reason"),
+        ({"add": [{"date": "2026-11-02", "event": "Bad Key", "time_et": "08:30", "reason": "r"}]}, "not an event key"),
+        ({"add": [{"date": "2026-13-02", "event": "x_event", "time_et": "08:30", "reason": "r"}]}, "bad date"),
+        ({"add": [{"date": "2026-11-02", "event": "x_event", "time_et": "8:30am", "reason": "r"}]}, "HH:MM"),
+        ({"schema": "Other@v1"}, "schema"),
+    ],
+)
 def test_an_invalid_override_file_is_refused_whole(tmp_path, bad, needle):
     with pytest.raises(MCR.RefreshError) as ei:
         _refresh(tmp_path, overrides=_overrides(**bad))
@@ -340,14 +399,20 @@ def test_missing_file_fails_closed(tmp_path):
     assert skip and why.startswith("UNAVAILABLE: calendar missing")
 
 
-@pytest.mark.parametrize("mutate, needle", [
-    (lambda t: "{not json", "corrupt"),
-    (lambda t: json.dumps({**json.loads(t), "schema": "MacroReleaseCalendar@v1"}), "schema is not MacroCalendar@v1"),
-    (lambda t: json.dumps({**json.loads(t), "fetched_at": "2026-10-21T09:05:00"}), "no UTC offset"),
-    (lambda t: json.dumps({**json.loads(t), "dates": {"2026-11-10": {"events": []}}}), "malformed"),
-    (lambda t: json.dumps({**json.loads(t), "valid_through": "2026-01-01"}), "before covers_from"),
-    (lambda t: json.dumps([1, 2]), "corrupt"),
-])
+@pytest.mark.parametrize(
+    "mutate, needle",
+    [
+        (lambda t: "{not json", "corrupt"),
+        (
+            lambda t: json.dumps({**json.loads(t), "schema": "MacroReleaseCalendar@v1"}),
+            "schema is not MacroCalendar@v1",
+        ),
+        (lambda t: json.dumps({**json.loads(t), "fetched_at": "2026-10-21T09:05:00"}), "no UTC offset"),
+        (lambda t: json.dumps({**json.loads(t), "dates": {"2026-11-10": {"events": []}}}), "malformed"),
+        (lambda t: json.dumps({**json.loads(t), "valid_through": "2026-01-01"}), "before covers_from"),
+        (lambda t: json.dumps([1, 2]), "corrupt"),
+    ],
+)
 def test_corrupt_file_fails_closed(calfile, mutate, needle):
     calfile.write_text(mutate(calfile.read_text()))
     v, why = MC.verdict(date(2026, 10, 23), NOW, path=calfile)
@@ -503,8 +568,9 @@ LIVE_0800 = {"enabled_0800": True, "armed": True, "detail": "delegation AUTHORIZ
 def test_needs_action_p2_when_stale_or_missing_and_nothing_on_a_macro_day():
     stale = NA.rule_macro_calendar({"day": "2026-10-22", "verdict": "STALE", "reason": "old", "scope": LIVE_0800}, NOW)
     assert [(i["severity"], i["title"]) for i in stale] == [("P2", "08:00 release window skipped: calendar stale")]
-    missing = NA.rule_macro_calendar({"day": "2026-10-22", "verdict": "UNAVAILABLE", "reason": "calendar missing",
-                                      "scope": LIVE_0800}, NOW)
+    missing = NA.rule_macro_calendar(
+        {"day": "2026-10-22", "verdict": "UNAVAILABLE", "reason": "calendar missing", "scope": LIVE_0800}, NOW
+    )
     assert [(i["severity"], i["title"]) for i in missing] == [("P2", "08:00 release window skipped: calendar missing")]
     assert NA.rule_macro_calendar({"verdict": "MACRO_DAY"}, NOW) == []
     assert NA.rule_macro_calendar({"verdict": "CLEAR"}, NOW) == []
@@ -519,12 +585,15 @@ def test_next_0800_day_rolls_past_0800_and_weekends():
     assert NA.next_0800_day(datetime(2026, 11, 2, 12, 30, tzinfo=UTC)) == date(2026, 11, 2)  # 07:30 EST
 
 
-@pytest.mark.parametrize("scope", [
-    {"enabled_0800": False, "armed": False, "detail": "delegation PAUSED"},
-    {"enabled_0800": True, "armed": False, "detail": "control UNARMED"},
-    {"enabled_0800": False, "armed": True, "detail": "0800 disabled"},
-    {},
-])
+@pytest.mark.parametrize(
+    "scope",
+    [
+        {"enabled_0800": False, "armed": False, "detail": "delegation PAUSED"},
+        {"enabled_0800": True, "armed": False, "detail": "control UNARMED"},
+        {"enabled_0800": False, "armed": True, "detail": "0800 disabled"},
+        {},
+    ],
+)
 def test_needs_action_is_p3_info_until_0800_is_enabled_and_armed(scope):
     for v in ("STALE", "UNAVAILABLE"):
         items = NA.rule_macro_calendar({"day": "2026-10-22", "verdict": v, "reason": "x", "scope": scope}, NOW)
@@ -546,22 +615,28 @@ def test_0800_scope_reads_the_delegation_and_control(tmp_path):
     p.write_text(json.dumps(d))
     sd = tmp_path / "rw"
     sc = NA.release_train_0800_scope(p, sd)
-    assert sc["enabled_0800"] is True and sc["armed"] is False             # never armed: UNARMED
+    assert sc["enabled_0800"] is True and sc["armed"] is False  # never armed: UNARMED
     ctl = RC.ReleaseControl(sd)
-    ctl.arm(RC.Actor("host_cli", "uid:t"), RC.HostCliProof("/dev/pts/9", os.getuid(), ctl.expected_phrase("arm")),
-            policy_digest=RD.load(p).digest, reason="arm for test")
+    ctl.arm(
+        RC.Actor("host_cli", "uid:t"),
+        RC.HostCliProof("/dev/pts/9", os.getuid(), ctl.expected_phrase("arm")),
+        policy_digest=RD.load(p).digest,
+        reason="arm for test",
+    )
     assert NA.release_train_0800_scope(p, sd)["armed"] is True
     assert NA.release_train_0800_scope(tmp_path / "absent.json", sd)["enabled_0800"] is False
 
 
 def test_needs_action_probe_and_aggregate(tmp_path, calfile):
     off = {"enabled_0800": False, "armed": False, "detail": "test"}
-    out = NA.aggregate({"macro_calendar": lambda: NA.probe_macro_calendar(tmp_path / "absent.json", now=NOW,
-                                                                          scope=off)}, now=NOW)
+    out = NA.aggregate(
+        {"macro_calendar": lambda: NA.probe_macro_calendar(tmp_path / "absent.json", now=NOW, scope=off)}, now=NOW
+    )
     assert out["sources"]["macro_calendar"]["status"] == "OK" and out["counts"]["P3"] == 1
     assert out["items"][0]["title"] == "08:00 release window skipped: calendar missing"
-    out = NA.aggregate({"macro_calendar": lambda: NA.probe_macro_calendar(tmp_path / "absent.json", now=NOW,
-                                                                          scope=LIVE_0800)}, now=NOW)
+    out = NA.aggregate(
+        {"macro_calendar": lambda: NA.probe_macro_calendar(tmp_path / "absent.json", now=NOW, scope=LIVE_0800)}, now=NOW
+    )
     assert out["counts"]["P2"] == 1
     ok = NA.probe_macro_calendar(calfile, now=NOW, scope=off)
     assert ok == {"day": "2026-10-21", "verdict": "CLEAR", "reason": ok["reason"], "scope": off}
@@ -577,8 +652,9 @@ def test_api_v2_wires_the_source():
 
 
 def _row():
-    return next(r for r in json.loads((ROOT / "config" / "lane_registry.json").read_text())["lanes"]
-                if r["lane_id"] == LANE)
+    return next(
+        r for r in json.loads((ROOT / "config" / "lane_registry.json").read_text())["lanes"] if r["lane_id"] == LANE
+    )
 
 
 def test_registry_row_is_n8n_native_ingest_shadow_daily_0505():
@@ -590,6 +666,7 @@ def test_registry_row_is_n8n_native_ingest_shadow_daily_0505():
     assert d["class"] == "ingest" and d["retry_policy"] == "none" and row["owner"] == "platform"
     assert (row["output_signal"]["path"], row["output_signal"]["key"]) == (RECEIPT, "ok_at")
     from scripts.lib.lane_dispatch import dispatch_eligible
+
     ok = dispatch_eligible(row)
     assert ok[0] if isinstance(ok, tuple) else ok
 
@@ -614,6 +691,7 @@ def test_health_contract_is_a_draft_for_the_operator_to_review():
         assert k["review"]["reviewed_by"].startswith("operator ")
     assert k["evidence"]["receipt"] == RECEIPT and k["expected_output"]["rule"] == "min_produced"
     from scripts.lib import n8n_output_verdict as V
+
     assert V.validate_expected_output(k["expected_output"]) == []
 
 
@@ -625,10 +703,16 @@ def test_ci_gate_is_registered_with_an_anchor():
 
 def test_lane_closure_reaches_no_sender_broker_order_or_db():
     import audit_lane_transitive_capabilities as cap
+
     res = cap.Resolver()
     order, _ = res.closure(ROOT / "scripts" / "macro_calendar_refresh.py")
     rels = {res.info(m).path for m in order}
-    assert not rels & {"scripts/db_adapter.py", "scripts/telegram_alert.py", "scripts/lib/host_comms_intents.py",
-                       "scripts/n8n_coordination_gateway.py", "scripts/lib/env_bootstrap.py"}, rels
+    assert not rels & {
+        "scripts/db_adapter.py",
+        "scripts/telegram_alert.py",
+        "scripts/lib/host_comms_intents.py",
+        "scripts/n8n_coordination_gateway.py",
+        "scripts/lib/env_bootstrap.py",
+    }, rels
     caps = set().union(*(res.info(m).caps for m in order))
     assert not caps & {"direct_sender", "broker_module", "order_placement", "chokepoint_send"}, caps

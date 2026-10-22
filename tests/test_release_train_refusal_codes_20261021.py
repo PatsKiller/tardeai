@@ -29,6 +29,7 @@ def _hermetic_git(monkeypatch):
 def _claim(w, *, status=None, factory=None):
     def default(live):
         return w.controller(live=live)
+
     return T.process_requests(w.state, factory or default, apply=True, now=lambda: w.clock.t, live_status=status)
 
 
@@ -41,18 +42,21 @@ def test_refusal_codes_equal_the_receipt_schema_enum():
     assert T.FAILED_CODES == {"CONTROLLER_ERROR", "CONTROLLER_FAILED"}
 
 
-@pytest.mark.parametrize("reason,code", [
-    ("REFUSED_RECONCILE_FIRST", "RECONCILE_REQUIRED"),
-    ("REFUSED_QUARANTINED_LINEAGE", "QUARANTINED_LINEAGE"),
-    ("REFUSED_CONTROL_CORRUPT", "CONTROLLER_ERROR"),
-    ("REFUSED_MAIN_UNREADABLE", "CONTROLLER_ERROR"),
-    ("REFUSED_STOP_LATCHED", "STOP_SET"),
-    ("REFUSED_STOP_UNREADABLE", "STOP_UNREADABLE"),
-    ("REFUSED_DELEGATION_PAUSED", "DELEGATION_NOT_ACTIVE"),
-    ("REFUSED_TRAIN_BUSY", "LOCK_HELD"),
-    ("SHADOW_LIVE_MISMATCH", "SHADOW_LIVE_MISMATCH"),
-    ("SOMETHING_NEW", "NOT_ARMED"),                       # unmapped: fail closed
-])
+@pytest.mark.parametrize(
+    "reason,code",
+    [
+        ("REFUSED_RECONCILE_FIRST", "RECONCILE_REQUIRED"),
+        ("REFUSED_QUARANTINED_LINEAGE", "QUARANTINED_LINEAGE"),
+        ("REFUSED_CONTROL_CORRUPT", "CONTROLLER_ERROR"),
+        ("REFUSED_MAIN_UNREADABLE", "CONTROLLER_ERROR"),
+        ("REFUSED_STOP_LATCHED", "STOP_SET"),
+        ("REFUSED_STOP_UNREADABLE", "STOP_UNREADABLE"),
+        ("REFUSED_DELEGATION_PAUSED", "DELEGATION_NOT_ACTIVE"),
+        ("REFUSED_TRAIN_BUSY", "LOCK_HELD"),
+        ("SHADOW_LIVE_MISMATCH", "SHADOW_LIVE_MISMATCH"),
+        ("SOMETHING_NEW", "NOT_ARMED"),  # unmapped: fail closed
+    ],
+)
 def test_refusal_code_mapping(reason, code):
     assert T.refusal_code(reason) == code
 
@@ -131,14 +135,22 @@ def test_every_receipt_for_a_valid_request_passes_the_shipped_validator(tmp_path
 
 def test_a_receipt_that_fails_the_contract_becomes_a_failed_controller_error():
     req = request()
-    bad = T._receipt(req, state="COMPLETED", mode="simulate", now=0.0, acknowledged_at="2026-10-21T20:00:00Z",
-                     outcome="NOT_AN_OUTCOME")
+    bad = T._receipt(
+        req,
+        state="COMPLETED",
+        mode="simulate",
+        now=0.0,
+        acknowledged_at="2026-10-21T20:00:00Z",
+        outcome="NOT_AN_OUTCOME",
+    )
     fixed, errs = T.checked_receipt(bad, request_valid=True)
     assert errs and fixed["state"] == "FAILED" and fixed["refusal"]["code"] == "CONTROLLER_ERROR"
     assert WV.validate_receipt(fixed) == []
-    garbage, errs2 = T.checked_receipt(T._receipt({}, state="REFUSED", mode="simulate", now=0.0,
-                                                  refusal=T._refusal("INVALID_REQUEST", "x")), request_valid=False)
-    assert errs2 and garbage["refusal"]["code"] == "INVALID_REQUEST"      # written as built, errors reported
+    garbage, errs2 = T.checked_receipt(
+        T._receipt({}, state="REFUSED", mode="simulate", now=0.0, refusal=T._refusal("INVALID_REQUEST", "x")),
+        request_valid=False,
+    )
+    assert errs2 and garbage["refusal"]["code"] == "INVALID_REQUEST"  # written as built, errors reported
 
 
 def test_old_packet_text_is_no_longer_stale():

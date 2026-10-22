@@ -29,10 +29,15 @@ INSTALL = OLD / "install_release_window_timer.sh"
 def _install(tmp_path, *args, **env):
     stub = tmp_path / "bin"
     stub.mkdir(exist_ok=True)
-    (stub / "systemctl").write_text(f"#!/bin/sh\necho \"systemctl $*\" >> {tmp_path}/calls.log\nexit 0\n")
+    (stub / "systemctl").write_text(f'#!/bin/sh\necho "systemctl $*" >> {tmp_path}/calls.log\nexit 0\n')
     (stub / "systemctl").chmod(0o755)
-    e = {"PATH": f"{stub}:{os.environ['PATH']}", "HOME": str(tmp_path / "home"),
-         "CANONICAL_SOURCE": str(tmp_path / "nope"), "TRADEAI_RELEASE_CHECKOUT": str(tmp_path / "nope"), **env}
+    e = {
+        "PATH": f"{stub}:{os.environ['PATH']}",
+        "HOME": str(tmp_path / "home"),
+        "CANONICAL_SOURCE": str(tmp_path / "nope"),
+        "TRADEAI_RELEASE_CHECKOUT": str(tmp_path / "nope"),
+        **env,
+    }
     return subprocess.run(["bash", str(INSTALL), *args], env=e, capture_output=True, text=True, timeout=60)
 
 
@@ -40,7 +45,7 @@ def test_apply_is_refused_even_for_the_operator(tmp_path):
     r = _install(tmp_path, "--apply", TRADEAI_OPERATOR_INSTALL="1")
     assert r.returncode == 2 and "SUPERSEDED" in r.stdout and "release-train-arming-20261021" in r.stdout
     assert not (tmp_path / "home" / ".config" / "systemd").exists()
-    assert not (tmp_path / "calls.log").exists()                     # no systemctl call at all
+    assert not (tmp_path / "calls.log").exists()  # no systemctl call at all
 
 
 def test_dry_run_says_superseded_and_writes_nothing(tmp_path):
@@ -60,10 +65,10 @@ def test_disable_still_archives_an_installed_copy(tmp_path):
 
 def test_old_packet_marks_the_timer_step_superseded():
     text = (OLD / "README.md").read_text(encoding="utf-8")
-    s5 = text[text.index("## 5. Scheduling"):text.index("## 6.")]
+    s5 = text[text.index("## 5. Scheduling") : text.index("## 6.")]
     assert "**SUPERSEDED 2026-10-21 (release-train arming finding 7).**" in s5
     assert "docs/ops/packets/release-train-arming-20261021/README.md" in s5
-    s8 = text[text.index("## 8. Operator steps"):text.index("## 9.")]
+    s8 = text[text.index("## 8. Operator steps") : text.index("## 9.")]
     assert "3. **SUPERSEDED**" in s8 and "TRADEAI_OPERATOR_INSTALL=1 … --apply" not in s8
 
 
@@ -84,7 +89,7 @@ def test_step_d_refuses_while_the_old_timer_is_installed(sb):
 
 def test_packet_finding_7_is_marked_fixed():
     text = (ROOT / "docs/ops/packets/release-train-arming-20261021/README.md").read_text(encoding="utf-8")
-    seg = text[text.index("7. **Two release schedules.**"):]
+    seg = text[text.index("7. **Two release schedules.**") :]
     assert "**Status: FIXED**" in seg[:1400]
 
 

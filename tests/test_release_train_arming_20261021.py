@@ -23,8 +23,13 @@ ROOT = Path(__file__).resolve().parents[1]
 ARM = ROOT / "scripts" / "ops" / "release_train_arm.sh"
 MAKE = ROOT / "tests" / "fixtures" / "release_train_arm" / "make_sandbox.sh"
 PACKET = ROOT / "docs" / "ops" / "packets" / "release-train-arming-20261021" / "README.md"
-LANES = ("release-train-request-1800", "release-train-request-0000", "release-train-request-0600",
-         "release-train-request-0800", "pr-hygiene-audit")
+LANES = (
+    "release-train-request-1800",
+    "release-train-request-0000",
+    "release-train-request-0600",
+    "release-train-request-0800",
+    "pr-hygiene-audit",
+)
 ACK = "TRADEAI_RELEASE_TRAIN_ARM_ACK"
 GRANTS = {"TRADEAI_CONFIG_WRITE_GRANT": "test-config-write", "TRADEAI_FABRIC_GRANT": "test-cron"}
 
@@ -32,8 +37,9 @@ GRANTS = {"TRADEAI_CONFIG_WRITE_GRANT": "test-config-write", "TRADEAI_FABRIC_GRA
 class Sandbox:
     def __init__(self, base: Path) -> None:
         self.root = base / "sb"
-        out = subprocess.run(["bash", str(MAKE), str(self.root), str(ROOT), sys.executable], check=True,
-                             capture_output=True, text=True).stdout
+        out = subprocess.run(
+            ["bash", str(MAKE), str(self.root), str(ROOT), sys.executable], check=True, capture_output=True, text=True
+        ).stdout
         self.env = dict(os.environ)
         for line in out.splitlines():
             k, v = line.split("=", 1)
@@ -88,6 +94,7 @@ def _out(r: subprocess.CompletedProcess) -> str:
 
 # ── dry run ─────────────────────────────────────────────────────────────────────────────────────────
 
+
 def test_plan_prints_what_every_step_would_do_and_writes_nothing(sb):
     before = sb.tree()
     r = sb.run("plan")
@@ -95,19 +102,25 @@ def test_plan_prints_what_every_step_would_do_and_writes_nothing(sb):
     assert r.returncode == 0, out
     for step in "ABCDEFG":
         assert f"== {step}" in out
-    assert "destructive statements: none (additive)" in out                       # A
-    assert "WOULD: install -d -m 700" in out and "64 hex chars" in out            # B
-    assert "status PAUSED, windows 1800/0000/0600/0800 all disabled" in out       # C
-    assert "REFUSED DELEGATION_PAUSED" in out and "C.3" not in out                # C: no acceptance step
+    assert "destructive statements: none (additive)" in out  # A
+    assert "WOULD: install -d -m 700" in out and "64 hex chars" in out  # B
+    assert "status PAUSED, windows 1800/0000/0600/0800 all disabled" in out  # C
+    assert "REFUSED DELEGATION_PAUSED" in out and "C.3" not in out  # C: no acceptance step
     assert "Acceptance is the arm itself, at step I.2" in out
-    assert "WOULD: systemctl --user enable --now tradeai-release-train-claim.path" in out   # D
-    assert "WOULD: rewrite ONLY the TRADEAI_N8N_RELAY_LIVE_LANES= line" in out     # E
-    assert "framework_gate" in out and "WOULD REFUSE --apply" in out              # F: the §23.24 gate today
-    assert "verdict: MATCH" in out                                                 # G
+    assert "WOULD: systemctl --user enable --now tradeai-release-train-claim.path" in out  # D
+    assert "WOULD: rewrite ONLY the TRADEAI_N8N_RELAY_LIVE_LANES= line" in out  # E
+    assert "framework_gate" in out and "WOULD REFUSE --apply" in out  # F: the §23.24 gate today
+    assert "verdict: MATCH" in out  # G
     assert sb.tree() == before
     assert sb.receipt_rows() == []
-    mutating = [c for c in sb.calls() if any(w in c for w in (" -f ", "--user enable ", "restart", "import:workflow",
-                                                              "publish:workflow", "daemon-reload"))]
+    mutating = [
+        c
+        for c in sb.calls()
+        if any(
+            w in c
+            for w in (" -f ", "--user enable ", "restart", "import:workflow", "publish:workflow", "daemon-reload")
+        )
+    ]
     assert mutating == []
 
 
@@ -121,6 +134,7 @@ def test_each_step_dry_run_alone_exits_zero_and_writes_nothing(sb, step):
 
 
 # ── --apply needs the per-step acknowledgement ──────────────────────────────────────────────────────
+
 
 @pytest.mark.parametrize("step", list("ABCDEF"))
 def test_apply_is_refused_without_the_acknowledgement(sb, step):
@@ -148,6 +162,7 @@ def test_grants_are_required_for_the_config_and_n8n_steps(sb):
 
 
 # ── idempotency ─────────────────────────────────────────────────────────────────────────────────────
+
 
 def test_every_step_is_idempotent(sb):
     gate = {"RTARM_IMPORT_GATE": "stub-pass"}
@@ -217,9 +232,23 @@ def test_a_paused_delegation_cannot_be_armed_at_the_cli(sb):
     a = sb.apply("C")
     assert a.returncode == 0 and "accepted at arm time, step I.2" in a.stdout and "C.3" not in a.stdout
     env = dict(sb.env, HOME=str(sb.home))
-    r = subprocess.run([sys.executable, str(ROOT / "scripts" / "release_control_cli.py"), "--state-dir",
-                        str(sb.state_dir), "arm", "--delegation", str(sb.conf / "delegation.json"),
-                        "--reason", "arming check", "--dry-run"], env=env, capture_output=True, text=True)
+    r = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "release_control_cli.py"),
+            "--state-dir",
+            str(sb.state_dir),
+            "arm",
+            "--delegation",
+            str(sb.conf / "delegation.json"),
+            "--reason",
+            "arming check",
+            "--dry-run",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
     assert r.returncode == 2 and '"DELEGATION_PAUSED"' in r.stdout
     v = sb.run("C", "--verify")
     assert v.returncode == 0 and "host CLI arm --dry-run: REFUSED DELEGATION_PAUSED" in v.stdout
@@ -228,12 +257,12 @@ def test_a_paused_delegation_cannot_be_armed_at_the_cli(sb):
 
 def test_packet_has_no_impossible_acceptance_step():
     text = PACKET.read_text(encoding="utf-8")
-    c = text[text.index("## C. "):text.index("## D. ")]
+    c = text[text.index("## C. ") : text.index("## D. ")]
     assert "C.3" not in c and "accept its digest at the host CLI" not in c
     assert "The digest is accepted when the train is armed, at step I.2" in c
-    i2 = text[text.index("**I.2 Arm (TTY)"):text.index("**I.3")]
+    i2 = text[text.index("**I.2 Arm (TTY)") : text.index("**I.3")]
     assert "this is where the delegation digest is accepted" in i2
-    f1 = text[text.index("1. **C cannot \"accept the PAUSED digest\".**"):]
+    f1 = text[text.index('1. **C cannot "accept the PAUSED digest".**') :]
     assert "**Status: FIXED**" in f1[:1200]
 
 
@@ -271,9 +300,13 @@ def test_live_list_edit_keeps_other_lines_and_archives_a_backup(sb):
     names = line.split("=", 1)[1].split()
     assert names[0] == "disk-usage-monitor" and all(n in names for n in LANES) and len(names) == len(set(names))
     baks = list(sb.live_env.parent.glob("n8n-live-lanes.env.bak-*-release-train-arm"))
-    assert len(baks) == 1 and baks[0].read_text() == "TRADEAI_N8N_RELAY_LIVE_LANES=disk-usage-monitor\nOTHER_KEY=keep-me\n"
+    assert (
+        len(baks) == 1 and baks[0].read_text() == "TRADEAI_N8N_RELAY_LIVE_LANES=disk-usage-monitor\nOTHER_KEY=keep-me\n"
+    )
     assert oct(sb.live_env.stat().st_mode & 0o777) == "0o600"
-    assert any("restart tradeai-n8n-run-relay.service tradeai-n8n-coordination-gateway.service" in c for c in sb.calls())
+    assert any(
+        "restart tradeai-n8n-run-relay.service tradeai-n8n-coordination-gateway.service" in c for c in sb.calls()
+    )
 
 
 def test_the_real_import_gate_refuses_the_workflow_and_nothing_is_imported(sb):
@@ -281,8 +314,9 @@ def test_the_real_import_gate_refuses_the_workflow_and_nothing_is_imported(sb):
     for _ in range(2):
         r = sb.apply("F")
         assert r.returncode == 2 and "§23.24" in r.stdout
-    assert not any("import:workflow" in c or "publish:workflow" in c or c.startswith("docker restart")
-                   for c in sb.calls())
+    assert not any(
+        "import:workflow" in c or "publish:workflow" in c or c.startswith("docker restart") for c in sb.calls()
+    )
 
 
 def test_n8n_restart_is_refused_near_a_train_tick(sb):
@@ -294,7 +328,7 @@ def test_n8n_restart_is_refused_near_a_train_tick(sb):
 def test_state_dir_mismatch_is_reported_never_fixed(sb):
     before = sb.tree()
     r = sb.run("G", FAKE_CC_STATE_DIR="/srv/elsewhere/release_window")
-    assert r.returncode == 0 and "MISMATCH" in r.stdout          # dry run reports, exit 0
+    assert r.returncode == 0 and "MISMATCH" in r.stdout  # dry run reports, exit 0
     v = sb.run("G", "--verify", FAKE_CC_STATE_DIR="/srv/elsewhere/release_window")
     assert v.returncode == 1 and "never auto-remediate" in v.stdout
     assert sb.tree() == before
@@ -308,6 +342,7 @@ def test_status_is_read_only(sb):
 
 
 # ── identity and the sandbox contract ───────────────────────────────────────────────────────────────
+
 
 def test_refuses_another_user(sb):
     r = sb.run("plan", RTARM_EXPECT_USER="someone-else")
@@ -354,8 +389,15 @@ def test_test_seams_are_read_only_inside_the_sandbox_branch():
     head, rest = text.split('if [[ -n "${RTARM_SANDBOX:-}" ]]; then', 1)
     branch, after = rest.split("\nelse\n", 1)
     real_branch, tail = after.split("\nfi\n", 1)
-    seams = ("RTARM_EXPECT_USER", "RTARM_EXPECT_HOST", "RTARM_CODE_ROOT", "RTARM_PY", "RTARM_RELAY_PROBE",
-             "RTARM_IMPORT_GATE", "RTARM_NOW_HM")
+    seams = (
+        "RTARM_EXPECT_USER",
+        "RTARM_EXPECT_HOST",
+        "RTARM_CODE_ROOT",
+        "RTARM_PY",
+        "RTARM_RELAY_PROBE",
+        "RTARM_IMPORT_GATE",
+        "RTARM_NOW_HM",
+    )
     for seam in seams:
         assert "${" + seam in branch, seam
         assert "${" + seam not in head + real_branch + tail, seam
@@ -364,13 +406,15 @@ def test_test_seams_are_read_only_inside_the_sandbox_branch():
 
 def test_nothing_touches_real_paths(sb):
     real_home = Path(os.path.expanduser("~"))
-    watch = [real_home / ".config" / "tradeai" / "release_train",
-             real_home / ".config" / "tradeai" / "n8n-live-lanes.env",
-             real_home / ".config" / "systemd" / "user",
-             real_home / "trade-ai-releases" / "persistent-state" / "data" / "runtime" / "release_window",
-             real_home / "trade-ai-releases" / "persistent-state" / "data" / "runtime" / "release_train_arm"]
+    watch = [
+        real_home / ".config" / "tradeai" / "release_train",
+        real_home / ".config" / "tradeai" / "n8n-live-lanes.env",
+        real_home / ".config" / "systemd" / "user",
+        real_home / "trade-ai-releases" / "persistent-state" / "data" / "runtime" / "release_window",
+        real_home / "trade-ai-releases" / "persistent-state" / "data" / "runtime" / "release_train_arm",
+    ]
 
-    def snap():   # stat only: never reads a real file's contents
+    def snap():  # stat only: never reads a real file's contents
         out = {}
         for w in watch:
             try:
@@ -379,8 +423,9 @@ def test_nothing_touches_real_paths(sb):
             except OSError:
                 out[str(w)] = None
             if w.is_dir():
-                out[str(w) + "/*"] = sorted(p.name for p in w.iterdir() if "release-train" in p.name
-                                            or "release_train" in p.name)
+                out[str(w) + "/*"] = sorted(
+                    p.name for p in w.iterdir() if "release-train" in p.name or "release_train" in p.name
+                )
         return out
 
     before = snap()
@@ -399,10 +444,16 @@ def test_nothing_touches_real_paths(sb):
 
 # ── packet, gate registration, wiring ───────────────────────────────────────────────────────────────
 
+
 def test_bash_suite_passes():
     env = dict(os.environ, RTARM_TEST_PY=sys.executable)
-    r = subprocess.run(["bash", str(ROOT / "tests" / "release_train_arm_test.sh")], env=env, capture_output=True,
-                       text=True, timeout=600)
+    r = subprocess.run(
+        ["bash", str(ROOT / "tests" / "release_train_arm_test.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-2000:]
     assert ", 0 failed" in r.stdout
 

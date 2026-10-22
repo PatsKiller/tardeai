@@ -92,14 +92,23 @@ def load(path: Optional[Union[str, Path]] = None) -> dict:
         raise ValueError("dates is not an object")
     for key, entry in dates.items():
         date.fromisoformat(key)
-        if not isinstance(entry, dict) or not isinstance(entry.get("has_0830"), bool) \
-                or not isinstance(entry.get("skip_0800"), bool) or not isinstance(entry.get("events"), list):
+        if (
+            not isinstance(entry, dict)
+            or not isinstance(entry.get("has_0830"), bool)
+            or not isinstance(entry.get("skip_0800"), bool)
+            or not isinstance(entry.get("events"), list)
+        ):
             raise ValueError(f"dates[{key}] is malformed")
     return body
 
 
-def verdict(day: DayLike, now: Optional[datetime] = None, *, path: Optional[Union[str, Path]] = None,
-            max_age_h: float = MAX_AGE_H) -> tuple[str, str]:
+def verdict(
+    day: DayLike,
+    now: Optional[datetime] = None,
+    *,
+    path: Optional[Union[str, Path]] = None,
+    max_age_h: float = MAX_AGE_H,
+) -> tuple[str, str]:
     """``(CLEAR | MACRO_DAY | STALE | UNAVAILABLE, reason)`` for the 08:00 ET window of ``day``. Never raises."""
     try:
         d = et_date(day)
@@ -129,17 +138,25 @@ def verdict(day: DayLike, now: Optional[datetime] = None, *, path: Optional[Unio
         return STALE, f"calendar covers {frm}..{thru}, not {d}"
     entry = body["dates"].get(d.isoformat())
     if entry and entry["skip_0800"]:
-        names = [f"{e.get('event')}@{e.get('time_et')} ({e.get('source')}"
-                 f"{':' + str(e['release_id']) if e.get('release_id') else ''})"
-                 for e in entry["events"] if isinstance(e, dict) and e.get("skips_0800")]
+        names = [
+            f"{e.get('event')}@{e.get('time_et')} ({e.get('source')}"
+            f"{':' + str(e['release_id']) if e.get('release_id') else ''})"
+            for e in entry["events"]
+            if isinstance(e, dict) and e.get("skips_0800")
+        ]
         return MACRO_DAY, f"{d} has a macro release that skips 08:00: {', '.join(names) or 'unnamed'}"
     others = [str(e.get("event")) for e in (entry or {}).get("events", []) if isinstance(e, dict)]
     tail = f"; other events recorded: {', '.join(others)}" if others else ""
     return CLEAR, f"{d} has no 08:30 ET release (calendar fetched {fetched.isoformat()}){tail}"
 
 
-def skip_0800(day: DayLike, now: Optional[datetime] = None, *, path: Optional[Union[str, Path]] = None,
-              max_age_h: float = MAX_AGE_H) -> tuple[bool, str]:
+def skip_0800(
+    day: DayLike,
+    now: Optional[datetime] = None,
+    *,
+    path: Optional[Union[str, Path]] = None,
+    max_age_h: float = MAX_AGE_H,
+) -> tuple[bool, str]:
     """``(skip, reason)``: True on an 08:30 release day and on every fail-closed case. Never raises."""
     v, why = verdict(day, now, path=path, max_age_h=max_age_h)
     return v != CLEAR, f"{v}: {why}"
