@@ -333,7 +333,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_GAP_2026-09-29-2012.md` | CIO Persistent Agent — AS-IS vs FUTURE GAP (2026-09-29 20:12 ET) |
 | `docs/architecture/CIO_GAP_2026-09-29-2107.md` | CIO Persistent Agent — GAP (2026-09-29 21:07 ET) |
 | `docs/architecture/CIO_GAP_2026-09-29-2153.md` | CIO Persistent Agent — GAP (2026-09-29 21:53 ET) |
+| `docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md` | CIO prospect data foundation — one store, one writer, the CIO as integrator |
 | `docs/architecture/COST_BASIS_FEED_CORRECTION_2026_06_05.md` | Cost Basis Feed Correction (2026-06-05) |
+| `docs/architecture/DATA_DICTIONARY.md` | Data dictionary — one source for every fact |
 | `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` | Decision Packet Operator Card + RTH Few-Hour Refresh |
 | `docs/architecture/DECISION_PROVENANCE_MATRIX.md` | Decision provenance matrix — 2026-08-28 |
 | `docs/architecture/DEFENSE_DESK_V1.md` | Defense Desk v1 — Sector Momentum · Posture · (Hedge/Short foundations) — 2026-07-17 |
