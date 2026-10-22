@@ -328,8 +328,8 @@ The four request lanes are fired only by this workflow through Run Lane (registr
 
 | step | allowlist `live_arg` | registry stage | key namespace | what it produces |
 |---|---|---|---|---|
-| build (this PR) | `null` | `shadow` | `rtw:` (accepted for `dry_run` only) | lane receipts: the request it would append |
-| train shadow | `["--append", "--shadow-only"]` | `canary` | needs a host-validated namespace (O3) | `shadow: true` requests; simulate-only receipts |
+| build (this PR) | `null` | `shadow` | dry runs: per-execution `rtwdry-<lane>-<ts>` (free-form, dry_run only) | lane receipts: the request it would append |
+| train shadow | `["--append", "--shadow-only"]` | `canary` | `rtw:<slot>:<window date>:shadow`, host-validated (O3) | `shadow: true` requests; simulate-only receipts |
 | canary (18:00) | `["--append"]` for `-1800` only | `canary` | as above | live requests for 18:00 once armed |
 | expand | `["--append"]` per slot, in order 00:00, 06:00, 08:00 | `canary` | as above | live requests per proven window |
 
@@ -352,9 +352,13 @@ The four request lanes are fired only by this workflow through Run Lane (registr
 - **O1** Review this contract (C1–C11, the two schemas, the request-tick lead) before Phase 3 builds against it.
 - **O2** ~~Review the four DRAFT health contracts~~ DONE 2026-10-21: the operator reviewed all four ("approve the 4
   contracts, email yes, rtw yes, push release 2"); they are `REVIEWED` at shadow (§23.19).
-- **O3** A host-validated run-key namespace for these lanes before any `live` request (the gateway refuses a
-  free-form key for `live`, audit DD03). Options: a `release-train` entry in `config/n8n_fabric_processes.json`
-  validated by `n8n_process_keys.py`, or a dedicated `rtw:` validator.
+- **O3** ~~A host-validated run-key namespace~~ DONE 2026-10-21 (operator "rtw yes"): the dedicated `rtw:` validator.
+  A live run key is `rtw:<slot>:<window date YYYYMMDD>:<shadow|live>`; the gateway
+  (`scripts/lib/n8n_coordination_gateway.py` `_run_window_key`) accepts it only for `mode: live`, for the lane's own
+  slot and the slot's current window date (`release_train_window_view.check_window_run_key`, the same `window_start`
+  the request lane uses); anything else is `run_window_key_invalid` with `key_state`. Deterministic: one key per lane,
+  window and kind, so a repeat replays the same row. The workflow mints it for live runs; dry runs use a
+  per-execution key outside the namespace.
 - **O4** Live list: add the request lanes to `TRADEAI_N8N_RELAY_LIVE_LANES` (config-write grant) when shadow starts.
 - **O5** Import and activate `tradeai-fabric-release-train` under a `cron` grant naming it (§23.2), after
   `check_n8n_relay_contract.py` passes against a relay that serves `GET /release-train-window` (relay and gateway

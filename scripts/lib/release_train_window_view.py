@@ -182,6 +182,44 @@ def request_id_for(slot: str, start: datetime, tick: str, run_id: str) -> str:
     return f"rtw-{start.strftime('%Y%m%d')}-{slot}-{suffix}"
 
 
+#: Host-validated LIVE run-key namespace for the four request lanes (operator 2026-10-21 "rtw yes"; contract O3):
+#: ``rtw:<slot>:<window date YYYYMMDD>:<shadow|live>``. Exact lower-case form only.
+RUN_KEY_PREFIX = "rtw:"
+RUN_KEY_RE = re.compile(r"^rtw:(0000|0600|0800|1800):([0-9]{8}):(shadow|live)$")
+
+
+def window_run_key(slot: str, now: datetime, cfg: Mapping[str, Any], kind: str) -> str:
+    """The one deterministic live run key for ``slot``'s current window (window date = ``window_start``'s local
+    date). One key per lane, window and kind, so a repeat of the same window is the same key (idempotent). Pure."""
+    if kind not in ("shadow", "live"):
+        raise ContractError(f"unknown run-key kind {kind!r}")
+    return f"{RUN_KEY_PREFIX}{slot}:{window_start(slot, now, cfg).strftime('%Y%m%d')}:{kind}"
+
+
+def check_window_run_key(run_id: str, lane_id: str, mode: str, now: datetime,
+                         cfg: Optional[Mapping[str, Any]] = None) -> tuple[bool, str]:
+    """(ok, state) for an ``rtw:`` key as the gateway sees it. ok only when the key is well formed, the request is
+    ``live``, the slot is the lane's own, and the date is the slot's CURRENT window date (``window_start`` at
+    ``now``). States: OK, MALFORMED_KEY, MODE_NOT_LIVE, SLOT_MISMATCH, WINDOW_DATE_MISMATCH, CONFIG_UNAVAILABLE.
+    Pure apart from loading the default config when ``cfg`` is None."""
+    m = RUN_KEY_RE.fullmatch(run_id or "")
+    if m is None:
+        return False, "MALFORMED_KEY"
+    if mode != "live":
+        return False, "MODE_NOT_LIVE"
+    slot, date = m.group(1), m.group(2)
+    if lane_id != LANE_PREFIX + slot:
+        return False, "SLOT_MISMATCH"
+    try:
+        c = cfg if cfg is not None else load_config()
+        expected = window_start(slot, now, c).strftime("%Y%m%d")
+    except (ContractError, OSError, ValueError, KeyError):
+        return False, "CONFIG_UNAVAILABLE"
+    if date != expected:
+        return False, "WINDOW_DATE_MISMATCH"
+    return True, "OK"
+
+
 def _iso_utc(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat()
 

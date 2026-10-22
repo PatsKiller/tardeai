@@ -354,8 +354,9 @@ GRAPH_PINS = {
     # hermes-learning cutover PR-2 (2026-10-15): spec MODE live; still never imported, so nothing stops verifying.
     "tradeai-fabric-hermes-learning": "f1d0984c64b06191020008af6d09f8b26a9c5a0ba5789f8e97ddb0e45215ebe4",
     # 2026-10-21 Release Train v2 Phase 4 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md); never imported. Adding it moves
-    # none of the pins above.
-    T.RELEASE_TRAIN_ID: "9b18e2e4c38ac2605c847a82a422b8cc1cc222c99b2d1efa0aa4a56217cc11c3",
+    # none of the pins above. Re-pinned 2026-10-21 (operator "rtw yes"): the gate node mints the host-validated
+    # rtw:<slot>:<window date>:<shadow|live> key for live runs; still never imported, so nothing stops verifying.
+    T.RELEASE_TRAIN_ID: "4c3a912e283c16fa7b2631337b34fa59029f05512cb08997668f5ea4636324ca",
 }
 
 

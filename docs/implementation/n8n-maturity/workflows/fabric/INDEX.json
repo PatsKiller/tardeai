@@ -179,7 +179,7 @@
       "active": false,
       "error_workflow": "tradeai-fabric-error",
       "file": "tradeai-fabric-release-train.json",
-      "graph_sha256": "9b18e2e4c38ac2605c847a82a422b8cc1cc222c99b2d1efa0aa4a56217cc11c3",
+      "graph_sha256": "4c3a912e283c16fa7b2631337b34fa59029f05512cb08997668f5ea4636324ca",
       "id": "tradeai-fabric-release-train",
       "kind": "release-train",
       "node_types": [
@@ -197,7 +197,7 @@
         "GET /release-train-window",
         "POST /intent"
       ],
-      "sha256": "3c01820023dd607dd972b3eed61d18218f87200f3ec6243e085581d2a6677671"
+      "sha256": "2d7ca58b3a134786cdf4f5fb48c07077cca56a446be765e1482c3795f7664e64"
     },
     {
       "active": false,

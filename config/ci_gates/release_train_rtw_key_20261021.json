@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_rtw_key_20261021",
+  "files": [
+    "tests/test_release_train_rtw_key_20261021.py"
+  ],
+  "anchor": "RELEASE_TRAIN_RTW_KEY_20261021",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_RTW_KEY_20261021 — operator 2026-10-21 \"rtw yes\": the gateway validates the release-train",
+    "request lanes' live run keys rtw:<slot>:<window date>:<shadow|live> (live only, own slot, current window date;",
+    "deterministic, replays); wrong slot/date, malformed, free-form and another lane's key refused. Hermetic: tmp ledger."
+  ]
+}
