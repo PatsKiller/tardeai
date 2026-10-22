@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ci_cio_hardening_fast_shards_20261022",
+  "files": [
+    "tests/test_ci_cio_hardening_fast_shards_20261022.py"
+  ],
+  "anchor": "CI_CIO_HARDENING_FAST_SHARDS_20261022",
+  "comment": [
+    "ANCHOR: CI_CIO_HARDENING_FAST_SHARDS_20261022 — the push-to-main cio-hardening FAST profile (26-38 min on",
+    "2026-10-22) runs as parallel jobs on the cio-full-suite-sharded pattern: 8 shards + serial + pg + integrity",
+    "rails; the required context cio-hardening is the aggregate (every FAST job success + --verify-shards), runs on",
+    "cancelled/timed-out shards so main-red-alert still fires; PR profile, per-SHA concurrency and alerting unchanged."
+  ]
+}

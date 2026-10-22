@@ -525,3 +525,29 @@ Combined effect of the quick wins:
 - **PR #1547 run** (37939842296): `changed=5 tier=high ... selected_files=115 ... deferred=0 select_secs=19.2`. The longest unit was `ci_self_guards (23 files, 135.9s)`.
 - **Live promote refusal:** `~/.local/state/cio-phase2-exact-main/deploy_receipt.json` has `extra: post_merge_ci_refused` at 2026-10-09T14:01:17Z for `3b5c24856`. Prepare had created `/home/johnclaw/trade-ai-releases/portfolio-server/3b5c24856-main-exact-phase2-20261009-095833`.
 - **Repo merge settings:** `allow_auto_merge: true`, `allow_update_branch: true` (`gh api repos/PatsKiller/tardeai`).
+
+---
+
+### Addendum 2026-10-22: the push-to-main FAST profile runs as parallel shards
+
+**Why.** The single push-to-main `cio-hardening` job ran the FAST profile, which is every registered gate in one worker pool. On 2026-10-22 it took 26-38 min. Run 39817528884 (`3b1da355b`) was cancelled at 35 min on both attempts, which blocked an exact-SHA release. #1934 raised the timeout to 50 min as a stopgap.
+
+**What changed.** `.github/workflows/cio-production-hardening-ci.yml` now reuses the `cio-full-suite-sharded.yml` pattern (Stage 2 above) on push and `workflow_dispatch`. These jobs run in parallel:
+- `fast-shard`: 8 duration-balanced shards x 4 workers;
+- `fast-serial`: the serial shard;
+- `fast-pg`: the Postgres shard, with the same throwaway M2 service as the nightly;
+- `fast-integrity`: the rails the FAST profile ran after its gates. These are the adversarial suite, dark contracts, retention, line endings, test coverage, host paths, docs index, the committed and candidate manifest, and the report smokes.
+
+**The required context is still `cio-hardening`.** On push and dispatch it is the aggregate:
+- **When it passes:** it is green only when every FAST job succeeded (`CI_GATE_NEEDS`) and `run_cio_hardening_ci.py --verify-shards` proves each registered file ran exactly once on this tree and plan.
+- **When it runs:** `always()` on push, so a failed, cancelled or timed-out shard yields a red aggregate rather than a skipped one. `main-red-alert` (needs: `cio-hardening`) therefore still fires on failure, cancelled and timed_out.
+- **On pull_request:** the FAST jobs are skipped and `cio-hardening` runs the PR profile exactly as before. The job condition has `!cancelled()`, so a superseded PR run is never reported green.
+
+**Unchanged:** the per-SHA push concurrency group (H2) and the `ci-main-red` alerting. No job is named `ci-gate`; that context belongs to `cio-full-suite-sharded.yml`.
+
+**Expected wall time:**
+- The shard plan's estimated loads are about 594 s per shard at 4 workers, serial about 270 s and pg about 34 s.
+- The sharded nightly measures a median of 6 min end to end.
+- Push-to-main should therefore finish in about 8-14 min, including setup and the aggregate, against the 20-minute target.
+
+**Pinned by:** `tests/test_ci_cio_hardening_fast_shards_20261022.py` (gate `ci_cio_hardening_fast_shards_20261022`).

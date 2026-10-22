@@ -32,21 +32,179 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  cio-hardening:
-    # Required status check. Operator budget (2026-09-25): 5 minutes wall clock
-    # including runner setup. On pull_request it runs the PR profile: smoke gates,
-    # every gate of each HIGH risk tier the diff touches, changed and impacted
-    # tests within budget; the rest is DEFERRED to the push-to-main run and listed
-    # in the job summary (scripts/lib/test_impact.py, config/ci_risk_tiers.json).
-    # On push/dispatch it runs the FAST profile: every registered gate, in a worker
-    # pool. Measured before 2026-09-25: 1,077-1,127 s per job, 610-1,090 s in the
-    # serial gates step.
-    if: github.event_name != 'schedule'
+  # ── Push-to-main / dispatch FAST profile, split into parallel jobs (2026-10-22) ──────────────
+  # The single FAST job ran every registered gate in one worker pool: 26-38 min on 2026-10-22
+  # (run 39817528884 cancelled at 35 min on both attempts; timeout raised to 50 in #1934). It is
+  # now the cio-full-suite-sharded pattern: 8 duration-balanced shards x 4 workers, the serial
+  # shard, the Postgres shard and the integrity rails, all in parallel. The required context
+  # `cio-hardening` (below) is the aggregate: on push/dispatch it is green only when every one of
+  # these jobs succeeded AND the shard manifests prove each registered file ran exactly once on
+  # this tree (run_cio_hardening_ci.py --verify-shards). Pull requests skip these jobs and keep
+  # the PR profile inside `cio-hardening`.
+  fast-shard:
+    name: cio-hardening fast shard ${{ matrix.shard }}
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    # 2026-10-11: push-to-main FAST profile exceeded 20 min after the 10-10/10-11 test growth (run 38151425912 cancelled twice at 20m on 9f602186a); PR profile unchanged
-    # 2026-10-22: push-to-main runs measured 26-38 min today and run 39817528884 (3b1da355b) was cancelled at 35 min on
-    # both attempts, blocking an exact-SHA release. Raised to 50; splitting the FAST profile is the follow-up.
-    timeout-minutes: 50
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    env:
+      TRADE_AI_CI: "1"
+      CIO_TELEGRAM_INTERDICT: "1"
+      ENABLE_TELEGRAM: "0"
+      ALPACA_MODE: paper
+      CIO_SHARDS: "8"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: .github/workflows/cio-production-hardening-ci.yml
+      - name: Install test deps
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pytest pyyaml requests "ruff==0.16.2"
+          # Attestation tests require the production-locked Ed25519 backend.
+          pip install -c requirements.lock.txt cryptography
+          pip install python-docx || true
+      - name: Install registered frontend test dependencies
+        uses: ./.github/actions/setup-cio-frontend-tests
+        with:
+          shard: ${{ matrix.shard }}/${{ env.CIO_SHARDS }}
+      - name: Fast shard ${{ matrix.shard }} of ${{ env.CIO_SHARDS }}
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python3 scripts/run_cio_hardening_ci.py --jobs 4 \
+            --shard "$SHARD/$CIO_SHARDS" --shard-out "$RUNNER_TEMP/shard/cio_shard_$SHARD.json"
+      - name: Upload shard manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cio-fast-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard/
+          if-no-files-found: ignore
+
+  fast-serial:
+    name: cio-hardening fast shard serial
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TRADE_AI_CI: "1"
+      CIO_TELEGRAM_INTERDICT: "1"
+      ENABLE_TELEGRAM: "0"
+      ALPACA_MODE: paper
+      CIO_SHARDS: "8"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: .github/workflows/cio-production-hardening-ci.yml
+      - name: Install test deps
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pytest pyyaml requests "ruff==0.16.2"
+          pip install -c requirements.lock.txt cryptography
+          pip install python-docx || true
+      - name: Install registered frontend test dependencies
+        uses: ./.github/actions/setup-cio-frontend-tests
+        with:
+          shard: serial/${{ env.CIO_SHARDS }}
+      - name: Serial shard (shared-state files, one at a time)
+        run: |
+          python3 scripts/run_cio_hardening_ci.py \
+            --shard "serial/$CIO_SHARDS" --shard-out "$RUNNER_TEMP/shard/cio_shard_serial.json"
+      - name: Upload shard manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cio-fast-shard-serial
+          path: ${{ runner.temp }}/shard/
+          if-no-files-found: ignore
+
+  fast-pg:
+    name: cio-hardening fast shard pg
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      # The isolated M2 test cluster the m2_conn tests expect (same service as
+      # cio-full-suite-sharded.yml job `pg`). These are the repository's public throwaway
+      # test-cluster values, not credentials of any live system.
+      m2:
+        image: mirror.gcr.io/pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: m2
+          POSTGRES_PASSWORD: m2shadow
+          POSTGRES_DB: m2_shadow_test
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U m2 -d m2_shadow_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      TRADE_AI_CI: "1"
+      CIO_TELEGRAM_INTERDICT: "1"
+      ENABLE_TELEGRAM: "0"
+      ALPACA_MODE: paper
+      CIO_SHARDS: "8"
+      M2_TEST_DATABASE: m2_shadow_test
+      M2_TEST_DB: "1"
+      ALERT_TEST_DSN: postgresql://m2:m2shadow@127.0.0.1:55432/m2_shadow_test_alerts
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: .github/workflows/cio-production-hardening-ci.yml
+      - name: Install test deps (+ psycopg2)
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pytest pyyaml requests "ruff==0.16.2" psycopg2-binary
+      - name: Create the test databases (fail closed if the service is unreachable)
+        run: |
+          python3 scripts/ensure_m2_test_database.py --name "$M2_TEST_DATABASE"
+          python3 scripts/ensure_m2_test_database.py --name m2_shadow_test_alerts
+      - name: Install registered frontend test dependencies
+        uses: ./.github/actions/setup-cio-frontend-tests
+        with:
+          shard: pg/${{ env.CIO_SHARDS }}
+      - name: Postgres shard (one pytest process + fresh alert database per file)
+        run: |
+          python3 scripts/run_cio_hardening_ci.py \
+            --shard "pg/$CIO_SHARDS" --shard-out "$RUNNER_TEMP/shard/cio_shard_pg.json"
+      - name: Upload shard manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cio-fast-shard-pg
+          path: ${{ runner.temp }}/shard/
+          if-no-files-found: ignore
+
+  # The rails the FAST profile ran after its gates (adversarial suite, dark contracts, retention,
+  # line endings, test coverage, host paths, docs index, manifest check + candidate, report
+  # smokes), in parallel with the shards instead of after them.
+  fast-integrity:
+    name: cio-hardening fast integrity rails
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       TRADE_AI_CI: "1"
       CIO_TELEGRAM_INTERDICT: "1"
@@ -55,84 +213,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
-
+          cache: pip
+          cache-dependency-path: .github/workflows/cio-production-hardening-ci.yml
       - name: Install test deps
         run: |
           python3 -m pip install --upgrade pip
-          pip install pytest pyyaml requests
-          # Attestation tests require the production-locked Ed25519 backend.
+          pip install pytest pyyaml requests "ruff==0.16.2"
           pip install -c requirements.lock.txt cryptography
-          # Optional render smoke deps (fail-soft if unavailable)
           pip install python-docx || true
-          # agent_governance_sop requires pinned Ruff (quality + toolchain tests).
-          # Never optional: missing Ruff must fail closed, not skip.
-          pip install "ruff==0.16.2"
-          python3 - <<'PY'
-          from scripts.lib.sop_toolchain import PINNED_RUFF_VERSION, resolve_ruff_bin, ruff_version_string
-          b = resolve_ruff_bin()
-          assert b is not None, "ruff missing after pip install"
-          raw = ruff_version_string(b)
-          assert PINNED_RUFF_VERSION in raw, raw
-          print("cio_hardening_ruff_ok", b, raw)
-          PY
-
-      - name: Install registered frontend test dependencies
-        uses: ./.github/actions/setup-cio-frontend-tests
-
-      - name: CIO hardening gates (unit + manifest)
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          if [ "$EVENT_NAME" = "pull_request" ]; then
-            python3 scripts/run_cio_hardening_ci.py --profile pr --base "origin/$BASE_REF"
-          else
-            python3 scripts/run_cio_hardening_ci.py --profile fast
-          fi
-
       - name: Phase 11 adversarial suite
         run: python3 scripts/run_cio_adversarial_suite.py
-
-      # A versioned contract with no caller is this codebase's recurring defect:
-      # the artifact passes its own tests, so nothing reports a problem. Fails
-      # only on a NEW one -- the 29 inherited are named in KNOWN_DARK.
       - name: Dark contract guard (no new uncalled versioned schema)
         run: python3 scripts/check_dark_contracts.py --fail-on-new
-
-      # 2026-10-07: retention is a governed surface. The four tax/brokerage tables sat on a
-      # 180-day DELETE policy for months; the registry makes KEEP_FOREVER explicit and this
-      # gate refuses a registry that deletes them, lacks a window, or carries unresolved rows.
       - name: Retention policy registry gate
         run: python3 scripts/check_retention_policy.py --fail-on-new
-
-      # A "preserve CRLF" helper double-converted an already-CRLF file on
-      # 2026-08-27: \r\n became \r\r\n across 783 lines. Python parsed it and
-      # the tests passed; the only symptom was an implausible insertion count.
       - name: Line-ending churn guard
         run: python3 scripts/check_line_endings.py --range origin/main...HEAD
-
-      # The hardening runner uses an explicit allowlist: 49 of 1,009 test files,
-      # so every green run reported on 4.9% of the suite and said nothing about
-      # the rest. Discovery cannot simply be switched on -- the unlisted suite
-      # does not pass and six files cannot be imported at all. The gap is made
-      # visible and bounded instead: today's unlisted set is a named baseline
-      # that may shrink, and a NEW unlisted test file fails here.
       - name: Test coverage guard (no new test file outside CI)
         run: python3 scripts/check_test_coverage.py --fail-on-new
-
-      # A test that reads /home/johnclaw/trade-ai-releases (or the dev tree) by
-      # absolute path tests the host, not the code: PR #1234 went red on its own
-      # head when an unrelated release was promoted (2026-09-25). New ones fail.
       - name: Test host-path guard (no new live-host paths in tests)
         run: python3 scripts/check_test_host_paths.py --fail-on-new
-
+      - name: Docs index drift
+        run: python3 scripts/report_docs_inventory.py --check-index
+      - name: Committed release manifest integrity
+        run: python3 scripts/cio_release_manifest.py check-committed
+      - name: Candidate release manifest
+        run: python3 scripts/cio_release_manifest.py candidate --out-dir "$RUNNER_TEMP/cio_manifest_candidate"
       - name: Report HTML export smoke
         run: |
           python3 - <<'PY'
@@ -230,6 +341,252 @@ jobs:
 
       - name: Upload CIO CI evidence
         if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cio-hardening-evidence
+          path: |
+            docs/investment-office/RELEASE_MANIFEST.md
+            docs/investment-office/RELEASE_MANIFEST.json
+            exports/ci_smoke/
+          if-no-files-found: ignore
+
+  cio-hardening:
+    # Required status check (the context name never changes).
+    # On pull_request it runs the PR profile here, as before (operator budget 2026-09-25: 5 minutes
+    # wall clock including runner setup): smoke gates, every gate of each HIGH risk tier the diff
+    # touches, changed and impacted tests within budget; the rest is DEFERRED to the push-to-main
+    # run and listed in the job summary (scripts/lib/test_impact.py, config/ci_risk_tiers.json).
+    # On push/dispatch (2026-10-22) it is the AGGREGATE of the parallel FAST jobs above: it fails
+    # unless every one of them succeeded and their manifests prove each registered file ran exactly
+    # once on this tree. A shard that fails, is cancelled or hits its timeout makes this job fail,
+    # so main-red-alert (needs: cio-hardening) still fires on failure, cancelled and timed_out.
+    # History: one FAST job measured 1,077-1,127 s before 2026-09-25, exceeded 20 min on 2026-10-11
+    # (run 38151425912), 26-38 min on 2026-10-22 (run 39817528884 cancelled at 35 min; raised to 50
+    # in #1934). Split per the cio-full-suite-sharded pattern; the shards there take a median 6 min.
+    needs: [fast-shard, fast-serial, fast-pg, fast-integrity]
+    # PR: the FAST jobs are skipped, so the job must not wait on success(); a superseded PR run is
+    # cancelled (never reported green). Push/dispatch: always() so a cancelled or timed-out shard
+    # still produces a red aggregate (and so the alert) instead of a skipped one.
+    if: >-
+      (github.event_name == 'pull_request' && !cancelled()) ||
+      (github.event_name != 'pull_request' && github.event_name != 'schedule' && always())
+    runs-on: ubuntu-latest
+    # PR profile bound; the push aggregate finishes in a few minutes once the shards are done.
+    timeout-minutes: 50
+    env:
+      TRADE_AI_CI: "1"
+      CIO_TELEGRAM_INTERDICT: "1"
+      ENABLE_TELEGRAM: "0"
+      ALPACA_MODE: paper
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install test deps
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pytest pyyaml requests
+          # Attestation tests require the production-locked Ed25519 backend.
+          pip install -c requirements.lock.txt cryptography
+          # Optional render smoke deps (fail-soft if unavailable)
+          pip install python-docx || true
+          # agent_governance_sop requires pinned Ruff (quality + toolchain tests).
+          # Never optional: missing Ruff must fail closed, not skip.
+          pip install "ruff==0.16.2"
+          python3 - <<'PY'
+          from scripts.lib.sop_toolchain import PINNED_RUFF_VERSION, resolve_ruff_bin, ruff_version_string
+          b = resolve_ruff_bin()
+          assert b is not None, "ruff missing after pip install"
+          raw = ruff_version_string(b)
+          assert PINNED_RUFF_VERSION in raw, raw
+          print("cio_hardening_ruff_ok", b, raw)
+          PY
+
+      - name: Install registered frontend test dependencies
+        if: github.event_name == 'pull_request'
+        uses: ./.github/actions/setup-cio-frontend-tests
+
+      - name: Download fast shard manifests
+        if: github.event_name != 'pull_request'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cio-fast-shard-*
+          path: ${{ runner.temp }}/manifests
+          merge-multiple: true
+
+      - name: CIO hardening gates (PR profile, or the FAST aggregate)
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          CI_GATE_NEEDS: ${{ toJSON(needs) }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            python3 scripts/run_cio_hardening_ci.py --profile pr --base "origin/$BASE_REF"
+          else
+            # Every FAST job succeeded (CI_GATE_NEEDS) and the shards ran exactly the registered files.
+            python3 scripts/run_cio_hardening_ci.py --shards 8 --verify-shards "$RUNNER_TEMP/manifests" \
+              --timings-out "$RUNNER_TEMP/timings/ci_shard_duration_hints.json"
+          fi
+
+      - name: Upload per-shard timings (duration-hint refresh)
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cio-fast-shard-timings
+          path: |
+            ${{ runner.temp }}/timings/
+            ${{ runner.temp }}/manifests/
+          if-no-files-found: ignore
+
+      - name: Phase 11 adversarial suite
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/run_cio_adversarial_suite.py
+
+      # A versioned contract with no caller is this codebase's recurring defect:
+      # the artifact passes its own tests, so nothing reports a problem. Fails
+      # only on a NEW one -- the 29 inherited are named in KNOWN_DARK.
+      - name: Dark contract guard (no new uncalled versioned schema)
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/check_dark_contracts.py --fail-on-new
+
+      # 2026-10-07: retention is a governed surface. The four tax/brokerage tables sat on a
+      # 180-day DELETE policy for months; the registry makes KEEP_FOREVER explicit and this
+      # gate refuses a registry that deletes them, lacks a window, or carries unresolved rows.
+      - name: Retention policy registry gate
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/check_retention_policy.py --fail-on-new
+
+      # A "preserve CRLF" helper double-converted an already-CRLF file on
+      # 2026-08-27: \r\n became \r\r\n across 783 lines. Python parsed it and
+      # the tests passed; the only symptom was an implausible insertion count.
+      - name: Line-ending churn guard
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/check_line_endings.py --range origin/main...HEAD
+
+      # The hardening runner uses an explicit allowlist: 49 of 1,009 test files,
+      # so every green run reported on 4.9% of the suite and said nothing about
+      # the rest. Discovery cannot simply be switched on -- the unlisted suite
+      # does not pass and six files cannot be imported at all. The gap is made
+      # visible and bounded instead: today's unlisted set is a named baseline
+      # that may shrink, and a NEW unlisted test file fails here.
+      - name: Test coverage guard (no new test file outside CI)
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/check_test_coverage.py --fail-on-new
+
+      # A test that reads /home/johnclaw/trade-ai-releases (or the dev tree) by
+      # absolute path tests the host, not the code: PR #1234 went red on its own
+      # head when an unrelated release was promoted (2026-09-25). New ones fail.
+      - name: Test host-path guard (no new live-host paths in tests)
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/check_test_host_paths.py --fail-on-new
+
+      - name: Report HTML export smoke
+        if: github.event_name == 'pull_request'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from datetime import datetime, timezone
+          import sys
+          sys.path.insert(0, ".")
+          sys.path.insert(0, "scripts")
+          from scripts.lib.cio_report_v2 import build_report_v2
+          from scripts.lib.cio_report_render import export_report_formats
+          model = build_report_v2(
+              part_b_ctx={
+                  "portfolio": {"total_value": 100000.0, "cash_value": 20000.0, "cash_pct": 20.0},
+                  "allocation": {"Cash & Equivalents": 20000.0, "Equities": 80000.0},
+                  "performance": {"ytd_return": 1.0, "port_cagr": 5.0},
+              },
+              part_a_inputs={"capital_plan": {
+                  "portfolio_value_usd": 100000.0, "cash_total_usd": 20000.0,
+                  "cash_reserved_usd": 20000.0, "cash_investable_usd": 0.0,
+                  "net_recommended_deploy_usd": 0.0, "net_recommended_raise_usd": 0.0,
+                  "post_plan_cash_usd": 20000.0, "position_decisions": [],
+              }},
+              source_sha="ci",
+              now=datetime.now(timezone.utc),
+          )
+          out = Path("exports/ci_smoke")
+          res = export_report_formats(model, out, basename="ci_smoke", formats=["html"])
+          assert res.get("paths", {}).get("html"), res
+          html = Path(res["paths"]["html"]).read_text()
+          assert "578107.50%" not in html
+          assert "READ_ONLY_ADVISORY" in html
+          print("HTML smoke OK", res["paths"]["html"])
+          PY
+
+      - name: DOCX smoke (optional)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          try:
+              import docx  # noqa: F401
+          except ImportError:
+              print("python-docx not installed — skip DOCX smoke")
+              raise SystemExit(0)
+          from pathlib import Path
+          from datetime import datetime, timezone
+          import sys
+          sys.path.insert(0, ".")
+          sys.path.insert(0, "scripts")
+          from scripts.lib.cio_report_v2 import build_report_v2
+          from scripts.lib.cio_report_render import export_report_formats
+          model = build_report_v2(
+              part_b_ctx={"portfolio": {"total_value": 1.0, "cash_value": 0.5},
+                          "allocation": {"Cash & Equivalents": 0.5, "Equities": 0.5}},
+              part_a_inputs={"capital_plan": {
+                  "portfolio_value_usd": 1.0, "cash_total_usd": 0.5,
+                  "cash_reserved_usd": 0.2, "cash_investable_usd": 0.3,
+                  "net_recommended_deploy_usd": 0, "net_recommended_raise_usd": 0,
+                  "post_plan_cash_usd": 0.5, "position_decisions": [],
+              }},
+              source_sha="ci", now=datetime.now(timezone.utc),
+          )
+          res = export_report_formats(model, Path("exports/ci_smoke"), basename="ci_docx", formats=["html","docx"])
+          assert res.get("paths", {}).get("docx") or res.get("errors", {}).get("docx")
+          print("DOCX smoke:", res.get("paths", {}).get("docx"), res.get("errors"))
+          PY
+
+      - name: PDF smoke (optional — needs chromium/weasyprint)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from datetime import datetime, timezone
+          import sys
+          sys.path.insert(0, ".")
+          sys.path.insert(0, "scripts")
+          from scripts.lib.cio_report_v2 import build_report_v2
+          from scripts.lib.cio_report_render import export_report_formats, has_pdf_renderer
+          if not has_pdf_renderer():
+              print("No PDF renderer in CI image — skip")
+              raise SystemExit(0)
+          model = build_report_v2(
+              part_b_ctx={"portfolio": {"total_value": 1.0, "cash_value": 0.5},
+                          "allocation": {"Cash & Equivalents": 0.5, "Equities": 0.5}},
+              part_a_inputs={"capital_plan": {
+                  "portfolio_value_usd": 1.0, "cash_total_usd": 0.5,
+                  "cash_reserved_usd": 0.2, "cash_investable_usd": 0.3,
+                  "net_recommended_deploy_usd": 0, "net_recommended_raise_usd": 0,
+                  "post_plan_cash_usd": 0.5, "position_decisions": [],
+              }},
+              source_sha="ci", now=datetime.now(timezone.utc),
+          )
+          res = export_report_formats(model, Path("exports/ci_smoke"), basename="ci_pdf", formats=["html","pdf"])
+          print("PDF smoke:", res.get("paths", {}).get("pdf"), res.get("errors"))
+          PY
+
+      - name: Upload CIO CI evidence
+        if: always() && github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: cio-hardening-evidence

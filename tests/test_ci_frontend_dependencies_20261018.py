@@ -51,6 +51,10 @@ def test_all_actual_test_jobs_install_before_executing_the_existing_runner():
     for workflow, job, selector in [
         (hardening, "cio-hardening", None),
         (hardening, "cio-hardening-full", None),
+        # 2026-10-22: the push-to-main FAST profile runs as parallel shards (aggregate: cio-hardening)
+        (hardening, "fast-shard", "${{ matrix.shard }}/${{ env.CIO_SHARDS }}"),
+        (hardening, "fast-serial", "serial/${{ env.CIO_SHARDS }}"),
+        (hardening, "fast-pg", "pg/${{ env.CIO_SHARDS }}"),
         (shards, "shard", "${{ matrix.shard }}/${{ env.CIO_SHARDS }}"),
         (shards, "serial", "serial/${{ env.CIO_SHARDS }}"),
         (shards, "pg", "pg/${{ env.CIO_SHARDS }}"),
