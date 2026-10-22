@@ -439,6 +439,13 @@ d_preflight() {
   [[ -x "$CODE_ROOT/.venv/bin/python" ]] || refuse "the unit's ExecStart interpreter $CODE_ROOT/.venv/bin/python is missing"
   [[ "$STATE_DIR" == "$UNIT_STATE_DIR" ]] \
     || refuse "state dir mismatch: the runner resolves $STATE_DIR ($STATE_DIR_SOURCE) but the .path unit watches $UNIT_STATE_DIR/train_requests/pending (step G; never auto-remediated)"
+  # Finding 7: the superseded 12:00/17:30 release_window timer must never run beside the train (two release paths).
+  local old
+  for old in tradeai-release-window.timer tradeai-release-window.service; do
+    if [[ -e "$UNIT_DIR/$old" ]] || [[ "$(systemctl --user is-enabled "$old" 2>/dev/null || true)" == enabled ]]; then
+      refuse "the superseded $old (12:00/17:30 release_window run) is installed; archive it first: TRADEAI_OPERATOR_INSTALL=1 bash $UNIT_SRC_REL/install_release_window_timer.sh --disable (never both release paths)"
+    fi
+  done
 }
 
 step_D() {

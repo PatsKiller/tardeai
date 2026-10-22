@@ -713,6 +713,10 @@ The fallback holds through every phase.
    `install_release_window_timer.sh`, schedule `release_window.py run` at 12:00 and 17:30 ET. The plan and the train
    use 18:00, 00:00, 06:00 and 08:00. Installing both would give two release paths. This packet installs only the
    claimer.
+   **Status: FIXED** (branch `fix/release-train-arming-blockers-20261021`). The old packet's §5 and §8 step 3 are
+   marked SUPERSEDED, with a pointer here. `install_release_window_timer.sh --apply` refuses even with
+   `TRADEAI_OPERATOR_INSTALL=1`, while its dry run and `--disable` (archive) still work. Step D refuses to install the
+   claimer while `tradeai-release-window.{timer,service}` is installed or enabled.
 8. **"No minimum number of days" versus one train per window.** Live requests are on-window only (an off-window
    request is always shadow), and there is one train per window. With only 18:00 enabled, the canary's 5 proofs (STOP
    in 4 phases) need about 8 separate 18:00 windows. That is a calendar floor the plan says does not exist.

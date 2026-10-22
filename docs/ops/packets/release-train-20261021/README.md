@@ -183,6 +183,12 @@ unless the operator rules otherwise.
 
 ## 5. Scheduling (proposed; operator installs; not installed)
 
+> **SUPERSEDED 2026-10-21 (release-train arming finding 7).** Do not install this 12:00/17:30 timer. Release Train v2
+> runs in the 18:00, 00:00, 06:00 and 08:00 windows through the claimer units, which step D of
+> `docs/ops/packets/release-train-arming-20261021/README.md` installs. Both together would be two release paths.
+> `install_release_window_timer.sh --apply` now refuses (`SUPERSEDED`), and step D refuses to install the claimer
+> while a `tradeai-release-window.timer` is present (`--disable` archives it). The text below is kept as history.
+
 **Use a host systemd timer, not n8n.**
 - §23.3, the allowlist `never` entries and `tests/test_n8n_run_allowlist_20261008.py` forbid release-deploy
   commands (`deploy`, `promote`, `cio_phase2_exact_main_deploy`) on the dispatcher.
@@ -286,8 +292,9 @@ evidence, and both are operator decisions (§17). Expected main CI: about 7 min 
 1. Review and merge this PR (it changes the deploy script, so it is per-PR, not §23.13 standing).
 2. Release it once by the expedited path, so the release checkout carries the train code. The installer preflight
    checks this.
-3. `bash docs/ops/packets/release-train-20261021/install_release_window_timer.sh` (dry run), then
-   `TRADEAI_OPERATOR_INSTALL=1 … --apply`.
+3. **SUPERSEDED** (arming finding 7): do not install the 12:00/17:30 timer. Install the train claimer by
+   `docs/ops/packets/release-train-arming-20261021/README.md` step D instead. (`install_release_window_timer.sh
+   --apply` refuses.)
 4. Arm windows per §4.4. Optionally ratify the §4.4 amendment and the §4.2 ledger change.
 5. Use `gh pr merge --auto --merge` for green PRs. Optionally apply the CI split (§6), then switch the required
    context.
