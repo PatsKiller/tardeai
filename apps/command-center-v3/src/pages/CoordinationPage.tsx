@@ -4,7 +4,7 @@ import { useMemo, useState, type CSSProperties } from 'react'
 import SchedulerOperations from './SchedulerOperations'
 import N8nToday from './N8nToday'
 import ReleaseTrainTab from './ReleaseTrainTab'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { projectionReadPath } from '../lib/projectionReadProtocol'
 import { Chip, ChipRow, SortHeader, useSort } from '../components/primitives'
@@ -112,7 +112,7 @@ export default function CoordinationPage() {
               release errors, n8n + cron timeline) is linked from here; the queue/trains/events views and STOP RELEASES stay on this tab. */}
           <div data-testid="coordination-releases-link" style={{ ...panel, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>Serving release, what releases next, train windows, shipped history, release errors and the next 3 hours of n8n and cron are on one page.</div>
-            <Link to="/system/releases" style={{ fontSize: TYPE.sm, fontWeight: 750, color: TOKENS.primary, textDecoration: 'none' }}>Open Releases &amp; schedules →</Link>
+            <a href="/v3/system/releases" style={{ fontSize: TYPE.sm, fontWeight: 750, color: TOKENS.primary, textDecoration: 'none' }}>Open Releases &amp; schedules →</a>
           </div>
           <ReleaseTrainTab />
         </div>
