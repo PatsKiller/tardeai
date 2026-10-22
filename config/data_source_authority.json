@@ -4661,6 +4661,16 @@
           },
           "role": "derived",
           "how": "Watch desk alert view (watch_alerts_eval)"
+        },
+        {
+          "store": {
+            "file": "runtime/unified_momentum_alerts.jsonl"
+          },
+          "role": "history",
+          "how": "Gate 4 unified momentum alert ledger (2026-10-22): shadow builds and live thread roots (first message id per chat), one writer scripts/lib/unified_momentum_alert.py; proposed, folds into alert_events at grant",
+          "match": [
+            "unified_momentum_alerts.jsonl"
+          ]
         }
       ],
       "primary_provider": "internal",

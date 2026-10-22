@@ -52,6 +52,11 @@ os.environ.setdefault("COMMS_EDITOR_MODE_FILE", os.path.join(_scratch("tradeai_c
 # imports a report writer without patching its output dir must not write into the live
 # reports tree (2026-10-09).
 os.environ.setdefault("TRADEAI_PORTFOLIO_REPORTS_ROOT", _scratch("tradeai_portfolio_reports_tests_"))
+# Gate 4 unified momentum alert (2026-10-22): its default mode is shadow, which appends to a ledger under the
+# persistent state root. A test that reaches a hooked sender (social_scalp_scanner.send_scalp_alert) must never
+# append to the live ledger (AGENTS.md §24.6).
+os.environ.setdefault("UNIFIED_MOMENTUM_ALERT_LEDGER", os.path.join(
+    _scratch("tradeai_unified_alert_tests_"), "unified_momentum_alerts.jsonl"))
 # The host editor-failure policy file must not steer tests either (M5 4d, 2026-09-23).
 os.environ.setdefault("COMMS_EDITOR_FAIL_MODE_FILE", os.path.join(_scratch("tradeai_comms_fail_mode_tests_"), "absent"))
 
