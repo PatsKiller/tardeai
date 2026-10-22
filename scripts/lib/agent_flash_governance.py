@@ -47,6 +47,12 @@ TASK_TO_PROCESS: dict[str, str] = {
     "risk_review": "watchlist_risk_flash_narrative",
     "steph_review": "watchlist_steph_flash_narrative",
     "tax_review": "watchlist_risk_flash_narrative",
+    # 2026-10-22: the options-desk CIO thesis review (scripts/lib/options_cio_review.py) borrowed cio_synthesis
+    # and so Steph's process, whose allowed lanes exclude fast_think. Its prompt carries thesis text such as
+    # "reconcile", which escalates the policy to FAST_THINK, so every SPCX/SCHG review since 2026-10-05 was refused
+    # POLICY_NOT_ALLOWED (3 x -> REVIEW_FAILURE_CAP). It now names itself (AGENTS.md §9.2): its own process, caps
+    # and lanes, so its spend is no longer booked to Steph and its refusals stop at its own cap.
+    "options_thesis_review": "options_thesis_cio_review",
     "default": "watchlist_maria_flash_narrative",
 }
 

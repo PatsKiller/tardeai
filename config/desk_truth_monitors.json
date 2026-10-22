@@ -1,0 +1,31 @@
+{
+  "schema": "DeskTruthMonitors@v1",
+  "as_of": "2026-10-22",
+  "_why": "Thresholds for scripts/desk_truth_monitor.py (operator 2026-10-22: \"fix all of these n8n first for scheduling and monitoring\"). Read-only monitors; each check writes its own LaneRunReceipt and queues at most one DIGEST host comms intent (P2) when its finding set GAINS a finding. Tuning a number here is a reviewed config change; nothing here can make a monitor write a store, a stop or a broker.",
+  "holdings_drift": {
+    "qty_tolerance": 0.001,
+    "cash_tolerance_usd": 50.0,
+    "holdings_stale_after_h": 2.0,
+    "positions_current_stale_after_h": 1.0,
+    "session_start_et": "09:45",
+    "session_end_et": "16:30",
+    "accounts": ["schwab_taxable", "schwab_roth_ira", "schwab_rollover_ira"],
+    "holdings_account_aliases": {"schwab_roth": "schwab_roth_ira"},
+    "_note": "accounts = the positions_current account keys compared (config/portfolio_positions.yaml required_accounts). Holdings freshness = the newest broker_position_as_of_at on those accounts' holdings.json rows (what schwab_position_sync stamps per row), falling back to the document's positions_built_at, which only moves when the position list changes."
+  },
+  "options_desk_staleness": {
+    "max_age_min": 45,
+    "sessions": ["REGULAR"],
+    "_note": "Desk freshness = the newer of options_proposals.json generated_at (full build, */10 12:00-15:59 ET) and quote_refresh.at (scripts/options_desk_quote_refresh.py, 09:35-11:50 ET). Until the quote-refresh lane runs, the 09:30-12:00 gap is a real finding every trading morning."
+  },
+  "held_exit_coverage": {
+    "working_lifecycles": ["working", "near_trigger"],
+    "snapshot_stale_after_h": 2.0,
+    "paper_accounts": ["tradeai_automated", "alpaca_paper"],
+    "exempt": [],
+    "exclude_asset_types": ["option", "cash"],
+    "min_position_value_usd": 1000.0,
+    "account_aliases": {"schwab_roth": "schwab_roth_ira"},
+    "_note": "Held = positions_current non-cash rows with qty > 0 (live accounts). A position is covered when stop_lifecycle (the stop_lifecycle_monitor snapshot) has a row for the same account and symbol whose lifecycle is in working_lifecycles. A position whose positions_current broker_market_value is below min_position_value_usd (fractional DRIP remainders, measured 2026-10-22: 14 of 27 held rows under $1,000) is counted as below_value_floor, not checked; a missing value is checked. Paper-account stop rows are counted and tagged PAPER; paper positions are not read (no broker read here). exempt: [{\"account\": \"...\", \"symbol\": \"...\", \"reason\": \"...\"}], each a reviewed operator decision."
+  }
+}

@@ -207,7 +207,9 @@ def test_cron_row_with_dispatch_live_at_canary_is_the_declared_dual_state_not_a_
     lane = "aegis-social-sentiment"
     decl = _decl([_row(lane, kind="cron", expression="0 7 * * *", dispatch="live")], [_contract(lane)], [_allow(lane)])
     ledger = {"live_runs": {lane: {"count": 1, "last": "x"}}, "owners": {lane: {"owner": "n8n"}}}
-    found, _, _ = RT.evaluate(decl, ledger=ledger, live_lanes=[lane], cron_lines=[], n8n_active=[])
+    # 2026-10-22: the dual state keeps its cron line live (ACTIVE_CRON_LINE_ABSENT reads the crontab for cron rows).
+    found, _, _ = RT.evaluate(decl, ledger=ledger, live_lanes=[lane], cron_lines=["0 7 * * * run 0 7 * * *:x"],
+                              n8n_active=[])
     assert found == []
     decl = _decl([_row(lane, kind="cron", expression="0 7 * * *", stage=None)])
     found, _, _ = RT.evaluate(decl, ledger=ledger, live_lanes=None, cron_lines=None, n8n_active=None)
@@ -496,3 +498,54 @@ def test_coverage_report_lists_every_active_signal_free_lane():
                    if r.get("state") == "ACTIVE" and (r.get("output_signal") or {}).get("kind") == "none"]
     missing = [lid for lid in none_active if f"`{lid}`" not in text]
     assert not missing, missing
+
+
+# ── 2026-10-22: kind-cron declared state vs the crontab ─────────────────────────────────────────────────────────
+
+
+def test_active_cron_row_whose_line_is_commented_is_a_contradiction():
+    """schwab-position-sync: ACTIVE in the registry, line `# PAUSED 2026-10-15 ...` in the crontab."""
+    lane = "schwab-position-sync-fixture"
+    row = _row(lane, kind="cron", expression="7,22,37,52 9-16 * * 1-5", stage=None)
+    row["scheduler"]["match"] = "scripts/schwab_position_sync.py"
+    decl = _decl([row])
+    commented = "# PAUSED 2026-10-15 x 7,22,37,52 9-16 * * 1-5 cd $PROJ && $PY scripts/schwab_position_sync.py --apply"
+    lines = RT.active_cron_lines(commented + "\n0 7 * * * other.py\n")
+    found, nm, _ = RT.evaluate(decl, ledger={"live_runs": {}, "owners": {}}, live_lanes=[], cron_lines=lines,
+                               n8n_active=[])
+    assert _codes(found) == [("ACTIVE_CRON_LINE_ABSENT", lane)]
+    assert "ACTIVE_CRON_LINE_ABSENT" not in nm
+    # the truthful row (PAUSED, line commented) is clean
+    paused = dict(row, state="PAUSED")
+    found, _, _ = RT.evaluate(_decl([paused]), ledger={"live_runs": {}, "owners": {}}, live_lanes=[],
+                              cron_lines=lines, n8n_active=[])
+    assert found == []
+    # and a live line clears the ACTIVE row
+    found, _, _ = RT.evaluate(decl, ledger={"live_runs": {}, "owners": {}}, live_lanes=[],
+                              cron_lines=["7 9 * * 1-5 $PY scripts/schwab_position_sync.py --apply"], n8n_active=[])
+    assert found == []
+
+
+def test_declared_off_cron_row_with_a_live_line_is_a_contradiction():
+    lane = "paused-but-running"
+    row = _row(lane, state="PAUSED", kind="cron", expression="0 7 * * *", stage=None)
+    found, _, _ = RT.evaluate(_decl([row]), ledger={"live_runs": {}, "owners": {}}, live_lanes=[],
+                              cron_lines=["0 7 * * * run 0 7 * * *:x"], n8n_active=[])
+    assert _codes(found) == [("DECLARED_OFF_CRON_LINE_ACTIVE", lane)]
+    assert found[0]["evidence"]["lines"] == 1 and len(found[0]["evidence"]["line_sha256"][0]) == 12
+
+
+def test_unreadable_crontab_leaves_the_cron_state_rules_not_measured():
+    row = _row("x", kind="cron", expression="0 7 * * *", stage=None)
+    found, nm, _ = RT.evaluate(_decl([row]), ledger={"live_runs": {}, "owners": {}}, live_lanes=[], cron_lines=None,
+                               n8n_active=[])
+    assert found == []
+    assert {"ACTIVE_CRON_LINE_ABSENT", "DECLARED_OFF_CRON_LINE_ACTIVE", "CUTOVER_CRON_LINE_ACTIVE"} <= set(nm)
+
+
+def test_the_committed_schwab_position_sync_row_tells_the_truth():
+    """The registry row fixed 2026-10-22: PAUSED (its line is commented since 2026-10-15), with a review date."""
+    row = REG["schwab-position-sync"]
+    assert row["state"] == "PAUSED"
+    assert row["state_since"] == "2026-10-15" and row.get("review_by")
+    assert "PAUSED 2026-10-15" in row["state_reason"]

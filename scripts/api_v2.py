@@ -30606,6 +30606,8 @@ def _needs_action(query=None):
         "pipelines": lambda: _system_pipeline_failures({}),
         # 2026-10-21: the pr-hygiene-audit lane's receipt (read-only; scripts/pr_hygiene_audit.py)
         "pr_hygiene": _na.probe_pr_hygiene,
+        # 2026-10-22: the three desk-truth monitor lanes' receipts (read-only; scripts/desk_truth_monitor.py)
+        "desk_truth": _na.probe_desk_truth,
         # Release train 2026-10-21: a failed release window (STOP latch / last receipt) is an inbox item.
         "release_window": _na.read_release_window_state,
         # 2026-10-21 macro calendar: a missing/stale calendar means the 08:00 window is skipped (P2; read-only).

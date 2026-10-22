@@ -17173,6 +17173,139 @@
       "note": "Fired only by tradeai-fabric-release-train through Run Lane (one lane per window slot: a run request names only lane and mode, AGENTS.md §23.3, so the slot is in the reviewed argv), never by the generic dispatcher (no dispatch block). Its whole effect with --append is one TrainWindowRequest@v1 file in the release-window request spool; it never merges, pushes, promotes, rolls back, issues a capability, writes the STOP latch, reads a credential or sends. A request is REQUEST_ONLY: the host controller re-validates every gate."
     },
     {
+      "lane_id": "schwab-position-sync",
+      "owner": "execution",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "7,22,37,52 9-16 * * 1-5",
+        "match": "scripts/schwab_position_sync.py"
+      },
+      "expected_cadence_hours": 64.25,
+      "state": "PAUSED",
+      "state_since": "2026-10-15",
+      "state_reason": "Crontab line 501 is commented: \"# PAUSED 2026-10-15 schwab-app-deactivated (incident SPCX, grant 0f9de907)\" (crontab -l, read 2026-10-22). The row said ACTIVE for a week while the scheduled holdings.json writer did not run, and lane_state_drift classified the pair UNCLASSIFIED, so no gate saw it; scripts/check_registry_runtime_truth.py now reports that shape as ACTIVE_CRON_LINE_ABSENT. Schwab reads were re-enabled by the operator 2026-10-16 (config/schwab_access_mode.yaml mode read_only). Until AGENTS.md 18.0.0 (broker READ-ONLY lanes on n8n) is ACTIVE this writer stays a HOST cron line: the operator's cron resume packet re-enables line 501 and flips this row back to ACTIVE in the same change (§9.3: a crontab edit is a registry edit). The n8n lane in f09_staged stays inert until 18.0.0 is ACTIVE.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l line 501 text (quoted in f09_staged.cron_lines); tests/test_registry_runtime_truth_20261018.py test_the_committed_schwab_position_sync_row_tells_the_truth",
+      "review_by": "2026-10-29",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/schwab_position_sync.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L499",
+        "pipeline": "P09",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:positions_sync",
+        "f_recommendation": "MERGE-into positions_sync (P09)",
+        "event_driven_candidate": false,
+        "f_evidence": "runs :07/:22/:37/:52 while positions_sync runs :09/:24/:39/:54; last log lines `\"added\": [], \"removed\": []`; schwab_positions_live 0 rows today (db_fresh)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "stay_on_cron": {
+        "class": "broker_order",
+        "token": "schwab_position_sync.py",
+        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+      },
+      "f09_staged": {
+        "policy": "operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\"); AGENTS.md 12.0.0 §23.25 (ACTIVE) makes F09 a cutover target: n8n schedules the HOST lane, the host executes under the trading lock and config/schwab_access_mode.yaml; same staged shape as PR #1795 (F09 batch 1)",
+        "since": "2026-10-22",
+        "why_off": "Staged inert, gated on AGENTS.md 18.0.0 ACTIVE: no allowlist entry and no dispatch block. Today lib/lane_dispatch.dispatch_eligible refuses the forbidden tokens 'schwab' (EXTRA_FORBIDDEN_WORDS) and 'schwab_position_sync.py' (pipeline_manifest.FORBIDDEN_COMMAND_TOKENS), and the broker-read lanes are on the §23 n8n never-list; this change does not touch either. 18.0.0 (operator-directed 2026-10-22, not yet ratified) is the amendment that admits broker READ-ONLY lanes.",
+        "order_path": false,
+        "entry_script": "scripts/schwab_position_sync.py",
+        "cron_lines": [
+          {
+            "row_id": "cron:L501",
+            "text": "# PAUSED 2026-10-15 schwab-app-deactivated (incident SPCX, grant 0f9de907) 7,22,37,52 9-16 * * 1-5 cd $PROJ && flock -n /tmp/schwab_pos_sync.lock bash -c \"sleep $((RANDOM \\% 20)); set -a; . ./.env; set +a; $PY scripts/schwab_position_sync.py --apply\" >> logs/schwab_position_sync.log 2>&1"
+          }
+        ],
+        "cron_argv": [
+          [
+            "--apply"
+          ]
+        ],
+        "cron_lock": "/tmp/schwab_pos_sync.lock",
+        "cadence": "7,22,37,52 9-16 * * 1-5 (America/New_York), unchanged from the cron line",
+        "effects": [
+          "overwrite"
+        ],
+        "access_mode": {
+          "required": "read_only",
+          "today": "sync_schwab_positions() proceeds when schwab_access_mode.reads_allowed() (normal or read_only) and skips with degraded_noop when forbidden; it calls schwab_transport.get_positions and the account cash read (GET only); it writes holdings.json through protected_holdings_write under holdings_write_lock. It never calls an order route.",
+          "activation_condition": "the lane runs only while config/schwab_access_mode.yaml resolves to read_only: a preflight in the activation PR refuses (typed RUN_REFUSED reason schwab_access_mode_not_read_only) under normal or forbidden; never by setting TRADEAI_SCHWAB_ACCESS_MODE, which would override an operator 'forbidden'"
+        },
+        "dry_run": {
+          "arg": null,
+          "today": "the bare command (no --apply) is the script's own dry run, but it READS Schwab live (positions + cash) and prints the add/remove diff; it writes nothing",
+          "needed": "a write-free, broker-call-free --dry-run guard like PR #1795's (returns before any .env load or broker import, prints one LaneOutput@v1 line dry_run_requires_broker_read)"
+        },
+        "activation_allowlist_entry": {
+          "lane_id": "schwab-position-sync",
+          "command": [
+            "$PY",
+            "scripts/schwab_position_sync.py"
+          ],
+          "lock": "/tmp/schwab_pos_sync.lock",
+          "lock_kind": "flock",
+          "timeout_s": 600,
+          "dry_run_arg": [
+            "--dry-run"
+          ],
+          "live_arg": null,
+          "market_gate": true,
+          "output_signal": "logs/schwab_position_sync.log",
+          "env_names": [],
+          "env_allowlist_mode": "report",
+          "source": "crontab cron:L501 (commented 2026-10-15): # PAUSED 2026-10-15 schwab-app-deactivated (incident SPCX, grant 0f9de907) 7,22,37,52 9-16 * * 1-5 cd $PROJ && flock -n /tmp/schwab_pos_sync.lock bash -c \"sleep $((RANDOM \\% 20)); set -a; . ./.env; set +a; $PY scripts/schwab_position_sync.py --apply\" >> logs/schwab_position_sync.log 2>&1"
+        },
+        "activation_registry": {
+          "scheduler.kind": "cron (kept; the line stays commented and the row records it)",
+          "scheduler.stage": "shadow",
+          "scheduler.wave": "F09",
+          "dispatch": {
+            "mode": "dry_run",
+            "cron": [
+              "7,22,37,52 9-16 * * 1-5"
+            ],
+            "tz": "America/New_York",
+            "wave": "W5",
+            "class": "pipeline",
+            "priority": 2,
+            "retry_policy": "none"
+          },
+          "canary_live_arg": [
+            "--apply"
+          ]
+        },
+        "health_contract": "config/n8n_health_contracts.json id schwab-position-sync (DRAFT, owner execution; operator REVIEW)",
+        "activation_needs": [
+          "AGENTS.md 18.0.0 ACTIVE (broker READ-ONLY lanes on n8n: read_only mode + trading lock LOCKED + read-only allowlist) and the code that implements it, reviewed in its own PR; nothing in this lane's record weakens the forbidden-token check before then",
+          "the --dry-run guard above (write-free, broker-call-free) and a LaneRunReceipt@v2 with produced_count (today output_signal is a log mtime)",
+          "the read_only access-mode preflight above",
+          "live env: env_names is [] (report mode renders TRADEAI_ENV like cron); a live entry reads Schwab tokens through schwab_token_manager on the host, never through n8n (§23.23 C5: no broker credential in n8n)",
+          "move activation_allowlist_entry into config/n8n_run_allowlist.json lanes and set the activation_registry fields in the same registry PR (one registry PR at a time, §23.11); drop stay_on_cron / KEEP_ON_CRON",
+          "cutover from the resumed host cron line follows §23.21 / §23.12: shadow and canary with the cron line live under the shared lock /tmp/schwab_pos_sync.lock (no double run), then `_cutover.py` comments the line under a cron grant; the canary live fire comes from n8n's own schedule, never from an agent forcing a live broker read (§23.25)"
+        ],
+        "relation_to_f09_batch_1": "PR #1795 stages the other read/sync lanes (alpaca/moomoo live read, snaptrade, positions_sync, ...) in this shape; it does not stage schwab-position-sync. Same activation decision for all of them.",
+        "gated_on": {
+          "policy": "AGENTS.md 18.0.0 (operator-directed 2026-10-22: n8n may schedule broker READ-ONLY lanes under read_only mode + trading lock LOCKED + a read-only allowlist)",
+          "status_required": "ACTIVE",
+          "status_today": "NOT RATIFIED (2026-10-22)",
+          "until_then": "this lane stays inert: no allowlist entry, no dispatch, and the forbidden-token rule (pipeline_manifest.FORBIDDEN_COMMAND_TOKENS, lane_dispatch.EXTRA_FORBIDDEN_WORDS) is NOT weakened"
+        },
+        "host_schedule_until_18": "host cron line 501, resumed by the operator's cron resume packet (not by this PR); the registry row returns to ACTIVE in that packet",
+        "trading_lock_condition": "the activation preflight also refuses unless lib.trading_lock.lock_state() is LOCKED for schwab (18.0.0 condition), in addition to access mode read_only"
+      },
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-22",
+      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented) and the f09_staged record added; reconcile_lane_registry.py re-derives generated rows from live crontab lines and would drop both, so the row is hand-maintained from here."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
@@ -20166,43 +20299,6 @@
         "class": "broker_order",
         "token": "stop",
         "source": "config/lane_stay_on_cron_tokens.json"
-      }
-    },
-    {
-      "lane_id": "schwab-position-sync",
-      "owner": "execution",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "7,22,37,52 9-16 * * 1-5",
-        "match": "scripts/schwab_position_sync.py"
-      },
-      "expected_cadence_hours": 64.25,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/schwab_position_sync.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L499",
-        "pipeline": "P09",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:positions_sync",
-        "f_recommendation": "MERGE-into positions_sync (P09)",
-        "event_driven_candidate": false,
-        "f_evidence": "runs :07/:22/:37/:52 while positions_sync runs :09/:24/:39/:54; last log lines `\"added\": [], \"removed\": []`; schwab_positions_live 0 rows today (db_fresh)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "stay_on_cron": {
-        "class": "broker_order",
-        "token": "schwab_position_sync.py",
-        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
       }
     },
     {
