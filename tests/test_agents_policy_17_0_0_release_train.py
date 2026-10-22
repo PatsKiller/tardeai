@@ -44,6 +44,12 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
 from scripts import check_agents_policy_state as STATE  # noqa: E402
 
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+# AGENTS.md 19.0.0 (§27.5): once 19.0.0 is ACTIVE its four clause edits in §17, §23.14 and §25.4 are undone before
+# the pins below are checked; tests/test_agents_policy_19_0_0_broker_read_controls.py pins those edits and the
+# post-ratification digests. While 19.0.0 is PROPOSED the text is unchanged.
+from tests.test_agents_policy_19_0_0_broker_read_controls import pre_19_0_0  # noqa: E402
+
+AGENTS = pre_19_0_0(AGENTS)
 AWP = (ROOT / "AI_WORK_POLICY.md").read_text(encoding="utf-8")
 TOKEN = "APPROVE_AGENTS_POLICY_17_0_0"
 ADAPTERS = ("CLAUDE.md", ".cursor/rules/00-tradeai-work-policy.mdc", ".github/copilot-instructions.md", ".goosehints")
