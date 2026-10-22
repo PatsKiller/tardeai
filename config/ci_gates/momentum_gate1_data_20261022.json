@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "momentum_gate1_data_20261022",
+  "files": [
+    "tests/test_momentum_gate1_data_20261022.py"
+  ],
+  "anchor": "MOMENTUM_GATE1_DATA_20261022",
+  "comment": [
+    "ANCHOR: MOMENTUM_GATE1_DATA_20261022 — Shared Momentum / Alerts redesign Gate 1 (data bugs only): AT rows carry",
+    "the catalyst the AT alert prints (Trade-AI scan -> earlier scan -> Hermes, origin labelled); trade_ai_today maps",
+    "tuple-cursor columns by name; the projection reads the journal's whole latest session (bounded, tail_truncated",
+    "honest); security_guid from the identity registry and a read-side SecurityEvent@v1 (never invented, mismatch",
+    "reported); AT gap pillar from today's Trade-AI row. Hermetic: tmp state roots, fake cursors, injected lookups."
+  ]
+}

@@ -2,11 +2,46 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "SecurityEvent@v1"
 STATUSES = ("SCHEDULED", "OCCURRED", "POST_EVENT", "SUPERSEDED", "CANCELLED", "UNKNOWN")
+
+# Event types whose natural lifecycle unit is a fiscal quarter. Everything else
+# is dated to the day: two analyst downgrades in one quarter are two events,
+# while two Q3 earnings reports for one issuer are a data error, not two events.
+QUARTERLY_TYPES = frozenset({
+    "earnings_beat", "earnings_miss", "earnings", "earnings_preview", "guidance",
+})
+
+
+def period_for(catalyst_type: str, when: Any) -> str | None:
+    """Lifecycle bucket for an event. None when the timestamp is unusable.
+
+    A missing period yields no event_guid at all rather than a shared placeholder,
+    which would merge unrelated events onto one node.
+    """
+    dt = _as_dt(when)
+    if dt is None:
+        return None
+    if str(catalyst_type or "").strip().lower() in QUARTERLY_TYPES:
+        return f"{dt.year}Q{(dt.month - 1) // 3 + 1}"
+    return f"{dt:%Y%m%d}"
+
+
+def _as_dt(value: Any) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if not value:
+        return None
+    text = str(value).strip().replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
 def event_guid(*, issuer_guid: str | None, event_type: str, period: str) -> str | None:

@@ -355,30 +355,12 @@ def get_scalp_catalyst(symbol: str, day: str, root: Path | str | None = None) ->
     except OSError:
         return out
     out["status"] = "NOT_RESEARCHED"
-    best: dict[str, Any] | None = None
-    best_ts: datetime | None = None
-    for line in lines:
-        try:
-            rec = json.loads(line)
-        except ValueError:
-            continue
-        if not isinstance(rec, dict) or str(rec.get("symbol") or "").upper() != sym:
-            continue
-        ts = _parse(rec.get("research_timestamp"))
-        if best is None or (ts is not None and (best_ts is None or ts >= best_ts)):
-            best, best_ts = rec, ts
-    if best is None:
-        return out
-    ctype = str(best.get("catalyst_type") or "").strip() or NO_CLEAR_CATALYST
-    out.update({
-        "status": "NONE_FOUND" if ctype == NO_CLEAR_CATALYST else "FOUND",
-        "catalyst_type": ctype,
-        "summary": str(best.get("catalyst_summary") or "").strip() or None,
-        "confidence": best.get("confidence"),
-        "source_count": best.get("source_count"),
-        "researched_at": best.get("research_timestamp"),
-        "source": "hermes_momentum_catalyst_researcher",
-    })
+    # 2026-10-22 (Gate 1): record selection is shared with the Shared Momentum projection.
+    from lib.hermes_scalp_catalyst_record import select_scalp_catalyst
+
+    found = select_scalp_catalyst(sym, lines)
+    if found is not None:
+        out.update(found)
     return out
 
 

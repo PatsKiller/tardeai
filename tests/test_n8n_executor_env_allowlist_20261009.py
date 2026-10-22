@@ -48,6 +48,11 @@ _REVIEWED_NEW_COMMON_MODULES = frozenset(
         # AGENTS 7.0.0 (2026-10-14): lane_dispatch imports the §23.20 static guard lazily; stdlib only, no env read.
         "scripts/lib/advisory_lane_guard.py",
         "scripts/lib/cron_schedule.py",
+        # 2026-10-22 (Shared Momentum Gate 1): imported lazily by scripts/lib/scanner_candidate_projection.py for
+        # read-side catalyst event ids (SecurityEvent@v1) and the Hermes scalp-catalyst record pick; both stdlib only
+        # (uuid, json, datetime), no environment read, no file I/O, no network, no write.
+        "scripts/lib/event_identity.py",
+        "scripts/lib/hermes_scalp_catalyst_record.py",
         "scripts/lib/lane_dispatch.py",
         "scripts/lib/n8n_coordination_gateway.py",
         "scripts/lib/n8n_coordination_ledger.py",

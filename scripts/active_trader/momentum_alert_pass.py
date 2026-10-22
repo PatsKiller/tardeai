@@ -85,8 +85,39 @@ def build_candidates(results: Sequence[Mapping[str, Any]], trigger_fires: Sequen
     return out
 
 
+TRADE_AI_RICH_COLUMNS = ("symbol", "decision", "not_tradeable", "scanned_at", "price", "float_m", "rvol", "gap_pct",
+                         "change_pct", "catalyst", "catalyst_verified", "catalyst_source", "catalyst_url", "catalyst_at")
+TRADE_AI_BASIC_COLUMNS = TRADE_AI_RICH_COLUMNS[:4]
+_TRADE_AI_FACT_COLUMNS = TRADE_AI_RICH_COLUMNS[4:]
+
+
+def _column_names(description, width: int) -> tuple:
+    """Column names for a tuple row: the cursor's own description, else the query's declared columns by width.
+
+    2026-10-22 (Gate 1): a tuple cursor took a positional branch that kept only decision / not_tradeable /
+    scanned_at, so price / float / rvol / gap / catalyst never reached ``trade_ai.setup_evidence`` (all None)."""
+    names = []
+    for col in description or ():
+        name = getattr(col, "name", None)
+        if name is None:
+            try:
+                name = col[0]
+            except (TypeError, IndexError, KeyError):
+                name = None
+        names.append(str(name) if name is not None else None)
+    if len(names) == width and all(names):
+        return tuple(names)
+    if width == len(TRADE_AI_RICH_COLUMNS):
+        return TRADE_AI_RICH_COLUMNS
+    if width == len(TRADE_AI_BASIC_COLUMNS):
+        return TRADE_AI_BASIC_COLUMNS
+    return ()
+
+
 def trade_ai_today(conn, symbols: Sequence[str], day: str) -> dict[str, dict]:
-    """Latest trade_ai_scans verdict + five-facts fields per symbol for the session day (read-only)."""
+    """Latest trade_ai_scans verdict + five-facts fields per symbol for the session day (read-only).
+
+    Rows are mapped by column NAME for both dict cursors and tuple cursors (Gate 1, 2026-10-22)."""
     syms = sorted({s for s in symbols if s})
     if conn is None or not syms:
         return {}
@@ -111,6 +142,7 @@ def trade_ai_today(conn, symbols: Sequence[str], day: str) -> dict[str, dict]:
                     (day, syms),
                 )
             rows = cur.fetchall()
+            description = getattr(cur, "description", None)
         conn.rollback()
     except Exception:  # noqa: BLE001
         try:
@@ -129,31 +161,24 @@ def trade_ai_today(conn, symbols: Sequence[str], day: str) -> dict[str, dict]:
     for r in rows:
         if isinstance(r, Mapping):
             payload = dict(r)
-            sym = str(payload.get("symbol"))
-            at = payload.get("scanned_at")
-            scanned = at.isoformat() if hasattr(at, "isoformat") else at
-            entry = {
-                "decision": payload.get("decision"),
-                "not_tradeable": bool(payload.get("not_tradeable")),
-                "scanned_at": scanned,
-                "run_date": day,
-                "scan_run_date": day,
-                "price": payload.get("price"),
-                "float_m": payload.get("float_m"),
-                "rvol": payload.get("rvol"),
-                "gap_pct": payload.get("gap_pct"),
-                "change_pct": payload.get("change_pct"),
-                "catalyst": payload.get("catalyst"),
-                "catalyst_verified": payload.get("catalyst_verified"),
-                "catalyst_source": payload.get("catalyst_source"),
-                "catalyst_url": payload.get("catalyst_url"),
-                "catalyst_at": payload.get("catalyst_at"),
-            }
         else:
-            sym = str(r[0])
-            scanned = r[3].isoformat() if hasattr(r[3], "isoformat") else r[3]
-            entry = {"decision": r[1], "not_tradeable": bool(r[2]), "scanned_at": scanned,
-                     "run_date": day, "scan_run_date": day}
+            values = list(r)
+            payload = dict(zip(_column_names(description, len(values)), values))
+        if not payload.get("symbol"):
+            continue
+        sym = str(payload.get("symbol"))
+        at = payload.get("scanned_at")
+        scanned = at.isoformat() if hasattr(at, "isoformat") else at
+        entry = {
+            "decision": payload.get("decision"),
+            "not_tradeable": bool(payload.get("not_tradeable")),
+            "scanned_at": scanned,
+            "run_date": day,
+            "scan_run_date": day,
+        }
+        for key in _TRADE_AI_FACT_COLUMNS:
+            value = payload.get(key)
+            entry[key] = value.isoformat() if hasattr(value, "isoformat") else value
         if build_setup_evidence is not None:
             try:
                 entry["setup_evidence"] = build_setup_evidence(

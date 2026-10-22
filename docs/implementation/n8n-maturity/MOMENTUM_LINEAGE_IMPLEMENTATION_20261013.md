@@ -154,6 +154,46 @@ The operator added dated Telegram examples during implementation (2026-10-13). T
 
 [TEST] The final formatted source and its updated precise firing annotation passed the same **330 tests**, zero failures/skips, in 60.89 seconds, finished `2026-10-14T01:18:14.219247+00:00`. Final receipt: `/home/johnclaw/tradeai-exact-main-20260827/.momentum-validation-archives-20261013/public-alarm-ci-final-formatted/receipt.json`. Ruff lint and `format --check` passed on both changed Python files; the secret-tree gate passed on 10,640 files, and diff whitespace passed. This final overlay supersedes the earlier overlay for publication without replacing its original receipt. Main and CURRENT remain `5bfccec3a`; no runtime promotion occurred.
 
+## Shared Momentum / Alerts redesign — Gate 1 data fixes (2026-10-22)
+
+Gate 1 fixes data only; it adds no features. Evidence comes from read-only projection runs against
+`~/trade-ai-releases/persistent-state` (before = main `48b745aec`, after = this branch). Tests:
+`tests/test_momentum_gate1_data_20261022.py` (CI gate `momentum_gate1_data_20261022`).
+
+1. **AT catalyst.** `SharedMomentumCandidates@v1` built Active Trader evidence from the AT `candidate` dict.
+   It read a top-level `catalyst` that the `Candidate` dataclass never had. Now
+   `scanner_candidate_projection.active_trader_catalyst` follows the alert's `catalyst_line` order: today's
+   Trade-AI scan, then the earlier scan today, then Hermes scalp research. The origin is recorded in the
+   additive `MomentumSetupEvidence@v1` field `catalyst.origin` (`TRADE_AI_SCAN` |
+   `TRADE_AI_SCAN_EARLIER_TODAY` | `HERMES_SCALP_RESEARCH` | null). Hermes picks its record with the shared
+   `lib/hermes_scalp_catalyst_record.py`, which `get_scalp_catalyst` also uses.
+2. **`trade_ai_today` tuple cursor.** Columns are now mapped by name for dict and tuple cursors. A tuple row
+   previously kept only the decision, `not_tradeable` and `scanned_at`, so the embedded
+   `trade_ai.setup_evidence` facts were all null. Journal rows written before deployment keep the old shape.
+3. **Whole latest session.** `read_journal_session` reads backwards in 1 MB blocks to the first row of an
+   earlier session, bounded by 32 MB (a full day measured 0.6–3.8 MB). `tail_truncated` is true only when that
+   bound is hit before the session boundary. `source_metadata.ACTIVE_TRADER` adds `read_scope`,
+   `session_window`, `session_boundary_found`, `bytes_read`, `max_bytes` and `earlier_session_rows_excluded`.
+   Rows from earlier sessions are no longer projected.
+4. **Identity and event, read side only.** `security_guid` comes from `IdentityRegistry@v1` by symbol, read at
+   the journal's state root. It follows `superseded_by`, and parity with `identity_registry.lookup_symbol` is
+   pinned by a test. An entity known only by ticker alias stays unresolved. A catalyst with a publication time
+   and a registered issuer becomes a `SecurityEvent@v1`, built from `event_identity.period_for` / `build_event`
+   with catalyst_graph's rules (`period_for` moved there and is re-exported by catalyst_graph). Each
+   observation records `security_guid_basis` and `catalyst_event`. A candidate adds `event_basis`, `event` and
+   `reconciliation_reasons` (`SECURITY_GUID_UNRESOLVED`, `EVENT_UNRESOLVED`, `EVENT_MISMATCH`,
+   `SESSION_UNRESOLVED`). Two different source events are reported, never picked. A Hermes research time is
+   not a publication time. Nothing is written to the registry.
+5. **AT gap pillar.** When the AT candidate has no gap, it takes `gap_pct` (or `change_pct`) from today's
+   Trade-AI row, stamped with the scan's `scanned_at` and `trade_ai_scans:<date>` as its observation.
+
+**Not changed (operator follow-up):** the AT price, float and RVOL pillars still report `UNKNOWN` even when
+they have values. This is by design: an advisory's publication clock is not a quote clock, and the AT
+`Candidate` has `quote_ts_epoch` but no `observed_at`. The momentum-cache-reconcile and
+momentum-lifecycle-monitor n8n closures gain two stdlib-only modules with no environment read
+(`event_identity`, `hermes_scalp_catalyst_record`). These are reviewed in
+`tests/test_n8n_executor_env_allowlist_20261009.py`.
+
 ## Rollback
 
 Before deployment, retain the reviewed source commit and existing production release identity. Operational rollback follows the existing exact-source release procedure and stops only approved candidate scheduling before restoring its affected legacy trigger. Preserve all original observations, notification receipts and retry history. Never restore an entire crontab or delete evidence.

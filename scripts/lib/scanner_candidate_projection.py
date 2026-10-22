@@ -60,6 +60,157 @@ def _digest(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def _mapping(value):
+    return value if isinstance(value, dict) else {}
+
+
+def _clean(value):
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def active_trader_catalyst(candidate, *, catalyst_lookup=None):
+    """The catalyst the Active Trader alert prints, as evidence-row fields with its origin labelled.
+
+    Same order as scripts/active_trader/momentum_alerts.py ``catalyst_line`` / ``_trade_ai_catalyst``:
+    today's Trade-AI scan (setup_evidence.catalyst, then the raw column, then the day's earlier non-empty
+    scan catalyst) -> Hermes scalp research through the data broker (FOUND only) -> nothing. The AT
+    Candidate dataclass has no catalyst field, so before Gate 1 (2026-10-22) the projection read a
+    top-level ``catalyst`` that never existed and every AT row showed no catalyst."""
+    ta = _mapping(candidate.get("trade_ai"))
+    facts = _mapping(ta.get("setup_evidence"))
+    cat = _mapping(facts.get("catalyst"))
+    day_cat = _mapping(ta.get("day_catalyst"))
+    if _clean(cat.get("text")) or _clean(ta.get("catalyst")):
+        reported = cat.get("reported_verified")
+        if not isinstance(reported, bool):
+            reported = ta.get("catalyst_verified") if isinstance(ta.get("catalyst_verified"), bool) else None
+        return {
+            "catalyst": _clean(cat.get("text")) or _clean(ta.get("catalyst")),
+            "catalyst_source": _clean(cat.get("source")) or _clean(ta.get("catalyst_source")),
+            "catalyst_url": cat.get("url") or ta.get("catalyst_url"),
+            "catalyst_published_at": cat.get("original_published_at") or ta.get("catalyst_at"),
+            "catalyst_verified": reported,
+            "catalyst_verification_method": cat.get("verification_method"),
+            "catalyst_origin": "TRADE_AI_SCAN",
+        }
+    if _clean(day_cat.get("text")):
+        return {
+            "catalyst": _clean(day_cat.get("text")),
+            "catalyst_source": _clean(day_cat.get("source")),
+            "catalyst_origin": "TRADE_AI_SCAN_EARLIER_TODAY",
+        }
+    symbol, day = _symbol(candidate.get("symbol")), _day(candidate.get("session_date"))
+    rec = None
+    if catalyst_lookup is not None and symbol and day:
+        try:
+            rec = catalyst_lookup(symbol, day)
+        except Exception:  # noqa: BLE001 - a failed lookup is an absent catalyst, never a crash
+            rec = None
+    rec = _mapping(rec)
+    text = _clean(rec.get("summary")) or _clean(rec.get("catalyst_type"))
+    if rec.get("status") == "FOUND" and text:
+        ctype = _clean(rec.get("catalyst_type"))
+        return {
+            "catalyst": text,
+            "catalyst_source": f"Hermes {ctype}" if ctype else "Hermes",
+            "catalyst_type": ctype,
+            "catalyst_origin": "HERMES_SCALP_RESEARCH",
+        }
+    return {}
+
+
+def _active_trader_evidence_row(candidate, *, catalyst_lookup=None):
+    """The AT candidate plus the facts its alert already used: catalyst (labelled) and gap from today's
+    Trade-AI row when the candidate has none (Gate 1 bug 5; the Candidate dataclass has no gap field)."""
+    row = dict(candidate)
+    if not _clean(row.get("catalyst")):
+        row.update(active_trader_catalyst(candidate, catalyst_lookup=catalyst_lookup))
+    ta = _mapping(candidate.get("trade_ai"))
+    if row.get("gap_pct") is None and row.get("change_pct") is None:
+        gap = ta.get("gap_pct") if ta.get("gap_pct") is not None else ta.get("change_pct")
+        if gap is not None:
+            row["gap_pct"] = gap
+            fields = dict(_mapping(row.get("field_observations")))
+            # The gap fact was observed by the Trade-AI scan, at the scan's time — not at the advisory's.
+            fields["gap"] = {
+                "observed_at": ta.get("scanned_at"),
+                "source_ref": f"trade_ai_scans:{ta.get('scan_run_date') or ta.get('run_date')}",
+            }
+            row["field_observations"] = fields
+    return row
+
+
+_REGISTRY_MAX_CHAIN = 16  # scripts/lib/identity_registry.py MAX_CHAIN
+
+
+def registry_entity(registry, symbol):
+    """The current IdentityRegistry@v1 entity for a ticker — the semantics of identity_registry.lookup_symbol
+    (by_symbol -> guid -> follow ``superseded_by`` to the active entity), on a document the caller read.
+
+    identity_registry itself is not imported: its closure reaches canonical_store_registry and env reads that the
+    n8n executor's reviewed inventory for this module's lanes does not allow
+    (tests/test_n8n_executor_env_allowlist_20261009.py). Parity is pinned by a test against lookup_symbol."""
+    sym = _symbol(symbol)
+    if not isinstance(registry, dict) or not sym:
+        return None
+    entities = _mapping(registry.get("entities"))
+    guid = _mapping(registry.get("by_symbol")).get(sym)
+    if not guid:
+        return None
+    seen, cur = set(), str(guid)
+    for _ in range(_REGISTRY_MAX_CHAIN):
+        if cur in seen:
+            break
+        seen.add(cur)
+        nxt = _mapping(entities.get(cur)).get("superseded_by")
+        if not nxt:
+            break
+        cur = str(nxt)
+    entity = entities.get(cur)
+    return entity if isinstance(entity, dict) else None
+
+
+def _registry_security_guid(registry, symbol):
+    """security_guid from the identity registry. Never invented: an entity with no security_guid (ticker alias
+    only, UNRESOLVED_WITH_REASON) stays unresolved."""
+    return _clean(_mapping(registry_entity(registry, symbol)).get("security_guid"))
+
+
+def _bind_event(registry, symbol, evidence_row):
+    """SecurityEvent@v1 for an observation's catalyst — catalyst_graph.bind_catalyst's rules from the same
+    primitives (event_identity.period_for / build_event): issuer-scoped, period-scoped by PUBLICATION time,
+    status OCCURRED. None without a registered issuer or a publication time (a research timestamp is not a
+    publication time). catalyst_graph itself is not imported: its closure reaches db_adapter."""
+    if not registry:
+        return None
+    published = evidence_row.get("catalyst_published_at") or evidence_row.get("catalyst_at")
+    if not published or not _clean(evidence_row.get("catalyst") or evidence_row.get("catalyst_headline")):
+        return None
+    entity = _mapping(registry_entity(registry, symbol))
+    if not entity.get("issuer_guid"):
+        return None
+    try:
+        try:
+            from scripts.lib.event_identity import build_event, period_for
+        except ModuleNotFoundError:
+            from lib.event_identity import build_event, period_for  # type: ignore
+        ctype = str(evidence_row.get("catalyst_type") or "other")
+        period = period_for(ctype, published)
+        if not period:
+            return None
+        event = build_event(
+            issuer_guid=entity.get("issuer_guid"),
+            security_guid=entity.get("security_guid"),
+            event_type=ctype,
+            period=period,
+            status="OCCURRED",
+            as_of=str(published),
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    return event if event.get("event_guid") else None
+
+
 def _source_view(observations, status, day):
     unique = {_digest(o): o for o in observations}
     rows = sorted(unique.values(), key=lambda o: (o.get("observed_at") or "", _digest(o)), reverse=True)
@@ -83,9 +234,21 @@ def _source_view(observations, status, day):
 
 
 def build_candidate_projection(
-    cache, journal, *, now=None, source_status=None, source_details=None, criteria=None, criteria_source=None
+    cache,
+    journal,
+    *,
+    now=None,
+    source_status=None,
+    source_details=None,
+    criteria=None,
+    criteria_source=None,
+    identity_registry=None,
+    catalyst_lookup=None,
 ):
-    """Union both populations without changing either authoritative input."""
+    """Union both populations without changing either authoritative input.
+
+    ``identity_registry`` (an IdentityRegistry@v1 document) and ``catalyst_lookup`` (Hermes scalp research,
+    lib.data_broker.scalp_list.get_scalp_catalyst) are read-side resolvers; both default to None (pure)."""
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         raise ValueError("projection clock must be timezone-aware")
@@ -103,10 +266,23 @@ def build_candidate_projection(
     groups = {}
     invalid = {name: 0 for name in SOURCE_NAMES}
 
-    def add(symbol, source, observation):
+    guid_cache = {}
+
+    def resolve_guid(symbol, lineage):
+        if lineage.get("security_guid"):
+            return lineage["security_guid"], "SOURCE"
+        if symbol not in guid_cache:
+            guid_cache[symbol] = _registry_security_guid(identity_registry, symbol)
+        return (guid_cache[symbol], "IDENTITY_REGISTRY") if guid_cache[symbol] else (None, None)
+
+    def add(symbol, source, observation, evidence_row):
         lineage = observation["lineage"]
+        guid, basis = resolve_guid(symbol, lineage)
+        observation["security_guid"] = guid
+        observation["security_guid_basis"] = basis
+        observation["catalyst_event"] = _bind_event(identity_registry, symbol, evidence_row)
         scope = (
-            lineage.get("security_guid") or f"unresolved:{symbol}",
+            guid or f"unresolved:{symbol}",
             lineage.get("session_date"),
             lineage.get("event_id"),
             lineage.get("event_at"),
@@ -162,6 +338,7 @@ def build_candidate_projection(
                     ),
                     "freshness": "STALE" if cache.get("stale") or cache.get("cache_error") else "NOT_MEASURED",
                 },
+                row,
             )
     if valid_journal and statuses["ACTIVE_TRADER"] not in UNAVAILABLE:
         for row in journal:
@@ -184,6 +361,7 @@ def build_candidate_projection(
             # The journal timestamp proves publication of the advisory, not the quote's observation time.
             stamp = _stamp(lineage["observed_at"])
             verdict = row.get("verdict") if row.get("verdict") in {"ALERT", "VETO"} else "UNKNOWN"
+            evidence_row = _active_trader_evidence_row(c, catalyst_lookup=catalyst_lookup)
             add(
                 sym,
                 "ACTIVE_TRADER",
@@ -203,7 +381,7 @@ def build_candidate_projection(
                     "security_guid": lineage["security_guid"],
                     "published_at": (_stamp(row.get("ts_epoch")).isoformat() if _stamp(row.get("ts_epoch")) else None),
                     "setup_evidence": build_setup_evidence(
-                        c,
+                        evidence_row,
                         now=now,
                         observed_at=stamp.isoformat() if stamp else None,
                         source_name="ACTIVE_TRADER",
@@ -212,6 +390,7 @@ def build_candidate_projection(
                     ),
                     "freshness": "NOT_MEASURED",
                 },
+                evidence_row,
             )
     candidates = []
     for (symbol, scope), observations in sorted(groups.items(), key=lambda item: str(item[0])):
@@ -222,7 +401,31 @@ def build_candidate_projection(
             conflicts.append("TRADE_AI_VERDICT_CONFLICT")
         if len(at["latest_verdicts"]) > 1:
             conflicts.append("ACTIVE_TRADER_VERDICT_CONFLICT")
-        comparable = bool(scope[0] and not scope[0].startswith("unresolved:") and scope[1] and scope[3])
+        event_id, event_at, event = scope[2], scope[3], None
+        event_basis = "SOURCE" if scope[3] else None
+        reasons = []
+        if scope[0].startswith("unresolved:"):
+            reasons.append("SECURITY_GUID_UNRESOLVED")
+        if not scope[1]:
+            reasons.append("SESSION_UNRESOLVED")
+        if not scope[3]:
+            # Read-side binding: each source's NEWEST observation's catalyst -> SecurityEvent@v1. One distinct
+            # event across sources is the candidate's event; two different ones are a mismatch, never a pick.
+            newest = [
+                view["observations"][0].get("catalyst_event")
+                for view in (ta, at)
+                if view["observations"] and view["observations"][0].get("catalyst_event")
+            ]
+            distinct = {e["event_guid"]: e for e in newest}
+            if len(distinct) == 1:
+                event = next(iter(distinct.values()))
+                event_id, event_at = event["event_guid"], _clean(event.get("as_of"))
+                event_basis = "READ_SIDE_CATALYST_BINDING"
+            if len(distinct) > 1:
+                reasons.append("EVENT_MISMATCH")
+            elif not event_at:
+                reasons.append("EVENT_UNRESOLVED")
+        comparable = bool(scope[0] and not scope[0].startswith("unresolved:") and scope[1] and event_at)
         if comparable and (
             ("ALERT" in at["verdicts"] and set(ta["verdicts"]) & {"AVOID", "NOGO", "NO_GO", "EXCLUDED"})
             or ("VETO" in at["verdicts"] and "GO" in ta["verdicts"])
@@ -248,9 +451,12 @@ def build_candidate_projection(
                 "symbol": symbol,
                 "security_guid": scope[0] if not scope[0].startswith("unresolved:") else None,
                 "session_date": scope[1],
-                "event_id": scope[2],
-                "event_at": scope[3],
+                "event_id": event_id,
+                "event_at": event_at,
+                "event_basis": event_basis,
+                "event": event,
                 "reconciliation_status": "COMPARABLE_EVENT" if comparable else "IDENTITY_OR_EVENT_UNRESOLVED",
+                "reconciliation_reasons": [] if comparable else reasons,
                 "sources": [name for name in SOURCE_NAMES if observations[name]],
                 "trade_ai": ta,
                 "active_trader": at,
@@ -359,10 +565,176 @@ def build_candidate_projection(
     }
 
 
+
+def _row_session(row):
+    """A journal row's session day: candidate.session_date, else its publication clock in ET."""
+    if not isinstance(row, dict):
+        return None
+    candidate = row.get("candidate")
+    day = _day(candidate.get("session_date")) if isinstance(candidate, dict) else None
+    if day:
+        return day
+    stamp = _stamp(row.get("ts_epoch"))
+    return stamp.astimezone(ET).date().isoformat() if stamp else None
+
+
+def _line_session(line):
+    try:
+        return _row_session(json.loads(line))
+    except ValueError:
+        return None
+
+
+def read_journal_session(path: Path, *, max_bytes=32_000_000, block_bytes=1_048_576):
+    """Every row of the journal's LATEST session, read backwards from the end in blocks (Gate 1, 2026-10-22).
+
+    The journal is append-only in time order. The old reader kept a fixed 4 MB byte tail of a 19 MB file, so a
+    busy session's morning rows were dropped and the source always said PARTIAL. This reads back until it
+    sees a complete row from an EARLIER session (the boundary), never past ``max_bytes``. ``tail_truncated``
+    stays honest: True only when the bound was hit before the boundary and earlier bytes remain.
+
+    Returns (rows, malformed_lines, details)."""
+    size = path.stat().st_size
+    target, boundary, pos, buf = None, False, size, b""
+    with path.open("rb") as fh:
+        while pos > 0 and size - pos < max_bytes:
+            step = min(block_bytes, pos, max_bytes - (size - pos))
+            pos -= step
+            fh.seek(pos)
+            buf = fh.read(step) + buf
+            lines = buf.split(b"\n")
+            complete = lines if pos == 0 else lines[1:]
+            if target is None:
+                target = next((d for d in map(_line_session, reversed(complete)) if d), None)
+            if target is not None:
+                oldest = next((d for d in map(_line_session, complete) if d), None)
+                if oldest is not None and oldest < target:
+                    boundary = True
+                    break
+    lines = buf.split(b"\n")
+    if pos > 0:
+        lines = lines[1:]  # the first piece may be the tail of a row that starts before what was read
+    rows, bad, earlier = [], 0, 0
+    for raw in lines:
+        if not raw.strip():
+            continue
+        try:
+            row = json.loads(raw.decode("utf-8", "replace"))
+        except ValueError:
+            bad += 1
+            continue
+        if not isinstance(row, dict):
+            bad += 1
+            continue
+        day = _row_session(row)
+        if target is not None and day is not None and day < target:
+            earlier += 1
+            continue
+        rows.append(row)
+    truncated = bool(pos > 0 and not boundary)
+    return (
+        rows,
+        bad,
+        {
+            "tail_truncated": truncated,
+            "malformed_lines": bad,
+            "read_scope": "LATEST_SESSION",
+            "session_window": target,
+            "session_boundary_found": boundary or pos == 0,
+            "bytes_read": size - pos,
+            "max_bytes": max_bytes,
+            "earlier_session_rows_excluded": earlier,
+        },
+    )
+
+
+_DEFAULT = object()
+
+HERMES_CATALYST_REL = Path("data") / "hermes" / "momentum_catalysts"  # lib/hermes_catalyst_store.REL
+IDENTITY_REGISTRY_REL = Path("data") / "runtime" / "identity_registry.json"  # identity_registry.REGISTRY_RELATIVE
+
+
+def _hermes_catalyst_lookup(state_root: Path):
+    """Hermes scalp-catalyst research for the AT catalyst fallback: the canonical persistent-state day file
+    (``<state>/data/hermes/momentum_catalysts/<day>_catalysts.jsonl``; lib/hermes_catalyst_store.py) read with the
+    record selection lib.data_broker.scalp_list.get_scalp_catalyst uses (lib/hermes_scalp_catalyst_record.py).
+    Same status vocabulary. Zero provider calls, never writes; one read per day file per projection."""
+    try:
+        try:
+            from scripts.lib.hermes_scalp_catalyst_record import select_scalp_catalyst
+        except ModuleNotFoundError:
+            from lib.hermes_scalp_catalyst_record import select_scalp_catalyst  # type: ignore
+    except Exception:  # noqa: BLE001
+        return None
+    files = {}
+
+    def lookup(symbol, day):
+        if day not in files:
+            try:
+                path = state_root / HERMES_CATALYST_REL / f"{day}_catalysts.jsonl"
+                files[day] = path.read_text(encoding="utf-8").splitlines()
+            except OSError:
+                files[day] = None
+        if files[day] is None:
+            return {"symbol": symbol, "day": day, "status": "STORE_MISSING", "provider_calls": 0}
+        found = select_scalp_catalyst(symbol, files[day])
+        return {"symbol": symbol, "day": day, "provider_calls": 0, **(found or {"status": "NOT_RESEARCHED"})}
+
+    return lookup
+
+
+def _state_root_of(journal_path: Path, override=None):
+    """``<state>`` for ``<state>/data/active_trader/momentum_alerts.jsonl``; None for any other layout."""
+    if override is not None:
+        return Path(override)
+    parents = journal_path.parents
+    if len(parents) > 2 and parents[0].name == "active_trader" and parents[1].name == "data":
+        return parents[2]
+    return None
+
+
+_REGISTRY_CACHE = {}
+
+
+def _identity_registry_for(root, *, max_bytes=64_000_000):
+    """IdentityRegistry@v1 at the state root (``<state>/data/runtime/identity_registry.json``), read-only, parsed
+    once per (path, mtime, size) like identity_registry.load_cached. Missing, oversized or unreadable -> None, and
+    every symbol stays unresolved (never guessed)."""
+    if root is None:
+        return None
+    path = Path(root) / IDENTITY_REGISTRY_REL
+    try:
+        st = path.stat()
+        if st.st_size > max_bytes:
+            return None
+        stamp = (st.st_mtime_ns, st.st_size)
+        hit = _REGISTRY_CACHE.get(str(path))
+        if hit and hit[0] == stamp:
+            return hit[1]
+        doc = json.loads(path.read_bytes())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(doc, dict) or not isinstance(doc.get("by_symbol"), dict) or not doc["by_symbol"]:
+        return None
+    _REGISTRY_CACHE.clear()
+    _REGISTRY_CACHE[str(path)] = (stamp, doc)
+    return doc
+
+
 def read_candidate_snapshot(
-    cache_path: Path, journal_path: Path, *, now=None, max_cache_bytes=16_000_000, max_journal_bytes=4_000_000
+    cache_path: Path,
+    journal_path: Path,
+    *,
+    now=None,
+    max_cache_bytes=16_000_000,
+    max_journal_bytes=32_000_000,
+    state_root=None,
+    catalyst_lookup=_DEFAULT,
 ):
-    """Bounded read only. Missing/unreadable sources are explicit, never empty success."""
+    """Bounded read only. Missing/unreadable sources are explicit, never empty success.
+
+    The identity registry and Hermes research are read from ``state_root`` (default: the journal's own state
+    root), so a fixture journal never resolves against live state."""
     statuses, details = {}, {}
     cache, journal = None, None
     try:
@@ -384,33 +756,18 @@ def read_candidate_snapshot(
     except (OSError, ValueError):
         statuses["TRADE_AI"] = "MALFORMED"
     try:
-        size = journal_path.stat().st_size
-        truncated = size > max_journal_bytes
-        with journal_path.open("rb") as fh:
-            if truncated:
-                fh.seek(size - max_journal_bytes)
-                fh.readline()
-            lines = fh.read(max_journal_bytes).decode("utf-8", "replace").splitlines()
-        journal, bad = [], 0
-        for line in lines:
-            if not line.strip():
-                continue
-            try:
-                row = json.loads(line)
-                if isinstance(row, dict):
-                    journal.append(row)
-                else:
-                    bad += 1
-            except ValueError:
-                bad += 1
-        statuses["ACTIVE_TRADER"] = "PARTIAL" if bad or truncated else "AVAILABLE"
-        details["ACTIVE_TRADER"] = {"tail_truncated": truncated, "malformed_lines": bad}
+        journal, bad, read_details = read_journal_session(journal_path, max_bytes=max_journal_bytes)
+        statuses["ACTIVE_TRADER"] = "PARTIAL" if bad or read_details["tail_truncated"] else "AVAILABLE"
+        details["ACTIVE_TRADER"] = read_details
     except FileNotFoundError:
         statuses["ACTIVE_TRADER"] = "MISSING"
     except OSError:
         statuses["ACTIVE_TRADER"] = "MALFORMED"
     from .scalp_go_criteria import load_criteria
 
+    root = _state_root_of(journal_path, state_root)
+    if catalyst_lookup is _DEFAULT:
+        catalyst_lookup = _hermes_catalyst_lookup(root) if root is not None else None
     return build_candidate_projection(
         cache,
         journal,
@@ -419,4 +776,6 @@ def read_candidate_snapshot(
         source_details=details,
         criteria=load_criteria(),
         criteria_source="scripts/lib/scalp_go_criteria.py:load_criteria (config or documented fallback)",
+        identity_registry=_identity_registry_for(root),
+        catalyst_lookup=catalyst_lookup,
     )
