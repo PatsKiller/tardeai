@@ -44,7 +44,7 @@ SELF_PID = os.getpid()
 
 # Reapable batch jobs ONLY. (pattern matched against full cmdline.) Anything not here is never touched.
 DEFAULT_RULES = [
-    {"name": "trade_ai_orchestrator",         "pattern": "trade_ai_orchestrator.py",         "max_concurrent": 1, "max_runtime_min": 20},
+    {"name": "trade_ai_orchestrator",         "pattern": "trade_ai_orchestrator.py",         "max_concurrent": 1, "max_runtime_min": 30},
     {"name": "process_watchlist_agent_jobs",  "pattern": "process_watchlist_agent_jobs.py",  "max_concurrent": 2, "max_runtime_min": 15},
     {"name": "health_agent",                  "pattern": "scripts/health_agent.py",          "max_concurrent": 1, "max_runtime_min": 8},
     {"name": "system_health_agent",           "pattern": "system_health_agent.py",           "max_concurrent": 1, "max_runtime_min": 10},
