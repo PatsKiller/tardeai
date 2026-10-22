@@ -34,11 +34,12 @@ try:
     from support.isolated_pg import isolated_cluster, pg_bin_dir
 
     pg_bin_dir()
+    import psycopg2  # noqa: F401  (PgStore needs it; some CI jobs have PG binaries but no driver)
     HAVE_PG = True
 except Exception:  # noqa: BLE001
     HAVE_PG = False
 
-needs_pg = pytest.mark.skipif(not HAVE_PG, reason="no PostgreSQL server binaries on this host")
+needs_pg = pytest.mark.skipif(not HAVE_PG, reason="no PostgreSQL server binaries or no psycopg2 on this host")
 
 
 @pytest.fixture(scope="module")
