@@ -36,6 +36,11 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from lib import unified_momentum_alert as U  # noqa: E402
 
+# check_dark_contracts: the replay report schema below has no importer by design -- an operator runs this CLI
+# (dry run, then append) to review the Active Trader side of the shadow beside the scanner hook.
+NO_CONSUMER_REASON = ("operator CLI for the Gate 4 shadow review: replays the Active Trader journal into the unified "
+                      "ledger; the AT live hook waits for an execution-engineering grant")
+
 
 def replay(day: str, *, journal: Path | None = None, ledger: "U.Ledger", include_unsent: bool = False,
            catalyst_lookup=None) -> dict:
