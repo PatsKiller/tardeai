@@ -907,7 +907,7 @@ def _handle_guard_approval(msg, text, chat_id):
         # Settled but not granted. Re-open the request (2026-10-22) so the same code works once the
         # cause is fixed, instead of leaving an APPROVED row with no grant behind it.
         reopened = gra.reopen_after_grant_failure(r["request_id"], detail=detail)
-        again = (f"The request is open again: reply `/approve <CODE>` once fixed."
+        again = ("The request is open again: reply `/approve <CODE>` once fixed."
                  if reopened.get("ok") else
                  f"The request is closed ({reopened.get('reason')}); ask for a new one.")
         _send_reply(chat_id, reply_to, f"⚠️ Approved, but the grant failed:\n`{detail}`\n{again}")
