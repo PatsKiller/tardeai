@@ -41,6 +41,11 @@ from scripts import tmp_hygiene_auto as TA  # noqa: E402
 from scripts.lib import lane_registry as LR  # noqa: E402
 from tests.pipeline_runner_fixtures import runner_env, sandbox_runner  # noqa: E402
 
+#: alarm firing coverage (tests/test_alarm_coverage.py): the P1/P2 send_telegram site in tmp_hygiene_auto.py is fired
+#: end to end by test_the_p1_alarm_reaches_the_telegram_transport
+COVERS = ["scripts/tmp_hygiene_auto.py", "scripts/tmp_hygiene.py", "config/disk_hygiene_rules.json",
+          "scripts/pipelines/_manifest_runner.sh"]
+
 CONFIG = ROOT / "config"
 UNITS = ROOT / "linux_launchers" / "systemd"
 UID = os.getuid()
@@ -507,6 +512,29 @@ def test_inode_alerts_p2_at_90_p1_at_97_once_per_band_and_recovery(w, monkeypatc
     inode_pct(monkeypatch, 50.0)
     w.auto(now=NOW + timedelta(hours=3))
     assert w.sent[-1][0] == "P2" and "recovered" in w.sent[-1][1] and len(w.sent) == 3
+
+
+def test_the_p1_alarm_reaches_the_telegram_transport(w, monkeypatch):
+    """Firing test for the send_telegram site: the default notifier, not an injected one."""
+    got: list[tuple[str, dict]] = []
+
+    def send_telegram(text, **kw):
+        got.append((text, kw))
+        return True
+
+    fake = types.ModuleType("telegram_alert")
+    fake.send_telegram = send_telegram
+    monkeypatch.setitem(sys.modules, "telegram_alert", fake)
+    w.lock()
+    inode_pct(monkeypatch, 99.0, 98.0)
+    rules, t = w.loaded()
+    assert TA.run(rules=rules, t=t, now=NOW, state_root=w.state, pressure_only=False, dry_run=False,
+                  allow_test_root=True, alert_state_path=w.alert_state) == 0
+    assert len(got) == 1
+    text, kw = got[0]
+    assert "/tmp inodes 98.0% used (P1" in text
+    assert kw == {"message_class": "operator_alert", "priority": "P1", "producer": "tmp_hygiene_auto"}
+    assert w.report()["alert"]["sent"] == "accepted"
 
 
 def test_threshold_order_is_enforced(w):
