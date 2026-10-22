@@ -418,15 +418,8 @@ class PgStore:
             return out
         return self._tx(q)
 
-    def audit_update(self, seq: int, **fields: Any) -> None:
-        def q(cur):
-            cur.execute("UPDATE ops_audit SET outcome = %s WHERE seq = %s", (fields.get("outcome", "x"), seq))
-        self._tx(q)
-
-    def audit_delete(self, seq: int) -> None:
-        def q(cur):
-            cur.execute("DELETE FROM ops_audit WHERE seq = %s", (seq,))
-        self._tx(q)
+    # No update or delete method exists for ops_audit: the table's triggers refuse both (tested with raw SQL on the
+    # throwaway cluster), and production code never issues either.
 
     # settings
     def setting_get(self, key: str) -> Optional[dict]:

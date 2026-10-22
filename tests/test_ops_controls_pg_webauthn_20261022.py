@@ -117,10 +117,12 @@ def test_pg_audit_is_append_only_and_chained(pg):
         st.append_audit(actor="tailnet:op", action=f"a{i}", kind="k", request_id=None, outcome="ok", detail={"i": i})
     rows = st.list_audit(50)
     assert S.verify_audit_chain(rows)
-    with pytest.raises(psycopg2.Error):
-        st.audit_update(rows[0]["seq"], outcome="tampered")
-    with pytest.raises(psycopg2.Error):
-        st.audit_delete(rows[0]["seq"])
+    assert not hasattr(st, "audit_update") and not hasattr(st, "audit_delete")
+    for sql in (f"UPDATE ops_audit SET outcome = 'tampered' WHERE seq = {int(rows[0]['seq'])}",
+                f"DELETE FROM ops_audit WHERE seq = {int(rows[0]['seq'])}"):
+        r = pg.psql(sql)
+        assert r.returncode != 0 and "refused" in r.stderr, (sql, r.stderr)
+    assert S.verify_audit_chain(st.list_audit(50)) and isinstance(psycopg2.Error, type)
     # row triggers fire only on rows: give each table one
     st.credential_add({"credential_id": "c1", "name": "n", "public_key": "pk", "user_handle": "u", "created_by": "op",
                        "created_request_id": "r"})
