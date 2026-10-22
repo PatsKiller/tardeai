@@ -30608,6 +30608,8 @@ def _needs_action(query=None):
         "pr_hygiene": _na.probe_pr_hygiene,
         # Release train 2026-10-21: a failed release window (STOP latch / last receipt) is an inbox item.
         "release_window": _na.read_release_window_state,
+        # 2026-10-21 macro calendar: a missing/stale calendar means the 08:00 window is skipped (P2; read-only).
+        "macro_calendar": _na.probe_macro_calendar,
     }
     out = _na.aggregate(probes)
     _NEEDS_ACTION_CACHE["v"] = (_t.monotonic(), out)

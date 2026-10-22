@@ -455,11 +455,57 @@ def rule_release_window(p: Any, now: datetime) -> list[dict]:
     return items
 
 
+# Macro calendar (operator ruling 2026-10-21: FRED + a yearly overrides file, lane macro-calendar-refresh). The release
+# train skips its 08:00 ET window when the calendar is missing, corrupt, stale (> 72 h) or does not cover the day
+# (scripts/lib/macro_calendar.py, fail closed); this source says so. An 08:30 release day is an expected skip, no item.
+MACRO_CALENDAR_LANE = "macro-calendar-refresh"
+
+
+def next_0800_day(now: datetime) -> Any:
+    """The ET date of the next 08:00 ET window at or after ``now`` (weekdays; after 08:00 ET it is the next one)."""
+    from zoneinfo import ZoneInfo
+
+    et = now.astimezone(ZoneInfo("America/New_York"))
+    d = et.date() if et.hour < 8 else et.date() + timedelta(days=1)
+    while d.weekday() >= 5:
+        d += timedelta(days=1)
+    return d
+
+
+def probe_macro_calendar(path: Any = None, now: Optional[datetime] = None) -> dict:
+    """The macro calendar's verdict for the next 08:00 ET window (read-only, no network). Never raises on a bad file:
+    a missing / corrupt / stale calendar is the finding, returned as its verdict."""
+    try:
+        from lib.macro_calendar import verdict
+    except ImportError:  # pragma: no cover - repo root on sys.path instead of scripts/
+        from scripts.lib.macro_calendar import verdict  # type: ignore[no-redef]
+    now = now or datetime.now(timezone.utc)
+    day = next_0800_day(now)
+    v, why = verdict(day, now, path=path)
+    return {"day": day.isoformat(), "verdict": v, "reason": why}
+
+
+def rule_macro_calendar(p: Any, now: datetime) -> list[dict]:
+    """STALE / UNAVAILABLE -> one P2 "08:00 release window skipped: calendar stale|missing"; CLEAR / MACRO_DAY -> none."""
+    if not isinstance(p, dict) or "verdict" not in p:
+        raise SourceUnavailable("macro calendar probe answered no verdict")
+    v = p.get("verdict")
+    if v in ("CLEAR", "MACRO_DAY"):
+        return []
+    what = "stale" if v == "STALE" else "missing"
+    return [item("P2", f"08:00 release window skipped: calendar {what}",
+                 f"{p.get('reason')}. The release train fails closed and skips the 08:00 ET window on {p.get('day')} "
+                 f"until the {MACRO_CALENDAR_LANE} lane writes a fresh calendar "
+                 "(python3 scripts/macro_calendar_refresh.py --dry-run shows what it would write).",
+                 R_SYSTEM_JOBS, "macro_calendar", None,
+                 {"day": p.get("day"), "verdict": v, "lane": MACRO_CALENDAR_LANE})]
+
+
 RULES: dict[str, Callable[[Any, datetime], list[dict]]] = {
     "health": rule_health, "systemd": rule_systemd, "n8n": rule_n8n, "approvals": rule_approvals,
     "queue": rule_queue, "data_plausibility": rule_plausibility, "data_sources": rule_data_sources,
     "comms": rule_comms, "pipelines": rule_pipelines, "pr_hygiene": rule_pr_hygiene,
-    "release_window": rule_release_window,
+    "release_window": rule_release_window, "macro_calendar": rule_macro_calendar,
 }
 
 _EXECUTOR: Optional[cf.ThreadPoolExecutor] = None
@@ -517,7 +563,8 @@ def aggregate(probes: dict[str, Callable[[], Any]], *, now: Optional[datetime] =
 def _source_where(name: str) -> str:
     return {"health": R_HEALTH, "systemd": R_SYSTEM_JOBS, "n8n": R_COORD, "approvals": R_COORD,
             "queue": R_SYSTEM_JOBS, "data_plausibility": R_SYSTEM_DATA, "data_sources": R_SYSTEM_DATA,
-            "comms": R_COMMS, "pipelines": R_SYSTEM_PIPELINE, "pr_hygiene": R_PR_HYGIENE}.get(name, "/v3/system")
+            "comms": R_COMMS, "pipelines": R_SYSTEM_PIPELINE, "pr_hygiene": R_PR_HYGIENE,
+            "macro_calendar": R_SYSTEM_JOBS}.get(name, "/v3/system")
 
 
 def parse_failed_units(text: str) -> list[dict]:

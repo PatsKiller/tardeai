@@ -7921,6 +7921,46 @@
       }
     },
     {
+      "lane_id": "macro-calendar-refresh",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/macro_calendar_refresh.py",
+        "cadence": "5 5 * * *",
+        "stage": "shadow",
+        "wave": "W4",
+        "timezone": "America/New_York"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-21",
+      "state_reason": "Operator ruling 2026-10-21: the release train's 08:00 ET window needs a macro-release calendar - FRED as the primary source plus a yearly file for FOMC and overrides (config/macro_calendar_overrides.json), managed by n8n, the host controller decides, fail closed. n8n-native dispatcher ingest lane at stage SHADOW, daily 05:05 ET plus on-demand (coordination/run): the stage clamp runs it --dry-run (fetches FRED read-only and prints; writes nothing). Ingest lanes on n8n are allowed by the operator's 2026-10-10 dispatch ruling. No cron line exists or is added (cron freeze). The operator says when it is promoted to live.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/macro-calendar-refresh_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/macro_calendar_refresh.py main() writes data/runtime/macro_calendar.json (MacroCalendar@v1, atomic) and then the LaneRunReceipt (v2 output fields) on a real run (tests/test_macro_calendar_20261021.py); at shadow no real run happens, so runtime is NOT_MEASURED"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_macro_calendar_20261021.py (FRED HTTP mocked: id verification, paging, maintenance page, mapping, coverage, overrides merge; reader fail-closed cases, Thursday claims, CPI day, DST; needs-action source; registry/allowlist/contract pins; closure: no sender/broker/order/DB reach).",
+      "review_by": "2026-10-28",
+      "note": "Read-only toward FRED: GET /fred/releases (id verification) and GET /fred/releases/dates (realtime_start..realtime_end, include_release_dates_with_no_data=true), about 2-3 requests a day, free. FRED_API_KEY is never printed or stored. A real run writes data/runtime/macro_calendar.json atomically and its receipt; a failed run writes no calendar (the previous one ages to STALE after 72 h and the 08:00 window is skipped). Reader: scripts/lib/macro_calendar.py skip_0800(date) / ReleaseTrainCalendar.verdict(day, now) for the release-train controller; GET /api/v2/needs-action source macro_calendar raises P2 when the calendar is missing or stale. No DB, no model, no sender, no broker. Exit 0 = calendar written; 1 = FRED unavailable / non-JSON / id verification failed / overrides invalid / no key.",
+      "severity": "Low",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "5 5 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "ingest",
+        "priority": 6,
+        "retry_policy": "none"
+      }
+    },
+    {
       "lane_id": "active-trader-motion-watchdog",
       "owner": "scalp",
       "scheduler": {
