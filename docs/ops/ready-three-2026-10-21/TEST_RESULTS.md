@@ -1,4 +1,8 @@
-# Test results — current provisional checkpoint 2026-10-22 21:31 UTC
+# Test results — current provisional checkpoint 2026-10-22 21:33 UTC
+
+## Exact full-profile progress — 21:33 UTC
+
+The existing session `86134` remains live. At 17:32:59 EDT / 21:32:59 UTC it had **380 PASS / 4 FAIL gates**; `overnight_d1_m5_cadence` was running. Since the previous checkpoint, options order authorization passed 43 (44 live-DB calls blocked by the hermetic guard), order gates 20, proposal cadence 4, queue eligibility 5, thesis 62 (9 DB calls blocked), wave B 8, options workflow 87/12 skipped, orchestrator rows 5, overnight B2/B3 22 (2 DB calls blocked), and overnight B6 9 (8 DB calls blocked). No new failed gate was reported. No terminal summary or final manifest exists.
 
 ## Live profile / PR check — 21:31 UTC
 

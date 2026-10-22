@@ -1,4 +1,8 @@
-# Current execution status — 2026-10-22 21:31 UTC
+# Current execution status — 2026-10-22 21:33 UTC
+
+## Exact profile progress — 2026-10-22 21:33 UTC
+
+The same full-profile session `86134` remains live. At 17:32:59 EDT / 21:32:59 UTC, the aggregate was **380 PASS / 4 FAIL**. Since the 21:31 checkpoint, options order authorization passed 43 tests (44 database calls were refused by the hermetic guard), order gates 20, proposal cadence 4, queue eligibility 5, thesis 62 (9 DB calls blocked), wave B 8, options workflow 87 passed / 12 skipped, orchestrator rows 5, overnight B2/B3 22 (2 DB calls blocked), and overnight B6 9 (8 DB calls blocked). `overnight_d1_m5_cadence` was running at the latest poll. No new failed gate; aggregate is still provisional.
 
 ## Latest coordination update — 2026-10-22 21:31 UTC
 
