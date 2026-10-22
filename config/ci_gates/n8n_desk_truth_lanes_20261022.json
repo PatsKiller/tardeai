@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_desk_truth_lanes_20261022",
+  "files": [
+    "tests/test_n8n_desk_truth_lanes_20261022.py"
+  ],
+  "anchor": "N8N_DESK_TRUTH_LANES_20261022",
+  "comment": [
+    "ANCHOR: N8N_DESK_TRUTH_LANES_20261022 — operator 2026-10-22 \"fix all of these n8n first for scheduling and",
+    "monitoring\": holdings-drift-monitor, options-desk-staleness-monitor, held-exit-coverage-monitor as n8n-native",
+    "dispatcher rows at SHADOW (dry-run allowlist entries, own locks); options-desk-quote-refresh and",
+    "schwab-position-sync staged inert (dispatch off, no allowlist entry, f09_staged activation record); every new",
+    "health contract DRAFT until its owner REVIEWs it."
+  ]
+}

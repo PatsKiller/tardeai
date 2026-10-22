@@ -146,7 +146,7 @@ python3 scripts/options_thesis_reopen.py --guid f327c7ac-a016-59d6-9bc0-d6740e00
 | lane | stage in this branch | why |
 |---|---|---|
 | `holdings-drift-monitor`, `options-desk-staleness-monitor`, `held-exit-coverage-monitor` | registry row + allowlist + DRAFT contract in the follow-up registry PR | a new lane's contract must be REVIEWED by its owner (`check_n8n_health_contracts` fails a DRAFT that is not grandfathered) |
-| `options-desk-quote-refresh` | staged inert (dispatch off) in the registry PR | its reach is the Schwab transport: the forbidden-token / broker-module gates refuse it (§23.14 / §23.20 (a)); admission is an operator decision |
+| `options-desk-quote-refresh` | staged inert (scheduler kind none, `f09_staged.activation_registry` holds the dispatcher row) in the registry PR | its reach is the Schwab transport: the forbidden-token / broker-module gates refuse it (§23.14 / §23.20 (a)); admission is an operator decision |
 | `schwab-position-sync` | registry row PAUSED (truth) + `f09_staged` record in this PR | `schwab`, `schwab_position_sync.py` are forbidden tokens; the §23.25 gate alignment (2026-10-16) kept broker markers refused; same decision as PR #1795's read/sync lanes |
 
 The crontab line 501 stays commented. A re-enabled cron line is not the plan, and adding a cron line is §17.
