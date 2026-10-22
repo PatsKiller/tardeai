@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "symbol_enrichment_supervision_20261022",
+  "files": [
+    "tests/test_symbol_enrichment_supervision_20261022.py"
+  ],
+  "anchor": "SYMBOL_ENRICHMENT_SUPERVISION_20261022",
+  "comment": [
+    "SYMBOL_ENRICHMENT_SUPERVISION_20261022 — watchdog-owned enrichment children complete or are",
+    "terminated and reaped under a bounded deadline; SIGTERM cleanup is covered, and the",
+    "symbol-level PostgreSQL advisory lock prevents concurrent enrichment writers across callers."
+  ]
+}
