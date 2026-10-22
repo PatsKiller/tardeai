@@ -491,6 +491,11 @@ def runner(monkeypatch):
     import lib.alert_quotes as aq
 
     monkeypatch.setattr(cesr, "_load_json", lambda path, default: default)
+    # The FOXA plan fixture is CREATED 2026-10-15; pin the plan-age clock to two hours later so the 7-day plan
+    # limit (cio_entry_state.PLAN_MAX_AGE_H) is judged against the fixture day, not the CI wall clock
+    # (it went red on 2026-10-22, exactly 7 days on).
+    monkeypatch.setattr(cesr, "_age_h", lambda ts: None if ts is None else
+                        (CREATED.timestamp() + 7200 - ts.timestamp()) / 3600.0)
     monkeypatch.setattr(aq, "broker_quotes", lambda cur, syms: {
         s: {"price": 58.55, "age_h": 0.05, "chg_pct": -0.6} for s in syms if s == "FOXA"})
     return cesr
