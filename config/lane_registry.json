@@ -7583,6 +7583,54 @@
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
     },
     {
+      "lane_id": "cio-prospect-shadow",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/cio_prospect_shadow_build.py",
+        "cadence": "*/30 9-16 * * 1-5",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 0.5,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-22",
+      "state_reason": "Operator directive 2026-10-22 (CIO prospect data foundation is the baseline of the site; AGENTS.md §26 18.0.0 ACTIVE; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md §7 P1 Shadow). n8n-native dispatcher lane at stage SHADOW: every 30 min in market hours the stage clamp runs --dry-run (assembles one prospect per security_guid from the existing CIO stores, prints the summary, writes nothing). No cron line exists or is added (cron freeze 2026-10-09). Canary (--write-shadow: the shadow artifact the cio_prospect projection serves) is a later registry PR after the owner marks the health contract REVIEWED.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_cio_prospect_shadow_lane_20261022.py (registry/allowlist/contract pins) and tests/test_cio_prospect_foundation_20261022.py (dry run writes nothing; MBI rail; conflicts; identity; curation; registry/allowlist/contract pins; closure reaches no sender, broker or order module); quoted dry run 2026-10-22 docs/architecture/CIO_PROSPECT_SHADOW_COMPARISON_2026-10-22.md.",
+      "review_by": "2026-11-05",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/cio-prospect-shadow_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/cio_prospect_shadow_build.py --write-shadow writes the receipt (ok_at, produced_count); at shadow no real run happens, so runtime is NOT_MEASURED"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Medium",
+      "note": "Read-only shadow builder (scripts/lib/cio_prospect_builder.py): CIO files, the held set through the positions_context projection (holdings via lib.portfolio_positions; never positions_current) and, with --with-db, bulk SELECTs on a READ ONLY session. No broker call, no model, no send, no store write; never calls InstrumentRecordStore. Exit 0 = built; 1 = no prospect assembled (empty output is a failure); 2 = could not run.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "*/30 9-16 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "report",
+        "priority": 5,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
       "lane_id": "advice-digest",
       "owner": "comms",
       "scheduler": {
