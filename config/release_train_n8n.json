@@ -12,8 +12,8 @@
   "grace_min": 15,
   "off_window_expiry_min": 60,
   "shadow": {
-    "enabled": false,
-    "note": "false at merge. The operator flips it by reviewed PR when the train shadow phase starts (plan Phase 5)."
+    "enabled": true,
+    "note": "true since the H.0 shadow-enable PR (2026-10-22, docs/ops/packets/release-train-arming-20261021 H.0; plan Phase 5). Shadow requests are simulate-only (shadow: true); live requests still need ARMED control, an ACTIVE delegation and an enabled window."
   },
   "slots": [
     {"slot": "1800", "local_time": "18:00", "lane_id": "release-train-request-1800"},

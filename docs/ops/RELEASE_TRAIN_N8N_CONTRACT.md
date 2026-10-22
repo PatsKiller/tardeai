@@ -333,6 +333,16 @@ The four request lanes are fired only by this workflow through Run Lane (registr
 | canary (18:00) | `["--append"]` for `-1800` only | `canary` | as above | live requests for 18:00 once armed |
 | expand | `["--append"]` per slot, in order 00:00, 06:00, 08:00 | `canary` | as above | live requests per proven window |
 
+**Current step: train shadow** (H.0 shadow-enable PR, 2026-10-22; `docs/ops/packets/release-train-arming-20261021`
+§H.0). `config/release_train_n8n.json` has `shadow.enabled: true`; the four request lanes carry
+`live_arg ["--append", "--shadow-only"]` at registry stage `canary`, but stay `state: NEVER_SCHEDULED` until step F
+publishes `tradeai-fabric-release-train` (the §23.24 import gate refuses it today, so the operator runs shadow on the
+host first, §10 item 2 / packet H.1(b)). `pr-hygiene-audit` moved to stage `canary`, `dispatch.mode live`,
+`live_arg []`, so a real run writes the census receipt the train's select step needs. Neither runs live from n8n until
+it is on the relay live list (packet step E). Not changed by H.0: the workflow's `RELEASE_TRAIN_MODE`
+(`scripts/n8n_workflow_templates.py`) still asks Run Lane for `dry_run`, so the n8n path (§10 item 1) runs the request
+lanes `--dry-run` until a later reviewed PR flips it and regenerates the workflow before F.
+
 ## 12. Failure handling
 
 | failure | n8n behaviour | host behaviour |

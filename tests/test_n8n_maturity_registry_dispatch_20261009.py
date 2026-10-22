@@ -511,12 +511,12 @@ def test_registry_dispatch_errors_hook():
 #: its own; the night-stage step is the clock fallback). tests/test_n8n_consolidation_cohort2_20261016.py.
 #: 2026-10-21 + pr-hygiene-audit (operator-approved process plan: PR hygiene audited every iteration; n8n-native,
 #: daily 06:30 dry_run until the operator promotes it; tests/test_pr_hygiene_audit_20261021.py).
+#: 2026-10-22 - pr-hygiene-audit: promoted to N8N_NATIVE_CANARY by the release train H.0 shadow-enable PR.
 N8N_NATIVE_SHADOW = frozenset(
     {
         "momentum-lifecycle-monitor",
         "momentum-cache-reconcile",
         "hermes-discovery-yield-on-learning",
-        "pr-hygiene-audit",
         # 2026-10-21 operator "yes rebuild 1417": two never-scheduled scripts onboarded as
         # n8n-native shadow lanes (no cron line; tests/test_cio_portfolio_thesis_lane_20261021.py).
         "cio-portfolio-thesis",
@@ -543,6 +543,9 @@ N8N_NATIVE_CANARY = frozenset(
         "n8n-gap-resolution-audit",
         *_DH.LIVE,
         "registry-runtime-truth",
+        # 2026-10-22 release train H.0 shadow-enable PR (docs/ops/packets/release-train-arming-20261021 H.0):
+        # shadow -> canary, dispatch live, live_arg [] (a real run writes the census receipt).
+        "pr-hygiene-audit",
     }
 )
 #: the reviewed live_arg of each n8n-native canary row whose live run is not the script default.
