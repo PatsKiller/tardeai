@@ -1,0 +1,12 @@
+{
+  "schema": "CalibrationShadowHarnessConfig@v1",
+  "_comment": "scripts/calibration_shadow_harness.py (operator design 2026-10-22). Evaluates each PROPOSED signal_calibration threshold beside the current one over the next `sessions` forward sessions. Recommendations are proposals; the operator ratifies (AGENTS.md §17). current_values: the CURRENT production value of a knob the operator has not set in config/scalp_signal_engine.yaml; leave a knob out rather than guess (its engine default lives in the broker execution file set, which this harness does not read) — an absent value is reported 'not computed' and compared against no threshold. Changed by reviewed PR only.",
+  "sessions": 5,
+  "min_sample": 30,
+  "min_edge": 0.03,
+  "max_exit_regression_pct": 0.10,
+  "drift_tolerance": 0.10,
+  "current_values": {},
+  "_current_scale": "Multiplier from a knob's config units to its journal feature's units. min_stop.pct_of_price is a fraction of price (0.01 = 1%); signal_calibration measures it as feature risk_pct in percent and proposes in percent (2026-10-22 report: proposed_value 1.767 against config 0.01). Finding reported to the operator: the proposal's units differ from the knob's.",
+  "current_scale": {"min_stop.pct_of_price": 100}
+}
