@@ -1,4 +1,10 @@
-# Test results — current provisional checkpoint 2026-10-22 21:35 UTC
+# Test results — current provisional checkpoint 2026-10-22 21:39 UTC
+
+## Aggregate and upstream checks — 21:39 UTC
+
+Exact profile session `86134` remained live at 17:38:23 EDT / 21:38:23 UTC with **462 PASS / 4 FAIL**, current gate `release_train_email_mirror_20261021`, and no new failure. The release pin daemons, queue migration grants, release train, arming, authority, CC stop, and controller gates passed with counts 20, 6, 55, 42, 90, 54, and 121 respectively.
+
+PR #1947 is still OPEN/CLEAN and unmerged. PR #1956 remains OPEN/BLOCKED: current checks report `ci-gate`, shards 1 and 5, and shard 7 failed; `cio-hardening` pending; full-hardening and nightly red-alert skipped. These check results do not qualify the held pipeline branch.
 
 ## Current profile and upstream checks — 21:35 UTC
 

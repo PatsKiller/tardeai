@@ -1,4 +1,10 @@
-# Current execution status — 2026-10-22 21:35 UTC
+# Current execution status — 2026-10-22 21:39 UTC
+
+## Latest profile and PR checks — 2026-10-22 21:39 UTC
+
+- Exact profile session `86134` remained live at 17:38:23 EDT / 21:38:23 UTC with **462 PASS / 4 FAIL**; `release_train_email_mirror_20261021` was running. Release pin daemons (20), queue migration grants (6), release train (55), arming (42), authority (90), CC stop (54), and controller (121) gates passed after the prior checkpoint. No new profile failure.
+- PR #1947 remains OPEN/CLEAN at `ff2f7b4d42e935334c93cc714ecedfcea227d8c9`, not merged.
+- PR #1956 remains OPEN/BLOCKED at `977606fa24f7079d1e3a32099ef1bc3925672f8b`. Fresh checks show `ci-gate`, shard 1, and shard 5 failed; shard 7 also failed; `cio-hardening` is pending; full-hardening and nightly red-alert checks are skipped. Hold our pipeline branch until #1956 merges; after merge drop duplicate timing changes and rerun the focused suites.
 
 ## Upstream coordination and profile — 2026-10-22 21:35 UTC
 
