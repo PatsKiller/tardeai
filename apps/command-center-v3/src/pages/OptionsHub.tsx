@@ -21,6 +21,8 @@ import ManualExecutionLog from '../components/ManualExecutionLog'
 import OptionsLifecycleView from '../components/options/OptionsLifecycleView'
 import StandingIntentsPanel, { type IntentFeed } from '../components/options/StandingIntentsPanel'
 import StrategyProposalModal, { type ProposalSource } from '../components/options/StrategyProposalModal'
+import StandingIntentModal from '../components/options/StandingIntentModal'
+import OptionsDesk from '../components/options/OptionsDesk'
 
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -35,7 +37,9 @@ import { BB, T, TYPE } from '../lib/watchTokens'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
-const TABS = ['Lifecycle', 'Proposals', 'All coverage', 'Open Options', 'Strategy Overview', 'Options Trends'] as const
+// 2026-10-22: 'Desk' is the operator-approved Gate 3 layout and the default view. The earlier views stay
+// reachable (rollback and power use) until the operator retires them.
+const TABS = ['Desk', 'Lifecycle', 'Proposals', 'All coverage', 'Open Options', 'Strategy Overview', 'Options Trends'] as const
 const LEGACY_TAB_ALIASES: Record<string, typeof TABS[number]> = {
   'Open Positions': 'Open Options',
 }
@@ -53,9 +57,9 @@ export default function OptionsHub({ onDrill }: Props) {
   // Defense's lifecycle strip links /trading?tab=Options&otab=Lifecycle)
   const urlTab = searchParams.get('otab') || searchParams.get('tab')
   const resolveTab = (t: string | null): typeof TABS[number] => {
-    if (!t) return 'Proposals'
+    if (!t) return 'Desk'
     const mapped = LEGACY_TAB_ALIASES[t] || t
-    return (TABS as readonly string[]).includes(mapped) ? mapped as typeof TABS[number] : 'Proposals'
+    return (TABS as readonly string[]).includes(mapped) ? mapped as typeof TABS[number] : 'Desk'
   }
   const [tab, setTab] = useState<typeof TABS[number]>(resolveTab(urlTab))
 
@@ -87,6 +91,7 @@ export default function OptionsHub({ onDrill }: Props) {
   const [proposalSource, setProposalSource] = useState<ProposalSource | null>(null)
   const [execMsg, setExecMsg] = useState<string | null>(null)
   const [manualSeed, setManualSeed] = useState<ManualExecSeed | null>(null)
+  const [showNewPlan, setShowNewPlan] = useState(false)
   // PR4 (2026-09-28): the redesigned cards render only behind ui_v5; v4 stays the fallback.
   const [uiV5] = useUiV5()
   // 2026-09-28 (reviewer): the beginner explanations existed but the hub never passed `novice`.
@@ -131,8 +136,10 @@ export default function OptionsHub({ onDrill }: Props) {
     return s ? `?${s}` : ''
   }, [posSymbolFilter, posTypeFilter, posSideFilter, posWorkingOnly, posRouteFilter, posSourceFilter])
 
+  // The Desk reads every idea (server cap 250) and filters client-side; the classic views keep their query.
+  const deskMode = tab === 'Desk'
   const { data: proposals, loading: propLoading, error: propError, stale: propStale, refetch: refetchProps } =
-    useApi<any>(`/api/v2/options/proposals${q}`, 300_000)
+    useApi<any>(deskMode ? '/api/v2/options/proposals?offset=0&limit=250' : `/api/v2/options/proposals${q}`, 300_000)
   const { data: monitor, loading: monLoading, error: monError, refetch: refetchMon } =
     useApi<any>(`/api/v2/options/open-positions${posQ}`, 300_000)
   const { data: intentFeed, refetch: refetchIntents } = useApi<IntentFeed>('/api/v2/options/intents', 300_000)
@@ -252,6 +259,25 @@ export default function OptionsHub({ onDrill }: Props) {
     next.set('tab', 'Options')
     next.set('otab', t)
     setSearchParams(next, { replace: true })
+  }
+
+  // 2026-10-22: no-op controls are disabled with the reason, not left clickable.
+  const scanDisabled = String(proposals?.scan_capacity?.status || '').toUpperCase() === 'DISABLED'
+
+  const validateOne = async (proposalId: string): Promise<string> => {
+    try {
+      const response = await fetch('/api/v2/options/validate', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposal_id: proposalId }),
+      })
+      const raw = await response.json()
+      const result = raw.data ?? raw
+      refetchProps()
+      if (!response.ok || result?.ok === false) return `Re-quote refused: ${result?.error || result?.reason || response.status}. No order was sent.`
+      return `Re-quoted: ${result?.status || 'done'}${result?.validated_at ? ` at ${new Date(result.validated_at).toLocaleTimeString()}` : ''}. No order was sent.`
+    } catch (error) {
+      return `Re-quote failed: ${String(error)}`
+    }
   }
 
   const execActions = new Set(['sell_covered_call', 'sell_put', 'buy_put', 'buy_call', 'sell_credit_spread'])
@@ -374,7 +400,7 @@ export default function OptionsHub({ onDrill }: Props) {
           <Tip tip={HEADER.desk} style={{ ...hubTitle(), display: 'inline-block' }}>
             Options Desk ⓘ
           </Tip>
-          <div style={hubSubtitle(terminalUi)}>
+          {!deskMode && <div style={hubSubtitle(terminalUi)}>
             {(proposals?.universe_census?.banner) || 'Coverage unavailable until a producer snapshot is recorded.'}
             {' '}· {propCount} matching ideas · {proposals?.coverage?.inventory_count ?? '—'} securities in inventory · {posList.length} open legs
             <div data-testid="options-evaluation-summary" style={{ marginTop: 4 }}>
@@ -428,18 +454,22 @@ export default function OptionsHub({ onDrill }: Props) {
                 {' '}· {armedDeskLine(!!execStatus?.armed_for_execution, liveEligibleCount)} ⓘ
               </Tip>
             )}
-          </div>
+          </div>}
         </div>
-        <div style={{ fontSize: 12, lineHeight: 1.45, color: BB.text2, marginTop: 8, maxWidth: 720 }}>
+        {!deskMode && <div style={{ fontSize: 12, lineHeight: 1.45, color: BB.text2, marginTop: 8, maxWidth: 720 }}>
           This page: {optionsDeskPersonLine(propList as any[], posList.length)}
-        </div>
+        </div>}
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <div className="hub-tabs">
           {TABS.map(t => (
             <button
               key={t}
+              aria-pressed={tab === t}
               title={
-                t === 'Proposals' ? TAB_TIPS.proposals
+                t === 'Desk' ? 'One table of every idea, the 7-step lifecycle, the checklist to place each one, and your plans.'
+                : t === 'Lifecycle' ? 'Open option positions by strategy: sell vs hold, P&L, roll guidance.'
+                : t === 'All coverage' ? 'Every security in the options inventory and whether it was evaluated.'
+                : t === 'Proposals' ? TAB_TIPS.proposals
                   : t === 'Open Options' ? TAB_TIPS.positions
                     : t === 'Strategy Overview' ? TAB_TIPS.overview
                       : TAB_TIPS.trends
@@ -459,11 +489,31 @@ export default function OptionsHub({ onDrill }: Props) {
             {label}{key && proposals?.queue_counts ? ` (${proposals.queue_counts[key] ?? 0} proposals)` : ''}{key === 'watch_reentry' && intentFeed?.match_count ? ` · ${intentFeed.match_count} standing-intent matches (${intentFeed.unstaged_count ?? 0} not staged)` : ''}
           </button>)}
       </div>}
+      {tab === 'Desk' && (
+        <OptionsDesk
+          proposals={proposals}
+          proposalsError={propError}
+          loading={propLoading}
+          execStatus={execStatus}
+          intentFeed={intentFeed}
+          openPositions={monitor}
+          validation={validation}
+          liveEligible={liveEligibleCount}
+          onReview={id => setProposalSource({ proposal_id: id })}
+          onStage={source => setProposalSource(source)}
+          onValidate={validateOne}
+          onChain={id => { const p = propList.find(x => String(x.id) === id); if (p) handleAction('review_chain', id, p) }}
+          onNewPlan={() => setShowNewPlan(true)}
+          onOpenView={v => selectTab(v)}
+        />
+      )}
+      {showNewPlan && <StandingIntentModal intents={intentFeed?.intents ?? []} onClose={() => setShowNewPlan(false)} onSaved={() => refetchIntents()} />}
+
       {/* Operator's standing options intents + the live Schwab contracts that fit them (2026-10-05). */}
-      <StandingIntentsPanel onSelectProposal={setProposalSource} data={intentFeed} onSaved={refetchIntents} onSelectSymbol={symbol => { clearPropFilters(); setSymbolFilter(symbol); setTab('Proposals') }} />
+      {!deskMode && <StandingIntentsPanel onSelectProposal={setProposalSource} data={intentFeed} onSaved={refetchIntents} onSelectSymbol={symbol => { clearPropFilters(); setSymbolFilter(symbol); setTab('Proposals') }} />}
 
       {/* Desk Path B readiness — Schwab Path B only (Alpaca paper lane retired from Hub). */}
-      {deskPathBRows.length > 0 && (
+      {!deskMode && deskPathBRows.length > 0 && (
         <div style={{ ...panel, marginBottom: 12, padding: '8px 14px', borderLeft: '4px solid #22c55e', display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>
           <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', color: '#22c55e', textTransform: 'uppercase' }} title="Schwab Path B strategies — live eligibility is enterprise liquidity + per-order 2FA">Desk Path B</span>
           {deskPathBRows.map((s: any) => (
@@ -480,7 +530,7 @@ export default function OptionsHub({ onDrill }: Props) {
         </div>
       )}
 
-      {posList.length > 0 && (
+      {!deskMode && posList.length > 0 && (
         <div
           title="Open option legs already on the book — sell vs hold / roll / P&L live on Open Options and Lifecycle tabs."
           style={{ ...panel, marginBottom: 12, padding: '8px 14px', borderLeft: `4px solid ${BB.green}`, fontSize: TYPE.sm, color: 'var(--text2)', cursor: 'help', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}
@@ -573,7 +623,13 @@ export default function OptionsHub({ onDrill }: Props) {
                 </select>
               </TipLabel>
               <button title={FILTERS.refresh} onClick={() => { refetchProps(); refetchMon(); refetchOverview() }} style={{ ...SEL, cursor: 'help' }}>Refresh</button>
-              <button title="Queue a background priority scan; progress appears in All coverage" onClick={() => forceRefresh()} style={SEL}>Request scan</button>
+              <button
+                title={scanDisabled ? 'Disabled: the expanded scan is switched off in the scan configuration, so a request cannot start. See All coverage for the capacity it needs.' : 'Queue a background priority scan; progress appears in All coverage'}
+                disabled={scanDisabled}
+                aria-disabled={scanDisabled}
+                onClick={() => forceRefresh()}
+                style={{ ...SEL, cursor: scanDisabled ? 'not-allowed' : 'pointer', opacity: scanDisabled ? 0.55 : 1 }}
+              >Request scan</button>
               <button onClick={validatePageQuotes} disabled={ensembleBusy} style={SEL}>Validate page quotes</button>
               <button title={FILTERS.validateAll} onClick={validateAllEnsemble} disabled={ensembleBusy} style={{ ...SEL, cursor: ensembleBusy ? 'default' : 'help', color: '#a855f7' }}>
                 {ensembleBusy ? 'Working…' : 'Request model reviews'}

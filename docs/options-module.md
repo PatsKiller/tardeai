@@ -444,7 +444,54 @@ TradeAI: `GET /api/v2/trade-ai` includes `options_desk` block (top-level + per-t
 
 ### Frontend — `apps/command-center-v3/src/pages/OptionsHub.tsx`
 
-Tabs: **Proposals**, **Open Positions**, **Strategy Overview**
+**2026-10-22 — Desk view (operator-approved Gate 3 mockup) is the default.** `/v3/trading?tab=Options`
+(or `otab=Desk`) renders `components/options/OptionsDesk.tsx`, top to bottom:
+
+1. **Truth header** — one sentence on execution state. The served `execution_state_text` wins; otherwise
+   it is derived from `/api/v2/options/execution/status` and the live-eligible count.
+2. **Data-freshness chips** — market session (served `market_session`; the page never says "closed"
+   unless the server sends a non-`REGULAR` session), stock quotes (oldest per-idea time), option chains
+   (oldest `chain_age_s` vs the 300 s cap), holdings (served freshness or the coverage holdings receipt),
+   scan coverage (evaluated of inventory, plus `coverage.not_scanned` when served).
+3. **7-step lifecycle row** — Found → Needs research → Needs data → Not staged → Your decision → Ready to
+   place → Open, with counts and owners; click filters the table. Lanes come from
+   `review_workflow.state` (`BLOCKED` and `READY_FOR_REVIEW` are "Your decision"); a served
+   `lifecycle_stage` of `ARCHIVED_ABANDONED` leaves the lanes and `REVIEW_FAILURE_CAP` needs the operator.
+4. **One idea table** — one row per idea; per-account duplicates merge on the served `group_key`
+   (fallback symbol·strategy·type·strike·expiry). Columns Symbol · Strategy/contract · What it does · Cost ·
+   Stuck on · Next step. Next-step controls only open existing flows: the Strategy Proposal review modal
+   (Decide / Open thesis / Stage), the existing quote-validation route `POST /api/v2/options/validate`
+   (Re-quote now; not offered when the served next action says "after the open"), and the read-only chain
+   drill (Pick another strike). The desk view itself never fetches or POSTs.
+5. **Detail panel** — plain-English summary, economics tiles (cash-secured puts show premium/collateral
+   and simple annualized, never reward/risk; edge is hidden when the liquidity gate fails or
+   `edge_status` is `WITHHELD_LIQUIDITY`), "If the stock falls" scenarios (combined exposure for merged
+   rows), the checklist to place it (✓ ✗ ○), each quote's own time, and a one-line Aegis model summary
+   marked advice.
+6. **Your plans** — best match per strategy from `/api/v2/options/intents`, conflict warnings (served
+   `conflicts` text, else accumulate-vs-hedge derivation), both earnings dates on a conflict, and the
+   "Not held · watch only" badge.
+7. **Drawers** — scan coverage / not-built reasons, Desk Path B paper ledger, manual execution log,
+   advanced filters (the classic Proposals view keeps every chip filter).
+
+**Glossary and help.** `src/lib/optionsGlossary.ts` holds every term (plain definition, formula, the
+server function that computes it, the data field, what it means for you). Every term and number on the
+desk is wrapped by `components/options/GlossaryTip.tsx` (`Term`, `ControlTip`, `Missing`): keyboard
+focusable, `aria-describedby` to an always-present description, bubble on hover/focus/tap, Escape closes.
+A missing field shows "—" with "not provided by this server version". "How this page works" explains the
+lifecycle, how to read an idea, the checklist, and what the system never does on its own.
+Tests (run by `npm run build`): `optionsGlossary.test.ts` (formula mirrors reproduce the served breakeven,
+floor, premium/collateral, simple annualized, spread % and tier on a captured fixture),
+`optionsDeskModel.test.ts` (layout model + served accuracy fields), `optionsDesk.view.test.mjs` (every
+rendered key has a glossary entry; the desk does not fetch or POST). E2E: `e2e/options-desk.spec.ts`.
+
+**No-op controls disabled with the reason:** Request scan (when `scan_capacity.status` is `DISABLED`),
+position Close/Roll, and Skip on proposal cards.
+
+The earlier views (Lifecycle, Proposals, All coverage, Open Options, Strategy Overview, Options Trends)
+stay as secondary tabs for rollback and power use until the operator retires them.
+
+Earlier tabs: **Proposals**, **Open Positions**, **Strategy Overview**
 
 Components: `OptionProposalCardV4`, `OptionPositionCardV4`, `OptionChainPanel`, `OptionReviewBar` (ensemble), `GreeksOverview`, `OptionsPnLProfile`, `OptionsNovicePanel`, `optionsCardSemantics.ts`.
 

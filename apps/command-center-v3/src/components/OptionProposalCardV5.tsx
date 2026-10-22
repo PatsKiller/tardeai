@@ -13,7 +13,7 @@ import { BeginnerSummaryRow, ExplainTradePanel, WhatIfBox } from './OptionsNovic
 import { Chip, ChipRow, Collapsible, Metric, MetricGuide, MetricRow, ShowMore, TakeawayBanner, TickerHeader } from './primitives'
 import { RADIUS, SHADOW, TOKENS, TYPE, numStyle, toneVars } from '../lib/designTokens'
 import { fmt$ } from '../lib/format'
-import { sanitizeActionButtons, allowsManualLog, liquidityWarnings } from '../lib/optionsCardSemantics'
+import { sanitizeActionButtons, allowsManualLog, liquidityWarnings, noopActionReason } from '../lib/optionsCardSemantics'
 import { floorCallouts, packagePointer, reviewWorkflow, REVIEW_STAGES } from '../lib/optionsDeskTruth'
 import {
   fmtIso, proposalContractLine, proposalDetailMetrics, proposalHeroMetrics, proposalInsight, proposalStatusChips,
@@ -49,10 +49,12 @@ function MetricFrom({ m, size, values }: { m: MetricSpec; size: 'sm' | 'md' | 'h
 
 function ActionButton({ a, onClick }: { a: ActionSpec; onClick: () => void }) {
   const t = toneVars(a.primary ? 'success' : 'neutral')
+  const noop = noopActionReason(a.action)
+  const off = a.locked || !!noop
   const btn = (
-    <button type="button" disabled={a.locked} onClick={onClick}
+    <button type="button" disabled={off} title={noop || undefined} onClick={onClick}
       style={{ fontFamily: 'inherit', fontSize: TYPE.sm, fontWeight: a.primary ? 800 : 700, padding: '5px 11px', borderRadius: RADIUS.sm, whiteSpace: 'nowrap',
-        cursor: a.locked ? 'not-allowed' : 'pointer', opacity: a.locked ? 0.55 : 1,
+        cursor: off ? 'not-allowed' : 'pointer', opacity: off ? 0.55 : 1,
         background: a.primary ? t.bg : 'transparent', color: a.primary ? t.color : TOKENS.text[1], border: `1px solid ${a.primary ? t.border : TOKENS.border}` }}>
       {a.label}{a.action !== 'hold' ? ' →' : ''}
     </button>

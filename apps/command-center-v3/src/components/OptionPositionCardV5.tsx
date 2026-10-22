@@ -11,6 +11,7 @@ import { RADIUS, SHADOW, TOKENS, TYPE, numStyle, toneVars } from '../lib/designT
 import { plainEnglishPosition } from '../lib/optionsNovice'
 import { fmtIso, positionContractLine, positionDetailMetrics, positionHeroMetrics, positionInsight, positionStatusChips, type MetricSpec } from '../lib/optionsCardV5'
 import type { MetricGuideKey } from '../lib/metricGuide'
+import { noopActionReason } from '../lib/optionsCardSemantics'
 import type { OptionPosition } from './OptionPositionCard'
 
 type Props = { position: OptionPosition; novice?: boolean; onAction: (action: string, id: string) => void; onDrill?: () => void }
@@ -56,9 +57,10 @@ export default function OptionPositionCardV5({ position: p, novice, onAction, on
           const primary = /close|roll/.test(b.action)
           const t = toneVars(primary ? 'warning' : 'neutral')
           const gk: MetricGuideKey | undefined = b.action === 'hold' ? 'options.ui.actions.hold' : b.action === 'review_chain' ? 'options.ui.actions.review_chain' : primary ? 'options.ui.actions.close_roll' : undefined
+          const noop = noopActionReason(b.action)
           const btn = (
-            <button type="button" onClick={() => onAction(b.action, p.id)}
-              style={{ fontFamily: 'inherit', fontSize: TYPE.sm, fontWeight: primary ? 800 : 700, padding: '5px 11px', borderRadius: RADIUS.sm, whiteSpace: 'nowrap', cursor: 'pointer',
+            <button type="button" disabled={!!noop} title={noop || undefined} onClick={() => onAction(b.action, p.id)}
+              style={{ fontFamily: 'inherit', fontSize: TYPE.sm, fontWeight: primary ? 800 : 700, padding: '5px 11px', borderRadius: RADIUS.sm, whiteSpace: 'nowrap', cursor: noop ? 'not-allowed' : 'pointer', opacity: noop ? 0.55 : 1,
                 background: primary ? t.bg : 'transparent', color: primary ? t.color : TOKENS.text[1], border: `1px solid ${primary ? t.border : TOKENS.border}` }}>
               {b.label}{b.action !== 'hold' ? ' →' : ''}
             </button>
