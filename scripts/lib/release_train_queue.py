@@ -282,7 +282,8 @@ def _train_row(detail: Mapping[str, Any]) -> dict[str, Any]:
     return {"train_id": detail["train_id"], "window_id": detail.get("window_id"), "phase": detail.get("phase"),
             "member_count": len(members) if members else len(oc.get("members") or []),
             "outcome": oc.get("outcome"), "history_class": detail.get("history_class"),
-            "started_at": detail.get("started_at"), "finished_at": detail.get("finished_at")}
+            "started_at": detail.get("started_at"), "finished_at": detail.get("finished_at"),
+            "forced": bool(detail.get("forced")), "forced_ref": (detail.get("forced") or {}).get("operator_ref")}
 
 
 def read_trains(db_query: DbQuery, *, limit: int = 20, before_seq: Optional[int] = None,
@@ -352,13 +353,16 @@ def train_detail(train_id: str, events: list[Mapping[str, Any]], *, now: Optiona
         "base_sha": None, "candidate_sha": None, "main_sha": None, "served_sha": None, "artifact_digest": None,
         "policy_version": None, "classifier_version": None, "check_manifest": [], "frozen_at": None,
         "started_at": None, "finished_at": None, "elapsed_seconds": None, "rollback_target": None,
-        "outcome": None, "evidence": [], "events": [dict(e) for e in events],
+        "outcome": None, "evidence": [], "events": [dict(e) for e in events], "forced": None,
     }
     for e in events:
         pl = e.get("payload") or {}
         out["started_at"] = out["started_at"] or e.get("occurred_at")
         if e.get("state_after"):
             out["phase"] = e["state_after"]
+        if isinstance(pl.get("forced"), dict):           # an operator-forced canary run (arming finding 8)
+            out["forced"] = {k: pl["forced"].get(k) for k in ("forced_by", "operator_ref", "window_gate_overridden",
+                                                               "forced_key")}
         if e.get("event_type") == "frozen" and pl.get("schema") == C.TRAIN_CANDIDATE:
             for k in ("window_id", "base_sha", "candidate_sha", "policy_version", "classifier_version",
                       "check_manifest", "frozen_at"):

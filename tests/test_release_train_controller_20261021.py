@@ -48,6 +48,7 @@ from scripts.lib import release_control as RC  # noqa: E402
 from scripts.lib import release_delegation as RD  # noqa: E402
 from scripts.lib import release_train_contracts as TC  # noqa: E402
 from scripts.lib import release_train_controller as T  # noqa: E402
+from scripts.lib import macro_calendar as MC  # noqa: E402
 
 #: Alarm coverage (tests/test_alarm_coverage.py): release_window.Host.notify's send_telegram site (ops branch
 #: 58bf60cf3) is fired by test_failed_window_alert_reaches_the_transport.
@@ -67,13 +68,15 @@ def _hermetic_git(monkeypatch):
 
 
 def git(cwd, *args):
-    p = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=str(cwd),
-                       capture_output=True, text=True)
+    p = subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=str(cwd), capture_output=True, text=True
+    )
     assert p.returncode == 0, p.stderr
     return p.stdout.strip()
 
 
 # ── the world ─────────────────────────────────────────────────────────────────────────────────────
+
 
 class Clock:
     def __init__(self, t: datetime = NOW) -> None:
@@ -119,8 +122,10 @@ class Repo:
 
 
 def runs_for(sha, conclusion="success", names=CHECKS, app="github-actions", status="completed", start_id=100):
-    return [{"id": start_id + i, "name": n, "head_sha": sha, "status": status, "conclusion": conclusion, "app": app}
-            for i, n in enumerate(names)]
+    return [
+        {"id": start_id + i, "name": n, "head_sha": sha, "status": status, "conclusion": conclusion, "app": app}
+        for i, n in enumerate(names)
+    ]
 
 
 class FakeGitHub:
@@ -296,8 +301,9 @@ class StaticQueue:
         self.entries, self.complete, self.reasons = entries, complete, list(reasons)
 
     def snapshot(self):
-        return T.QueueSnapshot(self.name, "2026-10-21T21:00:00+00:00", self.complete, list(self.entries),
-                               list(self.reasons))
+        return T.QueueSnapshot(
+            self.name, "2026-10-21T21:00:00+00:00", self.complete, list(self.entries), list(self.reasons)
+        )
 
 
 class AllowClassifier:
@@ -326,7 +332,7 @@ class World:
     def __init__(self, tmp: Path, *, prs=None, slot="1800", now=NOW, attempts=6, arm=True) -> None:
         self.tmp = tmp
         self.repo = Repo(tmp)
-        for n, files, *rest in (prs if prs is not None else [(11, {"docs/a.md": "a\n"}), (12, {"docs/b.md": "b\n"})]):
+        for n, files, *rest in prs if prs is not None else [(11, {"docs/a.md": "a\n"}), (12, {"docs/b.md": "b\n"})]:
             self.repo.pr(n, files)
         self.deps = {n: tuple(rest[0]) for n, _f, *rest in (prs or []) if rest}
         self.clock = Clock(now)
@@ -341,32 +347,54 @@ class World:
         self.deleg.write_text(json.dumps(delegation_body(slot)))
         self.ctl = RC.ReleaseControl(self.state_dir, clock=lambda: self.clock.t)
         if arm:
-            self.ctl.arm(HOST_ACTOR, RC.HostCliProof("/dev/pts/9", os.getuid(), self.ctl.expected_phrase("arm")),
-                         policy_digest=RD.load(self.deleg).digest, reason="arm for test")
+            self.ctl.arm(
+                HOST_ACTOR,
+                RC.HostCliProof("/dev/pts/9", os.getuid(), self.ctl.expected_phrase("arm")),
+                policy_digest=RD.load(self.deleg).digest,
+                reason="arm for test",
+            )
         self.gh = FakeGitHub(self.repo)
         self.writer = FakeWriter(self.gh)
         self.host = FakeHost(tmp, self.repo, self.clock)
         self.host.main_ref = lambda: getattr(self.writer, "merged", "")
         self.events_path = self.state_dir / "train_events.jsonl"
         self.attempts = attempts
-        self.calendar = T.MacroCalendar(tmp / "hostcfg" / "macro_calendar.json")
+        self.calendar = MC.ReleaseTrainCalendar(tmp / "hostcfg" / "macro_calendar.json")
 
     def entries(self, numbers=None):
-        return [T.QueueEntry(pr=n, head_sha=s, depends_on=self.deps.get(n, ()))
-                for n, s in sorted(self.repo.heads.items()) if numbers is None or n in numbers]
+        return [
+            T.QueueEntry(pr=n, head_sha=s, depends_on=self.deps.get(n, ()))
+            for n, s in sorted(self.repo.heads.items())
+            if numbers is None or n in numbers
+        ]
 
     def controller(self, *, live=True, queue=None, classifier=None, env=None, **cfg) -> T.TrainController:
-        config = T.TrainConfig(scratch_root=self.tmp / "scratch", regenerators=(("noop", [sys.executable, "-c",
-                                                                                          "pass"]),),
-                               test_attempts=self.attempts, poll_s=60, qualify_timeout_s=600,
-                               main_ci_timeout_s=600, **cfg)
+        config = T.TrainConfig(
+            scratch_root=self.tmp / "scratch",
+            regenerators=(("noop", [sys.executable, "-c", "pass"]),),
+            test_attempts=self.attempts,
+            poll_s=60,
+            qualify_timeout_s=600,
+            main_ci_timeout_s=600,
+            **cfg,
+        )
         tester = T.LocalTester(command=FAIL_CMD, base_env={"PATH": os.environ["PATH"]})
         return T.TrainController(
-            host=self.host, state=self.state, github=self.gh, queue=queue or StaticQueue(self.entries()),
-            classifier=classifier or AllowClassifier(), live=live, writer=self.writer if live else None,
-            tester=tester, events=T.JsonlEventSink(self.events_path) if live else None,
-            delegation_path=self.deleg, key_path=self.key, config=config,
-            env=env if env is not None else {"PATH": os.environ["PATH"]}, calendar=self.calendar)
+            host=self.host,
+            state=self.state,
+            github=self.gh,
+            queue=queue or StaticQueue(self.entries()),
+            classifier=classifier or AllowClassifier(),
+            live=live,
+            writer=self.writer if live else None,
+            tester=tester,
+            events=T.JsonlEventSink(self.events_path) if live else None,
+            delegation_path=self.deleg,
+            key_path=self.key,
+            config=config,
+            env=env if env is not None else {"PATH": os.environ["PATH"]},
+            calendar=self.calendar,
+        )
 
     def run(self, **kw):
         c = self.controller(**kw)
@@ -388,6 +416,7 @@ class World:
 
 # ── happy path ────────────────────────────────────────────────────────────────────────────────────
 
+
 def test_live_happy_path_releases_and_records_every_contract(tmp_path):
     w = World(tmp_path)
     code, rec, c = w.run()
@@ -402,8 +431,10 @@ def test_live_happy_path_releases_and_records_every_contract(tmp_path):
     assert all(v["ok"] for v in rec["verification"].values())
     # every event row is a valid TrainEvent@v1; the outcome is a valid TrainOutcome@v1
     evs = w.events()
-    assert evs and all(TC.validate_as(TC.TRAIN_EVENT, {k: v for k, v in e.items()
-                                                       if k not in ("seq", "recorded_at", "store")}) == [] for e in evs)
+    assert evs and all(
+        TC.validate_as(TC.TRAIN_EVENT, {k: v for k, v in e.items() if k not in ("seq", "recorded_at", "store")}) == []
+        for e in evs
+    )
     outcome = [e for e in evs if e["event_type"] == "outcome_recorded"][-1]
     assert outcome["payload"]["outcome"] == "RELEASED_VERIFIED" and outcome["state_after"] == "released"
     assert TC.validate_as(TC.TRAIN_OUTCOME, outcome["payload"]) == []
@@ -414,8 +445,13 @@ def test_live_happy_path_releases_and_records_every_contract(tmp_path):
     # capabilities: every intent SUCCEEDED, nothing uncertain
     ledger = w.ledger()
     assert {i["status"] for i in ledger["intents"].values()} == {"SUCCEEDED"}
-    assert {i["action"] for i in ledger["intents"].values()} == {"push_train_ref", "open_batch_pr", "merge_batch_pr",
-                                                                 "prepare_release", "promote_release"}
+    assert {i["action"] for i in ledger["intents"].values()} == {
+        "push_train_ref",
+        "open_batch_pr",
+        "merge_batch_pr",
+        "prepare_release",
+        "promote_release",
+    }
     # intents were journaled before effects
     jrn = [json.loads(x) for x in (w.state_dir / "train_intents.jsonl").read_text().splitlines()]
     order = [(r["kind"], r.get("action") or r.get("intent")) for r in jrn]
@@ -432,15 +468,24 @@ def test_dry_run_writes_nothing_and_prints_every_step(tmp_path):
     c = w.controller(live=False)
     code, rec = c.run(NOW)
     assert code == T.EXIT_OK and rec["outcome"] == "DRY_RUN_COMPLETE", rec["steps"]
-    assert sorted(p.name for p in w.state_dir.iterdir()) == before          # no claim, ledger, events, state
+    assert sorted(p.name for p in w.state_dir.iterdir()) == before  # no claim, ledger, events, state
     text = "\n".join(rec["steps"])
-    for needle in ("WOULD claim window", "WOULD merge --no-ff #11", "WOULD push", "WOULD open/update batch PR",
-                   "WOULD merge batch PR", "prepare", "WOULD re-check STOP + epoch at activation",
-                   "WOULD on failure: rollback"):
+    for needle in (
+        "WOULD claim window",
+        "WOULD merge --no-ff #11",
+        "WOULD push",
+        "WOULD open/update batch PR",
+        "WOULD merge batch PR",
+        "prepare",
+        "WOULD re-check STOP + epoch at activation",
+        "WOULD on failure: rollback",
+    ):
         assert needle in text
     assert w.writer.calls == [] and w.host.calls == []
-    assert all(TC.validate_as(TC.TRAIN_EVENT, {k: v for k, v in e.items() if k not in ("seq", "store")}) == []
-               for e in rec["events"])
+    assert all(
+        TC.validate_as(TC.TRAIN_EVENT, {k: v for k, v in e.items() if k not in ("seq", "store")}) == []
+        for e in rec["events"]
+    )
 
 
 def test_dry_run_of_an_unarmed_host_lists_what_live_would_refuse(tmp_path):
@@ -471,6 +516,7 @@ def test_backward_compatible_manual_commands_unchanged(tmp_path, monkeypatch, ca
 
 # ── windows, DST, calendar, rules ─────────────────────────────────────────────────────────────────
 
+
 def test_window_identity_is_dst_safe():
     slots = [{"window_id": "1800", "duration_min": 90, "enabled": True}]
     w1, _ = T.window_at(datetime(2026, 10, 31, 18, 1, tzinfo=ET), slots, lead_min=90, grace_min=15)
@@ -480,20 +526,20 @@ def test_window_identity_is_dst_safe():
 
 def test_repeated_local_hour_cannot_activate_twice_and_missing_hour_is_skipped():
     slots = [{"window_id": "0130", "duration_min": 120, "enabled": True}]
-    first = datetime(2026, 11, 1, 5, 35, tzinfo=timezone.utc)      # 01:35 EDT (first 01:35)
-    second = datetime(2026, 11, 1, 6, 35, tzinfo=timezone.utc)     # 01:35 EST (repeated)
+    first = datetime(2026, 11, 1, 5, 35, tzinfo=timezone.utc)  # 01:35 EDT (first 01:35)
+    second = datetime(2026, 11, 1, 6, 35, tzinfo=timezone.utc)  # 01:35 EST (repeated)
     w, phase = T.window_at(first, slots, lead_min=0, grace_min=15)
     assert w is not None and w.window_id == "2026-11-01T01:30-04:00" and phase == "open"
     w2, why = T.window_at(second, slots, lead_min=0, grace_min=15)
-    assert w2 is None and why == "off_window"                       # past the grace of the only 01:30
-    assert T.local_start(date(2026, 3, 8), "0230") is None          # spring-forward gap: no such time
+    assert w2 is None and why == "off_window"  # past the grace of the only 01:30
+    assert T.local_start(date(2026, 3, 8), "0230") is None  # spring-forward gap: no such time
 
 
 def test_repeated_hour_claim_key_is_per_day_and_slot(tmp_path):
     w = World(tmp_path)
     first = w.controller()
     code, rec = first.run()
-    w.clock.t = NOW.timestamp() + 300                              # same window, still inside the grace
+    w.clock.t = NOW.timestamp() + 300  # same window, still inside the grace
     code2, rec2 = w.controller().run()
     assert rec2["reason"] == "REFUSED_WINDOW_ALREADY_CLAIMED" and code2 == T.EXIT_REFUSED
 
@@ -512,22 +558,40 @@ def test_0600_needs_a_proven_drain(tmp_path):
     assert out and out[0]["payload"]["outcome"] == "NO_OP" and out[0]["payload"]["members"] == []
 
 
-@pytest.mark.parametrize("calendar,reason", [
-    (None, "WINDOW_SKIPPED_MACRO_UNAVAILABLE"),
-    ({"as_of": "2026-10-01T08:00:00-04:00", "covers_from": "2026-10-01", "covers_through": "2026-12-31",
-      "release_days_0830": []}, "WINDOW_SKIPPED_MACRO_STALE"),
-    ({"as_of": "2026-10-21T08:00:00-04:00", "covers_from": "2026-10-01", "covers_through": "2026-10-21",
-      "release_days_0830": []}, "WINDOW_SKIPPED_MACRO_STALE"),
-    ({"as_of": "2026-10-21T08:00:00-04:00", "covers_from": "2026-10-01", "covers_through": "2026-12-31",
-      "release_days_0830": ["2026-10-22"]}, "WINDOW_SKIPPED_MACRO_MACRO_DAY"),
-    ({"as_of": "2026-10-21T08:00:00-04:00", "covers_from": "2026-10-01", "covers_through": "2026-12-31",
-      "release_days_0830": []}, "WINDOW_SKIPPED_UNMEASURED"),
-])
+def _cal(fetched, valid_through="2026-12-31", skip_days=()):
+    """A MacroCalendar@v1 body (scripts/lib/macro_calendar.py), the one calendar the controller reads."""
+    dates = {
+        d: {
+            "has_0830": True,
+            "skip_0800": True,
+            "events": [{"event": "CPI", "time_et": "08:30", "source": "fred", "release_id": 10, "skips_0800": True}],
+        }
+        for d in skip_days
+    }
+    return {
+        "schema": "MacroCalendar@v1",
+        "fetched_at": fetched,
+        "covers_from": "2026-10-01",
+        "valid_through": valid_through,
+        "dates": dates,
+    }
+
+
+@pytest.mark.parametrize(
+    "calendar,reason",
+    [
+        (None, "WINDOW_SKIPPED_MACRO_UNAVAILABLE"),
+        (_cal("2026-10-01T08:00:00-04:00"), "WINDOW_SKIPPED_MACRO_STALE"),
+        (_cal("2026-10-18T07:00:00-04:00"), "WINDOW_SKIPPED_MACRO_STALE"),  # 97 h: over 72 h (was fine at 168 h)
+        (_cal("2026-10-21T08:00:00-04:00", valid_through="2026-10-21"), "WINDOW_SKIPPED_MACRO_STALE"),
+        (_cal("2026-10-21T08:00:00-04:00", skip_days=("2026-10-22",)), "WINDOW_SKIPPED_MACRO_MACRO_DAY"),
+        (_cal("2026-10-21T08:00:00-04:00"), "WINDOW_SKIPPED_UNMEASURED"),
+    ],
+)
 def test_0800_macro_calendar_and_measured_latest_start(tmp_path, calendar, reason):
     w = World(tmp_path, slot="0800", now=datetime(2026, 10, 22, 8, 1, tzinfo=ET))
     if calendar is not None:
-        (tmp_path / "hostcfg" / "macro_calendar.json").write_text(json.dumps({"schema": "MacroReleaseCalendar@v1",
-                                                                             "source": "test", **calendar}))
+        (tmp_path / "hostcfg" / "macro_calendar.json").write_text(json.dumps(calendar))
     code, rec, _ = w.run()
     assert rec["outcome"] == "NO_OP" and rec["reason"] == reason, rec
 
@@ -543,12 +607,27 @@ def test_0800_latest_start_is_09_minus_measured_promote_verify_rollback_minus_bu
     assert T.latest_activation_start(w2, m, buffer_min=10)[0] == datetime(2026, 10, 22, 8, 10, tzinfo=ET)
 
 
-def test_repo_has_no_macro_calendar_provider_so_default_fails_closed(tmp_path):
-    v, why = T.MacroCalendar(tmp_path / "absent.json").verdict(date(2026, 10, 22), NOW)
-    assert v == "UNAVAILABLE" and "economic_calendar" in why
+def test_missing_calendar_fails_closed_and_the_controller_has_one_calendar_source(tmp_path, monkeypatch):
+    v, why = MC.ReleaseTrainCalendar(tmp_path / "absent.json").verdict(date(2026, 10, 22), NOW)
+    assert v == "UNAVAILABLE" and "calendar missing" in why and MC.LANE_ID in why
+    assert not hasattr(T, "MacroCalendar") and not hasattr(T, "MACRO_CALENDAR_PATH")
+    src = (ROOT / "scripts/lib/release_train_controller.py").read_text(encoding="utf-8")
+    assert "168.0" not in src and '"macro_calendar.json"' not in src
+    # the default: <state root>/data/runtime/macro_calendar.json, 72 h
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "ps"))
+    c = T.TrainController(
+        host=types.SimpleNamespace(checkout=tmp_path, python=sys.executable, now=lambda: NOW),
+        state=RW.State(tmp_path / "s"),
+        github=None,
+        queue=None,
+        classifier=None,
+    )
+    assert isinstance(c.calendar, MC.ReleaseTrainCalendar) and c.calendar.max_age_h == 72.0
+    assert MC.default_path() == tmp_path / "ps" / "data" / "runtime" / "macro_calendar.json"
 
 
 # ── competing trains and manual / emergency collisions ───────────────────────────────────────────
+
 
 def test_competing_train_is_refused_while_one_holds_the_train_lock(tmp_path):
     w = World(tmp_path)
@@ -562,7 +641,7 @@ def test_competing_train_is_refused_while_one_holds_the_train_lock(tmp_path):
 
 def test_manual_release_holding_the_global_lock_blocks_the_first_mutation_and_consumes_nothing(tmp_path):
     w = World(tmp_path)
-    assert RC.GlobalReleaseLock(w.state_dir).path == w.state_dir / ".lock"     # release_window run's own lock
+    assert RC.GlobalReleaseLock(w.state_dir).path == w.state_dir / ".lock"  # release_window run's own lock
     lock = RC.GlobalReleaseLock(w.state_dir).acquire()
     try:
         code, rec, _ = w.run()
@@ -574,9 +653,14 @@ def test_manual_release_holding_the_global_lock_blocks_the_first_mutation_and_co
     assert not (w.state_dir / "capabilities.json").exists()
 
 
-@pytest.mark.parametrize("name,value", [("TRADEAI_EMERGENCY_RELEASE_SHA", "a" * 40),
-                                        ("TRADEAI_RELEASE_TRAIN_SHA", "b" * 40),
-                                        ("TRADEAI_CONFORMANCE_GATE_OVERRIDE", "x")])
+@pytest.mark.parametrize(
+    "name,value",
+    [
+        ("TRADEAI_EMERGENCY_RELEASE_SHA", "a" * 40),
+        ("TRADEAI_RELEASE_TRAIN_SHA", "b" * 40),
+        ("TRADEAI_CONFORMANCE_GATE_OVERRIDE", "x"),
+    ],
+)
 def test_emergency_or_bypass_env_refuses_before_anything(tmp_path, name, value):
     w = World(tmp_path)
     code, rec, _ = w.run(env={"PATH": os.environ["PATH"], name: value})
@@ -592,12 +676,14 @@ def test_a_second_claimed_train_is_refused_by_control(tmp_path):
 
 # ── main / CURRENT / heads moving at each boundary ────────────────────────────────────────────────
 
+
 def test_main_moves_between_select_and_freeze(tmp_path):
     w = World(tmp_path)
 
     def move(gh):
         if gh.reads == 2:
             gh.main = "9" * 40
+
     w.gh.on_main_read = move
     code, rec, _ = w.run()
     assert rec["outcome"] == "NO_OP" and rec["reason"] == "MAIN_MOVED_AT_FREEZE"
@@ -612,6 +698,7 @@ def test_main_moves_before_publishing_the_train_ref(tmp_path):
         if any(e["event_type"] == "integrating" for e in w.events()):
             w.gh.main = "9" * 40
         return orig()
+
     w.gh.main_head = moved
     code, rec, _ = w.run()
     assert rec["outcome"] == "FAILED_PRE_MERGE" and "WRONG_SHA" in rec["reason"], rec["reason"]
@@ -640,7 +727,8 @@ def test_main_moves_during_the_merge_latches_and_never_promotes(tmp_path):
     def racing():
         m = w.writer.calls[-1]
         merged = hashlib.sha1(("merge" + m[2]).encode()).hexdigest()
-        w.gh.parents[merged] = ["8" * 40, m[2]]                     # someone else's commit got in first
+        w.gh.parents[merged] = ["8" * 40, m[2]]  # someone else's commit got in first
+
     w.writer.hooks["merge"] = racing
     code, rec, _ = w.run()
     assert rec["outcome"] == "MERGED_NOT_LIVE" and rec["reason"] == "MAIN_MOVED_AT_MERGE"
@@ -653,13 +741,15 @@ def test_main_moves_after_merge_before_promote(tmp_path):
 
     def moved(sha):
         return orig(sha)
+
     w.writer.hooks["merge"] = lambda: None
     real_runs = w.gh.check_runs
 
     def runs(sha):
-        if sha in w.gh.parents:                                     # main CI read on the merge commit
+        if sha in w.gh.parents:  # main CI read on the merge commit
             w.gh.main = "6" * 40
         return real_runs(sha)
+
     w.gh.check_runs = runs
     code, rec, _ = w.run()
     assert rec["outcome"] == "MERGED_NOT_LIVE" and "WRONG_SHA" in rec["reason"], rec["reason"]
@@ -675,8 +765,9 @@ def test_current_moves_before_activation(tmp_path):
     def deploy(args, env):
         out = orig(args, env)
         if args[0] == "prepare":
-            w.host.cur = Path(os.path.realpath(other))            # a manual release landed meanwhile
+            w.host.cur = Path(os.path.realpath(other))  # a manual release landed meanwhile
         return out
+
     w.host.run_deploy = deploy
     code, rec, _ = w.run()
     assert rec["outcome"] == "MERGED_NOT_LIVE" and rec["reason"] == "CURRENT_MOVED"
@@ -684,6 +775,7 @@ def test_current_moves_before_activation(tmp_path):
 
 
 # ── capabilities ──────────────────────────────────────────────────────────────────────────────────
+
 
 def test_missing_capability_key_refuses_the_first_mutation(tmp_path):
     w = World(tmp_path)
@@ -702,6 +794,7 @@ def test_wrong_capability_signature_is_refused(tmp_path, monkeypatch):
         tok = real(*a, **k)
         p, b, _sig = tok.split(".")
         return f"{p}.{b}.{'0' * 64}"
+
     monkeypatch.setattr(c.authority, "issue_merge", forged)
     code, rec = c.run()
     assert rec["outcome"] == "FAILED_PRE_MERGE" and rec["reason"] == "CAPABILITY_SIGNATURE_INVALID"
@@ -715,6 +808,7 @@ def test_revoked_delegation_mid_train_stops_before_merge(tmp_path):
         d = json.loads(w.deleg.read_text())
         d["revocation_epoch"] = 2
         w.deleg.write_text(json.dumps(d))
+
     w.writer.hooks["open_pr"] = revoke
     code, rec, _ = w.run()
     assert rec["outcome"] in ("STOPPED", "FAILED_PRE_MERGE") and "POLICY" in rec["reason"], rec["reason"]
@@ -723,8 +817,11 @@ def test_revoked_delegation_mid_train_stops_before_merge(tmp_path):
 
 def test_revoked_control_refuses_a_live_run(tmp_path):
     w = World(tmp_path)
-    w.ctl.revoke(HOST_ACTOR, RC.HostCliProof("/dev/pts/9", os.getuid(), w.ctl.expected_phrase("revoke")),
-                 reason="revoke for test")
+    w.ctl.revoke(
+        HOST_ACTOR,
+        RC.HostCliProof("/dev/pts/9", os.getuid(), w.ctl.expected_phrase("revoke")),
+        reason="revoke for test",
+    )
     code, rec, _ = w.run()
     assert rec["reason"] == "REFUSED_REVOKED" and w.writer.calls == []
 
@@ -738,6 +835,7 @@ def test_replayed_capability_is_refused(tmp_path):
     def keep(*a, **k):
         tokens.append(real(*a, **k))
         return tokens[-1]
+
     c.authority.issue_build = keep
     code, rec = c.run()
     assert rec["outcome"] == "RELEASED_VERIFIED"
@@ -749,17 +847,29 @@ def test_replayed_capability_is_refused(tmp_path):
 
 def test_capability_promote_binds_batch_evidence_and_main_evidence(tmp_path):
     from tests.test_release_train_authority_20261021 import World as AW  # reuse the authority fixtures
+
     aw = AW(tmp_path)
     base, cand, merged = "a" * 40, "c" * 40, "e" * 40
     heads = [{"pr": 1901, "head_sha": "1" * 40}, {"pr": 1902, "head_sha": "2" * 40}]
-    main_ev = {"sha": merged, "checks": [{"name": n, "head_sha": merged, "status": "completed",
-                                          "conclusion": "success"} for n in CHECKS[:3]]}
-    batch_ev = {"sha": cand, "checks": [{"name": n, "head_sha": cand, "status": "completed",
-                                         "conclusion": "success"} for n in CHECKS]}
-    kw = dict(expected_base_sha=base, pr_heads=heads, candidate_sha=merged, artifact_digest="sha256:" + "d" * 64,
-              evidence=main_ev, rollback_target={"kind": "release", "sha": base, "release": "/r/prev"},
-              services=["portfolio-server.service"], actions=["promote_release"])
-    with pytest.raises(CAP.CapabilityRefused) as e:                         # ci-gate never runs on main
+    main_ev = {
+        "sha": merged,
+        "checks": [{"name": n, "head_sha": merged, "status": "completed", "conclusion": "success"} for n in CHECKS[:3]],
+    }
+    batch_ev = {
+        "sha": cand,
+        "checks": [{"name": n, "head_sha": cand, "status": "completed", "conclusion": "success"} for n in CHECKS],
+    }
+    kw = dict(
+        expected_base_sha=base,
+        pr_heads=heads,
+        candidate_sha=merged,
+        artifact_digest="sha256:" + "d" * 64,
+        evidence=main_ev,
+        rollback_target={"kind": "release", "sha": base, "release": "/r/prev"},
+        services=["portfolio-server.service"],
+        actions=["promote_release"],
+    )
+    with pytest.raises(CAP.CapabilityRefused) as e:  # ci-gate never runs on main
         aw.auth.issue_promote("train-20261021-1800", **kw)
     assert e.value.code == "EVIDENCE_NOT_QUALIFYING"
     tok = aw.auth.issue_promote("train-20261021-1800", batch_candidate_sha=cand, batch_evidence=batch_ev, **kw)
@@ -777,12 +887,27 @@ def test_capability_accepts_store_train_ids():
 
 # ── CI evidence ───────────────────────────────────────────────────────────────────────────────────
 
+
 def test_evidence_counts_only_trusted_latest_runs_on_the_exact_sha():
     sha = "c" * 40
-    runs = runs_for(sha) + [{"id": 1, "name": "ci-gate", "head_sha": "d" * 40, "status": "completed",
-                             "conclusion": "success", "app": "github-actions"},
-                            {"id": 999, "name": "ci-gate", "head_sha": sha, "status": "completed",
-                             "conclusion": "success", "app": "forger"}]
+    runs = runs_for(sha) + [
+        {
+            "id": 1,
+            "name": "ci-gate",
+            "head_sha": "d" * 40,
+            "status": "completed",
+            "conclusion": "success",
+            "app": "github-actions",
+        },
+        {
+            "id": 999,
+            "name": "ci-gate",
+            "head_sha": sha,
+            "status": "completed",
+            "conclusion": "success",
+            "app": "forger",
+        },
+    ]
     ev = T.check_evidence(runs, sha, now=0)
     assert T.evidence_verdict(ev)[0] == "GREEN"
     assert {i["why"] for i in ev["ignored"]} == {"other_sha", "untrusted_app"}
@@ -793,15 +918,31 @@ def test_evidence_counts_only_trusted_latest_runs_on_the_exact_sha():
 @pytest.mark.parametrize("conclusion", ["neutral", "skipped", "cancelled", "stale", "timed_out", "failure", None])
 def test_any_non_success_mandatory_check_is_red(conclusion):
     sha = "c" * 40
-    runs = runs_for(sha, names=CHECKS[:3]) + [{"id": 200, "name": "ci-gate", "head_sha": sha, "status": "completed",
-                                               "conclusion": conclusion, "app": "github-actions"}]
+    runs = runs_for(sha, names=CHECKS[:3]) + [
+        {
+            "id": 200,
+            "name": "ci-gate",
+            "head_sha": sha,
+            "status": "completed",
+            "conclusion": conclusion,
+            "app": "github-actions",
+        }
+    ]
     assert T.evidence_verdict(T.check_evidence(runs, sha, now=0))[0] == "RED"
 
 
 def test_a_rerun_supersedes_an_older_run():
     sha = "c" * 40
-    runs = runs_for(sha) + [{"id": 500, "name": "ci-gate", "head_sha": sha, "status": "in_progress",
-                             "conclusion": None, "app": "github-actions"}]
+    runs = runs_for(sha) + [
+        {
+            "id": 500,
+            "name": "ci-gate",
+            "head_sha": sha,
+            "status": "in_progress",
+            "conclusion": None,
+            "app": "github-actions",
+        }
+    ]
     assert T.evidence_verdict(T.check_evidence(runs, sha, now=0))[0] == "PENDING"
 
 
@@ -809,7 +950,8 @@ def test_forged_ci_evidence_never_qualifies_the_batch(tmp_path):
     w = World(tmp_path)
     w.gh.default_runs = False
     w.writer.hooks["push"] = lambda: w.gh.runs.__setitem__(
-        w.writer.calls[0][2], runs_for(w.writer.calls[0][2], app="evil-app"))
+        w.writer.calls[0][2], runs_for(w.writer.calls[0][2], app="evil-app")
+    )
     code, rec, _ = w.run()
     assert rec["outcome"] == "FAILED_PRE_MERGE" and rec["reason"] == "CI_TIMEOUT_BATCH"
     assert "merge" not in [x[0] for x in w.writer.calls]
@@ -830,6 +972,7 @@ def test_skipped_or_neutral_mandatory_check_fails_the_batch(tmp_path, conclusion
     def bad():
         sha = w.writer.calls[0][2]
         w.gh.runs[sha] = runs_for(sha, names=CHECKS[:3]) + runs_for(sha, conclusion, names=("ci-gate",), start_id=9)
+
     w.writer.hooks["push"] = bad
     code, rec, _ = w.run()
     assert rec["outcome"] == "FAILED_PRE_MERGE" and rec["reason"] == "CI_RED_BATCH"
@@ -837,8 +980,9 @@ def test_skipped_or_neutral_mandatory_check_fails_the_batch(tmp_path, conclusion
 
 def test_missing_mandatory_check_times_out(tmp_path):
     w = World(tmp_path)
-    w.writer.hooks["push"] = lambda: w.gh.runs.__setitem__(w.writer.calls[0][2],
-                                                           runs_for(w.writer.calls[0][2], names=CHECKS[:3]))
+    w.writer.hooks["push"] = lambda: w.gh.runs.__setitem__(
+        w.writer.calls[0][2], runs_for(w.writer.calls[0][2], names=CHECKS[:3])
+    )
     code, rec, _ = w.run()
     assert rec["reason"] == "CI_TIMEOUT_BATCH" and "ci-gate:missing" in rec["detail"]
 
@@ -851,11 +995,19 @@ def test_stale_evidence_is_re_read_immediately_before_the_merge(tmp_path):
     def runs(sha):
         if sha == (w.writer.calls[0][2] if w.writer.calls else None):
             seen["n"] += 1
-            if seen["n"] >= 2:                                    # a rerun started after qualification
-                return runs_for(sha, names=CHECKS[:3]) + [{"id": 900, "name": "ci-gate", "head_sha": sha,
-                                                           "status": "queued", "conclusion": None,
-                                                           "app": "github-actions"}]
+            if seen["n"] >= 2:  # a rerun started after qualification
+                return runs_for(sha, names=CHECKS[:3]) + [
+                    {
+                        "id": 900,
+                        "name": "ci-gate",
+                        "head_sha": sha,
+                        "status": "queued",
+                        "conclusion": None,
+                        "app": "github-actions",
+                    }
+                ]
         return real(sha)
+
     w.gh.check_runs = runs
     code, rec, _ = w.run()
     assert rec["outcome"] == "FAILED_PRE_MERGE" and rec["reason"] == "CI_TIMEOUT_BATCH_RECHECK"
@@ -864,10 +1016,19 @@ def test_stale_evidence_is_re_read_immediately_before_the_merge(tmp_path):
 
 # ── self-modification ─────────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("path", ["scripts/release_window.py", "scripts/lib/release_capability.py",
-                                  "scripts/lib/release_control.py", "scripts/cio_phase2_exact_main_deploy.sh",
-                                  ".github/workflows/cio-production-hardening-ci.yml",
-                                  "scripts/lib/release_train_controller.py", "AGENTS.md"])
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "scripts/release_window.py",
+        "scripts/lib/release_capability.py",
+        "scripts/lib/release_control.py",
+        "scripts/cio_phase2_exact_main_deploy.sh",
+        ".github/workflows/cio-production-hardening-ci.yml",
+        "scripts/lib/release_train_controller.py",
+        "AGENTS.md",
+    ],
+)
 def test_a_pr_that_edits_the_verifier_never_rides(tmp_path, path):
     w = World(tmp_path, prs=[(11, {"docs/a.md": "a\n"}), (12, {path: "tampered\n"})])
     code, rec, _ = w.run()
@@ -877,9 +1038,16 @@ def test_a_pr_that_edits_the_verifier_never_rides(tmp_path, path):
 
 
 def test_protected_surface_list_covers_the_named_verifiers():
-    for p in ("scripts/release_window.py", "scripts/lib/release_capability.py", "scripts/lib/release_control.py",
-              "scripts/cio_phase2_exact_main_deploy.sh", ".github/workflows/x.yml", ".githooks/pre-push",
-              ".cursor/hooks/guard_ledger.py", "bin/guard"):
+    for p in (
+        "scripts/release_window.py",
+        "scripts/lib/release_capability.py",
+        "scripts/lib/release_control.py",
+        "scripts/cio_phase2_exact_main_deploy.sh",
+        ".github/workflows/x.yml",
+        ".githooks/pre-push",
+        ".cursor/hooks/guard_ledger.py",
+        "bin/guard",
+    ):
         assert T.is_protected(p), p
     assert not T.is_protected("docs/ops/x.md") and not T.is_protected("scripts/api_v2.py")
 
@@ -896,9 +1064,12 @@ def test_final_candidate_diff_is_checked_even_if_selection_missed_it(tmp_path, m
 
 # ── integration: conflicts, dependents, bisect ────────────────────────────────────────────────────
 
+
 def test_conflict_ejects_the_pr_and_its_dependents(tmp_path):
-    w = World(tmp_path, prs=[(21, {"app.txt": "A\nline2\n"}), (22, {"app.txt": "B\nline2\n"}),
-                             (23, {"docs/d.md": "d\n"}, (22,))])
+    w = World(
+        tmp_path,
+        prs=[(21, {"app.txt": "A\nline2\n"}), (22, {"app.txt": "B\nline2\n"}), (23, {"docs/d.md": "d\n"}, (22,))],
+    )
     code, rec, _ = w.run()
     assert rec["outcome"] == "RELEASED_VERIFIED"
     ej = rec["integration"]["ejected"]
@@ -921,12 +1092,16 @@ def test_bisect_attributes_the_failing_pr_and_releases_the_rest(tmp_path):
 
 
 def test_budget_exhaustion_marks_uncertain_prs_pending_not_ejected(tmp_path):
-    w = World(tmp_path, prs=[(11, {"docs/a.md": "a\n"}), (12, {"FAIL_MARKER": "x\n"}), (13, {"docs/c.md": "c\n"})],
-              attempts=2)
+    w = World(
+        tmp_path, prs=[(11, {"docs/a.md": "a\n"}), (12, {"FAIL_MARKER": "x\n"}), (13, {"docs/c.md": "c\n"})], attempts=2
+    )
     code, rec, _ = w.run()
     assert rec["outcome"] == "RELEASED_VERIFIED", rec["steps"]
-    pend = {e["pr_number"] for e in w.events() if e["event_type"] == "ready"
-            and e["payload"].get("step") == "pending_investigation"}
+    pend = {
+        e["pr_number"]
+        for e in w.events()
+        if e["event_type"] == "ready" and e["payload"].get("step") == "pending_investigation"
+    }
     assert pend == {12, 13}
     assert not any(e["event_type"] == "blocked" and e["pr_number"] in (12, 13) for e in w.events())
     assert [e["pr_number"] for e in w.events() if e["event_type"] == "released"] == [11]
@@ -950,6 +1125,7 @@ def test_base_red_blames_nobody(tmp_path):
 
 # ── STOP ──────────────────────────────────────────────────────────────────────────────────────────
 
+
 def test_stop_before_merge(tmp_path):
     w = World(tmp_path)
     w.writer.hooks["open_pr"] = lambda: RC.ReleaseControl(w.state_dir).request_stop(CC, "operator stop test")
@@ -972,7 +1148,7 @@ def test_stop_during_promotion_finishes_verification_then_settles(tmp_path):
     w = World(tmp_path)
     w.host.hooks["promote"] = lambda: RC.ReleaseControl(w.state_dir).request_stop(CC, "operator stop test")
     code, rec, _ = w.run()
-    assert rec["outcome"] == "RELEASED_VERIFIED"                    # an activation that started is settled
+    assert rec["outcome"] == "RELEASED_VERIFIED"  # an activation that started is settled
     v = RC.ReleaseControl(w.state_dir).view()
     assert v.mode == RC.STOPPED and v.stop["acknowledged_at"]
 
@@ -986,12 +1162,19 @@ def test_stop_latch_written_by_release_window_refuses(tmp_path):
 
 # ── corrupt state ─────────────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("target,body,reason", [
-    ("control.json", "{not json", "REFUSED_CONTROL_CORRUPT"),
-    ("control.json", '{"schema": "ReleaseControl@v1", "mode": "WHATEVER", "epoch": 1, "version": 1}',
-     "REFUSED_CONTROL_CORRUPT"),
-    ("STOP.json", "garbage", "REFUSED_STOP_UNREADABLE"),
-])
+
+@pytest.mark.parametrize(
+    "target,body,reason",
+    [
+        ("control.json", "{not json", "REFUSED_CONTROL_CORRUPT"),
+        (
+            "control.json",
+            '{"schema": "ReleaseControl@v1", "mode": "WHATEVER", "epoch": 1, "version": 1}',
+            "REFUSED_CONTROL_CORRUPT",
+        ),
+        ("STOP.json", "garbage", "REFUSED_STOP_UNREADABLE"),
+    ],
+)
 def test_corrupt_control_state_fails_closed(tmp_path, target, body, reason):
     w = World(tmp_path)
     (w.state_dir / target).write_text(body)
@@ -1009,6 +1192,7 @@ def test_corrupt_capability_ledger_fails_closed(tmp_path):
 
 # ── restart with an ambiguous effect ──────────────────────────────────────────────────────────────
 
+
 def _uncertain_merge(tmp_path):
     w = World(tmp_path)
     w.writer.merge_raises = TimeoutError("socket timed out after the request was sent")
@@ -1020,7 +1204,7 @@ def _uncertain_merge(tmp_path):
 def test_uncertain_merge_blocks_everything_until_reconciled(tmp_path):
     w, rec = _uncertain_merge(tmp_path)
     assert any(i["status"] == "UNCERTAIN" for i in w.ledger()["intents"].values())
-    w.clock.t += 86400                                              # the next day's window
+    w.clock.t += 86400  # the next day's window
     code, rec2, _ = w.run()
     assert rec2["reason"] == "REFUSED_RECONCILE_FIRST"
 
@@ -1051,7 +1235,7 @@ def test_reconcile_effect_applied_is_merged_not_live(tmp_path):
 
 def test_reconcile_ambiguous_latches_stop_and_keeps_the_train_open(tmp_path):
     w, rec = _uncertain_merge(tmp_path)
-    w.gh.main = "4" * 40                                           # main moved; candidate not in it
+    w.gh.main = "4" * 40  # main moved; candidate not in it
     code, out = T.Reconciler(w.controller()).run()
     assert code == T.EXIT_UNCERTAIN and out["trains"][0]["disposition"] == "AMBIGUOUS"
     assert w.state.read_latch()[0] == "SET"
@@ -1074,6 +1258,7 @@ def test_unreadable_train_state_is_ambiguous(tmp_path):
 
 
 # ── failed artifact ───────────────────────────────────────────────────────────────────────────────
+
 
 def test_failed_verification_rolls_back_latches_quarantines_and_blocks_redeploy(tmp_path):
     w = World(tmp_path)
@@ -1111,6 +1296,7 @@ def test_quarantined_artifact_is_never_promoted_again(tmp_path):
         cand_merge["m"] = m
         T.RC._append_jsonl(w.state_dir / "quarantine.jsonl", {"kind": "quarantine", "sha": m})
         return m
+
     w.writer.merge_batch_pr = merge
     code, rec = c.run()
     assert rec["outcome"] == "MERGED_NOT_LIVE" and rec["reason"] == "QUARANTINED_ARTIFACT"
@@ -1118,6 +1304,7 @@ def test_quarantined_artifact_is_never_promoted_again(tmp_path):
 
 
 # ── event store ───────────────────────────────────────────────────────────────────────────────────
+
 
 class FakeCursor:
     def __init__(self, conn):
@@ -1194,6 +1381,7 @@ def test_jsonl_sink_refuses_an_invalid_event(tmp_path):
 
 # ── queue sources and classifier ──────────────────────────────────────────────────────────────────
 
+
 def test_real_phase1_classifier_is_used_and_blocks_its_own_controller():
     c = T.load_classifier(closure=False)
     assert isinstance(c, T.PolicyClassifier) and c.policy_version
@@ -1205,6 +1393,7 @@ def test_real_phase1_classifier_is_used_and_blocks_its_own_controller():
 
 def test_classifier_unavailable_holds_everything(monkeypatch):
     import scripts.lib as SL
+
     monkeypatch.setitem(sys.modules, "scripts.lib.release_train_classify", None)
     monkeypatch.delattr(SL, "release_train_classify", raising=False)
     c = T.load_classifier()
@@ -1235,6 +1424,7 @@ def test_fallback_queue_uses_receipt_source_only_when_store_absent():
 
         def snapshot(self):
             return self.snap
+
     fb = StaticQueue([T.QueueEntry(pr=5, head_sha="a" * 40)])
     absent = T.FallbackQueueSource(Store(T.QueueSnapshot("phase1", None, False, [], ["store:not_migrated"])), fb)
     assert [e.pr for e in absent.snapshot().entries] == [5]
@@ -1243,8 +1433,10 @@ def test_fallback_queue_uses_receipt_source_only_when_store_absent():
 
 
 def test_phase1_store_queue_source_reads_riding_rows(monkeypatch):
-    rows = [{"pr_number": 7, "head_sha": "a" * 40, "state": "ready", "depends_on": [6], "risk_class": "eligible"},
-            {"pr_number": 8, "head_sha": "b" * 40, "state": "held", "depends_on": [], "risk_class": "held"}]
+    rows = [
+        {"pr_number": 7, "head_sha": "a" * 40, "state": "ready", "depends_on": [6], "risk_class": "eligible"},
+        {"pr_number": 8, "head_sha": "b" * 40, "state": "held", "depends_on": [], "risk_class": "held"},
+    ]
     monkeypatch.setattr(T.Q, "read_queue", lambda dbq, limit: {"store_state": "OK", "as_of": "t", "rows": rows})
     snap = T.Phase1StoreQueueSource(lambda: FakeConn(True)).snapshot()
     assert snap.complete and [e.pr for e in snap.entries] == [7] and snap.entries[0].depends_on == (6,)
@@ -1257,19 +1449,42 @@ def test_hygiene_receipt_source_fails_closed_and_parses_dependencies(tmp_path):
     clock = lambda: NOW.timestamp()  # noqa: E731
 
     def runner(argv, **kw):
-        out = json.dumps([
-            {"number": 30, "headRefOid": "a" * 40, "baseRefName": "main", "headRefName": "feat/a", "title": "a",
-             "isDraft": False, "labels": [], "body": "Depends-on: #29, #28", "files": [{"path": "docs/a.md"}]},
-            {"number": 31, "headRefOid": "b" * 40, "baseRefName": "feat/a", "headRefName": "feat/b", "title": "b",
-             "isDraft": False, "labels": [], "body": "", "files": []}])
+        out = json.dumps(
+            [
+                {
+                    "number": 30,
+                    "headRefOid": "a" * 40,
+                    "baseRefName": "main",
+                    "headRefName": "feat/a",
+                    "title": "a",
+                    "isDraft": False,
+                    "labels": [],
+                    "body": "Depends-on: #29, #28",
+                    "files": [{"path": "docs/a.md"}],
+                },
+                {
+                    "number": 31,
+                    "headRefOid": "b" * 40,
+                    "baseRefName": "feat/a",
+                    "headRefName": "feat/b",
+                    "title": "b",
+                    "isDraft": False,
+                    "labels": [],
+                    "body": "",
+                    "files": [],
+                },
+            ]
+        )
         return types.SimpleNamespace(stdout=out, returncode=0)
+
     src = T.HygieneReceiptGhQueueSource(receipt=receipt, runner=runner, clock=clock)
     snap = src.snapshot()
     assert not snap.complete and snap.reasons[0].startswith("no_receipt")
     receipt.write_text(json.dumps({"summary": {"as_of": "2026-10-19T10:00:00+00:00", "prs": []}}))
     assert any(r.startswith("receipt_stale") for r in src.snapshot().reasons)
-    receipt.write_text(json.dumps({"summary": {"as_of": "2026-10-21T21:00:00+00:00",
-                                               "prs": [{"number": 30, "holds": []}]}}))
+    receipt.write_text(
+        json.dumps({"summary": {"as_of": "2026-10-21T21:00:00+00:00", "prs": [{"number": 30, "holds": []}]}})
+    )
     snap = src.snapshot()
     assert snap.complete
     by = {e.pr: e for e in snap.entries}
@@ -1277,9 +1492,13 @@ def test_hygiene_receipt_source_fails_closed_and_parses_dependencies(tmp_path):
 
 
 def test_dependency_order_and_missing_dependency():
-    es = [T.QueueEntry(pr=3, head_sha="a" * 40, depends_on=(2,)), T.QueueEntry(pr=2, head_sha="b" * 40),
-          T.QueueEntry(pr=4, head_sha="c" * 40, depends_on=(99,)), T.QueueEntry(pr=5, head_sha="d" * 40, depends_on=(6,)),
-          T.QueueEntry(pr=6, head_sha="e" * 40, depends_on=(5,))]
+    es = [
+        T.QueueEntry(pr=3, head_sha="a" * 40, depends_on=(2,)),
+        T.QueueEntry(pr=2, head_sha="b" * 40),
+        T.QueueEntry(pr=4, head_sha="c" * 40, depends_on=(99,)),
+        T.QueueEntry(pr=5, head_sha="d" * 40, depends_on=(6,)),
+        T.QueueEntry(pr=6, head_sha="e" * 40, depends_on=(5,)),
+    ]
     ordered, excl = T.order_members(es)
     assert [e.pr for e in ordered] == [2, 3]
     assert excl[4].startswith("DEPENDENCY_NOT_IN_TRAIN") and excl[5] == excl[6] == "DEPENDENCY_CYCLE"
@@ -1287,9 +1506,18 @@ def test_dependency_order_and_missing_dependency():
 
 # ── test worker isolation ─────────────────────────────────────────────────────────────────────────
 
+
 def test_worker_env_is_built_from_an_allowlist(tmp_path):
-    base = {"PATH": "/usr/bin", "DB_PASSWORD": "x", "GH_TOKEN": "x", "PGHOST": "db", "HOME": "/home/real",
-            "TELEGRAM_BOT_TOKEN": "x", "OPENAI_API_KEY": "x", "LANG": "C.UTF-8"}
+    base = {
+        "PATH": "/usr/bin",
+        "DB_PASSWORD": "x",
+        "GH_TOKEN": "x",
+        "PGHOST": "db",
+        "HOME": "/home/real",
+        "TELEGRAM_BOT_TOKEN": "x",
+        "OPENAI_API_KEY": "x",
+        "LANG": "C.UTF-8",
+    }
     env = T.worker_env(base, home=tmp_path / "h", tmp=tmp_path / "t")
     assert set(env) == {"PATH", "LANG", "HOME", "TMPDIR", *T.WORKER_ENV_FIXED}
     assert env["HOME"] == str(tmp_path / "h") and env["ENABLE_TELEGRAM"] == "0"
@@ -1301,25 +1529,49 @@ def test_local_test_worker_sees_no_credentials(tmp_path):
     def runner(argv, *, cwd, env, timeout, preexec):
         seen.update(env)
         return 0, ""
-    t = T.LocalTester(command=["true"], base_env={"PATH": "/usr/bin", "DB_PASSWORD": "s", "GITHUB_TOKEN": "s"},
-                      runner=runner)
+
+    t = T.LocalTester(
+        command=["true"], base_env={"PATH": "/usr/bin", "DB_PASSWORD": "s", "GITHUB_TOKEN": "s"}, runner=runner
+    )
     assert t.run(tmp_path, "a" * 40, timeout=5, scratch=tmp_path, now=lambda: 0.0).ok
     assert "DB_PASSWORD" not in seen and "GITHUB_TOKEN" not in seen and seen["HOME"].startswith(str(tmp_path))
 
 
 # ── n8n window requests (RELEASE_TRAIN_N8N_CONTRACT.md C1-C11) ──────────────────────────────────
 
+
 def request(slot="1800", day="20261021", tick="on_window", shadow=True, **over):
     start = datetime(int(day[:4]), int(day[4:6]), int(day[6:]), int(slot[:2]), int(slot[2:]), tzinfo=ET)
     rid = f"rtw-{day}-{slot}-" + ("win" if tick == "on_window" else "f0a1b2c")
-    body = {"schema": "TrainWindowRequest@v1", "request_id": rid, "window_slot": slot,
-            "window_id": start.isoformat(timespec="minutes"), "window_start": start.isoformat(), "tick": tick,
-            "shadow": shadow, "shadow_reason": "train_not_armed" if shadow else None,
-            "requested_at": (start - timedelta(minutes=90)).isoformat(),
-            "expires_at": (start + timedelta(minutes=15)).isoformat(),
-            "requested_by": {"lane_id": f"release-train-request-{slot}", "run_id": "rtw:x:live:1", "attempt": 1,
-                             "run_mode": "live", "code_sha": None},
-            "readiness": {"stop_state": "ABSENT"}, "authority": "REQUEST_ONLY", "note": "not authority"}
+    body = {
+        "schema": "TrainWindowRequest@v1",
+        "request_id": rid,
+        "window_slot": slot,
+        "window_id": start.isoformat(timespec="minutes"),
+        "window_start": start.isoformat(),
+        "tick": tick,
+        "shadow": shadow,
+        "shadow_reason": "train_not_armed" if shadow else None,
+        "requested_at": (start - timedelta(minutes=90)).isoformat(),
+        "expires_at": (start + timedelta(minutes=15)).isoformat(),
+        "requested_by": {
+            "lane_id": f"release-train-request-{slot}",
+            "run_id": "rtw:x:live:1",
+            "attempt": 1,
+            "run_mode": "live",
+            "code_sha": None,
+        },
+        "readiness": {
+            "stop_state": "ABSENT",
+            "armed": False,
+            "shadow_enabled": True,
+            "delegation_state": "PAUSED",
+            "window_enabled": False,
+            "policy_version": None,
+        },
+        "authority": "REQUEST_ONLY",
+        "note": "not authority",
+    }
     body.update(over)
     return body
 
@@ -1335,6 +1587,7 @@ def put(w, body, name=None):
 def claim(w, *, apply=True, status=None):
     def factory(live):
         return w.controller(live=live)
+
     return T.process_requests(w.state, factory, apply=apply, now=lambda: w.clock.t, live_status=status)
 
 
@@ -1343,7 +1596,7 @@ def receipt(w, rid):
 
 
 def test_shadow_request_is_simulate_only_and_completes(tmp_path):
-    w = World(tmp_path, now=datetime(2026, 10, 21, 16, 35, tzinfo=ET))       # the W-90 request tick
+    w = World(tmp_path, now=datetime(2026, 10, 21, 16, 35, tzinfo=ET))  # the W-90 request tick
     req = request()
     put(w, req)
     code, out = claim(w)
@@ -1360,7 +1613,11 @@ def test_shadow_request_is_simulate_only_and_completes(tmp_path):
 
 def test_off_window_shadow_request_is_evaluated_at_its_window(tmp_path):
     w = World(tmp_path, now=datetime(2026, 10, 21, 11, 0, tzinfo=ET))
-    req = request(tick="off_window", expires_at=(datetime(2026, 10, 21, 12, 0, tzinfo=ET)).isoformat())
+    req = request(
+        tick="off_window",
+        requested_at=(datetime(2026, 10, 21, 10, 59, tzinfo=ET)).isoformat(),
+        expires_at=(datetime(2026, 10, 21, 12, 0, tzinfo=ET)).isoformat(),
+    )
     put(w, req)
     claim(w)
     r = receipt(w, req["request_id"])
@@ -1379,7 +1636,7 @@ def test_live_request_is_refused_while_build_only(tmp_path):
 
 def test_live_request_when_active_re_validates_on_the_host(tmp_path):
     w = World(tmp_path)
-    w.state.write(w.state.latch, {"latched_at": "x"})                       # host STOP beats the request's view
+    w.state.write(w.state.latch, {"latched_at": "x"})  # host STOP beats the request's view
     req = request(shadow=False, shadow_reason=None)
     put(w, req)
     claim(w, status="ACTIVE")
@@ -1387,16 +1644,19 @@ def test_live_request_when_active_re_validates_on_the_host(tmp_path):
     assert r["state"] == "REFUSED" and r["refusal"]["code"] == "STOP_SET"
 
 
-@pytest.mark.parametrize("mutate,needle", [
-    (lambda b: b.update(candidate_sha="a" * 40), "unknown fields"),
-    (lambda b: b.update(train_id="rt-20261021-1800-abcd"), "unknown fields"),
-    (lambda b: b.update(window_slot="1200"), "window_slot"),
-    (lambda b: b.update(authority="GRANT"), "authority"),
-    (lambda b: b.update(tick="off_window"), "suffix"),
-    (lambda b: b.update(window_id="2026-10-22T18:00-04:00"), "disagree"),
-    (lambda b: b["requested_by"].update(lane_id="release-train-request-0000"), "lane_id"),
-    (lambda b: b.pop("expires_at"), "missing"),
-])
+@pytest.mark.parametrize(
+    "mutate,needle",
+    [
+        (lambda b: b.update(candidate_sha="a" * 40), "unknown key"),
+        (lambda b: b.update(train_id="rt-20261021-1800-abcd"), "unknown key"),
+        (lambda b: b.update(window_slot="1200"), "window_slot"),
+        (lambda b: b.update(authority="GRANT"), "authority"),
+        (lambda b: b.update(tick="off_window"), "suffix"),
+        (lambda b: b.update(window_id="2026-10-22T18:00-04:00"), "disagree"),
+        (lambda b: b["requested_by"].update(lane_id="release-train-request-0000"), "lane_id"),
+        (lambda b: b.pop("expires_at"), "missing"),
+    ],
+)
 def test_invalid_requests_are_claimed_and_refused(tmp_path, mutate, needle):
     w = World(tmp_path)
     req = request()
@@ -1457,8 +1717,9 @@ def test_claim_without_apply_lists_and_writes_nothing(tmp_path):
 
 def test_requests_are_answered_in_requested_at_order(tmp_path):
     w = World(tmp_path, now=datetime(2026, 10, 21, 16, 35, tzinfo=ET))
-    late = request(slot="0000", day="20261022", requested_at="2026-10-21T22:30:00-04:00",
-                   expires_at="2026-10-22T00:15:00-04:00")
+    late = request(
+        slot="0000", day="20261022", requested_at="2026-10-21T22:30:00-04:00", expires_at="2026-10-22T00:15:00-04:00"
+    )
     early = request()
     put(w, late)
     put(w, early)
@@ -1480,6 +1741,7 @@ def test_a_busy_claimer_does_nothing(tmp_path):
 
 # ── alarm firing (release_window.Host.notify -> telegram_alert.send_telegram) ─────────────────────
 
+
 def test_failed_window_alert_reaches_the_transport(tmp_path, monkeypatch):
     sent = []
     fake = types.ModuleType("telegram_alert")
@@ -1487,8 +1749,13 @@ def test_failed_window_alert_reaches_the_transport(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "telegram_alert", fake)
     runner = RW.Runner(RW.Host(checkout=tmp_path, releases=tmp_path, canonical=tmp_path), RW.State(tmp_path / "s"))
     w = RW.window_for(NOW, "1730")
-    rec = {"outcome": "ROLLED_BACK", "candidate": {"sha": "c" * 40, "selected_by": "head_green"},
-           "current": {"build_sha": "b" * 40}, "finished_at": "2026-10-21T22:00:00Z", "stop_latched": {"x": 1}}
+    rec = {
+        "outcome": "ROLLED_BACK",
+        "candidate": {"sha": "c" * 40, "selected_by": "head_green"},
+        "current": {"build_sha": "b" * 40},
+        "finished_at": "2026-10-21T22:00:00Z",
+        "stop_latched": {"x": 1},
+    }
     runner._alert(w, rec)
     assert rec["notification"] == {"accepted": True, "priority": "P1"}
     assert len(sent) == 1 and "ROLLED_BACK" in sent[0][0]
@@ -1503,10 +1770,10 @@ def test_stale_canonical_source_halts_before_any_prepare_or_capability(tmp_path)
     """The deploy script runs its release verifier from CANONICAL_SOURCE; a dev tree not at the merge commit is an
     older verifier. The controller refuses before issuing a prepare capability or calling the deploy script."""
     w = World(tmp_path)
-    w.host.canonical_sha = "5" * 40                                   # dev tree left on an older main
+    w.host.canonical_sha = "5" * 40  # dev tree left on an older main
     code, rec, _ = w.run()
     assert rec["outcome"] == "MERGED_NOT_LIVE" and rec["reason"] == "CANONICAL_SOURCE_HEAD_MISMATCH", rec["reason"]
-    assert w.deploys() == []                                          # no prepare, no promote
+    assert w.deploys() == []  # no prepare, no promote
     assert ("canonical_head",) in w.host.calls
     actions = {i["action"] for i in w.ledger()["intents"].values()}
     assert "prepare_release" not in actions and "promote_release" not in actions
@@ -1514,7 +1781,7 @@ def test_stale_canonical_source_halts_before_any_prepare_or_capability(tmp_path)
 
 def test_unreadable_canonical_source_halts_too(tmp_path):
     w = World(tmp_path)
-    w.host.canonical_sha = ""                                         # Host.canonical_head: "" when unreadable
+    w.host.canonical_sha = ""  # Host.canonical_head: "" when unreadable
     code, rec, _ = w.run()
     assert rec["reason"] == "CANONICAL_SOURCE_HEAD_MISMATCH" and w.deploys() == []
 
@@ -1528,8 +1795,13 @@ def test_dry_run_names_the_canonical_source_check(tmp_path):
 def test_release_window_host_reads_canonical_head_from_git(tmp_path):
     repo = tmp_path / "canonical"
     repo.mkdir()
-    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
-           "GIT_COMMITTER_EMAIL": "t@t"}
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+    }
     subprocess.run(["git", "init", "-q", str(repo)], check=True, env=env)
     subprocess.run(["git", "-C", str(repo), "commit", "-q", "--allow-empty", "-m", "c"], check=True, env=env)
     head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()

@@ -660,4 +660,7 @@ def test_lane_mode_counts_match_the_pr():
     # 2026-10-21 (feat/pr-hygiene-audit-20261021, tests/test_pr_hygiene_audit_20261021.py): + pr-hygiene-audit,
     # enforced from its first entry (no .env loader, no DB; literal reads declared). 16 + 1 = 17.
     assert LANES["pr-hygiene-audit"]["env_allowlist_mode"] == "enforce"
-    assert modes.count("enforce") == 17 and modes.count("report") == len(LANES) - 17
+    # 2026-10-21 (feat/macro-calendar-20261021, tests/test_macro_calendar_20261021.py): + macro-calendar-refresh,
+    # enforced from its first entry (no env-file loader, no DB; 5-module closure, literal reads declared). 17 + 1 = 18.
+    assert LANES["macro-calendar-refresh"]["env_allowlist_mode"] == "enforce"
+    assert modes.count("enforce") == 18 and modes.count("report") == len(LANES) - 18

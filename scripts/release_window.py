@@ -125,6 +125,13 @@ RELEASES_BASE = Path(os.environ.get("TRADEAI_RELEASES_BASE", str(HOME / "trade-a
 RELEASE_CHECKOUT = Path(os.environ.get("TRADEAI_RELEASE_CHECKOUT", str(HOME / "tradeai-exact-main-20260827")))
 STATE_ROOT = Path(os.environ.get("TRADEAI_STATE_ROOT", str(HOME / "trade-ai-releases" / "persistent-state")))
 STATE_DIR = Path(os.environ.get("TRADEAI_RELEASE_WINDOW_STATE_DIR", str(STATE_ROOT / "data" / "runtime" / "release_window")))
+#: Where STATE_DIR came from (arming finding 4): ``status`` prints it beside the path so the operator can compare the
+#: runner's STOP latch directory with the CC's ``GET /stop`` ``state_dir`` (UI contract §6).
+STATE_DIR_SOURCE = (
+    "env:TRADEAI_RELEASE_WINDOW_STATE_DIR" if "TRADEAI_RELEASE_WINDOW_STATE_DIR" in os.environ
+    else "env:TRADEAI_STATE_ROOT" if "TRADEAI_STATE_ROOT" in os.environ
+    else "default"
+)
 HEALTH_URL = os.environ.get("TRADEAI_RELEASE_WINDOW_HEALTH_URL", "http://127.0.0.1:7777/api/health")
 UNITS = tuple(os.environ.get(
     "TRADEAI_RELEASE_WINDOW_UNITS",
@@ -814,7 +821,10 @@ class Runner:
 
     def status(self) -> tuple[int, dict]:
         latch_state, latch = self.state.read_latch()
-        return EXIT_OK, {"latch_state": latch_state, "latch": latch, "last": self.state.read(self.state.last),
+        root = Path(self.state.root)
+        source = STATE_DIR_SOURCE if root == STATE_DIR else "argument"
+        return EXIT_OK, {"state_dir": str(root), "state_dir_source": source, "latch_path": str(self.state.latch),
+                         "latch_state": latch_state, "latch": latch, "last": self.state.read(self.state.last),
                          "multi_window_grant_status": MULTI_WINDOW_GRANT_STATUS, "windows_et": sorted(WINDOWS),
                          "grace_min": GRACE_MIN, "grant_token": WINDOW_TOKEN_HELP}
 
@@ -858,6 +868,15 @@ def main(argv: Optional[list[str]] = None) -> int:
                        help="dry run only: preview the pipeline past the classifier")
         if name == "train-run":
             t.add_argument("--live", action="store_true")
+            t.add_argument("--inject", choices=["red-check", "conflict", "stop-midrun", "corrupt-latch", "crash"],
+                           help="dry run only: simulate one failure and record how the controller behaved "
+                                "(refused with --live)")
+            # Arming finding 8: an operator-forced off-window CANARY run. Host CLI only (TTY + typed phrase when
+            # --live); needs the delegation phase "canary" and the policy canary flag; overrides only the timing.
+            t.add_argument("--force-window", choices=["1800", "0000", "0600", "0800"], default=None)
+            t.add_argument("--operator-forced", action="store_true")
+            t.add_argument("--operator-ref", default=None)
+            t.add_argument("--forced-n", type=int, default=None)
     sub.add_parser("train-status")
     r = sub.add_parser("train-reconcile")
     r.add_argument("--live", action="store_true")
@@ -869,6 +888,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     k = sub.add_parser("train-claim", help="answer n8n TrainWindowRequest@v1 files (docs/ops/RELEASE_TRAIN_N8N_"
                                            "CONTRACT.md); lists only, unless --apply")
     k.add_argument("--apply", action="store_true", help="claim by rename and write receipts (shadow = simulate)")
+    k.add_argument("--orphan-after-min", type=float, default=None,
+                   help="orphan watchdog age (default: TRADEAI_RELEASE_TRAIN_ORPHAN_AFTER_MIN, else 2x the 3 h max run)")
+    o = sub.add_parser("train-orphan-resolve", help="close an orphaned claim (after train-reconcile); dry run unless "
+                                                    "--apply; never re-runs the request")
+    o.add_argument("--request-id", required=True)
+    o.add_argument("--reason", required=True)
+    o.add_argument("--apply", action="store_true")
     args = ap.parse_args(argv)
     if args.cmd.startswith("train-"):
         from scripts.lib import release_train_controller as T

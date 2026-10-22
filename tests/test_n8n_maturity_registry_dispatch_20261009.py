@@ -511,11 +511,21 @@ def test_registry_dispatch_errors_hook():
 #: its own; the night-stage step is the clock fallback). tests/test_n8n_consolidation_cohort2_20261016.py.
 #: 2026-10-21 + pr-hygiene-audit (operator-approved process plan: PR hygiene audited every iteration; n8n-native,
 #: daily 06:30 dry_run until the operator promotes it; tests/test_pr_hygiene_audit_20261021.py).
-N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor", "momentum-cache-reconcile",
-                               "hermes-discovery-yield-on-learning", "pr-hygiene-audit",
-                               # 2026-10-21 operator "yes rebuild 1417": two never-scheduled scripts onboarded as
-                               # n8n-native shadow lanes (no cron line; tests/test_cio_portfolio_thesis_lane_20261021.py).
-                               "cio-portfolio-thesis", "advisory-maturity-evidence"})
+N8N_NATIVE_SHADOW = frozenset(
+    {
+        "momentum-lifecycle-monitor",
+        "momentum-cache-reconcile",
+        "hermes-discovery-yield-on-learning",
+        "pr-hygiene-audit",
+        # 2026-10-21 operator "yes rebuild 1417": two never-scheduled scripts onboarded as
+        # n8n-native shadow lanes (no cron line; tests/test_cio_portfolio_thesis_lane_20261021.py).
+        "cio-portfolio-thesis",
+        "advisory-maturity-evidence",
+        # 2026-10-21 operator ruling: macro calendar for the release train's 08:00 window,
+        # n8n-native ingest lane, daily 05:05 dry_run (tests/test_macro_calendar_20261021.py).
+        "macro-calendar-refresh",
+    }
+)
 #: 2026-10-17 + n8n-comms-intent-consumer (operator D2 "Queue reader first"; tests/support/comms_intent_consumer_live.py).
 #: 2026-10-19 + registry-runtime-truth (measure-only; tests/support/registry_runtime_truth_lane.py).
 #: 2026-10-18 + disk-usage-monitor and disk-hygiene (operator 2026-10-18: "a script with rules that's repeatable, n8n
@@ -523,9 +533,18 @@ N8N_NATIVE_SHADOW = frozenset({"momentum-lifecycle-monitor", "momentum-cache-rec
 from tests.support import disk_hygiene_n8n as _DH  # noqa: E402
 
 #: 2026-10-19 + active-trader-motion-watchdog (n8n owns motion supervision; tests/support/active_trader_motion_watchdog.py).
-N8N_NATIVE_CANARY = frozenset({"heartbeat-watch", "n8n-comms-intent-consumer", "active-trader-motion-watchdog",
-                               # 2026-10-18 data-integrity monitors (tests/support/data_integrity_monitors_n8n.py)
-                               "n8n-data-plausibility-audit", "n8n-gap-resolution-audit", *_DH.LIVE, "registry-runtime-truth"})
+N8N_NATIVE_CANARY = frozenset(
+    {
+        "heartbeat-watch",
+        "n8n-comms-intent-consumer",
+        "active-trader-motion-watchdog",
+        # 2026-10-18 data-integrity monitors (tests/support/data_integrity_monitors_n8n.py)
+        "n8n-data-plausibility-audit",
+        "n8n-gap-resolution-audit",
+        *_DH.LIVE,
+        "registry-runtime-truth",
+    }
+)
 #: the reviewed live_arg of each n8n-native canary row whose live run is not the script default.
 #: disk-hygiene's live run is --plan (a manifest, never a deletion).
 N8N_NATIVE_CANARY_LIVE_ARG = {
@@ -593,7 +612,9 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
             # canary-wave-20261014: cron rows at stage canary, mode live, live_arg = the cron argv suffix, allowlist
             # lock == the cron flock lock (tests/test_canary_wave_20261014.py pins every field).
             # 2026-10-16: or the dispatcher cutover row an n8n cutover wave wrote (cron line `# RETIRED`).
-            assert mode == "live" and row["scheduler"].get("stage") == ("cutover" if lane in _CW.CUT_OVER else "canary"), lane
+            assert mode == "live" and row["scheduler"].get("stage") == (
+                "cutover" if lane in _CW.CUT_OVER else "canary"
+            ), lane
             assert row["scheduler"]["kind"] == ("n8n" if lane in _CW.CUT_OVER else "cron"), lane
             assert isinstance(allow[lane]["live_arg"], list), lane
             assert clamp_mode(lane, "live", rows)["effective_mode"] == "live", lane
@@ -669,10 +690,16 @@ def test_live_registry_rows_are_off_or_shadow_dry_run_never_live():
     # null; tests/test_hermes_scorer_n8n_shadow_20261021.py).
     # - len(_HSC.LIVE): 2026-10-21 operator waiver "push live now" moves hermes-watchlist-scorer shadow -> canary
     # (tests/support/hermes_scorer_canary.py).
-    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2 - len(CANARY_WAVE_20261014) + 2 + len(SYSTEMD_TIMER_SHADOW) + 6 - len(CW_NEW) + 1 - len(_HSC.LIVE), shadow
+    assert len(shadow) == 54 + 3 + 15 - len(CANARY_ROWS) - 17 + 10 + 11 + len(N8N_NATIVE_SHADOW) + 1 - 2 + 2 - len(
+        CANARY_WAVE_20261014
+    ) + 2 + len(SYSTEMD_TIMER_SHADOW) + 6 - len(CW_NEW) + 1 - len(_HSC.LIVE), shadow
     # heartbeat-watch moved shadow → canary (N8N_NATIVE_CANARY) 2026-10-11.
     assert sorted(r["lane_id"] for r in rows if LD.dispatch_mode(r) == "live") == sorted(
-        CANARY_ROWS | N8N_NATIVE_CANARY | set(CANARY_WAVE_20261014) | CW_NEW | set(_HSC.LIVE)  # + 2026-10-21 scorer canary
+        CANARY_ROWS
+        | N8N_NATIVE_CANARY
+        | set(CANARY_WAVE_20261014)
+        | CW_NEW
+        | set(_HSC.LIVE)  # + 2026-10-21 scorer canary
     )
 
 
@@ -822,7 +849,10 @@ def test_policy_exception_config_lists_only_market_day_gate_for_the_bounded_lane
     doc = json.loads(LD.DEFAULT_POLICY_EXCEPTIONS.read_text(encoding="utf-8"))
     # 2026-10-14: + the two scalp hot-tier ingest lanes (operator directive, n8nmat/scalp-premarket-onboard-20261014).
     assert [e["lane_id"] for e in doc["exceptions"]] == [
-        "trade-ai-scalp-live", "finviz-enrichment-scalp-hot", "scalp-hot-list"]
+        "trade-ai-scalp-live",
+        "finviz-enrichment-scalp-hot",
+        "scalp-hot-list",
+    ]
     assert all(e["exempt_tokens"] == ["market_day_gate.sh"] for e in doc["exceptions"])
     assert "4.0.0" in doc["exceptions"][0]["authority"] and "2026-10-09" in doc["exceptions"][0]["approval"]
     assert LD.load_policy_exceptions()["trade-ai-scalp-live"] == SCALP_EXC["trade-ai-scalp-live"]

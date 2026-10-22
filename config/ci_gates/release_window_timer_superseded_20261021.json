@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_window_timer_superseded_20261021",
+  "files": [
+    "tests/test_release_window_timer_superseded_20261021.py"
+  ],
+  "anchor": "RELEASE_WINDOW_TIMER_SUPERSEDED_20261021",
+  "comment": [
+    "ANCHOR: RELEASE_WINDOW_TIMER_SUPERSEDED_20261021 — release-train arming finding 7. The old 12:00/17:30",
+    "release_window timer is SUPERSEDED: install_release_window_timer.sh --apply refuses, the old packet's §5/§8",
+    "step points to the arming packet, and release_train_arm.sh step D refuses to install the claimer while",
+    "tradeai-release-window.timer is present. Hermetic: HOME in tmp_path, stub systemctl, arming sandbox."
+  ]
+}

@@ -1,0 +1,133 @@
+{
+  "schema": "N8nFrameworkPendingEvidence@v1",
+  "workflow_id": "tradeai-fabric-release-train",
+  "workflow_file": "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json",
+  "as_of": "2026-10-21",
+  "status": "PENDING",
+  "note": "Not evidence and not an exception. The §23.24 gate (check_n8n_import_ready.py -> check_n8n_workflow_framework.py --gate activation) accepts runtime proof only as N8nFrameworkRuntimeEvidence@v2 host-signed attestations (--runtime-evidence), and accepts no exceptions. This file lists what is still owed, so the packet can collect it. It is pinned to the checker's own obligation list by tests/test_release_train_import_gate_20261021.py.",
+  "static_elements": {
+    "failing": [],
+    "score_pct": 98.4,
+    "non_pass": {
+      "FW-R3": "partial"
+    }
+  },
+  "platform_blocking": {
+    "FW-P1": {
+      "status": "fail",
+      "title": "instance saves successful executions (FW-M1/L1 need it per workflow until it does)"
+    },
+    "FW-P2": {
+      "status": "fail",
+      "title": "n8n DB role is not superuser (§23.24 Logging (3), Security audit trail)"
+    },
+    "FW-P3": {
+      "status": "fail",
+      "title": "drift check runs on a host schedule and pages P1 (§23.24 Logging (5))"
+    },
+    "FW-P4": {
+      "status": "fail",
+      "title": "relay docker-bridge bind is firewalled (§23.24 Security (4))"
+    },
+    "FW-P5": {
+      "status": "partial",
+      "title": "image pinned by digest, env access blocked in nodes, community packages off (§23.24 Security (3))"
+    },
+    "FW-P6": {
+      "status": "fail",
+      "title": "a dead-man outside n8n watches n8n (§23.23 Independence; §23.24 Alerting (2))"
+    }
+  },
+  "runtime_pending": [
+    {
+      "id": "23.24-M1a",
+      "evidence_required": "ledger runs rows joined to n8n execution custom data run_id for the window (no orphan either side)",
+      "collect_at": "phase 5 shadow ticks through n8n (H.1(a)): ledger runs joined to execution run_id"
+    },
+    {
+      "id": "23.24-M3b",
+      "evidence_required": "p95 of execution durations over the contract window, from saved executions or ledger runs",
+      "collect_at": "phase 5: p95 over the four shadow executions"
+    },
+    {
+      "id": "23.24-M4b",
+      "evidence_required": "executor receipts with admitted_at - requested_at, and a cap-refusal row under load",
+      "collect_at": "phase 5: executor receipts (admitted_at - requested_at); cap-refusal row under load"
+    },
+    {
+      "id": "23.24-M5b",
+      "evidence_required": "lane receipt store list (LaneRunReceipt@v2) compared with connects_to",
+      "collect_at": "phase 5: LaneRunReceipt@v2 store list for each request lane"
+    },
+    {
+      "id": "23.24-M6b",
+      "evidence_required": "RunReceipt with output_verdict empty_output -> RUN_FAILED for a forced empty run",
+      "collect_at": "phase 5: RunReceipt output_verdict for a forced empty run through H.1(a)"
+    },
+    {
+      "id": "23.24-A1b",
+      "evidence_required": "comms_intents / incident row for a forced failure execution id",
+      "collect_at": "phase 5: forced failure execution -> tradeai-fabric-error -> comms_intents row"
+    },
+    {
+      "id": "23.24-A3b",
+      "evidence_required": "P2 incident row raised by a slow-run drill",
+      "collect_at": "phase 5: slow-run drill -> P2 incident row"
+    },
+    {
+      "id": "23.24-L1",
+      "evidence_required": "ledger rows with schema RunRequested@v1/RunReceipt@v2 and requested_by = n8n:workflow:<id>",
+      "collect_at": "phase 5: RunRequested@v1/RunReceipt@v2 rows with requested_by n8n:workflow:tradeai-fabric-release-train"
+    },
+    {
+      "id": "23.24-L3b",
+      "evidence_required": "coordination ledger audit rows for the workflow's runs in the window",
+      "collect_at": "phase 5: coordination ledger audit rows for the shadow executions"
+    },
+    {
+      "id": "23.24-L4b",
+      "evidence_required": "relay_log.jsonl refusal row for a bad-bearer probe",
+      "collect_at": "phase 5: relay_log.jsonl refusal row for a bad-bearer probe"
+    },
+    {
+      "id": "23.24-L5b",
+      "evidence_required": "N8nWorkflowDriftReceipt@v1 for this workflow id with no drift, from a host-scheduled read",
+      "collect_at": "after import: host-scheduled N8nWorkflowDriftReceipt@v1 with no drift (needs FW-P3)"
+    },
+    {
+      "id": "23.24-R2b",
+      "evidence_required": "ledger breakers transition open -> half_open -> closed in a drill (WS1-05)",
+      "collect_at": "phase 5: breaker open -> half_open -> closed drill (WS1-05)"
+    },
+    {
+      "id": "23.24-R3b",
+      "evidence_required": "rollback drill receipt (CutoverReceipt@v1 rollback) for the workflow",
+      "collect_at": "phase 5: rollback drill (unpublish, step F rollback) CutoverReceipt@v1"
+    },
+    {
+      "id": "23.24-R6b",
+      "evidence_required": "effect_owners row + an effect_already_claimed refusal for a duplicate fire",
+      "collect_at": "canary (phase 6): request lanes are dry-run in shadow and claim no effect key; evidence needs a live fire"
+    },
+    {
+      "id": "23.24-SEC1b",
+      "evidence_required": "relay refusal for an old/forged bearer and gateway refusal for a bad HMAC claim",
+      "collect_at": "phase 5: relay refusal for an old/forged bearer; gateway refusal for a bad HMAC claim"
+    },
+    {
+      "id": "23.24-SEC2b",
+      "evidence_required": "reconciler receipt (WS1-07) agreeing for every lane this workflow fires",
+      "collect_at": "phase 5: reconciler receipt (WS1-07) agreeing for the four request lanes"
+    },
+    {
+      "id": "23.24-SEC5",
+      "evidence_required": "scripts/check_n8n_activation_grants.py attribution row naming this workflow id",
+      "collect_at": "at import: check_n8n_activation_grants.py attribution row naming the cron grant"
+    },
+    {
+      "id": "23.24-BAR",
+      "evidence_required": "--gate activation exit 0 recorded by the import/activation packet, plus live active flag history",
+      "collect_at": "at activation: --gate activation exit 0 recorded by step F, plus active flag history"
+    }
+  ]
+}

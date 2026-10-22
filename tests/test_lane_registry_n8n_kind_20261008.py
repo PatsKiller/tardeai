@@ -355,28 +355,37 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
     # fired by tradeai-heartbeat-watcher and tradeai-dispatcher; it flips no host scheduler (match names its script only).
     # The operator's2026-10-12 admission adds two new native metadata lanes;
     # neither retires or impersonates a legacy host trigger.
-    n8n_native_lanes = {"heartbeat-watch", "momentum-lifecycle-monitor", "momentum-cache-reconcile",
-                        # 2026-10-16 cohort 2: event-trigger lane of the Hermes discovery yield builder (shadow).
-                        "hermes-discovery-yield-on-learning",
-                        # 2026-10-17 comms-intent consumer live (D2): n8n-native dispatcher row at canary.
-                        *CIL.LIVE,
-                        # 2026-10-18 disk hygiene (weekly, dry-run) + disk-usage monitor (*/15): n8n-native rows;
-                        # the systemd disk_pressure_guard stays as the host backstop and is not flipped.
-                        "disk-hygiene", "disk-usage-monitor",
-                        # 2026-10-19 /tmp hygiene (daily, --plan; operator after the /tmp inode incident).
-                        "tmp-hygiene",
-                        # 2026-10-18 data-integrity monitors on n8n: dispatcher rows at canary.
-                        *DIM.LIVE,
-                        # 2026-10-19 active-trader-motion-watchdog: n8n-native dispatcher row at canary.
-                        *ATMW.LIVE,
-                        # 2026-10-19 registry-runtime-truth: n8n-native measure-only dispatcher row at canary.
-                        *RRT.LIVE,
-                        # 2026-10-21 operator "yes rebuild 1417": two never-scheduled scripts as n8n-native shadow
-                        # dispatcher rows (no host line ever existed; tests/test_cio_portfolio_thesis_lane_20261021.py).
-                        "cio-portfolio-thesis", "advisory-maturity-evidence",
-                        # 2026-10-21 pr-hygiene-audit: n8n-native dispatcher row at shadow, daily 06:30 dry_run (no
-                        # host line; tests/test_pr_hygiene_audit_20261021.py). Added in the release-1 integration.
-                        "pr-hygiene-audit"}
+    n8n_native_lanes = {
+        "heartbeat-watch",
+        "momentum-lifecycle-monitor",
+        "momentum-cache-reconcile",
+        # 2026-10-16 cohort 2: event-trigger lane of the Hermes discovery yield builder (shadow).
+        "hermes-discovery-yield-on-learning",
+        # 2026-10-17 comms-intent consumer live (D2): n8n-native dispatcher row at canary.
+        *CIL.LIVE,
+        # 2026-10-18 disk hygiene (weekly, dry-run) + disk-usage monitor (*/15): n8n-native rows;
+        # the systemd disk_pressure_guard stays as the host backstop and is not flipped.
+        "disk-hygiene",
+        "disk-usage-monitor",
+        # 2026-10-19 /tmp hygiene (daily, --plan; operator after the /tmp inode incident).
+        "tmp-hygiene",
+        # 2026-10-18 data-integrity monitors on n8n: dispatcher rows at canary.
+        *DIM.LIVE,
+        # 2026-10-19 active-trader-motion-watchdog: n8n-native dispatcher row at canary.
+        *ATMW.LIVE,
+        # 2026-10-19 registry-runtime-truth: n8n-native measure-only dispatcher row at canary.
+        *RRT.LIVE,
+        # 2026-10-21 operator "yes rebuild 1417": two never-scheduled scripts as n8n-native shadow
+        # dispatcher rows (no host line ever existed; tests/test_cio_portfolio_thesis_lane_20261021.py).
+        "cio-portfolio-thesis",
+        "advisory-maturity-evidence",
+        # 2026-10-21 pr-hygiene-audit: n8n-native dispatcher row at shadow, daily 06:30 dry_run (no
+        # host line; tests/test_pr_hygiene_audit_20261021.py). Added in the release-1 integration.
+        "pr-hygiene-audit",
+        # 2026-10-21 macro-calendar-refresh: n8n-native ingest dispatcher row at shadow, daily 05:05
+        # dry_run (no host line; tests/test_macro_calendar_20261021.py).
+        "macro-calendar-refresh",
+    }
     assert all(native[lane]["scheduler"]["expression"] == "dispatcher" for lane in n8n_native_lanes)
     # 2026-10-15: the step lanes of the n8n fabric process hermes-learning (AGENTS.md §23.23). Fired only by the
     # process workflow, NEVER_SCHEDULED until it runs live (2026-10-19: the five HL.LIVE steps are ACTIVE); `match` names the process step, so no

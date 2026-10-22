@@ -32011,6 +32011,228 @@
     },
     {
       "schema": "N8nHealthContract@v1",
+      "id": "macro-calendar-refresh",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Daily at 05:05 ET (and on demand), build the macro-release calendar for the release train's 08:00 ET window: verify the mapped FRED release ids (GET /fred/releases), fetch scheduled release dates (GET /fred/releases/dates, include_release_dates_with_no_data=true), flag the 08:30 ET releases (jobs, CPI, PPI, retail sales, GDP, weekly claims, PCE, durable goods, housing starts), merge the FOMC dates and operator overrides from config/macro_calendar_overrides.json, and write data/runtime/macro_calendar.json (MacroCalendar@v1) atomically. The controller reads it through scripts/lib/macro_calendar.py and skips 08:00 on an 08:30 release day or when the calendar is missing, corrupt, older than 72 h or does not cover the day.",
+        "business_function": "release-engineering",
+        "source": "scripts/macro_calendar_refresh.py; operator ruling 2026-10-21 (FRED primary, yearly overrides file, n8n-managed, host controller decides, fail closed)"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/macro_calendar_refresh.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_macro_calendar_refresh.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "FRED API api.stlouisfed.org (GET /fred/releases, GET /fred/releases/dates; FRED_API_KEY)",
+          "kind": "external_api",
+          "direction": "read",
+          "source": "scripts/macro_calendar_refresh.py urllib_fetch; provider fred (config/data_source_authority.json)"
+        },
+        {
+          "name": "config/macro_calendar_overrides.json (FOMC decision dates, operator add/remove with reasons)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/macro_calendar_refresh.py load_overrides"
+        },
+        {
+          "name": "data/runtime/macro_calendar.json",
+          "kind": "store",
+          "direction": "write",
+          "source": "MacroCalendar@v1, atomic replace (lib/atomic_json_store); live runs only"
+        },
+        {
+          "name": "data/runtime/macro-calendar-refresh_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        },
+        {
+          "name": "release-train controller (scripts/lib/macro_calendar.py ReleaseTrainCalendar.verdict / skip_0800)",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "reads the calendar; fail closed"
+        },
+        {
+          "name": "GET /api/v2/needs-action (scripts/lib/needs_action.py source macro_calendar)",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "P2 when the calendar is missing or stale for the next 08:00 window"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no calendar, no receipt"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/macro-calendar-refresh_last.json ok_at advances on each successful live run, and data/runtime/macro_calendar.json fetched_at with it"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at is within 48 h (2x of expected_cadence_hours 24); the reader's own limit is 72 h"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 240 s (80% of timeout_s 300)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = 08:00 skip days in coverage (weekly claims alone give >= 1)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 48 h but younger than 72 h (2x-3x cadence); the calendar is still used"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 240 s"
+        },
+        {
+          "check": "short_coverage",
+          "text": "valid_through less than 14 days ahead (a mapped release has few scheduled dates on FRED)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 72 h (3x cadence): the reader returns STALE and the 08:00 window is skipped; needs-action shows P2"
+        },
+        {
+          "check": "fred_unavailable",
+          "text": "FRED HTTP error, unreachable, or a non-JSON answer such as its maintenance page -> exit 1, receipt ok false (dependency_unavailable), no calendar written"
+        },
+        {
+          "check": "verification_failed",
+          "text": "a mapped release id is missing from /fred/releases or renamed -> exit 1 (unconfigured; failure_kind verification_failed), no calendar written"
+        },
+        {
+          "check": "config_invalid",
+          "text": "config/macro_calendar_overrides.json unreadable or an override without a reason -> exit 1 (unconfigured; failure_kind config_invalid), no calendar written"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced no 08:00 skip day -> RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 48.0,
+        "freshness_failed_after_h": 72.0,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 3x (equal to the reader's 72 h stale limit)",
+        "timeout_s": 300,
+        "class": "ingest",
+        "computed_on": "2026-10-21",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs yet (shadow); class defaults: duration degraded above 80% of timeout_s, freshness 2x/3x cadence; a run is 2-3 FRED GETs",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 240.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "lane_registry.json row severity (a missed refresh fails closed: the 08:00 release window is skipped, never used blind; no trade path reads it)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; on Home through GET /api/v2/needs-action (source macro_calendar, P2 \"08:00 release window skipped: calendar stale|missing\"). The lane itself sends nothing. Never PAGE.",
+        "enforced": "partial: the needs-action P2 is computed from the calendar file by the reader (tested); SIEM/notifier coverage of this lane is NOT_MEASURED (N8N_MONITORING_AND_REMEDIATION_STANDARD.md \u00a77)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue). A FRED outage heals on the next daily run; a verification failure needs a person to re-check the release id (docs/ops/MACRO_CALENDAR.md, runbook_id macro-calendar-refresh)."
+      },
+      "evidence": {
+        "receipt": "data/runtime/macro-calendar-refresh_last.json",
+        "verify": [
+          "python3 scripts/macro_calendar_refresh.py --dry-run   # read-only FRED fetch; prints the id verification and the 08:30 days; writes nothing",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='macro-calendar-refresh' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.fetched_at, .valid_through, (.skip_days_0800 | length)' $STATE_ROOT/data/runtime/macro_calendar.json",
+          "python3 -c 'import sys; sys.path.insert(0, \"scripts\"); from lib.macro_calendar import skip_0800; print(skip_0800(\"2026-11-06\"))'",
+          "curl -s :7777/api/v2/needs-action | jq '.sources.macro_calendar, [.items[] | select(.source==\"macro_calendar\")]'"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; prove work with the ledger, the receipt and the calendar's fetched_at",
+        "expected_output_basis": "expected_output 2026-10-21 from scripts/macro_calendar_refresh.py main(): produced = 08:00 skip days in coverage (at least the weekly claims Thursdays, so never 0 on a good run). Fatal (exit 1, no calendar written; the failure kind is in the receipt summary failure_kind): FRED unavailable / non-JSON / short read = dependency_unavailable; a release id failed verification or the overrides file is invalid = unconfigured; FRED_API_KEY absent = no_credentials."
+      },
+      "review": {
+        "prepared_by": "agent draft (macro calendar, feat/macro-calendar-20261021)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator PatsKiller 2026-10-21 (\"approve macro-calendar contract\")",
+        "reviewed_on": "2026-10-21"
+      },
+      "review_by": "2026-10-28",
+      "state_note": "REVIEWED by the operator 2026-10-21 (\"approve macro-calendar contract\"); agent-written 2026-10-21. Previously awaiting the platform owner's REVIEWED (AGENTS.md \u00a723.19: a new lane's contract is REVIEWED by its owner before its registry PR merges; check_n8n_health_contracts reports DRAFT_NOT_GRANDFATHERED until then). Promotion to live is the operator's word; it also needs FRED_API_KEY present in the executor's environment (host change, operator; the agent did not read or check the rendered env file).",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "08:00 skip days in the calendar's coverage",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "no_credentials",
+          "dependency_unavailable",
+          "unconfigured"
+        ],
+        "empty_allowed_reasons": [],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/macro-calendar-refresh_last.json produced_count (LaneRunReceipt@v2 output fields; the executor reads the immutable attempt copy data/runtime/lane_attempts/macro-calendar-refresh/<run_id>.json)"
+          },
+          {
+            "kind": "file_artifact",
+            "ref": "data/runtime/macro_calendar.json fetched_at (MacroCalendar@v1)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
       "id": "active-trader-motion-watchdog",
       "kind": "lane",
       "workflow_id": "dispatcher",

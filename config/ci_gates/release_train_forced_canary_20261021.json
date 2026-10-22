@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_forced_canary_20261021",
+  "files": [
+    "tests/test_release_train_forced_canary_20261021.py"
+  ],
+  "anchor": "RELEASE_TRAIN_FORCED_CANARY_20261021",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_FORCED_CANARY_20261021 — release-train arming finding 8. Operator-forced off-window",
+    "CANARY runs: release_window.py train-run --live --force-window 1800 --operator-forced --operator-ref --forced-n,",
+    "host CLI only (TTY + typed phrase); only with delegation phase canary AND the policy canary flag (shipped",
+    "false); overrides only the window timing (capability authority re-checks independently); recorded with",
+    "forced_by/operator_ref/window_gate_overridden under rtw:<slot>:<date>:live:forced:<n>, idempotent per n.",
+    "Refused outside canary, without TTY/phrase, with STOP set; every other gate enforced. Hermetic tmp_path world."
+  ]
+}

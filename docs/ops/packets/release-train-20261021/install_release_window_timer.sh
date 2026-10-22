@@ -15,8 +15,14 @@
 # The timer only STARTS the runner. Nothing releases without an operator release-write grant naming the window
 # (RELEASE_WINDOW release-window-<YYYYMMDD>-<HHMM> or RELEASE_WINDOW <date> <window>); without one every window
 # exits DISARMED (exit 2) and leaves only last.json. No broker, no credential read.
+#
+# SUPERSEDED 2026-10-21 (release-train arming finding 7). The Release Train v2 windows are 18:00, 00:00, 06:00 and
+# 08:00 ET, answered by the claimer units (docs/ops/packets/release-train-arming-20261021/README.md step D). Installing
+# this 12:00/17:30 timer beside them would create a second release path, so --apply is REFUSED. The dry run still
+# prints what it used to install (for review), and --disable still archives an already-installed copy.
 set -euo pipefail
 
+SUPERSEDED_BY="docs/ops/packets/release-train-arming-20261021/README.md (step D: tradeai-release-train-claim.{service,path,timer})"
 MODE="${1:---dry-run}"
 UNIT_DIR="${HOME}/.config/systemd/user"
 NAME="tradeai-release-window"
@@ -81,7 +87,8 @@ preflight() {
 
 case "$MODE" in
   --dry-run)
-    echo "== DRY RUN: nothing is written. Units that --apply would install =="
+    echo "== SUPERSEDED: --apply is refused; the release train is installed by ${SUPERSEDED_BY} =="
+    echo "== DRY RUN: nothing is written. Units that --apply would have installed =="
     service_unit; echo; timer_unit; echo
     echo "== --apply would run =="
     echo "  install -m 0644 <service> ${UNIT_DIR}/${NAME}.service"
@@ -97,6 +104,11 @@ case "$MODE" in
     fi
     ;;
   --apply)
+    echo "refused: SUPERSEDED. The 12:00/17:30 release_window timer must not run beside the release train"
+    echo "  (two release paths). Install the train claimer instead: ${SUPERSEDED_BY}"
+    exit 2
+    # Unreachable below: kept so the reviewed history of what this used to do stays readable.
+    # shellcheck disable=SC2317
     [[ "${TRADEAI_OPERATOR_INSTALL:-}" == "1" ]] || { echo "refused: set TRADEAI_OPERATOR_INSTALL=1 (operator only, AGENTS §17)"; exit 2; }
     preflight || { echo "refused: preflight failed"; exit 2; }
     mkdir -p "$UNIT_DIR"

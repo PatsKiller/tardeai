@@ -110,7 +110,12 @@ chmod 600 ~/.config/tradeai/release_train/github-app.pem
 - **Revocation in an emergency:** suspend the installation (Install App → Configure → Suspend). Every token stops
   working within the hour at most, and new tokens cannot be minted. Pair it with `scripts/release_control_cli.py stop`.
 
-**Minting.** The service does this; agents never do it. It is Phase 3 code and is not shipped in this PR.
+**Minting.** The service does this; agents never do it. It is implemented by `GitHubAppTokenMinter` /
+`GitHubAppWriter` in `scripts/lib/release_train_controller.py` (arming finding 3, branch
+`fix/release-train-arming-blockers-20261021`): one fresh token per write call, RS256 signed with `cryptography`, the
+token passed to `git push` only through that child's `GIT_CONFIG_*` environment as an `http.extraheader` scoped to
+`https://github.com/`, and only `refs/heads/train/<id>` pushed. It stays inert while `GITHUB_WRITES_STATUS` is
+`PROPOSED`.
 
 1. Build a JWT: header `{"alg":"RS256","typ":"JWT"}`; claims `iat = now − 60`, `exp = now + 540` (under the 10-minute
    cap), `iss = <client_id>`. Sign it with `github-app.pem`.

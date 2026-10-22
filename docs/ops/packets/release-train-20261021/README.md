@@ -183,6 +183,12 @@ unless the operator rules otherwise.
 
 ## 5. Scheduling (proposed; operator installs; not installed)
 
+> **SUPERSEDED 2026-10-21 (release-train arming finding 7).** Do not install this 12:00/17:30 timer. Release Train v2
+> runs in the 18:00, 00:00, 06:00 and 08:00 windows through the claimer units, which step D of
+> `docs/ops/packets/release-train-arming-20261021/README.md` installs. Both together would be two release paths.
+> `install_release_window_timer.sh --apply` now refuses (`SUPERSEDED`), and step D refuses to install the claimer
+> while a `tradeai-release-window.timer` is present (`--disable` archives it). The text below is kept as history.
+
 **Use a host systemd timer, not n8n.**
 - §23.3, the allowlist `never` entries and `tests/test_n8n_run_allowlist_20261008.py` forbid release-deploy
   commands (`deploy`, `promote`, `cio_phase2_exact_main_deploy`) on the dispatcher.
@@ -286,8 +292,9 @@ evidence, and both are operator decisions (§17). Expected main CI: about 7 min 
 1. Review and merge this PR (it changes the deploy script, so it is per-PR, not §23.13 standing).
 2. Release it once by the expedited path, so the release checkout carries the train code. The installer preflight
    checks this.
-3. `bash docs/ops/packets/release-train-20261021/install_release_window_timer.sh` (dry run), then
-   `TRADEAI_OPERATOR_INSTALL=1 … --apply`.
+3. **SUPERSEDED** (arming finding 7): do not install the 12:00/17:30 timer. Install the train claimer by
+   `docs/ops/packets/release-train-arming-20261021/README.md` step D instead. (`install_release_window_timer.sh
+   --apply` refuses.)
 4. Arm windows per §4.4. Optionally ratify the §4.4 amendment and the §4.2 ledger change.
 5. Use `gh pr merge --auto --merge` for green PRs. Optionally apply the CI split (§6), then switch the required
    context.
@@ -401,9 +408,10 @@ delegation's `latest_start_et`. It is checked at the start, before the merge and
 skipped when any of the three times is unmeasured. 08:00 is also skipped on an 08:30 macro-release day, or when the
 calendar is missing or stale.
 
-**There is no macro-calendar provider in this repo.** `scripts/economic_calendar.py` declares the gap (FMP retired
-2026-09-13). `MacroCalendar` reads an operator-supplied `~/.config/tradeai/release_train/macro_calendar.json`
-(`MacroReleaseCalendar@v1`); while it is absent, 08:00 is always skipped (fail closed).
+**Macro calendar (updated in release 3).** The controller now reads `scripts/lib/macro_calendar.py`
+(`MacroCalendar@v1` at `<state root>/data/runtime/macro_calendar.json`, from the n8n lane `macro-calendar-refresh`;
+72 h). The earlier `~/.config/tradeai/release_train/macro_calendar.json` reader (`MacroReleaseCalendar@v1`) is gone.
+While the file is absent, 08:00 is always skipped (fail closed).
 
 A window can be claimed only from `start - 90 min` until `start + 15 min`. The claim is
 `claims/<YYYYMMDD>-<slot>.json`, created O_EXCL, so a repeated local hour cannot activate twice. Window starts use
@@ -506,7 +514,7 @@ outcome: DRY_RUN_COMPLETE reason: DRY_RUN_COMPLETE exit: 0
   the batch PR head, and the main evidence must carry the other three on the merge commit. Both digests are bound.
   Each SHA is qualified by runs on exactly that SHA, so this is not a tree-equivalence fallback.
 
-### 11.6 n8n window requests (contract `docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md` rev 1, `5a230186a`)
+### 11.6 n8n window requests (contract `docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md` rev 1 `5a230186a` when built; now rev 3)
 
 `train-claim` is the controller half of C1–C11:
 
@@ -525,13 +533,17 @@ installed (operator item O7).
 
 **Contract gaps (reported, not diverged from):**
 
-- **(a) C9 is missing codes.** The closed set has no code for a reconcile-first, quarantined-lineage,
-  bypass-environment or corrupt-control refusal, or for a controller exception (FAILED). These map to the nearest
-  fail-closed code (`STOP_SET` / `NOT_ARMED` / `LOCK_HELD`), with the precise reason in `refusal.detail`. Proposed
-  new codes: `RECONCILE_REQUIRED`, `QUARANTINED_LINEAGE`, `CONTROLLER_ERROR`.
-- **(b) Schema and validator files are absent.** `train_window_request.v1.schema.json` and
-  `release_train_window.py` are not on that branch yet, so `validate_request` implements §5's table. Swap it for the
-  shared validator when they land.
+- **(a) C9 codes — RESOLVED (contract revision 3; controller updated 2026-10-21, branch
+  `fix/release-train-arming-blockers-20261021`, arming finding 9).** The controller's `REFUSAL_CODES` now equal the
+  receipt schema's closed set. A reconcile-first refusal is `RECONCILE_REQUIRED`, a quarantined lineage is
+  `QUARANTINED_LINEAGE`, a corrupt control state or an unreadable main is `CONTROLLER_ERROR` and a controller
+  exception is `CONTROLLER_FAILED` (both with `state: FAILED`); a busy lock stays `LOCK_HELD`, a bypass environment
+  `NOT_ARMED`. The precise reason still travels in `refusal.detail`.
+- **(b) Schema and validator — RESOLVED.** Release 2 ships `config/schemas/release_train/train_window_{request,receipt}.v1.schema.json`
+  and `scripts/lib/release_train_window_view.py`. The controller's temporary §5 validator is gone: `train-claim` uses
+  `validate_request` (plus the host rule that the file is named `<request_id>.json`) and validates every receipt
+  with `validate_receipt` before writing it (a valid request whose receipt fails the contract gets a FAILED
+  `CONTROLLER_ERROR` receipt instead).
 - **(c) Simulated outcomes.** A simulate run that got through every step reports `NO_OP` plus `simulated_effects`,
   per §7 ("never a release").
 - **(d) Receipt file mode.** Receipts are written 0600 by `_atomic_write_json`. The relay must read them as the same

@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_injected_failures_20261021",
+  "files": [
+    "tests/test_release_train_injected_failures_20261021.py"
+  ],
+  "anchor": "RELEASE_TRAIN_INJECTED_FAILURES_20261021",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_INJECTED_FAILURES_20261021 — release-train arming finding 5. Shadow drills",
+    "--inject red-check|conflict|stop-midrun|corrupt-latch|crash (request writer marker injections/<id>.json,",
+    "or release_window.py train-run --inject) are simulated and recorded in the receipt's injected_failures",
+    "{name, phase, behaved}; refused for live everywhere. A shadow train now HALTS (simulated, would_halt) on",
+    "STOP or a set/corrupt latch exactly where live would. Hermetic: the controller test world under tmp_path."
+  ]
+}

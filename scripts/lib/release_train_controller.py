@@ -34,9 +34,10 @@ Pipeline: select -> freeze -> integrate -> local test -> (wait for window) -> qu
 
 Windows (operator 2026-10-21): 18:00 and 00:00 general; 06:00 needs a proven drain (``DrainProbe``; none is proven,
 so it is skipped); 08:00 latest activation start = 09:00 minus measured promote + verify + rollback minus a buffer,
-skipped on 08:30 macro-release days or when the calendar is missing/stale. The repository has NO macro-calendar
-provider (``scripts/economic_calendar.py``: FMP retired 2026-09-13, declared gap), so 08:00 is always skipped until an
-operator-supplied calendar exists. A window is claimable only from ``lead_min`` before its start until ``grace_min``
+skipped on 08:30 macro-release days or when the calendar is missing/stale. The calendar is
+``scripts/lib/macro_calendar.py`` (``<state root>/data/runtime/macro_calendar.json``, written by the n8n lane
+``macro-calendar-refresh`` from FRED + overrides; stale after 72 h); until that lane writes it, 08:00 is skipped
+(fail closed). A window is claimable only from ``lead_min`` before its start until ``grace_min``
 after it; a missed window is never caught up. A per-day, per-slot claim file (O_EXCL) makes a repeated local hour
 unable to activate twice.
 
@@ -79,6 +80,8 @@ try:
     from scripts.lib import release_delegation as RD
     from scripts.lib import release_train_contracts as TC
     from scripts.lib import release_train_queue as Q
+    from scripts.lib import release_train_window_view as WV
+    from scripts.lib import macro_calendar as MC
 except ImportError:  # pragma: no cover - scripts/ on sys.path
     import release_window as RW  # type: ignore[no-redef]
     from lib import release_capability as CAP  # type: ignore[no-redef]
@@ -86,6 +89,8 @@ except ImportError:  # pragma: no cover - scripts/ on sys.path
     from lib import release_delegation as RD  # type: ignore[no-redef]
     from lib import release_train_contracts as TC  # type: ignore[no-redef]
     from lib import release_train_queue as Q  # type: ignore[no-redef]
+    from lib import release_train_window_view as WV  # type: ignore[no-redef]
+    from lib import macro_calendar as MC  # type: ignore[no-redef]
 
 CONTROLLER_VERSION = "release_train_controller/1"
 SCHEMA_MANIFEST = "TrainCandidate@v1"
@@ -143,7 +148,6 @@ DEFAULT_SLOTS = (
 STATE_ROOT = RW.STATE_ROOT
 HYGIENE_RECEIPT = STATE_ROOT / "data" / "runtime" / "pr-hygiene-audit_last.json"
 HOST_CONFIG = Path.home() / ".config" / "tradeai" / "release_train"
-MACRO_CALENDAR_PATH = HOST_CONFIG / "macro_calendar.json"
 SCRATCH_ROOT = Path(os.environ.get("TRADEAI_RELEASE_TRAIN_SCRATCH", str(Path.home() / ".cache" / "rtc")))
 
 # Outcomes (TrainOutcome@v1, docs/ops/RELEASE_TRAIN_API.md §8)
@@ -208,15 +212,19 @@ class TrainWindow:
     enabled: bool
     latest_start_et: Optional[str] = None
     skip_on_macro_days: bool = False
+    forced_n: Optional[int] = None          # an operator-forced canary run (finding 8): its own claim per n
+    nominal_start: Optional[datetime] = None  # forced: the slot's own start (its identity); ``start`` is the timing
 
     @property
     def window_id(self) -> str:
-        """ISO local start with its UTC offset: unambiguous across DST (a repeated hour has two offsets)."""
-        return self.start.isoformat(timespec="minutes")
+        """ISO local start with its UTC offset: unambiguous across DST (a repeated hour has two offsets). A forced run
+        keeps its slot's identity (the nominal start); only its timing (``start``) is overridden."""
+        return (self.nominal_start or self.start).isoformat(timespec="minutes")
 
     @property
     def claim_key(self) -> str:
-        return f"{self.start.strftime('%Y%m%d')}-{self.slot}"
+        base = f"{(self.nominal_start or self.start).strftime('%Y%m%d')}-{self.slot}"
+        return f"{base}-forced-{self.forced_n}" if self.forced_n is not None else base
 
     @property
     def end(self) -> datetime:
@@ -292,43 +300,11 @@ class UnprovenDrain:
         return False, "no service drain or non-disruptive release path has been proven for 06:00 (plan Phase 7)"
 
 
-class MacroCalendar:
-    """Operator-supplied 08:30 macro-release calendar (``MacroReleaseCalendar@v1``), read fail closed.
-
-    The repository declares no macro-events provider (scripts/economic_calendar.py; FMP retired 2026-09-13), so
-    until the operator provides ``~/.config/tradeai/release_train/macro_calendar.json`` the verdict is UNAVAILABLE
-    and the 08:00 window is skipped. Body: {"schema", "as_of", "source", "covers_from", "covers_through",
-    "release_days_0830": ["YYYY-MM-DD", ...]}."""
-
-    SCHEMA = "MacroReleaseCalendar@v1"
-
-    def __init__(self, path: Path = MACRO_CALENDAR_PATH, *, max_age_h: float = 168.0) -> None:
-        self.path, self.max_age_h = Path(path), max_age_h
-
-    def verdict(self, day: date, now: datetime) -> tuple[str, str]:
-        if not os.path.lexists(self.path):
-            return "UNAVAILABLE", (f"{self.path} absent; the repo has no macro-calendar provider "
-                                   "(scripts/economic_calendar.py declares the gap)")
-        try:
-            body = json.loads(self.path.read_text(encoding="utf-8"))
-            if not isinstance(body, dict) or body.get("schema") != self.SCHEMA:
-                return "UNAVAILABLE", "calendar schema is not MacroReleaseCalendar@v1"
-            as_of = datetime.fromisoformat(str(body["as_of"]))
-            if as_of.tzinfo is None:
-                return "UNAVAILABLE", "calendar as_of has no offset"
-            frm = date.fromisoformat(str(body["covers_from"]))
-            thru = date.fromisoformat(str(body["covers_through"]))
-            days = {date.fromisoformat(str(d)) for d in body["release_days_0830"]}
-        except (OSError, ValueError, KeyError, TypeError) as exc:
-            return "UNAVAILABLE", f"calendar unreadable: {type(exc).__name__}"
-        age_h = (now - as_of).total_seconds() / 3600
-        if age_h > self.max_age_h or age_h < -1:
-            return "STALE", f"calendar as_of {as_of.isoformat()} is {age_h:.0f} h old (max {self.max_age_h:.0f})"
-        if not frm <= day <= thru:
-            return "STALE", f"calendar covers {frm}..{thru}, not {day}"
-        if day in days:
-            return "MACRO_DAY", f"{day} has an 08:30 macro release"
-        return "CLEAR", f"{day} has no 08:30 macro release ({body.get('source')})"
+#: The 08:00 window's macro calendar: ONE source, ``scripts/lib/macro_calendar.py`` (MacroCalendar@v1 at
+#: ``<state root>/data/runtime/macro_calendar.json``, written by the n8n lane ``macro-calendar-refresh``; stale after
+#: 72 h; fail closed when missing, corrupt, future-stamped or not covering the day). Same verdict vocabulary as the
+#: controller's former private reader (CLEAR / MACRO_DAY / STALE / UNAVAILABLE), which is removed with its
+#: ``~/.config`` path and 168 h limit (release 3, 2026-10-21). The controller uses ``MC.ReleaseTrainCalendar``.
 
 
 class Measurements:
@@ -1015,6 +991,251 @@ class GhCliWriter:
         return out.strip()
 
 
+#: GitHub App (decision D2 (a), docs/ops/RELEASE_TRAIN_GITHUB_APP.md §5): the key and the non-secret identifiers live
+#: outside the repository, mode 600, owned by the release user. Agents never read the key (AGENTS §24.7).
+APP_KEY_PATH = HOST_CONFIG / "github-app.pem"
+APP_CONFIG_PATH = HOST_CONFIG / "github-app.json"
+GITHUB_API = "https://api.github.com"
+#: The narrowed installation-token request for the build/publish and merge phases (App doc §5 step 2).
+APP_TOKEN_PERMISSIONS = {"contents": "write", "pull_requests": "write", "checks": "read", "metadata": "read"}
+def is_train_ref(ref: str) -> bool:
+    """refs/heads/train/<a valid train id>, nothing else."""
+    p = "refs/heads/train/"
+    return isinstance(ref, str) and ref.startswith(p) and bool(CAP.TRAIN_RE.match(ref[len(p):]))
+
+
+class AppTokenError(RuntimeError):
+    """Minting failed. The message never carries the key, the JWT or a token."""
+
+
+class AppToken:
+    """An installation token held in memory for ONE writer call. ``repr`` never shows the value."""
+
+    __slots__ = ("_value", "expires_at", "permissions")
+
+    def __init__(self, value: str, expires_at: str, permissions: dict) -> None:
+        self._value, self.expires_at, self.permissions = value, expires_at, dict(permissions)
+
+    @property
+    def value(self) -> str:
+        return self._value
+
+    def __repr__(self) -> str:
+        return f"AppToken(expires_at={self.expires_at!r}, permissions={self.permissions!r}, value=<redacted>)"
+
+    __str__ = __repr__
+
+
+HttpFn = Callable[[str, str, dict, Optional[bytes]], tuple[int, bytes]]
+
+
+def _urllib_http(method: str, url: str, headers: dict, body: Optional[bytes]) -> tuple[int, bytes]:
+    import urllib.error  # noqa: PLC0415
+    import urllib.request  # noqa: PLC0415
+
+    if not url.startswith(GITHUB_API + "/"):
+        raise AppTokenError("refusing a request outside api.github.com")
+    req = urllib.request.Request(url, data=body, method=method, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:  # noqa: S310 - fixed https origin checked above
+            return resp.status, resp.read()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read() if exc.fp else b""
+
+
+def _read_private_file(path: Path, what: str) -> bytes:
+    """A regular file (not a symlink), owned by this uid, mode 600; else refused. The content is never logged."""
+    try:
+        st = os.lstat(path)
+    except OSError as exc:
+        raise AppTokenError(f"{what} {path} unavailable: {type(exc).__name__}") from None
+    import stat as _stat  # noqa: PLC0415
+
+    if not _stat.S_ISREG(st.st_mode):
+        raise AppTokenError(f"{what} {path} is not a regular file (symlinks are refused)")
+    if st.st_uid != os.getuid():
+        raise AppTokenError(f"{what} {path} is not owned by this user")
+    if st.st_mode & 0o077:
+        raise AppTokenError(f"{what} {path} must be mode 600 (is {oct(st.st_mode & 0o777)})")
+    with open(path, "rb") as fh:
+        return fh.read()
+
+
+class GitHubAppTokenMinter:
+    """Mints a 1-hour installation token: a JWT signed RS256 with the App's private key (``iat`` now-60, ``exp``
+    now+540, ``iss`` the client id or app id), then ``POST /app/installations/<id>/access_tokens`` with the narrowed
+    body. The key, the JWT and the token are never logged, written or put in an exception; only ``expires_at`` and
+    the granted ``permissions`` are kept (``audit``)."""
+
+    def __init__(self, *, key_path: Path = APP_KEY_PATH, config_path: Path = APP_CONFIG_PATH,
+                 http: Optional[HttpFn] = None, clock: Callable[[], float] = time.time) -> None:
+        self.key_path, self.config_path = Path(key_path), Path(config_path)
+        self.http = http or _urllib_http
+        self.clock = clock
+        self.audit: list[dict] = []
+
+    def config(self) -> dict:
+        try:
+            cfg = json.loads(_read_private_file(self.config_path, "App config").decode("utf-8"))
+        except ValueError:
+            raise AppTokenError("App config is not JSON") from None
+        iss = cfg.get("client_id") or cfg.get("app_id")
+        inst, repo = cfg.get("installation_id"), cfg.get("repository")
+        if not iss or not isinstance(inst, int) or not isinstance(repo, str) or repo.count("/") != 1:
+            raise AppTokenError("App config needs client_id (or app_id), an integer installation_id and owner/repo")
+        return {"iss": str(iss), "installation_id": inst, "repository": repo}
+
+    def jwt(self, iss: str) -> str:
+        """RS256 JWT (RFC 7515/7519) signed with ``cryptography`` directly: RSASSA-PKCS1-v1_5 over SHA-256. The
+        release venv also carries PyJWT, but cryptography is the one library both it and CI install
+        (requirements.lock.txt), so the signer has a single dependency."""
+        import base64  # noqa: PLC0415
+
+        try:
+            from cryptography.hazmat.primitives import hashes, serialization  # noqa: PLC0415
+            from cryptography.hazmat.primitives.asymmetric import padding, rsa  # noqa: PLC0415
+        except ImportError:
+            raise AppTokenError("cryptography is not installed in this interpreter; RS256 unavailable") from None
+
+        def b64(data: bytes) -> str:
+            return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+        now = int(self.clock())
+        pem = _read_private_file(self.key_path, "App private key")
+        try:
+            key = serialization.load_pem_private_key(pem, password=None)
+        except Exception:  # noqa: BLE001 - never echo the key or the library's message
+            raise AppTokenError("App private key unreadable (PEM, unencrypted RSA expected)") from None
+        if not isinstance(key, rsa.RSAPrivateKey):
+            raise AppTokenError("App private key is not an RSA key")
+        head = b64(json.dumps({"alg": "RS256", "typ": "JWT"}, separators=(",", ":")).encode())
+        body = b64(json.dumps({"iat": now - 60, "exp": now + 540, "iss": iss}, separators=(",", ":")).encode())
+        sig = key.sign(f"{head}.{body}".encode("ascii"), padding.PKCS1v15(), hashes.SHA256())
+        return f"{head}.{body}.{b64(sig)}"
+
+    def mint(self, action: str) -> AppToken:
+        cfg = self.config()
+        body = json.dumps({"repositories": [cfg["repository"].split("/")[1]],
+                           "permissions": APP_TOKEN_PERMISSIONS}).encode()
+        headers = {"Authorization": f"Bearer {self.jwt(cfg['iss'])}", "Accept": "application/vnd.github+json",
+                   "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json"}
+        status, raw = self.http("POST", f"{GITHUB_API}/app/installations/{cfg['installation_id']}/access_tokens",
+                                headers, body)
+        if status != 201:
+            raise AppTokenError(f"installation token refused: HTTP {status}")
+        try:
+            doc = json.loads(raw.decode("utf-8"))
+            tok, exp, perms = str(doc["token"]), str(doc["expires_at"]), dict(doc.get("permissions") or {})
+        except (ValueError, KeyError, TypeError, AttributeError):
+            raise AppTokenError("installation token response unreadable") from None
+        wider = {k: v for k, v in perms.items() if k not in APP_TOKEN_PERMISSIONS
+                 or (v == "write" and APP_TOKEN_PERMISSIONS[k] != "write")}
+        if wider:
+            raise AppTokenError(f"installation token is wider than requested: {sorted(wider)}")
+        self.audit.append({"action": action, "expires_at": exp, "permissions": perms, "at": utc_iso(self.clock())})
+        return AppToken(tok, exp, perms)
+
+
+class GitHubAppWriter:
+    """The live writer under decision D2 (a): every GitHub write is made with a fresh 1-hour GitHub App installation
+    token (never the host's gh user). ``git push`` publishes ONLY ``refs/heads/train/<train id>``; the token reaches
+    git as an ``http.extraheader`` through ``GIT_CONFIG_COUNT``/``GIT_CONFIG_KEY_0``/``GIT_CONFIG_VALUE_0`` in that one
+    child's environment (never argv, never a git config file, never a credential store). The PR calls go to the REST
+    API with the token in the request header. Refuses to construct while GITHUB_WRITES_STATUS is not ACTIVE."""
+
+    simulated = False
+
+    def __init__(self, host: RW.Host, reader: GhCliReader, *, minter: Optional[GitHubAppTokenMinter] = None,
+                 status: Optional[str] = None, remote_url: Optional[str] = None,
+                 runner: Optional[Callable[..., tuple[int, str]]] = None, http: Optional[HttpFn] = None) -> None:
+        if (status or GITHUB_WRITES_STATUS) != "ACTIVE":
+            raise WriterNotArmed(f"GitHub writes are {status or GITHUB_WRITES_STATUS}: decision D2 and the AGENTS "
+                                 "17.0.0 amendment are not in force")
+        self.host, self.reader = host, reader
+        self.minter = minter or GitHubAppTokenMinter()
+        self.http = http or self.minter.http
+        self.remote_url = remote_url
+        self.runner = runner or _run
+
+    # -- helpers ---------------------------------------------------------------------------------------
+    @staticmethod
+    def _scrub(text: str, token: AppToken) -> str:
+        import base64  # noqa: PLC0415
+
+        b64 = base64.b64encode(f"x-access-token:{token.value}".encode()).decode()
+        return str(text).replace(token.value, "***").replace(b64, "***")
+
+    def _repo(self) -> str:
+        return self.minter.config()["repository"]
+
+    def _api(self, token: AppToken, method: str, path: str, body: Optional[dict] = None) -> tuple[int, Any]:
+        headers = {"Authorization": f"token {token.value}", "Accept": "application/vnd.github+json",
+                   "X-GitHub-Api-Version": "2022-11-28"}
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode()
+            headers["Content-Type"] = "application/json"
+        status, raw = self.http(method, f"{GITHUB_API}/{path}", headers, data)
+        try:
+            doc = json.loads(raw.decode("utf-8")) if raw else None
+        except ValueError:
+            doc = None
+        return status, doc
+
+    def _push(self, sha: str, ref: str, *, bound_ref: str, token: AppToken) -> dict:
+        """The one git write. Refused unless ``ref`` IS the bound train ref (a train ref pattern and equal to it)."""
+        if ref != bound_ref or not is_train_ref(ref) or not SHA_RE.match(sha or ""):
+            raise PermissionError(f"refused: push to {ref!r} (only the bound {bound_ref!r} with a full SHA)")
+        import base64  # noqa: PLC0415
+
+        header = "AUTHORIZATION: basic " + base64.b64encode(f"x-access-token:{token.value}".encode()).decode()
+        url = self.remote_url or f"https://github.com/{self._repo()}.git"
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_CONFIG_")}
+        env.update({"GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_COUNT": "2",
+                    "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader", "GIT_CONFIG_VALUE_0": header,
+                    "GIT_CONFIG_KEY_1": "credential.helper", "GIT_CONFIG_VALUE_1": ""})
+        if self.remote_url:                         # tests: a local bare repo; the header is scoped to github.com
+            env["GIT_CONFIG_KEY_0"] = "http.extraheader"
+        rc, out = self.runner(["git", "-C", str(self.host.checkout), "push", "--porcelain", url, f"{sha}:{ref}"],
+                              env=env, timeout=600)
+        if rc != 0:
+            raise RuntimeError(f"push refused rc={rc}: {self._scrub(out, token).strip()[-200:]}")
+        return {"ref": ref, "sha": sha, "token_expires_at": token.expires_at}
+
+    # -- the GitHubWriter protocol ----------------------------------------------------------------------
+    def push_train_ref(self, train_id: str, sha: str) -> dict:
+        if not CAP.TRAIN_RE.match(train_id or ""):
+            raise ValueError("train id")
+        ref = f"refs/heads/train/{train_id}"
+        token = self.minter.mint("push_train_ref")
+        return self._push(sha, ref, bound_ref=ref, token=token)
+
+    def open_or_update_batch_pr(self, train_id: str, sha: str, title: str, body: str) -> int:
+        if not CAP.TRAIN_RE.match(train_id or ""):
+            raise ValueError("train id")
+        token = self.minter.mint("open_batch_pr")
+        repo = self._repo()
+        head = f"train/{train_id}"
+        status, doc = self._api(token, "GET", f"repos/{repo}/pulls?head={repo.split('/')[0]}:{head}&state=open")
+        if status == 200 and isinstance(doc, list) and doc:
+            return int(doc[0]["number"])
+        status, doc = self._api(token, "POST", f"repos/{repo}/pulls",
+                                {"title": title, "head": head, "base": "main", "body": body})
+        if status != 201 or not isinstance(doc, dict):
+            raise RuntimeError(f"open PR failed: HTTP {status}")
+        return int(doc["number"])
+
+    def merge_batch_pr(self, pr: int, expected_head_sha: str, message: str) -> str:
+        if not SHA_RE.match(expected_head_sha or ""):
+            raise ValueError("expected head sha")
+        token = self.minter.mint("merge_batch_pr")
+        status, doc = self._api(token, "PUT", f"repos/{self._repo()}/pulls/{int(pr)}/merge",
+                                {"sha": expected_head_sha, "merge_method": "merge", "commit_title": message})
+        if status != 200 or not isinstance(doc, dict) or not SHA_RE.match(str(doc.get("sha") or "")):
+            raise RuntimeError(f"merge refused: HTTP {status}")
+        return str(doc["sha"])
+
+
 class SimulatedGitHubWriter:
     """Dry run: records exactly what would be written; writes nothing."""
 
@@ -1182,6 +1403,58 @@ class TrainConfig:
     dry_run_integrate: bool = False
     dry_run_local_test: bool = False
     simulate_classifier: Optional[str] = None     # dry run only: "allow" previews the pipeline past the stub
+    inject: Optional[str] = None                  # dry run / shadow only: one of INJECTIONS (arming finding 5)
+    force_window: Optional[str] = None            # operator-forced canary run (finding 8): the slot whose timing
+    forced_n: Optional[int] = None                #   is overridden, the run number (idempotent per n),
+    operator_ref: Optional[str] = None            #   the operator's reference,
+    forced_confirmed: bool = False                #   and the host-CLI TTY + typed-phrase proof (cli() sets it)
+
+
+# ── operator-forced off-window canary runs (arming finding 8) ──────────────────────────────────────────────────
+#: The forced-run key: the rtw: namespace with a distinct marker. Host-only: the gateway's RUN_KEY_RE
+#: (rtw:<slot>:<date>:(shadow|live)) never matches it, so n8n cannot name a forced run.
+FORCED_KEY_RE = re.compile(r"^rtw:(0000|0600|0800|1800):([0-9]{8}):live:forced:([1-9][0-9]{0,2})$")
+
+
+def forced_key(slot: str, day: date, n: int) -> str:
+    return f"rtw:{slot}:{day.strftime('%Y%m%d')}:live:forced:{int(n)}"
+
+
+def forced_canary_policy(path: Optional[Path] = None) -> dict:
+    """The controller policy's canary block (``config/release_train_policy.json`` ``canary``), fail closed: anything
+    missing or malformed reads as not allowed."""
+    try:
+        body = json.loads(Path(path or WV.POLICY_PATH).read_text(encoding="utf-8"))
+        c = body.get("canary") if isinstance(body, dict) else None
+    except (OSError, ValueError):
+        c = None
+    if not isinstance(c, dict):
+        return {"operator_forced_off_window": False, "slots": []}
+    slots = [str(s) for s in c.get("slots") or [] if str(s) in ("0000", "0600", "0800", "1800")]
+    return {"operator_forced_off_window": c.get("operator_forced_off_window") is True, "slots": slots}
+
+
+def forced_phrase(slot: str, n: int, epoch: Optional[int]) -> str:
+    """The phrase the operator re-types at the TTY for a forced run (names the slot, the run number and the epoch)."""
+    return f"FORCE WINDOW {slot} RUN {int(n)} EPOCH {int(epoch or 0)}"
+
+
+#: Injected-failure drills (arming finding 5). Shadow / dry run only; a live controller refuses every one. Each is
+#: SIMULATED: nothing is written to the latch, the control file, GitHub or the host. The receipt records it in
+#: ``injected_failures`` ({name, phase, behaved}); a simulated halt is recorded in ``would_halt``.
+INJECTIONS = ("red-check", "conflict", "stop-midrun", "corrupt-latch", "crash")
+#: Control refusals that halt a SHADOW train exactly as they halt a live one (STOP and an unreadable latch). Every
+#: other refusal (unarmed, paused delegation, disabled window) is what shadow exists to look past: recorded, not halted.
+SHADOW_HALT_REFUSALS = frozenset({"STOP_LATCHED", "STOP_LATCH_UNREADABLE", "STOPPED"})
+
+
+class InjectedCrash(Exception):
+    """A simulated controller crash (``--inject crash``): the run stops where it is, with no outcome, as a SIGKILL
+    would leave it. Caught by ``TrainController.run``; never raised by a live controller."""
+
+    def __init__(self, phase: str) -> None:
+        super().__init__(f"simulated crash at {phase}")
+        self.phase = phase
 
 
 class TrainController:
@@ -1190,7 +1463,7 @@ class TrainController:
                  tester: Optional[LocalTester] = None, events: Optional[EventSink] = None,
                  delegation_path: Optional[Path] = None, key_path: Path = CAP.DEFAULT_KEY_PATH,
                  config: Optional[TrainConfig] = None, env: Optional[dict] = None,
-                 drain: Optional[DrainProbe] = None, calendar: Optional[MacroCalendar] = None,
+                 drain: Optional[DrainProbe] = None, calendar: Optional[MC.ReleaseTrainCalendar] = None,
                  workspace_factory: Optional[Callable[[Path], GitWorkspace]] = None,
                  allow_repo_delegation: bool = False) -> None:
         self.host, self.state, self.github, self.queue, self.classifier = host, state, github, queue, classifier
@@ -1214,7 +1487,7 @@ class TrainController:
         self.key_path = key_path
         self.allow_repo_delegation = allow_repo_delegation
         self.drain = drain or UnprovenDrain()
-        self.calendar = calendar or MacroCalendar()
+        self.calendar = calendar or MC.ReleaseTrainCalendar()
         self.measure = Measurements(state.root / "train_measurements.jsonl")
         self.workspace_factory = workspace_factory or (lambda p: GitWorkspace(host.checkout, p, env=worker_env(
             self.env, home=p.parent / "home", tmp=p.parent / "tmp")))
@@ -1228,6 +1501,24 @@ class TrainController:
         self.epoch_at_claim: Optional[int] = None
         self._train_lock: Any = None
         self.event_errors: list[str] = []
+        self.would_halt: Optional[dict] = None
+        self.forced: Optional[dict] = None             # an operator-forced canary run's record (finding 8)
+        self.inject: Optional[str] = None
+        self._inject_fired: Optional[str] = None      # the phase where the injection was exercised
+        self._inject_detail: dict = {}
+        if self.cfg.inject:
+            self.set_injection(self.cfg.inject)
+
+    def set_injection(self, name: Optional[str]) -> None:
+        """Arm one simulated failure for this (shadow / dry) run. Refused for a live controller (finding 5)."""
+        if name is None:
+            self.inject = None
+            return
+        if self.live:
+            raise ValueError("injected failures are for shadow / dry runs only; a live controller refuses them")
+        if name not in INJECTIONS:
+            raise ValueError(f"unknown injection {name!r}; one of {INJECTIONS}")
+        self.inject = name
 
     # -- small helpers -------------------------------------------------------------------------------
     def _ts(self) -> float:
@@ -1341,7 +1632,18 @@ class TrainController:
         """A mutation boundary: STOP latch / STOP request / revoke / pause / epoch change stop the train here."""
         v = self.control.view()
         if not self.live:
+            # Shadow halts on STOP exactly where live would (finding 5), simulated: no acknowledge / settle write.
+            if self.inject in ("stop-midrun", "crash") and self._inject_fired is None:
+                self._inject_fired = label
+                if self.inject == "crash":
+                    raise InjectedCrash(label)
+                self.say(f"INJECTED stop-midrun: STOP is treated as requested at {label} (simulated; no latch write)")
+                self._shadow_halt(self._stop_outcome(), "STOP_REQUESTED", label, "injected stop-midrun")
+            if v.mode == RC.STOP_REQUESTED:
+                self._shadow_halt(self._stop_outcome(), "STOP_REQUESTED", label, "STOP requested")
             refusal = v.mutation_refusal(self.train_id)
+            if refusal in SHADOW_HALT_REFUSALS:
+                self._shadow_halt(self._stop_outcome(), refusal, label, f"control state {refusal}")
             if refusal:
                 self._would(f"at {label}: control state {refusal}")
             return
@@ -1367,6 +1669,34 @@ class TrainController:
         self.would_refuse.append(why)
         self.say(f"LIVE WOULD REFUSE: {why}")
 
+    def _shadow_halt(self, outcome: str, reason: str, at: str, why: str, *, refusal: bool = False) -> None:
+        """A simulated halt (shadow / dry run): the train stops here exactly as a live train would, and the reason is
+        recorded in ``would_halt``. Nothing is written (no latch, control or capability)."""
+        self.would_halt = {"reason": reason, "at": at, "detail": why[:160]}
+        self.say(f"WOULD HALT (simulated, as live would): {reason} at {at}: {why}")
+        raise Halt(outcome, reason, f"simulated halt at {at}: {why}"[:300], refusal=refusal)
+
+    def _injection_result(self, rec: dict) -> list[dict]:
+        """TrainWindowReceipt@v1 ``injected_failures``: what was injected, where, and whether the controller behaved
+        as specified. NOT_REACHED when the run ended before the injection point (e.g. nothing eligible, so no
+        qualify step for a red check): an honest record, never a pass."""
+        if not self.inject:
+            return []
+        phase = self._inject_fired
+        if phase is None:
+            return [{"name": self.inject, "phase": "not_reached", "behaved": "NOT_REACHED"}]
+        reason, outcome = rec.get("reason"), rec.get("outcome")
+        no_merge = "merge" not in rec
+        ok = {
+            "corrupt-latch": reason == "REFUSED_STOP_UNREADABLE" and bool(rec.get("refused")),
+            "stop-midrun": reason == "STOP_REQUESTED" and outcome == STOPPED and no_merge,
+            "red-check": reason == "CI_RED_BATCH" and outcome == FAILED_PRE_MERGE and no_merge,
+            "conflict": str(self._inject_detail.get("pr")) in ((rec.get("integration") or {}).get("ejected") or {})
+            and self._inject_detail.get("pr") not in ((rec.get("integration") or {}).get("kept") or []),
+            "crash": bool(rec.get("crashed")) and outcome is None,
+        }[self.inject]
+        return [{"name": self.inject, "phase": str(phase)[:32], "behaved": "AS_SPECIFIED" if ok else "NOT_AS_SPECIFIED"}]
+
     # -- the run -------------------------------------------------------------------------------------
     def run(self, now: Optional[datetime] = None) -> tuple[int, dict]:
         now = now or self.host.now()
@@ -1387,6 +1717,7 @@ class TrainController:
             else:
                 self.say(f"WOULD claim window {w.window_id} (claim key {w.claim_key}, O_EXCL) and train {self.train_id}")
             self._rules(w, now, rec)
+            self._boundary("select")             # STOP before any work; shadow halts here as live would
             members, excluded = self._select(rec)
             manifest = self._freeze(w, members, dv, rec)
             cand = self._integrate_and_test(manifest, rec)
@@ -1400,6 +1731,15 @@ class TrainController:
             if h.refusal:
                 rec["refused"] = True
             self.say(f"=> {h.outcome} ({h.reason}{': ' + h.detail if h.detail else ''})")
+        except InjectedCrash as c:
+            # Simulated only (never live): the run ends with no outcome, as a killed claimer would leave it. Live, the
+            # claim stays in claimed/ with an ACKNOWLEDGED receipt; the orphan watchdog moves it to orphaned/ and
+            # train-reconcile is required before the next train.
+            rec.update(crashed=True, reason="INJECTED_CRASH", detail=str(c))
+            self.would_halt = {"reason": "CONTROLLER_CRASH", "at": c.phase,
+                               "detail": "live: claim orphaned (watchdog -> orphaned/, P2); reconcile required"}
+            self.say(f"=> simulated crash at {c.phase}: no outcome; live would need the orphan watchdog + reconcile")
+            code = EXIT_UNCERTAIN
         else:
             code = EXIT_OK
         finally:
@@ -1408,6 +1748,8 @@ class TrainController:
             if self._train_lock is not None:
                 self._train_lock.release()
         rec["exit_code"] = code
+        rec["would_halt"] = self.would_halt
+        rec["injected_failures"] = self._injection_result(rec)
         rec["would_refuse"] = self.would_refuse
         rec["event_errors"] = self.event_errors
         rec["steps"] = self.steps
@@ -1425,18 +1767,25 @@ class TrainController:
         if bad:
             raise Halt("REFUSED", "REFUSED_BYPASS_ENV", ",".join(bad), refusal=True)
         latch_state, latch = self.state.read_latch()
+        if self.inject == "corrupt-latch" and not self.live:
+            self._inject_fired = "preconditions"
+            self.say("INJECTED corrupt-latch: the STOP latch is read as UNREADABLE (simulated; the file is untouched)")
+            latch_state, latch = "UNREADABLE", {"error": "injected corrupt-latch (simulated)"}
         rec["latch_state"] = latch_state
         if latch_state != "ABSENT":
             reason = "REFUSED_STOP_UNREADABLE" if latch_state == "UNREADABLE" else "REFUSED_STOP_LATCHED"
             if self.live:
                 raise Halt("REFUSED", reason, json.dumps(latch)[:200], refusal=True)
-            self._would(f"{reason} ({latch_state})")
+            # Shadow halts on a set or corrupt latch exactly as live does (finding 5): it used to record and run on.
+            self._shadow_halt("REFUSED", reason, "preconditions", f"STOP latch {latch_state}", refusal=True)
         view = self.control.view()
         rec["control"] = {"mode": view.mode, "epoch": view.epoch, "error": view.error}
         refusal = view.mutation_refusal(None)
         if refusal:
             if self.live:
                 raise Halt("REFUSED", f"REFUSED_{refusal}", view.error or "", refusal=True)
+            if refusal in SHADOW_HALT_REFUSALS:
+                self._shadow_halt("REFUSED", f"REFUSED_{refusal}", "preconditions", f"control {refusal}", refusal=True)
             self._would(f"control {refusal}")
         dv = RD.load(self.delegation_path, allow_repo_path=self.allow_repo_delegation)
         rec["delegation"] = {"code": dv.code, "authorized": dv.authorized, "digest": dv.digest}
@@ -1504,7 +1853,10 @@ class TrainController:
     # -- window ----------------------------------------------------------------------------------------
     def _window(self, now: datetime, dv: RD.DelegationVerdict, rec: dict) -> tuple[TrainWindow, str]:
         slots = slots_from(dv.delegation)
-        w, phase = window_at(now, slots, lead_min=self.cfg.lead_min, grace_min=self.cfg.grace_min)
+        if self.cfg.force_window:
+            w, phase = self._forced_window(now, dv, slots, rec), "forced"
+        else:
+            w, phase = window_at(now, slots, lead_min=self.cfg.lead_min, grace_min=self.cfg.grace_min)
         rec["next_windows"] = next_windows(now, slots)
         if w is None:
             raise Halt("REFUSED", "REFUSED_OFF_WINDOW",
@@ -1517,6 +1869,46 @@ class TrainController:
                 raise Halt("REFUSED", "REFUSED_WINDOW_DISABLED", w.slot, refusal=True)
             self._would(f"window {w.slot} is disabled in the delegation")
         return w, phase
+
+    def _forced_window(self, now: datetime, dv: RD.DelegationVerdict, slots: list[dict], rec: dict) -> TrainWindow:
+        """Operator-forced canary run (finding 8): overrides ONLY the window timing. Allowed only when the controller
+        policy's canary flag allows the slot AND the delegation carries ``phase: canary`` AND (live) the host CLI
+        took a TTY + typed phrase. Everything else (latch, armed control, ACTIVE delegation, slot enabled in scope,
+        epoch, capabilities, the 4 checks, self-modification blocking, quarantine) is unchanged."""
+        slot, n, ref = str(self.cfg.force_window), self.cfg.forced_n, " ".join(str(self.cfg.operator_ref or "").split())
+        pol = forced_canary_policy()
+        if not pol["operator_forced_off_window"] or slot not in pol["slots"]:
+            raise Halt("REFUSED", "REFUSED_FORCE_NOT_ALLOWED",
+                       f"config/release_train_policy.json canary.operator_forced_off_window/slots do not allow {slot}",
+                       refusal=True)
+        phase = (dv.delegation or {}).get("phase")
+        if phase != "canary":
+            raise Halt("REFUSED", "REFUSED_FORCE_NOT_CANARY",
+                       f"the delegation phase is {phase!r}; forced runs exist only in phase 'canary'", refusal=True)
+        if not (isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= 999) or len(ref) < 3:
+            raise Halt("REFUSED", "REFUSED_FORCE_INVALID", "--forced-n 1..999 and an --operator-ref are required",
+                       refusal=True)
+        if self.live and not self.cfg.forced_confirmed:
+            raise Halt("REFUSED", "REFUSED_FORCE_UNCONFIRMED",
+                       "a live forced run needs the host CLI's TTY and the typed phrase", refusal=True)
+        spec = next((s for s in slots if str(s.get("window_id")) == slot), None)
+        if spec is None:
+            raise Halt("REFUSED", "REFUSED_FORCE_NOT_ALLOWED", f"slot {slot} is not in the delegation", refusal=True)
+        local = now.astimezone(TZ).replace(second=0, microsecond=0)
+        nominal = local_start(local.date(), slot)
+        if nominal is None:
+            raise Halt("REFUSED", "REFUSED_FORCE_INVALID", f"slot {slot} does not exist on {local.date()}",
+                       refusal=True)
+        w = TrainWindow(slot, str(spec.get("role") or ""), local, int(spec.get("duration_min") or 60),
+                        bool(spec.get("enabled")), spec.get("latest_start_et"), bool(spec.get("skip_on_macro_days")),
+                        forced_n=n, nominal_start=nominal)
+        self.forced = {"forced_by": "operator", "operator_ref": ref[:120], "window_gate_overridden": True,
+                       "forced_slot": slot, "forced_n": n, "forced_key": forced_key(slot, local.date(), n),
+                       "at": utc_iso(now.timestamp())}
+        rec["forced"] = dict(self.forced)
+        self.say(f"OPERATOR-FORCED canary run {self.forced['forced_key']} (ref {ref[:60]}): window timing overridden; "
+                 "every other gate applies")
+        return w
 
     def _rules(self, w: TrainWindow, now: datetime, rec: dict) -> None:
         if w.slot == "0600":
@@ -1575,7 +1967,14 @@ class TrainController:
                          policy_digest=dv.digest, epoch=res["epoch"], intents=[], outcome=None,
                          started_at=self.tstate.get("started_at"),
                          classifier_policy_version=getattr(self.classifier, "policy_version", None))
-        self._event("claimed", "claimed", {"window_id": w.window_id, "claim_key": w.claim_key})
+        if self.forced:
+            self._save_state(forced=dict(self.forced))
+            RC._atomic_write_json(self._train_dir() / "forced.json",
+                                  {"schema": "TrainForcedRun@v1", "train_id": self.train_id, "window_id": w.window_id,
+                                   "claim_key": w.claim_key, **self.forced})
+        self._event("claimed", "claimed", {"window_id": w.window_id, "claim_key": w.claim_key,
+                                           **({"forced": dict(self.forced)} if self.forced else {})},
+                    idem=(f"{self.forced['forced_key']}:claimed" if self.forced else None))
         self.say(f"claimed {w.claim_key} as {self.train_id} (epoch {res['epoch']})")
 
     # -- select / freeze -------------------------------------------------------------------------------
@@ -1587,10 +1986,12 @@ class TrainController:
         if not snap.complete:
             raise Halt(NO_OP, "QUEUE_INCOMPLETE", ";".join(snap.reasons)[:300])
         classifier = self.classifier
-        if self.cfg.simulate_classifier == "allow":
+        drill = self.inject in ("red-check", "conflict")      # these need members to reach their injection point
+        if self.cfg.simulate_classifier == "allow" or drill:
             if self.live:
                 raise Halt("REFUSED", "REFUSED_SIMULATED_CLASSIFIER", "dry run only", refusal=True)
-            self.say("NOTE: --simulate-classifier allow (dry run only): every clean PR treated as eligible")
+            self.say("NOTE: " + (f"--inject {self.inject}" if drill else "--simulate-classifier allow") +
+                     " (dry run only): every clean PR treated as eligible")
             classifier = _AllowForPreview()
         rec["classifier_version"] = classifier.version
         self.tstate["classifier_version"] = classifier.version
@@ -1720,7 +2121,16 @@ class TrainController:
             self.say(f"WOULD run local tests: {' '.join(self.tester.argv(manifest['base_sha']))} (worker env from "
                      f"allowlist {list(WORKER_ENV_ALLOW)}; bisect budget {self.cfg.test_attempts} runs / "
                      f"{self.cfg.test_budget_s:.0f}s)")
-            return {"sha": None, "members": manifest["members"], "simulated": True}
+            members = [dict(m) for m in manifest["members"]]
+            if self.inject == "conflict" and members:
+                ejected: dict[int, str] = {}
+                kept = self._merge_all(None, manifest["base_sha"], members, members, ejected)
+                rec["integration"] = {"candidate": None, "kept": [m["pr"] for m in kept],
+                                      "ejected": {str(k): v for k, v in ejected.items()}, "simulated": True}
+                if not kept:
+                    raise Halt(FAILED_PRE_MERGE, "ALL_EJECTED", json.dumps(rec["integration"]["ejected"])[:300])
+                members = kept
+            return {"sha": None, "members": members, "simulated": True}
         self._phase("integrating")
         for d in ("home", "tmp"):
             (self.cfg.scratch_root / str(self.train_id) / d).mkdir(parents=True, exist_ok=True)
@@ -1786,7 +2196,14 @@ class TrainController:
         for m in kept:
             if m["pr"] in ejected:
                 continue
-            ok, detail = ws.merge(m["head_sha"], f"release train {self.train_id}: merge #{m['pr']} {m['head_sha']}")
+            if self.inject == "conflict" and self._inject_fired is None and not self.live:
+                self._inject_fired, self._inject_detail = "integrate", {"pr": m["pr"]}
+                self.say(f"INJECTED conflict: #{m['pr']} merges with a conflict (simulated)")
+                ok, detail = False, "injected conflict (simulated)"
+            elif ws is None:
+                ok, detail = True, "simulated"
+            else:
+                ok, detail = ws.merge(m["head_sha"], f"release train {self.train_id}: merge #{m['pr']} {m['head_sha']}")
             if ok:
                 out.append(m)
             else:
@@ -2004,6 +2421,18 @@ class TrainController:
             self.say(f"WOULD wait <= {self.cfg.qualify_timeout_s:.0f}s for {list(REQUIRED_CHECKS)} to read exactly "
                      f"'success' (latest run, app github-actions) on {str(sha or '<candidate>')[:12]}; "
                      "neutral/skipped/cancelled/missing never pass; no tree-equivalence fallback")
+            if self.inject == "red-check":
+                # The real evidence reader decides: three green checks and a failed batch qualifier.
+                self._inject_fired = "qualify"
+                fake = sha if SHA_RE.match(sha or "") else "0" * 40
+                runs = [{"id": 1 + i, "name": n, "head_sha": fake, "status": "completed", "app": "github-actions",
+                         "conclusion": "failure" if n == BATCH_QUALIFIER else "success"}
+                        for i, n in enumerate(REQUIRED_CHECKS)]
+                verdict, errs = evidence_verdict(check_evidence(runs, fake, REQUIRED_CHECKS, now=self._ts()))
+                self.say(f"INJECTED red-check: {BATCH_QUALIFIER} concluded failure (simulated) -> {verdict}")
+                if verdict == "RED":
+                    raise Halt(FAILED_PRE_MERGE, "CI_RED_BATCH", ("injected red-check (simulated): " +
+                                                                  ";".join(errs))[:300])
             return {"pr": 0, "evidence": None, "simulated": True}
         self._phase("qualifying", {"candidate": sha})
         base = manifest["base_sha"]
@@ -2330,6 +2759,9 @@ class TrainController:
             outcome = CANCELLED
             rec["outcome"] = outcome
         body = self.outcome_doc(outcome, rec.get("reason"), rec.get("detail"), rec.get("failure_attribution"))
+        if self.forced:     # visible in every history view that shows the outcome notes
+            body["notes"] = (f"[OPERATOR-FORCED {self.forced['forced_key']} ref {self.forced['operator_ref']}; "
+                             f"window gate overridden] {body.get('notes') or ''}")[:2000]
         self._save_state(phase="terminal", outcome=body)
         RC._atomic_write_json(self._train_dir() / "outcome.json", body)
         self._event("outcome", self._OUTCOME_STATE.get(outcome), body)
@@ -2529,6 +2961,8 @@ def status(state: RW.State) -> dict:
                        "outcome": (body.get("outcome") or {}).get("outcome"), "window_id": body.get("window_id")})
     q = Measurements(state.root / "quarantine.jsonl").rows()
     return {"schema": "ReleaseTrainStatus@v1", "controller_status": TRAIN_CONTROLLER_STATUS,
+            "state_dir": str(state.root),
+            "state_dir_source": RW.STATE_DIR_SOURCE if Path(state.root) == RW.STATE_DIR else "argument",
             "github_writes_status": GITHUB_WRITES_STATUS, "latch_state": state.read_latch()[0],
             "control": {"mode": v.mode, "epoch": v.epoch, "stop_phase": v.stop_phase,
                         "current_train_id": v.current_train_id, "error": v.error},
@@ -2559,7 +2993,9 @@ def build_controller(*, live: bool, config: Optional[TrainConfig] = None, host: 
     host = host or RW.Host()
     state = state or RW.State()
     reader = GhCliReader(host)
-    writer = GhCliWriter(host, reader) if live else None    # raises WriterNotArmed until D2 + 17.0.0
+    # D2 (a): the live writer is the GitHub App writer (1-hour installation tokens), never the host gh user.
+    # Raises WriterNotArmed while GITHUB_WRITES_STATUS is not ACTIVE (D2 + AGENTS 17.0.0).
+    writer = GitHubAppWriter(host, reader) if live else None
     return TrainController(host=host, state=state, github=reader, queue=default_queue_source(),
                            classifier=load_classifier(), live=live, writer=writer, config=config)
 
@@ -2569,11 +3005,43 @@ def render(code: int, body: dict) -> str:
     lines.append(f"outcome: {body.get('outcome')} reason: {body.get('reason')} exit: {code}")
     if body.get("would_refuse"):
         lines.append("a live run would refuse: " + " | ".join(body["would_refuse"]))
+    if body.get("would_halt"):
+        lines.append(f"would halt: {json.dumps(body['would_halt'], sort_keys=True)}")
+    for x in body.get("injected_failures") or []:
+        lines.append(f"injected: {x['name']} at {x['phase']}: {x['behaved']}")
     return "\n".join(lines)
 
 
-def cli(args: Any) -> int:
+def _forced_cli_check(args: Any, live: bool, stdin: Any) -> Optional[dict]:
+    """Host-CLI gate for an operator-forced canary run (finding 8). None = proceed; else the refusal body. The run
+    must name --operator-forced, --operator-ref and --forced-n; a LIVE forced run needs stdin to be a TTY and the
+    operator to re-type ``forced_phrase`` (slot, run number, current epoch), the release_control_cli.py arm pattern.
+    n8n and the Command Center never reach this: it is only an argparse path of release_window.py train-run."""
+    import sys  # noqa: PLC0415
+
+    slot, n = getattr(args, "force_window", None), getattr(args, "forced_n", None)
+    if not getattr(args, "operator_forced", False) or not getattr(args, "operator_ref", None) or n is None:
+        return {"outcome": "REFUSED", "code": "REFUSED_FORCE_INVALID",
+                "detail": "--force-window needs --operator-forced, --operator-ref <ref> and --forced-n <n>"}
+    if not live:
+        return None                                     # a dry run previews it; nothing is written
+    stdin = stdin if stdin is not None else sys.stdin
+    if not (hasattr(stdin, "isatty") and stdin.isatty()):
+        return {"outcome": "REFUSED", "code": "REFUSED_FORCE_NO_TTY",
+                "detail": "a live forced run is typed by the operator at the host TTY (never n8n, never the CC)"}
+    phrase = forced_phrase(str(slot), int(n), RC.ReleaseControl(RW.State().root).view().epoch)
+    print(f"Type exactly: {phrase}", file=sys.stderr)
+    typed = (stdin.readline() or "").strip()
+    if typed != phrase:
+        return {"outcome": "REFUSED", "code": "REFUSED_FORCE_PHRASE", "detail": "the typed phrase did not match"}
+    return None
+
+
+def cli(args: Any, *, stdin: Any = None) -> int:
     live = bool(getattr(args, "live", False))
+    if live and getattr(args, "inject", None):
+        print(json.dumps({"outcome": "REFUSED", "detail": "--inject is for shadow / dry runs only; refused with --live"}))
+        return EXIT_REFUSED
     if live and TRAIN_CONTROLLER_STATUS != "ACTIVE":
         body = {"outcome": "REFUSED_BUILD_ONLY", "controller_status": TRAIN_CONTROLLER_STATUS,
                 "detail": "the train controller is built, not armed; arming (delegation, capability key, control "
@@ -2586,6 +3054,10 @@ def cli(args: Any) -> int:
         return EXIT_OK
     if args.cmd == "train-claim":
         return cli_claim(args)
+    if args.cmd == "train-orphan-resolve":
+        code, body = resolve_orphan(RW.State(), args.request_id, args.reason, apply=bool(args.apply))
+        print(json.dumps(body, indent=2, default=str))
+        return code
     if args.cmd == "train-quarantine-resolve":
         code, body = resolve_quarantine(RW.State(), args.sha, args.reason, args.evidence, live=live)
         print(json.dumps(body, indent=2, default=str))
@@ -2599,8 +3071,16 @@ def cli(args: Any) -> int:
         code, body = Reconciler(ctl).run()
         print(json.dumps(body, indent=2, default=str))
         return code
+    forced = getattr(args, "force_window", None)
+    if forced:
+        refused = _forced_cli_check(args, live, stdin)
+        if refused:
+            print(json.dumps(refused, indent=2))
+            return EXIT_REFUSED
     cfg = TrainConfig(dry_run_integrate=bool(args.integrate), dry_run_local_test=bool(args.local_test),
-                      simulate_classifier=args.simulate_classifier)
+                      simulate_classifier=args.simulate_classifier, inject=getattr(args, "inject", None),
+                      force_window=forced, forced_n=getattr(args, "forced_n", None),
+                      operator_ref=getattr(args, "operator_ref", None), forced_confirmed=bool(forced and live))
     now = RW._parse_now(args.now) if getattr(args, "now", None) else None
     if now is not None and live:
         print(json.dumps({"outcome": "REFUSED", "detail": "--now is for dry runs only"}))
@@ -2615,33 +3095,47 @@ def cli(args: Any) -> int:
     return code
 
 
-# ── n8n window requests (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md rev 1, branch feat/release-train-n8n-20261021) ──
-# The controller half of TrainWindowRequest@v1 / TrainWindowReceipt@v1 (C1-C11). The request schema and validator
-# (config/schemas/release_train/train_window_request.v1.schema.json, scripts/lib/release_train_window.py) are not on
-# this branch yet, so validate_request() below implements the contract's §5 table strictly; swap it for the shared
-# validator when that lands. A request is never authority: everything is re-derived on the host.
+# ── n8n window requests (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md rev 3) ──────────────────────────────────────────
+# The controller half of TrainWindowRequest@v1 / TrainWindowReceipt@v1 (C1-C13). Both records are validated by the
+# shipped schemas and validator (config/schemas/release_train/train_window_{request,receipt}.v1.schema.json,
+# scripts/lib/release_train_window_view.py validate_request / validate_receipt); the controller adds only the
+# host-side file-name rule. A request is never authority: everything is re-derived on the host.
 
-REQUEST_SCHEMA, RECEIPT_SCHEMA = "TrainWindowRequest@v1", "TrainWindowReceipt@v1"
-REQUEST_ID_RE = re.compile(r"^rtw-[0-9]{8}-[0-9]{4}-(win|f[0-9a-f]{6})$")
-REQUEST_KEYS_REQUIRED = frozenset({"schema", "request_id", "window_slot", "window_id", "window_start", "tick",
-                                   "shadow", "requested_at", "expires_at", "requested_by", "authority"})
-REQUEST_KEYS_OPTIONAL = frozenset({"shadow_reason", "readiness", "note"})
+REQUEST_SCHEMA, RECEIPT_SCHEMA = WV.TRAIN_WINDOW_REQUEST, WV.TRAIN_WINDOW_RECEIPT
+REQUEST_ID_RE = WV.REQUEST_ID_RE
+#: Contract C9 (rev 3), the closed set; equal to the receipt schema's ``refusal.code`` enum (pinned by a test).
 REFUSAL_CODES = frozenset({"INVALID_REQUEST", "EXPIRED", "DUPLICATE_WINDOW", "STOP_SET", "STOP_UNREADABLE",
                            "NOT_ARMED", "DELEGATION_NOT_ACTIVE", "WINDOW_NOT_ENABLED", "OUTSIDE_WINDOW",
-                           "CONTROLLER_BUILD_ONLY", "LOCK_HELD", "SHADOW_LIVE_MISMATCH"})
-TERMINAL_RECEIPT_STATES = frozenset({"COMPLETED", "REFUSED", "EXPIRED", "FAILED"})
-#: The controller's precise refusal -> the contract's closed set (C9). The contract has no code for a reconcile-first,
-#: quarantined-lineage, bypass-environment or corrupt-control refusal; they map to the closest fail-closed code and
-#: the precise reason travels in ``refusal.detail`` (reported as a contract gap in the packet README).
+                           "CONTROLLER_BUILD_ONLY", "LOCK_HELD", "SHADOW_LIVE_MISMATCH", "CONTROLLER_FAILED",
+                           "CONTROLLER_ERROR", "RECONCILE_REQUIRED", "QUARANTINED_LINEAGE"})
+#: C9: these two are written with ``state: FAILED`` (the controller itself failed, or its own state is in error).
+FAILED_CODES = frozenset({"CONTROLLER_FAILED", "CONTROLLER_ERROR"})
+TERMINAL_RECEIPT_STATES = frozenset(WV.TERMINAL_RECEIPT_STATES)
+#: The controller's precise refusal -> the contract's closed set (C9, rev 3). The precise reason always travels in
+#: ``refusal.detail``; an unmapped reason fails closed to NOT_ARMED.
 REFUSAL_MAP = {
     "REFUSED_STOP_LATCHED": "STOP_SET", "REFUSED_STOP_UNREADABLE": "STOP_UNREADABLE",
-    "REFUSED_CONTROL_UNARMED": "NOT_ARMED", "REFUSED_CONTROL_CORRUPT": "NOT_ARMED", "REFUSED_REVOKED": "NOT_ARMED",
-    "REFUSED_PAUSED": "NOT_ARMED", "REFUSED_STOPPED": "STOP_SET", "REFUSED_POLICY_NOT_ACCEPTED": "NOT_ARMED",
+    "REFUSED_STOPPED": "STOP_SET", "REFUSED_STOP_LATCH_UNREADABLE": "STOP_UNREADABLE",
+    "REFUSED_CONTROL_UNARMED": "NOT_ARMED", "REFUSED_REVOKED": "NOT_ARMED", "REFUSED_PAUSED": "NOT_ARMED",
+    "REFUSED_PAUSED_AFTER_CURRENT": "NOT_ARMED", "REFUSED_POLICY_NOT_ACCEPTED": "NOT_ARMED",
+    "REFUSED_BYPASS_ENV": "NOT_ARMED",
+    "REFUSED_CONTROL_CORRUPT": "CONTROLLER_ERROR", "REFUSED_CONTROL_MODE_UNKNOWN": "CONTROLLER_ERROR",
+    "REFUSED_MAIN_UNREADABLE": "CONTROLLER_ERROR",
     "REFUSED_WINDOW_DISABLED": "WINDOW_NOT_ENABLED", "REFUSED_OFF_WINDOW": "OUTSIDE_WINDOW",
     "REFUSED_WINDOW_ALREADY_CLAIMED": "DUPLICATE_WINDOW", "REFUSED_TRAIN_BUSY": "LOCK_HELD",
-    "REFUSED_TRAIN_ALREADY_CLAIMED": "LOCK_HELD", "REFUSED_RECONCILE_FIRST": "STOP_SET",
-    "REFUSED_QUARANTINED_LINEAGE": "STOP_SET", "REFUSED_BYPASS_ENV": "NOT_ARMED",
+    "REFUSED_TRAIN_ALREADY_CLAIMED": "LOCK_HELD",
+    "REFUSED_RECONCILE_FIRST": "RECONCILE_REQUIRED", "REFUSED_QUARANTINED_LINEAGE": "QUARANTINED_LINEAGE",
 }
+
+
+def refusal_code(reason: Any) -> str:
+    """The C9 code for a controller refusal reason (``REFUSED_DELEGATION_<code>`` -> DELEGATION_NOT_ACTIVE)."""
+    r = str(reason or "")
+    if r in REFUSAL_CODES:
+        return r
+    if r.startswith("REFUSED_DELEGATION_"):
+        return "DELEGATION_NOT_ACTIVE"
+    return REFUSAL_MAP.get(r, "NOT_ARMED")
 
 
 def _parse_ts(v: Any) -> Optional[datetime]:
@@ -2653,56 +3147,19 @@ def _parse_ts(v: Any) -> Optional[datetime]:
 
 
 def validate_request(body: Any, filename: str) -> list[str]:
-    """TrainWindowRequest@v1 (contract §5), strict: unknown keys are invalid (a request that names a SHA, PR, train
-    id, capability or command is invalid), and every identity field must agree with the others."""
-    if not isinstance(body, dict):
-        return ["request is not an object"]
-    errs = []
-    keys = set(body)
-    if REQUEST_KEYS_REQUIRED - keys:
-        errs.append(f"missing {sorted(REQUEST_KEYS_REQUIRED - keys)}")
-    extra = keys - REQUEST_KEYS_REQUIRED - REQUEST_KEYS_OPTIONAL
-    if extra:
-        errs.append(f"unknown fields {sorted(extra)} (a request carries no SHA, PR, train id or command)")
-    if errs:
-        return errs
-    if body["schema"] != REQUEST_SCHEMA:
-        errs.append("schema")
-    rid = body["request_id"]
-    if not (isinstance(rid, str) and REQUEST_ID_RE.match(rid)):
-        errs.append("request_id pattern")
-    elif filename != f"{rid}.json":
+    """TrainWindowRequest@v1 through the shipped schema and validator (``release_train_window_view.validate_request``:
+    unknown keys are invalid, so a request that names a SHA, PR, train id, capability or command is refused), plus the
+    host rule that the spool file is named ``<request_id>.json``."""
+    try:
+        errs = list(WV.validate_request(body))
+    except Exception as exc:  # noqa: BLE001 - a validator crash is an invalid request, never a pass
+        return [f"validator error: {type(exc).__name__}"]
+    if isinstance(body, dict) and isinstance(body.get("request_id"), str) and filename != f"{body['request_id']}.json":
         errs.append("request_id disagrees with the file name")
-    slot = body["window_slot"]
-    if slot not in ("0000", "0600", "0800", "1800"):
-        errs.append("window_slot")
-    start = _parse_ts(body["window_start"])
-    if start is None:
-        errs.append("window_start")
-    else:
-        local = start.astimezone(TZ)
-        if local.strftime("%H%M") != slot or local.isoformat(timespec="minutes") != body["window_id"]:
-            errs.append("window_id / window_start / window_slot disagree")
-        if isinstance(rid, str) and REQUEST_ID_RE.match(rid) and rid[4:17] != local.strftime("%Y%m%d-%H%M"):
-            errs.append("request_id date/slot disagree with the window")
-    if body["tick"] not in ("on_window", "off_window"):
-        errs.append("tick")
-    if not isinstance(body["shadow"], bool):
-        errs.append("shadow must be a boolean")
-    if body["tick"] == "off_window" and body["shadow"] is not True:
-        errs.append("an off-window request is always shadow")
-    if isinstance(rid, str) and rid.endswith("-win") != (body["tick"] == "on_window"):
-        errs.append("request_id suffix disagrees with tick")
-    if _parse_ts(body["requested_at"]) is None or _parse_ts(body["expires_at"]) is None:
-        errs.append("requested_at / expires_at")
-    if body["authority"] != "REQUEST_ONLY":
-        errs.append("authority must be REQUEST_ONLY")
-    rb = body["requested_by"]
-    if not (isinstance(rb, dict) and isinstance(rb.get("lane_id"), str) and isinstance(rb.get("run_id"), str)):
-        errs.append("requested_by")
-    elif isinstance(slot, str) and rb["lane_id"] != f"release-train-request-{slot}":
-        errs.append("requested_by.lane_id is not this slot's lane")
     return errs
+
+
+INJECTION_SCHEMA = "TrainInjection@v1"
 
 
 class RequestSpool:
@@ -2712,6 +3169,18 @@ class RequestSpool:
     def __init__(self, state_root: Path) -> None:
         self.root = Path(state_root) / "train_requests"
         self.pending, self.claimed, self.receipts = self.root / "pending", self.root / "claimed", self.root / "receipts"
+        self.orphaned, self.owners = self.root / "orphaned", self.root / "owners"
+
+    def record_owner(self, request_id: str, claimed_at: str) -> None:
+        """owners/<request_id>.json: the claiming process (pid + start time + host), for the orphan watchdog."""
+        RC._atomic_write_json(self.owners / f"{request_id}.json", {**claim_owner(), "claimed_at": claimed_at})
+
+    def owner(self, request_id: str) -> Optional[dict]:
+        try:
+            body = json.loads((self.owners / f"{request_id}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return body if isinstance(body, dict) else None
 
     def pending_files(self) -> list[Path]:
         try:
@@ -2729,6 +3198,23 @@ class RequestSpool:
         except FileNotFoundError:
             return None                                   # another claimer won the rename
         return dest
+
+    def injection(self, request_id: str) -> tuple[Optional[str], Optional[str]]:
+        """(name, None) for a valid operator injection marker ``injections/<request_id>.json`` (TrainInjection@v1,
+        written by ``release_train_window_request.py --inject`` before the request); (None, None) when there is none;
+        (None, why) when one exists but is invalid (the request is then refused, fail closed)."""
+        p = self.root / "injections" / f"{request_id}.json"
+        if not os.path.lexists(p):
+            return None, None
+        try:
+            body = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return None, f"injection marker unreadable: {type(exc).__name__}"
+        if not isinstance(body, dict) or body.get("schema") != INJECTION_SCHEMA:
+            return None, "injection marker is not TrainInjection@v1"
+        if body.get("request_id") != request_id or body.get("inject") not in INJECTIONS:
+            return None, "injection marker names another request or an unknown injection"
+        return str(body["inject"]), None
 
     def receipt(self, request_id: str) -> Optional[dict]:
         try:
@@ -2750,6 +3236,10 @@ def _receipt(req: dict, *, state: str, mode: str, now: float, acknowledged_at: O
     sel = rec.get("selection") or {}
     needs = [{"code": "NOT_RIDING", "pr": int(k), "text": str(v)[:160]} for k, v in
              list((sel.get("excluded") or {}).items())[:16]]
+    wh = rec.get("would_halt")
+    if isinstance(wh, dict):
+        needs.insert(0, {"code": "WOULD_HALT", "pr": None,
+                         "text": f"{wh.get('reason')} at {wh.get('at')}: {wh.get('detail') or ''}"[:160]})
     needs += [{"code": "LIVE_WOULD_REFUSE", "pr": None, "text": str(x)[:160]} for x in rec.get("would_refuse") or []]
     manifest = rec.get("manifest") or {}
     members = [{"pr": m["pr"], "head_sha": m["head_sha"]} for m in manifest.get("members") or []]
@@ -2767,7 +3257,7 @@ def _receipt(req: dict, *, state: str, mode: str, now: float, acknowledged_at: O
             "candidate_sha": (rec.get("batch") or {}).get("candidate"),
             "main_sha": (rec.get("merge") or {}).get("main_sha"), "served_sha": None,
             "needs_action": needs[:20], "simulated_effects": list(dict.fromkeys(sims)) if mode == "simulate" else [],
-            "injected_failures": [],
+            "injected_failures": [dict(x) for x in (rec.get("injected_failures") or [])][:20],
             "p1_alert": ({"sent_by": "host_notifier", "incident_key": f"release-train:{rec.get('train_id')}",
                           "at": rec.get("finished_at")} if notif.get("priority") == "P1" else None),
             "evidence_refs": []}
@@ -2777,11 +3267,192 @@ T_ID_RE = re.compile(r"^rt-[0-9]{8}-[0-9]{4}-[a-z0-9]{4,12}$")
 
 
 def _refusal(code: str, detail: str) -> dict:
-    return {"code": code if code in REFUSAL_CODES else "INVALID_REQUEST", "detail": str(detail)[:200]}
+    return {"code": code if code in REFUSAL_CODES else refusal_code(code), "detail": str(detail)[:200]}
+
+
+def _refused_state(refusal: dict) -> str:
+    """C9: CONTROLLER_FAILED / CONTROLLER_ERROR are FAILED receipts; every other refusal is REFUSED."""
+    return "FAILED" if refusal.get("code") in FAILED_CODES else "REFUSED"
+
+
+def checked_receipt(doc: dict, *, request_valid: bool) -> tuple[dict, list[str]]:
+    """Validate a receipt with the shipped validator before it is written. A terminal receipt is an acknowledgement
+    too, so a missing ``acknowledged_at`` is set to ``finished_at``. A receipt for a VALID request that still fails the
+    contract is replaced by a FAILED / CONTROLLER_ERROR receipt (fail closed; the defect is in ``refusal.detail``).
+    A receipt for an invalid request may be unrepresentable (its request_id is not an id); it is written as built and
+    the contract errors are returned to the caller's output, never silently passed."""
+    if doc.get("acknowledged_at") is None and doc.get("state") in TERMINAL_RECEIPT_STATES:
+        doc["acknowledged_at"] = doc.get("finished_at")
+    try:
+        errs = list(WV.validate_receipt(doc))
+    except Exception as exc:  # noqa: BLE001
+        errs = [f"validator error: {type(exc).__name__}"]
+    if not errs or not request_valid:
+        return doc, errs
+    fixed = dict(doc, state="FAILED", outcome=None, finished_at=doc.get("finished_at") or doc.get("acknowledged_at"),
+                 refusal={"code": "CONTROLLER_ERROR", "detail": ("receipt contract: " + "; ".join(errs))[:200]})
+    ack_ts, fin_ts = _parse_ts(fixed.get("acknowledged_at")), _parse_ts(fixed.get("finished_at"))
+    if ack_ts is not None and (fin_ts is None or fin_ts < ack_ts):
+        fixed["finished_at"] = fixed["acknowledged_at"]
+    if fixed["mode"] == "live" and fixed.get("shadow") is True:
+        fixed["mode"] = "simulate"
+    try:
+        again = list(WV.validate_receipt(fixed))
+    except Exception as exc:  # noqa: BLE001
+        again = [f"validator error: {type(exc).__name__}"]
+    return fixed, errs + again
+
+
+#: Orphaned-claim watchdog (arming finding 5 / contract §12 "the controller's independent watchdog"). The claimer unit
+#: is a oneshot with TimeoutStartSec=3h, so no claimer legitimately runs longer than CLAIM_MAX_RUN_MIN; a claim still
+#: non-terminal after twice that, with no live owner, is orphaned. Override: TRADEAI_RELEASE_TRAIN_ORPHAN_AFTER_MIN
+#: or ``train-claim --orphan-after-min``.
+CLAIM_MAX_RUN_MIN = 180
+ORPHAN_AFTER_MIN_DEFAULT = 2 * CLAIM_MAX_RUN_MIN
+
+
+def orphan_after_min(override: Optional[float] = None) -> float:
+    if override is not None and float(override) > 0:
+        return float(override)
+    raw = os.environ.get("TRADEAI_RELEASE_TRAIN_ORPHAN_AFTER_MIN", "")
+    try:
+        v = float(raw)
+    except ValueError:
+        return float(ORPHAN_AFTER_MIN_DEFAULT)
+    return v if v > 0 else float(ORPHAN_AFTER_MIN_DEFAULT)
+
+
+def proc_start_ticks(pid: int) -> Optional[int]:
+    """Field 22 of /proc/<pid>/stat (start time in clock ticks since boot): with the pid, a process identity that a
+    recycled pid cannot fake. None when the process does not exist or /proc is unreadable."""
+    try:
+        raw = Path(f"/proc/{int(pid)}/stat").read_text(encoding="utf-8", errors="replace")
+        return int(raw[raw.rindex(")") + 2:].split()[19])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def claim_owner() -> dict:
+    return {"pid": os.getpid(), "start_ticks": proc_start_ticks(os.getpid()), "host": os.uname().nodename}
+
+
+def owner_alive(owner: Any) -> bool:
+    """True only when the recorded owner is THIS host's process with the same pid AND the same start time."""
+    if not isinstance(owner, dict) or owner.get("host") != os.uname().nodename:
+        return False
+    pid, ticks = owner.get("pid"), owner.get("start_ticks")
+    if not isinstance(pid, int) or not isinstance(ticks, int):
+        return False
+    return proc_start_ticks(pid) == ticks
+
+
+def watch_orphans(spool: "RequestSpool", *, clock: Callable[[], float], apply: bool, after_min: float,
+                  notify: Optional[Callable[[str, str], Any]] = None) -> list[dict]:
+    """Move each non-terminal claim older than ``after_min`` with no live owner from ``claimed/`` to ``orphaned/``
+    (rename; never deleted), append an ``orphaned`` row to ``orphaned.jsonl`` and raise ONE P2 needs-action intent.
+    It never re-runs a request and never writes a receipt: an orphan is closed only by ``train-orphan-resolve`` after
+    ``train-reconcile`` (a live orphan may have left an effect). Without ``apply`` it only reports."""
+    out: list[dict] = []
+    try:
+        names = sorted(p.name for p in spool.claimed.iterdir() if p.is_file() and p.name.endswith(".json"))
+    except OSError:
+        return out
+    now = clock()
+    for name in names:
+        rid = name[:-5]
+        rec = spool.receipt(rid) or {}
+        if rec.get("state") in TERMINAL_RECEIPT_STATES:
+            continue
+        owner = spool.owner(rid)
+        since = _parse_ts((owner or {}).get("claimed_at")) or _parse_ts(rec.get("acknowledged_at"))
+        try:
+            started = since.timestamp() if since else os.lstat(spool.claimed / name).st_mtime
+        except OSError:
+            continue
+        age_min = (now - started) / 60.0
+        if age_min < after_min:
+            continue
+        row = {"request_id": rid, "age_min": round(age_min, 1), "after_min": after_min,
+               "receipt_state": rec.get("state"), "mode": rec.get("mode"), "owner": owner}
+        if owner_alive(owner):
+            out.append({**row, "result": "LIVE_OWNER (left in claimed/)"})
+            continue
+        if not apply:
+            out.append({**row, "result": "WOULD_ORPHAN (claimed/ -> orphaned/, P2 needs-action; reconcile required)"})
+            continue
+        spool.orphaned.mkdir(parents=True, exist_ok=True)
+        dest = spool.orphaned / name
+        if os.path.lexists(dest):
+            out.append({**row, "result": "NOT_MOVED (orphaned/ already holds that name; operator inspects both)"})
+            continue
+        os.rename(spool.claimed / name, dest)
+        RC._append_jsonl(spool.root / "orphaned.jsonl", {"kind": "orphaned", "at": utc_iso(now), **row})
+        msg = (f"Release train request {rid} orphaned: claimed {age_min:.0f} min ago, no live claimer, receipt "
+               f"{rec.get('state') or 'absent'} ({rec.get('mode') or '?'}). Moved to train_requests/orphaned/. "
+               "Run release_window.py train-reconcile, then train-orphan-resolve; it is never re-run automatically.")
+        sent = None
+        if notify is not None:
+            try:
+                sent = notify(msg, "P2")
+            except Exception as exc:  # noqa: BLE001 - recorded, never fatal
+                sent = {"accepted": False, "error": type(exc).__name__}
+        out.append({**row, "result": "ORPHANED", "notification": sent})
+    return out
+
+
+def resolve_orphan(state: RW.State, request_id: str, reason: str, *, apply: bool,
+                   now: Callable[[], float] = time.time,
+                   pending: Optional[Callable[[], list]] = None) -> tuple[int, dict]:
+    """Operator: close an orphaned claim with a terminal FAILED / CONTROLLER_FAILED receipt, after reconcile. Refused
+    while any train is non-terminal (train-reconcile first). The request file stays in orphaned/; nothing is re-run."""
+    spool = RequestSpool(state.root)
+    if not REQUEST_ID_RE.match(request_id or "") or len(" ".join(str(reason).split())) < 8:
+        return EXIT_REFUSED, {"outcome": "REFUSED", "detail": "a request id and a reason (>= 8 chars) are required"}
+    p = spool.orphaned / f"{request_id}.json"
+    if not os.path.lexists(p):
+        return EXIT_REFUSED, {"outcome": "REFUSED", "detail": f"no orphaned claim {request_id}"}
+    trains = pending() if pending is not None else _pending_trains(state)
+    if trains:
+        return EXIT_REFUSED, {"outcome": "REFUSED_RECONCILE_FIRST",
+                              "detail": f"non-terminal trains {trains}: run release_window.py train-reconcile first"}
+    prior = spool.receipt(request_id) or {}
+    if prior.get("state") in TERMINAL_RECEIPT_STATES:
+        return EXIT_OK, {"outcome": "NOOP", "detail": "receipt already terminal", "state": prior.get("state")}
+    try:
+        req = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        req = {}
+    req = req if isinstance(req, dict) else {}
+    why = " ".join(str(reason).split())
+    doc = _receipt(req, state="FAILED", mode=str(prior.get("mode") or "simulate"), now=now(),
+                   acknowledged_at=prior.get("acknowledged_at"),
+                   refusal={"code": "CONTROLLER_FAILED", "detail": f"orphaned claim resolved: {why}"[:200]})
+    doc, errs = checked_receipt(doc, request_valid=not validate_request(req, p.name))
+    if not apply:
+        return EXIT_OK, {"outcome": "WOULD_RESOLVE", "receipt": doc, "contract_errors": errs}
+    spool.write_receipt(request_id, doc)
+    RC._append_jsonl(spool.root / "orphaned.jsonl", {"kind": "resolved", "request_id": request_id,
+                                                      "reason": why[:400], "at": utc_iso(now())})
+    return EXIT_OK, {"outcome": "RESOLVED", "receipt_state": doc["state"], "contract_errors": errs}
+
+
+def _pending_trains(state: RW.State) -> list[str]:
+    out = []
+    for p in sorted((state.root / "trains").glob("*/state.json")):
+        try:
+            body = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            out.append(p.parent.name + "(unreadable)")
+            continue
+        if not body.get("outcome"):
+            out.append(p.parent.name)
+    return out
 
 
 def process_requests(state: RW.State, factory: Callable[[bool], TrainController], *, apply: bool,
-                     now: Optional[Callable[[], float]] = None, live_status: Optional[str] = None) -> tuple[int, dict]:
+                     now: Optional[Callable[[], float]] = None, live_status: Optional[str] = None,
+                     orphan_after: Optional[float] = None,
+                     notify: Optional[Callable[[str, str], Any]] = None) -> tuple[int, dict]:
     """Claim and answer pending TrainWindowRequest@v1 files (C1-C11). Without ``apply``: list what would be claimed
     and answered, run nothing, write nothing. With ``apply``: claim by rename, acknowledge, run the train (shadow ->
     dry run only, C3; live -> refused while the controller is BUILD_ONLY), write the terminal receipt."""
@@ -2798,6 +3469,8 @@ def process_requests(state: RW.State, factory: Callable[[bool], TrainController]
             out["outcome"] = "CLAIMER_BUSY"
             return EXIT_OK, out
     try:
+        out["orphans"] = watch_orphans(spool, clock=clock, apply=apply, after_min=orphan_after_min(orphan_after),
+                                       notify=notify)
         files = spool.pending_files()
         bodies = []
         for p in files:
@@ -2828,61 +3501,79 @@ def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], T
         item["would"] = ("REFUSE INVALID_REQUEST: " + "; ".join(errs)) if errs else (
             f"claim; {'simulate (shadow)' if req.get('shadow') else 'live -> ' + ('refused: CONTROLLER_BUILD_ONLY' if status_ != 'ACTIVE' else 'run live')}")
         return item
+    def put(doc: dict) -> dict:
+        doc, cerrs = checked_receipt(doc, request_valid=not errs)
+        if cerrs:
+            item["receipt_contract_errors"] = cerrs[:5]
+        spool.write_receipt(rid, doc)
+        return doc
+
     claimed = spool.claim(p)
     if claimed is None:
         item["result"] = "NOT_CLAIMED (another claimer, or a duplicate name already claimed)"
         if os.path.lexists(p) and os.path.lexists(spool.claimed / name):
-            spool.write_receipt(rid, _receipt(req, state="REFUSED", mode="simulate", now=clock(),
-                                              refusal=_refusal("DUPLICATE_WINDOW", "request already claimed")))
+            put(_receipt(req, state="REFUSED", mode="simulate", now=clock(),
+                         refusal=_refusal("DUPLICATE_WINDOW", "request already claimed")))
             item["result"] = "REFUSED DUPLICATE_WINDOW"
         return item
     shadow = req.get("shadow") is True
     mode = "simulate" if shadow or errs else "live"
     if errs:
-        spool.write_receipt(rid, _receipt(req, state="REFUSED", mode="simulate", now=clock(),
-                                          refusal=_refusal("INVALID_REQUEST", "; ".join(errs))))
+        put(_receipt(req, state="REFUSED", mode="simulate", now=clock(),
+                     refusal=_refusal("INVALID_REQUEST", "; ".join(errs))))
         item["result"] = "REFUSED INVALID_REQUEST"
         return item
     if clock() > _parse_ts(req["expires_at"]).timestamp():
-        spool.write_receipt(rid, _receipt(req, state="EXPIRED", mode=mode, now=clock(),
-                                          refusal=_refusal("EXPIRED", f"expired at {req['expires_at']}")))
+        put(_receipt(req, state="EXPIRED", mode=mode, now=clock(),
+                     refusal=_refusal("EXPIRED", f"expired at {req['expires_at']}")))
         item["result"] = "EXPIRED"
         return item
+    inject, inject_err = spool.injection(rid)
+    if inject_err or (inject and not shadow):
+        why = inject_err or f"--inject {inject} is shadow-only; a live request never carries an injected failure"
+        put(_receipt(req, state="REFUSED", mode=mode, now=clock(), refusal=_refusal("INVALID_REQUEST", why)))
+        item["result"] = "REFUSED INVALID_REQUEST"
+        return item
     ack = utc_iso(clock())
-    spool.write_receipt(rid, _receipt(req, state="ACKNOWLEDGED", mode=mode, now=clock(), acknowledged_at=ack))
+    spool.record_owner(rid, ack)
+    put(_receipt(req, state="ACKNOWLEDGED", mode=mode, now=clock(), acknowledged_at=ack))
     if not shadow and status_ != "ACTIVE":
-        spool.write_receipt(rid, _receipt(req, state="REFUSED", mode="live", now=clock(), acknowledged_at=ack,
-                                          refusal=_refusal("CONTROLLER_BUILD_ONLY",
-                                                           f"TRAIN_CONTROLLER_STATUS={status_}")))
+        put(_receipt(req, state="REFUSED", mode="live", now=clock(), acknowledged_at=ack,
+                     refusal=_refusal("CONTROLLER_BUILD_ONLY", f"TRAIN_CONTROLLER_STATUS={status_}")))
         item["result"] = "REFUSED CONTROLLER_BUILD_ONLY"
         return item
     try:
         ctl = factory(not shadow)
         if shadow and ctl.live:
             raise Halt("REFUSED", "SHADOW_LIVE_MISMATCH", "a shadow request produced a live controller", refusal=True)
+        if inject:
+            ctl.set_injection(inject)
+            item["inject"] = inject
         start = _parse_ts(req["window_start"])
         at = start + timedelta(minutes=1) if (shadow and req["tick"] == "off_window") else None
         code, rec = ctl.run(at)
     except Halt as h:
-        spool.write_receipt(rid, _receipt(req, state="REFUSED", mode=mode, now=clock(), acknowledged_at=ack,
-                                          refusal=_refusal(h.reason, h.detail)))
-        item["result"] = f"REFUSED {h.reason}"
+        ref = _refusal(refusal_code(h.reason), f"{h.reason}: {h.detail}")
+        put(_receipt(req, state=_refused_state(ref), mode=mode, now=clock(), acknowledged_at=ack, refusal=ref))
+        item["result"] = f"{_refused_state(ref)} {h.reason}"
         return item
     except Exception as exc:  # noqa: BLE001 - the controller itself failed: FAILED, exception type only
-        spool.write_receipt(rid, _receipt(req, state="FAILED", mode=mode, now=clock(), acknowledged_at=ack,
-                                          # C9 has no controller-error code (contract gap, packet README):
-                                          # LOCK_HELD for a busy lock, else NOT_ARMED; detail = exception type.
-                                          refusal={"code": "LOCK_HELD" if isinstance(exc, RC.LockBusy)
-                                                   else "NOT_ARMED", "detail": type(exc).__name__}))
+        # C9 rev 3: CONTROLLER_FAILED (state FAILED); a busy lock stays LOCK_HELD. Detail = exception type only.
+        code9 = "LOCK_HELD" if isinstance(exc, RC.LockBusy) else "CONTROLLER_FAILED"
+        put(_receipt(req, state="FAILED", mode=mode, now=clock(), acknowledged_at=ack,
+                     refusal={"code": code9, "detail": type(exc).__name__}))
         item["result"] = f"FAILED {type(exc).__name__}"
         return item
     if isinstance(ctl.writer, SimulatedGitHubWriter):
         rec["simulated_writes"] = ctl.writer.actions
     got = (rec.get("window") or {}).get("window_id")
-    if rec.get("refused"):
-        code9 = REFUSAL_MAP.get(str(rec.get("reason")), "NOT_ARMED")
-        receipt = _receipt(req, state="REFUSED", mode=mode, now=clock(), acknowledged_at=ack, rec=rec,
-                           refusal=_refusal(code9, f"{rec.get('reason')}: {rec.get('detail') or ''}"))
+    if rec.get("crashed"):
+        receipt = _receipt(req, state="FAILED", mode=mode, now=clock(), acknowledged_at=ack, rec=rec,
+                           refusal={"code": "CONTROLLER_FAILED", "detail": f"INJECTED_CRASH: {rec.get('detail')}"[:200]})
+    elif rec.get("refused"):
+        ref = _refusal(refusal_code(rec.get("reason")), f"{rec.get('reason')}: {rec.get('detail') or ''}")
+        receipt = _receipt(req, state=_refused_state(ref), mode=mode, now=clock(), acknowledged_at=ack, rec=rec,
+                           refusal=ref)
     elif got != req["window_id"]:
         receipt = _receipt(req, state="REFUSED", mode=mode, now=clock(), acknowledged_at=ack, rec=rec,
                            refusal=_refusal("OUTSIDE_WINDOW", f"the host derived window {got}, not {req['window_id']}"))
@@ -2892,7 +3583,7 @@ def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], T
             oc = NO_OP                                  # simulate: never a release, never a fake success (§7)
         receipt = _receipt(req, state="COMPLETED", mode=mode, now=clock(), acknowledged_at=ack, rec=rec,
                            outcome=oc if oc in TERMINAL_OUTCOMES else CANCELLED)
-    spool.write_receipt(rid, receipt)
+    receipt = put(receipt)
     item["result"] = f"{receipt['state']} {receipt.get('outcome') or (receipt.get('refusal') or {}).get('code')}"
     item["train_id"] = rec.get("train_id")
     return item
@@ -2901,6 +3592,9 @@ def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], T
 def cli_claim(args: Any) -> int:
     def factory(live: bool) -> TrainController:
         return build_controller(live=live)
-    code, body = process_requests(RW.State(), factory, apply=bool(getattr(args, "apply", False)))
+    apply = bool(getattr(args, "apply", False))
+    code, body = process_requests(RW.State(), factory, apply=apply,
+                                  orphan_after=getattr(args, "orphan_after_min", None),
+                                  notify=RW.Host().notify if apply else None)
     print(json.dumps(body, indent=2, default=str))
     return code

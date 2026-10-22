@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_orphan_watchdog_20261021",
+  "files": [
+    "tests/test_release_train_orphan_watchdog_20261021.py"
+  ],
+  "anchor": "RELEASE_TRAIN_ORPHAN_WATCHDOG_20261021",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_ORPHAN_WATCHDOG_20261021 — release-train arming finding 6. The claimer's watchdog moves a",
+    "non-terminal claim older than N min (default 2x the 3 h max run; TRADEAI_RELEASE_TRAIN_ORPHAN_AFTER_MIN or",
+    "--orphan-after-min) with no live owner (pid + /proc start time) from claimed/ to orphaned/, appends",
+    "orphaned.jsonl and raises one P2 (notifier + needs-action rule). Never deletes, never re-runs, writes no",
+    "receipt; train-orphan-resolve closes it only after train-reconcile. Hermetic: tmp_path world."
+  ]
+}

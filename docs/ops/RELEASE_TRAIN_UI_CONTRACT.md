@@ -154,9 +154,11 @@ STALE. A response whose `generated_at` is more than 15 minutes old is STALE. Eve
    non-GET request to any path under `/release-train` is intercepted first and refused by the STOP handler: 403
    without operator identity or same-origin, otherwise 400 `SET_ONLY`. Nothing is ever written. Merge order: either
    order works, because the STOP block sits above the read routes in `handle()`.
-5. **Two STOP reads.** `summary.stop` (`CLEAR` / `LATCHED` / `UNREADABLE`) and `GET /stop` (`ABSENT` / `SET` /
-   `UNREADABLE`, plus lock and audit) read the same file with different vocabularies. The STOP control uses `GET /stop`.
-   The summary chip uses `summary.stop`.
+5. **Two STOP reads, one vocabulary.** `summary.stop` (`stop.value.state`) and `GET /stop` both use the
+   `release_window.State.read_latch` vocabulary: `ABSENT` / `SET` / `UNREADABLE` (API revision 2 replaced the summary's
+   old `CLEAR` / `LATCHED` / `UNREADABLE`; `scripts/lib/release_train_view.py` `LATCH_STATES`). `effective_stop` is
+   true for every state except `ABSENT`; `UNREADABLE` is a STOP. `GET /stop` adds the lock and the audit. The STOP
+   control uses `GET /stop`; the summary chip uses `summary.stop`. (Corrected 2026-10-21, arming finding 10.)
 6. **State dir.** The server process and the host runner resolve the state dir from the same env and default (`HOME`
    is the same). Before arming, the operator confirms that `GET /stop`'s `state_dir` equals the path
    `release_window.py status` reads.

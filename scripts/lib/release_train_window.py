@@ -18,6 +18,7 @@ lane and a mode). Nothing here merges, pushes, promotes, rolls back, issues a ca
 
 AUTHORITY: READ_ONLY_ADVISORY (a request is REQUEST_ONLY: never authority). MBI_BEHAVIOR = 0.
 """
+
 from __future__ import annotations
 
 import json
@@ -110,8 +111,11 @@ def host_snapshot(
         "shadow_enabled": bool((cfg.get("shadow") or {}).get("enabled") is True),
         "delegation_state": dstate,
         "window_enabled": V.policy_window(pol, slot)["enabled"],
-        "policy_version": (str(pol.get("policy_version"))[:64] if isinstance(pol, Mapping)
-                           and pol.get("policy_version") is not None else None),
+        "policy_version": (
+            str(pol.get("policy_version"))[:64]
+            if isinstance(pol, Mapping) and pol.get("policy_version") is not None
+            else None
+        ),
     }
 
 
@@ -169,11 +173,17 @@ def build_request(
         "shadow_reason": decision.get("shadow_reason"),
         "requested_at": now.astimezone(timezone.utc).isoformat(),
         "expires_at": expires.astimezone(timezone.utc).isoformat(),
-        "requested_by": {"lane_id": lane_for_slot(slot), "run_id": run_id[:160],
-                         "attempt": attempt if isinstance(attempt, int) and attempt >= 1 else None,
-                         "run_mode": run_mode if run_mode in ("live", "dry_run") else None, "code_sha": sha},
-        "readiness": {k: snapshot[k] for k in ("stop_state", "armed", "shadow_enabled", "delegation_state",
-                                               "window_enabled", "policy_version")},
+        "requested_by": {
+            "lane_id": lane_for_slot(slot),
+            "run_id": run_id[:160],
+            "attempt": attempt if isinstance(attempt, int) and attempt >= 1 else None,
+            "run_mode": run_mode if run_mode in ("live", "dry_run") else None,
+            "code_sha": sha,
+        },
+        "readiness": {
+            k: snapshot[k]
+            for k in ("stop_state", "armed", "shadow_enabled", "delegation_state", "window_enabled", "policy_version")
+        },
         "authority": REQUEST_AUTHORITY,
         "note": REQUEST_NOTE,
     }
@@ -181,6 +191,36 @@ def build_request(
     if errs:
         raise ContractError("built request is invalid: " + "; ".join(errs[:5]))
     return doc
+
+
+INJECTION_SCHEMA = "TrainInjection@v1"
+INJECTIONS = ("red-check", "conflict", "stop-midrun", "corrupt-latch", "crash")
+
+
+def write_injection(doc: Mapping[str, Any], inject: str, state_dir: Optional[Path] = None) -> Path:
+    """Operator drill (arming finding 5): ``injections/<request_id>.json`` (TrainInjection@v1, O_EXCL, mode 600)
+    naming ONE simulated failure for a SHADOW request. Written before the request is appended, so the claimer always
+    sees it. Never for a live request (refused here and again by the claimer); never overwritten or deleted."""
+    if inject not in INJECTIONS:
+        raise ContractError(f"unknown injection {inject!r}")
+    if doc.get("shadow") is not True:
+        raise ContractError("--inject is for shadow requests only")
+    d = spool_dir(state_dir) / "injections"
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / f"{doc['request_id']}.json"
+    body = {
+        "schema": INJECTION_SCHEMA,
+        "request_id": doc["request_id"],
+        "inject": inject,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": "operator_cli",
+    }
+    fd = os.open(str(p), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(body, sort_keys=True) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    return p
 
 
 def append_request(doc: Mapping[str, Any], state_dir: Optional[Path] = None) -> tuple[str, Path]:
@@ -230,8 +270,13 @@ def _state(state_dir: Optional[Path]) -> Path:
     return Path(state_dir) if state_dir is not None else resolve_state_dir()
 
 
-def find_request(*, run_id: Optional[str] = None, slot: Optional[str] = None, now: Optional[datetime] = None,
-                 state_dir: Optional[Path] = None):
+def find_request(
+    *,
+    run_id: Optional[str] = None,
+    slot: Optional[str] = None,
+    now: Optional[datetime] = None,
+    state_dir: Optional[Path] = None,
+):
     return V.find_request(_state(state_dir), run_id=run_id, slot=slot, now=now)
 
 
@@ -239,8 +284,13 @@ def shadow_coverage(state_dir: Optional[Path] = None) -> list[dict[str, Any]]:
     return V.shadow_coverage(_state(state_dir))
 
 
-def window_view(*, run_id: Optional[str] = None, slot: Optional[str] = None, now: Optional[datetime] = None,
-                state_dir: Optional[Path] = None) -> dict[str, Any]:
+def window_view(
+    *,
+    run_id: Optional[str] = None,
+    slot: Optional[str] = None,
+    now: Optional[datetime] = None,
+    state_dir: Optional[Path] = None,
+) -> dict[str, Any]:
     return V.window_view(_state(state_dir), run_id=run_id, slot=slot, now=now)
 
 
@@ -256,9 +306,14 @@ def readiness_view(
 ) -> dict[str, Any]:
     """ReleaseTrainReadiness@v1 with the lane's delegation reader (Phase 2 loader when importable)."""
     sdir = _state(stop_dir if stop_dir is not None else state_dir)
-    return V.readiness_from_files(now or datetime.now(timezone.utc), sdir, cfg=cfg, policy_path=policy_path,
-                                  delegation_state=lambda: delegation_state(delegation_loader),
-                                  census_path=census_path)
+    return V.readiness_from_files(
+        now or datetime.now(timezone.utc),
+        sdir,
+        cfg=cfg,
+        policy_path=policy_path,
+        delegation_state=lambda: delegation_state(delegation_loader),
+        census_path=census_path,
+    )
 
 
 def gateway_answer(request: Mapping[str, Any], now: datetime, *, state_dir: Optional[Path] = None) -> dict[str, Any]:

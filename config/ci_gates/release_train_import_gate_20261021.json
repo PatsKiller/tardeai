@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_import_gate_20261021",
+  "files": [
+    "tests/test_release_train_import_gate_20261021.py"
+  ],
+  "anchor": "RELEASE_TRAIN_IMPORT_GATE_20261021",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_IMPORT_GATE_20261021 — release-train arming finding 2. tradeai-fabric-release-train",
+    "passes every workflow-level §23.24 element; the import gate still refuses, only on platform facts FW-P1..P6",
+    "and runtime obligations. Those obligations are recorded PENDING in the arming packet's",
+    "framework_pending_evidence.json, pinned equal to the checker's list; not evidence, not an exception. Step F runs",
+    "--framework-gate activation with --runtime-evidence and refuses --apply without it. The gate is not weakened."
+  ]
+}

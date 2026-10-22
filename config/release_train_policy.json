@@ -6,6 +6,11 @@
   "armed": false,
   "_note": "Release Train v2 Phase 1 (plan joyful-skipping-wilkes; enhanced design sections 4, 6, 7). Read by scripts/lib/release_train_classify.py and scripts/lib/release_train_view.py. Build-only: armed=false, every window enabled=false; arming is an operator act (Phase 5+). Classes from least to most restrictive: eligible < needs_operator < held < blocked; when rules disagree the more restrictive wins. Unknown risk is held. Broker / Active Trader is always at least held. Seeded from config/ci_risk_tiers.json (high categories map through seed.high_category_class; an unmapped new category is held).",
   "timezone": "America/New_York",
+  "canary": {
+    "operator_forced_off_window": false,
+    "slots": ["1800"],
+    "_note": "Arming finding 8. When true, AND the host delegation carries \"phase\": \"canary\", an operator at the host TTY may run release_window.py train-run --live --force-window 1800 --operator-forced --operator-ref <ref> --forced-n <n> outside the 18:00 window. It overrides ONLY the window timing; every other gate applies. Shipped false: flipping it is a reviewed one-line PR (arming packet I.4 PR 3)."
+  },
   "windows": [
     {"local_time": "18:00", "role": "canary", "enable_order": 1, "enabled": false, "note": "First live canary window."},
     {"local_time": "00:00", "role": "general", "enable_order": 2, "enabled": false, "note": "General eligible changes."},

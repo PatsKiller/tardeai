@@ -61,7 +61,9 @@ def test_all_operative_baselines_have_applicable_fields_and_order():
     # tests/test_pr_hygiene_audit_20261021.py) = 151 (release-1 integration: both sides add distinct contracts).
     # + 4 (2026-10-21 Release Train v2 Phase 4: release-train-request-{1800,0000,0600,0800}, REVIEWED at shadow by the
     # operator 2026-10-21; tests/test_release_train_n8n_20261021.py) = 155 (release-2 integration, recounted).
-    assert len(catalogue["contracts"]) == 155
+    # + 1 (2026-10-21 macro-calendar-refresh n8n-native ingest shadow; tests/test_macro_calendar_20261021.py)
+    # = 156 (release-3 integration: counted in config/n8n_health_contracts.json after the merge).
+    assert len(catalogue["contracts"]) == 156
     assert not {row["id"]: A.baseline_errors(row) for row in catalogue["contracts"] if A.baseline_errors(row)}
 
 

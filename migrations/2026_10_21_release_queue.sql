@@ -19,7 +19,8 @@
 --                          truth: if it disagrees with the events, the events win and the projection is rebuilt.
 --
 -- Idempotent: CREATE ... IF NOT EXISTS; the triggers are created only when absent (no DROP anywhere).
--- Apply (operator):   psql "$DB" -v ON_ERROR_STOP=1 -f migrations/2026_10_21_release_queue.sql
+-- Apply (operator):   psql "$DB" -v ON_ERROR_STOP=1 -f migrations/2026_10_21_release_queue.sql   (role trade_ai
+--                     must exist; it is GRANTed SELECT/INSERT on the events and SELECT/INSERT/UPDATE on the projection)
 -- Verify (operator):  psql "$DB" -c "SELECT to_regclass('public.release_queue_events'), to_regclass('public.release_queue')"
 --                     then GET /api/v2/coordination/release-train shows store.value.state = "OK".
 -- Reverse (operator): migrations/2026_10_21_release_queue.down.sql (archives by rename; never drops).
@@ -129,5 +130,16 @@ CREATE INDEX IF NOT EXISTS release_queue_state_idx ON release_queue (state);
 COMMENT ON TABLE release_queue IS
     'Release Train v2 queue projection, one row per PR, rebuildable from release_queue_events '
     '(scripts/lib/release_train_queue.py rebuild_projection). Never an independent source of truth.';
+
+-- Least privilege for the controller's role (arming finding 12). trade_ai (scripts/session13_db.py DB_USER) appends
+-- events and upserts the projection (INSERT ... ON CONFLICT DO UPDATE), and nothing else: no DELETE, no TRUNCATE, no
+-- REFERENCES, no TRIGGER, no DDL. USAGE on the events sequence is what INSERT needs to draw seq (BIGSERIAL). PUBLIC
+-- gets nothing. When an admin role applies this file, these are trade_ai's only rights on the two tables; when
+-- trade_ai applies it (packet step A), trade_ai is the owner and the append-only triggers above still bind it.
+REVOKE ALL ON release_queue_events, release_queue FROM PUBLIC;
+REVOKE ALL ON SEQUENCE release_queue_events_seq_seq FROM PUBLIC;
+GRANT SELECT, INSERT ON release_queue_events TO trade_ai;
+GRANT USAGE ON SEQUENCE release_queue_events_seq_seq TO trade_ai;
+GRANT SELECT, INSERT, UPDATE ON release_queue TO trade_ai;
 
 COMMIT;

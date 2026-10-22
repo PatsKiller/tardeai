@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_window_status_state_dir_20261021",
+  "files": [
+    "tests/test_release_window_status_state_dir_20261021.py"
+  ],
+  "anchor": "RELEASE_WINDOW_STATUS_STATE_DIR_20261021",
+  "comment": [
+    "ANCHOR: RELEASE_WINDOW_STATUS_STATE_DIR_20261021 — release-train arming finding 4. release_window.py status",
+    "(and train-status) print state_dir and state_dir_source (env:TRADEAI_RELEASE_WINDOW_STATE_DIR |",
+    "env:TRADEAI_STATE_ROOT | default | argument); release_train_arm.sh step G reads the runner's directory from",
+    "that status output. Hermetic: subprocess with a controlled env, the arming sandbox under $TMPDIR."
+  ]
+}

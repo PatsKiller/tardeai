@@ -36,6 +36,8 @@ SCHEMA_PATH = ROOT / "config" / "schemas" / "release_delegation_v1.schema.json"
 
 ACTIVE, PAUSED, REVOKED = "ACTIVE", "PAUSED", "REVOKED"
 STATUSES = frozenset({ACTIVE, PAUSED, REVOKED})
+#: Optional rollout phase (arming finding 8). Only "canary" admits an operator-forced off-window run.
+PHASES = frozenset({"shadow", "canary", "expand"})
 REPOSITORY = "PatsKiller/tardeai"
 ENVIRONMENTS = frozenset({"production"})
 #: The four operator windows (2026-10-21): 00:00, 06:00, 08:00, 18:00 America/New_York.
@@ -120,8 +122,10 @@ def validate(d: Any) -> list[str]:
     errs += _validate_freeze(d.get("merge_freeze"))
     errs += _validate_limits(d.get("limits"))
     errs += _validate_verification(d.get("verification_policy"))
+    if "phase" in d and d.get("phase") not in PHASES:
+        errs.append(f"phase must be one of {sorted(PHASES)} (optional)")
     known = {"schema", "delegation_id", "status", "repository", "environment", "revocation_epoch", "operator",
-             "permitted_classes", "windows", "merge_freeze", "limits", "verification_policy", "notes"}
+             "permitted_classes", "windows", "merge_freeze", "limits", "verification_policy", "notes", "phase"}
     extra = sorted(set(d) - known)
     if extra:
         errs.append(f"unknown fields {extra}")

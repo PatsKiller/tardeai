@@ -201,6 +201,45 @@ def open_window(delegation: dict, now_ts: float) -> Optional[dict]:
     return None
 
 
+POLICY_PATH = Path(__file__).resolve().parents[2] / "config" / "release_train_policy.json"
+
+
+def forced_window(delegation: dict, now_ts: float, state_dir: Path, train_id: str,
+                  *, policy_path: Optional[Path] = None) -> Optional[dict]:
+    """An operator-forced CANARY run's window (arming finding 8), else None. Checked here independently of the
+    controller: the delegation carries ``phase: canary``; the controller policy's ``canary`` block allows the slot;
+    the slot is enabled in the delegation; and ``<state>/trains/<train_id>/forced.json`` (TrainForcedRun@v1, written
+    at the claim by a host-CLI-confirmed run) names this train, ``forced_by: operator`` and
+    ``window_gate_overridden: true``. The forced window opens at the record's ``at`` and lasts the slot's duration.
+    Only the timing is replaced: every other issuance check is unchanged."""
+    if delegation.get("phase") != "canary":
+        return None
+    try:
+        pol = json.loads(Path(policy_path or POLICY_PATH).read_text(encoding="utf-8")).get("canary") or {}
+        rec = json.loads((Path(state_dir) / "trains" / str(train_id) / "forced.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, AttributeError):
+        return None
+    if pol.get("operator_forced_off_window") is not True or not isinstance(rec, dict):
+        return None
+    slot_id = str(rec.get("forced_slot"))
+    if (rec.get("schema") != "TrainForcedRun@v1" or rec.get("train_id") != train_id
+            or rec.get("forced_by") != "operator" or rec.get("window_gate_overridden") is not True
+            or slot_id not in [str(s) for s in pol.get("slots") or []]):
+        return None
+    slot = next((s for s in delegation["windows"]["slots"] if str(s.get("window_id")) == slot_id), None)
+    if not slot or not slot.get("enabled"):
+        return None
+    try:
+        start = datetime.fromisoformat(str(rec["at"]).replace("Z", "+00:00")).timestamp()
+    except (KeyError, ValueError):
+        return None
+    end = start + 60 * int(slot["duration_min"])
+    if not start <= now_ts < end:
+        return None
+    return {**slot, "window_id": slot["window_id"], "start_ts": start, "end_ts": end,
+            "forced_key": rec.get("forced_key")}
+
+
 # ── the authority ────────────────────────────────────────────────────────────────────────────────────
 
 class CapabilityAuthority:
@@ -302,7 +341,7 @@ class CapabilityAuthority:
             if errs:
                 raise CapabilityRefused("EVIDENCE_NOT_QUALIFYING", "; ".join(errs)[:400])
         now = self.clock()
-        window = open_window(d, now)
+        window = open_window(d, now) or forced_window(d, now, self.root, train_id)
         if window is None:
             raise CapabilityRefused("OUTSIDE_WINDOW", "no enabled release window is open")
         if phase == PHASE_BUILD and window.get("latest_start_et"):
