@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "data_dictionary_foundation_20261022",
+  "files": [
+    "tests/test_data_dictionary_foundation_20261022.py"
+  ],
+  "anchor": "DATA_DICTIONARY_FOUNDATION_20261022",
+  "comment": [
+    "ANCHOR: DATA_DICTIONARY_FOUNDATION_20261022 — operator 2026-10-22: one store with everything, the CIO agent",
+    "ties it together, a data dictionary that shows one source of data. The dictionary lives in the §7A registry",
+    "(config/data_source_authority.json: proposed_domains[], data_dictionary, domains[].store_presence); proposed rows",
+    "warn, granted rows fail CI on a second writer (DICTIONARY_SECOND_WRITER) or a page/API reading a derived or",
+    "retiring copy (NON_AUTHORITATIVE_READ); docs/architecture/DATA_DICTIONARY.md is rendered and cannot drift."
+  ]
+}
