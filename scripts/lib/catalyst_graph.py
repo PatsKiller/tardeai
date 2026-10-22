@@ -42,10 +42,11 @@ AUTHORITY: READ_ONLY_ADVISORY. MBI=0. No financial action.
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping
 
-from scripts.lib.event_identity import build_event, event_guid
+# period_for / QUARTERLY_TYPES moved to event_identity (2026-10-22) so light readers can share them without this
+# module's import closure; re-exported here unchanged.
+from scripts.lib.event_identity import QUARTERLY_TYPES, _as_dt, build_event, event_guid, period_for  # noqa: F401
 from scripts.lib.identity_registry import load as load_registry, lookup_symbol
 from scripts.lib.security_identity import normalize_symbol
 
@@ -59,41 +60,6 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
 SCHEMA = "CatalystEntityBinding@v1"
 TRACE_SCHEMA = "CatalystTrace@v1"
-
-# Event types whose natural lifecycle unit is a fiscal quarter. Everything else
-# is dated to the day: two analyst downgrades in one quarter are two events,
-# while two Q3 earnings reports for one issuer are a data error, not two events.
-QUARTERLY_TYPES = frozenset({
-    "earnings_beat", "earnings_miss", "earnings", "earnings_preview", "guidance",
-})
-
-
-def period_for(catalyst_type: str, when: Any) -> str | None:
-    """Lifecycle bucket for an event. None when the timestamp is unusable.
-
-    A missing period yields no event_guid at all rather than a shared placeholder,
-    which would merge unrelated events onto one node.
-    """
-    dt = _as_dt(when)
-    if dt is None:
-        return None
-    if str(catalyst_type or "").strip().lower() in QUARTERLY_TYPES:
-        return f"{dt.year}Q{(dt.month - 1) // 3 + 1}"
-    return f"{dt:%Y%m%d}"
-
-
-def _as_dt(value: Any) -> datetime | None:
-    if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
-    if not value:
-        return None
-    text = str(value).strip().replace("Z", "+00:00")
-    try:
-        dt = datetime.fromisoformat(text)
-    except ValueError:
-        return None
-    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-
 
 def bind_catalyst(row: Mapping[str, Any], registry: Mapping[str, Any]) -> dict[str, Any] | None:
     """One catalyst → one `SecurityEvent@v1` node plus its entity edge.

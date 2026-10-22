@@ -268,6 +268,9 @@ def build_setup_evidence(
         "publication_state": publication_state,
         "observation_state": observed_state,
         "freshness_bound_seconds": "NOT_MEASURED",
+        # Additive (Gate 1, 2026-10-22): WHICH store the text came from when the projection supplied it
+        # from another owner (e.g. an Active Trader row borrowing today's Trade-AI scan or Hermes research).
+        "origin": _text(row.get("catalyst_origin"), 80),
     }
     pillars = []
 
