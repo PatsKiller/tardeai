@@ -60,6 +60,8 @@ if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
 LANE_ID = "calibration-shadow-harness"
+# The caller is the n8n dispatcher (lane calibration-shadow-harness, registered in the stacked registry PR).
+SCHEDULED_ENTRYPOINT = "n8n: calibration-shadow-harness dispatcher row, weekdays 12:25 ET (stage shadow: --dry-run)"
 SCHEMA = "CalibrationShadowReport@v1"
 CONFIG_PATH = ROOT / "config" / "calibration_shadow_harness.json"
 ENGINE_YAML = ROOT / "config" / "scalp_signal_engine.yaml"
@@ -366,7 +368,8 @@ def main(argv=None) -> int:
     from lib.lane_output import emit as lane_emit, output_block
 
     n = int(rep["produced_count"])
-    empty = None if n else ("no_calibration_report" if rep["status"] != "ok" else "no_proposals")
+    # no_new_input (the closed N8nExpectedOutput enum): signal_calibration proposed nothing to test.
+    empty = None if n else ("no_calibration_report" if rep["status"] != "ok" else "no_new_input")
     block = output_block(produced=n, attempted=n, empty_reason=("dry_run" if a.dry_run else empty), unit="trial")
     if a.dry_run:
         lr.dry_run_report(LANE_ID, summary, would_write=[str(root_state / REPORT_REL),
