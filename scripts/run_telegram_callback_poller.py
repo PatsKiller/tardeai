@@ -99,6 +99,20 @@ def _token():
         return os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 
 
+def _callback_log_line(data, chat_id, outcome) -> str:
+    """One log line per callback, carrying the handler's outcome when it reports one.
+
+    Before 2026-10-22 every tap logged `callback: gapprove:<id> from chat=<id>` whatever happened, so the
+    log could not tell a granted approval from a refused, unknown or failed one.
+    """
+    line = f"callback: {data} from chat={chat_id}"
+    if isinstance(outcome, dict) and outcome.get("outcome"):
+        line += f" -> {outcome['outcome']}"
+        if outcome.get("reason"):
+            line += f" ({outcome['reason']})"
+    return line
+
+
 def _get_offset():
     try:
         return int(OFFSET_FILE.read_text().strip())
@@ -216,9 +230,9 @@ def poll_once(timeout=25):
             if chat_id in allowed:
                 try:
                     from telegram_callback_handler import handle_callback_query
-                    handle_callback_query(cb)
+                    outcome = handle_callback_query(cb)
                     processed += 1
-                    log.info(f"callback: {cb.get('data', '?')} from chat={chat_id}")
+                    log.info(_callback_log_line(cb.get("data", "?"), chat_id, outcome))
                 except Exception as e:
                     log.error(f"callback error: {e}")
             _commit_if_legacy()
@@ -869,9 +883,10 @@ def _handle_guard_approval(msg, text, chat_id):
     reason = f"{r['reason']} [remote_request_id={r['request_id']} chat={chat_id}]"
     guard_bin = Path(__file__).resolve().parent.parent / "bin" / "guard"
     if not guard_bin.is_file():
+        gra.reopen_after_grant_failure(r["request_id"], detail=f"bin/guard not found at {guard_bin}")
         _send_reply(chat_id, reply_to,
                     f"⚠️ Approved, but `bin/guard` was not found at {guard_bin}. "
-                    "Nothing granted.")
+                    "Nothing granted; the request is open again.")
         log.error(f"guard binary missing at {guard_bin}")
         return
 
@@ -883,16 +898,21 @@ def _handle_guard_approval(msg, text, chat_id):
            "--yes"]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        detail = "" if proc.returncode == 0 else \
+            f"rc={proc.returncode} {(proc.stderr or proc.stdout or '').strip()[:300]}"
     except Exception as e:                                    # noqa: BLE001
-        _send_reply(chat_id, reply_to, f"⚠️ Approved, but the grant failed: {e}")
-        log.error(f"guard grant failed: {e}")
-        return
+        detail = f"{type(e).__name__}: {e}"
 
-    if proc.returncode != 0:
-        detail = (proc.stderr or proc.stdout or "").strip()[:300]
-        _send_reply(chat_id, reply_to,
-                    f"⚠️ Approved, but the grant failed:\n`{detail}`")
-        log.error(f"guard grant rc={proc.returncode}: {detail}")
+    if detail:
+        # Settled but not granted. Re-open the request (2026-10-22) so the same code works once the
+        # cause is fixed, instead of leaving an APPROVED row with no grant behind it.
+        reopened = gra.reopen_after_grant_failure(r["request_id"], detail=detail)
+        again = (f"The request is open again: reply `/approve <CODE>` once fixed."
+                 if reopened.get("ok") else
+                 f"The request is closed ({reopened.get('reason')}); ask for a new one.")
+        _send_reply(chat_id, reply_to, f"⚠️ Approved, but the grant failed:\n`{detail}`\n{again}")
+        log.error(f"guard grant failed for request {r['request_id']}: {detail} "
+                  f"(reopened={bool(reopened.get('ok'))})")
         return
 
     mins = int(r["seconds"]) // 60
