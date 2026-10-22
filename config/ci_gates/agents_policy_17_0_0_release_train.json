@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agents_policy_17_0_0_release_train",
+  "files": [
+    "tests/test_agents_policy_17_0_0_release_train.py"
+  ],
+  "anchor": "AGENTS_POLICY_17_0_0_RELEASE_TRAIN",
+  "comment": [
+    "ANCHOR: AGENTS_POLICY_17_0_0_RELEASE_TRAIN — PROPOSED amendment (operator-applied patches, agents never edit",
+    "AGENTS.md / AI_WORK_POLICY.md), built on origin/main 4104effb9 (15.0.0 ACTIVE) plus the 16.0.0 PROPOSED patch:",
+    "agents queue and never merge, push main or train/*, or release; standing delegation; 00/06/08/18 ET windows +",
+    "merge freeze; operator-forced off-window canary runs (operator approval 2026-10-21: TTY plus phrase, canary phase",
+    "only, every other gate still enforced); STOP semantics; §17 additions; train pushes are the only automated remote",
+    "sync. RED UNTIL THE OPERATOR APPLIES the 16.0.0 and 17.0.0 patches on this branch (by design)."
+  ]
+}
