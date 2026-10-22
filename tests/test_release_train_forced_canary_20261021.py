@@ -69,9 +69,11 @@ def _forced(w, n=1, *, confirmed=True, live=True, ref="canary-proof-1", **kw):
     return c.run(OFF)
 
 
-def test_committed_policy_ships_the_flag_off_and_the_schema_knows_phase():
+def test_committed_policy_carries_the_flipped_flag_and_the_schema_knows_phase():
+    # Arming packet I.4 PR 3 flipped the flag; forced runs still need the delegation's "phase": "canary", a TTY
+    # phrase and every other gate (the refusals while the flag is false stay pinned by the tests below).
     pol = T.forced_canary_policy()
-    assert pol == {"operator_forced_off_window": False, "slots": ["1800"]}
+    assert pol == {"operator_forced_off_window": True, "slots": ["1800"]}
     schema = json.loads((ROOT / "config/schemas/release_delegation_v1.schema.json").read_text())
     assert schema["properties"]["phase"]["enum"] == ["shadow", "canary", "expand"]
     assert RD.validate({**delegation_body(), "phase": "nope"}) and RD.PHASES == {"shadow", "canary", "expand"}
