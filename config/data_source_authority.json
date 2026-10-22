@@ -3842,6 +3842,7 @@
       "writer_target": "scripts/lib/writers/watchlist_items_writer.py",
       "writer_target_status": "to_build",
       "_writer_note": "15+ writer files measured 2026-10-22. Membership changes only by the CIO curator and operator commands; everything else contributes candidates.",
+      "_in_directive_watch_note": "Field in_directive_watch has ONE writer, scripts/directive_promotion.py (_upsert_watchlist_master sets it; plan_/apply_/restore_directive_watch_flag clear and restore it with a JSONL backup, never a delete). Since 2026-10-22 it means an ACTIVE operator-created directive (created_by operator/operator_audit) matches; automated directives keep membership in their own records. Operator approval 2026-10-22, in session, verbatim: \"Yes, I agree with your recommendations.\" Doc: docs/ops/DIRECTIVE_WATCH_FLAG_2026-10-22.md.",
       "cadence": "event-driven membership; scores */15 in market hours",
       "stale_after_hours": 0.25,
       "freshness_sla": "membership event-driven; scores 15 min in market hours",
