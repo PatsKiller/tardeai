@@ -2,8 +2,11 @@
  * Symbol Intelligence dossier — watch-intelligence detail + CIO journal / queue / timeline.
  * READ_ONLY_ADVISORY. Zero new provider calls beyond existing APIs.
  */
+import { useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
+import { RADIUS } from '../lib/designTokens'
 import { BB, TYPE } from '../lib/watchTokens'
 
 function money(n?: number | null) {
@@ -119,6 +122,9 @@ export default function SymbolIntelligencePage() {
   const identity = detail.identity || {}
   const street = detail.street || card.street_consensus || {}
   const tradeAi = detail.trade_ai || {}
+  // "SET CONDITION ALERT" (WAIT) is wired to the Re-Entry pages' POST /api/v2/watch/alerts flow (2026-10-22 audit).
+  const [alertOpen, setAlertOpen] = useState(false)
+  const [alertMsg, setAlertMsg] = useState<string | null>(null)
   const cio = detail.cio_review || card.cio_review || {}
   const maria = detail.maria_review || card.maria_review || {}
   const reviews = detail.reviews || []
@@ -287,6 +293,29 @@ export default function SymbolIntelligencePage() {
             <div style={{ marginTop: 10, background: BB.bgShift, border: `1px solid ${BB.border}`, borderRadius: 10, padding: 10 }}>
               <div style={{ fontSize: TYPE.xs, color: BB.text3, fontWeight: 900, textTransform: 'uppercase' }}>Do this next</div>
               <div style={{ fontSize: TYPE.sm, color: BB.text1, marginTop: 4 }}>{card.next_operator_action || tradeAi.allowed_action_now || '—'}</div>
+              {/SET CONDITION ALERT/i.test(String(card.next_operator_action || tradeAi.allowed_action_now || '')) && !card.held && (
+                <button type="button" data-set-condition-alert={card.symbol || ''}
+                  onClick={() => { setAlertMsg(null); setAlertOpen(true) }}
+                  style={{ marginTop: 8, fontSize: TYPE.xs, fontWeight: 850, padding: '6px 10px', borderRadius: RADIUS.sm, cursor: 'pointer',
+                    border: `1px solid ${BB.border}`, background: BB.bgPanel, color: BB.text0 }}>
+                  SET CONDITION ALERT
+                </button>
+              )}
+              {alertMsg && <div style={{ fontSize: TYPE.xs, color: BB.green, marginTop: 6 }} data-alert-armed>{alertMsg}</div>}
+              {alertOpen && (
+                <ReEntryAlertArmModal
+                  symbol={String(card.symbol || '').toUpperCase()}
+                  intel={{
+                    price: card.last != null ? Number(card.last) : null,
+                    rsi: card.rsi != null ? Number(card.rsi) : null,
+                    entryLow: card.support != null && Number.isFinite(Number(card.support)) ? Number(card.support) : null,
+                    entryHigh: null,
+                  }}
+                  noteTag="watch-condition"
+                  onClose={() => setAlertOpen(false)}
+                  onArmed={(summary) => { setAlertMsg(`Armed ${summary}`); setAlertOpen(false) }}
+                />
+              )}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 7, marginTop: 10 }}>
               <Level n={card.support} l="Support" />

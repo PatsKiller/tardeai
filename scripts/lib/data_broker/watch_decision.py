@@ -334,6 +334,13 @@ def decide(card: dict[str, Any], inp: dict[str, Any], *, now: Optional[datetime]
     if status == "expired" and reentry_status and reentry_status != "invalidated":
         reentry_status = "expired"
     actionable = bool(rule.get("actionable")) and status == "active"
+    # A deterministic fail / block / avoid is never actionable for a non-held idea, whatever rule matched
+    # (2026-10-22 audit: FATN, AXTI "actionable / Set a re-entry alert" while Trade AI said NO TRADE ACTION).
+    blocked_by = None
+    no_act = {str(x).upper() for x in cfg.get("non_actionable_trade_states") or []}
+    if actionable and not fx["held"] and fx["trade_state"] in no_act:
+        actionable = False
+        blocked_by = fx["trade_state"]
     return {
         "version": DECISION_VERSION,
         "rule_id": rule.get("id"),
@@ -346,8 +353,11 @@ def decide(card: dict[str, Any], inp: dict[str, Any], *, now: Optional[datetime]
         "reentry_state": fx["reentry_state"] or None,
         "actionable": actionable,
         "action_hint": (rule.get("action") or fx["reentry_action"]) if actionable else None,
+        "actionable_blocked_by": blocked_by,
         "status": status,
         "held": fx["held"],
+        # Held names are managed, never entered: entry rules carry held:false in the standards.
+        "lane": "manage" if fx["held"] else "entry",
         "ttl_hours": ttl_h,
         "evidence_at": evidence_at.isoformat() if evidence_at else None,
         "expires_at": expires_at.isoformat() if expires_at else None,
@@ -379,8 +389,34 @@ def _csv(v: Any) -> set[str]:
 
 
 def is_live(d: dict[str, Any]) -> bool:
-    """Shown in the active views. Held positions always are — only a non-held idea's signal can age out."""
-    return d.get("status") in ("active", "needs_data") or bool(d.get("held"))
+    """A live SIGNAL: active or awaiting fresh analysis. An expired or invalidated signal is not live — held or not
+    (2026-10-22 audit: "live" counted held names whose signal had expired)."""
+    return d.get("status") in ("active", "needs_data")
+
+
+def in_view(d: dict[str, Any]) -> bool:
+    """Shown in the active views. Held positions always are (the membership never expires, only the signal);
+    an expired held name shows with its "signal expired — review" badge but is not counted live."""
+    return is_live(d) or bool(d.get("held"))
+
+
+# Every count the Watch projection returns declares one of these scopes (2026-10-22 audit: counts mixed the page,
+# the live signals and the whole universe under one unlabelled strip).
+SCOPES = {
+    "page": "the cards on the current page",
+    "matched": "every card matching the current view and filters (all pages)",
+    "live": "live signals in the watch universe (status active or needs_data; expired and invalidated excluded)",
+    "view": "what the active views list: the live signals plus every held name (an expired held name stays listed)",
+    "all": "every card in the watch universe this request built, including expired and invalidated",
+}
+
+
+def reentry_desk_counts(rows: Optional[dict[str, dict[str, Any]]] = None) -> dict[str, Any]:
+    """READY / NEAR / total on the whole re-entry desk — what the Re-Entry page shows, not just watch-universe names."""
+    rows = reentry_rows() if rows is None else rows
+    states = [str((r or {}).get("state") or "").upper() for r in rows.values()]
+    return {"ready": states.count("READY TO REVIEW"), "near": states.count("NEAR ENTRY"), "rows": len(states),
+            "source": "lib.data_broker.reentry_decision_desk", "scope": "desk"}
 
 
 def passes(d: dict[str, Any], q: dict[str, Any]) -> bool:
@@ -393,7 +429,7 @@ def passes(d: dict[str, Any], q: dict[str, Any]) -> bool:
     if st:
         if d.get("status") not in st:
             return False
-    elif not include and not (re_st & {"expired", "invalidated"}) and not is_live(d):
+    elif not include and not (re_st & {"expired", "invalidated"}) and not in_view(d):
         return False
     if _csv(q.get("category")) and d.get("category") not in _csv(q.get("category")):
         return False
@@ -447,8 +483,12 @@ def _compact(c: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def board(cards: list[dict[str, Any]], *, now: Optional[datetime] = None) -> dict[str, Any]:
-    """The six at-a-glance answers over the whole matched universe (not just the page)."""
+def board(cards: list[dict[str, Any]], *, now: Optional[datetime] = None,
+          desk: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """The six at-a-glance answers over the live signals of the whole universe (not just the page).
+
+    Every count declares its scope (SCOPES). ``desk`` is the re-entry desk's own READY/NEAR/rows count
+    (reentry_desk_counts); when given, the re-entry panel carries it so the tile and the Re-Entry page agree."""
     now = now or datetime.now(timezone.utc)
     b = load_config().get("board") or {}
     n = int(b.get("panel_size") or 6)
@@ -462,36 +502,49 @@ def board(cards: list[dict[str, Any]], *, now: Optional[datetime] = None) -> dic
         return [_compact(c) for c in sorted(rows, key=lambda c: (-(_f(d(c).get(k)) or 0),
                                                               -(_f(d(c).get("priority_score")) or 0)))[:n]]
 
+    attention = [c for c in live if d(c).get("actionable")]
+    # Highest reward: an expired or needs-data signal has no current reward — only active signals count.
+    reward = [c for c in live if d(c).get("status") == "active" and (d(c).get("reward_score") or 0) >= rmin]
+    reentry = [c for c in live if d(c).get("reentry_status") in ("confirmed", "potential")]
+    risk = [c for c in live if d(c).get("category") == "risk" or (d(c).get("risk_score") or 0) >= kmin]
+    expiring = [c for c in live if (d(c).get("ttl_remaining_s") or exp_s + 1) <= exp_s]
+    recently = [c for c in attention if (_ts(d(c).get("evidence_at")) or recent) > recent]
+    reentry_panel: dict[str, Any] = {
+        "label": "Re-entry — watch names (confirmed + potential)", "count": len(reentry), "scope": "live",
+        "items": top(reentry, "priority_score")}
+    if desk is not None:
+        reentry_panel["desk"] = desk
+        reentry_panel["note"] = (f"re-entry desk: {desk.get('ready', 0)} READY + {desk.get('near', 0)} NEAR "
+                                 f"of {desk.get('rows', 0)} rows; the tile counts only names on the Watch list")
     panels = {
-        "attention": {"label": "Needs attention now", "count": sum(1 for c in live if d(c).get("actionable")),
-                      "items": top([c for c in live if d(c).get("actionable")], "priority_score")},
-        "reward": {"label": "Highest reward", "count": sum(1 for c in live if (d(c).get("reward_score") or 0) >= rmin),
-                   "items": top([c for c in live if (d(c).get("reward_score") or 0) >= rmin], "reward_score")},
-        "reentry": {"label": "Top re-entry candidates",
-                    "count": sum(1 for c in live if d(c).get("reentry_status") in ("confirmed", "potential")),
-                    "items": top([c for c in live if d(c).get("reentry_status") in ("confirmed", "potential")],
-                                 "priority_score")},
-        "risk": {"label": "Highest risk",
-                 "count": sum(1 for c in live if d(c).get("category") == "risk" or (d(c).get("risk_score") or 0) >= kmin),
-                 "items": top([c for c in live if d(c).get("category") == "risk" or (d(c).get("risk_score") or 0) >= kmin],
-                              "risk_score")},
-        "expiring": {"label": "Expiring soon",
-                     "count": sum(1 for c in live if (d(c).get("ttl_remaining_s") or exp_s + 1) <= exp_s),
-                     "items": [_compact(c) for c in sorted(
-                         [c for c in live if (d(c).get("ttl_remaining_s") or exp_s + 1) <= exp_s],
-                         key=lambda c: d(c).get("ttl_remaining_s") or 0)[:n]]},
-        "recent": {"label": "Recently actionable",
-                   "count": sum(1 for c in live if d(c).get("actionable") and (_ts(d(c).get("evidence_at")) or recent) > recent),
-                   "items": [_compact(c) for c in sorted(
-                       [c for c in live if d(c).get("actionable") and (_ts(d(c).get("evidence_at")) or recent) > recent],
-                       key=lambda c: str(d(c).get("evidence_at") or ""), reverse=True)[:n]]},
+        "attention": {"label": "Needs attention now", "count": len(attention), "scope": "live",
+                      "items": top(attention, "priority_score")},
+        "reward": {"label": "Highest reward", "count": len(reward), "scope": "live", "status_in": ["active"],
+                   "items": top(reward, "reward_score")},
+        "reentry": reentry_panel,
+        "risk": {"label": "Highest risk", "count": len(risk), "scope": "live", "items": top(risk, "risk_score")},
+        "expiring": {"label": "Expiring soon", "count": len(expiring), "scope": "live",
+                     "items": [_compact(c) for c in sorted(expiring, key=lambda c: d(c).get("ttl_remaining_s") or 0)[:n]]},
+        "recent": {"label": "Recently actionable", "count": len(recently), "scope": "live",
+                   "items": [_compact(c) for c in sorted(recently, key=lambda c: str(d(c).get("evidence_at") or ""),
+                                                         reverse=True)[:n]]},
     }
-    facets: dict[str, dict[str, int]] = {"category": {}, "priority": {}, "status": {}, "reentry_status": {}}
-    for c in cards:
-        for k in facets:
-            v = d(c).get(k)
-            if v:
-                facets[k][v] = facets[k].get(v, 0) + 1
-    return {"version": DECISION_VERSION, "panels": panels, "live": len(live),
-            "actionable": sum(1 for c in live if d(c).get("actionable")), "facets": facets,
+
+    def facet(rows):
+        out: dict[str, dict[str, int]] = {"category": {}, "priority": {}, "status": {}, "reentry_status": {}}
+        for c in rows:
+            for k in out:
+                v = d(c).get(k)
+                if v:
+                    out[k][v] = out[k].get(v, 0) + 1
+        return out
+
+    return {"version": DECISION_VERSION, "panels": panels,
+            "live": len(live), "in_view": sum(1 for c in cards if in_view(d(c))), "all": len(cards),
+            "actionable": len(attention),
+            "facets": facet(cards), "facets_scope": "all",
+            "facets_live": facet(live),
+            "count_scopes": {"live": "live", "in_view": "view", "all": "all", "actionable": "live",
+                             "facets": "all", "facets_live": "live"},
+            "scopes": SCOPES,
             "categories": categories(), "sorts": list(SORTS)}

@@ -82,41 +82,211 @@ def membership_screener() -> set[str]:
     return out
 
 
-def membership_held() -> tuple[set[str], str]:
-    """Return (held symbols, source label). Prefer portfolio_snapshot broker."""
+# ── Held positions — one source for every Watch layer (2026-10-22 Watch audit) ─────────────────────────────
+#
+# Before: three readers disagreed. membership_held() asked portfolio_snapshot for "holdings" — a key that projection
+# never carries — so it recomputed (and, on a cache miss, wrote) the snapshot on every call and then fell back to
+# holdings.json anyway, labelled "fallback:holdings.json". watchlist_intelligence and rockville.live_projection each
+# read holdings.json themselves, and live_projection also trusted a decision packet's own ownership flag however
+# old the packet was. Delisted Schwab rows carry a bare CUSIP as the symbol (12507E201, 543354104, 628518102), so
+# the "Held" count (23) never matched the held cards (20).
+#
+# Now: held_positions() is the one reader, with an explicit freshness verdict and CUSIP rows resolved through the
+# identity registry (or reported as unresolved, never counted as a held card).
+#   1. positions_store (positions_current, broker-synced) — ONLY when config/watch_decision_standards.yaml
+#      held.positions_store_reader is true. The registry (config/data_source_authority.json, domain positions_store)
+#      says that store has no reader until the operator approves a phase-3 reader batch (AGENTS.md §7A, §17), so
+#      the switch ships OFF and flipping it is the operator's grant. When on and fresh (the positions_sync freshness
+#      contract: 30 min in session, 72 h closed) it wins; when stale the verdict says so and step 2 serves.
+#   2. holdings_accounts (holdings.json through lib/portfolio_positions.load_store, the approved accessor), with
+#      its own freshness (holdings_stale_after_hours, default 24 = the registry's stale_after_hours).
+
+HELD_CACHE_S = 60
+_held_cache: dict[str, Any] = {"at": 0.0, "val": None}
+_NOT_POSITIONS = ("CASH", "SPAXX", "FDRXX")
+
+
+def looks_like_cusip(sym: str) -> bool:
+    s = str(sym or "").strip().upper()
+    return len(s) == 9 and s.isalnum() and not s.isalpha() and any(c.isdigit() for c in s)
+
+
+def _held_cfg() -> dict[str, Any]:
     try:
-        from lib.data_broker.portfolio_snapshot import get_portfolio_snapshot
-        snap = get_portfolio_snapshot(max_age_s=120) or {}
-        holdings = snap.get("holdings") or snap.get("positions") or []
-        if not holdings and isinstance(snap.get("data"), dict):
-            holdings = snap["data"].get("holdings") or []
-        held = set()
-        for h in holdings:
-            if not isinstance(h, dict) or h.get("is_cash"):
-                continue
-            s = str(h.get("symbol") or "").upper()
-            if not s:
-                continue
-            if float(h.get("quantity") or h.get("shares") or 0) > 0 or float(h.get("market_value") or 0) > 0:
-                held.add(s)
-        if held:
-            return held, "data_broker.portfolio_snapshot"
+        import yaml
+        raw = yaml.safe_load((PROJECT_ROOT / "config" / "watch_decision_standards.yaml").read_text(encoding="utf-8"))
+        return dict((raw or {}).get("held") or {})
     except Exception:
-        pass
-    # Explicit fallback — file path documented
+        return {}
+
+
+def resolve_cusip_symbols(cusips, registry: dict | None = None) -> dict[str, str]:
+    """CUSIP → ticker via the identity registry: an entity whose identifiers carry the CUSIP (or that lists it as
+    an alias) AND carries a non-CUSIP ticker alias. A CUSIP with no such entity is left out (reported unresolved)."""
+    want = {str(c).strip().upper() for c in cusips if c}
+    if not want:
+        return {}
     try:
-        path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
-        data = json.loads(path.read_text(encoding="utf-8"))
-        held = set()
-        for h in data.get("holdings") or []:
-            if h.get("is_cash"):
-                continue
-            s = str(h.get("symbol") or "").upper()
-            if s and (float(h.get("quantity") or h.get("shares") or 0) > 0 or float(h.get("market_value") or 0) > 0):
-                held.add(s)
-        return held, "fallback:holdings.json"
+        if registry is None:
+            from lib import identity_registry as R
+            registry = R.load_cached()
+        entities = (registry or {}).get("entities") or {}
+    except Exception:
+        return {}
+    out: dict[str, str] = {}
+    for ent in entities.values():
+        if not isinstance(ent, dict) or ent.get("active") is False:
+            continue
+        ids = {str(v).strip().upper() for v in (ent.get("identifiers") or {}).values() if v}
+        aliases = [str(a).strip().upper() for a in (ent.get("aliases") or []) if a]
+        hit = want & (ids | set(aliases))
+        if not hit:
+            continue
+        ticker = next((a for a in [str(ent.get("ticker_alias") or "").upper(), *aliases]
+                       if a and not looks_like_cusip(a)), None)
+        if ticker:
+            for c in hit:
+                out.setdefault(c, ticker)
+    return out
+
+
+def _positions_store_rows(db_query) -> tuple[list[dict], Any]:
+    """positions_current rows of the latest promoted complete sync run, plus that run's finish time."""
+    rows = db_query(
+        """SELECT upper(pc.symbol) AS symbol, pc.qty, pc.is_cash, pc.as_of, runs.finished_at
+             FROM positions_current pc
+             JOIN positions_sync_runs runs ON runs.run_id = pc.sync_run_id
+            WHERE runs.promoted AND runs.status = 'complete'"""
+    ) or []
+    out = [dict(r) if hasattr(r, "keys") else {"symbol": r[0], "qty": r[1], "is_cash": r[2], "as_of": r[3],
+                                                 "finished_at": r[4]} for r in rows]
+    last = max((r.get("finished_at") for r in out if r.get("finished_at")), default=None)
+    return out, last
+
+
+def _as_dt(v: Any) -> datetime | None:
+    if v is None or v == "":
+        return None
+    if isinstance(v, datetime):
+        return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+    try:
+        d = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def _store_freshness(last: Any, now: datetime) -> dict[str, Any]:
+    """The positions store's own freshness contract (scripts/positions_sync.py freshness())."""
+    last_dt = _as_dt(last)
+    try:
+        import positions_sync as ps
+        return ps.freshness(last_dt, ps.load_sync_config(), now=now)
+    except Exception:
+        age = None if last_dt is None else (now - last_dt).total_seconds()
+        return {"last_complete": last_dt.isoformat() if last_dt else None, "age_s": age, "limit_s": 1800,
+                "stale": age is None or age > 1800}
+
+
+def _holdings_rows(holdings_path: Path | None) -> tuple[list[dict], Any]:
+    """holdings.json through lib/portfolio_positions.load_store (the approved holdings_accounts accessor)."""
+    doc: dict = {}
+    try:
+        from lib import portfolio_positions as pp
+        doc = pp.load_store(holdings_path) or {}
+    except Exception:
+        try:
+            p = holdings_path or PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+            doc = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            doc = {}
+    rows = [{"symbol": str(h.get("symbol") or "").upper(), "qty": h.get("shares", h.get("quantity")),
+             "market_value": h.get("market_value"), "is_cash": bool(h.get("is_cash"))}
+            for h in (doc.get("holdings") or []) if isinstance(h, dict)]
+    return rows, doc.get("updated_at") or doc.get("as_of") or doc.get("data_as_of")
+
+
+def _num(v: Any) -> float:
+    try:
+        return float(v or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def held_positions(*, db_query=None, holdings_path: Path | None = None, registry: dict | None = None,
+                   now: datetime | None = None, cfg: dict | None = None) -> dict[str, Any]:
+    """{symbols, source, as_of, age_s, stale_after_s, stale, resolved, unresolved, fallback_reason} — the one held
+    reader (see the block comment above). Cached HELD_CACHE_S seconds when called with no injected inputs."""
+    import time as _time
+    injected = any(x is not None for x in (db_query, holdings_path, registry, now, cfg))
+    if not injected:
+        hit = _held_cache.get("val")
+        if hit is not None and _time.monotonic() - _held_cache["at"] < HELD_CACHE_S:
+            return hit
+    now = now or _now()
+    cfg = _held_cfg() if cfg is None else cfg
+    fallback_reason = None
+    raw: list[dict] = []
+    source, as_of = "unavailable", None
+    fresh: dict[str, Any] = {"stale": True, "age_s": None, "limit_s": None}
+    if cfg.get("positions_store_reader"):
+        try:
+            rows, last = _positions_store_rows(db_query or _db_query)
+            fresh = _store_freshness(last, now)
+            if rows and not fresh.get("stale"):
+                raw, source, as_of = rows, "positions_store.positions_current", fresh.get("last_complete")
+            else:
+                fallback_reason = "positions_store_stale" if rows else "positions_store_empty"
+        except Exception as e:
+            fallback_reason = f"positions_store_error:{type(e).__name__}"
+    if not raw:
+        rows, stamp = _holdings_rows(holdings_path)
+        if rows:
+            raw, source, as_of = rows, "holdings_accounts.holdings_json", stamp
+            t = _as_dt(stamp)
+            age = None if t is None else (now - t).total_seconds()
+            limit = float(cfg.get("holdings_stale_after_hours") or 24) * 3600
+            fresh = {"age_s": age, "limit_s": limit, "stale": age is None or age > limit}
+    held_raw: set[str] = set()
+    for r in raw:
+        sym = str(r.get("symbol") or "").upper().strip()
+        if not sym or r.get("is_cash") or sym in _NOT_POSITIONS:
+            continue
+        if _num(r.get("qty")) > 0 or _num(r.get("market_value")) > 0:
+            held_raw.add(sym)
+    cusips = {s for s in held_raw if looks_like_cusip(s)}
+    resolved = resolve_cusip_symbols(cusips, registry) if cusips else {}
+    out = {
+        "symbols": (held_raw - cusips) | set(resolved.values()),
+        "source": source,
+        "as_of": as_of.isoformat() if hasattr(as_of, "isoformat") else as_of,
+        "age_s": fresh.get("age_s"),
+        "stale_after_s": fresh.get("limit_s"),
+        "stale": bool(fresh.get("stale")),
+        "resolved": resolved,
+        "unresolved": sorted(cusips - set(resolved)),
+        "fallback_reason": fallback_reason,
+        "positions_store_reader": bool(cfg.get("positions_store_reader")),
+    }
+    if not injected:
+        _held_cache.update(at=_time.monotonic(), val=out)
+    return out
+
+
+def held_detail_public(h: dict[str, Any] | None = None) -> dict[str, Any]:
+    """JSON-safe held verdict for payloads (symbols as a count, never a list of positions sizes)."""
+    h = h if h is not None else held_positions()
+    return {k: (len(v) if k == "symbols" else v) for k, v in h.items()} | {"count": len(h.get("symbols") or ())}
+
+
+def membership_held() -> tuple[set[str], str]:
+    """Return (held symbols, source label) from held_positions() — the one held reader for every Watch layer."""
+    try:
+        h = held_positions()
     except Exception:
         return set(), "unavailable"
+    label = h["source"] + (":stale" if h.get("stale") and h["source"] != "unavailable" else "")
+    return set(h["symbols"]), label
 
 
 def saved_lists_canonical() -> list[dict[str, Any]]:

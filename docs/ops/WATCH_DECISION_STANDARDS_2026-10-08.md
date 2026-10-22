@@ -72,3 +72,33 @@ as Communications. The label never falls below the rule's base priority and rise
 
 122 of 188 symbols having no plan, synthesis or review inside the window is the main finding. The pipeline is not
 producing evidence for most of the watchlist. The page now says so instead of showing every name as equally live.
+
+## Accuracy fixes (2026-10-22 Watch audit)
+
+A read-only audit of the Watch page found nine defects. Each is fixed and has a test in
+`tests/test_watch_accuracy_20261022.py` (gate `watch_accuracy_20261022`).
+
+| # | Defect | Fix |
+|---|---|---|
+| 1 | Held names (RTX, NVDA, CSWC, LDOS, BAH) got "High conviction / Review entry" while Trade AI said MANAGING | Every entry rule (`proposal_ready`, `plan_ready_strong`, `plan_ready`, `near_trigger`, `plan_near`) now has `held: false`. A held name falls through to `held_watch` (Held Position, manage lane). The decision carries `lane: manage \| entry`. |
+| 2 | FATN and AXTI showed "actionable / Set a re-entry alert" while Trade AI said DETERMINISTIC_FAIL / NO TRADE ACTION | `non_actionable_trade_states: [DETERMINISTIC_FAIL, BLOCKED, AVOID]`. A non-held idea in one of these states is never actionable, whatever rule matched. `actionable_blocked_by` names the state. Held risk reviews (`held_blocked`) are unchanged. |
+| 3 | Held came from three readers. `membership_held` asked `portfolio_snapshot` for a `holdings` key that projection never has, so it fell back to holdings.json on every call. Three delisted CUSIP rows made Held 23 against 20 held cards. | `watch_domains.held_positions()` is now the one reader. `membership_held`, `watchlist_intelligence._held_set` and `rockville.live_projection` all use it. It returns an explicit freshness verdict (`source`, `as_of`, `age_s`, `stale`). It resolves CUSIP rows through the identity registry; a CUSIP with no ticker in the registry is reported in `unresolved` and never counted as a held card. The payload has `counts.held_cards`, `counts.held_unresolved` and `source_status.held`. |
+| 4 | DT showed MANAGING from a 2026-10-11 packet after the position was gone | Current holdings decide ownership (`project_watch_decision(current_held=…)`). A packet's own ownership flag counts only when holdings cannot be read, and only while the packet is inside its TTL (`freshness.valid_until`, else `generated_at` + 12 h). The decision carries `packet_freshness`. |
+| 5 | "live" counted held names whose signal had expired, and the counts mixed scopes | `is_live()` means status active or needs_data. `in_view()` is live plus every held name, so expired held names stay listed but are not counted live. Every count declares its scope: `counts.scopes`, `count_scopes`, `scope_definitions`, `decision_board.panels[*].scope` and `facets_scope`. The scopes are `page`, `matched`, `live`, `view` and `all`. `facets_live` sits next to `facets` (scope all). The UI prints the scope under each number. |
+| 6 | "Highest reward" counted expired and needs-data cards | The reward panel counts only `status == active`. |
+| 7 | The Re-entry tile counted 3 watch names while the re-entry desk had 1 READY + 15 NEAR of 92 rows | The tile is labelled "Re-entry (watch names)" and carries `desk: {ready, near, rows}` from `reentry_desk_counts()`, printed under the number. |
+| 8 | POST `/api/v2/pullback-macd/dismiss` was registered twice in `scripts/api_v2.py` | The unreachable second registration was removed. The first (200/400) handles every call, so behaviour is unchanged. A test fails on any exact duplicate route line. |
+| 9 | WAIT cards said "SET CONDITION ALERT" with no button | The Watch cards and the symbol page now have a SET CONDITION ALERT button. It opens the Re-Entry pages' `ReEntryAlertArmModal`, which POSTs to `/api/v2/watch/alerts`, with the note tagged `watch-condition`. It is advisory only and never places an order. |
+
+**The positions_current switch is an operator grant.** `held.positions_store_reader` in
+`config/watch_decision_standards.yaml` ships `false`. The registry (`config/data_source_authority.json`, domain
+`positions_store`) says the store has no reader until the operator approves a phase-3 reader batch (AGENTS.md
+§7A, §17). With the switch on, a fresh `positions_current` wins. Fresh means the `positions_sync` contract: 30 min
+in session, 72 h when closed. A stale store falls back to holdings.json with `fallback_reason`.
+
+A read-only check on 2026-10-22 ~11:50 ET found the two sources agree. `positions_current` was fresh at 11.5 min
+old. It held the same 20 names as holdings.json, with the same 3 unresolved CUSIPs.
+
+**Measured, not changed:** 1,794 of 1,841 live decision packets are past their TTL. This PR stops a stale packet
+from setting **ownership**. It does not turn every past-TTL packet into STALE, because that would relabel about 97%
+of the Watch cards at once. That decision is the operator's (see the PR).

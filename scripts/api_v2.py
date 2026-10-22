@@ -55990,11 +55990,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 
-    if method == "POST" and base_path == "/api/v2/pullback-macd/dismiss":
-        try:
-            return 200, _pullback_macd_dismiss(body if isinstance(body, dict) else {})
-        except Exception as e:
-            return 500, {"ok": False, "error": str(e)[:200]}
+    # POST /api/v2/pullback-macd/dismiss is handled once, above (the 200/400 branch beside /api/v2/watch/alerts).
+    # A second registration here was unreachable dead code (2026-10-22 Watch audit) and was removed.
 
     if method == "POST" and base_path in (
         "/api/v2/options/proposal/prepare",
