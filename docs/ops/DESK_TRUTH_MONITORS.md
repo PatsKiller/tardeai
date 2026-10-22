@@ -23,7 +23,9 @@ Tests:       tests/test_n8n_desk_truth_20261022.py (gate n8n_desk_truth_20261022
 
 "n8n first" here means: schedule and watch through n8n dispatcher lanes (relay → gateway `coordination/run` →
 host executor, allowlist, registry row, health contract), shadow stage first. The host keeps every credential and
-every authority. No crontab line is added or re-enabled.
+every authority. No crontab line is added or re-enabled by these PRs. The holdings writer's own cron line is
+resumed separately by the operator's cron resume packet, because broker read-only lanes on n8n wait for
+AGENTS.md 18.0.0 (§5).
 
 ## 1. The three monitors — `scripts/desk_truth_monitor.py`
 
@@ -146,7 +148,23 @@ python3 scripts/options_thesis_reopen.py --guid f327c7ac-a016-59d6-9bc0-d6740e00
 | lane | stage in this branch | why |
 |---|---|---|
 | `holdings-drift-monitor`, `options-desk-staleness-monitor`, `held-exit-coverage-monitor` | registry row + allowlist + DRAFT contract in the follow-up registry PR | a new lane's contract must be REVIEWED by its owner (`check_n8n_health_contracts` fails a DRAFT that is not grandfathered) |
-| `options-desk-quote-refresh` | staged inert (dispatch off) in the registry PR | its reach is the Schwab transport: the forbidden-token / broker-module gates refuse it (§23.14 / §23.20 (a)); admission is an operator decision |
-| `schwab-position-sync` | registry row PAUSED (truth) + `f09_staged` record in this PR | `schwab`, `schwab_position_sync.py` are forbidden tokens; the §23.25 gate alignment (2026-10-16) kept broker markers refused; same decision as PR #1795's read/sync lanes |
+| `options-desk-quote-refresh` | staged inert (scheduler kind none) in the registry PR, **gated on AGENTS.md 18.0.0 ACTIVE** | its reach is the Schwab transport: the broker-module reach gates refuse it (§23.14 / §23.20 (a)) |
+| `schwab-position-sync` | registry row PAUSED (truth) + `f09_staged` record, **gated on AGENTS.md 18.0.0 ACTIVE** | `schwab` and `schwab_position_sync.py` are forbidden tokens, and broker-read lanes are on the §23 n8n never-list |
 
-The crontab line 501 stays commented. A re-enabled cron line is not the plan, and adding a cron line is §17.
+**Broker READ-ONLY lanes wait for AGENTS.md 18.0.0.** The operator directed an amendment on 2026-10-22 (coordinator
+context), and it is not yet ratified. It would let n8n schedule broker read-only lanes under read_only mode, the
+trading lock LOCKED, and a read-only allowlist. Until 18.0.0 is ACTIVE:
+
+- The holdings writer stays a host cron line. The operator's cron resume packet re-enables line 501 and flips the
+  registry row back to ACTIVE in the same change (§9.3). This PR does neither.
+- Both staged lanes stay inert.
+- Nothing here weakens the forbidden-token check: `pipeline_manifest.FORBIDDEN_COMMAND_TOKENS` and
+  `lane_dispatch.EXTRA_FORBIDDEN_WORDS` are unchanged. `test_holdings_writer_n8n_lane_is_gated_on_18_0_0_and_still_refused`
+  pins that a dispatch block on the row is still refused.
+
+After 18.0.0, the n8n lane follows §23.21 / §23.12:
+
+1. Shadow and canary run with the resumed cron line live, under the shared lock `/tmp/schwab_pos_sync.lock`.
+2. Then a cutover under a cron grant comments the line.
+
+The monitors call no broker and are n8n lanes now.
