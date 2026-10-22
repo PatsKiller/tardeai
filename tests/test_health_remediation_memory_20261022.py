@@ -7,6 +7,7 @@ credential-health banner ran a live Finviz probe per poll. These tests pin the f
 read that returns the same newest-50 rows and 24h stats as the old full parse, a single-flight
 cache, a cached Finviz verdict, and no sys.path growth.
 """
+
 from __future__ import annotations
 
 import builtins

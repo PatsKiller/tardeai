@@ -41996,8 +41996,9 @@ def _health_remediation_ts(value):
     return dt
 
 
-def _health_remediation_tail_rows(path, build, cutoff, min_rows=_HEALTH_REMEDIATION_NEWEST,
-                                  chunk_bytes=None, max_bytes=None):
+def _health_remediation_tail_rows(
+    path, build, cutoff, min_rows=_HEALTH_REMEDIATION_NEWEST, chunk_bytes=None, max_bytes=None
+):
     """Read a JSONL file backwards in bounded chunks and return (rows, truncated, bytes_read).
 
     ``build(entry) -> dict`` maps one parsed line to a remediation row (with "timestamp").
@@ -42208,7 +42209,10 @@ def _health_remediation():
     with _HEALTH_REMEDIATION_LOCK:
         now_m = _time.monotonic()
         paths = _HEALTH_REMEDIATION_CACHE.get("paths")
-        if paths is None or now_m - float(_HEALTH_REMEDIATION_CACHE.get("paths_ts") or 0.0) >= _HEALTH_REMEDIATION_CACHE_TTL_S:
+        if (
+            paths is None
+            or now_m - float(_HEALTH_REMEDIATION_CACHE.get("paths_ts") or 0.0) >= _HEALTH_REMEDIATION_CACHE_TTL_S
+        ):
             # Candidate discovery (RuntimeAwareness, release dir scan) is itself refreshed per TTL.
             paths = _health_remediation_paths()
             _HEALTH_REMEDIATION_CACHE.update(paths=paths, paths_ts=now_m)
@@ -44362,7 +44366,10 @@ def _finviz_credential_health(query=None):
 
     def _fresh():
         cached = _FINVIZ_CRED_HEALTH_CACHE.get("result")
-        if cached is not None and _time.monotonic() - float(_FINVIZ_CRED_HEALTH_CACHE.get("ts") or 0.0) < _FINVIZ_CRED_HEALTH_TTL_S:
+        if (
+            cached is not None
+            and _time.monotonic() - float(_FINVIZ_CRED_HEALTH_CACHE.get("ts") or 0.0) < _FINVIZ_CRED_HEALTH_TTL_S
+        ):
             return cached
         return None
 
