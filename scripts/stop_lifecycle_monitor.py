@@ -284,8 +284,12 @@ def _classify(stop: dict, held: dict | None) -> dict:
         lifecycle = "working"
 
     # health
+    # Proximity only means "about to fire" for a stop that can still fire. A filled, cancelled or replaced stop with
+    # the price below it is history, not an imminent trigger (2026-10-22: SPCX stops filled/replaced earlier were
+    # paged as "NEAR TRIGGER — about to fire" because the price had since dropped under their old stop prices).
+    _can_fire = lifecycle not in ("filled", "cancelled")
     if "orphaned" in flags or "oversized" in flags or "filled" in flags or \
-            (proximity_pct is not None and proximity_pct <= _NEAR_ALERT_PCT):
+            (_can_fire and proximity_pct is not None and proximity_pct <= _NEAR_ALERT_PCT):
         health = "alert"
     elif "partial" in flags or lifecycle == "near_trigger":
         health = "warn"

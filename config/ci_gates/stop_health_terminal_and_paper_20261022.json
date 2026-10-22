@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "stop_health_terminal_and_paper_20261022",
+  "files": [
+    "tests/test_stop_health_terminal_and_paper_20261022.py"
+  ],
+  "comment": [
+    "2026-10-22 operator false positive: filled/replaced stops paged as NEAR TRIGGER; Alpaca paper stops read as real holdings."
+  ]
+}
