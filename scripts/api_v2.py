@@ -54587,6 +54587,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, _dbw.get_catalog()
             if p == "watch-intelligence":
                 return 200, _dbw.get_list(query or {})
+            if p == "watch-prospects":
+                return 200, _dbw.get_prospects(query or {})
             if p == "watch-filters":
                 return 200, _dbw.get_filters()
             if p == "watch-lists":
