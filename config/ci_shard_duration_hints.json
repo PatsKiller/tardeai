@@ -1177,6 +1177,7 @@
   "tests/test_tiered_validation_20260916.py": 1.1,
   "tests/test_tiered_validation_wiring.py": 1.0,
   "tests/test_tmp_hygiene_20261019.py": 1.7,
+  "tests/test_tmp_hygiene_auto_apply_20261022.py": 3.2,
   "tests/test_tmp_scratch_cleanup_20261013.py": 0.8,
   "tests/test_trade_ai_scalp_5min_20261009.py": 2.0,
   "tests/test_trading_lock_20261014.py": 2.9,
