@@ -111,6 +111,77 @@ IDENTITY_PREFIX = "incident-notifier:"
 
 Sender = Callable[..., dict]  # send_system(text, *, identity, kind) -> record
 Previewer = Callable[..., dict]  # preview_send(text, *, identity, kind) -> plan
+EmailSender = Callable[..., dict]  # (subject, body, *, identity) -> {ok, gateway_mode, event_id, error}
+
+# Email mirror (operator 2026-10-21 "email yes"): config/comms_email_mirror.json names the comms-intent kinds whose
+# P2 incidents ALSO go to email when the Telegram message carrying them is SENT. Email goes only through the
+# communications gateway (send_via_gateway channel "email"); this module never opens a mail connection or reads a
+# recipient.
+EMAIL_MIRROR_PATH = Path(__file__).resolve().parents[1] / "config" / "comms_email_mirror.json"
+EMAIL_MIRROR_SCHEMA = "CommsEmailMirror@v1"
+COMMS_INTENT_SOURCE = "n8n_comms_intent"  # scripts/lib/n8n_comms_intent_consumption.INTENT_SOURCE (pinned by a test)
+
+
+def load_email_mirror(path: Optional[Path] = None) -> dict[str, Any]:
+    """{"prefixes": ("domain.kind:", ...), "severities": {...}, "status": ...}. Fail-soft: an absent or invalid file
+    mirrors nothing (Telegram is unchanged either way)."""
+    p = path or EMAIL_MIRROR_PATH
+    empty: dict[str, Any] = {"prefixes": (), "severities": frozenset(), "status": "absent"}
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return empty
+    except (OSError, ValueError):
+        return {**empty, "status": "unreadable"}
+    if not isinstance(doc, dict) or doc.get("schema") != EMAIL_MIRROR_SCHEMA or doc.get("source") != COMMS_INTENT_SOURCE:
+        return {**empty, "status": "invalid"}
+    sevs = frozenset(s for s in (doc.get("severities") or []) if s in ("P2", "P3"))  # P1 is never mirrored
+    prefixes = tuple(
+        f"{r['domain']}.{r['kind']}:"
+        for r in (doc.get("routes") or [])
+        if isinstance(r, dict) and r.get("channel") == "email" and r.get("domain") and r.get("kind")
+    )
+    return {"prefixes": prefixes, "severities": sevs, "status": "ok"}
+
+
+def email_mirror_incidents(incidents: list[dict], mirror: dict[str, Any]) -> list[dict]:
+    """The incidents of one message that the mirror sends to email. Pure."""
+    prefixes = tuple(mirror.get("prefixes") or ())
+    if not prefixes:
+        return []
+    return [
+        i
+        for i in incidents
+        if i.get("source") == COMMS_INTENT_SOURCE
+        and i.get("severity") in mirror.get("severities", ())
+        and str(i.get("item") or "").startswith(prefixes)
+    ]
+
+
+def _default_email_sender() -> EmailSender:
+    def send(subject: str, body: str, *, identity: str) -> dict:
+        from scripts.lib.comms.channel_adapters import send_via_gateway
+
+        gw = send_via_gateway(
+            "email",
+            body=body,
+            subject=subject,
+            producer="incident_notifier",
+            subject_key=f"{identity}:email",
+            event_type="release_train_digest_email",
+            message_class="ops",
+            retention_class="operational_30d",
+            deliver=True,
+            severity="info",
+        )
+        return {
+            "ok": bool(gw.get("delivered")),
+            "gateway_mode": gw.get("gateway_mode"),
+            "event_id": gw.get("event_id"),
+            "error": gw.get("error"),
+        }
+
+    return send
 
 
 def _hhmm(text: str) -> Optional[int]:
@@ -738,6 +809,8 @@ def run(
     sender: Optional[Sender] = None,
     previewer: Optional[Previewer] = None,
     ledger_path: Optional[Path] = None,
+    email_sender: Optional[EmailSender] = None,
+    email_mirror_path: Optional[Path] = None,
 ) -> dict[str, Any]:
     root = root or state_root(env)
     now = now or datetime.now(timezone.utc)
@@ -822,6 +895,12 @@ def run(
     receipt["p2_batch"] = batch
     send = sender if sender is not None else (_default_sender() if live else None)
     preview = previewer if previewer is not None else (None if live else _default_previewer())
+    # Email mirror: the production gateway sender only on the production path (no injected Telegram sender), so a
+    # test that injects a sender never reaches the gateway unless it injects an email sender too.
+    mirror = load_email_mirror(email_mirror_path)
+    mail_out = email_sender if email_sender is not None else (
+        _default_email_sender() if live and sender is None else None)
+    receipt["email_mirror"] = {"config": mirror["status"], "sent": 0, "failed": 0, "would": 0}
     failed = False
     for m in msgs:
         row = {k: m[k] for k in ("kind", "severity", "identity", "incident_keys")}
@@ -842,6 +921,10 @@ def run(
                 plan = {"would_send": False, "reason": f"preview_failed:{type(exc).__name__}"}
             row["status"] = "DRY_RUN"
             row["preview"] = {k: plan.get(k) for k in ("would_send", "reason", "transport_gate") if k in plan}
+            mirrored = email_mirror_incidents(m.get("incidents") or [], mirror)
+            if mirrored:
+                row["email_mirror"] = {"would_email": len(mirrored)}
+                receipt["email_mirror"]["would"] += 1
             if p1_bearing:
                 p1_used += 1
             if not off_cap:
@@ -877,6 +960,7 @@ def run(
                     for src, n in m["budget_charge"].items():
                         tday[src] = int(tday.get(src, 0)) + int(n)
                 apply_result(work, m, now)
+                _mirror_to_email(m, row, mirror, mail_out, receipt["email_mirror"], cfg)
             else:
                 row["status"] = "FAILED"
                 failed = True
@@ -917,6 +1001,28 @@ def run(
     if live:
         atomic_write_json(root / STATE_REL, {**state, "as_of": now.isoformat()}, indent=1)
     return receipt
+
+
+def _mirror_to_email(m: dict, row: dict, mirror: dict, mail_out: Optional[EmailSender], tally: dict,
+                     cfg: dict[str, Any]) -> None:
+    """After a live Telegram SENT: one email with the mirrored incidents' lines, through the gateway. A failed or
+    gateway-held email is recorded on the row and the receipt; it never changes the Telegram dedupe state."""
+    mirrored = email_mirror_incidents(m.get("incidents") or [], mirror)
+    if not mirrored:
+        return
+    if mail_out is None:
+        row["email_mirror"] = {"incidents": len(mirrored), "ok": False, "error": "no_email_sender"}
+        tally["failed"] += 1
+        return
+    subject = f"Trade AI release train — {len(mirrored)} notice(s)"
+    body = _body(subject, mirrored, "Source: incident notifier P2 (also sent to Telegram).", cfg["max_lines"])
+    try:
+        res = mail_out(subject, body, identity=m["identity"])
+    except Exception as exc:  # noqa: BLE001 — recorded, never fails the Telegram send
+        res = {"ok": False, "error": f"exception:{type(exc).__name__}"}
+    row["email_mirror"] = {"incidents": len(mirrored),
+                           **{k: res.get(k) for k in ("ok", "gateway_mode", "event_id", "error") if k in res}}
+    tally["sent" if res.get("ok") else "failed"] += 1
 
 
 ALERT_PATH_SOURCE = "n8n_alert_path"  # scripts/lib/n8n_alert_path_watch.SOURCE (pinned by a test)

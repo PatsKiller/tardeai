@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_email_mirror_20261021",
+  "files": [
+    "tests/test_release_train_email_mirror_20261021.py"
+  ],
+  "anchor": "RELEASE_TRAIN_EMAIL_MIRROR_20261021",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_EMAIL_MIRROR_20261021 — operator 2026-10-21 \"email yes\": release-train DIGEST and needs-action",
+    "comms-intent incidents are also emailed by the incident notifier through the communications gateway (send_via_gateway",
+    "channel email; config/comms_email_mirror.json). P2 only, never P1 or another kind; no new SMTP producer. Hermetic."
+  ]
+}

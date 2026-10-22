@@ -286,8 +286,13 @@ gateway decides delivery, dedupe, caps and quiet hours (§24.1). n8n holds no bo
 | `release_train_delegation_reminder` | DIGEST | delegation `PAUSED` or `NOT_CONFIGURED`, on the 18:00 report tick and on manual runs | `release train delegation <state>: routine releases are off` |
 
 - DIGEST becomes a P2 fan-in incident and reaches Telegram through `incident_notifier.py`'s P2 batch (held 22:00–07:00
-  ET). **Email delivery of these kinds is not wired today:** the incident notifier does not email. Adding email is a
-  host comms routing change (operator item O6), not a workflow change.
+  ET). **Email (operator 2026-10-21, "email yes"):** `release_train_window_digest` and `release_train_needs_action`
+  incidents are also emailed. `config/comms_email_mirror.json` names the two kinds; when the notifier's live P2 message
+  carrying them is SENT, it sends one email with those lines through the communications gateway
+  (`send_via_gateway` channel `email`, the approved adapter; recipient `REPORT_EMAIL_TO` read by the adapter only).
+  P2 only; the delegation reminder stays Telegram-only; the gateway mode gate applies; a failed email is recorded on
+  the notifier receipt (`email_mirror`) and never changes the Telegram result. A host comms routing change, not a
+  workflow change (operator item O6, done).
 - **P1 rollback and rollback-failed alerts are never n8n's** (C10). The intent table has no PAGE row.
 - A Run Lane `refused_policy` or `skipped_lock` is data: one `release_train_window_digest` naming the refusal, posted
   without an asserting node (§23.23 governance (5)). A Run Lane `failed` fails the execution on purpose, and
@@ -354,7 +359,8 @@ The four request lanes are fired only by this workflow through Run Lane (registr
 - **O5** Import and activate `tradeai-fabric-release-train` under a `cron` grant naming it (§23.2), after
   `check_n8n_relay_contract.py` passes against a relay that serves `GET /release-train-window` (relay and gateway
   restart under the operator's unit grant).
-- **O6** Email delivery for the DIGEST kinds (host comms routing).
+- **O6** ~~Email delivery for the DIGEST kinds~~ DONE 2026-10-21 (operator "email yes"): digest and needs-action
+  kinds mirrored to email through the gateway (`config/comms_email_mirror.json`, `scripts/incident_notifier.py`).
 - **O7** Install the controller's systemd path + timer units (Phase 3).
 
 ## 14. Runbook (`release-train-n8n`)
