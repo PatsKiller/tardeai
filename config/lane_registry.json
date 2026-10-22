@@ -17190,12 +17190,11 @@
         "match": "scripts/schwab_position_sync.py"
       },
       "expected_cadence_hours": 64.25,
-      "state": "PAUSED",
-      "state_since": "2026-10-15",
-      "state_reason": "Crontab line 501 is commented: \"# PAUSED 2026-10-15 schwab-app-deactivated (incident SPCX, grant 0f9de907)\" (crontab -l, read 2026-10-22). The row said ACTIVE for a week while the scheduled holdings.json writer did not run, and lane_state_drift classified the pair UNCLASSIFIED, so no gate saw it; scripts/check_registry_runtime_truth.py now reports that shape as ACTIVE_CRON_LINE_ABSENT. Schwab reads were re-enabled by the operator 2026-10-16 (config/schwab_access_mode.yaml mode read_only). Until AGENTS.md 18.0.0 (broker READ-ONLY lanes on n8n) is ACTIVE this writer stays a HOST cron line: the operator's cron resume packet re-enables line 501 and flips this row back to ACTIVE in the same change (§9.3: a crontab edit is a registry edit). The n8n lane in f09_staged stays inert until 18.0.0 is ACTIVE.",
+      "state": "ACTIVE",
+      "state_since": "2026-10-22",
+      "state_reason": "ACTIVE (cron): operator decision 2026-10-22, verbatim: \"keep step (a) as-is and resume it on cron now, because the holdings data matters. I'll flip its registry row to 'ACTIVE (cron)' in the same change, so the truth monitor doesn't flag a mismatch. It moves to the n8n lane after 19.0.0.\" The runner is HOST cron line 501 (7,22,37,52 9-16 * * 1-5, America/New_York, Mon-Fri), un-paused by step (a) of docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh (unchanged; operator-run, never by an agent), and this row flips in the same change (§9.3: a crontab edit is a registry edit). History: the line was commented \"# PAUSED 2026-10-15 schwab-app-deactivated (incident SPCX, grant 0f9de907)\" from 2026-10-15 to the resume; the row was PAUSED from 2026-10-22 (PR #1927) until this flip. Until the operator runs step (a), scripts/check_registry_runtime_truth.py reports ACTIVE_CRON_LINE_ABSENT for this row on the host; that finding clears when line 501 is live. The n8n lane in f09_staged stays inert until AGENTS.md 19.0.0 is ACTIVE.",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "crontab -l line 501 text (quoted in f09_staged.cron_lines); tests/test_registry_runtime_truth_20261018.py test_the_committed_schwab_position_sync_row_tells_the_truth",
-      "review_by": "2026-10-29",
+      "reason_evidence": "operator decision 2026-10-22 (quoted in state_reason and note); resume-operator.sh step a targets the exact line-501 text; tests/test_registry_runtime_truth_20261018.py test_the_committed_schwab_position_sync_row_tells_the_truth",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/schwab_position_sync.log",
@@ -17214,7 +17213,7 @@
         "f_evidence": "runs :07/:22/:37/:52 while positions_sync runs :09/:24/:39/:54; last log lines `\"added\": [], \"removed\": []`; schwab_positions_live 0 rows today (db_fresh)"
       },
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. 2026-10-22 operator decision (verbatim): \"keep step (a) as-is and resume it on cron now, because the holdings data matters. I'll flip its registry row to 'ACTIVE (cron)' in the same change, so the truth monitor doesn't flag a mismatch. It moves to the n8n lane after 19.0.0.\" Row set ACTIVE (cron, line 501) with the incident SPCX resume packet step (a); the f09_staged n8n lane record stays attached and inert, gated on AGENTS.md 19.0.0 ACTIVE.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "stay_on_cron": {
         "class": "broker_order",
@@ -17224,7 +17223,7 @@
       "f09_staged": {
         "policy": "operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\"); AGENTS.md 12.0.0 §23.25 (ACTIVE) makes F09 a cutover target: n8n schedules the HOST lane, the host executes under the trading lock and config/schwab_access_mode.yaml; same staged shape as PR #1795 (F09 batch 1)",
         "since": "2026-10-22",
-        "why_off": "Staged inert, gated on AGENTS.md 18.0.0 ACTIVE: no allowlist entry and no dispatch block. Today lib/lane_dispatch.dispatch_eligible refuses the forbidden tokens 'schwab' (EXTRA_FORBIDDEN_WORDS) and 'schwab_position_sync.py' (pipeline_manifest.FORBIDDEN_COMMAND_TOKENS), and the broker-read lanes are on the §23 n8n never-list; this change does not touch either. 18.0.0 (operator-directed 2026-10-22, not yet ratified) is the amendment that admits broker READ-ONLY lanes.",
+        "why_off": "Staged inert, gated on AGENTS.md 19.0.0 ACTIVE (operator 2026-10-22: \"It moves to the n8n lane after 19.0.0.\"): no allowlist entry and no dispatch block. Today lib/lane_dispatch.dispatch_eligible refuses the forbidden tokens 'schwab' (EXTRA_FORBIDDEN_WORDS) and 'schwab_position_sync.py' (pipeline_manifest.FORBIDDEN_COMMAND_TOKENS), and the broker-read lanes are on the §23 n8n never-list; this change does not touch either. AGENTS.md 18.0.0 was ratified 2026-10-22 as the data foundation (§26) and grants no n8n or broker authority, so the broker READ-ONLY amendment this lane waits for is 19.0.0 (not yet proposed or ratified).",
         "order_path": false,
         "entry_script": "scripts/schwab_position_sync.py",
         "cron_lines": [
@@ -17293,7 +17292,7 @@
         },
         "health_contract": "config/n8n_health_contracts.json id schwab-position-sync (DRAFT, owner execution; operator REVIEW)",
         "activation_needs": [
-          "AGENTS.md 18.0.0 ACTIVE (broker READ-ONLY lanes on n8n: read_only mode + trading lock LOCKED + read-only allowlist) and the code that implements it, reviewed in its own PR; nothing in this lane's record weakens the forbidden-token check before then",
+          "AGENTS.md 19.0.0 ACTIVE (broker READ-ONLY lanes on n8n: read_only mode + trading lock LOCKED + read-only allowlist) and the code that implements it, reviewed in its own PR; nothing in this lane's record weakens the forbidden-token check before then",
           "the --dry-run guard above (write-free, broker-call-free) and a LaneRunReceipt@v2 with produced_count (today output_signal is a log mtime)",
           "the read_only access-mode preflight above",
           "live env: env_names is [] (report mode renders TRADEAI_ENV like cron); a live entry reads Schwab tokens through schwab_token_manager on the host, never through n8n (§23.23 C5: no broker credential in n8n)",
@@ -17302,17 +17301,17 @@
         ],
         "relation_to_f09_batch_1": "PR #1795 stages the other read/sync lanes (alpaca/moomoo live read, snaptrade, positions_sync, ...) in this shape; it does not stage schwab-position-sync. Same activation decision for all of them.",
         "gated_on": {
-          "policy": "AGENTS.md 18.0.0 (operator-directed 2026-10-22: n8n may schedule broker READ-ONLY lanes under read_only mode + trading lock LOCKED + a read-only allowlist)",
+          "policy": "AGENTS.md 19.0.0 (the broker READ-ONLY lanes amendment: n8n may schedule broker READ-ONLY lanes under read_only mode + trading lock LOCKED + a read-only allowlist); operator 2026-10-22: \"It moves to the n8n lane after 19.0.0.\" (18.0.0, ratified 2026-10-22, is the data foundation and does not admit this lane)",
           "status_required": "ACTIVE",
-          "status_today": "NOT RATIFIED (2026-10-22)",
+          "status_today": "NOT PROPOSED (2026-10-22)",
           "until_then": "this lane stays inert: no allowlist entry, no dispatch, and the forbidden-token rule (pipeline_manifest.FORBIDDEN_COMMAND_TOKENS, lane_dispatch.EXTRA_FORBIDDEN_WORDS) is NOT weakened"
         },
-        "host_schedule_until_18": "host cron line 501, resumed by the operator's cron resume packet (not by this PR); the registry row returns to ACTIVE in that packet",
-        "trading_lock_condition": "the activation preflight also refuses unless lib.trading_lock.lock_state() is LOCKED for schwab (18.0.0 condition), in addition to access mode read_only"
+        "host_schedule_until_19": "host cron line 501, resumed by step (a) of the operator's incident SPCX resume packet (docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh), not by this PR; the registry row is ACTIVE (cron) from 2026-10-22 (operator decision quoted in the row's state_reason)",
+        "trading_lock_condition": "the activation preflight also refuses unless lib.trading_lock.lock_state() is LOCKED for schwab (19.0.0 condition), in addition to access mode read_only"
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-22",
-      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented) and the f09_staged record added; reconcile_lane_registry.py re-derives generated rows from live crontab lines and would drop both, so the row is hand-maintained from here."
+      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented) and the f09_staged record added; reconcile_lane_registry.py re-derives generated rows from live crontab lines and would drop both, so the row is hand-maintained from here. 2026-10-22 (later): state ACTIVE (cron) by operator decision with the incident SPCX resume packet step (a); still hand-maintained (the generator would drop f09_staged)."
     },
     {
       "lane_id": "schwab-stream-daemon",
