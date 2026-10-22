@@ -1565,6 +1565,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/incidents/PHASE67C_FINVIZ_SECRET_UPDATE_CHECKPOINT.md` | Phase 67C — Finviz Secret Update Checkpoint |
 | `docs/incidents/PHASE67D_FINVIZ_POST_UPDATE_VALIDATION.md` | Phase 67D — Finviz Post-Update Validation |
 | `docs/incidents/PHASE67E_MARIA_RESEARCH_STALENESS_TRUE_FIX_AUDIT.md` | Phase 67E — Maria Research Staleness True-Fix Audit |
+| `docs/incidents/POSTMORTEM_20261014_SPCX.md` | Postmortem — INC-20261014-SPCX: resting Schwab stops filled; the stop alerts were digested |
 | `docs/infra/DOCKER_CONTAINERIZATION_ARCHITECTURE_AUDIT_2026_05_31.md` | Docker Containerization Architecture Audit |
 | `docs/infra/DOCKER_PHASE11B_NONPROD_PREVIEW_PILOT_REPORT.md` | Docker Phase 11B — Non-Production Preview Pilot |
 | `docs/infra/DOCKER_PHASE12A_VERSION_CHECK_PILOT_DESIGN.md` | Docker Phase 12A — Version-Check Pilot Design |
@@ -2064,6 +2065,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/hermes-learning-cutover-20261015/README.md` | hermes-learning on the n8n fabric: cutover packet (learn stage) |
 | `docs/ops/packets/hermes-scorer-canary-20261021/README.md` | hermes-watchlist-scorer: n8n canary → cutover, 2026-10-21 (operator packet) |
 | `docs/ops/packets/hermes-worker-pool-wire-20261015/README.md` | hermes-research-worker-pool — real lane runners + fail closed on zero output (2026-10-15) |
+| `docs/ops/packets/incident-spcx-resume-20261022/README.md` | Incident SPCX resume packet and double-run fix (2026-10-22) |
 | `docs/ops/packets/lane-repair-indicator-engine-20261015/README.md` | Lane repair 2026-10-15: build-symbol-profiles, watchlist entry planner, indicator-engine |
 | `docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/03_apply.md` | Apply the RI overnight crontab changes (operator) |
 | `docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/04_rollback.md` | Roll back the RI overnight crontab changes (operator) |

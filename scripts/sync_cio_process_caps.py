@@ -46,6 +46,9 @@ CAPS: dict[str, tuple[float, int]] = {
     # 2026-09-19: L3 author was paid unregistered (2026-09-11); bind a process ceiling.
     "l3_judgment_author": (0.25, 48),
     "l3_independent_critic": (0.10, 24),
+    # 2026-10-22 (incident SPCX resume): Grok stop review, external OAuth lane. The count cap binds (30 calls/day,
+    # 12 stops per run in the script); the dollar cap is a declared ceiling for the gate (OAuth settles $0.00).
+    "grok_stop_review": (0.05, 30),
 }
 
 

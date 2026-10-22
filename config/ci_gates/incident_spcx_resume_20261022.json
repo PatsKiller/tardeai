@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "incident_spcx_resume_20261022",
+  "files": [
+    "tests/test_grok_stop_review_spend_gate_20261022.py",
+    "tests/test_incident_spcx_resume_packet_20261022.py"
+  ],
+  "anchor": "INCIDENT_SPCX_RESUME_20261022",
+  "comment": [
+    "ANCHOR: INCIDENT_SPCX_RESUME_20261022 — INC-20261014-SPCX close-out (operator 2026-10-22 \"yes\"): grok_stop_review on the LLM spend gate (process grok_stop_review, 12 stops/run, 30 calls/day, grok only, no fallback); the operator resume packet and double-run packet (exact-text crontab edits, one backup, one confirmation); registry truth for the paused lines; five armed effect keys."
+  ]
+}

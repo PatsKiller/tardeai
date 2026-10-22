@@ -959,8 +959,73 @@
       "wave": "HS-20261021",
       "cron_claim": false,
       "n8n_claim": false
+    },
+    "opening-intelligence-render": {
+      "process": "opening-intelligence-render",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "15 9 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:opening_intelligence/<date>.jsonl snapshot appended per run (10-22 09:15 cron + n8n = 2 rows)",
+      "wave": "DR-20261022 double-run fix",
+      "cron_claim": true,
+      "n8n_claim": true
+    },
+    "job-coverage-monitor": {
+      "process": "job-coverage-monitor",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "30 8,20 * * *",
+      "slot_tz": "America/New_York",
+      "effects": [],
+      "idempotent_today": "yes:read-only coverage report + its own receipt (10-21 20:30 cron + n8n both ran)",
+      "wave": "DR-20261022 double-run fix",
+      "cron_claim": true,
+      "n8n_claim": true
+    },
+    "classify-instruments": {
+      "process": "classify-instruments",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "30 6 * * 6",
+      "slot_tz": "America/New_York",
+      "effects": [],
+      "idempotent_today": "yes:symbol_profiles upsert + overwrite of its JSON (10-17 n8n won the lock race; cron did not run)",
+      "wave": "DR-20261022 double-run fix",
+      "cron_claim": true,
+      "n8n_claim": true
+    },
+    "finviz-enrichment": {
+      "process": "finviz-enrichment",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "0 13 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [],
+      "idempotent_today": "yes:cache overwrite; a second run spends finviz requests (n8n RUN_SKIPPED_LOCK every day so far)",
+      "wave": "DR-20261022 double-run fix",
+      "cron_claim": true,
+      "n8n_claim": true
+    },
+    "finviz-sector-research": {
+      "process": "finviz-sector-research",
+      "input_version": "v1",
+      "slot": "scheduled_minute",
+      "schedule": "15 10,16 * * 1-5",
+      "slot_tz": "America/New_York",
+      "effects": [
+        "append"
+      ],
+      "idempotent_today": "no:finviz_group_performance append-only daily snapshot (n8n RUN_SKIPPED_LOCK 9 of 9 slots so far)",
+      "wave": "DR-20261022 double-run fix",
+      "cron_claim": true,
+      "n8n_claim": true
     }
   },
   "_comment_process_steps": "2026-10-15 (n8n fabric process hermes-learning, packet docs/ops/packets/n8n-hermes-learning-flow-20261015/): one key per process STEP, process = the step lane id, slot = the stage's business slot <YYYYMMDD>T<HHMM of the stage cron minute> (America/New_York), the same string the cron stage runner computes (pipeline_manifest.py --effect-slot) and the process workflow sends. pipeline/stage/step_id map the key to the manifest step. cron_claim false = the cron stage runner does NOT claim yet (scripts/pipelines/_manifest_runner.sh); the cutover packet flips it to true only after effect_claim.py set-owner --owner cron has created the owner row, then moves the owner to n8n. Executor side: inert for dry_run; a LIVE run with a p: key is refused effect_slot_unknown until the gateway validates p: keys (cutover prerequisite).",
-  "_comment_canary_keys": "2026-10-15 (canary double-effect audit, ~/n8n-maturity-verification/arch-review-20261014/CANARY_DOUBLE_EFFECT_AUDIT.md section 4; branch fix/canary-effect-keys-20261015). One key per lane that is live, canary or staged for the 61-lane canary wave (tier A 21 + tier B 40, MIGRATION_STATUS 2026-10-14) AND whose live effect APPENDS rows, SENDS or CALLS AN LLM (effects; idempotent_today records today's own guard, from a read-only code trace). Overwrite-only and read-only lanes are not keyed. process = the lane id; slot = scheduled_minute (the dispatcher d: key slot of the scheduled minute = effect_claim.py --slot now at the cron minute, America/New_York) or request_minute (on-demand lanes: the minted e:/g: key slot); input_version v1. STAGED ONLY: cron_claim false (scripts/effect_claim_cron.sh runs the line unchanged) and n8n_claim false (scripts/lib/effect_claim.load_effect_config skips the lane, so the executor claims nothing and every live run behaves as before). Each lane's cutover packet arms it in order: effect_claim.py set-owner --owner cron; cron_claim true + TRADEAI_EFFECT_CLAIM=<lane> on its cron line; n8n_claim true; set-owner --owner n8n."
+  "_comment_canary_keys": "2026-10-15 (canary double-effect audit, ~/n8n-maturity-verification/arch-review-20261014/CANARY_DOUBLE_EFFECT_AUDIT.md section 4; branch fix/canary-effect-keys-20261015). One key per lane that is live, canary or staged for the 61-lane canary wave (tier A 21 + tier B 40, MIGRATION_STATUS 2026-10-14) AND whose live effect APPENDS rows, SENDS or CALLS AN LLM (effects; idempotent_today records today's own guard, from a read-only code trace). Overwrite-only and read-only lanes are not keyed. process = the lane id; slot = scheduled_minute (the dispatcher d: key slot of the scheduled minute = effect_claim.py --slot now at the cron minute, America/New_York) or request_minute (on-demand lanes: the minted e:/g: key slot); input_version v1. STAGED ONLY: cron_claim false (scripts/effect_claim_cron.sh runs the line unchanged) and n8n_claim false (scripts/lib/effect_claim.load_effect_config skips the lane, so the executor claims nothing and every live run behaves as before). Each lane's cutover packet arms it in order: effect_claim.py set-owner --owner cron; cron_claim true + TRADEAI_EFFECT_CLAIM=<lane> on its cron line; n8n_claim true; set-owner --owner n8n.",
+  "_comment_double_run_20261022": "2026-10-22 (incident SPCX resume packet, item 3; operator \"yes\"): five live-listed lanes whose crontab line was still active without TRADEAI_EFFECT_CLAIM, so cron and n8n could both run one slot (a shared flock serialises, it does not dedupe). Measured from the coordination ledger, receipts and log mtimes: opening-intelligence-render and job-coverage-monitor ran twice in one slot; classify-instruments, finviz-enrichment and finviz-sector-research did not (the lock race decided which side ran). Keys ARMED (cron_claim and n8n_claim true): once served, an n8n live run claims fx:<lane>:<slot>:v1 and is refused until an owner row exists. The operator packet docs/ops/packets/incident-spcx-resume-20261022/double-run-operator.sh then runs effect_claim.py set-owner --owner cron for each lane and wraps its cron line with env TRADEAI_EFFECT_CLAIM=<lane> bash scripts/effect_claim_cron.sh, so cron owns the slot and n8n skips it. Cutover to n8n later is the usual packet (set-owner --owner n8n). sync-social-to-intelligence, materialize-watchlist-strategy-cards and hermes-discovery-scorecard are not keyed: n8n is proven live for them, so the packet comments their cron lines instead."
 }
