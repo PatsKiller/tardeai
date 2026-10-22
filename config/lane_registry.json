@@ -17306,6 +17306,252 @@
       "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented) and the f09_staged record added; reconcile_lane_registry.py re-derives generated rows from live crontab lines and would drop both, so the row is hand-maintained from here."
     },
     {
+      "lane_id": "holdings-drift-monitor",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/desk_truth_monitor.py --check holdings-drift",
+        "cadence": "15,45 9-16 * * 1-5",
+        "stage": "shadow",
+        "wave": "W4",
+        "timezone": "America/New_York"
+      },
+      "expected_cadence_hours": 66.75,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-22",
+      "state_reason": "operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\"): read-only desk truth monitor, n8n-native dispatcher lane at stage SHADOW (15,45 9-16 * * 1-5 ET): the stage clamp runs it --dry-run (prints, writes nothing, queues nothing). No cron line exists or is added (cron freeze). Promotion to canary needs the owner's REVIEWED contract and is the operator's word.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/holdings-drift-monitor_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/desk_truth_monitor.py main() writes LaneRunReceipt (v2 output) on --apply (tests/test_n8n_desk_truth_20261022.py); at shadow no real run happens, so runtime is NOT_MEASURED"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_desk_truth_20261022.py; docs/ops/DESK_TRUTH_MONITORS.md",
+      "review_by": "2026-10-29",
+      "note": "Reads only: holdings.json (lib.portfolio_positions.load_store) vs positions_current (read-only SELECT): per compared account a symbol missing on either side, share counts off by more than qty_tolerance, account cash off by more than cash_tolerance_usd; holdings freshness (newest broker_position_as_of_at, else positions_built_at) and positions_current freshness against their in-session bounds. A real run writes its receipt, its alert state and, only when the alertable finding set gained a finding, ONE host comms intent positions/holdings_drift_finding (config/host_comms_intent_routes.json, DIGEST -> P2, producer desk_truth_monitor) straight into the coordination ledger (never a sender). GET /api/v2/needs-action source desk_truth reads the receipt. Exit 0 = check completed (findings are output); 1 = a source unreadable.",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "15,45 9-16 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "monitor",
+        "priority": 6,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "options-desk-staleness-monitor",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/desk_truth_monitor.py --check options-desk-staleness",
+        "cadence": "5,20,35,50 9-15 * * 1-5",
+        "stage": "shadow",
+        "wave": "W4",
+        "timezone": "America/New_York"
+      },
+      "expected_cadence_hours": 65.75,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-22",
+      "state_reason": "operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\"): read-only desk truth monitor, n8n-native dispatcher lane at stage SHADOW (5,20,35,50 9-15 * * 1-5 ET): the stage clamp runs it --dry-run (prints, writes nothing, queues nothing). No cron line exists or is added (cron freeze). Promotion to canary needs the owner's REVIEWED contract and is the operator's word.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/options-desk-staleness-monitor_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/desk_truth_monitor.py main() writes LaneRunReceipt (v2 output) on --apply (tests/test_n8n_desk_truth_20261022.py); at shadow no real run happens, so runtime is NOT_MEASURED"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_desk_truth_20261022.py; docs/ops/DESK_TRUTH_MONITORS.md",
+      "review_by": "2026-10-29",
+      "note": "Reads only: options_proposals.json freshness = the newer of generated_at (full build) and quote_refresh.at (scripts/options_desk_quote_refresh.py) against max_age_min during NYSE regular hours. A real run writes its receipt, its alert state and, only when the alertable finding set gained a finding, ONE host comms intent data/options_desk_stale (config/host_comms_intent_routes.json, DIGEST -> P2, producer desk_truth_monitor) straight into the coordination ledger (never a sender). GET /api/v2/needs-action source desk_truth reads the receipt. Exit 0 = check completed (findings are output); 1 = a source unreadable.",
+      "severity": "Low",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "5,20,35,50 9-15 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "monitor",
+        "priority": 6,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "held-exit-coverage-monitor",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/desk_truth_monitor.py --check held-exit-coverage",
+        "cadence": "10,40 9-15 * * 1-5",
+        "stage": "shadow",
+        "wave": "W4",
+        "timezone": "America/New_York"
+      },
+      "expected_cadence_hours": 66.5,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-22",
+      "state_reason": "operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\"): read-only desk truth monitor, n8n-native dispatcher lane at stage SHADOW (10,40 9-15 * * 1-5 ET): the stage clamp runs it --dry-run (prints, writes nothing, queues nothing). No cron line exists or is added (cron freeze). Promotion to canary needs the owner's REVIEWED contract and is the operator's word.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/held-exit-coverage-monitor_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/desk_truth_monitor.py main() writes LaneRunReceipt (v2 output) on --apply (tests/test_n8n_desk_truth_20261022.py); at shadow no real run happens, so runtime is NOT_MEASURED"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_desk_truth_20261022.py; docs/ops/DESK_TRUTH_MONITORS.md",
+      "review_by": "2026-10-29",
+      "note": "Reads only: every live held position in positions_current (non-cash, qty > 0, value >= min_position_value_usd) needs a stop_lifecycle snapshot row for the same account and symbol in a WORKING lifecycle; paper stop rows are counted and tagged PAPER; a stale snapshot makes the verdict NOT_MEASURED. Reads the snapshot scripts/stop_lifecycle_monitor.py writes; writes no stop, calls no broker. A real run writes its receipt, its alert state and, only when the alertable finding set gained a finding, ONE host comms intent stops/held_exit_coverage_gap (config/host_comms_intent_routes.json, DIGEST -> P2, producer desk_truth_monitor) straight into the coordination ledger (never a sender). GET /api/v2/needs-action source desk_truth reads the receipt. Exit 0 = check completed (findings are output); 1 = a source unreadable.",
+      "severity": "Medium",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "10,40 9-15 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "monitor",
+        "priority": 6,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
+      "lane_id": "options-desk-quote-refresh",
+      "owner": "options",
+      "scheduler": {
+        "kind": "none",
+        "match": "scripts/options_desk_quote_refresh.py",
+        "note": "no scheduler yet: staged for the n8n dispatcher (f09_staged.activation_registry). A kind-n8n dispatcher row needs an allowlist entry (tests/test_agents_policy_4_1_0_amendment.py), which this broker-reaching lane may not have until the operator admits it"
+      },
+      "expected_cadence_hours": 70.25,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-22",
+      "state_reason": "operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\"): quote-only refresh of the options desk 09:35-11:50 ET (the full build runs from 12:00 to stay out of the morning GPU window). Staged inert (dispatch off, no allowlist entry): its reach is the Schwab transport (one expiration-pinned option-chain read per (symbol, expiration)), which the dispatcher's broker gates refuse (tests/test_agents_policy_7_0_0_advisory_market_data.py reach scan; tests/test_lane_transitive_capabilities_20261015.py frozen baseline). Admitting it is an operator decision (f09_staged.activation_needs).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/options-desk-quote-refresh_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/options_desk_quote_refresh.py main() --apply (tests/test_n8n_desk_truth_20261022.py)"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_n8n_desk_truth_20261022.py; docs/ops/DESK_TRUTH_MONITORS.md §3",
+      "review_by": "2026-10-29",
+      "severity": "Low",
+      "f09_staged": {
+        "policy": "operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\"); AGENTS.md 12.0.0 §23.25 (ACTIVE): F09 market-data lanes are cutover targets, n8n schedules the HOST lane; same staged shape as PR #1795 / #1801 (options lanes)",
+        "since": "2026-10-22",
+        "why_off": "dispatch.mode off and no entry in config/n8n_run_allowlist.json lanes. The argv passes the forbidden-token rule, but the lane's reach imports scripts/schwab_transport.py (a broker client module with order functions behind the trading lock): the §23.20 (a) reach scan and the frozen transitive-capability baseline refuse any dispatched lane that reaches it.",
+        "order_path": false,
+        "entry_script": "scripts/options_desk_quote_refresh.py",
+        "cron_lines": [],
+        "request_budget": {
+          "per_run_cap": 25,
+          "ceiling": 60,
+          "measured_2026_10_22": "5 cards, 4 (symbol, expiration) groups -> 4 chain reads per run; 10 in-session runs -> ~40 reads per morning"
+        },
+        "gpu_window": "no LLM, no ensemble queue, no GPU: the reason the full build moved to 12:00 (crontab 2026-07-17; scripts/llm_priority_guard.sh tier-3 deferral 06:00-11:59 ET) does not apply to a quote-only refresh",
+        "access_mode": "runs only while config/schwab_access_mode.yaml resolves to read_only (code refusal)",
+        "dry_run": {
+          "arg": [
+            "--dry-run"
+          ],
+          "broker_calls": 0,
+          "writes": 0,
+          "proof": "tests/test_n8n_desk_truth_20261022.py test_dry_run_is_offline_and_imports_no_broker_module"
+        },
+        "activation_allowlist_entry": {
+          "lane_id": "options-desk-quote-refresh",
+          "command": [
+            "$PY",
+            "scripts/options_desk_quote_refresh.py"
+          ],
+          "dry_run_arg": [
+            "--dry-run"
+          ],
+          "live_arg": null,
+          "lock": "/tmp/tradeai_options_desk_quote_refresh.lock",
+          "lock_kind": "flock",
+          "timeout_s": 240,
+          "market_gate": true,
+          "output_signal": "data/runtime/options-desk-quote-refresh_last.json",
+          "output_receipt": "v2",
+          "env_names": [],
+          "env_allowlist_mode": "report",
+          "source": "n8n-native lane (no cron line); its own lock"
+        },
+        "activation_registry": {
+          "scheduler": {
+            "kind": "n8n",
+            "expression": "dispatcher",
+            "match": "scripts/options_desk_quote_refresh.py",
+            "cadence": "5,20,35,50 9-11 * * 1-5",
+            "stage": "shadow",
+            "wave": "W5",
+            "timezone": "America/New_York"
+          },
+          "dispatch": {
+            "mode": "dry_run",
+            "cron": [
+              "5,20,35,50 9-11 * * 1-5"
+            ],
+            "tz": "America/New_York",
+            "wave": "W5",
+            "class": "pipeline",
+            "priority": 5,
+            "retry_policy": "none"
+          },
+          "canary_live_arg": [
+            "--apply"
+          ]
+        },
+        "activation_needs": [
+          "OPERATOR DECISION: admit read-only Schwab option-chain reads to a dispatched lane (named ceiling in lib/lane_dispatch.py + a reviewed entry in the transitive-capability baseline / the 7.0.0 reach-scan baseline), the same decision as schwab-position-sync and PR #1795's read/sync lanes",
+          "the owner's REVIEWED health contract (config/n8n_health_contracts.json options-desk-quote-refresh)",
+          "live env: the host executor renders TRADEAI_ENV (report mode) so schwab_token_manager reads its token on the host; no broker credential in n8n (§23.23 C5)",
+          "move activation_allowlist_entry into the allowlist and set the activation_registry fields in one registry PR (§23.11)"
+        ]
+      }
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {

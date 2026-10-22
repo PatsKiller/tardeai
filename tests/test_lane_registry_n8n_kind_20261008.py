@@ -385,6 +385,11 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         # 2026-10-21 macro-calendar-refresh: n8n-native ingest dispatcher row at shadow, daily 05:05
         # dry_run (no host line; tests/test_macro_calendar_20261021.py).
         "macro-calendar-refresh",
+        # 2026-10-22 desk truth: three read-only monitors at shadow, no host line for any of them (the quote-only
+        # options refresh is staged as kind none; tests/test_n8n_desk_truth_lanes_20261022.py).
+        "holdings-drift-monitor",
+        "options-desk-staleness-monitor",
+        "held-exit-coverage-monitor",
     }
     assert all(native[lane]["scheduler"]["expression"] == "dispatcher" for lane in n8n_native_lanes)
     # 2026-10-15: the step lanes of the n8n fabric process hermes-learning (AGENTS.md §23.23). Fired only by the
