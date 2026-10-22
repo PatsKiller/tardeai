@@ -1,4 +1,14 @@
-# Test results — current provisional checkpoint 2026-10-22 21:20 UTC
+# Test results — current provisional checkpoint 2026-10-22 21:31 UTC
+
+## Live profile / PR check — 21:31 UTC
+
+Session `86134` remains live at **363 PASS / 4 FAIL**, running `options_broker_gates_20260927`; no new failures have appeared since the path-assertion failure. PR #1947 remains OPEN at `ff2f7b4d42e935334c93cc714ecedfcea227d8c9` but now has merge state CLEAN. All active required checks, including shard 7, `ci-gate`, and `cio-hardening`, pass; full hardening and red-alert jobs are skipped. It is not merged, so current main and candidate remain unchanged.
+
+## Updated aggregate profile and environment-path failure — 21:31 UTC
+
+Integration agent verified session `86134` live. At 17:30:34 EDT / 21:30:34 UTC the aggregate was **363 PASS / 4 FAIL gates**, with `options_broker_gates_20260927` running. The newly observed fourth failed gate is `operator_control_isolated_db` (**34 passed, 1 failed**): `test_probe_ran_against_the_isolated_cluster_only` hard-codes `/tmp/tradeai_testpg_`, while the required `TMPDIR=/home/johnclaw/cio-hardening-tmp-a750` caused `tempfile.mkdtemp()` to create the disposable cluster under `/home/johnclaw`. The isolated probe and database ran; only its absolute-path assertion failed. This is a test portability defect caused by the temp-root constraint. Once the aggregate exits, update the assertion to validate `tempfile.gettempdir()` plus the `tradeai_testpg_` directory shape, rerun the isolated DB suite with temp root under `/home/johnclaw`, and requalify the exact changed SHA. Do not edit the candidate while the profile is still consuming it.
+
+The prior three failures remain: two authority gates for the unapproved `desk_truth_monitor.py` positions reader, and the independently reproduced inherited AJG/OI=0 income-screen test failure. No candidate workaround or dependency change is authorized.
 
 ## Exact profile and independent review — 21:20 UTC
 

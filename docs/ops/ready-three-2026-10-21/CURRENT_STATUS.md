@@ -1,14 +1,22 @@
-# Current execution status — 2026-10-22 21:24 UTC
+# Current execution status — 2026-10-22 21:31 UTC
+
+## Latest coordination update — 2026-10-22 21:31 UTC
+
+PR #1947 is still OPEN, not merged, at head `ff2f7b4d42e935334c93cc714ecedfcea227d8c9`. Latest checks show all active required jobs passing, including shard 7, `ci-gate`, and `cio-hardening`; full hardening and red-alert workflows are skipped. GitHub reports merge state CLEAN. Do not rebase the candidate until the merge actually lands. The incoming orchestrator time-settings PR for commits `481d10dc1` and `30a70e59a` is still absent from the open-PR list; keep pipeline/locks held. `tradeai-portfolio-server.service` is inactive/dead, while port 7777 still has a separate listener and some paths respond; build metadata and health remain unverified. No active service or git-push grant exists.
 
 ## Production endpoint availability — 2026-10-22 21:23 UTC
 
 Read-only HTTP GETs to build metadata timed out with no response at 5s and 20s; `/api/v2/health` timed out at 8s and `/health` at 5s. A TCP listener remains on `127.0.0.1:7777` (Python PID 770477), which does not prove the HTTP app is healthy. Last successful build/health are the 20:51 / 20:48 observations above; current build and health are now unverified. The canonical guard reports no active grants. No restart, production write, or deployment was attempted. Read-only diagnosis is underway; see [live validation](LIVE_VALIDATION.md).
 
-Follow-up read-only diagnostics: `GET /` returned HTTP 302 in 3.608s, while `/healthz` returned 404 in 0.132s. The build and health handlers still return no data. The serving process and service manager cannot be inspected in this sandbox; no logs are available. A read-only reviewer found no safe evidence supporting a restart, and no service change was made.
+Follow-up read-only diagnostics: `GET /` returned HTTP 302 in 3.608s, while `/healthz` returned 404 in 0.132s. The build and health handlers still return no data. The serving process cannot be inspected in this sandbox; systemd status was obtained through the approved read-only check, but no logs are available. A read-only reviewer found no evidence supporting a restart, and no service change was made.
+
+The approved read-only `systemctl status tradeai-portfolio-server --no-pager` check reports the named unit **inactive (dead)** and disabled. The separate TCP listener still exists, but its owner cannot be inspected in the sandbox. No canonical `service` grant is active, so no restart was attempted. This is a live operational blocker requiring the service owner to inspect/recover the unit; current production build and health remain unverified.
 
 ## Profile and upstream PR refresh — 2026-10-22 21:20 UTC
 
 Latest profile poll: `n8n_maturity_registry_dispatch` passed 895 tests with 2 skipped in 79.14s; `n8n_maturity_retry_dlq_20261009` was running. Session `86134` remained live, with last aggregate 317 PASS / 3 FAIL and no new failure reported. This aggregate remains provisional.
+
+Latest subsequent poll at 17:30:34 EDT / 21:30:34 UTC: aggregate **363 PASS / 4 FAIL**; `options_broker_gates_20260927` was running. The new fourth failure is `operator_control_isolated_db`, where `test_probe_ran_against_the_isolated_cluster_only` asserts the cluster path begins `/tmp/tradeai_testpg_` although the mandated `TMPDIR=/home/johnclaw/cio-hardening-tmp-a750` placed it under `/home/johnclaw`. The isolated DB probe itself ran; treat this as a test assumption to fix after the full profile stops, not a database or product failure. No candidate files were changed during the run.
 
 - The integration agent polled the existing full-profile session `86134` and verified it is still live. At 17:20:02 EDT / 21:20:02 UTC the aggregate had advanced to **317 PASS / 3 FAIL**; `n8n_maturity_generic_workflows_20261009` was running. No terminal exit code or final manifest exists.
 - Independent review verified candidate `a7508b039b1f39d06bfc216726656b82ae5d0ca6` is clean with 50 changed paths and no edits to the implicated authority registry/gates or options income-screen implementation/test. It independently reproduced the AJG/OI=0 `test_income_screen_records_named_drops` failure (**1 failed in 0.82s**). The two authority failures are one baseline defect: `desk_truth_monitor.py` reads the positions projection without an approved reader registration. No candidate workaround or code change is warranted; do not suppress the authority gate.
