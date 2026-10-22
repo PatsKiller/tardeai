@@ -113,32 +113,69 @@ def _load_json(path: Path) -> Any:
         return None
 
 
+_RRID_RE = re.compile(r"\[remote_request_id=([0-9A-Za-z_-]{4,64})\b")
+_CLOSED_STATUSES = ("revoked", "replaced")
+
+
+def _grant_row(key: str, row: Mapping[str, Any]) -> dict[str, Any]:
+    """One grant row, normalized: tier from the row or its key ("<tier>" v1, "<tier>@<grant_id>" v2),
+    remote_request_id from the row or (older rows) the "[remote_request_id=...]" reason suffix."""
+    out = dict(row)
+    out["tier"] = row.get("tier") or (key.split("@", 1)[0] if "@" in key else key)
+    if not out.get("remote_request_id"):
+        m = _RRID_RE.search(str(row.get("reason") or ""))
+        if m:
+            out["remote_request_id"] = m.group(1)
+    return out
+
+
 def load_grants(path: Path = GRANTS_PATH) -> list[dict[str, Any]]:
-    """Grant rows as the guard stores them: a dict tier -> row, or a list of rows."""
+    """Grant rows as the guard stores them: v1 {tier: row}, v2 {"<tier>@<grant_id>": row}, or a list.
+
+    Closed v2 rows (status revoked / replaced) are not grants and are left out."""
     raw = _load_json(path)
     rows: list[dict[str, Any]] = []
     if isinstance(raw, dict):
-        for tier, row in raw.items():
+        for key, row in raw.items():
             if isinstance(row, dict):
-                rows.append({**row, "tier": row.get("tier") or tier})
+                rows.append(_grant_row(str(key), row))
             elif isinstance(row, list):
-                rows.extend({**r, "tier": r.get("tier") or tier} for r in row if isinstance(r, dict))
+                rows.extend(_grant_row(str(key), r) for r in row if isinstance(r, dict))
     elif isinstance(raw, list):
-        rows = [r for r in raw if isinstance(r, dict)]
-    return rows
+        rows = [_grant_row(str(r.get("tier") or ""), r) for r in raw if isinstance(r, dict)]
+    return [r for r in rows if str(r.get("status") or "active") not in _CLOSED_STATUSES]
+
+
+def normalize_request(r: Mapping[str, Any]) -> dict[str, Any]:
+    """`scope` and `tier` are one field (guard_remote_approval wrote `scope`; this module and the ledger
+    read `tier`); `request_id` and `id` likewise. Copied, never renamed. When `scope` and `tier`
+    disagree the row gets tier None and binds nothing."""
+    out = dict(r)
+    scope, tier = r.get("scope"), r.get("tier")
+    if scope is not None and tier is not None and str(scope).strip() != str(tier).strip():
+        out["tier"] = None
+        out["scope_conflict"] = True
+    elif scope is not None or tier is not None:
+        out["tier"] = out["scope"] = str(scope if scope is not None else tier).strip()
+    rid = r.get("request_id") or r.get("id")
+    if rid:
+        out["request_id"] = str(rid)
+    return out
 
 
 def load_requests(path: Path = REQUESTS_PATH) -> list[dict[str, Any]]:
     raw = _load_json(path)
+    rows: list[dict[str, Any]] = []
     if isinstance(raw, dict):
         vals = raw.get("requests") if isinstance(raw.get("requests"), (list, dict)) else raw
         if isinstance(vals, dict):
-            return [{**v, "request_id": v.get("request_id") or k} for k, v in vals.items() if isinstance(v, dict)]
-        if isinstance(vals, list):
-            return [r for r in vals if isinstance(r, dict)]
-    if isinstance(raw, list):
-        return [r for r in raw if isinstance(r, dict)]
-    return []
+            rows = [{**v, "request_id": v.get("request_id") or v.get("id") or k}
+                    for k, v in vals.items() if isinstance(v, dict)]
+        elif isinstance(vals, list):
+            rows = [r for r in vals if isinstance(r, dict)]
+    elif isinstance(raw, list):
+        rows = [r for r in raw if isinstance(r, dict)]
+    return [normalize_request(r) for r in rows]
 
 
 def named_shas(reason: str) -> list[str]:
@@ -181,6 +218,7 @@ def _allows_action(reason: str, action: str) -> bool:
 def pending_requests_for(act: ReleaseAction, requests: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     out = []
     for r in requests:
+        r = normalize_request(r)  # rows from the store carry `scope`; before 2026-10-21 this never matched
         if str(r.get("tier") or "") != TIER:
             continue
         if str(r.get("status") or "").upper() != "PENDING":
@@ -202,6 +240,22 @@ def decide(act: ReleaseAction, *, grants: Iterable[Mapping[str, Any]],
     pend = pending_requests_for(act, list(requests))
     pend_ids = [str(p.get("request_id") or p.get("id") or "") for p in pend]
     refused: list[dict[str, Any]] = []
+    grants = list(grants)
+    live = []
+    for g in grants:
+        if str(g.get("tier") or "") != TIER or str(g.get("status") or "active") in _CLOSED_STATUSES:
+            continue
+        try:
+            if float(g.get("expires") or g.get("expires_at") or 0) > now and int(g.get("uses") or 0) != 0:
+                live.append(str(g.get("grant_id") or g.get("id") or ""))
+        except (TypeError, ValueError):
+            continue
+    if len(live) > 1:
+        # One active grant per tier (guard ledger v2). More than one is a broken invariant: never pick
+        # one silently and never let two answer for each other.
+        return Verdict(False, f"ambiguous: {len(live)} active release-write grants ({', '.join(live)}); "
+                       "revoke all but one (bin/guard revoke release-write --grant-id <id>)",
+                       pending_request_ids=pend_ids)
     for g in grants:
         gid = str(g.get("grant_id") or g.get("id") or "")
         if str(g.get("tier") or "") != TIER:

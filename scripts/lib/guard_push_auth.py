@@ -103,4 +103,6 @@ def push_authorized_by_guard_scoped(*, branch: str, head_sha: str, adir: Path | 
     reason = str(rec.get("reason") or "guard git-push grant")
     covers, why = grant_scope_covers(reason, branch=branch, head_sha=head_sha)
     enforced = scope_enforced()
-    return {"ok": covers or not enforced, "scoped": covers, "enforced": enforced, "why": why, "reason": reason}
+    # grant_id (2026-10-21): the pre-push hook consumes from THIS exact grant, after its gates pass.
+    return {"ok": covers or not enforced, "scoped": covers, "enforced": enforced, "why": why, "reason": reason,
+            "grant_id": str(rec.get("grant_id") or "")}

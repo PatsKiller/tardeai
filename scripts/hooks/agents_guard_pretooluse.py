@@ -228,14 +228,29 @@ def grant_active(rules: Rules, tier: str, now: float) -> tuple[bool, str]:
         return False, "ledger_missing"
     except (OSError, ValueError):
         return False, "ledger_unreadable"
-    rec = doc.get(tier) if isinstance(doc, dict) else None
-    if not isinstance(rec, dict):
+    if not isinstance(doc, dict):
         return False, "no_grant"
-    try:
-        if int(rec.get("expires") or 0) > now and int(rec.get("uses") or 0) != 0:
-            return True, "active"
-    except (TypeError, ValueError):
-        return False, "ledger_unreadable"
+    # Ledger schema v2 (2026-10-21): rows keyed "<tier>@<grant_id>" with a status; a v1 entry is
+    # keyed by the tier itself. Same rule as guard_ledger.row_is_active, and the same refusal of a
+    # tier with more than one active row (ambiguous) -- grants are never unioned.
+    recs = [rec for key, rec in doc.items()
+            if isinstance(key, str) and (key == tier or ("@" in key and key.split("@", 1)[0] == tier))]
+    if not recs:
+        return False, "no_grant"
+    active = 0
+    for rec in recs:
+        if not isinstance(rec, dict):
+            return False, "ledger_unreadable"
+        try:
+            if (rec.get("status", "active") == "active" and int(rec.get("expires") or 0) > now
+                    and int(rec.get("uses") or 0) != 0):
+                active += 1
+        except (TypeError, ValueError):
+            return False, "ledger_unreadable"
+    if active == 1:
+        return True, "active"
+    if active > 1:
+        return False, "ambiguous_active_grants"
     return False, "expired_or_used"
 
 

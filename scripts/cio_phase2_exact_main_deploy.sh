@@ -686,7 +686,10 @@ cmd_prepare() {
   command -v rsync >/dev/null || die "rsync missing"
   require_head_is_origin_main
   require_canonical_source_at "$(git_sha)" prepare
-  release_grant_preflight prepare "$(git_sha)"
+  # Binding verdict only (2026-10-21, same order as promote): a prepare refused by any gate
+  # below (venv, critical paths, BUILD_SHA) must not cost a release-write use. The CANONICAL_SOURCE
+  # HEAD check above still runs before any grant is read or used.
+  release_grant_preflight prepare "$(git_sha)" --no-consume
   PREV_RELEASE="$(current_release)"
   [[ -d "$PREV_RELEASE" ]] || die "PREV release missing"
   CONTENT_SHA="$(git_sha)"
@@ -738,6 +741,9 @@ cmd_prepare() {
   local stamped
   stamped="$(tr -d '[:space:]' <"${NEW_RELEASE}/BUILD_SHA")"
   [[ "$stamped" == "$CONTENT_SHA" ]] || die "BUILD_SHA mismatch $stamped != $CONTENT_SHA"
+  # Every prepare gate passed: re-decide and consume the use (from the verdict's exact grant)
+  # immediately before the prepared state is recorded.
+  release_grant_preflight prepare "$CONTENT_SHA"
   write_state
   write_deploy_receipt true prepare skipped false "prepare_ok"
   log "PREPARE OK: $NEW_RELEASE"

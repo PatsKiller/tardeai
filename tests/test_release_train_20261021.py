@@ -322,7 +322,7 @@ case " $* " in
   *" --ci-only "*) exit "${FAKE_CI_RC:-2}" ;;
 esac
 if [[ "$*" == *release_grant_preflight.py* ]]; then
-  if [[ "$*" == *"--no-consume"* ]]; then exit 0; fi
+  if [[ "$*" == *"--no-consume"* ]]; then exit "${FAKE_DECIDE_RC:-0}"; fi
   exit "${FAKE_CONSUME_RC:-2}"
 fi
 exit 0
@@ -460,7 +460,9 @@ def test_prepare_accepts_a_train_sha_only_on_the_first_parent_chain(tmp_path, wh
     c1, c2, side, head = _train_repo(tmp_path, root)
     sha = {"c2": c2, "side": side, "head": head}[which]
     _git(root, "checkout", "-q", "--detach", sha)
-    env.update(TRADEAI_RELEASE_TRAIN_SHA=sha, FAKE_CI_RC="0", FAKE_CONSUME_RC="2")
+    # The binding refuses both the decide-only call (prepare decides with --no-consume first since the
+    # 2026-10-21 grant-mechanics patch) and the consuming one, so prepare stops before a build either way.
+    env.update(TRADEAI_RELEASE_TRAIN_SHA=sha, FAKE_CI_RC="0", FAKE_CONSUME_RC="2", FAKE_DECIDE_RC="2")
     p = subprocess.run(["bash", str(root / "scripts" / "cio_phase2_exact_main_deploy.sh"), "prepare"],
                        env=env, capture_output=True, text=True, timeout=60)
     assert p.returncode != 0                                    # the fake binding refuses: we stop before a build

@@ -129,9 +129,13 @@ ledger_is_corrupt() {
 
 # Single consume transaction: check+decrement under exclusive lock.
 # rc 0 consumed, 2 APPROVAL_LEDGER_CORRUPT, 3 no grant, 1 other.
+# $2 (optional): exact grant_id; another active grant of the tier is refused, never substituted.
+# A tier with more than one active grant row is refused (ambiguous), never unioned.
 grant_consume() {
   local out rc
-  out=$(_ledger consume --tier "$1" 2>/dev/null) || rc=$?
+  local _gid=()
+  [[ -n "${2:-}" ]] && _gid=(--grant-id "$2")
+  out=$(_ledger consume --tier "$1" "${_gid[@]}" 2>/dev/null) || rc=$?
   rc=${rc:-0}
   # Last JSON object only — ignore any stray lines.
   GRANT_CONSUME_JSON=$(printf '%s\n' "$out" | awk 'BEGIN{s="{}"} /^[[:space:]]*\{/{s=$0} END{print s}')
@@ -142,6 +146,11 @@ grant_active() {
   local out
   out=$(_ledger list 2>/dev/null) || return 1
   echo "$out" | jq -e --arg t "$1" '.active[$t] != null' >/dev/null 2>&1
+}
+
+# Full grant_id of the tier's single active grant ("" when none or ambiguous).
+grant_id_of() {
+  _ledger list 2>/dev/null | jq -r --arg t "$1" '.active[$t].grant_id // ""'
 }
 
 grant_reason() {

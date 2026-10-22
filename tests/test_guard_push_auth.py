@@ -122,7 +122,26 @@ def test_pre_push_allows_push_under_git_push_grant(tmp_path: Path) -> None:
     assert push.returncode == 0, push.stderr + push.stdout
 
 
-def test_pre_push_guard_grant_covers_push_budget(tmp_path: Path) -> None:
+def _three_pushes(src: Path, env: dict) -> list:
+    out = []
+    for i in range(3):
+        if i:
+            (src / "README").write_text(f"push{i}\n")
+            subprocess.run(["git", "add", "README"], cwd=src, check=True)
+            subprocess.run(["git", "commit", "-m", f"push{i}"], cwd=src, check=True)
+        cmd = ["git", "push", "-u", "origin", "main"] if i == 0 else ["git", "push", "origin", "main"]
+        out.append(_run(cmd, cwd=src, env=env))
+    return out
+
+
+def _git_push_uses(adir: Path) -> list[int]:
+    doc = json.loads((adir / "grants.json").read_text())
+    return [r["uses"] for k, r in doc.items() if k == "git-push" or k.startswith("git-push@")]
+
+
+def test_pre_push_guard_grant_does_not_lift_push_budget_without_override(tmp_path: Path) -> None:
+    """2026-10-21: a guard git-push grant authorizes the push, but the per-branch cap still applies
+    unless the grant's reason says "override". The refused third push costs no grant use."""
     adir = tmp_path / "approvals"
     src = _mini_repo(tmp_path, adir=adir)
     env = {
@@ -131,11 +150,24 @@ def test_pre_push_guard_grant_covers_push_budget(tmp_path: Path) -> None:
         "GUARD_APPROVALS_DIR": str(adir),
         "PYTHONPATH": str(src),
     }
-    for i in range(3):
-        if i:
-            (src / "README").write_text(f"push{i}\n")
-            subprocess.run(["git", "add", "README"], cwd=src, check=True)
-            subprocess.run(["git", "commit", "-m", f"push{i}"], cwd=src, check=True)
-        cmd = ["git", "push", "-u", "origin", "main"] if i == 0 else ["git", "push", "origin", "main"]
-        push = _run(cmd, cwd=src, env=env)
+    first, second, third = _three_pushes(src, env)
+    assert first.returncode == 0, first.stderr + first.stdout
+    assert second.returncode == 0, second.stderr + second.stdout
+    assert third.returncode != 0
+    assert "REMOTE PUSH BLOCKED (push budget)" in third.stderr
+    assert _git_push_uses(adir) == [3]  # 5 granted, 2 consumed by the two allowed pushes
+
+
+def test_pre_push_guard_grant_with_override_reason_covers_push_budget(tmp_path: Path) -> None:
+    adir = tmp_path / "approvals"
+    src = _mini_repo(tmp_path)
+    _grant_git_push(adir, reason="test grant for branch main, budget override approved")
+    env = {
+        "TRADEAI_SKIP_SECRETS_SCAN": "1",
+        "TRADEAI_PUSH_BUDGET_PATH": str(src / ".git/tradeai-push-budget.json"),
+        "GUARD_APPROVALS_DIR": str(adir),
+        "PYTHONPATH": str(src),
+    }
+    for push in _three_pushes(src, env):
         assert push.returncode == 0, push.stderr + push.stdout
+    assert _git_push_uses(adir) == [2]

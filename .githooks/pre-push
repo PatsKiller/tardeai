@@ -1,10 +1,20 @@
 #!/usr/bin/env bash
-# Trade AI tracked pre-push: auth + two-push budget, then secrets tree scan.
+# Trade AI tracked pre-push: auth + per-branch push budget, then secrets tree scan,
+# and only then the guard grant use and the budget count (2026-10-21).
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 export PYTHONPATH="${repo_root}${PYTHONPATH:+:$PYTHONPATH}"
+
+# git hands the hook one "<local ref> <local sha> <remote ref> <remote sha>" line per pushed ref.
+# The budget is charged to the PUSHED branch(es), not to HEAD; HEAD is only the fallback when the
+# hook is run by hand with no refs on stdin.
+push_refs=""
+if [[ ! -t 0 ]]; then
+  push_refs="$(timeout 10 cat || true)"
+fi
+export PUSH_REFS="$push_refs"
 
 echo
 echo "Trade AI Remote Sync Gate"
@@ -13,76 +23,78 @@ echo
 
 authorized=0
 [[ "${TRADEAI_REMOTE_PUSH_AUTHORIZED:-0}" == "1" ]] && authorized=1
-override=0
-[[ "${TRADEAI_REMOTE_PUSH_OVERRIDE:-0}" == "1" ]] && override=1
+env_override=0
+[[ "${TRADEAI_REMOTE_PUSH_OVERRIDE:-0}" == "1" ]] && env_override=1
 
-push_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
+push_head_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
 push_head="$(git rev-parse HEAD 2>/dev/null || echo "")"
-guard_meta="$(PUSH_BRANCH="$push_branch" PUSH_HEAD="$push_head" python3 - <<'PY'
+guard_meta="$(PUSH_BRANCH="$push_head_branch" PUSH_HEAD="$push_head" python3 - <<'PY'
 import json, os, sys
 sys.path.insert(0, os.environ.get("PYTHONPATH", "").split(":")[0] or ".")
 try:
     from scripts.lib.guard_push_auth import push_authorized_by_guard_scoped
-    v = push_authorized_by_guard_scoped(branch=os.environ.get("PUSH_BRANCH", ""),
-                                        head_sha=os.environ.get("PUSH_HEAD", ""))
+    from scripts.lib.tradeai_push_budget import parse_push_refs, ZERO_SHA
+    refs = [r for r in parse_push_refs(os.environ.get("PUSH_REFS", ""))]
+    targets = [(r["branch"], "" if r["local_sha"] == ZERO_SHA else r["local_sha"]) for r in refs] or \
+              [(os.environ.get("PUSH_BRANCH", ""), os.environ.get("PUSH_HEAD", ""))]
+    # The grant must cover EVERY ref this push writes; one uncovered ref and the grant authorizes nothing.
+    verdicts = [push_authorized_by_guard_scoped(branch=b, head_sha=s) for b, s in targets]
+    v = dict(verdicts[0])
+    v["ok"] = all(x["ok"] for x in verdicts)
+    v["scoped"] = all(x["scoped"] for x in verdicts)
+    v["uncovered"] = [b for (b, _), x in zip(targets, verdicts) if not x["scoped"]]
     print(json.dumps(v))
 except Exception:
-    print(json.dumps({"ok": False, "reason": "", "scoped": False, "why": "", "enforced": False}))
+    print(json.dumps({"ok": False, "reason": "", "scoped": False, "why": "", "enforced": False,
+                      "grant_id": "", "uncovered": []}))
 PY
 )"
+jget() { python3 -c 'import json,sys; v=json.loads(sys.argv[1]).get(sys.argv[2]); print("" if v is None else v)' "$1" "$2"; }
 guard_scoped="$(python3 -c 'import json,sys; print("1" if json.loads(sys.argv[1]).get("scoped") else "0")' "$guard_meta")"
 guard_has="$(python3 -c 'import json,sys; print("1" if json.loads(sys.argv[1]).get("reason") else "0")' "$guard_meta")"
 if [[ "$guard_has" == "1" && "$guard_scoped" != "1" ]]; then
-  echo "WARNING: the active guard git-push grant does not name branch '$push_branch' or head ${push_head:0:9}."
+  uncovered="$(python3 -c 'import json,sys; print(" ".join(json.loads(sys.argv[1]).get("uncovered") or []))' "$guard_meta")"
+  echo "WARNING: the active guard git-push grant does not name branch '${uncovered:-$push_head_branch}' or head ${push_head:0:9}."
   echo "         A grant is permission for one operation; unscoped grants are refused and not consumed (TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=0 to warn only)."
 fi
 guard_ok="$(python3 -c 'import json,sys; print("1" if json.loads(sys.argv[1])["ok"] else "0")' "$guard_meta")"
-guard_reason="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["reason"])' "$guard_meta")"
-if [[ "$guard_ok" == "1" ]]; then
-  authorized=1
-  # Operator scope grant covers the push-budget override for this window.
-  override=1
-  # C-10 (2026-09-26): only the Cursor shell guard consumed a use per push; a
-  # Claude Code (or plain shell) push authorized by the same grant consumed
-  # nothing, so the ledger under-counted. Consume one use here unless the shell
-  # guard already did (it exports TRADEAI_GUARD_CONSUMED_BY_SHELL=1). Fail-soft:
-  # accounting must never block a push the grant already authorized.
-  if [[ "${TRADEAI_GUARD_CONSUMED_BY_SHELL:-0}" != "1" && "${TRADEAI_GUARD_CONSUME:-1}" != "0" ]]; then
-    if [[ -f ".cursor/hooks/guard_ledger.py" ]]; then
-      consume_out="$(python3 .cursor/hooks/guard_ledger.py consume --tier git-push 2>/dev/null | tail -1)" || true
-      echo "guard: consumed one git-push use (${consume_out:0:120})"
-    fi
-  fi
-fi
+guard_reason="$(jget "$guard_meta" reason)"
+guard_grant_id="$(jget "$guard_meta" grant_id)"
+[[ "$guard_ok" == "1" ]] && authorized=1
 
-decision="$(PUSH_BRANCH="$push_branch" python3 - <<PY
+# Budget decision per pushed branch, counted per (git common dir, branch) so a new worktree or a
+# branch switch cannot reset it. A guard grant no longer lifts the cap by itself (2026-10-21): only
+# a grant whose reason says "override", or the operator's TRADEAI_REMOTE_PUSH_OVERRIDE=1, does.
+decision="$(AUTHORIZED="$authorized" ENV_OVERRIDE="$env_override" GUARD_OK="$guard_ok" GUARD_REASON="$guard_reason" python3 - <<'PY'
 import os, json, sys
 sys.path.insert(0, os.environ.get("PYTHONPATH", "").split(":")[0] or ".")
-from scripts.lib.tradeai_push_budget import decide, load_state
-st = load_state()
-d = decide(
-    authorized=os.environ.get("TRADEAI_REMOTE_PUSH_AUTHORIZED") == "1" or ${authorized} == 1,
-    override=os.environ.get("TRADEAI_REMOTE_PUSH_OVERRIDE") == "1" or ${override} == 1,
-    count=int(st.get("authorized_push_count") or 0),
-    branch=os.environ.get("PUSH_BRANCH") or None,
+from scripts.lib.tradeai_push_budget import decide_push, pushed_branches
+d = decide_push(
+    pushed_branches(os.environ.get("PUSH_REFS", "")),
+    authorized=os.environ.get("AUTHORIZED") == "1",
+    env_override=os.environ.get("ENV_OVERRIDE") == "1",
+    grant_reason=os.environ.get("GUARD_REASON") if os.environ.get("GUARD_OK") == "1" else None,
 )
-print(json.dumps({**d, "state_count": int(st.get("authorized_push_count") or 0), "guard_grant": ${guard_ok} == 1}))
+print(json.dumps({**d, "guard_grant": os.environ.get("GUARD_OK") == "1"}))
 PY
 )"
 
-reason="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["reason"])' "$decision")"
-allow="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["allow"])' "$decision")"
-count="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["state_count"])' "$decision")"
-budget="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("budget", 2))' "$decision")"
+reason="$(jget "$decision" reason)"
+allow="$(jget "$decision" allow)"
+count="$(jget "$decision" state_count)"
+budget="$(jget "$decision" budget)"
+blocked_branch="$(jget "$decision" branch)"
 
 if [[ "$allow" != "True" ]]; then
   if [[ "$reason" == "BUDGET_EXCEEDED" ]]; then
     cat >&2 <<EOF
 REMOTE PUSH BLOCKED (push budget).
 
-This tranche (branch '${push_branch}') already used ${count} authorized remote push(es).
+This tranche (branch '${blocked_branch}') already used ${count} authorized remote push(es).
 Effective budget for this branch is ${budget}.
 Default budget is 2 (4 for n8nmat/* until 2026-10-12T23:59:59-04:00, AGENTS.md §23.13).
+The count is per branch across every worktree of this repository; a guard git-push grant
+lifts it only when the grant's reason says "override".
 Any push beyond the effective budget requires explicit operator approval:
 
     TRADEAI_REMOTE_PUSH_OVERRIDE=1 TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push ...
@@ -128,11 +140,37 @@ if [[ "${TRADEAI_SKIP_SECRETS_SCAN:-0}" != "1" ]]; then
   fi
 fi
 
+# Consume AFTER the gates (2026-10-21): a push refused by the budget or the secrets scan above has
+# already exited and cost no grant use. C-10 (2026-09-26): only the Cursor shell guard consumed a
+# use per push; a Claude Code (or plain shell) push authorized by the same grant consumed nothing.
+# Consume one use here, from the exact grant that authorized the push, unless the shell guard
+# already did (it exports TRADEAI_GUARD_CONSUMED_BY_SHELL=1). When the grant was the ONLY
+# authorization and the use cannot be taken (the grant was exhausted, revoked or replaced since the
+# check), the push is refused; otherwise accounting stays fail-soft.
+if [[ "$guard_ok" == "1" && "${TRADEAI_GUARD_CONSUMED_BY_SHELL:-0}" != "1" && "${TRADEAI_GUARD_CONSUME:-1}" != "0" ]]; then
+  if [[ -f ".cursor/hooks/guard_ledger.py" ]]; then
+    gid_arg=()
+    [[ -n "$guard_grant_id" ]] && gid_arg=(--grant-id "$guard_grant_id")
+    consume_rc=0
+    consume_out="$(python3 .cursor/hooks/guard_ledger.py consume --tier git-push "${gid_arg[@]}" 2>/dev/null | tail -1)" || consume_rc=$?
+    if [[ $consume_rc -eq 0 ]]; then
+      echo "guard: consumed one git-push use (${consume_out:0:120})"
+    elif [[ "${TRADEAI_REMOTE_PUSH_AUTHORIZED:-0}" != "1" ]]; then
+      echo "REMOTE PUSH BLOCKED: the git-push grant ${guard_grant_id:0:8} could not be consumed (${consume_out:0:160})." >&2
+      exit 1
+    else
+      echo "guard: no git-push use consumed (${consume_out:0:120}); push authorized by TRADEAI_REMOTE_PUSH_AUTHORIZED"
+    fi
+  fi
+fi
+
 python3 - <<'PY'
 import os, sys
 sys.path.insert(0, os.environ.get("PYTHONPATH", "").split(":")[0] or ".")
-from scripts.lib.tradeai_push_budget import record_authorized_push
-record_authorized_push()
+from scripts.lib.tradeai_push_budget import record_authorized_push, parse_push_refs, pushed_branches
+shas = {r["branch"]: r["local_sha"] for r in parse_push_refs(os.environ.get("PUSH_REFS", ""))}
+for branch in pushed_branches(os.environ.get("PUSH_REFS", "")):
+    record_authorized_push(branch, sha=shas.get(branch))
 PY
 
 exit 0

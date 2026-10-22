@@ -42,8 +42,22 @@ from scripts.lib.release_grant_binding import ReleaseAction, decide_from_disk  #
 GUARD_LEDGER = ROOT / ".cursor" / "hooks" / "guard_ledger.py"
 
 
-def consume_release_grant(*, tier: str = "release-write", runner=None) -> dict:
+#: The grant the binding verdict of THIS run approved (set by main() through _bind_consume_grant).
+_CONSUME_GRANT_ID: str | None = None
+
+
+def _bind_consume_grant(grant_id: str | None) -> None:
+    global _CONSUME_GRANT_ID
+    _CONSUME_GRANT_ID = str(grant_id) if grant_id else None
+
+
+def consume_release_grant(*, tier: str = "release-write", runner=None, grant_id: str | None = None) -> dict:
     """Decrement one use of the active grant through the guard's own ledger CLI.
+
+    ``grant_id`` (2026-10-21; default: the grant this run's binding verdict approved). The
+    ledger then consumes THAT row only; if another grant is the active one, nothing is
+    consumed (``grant_id_mismatch``) -- a use is never taken from a grant that did not
+    authorize the release.
 
     Fail-soft: a missing ledger CLI or a consume error is REPORTED in the
     preflight JSON, never allowed to block a release the binding already
@@ -56,9 +70,12 @@ def consume_release_grant(*, tier: str = "release-write", runner=None) -> dict:
         return {"ok": False, "skipped": "guard_ledger.py absent"}
     import subprocess
     run = runner or subprocess.run
+    argv = [sys.executable, str(GUARD_LEDGER), "consume", "--tier", tier]
+    grant_id = grant_id or _CONSUME_GRANT_ID
+    if grant_id:
+        argv += ["--grant-id", str(grant_id)]
     try:
-        proc = run([sys.executable, str(GUARD_LEDGER), "consume", "--tier", tier],
-                   capture_output=True, text=True, timeout=20)
+        proc = run(argv, capture_output=True, text=True, timeout=20)
         last = [ln for ln in (proc.stdout or "").splitlines() if ln.strip().startswith("{")]
         body = json.loads(last[-1]) if last else {}
         return {"ok": proc.returncode == 0, "rc": proc.returncode, "tier": tier, **({"ledger": body} if body else {})}
@@ -266,6 +283,7 @@ def main() -> int:
         return 0 if evidence["ok"] else 2
     mode = (os.environ.get("TRADEAI_RELEASE_GRANT_BINDING") or "enforce").lower()
     v = decide_from_disk(ReleaseAction(action=args.action, target_sha=args.sha, pr_number=args.pr, campaign=args.campaign))
+    _bind_consume_grant(v.grant_id)  # 2026-10-21: a use is consumed only from the grant this verdict approved
     out = {**v.to_dict(), "mode": mode, "action": args.action, "sha": args.sha, "pr": args.pr}
     # The CI gate guards the consume. A --no-consume call (the deploy script's early binding verdict) consumes
     # nothing, so it reads no CI; the deploy's own exact-SHA re-query and this gate on the consuming call do

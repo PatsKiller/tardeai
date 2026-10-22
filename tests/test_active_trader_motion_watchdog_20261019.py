@@ -490,7 +490,8 @@ def pk(tmp_path):
         return doc
 
     def ledger() -> dict:
-        return json.loads((approvals / "grants.json").read_text())
+        # Guard ledger v2 keys rows "<tier>@<grant_id>"; these packets hold one row per tier.
+        return {k.split("@", 1)[0]: v for k, v in json.loads((approvals / "grants.json").read_text()).items()}
 
     def audit() -> list[dict]:
         log = tmp_path / "grant-audit.jsonl"

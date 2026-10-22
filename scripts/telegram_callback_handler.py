@@ -146,6 +146,14 @@ def handle_callback_query(cb):
             telegram={"message_id": message_id, "from_id": user_id,
                       "from_username": user.get("username"), "text": data},
         )
+        if not out.get("ok") and out.get("reason") == "ACTIVE_GRANT_EXISTS":
+            # One active grant per tier: a tap never replaces one (operator 2026-10-21). The alert is
+            # capped at 200 chars, so the full reply (grant id, uses, expiry, --replace CLI) is a message.
+            ag = out["active_grant"]
+            answer_callback(cb_id, f"Not granted: an active {ag.get('tier')} grant exists "
+                                   f"({str(ag.get('grant_id'))[:8]}). Details in chat.", show_alert=True)
+            send_reply(chat_id, message_id, out["message"])
+            return
         if not out.get("ok"):
             answer_callback(cb_id, f"Not settled: {out.get('reason')}", show_alert=True)
             return

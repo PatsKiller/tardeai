@@ -484,14 +484,24 @@ After Push 2:
 
 STOP before another push and request operator approval.
 
-A local, gitignored counter lives under `.git/tradeai-push-budget.json`
-(per worktree git-dir). It is NOT source-controlled.
+A local, gitignored counter lives in the repository's git COMMON dir,
+`$(git rev-parse --git-common-dir)/tradeai-push-budget.v2.json`, keyed on that
+common dir plus the pushed branch, so every worktree of the repository shares it
+and neither a new worktree nor a branch switch resets it (2026-10-21; the older
+per-worktree `tradeai-push-budget.json` files are read as floors and never
+rewritten). It is NOT source-controlled.
 
 The pre-push hook:
 
-- increments only after an authorized push is allowed to proceed;
-- allows pushes 1 and 2 for the current branch tranche;
-- blocks push 3+ unless a separate override is set.
+- charges each push to the branch(es) it writes, read from git's pre-push
+  stdin refs, not to HEAD;
+- increments only after an authorized push has passed the budget decision and
+  the secrets scan, and consumes a guard `git-push` use (from the exact grant
+  that authorized it) only at that point; a refused push costs no use;
+- allows pushes 1 and 2 for each branch;
+- blocks push 3+ unless a separate override is set. An active guard `git-push`
+  grant authorizes the push but lifts the per-branch cap only when its reason
+  says "override".
 
 Program exception (ACTIVE with AGENTS.md 4.1.0, §23.13; see §3): on a branch
 named `n8nmat/<something>` the hook allows pushes 1 through 4 and blocks push 5+
