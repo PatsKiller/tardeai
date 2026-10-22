@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_ui_contract_stop_vocab_20261021",
+  "files": [
+    "tests/test_release_train_ui_contract_stop_vocab_20261021.py"
+  ],
+  "anchor": "RELEASE_TRAIN_UI_CONTRACT_STOP_VOCAB_20261021",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_UI_CONTRACT_STOP_VOCAB_20261021 — release-train arming finding 10. RELEASE_TRAIN_UI_CONTRACT.md",
+    "item 5 names the served STOP vocabulary ABSENT / SET / UNREADABLE (release_train_view.LATCH_STATES), not the",
+    "retired CLEAR / LATCHED. Hermetic: committed files only."
+  ]
+}

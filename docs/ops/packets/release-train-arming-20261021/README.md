@@ -726,6 +726,8 @@ The fallback holds through every phase.
    `validate_receipt`, and the old packet's §11.6 (a) and (b) are marked resolved.
 10. **STOP vocabulary drift.** UI contract item 5 says `summary.stop` uses `CLEAR`/`LATCHED`/`UNREADABLE`. API
     revision 2 replaced that with `ABSENT`/`SET`/`UNREADABLE`.
+    **Status: FIXED** (branch `fix/release-train-arming-blockers-20261021`). UI contract item 5 now names
+    `ABSENT`/`SET`/`UNREADABLE` for both reads.
 11. **The served release is Release 1.** CURRENT (`d55da84d0`) has no `train-claim` and no `/release-train-window`.
     Every step refuses until Release 2 is released (P0).
 12. **The migration owner.** The migration's own header says "Apply (operator): `psql "$DB" …`" without naming a
