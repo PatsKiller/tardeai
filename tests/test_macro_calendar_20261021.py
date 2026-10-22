@@ -13,6 +13,7 @@ real schedules, not copied from FRED).
 from __future__ import annotations
 
 import json
+import os
 import sys
 import types
 from datetime import date, datetime, timedelta, timezone
@@ -496,10 +497,14 @@ def test_no_key_exits_1_and_says_only_that(state, monkeypatch, capsys):
 # ── needs-action source ────────────────────────────────────────────────────────────────────────────────────────
 
 
+LIVE_0800 = {"enabled_0800": True, "armed": True, "detail": "delegation AUTHORIZED; 0800 enabled; control RUNNING"}
+
+
 def test_needs_action_p2_when_stale_or_missing_and_nothing_on_a_macro_day():
-    stale = NA.rule_macro_calendar({"day": "2026-10-22", "verdict": "STALE", "reason": "old"}, NOW)
+    stale = NA.rule_macro_calendar({"day": "2026-10-22", "verdict": "STALE", "reason": "old", "scope": LIVE_0800}, NOW)
     assert [(i["severity"], i["title"]) for i in stale] == [("P2", "08:00 release window skipped: calendar stale")]
-    missing = NA.rule_macro_calendar({"day": "2026-10-22", "verdict": "UNAVAILABLE", "reason": "calendar missing"}, NOW)
+    missing = NA.rule_macro_calendar({"day": "2026-10-22", "verdict": "UNAVAILABLE", "reason": "calendar missing",
+                                      "scope": LIVE_0800}, NOW)
     assert [(i["severity"], i["title"]) for i in missing] == [("P2", "08:00 release window skipped: calendar missing")]
     assert NA.rule_macro_calendar({"verdict": "MACRO_DAY"}, NOW) == []
     assert NA.rule_macro_calendar({"verdict": "CLEAR"}, NOW) == []
@@ -514,12 +519,52 @@ def test_next_0800_day_rolls_past_0800_and_weekends():
     assert NA.next_0800_day(datetime(2026, 11, 2, 12, 30, tzinfo=UTC)) == date(2026, 11, 2)  # 07:30 EST
 
 
+@pytest.mark.parametrize("scope", [
+    {"enabled_0800": False, "armed": False, "detail": "delegation PAUSED"},
+    {"enabled_0800": True, "armed": False, "detail": "control UNARMED"},
+    {"enabled_0800": False, "armed": True, "detail": "0800 disabled"},
+    {},
+])
+def test_needs_action_is_p3_info_until_0800_is_enabled_and_armed(scope):
+    for v in ("STALE", "UNAVAILABLE"):
+        items = NA.rule_macro_calendar({"day": "2026-10-22", "verdict": v, "reason": "x", "scope": scope}, NOW)
+        assert [i["severity"] for i in items] == ["P3"] and "information only" in items[0]["why"]
+        assert items[0]["evidence"]["live_0800"] is False
+
+
+def test_0800_scope_reads_the_delegation_and_control(tmp_path):
+    from scripts.lib import release_control as RC
+    from scripts.lib import release_delegation as RD
+
+    d = json.loads(RD.EXAMPLE_PATH.read_text(encoding="utf-8"))
+    d.update(status="ACTIVE", delegation_id="rtd-test-0001")
+    d["operator"]["approved_at"] = "2026-10-21T17:00:00-04:00"
+    for s in d["windows"]["slots"]:
+        s["enabled"] = s["window_id"] == "0800"
+    p = tmp_path / "hostcfg" / "delegation.json"
+    p.parent.mkdir()
+    p.write_text(json.dumps(d))
+    sd = tmp_path / "rw"
+    sc = NA.release_train_0800_scope(p, sd)
+    assert sc["enabled_0800"] is True and sc["armed"] is False             # never armed: UNARMED
+    ctl = RC.ReleaseControl(sd)
+    ctl.arm(RC.Actor("host_cli", "uid:t"), RC.HostCliProof("/dev/pts/9", os.getuid(), ctl.expected_phrase("arm")),
+            policy_digest=RD.load(p).digest, reason="arm for test")
+    assert NA.release_train_0800_scope(p, sd)["armed"] is True
+    assert NA.release_train_0800_scope(tmp_path / "absent.json", sd)["enabled_0800"] is False
+
+
 def test_needs_action_probe_and_aggregate(tmp_path, calfile):
-    out = NA.aggregate({"macro_calendar": lambda: NA.probe_macro_calendar(tmp_path / "absent.json", now=NOW)}, now=NOW)
-    assert out["sources"]["macro_calendar"]["status"] == "OK" and out["counts"]["P2"] == 1
+    off = {"enabled_0800": False, "armed": False, "detail": "test"}
+    out = NA.aggregate({"macro_calendar": lambda: NA.probe_macro_calendar(tmp_path / "absent.json", now=NOW,
+                                                                          scope=off)}, now=NOW)
+    assert out["sources"]["macro_calendar"]["status"] == "OK" and out["counts"]["P3"] == 1
     assert out["items"][0]["title"] == "08:00 release window skipped: calendar missing"
-    ok = NA.probe_macro_calendar(calfile, now=NOW)
-    assert ok == {"day": "2026-10-21", "verdict": "CLEAR", "reason": ok["reason"]}
+    out = NA.aggregate({"macro_calendar": lambda: NA.probe_macro_calendar(tmp_path / "absent.json", now=NOW,
+                                                                          scope=LIVE_0800)}, now=NOW)
+    assert out["counts"]["P2"] == 1
+    ok = NA.probe_macro_calendar(calfile, now=NOW, scope=off)
+    assert ok == {"day": "2026-10-21", "verdict": "CLEAR", "reason": ok["reason"], "scope": off}
     assert "macro_calendar" in NA.RULES
 
 

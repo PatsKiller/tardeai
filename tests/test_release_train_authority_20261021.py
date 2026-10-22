@@ -875,7 +875,11 @@ def test_libraries_are_wired_into_nothing():
                # the key with release_capability.load_key, validates the delegation with release_delegation, and
                # reads release_control_cli.py status; it never arms (arm is a TTY act) and no timer, unit or lane
                # runs it.
-               "scripts/ops/release_train_arm.sh"}
+               "scripts/ops/release_train_arm.sh",
+               # Release 3 (macro calendar severity): needs_action.release_train_0800_scope READS the delegation
+               # (release_delegation.load) and the control view (ReleaseControl.view) to decide P2 vs P3 for the
+               # calendar item. Read-only: it never arms, writes or issues anything.
+               "scripts/lib/needs_action.py"}
     hits = []
     for base in ("scripts", "config", "deploy", "systemd", "n8n", "src", "bin"):
         root = ROOT / base

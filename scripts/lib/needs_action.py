@@ -472,9 +472,48 @@ def next_0800_day(now: datetime) -> Any:
     return d
 
 
-def probe_macro_calendar(path: Any = None, now: Optional[datetime] = None) -> dict:
-    """The macro calendar's verdict for the next 08:00 ET window (read-only, no network). Never raises on a bad file:
-    a missing / corrupt / stale calendar is the finding, returned as its verdict."""
+def release_train_0800_scope(delegation_path: Any = None, state_dir: Any = None) -> dict:
+    """Is the 08:00 window live-able? ``enabled_0800``: the standing delegation is ACTIVE (authorized) and its 0800
+    slot is enabled; ``armed``: the release control is armed (RUNNING or PAUSE_REQUESTED). Read-only; never raises:
+    anything unreadable reads as not enabled / not armed (the train then refuses 08:00 anyway)."""
+    import os
+    from pathlib import Path
+
+    out: dict[str, Any] = {"enabled_0800": False, "armed": False, "detail": []}
+    try:
+        try:
+            from lib import release_delegation as RD
+        except ImportError:  # pragma: no cover
+            from scripts.lib import release_delegation as RD  # type: ignore[no-redef]
+        dv = RD.load(Path(delegation_path) if delegation_path is not None else None)
+        slots = ((dv.delegation or {}).get("windows") or {}).get("slots") or []
+        en = any(str(s.get("window_id")) == "0800" and s.get("enabled") is True for s in slots if isinstance(s, dict))
+        out["enabled_0800"] = bool(dv.authorized and en)
+        out["detail"].append(f"delegation {dv.code}; 0800 {'enabled' if en else 'disabled'}")
+    except Exception as exc:  # noqa: BLE001
+        out["detail"].append(f"delegation unreadable: {type(exc).__name__}")
+    try:
+        try:
+            from lib import release_control as RC
+        except ImportError:  # pragma: no cover
+            from scripts.lib import release_control as RC  # type: ignore[no-redef]
+        if state_dir is None:
+            root = os.environ.get("TRADEAI_STATE_ROOT", str(Path.home() / "trade-ai-releases" / "persistent-state"))
+            state_dir = os.environ.get("TRADEAI_RELEASE_WINDOW_STATE_DIR",
+                                       str(Path(root) / "data" / "runtime" / "release_window"))
+        mode = RC.ReleaseControl(Path(state_dir)).view().mode
+        out["armed"] = mode in (RC.RUNNING, RC.PAUSE_REQUESTED)
+        out["detail"].append(f"control {mode}")
+    except Exception as exc:  # noqa: BLE001
+        out["detail"].append(f"control unreadable: {type(exc).__name__}")
+    out["detail"] = "; ".join(out["detail"])
+    return out
+
+
+def probe_macro_calendar(path: Any = None, now: Optional[datetime] = None, *, scope: Any = None) -> dict:
+    """The macro calendar's verdict for the next 08:00 ET window (read-only, no network), plus whether that window is
+    live-able (``scope``: a dict, a callable returning one, or None for the host's delegation + control). Never
+    raises on a bad file: a missing / corrupt / stale calendar is the finding, returned as its verdict."""
     try:
         from lib.macro_calendar import verdict
     except ImportError:  # pragma: no cover - repo root on sys.path instead of scripts/
@@ -482,23 +521,30 @@ def probe_macro_calendar(path: Any = None, now: Optional[datetime] = None) -> di
     now = now or datetime.now(timezone.utc)
     day = next_0800_day(now)
     v, why = verdict(day, now, path=path)
-    return {"day": day.isoformat(), "verdict": v, "reason": why}
+    sc = scope() if callable(scope) else scope if isinstance(scope, dict) else release_train_0800_scope()
+    return {"day": day.isoformat(), "verdict": v, "reason": why, "scope": sc}
 
 
 def rule_macro_calendar(p: Any, now: datetime) -> list[dict]:
-    """STALE / UNAVAILABLE -> one P2 "08:00 release window skipped: calendar stale|missing"; CLEAR / MACRO_DAY -> none."""
+    """STALE / UNAVAILABLE -> one "08:00 release window skipped: calendar stale|missing" item; CLEAR / MACRO_DAY ->
+    none. P2 only when the 08:00 window is live-able (enabled in the ACTIVE delegation's scope AND the train is armed);
+    otherwise P3 (information: a skipped window that could not have run is not something to act on yet)."""
     if not isinstance(p, dict) or "verdict" not in p:
         raise SourceUnavailable("macro calendar probe answered no verdict")
     v = p.get("verdict")
     if v in ("CLEAR", "MACRO_DAY"):
         return []
+    sc = p.get("scope") if isinstance(p.get("scope"), dict) else {}
+    live = sc.get("enabled_0800") is True and sc.get("armed") is True
     what = "stale" if v == "STALE" else "missing"
-    return [item("P2", f"08:00 release window skipped: calendar {what}",
+    gate = ("08:00 is enabled and the train is armed" if live else
+            f"08:00 is not live yet ({sc.get('detail') or 'scope unknown'}), so this is information only")
+    return [item("P2" if live else "P3", f"08:00 release window skipped: calendar {what}",
                  f"{p.get('reason')}. The release train fails closed and skips the 08:00 ET window on {p.get('day')} "
                  f"until the {MACRO_CALENDAR_LANE} lane writes a fresh calendar "
-                 "(python3 scripts/macro_calendar_refresh.py --dry-run shows what it would write).",
+                 f"(python3 scripts/macro_calendar_refresh.py --dry-run shows what it would write). {gate}.",
                  R_SYSTEM_JOBS, "macro_calendar", None,
-                 {"day": p.get("day"), "verdict": v, "lane": MACRO_CALENDAR_LANE})]
+                 {"day": p.get("day"), "verdict": v, "lane": MACRO_CALENDAR_LANE, "live_0800": live})]
 
 
 RULES: dict[str, Callable[[Any, datetime], list[dict]]] = {

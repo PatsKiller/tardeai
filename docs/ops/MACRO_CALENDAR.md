@@ -26,7 +26,7 @@ host controller decides, and the calendar fails closed.**
 | Calendar | `<state root>/data/runtime/macro_calendar.json` (`MacroCalendar@v1`) | Per-date events, the 08:30 flag, the 08:00 skip flag, source receipts, `fetched_at` and `valid_through`. |
 | Reader | `scripts/lib/macro_calendar.py` | `skip_0800(day) -> (skip, reason)`, `verdict(day, now)` and `ReleaseTrainCalendar`. Pure stdlib, no network, never writes. |
 | Lane | `macro-calendar-refresh` (n8n dispatcher, ingest class, daily `5 5 * * *` ET, SHADOW) | Registry row, allowlist entry (`--dry-run`, `live_arg` null, env enforce), DRAFT health contract and cron-inventory row. No crontab line. |
-| Inbox | `GET /api/v2/needs-action` source `macro_calendar` | P2 "08:00 release window skipped: calendar stale" or "…: calendar missing". |
+| Inbox | `GET /api/v2/needs-action` source `macro_calendar` | "08:00 release window skipped: calendar stale" or "…: calendar missing": P2 when 08:00 is enabled and the train armed, else P3 (info). |
 
 ## 2. The FRED release ids
 
@@ -102,11 +102,11 @@ TrainController(..., calendar=ReleaseTrainCalendar())   # drop-in for release_tr
 
 `ReleaseTrainCalendar.verdict(day, now)` has the same signature and the same four words as the controller's
 `MacroCalendar.verdict`. So `_rules()` keeps raising `Halt(NO_OP, f"WINDOW_SKIPPED_MACRO_{verdict}", why)` unchanged.
-The controller branch needs one change, which is not made here because the branch belongs to the release-train work:
-in `TrainController.__init__`, replace `self.calendar = calendar or MacroCalendar()` with
-`self.calendar = calendar or ReleaseTrainCalendar()` and add the import. Its own `MacroCalendar` class reads an
-operator-supplied `~/.config/tradeai/release_train/macro_calendar.json` (`MacroReleaseCalendar@v1`, 168 h max age).
-It can then be retired, or kept as a manual fallback. The operator ruled 72 h; the new reader enforces 72 h.
+**Wired (release 3, branch `fix/release-train-arming-blockers-20261021`).** `TrainController.__init__` now builds
+`calendar or MC.ReleaseTrainCalendar()`. The controller's own `MacroCalendar` class, its
+`~/.config/tradeai/release_train/macro_calendar.json` path (`MacroReleaseCalendar@v1`) and its 168 h limit are
+removed, so there is a single source: this file at `<state root>/data/runtime/macro_calendar.json`, stale after 72 h
+(the operator's ruling).
 
 `day` is the ET date of the window. An aware `datetime` is converted to America/New_York, and a naive one is taken as
 ET wall time. Age is measured between absolute instants, so a DST change inside the 72 h window neither adds nor
@@ -127,9 +127,11 @@ same root the lane receipts use.
 | A bad `day`, or a `now` with no offset | UNAVAILABLE | skipped |
 
 Needs-action evaluates the next 08:00 window: today if it is before 08:00 ET, otherwise the next weekday. STALE gives
-P2 "08:00 release window skipped: calendar stale". UNAVAILABLE gives P2 "…: calendar missing". A MACRO_DAY is an
-expected skip and raises no item. **While the lane is at SHADOW it writes no calendar, so this P2 shows every day
-until the lane goes live.** That is honest: the 08:00 window really is skipped.
+"08:00 release window skipped: calendar stale", and UNAVAILABLE gives "…: calendar missing". A MACRO_DAY is an expected
+skip and raises no item. **Severity (release 3):** the item is P2 only when the 08:00 window is live-able, meaning
+its slot is enabled in an ACTIVE delegation and the train is armed (`needs_action.release_train_0800_scope`). Otherwise
+it is P3, information only. While the lane is at SHADOW it writes no calendar, so the item shows every day. It stays P3
+until 08:00 is enabled and the train is armed, and from then on a missing calendar is a P2 to act on.
 
 ## 7. The lane and the key
 
