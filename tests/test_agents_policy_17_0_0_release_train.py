@@ -75,8 +75,9 @@ SECTION_17_SHA256 = {"f61b30d248331b2ee11e950cc8f455a273608d52d1eba3de6fca191b98
                      "2eeb550129d0054a2526907cd8fc5a482caf59ab03ac97cd51a60cdea90ea238"}
 SECTION_24_5_SHA256 = "01186281f84060666ac7de6045201aeed88b477f8aa0cf35404a5270d520785d"
 SECTION_24_8_SHA256 = "eea733900bb49f71a45049034415b2cc134679f0a8418248c4bf4fc797043413"
-#: AI_WORK_POLICY.md on origin/main 7faa8cddf; the patch only appends §28.
-AWP_MAIN_SHA256 = "de347f28e91904a039ca11946ad9d20092464ea6f8d19a00d782917da7d23e0b"
+#: AI_WORK_POLICY.md §§1-27 on origin/main after the operator-applied guard patches (ced99617e, PR #1912: push budget
+#: per git common dir + branch) and before §28; was 7faa8cddf (de347f28…) when 17.0.0 was drafted. The patch only appends §28.
+AWP_MAIN_SHA256 = "f2ad84aecbb16ed97a1d7709a59cec83004bf96a6f4cc354d55f4f97c14e17a2"
 
 # The three clauses the ratifying edit inserts (quoted in §25.9).
 S17_ANCHOR = ("monitoring. **If the deferred list grows during a wave, that is a finding about how the wave was\n"
