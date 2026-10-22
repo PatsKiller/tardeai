@@ -102,6 +102,9 @@ INVENTORY_SQL = """select json_build_object(
  'role', (select json_build_object('rolsuper', rolsuper, 'rolcreaterole', rolcreaterole, 'rolcreatedb', rolcreatedb,
           'rolreplication', rolreplication, 'rolbypassrls', rolbypassrls, 'rolcanlogin', rolcanlogin,
           'rolconnlimit', rolconnlimit) from pg_roles where rolname = '{role}'),
+ 'role_memberships', (select coalesce(json_agg(parent.rolname order by parent.rolname), '[]'::json)
+                      from pg_auth_members m join pg_roles parent on parent.oid = m.roleid
+                      join pg_roles member on member.oid = m.member where member.rolname = '{role}'),
  'admin_rolsuper', (select rolsuper from pg_roles where rolname = '{admin}'),
  'owners', (select coalesce(json_object_agg(k, n), '{{}}'::json) from (
      select pg_get_userbyid(c.relowner) || ':' || c.relkind::text as k, count(*) as n from pg_class c
@@ -274,6 +277,9 @@ def verify(inv: dict, *, connects_as: Optional[str]) -> list[str]:
             problems.append(f"{ROLE}.{k} = t")
     if not role.get("rolcanlogin"):
         problems.append(f"{ROLE} cannot log in")
+    memberships = inv.get("role_memberships") or []
+    if memberships:
+        problems.append(f"{ROLE} is a member of elevated or inherited role(s): {', '.join(sorted(memberships))}")
     if inv.get("not_owned_by_role"):
         problems.append(f"{inv['not_owned_by_role']} public relation(s) not owned by {ROLE}")
     if inv.get("functions_not_owned_by_role"):

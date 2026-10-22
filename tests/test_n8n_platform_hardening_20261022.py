@@ -2,7 +2,7 @@
 
 Pinned here:
 
-* the platform probe measures each element from host evidence (fake runner: docker inspect with an env template
+* the platform probe measures each element from host evidence (fake runner: docker container/image inspect, an env template
   that names only allowlisted keys, pg_roles, systemctl --user, ss, docker network inspect, an operator ufw
   capture) and an element PASSes only from a fresh host probe — a cited or stale file caps at PARTIAL;
 * the ufw verdict needs active + default deny + ALLOW (lab subnet, lab bridge) before DENY, and refuses a
@@ -48,6 +48,7 @@ from tests.test_n8n_workflow_drift_20261009 import _gen_dir, _git_doc, _live  # 
 PACKET = ROOT / "docs" / "ops" / "packets" / "n8n-platform-hardening-20261022"
 NOW = datetime(2026, 10, 22, 14, 0, tzinfo=timezone.utc)
 DIGEST = "sha256:c6a3a0461d1d3ffc16d849adf57606c2b028667ade70cce2faa2ff094734873c"
+IMAGE_ID = "sha256:" + "a" * 64
 
 UFW_GOOD = """Status: active
 Logging: on (low)
@@ -85,6 +86,8 @@ class FakeHost:
         }
         self.env.update(over.pop("env", {}))
         self.image = over.pop("image", f"n8nio/n8n:2.43.0@{DIGEST}")
+        self.repo_digests = over.pop("repo_digests", [f"n8nio/n8n@{DIGEST}"])
+        self.ufw_probe = over.pop("ufw_probe", True)
         self.rolsuper = over.pop("rolsuper", False)
         self.timers = over.pop("timers", {P.DRIFT_TIMER: ("enabled", "active"), P.DEADMAN_TIMER: ("enabled", "active")})
         self.binds = over.pop("binds", ["127.0.0.1:5678", "172.19.0.1:18092"])
@@ -97,7 +100,19 @@ class FakeHost:
                 return 0, "".join(f"{k}={v}\n" for k, v in self.env.items()) + "N8N_ENCRYPTION_KEY=SHOULD-BE-DROPPED\n", ""
             return 0, "POSTGRES_USER=n8n\nPOSTGRES_DB=n8n\n", ""
         if argv[:2] == ["docker", "inspect"]:
-            return 0, f"{self.image} {DIGEST}\n", ""
+            assert "RepoDigests" not in argv[-1], "RepoDigests must be read from ImageInspect"
+            assert argv[2:4] == ["--type=container", P.N8N_CONTAINER]
+            return 0, f"{self.image}\n{IMAGE_ID}\n", ""
+        if argv[:3] == ["docker", "image", "inspect"]:
+            assert argv[3] == IMAGE_ID
+            assert "RepoDigests" in argv[-1]
+            return 0, json.dumps(self.repo_digests) + "\n", ""
+        if argv[:3] == [P.SUDO_BIN, "-n", P.UFW_BIN]:
+            if self.ufw_probe and argv[3:5] == ["status", "verbose"]:
+                return 0, UFW_GOOD.split("[ 1]")[0], ""
+            if self.ufw_probe and argv[3:5] == ["status", "numbered"]:
+                return 0, UFW_GOOD, ""
+            return 1, "", "not authorized"
         if argv[:2] == ["docker", "exec"]:
             return 0, json.dumps({"role": "n8n_app", "rolsuper": self.rolsuper, "rolcreaterole": False,
                                   "rolcreatedb": False, "rolreplication": False, "rolbypassrls": False}) + "\n", ""
@@ -145,6 +160,17 @@ def test_a_hardened_host_passes_all_six_from_a_fresh_probe(tmp_path):
     assert {k: v["status"] for k, v in plat.items()} == {f"FW-P{i}": F.PASS for i in range(1, 7)}, plat
 
 
+def test_fw_p5_reads_container_reference_and_repo_digests_from_distinct_objects(tmp_path):
+    host = FakeHost()
+    plat = F.score_platform(_probe(tmp_path, host), now=NOW)
+    container_calls = [c for c in host.calls if c[:2] == ["docker", "inspect"] and "Config.Image" in c[-1]]
+    image_calls = [c for c in host.calls if c[:3] == ["docker", "image", "inspect"]]
+    assert len(container_calls) == len(image_calls) == 1
+    assert container_calls[0][-1] == "{{.Config.Image}}\n{{.Image}}"
+    assert image_calls[0][3:5] == [IMAGE_ID, "--format"]
+    assert plat["FW-P5"]["status"] == F.PASS
+
+
 def test_the_probe_never_reads_a_secret_env_value(tmp_path):
     host = FakeHost()
     facts = _probe(tmp_path, host)
@@ -176,9 +202,17 @@ def test_each_element_fails_on_its_own_host_evidence(tmp_path, over, element, ne
 
 
 def test_a_digest_pin_that_is_not_the_running_image_is_not_a_pin(tmp_path):
-    host = FakeHost(image="n8nio/n8n:2.43.0@sha256:" + "0" * 64)
+    host = FakeHost(repo_digests=["n8nio/n8n@sha256:" + "0" * 64])
     plat = F.score_platform(_probe(tmp_path, host), now=NOW)
-    assert plat["FW-P5"]["status"] == F.PARTIAL and "NOT the running image" in plat["FW-P5"]["evidence"]
+    assert plat["FW-P5"]["status"] == F.PARTIAL and "NOT present in the running image RepoDigests" in plat["FW-P5"]["evidence"]
+
+
+def test_saved_ufw_capture_cannot_authorize_firewall_pass(tmp_path):
+    facts = _probe(tmp_path, FakeHost(ufw_probe=False))
+    platform = F.score_platform(facts, now=NOW)
+    assert platform["FW-P4"]["status"] == F.FAIL
+    assert "saved capture cannot authorize PASS" in platform["FW-P4"]["evidence"]
+    assert facts["facts"]["relay_bind_firewall_verified"]["detail"]["ufw_evidence_source"] == "untrusted_capture_or_unavailable"
 
 
 def test_stale_or_cannot_run_receipts_fail_p3_and_p6(tmp_path):
@@ -199,6 +233,29 @@ def test_a_cited_or_stale_facts_file_can_never_pass(tmp_path):
     assert all(v["status"] == F.PARTIAL for v in stale.values())
     committed = json.loads((ROOT / F.DEFAULT_PLATFORM).read_text())
     assert F.score_platform(committed)["FW-P2"]["status"] == F.FAIL  # the 2026-10-15 measurement is unchanged
+
+
+def test_a_fresh_forged_host_probe_file_cannot_authorize_pass(tmp_path):
+    facts = _probe(tmp_path)
+    facts["probed_at"] = datetime.now(timezone.utc).isoformat()
+    f = tmp_path / "forged-host-probe.json"
+    f.write_text(json.dumps(facts))
+
+    loaded, source = IR.load_platform_facts(str(f))
+    report = IR.platform_report(loaded)
+
+    assert source["kind"] == "cited_file"
+    assert loaded["source_kind"] == "cited_file"
+    assert all(v["status"] == F.PARTIAL for v in report.values()), report
+
+
+def test_only_direct_host_probe_can_authorize_fresh_pass(tmp_path):
+    facts = _probe(tmp_path)
+    loaded, source = IR.load_platform_facts(probe_host=True, prober=lambda: facts)
+    report = IR.platform_report(loaded)
+
+    assert source["kind"] == "host_probe"
+    assert {k: v["status"] for k, v in report.items()} == {f"FW-P{i}": F.PASS for i in range(1, 7)}
 
 
 # ── ufw (FW-P4) ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -229,14 +286,14 @@ def test_ufw_rejects_each_gap(mutate, needle):
     assert not ok and any(needle in p for p in problems), problems
 
 
-def test_missing_or_old_ufw_capture_fails_p4_with_the_operator_command(tmp_path):
+def test_live_ufw_probe_does_not_depend_on_saved_capture(tmp_path):
     root = _host_root(tmp_path, ufw=None)
     ev = F.score_platform(_probe(tmp_path, root=root), now=NOW)["FW-P4"]
-    assert ev["status"] == F.FAIL and "sudo ufw status verbose" in ev["evidence"]
+    assert ev["status"] == F.PASS
     root2 = _host_root(tmp_path / "old")
     cap = root2 / P.UFW_CAPTURE_REL
     os.utime(cap, (NOW.timestamp() - 9 * 86400,) * 2)
-    assert "d old" in F.score_platform(_probe(tmp_path, root=root2), now=NOW)["FW-P4"]["evidence"]
+    assert F.score_platform(_probe(tmp_path, root=root2), now=NOW)["FW-P4"]["status"] == F.PASS
 
 
 # ── the pager (onset / remind / recover) ─────────────────────────────────────────────────────────────────────────
@@ -410,8 +467,9 @@ def test_scram_verifier_matches_rfc7677():
 
 
 class DB:
-    def __init__(self, exists=False, rolsuper=False, connects="n8n"):
+    def __init__(self, exists=False, rolsuper=False, connects="n8n", role_memberships=None):
         self.exists, self.rolsuper, self.connects = exists, rolsuper, connects
+        self.role_memberships = role_memberships or []
         self.inputs: list[str] = []
 
     def __call__(self, argv, *, input_text=None, **_):
@@ -424,6 +482,7 @@ class DB:
             return 0, "", ""
         inv = {"role_exists": self.exists, "role": {"rolsuper": self.rolsuper, "rolcanlogin": True} if self.exists else None,
                "admin_rolsuper": True, "owners": {"n8n:r": 157}, "functions": {"n8n:own": 2}, "not_owned_by_role": 0,
+               "role_memberships": self.role_memberships,
                "functions_not_owned_by_role": 0, "db_connect": True if self.exists else None,
                "schema_create": True if self.exists else None, "extensions": ["plpgsql", "uuid-ossp"],
                "password_encryption": "scram-sha-256", "server_version": "16.15"}
@@ -458,6 +517,7 @@ def test_role_verify_and_rollback_never_drop(tmp_path, capsys):
     assert R.main(["--verify"], run=DB(exists=True, connects="n8n")) == 1  # compose switch pending
     assert R.main(["--verify"], run=DB(exists=True, connects="n8n_app")) == 0
     assert R.main(["--verify"], run=DB(exists=True, rolsuper=True, connects="n8n_app")) == 1
+    assert R.main(["--verify"], run=DB(exists=True, connects="n8n_app", role_memberships=["pg_write_all_data"])) == 1
     assert "DROP ROLE" not in R.ROLLBACK_SQL and "NOLOGIN" in R.ROLLBACK_SQL
     db = DB(exists=True)
     assert R.main(["--rollback"], run=db) == 0 and not any(i.startswith("BEGIN") for i in db.inputs)
@@ -468,7 +528,7 @@ def test_role_verify_and_rollback_never_drop(tmp_path, capsys):
 WF = "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json"
 
 
-def test_import_guard_prints_each_platform_element_from_a_probe_file(tmp_path, capsys):
+def test_import_guard_does_not_trust_fresh_host_probe_file_claim(tmp_path, capsys):
     facts = _probe(tmp_path)
     facts["probed_at"] = datetime.now(timezone.utc).isoformat()
     f = tmp_path / "facts.json"
@@ -477,10 +537,10 @@ def test_import_guard_prints_each_platform_element_from_a_probe_file(tmp_path, c
                   "--platform-facts", str(f), "--json"])
     doc = json.loads(capsys.readouterr().out)
     assert rc == 1  # runtime evidence is still owed: the gate is not weakened
-    assert doc["platform_source"]["kind"] == "host_probe"
-    assert {k: v["status"] for k, v in doc["platform"].items()} == {f"FW-P{i}": "pass" for i in range(1, 7)}
+    assert doc["platform_source"]["kind"] == "cited_file"
+    assert {k: v["status"] for k, v in doc["platform"].items()} == {f"FW-P{i}": "partial" for i in range(1, 7)}
     blocking = doc["files"][0]["framework_gate"]["blocking"]
-    assert blocking and not any(b.startswith("platform FW-P") for b in blocking), blocking
+    assert any(b.startswith("platform FW-P") for b in blocking), blocking
 
 
 def test_import_guard_default_still_reads_the_committed_measurement(capsys, monkeypatch):
