@@ -10,6 +10,13 @@ Tests:       tests/test_n8n_desk_truth_20261022.py (gate n8n_desk_truth_20261022
              tests/test_registry_runtime_truth_20261018.py (gate registry_runtime_truth_20261018)
 ```
 
+**Current release gate (2026-10-22 integration review): HOLD.** The repository-wide data-source authority check
+reports `scripts/desk_truth_monitor.py` as an `UNAPPROVED_READER` of `positions_current`. This monitor's direct
+store access is not covered by the Watch-only reader grant described below. No reader grant or measured-reader
+exception has been added. Do not schedule or activate this monitor until it uses an already approved domain reader,
+or an operator approves a compliant reader/projection design and its scope is recorded. The existing full-repository
+authority gate must pass before release.
+
 **Why.** Operator 2026-10-22: *"fix all of these n8n first for scheduling and monitoring"*. On that day:
 
 - the scheduled holdings writer (`scripts/schwab_position_sync.py --apply`, crontab line 501) had been commented out

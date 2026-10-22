@@ -82,6 +82,48 @@ so a slow degradation escalates **before** it breaks.
 All decisions are audited (DB `coder_dispatch_audit` + `logs/coder_dispatch.jsonl`) with a reasoning trace.
 Bounded: `CODER_DISPATCH_MAX_PER_RUN` (default 2), `CODER_DISPATCH_DAILY_CAP` (default 6).
 
+### Component pipeline failures held for operator review
+
+When the only unrecovered pipeline keys are `symbol_enrichment`, `a1a_compliance`, or
+`indicator_engine`, health reports an active **Pipeline Operations** finding and does not enqueue
+the master screener retry. If an older queue item runs the iterative remediator and receives
+`outcome: HELD`, the escalation handler records that item as HELD, notifies the operator once, and
+skips verification, retries, and LLM diagnosis. The queue item stays persisted so its owner and
+`hold_until` evidence are not lost. `hold_until` is the earliest root-cause-memory reevaluation
+time; its expiration does **not** automatically release or retry a queue item already marked HELD.
+Operator review and explicit queue cleanup are required.
+
+After reviewing the component failure and recording the disposition, an operator may remove only
+the matching HELD queue entry. This is administrative queue cleanup only: it neither runs the
+`retry_cmd` nor requests a retry. A recovery action, if approved, must be separately initiated by
+the owner. Cleanup uses the queue's flock-protected atomic update. Run from the project root,
+replacing the component value with the exact value shown in the queue item:
+
+```bash
+python3 - <<'PY'
+import sys
+from pathlib import Path
+sys.path.insert(0, "scripts")
+from lib.queue_file import atomic_update
+
+queue = Path("logs/claude_escalation_queue.json")
+component = "health:execution_health:pipeline_failures"
+
+def remove_one_held(items):
+    matches = [item for item in items
+               if item.get("component") == component and item.get("outcome") == "HELD"]
+    if len(matches) != 1:
+        raise SystemExit(f"expected exactly one matching HELD item; found {len(matches)}")
+    held = matches[0]
+    return [item for item in items if item is not held]
+
+atomic_update(queue, remove_one_held)
+print(f"Removed one HELD queue entry for {component}; no retry was executed.")
+PY
+```
+
+Do not use the handler's broad `_clear_queues()` helper for this: it empties both escalation queues.
+
 ## Multi-coder dispatch — "what fits what"
 
 The router picks **one** backend per problem: it walks the preference list for the problem's `kind` and
