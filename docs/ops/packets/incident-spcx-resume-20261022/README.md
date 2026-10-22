@@ -55,41 +55,51 @@ cron finishes first n8n runs the slot again a few seconds later.
 
 | Lane (crontab line) | n8n live since 10-14 | Ran twice? | Fix |
 |---|---|---|---|
-| sync-social-to-intelligence (L875) | 9 RUN_DONE | **yes, 9 of 9 slots** (e.g. 10-22 cron 11:30:09, n8n 11:30:18) | Part A: comment the cron line (n8n proven) |
-| materialize-watchlist-strategy-cards (L219) | 35 RUN_DONE, 67 SKIPPED_LOCK | **yes, 33 slots** | Part A: comment |
-| hermes-discovery-scorecard (L845) | 4 RUN_DONE, 3 SKIPPED_LOCK | **yes, 10-19, 10-21, 10-22** (10-18 unproven) | Part A: comment |
-| opening-intelligence-render (L804) | 1 RUN_DONE, 4 SKIPPED_LOCK | **yes, 10-22 09:15** (duplicate jsonl row) | Part B: wrap, owner cron |
-| job-coverage-monitor (L391) | 1 RUN_DONE, 1 SKIPPED_LOCK | **yes, 10-21 20:30** | Part B: wrap, owner cron |
-| classify-instruments (L506) | 1 RUN_DONE | no (n8n won the 10-17 lock race; cron log last 10-10) | Part B: wrap, owner cron |
-| finviz-enrichment (L144) | 0 RUN_DONE, 4 SKIPPED_LOCK | no (cron always wins) | Part B: wrap, owner cron |
-| finviz-sector-research (L526) | 0 RUN_DONE, 9 SKIPPED_LOCK | no (cron always wins) | Part B: wrap, owner cron |
+| sync-social-to-intelligence (L875) | 9 RUN_DONE | **yes, 9 of 9 slots** (e.g. 10-22 cron 11:30:09, n8n 11:30:18) | **this script**: comment the cron line (n8n proven) |
+| materialize-watchlist-strategy-cards (L219) | 35 RUN_DONE, 67 SKIPPED_LOCK | **yes, 33 slots** | **this script**: comment |
+| hermes-discovery-scorecard (L845) | 4 RUN_DONE, 3 SKIPPED_LOCK | **yes, 10-19, 10-21, 10-22** (10-18 unproven) | **this script**: comment |
+| opening-intelligence-render (L804) | 1 RUN_DONE, 4 SKIPPED_LOCK | **yes, 10-22 09:15** (one duplicate jsonl row) | proposed: a staged effect key (`cron_claim`/`n8n_claim` false) in its cutover packet, then the usual arming order — see below |
+| job-coverage-monitor (L391) | 1 RUN_DONE, 1 SKIPPED_LOCK | **yes, 10-21 20:30** (read-only report; a duplicate costs time, not data) | none now; comment the cron line once n8n has >= 3 live runs |
+| classify-instruments (L506) | 1 RUN_DONE | no (n8n won the 10-17 lock race; cron log last 10-10) | none now (overwrite-only); same rule |
+| finviz-enrichment (L144) | 0 RUN_DONE, 4 SKIPPED_LOCK | no (cron always wins the lock) | none now; n8n has never completed a live run |
+| finviz-sector-research (L526) | 0 RUN_DONE, 9 SKIPPED_LOCK | no (cron always wins the lock) | none now; same |
 | maturity-remeasure (L1016) | dry_run only | no (n8n never ran it live) | no crontab change: take it off the relay live list with `docs/ops/packets/maturity-remeasure-relay-live-removal-20261015/` |
 
 ```bash
 bash docs/ops/packets/incident-spcx-resume-20261022/double-run-operator.sh --preview
-bash docs/ops/packets/incident-spcx-resume-20261022/double-run-operator.sh --part A   # any time
-bash docs/ops/packets/incident-spcx-resume-20261022/double-run-operator.sh --part B   # only after the release with the 5 keys is served
+bash docs/ops/packets/incident-spcx-resume-20261022/double-run-operator.sh            # then "type APPLY" once
 ```
 
-- **Part A** refuses a lane with fewer than 3 live `RUN_DONE` since 10-14, and prefixes the line with
-  `# N8N-OWNED 2026-10-22 double-run fix (n8n live RUN_DONE proven; cron side retired) `.
-- **Part B** refuses unless the **served** `config/n8n_effect_keys.json` has the lane armed (`cron_claim` and
-  `n8n_claim` true). Before that release, a wrapped line exits 65 and runs nothing. For each lane it runs
-  `effect_claim.py set-owner --process <lane> --owner cron`, checks the owner row, and only then wraps the line with
-  `env TRADEAI_EFFECT_CLAIM=<lane> bash scripts/effect_claim_cron.sh <lane>`. From then on cron claims
-  `fx:<lane>:<slot>:v1` and n8n skips the slot.
-- **Window to know about.** From the moment the keys are served until `set-owner` runs, n8n live runs of the five
-  lanes are refused (`effect_no_owner`, fail closed). The unwrapped cron lines keep running, so nothing is lost; only
-  the duplicate stops.
+The script re-reads the ledger and refuses a lane with fewer than 3 live `RUN_DONE` since 10-14. It prefixes each line
+with `# N8N-OWNED 2026-10-22 double-run fix (n8n live RUN_DONE proven; cron side retired) `, so the line is kept.
+
+**Why there is no effect-claim wrap in this packet (a finding against the 10-22 plan).** The plan offered "wrap the
+cron line in the effect claim" for the unproven lanes. The repo's canary effect-key process rules that out here:
+- `tests/test_effect_claim_20261014.py::test_committed_effect_config_changes_no_live_run_at_merge` forbids a key that
+  changes a live run at merge. An armed key refuses every n8n run (`effect_no_owner`) until an owner row exists.
+- `tests/test_canary_effect_keys_20261015.py` forbids keying overwrite-only or read-only lanes, which covers
+  job-coverage-monitor and classify-instruments.
+- The wrapper `scripts/effect_claim_cron.sh` exits 65 and runs nothing for an unkeyed lane.
+
+So wrapping is a per-lane cutover packet: a staged key, then `set-owner --owner cron`, then `cron_claim` true plus
+the wrapped line, then `n8n_claim` true. Only opening-intelligence-render needs it, because it appends.
 
 ## 3. Registry truth (in the same PR)
 
 - **15 paused-line rows → `PAUSED`**, each with `state_since`, the exact prefix, the incident id and `review_by`
   2026-10-29. `schwab-position-sync` (L501) is flipped by PR #1927, so this PR leaves it alone to avoid a conflict.
   `options-chain-snapshot` is one row for L772 + L778.
-- **7 disabled timers → `PAUSED`:** db-retention, user systemd-tmpfiles-clean, agent-runtime atlas, concierge,
-  hermes and pulse, iris-taxonomy. Each was measured with `systemctl --user is-enabled/is-active` on 2026-10-22, and
-  RETIRED is proposed for operator decision.
+- **The 7 disabled timers are not changed (a finding against the 10-22 plan).** db-retention, the user
+  systemd-tmpfiles-clean, agent-runtime atlas, concierge, hermes and pulse, and iris-taxonomy are already recorded as
+  `state ACTIVE`, `status DISABLED_UNRULED`, `operator_decision_pending true`. That is the registry's deliberate
+  shape for "found disabled, not yet ruled": `tests/test_expected_services_lane_states_20261008.py` pins it, so a
+  disabled timer stays a finding and never becomes "expected off" without an operator ruling.
+
+  Measured 2026-10-22 with `systemctl --user is-enabled` / `is-active`: all 7 disabled and inactive, and the 4
+  runtime timers never triggered since boot. The ruling stays with the operator:
+  - RETIRED proposed for db-retention, now inside `tradeai-platform-maintenance-nightly`;
+  - iris-taxonomy waits on decision O-4;
+  - systemd-tmpfiles-clean is OS-owned.
 - **L214 → a new `RETIRED` row `sync-docs-to-drive`**, superseded by `drive-syncs-hourly`.
 - **Live-list mismatches, documented in `live_list_note`, not changed:**
   - `release-train-request-*` is intended by H.0.
@@ -97,3 +107,7 @@ bash docs/ops/packets/incident-spcx-resume-20261022/double-run-operator.sh --par
 
 Generated rows that changed state were adopted (`adopted_from_generator`), so `reconcile_lane_registry.py` cannot
 reset them. The committed file is the generator's fixed point.
+
+**Host finding, not from this PR.** `tradeai-release-train-claim.timer` is enabled but undeclared, so
+`check_lane_registry.py --fail-on-new` fails on this host for origin/main as well. The release-train packet installed
+it, and its registry row belongs to that packet.

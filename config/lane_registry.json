@@ -17756,364 +17756,6 @@
       "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented since the SPCX incident); reconcile_lane_registry.py re-derives generated rows from live crontab lines and would reset the state, so the row is hand-maintained from here."
     },
     {
-      "lane_id": "db-retention-timer",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "db-retention.timer"
-      },
-      "expected_cadence_hours": 164.0,
-      "state": "PAUSED",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/db_retention.log",
-        "evidence": "SYSTEMD_STDOUT_APPEND"
-      },
-      "value_class": "UNCLASSIFIED",
-      "recommendation": "MIGRATE_N8N",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
-      },
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "disabled",
-      "status": "DISABLED_UNRULED",
-      "operator_decision_pending": true,
-      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
-      "proposed_state": {
-        "state": "RETIRED",
-        "state_since": "2026-10-07",
-        "reason_confidence": "ESTABLISHED",
-        "state_reason": "Duplicate scheduler on the dev tree: db_retention.py also runs from cron on CURRENT. Disabled 2026-10-07 under the cron trim work; the cron line is the owner.",
-        "reason_evidence": "docs/implementation/n8n-parallel/13-cron-consolidation-20261007.md (L982 row); docs/ops/live_proof_20260928/02-runtime-lane-registry.md (db_retention.py duplicate)",
-        "ruled": false
-      },
-      "service": "db-retention.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/db_retention.py",
-      "state_since": "2026-10-04",
-      "state_reason": "db-retention.timer is disabled and inactive (systemctl --user, 2026-10-22); last fire 2026-10-04 03:00. db_retention.py now runs inside tradeai-platform-maintenance-nightly (~/n8n-maturity-verification/cron-inventory/CRON_INVENTORY_LATEST.md). The unit file is kept. Proposed RETIRED with superseded_by the maintenance pipeline: operator decision (§17 retiring a writer).",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "systemctl --user is-enabled db-retention.timer -> disabled; is-active -> inactive (2026-10-22)",
-      "review_by": "2026-10-29",
-      "adopted_from_generator": "reconcile_lane_registry@v1",
-      "adopted_on": "2026-10-22",
-      "adopted_reason": "2026-10-22: state corrected to PAUSED (timer disabled on the host); the generator re-derives generated rows and would reset the state, so the row is hand-maintained."
-    },
-    {
-      "lane_id": "systemd-tmpfiles-clean",
-      "owner": "os",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "systemd-tmpfiles-clean.timer"
-      },
-      "expected_cadence_hours": 168.0,
-      "state": "PAUSED",
-      "output_signal": {
-        "kind": "none",
-        "reason": "SIGNAL_FREE_EXEMPT",
-        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): systemd-tmpfiles-clean.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the operator's rulin",
-        "exempt_since": "2026-10-19"
-      },
-      "value_class": "OS",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
-      },
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "disabled",
-      "status": "DISABLED_UNRULED",
-      "operator_decision_pending": true,
-      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
-      "proposed_state": {
-        "state": "NEVER_SCHEDULED",
-        "state_since": "2026-10-09",
-        "reason_confidence": "ESTABLISHED",
-        "state_reason": "OS-shipped user unit (vendor preset enabled) that is not enabled in this user session: ActiveState inactive, LastTriggerUSec empty — it has never fired. Not a Trade AI producer.",
-        "reason_evidence": "systemctl --user show systemd-tmpfiles-clean.timer (read-only) 2026-10-09; docs/audits/overnight/W2_UNDECLARED_CENSUS_2026-09-01.md (OS user timers)",
-        "ruled": false
-      },
-      "service": "systemd-tmpfiles-clean.service",
-      "cadence_basis": "unknown schedule: placeholder 168 h",
-      "exec_start": "systemd-tmpfiles --user --clean",
-      "stay_on_cron": {
-        "class": "os",
-        "token": "systemd-tmpfiles-clean.timer",
-        "source": "operating-system unit"
-      },
-      "flags": [
-        "SIGNAL_FREE_EXEMPT"
-      ],
-      "state_since": "2026-10-22",
-      "state_reason": "The USER instance of systemd-tmpfiles-clean.timer is disabled and inactive (systemctl --user, 2026-10-22); OS-owned, not a Trade AI lane. Disable date not recorded (state_since is the date it was observed). The system instance was not checked. Proposed RETIRED (OS-owned; AGENTS.md §24.4).",
-      "reason_confidence": "CORRELATED",
-      "reason_evidence": "systemctl --user is-enabled systemd-tmpfiles-clean.timer -> disabled; is-active -> inactive (2026-10-22)",
-      "review_by": "2026-10-29",
-      "adopted_from_generator": "reconcile_lane_registry@v1",
-      "adopted_on": "2026-10-22",
-      "adopted_reason": "2026-10-22: state corrected to PAUSED (timer disabled on the host); the generator re-derives generated rows and would reset the state, so the row is hand-maintained."
-    },
-    {
-      "lane_id": "tradeai-agent-runtime-atlas",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@atlas.timer"
-      },
-      "expected_cadence_hours": 0.25,
-      "state": "PAUSED",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "UNCLASSIFIED",
-      "recommendation": "MIGRATE_N8N",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
-      },
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "disabled",
-      "status": "DISABLED_UNRULED",
-      "operator_decision_pending": true,
-      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
-      "proposed_state": {
-        "state": "RETIRED",
-        "state_since": "2026-09-16",
-        "reason_confidence": "CORRELATED",
-        "state_reason": "Orphan persona timer: 'atlas' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal; who disabled it, and why, is not verified.",
-        "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'atlas' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09",
-        "ruled": false
-      },
-      "service": "tradeai-agent-runtime@atlas.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent atlas --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ],
-      "state_since": "2026-10-22",
-      "state_reason": "tradeai-agent-runtime@atlas.timer is disabled and inactive (systemctl --user is-enabled/is-active, 2026-10-22). Disable date and reason not recorded (cron inventory: 'disabled (date UNKNOWN)'); state_since is the date it was observed. alex, morgan and steph runtime timers are enabled; aegis, argus, darwin, iris and maria were retired in batch 1 (2026-10-09). Proposed RETIRED in the next retire batch: operator decision.",
-      "reason_confidence": "UNKNOWN",
-      "reason_evidence": "systemctl --user is-enabled tradeai-agent-runtime@atlas.timer -> disabled; is-active -> inactive (2026-10-22)",
-      "review_by": "2026-10-29",
-      "adopted_from_generator": "reconcile_lane_registry@v1",
-      "adopted_on": "2026-10-22",
-      "adopted_reason": "2026-10-22: state corrected to PAUSED (timer disabled on the host); the generator re-derives generated rows and would reset the state, so the row is hand-maintained."
-    },
-    {
-      "lane_id": "tradeai-agent-runtime-concierge",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@concierge.timer"
-      },
-      "expected_cadence_hours": 0.08,
-      "state": "PAUSED",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "UNCLASSIFIED",
-      "recommendation": "MIGRATE_N8N",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
-      },
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "disabled",
-      "status": "DISABLED_UNRULED",
-      "operator_decision_pending": true,
-      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
-      "proposed_state": {
-        "state": "RETIRED",
-        "state_since": "2026-09-16",
-        "reason_confidence": "CORRELATED",
-        "state_reason": "Orphan persona timer: 'concierge' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal; who disabled it, and why, is not verified.",
-        "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'concierge' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09",
-        "ruled": false
-      },
-      "service": "tradeai-agent-runtime@concierge.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent concierge --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ],
-      "state_since": "2026-10-22",
-      "state_reason": "tradeai-agent-runtime@concierge.timer is disabled and inactive (systemctl --user is-enabled/is-active, 2026-10-22). Disable date and reason not recorded (cron inventory: 'disabled (date UNKNOWN)'); state_since is the date it was observed. alex, morgan and steph runtime timers are enabled; aegis, argus, darwin, iris and maria were retired in batch 1 (2026-10-09). Proposed RETIRED in the next retire batch: operator decision.",
-      "reason_confidence": "UNKNOWN",
-      "reason_evidence": "systemctl --user is-enabled tradeai-agent-runtime@concierge.timer -> disabled; is-active -> inactive (2026-10-22)",
-      "review_by": "2026-10-29",
-      "adopted_from_generator": "reconcile_lane_registry@v1",
-      "adopted_on": "2026-10-22",
-      "adopted_reason": "2026-10-22: state corrected to PAUSED (timer disabled on the host); the generator re-derives generated rows and would reset the state, so the row is hand-maintained."
-    },
-    {
-      "lane_id": "tradeai-agent-runtime-hermes",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@hermes.timer"
-      },
-      "expected_cadence_hours": 0.08,
-      "state": "PAUSED",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "UNCLASSIFIED",
-      "recommendation": "MIGRATE_N8N",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
-      },
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "disabled",
-      "status": "DISABLED_UNRULED",
-      "operator_decision_pending": true,
-      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
-      "proposed_state": {
-        "state": "RETIRED",
-        "state_since": "2026-09-16",
-        "reason_confidence": "CORRELATED",
-        "state_reason": "Orphan persona timer: 'hermes' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal; who disabled it, and why, is not verified.",
-        "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'hermes' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09",
-        "ruled": false
-      },
-      "service": "tradeai-agent-runtime@hermes.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent hermes --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ],
-      "state_since": "2026-10-22",
-      "state_reason": "tradeai-agent-runtime@hermes.timer is disabled and inactive (systemctl --user is-enabled/is-active, 2026-10-22). Disable date and reason not recorded (cron inventory: 'disabled (date UNKNOWN)'); state_since is the date it was observed. alex, morgan and steph runtime timers are enabled; aegis, argus, darwin, iris and maria were retired in batch 1 (2026-10-09). Proposed RETIRED in the next retire batch: operator decision.",
-      "reason_confidence": "UNKNOWN",
-      "reason_evidence": "systemctl --user is-enabled tradeai-agent-runtime@hermes.timer -> disabled; is-active -> inactive (2026-10-22)",
-      "review_by": "2026-10-29",
-      "adopted_from_generator": "reconcile_lane_registry@v1",
-      "adopted_on": "2026-10-22",
-      "adopted_reason": "2026-10-22: state corrected to PAUSED (timer disabled on the host); the generator re-derives generated rows and would reset the state, so the row is hand-maintained."
-    },
-    {
-      "lane_id": "tradeai-agent-runtime-pulse",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-agent-runtime@pulse.timer"
-      },
-      "expected_cadence_hours": 0.08,
-      "state": "PAUSED",
-      "output_signal": {
-        "kind": "none",
-        "reason": "UNVERIFIED_OUTPUT",
-        "detail": "no scheduler log redirect and no verified script receipt"
-      },
-      "value_class": "UNCLASSIFIED",
-      "recommendation": "MIGRATE_N8N",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
-      },
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "disabled",
-      "status": "DISABLED_UNRULED",
-      "operator_decision_pending": true,
-      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
-      "proposed_state": {
-        "state": "RETIRED",
-        "state_since": "2026-09-16",
-        "reason_confidence": "CORRELATED",
-        "state_reason": "Orphan persona timer: 'pulse' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal; who disabled it, and why, is not verified.",
-        "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'pulse' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09",
-        "ruled": false
-      },
-      "service": "tradeai-agent-runtime@pulse.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent pulse --once --max-batch 8",
-      "flags": [
-        "UNVERIFIED_OUTPUT"
-      ],
-      "state_since": "2026-10-22",
-      "state_reason": "tradeai-agent-runtime@pulse.timer is disabled and inactive (systemctl --user is-enabled/is-active, 2026-10-22). Disable date and reason not recorded (cron inventory: 'disabled (date UNKNOWN)'); state_since is the date it was observed. alex, morgan and steph runtime timers are enabled; aegis, argus, darwin, iris and maria were retired in batch 1 (2026-10-09). Proposed RETIRED in the next retire batch: operator decision.",
-      "reason_confidence": "UNKNOWN",
-      "reason_evidence": "systemctl --user is-enabled tradeai-agent-runtime@pulse.timer -> disabled; is-active -> inactive (2026-10-22)",
-      "review_by": "2026-10-29",
-      "adopted_from_generator": "reconcile_lane_registry@v1",
-      "adopted_on": "2026-10-22",
-      "adopted_reason": "2026-10-22: state corrected to PAUSED (timer disabled on the host); the generator re-derives generated rows and would reset the state, so the row is hand-maintained."
-    },
-    {
-      "lane_id": "tradeai-iris-taxonomy",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "systemd",
-        "expression": "tradeai-iris-taxonomy.timer"
-      },
-      "expected_cadence_hours": 20.0,
-      "state": "PAUSED",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/iris_taxonomy.log",
-        "evidence": "SYSTEMD_STDOUT_APPEND"
-      },
-      "value_class": "UNCLASSIFIED",
-      "recommendation": "MIGRATE_N8N",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": null,
-        "recommendation": null,
-        "value_class": "UNCLASSIFIED",
-        "note": "no rationalization item joined to this line"
-      },
-      "reconciled_on": "2026-10-09",
-      "unit_enabled_state": "disabled",
-      "status": "DISABLED_UNRULED",
-      "operator_decision_pending": true,
-      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
-      "proposed_state": {
-        "state": "PAUSED",
-        "state_since": "2026-09-27",
-        "reason_confidence": "ESTABLISHED",
-        "review_by": "2026-10-16",
-        "state_reason": "Duplicates the iris_taxonomy_agent.py cron lines with different arguments; kept disabled since 2026-09-27. Retiring it is approval item O-4 (retiring a writer, AGENTS §17) — operator decision open.",
-        "reason_evidence": "docs/architecture/PLATFORM_INTELLIGENCE_DUE_DILIGENCE_2026-09-27.md:495; docs/architecture/cognitive_transformation_20260927/11_APPROVAL_PACKAGE.md (O-4)",
-        "ruled": false
-      },
-      "service": "tradeai-iris-taxonomy.service",
-      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
-      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/iris_taxonomy_agent.py",
-      "state_since": "2026-09-27",
-      "state_reason": "tradeai-iris-taxonomy.timer is disabled and inactive (systemctl --user, 2026-10-22); disabled since 2026-09-27 (last run 09-27 10:00) pending operator decision O-4 (~/n8n-maturity-verification/cron-inventory/CRON_INVENTORY_LATEST.md). Iris taxonomy runs from crontab L790/L792 instead. Proposed RETIRED once O-4 is decided.",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "systemctl --user is-enabled tradeai-iris-taxonomy.timer -> disabled; is-active -> inactive (2026-10-22)",
-      "review_by": "2026-10-29",
-      "adopted_from_generator": "reconcile_lane_registry@v1",
-      "adopted_on": "2026-10-22",
-      "adopted_reason": "2026-10-22: state corrected to PAUSED (timer disabled on the host); the generator re-derives generated rows and would reset the state, so the row is hand-maintained."
-    },
-    {
       "lane_id": "sync-docs-to-drive",
       "owner": "platform",
       "scheduler": {
@@ -23248,6 +22890,47 @@
       "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/aegis_surveillance.py"
     },
     {
+      "lane_id": "db-retention-timer",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "db-retention.timer"
+      },
+      "expected_cadence_hours": 164.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/db_retention.log",
+        "evidence": "SYSTEMD_STDOUT_APPEND"
+      },
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "MIGRATE_N8N",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": null,
+        "recommendation": null,
+        "value_class": "UNCLASSIFIED",
+        "note": "no rationalization item joined to this line"
+      },
+      "generated_by": "reconcile_lane_registry@v1",
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "disabled",
+      "status": "DISABLED_UNRULED",
+      "operator_decision_pending": true,
+      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
+      "proposed_state": {
+        "state": "RETIRED",
+        "state_since": "2026-10-07",
+        "reason_confidence": "ESTABLISHED",
+        "state_reason": "Duplicate scheduler on the dev tree: db_retention.py also runs from cron on CURRENT. Disabled 2026-10-07 under the cron trim work; the cron line is the owner.",
+        "reason_evidence": "docs/implementation/n8n-parallel/13-cron-consolidation-20261007.md (L982 row); docs/ops/live_proof_20260928/02-runtime-lane-registry.md (db_retention.py duplicate)",
+        "ruled": false
+      },
+      "service": "db-retention.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/db_retention.py"
+    },
+    {
       "lane_id": "hermes-backlog-health-check",
       "owner": "hermes",
       "scheduler": {
@@ -23568,6 +23251,56 @@
       ]
     },
     {
+      "lane_id": "systemd-tmpfiles-clean",
+      "owner": "os",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "systemd-tmpfiles-clean.timer"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none",
+        "reason": "SIGNAL_FREE_EXEMPT",
+        "detail": "SIGNAL-FREE BY NATURE (docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md): systemd-tmpfiles-clean.timer is an operating-system vendor user unit (owner os, stay_on_cron class os), not a Trade AI producer; it does OS housekeeping and has no per-run artifact to measure. Its unit state is the operator's rulin",
+        "exempt_since": "2026-10-19"
+      },
+      "value_class": "OS",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": null,
+        "recommendation": null,
+        "value_class": "UNCLASSIFIED",
+        "note": "no rationalization item joined to this line"
+      },
+      "generated_by": "reconcile_lane_registry@v1",
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "disabled",
+      "status": "DISABLED_UNRULED",
+      "operator_decision_pending": true,
+      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
+      "proposed_state": {
+        "state": "NEVER_SCHEDULED",
+        "state_since": "2026-10-09",
+        "reason_confidence": "ESTABLISHED",
+        "state_reason": "OS-shipped user unit (vendor preset enabled) that is not enabled in this user session: ActiveState inactive, LastTriggerUSec empty — it has never fired. Not a Trade AI producer.",
+        "reason_evidence": "systemctl --user show systemd-tmpfiles-clean.timer (read-only) 2026-10-09; docs/audits/overnight/W2_UNDECLARED_CENSUS_2026-09-01.md (OS user timers)",
+        "ruled": false
+      },
+      "service": "systemd-tmpfiles-clean.service",
+      "cadence_basis": "unknown schedule: placeholder 168 h",
+      "exec_start": "systemd-tmpfiles --user --clean",
+      "stay_on_cron": {
+        "class": "os",
+        "token": "systemd-tmpfiles-clean.timer",
+        "source": "operating-system unit"
+      },
+      "flags": [
+        "SIGNAL_FREE_EXEMPT"
+      ]
+    },
+    {
       "lane_id": "trade-ai-news-monitor",
       "owner": "portfolio",
       "scheduler": {
@@ -23709,6 +23442,138 @@
       ]
     },
     {
+      "lane_id": "tradeai-agent-runtime-atlas",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@atlas.timer"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "MIGRATE_N8N",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": null,
+        "recommendation": null,
+        "value_class": "UNCLASSIFIED",
+        "note": "no rationalization item joined to this line"
+      },
+      "generated_by": "reconcile_lane_registry@v1",
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "disabled",
+      "status": "DISABLED_UNRULED",
+      "operator_decision_pending": true,
+      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
+      "proposed_state": {
+        "state": "RETIRED",
+        "state_since": "2026-09-16",
+        "reason_confidence": "CORRELATED",
+        "state_reason": "Orphan persona timer: 'atlas' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal; who disabled it, and why, is not verified.",
+        "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'atlas' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09",
+        "ruled": false
+      },
+      "service": "tradeai-agent-runtime@atlas.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent atlas --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ]
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-concierge",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@concierge.timer"
+      },
+      "expected_cadence_hours": 0.08,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "MIGRATE_N8N",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": null,
+        "recommendation": null,
+        "value_class": "UNCLASSIFIED",
+        "note": "no rationalization item joined to this line"
+      },
+      "generated_by": "reconcile_lane_registry@v1",
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "disabled",
+      "status": "DISABLED_UNRULED",
+      "operator_decision_pending": true,
+      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
+      "proposed_state": {
+        "state": "RETIRED",
+        "state_since": "2026-09-16",
+        "reason_confidence": "CORRELATED",
+        "state_reason": "Orphan persona timer: 'concierge' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal; who disabled it, and why, is not verified.",
+        "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'concierge' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09",
+        "ruled": false
+      },
+      "service": "tradeai-agent-runtime@concierge.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent concierge --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ]
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-hermes",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@hermes.timer"
+      },
+      "expected_cadence_hours": 0.08,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "MIGRATE_N8N",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": null,
+        "recommendation": null,
+        "value_class": "UNCLASSIFIED",
+        "note": "no rationalization item joined to this line"
+      },
+      "generated_by": "reconcile_lane_registry@v1",
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "disabled",
+      "status": "DISABLED_UNRULED",
+      "operator_decision_pending": true,
+      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
+      "proposed_state": {
+        "state": "RETIRED",
+        "state_since": "2026-09-16",
+        "reason_confidence": "CORRELATED",
+        "state_reason": "Orphan persona timer: 'hermes' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal; who disabled it, and why, is not verified.",
+        "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'hermes' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09",
+        "ruled": false
+      },
+      "service": "tradeai-agent-runtime@hermes.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent hermes --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ]
+    },
+    {
       "lane_id": "tradeai-agent-runtime-morgan",
       "owner": "agents",
       "scheduler": {
@@ -23740,6 +23605,50 @@
       "service": "tradeai-agent-runtime@morgan.service",
       "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
       "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent morgan --once --max-batch 8",
+      "flags": [
+        "UNVERIFIED_OUTPUT"
+      ]
+    },
+    {
+      "lane_id": "tradeai-agent-runtime-pulse",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-runtime@pulse.timer"
+      },
+      "expected_cadence_hours": 0.08,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "no scheduler log redirect and no verified script receipt"
+      },
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "MIGRATE_N8N",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": null,
+        "recommendation": null,
+        "value_class": "UNCLASSIFIED",
+        "note": "no rationalization item joined to this line"
+      },
+      "generated_by": "reconcile_lane_registry@v1",
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "disabled",
+      "status": "DISABLED_UNRULED",
+      "operator_decision_pending": true,
+      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
+      "proposed_state": {
+        "state": "RETIRED",
+        "state_since": "2026-09-16",
+        "reason_confidence": "CORRELATED",
+        "state_reason": "Orphan persona timer: 'pulse' is not an agent in FLEET, so every run was a no-op. The 2026-09-16 archive proposal recommends removing it; the timer is disabled, consistent with that proposal; who disabled it, and why, is not verified.",
+        "reason_evidence": "docs/audits/archive-proposals/ARCHIVE_MANIFEST_PROPOSAL_2026-09-16.json (orphan_agent_timers_20260916): 'pulse' is absent from FLEET (scripts/agent_runtime/agents/definitions.py) and AGENT_ALIASES, every 5-min run logged 'no-work: unknown agent' and exited 0; the timer was found disabled on 2026-10-09",
+        "ruled": false
+      },
+      "service": "tradeai-agent-runtime@pulse.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.agent_runtime.agents.run_once --agent pulse --once --max-batch 8",
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
@@ -23845,6 +23754,48 @@
       "service": "tradeai-hermes-cio-worker.service",
       "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
       "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/hermes_cio_worker.py --drain --max 2 --backend live --json"
+    },
+    {
+      "lane_id": "tradeai-iris-taxonomy",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-iris-taxonomy.timer"
+      },
+      "expected_cadence_hours": 20.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/iris_taxonomy.log",
+        "evidence": "SYSTEMD_STDOUT_APPEND"
+      },
+      "value_class": "UNCLASSIFIED",
+      "recommendation": "MIGRATE_N8N",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": null,
+        "recommendation": null,
+        "value_class": "UNCLASSIFIED",
+        "note": "no rationalization item joined to this line"
+      },
+      "generated_by": "reconcile_lane_registry@v1",
+      "reconciled_on": "2026-10-09",
+      "unit_enabled_state": "disabled",
+      "status": "DISABLED_UNRULED",
+      "operator_decision_pending": true,
+      "disabled_evidence": "unit file state 'disabled' observed read-only on the host 2026-10-09 (systemctl --user list-unit-files). Not retired, not paused: nobody has ruled.",
+      "proposed_state": {
+        "state": "PAUSED",
+        "state_since": "2026-09-27",
+        "reason_confidence": "ESTABLISHED",
+        "review_by": "2026-10-16",
+        "state_reason": "Duplicates the iris_taxonomy_agent.py cron lines with different arguments; kept disabled since 2026-09-27. Retiring it is approval item O-4 (retiring a writer, AGENTS §17) — operator decision open.",
+        "reason_evidence": "docs/architecture/PLATFORM_INTELLIGENCE_DUE_DILIGENCE_2026-09-27.md:495; docs/architecture/cognitive_transformation_20260927/11_APPROVAL_PACKAGE.md (O-4)",
+        "ruled": false
+      },
+      "service": "tradeai-iris-taxonomy.service",
+      "cadence_basis": "OnCalendar max gap (systemd-analyze, fixed base)",
+      "exec_start": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/iris_taxonomy_agent.py"
     },
     {
       "lane_id": "tradeai-maturity-feeds",

@@ -132,45 +132,54 @@ def _plan():
     return [l.split("\t") for l in _heredoc(DOUBLE.read_text(), "PLAN").splitlines()]
 
 
-def test_double_run_plan_shape():
+PREFIX = "# N8N-OWNED 2026-10-22 double-run fix (n8n live RUN_DONE proven; cron side retired) "
+
+
+def test_double_run_plan_comments_only_the_three_proven_lanes():
     plan = _plan()
-    a = {lane for p, lane, _, _ in plan if p == "A"}
-    b = {lane for p, lane, _, _ in plan if p == "B"}
-    assert a == {"sync-social-to-intelligence", "materialize-watchlist-strategy-cards", "hermes-discovery-scorecard"}
-    assert b == {"opening-intelligence-render", "job-coverage-monitor", "classify-instruments", "finviz-enrichment",
-                 "finviz-sector-research"}
-    for p, lane, old, new in plan:
+    assert {lane for lane, _ in plan} == {"sync-social-to-intelligence", "materialize-watchlist-strategy-cards",
+                                          "hermes-discovery-scorecard"}
+    src = DOUBLE.read_text()
+    assert f"PREFIX='{PREFIX}'" in src
+    for lane, old in plan:
         assert not old.startswith("#")
-        if p == "A":
-            assert new == "# N8N-OWNED 2026-10-22 double-run fix (n8n live RUN_DONE proven; cron side retired) " + old
-        else:
-            assert f"env TRADEAI_EFFECT_CLAIM={lane} bash scripts/effect_claim_cron.sh {lane} $PY scripts/" in new
-            # the wrapped line is the old line with the wrapper inserted after the flock lock
-            assert new.replace(f"env TRADEAI_EFFECT_CLAIM={lane} bash scripts/effect_claim_cron.sh {lane} ", "") == old
-            # its registry match still matches the wrapped line
-            assert ROWS[lane]["scheduler"]["match"] in new
-    assert "maturity-remeasure" not in {lane for _, lane, _, _ in plan}
+        assert ROWS[lane]["scheduler"]["match"] in old
+        assert ROWS[lane]["dispatch"]["mode"] == "live"  # n8n keeps running it once cron is off
 
 
-def test_part_b_lanes_have_armed_keys_matching_the_cron_schedule():
-    for p, lane, old, _ in _plan():
-        if p != "B":
-            continue
-        k = KEYS[lane]
-        assert k["process"] == lane and k["cron_claim"] is True and k["n8n_claim"] is True
-        assert k["slot"] == "scheduled_minute" and k["slot_tz"] == "America/New_York"
-        assert old.startswith(k["schedule"] + " "), (lane, k["schedule"])
-    for lane in ("sync-social-to-intelligence", "materialize-watchlist-strategy-cards", "hermes-discovery-scorecard"):
-        assert lane not in KEYS
+def test_double_run_transform(tmp_path):
+    (tmp_path / "plan.tsv").write_text("\n".join("\t".join(r) for r in _plan()) + "\n")
+    # the second PYEOF heredoc (edit.py) is the transform; the first is the ledger check
+    blocks = re.findall(r"<<'PYEOF'\n(.*?)\nPYEOF\n", DOUBLE.read_text(), re.S)
+    (tmp_path / "edit.py").write_text(blocks[1] + "\n")
+    live = tmp_path / "crontab"
+    live.write_text("SHELL=/bin/bash\n" + "\n".join(old for _, old in _plan()) + "\n0 1 * * * true\n")
+    r = subprocess.run([sys.executable, str(tmp_path / "edit.py"), str(live), str(tmp_path / "plan.tsv"), PREFIX,
+                        str(tmp_path / "out")], capture_output=True, text=True)
+    assert r.returncode == 0 and r.stdout.strip() == "3", r.stderr
+    out = (tmp_path / "out").read_text().splitlines()
+    for _, old in _plan():
+        assert PREFIX + old in out and old not in out
+    assert "0 1 * * * true" in out
+
+
+def test_no_effect_keys_are_added_by_this_pr():
+    """The canary effect-key process (tests/test_canary_effect_keys_20261015.py) forbids arming keys at merge and keying
+    overwrite-only lanes, so the double-run fix here is crontab-only for the lanes n8n has proven."""
+    for lane in ("sync-social-to-intelligence", "materialize-watchlist-strategy-cards", "hermes-discovery-scorecard",
+                 "opening-intelligence-render", "job-coverage-monitor", "classify-instruments", "finviz-enrichment",
+                 "finviz-sector-research"):
+        assert lane not in KEYS, lane
 
 
 def test_double_run_script_guards():
     src = DOUBLE.read_text()
-    for needle in ("mode=ro", "PRAGMA query_only=1", "live:RUN_DONE", "set-owner --process", "--expect-epoch",
-                   "Type APPLY", "crontab.bak-$STAMP", "cron_claim", "REFUSED: the crontab changed since the preview"):
+    for needle in ("mode=ro", "PRAGMA query_only=1", "live:RUN_DONE", ">= 3", "Type APPLY", "crontab.bak-$STAMP",
+                   "REFUSED: the crontab changed since the preview", "grep -qxF"):
         assert needle in src, needle
     assert src.count("read -r -p") == 1
     assert "crontab -r" not in src and not re.search(r"(^|[;&|(]\s*|\s)rm\s", src, re.M)
+    assert "set-owner" not in src and "TRADEAI_EFFECT_CLAIM=" not in src.split("PLAN\n")[1]
 
 
 # ── registry truth ───────────────────────────────────────────────────────────────────────────────────────────
@@ -181,13 +190,17 @@ PAUSED_ROWS = {
     "options-lifecycle-digest", "schwab-econfirm-reconcile", "broker-stop-reconcile", "sweep-schwab-instruments",
     "positions-shadow-diff", "positions-proof-daily",
 }
+#: Disabled timers stay ACTIVE + DISABLED_UNRULED + operator_decision_pending (an operator ruling turns them off;
+#: tests/test_expected_services_lane_states_20261008.py). This PR does not flip them.
 STALE_TIMERS = {"db-retention-timer", "systemd-tmpfiles-clean", "tradeai-agent-runtime-atlas",
                 "tradeai-agent-runtime-concierge", "tradeai-agent-runtime-hermes", "tradeai-agent-runtime-pulse",
                 "tradeai-iris-taxonomy"}
 
 
 def test_paused_lines_are_paused_rows():
-    for lid in PAUSED_ROWS | STALE_TIMERS:
+    for lid in STALE_TIMERS:
+        assert ROWS[lid]["status"] == "DISABLED_UNRULED" and ROWS[lid]["operator_decision_pending"] is True, lid
+    for lid in PAUSED_ROWS:
         r = ROWS[lid]
         assert r["state"] == "PAUSED", lid
         assert r["state_since"] and r["state_reason"] and r.get("review_by") == "2026-10-29", lid

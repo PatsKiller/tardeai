@@ -7,6 +7,6 @@
   ],
   "anchor": "INCIDENT_SPCX_RESUME_20261022",
   "comment": [
-    "ANCHOR: INCIDENT_SPCX_RESUME_20261022 — INC-20261014-SPCX close-out (operator 2026-10-22 \"yes\"): grok_stop_review on the LLM spend gate (process grok_stop_review, 12 stops/run, 30 calls/day, grok only, no fallback); the operator resume packet and double-run packet (exact-text crontab edits, one backup, one confirmation); registry truth for the paused lines; five armed effect keys."
+    "ANCHOR: INCIDENT_SPCX_RESUME_20261022 — INC-20261014-SPCX close-out (operator 2026-10-22 \"yes\"): grok_stop_review on the LLM spend gate (process grok_stop_review, 12 stops/run, 30 calls/day, grok only, no fallback); the operator resume packet and double-run packet (exact-text crontab edits, one backup, one confirmation, never run by an agent); registry truth for the paused lines."
   ]
 }

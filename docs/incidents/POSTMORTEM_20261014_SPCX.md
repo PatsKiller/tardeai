@@ -100,8 +100,10 @@ Condensed from the record §2. Each line carries its evidence there.
     two of them SPCX stops that no longer exist (possible phantom protection on the surfaces that read it).
   - **Fill confirmations.** `econfirm` (L784) was off. The 10-14 SPCX confirms now fall outside its 7-day window and
     need a 10-day backfill check.
-- **The registry hid the outage.** 16 rows said ACTIVE while their lines were commented, and 7 timer rows said ACTIVE
-  for disabled timers (§3 of the 2026-10-22 review).
+- **The registry hid the outage.** 16 rows said ACTIVE while their lines were commented (§3 of the 2026-10-22
+  review). The review also counted 7 disabled timers as stale rows. That was a misreading, corrected here: those rows
+  already carry `status DISABLED_UNRULED, operator_decision_pending`, the registry's deliberate "found off, not yet
+  ruled" shape.
 - **Double runs went unnoticed.** Eight lanes on both cron and the n8n live list had no effect-claim wrapper.
   Five of them really ran twice in one slot (sync_social_to_intelligence 9 slots, materialize cards 33 slots,
   hermes_discovery_scorecard 3 days, opening_intelligence 10-22 with a duplicate jsonl row, job_coverage_monitor
@@ -120,10 +122,10 @@ Condensed from the record §2. Each line carries its evidence there.
 | A5 | 3 | Paused/stale broker data is loud | agent | #1733 **LIVE** |
 | A6 | 3 | Remove `BROKER_LIVE_ENABLED` from the rendered env; confirm in the incident §8 | operator (config-write) | tracker #28; **unverified** |
 | A7 | 4 | Resume the 13 read/report lines in order, each after its own dry run | operator | `docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh`; **ready, not run** |
-| A8 | 4 | Registry says PAUSED for every paused line (and the 7 disabled timers); flip back to ACTIVE as lines resume | agent | PR "ops(incident-SPCX): resume packet, registry truth, double-run fixes, postmortem draft"; **in review** |
+| A8 | 4 | Registry says PAUSED for every paused line; flip back to ACTIVE as lines resume. The 7 disabled timers stay DISABLED_UNRULED pending the operator ruling | agent | PR "ops(incident-SPCX): resume packet, registry truth, double-run fixes, postmortem draft"; **in review** |
 | A9 | 4 | A checker that flags ACTIVE cron rows whose line is commented, and off rows whose line runs | agent | PR #1927 (`ACTIVE_CRON_LINE_ABSENT`, `DECLARED_OFF_CRON_LINE_ACTIVE`); **in review** |
 | A10 | 4 | Every future pause packet names its resume condition, owner and review date (pause = PAUSED row with `review_by`) | agent → AGENTS.md amendment | proposed (§20); **open** |
-| A11 | double runs | Comment 3 cron lines where n8n is proven; wrap 5 in the effect claim (owner cron); maturity-remeasure off the live list | operator (crontab, ledger owner rows) + agent (keys) | `double-run-operator.sh` + PR (5 armed keys); maturity packet `maturity-remeasure-relay-live-removal-20261015`; **ready, not run** |
+| A11 | double runs | Comment the 3 cron lines where n8n is proven (sync_social, materialize cards, hermes scorecard); maturity-remeasure off the live list; opening_intelligence gets a staged effect key in its cutover packet (it appends) | operator (crontab, live list) + agent (key PR) | `double-run-operator.sh`; maturity packet `maturity-remeasure-relay-live-removal-20261015`; opening_intelligence key **open** |
 | A12 | 4 | Grok stop review registered with the LLM spend gate before it resumes | agent | same PR (`grok_stop_review` process, 12/run, 30/day); **in review** |
 | A13 | — | Kill switch: stays ON until the `write_bounded` ADR gates exist (DB role split, per-order WebAuthn, cancel via kill switch, bounded arming, one-order canary) | operator | ADR-WS10-01 §2.3; **decision: keep ON** |
 | A14 | — | Postmortem signed off and the incident moved to RESOLVED, then CLOSED | operator + agent | this file; **draft** |
@@ -132,7 +134,9 @@ Condensed from the record §2. Each line carries its evidence there.
 
 - The record's 21-minute figure measures from 14:24, the start of the fill window, not from the first fill at
   14:36. Both are kept; §3 says which.
-- The disable dates of 5 of the 7 stale timers are UNKNOWN (cron inventory: "date UNKNOWN"). The registry records
-  the date they were observed instead.
+- The disable dates of the 4 agent-runtime timers are UNKNOWN (cron inventory: "date UNKNOWN"; never triggered since
+  boot). They stay DISABLED_UNRULED; no reason is invented.
+- The 10-22 plan said "wrap the unproven double-run lanes in the effect claim". The repo's effect-key process forbids
+  arming a key at merge and keying overwrite-only lanes, so only the 3 proven lanes are fixed now (A11).
 - The 12:30 ET order inventory is the host's read, not the operator's (criterion 1 stays open).
 - `BROKER_LIVE_ENABLED` was not re-checked: an agent may not read the env file (§24.7).
