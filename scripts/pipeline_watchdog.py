@@ -5,8 +5,9 @@ pipeline_watchdog.py — The nervous system. Runs every 5 min weekdays.
 3. Acts on stale IER entities
 4. Daily summary at 8:30 AM
 """
-import json, logging, os, subprocess, sys, time
+import json, logging, os, signal, subprocess, sys, time
 import os
+from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -17,6 +18,106 @@ PROJECT_ROOT = os.environ.get('TRADEAI_DEV_ROOT') or '/home/johnclaw/trade-ai-v1
 MAX_RETRIES = 3
 # Enrichment attempts per entity per week before backing off to weekly.
 MAX_ENRICH_ATTEMPTS = int(os.getenv('WATCHDOG_MAX_ENRICH_ATTEMPTS', '6'))
+# The health_tick deadline is 300s. Keep this batch below it so the watchdog
+# can terminate and reap children, then return a receipt, before health_tick's
+# own deadline. Children run in their own sessions so the parent can supervise
+# their process trees without health_tick mistaking them for abandoned orphans.
+ENRICHMENT_BATCH_TIMEOUT_S = max(1, int(os.getenv('WATCHDOG_ENRICHMENT_BATCH_TIMEOUT_S', '240')))
+ENRICHMENT_TERM_GRACE_S = 5.0
+
+
+class _EnrichmentInterrupted(Exception):
+    def __init__(self, signum):
+        self.signum = signum
+
+
+def _signal_enrichment_groups(children, sig):
+    """Signal only the independently supervised enrichment process groups."""
+    for entity_id, proc in children:
+        if not _process_group_alive(proc.pid):
+            continue
+        try:
+            os.killpg(proc.pid, sig)
+        except ProcessLookupError:
+            pass
+        except OSError as exc:
+            log.error("[watchdog] could not signal enrichment %s pid=%s: %s",
+                      entity_id, proc.pid, type(exc).__name__)
+
+
+def _process_group_alive(pgid):
+    try:
+        os.killpg(pgid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def _terminate_enrichment_groups(children, grace_s=ENRICHMENT_TERM_GRACE_S):
+    """Terminate, escalate, and reap all still-running enrichment trees."""
+    alive = [(entity_id, proc) for entity_id, proc in children if _process_group_alive(proc.pid)]
+    if not alive:
+        return
+    _signal_enrichment_groups(alive, signal.SIGTERM)
+    deadline = time.monotonic() + grace_s
+    while time.monotonic() < deadline and any(_process_group_alive(proc.pid) for _, proc in alive):
+        # Reap direct children promptly; otherwise their zombie leaders keep
+        # killpg(pgid, 0) reporting an apparently live group for the full grace.
+        for _, proc in alive:
+            proc.poll()
+        time.sleep(0.05)
+    remaining = [(entity_id, proc) for entity_id, proc in alive if _process_group_alive(proc.pid)]
+    _signal_enrichment_groups(remaining, signal.SIGKILL)
+    for _, proc in alive:
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            log.error("[watchdog] enrichment pid=%s did not reap after SIGKILL", proc.pid)
+
+
+@contextmanager
+def _supervise_enrichment_batch(children, timeout_s=ENRICHMENT_BATCH_TIMEOUT_S, outcomes=None):
+    """Bound the batch and always clean up its children on exit.
+
+    A SIGTERM/SIGHUP to the watchdog is converted into an exception so this
+    function can stop child process groups before the supervisor's kill grace
+    expires. Child groups are independent because health_tick supervises the
+    watchdog as one step and must not mistake its owned children for orphans.
+    """
+    old_handlers = {}
+    def interrupted(signum, _frame):
+        raise _EnrichmentInterrupted(signum)
+
+    try:
+        for sig in (signal.SIGTERM, signal.SIGHUP):
+            old_handlers[sig] = signal.getsignal(sig)
+            signal.signal(sig, interrupted)
+        yield
+        deadline = time.monotonic() + timeout_s
+        pending = list(children)
+        while pending and time.monotonic() < deadline:
+            pending = [(entity_id, proc) for entity_id, proc in pending
+                       if proc.poll() is None or _process_group_alive(proc.pid)]
+            if pending:
+                time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
+        if pending:
+            if outcomes is not None:
+                outcomes.update({entity_id: 'batch_timeout' for entity_id, _ in pending})
+            log.error("[watchdog] enrichment batch exceeded %.0fs; terminating %d child process trees",
+                      timeout_s, len(pending))
+            _terminate_enrichment_groups(pending)
+    except _EnrichmentInterrupted as exc:
+        log.warning("[watchdog] received signal %s; terminating enrichment children", exc.signum)
+        _terminate_enrichment_groups(children)
+        raise
+    finally:
+        # Also covers spawn/wait failures. Completed children are already reaped
+        # by poll()/wait(); only live groups are signalled here.
+        _terminate_enrichment_groups(children)
+        for sig, handler in old_handlers.items():
+            signal.signal(sig, handler)
 
 def _load_env():
     env_path = Path(PROJECT_ROOT, '.env')
@@ -268,27 +369,69 @@ def run_ier_engine(conn):
         ORDER BY e.intelligence_score NULLS FIRST LIMIT 15
     """, [MAX_ENRICH_ATTEMPTS])
     actions = 0
-    for (eid, etype, score, freshness, decision) in cur.fetchall():
-        if was_alerted_recently(conn, f'ier_{eid}', hours=4): continue
+    enrichments = []
+    children = []
+    enrichment_outcomes = {}
+    with _supervise_enrichment_batch(children, outcomes=enrichment_outcomes):
+        for (eid, etype, score, freshness, decision) in cur.fetchall():
+            if was_alerted_recently(conn, f'ier_{eid}', hours=4): continue
 
-        if etype == 'market':
-            try:
-                subprocess.Popen([sys.executable, 'scripts/symbol_enrichment.py', eid, str(int(score or 0))],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=PROJECT_ROOT)
-                cur.execute("UPDATE intelligence_entities SET last_enriched=NOW() WHERE entity_id=%s", [eid])
-                conn.commit()
-                log_action(conn, 'trigger_enrichment', eid, f'score={score} fresh={freshness}', True, '')
-                actions += 1
-            except Exception:
-                pass
-        elif etype == 'subject' and freshness == 'CRITICAL':
-            try:
-                cur.execute("""INSERT INTO watchdog_actions (action_type,target,reason,success,result,created_at)
-                    VALUES ('queue_alex_refresh',%s,'subject CRITICAL',true,'queued',NOW())""", [eid])
-                conn.commit()
-                actions += 1
-            except Exception:
-                pass
+            if etype == 'market':
+                # Claim the four-hour slot atomically before spawning. Two
+                # watchdog invocations may have read the same stale row; only
+                # one can update it from stale to current and launch a writer.
+                claim_time = None
+                try:
+                    cur.execute("""UPDATE intelligence_entities SET last_enriched=NOW()
+                        WHERE entity_id=%s
+                          AND (last_enriched IS NULL OR last_enriched < NOW()-INTERVAL '4 hours')
+                        RETURNING last_enriched""", [eid])
+                    claim = cur.fetchone()
+                    if not claim:
+                        conn.commit()
+                        continue
+                    claim_time = claim[0]
+                    conn.commit()
+                    proc = subprocess.Popen(
+                        [sys.executable, 'scripts/symbol_enrichment.py', eid, str(int(score or 0))],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        cwd=PROJECT_ROOT, start_new_session=True)
+                    children.append((eid, proc))
+                    enrichments.append((eid, score, freshness, proc))
+                except Exception as exc:
+                    log.warning("[watchdog] could not start enrichment for %s: %s", eid, type(exc).__name__)
+                    if claim_time is not None:
+                        try:
+                            conn.rollback()
+                            cur.execute("""UPDATE intelligence_entities SET last_enriched=NULL
+                                WHERE entity_id=%s AND last_enriched=%s""", [eid, claim_time])
+                            conn.commit()
+                        except Exception as reset_exc:
+                            log.error("[watchdog] could not release enrichment claim for %s: %s",
+                                      eid, type(reset_exc).__name__)
+                        finally:
+                            del claim_time
+                    log_action(conn, 'trigger_enrichment', eid, f'score={score} fresh={freshness}',
+                               False, f'spawn failed: {type(exc).__name__}')
+            elif etype == 'subject' and freshness == 'CRITICAL':
+                try:
+                    cur.execute("""INSERT INTO watchdog_actions (action_type,target,reason,success,result,created_at)
+                        VALUES ('queue_alex_refresh',%s,'subject CRITICAL',true,'queued',NOW())""", [eid])
+                    conn.commit()
+                    actions += 1
+                except Exception:
+                    pass
+
+    # No fire-and-forget children: this step returns only after every child has
+    # completed, or its bounded supervisor has terminated and reaped it.
+    for eid, score, freshness, proc in enrichments:
+        if proc.returncode == 0 and eid not in enrichment_outcomes:
+            log_action(conn, 'trigger_enrichment', eid, f'score={score} fresh={freshness}', True, 'completed')
+            actions += 1
+        else:
+            detail = enrichment_outcomes.get(eid, f'exit={proc.returncode}')
+            log.warning("[watchdog] symbol enrichment for %s ended with %s", eid, detail)
+            log_action(conn, 'trigger_enrichment', eid, f'score={score} fresh={freshness}', False, detail)
     return actions
 
 

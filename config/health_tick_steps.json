@@ -90,7 +90,7 @@
       "needs_env": false,
       "market_day_gate": false,
       "log": "logs/pipeline_watchdog.log",
-      "note": "crontab line 277: 0 */2 * * * cd $PROJ && $PY scripts/pipeline_watchdog.py >> logs/pipeline_watchdog.log 2>&1 | lock added by health_tick (cron line had none); NOTE the script hardcodes PROJECT_ROOT to the dev tree and retries scripts there — pre-existing, not changed here | 2026-10-09: moved ahead of the 15-minute steps. It is due only at :00 of even hours and system_health_agent treats it as CRITICAL (max age 150 min), so a deferral costs 2 hours of a critical lane; deferring health-agent (every 15 min) costs 15 minutes. It leaves fire-and-forget symbol_enrichment.py children, which health_tick now reaps after orphan_wait_s"
+      "note": "crontab line 277: 0 */2 * * * cd $PROJ && $PY scripts/pipeline_watchdog.py >> logs/pipeline_watchdog.log 2>&1 | lock added by health_tick (cron line had none); NOTE the script hardcodes PROJECT_ROOT to the dev tree and retries scripts there — pre-existing, not changed here | 2026-10-09: moved ahead of the 15-minute steps. It is due only at :00 of even hours and system_health_agent treats it as CRITICAL (max age 150 min), so a deferral costs 2 hours of a critical lane; deferring health-agent (every 15 min) costs 15 minutes. The watchdog now owns and reaps symbol_enrichment.py process groups under a 240s batch deadline; health_tick's process-group cleanup remains the outer safety net."
     },
     {
       "step_id": "health-agent",

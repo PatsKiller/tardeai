@@ -66,8 +66,8 @@ portfolio_live_monitor.py ran into its 300 s timeout). A lock skip is recorded a
 `lock_skipped`, not as a failure — cron's `flock -n` was silent about it; this
 is louder. A timeout IS a failure.
 
-Processes a step leaves behind in its process group (fire-and-forget children,
-e.g. pipeline_watchdog.py's detached symbol_enrichment.py runs) are given
+Processes a step leaves behind in its process group (legacy fire-and-forget
+children that the step does not wait for) are given
 `orphan_wait_s` to finish and are then terminated and recorded in the row as
 `orphans`. Under cron they outlived the parent; inside this oneshot unit systemd
 SIGTERMs them when the tick exits, they outlived the 90 s stop timeout, and the
