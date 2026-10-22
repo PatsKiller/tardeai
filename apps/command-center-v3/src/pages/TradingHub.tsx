@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import SharedMomentumCandidates from '../components/tradeai/SharedMomentumCandidates'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
@@ -58,6 +58,9 @@ import { runLabel } from '../lib/homeLabels'
 import { tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
 import { renderSetupCounts } from '../lib/setupRunSummary'
 import { BB, TYPE } from '../lib/watchTokens'
+
+/** Scanner KPI tiles that filter the table below; null = informational only. */
+type TileFilter = 'GO' | 'WAIT' | null
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 const TABS = TRADING_TABS
@@ -143,6 +146,12 @@ export default function TradingHub({ onDrill }: Props) {
   const [draftSeed, setDraftSeed] = useState<any | null>(null)
   const [activeTraderStrategiesOpen, setActiveTraderStrategiesOpen] = useState(false)
   const [tradeFilter, setTradeFilter] = useState<'ACTIONABLE' | 'GO' | 'WAIT' | 'MANUAL' | 'SCOUT' | 'AWARENESS'>('ACTIONABLE')
+  const scannerFilterRef = useRef<HTMLDivElement | null>(null)
+  const applyTileFilter = (f: 'GO' | 'WAIT') => {
+    setTradeFilter(f)
+    setScannerPage(1)
+    scannerFilterRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+  }
   const [tradeSort, setTradeSort] = useState<ScannerSortMode>('awareness')
   const [copied, setCopied] = useState<string | null>(null)
   // Trade AI scanner: top-30 pagination + persistent cross-page symbol selection + Thinkorswim copy.
@@ -484,24 +493,36 @@ export default function TradingHub({ onDrill }: Props) {
           ? ` · integrity ${integrity}${integrityReason ? `: ${integrityReason}` : ''}`
           : ''
         const kpis = [
-          { label: 'UNIVERSE GO', value: goN, color: '#22c55e', title: universeScope },
-          { label: 'UNIVERSE WAIT', value: waitN, color: '#f59e0b', title: `${universeScope} · includes social-awareness WAIT (higher than WAIT screener copy)` },
-          { label: 'UNIVERSE NO-GO', value: noGoN, color: '#ef4444', title: universeScope },
-          { label: 'Universe', value: universeN, color: 'var(--text0)', title: universeScope },
-          { label: 'VIX', value: tradeAi?.vix != null ? Number(tradeAi.vix).toFixed(1) : '—', color: '#60a5fa', title: undefined as string | undefined },
-          { label: 'Regime', value: tradeAi?.market_regime ?? '—', color: '#a855f7', title: undefined as string | undefined },
+          { label: 'UNIVERSE GO', value: goN, color: '#22c55e', title: universeScope, filter: 'GO' as TileFilter },
+          { label: 'UNIVERSE WAIT', value: waitN, color: '#f59e0b', title: `${universeScope} · includes social-awareness WAIT (higher than WAIT screener copy)`, filter: 'WAIT' as TileFilter },
+          { label: 'UNIVERSE NO-GO', value: noGoN, color: '#ef4444', title: universeScope, filter: null as TileFilter },
+          { label: 'Universe', value: universeN, color: 'var(--text0)', title: universeScope, filter: null as TileFilter },
+          { label: 'VIX', value: tradeAi?.vix != null ? Number(tradeAi.vix).toFixed(1) : '—', color: '#60a5fa', title: undefined as string | undefined, filter: null as TileFilter },
+          { label: 'Regime', value: tradeAi?.market_regime ?? '—', color: '#a855f7', title: undefined as string | undefined, filter: null as TileFilter },
         ]
         const latestRunKpis = [
-          { label: 'LATEST RUN GO', value: tradeAi?.setup_run_summary?.go_count ?? '—', color: BB.green, title: `${latestRunScope}${underfillNote}${integrityNote}` },
-          { label: 'LATEST RUN WAIT', value: tradeAi?.setup_run_summary?.wait_count ?? '—', color: BB.amber, title: `${latestRunScope}${underfillNote}${integrityNote}` },
-          { label: 'LATEST RUN NOGO', value: tradeAi?.setup_run_summary?.nogo_count ?? '—', color: BB.red, title: `${latestRunScope}${underfillNote}${integrityNote}` },
+          { label: 'LATEST RUN GO', value: tradeAi?.setup_run_summary?.go_count ?? '—', color: BB.green, title: `${latestRunScope}${underfillNote}${integrityNote}`, filter: 'GO' as TileFilter },
+          { label: 'LATEST RUN WAIT', value: tradeAi?.setup_run_summary?.wait_count ?? '—', color: BB.amber, title: `${latestRunScope}${underfillNote}${integrityNote}`, filter: 'WAIT' as TileFilter },
+          { label: 'LATEST RUN NOGO', value: tradeAi?.setup_run_summary?.nogo_count ?? '—', color: BB.red, title: `${latestRunScope}${underfillNote}${integrityNote}`, filter: null as TileFilter },
           {
             label: 'LATEST RUN SCANNED',
             value: tradeAi?.setup_run_summary?.scanned_count ?? scannedN ?? '—',
             color: 'var(--text0)',
             title: `${latestRunScope}${underfillNote}${integrityNote}`,
+            filter: null as TileFilter,
           },
         ]
+        // GO / WAIT tiles filter the table below (operator 2026-10-22: "I can't click on go or wait"). The table
+        // rows are the universe scope (today + yesterday), so a LATEST RUN tile can show more rows than its count.
+        const tileFilterProps = (k: { label: string; filter: TileFilter; title?: string }) => k.filter ? {
+          role: 'button' as const,
+          tabIndex: 0,
+          'data-testid': `scanner-tile-filter-${k.filter.toLowerCase()}`,
+          'aria-pressed': tradeFilter === k.filter,
+          onClick: () => applyTileFilter(k.filter as 'GO' | 'WAIT'),
+          onKeyDown: (e: any) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); applyTileFilter(k.filter as 'GO' | 'WAIT') } },
+          title: `${k.title ? `${k.title} · ` : ''}click to show ${k.filter} rows in the table`,
+        } : { title: k.title }
         return (
           <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
             <ActiveTraderFiresStrip tradeAiTickers={tickers} />
@@ -660,7 +681,7 @@ export default function TradingHub({ onDrill }: Props) {
                 style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: terminalUi ? 4 : 8, margin: '10px 0 4px' }}
               >
                 {latestRunKpis.map(k => (
-                  <div key={k.label} title={k.title} style={{ ...(terminalUi ? hubKpiChip(false, true) : { background: 'var(--bg2)', borderRadius: 8, padding: '8px 6px' }), textAlign: 'center', cursor: 'help', border: `1px solid ${BB.amber}` }}>
+                  <div key={k.label} {...tileFilterProps(k)} style={{ ...(terminalUi ? hubKpiChip(k.filter != null && tradeFilter === k.filter, true) : { background: 'var(--bg2)', borderRadius: 8, padding: '8px 6px' }), textAlign: 'center', cursor: k.filter ? 'pointer' : 'help', border: `1px solid ${k.filter && tradeFilter === k.filter ? k.color : BB.amber}` }}>
                     <div style={{ fontSize: TYPE.md, fontWeight: 700, color: k.color }}>{k.value}</div>
                     <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', textTransform: 'uppercase' }}>{k.label}</div>
                   </div>
@@ -669,7 +690,7 @@ export default function TradingHub({ onDrill }: Props) {
             )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: terminalUi ? 4 : 8, margin: '10px 0 6px' }}>
               {kpis.map(k => (
-                <div key={k.label} title={k.title} style={{ ...(terminalUi ? hubKpiChip(false, true) : { background: 'var(--bg2)', borderRadius: 8, padding: '8px 6px' }), textAlign: 'center', cursor: k.title ? 'help' : 'default' }}>
+                <div key={k.label} {...tileFilterProps(k)} style={{ ...(terminalUi ? hubKpiChip(k.filter != null && tradeFilter === k.filter, true) : { background: 'var(--bg2)', borderRadius: 8, padding: '8px 6px' }), textAlign: 'center', cursor: k.filter ? 'pointer' : k.title ? 'help' : 'default', ...(k.filter && tradeFilter === k.filter ? { outline: `1px solid ${k.color}` } : {}) }}>
                   <div style={{ fontSize: terminalUi ? 14 : 17, fontWeight: 700, color: k.color }}>{k.value}</div>
                   <div style={{ fontSize: terminalUi ? 7 : 8, color: 'var(--text3)', textTransform: 'uppercase' }}>{k.label}</div>
                 </div>
@@ -714,7 +735,7 @@ export default function TradingHub({ onDrill }: Props) {
             </div>
 
             {/* Decision filter — default Actionable (GO+WAIT+Manual); Ross lanes collapsed under Manual */}
-            <div style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div ref={scannerFilterRef} style={{ display: 'flex', gap: 4, marginBottom: 8, flexWrap: 'wrap', alignItems: 'center' }}>
               {(['ACTIONABLE', 'GO', 'WAIT', 'AWARENESS', 'MANUAL', 'SCOUT'] as const).map(f => {
                 const active = tradeFilter === f
                 const fc = f === 'GO' ? '#22c55e' : f === 'WAIT' ? '#f59e0b' : f === 'AWARENESS' ? 'var(--social-awareness)' : f === 'SCOUT' ? 'var(--social-scout)' : f === 'MANUAL' ? 'var(--squeeze)' : '#60a5fa'
