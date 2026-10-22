@@ -34,6 +34,7 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
       { to: '/consumption', label: 'LLM Spend' },
       { to: '/coordination', label: 'Coordination' },
       { to: '/system/broker-access', label: 'Broker Access' },
+      { to: '/system/releases', label: 'Releases & Schedules' },
       { to: '/system', label: 'System', exact: true },
     ],
   },

@@ -106,7 +106,17 @@ export default function CoordinationPage() {
           </button>
         ))}
       </nav>
-      {tab === 'operations' ? <SchedulerOperations /> : tab === 'today' ? <N8nToday /> : tab === 'release' ? <ReleaseTrainTab /> : tab === 'migration' ? (
+      {tab === 'operations' ? <SchedulerOperations /> : tab === 'today' ? <N8nToday /> : tab === 'release' ? (
+        <div style={{ display: 'grid', gap: 12 }}>
+          {/* Releases & schedules (2026-10-22): the full page (serving release, main HEAD, windows, queue, shipped history,
+              release errors, n8n + cron timeline) is linked from here; the queue/trains/events views and STOP RELEASES stay on this tab. */}
+          <div data-testid="coordination-releases-link" style={{ ...panel, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>Serving release, what releases next, train windows, shipped history, release errors and the next 3 hours of n8n and cron are on one page.</div>
+            <a href="/v3/system/releases" style={{ fontSize: TYPE.sm, fontWeight: 750, color: TOKENS.primary, textDecoration: 'none' }}>Open Releases &amp; schedules →</a>
+          </div>
+          <ReleaseTrainTab />
+        </div>
+      ) : tab === 'migration' ? (
       <div style={panel} data-testid="coordination-migration-board">
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <div style={{ fontSize: TYPE.lg, fontWeight: 800, color: TOKENS.text[0] }}>Migration board</div>

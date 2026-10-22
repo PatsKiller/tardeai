@@ -138,6 +138,7 @@ Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `sc
 
 ## TIER 2 — Active Operational Docs
 
+- **ops/RELEASES_SCHEDULES_PAGE.md** — System → Releases & schedules (2026-10-22, DRAFT until served): `GET /api/v2/ops/releases-schedules` read model — serving release, main HEAD, train windows, queue, shipped history, release errors, n8n ledger today and the next-3-hours cron + n8n timeline; every section with as_of / age / source, UNAVAILABLE never 0.
 - **OPTIONS_LIFECYCLE_DESK.md** — Options Lifecycle Desk architecture & acceptance (2026-07-19, v1.1 same day): strategy-aware open-position management, journal bridge into trade_instances, ticker attribution, free-lane oversight. Supersedes the per-leg monitor sections of options-module.md for management decisions.
 - **architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md** — Watchlist decision packet **operator card** + RTH **4h** plan refresh / `should_be_stale` (2026-07-21): compact READY/WAIT/REFRESH/BLOCKED/NO TRADE/MANAGE, timestamps, material technical hash, shadow-batch RTH freshness. Advisory only.
 - **sessions/ALPACA_TAXONOMY_BUILD_2026-07-21.md** — Alpaca multi-account **R1–R5 build handoff** (registry, credentials, migration, live scaffolds, TV stub). Tip `4fa3ba33`.

@@ -48960,6 +48960,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__}
 
+    # Releases & Schedules (operator-approved 2026-10-22): one read-only projection for System → Releases &
+    # schedules — serving release, main HEAD, train windows, queue, shipped history, release errors, n8n today and
+    # the next 3 hours of cron + n8n. scripts/lib/releases_schedules_view.py (each source in a worker with its own
+    # deadline; missing data is null + UNAVAILABLE). Exact path only; GET only (405 otherwise). Contract:
+    # docs/ops/RELEASES_SCHEDULES_PAGE.md.
+    if base_path.rstrip("/") == "/api/v2/ops/releases-schedules":
+        try:
+            try:
+                from lib import releases_schedules_view as _rsv
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import releases_schedules_view as _rsv
+            _rsv_out = _rsv.handle(base_path, method, query or {}, _db_query)
+            if _rsv_out is not None:
+                return _rsv_out
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
     # Inference Layers routes (delegated to inference_api module; read-only)
     if base_path.startswith("/api/v2/inference"):
         try:
