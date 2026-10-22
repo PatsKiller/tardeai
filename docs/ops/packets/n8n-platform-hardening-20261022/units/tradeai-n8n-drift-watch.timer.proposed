@@ -1,0 +1,13 @@
+# PROPOSED, NOT INSTALLED (packet n8n-platform-hardening-20261022, FW-P3). Every 15 minutes at :07/:22/:37/:52,
+# off the release-train tick minutes. Outside n8n by construction (systemd --user on the host).
+[Unit]
+Description=Trade AI n8n workflow drift watch every 15 minutes - FW-P3
+
+[Timer]
+OnCalendar=*-*-* *:07/15:00
+AccuracySec=30s
+Persistent=true
+Unit=tradeai-n8n-drift-watch.service
+
+[Install]
+WantedBy=timers.target

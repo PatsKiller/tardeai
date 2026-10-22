@@ -1,0 +1,24 @@
+# PROPOSED, NOT INSTALLED (packet docs/ops/packets/n8n-platform-hardening-20261022, step FW-P6).
+# AGENTS §23.23 Independence / §24.1: a dead-man for n8n that runs OUTSIDE n8n and pages P1 through the host
+# SYSTEM ops transport (send_system) when /healthz fails or n8n stops scheduling (heartbeat-watch receipt stale).
+# Writes data/runtime/n8n_host_deadman_last.json (N8nHostDeadman@v1). Reads a URL and a receipt; no restart, no
+# remediation. Requires scripts/n8n_host_deadman.py in the served CURRENT tree. Dry run first:
+# python3 scripts/n8n_host_deadman.py (no --live).
+[Unit]
+Description=Trade AI n8n host dead-man (outside n8n, P1 on down or not scheduling) - FW-P6
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+EnvironmentFile=-%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+Environment=SYSTEM_TELEGRAM_ENABLED=1
+Environment=CIO_TELEGRAM_INTERDICT=1
+ExecStart=/usr/bin/flock -n /tmp/tradeai-n8n-host-deadman.lock %h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_host_deadman.py --live
+# exit 1 = n8n bad (paged after 2 consecutive runs); the page is the alert, not a failed unit
+SuccessExitStatus=1
+Nice=5
+MemoryMax=128M
+CPUQuota=10%
+TimeoutStartSec=60

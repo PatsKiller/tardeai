@@ -1,0 +1,14 @@
+--- a/docker-compose.n8n.yml
++++ b/docker-compose.n8n.yml
+@@ -31,7 +31,10 @@
+       retries: 20
+ 
+   n8n:
+-    image: n8nio/n8n:2.43.0
++    # 2026-10-22 FW-P5 (AGENTS 23.24 Security (3), 23.23 governance (6)): pinned by digest, not only by tag.
++    # Digest = the Docker Hub OCI index of n8nio/n8n:2.43.0, measured 2026-10-22 (docker buildx imagetools
++    # inspect) and equal to the image the container runs today (docker inspect m8m-n8n .Image).
++    image: n8nio/n8n:2.43.0@sha256:c6a3a0461d1d3ffc16d849adf57606c2b028667ade70cce2faa2ff094734873c
+     container_name: m8m-n8n
+     restart: unless-stopped
+     environment:

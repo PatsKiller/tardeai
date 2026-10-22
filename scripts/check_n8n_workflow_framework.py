@@ -6,7 +6,9 @@ their generator manifests and a fresh in-process render of each generator, ``con
 (or a contract named by the workflow's ``meta.framework.health_contract_ref``), ``config/n8n_run_allowlist.json``,
 ``config/n8n_effect_keys.json``, ``config/n8n_retry_policies.json``, ``config/lane_registry.json``, the LLM
 registries, the relay route table (``scripts/n8n_run_relay.py`` ``ROUTES``), the generator's node-type policy and,
-for the platform elements, a cited platform-facts file. Writes nothing unless ``--out`` / ``--markdown`` name a file.
+for the platform elements, a platform-facts file (an element PASSes only from a fresh host probe,
+``scripts/probe_n8n_platform_facts.py``; a cited file caps at PARTIAL). Writes nothing unless ``--out`` / ``--markdown``
+name a file.
 
 What the number means (third-party audit 2026-10-15, DD09/DD15/DD16): the per-workflow percentage is **static
 conformance** — the share of the offline predicates in the element catalogue
@@ -2005,15 +2007,44 @@ def _score_llm(el: dict, steps: list[dict], ctx: Context, by_name: Mapping, live
         )
 
 
-def score_platform(facts: Mapping) -> dict:
+#: A platform element may PASS only from a host probe (scripts/probe_n8n_platform_facts.py, source_kind host_probe)
+#: no older than this. A cited file (the 2026-10-15 measurement) or a stale probe caps every element at PARTIAL:
+#: an edited JSON file is not a measurement (n8n platform hardening packet 2026-10-22).
+PLATFORM_PROBE_SOURCE_KIND = "host_probe"
+PLATFORM_PROBE_MAX_AGE_H = 24.0
+
+
+def _platform_trust(facts: Mapping, now: _dt.datetime | None) -> str | None:
+    """None when PASS is allowed; otherwise why every PASS is capped at PARTIAL."""
+    if facts.get("source_kind") != PLATFORM_PROBE_SOURCE_KIND:
+        return "cited facts, not a host probe (scripts/probe_n8n_platform_facts.py)"
+    try:
+        probed = _dt.datetime.fromisoformat(str(facts.get("probed_at")))
+    except (TypeError, ValueError):
+        return "host probe without a readable probed_at"
+    if probed.tzinfo is None:
+        return "host probe probed_at has no timezone"
+    age_h = ((now or _dt.datetime.now(_dt.timezone.utc)) - probed).total_seconds() / 3600.0
+    if age_h > PLATFORM_PROBE_MAX_AGE_H or age_h < -0.1:
+        return f"host probe is {age_h:.1f} h old (max {PLATFORM_PROBE_MAX_AGE_H:g} h)"
+    return None
+
+
+def score_platform(facts: Mapping, now: _dt.datetime | None = None) -> dict:
     f = {k: (v or {}).get("value") for k, v in (facts.get("facts") or {}).items()}
     ev = {k: (v or {}).get("evidence") for k, v in (facts.get("facts") or {}).items()}
     image = str(f.get("image_pinned") or "")
     env_ok = f.get("block_env_access_in_node") is True and f.get("community_packages_disabled") is True
     p5 = PASS if (env_ok and "@sha256:" in image) else PARTIAL if (env_ok and image) else FAIL
+    probed = facts.get("source_kind") == PLATFORM_PROBE_SOURCE_KIND
+    # FW-P1 "with retention": a host probe must also show pruning on with a positive max age; a cited file predates
+    # the retention facts and is capped below anyway.
+    retention_ok = (not probed) or (
+        f.get("executions_prune") is True and isinstance(f.get("executions_max_age_h"), int) and f["executions_max_age_h"] > 0
+    )
     out = {
         "FW-P1": (
-            PASS if f.get("executions_save_on_success_default") == "all" else FAIL,
+            PASS if (f.get("executions_save_on_success_default") == "all" and retention_ok) else FAIL,
             ev.get("executions_save_on_success_default"),
         ),
         "FW-P2": (PASS if f.get("n8n_db_role_superuser") is False else FAIL, ev.get("n8n_db_role_superuser")),
@@ -2031,6 +2062,11 @@ def score_platform(facts: Mapping) -> dict:
         ),
         "FW-P6": (PASS if f.get("host_dead_man_outside_n8n") is True else FAIL, ev.get("host_dead_man_outside_n8n")),
     }
+    capped = _platform_trust(facts, now)
+    if capped:
+        out = {
+            k: ((PARTIAL, f"{e} — PASS withheld: {capped}") if s == PASS else (s, e)) for k, (s, e) in out.items()
+        }
     return {k: {"status": s, "title": PLATFORM_ELEMENTS[k], "evidence": e} for k, (s, e) in out.items()}
 
 
@@ -2148,7 +2184,7 @@ def build_report(
 ) -> dict:
     runtime_evidence = runtime_evidence or {}
     exceptions = list(exceptions)
-    plat = score_platform(platform) if platform else None
+    plat = score_platform(platform, now=now) if platform else None
     rows = []
     for path, entry in targets:
         wf = _load(path)

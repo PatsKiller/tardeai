@@ -1,0 +1,25 @@
+# PROPOSED, NOT INSTALLED (packet docs/ops/packets/n8n-platform-hardening-20261022, step FW-P3).
+# AGENTS §23.23 governance (2) / §23.24 Logging (5): the n8n workflow-drift check runs on a host schedule, outside
+# n8n, and pages P1 on drift through the host SYSTEM ops transport (send_system), never through n8n or the fan-in.
+# Writes data/runtime/n8n_workflow_drift_last.json (N8nWorkflowDriftReceipt@v1) and n8n_drift_watch_last.json
+# (N8nDriftWatch@v1). One SELECT on the n8n DB; no n8n write. Requires scripts/n8n_drift_watch.py in the served
+# CURRENT tree. Dry run first: python3 scripts/n8n_drift_watch.py (no --live).
+[Unit]
+Description=Trade AI n8n workflow drift watch (host schedule, P1 on drift) - FW-P3
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+# The ops bot name/chat for send_system (SYSTEM ops family): the same source the autonomy watchdog drop-in uses.
+EnvironmentFile=-%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+Environment=SYSTEM_TELEGRAM_ENABLED=1
+Environment=CIO_TELEGRAM_INTERDICT=1
+ExecStart=/usr/bin/flock -n /tmp/tradeai-n8n-drift-watch.lock %h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/n8n_drift_watch.py --live
+# exit 1 = drift found and paged (the page is the alert); exit 2 = cannot run (unit fails; receipt says CANNOT_RUN)
+SuccessExitStatus=1
+Nice=10
+MemoryMax=256M
+CPUQuota=25%
+TimeoutStartSec=120

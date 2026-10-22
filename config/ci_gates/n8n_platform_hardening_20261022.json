@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_platform_hardening_20261022",
+  "files": [
+    "tests/test_n8n_platform_hardening_20261022.py"
+  ],
+  "anchor": "N8N_PLATFORM_HARDENING_20261022",
+  "comment": [
+    "ANCHOR: N8N_PLATFORM_HARDENING_20261022 — the six platform elements of the AGENTS 23.24 import gate (FW-P1..P6)",
+    "that block tradeai-fabric-release-train. scripts/probe_n8n_platform_facts.py measures each from host evidence",
+    "(allowlisted env keys only, pg_roles, systemctl --user, ss, an operator ufw capture); a platform element PASSes",
+    "only from a fresh host probe. Drift watch and host dead-man page P1 through send_system, never n8n; the n8n_app",
+    "role script (SCRAM verifier, mode-600 file, never DROP). Hermetic: fake runner/sender/prober, tmp state roots."
+  ]
+}
