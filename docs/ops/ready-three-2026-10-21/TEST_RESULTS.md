@@ -1,4 +1,12 @@
-# Test results — current provisional checkpoint 2026-10-22 21:18 UTC
+# Test results — current provisional checkpoint 2026-10-22 21:20 UTC
+
+## Exact profile and independent review — 21:20 UTC
+
+The existing exact profile session `86134` was polled live at 17:20:02 EDT / 21:20:02 UTC. It had **317 PASS / 3 FAIL gates**, with `n8n_maturity_generic_workflows_20261009` running. This remains interim evidence; no aggregate exit code, terminal summary, or final manifest exists.
+
+Independent review verified the clean 50-path candidate at `a7508b039b1f39d06bfc216726656b82ae5d0ca6` and confirmed it changes none of the implicated authority registry/gate or income-screen files. A targeted rerun independently reproduced `test_income_screen_records_named_drops` (**1 failed in 0.82s**): AJG with OI=0 returned `None`, expected `NO_LIQUID_CONTRACT`. The two authority gate failures share one baseline cause: `desk_truth_monitor.py` reads the positions projection without an approved reader registration. Do not add an exemption/workaround or expand this candidate into trading logic.
+
+PR #1947 remains OPEN/BLOCKED at `ff2f7b4d42e935334c93cc714ecedfcea227d8c9`. Latest checks show `cio-hardening` passed, shard 7 is pending, other listed active checks passed, and `cio-hardening-full` plus `main-red-alert` were skipped. The proposed upstream fixes have not merged or qualified on main.
 
 ## Profile progress after 21:16 UTC
 

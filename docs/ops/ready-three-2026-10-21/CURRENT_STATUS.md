@@ -1,4 +1,10 @@
-# Current execution status — 2026-10-22 21:18 UTC
+# Current execution status — 2026-10-22 21:20 UTC
+
+## Profile and upstream PR refresh — 2026-10-22 21:20 UTC
+
+- The integration agent polled the existing full-profile session `86134` and verified it is still live. At 17:20:02 EDT / 21:20:02 UTC the aggregate had advanced to **317 PASS / 3 FAIL**; `n8n_maturity_generic_workflows_20261009` was running. No terminal exit code or final manifest exists.
+- Independent review verified candidate `a7508b039b1f39d06bfc216726656b82ae5d0ca6` is clean with 50 changed paths and no edits to the implicated authority registry/gates or options income-screen implementation/test. It independently reproduced the AJG/OI=0 `test_income_screen_records_named_drops` failure (**1 failed in 0.82s**). The two authority failures are one baseline defect: `desk_truth_monitor.py` reads the positions projection without an approved reader registration. No candidate workaround or code change is warranted; do not suppress the authority gate.
+- PR #1947 remains OPEN/BLOCKED at head `ff2f7b4d42e935334c93cc714ecedfcea227d8c9`, based on current main `b9804fa577e6d2793f4539c7458452707a350f61`. A fresh `gh pr checks` read showed `cio-hardening` passed (19m27s), shard 7 still pending, and full hardening/main-red-alert skipped. Its fixes are not merged into main, and the PR is not merge-qualified yet.
 
 ## Profile progress — 2026-10-22 21:18 UTC
 
