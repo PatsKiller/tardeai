@@ -482,6 +482,15 @@ artifact above. There is no calendar wait.
    to `train/*` is refused. So a PR must first mint a 1-hour installation token per reservation (§5 of the App doc)
    and pass it as `GH_TOKEN` to the writer's child processes only. The PR touches a protected surface
    (`release_train_controller.py`), so it ships by the manual path (L.1).
+   **Status (2026-10-22): built, not armed** (branch `feat/release-train-app-token-reservation-20261022`, gate
+   `RELEASE_TRAIN_APP_TOKEN_RESERVATION_20261022`). Finding 3 had already replaced `GhCliWriter` with
+   `GitHubAppWriter` (a fresh token per write call). This PR binds the token to the reservation: `_cap_effect` enters
+   `writer.reservation(<intent id>, <action>)` right after `reserve()`; a write outside it, or for another action, is
+   refused before anything is minted; one token is minted per reservation and dropped when it ends. The App is
+   pinned (`APP_ID = 5419776`, `APP_INSTALLATION_ID = 173961421`, `PatsKiller/tardeai`): `github-app.json` is now
+   optional, and one naming another App, installation or repository is refused. The `git push` child gets the token
+   as `GH_TOKEN` (and as the scoped `http.extraheader`), with every inherited `GH_TOKEN`/`GITHUB_TOKEN` stripped; this
+   process's environment never holds it. `GITHUB_WRITES_STATUS` stays `PROPOSED`.
 4. **`ci-gate` as a required context on `main`** (D4; a branch-protection change, §17). `ci-gate` is the batch
    qualifier, and capabilities bind it.
 5. **The standing-release binding (K), or one grant per train.** Without either, `prepare` refuses, and a train that

@@ -112,10 +112,19 @@ chmod 600 ~/.config/tradeai/release_train/github-app.pem
 
 **Minting.** The service does this; agents never do it. It is implemented by `GitHubAppTokenMinter` /
 `GitHubAppWriter` in `scripts/lib/release_train_controller.py` (arming finding 3, branch
-`fix/release-train-arming-blockers-20261021`): one fresh token per write call, RS256 signed with `cryptography`, the
-token passed to `git push` only through that child's `GIT_CONFIG_*` environment as an `http.extraheader` scoped to
-`https://github.com/`, and only `refs/heads/train/<id>` pushed. It stays inert while `GITHUB_WRITES_STATUS` is
-`PROPOSED`.
+`fix/release-train-arming-blockers-20261021`; reservation binding, branch
+`feat/release-train-app-token-reservation-20261022`): one token per capability reservation, minted on the first write
+inside `writer.reservation(<intent id>, <action>)` (which the controller enters right after `reserve()`), never outside
+one and never for another action, and dropped when the reservation ends. It is RS256 signed with `cryptography`. The
+`git push` child receives it as `GH_TOKEN` and as an `http.extraheader` scoped to `https://github.com/` through its
+`GIT_CONFIG_*` environment, with every inherited `GH_TOKEN`/`GITHUB_TOKEN` stripped; the parent process environment
+never holds it. Only `refs/heads/train/<id>` is pushed. It stays inert while `GITHUB_WRITES_STATUS` is `PROPOSED`.
+
+**The pinned App.** The operator's App is pinned in code: App ID `5419776`, installation `173961421`, repository
+`PatsKiller/tardeai` (`APP_ID`, `APP_INSTALLATION_ID`, `APP_REPOSITORY`). `github-app.json` is optional; absent, the
+pins are used with the App ID as the JWT `iss`; present, it must be mode 600 and agree with every pin, and a
+`client_id` in it becomes the `iss`. A file naming another App, installation or repository is refused before anything
+is signed.
 
 1. Build a JWT: header `{"alg":"RS256","typ":"JWT"}`; claims `iat = now − 60`, `exp = now + 540` (under the 10-minute
    cap), `iss = <client_id>`. Sign it with `github-app.pem`.

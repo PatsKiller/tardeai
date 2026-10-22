@@ -50,7 +50,14 @@ def app(tmp_path):
     os.chmod(pem, 0o600)
     cfg = d / "github-app.json"
     cfg.write_text(
-        json.dumps({"app_id": 42, "client_id": "Iv1.test", "installation_id": 7, "repository": "PatsKiller/tardeai"})
+        json.dumps(
+            {
+                "app_id": T.APP_ID,
+                "client_id": "Iv1.test",
+                "installation_id": T.APP_INSTALLATION_ID,
+                "repository": "PatsKiller/tardeai",
+            }
+        )
     )
     os.chmod(cfg, 0o600)
     return {"key": key, "pem": pem, "cfg": cfg}
@@ -94,7 +101,7 @@ def test_minting_signs_an_rs256_jwt_and_narrows_the_token(app):
     tok = _minter(app, api).mint("push_train_ref")
     assert tok.value == TOKEN and "redacted" in repr(tok) and TOKEN not in repr(tok) and TOKEN not in str(tok)
     method, url, headers, body = api.calls[0]
-    assert (method, url) == ("POST", "https://api.github.com/app/installations/7/access_tokens")
+    assert (method, url) == ("POST", f"https://api.github.com/app/installations/{T.APP_INSTALLATION_ID}/access_tokens")
     jwt = headers["Authorization"].split(" ", 1)[1]
     head, body64, sig = jwt.split(".")
 
@@ -174,7 +181,8 @@ def test_push_publishes_only_the_bound_train_ref_with_no_token_in_argv_or_config
     w = T.GitHubAppWriter(
         _Host(work), None, minter=_minter(app, api), status="ACTIVE", remote_url=f"file://{origin}", runner=runner
     )
-    out = w.push_train_ref(TRAIN, sha)
+    with w.reservation("intent-push", "push_train_ref"):
+        out = w.push_train_ref(TRAIN, sha)
     assert out == {"ref": f"refs/heads/train/{TRAIN}", "sha": sha, "token_expires_at": "2026-10-21T23:00:00Z"}
     refs = git(origin, "for-each-ref", "--format=%(refname)")
     assert refs.splitlines() == [f"refs/heads/train/{TRAIN}"]
@@ -194,7 +202,8 @@ def test_production_push_url_scopes_the_header_to_github(app, tmp_path):
         return 0, ""
 
     w = T.GitHubAppWriter(_Host(tmp_path), None, minter=_minter(app, FakeApi()), status="ACTIVE", runner=runner)
-    w.push_train_ref(TRAIN, "a" * 40)
+    with w.reservation("intent-push", "push_train_ref"):
+        w.push_train_ref(TRAIN, "a" * 40)
     assert seen["argv"][-2] == "https://github.com/PatsKiller/tardeai.git"
     assert seen["env"]["GIT_CONFIG_KEY_0"] == "http.https://github.com/.extraheader"
     assert "push" in seen["argv"] and "config" not in seen["argv"] and "origin" not in seen["argv"]
@@ -239,7 +248,7 @@ def test_a_failed_push_scrubs_the_token(app, tmp_path):
         status="ACTIVE",
         runner=lambda *a, **k: (128, f"fatal: header {b64} token {TOKEN} rejected"),
     )
-    with pytest.raises(RuntimeError) as e:
+    with pytest.raises(RuntimeError) as e, w.reservation("intent-push", "push_train_ref"):
         w.push_train_ref(TRAIN, "a" * 40)
     assert TOKEN not in str(e.value) and b64 not in str(e.value) and "***" in str(e.value)
 
@@ -248,14 +257,16 @@ def test_pr_open_and_merge_use_the_app_token_through_the_api(app, tmp_path, capl
     caplog.set_level(logging.DEBUG)
     api = FakeApi()
     w = T.GitHubAppWriter(_Host(tmp_path), None, minter=_minter(app, api), status="ACTIVE")
-    assert w.open_or_update_batch_pr(TRAIN, "a" * 40, "Release train", "body") == 9001
-    assert w.merge_batch_pr(9001, "b" * 40, "Release train") == "c" * 40
+    with w.reservation("intent-open", "open_batch_pr"):
+        assert w.open_or_update_batch_pr(TRAIN, "a" * 40, "Release train", "body") == 9001
+    with w.reservation("intent-merge", "merge_batch_pr"):
+        assert w.merge_batch_pr(9001, "b" * 40, "Release train") == "c" * 40
     api_calls = [c for c in api.calls if "/access_tokens" not in c[1]]
     assert [c[0] for c in api_calls] == ["GET", "POST", "PUT"]
     assert all(c[2]["Authorization"] == f"token {TOKEN}" for c in api_calls)
     assert json.loads(api_calls[1][3])["head"] == f"train/{TRAIN}" and json.loads(api_calls[1][3])["base"] == "main"
     assert json.loads(api_calls[2][3]) == {"sha": "b" * 40, "merge_method": "merge", "commit_title": "Release train"}
-    assert sum(1 for c in api.calls if "/access_tokens" in c[1]) == 2  # a fresh token per write call
+    assert sum(1 for c in api.calls if "/access_tokens" in c[1]) == 2  # a fresh token per reservation
     assert TOKEN not in caplog.text and TOKEN not in json.dumps(w.minter.audit)
 
 
@@ -264,11 +275,11 @@ def test_no_token_reaches_a_train_receipt_or_run_record(app, tmp_path):
     w = T.GitHubAppWriter(
         _Host(tmp_path), None, minter=_minter(app, FakeApi()), status="ACTIVE", runner=lambda *a, **k: (0, "")
     )
-    rec = {
-        "push": w.push_train_ref(TRAIN, "a" * 40),
-        "pr": w.open_or_update_batch_pr(TRAIN, "a" * 40, "t", "b"),
-        "audit": w.minter.audit,
-    }
+    with w.reservation("intent-push", "push_train_ref"):
+        push = w.push_train_ref(TRAIN, "a" * 40)
+    with w.reservation("intent-open", "open_batch_pr"):
+        pr = w.open_or_update_batch_pr(TRAIN, "a" * 40, "t", "b")
+    rec = {"push": push, "pr": pr, "audit": w.minter.audit}
     assert TOKEN not in json.dumps(rec)
 
 

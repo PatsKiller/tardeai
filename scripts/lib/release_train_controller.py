@@ -59,6 +59,7 @@ scratch integration, bisect, CI evidence reader, GitHub writer interface, event 
 
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import hashlib
 import json
@@ -998,6 +999,16 @@ APP_CONFIG_PATH = HOST_CONFIG / "github-app.json"
 GITHUB_API = "https://api.github.com"
 #: The narrowed installation-token request for the build/publish and merge phases (App doc §5 step 2).
 APP_TOKEN_PERMISSIONS = {"contents": "write", "pull_requests": "write", "checks": "read", "metadata": "read"}
+#: The App the operator created and installed (operator 2026-10-22; App doc §3). Non-secret identifiers, pinned so a
+#: config file naming another App, installation or repository is refused instead of silently minting for it.
+APP_ID = 5419776
+APP_INSTALLATION_ID = 173961421
+APP_REPOSITORY = "PatsKiller/tardeai"
+APP_PINS = {"app_id": APP_ID, "installation_id": APP_INSTALLATION_ID, "repository": APP_REPOSITORY}
+#: The writer actions that may mint a token, each only inside a capability reservation for that same action.
+APP_WRITER_ACTIONS = frozenset({"push_train_ref", "open_batch_pr", "merge_batch_pr"})
+#: Inherited GitHub credentials stripped from every writer child: the host gh user's token never rides along.
+_INHERITED_GH_CREDENTIALS = ("GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
 def is_train_ref(ref: str) -> bool:
     """refs/heads/train/<a valid train id>, nothing else."""
     p = "refs/heads/train/"
@@ -1068,21 +1079,34 @@ class GitHubAppTokenMinter:
     the granted ``permissions`` are kept (``audit``)."""
 
     def __init__(self, *, key_path: Path = APP_KEY_PATH, config_path: Path = APP_CONFIG_PATH,
-                 http: Optional[HttpFn] = None, clock: Callable[[], float] = time.time) -> None:
+                 http: Optional[HttpFn] = None, clock: Callable[[], float] = time.time,
+                 pins: Optional[dict] = None) -> None:
         self.key_path, self.config_path = Path(key_path), Path(config_path)
         self.http = http or _urllib_http
         self.clock = clock
+        self.pins = dict(APP_PINS if pins is None else pins)
         self.audit: list[dict] = []
 
     def config(self) -> dict:
-        try:
-            cfg = json.loads(_read_private_file(self.config_path, "App config").decode("utf-8"))
-        except ValueError:
-            raise AppTokenError("App config is not JSON") from None
+        """The identifiers to mint with. ``github-app.json`` is optional: absent, the pinned App is used (iss = the
+        App id). Present, it must be a private file and agree with every pin; a mismatch is refused."""
+        if not os.path.lexists(self.config_path):
+            cfg: dict = {"app_id": self.pins["app_id"], "installation_id": self.pins["installation_id"],
+                         "repository": self.pins["repository"]}
+        else:
+            try:
+                cfg = json.loads(_read_private_file(self.config_path, "App config").decode("utf-8"))
+            except ValueError:
+                raise AppTokenError("App config is not JSON") from None
+            if not isinstance(cfg, dict):
+                raise AppTokenError("App config is not a JSON object")
         iss = cfg.get("client_id") or cfg.get("app_id")
         inst, repo = cfg.get("installation_id"), cfg.get("repository")
         if not iss or not isinstance(inst, int) or not isinstance(repo, str) or repo.count("/") != 1:
             raise AppTokenError("App config needs client_id (or app_id), an integer installation_id and owner/repo")
+        for k in ("app_id", "installation_id", "repository"):
+            if cfg.get(k) is not None and cfg.get(k) != self.pins[k]:
+                raise AppTokenError(f"App config {k} does not match the pinned App ({k}={self.pins[k]!r})")
         return {"iss": str(iss), "installation_id": inst, "repository": repo}
 
     def jwt(self, iss: str) -> str:
@@ -1113,7 +1137,7 @@ class GitHubAppTokenMinter:
         sig = key.sign(f"{head}.{body}".encode("ascii"), padding.PKCS1v15(), hashes.SHA256())
         return f"{head}.{body}.{b64(sig)}"
 
-    def mint(self, action: str) -> AppToken:
+    def mint(self, action: str, *, reservation: Optional[str] = None) -> AppToken:
         cfg = self.config()
         body = json.dumps({"repositories": [cfg["repository"].split("/")[1]],
                            "permissions": APP_TOKEN_PERMISSIONS}).encode()
@@ -1132,16 +1156,26 @@ class GitHubAppTokenMinter:
                  or (v == "write" and APP_TOKEN_PERMISSIONS[k] != "write")}
         if wider:
             raise AppTokenError(f"installation token is wider than requested: {sorted(wider)}")
-        self.audit.append({"action": action, "expires_at": exp, "permissions": perms, "at": utc_iso(self.clock())})
+        self.audit.append({"action": action, "reservation": reservation, "expires_at": exp, "permissions": perms,
+                           "at": utc_iso(self.clock())})
         return AppToken(tok, exp, perms)
 
 
 class GitHubAppWriter:
-    """The live writer under decision D2 (a): every GitHub write is made with a fresh 1-hour GitHub App installation
-    token (never the host's gh user). ``git push`` publishes ONLY ``refs/heads/train/<train id>``; the token reaches
-    git as an ``http.extraheader`` through ``GIT_CONFIG_COUNT``/``GIT_CONFIG_KEY_0``/``GIT_CONFIG_VALUE_0`` in that one
-    child's environment (never argv, never a git config file, never a credential store). The PR calls go to the REST
-    API with the token in the request header. Refuses to construct while GITHUB_WRITES_STATUS is not ACTIVE."""
+    """The live writer under decision D2 (a): every GitHub write is made with a 1-hour GitHub App installation token
+    (never the host's gh user), minted once per capability reservation (packet I.1 item 3; App doc §4 (3), §5 step 4).
+
+    Reservation binding: the controller enters ``reservation(intent_id, action)`` after
+    ``CapabilityAuthority.reserve()`` succeeds and leaves it when the effect ends. A write outside a reservation, or
+    for an action other than the reserved one, is refused before anything is minted. The token is minted lazily on
+    the first write inside the reservation, held in memory only, and dropped when the reservation ends; it is never
+    cached across reservations.
+
+    Transport: ``git push`` publishes ONLY ``refs/heads/train/<train id>``; the token reaches that one child as
+    ``GH_TOKEN`` and as an ``http.extraheader`` through ``GIT_CONFIG_COUNT``/``GIT_CONFIG_KEY_0``/``GIT_CONFIG_VALUE_0``
+    (never argv, never a git config file, never a credential store, never this process's ``os.environ``); every
+    inherited ``GH_TOKEN``/``GITHUB_TOKEN`` is stripped from the child first. The PR calls go to the REST API with the
+    token in the request header. Refuses to construct while GITHUB_WRITES_STATUS is not ACTIVE."""
 
     simulated = False
 
@@ -1156,6 +1190,40 @@ class GitHubAppWriter:
         self.http = http or self.minter.http
         self.remote_url = remote_url
         self.runner = runner or _run
+        self._bound: Optional[dict] = None
+
+    # -- reservation binding -----------------------------------------------------------------------------
+    @contextlib.contextmanager
+    def reservation(self, intent_id: str, action: str):
+        """Bind writes to one capability reservation. Nested or concurrent reservations are refused."""
+        if self._bound is not None:
+            raise PermissionError("refused: a writer reservation is already held")
+        if not intent_id or action not in APP_WRITER_ACTIONS:
+            raise PermissionError(f"refused: reservation for {action!r} (writer actions only, with an intent id)")
+        self._bound = {"intent_id": str(intent_id), "action": action, "token": None}
+        try:
+            yield self
+        finally:
+            self._bound = None                      # the token dies with the reservation
+
+    def _token(self, action: str) -> AppToken:
+        b = self._bound
+        if b is None:
+            raise PermissionError(f"refused: {action} outside a capability reservation (no token is minted)")
+        if b["action"] != action:
+            raise PermissionError(f"refused: {action} inside a reservation for {b['action']}")
+        if b["token"] is None:
+            b["token"] = self.minter.mint(action, reservation=b["intent_id"])
+        return b["token"]
+
+    @staticmethod
+    def child_env(token: AppToken, base: Optional[dict] = None) -> dict:
+        """The environment of one writer child: inherited GitHub credentials stripped, ``GH_TOKEN`` the App token.
+        Built as a copy; this process's environment is never modified."""
+        env = {k: v for k, v in (os.environ if base is None else base).items()
+               if k not in _INHERITED_GH_CREDENTIALS and not k.startswith("GIT_CONFIG_")}
+        env["GH_TOKEN"] = token.value
+        return env
 
     # -- helpers ---------------------------------------------------------------------------------------
     @staticmethod
@@ -1190,7 +1258,7 @@ class GitHubAppWriter:
 
         header = "AUTHORIZATION: basic " + base64.b64encode(f"x-access-token:{token.value}".encode()).decode()
         url = self.remote_url or f"https://github.com/{self._repo()}.git"
-        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_CONFIG_")}
+        env = self.child_env(token)
         env.update({"GIT_TERMINAL_PROMPT": "0", "GIT_CONFIG_COUNT": "2",
                     "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader", "GIT_CONFIG_VALUE_0": header,
                     "GIT_CONFIG_KEY_1": "credential.helper", "GIT_CONFIG_VALUE_1": ""})
@@ -1207,13 +1275,13 @@ class GitHubAppWriter:
         if not CAP.TRAIN_RE.match(train_id or ""):
             raise ValueError("train id")
         ref = f"refs/heads/train/{train_id}"
-        token = self.minter.mint("push_train_ref")
+        token = self._token("push_train_ref")
         return self._push(sha, ref, bound_ref=ref, token=token)
 
     def open_or_update_batch_pr(self, train_id: str, sha: str, title: str, body: str) -> int:
         if not CAP.TRAIN_RE.match(train_id or ""):
             raise ValueError("train id")
-        token = self.minter.mint("open_batch_pr")
+        token = self._token("open_batch_pr")
         repo = self._repo()
         head = f"train/{train_id}"
         status, doc = self._api(token, "GET", f"repos/{repo}/pulls?head={repo.split('/')[0]}:{head}&state=open")
@@ -1228,7 +1296,7 @@ class GitHubAppWriter:
     def merge_batch_pr(self, pr: int, expected_head_sha: str, message: str) -> str:
         if not SHA_RE.match(expected_head_sha or ""):
             raise ValueError("expected head sha")
-        token = self.minter.mint("merge_batch_pr")
+        token = self._token("merge_batch_pr")
         status, doc = self._api(token, "PUT", f"repos/{self._repo()}/pulls/{int(pr)}/merge",
                                 {"sha": expected_head_sha, "merge_method": "merge", "commit_title": message})
         if status != 200 or not isinstance(doc, dict) or not SHA_RE.match(str(doc.get("sha") or "")):
@@ -2380,8 +2448,11 @@ class TrainController:
                 res._end(CAP.ABORTED_NO_EFFECT, {"halt": h.reason}, refund=True)
             self._effect(key, "ABORTED_NO_EFFECT", {"halt": h.reason})
             raise
+        bind = getattr(self.writer, "reservation", None) if action in APP_WRITER_ACTIONS else None
         try:
-            out = effect()
+            # D2 (a): the App writer mints its token only inside this reservation, for this action (packet I.1.3).
+            with (bind(res.intent_id, action) if callable(bind) else contextlib.nullcontext()):
+                out = effect()
         except Halt as h:
             if not res.done:
                 res.failed_no_effect({"halt": h.reason})
