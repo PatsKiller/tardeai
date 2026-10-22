@@ -2,6 +2,13 @@
 
 # Change and release log — 2026-10-21
 
+## 2026-10-22 21:39 UTC — profile, upstream sequencing, and production service status
+
+- Exact profile session `86134` remains live at **462 PASS / 4 FAIL gates** (17:38:23 EDT / 21:38:23 UTC); `release_train_email_mirror_20261021` was running. No terminal aggregate exists.
+- Failures recorded so far: two authority gates from the same unapproved `desk_truth_monitor.py` positions-reader issue; inherited AJG/OI=0 `NO_LIQUID_CONTRACT` test failure independently reproduced on exact main; and `operator_control_isolated_db`'s hard-coded `/tmp` path assertion, despite the disposable DB cluster running under the required `/home/johnclaw` temp root. The candidate was not changed during the profile; fix only the test path assumption after it exits and qualify the new exact SHA.
+- PR #1947 remains OPEN/CLEAN and unmerged; its active checks pass. PR #1956 carries the operator-pinned runtime limits and is OPEN/BLOCKED, with ci-gate and shards 1, 5, and 7 failing and `cio-hardening` pending. Keep pipeline/locks on HOLD until #1956 merges; then drop duplicate changes, retain measured settings, and rerun focused checks. Docs overlap nine paths; n8n probe evidence has no path overlap.
+- Read-only production GETs to build/health timed out. The systemd unit `tradeai-portfolio-server.service` reports inactive/dead, while a separate listener remains on port 7777 and `/` responds with HTTP 302. Current build and health are unverified. No service restart, candidate push, release, or deployment occurred; guard has no active service/git-push grants. C3 stays disabled; dependency changes remain deferred.
+
 ## 2026-10-22 21:15 UTC — full-profile interim progress
 
 - Profile progress at 17:15 EDT: **291 PASS / 3 FAIL gates**, still live in `n8n_cc_reader_first_20261018`; no terminal aggregate is claimed.
