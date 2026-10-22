@@ -98,7 +98,8 @@ def test_plan_prints_what_every_step_would_do_and_writes_nothing(sb):
     assert "destructive statements: none (additive)" in out                       # A
     assert "WOULD: install -d -m 700" in out and "64 hex chars" in out            # B
     assert "status PAUSED, windows 1800/0000/0600/0800 all disabled" in out       # C
-    assert "REFUSED DELEGATION_PAUSED" in out                                      # C.3 expectation
+    assert "REFUSED DELEGATION_PAUSED" in out and "C.3" not in out                # C: no acceptance step
+    assert "Acceptance is the arm itself, at step I.2" in out
     assert "WOULD: systemctl --user enable --now tradeai-release-train-claim.path" in out   # D
     assert "WOULD: rewrite ONLY the TRADEAI_N8N_RELAY_LIVE_LANES= line" in out     # E
     assert "framework_gate" in out and "WOULD REFUSE --apply" in out              # F: the §23.24 gate today
@@ -211,14 +212,29 @@ def test_delegation_is_paused_with_every_window_disabled(sb):
 
 
 def test_a_paused_delegation_cannot_be_armed_at_the_cli(sb):
-    """Packet step C.3: the host CLI's arm accepts only an ACTIVE record, so 'accept the PAUSED digest' is a refusal."""
-    assert sb.apply("C").returncode == 0
+    """Finding 1: the host CLI's arm accepts only an ACTIVE record, so C never 'accepts the PAUSED digest'; the
+    digest is accepted at arm time (I.2). C --verify proves the CLI fails closed, read-only, with no TTY."""
+    a = sb.apply("C")
+    assert a.returncode == 0 and "accepted at arm time, step I.2" in a.stdout and "C.3" not in a.stdout
     env = dict(sb.env, HOME=str(sb.home))
     r = subprocess.run([sys.executable, str(ROOT / "scripts" / "release_control_cli.py"), "--state-dir",
                         str(sb.state_dir), "arm", "--delegation", str(sb.conf / "delegation.json"),
-                        "--reason", "C.3 check", "--dry-run"], env=env, capture_output=True, text=True)
+                        "--reason", "arming check", "--dry-run"], env=env, capture_output=True, text=True)
     assert r.returncode == 2 and '"DELEGATION_PAUSED"' in r.stdout
+    v = sb.run("C", "--verify")
+    assert v.returncode == 0 and "host CLI arm --dry-run: REFUSED DELEGATION_PAUSED" in v.stdout
     assert not (sb.state_dir / "control.json").exists()
+
+
+def test_packet_has_no_impossible_acceptance_step():
+    text = PACKET.read_text(encoding="utf-8")
+    c = text[text.index("## C. "):text.index("## D. ")]
+    assert "C.3" not in c and "accept its digest at the host CLI" not in c
+    assert "The digest is accepted when the train is armed, at step I.2" in c
+    i2 = text[text.index("**I.2 Arm (TTY)"):text.index("**I.3")]
+    assert "this is where the delegation digest is accepted" in i2
+    f1 = text[text.index("1. **C cannot \"accept the PAUSED digest\".**"):]
+    assert "**Status: FIXED**" in f1[:1200]
 
 
 def test_an_invalid_delegation_is_refused_and_kept(sb):

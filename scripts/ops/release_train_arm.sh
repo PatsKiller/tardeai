@@ -370,8 +370,9 @@ step_C() {
         say "  WOULD write $DELEG_PATH (O_EXCL, mode 600): status PAUSED, windows 1800/0000/0600/0800 all disabled"
         say "  rendered delegation_id $(printf '%s' "$body" | "$PY" -c 'import sys,json; print(json.load(sys.stdin)["delegation_id"])'), digest $dg (approved_at is stamped at write time, so the applied digest differs)"
       fi
-      say "  then at the host TTY (operator, step C.3): python3 scripts/release_control_cli.py arm --delegation $DELEG_PATH --reason '...' --dry-run"
-      say "    expected while PAUSED: REFUSED DELEGATION_PAUSED (arm accepts only an ACTIVE record; acceptance is step I)"
+      say "  the digest is NOT accepted here: C only writes the PAUSED record. Acceptance is the arm itself, at step I.2"
+      say "    (operator, TTY: set status ACTIVE with every window still disabled, then release_control_cli.py arm)."
+      say "  --verify also checks the host CLI reads the record and fails closed: arm --dry-run -> REFUSED DELEGATION_PAUSED"
       ;;
     verify)
       [[ $present == 1 ]] || { say "  delegation: MISSING"; exit 1; }
@@ -379,6 +380,13 @@ step_C() {
       [[ "$(stat -c '%a' "$DELEG_PATH")" == 600 ]] || exit 1
       case "$v" in PAUSED*|AUTHORIZED*) ;; *) exit 1 ;; esac
       ( cd "$CODE_ROOT" && "$PY" scripts/release_control_cli.py --state-dir "$STATE_DIR" status ) | sed 's/^/  /'
+      if [[ "$v" == PAUSED* ]]; then
+        # Read-only: a dry-run arm never writes control.json. A PAUSED record must be refused (fail closed).
+        local out; out="$( ( cd "$CODE_ROOT" && "$PY" scripts/release_control_cli.py --state-dir "$STATE_DIR" arm \
+              --delegation "$DELEG_PATH" --reason "arming C verify (read-only)" --dry-run ) 2>&1 || true)"
+        if [[ "$out" == *DELEGATION_PAUSED* ]]; then say "  host CLI arm --dry-run: REFUSED DELEGATION_PAUSED (fails closed; acceptance is step I.2)"
+        else say "  host CLI arm --dry-run did NOT refuse the PAUSED record: $(printf '%s' "$out" | tail -c 200)"; exit 1; fi
+      fi
       ;;
     apply)
       need_ack C
@@ -405,7 +413,7 @@ finally:
       case "$v" in PAUSED*) ;; *) receipt C FAILED "$v"; echo "FAILED: written record reads $v"; exit 1 ;; esac
       receipt C APPLIED "PAUSED, windows none; $v"
       say "APPLIED: $DELEG_PATH written (mode 600): $v"
-      say "NEXT (operator, TTY): python3 scripts/release_control_cli.py arm --delegation $DELEG_PATH --reason 'C.3 check' --dry-run   -> REFUSED DELEGATION_PAUSED"
+      say "NEXT: $0 C --verify (read-only). The digest is accepted at arm time, step I.2, never here."
       ;;
   esac
 }

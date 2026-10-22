@@ -58,7 +58,7 @@ These rules apply to every run of the script:
 | P0 | Release 2 merged and released (CURRENT carries `train-claim`, `/release-train-window`, the request lanes) | Release 2 review | operator, `release-write` naming the PR | `grep -c train-claim $CUR/scripts/release_window.py` ≥ 1 |
 | A | Apply the queue migration | P0 | operator, as DB role `trade_ai` | `$ARM A --verify` → `store: APPLIED` |
 | B | Create the capability key | — | operator | `$ARM B --verify` → `load_key: KEY_OK` |
-| C | Create the delegation record (PAUSED, windows off); check the CLI refuses to arm it | — | operator, TTY for C.3 | `$ARM C --verify` → `PAUSED … none`, control `UNARMED` |
+| C | Create the delegation record (PAUSED, windows off); the digest is accepted at arm time (I.2) | — | operator (no TTY) | `$ARM C --verify` → `PAUSED … none`, control `UNARMED`, CLI arm dry run `REFUSED DELEGATION_PAUSED` |
 | D | Install the claimer units | P0, G's paths agree | operator (§17 systemd) | `$ARM D --verify` → `SAME; ENABLED` |
 | H.0 | Shadow-enable PR (shadow switch, lane `live_arg`, stages) | review | reviewed PR, then released | see H.0 |
 | E | Add 5 lanes to the relay live list; restart the relay and gateway; run the relay contract check | P0, H.0 | operator, config-write + unit grants | `$ARM E --verify` exit 0 |
@@ -117,7 +117,7 @@ It writes the file `O_EXCL` with mode 600 inside a mode-700 directory, then fsyn
 - **Rollback:** `mv ~/.config/tradeai/release_train/capability.key{,.archived-$(date -u +%Y%m%dT%H%M%SZ)}`.
   Every capability signed with the old key stops verifying, which fails closed. Never delete the key; agents never read it (§24.7).
 
-## C. Create the delegation record (PAUSED), then check that the host CLI refuses to arm it
+## C. Create the delegation record (PAUSED); its digest is accepted at arm time (I.2)
 
 `~/.config/tradeai/release_train/delegation.json` is the standing policy record (`ReleaseDelegation@v1`). The script
 renders it from `config/release_train_delegation.example.json` and changes only these fields:
@@ -131,26 +131,23 @@ It asserts that `status` is `PAUSED` and that all four windows are `enabled: fal
 `release_delegation.validate`, then writes it `O_EXCL` with mode 600. The file lives outside the repository on
 purpose: `release_delegation.load` refuses any path inside the repo, so no train can edit its own authority.
 
+**C writes the PAUSED record and nothing else. The digest is accepted when the train is armed, at step I.2** (finding
+1, fixed). `release_control_cli.py arm` refuses anything that is not `ACTIVE`, and accepting a digest *is* `arm`,
+which writes `control.json` in mode `RUNNING`. So there is no acceptance step here. At I.2 the operator sets `status`
+to `ACTIVE` with every window still disabled, and `arm` accepts that record's digest.
+
 - **Command:** `TRADEAI_RELEASE_TRAIN_ARM_ACK=C $ARM C --apply`
 - **Dry run:** `$ARM C` prints the record it would write, the `delegation_id` and a preview digest. `approved_at` is
   stamped at write time, so the applied digest differs from the preview.
-- **Expected (apply):** `APPLIED: … written (mode 600): PAUSED <sha256> none`.
+- **Expected (apply):** `APPLIED: … written (mode 600): PAUSED <sha256> none`, then
+  `NEXT: … C --verify (read-only). The digest is accepted at arm time, step I.2, never here.`
   - A second run prints `NOOP: delegation present (PAUSED …); never overwritten`.
   - A record that is present but invalid is refused and kept.
-- **C.3, "accept its digest at the host CLI" (operator, at a TTY):**
-  ```bash
-  cd $CUR && $PY scripts/release_control_cli.py arm --delegation ~/.config/tradeai/release_train/delegation.json \
-      --reason "C.3 check" --dry-run
-  ```
-  Expected: `{"code": "DELEGATION_PAUSED", "outcome": "REFUSED", …}`, exit 2.
-  - **The CLI cannot accept a PAUSED record.** `arm` and `change-scope` call `release_delegation.load()` and refuse
-    anything that is not `AUTHORIZED`, and only `status: ACTIVE` is authorized.
-  - Accepting the digest *is* `arm`, and `arm` immediately writes `control.json` with mode `RUNNING`. So C stops at the
-    refusal, which proves that the CLI reads the record and fails closed. The real acceptance is step I.2.
-  - This is contradiction 1 in the findings.
-- **Verify:** `$ARM C --verify` prints:
+- **Verify:** `$ARM C --verify` (read-only, no TTY) prints:
   - `delegation: PAUSED <digest> none; mode 600`;
-  - from `release_control_cli.py status`: `"mode": "UNARMED"`, `"latch_state": "ABSENT"`.
+  - from `release_control_cli.py status`: `"mode": "UNARMED"`, `"latch_state": "ABSENT"`;
+  - `host CLI arm --dry-run: REFUSED DELEGATION_PAUSED (fails closed; acceptance is step I.2)`. This proves the CLI
+    reads the record and fails closed. A dry-run arm writes no `control.json`.
 - **Rollback:** `mv ~/.config/tradeai/release_train/delegation.json{,.archived-$(date -u +%Y%m%dT%H%M%SZ)}`. A missing
   record reads `MISSING`, which means not authorized.
 
@@ -481,7 +478,8 @@ artifact above. There is no calendar wait.
 5. **The standing-release binding (K), or one grant per train.** Without either, `prepare` refuses, and a train that
    has merged ends `MERGED_NOT_LIVE`.
 
-**I.2 Arm (TTY).**
+**I.2 Arm (TTY): this is where the delegation digest is accepted.** Step C wrote the PAUSED record. Arming is the one
+act that accepts a digest: `arm` stores the record's digest as `accepted_policy_digest` (finding 1).
 
 1. Edit `~/.config/tradeai/release_train/delegation.json`: set `"status": "ACTIVE"`, and keep every window disabled.
 2. Run `cd $CUR && $PY scripts/release_control_cli.py arm --delegation ~/.config/tradeai/release_train/delegation.json --reason "canary arm" --dry-run`.
@@ -628,12 +626,16 @@ The fallback holds through every phase.
 
 ---
 
-## Findings: contradictions and gaps (each reported once; nothing was changed to resolve them)
+## Findings: contradictions and gaps (each reported once; status lines record the fixes on `fix/release-train-arming-blockers-20261021`)
 
 1. **C cannot "accept the PAUSED digest".** `release_control_cli.py arm` and `change-scope` refuse any delegation
    that is not ACTIVE (`DELEGATION_PAUSED`), and `arm` itself sets mode `RUNNING`. So "create PAUSED, then accept its
    digest" is not possible. The packet ends C with a refusal check, and accepts the digest at I.2 after setting
    ACTIVE with every window still off. Every later edit (enabling a window) changes the digest and needs `change-scope`.
+   **Status: FIXED** (branch `fix/release-train-arming-blockers-20261021`). Step C writes the PAUSED record and
+   nothing else. The impossible "C.3 accept the digest" step is gone, and so is its TTY. The digest is accepted at
+   arm time (I.2). `release_train_arm.sh C --verify` now runs the read-only `arm --dry-run` itself and expects
+   `REFUSED DELEGATION_PAUSED` (fail closed, no `control.json`), and `C --apply` points to that check and to I.2.
 2. **F is blocked by AGENTS §23.24.** `check_n8n_import_ready.py` refuses `tradeai-fabric-release-train`
    (`framework_gate`: FW-P1–P6 fail, runtime UNPROVEN, exceptions UNVERIFIED). The n8n contract's O5 ("import and
    activate under a cron grant") and §10 ("forcing ticks through n8n is preferred") say nothing about the gate.
@@ -774,7 +776,9 @@ Paths are shortened to `…`.
 == C
   WOULD write …/delegation.json (O_EXCL, mode 600): status PAUSED, windows 1800/0000/0600/0800 all disabled
   rendered delegation_id rtd-20261021-operator, digest 286e4359…d8b2 (approved_at is stamped at write time, …)
-    expected while PAUSED: REFUSED DELEGATION_PAUSED (arm accepts only an ACTIVE record; acceptance is step I)
+  the digest is NOT accepted here: C only writes the PAUSED record. Acceptance is the arm itself, at step I.2
+    (operator, TTY: set status ACTIVE with every window still disabled, then release_control_cli.py arm).
+  --verify also checks the host CLI reads the record and fails closed: arm --dry-run -> REFUSED DELEGATION_PAUSED
 == D
   units in …/systemd/user: ABSENT; path+timer: NOT_ENABLED
     { "schema": "ReleaseTrainClaimRun@v1", "mode": "dry_run", "requests": [] }
