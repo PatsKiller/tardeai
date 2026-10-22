@@ -96,6 +96,10 @@ def _build(monkeypatch, holdings, quotes=(), labels=None):
         "schwab_roth_ira": {"label": "Schwab Roth IRA", "environment": "live"},
         "tradeai_automated": {"label": "Alpaca Paper", "environment": "paper"},
     })
+    # CI runners have no psycopg2; the connection is faked above, so only the cursor-factory name is needed.
+    extras = types.SimpleNamespace(RealDictCursor=object)
+    monkeypatch.setitem(sys.modules, "psycopg2", types.SimpleNamespace(extras=extras))
+    monkeypatch.setitem(sys.modules, "psycopg2.extras", extras)
     monkeypatch.setitem(sys.modules, "db_adapter", types.SimpleNamespace(_get_conn=lambda: (_ for _ in ()).throw(RuntimeError("no db"))))
     return oti.build_intelligence(), oti
 
