@@ -100,10 +100,11 @@ def _writer(key_dir, api, *, cfg=None, runner=None):
 # ── the pinned App ───────────────────────────────────────────────────────────────────────────────
 
 
-def test_the_operator_app_is_pinned_and_writes_stay_proposed():
+def test_the_operator_app_is_pinned_and_a_non_active_status_refuses(monkeypatch):
     assert (T.APP_ID, T.APP_INSTALLATION_ID, T.APP_REPOSITORY) == (5419776, 173961421, "PatsKiller/tardeai")
     assert T.APP_KEY_PATH == Path.home() / ".config/tradeai/release_train/github-app.pem"
-    assert T.GITHUB_WRITES_STATUS == "PROPOSED"
+    assert T.GITHUB_WRITES_STATUS == "ACTIVE"  # arming packet I.4 PR 2
+    monkeypatch.setattr(T, "GITHUB_WRITES_STATUS", "PROPOSED")
     with pytest.raises(T.WriterNotArmed):
         T.GitHubAppWriter(_Host(Path("/nonexistent")), None)
 

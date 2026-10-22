@@ -88,8 +88,10 @@ def _minter(app, api):
     return T.GitHubAppTokenMinter(key_path=app["pem"], config_path=app["cfg"], http=api, clock=lambda: 1_800_000_000)
 
 
-def test_status_stays_proposed_and_nothing_constructs_a_live_writer():
-    assert T.GITHUB_WRITES_STATUS == "PROPOSED"
+def test_status_is_active_and_a_non_active_status_constructs_no_live_writer(monkeypatch):
+    # Arming packet I.4 PR 2: the flip. The refusal while not ACTIVE stays pinned below.
+    assert T.GITHUB_WRITES_STATUS == "ACTIVE"
+    monkeypatch.setattr(T, "GITHUB_WRITES_STATUS", "PROPOSED")
     with pytest.raises(T.WriterNotArmed):
         T.GitHubAppWriter(RW.Host(), T.GhCliReader(RW.Host()))
     with pytest.raises(T.WriterNotArmed):
