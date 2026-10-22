@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      17.0.0
+Policy-Version:      18.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              ACTIVE
-Effective-Date:      2026-10-21
-Last-Reviewed:       2026-10-21T23:22:17-04:00
+Status:              PROPOSED
+Effective-Date:      PENDING
+Last-Reviewed:       2026-10-22T16:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          16.0.0
+Supersedes:          17.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -110,6 +110,31 @@ asks the operator to decide needs `dedupe_minutes=0`; #1685 sets it only for `ap
 `stop_decision_brief.py` (a stop decision brief) is P1 with the default 60-minute exact-content dedupe — the
 operator classifies it before #1685 merges. **Numbering:** follows 5.0.0 (ACTIVE, PR #1686, merged `0ec320486`);
 `Supersedes` is 5.0.0. Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>`.
+
+**18.0.0 is PROPOSED (MAJOR) — the data foundation: one store, one writer, the CIO as integrator (§26).**
+Operator direction 2026-10-22, verbatim: "The CIO agent is supposed to tie all of this together, and it should all be
+in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this. This was supposed
+to be the baseline of the site." and "Make sure this is the foundation of the data in the site. Make sure that this is
+hard-coded in agents.md and you set the architecture of how this should work. And we should also have a data
+dictionary that shows one source of data." Awaiting the operator's `APPROVE_AGENTS_POLICY_18_0_0 <pr_number>
+<head_sha>` (§20); until it is ratified and merged nothing here binds and the 17.0.0 text governs. Under 18.0.0 the
+CIO prospect record — `InstrumentRecord@v1` extended, one row per `security_guid`, written only by
+`InstrumentRecordStore` — is the single per-security truth; every fact has exactly one authoritative store and one
+writer in the §7A registry, and the data dictionary rendered from it (`docs/architecture/DATA_DICTIONARY.md`) binds
+row by row as the operator grants each row; pages, APIs and alerts read only through registered projections; n8n
+schedules the gathering inside the §23.14 never-list; conflicting inputs are recorded and shown, never silently
+resolved; new stores and writers stay operator-only (§17); a retired copy is archived with a tripwire. **Why MAJOR:**
+it changes agent role authority — no desk, lane or agent other than the CIO may keep its own per-security judgment
+store, and the CIO agent becomes the only writer of the per-security record — and it changes what operator surfaces
+may read (version policy: role authority is MAJOR; an ambiguous class takes the higher one). It weakens nothing and
+grants nothing: no broker, order, stop, egress, n8n or §17 authority widens, `MBI_BEHAVIOR = 0` and the behaviour rail
+are untouched, ratification grants none of the proposed registry rows (each is its own §17 grant), and no runtime
+behaviour changes until those grants and their PRs land. If the operator rules it MINOR, it renumbers to 17.1.0 and
+nothing else changes. **Byte-identical:** §0, §2, §2A, §7A, §17, §22, §23.14, §24, §25 and the four adapters; §26
+extends §7A the way §24.3 does, without editing it. While PROPOSED the NO SILOS section is byte-identical too; the
+ratifying edit replaces exactly one clause there (its methodology rule 1, quoted in §26.7). **Numbering:** after
+17.0.0 (PR #1914, ACTIVE); `Supersedes` 17.0.0. Approval phrase as proposed:
+`APPROVE_AGENTS_POLICY_18_0_0 <pr_number> <head_sha>`.
 
 **17.0.0 is ACTIVE (MAJOR) — the release train: agents queue and never merge, push `main` or `train/*`, or
 release; a standing revocable delegation; the 00:00, 06:00, 08:00 and 18:00 ET windows with a merge freeze; STOP
@@ -6298,10 +6323,109 @@ arms the delegation at the host (§25.2) and enables a window (§25.3), each a �
 
 ---
 
+# 26 · Data foundation — one store, one writer, the CIO as integrator (18.0.0, PROPOSED)
+
+**Status: PROPOSED (MAJOR).** Binding only once AGENTS.md 18.0.0 is ACTIVE; until then 17.0.0 governs. §26 extends
+§7A (the authority registry), the identity spine and "Shared security research — NO SILOS" (§7), and §13.4–§13.5
+(`InstrumentRecord@v1`, the pre-build check) without editing §7A. Architecture:
+`docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md`. Dictionary: `docs/architecture/DATA_DICTIONARY.md`, rendered
+from `config/data_source_authority.json` by `scripts/render_data_dictionary.py`. Enforcement:
+`scripts/check_data_source_authority.py` with `scripts/lib/data_dictionary.py`.
+
+## 26.1 The CIO prospect record is the single per-security truth
+
+- **One row per `security_guid`, written only by the CIO agent.** The prospect record is `InstrumentRecord@v1`
+  extended (§13.5: extend, never clone): identity, stage (watching → setup forming → actionable → proposed → held →
+  exit / re-entry), conviction 0–100 with named components, stance, catalyst grade, next trigger, what is missing,
+  next action, `evidence_at` / `expires_at` and conflicts, in one Postgres store (§24.9), written only through
+  `InstrumentRecordStore` (`scripts/lib/cio_instrument_record.py`). Any other per-security judgment store — a thesis
+  cache, an entry state, an opportunity file, a decision packet, a research state — is an input the CIO reads, a log
+  it appends, or an export generated from the record. *Cause (§20): operator direction 2026-10-22 (banner);
+  measured 2026-10-22: the prospect was split over eight CIO stores holding 120 to 3,889 symbols, none GUID-keyed in
+  Postgres, and they disagreed silently (NVDA `ADD` at 78.5 beside thesis stance `watch`).*
+- **The key is `security_guid`; `issuer_guid` is carried; `subject_guid` is an alias.** For a security
+  `subject_guid` equals `security_guid` (the identity table), so it is accepted on read and mapped, never stored as a
+  second key; `subject_key` (`HELD:X`) and `symbol` are aliases. A security without a CONFIRMED GUID gets no record
+  and renders "identity unresolved". *Cause (§20): the identity table already defines both names; the kind-prefixed
+  `subject_key` kept a held security in a `WATCH:` record (NVDA, 2026-10-22).*
+- **`MBI_BEHAVIOR = 0` holds for the record.** The CIO sets stance and priority; it never sizes, orders, stops or
+  weights, no prospect field is a `BEHAVIOR_FIELDS` key, and its model calls go only through registered capabilities
+  (§12, §23.4). *Cause (§20): §0 rule 1; the §13.4 cognition boundary.*
+
+## 26.2 Every fact has one store and one writer — the data dictionary binds
+
+- **The dictionary is the §7A registry, not a second one.** Each fact — positions, cash, marks, stops, basis,
+  catalysts, scores, decisions, options ideas, alerts and the prospect's fields — names exactly one domain; each
+  domain names one authoritative store, one writer (or a declared `UNCONSOLIDATED` ceiling that only falls), one
+  refresh lane, one freshness SLA, its readers and its derived or retiring copies. An agent proposes a row in
+  `proposed_domains[]` (`status: "proposed"`, no `approval`); the operator's grant (§17) moves it into `domains[]`
+  with ceilings measured at the grant. *Cause (§20): operator 2026-10-22 "a data dictionary that shows one source of
+  data"; measured: stops, scans, catalysts, fused signals, CIO decisions and theses, options and paper proposals and
+  alerts had no registry domain, and two granted domains answered "what do I hold".*
+- **CI makes a granted row bind.** `check_data_source_authority.py` fails a granted row on a second writer
+  (`DICTIONARY_SECOND_WRITER`) or a page or API reading a derived or retiring copy (`NON_AUTHORITATIVE_READ`) above
+  its ceiling, and fails a malformed proposal (`DICTIONARY_INVALID`); a proposed row only warns. *Cause (§20): the
+  §7A ceilings covered granted tables only; 51 files write `paper_trade_proposals` and nothing reported it.*
+
+## 26.3 Pages and alerts read only through registered projections
+
+- **Every surface is a reader.** Home, Watch, Trade AI, Options, Open Trades, Telegram, Proposals and Re-entry read
+  each fact through its data-broker projection (§24.3) and the prospect through the `cio_prospect` projection, with
+  `as_of`, age, source and stale — never a copy, never a store directly. Changing what a surface ranks stays §17.
+  *Cause (§20): measured 2026-10-22: Watch ranked with an unregistered `top_ideas.v2` and read no CIO store; five
+  page or API files and two projections read `holdings.json` directly.*
+
+## 26.4 n8n gathers; the host keeps authority
+
+- **n8n schedules the gathering and refresh lanes and fires the CIO's passes; it decides nothing and writes
+  nothing.** Every lane runs on the host under §23 and climbs shadow → canary → cutover (§23.21); stops, orders,
+  paper execution, the options tick, senders and daemons stay on the host (§23.14); a broker read by an agent needs a
+  `broker-read` grant (§24.11). *Cause (§20): operator 2026-10-22 "use the CIO agent and n8n"; §23.14, §23.23.*
+
+## 26.5 Conflicts are shown, never silently resolved
+
+- **A disagreement between inputs is a recorded conflict.** The record keeps both values, both sources and both
+  times in `conflicts[]`, and every surface shows it until the CIO resolves it with a recorded reason; no writer,
+  projection or migration picks a winner silently, and divergent copies of a store are reported, never auto-merged
+  (§0 rule 5). *Cause (§20): measured 2026-10-22: the opportunity file, the thesis and the instrument record
+  disagreed for NVDA and SPCX, and no surface showed it.*
+
+## 26.6 New stores and writers stay operator-only; copies retire by archive
+
+- **Adding, replacing or retiring a store or a writer is §17, row by row.** Ratifying 18.0.0 grants none of the
+  proposed rows, creates no table and moves no reader. Migration runs shadow → compare → switch readers in
+  operator-approved batches; `holdings.json` becomes a generated export of `positions_current` (operator decision
+  2026-10-22). A retired copy is archived with a tripwire that fires if anything reads it (§0 rule 6), never deleted.
+  *Cause (§20): §7A "Ownership and the grant"; the positions plan of 2026-10-06; §0 rules 5 and 6.*
+
+## 26.7 Ratifying edit
+
+- **One clause of "Shared security research — NO SILOS" is replaced at ratification,** and nothing outside the
+  header block, the banner, §26 and the 18.0.0 history row changes. Methodology rule 1 reads, while PROPOSED:
+
+  ```
+  1. **One security → one spine.** Key by `subject_guid` when known; always carry `symbol`.
+     Identity rules above still apply (`issuer_guid` / `subject_guid` — never invent a second map).
+  ```
+
+  and the ratifying edit makes it:
+
+  ```
+  1. **One security → one spine → one prospect.** Key by `security_guid` (`subject_guid` is the same
+     value for a security and is mapped, never a second key); carry `issuer_guid` and `symbol`.
+     The spine feeds the CIO prospect record, the single per-security truth (§26).
+  ```
+
+  *Cause (§20): §20 — rules are replaced, not accumulated; until ratification the clause stays byte-identical, so no
+  agent reads a PROPOSED rule as in force.*
+
+---
+
 # Version history
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 18.0.0 | 2026-10-22 | PROPOSED | MAJOR | §26 "Data foundation — one store, one writer, the CIO as integrator" added. Operator direction 2026-10-22 (verbatim in the banner): one data store with everything, the CIO agent and n8n tie it together, hard-coded in AGENTS.md, a data dictionary that shows one source of data. The CIO prospect record (`InstrumentRecord@v1` extended, one row per `security_guid`, written only by `InstrumentRecordStore`) is the single per-security truth; every fact has one authoritative store and one writer in the §7A registry and the dictionary rendered from it binds row by row as each is granted; pages and alerts read only through registered projections; n8n schedules gathering inside the §23.14 never-list; conflicts are recorded and shown, never silently resolved; new stores and writers stay §17; copies retire by archive and tripwire. §0, §2, §2A, §7A, §17, §22, §23.14, §24, §25 and the adapters byte-identical; the NO SILOS section byte-identical while PROPOSED, one clause replaced at ratification (§26.7). MAJOR: agent role authority (the CIO becomes the only writer of per-security judgment); grants no row, broker, order, stop, egress or n8n authority. Header block 18.0.0 PROPOSED, `Effective-Date` PENDING, `Supersedes` 17.0.0. | **PENDING** — awaiting `APPROVE_AGENTS_POLICY_18_0_0 <pr_number> <head_sha>` (§20); per-PR word, because it is MAJOR. |
 | 17.0.0 | 2026-10-21 | ACTIVE | MAJOR | §25 "Release train — agents queue, the train releases" added (Release Train v2, Phase 2). Operator directive 2026-10-21 (plan record): agents queue PRs only; a scheduled train integrates, releases and reports at 00:00, 06:00, 08:00 and 18:00 ET; decisions D1 (standing revocable delegation, no daily or 7-day renewal), D2 (GitHub App, 1-hour installation tokens, operator-created), D3 (resume and scope changes only via the host CLI or a Telegram button confirmation). Once the delegation is first armed agents never merge, push `main` or `train/*`, or release; until then the manual process is unchanged. ReleaseDelegation@v1 on the host, accepted by digest; ReleaseCapability@v1 per train and phase (build/publish cannot merge or promote); one global release lock, intent before effect, refusals consume nothing, UNCERTAIN reconciled before retry. Windows 18:00, 00:00, 06:00, 08:00 ET (enabled in that order, DST-aware, no catch-up) with a merge freeze; operator-forced off-window canary runs (operator approval 2026-10-21: TTY plus phrase, canary phase only, every other gate still enforced; they count as canary proofs). Shadow, canary and expand end when their proofs pass, with no minimum days (operator 2026-10-21). STOP: latch plus epoch, requested → acknowledged → settling → stopped, fail closed; CC may only request STOP or pause; resume issues a new epoch. Operator-only items added to §17 at ratification (arming or revoking the delegation, clearing STOP, resume, scope expansion, GitHub App custody). `AI_WORK_POLICY.md` §28: train pushes are the only automated remote sync. §24.5 and §24.8 gained one quoted bullet each at ratification; §17, §24.5 and §24.8 were byte-identical until then. §0, §2, §2A, §7A, §22, §23.14 and the adapters byte-identical. MAJOR: an automated actor may push `train/*` and merge under a standing delegation. Header block 17.0.0 PROPOSED, `Effective-Date` PENDING while PROPOSED; the ratifying edit set it to 17.0.0 ACTIVE, `Effective-Date` 2026-10-21, `Supersedes` 16.0.0. Numbered after 15.0.0 (PR #1852) and 16.0.0 (PR #1911), both ACTIVE; `Supersedes` 16.0.0. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_17_0_0 1914 aeb5e6fd70dcefac0df8541c496bebb4a5e904ec` (operator, PR #1914 comment by PatsKiller 2026-10-22T03:22:17Z, https://github.com/PatsKiller/tardeai/pull/1914#issuecomment-6331877455, verbatim: "APPROVE_AGENTS_POLICY_17_0_0 1914 aeb5e6fd70dcefac0df8541c496bebb4a5e904ec"); ratified by this edit on #1914's branch, which inserted the three clauses quoted in §25.9 into §17, §24.5 and §24.8 and marked `AI_WORK_POLICY.md` §28 ACTIVE; approval phrase as proposed `APPROVE_AGENTS_POLICY_17_0_0 <pr_number> <head_sha>`; per-PR word, because it changes `AGENTS.md` §17 and `AI_WORK_POLICY.md`. Effective 2026-10-21. |
 | 16.0.0 | 2026-10-21 | ACTIVE | MAJOR | §23.21 "The cutover standard — fixed, dry run, regression tests, one live run" added, rebuilt from 8.0.0 (PR #1727, closed unratified) on the operator's word 2026-10-21 "yes rebuild 1727". Operator ruling 2026-10-14 ~11:05 ET, verbatim: "new standards apply when i say so fix and dry and regression testing, yes it should run live successful to many road blocks to testing". An n8n lane is cutover-ready when (1) its defect is fixed and served, (2) its n8n dry run passes (a forced `dry_run` fire counts; no natural shadow slot), (3) its lane regression tests pass under `TRADE_AI_CI=1`, (4) it has at least one successful `live` n8n run with the cron line still present under the shared lock: the dispatcher's slot, or an operator-forced in-window live fire (`OPERATOR_FORCED_LIVE` in `scripts/n8n_cutover_checklist.py`; never a gate override; never an agent-forced F09 live run, §23.25). Procedure: `scripts/n8n_cutover_wave.py` canary rows, `comment-cron` retirement as `# RETIRED <date> n8n-cutover <lane>` (the commented line is the fallback), then the dispatcher-row PR. Multi-day soaks removed; operator waivers recorded verbatim. While PROPOSED, §8.1, §23.3, §23.12, §23.14 and §23.23 were byte-identical; the ratifying edit replaced five quoted clauses (the §23.3 and §23.14 `trade-ai-scalp-live` 3-day fallback, the §8.1 natural-evidence gate list, a §23.12 pointer, the §23.23 (4) citation) whose digests `tests/test_agents_policy_16_0_0_cutover_standard.py` pins. §0, §2, §2A, §7A, §17, §22 and the adapters byte-identical. MAJOR: removes a 4.0.0 restriction; §23.14 changes by one clause at ratification (permitted to a new MAJOR outside a program window; window closed 2026-10-12). Header block 16.0.0 PROPOSED, `Effective-Date` PENDING, `Supersedes` 15.0.0 while PROPOSED; the ratifying edit set it to 16.0.0 ACTIVE, `Effective-Date` 2026-10-21, `Supersedes` 15.0.0. Numbered 16.0.0 after 15.0.0 (PR #1852, ACTIVE). | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1416ab9f240a69def0523dd125afbc18` (operator, PR #1911 comment by PatsKiller 2026-10-22T02:33:20Z, https://github.com/PatsKiller/tardeai/pull/1911#issuecomment-6331278599, verbatim: "APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1416ab9f240a69def0523dd125afbc18"); ratified by this edit on #1911's branch, which replaced the five clauses quoted in §23.21; approval phrase as proposed `APPROVE_AGENTS_POLICY_16_0_0 <pr_number> <head_sha>`; per-PR word, because it changes `AGENTS.md`. Effective 2026-10-21. |
 | 15.0.0 | 2026-10-18 | ACTIVE | MAJOR | §24.12 "Disk hygiene: the only automated deletion" added, one sentence added to §0 rule 6 and one entry added to §17 (both inserted by the ratifying edit in `AGENTS.md`, the four adapters and §17; absent while PROPOSED). Operator-directed 2026-10-18, verbatim: "i approve automatic deletion would need an AGENTS.md amendment" (root disk 89%; about 100 GB of stale clones/worktrees and 36 GB of old releases). Once ACTIVE, the weekly n8n lane `disk-hygiene` (or the operator at the CLI) may run ONLY `scripts/disk_hygiene.py` under `config/disk_hygiene_rules.json` to remove: git clones/worktrees that are clean, have no untracked files and no unpushed commits, are merged into `origin/main`, are referenced by no CURRENT release, unit or crontab line, hold no process cwd and are idle past N days; and release directories other than CURRENT, the previous release and the newest N. A code-enforced never-touch list (db_backups, persistent-state, models, .env/credential/cookie/token paths, .ssh, .config, Docker and n8n volumes) holds over every rule; changing the rules or the list is an operator config change (config-write grant + reviewed PR; new §17 entry "changing the disk-hygiene rules or never-touch list"). Every apply needs a fresh manifest, re-validates each item, respects per-run byte/item caps and writes a `LaneRunReceipt@v2` with each removed path, size and rule evidence; the first live apply follows the operator's review of a manifest; kill switch = remove the lane from `TRADEAI_N8N_RELAY_LIVE_LANES` or set `auto_apply` false. No agent deletes by hand; data, backups, DB rows and credentials stay under "Never delete". Open gap: `scripts/disk_hygiene_enforcer.py` (release and backup removal) is not covered and is retired or folded by its own PR. MAJOR: it narrows §0 rule 6 for one lane (version policy; precedent 5.0.0, 14.0.0). Tests: `tests/test_agents_policy_15_0_0_disk_hygiene.py`. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_15_0_0 1852 fc56728962fd51c94b3dc8cfd67e2df334eda88f` (operator, PR #1852 comment by PatsKiller 2026-10-21T19:37:58Z, https://github.com/PatsKiller/tardeai/pull/1852#issuecomment-6324859562, verbatim: "APPROVE_AGENTS_POLICY_15_0_0 1852 fc56728962fd51c94b3dc8cfd67e2df334eda88f"); ratified by this edit on #1852's branch; ratifying edit inserts the §0 rule 6 sentence in `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/00-tradeai-work-policy.mdc`, `.github/copilot-instructions.md` and `.goosehints`, and the §17 entry; approval phrase as proposed `APPROVE_AGENTS_POLICY_15_0_0 <pr_number> <head_sha>`; per-PR word, because it changes `AGENTS.md` §0 and §17. Effective 2026-10-21. |
