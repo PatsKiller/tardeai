@@ -115,7 +115,12 @@ def cc_symbol_url(symbol: str) -> str:
 
 
 def cc_trading_url(symbol: str, *, tab: str = "Scalp") -> str:
-    """Actionable Trading Hub deep-link — GO/scalp facts live here, not on Intelligence."""
+    """Actionable deep-link — GO/scalp facts live here, not on Intelligence.
+
+    The scalp list moved from Trading → Scalp to Active Trader → Scalp (Trading tabs 8 → 4, operator
+    2026-10-22); the old /v3/trading?tab=Scalp link still redirects there. Other tabs stay on Trading."""
+    if tab == "Scalp":
+        return f"{cc_base()}/v3/active-trader?tab=Scalp&symbol={quote(symbol.upper())}"
     return f"{cc_base()}/v3/trading?tab={quote(tab)}&symbol={quote(symbol.upper())}"
 
 

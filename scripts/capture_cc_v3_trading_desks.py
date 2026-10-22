@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture Command Center v3 Proposals + Entry Desk (Manual ToS) for layout comparison."""
+"""Capture Command Center v3 Proposals (Path B queue + Path A Entry Desk) for layout comparison."""
 from __future__ import annotations
 
 import os
@@ -46,8 +46,8 @@ def main() -> int:
     tos_out = ROOT / "docs" / "ui_review" / "entry_desk"
 
     proposals_url = f"{BASE.rstrip('/')}/v3/trading?tab=Proposals"
-    tos_tab = urllib.parse.quote("Entry Desk")
-    tos_url = f"{BASE.rstrip('/')}/v3/trading?tab={tos_tab}"
+    # Entry Desk is the Path A section of Proposals since the Trading tabs went 8 → 4 (2026-10-22).
+    tos_url = f"{BASE.rstrip('/')}/v3/trading?tab=Proposals&section=path-a"
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)

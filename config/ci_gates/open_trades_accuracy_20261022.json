@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "open_trades_accuracy_20261022",
+  "files": [
+    "tests/test_open_trades_accuracy_20261022.py"
+  ],
+  "anchor": "OPEN_TRADES_ACCURACY_20261022",
+  "comment": [
+    "ANCHOR: OPEN_TRADES_ACCURACY_20261022 — Open Trades intelligence (audit 2026-10-22): canonical_mark with its own age,",
+    "P/L = shares x mark - basis, day move hidden when the mark is stale, datetime (not lexical) last price update, write-offs",
+    "out of headline totals, large-gain-unprotected suppressed for funds and small positions, broker_accounts labels, one quote",
+    "source per row. Hermetic: fake connection and holdings in memory, no DB, broker or data/ file."
+  ]
+}

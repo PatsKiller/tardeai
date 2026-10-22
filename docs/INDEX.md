@@ -492,6 +492,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/TRADE_AI_WORKLOG_2026-09-16.md` | Trade-AI work log — 2026-09-16 |
 | `docs/architecture/TRADE_AI_WORKLOG_2026-10-04.md` | Trade AI — Work log 2026-10-03 → 2026-10-05 (00:30 ET) |
 | `docs/architecture/TRADE_INTELLIGENCE_JOURNAL_DESIGN.md` | Trade Intelligence Journal -- Design Document |
+| `docs/architecture/TRADING_HUB.md` | Trading hub (Command Center v3 `/v3/trading`) |
 | `docs/architecture/V3_3_IMPLEMENTATION_STATUS_2026-09-27.md` | v3.3 implementation status |
 | `docs/architecture/V3_OPENCLAW_TRADEAI_SYSTEM_TABS.md` | Command Center v3 — OpenClaw + TradeAI System Tabs — 2026-06-07 |
 | `docs/architecture/V3_OPEN_TRADES_INTELLIGENCE_2026_06_05.md` | v3 Open Trades — Actionable Position Intelligence (2026-06-05) |

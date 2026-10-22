@@ -176,9 +176,9 @@ def test_go_alert_sends_the_rich_layout_with_buttons_and_chart(monkeypatch):
     assert g._send_go(lambda text, **kw: calls.append((text, kw)) or True, item)
     text, kw = calls[0]
     assert kw["priority"] == "P1" and "bypass_router" not in kw   # P1 intent replaced the bypass (2026-10-10)
-    assert "<b>" in text and "/v3/trading?tab=Scalp&amp;symbol=ARMP" in text and "&amp; label" in text
+    assert "<b>" in text and "/v3/active-trader?tab=Scalp&amp;symbol=ARMP" in text and "&amp; label" in text
     assert CHART in kw["link_preview_options"]["url"]
-    assert kw["reply_markup"]["inline_keyboard"][0][0]["url"].endswith("/v3/trading?tab=Scalp&symbol=ARMP")
+    assert kw["reply_markup"]["inline_keyboard"][0][0]["url"].endswith("/v3/active-trader?tab=Scalp&symbol=ARMP")
     assert "READ_ONLY_ADVISORY" not in text and _fresh_transport().parse_mode_for(text) == "HTML"
 
 
@@ -238,7 +238,7 @@ def test_entry_alert_is_rich_and_keeps_the_entry_alert_words(monkeypatch, rich):
     text, kw = calls[0]
     # decision card (2026-10-08): an entry header that routes as cio_entry_state; the ticker links to Trading
     from scripts.lib.telegram_cards import ENTRY_HEADERS
-    assert any(h in text for h in ENTRY_HEADERS) and "/v3/trading?tab=Scalp&amp;symbol=AXTI" in text
+    assert any(h in text for h in ENTRY_HEADERS) and "/v3/active-trader?tab=Scalp&amp;symbol=AXTI" in text
     assert "Close under 10.90" in text and "T1 $13.5" in text and "nothing executed" in text
     assert CHART in kw["link_preview_options"]["url"] and kw["reply_markup"]
 

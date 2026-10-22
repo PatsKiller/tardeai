@@ -460,8 +460,8 @@ def _action_target(cls: str, line: str, sym: str | None, syms: list[str]) -> dic
                 "endpoint": "/api/v2/broker-proposals", "target_confidence": "medium" if sym else "low",
                 "reason": "approval / Steph-review line (no exact approval id in source)"}
     if cls == "broker_manual":
-        return {"target_type": "trading", "target_id": sym, "symbol": sym, "route": "/v3/trading?tab=Manual%20ToS",
-                "route_label": "Open Manual ToS", "modal": None, "endpoint": None, "target_confidence": "medium",
+        return {"target_type": "trading", "target_id": sym, "symbol": sym, "route": "/v3/trading?tab=Proposals&section=path-a",
+                "route_label": "Open Entry Desk (Path A)", "modal": None, "endpoint": None, "target_confidence": "medium",
                 "reason": "broker-manual line"}
     if cls == "research_needed":
         topic = _re.sub(r"^.*?(?:gap|topic)\s*:?\s*", "", line, flags=_re.I).split("—")[0].strip()
