@@ -51,18 +51,26 @@ rules:
      when: {held: false, reentry_state_in: ["NEAR ENTRY"]}}
   - {id: reentry_watch, category: re_entry, priority: low, actionable: false,
      when: {held: false, reentry_state_in: [WAIT, "OVERBOUGHT WAIT", "MISSING PLAN", "MISSING MARKET"]}}
+  # Entry rules never match a HELD name (2026-10-22 Watch audit: RTX/NVDA/CSWC/LDOS/BAH showed "High conviction /
+  # Review entry" while Trade AI said MANAGING). A held name is managed, not entered: it falls through to held_watch.
   - {id: proposal_ready, category: high_conviction_opportunity, priority: high, actionable: true, action: "Review the proposal",
-     when: {proposal_allowed: true}}
+     when: {held: false, proposal_allowed: true}}
   - {id: plan_ready_strong, category: high_conviction_opportunity, priority: high, actionable: true, action: "Review entry",
-     when: {plan_urgency_in: [ready], in_zone: true, min_plan_confidence: 0.6, min_rr: 2.0}}
+     when: {held: false, plan_urgency_in: [ready], in_zone: true, min_plan_confidence: 0.6, min_rr: 2.0}}
   - {id: plan_ready, category: reward, priority: medium, actionable: true, action: "Review entry",
-     when: {plan_urgency_in: [ready]}}
+     when: {held: false, plan_urgency_in: [ready]}}
   - {id: near_trigger, category: reward, priority: medium, actionable: true, action: "Watch the trigger",
-     when: {near_trigger: true}}
+     when: {held: false, near_trigger: true}}
   - {id: plan_near, category: reward, priority: low, actionable: false,
-     when: {plan_urgency_in: [near_entry]}}
-  - {id: held_watch, category: held_position, priority: low, actionable: false, when: {held: true}}
+     when: {held: false, plan_urgency_in: [near_entry]}}
+  - {id: held_watch, category: held_position, priority: low, actionable: false, action: "Manage the position",
+     when: {held: true}}
   - {id: candidate, category: watchlist_candidate, priority: low, actionable: false, when: {}}
+
+# A non-held idea whose Trade AI state is one of these is NEVER actionable, whatever rule matched (2026-10-22 audit:
+# FATN/AXTI showed "actionable / Set a re-entry alert" while Trade AI said DETERMINISTIC_FAIL / NO TRADE ACTION).
+# The card keeps its category and status; actionable is false and blocked_by names the state.
+non_actionable_trade_states: [DETERMINISTIC_FAIL, BLOCKED, AVOID]
 
 # Score inputs.
 scores:
@@ -85,3 +93,13 @@ board:
   recent_hours: 24
   reward_min: 0.5              # "Highest reward" counts items at or above this reward score
   risk_min: 0.6                # "Highest risk" counts risk-category items and items at or above this risk score
+
+# Held flag — the one reader is lib/data_broker/watch_domains.held_positions() (2026-10-22 Watch audit).
+# positions_store_reader: read held names from positions_current (broker-synced, positions_sync freshness contract)
+#   before holdings.json. Ships FALSE: config/data_source_authority.json says the positions_store has no reader until
+#   the operator approves a phase-3 reader batch (AGENTS.md §7A, §17). Setting it true IS that operator grant —
+#   record it in the positions_store registry row's approval in the same PR.
+# holdings_stale_after_hours: holdings.json older than this is served with stale=true (registry stale_after_hours).
+held:
+  positions_store_reader: false
+  holdings_stale_after_hours: 24

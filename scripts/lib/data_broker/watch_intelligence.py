@@ -731,6 +731,8 @@ def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
 
     starred = _starred_set()
     screener = _screener_origin_set()
+    from lib.data_broker.watch_domains import held_positions, held_detail_public
+    held_detail = held_detail_public(held_positions())
     held = _held_set()
     held_source = _held_source()
     enrich_map = enrichment_batch([c.get("symbol") for c in cards if c.get("symbol")])
@@ -768,7 +770,8 @@ def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
     _wd.attach([i["card"] for i in items])
     for i in items:
         i["domains"]["WatchDecision"] = {"decision": field(i["card"].get("decision"), source=_wd.DECISION_VERSION)}
-    decision_board = _wd.board([i["card"] for i in items])
+    # The re-entry tile carries the desk's own READY/NEAR count (the desk rows are already cached by attach()).
+    decision_board = _wd.board([i["card"] for i in items], desk=_wd.reentry_desk_counts())
     dq = dict(q)
     if view == "expired":
         dq.setdefault("decision_status", "expired,invalidated")
@@ -820,7 +823,22 @@ def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
         "decision_actionable": decision_board["actionable"],
         "decision_expired": decision_board["facets"]["status"].get("expired", 0),
         "decision_invalidated": decision_board["facets"]["status"].get("invalidated", 0),
+        "universe": len(items),
+        # Held count = held cards (2026-10-22 audit: 23 held vs 20 held cards — 3 delisted CUSIP rows).
+        "held_cards": sum(1 for i in items if (i.get("card") or {}).get("held")),
+        "held_unresolved": len(held_detail.get("unresolved") or []),
     }
+    # Every count declares its scope (watch_decision.SCOPES): page | matched | live | all.
+    count_scopes = {
+        "total_matched": "matched", "page": "page", "page_size": "page",
+        "starred_universe": "all", "held_universe": "all", "screener_universe": "all",
+        "street_strong_buy": "matched", "street_buy": "matched", "trade_ai_wait": "matched",
+        "proposal_eligible": "matched", "complete_reviews": "matched", "near_trigger": "all",
+        "material_change": "matched", "decision_live": "live", "decision_actionable": "live",
+        "decision_expired": "all", "decision_invalidated": "all", "universe": "all",
+        "held_cards": "all", "held_unresolved": "all",
+    }
+    counts["scopes"] = count_scopes
 
     cards_out = [i.get("card") for i in page_items]
     snap = content_snapshot_id(page_items, view=view, query=q)
@@ -842,6 +860,7 @@ def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
             "projection": "watch_intelligence",
             "domains_module": "lib.data_broker.watch_domains",
             "position_source": held_source,
+            "held": held_detail,
             "canonical_quotes": "watch_canonical_quote",
             "street_consensus": "yahoo + analyst_rollup",
             "provider_calls": 0,
@@ -863,7 +882,10 @@ def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
             ),
             "managing_held": sum(1 for i in sorted_items if (i.get("card") or {}).get("held") or (i.get("card") or {}).get("trade_ai_state") == "MANAGING"),
             "proposal_eligible": counts["proposal_eligible"],
+            "scope": "matched",
         },
+        "count_scopes": count_scopes,
+        "scope_definitions": _wd.SCOPES,
         "flags": {
             "watch_intelligence_primary": True,
             "watch_legacy_hidden": True,
@@ -1164,7 +1186,7 @@ def watch_filters() -> dict[str, Any]:
             note=None if providers else "No authorized COMPLETE CIO reviews",
         ),
         filt("starred", "Starred only", ["1"], "operator_starred_symbols"),
-        filt("held", "Held only", ["1"], "portfolio_snapshot|holdings_fallback"),
+        filt("held", "Held only", ["1"], "watch_domains.held_positions (positions_store|holdings_accounts)"),
         filt("sort", "Sort", ["watch_rank", "street_rating", "day_change", "upside", "symbol"], "projection"),
         # Typed unavailable — keep disabled with explanation
         filt("catalyst_window", "Catalyst window", [], "not_implemented", enabled=False, note=unavailable),

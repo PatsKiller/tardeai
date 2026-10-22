@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_accuracy_20261022",
+  "files": [
+    "tests/test_watch_accuracy_20261022.py"
+  ],
+  "anchor": "WATCH_ACCURACY_20261022",
+  "comment": [
+    "ANCHOR: WATCH_ACCURACY_20261022 — 2026-10-22 Watch audit: held names never get entry rules; a deterministic",
+    "fail is never actionable; one held reader with freshness + CUSIP resolution; a past-TTL packet never sets",
+    "ownership; every count declares its scope; reward excludes expired/needs_data; re-entry tile carries the desk",
+    "count; no duplicate api_v2 route; SET CONDITION ALERT wired to POST /api/v2/watch/alerts."
+  ]
+}

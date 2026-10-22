@@ -11,7 +11,9 @@ import { BB, TYPE } from '../lib/watchTokens'
 import { WI_SYNOPSIS_PROVENANCE } from '../lib/surfaceFreshness'
 import {
   DECISION_KEYS, DECISION_SORTS, WatchDecisionBadges, WatchDecisionBoard, WatchDecisionFilterModal, type WatchDecision,
+  scopeOf,
 } from '../components/watch/WatchDecisionParts'
+import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
 
 type Card = {
   symbol: string
@@ -28,6 +30,7 @@ type Card = {
   trade_ai_state?: string
   proposal_allowed?: boolean
   last?: number | null
+  rsi?: number | null
   day_change_pct?: number | null
   price_as_of?: string | null
   price_source?: string | null
@@ -267,6 +270,11 @@ export default function WatchIntelligenceUnified() {
 
   const [selected, setSelected] = useState<string | null>(null)
   const sel = cards.find(c => c.symbol === selected) || cards[0]
+  // WAIT cards say "SET CONDITION ALERT"; this wires that instruction to the same POST /api/v2/watch/alerts flow the
+  // Re-Entry pages use (2026-10-22 audit: the instruction had no button).
+  const [alertFor, setAlertFor] = useState<Card | null>(null)
+  const [alertMsg, setAlertMsg] = useState<string | null>(null)
+  const countScopes: Record<string, string> = body?.count_scopes || counts.scopes || {}
 
   const star = async (symbol: string, action: 'star' | 'unstar') => {
     setStarError(null)
@@ -381,12 +389,14 @@ export default function WatchIntelligenceUnified() {
 
       {/* 2. Counts */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,minmax(0,1fr))', gap: 8, marginBottom: 10 }}>
-        <Sum n={summary.street_strong_buy} label="Strong Buy" color={BB.green} />
-        <Sum n={summary.street_buy} label="Buy" color={BB.text0} />
-        <Sum n={summary.trade_ai_wait} label="Wait" color={BB.amber} />
-        <Sum n={summary.blocked_or_unavailable} label="Blocked / fail" color={BB.red} />
-        <Sum n={counts.starred_universe ?? filterBody?.counts?.starred} label="Starred" color={BB.text2} />
-        <Sum n={counts.held_universe ?? filterBody?.counts?.held} label="Held" color={BB.text2} />
+        <Sum n={summary.street_strong_buy} label="Strong Buy" scope={scopeOf(countScopes, 'street_strong_buy', summary.scope)} color={BB.green} />
+        <Sum n={summary.street_buy} label="Buy" scope={scopeOf(countScopes, 'street_buy', summary.scope)} color={BB.text0} />
+        <Sum n={summary.trade_ai_wait} label="Wait" scope={scopeOf(countScopes, 'trade_ai_wait', summary.scope)} color={BB.amber} />
+        <Sum n={summary.blocked_or_unavailable} label="Blocked / fail" scope={scopeOf(undefined, '', summary.scope)} color={BB.red} />
+        <Sum n={counts.starred_universe ?? filterBody?.counts?.starred} label="Starred" scope={scopeOf(countScopes, 'starred_universe')} color={BB.text2} />
+        <Sum n={counts.held_cards ?? counts.held_universe ?? filterBody?.counts?.held} label="Held"
+          scope={`${scopeOf(countScopes, 'held_cards')}${counts.held_unresolved ? ` · +${counts.held_unresolved} delisted CUSIP unresolved` : ''}`}
+          color={BB.text2} />
       </div>
 
       {/* 3. Views */}
@@ -723,6 +733,12 @@ export default function WatchIntelligenceUnified() {
                   {c.primary_risk && <div style={{ fontSize: TYPE.xs, color: BB.red, marginTop: 6 }}>Risk: {c.primary_risk}</div>}
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, gap: 8 }}>
                     <Link to={`/watch/intelligence/${c.symbol}`} style={linkBtn} onClick={e => e.stopPropagation()}>OPEN INTELLIGENCE</Link>
+                    {wantsAlert(c) && (
+                      <button type="button" style={ghostBtn} data-set-condition-alert={c.symbol}
+                        onClick={e => { e.stopPropagation(); setAlertMsg(null); setAlertFor(c) }}>
+                        SET CONDITION ALERT
+                      </button>
+                    )}
                     <button
                       type="button"
                       style={ghostBtn}
@@ -774,6 +790,22 @@ export default function WatchIntelligenceUnified() {
           </aside>
         )}
       </div>
+
+      {alertMsg && <div style={{ color: BB.green, fontSize: TYPE.sm, marginTop: 8 }} data-alert-armed>{alertMsg}</div>}
+      {alertFor && (
+        <ReEntryAlertArmModal
+          symbol={alertFor.symbol}
+          intel={{
+            price: alertFor.last != null ? Number(alertFor.last) : null,
+            rsi: alertFor.rsi != null ? Number(alertFor.rsi) : null,
+            entryLow: alertFor.support != null && Number.isFinite(Number(alertFor.support)) ? Number(alertFor.support) : null,
+            entryHigh: null,
+          }}
+          noteTag="watch-condition"
+          onClose={() => setAlertFor(null)}
+          onArmed={(summary) => { setAlertMsg(`${alertFor.symbol}: armed ${summary}`); setAlertFor(null) }}
+        />
+      )}
 
       {/* Pagination */}
       <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
@@ -837,11 +869,19 @@ function Chip({ children, good }: { children: React.ReactNode; good?: boolean })
     </span>
   )
 }
-function Sum({ n, label, color }: { n?: number; label: string; color: string }) {
+/** A WAIT card's next action is "SET CONDITION ALERT"; a NEAR re-entry's is "Set a re-entry alert". */
+function wantsAlert(c: Card): boolean {
+  if (c.held) return false
+  if (c.trade_ai_state === 'WAIT') return true
+  return /alert/i.test(String(c.decision?.action_hint || ''))
+}
+
+function Sum({ n, label, color, scope }: { n?: number; label: string; color: string; scope?: string }) {
   return (
-    <div style={{ background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 12, padding: 10 }}>
+    <div style={{ background: BB.bgPanel, border: `1px solid ${BB.border}`, borderRadius: 12, padding: 10 }} data-count-scope={scope || ''}>
       <div style={{ fontSize: TYPE.lg, fontWeight: 950, color }}>{n ?? 0}</div>
       <div style={{ fontSize: TYPE.xs, color: BB.text3, textTransform: 'uppercase', marginTop: 2, fontWeight: 800 }}>{label}</div>
+      {scope ? <div style={{ fontSize: 10, color: BB.text3, marginTop: 1 }}>{scope}</div> : null}
     </div>
   )
 }

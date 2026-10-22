@@ -30,11 +30,13 @@ type Props = {
   symbol: string
   intel: ReEntryAlertArmIntel
   short?: boolean
+  /** Prefix of the alert note (default "reentry-desk"); the Watch page passes "watch-condition". */
+  noteTag?: string
   onClose: () => void
   onArmed: (summary: string) => void
 }
 
-export default function ReEntryAlertArmModal({ symbol, intel, short = false, onClose, onArmed }: Props) {
+export default function ReEntryAlertArmModal({ symbol, intel, short = false, noteTag = 'reentry-desk', onClose, onArmed }: Props) {
   const defaultPrice = short
     ? (intel.entryLow ?? intel.entryHigh ?? intel.price)
     : (intel.entryHigh ?? intel.entryLow ?? intel.price)
@@ -81,7 +83,7 @@ export default function ReEntryAlertArmModal({ symbol, intel, short = false, onC
             symbol,
             condition_type: rule.condition_type,
             threshold: rule.threshold,
-            note: `reentry-desk ${symbol} advisory`,
+            note: `${noteTag} ${symbol} advisory`,
             recurring: true,
           }),
         })

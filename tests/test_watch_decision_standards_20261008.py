@@ -73,9 +73,10 @@ def test_old_signal_expires_but_a_held_name_stays_visible():
     syn_old = (NOW - timedelta(days=9)).isoformat()      # past the 168 h held_position TTL
     exp = wd.decide(card(held=True), {"synthesis": {"recommendation": "HOLD", "updated_at": syn_old}}, now=NOW)
     assert exp["category"] == "held_position" and exp["status"] == "expired"
-    assert wd.is_live(exp)                                   # held: shown, badge says "signal expired — review"
+    assert wd.in_view(exp)                                   # held: shown, badge says "signal expired — review"
+    assert not wd.is_live(exp)                               # ...but an expired signal is not a live one (2026-10-22)
     non_held = dict(exp, held=False)
-    assert not wd.is_live(non_held)                          # a non-held expired signal leaves the active views
+    assert not wd.in_view(non_held)                          # a non-held expired signal leaves the active views
 
 
 def test_avoid_synthesis_invalidates_non_held_only():

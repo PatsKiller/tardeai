@@ -88,13 +88,54 @@ def _first_blockers(packet: dict, quality: dict | None = None) -> list[dict]:
     return deduped
 
 
+# Fallback packet TTL when a packet carries no freshness.valid_until (scripts/packet_invalidation.py TTL_HOURS).
+DEFAULT_PACKET_TTL_HOURS = 12.0
+
+
+def _dt(v: Any):
+    from datetime import datetime, timezone
+    if v is None or v == "":
+        return None
+    if isinstance(v, datetime):
+        return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+    try:
+        d = datetime.fromisoformat(str(v).strip().replace("Z", "+00:00").replace(" ", "T", 1))
+    except ValueError:
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def packet_expired(packet: dict, *, generated_at: Any = None, now: Any = None) -> bool:
+    """True when the packet is past its TTL: freshness.valid_until, else generated_at + DEFAULT_PACKET_TTL_HOURS.
+    A packet with no timestamp at all (a hand-built fixture) is not judged expired; every live read passes the
+    decision_packets.generated_at it was read with (lib/rockville/live_projection.py)."""
+    from datetime import datetime, timedelta, timezone
+    p = packet or {}
+    now = _dt(now) or datetime.now(timezone.utc)
+    vu = _dt((p.get("freshness") or {}).get("valid_until"))
+    if vu is not None:
+        return vu < now
+    gen = _dt(generated_at or p.get("generated_at") or p.get("created_at"))
+    if gen is None:
+        return False
+    return gen + timedelta(hours=DEFAULT_PACKET_TTL_HOURS) < now
+
+
 def classify_primary_state(
     packet: dict,
     action_policy: dict | None = None,
     *,
     quality: dict | None = None,
+    current_held: bool | None = None,
+    generated_at: Any = None,
+    now: Any = None,
 ) -> str:
-    """Pure deterministic primary state. Never lets LLM override."""
+    """Pure deterministic primary state. Never lets LLM override.
+
+    Ownership (2026-10-22 Watch audit — DT showed MANAGING from a 2026-10-11 packet after the position was sold):
+    ``current_held`` (from the current holdings reader) wins whenever it is known. Only when it is None may the
+    packet's own ownership flag speak, and only while the packet is inside its TTL — an expired packet never makes
+    a name MANAGING."""
     p = packet or {}
     ap = action_policy or {}
     tr = p.get("ticket_review") or {}
@@ -102,7 +143,10 @@ def classify_primary_state(
     cap = p.get("current_actionable_plan")
     tv = (cap or {}).get("ticket_validation") or {}
     own = p.get("ownership") or {}
-    held = bool(own.get("held") or p.get("held"))
+    if current_held is not None:
+        held = bool(current_held)
+    else:
+        held = bool(own.get("held") or p.get("held")) and not packet_expired(p, generated_at=generated_at, now=now)
     ev = ((p.get("event_state") or {}).get("earnings") or {})
     event_blocked = "BLOCK" in _upper(ev.get("state")) or _upper(ap.get("state")) == "BLOCKED"
     q = quality or p.get("quality_admission") or p.get("quality") or {}
@@ -178,6 +222,9 @@ def project_watch_decision(
     *,
     quality: dict | None = None,
     symbol: str | None = None,
+    current_held: bool | None = None,
+    generated_at: Any = None,
+    now: Any = None,
 ) -> dict[str, Any]:
     """Project one canonical decision card payload.
 
@@ -190,7 +237,9 @@ def project_watch_decision(
     p = packet or {}
     ap = action_policy or p.get("action_policy") or {}
     sym = (symbol or p.get("symbol") or "").upper()
-    state = classify_primary_state(p, ap, quality=quality)
+    state = classify_primary_state(p, ap, quality=quality, current_held=current_held,
+                                   generated_at=generated_at, now=now)
+    expired = packet_expired(p, generated_at=generated_at, now=now)
     assert state in PRIMARY_STATES
 
     blockers = _first_blockers(p, quality)
@@ -285,6 +334,13 @@ def project_watch_decision(
         "wait_contract": wait_contract,
         "history_mechanics_not_current": history,
         "visibility": flags,
+        "packet_freshness": {
+            "valid_until": (p.get("freshness") or {}).get("valid_until"),
+            "generated_at": str(generated_at) if generated_at else None,
+            "expired": expired,
+            "ownership_from": "current_holdings" if current_held is not None else (
+                "packet" if not expired else "none (packet past TTL)"),
+        },
         "provenance": {
             "source": "rockville.decision_projection",
             "projection_version": PROJECTION_VERSION,

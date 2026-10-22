@@ -233,6 +233,17 @@ def _selection_reason(symbol: str, decision: dict, held: bool) -> str:
     return "bounded_priority_set"
 
 
+def current_held_set() -> tuple[set[str], bool]:
+    """(held symbols, known) from the one Watch held reader (lib/data_broker/watch_domains.held_positions).
+    known=False only when no holdings source could be read at all — then a packet inside its TTL may speak."""
+    try:
+        from lib.data_broker.watch_domains import held_positions
+        h = held_positions()
+        return set(h.get("symbols") or ()), h.get("source") != "unavailable"
+    except Exception:
+        return set(), False
+
+
 def build_live_cards(
     symbols: list[str] | None = None,
     *,
@@ -247,20 +258,9 @@ def build_live_cards(
     )
 
     syms = list(symbols or DEFAULT_PRIORITY_SYMBOLS)
-    # Ensure one held if requested
-    held_set: set[str] = set()
-    try:
-        hpath = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
-        if hpath.exists():
-            hd = json.loads(hpath.read_text())
-            for h in hd.get("holdings") or []:
-                if h.get("is_cash"):
-                    continue
-                s = str(h.get("symbol") or "").upper()
-                if s:
-                    held_set.add(s)
-    except Exception:
-        pass
+    # Current holdings win over a packet's own ownership flag (2026-10-22 Watch audit: DT showed MANAGING from a
+    # 2026-10-11 packet after the position was gone). One held reader for every Watch layer; None = unknown.
+    held_set, held_known = current_held_set()
     if include_held and held_set and not any(s in held_set for s in syms):
         # prefer PFLT if held else first held equity-like
         pick = "PFLT" if "PFLT" in held_set else sorted(held_set)[0]
@@ -337,12 +337,19 @@ def build_live_cards(
         except Exception:
             ap = packet.get("action_policy")
 
-        held = sym in held_set or bool((packet.get("ownership") or {}).get("held"))
         packet = dict(packet)
-        if held:
-            own = dict(packet.get("ownership") or {})
-            own["held"] = True
-            packet["ownership"] = own
+        if held_known:
+            held = sym in held_set
+        else:
+            # Holdings unreadable: a packet may speak for ownership only while it is inside its TTL.
+            from lib.rockville.decision_projection import packet_expired
+            held = bool((packet.get("ownership") or {}).get("held")) and not packet_expired(
+                packet, generated_at=rb.get("generated_at"))
+        own = dict(packet.get("ownership") or {})
+        if bool(own.get("held")) != held:
+            own["packet_held"] = own.get("held")
+        own["held"] = held
+        packet["ownership"] = own
 
         stages = _verification_stages(packet)
         packet["verification_stages"] = stages
@@ -356,7 +363,8 @@ def build_live_cards(
         except Exception:
             pass
 
-        dec = project_watch_decision(packet, ap, symbol=sym)
+        dec = project_watch_decision(packet, ap, symbol=sym, current_held=held,
+                                     generated_at=rb.get("generated_at"))
         dec["verification_stages"] = stages
         if dec.get("primary_state") == "DETERMINISTIC_FAIL" and stages.get("primary_reason_codes"):
             dec["primary_reason_codes"] = stages["primary_reason_codes"]

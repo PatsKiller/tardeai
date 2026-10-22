@@ -35,6 +35,19 @@ export type WatchDecision = {
   expires_at?: string | null
   ttl_remaining_s?: number | null
   rule_id?: string
+  /** Trade AI state that vetoed actionability (DETERMINISTIC_FAIL / BLOCKED / AVOID) — 2026-10-22 audit. */
+  actionable_blocked_by?: string | null
+  /** 'manage' for held names (entry rules never match them), 'entry' otherwise. */
+  lane?: string
+}
+
+/** Count scopes the projection declares (watch_decision.SCOPES) — every count on this page says which one it is. */
+export const SCOPE_LABEL: Record<string, string> = {
+  page: 'this page', matched: 'matched', live: 'live signals', view: 'in view', all: 'whole watchlist', desk: 're-entry desk',
+}
+export function scopeOf(scopes: Record<string, string> | undefined, key: string, fallback = ''): string {
+  const s = scopes?.[key] || fallback
+  return s ? SCOPE_LABEL[s] || s : ''
 }
 
 export const STATUS_COLOR: Record<string, string> = {
@@ -74,6 +87,11 @@ export function WatchDecisionBadges({ d }: { d?: WatchDecision | null }) {
       {d.status && <Badge text={STATUS_LABEL[d.status] || labelOf(d.status)} color={STATUS_COLOR[d.status] || MUTED}
         title={d.evidence_at ? `evidence ${new Date(d.evidence_at).toLocaleString()}${when ? ` · expires ${when}` : ''}` : 'no evidence inside the freshness window'} />}
       {d.actionable && <Badge text={d.action_hint ? `▶ ${d.action_hint}` : '▶ Actionable'} color={TOKENS.success} />}
+      {!d.actionable && d.actionable_blocked_by && (
+        <Badge text={`Not actionable — Trade AI ${d.actionable_blocked_by.replace(/_/g, ' ')}`} color={TOKENS.danger}
+          title="A deterministic fail / block / avoid is never actionable, whatever the plan or re-entry desk says" />
+      )}
+      {d.held && d.lane === 'manage' && <Badge text="Held — manage, not entry" color={TOKENS.info} />}
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 1 }} title="confidence · risk · reward · time sensitivity">
         <ScoreBar v={d.confidence} color={TOKENS.info} title={`confidence (${d.confidence_source || '—'})`} />
         <ScoreBar v={d.risk_score} color={TOKENS.danger} title="risk" />
@@ -99,7 +117,7 @@ const PANEL_ORDER = ['attention', 'reward', 'reentry', 'risk', 'expiring', 'rece
 const BOARD_LOOK: Record<string, { icon: string; label: string; family: Family }> = {
   attention: { icon: '🚨', label: 'Needs attention', family: 'critical' },
   reward: { icon: '🟢', label: 'Highest reward', family: 'opportunity' },
-  reentry: { icon: '↩️', label: 'Re-entry', family: 'opportunity' },
+  reentry: { icon: '↩️', label: 'Re-entry (watch names)', family: 'opportunity' },
   risk: { icon: '🔴', label: 'Highest risk', family: 'high' },
   expiring: { icon: '⏳', label: 'Expiring soon', family: 'medium' },
   recent: { icon: '⚡', label: 'Recently actionable', family: 'medium' },
@@ -110,15 +128,18 @@ export function WatchDecisionBoard({ board, onPreset, onOpen }: {
 }) {
   if (!board?.panels) return null
   const st = board.facets?.status || {}
+  const stLive = board.facets_live?.status || st
+  const total = board.all
   return (
     <div data-watch-decision-board style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 11, color: MUTED, marginBottom: 6 }}>
-        <b style={{ color: TEXT }}>{board.live ?? 0}</b> live ·{' '}
-        <b style={{ color: TOKENS.success }}>{board.actionable ?? 0}</b> actionable ·{' '}
-        <b style={{ color: TOKENS.warning }}>{st.needs_data ?? 0}</b> need fresh analysis ·{' '}
+      {/* Every count names its scope (2026-10-22 audit: page, live and all-188 counts were mixed unlabelled). */}
+      <div style={{ fontSize: 11, color: MUTED, marginBottom: 6 }} data-watch-board-scopes>
+        <b style={{ color: TEXT }}>{board.live ?? 0}</b> live signals ·{' '}
+        <b style={{ color: TOKENS.success }}>{board.actionable ?? 0}</b> actionable (live) ·{' '}
+        <b style={{ color: TOKENS.warning }}>{stLive.needs_data ?? 0}</b> need fresh analysis (live) ·{' '}
         <button type="button" onClick={() => onPreset({ view: 'expired' })} style={{ all: 'unset', cursor: 'pointer', color: TEXT2 }}
-          title="Signals past their TTL and invalidated ideas — hidden from the active views">
-          <b>{(st.expired ?? 0) + (st.invalidated ?? 0)}</b> expired / invalidated →
+          title="Signals past their TTL and invalidated ideas — hidden from the active views (held names stay listed)">
+          <b>{(st.expired ?? 0) + (st.invalidated ?? 0)}</b> expired / invalidated{total != null ? ` (of all ${total})` : ' (all)'} →
         </button>
       </div>
       {/* Numbers first (operator 2026-10-08): one big-number card per question; click → that view. */}
@@ -126,10 +147,16 @@ export function WatchDecisionBoard({ board, onPreset, onOpen }: {
         {PANEL_ORDER.filter((k) => board.panels[k]).map((k) => {
           const p = board.panels[k]
           const look = BOARD_LOOK[k]
+          const names = (p.items || []).slice(0, 3).map((e: any) => e.symbol).filter(Boolean).join(' · ')
+          const scope = SCOPE_LABEL[p.scope] || p.scope || ''
+          const desk = k === 'reentry' && p.desk
+            ? `desk: ${p.desk.ready ?? 0} ready + ${p.desk.near ?? 0} near of ${p.desk.rows ?? 0}`
+            : ''
           return (
-            <BigNumberCard key={k} testId={`watch-board-${k}`} icon={look.icon} label={look.label} value={p.count ?? 0}
+            <BigNumberCard key={k} testId={`watch-board-${k}`} icon={look.icon}
+              label={`${look.label}${scope ? ` · ${scope}` : ''}`} value={p.count ?? 0}
               family={look.family} onClick={() => onPreset(PANEL_PRESET[k])}
-              sub={(p.items || []).slice(0, 3).map((e: any) => e.symbol).filter(Boolean).join(' · ') || undefined} />
+              sub={[desk, names].filter(Boolean).join(' — ') || undefined} />
           )
         })}
       </div>
