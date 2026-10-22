@@ -1,4 +1,10 @@
-# Current execution status — 2026-10-22 21:33 UTC
+# Current execution status — 2026-10-22 21:35 UTC
+
+## Upstream coordination and profile — 2026-10-22 21:35 UTC
+
+- The integration agent verified session `86134` live. At 17:34:19 EDT / 21:34:19 UTC the profile was **395 PASS / 4 FAIL gates**; `overnight_g4_archive_mechanism` was running. No new failures; no terminal result.
+- PR #1956 is now OPEN at head `977606fa24f7079d1e3a32099ef1bc3925672f8b`, branch `fix/pipeline-sigterm-caps-20261022`. It carries the operator-specified SIGTERM cap, supervised enrichment, and measured time-setting work. Current merge state is BLOCKED; hosted shards 1 and 5 fail, shard 2, shard 7, serial, and CIO hardening are pending; full hardening is skipped. Keep `review/pipeline-lock-hardening-20261022` on HOLD. After #1956 merges, rebase and drop duplicated changes, preserve its measured runtime settings, and rerun focused suites. The docs branch overlaps nine paths; n8n evidence has no path overlap.
+- PR #1947 remains OPEN/CLEAN at `ff2f7b4d42e935334c93cc714ecedfcea227d8c9`; all active required checks pass, but it is not merged. Do not rebase the candidate until it merges.
 
 ## Exact profile progress — 2026-10-22 21:33 UTC
 

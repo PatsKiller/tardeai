@@ -2098,13 +2098,13 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/ready-three-2026-10-21/AGENT_HANDOFF.md` | Agent handoff — 2026-10-21 |
 | `docs/ops/ready-three-2026-10-21/ARCHITECTURE_AND_DATA_FLOW.md` | Architecture and data flow — indicator JSON and ready-three |
 | `docs/ops/ready-three-2026-10-21/CHANGELOG.md` | Change and release log — 2026-10-21 |
-| `docs/ops/ready-three-2026-10-21/CURRENT_STATUS.md` | Current execution status — 2026-10-22 21:33 UTC |
+| `docs/ops/ready-three-2026-10-21/CURRENT_STATUS.md` | Current execution status — 2026-10-22 21:35 UTC |
 | `docs/ops/ready-three-2026-10-21/DEPLOYMENT_AND_ROLLBACK.md` | Deployment and rollback gates — 2026-10-21 |
 | `docs/ops/ready-three-2026-10-21/EXECUTIVE_REPORT.md` | Executive gap and readiness report — 2026-10-22 |
 | `docs/ops/ready-three-2026-10-21/LIVE_VALIDATION.md` | Live validation — current read-only checkpoint 2026-10-22 21:25 UTC |
 | `docs/ops/ready-three-2026-10-21/README.md` | Ready-three evidence and readiness — 2026-10-21 |
 | `docs/ops/ready-three-2026-10-21/SYSTEM_INVENTORY.md` | System inventory snapshot — 2026-10-21 |
-| `docs/ops/ready-three-2026-10-21/TEST_RESULTS.md` | Test results — current provisional checkpoint 2026-10-22 21:33 UTC |
+| `docs/ops/ready-three-2026-10-21/TEST_RESULTS.md` | Test results — current provisional checkpoint 2026-10-22 21:35 UTC |
 | `docs/ops/self_heal_claude_fixer.md` | Self-heal Claude Code fixer — code defects fixed in iterations, shipped as a tested PR |
 | `docs/ops/telegram_channel_diligence_20260916/00_EXECUTIVE_SUMMARY.md` | Telegram Channel Diligence — Executive Summary |
 | `docs/ops/telegram_channel_diligence_20260916/01_CHANNEL_INVENTORY_SOURCE_MAP.md` | Phase 1 — Channel Inventory & Source Mapping |

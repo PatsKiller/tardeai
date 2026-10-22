@@ -1,4 +1,12 @@
-# Test results — current provisional checkpoint 2026-10-22 21:33 UTC
+# Test results — current provisional checkpoint 2026-10-22 21:35 UTC
+
+## Current profile and upstream checks — 21:35 UTC
+
+Session `86134` remains live. At 17:34:19 EDT / 21:34:19 UTC it had **395 PASS / 4 FAIL gates** and was running `overnight_g4_archive_mechanism`; no new failure or terminal status was reported.
+
+PR #1956 (`fix/pipeline-sigterm-caps-20261022`, head `977606fa24f7079d1e3a32099ef1bc3925672f8b`) is OPEN/BLOCKED. Its `shard 1` and `shard 5` checks failed; shard 2, shard 7, serial, and `cio-hardening` are pending; full hardening is skipped. It carries the time-setting commits that overlap the held pipeline branch. Do not push/rebase the held branch before that PR merges and the operator's exact measured limits are preserved.
+
+PR #1947 remains OPEN/CLEAN at `ff2f7b4d42e935334c93cc714ecedfcea227d8c9`; all active listed checks pass, while full hardening/red-alert jobs are skipped. It has not merged.
 
 ## Exact full-profile progress — 21:33 UTC
 
