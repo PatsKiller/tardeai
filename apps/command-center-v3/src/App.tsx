@@ -17,7 +17,7 @@ import AgentRuntimeHub from './pages/AgentRuntimeHub'
 import IntelligenceHub from './pages/IntelligenceHub'
 import HermesHub from './pages/HermesHub'
 import RetirementHub from './pages/RetirementHub'
-import JournalHub from './pages/JournalHub'
+import TradeInViewPage from './pages/TradeInViewPage'
 import WatchHub from './pages/WatchHub'
 import SymbolIntelligencePage from './pages/SymbolIntelligencePage'
 import WatchDiscovery from './pages/WatchDiscovery'
@@ -232,7 +232,7 @@ function Shell() {
             <Route path="research" element={<RouteErrorBoundary route="/v3/research"><Navigate to="/research-intelligence" replace /></RouteErrorBoundary>} />
             <Route path="hermes" element={<RouteErrorBoundary route="/v3/hermes"><HermesHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="retirement" element={<RouteErrorBoundary route="/v3/retirement"><RetirementHub onDrill={setDrill} /></RouteErrorBoundary>} />
-            <Route path="journal" element={<RouteErrorBoundary route="/v3/journal"><JournalHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="journal" element={<RouteErrorBoundary route="/v3/journal"><TradeInViewPage onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="trade-in-view" element={<RouteErrorBoundary route="/v3/trade-in-view"><Navigate to="/journal" replace /></RouteErrorBoundary>} />
             <Route path="watch" element={<RouteErrorBoundary route="/v3/watch"><WatchHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="watch/intelligence/:symbol" element={<RouteErrorBoundary route="/v3/watch/intelligence/:symbol"><SymbolIntelligencePage /></RouteErrorBoundary>} />

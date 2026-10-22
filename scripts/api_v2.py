@@ -54537,6 +54537,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
+    # TradeInView trade journeys (read-only projection, lib/data_broker/trade_journey.py; operator 2026-10-22):
+    # GET /api/v3/data-broker/trade-journeys[?days=&symbol=]  ·  GET /api/v3/data-broker/trade-journeys/{trade_id}
+    if method == "GET" and base_path.startswith("/api/v3/data-broker/trade-journeys"):
+        try:
+            import api_v3_trade_journey as _tj
+
+            rest = base_path[len("/api/v3/data-broker/trade-journeys") :].strip("/")
+            return 200, (_tj.get_detail(rest, query or {}) if rest else _tj.get_list(query or {}))
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     # Canonical Data Broker — catalog + Watch Intelligence (read-only)
     # Catalog: GET /api/v3/data-broker  and  GET /api/v3/data-broker/catalog
     if method == "GET" and (base_path == "/api/v3/data-broker" or base_path.startswith("/api/v3/data-broker/")):

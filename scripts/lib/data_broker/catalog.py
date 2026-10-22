@@ -489,6 +489,26 @@ PROJECTIONS: list[dict[str, Any]] = [
         "consumers": ["Opportunity modal portfolio context"],
     },
     {
+        "id": "trade_journey",
+        "module": "lib.data_broker.trade_journey",
+        "entrypoints": ["list_trade_journeys", "detail_trade_journey", "build_trade_journeys", "from_cio_prospect"],
+        "http": ["GET /api/v3/data-broker/trade-journeys", "GET /api/v3/data-broker/trade-journeys/{trade_id}"],
+        "domain": "trade_journal",
+        "description": (
+            "TradeInView per-trade journey (operator 2026-10-22): open + recently closed trades with origin (internal "
+            "surface, rank and conviction at entry, CIO entry call — or the operator's own pick), stop path, conviction/"
+            "stance changes, exit cause, post-exit review (facts first, model prose labelled advisory) and re-entry "
+            "conditions from the re-entry desk record Watch reads. Reads the cio_prospect projection when its store is "
+            "live; until then an interim adapter over schwab_round_trips, holdings_accounts, trade_transactions, "
+            "recommendation links, cio_entry_states, stop_last_known, the CIO opportunity history and ohlc_bars, "
+            "labelled interim."
+        ),
+        "contract_version": "TradeJourneys@v1",
+        "read_only": True,
+        "provider_calls": 0,
+        "consumers": ["TradeInView (/v3/journal)"],
+    },
+    {
         "id": "opportunity",
         "module": "lib.data_broker.opportunity",
         "entrypoints": ["universe", "gather", "assess", "rank"],
