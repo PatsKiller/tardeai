@@ -41019,11 +41019,20 @@ def _options_intents(query=None):
         # 2026-10-22: both earnings dates with sources (+ conflict), held vs watch-only, and the
         # desk cards on this symbol that work against the plan. Read-only joins.
         prior = (linked or {}).get("earnings") or {}
-        prov = prior.get("provider_date") if "provider_date" in prior else (
-            prior.get("date") if prior.get("date") and prior.get("source") not in (None, "operator estimate", "unknown")
-            else None)
-        ed = _acc.earnings_dates(prov, prior.get("provider_source") or (prior.get("source") if prov else None),
-                                 intent.get("earnings_estimate"))
+        prov = (
+            prior.get("provider_date")
+            if "provider_date" in prior
+            else (
+                prior.get("date")
+                if prior.get("date") and prior.get("source") not in (None, "operator estimate", "unknown")
+                else None
+            )
+        )
+        ed = _acc.earnings_dates(
+            prov,
+            prior.get("provider_source") or (prior.get("source") if prov else None),
+            intent.get("earnings_estimate"),
+        )
         if linked is not None:
             linked["earnings"] = {**prior, **ed, "date": ed["effective_date"]}
         if holdings is None:

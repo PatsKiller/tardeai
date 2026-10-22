@@ -121,7 +121,7 @@ are not modelled.
 | `intents[].held` | bool | True when any account holds shares of the symbol. |
 | `intents[].shares_held_total` | number | Total shares across accounts. |
 | `intents[].watch_only` | bool | True when nothing is held, as with NFLX. The intent is a watch or entry plan, not a plan on a holding. |
-| `intents[].held_source` | string | `match.shares_by_account` or `holdings.json`. |
+| `intents[].held_source` | string | `match.shares_by_account` or `options_engine_holdings` (the desk's own holdings loader). |
 | `intents[].earnings_dates` | object | The same shape as the card `earnings_dates`. |
 | `intents[].matches.earnings` | object | **Changed.** It still has `{date, source}`, and `date` is now the effective (earlier) date. It adds `provider_date`, `provider_source`, `operator_estimate`, `operator_source`, `conflict` and `conflict_days`. |
 | `intents[].conflicts` | list | Desk cards on this symbol that work against the intent, in the same rows as `intent_conflicts`. |

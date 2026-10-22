@@ -670,7 +670,7 @@ def holding_flags(intent: dict, match: Optional[dict], holdings: Optional[list[d
     elif holdings is not None:
         total = sum(float(h.get("shares") or h.get("quantity") or 0) for h in holdings
                     if str(h.get("symbol") or "").upper() == sym and not h.get("is_cash"))
-        src = "holdings.json"
+        src = "options_engine_holdings"
     else:
         return {"held": None, "shares_held_total": None, "watch_only": None, "held_source": "unknown"}
     held = total > 0
