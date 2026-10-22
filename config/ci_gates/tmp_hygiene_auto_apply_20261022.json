@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "tmp_hygiene_auto_apply_20261022",
+  "files": [
+    "tests/test_tmp_hygiene_auto_apply_20261022.py"
+  ],
+  "anchor": "TMP_HYGIENE_AUTO_APPLY_20261022",
+  "comment": [
+    "ANCHOR: TMP_HYGIENE_AUTO_APPLY_20261022 — operator 2026-10-22 (\"It needs to be able to delete it.\"): /tmp hygiene",
+    "deletes on host timers (hourly + inode-pressure trigger) under a standing operator approval; rules B (pytest",
+    "basetemp), E (named ephemeral entries), G (top-level /tmp work trees), future fixture mtimes ignored; P2/P1",
+    "inode alerts; the pipeline runner keeps step locks in PIPELINE_LOCK_DIR and removes its results temp file on",
+    "every return. Hermetic: fake /tmp, /proc, statvfs, tmp repos, injected notifier."
+  ]
+}

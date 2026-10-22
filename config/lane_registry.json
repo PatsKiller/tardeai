@@ -16884,7 +16884,7 @@
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "state_since": "2026-10-19",
-      "state_reason": "Operator 2026-10-19, after /tmp (tmpfs) hit 97% inodes with 20G bytes free and tools failed with ENOSPC: a daily /tmp plan on n8n. n8n-native host lane fired by tradeai-dispatcher 05:00 ET. live_arg is --plan: the tmp rules of config/disk_hygiene_rules.json (ended Claude session scratch dirs idle > 2 days with no cwd / open fd / live transcript; pytest temp older than 1 day; every other /tmp entry never touched) produce a DiskHygieneManifest@v1 scope tmp (path, kind, file_count, size, rule evidence) and a LaneRunReceipt; it DELETES NOTHING. --apply is operator-only (TRADEAI_DISK_HYGIENE_GRANT, a fresh manifest, per-item re-validation, item / byte / file caps) and refuses under the n8n executor (TRADEAI_RUN_ID): AGENTS.md §23.14. Live only once in TRADEAI_N8N_RELAY_LIVE_LANES (docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh relay).",
+      "state_reason": "Operator 2026-10-19, after /tmp (tmpfs) hit 97% inodes with 20G bytes free and tools failed with ENOSPC: a daily /tmp plan on n8n. n8n-native host lane fired by tradeai-dispatcher 05:00 ET. live_arg is --plan: the tmp rules of config/disk_hygiene_rules.json (ended Claude session scratch dirs idle > 2 days with no cwd / open fd / live transcript; pytest temp older than 1 day; every other /tmp entry never touched) produce a DiskHygieneManifest@v1 scope tmp (path, kind, file_count, size, rule evidence) and a LaneRunReceipt; it DELETES NOTHING. --apply is operator-only (TRADEAI_DISK_HYGIENE_GRANT, a fresh manifest, per-item re-validation, item / byte / file caps) and refuses under the n8n executor (TRADEAI_RUN_ID): AGENTS.md §23.14. Live only once in TRADEAI_N8N_RELAY_LIVE_LANES (docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh relay). 2026-10-22 (operator: 'It needs to be able to delete it.'): the same plan now also evaluates rules B (pytest --basetemp trees), E (named ephemeral entries) and G (top-level /tmp git trees) and ignores future-dated fixture mtimes; this n8n lane still deletes nothing, the deletion runs on the host lanes tmp-hygiene-apply (hourly) and tmp-hygiene-pressure (inode trigger).",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/tmp-hygiene_last.json",
@@ -16906,6 +16906,50 @@
         "priority": 3,
         "retry_policy": "transient-2"
       }
+    },
+    {
+      "lane_id": "tmp-hygiene-apply",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-tmp-hygiene-apply.timer",
+        "match": "scripts/tmp_hygiene_auto.py"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-22",
+      "state_reason": "Hourly /tmp auto-apply: scripts/tmp_hygiene_auto.py = a fresh tmp plan (rules S, P, B, E, G of config/disk_hygiene_rules.json tmp) then tmp_hygiene.apply (re-validation, caps), deletions ledger + run report + this LaneRunReceipt; P2 >= 90% / P1 >= 97% /tmp inode use via telegram_alert (alert_condition_state dedupe). Operator 2026-10-22 (verbatim): \"It needs to be able to delete it. Just looking at it won't do anything.\" (config/disk_hygiene_rules.json tmp.auto_apply.standing_approval). Host timer, never n8n: AGENTS.md §24.12 admits only lane disk-hygiene to n8n-executed deletion and the allowlist never-list keeps destructive retention off n8n; n8n keeps tmp-hygiene (--plan, daily) and disk-usage-monitor (inode bands) and watches this lane's receipt. NEVER_SCHEDULED until the operator installs the unit (docs/ops/packets/tmp-hygiene-auto-apply-20261022/README.md activation), then ACTIVE.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/tmp-hygiene-apply_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_tmp_hygiene_auto_apply_20261022.py; linux_launchers/systemd/tradeai-tmp-hygiene-apply.{service,timer}; docs/ops/packets/tmp-hygiene-auto-apply-20261022/01_auto_dry_run_20261022.txt",
+      "note": "Deletes only what the reviewed tmp rules select, only under /tmp, never --force; writes <state root>/data/runtime/disk_hygiene/{tmp_hygiene_manifest_auto_latest.json, tmp_hygiene_auto_apply_latest.json, tmp_hygiene_deletions_<yyyymm>.jsonl}. Kill switch: tmp.auto_apply.enabled=false or stop the timer.",
+      "severity": "Medium"
+    },
+    {
+      "lane_id": "tmp-hygiene-pressure",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-tmp-hygiene-pressure.timer",
+        "match": "scripts/tmp_hygiene_auto.py --pressure-only"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-22",
+      "state_reason": "Every 5 min: /tmp inode use >= tmp.auto_apply.pressure_trigger_pct (85%) runs the same auto-apply early (at most once per pressure_min_interval_minutes); below it writes only its receipt. Operator 2026-10-22 (verbatim): \"It needs to be able to delete it. Just looking at it won't do anything.\" (config/disk_hygiene_rules.json tmp.auto_apply.standing_approval). Host timer, never n8n: AGENTS.md §24.12 admits only lane disk-hygiene to n8n-executed deletion and the allowlist never-list keeps destructive retention off n8n; n8n keeps tmp-hygiene (--plan, daily) and disk-usage-monitor (inode bands) and watches this lane's receipt. NEVER_SCHEDULED until the operator installs the unit (docs/ops/packets/tmp-hygiene-auto-apply-20261022/README.md activation), then ACTIVE.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/tmp-hygiene-pressure_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_tmp_hygiene_auto_apply_20261022.py; linux_launchers/systemd/tradeai-tmp-hygiene-pressure.{service,timer}",
+      "note": "Below the trigger: receipt only (acted false). At or above: the tmp-hygiene-apply run (its receipt is tmp-hygiene-apply's).",
+      "severity": "Medium"
     },
     {
       "lane_id": "hermes-watchlist-scorer",

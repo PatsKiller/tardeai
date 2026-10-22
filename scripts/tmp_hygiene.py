@@ -22,15 +22,37 @@ RULES (only these patterns are ever evaluated; every other /tmp entry is reporte
        gitdir is gone (unregistered) is plain files.
   P  pytest temp ``<root>/pytest-of-<user>/pytest-*`` (never the ``pytest-current`` symlink): owned, newest mtime of
      the tree older than older_than_days, no cwd and no open fd inside.
-  NEVER-TOUCH: any /tmp entry that matches neither pattern (n8n-campaign-*, tradeai-*, momentum-*, ...) is never a
-     candidate and never scanned; ``never_touch_globs`` is checked again on every candidate and at apply time. The
-     current session's scratch is excluded by the idle / transcript / cwd / fd rules.
+  (2026-10-22, operator after /tmp hit 99% inodes: "It needs to be able to delete it. Just looking at it won't do
+  anything." — rules B, E and G added; every one shares the S/P checks: owned, bounded scan complete, idle by the
+  newest REAL mtime, no cwd, no open fd, never-touch globs)
+  B  pytest ``--basetemp`` trees ``<root>/<name>/<pid>/`` (e.g. /tmp/cbd/<pid>, 136k inodes on 2026-10-22): ``<name>``
+     holds ONLY pid-named dirs, and each ``<pid>`` dir holds ONLY pytest's numbered dirs (``<prefix><n>``) and its
+     ``<prefix>current`` symlinks (the layout markers); the pid is not a live pytest/python process; idle > idle_days.
+  E  named ephemeral entries ``tmp.named.rules``: a top-level name matching a rule's regex, made by a named creator
+     (the pipeline runner's test lock / results files, test mkdtemp dirs, the hermetic test env fixture); a rule may
+     pin the entry type, a max size and the allowed / required child names; idle > the rule's idle_days.
+  G  top-level git work trees ``<root>/<name>/.git`` (review worktrees and clones): a registered linked worktree must
+     be clean (untracked included), unlocked, with no commit reachable only from its HEAD, and is removed with
+     ``git -C <main repo> worktree remove`` (never --force); a clone must be clean, every branch pushed, no stash and
+     no linked worktree left; an unregistered worktree is kept (its edits may be the only copy); idle > idle_days.
+  IDLE: the newest mtime of the tree, ignoring entries dated more than ``future_mtime_skew_s`` after now (test fixtures
+     set future mtimes: /tmp/cbd and pytest-of-<user> carried mtimes 29 and 84 days ahead on 2026-10-22, which kept
+     them "recent" for ever); a tree whose only mtimes lie in the future is never a candidate (no_real_mtime).
+  NEVER-TOUCH: any /tmp entry that matches no rule (n8n-campaign-*, tradeai-*, momentum-*, systemd-private-*, ...) is
+     never a candidate and never scanned; ``never_touch_globs`` is checked again on every candidate and at apply time.
+     ``tradeai-*`` (hyphen) does not match ``tradeai_hermetic_env_*`` (underscore): that one is rule E with markers.
+     The current session's scratch is excluded by the idle / transcript / cwd / fd rules.
 
 MODES (as disk_hygiene.py)
     python3 scripts/tmp_hygiene.py                 # plan (default): manifest JSON + LaneRunReceipt, deletes nothing
     python3 scripts/tmp_hygiene.py --dry-run       # print the plan only: no manifest, no receipt, no write at all
     python3 scripts/tmp_hygiene.py --report        # + a human summary
     TRADEAI_DISK_HYGIENE_GRANT=<grant id> python3 scripts/tmp_hygiene.py --apply [--manifest PATH]
+
+Automatic deletion (operator 2026-10-22) is ``scripts/tmp_hygiene_auto.py`` on HOST systemd timers (hourly, plus every
+5 min acting only at >= tmp.auto_apply.pressure_trigger_pct inode use): a fresh plan, then this module's apply under
+the standing operator approval recorded in ``tmp.auto_apply`` (it replaces the grant on that path only). The n8n lane
+``tmp-hygiene`` stays --plan: apply refuses under the n8n executor.
 
 The manifest is a DiskHygieneManifest@v1 with ``scope: "tmp"``; every item carries ``file_count`` (inodes) and
 ``size_bytes``, and the totals report inodes reclaimable alongside bytes. ``--apply`` refuses under the n8n executor
@@ -70,7 +92,13 @@ SCRIPT = "scripts/tmp_hygiene.py"
 SCOPE = "tmp"
 KIND_SESSION = "tmp_claude_session"
 KIND_PYTEST = "tmp_pytest_dir"
-KINDS = (KIND_SESSION, KIND_PYTEST)
+KIND_BASETEMP = "tmp_pytest_basetemp"
+KIND_NAMED = "tmp_named_entry"
+KIND_GIT = "tmp_git_tree"
+KINDS = (KIND_SESSION, KIND_PYTEST, KIND_BASETEMP, KIND_NAMED, KIND_GIT)
+#: the only root an unattended apply may act on (tmp_hygiene_auto.py refuses any other; tests pass a fake root)
+REQUIRED_TMP_ROOT = "/tmp"
+DEFAULT_FUTURE_SKEW_S = 300.0
 SKIP_DEPENDENCY = "dependency_unavailable"
 #: The same literals as disk_hygiene.GRANT_ENV / RUN_ID_ENV (pinned equal in tests): literal here so the n8n env
 #: allowlist inventory resolves this module's reads statically.
@@ -106,6 +134,27 @@ def tmp_rules(rules: Mapping[str, Any], *, uid: Optional[int] = None, user: Opti
         except KeyError:
             user = str(uid)
     sub = lambda s: str(s).replace("{uid}", str(uid)).replace("{user}", user)  # noqa: E731
+    # rules B / E / G (2026-10-22): optional sections; absent = disabled
+    bt = dict(t.get("pytest_basetemp") or {"enabled": False})
+    if bt.get("enabled"):
+        for key in ("pid_regex", "idle_days", "max_children"):
+            if key not in bt:
+                raise DH.RulesError(f"rules_missing:tmp.pytest_basetemp.{key}")
+    named: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for r in (t.get("named") or {}).get("rules") or []:
+        for key in ("id", "regex", "entry_type", "idle_days", "creator"):
+            if key not in r:
+                raise DH.RulesError(f"rules_missing:tmp.named.rules[].{key}")
+        if r["entry_type"] not in ("file", "dir"):
+            raise DH.RulesError(f"rules_bad:tmp.named.{r['id']}.entry_type")
+        if r["id"] in seen:
+            raise DH.RulesError(f"rules_bad:tmp.named.{r['id']}.duplicate")
+        seen.add(r["id"])
+        named.append({**r, "_re": re.compile(str(r["regex"]))})
+    gt = dict(t.get("git_trees") or {"enabled": False})
+    if gt.get("enabled") and "idle_days" not in gt:
+        raise DH.RulesError("rules_missing:tmp.git_trees.idle_days")
     return {
         **t,
         "_root": Path(str(t["root"])),
@@ -114,6 +163,11 @@ def tmp_rules(rules: Mapping[str, Any], *, uid: Optional[int] = None, user: Opti
         "_session_re": re.compile(str(cs["session_regex"])),
         "_transcripts": DH._expand(str(cs["transcripts_dir"]), rules["_home"]),
         "_pytest_dir": sub(py["dir_name"]),
+        "_basetemp": bt,
+        "_pid_re": re.compile(str(bt.get("pid_regex") or r"^[0-9]{1,10}$")),
+        "_named": named,
+        "_git_trees": gt,
+        "_future_skew_s": float(t.get("future_mtime_skew_s", DEFAULT_FUTURE_SKEW_S)),
     }
 
 
@@ -156,17 +210,26 @@ def held_open_by(path: Path, open_paths: set[str]) -> Optional[str]:
     return None
 
 
-def tree_stats(path: Path, *, time_cap_s: float, max_entries: int) -> dict[str, Any]:
+def tree_stats(
+    path: Path, *, time_cap_s: float, max_entries: int, future_after: Optional[float] = None
+) -> dict[str, Any]:
     """One bounded lstat walk (never follows a symlink, never leaves the device): entries below ``path`` (the inodes
     a removal frees, the root dir included), bytes allocated (st_blocks * 512) and the newest mtime. ``complete`` is
     False when the time or entry cap stopped the walk: then the numbers are lower bounds and the tree is never a
-    candidate (idleness is unproven)."""
+    candidate (idleness is unproven). With ``future_after`` (now + skew), an mtime later than it is a fixture's
+    future date, not activity: it is counted in ``future_mtimes`` and never becomes ``newest_mtime`` (0.0 when every
+    mtime in the tree lies in the future)."""
     deadline = time.monotonic() + time_cap_s
     try:
         st = os.lstat(path)
     except OSError:
-        return {"files": 0, "bytes": 0, "newest_mtime": 0.0, "complete": False}
-    files, size, newest, dev = 1, st.st_blocks * 512, st.st_mtime, st.st_dev
+        return {"files": 0, "bytes": 0, "newest_mtime": 0.0, "complete": False, "future_mtimes": 0}
+    files, size, dev = 1, st.st_blocks * 512, st.st_dev
+    future = 0
+    if future_after is not None and st.st_mtime > future_after:
+        newest, future = 0.0, 1
+    else:
+        newest = st.st_mtime
     stack = [str(path)]
     complete = True
     while stack:
@@ -189,11 +252,13 @@ def tree_stats(path: Path, *, time_cap_s: float, max_entries: int) -> dict[str, 
                     continue
                 files += 1
                 size += s.st_blocks * 512
-                if s.st_mtime > newest:
+                if future_after is not None and s.st_mtime > future_after:
+                    future += 1
+                elif s.st_mtime > newest:
                     newest = s.st_mtime
                 if e.is_dir(follow_symlinks=False) and s.st_dev == dev:
                     stack.append(e.path)
-    return {"files": files, "bytes": size, "newest_mtime": newest, "complete": complete}
+    return {"files": files, "bytes": size, "newest_mtime": newest, "complete": complete, "future_mtimes": future}
 
 
 def git_trees(path: Path, depth: int) -> list[Path]:
@@ -302,12 +367,21 @@ def _common(path: Path, kind: str, rule: str, t: Mapping[str, Any], ctx: Mapping
         reasons.append("gone")
         return out
     scan = t["scan"]
-    st = tree_stats(path, time_cap_s=float(scan["time_cap_s"]), max_entries=int(scan["max_entries"]))
+    st = tree_stats(
+        path,
+        time_cap_s=float(scan["time_cap_s"]),
+        max_entries=int(scan["max_entries"]),
+        future_after=ctx["now"].timestamp() + float(t.get("_future_skew_s", DEFAULT_FUTURE_SKEW_S)),
+    )
     out["file_count"] = st["files"]
     out["size_bytes"] = st["bytes"]
     newest = st["newest_mtime"]
     out["evidence"]["newest_mtime"] = datetime.fromtimestamp(newest, timezone.utc).isoformat() if newest else None
     out["evidence"]["idle_days"] = round((ctx["now"].timestamp() - newest) / 86400.0, 2) if newest else None
+    if st.get("future_mtimes"):
+        out["evidence"]["future_mtime_entries"] = st["future_mtimes"]
+        if not newest:
+            reasons.append("no_real_mtime")
     if not st["complete"]:
         reasons.append("scan_incomplete")
     use = DH.in_use_by(path, ctx["cwds"])
@@ -365,6 +439,160 @@ def evaluate_pytest(path: Path, t: Mapping[str, Any], ctx: Mapping[str, Any]) ->
     return out
 
 
+# ── rules B / E / G (2026-10-22) ───────────────────────────────────────────────────────────────────────────────────
+
+_NUMBERED_RE = re.compile(r"^.+?[0-9]+$")
+
+
+def _idle_check(out: dict[str, Any], idle_days: float) -> None:
+    idle = out["evidence"].get("idle_days")
+    if idle is None or idle <= float(idle_days):
+        out["reasons"].append("recent_activity")
+
+
+def basetemp_children(path: Path, t: Mapping[str, Any]) -> Optional[list[Path]]:
+    """The pid dirs of a pytest ``--basetemp`` parent ``<root>/<name>``, or None when ``path`` is not one: at least
+    one child, and EVERY child a real directory whose name matches pid_regex (one bounded listing)."""
+    cap = int(t["_basetemp"].get("max_parent_children") or 10_000)
+    out: list[Path] = []
+    try:
+        with os.scandir(path) as it:
+            for i, e in enumerate(it):
+                if i >= cap:
+                    return None
+                if e.is_symlink() or not e.is_dir(follow_symlinks=False) or not t["_pid_re"].fullmatch(e.name):
+                    return None
+                out.append(Path(e.path))
+    except OSError:
+        return None
+    return sorted(out) or None
+
+
+def pytest_layout_reason(path: Path, max_children: int) -> Optional[str]:
+    """None when ``path`` looks like a pytest basetemp: only numbered dirs ``<prefix><n>`` (tmp_path /
+    tmp_path_factory.mktemp) and pytest's ``<prefix>current`` symlinks, with at least one numbered dir."""
+    numbered = 0
+    try:
+        with os.scandir(path) as it:
+            for i, e in enumerate(it):
+                if i >= max_children:
+                    return "layout_scan_capped"
+                if e.is_symlink():
+                    if not e.name.endswith("current"):
+                        return f"not_pytest_layout:{e.name[:60]}"
+                    continue
+                if not e.is_dir(follow_symlinks=False) or not _NUMBERED_RE.match(e.name):
+                    return f"not_pytest_layout:{e.name[:60]}"
+                numbered += 1
+    except OSError:
+        return "unreadable"
+    return None if numbered else "not_pytest_layout:no_numbered_dir"
+
+
+def _pid_alive_pytest(pid: str, proc_root: Path) -> bool:
+    try:
+        cmd = (proc_root / pid / "cmdline").read_bytes()
+    except OSError:
+        return False
+    return b"pytest" in cmd or b"python" in cmd
+
+
+def evaluate_basetemp(path: Path, t: Mapping[str, Any], ctx: Mapping[str, Any]) -> dict[str, Any]:
+    bt = t["_basetemp"]
+    out = _common(path, KIND_BASETEMP, "B", t, ctx)
+    out["creator"] = bt.get("creator")
+    if "fingerprint" not in out:
+        out["candidate"] = False
+        return out
+    why = pytest_layout_reason(path, int(bt["max_children"]))
+    if why:
+        out["reasons"].append(why)
+    if _pid_alive_pytest(path.name, ctx["rules"]["_proc_root"]):
+        out["reasons"].append("pid_alive")
+    _idle_check(out, float(bt["idle_days"]))
+    out["candidate"] = not out["reasons"]
+    return out
+
+
+def named_rule_for(name: str, t: Mapping[str, Any]) -> Optional[Mapping[str, Any]]:
+    for r in t["_named"]:
+        if r.get("enabled", True) and r["_re"].fullmatch(name):
+            return r
+    return None
+
+
+def evaluate_named(path: Path, rule: Mapping[str, Any], t: Mapping[str, Any], ctx: Mapping[str, Any]) -> dict:
+    out = _common(path, KIND_NAMED, f"E:{rule['id']}", t, ctx)
+    out["rule_id"] = rule["id"]
+    out["creator"] = rule.get("creator")
+    reasons: list[str] = out["reasons"]
+    if "fingerprint" not in out:
+        out["candidate"] = False
+        return out
+    out["fingerprint"]["rule_id"] = rule["id"]
+    is_dir = path.is_dir() and not path.is_symlink()
+    is_file = path.is_file() and not path.is_symlink()
+    if rule["entry_type"] == "dir" and not is_dir or rule["entry_type"] == "file" and not is_file:
+        reasons.append("entry_type_mismatch")
+    if rule.get("max_size_bytes") is not None and is_file:
+        try:
+            if os.lstat(path).st_size > int(rule["max_size_bytes"]):
+                reasons.append("unexpected_size")
+        except OSError:
+            reasons.append("gone")
+    if is_dir and (rule.get("require") or rule.get("allow_only") is not None):
+        try:
+            names = set(os.listdir(path))
+        except OSError:
+            names = None
+            reasons.append("unreadable")
+        if names is not None:
+            missing = sorted(set(rule.get("require") or []) - names)
+            if missing:
+                reasons.append("marker_missing:" + ",".join(missing)[:80])
+            if rule.get("allow_only") is not None:
+                extra = sorted(names - set(rule["allow_only"]))
+                if extra:
+                    reasons.append("unexpected_content:" + ",".join(extra)[:80])
+    _idle_check(out, float(rule["idle_days"]))
+    out["candidate"] = not reasons
+    return out
+
+
+def _linked_worktree_count(repo: Path, to: float) -> Optional[int]:
+    rc, out = DH._git(repo, "worktree", "list", "--porcelain", timeout=to)
+    if rc != 0:
+        return None
+    return sum(1 for ln in out.splitlines() if ln.startswith("worktree ")) - 1
+
+
+def evaluate_git_tree(path: Path, t: Mapping[str, Any], ctx: Mapping[str, Any]) -> dict[str, Any]:
+    gt = t["_git_trees"]
+    out = _common(path, KIND_GIT, "G", t, ctx)
+    out["creator"] = gt.get("creator")
+    reasons: list[str] = out["reasons"]
+    if "fingerprint" not in out:
+        out["candidate"] = False
+        return out
+    to = float(ctx["rules"]["git"].get("git_timeout_s") or 60)
+    row = judge_git_tree(path, to)
+    out["git_trees"] = [row]
+    if row["kind"] == "not_git":
+        reasons.append("not_a_git_tree")
+    elif row["kind"] == "git_worktree" and not row.get("registered"):
+        reasons.append("git_worktree_unregistered")
+    elif row["kind"] == "git_clone":
+        n = _linked_worktree_count(path, to)
+        if n is None:
+            reasons.append("git_worktree_list_failed")
+        elif n > 0:
+            reasons.append("clone_has_linked_worktrees")
+    reasons.extend(r for r in row["reasons"] if r not in reasons)
+    _idle_check(out, float(gt["idle_days"]))
+    out["candidate"] = not reasons
+    return out
+
+
 def _dirs(path: Path) -> list[os.DirEntry]:
     try:
         with os.scandir(path) as it:
@@ -412,8 +640,25 @@ def evaluate_tmp(t: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[dict[str,
                     continue  # pytest-current
                 if e.is_dir(follow_symlinks=False) and fnmatch.fnmatch(e.name, t["pytest"]["entry_glob"]):
                     results.append(evaluate_pytest(Path(e.path), t, ctx))
+        elif glob:
+            untouched(str(tp), glob)
+        elif (rule := named_rule_for(top.name, t)) is not None:
+            results.append(evaluate_named(tp, rule, t, ctx))
+        elif (
+            t["_git_trees"].get("enabled")
+            and top.is_dir(follow_symlinks=False)
+            and os.path.lexists(tp / DH.DOT_GIT)
+        ):
+            results.append(evaluate_git_tree(tp, t, ctx))
+        elif (
+            t["_basetemp"].get("enabled")
+            and top.is_dir(follow_symlinks=False)
+            and (pids := basetemp_children(tp, t)) is not None
+        ):
+            for pid_dir in pids:
+                results.append(evaluate_basetemp(pid_dir, t, ctx))
         else:
-            untouched(str(tp), glob or "no_tmp_rule")
+            untouched(str(tp), "no_tmp_rule")
     return results
 
 
@@ -622,6 +867,28 @@ def revalidate(item: Mapping[str, Any], t: Mapping[str, Any], ctx: Mapping[str, 
         if len(rel) != 2 or rel[0] != t["_pytest_dir"] or not fnmatch.fnmatch(rel[1], t["pytest"]["entry_glob"]):
             return False, "pattern_mismatch", None
         fresh = evaluate_pytest(p, t, ctx)
+    elif kind == KIND_NAMED:
+        rel = Path(os.path.relpath(p, t["_root"])).parts
+        rule = named_rule_for(rel[0], t) if len(rel) == 1 else None
+        if rule is None or rule["id"] != item.get("rule_id") or _never_glob(p, t):
+            return False, "pattern_mismatch", None
+        fresh = evaluate_named(p, rule, t, ctx)
+    elif kind == KIND_GIT:
+        rel = Path(os.path.relpath(p, t["_root"])).parts
+        if len(rel) != 1 or not t["_git_trees"].get("enabled") or _never_glob(p, t) or named_rule_for(rel[0], t):
+            return False, "pattern_mismatch", None
+        fresh = evaluate_git_tree(p, t, ctx)
+    elif kind == KIND_BASETEMP:
+        rel = Path(os.path.relpath(p, t["_root"])).parts
+        if len(rel) != 2 or not t["_basetemp"].get("enabled") or _never_glob(p, t):
+            return False, "pattern_mismatch", None
+        parent = t["_root"] / rel[0]
+        if named_rule_for(rel[0], t) or os.path.lexists(parent / DH.DOT_GIT):
+            return False, "pattern_mismatch", None
+        pids = basetemp_children(parent, t)
+        if pids is None or p not in pids:
+            return False, "pattern_mismatch", None
+        fresh = evaluate_basetemp(p, t, ctx)
     else:
         return False, f"unknown_kind:{kind}", None
     if not fresh.get("candidate"):
@@ -636,6 +903,9 @@ def remove_item(fresh: Mapping[str, Any]) -> tuple[bool, str]:
     failure stops before a single plain file is removed from the rest of the tree. Then rmtree (symlinks unlinked,
     never followed)."""
     p = Path(fresh["path"])
+    if fresh.get("kind") == KIND_NAMED and p.is_file() and not p.is_symlink():
+        os.unlink(p)
+        return True, "unlink"
     n = 0
     for g in fresh.get("git_trees") or []:
         if g.get("kind") == "git_worktree" and g.get("registered"):
@@ -643,6 +913,8 @@ def remove_item(fresh: Mapping[str, Any]) -> tuple[bool, str]:
             if rc != 0 or os.path.lexists(g["path"]):
                 return False, f"git_worktree_remove_rc:{rc}:{g['path']}"
             n += 1
+    if n and not os.path.lexists(p):
+        return True, f"git worktree remove x{n}"  # rule G: the item itself was the worktree
     if p.is_symlink() or not p.is_dir():
         return False, "not_a_dir"
     shutil.rmtree(p)
@@ -721,7 +993,15 @@ def apply(
             done_bytes += size
             done_files += files
             rep["removed"].append(
-                {"path": item["path"], "kind": item["kind"], "bytes": size, "files": files, "how": how}
+                {
+                    "path": item["path"],
+                    "kind": item["kind"],
+                    "rule": item.get("rule"),
+                    "bytes": size,
+                    "files": files,
+                    "age_days": (fresh.get("evidence") or {}).get("idle_days"),
+                    "how": how,
+                }
             )
         else:
             rep["skipped"].append({"path": item["path"], "why": how})
