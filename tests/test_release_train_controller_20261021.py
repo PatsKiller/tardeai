@@ -193,6 +193,7 @@ class FakeWriter:
             raise self.merge_raises
         m = hashlib.sha1(("merge" + expected_head_sha).encode()).hexdigest()
         self.gh.parents[m] = [self.gh.main, expected_head_sha]
+        self.merged = m
         self.gh.main = self.main_after_merge or m
         if "merge" in self.hooks:
             self.hooks["merge"]()
@@ -218,6 +219,14 @@ class FakeHost:
         self.rollback_rc = 0
         self.hooks: dict[str, object] = {}
         self.notified: list = []
+        # CANONICAL_SOURCE (the dev tree the deploy runs its verifier from). None = fast-forwarded to the train's
+        # merge commit (World wires main_ref to the fake writer's merge); a test pins a stale HEAD by setting a SHA.
+        self.canonical_sha: str | None = None
+        self.main_ref = lambda: ""
+
+    def canonical_head(self):
+        self.calls.append(("canonical_head",))
+        return self.canonical_sha if self.canonical_sha is not None else self.main_ref()
 
     def now(self):
         return self.clock.now()
@@ -337,6 +346,7 @@ class World:
         self.gh = FakeGitHub(self.repo)
         self.writer = FakeWriter(self.gh)
         self.host = FakeHost(tmp, self.repo, self.clock)
+        self.host.main_ref = lambda: getattr(self.writer, "merged", "")
         self.events_path = self.state_dir / "train_events.jsonl"
         self.attempts = attempts
         self.calendar = T.MacroCalendar(tmp / "hostcfg" / "macro_calendar.json")
@@ -1484,3 +1494,44 @@ def test_failed_window_alert_reaches_the_transport(tmp_path, monkeypatch):
     assert len(sent) == 1 and "ROLLED_BACK" in sent[0][0]
     assert sent[0][1]["priority"] == "P1" and sent[0][1]["dedupe_minutes"] == 0
     assert rec["needs_action_item"]["severity"] == "P1"
+
+
+# ── CANONICAL_SOURCE HEAD (2026-10-21, release-1 promote failure) ─────────────────────────────────
+
+
+def test_stale_canonical_source_halts_before_any_prepare_or_capability(tmp_path):
+    """The deploy script runs its release verifier from CANONICAL_SOURCE; a dev tree not at the merge commit is an
+    older verifier. The controller refuses before issuing a prepare capability or calling the deploy script."""
+    w = World(tmp_path)
+    w.host.canonical_sha = "5" * 40                                   # dev tree left on an older main
+    code, rec, _ = w.run()
+    assert rec["outcome"] == "MERGED_NOT_LIVE" and rec["reason"] == "CANONICAL_SOURCE_HEAD_MISMATCH", rec["reason"]
+    assert w.deploys() == []                                          # no prepare, no promote
+    assert ("canonical_head",) in w.host.calls
+    actions = {i["action"] for i in w.ledger()["intents"].values()}
+    assert "prepare_release" not in actions and "promote_release" not in actions
+
+
+def test_unreadable_canonical_source_halts_too(tmp_path):
+    w = World(tmp_path)
+    w.host.canonical_sha = ""                                         # Host.canonical_head: "" when unreadable
+    code, rec, _ = w.run()
+    assert rec["reason"] == "CANONICAL_SOURCE_HEAD_MISMATCH" and w.deploys() == []
+
+
+def test_dry_run_names_the_canonical_source_check(tmp_path):
+    w = World(tmp_path)
+    code, rec = w.controller(live=False).run(NOW)
+    assert any("CANONICAL_SOURCE HEAD" in s for s in rec["steps"])
+
+
+def test_release_window_host_reads_canonical_head_from_git(tmp_path):
+    repo = tmp_path / "canonical"
+    repo.mkdir()
+    env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+           "GIT_COMMITTER_EMAIL": "t@t"}
+    subprocess.run(["git", "init", "-q", str(repo)], check=True, env=env)
+    subprocess.run(["git", "-C", str(repo), "commit", "-q", "--allow-empty", "-m", "c"], check=True, env=env)
+    head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    assert RW.Host(checkout=tmp_path, releases=tmp_path, canonical=repo).canonical_head() == head
+    assert RW.Host(checkout=tmp_path, releases=tmp_path, canonical=tmp_path / "absent").canonical_head() == ""

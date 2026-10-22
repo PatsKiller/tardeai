@@ -160,6 +160,7 @@ def test_promotion_gate_precedes_activation_in_real_shell(tmp_path):
 load_state() { :; }
 current_release() { echo previous; }
 release_grant_preflight() { :; }
+require_canonical_source_at() { :; }
 conformance_gate() { :; }
 write_deploy_receipt() { echo "RECEIPT:$*"; }
 write_state() { echo MUTATION; }

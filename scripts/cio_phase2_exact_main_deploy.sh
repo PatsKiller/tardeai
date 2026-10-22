@@ -579,6 +579,24 @@ run_pin_check() {
 # re-query run, and only then the consuming call, whose in-preflight CI gate
 # reuses the fresh green receipt that re-query wrote. Exactly one use is
 # consumed, and only after binding, conformance and exact-SHA CI all passed.
+# 2026-10-21 (release-1 promote failure): the release grant preflight, the conformance gate and the CI re-query run
+# from CANONICAL_SOURCE (the dev tree), which this script fast-forwards only AFTER a promote. Release 1's first promote
+# ran an older preflight that did not know --no-consume. The verifier stays CANONICAL_SOURCE's (unchanged); this only
+# refuses, before any grant use and before prepare builds anything, when that checkout's HEAD is not the SHA being
+# prepared or promoted. Fast-forward the dev tree to the SHA first. No credential is read; nothing is consumed.
+require_canonical_source_at() {
+  local sha="$1" action="$2" head
+  if ! head="$(git -C "${CANONICAL_SOURCE}" rev-parse HEAD 2>/dev/null)"; then
+    [[ "$action" == "promote" ]] && write_deploy_receipt false "$action" blocked false "canonical_source_unreadable"
+    die "CANONICAL_SOURCE ${CANONICAL_SOURCE} is not a readable git checkout: the release verifier (release_grant_preflight.py, conformance_gate.py) runs from it, so its version cannot be proven — ${action} refused before any release grant use was consumed"
+  fi
+  if [[ "$head" != "$sha" ]]; then
+    [[ "$action" == "promote" ]] && write_deploy_receipt false "$action" blocked false "canonical_source_head_mismatch"
+    die "CANONICAL_SOURCE ${CANONICAL_SOURCE} HEAD ${head:0:12} != ${action} SHA ${sha:0:12}: the release verifier (release_grant_preflight.py, conformance_gate.py) runs from that checkout and would not be the version being released. Fast-forward it first (git -C ${CANONICAL_SOURCE} fetch origin main && git -C ${CANONICAL_SOURCE} merge --ff-only ${sha}) — ${action} refused before any release grant use was consumed"
+  fi
+  log "CANONICAL_SOURCE HEAD ${head:0:12} == ${action} SHA (verifier version proven)"
+}
+
 release_grant_preflight() {
   local action="$1" sha="$2"
   local extra=("${@:3}")   # e.g. --no-consume (decide only; release train 2026-10-21)
@@ -667,6 +685,7 @@ release_pin_step() {
 cmd_prepare() {
   command -v rsync >/dev/null || die "rsync missing"
   require_head_is_origin_main
+  require_canonical_source_at "$(git_sha)" prepare
   release_grant_preflight prepare "$(git_sha)"
   PREV_RELEASE="$(current_release)"
   [[ -d "$PREV_RELEASE" ]] || die "PREV release missing"
@@ -747,6 +766,7 @@ cmd_promote() {
   PREV_RELEASE="$(current_release)"
   NEW_RELEASE="$dir"
   CONTENT_SHA="$sha"
+  require_canonical_source_at "$sha" promote
   # Binding verdict only: a promote refused below (conformance, exact-SHA CI) must not cost a
   # release-write use (2026-10-21: 71df62acc was refused by CI after its use was consumed).
   release_grant_preflight promote "$sha" --no-consume

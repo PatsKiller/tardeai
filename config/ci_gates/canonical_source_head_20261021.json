@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "canonical_source_head_20261021",
+  "files": [
+    "tests/test_canonical_source_head_20261021.py"
+  ],
+  "anchor": "CANONICAL_SOURCE_HEAD_20261021",
+  "comment": [
+    "ANCHOR: CANONICAL_SOURCE_HEAD_20261021 — release-1 promote failure: cio_phase2_exact_main_deploy.sh prepare/promote",
+    "refuse unless CANONICAL_SOURCE HEAD is the SHA being released, before any release grant use or build (real repos,",
+    "fake python logging every preflight call). The controller check is in release_train_controller_20261021."
+  ]
+}

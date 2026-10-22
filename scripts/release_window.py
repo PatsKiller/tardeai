@@ -342,6 +342,13 @@ class Host:
             raise RuntimeError("could not read origin/main head")
         return m.group(1)
 
+    def canonical_head(self) -> str:
+        """HEAD of CANONICAL_SOURCE (the dev tree the deploy script runs its release verifier from); "" unreadable.
+        2026-10-21: the release train refuses to prepare/promote unless it equals the SHA being released."""
+        rc, out = self._run(["git", "-C", str(self.canonical), "rev-parse", "HEAD"])
+        head = out.strip()
+        return head if rc == 0 and re.fullmatch(r"[0-9a-f]{40}", head) else ""
+
     def current_release(self) -> Path:
         return (self.releases / "CURRENT").resolve()
 

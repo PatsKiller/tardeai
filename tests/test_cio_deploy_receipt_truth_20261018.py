@@ -81,6 +81,7 @@ def run_shell(tmp_path, action, *, current=True, bad_pins=False, health_fail=Fal
     extra = "\n".join(f"{k}={shlex.quote(str(v))}" for k, v in setup.items()) + "\n"
     extra += """
 release_grant_preflight() { :; }
+require_canonical_source_at() { :; }
 conformance_gate() { :; }
 release_pin_step() { :; }
 restart_root_frozen_units() { :; }

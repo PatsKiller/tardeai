@@ -2105,6 +2105,18 @@ class TrainController:
         if latest is not None:
             self.say(f"WOULD refuse merge/activation after the 08:00 latest start {utc_iso(latest)}")
 
+    def _require_canonical_at(self, sha: str) -> None:
+        """2026-10-21 (release-1 promote failure): the deploy script runs release_grant_preflight.py / conformance from
+        CANONICAL_SOURCE; an older dev tree there is an older verifier. Refuse before any capability is issued or any
+        grant use is consumed unless its HEAD is ``sha``. The verifier stays the deploy script's (unchanged); the
+        deploy script makes the same check itself (require_canonical_source_at)."""
+        reader = getattr(self.host, "canonical_head", None)
+        head = reader() if callable(reader) else ""
+        if head != sha:
+            raise Halt(MERGED_NOT_LIVE, "CANONICAL_SOURCE_HEAD_MISMATCH",
+                       f"CANONICAL_SOURCE HEAD {head[:12] or 'unreadable'} != {sha[:12]}: fast-forward the dev tree "
+                       "to the merge commit, then reconcile")
+
     # -- promote ---------------------------------------------------------------------------------------
     def _promote(self, manifest: dict, cand: dict, batch: dict, merged: str, rec: dict) -> None:
         heads = [{"pr": m["pr"], "head_sha": m["head_sha"]} for m in cand["members"]]
@@ -2113,6 +2125,8 @@ class TrainController:
             self.say(f"WOULD wait <= {self.cfg.main_ci_timeout_s:.0f}s for exact-SHA push/main checks "
                      f"{[c for c in REQUIRED_CHECKS if c != BATCH_QUALIFIER]} on the merge commit")
             self.say("WOULD refuse if the merge commit or its prepared artifact is quarantined, or CURRENT moved")
+            self.say("WOULD refuse unless CANONICAL_SOURCE HEAD (the dev tree the deploy runs its release verifier "
+                     "from) is the merge commit, before any capability is issued")
             self.say(f"WOULD git -C {self.host.checkout} fetch + checkout --detach <merge commit>; then "
                      f"bash {self.host.deploy} prepare (TRADEAI_RELEASE_CAMPAIGN=release-train-{self.train_id}, "
                      "TRADEAI_RELEASE_PR=<batch PR>) under a prepare capability")
@@ -2142,6 +2156,7 @@ class TrainController:
         env = RW.deploy_env(self.env, _CampaignWindow(f"release-train-{self.train_id}"), int(batch["pr"]), train_sha)
         if not self.host.checkout_clean():
             raise Halt(MERGED_NOT_LIVE, "CHECKOUT_DIRTY", str(self.host.checkout))
+        self._require_canonical_at(merged)
 
         def obs_main() -> dict:
             return self._observed(main_sha=self.github.main_head(), candidate_sha=merged)

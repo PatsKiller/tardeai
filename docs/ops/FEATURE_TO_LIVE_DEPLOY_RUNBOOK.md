@@ -183,6 +183,14 @@ persistent state (live copies hashed, paths removed from the index only, re-hash
 non-zero *after* `PROMOTE OK` and names the blocking paths. The release is live either way; a non-zero
 exit means the dev tree still needs attention. `CIO_DEPLOY_FF_DEV_TREE=0` skips the step.
 
+**Since 2026-10-21 `prepare` and `promote` refuse unless the dev tree's HEAD is the SHA being released**
+(`require_canonical_source_at`). The release grant preflight, the conformance gate and the CI re-query run from
+`CANONICAL_SOURCE`; release 1's first promote failed because the dev tree was on an older main whose preflight did
+not know `--no-consume`. The check runs before any release grant use and before `prepare` builds anything, and the
+message names the fix: `git -C $CANONICAL_SOURCE fetch origin main && git -C $CANONICAL_SOURCE merge --ff-only <sha>`
+before `prepare`. The release train controller makes the same check (`CANONICAL_SOURCE_HEAD_MISMATCH`, before it
+issues a prepare capability). Who runs the verifier is unchanged.
+
 `promote` restarts `portfolio-server` and the units in `TRADEAI_CURRENT_BOUND_UNITS` (default, from
 `restart_root_frozen_units` in `scripts/cio_phase2_exact_main_deploy.sh`:
 `tradeai-health-agent.service cio-governed-bridge.service tradeai-cio-telegram.service
