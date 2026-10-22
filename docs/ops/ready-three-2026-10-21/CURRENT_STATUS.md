@@ -1,6 +1,14 @@
-# Current execution status — 2026-10-22 21:20 UTC
+# Current execution status — 2026-10-22 21:24 UTC
+
+## Production endpoint availability — 2026-10-22 21:23 UTC
+
+Read-only HTTP GETs to build metadata timed out with no response at 5s and 20s; `/api/v2/health` timed out at 8s and `/health` at 5s. A TCP listener remains on `127.0.0.1:7777` (Python PID 770477), which does not prove the HTTP app is healthy. Last successful build/health are the 20:51 / 20:48 observations above; current build and health are now unverified. The canonical guard reports no active grants. No restart, production write, or deployment was attempted. Read-only diagnosis is underway; see [live validation](LIVE_VALIDATION.md).
+
+Follow-up read-only diagnostics: `GET /` returned HTTP 302 in 3.608s, while `/healthz` returned 404 in 0.132s. The build and health handlers still return no data. The serving process and service manager cannot be inspected in this sandbox; no logs are available. A read-only reviewer found no safe evidence supporting a restart, and no service change was made.
 
 ## Profile and upstream PR refresh — 2026-10-22 21:20 UTC
+
+Latest profile poll: `n8n_maturity_registry_dispatch` passed 895 tests with 2 skipped in 79.14s; `n8n_maturity_retry_dlq_20261009` was running. Session `86134` remained live, with last aggregate 317 PASS / 3 FAIL and no new failure reported. This aggregate remains provisional.
 
 - The integration agent polled the existing full-profile session `86134` and verified it is still live. At 17:20:02 EDT / 21:20:02 UTC the aggregate had advanced to **317 PASS / 3 FAIL**; `n8n_maturity_generic_workflows_20261009` was running. No terminal exit code or final manifest exists.
 - Independent review verified candidate `a7508b039b1f39d06bfc216726656b82ae5d0ca6` is clean with 50 changed paths and no edits to the implicated authority registry/gates or options income-screen implementation/test. It independently reproduced the AJG/OI=0 `test_income_screen_records_named_drops` failure (**1 failed in 0.82s**). The two authority failures are one baseline defect: `desk_truth_monitor.py` reads the positions projection without an approved reader registration. No candidate workaround or code change is warranted; do not suppress the authority gate.

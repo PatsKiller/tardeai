@@ -8,6 +8,10 @@ Independent review verified the clean 50-path candidate at `a7508b039b1f39d06bfc
 
 PR #1947 remains OPEN/BLOCKED at `ff2f7b4d42e935334c93cc714ecedfcea227d8c9`. Latest checks show `cio-hardening` passed, shard 7 is pending, other listed active checks passed, and `cio-hardening-full` plus `main-red-alert` were skipped. The proposed upstream fixes have not merged or qualified on main.
 
+## Latest exact-session poll — 21:24 UTC
+
+Session `86134` remains live. `n8n_maturity_generic_workflows_20261009` passed 18 tests in 153.05s, followed by `n8n_maturity_registry_dispatch` passing 895 tests with 2 skipped in 79.14s. `n8n_maturity_retry_dlq_20261009` was running at the latest poll. Aggregate remains 317 PASS / 3 FAIL; no terminal summary, exit code, or final manifest is available.
+
 ## Profile progress after 21:16 UTC
 
 The integration agent verified that exact profile session `86134` remained live. The following subsequent gates passed: `n8n_evidence_gates` (136 tests), evidence-kind parity (4), executor environment allowlist (284), fabric Hermes learning (131), fabric phase 1 (127), and health contracts (35). `n8n_import_guard_20261010` was running at the latest poll. No new failure was reported. The aggregate remains 291 PASS / 3 FAIL from the last observed overall checkpoint; it is provisional, and no terminal result, final manifest, or exit code exists.

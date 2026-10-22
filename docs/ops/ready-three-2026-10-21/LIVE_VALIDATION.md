@@ -1,4 +1,14 @@
-# Live validation — current read-only checkpoint 2026-10-22 20:51 UTC
+# Live validation — current read-only checkpoint 2026-10-22 21:23 UTC
+
+## Fresh endpoint availability check — 2026-10-22 21:23 UTC
+
+- Read-only GETs to `http://127.0.0.1:7777/v3/build-meta.json` timed out with no response at 5 seconds and again at 20 seconds. `/api/v2/health` timed out at 8 seconds, and `/health` timed out at 5 seconds.
+- `ss -ltnp` still shows a listener on `127.0.0.1:7777` (Python PID 770477). A listening socket without an HTTP response does not prove application health or establish the served build identity. The last successful evidence remains the 20:51 UTC build-metadata probe (main SHA `82180caba0e3ff2d31b11b109806094c5bf87c7a`) and health captured at 20:48:30 UTC (78/degraded, unhealthy, 3 critical findings); current build/health are now **unverified**.
+- A read-only `GET /` returned HTTP 302 after 3.608s; `/healthz` returned 404 in 0.132s. The server has at least one responsive route, but neither response proves build identity or health. `ss` showed LISTEN with backlog increasing from 5 to 6. The serving PID was not inspectable from this sandbox (`ps` and `/proc/<pid>/status` returned no content); later `ss` and `systemctl` calls were denied by sandbox permissions, so no service logs or manager status are available. The evidence cannot distinguish an overloaded/blocked app from a handler-specific stall.
+- Canonical guard recheck at 21:23 UTC reports no active grants. No service restart or production mutation was attempted. A read-only diagnosis of the stalled endpoint is underway; any service operation requires its named canonical guard grant.
+- Candidate SHA `a7508b039b1f39d06bfc216726656b82ae5d0ca6` is still not evidenced live. No candidate push, release, or deployment occurred; C3 remains disabled.
+
+These observations supersede the 20:51 checkpoint for endpoint availability only. The last successful build/health payloads remain historical evidence; they must not be described as a fresh 21:23 probe.
 
 ## Fresh production and authority checkpoint — 2026-10-22 20:51 UTC
 

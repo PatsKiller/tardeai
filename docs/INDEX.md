@@ -2098,10 +2098,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/ready-three-2026-10-21/AGENT_HANDOFF.md` | Agent handoff — 2026-10-21 |
 | `docs/ops/ready-three-2026-10-21/ARCHITECTURE_AND_DATA_FLOW.md` | Architecture and data flow — indicator JSON and ready-three |
 | `docs/ops/ready-three-2026-10-21/CHANGELOG.md` | Change and release log — 2026-10-21 |
-| `docs/ops/ready-three-2026-10-21/CURRENT_STATUS.md` | Current execution status — 2026-10-22 21:20 UTC |
+| `docs/ops/ready-three-2026-10-21/CURRENT_STATUS.md` | Current execution status — 2026-10-22 21:24 UTC |
 | `docs/ops/ready-three-2026-10-21/DEPLOYMENT_AND_ROLLBACK.md` | Deployment and rollback gates — 2026-10-21 |
 | `docs/ops/ready-three-2026-10-21/EXECUTIVE_REPORT.md` | Executive gap and readiness report — 2026-10-22 |
-| `docs/ops/ready-three-2026-10-21/LIVE_VALIDATION.md` | Live validation — current read-only checkpoint 2026-10-22 20:51 UTC |
+| `docs/ops/ready-three-2026-10-21/LIVE_VALIDATION.md` | Live validation — current read-only checkpoint 2026-10-22 21:23 UTC |
 | `docs/ops/ready-three-2026-10-21/README.md` | Ready-three evidence and readiness — 2026-10-21 |
 | `docs/ops/ready-three-2026-10-21/SYSTEM_INVENTORY.md` | System inventory snapshot — 2026-10-21 |
 | `docs/ops/ready-three-2026-10-21/TEST_RESULTS.md` | Test results — current provisional checkpoint 2026-10-22 21:20 UTC |
