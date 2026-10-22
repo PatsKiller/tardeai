@@ -4,6 +4,7 @@ import { useApi } from '../hooks/useApi'
 import { fmt$, fmtNum } from '../lib/format'
 import { plainEnglishProposal, proposalRiskFlags, strikeDistance, strategyGuide } from '../lib/optionsNovice'
 import { ACTIONS, PROPOSAL } from '../lib/optionsTooltips'
+import { noopActionReason } from '../lib/optionsCardSemantics'
 import { BeginnerSummaryRow, ExplainTradePanel, RiskFlagChips, StrikeDistanceBar, WhatIfBox } from './OptionsNovicePanel'
 import { CompactMetricRow, HeroMetricChip, MetricChipTooltip } from './MetricChipTooltip'
 import {
@@ -1242,16 +1243,16 @@ export default function OptionProposalCardV4({
                   key={`${b.action}-${i}`}
                   type="button"
                   title={
-                    b.action === 'hold' ? ACTIONS.hold
-                      : b.action === 'review_chain' ? ACTIONS.reviewChain
+                    noopActionReason(b.action)
+                      ?? (b.action === 'review_chain' ? ACTIONS.reviewChain
                         : execLocked ? ACTIONS.preflightLocked
                           : manualOnly && EXEC_ACTIONS.has(b.action) ? ACTIONS.preflightManual
                             : EXEC_ACTIONS.has(b.action) ? PROPOSAL.recommended
-                              : undefined
+                              : undefined)
                   }
-                  disabled={execLocked}
+                  disabled={execLocked || !!noopActionReason(b.action)}
                   onClick={() => onAction(b.action, p.id)}
-                  style={btnStyle(b.action)}
+                  style={{ ...btnStyle(b.action), ...(noopActionReason(b.action) ? { cursor: 'not-allowed', opacity: 0.55 } : {}) }}
                 >
                   {/* EARNINGS-SPREADS Stage 3: the review-chain drilldown opens the
                       put chain for the spread — label it honestly as a spread review */}

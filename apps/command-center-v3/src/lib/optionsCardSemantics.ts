@@ -156,6 +156,15 @@ function displayHoldLabel(action: string, label: string | undefined): string {
   return String(label || '')
 }
 
+/** 2026-10-22 (operator, options desk audit): controls that do nothing are disabled with the reason
+ *  instead of looking clickable. Skip ('hold') records nothing; Close/Roll on a position card has no
+ *  wired flow on this page. Returns the tooltip reason, or null when the action does something. */
+export function noopActionReason(action: string): string | null {
+  if (action === 'hold') return 'Disabled: Skip does not record anything yet, so the idea would stay on the desk. Leave it, or reject it in the strategy review.'
+  if (/close|roll/i.test(action)) return 'Disabled: closing or rolling is not wired on this page. Place it at the broker yourself, then record it in the Manual execution log.'
+  return null
+}
+
 export function sanitizeActionButtons(p: OptionProposal): { action: string; label: string }[] {
   if (isCardBlocked(p as any)) {
     const reviewLabel = isPaperModelRow(p as any) ? 'Review Paper Guards' : 'Review Block Reason'

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { fmt$, fmtNum } from '../lib/format'
 import { plainEnglishPosition } from '../lib/optionsNovice'
 import { ACTIONS, POSITION } from '../lib/optionsTooltips'
+import { noopActionReason } from '../lib/optionsCardSemantics'
 import { OpenPositionEducation, WhatIfBox } from './OptionsNovicePanel'
 import OptionMoneynessBar from './risk/OptionMoneynessBar'
 import OptionsPnLProfile from './risk/OptionsPnLProfile'
@@ -243,9 +244,10 @@ export default function OptionPositionCardV4({
               <button
                 key={`${b.action}-${i}`}
                 type="button"
-                title={b.action === 'hold' ? ACTIONS.hold : b.action === 'review_chain' ? ACTIONS.reviewChain : /close|roll/.test(b.action) ? ACTIONS.closeRoll : undefined}
+                title={noopActionReason(b.action) || (b.action === 'review_chain' ? ACTIONS.reviewChain : undefined)}
+                disabled={!!noopActionReason(b.action)}
                 onClick={() => onAction(b.action, p.id)}
-                style={btnStyle(b.action)}
+                style={{ ...btnStyle(b.action), ...(noopActionReason(b.action) ? { cursor: 'not-allowed', opacity: 0.55 } : {}) }}
               >
                 {b.label}{b.action !== 'hold' ? ' →' : ''}
               </button>
