@@ -24,6 +24,10 @@ Operator-approved Gate 3 design (`OpenTrades.dc.html`) and tab consolidation. Sh
   now samples positions near a stop. The unprotected chip skips funds, small positions and write-offs.
 - **Links.** Telegram entry alerts and the Alerts Center link to Active Trader → Scalp; the Reports
   broker-manual line links to Proposals · Path A.
+- **Trade AI page (stacked PR).** Opportunities per `Main.dc.html`: six filter tiles, float-first table or cards,
+  click-to-filter metrics, column sort, AI analysis panel with the served Level 2 entry signals, Shared Momentum
+  and the previous scanner view as collapsed drawers. Gate 2 fields (catalyst type, grade, validation, action
+  score, checks) show "—" with a tooltip until the CIO prospect record exists.
 
 ## 2026-10-20 — Analyst feed order, plausibility writers, comms reservations, notifier settlement, five n8n lanes live
 

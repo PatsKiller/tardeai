@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import SharedMomentumCandidates from '../components/tradeai/SharedMomentumCandidates'
+// Trade AI = Opportunities page (Gate 3 Main.dc.html, 2026-10-22); Shared Momentum is its collapsed drawer.
+import TradeAiOpportunities from '../components/tradeai/TradeAiOpportunities'
 import { Navigate, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import {
@@ -320,8 +321,9 @@ function TradingHubDesk({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'Trade AI' && <SharedMomentumCandidates />}
-      {tab === 'Trade AI' && (() => {
+      {/* The previous scanner view stays reachable as the page's "Scanner tools" drawer (run health,
+          run history, sector mix, Thinkorswim copy, Warrior audit). */}
+      {tab === 'Trade AI' && <TradeAiOpportunities tradeAi={tradeAi} error={tradeAiError} loading={tradeAiLoading} classic={tradeAi ? (() => {
         // Phase 203: do NOT render the KPI grid as 0/0/0/no-run when the API fetch is loading or
         // errored — that silently masks a transient backend issue (e.g. DB contention) as an empty
         // scanner. Show an explicit state instead. Genuine empty data still renders below.
@@ -498,7 +500,7 @@ function TradingHubDesk({ onDrill }: Props) {
                 {tradeAi?.run_health_status && (
                   <span
                     style={{ marginLeft: 6, color: runHealthChipColor(healthTier), fontWeight: 800 }}
-                    data-testid="trade-ai-run-health-chip"
+                    data-testid="trade-ai-run-health-chip-classic"
                     data-run-id={tradeAi?.run_id ?? ''}
                     data-run-scanned={scannedN != null ? String(scannedN) : ''}
                     data-run-floor={healthFloor && isFinite(healthFloor) ? String(healthFloor) : ''}
@@ -936,7 +938,7 @@ function TradingHubDesk({ onDrill }: Props) {
             </div>
           </div>
         )
-      })()}
+      })() : null} />}
 
       {tab === 'Options' && <OptionsHub onDrill={onDrill} />}
 

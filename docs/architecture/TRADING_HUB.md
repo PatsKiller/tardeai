@@ -2,7 +2,7 @@
 
 Status:      ACTIVE
 as_of:       2026-10-22T16:30:00-04:00
-Measured at: branch feat/trading-tabs-open-trades-20261022 (base origin/main b9804fa57) / not measured on the served release
+Measured at: branches feat/trading-tabs-open-trades-20261022 (#1949) and feat/trade-ai-opportunities-20261022 (base origin/main b9804fa57) / not measured on the served release
 
 The operator approved the Gate 3 designs on 2026-10-22 (`OpenTrades.dc.html`, `Main.dc.html`) and the
 consolidation of the Trading tabs from eight to four. This document records the shape after that change:
@@ -13,7 +13,7 @@ intelligence endpoint follows.
 
 | Tab | What it is | Source |
 |---|---|---|
-| Trade AI (default) | Market opportunities scanner | `/api/v2/trade-ai/scanner` |
+| Trade AI (default) | Opportunities page (Gate 3 `Main.dc.html`) | `/api/v2/trade-ai/scanner`, `/api/v2/trade-ai/candidates`, `/api/v3/active-trader/alerts` |
 | Options | Options desk (Gate 3, separate PR) | `/api/v2/options/*` |
 | Open Trades | Protect-first position desk (this change) | `/api/v2/open-trades/intelligence`, `/api/v2/broker-reconciliation` (drawer) |
 | Proposals | Path B broker queue, plus the Path A Entry Desk as a section (`section=path-a`) | `/api/v2/broker-proposals`, Entry Desk endpoints |
@@ -44,6 +44,33 @@ Proposals · Path A), the triage chip for recon breaks (`tradingCommandTriage.ts
 already pointed only at Proposals, Options and Broker Orders, all still valid; it was not changed.
 `WatchlistHub.tsx` and `WatchlistProposeModal.tsx` still link `?tab=Entry+Desk`; the redirect handles it, and
 those files belong to the Watch lane.
+
+## Trade AI — Opportunities page
+
+`components/tradeai/TradeAiOpportunities.tsx`, model `lib/tradeAiOpportunities.ts` (pure;
+`tradeAiOpportunities.test.ts`), e2e `e2e/trade-ai-opportunities.spec.ts`. Gate 3 design `Main.dc.html`.
+
+- **Reads existing endpoints only**: `/api/v2/trade-ai/scanner` (the hub's existing poll, passed in),
+  `/api/v2/trade-ai/candidates` (Shared Momentum drawer summary; the full panel renders only when opened) and
+  `/api/v3/active-trader/alerts` (served Level 2 entry signals).
+- **Six filter tiles**: GO, WAIT, Manual review, Grade ★4+, Float < 5M, RVOL ≥ 10× — counted over the scanner
+  universe the payload serves. Clicking a tile, a float, an RVOL or a sector adds a removable filter chip.
+- **Float-first table** (Symbol · Float · Vol · RVOL · Chg · Catalyst · grade · validation · Act · Decision · L2)
+  with column sort, or **Cards**. A float of 0 is shown as unknown, never as micro float.
+- **AI analysis panel**: decision, catalyst headline, the scanner's existing critic when it ran, scanner facts
+  (score, setup grade, scan catalyst verification), and **Level 2 · tape**. Entry chips map the served
+  `l2.spread_bps`, `l2.depth_ratio` and `signals.detail` (`supply_thinning`, `ask_refill`, `book_pull`,
+  `volume_acceleration`, `high_break`, `vwap_distance`) from the latest Active Trader decision for the symbol;
+  a book older than 15 s is flagged stale. Exit chips (tape flip, volume climax, ask wall, close below prior low,
+  VWAP loss) are computed only by the exit watch for open scalps and are not served for scanner names, so they
+  show "—" with that reason. A symbol with no decision row shows NOT WATCHED.
+- **Gate 2 fields** — catalyst type, catalyst grade (★), validation, the action score and the five AI checks —
+  come from the CIO prospect record (AGENTS.md §26), which does not exist yet. They render "—" with a tooltip;
+  the Grade ★4+ tile and the grade / Act sorts are disabled until a row carries them. The model reads
+  `catalyst_type`, `catalyst_grade`, `catalyst_validation`, `catalyst_validation_ok` and `action_score` if the
+  scanner payload ever serves them; nothing is invented.
+- **Drawers**: Shared Momentum (collapsed; was the panel at the top of the tab) and Scanner tools (the previous
+  scanner view: run health, run history, sector mix, Thinkorswim copy, Warrior audit).
 
 ## Open Trades desk
 
