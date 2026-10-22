@@ -3015,8 +3015,10 @@ def _stamp_truth_flags(p: dict) -> None:
     elif p.get("options_thesis"):
         flags.append({"key": "THESIS_COMPLETE", "label": "Thesis complete", "tone": "green"})
     try:
-        from lib.options_desk_accuracy import quote_time_of as _qt
-        session = _quote_session({"quote_time": _qt(p)})
+        from lib.options_desk_accuracy import quote_session_of, quote_time_of as _qt
+        # A WARNING flag: with no quote time, fall back to the session now (conservative -- an
+        # off-hours read is flagged). Liquidity deferral, which LOOSENS a gate, never does this.
+        session = quote_session_of({"quote_time": _qt(p)}, fallback=_market_session_now())
     except Exception:  # noqa: BLE001
         session = _market_session_now()
     if session and session != "REGULAR":
