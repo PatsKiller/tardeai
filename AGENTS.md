@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      16.0.0
+Policy-Version:      17.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
 Effective-Date:      2026-10-21
-Last-Reviewed:       2026-10-21T22:33:20-04:00
+Last-Reviewed:       2026-10-21T23:22:17-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          15.0.0
+Supersedes:          16.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -110,6 +110,30 @@ asks the operator to decide needs `dedupe_minutes=0`; #1685 sets it only for `ap
 `stop_decision_brief.py` (a stop decision brief) is P1 with the default 60-minute exact-content dedupe — the
 operator classifies it before #1685 merges. **Numbering:** follows 5.0.0 (ACTIVE, PR #1686, merged `0ec320486`);
 `Supersedes` is 5.0.0. Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>`.
+
+**17.0.0 is ACTIVE (MAJOR) — the release train: agents queue and never merge, push `main` or `train/*`, or
+release; a standing revocable delegation; the 00:00, 06:00, 08:00 and 18:00 ET windows with a merge freeze; STOP
+semantics; operator-only items added to §17 at ratification; train pushes become the only automated remote sync (§25; one
+section added to `AI_WORK_POLICY.md`).** Operator directive 2026-10-21, as the approved plan records it (the
+operator's words are not preserved verbatim here): agents queue PRs only; a scheduled train integrates, releases and reports at 00:00, 06:00, 08:00 and 18:00 ET. Operator decisions of 2026-10-21: D1 standing revocable authorization, no daily or 7-day renewal; D2 a GitHub App with 1-hour
+installation tokens, created by the operator; D3 resume and scope changes only via the host CLI or a Telegram button
+confirmation, TOTP declined; D4 `ci-gate` becomes a required check later; D5 merge 15.0.0; D6 guard hooks installed in
+log mode. Operator approval 2026-10-21: operator-forced off-window canary runs (TTY plus phrase, canary phase only,
+every other gate still enforced; §25.3). Operator (owner) 2026-10-21: no multi-day waits; shadow, canary and expand
+end when their proofs pass (§25.7). Ratified by the operator 2026-10-21
+(`APPROVE_AGENTS_POLICY_17_0_0 1914 aeb5e6fd70dcefac0df8541c496bebb4a5e904ec`, §20; PR #1914 comment by PatsKiller 2026-10-22T03:22:17Z,
+https://github.com/PatsKiller/tardeai/pull/1914#issuecomment-6331877455, verbatim: "APPROVE_AGENTS_POLICY_17_0_0 1914 aeb5e6fd70dcefac0df8541c496bebb4a5e904ec");
+ratified by this edit on #1914's branch, which set the header block to 17.0.0 ACTIVE with `Supersedes` 16.0.0 and
+inserted the three clauses quoted in §25.9 into §17, §24.5 and §24.8. Ratification arms nothing — arming is a
+separate §17 act at the host. **Why MAJOR:** it widens what an
+automated actor may do — a host release service may push `train/*` and merge to `main` under a standing delegation
+(version policy: classify by the weakest guarantee). **Byte-identical:** §0, §2, §2A, §7A, §22, §23.14 and the four
+adapters; §17, §24.5 and §24.8 were byte-identical while PROPOSED and changed only at ratification, by the three
+insertions quoted in §25.9, whose digests `tests/test_agents_policy_17_0_0_release_train.py` pins. **Numbering:** after
+15.0.0 (PR #1852, ACTIVE) and 16.0.0 (PR #1911, ACTIVE, ratified 2026-10-21); this text is built on the 16.0.0-ACTIVE
+`AGENTS.md` (`065f1083c`); the PROPOSED patch set the header block to 17.0.0 PROPOSED with `Effective-Date` PENDING and
+the ratifying edit set it to 17.0.0 ACTIVE, `Effective-Date` 2026-10-21. `Supersedes` is the last ACTIVE version,
+16.0.0 (§20). Approval phrase as proposed: `APPROVE_AGENTS_POLICY_17_0_0 <pr_number> <head_sha>`.
 
 **16.0.0 is ACTIVE (MAJOR) — the n8n cutover standard: defect fixed, dry run, regression tests, one live n8n
 run with the cron line present; no multi-day soak (§23.21; five clauses replaced in place by the ratifying edit).**
@@ -3913,6 +3937,14 @@ labeling, error strings, routing defaults whose conservative option is reversibl
 monitoring. **If the deferred list grows during a wave, that is a finding about how the wave was
 run.**
 
+**Release train (17.0.0, §25):** arming, re-arming or revoking the standing release delegation, and
+creating or editing its host record · clearing a release STOP or resuming the release train · expanding the
+train's scope: a permitted class, an enabled window, a limit, a named service or the verification policy
+(narrowing it is the same act and the same proof) · custody of the release-train GitHub App: creating,
+installing, re-permissioning or suspending it, and placing, rotating or revoking its private key. Each is done
+by the operator at the host CLI (`scripts/release_control_cli.py`) or by a Telegram button confirmation
+(decision D3, 2026-10-21); an agent or the Command Center may only request STOP or pause.
+
 ---
 
 # 17A · Topology and vocabulary
@@ -5689,6 +5721,11 @@ and grants one operational authority, under its own guard scope and its own toke
   `TRADEAI_REMOTE_PUSH_AUTHORIZED=1`, and never from `--from-queue`. The same PR found the backup branch's latest
   commit held 0 files (`git add --ignore-errors` aborting on an unmatched glob) — a job that exited 0 for an empty
   backup (§0 rule 8).*
+- **One exception (17.0.0, §25): the release service.** Once the standing delegation is armed, the host release
+  service (never an agent, a lane script or an n8n workflow) may push `refs/heads/train/<train_id>`, open the
+  train's batch PR and merge it, each only inside a reservation of a ReleaseCapability@v1 for that train and
+  phase and with a GitHub App installation token minted for that reservation. Nothing else scheduled pushes.
+  *Cause (§20): operator directive 2026-10-21 (§25.1); decisions D1 and D2.*
 
 ## 24.6 Tests never touch production state (extends §8A)
 
@@ -5722,6 +5759,11 @@ and grants one operational authority, under its own guard scope and its own toke
   SHA binding (no SHA named)"; the grant that named the SHA passed (`matched_by: sha:e8a4a6815524`,
   `status-20261010/release-e8a4a6815-promote.log`). The binding exists because on 2026-09-25 #1229 and #1230 were
   promoted under another campaign's grant.*
+- **Under the release train (17.0.0, §25) the capability is the binding.** A train merge or promotion is
+  authorized by a ReleaseCapability@v1 that binds the exact base, candidate and artifact, the ordered PR heads
+  and the qualifying CI evidence; it is issued per train and phase, never per day. A `release-write` grant naming
+  the SHA or PR stays the binding for the manual and emergency paths. *Cause (§20): decision D1 2026-10-21 —
+  standing authorization replaces daily and 7-day grants; the enhanced design §3 requires the full binding.*
 
 ## 24.9 Portability: designs stay Supabase- and n8n-Cloud-portable (reinforces §23.6)
 
@@ -6025,10 +6067,242 @@ under "Never delete. Archive with a tripwire".
 
 ---
 
+# 25 · Release train — agents queue, the train releases (17.0.0, ACTIVE)
+
+**Status: ACTIVE (MAJOR), ratified `APPROVE_AGENTS_POLICY_17_0_0 1914 aeb5e6fd70dcefac0df8541c496bebb4a5e904ec`
+(§20; PR #1914, operator comment 2026-10-21, https://github.com/PatsKiller/tardeai/pull/1914#issuecomment-6331877455).** The three clauses
+quoted in §25.9 are in place in §17, §24.5 and §24.8. Ratification arms nothing: the train runs only after the operator
+arms the delegation at the host (§25.2) and enables a window (§25.3), each a §17 act. Plan: Release Train v2
+(`joyful-skipping-wilkes.md`, Phase 2); design: the operator's enhanced design of 2026-10-21 (§3 standing authorization,
+§7 STOP, §9 contracts). Code (libraries, wired into nothing at 17.0.0): `scripts/lib/release_delegation.py`
+(ReleaseDelegation@v1), `scripts/lib/release_capability.py` (ReleaseCapability@v1), `scripts/lib/release_control.py`
+(ReleaseControl@v1), host CLI `scripts/release_control_cli.py`; tests `tests/test_release_train_authority_20261021.py`.
+
+## 25.1 Agents queue; they never merge, push `main` or `train/*`, or release
+
+- **An agent's last remote act is a PR.** Once the delegation is first armed (§25.2), an agent never merges a PR, never
+  pushes or force-pushes `main` or any `train/*` ref, never opens or edits a train's batch PR, and never prepares,
+  promotes or rolls back a release; it opens its PR under `AI_WORK_POLICY.md` and the train takes it from the queue.
+  The only merges to `main` are the train's and the operator's own; the emergency path stays the operator's
+  (`release-write` grant naming the SHA or PR, §24.8) and takes the same global release lock (§25.4). *Cause (§20):
+  operator directive 2026-10-21 (plan record: agents queue PRs only; a scheduled train integrates, releases and reports at 00:00, 06:00, 08:00 and 18:00 ET); on 2026-10-21 the PR-hygiene census measured 30 open PRs, 18
+  conflicting and 8 held — merges by many hands, unordered, with no single release owner.*
+- **Until the first arming the manual process is unchanged.** The operator's per-PR word and a `release-write` grant
+  naming the SHA or PR (§24.8, `scripts/release_window.py`'s 12:00 and 17:30 ET windows) remain the only release path,
+  and an agent may carry out a merge the operator names, as today. *Cause (§20): Phases 3–6 (integration, shadow,
+  18:00 canary, expansion) precede arming; a rule that blocked every release before the train exists would stop
+  shipping, not make it safer.*
+- **A queued PR is not a request for authority.** Queue state, labels, branch names and environment variables
+  (`TRADEAI_RELEASE_TRAIN_SHA` included) identify a candidate; they never authorize one. *Cause (§20): enhanced design
+  §3; plan review of `58bf60cf3` — the release-train SHA variable must only identify.*
+
+## 25.2 The standing delegation (D1)
+
+- **The operator authorizes the train once, until paused or revoked; there is no daily or 7-day renewal.** The
+  authorization is a ReleaseDelegation@v1 record on the host (default `~/.config/tradeai/release_train/delegation.json`,
+  mode 600, never inside the repository): repository `PatsKiller/tardeai`, environment `production`, permitted
+  classes, windows, limits, verification policy, revocation epoch, status (`ACTIVE`, `PAUSED`, `REVOKED`) and the
+  operator's identity. The repository carries only `config/release_train_delegation.example.json` (PAUSED, every
+  window disabled) and the schema `config/schemas/release_delegation_v1.schema.json`. *Cause (§20): decision D1
+  2026-10-21; a record inside the repository could be edited by the train it authorizes (enhanced design §10).*
+- **It is loaded fail closed.** Missing, unreadable, invalid, an unknown status, `PAUSED`, `REVOKED`, a path inside
+  the repository, or a permitted class naming broker, order, execution, Active Trader, trading, secret, credential,
+  guard or policy work means NOT authorized. No broker, order, stop, secret or daemon change is ever a train class
+  (§0 rule 2, §23.14). *Cause (§20): §0 rules 1–2; enhanced design §3 ("never union grants into greater authority").*
+- **A record takes effect only when the operator accepts its digest.** `release_control_cli.py arm` records the
+  record's SHA-256 in the control state; any later edit to the file — scope wider or narrower — changes the digest
+  and stops issuance until the operator accepts it (`change-scope`), which also issues a new epoch. *Cause (§20):
+  without it, editing one file would expand a standing authority silently.*
+- **Authority is issued per train and per phase, never held.** The host issuer mints a short-lived
+  ReleaseCapability@v1 (TTL at most the record's limit, never over 3600 s; a finite attempt budget, at most 3) for one
+  train and one phase. A build/publish capability (integrate, regenerate, local test, build, push
+  `refs/heads/train/<train_id>`, open the batch PR) cannot merge or promote. A merge or promote capability binds the
+  delegation id, policy digest and both epochs; repository, environment, train id and expected base SHA; the ordered
+  PR heads, candidate SHA, artifact digest and the digest of the qualifying CI evidence (every required check —
+  `cio-hardening`, `agent-governance`, `release-readiness`, `ci-gate` — exactly `success` on the candidate SHA;
+  neutral, skipped, stale or another SHA's run never counts); its actions and named services; its validity window and
+  its rollback target. It is HMAC-signed with a host key (mode 600, outside the repository) that agents never read
+  (§24.7). *Cause (§20): enhanced design §3; the 2026-09-25 incident behind §24.8, where a campaign grant released PRs
+  it did not name.*
+- **Mutation order.** Checks first, then one reservation, then the effect: under the one global release lock (the
+  `.lock` file `release_window.py` already holds for a window run), verify the capability, the delegation epoch and
+  digest, the control epoch, the STOP latch and the observed remote state; then write the intent and consume one
+  attempt in one atomic write; then act, and recheck revocation immediately before the main mutation or production
+  activation. A refusal before the reservation consumes nothing. An effect whose outcome is unknown is UNCERTAIN and
+  blocks every reservation until it is reconciled against GitHub `main`, `CURRENT` and the services; only then may it
+  be refunded or retried. *Cause (§20): enhanced design §3 and §7; audit 2026-10-21 (`guard_ledger.py:306`) — a
+  grant use consumed before CI, so a CI refusal spent authority.*
+- **A routine review is not a renewal.** Automated reports review policy and credential health; drift, an expired
+  machine credential or a changed scope is escalated, never silently renewed. *Cause (§20): enhanced design §3.*
+
+## 25.3 Windows and the merge freeze
+
+- **Four windows, America/New_York, DST-aware, no catch-up: 18:00, 00:00, 06:00 and 08:00, enabled in that
+  order.** 18:00 is the canary window and is enabled first. 00:00 follows. 06:00 needs a drain or a proven
+  non-disruptive release path. 08:00 is last; its latest start is 09:00 minus the measured promote, verify and
+  rollback time minus a buffer, and it is skipped on 08:30 macro-release days or when the macro calendar is stale.
+  A missed window is skipped, never run late. Enabling a window is a scope change (§17), made once that window's
+  own proof passes (§25.7), with no minimum wait between windows. *Cause (§20): operator directive 2026-10-21; plan
+  Phase 3 window rules; the 08:00 window ends 30 minutes before the open.*
+- **One train per window.** Each train freezes its base SHA, member PR heads, policy and classifier versions and
+  check manifest before integrating; nothing joins after the freeze. *Cause (§20): enhanced design §4.*
+- **Merge freeze.** From the record's `merge_freeze.starts_min_before_window` (30 minutes in the example) before a
+  window opens until that window's train reaches a terminal state (verified, rolled back, or stopped), nothing but
+  the train merges to `main` — the operator's emergency path included, unless the operator first stops the train.
+  *Cause (§20): a merge landing between freeze and promotion moves `main` under the train (the 2026-10-16
+  `release_window.py` main-moved refusal, `a7fc2175b` → `94ee3770a`).*
+- **One exception: operator-forced off-window canary runs, canary phase only.** While the train is in its canary
+  phase (§25.7: after shadow's proofs pass, with 18:00 the only enabled window), the operator may force one live canary
+  train outside a window. The force is typed by the operator at the host: stdin is a TTY and the operator re-types the
+  exact phrase the host prints, which names the train and the control epoch (the `release_control_cli.py` proof). It
+  is never accepted from n8n, the Command Center, Telegram, an agent, a pipe, a file or an environment variable, and an
+  agent never forces one. Only the window check is waived. Every other gate still holds: the armed delegation and its
+  accepted digest, a ReleaseCapability@v1 for that train and phase, the one global release lock, STOP and both epochs,
+  the merge freeze (from the force until the train reaches a terminal state), the permitted classes, every required
+  check exactly `success` on the candidate SHA, the verification policy, the attempt budget and the rollback target. A
+  forced run never starts during regular market hours (09:30–16:00 ET) or inside another window's merge freeze. Its
+  receipt records it as operator-forced, and it counts toward the canary proofs §25.7 lists. Outside the canary phase an off-window request stays shadow (n8n's forced tick) and an
+  off-window live release stays the manual path (§25.1, §24.8). *Cause (§20): operator approval 2026-10-21 —
+  operator-forced off-window canary runs, TTY plus phrase, canary phase only, every other gate still enforced.*
+
+## 25.4 STOP, pause, resume and revoke
+
+- **STOP is host-enforced, separate from the trading kill switch.** A STOP persists the latch
+  (`STOP.json` in the release-window state dir, the latch `release_window.py` already honours) and increments the
+  control epoch, so every capability already issued dies. New `main` writes, `train/*` writes and promotions are
+  refused at every mutation boundary; observation and safe settlement or rollback keep running. Stopping releases
+  never disables trading containment or monitoring. *Cause (§20): enhanced design §7.*
+- **Its states are requested → acknowledged → settling → stopped, each with a timestamp.** The controller
+  acknowledges at its next mutation boundary; an activation already started finishes its bounded verification or
+  restores the known-good artifact (settling); stopped means nothing is in flight. A STOP not acknowledged within its
+  SLO escalates through the host notifier (P1, §24.1), never through n8n alone. *Cause (§20): enhanced design §7 — "a
+  false immediate success" is what a one-state STOP button shows.*
+- **Fail closed.** A latch that exists but cannot be read or parsed (corrupt, unreadable, a directory, a dangling
+  link) is a STOP; missing or corrupt control state is not authorized. *Cause (§20): 2026-10-21 —
+  `release_window.py` `State.read` returned `None` for a corrupt latch, so an unreadable STOP read as absent (fixed on
+  `ops/release-train-20261021`, `9dde41745`, `read_latch`: ABSENT, SET, UNREADABLE).*
+- **Who may do what.** The Command Center and agents may only request STOP or pause (typed command, server-derived
+  actor, CSRF and origin checks, idempotency key, expected control version, durable audit). Resume, arming,
+  re-arming, scope changes and revoke are operator acts at the host CLI or by a Telegram button confirmation (D3);
+  never through report-only middleware or an unimplemented step-up. The host CLI works when the Command Center and
+  n8n are down. *Cause (§20): decision D3 2026-10-21 (TOTP declined); enhanced design §7.*
+- **Pause after current** stops claiming later trains and lets the current one reach its terminal state; the epoch
+  does not change. **Resume** archives the latch (rename, never delete, §0 rule 6), shows the stop reason, the current
+  state and fresh readiness, and issues a new epoch: no capability from before the stop is ever valid again, and the
+  train waits for its next approved window. **Revoke** ends issuance under the delegation and issues a new epoch;
+  queue and history stay readable; re-enabling is an arming. Rollback after a failed promotion uses a fresh epoch,
+  never an old one. *Cause (§20): enhanced design §7, §9.*
+
+## 25.5 The release-train GitHub App (D2)
+
+- **The train writes to GitHub only through a GitHub App the operator creates and installs on `PatsKiller/tardeai`
+  alone,** with Contents read/write, Pull requests read/write, Checks read and Metadata read, and nothing else
+  (Workflows write withheld, so a batch that changes `.github/workflows/**` stays on the manual path). The release
+  service mints a 1-hour installation token per reservation, narrowed to that phase's permissions, held in memory
+  only. The private key sits on the host outside the repository at mode 600; agents never read, copy or symlink it
+  (§24.7). An App permission cannot be limited to a branch or a path, so the `train/*` limit comes from a repository
+  ruleset with the App as its only bypass actor plus the capability's bound output ref — a branch-protection change,
+  operator-only (§17). Procedure: `docs/ops/RELEASE_TRAIN_GITHUB_APP.md`. *Cause (§20): decision D2 2026-10-21;
+  GitHub documents installation tokens as expiring after one hour.*
+
+## 25.6 Train pushes are the only automated remote sync
+
+- **Nothing scheduled pushes except the release service's train refs and batch-PR merge** (§24.5, as amended at
+  ratification; `AI_WORK_POLICY.md` §28). An agent's own push stays one operator-authorized event under the push
+  budget; train pushes are not agent pushes and do not draw on an agent's budget. *Cause (§20): §24.5's cause still
+  holds for every other job; operator directive 2026-10-21.*
+
+## 25.7 Phases end on proofs, never on a count of days
+
+- **Arming waits for the plan's build gates:** Phase 0 reconciliation (the grant-ledger and STOP fixes), Phase 1
+  (queue store and read-only Command Center view) and Phase 3 (integration and qualification in `release_window.py`,
+  no second deployer). *Cause (§20): plan Phases 0–3; enhanced design §10.*
+- **Shadow, canary and expand stay as phases; each ends when its proofs pass, with no minimum number of days or
+  windows.** Shadow ends when a shadow train has run clean for each of the four windows (they may be consecutive
+  windows, or forced shadow ticks). Canary ends when the 18:00 canary has proved a successful release, a failed
+  validation, a rollback, STOP during each phase and crash recovery; an operator-forced off-window canary run (§25.3)
+  counts toward these proofs. Expand enables 00:00, 06:00 and 08:00 in that order, each once its own window's proof
+  passes; they may come in consecutive windows. No document, packet or runbook may add a multi-day wait to these
+  phases. *Cause (§20): operator (owner) 2026-10-21, verbatim: "I do not want gates for 5 through 7... I just only asked you to remove the three-day wait requirement" — the three-day waits are removed; the phases
+  and their proofs stay.*
+
+## 25.8 Open gaps, stated
+
+- The issuer, control and delegation code is libraries only, apart from two consumers: the train controller
+  (`scripts/lib/release_train_controller.py`, `TRAIN_CONTROLLER_STATUS = "BUILD_ONLY"`, which refuses `--live`) and
+  the n8n window request's read-only delegation check (`scripts/lib/release_train_window.py`); no timer, unit or deploy
+  path runs a live train (`tests/test_release_train_authority_20261021.py::test_libraries_are_wired_into_nothing`).
+  The operator-forced off-window canary of §25.3 is not built: today the controller refuses every live off-window
+  request (`REFUSED_OFF_WINDOW`) and an off-window request is always shadow, so until a reviewed change adds the
+  TTY-plus-phrase path the exception authorizes nothing in code. The Telegram confirmation
+  hook is a stub that refuses. `release_window.py` still holds per-window `release-write` grants and
+  `MULTI_WINDOW_GRANT_STATUS = "PROPOSED"`. The guard hooks run in log mode (D6), so "agents never merge" is a rule,
+  not yet a block, until the operator applies a `main` ruleset or the guard patches. *Cause (§20): measured on
+  `feat/release-train-authority-20261021`, on origin/main `4104effb9` (release 2) and on `065f1083c` (16.0.0
+  ACTIVE), 2026-10-21.*
+
+## 25.9 Ratifying edit
+
+- Done 2026-10-21, after `APPROVE_AGENTS_POLICY_17_0_0 1914 aeb5e6fd70dcefac0df8541c496bebb4a5e904ec`.
+  The ratifying edit set this status and the banner and version row to ACTIVE, set the
+  header block (17.0.0 PROPOSED, `Effective-Date` PENDING, while PROPOSED) to 17.0.0 ACTIVE with its
+  `Effective-Date` and `Supersedes` the last ACTIVE version, and inserted exactly three clauses
+  (`tests/test_agents_policy_17_0_0_release_train.py` holds their anchors and digests):
+
+  (1) In §17, a new paragraph after "**If the deferred list grows during a wave, that is a finding about how the
+  wave was run.**":
+
+  ```
+  **Release train (17.0.0, §25):** arming, re-arming or revoking the standing release delegation, and
+  creating or editing its host record · clearing a release STOP or resuming the release train · expanding the
+  train's scope: a permitted class, an enabled window, a limit, a named service or the verification policy
+  (narrowing it is the same act and the same proof) · custody of the release-train GitHub App: creating,
+  installing, re-permissioning or suspending it, and placing, rotating or revoking its private key. Each is done
+  by the operator at the host CLI (`scripts/release_control_cli.py`) or by a Telegram button confirmation
+  (decision D3, 2026-10-21); an agent or the Command Center may only request STOP or pause.
+  ```
+
+  sha256 `8a40ded03c14814d0f5b769c00f6730b4d82b85f3172cbe9a12e3f756bc2c035`.
+
+  (2) In §24.5, after the first bullet's cause, a second bullet:
+
+  ```
+  - **One exception (17.0.0, §25): the release service.** Once the standing delegation is armed, the host release
+    service (never an agent, a lane script or an n8n workflow) may push `refs/heads/train/<train_id>`, open the
+    train's batch PR and merge it, each only inside a reservation of a ReleaseCapability@v1 for that train and
+    phase and with a GitHub App installation token minted for that reservation. Nothing else scheduled pushes.
+    *Cause (§20): operator directive 2026-10-21 (§25.1); decisions D1 and D2.*
+  ```
+
+  sha256 `39c0ff5332ce2063adc4d09fbba2a6d5e8504c04741131345fa9cd704a5d5877`.
+
+  (3) In §24.8, after the first bullet's cause, a second bullet:
+
+  ```
+  - **Under the release train (17.0.0, §25) the capability is the binding.** A train merge or promotion is
+    authorized by a ReleaseCapability@v1 that binds the exact base, candidate and artifact, the ordered PR heads
+    and the qualifying CI evidence; it is issued per train and phase, never per day. A `release-write` grant naming
+    the SHA or PR stays the binding for the manual and emergency paths. *Cause (§20): decision D1 2026-10-21 —
+    standing authorization replaces daily and 7-day grants; the enhanced design §3 requires the full binding.*
+  ```
+
+  sha256 `c84f81587f1596e950ec46e23b7e13314ee35b37c7e33c784b0adefd8fbec98e`.
+
+  It added `AI_WORK_POLICY.md` §28 (shipped in the same patch, marked binding only once 17.0.0 is ACTIVE; the
+  ratifying edit marked 17.0.0 ACTIVE there, leaving the arming condition), and moved
+  the §17 pins: `tests/test_agents_policy_4_4_0_r1_shadow_shape.py`, `4_6_0`, `5_0_0`, `5_1_0`, `5_2_0` (and `7_0_0`,
+  `10_0_0`, `11_0_0`, `14_0_0` through them) strip clause (1) before hashing, as
+  `tests/test_agents_policy_17_0_0_release_train.py` already does. §0, §2, §2A, §7A, §22, §23.14 and the four
+  adapters do not change. *Cause (§20): §20 — rules are replaced, not accumulated;
+  until ratification the widened clauses stay byte-identical, so no agent reads a PROPOSED widening as in force.*
+
+---
+
 # Version history
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 17.0.0 | 2026-10-21 | ACTIVE | MAJOR | §25 "Release train — agents queue, the train releases" added (Release Train v2, Phase 2). Operator directive 2026-10-21 (plan record): agents queue PRs only; a scheduled train integrates, releases and reports at 00:00, 06:00, 08:00 and 18:00 ET; decisions D1 (standing revocable delegation, no daily or 7-day renewal), D2 (GitHub App, 1-hour installation tokens, operator-created), D3 (resume and scope changes only via the host CLI or a Telegram button confirmation). Once the delegation is first armed agents never merge, push `main` or `train/*`, or release; until then the manual process is unchanged. ReleaseDelegation@v1 on the host, accepted by digest; ReleaseCapability@v1 per train and phase (build/publish cannot merge or promote); one global release lock, intent before effect, refusals consume nothing, UNCERTAIN reconciled before retry. Windows 18:00, 00:00, 06:00, 08:00 ET (enabled in that order, DST-aware, no catch-up) with a merge freeze; operator-forced off-window canary runs (operator approval 2026-10-21: TTY plus phrase, canary phase only, every other gate still enforced; they count as canary proofs). Shadow, canary and expand end when their proofs pass, with no minimum days (operator 2026-10-21). STOP: latch plus epoch, requested → acknowledged → settling → stopped, fail closed; CC may only request STOP or pause; resume issues a new epoch. Operator-only items added to §17 at ratification (arming or revoking the delegation, clearing STOP, resume, scope expansion, GitHub App custody). `AI_WORK_POLICY.md` §28: train pushes are the only automated remote sync. §24.5 and §24.8 gained one quoted bullet each at ratification; §17, §24.5 and §24.8 were byte-identical until then. §0, §2, §2A, §7A, §22, §23.14 and the adapters byte-identical. MAJOR: an automated actor may push `train/*` and merge under a standing delegation. Header block 17.0.0 PROPOSED, `Effective-Date` PENDING while PROPOSED; the ratifying edit set it to 17.0.0 ACTIVE, `Effective-Date` 2026-10-21, `Supersedes` 16.0.0. Numbered after 15.0.0 (PR #1852) and 16.0.0 (PR #1911), both ACTIVE; `Supersedes` 16.0.0. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_17_0_0 1914 aeb5e6fd70dcefac0df8541c496bebb4a5e904ec` (operator, PR #1914 comment by PatsKiller 2026-10-22T03:22:17Z, https://github.com/PatsKiller/tardeai/pull/1914#issuecomment-6331877455, verbatim: "APPROVE_AGENTS_POLICY_17_0_0 1914 aeb5e6fd70dcefac0df8541c496bebb4a5e904ec"); ratified by this edit on #1914's branch, which inserted the three clauses quoted in §25.9 into §17, §24.5 and §24.8 and marked `AI_WORK_POLICY.md` §28 ACTIVE; approval phrase as proposed `APPROVE_AGENTS_POLICY_17_0_0 <pr_number> <head_sha>`; per-PR word, because it changes `AGENTS.md` §17 and `AI_WORK_POLICY.md`. Effective 2026-10-21. |
 | 16.0.0 | 2026-10-21 | ACTIVE | MAJOR | §23.21 "The cutover standard — fixed, dry run, regression tests, one live run" added, rebuilt from 8.0.0 (PR #1727, closed unratified) on the operator's word 2026-10-21 "yes rebuild 1727". Operator ruling 2026-10-14 ~11:05 ET, verbatim: "new standards apply when i say so fix and dry and regression testing, yes it should run live successful to many road blocks to testing". An n8n lane is cutover-ready when (1) its defect is fixed and served, (2) its n8n dry run passes (a forced `dry_run` fire counts; no natural shadow slot), (3) its lane regression tests pass under `TRADE_AI_CI=1`, (4) it has at least one successful `live` n8n run with the cron line still present under the shared lock: the dispatcher's slot, or an operator-forced in-window live fire (`OPERATOR_FORCED_LIVE` in `scripts/n8n_cutover_checklist.py`; never a gate override; never an agent-forced F09 live run, §23.25). Procedure: `scripts/n8n_cutover_wave.py` canary rows, `comment-cron` retirement as `# RETIRED <date> n8n-cutover <lane>` (the commented line is the fallback), then the dispatcher-row PR. Multi-day soaks removed; operator waivers recorded verbatim. While PROPOSED, §8.1, §23.3, §23.12, §23.14 and §23.23 were byte-identical; the ratifying edit replaced five quoted clauses (the §23.3 and §23.14 `trade-ai-scalp-live` 3-day fallback, the §8.1 natural-evidence gate list, a §23.12 pointer, the §23.23 (4) citation) whose digests `tests/test_agents_policy_16_0_0_cutover_standard.py` pins. §0, §2, §2A, §7A, §17, §22 and the adapters byte-identical. MAJOR: removes a 4.0.0 restriction; §23.14 changes by one clause at ratification (permitted to a new MAJOR outside a program window; window closed 2026-10-12). Header block 16.0.0 PROPOSED, `Effective-Date` PENDING, `Supersedes` 15.0.0 while PROPOSED; the ratifying edit set it to 16.0.0 ACTIVE, `Effective-Date` 2026-10-21, `Supersedes` 15.0.0. Numbered 16.0.0 after 15.0.0 (PR #1852, ACTIVE). | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1416ab9f240a69def0523dd125afbc18` (operator, PR #1911 comment by PatsKiller 2026-10-22T02:33:20Z, https://github.com/PatsKiller/tardeai/pull/1911#issuecomment-6331278599, verbatim: "APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1416ab9f240a69def0523dd125afbc18"); ratified by this edit on #1911's branch, which replaced the five clauses quoted in §23.21; approval phrase as proposed `APPROVE_AGENTS_POLICY_16_0_0 <pr_number> <head_sha>`; per-PR word, because it changes `AGENTS.md`. Effective 2026-10-21. |
 | 15.0.0 | 2026-10-18 | ACTIVE | MAJOR | §24.12 "Disk hygiene: the only automated deletion" added, one sentence added to §0 rule 6 and one entry added to §17 (both inserted by the ratifying edit in `AGENTS.md`, the four adapters and §17; absent while PROPOSED). Operator-directed 2026-10-18, verbatim: "i approve automatic deletion would need an AGENTS.md amendment" (root disk 89%; about 100 GB of stale clones/worktrees and 36 GB of old releases). Once ACTIVE, the weekly n8n lane `disk-hygiene` (or the operator at the CLI) may run ONLY `scripts/disk_hygiene.py` under `config/disk_hygiene_rules.json` to remove: git clones/worktrees that are clean, have no untracked files and no unpushed commits, are merged into `origin/main`, are referenced by no CURRENT release, unit or crontab line, hold no process cwd and are idle past N days; and release directories other than CURRENT, the previous release and the newest N. A code-enforced never-touch list (db_backups, persistent-state, models, .env/credential/cookie/token paths, .ssh, .config, Docker and n8n volumes) holds over every rule; changing the rules or the list is an operator config change (config-write grant + reviewed PR; new §17 entry "changing the disk-hygiene rules or never-touch list"). Every apply needs a fresh manifest, re-validates each item, respects per-run byte/item caps and writes a `LaneRunReceipt@v2` with each removed path, size and rule evidence; the first live apply follows the operator's review of a manifest; kill switch = remove the lane from `TRADEAI_N8N_RELAY_LIVE_LANES` or set `auto_apply` false. No agent deletes by hand; data, backups, DB rows and credentials stay under "Never delete". Open gap: `scripts/disk_hygiene_enforcer.py` (release and backup removal) is not covered and is retired or folded by its own PR. MAJOR: it narrows §0 rule 6 for one lane (version policy; precedent 5.0.0, 14.0.0). Tests: `tests/test_agents_policy_15_0_0_disk_hygiene.py`. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_15_0_0 1852 fc56728962fd51c94b3dc8cfd67e2df334eda88f` (operator, PR #1852 comment by PatsKiller 2026-10-21T19:37:58Z, https://github.com/PatsKiller/tardeai/pull/1852#issuecomment-6324859562, verbatim: "APPROVE_AGENTS_POLICY_15_0_0 1852 fc56728962fd51c94b3dc8cfd67e2df334eda88f"); ratified by this edit on #1852's branch; ratifying edit inserts the §0 rule 6 sentence in `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/00-tradeai-work-policy.mdc`, `.github/copilot-instructions.md` and `.goosehints`, and the §17 entry; approval phrase as proposed `APPROVE_AGENTS_POLICY_15_0_0 <pr_number> <head_sha>`; per-PR word, because it changes `AGENTS.md` §0 and §17. Effective 2026-10-21. |
 | 14.0.0 | 2026-10-16 | ACTIVE | MAJOR | §24.11 "Read-only broker sync — the `broker-read` grant" added, and one sentence added to §0 rule 2 (inserted by the ratifying edit in `AGENTS.md` and the four adapters; it was absent while PROPOSED). Operator request 2026-10-16: "make that bash so agents can run, make amendment, not trading just reading, update agents.md". With an active operator `broker-read` guard grant (≤ 4 h, one use per run, remotely grantable, revocable), an agent may invoke ONLY `scripts/ops/broker_read_sync.sh` — the repo form of the operator's `sync_all_readonly.sh`: a closed eight-step allowlist (`broker_read_sync_policy.STEPS`) of Schwab, Alpaca, moomoo and SnapTrade position and transaction reads into our own stores, dry run by default, `--apply` to write, `--plan` contacting no broker. It refuses unless the trading lock is LOCKED for every broker, the Schwab access mode resolves to `read_only` for the run, the static capability audit of every step's effective import closure is clean, and it runs from the served release. `.env` is sourced only inside each step's own shell and never printed; output is scrubbed. Re-auth, token refresh, 2FA and flags are unreachable (runtime stubs, broker-host non-GET refusal); no token → `needs_operator_reauth`, stop. Stop managers, stop sync, options lifecycle, defense execution, order pilots, approval/2FA, order transports, the API server and active trader are excluded and refused at import; CI pins it (`tests/test_broker_read_sync_20261016.py`). Receipt `BrokerReadSyncReceipt@v1`. Guard scope `broker-read` in `bin/guard` and `.cursor/hooks/guard-lib.sh` (operator-only guard configuration, carried in the PR for review). MAJOR: it narrows §0 rule 2 for one read-only purpose (version policy; precedent 5.0.0). Numbered 14.0.0 because 12.1.0 (nightly cutover controller) and 13.0.0 (PR #1830) are claimed. Tests: `tests/test_agents_policy_14_0_0_broker_read.py`. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_14_0_0 1838 0d4940cda` (operator, PR #1838 comment by PatsKiller 2026-10-16T22:44:55Z, verbatim: "APPROVE_AGENTS_POLICY_14_0_0 1838 0d4940cda"); merged #1838 as `0c5998042` (operator-merged 2026-10-16T22:44:57Z) while PROPOSED; ratifying edit inserts the §0 rule 2 sentence in `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/00-tradeai-work-policy.mdc`, `.github/copilot-instructions.md` and `.goosehints`; per-PR word, because it changes `AGENTS.md` §0. Effective 2026-10-16. |
