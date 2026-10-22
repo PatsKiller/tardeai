@@ -32,6 +32,11 @@ export type TriageInput = {
     operator_decision?: string
     protection_state?: string
     risk_flags?: string[]
+    stop_eligible?: boolean
+    is_unstoppable_fund?: boolean
+    small_position?: boolean
+    worthless?: boolean
+    protection?: { stop_near?: boolean } | null
   }> | null
   /** broker-proposals/summary */
   queueSummary?: {
@@ -78,8 +83,10 @@ export function buildTradingTriage(input: TriageInput): TriageChip[] {
   const positions = input.intelPositions ?? []
   const risk = input.intelSummary?.risk_counts ?? {}
 
-  // 1) High-priority unprotected / needs protection review
+  // 1) High-priority unprotected / needs protection review. A fund that cannot take a stop order, a
+  //    position too small for one, and a write-off are never "unprotected" (Open Trades audit 2026-10-22).
   const needsProt = positions.filter(p => {
+    if (p.stop_eligible === false || p.is_unstoppable_fund || p.small_position || p.worthless) return false
     const rf = p.risk_flags ?? []
     const pri = String(p.operator_priority || '').toLowerCase()
     const highPri = pri === 'critical' || pri === 'high'
@@ -104,7 +111,9 @@ export function buildTradingTriage(input: TriageInput): TriageChip[] {
   // 2) Near stop
   const nearStop = Number(risk.near_stop ?? 0)
   if (nearStop > 0) {
-    const nearRows = positions.filter(p => (p.risk_flags ?? []).includes('near_stop'))
+    // The intelligence flag is `stop_near` (risk_flags) / protection.stop_near; `near_stop` never matched,
+    // so the chip fell back to the first positions — names with no stop at all (audit 2026-10-22).
+    const nearRows = positions.filter(p => (p.risk_flags ?? []).includes('stop_near') || (p.risk_flags ?? []).includes('near_stop') || p.protection?.stop_near === true)
     chips.push({
       id: 'near_stop',
       label: 'Near stop',
@@ -112,7 +121,7 @@ export function buildTradingTriage(input: TriageInput): TriageChip[] {
       count: nearStop,
       tone: 'critical',
       tab: 'Open Trades',
-      samples: uniqSyms(nearRows.length ? nearRows : positions),
+      samples: uniqSyms(nearRows),
     })
   }
 
@@ -184,7 +193,9 @@ export function buildTradingTriage(input: TriageInput): TriageChip[] {
       detail: `Unmatched broker ${umBroker} · local ${umLocal}`,
       count: reconBreaks,
       tone: 'warn',
-      tab: 'Broker Recon',
+      // Broker Recon tab retired 2026-10-22: reconciliation is a drawer on Open Trades.
+      tab: 'Open Trades',
+      params: { drawer: 'recon' },
     })
   }
 
@@ -197,7 +208,7 @@ export function buildTradingTriage(input: TriageInput): TriageChip[] {
       detail: 'Validation/Alpaca pipeline only — not Path B live queue',
       count: paper,
       tone: 'info',
-      tab: 'Proposals', // paper still managed near proposals tooling; Entry Desk is Path A
+      tab: 'Proposals', // paper still managed near proposals tooling; Path A (Entry Desk) is a section there
     })
   }
 

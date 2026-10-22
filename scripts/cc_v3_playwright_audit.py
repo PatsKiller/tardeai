@@ -37,10 +37,8 @@ HUB_TABS: dict[str, list[str]] = {
     "/watch": ["Watchlist", "Watchpool", "Sectors", "Pullback/MACD"],
     "/portfolio": ["Holdings", "Look-through", "Returns", "Dividends", "Forecast", "Tax", "Redeploy", "Stop Management"],
     "/risk": ["Exposure", "Correlation", "Regime", "Recovery"],
-    "/trading": [
-        "Trade AI", "Options", "Open Trades", "Proposals", "Entry Desk", "Execution",
-        "Broker Recon", "Scalp", "ATM Controls", "Broker Orders", "Schwab Accounts",
-    ],
+    # Trading tabs 8 → 4 (operator 2026-10-22). Broker Orders is reached from approval links only.
+    "/trading": ["Trade AI", "Options", "Open Trades", "Proposals"],
     "/strategy": ["Leaderboard", "Analytics", "Planner", "Desk", "Incubator", "Plan vs Perf"],
     "/agents": ["Roster", "Calibration", "Workflow", "Performance", "Weekly Learning"],
     "/intelligence": [

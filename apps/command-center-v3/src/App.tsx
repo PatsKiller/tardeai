@@ -219,11 +219,11 @@ function Shell() {
             <Route path="portfolio/re-entry" element={<RouteErrorBoundary route="/v3/portfolio/re-entry"><ReEntryPage /></RouteErrorBoundary>} />
             <Route path="risk" element={<RouteErrorBoundary route="/v3/risk"><RiskHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="trading" element={<RouteErrorBoundary route="/v3/trading"><TradingHub onDrill={setDrill} /></RouteErrorBoundary>} />
-            <Route path="active-trader" element={<RouteErrorBoundary route="/v3/active-trader"><ActiveTraderHub /></RouteErrorBoundary>} />
+            <Route path="active-trader" element={<RouteErrorBoundary route="/v3/active-trader"><ActiveTraderHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="trading/active-trader" element={<RouteErrorBoundary route="/v3/trading/active-trader"><Navigate to="/active-trader" replace /></RouteErrorBoundary>} />
             <Route path="go/order/:intentId" element={<RouteErrorBoundary route="/v3/go/order/:intentId"><GoOrderDeepLink /></RouteErrorBoundary>} />
             <Route path="go/proposal/:proposalId" element={<RouteErrorBoundary route="/v3/go/proposal/:proposalId"><GoProposalDeepLink /></RouteErrorBoundary>} />
-            <Route path="manual-execution" element={<RouteErrorBoundary route="/v3/manual-execution"><Navigate to="/trading?tab=Entry+Desk" replace /></RouteErrorBoundary>} />
+            <Route path="manual-execution" element={<RouteErrorBoundary route="/v3/manual-execution"><Navigate to="/trading?tab=Proposals&section=path-a" replace /></RouteErrorBoundary>} />
             <Route path="strategy" element={<RouteErrorBoundary route="/v3/strategy"><StrategyHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="agents" element={<RouteErrorBoundary route="/v3/agents"><AgentRuntimeHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="intelligence" element={<RouteErrorBoundary route="/v3/intelligence"><IntelligenceHub onDrill={setDrill} /></RouteErrorBoundary>} />
