@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_queue_migration_grants_20261021",
+  "files": [
+    "tests/test_release_queue_migration_grants_20261021.py"
+  ],
+  "anchor": "RELEASE_QUEUE_MIGRATION_GRANTS_20261021",
+  "comment": [
+    "ANCHOR: RELEASE_QUEUE_MIGRATION_GRANTS_20261021 — release-train arming finding 12. migrations/2026_10_21_release_queue.sql",
+    "grants trade_ai SELECT/INSERT on release_queue_events (+ sequence USAGE) and SELECT/INSERT/UPDATE on release_queue,",
+    "nothing else (PUBLIC revoked); the down migration archives by rename and withdraws the write grants. Proven on a",
+    "throwaway initdb cluster under $TMPDIR, unix socket only, never production (skipped without PG binaries)."
+  ]
+}

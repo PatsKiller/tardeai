@@ -87,7 +87,7 @@ already exists. Until it is applied, events go to `train_events.jsonl` and the C
 - **Expected (dry run):**
   ```
   migration …/migrations/2026_10_21_release_queue.sql
-    sha256 4c81a92c626f4248b53cc06c83099d8efa7c0167888b957982644449848f107d  creates (IF NOT EXISTS): release_queue_events, release_queue_events_pr_seq_idx, release_queue_events_train_seq_idx, release_queue_events_type_seq_idx, release_queue, release_queue_state_idx
+    sha256 b2382135a8a9afe81151e6c9447b717048b98835f38e877b176363b2edebee39  creates (IF NOT EXISTS): release_queue_events, release_queue_events_pr_seq_idx, release_queue_events_train_seq_idx, release_queue_events_type_seq_idx, release_queue, release_queue_state_idx
     destructive statements: none (additive)
   ```
   Expected (apply): `APPLIED: store migrated (2 tables, 2 append-only triggers)`. A second run prints `NOOP`.
@@ -733,6 +733,15 @@ The fallback holds through every phase.
 12. **The migration owner.** The migration's own header says "Apply (operator): `psql "$DB" …`" without naming a
     role, and it grants nothing. Applied as a superuser, the controller's `trade_ai` role could not write. Step A
     pins the role.
+    **Status: FIXED** (branch `fix/release-train-arming-blockers-20261021`; the migration had not been applied
+    anywhere). The migration now revokes everything from PUBLIC and grants `trade_ai` SELECT and INSERT on
+    `release_queue_events` (plus USAGE on its `seq` sequence, which INSERT needs), and SELECT, INSERT and UPDATE on
+    `release_queue` (the projection upsert), and nothing else. The down migration withdraws those write grants from the
+    archived tables (SELECT stays). Both were proven on a throwaway unix-socket PG cluster in scratch, never
+    production. As `trade_ai`, append and upsert work; DELETE, TRUNCATE and UPDATE of an event are refused. Note that
+    step A still applies the migration as `trade_ai`, which then owns the tables, so the grants are least privilege
+    in full only when an admin role applies it. Either way the append-only triggers bind the owner. Which role applies
+    it is the operator's choice. The new migration sha256 is `b2382135…bee39`.
 13. **Possible §23.24 reach into H.0.** §23.24's activation bar reads "no activation or stage promotion without
     passing". H.0 moves `pr-hygiene-audit` and the request lanes from stage `shadow` to `canary` on workflows that do
     not pass the gate. Recent dispatcher lanes (disk-hygiene, 2026-10-20) were promoted in this way. Whether the bar
@@ -752,7 +761,7 @@ Paths are shortened to `…`.
 == release train arming PLAN (dry run; nothing is written)
    user johnclaw host ms01-openclaw; code root …/s/code; state dir …/release_window (env:TRADEAI_RELEASE_WINDOW_STATE_DIR)
 == A
-  sha256 4c81a92c…f107d  creates (IF NOT EXISTS): release_queue_events, …, release_queue, release_queue_state_idx
+  sha256 b2382135…bee39  creates (IF NOT EXISTS): release_queue_events, …, release_queue, release_queue_state_idx
   destructive statements: none (additive)
   WOULD (apply): psql $RTARM_PSQL_ARGS -X -v ON_ERROR_STOP=1 -f …/migrations/2026_10_21_release_queue.sql
 == B
