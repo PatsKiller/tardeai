@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agents_policy_17_0_0_release_train",
+  "files": [
+    "tests/test_agents_policy_17_0_0_release_train.py"
+  ],
+  "anchor": "AGENTS_POLICY_17_0_0_RELEASE_TRAIN",
+  "comment": [
+    "ANCHOR: AGENTS_POLICY_17_0_0_RELEASE_TRAIN — ACTIVE, ratified 2026-10-21 (APPROVE_AGENTS_POLICY_17_0_0 1914",
+    "aeb5e6fd7, PR #1914 comment 6331877455; operator-applied patches, agents never edit AGENTS.md /",
+    "AI_WORK_POLICY.md): agents queue and never merge, push main or train/*, or release; standing delegation;",
+    "00/06/08/18 ET windows + merge freeze; operator-forced off-window canary runs (operator approval 2026-10-21: TTY",
+    "plus phrase, canary phase only, every other gate still enforced); STOP semantics; the §17, §24.5 and §24.8",
+    "clauses inserted by the ratifying edit and their digests pinned; train pushes are the only automated remote sync."
+  ]
+}

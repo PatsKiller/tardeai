@@ -191,8 +191,17 @@ def _finviz_token(k):
         return False, f"HTTP {r.status_code}"
     if "Ticker" not in text[:400]:
         return False, "token rejected or empty export"
+    return _finviz_rows_verdict(text)
+
+
+def _finviz_rows_verdict(text):
+    """A CSV export with its Ticker header proves the credential authenticated. The probe screen is a
+    narrow momentum filter, so zero matching rows (pre-market, quiet tape) is an empty screen, not a dead
+    credential (2026-10-22: the banner called both credentials failing on "0 screener rows")."""
     rows = max(0, len([ln for ln in text.strip().split("\n") if ln.strip()]) - 1)
-    return rows > 0, f"{rows} screener rows"
+    if rows == 0:
+        return True, "0 screener rows (export authenticated; screen empty right now)"
+    return True, f"{rows} screener rows"
 
 
 def _finviz_cookie(k):
@@ -203,8 +212,7 @@ def _finviz_cookie(k):
         return False, f"HTTP {r.status_code}"
     if "login" in body or "sign in" in body or "Ticker" not in text[:400]:
         return False, "login page or empty export — cookie expired"
-    rows = max(0, len([ln for ln in text.strip().split("\n") if ln.strip()]) - 1)
-    return rows > 0, f"{rows} screener rows"
+    return _finviz_rows_verdict(text)
 
 
 VALIDATORS = {

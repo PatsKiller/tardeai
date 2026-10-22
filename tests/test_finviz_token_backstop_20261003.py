@@ -216,3 +216,27 @@ def test_token_validator_probes_with_auth_and_never_echoes_it(monkeypatch):
     assert ok is True and detail == "2 screener rows"
     assert seen["url"].endswith(f"auth={TOKEN}") and "Cookie" not in seen["headers"]
     _no_secret(detail)
+
+
+def test_authenticated_export_with_zero_rows_is_not_a_dead_credential(monkeypatch):
+    """2026-10-22: a header-only CSV (narrow probe screen, nothing matching pre-market) is an empty
+    screen, not an expired cookie or token; only a login page / missing header is a failure."""
+    import secret_validators as sv
+
+    class _R:
+        status_code = 200
+        text = "No.,Ticker,Company,Price,Change,Volume\n"
+
+    monkeypatch.setattr(sv, "finviz_probe", lambda url, headers=None: _R())
+    for fn, cred in ((sv._finviz_token, TOKEN), (sv._finviz_cookie, COOKIE)):
+        ok, detail = fn(cred)
+        assert ok is True and detail.startswith("0 screener rows"), detail
+        _no_secret(detail)
+
+    class _Login:
+        status_code = 200
+        text = "<html>Please sign in</html>"
+
+    monkeypatch.setattr(sv, "finviz_probe", lambda url, headers=None: _Login())
+    assert sv._finviz_cookie(COOKIE)[0] is False
+    assert sv._finviz_token(TOKEN)[0] is False
