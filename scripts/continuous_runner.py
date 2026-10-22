@@ -1084,6 +1084,8 @@ def run_full_cycle(root: Path, run_label: str, date_str: str) -> None:
            "--allow-underfilled"]
     print("  [FULL] Launching complete pipeline...")
     try:
+        # 45 min hard limit. Must stay above process_reaper's trade_ai_orchestrator cap (30m):
+        # docs/ops/PIPELINE_TIME_SETTINGS.md, tests/test_pipeline_time_settings_20261022.py.
         subprocess.run(cmd, env=os.environ.copy(), timeout=2700)  # 45 min hard limit
     except subprocess.TimeoutExpired:
         print("  [FULL]            Pipeline timed out after 45 min  -- killing and continuing")

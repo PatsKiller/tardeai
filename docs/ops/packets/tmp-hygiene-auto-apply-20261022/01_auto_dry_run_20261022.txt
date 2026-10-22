@@ -1,0 +1,75 @@
+# READ-ONLY dry run: .venv/bin/python scripts/tmp_hygiene_auto.py --dry-run (branch fix/tmp-hygiene-auto-apply-20261022). Writes nothing, deletes nothing, sends nothing.
+Filesystem      Inodes   IUsed IFree IUse% Mounted on
+tmpfs          1048576 1023464 25112   98% /tmp
+2026-10-22T20:48:56Z
+{"dry_run": true, "inodes_used_pct": 97.61, "would_remove": 14392, "would_reclaim_files": 100218, "approval": "operator-20261022-tmp-hygiene-delete"}
+tmp_hygiene plan  generated_at 2026-10-22T20:48:56.724108+00:00  host ms01-openclaw  root /tmp
+rules /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.claude/worktrees/agent-ab6ae1a468304f8c5/config/disk_hygiene_rules.json sha256 157d158cace7  process cwds 38  open paths 290
+filesystem inodes 1023540 of 1048576 used (97.61%)
+
+CANDIDATES 14392  reclaimable 100.2k inodes, 0.15 GB
+  B:tmp_pytest_basetemp          1       2.2k inodes     0.01 GB
+  E:cio_acceptance_v4:tmp_named_entry   750       1.9k inodes     0.00 GB
+  E:gate_a1:tmp_named_entry    171       0.3k inodes     0.00 GB
+  E:goal_due_repair_dry:tmp_named_entry  1080       1.2k inodes     0.00 GB
+  E:hermetic_env:tmp_named_entry  5172      32.1k inodes     0.01 GB
+  E:n8nmat_unit:tmp_named_entry  3300       5.8k inodes     0.01 GB
+  E:operator_control_apply:tmp_named_entry   591       0.7k inodes     0.00 GB
+  E:pipeline_results_tmp:tmp_named_entry   141       0.1k inodes     0.00 GB
+  E:pipeline_test_stage_lock:tmp_named_entry   139       0.1k inodes     0.00 GB
+  E:pipeline_test_step_lock:tmp_named_entry  3014       3.0k inodes     0.00 GB
+  P:tmp_pytest_dir              15      47.8k inodes     0.11 GB
+  S:tmp_claude_session          18       5.0k inodes     0.01 GB
+
+LARGEST 20 CANDIDATES BY INODES
+      40.1k    0.09 GB  tmp_pytest_dir     /tmp/pytest-of-johnclaw/pytest-204204  idle 1.03d  registered worktrees 0
+       4.5k    0.01 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw/243cdb2b-21d3-42c2-ad84-6729909f0f3d  idle 16.76d  registered worktrees 0
+       2.7k    0.00 GB  tmp_pytest_dir     /tmp/pytest-of-johnclaw/pytest-201457  idle 1.3d  registered worktrees 0
+       2.3k    0.00 GB  tmp_pytest_dir     /tmp/pytest-of-johnclaw/pytest-201377  idle 1.3d  registered worktrees 0
+       2.2k    0.01 GB  tmp_pytest_basetemp /tmp/cbd/2698529  idle 1.02d  registered worktrees 0
+       0.6k    0.00 GB  tmp_pytest_dir     /tmp/pytest-of-johnclaw/pytest-201342  idle 1.3d  registered worktrees 0
+       0.4k    0.00 GB  tmp_pytest_dir     /tmp/pytest-of-johnclaw/pytest-201437  idle 1.29d  registered worktrees 0
+       0.4k    0.00 GB  tmp_pytest_dir     /tmp/pytest-of-johnclaw/pytest-201378  idle 1.3d  registered worktrees 0
+       0.3k    0.00 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw/77a6de60-3513-40ce-9220-25d684930e93  idle 12.81d  registered worktrees 0
+       0.3k    0.00 GB  tmp_pytest_dir     /tmp/pytest-of-johnclaw/pytest-199964  idle 1.74d  registered worktrees 0
+       0.2k    0.00 GB  tmp_pytest_dir     /tmp/pytest-of-johnclaw/pytest-201438  idle 1.29d  registered worktrees 0
+       0.2k    0.00 GB  tmp_pytest_dir     /tmp/pytest-of-johnclaw/pytest-201459  idle 1.3d  registered worktrees 0
+       0.2k    0.00 GB  tmp_claude_session /tmp/claude-1000/-home-johnclaw/7b2cdc6a-222e-4d83-ad5b-5da06beee281  idle 28.98d  registered worktrees 0
+       0.1k    0.00 GB  tmp_pytest_dir     /tmp/pytest-of-johnclaw/pytest-200033  idle 1.73d  registered worktrees 0
+       0.1k    0.00 GB  tmp_pytest_dir     /tmp/pytest-of-johnclaw/pytest-201387  idle 1.3d  registered worktrees 0
+       0.1k    0.00 GB  tmp_pytest_dir     /tmp/pytest-of-johnclaw/pytest-201436  idle 1.29d  registered worktrees 0
+       0.1k    0.00 GB  tmp_pytest_dir     /tmp/pytest-of-johnclaw/pytest-193435  idle 2.25d  registered worktrees 0
+       0.1k    0.00 GB  tmp_pytest_dir     /tmp/pytest-of-johnclaw/pytest-201297  idle 1.3d  registered worktrees 0
+       0.0k    0.00 GB  tmp_pytest_dir     /tmp/pytest-of-johnclaw/pytest-201487  idle 1.29d  registered worktrees 0
+       0.0k    0.00 GB  tmp_named_entry    /tmp/tradeai_hermetic_env_p0mlkgv1  idle 1.04d  registered worktrees 0
+
+EXCLUDED 1012  (731.4k inodes) by reason (an entry with several reasons counts under each)
+  recent_activity             1009     729.1k inodes     9.97 GB
+  git_tree_dirty                 6     126.4k inodes     2.74 GB
+  open_fd                        2      96.8k inodes     2.75 GB
+  session_transcript_live        2      96.8k inodes     2.41 GB
+  in_use_cwd                     2      42.6k inodes     0.63 GB
+  git_unpushed_commits           3      33.5k inodes     0.46 GB
+  clone_has_linked_worktrees     1       0.1k inodes     0.00 GB
+      96.8k  /tmp/claude-1000/-home-johnclaw-trade-ai-v12-rebuild-trade-ai-v12-rebuild/2e7e1d01-52e9-4376-be3e-e7c5e9902aeb  idle -0.0d  open_fd,recent_activity,session_transcript_live,git_tree_dirty
+      94.8k  /tmp/cbd/2701380  idle 1.0d  recent_activity
+      23.8k  /tmp/ready-three-main-integration-review  idle 0.04d  recent_activity
+      23.8k  /tmp/ready-three-final-20261022  idle 0.17d  recent_activity
+      23.7k  /tmp/candidate-release-blockers-20261022  idle 0.68d  recent_activity
+      23.7k  /tmp/ready-three-integrated-20261022  idle 0.71d  recent_activity
+      23.6k  /tmp/pipeline-health-remediation-d55  idle 0.82d  recent_activity
+      22.7k  /tmp/pr1887-requalify-8fd  idle 0.9d  recent_activity
+      21.9k  /tmp/ready-three-b980-integration  idle -0.0d  in_use_cwd,recent_activity
+      20.7k  /tmp/ready-three-main-docfix-review  idle 0.04d  in_use_cwd,git_unpushed_commits,recent_activity
+      19.7k  /tmp/pr1887-frontend-qa-09f0  idle 0.94d  recent_activity
+      15.7k  /tmp/pr1887-requalify-1fc525  idle 0.94d  recent_activity
+      13.7k  /tmp/ready-three-n8n-proof  idle 0.21d  recent_activity
+      13.7k  /tmp/ready-three-docs-update-20261022  idle 0.21d  recent_activity
+      13.7k  /tmp/ready-three-fwp5-fix-20261022  idle 0.21d  recent_activity
+      13.6k  /tmp/ready-three-symbol-enrichment-fix-20261022  idle 0.53d  recent_activity
+      13.6k  /tmp/stale-pid-test-update-20261022  idle 0.71d  recent_activity
+      13.6k  /tmp/ready-three-redaction-rca  idle 0.52d  git_tree_dirty,recent_activity
+      13.6k  /tmp/pipeline-failure-rca-20261022  idle 0.66d  git_tree_dirty,recent_activity
+      13.5k  /tmp/safe-flock-os-lock-20261022  idle 0.84d  recent_activity
+
+UNTOUCHED /tmp ENTRIES 4189 (no rule matches: never scanned, never a candidate)
