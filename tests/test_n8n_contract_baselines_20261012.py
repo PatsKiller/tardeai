@@ -63,7 +63,10 @@ def test_all_operative_baselines_have_applicable_fields_and_order():
     # operator 2026-10-21; tests/test_release_train_n8n_20261021.py) = 155 (release-2 integration, recounted).
     # + 1 (2026-10-21 macro-calendar-refresh n8n-native ingest shadow; tests/test_macro_calendar_20261021.py)
     # = 156 (release-3 integration: counted in config/n8n_health_contracts.json after the merge).
-    assert len(catalogue["contracts"]) == 156
+    # + 5 (2026-10-22 desk truth: holdings-drift-monitor, options-desk-staleness-monitor, held-exit-coverage-monitor at
+    # shadow, options-desk-quote-refresh and schwab-position-sync staged; DRAFT until the owners REVIEW them;
+    # tests/test_n8n_desk_truth_lanes_20261022.py) = 161.
+    assert len(catalogue["contracts"]) == 161
     assert not {row["id"]: A.baseline_errors(row) for row in catalogue["contracts"] if A.baseline_errors(row)}
 
 

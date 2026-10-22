@@ -260,7 +260,7 @@ def run(*, proposals: Path, apply: bool, max_requests: int, now: datetime,
     session = market_session(now)
     if session not in REFRESH_SESSIONS:
         # one cadence "5,20,35,50 9-11" covers 09:35-11:50; its 09:05 / 09:20 fires land here and read nothing
-        report.update(skipped=skipped, requests_made=0, cards_requoted=0, empty_reason="outside_session",
+        report.update(skipped=skipped, requests_made=0, cards_requoted=0, empty_reason="market_closed",
                       market_session=session)
         return report
     if not cards:
@@ -307,7 +307,7 @@ def lane_output(report: Mapping[str, Any]) -> dict[str, Any]:
     if report.get("error"):
         reason = "dependency_unavailable"
         if str(report["error"]).startswith("schwab_access_mode"):
-            reason = "access_mode_refused"
+            reason = "disabled"
         elif str(report["error"]).startswith("snapshot_changed"):
             reason = "superseded_by_build"
         return {"produced_count": 0, "attempted_count": report.get("cards") or 0, "skipped_reasons": {reason: 1},

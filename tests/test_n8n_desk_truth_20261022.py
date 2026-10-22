@@ -401,7 +401,7 @@ def test_access_mode_other_than_read_only_refuses_before_any_read(tmp_path):
         rep = QR.run(proposals=p, apply=True, max_requests=25, now=NOW,
                      chain_fn=lambda *a, **k: pytest.fail("no read"), mode_fn=lambda m=mode: m)
         assert rep["error"] == f"schwab_access_mode_not_read_only:{mode}"
-        assert QR.lane_output(rep)["skipped_reasons"] == {"access_mode_refused": 1}
+        assert QR.lane_output(rep)["skipped_reasons"] == {"disabled": 1}  # closed FATAL_SKIP_REASONS vocabulary
 
 
 def test_concurrent_rebuild_wins(tmp_path):
@@ -427,7 +427,7 @@ def test_outside_regular_hours_reads_nothing(tmp_path):
                  datetime(2026, 12, 2, 14, 20, tzinfo=timezone.utc)):   # 09:20 EST: the coarse -4h label says REGULAR
         rep = QR.run(proposals=p, apply=True, max_requests=25, now=when, mode_fn=lambda: "read_only",
                      chain_fn=lambda *a, **k: pytest.fail("no read outside RTH"))
-        assert rep["empty_reason"] == "outside_session" and rep["requests_made"] == 0, when
+        assert rep["empty_reason"] == "market_closed" and rep["requests_made"] == 0, when
     assert p.read_text() == before
     from scripts.lib.desk_session import market_session
 
@@ -520,10 +520,10 @@ def test_sync_caps_dry_run_touches_no_database(capsys):
     assert "would upsert options_thesis_cio_review: cost=0.4 soft=40" in capsys.readouterr().out
 
 
-# ── broker READ-ONLY lanes wait for AGENTS 18.0.0; the forbidden-token rule is untouched ─────────────────────────
+# ── broker READ-ONLY lanes wait for AGENTS 19.0.0; the forbidden-token rule is untouched ─────────────────────────
 
 
-def test_holdings_writer_n8n_lane_is_gated_on_18_0_0_and_still_refused():
+def test_holdings_writer_n8n_lane_is_gated_on_19_0_0_and_still_refused():
     from scripts.lib import lane_dispatch as LD
     from scripts.pipelines.pipeline_manifest import FORBIDDEN_COMMAND_TOKENS
 
@@ -531,8 +531,8 @@ def test_holdings_writer_n8n_lane_is_gated_on_18_0_0_and_still_refused():
     allow = {e["lane_id"] for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
     row = reg["schwab-position-sync"]
     gate = row["f09_staged"]["gated_on"]
-    assert "18.0.0" in gate["policy"] and gate["status_required"] == "ACTIVE"
-    assert "host cron line 501" in row["f09_staged"]["host_schedule_until_18"]
+    assert "19.0.0" in gate["policy"] and gate["status_required"] == "ACTIVE"
+    assert "host cron line 501" in row["f09_staged"]["host_schedule_until_19"]
     assert "schwab-position-sync" not in allow and "dispatch" not in row
     # the check is not weakened: the token and the word still refuse the lane
     assert "schwab_position_sync.py" in FORBIDDEN_COMMAND_TOKENS and "schwab" in LD.EXTRA_FORBIDDEN_WORDS
