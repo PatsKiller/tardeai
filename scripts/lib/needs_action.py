@@ -50,6 +50,12 @@ R_PR_HYGIENE = R_COORD
 # dispatcher daily 06:30) writes its LaneRunReceipt; this source only reads it.
 PR_HYGIENE_LANE = "pr-hygiene-audit"
 PR_HYGIENE_STALE_H = 36.0
+# Desk truth monitors (2026-10-22, operator "fix all of these n8n first for scheduling and monitoring"): the three
+# read-only lanes of scripts/desk_truth_monitor.py write LaneRunReceipts; this source only reads them.
+DESK_TRUTH_LANES = ("holdings-drift-monitor", "options-desk-staleness-monitor", "held-exit-coverage-monitor")
+DESK_TRUTH_STALE_H = 26.0
+DESK_TRUTH_ITEMS_MAX = 8
+R_DESK_TRUTH = R_SYSTEM_DATA
 PR_HYGIENE_ITEMS_MAX = 12
 PR_HYGIENE_TITLES = {
     "CONFLICT": "conflicts with main",
@@ -578,6 +584,77 @@ def rule_pr_hygiene(p: Any, now: datetime) -> list[dict]:
     return out
 
 
+def rule_desk_truth(p: Any, now: datetime) -> list[dict]:
+    """p = {lane_id: receipt | {"status": "NO_RECEIPT"}} from :func:`probe_desk_truth`.
+
+    No receipt for any lane -> one P3 (at shadow the lanes run dry and write nothing). Per lane: failed or stale (older
+    than DESK_TRUTH_STALE_H) -> P2; each ALERTED finding -> P2 (first DESK_TRUTH_ITEMS_MAX, then one rollup);
+    findings the check did not alert on (a stale snapshot makes coverage NOT_MEASURED) -> folded into one P3."""
+    if not isinstance(p, dict):
+        raise SourceUnavailable("desk truth receipts are not an object")
+    missing = [lane for lane in DESK_TRUTH_LANES if (p.get(lane) or {}).get("status") == "NO_RECEIPT"]
+    out: list[dict] = []
+    if missing:
+        out.append(item("P3", f"Desk truth monitors have no receipt yet ({len(missing)} of {len(DESK_TRUTH_LANES)})",
+                        "At shadow the n8n lanes run --dry-run and write nothing; run `python3 scripts/"
+                        "desk_truth_monitor.py --check <name>` for a read-only view.", R_DESK_TRUTH, "desk_truth",
+                        None, {"lanes": missing}))
+    for lane in DESK_TRUTH_LANES:
+        r = p.get(lane)
+        if not isinstance(r, dict) or r.get("status") == "NO_RECEIPT":
+            continue
+        if r.get("lane_id") != lane:
+            raise SourceUnavailable(f"desk truth receipt for {lane} names another lane")
+        if r.get("status") != "ok":
+            out.append(item("P2", f"{lane} failed", str(r.get("error") or "the last run failed")[:240], R_DESK_TRUTH,
+                            "desk_truth", r.get("finished_at"), {"ok_at": r.get("ok_at")}))
+        ok_at = _parse(r.get("ok_at"))
+        if ok_at is None or (now - ok_at).total_seconds() / 3600.0 > DESK_TRUTH_STALE_H:
+            out.append(item("P2", f"{lane} is stale", f"No completed run in {DESK_TRUTH_STALE_H:g} h; the check it "
+                            "makes is not being made.", R_DESK_TRUTH, "desk_truth", r.get("ok_at"),
+                            {"ok_at": r.get("ok_at")}))
+        summary = r.get("summary") if isinstance(r.get("summary"), dict) else {}
+        findings = [f for f in summary.get("findings") or [] if isinstance(f, dict)]
+        alerted = [f for f in findings if f.get("alert")]
+        since = summary.get("as_of") or r.get("finished_at")
+        for f in alerted[:DESK_TRUTH_ITEMS_MAX]:
+            out.append(item("P2", f"{f.get('code')}: {str(f.get('detail'))[:140]}",
+                            f"{lane} (read-only). It never repairs; the owner of the store or the operator acts.",
+                            R_DESK_TRUTH, "desk_truth", since, {"lane": lane, "key": f.get("key")}))
+        if len(alerted) > DESK_TRUTH_ITEMS_MAX:
+            out.append(item("P2", f"{len(alerted) - DESK_TRUTH_ITEMS_MAX} more {lane} findings",
+                            f"See the {lane} receipt (summary.findings).", R_DESK_TRUTH, "desk_truth", since,
+                            {"lane": lane, "total": len(alerted)}))
+        quiet = [f for f in findings if not f.get("alert")]
+        if quiet:
+            out.append(item("P3", f"{lane}: {len(quiet)} finding(s) not measured as alerts",
+                            "; ".join(str(f.get("detail"))[:80] for f in quiet[:3]), R_DESK_TRUTH, "desk_truth",
+                            since, {"lane": lane, "count": len(quiet)}))
+    return out
+
+
+def probe_desk_truth(root: Any = None) -> dict:
+    """Read the three desk-truth receipts (read-only). A missing receipt is {"status": "NO_RECEIPT"}."""
+    import json
+    from pathlib import Path
+
+    try:
+        from lib.lane_last_receipt import receipt_path
+    except ImportError:  # pragma: no cover - repo root on sys.path instead of scripts/
+        from scripts.lib.lane_last_receipt import receipt_path  # type: ignore[no-redef]
+    out: dict = {}
+    for lane in DESK_TRUTH_LANES:
+        p = Path(receipt_path(lane, root))
+        if not p.exists():
+            out[lane] = {"status": "NO_RECEIPT", "path": str(p)}
+            continue
+        try:
+            out[lane] = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise SourceUnavailable(f"{lane} receipt unreadable: {type(exc).__name__}") from exc
+    return out
+
+
 def probe_pr_hygiene(path: Any = None) -> dict:
     """Read the pr-hygiene-audit receipt (read-only). Missing -> {"status": "NO_RECEIPT"}; unreadable -> raises."""
     import json
@@ -838,6 +915,7 @@ RULES: dict[str, Callable[[Any, datetime], list[dict]]] = {
     "comms": rule_comms,
     "pipelines": rule_pipelines,
     "pr_hygiene": rule_pr_hygiene,
+    "desk_truth": rule_desk_truth,
     "release_window": rule_release_window,
     "macro_calendar": rule_macro_calendar,
 }
@@ -928,6 +1006,7 @@ def _source_where(name: str) -> str:
         "comms": R_COMMS,
         "pipelines": R_SYSTEM_PIPELINE,
         "pr_hygiene": R_PR_HYGIENE,
+        "desk_truth": R_DESK_TRUTH,
         "macro_calendar": R_SYSTEM_JOBS,
     }.get(name, "/v3/system")
 

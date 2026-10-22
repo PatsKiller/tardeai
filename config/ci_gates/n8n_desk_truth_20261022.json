@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_desk_truth_20261022",
+  "files": [
+    "tests/test_n8n_desk_truth_20261022.py"
+  ],
+  "anchor": "N8N_DESK_TRUTH_20261022",
+  "comment": [
+    "ANCHOR: N8N_DESK_TRUTH_20261022 — operator 2026-10-22 \"fix all of these n8n first for scheduling and monitoring\":",
+    "scripts/desk_truth_monitor.py (holdings drift vs positions_current, options desk staleness, held exit coverage;",
+    "read-only, alert-on-gain DIGEST host intents, needs-action source desk_truth, closure free of db_adapter / senders /",
+    "brokers), scripts/options_desk_quote_refresh.py (quote-only re-quote of existing cards, offline dry run, bounded",
+    "reads, read_only access mode only), the options CIO review on its own LLM process options_thesis_cio_review",
+    "(AGENTS.md §9.2; was refused POLICY_NOT_ALLOWED on Steph's pool), options_thesis_reopen.py --review-cap.",
+    "Hermetic: tmp files, fake readers and intent queue, tmp ledger; no DB, broker or network."
+  ]
+}
