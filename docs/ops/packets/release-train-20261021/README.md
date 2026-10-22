@@ -408,9 +408,10 @@ delegation's `latest_start_et`. It is checked at the start, before the merge and
 skipped when any of the three times is unmeasured. 08:00 is also skipped on an 08:30 macro-release day, or when the
 calendar is missing or stale.
 
-**There is no macro-calendar provider in this repo.** `scripts/economic_calendar.py` declares the gap (FMP retired
-2026-09-13). `MacroCalendar` reads an operator-supplied `~/.config/tradeai/release_train/macro_calendar.json`
-(`MacroReleaseCalendar@v1`); while it is absent, 08:00 is always skipped (fail closed).
+**Macro calendar (updated in release 3).** The controller now reads `scripts/lib/macro_calendar.py`
+(`MacroCalendar@v1` at `<state root>/data/runtime/macro_calendar.json`, from the n8n lane `macro-calendar-refresh`;
+72 h). The earlier `~/.config/tradeai/release_train/macro_calendar.json` reader (`MacroReleaseCalendar@v1`) is gone.
+While the file is absent, 08:00 is always skipped (fail closed).
 
 A window can be claimed only from `start - 90 min` until `start + 15 min`. The claim is
 `claims/<YYYYMMDD>-<slot>.json`, created O_EXCL, so a repeated local hour cannot activate twice. Window starts use

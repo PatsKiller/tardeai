@@ -544,9 +544,11 @@ Each window goes live once its own proof passes. Windows can go live in consecut
    - Then enable the slot, and change `live_arg` as for 00:00.
    - Proof: a 06:00 train whose receipt records `drain.ok true` and `RELEASED_VERIFIED`.
 3. **08:00, with the macro calendar.**
-   - `MacroCalendar` reads `~/.config/tradeai/release_train/macro_calendar.json` (`MacroReleaseCalendar@v1`). The
-     provider is being built on `feat/macro-calendar-20261021`, which has no commits yet (it is at main `d55da84d0`).
-     While the file is absent, 08:00 is always `WINDOW_SKIPPED_MACRO_UNAVAILABLE`.
+   - The controller reads `scripts/lib/macro_calendar.py` `ReleaseTrainCalendar`: `MacroCalendar@v1` at
+     `<state root>/data/runtime/macro_calendar.json`, written by the n8n lane `macro-calendar-refresh` (FRED +
+     `config/macro_calendar_overrides.json`; `docs/ops/MACRO_CALENDAR.md`), and stale after 72 h. While the file is
+     absent, 08:00 is always `WINDOW_SKIPPED_MACRO_UNAVAILABLE`, so the lane must run live first. Its needs-action row
+     is P3 until 08:00 is enabled and the train is armed, and P2 after that.
    - The latest start is 09:00 minus the worst measured promote, verify and rollback time minus 10 minutes. It needs
      measured rows in `train_measurements.jsonl`, and rollback is measured only by I.5(3). The delegation's
      `latest_start_et` (example `08:10`) caps it.

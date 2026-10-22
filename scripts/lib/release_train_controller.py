@@ -34,9 +34,10 @@ Pipeline: select -> freeze -> integrate -> local test -> (wait for window) -> qu
 
 Windows (operator 2026-10-21): 18:00 and 00:00 general; 06:00 needs a proven drain (``DrainProbe``; none is proven,
 so it is skipped); 08:00 latest activation start = 09:00 minus measured promote + verify + rollback minus a buffer,
-skipped on 08:30 macro-release days or when the calendar is missing/stale. The repository has NO macro-calendar
-provider (``scripts/economic_calendar.py``: FMP retired 2026-09-13, declared gap), so 08:00 is always skipped until an
-operator-supplied calendar exists. A window is claimable only from ``lead_min`` before its start until ``grace_min``
+skipped on 08:30 macro-release days or when the calendar is missing/stale. The calendar is
+``scripts/lib/macro_calendar.py`` (``<state root>/data/runtime/macro_calendar.json``, written by the n8n lane
+``macro-calendar-refresh`` from FRED + overrides; stale after 72 h); until that lane writes it, 08:00 is skipped
+(fail closed). A window is claimable only from ``lead_min`` before its start until ``grace_min``
 after it; a missed window is never caught up. A per-day, per-slot claim file (O_EXCL) makes a repeated local hour
 unable to activate twice.
 
@@ -80,6 +81,7 @@ try:
     from scripts.lib import release_train_contracts as TC
     from scripts.lib import release_train_queue as Q
     from scripts.lib import release_train_window_view as WV
+    from scripts.lib import macro_calendar as MC
 except ImportError:  # pragma: no cover - scripts/ on sys.path
     import release_window as RW  # type: ignore[no-redef]
     from lib import release_capability as CAP  # type: ignore[no-redef]
@@ -88,6 +90,7 @@ except ImportError:  # pragma: no cover - scripts/ on sys.path
     from lib import release_train_contracts as TC  # type: ignore[no-redef]
     from lib import release_train_queue as Q  # type: ignore[no-redef]
     from lib import release_train_window_view as WV  # type: ignore[no-redef]
+    from lib import macro_calendar as MC  # type: ignore[no-redef]
 
 CONTROLLER_VERSION = "release_train_controller/1"
 SCHEMA_MANIFEST = "TrainCandidate@v1"
@@ -145,7 +148,6 @@ DEFAULT_SLOTS = (
 STATE_ROOT = RW.STATE_ROOT
 HYGIENE_RECEIPT = STATE_ROOT / "data" / "runtime" / "pr-hygiene-audit_last.json"
 HOST_CONFIG = Path.home() / ".config" / "tradeai" / "release_train"
-MACRO_CALENDAR_PATH = HOST_CONFIG / "macro_calendar.json"
 SCRATCH_ROOT = Path(os.environ.get("TRADEAI_RELEASE_TRAIN_SCRATCH", str(Path.home() / ".cache" / "rtc")))
 
 # Outcomes (TrainOutcome@v1, docs/ops/RELEASE_TRAIN_API.md §8)
@@ -294,43 +296,11 @@ class UnprovenDrain:
         return False, "no service drain or non-disruptive release path has been proven for 06:00 (plan Phase 7)"
 
 
-class MacroCalendar:
-    """Operator-supplied 08:30 macro-release calendar (``MacroReleaseCalendar@v1``), read fail closed.
-
-    The repository declares no macro-events provider (scripts/economic_calendar.py; FMP retired 2026-09-13), so
-    until the operator provides ``~/.config/tradeai/release_train/macro_calendar.json`` the verdict is UNAVAILABLE
-    and the 08:00 window is skipped. Body: {"schema", "as_of", "source", "covers_from", "covers_through",
-    "release_days_0830": ["YYYY-MM-DD", ...]}."""
-
-    SCHEMA = "MacroReleaseCalendar@v1"
-
-    def __init__(self, path: Path = MACRO_CALENDAR_PATH, *, max_age_h: float = 168.0) -> None:
-        self.path, self.max_age_h = Path(path), max_age_h
-
-    def verdict(self, day: date, now: datetime) -> tuple[str, str]:
-        if not os.path.lexists(self.path):
-            return "UNAVAILABLE", (f"{self.path} absent; the repo has no macro-calendar provider "
-                                   "(scripts/economic_calendar.py declares the gap)")
-        try:
-            body = json.loads(self.path.read_text(encoding="utf-8"))
-            if not isinstance(body, dict) or body.get("schema") != self.SCHEMA:
-                return "UNAVAILABLE", "calendar schema is not MacroReleaseCalendar@v1"
-            as_of = datetime.fromisoformat(str(body["as_of"]))
-            if as_of.tzinfo is None:
-                return "UNAVAILABLE", "calendar as_of has no offset"
-            frm = date.fromisoformat(str(body["covers_from"]))
-            thru = date.fromisoformat(str(body["covers_through"]))
-            days = {date.fromisoformat(str(d)) for d in body["release_days_0830"]}
-        except (OSError, ValueError, KeyError, TypeError) as exc:
-            return "UNAVAILABLE", f"calendar unreadable: {type(exc).__name__}"
-        age_h = (now - as_of).total_seconds() / 3600
-        if age_h > self.max_age_h or age_h < -1:
-            return "STALE", f"calendar as_of {as_of.isoformat()} is {age_h:.0f} h old (max {self.max_age_h:.0f})"
-        if not frm <= day <= thru:
-            return "STALE", f"calendar covers {frm}..{thru}, not {day}"
-        if day in days:
-            return "MACRO_DAY", f"{day} has an 08:30 macro release"
-        return "CLEAR", f"{day} has no 08:30 macro release ({body.get('source')})"
+#: The 08:00 window's macro calendar: ONE source, ``scripts/lib/macro_calendar.py`` (MacroCalendar@v1 at
+#: ``<state root>/data/runtime/macro_calendar.json``, written by the n8n lane ``macro-calendar-refresh``; stale after
+#: 72 h; fail closed when missing, corrupt, future-stamped or not covering the day). Same verdict vocabulary as the
+#: controller's former private reader (CLEAR / MACRO_DAY / STALE / UNAVAILABLE), which is removed with its
+#: ``~/.config`` path and 168 h limit (release 3, 2026-10-21). The controller uses ``MC.ReleaseTrainCalendar``.
 
 
 class Measurements:
@@ -1456,7 +1426,7 @@ class TrainController:
                  tester: Optional[LocalTester] = None, events: Optional[EventSink] = None,
                  delegation_path: Optional[Path] = None, key_path: Path = CAP.DEFAULT_KEY_PATH,
                  config: Optional[TrainConfig] = None, env: Optional[dict] = None,
-                 drain: Optional[DrainProbe] = None, calendar: Optional[MacroCalendar] = None,
+                 drain: Optional[DrainProbe] = None, calendar: Optional[MC.ReleaseTrainCalendar] = None,
                  workspace_factory: Optional[Callable[[Path], GitWorkspace]] = None,
                  allow_repo_delegation: bool = False) -> None:
         self.host, self.state, self.github, self.queue, self.classifier = host, state, github, queue, classifier
@@ -1480,7 +1450,7 @@ class TrainController:
         self.key_path = key_path
         self.allow_repo_delegation = allow_repo_delegation
         self.drain = drain or UnprovenDrain()
-        self.calendar = calendar or MacroCalendar()
+        self.calendar = calendar or MC.ReleaseTrainCalendar()
         self.measure = Measurements(state.root / "train_measurements.jsonl")
         self.workspace_factory = workspace_factory or (lambda p: GitWorkspace(host.checkout, p, env=worker_env(
             self.env, home=p.parent / "home", tmp=p.parent / "tmp")))

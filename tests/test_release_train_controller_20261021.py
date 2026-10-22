@@ -48,6 +48,7 @@ from scripts.lib import release_control as RC  # noqa: E402
 from scripts.lib import release_delegation as RD  # noqa: E402
 from scripts.lib import release_train_contracts as TC  # noqa: E402
 from scripts.lib import release_train_controller as T  # noqa: E402
+from scripts.lib import macro_calendar as MC  # noqa: E402
 
 #: Alarm coverage (tests/test_alarm_coverage.py): release_window.Host.notify's send_telegram site (ops branch
 #: 58bf60cf3) is fired by test_failed_window_alert_reaches_the_transport.
@@ -349,7 +350,7 @@ class World:
         self.host.main_ref = lambda: getattr(self.writer, "merged", "")
         self.events_path = self.state_dir / "train_events.jsonl"
         self.attempts = attempts
-        self.calendar = T.MacroCalendar(tmp / "hostcfg" / "macro_calendar.json")
+        self.calendar = MC.ReleaseTrainCalendar(tmp / "hostcfg" / "macro_calendar.json")
 
     def entries(self, numbers=None):
         return [T.QueueEntry(pr=n, head_sha=s, depends_on=self.deps.get(n, ()))
@@ -512,22 +513,27 @@ def test_0600_needs_a_proven_drain(tmp_path):
     assert out and out[0]["payload"]["outcome"] == "NO_OP" and out[0]["payload"]["members"] == []
 
 
+def _cal(fetched, valid_through="2026-12-31", skip_days=()):
+    """A MacroCalendar@v1 body (scripts/lib/macro_calendar.py), the one calendar the controller reads."""
+    dates = {d: {"has_0830": True, "skip_0800": True,
+                 "events": [{"event": "CPI", "time_et": "08:30", "source": "fred", "release_id": 10,
+                             "skips_0800": True}]} for d in skip_days}
+    return {"schema": "MacroCalendar@v1", "fetched_at": fetched, "covers_from": "2026-10-01",
+            "valid_through": valid_through, "dates": dates}
+
+
 @pytest.mark.parametrize("calendar,reason", [
     (None, "WINDOW_SKIPPED_MACRO_UNAVAILABLE"),
-    ({"as_of": "2026-10-01T08:00:00-04:00", "covers_from": "2026-10-01", "covers_through": "2026-12-31",
-      "release_days_0830": []}, "WINDOW_SKIPPED_MACRO_STALE"),
-    ({"as_of": "2026-10-21T08:00:00-04:00", "covers_from": "2026-10-01", "covers_through": "2026-10-21",
-      "release_days_0830": []}, "WINDOW_SKIPPED_MACRO_STALE"),
-    ({"as_of": "2026-10-21T08:00:00-04:00", "covers_from": "2026-10-01", "covers_through": "2026-12-31",
-      "release_days_0830": ["2026-10-22"]}, "WINDOW_SKIPPED_MACRO_MACRO_DAY"),
-    ({"as_of": "2026-10-21T08:00:00-04:00", "covers_from": "2026-10-01", "covers_through": "2026-12-31",
-      "release_days_0830": []}, "WINDOW_SKIPPED_UNMEASURED"),
+    (_cal("2026-10-01T08:00:00-04:00"), "WINDOW_SKIPPED_MACRO_STALE"),
+    (_cal("2026-10-18T07:00:00-04:00"), "WINDOW_SKIPPED_MACRO_STALE"),        # 97 h: over 72 h (was fine at 168 h)
+    (_cal("2026-10-21T08:00:00-04:00", valid_through="2026-10-21"), "WINDOW_SKIPPED_MACRO_STALE"),
+    (_cal("2026-10-21T08:00:00-04:00", skip_days=("2026-10-22",)), "WINDOW_SKIPPED_MACRO_MACRO_DAY"),
+    (_cal("2026-10-21T08:00:00-04:00"), "WINDOW_SKIPPED_UNMEASURED"),
 ])
 def test_0800_macro_calendar_and_measured_latest_start(tmp_path, calendar, reason):
     w = World(tmp_path, slot="0800", now=datetime(2026, 10, 22, 8, 1, tzinfo=ET))
     if calendar is not None:
-        (tmp_path / "hostcfg" / "macro_calendar.json").write_text(json.dumps({"schema": "MacroReleaseCalendar@v1",
-                                                                             "source": "test", **calendar}))
+        (tmp_path / "hostcfg" / "macro_calendar.json").write_text(json.dumps(calendar))
     code, rec, _ = w.run()
     assert rec["outcome"] == "NO_OP" and rec["reason"] == reason, rec
 
@@ -543,9 +549,18 @@ def test_0800_latest_start_is_09_minus_measured_promote_verify_rollback_minus_bu
     assert T.latest_activation_start(w2, m, buffer_min=10)[0] == datetime(2026, 10, 22, 8, 10, tzinfo=ET)
 
 
-def test_repo_has_no_macro_calendar_provider_so_default_fails_closed(tmp_path):
-    v, why = T.MacroCalendar(tmp_path / "absent.json").verdict(date(2026, 10, 22), NOW)
-    assert v == "UNAVAILABLE" and "economic_calendar" in why
+def test_missing_calendar_fails_closed_and_the_controller_has_one_calendar_source(tmp_path, monkeypatch):
+    v, why = MC.ReleaseTrainCalendar(tmp_path / "absent.json").verdict(date(2026, 10, 22), NOW)
+    assert v == "UNAVAILABLE" and "calendar missing" in why and MC.LANE_ID in why
+    assert not hasattr(T, "MacroCalendar") and not hasattr(T, "MACRO_CALENDAR_PATH")
+    src = (ROOT / "scripts/lib/release_train_controller.py").read_text(encoding="utf-8")
+    assert "168.0" not in src and '"macro_calendar.json"' not in src
+    # the default: <state root>/data/runtime/macro_calendar.json, 72 h
+    monkeypatch.setenv("TRADEAI_STATE_ROOT", str(tmp_path / "ps"))
+    c = T.TrainController(host=types.SimpleNamespace(checkout=tmp_path, python=sys.executable, now=lambda: NOW),
+                          state=RW.State(tmp_path / "s"), github=None, queue=None, classifier=None)
+    assert isinstance(c.calendar, MC.ReleaseTrainCalendar) and c.calendar.max_age_h == 72.0
+    assert MC.default_path() == tmp_path / "ps" / "data" / "runtime" / "macro_calendar.json"
 
 
 # ── competing trains and manual / emergency collisions ───────────────────────────────────────────
