@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "relay_contract_whole_query_expr_20261022",
+  "files": [
+    "tests/test_relay_contract_whole_query_expr_20261022.py"
+  ],
+  "comment": [
+    "2026-10-22 release-train step E: whole-query n8n expressions are probed with a well-formed per-path sample."
+  ]
+}
