@@ -2721,6 +2721,10 @@ def cli(args: Any) -> int:
         return EXIT_OK
     if args.cmd == "train-claim":
         return cli_claim(args)
+    if args.cmd == "train-orphan-resolve":
+        code, body = resolve_orphan(RW.State(), args.request_id, args.reason, apply=bool(args.apply))
+        print(json.dumps(body, indent=2, default=str))
+        return code
     if args.cmd == "train-quarantine-resolve":
         code, body = resolve_quarantine(RW.State(), args.sha, args.reason, args.evidence, live=live)
         print(json.dumps(body, indent=2, default=str))
@@ -2824,6 +2828,18 @@ class RequestSpool:
     def __init__(self, state_root: Path) -> None:
         self.root = Path(state_root) / "train_requests"
         self.pending, self.claimed, self.receipts = self.root / "pending", self.root / "claimed", self.root / "receipts"
+        self.orphaned, self.owners = self.root / "orphaned", self.root / "owners"
+
+    def record_owner(self, request_id: str, claimed_at: str) -> None:
+        """owners/<request_id>.json: the claiming process (pid + start time + host), for the orphan watchdog."""
+        RC._atomic_write_json(self.owners / f"{request_id}.json", {**claim_owner(), "claimed_at": claimed_at})
+
+    def owner(self, request_id: str) -> Optional[dict]:
+        try:
+            body = json.loads((self.owners / f"{request_id}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return body if isinstance(body, dict) else None
 
     def pending_files(self) -> list[Path]:
         try:
@@ -2946,8 +2962,156 @@ def checked_receipt(doc: dict, *, request_valid: bool) -> tuple[dict, list[str]]
     return fixed, errs + again
 
 
+#: Orphaned-claim watchdog (arming finding 5 / contract §12 "the controller's independent watchdog"). The claimer unit
+#: is a oneshot with TimeoutStartSec=3h, so no claimer legitimately runs longer than CLAIM_MAX_RUN_MIN; a claim still
+#: non-terminal after twice that, with no live owner, is orphaned. Override: TRADEAI_RELEASE_TRAIN_ORPHAN_AFTER_MIN
+#: or ``train-claim --orphan-after-min``.
+CLAIM_MAX_RUN_MIN = 180
+ORPHAN_AFTER_MIN_DEFAULT = 2 * CLAIM_MAX_RUN_MIN
+
+
+def orphan_after_min(override: Optional[float] = None) -> float:
+    if override is not None and float(override) > 0:
+        return float(override)
+    raw = os.environ.get("TRADEAI_RELEASE_TRAIN_ORPHAN_AFTER_MIN", "")
+    try:
+        v = float(raw)
+    except ValueError:
+        return float(ORPHAN_AFTER_MIN_DEFAULT)
+    return v if v > 0 else float(ORPHAN_AFTER_MIN_DEFAULT)
+
+
+def proc_start_ticks(pid: int) -> Optional[int]:
+    """Field 22 of /proc/<pid>/stat (start time in clock ticks since boot): with the pid, a process identity that a
+    recycled pid cannot fake. None when the process does not exist or /proc is unreadable."""
+    try:
+        raw = Path(f"/proc/{int(pid)}/stat").read_text(encoding="utf-8", errors="replace")
+        return int(raw[raw.rindex(")") + 2:].split()[19])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def claim_owner() -> dict:
+    return {"pid": os.getpid(), "start_ticks": proc_start_ticks(os.getpid()), "host": os.uname().nodename}
+
+
+def owner_alive(owner: Any) -> bool:
+    """True only when the recorded owner is THIS host's process with the same pid AND the same start time."""
+    if not isinstance(owner, dict) or owner.get("host") != os.uname().nodename:
+        return False
+    pid, ticks = owner.get("pid"), owner.get("start_ticks")
+    if not isinstance(pid, int) or not isinstance(ticks, int):
+        return False
+    return proc_start_ticks(pid) == ticks
+
+
+def watch_orphans(spool: "RequestSpool", *, clock: Callable[[], float], apply: bool, after_min: float,
+                  notify: Optional[Callable[[str, str], Any]] = None) -> list[dict]:
+    """Move each non-terminal claim older than ``after_min`` with no live owner from ``claimed/`` to ``orphaned/``
+    (rename; never deleted), append an ``orphaned`` row to ``orphaned.jsonl`` and raise ONE P2 needs-action intent.
+    It never re-runs a request and never writes a receipt: an orphan is closed only by ``train-orphan-resolve`` after
+    ``train-reconcile`` (a live orphan may have left an effect). Without ``apply`` it only reports."""
+    out: list[dict] = []
+    try:
+        names = sorted(p.name for p in spool.claimed.iterdir() if p.is_file() and p.name.endswith(".json"))
+    except OSError:
+        return out
+    now = clock()
+    for name in names:
+        rid = name[:-5]
+        rec = spool.receipt(rid) or {}
+        if rec.get("state") in TERMINAL_RECEIPT_STATES:
+            continue
+        owner = spool.owner(rid)
+        since = _parse_ts((owner or {}).get("claimed_at")) or _parse_ts(rec.get("acknowledged_at"))
+        try:
+            started = since.timestamp() if since else os.lstat(spool.claimed / name).st_mtime
+        except OSError:
+            continue
+        age_min = (now - started) / 60.0
+        if age_min < after_min:
+            continue
+        row = {"request_id": rid, "age_min": round(age_min, 1), "after_min": after_min,
+               "receipt_state": rec.get("state"), "mode": rec.get("mode"), "owner": owner}
+        if owner_alive(owner):
+            out.append({**row, "result": "LIVE_OWNER (left in claimed/)"})
+            continue
+        if not apply:
+            out.append({**row, "result": "WOULD_ORPHAN (claimed/ -> orphaned/, P2 needs-action; reconcile required)"})
+            continue
+        spool.orphaned.mkdir(parents=True, exist_ok=True)
+        dest = spool.orphaned / name
+        if os.path.lexists(dest):
+            out.append({**row, "result": "NOT_MOVED (orphaned/ already holds that name; operator inspects both)"})
+            continue
+        os.rename(spool.claimed / name, dest)
+        RC._append_jsonl(spool.root / "orphaned.jsonl", {"kind": "orphaned", "at": utc_iso(now), **row})
+        msg = (f"Release train request {rid} orphaned: claimed {age_min:.0f} min ago, no live claimer, receipt "
+               f"{rec.get('state') or 'absent'} ({rec.get('mode') or '?'}). Moved to train_requests/orphaned/. "
+               "Run release_window.py train-reconcile, then train-orphan-resolve; it is never re-run automatically.")
+        sent = None
+        if notify is not None:
+            try:
+                sent = notify(msg, "P2")
+            except Exception as exc:  # noqa: BLE001 - recorded, never fatal
+                sent = {"accepted": False, "error": type(exc).__name__}
+        out.append({**row, "result": "ORPHANED", "notification": sent})
+    return out
+
+
+def resolve_orphan(state: RW.State, request_id: str, reason: str, *, apply: bool,
+                   now: Callable[[], float] = time.time,
+                   pending: Optional[Callable[[], list]] = None) -> tuple[int, dict]:
+    """Operator: close an orphaned claim with a terminal FAILED / CONTROLLER_FAILED receipt, after reconcile. Refused
+    while any train is non-terminal (train-reconcile first). The request file stays in orphaned/; nothing is re-run."""
+    spool = RequestSpool(state.root)
+    if not REQUEST_ID_RE.match(request_id or "") or len(" ".join(str(reason).split())) < 8:
+        return EXIT_REFUSED, {"outcome": "REFUSED", "detail": "a request id and a reason (>= 8 chars) are required"}
+    p = spool.orphaned / f"{request_id}.json"
+    if not os.path.lexists(p):
+        return EXIT_REFUSED, {"outcome": "REFUSED", "detail": f"no orphaned claim {request_id}"}
+    trains = pending() if pending is not None else _pending_trains(state)
+    if trains:
+        return EXIT_REFUSED, {"outcome": "REFUSED_RECONCILE_FIRST",
+                              "detail": f"non-terminal trains {trains}: run release_window.py train-reconcile first"}
+    prior = spool.receipt(request_id) or {}
+    if prior.get("state") in TERMINAL_RECEIPT_STATES:
+        return EXIT_OK, {"outcome": "NOOP", "detail": "receipt already terminal", "state": prior.get("state")}
+    try:
+        req = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        req = {}
+    req = req if isinstance(req, dict) else {}
+    why = " ".join(str(reason).split())
+    doc = _receipt(req, state="FAILED", mode=str(prior.get("mode") or "simulate"), now=now(),
+                   acknowledged_at=prior.get("acknowledged_at"),
+                   refusal={"code": "CONTROLLER_FAILED", "detail": f"orphaned claim resolved: {why}"[:200]})
+    doc, errs = checked_receipt(doc, request_valid=not validate_request(req, p.name))
+    if not apply:
+        return EXIT_OK, {"outcome": "WOULD_RESOLVE", "receipt": doc, "contract_errors": errs}
+    spool.write_receipt(request_id, doc)
+    RC._append_jsonl(spool.root / "orphaned.jsonl", {"kind": "resolved", "request_id": request_id,
+                                                      "reason": why[:400], "at": utc_iso(now())})
+    return EXIT_OK, {"outcome": "RESOLVED", "receipt_state": doc["state"], "contract_errors": errs}
+
+
+def _pending_trains(state: RW.State) -> list[str]:
+    out = []
+    for p in sorted((state.root / "trains").glob("*/state.json")):
+        try:
+            body = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            out.append(p.parent.name + "(unreadable)")
+            continue
+        if not body.get("outcome"):
+            out.append(p.parent.name)
+    return out
+
+
 def process_requests(state: RW.State, factory: Callable[[bool], TrainController], *, apply: bool,
-                     now: Optional[Callable[[], float]] = None, live_status: Optional[str] = None) -> tuple[int, dict]:
+                     now: Optional[Callable[[], float]] = None, live_status: Optional[str] = None,
+                     orphan_after: Optional[float] = None,
+                     notify: Optional[Callable[[str, str], Any]] = None) -> tuple[int, dict]:
     """Claim and answer pending TrainWindowRequest@v1 files (C1-C11). Without ``apply``: list what would be claimed
     and answered, run nothing, write nothing. With ``apply``: claim by rename, acknowledge, run the train (shadow ->
     dry run only, C3; live -> refused while the controller is BUILD_ONLY), write the terminal receipt."""
@@ -2964,6 +3128,8 @@ def process_requests(state: RW.State, factory: Callable[[bool], TrainController]
             out["outcome"] = "CLAIMER_BUSY"
             return EXIT_OK, out
     try:
+        out["orphans"] = watch_orphans(spool, clock=clock, apply=apply, after_min=orphan_after_min(orphan_after),
+                                       notify=notify)
         files = spool.pending_files()
         bodies = []
         for p in files:
@@ -3028,6 +3194,7 @@ def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], T
         item["result"] = "REFUSED INVALID_REQUEST"
         return item
     ack = utc_iso(clock())
+    spool.record_owner(rid, ack)
     put(_receipt(req, state="ACKNOWLEDGED", mode=mode, now=clock(), acknowledged_at=ack))
     if not shadow and status_ != "ACTIVE":
         put(_receipt(req, state="REFUSED", mode="live", now=clock(), acknowledged_at=ack,
@@ -3084,6 +3251,9 @@ def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], T
 def cli_claim(args: Any) -> int:
     def factory(live: bool) -> TrainController:
         return build_controller(live=live)
-    code, body = process_requests(RW.State(), factory, apply=bool(getattr(args, "apply", False)))
+    apply = bool(getattr(args, "apply", False))
+    code, body = process_requests(RW.State(), factory, apply=apply,
+                                  orphan_after=getattr(args, "orphan_after_min", None),
+                                  notify=RW.Host().notify if apply else None)
     print(json.dumps(body, indent=2, default=str))
     return code

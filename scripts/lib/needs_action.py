@@ -399,6 +399,24 @@ def read_release_window_state(root: Any = None) -> dict:
     last = root / "last.json"
     if last.exists():
         out["last"] = json.loads(last.read_text(encoding="utf-8"))     # unreadable -> raises -> source unavailable
+    # Release-train claims the claimer's watchdog moved to orphaned/ (arming finding 6) and nobody has closed yet
+    # (train-orphan-resolve writes a terminal receipt). Never deleted: a resolved orphan just stops being an item.
+    orphaned: list[dict] = []
+    spool = root / "train_requests"
+    try:
+        names = sorted(n for n in os.listdir(spool / "orphaned") if n.endswith(".json"))
+    except OSError:
+        names = []
+    for n in names[:50]:
+        rid = n[:-5]
+        try:
+            rec = json.loads((spool / "receipts" / n).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            rec = {}
+        state = rec.get("state") if isinstance(rec, dict) else None
+        if state not in ("COMPLETED", "REFUSED", "EXPIRED", "FAILED"):
+            orphaned.append({"request_id": rid, "receipt_state": state})
+    out["orphaned"] = orphaned
     return out
 
 
@@ -428,6 +446,12 @@ def rule_release_window(p: Any, now: datetime) -> list[dict]:
                               "the next window retries unless STOP is latched",
                               R_SYSTEM_JOBS, "release_window", at.isoformat(),
                               {"window_id": last.get("window_id"), "outcome": last.get("outcome")}))
+    for o in p.get("orphaned") or []:
+        items.append(item("P2", f"Release train request {o.get('request_id')} orphaned",
+                          "its claimer died after claiming it (receipt "
+                          f"{o.get('receipt_state') or 'absent'}); it is never re-run automatically. Run "
+                          "scripts/release_window.py train-reconcile, then train-orphan-resolve",
+                          R_SYSTEM_JOBS, "release_window", None, o))
     return items
 
 

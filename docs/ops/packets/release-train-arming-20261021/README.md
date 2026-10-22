@@ -444,8 +444,10 @@ the second, independent proof of each.
 5. **Crash, then reconcile.**
    - A shadow train writes no `trains/<id>/state.json`, so it has nothing to reconcile.
    - Kill the claimer mid-run: `systemctl --user kill -s SIGKILL tradeai-release-train-claim.service`.
-   - Expected: the request stays in `claimed/` with an `ACKNOWLEDGED` receipt that is never finished, because the
-     claimer re-reads only `pending/` (finding 6).
+   - Expected: the request stays in `claimed/` with an `ACKNOWLEDGED` receipt until the orphan watchdog (finding 6,
+     fixed) moves it to `orphaned/` and raises a P2. For the drill, run the claimer once with a short age:
+     `cd $CUR && $PY scripts/release_window.py train-claim --orphan-after-min 1` (dry run: `WOULD_ORPHAN`), then
+     with `--apply`. Close it with `train-orphan-resolve` (dry run, then `--apply`) after `train-reconcile`.
    - `release_window.py train-reconcile` (dry) prints `nothing to reconcile`.
    - The reconcile logic itself is proven by `-k "reconcile or uncertain_merge or unreadable_train_state"`, and live
      by canary proof I.5(5).
@@ -666,6 +668,15 @@ The fallback holds through every phase.
 6. **No watchdog for an orphaned claim.** A claimer killed after `ACKNOWLEDGED` leaves the request in `claimed/`
    forever: `process_requests` reads only `pending/`, and nothing finishes the receipt. Contract §12 cites "the
    controller's independent watchdog (Phase 3)", which does not exist.
+   **Status: FIXED** (branch `fix/release-train-arming-blockers-20261021`). The claimer records its owner
+   (`train_requests/owners/<id>.json`: pid, /proc start time, host). Each `train-claim` run first checks
+   `claimed/`: a claim whose receipt is not terminal, older than N minutes (default 360 = 2 x the unit's 3 h
+   `TimeoutStartSec`; `TRADEAI_RELEASE_TRAIN_ORPHAN_AFTER_MIN` or `--orphan-after-min`), and whose owner is not alive
+   (pid AND start time) is renamed to `orphaned/`, logged in `orphaned.jsonl`, and raises one P2 (notifier intent,
+   plus a needs-action item that stays until it is closed). It is never deleted and never re-run. After
+   `release_window.py train-reconcile`, the operator closes it with
+   `release_window.py train-orphan-resolve --request-id <id> --reason "…"` (dry run; then `--apply`), which writes a
+   FAILED / `CONTROLLER_FAILED` receipt and is refused while any train is non-terminal.
 7. **Two release schedules.** `docs/ops/packets/release-train-20261021/README.md` §5 and §8, and
    `install_release_window_timer.sh`, schedule `release_window.py run` at 12:00 and 17:30 ET. The plan and the train
    use 18:00, 00:00, 06:00 and 08:00. Installing both would give two release paths. This packet installs only the

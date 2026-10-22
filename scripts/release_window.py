@@ -882,6 +882,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     k = sub.add_parser("train-claim", help="answer n8n TrainWindowRequest@v1 files (docs/ops/RELEASE_TRAIN_N8N_"
                                            "CONTRACT.md); lists only, unless --apply")
     k.add_argument("--apply", action="store_true", help="claim by rename and write receipts (shadow = simulate)")
+    k.add_argument("--orphan-after-min", type=float, default=None,
+                   help="orphan watchdog age (default: TRADEAI_RELEASE_TRAIN_ORPHAN_AFTER_MIN, else 2x the 3 h max run)")
+    o = sub.add_parser("train-orphan-resolve", help="close an orphaned claim (after train-reconcile); dry run unless "
+                                                    "--apply; never re-runs the request")
+    o.add_argument("--request-id", required=True)
+    o.add_argument("--reason", required=True)
+    o.add_argument("--apply", action="store_true")
     args = ap.parse_args(argv)
     if args.cmd.startswith("train-"):
         from scripts.lib import release_train_controller as T
