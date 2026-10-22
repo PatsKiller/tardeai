@@ -762,14 +762,17 @@ def run(quiet: bool = False) -> dict:
         # actually decides on (a near-trigger on a deep loser reads very
         # differently from one locking a gain).
         _pl = _pl_if_fired(sym, acct, r.get("stop_price"), r.get("qty") or r.get("held_qty"))
+        # Alpaca stops are the automated paper account; say so on every line, because the batched card drops the
+        # account column and a paper stop read as a real holding (2026-10-22: HPE "you don't own" was paper).
+        _acct_tag = f"[{acct} · PAPER] " if (r.get("broker") or "").lower() == "alpaca" else f"[{acct}] "
         if "orphaned" in r["flags"]:
-            cond, sev, line = "ORPHANED", "urgent", f"stop with no matching {acct} holding (#{r['order_id']}) — on trigger it could short/reject. Cancel it."
+            cond, sev, line = "ORPHANED", "urgent", _acct_tag + f"stop with no matching {acct} holding (#{r['order_id']}) — on trigger it could short/reject. Cancel it."
         elif "oversized" in r["flags"]:
-            cond, sev, line = "OVERSIZED", "urgent", f"stop covers {r['qty']} sh but you hold {r['held_qty']} — modify to {r['held_qty']} sh.{_pl_line(_pl)}"
+            cond, sev, line = "OVERSIZED", "urgent", _acct_tag + f"stop covers {r['qty']} sh but you hold {r['held_qty']} — modify to {r['held_qty']} sh.{_pl_line(_pl)}"
         elif "filled" in r["flags"]:
-            cond, sev, line = "TRIGGERED", "urgent", f"stop FILLED (#{r['order_id']}) — position may be flat; review.{_pl_line(_pl)}"
+            cond, sev, line = "TRIGGERED", "urgent", _acct_tag + f"stop FILLED (#{r['order_id']}) — position may be flat; review.{_pl_line(_pl)}"
         else:
-            cond, sev, line = "NEAR_TRIGGER", "warning", f"price within {r.get('proximity_pct')}% of stop ${r.get('stop_price')} — about to fire.{_pl_line(_pl)}"
+            cond, sev, line = "NEAR_TRIGGER", "warning", _acct_tag + f"price within {r.get('proximity_pct')}% of stop ${r.get('stop_price')} — about to fire.{_pl_line(_pl)}"
         payload = {"kind": "stop_health", "condition": cond,
                    "pl_if_fired": (_pl or {}).get("pl"), "pl_if_fired_pct": (_pl or {}).get("pct"),
                    **{k: r.get(k) for k in
