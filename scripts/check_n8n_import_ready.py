@@ -295,10 +295,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             )
         )
     else:
-        for r in results:
-            mark = "OK     " if r["ok"] else "REFUSED"
-            extra = ", ".join(r["refusals"] + [f"warn:{w}" for w in r["warnings"]])
-            print(f"{mark} {r['id']} {r['name']}  {extra}")
+        # platform first: callers (release_train_arm.sh f_gate) keep only the last lines, which must stay the
+        # per-file verdicts and the summary
         src = platform_source
         print(
             f"platform facts: {src['kind']}"
@@ -307,6 +305,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
         for k, v in (platform or {}).items():
             print(f"  {k} {v['status'].upper():7s} {v['evidence']}")
+        for r in results:
+            mark = "OK     " if r["ok"] else "REFUSED"
+            extra = ", ".join(r["refusals"] + [f"warn:{w}" for w in r["warnings"]])
+            print(f"{mark} {r['id']} {r['name']}  {extra}")
         print(f"{len(results)} checked, {sum(not r['ok'] for r in results)} refused")
     return rc
 

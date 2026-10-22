@@ -390,10 +390,9 @@ cd ~/trade-ai-releases/portfolio-server/CURRENT && ~/trade-ai-v12-rebuild/trade-
 **Verify**: the guard prints `platform facts: host_probe (as of …)` and `FW-P1 … FW-P6 PASS`. It still REFUSES the
 release-train workflow until the runtime obligations have host-signed evidence (`--runtime-evidence`,
 `framework_pending_evidence.json` `runtime_pending`) — this packet clears the platform half only. Measured today with
-`--probe-host`:
+`--probe-host` (line order as printed after the CI fix: platform first, verdicts last):
 
 ```
-REFUSED tradeai-fabric-release-train tradeai-fabric-release-train  framework_gate
 platform facts: host_probe (as of 2026-10-22T13:34:08+00:00)
   FW-P1 FAIL    container env EXECUTIONS_DATA_SAVE_ON_SUCCESS=none …
   FW-P2 FAIL    pg_roles n8n (DB_POSTGRESDB_USER): rolsuper=t; also rolcreaterole,rolcreatedb,rolreplication,rolbypassrls
@@ -401,6 +400,7 @@ platform facts: host_probe (as of 2026-10-22T13:34:08+00:00)
   FW-P4 FAIL    relay binds ['172.19.0.1:18092']; lab br-fdc1921eeccb 172.19.0.0/16; … no ufw capture …
   FW-P5 PARTIAL container .Config.Image=n8nio/n8n:2.43.0 … — tag pin, not a digest
   FW-P6 FAIL    tradeai-n8n-host-deadman.timer not-found/inactive; …
+REFUSED tradeai-fabric-release-train tradeai-fabric-release-train  framework_gate
 1 checked, 1 refused
 ```
 
