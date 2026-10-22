@@ -1,7 +1,7 @@
 {
-  "code_sha": "279fbfd431f7",
+  "code_sha": "d78d2b049d73",
   "credential_name": "tradeai-run-relay",
-  "generated_at": "2026-10-17T04:33:07+00:00",
+  "generated_at": "2026-10-22T00:51:52+00:00",
   "generator": "scripts/n8n_workflow_templates.py",
   "lane_count": 75,
   "lanes": [

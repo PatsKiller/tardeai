@@ -398,7 +398,16 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         assert s["match"] == f"tradeai-fabric-hermes-learning:{s['process_step']}"
         # 2026-10-19 registry truth: the five n8n-owned steps run live (ACTIVE); the held feedback agent is not.
         assert native[lane]["state"] == ("ACTIVE" if lane in HL.LIVE else "NEVER_SCHEDULED")
-    assert set(native) == monitors | cutover | n8n_native_lanes | process_steps
+    # 2026-10-21 Release Train v2 Phase 4: the four request lanes of tradeai-fabric-release-train (one per window
+    # slot), fired only by that workflow through Run Lane; NEVER_SCHEDULED at shadow until the operator imports it.
+    # `match` names the workflow slot, so no host line maps to them and no host scheduler is flipped.
+    release_train = {f"release-train-request-{s}" for s in ("1800", "0000", "0600", "0800")}
+    for lane in release_train:
+        s = native[lane]["scheduler"]
+        assert s["expression"] == "tradeai-fabric-release-train" and s["stage"] == "shadow"
+        assert s["match"] == f"tradeai-fabric-release-train:{lane[-4:]}"
+        assert native[lane]["state"] == "NEVER_SCHEDULED"
+    assert set(native) == monitors | cutover | n8n_native_lanes | process_steps | release_train
     assert not reminders & set(native)
     assert all(native[lane]["state"] == "ACTIVE" for lane in cutover)
     assert all((native[lane]["scheduler"].get("match") or "").strip() for lane in cutover)

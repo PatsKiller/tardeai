@@ -133,6 +133,19 @@ of reference:
 * Path strings, such as `spec_from_file_location(..., "scripts/x.py")`, `subprocess` calls on `scripts/x.py`,
   and `config/*.json`.
 * Bare `"x.py"` names of top-level scripts.
+* Since 2026-10-21 (alignment audit H4), two further kinds:
+  * Path joins built from constant segments: `ROOT / "docs" / "x.md"`, and `DOCS / "y.md"` where
+    `DOCS = ROOT / "docs"`. `.joinpath(...)` and `Path("docs/x.md")` count as well.
+  * Document strings, such as `"docs/.../x.md"` or a quoted top-level `"AGENTS.md"`.
+
+  A test that reads a changed `.md` file directly pins its text, so it is **mandatory** for that change in
+  every tier and is never deferred. Measured on `7faa8cddf`:
+  * a change to `docs/architecture/n8n/N8N_CONTRACTS_DESIGN.md` now selects 3 doc-pinned tests, including
+    `test_n8n_audit_findings_20261015.py`. Before, it selected none, which is how PR #1904 went red on main.
+  * a change to `AGENTS.md` selects 34 doc-pinned tests, including `n8n_onboarding_standard_20261010`. The
+    mandatory estimate is about 115 hint-seconds.
+
+  The map schema is now `TestImpactMap@v2`, so v1 caches are rebuilt.
 
 A change selects every test in its reverse transitive closure. The map is cached in the worktree's git dir
 (`git rev-parse --git-path tradeai/test_impact_map.json`), keyed on the path, size and mtime of every scanned
@@ -146,8 +159,21 @@ If the diff base cannot be resolved, or the map or tiers cannot be loaded, the p
 | Tier | Paths (summary) | PR behaviour |
 |---|---|---|
 | HIGH | policy and guard (AGENTS.md, AI_WORK_POLICY.md, CLAUDE.md, `.cursor/`, `.githooks/`, `docs/governance/`, `bin/guard`, guard scripts, check_no_secrets); broker and execution (`scripts/brokers/`, moomoo, active_trader, schwab scripts, trading-session grant, instrument record, data_source_authority); memory and SQL (`sql/`, `migrations/`, `cio_memory_*`, `m2_*`); deploy and release; schedule (lane_registry, systemd, cron); CI control surface (workflows, runner, the tier/hint/baseline configs, SOP evidence, requirements, pyproject) | the category's named gates run **in full, regardless of budget**. Every gate of 60 s or less that holds a test directly importing the path also runs. The job summary says **independent review required** and lists the paths. |
-| LOW | `docs/**`, `**/*.md`, top-level `*.txt`, archive and reference | smoke gates plus the docs-index gate only |
-| MEDIUM | everything else | smoke gates plus impacted tests within budget |
+| LOW | `docs/**`, `**/*.md`, top-level `*.txt`, archive and reference | smoke gates plus the docs-index gate, plus every test that reads a changed document directly (since 2026-10-21) |
+| MEDIUM | everything else | smoke gates plus impacted tests within budget. If a MEDIUM path reaches **no** registered test (unknown impact), the PR runs the broader suite instead: every gate, `fast` profile (since 2026-10-21) |
+
+**2026-10-21 refresh (Release Train v2 Phase 0).** Four HIGH categories were added:
+
+| Category | Paths | Named gates |
+|---|---|---|
+| `cc_auth` | `config/cc_auth.yaml`, `scripts/lib/cc_auth.py` | `cc_tailscale_identity_auth_20261014`, `schwab_reauth_stepup_fallback_20261021` |
+| `portfolio_server_api` | `scripts/portfolio_server.py`, `scripts/portfolio_server_*`, `scripts/api_v2.py` | `cc_tailscale_identity_auth_20261014`, `cc_header_truth_v2`, `cc_v3_boot_no_reload_loop`, `cc_runtime_harness`, `cc_needs_action_20261021` |
+| `telegram_routing` | `telegram_alert.py`, `telegram_alert_router.py`, `telegram_alert_routing_policy.py`, `telegram_agent_router_bridge.py`, `operator_alert_policy_v2.py`, `alert_outbox.py`, the transport and idempotency libraries, the notification policy and chokepoint baseline configs | `telegram_notification_normalization`, `telegram_chokepoint_ratchet`, `SYSTEM_TELEGRAM_INTERDICT_SCOPE`, `notification_intents_20261010` |
+| `n8n_executor_relay_gateway` | `n8n_run_executor.py`, `n8n_run_relay.py`, `n8n_coordination_gateway.py` (script and library), `n8n_gateway_client.py`, `config/n8n_executor.json`, `config/n8n_run_allowlist.json` | `N8N_RUN_ROUTE`, `N8N_RUN_RELAY`, `n8n_w0_relay_fix_20261010`, `n8n_executor_env_allowlist_20261009`, `n8n_maturity_executor_v2_20261009`, `n8n_fabric_phase1_20261014` |
+
+Unknown impact was measured over the last 80 main merges. Twenty-three of them would have run the broader suite,
+mostly because of `apps/**` TypeScript. Setting `unknown_impact.action` to `"smoke"` in
+`config/ci_risk_tiers.json` restores the old behaviour.
 
 Every path in the CODEOWNERS file proposed by PR #1232 classifies HIGH, and
 `tests/test_ci_pr_selection_20260925.py` holds that. When `.github/CODEOWNERS` exists on main, the same test

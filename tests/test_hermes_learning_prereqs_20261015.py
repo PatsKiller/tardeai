@@ -73,7 +73,10 @@ RETENTION = "hermes-learning-score-history-retention"
 LEARN_NOW = datetime(2026, 10, 15, 10, 57, tzinfo=ET)
 #: The fabric policy hash Build 1 shipped (tests/test_n8n_fabric_hermes_learning_20261015.py POLICY_PIN). A host intent
 #: route must not move it.
-POLICY_PIN = "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f"
+#: 2026-10-21 Release Train v2 Phase 4 moved it ON PURPOSE (was c6750b96ada4...): the policy now names the
+#: release-train workflow's relay calls and three new n8n intent kinds. Graph hashes of the imported fabric workflows are
+#: unchanged, so `build-fabric --verify` of their exports still passes (verify checks graph, not meta policy).
+POLICY_PIN = "4b1ee926f4fd46d60715ba4ba4739bd40fb2e91aecc0476f1dd29a0d55696229"
 
 
 #: The feedback queue adapter exists, but its sixth-stage live output and transactional cutover remain unproven.

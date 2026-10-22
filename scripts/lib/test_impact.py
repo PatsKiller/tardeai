@@ -20,6 +20,10 @@ How "can reach" is computed -- static, conservative, no execution:
 * The selection is the REVERSE TRANSITIVE closure: a change to ``scripts/lib/b.py``
   selects every test that imports ``b`` directly, or imports ``a`` which imports
   ``b``, and so on.
+* Path joins built from constant segments (``ROOT / "docs" / "x.md"``, ``DOCS / "y.md"`` with
+  ``DOCS = ROOT / "docs"``, ``.joinpath(...)``, ``Path("docs/x.md")``) and document strings
+  (``"docs/.../x.md"``, ``"AGENTS.md"``) are references too (2026-10-21). A test that reads a
+  changed ``.md`` file directly pins its text and is MANDATORY for that change, in every tier.
 * A changed test file selects itself. A changed path nothing references and that
   the risk tiers do not classify selects nothing beyond the smoke set -- which is
   the honest answer, and the post-merge full run still covers it.
@@ -56,11 +60,81 @@ def _default_cache_path(root: Path = ROOT) -> Path:
     return root / ".git" / "tradeai-test_impact_map.json"
 
 
-SCHEMA = "TestImpactMap@v1"
+# v2 (2026-10-21): path joins and document references are edges; a v1 cache must not be reused.
+SCHEMA = "TestImpactMap@v2"
 TIERS_PATH = ROOT / "config" / "ci_risk_tiers.json"
 
 _PATH_REF_RE = re.compile(r"""["'/]((?:scripts|config|sql|tests)/[A-Za-z0-9_./-]+\.(?:py|json|yaml|yml|sql|sh))""")
 _BARE_PY_RE = re.compile(r"""["']([A-Za-z0-9_]+\.py)["']""")
+#: 2026-10-21 (alignment audit H4): string references to documents -- "docs/x/y.md" anywhere in a
+#: string, and a quoted top-level name such as "AGENTS.md" (kept only if that file exists at the root).
+_DOC_REF_RE = re.compile(r"""["'/]((?:docs|archive|reference|references)/[A-Za-z0-9_./-]+\.md)""")
+_ROOT_MD_RE = re.compile(r"""["']([A-Za-z0-9_.-]+\.md)["']""")
+
+
+def is_document(path: str) -> bool:
+    """A changed path whose content tests pin as TEXT (prose, policy, contracts in markdown)."""
+    return path.endswith(".md")
+
+
+def _const_parts(node: ast.AST) -> list[str] | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value:
+        return [p for p in node.value.split("/") if p and p != "."]
+    return None
+
+
+def _path_value(node: ast.AST, env: dict[str, list[str]]) -> list[str] | None:
+    """Repo-relative parts of a path expression, or None when it is not one we can read.
+
+    Handles ``BASE / "docs" / "x.md"`` chains, ``BASE.joinpath("docs", "x.md")`` and
+    ``Path("docs/x.md")``. A base we cannot resolve (``ROOT``, ``REPO``,
+    ``Path(__file__).resolve().parents[1]``, ...) is taken as the repo root; a variable assigned
+    from such a chain (``DOCS = ROOT / "docs" / "n8n"``) resolves through ``env``. Conservative
+    by construction: an over-read only adds a candidate, and candidates that are not files in the
+    repo are dropped by the caller.
+    """
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        right = _const_parts(node.right)
+        if right is None:
+            return None
+        left = _path_value(node.left, env)
+        if left is None and isinstance(node.left, ast.BinOp):
+            return None  # a non-constant segment earlier in the chain: unknown, not the root
+        return (left if left is not None else []) + right
+    if isinstance(node, ast.Name):
+        return env.get(node.id)
+    if isinstance(node, ast.Call):
+        args = [_const_parts(a) for a in node.args]
+        if not args or any(a is None for a in args):
+            return None
+        joined = [p for a in args for p in a]  # type: ignore[union-attr]
+        func = node.func
+        if isinstance(func, ast.Attribute) and func.attr == "joinpath":
+            base = _path_value(func.value, env)
+            return (base if base is not None else []) + joined
+        if isinstance(func, ast.Name) and func.id in ("Path", "PurePath", "PosixPath"):
+            return joined
+    return None
+
+
+def _path_join_refs(tree: ast.AST) -> set[str]:
+    """Every repo-relative path a module builds from constant segments (see _path_value)."""
+    env: dict[str, list[str]] = {}
+    assigns = [n for n in ast.walk(tree) if isinstance(n, ast.Assign) and len(n.targets) == 1]
+    for _ in range(3):  # chained aliases: A = ROOT / "docs"; B = A / "n8n"
+        for n in assigns:
+            t = n.targets[0]
+            if isinstance(t, ast.Name):
+                v = _path_value(n.value, env)
+                if v:
+                    env[t.id] = v
+    out: set[str] = set()
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.BinOp, ast.Call)):
+            v = _path_value(n, env)
+            if v and ".." not in v:
+                out.add("/".join(v))
+    return out
 
 
 def _iter_files(root: Path):
@@ -143,11 +217,22 @@ def build_map(root: Path = ROOT) -> dict:
                     target = name_to_file.get(imp)
                     if target and target != rel:
                         d.add(target)
+                for ref in _path_join_refs(tree):
+                    if ref != rel and (root / ref).is_file():
+                        d.add(ref)
             except SyntaxError:
                 pass
         for m in _PATH_REF_RE.finditer(text):
             ref = m.group(1)
             if ref != rel and (root / ref).exists():
+                d.add(ref)
+        for m in _DOC_REF_RE.finditer(text):
+            ref = m.group(1)
+            if (root / ref).is_file():
+                d.add(ref)
+        for m in _ROOT_MD_RE.finditer(text):
+            ref = m.group(1)
+            if (root / ref).is_file():
                 d.add(ref)
         for m in _BARE_PY_RE.finditer(text):
             target = by_basename.get(m.group(1))
@@ -334,6 +419,30 @@ def select(
         if d == 0:
             chosen.add(f)
 
+    # 2026-10-21 (alignment audit H4): a test that reads a changed DOCUMENT directly pins its text
+    # (PR #1904 merged with a doc edit that broke test_n8n_audit_findings_20261015.py, which the
+    # docs-only selection never ran). Every such direct reader is mandatory, whatever the tier --
+    # LOW docs included, and never deferred for budget.
+    doc_pinned: list[str] = []
+    for p in changed:
+        if not is_document(p):
+            continue
+        for f, d in impacted_tests([p], impact_map).items():
+            if d == 1 and f in registered and f not in doc_pinned:
+                doc_pinned.append(f)
+    chosen.update(doc_pinned)
+    # 2026-10-21: a MEDIUM path from which no registered test is reachable has UNKNOWN impact
+    # (it is not "safe", it is unmeasured). tiers["unknown_impact"]["action"] == "fast" tells the
+    # caller to run the broader suite (every gate) instead of this selection.
+    unknown_impact = sorted(
+        p
+        for p in changed
+        if tier_of[p] == "medium"
+        and p not in registered
+        and not any(f in registered for f in impacted_tests([p], impact_map))
+    )
+    unknown_action = str(((tiers.get("unknown_impact") or {}).get("action")) or "smoke")
+
     def w(p: str) -> float:
         return hints.get(p, default_seconds)
 
@@ -376,4 +485,7 @@ def select(
         "mandatory_estimate_seconds": round(mandatory_estimate, 1),
         "budget_seconds": budget,
         "unknown_gates": unknown_gates,
+        "doc_pinned": sorted(doc_pinned),
+        "unknown_impact": unknown_impact,
+        "broaden_to_fast": bool(unknown_impact) and unknown_action == "fast",
     }

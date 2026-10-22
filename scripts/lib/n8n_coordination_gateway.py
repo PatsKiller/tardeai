@@ -41,6 +41,11 @@ VALIDATED_KEY_PREFIXES = frozenset({"d:", "e:", "g:", "p:"})
 #: n8n-research-intake-consumer) send no key, so a live run from them carries this key. It is a host-minted
 #: namespace, not a free-form one, and a LIVE relay run may use it.
 RELAY_DERIVED_KEY_PREFIX = "n8n-wf-"
+#: 2026-10-21 (operator "rtw yes"; docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md O3): the release-train request lanes' LIVE
+#: run-key namespace ``rtw:<slot>:<window date YYYYMMDD>:<shadow|live>``, validated by the host
+#: (scripts/lib/release_train_window_view.check_window_run_key: live mode only, the lane's own slot, the slot's current
+#: window date). Deterministic, so one key per lane and window: a repeat replays the same row.
+WINDOW_RUN_KEY_PREFIX = "rtw:"
 MAX_REQUESTED_BY = 128
 SCOPE_READ = "coordination_read"
 SCOPE_RUN = "coordination_run"
@@ -259,9 +264,22 @@ REFUSAL_REASONS = frozenset(
         # 2026-10-15 (audit DD03): a LIVE run from the n8n relay caller whose key is in no host-validated namespace
         # (d:/e:/g: server-minted, p: manifest-validated). Free-form keys stay available to dry runs and to host callers.
         "run_key_namespace_refused",
+        # 2026-10-21 (operator "rtw yes"): an rtw: key that release_train_window_view.check_window_run_key refuses
+        # (``key_state`` names why: malformed, not live, another lane's slot, not the current window date).
+        "run_window_key_invalid",
+        # 2026-10-21 (Release Train v2 Phase 4; docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md §4/§8): the read-only
+        # release_train_window operation without a configured provider, with a bad query, or whose source failed.
+        "release_train_window_not_configured",
+        "release_train_window_bad_query",
+        "release_train_window_source_unavailable",
+        # the gateway was started without a ledger, so it has no state root to find the release-window spool in
+        "release_train_window_no_state_root",
     }
 )
 REFUSAL_PREFIXES = ("illegal_transition:", "typed_refusal:", "forbidden_route:")
+#: 2026-10-21 (Release Train v2 Phase 4): the only request keys the read-only ``release_train_window`` operation takes
+#: beyond route/operation/claim/signature (scripts/lib/release_train_window.py QUERY_KEYS); exactly one per request.
+RELEASE_TRAIN_WINDOW_QUERY_KEYS = ("view", "run_id", "slot")
 ARTIFACT_REF_FIELDS = frozenset({"store", "ref", "sha256", "as_of"})
 ARTIFACT_BYTES_KEYS = frozenset({"content", "bytes", "body", "data", "base64", "payload"})
 MAX_ARTIFACT_REF_BYTES = 4096
@@ -377,6 +395,7 @@ def handle_request(
     run_allowlist: frozenset[str] | set[str] | None = None,
     due_sources: Any = None,
     momentum_provider: Any = None,
+    release_train_provider: Any = None,
     outcome_store: Any = None,
     intent_store: Any = None,
     process_sources: Any = None,
@@ -460,6 +479,27 @@ def handle_request(
             return momentum_provider(datetime.fromtimestamp(_unix(now), timezone.utc))
         except (OSError, ValueError, TypeError):
             return _refused(None, "momentum_lifecycle_source_unavailable", peer_ignored=peer)
+    if operation == "release_train_window":
+        # 2026-10-21 (Release Train v2 Phase 4): a fixed read-only projection, like momentum_lifecycle. Exactly one
+        # of view=readiness / run_id / slot; nothing here runs, writes, merges, promotes or sends.
+        extra = set(request) - {"route", "operation", "claim", "signature"}
+        if route.strip().lower() != "coordination/status" or not extra <= set(RELEASE_TRAIN_WINDOW_QUERY_KEYS):
+            return _refused(None, "unexpected_field", peer_ignored=peer)
+        if len(extra) != 1 or not isinstance(request.get(next(iter(extra))), str):
+            return _refused(None, "release_train_window_bad_query", peer_ignored=peer)
+        if release_train_provider is None:
+            return _refused(None, "release_train_window_not_configured", peer_ignored=peer)
+        try:
+            answer = release_train_provider(
+                {k: request[k] for k in extra}, datetime.fromtimestamp(_unix(now), timezone.utc)
+            )
+        except (OSError, ValueError, TypeError):
+            return _refused(None, "release_train_window_source_unavailable", peer_ignored=peer)
+        if not isinstance(answer, dict):
+            return _refused(None, "release_train_window_source_unavailable", peer_ignored=peer)
+        if answer.get("state") == "REFUSED" and answer.get("reason") == "release_train_window_bad_query":
+            return _refused(None, "release_train_window_bad_query", peer_ignored=peer)
+        return answer
     if operation == "due" or route.strip().lower() == DUE_ROUTE:
         if operation != "due" or route.strip().lower() != DUE_ROUTE:
             return _refused(None, "unknown_operation", peer_ignored=peer)
@@ -711,6 +751,35 @@ def _run_process_key(
     return out
 
 
+def _run_window_key(claim, *, run_store, run_id: str, lane_id: str, mode: str, requested_by, now, peer) -> dict[str, Any]:
+    """2026-10-21 (operator "rtw yes"): an ``rtw:<slot>:<YYYYMMDD>:<shadow|live>`` key is accepted only when
+    release_train_window_view.check_window_run_key holds it valid NOW for this lane and mode (live only; the lane's
+    own slot; the slot's current window date). A replay of an accepted key returns its row (same lane and mode);
+    anything else is ``run_window_key_invalid`` with ``key_state``. Any caller, any case variant: never free-form."""
+    try:
+        from scripts.lib import release_train_window_view as RTV  # type: ignore
+    except ImportError:  # pragma: no cover - scripts/lib on sys.path instead of the repo root
+        import release_train_window_view as RTV  # type: ignore
+    existing = run_store.get(run_id)
+    if existing is not None and RTV.RUN_KEY_RE.fullmatch(run_id):
+        if existing.get("lane_id") != lane_id or existing.get("mode") != mode:
+            out = _refused(None, "run_window_key_invalid", peer_ignored=peer)
+            out["key_state"] = "KEY_MISMATCH"
+            return out
+        return _replay_or_conflict(
+            existing, True, run_store, lane_id=lane_id, mode=mode, requested_by=requested_by, peer=peer
+        )
+    ok, state = RTV.check_window_run_key(run_id, lane_id, mode, datetime.fromtimestamp(_unix(now), timezone.utc))
+    if not ok:
+        out = _refused(None, "run_window_key_invalid", peer_ignored=peer)
+        out["key_state"] = state
+        return out
+    row, duplicate = run_store.request(
+        run_id=run_id, lane_id=lane_id, mode=mode, requested_by=requested_by, caller_id=claim["caller_id"], now=now
+    )
+    return _replay_or_conflict(row, duplicate, run_store, lane_id=lane_id, mode=mode, requested_by=requested_by, peer=peer)
+
+
 def _run(
     request, claim, *, run_store, run_allowlist, now: float, peer, due_sources=None, process_sources: Any = None,
     parent_run_id: str | None = None,
@@ -742,6 +811,11 @@ def _run(
     requested_by = request.get("requested_by")
     if requested_by is not None and (not isinstance(requested_by, str) or len(requested_by) > MAX_REQUESTED_BY):
         return _refused(None, "malformed_event", peer_ignored=peer)
+    if run_id[: len(WINDOW_RUN_KEY_PREFIX)].lower() == WINDOW_RUN_KEY_PREFIX:
+        return _run_window_key(
+            claim, run_store=run_store, run_id=run_id, lane_id=lane_id, mode=mode, requested_by=requested_by,
+            now=now, peer=peer,
+        )
     prefix = run_id[:2].lower()
     relay_minted = run_id[: len(RELAY_DERIVED_KEY_PREFIX)].lower() == RELAY_DERIVED_KEY_PREFIX
     if (

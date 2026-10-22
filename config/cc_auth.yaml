@@ -106,6 +106,13 @@ cc_auth:
       - action: unlock
         methods: [POST, PUT, PATCH, DELETE]
         pattern: /api/v[23]/(.+/)?unlock(/.*)?
+      # Release Train v2 (2026-10-21): POST .../release-train/stop SETS the release-window STOP latch (set-only;
+      # resume is host-CLI-only, decision D3). Same-origin is enforced here even in report_only, and the handler
+      # re-checks it (cc_auth.command_csrf_check) and requires a tailnet operator identity. NEVER step-up: the
+      # operator declined TOTP, and stopping is the safe direction. Not the trading kill switch.
+      - action: release_train_command
+        methods: [POST, PUT, PATCH, DELETE]
+        pattern: /api/v2/coordination/release-train(/.*)?
     # Signed CIO action links render a same-origin HTML <form method="post"> (urlencoded). Allowed
     # content types widen to application/x-www-form-urlencoded, but Origin or Sec-Fetch-Site must be
     # PRESENT and same-origin on every listener (a cross-site form post carries a foreign Origin).

@@ -55,7 +55,10 @@ BLOCKED = [sid for sid, s in SPEC["steps"].items() if s["blocked"]]
 PROCESS_GRAPH_PIN = "f1d0984c64b0"  # cutover PR-2 (2026-10-15): MODE live (was 44c35ad3374f)
 #: The fabric policy hash Build 1 shipped (5aa61048d / 494adde71): adding a process workflow must not move it, or the
 #: four imported fabric workflows stop verifying.
-POLICY_PIN = "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f"
+#: 2026-10-21 Release Train v2 Phase 4 moved it ON PURPOSE (was c6750b96ada4...): the policy now names the
+#: release-train workflow's relay calls and three new n8n intent kinds. Graph hashes of the imported fabric workflows are
+#: unchanged, so `build-fabric --verify` of their exports still passes (verify checks graph, not meta policy).
+POLICY_PIN = "4b1ee926f4fd46d60715ba4ba4739bd40fb2e91aecc0476f1dd29a0d55696229"
 
 
 def _wf() -> dict:

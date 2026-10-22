@@ -385,6 +385,42 @@ def current_principal() -> str:
     return getattr(_REQ, "principal", "") or ""
 
 
+_CONTEXT_HEADERS = ("Origin", "Sec-Fetch-Site", "Content-Type", "Content-Length", "Transfer-Encoding")
+
+
+def set_request_context(listener: str | None, headers: Any) -> None:
+    """Set by portfolio_server's gate on EVERY request: the listener role and the CSRF-relevant headers, so an
+    operator command handler can re-check same-origin itself instead of inheriting report_only (2026-10-21)."""
+    if listener is None:
+        _REQ.context = None
+        return
+    _REQ.context = {"listener": listener, "headers": {n: _header_values(headers, n) for n in _CONTEXT_HEADERS}}
+
+
+def current_request_context() -> dict | None:
+    return getattr(_REQ, "context", None)
+
+
+def command_csrf_check(cfg: CCAuthConfig, method: str, path: str) -> tuple[bool, str]:
+    """Handler-side CSRF for operator command routes (release STOP), ENFORCED whatever enforce/report_only say.
+
+    Fails closed without the gate's request context. Applies csrf_check with browser (serve_proxy) semantics, then
+    requires positive same-origin proof: an allowlisted Origin, or Sec-Fetch-Site: same-origin.
+    """
+    ctx = current_request_context()
+    if not ctx:
+        return False, "csrf: no request context (the cc_auth gate did not run)"
+    headers = ctx.get("headers") or {}
+    ok, why = csrf_check(cfg, LISTENER_SERVE_PROXY, method, path, headers)
+    if not ok:
+        return False, why
+    origins = headers.get("Origin") or []
+    sites = [s.strip().lower() for s in (headers.get("Sec-Fetch-Site") or [])]
+    if not origins and sites != ["same-origin"]:
+        return False, "csrf: command routes need an allowlisted Origin or Sec-Fetch-Site: same-origin"
+    return True, ""
+
+
 def authenticated_principal(d: "Decision") -> str:
     if d.allowed and not d.would_deny and (d.principal.startswith("tailnet:") or d.principal == "service-token"):
         return d.principal

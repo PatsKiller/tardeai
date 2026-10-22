@@ -2033,6 +2033,8 @@ FABRIC_RELAY_CALLS = {
     FABRIC_ERROR_ID: ["POST /intent"],
     FABRIC_PROBE_ID: [],
     FABRIC_ERROR_PROBE_ID: [],
+    # 2026-10-21 Release Train v2 Phase 4 (RELEASE_TRAIN_RELAY_CALLS below; read-only view + send-intents only).
+    "tradeai-fabric-release-train": ["GET /release-train-window", "POST /intent"],
 }
 #: Node fields that change behaviour; the graph hash covers exactly these (plus connections and settings), so a
 #: re-export from n8n (which adds position, webhookId, notes, versionId, ...) of the same graph verifies.
@@ -3192,11 +3194,566 @@ def process_problems(wf: dict) -> list[str]:
     return problems
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# 2026-10-21 Release Train v2 Phase 4: `tradeai-fabric-release-train` (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md).
+# n8n COORDINATES ONLY: schedule ticks per window, a read-only readiness join, an advisory STOP/armed gate, one Run Lane
+# call to the slot's request lane (which only appends a TrainWindowRequest@v1 row on the host), a bounded poll for the
+# controller's TrainWindowReceipt@v1, and send-INTENTS (DIGEST / P2 needs-action / delegation reminder). No credential
+# but the relay's, no merge/promote/push, no direct controller command, no Telegram or email node, no P1 (the host
+# notifier owns P1 pages). One window per execution (no loop): a refusal stays data and a failure reaches the error
+# route (FW-A4). Inputs: config/release_train_n8n.json (slots, lead, report offset, waits).
+
+RELEASE_TRAIN_ID = "tradeai-fabric-release-train"
+RELEASE_TRAIN_CONFIG_REL = Path("config") / "release_train_n8n.json"
+#: What the workflow asks Run Lane for. dry_run until the train-shadow PR (contract §11) sets the lanes' live_arg and
+#: flips this; the executor's stage clamp also forces dry_run while the lanes' registry stage is shadow.
+RELEASE_TRAIN_MODE = "dry_run"
+RELEASE_TRAIN_EXECUTION_TIMEOUT_S = 1800
+RELEASE_TRAIN_RUN_ATTEMPTS = 1
+#: The request lane's allowlist timeout_s (60) + Run Lane's outcome margin (120).
+RELEASE_TRAIN_OUTCOME_TIMEOUT_S = 180
+RELEASE_TRAIN_POLL_FIRST_S = 5
+RELEASE_TRAIN_POLL_MAX_S = 60
+RELEASE_TRAIN_INTENT_KINDS = (
+    "release_train_window_digest",
+    "release_train_needs_action",
+    "release_train_delegation_reminder",
+)
+RELEASE_TRAIN_RELAY_CALLS = ["GET /release-train-window", "POST /intent"]
+#: Literal text that must never appear in the release-train workflow's nodes (release_train_problems and
+#: tests/test_release_train_n8n_20261021.py): controller/deploy commands, git/gh writes, and sender names.
+RELEASE_TRAIN_FORBIDDEN_TEXT = (
+    "release_window.py",
+    "release_control_cli",
+    "cio_phase2_exact_main_deploy",
+    "release_capability",
+    "git push",
+    "git merge",
+    "gh pr merge",
+    "gh api",
+    "promote",
+    "rollback",
+    "send_telegram",
+    "sendmessage",
+    "api.telegram.org",
+    "smtp",
+    "bot_token",
+)
+RT_SCHED_REQUEST = "Schedule request"
+RT_SCHED_REPORT = "Schedule report"
+RT_MANUAL = "Manual run"
+RT_PLAN_REQUEST = "Plan request"
+RT_PLAN_REPORT = "Plan report"
+RT_PLAN_MANUAL = "Plan manual"
+RT_RELAY = "Relay"
+RT_GET_READY = "GET readiness"
+RT_GATE = "Gate"
+RT_ROUTE = "Route action"
+RT_RUN = "Run request lane"
+RT_RECORD = "Record run"
+RT_ROUTE_RUN = "Route run"
+RT_FAIL = "Fail run"
+RT_REFUSAL = "Refusal as data"
+RT_POST_REFUSAL = "POST relay /intent (refusal)"
+RT_RECORD_REFUSAL = "Record refusal intent"
+RT_INIT = "Init collect"
+RT_COLLECT = "Collect?"
+RT_WAIT = "Wait poll"
+RT_GET_WIN = "GET window"
+RT_EVAL = "Evaluate poll"
+RT_AGAIN = "Poll again?"
+RT_SHAPE = "Shape intents"
+RT_POST = "POST relay /intent"
+RT_ASSERT = "Assert intents"
+
+
+def load_release_train_config(path: Path | None = None) -> dict:
+    """config/release_train_n8n.json, validated by scripts/lib/release_train_window_view.validate_config."""
+    try:
+        from scripts.lib.release_train_window_view import validate_config
+    except ImportError:  # run as a script: scripts/ is on sys.path, the repo root is not
+        from lib.release_train_window_view import validate_config  # type: ignore[no-redef]
+
+    cfg = json.loads((path or (ROOT / RELEASE_TRAIN_CONFIG_REL)).read_text(encoding="utf-8"))
+    errs = validate_config(cfg)
+    if errs:
+        raise ValueError(f"release-train config invalid: {errs}")
+    return cfg
+
+
+def _slot_minute(slot: str) -> int:
+    return int(slot[:2]) * 60 + int(slot[2:])
+
+
+def release_train_crons(cfg: dict, phase: str) -> list[str]:
+    """The four cron expressions (America/New_York via settings.timezone) for the request or report tick."""
+    offset = -int(cfg["request_lead_min"]) if phase == "request" else int(cfg["report_after_min"])
+    out = []
+    for s in cfg["slots"]:
+        m = (_slot_minute(s["slot"]) + offset) % 1440
+        out.append(f"{m % 60} {m // 60} * * *")
+    return out
+
+
+def _rt_slots_js(cfg: dict) -> str:
+    rows = [{"slot": s["slot"], "minute": _slot_minute(s["slot"]), "lane_id": s["lane_id"]} for s in cfg["slots"]]
+    return json.dumps(rows, sort_keys=True)
+
+
+def _rt_plan_scheduled_js(cfg: dict, phase: str) -> str:
+    offset = -int(cfg["request_lead_min"]) if phase == "request" else int(cfg["report_after_min"])
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            f"// {phase} tick: which window this cron fire belongs to (window start {offset:+d} min). The host lane",
+            "// re-derives the window from its own clock and argv; this only picks the lane to ask.",
+            f"const SLOTS = {_rt_slots_js(cfg)};",
+            f"const OFFSET = {offset};",
+            "const now = $now.setZone('America/New_York');",
+            "const nowMin = now.hour * 60 + now.minute;",
+            "let best = null;",
+            "for (const s of SLOTS) {",
+            "  const tick = (((s.minute + OFFSET) % 1440) + 1440) % 1440;",
+            "  let d = Math.abs(nowMin - tick);",
+            "  d = Math.min(d, 1440 - d);",
+            "  if (best === null || d < best.d) best = { ...s, d };",
+            "}",
+            "if (best === null || best.d > 30) {",
+            "  throw new Error('release-train: no window matches the tick at ' + now.toFormat('HH:mm'));",
+            "}",
+            f"return [{{ json: {{ phase: '{phase}', slot: best.slot }} }}];",
+            "",
+        ]
+    )
+
+
+def _rt_plan_manual_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "// Manual run = FORCED SHADOW TICK (contract §10). The Gate picks the window with the oldest (or no) shadow",
+            "// receipt, so four manual runs cover all four windows. A forced request is off_window on the host,",
+            "// therefore shadow=true and simulate-only by construction.",
+            "return [{ json: { phase: 'forced', slot: null } }];",
+            "",
+        ]
+    )
+
+
+def _rt_gate_js(cfg: dict) -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "// ADVISORY gate on ReleaseTrainReadiness@v1 (contract §4-§5). STOP set, unreadable or unknown -> no-op;",
+            "// not armed and shadow disabled -> no-op. A report tick only collects. The host lane and the controller",
+            "// re-decide everything; this never grants anything.",
+            f"const WF = {json.dumps(RELEASE_TRAIN_ID)};",
+            f"const MODE = {json.dumps(RELEASE_TRAIN_MODE)};",
+            f"const SLOTS = {_rt_slots_js(cfg)};",
+            f"const WAITS = {json.dumps(cfg['receipt_wait_s'], sort_keys=True)};",
+            f"const REMINDER_SLOT = {json.dumps(cfg['reminder_slot'])};",
+            f"const p = $('{RT_RELAY}').first().json;",
+            "const r = $input.first().json || {};",
+            "const b = (r.body && typeof r.body === 'object') ? r.body : {};",
+            "const ok = r.statusCode === 200 && b.schema === 'ReleaseTrainReadiness@v1' && b.state === 'OK';",
+            "let slot = p.slot;",
+            "if (p.phase === 'forced') {",
+            "  // the window whose newest shadow request is oldest (never requested first); ties keep SLOTS order",
+            "  const cov = (ok && Array.isArray(b.shadow_coverage)) ? b.shadow_coverage : [];",
+            "  const at = (s) => { const c = cov.find((x) => x && x.slot === s); return c && c.last_requested_at ? c.last_requested_at : ''; };",
+            "  slot = SLOTS.map((s) => s.slot).reduce((a, s) => (at(s) < at(a) ? s : a));",
+            "}",
+            "const sl = SLOTS.find((s) => s.slot === slot);",
+            "if (!sl) throw new Error('release-train: unknown slot ' + String(slot));",
+            "const now = $now.setZone('America/New_York');",
+            "// LIVE runs carry the host-validated key rtw:<slot>:<window date>:<shadow|live> (gateway check_window_run_key:",
+            "// the slot's current window = first occurrence at or after now - grace). Dry runs use a per-execution key",
+            "// outside that namespace (a free-form key is allowed for dry_run only).",
+            f"const GRACE_MIN = {int(cfg['grace_min'])};",
+            "const hh = Number(String(slot).slice(0, 2)), mi = Number(String(slot).slice(2));",
+            "const floor = $now.minus({ minutes: GRACE_MIN });",
+            "let wstart = null;",
+            "for (let d = -1; d < 3 && !wstart; d++) {",
+            "  const c = now.plus({ days: d }).set({ hour: hh, minute: mi, second: 0, millisecond: 0 });",
+            "  if (c >= floor) wstart = c;",
+            "}",
+            "const kind = (p.phase === 'request' && b.shadow_enabled === true && !(b.armed === true)) ? 'shadow' : 'live';",
+            "const key = MODE === 'live'",
+            "  ? 'rtw:' + slot + ':' + wstart.toFormat('yyyyLLdd') + ':' + kind",
+            "  : 'rtwdry-' + sl.lane_id + '-' + now.toFormat(\"yyyyLLdd'T'HHmmss\");",
+            "const stop = (ok && b.stop && typeof b.stop === 'object') ? b.stop : {};",
+            "const win = ok ? (b.windows || []).find((w) => w && w.slot === slot) : null;",
+            "const dstate = ok && b.delegation ? String(b.delegation.state || 'UNAVAILABLE') : 'UNAVAILABLE';",
+            "let action = 'no_op';",
+            "let reason = null;",
+            "if (p.phase === 'report') {",
+            "  action = 'report';",
+            "} else if (!ok) {",
+            "  reason = 'readiness_unavailable';",
+            "} else if (stop.state !== 'ABSENT' || stop.effective_stop !== false) {",
+            "  reason = stop.state === 'SET' ? 'stop_set' : (stop.state === 'UNREADABLE' ? 'stop_unreadable' : 'stop_unavailable');",
+            "} else {",
+            "  const live = p.phase === 'request' && b.armed === true && dstate === 'ACTIVE' && !!win && win.enabled === true;",
+            "  if (live || b.shadow_enabled === true) { action = 'request'; reason = live ? null : 'shadow'; }",
+            "  else { reason = 'not_armed'; }",
+            "}",
+            "const remind = ok && ['PAUSED', 'NOT_CONFIGURED'].includes(dstate)",
+            "  && (p.phase === 'forced' || (p.phase === 'report' && slot === REMINDER_SLOT));",
+            "$execution.customData.set('slot', String(slot));",
+            "$execution.customData.set('lane_id', String(sl.lane_id));",
+            "return [{ json: { schema: 'ReleaseTrainTick@v1', phase: p.phase, slot, lane_id: sl.lane_id, mode: MODE,",
+            "  process_id: WF, idempotency_key: key,",
+            f"  max_attempts: {RELEASE_TRAIN_RUN_ATTEMPTS}, outcome_timeout_s: {RELEASE_TRAIN_OUTCOME_TIMEOUT_S},",
+            "  wait_budget_s: WAITS[p.phase], action, reason, remind, readiness_ok: ok,",
+            "  readiness: ok ? { stop_state: stop.state ?? null, armed: b.armed ?? null, shadow_enabled: b.shadow_enabled ?? null,",
+            "    delegation_state: dstate, window_enabled: win ? win.enabled === true : null,",
+            "    queue_counts: b.queue_counts ?? null, queue_freshness: b.queue_freshness ?? null } : null } }];",
+            "",
+        ]
+    )
+
+
+def _rt_record_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "// Join key for the ledger (run_id <-> execution_id), saved with the execution (FW-M1). The Run Lane",
+            "// status is routed next: success -> collect, refused_policy / skipped_lock -> data, failed -> error route.",
+            f"const g = $('{RT_GATE}').first().json;",
+            "const r = $input.first().json || {};",
+            "$execution.customData.set('run_id', String(r.run_id || g.idempotency_key));",
+            "const res = r.schema === 'RunLaneResult@v1' ? r : { ...r, status: 'failed', reason: 'no_run_lane_result' };",
+            "const run = { status: String(res.status || 'failed'), run_id: res.run_id ?? null, reason: res.reason ?? null,",
+            "  attempts: res.attempts ?? 0, mode: res.mode ?? g.mode };",
+            "return [{ json: { ...g, status: run.status, run } }];",
+            "",
+        ]
+    )
+
+
+def _rt_fail_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "// A failed request run (after Run Lane's budget) or an unrouted status fails the execution on purpose:",
+            "// errorWorkflow tradeai-fabric-error turns it into one deduped send-INTENT with a runbook id (P2).",
+            "const s = $input.first().json || {};",
+            "throw new Error('release-train: ' + String(s.lane_id || '') + ' ' + String(s.status || 'unknown') + ' '",
+            "  + String((s.run && s.run.reason) || '').slice(0, 80));",
+            "",
+        ]
+    )
+
+
+def _rt_refusal_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "// A policy refusal or a lock skip is DATA (AGENTS §23.23 governance (5)): one digest intent, never an error.",
+            "const s = $input.first().json;",
+            "const xid = String($execution.id).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || 'none';",
+            "return [{ json: { workflow_id: String($workflow.id), execution_id: xid, node: 'Refusal as data',",
+            "  domain: 'fabric', kind: 'release_train_window_digest',",
+            "  subject: ('release train ' + s.slot + ' ' + s.phase + ': ' + String(s.status).toUpperCase() + ' ('",
+            "    + String((s.run && s.run.reason) || '') + ')').slice(0, 120),",
+            "  summary: ('request lane ' + s.lane_id + ' was not run: ' + String(s.status) + '; the coordination ledger row is'",
+            "    + ' the record').slice(0, 300) } }];",
+            "",
+        ]
+    )
+
+
+def _rt_record_refusal_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "// Whether the host accepted the refusal digest is recorded as data; the refusal itself is in the ledger.",
+            "const r = $input.first().json || {};",
+            "const body = (r.body && typeof r.body === 'object') ? r.body : {};",
+            "return [{ json: { intent_state: String(body.state || ('HTTP ' + r.statusCode)), intent_id: body.intent_id ?? null } }];",
+            "",
+        ]
+    )
+
+
+def _rt_init_collect_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            f"const POLL_FIRST_S = {RELEASE_TRAIN_POLL_FIRST_S};",
+            "const s = $input.first().json;",
+            "const byRun = s.phase !== 'report';",
+            "// A dry_run lane appends nothing, so there is no receipt to wait for (contract §8).",
+            "const ran = !!s.run && s.run.status === 'success';",
+            "const collect = s.phase === 'report' || (ran && s.mode === 'live');",
+            "const query = byRun ? ('run_id=' + encodeURIComponent(String((s.run && s.run.run_id) || '')))",
+            "  : ('slot=' + encodeURIComponent(String(s.slot)));",
+            "return [{ json: { ...s, collect, query, polls: 0, waited_s: 0, wait_s: POLL_FIRST_S, view: null,",
+            "  collect_status: collect ? 'pending' : 'skipped', again: false } }];",
+            "",
+        ]
+    )
+
+
+def _rt_evaluate_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "// One ReleaseTrainWindowView@v1 poll. request tick: any receipt (ACKNOWLEDGED) ends it; report and forced:",
+            "// a terminal receipt. NOT_FOUND = no request was appended (no-op or duplicate). Budget -> timeout (data).",
+            f"const POLL_MAX_S = {RELEASE_TRAIN_POLL_MAX_S};",
+            "const TERMINAL = ['COMPLETED', 'REFUSED', 'EXPIRED', 'FAILED'];",
+            f"const s = $('{RT_WAIT}').last().json;",
+            "const r = $input.first().json || {};",
+            "const b = (r.body && typeof r.body === 'object') ? r.body : {};",
+            "const ok = r.statusCode === 200 && b.schema === 'ReleaseTrainWindowView@v1' && b.state === 'OK';",
+            "const out = { ...s, polls: s.polls + 1, waited_s: s.waited_s + s.wait_s, again: false };",
+            "if (ok) out.view = { request_state: b.request_state ?? null, request: b.request ?? null,",
+            "  receipt: b.receipt ?? null, receipt_problem: b.receipt_problem ?? null };",
+            "const rec = ok ? b.receipt : null;",
+            "if (ok && b.request_state === 'NOT_FOUND') { out.collect_status = 'no_request'; }",
+            "else if (rec && (s.phase === 'request' || TERMINAL.includes(rec.state))) { out.collect_status = 'done'; }",
+            "else if (out.waited_s >= s.wait_budget_s) { out.collect_status = 'timeout'; }",
+            "else {",
+            "  out.again = true;",
+            "  out.wait_s = Math.min(POLL_MAX_S, s.wait_s * 2, Math.max(1, s.wait_budget_s - out.waited_s));",
+            "}",
+            "return [{ json: out }];",
+            "",
+        ]
+    )
+
+
+def _rt_shape_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "// Send-INTENTS only (contract §9): n8n holds no bot token and sends nothing; the host comms gateway decides",
+            "// delivery, dedupe, caps and quiet hours. A P1 page is the host notifier's, never n8n's.",
+            "const s = $input.first().json;",
+            "const wid = String($workflow.id);",
+            "const xid = String($execution.id).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || 'none';",
+            "const view = s.view || {};",
+            "const rec = view.receipt || null;",
+            "const win = (view.request && view.request.window_id) || (String(s.slot).slice(0, 2) + ':' + String(s.slot).slice(2) + ' ET');",
+            "let label;",
+            "if (s.action === 'no_op') label = 'NO_OP (' + String(s.reason) + ')';",
+            "else if (s.action === 'request' && s.mode !== 'live') label = 'DRY_RUN';",
+            "else if (s.collect_status === 'no_request') label = 'NO_REQUEST';",
+            "else if (!rec) label = s.collect_status === 'timeout' ? (s.phase === 'request' ? 'UNACKNOWLEDGED' : 'IN_PROGRESS')",
+            "  : 'PENDING';",
+            "else if (rec.state === 'COMPLETED') label = String(rec.outcome) + (rec.mode === 'simulate' ? ' (simulated)' : '');",
+            "else if (rec.state === 'ACKNOWLEDGED') label = 'ACKNOWLEDGED';",
+            "else label = String(rec.state) + ' (' + String((rec.refusal || {}).code || '') + ')';",
+            "const rd = s.readiness || {};",
+            "const qc = rd.queue_counts ? ('ready ' + rd.queue_counts.ready + ', held ' + rd.queue_counts.held)",
+            "  : ('queue ' + String(rd.queue_freshness || 'UNAVAILABLE'));",
+            "const summary = ['mode ' + s.mode, 'stop ' + String(rd.stop_state ?? 'UNKNOWN'),",
+            "  'armed ' + String(rd.armed), 'delegation ' + String(rd.delegation_state ?? 'UNKNOWN'), qc,",
+            "  rec && rec.train_id ? ('train ' + rec.train_id) : null,",
+            "  rec && rec.p1_alert ? 'P1 paged by the host notifier' : null,",
+            "  view.request ? ('request ' + view.request.request_id + (view.request.shadow ? ' shadow' : ' live')) : null,",
+            "].filter(Boolean).join('; ');",
+            "const base = { workflow_id: wid, execution_id: xid, node: 'Shape intents' };",
+            "const out = [{ json: { ...base, domain: 'fabric', kind: 'release_train_window_digest',",
+            "  subject: ('release train ' + win + ' ' + s.phase + ': ' + label).slice(0, 120), summary: summary.slice(0, 300) } }];",
+            "const na = [];",
+            "if (s.reason === 'readiness_unavailable') na.push('readiness view unavailable (treated as STOP)');",
+            "if (s.phase === 'request' && s.collect && s.collect_status === 'timeout') na.push('controller unacknowledged');",
+            "if (view.receipt_problem) na.push(String(view.receipt_problem));",
+            "const items = (rec && Array.isArray(rec.needs_action)) ? rec.needs_action : [];",
+            "if (items.length) na.push(items.length + ' item(s): ' + items.slice(0, 3).map((x) => String(x.code)",
+            "  + (x.pr ? ' #' + x.pr : '')).join(', '));",
+            "if (na.length) out.push({ json: { ...base, domain: 'fabric', kind: 'release_train_needs_action',",
+            "  subject: ('release train ' + win + ': needs action (' + na.length + ')').slice(0, 120),",
+            "  summary: na.join('; ').slice(0, 300) } });",
+            "if (s.remind) out.push({ json: { ...base, domain: 'fabric', kind: 'release_train_delegation_reminder',",
+            "  subject: ('release train delegation ' + String(rd.delegation_state) + ': routine releases are off').slice(0, 120),",
+            "  summary: 'The standing release delegation is ' + String(rd.delegation_state) + '. Routine train releases do not'",
+            "    + ' run; the manual release path stays available. Resuming is an operator action.' } });",
+            "return out;",
+            "",
+        ]
+    )
+
+
+def _rt_assert_js() -> str:
+    return "\n".join(
+        [
+            "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.",
+            "// An intent the host did not accept fails this execution -> errorWorkflow tradeai-fabric-error. The host",
+            "// P1 path never depends on n8n (§24.1).",
+            "const all = $input.all();",
+            "for (const it of all) {",
+            "  const r = it.json || {};",
+            "  const body = (r.body && typeof r.body === 'object') ? r.body : {};",
+            "  if (!(r.statusCode === 200 && body.state === 'ACCEPTED')) {",
+            "    throw new Error('release-train: intent not accepted: ' + String(body.reason || ('HTTP ' + r.statusCode)).slice(0, 80));",
+            "  }",
+            "}",
+            "return [{ json: { schema: 'ReleaseTrainTickResult@v1', intents: all.length } }];",
+            "",
+        ]
+    )
+
+
+def _rt_schedule(wid: str, name: str, crons: list[str], position: list[int]) -> dict:
+    return {
+        "id": _f_node_id(wid, name),
+        "name": name,
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": position,
+        "parameters": {"rule": {"interval": [{"field": "cronExpression", "expression": c} for c in crons]}},
+    }
+
+
+def _rt_intent_body() -> str:
+    return (
+        "={{ JSON.stringify({ domain: $json.domain, kind: $json.kind, subject: $json.subject, summary: $json.summary, "
+        "workflow_id: $json.workflow_id, execution_id: $json.execution_id, node: $json.node }) }}"
+    )
+
+
+def build_release_train() -> dict:
+    """The release-train coordination workflow (inactive). See the section comment and the contract."""
+    cfg = load_release_train_config()
+    wid = RELEASE_TRAIN_ID
+    nodes = [
+        _rt_schedule(wid, RT_SCHED_REQUEST, release_train_crons(cfg, "request"), [0, 0]),
+        _rt_schedule(wid, RT_SCHED_REPORT, release_train_crons(cfg, "report"), [0, 240]),
+        {
+            "id": _f_node_id(wid, RT_MANUAL),
+            "name": RT_MANUAL,
+            "type": "n8n-nodes-base.manualTrigger",
+            "typeVersion": 1,
+            "position": [0, 480],
+            "parameters": {},
+        },
+        _f_code(wid, RT_PLAN_REQUEST, _rt_plan_scheduled_js(cfg, "request"), [240, 0]),
+        _f_code(wid, RT_PLAN_REPORT, _rt_plan_scheduled_js(cfg, "report"), [240, 240]),
+        _f_code(wid, RT_PLAN_MANUAL, _rt_plan_manual_js(), [240, 480]),
+        _f_set_relay(wid, RT_RELAY, [480, 240]),
+        _f_http(wid, RT_GET_READY, method="GET", path_expr="/release-train-window?view=readiness",
+                position=[720, 240], relay_node=RT_RELAY),
+        _f_code(wid, RT_GATE, _rt_gate_js(cfg), [960, 240]),
+        _f_switch(wid, RT_ROUTE, "={{ $json.action }}", ("request", "report", "no_op"), [1200, 240]),
+        _p_run(wid, RT_RUN, [1440, 0]),
+        _f_code(wid, RT_RECORD, _rt_record_js(), [1680, 0]),
+        _f_switch(wid, RT_ROUTE_RUN, "={{ $json.status }}", RUN_LANE_TERMINAL, [1920, 0]),
+        _f_code(wid, RT_FAIL, _rt_fail_js(), [2160, -240]),
+        _f_code(wid, RT_REFUSAL, _rt_refusal_js(), [2160, -480]),
+        _f_http(wid, RT_POST_REFUSAL, method="POST", path_expr="/intent", position=[2400, -480],
+                json_body=_rt_intent_body(), relay_node=RT_RELAY),
+        _f_code(wid, RT_RECORD_REFUSAL, _rt_record_refusal_js(), [2640, -480]),
+        _f_code(wid, RT_INIT, _rt_init_collect_js(), [2160, 240]),
+        _f_if(wid, RT_COLLECT, "={{ $json.collect === true }}", [2400, 240]),
+        _f_wait(wid, RT_WAIT, "={{ $json.wait_s }}", [2640, 120]),
+        _f_http(wid, RT_GET_WIN, method="GET", path_expr="/release-train-window?{{ $json.query }}",
+                position=[2880, 120], relay_node=RT_RELAY),
+        _f_code(wid, RT_EVAL, _rt_evaluate_js(), [3120, 120]),
+        _f_if(wid, RT_AGAIN, "={{ $json.again === true }}", [3360, 120]),
+        _f_code(wid, RT_SHAPE, _rt_shape_js(), [3600, 480]),
+        _f_http(wid, RT_POST, method="POST", path_expr="/intent", position=[3840, 480], json_body=_rt_intent_body(),
+                relay_node=RT_RELAY),
+        _f_code(wid, RT_ASSERT, _rt_assert_js(), [4080, 480]),
+    ]
+    conns: dict = {}
+    _g_main(conns, RT_SCHED_REQUEST, [RT_PLAN_REQUEST])
+    _g_main(conns, RT_SCHED_REPORT, [RT_PLAN_REPORT])
+    _g_main(conns, RT_MANUAL, [RT_PLAN_MANUAL])
+    _g_main(conns, RT_PLAN_REQUEST, [RT_RELAY])
+    _g_main(conns, RT_PLAN_REPORT, [RT_RELAY])
+    _g_main(conns, RT_PLAN_MANUAL, [RT_RELAY])
+    _g_main(conns, RT_RELAY, [RT_GET_READY])
+    _g_main(conns, RT_GET_READY, [RT_GATE])
+    _g_main(conns, RT_GATE, [RT_ROUTE])
+    # Switch outputs: request, report, no_op, then the fallback (an unknown action is reported as data).
+    _g_main(conns, RT_ROUTE, [RT_RUN], [RT_INIT], [RT_SHAPE], [RT_SHAPE])
+    _g_main(conns, RT_RUN, [RT_RECORD])
+    _g_main(conns, RT_RECORD, [RT_ROUTE_RUN])
+    # Switch outputs in RUN_LANE_TERMINAL order (success, failed, refused_policy, skipped_lock), then the fallback.
+    _g_main(conns, RT_ROUTE_RUN, [RT_INIT], [RT_FAIL], [RT_REFUSAL], [RT_REFUSAL], [RT_FAIL])
+    _g_main(conns, RT_REFUSAL, [RT_POST_REFUSAL])
+    _g_main(conns, RT_POST_REFUSAL, [RT_RECORD_REFUSAL])
+    _g_main(conns, RT_INIT, [RT_COLLECT])
+    _g_main(conns, RT_COLLECT, [RT_WAIT], [RT_SHAPE])
+    _g_main(conns, RT_WAIT, [RT_GET_WIN])
+    _g_main(conns, RT_GET_WIN, [RT_EVAL])
+    _g_main(conns, RT_EVAL, [RT_AGAIN])
+    _g_main(conns, RT_AGAIN, [RT_WAIT], [RT_SHAPE])
+    _g_main(conns, RT_SHAPE, [RT_POST])
+    _g_main(conns, RT_POST, [RT_ASSERT])
+    settings = _fabric_settings(wid, RELEASE_TRAIN_EXECUTION_TIMEOUT_S)
+    wf = _fabric_doc(wid, "release-train", nodes, conns, settings)
+    wf["meta"]["design"] = (
+        "docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md (Release Train v2 Phase 4); AGENTS.md §23.3, §23.14, §23.23, §24.1"
+    )
+    lanes = [s["lane_id"] for s in cfg["slots"]]
+    wf["meta"]["framework"] = {
+        "schema": "N8nWorkflowFrameworkMeta@v1",
+        "class": "business-critical",
+        "owner": "platform",
+        "stage": "shadow",
+        "lanes": lanes,
+        "llm_steps": [],
+        "connects_to": [
+            "workflow:tradeai-fabric-run-lane (Execute Workflow, waits) -> relay:POST /run, relay:GET /run_outcome",
+            *[f"lane:{lane} (config/n8n_run_allowlist.json; --dry-run, live_arg null)" for lane in lanes],
+            "relay:GET /release-train-window (read-only; gateway release_train_window)",
+            "relay:POST /intent (domain fabric; host comms gateway decides delivery)",
+            "workflow:tradeai-fabric-error (errorWorkflow) -> relay:POST /intent",
+        ],
+        "runbook_id": "release-train-n8n",
+        "runbook_path": "docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md",
+        "rollback": "unpublish this workflow (docs/ops/ROLLBACK_COMMANDS.md); the manual release path "
+        "(grant + cio_phase2_exact_main_deploy.sh) is the fallback; nothing to undo host-side",
+    }
+    wf["meta"]["graph_sha256"] = graph_hash(wf)
+    return wf
+
+
+def release_train_problems(wf: dict) -> list[str]:
+    """Release-train invariants on top of validate_fabric_workflow: HTTP only to the two allowed relay routes, Execute
+    Workflow only to Run Lane (waiting), Run Lane only for the four request lanes, no forbidden text in any node, no
+    credential other than the relay's, and send-intent kinds only from the closed list."""
+    problems: list[str] = []
+    allowed_http = {("GET", "/release-train-window"), ("POST", "/intent")}
+    for n in wf.get("nodes") or []:
+        t = n.get("type")
+        p = n.get("parameters") or {}
+        if t == "n8n-nodes-base.httpRequest":
+            url = str(p.get("url") or "")
+            path = url.split("}}", 1)[-1].split("?", 1)[0]
+            if (str(p.get("method") or "GET").upper(), path) not in allowed_http:
+                problems.append(f"release_train_http_refused:{n.get('name')}:{path}")
+        elif t == "n8n-nodes-base.executeWorkflow":
+            if (p.get("workflowId") or {}).get("value") != RUN_LANE_ID or not (p.get("options") or {}).get(
+                "waitForSubWorkflow"
+            ):
+                problems.append(f"release_train_call_not_run_lane:{n.get('name')}")
+        for ctype, cred in (n.get("credentials") or {}).items():
+            if ctype != "httpHeaderAuth" or (cred or {}).get("name") != CREDENTIAL_NAME:
+                problems.append(f"release_train_credential_refused:{n.get('name')}")
+    text = json.dumps(wf.get("nodes"), sort_keys=True).lower()
+    for tok in RELEASE_TRAIN_FORBIDDEN_TEXT:
+        if tok in text:
+            problems.append(f"release_train_forbidden_text:{tok}")
+    lanes = set(re.findall(r"release-train-request-[0-9]{4}", text))
+    if not lanes or not lanes <= {f"release-train-request-{s}" for s in ("0000", "0600", "0800", "1800")}:
+        problems.append(f"release_train_lanes:{sorted(lanes)}")
+    kinds = set(re.findall(r"kind: '([a-z_]+)'", text))
+    if kinds != set(RELEASE_TRAIN_INTENT_KINDS):
+        problems.append(f"release_train_intent_kinds:{sorted(kinds)}")
+    return problems
+
+
 FABRIC_BUILDERS = {
     RUN_LANE_ID: build_run_lane,
     FABRIC_ERROR_ID: build_fabric_error,
     FABRIC_PROBE_ID: build_fabric_probe,
     FABRIC_ERROR_PROBE_ID: build_fabric_error_probe,
+    RELEASE_TRAIN_ID: build_release_train,
 }
 
 
@@ -3309,6 +3866,8 @@ def render_fabric() -> dict[str, str]:
         problems = validate_fabric_workflow(wf, known)
         if wf["id"] in procs:
             problems += process_problems(wf)
+        if wf["id"] == RELEASE_TRAIN_ID:
+            problems += release_train_problems(wf)
         if problems:
             raise ValueError(f"fabric workflow {wf['id']} refused by its own generator: {problems}")
         text = _dump(wf)
@@ -3369,6 +3928,8 @@ def verify_fabric(paths: list[Path], manifest_path: Path) -> dict:
             problems = validate_fabric_workflow(stamped, known)
             if row is not None and row.get("kind") == PROCESS_KIND:
                 problems += process_problems(wf)
+            if wid == RELEASE_TRAIN_ID:
+                problems += release_train_problems(wf)
             # A live export is active once published; activation state is the grant's business, not the graph's.
             problems = [x for x in problems if x != "active_not_false"]
             if row is None:

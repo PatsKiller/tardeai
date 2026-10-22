@@ -48735,6 +48735,61 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # Strip query string from path if present
     base_path = path.split("?")[0] if "?" in path else path
 
+    # Release Train v2 STOP (2026-10-21, Phase 2 pulled forward): GET reads the release-window STOP latch back;
+    # POST SETS it (scripts/lib/release_train_stop.py; the same STOP.json scripts/release_window.py obeys). Set-only:
+    # every other command under release-train is refused — resume is host-CLI-only (decision D3). Actor = the
+    # authenticated cc_auth principal, never the body; same-origin enforced here regardless of report_only; no
+    # step-up (declined). Separate from the trading kill switch, which this never touches.
+    _rt_base = base_path.rstrip("/")
+    if _rt_base == "/api/v2/coordination/release-train/stop" or (
+        method != "GET"
+        and (
+            _rt_base == "/api/v2/coordination/release-train"
+            or _rt_base.startswith("/api/v2/coordination/release-train/")
+        )
+    ):
+        try:
+            from lib import release_train_stop as _rts
+            from lib import cc_auth as _rt_auth
+        except ImportError:  # pragma: no cover - imported as scripts.api_v2
+            from scripts.lib import release_train_stop as _rts
+            from scripts.lib import cc_auth as _rt_auth
+        if _rt_base == "/api/v2/coordination/release-train/stop" and method == "GET":
+            try:
+                return 200, {"ok": True, "data": _rts.status()}
+            except Exception as e:
+                return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+        _rt_actor = _rt_auth.current_principal()
+        _rt_csrf_ok, _rt_csrf_why = _rt_auth.command_csrf_check(_rt_auth.load_config(), method, base_path)
+        if _rt_base != "/api/v2/coordination/release-train/stop" or method != "POST":
+            # Any clear / resume / other command route: refused and audited. There is no resume endpoint.
+            return _rts.request_stop(
+                actor=_rt_actor,
+                reason=None,
+                idempotency_key=None,
+                csrf_ok=_rt_csrf_ok,
+                csrf_reason=_rt_csrf_why,
+                body={"action": f"{method} {base_path}"},
+            )
+        b = body if isinstance(body, dict) else {}
+        try:
+            return _rts.request_stop(
+                actor=_rt_actor,
+                reason=b.get("reason"),
+                idempotency_key=b.get("idempotency_key"),
+                csrf_ok=_rt_csrf_ok,
+                csrf_reason=_rt_csrf_why,
+                body=b,
+            )
+        except Exception as e:
+            return 500, {
+                "ok": False,
+                "outcome": "STOP_NOT_CONFIRMED",
+                "error": type(e).__name__,
+                "detail": str(e)[:200],
+                "fallback": "host: python3 scripts/lib/release_train_stop.py stop --reason TEXT",
+            }
+
     # TradingView webhook ingress (R5) — dormant; returns 503 unless explicitly enabled.
     if base_path == "/api/v2/ingress/tradingview":
         import os as _os_tv
@@ -48748,6 +48803,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             }
         # Future: auth + paper_trade_proposals insert only — never orders
         return 501, {"ok": False, "error": "tradingview ingress not implemented (stub)", "enabled": True}
+
+    # Release Train v2, Phase 1 (2026-10-21): read-only view. GET /api/v2/coordination/release-train (summary),
+    # /queue, /trains, /trains/{id}, /events — contract docs/ops/RELEASE_TRAIN_API.md. Every source is read in a
+    # worker pool with its own deadline (scripts/lib/release_train_view.py, the needs-action / platform-health
+    # pattern); missing data is null + UNAVAILABLE, never 0/green. GET only: non-GET and .../stop fall through
+    # (handle() returns None for them) to the STOP block, which owns them.
+    if method == "GET" and base_path.rstrip("/").startswith("/api/v2/coordination/release-train"):
+        try:
+            try:
+                from lib import release_train_view as _rtv
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import release_train_view as _rtv
+            _rtv_out = _rtv.handle(base_path, method, query or {}, _db_query)
+            if _rtv_out is not None:
+                return _rtv_out
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
 
     # Inference Layers routes (delegated to inference_api module; read-only)
     if base_path.startswith("/api/v2/inference"):

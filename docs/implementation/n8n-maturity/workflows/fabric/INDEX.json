@@ -65,13 +65,17 @@
       "n8n-nodes-base.whatsApp",
       "n8n-nodes-base.writeBinaryFile"
     ],
-    "intent_routes_sha256": "e233d5ffa7635c22f0e4608f938ad4df636e554215768bc7aa6a4793f1d94792",
+    "intent_routes_sha256": "1689098b654609c75472e1be0fac00d0e43df6e7b5d8315db583ade6e505a1a5",
     "node_package": "n8n-nodes-base.",
     "relay_calls": {
       "tradeai-fabric-error": [
         "POST /intent"
       ],
       "tradeai-fabric-error-probe": [],
+      "tradeai-fabric-release-train": [
+        "GET /release-train-window",
+        "POST /intent"
+      ],
       "tradeai-fabric-run-lane": [
         "POST /run",
         "GET /run_outcome"
@@ -98,7 +102,7 @@
       ]
     }
   },
-  "policy_sha256": "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f",
+  "policy_sha256": "4b1ee926f4fd46d60715ba4ba4739bd40fb2e91aecc0476f1dd29a0d55696229",
   "schema": "N8nFabricManifest@v1",
   "workflows": [
     {
@@ -121,7 +125,7 @@
         "POST /run",
         "GET /run_outcome"
       ],
-      "sha256": "2be69ee35360a2ba8cd396f08ea6ee280eb6973d22ee01ba4e419c56b0a4ca51"
+      "sha256": "0295b0b6f44f4b2b8f039922a97dfe8f1b41a34719e27870047fdcf0df48a243"
     },
     {
       "active": false,
@@ -139,7 +143,7 @@
       "relay_calls": [
         "POST /intent"
       ],
-      "sha256": "fc5e728924d1539ffd4b15a3935c888ac81c968e587e4fcc83314bc609fdfdcd"
+      "sha256": "bd1cfeb6f29ceec13c5e755ca303df0bd51f3b41544cfc7f42c8b558d18146b4"
     },
     {
       "active": false,
@@ -155,7 +159,7 @@
         "n8n-nodes-base.set"
       ],
       "relay_calls": [],
-      "sha256": "47b71559f13cc440dee1ad41f08ff5da8c0ea139542f919ec381c522f62d331c"
+      "sha256": "2248c8bbfbe9db203a1f78e7ce18df64742e406905f386d05cca14971c3e519f"
     },
     {
       "active": false,
@@ -169,7 +173,31 @@
         "n8n-nodes-base.scheduleTrigger"
       ],
       "relay_calls": [],
-      "sha256": "66859c09459ee5b62ef69e32ef38748f0d162ba18852b6d12260b0e996e50676"
+      "sha256": "85176f3b7b2262da935f526628a9103bb15855c14c7838282307b345cc6220fd"
+    },
+    {
+      "active": false,
+      "error_workflow": "tradeai-fabric-error",
+      "file": "tradeai-fabric-release-train.json",
+      "graph_sha256": "4c3a912e283c16fa7b2631337b34fa59029f05512cb08997668f5ea4636324ca",
+      "id": "tradeai-fabric-release-train",
+      "kind": "release-train",
+      "node_types": [
+        "n8n-nodes-base.code",
+        "n8n-nodes-base.executeWorkflow",
+        "n8n-nodes-base.httpRequest",
+        "n8n-nodes-base.if",
+        "n8n-nodes-base.manualTrigger",
+        "n8n-nodes-base.scheduleTrigger",
+        "n8n-nodes-base.set",
+        "n8n-nodes-base.switch",
+        "n8n-nodes-base.wait"
+      ],
+      "relay_calls": [
+        "GET /release-train-window",
+        "POST /intent"
+      ],
+      "sha256": "2d7ca58b3a134786cdf4f5fb48c07077cca56a446be765e1482c3795f7664e64"
     },
     {
       "active": false,
@@ -188,7 +216,7 @@
         "n8n-nodes-base.switch"
       ],
       "relay_calls": [],
-      "sha256": "50277f7ed7e4d6b790c03c0d9bb1cbb73c407827267a589fe42e1b56b2c5d4b0"
+      "sha256": "4ca21ace538d208d0fb18957678a9756b9a98c96f9b00a97aa2df7b1bd1e7990"
     }
   ]
 }

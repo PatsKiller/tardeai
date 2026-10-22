@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ci_risk_tiers_refresh_20261021",
+  "files": [
+    "tests/test_ci_risk_tiers_refresh_20261021.py"
+  ],
+  "anchor": "CI_RISK_TIERS_REFRESH_20261021",
+  "comment": [
+    "ANCHOR: CI_RISK_TIERS_REFRESH_20261021 — Release Train v2 Phase 0: CC auth, portfolio server / api_v2,",
+    "Telegram routing and the n8n executor/relay/gateway are HIGH; unknown impact runs every gate. Hermetic."
+  ]
+}

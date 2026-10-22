@@ -540,7 +540,7 @@
     "generator": "scripts/n8n_workflow_templates.py build-fabric",
     "graph_sha256": "f1d0984c64b06191020008af6d09f8b26a9c5a0ba5789f8e97ddb0e45215ebe4",
     "kind": "process",
-    "policy_sha256": "c6750b96ada49f816798bf3714ad390616b1b32769fdcbcc54e0635e32caf31f"
+    "policy_sha256": "4b1ee926f4fd46d60715ba4ba4739bd40fb2e91aecc0476f1dd29a0d55696229"
   },
   "name": "tradeai-fabric-hermes-learning",
   "nodes": [

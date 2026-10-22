@@ -67,6 +67,12 @@ _REVIEWED_NEW_COMMON_MODULES = frozenset(
         "scripts/lib/n8n_policy_reload.py",
         "scripts/lib/n8n_remediation_catalogue.py",
         "scripts/lib/n8n_retry_policy.py",
+        # 2026-10-21 (Release Train v2 Phase 4): imported lazily by scripts/n8n_coordination_gateway.py serve() for the
+        # read-only release_train_window operation, and kept small on purpose: stdlib (json, os.stat/listdir, re,
+        # hashlib, datetime, zoneinfo, pathlib) plus release_train_contracts (stdlib only); NO environment read (the
+        # gateway passes every path), no network, no subprocess, no write.
+        "scripts/lib/release_train_contracts.py",
+        "scripts/lib/release_train_window_view.py",
         "scripts/lib/scanner_candidate_projection.py",
         "scripts/n8n_coordination_gateway.py",
         "scripts/pipelines/pipeline_manifest.py",

@@ -1,0 +1,238 @@
+{
+  "schema": "ReleaseTrainPolicy@v1",
+  "policy_version": "2026-10-21.1",
+  "as_of": "2026-10-21",
+  "status": "PROPOSED",
+  "armed": false,
+  "_note": "Release Train v2 Phase 1 (plan joyful-skipping-wilkes; enhanced design sections 4, 6, 7). Read by scripts/lib/release_train_classify.py and scripts/lib/release_train_view.py. Build-only: armed=false, every window enabled=false; arming is an operator act (Phase 5+). Classes from least to most restrictive: eligible < needs_operator < held < blocked; when rules disagree the more restrictive wins. Unknown risk is held. Broker / Active Trader is always at least held. Seeded from config/ci_risk_tiers.json (high categories map through seed.high_category_class; an unmapped new category is held).",
+  "timezone": "America/New_York",
+  "windows": [
+    {"local_time": "18:00", "role": "canary", "enable_order": 1, "enabled": false, "note": "First live canary window."},
+    {"local_time": "00:00", "role": "general", "enable_order": 2, "enabled": false, "note": "General eligible changes."},
+    {"local_time": "06:00", "role": "premarket_drain", "enable_order": 3, "enabled": false, "note": "Needs a proven drain or a non-disruptive release path first."},
+    {"local_time": "08:00", "role": "premarket_last", "enable_order": 4, "enabled": false, "note": "Enabled last. Skipped on 08:30 macro days or when calendar data is stale."}
+  ],
+  "census": {
+    "lane_id": "pr-hygiene-audit",
+    "stale_after_hours": 36,
+    "page_cap": 500
+  },
+  "seed": {
+    "ci_risk_tiers": "config/ci_risk_tiers.json",
+    "high_category_class": {
+      "policy_and_guard": "needs_operator",
+      "broker_and_execution": "held",
+      "memory_sql": "needs_operator",
+      "deploy_and_release": "needs_operator",
+      "schedule": "needs_operator",
+      "ci_control_surface": "needs_operator",
+      "cc_auth": "needs_operator",
+      "portfolio_server_api": "needs_operator",
+      "telegram_routing": "needs_operator",
+      "n8n_executor_relay_gateway": "needs_operator"
+    },
+    "unmapped_high_category_class": "held",
+    "low_class": "eligible"
+  },
+  "rules": [
+    {
+      "id": "train_self",
+      "class": "blocked",
+      "reason": "Changes the train's own controller, classifier, policy, queue store or contracts. A candidate may not modify the verifier that qualifies it.",
+      "next_action": "Release through the manual process with an operator release grant; the train never carries it.",
+      "globs": [
+        "config/release_train_policy.json",
+        "config/release_train_delegation.json",
+        "config/schemas/release_train/**",
+        "scripts/lib/release_train_*.py",
+        "scripts/release_train*.py",
+        "scripts/release_window.py",
+        "scripts/release_grant_preflight.py",
+        "scripts/lib/release_grant_binding.py",
+        "scripts/cio_phase2_exact_main_deploy.sh",
+        "migrations/*release_queue*"
+      ]
+    },
+    {
+      "id": "broker_active_trader",
+      "class": "held",
+      "reason": "Broker / Active Trader code is always held (the more restrictive rule wins over any hot-path eligibility).",
+      "next_action": "Needs an execution-engineering grant and a manual release; the train never carries it.",
+      "globs": [
+        "scripts/brokers/**",
+        "scripts/moomoo/**",
+        "scripts/active_trader/**",
+        "scripts/*active_trader*",
+        "scripts/*alpaca*",
+        "scripts/lib/*alpaca*",
+        "scripts/broker_*.py",
+        "scripts/lib/broker_*.py",
+        "scripts/*schwab*",
+        "scripts/lib/*schwab*",
+        "scripts/*moomoo*",
+        "scripts/*execution_guard*",
+        "scripts/lib/*execution_guard*",
+        "scripts/defense_execution.py",
+        "scripts/*order_intent*",
+        "scripts/lib/*order_intent*",
+        "scripts/*stop_manager*",
+        "scripts/lib/trading_session_grant.py",
+        "apps/broker-admin/**",
+        "apps/command-center-v3/src/pages/ActiveTrader*",
+        "apps/command-center-v3/src/pages/activeTrader*",
+        "apps/command-center-v3/src/components/active-trader*/**",
+        "config/active_trader*",
+        "config/systemd/**/*active-trader*",
+        "config/data_source_authority.json"
+      ]
+    },
+    {
+      "id": "agents_policy",
+      "class": "needs_operator",
+      "reason": "AGENTS / policy text and agent adapters are operator-ratified.",
+      "next_action": "Operator ratification per AGENTS.md section 20; a ride approval does not ratify policy.",
+      "globs": [
+        "AGENTS.md",
+        "**/AGENTS.md",
+        "AI_WORK_POLICY.md",
+        "CLAUDE.md",
+        "GEMINI.md",
+        ".cursor/**",
+        ".claude/**",
+        "docs/governance/**"
+      ]
+    },
+    {
+      "id": "auth_secrets",
+      "class": "needs_operator",
+      "reason": "Authentication, authorization or secret handling.",
+      "next_action": "Operator ride approval bound to the full head SHA.",
+      "globs": [
+        "config/cc_auth*",
+        "scripts/lib/cc_auth*.py",
+        "config/secret_registry.yaml",
+        "**/*secret*",
+        "**/*credential*",
+        "**/*oauth*",
+        "**/.env",
+        "**/.env.*",
+        "config/systemd/**/*auth*"
+      ]
+    },
+    {
+      "id": "guard_ci_enforcement",
+      "class": "needs_operator",
+      "reason": "Guard, push-budget or CI enforcement surface.",
+      "next_action": "Operator ride approval bound to the full head SHA; guard surfaces are operator-applied patches.",
+      "globs": [
+        ".githooks/**",
+        "bin/**",
+        ".github/**",
+        "scripts/hooks/**",
+        "scripts/lib/guard_*.py",
+        "scripts/guard_*.py",
+        "scripts/lib/tradeai_push_budget.py",
+        "scripts/run_cio_hardening_ci.py",
+        "scripts/lib/test_impact.py",
+        "config/ci_gates/**",
+        "config/ci_*.json"
+      ]
+    },
+    {
+      "id": "scheduler_live_list",
+      "class": "needs_operator",
+      "reason": "Scheduler, workflow or live-list authority (cron freeze; n8n stage and allowlist).",
+      "next_action": "Operator ride approval; cron and systemd changes stay operator decisions (AGENTS.md section 17).",
+      "globs": [
+        "config/lane_registry.json",
+        "config/n8n_run_allowlist.json",
+        "config/n8n_*.json",
+        "config/systemd/**",
+        "config/cron/**",
+        "**/crontab*",
+        "scripts/*crontab*",
+        "config/lane_stay_on_cron_tokens.json",
+        "docs/implementation/n8n-*/workflows/**"
+      ]
+    },
+    {
+      "id": "migrations",
+      "class": "needs_operator",
+      "reason": "Database migration or DDL. Code rollback does not reverse a migration.",
+      "next_action": "The operator applies the migration; a ride approval does not authorize it.",
+      "globs": [
+        "migrations/**",
+        "sql/**",
+        "**/*.sql"
+      ]
+    }
+  ],
+  "eligible_globs": [
+    "docs/**",
+    "**/*.md",
+    "tests/**",
+    "scripts/**/*.py",
+    "apps/command-center-v3/src/**",
+    "apps/command-center-v3/e2e/**"
+  ],
+  "deletions": {
+    "class": "needs_operator",
+    "reason": "Deletes a path. Never delete: archive with a tripwire (AGENTS.md section 0 rule 6)."
+  },
+  "size": {
+    "class": "needs_operator",
+    "max_files": 60,
+    "max_changed_lines": 2500,
+    "reason": "Oversized change (generated files are not counted)."
+  },
+  "semantic_config": {
+    "eligible_paths": [
+      "config/host_comms_intent_routes.json"
+    ],
+    "protected_key_segment_patterns": [
+      "live",
+      "live_*",
+      "*_live",
+      "*armed*",
+      "*enabled*",
+      "mode",
+      "*_mode",
+      "stage",
+      "*kill*",
+      "*secret*",
+      "*token*",
+      "*password*",
+      "*grant*",
+      "*allowlist*"
+    ],
+    "protected_class": "needs_operator",
+    "protected_reason": "A semantic config change touches a live switch, stage, grant or secret key.",
+    "unknown_keys_class": "held"
+  },
+  "generated": [
+    {
+      "globs": ["docs/INDEX.md"],
+      "generator": "scripts/report_docs_inventory.py",
+      "consumers": []
+    },
+    {
+      "globs": ["config/contract_manifest.json"],
+      "generator": "scripts/check_contract_manifest.py",
+      "consumers": ["scripts/check_contract_manifest.py"]
+    },
+    {
+      "globs": ["config/n8n_health_contracts.json"],
+      "generator": "scripts/build_n8n_health_contracts.py",
+      "consumers": ["scripts/check_n8n_health_contracts.py", "scripts/n8n_run_relay.py"]
+    }
+  ],
+  "import_closure": {
+    "enabled": true,
+    "edges": "imports",
+    "max_depth": null,
+    "exclude_prefixes": ["tests/"],
+    "propagate_classes": ["needs_operator", "held", "blocked"],
+    "unavailable_class": "held",
+    "_note": "Reverse Python-import closure built with scripts/lib/test_impact.py's resolver (edges=imports; imports_and_refs adds its string path references, which reach almost everything through scripts/api_v2.py). A change reachable from a protected file inherits that file's class, so a harmless-looking path cannot launder a protected change. Only explicit rule classes propagate; an unclassified importer does not."
+  }
+}

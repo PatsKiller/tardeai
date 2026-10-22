@@ -1,0 +1,1113 @@
+{
+  "active": false,
+  "connections": {
+    "Collect?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Wait poll",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Shape intents",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Evaluate poll": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Poll again?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "GET readiness": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Gate",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "GET window": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Evaluate poll",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Gate": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Route action",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Init collect": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Collect?",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Manual run": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Plan manual",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "POST relay /intent": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Assert intents",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "POST relay /intent (refusal)": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Record refusal intent",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Plan manual": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Relay",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Plan report": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Relay",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Plan request": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Relay",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Poll again?": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Wait poll",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Shape intents",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Record run": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Route run",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Refusal as data": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "POST relay /intent (refusal)",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Relay": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "GET readiness",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Route action": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Run request lane",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Init collect",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Shape intents",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Shape intents",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Route run": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Init collect",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Fail run",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Refusal as data",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Refusal as data",
+            "type": "main"
+          }
+        ],
+        [
+          {
+            "index": 0,
+            "node": "Fail run",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Run request lane": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Record run",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Schedule report": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Plan report",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Schedule request": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Plan request",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Shape intents": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "POST relay /intent",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Wait poll": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "GET window",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "id": "tradeai-fabric-release-train",
+  "meta": {
+    "design": "docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md (Release Train v2 Phase 4); AGENTS.md §23.3, §23.14, §23.23, §24.1",
+    "framework": {
+      "class": "business-critical",
+      "connects_to": [
+        "workflow:tradeai-fabric-run-lane (Execute Workflow, waits) -> relay:POST /run, relay:GET /run_outcome",
+        "lane:release-train-request-1800 (config/n8n_run_allowlist.json; --dry-run, live_arg null)",
+        "lane:release-train-request-0000 (config/n8n_run_allowlist.json; --dry-run, live_arg null)",
+        "lane:release-train-request-0600 (config/n8n_run_allowlist.json; --dry-run, live_arg null)",
+        "lane:release-train-request-0800 (config/n8n_run_allowlist.json; --dry-run, live_arg null)",
+        "relay:GET /release-train-window (read-only; gateway release_train_window)",
+        "relay:POST /intent (domain fabric; host comms gateway decides delivery)",
+        "workflow:tradeai-fabric-error (errorWorkflow) -> relay:POST /intent"
+      ],
+      "lanes": [
+        "release-train-request-1800",
+        "release-train-request-0000",
+        "release-train-request-0600",
+        "release-train-request-0800"
+      ],
+      "llm_steps": [],
+      "owner": "platform",
+      "rollback": "unpublish this workflow (docs/ops/ROLLBACK_COMMANDS.md); the manual release path (grant + cio_phase2_exact_main_deploy.sh) is the fallback; nothing to undo host-side",
+      "runbook_id": "release-train-n8n",
+      "runbook_path": "docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md",
+      "schema": "N8nWorkflowFrameworkMeta@v1",
+      "stage": "shadow"
+    },
+    "generator": "scripts/n8n_workflow_templates.py build-fabric",
+    "graph_sha256": "4c3a912e283c16fa7b2631337b34fa59029f05512cb08997668f5ea4636324ca",
+    "kind": "release-train",
+    "policy_sha256": "4b1ee926f4fd46d60715ba4ba4739bd40fb2e91aecc0476f1dd29a0d55696229"
+  },
+  "name": "tradeai-fabric-release-train",
+  "nodes": [
+    {
+      "id": "550e682e-8856-5fc2-8339-ae6040f55d12",
+      "name": "Assert intents",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// An intent the host did not accept fails this execution -> errorWorkflow tradeai-fabric-error. The host\n// P1 path never depends on n8n (§24.1).\nconst all = $input.all();\nfor (const it of all) {\n  const r = it.json || {};\n  const body = (r.body && typeof r.body === 'object') ? r.body : {};\n  if (!(r.statusCode === 200 && body.state === 'ACCEPTED')) {\n    throw new Error('release-train: intent not accepted: ' + String(body.reason || ('HTTP ' + r.statusCode)).slice(0, 80));\n  }\n}\nreturn [{ json: { schema: 'ReleaseTrainTickResult@v1', intents: all.length } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        4080,
+        480
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "c966c63e-446e-5b47-ad1a-4f717b394fd8",
+      "name": "Collect?",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "0596b9ae-a3fc-5f87-8942-32160add5da6",
+              "leftValue": "={{ $json.collect === true }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        }
+      },
+      "position": [
+        2400,
+        240
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "a4c7ac88-305b-5f71-bcb7-bb0fe3c7a305",
+      "name": "Evaluate poll",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// One ReleaseTrainWindowView@v1 poll. request tick: any receipt (ACKNOWLEDGED) ends it; report and forced:\n// a terminal receipt. NOT_FOUND = no request was appended (no-op or duplicate). Budget -> timeout (data).\nconst POLL_MAX_S = 60;\nconst TERMINAL = ['COMPLETED', 'REFUSED', 'EXPIRED', 'FAILED'];\nconst s = $('Wait poll').last().json;\nconst r = $input.first().json || {};\nconst b = (r.body && typeof r.body === 'object') ? r.body : {};\nconst ok = r.statusCode === 200 && b.schema === 'ReleaseTrainWindowView@v1' && b.state === 'OK';\nconst out = { ...s, polls: s.polls + 1, waited_s: s.waited_s + s.wait_s, again: false };\nif (ok) out.view = { request_state: b.request_state ?? null, request: b.request ?? null,\n  receipt: b.receipt ?? null, receipt_problem: b.receipt_problem ?? null };\nconst rec = ok ? b.receipt : null;\nif (ok && b.request_state === 'NOT_FOUND') { out.collect_status = 'no_request'; }\nelse if (rec && (s.phase === 'request' || TERMINAL.includes(rec.state))) { out.collect_status = 'done'; }\nelse if (out.waited_s >= s.wait_budget_s) { out.collect_status = 'timeout'; }\nelse {\n  out.again = true;\n  out.wait_s = Math.min(POLL_MAX_S, s.wait_s * 2, Math.max(1, s.wait_budget_s - out.waited_s));\n}\nreturn [{ json: out }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        3120,
+        120
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "8fb260e0-a137-514b-8204-2a3893bfbe89",
+      "name": "Fail run",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// A failed request run (after Run Lane's budget) or an unrouted status fails the execution on purpose:\n// errorWorkflow tradeai-fabric-error turns it into one deduped send-INTENT with a runbook id (P2).\nconst s = $input.first().json || {};\nthrow new Error('release-train: ' + String(s.lane_id || '') + ' ' + String(s.status || 'unknown') + ' '\n  + String((s.run && s.run.reason) || '').slice(0, 80));\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        2160,
+        -240
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tradeai-run-relay",
+          "name": "tradeai-run-relay"
+        }
+      },
+      "id": "c1690c5b-bdcf-56db-b9d4-d98615b5c0cc",
+      "maxTries": 2,
+      "name": "GET readiness",
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "GET",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        },
+        "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/release-train-window?view=readiness"
+      },
+      "position": [
+        720,
+        240
+      ],
+      "retryOnFail": true,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tradeai-run-relay",
+          "name": "tradeai-run-relay"
+        }
+      },
+      "id": "d408d001-6c09-53df-8fe5-dc58dd81120c",
+      "maxTries": 2,
+      "name": "GET window",
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "method": "GET",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        },
+        "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/release-train-window?{{ $json.query }}"
+      },
+      "position": [
+        2880,
+        120
+      ],
+      "retryOnFail": true,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "c8c7306d-a2d7-519c-bff9-90c2eff9387f",
+      "name": "Gate",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// ADVISORY gate on ReleaseTrainReadiness@v1 (contract §4-§5). STOP set, unreadable or unknown -> no-op;\n// not armed and shadow disabled -> no-op. A report tick only collects. The host lane and the controller\n// re-decide everything; this never grants anything.\nconst WF = \"tradeai-fabric-release-train\";\nconst MODE = \"dry_run\";\nconst SLOTS = [{\"lane_id\": \"release-train-request-1800\", \"minute\": 1080, \"slot\": \"1800\"}, {\"lane_id\": \"release-train-request-0000\", \"minute\": 0, \"slot\": \"0000\"}, {\"lane_id\": \"release-train-request-0600\", \"minute\": 360, \"slot\": \"0600\"}, {\"lane_id\": \"release-train-request-0800\", \"minute\": 480, \"slot\": \"0800\"}];\nconst WAITS = {\"forced\": 600, \"report\": 900, \"request\": 300};\nconst REMINDER_SLOT = \"1800\";\nconst p = $('Relay').first().json;\nconst r = $input.first().json || {};\nconst b = (r.body && typeof r.body === 'object') ? r.body : {};\nconst ok = r.statusCode === 200 && b.schema === 'ReleaseTrainReadiness@v1' && b.state === 'OK';\nlet slot = p.slot;\nif (p.phase === 'forced') {\n  // the window whose newest shadow request is oldest (never requested first); ties keep SLOTS order\n  const cov = (ok && Array.isArray(b.shadow_coverage)) ? b.shadow_coverage : [];\n  const at = (s) => { const c = cov.find((x) => x && x.slot === s); return c && c.last_requested_at ? c.last_requested_at : ''; };\n  slot = SLOTS.map((s) => s.slot).reduce((a, s) => (at(s) < at(a) ? s : a));\n}\nconst sl = SLOTS.find((s) => s.slot === slot);\nif (!sl) throw new Error('release-train: unknown slot ' + String(slot));\nconst now = $now.setZone('America/New_York');\n// LIVE runs carry the host-validated key rtw:<slot>:<window date>:<shadow|live> (gateway check_window_run_key:\n// the slot's current window = first occurrence at or after now - grace). Dry runs use a per-execution key\n// outside that namespace (a free-form key is allowed for dry_run only).\nconst GRACE_MIN = 15;\nconst hh = Number(String(slot).slice(0, 2)), mi = Number(String(slot).slice(2));\nconst floor = $now.minus({ minutes: GRACE_MIN });\nlet wstart = null;\nfor (let d = -1; d < 3 && !wstart; d++) {\n  const c = now.plus({ days: d }).set({ hour: hh, minute: mi, second: 0, millisecond: 0 });\n  if (c >= floor) wstart = c;\n}\nconst kind = (p.phase === 'request' && b.shadow_enabled === true && !(b.armed === true)) ? 'shadow' : 'live';\nconst key = MODE === 'live'\n  ? 'rtw:' + slot + ':' + wstart.toFormat('yyyyLLdd') + ':' + kind\n  : 'rtwdry-' + sl.lane_id + '-' + now.toFormat(\"yyyyLLdd'T'HHmmss\");\nconst stop = (ok && b.stop && typeof b.stop === 'object') ? b.stop : {};\nconst win = ok ? (b.windows || []).find((w) => w && w.slot === slot) : null;\nconst dstate = ok && b.delegation ? String(b.delegation.state || 'UNAVAILABLE') : 'UNAVAILABLE';\nlet action = 'no_op';\nlet reason = null;\nif (p.phase === 'report') {\n  action = 'report';\n} else if (!ok) {\n  reason = 'readiness_unavailable';\n} else if (stop.state !== 'ABSENT' || stop.effective_stop !== false) {\n  reason = stop.state === 'SET' ? 'stop_set' : (stop.state === 'UNREADABLE' ? 'stop_unreadable' : 'stop_unavailable');\n} else {\n  const live = p.phase === 'request' && b.armed === true && dstate === 'ACTIVE' && !!win && win.enabled === true;\n  if (live || b.shadow_enabled === true) { action = 'request'; reason = live ? null : 'shadow'; }\n  else { reason = 'not_armed'; }\n}\nconst remind = ok && ['PAUSED', 'NOT_CONFIGURED'].includes(dstate)\n  && (p.phase === 'forced' || (p.phase === 'report' && slot === REMINDER_SLOT));\n$execution.customData.set('slot', String(slot));\n$execution.customData.set('lane_id', String(sl.lane_id));\nreturn [{ json: { schema: 'ReleaseTrainTick@v1', phase: p.phase, slot, lane_id: sl.lane_id, mode: MODE,\n  process_id: WF, idempotency_key: key,\n  max_attempts: 1, outcome_timeout_s: 180,\n  wait_budget_s: WAITS[p.phase], action, reason, remind, readiness_ok: ok,\n  readiness: ok ? { stop_state: stop.state ?? null, armed: b.armed ?? null, shadow_enabled: b.shadow_enabled ?? null,\n    delegation_state: dstate, window_enabled: win ? win.enabled === true : null,\n    queue_counts: b.queue_counts ?? null, queue_freshness: b.queue_freshness ?? null } : null } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        960,
+        240
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "4934a962-4a7e-5a3e-a000-b85e6ea19f44",
+      "name": "Init collect",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\nconst POLL_FIRST_S = 5;\nconst s = $input.first().json;\nconst byRun = s.phase !== 'report';\n// A dry_run lane appends nothing, so there is no receipt to wait for (contract §8).\nconst ran = !!s.run && s.run.status === 'success';\nconst collect = s.phase === 'report' || (ran && s.mode === 'live');\nconst query = byRun ? ('run_id=' + encodeURIComponent(String((s.run && s.run.run_id) || '')))\n  : ('slot=' + encodeURIComponent(String(s.slot)));\nreturn [{ json: { ...s, collect, query, polls: 0, waited_s: 0, wait_s: POLL_FIRST_S, view: null,\n  collect_status: collect ? 'pending' : 'skipped', again: false } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        2160,
+        240
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "fd1a4d1c-5a1d-52fe-b2e6-f73c222660fc",
+      "name": "Manual run",
+      "parameters": {},
+      "position": [
+        0,
+        480
+      ],
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tradeai-run-relay",
+          "name": "tradeai-run-relay"
+        }
+      },
+      "id": "b0119e92-6f2d-56ec-88f3-57cc876cbfda",
+      "maxTries": 2,
+      "name": "POST relay /intent",
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "jsonBody": "={{ JSON.stringify({ domain: $json.domain, kind: $json.kind, subject: $json.subject, summary: $json.summary, workflow_id: $json.workflow_id, execution_id: $json.execution_id, node: $json.node }) }}",
+        "method": "POST",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/intent"
+      },
+      "position": [
+        3840,
+        480
+      ],
+      "retryOnFail": true,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "tradeai-run-relay",
+          "name": "tradeai-run-relay"
+        }
+      },
+      "id": "87663904-316f-53a0-b634-0bd8740a3d29",
+      "maxTries": 2,
+      "name": "POST relay /intent (refusal)",
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "jsonBody": "={{ JSON.stringify({ domain: $json.domain, kind: $json.kind, subject: $json.subject, summary: $json.summary, workflow_id: $json.workflow_id, execution_id: $json.execution_id, node: $json.node }) }}",
+        "method": "POST",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "={{ $('Relay').first().json.TRADEAI_N8N_RUN_URL }}/intent"
+      },
+      "position": [
+        2400,
+        -480
+      ],
+      "retryOnFail": true,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "waitBetweenTries": 2000
+    },
+    {
+      "id": "f1fcc5c2-c509-5694-9cf8-7a874c3132ac",
+      "name": "Plan manual",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// Manual run = FORCED SHADOW TICK (contract §10). The Gate picks the window with the oldest (or no) shadow\n// receipt, so four manual runs cover all four windows. A forced request is off_window on the host,\n// therefore shadow=true and simulate-only by construction.\nreturn [{ json: { phase: 'forced', slot: null } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        240,
+        480
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "bd8c05ab-d5fd-5326-b687-2182a81ef30a",
+      "name": "Plan report",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// report tick: which window this cron fire belongs to (window start +75 min). The host lane\n// re-derives the window from its own clock and argv; this only picks the lane to ask.\nconst SLOTS = [{\"lane_id\": \"release-train-request-1800\", \"minute\": 1080, \"slot\": \"1800\"}, {\"lane_id\": \"release-train-request-0000\", \"minute\": 0, \"slot\": \"0000\"}, {\"lane_id\": \"release-train-request-0600\", \"minute\": 360, \"slot\": \"0600\"}, {\"lane_id\": \"release-train-request-0800\", \"minute\": 480, \"slot\": \"0800\"}];\nconst OFFSET = 75;\nconst now = $now.setZone('America/New_York');\nconst nowMin = now.hour * 60 + now.minute;\nlet best = null;\nfor (const s of SLOTS) {\n  const tick = (((s.minute + OFFSET) % 1440) + 1440) % 1440;\n  let d = Math.abs(nowMin - tick);\n  d = Math.min(d, 1440 - d);\n  if (best === null || d < best.d) best = { ...s, d };\n}\nif (best === null || best.d > 30) {\n  throw new Error('release-train: no window matches the tick at ' + now.toFormat('HH:mm'));\n}\nreturn [{ json: { phase: 'report', slot: best.slot } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        240,
+        240
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "e58b536a-5912-5ce9-936c-4d29c3bce4ab",
+      "name": "Plan request",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// request tick: which window this cron fire belongs to (window start -90 min). The host lane\n// re-derives the window from its own clock and argv; this only picks the lane to ask.\nconst SLOTS = [{\"lane_id\": \"release-train-request-1800\", \"minute\": 1080, \"slot\": \"1800\"}, {\"lane_id\": \"release-train-request-0000\", \"minute\": 0, \"slot\": \"0000\"}, {\"lane_id\": \"release-train-request-0600\", \"minute\": 360, \"slot\": \"0600\"}, {\"lane_id\": \"release-train-request-0800\", \"minute\": 480, \"slot\": \"0800\"}];\nconst OFFSET = -90;\nconst now = $now.setZone('America/New_York');\nconst nowMin = now.hour * 60 + now.minute;\nlet best = null;\nfor (const s of SLOTS) {\n  const tick = (((s.minute + OFFSET) % 1440) + 1440) % 1440;\n  let d = Math.abs(nowMin - tick);\n  d = Math.min(d, 1440 - d);\n  if (best === null || d < best.d) best = { ...s, d };\n}\nif (best === null || best.d > 30) {\n  throw new Error('release-train: no window matches the tick at ' + now.toFormat('HH:mm'));\n}\nreturn [{ json: { phase: 'request', slot: best.slot } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        240,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "07bd9f34-e419-5215-a441-38f6ad26cd58",
+      "name": "Poll again?",
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "2bf0759a-7f24-55aa-9205-4652728bcc80",
+              "leftValue": "={{ $json.again === true }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": true
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          }
+        }
+      },
+      "position": [
+        3360,
+        120
+      ],
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2
+    },
+    {
+      "id": "a5a1f210-2470-5798-a107-45f913fda0fe",
+      "name": "Record refusal intent",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// Whether the host accepted the refusal digest is recorded as data; the refusal itself is in the ledger.\nconst r = $input.first().json || {};\nconst body = (r.body && typeof r.body === 'object') ? r.body : {};\nreturn [{ json: { intent_state: String(body.state || ('HTTP ' + r.statusCode)), intent_id: body.intent_id ?? null } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        2640,
+        -480
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "88ee2213-f9c9-5dcc-bf98-8ade1cabe152",
+      "name": "Record run",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// Join key for the ledger (run_id <-> execution_id), saved with the execution (FW-M1). The Run Lane\n// status is routed next: success -> collect, refused_policy / skipped_lock -> data, failed -> error route.\nconst g = $('Gate').first().json;\nconst r = $input.first().json || {};\n$execution.customData.set('run_id', String(r.run_id || g.idempotency_key));\nconst res = r.schema === 'RunLaneResult@v1' ? r : { ...r, status: 'failed', reason: 'no_run_lane_result' };\nconst run = { status: String(res.status || 'failed'), run_id: res.run_id ?? null, reason: res.reason ?? null,\n  attempts: res.attempts ?? 0, mode: res.mode ?? g.mode };\nreturn [{ json: { ...g, status: run.status, run } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        1680,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "ba4b0734-c82a-5f44-9c11-c8c06bbb27e3",
+      "name": "Refusal as data",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// A policy refusal or a lock skip is DATA (AGENTS §23.23 governance (5)): one digest intent, never an error.\nconst s = $input.first().json;\nconst xid = String($execution.id).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || 'none';\nreturn [{ json: { workflow_id: String($workflow.id), execution_id: xid, node: 'Refusal as data',\n  domain: 'fabric', kind: 'release_train_window_digest',\n  subject: ('release train ' + s.slot + ' ' + s.phase + ': ' + String(s.status).toUpperCase() + ' ('\n    + String((s.run && s.run.reason) || '') + ')').slice(0, 120),\n  summary: ('request lane ' + s.lane_id + ' was not run: ' + String(s.status) + '; the coordination ledger row is'\n    + ' the record').slice(0, 300) } }];\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        2160,
+        -480
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "96d37cd3-5dea-57ee-8618-0d4264871270",
+      "name": "Relay",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8a71edfb-370d-53de-84af-93b27e55ced3",
+              "name": "TRADEAI_N8N_RUN_URL",
+              "type": "string",
+              "value": "http://172.19.0.1:18092"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "position": [
+        480,
+        240
+      ],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    },
+    {
+      "id": "2035eb51-3253-533f-8703-7d1d647e8c93",
+      "name": "Route action",
+      "parameters": {
+        "options": {
+          "fallbackOutput": "extra"
+        },
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "4b11073c-a92f-5d9d-b902-ab2aceeecb52",
+                    "leftValue": "={{ $json.action }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "request"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputKey": "request",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "6b2db706-b091-5935-8256-85d8e3520cf2",
+                    "leftValue": "={{ $json.action }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "report"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputKey": "report",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "58b23aab-a71f-5376-b086-662a8794a3f7",
+                    "leftValue": "={{ $json.action }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "no_op"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputKey": "no_op",
+              "renameOutput": true
+            }
+          ]
+        }
+      },
+      "position": [
+        1200,
+        240
+      ],
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2
+    },
+    {
+      "id": "757b1bd7-89d1-52b4-aa3e-985b14aa0c20",
+      "name": "Route run",
+      "parameters": {
+        "options": {
+          "fallbackOutput": "extra"
+        },
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "7b18655b-9251-5ef2-9728-0e6562c00b36",
+                    "leftValue": "={{ $json.status }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "success"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputKey": "success",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "5c1cb4d7-1ac0-570b-9db5-5a1c84a95361",
+                    "leftValue": "={{ $json.status }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "failed"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputKey": "failed",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "31a29397-5162-59fa-8d63-cc1a6c87cb3c",
+                    "leftValue": "={{ $json.status }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "refused_policy"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputKey": "refused_policy",
+              "renameOutput": true
+            },
+            {
+              "conditions": {
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "4ceb0b4f-c79a-545e-8c18-41b82467a78b",
+                    "leftValue": "={{ $json.status }}",
+                    "operator": {
+                      "operation": "equals",
+                      "type": "string"
+                    },
+                    "rightValue": "skipped_lock"
+                  }
+                ],
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                }
+              },
+              "outputKey": "skipped_lock",
+              "renameOutput": true
+            }
+          ]
+        }
+      },
+      "position": [
+        1920,
+        0
+      ],
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2
+    },
+    {
+      "id": "85637bad-9d0f-5839-bfa4-cc46d1664e4b",
+      "name": "Run request lane",
+      "parameters": {
+        "options": {
+          "waitForSubWorkflow": true
+        },
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "tradeai-fabric-run-lane"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "matchingColumns": [],
+          "schema": [],
+          "value": {
+            "idempotency_key": "={{ $json.idempotency_key }}",
+            "lane_id": "={{ $json.lane_id }}",
+            "max_attempts": "={{ $json.max_attempts }}",
+            "mode": "={{ $json.mode }}",
+            "outcome_timeout_s": "={{ $json.outcome_timeout_s }}",
+            "process_id": "={{ $json.process_id }}"
+          }
+        }
+      },
+      "position": [
+        1440,
+        0
+      ],
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "4471ee53-d85e-5b28-9d4d-34af2cdeded3",
+      "name": "Schedule report",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "expression": "15 19 * * *",
+              "field": "cronExpression"
+            },
+            {
+              "expression": "15 1 * * *",
+              "field": "cronExpression"
+            },
+            {
+              "expression": "15 7 * * *",
+              "field": "cronExpression"
+            },
+            {
+              "expression": "15 9 * * *",
+              "field": "cronExpression"
+            }
+          ]
+        }
+      },
+      "position": [
+        0,
+        240
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "831d7f3b-fb77-5ecd-95d8-990cf1e0c316",
+      "name": "Schedule request",
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "expression": "30 16 * * *",
+              "field": "cronExpression"
+            },
+            {
+              "expression": "30 22 * * *",
+              "field": "cronExpression"
+            },
+            {
+              "expression": "30 4 * * *",
+              "field": "cronExpression"
+            },
+            {
+              "expression": "30 6 * * *",
+              "field": "cronExpression"
+            }
+          ]
+        }
+      },
+      "position": [
+        0,
+        0
+      ],
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2
+    },
+    {
+      "id": "4aabf16f-4ac9-548d-a820-b21509594aa6",
+      "name": "Shape intents",
+      "parameters": {
+        "jsCode": "// Generated by scripts/n8n_workflow_templates.py build-fabric — do not edit in n8n.\n// Send-INTENTS only (contract §9): n8n holds no bot token and sends nothing; the host comms gateway decides\n// delivery, dedupe, caps and quiet hours. A P1 page is the host notifier's, never n8n's.\nconst s = $input.first().json;\nconst wid = String($workflow.id);\nconst xid = String($execution.id).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40) || 'none';\nconst view = s.view || {};\nconst rec = view.receipt || null;\nconst win = (view.request && view.request.window_id) || (String(s.slot).slice(0, 2) + ':' + String(s.slot).slice(2) + ' ET');\nlet label;\nif (s.action === 'no_op') label = 'NO_OP (' + String(s.reason) + ')';\nelse if (s.action === 'request' && s.mode !== 'live') label = 'DRY_RUN';\nelse if (s.collect_status === 'no_request') label = 'NO_REQUEST';\nelse if (!rec) label = s.collect_status === 'timeout' ? (s.phase === 'request' ? 'UNACKNOWLEDGED' : 'IN_PROGRESS')\n  : 'PENDING';\nelse if (rec.state === 'COMPLETED') label = String(rec.outcome) + (rec.mode === 'simulate' ? ' (simulated)' : '');\nelse if (rec.state === 'ACKNOWLEDGED') label = 'ACKNOWLEDGED';\nelse label = String(rec.state) + ' (' + String((rec.refusal || {}).code || '') + ')';\nconst rd = s.readiness || {};\nconst qc = rd.queue_counts ? ('ready ' + rd.queue_counts.ready + ', held ' + rd.queue_counts.held)\n  : ('queue ' + String(rd.queue_freshness || 'UNAVAILABLE'));\nconst summary = ['mode ' + s.mode, 'stop ' + String(rd.stop_state ?? 'UNKNOWN'),\n  'armed ' + String(rd.armed), 'delegation ' + String(rd.delegation_state ?? 'UNKNOWN'), qc,\n  rec && rec.train_id ? ('train ' + rec.train_id) : null,\n  rec && rec.p1_alert ? 'P1 paged by the host notifier' : null,\n  view.request ? ('request ' + view.request.request_id + (view.request.shadow ? ' shadow' : ' live')) : null,\n].filter(Boolean).join('; ');\nconst base = { workflow_id: wid, execution_id: xid, node: 'Shape intents' };\nconst out = [{ json: { ...base, domain: 'fabric', kind: 'release_train_window_digest',\n  subject: ('release train ' + win + ' ' + s.phase + ': ' + label).slice(0, 120), summary: summary.slice(0, 300) } }];\nconst na = [];\nif (s.reason === 'readiness_unavailable') na.push('readiness view unavailable (treated as STOP)');\nif (s.phase === 'request' && s.collect && s.collect_status === 'timeout') na.push('controller unacknowledged');\nif (view.receipt_problem) na.push(String(view.receipt_problem));\nconst items = (rec && Array.isArray(rec.needs_action)) ? rec.needs_action : [];\nif (items.length) na.push(items.length + ' item(s): ' + items.slice(0, 3).map((x) => String(x.code)\n  + (x.pr ? ' #' + x.pr : '')).join(', '));\nif (na.length) out.push({ json: { ...base, domain: 'fabric', kind: 'release_train_needs_action',\n  subject: ('release train ' + win + ': needs action (' + na.length + ')').slice(0, 120),\n  summary: na.join('; ').slice(0, 300) } });\nif (s.remind) out.push({ json: { ...base, domain: 'fabric', kind: 'release_train_delegation_reminder',\n  subject: ('release train delegation ' + String(rd.delegation_state) + ': routine releases are off').slice(0, 120),\n  summary: 'The standing release delegation is ' + String(rd.delegation_state) + '. Routine train releases do not'\n    + ' run; the manual release path stays available. Resuming is an operator action.' } });\nreturn out;\n",
+        "language": "javaScript",
+        "mode": "runOnceForAllItems"
+      },
+      "position": [
+        3600,
+        480
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "613f4f8e-9483-5e27-9e69-f1e995745c16",
+      "name": "Wait poll",
+      "parameters": {
+        "amount": "={{ $json.wait_s }}",
+        "unit": "seconds"
+      },
+      "position": [
+        2640,
+        120
+      ],
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "webhookId": "e15d1e23-3b36-5dbf-9620-b7c5430cea68"
+    }
+  ],
+  "settings": {
+    "errorWorkflow": "tradeai-fabric-error",
+    "executionOrder": "v1",
+    "executionTimeout": 1800,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveManualExecutions": false,
+    "timezone": "America/New_York"
+  }
+}

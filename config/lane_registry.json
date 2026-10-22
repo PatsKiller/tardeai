@@ -17037,6 +17037,102 @@
       }
     },
     {
+      "lane_id": "release-train-request-1800",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "tradeai-fabric-release-train",
+        "match": "tradeai-fabric-release-train:1800",
+        "cadence": "30 16 * * *",
+        "stage": "shadow"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-21",
+      "state_reason": "Release Train v2 Phase 4 request lane for the 18:00 ET window (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md). Generated inactive: workflow tradeai-fabric-release-train is not imported (operator import and activation under a cron grant naming it, AGENTS.md §23.2). Becomes ACTIVE at stage shadow when the operator publishes the workflow; it then runs --dry-run only (allowlist live_arg null; the executor's stage clamp also forces dry_run at shadow).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "config/n8n_run_allowlist.json entry (argv, --dry-run, live_arg null); config/release_train_n8n.json (slot 1800, request tick W-90 = 30 16 * * *); generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json (INDEX.json graph hash).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/release-train-request-1800_last.json",
+        "key": "ok_at"
+      },
+      "severity": "Medium",
+      "note": "Fired only by tradeai-fabric-release-train through Run Lane (one lane per window slot: a run request names only lane and mode, AGENTS.md §23.3, so the slot is in the reviewed argv), never by the generic dispatcher (no dispatch block). Its whole effect with --append is one TrainWindowRequest@v1 file in the release-window request spool; it never merges, pushes, promotes, rolls back, issues a capability, writes the STOP latch, reads a credential or sends. A request is REQUEST_ONLY: the host controller re-validates every gate."
+    },
+    {
+      "lane_id": "release-train-request-0000",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "tradeai-fabric-release-train",
+        "match": "tradeai-fabric-release-train:0000",
+        "cadence": "30 22 * * *",
+        "stage": "shadow"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-21",
+      "state_reason": "Release Train v2 Phase 4 request lane for the 00:00 ET window (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md). Generated inactive: workflow tradeai-fabric-release-train is not imported (operator import and activation under a cron grant naming it, AGENTS.md §23.2). Becomes ACTIVE at stage shadow when the operator publishes the workflow; it then runs --dry-run only (allowlist live_arg null; the executor's stage clamp also forces dry_run at shadow).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "config/n8n_run_allowlist.json entry (argv, --dry-run, live_arg null); config/release_train_n8n.json (slot 0000, request tick W-90 = 30 22 * * *); generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json (INDEX.json graph hash).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/release-train-request-0000_last.json",
+        "key": "ok_at"
+      },
+      "severity": "Medium",
+      "note": "Fired only by tradeai-fabric-release-train through Run Lane (one lane per window slot: a run request names only lane and mode, AGENTS.md §23.3, so the slot is in the reviewed argv), never by the generic dispatcher (no dispatch block). Its whole effect with --append is one TrainWindowRequest@v1 file in the release-window request spool; it never merges, pushes, promotes, rolls back, issues a capability, writes the STOP latch, reads a credential or sends. A request is REQUEST_ONLY: the host controller re-validates every gate."
+    },
+    {
+      "lane_id": "release-train-request-0600",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "tradeai-fabric-release-train",
+        "match": "tradeai-fabric-release-train:0600",
+        "cadence": "30 4 * * *",
+        "stage": "shadow"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-21",
+      "state_reason": "Release Train v2 Phase 4 request lane for the 06:00 ET window (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md). Generated inactive: workflow tradeai-fabric-release-train is not imported (operator import and activation under a cron grant naming it, AGENTS.md §23.2). Becomes ACTIVE at stage shadow when the operator publishes the workflow; it then runs --dry-run only (allowlist live_arg null; the executor's stage clamp also forces dry_run at shadow).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "config/n8n_run_allowlist.json entry (argv, --dry-run, live_arg null); config/release_train_n8n.json (slot 0600, request tick W-90 = 30 4 * * *); generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json (INDEX.json graph hash).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/release-train-request-0600_last.json",
+        "key": "ok_at"
+      },
+      "severity": "Medium",
+      "note": "Fired only by tradeai-fabric-release-train through Run Lane (one lane per window slot: a run request names only lane and mode, AGENTS.md §23.3, so the slot is in the reviewed argv), never by the generic dispatcher (no dispatch block). Its whole effect with --append is one TrainWindowRequest@v1 file in the release-window request spool; it never merges, pushes, promotes, rolls back, issues a capability, writes the STOP latch, reads a credential or sends. A request is REQUEST_ONLY: the host controller re-validates every gate."
+    },
+    {
+      "lane_id": "release-train-request-0800",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "tradeai-fabric-release-train",
+        "match": "tradeai-fabric-release-train:0800",
+        "cadence": "30 6 * * *",
+        "stage": "shadow"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-21",
+      "state_reason": "Release Train v2 Phase 4 request lane for the 08:00 ET window (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md). Generated inactive: workflow tradeai-fabric-release-train is not imported (operator import and activation under a cron grant naming it, AGENTS.md §23.2). Becomes ACTIVE at stage shadow when the operator publishes the workflow; it then runs --dry-run only (allowlist live_arg null; the executor's stage clamp also forces dry_run at shadow).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "config/n8n_run_allowlist.json entry (argv, --dry-run, live_arg null); config/release_train_n8n.json (slot 0800, request tick W-90 = 30 6 * * *); generated docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json (INDEX.json graph hash).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/release-train-request-0800_last.json",
+        "key": "ok_at"
+      },
+      "severity": "Medium",
+      "note": "Fired only by tradeai-fabric-release-train through Run Lane (one lane per window slot: a run request names only lane and mode, AGENTS.md §23.3, so the slot is in the reviewed argv), never by the generic dispatcher (no dispatch block). Its whole effect with --append is one TrainWindowRequest@v1 file in the release-window request spool; it never merges, pushes, promotes, rolls back, issues a capability, writes the STOP latch, reads a credential or sends. A request is REQUEST_ONLY: the host controller re-validates every gate."
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {

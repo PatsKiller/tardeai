@@ -329,6 +329,19 @@ exit 0
 """
 
 
+#: 2026-10-21: the deploy script refuses unless CANONICAL_SOURCE's HEAD is the SHA it prepares/promotes
+#: (require_canonical_source_at; proven against a real git checkout in tests/test_canonical_source_head_20261021.py).
+#: These sandboxes use fake SHAs, so this shim answers ``git -C <canonical> rev-parse HEAD`` as a dev tree already
+#: fast-forwarded to the release: the train SHA when one is set, else the sandbox release's SHA. Every other git call
+#: is the real git.
+GIT_SHIM = r"""#!/usr/bin/env bash
+if [[ "$1" == "-C" && "$2" == "$CANONICAL_SOURCE" && "$3" == "rev-parse" && "$4" == "HEAD" ]]; then
+  echo "${TRADEAI_RELEASE_TRAIN_SHA:-$FAKE_CANONICAL_HEAD}"; exit 0
+fi
+exec "$REAL_GIT" "$@"
+"""
+
+
 def _deploy_sandbox(tmp_path):
     """A copy of the deploy script whose ROOT is a tmp tree; HOME, releases and state are tmp."""
     root = tmp_path / "root"
@@ -352,8 +365,12 @@ def _deploy_sandbox(tmp_path):
         (d / "BUILD_SHA").write_text(sha + "\n", encoding="utf-8")
     (rel / "CURRENT").symlink_to(prev)
     log = tmp_path / "py.log"
+    git = bindir / "git"
+    git.write_text(GIT_SHIM, encoding="utf-8")
+    git.chmod(0o755)
     env = {"PATH": f"{bindir}:{os.environ.get('PATH', '/usr/bin:/bin')}", "HOME": str(home), "TRADE_AI_CI": "1",
-           "VENV_PYTHON": str(bindir / "fakepy"), "CANONICAL_SOURCE": str(canonical), "FAKE_LOG": str(log)}
+           "VENV_PYTHON": str(bindir / "fakepy"), "CANONICAL_SOURCE": str(canonical), "FAKE_LOG": str(log),
+           "REAL_GIT": shutil.which("git") or "/usr/bin/git", "FAKE_CANONICAL_HEAD": HEAD}
     return root, env, log, new, rel
 
 

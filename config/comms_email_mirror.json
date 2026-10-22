@@ -1,0 +1,10 @@
+{
+  "schema": "CommsEmailMirror@v1",
+  "_comment": "Operator 2026-10-21 ('email yes'): the release-train per-window DIGEST and needs-action notices also go to email, in addition to the incident notifier's Telegram P2 batch. Read by scripts/incident_notifier.py only. When a live P2 message that carries one of these comms-intent incidents is SENT, the notifier sends ONE email with those incidents' lines through the communications gateway (scripts/lib/comms/channel_adapters.send_via_gateway, channel 'email' -> the approved adapter scripts/alerting.send_email; recipient REPORT_EMAIL_TO is read by that adapter, never here). Only P2 (DIGEST) incidents from the n8n comms-intent source are mirrored; P1 is never mirrored, and release-train rollback (P1) stays with the host notifier unchanged. The gateway mode gate applies (SHADOW records, never delivers). Changed only by reviewed PR.",
+  "source": "n8n_comms_intent",
+  "severities": ["P2"],
+  "routes": [
+    {"domain": "fabric", "kind": "release_train_window_digest", "channel": "email"},
+    {"domain": "fabric", "kind": "release_train_needs_action", "channel": "email"}
+  ]
+}

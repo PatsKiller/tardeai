@@ -1,0 +1,13 @@
+# PROPOSED, NOT INSTALLED (operator item O7). Fallback for the path unit: one claimer pass
+# per minute. A pass with nothing pending does nothing; a second pass while one runs exits
+# CLAIMER_BUSY (flock on train_requests/.claimer.lock).
+[Unit]
+Description=Trade AI release train: claimer fallback tick
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=5s
+Unit=tradeai-release-train-claim.service
+
+[Install]
+WantedBy=timers.target

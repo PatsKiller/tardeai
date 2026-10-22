@@ -1,0 +1,170 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tradeai:release-train/TrainEvent.schema.json",
+  "title": "TrainEvent@v1",
+  "description": "One row of the append-only release_queue_events store (migrations/2026_10_21_release_queue.sql). The release_queue projection is rebuilt from these. seq and recorded_at are assigned by the store. Program rules: subject_id matches subject_kind (pr:<n> / train:<id> / control:<id>); a PR state event's state_after equals its event_type; outcome_recorded / evidence_recorded / control_* payloads validate as TrainOutcome@v1 / TrainEvidence@v1 / ReleaseControl@v1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "event_id",
+    "event_type",
+    "subject_kind",
+    "subject_id",
+    "actor",
+    "occurred_at",
+    "payload"
+  ],
+  "properties": {
+    "schema": {
+      "const": "TrainEvent@v1"
+    },
+    "seq": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "event_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]{8,160}$"
+    },
+    "event_type": {
+      "enum": [
+        "submitted",
+        "classified",
+        "ready",
+        "held",
+        "needs_operator",
+        "blocked",
+        "selected",
+        "integrating",
+        "qualified",
+        "waiting_window",
+        "merged",
+        "promoting",
+        "released",
+        "observing",
+        "rolled_back",
+        "rollback_failed",
+        "superseded",
+        "quarantined",
+        "cancelled",
+        "ride_approved",
+        "frozen",
+        "verifying",
+        "evidence_recorded",
+        "outcome_recorded",
+        "control_requested",
+        "control_acknowledged",
+        "control_settling",
+        "control_stopped",
+        "control_applied",
+        "control_refused"
+      ]
+    },
+    "subject_kind": {
+      "enum": [
+        "pr",
+        "train",
+        "control"
+      ]
+    },
+    "subject_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 120
+    },
+    "pr_number": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "train_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^rt-[0-9]{8}-[0-9]{4}-[a-z0-9]{4,12}$"
+    },
+    "state_after": {
+      "enum": [
+        "submitted",
+        "classified",
+        "ready",
+        "held",
+        "needs_operator",
+        "blocked",
+        "selected",
+        "integrating",
+        "qualified",
+        "waiting_window",
+        "merged",
+        "promoting",
+        "released",
+        "observing",
+        "rolled_back",
+        "rollback_failed",
+        "superseded",
+        "quarantined",
+        "cancelled",
+        null
+      ]
+    },
+    "actor": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "policy_version": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 40
+    },
+    "epoch": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "idempotency_key": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 8,
+      "maxLength": 200
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 40
+    },
+    "recorded_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time",
+      "maxLength": 40
+    },
+    "payload": {
+      "type": "object"
+    },
+    "evidence_refs": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 400
+      }
+    }
+  }
+}

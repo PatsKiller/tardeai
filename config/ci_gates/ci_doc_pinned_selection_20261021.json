@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ci_doc_pinned_selection_20261021",
+  "files": [
+    "tests/test_ci_doc_pinned_selection_20261021.py"
+  ],
+  "anchor": "CI_DOC_PINNED_SELECTION_20261021",
+  "comment": [
+    "ANCHOR: CI_DOC_PINNED_SELECTION_20261021 — alignment audit H4: test_impact follows constant path joins and",
+    "document strings; a test reading a changed .md is mandatory in the pr selection, in every tier."
+  ]
+}
