@@ -1,4 +1,8 @@
-# Test results — current provisional checkpoint 2026-10-22 21:16 UTC
+# Test results — current provisional checkpoint 2026-10-22 21:18 UTC
+
+## Profile progress after 21:16 UTC
+
+The integration agent verified that exact profile session `86134` remained live. The following subsequent gates passed: `n8n_evidence_gates` (136 tests), evidence-kind parity (4), executor environment allowlist (284), fabric Hermes learning (131), fabric phase 1 (127), and health contracts (35). `n8n_import_guard_20261010` was running at the latest poll. No new failure was reported. The aggregate remains 291 PASS / 3 FAIL from the last observed overall checkpoint; it is provisional, and no terminal result, final manifest, or exit code exists.
 
 ## Profile progress after 21:15 UTC
 

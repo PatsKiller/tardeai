@@ -1,4 +1,8 @@
-# Current execution status — 2026-10-22 21:16 UTC
+# Current execution status — 2026-10-22 21:18 UTC
+
+## Profile progress — 2026-10-22 21:18 UTC
+
+The integration agent verified the exact full-profile session `86134` still live. After the 21:16 UTC checkpoint, `n8n_evidence_gates` passed 136 tests; evidence-kind parity passed 4; executor environment allowlist passed 284; fabric Hermes learning passed 131; fabric phase 1 passed 127; and health contracts passed 35. `n8n_import_guard_20261010` was running at the latest poll. No new failing gate was reported. Aggregate remains the last observed 291 PASS / 3 FAIL, provisional and nonterminal. The current live profile remains based on candidate SHA `a7508b039b1f39d06bfc216726656b82ae5d0ca6` and main SHA `b9804fa577e6d2793f4539c7458452707a350f61`.
 
 ## Coordination and profile refresh — 2026-10-22 21:16 UTC
 
