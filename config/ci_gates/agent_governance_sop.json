@@ -29,6 +29,7 @@
     "tests/test_agents_policy_12_0_0_cutover_directive.py",
     "tests/test_agents_policy_14_0_0_broker_read.py",
     "tests/test_agents_policy_15_0_0_disk_hygiene.py",
+    "tests/test_agents_policy_16_0_0_cutover_standard.py",
     "tests/test_trading_session_grant_20260925.py",
     "tests/test_operator_approval_workflow_docs.py"
   ],
@@ -54,6 +55,9 @@
     "the adapters byte-identical until ratified; the proposed §0 sentence and its digest pinned.",
     "AGENTS.md 15.0.0 (ACTIVE, ratified 2026-10-21: APPROVE_AGENTS_POLICY_15_0_0 1852 fc5672896; proposed",
     "2026-10-18): §24.12 disk hygiene, the only automated deletion; the ratified §0 rule 6 sentence, the §17",
-    "entry, the four adapter copies and the digests pinned."
+    "entry, the four adapter copies and the digests pinned.",
+    "AGENTS.md 16.0.0 (ACTIVE, ratified 2026-10-21: APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1, comment",
+    "6331278599; rebuilt from 8.0.0 / PR #1727 onto 15.0.0): §23.21 cutover standard; the five replaced",
+    "clauses, their digests and the post-edit §23.14 and §23.23 digests pinned."
   ]
 }

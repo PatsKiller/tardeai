@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      15.0.0
+Policy-Version:      16.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
 Effective-Date:      2026-10-21
-Last-Reviewed:       2026-10-21T15:37:58-04:00
+Last-Reviewed:       2026-10-21T22:33:20-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          14.0.0
+Supersedes:          15.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -110,6 +110,34 @@ asks the operator to decide needs `dedupe_minutes=0`; #1685 sets it only for `ap
 `stop_decision_brief.py` (a stop decision brief) is P1 with the default 60-minute exact-content dedupe — the
 operator classifies it before #1685 merges. **Numbering:** follows 5.0.0 (ACTIVE, PR #1686, merged `0ec320486`);
 `Supersedes` is 5.0.0. Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>`.
+
+**16.0.0 is ACTIVE (MAJOR) — the n8n cutover standard: defect fixed, dry run, regression tests, one live n8n
+run with the cron line present; no multi-day soak (§23.21; five clauses replaced in place by the ratifying edit).**
+Rebuilt on 2026-10-21 from 8.0.0 (PR #1727, closed unratified) on the operator's word "yes rebuild 1727". Operator ruling
+2026-10-14 ~11:05 ET, in session, verbatim: "new standards apply when i say so fix and dry and regression testing, yes it should run live successful to many road blocks to testing". Ratified by the operator 2026-10-21
+(`APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1416ab9f240a69def0523dd125afbc18`, §20; PR #1911 comment by PatsKiller 2026-10-22T02:33:20Z,
+https://github.com/PatsKiller/tardeai/pull/1911#issuecomment-6331278599, verbatim: "APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1416ab9f240a69def0523dd125afbc18");
+ratified by this edit on #1911's branch, which set the header block to 16.0.0 ACTIVE with `Supersedes` 15.0.0 and
+replaced the five clauses quoted in §23.21 "Ratifying edit" (§23.3's three clean market days for
+`trade-ai-scalp-live`, §23.14's restatement, the §8.1 gate list, a §23.12 pointer, the §23.23 (4) citation);
+onboarding step 8's natural shadow slot is no longer a gate. Main already depends on it: §23.23 (4) and §23.25 cite "§23.21 cutover standard", and
+`scripts/n8n_cutover_wave.py` describes its waves as "§23.21: fix + dry run + regression + at least one live n8n run
+with the cron line still present; no soaks". An n8n lane is ready to cut over when (1) the defect that held it is
+fixed and served, (2) its n8n dry run passes (a forced `dry_run` fire counts), (3) its regression tests pass under
+`TRADE_AI_CI=1`, and (4) it has at least one successful `live` n8n run with the cron line still present under the
+shared lock — the dispatcher's slot, or a live fire the operator forces inside the lane's window. The cron line is
+then commented, never deleted, and the commented line is the fallback. **Why MAJOR:** it removes a restriction 4.0.0
+(MAJOR) set on a lane that ingests and sends, so the weakest guarantee after the change is weaker (version policy:
+classify by the weakest guarantee). It grants nothing: no lane, allowlist `never` entry, grant tier or §17 item
+changes, and §0, §2, §2A, §7A, §17 and §22 are byte-identical, as are the four adapters. **§23.14 changes by one
+clause at ratification**, which §23.14's last bullet permits only to a new MAJOR made outside a program window; the
+window closed 2026-10-12T23:59:59-04:00. **Pattern (as 14.0.0 and 15.0.0, plus the header):** the PROPOSED patch added the
+banner, §23.21 and a PENDING row, and set the header block to 16.0.0 PROPOSED with `Effective-Date` PENDING; §8.1,
+§23.3, §23.12, §23.14 and §23.23 stayed byte-identical until the ratifying edit, which replaced exactly the five clauses
+quoted in §23.21 "Ratifying edit", whose SHA-256 digests `tests/test_agents_policy_16_0_0_cutover_standard.py` pins.
+**Numbering:** 8.0.0 was never ratified and its number is retired with #1727; 15.0.0 (PR #1852) was ratified on
+2026-10-21 and was the last ACTIVE version, so this takes 16.0.0. `Supersedes` is the last ACTIVE version, 15.0.0
+(settled at ratification, §20). Approval phrase as proposed: `APPROVE_AGENTS_POLICY_16_0_0 <pr_number> <head_sha>`.
 
 **15.0.0 is ACTIVE (MAJOR) — one automated deletion: the weekly n8n lane `disk-hygiene` may remove the
 reclaimable items its reviewed rules select, and nothing else (§24.12; one sentence added to §0 rule 6).**
@@ -2061,10 +2089,10 @@ and nobody waits for one to declare success: a dependent step may start on the f
 natural fire is still checked when it comes — it settles the separate claim that the job runs *on its schedule*
 (§8 "What counts as verified", §9.3) — and a natural fire that fails makes the change not working again: report
 it, and re-check any step that started on it. **This lifts no gate this file or a standard already conditions on
-natural-schedule evidence**, which keeps its condition: the lane-specific shadow fire on the natural schedule
-(`N8N_ONBOARDING_STANDARD.md` step 8), natural-schedule evidence after a cutover (§23.12, last bullet), a
-registry `PAUSED` row's flip to `ACTIVE` after its natural-slot verification, `trade-ai-scalp-live`'s three
-clean market days with cron as fallback (§23.3), and the maturity proofs (§15).
+natural-schedule evidence**, which keeps its condition: natural-schedule evidence after a cutover (§23.12, last
+bullet), a registry `PAUSED` row's flip to `ACTIVE` after its natural-slot verification, and the maturity proofs
+(§15). An n8n cutover is the exception: its readiness is the §23.21 cutover standard (16.0.0), which needs no
+natural shadow slot and no run of clean days.
 
 **The forced run has the same bounds as the thing it runs.**
 
@@ -4485,8 +4513,9 @@ mandatory. *Cause (§20): operator 2026-10-10 ~16:35 ET, after the W0 rollback
   behind the data broker on the host); the send stays the host chokepoint with GO de-duplication
   persisted in `state/trade_ai_scalp_live_state.json`; live is reachable only when the lane is also in
   the relay's `TRADEAI_N8N_RELAY_LIVE_LANES` (config-write grant) and the live workflow is activated
-  (grant naming the workflow id). The cron line stays live as the fallback until n8n has 3 market days
-  of `RUN_DONE` with no `trade-ai-scalp-live:STALLED` finding; it is then retired as
+  (grant naming the workflow id). The cron line stays live as the fallback until the lane meets the
+  §23.21 cutover standard (16.0.0): one successful in-window `live` n8n run with the cron line present
+  under that lock; it is then retired as
   `# RETIRED <date> n8n-cutover trade-ai-scalp-live` under a cron grant. No other ingest writer or
   sender enters the allowlist by analogy. *Cause (§20): 2026-10-09 13:30–15:00 the cron-run scan
   stalled unseen for 90 minutes (cold catalyst cache, every run killed at 295 s); operator: "n8n drives
@@ -4896,7 +4925,8 @@ For dispatcher rows this replaces the per-lane ladder of §23.2; lane-specific w
   registry PR. *Cause (§20): due-diligence audit E C8 — `n8n-incident-fanin` was cut over when its
   only live fire was `RUN_SKIPPED_LOCK`, which proves no double run but not that the n8n-initiated
   run works.*
-- **Cutover is per wave, under one `cron` grant whose reason names every lane id in the wave.**
+- **Cutover is per wave, under one `cron` grant whose reason names every lane id in the wave.** A lane joins
+  the cutover when it meets the §23.21 cutover standard (16.0.0); no soak precedes it.
   `scripts/pipelines/cutover/_cutover.py --lane <lane_id>` runs per lane: the line is commented,
   never deleted (§0 rail 6), the row moves to `scheduler.stage = "cutover"`, and each lane gets its own
   `CutoverReceipt@v1`. A lane the grant does not name is not cut over. **Rollback stays per line**
@@ -4973,7 +5003,8 @@ every merge needs the operator's per-PR word again.
   (`scripts/run_trade_ai_scalp_live.py`), the cron line's lock `/tmp/tradeai_scalp_live.lock`
   (`flock -n`), `timeout_s` 295, `market_day_gate.sh`, the lane listed in the relay's
   `TRADEAI_N8N_RELAY_LIVE_LANES` (config-write grant), a grant naming the id of the workflow that
-  fires it, and the cron line live as the fallback until 3 clean market days. The test checks those
+  fires it, and the cron line live as the fallback until the §23.21 cutover standard (16.0.0) is met. The
+  test checks those
   conditions for it instead of the token test. No other ingest writer or sender becomes
   dispatcher-eligible by analogy. *Cause (§20): 4.0.0 admitted one lane by name after it stalled
   unseen for 90 minutes on 2026-10-09; dispatch must not turn that into a class.*
@@ -5167,6 +5198,140 @@ it holds. ACTIVE since the ratifying edit of 2026-10-14 (`APPROVE_AGENTS_POLICY_
   blocks the admitted lane: measured 2026-10-14), no relay route or credential is added, and an n8n Agent node never
   invokes a §23.20 lane.
 
+## 23.21 The cutover standard — fixed, dry run, regression tests, one live run (16.0.0, ACTIVE)
+
+**Status: ACTIVE (MAJOR), ratified `APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1416ab9f240a69def0523dd125afbc18`
+(§20; PR #1911, operator comment 2026-10-21, https://github.com/PatsKiller/tardeai/pull/1911#issuecomment-6331278599).** The five clauses quoted
+under "Ratifying edit" are in place in §8.1, §23.3, §23.12, §23.14 and §23.23. Operator ruling 2026-10-14 ~11:05 ET, in
+session, verbatim: "new standards apply when i say so fix and dry and regression testing, yes it should run live successful to many road blocks to testing". First proposed as 8.0.0 (PR #1727, closed unratified); rebuilt onto main on
+2026-10-21 on the operator's word "yes rebuild 1727", reconciled with how cutovers ran since: the 2026-10-16 waves of
+`scripts/n8n_cutover_wave.py` and the 2026-10-21 `hermes-watchlist-scorer` canary under an operator waiver.
+
+- **An n8n lane is ready to cut over when all four hold, each with its evidence recorded in the change record.** This
+  applies to dispatcher rows (§23.12) and lane-specific workflows (§23.2) alike, and to every family §23.25 approves.
+  (1) **Defect fixed.** Whatever held the lane back (a failed fire, a refactor, a finding) is fixed: merged and served
+  from CURRENT, with the PR and the release named. (2) **n8n dry run passes.** The lane's latest n8n `dry_run` fire is
+  `RUN_DONE` with its receipt, and any earlier failure is followed by a clean fire. A forced `dry_run` fire through
+  `coordination/run` counts (§8.1); no natural shadow slot and no number of shadow days is required. (3) **Lane
+  regression tests pass** under `TRADE_AI_CI=1`, command and result quoted (§8A, §24.6). (4) **At least one successful
+  `live` n8n run with the cron line still present under the shared lock.** `RUN_DONE` in mode `live`, its
+  `output_signal` advanced after the trigger (§0 rule 8), and the allowlist lock equal to the cron line's lock, so the
+  cron line could not double-run. A `RUN_SKIPPED_LOCK` is not this run (§23.12, second bullet). *Cause (§20): on
+  2026-10-14 the migration matrix held 6 lanes cut over, 61 canary-ready and 18 in shadow, six days after 2.0.0 opened
+  n8n scheduling; the operator ruled the waits, not the defects, the road block.*
+- **Where the live run comes from.** Normally the dispatcher's next slot with the cron line present is the live run
+  (`n8n_cutover_wave.py` packet step 3): the gateway refuses a free-form live key from n8n
+  (`run_key_namespace_refused`), so a lane with an armed effect key needs its slot. A live fire the operator forces
+  also counts, when the gateway accepts its key and the lane's window allows it: a lane gated on market hours or
+  another clock window is fired inside that window, never with the gate overridden (§8.1). It is recorded as
+  `OPERATOR_FORCED_LIVE` evidence in `scripts/n8n_cutover_checklist.py` with `forced_by` "operator", the operator's
+  word or grant as `operator_ref`, and `window_gate_overridden` false. An agent never forces a live run of an F09
+  (broker, order, stop, protection or secret) lane; its live proof comes from n8n's own schedule (§23.25). *Cause
+  (§20): the 2026-10-15 cutover packets and the 2026-10-21 `hermes-watchlist-scorer` packet
+  (`docs/ops/packets/hermes-scorer-canary-20261021/README.md`, step 3) both found a forced live fire refused for keyed
+  lanes; #1727 left the checklist accepting natural-slot evidence only.*
+- **The procedure is the cutover factory, then the commented line is the fallback.** `scripts/n8n_cutover_wave.py`
+  does the per-lane config work: `plan` and `apply` write the canary row (registry `kind: cron`, `stage: canary`,
+  `dispatch.mode: live`; allowlist `live_arg` = the cron argv and lock = the cron line's `flock` lock; health contract
+  at canary; effect key per tier), `evidence` reads the ledger, `comment-cron` retires the wave's lines in one crontab
+  write under the wave's `cron` grant, and `cutover` writes the §23.11 dispatcher rows in the registry PR that follows.
+  The row stays at canary while its cron line is live: a cutover row with an active line fails
+  `CRON_PRESENT_WHILE_SCHEDULER_N8N` and `CUTOVER_CRON_LINE_ACTIVE`. Retirement comments the exact line as
+  `# RETIRED <date> n8n-cutover <lane> <original line>`, never deletes it (§0 rule 6); that commented line is the
+  fallback, restored by `_cutover.py rollback --lane` or the packet's fallback script under a `cron` grant, with the
+  shared lock keeping one run per slot while both schedulers fire. `scripts/pipelines/cutover/_cutover.py --lane`
+  stays the single-lane path (§23.12). *Cause (§20): 12 lanes were retired this way on 2026-10-16 (crontab measured
+  2026-10-21: 16 `RETIRED … n8n-cutover` lines, 13 registry rows at `stage: cutover`); operator 2026-10-21, verbatim:
+  "comment out whats working now this can be a fallback".*
+- **No multi-day soak is a cutover condition.** Removed by name: §23.3's "3 market days of `RUN_DONE` with no
+  `trade-ai-scalp-live:STALLED` finding" for `trade-ai-scalp-live` and its restatement in §23.14; the natural-slot
+  shadow fire as the gate to canary (`N8N_ONBOARDING_STANDARD.md` step 8); and any program bar of N clean days in
+  shadow or canary in a design, packet or runbook. A document that still states one is stale and is corrected to this
+  subsection. An operator waiver of such a wait, like the 2026-10-21 `hermes-watchlist-scorer` waiver ("push live
+  now"), is recorded verbatim in the registry row's `canary.operator_waiver` and the contract's
+  `review.stage_rereview`; once this is ACTIVE that waiver is no longer needed, because two `RUN_DONE` dry runs meet
+  (2). A waiver never covers (1), (3), the shared lock or comment-not-delete. *Cause (§20): the operator ruling above
+  — "to many road blocks to testing".*
+- **Unchanged.** §23.14 — broker, order, secret and daemon lanes are never dispatcher-eligible except as §23.25
+  supersedes its scheduling restriction for approved families, the token test, and `trade-ai-scalp-live`'s other
+  4.0.0 conditions (exact argv, lock, `timeout_s` 295, `market_day_gate.sh`, relay live list, workflow-id grant).
+  One `cron` grant per wave naming every lane id (§23.12); rollback per line (§23.2); the fenced single-owner switch
+  (§23.23 (4)); the §23.24 framework. After cutover, natural-schedule evidence is monitored, not awaited (§23.12, last
+  bullet), and a failing natural fire makes the lane not working again and is a rollback trigger (§8.1). *Cause
+  (§20): the ruling concerned waits, not the rails.*
+- **Why MAJOR, and why §23.14 can change.** It removes a restriction that 4.0.0 (MAJOR) set on a lane that ingests
+  and sends, so the weakest guarantee after the change is weaker (version policy). §23.14's last bullet says no
+  amendment made inside a program window can change it and it needs a new MAJOR: the program window ended
+  2026-10-12T23:59:59-04:00 (§23.13) and this is a new MAJOR. *Cause (§20): version policy; §23.14.*
+- **Open gaps, stated.** `scripts/n8n_cutover_checklist.py` accepts `OPERATOR_FORCED_LIVE` for (4) (2026-10-21,
+  `tests/test_n8n_cutover_checklist_forced_live_20261021.py`), but its shadow step still asks for two natural
+  `dry_run` slots, which (2) does not; it is a read-only reporter and its shadow verdict is not a cutover blocker until
+  a follow-up accepts a forced `dry_run`. `N8N_ONBOARDING_STANDARD.md` step 8 stated the natural-slot gate until the
+  ratifying edit corrected it to (2). *Cause (§20): measured on origin/main `7faa8cddf`, 2026-10-21, and again on
+  `4104effb9` (15.0.0 ACTIVE), unchanged.*
+- **Ratifying edit (done 2026-10-21, after `APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1416ab9f240a69def0523dd125afbc18`).**
+  The ratifying edit set this status to ACTIVE and the header block
+  (16.0.0 PROPOSED, `Effective-Date` PENDING, while PROPOSED) to 16.0.0 ACTIVE with its `Effective-Date` and
+  `Supersedes` 15.0.0, the last ACTIVE version; flipped the banner and the version row; replaced exactly these
+  five clauses, each named by the text it replaces (`tests/test_agents_policy_16_0_0_cutover_standard.py` holds the
+  old text and checks it is gone and the new text is on main once):
+
+  (1) In §23.3, the `trade-ai-scalp-live` exception (4.0.0): the two lines from "The cron line stays live as the fallback until n8n has 3 market days" to "it is then retired as" become
+
+  ```
+    (grant naming the workflow id). The cron line stays live as the fallback until the lane meets the
+    §23.21 cutover standard (16.0.0): one successful in-window `live` n8n run with the cron line present
+    under that lock; it is then retired as
+  ```
+
+  sha256 `82e4012f9e6a2d6728e8a6456e15743e92647905c4f904806a21ce29bf435ff1`.
+
+  (2) In §23.14, the `trade-ai-scalp-live` bullet: the line ending "until 3 clean market days. The test checks those" becomes
+
+  ```
+    fires it, and the cron line live as the fallback until the §23.21 cutover standard (16.0.0) is met. The
+    test checks those
+  ```
+
+  sha256 `c2738d78d2b3580857cf54a9682d6140223d85b4d347b0018d791cc0dd97a961`.
+
+  (3) In §8.1, the four lines listing the gates that keep natural-schedule evidence become
+
+  ```
+  natural-schedule evidence**, which keeps its condition: natural-schedule evidence after a cutover (§23.12, last
+  bullet), a registry `PAUSED` row's flip to `ACTIVE` after its natural-slot verification, and the maturity proofs
+  (§15). An n8n cutover is the exception: its readiness is the §23.21 cutover standard (16.0.0), which needs no
+  natural shadow slot and no run of clean days.
+  ```
+
+  sha256 `20fd2f9c80fa13b331b09152658bb73c854987fdbd5b7435457725b2b8ee283a`.
+
+  (4) In §23.12, the cutover bullet's bold first line gains one sentence:
+
+  ```
+  - **Cutover is per wave, under one `cron` grant whose reason names every lane id in the wave.** A lane joins
+    the cutover when it meets the §23.21 cutover standard (16.0.0); no soak precedes it.
+  ```
+
+  sha256 `05cb9d12012d6348a47500ca9d872ddefe5e9842b909300930b3225302831ec5`.
+
+  (5) In §23.23 (4), the citation "(8.0.0, PR #1727; until it is ACTIVE, the cutover rules then in force)" becomes
+
+  ```
+    folded on the host first, then moved as one process. (4) A cutover keeps the §23.21 cutover standard (16.0.0,
+    rebuilt from PR #1727) plus a fenced single-owner switch: one recorded act
+  ```
+
+  sha256 `baccf84bff2129f0f112b9dd979bb12658e08a8ce898d62c4578937a57721681`.
+
+  and moved the pins: the §23.14 digests in `tests/test_agents_policy_4_3_0_r1_classes.py`, `4_4_0`, `4_6_0`,
+  `5_0_0`, `5_1_0`, `5_2_0` (and `7_0_0` and `10_0_0` through it) reverse clause (2) before hashing, the §23.23
+  digest in `tests/test_agents_policy_11_0_0_workflow_framework.py` takes the post-(5) value, the `4_0_0` and `5_2_0`
+  fragment tests drop "3 market days" and "three clean market days", and `N8N_ONBOARDING_STANDARD.md` step 8 states
+  (2). `tests/test_agents_policy_16_0_0_cutover_standard.py` computes the post-edit §23.14 and §23.23 digests. §0,
+  §17 and the adapters do not change. *Cause (§20): §20 — rules are replaced, not accumulated; until ratification the
+  replaced clauses stay byte-identical, so no agent reads a PROPOSED clause as in force.*
+
 ## 23.23 n8n is the automation fabric — n8n owns flow, the host owns authority (10.0.0, ACTIVE)
 
 Operator directive 2026-10-14, in session, verbatim: n8n is "a centralized, intelligent automation fabric that
@@ -5239,8 +5404,8 @@ the architecture review of 2026-10-14 in `~/n8n-maturity-verification/arch-revie
   fallback), and this amendment ACTIVE. Retirements and host-side consolidation continue. (2) After that, progress
   is measured as business processes owned by n8n and orchestration owners retired, not lanes moved. (3) Consolidate
   before migrating: a WS2 family (`~/n8n-maturity-verification/arch-review-20261014/WS2_family_decisions.csv`) is
-  folded on the host first, then moved as one process. (4) A cutover keeps the §23.21 cutover standard (8.0.0, PR
-  #1727; until it is ACTIVE, the cutover rules then in force) plus a fenced single-owner switch: one recorded act
+  folded on the host first, then moved as one process. (4) A cutover keeps the §23.21 cutover standard (16.0.0,
+  rebuilt from PR #1727) plus a fenced single-owner switch: one recorded act
   moves ownership, the shared lock fences the old owner, and at no moment can both the cron line and the workflow
   fire the process. *Cause (§20): 6 lanes cut over in 8 days, 4 of them the platform watching itself, for 68% of
   merge throughput (`EXECUTIVE_SUMMARY.md`); 35–45% of planned items were for jobs that will not exist
@@ -5864,6 +6029,7 @@ under "Never delete. Archive with a tripwire".
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 16.0.0 | 2026-10-21 | ACTIVE | MAJOR | §23.21 "The cutover standard — fixed, dry run, regression tests, one live run" added, rebuilt from 8.0.0 (PR #1727, closed unratified) on the operator's word 2026-10-21 "yes rebuild 1727". Operator ruling 2026-10-14 ~11:05 ET, verbatim: "new standards apply when i say so fix and dry and regression testing, yes it should run live successful to many road blocks to testing". An n8n lane is cutover-ready when (1) its defect is fixed and served, (2) its n8n dry run passes (a forced `dry_run` fire counts; no natural shadow slot), (3) its lane regression tests pass under `TRADE_AI_CI=1`, (4) it has at least one successful `live` n8n run with the cron line still present under the shared lock: the dispatcher's slot, or an operator-forced in-window live fire (`OPERATOR_FORCED_LIVE` in `scripts/n8n_cutover_checklist.py`; never a gate override; never an agent-forced F09 live run, §23.25). Procedure: `scripts/n8n_cutover_wave.py` canary rows, `comment-cron` retirement as `# RETIRED <date> n8n-cutover <lane>` (the commented line is the fallback), then the dispatcher-row PR. Multi-day soaks removed; operator waivers recorded verbatim. While PROPOSED, §8.1, §23.3, §23.12, §23.14 and §23.23 were byte-identical; the ratifying edit replaced five quoted clauses (the §23.3 and §23.14 `trade-ai-scalp-live` 3-day fallback, the §8.1 natural-evidence gate list, a §23.12 pointer, the §23.23 (4) citation) whose digests `tests/test_agents_policy_16_0_0_cutover_standard.py` pins. §0, §2, §2A, §7A, §17, §22 and the adapters byte-identical. MAJOR: removes a 4.0.0 restriction; §23.14 changes by one clause at ratification (permitted to a new MAJOR outside a program window; window closed 2026-10-12). Header block 16.0.0 PROPOSED, `Effective-Date` PENDING, `Supersedes` 15.0.0 while PROPOSED; the ratifying edit set it to 16.0.0 ACTIVE, `Effective-Date` 2026-10-21, `Supersedes` 15.0.0. Numbered 16.0.0 after 15.0.0 (PR #1852, ACTIVE). | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1416ab9f240a69def0523dd125afbc18` (operator, PR #1911 comment by PatsKiller 2026-10-22T02:33:20Z, https://github.com/PatsKiller/tardeai/pull/1911#issuecomment-6331278599, verbatim: "APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1416ab9f240a69def0523dd125afbc18"); ratified by this edit on #1911's branch, which replaced the five clauses quoted in §23.21; approval phrase as proposed `APPROVE_AGENTS_POLICY_16_0_0 <pr_number> <head_sha>`; per-PR word, because it changes `AGENTS.md`. Effective 2026-10-21. |
 | 15.0.0 | 2026-10-18 | ACTIVE | MAJOR | §24.12 "Disk hygiene: the only automated deletion" added, one sentence added to §0 rule 6 and one entry added to §17 (both inserted by the ratifying edit in `AGENTS.md`, the four adapters and §17; absent while PROPOSED). Operator-directed 2026-10-18, verbatim: "i approve automatic deletion would need an AGENTS.md amendment" (root disk 89%; about 100 GB of stale clones/worktrees and 36 GB of old releases). Once ACTIVE, the weekly n8n lane `disk-hygiene` (or the operator at the CLI) may run ONLY `scripts/disk_hygiene.py` under `config/disk_hygiene_rules.json` to remove: git clones/worktrees that are clean, have no untracked files and no unpushed commits, are merged into `origin/main`, are referenced by no CURRENT release, unit or crontab line, hold no process cwd and are idle past N days; and release directories other than CURRENT, the previous release and the newest N. A code-enforced never-touch list (db_backups, persistent-state, models, .env/credential/cookie/token paths, .ssh, .config, Docker and n8n volumes) holds over every rule; changing the rules or the list is an operator config change (config-write grant + reviewed PR; new §17 entry "changing the disk-hygiene rules or never-touch list"). Every apply needs a fresh manifest, re-validates each item, respects per-run byte/item caps and writes a `LaneRunReceipt@v2` with each removed path, size and rule evidence; the first live apply follows the operator's review of a manifest; kill switch = remove the lane from `TRADEAI_N8N_RELAY_LIVE_LANES` or set `auto_apply` false. No agent deletes by hand; data, backups, DB rows and credentials stay under "Never delete". Open gap: `scripts/disk_hygiene_enforcer.py` (release and backup removal) is not covered and is retired or folded by its own PR. MAJOR: it narrows §0 rule 6 for one lane (version policy; precedent 5.0.0, 14.0.0). Tests: `tests/test_agents_policy_15_0_0_disk_hygiene.py`. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_15_0_0 1852 fc56728962fd51c94b3dc8cfd67e2df334eda88f` (operator, PR #1852 comment by PatsKiller 2026-10-21T19:37:58Z, https://github.com/PatsKiller/tardeai/pull/1852#issuecomment-6324859562, verbatim: "APPROVE_AGENTS_POLICY_15_0_0 1852 fc56728962fd51c94b3dc8cfd67e2df334eda88f"); ratified by this edit on #1852's branch; ratifying edit inserts the §0 rule 6 sentence in `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/00-tradeai-work-policy.mdc`, `.github/copilot-instructions.md` and `.goosehints`, and the §17 entry; approval phrase as proposed `APPROVE_AGENTS_POLICY_15_0_0 <pr_number> <head_sha>`; per-PR word, because it changes `AGENTS.md` §0 and §17. Effective 2026-10-21. |
 | 14.0.0 | 2026-10-16 | ACTIVE | MAJOR | §24.11 "Read-only broker sync — the `broker-read` grant" added, and one sentence added to §0 rule 2 (inserted by the ratifying edit in `AGENTS.md` and the four adapters; it was absent while PROPOSED). Operator request 2026-10-16: "make that bash so agents can run, make amendment, not trading just reading, update agents.md". With an active operator `broker-read` guard grant (≤ 4 h, one use per run, remotely grantable, revocable), an agent may invoke ONLY `scripts/ops/broker_read_sync.sh` — the repo form of the operator's `sync_all_readonly.sh`: a closed eight-step allowlist (`broker_read_sync_policy.STEPS`) of Schwab, Alpaca, moomoo and SnapTrade position and transaction reads into our own stores, dry run by default, `--apply` to write, `--plan` contacting no broker. It refuses unless the trading lock is LOCKED for every broker, the Schwab access mode resolves to `read_only` for the run, the static capability audit of every step's effective import closure is clean, and it runs from the served release. `.env` is sourced only inside each step's own shell and never printed; output is scrubbed. Re-auth, token refresh, 2FA and flags are unreachable (runtime stubs, broker-host non-GET refusal); no token → `needs_operator_reauth`, stop. Stop managers, stop sync, options lifecycle, defense execution, order pilots, approval/2FA, order transports, the API server and active trader are excluded and refused at import; CI pins it (`tests/test_broker_read_sync_20261016.py`). Receipt `BrokerReadSyncReceipt@v1`. Guard scope `broker-read` in `bin/guard` and `.cursor/hooks/guard-lib.sh` (operator-only guard configuration, carried in the PR for review). MAJOR: it narrows §0 rule 2 for one read-only purpose (version policy; precedent 5.0.0). Numbered 14.0.0 because 12.1.0 (nightly cutover controller) and 13.0.0 (PR #1830) are claimed. Tests: `tests/test_agents_policy_14_0_0_broker_read.py`. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_14_0_0 1838 0d4940cda` (operator, PR #1838 comment by PatsKiller 2026-10-16T22:44:55Z, verbatim: "APPROVE_AGENTS_POLICY_14_0_0 1838 0d4940cda"); merged #1838 as `0c5998042` (operator-merged 2026-10-16T22:44:57Z) while PROPOSED; ratifying edit inserts the §0 rule 2 sentence in `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/00-tradeai-work-policy.mdc`, `.github/copilot-instructions.md` and `.goosehints`; per-PR word, because it changes `AGENTS.md` §0. Effective 2026-10-16. |
 | 12.0.0 | 2026-10-15 | ACTIVE | MAJOR | Operator directive 2026-10-15 "N8N Cutover Decision": every lane family cuts over to n8n except F07 (long-running daemons, @reboot) and registry_systemd assets (deferred this iteration). §23.25 added; for the approved families it supersedes the §23.14 scheduling restriction and the §24.1 P0/P1 placement by reference (§23.14 and §24.1 text unchanged); host-side placement rationales are not blockers; F07w and F10 keep independent backstops. Grants nothing beyond scheduling. §0, §2, §2A, §7A, §17 and §22 byte-identical. Tests: `tests/test_agents_policy_12_0_0_cutover_directive.py`. The ratifying edit set the header to 12.0.0 ACTIVE, `Supersedes` 11.0.0. | **RATIFIED 2026-10-15** (`APPROVE_AGENTS_POLICY_12_0_0 1779 4aeb8cf4e`, §20; PR #1779 comment by PatsKiller 2026-10-15T21:12:48Z); merged #1779 as `818d6d9c4`, ratified by this edit. |

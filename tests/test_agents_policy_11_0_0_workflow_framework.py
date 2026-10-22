@@ -32,7 +32,11 @@ TOKEN = "APPROVE_AGENTS_POLICY_11_0_0"
 DIRECTIVE = "a mandatory standard framework for every n8n workflow, contract, integration and automation"
 #: §23.23 (heading up to the next "## ", rstripped), measured on origin/main 57d8fc3ff before this amendment
 #: (after the 10.0.0 ratifying edit, #1740, which changed §23.23's status lines; the a1b1c5c93 value was 12d4df6d…).
-SECTION_23_23_SHA256 = "f5770e9bc578b1e96b1380f380b5b64821b9ee8965b7468b03d7e7347e469d4d"
+#: AGENTS.md 16.0.0 (ratified 2026-10-21, #1911 comment 6331278599) replaced the §23.23 (4) citation (§23.21
+#: replacement (5)); before it, §23.23 hashed to SECTION_23_23_PRE_16_0_0_SHA256. The post-edit value is computed
+#: by tests/test_agents_policy_16_0_0_cutover_standard.py.
+SECTION_23_23_PRE_16_0_0_SHA256 = "f5770e9bc578b1e96b1380f380b5b64821b9ee8965b7468b03d7e7347e469d4d"
+SECTION_23_23_SHA256 = "5ef9f1ddfdab293144f58dbcbf3d9ae0a7d8dbdc4ed11d21e2e53faf39273cfa"
 DOCS = (
     "docs/implementation/n8n-maturity/N8N_CONFIGURATION.md",
     "docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md",
@@ -82,7 +86,11 @@ def test_header_stays_until_ratification_and_row_waits_for_the_operator():
     if _control("Policy-Version") == "11.0.0":
         assert _control("Status") == status
     else:
-        assert _control("Status") == "ACTIVE"
+        assert _control("Status") == "ACTIVE" or (
+            # 16.0.0 (2026-10-21) sets the header block to its PROPOSED version while the row waits for the token.
+            tuple(int(x) for x in _control("Policy-Version").split(".")) >= (16, 0, 0)
+            and _control("Status") == "PROPOSED" and _control("Effective-Date") == "PENDING"
+        )
     if status == "PROPOSED":
         assert "PENDING" in rest and f"{TOKEN} <pr_number> <head_sha>" in rest
         assert not re.search(r"\brides?\b", rest, re.I)

@@ -3,13 +3,15 @@
   "name": "n8n_workflow_gen_20261008",
   "files": [
     "tests/test_n8n_workflow_templates_20261008.py",
-    "tests/test_n8n_cutover_checklist_20261008.py"
+    "tests/test_n8n_cutover_checklist_20261008.py",
+    "tests/test_n8n_cutover_checklist_forced_live_20261021.py"
   ],
   "comment": [
     "N8N_WORKFLOW_GEN (2026-10-08, plan streamed-humming-wolf workstream H): the n8n",
     "scheduler-of-record workflow generator and the per-lane cutover checklist. The tests",
     "pin determinism (--check), the four-node allowlist, the relay contract, the N1 lane set",
     "and the INDEX shape; the checklist renders from receipts under tmp_path only. Listing",
-    "them imports nothing into n8n and retires no cron line."
+    "them imports nothing into n8n and retires no cron line.",
+    "AGENTS.md §23.21 (4): an operator-forced in-window live fire is canary evidence (2026-10-21)."
   ]
 }

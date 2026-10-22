@@ -87,8 +87,13 @@ def test_header_stays_until_ratification_and_row_waits_for_the_operator():
         if status == "PROPOSED":
             assert _control("Effective-Date") == "PENDING"
     else:
-        # Until the ratifying edit the header is the last ACTIVE version (7.0.0 when this was written).
-        assert _control("Status") == "ACTIVE"
+        # Until the ratifying edit the header is the last ACTIVE version (7.0.0 when this was written), or a later
+        # version's PROPOSED header block (16.0.0 onward).
+        assert _control("Status") == "ACTIVE" or (
+            # 16.0.0 (2026-10-21) sets the header block to its PROPOSED version while the row waits for the token.
+            tuple(int(x) for x in _control("Policy-Version").split(".")) >= (16, 0, 0)
+            and _control("Status") == "PROPOSED" and _control("Effective-Date") == "PENDING"
+        )
     if status == "PROPOSED":
         assert "PENDING" in rest and f"{TOKEN} <pr_number> <head_sha>" in rest
         assert not re.search(r"\brides?\b", rest, re.I)
@@ -255,6 +260,8 @@ def test_23_14_is_byte_identical():
     new, old = getattr(P520, "CLAUSE_23_14_8_0_0", None), getattr(P520, "CLAUSE_23_14_PRE_8_0_0", None)
     if new and old and new in block:
         block = block.replace(new, old)
+    # 16.0.0 (ratified 2026-10-21, #1911) replaced one §23.14 clause; reversed the same way (pinned in 16.0.0's test).
+    block = block.replace(P520.CLAUSE_23_14_16_0_0, P520.CLAUSE_23_14_PRE_16_0_0)
     assert hashlib.sha256(block.encode("utf-8")).hexdigest() == P520.SECTION_23_14_SHA256
     assert "10.0.0" not in block and "§23.23" not in block
 

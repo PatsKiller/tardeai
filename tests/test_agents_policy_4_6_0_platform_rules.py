@@ -31,6 +31,15 @@ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 TOKEN = "APPROVE_AGENTS_POLICY_4_6_0"
 
 SECTION_23_14_SHA256 = "bb8722f69b8e54a8582011bdbe266d55ea7c2c0c6b120d123a1d4e43394311e7"
+# AGENTS.md 16.0.0 (ACTIVE 2026-10-21, ratified APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1, PR #1911 comment
+# 6331278599): the ratifying edit replaced one §23.14 clause (§23.21 replacement (2)). Reversed before hashing so
+# SECTION_23_14_SHA256 keeps pinning the rest of §23.14; the post-edit digest is pinned by
+# tests/test_agents_policy_16_0_0_cutover_standard.py.
+CLAUSE_23_14_PRE_16_0_0 = "  fires it, and the cron line live as the fallback until 3 clean market days. The test checks those"
+CLAUSE_23_14_16_0_0 = (
+    "  fires it, and the cron line live as the fallback until the §23.21 cutover standard (16.0.0) is met. The\n"
+    "  test checks those"
+)
 # Operator-requested amendment 5.0.0 (asked for as "4.7.0", 2026-10-10 ~21:50 ET; PROPOSED, pending
 # APPROVE_AGENTS_POLICY_5_0_0): §0 rule 2 gains exactly this one sentence, pointing to §24.10. It is removed before
 # hashing, so the digest below still proves every other byte of §0 is unchanged; the sentence itself is pinned by
@@ -150,8 +159,8 @@ def test_banner_states_the_numbering_dependency_and_the_class_reasoning():
     assert "316700266" in f
     # 4.6.0 supersedes 4.5.0; 5.0.0 (#1686) supersedes 4.6.0; 5.1.0 supersedes 5.0.0; 5.2.0 (PROPOSED) supersedes 5.1.0;
     # 10.0.0 (ACTIVE, ratified on #1736) supersedes 7.0.0; 14.0.0 (ratified on #1838) supersedes 12.0.0;
-    # 15.0.0 (ratified on #1852) supersedes 14.0.0.
-    supersedes = {(4, 6, 0): "4.5.0", (5, 0, 0): "4.6.0", (5, 1, 0): "5.0.0", (5, 2, 0): "5.1.0", (10, 0, 0): "7.0.0", (11, 0, 0): "10.0.0", (12, 0, 0): "11.0.0", (14, 0, 0): "12.0.0", (15, 0, 0): "14.0.0"}
+    # 15.0.0 (ratified on #1852) supersedes 14.0.0; 16.0.0 (PROPOSED, header block set by its patch) supersedes 15.0.0.
+    supersedes = {(4, 6, 0): "4.5.0", (5, 0, 0): "4.6.0", (5, 1, 0): "5.0.0", (5, 2, 0): "5.1.0", (10, 0, 0): "7.0.0", (11, 0, 0): "10.0.0", (12, 0, 0): "11.0.0", (14, 0, 0): "12.0.0", (15, 0, 0): "14.0.0", (16, 0, 0): "15.0.0"}
     assert _control("Supersedes") == supersedes.get(_version(), "5.1.0")
     assert f"{TOKEN} <pr_number> <head_sha>" in f
 
@@ -175,7 +184,7 @@ def test_23_14_is_byte_identical():
     assert sec
     m = re.search(r"^## 23\.14 .*?(?=^## |^---$|^# |\Z)", sec.group(0), re.M | re.S)
     assert m
-    block = m.group(0).rstrip("\n").rstrip("-").rstrip("\n")
+    block = m.group(0).rstrip("\n").rstrip("-").rstrip("\n").replace(CLAUSE_23_14_16_0_0, CLAUSE_23_14_PRE_16_0_0)  # 16.0.0 clause (2)
     assert hashlib.sha256(block.encode("utf-8")).hexdigest() == SECTION_23_14_SHA256
 
 

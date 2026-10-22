@@ -35,7 +35,13 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
 from scripts import check_agents_policy_state as STATE  # noqa: E402
 from scripts.lib import advisory_lane_guard as G  # noqa: E402
 from scripts.lib import lane_dispatch as LD  # noqa: E402
-from tests.test_agents_policy_5_2_0_validation import PINNED_SECTIONS, SECTION_23_14_SHA256, _section  # noqa: E402
+from tests.test_agents_policy_5_2_0_validation import (  # noqa: E402
+    CLAUSE_23_14_16_0_0,
+    CLAUSE_23_14_PRE_16_0_0,
+    PINNED_SECTIONS,
+    SECTION_23_14_SHA256,
+    _section,
+)
 
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 TOKEN = "APPROVE_AGENTS_POLICY_7_0_0"
@@ -90,8 +96,12 @@ def _s2320() -> str:
 def test_header_row_and_status_constant_agree():
     # 11.0.0 (ratified 2026-10-15, #1747 comment) moved the header date; 7.0.0 and 10.0.0 were 2026-10-14;
     # 14.0.0 (ratified 2026-10-16, #1838 comment) and 15.0.0 (ratified 2026-10-21, #1852 comment) moved it again.
-    assert _control("Status") == "ACTIVE" and _control("Effective-Date") in (
-        "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-21")
+    # 16.0.0 (PROPOSED 2026-10-21) sets the header block to 16.0.0 PROPOSED, Effective-Date PENDING, until ratified;
+    # ratified 2026-10-21 (#1911 comment 6331278599, 22:33 ET) with Effective-Date 2026-10-21, already listed.
+    later_proposed = (tuple(int(x) for x in _control("Policy-Version").split(".")) >= (16, 0, 0)
+                      and _control("Status") == "PROPOSED" and _control("Effective-Date") == "PENDING")
+    assert later_proposed or (_control("Status") == "ACTIVE" and _control("Effective-Date") in (
+        "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-21"))
     status = _row().group(1)
     if _control("Policy-Version") == "7.0.0":
         assert _control("Status") == status and _control("Supersedes") == "5.1.0"
@@ -143,7 +153,7 @@ def test_rails_and_23_14_are_byte_identical():
         assert hashlib.sha256(block.encode("utf-8")).hexdigest() == digest, f"{name} changed"
     sec = re.search(r"^# 23 · .*?(?=^# 24 · |^# Version history)", AGENTS, re.M | re.S).group(0)
     m = re.search(r"^## 23\.14 .*?(?=^## |^---$|^# |\Z)", sec, re.M | re.S)
-    block = m.group(0).rstrip("\n").rstrip("-").rstrip("\n")
+    block = m.group(0).rstrip("\n").rstrip("-").rstrip("\n").replace(CLAUSE_23_14_16_0_0, CLAUSE_23_14_PRE_16_0_0)  # 16.0.0 clause (2)
     assert hashlib.sha256(block.encode("utf-8")).hexdigest() == SECTION_23_14_SHA256
 
 

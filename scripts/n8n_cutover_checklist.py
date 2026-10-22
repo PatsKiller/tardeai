@@ -25,7 +25,7 @@ Acceptance additionally requires ``--expected-sha <full integrated SHA>`` and a 
 the relevant fixes (outside paths and symlinks are refused before reading). The packet contains
 ``tested_sha``, ``deployed_sha``, ``fixes_deployed_at``, ``observed_at`` and ``lanes`` keyed by lane ID.
 Each lane's ``runs`` observations contain ``run_id``, ``evidence_class`` (NATURAL_SHADOW,
-NATURAL_CANARY, MANUAL_CANARY or NATURAL_POST_CUTOVER), ``legacy_lock``, ``legacy_authoritative``,
+NATURAL_CANARY, MANUAL_CANARY, OPERATOR_FORCED_LIVE or NATURAL_POST_CUTOVER), ``legacy_lock``, ``legacy_authoritative``,
 the exported ``ledger_run`` including its receipt SHA/verdict/timeout/lock fields and a correlated
 ``n8n_execution`` (execution_id, workflow_id, run_id, trigger_kind schedule/manual, started_at,
 finished_at, status, completed). A selectively retained running execution additionally needs an
@@ -33,6 +33,12 @@ explicit completed observation and retention_reason=SUCCESS_NOT_RETAINED; error 
 ``effect_proof_ref`` names a relative JSON
 observation artifact under data/runtime containing lane_id, run_id, code_sha, observed_at,
 business_effect_count, duplicate_effect_count, output_matches_contract and consumer_correct.
+OPERATOR_FORCED_LIVE is the AGENTS.md §23.21 criterion (4) forced live relay fire (16.0.0, PROPOSED; rebuilt from
+8.0.0 / PR #1727): a manual n8n trigger in mode live with the cron line still authoritative under the shared lock,
+plus ``forced_by`` = "operator", a non-empty ``operator_ref`` (the operator's word or grant id) and
+``window_gate_overridden`` = false (§8.1: a clock-gated lane is fired inside its window, never past its gate). An
+agent-forced live fire is not this evidence (§23.25: an F09 live proof never comes from an agent forcing a run).
+MANUAL_CANARY stays the §23.12 weekly/monthly natural-equivalent fire.
 These are collected observations, never populated from a lock or exit code. Missing correlation,
 reviewed contract fields or current release identity is NOT_MEASURED. This renderer grants no authority.
 
@@ -76,6 +82,11 @@ GENERIC_INDEX = Path("docs/implementation/n8n-maturity/workflows/INDEX.json")
 ALLOWLIST_FILE = Path("config/n8n_run_allowlist.json")
 CONTRACTS_FILE = Path("config/n8n_health_contracts.json")
 OUT_DIR = Path("data/runtime")
+
+#: Evidence classes an acceptance packet may carry. OPERATOR_FORCED_LIVE added 2026-10-21 (AGENTS.md §23.21 (4)).
+EVIDENCE_CLASSES = ("NATURAL_SHADOW", "NATURAL_CANARY", "MANUAL_CANARY", "OPERATOR_FORCED_LIVE", "NATURAL_POST_CUTOVER")
+#: Live classes that prove the canary step (cron line still present under the shared lock).
+CANARY_CLASSES = ("NATURAL_CANARY", "MANUAL_CANARY", "OPERATOR_FORCED_LIVE")
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +320,13 @@ def _correlate(state_root: Path, lane: dict, receipt: dict, observation: dict, c
     natural = klass in {"NATURAL_SHADOW", "NATURAL_CANARY", "NATURAL_POST_CUTOVER"}
     if execution.get("trigger_kind") != ("schedule" if natural else "manual"):
         return "DRIFT: manual/event fire cannot substitute for a natural schedule"
+    if klass == "OPERATOR_FORCED_LIVE":
+        # §23.21 (4): a forced live relay fire counts only when the operator forced it, inside the lane's window.
+        ref = observation.get("operator_ref")
+        if observation.get("forced_by") != "operator" or not isinstance(ref, str) or not ref.strip():
+            return "NOT_MEASURED: forced live fire needs forced_by=operator and an operator_ref (word or grant)"
+        if observation.get("window_gate_overridden") is not False:
+            return "NOT_MEASURED: forced live fire needs window_gate_overridden=false (fired inside its window)"
     if natural:
         slot_key = ledger.get("slot_key")
         key = parse_key(slot_key) if isinstance(slot_key, str) else None
@@ -358,7 +376,7 @@ def _correlate(state_root: Path, lane: dict, receipt: dict, observation: dict, c
             return "DRIFT: shadow output signal changed or was not observed"
     elif lock.get("scope") != "live" or lock.get("path") != legacy_lock:
         return "DRIFT: live canary must use the legacy lock"
-    elif klass in {"NATURAL_CANARY", "MANUAL_CANARY"} and observation.get("legacy_authoritative") is not True:
+    elif klass in CANARY_CLASSES and observation.get("legacy_authoritative") is not True:
         return "NOT_MEASURED: legacy authority during canary required"
     proof = _proof_file(state_root, observation.get("effect_proof_ref"))
     if (
@@ -385,7 +403,7 @@ def _correlate(state_root: Path, lane: dict, receipt: dict, observation: dict, c
 
 
 def accepted_runs(state_root: Path, lane: dict, runs: dict, packet, ctx: dict, errors: list[str], now: datetime):
-    accepted = {k: [] for k in ("NATURAL_SHADOW", "NATURAL_CANARY", "MANUAL_CANARY", "NATURAL_POST_CUTOVER")}
+    accepted = {k: [] for k in EVIDENCE_CLASSES}
     rejected = {k: [] for k in accepted}
     if errors:
         return accepted, rejected
@@ -627,7 +645,7 @@ def lane_items(
     accepted, rejected = accepted_runs(state_root, lane, runs, acceptance, ctx, errors, now)
     dry = accepted["NATURAL_SHADOW"]
     slots = {r.get("slot_key") for r in dry}
-    canary = accepted["NATURAL_CANARY"] + accepted["MANUAL_CANARY"]
+    canary = [row for klass in CANARY_CLASSES for row in accepted[klass]]
     natural = accepted["NATURAL_POST_CUTOVER"]
     # A failed current live run cannot be concealed by selecting one successful canary.
     failed_live = [r for r in runs.get("live", []) if not errors and _current_receipt(r, ctx, now) and not _run_ok(r)]
@@ -685,14 +703,12 @@ def lane_items(
         },
         {
             "step": "canary",
-            "label": "Canary: correlated live fire, legacy lock, outputs/consumers checked and no duplicate business effects",
-            "done": bool(canary)
-            and not failed_live
-            and not errors
-            and not rejected["NATURAL_CANARY"]
-            and not rejected["MANUAL_CANARY"],
-            "evidence": detail(("NATURAL_CANARY", "MANUAL_CANARY"), canary)
-            + f"; MANUAL_CANARY={len(accepted['MANUAL_CANARY'])}; failed current live={len(failed_live)}",
+            "label": "Canary: correlated live fire (natural slot, or operator-forced in window), legacy lock, "
+            "outputs/consumers checked and no duplicate business effects",
+            "done": bool(canary) and not failed_live and not errors and not any(rejected[k] for k in CANARY_CLASSES),
+            "evidence": detail(CANARY_CLASSES, canary)
+            + f"; MANUAL_CANARY={len(accepted['MANUAL_CANARY'])}"
+            + f"; OPERATOR_FORCED_LIVE={len(accepted['OPERATOR_FORCED_LIVE'])}; failed current live={len(failed_live)}",
         },
         {
             "step": "readiness",
