@@ -500,7 +500,7 @@ function TradingHubDesk({ onDrill }: Props) {
                 {tradeAi?.run_health_status && (
                   <span
                     style={{ marginLeft: 6, color: runHealthChipColor(healthTier), fontWeight: 800 }}
-                    data-testid="trade-ai-run-health-chip"
+                    data-testid="trade-ai-run-health-chip-classic"
                     data-run-id={tradeAi?.run_id ?? ''}
                     data-run-scanned={scannedN != null ? String(scannedN) : ''}
                     data-run-floor={healthFloor && isFinite(healthFloor) ? String(healthFloor) : ''}

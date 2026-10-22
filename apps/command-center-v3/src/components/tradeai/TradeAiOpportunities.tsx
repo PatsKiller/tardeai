@@ -20,6 +20,7 @@ import {
 } from '../../lib/tradeAiOpportunities'
 import { tradeAiSurfaceFreshness } from '../../lib/surfaceFreshness'
 import { runLabel } from '../../lib/homeLabels'
+import { classifyRunHealth, runHealthChipColor, runHealthReasonCodes } from '../../lib/runHealth'
 import SharedMomentumCandidates from './SharedMomentumCandidates'
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md }
@@ -84,9 +85,14 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
 
   const summary = tradeAi?.setup_run_summary ?? {}
   const fresh = tradeAiSurfaceFreshness(tradeAi)
-  const health = String(tradeAi?.run_health_status || summary.quality || 'UNKNOWN')
-  const healthBad = /UNDER|DEGRAD|FAIL|STALE|EMPTY/i.test(health) || fresh.stale
-  const scanned = summary.scanned_count ?? tradeAi?.current_run_scanned ?? tradeAi?.latest_run_symbols_scanned
+  // Same run-health facts the header strip renders (one classifier, lib/runHealth): the chip below carries
+  // data-run-* so e2e/run_health_agreement.spec.ts can prove the header and this page state the same run.
+  const health = String(tradeAi?.run_health_status || 'UNKNOWN')
+  const healthTier = classifyRunHealth(tradeAi?.run_health_status)
+  const healthCodes = runHealthReasonCodes(tradeAi)
+  const healthFloor = Number(tradeAi?.expected_min_symbols)
+  const scannedN = tradeAi?.current_run_scanned ?? tradeAi?.latest_run_symbols_scanned ?? tradeAi?.ticker_count
+  const scanned = summary.scanned_count ?? scannedN
   const l2For = (sym: string) => l2View(latestAlertFor(alerts, sym))
   const l2Short = (sym: string) => {
     const v = l2For(sym)
@@ -127,7 +133,13 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
           <div data-testid="ta-run-line" style={{ fontSize: TYPE.md - 1, color: TOKENS.text[2] }}>
             Run {summary.run_date ?? tradeAi?.run_date ?? '—'} · {runLabel(summary.run_label || tradeAi?.latest_run_label || tradeAi?.run_label, summary.run_date || tradeAi?.run_date)} slot
             {scanned != null ? ` · ${scanned} scanned` : ''} ·{' '}
-            <span style={{ color: healthBad ? toneVars('warning').color : toneVars('success').color, fontWeight: 700 }}>{fresh.stale ? 'STALE SESSION' : health}</span>
+            <span data-testid="trade-ai-run-health-chip" data-run-id={tradeAi?.run_id ?? ''}
+              data-run-scanned={scannedN != null ? String(scannedN) : ''}
+              data-run-floor={healthFloor && isFinite(healthFloor) ? String(healthFloor) : ''}
+              data-run-health={healthTier} data-run-integrity={summary.count_integrity ?? ''}
+              title={healthCodes.length ? healthCodes.join(', ') : health}
+              style={{ color: runHealthChipColor(healthTier), fontWeight: 700 }}>{health}</span>
+            {fresh.stale && <span data-testid="trade-ai-stale-session" style={{ color: toneVars('warning').color, fontWeight: 700 }}> · STALE SESSION</span>}
             {' '}· {all.length} in the scanner universe · awareness only, verdicts never grant approval
           </div>
         </div>
