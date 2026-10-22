@@ -1,0 +1,13 @@
+# PROPOSED, NOT INSTALLED (packet n8n-platform-hardening-20261022, FW-P6). Every 5 minutes at :02/:07/...;
+# two consecutive bad runs (<= 10 min) page P1.
+[Unit]
+Description=Trade AI n8n host dead-man every 5 minutes - FW-P6
+
+[Timer]
+OnCalendar=*-*-* *:02/5:00
+AccuracySec=15s
+Persistent=true
+Unit=tradeai-n8n-host-deadman.service
+
+[Install]
+WantedBy=timers.target

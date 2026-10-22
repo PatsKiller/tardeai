@@ -85,6 +85,14 @@ probes): 1 statically conformant (the reference), 2064/4877 = 42.3%, 0 activatio
 | FW-P5 image pinned by digest, env access blocked, community packages off | partial | `n8nio/n8n:2.43.0` is a tag pin, not a digest (was scored pass on the v1 checker) |
 | FW-P6 dead-man outside n8n | fail | heartbeat-watch runs in n8n (WS1-15) |
 
+**2026-10-22 update (packet `docs/ops/packets/n8n-platform-hardening-20261022/`, branch
+feat/n8n-platform-hardening-20261022):** the six rows above are a cited measurement. The platform elements are now
+measured from the host by `scripts/probe_n8n_platform_facts.py` (read-only; `check_n8n_import_ready.py --probe-host`
+prints each one), and the checker lets an element PASS only from a fresh host probe — a cited file caps at PARTIAL.
+Re-measured 2026-10-22T13:48:59Z by the probe: same verdicts (FW-P1..P4, P6 FAIL; FW-P5 PARTIAL). The packet holds the
+operator steps that clear each one (ufw rules, `n8n_app` role script, compose patch, drift-watch and host dead-man
+timers); nothing in it is applied by an agent.
+
 ### Audit counterexamples (regression fixtures, `tests/test_check_n8n_workflow_framework_adversarial.py`)
 
 Each was scored with its manifest row (and, except the hash case, `meta.graph_sha256`) re-stamped to match, so no

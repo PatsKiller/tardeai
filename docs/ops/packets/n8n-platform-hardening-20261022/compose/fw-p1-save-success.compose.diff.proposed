@@ -1,0 +1,23 @@
+--- a/docker-compose.n8n.yml
++++ b/docker-compose.n8n.yml
+@@ -254,12 +254,19 @@
+         "@n8n/n8n-nodes-langchain.manualChatTrigger",
+         "@n8n/n8n-nodes-langchain.microsoftAgent365Trigger"
+         ]
+-      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
++      # 2026-10-22 FW-P1 (AGENTS 23.23 governance (3), 23.24 Monitoring (1)): successful executions are saved, so
++      # every run joins the ledger by run_id. Retention below: prune on, 168 h max age, 20000 rows max (n8n prunes
++      # its own execution rows; nothing else is touched). Redaction: n8n 2.43 execution-data redaction (workflow
++      # settings.redactionPolicy / instance floor) is license-gated (isDataRedactionLicensed) and resolves to 'none'
++      # on this instance, so the controls are: manual runs not saved (below), N8N_BLOCK_ENV_ACCESS_IN_NODE, no
++      # credential in any node output (relay bearer is a stored credential, never echoed), 168 h retention.
++      EXECUTIONS_DATA_SAVE_ON_SUCCESS: all
+       EXECUTIONS_DATA_SAVE_ON_ERROR: all
+       # 2026-10-09 audit C G8 / sec 23.10 P19: manual (editor) runs are not stored.
+       EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS: "false"
+       EXECUTIONS_DATA_PRUNE: "true"
+       EXECUTIONS_DATA_MAX_AGE: "168"
++      EXECUTIONS_DATA_PRUNE_MAX_COUNT: "20000"
+       N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+     volumes:
+       - n8n-data:/home/node/.n8n
