@@ -77,6 +77,11 @@ _UNSUPPORTED_REASONS = frozenset({"relay_bad_path", "relay_bad_query"})
 #: An n8n expression inside a probed query is replaced by this well-formed run id (RUN_ID_RE: 16-128 chars).
 EXPR_RE = re.compile(r"\{\{.*?\}\}")
 PROBE_EXPR_VALUE = "contract-probe-run-0000000001"
+#: 2026-10-22 (release-train arming step E): a query that is ONE expression with no key (the Release Train
+#: workflow's `GET /release-train-window?{{ $json.query }}`, which builds `run_id=…` or `slot=…` at run time) has no
+#: shape to substitute into; probe it with a well-formed sample for that path instead of a bare value the relay
+#: must refuse as relay_bad_query. A path missing here keeps the old behaviour (and is refused).
+WHOLE_QUERY_EXPR_SAMPLES = {"/release-train-window": f"run_id={PROBE_EXPR_VALUE}"}
 GATEWAY_UNIT_REL = Path("config") / "systemd" / "user" / "tradeai-n8n-coordination-gateway.service"
 CONCURRENCY_MIN = 3
 CONCURRENCY_MARGIN = 0.5  # every call must finish inside half the relay timeout
@@ -334,6 +339,8 @@ class ScratchRelay:
     def probe(self, method: str, path: str, query: str) -> tuple[bool, str]:
         # 2026-10-14 (n8n fabric Phase 1): a query may carry an n8n expression (Run Lane's
         # `run_id={{ encodeURIComponent($json.run_id) }}`); probe it with a well-formed sample value.
+        if EXPR_RE.fullmatch(query.strip()) and path in WHOLE_QUERY_EXPR_SAMPLES:
+            query = WHOLE_QUERY_EXPR_SAMPLES[path]
         query = EXPR_RE.sub(PROBE_EXPR_VALUE, query)
         status, body = _request(self.port, method, path + (f"?{query}" if query else ""), self.bearer)
         reason = str(body.get("reason") or body.get("state") or "")
