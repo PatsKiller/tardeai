@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "positions_reader_batch1_20261022",
+  "files": [
+    "tests/test_positions_reader_batch1_20261022.py"
+  ],
+  "anchor": "POSITIONS_READER_BATCH1_20261022",
+  "comment": [
+    "ANCHOR: POSITIONS_READER_BATCH1_20261022 — positions_store phase-3 reader batch #1 (operator 2026-10-22):",
+    "the Watch held flag reads positions_current through watch_domains.held_positions(surface='watch') only;",
+    "stale/empty/unreadable falls back to holdings.json with an explicit fallback_reason; the registry row lists",
+    "the approved reader; check_data_source_authority.py fails UNAPPROVED_READER / READER_GRANT_INVALID."
+  ]
+}

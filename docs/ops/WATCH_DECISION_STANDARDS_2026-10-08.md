@@ -91,10 +91,32 @@ A read-only audit of the Watch page found nine defects. Each is fixed and has a 
 | 9 | WAIT cards said "SET CONDITION ALERT" with no button | The Watch cards and the symbol page now have a SET CONDITION ALERT button. It opens the Re-Entry pages' `ReEntryAlertArmModal`, which POSTs to `/api/v2/watch/alerts`, with the note tagged `watch-condition`. It is advisory only and never places an order. |
 
 **The positions_current switch is an operator grant.** `held.positions_store_reader` in
-`config/watch_decision_standards.yaml` ships `false`. The registry (`config/data_source_authority.json`, domain
+`config/watch_decision_standards.yaml` shipped `false` in #1926. The registry (`config/data_source_authority.json`, domain
 `positions_store`) says the store has no reader until the operator approves a phase-3 reader batch (AGENTS.md
 §7A, §17). With the switch on, a fresh `positions_current` wins. Fresh means the `positions_sync` contract: 30 min
 in session, 72 h when closed. A stale store falls back to holdings.json with `fallback_reason`.
+
+**Granted 2026-10-22: positions reader batch #1 = the Watch held flag.** The operator's reply, verbatim, to the
+recommendation "Use the broker-synced store for 'held' on Watch: Watch becomes positions batch #1 … Recommend: yes"
+was "I take your recommendations on above." Branch `feat/positions-reader-batch1-watch-held-20261022`:
+
+- `held.positions_store_reader: true` and `held.positions_store_reader_surfaces: [watch]`. Only a caller that passes
+  `surface="watch"` (`WATCH_SURFACE`) reads the store: `watch_intelligence`, `watchlist_intelligence._held_set` and
+  `rockville.live_projection.current_held_set`. Other `membership_held()` callers (advice digest, opportunity) pass no
+  surface and still read holdings.json. Adding them is a later batch. A missing surface list reads nothing.
+- Only the held flag comes from the store, meaning the set of symbols with qty > 0. Qty, basis and value on Watch
+  still come from their existing readers.
+- Freshness guard, unchanged from #1926: if the store is stale, empty or unreadable, holdings.json serves and
+  `fallback_reason` says why (`positions_store_stale`, `positions_store_empty` or
+  `positions_store_error:<type>`). If neither source can be read, `source` is `unavailable` and `stale` is true.
+  The verdict reaches the payload through `held_detail_public` (`source_status.held`).
+- The registry row `positions_store` now carries `approved_readers[batch 1]` with the operator's approval, and a
+  `reader_gate`. `check_data_source_authority.py` fails `UNAPPROVED_READER` if any other file under scripts/ reads
+  `positions_current`, `position_lots`, `realized_lots` or `position_snapshots`. Exempt are the writer, an approved
+  reader and the two measured pre-batch readers. The first is `positions_proof_daily.py`, the phase-2 grader. The
+  second is `stop_health_check.py`, which has read positions_current since 2026-10-06 with no batch approval; it is
+  reported, not approved. The gate fails `READER_GRANT_INVALID` if a grant is incomplete or stale.
+- Tests: `tests/test_positions_reader_batch1_20261022.py` (gate `positions_reader_batch1_20261022`).
 
 A read-only check on 2026-10-22 ~11:50 ET found the two sources agree. `positions_current` was fresh at 11.5 min
 old. It held the same 20 names as holdings.json, with the same 3 unresolved CUSIPs.

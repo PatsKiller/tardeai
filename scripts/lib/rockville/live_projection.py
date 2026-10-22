@@ -237,8 +237,8 @@ def current_held_set() -> tuple[set[str], bool]:
     """(held symbols, known) from the one Watch held reader (lib/data_broker/watch_domains.held_positions).
     known=False only when no holdings source could be read at all — then a packet inside its TTL may speak."""
     try:
-        from lib.data_broker.watch_domains import held_positions
-        h = held_positions()
+        from lib.data_broker.watch_domains import WATCH_SURFACE, held_positions
+        h = held_positions(surface=WATCH_SURFACE)
         return set(h.get("symbols") or ()), h.get("source") != "unavailable"
     except Exception:
         return set(), False

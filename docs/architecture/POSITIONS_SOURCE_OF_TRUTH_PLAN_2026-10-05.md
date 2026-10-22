@@ -12,7 +12,7 @@ We will move portfolio truth from holdings.json to database tables with one brok
 | 0 — stop the bleeding | DONE — LIVE c96bec23c (#1456/#1457); 2026-10-06 live Schwab check: values + cash match, 4 defects found and fixed in the phase 1 PR (docs/ops/POSITIONS_FIXES_2026-10-06.md) | 4 issues → fixed in phase 1 PR | #1456 | 2026-10-06 |
 | 1 — build in shadow | DONE — LIVE 65fbeecf3 (#1460) 2026-10-06 10:58 ET; migration applied; first run complete 5/5 accounts; cron */15 (lanes #1461) | PASS: builds green; full sync run complete (17/17 runs complete on 10-06) | #1460 #1461 | 2026-10-06 |
 | 2 — prove it (10 trading days) | IN PROGRESS — operator 'start phase 2' 2026-10-06; graded nightly 17:25 by scripts/positions_proof_daily.py (Telegram 'day N of 10'); day 1 = 2026-10-07; 10-06 baseline: 0 diffs, heartbeat fail (first run 10:58) | day 0 of 10 | wt/positions-phase2-20261006 | 2026-10-06 |
-| 3 — switch reads in batches | NOT STARTED | batch 0 of 4 | — | — |
+| 3 — switch reads in batches | IN PROGRESS — batch 1 approved by the operator 2026-10-22 ("I take your recommendations on above."): the Watch held flag reads positions_current via watch_domains.held_positions(surface='watch'); recorded in the registry positions_store approved_readers[batch 1]; check_data_source_authority.py UNAPPROVED_READER gates every other reader | batch 1 of 4 — before/after: read-only check 2026-10-22 ~11:50 ET, positions_current and holdings.json held the same 20 names (docs/ops/WATCH_DECISION_STANDARDS_2026-10-08.md "Accuracy fixes") | #1926 + feat/positions-reader-batch1-watch-held-20261022 | 2026-10-22 |
 | 4 — retire holdings.json as a store | NOT STARTED | — | — | — |
 
 ## Why
@@ -112,7 +112,7 @@ The nightly reconciliation report goes to the operator on Telegram each evening 
 - [x] Approve the plan and the five-table design (2026-10-06, phase 1 start)
 - [x] Approve the 10-trading-day proof as the gate for switching reads (2026-10-06, "start phase 2")
 - [x] Choose the stale threshold during market hours (30 minutes — operator approved 2026-10-06; in config/portfolio_positions.yaml `positions_sync.stale_after_minutes_market`; operator may change it)
-- [ ] Approve each reader batch switch (four approvals across phase 3)
+- [ ] Approve each reader batch switch (four approvals across phase 3) — batch 1 (Watch held flag) approved 2026-10-22
 - [ ] Approve retiring holdings.json as a store (phase 4)
 
 ## How we execute it

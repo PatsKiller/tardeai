@@ -250,8 +250,8 @@ def _held_set() -> set[str]:
     """Held symbols from the one Watch held reader (lib/data_broker/watch_domains.held_positions — CUSIP rows
     resolved, freshness checked). The direct holdings.json read below is only the import-failure fallback."""
     try:
-        from lib.data_broker.watch_domains import membership_held
-        return membership_held()[0]
+        from lib.data_broker.watch_domains import WATCH_SURFACE, membership_held
+        return membership_held(WATCH_SURFACE)[0]
     except Exception:
         pass
     out: set[str] = set()

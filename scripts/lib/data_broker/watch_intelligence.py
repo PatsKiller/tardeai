@@ -76,14 +76,14 @@ def _screener_origin_set() -> set[str]:
 
 
 def _held_set() -> set[str]:
-    from lib.data_broker.watch_domains import membership_held
-    held, _src = membership_held()
+    from lib.data_broker.watch_domains import WATCH_SURFACE, membership_held
+    held, _src = membership_held(WATCH_SURFACE)
     return held
 
 
 def _held_source() -> str:
-    from lib.data_broker.watch_domains import membership_held
-    _held, src = membership_held()
+    from lib.data_broker.watch_domains import WATCH_SURFACE, membership_held
+    _held, src = membership_held(WATCH_SURFACE)
     return src
 
 
@@ -731,8 +731,8 @@ def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
 
     starred = _starred_set()
     screener = _screener_origin_set()
-    from lib.data_broker.watch_domains import held_positions, held_detail_public
-    held_detail = held_detail_public(held_positions())
+    from lib.data_broker.watch_domains import WATCH_SURFACE, held_positions, held_detail_public
+    held_detail = held_detail_public(held_positions(surface=WATCH_SURFACE))
     held = _held_set()
     held_source = _held_source()
     enrich_map = enrichment_batch([c.get("symbol") for c in cards if c.get("symbol")])

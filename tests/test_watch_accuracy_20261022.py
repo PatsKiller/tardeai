@@ -4,7 +4,8 @@
 2. A deterministic fail / block / avoid is never counted actionable for a non-held idea.
 3. Held comes from ONE reader with an explicit freshness verdict; CUSIP rows resolve through the identity registry
    or are reported unresolved, so the Held count equals the held cards. positions_current is read only behind the
-   operator-granted held.positions_store_reader switch (ships off; AGENTS.md §7A/§17).
+   operator-granted held.positions_store_reader switch, for the surfaces it names (on for "watch" since reader
+   batch #1, operator 2026-10-22; AGENTS.md §7A/§17 — tests/test_positions_reader_batch1_20261022.py).
 4. A decision packet past its TTL never sets ownership state; current holdings win.
 5. "live" excludes expired held names; every count declares its scope (page | matched | live | all).
 6. "Highest reward" excludes expired and needs-data cards.
@@ -121,6 +122,7 @@ def test_holdings_freshness_is_explicit(tmp_path):
 
 
 SAT = datetime(2026, 10, 24, 15, 0, tzinfo=timezone.utc)      # market closed → 72 h contract
+ON = {"positions_store_reader": True, "positions_store_reader_surfaces": ["watch"]}
 
 
 def _store(finished_at):
@@ -136,7 +138,7 @@ def _store(finished_at):
 def test_positions_store_reader_wins_when_granted_and_fresh(tmp_path):
     q, calls = _store(SAT - timedelta(hours=19))
     p = _holdings(tmp_path, updated_at=SAT.isoformat(), rows=HOLD_ROWS)
-    h = wdom.held_positions(db_query=q, holdings_path=p, registry={}, now=SAT, cfg={"positions_store_reader": True})
+    h = wdom.held_positions(db_query=q, holdings_path=p, registry={}, now=SAT, cfg=ON, surface="watch")
     assert calls and h["source"] == "positions_store.positions_current" and h["symbols"] == {"NVDA"}
     assert h["stale"] is False
 
@@ -144,26 +146,28 @@ def test_positions_store_reader_wins_when_granted_and_fresh(tmp_path):
 def test_stale_positions_store_falls_back_with_a_reason(tmp_path):
     q, _ = _store(SAT - timedelta(hours=100))
     p = _holdings(tmp_path, updated_at=SAT.isoformat(), rows=HOLD_ROWS)
-    h = wdom.held_positions(db_query=q, holdings_path=p, registry={}, now=SAT, cfg={"positions_store_reader": True})
+    h = wdom.held_positions(db_query=q, holdings_path=p, registry={}, now=SAT, cfg=ON, surface="watch")
     assert h["source"] == "holdings_accounts.holdings_json" and h["fallback_reason"] == "positions_store_stale"
 
 
-def test_positions_store_is_not_read_until_the_operator_grants_it(tmp_path):
+def test_positions_store_is_not_read_without_the_operator_grant(tmp_path):
     q, calls = _store(SAT)
     p = _holdings(tmp_path, updated_at=SAT.isoformat(), rows=HOLD_ROWS)
-    wdom.held_positions(db_query=q, holdings_path=p, registry={}, now=SAT, cfg={"positions_store_reader": False})
-    assert calls == []
-    cfg = wd.load_config()["held"]
-    assert cfg["positions_store_reader"] is False             # flipping it is an operator grant (§7A/§17)
+    wdom.held_positions(db_query=q, holdings_path=p, registry={}, now=SAT,
+                        cfg={"positions_store_reader": False, "positions_store_reader_surfaces": ["watch"]},
+                        surface="watch")
+    assert calls == []                                        # switch off → never read (§7A/§17)
+    wdom.held_positions(db_query=q, holdings_path=p, registry={}, now=SAT, cfg=ON)
+    assert calls == []                                        # no surface → never read
 
 
 def test_every_watch_layer_uses_the_one_held_reader():
     src = (ROOT / "scripts/lib/data_broker/watch_domains.py").read_text()
-    fn = src[src.index("def membership_held()"):]
+    fn = src[src.index("def membership_held("):]
     fn = fn[: fn.index("\ndef ", 10)] if "\ndef " in fn[10:] else fn
-    assert "held_positions()" in fn and "get_portfolio_snapshot" not in fn
+    assert "held_positions(surface=surface)" in fn and "get_portfolio_snapshot" not in fn
     wi = (ROOT / "scripts/lib/watchlist_intelligence.py").read_text()
-    assert "membership_held()" in wi[wi.index("def _held_set"):wi.index("def _enrichment_map")]
+    assert "membership_held(WATCH_SURFACE)" in wi[wi.index("def _held_set"):wi.index("def _enrichment_map")]
     lp = (ROOT / "scripts/lib/rockville/live_projection.py").read_text()
     body = lp[lp.index("def build_live_cards"):lp.index("def build_live_symbol")]
     assert "current_held_set()" in body and "holdings.json" not in body

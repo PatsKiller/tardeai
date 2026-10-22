@@ -1205,7 +1205,49 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "Tables position_snapshots (append-only), positions_current, position_lots, realized_lots, positions_sync_runs — migrations/2026_10_06_positions_store_phase1.sql. One writer, enforced by tests/test_positions_store_phase1_20261006.py. A run is promoted to positions_current only when every required account (the three Schwab accounts) read OK. Readers: none in phase 1 (shadow); phase 3 moves readers to it through lib/portfolio_positions.py in four operator-approved batches."
+      "_writer_note": "Tables position_snapshots (append-only), positions_current, position_lots, realized_lots, positions_sync_runs — migrations/2026_10_06_positions_store_phase1.sql. One writer, enforced by tests/test_positions_store_phase1_20261006.py. A run is promoted to positions_current only when every required account (the three Schwab accounts) read OK. Readers: none in phase 1 (shadow); phase 3 moves readers to it in four operator-approved batches, each listed in approved_readers with its grant. Batch #1 (operator 2026-10-22): the Watch held flag (watch_domains.held_positions, surface watch).",
+      "approved_readers": [
+        {
+          "batch": 1,
+          "reader": "scripts/lib/data_broker/watch_domains.py::held_positions",
+          "files": [
+            "scripts/lib/data_broker/watch_domains.py"
+          ],
+          "tables": [
+            "positions_current"
+          ],
+          "surfaces": [
+            "watch"
+          ],
+          "facts": "held flag only: the set of symbols with qty > 0 (no qty, basis or value is served from the store)",
+          "consumers": [
+            "scripts/lib/data_broker/watch_intelligence.py",
+            "scripts/lib/watchlist_intelligence.py",
+            "scripts/lib/rockville/live_projection.py"
+          ],
+          "switch": "config/watch_decision_standards.yaml held.positions_store_reader + held.positions_store_reader_surfaces",
+          "freshness_guard": "positions_sync.freshness() (30 min in session, 72 h closed); stale, empty or unreadable -> holdings_accounts (holdings.json) with fallback_reason positions_store_stale | positions_store_empty | positions_store_error:<type>",
+          "approval": {
+            "approved_by": "operator",
+            "approved_on": "2026-10-22",
+            "reference": "Operator reply 2026-10-22 (verbatim): \"I take your recommendations on above.\" to the recommendation \"Use the broker-synced store for 'held' on Watch: Watch becomes positions batch #1 … Recommend: yes\" (session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko); reader built in PR #1926; switch flipped in branch feat/positions-reader-batch1-watch-held-20261022",
+            "scope": "Phase-3 reader batch #1: the Watch held flag reads positions_current through watch_domains.held_positions(surface='watch') only. No other surface, file or fact; advice digest and opportunity callers keep holdings.json until a later batch is approved."
+          }
+        }
+      ],
+      "reader_gate": {
+        "_why": "AGENTS.md §7A: nothing reads the positions store until the operator approves each phase-3 reader batch. check_data_source_authority.py fails UNAPPROVED_READER when a file under scripts/ reads one of these tables (FROM/JOIN) and is not the writer, an approved_readers file, or a measured pre-batch reader below. positions_sync_runs is the heartbeat and is not gated.",
+        "tables": [
+          "positions_current",
+          "position_lots",
+          "realized_lots",
+          "position_snapshots"
+        ],
+        "measured_unbatched_readers": {
+          "scripts/positions_proof_daily.py": "phase-2 proof grader (positions_current vs holdings.json, nightly) — part of the approved phase-2 plan, not a serving reader",
+          "scripts/stop_health_check.py": "MEASURED 2026-10-22, not a batch approval: LEFT JOIN positions_current for stop-recovery reconciliation since dc79d189e (2026-10-06). Reported to the operator; it may only leave this list (by a batch approval or by removing the read)."
+        }
+      }
     },
     {
       "domain": "options_iv",
