@@ -278,8 +278,13 @@ def test_ratifying_clauses(key, section, anchor, clause, digest_pin):
         assert h(block) in digest_pin, f"{key}: section changed while PROPOSED"
         assert AGENTS.count(anchor) == 1, f"{key}: insertion anchor not unique"
     else:
-        assert block.count(clause) == 1 and (anchor + clause) in AGENTS, f"{key} not inserted after its anchor"
-        assert h(block.replace(clause, "", 1)) in digest_pin, f"{key}: more than the clause changed"
+        # _sub() drops the subsection's trailing newline; restore it so a clause inserted as the last bullet matches.
+        tail = "" if block.endswith("\n") else "\n"
+        full = block + tail
+        assert full.count(clause) == 1 and (anchor + clause) in AGENTS, f"{key} not inserted after its anchor"
+        rest = full.replace(clause, "", 1)
+        rest = rest[: len(rest) - len(tail)]
+        assert h(rest) in digest_pin, f"{key}: more than the clause changed"
 
 
 def test_section_25_9_quotes_the_clauses_verbatim_with_their_digests():
@@ -298,7 +303,12 @@ def test_ai_work_policy_only_appends_section_28():
     assert i > 0, "AI_WORK_POLICY.md §28 missing: the 17.0.0 AI_WORK_POLICY patch is not applied"
     assert h(AWP[:i]) == AWP_MAIN_SHA256, "AI_WORK_POLICY.md sections 1-27 changed"
     s28 = _flat(AWP[i:])
-    for frag in ("Binding only once AGENTS.md 17.0.0 is ACTIVE", "only automated remote synchronization",
+    # while PROPOSED §28 is binding only once 17.0.0 is ACTIVE and the delegation is armed; the ratifying edit marks
+    # 17.0.0 ACTIVE there and leaves the arming condition
+    gate = (("(AGENTS.md 17.0.0, ACTIVE)", "AGENTS.md 17.0.0 is ACTIVE (ratified 2026-10-21, PR #1914)",
+             "Binding only once the operator has also armed the standing release delegation at the host")
+            if _ratified() else ("(AGENTS.md 17.0.0, PROPOSED)", "Binding only once AGENTS.md 17.0.0 is ACTIVE"))
+    for frag in gate + ("only automated remote synchronization",
                  "refs/heads/train/<train_id>", "ReleaseCapability@v1", "GitHub App installation", "not counted against",
                  "never pushes `main` or any `train/*` ref, never merges", "never deploy by themselves",
                  "operator-only"):
