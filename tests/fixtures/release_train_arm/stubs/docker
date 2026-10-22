@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Test stub for docker (release_train_arm sandbox): a fake m8m-n8n. Workflow rows live in $RTARM_SANDBOX/fake/n8n.
+# Seed a row with: echo ACTIVE > $RTARM_SANDBOX/fake/n8n/rows/<workflow id>
+set -u
+F="$RTARM_SANDBOX/fake/n8n"; mkdir -p "$F/rows"
+echo "docker $*" >> "$RTARM_SANDBOX/calls.log"
+row() { cat "$F/rows/$1" 2>/dev/null || true; }
+case "${1:-}" in
+  exec)
+    shift
+    while [[ "${1:-}" == -e ]]; do shift 2; done
+    ctr="$1"; shift
+    if [[ "$ctr" == m8m-n8n-db ]]; then
+      q=""
+      while [[ $# -gt 0 ]]; do if [[ "$1" == -c ]]; then q="$2"; shift 2; continue; fi; shift; done
+      id="$(printf '%s' "$q" | sed -n "s/.*id='\([^']*\)'.*/\1/p")"
+      case "$(row "$id")" in
+        INACTIVE|PUBLISHED) echo "false|NULL|false" ;;
+        ACTIVE) echo "true|v1|false" ;;
+        ARCHIVED) echo "false|NULL|true" ;;
+        *) echo "" ;;
+      esac
+      exit 0
+    fi
+    [[ "${1:-}" == mkdir ]] && exit 0
+    [[ "${1:-}" == n8n ]] && shift
+    case "${1:-}" in
+      import:workflow) cp "$(cat "$F/staged")"/*.json "$F/export.json"; echo INACTIVE > "$F/rows/tradeai-fabric-release-train" ;;
+      export:workflow) : ;;
+      publish:workflow) echo PUBLISHED > "$F/rows/tradeai-fabric-release-train" ;;
+    esac
+    exit 0 ;;
+  cp)
+    src="$2"; dst="$3"
+    if [[ "$src" == m8m-n8n:* ]]; then cp "$F/export.json" "$dst"; else printf '%s\n' "${src%/.}" > "$F/staged"; fi
+    exit 0 ;;
+  restart)
+    if [[ "$(row tradeai-fabric-release-train)" == PUBLISHED ]]; then echo ACTIVE > "$F/rows/tradeai-fabric-release-train"; fi
+    exit 0 ;;
+esac
+exit 0

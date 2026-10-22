@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Test stub for curl against the Command Center (release_train_arm sandbox).
+set -u
+echo "curl $*" >> "$RTARM_SANDBOX/calls.log"
+url="${!#}"
+sd="${FAKE_CC_STATE_DIR:-$TRADEAI_RELEASE_WINDOW_STATE_DIR}"
+case "$url" in
+  */release-train/stop)
+    printf '{"ok": true, "data": {"state_dir": "%s", "latch": {"status": "%s"}}}\n' "$sd" "${FAKE_CC_LATCH:-ABSENT}" ;;
+  */release-train)
+    printf '{"ok": true, "data": {"state_dir": {"value": {"path": "%s", "source": "release_window.STATE_DIR"}}}}\n' "$sd" ;;
+  *) echo '{}' ;;
+esac
