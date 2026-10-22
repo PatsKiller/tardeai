@@ -270,7 +270,7 @@ export const TOOLTIPS = {
     : 'Every row is the CIO prospect record: one row per security, written only by the CIO agent.',
   updated: (convAsOf?: string | null) => `When this page's record was composed (cached 60 s). Conviction as of ${fmtTime(convAsOf)}.`,
   holdings: 'Held names come from the one Watch held reader: broker-synced positions_current, falling back to '
-    + 'holdings.json with a stated reason if the store is stale or empty.',
+    + 'the older holdings file with a stated reason if the store is stale or empty.',
   conflicts: 'Two inputs that disagree about the same security (for example the conviction stance vs today\'s desk '
     + 'synthesis). Both values, sources and times are shown; nothing here picks a winner. Expired rows are not counted.',
   lane: {

@@ -27,7 +27,7 @@ one row per security, one next step each. The previous Intelligence view stays o
 **When the CIO prospect store is live** (AGENTS.md §26; `docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md` §5.3),
 the adapter reads `lib.data_broker.cio_prospect.get_prospects()` and only maps each record's `stage` to a lane
 (`from_cio_prospect`; `source = "cio_prospect"`); the one next step comes from the same `next_step()` rules. That
-module is being built on its own branch (`feat/cio-prospect-p0-p1-20261022`, not yet pushed when this was written);
+module is being built on its own branch (`feat/cio-prospect-p0-p1-20261022`, PR #1944, checked against its head);
 the mapping follows its record shapes as read from that working tree (`cio_prospect_builder.assemble`: conflicts
 `{field, values[2], resolved}`, components `{name: {value, weight, source, evidence_at}}`, next_trigger
 `{kind, entry_zone, entry_ref, invalidation_level, observed_by}`) and is re-checked when that PR lands. **A shadow
