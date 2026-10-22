@@ -113,12 +113,28 @@ def _version() -> tuple[int, ...]:
     return tuple(int(x) for x in _control("Policy-Version").split("."))
 
 
+# AGENTS.md 17.0.0 (ACTIVE 2026-10-21, ratified APPROVE_AGENTS_POLICY_17_0_0 1914 aeb5e6fd7, PR #1914 comment
+# 6331877455): §17 gained this one paragraph (§25.9 clause (1)). Stripped before hashing so the §17 digest keeps
+# pinning the rest of §17; the paragraph and its SHA-256 are pinned by tests/test_agents_policy_17_0_0_release_train.py.
+S17_ENTRY_17_0_0 = (
+    "**Release train (17.0.0, §25):** arming, re-arming or revoking the standing release delegation, and\n"
+    "creating or editing its host record · clearing a release STOP or resuming the release train · expanding the\n"
+    "train's scope: a permitted class, an enabled window, a limit, a named service or the verification policy\n"
+    "(narrowing it is the same act and the same proof) · custody of the release-train GitHub App: creating,\n"
+    "installing, re-permissioning or suspending it, and placing, rotating or revoking its private key. Each is done\n"
+    "by the operator at the host CLI (`scripts/release_control_cli.py`) or by a Telegram button confirmation\n"
+    "(decision D3, 2026-10-21); an agent or the Command Center may only request STOP or pause.\n"
+    "\n"
+)
+
+
 def _section(text: str, start: str, end: str) -> str:
     s = re.search(rf"^{re.escape(start)}", text, re.M)
     assert s, start
     e = re.search(rf"^{re.escape(end)}", text[s.start() + 1 :], re.M)
     assert e, end
     block = text[s.start() : s.start() + 1 + e.start()]
+    block = block.replace(S17_ENTRY_17_0_0, "")  # 17.0.0's §17 paragraph; see the constant
     block = block.replace(RULE_2_EXCEPTION_5_0_0, "")  # operator-requested amendment 5.0.0; see the constant
     block = block.replace(RULE_2_EXCEPTION_14_0_0, "")  # operator-requested amendment 14.0.0; see the constant
     block = block.replace(RULE_6_EXCEPTION_15_0_0, "").replace(S17_ENTRY_15_0_0, "")  # 15.0.0; see the constants

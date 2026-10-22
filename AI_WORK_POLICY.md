@@ -663,3 +663,40 @@ It does **not** authorize:
 - broker/risk/2FA/cash/canary/registry changes
 - `MEMORY_BEHAVIOR_INFLUENCE` other than 0
 
+---
+
+# 28. RELEASE TRAIN PUSHES (AGENTS.md 17.0.0, ACTIVE)
+
+AGENTS.md 17.0.0 is ACTIVE (ratified 2026-10-21, PR #1914). Binding only once the
+operator has also armed the standing release delegation at the host. Until then,
+sections 1-27 govern alone and nothing below authorizes anything.
+
+The release train is the only automated remote synchronization in this
+repository. Concretely, the host release service — not a coding agent, not a
+lane script, not an n8n workflow — may:
+
+- push `refs/heads/train/<train_id>` for the train it is running
+- open that train's batch PR
+- merge that batch PR into `main` once its qualifying checks are green
+
+and only while it holds a reservation of a single-train, single-phase
+ReleaseCapability@v1 issued on this host, using a GitHub App installation
+token minted for that reservation (it expires within one hour).
+
+These train pushes:
+
+- are not counted against any agent's push budget (section 3), because no
+  agent makes them
+- satisfy section 9 only because the operator's standing delegation is the
+  explicit request for exactly these actions, and for nothing else
+- never deploy by themselves; promotion stays behind the release boundary of
+  sections 21 and 27
+
+Coding agents keep every rule above: a local commit is the checkpoint, one
+authorized push per tranche, and a PR as their last remote act. An agent
+never pushes `main` or any `train/*` ref, never merges, and never sets
+`TRADEAI_REMOTE_PUSH_AUTHORIZED=1` on the release service's behalf.
+
+A release STOP (AGENTS.md section 25.4) halts train pushes and merges at the
+next mutation boundary. Clearing it, resuming, widening the train's scope and
+custody of the GitHub App are operator-only.
