@@ -32,7 +32,11 @@ TOKEN = "APPROVE_AGENTS_POLICY_11_0_0"
 DIRECTIVE = "a mandatory standard framework for every n8n workflow, contract, integration and automation"
 #: §23.23 (heading up to the next "## ", rstripped), measured on origin/main 57d8fc3ff before this amendment
 #: (after the 10.0.0 ratifying edit, #1740, which changed §23.23's status lines; the a1b1c5c93 value was 12d4df6d…).
-SECTION_23_23_SHA256 = "f5770e9bc578b1e96b1380f380b5b64821b9ee8965b7468b03d7e7347e469d4d"
+#: AGENTS.md 16.0.0 (ratified 2026-10-21, #1911 comment 6331278599) replaced the §23.23 (4) citation (§23.21
+#: replacement (5)); before it, §23.23 hashed to SECTION_23_23_PRE_16_0_0_SHA256. The post-edit value is computed
+#: by tests/test_agents_policy_16_0_0_cutover_standard.py.
+SECTION_23_23_PRE_16_0_0_SHA256 = "f5770e9bc578b1e96b1380f380b5b64821b9ee8965b7468b03d7e7347e469d4d"
+SECTION_23_23_SHA256 = "5ef9f1ddfdab293144f58dbcbf3d9ae0a7d8dbdc4ed11d21e2e53faf39273cfa"
 DOCS = (
     "docs/implementation/n8n-maturity/N8N_CONFIGURATION.md",
     "docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md",

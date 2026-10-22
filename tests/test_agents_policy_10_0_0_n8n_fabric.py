@@ -260,6 +260,8 @@ def test_23_14_is_byte_identical():
     new, old = getattr(P520, "CLAUSE_23_14_8_0_0", None), getattr(P520, "CLAUSE_23_14_PRE_8_0_0", None)
     if new and old and new in block:
         block = block.replace(new, old)
+    # 16.0.0 (ratified 2026-10-21, #1911) replaced one §23.14 clause; reversed the same way (pinned in 16.0.0's test).
+    block = block.replace(P520.CLAUSE_23_14_16_0_0, P520.CLAUSE_23_14_PRE_16_0_0)
     assert hashlib.sha256(block.encode("utf-8")).hexdigest() == P520.SECTION_23_14_SHA256
     assert "10.0.0" not in block and "§23.23" not in block
 

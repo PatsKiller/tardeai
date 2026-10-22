@@ -42,6 +42,15 @@ THIS_FILE = "tests/test_agents_policy_4_4_0_r1_shadow_shape.py"
 # Hashes at origin/main af292381c (AGENTS 4.3.0 ACTIVE). §0/§2/§2A/§7A and §23.14 are the digests the 4.1.0 and
 # 4.3.0 tests pin; §17 and the never-under-any-class sentence are pinned here.
 SECTION_23_14_SHA256 = "bb8722f69b8e54a8582011bdbe266d55ea7c2c0c6b120d123a1d4e43394311e7"
+# AGENTS.md 16.0.0 (ACTIVE 2026-10-21, ratified APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1, PR #1911 comment
+# 6331278599): the ratifying edit replaced one §23.14 clause (§23.21 replacement (2)). Reversed before hashing so
+# SECTION_23_14_SHA256 keeps pinning the rest of §23.14; the post-edit digest is pinned by
+# tests/test_agents_policy_16_0_0_cutover_standard.py.
+CLAUSE_23_14_PRE_16_0_0 = "  fires it, and the cron line live as the fallback until 3 clean market days. The test checks those"
+CLAUSE_23_14_16_0_0 = (
+    "  fires it, and the cron line live as the fallback until the §23.21 cutover standard (16.0.0) is met. The\n"
+    "  test checks those"
+)
 # Operator-requested amendment 5.0.0 (asked for as "4.7.0", 2026-10-10 ~21:50 ET; PROPOSED, pending
 # APPROVE_AGENTS_POLICY_5_0_0): §0 rule 2 gains exactly this one sentence, pointing to §24.10. It is removed before
 # hashing, so the digest below still proves every other byte of §0 is unchanged; the sentence itself is pinned by
@@ -173,7 +182,7 @@ def test_banner_names_the_proposal_and_what_governs_meanwhile():
 
 
 def test_23_14_is_byte_identical():
-    block = _subsection("23.14").rstrip("\n").rstrip("-").rstrip("\n")
+    block = _subsection("23.14").rstrip("\n").rstrip("-").rstrip("\n").replace(CLAUSE_23_14_16_0_0, CLAUSE_23_14_PRE_16_0_0)  # 16.0.0 clause (2)
     assert hashlib.sha256(block.encode("utf-8")).hexdigest() == SECTION_23_14_SHA256, "§23.14 changed"
 
 

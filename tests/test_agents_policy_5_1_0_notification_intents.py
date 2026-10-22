@@ -45,6 +45,15 @@ INTENTS_TEST = ROOT / "tests" / "test_notification_intents_20261010.py"
 # tests/test_agents_policy_15_0_0_disk_hygiene.py); before it, §0 hashed to 86ab4957123f… and §17 to f61b30d24833….
 SECTION_0_SHA256 = "d10461625959d3de2f520419dbb67c1763e46d6b5905784b6aa185795ac10549"
 SECTION_23_14_SHA256 = "bb8722f69b8e54a8582011bdbe266d55ea7c2c0c6b120d123a1d4e43394311e7"
+# AGENTS.md 16.0.0 (ACTIVE 2026-10-21, ratified APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1, PR #1911 comment
+# 6331278599): the ratifying edit replaced one §23.14 clause (§23.21 replacement (2)). Reversed before hashing so
+# SECTION_23_14_SHA256 keeps pinning the rest of §23.14; the post-edit digest is pinned by
+# tests/test_agents_policy_16_0_0_cutover_standard.py.
+CLAUSE_23_14_PRE_16_0_0 = "  fires it, and the cron line live as the fallback until 3 clean market days. The test checks those"
+CLAUSE_23_14_16_0_0 = (
+    "  fires it, and the cron line live as the fallback until the §23.21 cutover standard (16.0.0) is met. The\n"
+    "  test checks those"
+)
 PINNED_SECTIONS = {
     "§0": ("# 0 · If you read nothing else", "# 1 · Identity and responsibilities", SECTION_0_SHA256),
     "§2": ("# 2 · Authority rails", "# 2A ·", "5fd247be2571bd2a8c75d4c789bf1f0b59a1068817ed8d541b852b24a512c2af"),
@@ -169,7 +178,7 @@ def test_23_14_is_byte_identical():
     assert sec
     m = re.search(r"^## 23\.14 .*?(?=^## |^---$|^# |\Z)", sec.group(0), re.M | re.S)
     assert m
-    block = m.group(0).rstrip("\n").rstrip("-").rstrip("\n")
+    block = m.group(0).rstrip("\n").rstrip("-").rstrip("\n").replace(CLAUSE_23_14_16_0_0, CLAUSE_23_14_PRE_16_0_0)  # 16.0.0 clause (2)
     assert hashlib.sha256(block.encode("utf-8")).hexdigest() == SECTION_23_14_SHA256
 
 

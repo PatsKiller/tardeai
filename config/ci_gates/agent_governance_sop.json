@@ -56,8 +56,8 @@
     "AGENTS.md 15.0.0 (ACTIVE, ratified 2026-10-21: APPROVE_AGENTS_POLICY_15_0_0 1852 fc5672896; proposed",
     "2026-10-18): §24.12 disk hygiene, the only automated deletion; the ratified §0 rule 6 sentence, the §17",
     "entry, the four adapter copies and the digests pinned.",
-    "AGENTS.md 16.0.0 (PROPOSED 2026-10-21, rebuilt from 8.0.0 / PR #1727 onto 15.0.0): §23.21 cutover",
-    "standard; the five clauses it replaces stay byte-identical until ratified; their replacement text and",
-    "digests pinned. Red until the operator applies the 16.0.0 AGENTS.md patch (agents never edit AGENTS.md)."
+    "AGENTS.md 16.0.0 (ACTIVE, ratified 2026-10-21: APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1, comment",
+    "6331278599; rebuilt from 8.0.0 / PR #1727 onto 15.0.0): §23.21 cutover standard; the five replaced",
+    "clauses, their digests and the post-edit §23.14 and §23.23 digests pinned."
   ]
 }

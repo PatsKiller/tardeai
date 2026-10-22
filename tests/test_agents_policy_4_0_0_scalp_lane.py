@@ -75,7 +75,9 @@ def test_exception_bullet_names_exactly_one_lane_and_its_conditions():
     s = _flat(m.group(0))
     assert "**Exception (4.0.0) — `trade-ai-scalp-live` only.**" in s
     for frag in ("/tmp/tradeai_scalp_live.lock", "`timeout_s` 295", "market_day_gate.sh", "n8n holds no provider key",
-                 "send_telegram", "TRADEAI_N8N_RELAY_LIVE_LANES", "3 market days",
+                 "send_telegram", "TRADEAI_N8N_RELAY_LIVE_LANES",
+                 # 16.0.0 (ratified 2026-10-21, #1911) replaced "3 market days" with the §23.21 standard.
+                 "§23.21 cutover standard (16.0.0)",
                  "No other ingest writer or sender enters the allowlist by analogy"):
         assert frag in s, frag
     # AGENTS 7.0.0 (PROPOSED, MAJOR, operator-directed 2026-10-14) adds exactly one more: the §23.20 advisory

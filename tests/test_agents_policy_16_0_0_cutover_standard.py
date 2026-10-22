@@ -1,4 +1,8 @@
-"""AGENTS.md 16.0.0 (PROPOSED, MAJOR) — §23.21 the n8n cutover standard; multi-day soaks removed.
+"""AGENTS.md 16.0.0 (ACTIVE, MAJOR) — §23.21 the n8n cutover standard; multi-day soaks removed.
+
+Ratified 2026-10-21 by the operator (APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1416ab9f240a69def0523dd125afbc18,
+PR #1911 comment 6331278599); the ratifying edit flipped header, banner, §23.21 and the row and replaced the five
+clauses. Both states are still accepted by these pins.
 
 Rebuilt 2026-10-21 from 8.0.0 (PR #1727, closed unratified; its test was tests/test_agents_policy_8_0_0_cutover_standard.py)
 on the operator's word "yes rebuild 1727". Operator ruling 2026-10-14 ~11:05 ET, verbatim: "new standards apply when i
@@ -203,7 +207,6 @@ def test_banner_explains_class_number_pattern_and_dependents():
     start = AGENTS.index("**16.0.0 is ")
     banner = _flat(AGENTS[start : AGENTS.index("\n\n**", start + 10)])
     for frag in (
-        "PROPOSED (MAJOR)",
         OPERATOR_WORDS,
         REBUILD_WORD,
         "Why MAJOR:",
@@ -217,10 +220,16 @@ def test_banner_explains_class_number_pattern_and_dependents():
         "scripts/n8n_cutover_wave.py",
         "byte-identical",
         f"{TOKEN} <pr_number> <head_sha>",
-        "`Supersedes` will be the last ACTIVE version, 15.0.0",
-        "sets the header block to 16.0.0 PROPOSED",
     ):
         assert frag in banner, frag
+    if _ratified():
+        # Ratified 2026-10-21 (APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1, PR #1911 comment 6331278599).
+        assert "ACTIVE (MAJOR)" in banner and "set the header block to 16.0.0 PROPOSED" in banner
+        assert "`Supersedes` is the last ACTIVE version, 15.0.0" in banner
+        assert re.search(rf"{TOKEN} 1911 [0-9a-f]{{7,40}}", banner) and "6331278599" in banner
+    else:
+        assert "PROPOSED (MAJOR)" in banner and "sets the header block to 16.0.0 PROPOSED" in banner
+        assert "`Supersedes` will be the last ACTIVE version, 15.0.0" in banner
 
 
 # ------------------------------------------------------------------------------------------------- §23.21
@@ -338,7 +347,7 @@ def test_post_edit_section_23_23_digest():
     _name, old, new, _d = REPLACEMENTS[4]
     block = _block_23_23(AGENTS)
     if not _ratified():
-        assert _sha(block) == T11.SECTION_23_23_SHA256, "§23.23 must stay byte-identical while 16.0.0 is PROPOSED"
+        assert _sha(block) == T11.SECTION_23_23_PRE_16_0_0_SHA256, "§23.23 must stay byte-identical while 16.0.0 is PROPOSED"
         block = block.replace(old, new)
     assert _sha(block) == SECTION_23_23_16_0_0_SHA256, _sha(block)
 
