@@ -639,6 +639,28 @@ The fallback holds through every phase.
    activate under a cron grant") and §10 ("forcing ticks through n8n is preferred") say nothing about the gate.
    Phase 5 can run host-only (H.1(b)), but the n8n path, its digests and its emails cannot be proven until the gate
    passes.
+   **Status: WORKFLOW CONFORMS; STILL BLOCKED (platform + runtime)** (branch
+   `fix/release-train-arming-blockers-20261021`). Measured with `check_n8n_workflow_framework.py --workflow` and
+   `check_n8n_import_ready.py --framework-gate activation`:
+   - **Workflow elements: all pass.** Static conformance is 98.4 % (30.5/31), with no FAIL and no critical PARTIAL.
+     It has the error workflow `tradeai-fabric-error` (FW-M2/A1), retries owned by Run Lane (FW-R1), executor
+     breakers (FW-R2), the effect-key check (FW-R6: shadow claims none), the REVIEWED health contract (FW-C3), the
+     runbook (FW-A6/R5), saved executions (FW-L1/L2) and the expected-output rule (FW-M6). The one PARTIAL, FW-R3
+     (non-critical), is structural: an n8n-only lane has no cron line to fall back to, and the fallback is the
+     manual release (L). Nothing in the workflow needed changing, so its graph hash is unchanged.
+   - **Platform elements FW-P1–P6 fail for every fabric workflow**, the already-imported ones included. They are host
+     facts (`docs/implementation/n8n-maturity/data/n8n_platform_facts_20261015.json`): successful executions are not
+     saved instance-wide, the n8n DB role is a superuser, there is no scheduled drift check, the relay bridge firewall
+     is unverified, the image is pinned by tag and not digest, and there is no outside-n8n dead-man. No workflow
+     change can pass them. They need host changes and a re-measured facts file (operator, §17).
+   - **18 runtime obligations need host-signed `N8nFrameworkRuntimeEvidence@v2`** from runs of the imported
+     workflow. They are recorded as PENDING, with where each is collected, in `framework_pending_evidence.json`
+     (pinned to the checker's list by a test). The file is not evidence and not an exception. The gate accepts no
+     exceptions (`_excused` returns False).
+   - **This is circular for a new workflow.** Runtime evidence needs runs, runs need import, and import needs the
+     gate. Like the platform facts, it is a §23.24 decision for the operator. It was not routed around. Step F now
+     runs `--framework-gate activation --runtime-evidence "$N8N_FRAMEWORK_RUNTIME_EVIDENCE"` (the pattern of the
+     comms-intent and hermes cutover packets), and `--apply` refuses without that file.
 3. **`GITHUB_WRITES_STATUS` does not deliver D2.** `GhCliWriter` uses `git push origin` and the host `gh` token.
    There is no App token minting anywhere ("Phase 3 code and is not shipped", App doc §5). The `train/**` ruleset
    that bypasses only the App would refuse those pushes.

@@ -48,6 +48,7 @@ UNITS=(tradeai-release-train-claim.service tradeai-release-train-claim.path trad
 MIGRATION_REL="migrations/2026_10_21_release_queue.sql"
 UNIT_SRC_REL="docs/ops/packets/release-train-20261021"
 WF_REL="docs/implementation/n8n-maturity/workflows/fabric/${WF_ID}.json"
+PENDING_REL="docs/ops/packets/release-train-arming-20261021/framework_pending_evidence.json"   # finding 2: what the gate still needs
 EXAMPLE_REL="config/release_train_delegation.example.json"
 
 die_usage() { echo "usage: $0 plan|status|<A..G|step-name> [--apply|--verify]" >&2; exit 3; }
@@ -629,9 +630,18 @@ f_row() {   # ABSENT | INACTIVE | ACTIVE | ARCHIVED
 
 f_gate() {
   if [[ "$IMPORT_GATE" == "stub-pass" ]]; then echo "  import gate: STUB PASS (sandbox only)"; return 0; fi
+  # The packet pattern (comms-intent-consumer-live, hermes-*-cutover): the activation gate, with the host-signed
+  # runtime evidence (N8nFrameworkRuntimeEvidence@v2) when the operator supplies it. Never an exception file.
+  local ev=()
+  [[ -n "${N8N_FRAMEWORK_RUNTIME_EVIDENCE:-}" ]] && ev=(--runtime-evidence "$N8N_FRAMEWORK_RUNTIME_EVIDENCE")
   ( cd "$CODE_ROOT" && "$PY" scripts/check_n8n_import_ready.py "$CODE_ROOT/$WF_REL" --relay-url "$RELAY_URL" \
-      --known-id "$ERROR_WF_ID" ) 2>&1 | sed 's/^/  /' | tail -3
+      --known-id "$ERROR_WF_ID" --framework-gate activation "${ev[@]}" ) 2>&1 | sed 's/^/  /' | tail -3
   return "${PIPESTATUS[0]}"
+}
+
+f_pending() {   # what the §23.24 gate still needs, from the committed pending-evidence record (finding 2)
+  "$PY" -c 'import json,sys; d=json.load(open(sys.argv[1])); print("platform blocking %s; runtime obligations pending %d (%s)" % (",".join(sorted(d["platform_blocking"])) or "none", len(d["runtime_pending"]), sys.argv[1].split("/docs/",1)[-1]))' \
+    "$CODE_ROOT/$PENDING_REL" 2>/dev/null || echo "pending-evidence record unavailable"
 }
 
 f_quiet_now() {   # refuse an n8n restart within 10 min of any release-train tick (ET)
@@ -651,6 +661,7 @@ step_F() {
   case "$MODE" in
     dry)
       row="$(f_row "$WF_ID")"; say "  n8n row $WF_ID: $row; error workflow $ERROR_WF_ID: $(f_row "$ERROR_WF_ID")"
+      say "  runtime evidence: ${N8N_FRAMEWORK_RUNTIME_EVIDENCE:-NOT SUPPLIED (N8N_FRAMEWORK_RUNTIME_EVIDENCE)}; $(f_pending)"
       set +e; f_gate; gate_rc=$?; set -e
       [[ $gate_rc == 0 ]] || say "  WOULD REFUSE --apply: the mandatory import gate (AGENTS §23.24, check_n8n_import_ready.py) refuses this workflow"
       say "  graph check: $( ( cd "$CODE_ROOT" && "$PY" scripts/n8n_workflow_templates.py build-fabric --verify "$CODE_ROOT/$WF_REL" ) 2>/dev/null | "$PY" -c 'import json,sys; d=json.load(sys.stdin); print("ok" if d.get("ok") else "MISMATCH", d["workflows"][0]["graph_sha256"][:12])' 2>/dev/null || echo unavailable)"
@@ -672,6 +683,10 @@ step_F() {
       if [[ "$row" == ACTIVE ]]; then receipt F NOOP "already active"; say "NOOP: $WF_ID already active"; return 0; fi
       [[ "$row" != ARCHIVED ]] || { receipt F REFUSED "archived"; refuse "$WF_ID is archived in n8n"; }
       [[ "$(f_row "$ERROR_WF_ID")" == ACTIVE ]] || { receipt F REFUSED "error workflow not active"; refuse "$ERROR_WF_ID (settings.errorWorkflow) is not active"; }
+      if [[ "$IMPORT_GATE" != "stub-pass" && ! -f "${N8N_FRAMEWORK_RUNTIME_EVIDENCE:-}" ]]; then
+        receipt F REFUSED "framework evidence unavailable"
+        refuse "framework evidence unavailable (AGENTS §23.24): set N8N_FRAMEWORK_RUNTIME_EVIDENCE to the host-signed N8nFrameworkRuntimeEvidence@v2 file ($(f_pending)); not routed around"
+      fi
       set +e; f_gate >/dev/null; gate_rc=$?; set -e
       [[ $gate_rc == 0 ]] || { receipt F REFUSED "import gate §23.24 refused"; refuse "check_n8n_import_ready.py refuses $WF_ID (AGENTS §23.24 activation bar); not routed around"; }
       local busy; busy="$(f_quiet_now)"
