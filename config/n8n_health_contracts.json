@@ -29918,7 +29918,7 @@
       "id": "release-train-request-0000",
       "kind": "lane",
       "workflow_id": "tradeai-fabric-release-train",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "stage:shadow",
       "stage": "shadow",
       "purpose": {
@@ -30091,6 +30091,12 @@
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
       },
       "review_by": "2026-11-04",
+      "review": {
+        "prepared_by": "agent draft (Release Train v2 Phase 4, feat/release-train-n8n-20261021)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator PatsKiller 2026-10-21 (\"approve the 4 contracts, email yes, rtw yes, push release 2\")",
+        "reviewed_on": "2026-10-21"
+      },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "train window request",
@@ -30124,7 +30130,7 @@
       "id": "release-train-request-0600",
       "kind": "lane",
       "workflow_id": "tradeai-fabric-release-train",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "stage:shadow",
       "stage": "shadow",
       "purpose": {
@@ -30297,6 +30303,12 @@
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
       },
       "review_by": "2026-11-04",
+      "review": {
+        "prepared_by": "agent draft (Release Train v2 Phase 4, feat/release-train-n8n-20261021)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator PatsKiller 2026-10-21 (\"approve the 4 contracts, email yes, rtw yes, push release 2\")",
+        "reviewed_on": "2026-10-21"
+      },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "train window request",
@@ -30330,7 +30342,7 @@
       "id": "release-train-request-0800",
       "kind": "lane",
       "workflow_id": "tradeai-fabric-release-train",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "stage:shadow",
       "stage": "shadow",
       "purpose": {
@@ -30503,6 +30515,12 @@
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
       },
       "review_by": "2026-11-04",
+      "review": {
+        "prepared_by": "agent draft (Release Train v2 Phase 4, feat/release-train-n8n-20261021)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator PatsKiller 2026-10-21 (\"approve the 4 contracts, email yes, rtw yes, push release 2\")",
+        "reviewed_on": "2026-10-21"
+      },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "train window request",
@@ -30536,7 +30554,7 @@
       "id": "release-train-request-1800",
       "kind": "lane",
       "workflow_id": "tradeai-fabric-release-train",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "stage:shadow",
       "stage": "shadow",
       "purpose": {
@@ -30709,6 +30727,12 @@
         "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger"
       },
       "review_by": "2026-11-04",
+      "review": {
+        "prepared_by": "agent draft (Release Train v2 Phase 4, feat/release-train-n8n-20261021)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator PatsKiller 2026-10-21 (\"approve the 4 contracts, email yes, rtw yes, push release 2\")",
+        "reviewed_on": "2026-10-21"
+      },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "train window request",

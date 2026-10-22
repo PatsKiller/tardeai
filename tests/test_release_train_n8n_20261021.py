@@ -4,7 +4,7 @@ Covers the contract (TrainWindowRequest@v1 / TrainWindowReceipt@v1 / ReleaseTrai
 relay route and the gateway's read-only release_train_window operation, the generated workflow
 ``tradeai-fabric-release-train`` (no credential, no merge/promote/push, no direct sender node, only the two relay
 routes, only Run Lane for the four request lanes), the n8n framework check, the lane registry rows, the allowlist
-entries, the DRAFT health contracts (their expected gate failure is asserted, not hidden) and the transitive
+entries, the health contracts (REVIEWED by the operator 2026-10-21; the gate is clean) and the transitive
 capabilities of the request lanes (no sender, broker or order reach).
 
 Hermetic: tmp_path state dirs, spools, STOP latches and ledgers; a fake delegation loader; an in-process gateway behind
@@ -645,9 +645,9 @@ def test_framework_check_has_no_failing_element(wf):
     bad = {k: v for k, v in row["elements"].items() if v["status"] == "fail"}
     assert bad == {}, bad
     partial = {k for k, v in row["elements"].items() if v["status"] == "partial"}
-    # Expected and reported: FW-C3 (contracts DRAFT until the operator reviews them) and FW-R3 (a new n8n-only
+    # Expected and reported: FW-R3 (a new n8n-only
     # schedule has no cron line to fall back to; the manual release path is the declared fallback).
-    assert partial <= {"FW-C3", "FW-R3"}, partial
+    assert partial <= {"FW-R3"}, partial  # FW-C3 passes since the operator review
 
 
 # ── registry, allowlist, health contracts, capabilities ─────────────────────────────────────────────────────
@@ -675,9 +675,9 @@ def test_registry_rows_are_n8n_shadow_with_no_dispatch_block():
         assert r["state"] == "NEVER_SCHEDULED" and r["output_signal"]["path"] == f"data/runtime/{lane}_last.json"
 
 
-def test_health_contracts_are_draft_and_the_gate_says_so():
-    """Expected and reported: a new lane needs a REVIEWED contract (AGENTS §23.19). The gate's ONLY failures are
-    these four DRAFT_NOT_GRANDFATHERED rows; once the operator reviews them, the gate has none of ours."""
+def test_health_contracts_are_reviewed_by_the_operator_and_the_gate_is_clean():
+    """AGENTS §23.19: a new lane needs a REVIEWED contract. The operator reviewed all four on 2026-10-21 ("approve
+    the 4 contracts, email yes, rtw yes, push release 2"); the gate has no failure of ours."""
     doc = json.loads((ROOT / "config/n8n_health_contracts.json").read_text())
     ours = {c["id"]: c for c in doc["contracts"] if c["id"] in LANES}
     assert set(ours) == set(LANES)
@@ -685,12 +685,13 @@ def test_health_contracts_are_draft_and_the_gate_says_so():
         assert c["workflow_id"] == T.RELEASE_TRAIN_ID and c["stage"] == "shadow"
         assert c["expected_output"]["rule"] == "empty_allowed"
         assert "no_runner" in c["expected_output"]["fatal_skip_reasons"]
+        assert c["status"] == "REVIEWED" and c["review"]["status"] == "REVIEWED"
+        assert c["review"]["reviewed_by"].startswith("operator PatsKiller 2026-10-21")
+        assert c["review"]["reviewed_on"] == "2026-10-21"
     out = subprocess.run([sys.executable, str(ROOT / "scripts/check_n8n_health_contracts.py")], capture_output=True,
                          text=True, cwd=str(ROOT), timeout=300)
     fails = [ln for ln in (out.stdout + out.stderr).splitlines() if "✗" in ln]
-    drafts = {lane for lane in LANES if ours[lane]["status"] == "DRAFT"}
-    assert {ln.split()[2].rstrip(":") for ln in fails} == drafts
-    assert all("DRAFT_NOT_GRANDFATHERED" in ln for ln in fails)
+    assert not [ln for ln in fails if any(lane in ln for lane in LANES)], fails
 
 
 def test_request_lanes_reach_no_sender_broker_or_order_code():

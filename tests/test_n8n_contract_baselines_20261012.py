@@ -59,8 +59,8 @@ def test_all_operative_baselines_have_applicable_fields_and_order():
     # DRAFT pending owner REVIEW; tests/test_cio_portfolio_thesis_lane_20261021.py) = 150.
     # + 1 (2026-10-21 pr-hygiene-audit n8n-native shadow: REVIEWED by the operator 2026-10-21;
     # tests/test_pr_hygiene_audit_20261021.py) = 151 (release-1 integration: both sides add distinct contracts).
-    # + 4 (2026-10-21 Release Train v2 Phase 4: release-train-request-{1800,0000,0600,0800}, DRAFT at shadow until the
-    # operator reviews them; tests/test_release_train_n8n_20261021.py) = 155 (release-2 integration, recounted).
+    # + 4 (2026-10-21 Release Train v2 Phase 4: release-train-request-{1800,0000,0600,0800}, REVIEWED at shadow by the
+    # operator 2026-10-21; tests/test_release_train_n8n_20261021.py) = 155 (release-2 integration, recounted).
     assert len(catalogue["contracts"]) == 155
     assert not {row["id"]: A.baseline_errors(row) for row in catalogue["contracts"] if A.baseline_errors(row)}
 

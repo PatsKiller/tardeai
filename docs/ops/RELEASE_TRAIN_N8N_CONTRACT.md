@@ -345,7 +345,8 @@ The four request lanes are fired only by this workflow through Run Lane (registr
 ## 13. Operator items (propose and stop)
 
 - **O1** Review this contract (C1–C11, the two schemas, the request-tick lead) before Phase 3 builds against it.
-- **O2** Review the four DRAFT health contracts; they must be `REVIEWED` before the lanes leave shadow (§23.19).
+- **O2** ~~Review the four DRAFT health contracts~~ DONE 2026-10-21: the operator reviewed all four ("approve the 4
+  contracts, email yes, rtw yes, push release 2"); they are `REVIEWED` at shadow (§23.19).
 - **O3** A host-validated run-key namespace for these lanes before any `live` request (the gateway refuses a
   free-form key for `live`, audit DD03). Options: a `release-train` entry in `config/n8n_fabric_processes.json`
   validated by `n8n_process_keys.py`, or a dedicated `rtw:` validator.
