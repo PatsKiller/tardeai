@@ -23,6 +23,7 @@ import secrets
 import stat
 import time
 from dataclasses import dataclass
+from datetime import timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -83,7 +84,9 @@ def approval_message(req: dict) -> bytes:
     body = {k: req.get(k) for k in ("request_id", "kind", "direction", "executor", "params", "expected_state_digest",
                                     "actor", "stepup_factor", "stepup_credential_id")}
     approved = req.get("approved_at")
-    body["approved_at"] = approved.isoformat() if hasattr(approved, "isoformat") else approved
+    if hasattr(approved, "astimezone"):  # Postgres hands timestamptz back in the session zone: sign UTC, always
+        approved = approved.astimezone(timezone.utc).isoformat()
+    body["approved_at"] = approved
     return json.dumps(body, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
 
 

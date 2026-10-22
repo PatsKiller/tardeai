@@ -82,6 +82,33 @@ def test_pg_store_status_and_request_lifecycle(pg):
 
 
 @needs_pg
+def test_pg_signed_approval_survives_the_round_trip_in_a_non_utc_session(pg):
+    """The CC process signs approved_at it sent; the applier verifies what Postgres hands back (session zone)."""
+    import psycopg2
+
+    def connect():
+        c = psycopg2.connect(host=pg.host, port=pg.port, dbname=pg.dbname, user=pg.user, password=pg.password,
+                             options="-c timezone=America/New_York")
+        return c
+    st = S.PgStore(connect, owned=True)
+    key = b"q" * 40
+    now = datetime.now(timezone.utc)
+    req, _ = st.create_request({"request_id": "opsreq_" + "d" * 20, "idempotency_key": "pg-idem-sig1",
+                                "kind": "n8n_live_list.add", "direction": "risky", "executor": "applier",
+                                "params": {"lane_id": "x", "n": 0.1}, "expected_state_digest": "e", "actor": "tailnet:o",
+                                "status": "STEP_UP_VERIFIED", "stepup_factor": "passkey",
+                                "stepup_credential_id": "c"})
+    sig = A.sign_approval(key, dict(req, approved_at=now))
+    st.transition(req["request_id"], ("STEP_UP_VERIFIED",), "APPROVED", approved_at=now, approval_sig=sig)
+    back = st.get_request(req["request_id"])
+    assert back["approved_at"].utcoffset() != timedelta(0)  # really came back in the session zone
+    assert A.verify_approval(key, back)
+    assert not A.verify_approval(key, dict(back, params={"lane_id": "y", "n": 0.1}))
+    st.append_audit(actor="o", action="tz", kind=None, request_id=None, outcome="ok", detail={})
+    assert S.verify_audit_chain(st.list_audit(500)) and S.verify_audit_chain(_store(pg).list_audit(500))
+
+
+@needs_pg
 def test_pg_audit_is_append_only_and_chained(pg):
     import psycopg2
 

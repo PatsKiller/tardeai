@@ -396,7 +396,8 @@ class PgStore:
             r = cur.fetchone()
             prev = r["row_hash"] if r else None
             cur.execute("SELECT now() AS at")
-            at = cur.fetchone()["at"].isoformat()
+            # UTC: the hash must not depend on the reading session's time zone
+            at = cur.fetchone()["at"].astimezone(timezone.utc).isoformat()
             row = {"at": at, "actor": actor, "action": action, "kind": kind, "request_id": request_id,
                    "outcome": outcome, "detail": dict(detail or {})}
             h = audit_hash(prev, row)
@@ -412,7 +413,7 @@ class PgStore:
             out = []
             for r in cur.fetchall():
                 d = dict(r)
-                d["at"] = d["at"].isoformat() if hasattr(d["at"], "isoformat") else d["at"]
+                d["at"] = d["at"].astimezone(timezone.utc).isoformat() if hasattr(d["at"], "astimezone") else d["at"]
                 out.append(d)
             return out
         return self._tx(q)

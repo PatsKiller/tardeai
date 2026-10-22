@@ -680,7 +680,7 @@ def applier_view(ctx: Ctx) -> dict:
 def build_state(ctx: Ctx, op: str) -> dict:
     store = _section(ctx.store.tables_status)
     store_ok = store.get("state") == "OK"
-    creds = (_active_credentials(ctx) if store_ok else []) if True else []
+    creds = _active_credentials(ctx) if store_ok else []
     try:
         all_creds = ctx.store.credentials_list() if store_ok else []
     except Exception:  # noqa: BLE001
