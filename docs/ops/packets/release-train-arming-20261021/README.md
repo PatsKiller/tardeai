@@ -392,8 +392,20 @@ then proves only the tick path. `--shadow-only` makes a request lane write `shad
 | CC view | `bash $CUR/scripts/cc_curl.sh -s http://127.0.0.1:7777/api/v2/coordination/release-train \| jq '.data \| {armed,standing_policy,stop,store,census}'` | `armed.value false`, `standing_policy` PAUSED, `stop.value.state ABSENT`, `store` OK after A, `census.status COMPLETE` once the hygiene lane writes |
 | reports | `sqlite3 -readonly ~/trade-ai-releases/persistent-state/data/governance/n8n_coordination_ledger.sqlite "SELECT kind,tier,subject,state,last_at FROM comms_intents WHERE kind LIKE 'release_train_%' ORDER BY last_at DESC LIMIT 12"` and `jq .email_mirror ~/trade-ai-releases/persistent-state/data/runtime/incident_notifier_last.json` | path (a): one `release_train_window_digest` per run, plus `release_train_delegation_reminder` (PAUSED). The P2 batch reaches Telegram, held 22:00–07:00. The digest and needs-action kinds are emailed (`email_mirror` SENT). Path (b) posts no intents, because n8n posts them. |
 
-**H.2 Injected failures.** The controller never fills `injected_failures` in a receipt (it is hardcoded to `[]`,
-finding 5). Each injection is therefore proven by its own artifact.
+**H.2 Injected failures.** Each drill is one shadow request that carries the injection (finding 5, fixed):
+
+```bash
+cd $CUR && $PY scripts/release_train_window_request.py --window 1800 --dry-run --shadow-only --inject <name>   # dry run
+cd $CUR && $PY scripts/release_train_window_request.py --window 1800 --append  --shadow-only --inject <name>
+jq '{state,outcome,refusal,injected_failures,needs_action}' $SD/train_requests/receipts/<request_id>.json
+```
+
+Done when each of `red-check`, `conflict`, `stop-midrun`, `corrupt-latch` and `crash` has a receipt whose
+`injected_failures[0].behaved` is `AS_SPECIFIED` (expected: `FAILED_PRE_MERGE`; an ejected PR; `STOPPED`;
+`REFUSED STOP_UNREADABLE`; `FAILED CONTROLLER_FAILED`). Each request id is new (an off-window id carries a fresh
+suffix), so the five drills can run back to back. `NOT_REACHED` means the run ended before the injection point (an
+empty queue, or 0600/0800 skipped at the window rules): fix the queue and repeat. The real-world artifacts below remain
+the second, independent proof of each.
 
 1. **A red check.**
    - In shadow the dry run does not wait for checks (`WOULD wait …`), so the host cannot show this.
@@ -640,6 +652,17 @@ The fallback holds through every phase.
    injection hook, while contract §7 says it records "which injected failure … was exercised and how it behaved".
    Also, a dry-run (shadow) train never halts on STOP or a corrupt latch. It records `LIVE WOULD REFUSE` and runs on,
    so shadow cannot prove halting; only fixture tests and the canary can.
+   **Status: FIXED** (branch `fix/release-train-arming-blockers-20261021`). A shadow request can carry one drill:
+   `release_train_window_request.py --window <slot> --append --shadow-only --inject <red-check|conflict|stop-midrun|corrupt-latch|crash>`
+   writes `train_requests/injections/<request_id>.json` (TrainInjection@v1, mode 600) before the request, and the
+   claimer simulates it. `release_window.py train-run --inject <name>` does the same for a dry run. Every path
+   refuses it for live. The receipt's `injected_failures` records `{name, phase, behaved}` (`AS_SPECIFIED`,
+   `NOT_AS_SPECIFIED`, or `NOT_REACHED` when the run ended before the injection point), and a simulated halt adds
+   a `WOULD_HALT` needs-action row. Shadow now halts on a set or unreadable latch (receipt `REFUSED STOP_SET` /
+   `STOP_UNREADABLE`) and on a STOP request at the next boundary (outcome `STOPPED`), exactly as live, with no
+   latch, control or capability write. `red-check` and `conflict` preview past the classifier (as
+   `--simulate-classifier allow`) so that they have members to act on; with an empty or incomplete queue they are
+   `NOT_REACHED`.
 6. **No watchdog for an orphaned claim.** A claimer killed after `ACKNOWLEDGED` leaves the request in `claimed/`
    forever: `process_requests` reads only `pending/`, and nothing finishes the receipt. Contract §12 cites "the
    controller's independent watchdog (Phase 3)", which does not exist.

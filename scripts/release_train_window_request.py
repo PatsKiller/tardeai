@@ -54,6 +54,9 @@ def _parser() -> argparse.ArgumentParser:
     mode.add_argument("--dry-run", action="store_true", help="print the request; write nothing (default)")
     mode.add_argument("--append", action="store_true", help="append the request to the spool")
     ap.add_argument("--shadow-only", action="store_true", help="never request a live train (shadow phase lanes)")
+    ap.add_argument("--inject", choices=list(W.INJECTIONS), default=None,
+                    help="operator drill, SHADOW requests only (refused for a live one): the claimer simulates this "
+                         "failure and records it in the receipt's injected_failures. Never in the n8n lane argv.")
     ap.add_argument("--state-dir", default=None, help="release-window state dir (default: resolved like the runner)")
     ap.add_argument("--config", default=None, help=argparse.SUPPRESS)
     return ap
@@ -106,10 +109,18 @@ def run(
         summary.update({"disposition": "error", "reason": str(exc)[:160]})
         return _finish(lane_id, append, False, summary, started, receipt_path, exit_code=1)
     summary["request_id"] = doc["request_id"]
+    if a.inject:
+        if doc.get("shadow") is not True:
+            print(json.dumps({"lane_id": lane_id, "disposition": "refused",
+                              "reason": "--inject is for shadow requests only; this request would be live"}))
+            return 2
+        summary["inject"] = a.inject
     if not append:
         summary["would_append"] = doc
         return _finish(lane_id, False, True, summary, started, receipt_path)
     try:
+        if a.inject:
+            W.write_injection(doc, a.inject, state_dir)
         result, path = W.append_request(doc, state_dir)
     except (OSError, W.ContractError) as exc:
         summary.update({"disposition": "error", "reason": f"append failed: {type(exc).__name__}"})

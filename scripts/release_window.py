@@ -868,6 +868,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                        help="dry run only: preview the pipeline past the classifier")
         if name == "train-run":
             t.add_argument("--live", action="store_true")
+            t.add_argument("--inject", choices=["red-check", "conflict", "stop-midrun", "corrupt-latch", "crash"],
+                           help="dry run only: simulate one failure and record how the controller behaved "
+                                "(refused with --live)")
     sub.add_parser("train-status")
     r = sub.add_parser("train-reconcile")
     r.add_argument("--live", action="store_true")

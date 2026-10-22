@@ -1184,6 +1184,25 @@ class TrainConfig:
     dry_run_integrate: bool = False
     dry_run_local_test: bool = False
     simulate_classifier: Optional[str] = None     # dry run only: "allow" previews the pipeline past the stub
+    inject: Optional[str] = None                  # dry run / shadow only: one of INJECTIONS (arming finding 5)
+
+
+#: Injected-failure drills (arming finding 5). Shadow / dry run only; a live controller refuses every one. Each is
+#: SIMULATED: nothing is written to the latch, the control file, GitHub or the host. The receipt records it in
+#: ``injected_failures`` ({name, phase, behaved}); a simulated halt is recorded in ``would_halt``.
+INJECTIONS = ("red-check", "conflict", "stop-midrun", "corrupt-latch", "crash")
+#: Control refusals that halt a SHADOW train exactly as they halt a live one (STOP and an unreadable latch). Every
+#: other refusal (unarmed, paused delegation, disabled window) is what shadow exists to look past: recorded, not halted.
+SHADOW_HALT_REFUSALS = frozenset({"STOP_LATCHED", "STOP_LATCH_UNREADABLE", "STOPPED"})
+
+
+class InjectedCrash(Exception):
+    """A simulated controller crash (``--inject crash``): the run stops where it is, with no outcome, as a SIGKILL
+    would leave it. Caught by ``TrainController.run``; never raised by a live controller."""
+
+    def __init__(self, phase: str) -> None:
+        super().__init__(f"simulated crash at {phase}")
+        self.phase = phase
 
 
 class TrainController:
@@ -1230,6 +1249,23 @@ class TrainController:
         self.epoch_at_claim: Optional[int] = None
         self._train_lock: Any = None
         self.event_errors: list[str] = []
+        self.would_halt: Optional[dict] = None
+        self.inject: Optional[str] = None
+        self._inject_fired: Optional[str] = None      # the phase where the injection was exercised
+        self._inject_detail: dict = {}
+        if self.cfg.inject:
+            self.set_injection(self.cfg.inject)
+
+    def set_injection(self, name: Optional[str]) -> None:
+        """Arm one simulated failure for this (shadow / dry) run. Refused for a live controller (finding 5)."""
+        if name is None:
+            self.inject = None
+            return
+        if self.live:
+            raise ValueError("injected failures are for shadow / dry runs only; a live controller refuses them")
+        if name not in INJECTIONS:
+            raise ValueError(f"unknown injection {name!r}; one of {INJECTIONS}")
+        self.inject = name
 
     # -- small helpers -------------------------------------------------------------------------------
     def _ts(self) -> float:
@@ -1343,7 +1379,18 @@ class TrainController:
         """A mutation boundary: STOP latch / STOP request / revoke / pause / epoch change stop the train here."""
         v = self.control.view()
         if not self.live:
+            # Shadow halts on STOP exactly where live would (finding 5), simulated: no acknowledge / settle write.
+            if self.inject in ("stop-midrun", "crash") and self._inject_fired is None:
+                self._inject_fired = label
+                if self.inject == "crash":
+                    raise InjectedCrash(label)
+                self.say(f"INJECTED stop-midrun: STOP is treated as requested at {label} (simulated; no latch write)")
+                self._shadow_halt(self._stop_outcome(), "STOP_REQUESTED", label, "injected stop-midrun")
+            if v.mode == RC.STOP_REQUESTED:
+                self._shadow_halt(self._stop_outcome(), "STOP_REQUESTED", label, "STOP requested")
             refusal = v.mutation_refusal(self.train_id)
+            if refusal in SHADOW_HALT_REFUSALS:
+                self._shadow_halt(self._stop_outcome(), refusal, label, f"control state {refusal}")
             if refusal:
                 self._would(f"at {label}: control state {refusal}")
             return
@@ -1369,6 +1416,34 @@ class TrainController:
         self.would_refuse.append(why)
         self.say(f"LIVE WOULD REFUSE: {why}")
 
+    def _shadow_halt(self, outcome: str, reason: str, at: str, why: str, *, refusal: bool = False) -> None:
+        """A simulated halt (shadow / dry run): the train stops here exactly as a live train would, and the reason is
+        recorded in ``would_halt``. Nothing is written (no latch, control or capability)."""
+        self.would_halt = {"reason": reason, "at": at, "detail": why[:160]}
+        self.say(f"WOULD HALT (simulated, as live would): {reason} at {at}: {why}")
+        raise Halt(outcome, reason, f"simulated halt at {at}: {why}"[:300], refusal=refusal)
+
+    def _injection_result(self, rec: dict) -> list[dict]:
+        """TrainWindowReceipt@v1 ``injected_failures``: what was injected, where, and whether the controller behaved
+        as specified. NOT_REACHED when the run ended before the injection point (e.g. nothing eligible, so no
+        qualify step for a red check): an honest record, never a pass."""
+        if not self.inject:
+            return []
+        phase = self._inject_fired
+        if phase is None:
+            return [{"name": self.inject, "phase": "not_reached", "behaved": "NOT_REACHED"}]
+        reason, outcome = rec.get("reason"), rec.get("outcome")
+        no_merge = "merge" not in rec
+        ok = {
+            "corrupt-latch": reason == "REFUSED_STOP_UNREADABLE" and bool(rec.get("refused")),
+            "stop-midrun": reason == "STOP_REQUESTED" and outcome == STOPPED and no_merge,
+            "red-check": reason == "CI_RED_BATCH" and outcome == FAILED_PRE_MERGE and no_merge,
+            "conflict": str(self._inject_detail.get("pr")) in ((rec.get("integration") or {}).get("ejected") or {})
+            and self._inject_detail.get("pr") not in ((rec.get("integration") or {}).get("kept") or []),
+            "crash": bool(rec.get("crashed")) and outcome is None,
+        }[self.inject]
+        return [{"name": self.inject, "phase": str(phase)[:32], "behaved": "AS_SPECIFIED" if ok else "NOT_AS_SPECIFIED"}]
+
     # -- the run -------------------------------------------------------------------------------------
     def run(self, now: Optional[datetime] = None) -> tuple[int, dict]:
         now = now or self.host.now()
@@ -1389,6 +1464,7 @@ class TrainController:
             else:
                 self.say(f"WOULD claim window {w.window_id} (claim key {w.claim_key}, O_EXCL) and train {self.train_id}")
             self._rules(w, now, rec)
+            self._boundary("select")             # STOP before any work; shadow halts here as live would
             members, excluded = self._select(rec)
             manifest = self._freeze(w, members, dv, rec)
             cand = self._integrate_and_test(manifest, rec)
@@ -1402,6 +1478,15 @@ class TrainController:
             if h.refusal:
                 rec["refused"] = True
             self.say(f"=> {h.outcome} ({h.reason}{': ' + h.detail if h.detail else ''})")
+        except InjectedCrash as c:
+            # Simulated only (never live): the run ends with no outcome, as a killed claimer would leave it. Live, the
+            # claim stays in claimed/ with an ACKNOWLEDGED receipt; the orphan watchdog moves it to orphaned/ and
+            # train-reconcile is required before the next train.
+            rec.update(crashed=True, reason="INJECTED_CRASH", detail=str(c))
+            self.would_halt = {"reason": "CONTROLLER_CRASH", "at": c.phase,
+                               "detail": "live: claim orphaned (watchdog -> orphaned/, P2); reconcile required"}
+            self.say(f"=> simulated crash at {c.phase}: no outcome; live would need the orphan watchdog + reconcile")
+            code = EXIT_UNCERTAIN
         else:
             code = EXIT_OK
         finally:
@@ -1410,6 +1495,8 @@ class TrainController:
             if self._train_lock is not None:
                 self._train_lock.release()
         rec["exit_code"] = code
+        rec["would_halt"] = self.would_halt
+        rec["injected_failures"] = self._injection_result(rec)
         rec["would_refuse"] = self.would_refuse
         rec["event_errors"] = self.event_errors
         rec["steps"] = self.steps
@@ -1427,18 +1514,25 @@ class TrainController:
         if bad:
             raise Halt("REFUSED", "REFUSED_BYPASS_ENV", ",".join(bad), refusal=True)
         latch_state, latch = self.state.read_latch()
+        if self.inject == "corrupt-latch" and not self.live:
+            self._inject_fired = "preconditions"
+            self.say("INJECTED corrupt-latch: the STOP latch is read as UNREADABLE (simulated; the file is untouched)")
+            latch_state, latch = "UNREADABLE", {"error": "injected corrupt-latch (simulated)"}
         rec["latch_state"] = latch_state
         if latch_state != "ABSENT":
             reason = "REFUSED_STOP_UNREADABLE" if latch_state == "UNREADABLE" else "REFUSED_STOP_LATCHED"
             if self.live:
                 raise Halt("REFUSED", reason, json.dumps(latch)[:200], refusal=True)
-            self._would(f"{reason} ({latch_state})")
+            # Shadow halts on a set or corrupt latch exactly as live does (finding 5): it used to record and run on.
+            self._shadow_halt("REFUSED", reason, "preconditions", f"STOP latch {latch_state}", refusal=True)
         view = self.control.view()
         rec["control"] = {"mode": view.mode, "epoch": view.epoch, "error": view.error}
         refusal = view.mutation_refusal(None)
         if refusal:
             if self.live:
                 raise Halt("REFUSED", f"REFUSED_{refusal}", view.error or "", refusal=True)
+            if refusal in SHADOW_HALT_REFUSALS:
+                self._shadow_halt("REFUSED", f"REFUSED_{refusal}", "preconditions", f"control {refusal}", refusal=True)
             self._would(f"control {refusal}")
         dv = RD.load(self.delegation_path, allow_repo_path=self.allow_repo_delegation)
         rec["delegation"] = {"code": dv.code, "authorized": dv.authorized, "digest": dv.digest}
@@ -1589,10 +1683,12 @@ class TrainController:
         if not snap.complete:
             raise Halt(NO_OP, "QUEUE_INCOMPLETE", ";".join(snap.reasons)[:300])
         classifier = self.classifier
-        if self.cfg.simulate_classifier == "allow":
+        drill = self.inject in ("red-check", "conflict")      # these need members to reach their injection point
+        if self.cfg.simulate_classifier == "allow" or drill:
             if self.live:
                 raise Halt("REFUSED", "REFUSED_SIMULATED_CLASSIFIER", "dry run only", refusal=True)
-            self.say("NOTE: --simulate-classifier allow (dry run only): every clean PR treated as eligible")
+            self.say("NOTE: " + (f"--inject {self.inject}" if drill else "--simulate-classifier allow") +
+                     " (dry run only): every clean PR treated as eligible")
             classifier = _AllowForPreview()
         rec["classifier_version"] = classifier.version
         self.tstate["classifier_version"] = classifier.version
@@ -1722,7 +1818,16 @@ class TrainController:
             self.say(f"WOULD run local tests: {' '.join(self.tester.argv(manifest['base_sha']))} (worker env from "
                      f"allowlist {list(WORKER_ENV_ALLOW)}; bisect budget {self.cfg.test_attempts} runs / "
                      f"{self.cfg.test_budget_s:.0f}s)")
-            return {"sha": None, "members": manifest["members"], "simulated": True}
+            members = [dict(m) for m in manifest["members"]]
+            if self.inject == "conflict" and members:
+                ejected: dict[int, str] = {}
+                kept = self._merge_all(None, manifest["base_sha"], members, members, ejected)
+                rec["integration"] = {"candidate": None, "kept": [m["pr"] for m in kept],
+                                      "ejected": {str(k): v for k, v in ejected.items()}, "simulated": True}
+                if not kept:
+                    raise Halt(FAILED_PRE_MERGE, "ALL_EJECTED", json.dumps(rec["integration"]["ejected"])[:300])
+                members = kept
+            return {"sha": None, "members": members, "simulated": True}
         self._phase("integrating")
         for d in ("home", "tmp"):
             (self.cfg.scratch_root / str(self.train_id) / d).mkdir(parents=True, exist_ok=True)
@@ -1788,7 +1893,14 @@ class TrainController:
         for m in kept:
             if m["pr"] in ejected:
                 continue
-            ok, detail = ws.merge(m["head_sha"], f"release train {self.train_id}: merge #{m['pr']} {m['head_sha']}")
+            if self.inject == "conflict" and self._inject_fired is None and not self.live:
+                self._inject_fired, self._inject_detail = "integrate", {"pr": m["pr"]}
+                self.say(f"INJECTED conflict: #{m['pr']} merges with a conflict (simulated)")
+                ok, detail = False, "injected conflict (simulated)"
+            elif ws is None:
+                ok, detail = True, "simulated"
+            else:
+                ok, detail = ws.merge(m["head_sha"], f"release train {self.train_id}: merge #{m['pr']} {m['head_sha']}")
             if ok:
                 out.append(m)
             else:
@@ -2006,6 +2118,18 @@ class TrainController:
             self.say(f"WOULD wait <= {self.cfg.qualify_timeout_s:.0f}s for {list(REQUIRED_CHECKS)} to read exactly "
                      f"'success' (latest run, app github-actions) on {str(sha or '<candidate>')[:12]}; "
                      "neutral/skipped/cancelled/missing never pass; no tree-equivalence fallback")
+            if self.inject == "red-check":
+                # The real evidence reader decides: three green checks and a failed batch qualifier.
+                self._inject_fired = "qualify"
+                fake = sha if SHA_RE.match(sha or "") else "0" * 40
+                runs = [{"id": 1 + i, "name": n, "head_sha": fake, "status": "completed", "app": "github-actions",
+                         "conclusion": "failure" if n == BATCH_QUALIFIER else "success"}
+                        for i, n in enumerate(REQUIRED_CHECKS)]
+                verdict, errs = evidence_verdict(check_evidence(runs, fake, REQUIRED_CHECKS, now=self._ts()))
+                self.say(f"INJECTED red-check: {BATCH_QUALIFIER} concluded failure (simulated) -> {verdict}")
+                if verdict == "RED":
+                    raise Halt(FAILED_PRE_MERGE, "CI_RED_BATCH", ("injected red-check (simulated): " +
+                                                                  ";".join(errs))[:300])
             return {"pr": 0, "evidence": None, "simulated": True}
         self._phase("qualifying", {"candidate": sha})
         base = manifest["base_sha"]
@@ -2573,11 +2697,18 @@ def render(code: int, body: dict) -> str:
     lines.append(f"outcome: {body.get('outcome')} reason: {body.get('reason')} exit: {code}")
     if body.get("would_refuse"):
         lines.append("a live run would refuse: " + " | ".join(body["would_refuse"]))
+    if body.get("would_halt"):
+        lines.append(f"would halt: {json.dumps(body['would_halt'], sort_keys=True)}")
+    for x in body.get("injected_failures") or []:
+        lines.append(f"injected: {x['name']} at {x['phase']}: {x['behaved']}")
     return "\n".join(lines)
 
 
 def cli(args: Any) -> int:
     live = bool(getattr(args, "live", False))
+    if live and getattr(args, "inject", None):
+        print(json.dumps({"outcome": "REFUSED", "detail": "--inject is for shadow / dry runs only; refused with --live"}))
+        return EXIT_REFUSED
     if live and TRAIN_CONTROLLER_STATUS != "ACTIVE":
         body = {"outcome": "REFUSED_BUILD_ONLY", "controller_status": TRAIN_CONTROLLER_STATUS,
                 "detail": "the train controller is built, not armed; arming (delegation, capability key, control "
@@ -2604,7 +2735,7 @@ def cli(args: Any) -> int:
         print(json.dumps(body, indent=2, default=str))
         return code
     cfg = TrainConfig(dry_run_integrate=bool(args.integrate), dry_run_local_test=bool(args.local_test),
-                      simulate_classifier=args.simulate_classifier)
+                      simulate_classifier=args.simulate_classifier, inject=getattr(args, "inject", None))
     now = RW._parse_now(args.now) if getattr(args, "now", None) else None
     if now is not None and live:
         print(json.dumps({"outcome": "REFUSED", "detail": "--now is for dry runs only"}))
@@ -2683,6 +2814,9 @@ def validate_request(body: Any, filename: str) -> list[str]:
     return errs
 
 
+INJECTION_SCHEMA = "TrainInjection@v1"
+
+
 class RequestSpool:
     """<state_dir>/train_requests/{pending,claimed,receipts}. Claim = os.rename(pending -> claimed) (C2). Nothing
     is ever deleted; a terminal receipt is never rewritten (C8)."""
@@ -2708,6 +2842,23 @@ class RequestSpool:
             return None                                   # another claimer won the rename
         return dest
 
+    def injection(self, request_id: str) -> tuple[Optional[str], Optional[str]]:
+        """(name, None) for a valid operator injection marker ``injections/<request_id>.json`` (TrainInjection@v1,
+        written by ``release_train_window_request.py --inject`` before the request); (None, None) when there is none;
+        (None, why) when one exists but is invalid (the request is then refused, fail closed)."""
+        p = self.root / "injections" / f"{request_id}.json"
+        if not os.path.lexists(p):
+            return None, None
+        try:
+            body = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return None, f"injection marker unreadable: {type(exc).__name__}"
+        if not isinstance(body, dict) or body.get("schema") != INJECTION_SCHEMA:
+            return None, "injection marker is not TrainInjection@v1"
+        if body.get("request_id") != request_id or body.get("inject") not in INJECTIONS:
+            return None, "injection marker names another request or an unknown injection"
+        return str(body["inject"]), None
+
     def receipt(self, request_id: str) -> Optional[dict]:
         try:
             return json.loads((self.receipts / f"{request_id}.json").read_text(encoding="utf-8"))
@@ -2728,6 +2879,10 @@ def _receipt(req: dict, *, state: str, mode: str, now: float, acknowledged_at: O
     sel = rec.get("selection") or {}
     needs = [{"code": "NOT_RIDING", "pr": int(k), "text": str(v)[:160]} for k, v in
              list((sel.get("excluded") or {}).items())[:16]]
+    wh = rec.get("would_halt")
+    if isinstance(wh, dict):
+        needs.insert(0, {"code": "WOULD_HALT", "pr": None,
+                         "text": f"{wh.get('reason')} at {wh.get('at')}: {wh.get('detail') or ''}"[:160]})
     needs += [{"code": "LIVE_WOULD_REFUSE", "pr": None, "text": str(x)[:160]} for x in rec.get("would_refuse") or []]
     manifest = rec.get("manifest") or {}
     members = [{"pr": m["pr"], "head_sha": m["head_sha"]} for m in manifest.get("members") or []]
@@ -2745,7 +2900,7 @@ def _receipt(req: dict, *, state: str, mode: str, now: float, acknowledged_at: O
             "candidate_sha": (rec.get("batch") or {}).get("candidate"),
             "main_sha": (rec.get("merge") or {}).get("main_sha"), "served_sha": None,
             "needs_action": needs[:20], "simulated_effects": list(dict.fromkeys(sims)) if mode == "simulate" else [],
-            "injected_failures": [],
+            "injected_failures": [dict(x) for x in (rec.get("injected_failures") or [])][:20],
             "p1_alert": ({"sent_by": "host_notifier", "incident_key": f"release-train:{rec.get('train_id')}",
                           "at": rec.get("finished_at")} if notif.get("priority") == "P1" else None),
             "evidence_refs": []}
@@ -2866,6 +3021,12 @@ def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], T
                      refusal=_refusal("EXPIRED", f"expired at {req['expires_at']}")))
         item["result"] = "EXPIRED"
         return item
+    inject, inject_err = spool.injection(rid)
+    if inject_err or (inject and not shadow):
+        why = inject_err or f"--inject {inject} is shadow-only; a live request never carries an injected failure"
+        put(_receipt(req, state="REFUSED", mode=mode, now=clock(), refusal=_refusal("INVALID_REQUEST", why)))
+        item["result"] = "REFUSED INVALID_REQUEST"
+        return item
     ack = utc_iso(clock())
     put(_receipt(req, state="ACKNOWLEDGED", mode=mode, now=clock(), acknowledged_at=ack))
     if not shadow and status_ != "ACTIVE":
@@ -2877,6 +3038,9 @@ def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], T
         ctl = factory(not shadow)
         if shadow and ctl.live:
             raise Halt("REFUSED", "SHADOW_LIVE_MISMATCH", "a shadow request produced a live controller", refusal=True)
+        if inject:
+            ctl.set_injection(inject)
+            item["inject"] = inject
         start = _parse_ts(req["window_start"])
         at = start + timedelta(minutes=1) if (shadow and req["tick"] == "off_window") else None
         code, rec = ctl.run(at)
@@ -2895,7 +3059,10 @@ def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], T
     if isinstance(ctl.writer, SimulatedGitHubWriter):
         rec["simulated_writes"] = ctl.writer.actions
     got = (rec.get("window") or {}).get("window_id")
-    if rec.get("refused"):
+    if rec.get("crashed"):
+        receipt = _receipt(req, state="FAILED", mode=mode, now=clock(), acknowledged_at=ack, rec=rec,
+                           refusal={"code": "CONTROLLER_FAILED", "detail": f"INJECTED_CRASH: {rec.get('detail')}"[:200]})
+    elif rec.get("refused"):
         ref = _refusal(refusal_code(rec.get("reason")), f"{rec.get('reason')}: {rec.get('detail') or ''}")
         receipt = _receipt(req, state=_refused_state(ref), mode=mode, now=clock(), acknowledged_at=ack, rec=rec,
                            refusal=ref)

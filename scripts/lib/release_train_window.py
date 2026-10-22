@@ -183,6 +183,31 @@ def build_request(
     return doc
 
 
+INJECTION_SCHEMA = "TrainInjection@v1"
+INJECTIONS = ("red-check", "conflict", "stop-midrun", "corrupt-latch", "crash")
+
+
+def write_injection(doc: Mapping[str, Any], inject: str, state_dir: Optional[Path] = None) -> Path:
+    """Operator drill (arming finding 5): ``injections/<request_id>.json`` (TrainInjection@v1, O_EXCL, mode 600)
+    naming ONE simulated failure for a SHADOW request. Written before the request is appended, so the claimer always
+    sees it. Never for a live request (refused here and again by the claimer); never overwritten or deleted."""
+    if inject not in INJECTIONS:
+        raise ContractError(f"unknown injection {inject!r}")
+    if doc.get("shadow") is not True:
+        raise ContractError("--inject is for shadow requests only")
+    d = spool_dir(state_dir) / "injections"
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / f"{doc['request_id']}.json"
+    body = {"schema": INJECTION_SCHEMA, "request_id": doc["request_id"], "inject": inject,
+            "created_at": datetime.now(timezone.utc).isoformat(), "created_by": "operator_cli"}
+    fd = os.open(str(p), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps(body, sort_keys=True) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    return p
+
+
 def append_request(doc: Mapping[str, Any], state_dir: Optional[Path] = None) -> tuple[str, Path]:
     """Append one request. Returns ("appended" | "duplicate", path). Never overwrites, never deletes (§0 rule 6).
 
