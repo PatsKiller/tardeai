@@ -155,8 +155,10 @@ def test_csp_respects_strike_max_delta_liquidity_and_earnings():
     assert 145.0 not in strikes                         # spread 46% — not fillable near mid
     assert all(r["exp"] < "2026-11-03" for r in rows)   # Nov 20 crosses earnings
     top = rows[0]
-    assert top["strike"] == 157.5 and top["credit_per_contract"] == pytest.approx(370.0)
-    assert top["collateral_per_contract"] == 15750.0 and top["breakeven"] == pytest.approx(153.8)
+    # 2026-10-22: a seller receives the bid (3.65), not the mid (3.70); the mid is kept for comparison.
+    assert top["strike"] == 157.5 and top["credit_per_contract"] == pytest.approx(365.0)
+    assert top["credit_per_contract_at_mid"] == pytest.approx(370.0) and top["credit_basis"] == "bid"
+    assert top["collateral_per_contract"] == 15750.0 and top["breakeven"] == pytest.approx(153.85)
     assert top["delta_magnitude_pct"] == 28
     assert "assignment_odds_pct" not in top
 

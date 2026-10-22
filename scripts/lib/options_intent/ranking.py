@@ -89,15 +89,45 @@ def rank_csp(chain: Dict[str, Any], play: Dict[str, Any], *, earnings_date: Opti
         cross = _crosses(c.get("exp"), earnings_date)
         if avoid_earnings_cross and cross:
             continue
-        dte = max(int(c.get("dte") or 1), 1)
-        ret = m / k
-        rows.append({**_base(c, m), "play": "cash_secured_put",
-                     "credit_per_contract": round(m * 100, 2), "collateral_per_contract": round(k * 100, 2),
-                     "return_pct": round(ret * 100, 3), "annualized_pct": round(ret * 365 / dte * 100, 1),
-                     "breakeven": round(k - m, 4), "breakeven_vs_spot_pct": round((k - m) / spot * 100 - 100, 2),
-                     "delta_magnitude_pct": round(d * 100), "crosses_earnings": cross})
-    rows.sort(key=lambda r: r["annualized_pct"], reverse=True)
+        row = {**_base(c, m), "play": "cash_secured_put", "collateral_per_contract": round(k * 100, 2),
+               "delta_magnitude_pct": round(d * 100), "crosses_earnings": cross}
+        rows.append(csp_bid_fields(row, spot=spot))
+    rows.sort(key=lambda r: r["simple_annualized_yield_pct"] or 0.0, reverse=True)
     return rows[:top]
+
+
+CSP_YIELD_BASIS = ("premium at the bid over the cash set aside (strike x 100); simple annualization "
+                   "x 365/DTE is not repeatable and is not expected return")
+
+
+def csp_bid_fields(row: Dict[str, Any], *, spot: Optional[float] = None) -> Dict[str, Any]:
+    """CSP economics at the BID (2026-10-22): a seller receives the bid, not the mid.
+
+    Idempotent, so the API can re-derive rows captured before the change. return_pct and
+    annualized_pct stay as deprecated aliases of the bid-based values."""
+    out = dict(row)
+    k, bid, m = _f(out.get("strike")), _f(out.get("bid")), _f(out.get("mid"))
+    credit = bid if bid is not None and bid > 0 else None
+    dte = max(int(out.get("dte") or 1), 1)
+    out["credit_basis"] = "bid" if credit is not None else "unavailable"
+    out["credit_per_contract_at_mid"] = round(m * 100, 2) if m is not None else None
+    out["credit_per_contract"] = round(credit * 100, 2) if credit is not None else None
+    if k and credit is not None:
+        poc = credit / k * 100.0
+        out["premium_over_collateral_pct"] = round(poc, 3)
+        out["simple_annualized_yield_pct"] = round(poc * 365.0 / dte, 1)
+        out["breakeven"] = round(k - credit, 4)
+        sp = _f(spot)
+        if sp:
+            out["breakeven_vs_spot_pct"] = round((k - credit) / sp * 100 - 100, 2)
+    else:
+        out["premium_over_collateral_pct"] = None
+        out["simple_annualized_yield_pct"] = None
+    out["yield_basis"] = CSP_YIELD_BASIS
+    out["return_pct"] = out["premium_over_collateral_pct"]
+    out["annualized_pct"] = out["simple_annualized_yield_pct"]
+    out["not_applicable_metrics"] = ["risk_reward", "max_loss_to_zero"]
+    return out
 
 
 def rank_covered_calls(chain: Dict[str, Any], play: Dict[str, Any], *, thesis_target: Optional[float] = None,

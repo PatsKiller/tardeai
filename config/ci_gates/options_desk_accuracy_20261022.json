@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "options_desk_accuracy_20261022",
+  "files": [
+    "tests/test_options_desk_accuracy_20261022.py",
+    "tests/test_options_intent_20261005.py"
+  ],
+  "anchor": "OPTIONS_DESK_ACCURACY_20261022",
+  "comment": [
+    "ANCHOR: OPTIONS_DESK_ACCURACY_20261022 — Options Desk audit 2026-10-22: session stamped per quote (not run start)",
+    "and served as the session now; honest quote/spot/chain ages and next scheduled refresh; Next/Owner from the",
+    "lifecycle stage (REVIEW_FAILURE_CAP, re-quote); edge withheld on a failed liquidity gate and penalised by spread;",
+    "CSP premium/yield on the bid with reward/risk not applicable; both earnings dates with a conflict flag;",
+    "execution_state_text; intent-vs-hedge conflicts; account grouping; honest coverage when the expanded scan is",
+    "disabled; lifecycle freshness at serve time (PAUSED since); blocked queue rows expire; abandon before the",
+    "liquidity skip; watch-only intents; avg POP null. Contract: docs/ops/OPTIONS_DESK_FIELDS.md."
+  ]
+}

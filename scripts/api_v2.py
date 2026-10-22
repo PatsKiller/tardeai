@@ -40961,13 +40961,8 @@ def _schwab_option_chain(query=None):
     return _json_clean(out)
 
 
-def _options_intents(query=None):
-    """GET /api/v2/options/intents — the operator's standing options intents (spec.options_intent on
-    ticker watch directives) joined to the matcher's latest live-contract snapshot. READ-ONLY."""
-    import sys as _sys
-
-    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-    from lib.options_intent import matcher as _mt
+def _load_standing_intents():
+    """Standing options intents (spec.options_intent on ticker watch directives). READ-ONLY."""
     from lib.options_intent import store as _st
 
     rows = _db_query(_st.SELECT_SQL, fetch="all") or []
@@ -40982,6 +40977,19 @@ def _options_intents(query=None):
         it = (spec or {}).get(_st.INTENT_KEY)
         if isinstance(it, dict):
             intents.append({**it, "directive_id": r.get("id")})
+    return intents
+
+
+def _options_intents(query=None):
+    """GET /api/v2/options/intents — the operator's standing options intents (spec.options_intent on
+    ticker watch directives) joined to the matcher's latest live-contract snapshot. READ-ONLY."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib.options_intent import matcher as _mt
+    from lib import options_desk_accuracy as _acc
+
+    intents = _load_standing_intents()
     try:
         latest = json.loads((_mt.state_dir() / "latest.json").read_text(encoding="utf-8"))
     except Exception:
@@ -40990,6 +40998,7 @@ def _options_intents(query=None):
     # Read-only contract joins; no second proposal/thesis store and no implicit staging.
     proposals = (_get_options_engine().read_proposals() or {}).get("proposals") or []
     joined = []
+    holdings = None
     for intent in intents:
         match = latest.get(intent.get("symbol"))
         if match and intent.get("updated_at"):
@@ -41006,10 +41015,38 @@ def _options_intents(query=None):
                 stale = True
             if stale:
                 match = None
+        linked = _mt.link_desk_matches(match, proposals) if match else None
+        # 2026-10-22: both earnings dates with sources (+ conflict), held vs watch-only, and the
+        # desk cards on this symbol that work against the plan. Read-only joins.
+        prior = (linked or {}).get("earnings") or {}
+        prov = (
+            prior.get("provider_date")
+            if "provider_date" in prior
+            else (
+                prior.get("date")
+                if prior.get("date") and prior.get("source") not in (None, "operator estimate", "unknown")
+                else None
+            )
+        )
+        ed = _acc.earnings_dates(
+            prov,
+            prior.get("provider_source") or (prior.get("source") if prov else None),
+            intent.get("earnings_estimate"),
+        )
+        if linked is not None:
+            linked["earnings"] = {**prior, **ed, "date": ed["effective_date"]}
+        if holdings is None:
+            try:
+                holdings = _get_options_engine()._load_holdings()[0]
+            except Exception:
+                holdings = []
         joined.append(
             {
                 **intent,
-                "matches": _mt.link_desk_matches(match, proposals) if match else None,
+                **_acc.holding_flags(intent, match, holdings),
+                "earnings_dates": ed,
+                "conflicts": _acc.intent_conflicts(proposals, [intent]),
+                "matches": linked,
                 "llm_review": _mt.review_packet(intent, match),
             }
         )
@@ -41375,8 +41412,25 @@ def _options_proposals(query=None):
     from lib.options_exposure import combined_exposure
     from lib.options_scan import capacity_summary, load_config
 
+    from lib import options_desk_accuracy as _acc
+
     data = deepcopy(oe.read_proposals())
-    data["scan_capacity"] = capacity_summary(data.get("coverage") or {}, load_config(oe.PROJECT_ROOT))
+    _scan_cfg = load_config(oe.PROJECT_ROOT)
+    data["scan_capacity"] = capacity_summary(data.get("coverage") or {}, _scan_cfg)
+    # 2026-10-22 accuracy pass: per-quote session and ages, lifecycle stage, liquidity-aware
+    # edge and CSP labels, computed now from the stored card (no provider call, no write).
+    from datetime import datetime as _dt_acc, timezone as _tz_acc
+
+    _acc_now = _dt_acc.now(_tz_acc.utc)
+    try:
+        _acc_cfg = oe._desk_cfg()
+    except Exception:
+        _acc_cfg = {}
+    for row in data.get("proposals") or []:
+        try:
+            _acc.stamp_card(row, now=_acc_now, cfg=_acc_cfg)
+        except Exception as _se:
+            row["accuracy_error"] = type(_se).__name__
     captured_combos = {}
     for row in data.get("proposals") or []:
         combo = row.get("combined_exposure") or {}
@@ -41465,6 +41519,22 @@ def _options_proposals(query=None):
         schwab_armed = bool((opa.status() or {}).get("armed_for_execution"))
     except Exception:
         pass
+    try:
+        try:
+            _intents = _load_standing_intents()
+        except Exception:
+            _intents = []
+        _acc.apply_served_accuracy(
+            data,
+            proposals,
+            now=_acc_now,
+            armed=schwab_armed,
+            intents=_intents,
+            scan_enabled=bool(_scan_cfg.get("enabled")),
+            schedule=_acc.proposals_schedule(oe.PROJECT_ROOT),
+        )
+    except Exception as _ae:
+        data["accuracy_error"] = f"{type(_ae).__name__}: {str(_ae)[:160]}"
     try:
         from lib.options_pipeline.card_semantics import apply_card_semantics_batch
 
@@ -41762,7 +41832,20 @@ def _options_paper_position_alerts_ack(body=None):
 
 def _options_overview(query=None):
     """GET /api/v2/options/overview — strategy edge summary + open position stats."""
-    return _json_clean(_get_options_engine().get_overview())
+    out = _get_options_engine().get_overview()
+    try:
+        from lib import options_desk_accuracy as _acc
+
+        now = datetime.now(timezone.utc)
+        out["market_session"] = _acc.session_at(now)
+        out["snapshot"] = _acc.snapshot_block(
+            out.get("snapshot_generated_at"),
+            now=now,
+            schedule=_acc.proposals_schedule(PROJECT_ROOT),
+        )
+    except Exception as _ae:
+        out["accuracy_error"] = type(_ae).__name__
+    return _json_clean(out)
 
 
 def _proposals_execution_readiness(query=None):
@@ -43213,6 +43296,21 @@ def _options_lifecycle_get():
         if p.exists()
         else {"positions": [], "alerts": [], "counts": {"open_strategies": 0}, "note": "no lifecycle run yet"}
     )
+    try:
+        # N1 (2026-10-22): freshness is computed NOW from generated_at; a paused producer says
+        # "PAUSED since <date>" instead of the write-time "20 min old" it kept forever.
+        from lib import options_desk_accuracy as _acc
+
+        _text, _src = _acc.crontab_cached()
+        _acc.lifecycle_freshness(
+            payload,
+            now=datetime.now(timezone.utc),
+            crontab_text=_text,
+            crontab_source=_src,
+            registry=None if _text else _acc.lane_registry_cached(PROJECT_ROOT),
+        )
+    except Exception as _fe:
+        payload["freshness"] = {"state": "UNKNOWN", "text": f"freshness unavailable: {type(_fe).__name__}"}
     try:
         cur = _get_conn().cursor()
         cur.execute("""SELECT ticket_id, strategy_position_id, kind, status, tif, created_at

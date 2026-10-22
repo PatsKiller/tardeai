@@ -87,12 +87,15 @@ def _desk_cfg() -> dict:
 def _income_screen(strategy: str, sym: str, contract: Optional[dict], data_source: str, und: float) -> Optional[str]:
     """Named reason an income card must not be built, recorded for the funnel."""
     from lib.options_income_quality import defer_liquidity, income_drop_reason, is_liquid
-    reason = income_drop_reason(strategy, contract, data_source, und, _desk_cfg(), session=_SESSION.get("now"))
+    # 2026-10-22: the session is the QUOTE's session, not the run start's. A 09:29 start
+    # stamped PRE_MARKET on quotes read at 09:31 and deferred their liquidity misses.
+    session = _quote_session(contract)
+    reason = income_drop_reason(strategy, contract, data_source, und, _desk_cfg(), session=session)
     if not reason and contract and not is_liquid(contract, _desk_cfg()) \
-            and defer_liquidity(_SESSION.get("now"), _desk_cfg()):
+            and defer_liquidity(session, _desk_cfg()):
         LIQUIDITY_DEFERRED.append({"symbol": sym, "strategy": strategy, "strike": contract.get("strike"),
                                    "oi": contract.get("oi"), "bid_ask_spread_pct": contract.get("bid_ask_spread_pct"),
-                                   "session": _SESSION.get("now")})
+                                   "session": session, "quote_time": (contract or {}).get("quote_time")})
     if reason:
         INCOME_SCREEN_DROPS.append({
             "symbol": sym, "strategy": strategy, "reason": reason,
@@ -104,6 +107,13 @@ def _income_screen(strategy: str, sym: str, contract: Optional[dict], data_sourc
 
 def _iso(dt: Optional[datetime] = None) -> str:
     return (dt or _now()).isoformat()
+
+
+def _quote_session(*contracts: Optional[dict]) -> Optional[str]:
+    """Session of the oldest quote among ``contracts`` (2026-10-22); the session now when none
+    carries a quote time. Never the run-start session."""
+    from lib.options_desk_accuracy import quote_session_of
+    return quote_session_of(*contracts, fallback=_market_session_now())
 
 
 _EXEC_NOTE_CACHE: Optional[str] = None
@@ -1260,7 +1270,12 @@ def _spot_for(sym: str, price: float) -> float:
     except Exception:
         cu = 0.0
     if cu > 0:
+        _ch = _schwab_chain(sym, strikes=16) or {}
+        # 2026-10-22: as_of is the fetch time; quote_time is the provider's underlying quote
+        # time (yesterday's close on a pre-open read), shown separately on the card.
         _PRICE_SOURCE[sym.upper()] = {"source": "schwab_chain_underlying", "as_of": _iso(),
+                                      "quote_time": _ch.get("underlying_quote_time"),
+                                      "fetched_at": _ch.get("fetched_at"),
                                       "replaced": round(price, 2) if price and abs(cu / price - 1) > 0.005 else None}
         return cu
     return price
@@ -1937,7 +1952,10 @@ def _append_csp_proposal(
     holdings: Optional[List[dict]] = None,
     cash_map: Optional[Dict[str, float]] = None,
 ) -> None:
-    premium = contract["mid"]
+    # 2026-10-22: a seller receives the bid, so the CSP's premium, edge and yield use it.
+    # The mid stays only as a comparison (stamp_payoff keeps it in premium_midpoint).
+    _bid = _f(contract.get("bid"))
+    premium = _bid if _bid > 0 and data_source != "bs_estimate" else contract["mid"]
     strike, dte, iv = contract["strike"], contract["dte"], contract.get("iv") or 0.3
     pop = _pop_otm_put(und, strike, max(0.05, iv), dte)
     max_profit = round(premium * 100, 2)
@@ -1964,6 +1982,7 @@ def _append_csp_proposal(
         "dte": dte,
         "contracts": 1,
         "premium": premium,
+        "premium_midpoint": contract.get("mid"),
         "premium_total": round(premium * 100, 2),
         "underlying_price": round(und, 2),
         "pop_pct": pop,
@@ -2177,7 +2196,7 @@ def generate_credit_spread_proposals(
         # the leg-midpoint difference (DELL $8.10 vs $6.35 selling at bid / buying at ask; ETON
         # $0.89 while crossing the quotes was a $2.00 debit). A midpoint is not a fill.
         from lib.options_economics import spread_quote
-        sq = spread_quote(short_c, long_c, session=_SESSION.get("now"),
+        sq = spread_quote(short_c, long_c, session=_quote_session(short_c, long_c),
                           quotes_as_of=(short_c.get("quote_time") or long_c.get("quote_time")
                                         or _chain_fetched_at(sym)))
         if data_source == "bs_estimate":
@@ -2193,7 +2212,7 @@ def generate_credit_spread_proposals(
                                                    f"{long_strike:g}p at ask {sq['legs'][1]['ask']} = {sq['executable_credit']}"
                                                    f" (mid {sq['mid_credit']})"),
                                         "short_strike": short_strike, "long_strike": long_strike,
-                                        "session": _SESSION.get("now")})
+                                        "session": _quote_session(short_c, long_c)})
             continue
         net_credit = round(net_credit, 2)
         if net_credit < 0.08:
@@ -2202,7 +2221,7 @@ def generate_credit_spread_proposals(
         # 2026-09-26: ETON built a Tier A spread on OI 0 / 122% spread legs; the income
         # screen now covers spreads: both legs liquid, credit and return-on-risk floors.
         from lib.options_income_quality import defer_liquidity, is_liquid
-        if not is_liquid(long_c, _desk_cfg()) and not defer_liquidity(_SESSION.get("now"), _desk_cfg()):
+        if not is_liquid(long_c, _desk_cfg()) and not defer_liquidity(_quote_session(long_c), _desk_cfg()):
             INCOME_SCREEN_DROPS.append({"symbol": sym, "strategy": "credit_spread", "reason": "NO_LIQUID_CONTRACT",
                                         "strike": long_strike, "oi": long_c.get("oi")})
             continue
@@ -2721,9 +2740,9 @@ def _apply_enterprise_layer(proposals: List[dict]) -> List[dict]:
                     _ent["live_eligible"] = False
                     if not any("awaiting live quotes" in str(b) or "OI" in str(b) or "spread" in str(b) for b in _ent.get("blocks") or []):
                         try:
-                            from lib.canonical_observation import market_session as _ms
+                            from lib.options_desk_accuracy import quote_time_of as _qt
                             from lib.options_income_quality import defer_liquidity as _dl
-                            _sess = _ms()
+                            _sess = _quote_session({"quote_time": _qt(row)})
                         except Exception:  # noqa: BLE001
                             _sess, _dl = None, (lambda *_a, **_k: False)
                         if _dl(_sess, ent.load_desk_config()):
@@ -2811,6 +2830,9 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
             } if fu else None),
             "decisions": [{"decision_guid": d.get("decision_guid"), "outcome": d.get("outcome"),
                            "at": d.get("recorded_at")} for d in (life.get("decisions") or [])],
+            # 2026-10-22: the served lifecycle_stage names REVIEW_FAILURE_CAP from these two.
+            "review_failures": int(life.get("review_failures") or 0),
+            "review_failure_cap": int(_life_settings(_desk_cfg()).get("max_review_failures") or 3),
             "research_queue": (queue_position(_proj, req.get("research_id"), _life_settings(_desk_cfg()))
                                if req.get("research_id") and not life.get("research") else None),
         }
@@ -2860,10 +2882,19 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
             from lib.options_economics import stamp_payoff
             _liq = (p.get("enterprise") or {}).get("liquidity") or {}
             if not p.get("workflow_version"):
-                stamp_payoff(p, session=_SESSION.get("now"),
+                from lib.options_desk_accuracy import quote_time_of as _qt
+                stamp_payoff(p, session=_quote_session({"quote_time": _qt(p)}),
                          quote_issues=list(_liq.get("issues") or []) if _liq.get("pass") is False else None)
         except Exception:  # noqa: BLE001
             p["expected_value"] = None
+        # 2026-10-22: CSP labels on the bid, liquidity-aware edge, and the quote's own session.
+        try:
+            from lib import options_desk_accuracy as _acc
+            p["quote_session"] = _acc.session_at(_acc.quote_time_of(p))
+            _acc.apply_csp_metrics(p)
+            _acc.apply_edge_liquidity(p, _desk_cfg())
+        except Exception as _ae:  # noqa: BLE001
+            print(f"[options_engine] accuracy stamp skipped for {sym}: {type(_ae).__name__}: {_ae}", file=sys.stderr)
         rc = p.get("research_context") or {}
         if not p.get("catalyst") and rc.get("catalyst"):
             p["catalyst"] = rc["catalyst"]  # memo and strategy-fit read the top level
@@ -2979,10 +3010,14 @@ def _stamp_truth_flags(p: dict) -> None:
                       "label": "Thesis missing: " + ", ".join(m.replace("_", " ") for m in missing)})
     elif p.get("options_thesis"):
         flags.append({"key": "THESIS_COMPLETE", "label": "Thesis complete", "tone": "green"})
-    session = _market_session_now()
+    try:
+        from lib.options_desk_accuracy import quote_time_of as _qt
+        session = _quote_session({"quote_time": _qt(p)})
+    except Exception:  # noqa: BLE001
+        session = _market_session_now()
     if session and session != "REGULAR":
         flags.append({"key": "CLOSED_MARKET_CHAIN", "tone": "amber",
-                      "label": f"Chain read {session.lower().replace('_', ' ')}"})
+                      "label": f"Quote taken {session.lower().replace('_', ' ')}"})
     p["purpose"] = key
     p["approvable"] = approvable
     p["flags"] = flags
@@ -3009,10 +3044,24 @@ def _income_screen_summary() -> dict:
         slot["count"] += 1
         if d.get("symbol") and d["symbol"] not in slot["symbols"]:
             slot["symbols"].append(d["symbol"])
+    # 2026-10-22: deferral follows each QUOTE's session; the run-start session is kept separately.
+    _sessions: Dict[str, int] = {}
+    for d in LIQUIDITY_DEFERRED:
+        _sessions[str(d.get("session"))] = _sessions.get(str(d.get("session")), 0) + 1
     return {"reasons": by, "total": len(INCOME_SCREEN_DROPS), "drops": INCOME_SCREEN_DROPS[:200],
-            "liquidity_deferred": {"count": len(LIQUIDITY_DEFERRED), "session": _SESSION.get("now"),
+            "liquidity_deferred": {"count": len(LIQUIDITY_DEFERRED),
+                                   "session": (next(iter(_sessions)) if len(_sessions) == 1
+                                               else ("MIXED" if _sessions else None)),
+                                   "quote_sessions": _sessions,
+                                   "run_started_session": _SESSION.get("now"),
                                    "symbols": sorted({d["symbol"] for d in LIQUIDITY_DEFERRED}),
-                                   "note": "market closed: quotes are not live; liquidity is checked at the open"}}
+                                   "note": "quotes taken outside the regular session are not live; "
+                                           "liquidity is checked on a regular-session quote"}}
+
+
+def _avg_or_none(values) -> Optional[float]:
+    from lib.options_desk_accuracy import avg_or_none
+    return avg_or_none(values)
 
 
 def _market_session_now() -> Optional[str]:
@@ -3395,8 +3444,9 @@ def generate_proposals(force: bool = False, *, scan_inputs: Optional[dict] = Non
         "approval_queue": approval_sync,
         "archived_queue_rows": archive_sync,
         "strategy_overview": {
-            "total_edge_avg": round(sum(_f(p.get("edge_score")) for p in all_p) / max(sum(p.get("edge_score") is not None for p in all_p), 1), 1),
-            "avg_pop": round(sum(_f(p.get("pop_pct")) for p in all_p) / max(sum(p.get("pop_pct") is not None for p in all_p), 1), 1),
+            # 2026-10-22: None, not 0.0, when no card carries the number (avg_pop read 0.0).
+            "total_edge_avg": _avg_or_none(p.get("edge_score") for p in all_p),
+            "avg_pop": _avg_or_none(p.get("pop_pct") for p in all_p),
             "income_opportunities": sum(1 for p in all_p if p["strategy"] == "covered_call"),
             "put_plays": sum(1 for p in all_p if "put" in (p.get("strategy") or "")),
             "conviction_plays": sum(1 for p in all_p if p["strategy"] not in ("covered_call", "cash_secured_put", "protective_put")),
@@ -3524,10 +3574,17 @@ def monitor_positions(force: bool = False) -> dict:
 def get_overview() -> dict:
     props = read_proposals()
     mon = _load_json(MONITOR_CACHE) or {}
+    try:
+        # 2026-10-22: avg_pop / total_edge_avg are None (not 0.0) when no card carries them.
+        from lib.options_desk_accuracy import honest_overview
+        overview = honest_overview(props.get("strategy_overview") or {}, props.get("proposals") or [])
+    except Exception:  # noqa: BLE001
+        overview = props.get("strategy_overview") or {}
     return {
         "generated_at": _iso(),
+        "snapshot_generated_at": props.get("generated_at"),
         "desk_level": props.get("desk_level") or "enterprise",
-        "proposals": props.get("strategy_overview") or {},
+        "proposals": overview,
         "enterprise": props.get("enterprise") or {},
         "monitor": mon.get("summary") or {},
         "book_greeks": mon.get("book_greeks") or {},

@@ -1078,6 +1078,37 @@ def _conn():
     return _get_conn()
 
 
+#: Queue statuses the expiry sweep closes. 'blocked' added 2026-10-22: resolve_approval refuses
+#: any blocked row, so expiring one changes bookkeeping only and never an order path.
+QUEUE_EXPIRY_STATUSES = ("pending", "blocked")
+QUEUE_EXPIRY_NOTES = {
+    "pending": "auto-expired: passed 24h expires_at without operator review",
+    "blocked": "auto-expired: blocked row passed 24h expires_at; its blocks never cleared",
+}
+
+
+def expire_stale_queue_rows(cur, *, apply: bool = True) -> dict:
+    """Close approval-queue rows past ``expires_at`` that are still pending or blocked.
+
+    Bookkeeping only: the terminal state is the existing system-rejected one
+    (reviewer='system_expiry'); approved/rejected/executed rows are never touched.
+    ``apply=False`` is the dry run: one SELECT, no write."""
+    cur.execute(
+        """SELECT status, COUNT(*) FROM options_approval_queue
+           WHERE status IN ('pending','blocked') AND expires_at < NOW()
+           GROUP BY status""")
+    found = {str(r[0]): int(r[1]) for r in (cur.fetchall() or [])}
+    if not apply:
+        return {"dry_run": True, "would_expire": found, "total": sum(found.values())}
+    cur.execute(
+        """UPDATE options_approval_queue
+           SET status='rejected', reviewer='system_expiry', reviewed_at=NOW(), updated_at=NOW(),
+               review_note=CASE WHEN status='blocked' THEN %s ELSE %s END
+           WHERE status IN ('pending','blocked') AND expires_at < NOW()""",
+        (QUEUE_EXPIRY_NOTES["blocked"], QUEUE_EXPIRY_NOTES["pending"]))
+    return {"dry_run": False, "expired": found, "total": sum(found.values())}
+
+
 def sync_approval_queue(proposals: List[dict], *, apply: bool = True) -> dict:
     """Upsert desk proposals into options_approval_queue for operator review."""
     conn = _conn()
@@ -1093,11 +1124,8 @@ def sync_approval_queue(proposals: List[dict], *, apply: bool = True) -> dict:
     # 'queue not being cleaned' — 8 rows dating back to 06-26). The CHECK constraint has no
     # 'expired' status; system-rejected is the terminal state the desk already understands,
     # and the re-proposal path is unaffected (the desk re-queues fresh ids daily).
-    cur.execute(
-        """UPDATE options_approval_queue
-           SET status='rejected', reviewer='system_expiry', reviewed_at=NOW(), updated_at=NOW(),
-               review_note='auto-expired: passed 24h expires_at without operator review'
-           WHERE status='pending' AND expires_at < NOW()""")
+    # 2026-10-22: blocked rows expire too (they never did, so the queue kept every blocked idea).
+    expired = expire_stale_queue_rows(cur, apply=apply)
     for p in proposals:
         pid = p.get("id")
         if not pid:
@@ -1166,7 +1194,7 @@ def sync_approval_queue(proposals: List[dict], *, apply: bool = True) -> dict:
         upserted += 1
     if apply:
         conn.commit()
-    return {"ok": True, "upserted": upserted}
+    return {"ok": True, "upserted": upserted, "expired": expired}
 
 
 def fetch_approval_queue(*, status: str = "", limit: int = 50) -> List[dict]:

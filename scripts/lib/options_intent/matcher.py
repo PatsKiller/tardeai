@@ -17,6 +17,14 @@ except ModuleNotFoundError:
 CONTRACT = "options-intent-match-v1"
 
 
+def earnings_dates(provider_date, provider_source, operator_estimate) -> Dict[str, Any]:
+    try:
+        from lib.options_desk_accuracy import earnings_dates as _ed
+    except ModuleNotFoundError:
+        from scripts.lib.options_desk_accuracy import earnings_dates as _ed  # type: ignore
+    return _ed(provider_date, provider_source, operator_estimate)
+
+
 def shares_by_account(holdings: List[Dict[str, Any]], symbol: str) -> Dict[str, float]:
     out: Dict[str, float] = {}
     for h in holdings or []:
@@ -34,14 +42,19 @@ def match_intent(intent: Dict[str, Any], *, chain_fn: Callable[[str, str], Dict[
     sym = intent["symbol"]
     plays = intent.get("plays") or {}
     earn = (earnings_fn(sym) if earnings_fn else None) or {}
-    edate = earn.get("date") or intent.get("earnings_estimate")
-    esrc = earn.get("source") if earn.get("date") else ("operator estimate" if intent.get("earnings_estimate") else "unknown")
+    # 2026-10-22: keep BOTH dates. The provider date used to replace the operator's estimate
+    # silently (SPCX: provider 2027-02-09 vs operator ~2026-11-03). Avoidance uses the earlier.
+    ed = earnings_dates(earn.get("date"), earn.get("source"), intent.get("earnings_estimate"))
+    edate = ed["effective_date"]
+    # The source names whichever date is used: the provider's when it is the earlier (or equal) one.
+    esrc = (earn.get("source") if edate and edate == ed["provider_date"]
+            else ("operator estimate" if edate else "unknown"))
     avoid = bool(intent.get("avoid_earnings_cross")) and bool(edate)
     out: Dict[str, Any] = {
         "contract": CONTRACT, "directive_id": intent.get("directive_id"), "symbol": sym,
         "intent_updated_at": intent.get("updated_at"),
         "as_of": (now or datetime.now(timezone.utc)).isoformat(timespec="seconds"),
-        "thesis_target": intent.get("thesis_target"), "earnings": {"date": edate, "source": esrc},
+        "thesis_target": intent.get("thesis_target"), "earnings": {"date": edate, "source": esrc, **ed},
         "plays": {}, "errors": [],
     }
     held = shares_by_account(holdings, sym)
@@ -95,6 +108,9 @@ def link_desk_matches(match: Dict[str, Any], proposals: List[Dict[str, Any]], *,
     out = deepcopy(match)
     sym = str(out.get("symbol") or "").upper()
     linked, unmatched = 0, 0
+    if (out.get("plays") or {}).get("cash_secured_put"):
+        out["plays"]["cash_secured_put"] = [rk.csp_bid_fields(r, spot=out.get("spot"))
+                                            for r in out["plays"]["cash_secured_put"]]
     for play, rows in (out.get("plays") or {}).items():
         strategy = "long_call" if play == "leap_call" else play
         right = "put" if play == "cash_secured_put" else "call"
@@ -179,8 +195,8 @@ def material_changes(prev: Optional[Dict[str, Any]], cur: Dict[str, Any], *,
 def _line(r: Dict[str, Any]) -> str:
     exp, k = r.get("exp"), r.get("strike")
     if r.get("play") == "cash_secured_put":
-        return (f"  {exp} ${k:g}P · mid ${r['mid']:.2f} (${r['credit_per_contract']:,.0f} on ${r['collateral_per_contract']:,.0f}) · "
-                f"{r['annualized_pct']:.0f}% annualized premium yield (not expected return) · breakeven ${r['breakeven']:.2f} · IV {r.get('iv')}% · Δ {r.get('delta')} · OI {r.get('oi')}")
+        return (f"  {exp} ${k:g}P · bid ${float(r.get('bid') or 0):.2f} (${float(r.get('credit_per_contract') or 0):,.0f} on ${r['collateral_per_contract']:,.0f}) · "
+                f"{float(r.get('simple_annualized_yield_pct') or 0):.0f}% simple annualized premium yield (not repeatable, not expected return) · breakeven ${r['breakeven']:.2f} · IV {r.get('iv')}% · Δ {r.get('delta')} · OI {r.get('oi')}")
     if r.get("play") == "covered_call":
         return (f"  {exp} ${k:g}C · mid ${r['mid']:.2f} (${r['credit_per_contract']:,.0f}/contract) · keeps +{r['upside_kept_pct']:.0f}% · "
                 f"{r['annualized_pct']:.0f}% annualized premium yield (not expected return) · IV {r.get('iv')}% · Δ {r.get('delta')} · OI {r.get('oi')}")
@@ -203,7 +219,9 @@ def digest_text(m: Dict[str, Any], reasons: List[str], *, per_play: int = 2) -> 
         else:
             lines.append("  none fit now — " + str((m.get("empty_reasons") or {}).get(play) or "no match"))
     e = m.get("earnings") or {}
-    lines.append(f"Earnings: {e.get('date') or 'unknown'} ({e.get('source')})")
+    lines.append(f"Earnings: {e.get('date') or 'unknown'} ({e.get('source')})"
+                 + (f" · CONFLICT: provider {e.get('provider_date')} vs your estimate {e.get('operator_estimate')}"
+                    if e.get("conflict") else ""))
     return "\n".join(lines)
 
 
