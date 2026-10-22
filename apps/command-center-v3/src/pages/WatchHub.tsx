@@ -5,6 +5,7 @@ import WatchpoolHub from './WatchpoolHub'
 import SectorsHub from './SectorsHub'
 import PullbackMacdHub from './PullbackMacdHub'
 import WatchIntelligenceUnified from './WatchIntelligenceUnified'
+import WatchProspects from './WatchProspects'
 import OpportunitiesHub from './OpportunitiesHub'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, BB, TYPE, RAIL } from '../lib/watchTokens'
@@ -13,9 +14,15 @@ import { useApi } from '../hooks/useApi'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
-/** Secondary research lenses only — Watchlist/Intelligence/Screener are NOT tabs. */
-const TABS = ['Intelligence', 'Opportunities', 'Watchpool', 'Sectors', 'Pullback/MACD'] as const
+/** Prospects is the primary Watch view (Gate 3 redesign, operator directive 2026-10-22). The old Intelligence view
+ *  stays reachable as "Classic view" (?tab=intelligence) for one release; the rest are secondary research lenses. */
+const TABS = ['Prospects', 'Opportunities', 'Watchpool', 'Sectors', 'Pullback/MACD', 'Intelligence'] as const
+const TAB_LABEL: Record<typeof TABS[number], string> = {
+  Prospects: 'Prospects', Opportunities: 'Opportunities', Watchpool: 'Watchpool', Sectors: 'Sectors',
+  'Pullback/MACD': 'Pullback/MACD', Intelligence: 'Classic view',
+}
 const TAB_SLUG: Record<typeof TABS[number], string> = {
+  Prospects: 'prospects',
   Intelligence: 'intelligence',
   Opportunities: 'opportunities',
   Watchpool: 'watchpool',
@@ -29,25 +36,26 @@ export default function WatchHub({ onDrill }: Props) {
   const [searchParams, setSearchParams] = useSearchParams()
   const raw = searchParams.get('tab') ?? ''
 
-  // Legacy tab redirects → primary Intelligence (no Watchlist/Screener nav)
+  // No tab → Prospects (the redesign). Legacy watchlist / screener deep links carry a classic `view`, so they open
+  // the Classic (Intelligence) view they were written for.
   useEffect(() => {
-    if (raw === 'watchlist' || raw === 'screener-finds' || raw === '') {
+    if (raw === 'watchlist' || raw === 'screener-finds') {
       const next = new URLSearchParams(searchParams)
       next.set('tab', 'intelligence')
       // preserve view query if present
       if (!next.get('view') && raw === 'screener-finds') next.set('view', 'screener_finds')
-      if (!next.get('view') && (raw === 'watchlist' || raw === '')) next.set('view', 'top_ideas')
+      if (!next.get('view') && raw === 'watchlist') next.set('view', 'top_ideas')
       setSearchParams(next, { replace: true })
       return
     }
     if (!SLUG_TAB[raw]) {
       const next = new URLSearchParams(searchParams)
-      next.set('tab', 'intelligence')
+      next.set('tab', 'prospects')
       setSearchParams(next, { replace: true })
     }
   }, [raw, searchParams, setSearchParams])
 
-  const tab = SLUG_TAB[raw] ?? 'Intelligence'
+  const tab = SLUG_TAB[raw] ?? 'Prospects'
 
   const selectTab = (nextTab: typeof TABS[number]) => {
     const next = new URLSearchParams(searchParams)
@@ -60,11 +68,13 @@ export default function WatchHub({ onDrill }: Props) {
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={hubTitle()}>
-            Watch <span style={{ color: BB.text3 }}>›</span> {tab === 'Intelligence' ? 'Intelligence' : tab}
+            Watch <span style={{ color: BB.text3 }}>›</span> {TAB_LABEL[tab]}
           </div>
           <div style={hubSubtitle(terminalUi)}>
-            {tab === 'Intelligence'
-              ? 'Primary workspace · Screener filters integrated · legacy Watchlist hidden'
+            {tab === 'Prospects'
+              ? 'What to watch first · one prospect record per security · conflicts shown, not hidden'
+              : tab === 'Intelligence'
+              ? 'Classic Intelligence view · kept for one release · Prospects is the primary Watch view'
               : tab === 'Opportunities'
                 ? 'Ranked by conviction · risk/reward · Street upside — curated in CIO memory'
                 : 'Secondary research lens'}
@@ -78,8 +88,10 @@ export default function WatchHub({ onDrill }: Props) {
               aria-pressed={tab === candidate}
               onClick={() => selectTab(candidate)}
               style={hubTab(tab === candidate, terminalUi)}
+              data-testid={`watch-tab-${TAB_SLUG[candidate]}`}
+              title={candidate === 'Intelligence' ? 'The previous Watch Intelligence view, kept for one release.' : undefined}
             >
-              {candidate}
+              {TAB_LABEL[candidate]}
             </button>
           ))}
           <Link
@@ -92,6 +104,7 @@ export default function WatchHub({ onDrill }: Props) {
         </div>
       </div>
       <WatchRegimeStrip />
+      {tab === 'Prospects' && <WatchProspects />}
       {tab === 'Intelligence' && <WatchIntelligenceUnified />}
       {tab === 'Opportunities' && <OpportunitiesHub />}
       {tab === 'Watchpool' && <WatchpoolHub onDrill={onDrill} embedded />}

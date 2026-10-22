@@ -50,7 +50,7 @@ def test_the_ticker_links_to_command_center_finviz_and_yahoo(monkeypatch):
     # 2026-09-15 lean: GO title + primary button land on Trading (scalp facts), not Watch Intelligence.
     monkeypatch.setattr(tr, "cc_base", lambda: "https://cc.example")
     out = tr.go_alert(ARMP, tier="A+", passed=["price"]).render()
-    assert '<b><a href="https://cc.example/v3/trading?tab=Scalp&amp;symbol=ARMP">A+ ARMP — momentum scalp setup</a></b>' in out["text"]
+    assert '<b><a href="https://cc.example/v3/active-trader?tab=Scalp&amp;symbol=ARMP">A+ ARMP — momentum scalp setup</a></b>' in out["text"]
     urls = [b["url"] for b in out["reply_markup"]["inline_keyboard"][0]]
     assert "https://finviz.com/quote.ashx?t=ARMP" in urls and "https://finance.yahoo.com/quote/ARMP" in urls
     assert "ARMP in Command Center" not in out["text"] and "finviz.com/quote.ashx" not in out["text"]
@@ -67,7 +67,7 @@ def test_buttons_and_the_chart_preview(monkeypatch):
     out = tr.go_alert(ARMP, tier="A+", passed=["price"]).render()
     row = out["reply_markup"]["inline_keyboard"][0]
     assert [b["text"] for b in row] == ["📊 Trading", "📈 Finviz", "💹 Yahoo"]
-    assert row[0]["url"] == "https://cc.example/v3/trading?tab=Scalp&symbol=ARMP"
+    assert row[0]["url"] == "https://cc.example/v3/active-trader?tab=Scalp&symbol=ARMP"
     assert out["link_preview_options"]["url"].startswith("https://charts2-node.finviz.com/chart.ashx?")
     assert out["link_preview_options"]["prefer_large_media"] is True
 

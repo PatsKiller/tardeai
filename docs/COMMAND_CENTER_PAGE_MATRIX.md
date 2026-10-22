@@ -366,3 +366,8 @@ A read-only answer to "is the machinery up?". It replaces checking `docker ps`, 
 - **First local run (2026-10-21 13:20Z).** 21 OK, 2 WARN, 0 UNKNOWN, in 301 ms. The two WARN rows are both
   `tradeai-portfolio-backup-cadence.service`, which ended `exit-code` (status 1) at 02:52 EDT. The 02:30 dump
   `trade_ai_20261021_023000.sql.gz` (2.7 GB) did complete. The surface exposes this as a hidden failure; nothing here repairs it.
+
+## Trading tabs 8 → 4 (2026-10-22)
+
+Trading → Broker Recon, Entry Desk, Scalp, ATM Controls, Execution and Schwab Accounts are no longer tabs. The
+rows above that name them are historical; current homes and redirects are in `docs/architecture/TRADING_HUB.md`.

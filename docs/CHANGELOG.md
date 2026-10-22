@@ -4,6 +4,31 @@ Status:      ACTIVE
 as_of:       2026-10-20T14:40:00-04:00
 Measured at: origin/main 1d00a5181 / served CURRENT 1d00a5181 (latest entry); each entry carries its own measurement
 
+## 2026-10-22 — Trading tabs 8 → 4 and the protect-first Open Trades desk
+
+Operator-approved Gate 3 design (`OpenTrades.dc.html`) and tab consolidation. Shape and rules:
+`docs/architecture/TRADING_HUB.md`. Branch `feat/trading-tabs-open-trades-20261022`; not yet served.
+
+- **Tabs.** Trade AI · Options · Open Trades · Proposals. Entry Desk is the Path A section of Proposals;
+  Broker Recon is a drawer on Open Trades; Scalp moved to Active Trader → Scalp; ATM Controls moved to
+  System → Broker Access; Execution redirects to the Journal; Schwab Accounts is a section of the Broker Orders
+  desk, which opens only from its approval links. Every old link redirects (`LEGACY_TAB_TARGETS`).
+- **Open Trades desk.** Headline, freshness chips, protect-first strip, one table with PAPER badges, detail
+  panel with stop history and Arm stop (2FA) / Protective put ideas / Snooze, drawers. Arm stop renders the
+  existing `PositionDecisionCardV4` unchanged. The time-exit widget is no longer shown.
+- **Intelligence accuracy.** `open_trades_intelligence.py`: canonical mark with its own age, P/L = shares ×
+  mark − basis, day move hidden when stale, datetime (not lexical) price times, write-offs out of the headline,
+  no "large gain unprotected" for funds or small positions, `broker_accounts` labels, one quote source per row.
+  Gate `open_trades_accuracy_20261022`.
+- **Triage.** The near-stop chip sampled the first positions (filter on a flag the endpoint never emits); it
+  now samples positions near a stop. The unprotected chip skips funds, small positions and write-offs.
+- **Links.** Telegram entry alerts and the Alerts Center link to Active Trader → Scalp; the Reports
+  broker-manual line links to Proposals · Path A.
+- **Trade AI page (stacked PR).** Opportunities per `Main.dc.html`: six filter tiles, float-first table or cards,
+  click-to-filter metrics, column sort, AI analysis panel with the served Level 2 entry signals, Shared Momentum
+  and the previous scanner view as collapsed drawers. Gate 2 fields (catalyst type, grade, validation, action
+  score, checks) show "—" with a tooltip until the CIO prospect record exists.
+
 ## 2026-10-20 — Analyst feed order, plausibility writers, comms reservations, notifier settlement, five n8n lanes live
 
 Full record with status and evidence: `docs/ops/LIVE_CHANGES_20261020.md`. Releases promoted: `720fce06c` 08:58 ET,

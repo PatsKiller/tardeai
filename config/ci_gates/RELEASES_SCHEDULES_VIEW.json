@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "RELEASES_SCHEDULES_VIEW",
+  "files": [
+    "tests/test_releases_schedules_view_20261022.py"
+  ],
+  "anchor": "RELEASES_SCHEDULES_VIEW_20261022",
+  "comment": [
+    "ANCHOR: RELEASES_SCHEDULES_VIEW_20261022 — System → Releases & schedules (operator-approved 2026-10-22):",
+    "GET /api/v2/ops/releases-schedules (scripts/lib/releases_schedules_view.py). Serving release, main HEAD,",
+    "train windows + host-gate state, queue/census, shipped history, release errors, n8n ledger today and the",
+    "next-3-hours cron + n8n timeline. Hermetic: tmp paths, injected readers; UNAVAILABLE is null, never 0."
+  ]
+}

@@ -140,7 +140,8 @@ def test_payload_carries_the_verdict(tmp_path):
 
 def test_registry_lists_the_approved_reader_batch():
     row = _row()
-    (r,) = row["approved_readers"]
+    # Later batches append rows (batch #2, 2026-10-22); batch #1 stays exactly one reader.
+    (r,) = [x for x in row["approved_readers"] if x["batch"] == 1]
     assert r["batch"] == 1 and r["reader"] == f"{READER_FILE}::held_positions"
     assert r["files"] == [READER_FILE] and r["tables"] == ["positions_current"] and r["surfaces"] == ["watch"]
     a = r["approval"]

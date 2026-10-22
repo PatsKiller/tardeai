@@ -30618,6 +30618,42 @@ def _needs_action(query=None):
     return out
 
 
+_HOME_DO_NOW_CACHE: dict = {}
+
+
+def _home_do_now(query=None):
+    """GET /api/v2/home/do-now — the Home "Do now" queue (HomeDoNow@v1, data-broker projection home_do_now,
+    scripts/lib/data_broker/home_do_now.py; operator-approved Home redesign 2026-10-22). One deduplicated queue over
+    needs-action, the operator inbox, the risk snapshot, the desk-truth stop-coverage receipt, pending paper proposals
+    and open redeploys, each source with its own as_of / age / stale. Read-only; never a broker read (the risk
+    snapshot is read without the /api/v2/risk broker-stop overlay). Cached 60 s so Home polling never fans out more
+    than once a minute."""
+    import time as _t
+
+    hit = _HOME_DO_NOW_CACHE.get("v")
+    if hit and _t.monotonic() - hit[0] < 60:
+        return hit[1]
+    from lib import needs_action as _na
+    from lib.data_broker import home_do_now as _hdn
+
+    def _risk():
+        from lib.data_broker.risk_snapshot import get_risk_snapshot as _grs
+
+        return _grs(db_query=_db_query, max_age_s=120)
+
+    probes = {
+        "needs_action": _needs_action,
+        "inbox": _inbox,
+        "risk": _risk,
+        "desk_truth": _na.probe_desk_truth,
+        "proposals": lambda: _hdn.probe_pending_proposals(_db_query),
+        "deploy": lambda: _deploy_events({"status": "open", "days": "14"}),
+    }
+    out = _hdn.build(probes)
+    _HOME_DO_NOW_CACHE["v"] = (_t.monotonic(), out)
+    return out
+
+
 def _queue_pending():
     rows = (
         _db_query("""
@@ -48582,6 +48618,7 @@ ROUTES = {
     "/api/v2/system/data-plausibility": lambda: _system_data_plausibility(),
     "/api/v2/system/pipeline-failures": lambda: _system_pipeline_failures(_current_query),
     "/api/v2/needs-action": lambda: _needs_action(),
+    "/api/v2/home/do-now": lambda: _home_do_now(),
     "/api/v2/queue/pending": lambda: _queue_pending(),
     "/api/v2/queue/completed": lambda: _queue_completed(),
     "/api/v2/queue/failed": lambda: _queue_failed(),
@@ -48892,6 +48929,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "fallback": "host: python3 scripts/lib/release_train_stop.py stop --reason TEXT",
             }
 
+    # Ops -> Controls (AGENTS.md 19.0.0 §27.2-§27.3, PROPOSED; docs/ops/OPS_CONTROLS_API.md). Every POST refuses
+    # POLICY_NOT_ACTIVE until 19.0.0 is ACTIVE (read at request time); only the operator's tailnet identity is
+    # answered (the service token -- agents, n8n, cron -- is refused); host changes are applied only by
+    # scripts/ops/operator_controls_applier.py, never by this process.
+    if base_path.rstrip("/") == "/api/v2/ops/controls" or base_path.startswith("/api/v2/ops/controls/"):
+        try:
+            try:
+                from lib import ops_controls_api as _oca
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import ops_controls_api as _oca
+            _oca_out = _oca.handle(base_path, method, body, query)
+            if _oca_out is not None:
+                return _oca_out
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
     # TradingView webhook ingress (R5) — dormant; returns 503 unless explicitly enabled.
     if base_path == "/api/v2/ingress/tradingview":
         import os as _os_tv
@@ -48920,6 +48973,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _rtv_out = _rtv.handle(base_path, method, query or {}, _db_query)
             if _rtv_out is not None:
                 return _rtv_out
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
+    # Releases & Schedules (operator-approved 2026-10-22): one read-only projection for System → Releases &
+    # schedules — serving release, main HEAD, train windows, queue, shipped history, release errors, n8n today and
+    # the next 3 hours of cron + n8n. scripts/lib/releases_schedules_view.py (each source in a worker with its own
+    # deadline; missing data is null + UNAVAILABLE). Exact path only; GET only (405 otherwise). Contract:
+    # docs/ops/RELEASES_SCHEDULES_PAGE.md.
+    if base_path.rstrip("/") == "/api/v2/ops/releases-schedules":
+        try:
+            try:
+                from lib import releases_schedules_view as _rsv
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import releases_schedules_view as _rsv
+            _rsv_out = _rsv.handle(base_path, method, query or {}, _db_query)
+            if _rsv_out is not None:
+                return _rsv_out
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__}
 
@@ -54550,6 +54620,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, _dbw.get_catalog()
             if p == "watch-intelligence":
                 return 200, _dbw.get_list(query or {})
+            if p == "watch-prospects":
+                return 200, _dbw.get_prospects(query or {})
             if p == "watch-filters":
                 return 200, _dbw.get_filters()
             if p == "watch-lists":
