@@ -100,7 +100,13 @@ def test_header_row_and_status_constant_agree():
     # ratified 2026-10-21 (#1911 comment 6331278599, 22:33 ET) with Effective-Date 2026-10-21, already listed.
     later_proposed = (tuple(int(x) for x in _control("Policy-Version").split(".")) >= (16, 0, 0)
                       and _control("Status") == "PROPOSED" and _control("Effective-Date") == "PENDING")
-    assert later_proposed or (_control("Status") == "ACTIVE" and _control("Effective-Date") in (
+    # 18.0.0 (PROPOSED 2026-10-22) takes the ratification day as its Effective-Date, which is not known in advance:
+    # any ISO date on or after 2026-10-22 once 18.0.0 or later is ACTIVE.
+    later_active = (tuple(int(x) for x in _control("Policy-Version").split(".")) >= (18, 0, 0)
+                    and _control("Status") == "ACTIVE"
+                    and re.fullmatch(r"\d{4}-\d{2}-\d{2}", _control("Effective-Date") or "") is not None
+                    and _control("Effective-Date") >= "2026-10-22")
+    assert later_proposed or later_active or (_control("Status") == "ACTIVE" and _control("Effective-Date") in (
         "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-21"))
     status = _row().group(1)
     if _control("Policy-Version") == "7.0.0":

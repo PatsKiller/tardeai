@@ -85,8 +85,30 @@
       "tier": "DIGEST",
       "runbook_id": "pr-hygiene-audit",
       "producer": "pr_hygiene_audit"
+    },
+    {
+      "domain": "positions",
+      "kind": "holdings_drift_finding",
+      "tier": "DIGEST",
+      "runbook_id": "desk-truth-monitors",
+      "producer": "desk_truth_monitor"
+    },
+    {
+      "domain": "data",
+      "kind": "options_desk_stale",
+      "tier": "DIGEST",
+      "runbook_id": "desk-truth-monitors",
+      "producer": "desk_truth_monitor"
+    },
+    {
+      "domain": "stops",
+      "kind": "held_exit_coverage_gap",
+      "tier": "DIGEST",
+      "runbook_id": "desk-truth-monitors",
+      "producer": "desk_truth_monitor"
     }
   ],
+  "_comment_20261022_desk_truth": "2026-10-22 (operator: \"fix all of these n8n first for scheduling and monitoring\"): scripts/desk_truth_monitor.py (lanes holdings-drift-monitor, options-desk-staleness-monitor, held-exit-coverage-monitor) queues ONE intent per run only when that check's alertable finding set GAINED a finding (state data/runtime/<lane>_alert_state.json, on top of the store dedupe); all DIGEST -> P2, never a sender (the #1899 direct intent-store pattern, through check_registry_runtime_truth.queue_host_intent). Runbook docs/ops/DESK_TRUTH_MONITORS.md.",
   "_comment_20261018": "2026-10-18 (data-integrity fix PR, operator: the two data monitors 'within n8n with proper contracts'): lanes n8n-data-plausibility-audit and n8n-gap-resolution-audit run with --notify queue once their allowlist live_arg carries it, so they may not call a sender. data/data_plausibility_violation and data/gap_resolution_finding (RETIRED_RAN, VECTOR_FAILING) are DIGEST -> P2 incidents; data/gap_resolution_digest (OPEN_NO_ATTEMPT, REFUSED_NOWHERE) is DASHBOARD -> P3, never an interrupt. The systemd units keep the chokepoint send (--notify send, the default) until the packet's c3 step.",
   "_comment_20261021": "2026-10-21 (PR #1899, n8n shadow lane hermes-watchlist-scorer): the scorer's loud-failure alert (OUTAGE: nothing landed; DEGRADED: >20% of names errored) is queued as research/hermes_watchlist_scorer_failure (DIGEST -> P2) instead of a send_telegram call, because a dispatched lane may not send (tests/test_agents_policy_7_0_0_advisory_market_data.py). The scorer keeps its own 12h per-condition cooldown (data/runtime/hermes_watchlist_scorer_alert_state.json) on top of the store dedupe.",
   "_comment_20261021_pr_hygiene": "2026-10-21 (operator process plan: PR hygiene audited every iteration and alerted back): the n8n shadow lane pr-hygiene-audit (scripts/pr_hygiene_audit.py) queues agents/pr_hygiene_findings only when its alertable finding set GAINED a finding (state data/runtime/pr_hygiene_audit_alert_state.json, on top of the store dedupe) and agents/pr_hygiene_weekly_digest once per ISO week; both DIGEST -> P2, never a sender (the #1899 direct intent-store pattern)."

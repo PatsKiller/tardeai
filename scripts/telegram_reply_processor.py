@@ -67,8 +67,21 @@ def _save_offset(offset: int):
     OFFSET_FILE.write_text(str(offset))
 
 
+#: The live callback poller (tradeai-telegram-callback-poller.service) owns the single getUpdates
+#: consumer for this bot. This module is called by recovery-watch.timer at 07:30 and was a second
+#: consumer: the poller logged `getUpdates failed: HTTP Error 409: Conflict` at 07:30:01/07:30:07 on
+#: 2026-10-21 and 2026-10-22, and any update it did receive (gapprove taps included) was dispatched
+#: here, outside the inbound checkpoint and receipt. It polls only when this is explicitly set.
+POLL_FLAG = "TELEGRAM_REPLY_PROCESSOR_POLL"
+
+
 def poll_updates() -> list[dict]:
-    """Fetch new Telegram messages and callback queries since last offset."""
+    """Fetch new Telegram messages and callback queries since last offset.
+
+    Off unless ``TELEGRAM_REPLY_PROCESSOR_POLL=1``: the callback poller is the one getUpdates consumer.
+    """
+    if os.getenv(POLL_FLAG, "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return []
     token = _token()
     if not token:
         return []

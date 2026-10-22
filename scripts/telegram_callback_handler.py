@@ -140,6 +140,9 @@ def handle_callback_query(cb):
             from lib import guard_remote_approval as _gra  # type: ignore
 
         rid = parts[1] if len(parts) > 1 else ""
+        # The outcome is RETURNED so the poller can log it. Until 2026-10-22 the poller logged
+        # `callback: gapprove:<id>` whether the tap granted, was refused or hit an unknown request.
+        result = {"kind": "guard", "action": action, "request_id": rid}
         out = _gra.settle_by_request_id(
             rid, approve=(action == "gapprove"), chat_id=chat_id,
             allowed_chats=_allowed_chat_ids(),
@@ -153,32 +156,42 @@ def handle_callback_query(cb):
             answer_callback(cb_id, f"Not granted: an active {ag.get('tier')} grant exists "
                                    f"({str(ag.get('grant_id'))[:8]}). Details in chat.", show_alert=True)
             send_reply(chat_id, message_id, out["message"])
-            return
+            return {**result, "outcome": "REFUSED", "reason": "ACTIVE_GRANT_EXISTS"}
         if not out.get("ok"):
             answer_callback(cb_id, f"Not settled: {out.get('reason')}", show_alert=True)
-            return
+            return {**result, "outcome": "REFUSED", "reason": str(out.get("reason"))}
         r = out["request"]
+        result["scope"] = r["scope"]
         if action == "gdeny":
             answer_callback(cb_id, f"Denied {r['scope']}. Nothing granted.")
-            return
+            return {**result, "outcome": "DENIED"}
 
         guard_bin = _Path(__file__).resolve().parent.parent / "bin" / "guard"
-        if not guard_bin.is_file():
-            answer_callback(cb_id, "Approved, but bin/guard not found", show_alert=True)
-            return
         reason = f"{r['reason']} [remote_request_id={r['request_id']} chat={chat_id} via=button]"
-        proc = subprocess.run(
-            [str(guard_bin), "grant", r["scope"], "--for", str(int(r["seconds"])),
-             "--uses", str(int(r["uses"])), "--reason", reason, "--yes"],
-            capture_output=True, text=True, timeout=30)
-        if proc.returncode != 0:
-            detail = (proc.stderr or proc.stdout or "").strip()[:150]
-            answer_callback(cb_id, f"Approved, grant failed: {detail}", show_alert=True)
-            return
+        if not guard_bin.is_file():
+            detail = f"bin/guard not found at {guard_bin}"
+        else:
+            try:
+                proc = subprocess.run(
+                    [str(guard_bin), "grant", r["scope"], "--for", str(int(r["seconds"])),
+                     "--uses", str(int(r["uses"])), "--reason", reason, "--yes"],
+                    capture_output=True, text=True, timeout=30)
+                detail = "" if proc.returncode == 0 else \
+                    f"rc={proc.returncode} {(proc.stderr or proc.stdout or '').strip()}"
+            except Exception as e:  # noqa: BLE001 — a timeout must re-open, not spend, the request
+                detail = f"{type(e).__name__}: {e}"
+        if detail:
+            # Settled but not granted: re-open the request so the same button works once fixed.
+            reopened = _gra.reopen_after_grant_failure(r["request_id"], detail=detail)
+            again = "Tap Approve again once fixed." if reopened.get("ok") else \
+                f"Request closed ({reopened.get('reason')}); ask for a new one."
+            answer_callback(cb_id, f"Approved, but the grant failed: {detail[:90]}. {again}", show_alert=True)
+            return {**result, "outcome": "GRANT_FAILED",
+                    "reason": "REOPENED" if reopened.get("ok") else str(reopened.get("reason"))}
         answer_callback(cb_id,
                         f"Granted {r['scope']} for {int(r['seconds']) // 60} min "
                         f"({r['uses']} uses) — {now_short}")
-        return
+        return {**result, "outcome": "GRANTED"}
 
     # ── Approval packages (pkgapprove:<pkg>[:items] / pkgdeny:<pkg>[:items] / pkgshow:<pkg>) ──
     # ── Coordination acknowledgement (ack:<idempotency_key>) — roadmap Phase 1, 2026-10-07 ──

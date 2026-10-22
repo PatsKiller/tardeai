@@ -1135,6 +1135,35 @@
       "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
     },
     {
+      "id": "options_thesis_cio_review",
+      "name": "Options Desk CIO Thesis Review (Flash)",
+      "category": "Options",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "Governed CIO review of one options-desk thesis (scripts/lib/options_cio_review.py via scripts/options_thesis_lifecycle.py, the options-tick lifecycle step). Task options_thesis_review. DeepSeek Flash FAST, escalating to FAST_THINK on the deterministic markers of lib.agent_flash_governance.should_escalate_fast_think; PRO forbidden. Advisory only (MBI_BEHAVIOR = 0).",
+      "allowed_lanes": [
+        "deepseek-flash",
+        "fast",
+        "fast_think",
+        "grok",
+        "chatgpt"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST",
+        "FAST_THINK"
+      ],
+      "max_input_tokens": 8000,
+      "max_output_tokens": 3200,
+      "daily_soft_cap": 40,
+      "daily_cost_cap_usd": 0.4,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "reasoning_tier": "standard",
+      "notes": "2026-10-22 (operator: fix the options CIO review routing refusal): new caller row per AGENTS.md §9.2 (every caller names itself). The review previously called task cio_synthesis and so ran as watchlist_steph_flash_narrative, whose allowed_lanes exclude fast_think; thesis text containing 'reconcile' escalated the policy to FAST_THINK and llm_consumption.should_call refused POLICY_NOT_ALLOWED (options_theses.jsonl: 28 guids, 26 SPCX + 2 SCHG, 2026-10-05..22; 3 failures -> REVIEW_FAILURE_CAP). Caps from demand: lifecycle max_reviews_per_run 6 and max_review_failures 3 per idea; the desk holds 5 cards today (2026-10-22), so 40 calls/day covers every idea several times. Measured settled Flash cost on the Steph pool $0.0015/call (2026-09-19 note there) -> 40 calls ~ $0.06; the $0.40 cost cap is the binding guard and sits well inside the §12 $2.00/day global cap. default_mode automated: a scheduled desk lane, not an answer to the operator. max_output_tokens 3200 covers the lifecycle's review_max_tokens 2500. Bridge route: caller advisory_desk task options_thesis_cio_review (cio_governed_model_bridge CALLER_TASK_PROCESS_MAP, lib/governed_process_routes) with the n8n_oauth_first routing row, used only when TRADEAI_LLM_VIA_BRIDGE is set; the in-process path stays DeepSeek Flash. Operator after merge: python3 scripts/sync_cio_process_caps.py and a bridge restart (§9.2)."
+    },
+    {
       "id": "cio_operator_reply",
       "name": "CIO Operator Reply (Flash)",
       "category": "CIO",

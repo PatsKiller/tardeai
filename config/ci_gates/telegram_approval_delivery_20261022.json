@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "telegram_approval_delivery_20261022",
+  "files": [
+    "tests/test_telegram_approval_delivery_20261022.py"
+  ],
+  "comment": [
+    "Telegram approvals reach the ledger or say why not (2026-10-22; operator decision: sensitive Command Center",
+    "actions are confirmed by a Telegram Approve tap). A grant that fails after settle re-opens the request",
+    "(PENDING) instead of spending it; the tap outcome is returned and logged by the poller; `bin/guard request`",
+    "records the provider message id on the request row; telegram_reply_processor (recovery-watch 07:30) no",
+    "longer polls getUpdates unless TELEGRAM_REPLY_PROCESSOR_POLL=1 (the 07:30 HTTP 409s)."
+  ]
+}

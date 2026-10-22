@@ -409,8 +409,10 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # tests/test_hermes_scorer_hardening_20261021.py): 210 - 1 = 209.
     # Incident SPCX resume packet (2026-10-22, tests/test_incident_spcx_resume_packet_20261022.py) adopts the 13
     # generated rows whose crontab line is commented "# PAUSED 2026-10-1x schwab-app-deactivated" (state PAUSED,
-    # incident INC-20261014-SPCX), or the generator would re-derive them ACTIVE: 209 - 13 = 196.
-    assert len(gen) >= 196
+    # incident INC-20261014-SPCX), and desk truth 2026-10-22 adopts schwab-position-sync (state PAUSED: its cron
+    # line is commented; f09_staged record; tests/test_registry_runtime_truth_20261018.py), or the generator would
+    # re-derive them ACTIVE: 209 - 13 - 1 = 195.
+    assert len(gen) >= 195
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
     # build-symbol-profiles-at-0-19, social-ingest-stocktwits and overnight-batch-tax are adopted unchanged only to keep
@@ -428,6 +430,8 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
             or r["lane_id"] == "run-research-intelligence-overnight-archive"
             # incident SPCX resume packet (2026-10-22): PAUSED with the incident id until the operator resumes the line
             or (r.get("state") == "PAUSED" and r.get("incident") == "INC-20261014-SPCX")
+            # desk truth 2026-10-22: PAUSED (cron line commented) + f09_staged record (staged n8n lane, mode off)
+            or "f09_staged" in r
         )
         and "generated_by" not in r
         for r in adopted

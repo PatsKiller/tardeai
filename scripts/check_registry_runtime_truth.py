@@ -30,6 +30,10 @@ Contradiction codes (rules are pure functions over the two sides; tests/test_reg
   ACTIVE_N8N_WORKFLOW_INACTIVE   ACTIVE kind-n8n row whose workflow (dispatcher rows: tradeai-dispatcher) is inactive
   CUTOVER_CRON_LINE_ACTIVE       registry stage cutover, but an active crontab line still runs scheduler.match
   EFFECT_OWNERSHIP_DRIFT         a parent row's declared effect_ownership disagrees with effect_owners
+  ACTIVE_CRON_LINE_ABSENT        (2026-10-22) kind-cron row declared ACTIVE, but no active crontab line runs scheduler.match
+                                 (a commented/paused line: the registry says the job runs and it does not)
+  DECLARED_OFF_CRON_LINE_ACTIVE  (2026-10-22) kind-cron row declared NEVER_SCHEDULED/RETIRED/PAUSED, but an active
+                                 crontab line runs scheduler.match
 
     python3 scripts/check_registry_runtime_truth.py              # --dry-run (default): print, write nothing
     python3 scripts/check_registry_runtime_truth.py --json       # dry run, JSON only
@@ -376,8 +380,29 @@ def evaluate(
                               workflow_id=probe))
 
     if cron_lines is None:
-        not_measured.append("CUTOVER_CRON_LINE_ACTIVE")
+        not_measured += ["CUTOVER_CRON_LINE_ACTIVE", "ACTIVE_CRON_LINE_ABSENT", "DECLARED_OFF_CRON_LINE_ACTIVE"]
     else:
+        # 2026-10-22 (operator: "fix all of these n8n first for scheduling and monitoring"): a kind-cron row's
+        # declared state against the crontab. schwab-position-sync said ACTIVE for a week while its line was
+        # commented ("# PAUSED 2026-10-15 schwab-app-deactivated"), and holdings.json drifted with nothing saying
+        # the writer was off; lane_state_drift.classify_cron calls that case UNCLASSIFIED, never a conflict.
+        for lane, row in sorted(rows.items()):
+            s = _sched(row)
+            if s.get("kind") != "cron":
+                continue
+            match = str(s.get("match") or "").strip()
+            if not match:
+                continue
+            hits = [ln for ln in cron_lines if match in ln]
+            if row.get("state") == "ACTIVE" and not hits:
+                out.append(_c("ACTIVE_CRON_LINE_ABSENT", lane,
+                              f"registry state ACTIVE (kind cron) but no active crontab line runs {match!r}",
+                              registry_state="ACTIVE", match=match))
+            elif row.get("state") in OFF_STATES and hits:
+                out.append(_c("DECLARED_OFF_CRON_LINE_ACTIVE", lane,
+                              f"registry state {row.get('state')} but {len(hits)} active crontab line(s) run {match!r}",
+                              registry_state=row.get("state"), lines=len(hits),
+                              line_sha256=[hashlib.sha256(h.encode()).hexdigest()[:12] for h in hits]))
         for lane, row in sorted(rows.items()):
             s = _sched(row)
             if row.get("state") != "ACTIVE" or s.get("kind") != "n8n" or s.get("stage") != "cutover":

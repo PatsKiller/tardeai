@@ -49,10 +49,18 @@ CAPS: dict[str, tuple[float, int]] = {
     # 2026-10-22 (incident SPCX resume): Grok stop review, external OAuth lane. The count cap binds (30 calls/day,
     # 12 stops per run in the script); the dollar cap is a declared ceiling for the gate (OAuth settles $0.00).
     "grok_stop_review": (0.05, 30),
+    # 2026-10-22: the options-desk CIO thesis review on its own process (AGENTS.md §9.2; was Steph's pool).
+    "options_thesis_cio_review": (0.40, 40),
 }
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    # 2026-10-22: --dry-run prints the upserts and touches no database (AGENTS.md §0 rule 7: dry run first).
+    args = sys.argv[1:] if argv is None else argv
+    if "--dry-run" in args:
+        for process_id, (cost, soft) in CAPS.items():
+            print(f"  [dry-run] would upsert {process_id}: cost={cost} soft={soft}")
+        return 0
     import db_adapter
 
     for process_id, (cost, soft) in CAPS.items():

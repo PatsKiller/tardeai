@@ -277,7 +277,9 @@ def _default_llm(prompt: str, *, symbol: str, job_key: str, max_tokens: int = 25
         from scripts.llm_router import get_llm_response  # type: ignore
     # 2026-09-26 first live run: 1200 output tokens cut both reviews off before the
     # closing brace ("no JSON object in response"). Limit now comes from config.
-    return get_llm_response("cio_synthesis", prompt, high_impact=True, max_tokens=max_tokens,
+    # 2026-10-22: its own task -> process options_thesis_cio_review (lib/agent_flash_governance TASK_TO_PROCESS;
+    # AGENTS.md §9.2). As "cio_synthesis" it ran as Steph's process, which refused FAST_THINK (POLICY_NOT_ALLOWED).
+    return get_llm_response("options_thesis_review", prompt, high_impact=True, max_tokens=max_tokens,
                             metadata={"symbol": symbol, "agent": "alex", "task": "options_thesis_review"},
                             job_key=job_key)
 

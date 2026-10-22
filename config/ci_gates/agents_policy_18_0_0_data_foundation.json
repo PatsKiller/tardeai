@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agents_policy_18_0_0_data_foundation",
+  "files": [
+    "tests/test_agents_policy_18_0_0_data_foundation.py"
+  ],
+  "anchor": "AGENTS_POLICY_18_0_0_DATA_FOUNDATION",
+  "comment": [
+    "ANCHOR: AGENTS_POLICY_18_0_0_DATA_FOUNDATION — PROPOSED (MAJOR), operator-applied patch (agents never edit",
+    "AGENTS.md): §26 data foundation — the CIO prospect record (InstrumentRecord@v1 extended, one row per",
+    "security_guid, single writer InstrumentRecordStore) is the single per-security truth; one store and one writer",
+    "per fact in the §7A registry (the data dictionary binds per granted row); readers via projections; n8n gathers",
+    "inside the never-list; conflicts shown, never silently resolved; §0/§2/§2A/§7A/§17/§22/§23.14/§24/§25 pinned;",
+    "the NO SILOS clause changes only at ratification. RED until the operator applies the patch, by design."
+  ]
+}

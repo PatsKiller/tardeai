@@ -528,6 +528,61 @@ def settle_by_request_id(request_id: str, *, approve: bool, chat_id: Any,
     return {"ok": True, "request": rec}
 
 
+# ── settle, then grant: a failed grant must not spend the request (2026-10-22) ────────────────
+# Both reply paths settle the request APPROVED and only then run `bin/guard grant`. When that grant
+# failed (corrupt or locked ledger, a tier refused under the ledger lock, a timeout), the row stayed
+# APPROVED with no grant behind it: the code and the button were spent and the operator had to go to
+# the keyboard. A failed grant now re-opens the request, with the failure recorded on the row, so the
+# same tap or code works once the cause is fixed. Past its answer deadline it closes as GRANT_FAILED
+# rather than ever claiming APPROVED without a grant.
+
+def reopen_after_grant_failure(request_id: str, *, detail: str) -> dict[str, Any]:
+    """APPROVED -> PENDING after `bin/guard grant` failed; GRANT_FAILED when the deadline has passed."""
+    doc = _load()
+    if doc.get("corrupt"):
+        return {"ok": False, "reason": "REQUEST_STORE_CORRUPT"}
+    want = str(request_id).strip()
+    rec = next((r for r in doc["requests"] if want and request_id_of(r) == want), None)
+    if rec is None:
+        return {"ok": False, "reason": "UNKNOWN_REQUEST"}
+    if rec.get("status") != "APPROVED":
+        return {"ok": False, "reason": "REQUEST_NOT_APPROVED"}
+    failure = {"reason": "GRANT_FAILED", "at": _now(), "detail": str(detail or "")[:300],
+               "approved_at": rec.get("approved_at"), "approved_by_chat": rec.get("approved_by_chat")}
+    rec.setdefault("grant_failures", []).append(failure)
+    rec["last_refusal"] = failure
+    for k in ("approved_at", "approved_by_chat", "settled_via"):
+        rec.pop(k, None)
+    if _now() >= int(rec.get("expires_at", 0)):
+        rec["status"] = "GRANT_FAILED"
+        _save(doc)
+        return {"ok": False, "reason": "REQUEST_EXPIRED", "request": rec}
+    rec["status"] = "PENDING"
+    _save(doc)
+    return {"ok": True, "request": rec}
+
+
+def record_delivery(request_id: str, *, accepted: bool, message_ids: Any) -> None:
+    """Record on the request row whether its Telegram prompt got a provider message id.
+
+    `accepted` alone (the old `telegram=accepted for interrupt delivery`) cannot tell a delivered prompt
+    from one the transport never posted; a message id can. Best-effort: never raises.
+    """
+    try:
+        doc = _load()
+        if doc.get("corrupt"):
+            return
+        want = str(request_id).strip()
+        rec = next((r for r in doc["requests"] if want and request_id_of(r) == want), None)
+        if rec is None:
+            return
+        rec["delivery"] = {"accepted": bool(accepted), "at": _now(),
+                           "message_ids": [str(m) for m in (message_ids or []) if m is not None]}
+        _save(doc)
+    except Exception:
+        return
+
+
 def deny(code: str, *, chat_id: Any, allowed_chats: Any) -> dict[str, Any]:
     """Operator explicitly refuses. Burns the code."""
     allowed = {str(c).strip() for c in (allowed_chats or set()) if str(c).strip()}
