@@ -93,7 +93,7 @@ def _keyboard(request_id: str) -> dict:
     return {"inline_keyboard": keyboard}
 
 
-def _send(message: str, reply_markup: dict | None = None) -> tuple[bool, str]:
+def _send(message: str, reply_markup: dict | None = None) -> tuple[bool, str, list[str]]:
     """Send through the house chokepoint, INTERRUPT class. Never a digest.
 
     An approval prompt is not a notification. It is a question with a fifteen
@@ -113,23 +113,35 @@ def _send(message: str, reply_markup: dict | None = None) -> tuple[bool, str]:
 
     `bypass_router=True` is the same thing research_lane_health.py:251 does for
     its own alarms, and for the same reason: some messages are not summarisable.
+
+    Returns (accepted, detail, provider_message_ids). The ids (2026-10-22) are the
+    proof a prompt reached Telegram: request 6ffaff13 (2026-10-21) printed
+    `accepted for interrupt delivery`, never got a tap, and nothing on the host
+    could say whether the operator had ever been shown it.
     """
     try:
-        from telegram_alert import send_telegram
+        import telegram_alert as _ta
     except ImportError:
         try:
-            from scripts.telegram_alert import send_telegram  # type: ignore
+            from scripts import telegram_alert as _ta  # type: ignore
         except ImportError as exc:
-            return False, f"telegram_alert unavailable: {exc}"
+            return False, f"telegram_alert unavailable: {exc}", []
     try:
-        ok = send_telegram(message, bypass_router=True, reply_markup=reply_markup)
+        _ta.reset_last_message_ids()
+        ok = _ta.send_telegram(message, bypass_router=True, reply_markup=reply_markup)
     except Exception as exc:                              # noqa: BLE001
-        return False, f"{type(exc).__name__}: {exc}"
+        return False, f"{type(exc).__name__}: {exc}", []
     if not ok:
-        return False, "send_telegram returned falsey — not accepted"
-    # Truthy means ACCEPTED, which is a weaker claim than delivered. Say the
-    # weaker thing rather than the flattering one.
-    return True, "accepted for interrupt delivery (router bypassed)"
+        return False, "send_telegram returned falsey — not accepted", []
+    try:
+        ids = [str(i) for i in (_ta.last_message_ids() or []) if i is not None]
+    except Exception:                                     # noqa: BLE001
+        ids = []
+    # Truthy means ACCEPTED, which is a weaker claim than delivered. Only a
+    # provider message id upgrades it; without one, say the weaker thing.
+    if ids:
+        return True, f"accepted, delivered message_id={','.join(ids)}", ids
+    return True, "accepted for interrupt delivery (router bypassed), UNCONFIRMED: no message id", ids
 
 
 def main() -> int:
@@ -179,13 +191,18 @@ def main() -> int:
         f"`/deny {req['code']}`\n\n"
         f"_Code expires in {ttl // 60} min and works once._"
     )
-    ok, detail = _send(body, reply_markup=_keyboard(req["request_id"]))
+    ok, detail, message_ids = _send(body, reply_markup=_keyboard(req["request_id"]))
+    gra.record_delivery(req["request_id"], accepted=ok, message_ids=message_ids)
 
     # The code is NOT printed. An agent running this must not be able to read it
     # out of its own stdout — that is the property that keeps the approval the
     # operator's to give.
     print(f"request_id={req['request_id']} scope={req['scope']} "
           f"window={seconds}s uses={args.uses} telegram={detail if ok else 'FAILED'}")
+    if ok and not message_ids:
+        print("WARNING: the prompt was accepted but no Telegram message id came back, so delivery is "
+              "unconfirmed. If the operator does not see it, ask again or tell them out of band.",
+              file=sys.stderr)
     if not ok:
         print(f"TELEGRAM SEND FAILED: {detail}", file=sys.stderr)
         print("The request is minted but the operator was not notified. "

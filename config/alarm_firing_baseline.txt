@@ -143,7 +143,6 @@ scripts/system_health_agent.py 2
 scripts/system_rollup_snapshot.py 1
 scripts/technicals_gap_backfill.py 1
 scripts/telegram_cio_summary.py 1
-scripts/telegram_reply_processor.py 1
 scripts/trade_ai_news_monitor.py 1
 scripts/trade_ai_orchestrator.py 1
 scripts/verify_fib_proposals.py 1
