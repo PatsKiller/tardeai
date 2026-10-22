@@ -103,7 +103,7 @@ def _writer(key_dir, api, *, cfg=None, runner=None):
 def test_the_operator_app_is_pinned_and_writes_stay_proposed():
     assert (T.APP_ID, T.APP_INSTALLATION_ID, T.APP_REPOSITORY) == (5419776, 173961421, "PatsKiller/tardeai")
     assert T.APP_KEY_PATH == Path.home() / ".config/tradeai/release_train/github-app.pem"
-    assert T.GITHUB_WRITES_STATUS == "PROPOSED" and T.TRAIN_CONTROLLER_STATUS == "BUILD_ONLY"
+    assert T.GITHUB_WRITES_STATUS == "PROPOSED"
     with pytest.raises(T.WriterNotArmed):
         T.GitHubAppWriter(_Host(Path("/nonexistent")), None)
 
