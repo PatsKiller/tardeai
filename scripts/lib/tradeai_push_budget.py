@@ -33,6 +33,9 @@ STATE_NAME = "tradeai-push-budget.json"          # v1 name: read-only legacy flo
 STATE_NAME_V2 = "tradeai-push-budget.v2.json"
 LOCK_NAME_V2 = "tradeai-push-budget.v2.lock"
 SCHEMA_V2 = "TradeAIPushBudget@v2"
+# The v2 counter file is private state of the pre-push hook: this module both writes and reads it, and no other
+# component consumes it (2026-10-21, guard grant mechanics).
+NO_CONSUMER_REASON = "private state of the pre-push budget hook; written and read only by this module"
 ZERO_SHA = "0" * 40
 
 # Time-boxed program exceptions to the default budget (AI_WORK_POLICY.md §3/§17).
