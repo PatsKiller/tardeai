@@ -180,7 +180,7 @@ def test_banner_explains_class_number_scope_and_decisions():
                  "00:00, 06:00, 08:00 and 18:00 ET", "merge freeze", "STOP", "§17", "only automated remote sync",
                  "D1", "D2", "D3", "TOTP declined", "15.0.0", "16.0.0", f"{TOKEN} <pr_number> <head_sha>",
                  "Byte-identical:", "arms nothing", "operator-forced off-window canary runs",
-                 "TTY plus phrase, canary phase only"):
+                 "TTY plus phrase, canary phase only", "no multi-day waits"):
         assert frag in banner, frag
 
 
@@ -202,7 +202,8 @@ def test_banner_explains_class_number_scope_and_decisions():
               "operator-forced off-window canary runs, canary phase only", "stdin is a TTY",
               "re-types the exact phrase", "never accepted from n8n, the Command Center, Telegram, an agent",
               "an agent never forces one", "Only the window check is waived", "Every other gate still holds",
-              "never starts during regular market hours", "not one of the three market days",
+              "never starts during regular market hours", "counts toward the canary proofs",
+              "with no minimum wait between windows",
               "Outside the canary phase an off-window request stays shadow")),
     ("25.4", ("separate from the trading kill switch", "requested → acknowledged → settling → stopped",
               "increments the", "Fail closed", "ABSENT, SET, UNREADABLE", "may only request STOP or pause",
@@ -211,7 +212,11 @@ def test_banner_explains_class_number_scope_and_decisions():
     ("25.5", ("GitHub App", "PatsKiller/tardeai", "1-hour installation token", "mode 600", "cannot be limited to a "
               "branch or a path", "ruleset", "docs/ops/RELEASE_TRAIN_GITHUB_APP.md", "Workflows write withheld")),
     ("25.6", ("only automated remote sync", "AI_WORK_POLICY.md` §28")),
-    ("25.7", ("three shadow days", "18:00 canary", "crash recovery")),
+    # operator (owner) 2026-10-21: no multi-day waits; each phase ends when its proofs pass
+    ("25.7", ("each ends when its proofs pass, with no minimum number of days or windows", "18:00 canary",
+              "crash recovery", "counts toward these proofs", "may come in consecutive windows",
+              "No document, packet or runbook may add a multi-day wait",
+              "I just only asked you to remove the three-day wait requirement")),
     ("25.8", ("libraries only", "stub", "log mode", "BUILD_ONLY", "`REFUSED_OFF_WINDOW`",
               "the exception authorizes nothing in code")),
     ("25.9", ("three clauses", "§17", "§24.5", "§24.8")),
@@ -220,6 +225,14 @@ def test_section_25_states_every_rule(sub, frags):
     text = _flat(_sub(_s25(), sub))
     for frag in frags:
         assert _flat(frag) in text, f"§{sub}: {frag!r}"
+
+
+def test_no_minimum_day_count_in_section_25():
+    # operator (owner) 2026-10-21: the three-day waits are removed; only the verbatim quote of that ruling may say it
+    text = _flat(_s25()).replace("remove the three-day wait requirement", "").replace("the three-day waits are removed", "")
+    for frag in ("three shadow days", "three market days", "market days of 18:00 canary", "at least three",
+                 "three-day"):
+        assert frag not in text, frag
 
 
 def test_every_section_25_bullet_cites_its_cause():
