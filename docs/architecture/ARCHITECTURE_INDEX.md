@@ -24,6 +24,7 @@ registry that does, so there is exactly one place to change each fact.
 | OpenClaw agents (Maria, Alex, Iris, …) | `~/.openclaw/openclaw.json` (host, not in repo) | — |
 | Coding clients allowed to mutate | `config/agent_clients.yaml` | `tests/test_agent_clients_registry.py` (agent-governance CI) |
 | Data domains, providers, writers, freshness | `config/data_source_authority.json` (26 domains, 22 providers) | `scripts/check_data_source_authority.py` |
+| Data dictionary (one source per fact) and the CIO prospect foundation | `config/data_source_authority.json` `proposed_domains[]` + `data_dictionary` (2026-10-22, PROPOSED rows); rendered `docs/architecture/DATA_DICTIONARY.md`; design `docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md` | `scripts/check_data_source_authority.py` (`DICTIONARY_*`, `NON_AUTHORITATIVE_READ`), `scripts/render_data_dictionary.py --check` |
 | Stores that feed operator surfaces | `config/operator_surface_stores.json` | `scripts/report_store_cadence.py`, `tests/test_store_cadence.py` |
 | LLM models / processes / lane floors | `config/llm_model_registry.json`, `config/llm_process_registry.json`, `config/llm_lane_floors.json` | — |
 | Secret logical names (never values) | `config/secret_registry.yaml` | `scripts/check_no_secrets.py` |

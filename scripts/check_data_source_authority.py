@@ -35,6 +35,16 @@ CHECKS
                           the scripts/lib modules they import directly. Every bypass is
                           listed in the report (lane_bypasses) whether or not it fails.
 
+DATA DICTIONARY (2026-10-22, docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md; scripts/lib/data_dictionary.py)
+    DICTIONARY_INVALID        a proposed_domains[] row or a data_dictionary entry is malformed (always fails)
+    DICTIONARY_SECOND_WRITER  more files write a dictionary row's store than its ceiling
+    NON_AUTHORITATIVE_READ    a page/API surface file (data_dictionary.surface_files) reads a derived or
+                              retiring copy of a dictionary row more than its ceiling
+    The last two FAIL for an approved row (domains[].dictionary, ceilings recorded at the operator's
+    grant, may only fall) and WARN for a proposed row (proposed_domains[], status "proposed"): an
+    ungranted row never trips a ceiling nobody approved. Warnings print as [WARN ...] and go to the
+    report's "warnings"; they never change the exit code.
+
 Baselines live in config/data_source_authority_baseline.json and may only fall.
 Regenerate with --write-baseline after a deliberate reduction; a rise fails.
 The lane ceilings (lane_direct_reads, lane_raw_cache_reads) never rise even under
@@ -451,6 +461,17 @@ def check_routing_policy(auth: dict) -> list[dict]:
     return findings
 
 
+def check_dictionary(auth: dict, root: Path | None = None) -> tuple[list[dict], list[dict], dict]:
+    """The data-dictionary checks (scripts/lib/data_dictionary.py): findings for approved rows, warnings for
+    proposed ones. A dictionary that cannot be evaluated is a finding, never a silent pass."""
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        from lib import data_dictionary as DD  # type: ignore
+        return DD.evaluate(auth, root or PROJECT_ROOT)
+    except Exception as exc:  # noqa: BLE001
+        return [{"check": "DICTIONARY_INVALID", "where": "evaluate", "why": f"{type(exc).__name__}: {exc}"}], [], {}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
@@ -509,6 +530,8 @@ def main() -> int:
                                       baseline.get("lane_direct_reads"), lanes["bypasses"])
     findings += compare_lane_baseline("LANE_DIRECT_READ_ROSE", lanes["raw_cache_reads"],
                                       baseline.get("lane_raw_cache_reads"), lanes["bypasses"])
+    dict_findings, dict_warnings, dict_measured = check_dictionary(auth)
+    findings += dict_findings
 
     unapproved = [f for f in findings if f["check"] == "UNAPPROVED_SOURCE"]
     approved = {"providers": len(auth["providers"]) - sum(1 for f in unapproved if f["kind"] == "provider"),
@@ -520,6 +543,10 @@ def main() -> int:
               "writers": writers, "direct_reads": reads, "undeclared_hosts_seen": [u["host"] for u in undeclared],
               "lane_direct_reads": lanes["direct_reads"], "lane_raw_cache_reads": lanes["raw_cache_reads"],
               "lane_scan": lanes["scanned"], "lane_bypasses": lanes["bypasses"],
+              "dictionary": {"approved_rows": sum(1 for d in auth["domains"] if isinstance(d.get("dictionary"), dict)),
+                             "proposed_rows": len(auth.get("proposed_domains") or []),
+                             "measured": dict_measured},
+              "warnings": dict_warnings,
               "findings": findings}
     if args.json:
         print(json.dumps(report, indent=2))
@@ -541,10 +568,16 @@ def main() -> int:
             for b in lanes["bypasses"]:
                 print(f"    [LANE_BYPASS] {b['file']} -> {b['store']} (x{b['occurrences']}; use {b['read_path']}) "
                       f"lanes={','.join(b['lanes'][:4])}{'…' if len(b['lanes']) > 4 else ''}")
+        dd = report["dictionary"]
+        print(f"  data dictionary     : approved rows={dd['approved_rows']}  proposed rows={dd['proposed_rows']} "
+              f"(proposed rows warn only)")
+        for w in dict_warnings:
+            brief = {k: v for k, v in w.items() if k not in ("check", "action", "files", "state")}
+            print(f"  [WARN {w['check']}] {json.dumps(brief)}")
         for f in findings:
             print(f"  [{f['check']}] {json.dumps({k: v for k, v in f.items() if k != 'check'})}")
         print("-" * 74)
-        print(f"  findings={len(findings)}")
+        print(f"  findings={len(findings)}  warnings={len(dict_warnings)}")
     return 1 if findings else 0
 
 

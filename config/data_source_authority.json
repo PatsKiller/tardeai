@@ -2112,7 +2112,14 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "Dry run 2026-09-27 on production persistent-state: 129,000 entities / 5,803 envelopes / 237,866 edges (118,027 are contradiction candidates). Postgres tables land with migrations/2026_09_27_intelligence_v1.sql."
+      "_writer_note": "Dry run 2026-09-27 on production persistent-state: 129,000 entities / 5,803 envelopes / 237,866 edges (118,027 are contradiction candidates). Postgres tables land with migrations/2026_09_27_intelligence_v1.sql.",
+      "store_presence": {
+        "status": "SECONDARY_MISSING",
+        "what": "runtime/gir_projection_dryrun.json absent (table intelligence.gir_entity present)",
+        "why": "dry-run artifact only; the table is the store",
+        "measured_at": "2026-10-22T11:35-04:00",
+        "method": "read-only registry_check (file stat / to_regclass) 2026-10-22"
+      }
     },
     {
       "domain": "supervisor_breaches",
@@ -2581,7 +2588,14 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "Wave 4 O-W4-5: L4 pages through telegram_alert (ops-exempt 'STOP HEALTH' signature, one per breach via alert_transition) and L5 writes a proposal ONLY with --ladder; the installed timer runs without it (shadow). Also fixes the L3 call (enqueue_escalations(policy, findings) with severity) that had silently never enqueued."
+      "_writer_note": "Wave 4 O-W4-5: L4 pages through telegram_alert (ops-exempt 'STOP HEALTH' signature, one per breach via alert_transition) and L5 writes a proposal ONLY with --ladder; the installed timer runs without it (shadow). Also fixes the L3 call (enqueue_escalations(policy, findings) with severity) that had silently never enqueued.",
+      "store_presence": {
+        "status": "MISSING",
+        "what": "runtime/supervisor_ladder_receipts.jsonl absent",
+        "why": "measured absent; verify the detector writes it",
+        "measured_at": "2026-10-22T11:35-04:00",
+        "method": "read-only registry_check (file stat / to_regclass) 2026-10-22"
+      }
     },
     {
       "domain": "maturity_scores",
@@ -2829,7 +2843,14 @@
           "expected_seconds": 0
         }
       ],
-      "_writer_note": "Reads auto_proposal_decisions SKIPPED_* and cio_decisions options/entry reviews, prices from ticker_prices snapshots (SPY session calendar). Missing prices are PENDING; identical forward snapshots STALE_IDENTICAL. Read by api_v3_cio.get_cio_counterfactuals."
+      "_writer_note": "Reads auto_proposal_decisions SKIPPED_* and cio_decisions options/entry reviews, prices from ticker_prices snapshots (SPY session calendar). Missing prices are PENDING; identical forward snapshots STALE_IDENTICAL. Read by api_v3_cio.get_cio_counterfactuals.",
+      "store_presence": {
+        "status": "MISSING",
+        "what": "cio/counterfactual_ledger.jsonl absent",
+        "why": "measured absent; daily builder not producing — verify before relying on it",
+        "measured_at": "2026-10-22T11:35-04:00",
+        "method": "read-only registry_check (file stat / to_regclass) 2026-10-22"
+      }
     },
     {
       "domain": "active_trader_microstructure",
@@ -3085,7 +3106,14 @@
       ],
       "_writer_note": "Upsert one row per symbol, never regressing fetched_at; rails on the receipt (naive time, empty ok payload rejected). tests/test_broker_domains_q1_20261010.py enforces the single writer.",
       "provider_health_window": false,
-      "_provider_health_window_why": "Store freshness, not provider liveness: lib/data_source_health_view.window_minutes_for skips this row so registering the domain does not change the provider's health window (measured: without it finviz would drop 18h->15min, yfinance 168h->48h)."
+      "_provider_health_window_why": "Store freshness, not provider liveness: lib/data_source_health_view.window_minutes_for skips this row so registering the domain does not change the provider's health window (measured: without it finviz would drop 18h->15min, yfinance 168h->48h).",
+      "store_presence": {
+        "status": "MISSING",
+        "what": "table yfinance_info_snapshot does not exist",
+        "why": "migration migrations/2026_10_10_yfinance_info_snapshot.sql never applied; no producer until the owner lane is decided (§D.12)",
+        "measured_at": "2026-10-22T11:35-04:00",
+        "method": "read-only registry_check (file stat / to_regclass) 2026-10-22"
+      }
     },
     {
       "domain": "earnings_calendar",
@@ -3128,7 +3156,14 @@
           "expected_seconds": 7200
         }
       ],
-      "_why": "symbol_profiles has next_earnings_date for 1,260 of 3,337 profiles (1,037 in the future) and no report timing at all (read-only query 2026-10-10). One call covers the market with timing and estimate. Not a backup of earnings_date (yfinance): it answers a wider question (time of day, estimate); see B1 for the same-question backup."
+      "_why": "symbol_profiles has next_earnings_date for 1,260 of 3,337 profiles (1,037 in the future) and no report timing at all (read-only query 2026-10-10). One call covers the market with timing and estimate. Not a backup of earnings_date (yfinance): it answers a wider question (time of day, estimate); see B1 for the same-question backup.",
+      "store_presence": {
+        "status": "MISSING",
+        "what": "runtime/alpha_vantage/earnings_calendar_latest.json absent",
+        "why": "unscheduled; Alpha Vantage returns a premium-endpoint error",
+        "measured_at": "2026-10-22T11:35-04:00",
+        "method": "read-only registry_check (file stat / to_regclass) 2026-10-22"
+      }
     },
     {
       "domain": "news_sentiment",
@@ -3176,7 +3211,1898 @@
           "expected_seconds": 7200
         }
       ],
-      "_why": "0 of 7,492 news_articles rows from the last 3 days carry a sentiment_score (read-only query 2026-10-10). No other provider in the registry answers per-ticker sentiment, so there is no same-question backup; when the budget is spent the answer is say_so."
+      "_why": "0 of 7,492 news_articles rows from the last 3 days carry a sentiment_score (read-only query 2026-10-10). No other provider in the registry answers per-ticker sentiment, so there is no same-question backup; when the budget is spent the answer is say_so.",
+      "store_presence": {
+        "status": "MISSING",
+        "what": "runtime/alpha_vantage/news_sentiment_latest.json absent",
+        "why": "unscheduled (needs a cron/n8n grant)",
+        "measured_at": "2026-10-22T11:35-04:00",
+        "method": "read-only registry_check (file stat / to_regclass) 2026-10-22"
+      }
     }
-  ]
+  ],
+  "proposed_domains": [
+    {
+      "domain": "cio_prospect",
+      "status": "proposed",
+      "entity": "CIO prospect — the per-security truth",
+      "title": "CIO prospect record",
+      "class": "derived",
+      "supersedes": [
+        "opportunity_assessment"
+      ],
+      "facts": [
+        "stage",
+        "conviction",
+        "stance",
+        "catalyst grade",
+        "next trigger",
+        "what's missing",
+        "next action",
+        "conflicts",
+        "unified edge"
+      ],
+      "store": {
+        "table": "cio_prospect"
+      },
+      "store_detail": "One row per security_guid (current state) plus cio_prospect_events (append-only change log, same writer). Postgres, so it is Supabase-portable (AGENTS.md §24.9). Not created: the migration is its own operator-approved PR after this row is granted.",
+      "writer": "scripts/lib/cio_instrument_record.py",
+      "_writer_note": "InstrumentRecordStore is the only write path (extend InstrumentRecord@v1, AGENTS.md §13.5; never a parallel type). The curator, entry-state runner, thesis store, wake dispatch and belief writer CALL it; none writes the table. apply_cognition / apply_belief rails unchanged: BEHAVIOR_FIELDS are refused, MBI_BEHAVIOR = 0.",
+      "cadence": "*/30 09:00-16:00 Mon-Fri curator pass + */10 entry-state pass + event-driven wake writes",
+      "stale_after_hours": 0.5,
+      "stale_after_hours_closed": 26,
+      "freshness_sla": "stage/conviction 30 min in market hours; thesis 24 h; every field carries evidence_at and expires_at and renders its age",
+      "refresh_lane": {
+        "runner": "n8n_shadow_then_live",
+        "lane": "cio-opportunity-curator, cio-entry-state (dispatcher rows; shadow -> canary -> cutover under AGENTS.md §23.21)",
+        "never_list": false,
+        "note": "n8n schedules gathering and refresh; the host runs the lane; only the CIO writer writes. Model calls only through registered capabilities (AGENTS.md §23.4)."
+      },
+      "projection": "cio_prospect",
+      "projection_status": "to_build (scripts/lib/data_broker/cio_prospect.py)",
+      "required_fields": [
+        "security_guid",
+        "issuer_guid",
+        "symbol",
+        "stage",
+        "conviction",
+        "stance",
+        "evidence_at",
+        "expires_at",
+        "as_of"
+      ],
+      "readers": [
+        "Home",
+        "Watch",
+        "Trade AI",
+        "Options",
+        "Open Trades",
+        "Telegram",
+        "Proposals",
+        "Re-entry"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "file": "data/cio/cio_opportunity_projection.json"
+          },
+          "role": "derived",
+          "how": "opportunity view exported from cio_prospect by the CIO writer; registry domain opportunity_assessment is superseded, not removed, until its readers move"
+        },
+        {
+          "store": {
+            "file": "cio/cio_instrument_records.jsonl"
+          },
+          "role": "derived",
+          "how": "today InstrumentRecordStore's file; phase 1 dual-writes it beside the table, phase 4 makes it an export; retired later by archive + tripwire, never deleted"
+        },
+        {
+          "store": {
+            "file": "cio/ticker_research_state.jsonl"
+          },
+          "role": "retiring",
+          "how": "per-symbol decision/evidence watermark folds into cio_prospect; archive + tripwire after the compare phase"
+        },
+        {
+          "store": {
+            "file": "cio/security_research_spine.jsonl"
+          },
+          "role": "history",
+          "how": "SecurityResearchSpine@v1 contribution ledger (NO SILOS); its summary becomes the prospect's research section; view_for_silo reads the prospect"
+        },
+        {
+          "store": {
+            "table": "cio_entry_states"
+          },
+          "role": "retiring",
+          "how": "entry state becomes cio_prospect.stage written through InstrumentRecordStore; readers (options_engine, notify_material_change) move to the projection; then archive + tripwire"
+        },
+        {
+          "store": {
+            "table": "decision_packets"
+          },
+          "role": "history",
+          "how": "per-run Watch decision log; the current per-symbol decision is read from cio_prospect"
+        },
+        {
+          "store": {
+            "file": "cio/cio_investment_brief.json"
+          },
+          "role": "derived",
+          "how": "operator product rendered from cio_prospect (CIOOperatorProduct@v1)",
+          "match": [
+            "cio_investment_brief.json"
+          ]
+        },
+        {
+          "store": {
+            "table": "watchlist_research_cards"
+          },
+          "role": "retiring",
+          "how": "private per-desk research (NO SILOS defect); contribute into the spine; archive + tripwire"
+        },
+        {
+          "store": {
+            "table": "advisor_recommendations"
+          },
+          "role": "retiring",
+          "how": "dead since 2026-07-20; archive + tripwire"
+        }
+      ],
+      "primary_provider": "derived",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
+        "decision": "Grant cio_prospect as the single per-security store: a Postgres table keyed by security_guid, written only by InstrumentRecordStore (scripts/lib/cio_instrument_record.py); opportunity_assessment becomes its export (superseded, not removed)."
+      },
+      "measured": {
+        "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
+        "writer_files": 0,
+        "surface_reads": {
+          "file:data/cio/cio_opportunity_projection.json": 1,
+          "file:cio/cio_instrument_records.jsonl": 0,
+          "file:cio/ticker_research_state.jsonl": 0,
+          "table:cio_entry_states": 0,
+          "file:cio/cio_investment_brief.json": 1,
+          "table:watchlist_research_cards": 1,
+          "table:advisor_recommendations": 1
+        }
+      }
+    },
+    {
+      "domain": "security_identity",
+      "status": "proposed",
+      "entity": "Security identity",
+      "title": "Identity registry (GUIDs)",
+      "class": "native",
+      "supersedes": [],
+      "facts": [
+        "issuer_guid",
+        "security_guid",
+        "listing_guid",
+        "ticker alias",
+        "CUSIP"
+      ],
+      "store": {
+        "file": "runtime/identity_registry.json"
+      },
+      "store_detail": "IdentityRegistry@v1 (10k+ entities). Target: a Postgres identity table set (issuer/security/listing/ticker_alias) byte-identical on GUIDs, dry-run diffed — its own operator decision; never re-mint.",
+      "writer": "scripts/lib/identity_registry.py",
+      "_writer_note": "GUIDs are computed only by scripts/lib/security_identity.py (ROOT GUID AUTHORITY); minting only via mint_identity_registry.",
+      "cadence": "premarket pipeline + catalyst-graph 06:10 (n8n)",
+      "stale_after_hours": 24,
+      "freshness_sla": "24 h; a symbol without a CONFIRMED GUID renders 'identity unresolved', never a placeholder",
+      "refresh_lane": {
+        "runner": "n8n",
+        "lane": "catalyst-graph, identity-sweep-stage0, mint-identity-registry",
+        "never_list": false,
+        "note": "existing lanes; nothing new is scheduled by this row"
+      },
+      "projection": null,
+      "projection_status": "to_build (identity lookup projection)",
+      "required_fields": [
+        "issuer_guid",
+        "security_guid",
+        "identity_status"
+      ],
+      "readers": [
+        "Home",
+        "Watch",
+        "Trade AI",
+        "Options",
+        "Open Trades",
+        "Telegram",
+        "Proposals",
+        "Re-entry"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "table": "memory_r10_m2.memory_identity"
+          },
+          "role": "retiring",
+          "how": "shadow memory identity (third GUID-bearing store); archive + tripwire after the compare"
+        },
+        {
+          "store": {
+            "table": "narrative_subjects"
+          },
+          "role": "history",
+          "how": "NarrativeSubjectLink@v1 tag log, not an identity"
+        }
+      ],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
+        "decision": "Grant the identity registry as a domain (store runtime/identity_registry.json, writer scripts/lib/identity_registry.py). Moving it to Postgres is a separate decision."
+      },
+      "measured": {
+        "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
+        "writer_files": 0,
+        "surface_reads": {
+          "table:memory_r10_m2.memory_identity": 0
+        }
+      }
+    },
+    {
+      "domain": "positions_store",
+      "status": "proposed",
+      "entity": "Positions, cash and cost basis",
+      "title": "Positions (one authority)",
+      "class": "ingested",
+      "extends_approved": true,
+      "supersedes": [
+        "holdings_accounts"
+      ],
+      "facts": [
+        "shares",
+        "cash",
+        "cost basis",
+        "broker market value"
+      ],
+      "store": {
+        "table": "positions_current"
+      },
+      "store_detail": "positions_current (+ position_snapshots history, position_lots, realized_lots, positions_sync_runs); cash as is_cash rows.",
+      "writer": "scripts/positions_sync.py",
+      "cadence": "9,24,39,54 09:00-16:00 Mon-Fri (lane positions-sync)",
+      "stale_after_hours": 0.5,
+      "stale_after_hours_closed": 72,
+      "freshness_sla": "30 min in market hours (positions_sync.stale_after_minutes_market)",
+      "refresh_lane": {
+        "runner": "host",
+        "lane": "positions-sync",
+        "never_list": true,
+        "note": "a broker READ through the existing read clients; stays on the host (AGENTS.md §23.14). Agents may run broker reads only under a broker-read grant (§24.11)."
+      },
+      "projection": "positions_context",
+      "projection_status": "exists",
+      "required_fields": [
+        "account_key",
+        "symbol",
+        "qty",
+        "cost_basis_total",
+        "as_of",
+        "sync_run_id"
+      ],
+      "readers": [
+        "Home",
+        "Open Trades",
+        "Re-entry",
+        "Options",
+        "Telegram",
+        "Proposals"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "file": "portfolios/state/holdings.json"
+          },
+          "role": "derived",
+          "how": "operator decision 2026-10-22: becomes a generated export written by ONE projector from positions_current + data-broker marks; its writers fall 7 -> 1 in operator-approved reader batches (plan docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md phase 4)",
+          "match": [
+            "holdings.json"
+          ]
+        },
+        {
+          "store": {
+            "table": "schwab_positions_live"
+          },
+          "role": "retiring",
+          "how": "stale third copy (last write 2026-10-13); readers move to positions_context; archive + tripwire"
+        }
+      ],
+      "primary_provider": "schwab",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "per_account_state_never_zero",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
+        "decision": "Make positions_current the ONE positions/cash/basis authority and supersede holdings_accounts: holdings.json becomes a generated export (operator decision 2026-10-22); readers move in operator-approved batches."
+      },
+      "measured": {
+        "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
+        "writer_files": 1,
+        "surface_reads": {
+          "file:portfolios/state/holdings.json": 5,
+          "table:schwab_positions_live": 0
+        }
+      }
+    },
+    {
+      "domain": "transactions",
+      "status": "proposed",
+      "entity": "Transactions and lots",
+      "title": "Broker transactions",
+      "class": "ingested",
+      "supersedes": [],
+      "facts": [
+        "transaction",
+        "realized lot",
+        "tax lot"
+      ],
+      "store": {
+        "table": "trade_transactions"
+      },
+      "writer": null,
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/schwab_transaction_ingest.py",
+      "writer_target_status": "exists",
+      "_writer_note": "3 writers measured 2026-10-22 (schwab_transaction_ingest, snaptrade_activity_ingest, paper_scale). Lots are written only by positions_sync.py (position_lots/realized_lots).",
+      "cadence": "3,18,33,48 09:00-16:00 + 18:15; snaptrade 07:20",
+      "stale_after_hours": 0.5,
+      "freshness_sla": "15 min in market hours; lots with each positions run",
+      "refresh_lane": {
+        "runner": "host",
+        "lane": "schwab-transaction-ingest-at-3-18-33-48-9-16",
+        "never_list": true,
+        "note": "broker read; host only (AGENTS.md §23.14)"
+      },
+      "projection": "positions_context",
+      "projection_status": "exists",
+      "readers": [
+        "Open Trades",
+        "Re-entry",
+        "Home"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "file": "portfolios/state/tax_lots.json"
+          },
+          "role": "derived",
+          "how": "export rebuilt from trade_transactions; readers move to positions_context",
+          "match": [
+            "tax_lots.json"
+          ]
+        },
+        {
+          "store": {
+            "table": "schwab_cost_basis_lots"
+          },
+          "role": "retiring",
+          "how": "stale since 2026-06-10; archive + tripwire"
+        },
+        {
+          "store": {
+            "table": "cost_basis_anchors"
+          },
+          "role": "retiring",
+          "how": "orphan since 2026-07-16; archive + tripwire"
+        }
+      ],
+      "primary_provider": "schwab",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
+        "decision": "Grant trade_transactions as the transactions domain with a 3-writer ceiling that may only fall (target schwab_transaction_ingest.py)."
+      },
+      "measured": {
+        "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
+        "writer_files": 3,
+        "surface_reads": {
+          "file:portfolios/state/tax_lots.json": 1,
+          "table:schwab_cost_basis_lots": 0,
+          "table:cost_basis_anchors": 1
+        }
+      }
+    },
+    {
+      "domain": "broker_stops",
+      "status": "proposed",
+      "entity": "Stops (observed at the broker)",
+      "title": "Observed broker stops",
+      "class": "ingested",
+      "supersedes": [],
+      "facts": [
+        "stop"
+      ],
+      "store": {
+        "table": "stop_lifecycle"
+      },
+      "writer": "scripts/stop_lifecycle_monitor.py",
+      "_writer_note": "Observation only: the row records what the broker shows. Nothing in the dictionary grants any stop or order change (AGENTS.md §0 rules 1-2); code changes here need an execution-engineering grant.",
+      "cadence": "*/10 09:00-16:00 via stop_health_check",
+      "stale_after_hours": 0.25,
+      "stale_after_hours_closed": 72,
+      "freshness_sla": "10 min in market hours",
+      "refresh_lane": {
+        "runner": "host",
+        "lane": "stop-health-check",
+        "never_list": true,
+        "note": "stop lanes are on the n8n never-list (AGENTS.md §23.14); stays cron/systemd"
+      },
+      "projection": null,
+      "projection_status": "to_build (read-only stop view)",
+      "readers": [
+        "Open Trades",
+        "Home",
+        "Telegram"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "table": "stop_last_known"
+          },
+          "role": "retiring",
+          "how": "write-only near-copy (no reader); archive + tripwire"
+        },
+        {
+          "store": {
+            "table": "manual_broker_stops"
+          },
+          "role": "retiring",
+          "how": "0 active rows, last 2026-10-05; archive + tripwire"
+        },
+        {
+          "store": {
+            "table": "broker_order_intents"
+          },
+          "role": "excluded",
+          "how": "broker execution subsystem (AGENTS.md §0 rule 2): inventoried by SELECT only, never dictionary-managed"
+        },
+        {
+          "store": {
+            "table": "trade_approvals"
+          },
+          "role": "excluded",
+          "how": "broker execution subsystem (AGENTS.md §0 rule 2): never dictionary-managed"
+        }
+      ],
+      "primary_provider": "schwab",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
+        "decision": "Grant stop_lifecycle as the observed-stop domain (read-only observation; no stop or order authority; code changes need an execution-engineering grant)."
+      },
+      "measured": {
+        "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
+        "writer_files": 1,
+        "surface_reads": {
+          "table:stop_last_known": 0,
+          "table:manual_broker_stops": 0
+        }
+      }
+    },
+    {
+      "domain": "watchlist_membership",
+      "status": "proposed",
+      "entity": "Watchlist membership",
+      "title": "Watchlist (one list)",
+      "class": "native",
+      "supersedes": [
+        "watch_discovery"
+      ],
+      "facts": [
+        "membership",
+        "origin",
+        "operator star"
+      ],
+      "store": {
+        "table": "watchlist_items"
+      },
+      "writer": null,
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/lib/writers/watchlist_items_writer.py",
+      "writer_target_status": "to_build",
+      "_writer_note": "15+ writer files measured 2026-10-22. Membership changes only by the CIO curator and operator commands; everything else contributes candidates.",
+      "cadence": "event-driven membership; scores */15 in market hours",
+      "stale_after_hours": 0.25,
+      "freshness_sla": "membership event-driven; scores 15 min in market hours",
+      "refresh_lane": {
+        "runner": "n8n",
+        "lane": "hermes-watchlist-scorer, watchlist-enrichment-sweep, materialize-watchlist-strategy-cards",
+        "never_list": false,
+        "note": "existing n8n lanes"
+      },
+      "projection": "watch_intelligence",
+      "projection_status": "exists (ranks with top_ideas.v2; must read cio_prospect)",
+      "readers": [
+        "Watch",
+        "Home",
+        "Trade AI",
+        "Telegram"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "file": "portfolios/state/watchlist.json"
+          },
+          "role": "derived",
+          "how": "legacy personal watchlist; stops being a write target and becomes an export",
+          "match": [
+            "watchlist.json"
+          ]
+        },
+        {
+          "store": {
+            "table": "strategy_watchpool"
+          },
+          "role": "retiring",
+          "how": "a second membership list (7,080 rows); fold into watchlist_items origin; archive + tripwire"
+        },
+        {
+          "store": {
+            "file": "runtime/hermes_watchlist_lifecycle.json"
+          },
+          "role": "derived",
+          "how": "third membership/lifecycle list; becomes a projection of watchlist_items",
+          "match": [
+            "hermes_watchlist_lifecycle.json"
+          ]
+        },
+        {
+          "store": {
+            "table": "operator_starred_symbols"
+          },
+          "role": "retiring",
+          "how": "stars become watchlist_items origin=operator_star; archive + tripwire"
+        },
+        {
+          "store": {
+            "table": "watch_candidate_events"
+          },
+          "role": "retiring",
+          "how": "dead feed since 2026-07-16 (registry watch_discovery); archive + tripwire"
+        }
+      ],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
+        "decision": "Grant watchlist_items as the ONE membership list with a writer ceiling that may only fall; supersede watch_discovery; strategy_watchpool, watchlist.json and hermes_watchlist_lifecycle.json become derived or retired."
+      },
+      "measured": {
+        "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
+        "writer_files": 25,
+        "surface_reads": {
+          "file:portfolios/state/watchlist.json": 3,
+          "table:strategy_watchpool": 1,
+          "file:runtime/hermes_watchlist_lifecycle.json": 0,
+          "table:operator_starred_symbols": 2,
+          "table:watch_candidate_events": 0
+        }
+      }
+    },
+    {
+      "domain": "scanner_results",
+      "status": "proposed",
+      "entity": "Scanner results",
+      "title": "Trade AI scans",
+      "class": "derived",
+      "supersedes": [],
+      "facts": [
+        "scan decision",
+        "scan score"
+      ],
+      "store": {
+        "table": "trade_ai_scans"
+      },
+      "writer": null,
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/lib/writers/trade_ai_scans_writer.py",
+      "writer_target_status": "to_build",
+      "_writer_note": "6 writer files measured 2026-10-22 (orchestrator, continuous runner, social scalp scanner, premarket watcher, symbol enrichment, backfill).",
+      "cadence": "17:30 full; */15 07:00-09:00; scalp-live */5 in market hours",
+      "stale_after_hours": 0.1,
+      "freshness_sla": "5 min in market hours for scalp rows; daily for the full scan",
+      "refresh_lane": {
+        "runner": "n8n",
+        "lane": "trade-ai-scalp-live (AGENTS.md §23.3 live exception), orchestrator-slot",
+        "never_list": false,
+        "note": "the one n8n live lane stays under its §23.3 conditions"
+      },
+      "projection": null,
+      "projection_status": "to_build (scan projection; the UI reads trade_ai_cache.json today)",
+      "readers": [
+        "Trade AI",
+        "Watch",
+        "Home",
+        "Telegram"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "file": "runtime/trade_ai_cache.json"
+          },
+          "role": "derived",
+          "how": "UI read path today; becomes a projection stamped with run_id",
+          "match": [
+            "trade_ai_cache.json"
+          ]
+        },
+        {
+          "store": {
+            "table": "scalp_scan_results"
+          },
+          "role": "retiring",
+          "how": "fold into trade_ai_scans run_type; archive + tripwire"
+        }
+      ],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
+        "decision": "Grant trade_ai_scans as the scanner domain with a 6-writer ceiling that may only fall (target a single writer module)."
+      },
+      "measured": {
+        "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
+        "writer_files": 6,
+        "surface_reads": {
+          "file:runtime/trade_ai_cache.json": 1,
+          "table:scalp_scan_results": 1
+        }
+      }
+    },
+    {
+      "domain": "catalyst_events",
+      "status": "proposed",
+      "entity": "Catalysts",
+      "title": "Catalyst events (SecurityEvent@v1)",
+      "class": "derived",
+      "supersedes": [],
+      "facts": [
+        "catalyst",
+        "event_guid",
+        "catalyst date"
+      ],
+      "store": {
+        "table": "catalyst_events"
+      },
+      "writer": null,
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/news_to_catalyst.py",
+      "writer_target_status": "exists",
+      "_writer_note": "3 writers measured 2026-10-22 (news_to_catalyst, news_ingestion, lib/sec_filing_events). News and filings emit documents; only news_to_catalyst mints events (event_guid).",
+      "cadence": "45 6,12,18 + ingest tails",
+      "stale_after_hours": 6,
+      "freshness_sla": "6 h; news_articles 18 h (registry catalyst_news)",
+      "refresh_lane": {
+        "runner": "n8n_shadow_then_live",
+        "lane": "news-to-catalyst, hermes-news-bridge",
+        "never_list": false,
+        "note": "news-to-catalyst is in n8n shadow"
+      },
+      "projection": "catalyst_record",
+      "projection_status": "exists",
+      "required_fields": [
+        "event_guid",
+        "issuer_guid",
+        "event_type",
+        "period",
+        "state"
+      ],
+      "readers": [
+        "Watch",
+        "Trade AI",
+        "Home",
+        "Telegram",
+        "Options"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "file": "hermes/momentum_catalysts/<date>_catalysts.jsonl"
+          },
+          "role": "derived",
+          "how": "parallel per-day catalyst file; becomes a projection of catalyst_events",
+          "match": [
+            "momentum_catalysts"
+          ]
+        },
+        {
+          "store": {
+            "table": "catalyst_quality_results"
+          },
+          "role": "retiring",
+          "how": "dead since 2026-05-07; archive + tripwire"
+        }
+      ],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
+        "decision": "Grant catalyst_events (SecurityEvent@v1) as the one catalyst store with a 3-writer ceiling; news_to_catalyst.py is the target single writer."
+      },
+      "measured": {
+        "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
+        "writer_files": 3,
+        "surface_reads": {
+          "file:hermes/momentum_catalysts/<date>_catalysts.jsonl": 0,
+          "table:catalyst_quality_results": 1
+        }
+      }
+    },
+    {
+      "domain": "fused_signals",
+      "status": "proposed",
+      "entity": "Scores (fused signals)",
+      "title": "Fused signals",
+      "class": "derived",
+      "supersedes": [],
+      "facts": [
+        "fused score",
+        "component scores"
+      ],
+      "store": {
+        "table": "fused_signals"
+      },
+      "writer": "scripts/signal_fusion.py",
+      "cadence": "07,13 full + */30 04:00-16:00 active",
+      "stale_after_hours": 0.5,
+      "freshness_sla": "30 min in market hours",
+      "refresh_lane": {
+        "runner": "n8n_shadow_then_live",
+        "lane": "signal-fusion-full, signal-fusion-active",
+        "never_list": false,
+        "note": "shadow first"
+      },
+      "projection": null,
+      "projection_status": "to_build (score projection)",
+      "readers": [
+        "Trade AI",
+        "Watch",
+        "Options"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "table": "hermes_score_history"
+          },
+          "role": "history",
+          "how": "component score history (hermes watchlist scorer)"
+        }
+      ],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
+        "decision": "Grant fused_signals as the score domain (single writer signal_fusion.py)."
+      },
+      "measured": {
+        "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
+        "writer_files": 1,
+        "surface_reads": {}
+      }
+    },
+    {
+      "domain": "cio_decisions",
+      "status": "proposed",
+      "entity": "CIO decisions",
+      "title": "CIO decision log",
+      "class": "derived",
+      "supersedes": [],
+      "facts": [
+        "decision",
+        "decision reason"
+      ],
+      "store": {
+        "table": "cio_decisions"
+      },
+      "writer": null,
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/lib/cio_instrument_record.py",
+      "writer_target_status": "exists",
+      "_writer_note": "5 writers measured 2026-10-22 (cio_decision_engine PAUSED, cio_entry_state_runner, buy_ready_cio_review, options_cio_review, options_thesis_lifecycle RETIRED). Append-only log: the decision is appended by the CIO writer in the same write as the prospect change. Current state is never read from the log.",
+      "cadence": "*/10 09:00-16:00",
+      "stale_after_hours": 0.5,
+      "freshness_sla": "append-only; current state lives in cio_prospect",
+      "refresh_lane": {
+        "runner": "n8n_shadow_then_live",
+        "lane": "cio-entry-state",
+        "never_list": false,
+        "note": "rides the cio_prospect lanes"
+      },
+      "projection": "cio_prospect",
+      "projection_status": "to_build",
+      "readers": [
+        "Home",
+        "Watch",
+        "Trade AI",
+        "Proposals"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "table": "trade_thesis_reviews"
+          },
+          "role": "history",
+          "how": "nightly thesis review log (18:40)"
+        }
+      ],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
+        "decision": "Grant cio_decisions as the append-only CIO decision log (5-writer ceiling, target the CIO writer); current state is read from cio_prospect."
+      },
+      "measured": {
+        "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
+        "writer_files": 5,
+        "surface_reads": {}
+      }
+    },
+    {
+      "domain": "cio_theses",
+      "status": "proposed",
+      "entity": "CIO theses",
+      "title": "Thesis documents",
+      "class": "derived",
+      "supersedes": [],
+      "facts": [
+        "thesis",
+        "thesis version"
+      ],
+      "store": {
+        "file": "cio/cio_theses.jsonl"
+      },
+      "writer": "scripts/lib/cio_theses.py",
+      "_writer_note": "CIOThesisStore; the prospect carries thesis_ref + stance, never a copy of the text.",
+      "cadence": "17:17 + curator + operator commands",
+      "stale_after_hours": 24,
+      "freshness_sla": "24 h",
+      "refresh_lane": {
+        "runner": "n8n_shadow_then_live",
+        "lane": "cio-opportunity-curator",
+        "never_list": false,
+        "note": "thesis acquisition model calls only through registered capabilities"
+      },
+      "projection": "cio_prospect",
+      "projection_status": "to_build",
+      "readers": [
+        "Watch",
+        "Home",
+        "Trade AI",
+        "Options",
+        "Re-entry"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "file": "cio/cio_theses_projection.json"
+          },
+          "role": "derived",
+          "how": "thesis view; served via the projection",
+          "match": [
+            "cio_theses_projection.json"
+          ]
+        }
+      ],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
+        "decision": "Grant cio_theses.jsonl as the thesis-document store (single writer CIOThesisStore)."
+      },
+      "measured": {
+        "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
+        "writer_files": 0,
+        "surface_reads": {
+          "file:cio/cio_theses_projection.json": 2
+        }
+      }
+    },
+    {
+      "domain": "options_ideas",
+      "status": "proposed",
+      "entity": "Options ideas",
+      "title": "Options proposal lifecycle",
+      "class": "derived",
+      "supersedes": [],
+      "facts": [
+        "options idea",
+        "options approval state"
+      ],
+      "store": {
+        "table": "options_approval_queue"
+      },
+      "writer": null,
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/options_desk_enterprise.py",
+      "writer_target_status": "exists",
+      "_writer_note": "4 writers measured 2026-10-22 (options_desk_enterprise, alpaca_paper, prime_rubric, api_v2). Expression ranking is a consumer of the prospect, never a second research store (NO SILOS).",
+      "cadence": "options-tick 7,22,37,52 in market hours",
+      "stale_after_hours": 0.25,
+      "freshness_sla": "15 min in market hours",
+      "refresh_lane": {
+        "runner": "host",
+        "lane": "options-tick",
+        "never_list": true,
+        "note": "order/paper-adjacent; stays on the host (AGENTS.md §23.14)"
+      },
+      "projection": "option_chain",
+      "projection_status": "exists (chain); idea projection to_build",
+      "readers": [
+        "Options",
+        "Proposals",
+        "Telegram",
+        "Home"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "file": "options_intent/latest.json"
+          },
+          "role": "derived",
+          "how": "intent matcher view",
+          "match": [
+            "options_intent/latest.json",
+            "\"options_intent\""
+          ]
+        },
+        {
+          "store": {
+            "file": "cio/options_theses.jsonl"
+          },
+          "role": "history",
+          "how": "options expression sub-document of the prospect; projector lane RETIRED"
+        },
+        {
+          "store": {
+            "table": "option_chain_snapshots"
+          },
+          "role": "retiring",
+          "how": "duplicate of options_chain_snapshots, no reader since 2026-10-14; archive + tripwire"
+        },
+        {
+          "store": {
+            "table": "proxy_option_candidates"
+          },
+          "role": "retiring",
+          "how": "dead since 2026-07-06; archive + tripwire"
+        }
+      ],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
+        "decision": "Grant options_approval_queue as the options-idea lifecycle (4-writer ceiling, target options_desk_enterprise.py; host only)."
+      },
+      "measured": {
+        "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
+        "writer_files": 4,
+        "surface_reads": {
+          "file:options_intent/latest.json": 2,
+          "table:option_chain_snapshots": 0,
+          "table:proxy_option_candidates": 1
+        }
+      }
+    },
+    {
+      "domain": "paper_proposals",
+      "status": "proposed",
+      "entity": "Paper proposals",
+      "title": "Paper trade proposals",
+      "class": "derived",
+      "supersedes": [],
+      "facts": [
+        "proposal",
+        "proposal status"
+      ],
+      "store": {
+        "table": "paper_trade_proposals"
+      },
+      "writer": null,
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/lib/proposal_lifecycle.py",
+      "writer_target_status": "to_build",
+      "_writer_note": "51 writer files measured 2026-10-22: the worst multi-writer store. One lifecycle state machine becomes the only UPDATE path, in batches. Paper submit paths are broker-adjacent: execution-engineering grant territory (AGENTS.md §0 rule 2).",
+      "cadence": "many crons (auto-proposal */10, sweeps */5)",
+      "stale_after_hours": 0.1,
+      "freshness_sla": "5 min in market hours",
+      "refresh_lane": {
+        "runner": "host",
+        "lane": "auto-proposal, paper-execution-sweep",
+        "never_list": true,
+        "note": "paper lanes are on the n8n never-list (AGENTS.md §23.14)"
+      },
+      "projection": null,
+      "projection_status": "to_build (proposal projection)",
+      "readers": [
+        "Proposals",
+        "Home",
+        "Telegram",
+        "Trade AI"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "file": "paper_trading/paper_trade_statistics_latest.json"
+          },
+          "role": "derived",
+          "how": "statistics export",
+          "match": [
+            "paper_trade_statistics_latest.json"
+          ]
+        }
+      ],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
+        "decision": "Grant paper_trade_proposals with its measured 51-writer ceiling that may only fall; a lifecycle module becomes the only UPDATE path in batches."
+      },
+      "measured": {
+        "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
+        "writer_files": 51,
+        "surface_reads": {
+          "file:paper_trading/paper_trade_statistics_latest.json": 1
+        }
+      }
+    },
+    {
+      "domain": "paper_trades",
+      "status": "proposed",
+      "entity": "Paper trades",
+      "title": "Paper trades",
+      "class": "derived",
+      "supersedes": [],
+      "facts": [
+        "paper fill",
+        "paper position"
+      ],
+      "store": {
+        "table": "paper_trades"
+      },
+      "writer": null,
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/paper_execution_sweep.py",
+      "writer_target_status": "exists",
+      "_writer_note": "32 writer files measured 2026-10-22. Consolidation touches the paper adapter: only under an execution-engineering grant.",
+      "cadence": "paper-execution-sweep */5; alpaca paper sync hourly",
+      "stale_after_hours": 0.1,
+      "freshness_sla": "5 min in market hours",
+      "refresh_lane": {
+        "runner": "host",
+        "lane": "paper-execution-sweep, alpaca-paper-reconciler",
+        "never_list": true,
+        "note": "paper lanes are on the n8n never-list"
+      },
+      "projection": null,
+      "projection_status": "to_build",
+      "readers": [
+        "Proposals",
+        "Open Trades",
+        "Home"
+      ],
+      "derived_copies": [],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
+        "decision": "Grant paper_trades with its measured 32-writer ceiling; consolidation only under an execution-engineering grant."
+      },
+      "measured": {
+        "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
+        "writer_files": 32,
+        "surface_reads": {}
+      }
+    },
+    {
+      "domain": "alert_events",
+      "status": "proposed",
+      "entity": "Alerts",
+      "title": "Alert facts",
+      "class": "derived",
+      "supersedes": [],
+      "facts": [
+        "alert"
+      ],
+      "store": {
+        "table": "alert_events"
+      },
+      "writer": null,
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/alert_event_writer.py",
+      "writer_target_status": "exists (wire it; AGENTS.md §13.5 — do not build a second)",
+      "_writer_note": "17 writer files measured 2026-10-22. An alert_events row is not a send (AGENTS.md 4.3.0 ruling 4); sends are comms intents.",
+      "cadence": "event-driven",
+      "stale_after_hours": 24,
+      "freshness_sla": "event-driven",
+      "refresh_lane": {
+        "runner": "event",
+        "lane": "the producing lanes",
+        "never_list": false,
+        "note": "no new schedule"
+      },
+      "projection": null,
+      "projection_status": "to_build",
+      "readers": [
+        "Home",
+        "Watch",
+        "Open Trades",
+        "Telegram"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "table": "alert_occurrences"
+          },
+          "role": "derived",
+          "how": "occurrence dedupe view of alert_events"
+        },
+        {
+          "store": {
+            "table": "open_trade_alerts"
+          },
+          "role": "derived",
+          "how": "per-desk alert table; writer unknown in the 2026-10-22 inventory — classify before approval"
+        },
+        {
+          "store": {
+            "table": "watch_alerts"
+          },
+          "role": "derived",
+          "how": "Watch desk alert view (watch_alerts_eval)"
+        }
+      ],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
+        "decision": "Grant alert_events as the alert-fact domain (17-writer ceiling, target the existing scripts/alert_event_writer.py)."
+      },
+      "measured": {
+        "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
+        "writer_files": 17,
+        "surface_reads": {
+          "table:alert_occurrences": 0,
+          "table:open_trade_alerts": 1,
+          "table:watch_alerts": 1
+        }
+      }
+    },
+    {
+      "domain": "comms_intents",
+      "status": "proposed",
+      "entity": "Operator messages",
+      "title": "Notification intents and deliveries",
+      "class": "native",
+      "supersedes": [],
+      "facts": [
+        "notification intent",
+        "delivery receipt"
+      ],
+      "store": {
+        "table": "communication_events"
+      },
+      "writer": null,
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/lib/comms/client.py",
+      "writer_target_status": "exists",
+      "_writer_note": "7 writer files measured 2026-10-22 (comms client, delivery, classify, lifecycle, portal, outbound identity, ...). AGENTS.md §24.1: the host communications gateway is the only sender; senders emit intents.",
+      "cadence": "event-driven",
+      "stale_after_hours": 1,
+      "freshness_sla": "P1 immediate; P2 held 22:00-07:00 ET to the digest",
+      "refresh_lane": {
+        "runner": "host",
+        "lane": "n8n-comms-intent-consumer (canary) orchestrates; the gateway sends",
+        "never_list": true,
+        "note": "senders stay on the host; the P1 path never depends on n8n"
+      },
+      "projection": null,
+      "projection_status": "to_build (notification outbox projection exists in comms)",
+      "readers": [
+        "Telegram",
+        "Home"
+      ],
+      "derived_copies": [
+        {
+          "store": {
+            "table": "communication_outbox"
+          },
+          "role": "history",
+          "how": "delivery receipts (same gateway)"
+        },
+        {
+          "store": {
+            "table": "telegram_outbox"
+          },
+          "role": "derived",
+          "how": "second outbox (report_capture); becomes a view"
+        },
+        {
+          "store": {
+            "file": "runtime/notification_intent_receipts.jsonl"
+          },
+          "role": "history",
+          "how": "router receipt of the same send",
+          "match": [
+            "notification_intent_receipts.jsonl"
+          ]
+        },
+        {
+          "store": {
+            "table": "notification_log"
+          },
+          "role": "retiring",
+          "how": "fourth record of a send; archive + tripwire"
+        }
+      ],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 12,
+          "expected_seconds": 120
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
+        "decision": "Grant communication_events as the notification-intent domain (gateway-only sends, AGENTS.md §24.1; 7-writer ceiling, target scripts/lib/comms/client.py)."
+      },
+      "measured": {
+        "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
+        "writer_files": 7,
+        "surface_reads": {
+          "table:telegram_outbox": 1,
+          "table:notification_log": 1
+        }
+      }
+    }
+  ],
+  "data_dictionary": {
+    "schema": "DataDictionary@v1",
+    "as_of": "2026-10-22T16:00:00-04:00",
+    "_why": "One source of data (operator 2026-10-22). Every fact names one domain; every domain one store and one writer; every page reads through a projection. Proposed rows live in proposed_domains[] until the operator grants them (AGENTS.md §17); scripts/check_data_source_authority.py warns on them and fails on granted ones. docs/architecture/DATA_DICTIONARY.md is rendered from here by scripts/render_data_dictionary.py.",
+    "canonical_key": {
+      "per_security": "security_guid",
+      "per_company": "issuer_guid",
+      "aliases": {
+        "subject_guid": "equals security_guid for a security subject (AGENTS.md identity table); accepted on read, mapped, never stored as a second key",
+        "subject_key": "InstrumentRecord@v1 legacy key; alias only",
+        "symbol": "display alias; never a key"
+      },
+      "authority": "scripts/lib/security_identity.py (ROOT GUID AUTHORITY) via scripts/lib/identity_registry.py"
+    },
+    "surface_files": [
+      "scripts/api_v2.py",
+      "scripts/api_v3_*.py",
+      "scripts/portfolio_server.py",
+      "scripts/telegram_command_handler.py"
+    ],
+    "surfaces": {
+      "Home": "apps/command-center-v3 Home -> /api/v3/cio/home, /api/v2/portfolio",
+      "Watch": "Watch desk -> /api/v3/data-broker/watch (watch_intelligence)",
+      "Trade AI": "Trade AI scanner -> /api/v2 trade-ai routes",
+      "Options": "Trading -> Options -> /api/v2 options routes",
+      "Open Trades": "Open Trades -> /api/v2/open-trades",
+      "Telegram": "Telegram cards and commands (telegram_command_handler, comms gateway)",
+      "Proposals": "Proposals -> /api/v2 proposals routes",
+      "Re-entry": "Re-entry desk -> reentry_decision_desk projection"
+    },
+    "records": {
+      "CIOProspect": {
+        "domain": "cio_prospect",
+        "extends": "InstrumentRecord@v1 (AGENTS.md §13.4; extended, not cloned, per §13.5)",
+        "fields": [
+          {
+            "field": "security_guid",
+            "type": "uuid",
+            "meaning": "THE key: one row per security (AGENTS.md identity: security_guid is the specific instrument)",
+            "source": "security_identity",
+            "required": true
+          },
+          {
+            "field": "issuer_guid",
+            "type": "uuid",
+            "meaning": "the default join for 'everything about this company'",
+            "source": "security_identity",
+            "required": true
+          },
+          {
+            "field": "subject_guid",
+            "type": "uuid (alias)",
+            "meaning": "accepted on read and mapped: equals security_guid for a security subject today; never a second key",
+            "source": "security_identity"
+          },
+          {
+            "field": "subject_key",
+            "type": "string (alias)",
+            "meaning": "legacy InstrumentRecord@v1 key (HELD:X / WATCH:X / EXIT:X); kept as an alias so wake and belief paths keep working; the stage replaces the kind split",
+            "source": "cio_prospect"
+          },
+          {
+            "field": "symbol",
+            "type": "string",
+            "meaning": "display alias; tickers are reassigned, never a key",
+            "source": "security_identity"
+          },
+          {
+            "field": "stage",
+            "type": "enum",
+            "meaning": "watching -> setup_forming -> actionable -> proposed -> held -> exit / re_entry",
+            "source": "cio_prospect",
+            "required": true
+          },
+          {
+            "field": "stage_changed_at",
+            "type": "timestamptz",
+            "meaning": "when the stage last moved, with the evidence that moved it",
+            "source": "cio_prospect"
+          },
+          {
+            "field": "conviction",
+            "type": "0-100",
+            "meaning": "the CIO's conviction",
+            "source": "cio_prospect",
+            "required": true
+          },
+          {
+            "field": "conviction_components",
+            "type": "object",
+            "meaning": "named components that sum to the conviction: unified_edge, fused_score, catalyst_grade, thesis_quality, risk_reward, regime_fit — each with value, source, evidence_at",
+            "source": "fused_signals / catalyst_events / cio_theses"
+          },
+          {
+            "field": "stance",
+            "type": "enum",
+            "meaning": "BUY_SETUP / ADD / HOLD / TRIM_REVIEW / EXIT_REVIEW / WATCH / AVOID — priority and posture only; never a size, order or stop (MBI_BEHAVIOR = 0)",
+            "source": "cio_prospect",
+            "required": true
+          },
+          {
+            "field": "catalyst_grade",
+            "type": "A-F + score",
+            "meaning": "Gate 2 (Momentum Core) folds in here: the momentum/catalyst grade with its event_guid",
+            "source": "catalyst_events"
+          },
+          {
+            "field": "next_trigger",
+            "type": "object",
+            "meaning": "the observable event or level that moves the stage next, with the source that will observe it (reference level, never an order)",
+            "source": "cio_prospect"
+          },
+          {
+            "field": "whats_missing",
+            "type": "list",
+            "meaning": "evidence the CIO still needs before the next stage (data gaps, questions)",
+            "source": "cio_prospect"
+          },
+          {
+            "field": "next_action",
+            "type": "object",
+            "meaning": "who does what next: research question, operator review, wait-for-trigger",
+            "source": "cio_prospect"
+          },
+          {
+            "field": "thesis_ref",
+            "type": "string",
+            "meaning": "pointer to the thesis document version (cio_theses); never a copy of the text",
+            "source": "cio_theses"
+          },
+          {
+            "field": "research",
+            "type": "object",
+            "meaning": "SecurityResearchSpine@v1 summary (view_for_silo) — the same for every desk",
+            "source": "research_thesis"
+          },
+          {
+            "field": "position_ref",
+            "type": "object",
+            "meaning": "account_key list + qty from positions_context when held; read, never written",
+            "source": "positions_store"
+          },
+          {
+            "field": "evidence_at",
+            "type": "timestamptz",
+            "meaning": "the newest evidence time behind the record",
+            "source": "cio_prospect",
+            "required": true
+          },
+          {
+            "field": "expires_at",
+            "type": "timestamptz",
+            "meaning": "when the record is stale and renders as stale",
+            "source": "cio_prospect",
+            "required": true
+          },
+          {
+            "field": "conflicts",
+            "type": "list",
+            "meaning": "every disagreement between inputs (e.g. opportunity stance ADD vs thesis stance watch): both values, both sources, both times — shown, never silently resolved",
+            "source": "cio_prospect"
+          },
+          {
+            "field": "next_eligible_at / notify_priority / cc_narrative / next_research_question",
+            "type": "InstrumentRecord@v1",
+            "meaning": "the existing cognition fields, unchanged (apply_cognition)",
+            "source": "cio_prospect"
+          },
+          {
+            "field": "beliefs[] / lessons[] / operator_turns[]",
+            "type": "InstrumentRecord@v1",
+            "meaning": "unchanged; written only by their existing rails (apply_belief, cognition, operator turns)",
+            "source": "cio_prospect"
+          },
+          {
+            "field": "as_of / writer / revision",
+            "type": "meta",
+            "meaning": "write time, the single writer's id, monotonic revision",
+            "source": "cio_prospect",
+            "required": true
+          }
+        ]
+      }
+    },
+    "facts": [
+      {
+        "fact": "shares",
+        "entity": "Positions",
+        "domain": "positions_store",
+        "store": "positions_current",
+        "field": "qty",
+        "unit": "shares",
+        "meaning": "broker-reported quantity per (account_key, symbol)",
+        "never": "a number from a report, a chat, a CSV or another account"
+      },
+      {
+        "fact": "cash",
+        "entity": "Positions",
+        "domain": "positions_store",
+        "store": "positions_current",
+        "field": "qty where is_cash",
+        "unit": "USD",
+        "meaning": "broker-reported cash per account",
+        "never": "a computed residual"
+      },
+      {
+        "fact": "cost basis",
+        "entity": "Positions",
+        "domain": "positions_store",
+        "store": "positions_current",
+        "field": "cost_basis_total",
+        "unit": "USD",
+        "meaning": "broker average cost x shares, same account (positions.cost_basis_truth: broker)",
+        "never": "a CSV lot or manual repair that disagrees with the broker; another account's basis"
+      },
+      {
+        "fact": "mark",
+        "entity": "Quotes",
+        "domain": "quote_price",
+        "store": "market_quotes",
+        "field": "price, as_of",
+        "unit": "USD",
+        "meaning": "data-broker quote at read time with its age (resolve_mark / value_and_pl)",
+        "never": "a stored current_price; any price without an age"
+      },
+      {
+        "fact": "stop",
+        "entity": "Stops",
+        "domain": "broker_stops",
+        "store": "stop_lifecycle",
+        "field": "stop_price, state, observed_at",
+        "unit": "USD",
+        "meaning": "the stop the broker shows, as observed; read-only",
+        "never": "stop_last_known or any agent-set value"
+      },
+      {
+        "fact": "catalyst",
+        "entity": "Catalysts",
+        "domain": "catalyst_events",
+        "store": "catalyst_events",
+        "field": "event_guid, event_type, period, state",
+        "unit": "-",
+        "meaning": "a SecurityEvent@v1 (issuer, type, period), SCHEDULED -> OCCURRED -> POST_EVENT -> SUPERSEDED",
+        "never": "a headline without an event_guid"
+      },
+      {
+        "fact": "fused score",
+        "entity": "Scores",
+        "domain": "fused_signals",
+        "store": "fused_signals",
+        "field": "score, components, as_of",
+        "unit": "0-100",
+        "meaning": "signal fusion output per symbol and time",
+        "never": "a recomputed score in a page handler"
+      },
+      {
+        "fact": "unified edge",
+        "entity": "Scores",
+        "domain": "cio_prospect",
+        "store": "cio_prospect",
+        "field": "conviction_components.unified_edge",
+        "unit": "0-100",
+        "meaning": "today computed in memory inside auto_proposal_generator and never persisted; persisted as a conviction component so it is inspectable and reproducible",
+        "never": "an in-memory value nobody can replay"
+      },
+      {
+        "fact": "decision",
+        "entity": "CIO decisions",
+        "domain": "cio_decisions",
+        "store": "cio_decisions",
+        "field": "decision, reason, decided_at",
+        "unit": "-",
+        "meaning": "append-only CIO decision log",
+        "never": "current state read from the log (read cio_prospect.stage/stance)"
+      },
+      {
+        "fact": "stance",
+        "entity": "CIO prospect",
+        "domain": "cio_prospect",
+        "store": "cio_prospect",
+        "field": "stance",
+        "unit": "enum",
+        "meaning": "the CIO's one stance per security",
+        "never": "a desk's private stance (NO SILOS)"
+      },
+      {
+        "fact": "options idea",
+        "entity": "Options",
+        "domain": "options_ideas",
+        "store": "options_approval_queue",
+        "field": "idea, status, blocked_reason",
+        "unit": "-",
+        "meaning": "an options proposal and its lifecycle state",
+        "never": "an idea qualified from a watchlist-only memo when the prospect holds CIO research"
+      },
+      {
+        "fact": "paper proposal",
+        "entity": "Proposals",
+        "domain": "paper_proposals",
+        "store": "paper_trade_proposals",
+        "field": "status",
+        "unit": "-",
+        "meaning": "a paper proposal and its lifecycle",
+        "never": "a status set by a second writer"
+      },
+      {
+        "fact": "alert",
+        "entity": "Alerts",
+        "domain": "alert_events",
+        "store": "alert_events",
+        "field": "alert_type, symbol, fired_at",
+        "unit": "-",
+        "meaning": "an alert fact (not a send)",
+        "never": "a send without a comms intent"
+      },
+      {
+        "fact": "operator message",
+        "entity": "Operator messages",
+        "domain": "comms_intents",
+        "store": "communication_events",
+        "field": "intent, priority, receipt",
+        "unit": "-",
+        "meaning": "a notification intent and its delivery receipt",
+        "never": "a direct Telegram send"
+      },
+      {
+        "fact": "watchlist membership",
+        "entity": "Watchlist",
+        "domain": "watchlist_membership",
+        "store": "watchlist_items",
+        "field": "security_guid, status, origin",
+        "unit": "-",
+        "meaning": "is this security on the watchlist, and who put it there",
+        "never": "watchlist.json, strategy_watchpool or hermes_watchlist_lifecycle.json"
+      },
+      {
+        "fact": "identity",
+        "entity": "Security identity",
+        "domain": "security_identity",
+        "store": "runtime/identity_registry.json",
+        "field": "issuer_guid, security_guid",
+        "unit": "UUIDv5",
+        "meaning": "durable identity; a ticker is an alias",
+        "never": "a ticker used as a key, a placeholder GUID"
+      }
+    ]
+  }
 }

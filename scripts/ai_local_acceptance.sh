@@ -219,6 +219,8 @@ else
     # registry row, or a writer count that rose all fail here before they reach CI.
     "$PY" scripts/check_data_source_authority.py          || cio_failed+=("data_source_authority")
     "$PY" scripts/render_source_of_truth.py --check       || cio_failed+=("source_of_truth_docs_stale")
+    # Data dictionary (2026-10-22): docs/architecture/DATA_DICTIONARY.md is rendered from the same registry.
+    "$PY" scripts/render_data_dictionary.py --check       || cio_failed+=("data_dictionary_docs_stale")
     if (( ${#cio_failed[@]} )); then
       echo
       echo "CIO GATES FAILED: ${cio_failed[*]}" >&2
