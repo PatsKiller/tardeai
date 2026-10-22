@@ -870,7 +870,12 @@ def test_libraries_are_wired_into_nothing():
                # release_delegation.load() (read-only validation of the standing delegation, fail closed when absent);
                # the other three name the libraries in docstrings or in the workflow's forbidden-text denylist.
                "scripts/lib/release_train_window.py", "scripts/lib/release_train_window_view.py",
-               "scripts/release_train_window_request.py", "scripts/n8n_workflow_templates.py"}
+               "scripts/release_train_window_request.py", "scripts/n8n_workflow_templates.py",
+               # Arming packet (ops/release-train-arming-20261021): the OPERATOR's one-time setup script. It verifies
+               # the key with release_capability.load_key, validates the delegation with release_delegation, and
+               # reads release_control_cli.py status; it never arms (arm is a TTY act) and no timer, unit or lane
+               # runs it.
+               "scripts/ops/release_train_arm.sh"}
     hits = []
     for base in ("scripts", "config", "deploy", "systemd", "n8n", "src", "bin"):
         root = ROOT / base

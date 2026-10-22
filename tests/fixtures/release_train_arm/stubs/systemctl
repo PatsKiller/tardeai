@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Test stub for `systemctl --user` (release_train_arm sandbox). Unit state lives in $RTARM_SANDBOX/fake/units.
+set -u
+F="$RTARM_SANDBOX/fake/units"; mkdir -p "$F/enabled" "$F/started"
+echo "systemctl $*" >> "$RTARM_SANDBOX/calls.log"
+[[ "${1:-}" == "--user" ]] && shift
+cmd="${1:-}"; shift || true
+case "$cmd" in
+  cat)
+    if [[ "${1:-}" == portfolio-server.service && -z "${FAKE_NO_PS_UNIT:-}" ]]; then echo "[Service]"; exit 0; fi
+    exit 1 ;;
+  daemon-reload) exit 0 ;;
+  enable)
+    for u in "$@"; do [[ "$u" == --now ]] && continue; touch "$F/enabled/$u" "$F/started/$u"; done; exit 0 ;;
+  is-enabled)
+    if [[ -f "$F/enabled/$1" ]]; then echo enabled; exit 0; fi
+    echo disabled; exit 1 ;;
+  is-active)
+    case "$1" in tradeai-n8n-run-relay.service|tradeai-n8n-coordination-gateway.service) echo active; exit 0 ;; esac
+    if [[ -f "$F/started/$1" ]]; then echo active; exit 0; fi
+    echo inactive; exit 3 ;;
+  restart) for u in "$@"; do touch "$F/started/$u"; done; exit 0 ;;
+  show)
+    u="$1"; shift; prop=""
+    while [[ $# -gt 0 ]]; do case "$1" in -p) prop="$2"; shift 2 ;; *) shift ;; esac; done
+    case "$prop" in
+      ActiveEnterTimestamp)
+        if [[ -f "$F/started/$u" ]]; then date -d "@$(stat -c %Y "$F/started/$u")" '+%a %Y-%m-%d %H:%M:%S %Z'
+        else echo "Wed 2026-10-01 00:00:00 UTC"; fi ;;
+      Environment)
+        key="FAKE_ENV_$(printf '%s' "$u" | tr -c 'A-Za-z0-9' '_')"; echo "${!key:-}" ;;
+    esac
+    exit 0 ;;
+  list-timers) echo "NEXT LEFT LAST PASSED UNIT ACTIVATES"; echo "- - - - ${1:-} tradeai-release-train-claim.service"; exit 0 ;;
+  *) exit 0 ;;
+esac

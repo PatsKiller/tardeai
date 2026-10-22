@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Test stub for psql (release_train_arm sandbox). Fake DB state lives in $RTARM_SANDBOX/fake/db.
+set -u
+F="$RTARM_SANDBOX/fake/db"; mkdir -p "$F"
+echo "psql $*" >> "$RTARM_SANDBOX/calls.log"
+q=""; file=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in -c) q="$2"; shift 2 ;; -f) file="$2"; shift 2 ;; *) shift ;; esac
+done
+if [[ -n "$file" ]]; then
+  [[ -f "$file" ]] || { echo "psql: $file: No such file" >&2; exit 1; }
+  echo "BEGIN"; echo "CREATE TABLE"; echo "COMMIT"
+  echo "$file" >> "$F/applied_files"
+  touch "$F/migrated"; exit 0
+fi
+case "$q" in
+  *current_user*) echo "${FAKE_DB_ROLE:-trade_ai}" ;;
+  *to_regclass*) if [[ -f "$F/migrated" ]]; then echo 2; else echo 0; fi ;;
+  *pg_trigger*) if [[ -f "$F/migrated" ]]; then echo 2; else echo 0; fi ;;
+  *) echo "" ;;
+esac
