@@ -719,12 +719,19 @@ step_G() {
   local claimer_env gw_env
   claimer_env="$(g_unit_env tradeai-release-train-claim.service)"
   gw_env="$(g_unit_env tradeai-n8n-coordination-gateway.service)"
-  local runner_dir runner_status cli_dir
+  local runner_dir runner_status runner_json cli_dir
   # The runner as the claimer unit runs it: the unit's inline env only (the .proposed unit sets none).
-  runner_dir="$(cd "$CODE_ROOT" && env -u TRADEAI_STATE_ROOT -u TRADEAI_RELEASE_WINDOW_STATE_DIR $claimer_env \
-                "$PY" -c 'from scripts import release_window as RW; print(RW.STATE_DIR)' 2>/dev/null || echo UNAVAILABLE)"
-  runner_status="$(cd "$CODE_ROOT" && env -u TRADEAI_STATE_ROOT -u TRADEAI_RELEASE_WINDOW_STATE_DIR $claimer_env \
-                   "$PY" scripts/release_window.py status 2>/dev/null | "$PY" -c 'import json,sys; print(json.load(sys.stdin).get("latch_state"))' 2>/dev/null || echo UNAVAILABLE)"
+  # release_window.py status prints state_dir + state_dir_source (finding 4, fixed); a served release that predates the
+  # fix lacks them, and then the directory falls back to release_window.STATE_DIR read directly (labelled as such).
+  runner_json="$(cd "$CODE_ROOT" && env -u TRADEAI_STATE_ROOT -u TRADEAI_RELEASE_WINDOW_STATE_DIR $claimer_env \
+                 "$PY" scripts/release_window.py status 2>/dev/null || true)"
+  runner_status="$(printf '%s' "$runner_json" | "$PY" -c 'import json,sys; print(json.load(sys.stdin).get("latch_state"))' 2>/dev/null || echo UNAVAILABLE)"
+  runner_dir="$(printf '%s' "$runner_json" | "$PY" -c 'import json,sys; d=json.load(sys.stdin); print(d["state_dir"] + " [" + d["state_dir_source"] + "]")' 2>/dev/null || true)"
+  if [[ -z "$runner_dir" ]]; then
+    runner_dir="$(cd "$CODE_ROOT" && env -u TRADEAI_STATE_ROOT -u TRADEAI_RELEASE_WINDOW_STATE_DIR $claimer_env \
+                  "$PY" -c 'from scripts import release_window as RW; print(RW.STATE_DIR)' 2>/dev/null || echo UNAVAILABLE)"
+    [[ "$runner_dir" == UNAVAILABLE ]] || runner_dir="$runner_dir [release_window.STATE_DIR; status has no state_dir]"
+  fi
   cli_dir="$(cd "$CODE_ROOT" && env -u TRADEAI_STATE_ROOT -u TRADEAI_RELEASE_WINDOW_STATE_DIR $claimer_env \
              "$PY" scripts/release_control_cli.py status 2>/dev/null | "$PY" -c 'import json,sys; print(json.load(sys.stdin)["state_dir"])' 2>/dev/null || echo UNAVAILABLE)"
   local gw_dir
@@ -750,7 +757,8 @@ cc_stop = ((st or {}).get("data") or {})
 rows = [
     ("CC summary state_dir", cc_sum.get("path") or "UNAVAILABLE", cc_sum.get("source")),
     ("CC GET /stop state_dir", cc_stop.get("state_dir") or "UNAVAILABLE", None),
-    ("runner release_window.STATE_DIR (claimer env)", os.environ["RTARM_G_RUNNER"], None),
+    ("release_window.py status state_dir (claimer env)", os.environ["RTARM_G_RUNNER"].split(" [", 1)[0],
+     os.environ["RTARM_G_RUNNER"].split(" [", 1)[1].rstrip("]") if " [" in os.environ["RTARM_G_RUNNER"] else None),
     ("release_control_cli.py status state_dir", os.environ["RTARM_G_CLI"], None),
     ("gateway (inline env) state dir", os.environ["RTARM_G_GW"], None),
     ("claimer .path unit watch dir", os.environ["RTARM_G_PATH"].replace(" (proposed; not installed)", ""), None),

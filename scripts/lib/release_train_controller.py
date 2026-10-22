@@ -2531,6 +2531,8 @@ def status(state: RW.State) -> dict:
                        "outcome": (body.get("outcome") or {}).get("outcome"), "window_id": body.get("window_id")})
     q = Measurements(state.root / "quarantine.jsonl").rows()
     return {"schema": "ReleaseTrainStatus@v1", "controller_status": TRAIN_CONTROLLER_STATUS,
+            "state_dir": str(state.root),
+            "state_dir_source": RW.STATE_DIR_SOURCE if Path(state.root) == RW.STATE_DIR else "argument",
             "github_writes_status": GITHUB_WRITES_STATUS, "latch_state": state.read_latch()[0],
             "control": {"mode": v.mode, "epoch": v.epoch, "stop_phase": v.stop_phase,
                         "current_train_id": v.current_train_id, "error": v.error},

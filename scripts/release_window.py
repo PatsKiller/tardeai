@@ -125,6 +125,13 @@ RELEASES_BASE = Path(os.environ.get("TRADEAI_RELEASES_BASE", str(HOME / "trade-a
 RELEASE_CHECKOUT = Path(os.environ.get("TRADEAI_RELEASE_CHECKOUT", str(HOME / "tradeai-exact-main-20260827")))
 STATE_ROOT = Path(os.environ.get("TRADEAI_STATE_ROOT", str(HOME / "trade-ai-releases" / "persistent-state")))
 STATE_DIR = Path(os.environ.get("TRADEAI_RELEASE_WINDOW_STATE_DIR", str(STATE_ROOT / "data" / "runtime" / "release_window")))
+#: Where STATE_DIR came from (arming finding 4): ``status`` prints it beside the path so the operator can compare the
+#: runner's STOP latch directory with the CC's ``GET /stop`` ``state_dir`` (UI contract §6).
+STATE_DIR_SOURCE = (
+    "env:TRADEAI_RELEASE_WINDOW_STATE_DIR" if "TRADEAI_RELEASE_WINDOW_STATE_DIR" in os.environ
+    else "env:TRADEAI_STATE_ROOT" if "TRADEAI_STATE_ROOT" in os.environ
+    else "default"
+)
 HEALTH_URL = os.environ.get("TRADEAI_RELEASE_WINDOW_HEALTH_URL", "http://127.0.0.1:7777/api/health")
 UNITS = tuple(os.environ.get(
     "TRADEAI_RELEASE_WINDOW_UNITS",
@@ -814,7 +821,10 @@ class Runner:
 
     def status(self) -> tuple[int, dict]:
         latch_state, latch = self.state.read_latch()
-        return EXIT_OK, {"latch_state": latch_state, "latch": latch, "last": self.state.read(self.state.last),
+        root = Path(self.state.root)
+        source = STATE_DIR_SOURCE if root == STATE_DIR else "argument"
+        return EXIT_OK, {"state_dir": str(root), "state_dir_source": source, "latch_path": str(self.state.latch),
+                         "latch_state": latch_state, "latch": latch, "last": self.state.read(self.state.last),
                          "multi_window_grant_status": MULTI_WINDOW_GRANT_STATUS, "windows_et": sorted(WINDOWS),
                          "grace_min": GRACE_MIN, "grant_token": WINDOW_TOKEN_HELP}
 

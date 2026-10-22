@@ -312,9 +312,10 @@ The whole design assumes one STOP latch: `<state_dir>/STOP.json`. These must all
 The step is read-only in every mode. A mismatch is reported with both paths and never fixed by the script
 (§0 rule 5).
 
-`release_window.py status` prints `latch_state` but **no `state_dir`** (finding 4). The script therefore compares the
-CC latch with `release_window.py status`'s `latch_state`, and reads the directory from `release_window.STATE_DIR`
-directly.
+`release_window.py status` prints `state_dir`, `state_dir_source` and `latch_state` (finding 4, fixed). The script
+reads the runner's directory and latch from that one output, as the claimer unit's environment resolves them. A served
+release that predates the fix has no `state_dir` there; the script then reads `release_window.STATE_DIR` directly and
+labels the row so.
 
 - **Command:** `TRADEAI_RELEASE_TRAIN_ARM_ACK=G $ARM G --apply`. It is still read-only and only adds a receipt.
 - **Dry run:** `$ARM G`. `--verify` runs the same comparison and exits 1 on a mismatch.
@@ -322,7 +323,7 @@ directly.
   ```
     CC summary state_dir                             ~/trade-ai-releases/persistent-state/data/runtime/release_window  [release_window.STATE_DIR]
     CC GET /stop state_dir                           ~/trade-ai-releases/persistent-state/data/runtime/release_window
-    runner release_window.STATE_DIR (claimer env)    ~/trade-ai-releases/persistent-state/data/runtime/release_window
+    release_window.py status state_dir (claimer env) ~/trade-ai-releases/persistent-state/data/runtime/release_window  [default]
     release_control_cli.py status state_dir          ~/trade-ai-releases/persistent-state/data/runtime/release_window
     gateway (inline env) state dir                   ~/trade-ai-releases/persistent-state/data/runtime/release_window
     claimer .path unit watch dir                     ~/trade-ai-releases/persistent-state/data/runtime/release_window
@@ -631,6 +632,10 @@ The fallback holds through every phase.
    `GET /stop`'s `state_dir` equals the path `release_window.py status` reads". `Runner.status()` returns
    `latch_state`, `latch`, `last`, `multi_window_grant_status`, `windows_et`, `grace_min` and `grant_token`, and no
    path. Step G reads `release_window.STATE_DIR` instead.
+   **Status: FIXED** (branch `fix/release-train-arming-blockers-20261021`). `release_window.py status` (and
+   `train-status`) print `state_dir`, `state_dir_source` (`env:TRADEAI_RELEASE_WINDOW_STATE_DIR`,
+   `env:TRADEAI_STATE_ROOT`, `default`, or `argument`) and `latch_path`. Step G reads the runner's directory from
+   that output, and falls back to `release_window.STATE_DIR` (labelled) only for a served release that predates it.
 5. **The `injected_failures` receipt field is always `[]`.** It is hardcoded in `_receipt`, and the controller has no
    injection hook, while contract §7 says it records "which injected failure … was exercised and how it behaved".
    Also, a dry-run (shadow) train never halts on STOP or a corrupt latch. It records `LIVE WOULD REFUSE` and runs on,
