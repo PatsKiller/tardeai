@@ -49,7 +49,7 @@ except ImportError:  # repo root on sys.path
 ROOT = Path(__file__).resolve().parents[2]
 
 #: Set to "ACTIVE" only by the AGENTS.md 19.0.0 ratifying edit. Anything else refuses every admission.
-CARVEOUT_STATUS = "PROPOSED"
+CARVEOUT_STATUS = "ACTIVE"
 POLICY_VERSION = "19.0.0"
 POLICY_TOKEN = "APPROVE_AGENTS_POLICY_19_0_0"
 SCHEMA_ADMISSION = "N8nBrokerReadAdmission@v1"
