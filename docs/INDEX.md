@@ -1914,6 +1914,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/HERMES_LIBRARIAN_CURATION_MATURITY_2026-08-23.md` | Librarian + curation maturity (PR C) |
 | `docs/ops/HERMES_TICKER_INTELLIGENCE_WIRING_CLOSEOUT_2026-08-23.md` | Hermes Ticker Intelligence Wiring Closeout |
 | `docs/ops/HOLDINGS_STATE_RECONCILIATION_2026-09-01.md` | Holdings state — per-file reconciliation plan |
+| `docs/ops/HOME_DO_NOW_2026-10-22.md` | Command Center Home — the "Do now" layout (2026-10-22) |
 | `docs/ops/INSTRUMENT_RECORD_V1.md` | InstrumentRecord@v1 |
 | `docs/ops/INVESTMENT_COMMAND_CENTER_2026-10-08.md` | Investment Command Center — PR-A: engine, CIO memory, ranking, filters, modal, Telegram line (2026-10-08) |
 | `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Lane Quality Bake-Off — 2026-08-21 |

@@ -435,7 +435,7 @@ These carry no dictionary block yet; their store, writer and read path are in [`
 
 `scripts/api_v2.py`, `scripts/api_v3_*.py`, `scripts/portfolio_server.py`, `scripts/telegram_command_handler.py`
 
-- **Home** — apps/command-center-v3 Home -> /api/v3/cio/home, /api/v2/portfolio
+- **Home** — apps/command-center-v3 Home -> /api/v2/home/do-now (home_do_now projection: the Do now queue and the three numbers), /api/v2/overview and /api/v2/portfolio/performance (header, accounts, movers; holdings.json until a positions_current reader batch covers Home), /api/v3/cio/home
 - **Watch** — Watch desk -> /api/v3/data-broker/watch (watch_intelligence)
 - **Trade AI** — Trade AI scanner -> /api/v2 trade-ai routes
 - **Options** — Trading -> Options -> /api/v2 options routes

@@ -30618,6 +30618,42 @@ def _needs_action(query=None):
     return out
 
 
+_HOME_DO_NOW_CACHE: dict = {}
+
+
+def _home_do_now(query=None):
+    """GET /api/v2/home/do-now — the Home "Do now" queue (HomeDoNow@v1, data-broker projection home_do_now,
+    scripts/lib/data_broker/home_do_now.py; operator-approved Home redesign 2026-10-22). One deduplicated queue over
+    needs-action, the operator inbox, the risk snapshot, the desk-truth stop-coverage receipt, pending paper proposals
+    and open redeploys, each source with its own as_of / age / stale. Read-only; never a broker read (the risk
+    snapshot is read without the /api/v2/risk broker-stop overlay). Cached 60 s so Home polling never fans out more
+    than once a minute."""
+    import time as _t
+
+    hit = _HOME_DO_NOW_CACHE.get("v")
+    if hit and _t.monotonic() - hit[0] < 60:
+        return hit[1]
+    from lib import needs_action as _na
+    from lib.data_broker import home_do_now as _hdn
+
+    def _risk():
+        from lib.data_broker.risk_snapshot import get_risk_snapshot as _grs
+
+        return _grs(db_query=_db_query, max_age_s=120)
+
+    probes = {
+        "needs_action": _needs_action,
+        "inbox": _inbox,
+        "risk": _risk,
+        "desk_truth": _na.probe_desk_truth,
+        "proposals": lambda: _hdn.probe_pending_proposals(_db_query),
+        "deploy": lambda: _deploy_events({"status": "open", "days": "14"}),
+    }
+    out = _hdn.build(probes)
+    _HOME_DO_NOW_CACHE["v"] = (_t.monotonic(), out)
+    return out
+
+
 def _queue_pending():
     rows = (
         _db_query("""
@@ -48582,6 +48618,7 @@ ROUTES = {
     "/api/v2/system/data-plausibility": lambda: _system_data_plausibility(),
     "/api/v2/system/pipeline-failures": lambda: _system_pipeline_failures(_current_query),
     "/api/v2/needs-action": lambda: _needs_action(),
+    "/api/v2/home/do-now": lambda: _home_do_now(),
     "/api/v2/queue/pending": lambda: _queue_pending(),
     "/api/v2/queue/completed": lambda: _queue_completed(),
     "/api/v2/queue/failed": lambda: _queue_failed(),
