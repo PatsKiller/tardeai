@@ -1,0 +1,14 @@
+# PROPOSED, NOT INSTALLED (packet docs/ops/packets/release-train-host-trigger-20261023/). Fires the 00:00 ET
+# window's request at the window time: inside [W-100 min, W+15 min) the writer classifies the tick on_window, so the
+# request id is rtw-<YYYYMMDD>-0000-win. A missed window is never replayed late (Persistent=false).
+[Unit]
+Description=Trade AI release train: host-timer request, 00:00 America/New_York window
+
+[Timer]
+OnCalendar=*-*-* 00:00:00 America/New_York
+Persistent=false
+AccuracySec=30s
+Unit=tradeai-release-train-request@0000.service
+
+[Install]
+WantedBy=timers.target
