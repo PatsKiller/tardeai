@@ -4,6 +4,8 @@ POST /api/v3/watch/commands/star
 POST /api/v3/watch/commands/list-membership
 POST /api/v3/watch/commands/alert
 POST /api/v3/watch/commands/refresh-data
+POST /api/v3/watch/commands/suggest-dismiss   (System Suggests: hide a suggested name for 30 days)
+POST /api/v3/watch/commands/suggest-restore   (undo a dismissal)
 
 No provider calls. Broker remains the read model.
 """
@@ -110,3 +112,69 @@ def post_refresh_data(body: dict | None = None) -> dict[str, Any]:
         "note": "Refresh is queued as deterministic data refresh only — no LLM",
         "accepted_at": _now(),
     }
+
+
+# ── System Suggests decisions (operator 2026-10-23) ─────────────────────────────────────────────────────────────
+# A dismissal is an operator command on the watchlist, never a broker action. It is recorded as one row in the
+# existing watchlist_events log (event_type watch_suggest_dismissed / watch_suggest_restored) with who (the
+# authenticated cc_auth principal, never the body), when, the reason and the name's rank at the time — the audit
+# trail. lib/data_broker/watch_curation.read_dismissed() reads it (latest event per symbol, 30 days).
+
+_SUGGEST_EVENTS = {"dismiss": "watch_suggest_dismissed", "restore": "watch_suggest_restored"}
+
+
+def _principal() -> str:
+    try:
+        from lib.cc_auth import current_principal
+    except ImportError:  # pragma: no cover - flat import layout
+        try:
+            from scripts.lib.cc_auth import current_principal  # type: ignore
+        except ImportError:
+            return ""
+    try:
+        return current_principal() or ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def post_suggest_decision(action: str, body: dict | None = None, *, db_execute=None) -> dict[str, Any]:
+    """Record a System Suggests dismissal or restore. ``db_execute(sql, params)`` is injectable for tests."""
+    import json as _json
+    import re as _re
+
+    body = body or {}
+    if action not in _SUGGEST_EVENTS:
+        return {"ok": False, "error": "UNKNOWN_ACTION", "provider_calls": 0}
+    symbol = str(body.get("symbol") or "").upper().strip()
+    if not symbol or not _re.fullmatch(r"[A-Z0-9.\-^/]{1,12}", symbol):
+        return {"ok": False, "error": "SYMBOL_REQUIRED", "provider_calls": 0}
+    reason = str(body.get("reason") or "").strip()[:300] or None
+    by = _principal() or "unauthenticated"
+    payload = {"by": by, "reason": reason, "surface": "watch.system_suggests",
+               "universe_rank": body.get("universe_rank") if isinstance(body.get("universe_rank"), int) else None,
+               "conviction": body.get("conviction") if isinstance(body.get("conviction"), (int, float)) else None}
+    sql = ("INSERT INTO watchlist_events (event_type, symbol, source, agent, status, message, payload) "
+           "VALUES (%s, %s, 'operator', 'command_center', 'recorded', %s, %s::jsonb)")
+    msg = (f"System Suggests: {'dismissed' if action == 'dismiss' else 'restored'} {symbol}"
+           + (f" — {reason}" if reason else ""))
+    params = (_SUGGEST_EVENTS[action], symbol, msg[:500], _json.dumps(payload))
+    try:
+        if db_execute is not None:
+            db_execute(sql, params)
+        else:
+            from db_adapter import _get_conn
+
+            conn = _get_conn()
+            cur = conn.cursor()
+            cur.execute(sql, params)
+            conn.commit()
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": type(e).__name__, "detail": str(e)[:160], "provider_calls": 0}
+    try:  # the next read shows the change at once
+        from lib.data_broker import watch_prospects as _wp
+
+        _wp._CACHE.update(at=0.0, val=None)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "command": f"suggest-{action}", "symbol": symbol, "event_type": _SUGGEST_EVENTS[action],
+            "by": by, "reason": reason, "provider_calls": 0, "broker_write": False, "accepted_at": _now()}

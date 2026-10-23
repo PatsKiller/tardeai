@@ -17,10 +17,10 @@ async function mockApi(page: Page, writes: string[]) {
   })
 }
 
-test('Prospects is the default Watch view: interim label, chips, five lanes, one row per prospect', async ({ page }) => {
+test('Prospects (now the third Watch tab): interim label, chips, five lanes, one row per prospect', async ({ page }) => {
   const writes: string[] = []
   await mockApi(page, writes)
-  await page.goto('/v3/watch')
+  await page.goto('/v3/watch?tab=prospects')
   await expect(page).toHaveURL(/tab=prospects/)
   const root = page.getByTestId('watch-prospects')
   await expect(root).toBeVisible({ timeout: 60_000 })

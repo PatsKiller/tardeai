@@ -19,6 +19,11 @@ import {
 } from '../lib/watchProspectsModel'
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
 import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
+import PositionFilterBar from '../components/watch/PositionFilterBar'
+import {
+  alertLevelsLabel, money, positionChip, positionQuery, readinessTone, reentryLabel, resultTone, roundTripLabel,
+  roundTripPath, withQuery, type ListRow,
+} from '../lib/watchListsModel'
 
 const panel: CSSProperties = {
   background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.lg, minWidth: 0,
@@ -26,7 +31,7 @@ const panel: CSSProperties = {
 const label: CSSProperties = {
   fontSize: TYPE.xs, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: TOKENS.text[2],
 }
-const GRID = '72px 128px 96px minmax(180px, 1fr) 160px 140px'
+export const GRID = '96px 104px 84px minmax(180px, 1fr) 160px 130px'
 
 function Bar({ value, tone, height = 4 }: { value: number | null; tone: Tone; height?: number }) {
   const w = value == null ? 0 : Math.max(0, Math.min(100, value))
@@ -37,12 +42,12 @@ function Bar({ value, tone, height = 4 }: { value: number | null; tone: Tone; he
   )
 }
 
-function StepButton({ row, onStep }: { row: ProspectRow; onStep: (r: ProspectRow) => void }) {
+export function StepButton({ row, onStep }: { row: ProspectRow; onStep: (r: ProspectRow) => void }) {
   const a = row.next_action
   const t = toneVars(stepTone(a.kind))
   const style: CSSProperties = {
-    whiteSpace: 'nowrap', fontSize: TYPE.base, fontWeight: 700, padding: '8px 10px', borderRadius: RADIUS.md,
-    minHeight: 36, boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    whiteSpace: 'nowrap', fontSize: TYPE.base, fontWeight: 700, padding: '3px 8px', borderRadius: RADIUS.md,
+    minHeight: 26, boxSizing: 'border-box', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
     background: t.bg, border: `1px solid ${t.border}`, color: t.color, cursor: 'pointer', textDecoration: 'none',
   }
   if (a.kind === 'none') return <span style={{ color: TOKENS.text[3] }} title={a.reason}>—</span>
@@ -65,15 +70,17 @@ function Chip({ tone, children, tip, testId }: { tone: Tone; children: ReactNode
   )
 }
 
-function Row({ r, selected, onSelect, onStep, alerts }: {
+export function Row({ r, selected, onSelect, onStep, alerts }: {
   r: ProspectRow; selected: boolean; onSelect: () => void; onStep: (r: ProspectRow) => void; alerts: number
 }) {
   const ct = convictionTone(r.conviction)
+  const lr = r as ListRow
+  const pchip = positionChip(lr)
   return (
     <div
       data-testid="watch-row" data-symbol={r.symbol} data-lane={r.lane}
       style={{
-        display: 'grid', gridTemplateColumns: GRID, gap: 10, padding: '8px 16px', alignItems: 'center',
+        display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '3px 12px', alignItems: 'center',
         borderBottom: `1px solid ${TOKENS.borderSubtle}`,
         background: selected ? TOKENS.bg[2] : undefined,
         borderLeft: `3px solid ${selected ? TOKENS.info : 'transparent'}`,
@@ -81,10 +88,13 @@ function Row({ r, selected, onSelect, onStep, alerts }: {
     >
       <button
         type="button" onClick={onSelect} aria-pressed={selected} title={`Open the ${r.symbol} record`}
-        style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: TOKENS.text[0], fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.md, minHeight: 36 }}
+        style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: TOKENS.text[0], fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.md, minHeight: 26 }}
       >
+        {lr.starred && <span title="Starred by you" style={{ color: TOKENS.warning, marginRight: 2 }}>★</span>}
         {r.symbol}
+        {lr.mine && !lr.starred && <span title={(lr.membership || []).map(m => m.label).join(' · ') || 'Your name'} style={{ marginLeft: 3, fontSize: TYPE.xs, color: TOKENS.info }}>●</span>}
         {alerts > 0 && <span title={`${alerts} armed Watch alert(s) on this symbol`} style={{ marginLeft: 4, fontSize: TYPE.xs, color: TOKENS.warning }}>🔔{alerts}</span>}
+        {pchip && <span title={pchip.tip} data-testid="watch-position-chip" style={{ display: 'block', fontFamily: FONT.sans, fontWeight: 600, fontSize: TYPE.xs, color: toneVars(pchip.tone).color }}>{pchip.label}</span>}
       </button>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }} title={TOOLTIPS.conviction}>
         <span style={{ ...numStyle, fontWeight: 700, color: r.conviction == null ? TOKENS.text[3] : TOKENS.text[0] }}>
@@ -96,6 +106,9 @@ function Row({ r, selected, onSelect, onStep, alerts }: {
       <span title={TOOLTIPS.stance} style={{ fontSize: TYPE.base, fontWeight: 700, color: toneVars(stanceTone(r.stance)).color }}>{stanceLabel(r.stance)}</span>
       <span style={{ fontSize: TYPE.base, lineHeight: 1.35, color: TOKENS.text[1] }}>
         {r.why}
+        {lr.expiry_suggestion && <span style={{ display: 'block', color: TOKENS.warning }} title="Your names never expire off the page; an expired signal only suggests a review.">Review suggested: {lr.expiry_suggestion.suggest}</span>}
+        {lr.last_round_trip && <span data-testid="watch-last-trade" style={{ display: 'block', color: toneVars(resultTone(lr.last_round_trip)).color }} title={`Last round trip ${roundTripPath(lr.last_round_trip)}. ${lr.last_round_trip.exit_cause_evidence || ''}`}>Last trade {roundTripLabel(lr.last_round_trip)}</span>}
+        {lr.reentry && <span style={{ display: 'block', color: toneVars(readinessTone(lr.reentry)).color }} title={`Re-Entry Desk classifier: ${lr.reentry.state}. Alert levels ${alertLevelsLabel(lr.reentry)}.`}>Re-entry {reentryLabel(lr.reentry)}</span>}
         {r.whats_missing[0] && <span style={{ display: 'block', color: TOKENS.text[3] }}>Missing: {r.whats_missing[0]}</span>}
         {r.conflicts.map((c, i) => (
           <span key={i} data-testid="watch-conflict" style={{ display: 'block', color: TOKENS.warning }}>⚠ {c.summary}</span>
@@ -107,7 +120,7 @@ function Row({ r, selected, onSelect, onStep, alerts }: {
   )
 }
 
-function Detail({ r, onAskCio, cioMsg }: { r: ProspectRow | null; onAskCio: (r: ProspectRow) => void; cioMsg: string }) {
+export function Detail({ r, onAskCio, cioMsg }: { r: ProspectRow | null; onAskCio: (r: ProspectRow) => void; cioMsg: string }) {
   if (!r) return <div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>Click a symbol to see its full record and where it appears.</div>
   return (
     <div data-testid="watch-detail" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -116,6 +129,7 @@ function Detail({ r, onAskCio, cioMsg }: { r: ProspectRow | null; onAskCio: (r: 
         <span style={{ fontSize: TYPE.base, color: TOKENS.text[2], textAlign: 'right' }}>{r.company || ''}</span>
       </div>
       <div style={{ fontSize: TYPE.base + 1, lineHeight: 1.5 }}>{r.summary}</div>
+      <PositionDetail r={r as ListRow} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="watch-components">
         <span style={label} title={TOOLTIPS.conviction}>
           Conviction {r.conviction == null ? 'n/a' : r.conviction.toFixed(0)} — what it's made of
@@ -176,6 +190,44 @@ function Detail({ r, onAskCio, cioMsg }: { r: ProspectRow | null; onAskCio: (r: 
   )
 }
 
+/** Last round trip and re-entry advice (CIO prospect lifecycle) for a formerly held name; membership for yours. */
+export function PositionDetail({ r }: { r: ListRow }) {
+  const rt = r.last_round_trip
+  const a = r.reentry
+  if (!rt && !a && !(r.membership || []).length) return null
+  return (
+    <div data-testid="watch-position-detail" style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: TYPE.base }}>
+      {(r.membership || []).length > 0 && (
+        <div><span style={label}>Why it's yours</span>
+          {(r.membership || []).map((m, i) => <div key={i}>{m.label}{m.at ? ` · since ${String(m.at).slice(0, 10)}` : ''}</div>)}
+        </div>
+      )}
+      {rt && (
+        <div data-testid="watch-round-trip">
+          <span style={label} title="The last closed round trip, from the CIO prospect lifecycle (fills, observed stop path, exit cause).">Last trade · {r.position_label}</span>
+          <div style={{ fontFamily: FONT.mono }}>{roundTripPath(rt)}</div>
+          <div style={{ color: toneVars(resultTone(rt)).color, fontWeight: 700 }}>{roundTripLabel(rt)}</div>
+          <div style={{ color: TOKENS.text[2] }} title={rt.r_basis ? `R measured against the ${rt.r_basis}` : undefined}>
+            {rt.stop_raised != null ? `Stop raised ${rt.stop_raised}× (${money(rt.stop_initial)} → ${money(rt.stop_last)})` : 'No stop history'}
+            {rt.noise_vs_trend ? ` · exit reads as ${rt.noise_vs_trend.replace('_', ' ')}` : ''}
+          </div>
+          {rt.noise_vs_trend_basis && <div style={{ color: TOKENS.text[3], fontSize: TYPE.xs }}>{rt.noise_vs_trend_basis}</div>}
+        </div>
+      )}
+      {a && (
+        <div data-testid="watch-reentry-advice">
+          <span style={label} title="Same classifier as the Re-Entry Decision Desk (reentry_rules.derive_intel_state).">Re-entry · {a.state}</span>
+          <div style={{ color: toneVars(readinessTone(a)).color, fontWeight: 700 }}>{reentryLabel(a)}</div>
+          <div style={{ color: TOKENS.text[2] }}>Alert levels {alertLevelsLabel(a)}</div>
+          <ul style={{ margin: '2px 0 0', paddingLeft: 16, color: TOKENS.text[2] }}>
+            {a.conditions.map(c => <li key={c.id}>{c.met === true ? '✓' : c.met === false ? '✗' : '?'} {c.text}</li>)}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AlertsBody({ t, now }: { t: TiedAlerts; now: Date }) {
   return (
     <div data-testid="watch-drawer-alerts-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -202,9 +254,11 @@ function AlertsBody({ t, now }: { t: TiedAlerts; now: Date }) {
 }
 
 export default function WatchProspects() {
-  const { data: raw, loading, error, refetch } = useApi<any>('/api/v3/data-broker/watch-prospects', 120_000)
-  const { data: alertsRaw } = useApi<any>('/api/v2/watch/alerts/list', 120_000)
   const [params, setParams] = useSearchParams()
+  const pq = positionQuery(params)
+  delete pq.sort
+  const { data: raw, loading, error, refetch } = useApi<any>(withQuery('/api/v3/data-broker/watch-prospects', pq), 120_000)
+  const { data: alertsRaw } = useApi<any>('/api/v2/watch/alerts/list', 120_000)
   const p: ProspectsPayload | null = useMemo(() => unwrap(raw), [raw])
   const lane = (LANE_ORDER.includes(params.get('lane') as LaneId) ? params.get('lane') : 'actionable') as LaneId
   const [sel, setSel] = useState<string | null>(params.get('symbol'))
@@ -285,7 +339,7 @@ export default function WatchProspects() {
               title={TOOLTIPS.lane[l.id]}
               style={{
                 display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-start', textAlign: 'left', cursor: 'pointer',
-                borderRadius: RADIUS.lg, padding: '10px 12px', minHeight: 84, color: TOKENS.text[0],
+                borderRadius: RADIUS.lg, padding: '6px 10px', minHeight: 60, color: TOKENS.text[0],
                 background: on ? TOKENS.bg[2] : TOKENS.bg[1], border: `1px solid ${on ? tone.color : TOKENS.border}`,
               }}>
               <span style={{ fontFamily: FONT.mono, fontSize: TYPE.xl, fontWeight: 700, color: tone.color }}>{l.count}</span>
@@ -295,6 +349,8 @@ export default function WatchProspects() {
           )
         })}
       </div>
+
+      <PositionFilterBar specs={(p as any).position_filters} facets={(p as any).position_facets} sortable={false} testId="prospects-position-filters" />
 
       {toast && <div role="status" style={{ ...chipStyle('success', 'soft', 'md'), alignSelf: 'flex-start' }}>{toast}</div>}
 

@@ -59,6 +59,92 @@ def membership_starred() -> set[str]:
         return set()
 
 
+# ── The operator's own names — "My Watchlist" (operator 2026-10-23) ──────────────────────────────────────────
+#
+# Operator 2026-10-23 (verbatim): "I don't see stuff that I had starred that I was watching ... where is my
+# traditional watch list, the stuff that I was watching, and where is the automated watch list". Measured the same
+# morning: the operator's names live in four places and the Watch universe read only one of them (stars):
+#   1. operator_starred_symbols                          — the star (12 names);
+#   2. watchlist_items source='personal_watchlist'      — the traditional list (the DB copy of
+#      portfolios/state/watchlist.json, 13 names: PLTR, HII, GD, BWXT, AXON, MAIN, ARCC, HTGC, MSFT, NVDA, ...);
+#   3. watch_directives kind='ticker' created_by='operator' status='active' — "Watchlist" adds from the
+#      Command Center and named operator lists ("White House Quantum Computing": IBM, GFS, QBTS, RGTI);
+#   4. watchlist_items origin_system='operator' or source='operator' — names the operator added or proposed.
+# Each name carries every reason it is the operator's (kind, label, when), so the page can say why it is listed.
+# Read-only. Each source fails soft on its own and is reported in ``sources`` (never a silent empty list).
+
+OPERATOR_KINDS = ("starred", "personal_watchlist", "directive", "operator_added")
+OPERATOR_KIND_LABEL = {
+    "starred": "Starred by you",
+    "personal_watchlist": "Your personal watchlist",
+    "directive": "Your watch directive",
+    "operator_added": "Added or proposed by you",
+}
+
+
+def _iso_or_none(v: Any) -> str | None:
+    if v is None:
+        return None
+    return v.isoformat() if hasattr(v, "isoformat") else str(v)
+
+
+def membership_operator(db_query=None) -> dict[str, Any]:
+    """{names: {SYM: {starred, starred_at, reasons:[{kind, label, at, ref}]}}, sources: {kind: {status, count}}}.
+
+    The operator's names, never capped and never expired here (expiry only suggests, on the page). ``db_query`` is
+    injectable for tests (signature ``db_query(sql, params=None)``)."""
+    q = db_query or (lambda sql, params=None: _db_query(sql, params))
+    names: dict[str, dict[str, Any]] = {}
+    sources: dict[str, dict[str, Any]] = {}
+
+    def add(sym: Any, kind: str, *, at: Any = None, ref: Any = None, label: str | None = None) -> None:
+        s = str(sym or "").strip().upper()
+        if not s or looks_like_cusip(s):
+            return
+        ent = names.setdefault(s, {"symbol": s, "starred": False, "starred_at": None, "reasons": []})
+        if kind == "starred":
+            ent["starred"], ent["starred_at"] = True, _iso_or_none(at)
+        if not any(r["kind"] == kind and r.get("ref") == ref for r in ent["reasons"]):
+            ent["reasons"].append({"kind": kind, "label": label or OPERATOR_KIND_LABEL[kind], "at": _iso_or_none(at),
+                                   "ref": ref})
+
+    reads = (
+        ("starred", "SELECT upper(symbol) AS s, starred_at AS at, NULL AS ref, NULL AS label "
+                    "FROM operator_starred_symbols"),
+        ("personal_watchlist", "SELECT upper(symbol) AS s, min(first_seen_at) AS at, NULL AS ref, NULL AS label "
+                               "FROM watchlist_items WHERE status IN ('active','researched') "
+                               "AND source = 'personal_watchlist' GROUP BY 1"),
+        ("directive", "SELECT upper(spec->>'symbol') AS s, created_at AS at, id AS ref, label "
+                      "FROM watch_directives WHERE kind = 'ticker' AND status = 'active' "
+                      "AND created_by = 'operator' AND coalesce(spec->>'symbol', '') <> ''"),
+        ("operator_added", "SELECT upper(symbol) AS s, min(first_seen_at) AS at, NULL AS ref, "
+                           "string_agg(DISTINCT source, ',') AS label FROM watchlist_items "
+                           "WHERE status IN ('active','researched') AND source <> 'personal_watchlist' "
+                           "AND (origin_system = 'operator' OR source = 'operator') GROUP BY 1"),
+    )
+    for kind, sql in reads:
+        try:
+            rows = q(sql) or []
+        except Exception as e:  # noqa: BLE001 — one source failing never empties the others
+            sources[kind] = {"status": "error", "error": type(e).__name__, "count": 0}
+            continue
+        n = 0
+        for r in rows:
+            def g(k: str, i: int) -> Any:
+                return r.get(k) if hasattr(r, "get") else r[i]
+
+            sym, at, ref, lab = g("s", 0), g("at", 1), g("ref", 2), g("label", 3)
+            label = None
+            if kind == "directive" and lab:
+                label = f"Your watch directive “{lab}”"
+            elif kind == "operator_added" and lab:
+                label = f"Added or proposed by you ({str(lab).replace('_', ' ')})"
+            add(sym, kind, at=at, ref=ref, label=label)
+            n += 1
+        sources[kind] = {"status": "ok", "count": n}
+    return {"names": names, "sources": sources}
+
+
 def membership_screener() -> set[str]:
     out: set[str] = set()
     try:
@@ -126,6 +212,10 @@ def membership_watchlist(symbols) -> set[str]:
 HELD_CACHE_S = 60
 _held_cache: dict[str, Any] = {}          # surface -> {"at": monotonic, "val": verdict}
 WATCH_SURFACE = "watch"                   # positions_store reader batch #1 (operator 2026-10-22)
+# The CIO opportunity curator's held flag (lib/data_broker/opportunity.gather). PROPOSED reader batch #4 — not in
+# held.positions_store_reader_surfaces until the operator grants it (config/data_source_authority.json
+# positions_store.proposed_readers); until then held_positions(surface=OPPORTUNITY_SURFACE) reads holdings.json.
+OPPORTUNITY_SURFACE = "opportunity"
 _NOT_POSITIONS = ("CASH", "SPAXX", "FDRXX")
 
 

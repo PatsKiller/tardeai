@@ -1322,7 +1322,38 @@
           "position_snapshots"
         ],
         "measured_unbatched_readers": {}
-      }
+      },
+      "proposed_readers": [
+        {
+          "batch": 4,
+          "status": "proposed",
+          "reader": "scripts/lib/data_broker/watch_domains.py::held_positions",
+          "files": [
+            "scripts/lib/data_broker/watch_domains.py",
+            "scripts/lib/data_broker/opportunity.py"
+          ],
+          "tables": [
+            "positions_current"
+          ],
+          "surfaces": [
+            "opportunity"
+          ],
+          "facts": "held flag only: the set of symbols with qty > 0 decides the curator's owned / not owned (and so its type, stance and position_status); shares, basis and value stay the holdings file's",
+          "consumers": [
+            "scripts/lib/data_broker/opportunity.py",
+            "scripts/cio_opportunity_curator.py"
+          ],
+          "switch": "config/watch_decision_standards.yaml held.positions_store_reader_surfaces gains 'opportunity'",
+          "freshness_guard": "positions_sync.freshness() (30 min in session, 72 h closed); stale, empty or unreadable -> holdings_accounts (holdings.json) with fallback_reason, stamped on every assessment as position_basis and in the curator receipt",
+          "why": "Operator 2026-10-23: NAVN showed Add-On / ADD on Watch › Opportunities the morning after it was sold — the curator's 09:00 run read the holdings file, which still listed NAVN, while positions_current (synced 09:09, and 16:54 the day before) did not.",
+          "approval": null,
+          "proposal": {
+            "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+            "proposed_on": "2026-10-23",
+            "grant_phrase": "approve positions reader batch #4 (curator held flag)"
+          }
+        }
+      ]
     },
     {
       "domain": "options_iv",

@@ -9,6 +9,8 @@ Watch Intelligence (composes existing broker domains):
   GET /api/v3/data-broker/watch-intelligence/{symbol}
   GET /api/v3/data-broker/watch-filters
   GET /api/v3/data-broker/watch-lists
+  GET /api/v3/data-broker/watch-curation   (My Watchlist + System Suggests, operator 2026-10-23)
+  GET /api/v3/data-broker/watch-universe   (Full universe on Watch: curator rank + position facts + filters)
   GET /api/v3/data-broker/watch-reviews/{symbol}
 """
 from __future__ import annotations
@@ -73,6 +75,20 @@ def get_prospects(query: dict | None = None) -> dict[str, Any]:
     cio_prospect projection is live; lib/data_broker/watch_prospects.py)."""
     from lib.data_broker.watch_prospects import list_watch_prospects
     return list_watch_prospects(query or {})
+
+
+def get_curation(query: dict | None = None) -> dict[str, Any]:
+    """GET /api/v3/data-broker/watch-curation — My Watchlist (every operator name, starred first, never capped) and
+    System Suggests (top N of the Full universe ranking, rotating with reasons); lib/data_broker/watch_curation.py."""
+    from lib.data_broker.watch_curation import list_watch_curation
+    return list_watch_curation(query or {})
+
+
+def get_universe(query: dict | None = None) -> dict[str, Any]:
+    """GET /api/v3/data-broker/watch-universe — the curator's ranked list with held / formerly held / never held,
+    the last round trip and re-entry advice per row, and the position filters (lib/data_broker/watch_universe.py)."""
+    from lib.data_broker.watch_universe import list_watch_universe
+    return list_watch_universe(query or {})
 
 
 def get_filters() -> dict[str, Any]:
