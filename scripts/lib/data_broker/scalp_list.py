@@ -445,3 +445,21 @@ def freshness_report(
     order = ["NO_SLO", "healthy", "late", "degraded", "failed"]
     report["overall"] = max(statuses, key=order.index) if statuses else "NO_SLO"
     return report
+
+
+def get_focus_list(*, now: datetime | None = None, fresh_s: float | None = None) -> dict[str, Any]:
+    """The scalp FOCUS list (``ScalpFocusList@v1``, lib/scalp_focus): the ranked top N of the scalp list with each
+    member's entry reason, and today's in/out events. One source for the Trade AI page, the Active Trader page and
+    the critique gate. Read-only; zero provider calls; ``status`` ok / stale / missing (never a stale list as fresh)."""
+    try:
+        from lib import scalp_focus as sf
+    except ImportError:  # pragma: no cover
+        from scripts.lib import scalp_focus as sf  # type: ignore
+    ref = _now(now)
+    cfg = sf.load_config()
+    view = sf.read_focus(now=ref.timestamp(), fresh_s=cfg.fresh_s if fresh_s is None else fresh_s)
+    day = ref.astimezone(hot.ET).strftime("%Y-%m-%d") if hot.ET else ref.strftime("%Y-%m-%d")
+    view["events"] = sf.recent_events(day=day, limit=50)
+    view["provider_calls"] = 0
+    view["domain"] = "scalp_focus"
+    return view

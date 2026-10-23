@@ -24,6 +24,23 @@ ALERTS ONLY — no order path.
   python3 scripts/active_trader/premarket_watch.py                       # dry run, now
   python3 scripts/active_trader/premarket_watch.py --as-of 09:00         # replay today's bars to 09:00
   python3 scripts/active_trader/premarket_watch.py --apply               # journal (+ Telegram if send)
+  python3 scripts/active_trader/premarket_watch.py --apply --loop        # 1-minute supervisor until window end
+
+1-MINUTE CADENCE + THREADED LIFECYCLE (operator 2026-10-23: "I agree for every minute, because on manually, I do a
+1 minute candle check"; "this should just be critiqued at least the top 20"). `cadence_mode` in
+`active_trader_premarket:`:
+  legacy  today's 5-minute pass exactly: PREMARKET_WATCH heads-up, 30-min per-symbol throttle, nothing new.
+  shadow  (default) the legacy pass still runs on its 5-minute grid and is still the only sender; beside it, on every
+          closed 1-minute candle, the FOCUS list (lib/scalp_focus: top N of the hot-list pool, hysteresis) is
+          re-ranked and each focus name's lifecycle state (WATCH -> APPROACHING -> ARMED -> TRIGGERED -> STAND DOWN,
+          EXTENDED, PULLBACK_ZONE, TRIGGER_CANCELLED) is logged to the unified threaded-alert ledger (#1971) as
+          SHADOW_LOGGED, plus momentum_alerts_premarket_1m.jsonl. Nothing new is sent.
+  live    the threaded lifecycle replaces the throttled heads-up: each state change is sent at once as a reply in
+          the symbol's thread (same state never re-sent, hard cap max_msgs_per_symbol_hour); the legacy pass is
+          journaled but not sent; a failed threaded send falls back to the legacy transport.
+`--loop` ticks settle_s seconds after every minute boundary on the CLOSED candle and exits at window end; an
+in-process lock (premarket_watch.run.lock) plus the cron line's flock mean two runs never overlap.
+scripts/premarket_cadence_compare.py --day D lists, per symbol, when the old and the new path alerted.
 """
 from __future__ import annotations
 
@@ -57,6 +74,11 @@ THROTTLE_FILE = "momentum_alerts_premarket_throttle.json"
 HEARTBEAT_FILE = "momentum_alerts_premarket_heartbeat.json"
 EVIDENCE_GATES = ("downgrade", "hold", "off")
 VALIDATED, UNVALIDATED = "VALIDATED", "UNVALIDATED"
+CADENCE_MODES = ("legacy", "shadow", "live")
+CADENCE_JOURNAL = "momentum_alerts_premarket_1m.jsonl"
+LIFECYCLE_FILE = "momentum_alerts_premarket_lifecycle.json"
+RUN_LOCK_FILE = "premarket_watch.run.lock"
+ORIGIN_1M = "active_trader_premarket"
 
 
 @dataclass(frozen=True)
@@ -93,6 +115,20 @@ class PremarketConfig:
     # UNVALIDATED heads-up with no CIO chrome; hold = journal only, never sent; off = the pre-10-14 path.
     evidence_gate: str = "downgrade"
     evidence_min_passed: int = 5
+    # 1-minute cadence + threaded lifecycle (operator 2026-10-23). Thresholds are v1 priors, operator-ratified.
+    cadence_mode: str = "shadow"            # legacy | shadow | live
+    settle_s: float = 6.0                   # tick this long after each minute boundary (recorder polls every 5 s)
+    legacy_grid_min: int = 5                # the legacy pass runs on minutes divisible by this in --loop
+    approach_pct: float = 3.0               # close within this % of the PM high -> APPROACHING
+    arm_pct: float = 0.75                   # within this % and volume accelerating -> ARMED
+    arm_vol_mult: float = 1.2               # closed-bar volume vs session median 1-min volume
+    trigger_vol_mult: float = 1.5           # break of the prior PM high on CLOSE needs this volume multiple
+    extended_pct: float = 5.0               # close this % above the break level -> EXTENDED (don't chase)
+    pullback_pct: float = 2.0               # back within this % of the break level, above VWAP -> PULLBACK_ZONE
+    stand_down_vwap_bars: int = 2           # consecutive closes below PM VWAP -> STAND DOWN
+    max_msgs_per_symbol_hour: int = 6       # hard cap per thread per trailing hour
+    reopen_after_min: float = 10.0          # after a STAND DOWN, no new pre-trigger state for this long
+    direct_book_max: int = 8                # focus names whose book/tape may be read directly when the recorder has none
 
     @classmethod
     def from_mapping(cls, raw: Optional[Mapping[str, Any]]) -> "PremarketConfig":
@@ -103,6 +139,9 @@ class PremarketConfig:
         cfg = cls(**kw)
         if cfg.mode not in ("shadow", "send"):
             raise ValueError(f"active_trader_premarket.mode must be shadow or send, got {cfg.mode!r}")
+        if cfg.cadence_mode not in CADENCE_MODES:
+            raise ValueError(f"active_trader_premarket.cadence_mode must be one of {CADENCE_MODES}, "
+                             f"got {cfg.cadence_mode!r}")
         if cfg.evidence_gate not in EVIDENCE_GATES:
             raise ValueError(f"active_trader_premarket.evidence_gate must be one of {EVIDENCE_GATES}, "
                              f"got {cfg.evidence_gate!r}")
@@ -333,8 +372,15 @@ class PremarketMoomoo:
                 "float_mm": (fs / 1e6) if fs else None,
                 "update_time": r.get("update_time"),
                 "pre_price": _f(r.get("pre_price")),
+                "pre_volume": _f(r.get("pre_volume")),
+                "last_price": _f(r.get("last_price")),
             }
         return out
+
+    def bars_start(self, symbol: str) -> list[dict]:
+        """Today's 1-min bars normalized to bar START ({s,o,h,l,c,v}; the forming bar included -- callers keep
+        only CLOSED bars). Same quote-context subscription the recorder uses (MoomooSource.bars_1m)."""
+        return self.src.bars_1m(symbol)
 
     def book(self, symbol: str, now: float):
         return self.src.book(symbol, now=now)
@@ -366,11 +412,22 @@ def resolve_universe(conn, cfg: PremarketConfig) -> list[dict]:
                  GROUP BY symbol)
                SELECT r.symbol, r.score,
                       (SELECT s.float_mm FROM scalp_scan_results s WHERE s.symbol = r.symbol
-                         AND s.float_mm IS NOT NULL ORDER BY s.scanned_at DESC LIMIT 1) AS float_mm
+                         AND s.float_mm IS NOT NULL ORDER BY s.scanned_at DESC LIMIT 1) AS float_mm,
+                      (SELECT s.rvol FROM scalp_scan_results s WHERE s.symbol = r.symbol
+                         AND s.rvol IS NOT NULL ORDER BY s.scanned_at DESC LIMIT 1) AS rvol
                FROM recent r ORDER BY r.score DESC NULLS LAST, r.symbol LIMIT %s""",
             [int(cfg.lookback_hours), list(cfg.excluded_routes), int(cfg.max_symbols) * 3])
         rows = cur.fetchall()
-    return [{"symbol": str(r[0]).upper(), "score": r[1], "float_mm": _f(r[2])} for r in rows]
+    return [{"symbol": str(r[0]).upper(), "score": r[1], "float_mm": _f(r[2]),
+             "rvol": _f(r[3]) if len(r) > 3 else None} for r in rows]
+
+
+def resolve_pool(conn, cfg: PremarketConfig) -> list[dict]:
+    """The FOCUS pool: the hot list's scalp names (same rules as resolve_universe) without the legacy
+    max_symbols x 3 cut -- the focus list ranks the whole pool and keeps the top N. SELECT only."""
+    big = PremarketConfig.from_mapping({**{k: getattr(cfg, k) for k in cfg.__dataclass_fields__},
+                                        "max_symbols": 200})
+    return resolve_universe(conn, big)
 
 
 # ── pass ──────────────────────────────────────────────────────────────────────
@@ -504,40 +561,542 @@ def evaluate(universe: Sequence[Mapping[str, Any]], *, data, cfg: PremarketConfi
     return rows
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Active Trader premarket watch (heads-up only)")
-    ap.add_argument("--apply", action="store_true", help="journal (and send when mode=send)")
-    ap.add_argument("--as-of", help="replay today's bars up to HH:MM ET (dry run only; no book/tape)")
-    ap.add_argument("--symbols", help="comma list instead of the scan universe")
-    a = ap.parse_args(argv)
-    if a.apply and a.as_of:
-        ap.error("--as-of is a replay; it never journals or sends")
-    if (ma.journal_dir() / "PREMARKET_DISABLED").exists():
-        print("HALT: PREMARKET_DISABLED present"); return 0
-    cfg = load_config()
-    now = time.time()
-    now_et = datetime.fromtimestamp(now, ET)
-    day = now_et.date().isoformat()
-    as_of = a.as_of or now_et.strftime("%H:%M")
-    if not a.as_of and not in_window(now_et, cfg):
-        print(f"outside premarket window {cfg.window_start}-{cfg.window_end} ET; nothing to do"); return 0
-    if a.symbols:
-        universe = [{"symbol": s.strip().upper(), "float_mm": None} for s in a.symbols.split(",") if s.strip()]
+# ── 1-minute cadence: closed-candle features, lifecycle, focus, threading (operator 2026-10-23) ───────────────
+
+PRE_TRIGGER = ("WATCH", "APPROACHING", "ARMED")
+POST_TRIGGER = ("TRIGGERED", "EXTENDED", "PULLBACK_ZONE", "TRIGGER_CANCELLED")
+ACTIVE_STATES = PRE_TRIGGER + POST_TRIGGER
+HARD_FAIL = frozenset({"PRICE_OUT_OF_BAND", "GAP_SMALL", "FLOAT_TOO_LARGE", "FLOAT_UNKNOWN", "NO_PREMARKET_BARS"})
+
+
+def minute_boundary(now: float) -> float:
+    """The most recent minute boundary at or before `now` (epoch seconds): the close of the last 1-min candle."""
+    return float(int(now // 60) * 60)
+
+
+def next_tick(now: float, settle_s: float) -> float:
+    """When the next tick fires: settle_s after the next minute boundary (or this one, if still ahead)."""
+    b = minute_boundary(now)
+    t = b + float(settle_s)
+    return t if t > now else b + 60.0 + float(settle_s)
+
+
+def closed_bars(rows: Sequence[Mapping[str, Any]], *, boundary: float, day: str) -> list[dict]:
+    """Start-normalized bars ({s|t, o, h, l, c, v}) of `day`, premarket only, CLOSED at `boundary` (start + 60 <=
+    boundary). The forming bar is never used: the operator's manual method is the completed 1-minute candle."""
+    start_of_day = datetime.fromisoformat(f"{day}T00:00:00").replace(tzinfo=ET).timestamp()
+    rth = datetime.fromisoformat(f"{day}T09:30:00").replace(tzinfo=ET).timestamp()
+    out = []
+    for r in rows or []:
+        t = _f(r.get("s") if r.get("s") is not None else r.get("t"))
+        if t is None or t < start_of_day or t >= rth or t + 60.0 > boundary:
+            continue
+        out.append({"t": t, "o": _f(r.get("o")), "h": _f(r.get("h")), "l": _f(r.get("l")), "c": _f(r.get("c")),
+                    "v": _f(r.get("v")) or 0.0})
+    out.sort(key=lambda b: b["t"])
+    return out
+
+
+def candle_features(bars: Sequence[Mapping[str, Any]], *, prev_close: Optional[float], float_mm: Optional[float],
+                    boundary: float, vwap_hold_bars: int) -> dict:
+    """Features of the last CLOSED 1-minute candle and the premarket session up to it. Pure.
+
+    prior_high is the PM high BEFORE the last candle (the break level that candle is judged against)."""
+    out: dict[str, Any] = {"bars": len(bars), "boundary_epoch": boundary}
+    if not bars:
+        out["status"] = "NO_PREMARKET_BARS"
+        return out
+    last = bars[-1]
+    vol = sum(b["v"] or 0.0 for b in bars)
+    pv = sum(((b["h"] or 0) + (b["l"] or 0) + (b["c"] or 0)) / 3.0 * (b["v"] or 0.0) for b in bars)
+    vwap = (pv / vol) if vol > 0 else None
+    highs = [b["h"] for b in bars if b["h"] is not None]
+    prior = [b["h"] for b in bars[:-1] if b["h"] is not None]
+    pm_high = max(highs) if highs else None
+    hi_bar = max((b for b in bars if b["h"] is not None), key=lambda b: (b["h"], b["t"]), default=None)
+    vols = sorted(b["v"] for b in bars[:-1] if (b["v"] or 0) > 0)
+    med = vols[len(vols) // 2] if vols else None
+    close = last["c"]
+    tail = [b["c"] for b in bars[-max(1, vwap_hold_bars):]]
+    below = 0
+    for b in reversed(bars):
+        if vwap is not None and b["c"] is not None and b["c"] < vwap:
+            below += 1
+        else:
+            break
+    out.update(
+        status="OK", last=close, candle_at=datetime.fromtimestamp(last["t"], ET).strftime("%H:%M"),
+        candle_open=last["o"], candle_high=last["h"], candle_low=last["l"], candle_volume=last["v"],
+        candle_green=bool(close is not None and last["o"] is not None and close > last["o"]),
+        candle_age_s=round(boundary - (last["t"] + 60.0), 1),
+        pm_volume=vol, pm_vwap=None if vwap is None else round(vwap, 4), pm_high=pm_high,
+        pm_high_at=datetime.fromtimestamp(hi_bar["t"], ET).strftime("%H:%M") if hi_bar else None,
+        prior_high=max(prior) if prior else None, prev_close=prev_close, float_mm=float_mm,
+        gap_pct=None if not (prev_close and close) else round((close - prev_close) / prev_close * 100, 2),
+        rotation_pct=None if not float_mm else round(vol / (float_mm * 1e6) * 100, 2),
+        above_vwap=bool(vwap is not None and all(c is not None and c >= vwap for c in tail)),
+        below_vwap_bars=below,
+        vol_accel=None if not med else round((last["v"] or 0.0) / med, 2),
+        dist_to_high_pct=None if not (close and pm_high) else round((pm_high - close) / close * 100, 2),
+        minutes_since_high=None if not hi_bar else round((last["t"] - hi_bar["t"]) / 60.0, 1),
+    )
+    return out
+
+
+def classify(feat: Mapping[str, Any], gates: Mapping[str, Any], memory: Optional[Mapping[str, Any]], *,
+             cfg: PremarketConfig, l2: Optional[Mapping[str, Any]] = None) -> tuple[Optional[str], str, dict]:
+    """(state, why, new memory) for one focus name on one closed candle. Pure.
+
+    memory: {"state", "break_level", "since"} from the previous candle. Pre-trigger states only escalate
+    (WATCH < APPROACHING < ARMED) until a STAND DOWN, so a name hovering near a threshold does not chatter."""
+    mem = dict(memory or {})
+    prev = mem.get("state")
+    reasons = list(gates.get("veto_reasons") or [])
+    if feat.get("status") != "OK":
+        return (("STAND_DOWN", "no premarket bars", {**mem, "state": "STAND_DOWN"}) if prev in ACTIVE_STATES
+                else (None, "no premarket bars", mem))
+    close, prior_high = feat.get("last"), feat.get("prior_high")
+    hard = [r for r in reasons if r in HARD_FAIL]
+    vwap_lost = int(feat.get("below_vwap_bars") or 0) >= int(cfg.stand_down_vwap_bars)
+    if prev in ACTIVE_STATES and (hard or vwap_lost):
+        why = (f"{int(feat.get('below_vwap_bars') or 0)} closes below PM VWAP {_fmt_n(feat.get('pm_vwap'))}"
+               if vwap_lost else ", ".join(hard))
+        if prev == "WATCH":
+            # a plain heads-up that fades is dropped quietly: a STAND DOWN message is for a name that was getting
+            # close (replay 2026-10-23: WATCH <-> STAND DOWN chatter on names oscillating around PM VWAP)
+            return None, f"watch dropped: {why}", {"emitted_state": mem.get("emitted_state")}
+        return "STAND_DOWN", why, {"state": "STAND_DOWN", "since": feat.get("candle_at"),
+                                   "stood_down_at": feat.get("boundary_epoch"),
+                                   "emitted_state": mem.get("emitted_state")}
+    accel = feat.get("vol_accel")
+    breakout = bool(prior_high and close and close > prior_high and feat.get("candle_green")
+                    and accel is not None and accel >= cfg.trigger_vol_mult)
+    if prev in POST_TRIGGER:
+        bl = _f(mem.get("break_level")) or prior_high
+        if bl and close is not None:
+            if close >= bl * (1 + cfg.extended_pct / 100.0) and prev != "EXTENDED":
+                return "EXTENDED", f"close {_fmt_n(close)} is {((close / bl) - 1) * 100:.1f}% above the break " \
+                                   f"{_fmt_n(bl)}: don't chase", {**mem, "state": "EXTENDED"}
+            if prev == "TRIGGERED" and close < bl:
+                return "TRIGGER_CANCELLED", f"closed back below the break {_fmt_n(bl)}", \
+                    {**mem, "state": "TRIGGER_CANCELLED"}
+            if prev == "EXTENDED" and abs(close / bl - 1) * 100 <= cfg.pullback_pct and feat.get("above_vwap"):
+                return "PULLBACK_ZONE", f"back to {_fmt_n(close)} near the break {_fmt_n(bl)}, above VWAP", \
+                    {**mem, "state": "PULLBACK_ZONE"}
+            if prev == "TRIGGER_CANCELLED" and breakout:
+                return "TRIGGERED", f"re-broke {_fmt_n(prior_high)} on close, volume {accel:.1f}x", \
+                    {"state": "TRIGGERED", "break_level": prior_high, "since": feat.get("candle_at")}
+        return prev, "unchanged", mem
+    ok = gates.get("verdict") == ma.ALERT
+    if prev == "STAND_DOWN" and mem.get("stood_down_at") is not None and feat.get("boundary_epoch") is not None \
+            and float(feat["boundary_epoch"]) - float(mem["stood_down_at"]) < cfg.reopen_after_min * 60.0:
+        return "STAND_DOWN", "cooling off after stand-down", mem
+    if not ok:
+        if prev in PRE_TRIGGER and not hard:
+            return prev, "soft veto: " + ", ".join(reasons), mem       # e.g. a wide spread for a minute
+        return None, ", ".join(reasons) or "gates not met", ({} if prev == "STAND_DOWN" else mem)
+    if breakout:
+        return "TRIGGERED", f"closed {_fmt_n(close)} above the PM high {_fmt_n(prior_high)}, volume {accel:.1f}x", \
+            {"state": "TRIGGERED", "break_level": prior_high, "since": feat.get("candle_at")}
+    dist = feat.get("dist_to_high_pct")
+    ask_heavy = bool(l2 and l2.get("depth_ratio") is not None and l2.get("best_ask") is not None
+                     and l2["depth_ratio"] < cfg.min_depth_ratio)
+    if dist is not None and dist <= cfg.arm_pct and accel is not None and accel >= cfg.arm_vol_mult and not ask_heavy:
+        new, why = "ARMED", f"{dist:.2f}% under the PM high {_fmt_n(feat.get('pm_high'))}, volume {accel:.1f}x"
+    elif dist is not None and dist <= cfg.approach_pct:
+        new, why = "APPROACHING", f"{dist:.2f}% under the PM high {_fmt_n(feat.get('pm_high'))}"
     else:
-        from db_adapter import get_connection  # type: ignore
-        conn = get_connection()
-        try:
-            universe = resolve_universe(conn, cfg)
-        finally:
-            conn.close()
-    data = PremarketMoomoo(levels=cfg.book_levels, prints=cfg.tape_prints)
+        new, why = "WATCH", f"gapping {feat.get('gap_pct') or 0:+.1f}%, holding PM VWAP {_fmt_n(feat.get('pm_vwap'))}"
+    if prev in PRE_TRIGGER and PRE_TRIGGER.index(prev) > PRE_TRIGGER.index(new):
+        return prev, f"holding {prev} (now {new})", mem
+    return new, why, {"state": new, "since": feat.get("candle_at") if new != prev else mem.get("since")}
+
+
+def _fmt_n(v: Any) -> str:
+    x = _f(v)
+    return "—" if x is None else f"{x:,.2f}"
+
+
+def live_facts(feat: Mapping[str, Any], l2: Mapping[str, Any], tape: Mapping[str, Any], *, rvol: Optional[float],
+               cfg: PremarketConfig, book_src: Optional[str], book_age: Optional[float]) -> list[dict]:
+    """Facts measured on the closed candle / book / tape for the shared evidence block (MomentumEvidenceBlock@v1)."""
+    facts: list[dict] = []
+    gap = feat.get("gap_pct")
+    facts.append({"id": "gap", "label": "Gap", "driver": True,
+                  "status": "UNKNOWN" if gap is None else "PASSED" if abs(gap) >= cfg.min_gap_pct else "FAILED",
+                  "detail": None if gap is None else f"{gap:+.1f}%"})
+    facts.append({"id": "rvol", "label": "RVOL", "driver": True,
+                  "status": "UNKNOWN" if rvol is None else "PASSED" if rvol >= 5 else "FAILED",
+                  "detail": "unknown (scan)" if rvol is None else f"{rvol:.1f}x (scan)"})
+    acc = feat.get("vol_accel")
+    facts.append({"id": "volume_1m", "label": "1-min volume", "driver": True,
+                  "status": "UNKNOWN" if acc is None else "PASSED" if acc >= cfg.arm_vol_mult else "FAILED",
+                  "detail": None if acc is None else f"{acc:.1f}x session median"})
+    facts.append({"id": "vwap", "label": "Above PM VWAP", "driver": False,
+                  "status": "PASSED" if feat.get("above_vwap") else "FAILED",
+                  "detail": _fmt_n(feat.get("pm_vwap"))})
+    if l2.get("best_ask") is not None:
+        r = l2.get("depth_ratio")
+        facts.append({"id": "book", "label": "Book bid/ask", "driver": True,
+                      "status": "PASSED" if r is not None and r >= cfg.min_depth_ratio else "FAILED",
+                      "detail": f"{_u(r, 2, 'x')} ({book_src}, {_u(book_age, 0, 's')} old)"})
+    else:
+        facts.append({"id": "book", "label": "Book", "driver": False, "status": "UNKNOWN",
+                      "detail": f"none ({book_src or 'not recorded'})"})
+    br = tape.get("buy_ratio") if tape else None
+    facts.append({"id": "tape", "label": "Tape buys", "driver": True,
+                  "status": "UNKNOWN" if br is None else "PASSED" if br >= cfg.min_buy_ratio else "FAILED",
+                  "detail": "none" if br is None else f"{br * 100:.0f}% of {tape.get('prints', 0)} prints"})
+    return facts
+
+
+def _u(v: Any, nd: int, unit: str) -> str:
+    x = _f(v)
+    return "—" if x is None else f"{x:.{nd}f}{unit}"
+
+
+def load_lifecycle(path: Path, day: str) -> dict:
     try:
-        rows = evaluate(universe, data=data, cfg=cfg, now=now, day=day, as_of_hm=as_of,
-                        live_book=not a.as_of, persist=a.apply,
-                        send_fn=ma.telegram_send if (a.apply and cfg.mode == "send") else None,
-                        evidence_loader=mse.load_cached_snapshot)
-    finally:
-        data.close()
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return doc.get(day) or {} if isinstance(doc, dict) else {}
+
+
+def save_lifecycle(path: Path, day: str, memory: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps({day: dict(memory)}, sort_keys=True, default=str), encoding="utf-8")
+    tmp.replace(path)
+
+
+class RecorderReader:
+    """Book / tape / bars from the microstructure recorder's store (data broker, read-only), each with its age."""
+
+    def __init__(self, micro=None):
+        if micro is None:
+            try:
+                from lib.data_broker import microstructure as micro  # type: ignore
+            except ModuleNotFoundError:  # pragma: no cover
+                from scripts.lib.data_broker import microstructure as micro  # type: ignore
+        self.m = micro
+
+    def bars(self, day: str, sym: str, *, boundary: float, now: float, max_age_s: float) -> Optional[list[dict]]:
+        """Closed bars only when the store was published AFTER the boundary (so the last candle is final)."""
+        env = self.m.bars(day, sym, now=now, max_age_s=max_age_s)
+        if env.get("status") != "ok" or float(env.get("as_of") or 0) < boundary:
+            return None
+        return list(env.get("closed") or [])
+
+    def book(self, day: str, sym: str, *, now: float, max_age_s: float) -> Optional[dict]:
+        return self.m.book(day, sym, now=now, max_age_s=max_age_s)
+
+    def tape(self, day: str, sym: str, *, now: float) -> list[dict]:
+        return self.m.tape(day, sym, now=now)
+
+
+def _cadence(cfg: PremarketConfig, unified_mode: str) -> dict:
+    """What each path does this tick. The legacy path is the sender unless cadence is live (and send is allowed)."""
+    new_on = cfg.cadence_mode in ("shadow", "live")
+    live = cfg.cadence_mode == "live" and cfg.mode == "send" and unified_mode != "off"
+    return {"cadence_mode": cfg.cadence_mode, "new_path": new_on, "emit": new_on and unified_mode != "off",
+            "emit_mode": "live" if live else "shadow", "legacy_sends": not live}
+
+
+def evaluate_1m(pool: Sequence[Mapping[str, Any]], *, data, cfg: PremarketConfig, fcfg=None, boundary: float,
+                now: float, day: str, persist: bool, recorder: Optional[RecorderReader] = None,
+                evidence_loader: Optional[Callable] = None, unified_mode: Optional[str] = None,
+                ledger=None, send=None, fallback_send: Optional[Callable] = None,
+                lifecycle_path: Optional[Path] = None, focus_path: Optional[Path] = None,
+                focus_events_path: Optional[Path] = None, journal_path: Optional[Path] = None,
+                catalyst_lookup: Optional[Callable] = None) -> dict:
+    """One closed candle for the FOCUS list: re-rank the pool, update membership, classify, thread. ALERTS ONLY.
+
+    Returns {"focus": state, "events": focus events, "rows": per-member rows}. persist=False writes nothing (the
+    unified ledger is then a MemoryLedger)."""
+    try:
+        from lib import scalp_focus as sf  # type: ignore
+        from lib import unified_momentum_alert as um  # type: ignore
+        from lib import l2_book_signals as l2sig  # type: ignore
+    except ModuleNotFoundError:  # pragma: no cover
+        from scripts.lib import scalp_focus as sf  # type: ignore
+        from scripts.lib import unified_momentum_alert as um  # type: ignore
+        from scripts.lib import l2_book_signals as l2sig  # type: ignore
+    fcfg = fcfg or sf.load_config()
+    unified_mode = unified_mode or um.resolve_mode()
+    plan = _cadence(cfg, unified_mode)
+    rec = recorder or RecorderReader()
+    jdir = ma.journal_dir()
+    lpath = lifecycle_path or (jdir / LIFECYCLE_FILE)
+    memory = load_lifecycle(lpath, day)
+    prev_focus = sf.load_state(focus_path, day=day)
+    if ledger is None:
+        ledger = um.Ledger(um.ledger_path()) if persist else um.MemoryLedger()
+    acfg = ma.AlertConfig(book_levels=cfg.book_levels, max_book_age_s=cfg.max_book_age_s, max_spread_bps=1e9)
+    tcfg = ma.AlertConfig(tape_prints=cfg.tape_prints, max_tape_age_s=cfg.max_quote_age_s, min_tape_prints=1)
+    snapshot_box: dict[str, Any] = {}
+
+    def evidence_snapshot() -> Any:
+        if "v" not in snapshot_box:
+            try:
+                snapshot_box["v"] = evidence_loader() if evidence_loader is not None else None
+            except Exception:  # noqa: BLE001 — unreadable evidence is UNKNOWN evidence, never a pass
+                snapshot_box["v"] = None
+        return snapshot_box["v"]
+
+    # 1) pool pre-rank from one batched snapshot (no subscription): change, PM volume vs float, scan RVOL
+    syms = [str(u["symbol"]).upper() for u in pool if u.get("symbol")]
+    by_sym = {str(u["symbol"]).upper(): u for u in pool if u.get("symbol")}
+    try:
+        snap = data.snapshot(syms) if syms else {}
+    except Exception:  # noqa: BLE001
+        snap = {}
+    invalid: dict[str, str] = {}
+    pre: dict[str, dict] = {}
+    members = set(((prev_focus or {}).get("members") or {}).keys())
+    for sym in syms:
+        u, sn = by_sym[sym], snap.get(sym) or {}
+        float_mm = u.get("float_mm") if u.get("float_mm") is not None else sn.get("float_mm")
+        if float_mm is not None and float_mm > cfg.float_mm_max:
+            invalid[sym] = f"float {float_mm:.1f}M > {cfg.float_mm_max:g}M"
+            continue
+        px = sn.get("pre_price") or sn.get("last_price")
+        pc = sn.get("prev_close")
+        # a member keeps a 3 % band tolerance so a name trading at the $1.00 / $25 edge does not flap in and out
+        tol = 0.03 if sym in members else 0.0
+        if px is not None and not (cfg.price_min * (1 - tol) <= px <= cfg.price_max * (1 + tol)):
+            invalid[sym] = f"price {px:.2f} out of band"
+            continue
+        pre[sym] = {"rvol": u.get("rvol"), "float_mm": float_mm, "prev_close": pc,
+                    "change_pct": None if not (px and pc) else round((px - pc) / pc * 100, 2),
+                    "rotation_pct": None if not (float_mm and sn.get("pre_volume")) else
+                    round(sn["pre_volume"] / (float_mm * 1e6) * 100, 2)}
+    pre_ranked = sf.rank(pre, fcfg)
+    contenders = [r["symbol"] for r in pre_ranked[: fcfg.exit_rank]]
+    contenders += [s for s in sorted(members) if s in pre and s not in contenders]
+
+    # 2) closed-candle features for the contenders (recorder store first, own quote-context bars second)
+    feats: dict[str, dict] = {}
+    ctx: dict[str, dict] = {}
+    for sym in contenders:
+        p = pre[sym]
+        bars_src = "recorder"
+        try:
+            rows = rec.bars(day, sym, boundary=boundary, now=now, max_age_s=max(60.0, cfg.max_book_age_s))
+        except Exception:  # noqa: BLE001
+            rows = None
+        if rows is None:
+            bars_src = "moomoo_quote"
+            try:
+                rows = data.bars_start(sym)
+            except Exception as exc:  # noqa: BLE001
+                rows, bars_src = [], f"error:{type(exc).__name__}"
+        feat = candle_features(closed_bars(rows, boundary=boundary, day=day), prev_close=p["prev_close"],
+                               float_mm=p["float_mm"], boundary=boundary, vwap_hold_bars=cfg.vwap_hold_bars)
+        feat["bars_source"] = bars_src
+        book_src, book, book_age = "recorder", None, None
+        try:
+            book = rec.book(day, sym, now=now, max_age_s=cfg.max_book_age_s)
+        except Exception:  # noqa: BLE001
+            book = None
+        try:
+            ticks = rec.tape(day, sym, now=now)
+        except Exception:  # noqa: BLE001
+            ticks = []
+        ctx[sym] = {"feat": feat, "book": book, "book_src": book_src if book else None, "ticks": ticks}
+        gate_ev = mse.same_symbol_evidence(sym, evidence_snapshot(), now=datetime.fromtimestamp(now, ET))
+        l2 = ma.l2_evidence(book, now=now, cfg=acfg, source="recorder") if book else {}
+        tape = ma.tape_evidence(ticks, now=now, cfg=tcfg, source="recorder") if ticks else {}
+        ctx[sym].update(l2=l2, tape=tape, evidence=gate_ev)
+        feats[sym] = {"rvol": p["rvol"],
+                      "change_pct": feat.get("gap_pct") if feat.get("status") == "OK" else p["change_pct"],
+                      "rotation_pct": feat.get("rotation_pct") if feat.get("status") == "OK" else p["rotation_pct"],
+                      "depth_ratio": l2.get("depth_ratio"), "buy_ratio": tape.get("buy_ratio"),
+                      "evidence_passed": gate_ev.get("passed_count") if gate_ev.get("status") == "CURRENT" else None,
+                      "minutes_since_high": feat.get("minutes_since_high"), "above_vwap": feat.get("above_vwap")}
+    ranked = sf.rank(feats, fcfg)
+    tail = [r for r in pre_ranked if r["symbol"] not in feats]
+    for i, r in enumerate(tail, len(ranked) + 1):
+        ranked.append({**r, "rank": i})
+
+    # 3) lifecycle for current members + contenders that may enter (state feeds the protection rule)
+    # states for members (ARMED / TRIGGERED are protected) and for any name still cooling off after a STAND DOWN
+    # (it may not re-enter until reopen_after_min has passed: no leave/enter flapping on a faded name)
+    states = {}
+    for s_, m_ in memory.items():
+        st_ = (m_ or {}).get("state")
+        if st_ == "STAND_DOWN" and boundary - float((m_ or {}).get("stood_down_at") or 0) >= cfg.reopen_after_min * 60:
+            st_ = None
+        if s_ in members or st_ == "STAND_DOWN":
+            states[s_] = st_
+    focus, fevents = sf.update(prev_focus, ranked, now=boundary, cfg=fcfg, states=states, invalidated=invalid)
+    rank_of = {r["symbol"]: r["rank"] for r in ranked}
+    direct_left = int(cfg.direct_book_max)
+    rows_out: list[dict] = []
+    for m in sf.members_by_rank(focus):
+        sym = m["symbol"]
+        c = ctx.get(sym)
+        if c is None:
+            continue
+        feat, l2, tape = c["feat"], c["l2"], c["tape"]
+        mem = memory.get(sym) or {}
+        if not l2 and direct_left > 0 and mem.get("state") in ("APPROACHING", "ARMED") + POST_TRIGGER:
+            direct_left -= 1                     # closest to action: read the book directly when unrecorded
+            try:
+                book = data.book(sym, now)
+                l2 = ma.l2_evidence(book, now=now, cfg=acfg, source="moomoo_direct")
+                c["book_src"] = "moomoo_direct"
+                tape = ma.tape_evidence(data.tape(sym), now=now, cfg=tcfg, source="moomoo_direct")
+            except Exception:  # noqa: BLE001
+                l2 = l2 or {"source": "moomoo_direct", "ok": False, "reasons": ["BOOK_MISSING"]}
+        gates = decide(feat, l2, tape, cfg=cfg, quote_age_s=feat.get("candle_age_s"))
+        state, why, new_mem = classify(feat, gates, mem, cfg=cfg, l2=l2)
+        gate = None
+        if state is not None and cfg.evidence_gate != "off":
+            gate = momentum_gate(sym, evidence_snapshot(), cfg=cfg, now=now)
+        block = mse.evidence_block((c.get("evidence") or {}).get("evidence"),
+                                   extra_facts=live_facts(feat, l2, tape, rvol=pre[sym]["rvol"], cfg=cfg,
+                                                          book_src=c.get("book_src"),
+                                                          book_age=(l2 or {}).get("age_s")))
+        row = {"schema": "PremarketCadence@v1", "day": day, "tick_epoch": now, "boundary_epoch": boundary,
+               "candle_at": feat.get("candle_at"), "symbol": sym, "rank": rank_of.get(sym),
+               "cadence": plan, "prev_state": mem.get("state"), "state": state, "why": why,
+               "gates": gates, "features": {k: feat.get(k) for k in (
+                   "last", "pm_high", "prior_high", "pm_vwap", "gap_pct", "vol_accel", "dist_to_high_pct",
+                   "below_vwap_bars", "candle_age_s", "bars_source")},
+               "book": {"source": c.get("book_src"), "age_s": (l2 or {}).get("age_s")},
+               "evidence_block": {k: block[k] for k in ("driven_by", "ready", "missing")},
+               "evidence_gate": None if gate is None else gate.get("result"), "action": None}
+        changed = state is not None and state != mem.get("emitted_state")
+        hold = gate is not None and gate.get("result") == UNVALIDATED and cfg.evidence_gate == "hold"
+        if changed and plan["emit"] and not hold:
+            ev = um.UnifiedAlertEvent(
+                symbol=sym, state=state, ts_epoch=boundary, origin=ORIGIN_1M,
+                origin_ref=f"pm1m:{day}:{sym}:{int(boundary)}:{state}",
+                float_m=pre[sym]["float_mm"], volume=feat.get("pm_volume"), rvol=pre[sym]["rvol"],
+                price=feat.get("last"),
+                sources={"scan": True, "social": None,
+                         "l2": None if l2.get("best_ask") is None else
+                         (l2.get("depth_ratio") or 0) >= cfg.min_depth_ratio},
+                source_detail={"scan": f"focus rank {rank_of.get(sym)}"},
+                l2=l2sig.from_at_l2(l2) if l2 else None,
+                levels={"trigger": new_mem.get("break_level") or feat.get("pm_high"), "stop": feat.get("pm_vwap")},
+                detail=f"{feat.get('candle_at')} 1-min close {_fmt_n(feat.get('last'))}: {why}"
+                       + (" · UNVALIDATED" if gate and gate.get("result") == UNVALIDATED else ""),
+                evidence_block=block)
+            try:
+                um.enrich_catalyst(ev, catalyst_lookup)
+            except Exception:  # noqa: BLE001 — a missing catalyst renders "—"; the state change still goes
+                pass
+            res = um.emit(ev, mode=plan["emit_mode"], ledger=ledger, send=send,
+                          legacy_alert="active_trader.premarket_watch (5-min throttled heads-up)",
+                          # corrections of an alert already sent are never capped (momentum_alerts._INFO_KINDS)
+                          max_per_hour=None if state in ma._INFO_KINDS else int(cfg.max_msgs_per_symbol_hour),
+                          priority="P1")
+            row["action"] = res.get("action")
+            row["thread_key"] = res.get("thread_key")
+            if res.get("action") in um.EMITTED_ACTIONS or res.get("action") == "DEDUPED_SAME_STATE":
+                new_mem["emitted_state"] = state
+            else:
+                new_mem["emitted_state"] = mem.get("emitted_state")
+            if res.get("action") == "SEND_FAILED" and fallback_send is not None:
+                text = res.get("text") or um.render(ev)
+                head, _, body = text.partition("\n")
+                try:
+                    fb = _send_scoped(fallback_send, sym, title=f"{ma.AT_SCALP_ALERT_HEADER}\n{head}", body=body)
+                except Exception as exc:  # noqa: BLE001
+                    # ALARM-DELIVERY-DECLARED: both the threaded send and the legacy fallback failed; recorded on the
+                    # 1-min journal row (durable) and in the unified ledger as SEND_FAILED, retried next state change.
+                    fb = {"sent": False, "error": type(exc).__name__}
+                row["fallback_send"] = fb
+        else:
+            new_mem.setdefault("emitted_state", mem.get("emitted_state"))
+            if hold and changed:
+                row["action"] = "HELD_UNVALIDATED"
+        memory[sym] = new_mem
+        m["state"] = state or m.get("state")
+        if persist and (row["action"] or state != mem.get("state")):
+            ma.append_journal(row, journal_path or (jdir / CADENCE_JOURNAL))
+        rows_out.append(row)
+    if persist:
+        sf.save(focus, fevents, day=day, path=focus_path, events_file=focus_events_path)
+        save_lifecycle(lpath, day, memory)
+        ma.append_journal({"schema": "PremarketCadenceTick@v1", "day": day, "tick_epoch": now,
+                           "boundary_epoch": boundary, "cadence": plan, "pool": len(syms),
+                           "contenders": len(contenders), "focus": [m["symbol"] for m in sf.members_by_rank(focus)],
+                           "focus_events": [{k: e.get(k) for k in ("event", "symbol", "reason")} for e in fevents],
+                           "state_changes": sum(1 for r in rows_out if r.get("action"))},
+                          journal_path or (jdir / CADENCE_JOURNAL))
+    return {"focus": focus, "events": fevents, "rows": rows_out, "plan": plan}
+
+
+class RunLock:
+    """Non-blocking exclusive lock for the whole process: a second premarket run (manual or cron) never overlaps."""
+
+    def __init__(self, path: Path):
+        self.path, self.fh = Path(path), None
+
+    def acquire(self) -> bool:
+        import fcntl
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.fh = self.path.open("a")
+        try:
+            fcntl.flock(self.fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            self.fh.close()
+            self.fh = None
+            return False
+        return True
+
+    def release(self) -> None:
+        if self.fh is not None:
+            import fcntl
+            fcntl.flock(self.fh, fcntl.LOCK_UN)
+            self.fh.close()
+            self.fh = None
+
+
+def run_loop(tick: Callable[[float, float, bool], Any], *, cfg: PremarketConfig, now_fn=time.time,
+             sleep_fn=time.sleep, max_ticks: Optional[int] = None, stop_fn: Optional[Callable[[], bool]] = None,
+             out=print) -> dict:
+    """Tick settle_s after every minute boundary, on the closed candle, until the window ends. Single-threaded,
+    so ticks never overlap; a tick that overruns skips the minutes it missed (counted, never queued)."""
+    stats = {"ticks": 0, "skipped_minutes": 0, "stopped": None, "boundaries": []}
+    last_boundary: Optional[float] = None
+    while True:
+        if stop_fn is not None and stop_fn():
+            stats["stopped"] = "kill_file"
+            break
+        if max_ticks is not None and stats["ticks"] >= max_ticks:
+            stats["stopped"] = "max_ticks"
+            break
+        now = now_fn()
+        at = next_tick(now, cfg.settle_s)
+        if at > now:
+            sleep_fn(at - now)
+        now = now_fn()
+        boundary = minute_boundary(now - float(cfg.settle_s))
+        if not in_window(datetime.fromtimestamp(boundary, ET), cfg) and not in_window(
+                datetime.fromtimestamp(boundary - 60.0, ET), cfg):
+            stats["stopped"] = "window_closed"
+            break
+        if last_boundary is not None and boundary - last_boundary > 60.0:
+            stats["skipped_minutes"] += int((boundary - last_boundary) // 60) - 1
+        if last_boundary is not None and boundary <= last_boundary:
+            continue
+        minute = datetime.fromtimestamp(boundary, ET).minute
+        legacy_due = minute % max(1, int(cfg.legacy_grid_min)) == 0
+        try:
+            tick(boundary, now, legacy_due)
+        except Exception as exc:  # noqa: BLE001 — one bad minute never stops the loop
+            out(f"[premarket-loop] tick failed: {type(exc).__name__}: {str(exc)[:160]}")
+        stats["ticks"] += 1
+        stats["boundaries"].append(boundary)
+        last_boundary = boundary
+    return stats
+
+
+def _print_rows(rows: Sequence[Mapping[str, Any]]) -> None:
     for r in rows:
         f = r["premarket"]
         print(f"{r['candidate']['symbol']:6} {r['verdict']:5} gap={f.get('gap_pct')}% pmvol={f.get('pm_volume')} "
@@ -547,17 +1106,119 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                  if r.get("momentum_evidence") else ""))
         if r.get("message"):
             print("  " + (r["message"]["title"] + "\n" + r["message"]["body"]).replace("\n", "\n  "))
-    summary = {"as_of": as_of, "mode": cfg.mode, "applied": a.apply, "universe": len(universe),
-               "evaluated": len(rows), "alerts": sum(r["verdict"] == ma.ALERT for r in rows),
-               "sent": sum(bool(r.get("sent")) for r in rows),
-               "unvalidated": sum((r.get("momentum_evidence") or {}).get("result") == UNVALIDATED for r in rows)}
-    print(json.dumps(summary))
-    if a.apply:
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    ap = argparse.ArgumentParser(description="Active Trader premarket watch (heads-up only)")
+    ap.add_argument("--apply", action="store_true", help="journal (and send when mode=send)")
+    ap.add_argument("--as-of", help="replay today's bars up to HH:MM ET (dry run only; no book/tape)")
+    ap.add_argument("--symbols", help="comma list instead of the scan universe")
+    ap.add_argument("--loop", action="store_true",
+                    help="1-minute supervisor: tick on every closed candle until the window ends (cron-launched)")
+    ap.add_argument("--max-ticks", type=int, default=None, help="--loop: stop after N ticks (testing)")
+    a = ap.parse_args(argv)
+    if a.apply and a.as_of:
+        ap.error("--as-of is a replay; it never journals or sends")
+    if a.loop and a.as_of:
+        ap.error("--loop runs on live candles; --as-of is a replay")
+    if (ma.journal_dir() / "PREMARKET_DISABLED").exists():
+        print("HALT: PREMARKET_DISABLED present"); return 0
+    cfg = load_config()
+    now = time.time()
+    now_et = datetime.fromtimestamp(now, ET)
+    day = now_et.date().isoformat()
+    as_of = a.as_of or now_et.strftime("%H:%M")
+    if not a.as_of and not in_window(now_et, cfg):
+        print(f"outside premarket window {cfg.window_start}-{cfg.window_end} ET; nothing to do"); return 0
+    lock = RunLock(ma.journal_dir() / RUN_LOCK_FILE)
+    if a.apply and not lock.acquire():
+        print(json.dumps({"status": "SKIPPED_ALREADY_RUNNING", "lock": str(lock.path)})); return 0
+    try:
+        return _run(a, cfg, now=now, day=day, as_of=as_of)
+    finally:
+        lock.release()
+
+
+def _universe(a, cfg: PremarketConfig) -> tuple[list[dict], list[dict]]:
+    if a.symbols:
+        u = [{"symbol": s.strip().upper(), "float_mm": None} for s in a.symbols.split(",") if s.strip()]
+        return u, u
+    from db_adapter import get_connection  # type: ignore
+    conn = get_connection()
+    try:
+        universe = resolve_universe(conn, cfg)
+        pool = resolve_pool(conn, cfg) if cfg.cadence_mode != "legacy" else universe
+    finally:
+        conn.close()
+    return universe, pool
+
+
+def _run(a, cfg: PremarketConfig, *, now: float, day: str, as_of: str) -> int:
+    data = PremarketMoomoo(levels=cfg.book_levels, prints=cfg.tape_prints)
+    universe_box: dict[str, Any] = {}
+
+    start_cfg = cfg
+
+    def tick(boundary: float, tick_now: float, legacy_due: bool) -> dict:
+        # re-read each minute in --loop, so a cadence_mode flip or rollback applies at the next candle
+        cfg = (load_config() if a.loop else start_cfg)
+        tday = datetime.fromtimestamp(boundary, ET).date().isoformat()
+        if not universe_box or tick_now - universe_box.get("at", 0) >= 120:   # the hot list refreshes every 2 min
+            universe_box["u"], universe_box["pool"] = _universe(a, cfg)
+            universe_box["at"] = tick_now
+        universe, pool = universe_box["u"], universe_box["pool"]
         try:
-            p = ma.journal_dir() / HEARTBEAT_FILE
-            p.write_text(json.dumps({"ts_epoch": now, **summary}), encoding="utf-8")
-        except Exception:  # noqa: BLE001
-            pass
+            from lib import unified_momentum_alert as um  # type: ignore
+        except ModuleNotFoundError:  # pragma: no cover
+            from scripts.lib import unified_momentum_alert as um  # type: ignore
+        plan = _cadence(cfg, um.resolve_mode())
+        summary: dict[str, Any] = {"as_of": datetime.fromtimestamp(boundary, ET).strftime("%H:%M"),
+                                   "mode": cfg.mode, "cadence": plan, "applied": a.apply,
+                                   "universe": len(universe), "pool": len(pool)}
+        if legacy_due or a.as_of:
+            send_ok = a.apply and cfg.mode == "send" and plan["legacy_sends"]
+            rows = evaluate(universe, data=data, cfg=cfg, now=tick_now, day=tday, as_of_hm=as_of if a.as_of else
+                            datetime.fromtimestamp(tick_now, ET).strftime("%H:%M"),
+                            live_book=not a.as_of, persist=a.apply,
+                            send_fn=ma.telegram_send if send_ok else None, evidence_loader=mse.load_cached_snapshot)
+            _print_rows(rows)
+            summary.update(evaluated=len(rows), alerts=sum(r["verdict"] == ma.ALERT for r in rows),
+                           sent=sum(bool(r.get("sent")) for r in rows),
+                           unvalidated=sum((r.get("momentum_evidence") or {}).get("result") == UNVALIDATED
+                                           for r in rows))
+        if plan["new_path"] and not a.as_of:
+            res = evaluate_1m(pool, data=data, cfg=cfg, boundary=boundary, now=tick_now, day=tday, persist=a.apply,
+                              evidence_loader=mse.load_cached_snapshot,
+                              fallback_send=ma.telegram_send if a.apply and cfg.mode == "send" else None)
+            for r in res["rows"]:
+                if r.get("action") or r.get("state") != r.get("prev_state"):
+                    print(f"[1m] {r['symbol']:6} rank={r.get('rank')} {r.get('prev_state')} -> {r.get('state')} "
+                          f"({r.get('why')}) action={r.get('action')}")
+            for e in res["events"]:
+                print(f"[focus] {e['event']} {e['symbol']}: {e['reason']}")
+            summary["focus"] = [m["symbol"] for m in sorted(res["focus"]["members"].values(),
+                                                             key=lambda m: m.get("rank") or 10 ** 6)]
+            summary["state_changes"] = sum(1 for r in res["rows"] if r.get("action"))
+        print(json.dumps(summary, default=str))
+        if a.apply:
+            try:
+                p = ma.journal_dir() / HEARTBEAT_FILE
+                p.write_text(json.dumps({"ts_epoch": tick_now, **summary}, default=str), encoding="utf-8")
+            except Exception:  # noqa: BLE001
+                pass
+        return summary
+
+    try:
+        if a.loop:
+            stats = run_loop(tick, cfg=cfg, max_ticks=a.max_ticks,
+                             stop_fn=lambda: (ma.journal_dir() / "PREMARKET_DISABLED").exists())
+            print(json.dumps({"loop": {k: v for k, v in stats.items() if k != "boundaries"}}))
+        else:
+            # one pass (the 5-minute cron line until the 1-minute packet is installed): the legacy pass as before,
+            # plus one closed-candle tick of the new path when cadence is shadow/live
+            tick(minute_boundary(now), now, True)
+    finally:
+        data.close()
     return 0
 
 

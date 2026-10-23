@@ -365,6 +365,17 @@ def union_with_at_symbols(candidates, at_symbols, *, cap=AT_RESEARCH_SYMBOL_CAP)
     return out
 
 
+def focus_gate(candidates):
+    """Operator 2026-10-23: "this should just be critiqued at least the top 20". Scalp-list candidates are cut to the
+    scalp FOCUS list (lib/scalp_focus) while a fresh one exists; no fresh list -> unchanged (fail-soft). The Active
+    Trader recorder's live symbols (your fills first) are added after this and are not cut. Never raises."""
+    try:
+        from lib import scalp_focus as sf
+        return sf.restrict_to_focus(candidates, cfg=sf.load_config())
+    except Exception as e:  # noqa: BLE001
+        return list(candidates), {"applied": False, "error": type(e).__name__}
+
+
 def get_awaiting_catalyst(max_tickers=15, *, read_errors=None):
     """Today's names blocked only on catalyst verification (the scalp_priority class). Read-only."""
     import psycopg2
@@ -480,6 +491,12 @@ def _execute(args):
         from hermes_momentum_candidate_reader import get_momentum_candidates
         candidates = get_momentum_candidates(max_tickers=args.max_tickers)
         _cap = None
+    focus_report = None
+    if args.source == "scalp":
+        candidates, focus_report = focus_gate(candidates)
+        if focus_report.get("applied"):
+            print(f"[focus] critique limited to the focus list: kept {focus_report.get('kept')}, "
+                  f"skipped {len(focus_report.get('dropped') or [])} non-focus names")
     if args.source == "scalp":
         at_syms = active_trader_hot_symbols(read_errors=read_errors)
         before = len(candidates)
@@ -510,7 +527,9 @@ def _execute(args):
 
     return {"tickers": len(results), "with_catalyst": with_catalyst,
             "sources": sum(r["source_count"] for r in results),
-            "candidate_read_failures": len(read_errors), "candidates": len(candidates)}
+            "candidate_read_failures": len(read_errors), "candidates": len(candidates),
+            "focus_gate_applied": bool((focus_report or {}).get("applied")),
+            "focus_gate_skipped": len((focus_report or {}).get("dropped") or [])}
 
 
 if __name__ == "__main__":

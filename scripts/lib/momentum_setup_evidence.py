@@ -595,3 +595,95 @@ def enrich_active_trader_notification(
         appendix = html.escape(appendix)
     out = message.rstrip() + "\n\n" + appendix
     return out if len(out.encode("utf-16-le")) // 2 <= 4000 else message
+
+
+# ── the shared "driven by / ready / missing" block (MomentumEvidenceBlock@v1) ─────────────────────────────────
+#
+# Operator 2026-10-23 (premarket 1-minute threaded alerts): every lifecycle message carries the same three lines,
+# so the operator reads WHY a name is moving, WHAT is already in place and WHAT is still missing, in one glance.
+# This is the single definition: Active Trader, the unified threaded alert and the Trade AI page render it from
+# here (alignment work: reuse ``evidence_block`` / ``format_evidence_block``; never re-derive the three lists).
+#
+# Inputs are the five-fact MomentumSetupEvidence above (``pillars``) plus optional live facts the caller measured
+# on the closed candle / book / tape (``extra_facts``). Each fact is ``{"id", "label", "status", "value",
+# "detail", "driver"}`` with status PASSED / FAILED / UNKNOWN. Rules (pure, never invented):
+#   ready     = every PASSED fact;
+#   driven_by = the PASSED facts flagged ``driver`` (the ones that move a name: RVOL, gap, catalyst, tape, book,
+#               break of the high), strongest first as the caller ordered them;
+#   missing   = every FAILED or UNKNOWN fact, with its detail (why).
+EVIDENCE_BLOCK_SCHEMA = "MomentumEvidenceBlock@v1"
+_DRIVER_PILLARS = frozenset({"rvol", "gap", "catalyst"})
+_STATUSES = ("PASSED", "FAILED", "UNKNOWN")
+
+
+def _fact_token(fact):
+    label = _safe_line(fact.get("label") or fact.get("id") or "?").strip()
+    detail = fact.get("detail")
+    if detail is None and fact.get("value") is not None and not isinstance(fact.get("value"), bool):
+        detail = fact.get("value")
+    return f"{label} {_safe_line(detail).strip()}".strip() if detail is not None else label
+
+
+def evidence_block(evidence=None, *, extra_facts=None):
+    """MomentumEvidenceBlock@v1 from five-fact evidence (may be None) and live facts. Pure; never raises."""
+    facts = []
+    if isinstance(evidence, dict):
+        for p in evidence.get("pillars") or []:
+            if not isinstance(p, dict):
+                continue
+            status = str(p.get("status") or "UNKNOWN").upper()
+            pid = str(p.get("id") or "")
+            if pid == "catalyst":
+                cat = evidence.get("catalyst") or {}
+                detail = _text(cat.get("text"), 60) if status == "PASSED" else (
+                    "not verified" if status == "FAILED" else "unknown")
+            else:
+                value = _number(p.get("value"))
+                detail = None if value is None else (
+                    f"{value:g}x" if pid == "rvol" else f"{value:+.1f}%" if pid == "gap"
+                    else f"{value:g}M" if pid == "float" else f"{value:g}")
+                if status == "UNKNOWN" and detail is None:
+                    detail = "unknown"
+            facts.append({"id": pid, "label": p.get("label") or pid, "status": status if status in _STATUSES
+                          else "UNKNOWN", "detail": detail, "driver": pid in _DRIVER_PILLARS, "source": "evidence"})
+    else:
+        facts.append({"id": "momentum_evidence", "label": "Momentum evidence", "status": "UNKNOWN",
+                      "detail": "no current same-symbol evidence", "driver": False, "source": "evidence"})
+    seen = {f["id"] for f in facts}
+    for f in extra_facts or []:
+        if not isinstance(f, dict) or not f.get("id"):
+            continue
+        status = str(f.get("status") or "UNKNOWN").upper()
+        row = {"id": str(f["id"]), "label": f.get("label") or f["id"],
+               "status": status if status in _STATUSES else "UNKNOWN",
+               "detail": f.get("detail"), "driver": bool(f.get("driver")), "source": f.get("source") or "live"}
+        if row["id"] in seen:  # a live measurement replaces the cached one of the same id
+            facts = [x for x in facts if x["id"] != row["id"]]
+        seen.add(row["id"])
+        facts.append(row)
+    ready = [f for f in facts if f["status"] == "PASSED"]
+    return {
+        "schema": EVIDENCE_BLOCK_SCHEMA,
+        "driven_by": [_fact_token(f) for f in ready if f["driver"]],
+        "ready": [_fact_token(f) for f in ready],
+        "missing": [_fact_token(f) for f in facts if f["status"] != "PASSED"],
+        "facts": facts,
+        "five_fact_passed": evidence.get("passed_count") if isinstance(evidence, dict) else None,
+        "authority": "READ_ONLY_ADVISORY",
+    }
+
+
+def format_evidence_block(block, *, max_items=6):
+    """The three operator lines. Absent lists render "—", never an invented reason."""
+    if not isinstance(block, dict):
+        return "Driven by: —\nReady: —\nMissing: current evidence unavailable"
+
+    def line(name, items):
+        items = [str(x) for x in items or [] if x]
+        if not items:
+            return f"{name}: —"
+        more = len(items) - max_items
+        return f"{name}: " + " · ".join(items[:max_items]) + (f" · +{more} more" if more > 0 else "")
+
+    return "\n".join((line("Driven by", block.get("driven_by")), line("Ready", block.get("ready")),
+                      line("Missing", block.get("missing"))))
