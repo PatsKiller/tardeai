@@ -124,3 +124,15 @@ old. It held the same 20 names as holdings.json, with the same 3 unresolved CUSI
 **Measured, not changed:** 1,794 of 1,841 live decision packets are past their TTL. This PR stops a stale packet
 from setting **ownership**. It does not turn every past-TTL packet into STALE, because that would relabel about 97%
 of the Watch cards at once. That decision is the operator's (see the PR).
+
+## Prospect lanes read the decision (2026-10-22 Watch redesign)
+
+The Prospects page (`docs/ops/WATCH_PROSPECTS_PAGE_2026-10-22.md`) places each card in one lane from this decision
+block (status, rule, actionability, expiry). Two additive fields support it; no rule, TTL or score changed:
+
+- `decision.inputs.plan_levels` — the fresh entry plan's reference levels (`entry_low_ref`, `entry_high_ref`,
+  `limit_ref`, `stop_ref`, `target_ref`, `created_at`), `null` when the plan is not fresh. They seed the operator's
+  existing Propose form; keys end in `_ref` so none is a `BEHAVIOR_FIELDS` name.
+- `decision.inputs.synthesis_at` — when the fresh synthesis was written, so a conflict shows both times.
+- `reentry_rows()` also carries the desk's `price`, `rsi`, `entry_low_ref`, `entry_high_ref`, `stop_ref`,
+  `target_ref`, `company` and `held`.

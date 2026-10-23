@@ -62,6 +62,40 @@ FORBIDDEN_COMMAND_TOKENS = (
     "schwab_econfirm_reconcile.py",
 )
 
+
+def _broker_read_carveout():
+    """scripts/lib/n8n_broker_read_carveout.py (AGENTS.md 19.0.0 §27.1), or None when it cannot be loaded."""
+    try:
+        from scripts.lib import n8n_broker_read_carveout as carve  # noqa: PLC0415 — repo root on sys.path
+    except ImportError:
+        try:
+            from lib import n8n_broker_read_carveout as carve  # type: ignore[no-redef]  # noqa: PLC0415
+        except ImportError:
+            return None
+    return carve
+
+
+def forbidden_command_tokens(command: str, *, n8n_broker_read: bool = False) -> list[str]:
+    """The FORBIDDEN_COMMAND_TOKENS in ``command`` (the plain substring test ``validate`` has always applied).
+
+    ``n8n_broker_read=True`` consults the AGENTS.md 19.0.0 §27.1 carve-out: an exact audited read-lane command is
+    exempt from the tokens naming its own script, and from nothing else. While ``CARVEOUT_STATUS`` is not ``ACTIVE``
+    (it is ``PROPOSED`` until the operator's ratifying edit), or when the carve-out module cannot be loaded or
+    raises, nothing is exempt and the result is exactly the plain test. Pipeline manifests never pass it: a pipeline
+    step is not an n8n lane."""
+    hits = [tok for tok in FORBIDDEN_COMMAND_TOKENS if tok in (command or "")]
+    if not hits or not n8n_broker_read:
+        return hits
+    carve = _broker_read_carveout()
+    if carve is None:
+        return hits
+    try:
+        exempt = carve.exempt_command_tokens(command, forbidden=tuple(hits))
+    except Exception:  # noqa: BLE001 — fail closed: an error exempts nothing
+        return hits
+    return [tok for tok in hits if tok not in exempt]
+
+
 # The runner never wraps a stage in one of these; a step that needs one keeps it VERBATIM.
 LLM_WRAPPERS = ("run_with_deepseek_offpeak.sh", "llm_priority_guard.sh")
 
@@ -164,9 +198,8 @@ def validate(manifest: dict) -> list[str]:
             if not isinstance(cmd, str) or not cmd.strip():
                 errs.append(f"{where}: command must be a non-empty string")
             else:
-                for tok in FORBIDDEN_COMMAND_TOKENS:
-                    if tok in cmd:
-                        errs.append(f"{where}: command contains excluded token {tok}")
+                for tok in forbidden_command_tokens(cmd):
+                    errs.append(f"{where}: command contains excluded token {tok}")
                 verbatim = st.get("cron_line_verbatim")
                 if isinstance(verbatim, str) and cmd.strip() not in verbatim:
                     errs.append(f"{where}: command is not a verbatim slice of cron_line_verbatim")

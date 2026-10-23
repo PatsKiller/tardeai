@@ -1,0 +1,10 @@
+[Unit]
+Description=TradeAI /tmp hygiene auto-apply — hourly (operator 2026-10-22: "It needs to be able to delete it.")
+
+[Timer]
+OnCalendar=*-*-* *:20:00
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

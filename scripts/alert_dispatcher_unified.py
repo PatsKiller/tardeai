@@ -123,16 +123,25 @@ def check_pipeline_critical() -> list:
         # this query's LIMIT 5 with no aggregation and no dedupe, emitting one
         # critical alert per row, each rendering the SAME stringified exit code
         # under the label "Error:".
+        #
+        # 2026-10-22: a run settled by remediate_pipeline_failures carries
+        # summary {"errors": [], "note": "zombie run cleared", "cleared_by": ...};
+        # summary->>'errors' is then the literal "[]" and the alert read
+        # "Error: []". An empty errors list falls through to `error`, then to
+        # the note plus who cleared it (same precedence as lib/pipeline_failures).
         cur.execute("""
             SELECT pipeline_key,
-                   COALESCE(summary->>'errors', 'unknown') AS error,
+                   COALESCE(NULLIF(NULLIF(summary->>'errors', '[]'), ''),
+                            NULLIF(summary->>'error', ''),
+                            (summary->>'note') || COALESCE(' by ' || (summary->>'cleared_by'), ''),
+                            'unknown') AS error,
                    COUNT(*) AS n,
                    MIN(started_at) AS first_at,
                    MAX(started_at) AS last_at
             FROM pipeline_runs
             WHERE status = 'failed' AND started_at > NOW() - INTERVAL '4 hours'
               AND COALESCE(trigger_source, 'cron') != 'manual_test'
-            GROUP BY pipeline_key, COALESCE(summary->>'errors', 'unknown')
+            GROUP BY 1, 2
             ORDER BY MAX(started_at) DESC LIMIT 5
         """)
         for key, error, n, first_at, last_at in cur.fetchall():

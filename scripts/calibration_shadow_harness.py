@@ -252,7 +252,11 @@ def update_trials(previous: Optional[dict], calibration: dict, cfg: dict) -> tup
     for p in calibration.get("proposals") or []:
         if p.get("type") != "threshold" or not str(p.get("status", "")).startswith("PROPOSED"):
             continue
-        knob, val = p.get("knob"), p.get("proposed_value")
+        # The trial is evaluated against the journal FEATURE, so it freezes the feature-unit value. Since the
+        # 2026-10-22 unit fix signal_calibration emits proposed_value in knob units plus proposed_feature_value;
+        # older reports carry only proposed_value, which was the feature value.
+        knob = p.get("knob")
+        val = p.get("proposed_feature_value", p.get("proposed_value"))
         if not knob or not isinstance(val, (int, float)) or knob in seen:
             continue
         seen.add(knob)

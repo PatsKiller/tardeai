@@ -50,13 +50,17 @@ decides. Approval stays with the operator; a one-click approval in Ops is a late
   (`AlertConfig`) live in the broker execution file set, which the harness does not read.
 - `current_scale` converts config units to feature units.
 
-## Finding: proposal units
+## Fixed: proposal units
 
-`min_stop.pct_of_price` is a fraction in config (`0.01` means 1%), but `signal_calibration` proposes it in percent
-from feature `risk_pct`. The 2026-10-22 proposal was `1.767`, set against `0.01`. Ratifying the number as written
-would set the minimum stop to 176.7% of price. The harness scales the current value by 100 to compare like
-with like. The fix belongs in `signal_calibration.py`, which is in the broker execution set and needs an
-`execution-engineering` grant.
+`min_stop.pct_of_price` is a fraction in config (`0.01` means 1%), but `signal_calibration` proposed it in percent
+from feature `risk_pct` (`1.767` on 2026-10-22): ratified as written, a minimum stop of 176.7% of price. Under grant
+`e88bf21e` `signal_calibration.KNOB_UNIT_SCALE` converts: `proposed_value` is now in knob units (`0.01767`) with
+`proposed_feature_value` (`1.767`) and `knob_unit_scale` beside it. The harness freezes the feature-unit value (and
+reads older reports' `proposed_value` as the feature value) and scales the current value by 100.
+
+**Current values.** `config/calibration_shadow_harness.json` declares the `AlertConfig` defaults read under the
+grant (`max_spread_bps` 80, `min_buy_ratio` 0.55, `min_depth_ratio_armed` 1.0); a test pins them equal to
+`AlertConfig`, so the harness compares against the real baseline without importing the broker execution set.
 
 ## n8n lane `calibration-shadow-harness`
 
@@ -79,13 +83,13 @@ At canary, a separate PR sets `live_arg []` and dispatch mode `live`. The lane t
 - `data/runtime/calibration_shadow_report.md`;
 - the `LaneRunReceipt` `data/runtime/calibration-shadow-harness_last.json`.
 
-Dry run on 2026-10-22 against the live journals:
+Dry run on 2026-10-22 against the live journals (re-run after the grant work):
 
 ```
-decisions_read 3615 · 3 trials, all IN_PROGRESS (0/5 forward sessions):
-  active_trader_alerts.min_buy_ratio   current not computed  proposed 0.434   in-sample worked rate 0.0617 -> 0.0743
-  active_trader_alerts.max_spread_bps  current not computed  proposed 57.75   in-sample worked rate 0.07   -> 0.1084
-  min_stop.pct_of_price                current 1 (0.01 x100) proposed 1.767   in-sample worked rate 0.0748 -> 0.0697
+decisions_read 3615 · 3 trials, all IN_PROGRESS (0/5 forward sessions); current = AlertConfig defaults:
+  active_trader_alerts.min_buy_ratio   current 0.55  proposed 0.434  in-sample worked rate 0.0699 -> 0.0743
+  active_trader_alerts.max_spread_bps  current 80    proposed 57.75  in-sample worked rate 0.0909 -> 0.1084
+  min_stop.pct_of_price                current 1 (0.01 x100)  proposed 1.767  in-sample 0.0711 -> 0.0697
 LANE_OUTPUT produced_count 0, empty_reason dry_run; nothing written
 ```
 
