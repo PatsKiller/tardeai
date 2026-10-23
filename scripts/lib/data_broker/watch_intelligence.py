@@ -1520,7 +1520,17 @@ def get_watch_intelligence() -> dict[str, Any]:
     return projection
 
 
-def active_ticker_directives(*, strict: bool = False) -> list[dict[str, Any]]:
+ACTIVE_TICKER_DIRECTIVES_SQL = """
+            SELECT DISTINCT ON (UPPER(TRIM(spec->>'symbol')))
+                   UPPER(TRIM(spec->>'symbol')) AS symbol, id, label, rationale,
+                   trade_ai_enabled, hermes_enabled, created_at, updated_at
+              FROM watch_directives
+             WHERE status = 'active' AND kind = 'ticker' AND COALESCE(TRIM(spec->>'symbol'), '') <> ''
+             ORDER BY UPPER(TRIM(spec->>'symbol')), created_at DESC, id DESC
+            """
+
+
+def active_ticker_directives(*, strict: bool = False, db_query: Any = None) -> list[dict[str, Any]]:
     """Active ticker watch directives, newest per symbol, for the hub's /api/v2/watchlist.
 
     The symbol lives in spec->>'symbol'. Read here (the watch_directives projection
@@ -1530,19 +1540,12 @@ def active_ticker_directives(*, strict: bool = False) -> list[dict[str, Any]]:
     (Open Trades' directive_state, 2026-10-22).
     """
     try:
-        from db_adapter import _execute
+        if db_query is not None:   # an injected read-only ``db_query(sql) -> rows`` (the CIO prospect builder, 2026-10-23)
+            rows = db_query(ACTIVE_TICKER_DIRECTIVES_SQL)
+        else:
+            from db_adapter import _execute
 
-        rows = _execute(
-            """
-            SELECT DISTINCT ON (UPPER(TRIM(spec->>'symbol')))
-                   UPPER(TRIM(spec->>'symbol')) AS symbol, id, label, rationale,
-                   trade_ai_enabled, hermes_enabled, created_at, updated_at
-              FROM watch_directives
-             WHERE status = 'active' AND kind = 'ticker' AND COALESCE(TRIM(spec->>'symbol'), '') <> ''
-             ORDER BY UPPER(TRIM(spec->>'symbol')), created_at DESC, id DESC
-            """,
-            fetch="all",
-        )
+            rows = _execute(ACTIVE_TICKER_DIRECTIVES_SQL, fetch="all")
     except Exception:
         if strict:
             raise
