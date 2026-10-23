@@ -1751,6 +1751,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CANONICAL_OBSERVATION_CONTRACT.md` | Canonical observation contract |
 | `docs/ops/CANON_SOURCE_ACQUISITION_QUEUE_2026-08-23.md` | Canon Source Acquisition Queue - 2026-08-23 |
 | `docs/ops/CC_NEEDS_ACTION_2026-10-21.md` | Command Center — the "Needs action" inbox and the failures that had no page (2026-10-21) |
+| `docs/ops/CC_P3_COSMETICS_2026-10-23.md` | Command Center v3 — P3 cosmetic fixes from the site validation (2026-10-23) |
 | `docs/ops/CIO_ADVISORY_TRUTH_HARDENING_CLOSEOUT_2026-08-20.md` | CIO/Advisory truth + presentation hardening — closeout 2026-08-20 |
 | `docs/ops/CIO_AFTERNOON_FIVE_2026-09-01.md` | Afternoon five — closeout |
 | `docs/ops/CIO_BANNER_DATA_ASOF_2026-09-01.md` | PORTFOLIO chip — freshness is `data_as_of`, not the loader run |
