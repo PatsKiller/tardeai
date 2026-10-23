@@ -27,6 +27,8 @@ Inputs (every one read-only; a missing input is reported, never invented):
          — typed catalysts per security, folded into ``catalyst_grade`` with the scanner's and the re-entry desk's
          catalyst; two verdicts for one security are a recorded conflict (silo audit 2026-10-23, SAIQ)
   file   data/hermes/momentum_catalysts/<day>_catalysts.jsonl   Hermes momentum catalyst research (newest 2 days)
+  proj   data_broker.watch_intelligence.active_ticker_directives (watch_directives, granted) — operator_directive way-in
+  db     paper_trade_proposals — stage ``proposed``; INERT until the operator grants registry row paper_proposals
 
 Identity: ``identity_carriage.resolve_security_identity`` (lookup only, never mints). A symbol without a
 CONFIRMED registry GUID gets no prospect and is listed as "identity unresolved" (§7, §26.1).
@@ -420,6 +422,64 @@ def load_hermes_catalysts(state_root: Path) -> dict[str, dict[str, Any]]:
                                         None if files else "missing")}
 
 
+def load_directive_inputs(db_query: Optional[Callable[..., list[dict]]]) -> dict[str, dict[str, Any]]:
+    """Active ticker watch directives through their projection (``watch_intelligence.active_ticker_directives``,
+    registry domain ``watch_directives``, granted) on the injected read-only session. Silo audit 2026-10-23 #23."""
+    if db_query is None:
+        return {"directives": _source("directives", "projection:watch_intelligence.active_ticker_directives", {},
+                                      None, "not_read (no read-only db_query injected)")}
+    try:
+        try:
+            from scripts.lib.data_broker.watch_intelligence import active_ticker_directives
+        except ImportError:  # scripts/ on sys.path
+            from lib.data_broker.watch_intelligence import active_ticker_directives  # type: ignore
+        rows = active_ticker_directives(strict=True, db_query=db_query) or []
+    except Exception as exc:  # noqa: BLE001 — reported, never invented
+        return {"directives": _source("directives", "projection:watch_intelligence.active_ticker_directives", {},
+                                      None, f"error:{type(exc).__name__}")}
+    by = {str(r.get("symbol") or "").upper(): dict(r) for r in rows if r.get("symbol")}
+    newest = max((str(_iso(_ts(r.get("updated_at") or r.get("created_at"))) or "") for r in by.values()), default=None)
+    return {"directives": _source("directives", "projection:watch_intelligence.active_ticker_directives", by,
+                                  newest, None)}
+
+
+# Open proposals (stage ``proposed``, §26.1). ``paper_trade_proposals`` is the PROPOSED registry domain
+# ``paper_proposals`` (51 writer files, no projection): NOT read until the operator grants that row (§26.6, §17).
+# The read below is inert until then — the source reports why, and no prospect reaches ``proposed``.
+PROPOSALS_DOMAIN = "paper_proposals"
+PROPOSALS_SQL = (
+    "SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS symbol, id AS proposal_id, status, created_at "
+    "FROM paper_trade_proposals WHERE lower(status) IN ('pending', 'pending_approval', 'proposed', 'open') "
+    "AND created_at > now() - interval '7 days' ORDER BY upper(symbol), created_at DESC")
+
+
+def domain_granted(domain: str, registry: Optional[dict[str, Any]] = None) -> bool:
+    """True only when ``domain`` sits in the registry's ``domains[]`` with an approval naming who approved it."""
+    doc = registry if registry is not None else ir._registry_doc()
+    for row in doc.get("domains") or []:
+        if isinstance(row, dict) and row.get("domain") == domain:
+            appr = row.get("approval") or {}
+            return bool(isinstance(appr, dict) and str(appr.get("approved_by") or "").strip())
+    return False
+
+
+def load_proposal_inputs(db_query: Optional[Callable[..., list[dict]]], *,
+                         registry: Optional[dict[str, Any]] = None) -> dict[str, dict[str, Any]]:
+    path = "db:paper_trade_proposals"
+    if not domain_granted(PROPOSALS_DOMAIN, registry):
+        return {"proposals": _source("proposals", path, {}, None,
+                                     f"not_read (registry row {PROPOSALS_DOMAIN} not granted — §26.6; inert)")}
+    if db_query is None:
+        return {"proposals": _source("proposals", path, {}, None, "not_read (no read-only db_query injected)")}
+    try:
+        rows = db_query(PROPOSALS_SQL) or []
+    except Exception as exc:  # noqa: BLE001
+        return {"proposals": _source("proposals", path, {}, None, f"error:{type(exc).__name__}")}
+    by = {str(r.get("symbol") or "").upper(): dict(r) for r in rows if r.get("symbol")}
+    newest = max((str(_iso(_ts(r.get("created_at"))) or "") for r in by.values()), default=None)
+    return {"proposals": _source("proposals", path, by, newest, None)}
+
+
 def _fact_at(f: dict[str, Any]) -> Optional[datetime]:
     return _ts(f.get("published_at")) or _ts(f.get("observed_at"))
 
@@ -760,6 +820,11 @@ def assemble(sym: str, inputs: dict[str, dict[str, Any]], held: dict[str, Any], 
                                        "at": (opp or {}).get("as_of")}
     else:
         stage, why = "watching", {"source": "default", "reason": "no setup evidence"}
+    proposal = g("proposals")
+    if proposal and stage in ("watching", "setup_forming", "actionable"):
+        # §26.1: "proposed means a paper or operator proposal exists" (inert until paper_proposals is granted)
+        stage, why = "proposed", {"source": "paper_trade_proposals", "proposal_id": proposal.get("proposal_id"),
+                                  "status": proposal.get("status"), "at": _iso(_ts(proposal.get("created_at")))}
 
     thesis_stance = str((thesis or {}).get("stance") or "").upper() or None
     if opp_stance:
@@ -919,6 +984,12 @@ def assemble(sym: str, inputs: dict[str, dict[str, Any]], held: dict[str, Any], 
     if wl_item and str(wl_item.get("source") or "").lower() in ("operator", "operator_ui", "manual"):
         cands.append({"origin": "operator_add", "reason": f"operator added ({wl_item.get('source')})",
                       "at": _iso(_ts(wl_item.get("first_seen_at")))})
+    directive = g("directives")
+    if directive:
+        label = str(directive.get("label") or directive.get("rationale") or "").strip()
+        cands.append({"origin": "operator_directive",
+                      "reason": f"watch directive #{directive.get('id')}" + (f": {label[:80]}" if label else ""),
+                      "at": _iso(_ts(directive.get("created_at")))})
     if is_held:
         cands.append({"origin": "held_position", "reason": f"held per {held_src}", "at": held.get("as_of")})
     min_conv = float(((rules.get("ways_in") or {}).get("min_conviction")) or 60)
@@ -992,7 +1063,8 @@ def build(state_root: Path, *, db_query: Optional[Callable[[str], list[dict]]] =
           identity_resolver: Optional[Callable[[str], dict]] = None,
           symbols: Optional[Iterable[str]] = None, now: Optional[datetime] = None,
           rules: Optional[dict[str, Any]] = None,
-          captured: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+          captured: Optional[dict[str, Any]] = None,
+          registry: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     """Assemble every prospect. Pure with respect to stores: reads, never writes. ``captured`` supplies the
     lifecycle rows (round trips, fills, observed stops, links, bars) captured read-only elsewhere."""
     now = now or datetime.now(timezone.utc)
@@ -1000,6 +1072,8 @@ def build(state_root: Path, *, db_query: Optional[Callable[[str], list[dict]]] =
     inputs = load_file_inputs(Path(state_root))
     inputs.update(load_db_inputs(db_query))
     inputs.update(load_catalyst_inputs(db_query))
+    inputs.update(load_directive_inputs(db_query))
+    inputs.update(load_proposal_inputs(db_query, registry=registry))
     inputs.update(load_hermes_catalysts(Path(state_root)))
     inputs.update(load_lifecycle_inputs(db_query, captured))
     held = load_held(Path(state_root), held_reader)
@@ -1019,7 +1093,7 @@ def build(state_root: Path, *, db_query: Optional[Callable[[str], list[dict]]] =
             return resolve_security_identity(s, root=Path(state_root))
     universe: set[str] = set(held["symbols"])
     for name in ("opportunity", "theses", "instrument_records", "reentry", "watchlist_items", "starred",
-                 "round_trips"):
+                 "round_trips", "directives", "proposals"):
         universe |= set((inputs.get(name) or {}).get("rows", {}).keys())
     if symbols is not None:
         universe = {str(s).upper() for s in symbols}
