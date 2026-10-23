@@ -522,7 +522,14 @@ def test_shadow_tick_apply_appends_and_waits_for_the_claimer(tmp_path):
     assert not w.state.latch.exists()  # the drill is simulated
 
 
-def test_back_to_back_forced_ticks_get_distinct_requests(tmp_path):
+def test_back_to_back_forced_ticks_get_distinct_requests(tmp_path, monkeypatch):
+    # An off-window clock: from 16:20 to 18:15 ET the 18:00 tick is on-window, where one request id per window
+    # (``-win``) is the contract and a second tick is a duplicate (CI went red at 16:22 ET on 2026-10-23).
+    from scripts import release_train_window_request as RQ
+
+    real_run = RQ.run
+    off_window = datetime(2026, 10, 21, 12, 0, tzinfo=ET)
+    monkeypatch.setattr(RQ, "run", lambda argv, **kw: real_run(argv, now=off_window, **kw))
     state = RW.State(tmp_path / "rw")
     ids = []
     for _ in range(3):
