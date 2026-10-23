@@ -76,7 +76,12 @@ See the table in `docs/ops/OPS_CONTROLS_API.md` §5. Safe: `release_train.stop`,
 
 - **`kill_switch.clear`:** its path is broker-execution code (`scripts/brokers/kill_switches.py --disable`). Calling or
   testing it from the applier needs an `execution-engineering` grant (§0 rule 2, §27.4). Engage only runs the existing
-  CLI as a subprocess. Neither path's code is modified.
+  CLI as a subprocess. Neither path's code is modified by the applier.
+  *2026-10-22 (execution-engineering grant e88bf21e, `KILL_SWITCH_DISABLE_AUDIT_20261022`):* the operator CLI's
+  `--disable` raised `TypeError` on every correctly-confirmed phrase (`_audit()` keyword mismatch, present since
+  2026-06-26) and is fixed. Enable and disable now write the state row and the audit row in one transaction that
+  rolls back on any failure, and the CLI exits 1 when a change is refused or fails, so an engage that did not apply
+  reports `FAILED`, not `APPLIED`.
 - **`release_train.resume` / `.arm` / `.change_scope` / `.revoke`:** `release_control.OPERATOR_KINDS` is pinned to
   the D3 host-CLI and Telegram proofs by `tests/test_agents_policy_17_0_0_release_train.py`. Adding a passkey proof
   kind is its own reviewed PR after 19.0.0 is ACTIVE. Until then the host CLI is the path
