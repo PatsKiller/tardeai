@@ -54878,6 +54878,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, _dbw.get_list(query or {})
             if p == "watch-prospects":
                 return 200, _dbw.get_prospects(query or {})
+            if p == "watch-curation":
+                return 200, _dbw.get_curation(query or {})
+            if p == "watch-symbol-search":
+                return 200, _dbw.get_symbol_search(query or {})
+            if p == "watch-universe":
+                return 200, _dbw.get_universe(query or {})
             if p == "watch-filters":
                 return 200, _dbw.get_filters()
             if p == "watch-lists":
@@ -54912,6 +54918,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, _wcmd.post_alert(body or {})
             if cmd in ("refresh-data", "refresh_data"):
                 return 200, _wcmd.post_refresh_data(body or {})
+            if cmd == "mine":
+                _out = _wcmd.post_mine_decision(body or {})
+                return (200 if _out.get("ok") else 400), _out
+            if cmd in ("suggest-dismiss", "suggest-restore"):
+                _out = _wcmd.post_suggest_decision(cmd.split("-", 1)[1], body or {})
+                return (200 if _out.get("ok") else 400), _out
             return 404, {"ok": False, "error": "unknown_command"}
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}

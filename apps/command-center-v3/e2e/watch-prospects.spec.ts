@@ -17,10 +17,10 @@ async function mockApi(page: Page, writes: string[]) {
   })
 }
 
-test('Prospects is the default Watch view: interim label, chips, five lanes, one row per prospect', async ({ page }) => {
+test('Prospects (now the third Watch tab): interim label, chips, five lanes, one row per prospect', async ({ page }) => {
   const writes: string[] = []
   await mockApi(page, writes)
-  await page.goto('/v3/watch')
+  await page.goto('/v3/watch?tab=prospects')
   await expect(page).toHaveURL(/tab=prospects/)
   const root = page.getByTestId('watch-prospects')
   await expect(root).toBeVisible({ timeout: 60_000 })
@@ -48,7 +48,7 @@ test('Prospects is the default Watch view: interim label, chips, five lanes, one
   await expect(page.getByTestId('watch-overflow')).toContainText('12 more below the 8-row cap')
 
   // Detail: components, conflicts with both sides, same record everywhere.
-  await navn.getByRole('button', { name: /NAVN/ }).click()
+  await navn.getByRole('button', { name: 'NAVN', exact: true }).click()
   const detail = page.getByTestId('watch-detail')
   await expect(detail).toContainText('Conviction 88')
   await expect(page.getByTestId('watch-components')).toContainText('Risk/Reward')

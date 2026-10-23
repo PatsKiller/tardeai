@@ -1,0 +1,18 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_lists_20261023",
+  "files": [
+    "tests/test_watch_lists_20261023.py"
+  ],
+  "anchor": "WATCH_LISTS_20261023",
+  "comment": [
+    "ANCHOR: WATCH_LISTS_20261023 — Watch IA (operator 2026-10-23): My Watchlist = every operator name (stars, personal",
+    "watchlist, operator ticker directives, operator adds; watch_domains.membership_operator), starred first, never capped,",
+    "never expired (expiry only suggests); Prospects lists every operator name; System Suggests = top N (20, max 30) of the",
+    "same curator ranking as Full universe minus held/yours/dismissed, focus-list hysteresis with entry/exit reasons from",
+    "rank_history; Full universe on Watch overlays held/formerly held/never held from the Watch held reader, the last round",
+    "trip and re-entry advice (CIO prospect lifecycle) — a sold name is Re-entry/formerly held, never Add-On/ADD; position",
+    "filters/sorts server-side with stated rules; suggest dismiss is an audited watchlist_events row with the cc_auth",
+    "principal; the curator's held flag reads positions_current only once reader batch #4 is granted (fail closed)."
+  ]
+}
