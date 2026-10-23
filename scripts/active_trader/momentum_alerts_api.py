@@ -86,6 +86,9 @@ def _compact(row: dict, score: Optional[dict]) -> dict:
                   if isinstance(v, dict) and v.get("mfe") is not None} or None,
         "supply": l2.get("supply") or None,
         "signals": _signals_view(row.get("signals")),
+        # Gate 4 (2026-10-22): Level 2 book signals from this row's own book evidence (additive; historic rows too)
+        "l2_book_signals": _l2_book_view(l2),
+        "unified": row.get("unified") or None,
         "outcome": _outcome_view((score or {}).get("outcome")),
         # alert sync (2026-10-05): which loop decided, the market event it reacted to, and how late
         "source": row.get("source") or "pass5",
@@ -117,6 +120,24 @@ def latency_summary(rows: list[dict]) -> dict:
     for k, xs in groups.items():
         out[k] = {"n": len(xs), "p50_s": pct(xs, 0.5), "p90_s": pct(xs, 0.9)}
     return out
+
+
+def _l2_book_view(l2: dict) -> Optional[dict]:
+    """tight_spread / bid_ask_imbalance / ask_heavy (lib/l2_book_signals, priors in microstructure_signals)."""
+    if not l2:
+        return None
+    try:
+        try:
+            from lib import l2_book_signals as l2sig  # type: ignore
+        except ModuleNotFoundError:  # pragma: no cover
+            from scripts.lib import l2_book_signals as l2sig  # type: ignore
+        r = l2sig.from_at_l2(l2, l2sig.load_config())
+    except Exception:  # noqa: BLE001 — a read view; absent renders as not computed
+        return None
+    return {"status": r.get("status"), "spread_bps": r.get("spread_bps"), "imbalance": r.get("imbalance"),
+            "levels": r.get("levels"),
+            "signals": {k: {"on": v.get("on"), "value": v.get("value"), "threshold": v.get("threshold"),
+                            "kind": v.get("kind")} for k, v in (r.get("signals") or {}).items()}}
 
 
 def _signals_view(sig: Any) -> Optional[dict]:

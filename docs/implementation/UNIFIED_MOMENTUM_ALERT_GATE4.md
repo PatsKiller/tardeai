@@ -61,30 +61,30 @@ unified_momentum_alert:
   dedupe_minutes: 30
 ```
 
-| mode | Momentum Scalp (scanner) | Active Trader | unified ledger |
+| mode | Momentum Scalp (scanner) | Active Trader engine | unified ledger |
 | --- | --- | --- | --- |
-| `off` | today's alert, byte for byte | today's alert | nothing written |
-| `shadow` (default) | today's alert **plus** the unified message logged beside it (`SHADOW_LOGGED`, `legacy_alert` names the old one) | today's alert; replay CLI builds its shadow rows | shadow rows |
-| `live` | unified message **instead**. The old alert is sent only if the unified send was not accepted | **unchanged until the grant below** | live rows with message ids |
+| `off` | today's alert, byte for byte | today's alert, byte for byte | nothing written |
+| `shadow` (default) | today's alert **plus** the unified message logged beside it (`SHADOW_LOGGED`, `legacy_alert` names the old one) | today's alert **plus** the unified message logged beside it (journal row `unified`) | shadow rows |
+| `live` | unified message **instead**. The old alert is sent only if the unified send was not accepted | today's alert, unchanged; the hook **refuses** and records `LIVE_REFUSED` — "live replacement pending operator decision" | live rows (scanner only) |
 
 Env `UNIFIED_MOMENTUM_ALERT_MODE` overrides the mode for one process. An unknown value resolves to `shadow`,
 never to `live`.
 
-## What is held, and why
+## Active Trader side (execution-engineering grant e88bf21e, 2026-10-22)
 
-`scripts/active_trader/**` is the broker execution file set. It is editable only under an operator
-`execution-engineering` grant naming the files (AGENTS.md §0 rule 2, §2B, §24.10;
-`config/agents_guard_hook_rules.json` rule `broker.execution_code_edit`, action deny). No grant was active on
-2026-10-22, so this change does **not** touch it. Held for that grant:
+`scripts/active_trader/**` is the broker execution file set (AGENTS.md §0 rule 2, §2B, §24.10). The operator's
+grant `e88bf21e` (approve-all item H, A1/A2: fixtures and replay only) names `momentum_alerts.py`,
+`microstructure_signals.py`, `momentum_alerts_api.py`, `read_api.py` and `signal_calibration.py`.
 
-1. **The Active Trader live hook.** `momentum_alerts.py` would call `unified_momentum_alert.emit(event_from_at_row(row))`
-   where it sends today, suppressing its own alert in `live`. AGENTS.md §9.1 already lists the file's
-   `bypass_router=True` site as awaiting this grant. Until then, `live` replaces only the scanner side.
-2. **`microstructure_signals.SignalConfig` and the served AT payload** carrying `spread_bps` / imbalance
-   signals. The computation and priors are in place (below), and the AT alert row already carries the inputs
-   (`l2.best_bid/best_ask/bid_depth/ask_depth`).
+- **Shadow-only hook.** `momentum_alerts.evaluate_pass` calls `unified_shadow(row)` after every ALERT row's
+  legacy send. It never suppresses or replaces that send (test-pinned: the legacy call is identical in off, shadow
+  and live). In `live` it refuses and records `{"action": "LIVE_REFUSED", "note": "live replacement pending
+  operator decision"}`. Replacing the AT alert is the operator's decision. A first version that suppressed the
+  legacy send in live mode was refused by the session's safety classifier and is not built.
+- **No new router bypass.** The legacy `telegram_send` keeps its allowlisted `bypass_router=True`; the hook sends
+  nothing.
 
-Until then, the Active Trader side runs in shadow by replay, which reads its journal, a store, read-only:
+The replay CLI stays for back-filling a day (idempotent with the live hook: same `origin_ref`):
 
 ```
 python scripts/unified_momentum_alert_shadow.py --day YYYY-MM-DD --dry-run --show 5
@@ -110,18 +110,25 @@ TRIGGER CANCELLED 09:43, then EXTENDED 09:56, PULLBACK ZONE 10:16 and TRIGGER CA
 - `bid_ask_imbalance`: on when bid size / ask size over the top `levels` is at least `imbalance_min`;
 - `ask_heavy` (warning): on when that ratio is at or below `ask_heavy_max`.
 
-The v1 priors are in `config/scalp_signal_engine.yaml` `l2_book_signals`:
+The v1 priors are in `config/scalp_signal_engine.yaml` `microstructure_signals` (the section
+`SignalConfig` reads), one home for both readers:
 
 | prior | value | basis |
 | --- | --- | --- |
 | `spread_bps_max` | 50 | the existing `config/scalp_confirmations.yaml` bound |
 | `imbalance_min` | 1.5 | |
 | `ask_heavy_max` | 0.67 | |
-| `levels` | 5 | |
+| `imbalance_levels` | 5 | |
 
 Changes are operator-ratified only; `signal_calibration` proposes. A missing, one-sided or crossed book gives
 `NO_BOOK` with `on: None`, never a lit signal. Inputs are either a recorder snapshot (data-broker
 `active_trader_microstructure`) or an AT row's `l2` block.
+
+Under the grant the engine computes them too: `SignalConfig` carries the four priors, `entry_signals()` adds
+`tight_spread` and `bid_ask_imbalance` (evidence on the journal row; never a verdict), and `ask_heavy()` exists as
+a helper but is **not** added to `exit_signals()`, whose `fired()` count drives `exit_watch`. The served payload
+(`GET /api/v3/active-trader/alerts`, `momentum_alerts_api._compact`) carries `l2_book_signals` for every
+decision, computed from the row's own `l2` block, and the row's `unified` summary.
 
 ## Store
 
