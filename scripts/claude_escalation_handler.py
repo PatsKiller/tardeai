@@ -508,11 +508,14 @@ def _verify_remediation(item) -> tuple[bool, str]:
 
     # pipeline_failures: unrecovered real pipeline_runs (not just job backlog)
     if ftype == "pipeline_failures":
+        from lib.pipeline_failure_counts import SUBSTANTIVE_FAILURE_FILTER
+
         ok, n, note = _db_verify(
-            """
+            f"""
             SELECT COUNT(*) FROM pipeline_runs f
             WHERE f.status='failed'
               AND f.started_at > now() - interval '24 hours'
+              AND {SUBSTANTIVE_FAILURE_FILTER}
               AND (f.summary IS NULL OR f.summary::text NOT LIKE '%%zombie run cleared%%')
               AND NOT EXISTS (
                 SELECT 1 FROM pipeline_runs s
@@ -596,6 +599,31 @@ def resolve_relative_venv(cmd: str, dev_venv_python: str) -> str:
     return _RELATIVE_VENV_RE.sub(dev_venv_python, cmd)
 
 
+def _held_retry_outcome(output):
+    """Return the structured HELD payload emitted by an iterative remediator."""
+    text = str(output or "")
+    decoder = json.JSONDecoder()
+    for pos in range(len(text) - 1, -1, -1):
+        if text[pos] != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(text[pos:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and payload.get("outcome") == "HELD":
+            return payload
+    return None
+
+
+def _retry_output(stdout, stderr="", rc=None):
+    """Preserve HELD as structured metadata before applying the normal log tail cap."""
+    held = _held_retry_outcome(stdout)
+    if held:
+        return "HELD_JSON:" + json.dumps(held, separators=(",", ":"))
+    prefix = f"exit_code={rc}: " if rc is not None else ""
+    return f"{prefix}{(stdout or '')[-1500:]} {(stderr or '')[-500:]}"[-2000:]
+
+
 def _execute_retry_cmd(item, allowlist, dry_run=False):
     """Execute an allowlisted retry command with full logging.
     Returns (executed: bool, success: bool, output: str)."""
@@ -677,7 +705,7 @@ def _execute_retry_cmd(item, allowlist, dry_run=False):
             log.info(f"  ✅ retry_cmd succeeded ({duration:.1f}s)")
             _log_retry(item, cmd, True, reason, "retry_cmd_succeeded",
                        rc, stdout, stderr, duration)
-            return True, True, (stdout or "")[-500:]
+            return True, True, _retry_output(stdout)
         elif rc in (69, 99):
             # rc=69/99 = flock lock held by another process — NOT a failure, just contention
             stderr_tail = (stderr or "")[-200:]
@@ -689,7 +717,7 @@ def _execute_retry_cmd(item, allowlist, dry_run=False):
             log.warning(f"  ❌ retry_cmd failed (rc={rc}, {duration:.1f}s)")
             _log_retry(item, cmd, True, reason, "retry_cmd_failed",
                        rc, stdout, stderr, duration)
-            return True, False, f"exit_code={rc}: {(stderr or '')[-200:]}"
+            return True, False, _retry_output(stdout, stderr, rc)
     except Exception as e:
         duration = time.time() - t0
         log.error(f"  💥 retry_cmd error: {e}")
@@ -735,14 +763,35 @@ def _log_intervention(conn, component, problem, diagnosis="", solution="",
 
 
 def _notify(message):
-    """Send Telegram notification."""
+    """Send Telegram notification; persist a delivery failure without masking work."""
     try:
         _ensure_scripts_path()
         from telegram_alert import send_telegram
         # P3: escalation progress (investigating / complete / paused) is FYI -> digest.
-        send_telegram(message, priority="P3", producer="claude_escalation_handler")
-    except Exception:
-        pass
+        accepted = send_telegram(message, priority="P3", producer="claude_escalation_handler")
+        if not accepted:
+            raise RuntimeError("Telegram notification was not accepted")
+        return True
+    except Exception as exc:
+        _record_notification_failure(exc)
+        return False
+
+
+def _record_notification_failure(exc: Exception) -> None:
+    """Durably record Telegram delivery failures without persisting message contents."""
+    entry = {
+        "at": datetime.now(timezone.utc).isoformat(),
+        "error_type": type(exc).__name__,
+        "error": "Telegram delivery failed; exception details omitted to avoid credential leakage.",
+    }
+    path = LOG_DIR / "claude_escalation_notification_failures.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+    try:
+        os.write(fd, (json.dumps(entry, separators=(",", ":")) + "\n").encode("utf-8"))
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 # ── Main processing ─────────────────────────────────────────────────────
@@ -812,7 +861,21 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
             unique_items.append(item)
 
     # Filter to actionable items (skip portfolio_risk — those are informational)
-    actionable = [i for i in unique_items if i.get("component") != "portfolio_risk"]
+    preheld = [i for i in unique_items if i.get("outcome") == "HELD" or i.get("operator_action_required")]
+    held_items = list(preheld)
+    actionable = [i for i in unique_items if i.get("component") != "portfolio_risk"
+                  and i not in preheld]
+
+    for item in preheld:
+        if not item.get("_operator_review_notified") and not dry_run:
+            try:
+                item["_operator_review_notified"] = bool(_notify(
+                    f"👤 OPERATOR REVIEW REQUIRED: {item.get('component')}\n"
+                    f"{item.get('operator_review_reason') or item.get('detail', '')[:250]}\n"
+                    f"Automatic retry held until {item.get('hold_until') or 'review'}"
+                ))
+            except Exception:
+                log.exception("operator-review notification failed for queued HELD item")  # ALARM-DELIVERY-DECLARED: held item remains in durable queue.
 
     if not actionable:
         log.info(f"Queue has {len(unique_items)} items but none are actionable (all portfolio_risk)")
@@ -914,7 +977,7 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
                     f"After {attempts} retries; autonomous re-arm in {int(EXHAUST_RESET_SEC/60)}m."
                 )
             except Exception:
-                pass
+                log.exception("retry-exhausted notification failed")  # ALARM-DELIVERY-DECLARED: exhausted item and retry budget remain in durable queue state.
             continue
 
         # Apply backoff: skip if cooldown hasn't elapsed
@@ -928,6 +991,7 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
     # ── Tier 1: Direct retry_cmd execution for fixable items ──
     fixable = [i for i in actionable if i.get("fixable") and i.get("retry_cmd")]
     resolved_by_retry = set()
+    held_for_operator = set()
 
     if fixable:
         log.info(f"Tier 1: {len(fixable)} fixable item(s) with retry_cmd")
@@ -961,6 +1025,25 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
                 flush=True,
             )
             executed, success, output = _execute_retry_cmd(item, allowlist, dry_run)
+            held_payload = _held_retry_outcome(output)
+            if held_payload:
+                item["outcome"] = "HELD"
+                item["operator_action_required"] = True
+                item["hold_until"] = held_payload.get("hold_until")
+                item["operator_review_reason"] = held_payload.get("note") or held_payload.get("root_cause") or "component failures require owner review"
+                item["retry_output"] = output[-2000:]
+                held_for_operator.add(id(item))
+                held_items.append(item)
+                try:
+                    item["_operator_review_notified"] = bool(_notify(
+                        f"👤 OPERATOR REVIEW REQUIRED: {item.get('component')}\n"
+                        f"{item['operator_review_reason']}\n"
+                        f"Automatic retry held until {item.get('hold_until') or 'review'}"
+                    ))
+                except Exception:
+                    log.exception("operator-review notification failed for held retry")  # ALARM-DELIVERY-DECLARED: held item remains in durable queue.
+                log.warning(f"  👤 held for operator review: {item.get('component')}")
+                continue
             if success:
                 cleared, vnote = _verify_remediation(item)
                 # Durable root-cause memory: record verify result for iterative next strategy
@@ -1035,15 +1118,15 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
                 time.sleep(TIER1_INTER_CMD_DELAY_SEC)
 
     # Remove resolved items from actionable
-    remaining = [i for i in actionable if id(i) not in resolved_by_retry]
+    remaining = [i for i in actionable if id(i) not in resolved_by_retry and id(i) not in held_for_operator]
     if resolved_by_retry:
         log.info(f"  Tier 1 resolved {len(resolved_by_retry)}/{len(fixable)} items")
 
     if not remaining:
-        log.info("All items resolved by direct retry_cmd")
+        log.info("No items remain in automated escalation after Tier 1")
         if not dry_run:
             # Only wipe the main queue (resolved) — staleness queue is separate
-            _safe_write_queue(QUEUE_FILE, [])
+            _safe_write_queue(QUEUE_FILE, held_items)
         if resolved_by_retry and not dry_run:
             _notify(f"✅ Auto-recovery: {len(resolved_by_retry)} escalation(s) resolved by retry_cmd")
         print(
@@ -1065,10 +1148,10 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
             flush=True,
         )
         # Leave queue intact when dry-run or when items remain unfixed
-        if not dry_run and resolved_by_retry:
+        if not dry_run and (resolved_by_retry or held_items):
             # Drop only resolved; rewrite queues with remaining
             try:
-                _safe_write_queue(QUEUE_FILE, remaining)
+                _safe_write_queue(QUEUE_FILE, remaining + held_items)
             except Exception:
                 pass
         print("[claude-escalation] done (tier1-only path)", flush=True)
@@ -1464,7 +1547,7 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
             f"Tier 3 (local LLM): {len(remaining)} analyzed → {final_status}{defer_note}\n"
             f"Analysis: {session_log[:200]}")
 
-    _safe_write_queue(QUEUE_FILE, deferred)
+    _safe_write_queue(QUEUE_FILE, deferred + held_items)
     log.info(
         f"Queue: {resolved_count} retried, {len(remaining)} tier3 → {final_status}, "
         f"{len(deferred)} deferred"

@@ -716,6 +716,7 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
             # served numbers stayed stale. The real verdict is decided below, after
             # the originating check is re-run. `ok` is overwritten there.
             ok = False
+            previous_fail_streak = st.get("fail_streak", 0)
             st["fail_streak"] = _next_fail_streak(st, rc)
             entry = {
                 "at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": ok,
@@ -744,6 +745,9 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                                     entry["how_to_fix"] = parsed.get("how_to_fix")
                                     entry["strategy_id"] = parsed.get("strategy_id")
                                     entry["held"] = parsed.get("held")
+                                    entry["outcome"] = parsed.get("outcome")
+                                    entry["hold_until"] = parsed.get("hold_until")
+                                    entry["operator_action_required"] = parsed.get("operator_action_required")
                                     if parsed.get("note"):
                                         entry["note"] = str(parsed.get("note"))[:300]
                                 break  # found and parsed — stop
@@ -754,6 +758,23 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
             if rc in (69, 99):
                 entry["ok"] = False
                 entry["flock_contention"] = True
+            # A held result is a deliberate pause for operator review. Do not
+            # enqueue it for verification or count it as a remediation attempt.
+            if entry.get("held") or entry.get("outcome") == "HELD":
+                entry["outcome"] = "HELD"
+                entry["ok"] = False
+                st["fail_streak"] = previous_fail_streak
+                # A deliberate hold is not a failed remediation attempt; keep
+                # the persisted streak and its audit record consistent.
+                entry["fail_streak"] = previous_fail_streak
+                entry.pop("_pending_verification", None)
+                entry["hold_until"] = entry.get("hold_until") or entry.get("hold_until_ts")
+                results.append(entry)
+                REMEDIATION_LOG.parent.mkdir(parents=True, exist_ok=True)
+                with open(REMEDIATION_LOG, "a") as fh:
+                    fh.write(json.dumps({**entry, "record": "held"}) + "\n")
+                state[ftype] = st
+                continue
             # Queue for the re-check pass. Until then this entry claims nothing.
             entry["_pending_verification"] = True
             entry["_before_finding"] = {k: f.get(k) for k in
@@ -1019,7 +1040,7 @@ def collect_data_quality() -> list[dict]:
     return out
 
 
-def _count_real_pipeline_failures(hours: int = 24) -> int:
+def _real_unrecovered_pipeline_failures(hours: int = 24) -> list[dict]:
     """Count failed pipeline runs with substantive errors that have NOT since recovered.
 
     Recovery-aware: a pipeline that failed earlier but has a later successful run for the same
@@ -1027,36 +1048,41 @@ def _count_real_pipeline_failures(hours: int = 24) -> int:
     for a full 24h after a transient blip (e.g. a morning 'connection already closed' burst that
     recovered by 08:18). We only count failures with no same-key success at a later started_at.
     Still excludes zombie rows and failed-with-empty-errors bookkeeping."""
-    row = _db(
-        f"""SELECT COUNT(*) AS c FROM pipeline_runs f
+    from lib.pipeline_failure_counts import SUBSTANTIVE_FAILURE_FILTER
+
+    rows = _db(
+        f"""SELECT f.pipeline_key, COUNT(*) AS c FROM pipeline_runs f
             WHERE f.status='failed'
               AND f.started_at > now() - interval '{int(hours)} hours'
               AND (f.summary IS NULL OR f.summary::text NOT LIKE '%%zombie run cleared%%')
-              AND NOT (
-                f.summary IS NOT NULL AND (
-                  f.summary::text ~ '"errors"\\s*:\\s*\\[\\s*\\]'
-                  OR COALESCE(f.summary::jsonb->>'errors', 'x') IN ('', '[]')
-                  OR (jsonb_typeof(f.summary::jsonb->'errors') = 'array'
-                      AND jsonb_array_length(f.summary::jsonb->'errors') = 0)
-                )
-              )
+              AND {SUBSTANTIVE_FAILURE_FILTER}
               AND NOT EXISTS (
                 SELECT 1 FROM pipeline_runs s
                 WHERE s.pipeline_key = f.pipeline_key
                   AND s.status = 'success'
                   AND s.started_at > f.started_at
-              )""",
-        fetch="one",
+              )
+            GROUP BY f.pipeline_key ORDER BY COUNT(*) DESC, f.pipeline_key""",
+        fetch="all",
     )
-    return int((row or {}).get("c") or 0)
+    return rows if isinstance(rows, list) else []
+
+
+def _count_real_pipeline_failures(hours: int = 24) -> int:
+    return sum(int(row.get("c") or 0) for row in _real_unrecovered_pipeline_failures(hours))
 
 
 def collect_execution_health() -> list[dict]:
     out = []
     try:
-        # recent pipeline failures — exclude zombie rows and failed-with-empty-errors bookkeeping
-        pf_count = _count_real_pipeline_failures(24)
+        # Use the same grouped rows for the score and operator-action classification.
+        failures = _real_unrecovered_pipeline_failures(24)
+        pf_count = sum(int(row.get("c") or 0) for row in failures)
         if pf_count > 0:
+            pipeline_keys = [str(row.get("pipeline_key")) for row in failures if row.get("pipeline_key")]
+            component_only = bool(pipeline_keys) and set(pipeline_keys).issubset(
+                {"symbol_enrichment", "a1a_compliance", "indicator_engine"}
+            )
             rc_note = ""
             try:
                 from lib import health_root_cause_memory as _rcmem
@@ -1069,8 +1095,25 @@ def collect_execution_health() -> list[dict]:
                     )
             except Exception:
                 pass
-            out.append(_f("execution_health", "pipeline_failures", "warning" if pf_count <= 5 else "critical",
-                          f"{pf_count} pipeline run failures in 24h{rc_note}", count=pf_count))
+            message = f"{pf_count} pipeline run failures in 24h{rc_note}"
+            if component_only:
+                message += (
+                    " — component owner review required; automatic master-orchestrator retries are held "
+                    f"(pipelines: {', '.join(pipeline_keys)})"
+                )
+            finding = _f("execution_health", "pipeline_failures", "warning" if pf_count <= 5 else "critical",
+                         message, count=pf_count, pipeline_keys=pipeline_keys)
+            if component_only:
+                finding.update({
+                    "operator_action": True,
+                    "held": True,
+                    "operator_action_text": (
+                        "Pipeline operations owner: inspect component logs/receipts and assign a fix; "
+                        "do not rerun the master screener."
+                    ),
+                    "owner": "Pipeline Operations",
+                })
+            out.append(finding)
         # stuck queued agent jobs — distinguish DECISION-FEEDING jobs (have an SLA) from the rolling
         # background research/discovery queue (no SLA; drained by priority, intentionally backloggy).
         # Penalizing execution_health for a research backlog was a false signal — only time-sensitive
@@ -1752,7 +1795,7 @@ def _annotate(f: dict, rmap: dict):
     if t in never or f.get("operator_action"):
         f["action_type"] = "operator"
         f["recommended_action"] = (
-            f.get("reauth_cmd")
+            f.get("operator_action_text") or f.get("reauth_cmd")
             or "Operator action required (risk/credential/SIEM/ledger — never auto)."
         )
         f["actionable"] = True
@@ -2235,8 +2278,14 @@ def collect_underfilled_streak() -> list[dict]:
                      fetch="all") or []
         for row in labels:
             label = str(row.get("run_label") or "")
-            hist = _db("""SELECT status, reason_codes FROM screener_run_health WHERE run_label=%s
-                          ORDER BY finished_at DESC NULLS LAST LIMIT %s""", (label, threshold * 2), fetch="all") or []
+            # One latest outcome per scheduled date: health remediation can execute
+            # the same label repeatedly on a single date, which is not a multi-day streak.
+            hist = _db("""SELECT DISTINCT ON (run_date) status, reason_codes, run_date
+                          FROM screener_run_health
+                         WHERE run_label=%s AND status <> 'RUNNING'
+                           AND finished_at > now() - interval '3 days'
+                         ORDER BY run_date DESC, finished_at DESC NULLS LAST, id DESC
+                         LIMIT %s""", (label, threshold * 2), fetch="all") or []
             a = _assess_underfilled_streak([(r.get("status"), r.get("reason_codes")) for r in hist], threshold)
             if a.get("finding"):
                 out.append(_f("pipeline_freshness", a["type"], a["severity"], f"{label}: {a['message']}",
@@ -4450,7 +4499,14 @@ def alert(policy: dict, snapshot: dict):
                      f"{', '.join(r.get('type', '?') for r in unverified)}")
     # Intent: P1 when the operator must act (unhealthy, a remediation that worsened or stopped working),
     # otherwise P3 -- a degraded score with nothing for the operator to do is FYI for the digest.
-    needs_operator = snapshot.get("status") == "unhealthy" or bool(worsened) or bool(ineffective)
+    held = [r for r in (snapshot.get("remediated") or []) if r.get("outcome") == "HELD"]
+    for r in held:
+        lines.append(
+            f"👤 Operator review required — {r.get('type', '?')}: "
+            f"{r.get('note') or r.get('root_cause') or 'automatic retries are held'}; "
+            f"hold until {r.get('hold_until') or 'review'}"
+        )
+    needs_operator = snapshot.get("status") == "unhealthy" or bool(worsened) or bool(ineffective) or bool(held)
     try:
         from telegram_alert import send_telegram
         send_telegram("\n".join(lines), priority=("P1" if needs_operator else "P3"), producer="health_agent")

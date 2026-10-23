@@ -1,7 +1,7 @@
 """scripts/n8n_run_executor.py (n8n scheduler-of-record tranche N1, 2026-10-08).
 
 `--once` against a tmp_path ledger and state root, with the REAL scripts/safe_flock.sh wrapper and a fake
-runner script in tmp_path: exit 0 -> RUN_DONE, exit 3 -> RUN_FAILED, a live pid file -> RUN_SKIPPED_LOCK,
+runner script in tmp_path: exit 0 -> RUN_DONE, exit 3 -> RUN_FAILED, a held kernel lock -> RUN_SKIPPED_LOCK,
 a sleeper under a 1 s timeout -> RUN_TIMEOUT, a lane missing from the allowlist -> RUN_REFUSED, and a mode
 whose argument is null -> RUN_REFUSED. Every row ends with a RunReceipt@v1 on the row, in n8n_runs/<run_id>.json
 and in n8n_run_executor_last.json. Never touches the live ledger, crontab or token store."""
@@ -186,7 +186,7 @@ def test_nonzero_exit_is_run_failed(bench, monkeypatch):
     assert row["state"] == "RUN_FAILED" and row["exit_code"] == 3 and row["receipt"]["reason"] == "exit_3"
 
 
-def test_a_live_pid_file_on_the_lane_lock_is_run_skipped_lock(bench):
+def test_a_live_pid_file_without_kernel_lock_does_not_skip_the_lane(bench):
     lock = bench["locks"] / "fake.lock"
     sleeper = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
     try:
@@ -198,14 +198,11 @@ def test_a_live_pid_file_on_the_lane_lock_is_run_skipped_lock(bench):
         sleeper.kill()
         sleeper.wait()
     row = _row(bench, "run-lock0-0000000001")
-    assert row["state"] == "RUN_SKIPPED_LOCK" and row["exit_code"] == 0
+    assert row["state"] == "RUN_DONE" and row["exit_code"] == 0
     r = row["receipt"]
-    assert (
-        r["lock_skipped"] is True
-        and r["reason"] == "safe_flock_pid_running"
-        and "safe_flock: skipped" in r["stderr_tail"]
-    )
-    assert r["output_signal_mtime_after"] is None  # exit 0, nothing ran: visible on the receipt
+    assert r["lock_skipped"] is False
+    assert r["reason"] != "safe_flock_pid_running"
+    assert r["output_signal_mtime_after"] is not None  # command ran despite unrelated live PID metadata
 
 
 def test_flock_kind_reuses_a_cron_style_lock_and_reports_conflict_as_skipped(bench):

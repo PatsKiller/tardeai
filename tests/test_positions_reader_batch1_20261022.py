@@ -153,8 +153,18 @@ def test_registry_lists_the_approved_reader_batch():
 # ── 5 ── the gate passes with the reader registered, and fails without it ────
 
 def test_gate_passes_with_the_reader_registered():
-    assert gate.check_readers(AUTH, gate._files()) == []
+    # Verify only the surface covered by this batch's explicit operator grant.
+    # Repository-wide validation is a separate assertion because unrelated
+    # direct readers must remain visible as blockers.
+    assert gate.check_readers(AUTH, [ROOT / READER_FILE]) == []
     assert gate.check_approvals(AUTH) == []
+
+
+def test_repository_gate_flags_desk_truth_monitor_direct_reader():
+    findings = gate.check_readers(AUTH, gate._files())
+    unapproved = [f for f in findings if f.get("file") == "scripts/desk_truth_monitor.py"]
+    assert len(unapproved) == 1
+    assert unapproved[0]["check"] == "UNAPPROVED_READER"
 
 
 def test_gate_fails_an_unregistered_reader():

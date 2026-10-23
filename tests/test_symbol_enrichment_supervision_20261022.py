@@ -153,6 +153,7 @@ class _LockConn:
         self.cursors = []
         self.acquired = acquired
         self.commits = 0
+        self.rollbacks = 0
 
     def cursor(self):
         c = _LockCursor(self.acquired)
@@ -162,6 +163,9 @@ class _LockConn:
     def commit(self):
         self.commits += 1
 
+    def rollback(self):
+        self.rollbacks += 1
+
 
 def test_enrichment_takes_and_releases_per_symbol_session_lock(modules, monkeypatch):
     _, enrichment = modules
@@ -169,10 +173,55 @@ def test_enrichment_takes_and_releases_per_symbol_session_lock(modules, monkeypa
     called = []
     monkeypatch.setattr(enrichment, "_enrich_symbol_impl",
                         lambda symbol, score, db, force_full=False:
-                        called.append((symbol, score, db, force_full)) or {"ok": True})
+                        called.append((symbol, score, db, force_full, db.commits)) or {"ok": True})
     assert enrichment.enrich_symbol("abc", 55, conn, force_full=True) == {"ok": True}
-    assert called == [("ABC", 55, conn, True)]
+    assert called == [("ABC", 55, conn, True, 1)]  # lock probe committed before source writers
     assert "pg_try_advisory_lock" in conn.cursors[0].statements[0][0]
+    assert "pg_advisory_unlock" in conn.cursors[1].statements[0][0]
+    assert all(cursor.closed for cursor in conn.cursors)
+    assert conn.commits == 2  # acquire-boundary commit and post-unlock commit
+
+
+def test_enrichment_rolls_back_before_unlock_and_preserves_writer_error(modules, monkeypatch):
+    _, enrichment = modules
+
+    class AbortedTransactionConn(_LockConn):
+        def __init__(self):
+            super().__init__(True)
+            self.aborted = False
+
+        def cursor(self):
+            conn = self
+
+            class Cursor(_LockCursor):
+                def execute(self, sql, params):
+                    if "pg_advisory_unlock" in sql and conn.aborted:
+                        raise RuntimeError("current transaction is aborted")
+                    super().execute(sql, params)
+
+            cur = Cursor(self.acquired)
+            self.cursors.append(cur)
+            return cur
+
+        def rollback(self):
+            self.aborted = False
+            super().rollback()
+
+    conn = AbortedTransactionConn()
+    writer_error = ValueError("source write failed")
+
+    def fail_writer(*args, **kwargs):
+        conn.aborted = True
+        raise writer_error
+
+    monkeypatch.setattr(enrichment, "_enrich_symbol_impl", fail_writer)
+    with pytest.raises(ValueError, match="source write failed") as caught:
+        enrichment.enrich_symbol("abc", 55, conn)
+
+    assert caught.value is writer_error
+    assert conn.rollbacks == 1
+    assert conn.commits == 2
+    assert len(conn.cursors) == 2
     assert "pg_advisory_unlock" in conn.cursors[1].statements[0][0]
     assert all(cursor.closed for cursor in conn.cursors)
 
@@ -186,6 +235,7 @@ def test_enrichment_lock_contention_skips_without_running_writer(modules, monkey
     assert result["skipped"] == "already_running"
     assert called == []
     assert len(conn.cursors) == 1 and conn.cursors[0].closed
+    assert conn.commits == 1  # close the lock-probe transaction even on contention
 
 
 def test_enrichment_lock_query_failure_fails_closed(modules, monkeypatch):
@@ -208,4 +258,3 @@ def test_enrichment_lock_query_failure_fails_closed(modules, monkeypatch):
         enrichment.enrich_symbol("ABC", 55, conn)
     assert called == []
     assert conn.cursors[0].closed
-

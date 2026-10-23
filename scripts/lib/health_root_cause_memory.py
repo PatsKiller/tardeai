@@ -149,6 +149,11 @@ SEED_RECIPES: dict[str, dict[str, Any]] = {
                 "and leaves pipeline_runs status=running (zombie). Fix: clear zombies; "
                 "backoff; re-run off-peak; health recovery success closes unrecovered window."
             ),
+            "component_stage_fail": (
+                "Only symbol_enrichment, a1a_compliance, or indicator_engine pipelines are "
+                "unrecovered. The master screener retry does not target these components. "
+                "Assign their owners to inspect component logs and receipts; do not rerun the screener."
+            ),
             "agent_flash_circuit_open": (
                 "agent_flash governance trips after 8 errors/900s → jobs fail CIRCUIT_OPEN "
                 "and thrash the worker. Fix: reset stuck jobs, wait cooldown, drain with "

@@ -632,6 +632,13 @@ def enrich_symbol(symbol: str, score: int, conn, force_full: bool = False) -> di
     commits performed by the source-specific writers below. If another caller
     already owns this symbol, return an explicit skipped result without doing
     any source or database writes.
+
+    Transaction contract: the lock-probe SELECT is explicitly committed to
+    close psycopg2's implicit read transaction before enrichment starts. This
+    is an intentional transaction boundary; callers must commit or roll back
+    any caller-owned writes before calling this function. The current direct
+    in-process caller performs only a SELECT before this call, and the CLI uses
+    a fresh connection.
     """
     symbol = str(symbol).upper()
     lock_cur = conn.cursor()
@@ -640,8 +647,8 @@ def enrich_symbol(symbol: str, score: int, conn, force_full: bool = False) -> di
         lock_cur.execute("SELECT pg_try_advisory_lock(%s, hashtext(%s))",
                          (_ENRICHMENT_ADVISORY_LOCK_NS, symbol))
         acquired = bool(lock_cur.fetchone()[0])
-        # Advisory locks are session-scoped, so committing this read-only lock
-        # probe leaves the caller's connection ready for the enrichment work.
+        # Advisory locks are session-scoped, so this explicit transaction
+        # boundary closes the read-only probe while retaining the lock.
         conn.commit()
     except Exception:
         if acquired:
@@ -663,14 +670,31 @@ def enrich_symbol(symbol: str, score: int, conn, force_full: bool = False) -> di
     try:
         return _enrich_symbol_impl(symbol, score, conn, force_full=force_full)
     finally:
-        unlock_cur = conn.cursor()
+        # A failed source write can leave psycopg2's transaction in INERROR.
+        # Roll it back before the unlock query, or that query will fail too
+        # and the session lock will remain held until the caller closes conn.
+        # Keep cleanup errors from replacing the enrichment exception.
+        active_error = sys.exc_info()[0] is not None
         try:
-            unlock_cur.execute("SELECT pg_advisory_unlock(%s, hashtext(%s))",
-                               (_ENRICHMENT_ADVISORY_LOCK_NS, symbol))
-            unlock_cur.fetchone()
+            if active_error:
+                conn.rollback()
+            unlock_cur = conn.cursor()
+            try:
+                unlock_cur.execute("SELECT pg_advisory_unlock(%s, hashtext(%s))",
+                                   (_ENRICHMENT_ADVISORY_LOCK_NS, symbol))
+                unlock_cur.fetchone()
+            finally:
+                unlock_cur.close()
             conn.commit()
-        finally:
-            unlock_cur.close()
+        except Exception as cleanup_error:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            if not active_error:
+                raise
+            log.warning("[enrichment] %s advisory-lock cleanup failed after writer error: %s",
+                        symbol, cleanup_error)
 
 
 def _enrich_symbol_impl(symbol: str, score: int, conn, force_full: bool = False) -> dict:

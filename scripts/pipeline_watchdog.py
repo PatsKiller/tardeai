@@ -464,7 +464,8 @@ def run_ier_engine(conn):
     # completed, or its bounded supervisor has terminated and reaped it.
     for eid, score, freshness, proc in enrichments:
         if proc.returncode == 0 and eid not in enrichment_outcomes:
-            log_action(conn, 'trigger_enrichment', eid, f'score={score} fresh={freshness}', True, 'completed')
+            log_action(conn, 'trigger_enrichment', eid, f'score={score} fresh={freshness}', True,
+                       'child exit=0; may be a safe no-op because another session owns the symbol lock')
             actions += 1
         else:
             detail = enrichment_outcomes.get(eid, f'exit={proc.returncode}')

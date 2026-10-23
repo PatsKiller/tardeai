@@ -31,18 +31,42 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from lib.live_project_root import DEV_ROOT, DEV_VENV_PYTHON, get_live_project_root
 from lib import health_root_cause_memory as rcmem
+from lib.pipeline_failure_counts import SUBSTANTIVE_FAILURE_FILTER
 
 FINDING = "pipeline_failures"
 HOURS = int(os.getenv("PIPELINE_RC_HOURS", "24"))
+COMPONENT_ONLY_FAILURE_KEYS = frozenset({"symbol_enrichment", "a1a_compliance", "indicator_engine"})
+
+
+def _component_stage_failures_only(keys) -> bool:
+    keys = {str(key) for key in (keys or [])}
+    return bool(keys) and keys.issubset(COMPONENT_ONLY_FAILURE_KEYS)
 
 
 def _root() -> Path:
+    """Approved code root for remediation execution (DEV has the venv + current scripts)."""
     try:
         if (DEV_ROOT / "scripts").is_dir():
             return DEV_ROOT
         return get_live_project_root()
     except Exception:
         return DEV_ROOT
+
+
+def _diagnostic_log_root() -> Path:
+    """Canonical live root for reading operational logs.
+
+    Remediation commands intentionally execute from DEV_ROOT (it contains the
+    approved interpreter and current scripts), but production log evidence lives
+    under CURRENT. Mixing these roots made CIRCUIT_OPEN/rate-limit counts silently
+    read stale development logs and report zero. Keep observation and execution
+    roots explicit and separate.
+    """
+    try:
+        return get_live_project_root()
+    except Exception:
+        # In a local/dev-only environment there may be no CURRENT target.
+        return _root()
 
 
 def _py() -> str:
@@ -83,7 +107,7 @@ def _db(sql: str, params=None, fetch="one"):
 
 def _count_circuit_open_logs(hours: int = 6) -> int:
     """Best-effort scan of recent agent-job logs for CIRCUIT_OPEN."""
-    root = _root()
+    root = _diagnostic_log_root()
     log_dir = root / "logs"
     patterns = [
         "watchlist_agent_jobs*.log",
@@ -109,7 +133,7 @@ def _count_circuit_open_logs(hours: int = 6) -> int:
 
 def _count_rate_limit_log_hits(hours: int = 3) -> int:
     """Count yfinance OHLCV rate-limit lines in recent screener/orchestrator logs."""
-    root = _root()
+    root = _diagnostic_log_root()
     n = 0
     cutoff = datetime.now().timestamp() - hours * 3600
     for name in ("screener_pm.log", "portfolio_orchestrator.log", "trade_ai_orchestrator.log"):
@@ -201,13 +225,14 @@ def diagnose() -> dict:
             WHERE f.status='failed'
               AND f.started_at > now() - interval '{int(HOURS)} hours'
               AND (f.summary IS NULL OR f.summary::text NOT LIKE '%%zombie run cleared%%')
+              AND {SUBSTANTIVE_FAILURE_FILTER}
               AND NOT EXISTS (
                 SELECT 1 FROM pipeline_runs s
                 WHERE s.pipeline_key = f.pipeline_key
                   AND s.status = 'success'
                   AND s.started_at > f.started_at
               )
-            GROUP BY 1 ORDER BY 2 DESC LIMIT 15""",
+            GROUP BY 1 ORDER BY 2 DESC""",
         fetch="all",
     )
     if isinstance(unrecovered, list):
@@ -258,6 +283,8 @@ def diagnose() -> dict:
 
     if d.get("zombie_running", 0) >= 3 and d.get("unrecovered_count", 0) == 0:
         rc = "zombie_running_rows"
+    elif _component_stage_failures_only(keys):
+        rc = "component_stage_fail"
     elif (
         "trade_ai_orchestrator" in keys
         and d.get("yfinance_rate_limit_hits", 0) >= 20
@@ -547,6 +574,27 @@ def run(strategy_id: str | None = None, diagnose_only: bool = False) -> dict:
         result.update({"ok": True, "strategy_id": "diagnose_only"})
         return result
 
+    if root_cause == "component_stage_fail":
+        # These are independent component pipelines. Re-running the master scanner
+        # cannot recover them and creates duplicate same-label screener receipts.
+        selected = rcmem.select_next_strategy(FINDING)
+        if selected and selected.get("id") == "hold":
+            held_until = (rcmem.summary_for(FINDING) or {}).get("hold_until")
+            result.update({"ok": False, "outcome": "HELD", "strategy_id": "operator_review_component_failures",
+                           "held": True, "operator_action_required": True, "hold_until": held_until,
+                           "note": selected.get("how")})
+            return result
+        note = "component pipeline failures require owner diagnosis; master orchestrator retry is not applicable"
+        memory = rcmem.record_outcome(
+            FINDING, strategy_id="operator_review_component_failures", ok=False,
+            root_cause=root_cause, note=note, hold_minutes=60,
+        )
+        result.update({"ok": False, "outcome": "HELD", "strategy_id": "operator_review_component_failures",
+                       "held": True, "operator_action_required": True,
+                       "hold_until": (memory or {}).get("hold_until"), "note": note})
+        result["memory"] = rcmem.summary_for(FINDING)
+        return result
+
     # Prefer strategy matching root cause (skip thrashing strategies already failed recently)
     prefer = strategy_id
     mem = rcmem.summary_for(FINDING)
@@ -729,7 +777,9 @@ def main():
     args = ap.parse_args()
     out = run(strategy_id=args.strategy, diagnose_only=args.diagnose_only)
     print(json.dumps(out, indent=2, default=str))
-    sys.exit(0 if out.get("ok") else 1)
+    # A typed hold is a handled outcome: callers must inspect outcome/held before
+    # treating process status as failure or scheduling an automatic follow-up.
+    sys.exit(0 if out.get("ok") or out.get("outcome") == "HELD" else 1)
 
 
 if __name__ == "__main__":

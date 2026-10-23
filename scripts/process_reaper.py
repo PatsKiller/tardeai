@@ -90,7 +90,13 @@ def _ps_snapshot() -> list[dict]:
             # genuinely hung proc gets a correct reading on the next 3-min pass and is reaped then).
             if etimes < 0 or etimes > 2_592_000:
                 etimes = 0
-            out.append({"pid": pid, "etimes": etimes, "args": args})
+            try:
+                identity = _proc_identity(pid)
+            except (OSError, ValueError):
+                # A process may exit between ps and procfs reads. Keep the snapshot row for
+                # diagnostics, but it cannot be signalled without a captured identity.
+                identity = None
+            out.append({"pid": pid, "etimes": etimes, "args": args, "identity": identity})
     except Exception:
         pass
     return out
@@ -145,27 +151,92 @@ def _flag(rule: dict, procs: list[dict]) -> tuple[list[dict], list[str]]:
     return list(reap.values()), reasons
 
 
-def _kill(pid: int, enabled: bool) -> str:
+def _proc_identity(pid: int) -> tuple[int, bytes]:
+    """Return Linux process start ticks and raw argv, failing closed if unreadable."""
+    stat = Path(f"/proc/{pid}/stat").read_text()
+    # comm is parenthesized and may itself contain spaces or ')' characters.
+    tail = stat[stat.rfind(")") + 1:].split()
+    if len(tail) <= 19:
+        raise ValueError("short /proc stat record")
+    start_ticks = int(tail[19])  # field 22; tail starts at field 3
+    cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
+    if not cmdline:
+        raise ValueError("empty cmdline")
+    return start_ticks, cmdline
+
+
+def _same_identity(target: dict) -> bool:
+    expected = target.get("identity")
+    if expected is None:
+        return False
+    try:
+        return _proc_identity(int(target["pid"])) == expected
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def _open_pidfd(pid: int) -> int | None:
+    opener = getattr(os, "pidfd_open", None)
+    sender = getattr(signal, "pidfd_send_signal", None)
+    if opener is None or sender is None:
+        return None
+    try:
+        return opener(pid, 0)
+    except (OSError, NotImplementedError):
+        # Older kernels and restricted proc environments use the checked fallback below.
+        return None
+
+
+def _send_signal(target: dict, sig: int, pidfd: int | None) -> None:
+    if pidfd is not None:
+        signal.pidfd_send_signal(pidfd, sig, None, 0)
+    else:
+        # Fallback for kernels without pidfd: revalidate immediately before each numeric-PID signal.
+        if not _same_identity(target):
+            raise ProcessLookupError("process identity changed")
+        os.kill(int(target["pid"]), sig)
+
+
+def _kill(target: dict, enabled: bool) -> str:
     if not enabled:
         return "advisory"
+    pid = int(target["pid"])
+    if target.get("identity") is None:
+        return "identity_unavailable"
+    pidfd = _open_pidfd(pid)
     try:
-        os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return "already_gone"
-    except Exception as e:
-        return f"sigterm_err:{e}"
-    time.sleep(3)
-    try:
-        os.kill(pid, 0)  # still alive?
-    except ProcessLookupError:
-        return "terminated"
-    except Exception:
-        return "terminated"
-    try:
-        os.kill(pid, signal.SIGKILL)
-        return "killed_sigkill"
-    except Exception as e:
-        return f"sigkill_err:{e}"
+        # pidfd pins the process instance. Also compare starttime + argv to the candidate
+        # snapshot so a process that exec'd into something else is never signalled.
+        if not _same_identity(target):
+            return "identity_changed"
+        try:
+            _send_signal(target, signal.SIGTERM, pidfd)
+        except ProcessLookupError:
+            return "already_gone"
+        except Exception as e:
+            return f"sigterm_err:{e}"
+        try:
+            time.sleep(3)
+            current = _proc_identity(pid)
+        except (ProcessLookupError, FileNotFoundError):
+            return "terminated"
+        except Exception:
+            return "identity_unavailable"
+        if current != target["identity"]:
+            return "identity_changed_after_sigterm"
+        try:
+            _send_signal(target, signal.SIGKILL, pidfd)
+            return "killed_sigkill"
+        except ProcessLookupError:
+            return "terminated"
+        except Exception as e:
+            return f"sigkill_err:{e}"
+    finally:
+        if pidfd is not None:
+            try:
+                os.close(pidfd)
+            except OSError:
+                pass
 
 
 def main():
@@ -189,7 +260,7 @@ def main():
             continue
         actions = []
         for p in to_reap:
-            result = _kill(p["pid"], enabled)
+            result = _kill(p, enabled)
             actions.append({"pid": p["pid"], "age_min": round(p["etimes"] / 60, 1), "result": result})
         findings.append({"rule": rule["name"], "reasons": reasons, "enabled": enabled, "actions": actions})
 
