@@ -237,9 +237,21 @@ check('the TODAY hover note falls back to a scope, never a single account name',
 
 // "53.3% . 169 . $55,429" was three unlabelled numbers, and the dollar figure sat beside
 // a REALIZED tile showing a different one.
-check('the TRADING tile labels its win rate', /\$\{winRate\}% win/.test(code))
-check('the TRADING tile labels its trade count', /\$\{winTrades\} trades/.test(code))
-check('the TRADING tile labels its P&L', /fmt\$\(journalPnl, 0\)\} P&L/.test(code))
+//
+// P3 2026-10-23 (operator-approved mockup): at 1440 px the value was cut to "... · $...", hiding the P&L.
+// The face drops the repeated word "trades" ("47.9% win · 238 · $25,505 P&L", built by
+// lib/displayLabels.ts tradingTileValue) and may wrap to two lines; the tooltip spells every unit out.
+const labelsSrc = fs.readFileSync(path.join(here, '..', 'apps', 'command-center-v3', 'src', 'lib', 'displayLabels.ts'), 'utf8')
+check('the TRADING tile value is built by the shared labeller from win rate, count and P&L',
+  /tradingTileValue\(winRate, winTrades, journalPnl != null \? fmt\$\(journalPnl, 0\) : null\)/.test(code))
+check('the TRADING face labels its win rate and its P&L', /% win\$\{/.test(labelsSrc) && /P&L` : ''\}/.test(labelsSrc))
+check('the TRADING tooltip spells out win rate, trade count and P&L',
+  /\$\{winRate\}% win rate/.test(code) && /\$\{winTrades\} trades/.test(code) && /fmt\$\(journalPnl, 0\)\} P&L/.test(code))
+check('only the TRADING value may wrap, clamped to two lines', (code.match(/wrapValue: true/g) || []).length === 1
+  && /const VALUE_WRAP = \{[^}]*WebkitLineClamp: 2/.test(code) && code.includes('(t as any).wrapValue ? VALUE_WRAP : NOWRAP'))
+check('the short price stamp keeps quote coverage on the face',
+  /shortPriceStamp\([\s\S]{0,200}quoteCovered, quoteTotal/.test(code))
+check('a date-only clock on a tile face is shown as its date', code.includes('dateOnlyPart(asOfRaw) ??'))
 
 console.log(`\nmetric_strip_header_truth: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

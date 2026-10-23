@@ -1,14 +1,38 @@
-import { rotationAvailability, rotationAvailabilityMessage } from '../lib/rotationPublication'
-import { RADIUS } from '../lib/designTokens'
+import { rotationAvailability, rotationAvailabilityMessage, rotationReasonChips } from '../lib/rotationPublication'
+import { fmtAsOf } from '../lib/asOfDisplay'
+import { RADIUS, TYPE, toneVars } from '../lib/designTokens'
 
+/**
+ * Rotation publication notice: ONE line — reasons as chips, clocks in ET, a date-only source shown as a
+ * date (P3, operator-approved mockup 2026-10-23). A withheld advisory used to be the largest text on the
+ * page, with raw ISO stamps in microseconds and UTC. Amber when withheld, neutral when ready (Rotation →
+ * Review renders it in both states). The sentences and the raw stamps stay in the tooltip.
+ */
 export default function RotationPublicationNotice({ summary, error }: { summary: unknown; error?: unknown }) {
   const observation = rotationAvailability(summary, error)
-  return <div role="status" style={{ padding: 14, border: '1px solid var(--border)', borderRadius: RADIUS.md, color: 'var(--text2)', marginBottom: 12 }}>
-    <strong>Rotation advisory {observation.status}</strong>
-    {!observation.ready && <div>Advisory output withheld. {rotationAvailabilityMessage(observation)}</div>}
-    <div style={{ marginTop: 5, fontSize: 11 }}>
-      Source as of: {observation.sourceAsOf ?? 'UNAVAILABLE'} · Generated: {observation.generatedAt ?? 'UNAVAILABLE'}
-    </div>
-    {observation.validatedAt && <div style={{ fontSize: 11 }}>Checked at: {observation.validatedAt}</div>}
+  const tone = toneVars(observation.ready ? 'neutral' : 'warning')
+  const chips = rotationReasonChips(observation)
+  const source = fmtAsOf(observation.sourceAsOf) ?? 'UNAVAILABLE'
+  const generated = fmtAsOf(observation.generatedAt) ?? 'UNAVAILABLE'
+  const checked = fmtAsOf(observation.validatedAt)
+  const tip = [
+    `Rotation advisory ${observation.status}.`,
+    observation.ready ? null : `Advisory output withheld. ${rotationAvailabilityMessage(observation)}`,
+    `Source as of: ${observation.sourceAsOf ?? 'UNAVAILABLE'}`,
+    `Generated: ${observation.generatedAt ?? 'UNAVAILABLE'}`,
+    observation.validatedAt ? `Checked at: ${observation.validatedAt}` : null,
+    observation.reasons.length ? `Reason codes: ${observation.reasons.join(', ')}` : null,
+  ].filter(Boolean).join('\n')
+  return <div role="status" aria-label={`Rotation advisory ${observation.status}`} title={tip}
+    data-testid="rotation-publication-notice" data-rotation-status={observation.status}
+    style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 8px', padding: '6px 10px', marginBottom: 12,
+      fontSize: TYPE.base, color: observation.ready ? 'var(--text2)' : tone.color, background: tone.bg,
+      border: `1px solid ${tone.border}`, borderRadius: RADIUS.md }}>
+    <strong>{observation.ready ? 'Rotation advisory ready' : `Rotation advisory withheld${observation.status === 'STALE' ? ' · stale' : ''}`}</strong>
+    {chips.map(c => <span key={c} data-testid="rotation-reason-chip"
+      style={{ border: `1px solid ${tone.border}`, borderRadius: RADIUS.sm, padding: '0 5px', whiteSpace: 'nowrap' }}>{c}</span>)}
+    <span style={{ color: 'var(--text3)' }}>
+      Source as of {source}{checked ? ` · checked ${checked}` : ` · generated ${generated}`}
+    </span>
   </div>
 }
