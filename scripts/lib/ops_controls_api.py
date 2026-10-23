@@ -656,10 +656,15 @@ def grants_view(ctx: Ctx) -> dict:
 
 
 def data_approvals_view(ctx: Ctx) -> dict:
-    doc = json.loads((ctx.hosts.code_root / C.AUTHORITY_REL).read_text(encoding="utf-8"))
-    rows = [{"domain": p.get("domain"), "title": p.get("title"), "status": p.get("status")}
-            for p in doc.get("proposed_domains") or []]
-    return {"state": "OK", "rows": rows, "note": "Registry grants are a reviewed PR (§26.6); this tab is read-only."}
+    """Per-domain readiness (scripts/lib/data_domain_readiness.py): store, writer, readers, live checker findings,
+    freshness, approval and a READY_TO_APPROVE / NOT_READY / APPROVED verdict. The scan runs in one background
+    thread at most once per ~60 s; this call never waits on it. Read-only: nothing here approves a row."""
+    from scripts.lib import data_domain_readiness as R
+
+    v = R.cached_view(ctx.hosts.code_root)
+    return {"state": "OK", **v,
+            "note": "Read-only. A grant is the operator's decision (AGENTS.md §17, §26.6), applied by a reviewed PR "
+                    "that records the approval with data_dictionary.promote; nothing on this tab approves a row."}
 
 
 def release_view(ctx: Ctx) -> dict:

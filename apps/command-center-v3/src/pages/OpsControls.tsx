@@ -15,6 +15,10 @@ import {
   type OpsControlsState, type OpsRequest, type SettingRow,
 } from '../lib/opsControls'
 import { classifyJob, FILTERS, filterCounts, matchesFilter, matchesQuery, type JobFilter, type JobRowX } from '../lib/opsControlsJobs'
+import {
+  CHECK_TIP, DATA_FILTERS, EXPLAINER, findingText, freshnessView, matchesDataFilter, scanText, sortRows, summarize, SUMMARY_TIP,
+  VERDICT_TIP, verdictView, writerText, type DataFilter, type DataRow, type FileList,
+} from '../lib/opsControlsData'
 
 // ── styles ──────────────────────────────────────────────────────────────────────────────────────────
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0 }
@@ -535,13 +539,146 @@ function FlagsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   </Panel>
 }
 
+// ── Data approvals (readiness, 2026-10-22) ──────────────────────────────────────────────────────────────────────────
+// Operator: the tab listed 17 domains, all "proposed", with no other information — "This is not a dashboard."
+// Each row is one data-dictionary domain (config/data_source_authority.json). The server
+// (scripts/lib/data_domain_readiness.py) promotes each proposed row in memory with today's ceilings and runs the real
+// gates on it; src/lib/opsControlsData.ts turns that into words. Read-only: nothing on this tab approves a row.
+function Stat({ label: l, value, tone, tip, testId }: { label: string; value: ReactNode; tone: Tone; tip: string; testId: string }) {
+  const t = toneVars(tone)
+  return <Tooltip content={tip} as="div">
+    <div data-testid={testId} style={{ background: t.bg, border: `1px solid ${t.border}`, borderRadius: RADIUS.md, padding: '8px 12px', minWidth: 120, cursor: 'help' }}>
+      <div style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }}>{l}</div>
+      <div style={{ fontSize: TYPE.lg, fontWeight: 700, color: t.color, fontFamily: FONT.mono }}>{value}</div>
+    </div>
+  </Tooltip>
+}
+
+function FileListView({ fl, empty }: { fl?: FileList | null; empty: string }) {
+  if (!fl || !fl.count) return <span style={{ color: TOKENS.text[2] }}>{empty}</span>
+  return <span style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+    {fl.files.map(f => <span key={f} style={{ ...mono, overflowWrap: 'anywhere' }}>{f}</span>)}
+    {fl.truncated ? <span style={{ color: TOKENS.text[2] }}>… and {fl.count - fl.files.length} more</span> : null}
+  </span>
+}
+
+function DataDetail({ r }: { r: DataRow }) {
+  const kv: CSSProperties = { display: 'grid', gridTemplateColumns: 'minmax(110px, 160px) minmax(0, 1fr)', gap: '4px 10px', fontSize: TYPE.sm, color: TOKENS.text[1], minWidth: 0 }
+  const k: CSSProperties = { color: TOKENS.text[2] }
+  const fv = freshnessView(r.freshness)
+  const lane = r.refresh_lane
+  return <div data-testid={`ops-data-detail-${r.domain}`} style={{ display: 'grid', gap: 10, padding: '8px 4px 12px', minWidth: 0 }}>
+    {r.decision ? <p style={{ ...muted, color: TOKENS.text[1], margin: 0 }}><b>Decision asked:</b> {r.decision}</p> : null}
+    {r.verdict && r.verdict !== 'APPROVED' ? <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: TYPE.sm, fontWeight: 700, color: TOKENS.text[0], marginBottom: 4 }}>
+        <HeadTip text="Readiness checks" tip={<span>Each check is a gate that already exists. The row is promoted in memory with the ceilings measured now — exactly what the approval PR records — and run through it. Nothing is written.</span>} />
+      </div>
+      <div style={{ display: 'grid', gap: 3 }}>
+        {(r.criteria || []).map(c => <div key={c.id} style={{ fontSize: TYPE.sm, color: TOKENS.text[1], minWidth: 0, overflowWrap: 'anywhere' }}>
+          <Tooltip content={`Source: ${c.source}`}><Chip tone={c.ok ? 'success' : 'warning'}>{c.ok ? 'pass' : 'missing'}</Chip></Tooltip> {c.label}
+          {c.gaps.map((g, i) => <div key={i} style={{ marginLeft: 16, color: TOKENS.warning }}>– {g}</div>)}
+        </div>)}
+      </div>
+    </div> : null}
+    <div style={kv}>
+      <span style={k}>Store</span><span style={{ ...mono, overflowWrap: 'anywhere' }}>{s(r.store)}{r.store_detail ? <span style={{ ...muted, display: 'block', fontFamily: FONT.sans }}>{r.store_detail}</span> : null}</span>
+      <span style={k}>Writer</span><span style={{ overflowWrap: 'anywhere' }}>{writerText(r)}{r.writer_note ? <span style={{ ...muted, display: 'block' }}>{r.writer_note}</span> : null}</span>
+      <span style={k}>Writes today</span><FileListView fl={r.live?.writer_files} empty="none seen by the scan (it reads SQL verbs and file markers only)" />
+      <span style={k}>Read path</span><span>{r.projection ? <span style={mono}>{r.projection}</span> : 'no projection'}{r.projection_status ? ` (${r.projection_status})` : ''}</span>
+      <span style={k}>Pages that read it</span><span>{(r.readers_declared || []).join(', ') || '—'}</span>
+      <span style={k}>Files reading the store</span><FileListView fl={r.live?.store_readers} empty="none found" />
+      {r.reader_gate ? <><span style={k}>Reader gate</span><span>gated tables {s((r.reader_gate.tables || []).join(', '))} — a reader needs an approved batch</span></> : null}
+      {(r.approved_reader_batches || []).length ? <><span style={k}>Approved reader batches</span><span style={{ display: 'grid', gap: 2 }}>
+        {(r.approved_reader_batches || []).map(b => <span key={String(b.batch)}>#{b.batch} <span style={mono}>{s(b.reader)}</span> · {s((b.surfaces || []).join(', '))} · approved {s(b.approved_on)}{b.facts ? ` — ${b.facts}` : ''}</span>)}
+      </span></> : null}
+      <span style={k}>Freshness</span><span><Tooltip content={fv.tip}><Chip tone={fv.tone}>{fv.text}</Chip></Tooltip> {r.freshness_sla ? <span style={muted}>SLA: {r.freshness_sla}</span> : null}</span>
+      <span style={k}>Refresh lane</span><span>{lane ? `${s(lane.runner)} · ${s(lane.lane)}${lane.note ? ` — ${lane.note}` : ''}` : '—'}</span>
+      {(r.derived_copies || []).length ? <><span style={k}>Copies</span><span style={{ display: 'grid', gap: 2 }}>
+        {(r.derived_copies || []).map(c => <span key={String(c.store)}><span style={mono}>{s(c.store)}</span> <Chip tone={c.role === 'retiring' ? 'warning' : 'neutral'}>{s(c.role)}</Chip> {s(c.how)}</span>)}
+      </span></> : null}
+      {(r.supersedes || []).length ? <><span style={k}>Supersedes</span><span style={mono}>{(r.supersedes || []).join(', ')}</span></> : null}
+      <span style={k}>Approval</span><span>{r.approval ? `${s(r.approval.approved_by)} · ${s(r.approval.approved_on)} — ${s(r.approval.scope)}`
+        : r.operator_note?.approval_given ? `Operator approved: ${s(r.operator_note.decision)}; pending: ${s(r.operator_note.pending)}`
+        : 'none recorded (proposed)'}{r.extends_approved && r.base_domain_approval ? <span style={{ ...muted, display: 'block' }}>Already a granted §7A domain (approved {s(r.base_domain_approval.approved_on)}); this adds its dictionary block.</span> : null}</span>
+    </div>
+    {(r.live?.findings || []).length ? <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: TYPE.sm, fontWeight: 700, color: TOKENS.text[0], marginBottom: 4 }}>Live checker findings ({r.live?.findings.length})</div>
+      {(r.live?.findings || []).map((f, i) => <div key={i} style={{ fontSize: TYPE.sm, color: TOKENS.text[1], minWidth: 0, overflowWrap: 'anywhere', marginBottom: 2 }}>
+        <Tooltip content={CHECK_TIP[f.check] || f.check}><Chip tone={r.verdict === 'APPROVED' || f.check === 'UNAPPROVED_READER' ? 'danger' : 'warning'}>{f.check}</Chip></Tooltip> {findingText(f)}
+        {f.files?.files?.length ? <span style={{ ...mono, display: 'block', marginLeft: 16, color: TOKENS.text[2] }}>{f.files.files.slice(0, 6).join(' · ')}{f.files.count > 6 ? ` … +${f.files.count - 6}` : ''}</span> : null}
+      </div>)}
+    </div> : null}
+    {(r.approval_effects || []).length ? <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: TYPE.sm, fontWeight: 700, color: TOKENS.text[0], marginBottom: 4 }}>What approving changes</div>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: TYPE.sm, color: TOKENS.text[1] }}>{(r.approval_effects || []).map((e, i) => <li key={i}>{e}</li>)}</ul>
+    </div> : null}
+  </div>
+}
+
 function DataTab({ d }: { d: OpsControlsState | null }) {
   const da = d?.data_approvals
-  return <Panel title="Data dictionary approvals">
+  const rows = sortRows(da?.rows as DataRow[] | undefined)
+  const sum = summarize(rows)
+  const [filter, setFilter] = useState<DataFilter>('all')
+  const [open, setOpen] = useState<Set<string>>(() => new Set())
+  const toggle = (id: string) => setOpen(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const shown = rows.filter(r => matchesDataFilter(r, filter))
+  const scan = scanText(da?.scan)
+  const legacy = rows.length > 0 && rows.every(r => r.verdict === undefined && r.store === undefined)
+  return <Panel title="Data approvals" right={<span style={{ ...muted, color: toneVars(scan.tone).color }} data-testid="ops-data-scan">{scan.text}</span>}>
     <SectionGate sec={da}>
+      <p style={{ ...muted, color: TOKENS.text[1] }} data-testid="ops-data-explainer">{EXPLAINER} Hover or tap any underlined heading, number or badge for its meaning.</p>
+      {legacy ? <p role="alert" style={{ ...muted, color: TOKENS.warning, fontWeight: 600 }}>This server sends only domain names and status; readiness needs the newer server.</p> : null}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '8px 0' }} role="group" aria-label="Data approvals summary">
+        <Stat testId="ops-data-approved" label="Approved" value={sum.approved} tone="success" tip={SUMMARY_TIP.approved} />
+        <Stat testId="ops-data-ready" label="Ready to approve" value={sum.ready} tone="info" tip={SUMMARY_TIP.ready} />
+        <Stat testId="ops-data-not-ready" label="Not ready" value={sum.notReady} tone={sum.notReady ? 'warning' : 'neutral'} tip={SUMMARY_TIP.not_ready} />
+        <Stat testId="ops-data-findings" label="Findings" value={sum.findings} tone={sum.findings ? 'warning' : 'neutral'} tip={SUMMARY_TIP.findings} />
+      </div>
+      {sum.pendingPr.length ? <p style={muted}>Operator-approved, waiting for its promotion PR: <span style={mono}>{sum.pendingPr.join(', ')}</span>. It binds only once that PR merges.</p> : null}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', margin: '8px 0' }} role="group" aria-label="Filter domains">
+        {DATA_FILTERS.map(([k, text]) => {
+          const sel = filter === k
+          const n = rows.filter(r => matchesDataFilter(r, k)).length
+          return <button key={k} type="button" aria-pressed={sel} onClick={() => setFilter(k)}
+            style={{ ...btnStyle(sel ? 'info' : 'plain'), padding: '4px 10px', minHeight: 28, fontSize: TYPE.sm }}>
+            {text} <span style={{ fontFamily: FONT.mono, color: TOKENS.text[2] }}>{n}</span>
+          </button>
+        })}
+      </div>
+      <div style={{ overflowX: 'auto', minWidth: 0 }}>
+        <table aria-label="Data approvals" style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr>
+            <th style={{ ...cell, color: TOKENS.text[3] }}>Domain</th>
+            <th style={{ ...cell, color: TOKENS.text[3], whiteSpace: 'nowrap' }}><HeadTip text="Verdict" tip={<>
+              <span><b>Approved</b> — {VERDICT_TIP.APPROVED}</span><span><b>Ready to approve</b> — {VERDICT_TIP.READY_TO_APPROVE}</span>
+              <span><b>Not ready</b> — {VERDICT_TIP.NOT_READY}</span></>} /></th>
+            <th style={{ ...cell, color: TOKENS.text[3] }}><HeadTip text="Store · writer" tip="The one authoritative store, and the one module allowed to write it. “Not consolidated” means several files write it today under a ceiling that may only fall, with the module that should become the single writer." /></th>
+            <th style={{ ...cell, color: TOKENS.text[3] }}><HeadTip text="Freshness" tip="How recently the store changed: file modification time for a file store; for a table, the newest value of a time column only when the registry declares one in the data dictionary. Shown as evidence; it is not a readiness check." /></th>
+            <th style={{ ...cell, color: TOKENS.text[3] }}><HeadTip text="Findings" tip={SUMMARY_TIP.findings} /></th>
+            <th style={{ ...cell, color: TOKENS.text[3] }}></th>
+          </tr></thead>
+          <tbody>
+            {shown.map(r => {
+              const v = verdictView(r)
+              const fv = freshnessView(r.freshness)
+              const isOpen = open.has(r.domain)
+              const nf = r.live?.findings?.length || 0
+              return [<tr key={r.domain} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }}>
+                <td style={cell}><span style={{ display: 'grid', gap: 2 }}><span style={{ color: TOKENS.text[0], fontWeight: 600 }}>{s(r.title || r.domain)}</span><span style={{ ...mono, color: TOKENS.text[2] }}>{r.domain}</span></span></td>
+                <td style={cell}><span style={{ display: 'grid', gap: 2 }}><Tooltip content={v.tip}><Chip tone={v.tone}>{v.label}</Chip></Tooltip>
+                  {(r.missing || []).length ? <span style={{ color: TOKENS.warning, fontSize: TYPE.xs }}>{(r.missing || []).length} missing</span> : null}</span></td>
+                <td style={{ ...cell, overflowWrap: 'anywhere' }}><span style={mono}>{s(r.store)}</span><span style={{ display: 'block', color: TOKENS.text[2] }}>{writerText(r)}</span></td>
+                <td style={cell}><Tooltip content={fv.tip}><Chip tone={fv.tone}>{fv.text}</Chip></Tooltip></td>
+                <td style={cell}>{r.live ? <Chip tone={nf ? (r.verdict === 'APPROVED' ? 'danger' : 'warning') : 'success'}>{nf ? `${nf} finding${nf === 1 ? '' : 's'}` : 'none'}</Chip> : '—'}</td>
+                <td style={cell}><button type="button" aria-expanded={isOpen} onClick={() => toggle(r.domain)} style={{ ...btnStyle('plain'), padding: '4px 10px', minHeight: 28, fontSize: TYPE.sm }}>{isOpen ? 'Hide' : 'Details'}</button></td>
+              </tr>, isOpen ? <tr key={`${r.domain}-d`}><td colSpan={6} style={{ ...cell, background: TOKENS.bg[2] }}><DataDetail r={r} /></td></tr> : null]
+            })}
+            {!shown.length ? <tr><td colSpan={6} style={{ ...cell, color: TOKENS.text[2] }}>No rows</td></tr> : null}
+          </tbody>
+        </table>
+      </div>
       <p style={muted}>{s(da?.note || 'Read-only.')}</p>
-      <Table label="Data approvals" heads={['Domain', 'Title', 'Status']}
-        rows={(da?.rows || []).map(r => [<span style={mono}>{r.domain}</span>, s(r.title), <Chip tone={r.status === 'approved' ? 'success' : 'neutral'}>{s(r.status)}</Chip>])} />
     </SectionGate>
   </Panel>
 }

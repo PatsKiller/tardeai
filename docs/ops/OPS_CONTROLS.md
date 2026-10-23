@@ -3,7 +3,7 @@
 ```
 Status:      DRAFT (branch feat/ops-controls-20261022). Built INERT: refuses every change until AGENTS.md 19.0.0 is
              ACTIVE and the operator has applied the migration, installed the applier and enrolled a passkey.
-as_of:       2026-10-22T22:00:00-04:00 (§8 Jobs tab readability added; previous 2026-10-22T18:30:00-04:00)
+as_of:       2026-10-22T22:30:00-04:00 (§9 Data approvals readiness added; previous 2026-10-22T22:00:00-04:00)
 Measured at: hermetic tests only (tests/test_ops_controls_20261022.py, tests/test_ops_controls_pg_webauthn_20261022.py);
              nothing ran against the live server, database, crontab, live list or guard ledger
 Owner:       platform
@@ -82,7 +82,7 @@ See the table in `docs/ops/OPS_CONTROLS_API.md` §5. Safe: `release_train.stop`,
   kind is its own reviewed PR after 19.0.0 is ACTIVE. Until then the host CLI is the path
   (`scripts/release_control_cli.py`).
 - **Data approvals (registry rows):** these are a reviewed PR to `config/data_source_authority.json` (§26.6). The tab
-  is read-only.
+  is read-only. It shows each row's readiness for that decision (§9); it never approves one.
 
 The settings catalog (`config/ops_controls.json` `settings_catalog`) starts with two keys, both `wired: false`: the
 value is stored and shown, but no consumer reads `operator_settings` yet. Wiring each consumer is its own PR.
@@ -212,3 +212,73 @@ and a cut-over lane reads as "Off — but registry says it should run".
 
 **n8n lanes tab.** This tab has a one-line explainer and tooltips on Stage, Mode, On live list, Workflow and Action. A
 lane fires for real only when its mode is `live` and it is on the relay live list.
+
+## 9. Reading the Data approvals tab (UI, 2026-10-22)
+
+Operator feedback 2026-10-22: the tab listed 17 domains, all "proposed", with nothing else — "This is not a
+dashboard." The tab was reworked on branch `feat/ops-controls-data-approvals-20261022`. The server is
+`scripts/lib/data_domain_readiness.py`, tested hermetically by `tests/test_data_domain_readiness_20261022.py` (CI gate
+`ops_controls_data_approvals_20261022`). The page model is `apps/command-center-v3/src/lib/opsControlsData.ts`, tested
+by `src/lib/opsControlsData.test.ts`, which runs in `npm run build`. The first full readout is
+`docs/ops/DATA_DOMAIN_APPROVAL_READINESS_2026-10-22.md`.
+
+**What a row is.** Each row is one data-dictionary domain (`config/data_source_authority.json`): a `proposed_domains[]`
+row, or an approved `domains[]` row that carries a dictionary block.
+
+**Explainer (shown on the tab).** Proposed means the data flows today, but the one-store / one-writer rule for it is
+not signed off yet. Approving a row makes the rule binding. The CI gate (`check_data_source_authority.py`) then fails
+the build on a second writer, or on a page reading a copy above the ceilings measured at approval, instead of only
+warning. Approval itself creates no table, moves no reader and changes no page; those are separate decisions (§26.6).
+The tab does not claim more than that. The only runtime code that reads a grant today is `cio_prospect`'s dual-write
+gate (`prospect_store_status()`), and the row's "What approving changes" list says so.
+
+**Summary strip.** Four counts, each with a tooltip:
+
+- **Approved**
+- **Ready to approve**
+- **Not ready**
+- **Findings** — live checker results; warnings for proposed rows, failures for approved ones.
+
+Under the strip:
+
+- A line names any row the operator has approved whose promotion PR has not merged yet, from
+  `config/data_domain_approval_notes.json`. That file is display only and no gate reads it. Today it holds
+  `cio_prospect`, approval E.
+- Filter chips: All · Ready to approve · Not ready · Approved · With findings.
+- Rows are ordered not-ready first.
+
+**Verdict.** The server promotes each proposed row in memory with the ceilings measured now, exactly as
+`data_dictionary.promote` would, and runs the real gates on it:
+
+- `validate`
+- `check_domains`: writer, projection
+- `evaluate`: second writer, non-authoritative read
+- `check_readers`: gated-store readers
+
+It also checks the §26.2 rule that a row naming one writer has no other writer. **Ready to approve** means all of
+these pass. **Not ready** lists each failing check, in the gate's own words. **Approved** means the row is in
+`domains[]`. A row the operator approved whose PR is pending reads "Approved by operator · PR pending", never
+"Approved".
+
+**Row detail (Details).**
+
+- The decision asked, and the readiness checks: pass or missing, with the source of each check in its tooltip.
+- Store, writer, and the files that write the store today. The list is capped at 12; the count is always whole.
+- Read path (projection), the pages declared as readers, and the files that read the store.
+- Reader gate and approved reader batches.
+- Freshness, refresh lane, derived copies, supersedes, and the approval record.
+- The live findings, and what approving changes.
+
+**Freshness.** For a file store it is the file's modification time under `served_from.root`. For a table it is
+`max(column)`, but only when `data_dictionary.facts` declares a time column (`*_at` or `as_of`). This runs in a
+read-only transaction with a 2 s statement timeout. Where the declared column does not exist, the tab says so ("Declared
+time column not found"). Freshness is evidence, not a readiness check.
+
+**Cost and bounds.** One background scan runs at most once per 60 s. It takes about 25 s on this host, most of it the
+reader-gate scan. `GET /state` never waits for it: until the first scan finishes, rows show the registry facts with
+"Checking…". A failed scan reads FAILED and shows no verdict.
+
+The dictionary scan got an exact pre-filter in `data_dictionary.writer_files` / `reader_files`. The CI gate shares that
+scan, so it is faster too. On 2026-10-22 `evaluate` took 39 s before the pre-filter and 3.8 s after. The measurements
+were identical, and a test checks them against the bare regex.
+
