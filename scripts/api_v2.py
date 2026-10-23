@@ -49118,6 +49118,21 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__}
 
+    # Ask the CIO (Phases 8-11; docs/ops/ASK_THE_CIO.md). Operator's tailnet identity only; POSTs re-check
+    # same-origin CSRF (cc_auth hard route cio_ask_command). The answer comes from the same converse path as the CIO
+    # Telegram bot (scripts/lib/cio_converse_core.py), so both channels answer identically. READ_ONLY_ADVISORY.
+    if base_path.rstrip("/") in ("/api/v2/cio/ask", "/api/v2/cio/asks") or base_path.startswith("/api/v2/cio/asks/"):
+        try:
+            try:
+                from scripts.lib import cio_ask_api as _caa
+            except ImportError:  # pragma: no cover - flat lib.* layout
+                from lib import cio_ask_api as _caa
+            _caa_out = _caa.handle(base_path, method, body, query)
+            if _caa_out is not None:
+                return _caa_out
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
     # TradingView webhook ingress (R5) — dormant; returns 503 unless explicitly enabled.
     if base_path == "/api/v2/ingress/tradingview":
         import os as _os_tv

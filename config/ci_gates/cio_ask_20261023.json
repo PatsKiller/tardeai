@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_ask_20261023",
+  "files": [
+    "tests/test_cio_ask_20261023.py"
+  ],
+  "anchor": "CIO_ASK_20261023",
+  "comment": [
+    "ANCHOR: CIO_ASK_20261023 — Ask the CIO Phases 8/10/11: identical CC and Telegram answers through cio_converse_core, cross-channel threads, CIO memory append + recall keyed by security_guid, auto-track/untrack via existing write paths, re-answer on material change (shadow default, idempotent, rate-limited), caps fail closed, MBI guard, private entities never get a ticker, operator-only + CSRF API."
+  ]
+}

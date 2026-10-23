@@ -120,6 +120,12 @@ cc_auth:
       - action: ops_controls_command
         methods: [POST, PUT, PATCH, DELETE]
         pattern: /api/v2/ops/controls(/.*)?
+      # Ask the CIO (2026-10-23, docs/ops/ASK_THE_CIO.md): asking, deep requests and untrack change ask state and
+      # the operator watchlist; same-origin enforced here even in report_only; the handler re-checks it and requires
+      # the tailnet operator identity on serve_proxy. READ_ONLY_ADVISORY — no order, size, stop or weight path.
+      - action: cio_ask_command
+        methods: [POST, PUT, PATCH, DELETE]
+        pattern: /api/v2/cio/asks?(/.*)?
     # Signed CIO action links render a same-origin HTML <form method="post"> (urlencoded). Allowed
     # content types widen to application/x-www-form-urlencoded, but Origin or Sec-Fetch-Site must be
     # PRESENT and same-origin on every listener (a cross-site form post carries a foreign Origin).

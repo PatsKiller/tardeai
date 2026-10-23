@@ -1,0 +1,47 @@
+{
+  "schema": "CioAskConfig@v1",
+  "_doc": "Ask the CIO (Phases 8-11). docs/ops/ASK_THE_CIO.md. Read at call time; no env override for the caps.",
+  "enabled": true,
+  "telegram_hook": true,
+  "mirror_cc_to_telegram": true,
+  "max_question_chars": 2000,
+  "auto_track": {
+    "enabled": true,
+    "watchlist": true,
+    "cio_record": true,
+    "directive": true,
+    "directive_ttl_days": 90
+  },
+  "recall": {
+    "max_items": 4
+  },
+  "sizing": {
+    "reference_stop_pct": 8.0,
+    "_reference_stop_note": "Illustrative reference for 'loss at a reference stop' when the operator names no stop. Not a stop recommendation; an operator-named stop in the question replaces it.",
+    "concentration_limit_path": "config/investment_policy_statement.json#constraints.max_single_position_pct"
+  },
+  "cost": {
+    "process_id": "cio_ask_deep_research",
+    "daily_cap_usd": 5.0,
+    "per_question_cap_usd": 0.5,
+    "projected_usd_deep": 0.25,
+    "projected_usd_reanswer": 0.05,
+    "approval": {
+      "status": "PROPOSED",
+      "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+      "proposed_on": "2026-10-23",
+      "decision": "Grant a $5.00/day Ask-the-CIO research cap (deep answers and re-answers), $0.50 per question, inside LLM_GLOBAL_DAILY_USD_CAP. Until status is APPROVED the deep path and re-answers spend nothing (inert above cap = inert at $0).",
+      "approved_by": null,
+      "approved_on": null,
+      "reference": null
+    }
+  },
+  "reanswer": {
+    "mode": "shadow",
+    "_mode_note": "shadow: record what would be re-answered, spend and send nothing. live needs the operator's grant (cap approval + lane at canary).",
+    "min_hours_between_per_thread": 6,
+    "max_per_day": 10,
+    "lookback_hours": 48,
+    "sources": ["sec_filing_events", "material_changes"]
+  }
+}
