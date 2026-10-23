@@ -763,6 +763,11 @@ def evaluate_pass(candidates: Iterable[Candidate], *, cfg: AlertConfig, now: Opt
                         row["send_result"] = res
                     except Exception as e:  # noqa: BLE001
                         row["send_error"] = f"{type(e).__name__}: {e}"
+                if persist:
+                    # Gate 4 (2026-10-22): SHADOW ONLY. The legacy alert above is never suppressed or replaced; the
+                    # unified threaded message is built and logged beside it. Live replacement for this engine is
+                    # an open operator decision, so mode `live` is refused here and recorded.
+                    row["unified"] = unified_shadow(row)
                 if kind == PULLBACK_ZONE:
                     zones.pop(c.symbol, None)      # one zone, one alert
             if persist:
@@ -773,6 +778,38 @@ def evaluate_pass(candidates: Iterable[Candidate], *, cfg: AlertConfig, now: Opt
             save_throttle_state(throttle.state(), throttle_path)
             save_zones(zones, zones_file)
     return rows
+
+
+# ── Gate 4 unified alert: shadow-only hook ──────────────────────────────────────
+
+UNIFIED_LIVE_REFUSED = "live replacement pending operator decision"
+
+
+def unified_shadow(row: Mapping[str, Any]) -> Optional[dict]:
+    """Log the unified message for one ALERT row beside the legacy alert. Never sends, never raises.
+
+    off -> None (nothing built); shadow -> the ledger row summary; live -> refused for this engine (recorded),
+    the legacy alert having already gone out unchanged."""
+    try:
+        try:
+            from lib import unified_momentum_alert as um  # type: ignore
+        except ModuleNotFoundError:  # pragma: no cover
+            from scripts.lib import unified_momentum_alert as um  # type: ignore
+        mode = um.resolve_mode()
+        if mode == "off":
+            return None
+        if mode == "live":
+            return {"action": "LIVE_REFUSED", "mode": "live", "note": UNIFIED_LIVE_REFUSED}
+        ev = um.event_from_at_row(dict(row))
+        if ev is None:
+            return {"action": "UNMAPPED_KIND", "mode": mode}
+        um.enrich_catalyst(ev)
+        u = um.emit(ev, mode="shadow", legacy_alert="active_trader.momentum_alerts")
+        return {k: u.get(k) for k in ("action", "mode", "state", "row_id", "thread_key", "is_root")
+                if u.get(k) is not None}
+    except Exception as e:  # noqa: BLE001
+        # ALARM-DELIVERY-DECLARED: shadow evidence only, recorded on the journal row; the legacy alert is unaffected.
+        return {"action": "ERROR", "error": f"{type(e).__name__}: {e}"[:200]}
 
 
 def _safe(fn, symbol: str):

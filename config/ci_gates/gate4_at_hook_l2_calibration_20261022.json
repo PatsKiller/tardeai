@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "gate4_at_hook_l2_calibration_20261022",
+  "files": [
+    "tests/test_gate4_at_hook_l2_calibration_20261022.py"
+  ],
+  "anchor": "GATE4_AT_HOOK_L2_CALIBRATION_20261022",
+  "comment": [
+    "ANCHOR: GATE4_AT_HOOK_L2_CALIBRATION_20261022 — under execution-engineering grant e88bf21e: the Active Trader",
+    "engine logs the unified Gate 4 message beside its legacy alert (shadow only; live refused and recorded, never a",
+    "replacement); L2 book signals in SignalConfig / entry_signals / the served AT payload (exit_signals unchanged);",
+    "signal_calibration proposes min_stop.pct_of_price as a fraction. Hermetic fixtures only."
+  ]
+}

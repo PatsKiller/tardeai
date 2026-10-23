@@ -229,7 +229,9 @@ EOF
     controller_hold
     served_state || fail "serve the tune cutover PR first"
     need_grant; quiet_minute
-    "$CRONTAB_BIN" -l | grep -qF -- "$NEW_LINE" || fail "c2 not applied (the tune line must claim effects before n8n owns them)"
+    # captured, not piped: `crontab -l | grep -q` under pipefail is a false failure (SIGPIPE, 2026-10-22)
+    CT="$("$CRONTAB_BIN" -l)" || fail "crontab -l failed"
+    grep -qF -- "$NEW_LINE" <<<"$CT" || fail "c2 not applied (the tune line must claim effects before n8n owns them)"
     in_live_list || fail "relay not applied ($LANE not in the live list): n8n would be refused relay_live_not_enabled and cron skipped — no tune today"
     read -r cur ep <<<"$(owner_of)"
     [[ "$cur" == n8n ]] && { echo "  $LANE already n8n (epoch $ep)"; exit 0; }

@@ -1,0 +1,14 @@
+[Unit]
+Description=TradeAI agent claim board — weekly compaction (archive done/stale claims > 7 days to claims_history.jsonl, then remove the claim files)
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/ops/AGENT_CLAIM_BOARD.md
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+# Receipt: <state root>/data/runtime/agent-claim-compact_last.json (lane agent-claim-compact, output_signal ok_at).
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/agent_claim.py compact --apply --lane-receipt
+TimeoutStartSec=300
+Nice=10
+IOSchedulingClass=idle

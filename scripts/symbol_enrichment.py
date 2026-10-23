@@ -622,7 +622,58 @@ def compute_intelligence_readiness(symbol: str, conn, _retried: bool = False) ->
 # ORCHESTRATOR — MAIN ENTRY POINT
 # ─────────────────────────────────────────────
 
+_ENRICHMENT_ADVISORY_LOCK_NS = 1397044818  # stable "SENR" namespace, separate from other lock families
+
+
 def enrich_symbol(symbol: str, score: int, conn, force_full: bool = False) -> dict:
+    """Serialize enrichment writers per symbol across every caller.
+
+    The lock belongs to the PostgreSQL session, so it remains held across the
+    commits performed by the source-specific writers below. If another caller
+    already owns this symbol, return an explicit skipped result without doing
+    any source or database writes.
+    """
+    symbol = str(symbol).upper()
+    lock_cur = conn.cursor()
+    acquired = False
+    try:
+        lock_cur.execute("SELECT pg_try_advisory_lock(%s, hashtext(%s))",
+                         (_ENRICHMENT_ADVISORY_LOCK_NS, symbol))
+        acquired = bool(lock_cur.fetchone()[0])
+        # Advisory locks are session-scoped, so committing this read-only lock
+        # probe leaves the caller's connection ready for the enrichment work.
+        conn.commit()
+    except Exception:
+        if acquired:
+            try:
+                lock_cur.execute("SELECT pg_advisory_unlock(%s, hashtext(%s))",
+                                 (_ENRICHMENT_ADVISORY_LOCK_NS, symbol))
+                lock_cur.fetchone()
+                conn.commit()
+            except Exception:
+                pass
+        raise
+    finally:
+        lock_cur.close()
+    if not acquired:
+        log.info("[enrichment] %s skipped: another writer holds the symbol lock", symbol)
+        return {'symbol': symbol, 'score': score, 'skipped': 'already_running',
+                'articles': 0, 'social': 0, 'youtube': 0, 'sources': []}
+
+    try:
+        return _enrich_symbol_impl(symbol, score, conn, force_full=force_full)
+    finally:
+        unlock_cur = conn.cursor()
+        try:
+            unlock_cur.execute("SELECT pg_advisory_unlock(%s, hashtext(%s))",
+                               (_ENRICHMENT_ADVISORY_LOCK_NS, symbol))
+            unlock_cur.fetchone()
+            conn.commit()
+        finally:
+            unlock_cur.close()
+
+
+def _enrich_symbol_impl(symbol: str, score: int, conn, force_full: bool = False) -> dict:
     """
     Main entry point. Orchestrates all enrichment tiers.
     Called from trade_ai_orchestrator on_symbol_surfaced() for GO signals.

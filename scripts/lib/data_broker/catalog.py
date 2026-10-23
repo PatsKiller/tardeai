@@ -202,6 +202,24 @@ PROJECTIONS: list[dict[str, Any]] = [
         "consumers": ["Re-Entry", "Watch"],
     },
     {
+        "id": "watch_prospects",
+        "module": "lib.data_broker.watch_prospects",
+        "entrypoints": ["list_watch_prospects", "build_watch_prospects", "from_cio_prospect"],
+        "http": ["GET /api/v3/data-broker/watch-prospects"],
+        "domain": "watch",
+        "description": (
+            "Watch prospect lanes (Actionable now / Setup forming / Re-entry near / Manage / Expired): one row per "
+            "security with conviction + components, stance, conflicts shown never resolved, next trigger (reference "
+            "level) and one next step. Reads the cio_prospect projection when it is live; until then an interim "
+            "adapter over cio_opportunity_projection, watch_decision.v1, the Trade AI decision projection, the "
+            "Watch held reader and the re-entry desk, labelled interim."
+        ),
+        "contract_version": "WatchProspects@v1",
+        "read_only": True,
+        "provider_calls": 0,
+        "consumers": ["Watch (/v3/watch)"],
+    },
+    {
         "id": "watch_intelligence",
         "module": "lib.data_broker.watch_intelligence",
         "entrypoints": [
@@ -528,6 +546,22 @@ PROJECTIONS: list[dict[str, Any]] = [
         "envelope": "BrokerReadEnvelope@v1",
         "consumers": ["scripts/catalyst_enrichment.py (alpha_vantage slot)",
                       "scripts/external_market_data_ingest.py --news-sentiment"],
+    },    {
+        "id": "home_do_now",
+        "module": "lib.data_broker.home_do_now",
+        "entrypoints": ["build", "probe_pending_proposals"],
+        "http": ["/api/v2/home/do-now"],
+        "domain": "home_do_now",
+        "authority_domain": None,
+        "contract_version": "HomeDoNow@v1",
+        "description": "Home 'Do now' queue (operator-approved Home redesign 2026-10-22): one deduplicated, "
+                       "money-at-risk-first queue (protect / decide / fix) composed from needs-action, the operator "
+                       "inbox, the risk snapshot, the held-exit-coverage receipt, pending paper proposals and open "
+                       "redeploys; per-source as_of / age / stale; an unreadable source is an item. Owns no store; "
+                       "positions via risk_snapshot (holdings.json) until a positions_current reader batch covers Home",
+        "read_only": True,
+        "provider_calls": 0,
+        "consumers": ["Command Center v3 Home (Do now queue, three numbers)"],
     },
     {
         "id": "cio_prospect",

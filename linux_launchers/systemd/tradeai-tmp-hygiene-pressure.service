@@ -1,0 +1,13 @@
+[Unit]
+Description=TradeAI /tmp hygiene pressure trigger — auto-apply early when /tmp inode use >= tmp.auto_apply.pressure_trigger_pct
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/ops/packets/tmp-hygiene-auto-apply-20261022/README.md
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/tmp_hygiene_auto.py --pressure-only
+TimeoutStartSec=1800
+Nice=10
+IOSchedulingClass=idle

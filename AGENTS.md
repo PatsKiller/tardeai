@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      18.0.0
+Policy-Version:      19.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
 Effective-Date:      2026-10-22
-Last-Reviewed:       2026-10-22T16:00:00-04:00
+Last-Reviewed:       2026-10-22T20:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          17.0.0
+Supersedes:          18.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -110,6 +110,31 @@ asks the operator to decide needs `dedupe_minutes=0`; #1685 sets it only for `ap
 `stop_decision_brief.py` (a stop decision brief) is P1 with the default 60-minute exact-content dedupe — the
 operator classifies it before #1685 merges. **Numbering:** follows 5.0.0 (ACTIVE, PR #1686, merged `0ec320486`);
 `Supersedes` is 5.0.0. Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>`.
+
+**19.0.0 is ACTIVE (MAJOR) — n8n may schedule the audited read-only broker lanes (§27.1), and the operator's
+Ops → Controls surface: the safe direction is one click, the risky direction a passkey plus a typed phrase
+(§27.2–§27.3).** Operator decisions 2026-10-22, verbatim: "N8N can read the broker because right now we're only doing
+reading of the broker. We're not doing any trading. So I want to amendment." and "yes on passkey"; the operator chose
+("yes") that these rule changes ship as a diff the operator applies and commits. Ratified by the operator 2026-10-22 (`APPROVE_AGENTS_POLICY_19_0_0 1962 bb54a14a89347a1c17dd0d326b0720c882bbd61f`, §20; PR #1962 comment by PatsKiller 2026-10-22T22:10:31Z, https://github.com/PatsKiller/tardeai/pull/1962#issuecomment-6352416425, verbatim: "APPROVE_AGENTS_POLICY_19_0_0 1962 bb54a14a89347a1c17dd0d326b0720c882bbd61f"); ratified by this edit, which set the header block to 19.0.0 ACTIVE, made the four clause edits quoted in §27.5 and set `CARVEOUT_STATUS` to `ACTIVE`. Under 19.0.0 n8n may schedule and trigger only the closed set of read lanes in
+`scripts/lib/n8n_broker_read_carveout.py` (the §24.11 steps
+and market-data reads that pass the same audit), executed on the host through the allowlisted executor, only while
+every broker trading lock is LOCKED and the Schwab access mode is `read_only`, with no credential in n8n; orders, stop
+writes, cancel, replace, preflight, 2FA, `place_order`, live and paper flags and senders stay on the §23.14
+never-list. Operator settings live in a Postgres `operator_settings` table with history (a proposed §26 registry
+row); one governed host applier with backup, audit and undo changes the crontab, the n8n live list, settings and
+grants; release-train STOP or pause and kill-switch ENGAGE are one click; arming, resuming or rescoping the train,
+clearing the kill switch, resuming broker jobs, n8n live-list changes and grants need a WebAuthn passkey (several
+named devices, each revocable) and a typed phrase; TOTP is recovery only and Telegram notification only. This
+supersedes decision D3 (2026-10-21) and the kill switch's terminal-only clear; the host terminal stays the fallback;
+agents never call the Controls endpoints. **Why MAJOR:** it gives an automated actor broker reach §23.14 forbade
+(n8n triggering broker reads) and changes how operator-only (§17) acts are made (a web surface with a passkey
+replaces D3's host CLI or Telegram confirmation); broker access and operator-only boundaries are MAJOR by the version
+policy, and a change that removes a restriction is classed by the weakest guarantee after it (precedents 12.0.0,
+14.0.0, 17.0.0). It cannot be MINOR. Ratification arms nothing: no lane, allowlist entry, dispatcher row, table,
+endpoint or passkey exists until its own reviewed PR and §17 grant. **Byte-identical:** §0, §2, §2A, §7A, §22, §24,
+§26 and the four adapters; while PROPOSED §17, §23.14 and §25 are byte-identical too, and the ratifying edit changes
+exactly the clauses quoted in §27.5. **Numbering:** after 18.0.0 (PR #1931, ACTIVE); `Supersedes` 18.0.0. Approval
+phrase as proposed: `APPROVE_AGENTS_POLICY_19_0_0 <pr_number> <head_sha>`.
 
 **18.0.0 is ACTIVE (MAJOR) — the data foundation: one store, one writer, the CIO as integrator (§26).**
 Operator direction 2026-10-22, verbatim: "The CIO agent is supposed to tie all of this together, and it should all be
@@ -3967,8 +3992,14 @@ creating or editing its host record · clearing a release STOP or resuming the r
 train's scope: a permitted class, an enabled window, a limit, a named service or the verification policy
 (narrowing it is the same act and the same proof) · custody of the release-train GitHub App: creating,
 installing, re-permissioning or suspending it, and placing, rotating or revoking its private key. Each is done
-by the operator at the host CLI (`scripts/release_control_cli.py`) or by a Telegram button confirmation
-(decision D3, 2026-10-21); an agent or the Command Center may only request STOP or pause.
+by the operator on Ops → Controls with a WebAuthn passkey and a typed confirmation phrase (§27.3), or at
+the host CLI (`scripts/release_control_cli.py`), the fallback; an agent may only request STOP or pause.
+
+**Operator controls (19.0.0, §27):** clearing the trading kill switch · resuming broker jobs · changing the n8n
+relay live list · issuing a grant from Ops → Controls · registering or revoking a passkey · changing an n8n
+broker read lane into one that writes, or widening any read lane's reach (§27.1). A risky act is made by the
+operator on Ops → Controls with a passkey and a typed phrase, or at the host terminal; no agent ever calls a
+Controls endpoint or the host applier.
 
 ---
 
@@ -5048,6 +5079,14 @@ every merge needs the operator's per-PR word again.
   stale one to the incident router. Watching is not scheduling; no n8n workflow fires them.
   *Cause (§0 rails 1–2, §2A, §23.3): a stolen relay bearer must not be able to place an order, render
   a secret or start a second copy of a long-running process.*
+- **One exception (19.0.0, §27.1): the audited read-only broker lanes.** n8n may schedule and trigger the closed
+  set of read lanes in `scripts/lib/n8n_broker_read_carveout.py` `READ_LANES` — the §24.11 steps, and market-data
+  reads that pass the same audit — each run on the host through the allowlisted executor, only while every broker
+  trading lock is LOCKED and the Schwab access mode is `read_only`; n8n holds no credential. Orders, stop writes,
+  cancel, replace, preflight, 2FA, `place_order`, live and paper flags, paper execution and senders stay on this
+  never-list, and changing any read lane into one that writes is §17. *Cause (§20): operator 2026-10-22,
+  verbatim: "N8N can read the broker because right now we're only doing reading of the broker. We're not doing
+  any trading. So I want to amendment."*
 - **The test is code, not judgement.** `tests/test_agents_policy_4_1_0_amendment.py` fails unless
   every row with `scheduler.expression = "dispatcher"` has a `config/n8n_run_allowlist.json` entry
   whose argv passes `FORBIDDEN_COMMAND_TOKENS` (`scripts/pipelines/pipeline_manifest.py`) and the
@@ -6206,11 +6245,12 @@ arms the delegation at the host (§25.2) and enables a window (§25.3), each a �
   link) is a STOP; missing or corrupt control state is not authorized. *Cause (§20): 2026-10-21 —
   `release_window.py` `State.read` returned `None` for a corrupt latch, so an unreadable STOP read as absent (fixed on
   `ops/release-train-20261021`, `9dde41745`, `read_latch`: ABSENT, SET, UNREADABLE).*
-- **Who may do what.** The Command Center and agents may only request STOP or pause (typed command, server-derived
-  actor, CSRF and origin checks, idempotency key, expected control version, durable audit). Resume, arming,
-  re-arming, scope changes and revoke are operator acts at the host CLI or by a Telegram button confirmation (D3);
-  never through report-only middleware or an unimplemented step-up. The host CLI works when the Command Center and
-  n8n are down. *Cause (§20): decision D3 2026-10-21 (TOTP declined); enhanced design §7.*
+- **Who may do what.** Agents may only request STOP or pause (typed command, server-derived actor, CSRF and origin
+  checks, idempotency key, expected control version, durable audit). On Ops → Controls, STOP and pause are one
+  click; resume, arming, re-arming, scope changes and revoke are operator acts made with a WebAuthn passkey and a
+  typed confirmation phrase (§27.3), or at the host CLI, which works when the Command Center and n8n are down. A
+  Telegram button confirms nothing; never through report-only middleware or an unimplemented step-up.
+  *Cause (§20): operator decisions 2026-10-22 (§27.3), superseding decision D3 2026-10-21; enhanced design §7.*
 - **Pause after current** stops claiming later trains and lets the current one reach its terminal state; the epoch
   does not change. **Resume** archives the latch (rename, never delete, §0 rule 6), shows the stop reason, the current
   state and fresh readiness, and issues a new epoch: no capability from before the stop is ever valid again, and the
@@ -6421,10 +6461,157 @@ from `config/data_source_authority.json` by `scripts/render_data_dictionary.py`.
 
 ---
 
+# 27 · n8n broker reads and the operator controls surface (19.0.0, ACTIVE)
+
+**Status: ACTIVE (MAJOR).** Ratified 2026-10-22 (`APPROVE_AGENTS_POLICY_19_0_0 1962 bb54a14a89347a1c17dd0d326b0720c882bbd61f`, §20); the clauses quoted in §27.5 are in place in
+§17, §23.14 and §25.4. §27 extends §23.14 (one exception), §24.11 (the same closed step set and audit),
+§25.4 (who may resume) and §17 (where an operator act is made); the ratifying edit makes exactly the clause edits
+quoted in §27.5. Code: `scripts/lib/n8n_broker_read_carveout.py` (`CARVEOUT_STATUS`, `PROPOSED` until the ratifying
+edit), consulted by `scripts/pipelines/pipeline_manifest.py` `forbidden_command_tokens()`. Tests:
+`tests/test_n8n_broker_read_carveout_20261022.py`, `tests/test_agents_policy_19_0_0_broker_read_controls.py`.
+
+## 27.1 n8n may schedule the audited read-only broker lanes
+
+- **Reach: a closed set of read lanes, nothing by analogy.** n8n may schedule and trigger only the lanes
+  `n8n_broker_read_carveout.READ_LANES` lists: the eight §24.11 steps (`broker_read_sync_policy.STEPS`, same scripts
+  and argv) and the market-data reads `options_chain_snapshot.py` and `sweep_schwab_instruments.py`, each admitted
+  only while the §24.11 static audit (`broker_read_sync_policy.audit()`, `excluded_family`, `runtime_denied`) is clean
+  for it. A lane's command is exactly its script and one of its argv forms: no wrapper, extra argument, pipe or second
+  command. Adding a lane is a reviewed PR to that tuple. *Cause (§20): operator 2026-10-22 (banner); measured
+  2026-10-22 on `2d8fc9574`: both market-data reads pass the §24.11 audit with no finding.*
+- **Preconditions — each a refusal in code.** A carve-out lane runs only while `CARVEOUT_STATUS` is `ACTIVE`, every
+  broker trading lock is LOCKED (`broker_read_sync.lock_states()`: schwab, alpaca, moomoo, snaptrade), and the Schwab
+  access mode the operator's switch resolves is `read_only` (`broker_read_sync.resolved_child_mode()` without a
+  per-process override), not merely forced so for the step. `runtime_refusals()` returns `carveout_not_active`,
+  `trading_lock_not_locked:<broker>` or `schwab_access_mode_not_read_only`, and an unreadable state refuses too.
+  *Cause (§20): the operator's "only doing reading … not doing any trading"; the §24.11 conditions of 2026-10-16.*
+- **Execution stays on the host; n8n holds no token.** n8n fires the lane through the relay and the allowlisted
+  executor (§23.3); the step runs on the host from the served release and sources `.env` inside its own process, as
+  §24.11 does, and n8n never receives, stores or forwards a broker credential, token or cookie. *Cause (§20): §23.14
+  — a stolen relay bearer must not be able to place an order or render a secret; 12.0.0, "n8n still never holds a
+  broker credential".*
+- **The never-list does not move.** Orders, stop writes, cancel, replace, order preflight, 2FA, `place_order`, live
+  and paper flags, paper execution, senders, re-auth and token refresh, and every `broker_read_sync_policy.EXCLUDED`
+  family stay never dispatcher-eligible; `NEVER_TOKENS` refuses them even when `ACTIVE`. Changing a read lane into one
+  that writes, or widening any lane's reach, is §17. An agent never fires, forces or re-stages a carve-out lane; §0
+  rule 2 and §24.11 still govern every agent broker read. *Cause (§20): §0 rules 1–2; the SPCX incident of
+  2026-10-14.*
+
+## 27.2 Ops → Controls: one operator surface, one governed applier
+
+- **Settings live in Postgres; one host applier changes state.** Operator settings live in an `operator_settings`
+  table with history (each change a new row: who, when, which factor, old and new value), and a setting there
+  overrides the repository default. It is proposed as the §26 registry row `operator_settings`; the table and its
+  writer are §17 grants. One governed host applier, with a backup before, an audit row and an undo for every change,
+  applies the crontab, the n8n relay live list, settings and guard grants; nothing else writes them from the surface.
+  *Cause (§20): operator decisions 2026-10-22; §24.9 (Postgres, portable); §0 rules 6–7.*
+- **Agents never call it.** No agent calls a Controls endpoint or the applier by any route (HTTP, CLI, n8n,
+  Telegram, a borrowed session); §17 acts are the operator's, through an authenticated operator surface or at the host
+  terminal. An agent's STOP or pause request (§25.4) uses the release-train request path, and an agent may read the
+  settings through their projection. *Cause (§20): operator decision 2026-10-22; §0 rules 3 and 9.*
+
+## 27.3 Safe direction one click; risky direction a passkey and a typed phrase
+
+- **Safe direction: one click.** Release-train STOP or pause and engaging the trading kill switch are one click in an
+  authenticated operator session (CSRF and origin checks, idempotency key, durable audit). *Cause (§20): operator
+  decision 2026-10-22; `scripts/lib/trading_lock.py` — stopping is easy, re-enabling is hard.*
+- **Risky direction: two factors.** Arming, resuming or rescoping the release train, clearing the trading kill
+  switch, resuming broker jobs, changing the n8n live list and issuing grants each need a WebAuthn passkey assertion
+  (user verification required, bound to that action and its expected state) and the typed confirmation phrase the
+  server shows for it. This supersedes decision D3 (resume and scope only at the host CLI or by a Telegram button) and
+  the kill switch's terminal-only clear (`scripts/brokers/kill_switches.py --disable … --confirm`); the host terminal
+  stays the fallback. *Cause (§20): operator decisions 2026-10-22, "yes on passkey".*
+- **Passkeys are named devices; recovery and notification are not factors.** Several named passkeys may be
+  registered and each revoked alone; adding or removing one needs an existing passkey and the phrase. Google
+  Authenticator TOTP is recovery only (re-enrolling when no passkey remains), never a factor for a risky act. Telegram
+  is notification only: every Controls change is announced there, and no Telegram button confirms anything.
+  *Cause (§20): operator decisions 2026-10-22; D3 had declined TOTP as a factor.*
+
+## 27.4 Open gaps, stated
+
+- **Nothing is built; ratification arms nothing.** There is no carve-out executor wrapper, no allowlist entry or
+  dispatcher row for a carve-out lane, and `scripts/lib/lane_dispatch.py` still refuses every
+  `FORBIDDEN_COMMAND_TOKENS` hit; the Controls surface, the applier, the `operator_settings` table and the passkey
+  store do not exist. Each comes in its own reviewed PR, and activating a workflow or adding a dispatcher row stays §17
+  (§23.11). Until the passkey step-up is built and verified, a risky act is made at the host CLI only (§25.4). The
+  kill-switch code is in the broker execution set: changing its clear path needs an `execution-engineering` grant (§0
+  rule 2). *Cause (§20): measured 2026-10-22 on `2d8fc9574`.*
+
+## 27.5 Ratifying edit
+
+- **Four clause edits, and nothing else outside the header block, the banner, §27 and the 19.0.0 history row.** The
+  ratifying edit also sets `CARVEOUT_STATUS = "ACTIVE"` in `scripts/lib/n8n_broker_read_carveout.py`.
+  `tests/test_agents_policy_19_0_0_broker_read_controls.py` holds the anchors and digests. *Cause (§20): §20 — rules
+  are replaced, not accumulated; until ratification the clauses stay byte-identical, so no agent reads a PROPOSED
+  widening as in force.*
+
+  (1) In §23.14, directly after the first bullet:
+
+  ```
+  - **One exception (19.0.0, §27.1): the audited read-only broker lanes.** n8n may schedule and trigger the closed
+    set of read lanes in `scripts/lib/n8n_broker_read_carveout.py` `READ_LANES` — the §24.11 steps, and market-data
+    reads that pass the same audit — each run on the host through the allowlisted executor, only while every broker
+    trading lock is LOCKED and the Schwab access mode is `read_only`; n8n holds no credential. Orders, stop writes,
+    cancel, replace, preflight, 2FA, `place_order`, live and paper flags, paper execution and senders stay on this
+    never-list, and changing any read lane into one that writes is §17. *Cause (§20): operator 2026-10-22,
+    verbatim: "N8N can read the broker because right now we're only doing reading of the broker. We're not doing
+    any trading. So I want to amendment."*
+  ```
+
+  (2) In §25.4, the bullet
+
+  ```
+  - **Who may do what.** The Command Center and agents may only request STOP or pause (typed command, server-derived
+    actor, CSRF and origin checks, idempotency key, expected control version, durable audit). Resume, arming,
+    re-arming, scope changes and revoke are operator acts at the host CLI or by a Telegram button confirmation (D3);
+    never through report-only middleware or an unimplemented step-up. The host CLI works when the Command Center and
+    n8n are down. *Cause (§20): decision D3 2026-10-21 (TOTP declined); enhanced design §7.*
+  ```
+
+  becomes
+
+  ```
+  - **Who may do what.** Agents may only request STOP or pause (typed command, server-derived actor, CSRF and origin
+    checks, idempotency key, expected control version, durable audit). On Ops → Controls, STOP and pause are one
+    click; resume, arming, re-arming, scope changes and revoke are operator acts made with a WebAuthn passkey and a
+    typed confirmation phrase (§27.3), or at the host CLI, which works when the Command Center and n8n are down. A
+    Telegram button confirms nothing; never through report-only middleware or an unimplemented step-up.
+    *Cause (§20): operator decisions 2026-10-22 (§27.3), superseding decision D3 2026-10-21; enhanced design §7.*
+  ```
+
+  (3) In §17, the last sentence of the release-train paragraph
+
+  ```
+  Each is done
+  by the operator at the host CLI (`scripts/release_control_cli.py`) or by a Telegram button confirmation
+  (decision D3, 2026-10-21); an agent or the Command Center may only request STOP or pause.
+  ```
+
+  becomes
+
+  ```
+  Each is done
+  by the operator on Ops → Controls with a WebAuthn passkey and a typed confirmation phrase (§27.3), or at
+  the host CLI (`scripts/release_control_cli.py`), the fallback; an agent may only request STOP or pause.
+  ```
+
+  (4) In §17, directly after that paragraph:
+
+  ```
+  **Operator controls (19.0.0, §27):** clearing the trading kill switch · resuming broker jobs · changing the n8n
+  relay live list · issuing a grant from Ops → Controls · registering or revoking a passkey · changing an n8n
+  broker read lane into one that writes, or widening any read lane's reach (§27.1). A risky act is made by the
+  operator on Ops → Controls with a passkey and a typed phrase, or at the host terminal; no agent ever calls a
+  Controls endpoint or the host applier.
+  ```
+
+---
+
 # Version history
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 19.0.0 | 2026-10-22 | ACTIVE | MAJOR | §27 "n8n broker reads and the operator controls surface" added. Operator decisions 2026-10-22 (verbatim in the banner): n8n may read the broker because only reading is done (§27.1: a closed set of audited read lanes, host execution, every trading lock LOCKED, Schwab `read_only`, no credential in n8n; the never-list unchanged); Ops → Controls (§27.2–§27.3: settings in a Postgres `operator_settings` table with history, one governed host applier, safe direction one click, risky direction a WebAuthn passkey plus a typed phrase, TOTP recovery only, Telegram notification only), superseding decision D3 and the kill switch's terminal-only clear. Code: `scripts/lib/n8n_broker_read_carveout.py` (`CARVEOUT_STATUS` PROPOSED), consulted by `pipeline_manifest.forbidden_command_tokens()`; registry row `operator_settings` proposed. While PROPOSED §17, §23.14 and §25 are byte-identical; the ratifying edit inserts one §23.14 bullet, replaces the §25.4 "Who may do what." bullet and one §17 sentence, appends one §17 paragraph (§27.5) and sets `CARVEOUT_STATUS` ACTIVE. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_19_0_0 1962 bb54a14a89347a1c17dd0d326b0720c882bbd61f` (operator, PR #1962 comment by PatsKiller 2026-10-22T22:10:31Z, https://github.com/PatsKiller/tardeai/pull/1962#issuecomment-6352416425, verbatim: "APPROVE_AGENTS_POLICY_19_0_0 1962 bb54a14a89347a1c17dd0d326b0720c882bbd61f"); ratified by this edit on #1962's branch, which set the header block to 19.0.0 ACTIVE, made the four clause edits quoted in §27.5 and set `CARVEOUT_STATUS` to `ACTIVE`; approval phrase as proposed `APPROVE_AGENTS_POLICY_19_0_0 <pr_number> <head_sha>`; per-PR word, because it is MAJOR. Effective 2026-10-22. |
 | 18.0.0 | 2026-10-22 | ACTIVE | MAJOR | §26 "Data foundation — one store, one writer, the CIO as integrator" added. Operator direction 2026-10-22 (verbatim in the banner): one data store with everything, the CIO agent and n8n tie it together, hard-coded in AGENTS.md, a data dictionary that shows one source of data. The CIO prospect record (`InstrumentRecord@v1` extended, one row per `security_guid`, written only by `InstrumentRecordStore`) is the single per-security truth; every fact has one authoritative store and one writer in the §7A registry and the dictionary rendered from it binds row by row as each is granted; pages and alerts read only through registered projections; n8n schedules gathering inside the §23.14 never-list; conflicts are recorded and shown, never silently resolved; new stores and writers stay §17; copies retire by archive and tripwire. §0, §2, §2A, §7A, §17, §22, §23.14, §24, §25 and the adapters byte-identical; the NO SILOS section byte-identical while PROPOSED, one clause replaced at ratification (§26.7). MAJOR: agent role authority (the CIO becomes the only writer of per-security judgment); grants no row, broker, order, stop, egress or n8n authority. Header block 18.0.0 PROPOSED, `Effective-Date` PENDING, `Supersedes` 17.0.0. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_18_0_0 1931 894bbd954ca174453e7339d30157e082d4403c84` (operator, PR #1931 comment by PatsKiller 2026-10-22T16:59:09Z, https://github.com/PatsKiller/tardeai/pull/1931#issuecomment-6346416104, verbatim: "APPROVE_AGENTS_POLICY_18_0_0 1931 894bbd954ca174453e7339d30157e082d4403c84"); ratified by this edit on #1931's branch, which set the header block to 18.0.0 ACTIVE and replaced the NO SILOS methodology rule 1 quoted in §26.7; approval phrase as proposed `APPROVE_AGENTS_POLICY_18_0_0 <pr_number> <head_sha>`; per-PR word, because it is MAJOR. Effective 2026-10-22. |
 | 17.0.0 | 2026-10-21 | ACTIVE | MAJOR | §25 "Release train — agents queue, the train releases" added (Release Train v2, Phase 2). Operator directive 2026-10-21 (plan record): agents queue PRs only; a scheduled train integrates, releases and reports at 00:00, 06:00, 08:00 and 18:00 ET; decisions D1 (standing revocable delegation, no daily or 7-day renewal), D2 (GitHub App, 1-hour installation tokens, operator-created), D3 (resume and scope changes only via the host CLI or a Telegram button confirmation). Once the delegation is first armed agents never merge, push `main` or `train/*`, or release; until then the manual process is unchanged. ReleaseDelegation@v1 on the host, accepted by digest; ReleaseCapability@v1 per train and phase (build/publish cannot merge or promote); one global release lock, intent before effect, refusals consume nothing, UNCERTAIN reconciled before retry. Windows 18:00, 00:00, 06:00, 08:00 ET (enabled in that order, DST-aware, no catch-up) with a merge freeze; operator-forced off-window canary runs (operator approval 2026-10-21: TTY plus phrase, canary phase only, every other gate still enforced; they count as canary proofs). Shadow, canary and expand end when their proofs pass, with no minimum days (operator 2026-10-21). STOP: latch plus epoch, requested → acknowledged → settling → stopped, fail closed; CC may only request STOP or pause; resume issues a new epoch. Operator-only items added to §17 at ratification (arming or revoking the delegation, clearing STOP, resume, scope expansion, GitHub App custody). `AI_WORK_POLICY.md` §28: train pushes are the only automated remote sync. §24.5 and §24.8 gained one quoted bullet each at ratification; §17, §24.5 and §24.8 were byte-identical until then. §0, §2, §2A, §7A, §22, §23.14 and the adapters byte-identical. MAJOR: an automated actor may push `train/*` and merge under a standing delegation. Header block 17.0.0 PROPOSED, `Effective-Date` PENDING while PROPOSED; the ratifying edit set it to 17.0.0 ACTIVE, `Effective-Date` 2026-10-21, `Supersedes` 16.0.0. Numbered after 15.0.0 (PR #1852) and 16.0.0 (PR #1911), both ACTIVE; `Supersedes` 16.0.0. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_17_0_0 1914 aeb5e6fd70dcefac0df8541c496bebb4a5e904ec` (operator, PR #1914 comment by PatsKiller 2026-10-22T03:22:17Z, https://github.com/PatsKiller/tardeai/pull/1914#issuecomment-6331877455, verbatim: "APPROVE_AGENTS_POLICY_17_0_0 1914 aeb5e6fd70dcefac0df8541c496bebb4a5e904ec"); ratified by this edit on #1914's branch, which inserted the three clauses quoted in §25.9 into §17, §24.5 and §24.8 and marked `AI_WORK_POLICY.md` §28 ACTIVE; approval phrase as proposed `APPROVE_AGENTS_POLICY_17_0_0 <pr_number> <head_sha>`; per-PR word, because it changes `AGENTS.md` §17 and `AI_WORK_POLICY.md`. Effective 2026-10-21. |
 | 16.0.0 | 2026-10-21 | ACTIVE | MAJOR | §23.21 "The cutover standard — fixed, dry run, regression tests, one live run" added, rebuilt from 8.0.0 (PR #1727, closed unratified) on the operator's word 2026-10-21 "yes rebuild 1727". Operator ruling 2026-10-14 ~11:05 ET, verbatim: "new standards apply when i say so fix and dry and regression testing, yes it should run live successful to many road blocks to testing". An n8n lane is cutover-ready when (1) its defect is fixed and served, (2) its n8n dry run passes (a forced `dry_run` fire counts; no natural shadow slot), (3) its lane regression tests pass under `TRADE_AI_CI=1`, (4) it has at least one successful `live` n8n run with the cron line still present under the shared lock: the dispatcher's slot, or an operator-forced in-window live fire (`OPERATOR_FORCED_LIVE` in `scripts/n8n_cutover_checklist.py`; never a gate override; never an agent-forced F09 live run, §23.25). Procedure: `scripts/n8n_cutover_wave.py` canary rows, `comment-cron` retirement as `# RETIRED <date> n8n-cutover <lane>` (the commented line is the fallback), then the dispatcher-row PR. Multi-day soaks removed; operator waivers recorded verbatim. While PROPOSED, §8.1, §23.3, §23.12, §23.14 and §23.23 were byte-identical; the ratifying edit replaced five quoted clauses (the §23.3 and §23.14 `trade-ai-scalp-live` 3-day fallback, the §8.1 natural-evidence gate list, a §23.12 pointer, the §23.23 (4) citation) whose digests `tests/test_agents_policy_16_0_0_cutover_standard.py` pins. §0, §2, §2A, §7A, §17, §22 and the adapters byte-identical. MAJOR: removes a 4.0.0 restriction; §23.14 changes by one clause at ratification (permitted to a new MAJOR outside a program window; window closed 2026-10-12). Header block 16.0.0 PROPOSED, `Effective-Date` PENDING, `Supersedes` 15.0.0 while PROPOSED; the ratifying edit set it to 16.0.0 ACTIVE, `Effective-Date` 2026-10-21, `Supersedes` 15.0.0. Numbered 16.0.0 after 15.0.0 (PR #1852, ACTIVE). | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1416ab9f240a69def0523dd125afbc18` (operator, PR #1911 comment by PatsKiller 2026-10-22T02:33:20Z, https://github.com/PatsKiller/tardeai/pull/1911#issuecomment-6331278599, verbatim: "APPROVE_AGENTS_POLICY_16_0_0 1911 527a9bdc1416ab9f240a69def0523dd125afbc18"); ratified by this edit on #1911's branch, which replaced the five clauses quoted in §23.21; approval phrase as proposed `APPROVE_AGENTS_POLICY_16_0_0 <pr_number> <head_sha>`; per-PR word, because it changes `AGENTS.md`. Effective 2026-10-21. |

@@ -66,8 +66,10 @@ portfolio_live_monitor.py ran into its 300 s timeout). A lock skip is recorded a
 `lock_skipped`, not as a failure — cron's `flock -n` was silent about it; this
 is louder. A timeout IS a failure.
 
-Processes a step leaves behind in its process group (fire-and-forget children,
-e.g. pipeline_watchdog.py's detached symbol_enrichment.py runs) are given
+Each step receives its effective (clamped) timeout as HEALTH_TICK_STEP_TIMEOUT_S.
+
+Processes a step leaves behind in its process group (legacy fire-and-forget
+children that the step does not wait for) are given
 `orphan_wait_s` to finish and are then terminated and recorded in the row as
 `orphans`. Under cron they outlived the parent; inside this oneshot unit systemd
 SIGTERMs them when the tick exits, they outlived the 90 s stop timeout, and the
@@ -123,7 +125,13 @@ EXIT_STEP_FAILED = 1          # the tick is broken (a step crashed / timed out /
 EXIT_TICK_BROKEN = EXIT_STEP_FAILED
 EXIT_CANNOT_RUN = 2
 # Below the unit's TimeoutStartSec=330 with room for one kill grace + the receipt.
+# TIME SETTINGS — docs/ops/PIPELINE_TIME_SETTINGS.md. Do not change without measured
+# runtime evidence: 300 + KILL_GRACE_S 10 + receipt < 330 is pinned by
+# tests/test_pipeline_time_settings_20261022.py.
 DEFAULT_TICK_DEADLINE_S = 300.0
+# Grace for LEGACY fire-and-forget children only. Do not "fix" a step whose children
+# need longer by raising this: it is paid once per step on the shared 300s tick.
+# Make the step supervise its children instead (pipeline_watchdog.py, 2026-10-22).
 DEFAULT_ORPHAN_WAIT_S = 30.0
 MIN_STEP_WINDOW_S = 5.0
 EXIT_SEMANTICS = ("0=tick completed (findings, if any, in `findings`/status=unhealthy); "
@@ -379,7 +387,12 @@ def run_step(step: dict[str, Any], *, py: str, project_root: Path, default_timeo
     started = time.monotonic()
     out = err = b""
     try:
-        proc = subprocess.Popen(cmd, cwd=str(project_root), env=_env_for(step, project_root),
+        env = _env_for(step, project_root)
+        # The step's effective (clamped) timeout, so a step that supervises its own
+        # children (pipeline_watchdog.py's enrichment batch) can finish them before
+        # this timeout kills it. docs/ops/PIPELINE_TIME_SETTINGS.md
+        env["HEALTH_TICK_STEP_TIMEOUT_S"] = f"{timeout_s:.1f}"
+        proc = subprocess.Popen(cmd, cwd=str(project_root), env=env,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                 start_new_session=True)
         row["ran"] = True

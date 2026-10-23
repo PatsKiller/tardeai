@@ -24,11 +24,11 @@ const OUT = path.join(__dirname, 'screenshots', 'ui-audit', THEME ? `${DIR}-${TH
 const ROUTES: Array<{ path: string; slug: string; tabs?: string[] }> = [
   { path: '/', slug: 'home' },
   { path: '/portfolio', slug: 'portfolio', tabs: ['Holdings', 'Allocation', 'Look-through', 'Returns', 'Dividends', 'Forecast', 'Tax', 'Redeploy', 'Stop Management'] },
-  { path: '/trading', slug: 'trading', tabs: ['Trade AI', 'Options', 'Open Trades', 'Proposals', 'Entry Desk', 'Execution', 'Broker Recon', 'Scalp', 'ATM Controls', 'Broker Orders', 'Schwab Accounts'] },
+  { path: '/trading', slug: 'trading', tabs: ['Trade AI', 'Options', 'Open Trades', 'Proposals'] },
   { path: '/watch', slug: 'watch', tabs: ['Intelligence', 'Watchpool', 'Sectors', 'Pullback'] },
   { path: '/watch/intelligence/DELL', slug: 'symbol-DELL' },
   { path: '/risk', slug: 'risk', tabs: ['Exposure', 'Correlation', 'Regime', 'Recovery'] },
-  { path: '/active-trader', slug: 'active-trader' },
+  { path: '/active-trader', slug: 'active-trader', tabs: ['Alerts', 'Scalp'] },
   { path: '/journal', slug: 'journal' },
   { path: '/cio', slug: 'cio', tabs: ['Overview', 'Decisions', 'Research', 'Capital & Policy', 'Evidence & Comms'] },
   { path: '/advisory', slug: 'advisory' },

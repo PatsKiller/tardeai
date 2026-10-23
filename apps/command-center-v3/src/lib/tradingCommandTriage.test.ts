@@ -34,6 +34,7 @@ console.log('tradingCommandTriage')
   check('V sample on unprot', Boolean(chips.find(c => c.id === 'unprotected_priority')?.samples?.includes('V')))
   check('route ready count 2', chips.find(c => c.id === 'route_ready')?.count === 2)
   check('recon count 3', chips.find(c => c.id === 'recon_break')?.count === 3)
+  check('recon opens the Open Trades reconciliation drawer', chips.find(c => c.id === 'recon_break')?.tab === 'Open Trades' && chips.find(c => c.id === 'recon_break')?.params?.drawer === 'recon')
   // paper pending suppressed when queue has action items
   check('no paper when queue active', !ids.includes('paper_pending'))
 }
@@ -50,6 +51,24 @@ console.log('tradingCommandTriage')
 {
   const chips = buildTradingTriage({})
   check('empty sources → no fake clear', chips.length === 0)
+}
+
+// Open Trades audit 2026-10-22: funds, tiny positions and write-offs are never "unprotected"; near-stop
+// samples are the positions actually near a stop (flag `stop_near`), never the first rows.
+{
+  const chips = buildTradingTriage({
+    intelSummary: { risk_counts: { near_stop: 1 } },
+    intelPositions: [
+      { symbol: 'SCHD', operator_priority: 'critical', protection_state: 'unprotected', risk_flags: ['no_protection'] },
+      { symbol: 'AMANX', operator_priority: 'high', protection_state: 'unprotected', risk_flags: ['no_protection'], stop_eligible: false, is_unstoppable_fund: true },
+      { symbol: 'VSMALL', operator_priority: 'high', protection_state: 'unprotected', risk_flags: ['no_protection'], small_position: true },
+      { symbol: 'SRNE', operator_priority: 'high', protection_state: 'unprotected', risk_flags: ['no_protection'], worthless: true },
+      { symbol: 'XLB', operator_priority: 'low', protection_state: 'protected', risk_flags: ['stop_near'], protection: { stop_near: true } },
+    ],
+  })
+  const unprot = chips.find(c => c.id === 'unprotected_priority')
+  check('unprotected excludes fund / small / write-off', unprot?.count === 1 && unprot?.samples?.join() === 'SCHD')
+  check('near-stop samples are the near rows', chips.find(c => c.id === 'near_stop')?.samples?.join() === 'XLB')
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)
