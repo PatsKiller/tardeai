@@ -11,6 +11,8 @@ import ScalpStopMonitorCard from '../components/ScalpStopMonitorCard'
 import { riskContributionRows } from '../lib/riskMath'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
+import { accountFullName } from '../lib/holdingsRowModel'
+import { clipAtWord } from '../lib/clipText'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -124,8 +126,11 @@ export default function RiskHub({ onDrill }: Props) {
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={hubTitle(overThreshold ? '#ef4444' : undefined)}>Risk Hub</div>
-          <div style={{ ...hubSubtitle(terminalUi), color: overThreshold ? '#ef4444' : undefined }}>
-            heat {heat}%{overThreshold ? ' — over threshold' : ''} · {positions.length} positions
+          <div style={{ ...hubSubtitle(terminalUi), color: overThreshold ? '#ef4444' : undefined }}
+            title={'Risk-tracked positions: risk_management.json rows that are not risk_excluded (same rule as /api/v2/risk). '
+              + 'Other pages count other scopes (Home classic: non-cash holdings over $100; Portfolio: every holding row, per account), '
+              + 'so the numbers differ by design.'}>
+            heat {heat}%{overThreshold ? ' — over threshold' : ''} · {positions.length} risk-tracked positions
           </div>
         </div>
         <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
@@ -399,13 +404,15 @@ export default function RiskHub({ onDrill }: Props) {
               onClick={() => onDrill({ title: `${item.symbol} Recovery`, subtitle: item.analyst_verdict, endpoint: '/api/v2/recovery', rows: [item] })}
               style={{ padding: '10px 10px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>{item.symbol}</span> <ProAnalystPill symbol={item.symbol} map={paMap} compact />
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)' }}>{item.symbol}
+                  {item.account ? <span style={{ fontSize: 10, fontWeight: 500, color: 'var(--text3)', marginLeft: 6 }}>{accountFullName(String(item.account))}</span> : null}
+                </span> <ProAnalystPill symbol={item.symbol} map={paMap} compact />
                 <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 4,
                   background: item.analyst_verdict === 'reentry_candidate' ? 'rgba(34,197,94,.1)' : 'rgba(245,158,11,.1)',
                   color: item.analyst_verdict === 'reentry_candidate' ? '#22c55e' : '#f59e0b',
                 }}>{item.analyst_verdict?.replace(/_/g, ' ')}</span>
               </div>
-              <div style={{ fontSize: 10, color: 'var(--text2)', marginBottom: 4 }}>{item.analyst_summary?.slice(0, 150)}</div>
+              <div style={{ fontSize: 10, color: 'var(--text2)', marginBottom: 4 }} title={item.analyst_summary || undefined}>{clipAtWord(item.analyst_summary, 150)}</div>
               <div style={{ fontSize: 9, color: 'var(--text3)' }}>Exit: ${item.exit_price} on {item.stopped_out_at} · {item.reason}</div>
             </div>
           ))}
