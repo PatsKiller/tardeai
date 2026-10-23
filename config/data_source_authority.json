@@ -4067,6 +4067,26 @@
           },
           "role": "retiring",
           "how": "fold into trade_ai_scans run_type; archive + tripwire"
+        },
+        {
+          "store": {
+            "file": "runtime/scalp_focus_list.json"
+          },
+          "role": "derived",
+          "how": "scalp FOCUS list (2026-10-23, operator \"critiqued at least the top 20\"): the ranked top N (<=30) of the scalp hot list's pool with hysteresis and entry reasons, re-ranked each closed 1-min candle; one writer scripts/active_trader/premarket_watch.py via scripts/lib/scalp_focus.py; readers lib.data_broker.scalp_list.get_focus_list, AT alerts API focus_list, the Hermes critique gate; proposed",
+          "match": [
+            "scalp_focus_list.json"
+          ]
+        },
+        {
+          "store": {
+            "file": "runtime/scalp_focus_events.jsonl"
+          },
+          "role": "history",
+          "how": "focus list ENTER / LEAVE / HOLD events with reasons (ScalpFocusEvent@v1), append-only; same writer; proposed",
+          "match": [
+            "scalp_focus_events.jsonl"
+          ]
         }
       ],
       "primary_provider": "internal",
@@ -4745,6 +4765,16 @@
           "how": "Gate 4 unified momentum alert ledger (2026-10-22): shadow builds and live thread roots (first message id per chat), one writer scripts/lib/unified_momentum_alert.py; proposed, folds into alert_events at grant",
           "match": [
             "unified_momentum_alerts.jsonl"
+          ]
+        },
+        {
+          "store": {
+            "file": "active_trader/momentum_alerts_premarket_1m.jsonl"
+          },
+          "role": "history",
+          "how": "premarket 1-minute cadence journal (2026-10-23): per-minute lifecycle state changes (PremarketCadence@v1) and tick summaries; one writer scripts/active_trader/premarket_watch.py; the alert itself is the unified ledger row; proposed",
+          "match": [
+            "momentum_alerts_premarket_1m.jsonl"
           ]
         }
       ],

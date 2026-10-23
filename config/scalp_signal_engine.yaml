@@ -317,6 +317,39 @@ active_trader_premarket:
   # explicit UNVALIDATED heads-up with no CIO chrome; hold = journal only; off = pre-10-14 behaviour.
   evidence_gate: downgrade
   evidence_min_passed: 5
+  # operator 2026-10-23: "I agree for every minute, because on manually, I do a 1 minute candle check."
+  # cadence_mode: legacy = today's 5-min throttled heads-up only | shadow = legacy still sends; the 1-minute
+  # threaded lifecycle on the focus list is logged beside it (unified ledger SHADOW_LOGGED) | live = the threaded
+  # lifecycle is sent instead of the throttled heads-up (state change -> in-thread reply; same state never re-sent).
+  # Compare a session first: python3 scripts/premarket_cadence_compare.py --day YYYY-MM-DD
+  # Doc: docs/implementation/PREMARKET_1MIN_THREADED.md. Thresholds below are v1 priors (operator-ratified).
+  cadence_mode: shadow
+  settle_s: 6
+  legacy_grid_min: 5
+  approach_pct: 3.0
+  arm_pct: 0.75
+  arm_vol_mult: 1.2
+  trigger_vol_mult: 1.5
+  extended_pct: 5.0
+  pullback_pct: 2.0
+  stand_down_vwap_bars: 2
+  max_msgs_per_symbol_hour: 6
+  reopen_after_min: 10           # after a STAND DOWN, no new pre-trigger state for 10 min
+  direct_book_max: 8
+
+# Scalp FOCUS list (operator 2026-10-23: "critiqued at least the top 20 ... a mechanism that's bringing stuff in and
+# out of the top 20. Or the top 30"). Ranks the scalp hot list's pool every minute (scripts/lib/scalp_focus.py):
+# enter at rank <= size; leave after exit_minutes consecutive minutes below ceil(exit_rank_mult x size), or on
+# stand-down; never while ARMED / TRIGGERED. critique_gate focus = Hermes scalp research only for focus names while
+# the list is fresh (fresh_s); all = unchanged.
+scalp_focus:
+  size: 20                     # hard max 30
+  exit_rank_mult: 1.5
+  exit_minutes: 5
+  displace_margin_mult: 0.5    # a full list swaps a member out only when an entrant outranks it by >= 0.5 x size
+  critique_gate: focus
+  fresh_s: 180
+  weights: {rvol: 0.25, change: 0.20, rotation: 0.15, l2: 0.10, tape: 0.10, evidence: 0.10, recency: 0.10}
 
 # ── Active Trader doctrine: session review + automated mode (SIMULATION ONLY) ──
 # operator 2026-10-05: "build this methodology in as a soul and its foundation … both the option for
