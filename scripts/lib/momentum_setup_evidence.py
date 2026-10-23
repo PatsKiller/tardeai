@@ -595,3 +595,215 @@ def enrich_active_trader_notification(
         appendix = html.escape(appendix)
     out = message.rstrip() + "\n\n" + appendix
     return out if len(out.encode("utf-16-le")) // 2 <= 4000 else message
+
+
+# ── Setup readiness: ONE "driven by / ready / missing" object (operator 2026-10-23) ──────────────────────────────
+#
+# Operator 2026-10-23 08:54 (SAIQ): the Active Trader alert said "catalyst: none found (Hermes researched 08:25 —
+# no clear catalyst) · Verified catalyst: FAILED" while the Trade AI Opportunities row printed a Yahoo headline as
+# THE catalyst. Both read the same scan row (catalyst_verified=false, confidence 0.0); they rendered it two ways.
+# Every surface that says why a symbol is (not) ready — the Trade AI page (/api/v2/trade-ai/scanner rows), the
+# Shared Momentum projection, the Active Trader alert and the Gate 4 unified alert — builds this object from a
+# MomentumSetupEvidence@v1 block with :func:`setup_readiness` and prints it with :func:`format_readiness`, so two
+# surfaces cannot disagree about what drove a setup or what it is missing. Pure; no I/O, no clock beyond the
+# evidence's own. READ_ONLY_ADVISORY: "ready" means "all five source facts proven", never an approval or an order.
+
+READINESS_SCHEMA = "SetupReadiness@v1"
+
+#: catalyst_verdict statuses, strongest first.
+CATALYST_VERDICTS = ("VERIFIED", "HERMES_FOUND", "UNVERIFIED_HEADLINE", "NONE_FOUND", "UNKNOWN")
+
+_CATALYST_LABEL = {
+    "VERIFIED": "verified catalyst",
+    "HERMES_FOUND": "Hermes catalyst (not source-verified)",
+    "UNVERIFIED_HEADLINE": "unverified headline",
+    "NONE_FOUND": "no catalyst found",
+    "UNKNOWN": "catalyst not checked",
+}
+
+
+def _hhmm(value):
+    text = str(value or "")
+    return text[11:16] if len(text) >= 16 and text[10] in "T " else None
+
+
+def catalyst_verdict(catalyst, hermes=None):
+    """One catalyst verdict from the evidence's catalyst block plus today's Hermes scalp research record.
+
+    ``catalyst``: MomentumSetupEvidence@v1 ``catalyst`` (text, source, reported_verified, verification_status,
+    model_confidence). ``hermes``: a lib.hermes_scalp_catalyst_record / data_broker.scalp_list record
+    (status FOUND | NONE_FOUND | NOT_RESEARCHED | STORE_MISSING, catalyst_type, summary, researched_at) or None.
+
+    A headline is never presented as the catalyst unless it is SOURCE_VERIFIED: a scan headline the scan itself
+    marked unverified is ``UNVERIFIED_HEADLINE`` and keeps its text so a surface can show it *labelled*."""
+    cat = catalyst if isinstance(catalyst, dict) else {}
+    rec = hermes if isinstance(hermes, dict) else {}
+    text = _text(cat.get("text"))
+    source = _text(cat.get("source"), 120)
+    reported = cat.get("reported_verified") if isinstance(cat.get("reported_verified"), bool) else None
+    conf = _number(cat.get("model_confidence"))
+    h_status = rec.get("status") if isinstance(rec.get("status"), str) else None
+    h_at = _hhmm(rec.get("researched_at"))
+    h_summary = _text(rec.get("summary"), 160)
+    h_type = _text(rec.get("catalyst_type"), 60)
+    if h_status == "FOUND":
+        hermes_note = f"Hermes{(' ' + h_at) if h_at else ''}: {h_type or 'catalyst'}" + (
+            f" — {h_summary}" if h_summary else "")
+    elif h_status == "NONE_FOUND":
+        hermes_note = f"Hermes{(' ' + h_at) if h_at else ''}: no clear catalyst (no primary source)"
+    elif h_status == "NOT_RESEARCHED":
+        hermes_note = "Hermes: not in today's research"
+    elif h_status == "STORE_MISSING":
+        hermes_note = "Hermes: no research today"
+    else:
+        hermes_note = None
+    if cat.get("verification_status") == "SOURCE_VERIFIED" and text:
+        status, why = "VERIFIED", f"source-verified ({source or 'source —'})"
+    elif text:
+        status = "UNVERIFIED_HEADLINE"
+        if reported is False:
+            why = f"scan marked it NOT verified ({source or 'source —'}" + (
+                f", confidence {conf:g})" if conf is not None else ")")
+        elif reported is True:
+            why = (f"scan reports it verified but gives no source URL / publication time / method to prove it "
+                   f"({source or 'source —'})")
+        else:
+            why = f"no source verification reported ({source or 'source —'})"
+    elif h_status == "FOUND":
+        status, why = "HERMES_FOUND", "Hermes research only, no primary-source match"
+    elif h_status == "NONE_FOUND":
+        status, why = "NONE_FOUND", "scan had no headline"
+    else:
+        status, why = "UNKNOWN", "scan had no headline"
+    return {
+        "status": status,
+        "label": _CATALYST_LABEL[status],
+        "verified": status == "VERIFIED",
+        "text": text if status != "HERMES_FOUND" else (h_summary or h_type),
+        "source": source if status != "HERMES_FOUND" else "hermes",
+        "reason": "; ".join(x for x in (why, hermes_note) if x),
+        "hermes_status": h_status,
+        "hermes_researched_at": rec.get("researched_at") if isinstance(rec.get("researched_at"), str) else None,
+        "model_confidence": conf,
+    }
+
+
+def _fmt_value(pillar_id, value):
+    if value is None:
+        return "—"
+    if pillar_id == "float":
+        return f"{value:,.2f}M"
+    if pillar_id == "rvol":
+        return f"{value:.1f}x"
+    if pillar_id == "gap":
+        return f"{value:+.1f}%"
+    if pillar_id == "price":
+        return f"{value:,.2f}"
+    return str(value)
+
+
+def _fmt_rule(pillar):
+    t = pillar.get("threshold") or {}
+    pid = pillar.get("id")
+    if pid == "catalyst":
+        return "verified, current session"
+    if pid == "price" and t.get("min") is not None and t.get("max") is not None:
+        return f"{t['min']:g}–{t['max']:g}"
+    if pid == "float" and t.get("max") is not None:
+        return f"≤ {t['max']:g}M"
+    if pid == "rvol" and t.get("min") is not None:
+        return f"≥ {t['min']:g}x"
+    if pid == "gap" and t.get("min_abs") is not None:
+        return f"|gap| ≥ {t['min_abs']:g}%"
+    return ", ".join(f"{k} {v}" for k, v in t.items() if k != "unit") or "—"
+
+
+_PILLAR_SHORT = {"price": "price", "float": "float", "rvol": "RVOL", "gap": "gap", "catalyst": "verified catalyst"}
+
+
+def setup_readiness(evidence, *, hermes=None, veto_reasons=None):
+    """The SetupReadiness@v1 object: what drove the setup, whether it is ready, and exactly what is missing.
+
+    ``evidence``: a MomentumSetupEvidence@v1 block (:func:`build_setup_evidence`). ``hermes``: today's Hermes
+    research record for the symbol (optional). ``veto_reasons``: the Active Trader verdict's veto codes (optional;
+    reported as blockers, never recomputed). Ready = all five source facts PASSED and no veto; UNKNOWN when there
+    is no evidence block at all. Never raises."""
+    if not isinstance(evidence, dict) or not isinstance(evidence.get("pillars"), list):
+        return {
+            "schema": READINESS_SCHEMA, "status": "UNKNOWN", "ready": None, "passed": None, "required": 5,
+            "driven_by": [], "missing": ["no same-session momentum evidence"], "blockers": [],
+            "catalyst": catalyst_verdict(None, hermes), "summary": "UNKNOWN — no same-session momentum evidence",
+            "as_of": None, "source_name": None, "authority": "READ_ONLY_ADVISORY",
+        }
+    cat = catalyst_verdict(evidence.get("catalyst"), hermes)
+    driven, missing = [], []
+    for p in evidence["pillars"]:
+        if not isinstance(p, dict):
+            continue
+        pid = p.get("id")
+        status = str(p.get("status") or "UNKNOWN").upper()
+        name = _PILLAR_SHORT.get(pid, str(p.get("label") or pid))
+        value = _number(p.get("value")) if pid != "catalyst" else None
+        rule = _fmt_rule(p)
+        item = {
+            "id": pid, "label": name, "status": status, "value": p.get("value"),
+            "value_text": cat["label"] if pid == "catalyst" else _fmt_value(pid, value),
+            "rule": rule, "observed_at": p.get("observed_at"),
+        }
+        driven.append(item)
+        if status == "PASSED":
+            continue
+        if pid == "catalyst":
+            missing.append(f"verified catalyst: {cat['label']}" + (f" — {cat['reason']}" if cat["reason"] else ""))
+        elif status == "FAILED":
+            missing.append(f"{name} {item['value_text']} fails {rule}")
+        else:
+            missing.append(f"{name}: not observed this session (needs {rule})")
+    passed = sum(1 for d in driven if d["status"] == "PASSED")
+    required = evidence.get("required_count") if isinstance(evidence.get("required_count"), int) else 5
+    blockers = [str(v) for v in (veto_reasons or []) if isinstance(v, str) and v]
+    ready = passed >= required and not blockers
+    status = "READY" if ready else "NOT_READY"
+    gap_text = f"needs {required}/{required}, has {passed}/{required}"
+    if ready:
+        summary = f"READY — {passed}/{required} source facts proven"
+    else:
+        parts = [gap_text]
+        if missing:
+            parts.append("missing: " + "; ".join(missing))
+        if blockers:
+            parts.append("Active Trader veto: " + ", ".join(b.replace("_", " ").lower() for b in blockers))
+        summary = "NOT READY — " + " · ".join(parts)
+    return {
+        "schema": READINESS_SCHEMA,
+        "status": status,
+        "ready": ready,
+        "passed": passed,
+        "required": required,
+        "driven_by": driven,
+        "missing": missing,
+        "blockers": blockers,
+        "catalyst": cat,
+        "summary": summary,
+        "as_of": (evidence.get("catalyst") or {}).get("observed_at") if isinstance(evidence.get("catalyst"), dict) else None,
+        "source_name": evidence.get("source_name"),
+        "authority": "READ_ONLY_ADVISORY",
+    }
+
+
+def format_readiness(readiness):
+    """Two plain lines for a notification: "Driven by: …" and "Ready: YES|NO — …". Same text on every surface."""
+    if not isinstance(readiness, dict):
+        return ["Ready: UNKNOWN — no same-session momentum evidence"]
+    marks = {"PASSED": "✓", "FAILED": "✗"}
+    driven = " · ".join(
+        f"{d['label']} {d['value_text']} ({d['rule']}) {marks.get(d['status'], '?')}"
+        for d in readiness.get("driven_by") or [] if isinstance(d, dict)
+    )
+    lines = [f"Driven by: {_safe_line(driven)}"] if driven else []
+    status = readiness.get("status")
+    head = "YES" if status == "READY" else "NO" if status == "NOT_READY" else "UNKNOWN"
+    summary = str(readiness.get("summary") or "")
+    tail = summary.split(" — ", 1)[1] if " — " in summary else summary
+    lines.append(f"Ready: {head} — {_safe_line(tail)}")
+    return lines

@@ -348,6 +348,38 @@ class InstrumentRecordStore:
         proj[key] = row
         return row
 
+    def upsert_prospect(self, record: dict[str, Any], *,
+                        backend: Optional["ProspectPgBackend"] = None,
+                        registry: Optional[dict[str, Any]] = None,
+                        env: Optional[dict[str, str]] = None,
+                        lifecycle_events: Iterable[dict[str, Any]] = ()) -> dict[str, Any]:
+        """The single write path for a CIO prospect (AGENTS.md §26.1).
+
+        ``lifecycle_events`` (``cio_prospect_lifecycle.lifecycle_events``) are appended to ``cio_prospect_events`` in
+        the same transaction, one idempotent row per fact (entry fill, observed stop change, exit fill, review ...).
+
+        jsonl append first (the store of record in P1), then the Postgres dual-write when —
+        and only when — ``prospect_store_status`` is live (row granted + operator flag + table
+        present). Returns ``{"row": <jsonl row>, "pg": {...}}``; ``pg.mode`` is ``inert`` with
+        its reasons until the operator's grants land. A Postgres failure never loses the jsonl
+        write and is reported, never swallowed.
+        """
+        if not is_prospect_record(record):
+            raise ProspectInvalid("upsert_prospect takes a record that passed apply_prospect")
+        table_row = prospect_row(record)                  # validate before any write
+        prior = self.load(str(record.get("subject_key") or ""))
+        stored = self.upsert(record)
+        status = prospect_store_status(registry=registry, env=env,
+                                       table_probe=(backend.table_present if backend else None))
+        pg: dict[str, Any] = dict(status)
+        if status["live"] and backend is not None:
+            event = prospect_event(prospect_row(prior) if is_prospect_record(prior) else None, table_row)
+            try:
+                pg.update(backend.write(table_row, event, list(lifecycle_events)))
+            except Exception as exc:  # noqa: BLE001
+                pg.update({"ok": False, "error": f"{type(exc).__name__}: {exc}"[:200]})
+        return {"row": stored, "pg": pg}
+
 
 def thesis_summary(record: Optional[dict[str, Any]]) -> dict[str, Any]:
     """Operator-facing thesis slice recovered from a record version."""
@@ -810,3 +842,473 @@ def stamp_last_artifact_id(
     except Exception as exc:  # noqa: BLE001
         out["reason"] = f"{type(exc).__name__}: {exc}"[:200]
         return out
+
+
+# ── CIO prospect: InstrumentRecord@v1 extended (AGENTS.md §26, §13.5) ─────────
+#
+# 18.0.0 (ACTIVE) makes the CIO prospect record the single per-security truth:
+# one row per security_guid, written only by THIS store. The prospect is not a
+# new type — it is InstrumentRecord@v1 with the §4 fields of
+# docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md added at the top level of
+# the record, through `apply_prospect`, a named rail beside `apply_cognition`
+# and `apply_belief`. MBI_BEHAVIOR = 0 is unchanged: the rail refuses any
+# BEHAVIOR_FIELDS key anywhere in the block, outright, never filtered. Stance is
+# posture and priority; next_trigger is a reference level, never an order.
+#
+# P1 (shadow): the jsonl stays the store of record. The Postgres table
+# `cio_prospect` (migrations/2026_10_22_cio_prospect.sql, NOT applied) receives
+# a dual-write only when `prospect_store_status()` says live: the registry row is
+# granted (domains[], with an approval), the operator's flag is set, and the
+# table exists. Until all three hold the dual-write is inert and says why.
+
+PROSPECT_SCHEMA = "CIOProspect@v1-ext"          # field-set tag on the record; the type stays InstrumentRecord@v1
+PROSPECT_DOMAIN = "cio_prospect"
+PROSPECT_TABLE = "cio_prospect"
+PROSPECT_EVENTS_TABLE = "cio_prospect_events"
+PROSPECT_WRITER = "InstrumentRecordStore"
+PROSPECT_DUAL_WRITE_ENV = "TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE"
+
+PROSPECT_STAGES = ("watching", "setup_forming", "actionable", "proposed", "held", "exit", "re_entry")
+PROSPECT_STANCES = ("BUY_SETUP", "ADD", "HOLD", "TRIM_REVIEW", "EXIT_REVIEW", "WATCH", "AVOID")
+CONVICTION_COMPONENTS = (
+    "unified_edge", "fused_score", "catalyst_grade", "thesis_quality", "risk_reward", "regime_fit",
+    "opportunity_score", "hermes_score", "scanner_score",
+)
+PROSPECT_FIELDS = (
+    "security_guid", "issuer_guid", "aliases", "stage", "stage_phase", "stage_changed_at", "stage_evidence",
+    "conviction", "conviction_components", "stance", "catalyst_grade", "next_trigger", "whats_missing",
+    "next_action", "research", "position_ref", "watchlist", "conflicts", "evidence_at", "expires_at",
+    "provenance",
+    # Operator 2026-10-22 (NAVN): where a position came from, its lifecycle, why it ended and when to get back in —
+    # on the same record (scripts/lib/cio_prospect_lifecycle.py builds them; observed facts, never behaviour).
+    "origin", "position_lifecycle", "post_exit_review", "reentry_advice",
+)
+# held -> exit (exit_review) -> re_entry (re_entry_watch): display phases inside the §26.1 stages.
+PROSPECT_STAGE_PHASES = ("exit_review", "re_entry_watch")
+PROSPECT_EVENT_TYPES = (
+    "mint", "update", "stage_change", "conflict_opened", "conflict_resolved", "rollback",
+    "origin_attributed", "entry_fill", "stop_change", "conviction_change", "excursion", "exit_fill",
+    "exit_review", "reentry_advice",
+)
+# The fields a prospect write must carry (DATA_DICTIONARY.md CIOProspect, "Required").
+PROSPECT_REQUIRED = ("security_guid", "issuer_guid", "stage", "conviction", "stance", "evidence_at", "expires_at")
+
+
+class ProspectInvalid(ValueError):
+    """A prospect block that would not be a truthful record (bad enum, no identity, no expiry)."""
+
+
+def _parse_ts(value: Any) -> Optional[datetime]:
+    if value in (None, ""):
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _is_uuid(value: Any) -> bool:
+    import uuid
+    try:
+        uuid.UUID(str(value))
+        return True
+    except (TypeError, ValueError, AttributeError):
+        return False
+
+
+def conviction_from_components(components: Optional[dict[str, Any]]) -> Optional[float]:
+    """The conviction, reproduced from its named components (weighted mean, 0–100).
+
+    Each component is ``{"value": 0..100, "weight": w (default 1), "source", "evidence_at"}``.
+    A component with ``value`` None is carried (so "missing" is visible) and does not vote.
+    Returns None when no component votes — a conviction with no evidence is not a number.
+    """
+    num = 0.0
+    den = 0.0
+    for comp in (components or {}).values():
+        if not isinstance(comp, dict) or comp.get("value") is None:
+            continue
+        try:
+            v = float(comp["value"])
+            w = float(comp.get("weight", 1.0))
+        except (TypeError, ValueError):
+            continue
+        if w <= 0:
+            continue
+        num += max(0.0, min(100.0, v)) * w
+        den += w
+    if den <= 0:
+        return None
+    return round(num / den, 2)
+
+
+def unified_edge_component(ctx: dict[str, Any], *, source: str, evidence_at: Any,
+                           weight: float = 1.0) -> dict[str, Any]:
+    """Persist the unified edge as a conviction component (DATA_DICTIONARY.md "unified edge").
+
+    The number was computed in memory inside auto_proposal_generator and never stored;
+    nobody could replay it. Here it is computed with the SAME function
+    (``unified_edge_score.edge_from_trade_context``) and stored with its inputs, so it
+    is inspectable and reproducible. Inputs are scores and ratios only — a BEHAVIOR key
+    in ``ctx`` raises (MBI_BEHAVIOR = 0).
+    """
+    bad = sorted(k for k in _walk_keys(ctx or {}) if k in BEHAVIOR_FIELDS)
+    if bad:
+        raise BehaviorWriteRefused(f"MBI_BEHAVIOR=0: a unified-edge input may not carry {bad}")
+    try:
+        from scripts.unified_edge_score import edge_from_trade_context
+    except ImportError:  # imported with scripts/ on sys.path
+        from unified_edge_score import edge_from_trade_context  # type: ignore
+    inputs = {k: ctx.get(k) for k in (
+        "pop_pct", "iv_rank", "risk_reward", "catalyst_strength", "confidence",
+        "regime_alignment", "technical_score") if ctx.get(k) is not None}
+    return {
+        "value": float(edge_from_trade_context(dict(ctx or {}))),
+        "weight": float(weight),
+        "source": source,
+        "evidence_at": evidence_at,
+        "method": "unified_edge_score.edge_from_trade_context",
+        "inputs": inputs,
+    }
+
+
+def _validate_prospect(rec: dict[str, Any]) -> None:
+    missing = [k for k in PROSPECT_REQUIRED if rec.get(k) in (None, "")]
+    if missing:
+        raise ProspectInvalid(f"prospect is missing {missing}")
+    if not _is_uuid(rec.get("security_guid")) or not _is_uuid(rec.get("issuer_guid")):
+        raise ProspectInvalid("security_guid / issuer_guid must be registry GUIDs (never a placeholder, §7)")
+    if rec.get("stage") not in PROSPECT_STAGES:
+        raise ProspectInvalid(f"stage must be one of {PROSPECT_STAGES}")
+    if rec.get("stance") not in PROSPECT_STANCES:
+        raise ProspectInvalid(f"stance must be one of {PROSPECT_STANCES}")
+    try:
+        conv = float(rec.get("conviction"))
+    except (TypeError, ValueError):
+        raise ProspectInvalid("conviction must be a number 0-100") from None
+    if not 0.0 <= conv <= 100.0:
+        raise ProspectInvalid("conviction must be within 0-100")
+    comps = rec.get("conviction_components") or {}
+    if not isinstance(comps, dict):
+        raise ProspectInvalid("conviction_components must be an object")
+    unknown = sorted(set(comps) - set(CONVICTION_COMPONENTS))
+    if unknown:
+        raise ProspectInvalid(f"unknown conviction components {unknown}")
+    derived = conviction_from_components(comps)
+    if derived is not None and abs(derived - conv) > 0.01:
+        raise ProspectInvalid(
+            f"conviction {conv} is not reproducible from its components ({derived})")
+    ev, ex = _parse_ts(rec.get("evidence_at")), _parse_ts(rec.get("expires_at"))
+    if ev is None or ex is None:
+        raise ProspectInvalid("evidence_at / expires_at must be ISO timestamps")
+    if ex < ev:
+        raise ProspectInvalid("expires_at precedes evidence_at")
+    conflicts = rec.get("conflicts") or []
+    if not isinstance(conflicts, list):
+        raise ProspectInvalid("conflicts must be a list")
+    for c in conflicts:
+        vals = (c or {}).get("values") if isinstance(c, dict) else None
+        if not isinstance(c, dict) or not c.get("field") or not isinstance(vals, list) or len(vals) < 2:
+            raise ProspectInvalid("each conflict names a field and at least two {value, source, at} values")
+        for v in vals:
+            if not isinstance(v, dict) or not v.get("source"):
+                raise ProspectInvalid("each conflicting value names its source")
+    if not isinstance(rec.get("whats_missing") or [], list):
+        raise ProspectInvalid("whats_missing must be a list")
+    if rec.get("stage_phase") is not None and rec.get("stage_phase") not in PROSPECT_STAGE_PHASES:
+        raise ProspectInvalid(f"stage_phase must be one of {PROSPECT_STAGE_PHASES}")
+    origin = rec.get("origin")
+    if origin is not None and (not isinstance(origin, dict) or origin.get("classification") not in (
+            "internal", "operator_initiated")):
+        raise ProspectInvalid("origin.classification is internal or operator_initiated — never null (learning loop)")
+
+
+def apply_prospect(
+    record: dict[str, Any],
+    *,
+    prospect: dict[str, Any],
+    strict: bool = True,
+) -> tuple[dict[str, Any], list[str]]:
+    """Return (updated_record, changed_prospect_fields) or raise.
+
+    The rail, in order: any BEHAVIOR_FIELDS key anywhere in ``prospect`` raises
+    BehaviorWriteRefused; a key outside PROSPECT_FIELDS raises ProspectInvalid (the
+    prospect is a named field set, not a bag); a ``conviction`` the caller omitted is
+    reproduced from ``conviction_components``; the merged record must validate; a
+    stage move must name its evidence; a write that changes nothing is a CognitionNoOp
+    under ``strict``. ``subject_guid`` on the record is an alias of ``security_guid``
+    (identity table) and is mapped into ``aliases``, never a second key.
+    """
+    if not isinstance(prospect, dict):
+        raise ValueError("prospect must be a dict")
+    bad = sorted(k for k in _walk_keys(prospect) if k in BEHAVIOR_FIELDS)
+    if bad:
+        raise BehaviorWriteRefused(f"MBI_BEHAVIOR=0: a prospect may not carry {bad}")
+    extra = sorted(k for k in prospect if k not in PROSPECT_FIELDS)
+    if extra:
+        raise ProspectInvalid(f"not prospect fields: {extra}")
+
+    rec = dict(record)
+    block = dict(prospect)
+    if block.get("conviction") is None and block.get("conviction_components") is not None:
+        block["conviction"] = conviction_from_components(block["conviction_components"])
+
+    changed: list[str] = []
+    prior_stage = rec.get("stage")
+    for k, v in block.items():
+        if rec.get(k) != v:
+            rec[k] = v
+            changed.append(k)
+
+    if "stage" in changed:
+        if prior_stage is not None and not block.get("stage_evidence"):
+            raise ProspectInvalid("a stage move names the evidence that moved it (stage_evidence)")
+        if "stage_changed_at" not in block:
+            rec["stage_changed_at"] = (rec.get("evidence_at") if prior_stage is None else None) or _now()
+
+    aliases = dict(rec.get("aliases") or {})
+    sg = rec.get("subject_guid")
+    if sg:
+        aliases["subject_guid"] = sg
+    if rec.get("subject_key"):
+        aliases["subject_key"] = rec["subject_key"]
+    syms = rec.get("symbols") or []
+    if syms:
+        aliases["symbol"] = syms[0]
+    rec["aliases"] = aliases
+    rec.setdefault("conflicts", [])
+    rec.setdefault("whats_missing", [])
+
+    _validate_prospect(rec)
+    if strict and not changed:
+        raise CognitionNoOp(f"{rec.get('subject_key')}: prospect unchanged — not persisted")
+    rec["prospect_schema"] = PROSPECT_SCHEMA
+    rec["prospect_revision"] = int(record.get("prospect_revision") or 0) + (1 if changed else 0)
+    rec["memory_behavior_influence"] = MBI_BEHAVIOR
+    rec["updated_ts"] = _now()
+    return rec, changed
+
+
+def is_prospect_record(record: Optional[dict[str, Any]]) -> bool:
+    return bool(record) and record.get("prospect_schema") == PROSPECT_SCHEMA
+
+
+def prospect_row(record: dict[str, Any]) -> dict[str, Any]:
+    """The ``cio_prospect`` table row for a prospect-bearing record (validated)."""
+    _validate_prospect(record)
+    syms = record.get("symbols") or []
+    cognition = {k: record.get(k) for k in COGNITION_FIELDS}
+    return {
+        "security_guid": str(record["security_guid"]),
+        "issuer_guid": str(record["issuer_guid"]),
+        "symbol": str((syms[0] if syms else (record.get("aliases") or {}).get("symbol")) or ""),
+        "subject_key": record.get("subject_key"),
+        "aliases": record.get("aliases") or {},
+        "stage": record["stage"],
+        "stage_changed_at": record.get("stage_changed_at"),
+        "stage_evidence": record.get("stage_evidence"),
+        "conviction": round(float(record["conviction"]), 2),
+        "conviction_components": record.get("conviction_components") or {},
+        "stance": record["stance"],
+        "catalyst_grade": record.get("catalyst_grade"),
+        "next_trigger": record.get("next_trigger"),
+        "whats_missing": record.get("whats_missing") or [],
+        "next_action": record.get("next_action"),
+        "thesis_ref": record.get("thesis_ref"),
+        "research": record.get("research"),
+        "position_ref": record.get("position_ref"),
+        "watchlist": record.get("watchlist"),
+        "stage_phase": record.get("stage_phase"),
+        "origin": record.get("origin"),
+        "position_lifecycle": record.get("position_lifecycle"),
+        "post_exit_review": record.get("post_exit_review"),
+        "reentry_advice": record.get("reentry_advice"),
+        "conflicts": record.get("conflicts") or [],
+        "cognition": cognition,
+        "provenance": record.get("provenance") or {},
+        "evidence_at": record["evidence_at"],
+        "expires_at": record["expires_at"],
+        "as_of": record.get("updated_ts") or _now(),
+        "writer": PROSPECT_WRITER,
+        "revision": max(1, int(record.get("prospect_revision") or 1)),
+    }
+
+
+def prospect_event(prior: Optional[dict[str, Any]], row: dict[str, Any]) -> dict[str, Any]:
+    """The append-only ``cio_prospect_events`` row describing prior → row (both table rows)."""
+    if prior is None:
+        etype, change = "mint", {k: row.get(k) for k in ("stage", "stance", "conviction")}
+    else:
+        diff = {k: {"from": prior.get(k), "to": row.get(k)}
+                for k in ("stage", "stance", "conviction", "catalyst_grade", "conflicts", "next_trigger", "expires_at")
+                if prior.get(k) != row.get(k)}
+        n_new, n_old = len(row.get("conflicts") or []), len(prior.get("conflicts") or [])
+        if "stage" in diff:
+            etype = "stage_change"
+        elif n_new > n_old:
+            etype = "conflict_opened"
+        elif n_new < n_old:
+            etype = "conflict_resolved"
+        else:
+            etype = "update"
+        change = diff
+    return {
+        "security_guid": row["security_guid"],
+        "at": row["as_of"],
+        "writer": PROSPECT_WRITER,
+        "event_type": etype,
+        "event_key": f"rev:{row['revision']}",
+        "change": change,
+        "evidence": row.get("stage_evidence"),
+        "revision": row["revision"],
+    }
+
+
+def _registry_doc(registry_path: Path | str | None = None) -> dict[str, Any]:
+    p = (Path(registry_path) if registry_path
+         else Path(__file__).resolve().parents[2] / "config" / "data_source_authority.json")
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def prospect_row_granted(registry: Optional[dict[str, Any]] = None, *,
+                         registry_path: Path | str | None = None) -> bool:
+    """True only when the operator granted the ``cio_prospect`` row (§17): it sits in
+    ``domains[]`` with an ``approval`` naming who approved it. A proposed row is not a grant."""
+    doc = registry if registry is not None else _registry_doc(registry_path)
+    for row in doc.get("domains") or []:
+        if isinstance(row, dict) and row.get("domain") == PROSPECT_DOMAIN:
+            appr = row.get("approval") or {}
+            return bool(isinstance(appr, dict) and str(appr.get("approved_by") or "").strip())
+    return False
+
+
+def prospect_store_status(*, registry: Optional[dict[str, Any]] = None,
+                          env: Optional[dict[str, str]] = None,
+                          table_probe: Any = None) -> dict[str, Any]:
+    """Whether the Postgres dual-write may run, and every reason it may not.
+
+    Three conditions, all required: the registry row is granted; the operator's flag
+    ``TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE=1`` is set; the table exists (``table_probe``,
+    a zero-arg callable returning bool, is only called after the first two hold — so an
+    ungranted store never touches the database).
+    """
+    environ = os.environ if env is None else env
+    reasons: list[str] = []
+    granted = prospect_row_granted(registry)
+    if not granted:
+        reasons.append("registry_row_not_granted")
+    flag = str(environ.get(PROSPECT_DUAL_WRITE_ENV) or "").strip() == "1"
+    if not flag:
+        reasons.append("dual_write_flag_off")
+    table_present: Optional[bool] = None
+    if granted and flag:
+        if table_probe is None:
+            reasons.append("no_table_probe")
+        else:
+            try:
+                table_present = bool(table_probe())
+                if not table_present:
+                    reasons.append("table_absent")
+            except Exception as exc:  # noqa: BLE001
+                table_present = False
+                reasons.append(f"table_probe_failed:{type(exc).__name__}")
+    return {
+        "live": not reasons,
+        "reasons": reasons,
+        "row_granted": granted,
+        "flag": flag,
+        "table_present": table_present,
+        "mode": "dual_write" if not reasons else "inert",
+        "store_of_record": "jsonl",
+        "memory_behavior_influence": MBI_BEHAVIOR,
+    }
+
+
+UPSERT_PROSPECT_SQL = (
+    "INSERT INTO cio_prospect (security_guid, issuer_guid, symbol, subject_key, aliases, stage, stage_changed_at, "
+    "stage_evidence, conviction, conviction_components, stance, catalyst_grade, next_trigger, whats_missing, "
+    "next_action, thesis_ref, research, position_ref, watchlist, stage_phase, origin, position_lifecycle, "
+    "post_exit_review, reentry_advice, conflicts, cognition, provenance, evidence_at, "
+    "expires_at, as_of, writer, revision) VALUES (%(security_guid)s, %(issuer_guid)s, %(symbol)s, %(subject_key)s, "
+    "%(aliases)s, %(stage)s, %(stage_changed_at)s, %(stage_evidence)s, %(conviction)s, %(conviction_components)s, "
+    "%(stance)s, %(catalyst_grade)s, %(next_trigger)s, %(whats_missing)s, %(next_action)s, %(thesis_ref)s, "
+    "%(research)s, %(position_ref)s, %(watchlist)s, %(stage_phase)s, %(origin)s, %(position_lifecycle)s, "
+    "%(post_exit_review)s, %(reentry_advice)s, %(conflicts)s, %(cognition)s, %(provenance)s, %(evidence_at)s, "
+    "%(expires_at)s, %(as_of)s, %(writer)s, %(revision)s) "
+    "ON CONFLICT (security_guid) DO UPDATE SET issuer_guid = EXCLUDED.issuer_guid, symbol = EXCLUDED.symbol, "
+    "subject_key = EXCLUDED.subject_key, aliases = EXCLUDED.aliases, stage = EXCLUDED.stage, "
+    "stage_changed_at = EXCLUDED.stage_changed_at, stage_evidence = EXCLUDED.stage_evidence, "
+    "conviction = EXCLUDED.conviction, conviction_components = EXCLUDED.conviction_components, "
+    "stance = EXCLUDED.stance, catalyst_grade = EXCLUDED.catalyst_grade, next_trigger = EXCLUDED.next_trigger, "
+    "whats_missing = EXCLUDED.whats_missing, next_action = EXCLUDED.next_action, thesis_ref = EXCLUDED.thesis_ref, "
+    "research = EXCLUDED.research, position_ref = EXCLUDED.position_ref, watchlist = EXCLUDED.watchlist, "
+    "stage_phase = EXCLUDED.stage_phase, origin = EXCLUDED.origin, position_lifecycle = EXCLUDED.position_lifecycle, "
+    "post_exit_review = EXCLUDED.post_exit_review, reentry_advice = EXCLUDED.reentry_advice, "
+    "conflicts = EXCLUDED.conflicts, cognition = EXCLUDED.cognition, provenance = EXCLUDED.provenance, "
+    "evidence_at = EXCLUDED.evidence_at, expires_at = EXCLUDED.expires_at, as_of = EXCLUDED.as_of, "
+    "writer = EXCLUDED.writer, revision = EXCLUDED.revision "
+    "WHERE cio_prospect.revision < EXCLUDED.revision"
+)
+INSERT_PROSPECT_EVENT_SQL = (
+    "INSERT INTO cio_prospect_events (security_guid, at, writer, event_type, event_key, change, evidence, revision) "
+    "VALUES (%(security_guid)s, %(at)s, %(writer)s, %(event_type)s, %(event_key)s, %(change)s, %(evidence)s, "
+    "%(revision)s) ON CONFLICT (security_guid, event_key) DO NOTHING"
+)
+_JSON_COLUMNS = ("aliases", "stage_evidence", "conviction_components", "catalyst_grade", "next_trigger",
+                 "whats_missing", "next_action", "research", "position_ref", "watchlist", "conflicts",
+                 "cognition", "provenance", "change", "evidence", "origin", "position_lifecycle",
+                 "post_exit_review", "reentry_advice")
+
+
+def _jsonify(row: dict[str, Any]) -> dict[str, Any]:
+    out = dict(row)
+    for k in _JSON_COLUMNS:
+        if k in out and out[k] is not None:
+            out[k] = json.dumps(out[k], sort_keys=True, default=str)
+    return out
+
+
+class ProspectPgBackend:
+    """Postgres side of the P1 dual-write. ``connect`` is a zero-arg DB-API connection factory.
+
+    One transaction per write: the row upsert (applied only when the revision advances) and
+    its event. Never deletes, never DDL. Called only when ``prospect_store_status`` is live.
+    """
+
+    def __init__(self, connect: Any) -> None:
+        self._connect = connect
+
+    def table_present(self) -> bool:
+        conn = self._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT to_regclass('public.cio_prospect') IS NOT NULL "
+                            "AND to_regclass('public.cio_prospect_events') IS NOT NULL")
+                return bool(cur.fetchone()[0])
+        finally:
+            conn.close()
+
+    def write(self, row: dict[str, Any], event: dict[str, Any],
+              lifecycle: Iterable[dict[str, Any]] = ()) -> dict[str, Any]:
+        conn = self._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(UPSERT_PROSPECT_SQL, _jsonify(row))
+                upserted = cur.rowcount
+                cur.execute(INSERT_PROSPECT_EVENT_SQL, _jsonify(event))
+                appended = cur.rowcount
+                for ev in lifecycle:          # idempotent: one row per fact (event_key)
+                    cur.execute(INSERT_PROSPECT_EVENT_SQL, _jsonify(
+                        {"evidence": None, "revision": row["revision"], **ev}))
+                    appended += cur.rowcount
+            conn.commit()
+            return {"ok": True, "upserted": upserted, "event_appended": appended}
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()

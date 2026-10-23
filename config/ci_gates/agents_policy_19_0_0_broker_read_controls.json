@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agents_policy_19_0_0_broker_read_controls",
+  "files": [
+    "tests/test_agents_policy_19_0_0_broker_read_controls.py"
+  ],
+  "anchor": "AGENTS_POLICY_19_0_0_BROKER_READ_CONTROLS",
+  "comment": [
+    "ANCHOR: AGENTS_POLICY_19_0_0_BROKER_READ_CONTROLS — PROPOSED (MAJOR), operator-applied and operator-committed",
+    "package (agents never edit AGENTS.md): §27 — n8n may schedule the audited read-only broker lanes (host",
+    "execution, every trading lock LOCKED, Schwab read_only, no credential in n8n, never-list unchanged); Ops ->",
+    "Controls (settings in Postgres with history, one governed host applier, safe direction one click, risky",
+    "direction WebAuthn passkey + typed phrase, TOTP recovery only, Telegram notification only; supersedes D3).",
+    "§0/§2/§2A/§7A/§22/§24/§26 pinned; §17/§23.14/§25 change only at ratification by the four clauses §27.5 quotes."
+  ]
+}

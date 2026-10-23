@@ -9,6 +9,7 @@
     "paths": [
       "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
       "~/tradeai-exact-main-20260827",
+      "~/trade-ai-releases/train-checkout",
       "~/trade-ai-releases/portfolio-server/CURRENT"
     ]
   },
@@ -206,8 +207,9 @@
     ]
   },
   "tmp": {
-    "_why": "Incident 2026-10-19 ~13:40 ET: /tmp (tmpfs, 1,048,576 inodes) hit 97% INODES with 20G bytes free; ended Claude sessions' scratch dirs and pytest temp held the files. scripts/tmp_hygiene.py, n8n lane tmp-hygiene (daily 05:00 ET, --plan: manifest only). Only claude_scratch and pytest entries are ever evaluated; every other /tmp entry is never a candidate and never scanned. Deletion is --apply with TRADEAI_DISK_HYGIENE_GRANT, never under the n8n executor, exactly like the home rules.",
+    "_why": "Incident 2026-10-19 ~13:40 ET: /tmp (tmpfs, 1,048,576 inodes) hit 97% INODES with 20G bytes free; ended Claude sessions' scratch dirs and pytest temp held the files. scripts/tmp_hygiene.py, n8n lane tmp-hygiene (daily 05:00 ET, --plan: manifest only). 2026-10-22: /tmp hit 99% inodes again while the plan-only lane removed nothing; the operator ruled it must delete (auto_apply below). Evaluated: claude_scratch (S), pytest (P), pytest_basetemp (B), named (E), git_trees (G); every other /tmp entry is never a candidate and never scanned. Deletion: scripts/tmp_hygiene_auto.py on host systemd timers under auto_apply.standing_approval (hourly + inode-pressure trigger), or a manual --apply with TRADEAI_DISK_HYGIENE_GRANT; never under the n8n executor (AGENTS.md §24.12 admits only the disk-hygiene lane to n8n deletion; the allowlist never-list keeps destructive retention off n8n).",
     "root": "/tmp",
+    "future_mtime_skew_s": 300,
     "claude_scratch": {
       "_why": "<root>/<dir_name>/<project>/<session uuid>/: candidate only if idle (newest mtime of the whole tree, bounded scan) > idle_days AND no /proc/*/cwd and no /proc/*/fd inside AND its transcript <transcripts_dir>/<project>/<uuid>.jsonl, when present, is older than transcript_idle_days AND every git tree inside is safe to drop (registered worktrees go through `git worktree remove`, never --force).",
       "enabled": true,
@@ -224,6 +226,106 @@
       "dir_name": "pytest-of-{user}",
       "entry_glob": "pytest-*",
       "older_than_days": 1
+    },
+    "pytest_basetemp": {
+      "_why": "Rule B (2026-10-22): /tmp/cbd/<pid>/ held 136,419 inodes from `pytest --basetemp=/tmp/cbd/<pid>` runs on 2026-10-21 with fixture mtimes 29 days in the future. <root>/<name> qualifies only when EVERY child is a pid-named real dir; each <pid> dir is a candidate only when it holds nothing but pytest's numbered dirs (<prefix><n>) and <prefix>current symlinks, the pid is not a live pytest/python process, and it is idle > idle_days by its newest real mtime.",
+      "enabled": true,
+      "creator": "ad-hoc `pytest --basetemp=/tmp/<name>/<pid>` runs (agent verification shells); pytest leaves --basetemp trees in place",
+      "pid_regex": "^[0-9]{1,10}$",
+      "idle_days": 1,
+      "max_children": 200000,
+      "max_parent_children": 10000
+    },
+    "named": {
+      "_why": "Rule E (2026-10-22): top-level /tmp entries whose names a known creator mints; matched by full regex, type pinned, children pinned where the creator's layout is fixed; idle > idle_days, no cwd / open fd. Each rule names its creator so a leak is fixed at source, not only swept.",
+      "rules": [
+        {
+          "id": "pipeline_test_step_lock",
+          "enabled": true,
+          "regex": "^pipeline_step_(worker|receipt|par)_[0-9a-f]{8}_[A-Za-z0-9_.-]+\\.lock$",
+          "entry_type": "file",
+          "max_size_bytes": 0,
+          "idle_days": 1,
+          "creator": "scripts/pipelines/_manifest_runner.sh step flock, driven by tests/test_pipeline_manifest_runner_20261007.py (worker_/receipt_<hex>) and tests/test_premarket_stage_parallel_20261010.py (par_<hex>); fixed 2026-10-22: the step lock honours PIPELINE_LOCK_DIR"
+        },
+        {
+          "id": "pipeline_test_stage_lock",
+          "enabled": true,
+          "regex": "^pipeline_(worker|receipt|par)_[0-9a-f]{8}-[A-Za-z0-9_.-]+\\.lock$",
+          "entry_type": "file",
+          "max_size_bytes": 0,
+          "idle_days": 1,
+          "creator": "scripts/pipelines/_pipeline_common.sh acquire_lock under the same tests before tests/pipeline_runner_fixtures.runner_env set PIPELINE_LOCK_DIR"
+        },
+        {
+          "id": "pipeline_results_tmp",
+          "enabled": true,
+          "regex": "^pipeline_[A-Za-z0-9_.-]+_results\\.[A-Za-z0-9]{6}$",
+          "entry_type": "file",
+          "idle_days": 1,
+          "creator": "scripts/pipelines/_manifest_runner.sh mktemp RESULTS, left behind by every early return (lock busy, safety refusal, corrupt .env); fixed 2026-10-22: removed by a RETURN trap"
+        },
+        {
+          "id": "hermetic_env",
+          "enabled": true,
+          "regex": "^tradeai_hermetic_env_[A-Za-z0-9_]{8}$",
+          "entry_type": "dir",
+          "require": ["env"],
+          "allow_only": ["CURRENT", "env", "home", "state_root", "xdg_runtime", "dev_root_absent", "live_root"],
+          "idle_days": 1,
+          "creator": "scripts/lib/hermetic_test_guard.install() fixture (removed by atexit; a killed pytest worker leaks it). Not covered by never_touch_globs tradeai-* (hyphen); the weekly tmp-scratch-cleanup cron archives the >7-day ones it still finds"
+        },
+        {
+          "id": "n8nmat_unit",
+          "enabled": true,
+          "regex": "^n8nmat-unit-[A-Za-z0-9_]{8}$",
+          "entry_type": "dir",
+          "allow_only": ["executor.service"],
+          "idle_days": 1,
+          "creator": "tests/test_n8n_platform_maturity_governance_20261009.py tempfile.mkdtemp(prefix='n8nmat-unit-')"
+        },
+        {
+          "id": "gate_a1",
+          "enabled": true,
+          "regex": "^ga1-[0-9a-f]{8}$",
+          "entry_type": "dir",
+          "allow_only": ["c.jsonl", "e.jsonl"],
+          "idle_days": 1,
+          "creator": "tests/test_gate_a1_suite.py mkp() (tempfile.gettempdir()/ga1-<hex>)"
+        },
+        {
+          "id": "cio_acceptance_v4",
+          "enabled": true,
+          "regex": "^cio_acc_v4_[A-Za-z0-9_]{8}$",
+          "entry_type": "dir",
+          "idle_days": 1,
+          "creator": "tests/test_cio_acceptance_v4.py module-level tempfile.mkdtemp(prefix='cio_acc_v4_')"
+        },
+        {
+          "id": "operator_control_apply",
+          "enabled": true,
+          "regex": "^opctl_apply_[A-Za-z0-9_]{8}$",
+          "entry_type": "dir",
+          "allow_only": ["applied.txt"],
+          "idle_days": 1,
+          "creator": "tests/support/operator_control_probe.py tempfile.mkdtemp(prefix='opctl_apply_')"
+        },
+        {
+          "id": "goal_due_repair_dry",
+          "enabled": true,
+          "regex": "^goal_due_repair_dry_[A-Za-z0-9_]{8}$",
+          "entry_type": "dir",
+          "allow_only": ["projection.json", "cursors.json"],
+          "idle_days": 1,
+          "creator": "scripts/repair_goal_due_ts.py dry-run scratch projection (tempfile.mkdtemp(prefix='goal_due_repair_dry_'))"
+        }
+      ]
+    },
+    "git_trees": {
+      "_why": "Rule G (2026-10-22): top-level /tmp git work trees (agent review worktrees ready-*, candidate-*, pr<N>-*, ... ~13-24k inodes each). Only a registered linked worktree that is clean, unlocked and has no HEAD-only commit (removed by `git worktree remove`, never --force; its branch stays in the main repo), or a clone that is clean with every branch pushed, no stash and no linked worktree left; an unregistered worktree is kept. Idle > idle_days.",
+      "enabled": true,
+      "creator": "agent sessions' `git worktree add /tmp/<name>` / `git clone ... /tmp/<name>` review checkouts",
+      "idle_days": 2
     },
     "never_touch_globs": [
       "n8n-campaign-*",
@@ -245,9 +347,29 @@
     "untouched_list_max": 200,
     "apply": {
       "manifest_max_age_hours": 24,
-      "max_items_per_run": 200,
+      "max_items_per_run": 5000,
       "max_bytes_per_run": 21474836480,
       "max_files_per_run": 2000000
+    },
+    "auto_apply": {
+      "_why": "scripts/tmp_hygiene_auto.py on host systemd timers linux_launchers/systemd/tradeai-tmp-hygiene-apply.timer (hourly) and tradeai-tmp-hygiene-pressure.timer (every 5 min; acts only at >= pressure_trigger_pct inode use, at most once per pressure_min_interval_minutes). Fresh plan + apply in one run (re-validation, caps above), deletions ledger + run report + LaneRunReceipt tmp-hygiene-apply. Never the n8n executor: AGENTS.md §24.12 admits only lane disk-hygiene to n8n deletion and the allowlist never-list keeps destructive retention off n8n; n8n keeps the --plan lane and the inode-band monitor. Kill switch: enabled=false (the script then exits without deleting) or stop the timers. Alerts after each run: >= alert_p2_pct P2, >= alert_p1_pct P1 via telegram_alert.send_telegram, deduped by lib/alert_condition_state (system_health:tmp_inodes).",
+      "enabled": true,
+      "standing_approval": {
+        "id": "operator-20261022-tmp-hygiene-delete",
+        "operator": "John (repository operator, GitHub PatsKiller), relayed to the agent session 2026-10-22",
+        "date": "2026-10-22",
+        "quote": "It needs to be able to delete it. Just looking at it won't do anything.",
+        "context": "/tmp (tmpfs, 1,048,576 inodes) at 99% inodes on 2026-10-22 (97% on 2026-10-19) while lane tmp-hygiene ran --plan only (22 candidates, 59,088 files reclaimable, nothing removed).",
+        "replaces": "TRADEAI_DISK_HYGIENE_GRANT on the tmp_hygiene_auto.py path only; a manual scripts/tmp_hygiene.py --apply still needs the grant. Scope: only the tmp rules above (S, P, B, E, G) under never_touch_globs and the home never_touch list; nothing outside /tmp."
+      },
+      "pressure_trigger_pct": 85.0,
+      "pressure_min_interval_minutes": 15,
+      "alert_p2_pct": 90.0,
+      "alert_p1_pct": 97.0,
+      "realert_minutes": 360,
+      "manifest_latest_name": "tmp_hygiene_manifest_auto_latest.json",
+      "report_latest_name": "tmp_hygiene_auto_apply_latest.json",
+      "deletions_ledger_pattern": "tmp_hygiene_deletions_{yyyymm}.jsonl"
     }
   },
   "monitor": {

@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_prospect_catalyst_facts_20261023",
+  "files": [
+    "tests/test_cio_prospect_catalyst_facts_20261023.py"
+  ],
+  "anchor": "CIO_PROSPECT_CATALYST_FACTS_20261023",
+  "comment": [
+    "ANCHOR: CIO_PROSPECT_CATALYST_FACTS_20261023 — silo audit 2026-10-23 P1 (SAIQ): catalyst facts from catalyst_events",
+    "(through the catalyst_record projection), the Trade AI scanner and the re-entry desk land on the ONE CIO prospect",
+    "record (catalyst_grade, keyed by security_guid); two verdicts are a recorded conflict (AGENTS.md §26.5); no grade is",
+    "invented; the builder still writes nothing; a catalyst change is an idempotent prospect event."
+  ]
+}

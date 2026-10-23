@@ -20,12 +20,12 @@ What it reads (every command is a fixed argv, no shell; no secret value is ever 
   ``N8nDriftWatch@v1`` receipt (``scripts/n8n_drift_watch.py``) whose verdict is CLEAN or DRIFT (CANNOT_RUN fails),
   plus a fresh ``N8nWorkflowDriftReceipt@v1``.
 * FW-P4 — the relay listener (``ss -ltn``: bound to the lab bridge gateway, not 0.0.0.0), the lab network
-  (``docker network inspect``: subnet, bridge name) and the ufw rules. ``ufw status`` needs root, so the probe reads
-  an operator capture (``--ufw-status``; default ``$STATE_ROOT/data/runtime/ufw_status_n8n_relay.txt``, written by
-  ``{ sudo ufw status verbose; sudo ufw status numbered; } > FILE``, at most 7 days old). PASS needs: ufw active,
+  (``docker network inspect``: subnet, bridge name) and live ufw rules. The probe reads them with two exact
+  read-only ``sudo -n /usr/sbin/ufw status`` commands; a saved capture is diagnostic only and can never authorize
+  PASS. PASS needs: ufw active,
   default incoming deny/reject, an ALLOW from the lab subnet on the lab bridge to the relay port, a DENY to the relay
   port after it, and no other ALLOW in front of the DENY that covers the relay.
-* FW-P5 — ``.Config.Image`` of the running container carries ``@sha256:`` and equals the running image id; the env
+* FW-P5 — compare the configured ``@sha256:`` manifest digest against ImageInspect ``.RepoDigests``. The probe reads the running container's image ID, then inspects that exact image object; it does not treat a container-config image reference as proof of the manifest digest. The env
   keys ``N8N_BLOCK_ENV_ACCESS_IN_NODE=true``, ``N8N_COMMUNITY_PACKAGES_ENABLED=false``.
 * FW-P6 — ``systemctl --user is-enabled/is-active tradeai-n8n-host-deadman.timer`` and a fresh live
   ``N8nHostDeadman@v1`` receipt (``scripts/n8n_host_deadman.py``) that runs outside n8n.
@@ -34,7 +34,7 @@ What it reads (every command is a fixed argv, no shell; no secret value is ever 
     python3 scripts/probe_n8n_platform_facts.py --write         # also write $STATE_ROOT/data/runtime/n8n_platform_facts_last.json
 
 Exit 0 always when the probe ran (a FAIL is a fact, not an error); 2 when it could not run at all.
-AUTHORITY: READ_ONLY_ADVISORY. No n8n write, no DB write, no send, no sudo, no network beyond docker/systemctl/ss.
+AUTHORITY: READ_ONLY_ADVISORY. No privileged writes, n8n writes, DB writes, or sends. sudo is used only for the exact read-only UFW status queries; other host queries use docker, systemctl, and ss.
 """
 
 from __future__ import annotations
@@ -65,6 +65,8 @@ SCHEMA = "N8nPlatformFacts@v1"
 SOURCE_KIND = "host_probe"
 RECEIPT_REL = Path("data") / "runtime" / "n8n_platform_facts_last.json"
 UFW_CAPTURE_REL = Path("data") / "runtime" / "ufw_status_n8n_relay.txt"
+SUDO_BIN = "/usr/bin/sudo"
+UFW_BIN = "/usr/sbin/ufw"
 N8N_CONTAINER = "m8m-n8n"
 DB_CONTAINER = "m8m-n8n-db"
 LAB_NETWORK = "m8m-n8n_lab"
@@ -112,7 +114,7 @@ def default_runner(argv: list[str], timeout: int = 30) -> tuple[int, str, str]:
 
 def env_template(keys: tuple[str, ...] = ENV_ALLOWLIST) -> str:
     cond = " ".join(f'(eq $k "{k}")' for k in keys)
-    return '{{range .Config.Env}}{{$k := index (split . "=") 0}}{{if or ' + cond + '}}{{println .}}{{end}}{{end}}'
+    return '{{range .Config.Env}}{{$k := index (split . "=") 0}}{{if or ' + cond + "}}{{println .}}{{end}}{{end}}"
 
 
 def read_env(container: str, run: Runner) -> dict[str, str]:
@@ -196,8 +198,21 @@ def p2_facts(n8n_env: dict[str, str], db_env: dict[str, str], run: Runner) -> di
         f"from pg_roles where rolname = '{role}'), json_build_object('role', '{role}', 'missing', true))"
     )
     rc, out, err = run(
-        ["docker", "exec", "-e", "PGOPTIONS=-c default_transaction_read_only=on", DB_CONTAINER,
-         "psql", "-X", "-U", admin, "-d", db, "-tAc", sql]
+        [
+            "docker",
+            "exec",
+            "-e",
+            "PGOPTIONS=-c default_transaction_read_only=on",
+            DB_CONTAINER,
+            "psql",
+            "-X",
+            "-U",
+            admin,
+            "-d",
+            db,
+            "-tAc",
+            sql,
+        ]
     )
     if rc != 0:
         return {"n8n_db_role_superuser": _fact(None, f"pg_roles read failed: exit {rc}: {err.strip()[:120]}")}
@@ -289,7 +304,9 @@ def p6_facts(root: Path, now: datetime, run: Runner) -> dict[str, dict]:
         if rec.get("runs_inside_n8n") is not False or not str(rec.get("alert_path") or "").startswith("host:"):
             problems.append("receipt does not show a host alert path outside n8n")
     ev = f"{DEADMAN_TIMER} {t.get('is-enabled')}/{t.get('is-active')}; {DEADMAN_REL} {rec.get('status', 'absent')} age {age} min"
-    return {"host_dead_man_outside_n8n": _fact(not problems, ev + ("" if not problems else " — " + "; ".join(problems)))}
+    return {
+        "host_dead_man_outside_n8n": _fact(not problems, ev + ("" if not problems else " — " + "; ".join(problems)))
+    }
 
 
 # ── FW-P4: ufw ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -306,8 +323,13 @@ def parse_ufw(text: str) -> dict[str, Any]:
         if not m or "(v6)" in line:
             continue
         rules.append(
-            {"n": int(m.group(1)), "to": m.group(2).strip(), "action": m.group(3), "dir": m.group(4) or "IN",
-             "from": m.group(5).strip()}
+            {
+                "n": int(m.group(1)),
+                "to": m.group(2).strip(),
+                "action": m.group(3),
+                "dir": m.group(4) or "IN",
+                "from": m.group(5).strip(),
+            }
         )
     return {
         "status": status.group(1).lower() if status else None,
@@ -395,8 +417,16 @@ def ufw_verdict(text: str, *, relay_ip: str, port: int, subnet: str, bridge: str
 
 def p4_facts(root: Path, now: datetime, run: Runner, ufw_path: Path) -> dict[str, dict]:
     problems: list[str] = []
-    rc, out, err = run(["docker", "network", "inspect", LAB_NETWORK, "--format",
-                        "{{.Id}} {{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}}"])
+    rc, out, err = run(
+        [
+            "docker",
+            "network",
+            "inspect",
+            LAB_NETWORK,
+            "--format",
+            "{{.Id}} {{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}}",
+        ]
+    )
     netid = subnet = gateway = None
     if rc == 0 and len(out.split()) >= 3:
         netid, subnet, gateway = out.split()[:3]
@@ -404,55 +434,97 @@ def p4_facts(root: Path, now: datetime, run: Runner, ufw_path: Path) -> dict[str
         problems.append(f"docker network inspect {LAB_NETWORK}: exit {rc} {err.strip()[:80]}")
     bridge = f"br-{netid[:12]}" if netid else None
     rc, out, _ = run(["ss", "-ltnH"])
-    binds = sorted({ln.split()[3] for ln in out.splitlines() if len(ln.split()) >= 4 and ln.split()[3].endswith(f":{RELAY_PORT}")})
+    binds = sorted(
+        {ln.split()[3] for ln in out.splitlines() if len(ln.split()) >= 4 and ln.split()[3].endswith(f":{RELAY_PORT}")}
+    )
     if gateway and f"{gateway}:{RELAY_PORT}" not in binds:
         problems.append(f"relay not listening on {gateway}:{RELAY_PORT} (binds {binds})")
     wide = [b for b in binds if b.startswith(("0.0.0.0:", "*:", "[::]:"))]
     if wide:
         problems.append(f"relay bound wide: {wide}")
-    detail: dict[str, Any] = {"bridge": bridge, "subnet": subnet, "gateway": gateway, "binds": binds,
-                              "ufw_capture": str(ufw_path)}
-    try:
-        st = ufw_path.stat()
-        text = ufw_path.read_text(encoding="utf-8")
-        age_d = (now.timestamp() - st.st_mtime) / 86400.0
-        detail["ufw_capture_age_days"] = round(age_d, 2)
-        if age_d > UFW_MAX_AGE_DAYS:
-            problems.append(f"ufw capture {age_d:.1f} d old > {UFW_MAX_AGE_DAYS:g} d")
-        if gateway and subnet and bridge:
-            ok, ufw_problems, picked = ufw_verdict(text, relay_ip=gateway, port=RELAY_PORT, subnet=subnet, bridge=bridge)
-            problems.extend(ufw_problems)
-            detail["ufw"] = picked
-    except FileNotFoundError:
+    detail: dict[str, Any] = {
+        "bridge": bridge,
+        "subnet": subnet,
+        "gateway": gateway,
+        "binds": binds,
+        "ufw_capture": str(ufw_path),
+    }
+    rc_v, verbose, err_v = run([SUDO_BIN, "-n", UFW_BIN, "status", "verbose"])
+    rc_n, numbered, err_n = run([SUDO_BIN, "-n", UFW_BIN, "status", "numbered"])
+    text = ""
+    trusted_live = rc_v == 0 and rc_n == 0
+    if trusted_live:
+        text = verbose + "\n" + numbered
+        detail["ufw_evidence_source"] = "live_read_only_sudo"
+    else:
         problems.append(
-            f"no ufw capture at {ufw_path} (root-only: operator runs "
-            f"'{{ sudo ufw status verbose; sudo ufw status numbered; }} > {ufw_path}')"
+            "live UFW status unavailable through the exact read-only sudo commands "
+            f"(verbose exit {rc_v}, numbered exit {rc_n}); a saved capture cannot authorize PASS"
         )
-    except OSError as exc:
-        problems.append(f"ufw capture unreadable: {type(exc).__name__}")
-    ev = f"relay binds {binds or 'none'}; lab {bridge} {subnet}; ufw capture {ufw_path.name}"
-    return {"relay_bind_firewall_verified": _fact(not problems, ev + ("" if not problems else " — " + "; ".join(problems)), **detail)}
+        detail["ufw_evidence_source"] = "untrusted_capture_or_unavailable"
+        try:
+            st = ufw_path.stat()
+            text = ufw_path.read_text(encoding="utf-8")
+            age_d = (now.timestamp() - st.st_mtime) / 86400.0
+            detail["ufw_capture_age_days"] = round(age_d, 2)
+            if age_d > UFW_MAX_AGE_DAYS:
+                problems.append(f"ufw capture {age_d:.1f} d old > {UFW_MAX_AGE_DAYS:g} d")
+        except FileNotFoundError:
+            problems.append(f"no diagnostic UFW capture at {ufw_path}")
+        except OSError as exc:
+            problems.append(f"ufw capture unreadable: {type(exc).__name__}")
+    if text and gateway and subnet and bridge:
+        _ok, ufw_problems, picked = ufw_verdict(text, relay_ip=gateway, port=RELAY_PORT, subnet=subnet, bridge=bridge)
+        problems.extend(ufw_problems)
+        detail["ufw"] = picked
+    ev = f"relay binds {binds or 'none'}; lab {bridge} {subnet}; ufw evidence={detail['ufw_evidence_source']}"
+    return {
+        "relay_bind_firewall_verified": _fact(
+            not problems, ev + ("" if not problems else " — " + "; ".join(problems)), **detail
+        )
+    }
 
 
 # ── FW-P5 ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
 def p5_facts(env: dict[str, str], run: Runner) -> dict[str, dict]:
-    rc, out, err = run(["docker", "inspect", N8N_CONTAINER, "--format", "{{.Config.Image}} {{.Image}}"])
-    image = running = None
-    if rc == 0 and len(out.split()) >= 2:
-        image, running = out.split()[:2]
-    ev_img = f"container .Config.Image={image} running={running}"
-    if image and "@sha256:" in image and running and image.split("@", 1)[1] != running:
-        ev_img += " — the pinned digest is NOT the running image (recreate pending)"
-        image_value = image.split("@", 1)[0]  # not a pin until it runs
+    # RepoDigests is an ImageInspect field, not a ContainerInspect field. Read
+    # the running container's configured reference and immutable image ID first,
+    # then inspect that exact local image object.
+    rc, out, err = run(
+        ["docker", "inspect", "--type=container", N8N_CONTAINER, "--format", "{{.Config.Image}}\n{{.Image}}"]
+    )
+    image = None
+    image_id = None
+    repo_digests: list[str] = []
+    if rc == 0:
+        lines = out.splitlines()
+        image = lines[0].strip() if lines else None
+        image_id = lines[1].strip() if len(lines) > 1 else None
+    if image_id and re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
+        rc_img, out_img, _err_img = run(["docker", "image", "inspect", image_id, "--format", "{{json .RepoDigests}}"])
+        if rc_img == 0:
+            try:
+                parsed = json.loads(out_img.strip())
+                repo_digests = [str(value) for value in parsed] if isinstance(parsed, list) else []
+            except (TypeError, ValueError):
+                repo_digests = []
+    pinned_digest = image.split("@", 1)[1] if image and "@sha256:" in image else None
+    running = next((value for value in repo_digests if value.rsplit("@", 1)[-1] == pinned_digest), None)
+    ev_img = f"container .Config.Image={image}; image ID={image_id}; image RepoDigests={repo_digests}"
+    if pinned_digest and not running:
+        ev_img += " — pinned manifest digest is NOT present in the running image RepoDigests (recreate or registry proof pending)"
+        image_value = image.split("@", 1)[0]  # not a verified pin until the manifest digest is present
     else:
         image_value = image or ""
     block = _bool(env.get("N8N_BLOCK_ENV_ACCESS_IN_NODE"))
     community = _bool(env.get("N8N_COMMUNITY_PACKAGES_ENABLED"))
     return {
         "image_pinned": _fact(image_value, ev_img),
-        "block_env_access_in_node": _fact(block is True, f"N8N_BLOCK_ENV_ACCESS_IN_NODE={env.get('N8N_BLOCK_ENV_ACCESS_IN_NODE', '<unset>')}"),
+        "block_env_access_in_node": _fact(
+            block is True, f"N8N_BLOCK_ENV_ACCESS_IN_NODE={env.get('N8N_BLOCK_ENV_ACCESS_IN_NODE', '<unset>')}"
+        ),
         "community_packages_disabled": _fact(
             community is False, f"N8N_COMMUNITY_PACKAGES_ENABLED={env.get('N8N_COMMUNITY_PACKAGES_ENABLED', '<unset>')}"
         ),
@@ -463,7 +535,10 @@ def p5_facts(env: dict[str, str], run: Runner) -> dict[str, dict]:
 
 
 def probe(
-    *, root: Optional[Path] = None, now: Optional[datetime] = None, run: Optional[Runner] = None,
+    *,
+    root: Optional[Path] = None,
+    now: Optional[datetime] = None,
+    run: Optional[Runner] = None,
     ufw_status: Optional[Path] = None,
 ) -> dict[str, Any]:
     """All six elements, measured now. Raises RuntimeError only when the n8n container itself cannot be read."""

@@ -28,6 +28,12 @@ from scripts import check_agents_policy_state as STATE  # noqa: E402
 from tests import test_agents_policy_10_0_0_n8n_fabric as T10  # noqa: E402
 
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+# AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+# checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+# the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+from tests.test_agents_policy_20_0_0_agent_operations import pre_20_0_0  # noqa: E402
+
+AGENTS = pre_20_0_0(AGENTS)
 TOKEN = "APPROVE_AGENTS_POLICY_11_0_0"
 DIRECTIVE = "a mandatory standard framework for every n8n workflow, contract, integration and automation"
 #: §23.23 (heading up to the next "## ", rstripped), measured on origin/main 57d8fc3ff before this amendment

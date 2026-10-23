@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agent_claim_board_20261022",
+  "files": [
+    "tests/test_agent_claim_board_20261022.py"
+  ],
+  "anchor": "AGENT_CLAIM_BOARD_20261022",
+  "comment": [
+    "ANCHOR: AGENT_CLAIM_BOARD_20261022 — multi-vendor agent claim board (operator-approved 2026-10-22): one JSON per claim created atomically (O_EXCL temp + link, flock-serialized scan, lost-race withdrawal fallback), glob overlap, 2 h stale takeover, compact archives to claims_history.jsonl then removes, check exit codes + draft-PR fallback (gh absent = warning), warn-only pre-commit script, read-only GET /api/v2/coordination/claims, CC Who's working tab, NEVER_SCHEDULED weekly compaction lane. Hermetic: temp dirs, fake gh."
+  ]
+}

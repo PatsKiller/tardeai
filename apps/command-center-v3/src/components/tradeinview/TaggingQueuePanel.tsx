@@ -262,7 +262,9 @@ export default function TaggingQueuePanel({ account, days, acctLabel = {} }: Pro
     const key = `tiv-auto-enrich:${days}:${account || 'all'}`
     if (sessionStorage.getItem(key)) return
     sessionStorage.setItem(key, '1')
-    void autoEnrich(true)
+    // Silent once-per-session enrich: a failed POST must not surface as an unhandled rejection
+    // (site validation 2026-10-22: "TypeError: Failed to fetch" uncaught on Journal → Tagging Queue).
+    autoEnrich(true).catch(() => { /* silent by design; the queue still loads via refresh() */ })
   }, [days, account])
 
   useEffect(() => {

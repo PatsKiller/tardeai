@@ -52,6 +52,10 @@ try:  # YouTube cookie jar lives outside the release dir (lib/youtube_cookie_pat
     from lib import youtube_cookie_path as _yt_cookie_path  # noqa: E402
 except ImportError:  # pragma: no cover - imported as scripts.<module>
     from scripts.lib import youtube_cookie_path as _yt_cookie_path  # noqa: E402
+try:  # one short human name per account, never an account number (operator 2026-10-23)
+    from lib import account_display as _acct_disp  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib import account_display as _acct_disp  # noqa: E402
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 # Dev tree often owns the venv while portfolio-server runs from a release stamp
 # that has scripts/ but no .venv (Fix-now Errno 2 on live/.venv/bin/python).
@@ -3896,9 +3900,16 @@ def overview():
                 "name": (m.get("name") or "")[:30],
                 "day_change": m.get("day_change", 0),
                 "day_change_pct": m.get("day_change_pct", 0),
+                # Which account (operator 2026-10-23: "two SpaceX and two different accounts").
+                # One row per account holding; the label is a name only, never an account number.
+                "account_id": _acct_disp.canonical_key(m.get("account") or m.get("account_id")),
+                "account_label": _acct_disp.account_label(m.get("account") or m.get("account_id")),
             }
             for m in movers
         ],
+        "account_labels": _acct_disp.labels_map(
+            sorted({str(p.get("account") or "") for p in holdings if p.get("account")})
+        ),
         "trade_ai": {
             "vix": tai.get("vix"),
             "vix_source": tai.get("vix_source"),
@@ -8115,6 +8126,7 @@ def journal():
             {
                 "trade_key": f"{t.get('symbol', '')}:{t.get('account', '')}:{t.get('close_date', '')}",
                 **t,
+                "account_label": _acct_disp.account_label(t.get("account")),
             }
             for t in trades[:500]
         ],
@@ -8170,7 +8182,7 @@ def risk():
                 "total_unprotected_mv": snap.get("portfolio", {}).get("total_unprotected_mv", 0),
                 "position_count": snap.get("portfolio", {}).get("position_count_real", 0),
                 "paper_position_count": snap.get("portfolio", {}).get("position_count_paper", 0),
-                "positions": snap.get("positions", []),
+                "positions": _acct_disp.label_rows(snap.get("positions", [])),
                 "stops": snap.get("stops_map", {}),
                 "escalation": snap.get("escalation", {}),
                 "correlation": snap.get("correlation", []),
@@ -8303,6 +8315,8 @@ def risk():
                     "symbol": p.get("symbol", ""),
                     "market_value": p.get("market_value", 0),
                     "account": p.get("account", ""),
+                    "account_id": _acct_disp.canonical_key(p.get("account", "")),
+                    "account_label": _acct_disp.account_label(p.get("account", "")),
                     "environment": p.get("environment", "real"),
                     "risk_excluded": bool(p.get("risk_excluded")),
                     # CANONICAL protection hierarchy: (1) live broker stop order [API accounts], (2) operator-confirmed
@@ -16042,6 +16056,9 @@ def _compute_trade_ai():
         "avoid_count": current_run_nogo,
         "ticker_count": current_run_total or latest.get("ticker_count", 0),
         "universe_count": len(tickers),
+        # Newest trade_ai_scans.scanned_at among the served rows (LIVE cycles refresh rows between the FULL runs
+        # that write run_summary.json). scan_freshness is derived from it on every serve. Operator 2026-10-23.
+        "latest_scan_at": _scan_latest_at(tickers),
         "universe_go": go_count,
         "universe_wait": wait_count,
         "universe_nogo": avoid_count,
@@ -18232,6 +18249,9 @@ def trade_ai_summary():
         "cache_age_sec",
         "cached_at",
         "cache_missing",
+        # Header run-age chip (operator 2026-10-23): newest scan + its freshness verdict.
+        "latest_scan_at",
+        "scan_freshness",
     )
     return {k: d.get(k) for k in keys}
 
@@ -18255,7 +18275,24 @@ def _refresh_trade_ai_cache_age(data: dict, now: float) -> dict:
     data["cached_at"] = data.get("_cached_at") or data.get("cached_at")
     data["cache_age_sec"] = round(age)
     data["stale"] = bool(data.get("cache_missing")) or age > 600
+    # Age of the newest scan (not of the cache file): FRESH / STALE (>10 min in the 06:00-12:00 ET scalp
+    # window) / OFF_WINDOW / UNKNOWN. Recomputed per serve so it moves between warms.
+    try:
+        from lib.scan_freshness import scan_freshness
+
+        data["scan_freshness"] = scan_freshness(data.get("latest_scan_at"))
+    except Exception:
+        data["scan_freshness"] = {"contract": "ScanFreshness@v1", "status": "UNKNOWN", "error": "compute_failed"}
     return data
+
+
+def _scan_latest_at(tickers):
+    try:
+        from lib.scan_freshness import latest_scan_at
+
+        return latest_scan_at(tickers)
+    except Exception:
+        return None
 
 
 def _trade_ai_with_etag(data, disk=None):
@@ -18445,6 +18482,44 @@ _TRADE_AI_FLAG_KEYS = (
 )
 
 
+def _scanner_readiness_builder(payload):
+    """Row -> row + ``setup_readiness`` (SetupReadiness@v1, lib.momentum_setup_evidence.setup_readiness).
+
+    Operator 2026-10-23 (SAIQ): the Opportunities table printed a Yahoo headline the scan itself had marked
+    unverified (catalyst_verified=false, confidence 0.0) as THE catalyst, while the Active Trader alert, reading
+    the same row, said "Verified catalyst: FAILED". Each actionable row now carries the same "driven by / ready /
+    missing" object the alerts print -- built from the row's own MomentumSetupEvidence@v1 block plus today's
+    Hermes scalp research -- so the page renders the shared verdict instead of re-deriving one. Never raises:
+    a row whose evidence cannot be built is returned unchanged (the page then shows "—")."""
+    try:
+        from lib.momentum_setup_evidence import build_setup_evidence, setup_readiness
+        from lib.scanner_candidate_projection import _hermes_catalyst_lookup
+    except Exception:  # noqa: BLE001
+        return lambda row: row
+    now = datetime.now(timezone.utc)
+    stale = bool(payload.get("stale") or payload.get("cache_error"))
+    state = Path.home() / "trade-ai-releases" / "persistent-state"
+    lookup = _hermes_catalyst_lookup(state) if (state / "PERSISTENT_STATE_ROOT.json").is_file() else None
+
+    def build(row):
+        try:
+            day = str(row.get("scan_run_date") or row.get("run_date") or "")[:10] or None
+            observed = row.get("observed_at") or row.get("persisted_at")
+            evidence = build_setup_evidence(
+                row,
+                now=now,
+                observed_at=observed if isinstance(observed, str) else None,
+                source_name="TRADE_AI",
+                source_stale=stale,
+            )
+            hermes = lookup(str(row.get("symbol") or "").upper(), day) if lookup and day else None
+            return {**row, "setup_readiness": setup_readiness(evidence, hermes=hermes)}
+        except Exception:  # noqa: BLE001 - annotation only
+            return row
+
+    return build
+
+
 def trade_ai_scanner():
     """GET /api/v2/trade-ai/scanner — scanner-grade slim projection of /trade-ai.
 
@@ -18466,12 +18541,13 @@ def trade_ai_scanner():
         return dict(cached["data"])
     out = {k: v for k, v in d.items() if k not in ("tickers", "__etag__")}
     slim = []
+    readiness_for = _scanner_readiness_builder(d)
     for row in d.get("tickers") or []:
         if not isinstance(row, dict):
             continue
         dec = str(row.get("decision") or "").upper()
         if dec in ("GO", "WAIT", "MANUAL_REVIEW") or any(row.get(k) for k in _TRADE_AI_FLAG_KEYS):
-            slim.append(row)
+            slim.append(readiness_for(row))
         else:
             slim.append({k: row[k] for k in _TRADE_AI_TRIM_KEYS if k in row})
     out["tickers"] = slim
@@ -25142,7 +25218,11 @@ def _strategy_leaderboard():
                    count(*) AS n, count(*) FILTER (WHERE pnl>0) AS wins,
                    round(100.0*count(*) FILTER (WHERE pnl>0)/NULLIF(count(*),0),1) AS win_rate,
                    round(avg(pnl)::numeric,2) AS avg_pnl, round(sum(pnl)::numeric,2) AS total_pnl,
-                   round(avg(pnl_pct)::numeric,2) AS avg_pct, round(avg(r_multiple)::numeric,2) AS avg_r
+                   round(avg(pnl_pct)::numeric,2) AS avg_pct, round(avg(r_multiple)::numeric,2) AS avg_r,
+                   -- site validation 2026-10-22: a closed trade's stored r_multiple can disagree in sign with
+                   -- its pnl (reit_income: 1 trade, +$298.86, avg_r -1.93), so Live R is flagged, not trusted.
+                   count(*) FILTER (WHERE r_multiple IS NOT NULL AND pnl <> 0
+                                      AND sign(r_multiple) <> sign(pnl)) AS r_sign_conflicts
               FROM paper_trades
              WHERE status='closed' AND pnl IS NOT NULL
              GROUP BY strategy_id""")
@@ -25201,9 +25281,19 @@ def _strategy_leaderboard():
                 {
                     "strategy_id": sid,
                     "live": {
-                        k: _json_clean(lv[k])
-                        for k in ("n", "wins", "win_rate", "avg_pnl", "total_pnl", "avg_pct", "avg_r")
-                    },
+                        k: _json_clean(lv.get(k))
+                        for k in (
+                            "n",
+                            "wins",
+                            "win_rate",
+                            "avg_pnl",
+                            "total_pnl",
+                            "avg_pct",
+                            "avg_r",
+                            "r_sign_conflicts",
+                        )
+                    }
+                    | {"avg_r_suspect": bool(lv.get("r_sign_conflicts"))},
                     "backtest": (
                         {k: _json_clean(b.get(k)) for k in ("sample", "win_rate", "expectancy_r", "profit_factor")}
                         | {"data_suspect": bt_suspect}
@@ -29575,8 +29665,12 @@ def _morning_command():
                 "day_change": 0.0,
                 "market_value": 0.0,
                 "price": pos.get("price", 0),
+                "by_account": {},
             },
         )
+        # keep each account's part: a symbol in two accounts is named per account, never merged silently
+        _ak = _acct_disp.canonical_key(pos.get("account"))
+        a["by_account"][_ak] = round(a["by_account"].get(_ak, 0.0) + dc, 2)
         a["day_change"] += dc
         a["market_value"] += mv
         if pos.get("price"):
@@ -29597,6 +29691,12 @@ def _morning_command():
                 "change_pct": pct,  # UI convenience alias
                 "price": a.get("price") or 0,
                 "market_value": round(mv, 2),
+                "accounts": list(a["by_account"].keys()),
+                "account_labels": [_acct_disp.account_label(k) for k in a["by_account"]],
+                "by_account": [
+                    {"account_id": k, "account_label": _acct_disp.account_label(k), "day_change": v}
+                    for k, v in a["by_account"].items()
+                ],
             }
         )
     top_day_gainers = sorted(
@@ -30615,6 +30715,49 @@ def _needs_action(query=None):
     }
     out = _na.aggregate(probes)
     _NEEDS_ACTION_CACHE["v"] = (_t.monotonic(), out)
+    return out
+
+
+_HOME_DO_NOW_CACHE: dict = {}
+
+
+def _home_do_now(query=None):
+    """GET /api/v2/home/do-now — the Home "Do now" queue (HomeDoNow@v1, data-broker projection home_do_now,
+    scripts/lib/data_broker/home_do_now.py; operator-approved Home redesign 2026-10-22). One deduplicated queue over
+    needs-action, the operator inbox, the risk snapshot, the desk-truth stop-coverage receipt, pending paper proposals
+    and open redeploys, each source with its own as_of / age / stale. Read-only; never a broker read (the risk
+    snapshot is read without the /api/v2/risk broker-stop overlay). Cached 60 s so Home polling never fans out more
+    than once a minute."""
+    import time as _t
+
+    hit = _HOME_DO_NOW_CACHE.get("v")
+    if hit and _t.monotonic() - hit[0] < 60:
+        return hit[1]
+    from lib import needs_action as _na
+    from lib.data_broker import home_do_now as _hdn
+
+    def _home_held():
+        from lib.data_broker import watch_domains as _wdom
+
+        return _wdom.held_positions(surface=_wdom.HOME_SURFACE)
+
+    def _risk():
+        from lib.data_broker.risk_snapshot import get_risk_snapshot as _grs
+
+        return _grs(db_query=_db_query, max_age_s=120)
+
+    probes = {
+        "needs_action": _needs_action,
+        "inbox": _inbox,
+        "risk": _risk,
+        "desk_truth": _na.probe_desk_truth,
+        "proposals": lambda: _hdn.probe_pending_proposals(_db_query),
+        "deploy": lambda: _deploy_events({"status": "open", "days": "14"}),
+        # positions_store reader batch #3 (operator 2026-10-22, "approve all" item G): the one held reader.
+        "held": _home_held,
+    }
+    out = _hdn.build(probes)
+    _HOME_DO_NOW_CACHE["v"] = (_t.monotonic(), out)
     return out
 
 
@@ -41933,69 +42076,102 @@ def _health_proposals(query=None):
     return _json_clean(base)
 
 
-def _health_remediation():
-    """GET /api/v2/health/remediation — unified remediation timeline across all health layers.
+# ── /api/v2/health/remediation memory bound (2026-10-22) ──────────────────────────────────────
+# The two remediation logs are append-only and were never rotated (119 MB + 55 MB, ~300k lines on
+# 2026-10-22). Parsing them whole on every UI poll added 300–770 MB RSS per call and pushed
+# portfolio-server past MemoryHigh, where the watchdog SIGKILLed it 69 times in one day. The handler
+# now reads a bounded tail window per file, extends backwards only until the 24h boundary is
+# crossed (hard cap), and serves concurrent polls from one single-flight computation.
+_HEALTH_REMEDIATION_TAIL_BYTES = int(os.environ.get("TRADEAI_HEALTH_REMEDIATION_TAIL_BYTES", str(8 * 1024 * 1024)))
+_HEALTH_REMEDIATION_MAX_BYTES = int(os.environ.get("TRADEAI_HEALTH_REMEDIATION_MAX_BYTES", str(64 * 1024 * 1024)))
+_HEALTH_REMEDIATION_CACHE_TTL_S = float(os.environ.get("TRADEAI_HEALTH_REMEDIATION_CACHE_TTL_S", "60"))
+_HEALTH_REMEDIATION_NEWEST = 50
+_HEALTH_REMEDIATION_LOCK = __import__("threading").Lock()
+_HEALTH_REMEDIATION_CACHE: dict = {"key": None, "ts": 0.0, "result": None, "paths": None, "paths_ts": 0.0}
 
-    Reads health_agent_remediation.jsonl (Layer 4 auto-fixes) and health_inspector_fixes.jsonl
-    (OpenClaw Layer 1 inspector). Merges into a time-sorted list with stats.
-    Also scans live release runtime dir when PROJECT_ROOT is the dev tree."""
-    remediations = []
 
-    def _append_health_agent_line(entry: dict) -> None:
-        ft = entry.get("type", "unknown")
-        remediations.append(
-            {
-                "timestamp": entry.get("at"),
-                "agent": "health_agent",
-                "layer": 4,
-                "finding": ft,
-                "severity": "warning" if not entry.get("ok") else "info",
-                "old_state": str(entry.get("trigger", ""))[:100],
-                "new_state": f"exit_code={entry.get('exit_code')}" if entry.get("ok") else "failed",
-                "script": entry.get("cmd", ""),
-                "exit_code": entry.get("exit_code"),
-                "duration_ms": 0,
-                "verified": entry.get("ok", False),
-            }
-        )
+def _health_remediation_ts(value):
+    """Aware UTC datetime for a remediation timestamp, or None when it cannot be parsed."""
+    if not value or not isinstance(value, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
-    def _append_inspector_line(entry: dict) -> None:
-        remediations.append(
-            {
-                "timestamp": entry.get("timestamp"),
-                "agent": entry.get("agent", "tradeai-health-inspector"),
-                "layer": entry.get("layer", 1),
-                "finding": entry.get("finding", ""),
-                "severity": entry.get("severity", "info"),
-                "old_state": entry.get("old_state", ""),
-                "new_state": entry.get("new_state", ""),
-                "script": entry.get("script", ""),
-                "exit_code": entry.get("exit_code"),
-                "duration_ms": entry.get("duration_ms", 0),
-                "verified": entry.get("verified", False),
-                "mode": entry.get("mode"),
-            }
-        )
 
-    def _read_jsonl(path, handler) -> None:
-        try:
-            p = Path(path) if not isinstance(path, Path) else path
-            if not p.exists():
-                return
-            for line in p.read_text(errors="replace").strip().splitlines():
-                if not line.strip():
-                    continue
-                try:
-                    handler(json.loads(line))
-                except Exception:
-                    pass
-        except Exception:
-            pass
+def _health_remediation_tail_rows(
+    path, build, cutoff, min_rows=_HEALTH_REMEDIATION_NEWEST, chunk_bytes=None, max_bytes=None
+):
+    """Read a JSONL file backwards in bounded chunks and return (rows, truncated, bytes_read).
 
-    # health_agent remediation log
-    _read_jsonl(PROJECT_ROOT / "logs" / "health_agent_remediation.jsonl", _append_health_agent_line)
+    ``build(entry) -> dict`` maps one parsed line to a remediation row (with "timestamp").
+    Reading stops at the start of the file, or once at least ``min_rows`` rows are held AND the
+    oldest row of the last chunk is older than ``cutoff`` (the 24h boundary has been crossed),
+    or at ``max_bytes`` — in which case ``truncated`` is True and the 24h stats may undercount.
+    A partial first line of a window is carried into the next (earlier) chunk, never parsed."""
+    chunk_bytes = int(chunk_bytes or _HEALTH_REMEDIATION_TAIL_BYTES)
+    max_bytes = int(max_bytes or _HEALTH_REMEDIATION_MAX_BYTES)
+    rows: list = []
+    truncated = False
+    bytes_read = 0
+    try:
+        p = Path(path)
+        if not p.is_file():
+            return rows, truncated, bytes_read
+        with open(p, "rb") as fh:
+            fh.seek(0, 2)
+            end = fh.tell()
+            carry = b""
+            while end > 0:
+                start = max(0, end - chunk_bytes)
+                fh.seek(start)
+                block = fh.read(end - start)
+                bytes_read += len(block)
+                data = block + carry
+                if start > 0:
+                    nl = data.find(b"\n")
+                    if nl < 0:
+                        carry, data = data, b""
+                    else:
+                        carry, data = data[:nl], data[nl + 1 :]
+                else:
+                    carry = b""
+                chunk_rows = []
+                for raw in data.split(b"\n"):
+                    if not raw.strip():
+                        continue
+                    try:
+                        entry = json.loads(raw.decode("utf-8", errors="replace"))
+                        if isinstance(entry, dict):
+                            chunk_rows.append(build(entry))
+                    except Exception:
+                        pass
+                rows[:0] = chunk_rows
+                end = start
+                if end == 0:
+                    break
+                oldest = None
+                for r in chunk_rows:
+                    dt = _health_remediation_ts(r.get("timestamp"))
+                    if dt is not None and (oldest is None or dt < oldest):
+                        oldest = dt
+                if len(rows) >= min_rows and oldest is not None and oldest < cutoff:
+                    break
+                if bytes_read >= max_bytes:
+                    truncated = True
+                    break
+    except Exception:
+        pass
+    return rows, truncated, bytes_read
 
-    # OpenClaw health inspector fixes — dev tree + live release runtime
+
+def _health_remediation_paths():
+    """(health_agent_path, [deduped inspector paths]) — same candidates as before 2026-10-22."""
+    agent_path = PROJECT_ROOT / "logs" / "health_agent_remediation.jsonl"
     inspector_paths = [
         PROJECT_ROOT / "data" / "runtime" / "health_inspector_fixes.jsonl",
     ]
@@ -42024,7 +42200,7 @@ def _health_remediation():
                     inspector_paths.append(_cand / "data" / "runtime" / "health_inspector_fixes.jsonl")
     except Exception:
         pass
-
+    out = []
     _seen_files = set()
     for _ip in inspector_paths:
         try:
@@ -42034,18 +42210,75 @@ def _health_remediation():
         if _key in _seen_files:
             continue
         _seen_files.add(_key)
-        _read_jsonl(_ip, _append_inspector_line)
+        out.append(Path(_ip))
+    return agent_path, out
+
+
+def _health_remediation_signature(paths):
+    sig = []
+    for p in paths:
+        try:
+            st = Path(p).stat()
+            sig.append((str(p), st.st_size, st.st_mtime_ns))
+        except Exception:
+            sig.append((str(p), None, None))
+    return tuple(sig)
+
+
+def _health_agent_remediation_row(entry: dict) -> dict:
+    ft = entry.get("type", "unknown")
+    return {
+        "timestamp": entry.get("at"),
+        "agent": "health_agent",
+        "layer": 4,
+        "finding": ft,
+        "severity": "warning" if not entry.get("ok") else "info",
+        "old_state": str(entry.get("trigger", ""))[:100],
+        "new_state": f"exit_code={entry.get('exit_code')}" if entry.get("ok") else "failed",
+        "script": entry.get("cmd", ""),
+        "exit_code": entry.get("exit_code"),
+        "duration_ms": 0,
+        "verified": entry.get("ok", False),
+    }
+
+
+def _health_inspector_remediation_row(entry: dict) -> dict:
+    return {
+        "timestamp": entry.get("timestamp"),
+        "agent": entry.get("agent", "tradeai-health-inspector"),
+        "layer": entry.get("layer", 1),
+        "finding": entry.get("finding", ""),
+        "severity": entry.get("severity", "info"),
+        "old_state": entry.get("old_state", ""),
+        "new_state": entry.get("new_state", ""),
+        "script": entry.get("script", ""),
+        "exit_code": entry.get("exit_code"),
+        "duration_ms": entry.get("duration_ms", 0),
+        "verified": entry.get("verified", False),
+        "mode": entry.get("mode"),
+    }
+
+
+def _health_remediation_compute(agent_path, inspector_paths, now=None):
+    now = now or datetime.now(timezone.utc)
+    cutoff = now - timedelta(hours=24)
+    remediations: list = []
+    truncated = False
+    rows, trunc, _ = _health_remediation_tail_rows(agent_path, _health_agent_remediation_row, cutoff)
+    remediations.extend(rows)
+    truncated = truncated or trunc
+    for ip in inspector_paths:
+        rows, trunc, _ = _health_remediation_tail_rows(ip, _health_inspector_remediation_row, cutoff)
+        remediations.extend(rows)
+        truncated = truncated or trunc
 
     remediations.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
 
-    # Calculate stats
-    now = datetime.now(timezone.utc)
-    recent_24h = [
-        r
-        for r in remediations
-        if r.get("timestamp")
-        and now - datetime.fromisoformat(r["timestamp"].replace("Z", "+00:00")) < timedelta(hours=24)
-    ]
+    recent_24h = []
+    for r in remediations:
+        dt = _health_remediation_ts(r.get("timestamp"))
+        if dt is not None and now - dt < timedelta(hours=24):
+            recent_24h.append(r)
     by_agent: dict = {}
     by_severity: dict = {}
     success_count = 0
@@ -42057,17 +42290,51 @@ def _health_remediation():
         if r.get("verified"):
             success_count += 1
 
-    return _json_clean(
-        {
-            "remediations": remediations[:50],
-            "stats": {
-                "total_fixes_24h": len(recent_24h),
-                "by_agent": by_agent,
-                "by_severity": by_severity,
-                "success_rate": f"{success_count / max(len(recent_24h), 1) * 100:.0f}%" if recent_24h else "N/A",
-            },
-        }
-    )
+    stats = {
+        "total_fixes_24h": len(recent_24h),
+        "by_agent": by_agent,
+        "by_severity": by_severity,
+        "success_rate": f"{success_count / max(len(recent_24h), 1) * 100:.0f}%" if recent_24h else "N/A",
+    }
+    if truncated:
+        # 24h of rows exceeded the read cap: the counts are a lower bound, not the whole day.
+        stats["stats_truncated"] = True
+    return _json_clean({"remediations": remediations[:_HEALTH_REMEDIATION_NEWEST], "stats": stats})
+
+
+def _health_remediation():
+    """GET /api/v2/health/remediation — unified remediation timeline across all health layers.
+
+    Reads health_agent_remediation.jsonl (Layer 4 auto-fixes) and health_inspector_fixes.jsonl
+    (OpenClaw Layer 1 inspector). Merges into a time-sorted list with stats (newest 50 rows and
+    exact 24h counts). Each file is tail-read in a bounded window (see _HEALTH_REMEDIATION_*), and
+    the result is cached for ~60 s keyed on every file's (path, size, mtime_ns); concurrent callers
+    share one computation. Also scans live release runtime dir when PROJECT_ROOT is the dev tree."""
+    import copy as _copy
+    import time as _time
+
+    with _HEALTH_REMEDIATION_LOCK:
+        now_m = _time.monotonic()
+        paths = _HEALTH_REMEDIATION_CACHE.get("paths")
+        if (
+            paths is None
+            or now_m - float(_HEALTH_REMEDIATION_CACHE.get("paths_ts") or 0.0) >= _HEALTH_REMEDIATION_CACHE_TTL_S
+        ):
+            # Candidate discovery (RuntimeAwareness, release dir scan) is itself refreshed per TTL.
+            paths = _health_remediation_paths()
+            _HEALTH_REMEDIATION_CACHE.update(paths=paths, paths_ts=now_m)
+        agent_path, inspector_paths = paths
+        key = _health_remediation_signature([agent_path, *inspector_paths])
+        cached = _HEALTH_REMEDIATION_CACHE.get("result")
+        if (
+            cached is not None
+            and _HEALTH_REMEDIATION_CACHE.get("key") == key
+            and _time.monotonic() - float(_HEALTH_REMEDIATION_CACHE.get("ts") or 0.0) < _HEALTH_REMEDIATION_CACHE_TTL_S
+        ):
+            return _copy.deepcopy(cached)
+        result = _health_remediation_compute(agent_path, inspector_paths)
+        _HEALTH_REMEDIATION_CACHE.update(key=key, ts=_time.monotonic(), result=result)
+        return _copy.deepcopy(result)
 
 
 def _health_ops_autonomy(query=None):
@@ -44187,8 +44454,55 @@ def _schwab_reauth_operator_paths(key: str) -> dict:
     }
 
 
+# 2026-10-22: the site-wide FinvizCookieBanner polls this route every 60 s from every open tab, and
+# each poll ran a live Finviz export probe (throttle wait up to 30 s + up to 15 s HTTP + a token
+# probe) — 3,387 requests over 10 s in one day. A poll now reads a cached verdict; the live probe
+# runs at most once per TTL, single-flight, so concurrent polls share it.
+_FINVIZ_CRED_HEALTH_TTL_S = float(os.environ.get("TRADEAI_FINVIZ_CRED_HEALTH_TTL_S", "300"))
+_FINVIZ_CRED_HEALTH_LOCK = __import__("threading").Lock()
+_FINVIZ_CRED_HEALTH_CACHE: dict = {"ts": 0.0, "result": None}
+
+
 def _finviz_credential_health(query=None):
-    """GET /api/v2/data-sources/finviz/credential-health — live FINVIZ_COOKIE probe + last_error.
+    """GET /api/v2/data-sources/finviz/credential-health — cached verdict of the FINVIZ_COOKIE probe.
+
+    Same response shape as the live probe (_finviz_credential_health_live); ``as_of`` is the time
+    of the probe that produced the verdict. Refreshes at most once per _FINVIZ_CRED_HEALTH_TTL_S."""
+    import copy as _copy
+    import time as _time
+
+    def _fresh():
+        cached = _FINVIZ_CRED_HEALTH_CACHE.get("result")
+        if (
+            cached is not None
+            and _time.monotonic() - float(_FINVIZ_CRED_HEALTH_CACHE.get("ts") or 0.0) < _FINVIZ_CRED_HEALTH_TTL_S
+        ):
+            return cached
+        return None
+
+    hit = _fresh()
+    if hit is not None:
+        return _copy.deepcopy(hit)
+    if not _FINVIZ_CRED_HEALTH_LOCK.acquire(blocking=False):
+        # Another request is probing. Serve the last verdict instead of parking a server thread
+        # behind a probe that can take ~45 s; only the very first call (no verdict yet) waits.
+        stale = _FINVIZ_CRED_HEALTH_CACHE.get("result")
+        if stale is not None:
+            return _copy.deepcopy(stale)
+        _FINVIZ_CRED_HEALTH_LOCK.acquire()
+    try:
+        hit = _fresh()
+        if hit is not None:
+            return _copy.deepcopy(hit)
+        result = _finviz_credential_health_live(query)
+        _FINVIZ_CRED_HEALTH_CACHE.update(ts=_time.monotonic(), result=result)
+        return _copy.deepcopy(result)
+    finally:
+        _FINVIZ_CRED_HEALTH_LOCK.release()
+
+
+def _finviz_credential_health_live(query=None):
+    """Live FINVIZ_COOKIE probe + last_error (uncached; called by _finviz_credential_health).
 
     Mirrors Schwab token-health for the site-wide FinvizCookieBanner. Uses
     secret_validators._finviz_cookie (Elite CSV export) and data_source_health.last_error.
@@ -44214,7 +44528,9 @@ def _finviz_credential_health(query=None):
     try:
         import sys as _sys
 
-        _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        _scripts = str(PROJECT_ROOT / "scripts")
+        if _scripts not in _sys.path:
+            _sys.path.insert(0, _scripts)
         import secret_validators as _sv
         from credential_monitor import is_finviz_cookie_failure_text
 
@@ -48582,6 +48898,7 @@ ROUTES = {
     "/api/v2/system/data-plausibility": lambda: _system_data_plausibility(),
     "/api/v2/system/pipeline-failures": lambda: _system_pipeline_failures(_current_query),
     "/api/v2/needs-action": lambda: _needs_action(),
+    "/api/v2/home/do-now": lambda: _home_do_now(),
     "/api/v2/queue/pending": lambda: _queue_pending(),
     "/api/v2/queue/completed": lambda: _queue_completed(),
     "/api/v2/queue/failed": lambda: _queue_failed(),
@@ -48892,6 +49209,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "fallback": "host: python3 scripts/lib/release_train_stop.py stop --reason TEXT",
             }
 
+    # Ops -> Controls (AGENTS.md 19.0.0 §27.2-§27.3, PROPOSED; docs/ops/OPS_CONTROLS_API.md). Every POST refuses
+    # POLICY_NOT_ACTIVE until 19.0.0 is ACTIVE (read at request time); only the operator's tailnet identity is
+    # answered (the service token -- agents, n8n, cron -- is refused); host changes are applied only by
+    # scripts/ops/operator_controls_applier.py, never by this process.
+    if base_path.rstrip("/") == "/api/v2/ops/controls" or base_path.startswith("/api/v2/ops/controls/"):
+        try:
+            try:
+                from lib import ops_controls_api as _oca
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import ops_controls_api as _oca
+            _oca_out = _oca.handle(base_path, method, body, query)
+            if _oca_out is not None:
+                return _oca_out
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
     # TradingView webhook ingress (R5) — dormant; returns 503 unless explicitly enabled.
     if base_path == "/api/v2/ingress/tradingview":
         import os as _os_tv
@@ -48920,6 +49253,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _rtv_out = _rtv.handle(base_path, method, query or {}, _db_query)
             if _rtv_out is not None:
                 return _rtv_out
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
+    # Releases & Schedules (operator-approved 2026-10-22): one read-only projection for System → Releases &
+    # schedules — serving release, main HEAD, train windows, queue, shipped history, release errors, n8n today and
+    # the next 3 hours of cron + n8n. scripts/lib/releases_schedules_view.py (each source in a worker with its own
+    # deadline; missing data is null + UNAVAILABLE). Exact path only; GET only (405 otherwise). Contract:
+    # docs/ops/RELEASES_SCHEDULES_PAGE.md.
+    if base_path.rstrip("/") == "/api/v2/ops/releases-schedules":
+        try:
+            try:
+                from lib import releases_schedules_view as _rsv
+            except ImportError:  # pragma: no cover - imported as scripts.api_v2
+                from scripts.lib import releases_schedules_view as _rsv
+            _rsv_out = _rsv.handle(base_path, method, query or {}, _db_query)
+            if _rsv_out is not None:
+                return _rsv_out
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__}
 
@@ -54537,6 +54887,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
+    # TradeInView trade journeys (read-only projection, lib/data_broker/trade_journey.py; operator 2026-10-22):
+    # GET /api/v3/data-broker/trade-journeys[?days=&symbol=]  ·  GET /api/v3/data-broker/trade-journeys/{trade_id}
+    if method == "GET" and base_path.startswith("/api/v3/data-broker/trade-journeys"):
+        try:
+            import api_v3_trade_journey as _tj
+
+            rest = base_path[len("/api/v3/data-broker/trade-journeys") :].strip("/")
+            return 200, (_tj.get_detail(rest, query or {}) if rest else _tj.get_list(query or {}))
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     # Canonical Data Broker — catalog + Watch Intelligence (read-only)
     # Catalog: GET /api/v3/data-broker  and  GET /api/v3/data-broker/catalog
     if method == "GET" and (base_path == "/api/v3/data-broker" or base_path.startswith("/api/v3/data-broker/")):
@@ -54550,6 +54911,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, _dbw.get_catalog()
             if p == "watch-intelligence":
                 return 200, _dbw.get_list(query or {})
+            if p == "watch-prospects":
+                return 200, _dbw.get_prospects(query or {})
+            if p == "watch-curation":
+                return 200, _dbw.get_curation(query or {})
+            if p == "watch-symbol-search":
+                return 200, _dbw.get_symbol_search(query or {})
+            if p == "watch-universe":
+                return 200, _dbw.get_universe(query or {})
             if p == "watch-filters":
                 return 200, _dbw.get_filters()
             if p == "watch-lists":
@@ -54584,6 +54953,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, _wcmd.post_alert(body or {})
             if cmd in ("refresh-data", "refresh_data"):
                 return 200, _wcmd.post_refresh_data(body or {})
+            if cmd == "mine":
+                _out = _wcmd.post_mine_decision(body or {})
+                return (200 if _out.get("ok") else 400), _out
+            if cmd in ("suggest-dismiss", "suggest-restore"):
+                _out = _wcmd.post_suggest_decision(cmd.split("-", 1)[1], body or {})
+                return (200 if _out.get("ok") else 400), _out
             return 404, {"ok": False, "error": "unknown_command"}
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
@@ -55136,6 +55511,70 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 200, {"ok": True, "data": _board_load()}
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
+    # Agent claim board (operator-approved 2026-10-22): which agent session (Claude, Codex, Cursor -- equal
+    # peers) holds which files, on which branch/PR, since when, last heartbeat. One JSON per claim under
+    # persistent-state data/coordination/claims (scripts/lib/agent_claim_board.py). Read-only: never creates
+    # the directory, never claims, releases or compacts. ?active=1 hides done/abandoned; ?worklog=<claim_id>
+    # returns one claim's worklog. Lifecycle stages + task board are additive fields (2026-10-23).
+    if base_path == "/api/v2/coordination/claims":
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from lib.agent_claim_board import board_view as _claims_board
+
+            _act = (query or {}).get("active")
+            _act = (_act or [None])[0] if isinstance(_act, list) else _act
+            finished = str(_act or "") not in ("1", "true")
+            # ?worklog=<claim_id> (2026-10-23): that claim's worklog text (live file, else its archive)
+            _wl = (query or {}).get("worklog")
+            _wl = (_wl or [None])[0] if isinstance(_wl, list) else _wl
+            if _wl:
+                return 200, {"ok": True, "data": _claims_board(worklog=str(_wl)[:64])}
+            return 200, {"ok": True, "data": _claims_board(include_finished=finished)}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
+    # Work board (operator 2026-10-23): ALL queued work broken into tasks, and designs awaiting approval.
+    # scripts/lib/design_registry.py. GET only; single-flight in-process cache, rebuilt at most once per 30 s;
+    # design files re-parsed only when they change; open PRs read by a background thread (gh api GET).
+    # Writes go only through scripts/agent_claim.py (CLI).
+    if base_path in ("/api/v2/coordination/tasks", "/api/v2/coordination/designs"):
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from lib.design_registry import work_board as _work_board
+
+            _wb = _work_board()
+            return 200, {"ok": True, "data": _wb.tasks() if base_path.endswith("/tasks") else _wb.designs()}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
+    # Work pipeline (operator 2026-10-23 13:15 ET): one row per work item (task, PR, design phase) staged
+    # proposed -> ... -> verified live with RAG, who/what/when/where/how, blocker and next step + owner.
+    # scripts/lib/work_pipeline.py: single-flight 30 s cache; the GitHub census runs only in a background thread,
+    # at most once per 60 s; a request never waits on GitHub. GET only.
+    if base_path == "/api/v2/coordination/pipeline":
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from lib.work_pipeline import work_pipeline as _work_pipeline
+
+            return 200, {"ok": True, "data": _work_pipeline().view()}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
+    # Work pipeline commands, Tier 1 (operator 2026-10-23: "both"): note, priority, hold/unhold, next-batch queue,
+    # new/split task, release a red-stale claim. Operator tailnet identity only (agents/service token refused), CSRF
+    # enforced here (cc_auth.command_csrf_check), idempotency key, append-only audit in the claims dir.
+    # scripts/lib/work_pipeline_commands.py. Never broker orders, stops, kill-switch clearing or grants.
+    if base_path == "/api/v2/coordination/commands":
+        try:
+            from lib import work_pipeline_commands as _wpc
+
+            return _wpc.handle(method, body)
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
 
     # Migration board (n8n scheduler-of-record program, stream G, 2026-10-08): per lane the
     # scheduler of record, phase, last run, output-signal age, rollback readiness and risk flags, plus

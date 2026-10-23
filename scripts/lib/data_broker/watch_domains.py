@@ -59,6 +59,113 @@ def membership_starred() -> set[str]:
         return set()
 
 
+# ── The operator's own names — "My Watchlist" (operator 2026-10-23) ──────────────────────────────────────────
+#
+# Operator 2026-10-23 (verbatim): "I don't see stuff that I had starred that I was watching ... where is my
+# traditional watch list, the stuff that I was watching, and where is the automated watch list". Measured the same
+# morning: the operator's names live in four places and the Watch universe read only one of them (stars):
+#   1. operator_starred_symbols                          — the star (12 names);
+#   2. watchlist_items source='personal_watchlist'      — the traditional list (the DB copy of
+#      portfolios/state/watchlist.json, 13 names: PLTR, HII, GD, BWXT, AXON, MAIN, ARCC, HTGC, MSFT, NVDA, ...);
+#   3. watch_directives kind='ticker' created_by='operator' status='active' — "Watchlist" adds from the
+#      Command Center and named operator lists ("White House Quantum Computing": IBM, GFS, QBTS, RGTI);
+#   4. watchlist_items origin_system='operator' or source='operator' — names the operator added or proposed.
+# Each name carries every reason it is the operator's (kind, label, when), so the page can say why it is listed.
+# Read-only. Each source fails soft on its own and is reported in ``sources`` (never a silent empty list).
+
+OPERATOR_KINDS = ("starred", "personal_watchlist", "directive", "operator_added")
+OPERATOR_KIND_LABEL = {
+    "starred": "Starred by you",
+    "personal_watchlist": "Your personal watchlist",
+    "directive": "Your watch directive",
+    "operator_added": "Added or proposed by you",
+}
+
+
+def _iso_or_none(v: Any) -> str | None:
+    if v is None:
+        return None
+    return v.isoformat() if hasattr(v, "isoformat") else str(v)
+
+
+def membership_operator(db_query=None) -> dict[str, Any]:
+    """{names: {SYM: {starred, starred_at, reasons:[{kind, label, at, ref}]}}, sources: {kind: {status, count}}}.
+
+    The operator's names, never capped and never expired here (expiry only suggests, on the page). ``db_query`` is
+    injectable for tests (signature ``db_query(sql, params=None)``)."""
+    q = db_query or (lambda sql, params=None: _db_query(sql, params))
+    names: dict[str, dict[str, Any]] = {}
+    sources: dict[str, dict[str, Any]] = {}
+
+    def add(sym: Any, kind: str, *, at: Any = None, ref: Any = None, label: str | None = None) -> None:
+        s = str(sym or "").strip().upper()
+        if not s or looks_like_cusip(s):
+            return
+        ent = names.setdefault(s, {"symbol": s, "starred": False, "starred_at": None, "reasons": []})
+        if kind == "starred":
+            ent["starred"], ent["starred_at"] = True, _iso_or_none(at)
+        if not any(r["kind"] == kind and r.get("ref") == ref for r in ent["reasons"]):
+            ent["reasons"].append({"kind": kind, "label": label or OPERATOR_KIND_LABEL[kind], "at": _iso_or_none(at),
+                                   "ref": ref})
+
+    reads = (
+        ("starred", "SELECT upper(symbol) AS s, starred_at AS at, NULL AS ref, NULL AS label "
+                    "FROM operator_starred_symbols"),
+        ("personal_watchlist", "SELECT upper(symbol) AS s, min(first_seen_at) AS at, NULL AS ref, NULL AS label "
+                               "FROM watchlist_items WHERE status IN ('active','researched') "
+                               "AND source = 'personal_watchlist' GROUP BY 1"),
+        ("directive", "SELECT upper(spec->>'symbol') AS s, created_at AS at, id AS ref, label "
+                      "FROM watch_directives WHERE kind = 'ticker' AND status = 'active' "
+                      "AND created_by = 'operator' AND coalesce(spec->>'symbol', '') <> ''"),
+        ("operator_added", "SELECT upper(symbol) AS s, min(first_seen_at) AS at, NULL AS ref, "
+                           "string_agg(DISTINCT source, ',') AS label FROM watchlist_items "
+                           "WHERE status IN ('active','researched') AND source <> 'personal_watchlist' "
+                           "AND (origin_system = 'operator' OR source = 'operator') GROUP BY 1"),
+    )
+    for kind, sql in reads:
+        try:
+            rows = q(sql) or []
+        except Exception as e:  # noqa: BLE001 — one source failing never empties the others
+            sources[kind] = {"status": "error", "error": type(e).__name__, "count": 0}
+            continue
+        n = 0
+        for r in rows:
+            def g(k: str, i: int) -> Any:
+                return r.get(k) if hasattr(r, "get") else r[i]
+
+            sym, at, ref, lab = g("s", 0), g("at", 1), g("ref", 2), g("label", 3)
+            label = None
+            if kind == "directive" and lab:
+                label = f"Your watch directive “{lab}”"
+            elif kind == "operator_added" and lab:
+                label = f"Added or proposed by you ({str(lab).replace('_', ' ')})"
+            add(sym, kind, at=at, ref=ref, label=label)
+            n += 1
+        sources[kind] = {"status": "ok", "count": n}
+    # "Remove from my watchlist" (operator 2026-10-23): the latest watch_mine_added / watch_mine_removed event per
+    # symbol in watchlist_events decides; a removal hides the name unless a reason is newer than the removal.
+    removed: list[str] = []
+    try:
+        ev = q("SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS s, event_type, created_at FROM watchlist_events "
+               "WHERE event_type IN ('watch_mine_added', 'watch_mine_removed') "
+               "ORDER BY upper(symbol), created_at DESC, id DESC") or []
+        for r in ev:
+            g = (lambda k, i: r.get(k) if hasattr(r, "get") else r[i])  # noqa: E731
+            sym, et, at = str(g("s", 0) or "").upper(), g("event_type", 1), _iso_or_none(g("created_at", 2))
+            if et != "watch_mine_removed" or sym not in names:
+                continue
+            t_rm = _as_dt(at)
+            newer = [x for x in names[sym]["reasons"]
+                     if t_rm is not None and _as_dt(x.get("at")) is not None and _as_dt(x.get("at")) > t_rm]
+            if not newer:
+                names.pop(sym)
+                removed.append(sym)
+        sources["removed"] = {"status": "ok", "count": len(removed)}
+    except Exception as e:  # noqa: BLE001
+        sources["removed"] = {"status": "error", "error": type(e).__name__, "count": 0}
+    return {"names": names, "sources": sources, "removed": sorted(removed)}
+
+
 def membership_screener() -> set[str]:
     out: set[str] = set()
     try:
@@ -80,6 +187,25 @@ def membership_screener() -> set[str]:
     except Exception:
         pass
     return out
+
+
+def membership_watchlist(symbols) -> set[str]:
+    """Which of ``symbols`` are on the watchlist (watchlist_items, status active or researched).
+
+    watchlist_items is the one membership list (data_source_authority.json, watchlist_membership);
+    this broker module is its reader so callers outside the Watch layer (Open Trades) do not grow
+    their own SQL. NOT fail-soft: a DB error raises, so the caller can say "unavailable" instead of
+    reporting every symbol as off the watchlist (the Open Trades `_db_query` bug, 2026-10-22).
+    """
+    syms = sorted({str(s).strip().upper() for s in (symbols or []) if s and str(s).strip()})
+    if not syms:
+        return set()
+    rows = _db_query(
+        "SELECT DISTINCT upper(symbol) AS s FROM watchlist_items "
+        "WHERE status IN ('active','researched') AND upper(symbol) = ANY(%s)",
+        (syms,),
+    )
+    return {(r["s"] if hasattr(r, "keys") else r[0]) for r in rows or []}
 
 
 # ── Held positions — one source for every Watch layer (2026-10-22 Watch audit) ─────────────────────────────
@@ -107,6 +233,11 @@ def membership_screener() -> set[str]:
 HELD_CACHE_S = 60
 _held_cache: dict[str, Any] = {}          # surface -> {"at": monotonic, "val": verdict}
 WATCH_SURFACE = "watch"                   # positions_store reader batch #1 (operator 2026-10-22)
+HOME_SURFACE = "home"                     # positions_store reader batch #3 (operator 2026-10-22, "approve all" item G)
+# The CIO opportunity curator's held flag (lib/data_broker/opportunity.gather): positions_store reader batch #4,
+# operator 2026-10-23 ("Yes, I approve" to "approve positions reader batch #4 (curator held flag)");
+# config/data_source_authority.json positions_store.approved_readers[batch 4].
+OPPORTUNITY_SURFACE = "opportunity"
 _NOT_POSITIONS = ("CASH", "SPAXX", "FDRXX")
 
 
@@ -157,13 +288,14 @@ def resolve_cusip_symbols(cusips, registry: dict | None = None) -> dict[str, str
 def _positions_store_rows(db_query) -> tuple[list[dict], Any]:
     """positions_current rows of the latest promoted complete sync run, plus that run's finish time."""
     rows = db_query(
-        """SELECT upper(pc.symbol) AS symbol, pc.qty, pc.is_cash, pc.as_of, runs.finished_at
+        """SELECT upper(pc.symbol) AS symbol, pc.qty, pc.is_cash, pc.as_of, runs.finished_at, pc.account_key AS account
              FROM positions_current pc
              JOIN positions_sync_runs runs ON runs.run_id = pc.sync_run_id
             WHERE runs.promoted AND runs.status = 'complete'"""
     ) or []
     out = [dict(r) if hasattr(r, "keys") else {"symbol": r[0], "qty": r[1], "is_cash": r[2], "as_of": r[3],
-                                                 "finished_at": r[4]} for r in rows]
+                                                 "finished_at": r[4], "account": r[5] if len(r) > 5 else None}
+           for r in rows]
     last = max((r.get("finished_at") for r in out if r.get("finished_at")), default=None)
     return out, last
 
@@ -205,7 +337,7 @@ def _holdings_rows(holdings_path: Path | None) -> tuple[list[dict], Any]:
         except Exception:
             doc = {}
     rows = [{"symbol": str(h.get("symbol") or "").upper(), "qty": h.get("shares", h.get("quantity")),
-             "market_value": h.get("market_value"), "is_cash": bool(h.get("is_cash"))}
+             "market_value": h.get("market_value"), "is_cash": bool(h.get("is_cash")), "account": h.get("account")}
             for h in (doc.get("holdings") or []) if isinstance(h, dict)]
     return rows, doc.get("updated_at") or doc.get("as_of") or doc.get("data_as_of")
 
@@ -263,16 +395,23 @@ def held_positions(*, db_query=None, holdings_path: Path | None = None, registry
             limit = float(cfg.get("holdings_stale_after_hours") or 24) * 3600
             fresh = {"age_s": age, "limit_s": limit, "stale": age is None or age > limit}
     held_raw: set[str] = set()
+    # Which account(s) hold each symbol — account KEYS only, the UI shows the account NAME (operator 2026-10-23:
+    # "two SpaceX and two different accounts"; never an account number).
+    accounts_raw: dict[str, list[str]] = {}
     for r in raw:
         sym = str(r.get("symbol") or "").upper().strip()
         if not sym or r.get("is_cash") or sym in _NOT_POSITIONS:
             continue
         if _num(r.get("qty")) > 0 or _num(r.get("market_value")) > 0:
             held_raw.add(sym)
+            acct = str(r.get("account") or "").strip()
+            if acct and acct not in accounts_raw.setdefault(sym, []):
+                accounts_raw[sym].append(acct)
     cusips = {s for s in held_raw if looks_like_cusip(s)}
     resolved = resolve_cusip_symbols(cusips, registry) if cusips else {}
     out = {
         "symbols": (held_raw - cusips) | set(resolved.values()),
+        "accounts_by_symbol": {resolved.get(s, s): a for s, a in accounts_raw.items() if s not in cusips or s in resolved},
         "source": source,
         "as_of": as_of.isoformat() if hasattr(as_of, "isoformat") else as_of,
         "age_s": fresh.get("age_s"),
@@ -292,7 +431,8 @@ def held_positions(*, db_query=None, holdings_path: Path | None = None, registry
 def held_detail_public(h: dict[str, Any] | None = None) -> dict[str, Any]:
     """JSON-safe held verdict for payloads (symbols as a count, never a list of positions sizes)."""
     h = h if h is not None else held_positions(surface=WATCH_SURFACE)
-    return {k: (len(v) if k == "symbols" else v) for k, v in h.items()} | {"count": len(h.get("symbols") or ())}
+    return {k: (len(v) if k in ("symbols", "accounts_by_symbol") else v) for k, v in h.items()} | {
+        "count": len(h.get("symbols") or ())}
 
 
 def membership_held(surface: str | None = None) -> tuple[set[str], str]:

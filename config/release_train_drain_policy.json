@@ -1,0 +1,17 @@
+{
+  "schema": "ReleaseTrainDrainPolicy@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "note": "Release train Phase 7 (AGENTS.md §25.3; arming packet §J.2): what the 06:00 drain probe (scripts/lib/release_train_drain.py) must prove before a 06:00 train may activate. Protected surface of the release-train controller: a train never changes it; it changes by a reviewed PR. Adding a lane to restart_tolerant narrows the drain and is an operator decision (§17 scope change); each entry needs a reason. Inert while the 0600 slot is disabled in the delegation.",
+  "slots": ["0600"],
+  "critical_value_classes": ["Business Critical"],
+  "critical_lanes_extra": [],
+  "critical_pipeline_keys": [],
+  "restart_tolerant": {},
+  "pre_guard_min": 5,
+  "buffer_min": 10,
+  "max_restart_impact_s": 1200,
+  "market_guard_min": 60,
+  "running_statuses": ["running", "started", "in_progress"],
+  "running_lookback_h": 6,
+  "extra_locks": []
+}

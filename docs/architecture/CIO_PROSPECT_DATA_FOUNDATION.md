@@ -290,11 +290,51 @@ projections themselves (they are the read path, and some still read `holdings.js
 
 ## 10. Open gaps, stated
 
-- `cio_prospect` projection, the Postgres backend of `InstrumentRecordStore`, the compare job and the single writer
-  modules marked `to_build` in the registry do not exist yet.
+- ~~`cio_prospect` projection, the Postgres backend of `InstrumentRecordStore`~~ — built inert in P1 (§11). The
+  compare job (P2) and the single writer modules marked `to_build` in the registry do not exist yet.
 - `open_trade_alerts` and `ticker_research_state.jsonl` have no identified writer in the inventory; they are listed,
   not classified as settled.
 - The n8n placement of `positions-sync` and the transaction ingest (broker reads) needs a §23 ruling before n8n may
   trigger them; the dictionary keeps them on the host.
 - Paper-trade and paper-proposal consolidation touches the paper adapter: execution-engineering grant territory
   (§0 rule 2). The dictionary records ceilings; it authorizes no code change there.
+
+## 11. Build status — P0/P1 built, inert (2026-10-22)
+
+Operator directive 2026-10-22: "start executing immediately ... for everything that's not built and not live".
+Branch `feat/cio-prospect-p0-p1-20261022`. **Nothing below is live**: no migration is applied, no row is granted,
+no lane is past shadow, no page reads anything new. Each piece names what turns it on.
+
+| Piece | Where | State | Turned on by (§17) |
+|---|---|---|---|
+| Migration `cio_prospect` + `cio_prospect_events` (append-only trigger, no-delete trigger, writer column CHECKed to `InstrumentRecordStore`, least-privilege grants) and its archive-by-rename reverse | `migrations/2026_10_22_cio_prospect.sql`, `.down.sql` | written, **not applied**; proven on a throwaway initdb cluster in the test | the P1 migration grant naming the file's sha256 (printed by the plan tool) |
+| Plan / dry run (static checks, inventory, grant strings bound to sha256; no `--apply`, no DB contact) | `scripts/cio_prospect_migration_plan.py` | runnable | — |
+| `InstrumentRecord@v1` extended: `apply_prospect` rail (BEHAVIOR_FIELDS refused anywhere, MBI = 0), `conviction_from_components`, `unified_edge_component` (the unified edge persisted with its inputs), `prospect_row` / `prospect_event`, `InstrumentRecordStore.upsert_prospect` (jsonl first, then the Postgres dual-write), `ProspectPgBackend` | `scripts/lib/cio_instrument_record.py` | built; dual-write **inert** (`prospect_store_status`: row not granted, flag off) | row grant + migration + `TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE=1`; no production caller yet (the curator/entry-state wiring is the next PR) |
+| Shadow builder (one prospect per security_guid from the opportunity projection, theses, spine, instrument records, re-entry desk, Hermes, scanner cache, the positions_context projection for the held set, and read-only DB inputs) + comparison vs Home / Watch / Telegram | `scripts/lib/cio_prospect_builder.py`, `scripts/cio_prospect_shadow_build.py` | runnable; `--dry-run` writes nothing | — |
+| Watchlist curation rules (one membership, ways in with a reason, expiry/invalidation out, size cap per stage, operator adds/stars and held never auto-dropped) | `config/cio_prospect_watchlist_rules.json` (PROPOSED), `scripts/lib/cio_prospect_watchlist_rules.py` | evaluated in the shadow; proposes only | the operator sets the caps and rules ("what is ranked onto an operator surface") |
+| n8n lane `cio-prospect-shadow` (registry row, allowlist entry `--with-db`, DRAFT contract), `*/30 9-16 * * 1-5` ET | **stacked PR** `feat/cio-prospect-shadow-lane-20261022` (lane registry, allowlist, contract) | **shadow** (dispatcher fires `--dry-run`; `live_arg` null) | the cio owner marks the contract REVIEWED (§23.19; the contract gates fail until then, by design); canary (`--write-shadow`) is a later registry PR |
+| Projection `cio_prospect` (BrokerReadEnvelope@v1; store only when live, else the shadow labelled SHADOW; say_so on gap; per-row stale after `expires_at`); `get_position_view` for TradeInView / Open Trades / Watch | `scripts/lib/data_broker/cio_prospect.py`, catalog entry | registered; no consumer | reader batches of §7 P3 |
+| **Position lifecycle on the same record** (operator 2026-10-22, NAVN): `origin` (internal vs operator-initiated, linked by the learning-loop rules `trade_recommendation_linkage`, with the surfaces and values at the entry fill), `position_lifecycle` (fills, every observed stop, excursion, conviction while held, exit cause stop-out / trailing ratchet / target / manual sell, P/L and R), `post_exit_review` (deterministic facts + noise-vs-trend; model prose only through a registered capability — none exists, so it is null and says so), `reentry_advice` (the Re-Entry Desk classifier, conditions, alert levels, one described alert), `stage_phase` exit_review → re_entry_watch, and one append-only `cio_prospect_events` row per fact (idempotent `event_key`) | `scripts/lib/cio_prospect_lifecycle.py`, migration columns + event types, `scripts/lib/reentry_rules.py` (the desk's classifier moved verbatim, re-exported by the desk) | built; shadow | the reader batch below; a capability for review prose (§12, §23.4) if wanted |
+
+| **Catalyst facts on the same record** (silo audit 2026-10-23 P1, SAIQ; operator: "anything for the security … the CIO agent needs to have it in memory"): `catalyst_grade` carries the facts from `catalyst_events` (read through the registered `catalyst_record` projection, new bulk `get_catalyst_records_bulk`), the Trade AI scanner's catalyst, the Hermes momentum catalyst research (`data/hermes/momentum_catalysts`, newest two days) and — only when the store is not read — the re-entry desk's derived copy; `verdict` VERIFIED / UNVERIFIED / DISAGREE / NONE; `grade` stays null (`grade_status: not_produced`, Gate 2 has no producer — weighting catalysts into conviction is §17); two verdicts are a `catalyst` conflict, a catalyst row filed under another GUID is a `catalyst_identity` conflict, a catalyst the scanner cites that the store lacks is a named `whats_missing` gap; a `catalyst_grade` change is an `update` prospect event (`rev:<n>`, idempotent) | `scripts/lib/cio_prospect_builder.py` (`catalyst_facts`), `scripts/lib/data_broker/catalyst_record.py`, `scripts/lib/cio_instrument_record.py` (`prospect_event` diff keys) | built; shadow (writes nothing) | the reader batch below (the lane already reads `catalyst_events` only through its projection) |
+
+| **Watch directives and open proposals on the same record** (silo audit 2026-10-23 P2): an active ticker watch directive is the protected watchlist way-in `operator_directive` (read through `watch_intelligence.active_ticker_directives` — registry domain `watch_directives`, granted — on the injected read-only session; 97 active live); an open proposal sets stage `proposed` with its id as evidence, **inert** until the operator grants registry row `paper_proposals` (the source reports `not_read (… not granted — §26.6; inert)`) | `scripts/lib/cio_prospect_builder.py` (`load_directive_inputs`, `load_proposal_inputs`, `domain_granted`), `scripts/lib/data_broker/watch_intelligence.py` (injectable `db_query`), `config/cio_prospect_watchlist_rules.json` + `cio_prospect_watchlist_rules.py` (origin `operator_directive`, protected) | built; shadow; proposals inert | grant `paper_proposals` (§17); the curation rules are PROPOSED (operator sets them) |
+
+Evidence: `tests/test_cio_prospect_foundation_20261022.py` (gate `cio_prospect_foundation_20261022`); quoted dry run
+and comparison [`CIO_PROSPECT_SHADOW_COMPARISON_2026-10-22.md`](CIO_PROSPECT_SHADOW_COMPARISON_2026-10-22.md).
+
+Pre-build check (§13.5), recorded: searched §13.4 for *prospect*, *instrument record*, *opportunity*, *unified edge*,
+*watchlist curation*; found `InstrumentRecord@v1` / `InstrumentRecordStore` (extended, not cloned — no new `@v1`
+type), `OpportunityAssessment@v1` (read as an input), `SecurityResearchSpine@v1` (read), `unified_edge_score`
+(called, not reimplemented), `data_broker.positions_context` (the registered positions projection, reused for the held set; the Watch held reader was ruled out because its import closure reaches broker transport, which a dispatched lane may not import), `docs/cio/TWO_WAY_WATCHLIST_CURATION.md`
+(the staging/drain path stays the membership writer; the new rules only propose). Nothing else does the per-security
+assembly, so the builder is new. For the position lifecycle (NAVN scope, 2026-10-22) the search found the learning-loop linkage (`scripts/lib/trade_recommendation_linkage.py`, `trade_recommendation_links`, TradeInView's `RecommendationOriginCard`) and the Re-Entry Decision Desk classifier (`derive_intel_state`): both are reused — `match_trade` / `attribute` / `r_multiple` are called, not re-implemented, and the desk classifier was moved verbatim into `scripts/lib/reentry_rules.py` (re-exported by the desk) because the desk module's import closure reaches the market-quote provider and broker transport, which a dispatched lane may not import.
+
+**Reader batch PROPOSED for the lane (not self-approved, §17):** the `cio-prospect-shadow` lane reads, READ ONLY, `schwab_round_trips` (+ `trade_closed.stop_used`), `trade_transactions` (proposed domain `transactions`), `stop_lifecycle` (proposed domain `broker_stops`, an observation), `trade_recommendation_links` (when the learning-loop migration is applied) and `ticker_prices` closes, to build the lifecycle. The catalyst fold-in (2026-10-23) adds `catalyst_events` through the `catalyst_record` projection and the Hermes momentum catalyst day files. None is `positions_current`, so the UNAPPROVED_READER gate does not fire, but each is a reader the dictionary will count once those rows are granted; the operator grants or narrows this batch.
+
+Backlog (open, in order): (1) operator grants — row `cio_prospect`, the P1 migration, the contract review;
+(2) wire the curator and entry-state runner to call `upsert_prospect` (P1 dual-write); (3) the P2 compare job;
+(4) a `catalyst_grade` (Gate 2) and `fused_score` producer keyed by GUID (the catalyst FACTS are on the record since 2026-10-23; the grade is still unproduced); (5) the reader batches (Home + Telegram
+cards first); (6) AGENTS.md cites the behaviour rail as `cio_instrument_record.py:390`; it is now at line 450 (it was
+already at 422 before this change) — the citation should name the symbol (`apply_cognition` raises
+`BehaviorWriteRefused`) instead of a line (§20 PATCH).

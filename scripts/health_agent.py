@@ -25,6 +25,7 @@ Usage:
     .venv/bin/python scripts/health_agent.py --no-enqueue    # score only, do not touch escalation queue
     .venv/bin/python scripts/health_agent.py --json          # print snapshot json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -42,6 +43,7 @@ from lib.live_project_root import (  # noqa: E402
     DEV_ROOT,
     DEV_VENV_PYTHON,
 )
+
 PROJECT_ROOT = get_live_project_root()
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 # Prefer DEV scripts on sys.path when live stamp is missing newer modules
@@ -50,6 +52,7 @@ if DEV_ROOT != PROJECT_ROOT and (DEV_ROOT / "scripts").is_dir():
 
 try:
     from dotenv import load_dotenv
+
     load_dotenv(PROJECT_ROOT / ".env")
     if DEV_ROOT != PROJECT_ROOT:
         load_dotenv(DEV_ROOT / ".env", override=False)
@@ -82,6 +85,7 @@ def _resolve_remediation_python() -> str:
 def _rewrite_remediation_cmd(cmd: str) -> str:
     """Rewrite relative .venv/bin/python → absolute dev venv; prefer DEV scripts cwd later."""
     import re
+
     if not cmd or not isinstance(cmd, str):
         return cmd or ""
     py = _resolve_remediation_python()
@@ -127,17 +131,14 @@ def _data_source_retry_cmd(policy: dict, ftype: str, finding: dict) -> str | Non
                 from credential_monitor import is_finviz_cookie_failure_text
             except Exception:
                 is_finviz_cookie_failure_text = lambda _t: False  # noqa: E731
-            blob = " ".join(
-                str(finding.get(k) or "")
-                for k in ("last_error", "message", "detail", "error")
-            )
+            blob = " ".join(str(finding.get(k) or "") for k in ("last_error", "message", "detail", "error"))
             if is_finviz_cookie_failure_text(blob):
                 return None
     return cmd if isinstance(cmd, str) else None
 
 
 FAIL_STREAK_CEILING = int(os.environ.get("HEALTH_REMEDIATION_FAIL_STREAK_CEILING", "5"))
-_NON_FAILURE_RCS = (0, 69, 99)     # 69/99: flock contention / fresh-dump gate, not a failure
+_NON_FAILURE_RCS = (0, 69, 99)  # 69/99: flock contention / fresh-dump gate, not a failure
 _PAUSED_OR_RETIRED = frozenset({"PAUSED", "RETIRED", "NEVER_SCHEDULED"})
 
 
@@ -174,6 +175,8 @@ def _remediation_cwd() -> Path:
     if (PROJECT_ROOT / "scripts").is_dir():
         return PROJECT_ROOT
     return DEV_ROOT
+
+
 STATUS_FILE = STATE_DIR / "health_agent_status.json"
 AUDIT_JSONL = LOG_DIR / "health_agent.jsonl"
 QUEUE_FILE = LOG_DIR / "claude_escalation_queue.json"
@@ -183,9 +186,11 @@ SEV_ORDER = {"critical": 3, "warning": 2, "info": 1, "ok": 0}
 
 # ── config + db ─────────────────────────────────────────────────────────────────────────────────────
 
+
 def load_policy() -> dict:
     try:
         from config_db_loader import get_config
+
         cfg = get_config("health_agent_policy", fallback_path="config/health_agent_policy.json")
         if cfg:
             return cfg
@@ -200,6 +205,7 @@ def load_policy() -> dict:
 def _db(sql, params=None, fetch="one"):
     try:
         from db_adapter import _execute, USE_DB
+
         if not USE_DB:
             return None
         return _execute(sql, params, fetch=fetch)
@@ -262,6 +268,7 @@ def _freshest_log_age_h(name: str):
 def _is_portfolio_market_hours() -> bool:
     try:
         from zoneinfo import ZoneInfo
+
         now = datetime.now(ZoneInfo("America/New_York"))
     except Exception:
         now = datetime.now()
@@ -278,6 +285,7 @@ def _parse_et_ts_minutes(ts_str: str) -> float | None:
     s = str(ts_str).strip().replace(" ET", "").replace("ET", "").strip()[:19]
     try:
         from zoneinfo import ZoneInfo
+
         naive = datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
         et = naive.replace(tzinfo=ZoneInfo("America/New_York"))
         return round((datetime.now(ZoneInfo("America/New_York")) - et).total_seconds() / 60.0, 1)
@@ -322,11 +330,19 @@ def _check_portfolio_totals_drift(hp: dict, pcfg: dict) -> list[dict]:
     drift_pct = drift / canonical * 100 if canonical else 0
     if drift >= min_drift or drift_pct >= min_pct:
         sev = "critical" if drift >= min_drift * 3 or drift_pct >= min_pct * 4 else "warning"
-        out.append(_f("data_quality", "portfolio_totals_drift", sev,
-                      f"portfolio_totals ${canonical:,.0f} vs holdings sum ${derived:,.0f} "
-                      f"(drift ${drift:,.0f} / {drift_pct:.2f}%) — run portfolio_repricer",
-                      derived_total=derived, canonical_total=canonical, drift_dollars=drift,
-                      drift_pct=round(drift_pct, 3)))
+        out.append(
+            _f(
+                "data_quality",
+                "portfolio_totals_drift",
+                sev,
+                f"portfolio_totals ${canonical:,.0f} vs holdings sum ${derived:,.0f} "
+                f"(drift ${drift:,.0f} / {drift_pct:.2f}%) — run portfolio_repricer",
+                derived_total=derived,
+                canonical_total=canonical,
+                drift_dollars=drift,
+                drift_pct=round(drift_pct, 3),
+            )
+        )
     # Per-account: stale manual/reported totals (Fidelity rollover after SnapTrade position merge).
     for acct_key, acct in (hp.get("account_summaries") or {}).items():
         if not isinstance(acct, dict):
@@ -339,11 +355,19 @@ def _check_portfolio_totals_drift(hp: dict, pcfg: dict) -> list[dict]:
         adrift = round(abs(acct_derived - acct_stored), 2)
         if adrift >= min_drift:
             sev = "critical" if adrift >= min_drift * 2 else "warning"
-            out.append(_f("data_quality", "account_summary_drift", sev,
-                          f"{acct_key}: account_summary ${acct_stored:,.0f} vs holdings "
-                          f"${acct_derived:,.0f} (drift ${adrift:,.0f})",
-                          account=acct_key, derived_total=acct_derived, stored_total=acct_stored,
-                          drift_dollars=adrift))
+            out.append(
+                _f(
+                    "data_quality",
+                    "account_summary_drift",
+                    sev,
+                    f"{acct_key}: account_summary ${acct_stored:,.0f} vs holdings "
+                    f"${acct_derived:,.0f} (drift ${adrift:,.0f})",
+                    account=acct_key,
+                    derived_total=acct_derived,
+                    stored_total=acct_stored,
+                    drift_dollars=adrift,
+                )
+            )
     return out
 
 
@@ -351,12 +375,15 @@ def _check_snaptrade_cash_stale(hp: dict, pcfg: dict) -> list[dict]:
     """Fidelity/SnapTrade: SPAXX position units lag after stock buys; cash must use buying_power."""
     out = []
     min_gap = float(pcfg.get("snaptrade_cash_gap_min_dollars", 5000))
-    for acct in (pcfg.get("snaptrade_accounts") or ["fidelity_rollover_ira"]):
+    for acct in pcfg.get("snaptrade_accounts") or ["fidelity_rollover_ira"]:
         rows = [p for p in (hp.get("holdings") or []) if p.get("account") == acct]
         if not rows:
             continue
-        cash_rows = [p for p in rows if p.get("is_cash") or str(p.get("symbol") or "").upper()
-                     in ("SPAXX", "FDRXX", "FZFXX", "SPRXX")]
+        cash_rows = [
+            p
+            for p in rows
+            if p.get("is_cash") or str(p.get("symbol") or "").upper() in ("SPAXX", "FDRXX", "FZFXX", "SPRXX")
+        ]
         equity_mv = round(sum(float(p.get("market_value") or 0) for p in rows if p not in cash_rows), 2)
         if not cash_rows or equity_mv < min_gap:
             continue
@@ -367,10 +394,19 @@ def _check_snaptrade_cash_stale(hp: dict, pcfg: dict) -> list[dict]:
             continue
         # Stale: position-unit cash with large equity book (post-deploy pattern)
         if cash_mv > equity_mv * 0.8 and src in ("snaptrade_position_units", "snaptrade", ""):
-            out.append(_f("data_quality", "snaptrade_cash_stale", "warning",
-                          f"{acct}: SPAXX ${cash_mv:,.0f} looks stale vs ${equity_mv:,.0f} "
-                          f"equity — re-sync with balances.buying_power",
-                          account=acct, spaxx_mv=cash_mv, equity_mv=equity_mv, cash_source=src))
+            out.append(
+                _f(
+                    "data_quality",
+                    "snaptrade_cash_stale",
+                    "warning",
+                    f"{acct}: SPAXX ${cash_mv:,.0f} looks stale vs ${equity_mv:,.0f} "
+                    f"equity — re-sync with balances.buying_power",
+                    account=acct,
+                    spaxx_mv=cash_mv,
+                    equity_mv=equity_mv,
+                    cash_source=src,
+                )
+            )
     return out
 
 
@@ -385,16 +421,27 @@ def _check_portfolio_stale_marks(hp: dict, pcfg: dict, *, market_open: bool, max
     Critical so tier-1 escalation pages the operator; remediation reruns portfolio_repricer.py."""
     if not market_open:
         return []
-    rows = [p for p in (hp.get("holdings") or [])
-            if not p.get("is_cash") and float(p.get("market_value") or 0) >= 50
-            and str(p.get("price_source") or "") in _FALLBACK_MARK_SOURCES]
+    rows = [
+        p
+        for p in (hp.get("holdings") or [])
+        if not p.get("is_cash")
+        and float(p.get("market_value") or 0) >= 50
+        and str(p.get("price_source") or "") in _FALLBACK_MARK_SOURCES
+    ]
     if len(rows) <= max_rows:
         return []
     syms = sorted({str(p.get("symbol")) for p in rows})
-    return [_f("data_quality", "portfolio_stale_marks", "critical",
-               f"{len(rows)} held positions priced from a stale fallback cache, not a live quote "
-               f"({', '.join(syms[:8])}{'…' if len(syms) > 8 else ''}) — day change shows 0%",
-               count=len(rows), symbols=syms[:20])]
+    return [
+        _f(
+            "data_quality",
+            "portfolio_stale_marks",
+            "critical",
+            f"{len(rows)} held positions priced from a stale fallback cache, not a live quote "
+            f"({', '.join(syms[:8])}{'…' if len(syms) > 8 else ''}) — day change shows 0%",
+            count=len(rows),
+            symbols=syms[:20],
+        )
+    ]
 
 
 REMEDIATION_STATE = STATE_DIR / "health_agent_remediation_state.json"
@@ -425,7 +472,13 @@ def _load_safe_remediation_scripts() -> tuple:
                     break
                 # Extract basename from quoted string like '- "scripts/foo.py"'
                 if stripped.startswith("- ") and "." in stripped:
-                    script = stripped.split('"')[1] if '"' in stripped else stripped.split("'")[1] if "'" in stripped else stripped[3:].strip()
+                    script = (
+                        stripped.split('"')[1]
+                        if '"' in stripped
+                        else stripped.split("'")[1]
+                        if "'" in stripped
+                        else stripped[3:].strip()
+                    )
                     basename = script.rsplit("/", 1)[-1]
                     if basename and "." in basename:
                         scripts.append(basename)
@@ -436,28 +489,55 @@ def _load_safe_remediation_scripts() -> tuple:
 
     # Fallback — hardcoded safety net (must be kept in sync with the YAML manually)
     import sys as _sys
+
     print("WARNING: health_agent failed to load allowlist from YAML — using hardcoded fallback", file=_sys.stderr)
     return (
-        "portfolio_repricer.py", "external_market_data_ingest.py", "snaptrade_sync.py",
-        "run_finviz_momentum_scalp_scan.py", "social_scalp_scanner.py",
-        "run_sec_form4_momentum_context.py", "reset_stuck_agent_jobs.py",
-        "fix_strategy_registry_null_ids.py", "remediate_proposal_trade_plans.py",
-        "auto_enrichment_runner.py", "cleanup_stale_proposals.py",
-        "remediate_watchlist_news_guard.py", "hermes_scope_governor.py",
-        "cio_decision_engine.py", "schwab_journal_builder.py",
-        "schwab_transaction_ingest.py", "trade_ai_orchestrator.py",
-        "shadow_batch_generator.py", "finviz_screener_runner.py", "news_ingestion.py",
-        "indicator_cache_refresh.py", "build_symbol_profiles.py", "pro_analyst_fetch.py",
-        "sector_momentum_engine.py", "rotation_autopilot.py", "unified_stop_supervisor.py",
-        "fred_data_ingest.py", "sec_data_ingest.py", "social_ingest.py",
-        "youtube_transcript_ingest.py", "process_watchlist_agent_jobs.py",
-        "run_pg_backup.sh", "run_options_monitor.py", "data_gap_resolver.py",
-        "hermes_coordinator.py", "hermes_embedding_enqueue.py",
-        "hermes_embedding_worker.py", "backtest_results_aggregator.py",
-        "proposal_backtest_engine.py", "enrich_proposal_technicals.py",
-        "journal_review_builder.py", "paper_trade_monitor.py",
-        "paper_trade_statistics.py", "heal_trade_ai_session_cache.py",
-        "remediate_scalp_go_dark.py", "remediate_pipeline_failures.py",
+        "portfolio_repricer.py",
+        "external_market_data_ingest.py",
+        "snaptrade_sync.py",
+        "run_finviz_momentum_scalp_scan.py",
+        "social_scalp_scanner.py",
+        "run_sec_form4_momentum_context.py",
+        "reset_stuck_agent_jobs.py",
+        "fix_strategy_registry_null_ids.py",
+        "remediate_proposal_trade_plans.py",
+        "auto_enrichment_runner.py",
+        "cleanup_stale_proposals.py",
+        "remediate_watchlist_news_guard.py",
+        "hermes_scope_governor.py",
+        "cio_decision_engine.py",
+        "schwab_journal_builder.py",
+        "schwab_transaction_ingest.py",
+        "trade_ai_orchestrator.py",
+        "shadow_batch_generator.py",
+        "finviz_screener_runner.py",
+        "news_ingestion.py",
+        "indicator_cache_refresh.py",
+        "build_symbol_profiles.py",
+        "pro_analyst_fetch.py",
+        "sector_momentum_engine.py",
+        "rotation_autopilot.py",
+        "unified_stop_supervisor.py",
+        "fred_data_ingest.py",
+        "sec_data_ingest.py",
+        "social_ingest.py",
+        "youtube_transcript_ingest.py",
+        "process_watchlist_agent_jobs.py",
+        "run_pg_backup.sh",
+        "run_options_monitor.py",
+        "data_gap_resolver.py",
+        "hermes_coordinator.py",
+        "hermes_embedding_enqueue.py",
+        "hermes_embedding_worker.py",
+        "backtest_results_aggregator.py",
+        "proposal_backtest_engine.py",
+        "enrich_proposal_technicals.py",
+        "journal_review_builder.py",
+        "paper_trade_monitor.py",
+        "paper_trade_statistics.py",
+        "heal_trade_ai_session_cache.py",
+        "remediate_scalp_go_dark.py",
+        "remediate_pipeline_failures.py",
     )
 
 
@@ -479,10 +559,17 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
     if not cfg.get("enabled", True):
         return []
     never = set(policy.get("never_auto_remediate") or cfg.get("never_auto_remediate") or [])
-    types = set(cfg.get("finding_types") or [
-        "portfolio_totals_drift", "account_summary_drift", "snaptrade_cash_stale",
-        "portfolio_repricer_stale", "finviz_quote_cache_stale", "market_quotes_stale",
-    ])
+    types = set(
+        cfg.get("finding_types")
+        or [
+            "portfolio_totals_drift",
+            "account_summary_drift",
+            "snaptrade_cash_stale",
+            "portfolio_repricer_stale",
+            "finviz_quote_cache_stale",
+            "market_quotes_stale",
+        ]
+    )
     cooldown_m = float(cfg.get("cooldown_minutes", 10))
     # Circuit breaker: if a remediation keeps "succeeding" (exit 0) yet the SAME finding fires again
     # within ineffective_window_minutes, the fix isn't actually fixing it — stop the futile loop and
@@ -499,14 +586,14 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
     }
     # Always auto session heal even if severity was demoted; SETUPS header is user-visible.
     session_force = {"trade_ai_session_stale", "trade_ai_session_missing"}
-    actionable = [f for f in findings
-                  if (
-                      (f.get("severity") in ("warning", "critical") and f.get("type") in types)
-                      or f.get("type") in session_force
-                  )
-                  and f.get("type") not in never
-                  and f.get("type") in types
-                  and not f.get("held")]  # root-cause hold: skip thrash
+    actionable = [
+        f
+        for f in findings
+        if ((f.get("severity") in ("warning", "critical") and f.get("type") in types) or f.get("type") in session_force)
+        and f.get("type") not in never
+        and f.get("type") in types
+        and not f.get("held")
+    ]  # root-cause hold: skip thrash
     if not actionable:
         return []
     try:
@@ -528,6 +615,7 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
         """Best-effort: push error/outcome into durable root-cause memory."""
         try:
             from lib import health_root_cause_memory as rcmem
+
             if not entry.get("ok") or entry.get("ineffective"):
                 rcmem.record_error(
                     ftype,
@@ -572,15 +660,22 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                 pass
         # Circuit broken: don't re-run; record an ineffective result so the alert escalates (not "fixed").
         if st.get("ineffective_streak", 0) >= ceiling:
-            entry = {"at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False, "ineffective": True,
-                     "streak": st["ineffective_streak"],
-                     "note": f"remediation ineffective {st['ineffective_streak']}x within {int(ineff_window_m)}m "
-                             f"— not re-running; needs operator/code review",
-                     "trigger": f.get("message", "")[:200]}
+            entry = {
+                "at": now.isoformat(),
+                "type": ftype,
+                "cmd": cmd,
+                "ok": False,
+                "ineffective": True,
+                "streak": st["ineffective_streak"],
+                "note": f"remediation ineffective {st['ineffective_streak']}x within {int(ineff_window_m)}m "
+                f"— not re-running; needs operator/code review",
+                "trigger": f.get("message", "")[:200],
+            }
             # Ladder types: reset streak + advance memory strategy so next window tries next fix
             if ftype in ladder_types:
                 try:
                     from lib import health_root_cause_memory as rcmem
+
                     rcmem.advance_strategy(ftype)
                     entry["note"] += " (ladder advanced)"
                     st["ineffective_streak"] = 0
@@ -598,10 +693,16 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
         # the allowlist could resurrect scripts/cio_decision_engine.py (lane PAUSED).
         _lane = _lane_state_for_cmd(cmd)
         if _lane.get("state") in _PAUSED_OR_RETIRED:
-            entry = {"at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False,
-                     "skipped": "lane_" + _lane["state"].lower(), "lane_id": _lane.get("lane_id"),
-                     "note": f"remediation skipped: lane {_lane.get('lane_id')} is {_lane['state']}",
-                     "trigger": f.get("message", "")[:200]}
+            entry = {
+                "at": now.isoformat(),
+                "type": ftype,
+                "cmd": cmd,
+                "ok": False,
+                "skipped": "lane_" + _lane["state"].lower(),
+                "lane_id": _lane.get("lane_id"),
+                "note": f"remediation skipped: lane {_lane.get('lane_id')} is {_lane['state']}",
+                "trigger": f.get("message", "")[:200],
+            }
             results.append(entry)
             REMEDIATION_LOG.parent.mkdir(parents=True, exist_ok=True)
             with open(REMEDIATION_LOG, "a") as fh:
@@ -611,11 +712,19 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
         # re-run forever — remediate_watchlist_news_guard hit a ForeignKeyViolation
         # 2,447 times. The existing breaker only counted "succeeded then recurred".
         if _circuit_open(st):
-            entry = {"at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False,
-                     "circuit_open": True, "fail_streak": st.get("fail_streak", 0),
-                     "note": (f"remediation failed {st.get('fail_streak', 0)}x in a row — circuit open, "
-                              f"not re-running; needs operator/code review"),
-                     "trigger": f.get("message", "")[:200]}
+            entry = {
+                "at": now.isoformat(),
+                "type": ftype,
+                "cmd": cmd,
+                "ok": False,
+                "circuit_open": True,
+                "fail_streak": st.get("fail_streak", 0),
+                "note": (
+                    f"remediation failed {st.get('fail_streak', 0)}x in a row — circuit open, "
+                    f"not re-running; needs operator/code review"
+                ),
+                "trigger": f.get("message", "")[:200],
+            }
             results.append(entry)
             REMEDIATION_LOG.parent.mkdir(parents=True, exist_ok=True)
             with open(REMEDIATION_LOG, "a") as fh:
@@ -627,13 +736,20 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
             # P0 agent_jobs containment (same guard as escalation handler)
             try:
                 from lib.agent_jobs_containment import guard_agent_jobs_execution
+
                 g = guard_agent_jobs_execution(cmd, source="health_agent_auto_remediate")
                 if g.get("blocked"):
-                    results.append({
-                        "at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False,
-                        "contained": True, "note": g.get("remediation_status") or "CONTAINED",
-                        "trigger": f.get("message", "")[:200],
-                    })
+                    results.append(
+                        {
+                            "at": now.isoformat(),
+                            "type": ftype,
+                            "cmd": cmd,
+                            "ok": False,
+                            "contained": True,
+                            "note": g.get("remediation_status") or "CONTAINED",
+                            "trigger": f.get("message", "")[:200],
+                        }
+                    )
                     continue
             except Exception:
                 pass
@@ -659,8 +775,13 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
             t0 = _time_module.time()
             try:
                 proc = subprocess.Popen(
-                    cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                    text=True, cwd=str(run_cwd), start_new_session=True,
+                    cmd,
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    cwd=str(run_cwd),
+                    start_new_session=True,
                 )
                 try:
                     stdout, stderr = proc.communicate(timeout=timeout)
@@ -677,8 +798,12 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                     except Exception:
                         pass  # process already exited — best-effort cleanup
                     entry = {
-                        "at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False,
-                        "exit_code": -1, "cwd": str(run_cwd),
+                        "at": now.isoformat(),
+                        "type": ftype,
+                        "cmd": cmd,
+                        "ok": False,
+                        "exit_code": -1,
+                        "cwd": str(run_cwd),
                         "stdout_tail": (stdout or "")[-400:],
                         "stderr_tail": (stderr or "")[-400:],
                         "ineffective_streak": st.get("ineffective_streak", 0),
@@ -696,8 +821,12 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
             except Exception as exc:
                 duration = _time_module.time() - t0
                 entry = {
-                    "at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False,
-                    "exit_code": -1, "cwd": str(run_cwd),
+                    "at": now.isoformat(),
+                    "type": ftype,
+                    "cmd": cmd,
+                    "ok": False,
+                    "exit_code": -1,
+                    "cwd": str(run_cwd),
                     "stdout_tail": (stdout or "")[-400:],
                     "stderr_tail": (stderr or "")[-400:],
                     "ineffective_streak": st.get("ineffective_streak", 0),
@@ -716,9 +845,13 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
             # served numbers stayed stale. The real verdict is decided below, after
             # the originating check is re-run. `ok` is overwritten there.
             ok = False
+            previous_fail_streak = st.get("fail_streak", 0)
             st["fail_streak"] = _next_fail_streak(st, rc)
             entry = {
-                "at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": ok,
+                "at": now.isoformat(),
+                "type": ftype,
+                "cmd": cmd,
+                "ok": ok,
                 "exit_code": rc,
                 "fail_streak": st["fail_streak"],
                 "cwd": str(run_cwd),
@@ -744,6 +877,9 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                                     entry["how_to_fix"] = parsed.get("how_to_fix")
                                     entry["strategy_id"] = parsed.get("strategy_id")
                                     entry["held"] = parsed.get("held")
+                                    entry["outcome"] = parsed.get("outcome")
+                                    entry["hold_until"] = parsed.get("hold_until")
+                                    entry["operator_action_required"] = parsed.get("operator_action_required")
                                     if parsed.get("note"):
                                         entry["note"] = str(parsed.get("note"))[:300]
                                 break  # found and parsed — stop
@@ -754,11 +890,28 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
             if rc in (69, 99):
                 entry["ok"] = False
                 entry["flock_contention"] = True
+            # A held result is a deliberate pause for operator review. Do not
+            # enqueue it for verification or count it as a remediation attempt.
+            if entry.get("held") or entry.get("outcome") == "HELD":
+                entry["outcome"] = "HELD"
+                entry["ok"] = False
+                st["fail_streak"] = previous_fail_streak
+                # A deliberate hold is not a failed remediation attempt; keep
+                # the persisted streak and its audit record consistent.
+                entry["fail_streak"] = previous_fail_streak
+                entry.pop("_pending_verification", None)
+                entry["hold_until"] = entry.get("hold_until") or entry.get("hold_until_ts")
+                results.append(entry)
+                REMEDIATION_LOG.parent.mkdir(parents=True, exist_ok=True)
+                with open(REMEDIATION_LOG, "a") as fh:
+                    fh.write(json.dumps({**entry, "record": "held"}) + "\n")
+                state[ftype] = st
+                continue
             # Queue for the re-check pass. Until then this entry claims nothing.
             entry["_pending_verification"] = True
-            entry["_before_finding"] = {k: f.get(k) for k in
-                                        ("type", "severity", "message", "age_hours",
-                                         "age_seconds", "count", "drift_pct")}
+            entry["_before_finding"] = {
+                k: f.get(k) for k in ("type", "severity", "message", "age_hours", "age_seconds", "count", "drift_pct")
+            }
             _pending.append(entry)
             results.append(entry)
             # The attempt is recorded now; the VERDICT is appended by the re-check
@@ -775,8 +928,16 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
             state[ftype] = st
             _record_rc_memory(ftype, f, entry)
         except Exception as ex:
-            results.append({"at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False,
-                            "error": str(ex)[:200], "trigger": f.get("message", "")[:200]})
+            results.append(
+                {
+                    "at": now.isoformat(),
+                    "type": ftype,
+                    "cmd": cmd,
+                    "ok": False,
+                    "error": str(ex)[:200],
+                    "trigger": f.get("message", "")[:200],
+                }
+            )
     # ── Verdict pass: re-run the originating check and compare ──────────────
     # Nothing above this point is entitled to say a condition was fixed. A
     # subprocess exit code proves the command ran; only re-observing the finding
@@ -785,8 +946,13 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
     if _pending:
         try:
             from scripts.lib.health_remediation_outcome import (
-                WORSENED, classify, diagnose, escalation_payload, should_stop_retrying,
+                WORSENED,
+                classify,
+                diagnose,
+                escalation_payload,
+                should_stop_retrying,
             )
+
             try:
                 _, _, _, after_cat = compute(policy)
                 after_findings = [x for fs in after_cat.values() for x in fs]
@@ -808,7 +974,9 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                     continue
 
                 verdict = classify(
-                    finding_type=ftype, before=before, after_findings=after_findings,
+                    finding_type=ftype,
+                    before=before,
+                    after_findings=after_findings,
                     exit_code=entry.get("exit_code"),
                     timed_out=bool(entry.get("error", "").startswith("timeout")),
                 )
@@ -829,24 +997,27 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
                     if verdict["outcome"] in ("INEFFECTIVE", WORSENED):
                         streak += 1
                         st2["ineffective_streak"] = streak
-                        cause = diagnose(verdict, evidence={
-                            "wrote_path": entry.get("wrote_path"),
-                            "read_path": entry.get("read_path"),
-                        })
+                        cause = diagnose(
+                            verdict,
+                            evidence={
+                                "wrote_path": entry.get("wrote_path"),
+                                "read_path": entry.get("read_path"),
+                            },
+                        )
                         entry["root_cause"] = cause
                         stop, reason = should_stop_retrying(verdict, streak, breaker=breaker)
                         if stop:
                             entry["escalate"] = escalation_payload(
-                                verdict, root_cause=cause,
-                                command=entry.get("cmd") or "", reason=reason)
+                                verdict, root_cause=cause, command=entry.get("cmd") or "", reason=reason
+                            )
                             entry["ineffective"] = True
                             entry["note"] = (
-                                f"{verdict['outcome']} — {cause}; not re-running. "
-                                f"{entry['escalate']['metric_trend']}")
+                                f"{verdict['outcome']} — {cause}; not re-running. {entry['escalate']['metric_trend']}"
+                            )
                         try:
                             from lib import health_root_cause_memory as rcmem
-                            rcmem.record_error(ftype, entry.get("note") or entry.get("trigger") or "",
-                                               root_cause=cause)
+
+                            rcmem.record_error(ftype, entry.get("note") or entry.get("trigger") or "", root_cause=cause)
                         except Exception:
                             pass
                 state[ftype] = st2
@@ -873,6 +1044,7 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
 
 # ── category collectors (each returns a list of findings; never raises) ──────────────────────────────
 
+
 def collect_data_quality() -> list[dict]:
     out = []
     try:
@@ -882,8 +1054,18 @@ def collect_data_quality() -> list[dict]:
             ("risk_management", _file_age_h(STATE_DIR / "risk_management.json"), wk or 24, True),
             ("dividend_calendar", _file_age_h(STATE_DIR / "dividend_calendar.json"), wk or 48, True),
             ("news", _db_age_h("SELECT MAX(created_at) FROM news_articles"), wk or 6, False),
-            ("cio_advisory_cases", _file_age_h(PROJECT_ROOT / "data" / "cio" / "cio_production_cases.jsonl"), wk or 48, True),
-            ("agent_jobs", _db_age_h("SELECT MAX(created_at) FROM watchlist_agent_jobs WHERE status='completed'"), wk or 4, False),
+            (
+                "cio_advisory_cases",
+                _file_age_h(PROJECT_ROOT / "data" / "cio" / "cio_production_cases.jsonl"),
+                wk or 48,
+                True,
+            ),
+            (
+                "agent_jobs",
+                _db_age_h("SELECT MAX(created_at) FROM watchlist_agent_jobs WHERE status='completed'"),
+                wk or 4,
+                False,
+            ),
             # indicator_signal_history last wrote 2026-05-04; producer is retired.
             # Do not emit critical / auto-retry indicator_cache_refresh against a dead table.
             # ("indicator_snapshots", ... retired)
@@ -891,7 +1073,12 @@ def collect_data_quality() -> list[dict]:
             ("analyst_rollups", _db_age_h("SELECT MAX(created_at) FROM analyst_consensus_history"), wk or 48, True),
             ("sector_momentum", _db_age_h("SELECT MAX(created_at) FROM sector_momentum_state"), wk or 48, True),
             ("rotation_summary", _db_age_h("SELECT MAX(created_at) FROM strategy_rotation_signals"), wk or 48, True),
-            ("stops", _db_age_h("SELECT MAX(snapshot_at) FROM stop_lifecycle WHERE lifecycle != 'orphaned'"), wk or 48, True),
+            (
+                "stops",
+                _db_age_h("SELECT MAX(snapshot_at) FROM stop_lifecycle WHERE lifecycle != 'orphaned'"),
+                wk or 48,
+                True,
+            ),
             ("fred_data", _db_age_h("SELECT MAX(fetched_at) FROM fred_economic_series"), wk or 168, True),
             ("sec_data", _db_age_h("SELECT MAX(created_at) FROM sec_form4"), wk or 168, True),
             ("social_data", _db_age_h("SELECT MAX(observed_at) FROM social_sentiment_history"), wk or 48, True),
@@ -899,13 +1086,15 @@ def collect_data_quality() -> list[dict]:
             ("orchestrator_setups", _file_age_h(LOG_DIR / "screener_pm.log"), wk or 24, True),
             ("shadow_batch", _file_age_h(LOG_DIR / "shadow_batch_manual.log"), wk or 24, True),
         ]
-        out.append(_f(
-            "data_quality",
-            "indicator_snapshots_retired",
-            "info",
-            "indicator_signal_history producer retired (last row 2026-05-04); "
-            "not the canonical live indicator product",
-        ))
+        out.append(
+            _f(
+                "data_quality",
+                "indicator_snapshots_retired",
+                "info",
+                "indicator_signal_history producer retired (last row 2026-05-04); "
+                "not the canonical live indicator product",
+            )
+        )
         for name, age, maxh, weekend_ok in checks:
             if age is None:
                 out.append(_f("data_quality", f"{name}_unknown", "info", f"{name} freshness unknown", age_hours=None))
@@ -913,38 +1102,71 @@ def collect_data_quality() -> list[dict]:
                 weekend_excused = _IS_WEEKEND and weekend_ok
                 sev = "info" if weekend_excused else ("critical" if age > maxh * 3 else "warning")
                 ft = "news_stale" if name == "news" else f"{name}_stale"
-                out.append(_f("data_quality", ft, sev,
-                              f"{name} stale: {age}h (max {maxh}h)" + (" [weekend]" if weekend_excused else ""),
-                              age_hours=age, max_hours=maxh))
+                out.append(
+                    _f(
+                        "data_quality",
+                        ft,
+                        sev,
+                        f"{name} stale: {age}h (max {maxh}h)" + (" [weekend]" if weekend_excused else ""),
+                        age_hours=age,
+                        max_hours=maxh,
+                    )
+                )
         gaps = _db("SELECT COUNT(*) AS c FROM data_gap_registry WHERE status='open'", fetch="one")
         if gaps and gaps.get("c", 0) > 0:
             n = gaps["c"]
-            out.append(_f("data_quality", "data_gaps_open", "warning" if n < 10 else "critical",
-                          f"{n} open data gaps", count=n))
+            out.append(
+                _f(
+                    "data_quality",
+                    "data_gaps_open",
+                    "warning" if n < 10 else "critical",
+                    f"{n} open data gaps",
+                    count=n,
+                )
+            )
 
         # Portfolio live prices — Finviz repricer is authoritative (SnapTrade touches holdings mtime)
-        pcfg = (load_policy().get("portfolio_price_freshness") or {})
+        pcfg = load_policy().get("portfolio_price_freshness") or {}
         if pcfg.get("enabled", True) and _is_portfolio_market_hours():
             max_m = float(pcfg.get("max_age_minutes", 25))
             fv_path = STATE_DIR / "finviz_quote_cache.json"
             if fv_path.exists():
                 try:
-                    meta = (json.loads(fv_path.read_text(encoding="utf-8")).get("_meta") or {})
+                    meta = json.loads(fv_path.read_text(encoding="utf-8")).get("_meta") or {}
                     age_m = _parse_et_ts_minutes(meta.get("last_fetched") or meta.get("last_updated") or "")
                     if age_m is None:
-                        out.append(_f("data_quality", "finviz_quote_cache_unknown", "warning",
-                                      "finviz_quote_cache missing last_fetched"))
+                        out.append(
+                            _f(
+                                "data_quality",
+                                "finviz_quote_cache_unknown",
+                                "warning",
+                                "finviz_quote_cache missing last_fetched",
+                            )
+                        )
                     elif age_m > max_m:
                         sev = "critical" if age_m > max_m * 2 else "warning"
-                        out.append(_f("data_quality", "finviz_quote_cache_stale", sev,
-                                      f"Finviz quote cache stale {age_m:.0f}m (max {max_m:.0f}m)",
-                                      age_minutes=age_m))
+                        out.append(
+                            _f(
+                                "data_quality",
+                                "finviz_quote_cache_stale",
+                                sev,
+                                f"Finviz quote cache stale {age_m:.0f}m (max {max_m:.0f}m)",
+                                age_minutes=age_m,
+                            )
+                        )
                 except Exception as ex:
-                    out.append(_f("data_quality", "finviz_quote_cache_error", "warning",
-                                  f"finviz_quote_cache read error: {ex}"))
+                    out.append(
+                        _f(
+                            "data_quality",
+                            "finviz_quote_cache_error",
+                            "warning",
+                            f"finviz_quote_cache read error: {ex}",
+                        )
+                    )
             else:
-                out.append(_f("data_quality", "finviz_quote_cache_missing", "critical",
-                              "finviz_quote_cache.json missing"))
+                out.append(
+                    _f("data_quality", "finviz_quote_cache_missing", "critical", "finviz_quote_cache.json missing")
+                )
 
             hp = STATE_DIR / "holdings.json"
             if hp.exists():
@@ -952,38 +1174,71 @@ def collect_data_quality() -> list[dict]:
                     hp_data = json.loads(hp.read_text(encoding="utf-8"))
                     age_m = _parse_et_ts_minutes(hp_data.get("last_repriced") or "")
                     if age_m is None:
-                        out.append(_f("data_quality", "portfolio_repriced_unknown", "warning",
-                                      "holdings.json missing last_repriced"))
+                        out.append(
+                            _f(
+                                "data_quality",
+                                "portfolio_repriced_unknown",
+                                "warning",
+                                "holdings.json missing last_repriced",
+                            )
+                        )
                     elif age_m > max_m:
                         sev = "critical" if age_m > max_m * 2 else "warning"
-                        out.append(_f("data_quality", "portfolio_repricer_stale", sev,
-                                      f"Portfolio last_repriced stale {age_m:.0f}m (max {max_m:.0f}m)",
-                                      age_minutes=age_m))
+                        out.append(
+                            _f(
+                                "data_quality",
+                                "portfolio_repricer_stale",
+                                sev,
+                                f"Portfolio last_repriced stale {age_m:.0f}m (max {max_m:.0f}m)",
+                                age_minutes=age_m,
+                            )
+                        )
                     out.extend(_check_portfolio_totals_drift(hp_data, pcfg))
                     out.extend(_check_snaptrade_cash_stale(hp_data, pcfg))
-                    out.extend(_check_portfolio_stale_marks(
-                        hp_data, pcfg, market_open=_is_portfolio_market_hours(),
-                        max_rows=int(pcfg.get("stale_marks_max", 3))))
+                    out.extend(
+                        _check_portfolio_stale_marks(
+                            hp_data,
+                            pcfg,
+                            market_open=_is_portfolio_market_hours(),
+                            max_rows=int(pcfg.get("stale_marks_max", 3)),
+                        )
+                    )
                 except Exception as ex:
-                    out.append(_f("data_quality", "portfolio_repriced_error", "warning",
-                                  f"holdings last_repriced check error: {ex}"))
+                    out.append(
+                        _f(
+                            "data_quality",
+                            "portfolio_repriced_error",
+                            "warning",
+                            f"holdings last_repriced check error: {ex}",
+                        )
+                    )
 
-            mq = _db("""SELECT EXTRACT(EPOCH FROM (NOW() - MAX(fetched_at)))/60.0 AS age_m
-                        FROM market_quotes""", fetch="one")
+            mq = _db(
+                """SELECT EXTRACT(EPOCH FROM (NOW() - MAX(fetched_at)))/60.0 AS age_m
+                        FROM market_quotes""",
+                fetch="one",
+            )
             if mq and mq.get("age_m") is not None:
                 mq_age = float(mq["age_m"])
                 mq_max = float(pcfg.get("market_quotes_max_age_minutes", max_m))
                 if mq_age > mq_max:
-                    out.append(_f("data_quality", "market_quotes_stale", "warning",
-                                  f"market_quotes DB stale {mq_age:.0f}m (max {mq_max:.0f}m)",
-                                  age_minutes=mq_age))
+                    out.append(
+                        _f(
+                            "data_quality",
+                            "market_quotes_stale",
+                            "warning",
+                            f"market_quotes DB stale {mq_age:.0f}m (max {mq_max:.0f}m)",
+                            age_minutes=mq_age,
+                        )
+                    )
     except Exception as e:
         out.append(_f("data_quality", "collector_error", "info", f"data_quality check error: {e}"))
 
     # ── Agent Liveness Check ──
     # Ignore test_*/fixture agents — they burn critical score without a safe auto-restart.
     try:
-        rows = _db("""
+        rows = _db(
+            """
             SELECT agent_id, last_seen, status,
                    EXTRACT(EPOCH FROM (now() - last_seen))/60 as minutes_since_seen
             FROM agent_heartbeat
@@ -992,7 +1247,9 @@ def collect_data_quality() -> list[dict]:
               AND agent_id NOT ILIKE 'test\\_%'
               AND agent_id NOT ILIKE 'fixture\\_%'
               AND agent_id NOT ILIKE 'dummy\\_%'
-        """, fetch="all")
+        """,
+            fetch="all",
+        )
         if rows:
             for row in rows:
                 agent_id = row["agent_id"]
@@ -1001,25 +1258,27 @@ def collect_data_quality() -> list[dict]:
                 mins = float(row["minutes_since_seen"])
                 severity = "P0" if mins > 30 else ("P1" if mins > 10 else "P2")
                 problem_label = "HUNG" if mins > 30 else "LATE"
-                out.append({
-                    "category": "data_quality",
-                    "type": f"agent::{agent_id}",
-                    "severity": "critical" if severity == "P0" else ("warning" if severity == "P1" else "info"),
-                    "message": f"Agent {agent_id} ({status}) last seen {mins:.0f}min ago",
-                    "producer": f"agent::{agent_id}",
-                    "problem": problem_label,
-                    "description": f"Agent {agent_id} ({status}) last seen {mins:.0f}min ago",
-                    "latest_reading": str(last_seen),
-                    "needs_restart": mins > 15,
-                    "auto_retry": f"agent_restart::{agent_id}" if mins > 15 else None,
-                })
+                out.append(
+                    {
+                        "category": "data_quality",
+                        "type": f"agent::{agent_id}",
+                        "severity": "critical" if severity == "P0" else ("warning" if severity == "P1" else "info"),
+                        "message": f"Agent {agent_id} ({status}) last seen {mins:.0f}min ago",
+                        "producer": f"agent::{agent_id}",
+                        "problem": problem_label,
+                        "description": f"Agent {agent_id} ({status}) last seen {mins:.0f}min ago",
+                        "latest_reading": str(last_seen),
+                        "needs_restart": mins > 15,
+                        "auto_retry": f"agent_restart::{agent_id}" if mins > 15 else None,
+                    }
+                )
     except Exception:
         pass  # graceful if table doesn't exist yet
 
     return out
 
 
-def _count_real_pipeline_failures(hours: int = 24) -> int:
+def _real_unrecovered_pipeline_failures(hours: int = 24) -> list[dict]:
     """Count failed pipeline runs with substantive errors that have NOT since recovered.
 
     Recovery-aware: a pipeline that failed earlier but has a later successful run for the same
@@ -1027,39 +1286,45 @@ def _count_real_pipeline_failures(hours: int = 24) -> int:
     for a full 24h after a transient blip (e.g. a morning 'connection already closed' burst that
     recovered by 08:18). We only count failures with no same-key success at a later started_at.
     Still excludes zombie rows and failed-with-empty-errors bookkeeping."""
-    row = _db(
-        f"""SELECT COUNT(*) AS c FROM pipeline_runs f
+    from lib.pipeline_failure_counts import SUBSTANTIVE_FAILURE_FILTER
+
+    rows = _db(
+        f"""SELECT f.pipeline_key, COUNT(*) AS c FROM pipeline_runs f
             WHERE f.status='failed'
               AND f.started_at > now() - interval '{int(hours)} hours'
               AND (f.summary IS NULL OR f.summary::text NOT LIKE '%%zombie run cleared%%')
-              AND NOT (
-                f.summary IS NOT NULL AND (
-                  f.summary::text ~ '"errors"\\s*:\\s*\\[\\s*\\]'
-                  OR COALESCE(f.summary::jsonb->>'errors', 'x') IN ('', '[]')
-                  OR (jsonb_typeof(f.summary::jsonb->'errors') = 'array'
-                      AND jsonb_array_length(f.summary::jsonb->'errors') = 0)
-                )
-              )
+              AND {SUBSTANTIVE_FAILURE_FILTER}
               AND NOT EXISTS (
                 SELECT 1 FROM pipeline_runs s
                 WHERE s.pipeline_key = f.pipeline_key
                   AND s.status = 'success'
                   AND s.started_at > f.started_at
-              )""",
-        fetch="one",
+              )
+            GROUP BY f.pipeline_key ORDER BY COUNT(*) DESC, f.pipeline_key""",
+        fetch="all",
     )
-    return int((row or {}).get("c") or 0)
+    return rows if isinstance(rows, list) else []
+
+
+def _count_real_pipeline_failures(hours: int = 24) -> int:
+    return sum(int(row.get("c") or 0) for row in _real_unrecovered_pipeline_failures(hours))
 
 
 def collect_execution_health() -> list[dict]:
     out = []
     try:
-        # recent pipeline failures — exclude zombie rows and failed-with-empty-errors bookkeeping
-        pf_count = _count_real_pipeline_failures(24)
+        # Use the same grouped rows for the score and operator-action classification.
+        failures = _real_unrecovered_pipeline_failures(24)
+        pf_count = sum(int(row.get("c") or 0) for row in failures)
         if pf_count > 0:
+            pipeline_keys = [str(row.get("pipeline_key")) for row in failures if row.get("pipeline_key")]
+            component_only = bool(pipeline_keys) and set(pipeline_keys).issubset(
+                {"symbol_enrichment", "a1a_compliance", "indicator_engine"}
+            )
             rc_note = ""
             try:
                 from lib import health_root_cause_memory as _rcmem
+
                 mem = _rcmem.summary_for("pipeline_failures")
                 if mem.get("last_root_cause"):
                     rc_note = (
@@ -1069,27 +1334,74 @@ def collect_execution_health() -> list[dict]:
                     )
             except Exception:
                 pass
-            out.append(_f("execution_health", "pipeline_failures", "warning" if pf_count <= 5 else "critical",
-                          f"{pf_count} pipeline run failures in 24h{rc_note}", count=pf_count))
+            message = f"{pf_count} pipeline run failures in 24h{rc_note}"
+            if component_only:
+                message += (
+                    " — component owner review required; automatic master-orchestrator retries are held "
+                    f"(pipelines: {', '.join(pipeline_keys)})"
+                )
+            finding = _f(
+                "execution_health",
+                "pipeline_failures",
+                "warning" if pf_count <= 5 else "critical",
+                message,
+                count=pf_count,
+                pipeline_keys=pipeline_keys,
+            )
+            if component_only:
+                finding.update(
+                    {
+                        "operator_action": True,
+                        "held": True,
+                        "operator_action_text": (
+                            "Pipeline operations owner: inspect component logs/receipts and assign a fix; "
+                            "do not rerun the master screener."
+                        ),
+                        "owner": "Pipeline Operations",
+                    }
+                )
+            out.append(finding)
         # stuck queued agent jobs — distinguish DECISION-FEEDING jobs (have an SLA) from the rolling
         # background research/discovery queue (no SLA; drained by priority, intentionally backloggy).
         # Penalizing execution_health for a research backlog was a false signal — only time-sensitive
         # jobs starved >2h are an execution defect; the rolling backlog is reported as info.
         from lib.watchlist_priority import TIME_SENSITIVE_REQUEST_TYPES as _TIME_SENSITIVE
-        qt = _db("""SELECT COUNT(*) AS c FROM watchlist_agent_jobs
+
+        qt = _db(
+            """SELECT COUNT(*) AS c FROM watchlist_agent_jobs
                     WHERE status='queued' AND created_at < now() - interval '2 hours'
-                      AND request_type = ANY(%s)""", (list(_TIME_SENSITIVE),), fetch="one")
+                      AND request_type = ANY(%s)""",
+            (list(_TIME_SENSITIVE),),
+            fetch="one",
+        )
         if qt and qt.get("c", 0) > 0:
             n = qt["c"]
-            out.append(_f("execution_health", "agent_jobs_stuck", "warning" if n < 40 else "critical",
-                          f"{n} decision-feeding agent jobs queued >2h", count=n))
-        qr = _db("""SELECT COUNT(*) AS c FROM watchlist_agent_jobs
+            out.append(
+                _f(
+                    "execution_health",
+                    "agent_jobs_stuck",
+                    "warning" if n < 40 else "critical",
+                    f"{n} decision-feeding agent jobs queued >2h",
+                    count=n,
+                )
+            )
+        qr = _db(
+            """SELECT COUNT(*) AS c FROM watchlist_agent_jobs
                     WHERE status='queued' AND created_at < now() - interval '2 hours'
-                      AND request_type <> ALL(%s)""", (list(_TIME_SENSITIVE),), fetch="one")
+                      AND request_type <> ALL(%s)""",
+            (list(_TIME_SENSITIVE),),
+            fetch="one",
+        )
         if qr and qr.get("c", 0) >= 150:
-            out.append(_f("execution_health", "research_backlog", "info",
-                          f"{qr['c']} background research/discovery jobs queued >2h (no SLA, priority-drained)",
-                          count=qr["c"]))
+            out.append(
+                _f(
+                    "execution_health",
+                    "research_backlog",
+                    "info",
+                    f"{qr['c']} background research/discovery jobs queued >2h (no SLA, priority-drained)",
+                    count=qr["c"],
+                )
+            )
         # execution-integrity escalation queue depth (system_health_agent output)
         try:
             items = json.loads(QUEUE_FILE.read_text()) if QUEUE_FILE.exists() else []
@@ -1098,19 +1410,35 @@ def collect_execution_health() -> list[dict]:
         # Only count non-health_agent escalations (system_health_agent, etc.) — health_agent must not
         # count its own enqueued findings or the execution_escalations meta-type (feedback loop).
         _META = frozenset({"health:execution_health:execution_escalations"})
-        crit = [i for i in items
-                if (i.get("severity") in ("CRITICAL", "critical") or i.get("critical"))
-                and i.get("component") not in _META
-                and (i.get("source") or "") not in ("health_agent", "health_agent_meta")]
+        crit = [
+            i
+            for i in items
+            if (i.get("severity") in ("CRITICAL", "critical") or i.get("critical"))
+            and i.get("component") not in _META
+            and (i.get("source") or "") not in ("health_agent", "health_agent_meta")
+        ]
         if crit:
-            out.append(_f("execution_health", "execution_escalations", "critical",
-                          f"{len(crit)} critical execution escalations open",
-                          components=[i.get("component") for i in crit[:6]]))
+            out.append(
+                _f(
+                    "execution_health",
+                    "execution_escalations",
+                    "critical",
+                    f"{len(crit)} critical execution escalations open",
+                    components=[i.get("component") for i in crit[:6]],
+                )
+            )
         # orphaned protective stops
         orph = _db("SELECT COUNT(*) AS c FROM stop_lifecycle WHERE lifecycle='orphaned'", fetch="one")
         if orph and orph.get("c", 0) > 0:
-            out.append(_f("execution_health", "orphaned_stops", "warning",
-                          f"{orph['c']} orphaned stop orders", count=orph["c"]))
+            out.append(
+                _f(
+                    "execution_health",
+                    "orphaned_stops",
+                    "warning",
+                    f"{orph['c']} orphaned stop orders",
+                    count=orph["c"],
+                )
+            )
         # paper_trades is paper-only (ALPACA_PAPER / TOS_PAPER / tradeai_automated sandbox): it never feeds
         # health — operator rule 2026-10-03, live data only. See _drop_paper_findings.
     except Exception as e:
@@ -1123,6 +1451,7 @@ def collect_intelligence_quality() -> list[dict]:
     try:
         # local LLM reachable?
         import urllib.request
+
         base = os.getenv("LOCAL_LLM_BASE_URL", "http://localhost:11434")
         up = False
         try:
@@ -1131,75 +1460,183 @@ def collect_intelligence_quality() -> list[dict]:
         except Exception:
             up = False
         if not up:
-            out.append(_f("intelligence_quality", "local_llm_down", "critical",
-                          "Local LLM (Ollama) not reachable", base_url=base, kind="code"))
+            out.append(
+                _f(
+                    "intelligence_quality",
+                    "local_llm_down",
+                    "critical",
+                    "Local LLM (Ollama) not reachable",
+                    base_url=base,
+                    kind="code",
+                )
+            )
         # ensemble failures
         # The worker writes status='error' (never 'failed'); counting only 'failed' kept this silent.
-        ef = _db("SELECT COUNT(*) AS c FROM inference_ensemble_jobs WHERE status IN ('failed','error') AND requested_at > now() - interval '24 hours'", fetch="one")
+        ef = _db(
+            "SELECT COUNT(*) AS c FROM inference_ensemble_jobs WHERE status IN ('failed','error') AND requested_at > now() - interval '24 hours'",
+            fetch="one",
+        )
         if ef and ef.get("c", 0) > 0:
-            out.append(_f("intelligence_quality", "ensemble_failures", "warning",
-                          f"{ef['c']} ensemble jobs failed in 24h", count=ef["c"]))
+            out.append(
+                _f(
+                    "intelligence_quality",
+                    "ensemble_failures",
+                    "warning",
+                    f"{ef['c']} ensemble jobs failed in 24h",
+                    count=ef["c"],
+                )
+            )
         # A claim crash changes no row status, so the failure count above cannot see it
         # (2026-07-08..09-26: 0 claims, 3,687 queued). Stalled = old queued work and nothing finished.
         stall_h = float(os.getenv("ENSEMBLE_STALL_HOURS", "72"))
-        st = _db("""SELECT COUNT(*) FILTER (WHERE status='queued' AND requested_at < now() - make_interval(hours => %s::int)) AS old_q,
+        st = _db(
+            """SELECT COUNT(*) FILTER (WHERE status='queued' AND requested_at < now() - make_interval(hours => %s::int)) AS old_q,
                            MAX(finished_at) AS last_done
-                    FROM inference_ensemble_jobs""", (int(round(stall_h)),), fetch="one")
+                    FROM inference_ensemble_jobs""",
+            (int(round(stall_h)),),
+            fetch="one",
+        )
         if st and (st.get("old_q") or 0) > 0:
             last_done = st.get("last_done")
             stale = last_done is None or (datetime.now(timezone.utc) - last_done).total_seconds() > stall_h * 3600
             if stale:
-                out.append(_f("intelligence_quality", "ensemble_worker_stalled", "critical",
-                              f"Aegis ensemble worker stalled: {st['old_q']} jobs queued > {stall_h:.0f}h, last finished {last_done or 'never'}",
-                              count=st["old_q"], kind="code"))
+                out.append(
+                    _f(
+                        "intelligence_quality",
+                        "ensemble_worker_stalled",
+                        "critical",
+                        f"Aegis ensemble worker stalled: {st['old_q']} jobs queued > {stall_h:.0f}h, last finished {last_done or 'never'}",
+                        count=st["old_q"],
+                        kind="code",
+                    )
+                )
         # stale research backlog
-        aged = _db("SELECT MAX(EXTRACT(DAY FROM now()-created_at)) AS d FROM hermes_research_intelligence WHERE status='staged'", fetch="one")
+        aged = _db(
+            "SELECT MAX(EXTRACT(DAY FROM now()-created_at)) AS d FROM hermes_research_intelligence WHERE status='staged'",
+            fetch="one",
+        )
         if aged and aged.get("d") and float(aged["d"]) > 14:
-            out.append(_f("intelligence_quality", "research_stale", "warning",
-                          f"oldest staged research is {int(float(aged['d']))}d old", days=int(float(aged["d"]))))
+            out.append(
+                _f(
+                    "intelligence_quality",
+                    "research_stale",
+                    "warning",
+                    f"oldest staged research is {int(float(aged['d']))}d old",
+                    days=int(float(aged["d"])),
+                )
+            )
         # Hermes → RAG pipeline (promoted research must reach content_embeddings)
-        promoted = int((_db("SELECT COUNT(*) AS c FROM hermes_research_intelligence WHERE status='promoted'", fetch="one") or {}).get("c", 0))
-        embedded = int((_db("SELECT COUNT(*) AS c FROM content_embeddings WHERE source_type='hermes_research'", fetch="one") or {}).get("c", 0))
-        pending = int((_db("SELECT COUNT(*) AS c FROM hermes_embedding_queue WHERE embedding_status='pending'", fetch="one") or {}).get("c", 0))
-        failed = int((_db("SELECT COUNT(*) AS c FROM hermes_embedding_queue WHERE embedding_status='failed'", fetch="one") or {}).get("c", 0))
+        promoted = int(
+            (
+                _db("SELECT COUNT(*) AS c FROM hermes_research_intelligence WHERE status='promoted'", fetch="one") or {}
+            ).get("c", 0)
+        )
+        embedded = int(
+            (
+                _db("SELECT COUNT(*) AS c FROM content_embeddings WHERE source_type='hermes_research'", fetch="one")
+                or {}
+            ).get("c", 0)
+        )
+        pending = int(
+            (
+                _db("SELECT COUNT(*) AS c FROM hermes_embedding_queue WHERE embedding_status='pending'", fetch="one")
+                or {}
+            ).get("c", 0)
+        )
+        failed = int(
+            (
+                _db("SELECT COUNT(*) AS c FROM hermes_embedding_queue WHERE embedding_status='failed'", fetch="one")
+                or {}
+            ).get("c", 0)
+        )
         if promoted >= 50:
             cov = embedded / max(promoted, 1)
             if cov < 0.10:
-                out.append(_f("intelligence_quality", "hermes_rag_gap", "critical",
-                              f"Hermes RAG coverage {cov * 100:.1f}% ({embedded}/{promoted} embedded)",
-                              promoted=promoted, embedded=embedded, coverage_pct=round(cov * 100, 1)))
+                out.append(
+                    _f(
+                        "intelligence_quality",
+                        "hermes_rag_gap",
+                        "critical",
+                        f"Hermes RAG coverage {cov * 100:.1f}% ({embedded}/{promoted} embedded)",
+                        promoted=promoted,
+                        embedded=embedded,
+                        coverage_pct=round(cov * 100, 1),
+                    )
+                )
             elif cov < 0.50:
-                out.append(_f("intelligence_quality", "hermes_rag_gap", "warning",
-                              f"Hermes RAG coverage {cov * 100:.1f}% ({embedded}/{promoted} embedded)",
-                              promoted=promoted, embedded=embedded, coverage_pct=round(cov * 100, 1)))
+                out.append(
+                    _f(
+                        "intelligence_quality",
+                        "hermes_rag_gap",
+                        "warning",
+                        f"Hermes RAG coverage {cov * 100:.1f}% ({embedded}/{promoted} embedded)",
+                        promoted=promoted,
+                        embedded=embedded,
+                        coverage_pct=round(cov * 100, 1),
+                    )
+                )
         # Gate-aware: the RAG embedding worker is operator-gated (curator approved 2026-06-02, RAG write
         # still gated → hermes_embedding_worker defaults dry-run + has no scheduled --apply run). When
         # gated, a pending backlog is BY DESIGN, not a quality defect — surface as info, don't penalize.
         rag_gated = True
         try:
             import subprocess as _sp
+
             _cr = _sp.run(["crontab", "-l"], capture_output=True, text=True, timeout=5).stdout
             rag_gated = not any("hermes_embedding_worker" in ln and "--apply" in ln for ln in _cr.splitlines())
         except Exception:
             rag_gated = True
         _gate_note = " (RAG worker gated by design — not a defect)" if rag_gated else " in queue"
         if pending >= 2000:
-            out.append(_f("intelligence_quality", "hermes_embed_backlog", "info" if rag_gated else "critical",
-                          f"{pending} Hermes embeddings pending{_gate_note}", count=pending, rag_gated=rag_gated))
+            out.append(
+                _f(
+                    "intelligence_quality",
+                    "hermes_embed_backlog",
+                    "info" if rag_gated else "critical",
+                    f"{pending} Hermes embeddings pending{_gate_note}",
+                    count=pending,
+                    rag_gated=rag_gated,
+                )
+            )
         elif pending >= 200:
-            out.append(_f("intelligence_quality", "hermes_embed_backlog", "info" if rag_gated else "warning",
-                          f"{pending} Hermes embeddings pending{_gate_note}", count=pending, rag_gated=rag_gated))
+            out.append(
+                _f(
+                    "intelligence_quality",
+                    "hermes_embed_backlog",
+                    "info" if rag_gated else "warning",
+                    f"{pending} Hermes embeddings pending{_gate_note}",
+                    count=pending,
+                    rag_gated=rag_gated,
+                )
+            )
         if failed >= 10:
-            out.append(_f("intelligence_quality", "hermes_embed_failures", "warning",
-                          f"{failed} Hermes embedding jobs failed", count=failed))
+            out.append(
+                _f(
+                    "intelligence_quality",
+                    "hermes_embed_failures",
+                    "warning",
+                    f"{failed} Hermes embedding jobs failed",
+                    count=failed,
+                )
+            )
         elif failed > 0:
-            out.append(_f("intelligence_quality", "hermes_embed_failures", "info",
-                          f"{failed} Hermes embedding jobs failed", count=failed))
+            out.append(
+                _f(
+                    "intelligence_quality",
+                    "hermes_embed_failures",
+                    "info",
+                    f"{failed} Hermes embedding jobs failed",
+                    count=failed,
+                )
+            )
         # Coordinator tick freshness (cron */15m)
-        coord = _db("""SELECT EXTRACT(EPOCH FROM (now() - created_at))/60 AS age_min
+        coord = _db(
+            """SELECT EXTRACT(EPOCH FROM (now() - created_at))/60 AS age_min
                        FROM hermes_memory_events
                        WHERE hermes_agent_name='chief_hermes_coordinator' AND event_type='agent_state_change'
-                       ORDER BY created_at DESC LIMIT 1""", fetch="one")
+                       ORDER BY created_at DESC LIMIT 1""",
+            fetch="one",
+        )
         age_min = float((coord or {}).get("age_min") or 999)
         # llm_priority_guard DEFERS coordinator ticks 06:00-12:00 ET weekdays (market-critical GPU
         # window) — in-window silence is by design and fired a false critical every morning
@@ -1211,11 +1648,25 @@ def collect_intelligence_quality() -> list[dict]:
             age_min -= (_now - _now.replace(hour=6, minute=0, second=0, microsecond=0)).total_seconds() / 60
         _note = " (guard-window adjusted)" if _in_guard else ""
         if age_min > 60:
-            out.append(_f("intelligence_quality", "hermes_coordinator_stale", "critical",
-                          f"Hermes coordinator last tick {int(age_min)}m ago{_note}", age_min=int(age_min)))
+            out.append(
+                _f(
+                    "intelligence_quality",
+                    "hermes_coordinator_stale",
+                    "critical",
+                    f"Hermes coordinator last tick {int(age_min)}m ago{_note}",
+                    age_min=int(age_min),
+                )
+            )
         elif age_min > 30:
-            out.append(_f("intelligence_quality", "hermes_coordinator_stale", "warning",
-                          f"Hermes coordinator last tick {int(age_min)}m ago{_note}", age_min=int(age_min)))
+            out.append(
+                _f(
+                    "intelligence_quality",
+                    "hermes_coordinator_stale",
+                    "warning",
+                    f"Hermes coordinator last tick {int(age_min)}m ago{_note}",
+                    age_min=int(age_min),
+                )
+            )
     except Exception as e:
         out.append(_f("intelligence_quality", "collector_error", "info", f"intelligence check error: {e}"))
     return out
@@ -1227,9 +1678,11 @@ def collect_hermes_scope_governor_health() -> list[dict]:
     try:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
         from lib.hermes_scope_governor.health import check_scope_governor_health
+
         conn = None
         try:
             from db_adapter import _get_conn, USE_DB
+
             if USE_DB:
                 conn = _get_conn()
         except Exception:
@@ -1238,8 +1691,14 @@ def collect_hermes_scope_governor_health() -> list[dict]:
             extra = {k: v for k, v in f.items() if k not in ("type", "severity", "message")}
             out.append(_f("intelligence_quality", f["type"], f["severity"], f["message"], **extra))
     except Exception as e:
-        out.append(_f("intelligence_quality", "hermes_scope_governor_monitor_error", "info",
-                      f"scope governor health check failed: {str(e)[:80]}"))
+        out.append(
+            _f(
+                "intelligence_quality",
+                "hermes_scope_governor_monitor_error",
+                "info",
+                f"scope governor health check failed: {str(e)[:80]}",
+            )
+        )
     return out
 
 
@@ -1261,36 +1720,77 @@ def collect_research_heartbeat() -> list[dict]:
     out = []
     try:
         from lib.persistent_state_root import resolve_durable_dir
+
         gate_path = resolve_durable_dir("data/health", PROJECT_ROOT) / "non_trading_hours_gate.json"
         if gate_path.exists():
             gate = json.loads(gate_path.read_text(encoding="utf-8"))
             if gate.get("status") == "FAILED":
-                out.append(_f("intelligence_quality", "research_session_gate_failed", "warning",
-                              "Research session gate failed: " + str(gate.get("reason")),
-                              evidence=gate, path=str(gate_path)))
+                out.append(
+                    _f(
+                        "intelligence_quality",
+                        "research_session_gate_failed",
+                        "warning",
+                        "Research session gate failed: " + str(gate.get("reason")),
+                        evidence=gate,
+                        path=str(gate_path),
+                    )
+                )
     except (OSError, ValueError) as exc:
-        out.append(_f("intelligence_quality", "research_session_gate_unreadable", "warning",
-                      "Cannot read research session gate health: " + type(exc).__name__))
+        out.append(
+            _f(
+                "intelligence_quality",
+                "research_session_gate_unreadable",
+                "warning",
+                "Cannot read research session gate health: " + type(exc).__name__,
+            )
+        )
     try:
         age_h = _file_age_h(RESEARCH_LANE_STATUS)
         if age_h is None:
-            return out + [_f("intelligence_quality", "research_heartbeat_unmonitored", "critical",
-                       "research lane monitor has never written its status file", path=str(RESEARCH_LANE_STATUS))]
+            return out + [
+                _f(
+                    "intelligence_quality",
+                    "research_heartbeat_unmonitored",
+                    "critical",
+                    "research lane monitor has never written its status file",
+                    path=str(RESEARCH_LANE_STATUS),
+                )
+            ]
         if age_h > 1.0:
-            out.append(_f("intelligence_quality", "research_heartbeat_monitor_stale", "critical",
-                          f"research lane monitor status is {age_h}h old (timer runs every 15 min)", age_hours=age_h))
+            out.append(
+                _f(
+                    "intelligence_quality",
+                    "research_heartbeat_monitor_stale",
+                    "critical",
+                    f"research lane monitor status is {age_h}h old (timer runs every 15 min)",
+                    age_hours=age_h,
+                )
+            )
         doc = json.loads(RESEARCH_LANE_STATUS.read_text(encoding="utf-8"))
         lanes = doc.get("lanes") if isinstance(doc.get("lanes"), dict) else {}
         for lane, row in sorted(lanes.items()):
             if not isinstance(row, dict) or row.get("ok") is not False:
                 continue
             severity = "critical" if lane in RESEARCH_HEARTBEAT_LANES else "warning"
-            out.append(_f("intelligence_quality", f"research_lane_firing:{lane}", severity,
-                          f"research lane {lane} firing: {', '.join(str(x) for x in row.get('firing') or [])}",
-                          lane=lane, firing=row.get("firing") or []))
+            out.append(
+                _f(
+                    "intelligence_quality",
+                    f"research_lane_firing:{lane}",
+                    severity,
+                    f"research lane {lane} firing: {', '.join(str(x) for x in row.get('firing') or [])}",
+                    lane=lane,
+                    firing=row.get("firing") or [],
+                )
+            )
     except Exception as e:
-        out.append(_f("intelligence_quality", "research_heartbeat_check_error", "warning",
-                      f"research heartbeat check failed: {str(e)[:80]}"))
+        out.append(
+            _f(
+                "intelligence_quality",
+                "research_heartbeat_check_error",
+                "warning",
+                f"research heartbeat check failed: {str(e)[:80]}",
+            )
+        )
     return out
 
 
@@ -1300,50 +1800,86 @@ def collect_risk_protection() -> list[dict]:
         # stop lifecycle alerts — but a rejected NATIVE stop is NOT unprotected if an armed SYNTHETIC stop
         # covers the same symbol/account (Schwab rejects fractional STOPs by design → synthetic takes over).
         # Cross-reference synthetic_stops so fractional positions don't trip a false 'unprotected' alert.
-        al = _db("""SELECT COUNT(*) AS c FROM stop_lifecycle sl
+        al = _db(
+            """SELECT COUNT(*) AS c FROM stop_lifecycle sl
                     WHERE sl.health='alert'
                       AND NOT EXISTS (SELECT 1 FROM synthetic_stops ss
                                       WHERE ss.symbol = sl.symbol AND ss.account = sl.account
-                                        AND ss.status = 'armed')""", fetch="one")
+                                        AND ss.status = 'armed')""",
+            fetch="one",
+        )
         if al and al.get("c", 0) > 0:
-            out.append(_f("risk_protection", "stop_alerts", "warning",
-                          f"{al['c']} stops in alert state (no synthetic coverage)", count=al["c"]))
+            out.append(
+                _f(
+                    "risk_protection",
+                    "stop_alerts",
+                    "warning",
+                    f"{al['c']} stops in alert state (no synthetic coverage)",
+                    count=al["c"],
+                )
+            )
         try:
             import sys as _sysc
             from pathlib import Path as _P
+
             _root = _P(__file__).resolve().parent.parent
             _sysc.path.insert(0, str(_root / "scripts" / "lib"))
             from stop_consensus_check import detect_conflicts
+
             _soc = detect_conflicts(project_root=_root)
             if _soc:
                 syms = ", ".join(c["symbol"] for c in _soc[:5])
-                out.append(_f("risk_protection", "stop_over_consensus", "warning",
-                              f"{len(_soc)} stop(s) above Street mean ({syms})", count=len(_soc)))
+                out.append(
+                    _f(
+                        "risk_protection",
+                        "stop_over_consensus",
+                        "warning",
+                        f"{len(_soc)} stop(s) above Street mean ({syms})",
+                        count=len(_soc),
+                    )
+                )
         except Exception:
             pass
         # Count stable unresolved source incidents across the full 24h dataset.
         # Raw urgent/critical is not the dashboard's separate P0/P1 classifier.
         # Preserve the existing escalation threshold and retain unknown evidence.
         from lib.siem_incident_identity import incident_key
-        rows = _db("""SELECT id, alert_uid, source_script, alert_type, raw_text, parsed_payload
+
+        rows = _db(
+            """SELECT id, alert_uid, source_script, alert_type, raw_text, parsed_payload
                       FROM alert_events
                       WHERE severity IN ('critical','urgent')
                         AND created_at > now() - interval '24 hours'
                         AND COALESCE(lifecycle_state,'active') NOT IN ('resolved','acknowledged')""",
-                   fetch="all")
+            fetch="all",
+        )
         if rows is None:
-            out.append(_f("risk_protection", "siem_check_unavailable", "warning",
-                          "SIEM unresolved-incident check unavailable"))
+            out.append(
+                _f("risk_protection", "siem_check_unavailable", "warning", "SIEM unresolved-incident check unavailable")
+            )
         else:
             try:
                 count = len({incident_key(row) for row in rows})
             except (TypeError, ValueError, AttributeError):
-                out.append(_f("risk_protection", "siem_check_unavailable", "warning",
-                              "SIEM incident identity could not be verified"))
+                out.append(
+                    _f(
+                        "risk_protection",
+                        "siem_check_unavailable",
+                        "warning",
+                        "SIEM incident identity could not be verified",
+                    )
+                )
             else:
                 if count:
-                    out.append(_f("risk_protection", "siem_p0p1", "warning" if count < 5 else "critical",
-                                  f"{count} distinct urgent/critical SIEM issues open (24h)", count=count))
+                    out.append(
+                        _f(
+                            "risk_protection",
+                            "siem_p0p1",
+                            "warning" if count < 5 else "critical",
+                            f"{count} distinct urgent/critical SIEM issues open (24h)",
+                            count=count,
+                        )
+                    )
     except Exception as e:
         out.append(_f("risk_protection", "collector_error", "info", f"risk check error: {e}"))
     return out
@@ -1369,16 +1905,29 @@ def collect_retirement_planning() -> list[dict]:
                 rr = {}
         gw = rr.get("golden_window")
         if not gw:
-            out.append(_f("retirement_planning", "golden_window_missing", "warning",
-                          "golden_window not present in retirement state"))
+            out.append(
+                _f(
+                    "retirement_planning",
+                    "golden_window_missing",
+                    "warning",
+                    "golden_window not present in retirement state",
+                )
+            )
         total = div.get("total_annual") or div.get("annual_income")
         if total in (None, 0):
-            out.append(_f("retirement_planning", "dividend_income_zero", "warning",
-                          "dividend annual income is 0/missing — likely a data inconsistency"))
+            out.append(
+                _f(
+                    "retirement_planning",
+                    "dividend_income_zero",
+                    "warning",
+                    "dividend annual income is 0/missing — likely a data inconsistency",
+                )
+            )
         age = _file_age_h(dpath)
         if age is None:
-            out.append(_f("retirement_planning", "dividend_calendar_missing", "warning",
-                          "dividend_calendar.json missing"))
+            out.append(
+                _f("retirement_planning", "dividend_calendar_missing", "warning", "dividend_calendar.json missing")
+            )
     except Exception as e:
         out.append(_f("retirement_planning", "collector_error", "info", f"retirement check error: {e}"))
     return out
@@ -1394,12 +1943,13 @@ def collect_strategy_output() -> list[dict]:
     generalized to every strategy. Gated to avoid morning false-positives: only on trading days, only
     after the configured hour, and only for strategies with a recent baseline (fired in prior days)."""
     out = []
-    cfg = (_POLICY.get("strategy_output") or {})
+    cfg = _POLICY.get("strategy_output") or {}
     if not cfg.get("enabled", True):
         return out
     try:
         try:
             from market_session import is_trading_day
+
             if not is_trading_day():
                 return out  # no signals expected off-session
         except Exception:
@@ -1408,12 +1958,18 @@ def collect_strategy_output() -> list[dict]:
         if datetime.now().hour < check_after:
             return out  # too early to judge "zero today"
         tilt_min = float(cfg.get("tilt_min", 1.0))
-        rows = _db("""SELECT strategy_id,
+        rows = (
+            _db(
+                """SELECT strategy_id,
                         COUNT(*) FILTER (WHERE fired_at::date = CURRENT_DATE) AS today,
                         COUNT(*) FILTER (WHERE fired_at::date < CURRENT_DATE) AS prior
                       FROM strategy_signals
                       WHERE fired_at > now() - interval '7 days'
-                      GROUP BY strategy_id""", fetch="all") or []
+                      GROUP BY strategy_id""",
+                fetch="all",
+            )
+            or []
+        )
         try:
             import strategy_tilt as _st
         except Exception:
@@ -1428,10 +1984,17 @@ def collect_strategy_output() -> list[dict]:
                 tilt = 1.0
             if tilt < tilt_min:
                 continue
-            out.append(_f("execution_health", "strategy_zero_output",
-                          "warning" if tilt >= 1.5 else "info",
-                          f"{sid}: 0 signals today (tilt {tilt}, {r['prior']} fired in prior 7d)",
-                          strategy=sid, tilt=tilt, prior_7d=r["prior"]))
+            out.append(
+                _f(
+                    "execution_health",
+                    "strategy_zero_output",
+                    "warning" if tilt >= 1.5 else "info",
+                    f"{sid}: 0 signals today (tilt {tilt}, {r['prior']} fired in prior 7d)",
+                    strategy=sid,
+                    tilt=tilt,
+                    prior_7d=r["prior"],
+                )
+            )
     except Exception as e:
         out.append(_f("execution_health", "collector_error", "info", f"strategy_output check error: {e}"))
     return out
@@ -1440,11 +2003,12 @@ def collect_strategy_output() -> list[dict]:
 def collect_proposal_maturity() -> list[dict]:
     """Monitor proposal volume/quality across Options, Trades, Watchlist, Rotation."""
     out = []
-    cfg = (_POLICY.get("proposal_maturity") or {})
+    cfg = _POLICY.get("proposal_maturity") or {}
     if not cfg.get("enabled", True):
         return out
     try:
         import options_engine as oe
+
         metrics = oe.get_proposal_health_metrics()
         opt = metrics.get("options") or {}
         count = int(opt.get("proposal_count") or 0)
@@ -1452,42 +2016,81 @@ def collect_proposal_maturity() -> list[dict]:
         stale_h = float(cfg.get("options_stale_hours", 4)) * 60
         min_count = int(cfg.get("options_min_count", 1))
         if age_min is not None and age_min > stale_h:
-            out.append(_f("execution_health", "options_proposals_stale", "warning",
-                          f"Options cache {int(age_min)}m old (>{int(stale_h)}m)",
-                          count=count, age_min=age_min))
+            out.append(
+                _f(
+                    "execution_health",
+                    "options_proposals_stale",
+                    "warning",
+                    f"Options cache {int(age_min)}m old (>{int(stale_h)}m)",
+                    count=count,
+                    age_min=age_min,
+                )
+            )
         try:
             from market_session import is_trading_day
+
             trading = is_trading_day()
         except Exception:
             trading = datetime.now().weekday() < 5
         check_after = int(cfg.get("check_after_hour", 10))
         if trading and datetime.now().hour >= check_after and count < min_count:
-            out.append(_f("execution_health", "options_zero_proposals", "warning",
-                          f"No options proposals ({count}) — desk empty after {check_after}:00",
-                          count=count, kind="code"))
+            out.append(
+                _f(
+                    "execution_health",
+                    "options_zero_proposals",
+                    "warning",
+                    f"No options proposals ({count}) — desk empty after {check_after}:00",
+                    count=count,
+                    kind="code",
+                )
+            )
         pending = (metrics.get("trades") or {}).get("pending_proposals")
         if pending is not None and pending >= int(cfg.get("trade_pending_warn", 25)):
-            out.append(_f("execution_health", "trade_proposals_backlog", "warning",
-                          f"{pending} pending trade proposals awaiting review", count=pending))
+            out.append(
+                _f(
+                    "execution_health",
+                    "trade_proposals_backlog",
+                    "warning",
+                    f"{pending} pending trade proposals awaiting review",
+                    count=pending,
+                )
+            )
         wl_stale = (metrics.get("watchlist") or {}).get("stale_active_7d")
         if wl_stale is not None and wl_stale >= int(cfg.get("watchlist_stale_warn", 15)):
-            out.append(_f("intelligence_quality", "watchlist_stale", "warning",
-                          f"{wl_stale} active watchlist items stale >7d", count=wl_stale))
+            out.append(
+                _f(
+                    "intelligence_quality",
+                    "watchlist_stale",
+                    "warning",
+                    f"{wl_stale} active watchlist items stale >7d",
+                    count=wl_stale,
+                )
+            )
         rot = (metrics.get("rotation") or {}).get("pending_recommendations")
         if rot is not None and rot == 0 and trading and datetime.now().hour >= 14:
-            out.append(_f("intelligence_quality", "rotation_empty", "info",
-                          "No pending rotation recommendations", count=0))
+            out.append(
+                _f("intelligence_quality", "rotation_empty", "info", "No pending rotation recommendations", count=0)
+            )
         try:
             import market_rotation_signals as mrs
+
             rot_sig = mrs.detect_small_cap_rotation()
             cov = mrs.coverage_gap(rot_sig)
             if cov.get("has_market_signal") and cov.get("gaps"):
-                out.append(_f("intelligence_quality", "small_cap_signal_gap", "warning",
-                              f"Small-cap outperformance detected but system gaps: {', '.join(cov['gaps'])}",
-                              rs_20d=rot_sig.get("rs_20d"), rs_1d=rot_sig.get("rs_1d"),
-                              gaps=cov.get("gaps"), news_count=cov.get("news_count"),
-                              proposal_count=cov.get("proposal_count"),
-                              watchlist_count=cov.get("watchlist_count")))
+                out.append(
+                    _f(
+                        "intelligence_quality",
+                        "small_cap_signal_gap",
+                        "warning",
+                        f"Small-cap outperformance detected but system gaps: {', '.join(cov['gaps'])}",
+                        rs_20d=rot_sig.get("rs_20d"),
+                        rs_1d=rot_sig.get("rs_1d"),
+                        gaps=cov.get("gaps"),
+                        news_count=cov.get("news_count"),
+                        proposal_count=cov.get("proposal_count"),
+                        watchlist_count=cov.get("watchlist_count"),
+                    )
+                )
         except Exception:
             pass
         # Proposal → manual execution conversion + tagging (closed-loop monitor)
@@ -1499,21 +2102,43 @@ def collect_proposal_maturity() -> list[dict]:
             opt_active = int(track.get("options_proposals_active") or 0)
             opt_logged = int(track.get("options_executions_logged") or 0)
             if untagged >= 3 and tag_pct < 70:
-                out.append(_f("execution_health", "manual_tagging_failing", "warning",
-                              f"{untagged} manual executions untagged ({tag_pct:.0f}% tagging rate)",
-                              untagged=untagged, tagging_rate_pct=tag_pct))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "manual_tagging_failing",
+                        "warning",
+                        f"{untagged} manual executions untagged ({tag_pct:.0f}% tagging rate)",
+                        untagged=untagged,
+                        tagging_rate_pct=tag_pct,
+                    )
+                )
             pending_broker = int(track.get("broker_proposals_pending_7d") or 0)
             if pending_broker >= 5 and conv_pct < 15:
-                out.append(_f("execution_health", "proposal_conversion_low", "warning",
-                              f"Only {conv_pct:.0f}% broker proposals logged as executed ({pending_broker} pending)",
-                              conversion_pct=conv_pct, pending=pending_broker))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "proposal_conversion_low",
+                        "warning",
+                        f"Only {conv_pct:.0f}% broker proposals logged as executed ({pending_broker} pending)",
+                        conversion_pct=conv_pct,
+                        pending=pending_broker,
+                    )
+                )
             if opt_active >= 4 and opt_logged == 0 and trading:
-                out.append(_f("execution_health", "options_proposals_ignored", "info",
-                              f"{opt_active} quality options proposals — none logged as manually executed",
-                              options_active=opt_active, options_logged=opt_logged))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "options_proposals_ignored",
+                        "info",
+                        f"{opt_active} quality options proposals — none logged as manually executed",
+                        options_active=opt_active,
+                        options_logged=opt_logged,
+                    )
+                )
         # Broker queue conversion: approved broker-route proposals stuck without live_submit_path
         try:
             from proposal_execution_readiness import collect_execution_readiness
+
             readiness = collect_execution_readiness(since_days=7)
             unrouted = int(readiness.get("broker_unrouted_48h") or 0)
             link_pct = float(readiness.get("link_rate_pct") or 0)
@@ -1523,18 +2148,31 @@ def collect_proposal_maturity() -> list[dict]:
             link_warn = float(cfg.get("link_rate_warn_pct", 5))
             if unrouted >= unrouted_warn:
                 sev = "critical" if unrouted >= unrouted_crit else "warning"
-                out.append(_f("execution_health", "broker_proposals_unrouted", sev,
-                              f"{unrouted} broker-route proposals >48h without submit tag — conversion stalled",
-                              count=unrouted, link_rate_pct=link_pct))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "broker_proposals_unrouted",
+                        sev,
+                        f"{unrouted} broker-route proposals >48h without submit tag — conversion stalled",
+                        count=unrouted,
+                        link_rate_pct=link_pct,
+                    )
+                )
             if link_pct < link_warn and int(readiness.get("created") or 0) >= 10:
-                out.append(_f("execution_health", "proposal_link_rate_low", "warning",
-                              f"Execution link rate {link_pct:.1f}% (target {target_link:.0f}%)",
-                              link_rate_pct=link_pct, created=readiness.get("created")))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "proposal_link_rate_low",
+                        "warning",
+                        f"Execution link rate {link_pct:.1f}% (target {target_link:.0f}%)",
+                        link_rate_pct=link_pct,
+                        created=readiness.get("created"),
+                    )
+                )
         except Exception:
             pass
     except Exception as e:
-        out.append(_f("execution_health", "collector_error", "info",
-                      f"proposal_maturity check error: {e}"))
+        out.append(_f("execution_health", "collector_error", "info", f"proposal_maturity check error: {e}"))
     return out
 
 
@@ -1543,27 +2181,39 @@ def collect_log_errors() -> list[dict]:
     Only recently-modified logs are considered, so old errors don't re-alarm."""
     import re as _re
     import time as _t
+
     out = []
-    cfg = (_POLICY.get("log_errors") or {})
+    cfg = _POLICY.get("log_errors") or {}
     if not cfg.get("enabled", True):
         return out
     watch = cfg.get("watch") or [
-        "auto_proposal.log", "screener_pm.log", "news_ingestion.log",
-        "unified_stop_supervisor.log", "pipeline_watchdog.log", "atm.log", "cio_decisions.log",
-        "data_gap_resolver.log", "rag_indexer.log", "health_agent_cron.log", "coder_dispatch_cron.log",
-        "hermes_scope_governor.log", "hermes_event_feeder.log",
+        "auto_proposal.log",
+        "screener_pm.log",
+        "news_ingestion.log",
+        "unified_stop_supervisor.log",
+        "pipeline_watchdog.log",
+        "atm.log",
+        "cio_decisions.log",
+        "data_gap_resolver.log",
+        "rag_indexer.log",
+        "health_agent_cron.log",
+        "coder_dispatch_cron.log",
+        "hermes_scope_governor.log",
+        "hermes_event_feeder.log",
     ]
     window_h = float(cfg.get("window_hours", 3))
     threshold = int(cfg.get("error_threshold", 5))
     tail = int(cfg.get("tail_lines", 400))
     # Case-SENSITIVE: match real log-level tokens / error markers, NOT domain words like the
     # severity label "high/critical" in a normal summary line (that caused false positives).
-    pat = _re.compile(r"\bERROR\b|\bCRITICAL\b|\bFATAL\b|Traceback \(most recent call last\)"
-                      r"|\bException\b|[A-Za-z]*error:|[A-Za-z]*exception:"
-                      # "Error:" with the colon — e.g. "[email] Error: [Errno 2] ... 'gog'" (the dead
-                      # email lane was invisible to this scraper, 2026-07-06 audit); the colon keeps
-                      # prose like "HTTP Error 404" from matching
-                      r"|\bError:")
+    pat = _re.compile(
+        r"\bERROR\b|\bCRITICAL\b|\bFATAL\b|Traceback \(most recent call last\)"
+        r"|\bException\b|[A-Za-z]*error:|[A-Za-z]*exception:"
+        # "Error:" with the colon — e.g. "[email] Error: [Errno 2] ... 'gog'" (the dead
+        # email lane was invisible to this scraper, 2026-07-06 audit); the colon keeps
+        # prose like "HTTP Error 404" from matching
+        r"|\bError:"
+    )
     now = _t.time()
     try:
         for name in watch:
@@ -1607,11 +2257,18 @@ def collect_log_errors() -> list[dict]:
                 elif not _has_any_ts:
                     errs.append(ln)
             if len(errs) >= threshold:
-                out.append(_f("execution_health", "log_errors",
-                              "critical" if len(errs) >= threshold * 3 else "warning",
-                              f"{name}: {len(errs)} error lines in last {tail} (recent)",
-                              log=name, count=len(errs), sample=(errs[-1][:160] if errs else ""),
-                              kind="code"))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "log_errors",
+                        "critical" if len(errs) >= threshold * 3 else "warning",
+                        f"{name}: {len(errs)} error lines in last {tail} (recent)",
+                        log=name,
+                        count=len(errs),
+                        sample=(errs[-1][:160] if errs else ""),
+                        kind="code",
+                    )
+                )
     except Exception as e:
         out.append(_f("execution_health", "collector_error", "info", f"log_errors check error: {e}"))
     return out
@@ -1727,32 +2384,48 @@ _CTA_BY_CATEGORY = {
 def _attach_cta(f: dict):
     """One-click operator route for CC v3 UI (Health, Home alert rail, MetricStrip)."""
     t = f.get("type", "")
-    cta = _CTA_BY_TYPE.get(t) or _CTA_BY_CATEGORY.get(f.get("category", "")) or {
-        "label": "Health Agent", "route": "/v3/health",
-    }
+    cta = (
+        _CTA_BY_TYPE.get(t)
+        or _CTA_BY_CATEGORY.get(f.get("category", ""))
+        or {
+            "label": "Health Agent",
+            "route": "/v3/health",
+        }
+    )
     f["cta"] = cta
 
 
 # Hard operator-only: never claim auto-retry; never enqueue producer scripts.
-_NEVER_AUTO_DEFAULT = frozenset({
-    "unprotected_positions", "siem_p0p1", "schwab_token_revoked",
-    "finviz_cookie_expired", "finviz_cookie_expired_token_ok", "audit_ledger_coverage_warn",
-    "audit_ledger_coverage_fail", "audit_ledger_chain_break",
-    "kill_switch_active",
-})
+_NEVER_AUTO_DEFAULT = frozenset(
+    {
+        "unprotected_positions",
+        "siem_p0p1",
+        "schwab_token_revoked",
+        "finviz_cookie_expired",
+        "finviz_cookie_expired_token_ok",
+        "audit_ledger_coverage_warn",
+        "audit_ledger_coverage_fail",
+        "audit_ledger_chain_break",
+        "kill_switch_active",
+    }
+)
 
 
 def _annotate(f: dict, rmap: dict):
     """Attach why-it-matters + recommended action + actionability to a finding (write-time)."""
     t = f.get("type", "")
     never = set(_POLICY.get("never_auto_remediate") or []) | set(_NEVER_AUTO_DEFAULT)
-    f["why"] = WHY.get(t) or ("Stale data product — dependent pages/decisions use old numbers."
-                              if t.endswith("_stale") else f"{f.get('category','')} signal needs review.")
+    f["why"] = WHY.get(t) or (
+        "Stale data product — dependent pages/decisions use old numbers."
+        if t.endswith("_stale")
+        else f"{f.get('category', '')} signal needs review."
+    )
     cmd = rmap.get(t)
     if t in never or f.get("operator_action"):
         f["action_type"] = "operator"
         f["recommended_action"] = (
-            f.get("reauth_cmd")
+            f.get("operator_action_text")
+            or f.get("reauth_cmd")
             or "Operator action required (risk/credential/SIEM/ledger — never auto)."
         )
         f["actionable"] = True
@@ -1791,19 +2464,31 @@ def collect_strategy_registry_integrity() -> list[dict]:
         never auto-rewrite joins."""
     out = []
     try:
-        rows = _db("""SELECT strategy_type FROM strategy_registry
-                      WHERE strategy_id IS NULL OR BTRIM(strategy_id) = ''""", fetch="all") or []
+        rows = (
+            _db(
+                """SELECT strategy_type FROM strategy_registry
+                      WHERE strategy_id IS NULL OR BTRIM(strategy_id) = ''""",
+                fetch="all",
+            )
+            or []
+        )
         if rows:
             names = sorted(str(r.get("strategy_type")) for r in rows)
             shown = ", ".join(names[:6]) + ("…" if len(names) > 6 else "")
-            out.append(_f("data_quality", "strategy_registry_null_ids", "warning",
-                          f"{len(rows)} strategy_registry rows have NULL/empty strategy_id ({shown}) — "
-                          f"weekly review renders them as 'None (UNVALIDATED)'; backfilling "
-                          f"strategy_id = strategy_type",
-                          count=len(rows), strategy_types=names))
+            out.append(
+                _f(
+                    "data_quality",
+                    "strategy_registry_null_ids",
+                    "warning",
+                    f"{len(rows)} strategy_registry rows have NULL/empty strategy_id ({shown}) — "
+                    f"weekly review renders them as 'None (UNVALIDATED)'; backfilling "
+                    f"strategy_id = strategy_type",
+                    count=len(rows),
+                    strategy_types=names,
+                )
+            )
     except Exception as e:
-        out.append(_f("data_quality", "collector_error", "info",
-                      f"strategy_registry null-id check error: {e}"))
+        out.append(_f("data_quality", "collector_error", "info", f"strategy_registry null-id check error: {e}"))
     try:
         st_file = STATE_DIR / "strategy_weekly_review_latest.json"
         if st_file.exists():
@@ -1814,21 +2499,33 @@ def collect_strategy_registry_integrity() -> list[dict]:
                 journal_n = int(r.get("n") or 0)
                 seen = int(st.get("real_rows_attributed") or 0) + int(st.get("real_rows_unattributed") or 0)
                 if journal_n >= 1 and seen == 0:
-                    out.append(_f("data_quality", "weekly_review_real_join_zero", "critical",
-                                  f"strategy weekly review saw 0 real trades but the schwab journal "
-                                  f"(trade_closed) has {journal_n} closed trades — real-trade join "
-                                  f"broken; needs operator review (joins are never auto-rewritten)",
-                                  journal_closed=journal_n,
-                                  review_generated_at=st.get("generated_at"),
-                                  action_type="review"))
+                    out.append(
+                        _f(
+                            "data_quality",
+                            "weekly_review_real_join_zero",
+                            "critical",
+                            f"strategy weekly review saw 0 real trades but the schwab journal "
+                            f"(trade_closed) has {journal_n} closed trades — real-trade join "
+                            f"broken; needs operator review (joins are never auto-rewritten)",
+                            journal_closed=journal_n,
+                            review_generated_at=st.get("generated_at"),
+                            action_type="review",
+                        )
+                    )
     except Exception as e:
-        out.append(_f("data_quality", "collector_error", "info",
-                      f"weekly_review real-join check error: {e}"))
+        out.append(_f("data_quality", "collector_error", "info", f"weekly_review real-join check error: {e}"))
     return out
 
 
-CATEGORIES = ["data_quality", "execution_health", "intelligence_quality",
-              "risk_protection", "retirement_planning", "pipeline_freshness"]
+CATEGORIES = [
+    "data_quality",
+    "execution_health",
+    "intelligence_quality",
+    "risk_protection",
+    "retirement_planning",
+    "pipeline_freshness",
+]
+
 
 def collect_pipeline_freshness() -> list[dict]:
     """OUTPUT-freshness of key data pipelines — the blind spot that let ticker_snapshot_daily,
@@ -1838,23 +2535,39 @@ def collect_pipeline_freshness() -> list[dict]:
     out: list[dict] = []
     try:
         import pipeline_freshness_monitor as pfm
+
         stale, missing, _ok = pfm.check()
         # A stale OUTPUT with a known data-REFRESH remediation (e.g. backtest aggregator / proposal
         # backtest engine) is auto-retryable — don't tag it kind='code' (which would route it to the AI
         # coder); the escalation handler runs the allowlisted refresh instead. Only feeders with NO
         # remediation stay kind='code' (genuinely stale-despite-cron → needs a real code fix).
-        rmap = (_POLICY.get("remediation_map") or {})
+        rmap = _POLICY.get("remediation_map") or {}
         for s in stale:
             sev = "critical" if s["age_days"] > (s["threshold_days"] * 4) else "warning"
             ftype = f"stale_{s['name']}"
             extra = {} if ftype in rmap else {"kind": "code"}
-            out.append(_f("pipeline_freshness", ftype, sev,
-                          f"{s['name']} output {s['age_days']}d stale (>{s['threshold_days']}d) — shown on {s['surfaced']}",
-                          age_days=s["age_days"], surfaced=s["surfaced"], **extra))
+            out.append(
+                _f(
+                    "pipeline_freshness",
+                    ftype,
+                    sev,
+                    f"{s['name']} output {s['age_days']}d stale (>{s['threshold_days']}d) — shown on {s['surfaced']}",
+                    age_days=s["age_days"],
+                    surfaced=s["surfaced"],
+                    **extra,
+                )
+            )
         for m in missing:
-            out.append(_f("pipeline_freshness", f"missing_{m['name']}", "warning",
-                          f"{m['name']} produces no output ({m['reason']}) — {m['surfaced']}",
-                          kind="code", surfaced=m["surfaced"]))
+            out.append(
+                _f(
+                    "pipeline_freshness",
+                    f"missing_{m['name']}",
+                    "warning",
+                    f"{m['name']} produces no output ({m['reason']}) — {m['surfaced']}",
+                    kind="code",
+                    surfaced=m["surfaced"],
+                )
+            )
     except Exception as e:
         out.append(_f("pipeline_freshness", "monitor_error", "info", f"freshness monitor failed: {str(e)[:80]}"))
     return out
@@ -1882,6 +2595,7 @@ def _skipped_refresh_span_min(lines, now) -> float | None:
         return None
     try:
         from datetime import datetime as _dt
+
         t0 = _dt.fromisoformat(str(oldest))
         if t0.tzinfo is None and getattr(now, "tzinfo", None) is not None:
             t0 = t0.replace(tzinfo=now.tzinfo)
@@ -1890,8 +2604,9 @@ def _skipped_refresh_span_min(lines, now) -> float | None:
         return None
 
 
-def _assess_momentum_scalp_scan(log_age_min, last_status, failed_stages, log_exists, in_window,
-                                skipped_refresh_min=None) -> dict:
+def _assess_momentum_scalp_scan(
+    log_age_min, last_status, failed_stages, log_exists, in_window, skipped_refresh_min=None
+) -> dict:
     """Pure: decide whether the momentum_scalp Finviz 5-min early lane is healthy. Schedule-aware —
     only judges DURING the 06:00-12:00 ET window (no off-hours/weekend false alarms). Returns a dict
     {finding: bool, type, severity, message} or {finding: False}."""
@@ -1899,22 +2614,38 @@ def _assess_momentum_scalp_scan(log_age_min, last_status, failed_stages, log_exi
         return {"finding": False, "reason": "off_window"}
     # Cron is every 5 min; >12 min of no fresh log output ⇒ ≥2 missed runs (or the scan is hung).
     if not log_exists:
-        return {"finding": True, "type": "momentum_scalp_finviz_scan_stale", "severity": "warning",
-                "message": "momentum_scalp Finviz 5-min scan log missing during 06:00-12:00 ET window "
-                           "(cron may not be firing) — re-running the early lane"}
+        return {
+            "finding": True,
+            "type": "momentum_scalp_finviz_scan_stale",
+            "severity": "warning",
+            "message": "momentum_scalp Finviz 5-min scan log missing during 06:00-12:00 ET window "
+            "(cron may not be firing) — re-running the early lane",
+        }
     if log_age_min is not None and log_age_min > 12:
         sev = "critical" if log_age_min > 30 else "warning"
-        return {"finding": True, "type": "momentum_scalp_finviz_scan_stale", "severity": sev,
-                "message": f"momentum_scalp Finviz 5-min scan last ran {log_age_min:.0f} min ago "
-                           f"(cron is */5) during the 06:00-12:00 ET window — re-running the early lane"}
+        return {
+            "finding": True,
+            "type": "momentum_scalp_finviz_scan_stale",
+            "severity": sev,
+            "message": f"momentum_scalp Finviz 5-min scan last ran {log_age_min:.0f} min ago "
+            f"(cron is */5) during the 06:00-12:00 ET window — re-running the early lane",
+        }
     if skipped_refresh_min is not None and skipped_refresh_min > 30:
-        return {"finding": True, "type": "momentum_scalp_refresh_never_runs", "severity": "warning",
-                "message": f"momentum_scalp early lane has reported skipped_finviz_refresh on every run for "
-                           f"{skipped_refresh_min:.0f} min in-window — it is PASSing on borrowed scan rows"}
+        return {
+            "finding": True,
+            "type": "momentum_scalp_refresh_never_runs",
+            "severity": "warning",
+            "message": f"momentum_scalp early lane has reported skipped_finviz_refresh on every run for "
+            f"{skipped_refresh_min:.0f} min in-window — it is PASSing on borrowed scan rows",
+        }
     if last_status in ("PARTIAL", "FAIL") or failed_stages:
-        return {"finding": True, "type": "momentum_scalp_early_lane_error", "severity": "warning",
-                "message": f"momentum_scalp early lane last run status={last_status} "
-                           f"failed_stages={failed_stages or []} — re-running to recover"}
+        return {
+            "finding": True,
+            "type": "momentum_scalp_early_lane_error",
+            "severity": "warning",
+            "message": f"momentum_scalp early lane last run status={last_status} "
+            f"failed_stages={failed_stages or []} — re-running to recover",
+        }
     return {"finding": False, "reason": "fresh"}
 
 
@@ -1926,6 +2657,7 @@ def collect_momentum_scalp_source_health() -> list[dict]:
     try:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
         import momentum_scalp_early_lane_runner as lane
+
         t = lane.now_et()
         in_window = lane.is_trading_day(t) and lane.in_window(t)
         log = PROJECT_ROOT / "logs" / "finviz_momentum_scalp_scan.log"
@@ -1946,19 +2678,34 @@ def collect_momentum_scalp_source_health() -> list[dict]:
                 skipped_refresh_min = _skipped_refresh_span_min(tail[-80:], t)
             except Exception:
                 pass
-        a = _assess_momentum_scalp_scan(age_min, last_status, failed_stages, log_exists, in_window,
-                                        skipped_refresh_min=skipped_refresh_min)
+        a = _assess_momentum_scalp_scan(
+            age_min, last_status, failed_stages, log_exists, in_window, skipped_refresh_min=skipped_refresh_min
+        )
         if a.get("finding"):
-            out.append(_f("pipeline_freshness", a["type"], a["severity"], a["message"],
-                          surfaced="Trading hub · momentum scalp early lane"))
+            out.append(
+                _f(
+                    "pipeline_freshness",
+                    a["type"],
+                    a["severity"],
+                    a["message"],
+                    surfaced="Trading hub · momentum scalp early lane",
+                )
+            )
     except Exception as e:
-        out.append(_f("pipeline_freshness", "momentum_scalp_source_monitor_error", "info",
-                      f"momentum scalp source monitor failed: {str(e)[:80]}"))
+        out.append(
+            _f(
+                "pipeline_freshness",
+                "momentum_scalp_source_monitor_error",
+                "info",
+                f"momentum scalp source monitor failed: {str(e)[:80]}",
+            )
+        )
     return out
 
 
-def _assess_refresh_receipt(age_min, state, in_window, threshold_min, started_age_min=None,
-                            killed_after_min=10) -> dict:
+def _assess_refresh_receipt(
+    age_min, state, in_window, threshold_min, started_age_min=None, killed_after_min=10
+) -> dict:
     """Pure (2026-09-28, plan root cause 2/5): judge the momentum-scalp Finviz REFRESH receipt.
 
     The lane's own log said PASS for ten days while it never refreshed Finviz (the refresh line was
@@ -1971,35 +2718,52 @@ def _assess_refresh_receipt(age_min, state, in_window, threshold_min, started_ag
     if not in_window:
         return {"finding": False, "reason": "off_window"}
     if state is None:
-        return {"finding": True, "type": "momentum_scalp_refresh_missing", "severity": "warning",
-                "message": "momentum_scalp Finviz refresh has NO receipt during the 06:00-12:00 ET window — "
-                           "the lane is not refreshing its source (or PR-2 is not yet in CURRENT)"}
+        return {
+            "finding": True,
+            "type": "momentum_scalp_refresh_missing",
+            "severity": "warning",
+            "message": "momentum_scalp Finviz refresh has NO receipt during the 06:00-12:00 ET window — "
+            "the lane is not refreshing its source (or PR-2 is not yet in CURRENT)",
+        }
     if state == "STARTED":
         if started_age_min is not None and started_age_min > killed_after_min:
-            return {"finding": True, "type": "momentum_scalp_refresh_killed", "severity": "warning",
-                    "message": f"momentum_scalp Finviz refresh STARTED {started_age_min:.0f} min ago and never finished — "
-                               f"the run was killed (cron timeout / lock) before DONE"}
+            return {
+                "finding": True,
+                "type": "momentum_scalp_refresh_killed",
+                "severity": "warning",
+                "message": f"momentum_scalp Finviz refresh STARTED {started_age_min:.0f} min ago and never finished — "
+                f"the run was killed (cron timeout / lock) before DONE",
+            }
         return {"finding": False, "reason": "in_progress"}
     if state == "FAILED":
-        return {"finding": True, "type": "momentum_scalp_refresh_failed", "severity": "warning",
-                "message": "momentum_scalp Finviz refresh last attempt FAILED (finviz_screener_runner rc!=0)"}
+        return {
+            "finding": True,
+            "type": "momentum_scalp_refresh_failed",
+            "severity": "warning",
+            "message": "momentum_scalp Finviz refresh last attempt FAILED (finviz_screener_runner rc!=0)",
+        }
     if age_min is not None and age_min > threshold_min:
         sev = "critical" if age_min > threshold_min * 3 else "warning"
-        return {"finding": True, "type": "momentum_scalp_refresh_stale", "severity": sev,
-                "message": f"momentum_scalp Finviz refresh last DONE {age_min:.0f} min ago (>{threshold_min}m) during "
-                           f"the 06:00-12:00 ET window — scan rows are borrowed, not refreshed"}
+        return {
+            "finding": True,
+            "type": "momentum_scalp_refresh_stale",
+            "severity": sev,
+            "message": f"momentum_scalp Finviz refresh last DONE {age_min:.0f} min ago (>{threshold_min}m) during "
+            f"the 06:00-12:00 ET window — scan rows are borrowed, not refreshed",
+        }
     return {"finding": False, "reason": "fresh"}
 
 
 def collect_momentum_scalp_refresh_age() -> list[dict]:
     """Owns the question the lane log could not answer: did the lane REFRESH Finviz recently?"""
     out: list[dict] = []
-    cfg = (_POLICY.get("momentum_scalp_refresh") or {})
+    cfg = _POLICY.get("momentum_scalp_refresh") or {}
     if not cfg.get("enabled", True):
         return out
     try:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
         import momentum_scalp_early_lane_runner as lane
+
         t = lane.now_et()
         in_window = lane.is_trading_day(t) and lane.in_window(t)
         rec = lane.read_refresh_receipt()
@@ -2009,18 +2773,39 @@ def collect_momentum_scalp_refresh_age() -> list[dict]:
         if rec and state == "STARTED":
             try:
                 from datetime import datetime as _dt
+
                 at = _dt.fromisoformat(str(rec.get("at")))
                 started_age = max(0.0, (t - at).total_seconds() / 60.0)
             except Exception:
                 started_age = None
-        a = _assess_refresh_receipt(age_min, state, in_window, float(cfg.get("stale_min", 20)),
-                                    started_age_min=started_age, killed_after_min=float(cfg.get("killed_after_min", 10)))
+        a = _assess_refresh_receipt(
+            age_min,
+            state,
+            in_window,
+            float(cfg.get("stale_min", 20)),
+            started_age_min=started_age,
+            killed_after_min=float(cfg.get("killed_after_min", 10)),
+        )
         if a.get("finding"):
-            out.append(_f("pipeline_freshness", a["type"], a["severity"], a["message"],
-                          surfaced="Trading hub · momentum scalp early lane", receipt=rec or {}))
+            out.append(
+                _f(
+                    "pipeline_freshness",
+                    a["type"],
+                    a["severity"],
+                    a["message"],
+                    surfaced="Trading hub · momentum scalp early lane",
+                    receipt=rec or {},
+                )
+            )
     except Exception as e:
-        out.append(_f("pipeline_freshness", "momentum_scalp_refresh_monitor_error", "info",
-                      f"momentum scalp refresh monitor failed: {str(e)[:80]}"))
+        out.append(
+            _f(
+                "pipeline_freshness",
+                "momentum_scalp_refresh_monitor_error",
+                "info",
+                f"momentum scalp refresh monitor failed: {str(e)[:80]}",
+            )
+        )
     return out
 
 
@@ -2033,8 +2818,11 @@ def _assess_source_stale(age_min, threshold_min, in_window, present=True) -> dic
     if age_min is None:
         return {"finding": False, "reason": "unknown_age"}
     if age_min > threshold_min:
-        return {"finding": True, "severity": "critical" if age_min > threshold_min * 3 else "warning",
-                "reason": f"stale {age_min:.0f}m (>{threshold_min}m)"}
+        return {
+            "finding": True,
+            "severity": "critical" if age_min > threshold_min * 3 else "warning",
+            "reason": f"stale {age_min:.0f}m (>{threshold_min}m)",
+        }
     return {"finding": False, "reason": "fresh"}
 
 
@@ -2047,6 +2835,7 @@ def collect_momentum_scalp_multi_source_health() -> list[dict]:
     try:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
         import momentum_scalp_early_lane_runner as lane
+
         t = lane.now_et()
         trading = lane.is_trading_day(t)
         hhmm = t.strftime("%H:%M")
@@ -2055,8 +2844,8 @@ def collect_momentum_scalp_multi_source_health() -> list[dict]:
         # pre-market 06:00-09:30 is legitimately quiet (weekend-stale quotes are correctly skipped, the
         # orchestrator runs at 09:00), so "no fresh output" there is EXPECTED, not a fault. This stops
         # the pre-market false floods seen 2026-06-29 (proposal_gen 3504m, social 750m at 07:46).
-        in_sec = trading and ("06:00" <= hhmm <= "12:00")            # SEC context window (05:45 + 09:15)
-        in_active = trading and ("09:30" <= hhmm <= "12:00")         # post-open signal/proposal flow
+        in_sec = trading and ("06:00" <= hhmm <= "12:00")  # SEC context window (05:45 + 09:15)
+        in_active = trading and ("09:30" <= hhmm <= "12:00")  # post-open signal/proposal flow
         in_active_social = trading and ("09:30" <= hhmm <= "16:00")  # post-open social scan
 
         def _age_min(sql):
@@ -2068,18 +2857,30 @@ def collect_momentum_scalp_multi_source_health() -> list[dict]:
         sec_age = (_file_age_h(sec_log) or 0) * 60 if sec_log.exists() else None
         a = _assess_source_stale(sec_age, 240, in_sec, present=sec_log.exists())
         if a["finding"]:
-            out.append(_f("pipeline_freshness", "sec_form4_context_stale", a["severity"],
-                          f"SEC/Form 4 momentum context {a['reason']} during its 05:45-09:15 ET window "
-                          f"— re-running the context wrapper (source/read-only)",
-                          surfaced="momentum scalp · SEC/Form 4 catalyst context"))
+            out.append(
+                _f(
+                    "pipeline_freshness",
+                    "sec_form4_context_stale",
+                    a["severity"],
+                    f"SEC/Form 4 momentum context {a['reason']} during its 05:45-09:15 ET window "
+                    f"— re-running the context wrapper (source/read-only)",
+                    surfaced="momentum scalp · SEC/Form 4 catalyst context",
+                )
+            )
 
         # Signal sync — strategy_signals uses fired_at (NOT created_at, which does not exist). Active
         # session only.
         a = _assess_source_stale(_age_min("SELECT MAX(fired_at) FROM strategy_signals"), 120, in_active)
         if a["finding"]:
-            out.append(_f("pipeline_freshness", "momentum_scalp_signal_sync_stale", "warning",
-                          f"momentum scalp signal sync output {a['reason']} during the active session",
-                          surfaced="momentum scalp · signal sync"))
+            out.append(
+                _f(
+                    "pipeline_freshness",
+                    "momentum_scalp_signal_sync_stale",
+                    "warning",
+                    f"momentum scalp signal sync output {a['reason']} during the active session",
+                    surfaced="momentum scalp · signal sync",
+                )
+            )
 
         # Proposal generation — CONDITION-AWARE: only a real conversion gap counts. Fire only when a
         # FRESH GO strategy_signal exists (≤120m) but no proposal has been created since it fired. If
@@ -2089,20 +2890,38 @@ def collect_momentum_scalp_multi_source_health() -> list[dict]:
             go_sig_age = _age_min("SELECT MAX(fired_at) FROM strategy_signals WHERE signal_type='GO'")
             prop_age = _age_min("SELECT MAX(created_at) FROM paper_trade_proposals")
             if go_sig_age is not None and go_sig_age <= 120 and (prop_age is None or prop_age > go_sig_age + 90):
-                out.append(_f("pipeline_freshness", "momentum_scalp_proposal_gen_stale", "warning",
-                              f"fresh GO signal ({go_sig_age:.0f}m) not converting — proposal generation "
-                              f"output stale ({'none' if prop_age is None else f'{prop_age:.0f}m'}) post-open",
-                              surfaced="momentum scalp · proposal generation"))
+                out.append(
+                    _f(
+                        "pipeline_freshness",
+                        "momentum_scalp_proposal_gen_stale",
+                        "warning",
+                        f"fresh GO signal ({go_sig_age:.0f}m) not converting — proposal generation "
+                        f"output stale ({'none' if prop_age is None else f'{prop_age:.0f}m'}) post-open",
+                        surfaced="momentum scalp · proposal generation",
+                    )
+                )
 
         # Social scan — active-session output freshness (pre-market carryover excluded).
         a = _assess_source_stale(_age_min("SELECT MAX(scanned_at) FROM scalp_scan_results"), 180, in_active_social)
         if a["finding"]:
-            out.append(_f("pipeline_freshness", "momentum_scalp_social_scan_stale", "warning",
-                          f"momentum scalp social scan output {a['reason']} during the active session",
-                          surfaced="momentum scalp · social scan"))
+            out.append(
+                _f(
+                    "pipeline_freshness",
+                    "momentum_scalp_social_scan_stale",
+                    "warning",
+                    f"momentum scalp social scan output {a['reason']} during the active session",
+                    surfaced="momentum scalp · social scan",
+                )
+            )
     except Exception as e:
-        out.append(_f("pipeline_freshness", "momentum_scalp_multi_source_monitor_error", "info",
-                      f"multi-source monitor failed: {str(e)[:80]}"))
+        out.append(
+            _f(
+                "pipeline_freshness",
+                "momentum_scalp_multi_source_monitor_error",
+                "info",
+                f"multi-source monitor failed: {str(e)[:80]}",
+            )
+        )
     return out
 
 
@@ -2129,16 +2948,28 @@ def _finviz_cookie_finding(src: str, last_err: str, age_m: float, cookie_detail:
     """Critical only when BOTH the cookie and the Elite API token fail."""
     token_ok, token_detail = _finviz_token_backstop()
     if token_ok:
-        return _f("data_quality", "finviz_cookie_expired_token_ok", "info",
-                  f"Finviz cookie expired ({cookie_detail}) but the Elite API token works "
-                  f"({token_detail}) — screeners use the token; refresh FINVIZ_COOKIE when convenient",
-                  source=src, last_error=last_err[:120], operator_action=False)
-    return _f("data_quality", "finviz_cookie_expired", "critical",
-              f"Finviz cookie and Elite API token both failing (cookie: {cookie_detail}; token: "
-              f"{token_detail}) — last healthy probe {age_m / 60:.0f}h ago; operator must refresh "
-              f"FINVIZ_COOKIE or FINVIZ_API_TOKEN in System → Admin secrets",
-              source=src, last_error=last_err[:120], operator_action=True,
-              reauth_cmd="Open /v3/system?tab=Admin and rotate FINVIZ_COOKIE")
+        return _f(
+            "data_quality",
+            "finviz_cookie_expired_token_ok",
+            "info",
+            f"Finviz cookie expired ({cookie_detail}) but the Elite API token works "
+            f"({token_detail}) — screeners use the token; refresh FINVIZ_COOKIE when convenient",
+            source=src,
+            last_error=last_err[:120],
+            operator_action=False,
+        )
+    return _f(
+        "data_quality",
+        "finviz_cookie_expired",
+        "critical",
+        f"Finviz cookie and Elite API token both failing (cookie: {cookie_detail}; token: "
+        f"{token_detail}) — last healthy probe {age_m / 60:.0f}h ago; operator must refresh "
+        f"FINVIZ_COOKIE or FINVIZ_API_TOKEN in System → Admin secrets",
+        source=src,
+        last_error=last_err[:120],
+        operator_action=True,
+        reauth_cmd="Open /v3/system?tab=Admin and rotate FINVIZ_COOKIE",
+    )
 
 
 def _assess_go_conversion(go_scans: int, created: int, skipped_by_reason: dict, window_days: int) -> dict:
@@ -2176,34 +3007,67 @@ def _assess_go_conversion(go_scans: int, created: int, skipped_by_reason: dict, 
     reasons = {str(k) for k in skipped_by_reason}
     policy_only = bool(reasons) and reasons.issubset(policy_skips)
     sev = "warning" if policy_only else ("critical" if go_scans >= 5 else "warning")
-    return {"finding": True, "type": "momentum_scalp_go_not_converting",
-            "severity": sev,
-            "message": (f"{go_scans} GO scan row(s) in {window_days}d but 0 momentum_scalp proposals created — "
-                        f"skips: {', '.join(f'{k}={v}' for k, v in top) or 'none recorded'}")}
+    return {
+        "finding": True,
+        "type": "momentum_scalp_go_not_converting",
+        "severity": sev,
+        "message": (
+            f"{go_scans} GO scan row(s) in {window_days}d but 0 momentum_scalp proposals created — "
+            f"skips: {', '.join(f'{k}={v}' for k, v in top) or 'none recorded'}"
+        ),
+    }
 
 
 def collect_go_to_proposal_conversion() -> list[dict]:
     """GO → proposal conversion for momentum_scalp over the last N days (auto_proposal_decisions)."""
     out: list[dict] = []
-    cfg = (_POLICY.get("lane_ownership") or {})
+    cfg = _POLICY.get("lane_ownership") or {}
     if not cfg.get("enabled", True):
         return out
     days = int(cfg.get("conversion_window_days", 5))
     try:
-        go = _db("SELECT count(*) n FROM trade_ai_scans WHERE decision='GO' AND scanned_at > now() - make_interval(days => %s)",
-                 (days,), fetch="one") or {}
-        rows = _db("""SELECT decision, count(*) n FROM auto_proposal_decisions
+        go = (
+            _db(
+                "SELECT count(*) n FROM trade_ai_scans WHERE decision='GO' AND scanned_at > now() - make_interval(days => %s)",
+                (days,),
+                fetch="one",
+            )
+            or {}
+        )
+        rows = (
+            _db(
+                """SELECT decision, count(*) n FROM auto_proposal_decisions
                       WHERE strategy_id='momentum_scalp' AND created_at > now() - make_interval(days => %s)
-                      GROUP BY decision""", (days,), fetch="all") or []
+                      GROUP BY decision""",
+                (days,),
+                fetch="all",
+            )
+            or []
+        )
         by = {str(r.get("decision")): int(r.get("n") or 0) for r in rows}
         # Advisory delivery (operator 2026-10-03): an operator alert is the conversion; no proposal row.
         created = by.pop("CREATED", 0) + by.pop("ADVISORY_ALERT", 0)
         a = _assess_go_conversion(int((go or {}).get("n") or 0), created, by, days)
         if a.get("finding"):
-            out.append(_f("pipeline_freshness", a["type"], a["severity"], a["message"],
-                          surfaced="Trading hub · momentum scalp proposals", skips=by))
+            out.append(
+                _f(
+                    "pipeline_freshness",
+                    a["type"],
+                    a["severity"],
+                    a["message"],
+                    surfaced="Trading hub · momentum scalp proposals",
+                    skips=by,
+                )
+            )
     except Exception as e:
-        out.append(_f("pipeline_freshness", "go_conversion_monitor_error", "info", f"go→proposal monitor failed: {str(e)[:80]}"))
+        out.append(
+            _f(
+                "pipeline_freshness",
+                "go_conversion_monitor_error",
+                "info",
+                f"go→proposal monitor failed: {str(e)[:80]}",
+            )
+        )
     return out
 
 
@@ -2211,38 +3075,74 @@ def _assess_underfilled_streak(statuses_reasons: list, threshold: int) -> dict:
     """Pure: consecutive most-recent runs (one window label) that are RUN_UNDERFILLED for a REAL reason.
     PREOPEN_WINDOW_BY_DESIGN never counts (that is configuration, not failure)."""
     streak = 0
-    for status, reasons in statuses_reasons:          # newest first
+    for status, reasons in statuses_reasons:  # newest first
         rs = list(reasons or [])
         if status in ("RUN_UNDERFILLED", "RUN_FAILED") and "PREOPEN_WINDOW_BY_DESIGN" not in rs:
             streak += 1
         else:
             break
     if streak >= threshold:
-        return {"finding": True, "type": "screener_run_underfilled_streak",
-                "severity": "critical" if streak >= threshold * 2 else "warning",
-                "message": f"{streak} consecutive underfilled/failed runs for a real reason (threshold {threshold})"}
+        return {
+            "finding": True,
+            "type": "screener_run_underfilled_streak",
+            "severity": "critical" if streak >= threshold * 2 else "warning",
+            "message": f"{streak} consecutive underfilled/failed runs for a real reason (threshold {threshold})",
+        }
     return {"finding": False, "streak": streak}
 
 
 def collect_underfilled_streak() -> list[dict]:
     out: list[dict] = []
-    cfg = (_POLICY.get("lane_ownership") or {})
+    cfg = _POLICY.get("lane_ownership") or {}
     if not cfg.get("enabled", True):
         return out
     threshold = int(cfg.get("underfilled_streak", 3))
     try:
-        labels = _db("SELECT DISTINCT run_label FROM screener_run_health WHERE finished_at > now() - interval '3 days'",
-                     fetch="all") or []
+        labels = (
+            _db(
+                "SELECT DISTINCT run_label FROM screener_run_health WHERE finished_at > now() - interval '3 days'",
+                fetch="all",
+            )
+            or []
+        )
         for row in labels:
             label = str(row.get("run_label") or "")
-            hist = _db("""SELECT status, reason_codes FROM screener_run_health WHERE run_label=%s
-                          ORDER BY finished_at DESC NULLS LAST LIMIT %s""", (label, threshold * 2), fetch="all") or []
+            # One latest outcome per scheduled date: health remediation can execute
+            # the same label repeatedly on a single date, which is not a multi-day streak.
+            hist = (
+                _db(
+                    """SELECT DISTINCT ON (run_date) status, reason_codes, run_date
+                          FROM screener_run_health
+                         WHERE run_label=%s AND status <> 'RUNNING'
+                           AND finished_at > now() - interval '3 days'
+                         ORDER BY run_date DESC, finished_at DESC NULLS LAST, id DESC
+                         LIMIT %s""",
+                    (label, threshold * 2),
+                    fetch="all",
+                )
+                or []
+            )
             a = _assess_underfilled_streak([(r.get("status"), r.get("reason_codes")) for r in hist], threshold)
             if a.get("finding"):
-                out.append(_f("pipeline_freshness", a["type"], a["severity"], f"{label}: {a['message']}",
-                              surfaced="Trading hub · scanner run health", run_label=label))
+                out.append(
+                    _f(
+                        "pipeline_freshness",
+                        a["type"],
+                        a["severity"],
+                        f"{label}: {a['message']}",
+                        surfaced="Trading hub · scanner run health",
+                        run_label=label,
+                    )
+                )
     except Exception as e:
-        out.append(_f("pipeline_freshness", "underfilled_streak_monitor_error", "info", f"underfilled-streak monitor failed: {str(e)[:80]}"))
+        out.append(
+            _f(
+                "pipeline_freshness",
+                "underfilled_streak_monitor_error",
+                "info",
+                f"underfilled-streak monitor failed: {str(e)[:80]}",
+            )
+        )
     return out
 
 
@@ -2267,7 +3167,7 @@ def _count_social_inject_errors(text: str) -> int:
 def collect_social_inject_errors() -> list[dict]:
     """The scanner's social overlay failing on every live cycle used to be a footnote in the log."""
     out: list[dict] = []
-    cfg = (_POLICY.get("lane_ownership") or {})
+    cfg = _POLICY.get("lane_ownership") or {}
     if not cfg.get("enabled", True):
         return out
     try:
@@ -2276,11 +3176,25 @@ def collect_social_inject_errors() -> list[dict]:
             return out
         n = _count_social_inject_errors(log.read_text(errors="replace")[-400_000:])
         if n >= int(cfg.get("social_inject_errors", 3)):
-            out.append(_f("pipeline_freshness", "scanner_social_inject_failing", "warning",
-                          f"{n} social-inject failures in today's continuous log — the social overlay contributes nothing",
-                          surfaced="Trading hub · scanner", log=str(log)))
+            out.append(
+                _f(
+                    "pipeline_freshness",
+                    "scanner_social_inject_failing",
+                    "warning",
+                    f"{n} social-inject failures in today's continuous log — the social overlay contributes nothing",
+                    surfaced="Trading hub · scanner",
+                    log=str(log),
+                )
+            )
     except Exception as e:
-        out.append(_f("pipeline_freshness", "social_inject_monitor_error", "info", f"social-inject monitor failed: {str(e)[:80]}"))
+        out.append(
+            _f(
+                "pipeline_freshness",
+                "social_inject_monitor_error",
+                "info",
+                f"social-inject monitor failed: {str(e)[:80]}",
+            )
+        )
     return out
 
 
@@ -2295,23 +3209,32 @@ def collect_scalp_catalyst_health() -> list[dict]:
     false-fires. Auto-remediable (re-run the scanner, source/advisory only — no broker writes), so it is
     NOT kind='code'; if the retry is futile (real code/data bug), the circuit breaker escalates to the
     operator after max_ineffective_attempts."""
-    cfg = (_POLICY.get("scalp_catalyst_health") or {})
+    cfg = _POLICY.get("scalp_catalyst_health") or {}
     if not cfg.get("enabled", True):
         return []
     out: list[dict] = []
     window_days = int(cfg.get("window_days", 3))
     min_rows = int(cfg.get("min_rows", 40))
     try:
-        recent = _db("SELECT count(*) n FROM scalp_scan_results WHERE scanned_at > now() - interval '18 hours'",
-                     fetch="one") or {}
+        recent = (
+            _db("SELECT count(*) n FROM scalp_scan_results WHERE scanned_at > now() - interval '18 hours'", fetch="one")
+            or {}
+        )
         if int((recent or {}).get("n") or 0) == 0:
             return []  # scanner not currently active — the freshness collector owns 'not running'
-        r = _db("""SELECT count(*) rows,
+        r = (
+            _db(
+                """SELECT count(*) rows,
                           count(*) FILTER (WHERE catalyst_verified) verified,
                           count(*) FILTER (WHERE decision='GO') go,
                           count(*) FILTER (WHERE decision='WAIT') wait
                    FROM scalp_scan_results
-                   WHERE scanned_at > now() - make_interval(days => %s)""", (window_days,), fetch="one") or {}
+                   WHERE scanned_at > now() - make_interval(days => %s)""",
+                (window_days,),
+                fetch="one",
+            )
+            or {}
+        )
         rows = int((r or {}).get("rows") or 0)
         go = int((r or {}).get("go") or 0)
         verified = int((r or {}).get("verified") or 0)
@@ -2323,6 +3246,7 @@ def collect_scalp_catalyst_health() -> list[dict]:
             try:
                 from lib import health_root_cause_memory as _rcmem
                 from datetime import datetime, timezone as _tz
+
                 mem = _rcmem.summary_for("scalp_catalyst_verification_dead")
                 if mem.get("last_root_cause"):
                     rc_note = (
@@ -2345,9 +3269,7 @@ def collect_scalp_catalyst_health() -> list[dict]:
                     rc_note += " [hold — regime-gated, not thrashing scanner]"
                 elif hu and rc == "low_max_score_regime":
                     try:
-                        if datetime.now(_tz.utc) < datetime.fromisoformat(
-                            str(hu).replace("Z", "+00:00")
-                        ):
+                        if datetime.now(_tz.utc) < datetime.fromisoformat(str(hu).replace("Z", "+00:00")):
                             sev = "warning"
                             held = True
                             rc_note += " [hold — not thrashing scanner]"
@@ -2355,17 +3277,29 @@ def collect_scalp_catalyst_health() -> list[dict]:
                         pass
             except Exception:
                 pass
-            out.append(_f("intelligence_quality", "scalp_catalyst_verification_dead", sev,
-                f"Momentum-scalp GO tier DARK: {rows} setups scored in {window_days}d ({wait} WAIT, "
-                f"{verified} catalyst-verified) but ZERO reached GO — everything capped to WAIT and "
-                f"suppressed, so real-time scalp GO/WAIT Telegram alerts are silently down (the 2026-07-01 "
-                f"class). Check social_scalp_scanner catalyst enrichment / Hermes catalyst wiring / news feed."
-                f"{rc_note}",
-                surfaced="Trading hub · momentum scalp real-time alerts",
-                held=held))
+            out.append(
+                _f(
+                    "intelligence_quality",
+                    "scalp_catalyst_verification_dead",
+                    sev,
+                    f"Momentum-scalp GO tier DARK: {rows} setups scored in {window_days}d ({wait} WAIT, "
+                    f"{verified} catalyst-verified) but ZERO reached GO — everything capped to WAIT and "
+                    f"suppressed, so real-time scalp GO/WAIT Telegram alerts are silently down (the 2026-07-01 "
+                    f"class). Check social_scalp_scanner catalyst enrichment / Hermes catalyst wiring / news feed."
+                    f"{rc_note}",
+                    surfaced="Trading hub · momentum scalp real-time alerts",
+                    held=held,
+                )
+            )
     except Exception as e:
-        out.append(_f("intelligence_quality", "scalp_catalyst_monitor_error", "info",
-                      f"scalp catalyst health monitor failed: {str(e)[:80]}"))
+        out.append(
+            _f(
+                "intelligence_quality",
+                "scalp_catalyst_monitor_error",
+                "info",
+                f"scalp catalyst health monitor failed: {str(e)[:80]}",
+            )
+        )
     return out
 
 
@@ -2379,12 +3313,19 @@ def collect_infra_optimization_health() -> list[dict]:
     try:
         from db_adapter import get_connection
         from reset_stuck_agent_jobs import find_stuck
+
         stuck = find_stuck(get_connection())
         if stuck:
             sev = "warning" if len(stuck) < 10 else "critical"
-            out.append(_f("execution_health", "agent_jobs_processing_stuck", sev,
-                          f"{len(stuck)} agent jobs stuck in 'processing' >30m (worker died mid-job) — "
-                          f"resetting to queued", count=len(stuck)))
+            out.append(
+                _f(
+                    "execution_health",
+                    "agent_jobs_processing_stuck",
+                    sev,
+                    f"{len(stuck)} agent jobs stuck in 'processing' >30m (worker died mid-job) — resetting to queued",
+                    count=len(stuck),
+                )
+            )
     except Exception:
         pass
     # 1b. Zombie 'processing' synthesis rows (watchlist_analysis_maturity) — same failure mode, different
@@ -2393,19 +3334,27 @@ def collect_infra_optimization_health() -> list[dict]:
     try:
         from db_adapter import get_connection
         from reset_stuck_agent_jobs import find_stuck_synthesis
+
         stuck_syn = find_stuck_synthesis(get_connection())
         if stuck_syn:
             sev = "warning" if len(stuck_syn) < 10 else "critical"
             worst = max(float(s["age_min"]) for s in stuck_syn) / 60.0
-            out.append(_f("execution_health", "synthesis_processing_stuck", sev,
-                          f"{len(stuck_syn)} synthesis rows stuck in 'processing' >30m (worst {worst:.0f}h) — "
-                          f"symbols silently excluded from CIO-view refresh; resetting to pending",
-                          count=len(stuck_syn)))
+            out.append(
+                _f(
+                    "execution_health",
+                    "synthesis_processing_stuck",
+                    sev,
+                    f"{len(stuck_syn)} synthesis rows stuck in 'processing' >30m (worst {worst:.0f}h) — "
+                    f"symbols silently excluded from CIO-view refresh; resetting to pending",
+                    count=len(stuck_syn),
+                )
+            )
     except Exception:
         pass
     # 2. Cloud-OAuth lanes — usage / reachability / paid-fallback.
     try:
         from cloud_oauth_usage_monitor import build as _oauth_build
+
         for f in _oauth_build().get("findings", []):
             out.append(_f("intelligence_quality", f["type"], f["severity"], f["message"]))
     except Exception:
@@ -2414,14 +3363,28 @@ def collect_infra_optimization_health() -> list[dict]:
     #    06:00-12:00 ET window (the guard should keep effective contention down).
     try:
         from job_schedule_audit import audit as _audit
+
         a = _audit()
-        unguarded = [j["name"] for j in a["jobs"]
-                     if j["tier"] == "T3" and j["resource_class"] == "llm" and not j.get("market_guarded")
-                     and (set(j["hours"]) & set(range(6, 12))) and (set(j["hours"]) - set(range(6, 12)))]
+        unguarded = [
+            j["name"]
+            for j in a["jobs"]
+            if j["tier"] == "T3"
+            and j["resource_class"] == "llm"
+            and not j.get("market_guarded")
+            and (set(j["hours"]) & set(range(6, 12)))
+            and (set(j["hours"]) - set(range(6, 12)))
+        ]
         if len(unguarded) > 3:
-            out.append(_f("execution_health", "llm_market_window_contention", "warning",
-                          f"{len(unguarded)} unguarded T3 LLM jobs in the 06:00-12:00 ET window — "
-                          f"re-run apply_llm_priority_guard_to_crontab.py --apply", count=len(unguarded)))
+            out.append(
+                _f(
+                    "execution_health",
+                    "llm_market_window_contention",
+                    "warning",
+                    f"{len(unguarded)} unguarded T3 LLM jobs in the 06:00-12:00 ET window — "
+                    f"re-run apply_llm_priority_guard_to_crontab.py --apply",
+                    count=len(unguarded),
+                )
+            )
     except Exception:
         pass
     # 4. Disk-space monitoring — prevent the Aug 2026 backup-storm / 2026-09-18 ENOSPC
@@ -2465,7 +3428,7 @@ def collect_infra_optimization_health() -> list[dict]:
 
 def _collect_backup_cadence_enospc() -> list[dict]:
     """Critical when portfolio backup cadence journal shows ENOSPC in the lookback window."""
-    cfg = (_POLICY.get("backup_cadence_enospc") or {})
+    cfg = _POLICY.get("backup_cadence_enospc") or {}
     if cfg.get("enabled", True) is False:
         return []
     unit = str(cfg.get("unit") or "tradeai-portfolio-backup-cadence.service")
@@ -2526,6 +3489,7 @@ def collect_pipeline_containment() -> list[dict]:
     out = []
     try:
         import subprocess
+
         # ── 1. Containment state ──
         from lib.agent_jobs_containment import evaluate_containment_state, STATUS_ACTIVE, STATUS_INACTIVE
         from pathlib import Path
@@ -2544,16 +3508,15 @@ def collect_pipeline_containment() -> list[dict]:
         _cron_read = _read_crontab()
         crontab_raw = _cron_read.text if _cron_read.ok else ""
         if not _cron_read.ok:
-            out.append(_f(
-                "intelligence_quality",
-                "hermes_crontab_unreadable",
-                "warning",
-                f"cron_missing checks NOT run this cycle: {_cron_read.error}",
-            ))
-        agent_cron_lines = [
-            l for l in crontab_raw.split("\n")
-            if "process_watchlist_agent_jobs.py" in l
-        ]
+            out.append(
+                _f(
+                    "intelligence_quality",
+                    "hermes_crontab_unreadable",
+                    "warning",
+                    f"cron_missing checks NOT run this cycle: {_cron_read.error}",
+                )
+            )
+        agent_cron_lines = [l for l in crontab_raw.split("\n") if "process_watchlist_agent_jobs.py" in l]
         commented_lines = [l for l in agent_cron_lines if l.strip().startswith("#")]
         active_lines = [l for l in agent_cron_lines if not l.strip().startswith("#")]
 
@@ -2569,18 +3532,30 @@ def collect_pipeline_containment() -> list[dict]:
                 age_s = __import__("time").time() - scorecard_path.stat().st_mtime
                 scorecard_stale_days = age_s / 86400.0
                 if scorecard_stale_days > 7:
-                    out.append(_f("intelligence_quality", "discovery_scorecard_stale", "warning",
-                                  f"Hermes discovery scorecard is {scorecard_stale_days:.0f}d stale "
-                                  f"(last written {scorecard_stale_days:.0f} days ago). "
-                                  f"Discovery intake continues but scorecard-based gating is blind. "
-                                  f"Check hermes_discovery_scorecard.py cron.",
-                                  age_days=round(scorecard_stale_days, 1)))
+                    out.append(
+                        _f(
+                            "intelligence_quality",
+                            "discovery_scorecard_stale",
+                            "warning",
+                            f"Hermes discovery scorecard is {scorecard_stale_days:.0f}d stale "
+                            f"(last written {scorecard_stale_days:.0f} days ago). "
+                            f"Discovery intake continues but scorecard-based gating is blind. "
+                            f"Check hermes_discovery_scorecard.py cron.",
+                            age_days=round(scorecard_stale_days, 1),
+                        )
+                    )
             except Exception:
                 pass
         else:
-            out.append(_f("intelligence_quality", "discovery_scorecard_missing", "warning",
-                          "Hermes discovery scorecard file missing — scorecard cron may not be "
-                          "running or writing to wrong path. Check hermes_discovery_scorecard.py."))
+            out.append(
+                _f(
+                    "intelligence_quality",
+                    "discovery_scorecard_missing",
+                    "warning",
+                    "Hermes discovery scorecard file missing — scorecard cron may not be "
+                    "running or writing to wrong path. Check hermes_discovery_scorecard.py.",
+                )
+            )
 
         # ── 5. Catalyst quality ratio ──
         try:
@@ -2589,16 +3564,23 @@ def collect_pipeline_containment() -> list[dict]:
                           COUNT(*) AS total
                    FROM catalyst_events
                    WHERE created_at > now() - interval '7 days'""",
-                fetch="one"
+                fetch="one",
             )
             if cat_row and cat_row.get("total", 0) > 100:
                 other_pct = (cat_row.get("other_n", 0) or 0) / max(cat_row["total"], 1) * 100
                 if other_pct > 80:
-                    out.append(_f("intelligence_quality", "catalyst_type_quality", "warning",
-                                  f"Catalyst classification quality low: {other_pct:.0f}% 'other' "
-                                  f"in last 7d ({cat_row['other_n']}/{cat_row['total']}). "
-                                  f"catalyst_type_weights may need retuning or classifier retraining.",
-                                  other_pct=round(other_pct, 1), total=cat_row["total"]))
+                    out.append(
+                        _f(
+                            "intelligence_quality",
+                            "catalyst_type_quality",
+                            "warning",
+                            f"Catalyst classification quality low: {other_pct:.0f}% 'other' "
+                            f"in last 7d ({cat_row['other_n']}/{cat_row['total']}). "
+                            f"catalyst_type_weights may need retuning or classifier retraining.",
+                            other_pct=round(other_pct, 1),
+                            total=cat_row["total"],
+                        )
+                    )
         except Exception:
             pass
 
@@ -2613,9 +3595,11 @@ def collect_pipeline_containment() -> list[dict]:
                     uncommented = line.strip()
                     # Remove "# CONTAINED YYYY-MM-DD issue#NNN ... re-enable only after governed PR: "
                     import re
+
                     uncommented = re.sub(
-                        r'^#\s*CONTAINED\s+\d{4}-\d{2}-\d{2}\s+issue#\d+\s+.*?re-enable only after governed PR:\s*',
-                        '', uncommented
+                        r"^#\s*CONTAINED\s+\d{4}-\d{2}-\d{2}\s+issue#\d+\s+.*?re-enable only after governed PR:\s*",
+                        "",
+                        uncommented,
                     )
                     # Also handle plain "# " prefix if the above didn't match
                     if uncommented.startswith("# "):
@@ -2630,39 +3614,69 @@ def collect_pipeline_containment() -> list[dict]:
             if fixed_count > 0:
                 new_crontab = "\n".join(fixed_lines) + "\n"
                 try:
-                    subprocess.run(
-                        ["crontab", "-"],
-                        input=new_crontab, text=True, timeout=10, capture_output=True
+                    subprocess.run(["crontab", "-"], input=new_crontab, text=True, timeout=10, capture_output=True)
+                    out.append(
+                        _f(
+                            "execution_health",
+                            "agent_jobs_crons_auto_restored",
+                            "critical",
+                            f"AUTO-FIXED: {fixed_count} contained watchlist agent cron lines "
+                            f"uncommented. Containment is INACTIVE (flag absent, governed PR "
+                            f"deployed). Pipeline resuming next cron tick.",
+                            auto_fixed=True,
+                            fixed_count=fixed_count,
+                        )
                     )
-                    out.append(_f("execution_health", "agent_jobs_crons_auto_restored", "critical",
-                                  f"AUTO-FIXED: {fixed_count} contained watchlist agent cron lines "
-                                  f"uncommented. Containment is INACTIVE (flag absent, governed PR "
-                                  f"deployed). Pipeline resuming next cron tick.",
-                                  auto_fixed=True, fixed_count=fixed_count))
                 except Exception as e:
-                    out.append(_f("execution_health", "agent_jobs_crons_still_contained", "critical",
-                                  f"{fixed_count} watchlist agent cron lines STILL COMMENTED despite "
-                                  f"inactive containment. Auto-fix FAILED: {e}. "
-                                  f"Manually run: crontab -l | sed 's/^# CONTAINED.*: //' | crontab -",
-                                  auto_fix_failed=True, error=str(e)[:120]))
+                    out.append(
+                        _f(
+                            "execution_health",
+                            "agent_jobs_crons_still_contained",
+                            "critical",
+                            f"{fixed_count} watchlist agent cron lines STILL COMMENTED despite "
+                            f"inactive containment. Auto-fix FAILED: {e}. "
+                            f"Manually run: crontab -l | sed 's/^# CONTAINED.*: //' | crontab -",
+                            auto_fix_failed=True,
+                            error=str(e)[:120],
+                        )
+                    )
         elif not contained and governed_deployed and active_lines:
             # All good — pipeline is active
             pass
         elif contained:
-            out.append(_f("execution_health", "agent_jobs_contained", "critical",
-                          f"Watchlist agent jobs pipeline is CONTAINED "
-                          f"(source={state.get('source','?')}, detail={state.get('detail','?')}). "
-                          f"No LLM reviews firing. Clear flag and re-enable crons after governed PR deploy.",
-                          contained=True, state=state))
+            out.append(
+                _f(
+                    "execution_health",
+                    "agent_jobs_contained",
+                    "critical",
+                    f"Watchlist agent jobs pipeline is CONTAINED "
+                    f"(source={state.get('source', '?')}, detail={state.get('detail', '?')}). "
+                    f"No LLM reviews firing. Clear flag and re-enable crons after governed PR deploy.",
+                    contained=True,
+                    state=state,
+                )
+            )
         elif commented_lines and not governed_deployed:
-            out.append(_f("execution_health", "agent_jobs_crons_contained_no_gov", "critical",
-                          f"{len(commented_lines)} watchlist agent cron lines commented but "
-                          f"governance module (agent_flash_governance.py) NOT deployed. "
-                          f"Deploy PR #284 first, then uncomment crons."))
+            out.append(
+                _f(
+                    "execution_health",
+                    "agent_jobs_crons_contained_no_gov",
+                    "critical",
+                    f"{len(commented_lines)} watchlist agent cron lines commented but "
+                    f"governance module (agent_flash_governance.py) NOT deployed. "
+                    f"Deploy PR #284 first, then uncomment crons.",
+                )
+            )
 
     except Exception as e:
-        out.append(_f("execution_health", "pipeline_containment_check_failed", "warning",
-                      f"Pipeline containment check failed: {type(e).__name__}: {str(e)[:120]}"))
+        out.append(
+            _f(
+                "execution_health",
+                "pipeline_containment_check_failed",
+                "warning",
+                f"Pipeline containment check failed: {type(e).__name__}: {str(e)[:120]}",
+            )
+        )
 
     return out
 
@@ -2676,16 +3690,22 @@ def collect_proposal_integrity() -> list[dict]:
     hit) and flags PENDING proposals whose LIVE thesis is invalid (price past target or at/below stop →
     no valid live R:R). A pile of these means expiry/recalibration is lagging and stale R:R may show."""
     out = []
-    cfg = (_POLICY.get("proposal_integrity") or {})
+    cfg = _POLICY.get("proposal_integrity") or {}
     if not cfg.get("enabled", True):
         return out
     try:
-        rows = _db("""SELECT id, symbol, proposed_entry, proposed_stop, proposed_target1, current_price,
+        rows = (
+            _db(
+                """SELECT id, symbol, proposed_entry, proposed_stop, proposed_target1, current_price,
                              updated_at
                       FROM paper_trade_proposals
                       WHERE status='PENDING' AND atm_expired_at IS NULL
                         AND proposed_entry > 0 AND proposed_stop > 0 AND proposed_target1 > 0
-                        AND current_price IS NOT NULL""", fetch="all") or []
+                        AND current_price IS NOT NULL""",
+                fetch="all",
+            )
+            or []
+        )
         if not rows:
             return out
         try:
@@ -2695,8 +3715,10 @@ def collect_proposal_integrity() -> list[dict]:
         broken = []
         for r in rows:
             try:
-                entry = float(r["proposed_entry"]); stop = float(r["proposed_stop"])
-                tgt = float(r["proposed_target1"]); px = float(r["current_price"])
+                entry = float(r["proposed_entry"])
+                stop = float(r["proposed_stop"])
+                tgt = float(r["proposed_target1"])
+                px = float(r["current_price"])
             except (TypeError, ValueError):
                 continue
             if px <= 0:
@@ -2708,11 +3730,17 @@ def collect_proposal_integrity() -> list[dict]:
         n = len(broken)
         if n > 0:
             warn_at = int(cfg.get("broken_warn", 3))
-            out.append(_f("execution_health", "proposal_thesis_broken",
-                          "warning" if n >= warn_at else "info",
-                          f"{n} PENDING proposal(s) with an invalidated live thesis "
-                          f"(price past target/stop) — verify not displaying a stale live R:R",
-                          count=n, sample=broken[:6]))
+            out.append(
+                _f(
+                    "execution_health",
+                    "proposal_thesis_broken",
+                    "warning" if n >= warn_at else "info",
+                    f"{n} PENDING proposal(s) with an invalidated live thesis "
+                    f"(price past target/stop) — verify not displaying a stale live R:R",
+                    count=n,
+                    sample=broken[:6],
+                )
+            )
     except Exception as e:
         out.append(_f("execution_health", "collector_error", "info", f"proposal_integrity check error: {e}"))
     return out
@@ -2724,42 +3752,63 @@ def collect_options_desk_health() -> list[dict]:
     options_chain_snapshots bounded, and (2) the operator approval queue not backing up or
     sitting on expired-but-unreviewed proposals. Both are cheap DB aggregates; advisory only."""
     out = []
-    cfg = (_POLICY.get("options_desk") or {})
+    cfg = _POLICY.get("options_desk") or {}
     if not cfg.get("enabled", True):
         return out
     try:
         import os as _os
+
         retention_days = int(_os.getenv("OPTIONS_SNAPSHOT_RETENTION_DAYS", "45"))
         grace_days = int(cfg.get("snapshot_grace_days", 7))
         row_warn = int(cfg.get("snapshot_row_warn", 50000))
 
         # (1) Retention: oldest snapshot should never exceed retention window + grace.
-        snap = _db("""SELECT count(*) AS n,
+        snap = _db(
+            """SELECT count(*) AS n,
                              EXTRACT(DAY FROM NOW() - MIN(captured_at))::int AS oldest_days
-                      FROM options_chain_snapshots""", fetch="one")
+                      FROM options_chain_snapshots""",
+            fetch="one",
+        )
         if snap:
             n = int(snap.get("n") or 0)
             oldest = snap.get("oldest_days")
             oldest = int(oldest) if oldest is not None else None
             if oldest is not None and oldest > retention_days + grace_days:
-                out.append(_f("execution_health", "options_snapshot_retention_stale", "warning",
-                              f"Oldest options_chain_snapshots row is {oldest}d old "
-                              f"(> {retention_days}d retention + {grace_days}d grace) — prune not running",
-                              oldest_days=oldest, retention_days=retention_days, rows=n))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "options_snapshot_retention_stale",
+                        "warning",
+                        f"Oldest options_chain_snapshots row is {oldest}d old "
+                        f"(> {retention_days}d retention + {grace_days}d grace) — prune not running",
+                        oldest_days=oldest,
+                        retention_days=retention_days,
+                        rows=n,
+                    )
+                )
             if n >= row_warn:
-                out.append(_f("execution_health", "options_snapshot_table_bloat", "info",
-                              f"options_chain_snapshots has {n:,} rows (>{row_warn:,}) — verify retention sweep",
-                              rows=n))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "options_snapshot_table_bloat",
+                        "info",
+                        f"options_chain_snapshots has {n:,} rows (>{row_warn:,}) — verify retention sweep",
+                        rows=n,
+                    )
+                )
 
         # (2) Approval queue. Backlog warning counts only PENDING (a genuine operator-review
         # lag); BLOCKED items are auto-gated (illiquid/earnings/etc.), not actionable by an
         # operator, so they get a separate softer info signal rather than tripping the warning.
-        q = _db("""SELECT
+        q = _db(
+            """SELECT
                      count(*) FILTER (WHERE status='pending') AS pending,
                      count(*) FILTER (WHERE status='blocked') AS blocked,
                      count(*) FILTER (WHERE status='pending'
                                       AND expires_at IS NOT NULL AND expires_at < NOW()) AS expired_pending
-                   FROM options_approval_queue""", fetch="one")
+                   FROM options_approval_queue""",
+            fetch="one",
+        )
         if q:
             pending = int(q.get("pending") or 0)
             blocked = int(q.get("blocked") or 0)
@@ -2767,31 +3816,48 @@ def collect_options_desk_health() -> list[dict]:
             backlog_warn = int(cfg.get("approval_backlog_warn", 15))
             blocked_warn = int(cfg.get("blocked_pileup_warn", 30))
             if pending >= backlog_warn:
-                out.append(_f("execution_health", "options_approval_backlog", "warning",
-                              f"{pending} options proposals pending in desk approval queue "
-                              f"(>{backlog_warn}) — operator review lagging",
-                              count=pending, blocked=blocked))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "options_approval_backlog",
+                        "warning",
+                        f"{pending} options proposals pending in desk approval queue "
+                        f"(>{backlog_warn}) — operator review lagging",
+                        count=pending,
+                        blocked=blocked,
+                    )
+                )
             if blocked >= blocked_warn:
-                out.append(_f("execution_health", "options_approval_blocked_pileup", "info",
-                              f"{blocked} options proposals auto-blocked (illiquid/gated) in queue "
-                              f"(>{blocked_warn}) — review desk universe or liquidity gates",
-                              count=blocked))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "options_approval_blocked_pileup",
+                        "info",
+                        f"{blocked} options proposals auto-blocked (illiquid/gated) in queue "
+                        f"(>{blocked_warn}) — review desk universe or liquidity gates",
+                        count=blocked,
+                    )
+                )
             if expired_pending >= int(cfg.get("expired_pending_warn", 1)):
-                out.append(_f("execution_health", "options_approval_expired_pending",
-                              "warning" if expired_pending >= 5 else "info",
-                              f"{expired_pending} pending options approval(s) past their 24h expiry — "
-                              f"queue not being cleaned",
-                              count=expired_pending))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "options_approval_expired_pending",
+                        "warning" if expired_pending >= 5 else "info",
+                        f"{expired_pending} pending options approval(s) past their 24h expiry — "
+                        f"queue not being cleaned",
+                        count=expired_pending,
+                    )
+                )
     except Exception as e:
-        out.append(_f("execution_health", "collector_error", "info",
-                      f"options_desk health check error: {e}"))
+        out.append(_f("execution_health", "collector_error", "info", f"options_desk health check error: {e}"))
     return out
 
 
 def collect_trade_in_view_health() -> list[dict]:
     """TradeInView journal: Schwab ingest heartbeat, annotation coverage, MFE backfill."""
     out = []
-    cfg = (_POLICY.get("trade_in_view") or {})
+    cfg = _POLICY.get("trade_in_view") or {}
     if not cfg.get("enabled", True):
         return out
     try:
@@ -2803,24 +3869,39 @@ def collect_trade_in_view_health() -> list[dict]:
             if age_h is not None:
                 max_h = float(cfg.get("schwab_ingest_stale_hours", 0.5))
                 if age_h > max_h:
-                    out.append(_f("data_quality", "schwab_journal_ingest_stale", "warning",
-                                  f"Schwab journal ingest log {age_h:.1f}h old (>{max_h:.1f}h) — "
-                                  f"trade_closed may lag during market hours",
-                                  age_hours=age_h, route="/v3/trade-in-view"))
+                    out.append(
+                        _f(
+                            "data_quality",
+                            "schwab_journal_ingest_stale",
+                            "warning",
+                            f"Schwab journal ingest log {age_h:.1f}h old (>{max_h:.1f}h) — "
+                            f"trade_closed may lag during market hours",
+                            age_hours=age_h,
+                            route="/v3/trade-in-view",
+                        )
+                    )
             else:
-                out.append(_f("data_quality", "schwab_journal_ingest_missing", "warning",
-                              "schwab_ingest.log missing — journal ingest never ran",
-                              route="/v3/trade-in-view"))
+                out.append(
+                    _f(
+                        "data_quality",
+                        "schwab_journal_ingest_missing",
+                        "warning",
+                        "schwab_ingest.log missing — journal ingest never ran",
+                        route="/v3/trade-in-view",
+                    )
+                )
 
         # Annotation coverage (same join as Telegram reminder)
-        cov = _db("""SELECT
+        cov = _db(
+            """SELECT
                          (SELECT COUNT(*) FROM trade_closed t
                           WHERE t.buy_price > 0 OR t.pnl != 0) AS total,
                          (SELECT COUNT(*) FROM trade_closed t
                           JOIN journal_trade_reviews r
                             ON r.trade_key = (t.symbol || ':' || t.account || ':' || t.close_date::text)
                           WHERE t.buy_price > 0 OR t.pnl != 0) AS reviewed""",
-                  fetch="one")
+            fetch="one",
+        )
         total = int((cov or {}).get("total") or 0)
         reviewed = int((cov or {}).get("reviewed") or 0)
         if total > 0:
@@ -2834,36 +3915,55 @@ def collect_trade_in_view_health() -> list[dict]:
             else:
                 sev = None
             if sev:
-                out.append(_f("data_quality", "journal_annotation_low", sev,
-                              f"TradeInView annotation coverage {pct}% ({reviewed}/{total}) "
-                              f"(target ≥{warn_pct:.0f}%)",
-                              coverage_pct=pct, reviewed=reviewed, total=total,
-                              route="/v3/trade-in-view"))
+                out.append(
+                    _f(
+                        "data_quality",
+                        "journal_annotation_low",
+                        sev,
+                        f"TradeInView annotation coverage {pct}% ({reviewed}/{total}) (target ≥{warn_pct:.0f}%)",
+                        coverage_pct=pct,
+                        reviewed=reviewed,
+                        total=total,
+                        route="/v3/trade-in-view",
+                    )
+                )
 
         # MFE / profit-capture backfill coverage
-        mfe = _db("""SELECT
+        mfe = _db(
+            """SELECT
                          (SELECT COUNT(*) FROM trade_closed) AS trades,
                          (SELECT COUNT(*) FROM trade_profit_capture_analysis) AS mfe_rows""",
-                  fetch="one")
+            fetch="one",
+        )
         trades_n = int((mfe or {}).get("trades") or 0)
         mfe_n = int((mfe or {}).get("mfe_rows") or 0)
         if trades_n > 0:
             mfe_pct = round(mfe_n / trades_n * 100, 1)
             mfe_warn = float(cfg.get("mfe_coverage_warn_pct", 50))
             if mfe_pct < mfe_warn:
-                out.append(_f("data_quality", "journal_mfe_coverage_low", "info",
-                              f"TradeInView MFE backfill {mfe_pct}% ({mfe_n}/{trades_n}) "
-                              f"(target ≥{mfe_warn:.0f}%) — Exit Intel may be thin",
-                              mfe_pct=mfe_pct, mfe_rows=mfe_n, trades=trades_n,
-                              route="/v3/trade-in-view"))
+                out.append(
+                    _f(
+                        "data_quality",
+                        "journal_mfe_coverage_low",
+                        "info",
+                        f"TradeInView MFE backfill {mfe_pct}% ({mfe_n}/{trades_n}) "
+                        f"(target ≥{mfe_warn:.0f}%) — Exit Intel may be thin",
+                        mfe_pct=mfe_pct,
+                        mfe_rows=mfe_n,
+                        trades=trades_n,
+                        route="/v3/trade-in-view",
+                    )
+                )
 
         # trade_closed output freshness (post-close on trading days). Rebased on the journal REBUILD
         # timestamp (created_at), NOT MAX(close_date): a quiet market with no recent closes is not a
         # broken ingest. schwab_journal_builder DELETE-then-INSERTs with created_at=NOW() each --apply.
         try:
             from zoneinfo import ZoneInfo
+
             now_et = datetime.now(ZoneInfo("America/New_York"))
             from market_session import is_trading_day
+
             trading = is_trading_day(now_et.date())
         except Exception:
             now_et = datetime.now()
@@ -2872,13 +3972,19 @@ def collect_trade_in_view_health() -> list[dict]:
             age_d = _db_age_h("SELECT MAX(created_at)::timestamp FROM trade_closed WHERE account LIKE 'schwab%'")
             max_d = float(cfg.get("trade_closed_stale_days", 3))
             if age_d is not None and age_d > max_d * 24:
-                out.append(_f("data_quality", "trade_closed_stale", "warning",
-                              f"trade_closed journal rebuild {age_d:.0f}h old (>{max_d}d) — "
-                              f"schwab_journal_builder may be broken",
-                              age_hours=age_d, route="/v3/trade-in-view"))
+                out.append(
+                    _f(
+                        "data_quality",
+                        "trade_closed_stale",
+                        "warning",
+                        f"trade_closed journal rebuild {age_d:.0f}h old (>{max_d}d) — "
+                        f"schwab_journal_builder may be broken",
+                        age_hours=age_d,
+                        route="/v3/trade-in-view",
+                    )
+                )
     except Exception as e:
-        out.append(_f("data_quality", "collector_error", "info",
-                      f"trade_in_view check error: {e}"))
+        out.append(_f("data_quality", "collector_error", "info", f"trade_in_view check error: {e}"))
     return out
 
 
@@ -2886,21 +3992,32 @@ def collect_pullback_macd_screener() -> list[dict]:
     """Freshness of the S&P 500 pullback/MACD screener — did the daily scan run, and is the
     universe populated. Advisory; cheap DB reads."""
     out = []
-    cfg = (_POLICY.get("pullback_macd_screener") or {})
+    cfg = _POLICY.get("pullback_macd_screener") or {}
     if not cfg.get("enabled", True):
         return out
     try:
-        run = _db("SELECT scan_date, screened, trigger_count, watch_count, created_at "
-                  "FROM pullback_macd_runs ORDER BY created_at DESC LIMIT 1", fetch="one")
+        run = _db(
+            "SELECT scan_date, screened, trigger_count, watch_count, created_at "
+            "FROM pullback_macd_runs ORDER BY created_at DESC LIMIT 1",
+            fetch="one",
+        )
         try:
             from market_session import is_trading_day
+
             trading = is_trading_day()
         except Exception:
             trading = datetime.now().weekday() < 5
         if run is None:
             if trading and datetime.now().hour >= int(cfg.get("check_after_hour", 18)):
-                out.append(_f("execution_health", "pullback_macd_no_runs", "info",
-                              "Pullback/MACD screener has no recorded runs yet", kind="code"))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "pullback_macd_no_runs",
+                        "info",
+                        "Pullback/MACD screener has no recorded runs yet",
+                        kind="code",
+                    )
+                )
         else:
             age_h = _db_age_h("SELECT created_at FROM pullback_macd_runs ORDER BY created_at DESC LIMIT 1")
             # slot-aware threshold: the screener runs weekdays 16:40, so judge age against the most
@@ -2915,78 +4032,143 @@ def collect_pullback_macd_screener() -> list[dict]:
                     break
             allowed_h = (slot_age_h or 0) + float(cfg.get("scan_grace_hours", 3))
             if age_h is not None and age_h > allowed_h:
-                out.append(_f("execution_health", "pullback_macd_scan_stale", "warning",
-                              f"Pullback/MACD scan {age_h:.0f}h old (last expected slot {allowed_h:.0f}h ago) — daily cron may be down",
-                              age_h=age_h, last_scan=str(run.get("scan_date"))))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "pullback_macd_scan_stale",
+                        "warning",
+                        f"Pullback/MACD scan {age_h:.0f}h old (last expected slot {allowed_h:.0f}h ago) — daily cron may be down",
+                        age_h=age_h,
+                        last_scan=str(run.get("scan_date")),
+                    )
+                )
         uni = _db("SELECT count(*) AS n FROM sp500_constituents WHERE active", fetch="one")
         if uni and int(uni.get("n") or 0) < int(cfg.get("min_universe", 400)):
-            out.append(_f("execution_health", "pullback_macd_universe_thin", "warning",
-                          f"S&P 500 universe table has {uni['n']} active names (<{cfg.get('min_universe',400)}) "
-                          f"— constituent refresh may be failing", count=int(uni["n"])))
+            out.append(
+                _f(
+                    "execution_health",
+                    "pullback_macd_universe_thin",
+                    "warning",
+                    f"S&P 500 universe table has {uni['n']} active names (<{cfg.get('min_universe', 400)}) "
+                    f"— constituent refresh may be failing",
+                    count=int(uni["n"]),
+                )
+            )
     except Exception as e:
-        out.append(_f("execution_health", "collector_error", "info",
-                      f"pullback_macd screener check error: {e}"))
+        out.append(_f("execution_health", "collector_error", "info", f"pullback_macd screener check error: {e}"))
     return out
 
 
 def collect_execution_hardening_health() -> list[dict]:
     """Institutional hardening signals: readiness, kill switches, stale orders, audit ledger."""
     out = []
-    cfg = (_POLICY.get("execution_hardening") or {})
+    cfg = _POLICY.get("execution_hardening") or {}
     if cfg.get("enabled", True) is False:
         return out
     try:
         from brokers.kill_switches import list_active
+
         active = list_active()
         for row in active:
             if row.get("level") in ("global", "live_submit") or row.get("fail_closed"):
-                out.append(_f("execution_health", "kill_switch_active", "critical",
-                              f"Kill switch {row.get('level')}: {row.get('reason')}",
-                              route="/v3/system?tab=Control+Plane",
-                              recommended_action="Review kill switch status before any live submit"))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "kill_switch_active",
+                        "critical",
+                        f"Kill switch {row.get('level')}: {row.get('reason')}",
+                        route="/v3/system?tab=Control+Plane",
+                        recommended_action="Review kill switch status before any live submit",
+                    )
+                )
     except Exception as e:
-        out.append(_f("execution_health", "readiness_resolver_error", "warning",
-                      f"kill_switch inspect failed: {e}", route="/v3/system"))
+        out.append(
+            _f(
+                "execution_health",
+                "readiness_resolver_error",
+                "warning",
+                f"kill_switch inspect failed: {e}",
+                route="/v3/system",
+            )
+        )
     try:
         from brokers.reconcile_orders import find_stale_internal_orders
+
         stale = find_stale_internal_orders(max_age_minutes=int(cfg.get("stale_order_minutes", 30)))
         if stale:
-            out.append(_f("execution_health", "broker_reconciliation_stale", "warning",
-                          f"{len(stale)} stale SUBMIT_REQUESTED/OPERATOR_APPROVED orders",
-                          count=len(stale), route="/v3/trading?tab=Broker+Orders",
-                          recommended_action="Run reconcile_orders.py --dry-run"))
+            out.append(
+                _f(
+                    "execution_health",
+                    "broker_reconciliation_stale",
+                    "warning",
+                    f"{len(stale)} stale SUBMIT_REQUESTED/OPERATOR_APPROVED orders",
+                    count=len(stale),
+                    route="/v3/trading?tab=Broker+Orders",
+                    recommended_action="Run reconcile_orders.py --dry-run",
+                )
+            )
     except Exception as e:
         out.append(_f("execution_health", "reconcile_inspect_error", "info", str(e)[:120]))
     try:
         import execution_state as es
+
         state = es.build_state()
         if state.get("live_adjacent_dirty_count", 0) > 0:
-            out.append(_f("execution_health", "live_adjacent_dirty", "warning",
-                          f"{state['live_adjacent_dirty_count']} live-adjacent dirty files",
-                          route="/v3/system"))
+            out.append(
+                _f(
+                    "execution_health",
+                    "live_adjacent_dirty",
+                    "warning",
+                    f"{state['live_adjacent_dirty_count']} live-adjacent dirty files",
+                    route="/v3/system",
+                )
+            )
         for blocker in (state.get("current_blockers") or [])[:3]:
             if "kill_switch" in blocker or "cannot inspect" in blocker:
-                out.append(_f("execution_health", "execution_state_conflict", "warning",
-                              blocker, route="/v3/system"))
+                out.append(_f("execution_health", "execution_state_conflict", "warning", blocker, route="/v3/system"))
     except Exception as e:
-        out.append(_f("execution_health", "execution_state_missing", "warning",
-                      f"execution_state unavailable: {e}", route="/v3/system"))
+        out.append(
+            _f(
+                "execution_health",
+                "execution_state_missing",
+                "warning",
+                f"execution_state unavailable: {e}",
+                route="/v3/system",
+            )
+        )
     try:
         from audit_ledger import verify_chain
+
         chain = verify_chain(100)
         if not chain.get("ok"):
-            out.append(_f("execution_health", "audit_ledger_chain_break", "critical",
-                          f"audit ledger chain break: {chain.get('error')}",
-                          recommended_action="Inspect data/runtime/audit_ledger/events.jsonl"))
+            out.append(
+                _f(
+                    "execution_health",
+                    "audit_ledger_chain_break",
+                    "critical",
+                    f"audit ledger chain break: {chain.get('error')}",
+                    recommended_action="Inspect data/runtime/audit_ledger/events.jsonl",
+                )
+            )
     except Exception as e:
         out.append(_f("execution_health", "audit_ledger_inspect_error", "info", str(e)[:120]))
     try:
-        exp = _db("""SELECT COUNT(*) AS c FROM options_approval_queue
-                     WHERE status='pending' AND expires_at < NOW()""", fetch="one")
+        exp = _db(
+            """SELECT COUNT(*) AS c FROM options_approval_queue
+                     WHERE status='pending' AND expires_at < NOW()""",
+            fetch="one",
+        )
         if exp and int(exp.get("c") or 0) >= int(cfg.get("expired_pending_warn", 1)):
-            out.append(_f("execution_health", "approval_queue_expired_pending", "warning",
-                          f"{exp['c']} expired pending desk approvals", count=int(exp["c"]),
-                          route="/v3/trading?tab=Options"))
+            out.append(
+                _f(
+                    "execution_health",
+                    "approval_queue_expired_pending",
+                    "warning",
+                    f"{exp['c']} expired pending desk approvals",
+                    count=int(exp["c"]),
+                    route="/v3/trading?tab=Options",
+                )
+            )
     except Exception:
         pass
 
@@ -2994,6 +4176,7 @@ def collect_execution_hardening_health() -> list[dict]:
     # 1. Release manifest WARN/FAIL (read the auto-generated manifest's status line).
     try:
         from pathlib import Path as _P
+
         man = _P(__file__).resolve().parent.parent / "docs" / "project" / "RELEASE_MANIFEST_LATEST.md"
         if man.exists():
             st = ""
@@ -3002,83 +4185,145 @@ def collect_execution_hardening_health() -> list[dict]:
                     st = line.split(":", 1)[1].strip()
                     break
             if st == "FAIL":
-                out.append(_f("execution_health", "release_manifest_fail", "critical",
-                              "Release manifest status FAIL — live-adjacent dirty or validator failed",
-                              route="/v3/system",
-                              recommended_action="Run scripts/validate_release_readiness.py --json --skip-build"))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "release_manifest_fail",
+                        "critical",
+                        "Release manifest status FAIL — live-adjacent dirty or validator failed",
+                        route="/v3/system",
+                        recommended_action="Run scripts/validate_release_readiness.py --json --skip-build",
+                    )
+                )
             elif st == "WARN":
-                out.append(_f("execution_health", "release_manifest_warn", "warning",
-                              "Release manifest WARN (non-classified dirty files present)",
-                              route="/v3/system",
-                              recommended_action="Classify/clean dirty files; rerun release readiness"))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "release_manifest_warn",
+                        "warning",
+                        "Release manifest WARN (non-classified dirty files present)",
+                        route="/v3/system",
+                        recommended_action="Classify/clean dirty files; rerun release readiness",
+                    )
+                )
     except Exception:
         pass
 
     # 2. Audit-ledger coverage of live-adjacent event types (write/verify failure → blocker).
     try:
         from audit_ledger import coverage_report
+
         cov = coverage_report(release_mode=cfg.get("ledger_release_mode", "review"))
         if cov.get("status") == "FAIL":
-            out.append(_f("execution_health", "audit_ledger_coverage_fail", "critical",
-                          f"audit ledger coverage FAIL: missing {cov.get('missing_critical')}",
-                          recommended_action="Investigate ledger write path before live-adjacent run",
-                          route="/v3/system"))
+            out.append(
+                _f(
+                    "execution_health",
+                    "audit_ledger_coverage_fail",
+                    "critical",
+                    f"audit ledger coverage FAIL: missing {cov.get('missing_critical')}",
+                    recommended_action="Investigate ledger write path before live-adjacent run",
+                    route="/v3/system",
+                )
+            )
         elif cov.get("status") == "WARN" and cov.get("any_live_activity"):
-            out.append(_f("execution_health", "audit_ledger_coverage_warn", "warning",
-                          f"audit ledger missing expected events: {cov.get('missing_expected')[:5]}",
-                          route="/v3/system"))
+            out.append(
+                _f(
+                    "execution_health",
+                    "audit_ledger_coverage_warn",
+                    "warning",
+                    f"audit ledger missing expected events: {cov.get('missing_expected')[:5]}",
+                    route="/v3/system",
+                )
+            )
     except Exception as e:
         out.append(_f("execution_health", "audit_ledger_coverage_error", "info", str(e)[:120]))
 
     # 3. Stale OPERATOR_APPROVED records specifically (separate from SUBMIT_REQUESTED).
     try:
-        oa = _db("""SELECT COUNT(*) AS c FROM broker_order_intents
+        oa = _db(
+            """SELECT COUNT(*) AS c FROM broker_order_intents
                     WHERE state='OPERATOR_APPROVED'
                       AND updated_at < NOW() - (%s || ' minutes')::interval""",
-                 (int(cfg.get("stale_operator_approved_minutes", 60)),), fetch="one")
+            (int(cfg.get("stale_operator_approved_minutes", 60)),),
+            fetch="one",
+        )
         if oa and int(oa.get("c") or 0) > 0:
-            out.append(_f("execution_health", "stale_operator_approved", "warning",
-                          f"{oa['c']} OPERATOR_APPROVED intents stale without submit",
-                          count=int(oa["c"]), route="/v3/trading?tab=Broker+Orders",
-                          recommended_action="Reconcile or expire stale approvals"))
+            out.append(
+                _f(
+                    "execution_health",
+                    "stale_operator_approved",
+                    "warning",
+                    f"{oa['c']} OPERATOR_APPROVED intents stale without submit",
+                    count=int(oa["c"]),
+                    route="/v3/trading?tab=Broker+Orders",
+                    recommended_action="Reconcile or expire stale approvals",
+                )
+            )
     except Exception:
         pass
 
     # 4. Stale option chain snapshots (live options path depends on fresh broker chains).
     try:
-        snap = _db("""SELECT EXTRACT(EPOCH FROM (NOW()-MAX(captured_at)))/60.0 AS age_min
-                      FROM options_chain_snapshots""", fetch="one")
+        snap = _db(
+            """SELECT EXTRACT(EPOCH FROM (NOW()-MAX(captured_at)))/60.0 AS age_min
+                      FROM options_chain_snapshots""",
+            fetch="one",
+        )
         if snap and snap.get("age_min") is not None:
             age = float(snap["age_min"])
             warn_min = float(cfg.get("chain_snapshot_warn_min", 1440))
             if age > warn_min:
-                out.append(_f("execution_health", "option_chain_snapshot_stale", "warning",
-                              f"newest option chain snapshot is {age/60.0:.1f}h old",
-                              age_minutes=round(age, 1), route="/v3/trading?tab=Options",
-                              recommended_action="Refresh option chain snapshots (vol-analytics cron)"))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "option_chain_snapshot_stale",
+                        "warning",
+                        f"newest option chain snapshot is {age / 60.0:.1f}h old",
+                        age_minutes=round(age, 1),
+                        route="/v3/trading?tab=Options",
+                        recommended_action="Refresh option chain snapshots (vol-analytics cron)",
+                    )
+                )
     except Exception:
         pass
 
     # 5. AI critique stale rate + 6. replay-integrity (degraded) rate.
     try:
-        crit = _db("""SELECT COUNT(*) AS total,
+        crit = _db(
+            """SELECT COUNT(*) AS total,
                              SUM(CASE WHEN stale THEN 1 ELSE 0 END) AS stale_n,
                              SUM(CASE WHEN status='degraded' THEN 1 ELSE 0 END) AS degraded_n
-                      FROM journal_ai_critiques""", fetch="one")
+                      FROM journal_ai_critiques""",
+            fetch="one",
+        )
         total = int((crit or {}).get("total") or 0)
         if total >= int(cfg.get("critique_min_sample", 20)):
             stale_rate = int((crit or {}).get("stale_n") or 0) / total * 100.0
             degraded_rate = int((crit or {}).get("degraded_n") or 0) / total * 100.0
             if stale_rate >= float(cfg.get("critique_stale_warn_pct", 25)):
-                out.append(_f("intelligence_quality", "ai_critique_stale_rate", "warning",
-                              f"{stale_rate:.0f}% of AI critiques are stale (tags changed)",
-                              rate_pct=round(stale_rate, 1), route="/v3/trade-in-view",
-                              recommended_action="Regenerate stale critiques"))
+                out.append(
+                    _f(
+                        "intelligence_quality",
+                        "ai_critique_stale_rate",
+                        "warning",
+                        f"{stale_rate:.0f}% of AI critiques are stale (tags changed)",
+                        rate_pct=round(stale_rate, 1),
+                        route="/v3/trade-in-view",
+                        recommended_action="Regenerate stale critiques",
+                    )
+                )
             if degraded_rate >= float(cfg.get("replay_degraded_warn_pct", 20)):
-                out.append(_f("intelligence_quality", "replay_integrity_degraded_rate", "warning",
-                              f"{degraded_rate:.0f}% of critiques degraded (replay integrity)",
-                              rate_pct=round(degraded_rate, 1), route="/v3/trade-in-view",
-                              recommended_action="Investigate replay markers / time integrity"))
+                out.append(
+                    _f(
+                        "intelligence_quality",
+                        "replay_integrity_degraded_rate",
+                        "warning",
+                        f"{degraded_rate:.0f}% of critiques degraded (replay integrity)",
+                        rate_pct=round(degraded_rate, 1),
+                        route="/v3/trade-in-view",
+                        recommended_action="Investigate replay markers / time integrity",
+                    )
+                )
     except Exception:
         pass
     return out
@@ -3087,8 +4332,9 @@ def collect_execution_hardening_health() -> list[dict]:
 def collect_proposal_pipeline_health() -> list[dict]:
     """Dual-lane proposal pipeline: enrichment failures and stale IN_PROGRESS (no paper-lane checks)."""
     import re as _re
+
     out = []
-    cfg = (_POLICY.get("proposal_pipeline") or {})
+    cfg = _POLICY.get("proposal_pipeline") or {}
     if cfg.get("enabled", True) is False:
         return out
     try:
@@ -3128,13 +4374,19 @@ def collect_proposal_pipeline_health() -> list[dict]:
         fail_total = max(elog_n, perror_n, log_hits)
         if fail_total >= fail_warn or (elog_n + perror_n) >= 1:
             sev = "critical" if fail_total >= fail_warn * 2 else "warning"
-            out.append(_f(
-                "execution_health", "enrichment_pipeline_failure", sev,
-                f"Enrichment pipeline failing ({fail_total} signals in {win_h}h) — "
-                f"readiness/import errors block ATM + broker lanes",
-                enrichment_log_failures=elog_n, proposal_errors=perror_n,
-                log_import_lines=log_hits, count=fail_total,
-            ))
+            out.append(
+                _f(
+                    "execution_health",
+                    "enrichment_pipeline_failure",
+                    sev,
+                    f"Enrichment pipeline failing ({fail_total} signals in {win_h}h) — "
+                    f"readiness/import errors block ATM + broker lanes",
+                    enrichment_log_failures=elog_n,
+                    proposal_errors=perror_n,
+                    log_import_lines=log_hits,
+                    count=fail_total,
+                )
+            )
 
         pending_fail = _db(
             """SELECT COUNT(*) AS c FROM paper_trade_proposals
@@ -3145,11 +4397,15 @@ def collect_proposal_pipeline_health() -> list[dict]:
         )
         pf = int((pending_fail or {}).get("c") or 0)
         if pf >= int(cfg.get("enrichment_pending_fail_warn", 5)):
-            out.append(_f(
-                "execution_health", "enrichment_failures_high", "warning",
-                f"{pf} PENDING proposals with ≥2 enrichment failures — queue stalled",
-                count=pf,
-            ))
+            out.append(
+                _f(
+                    "execution_health",
+                    "enrichment_failures_high",
+                    "warning",
+                    f"{pf} PENDING proposals with ≥2 enrichment failures — queue stalled",
+                    count=pf,
+                )
+            )
 
         stale_m = int(cfg.get("in_progress_stale_minutes", 30))
         inprog = _db(
@@ -3172,27 +4428,33 @@ def collect_proposal_pipeline_health() -> list[dict]:
         ip_warn = int(cfg.get("in_progress_stale_warn", 3))
         if total_ip >= ip_warn:
             sev = "critical" if total_ip >= ip_warn * 3 else "warning"
-            out.append(_f(
-                "execution_health", "enrichment_status_in_progress_stale", sev,
-                f"{total_ip} proposal(s) with stale enrichment_status=IN_PROGRESS "
-                f"({terminal_n} terminal, {active_n} active >{stale_m}m)",
-                count=total_ip, terminal=terminal_n, active_stuck=active_n,
-            ))
+            out.append(
+                _f(
+                    "execution_health",
+                    "enrichment_status_in_progress_stale",
+                    sev,
+                    f"{total_ip} proposal(s) with stale enrichment_status=IN_PROGRESS "
+                    f"({terminal_n} terminal, {active_n} active >{stale_m}m)",
+                    count=total_ip,
+                    terminal=terminal_n,
+                    active_stuck=active_n,
+                )
+            )
     except Exception as e:
-        out.append(_f("execution_health", "collector_error", "info",
-                      f"proposal_pipeline check error: {e}"))
+        out.append(_f("execution_health", "collector_error", "info", f"proposal_pipeline check error: {e}"))
     return out
 
 
 def collect_watchlist_news_guard_health() -> list[dict]:
     """Detect mis-tagged catalyst headlines on CIO-rated symbols (all verdict tiers)."""
     out = []
-    cfg = (_POLICY.get("watchlist_news_guard") or {})
+    cfg = _POLICY.get("watchlist_news_guard") or {}
     if cfg.get("enabled", True) is False:
         return out
     try:
         from db_adapter import get_connection
         from news_symbol_guard import count_mismatched_watchlist
+
         conn = get_connection()
         try:
             audit = count_mismatched_watchlist(conn, limit=int(cfg.get("sample_limit", 120)))
@@ -3202,18 +4464,21 @@ def collect_watchlist_news_guard_health() -> list[dict]:
         warn_n = int(cfg.get("mismatch_warn", 1))
         if n >= warn_n:
             samples = audit.get("mismatches") or []
-            preview = ", ".join(
-                f"{m.get('symbol')}" for m in samples[:5]
-            ) or "see watchlist"
+            preview = ", ".join(f"{m.get('symbol')}" for m in samples[:5]) or "see watchlist"
             sev = "critical" if n >= int(cfg.get("mismatch_critical", 5)) else "warning"
-            out.append(_f(
-                "data_quality", "news_symbol_mismatch", sev,
-                f"{n} CIO-rated watchlist symbol(s) have mis-tagged catalyst headlines ({preview})",
-                count=n, scanned=audit.get("scanned"), samples=samples[:8],
-            ))
+            out.append(
+                _f(
+                    "data_quality",
+                    "news_symbol_mismatch",
+                    sev,
+                    f"{n} CIO-rated watchlist symbol(s) have mis-tagged catalyst headlines ({preview})",
+                    count=n,
+                    scanned=audit.get("scanned"),
+                    samples=samples[:8],
+                )
+            )
     except Exception as e:
-        out.append(_f("data_quality", "collector_error", "info",
-                      f"watchlist_news_guard check error: {e}"))
+        out.append(_f("data_quality", "collector_error", "info", f"watchlist_news_guard check error: {e}"))
     return out
 
 
@@ -3223,39 +4488,48 @@ def collect_proposal_oversight_load() -> list[dict]:
     (e.g. a screener emitting 22 at once on 2026-06-26) spikes machine load and starves the
     single-threaded API server. This is the guardrail so that can't recur unnoticed."""
     out = []
-    cfg = (_POLICY.get("proposal_oversight_load") or {})
+    cfg = _POLICY.get("proposal_oversight_load") or {}
     if not cfg.get("enabled", True):
         return out
     try:
         win = int(cfg.get("burst_window_min", 20))
         burst_warn = int(cfg.get("burst_warn", 15))
         burst_crit = int(cfg.get("burst_critical", 30))
-        row = _db(f"""SELECT count(*) AS n, string_agg(DISTINCT COALESCE(discovery_source,'?'), ',') AS srcs
+        row = _db(
+            f"""SELECT count(*) AS n, string_agg(DISTINCT COALESCE(discovery_source,'?'), ',') AS srcs
                       FROM paper_trade_proposals
                       WHERE status='PENDING' AND created_at > NOW() - INTERVAL '{win} minutes'""",
-                  fetch="one")
+            fetch="one",
+        )
         n = int((row or {}).get("n") or 0)
         if n >= burst_warn:
             sev = "critical" if n >= burst_crit else "warning"
-            out.append(_f("execution_health", "proposal_creation_burst", sev,
-                          f"{n} proposals created in {win}m (src: {(row or {}).get('srcs')}) — each triggers "
-                          f"local+cloud LLM oversight; bulk creation can overload the single-threaded server",
-                          count=n, window_min=win))
+            out.append(
+                _f(
+                    "execution_health",
+                    "proposal_creation_burst",
+                    sev,
+                    f"{n} proposals created in {win}m (src: {(row or {}).get('srcs')}) — each triggers "
+                    f"local+cloud LLM oversight; bulk creation can overload the single-threaded server",
+                    count=n,
+                    window_min=win,
+                )
+            )
     except Exception as e:
-        out.append(_f("execution_health", "collector_error", "info",
-                      f"proposal_oversight_load check error: {e}"))
+        out.append(_f("execution_health", "collector_error", "info", f"proposal_oversight_load check error: {e}"))
     return out
 
 
 def collect_proposal_trade_plan_health() -> list[dict]:
     """Active broker-queue proposals blocked on gambling geometry / missing authoritative plan."""
     out = []
-    cfg = (_POLICY.get("proposal_trade_plan") or {})
+    cfg = _POLICY.get("proposal_trade_plan") or {}
     if cfg.get("enabled") is False:
         return out
     try:
         from db_adapter import get_connection
         import remediate_proposal_trade_plans as rtpr
+
         audit = rtpr.audit_blocked_count(get_connection())
         n = int(audit.get("count") or 0)
         warn_n = int(cfg.get("blocked_warn", 1))
@@ -3263,14 +4537,18 @@ def collect_proposal_trade_plan_health() -> list[dict]:
         if n >= warn_n:
             syms = ", ".join(sorted((audit.get("by_symbol") or {}).keys())[:8])
             sev = "critical" if n >= crit_n else "warning"
-            out.append(_f(
-                "execution_health", "proposal_trade_plan_blocked", sev,
-                f"{n} active proposal(s) lack authoritative trade plan (gambling-blocked) — {syms or 'see queue'}",
-                count=n, symbols=audit.get("by_symbol"),
-            ))
+            out.append(
+                _f(
+                    "execution_health",
+                    "proposal_trade_plan_blocked",
+                    sev,
+                    f"{n} active proposal(s) lack authoritative trade plan (gambling-blocked) — {syms or 'see queue'}",
+                    count=n,
+                    symbols=audit.get("by_symbol"),
+                )
+            )
     except Exception as e:
-        out.append(_f("execution_health", "collector_error", "info",
-                      f"proposal_trade_plan check error: {e}"))
+        out.append(_f("execution_health", "collector_error", "info", f"proposal_trade_plan check error: {e}"))
     return out
 
 
@@ -3282,7 +4560,7 @@ def collect_data_source_health() -> list[dict]:
     line. When finviz is stale we live-validate the cookie (credential_monitor.check_finviz)
     to tell "cookie expired — needs operator" apart from a transient ingestion failure.
     """
-    cfg = (_POLICY.get("data_sources") or {})
+    cfg = _POLICY.get("data_sources") or {}
     if not cfg.get("enabled", True):
         return []
     out: list[dict] = []
@@ -3296,13 +4574,25 @@ def collect_data_source_health() -> list[dict]:
     # so a source that was never wired is reported when something is scheduled
     # to feed it.
     from lib.data_source_health_view import (
-        HEALTHY, ERROR, NOT_ALERTED, load_registry, view_rows, has_scheduled_caller,
+        HEALTHY,
+        ERROR,
+        NOT_ALERTED,
+        load_registry,
+        view_rows,
+        has_scheduled_caller,
     )
+
     registry = load_registry()
     now_utc = datetime.now(timezone.utc)
-    rows = _db("""SELECT source_key, status, last_success_at, last_failure_at,
+    rows = (
+        _db(
+            """SELECT source_key, status, last_success_at, last_failure_at,
                          max_stale_minutes, last_error, failure_count
-                  FROM data_source_health""", fetch="all") or []
+                  FROM data_source_health""",
+            fetch="all",
+        )
+        or []
+    )
     try:
         from lib.retired_providers import is_retired, called_since_retirement
     except Exception:
@@ -3318,17 +4608,31 @@ def collect_data_source_health() -> list[dict]:
             # 2026-10-16: "alpha_vantage failing: last success 164h ago" while no caller could reach
             # it (scalp_float moved to Finviz; OVERVIEW is premium on this key). Explained, not failing.
             label = "idle" if eff == "idle" else "premium endpoint unavailable"
-            out.append(_f("data_quality", f"data_source_{eff}", "info",
-                          f"data source '{src}' {label}: {r.get('idle_reason') or 'no reason recorded'}",
-                          source=src, effective_status=eff))
+            out.append(
+                _f(
+                    "data_quality",
+                    f"data_source_{eff}",
+                    "info",
+                    f"data source '{src}' {label}: {r.get('idle_reason') or 'no reason recorded'}",
+                    source=src,
+                    effective_status=eff,
+                )
+            )
             continue
         if is_retired(src):
             raw = raw_by_src.get(src) or {}
             if called_since_retirement(src, raw.get("last_success_at"), raw.get("last_failure_at")):
-                out.append(_f("data_quality", "retired_provider_still_called", "warning",
-                              f"data source '{src}' is RETIRED in config/data_source_authority.json but "
-                              f"reported activity after its retirement day — a caller still reaches it",
-                              source=src, last_error=(raw.get("last_error") or "")[:120]))
+                out.append(
+                    _f(
+                        "data_quality",
+                        "retired_provider_still_called",
+                        "warning",
+                        f"data source '{src}' is RETIRED in config/data_source_authority.json but "
+                        f"reported activity after its retirement day — a caller still reaches it",
+                        source=src,
+                        last_error=(raw.get("last_error") or "")[:120],
+                    )
+                )
             # A retired provider's last failure is history, not an outage or a key to rotate.
             continue
         age_m = r.get("age_minutes")
@@ -3343,21 +4647,38 @@ def collect_data_source_health() -> list[dict]:
                 # fall through to the auth/stale classification below with age=∞
                 age_m = float("inf")
             else:
-                out.append(_f("data_quality", "data_source_never_reported", "warning",
-                              f"data source '{src}' has a scheduled caller but has never "
-                              f"reported a success (effective status unknown)",
-                              source=src, effective_status=eff, decayed=False))
+                out.append(
+                    _f(
+                        "data_quality",
+                        "data_source_never_reported",
+                        "warning",
+                        f"data source '{src}' has a scheduled caller but has never "
+                        f"reported a success (effective status unknown)",
+                        source=src,
+                        effective_status=eff,
+                        decayed=False,
+                    )
+                )
                 continue
         # Weekend grace is applied to the WINDOW, never to the verdict: a source
         # inside window*factor on a weekend is info, not silent.
         allowed_m = win_m * (weekend_factor if _IS_WEEKEND else 1.0)
         if eff != ERROR and age_m <= allowed_m:
             # decayed by the registry window but inside the weekend grace
-            out.append(_f("data_quality", "data_source_stale", "info",
-                          f"data source '{src}' stale: last success {age_m / 60:.1f}h ago "
-                          f"(window {win_m / 60:.1f}h) [weekend]",
-                          source=src, last_error=last_err[:120], decayed=bool(r.get("decayed")),
-                          age_minutes=age_m, effective_status=eff))
+            out.append(
+                _f(
+                    "data_quality",
+                    "data_source_stale",
+                    "info",
+                    f"data source '{src}' stale: last success {age_m / 60:.1f}h ago "
+                    f"(window {win_m / 60:.1f}h) [weekend]",
+                    source=src,
+                    last_error=last_err[:120],
+                    decayed=bool(r.get("decayed")),
+                    age_minutes=age_m,
+                    effective_status=eff,
+                )
+            )
             continue
         # Weekday-only ingestion lanes legitimately go stale over the weekend — house
         # convention (see collect_data_quality): visible as info + [weekend], escalates Monday.
@@ -3365,10 +4686,12 @@ def collect_data_source_health() -> list[dict]:
         if age_m == float("inf"):
             msg = f"data source '{src}' failing and has never succeeded"
         else:
-            msg = (f"data source '{src}' {'failing' if eff == ERROR else 'stale'}: last success "
-                   f"{age_m / 60:.1f}h ago (window {win_m / 60:.1f}h)"
-                   + (" [weekend]" if _IS_WEEKEND else "")
-                   + (" [table still said healthy]" if r.get("decayed") else ""))
+            msg = (
+                f"data source '{src}' {'failing' if eff == ERROR else 'stale'}: last success "
+                f"{age_m / 60:.1f}h ago (window {win_m / 60:.1f}h)"
+                + (" [weekend]" if _IS_WEEKEND else "")
+                + (" [table still said healthy]" if r.get("decayed") else "")
+            )
         if src == "finviz":
             # Prefer last_error cookie/zero-row signals (no live HTTP) before the probe.
             try:
@@ -3384,8 +4707,9 @@ def collect_data_source_health() -> list[dict]:
                 try:
                     ck = check_finviz()
                     if str(ck.get("status")) != "ok":
-                        out.append(_finviz_cookie_finding(src, last_err, age_m,
-                                                          str(ck.get("error") or ck.get("status"))))
+                        out.append(
+                            _finviz_cookie_finding(src, last_err, age_m, str(ck.get("error") or ck.get("status")))
+                        )
                         continue
                 except Exception:
                     pass
@@ -3394,22 +4718,39 @@ def collect_data_source_health() -> list[dict]:
             # Auth failure = a rotated/expired API key, not a transient ingestion stall.
             # Auto-retrying the producer can never clear a 401, so surface it as a distinct
             # operator action (never auto) — mirrors finviz_cookie_expired.
-            out.append(_f("data_quality", "data_source_auth_failed", "critical",
-                          f"data source '{src}' auth failed ({last_err.strip()}) — key invalid/expired; "
-                          f"operator must rotate {src.upper()}_API_KEY in Bitwarden",
-                          source=src, last_error=last_err,
-                          operator_action=True,
-                          reauth_cmd=(f".venv/bin/python scripts/secrets/render_env.py --now && "
-                                      f".venv/bin/python scripts/secret_validators.py {src.upper()}_API_KEY")))
+            out.append(
+                _f(
+                    "data_quality",
+                    "data_source_auth_failed",
+                    "critical",
+                    f"data source '{src}' auth failed ({last_err.strip()}) — key invalid/expired; "
+                    f"operator must rotate {src.upper()}_API_KEY in Bitwarden",
+                    source=src,
+                    last_error=last_err,
+                    operator_action=True,
+                    reauth_cmd=(
+                        f".venv/bin/python scripts/secrets/render_env.py --now && "
+                        f".venv/bin/python scripts/secret_validators.py {src.upper()}_API_KEY"
+                    ),
+                )
+            )
             continue
         # Type stays `data_source_stale` for BOTH stale and failing so the policy's
         # remediation_map / operator_action lists keep applying; `effective_status`
         # carries the distinction.
-        out.append(_f("data_quality", "data_source_stale",
-                      sev, msg, source=src, last_error=last_err,
-                      decayed=bool(r.get("decayed")),
-                      age_minutes=None if age_m == float("inf") else age_m,
-                      effective_status=eff))
+        out.append(
+            _f(
+                "data_quality",
+                "data_source_stale",
+                sev,
+                msg,
+                source=src,
+                last_error=last_err,
+                decayed=bool(r.get("decayed")),
+                age_minutes=None if age_m == float("inf") else age_m,
+                effective_status=eff,
+            )
+        )
     return out
 
 
@@ -3419,11 +4760,10 @@ def collect_failed_systemd_units() -> list[dict]:
     Detection only — restarting system units needs privileges the agent doesn't have;
     the finding carries the operator command instead.
     """
-    cfg = (_POLICY.get("systemd_units") or {})
+    cfg = _POLICY.get("systemd_units") or {}
     if not cfg.get("enabled", True):
         return []
-    prefixes = tuple(cfg.get("unit_prefixes") or
-                     ["tradeai-", "portfolio-", "grok-oauth", "chatgpt-oauth"])
+    prefixes = tuple(cfg.get("unit_prefixes") or ["tradeai-", "portfolio-", "grok-oauth", "chatgpt-oauth"])
     out: list[dict] = []
     # systemctl needs DBUS_SESSION_BUS_ADDRESS when running under cron (no login session).
     # Without it the subprocess fails and the bare `except` made this collector permanently
@@ -3438,24 +4778,44 @@ def collect_failed_systemd_units() -> list[dict]:
     # while three user units sat failed). Ask both managers.
     for scope, flag, fix in (("system", [], "sudo systemctl"), ("user", ["--user"], "systemctl --user")):
         try:
-            proc = subprocess.run(["systemctl", *flag, "--failed", "--plain", "--no-legend", "--no-pager"],
-                                  capture_output=True, text=True, timeout=10, env=env)
+            proc = subprocess.run(
+                ["systemctl", *flag, "--failed", "--plain", "--no-legend", "--no-pager"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env,
+            )
         except Exception as e:
             # Surface that we can't check — silence is worse than an info finding
-            out.append(_f("execution_health", "systemd_check_unavailable", "info",
-                          f"Cannot check {scope} systemd unit state: {e}. "
-                          f"systemctl --failed may need DBUS_SESSION_BUS_ADDRESS or the "
-                          f"collector may be running without a system bus.",
-                          error=str(e)[:200], scope=scope))
+            out.append(
+                _f(
+                    "execution_health",
+                    "systemd_check_unavailable",
+                    "info",
+                    f"Cannot check {scope} systemd unit state: {e}. "
+                    f"systemctl --failed may need DBUS_SESSION_BUS_ADDRESS or the "
+                    f"collector may be running without a system bus.",
+                    error=str(e)[:200],
+                    scope=scope,
+                )
+            )
             continue
         for line in (proc.stdout or "").splitlines():
             unit = (line.replace("\u25cf", " ").split() or [""])[0]
             if unit.startswith(prefixes):
                 journal = "journalctl --user" if scope == "user" else "journalctl"
-                out.append(_f("execution_health", "systemd_unit_failed", "warning",
-                              f"{scope} systemd unit {unit} is in failed state — scheduled runs may be "
-                              f"missed; operator: {fix} reset-failed {unit} "
-                              f"(then check why it died: {journal} -u {unit})", unit=unit, scope=scope))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "systemd_unit_failed",
+                        "warning",
+                        f"{scope} systemd unit {unit} is in failed state — scheduled runs may be "
+                        f"missed; operator: {fix} reset-failed {unit} "
+                        f"(then check why it died: {journal} -u {unit})",
+                        unit=unit,
+                        scope=scope,
+                    )
+                )
     return out
 
 
@@ -3464,10 +4824,11 @@ def collect_db_connection_health() -> list[dict]:
     non-DB work (LLM call, big file parse) dies at the 120s session timeout with
     'SSL connection has been closed unexpectedly'. Catches the next scope-governor-style
     bug while it's one victim, not a fleet."""
-    cfg = (_POLICY.get("db_connections") or {})
+    cfg = _POLICY.get("db_connections") or {}
     if not cfg.get("enabled", True):
         return []
     import glob as _glob
+
     window_h = float(cfg.get("window_hours", 3))
     warn_at = int(cfg.get("idle_txn_kills_warn", 10))
     log_glob = cfg.get("pg_log_glob", "/var/log/postgresql/postgresql-*-main.log")
@@ -3492,10 +4853,17 @@ def collect_db_connection_health() -> list[dict]:
                 except Exception:
                     n += 1
         if n >= warn_at:
-            out.append(_f("execution_health", "db_idle_txn_kills", "warning",
-                          f"{n} Postgres idle-in-transaction kills in {window_h:.0f}h — some script "
-                          f"holds a DB transaction through slow non-DB work (LLM call/file parse); "
-                          f"check the killed PIDs in the PG log", count=n))
+            out.append(
+                _f(
+                    "execution_health",
+                    "db_idle_txn_kills",
+                    "warning",
+                    f"{n} Postgres idle-in-transaction kills in {window_h:.0f}h — some script "
+                    f"holds a DB transaction through slow non-DB work (LLM call/file parse); "
+                    f"check the killed PIDs in the PG log",
+                    count=n,
+                )
+            )
     except Exception:
         pass
     # Connection-slot saturation (2026-07-17): portfolio_server leaked idle conns until 97/100
@@ -3506,11 +4874,15 @@ def collect_db_connection_health() -> list[dict]:
         warn_per_app = int(cfg.get("slots_per_app_warn", 40))
         crit_total = int(cfg.get("slots_total_crit", 70))
         import psycopg2 as _pg
+
         try:
             _conn = _pg.connect(
-                host=os.getenv("DB_HOST", "localhost"), port=int(os.getenv("DB_PORT", "5432")),
-                dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
-                password=os.getenv("DB_PASSWORD", ""), connect_timeout=5,
+                host=os.getenv("DB_HOST", "localhost"),
+                port=int(os.getenv("DB_PORT", "5432")),
+                dbname=os.getenv("DB_NAME", "trade_ai"),
+                user=os.getenv("DB_USER", "trade_ai"),
+                password=os.getenv("DB_PASSWORD", ""),
+                connect_timeout=5,
                 application_name="health_agent_slotcheck",
             )
         except Exception as e:
@@ -3518,32 +4890,46 @@ def collect_db_connection_health() -> list[dict]:
 
             kind = classify_pg_connect_error(e)
             if kind == "slots_exhausted":
-                out.append(_f("execution_health", "db_slots_exhausted", "critical",
-                              "Postgres connection slots EXHAUSTED — new connections are failing "
-                              "FATAL; DB-fed writers (warm_caches etc.) silently degrade. Find the "
-                              "holder: ss -tn 'dport = :5432' grouped by pid; restarting the "
-                              "offending service frees its slots (2026-07-17 incident)."))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "db_slots_exhausted",
+                        "critical",
+                        "Postgres connection slots EXHAUSTED — new connections are failing "
+                        "FATAL; DB-fed writers (warm_caches etc.) silently degrade. Find the "
+                        "holder: ss -tn 'dport = :5432' grouped by pid; restarting the "
+                        "offending service frees its slots (2026-07-17 incident).",
+                    )
+                )
             elif kind == "auth_failed":
-                out.append(_f("execution_health", "postgres_main_auth_failed", "critical",
-                              f"Postgres main auth failed on :{os.getenv('DB_PORT', '5432')} — "
-                              f"check DB_USER/DB_PASSWORD in the health-agent env "
-                              f"({type(e).__name__}: {str(e)[:160]})",
-                              error=str(e)[:240]))
+                out.append(
+                    _f(
+                        "execution_health",
+                        "postgres_main_auth_failed",
+                        "critical",
+                        f"Postgres main auth failed on :{os.getenv('DB_PORT', '5432')} — "
+                        f"check DB_USER/DB_PASSWORD in the health-agent env "
+                        f"({type(e).__name__}: {str(e)[:160]})",
+                        error=str(e)[:240],
+                    )
+                )
             else:
                 # 2026-09-18: connection refused after ENOSPC WAL PANIC left the cluster down
                 # for hours while CC kept serving AWARE/PARTIAL. Always page this.
                 port = os.getenv("DB_PORT", "5432")
-                out.append(_f(
-                    "infra",
-                    "postgres_main_down",
-                    "critical",
-                    f"Postgres main :{port} unreachable ({kind}: {type(e).__name__}: {str(e)[:140]}). "
-                    f"If disk is healthy, allowlisted remediate_postgres_main.py --apply will "
-                    f"sudo -n systemctl start postgresql@17-main; else free space first. "
-                    f"Manual: sudo systemctl start postgresql@17-main && pg_lsclusters",
-                    error=str(e)[:240],
-                    classify=kind,
-                ))
+                out.append(
+                    _f(
+                        "infra",
+                        "postgres_main_down",
+                        "critical",
+                        f"Postgres main :{port} unreachable ({kind}: {type(e).__name__}: {str(e)[:140]}). "
+                        f"If disk is healthy, allowlisted remediate_postgres_main.py --apply will "
+                        f"sudo -n systemctl start postgresql@17-main; else free space first. "
+                        f"Manual: sudo systemctl start postgresql@17-main && pg_lsclusters",
+                        error=str(e)[:240],
+                        classify=kind,
+                    )
+                )
             return out
         try:
             with _conn.cursor() as c:
@@ -3554,19 +4940,35 @@ def collect_db_connection_health() -> list[dict]:
         finally:
             _conn.close()
         total = sum(r[1] for r in rows)
-        top_app, top_n = (rows[0] if rows else ("?", 0))
+        top_app, top_n = rows[0] if rows else ("?", 0)
         if total >= crit_total:
-            out.append(_f("execution_health", "db_slots_near_exhaustion", "critical",
-                          f"{total} Postgres connections held by trade_ai (cap ~100; top holder "
-                          f"{top_app}={top_n}) — leak in progress, slots will exhaust and DB-fed "
-                          f"writers will silently degrade; restart the top holder",
-                          total=total, top_app=top_app, top_count=top_n))
+            out.append(
+                _f(
+                    "execution_health",
+                    "db_slots_near_exhaustion",
+                    "critical",
+                    f"{total} Postgres connections held by trade_ai (cap ~100; top holder "
+                    f"{top_app}={top_n}) — leak in progress, slots will exhaust and DB-fed "
+                    f"writers will silently degrade; restart the top holder",
+                    total=total,
+                    top_app=top_app,
+                    top_count=top_n,
+                )
+            )
         elif top_n >= warn_per_app:
-            out.append(_f("execution_health", "db_slots_single_app_high", "warning",
-                          f"{top_app} holds {top_n} Postgres connections (warn at {warn_per_app}) — "
-                          f"idle-connection leak signature (2026-07-17 scanner incident); watch for "
-                          f"growth and restart the service if it keeps climbing",
-                          total=total, top_app=top_app, top_count=top_n))
+            out.append(
+                _f(
+                    "execution_health",
+                    "db_slots_single_app_high",
+                    "warning",
+                    f"{top_app} holds {top_n} Postgres connections (warn at {warn_per_app}) — "
+                    f"idle-connection leak signature (2026-07-17 scanner incident); watch for "
+                    f"growth and restart the service if it keeps climbing",
+                    total=total,
+                    top_app=top_app,
+                    top_count=top_n,
+                )
+            )
     except Exception:
         pass
     return out
@@ -3578,36 +4980,57 @@ def collect_backup_health() -> list[dict]:
     failed or silently-dead run alerted NOBODY. Critical when the last-run summary is stale
     (>26h) or any step failed; also checks the newest local pg dump is <26h old."""
     out: list[dict] = []
-    cfg = (_POLICY.get("backup_health") or {})
+    cfg = _POLICY.get("backup_health") or {}
     if not cfg.get("enabled", True):
         return out
     max_age_h = float(cfg.get("max_age_hours", 26))
     summary = PROJECT_ROOT / "data" / "runtime" / "portfolio_maintenance_backup_last_run.json"
     try:
         if not summary.exists():
-            out.append(_f("pipeline_freshness", "backup_cadence_missing", "critical",
-                          "backup cadence has never written its last-run summary — verify "
-                          "tradeai-portfolio-backup-cadence.timer"))
+            out.append(
+                _f(
+                    "pipeline_freshness",
+                    "backup_cadence_missing",
+                    "critical",
+                    "backup cadence has never written its last-run summary — verify "
+                    "tradeai-portfolio-backup-cadence.timer",
+                )
+            )
             return out
         age_h = (datetime.now().timestamp() - summary.stat().st_mtime) / 3600
         if age_h > max_age_h:
-            out.append(_f("pipeline_freshness", "backup_cadence_stale", "critical",
-                          f"backup cadence last ran {age_h:.0f}h ago (>{max_age_h:.0f}h) — "
-                          f"pg dump + offsite encrypted backups are NOT running",
-                          age_hours=round(age_h, 1)))
+            out.append(
+                _f(
+                    "pipeline_freshness",
+                    "backup_cadence_stale",
+                    "critical",
+                    f"backup cadence last ran {age_h:.0f}h ago (>{max_age_h:.0f}h) — "
+                    f"pg dump + offsite encrypted backups are NOT running",
+                    age_hours=round(age_h, 1),
+                )
+            )
         try:
             d = json.loads(summary.read_text())
-            bad = [s for s in (d.get("steps") or [])
-                   if str(s.get("status", "")).lower() not in
-                   ("ok", "gated_skip_fresh", "excluded_not_run", "")]
+            bad = [
+                s
+                for s in (d.get("steps") or [])
+                if str(s.get("status", "")).lower() not in ("ok", "gated_skip_fresh", "excluded_not_run", "")
+            ]
             if bad:
-                out.append(_f("pipeline_freshness", "backup_step_failed", "critical",
-                              f"{len(bad)} backup step(s) failed in the last cadence run — "
-                              f"check journalctl --user -u tradeai-portfolio-backup-cadence",
-                              count=len(bad)))
+                out.append(
+                    _f(
+                        "pipeline_freshness",
+                        "backup_step_failed",
+                        "critical",
+                        f"{len(bad)} backup step(s) failed in the last cadence run — "
+                        f"check journalctl --user -u tradeai-portfolio-backup-cadence",
+                        count=len(bad),
+                    )
+                )
         except Exception:
             pass
         import glob as _g
+
         min_bytes = int(cfg.get("min_dump_bytes", 500 * 1024 * 1024))  # ignore partial thrash dumps
         max_count = int(cfg.get("max_local_count", 1))  # 2026-08-11: single local dump only
         max_total = int(cfg.get("max_local_bytes", 5 * 1024 * 1024 * 1024))
@@ -3622,29 +5045,54 @@ def collect_backup_health() -> list[dict]:
             except OSError:
                 continue
         if not dumps:
-            out.append(_f("pipeline_freshness", "db_dump_missing", "critical",
-                          "no local full pg dumps exist in ~/db_backups "
-                          f"(min size {min_bytes // (1024*1024)}MB)"))
+            out.append(
+                _f(
+                    "pipeline_freshness",
+                    "db_dump_missing",
+                    "critical",
+                    f"no local full pg dumps exist in ~/db_backups (min size {min_bytes // (1024 * 1024)}MB)",
+                )
+            )
         else:
             dump_age_h = (datetime.now().timestamp() - Path(dumps[-1]).stat().st_mtime) / 3600
             if dump_age_h > max_age_h:
                 # Notify only — NEVER auto-remediate (backup storm 2026-08). Operator runs
                 # run_pg_backup.sh or waits for tradeai-portfolio-backup-cadence.timer.
-                out.append(_f("pipeline_freshness", "db_dump_stale", "critical",
-                              f"newest full pg dump is {dump_age_h:.0f}h old (>{max_age_h:.0f}h) — "
-                              f"manual: bash linux_launchers/run_pg_backup.sh (auto-remediate disabled)",
-                              age_hours=round(dump_age_h, 1)))
+                out.append(
+                    _f(
+                        "pipeline_freshness",
+                        "db_dump_stale",
+                        "critical",
+                        f"newest full pg dump is {dump_age_h:.0f}h old (>{max_age_h:.0f}h) — "
+                        f"manual: bash linux_launchers/run_pg_backup.sh (auto-remediate disabled)",
+                        age_hours=round(dump_age_h, 1),
+                    )
+                )
         # Cap enforcement (Aug 2026 storm left 38×2.3G dumps)
         if len(dumps) > max_count:
-            out.append(_f("pipeline_freshness", "backup_local_count_exceeded", "critical",
-                          f"{len(dumps)} full local pg dumps (max {max_count}) — "
-                          f"run: .venv/bin/python scripts/backup_enforcer.py",
-                          count=len(dumps), max_count=max_count))
+            out.append(
+                _f(
+                    "pipeline_freshness",
+                    "backup_local_count_exceeded",
+                    "critical",
+                    f"{len(dumps)} full local pg dumps (max {max_count}) — "
+                    f"run: .venv/bin/python scripts/backup_enforcer.py",
+                    count=len(dumps),
+                    max_count=max_count,
+                )
+            )
         if total_bytes > max_total:
-            out.append(_f("pipeline_freshness", "backup_local_bytes_exceeded", "critical",
-                          f"~/db_backups total {total_bytes/1e9:.1f}GB exceeds "
-                          f"{max_total/1e9:.1f}GB cap — run backup_enforcer.py",
-                          total_bytes=total_bytes, max_bytes=max_total))
+            out.append(
+                _f(
+                    "pipeline_freshness",
+                    "backup_local_bytes_exceeded",
+                    "critical",
+                    f"~/db_backups total {total_bytes / 1e9:.1f}GB exceeds "
+                    f"{max_total / 1e9:.1f}GB cap — run backup_enforcer.py",
+                    total_bytes=total_bytes,
+                    max_bytes=max_total,
+                )
+            )
     except Exception as e:
         out.append(_f("pipeline_freshness", "backup_check_error", "info", str(e)[:120]))
     return out
@@ -3659,24 +5107,29 @@ def collect_broker_token_health() -> list[dict]:
     critical OPERATOR-ACTION finding, deliberately NOT in `remediation_map` (retrying the ingest is futile).
     Closes the gap where a revoked token silently stalled the trade journal for a full day (2026-07-07)."""
     out = []
-    cfg = (_POLICY.get("broker_token_health") or {})
+    cfg = _POLICY.get("broker_token_health") or {}
     if not cfg.get("enabled", True):
         return out
-    reauth = ("Manual Schwab reauth required (token cannot be auto-renewed): run "
-              "`.venv/bin/python scripts/schwab_token_manager.py reauth-url schwab_taxable`, open the URL, "
-              "log in, then `exchange-code schwab_taxable \"<redirect URL>\"`; then re-run "
-              "`scripts/schwab_transaction_ingest.py --apply`.")
+    reauth = (
+        "Manual Schwab reauth required (token cannot be auto-renewed): run "
+        "`.venv/bin/python scripts/schwab_token_manager.py reauth-url schwab_taxable`, open the URL, "
+        'log in, then `exchange-code schwab_taxable "<redirect URL>"`; then re-run '
+        "`scripts/schwab_transaction_ingest.py --apply`."
+    )
     try:
         # AUTHORITATIVE, recency-correct signal: the `degraded` flag is SET when a refresh is rejected
         # (schwab_transport persists it on Schwab auth-rejection; token manager sets it on refresh failure)
         # and CLEARED on a successful reauth/refresh (`_clear_degraded`). We do NOT trigger on a raw
         # log-scan alone — the ingest log keeps stale invalid_grant lines after recovery, which would
         # false-positive. The log is used only to enrich the message once `degraded` confirms the failure.
-        rows = _db("SELECT account_key, degraded, last_error FROM broker_oauth_tokens WHERE degraded IS TRUE",
-                   fetch="all") or []
+        rows = (
+            _db("SELECT account_key, degraded, last_error FROM broker_oauth_tokens WHERE degraded IS TRUE", fetch="all")
+            or []
+        )
         paused = None
         try:
             from lib import schwab_access_mode as _sam
+
             paused = _sam.status() if _sam.is_paused() else None
         except Exception:  # noqa: BLE001 — no switch readable: the normal (re-auth) path below applies
             paused = None
@@ -3685,12 +5138,20 @@ def collect_broker_token_health() -> list[dict]:
             # re-auth cannot succeed (and is not wanted). Say so, and page once per ET day — not every cycle.
             acct = rows[0].get("account_key")
             first_today = _sam.once_per_day("health_agent:schwab_token_revoked")
-            out.append(_f("execution_health", "schwab_token_revoked", "critical" if first_today else "info",
-                          f"Schwab token degraded ({acct}) — {_sam.PAUSED_REMEDIATION}. "
-                          f"Schwab positions/stops/transactions are NOT being refreshed while paused"
-                          f"{'' if first_today else ' (already reported today)'}.",
-                          operator_action=False, reauth_cmd=_sam.PAUSED_REMEDIATION,
-                          schwab_access_mode=paused.get("mode"), schwab_paused=True))
+            out.append(
+                _f(
+                    "execution_health",
+                    "schwab_token_revoked",
+                    "critical" if first_today else "info",
+                    f"Schwab token degraded ({acct}) — {_sam.PAUSED_REMEDIATION}. "
+                    f"Schwab positions/stops/transactions are NOT being refreshed while paused"
+                    f"{'' if first_today else ' (already reported today)'}.",
+                    operator_action=False,
+                    reauth_cmd=_sam.PAUSED_REMEDIATION,
+                    schwab_access_mode=paused.get("mode"),
+                    schwab_paused=True,
+                )
+            )
             return out
         if rows:
             acct = rows[0].get("account_key")
@@ -3699,18 +5160,25 @@ def collect_broker_token_health() -> list[dict]:
             try:
                 p = _freshest_log_path("schwab_ingest.log")
                 if p is not None:
-                    tail = "\n".join(p.read_text(errors="ignore").splitlines()[-int(cfg.get("tail_lines", 200)):])
+                    tail = "\n".join(p.read_text(errors="ignore").splitlines()[-int(cfg.get("tail_lines", 200)) :])
                     for sig in ("invalid_grant", "no Schwab login token", "Refresh token is invalid", "OAuthError"):
                         if sig in tail:
                             log_sig = sig
                             break
             except Exception:
                 pass
-            out.append(_f("execution_health", "schwab_token_revoked", "critical",
-                          f"Schwab OAuth token DEGRADED/revoked ({acct}: {err[:80]}"
-                          f"{'; log: ' + log_sig if log_sig else ''}). The TTL health may still read valid; "
-                          f"ingest is silently failing → trade journal stalls. {reauth}",
-                          operator_action=True, reauth_cmd=reauth))
+            out.append(
+                _f(
+                    "execution_health",
+                    "schwab_token_revoked",
+                    "critical",
+                    f"Schwab OAuth token DEGRADED/revoked ({acct}: {err[:80]}"
+                    f"{'; log: ' + log_sig if log_sig else ''}). The TTL health may still read valid; "
+                    f"ingest is silently failing → trade journal stalls. {reauth}",
+                    operator_action=True,
+                    reauth_cmd=reauth,
+                )
+            )
     except Exception as e:
         out.append(_f("execution_health", "collector_error", "info", f"broker token health check error: {e}"))
     return out
@@ -3727,6 +5195,7 @@ def collect_trade_ai_session() -> list[dict]:
         today = datetime.now().astimezone().strftime("%Y-%m-%d")
         try:
             from zoneinfo import ZoneInfo
+
             today = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
         except Exception:
             pass
@@ -3735,6 +5204,7 @@ def collect_trade_ai_session() -> list[dict]:
         candidates = [cache_path]
         try:
             from lib.live_project_root import DEV_ROOT
+
             candidates.append(DEV_ROOT / "data" / "runtime" / "trade_ai_cache.json")
         except Exception:
             pass
@@ -3753,25 +5223,44 @@ def collect_trade_ai_session() -> list[dict]:
             except Exception:
                 continue
         if not run_date:
-            out.append(_f("pipeline_freshness", "trade_ai_session_missing", "critical",
-                          "trade_ai_cache.json missing or has no run_date — SETUPS session unknown",
-                          surfaced="CC SETUPS header"))
+            out.append(
+                _f(
+                    "pipeline_freshness",
+                    "trade_ai_session_missing",
+                    "critical",
+                    "trade_ai_cache.json missing or has no run_date — SETUPS session unknown",
+                    surfaced="CC SETUPS header",
+                )
+            )
             return out
         if run_date < today:
-            out.append(_f(
-                "pipeline_freshness", "trade_ai_session_stale", "critical",
-                f"SETUPS session stale: run_date={run_date} (today ET {today}) — "
-                f"CC header will show STALE until cache is healed",
-                run_date=run_date, today_et=today, cache=used,
-                surfaced="CC SETUPS header",
-            ))
+            out.append(
+                _f(
+                    "pipeline_freshness",
+                    "trade_ai_session_stale",
+                    "critical",
+                    f"SETUPS session stale: run_date={run_date} (today ET {today}) — "
+                    f"CC header will show STALE until cache is healed",
+                    run_date=run_date,
+                    today_et=today,
+                    cache=used,
+                    surfaced="CC SETUPS header",
+                )
+            )
     except Exception as e:
-        out.append(_f("pipeline_freshness", "trade_ai_session_check_error", "info",
-                      f"trade_ai session check failed: {str(e)[:100]}"))
+        out.append(
+            _f(
+                "pipeline_freshness",
+                "trade_ai_session_check_error",
+                "info",
+                f"trade_ai session check failed: {str(e)[:100]}",
+            )
+        )
     return out
 
 
 # ── Phase 4 prevention collectors ────────────────────────────────────────────────────────────────────
+
 
 def collect_cron_sanity() -> list[dict]:
     """Verify every scripts/*.py reference in the crontab exists (prevents C8 recurrence).
@@ -3781,24 +5270,33 @@ def collect_cron_sanity() -> list[dict]:
     for weeks without existing in prod."""
     try:
         from check_cron_sanity import check
+
         return check()
     except Exception as e:
-        return [_f("execution_health", "cron_sanity_check_error", "info",
-                   f"Cron sanity check failed: {str(e)[:100]}")]
+        return [_f("execution_health", "cron_sanity_check_error", "info", f"Cron sanity check failed: {str(e)[:100]}")]
 
 
 def collect_agent_configuration_drift() -> list[dict]:
     """Surface deployment disagreements without changing any agent definition."""
     try:
         from scripts.lib.agent_registry import runtime_truth
+
         truth = runtime_truth()
     except Exception as exc:
         return [_f("intelligence_quality", "agent_registry_unavailable", "warning", type(exc).__name__)]
-    return [_f("intelligence_quality", "agent_configuration_drift", "warning",
-               f"{r['agent_id']}: registry {r['registry_status']}, runtime {r['deployment_state']}, enabled={r['runtime_enabled']}",
-               agent_id=r["agent_id"], deployment_truth=r,
-               recommended_action="Review deployment intent; registry status does not authorize activation")
-            for r in truth["agents"] if r["configuration_disagreement"]]
+    return [
+        _f(
+            "intelligence_quality",
+            "agent_configuration_drift",
+            "warning",
+            f"{r['agent_id']}: registry {r['registry_status']}, runtime {r['deployment_state']}, enabled={r['runtime_enabled']}",
+            agent_id=r["agent_id"],
+            deployment_truth=r,
+            recommended_action="Review deployment intent; registry status does not authorize activation",
+        )
+        for r in truth["agents"]
+        if r["configuration_disagreement"]
+    ]
 
 
 def collect_queue_health() -> list[dict]:
@@ -3809,13 +5307,20 @@ def collect_queue_health() -> list[dict]:
     out: list[dict] = []
     try:
         from lib.queue_file import read_items
+
         items = read_items(QUEUE_FILE)
     except Exception:
         try:
             items = json.loads(QUEUE_FILE.read_text()) if QUEUE_FILE.exists() else []
         except Exception:
-            return [_f("execution_health", "queue_health_read_error", "info",
-                       "Could not read escalation queue for health check")]
+            return [
+                _f(
+                    "execution_health",
+                    "queue_health_read_error",
+                    "info",
+                    "Could not read escalation queue for health check",
+                )
+            ]
     if not items:
         return []
     now_ts = __import__("time").time()
@@ -3827,19 +5332,35 @@ def collect_queue_health() -> list[dict]:
             if last_at and (now_ts - float(last_at)) > 86400:
                 stuck += 1
         src = item.get("source", "")
-        if src and src not in ("health_agent", "system_health_agent",
-                                "hermes_health_inspector", "manual"):
+        if src and src not in ("health_agent", "system_health_agent", "hermes_health_inspector", "manual"):
             orphaned_sources.add(src)
     if stuck:
-        out.append(_f("execution_health", "queue_stuck_items", "warning",
-                      f"{stuck} escalation queue item(s) exhausted >24h — may need operator review"))
+        out.append(
+            _f(
+                "execution_health",
+                "queue_stuck_items",
+                "warning",
+                f"{stuck} escalation queue item(s) exhausted >24h — may need operator review",
+            )
+        )
     if orphaned_sources:
-        out.append(_f("execution_health", "queue_orphaned_sources", "info",
-                      f"Escalation queue contains items from unknown sources: "
-                      f"{', '.join(sorted(orphaned_sources)[:5])}"))
+        out.append(
+            _f(
+                "execution_health",
+                "queue_orphaned_sources",
+                "info",
+                f"Escalation queue contains items from unknown sources: {', '.join(sorted(orphaned_sources)[:5])}",
+            )
+        )
     if len(items) > 50:
-        out.append(_f("execution_health", "queue_depth_high", "info",
-                      f"Escalation queue has {len(items)} items (>50) — review may be needed"))
+        out.append(
+            _f(
+                "execution_health",
+                "queue_depth_high",
+                "info",
+                f"Escalation queue has {len(items)} items (>50) — review may be needed",
+            )
+        )
     return out
 
 
@@ -3875,7 +5396,9 @@ def collect_store_consistency() -> list[dict]:
 SPEND_RECEIPT = PROJECT_ROOT / "data" / "runtime" / "llm_spend_report_last_daily.json"
 
 
-def spend_receipt_finding(receipt: dict | None, now_utc: datetime, cap_usd: float, *, max_age_h: float = 26.0) -> dict | None:
+def spend_receipt_finding(
+    receipt: dict | None, now_utc: datetime, cap_usd: float, *, max_age_h: float = 26.0
+) -> dict | None:
     """E-10 (2026-09-15): the $2/day actual-spend policy is proven every day, not spot-checked.
 
     Returns None when the daily spend report ran within max_age_h, was sent, and reported actual USD
@@ -3897,7 +5420,11 @@ def spend_receipt_finding(receipt: dict | None, now_utc: datetime, cap_usd: floa
     except (TypeError, ValueError):
         return {"reason": "receipt has no actual USD"}
     if usd > cap_usd + 1e-9:
-        return {"reason": f"actual LLM spend ${usd:.2f} exceeded the ${cap_usd:.2f}/day cap", "usd": usd, "key": receipt.get("key")}
+        return {
+            "reason": f"actual LLM spend ${usd:.2f} exceeded the ${cap_usd:.2f}/day cap",
+            "usd": usd,
+            "key": receipt.get("key"),
+        }
     return None
 
 
@@ -3909,20 +5436,34 @@ def collect_llm_spend_receipt() -> list[dict]:
         # carried 0.50 and agent-operator.env 0.25.
         try:
             from lib.llm_spend import configured_global_cap
+
             cap = configured_global_cap()
         except Exception:
             cap = None
         if cap is None:
-            out.append(_f("execution_health", "llm_spend_cap_file_missing", "warning",
-                          "~/.config/tradeai/llm_global_daily_usd_cap.env is missing or unreadable — the "
-                          "daily LLM spend cap cannot be proven"))
+            out.append(
+                _f(
+                    "execution_health",
+                    "llm_spend_cap_file_missing",
+                    "warning",
+                    "~/.config/tradeai/llm_global_daily_usd_cap.env is missing or unreadable — the "
+                    "daily LLM spend cap cannot be proven",
+                )
+            )
             return out
         receipt = json.loads(SPEND_RECEIPT.read_text()) if SPEND_RECEIPT.exists() else None
         f = spend_receipt_finding(receipt, datetime.now(timezone.utc), cap)
         if f:
             sev = "critical" if "exceeded" in f["reason"] else "warning"
-            out.append(_f("execution_health", "llm_spend_policy_unproven", sev,
-                          f"LLM spend policy not proven today: {f['reason']}", **f))
+            out.append(
+                _f(
+                    "execution_health",
+                    "llm_spend_policy_unproven",
+                    sev,
+                    f"LLM spend policy not proven today: {f['reason']}",
+                    **f,
+                )
+            )
     except Exception as e:
         out.append(_f("execution_health", "collector_error", "info", f"spend receipt check error: {e}"))
     return out
@@ -3957,12 +5498,16 @@ def verdict_store_finding(entries: list[dict], desk_rows: list[dict], *, min_run
     return None
 
 
-def expire_on_arrival_finding(created: int, expired_within_1h: int, *, min_created: int = 10,
-                              max_share: float = 0.5) -> dict | None:
+def expire_on_arrival_finding(
+    created: int, expired_within_1h: int, *, min_created: int = 10, max_share: float = 0.5
+) -> dict | None:
     """E-05 (2026-09-15): proposals created and expired within the hour (the #1027 defect class)."""
     if created >= min_created and expired_within_1h / max(created, 1) >= max_share:
-        return {"created": created, "expired_within_1h": expired_within_1h,
-                "share": round(expired_within_1h / created, 2)}
+        return {
+            "created": created,
+            "expired_within_1h": expired_within_1h,
+            "share": round(expired_within_1h / created, 2),
+        }
     return None
 
 
@@ -3982,24 +5527,43 @@ def collect_decision_store_integrity() -> list[dict]:
         desk = json.loads(REENTRY_DESK.read_text()) if REENTRY_DESK.exists() else {}
         f = verdict_store_finding(entries, desk.get("rows") or [])
         if f:
-            out.append(_f("intelligence_quality", "governed_verdicts_empty_while_desk_in_zone", "warning",
-                          f"CIO governed verdict store empty for the last {f['empty_run']} snapshots while "
-                          f"{len(f['in_zone'])} re-entry desk names are inside their entry zone "
-                          f"({', '.join(f['in_zone'][:6])}) — the verdict writer is not seeing the desk",
-                          **f))
+            out.append(
+                _f(
+                    "intelligence_quality",
+                    "governed_verdicts_empty_while_desk_in_zone",
+                    "warning",
+                    f"CIO governed verdict store empty for the last {f['empty_run']} snapshots while "
+                    f"{len(f['in_zone'])} re-entry desk names are inside their entry zone "
+                    f"({', '.join(f['in_zone'][:6])}) — the verdict writer is not seeing the desk",
+                    **f,
+                )
+            )
     except Exception as e:
         out.append(_f("intelligence_quality", "collector_error", "info", f"verdict store check error: {e}"))
     try:
-        r = _db("""SELECT COUNT(*) AS created,
+        r = (
+            _db(
+                """SELECT COUNT(*) AS created,
                           COUNT(*) FILTER (WHERE UPPER(status) = 'EXPIRED'
                                              AND COALESCE(expired_at, updated_at) < created_at + interval '1 hour') AS expired_1h
                    FROM paper_trade_proposals
-                   WHERE created_at > now() - interval '24 hours'""", fetch="one") or {}
+                   WHERE created_at > now() - interval '24 hours'""",
+                fetch="one",
+            )
+            or {}
+        )
         f = expire_on_arrival_finding(int(r.get("created") or 0), int(r.get("expired_1h") or 0))
         if f:
-            out.append(_f("execution_health", "proposals_expire_on_arrival", "warning",
-                          f"{f['expired_within_1h']} of {f['created']} proposals created in 24h expired within "
-                          f"an hour ({int(f['share'] * 100)}%) — entries are stale on arrival", **f))
+            out.append(
+                _f(
+                    "execution_health",
+                    "proposals_expire_on_arrival",
+                    "warning",
+                    f"{f['expired_within_1h']} of {f['created']} proposals created in 24h expired within "
+                    f"an hour ({int(f['share'] * 100)}%) — entries are stale on arrival",
+                    **f,
+                )
+            )
     except Exception as e:
         out.append(_f("execution_health", "collector_error", "info", f"proposal expiry check error: {e}"))
     return out
@@ -4053,6 +5617,7 @@ COLLECTORS = [
 
 
 # ── scoring ──────────────────────────────────────────────────────────────────────────────────────────
+
 
 def score_category(findings: list[dict], penalties: dict) -> int:
     """Score a category 0-100.
@@ -4113,6 +5678,7 @@ def compute(policy: dict):
     db_down = False
     try:
         from db_adapter import _execute, USE_DB
+
         if USE_DB:
             _execute("SELECT 1", fetch="one")  # raises on connectivity failure
     except Exception:
@@ -4123,11 +5689,17 @@ def compute(policy: dict):
     all_findings = []
 
     if db_down:
-        all_findings.append(_f("execution_health", "database_unreachable", "critical",
-            "PostgreSQL is unreachable — DB-dependent collectors (data freshness, broker state, "
-            "pipeline runs, options desk, etc.) cannot run. The score reflects ONLY file-based "
-            "collectors and WILL be incomplete. Restore Postgres and re-run the health agent.",
-            surfaced="All DB-dependent pages · health agent"))
+        all_findings.append(
+            _f(
+                "execution_health",
+                "database_unreachable",
+                "critical",
+                "PostgreSQL is unreachable — DB-dependent collectors (data freshness, broker state, "
+                "pipeline runs, options desk, etc.) cannot run. The score reflects ONLY file-based "
+                "collectors and WILL be incomplete. Restore Postgres and re-run the health agent.",
+                surfaced="All DB-dependent pages · health agent",
+            )
+        )
 
     for fn in COLLECTORS:
         try:
@@ -4136,7 +5708,7 @@ def compute(policy: dict):
             all_findings.append(_f("execution_health", "collector_error", "info", f"{fn.__name__}: {e}"))
     all_findings = _drop_paper_findings(all_findings)
     # Annotate each finding with why-it-matters + recommended action (self-justifying + actionable).
-    rmap = (policy.get("remediation_map") or {})
+    rmap = policy.get("remediation_map") or {}
     for _f_ in all_findings:
         _annotate(_f_, rmap)
     # Group findings by their tagged category so multiple collectors can feed one category.
@@ -4155,39 +5727,64 @@ def compute(policy: dict):
 
 # ── trends ────────────────────────────────────────────────────────────────────────────────────────────
 
+
 def ensure_snapshot_table():
-    _db("""CREATE TABLE IF NOT EXISTS health_agent_snapshots (
+    _db(
+        """CREATE TABLE IF NOT EXISTS health_agent_snapshots (
              id SERIAL PRIMARY KEY,
              captured_at TIMESTAMPTZ DEFAULT now(),
              overall_score INT, status TEXT,
-             category_scores JSONB, findings JSONB, mode TEXT)""", fetch=None)
-    _db("""CREATE INDEX IF NOT EXISTS idx_health_agent_snapshots_captured_at
-           ON health_agent_snapshots (captured_at DESC)""", fetch=None)
+             category_scores JSONB, findings JSONB, mode TEXT)""",
+        fetch=None,
+    )
+    _db(
+        """CREATE INDEX IF NOT EXISTS idx_health_agent_snapshots_captured_at
+           ON health_agent_snapshots (captured_at DESC)""",
+        fetch=None,
+    )
 
 
 def detect_trends(policy: dict, overall: int, cat_scores: dict) -> list[dict]:
     look = policy.get("trend", {}).get("lookback_runs", 3)
     drop = policy.get("trend", {}).get("drop_alert_points", 10)
-    rows = _db("SELECT overall_score, category_scores FROM health_agent_snapshots "
-               "ORDER BY captured_at DESC LIMIT %s", (look,), fetch="all") or []
+    rows = (
+        _db(
+            "SELECT overall_score, category_scores FROM health_agent_snapshots ORDER BY captured_at DESC LIMIT %s",
+            (look,),
+            fetch="all",
+        )
+        or []
+    )
     trends = []
     if len(rows) >= 2:
         prev_overall = rows[0].get("overall_score")
         if prev_overall is not None and (prev_overall - overall) >= drop:
-            trends.append({"scope": "overall", "from": prev_overall, "to": overall,
-                           "message": f"overall health dropped {prev_overall}→{overall}"})
+            trends.append(
+                {
+                    "scope": "overall",
+                    "from": prev_overall,
+                    "to": overall,
+                    "message": f"overall health dropped {prev_overall}→{overall}",
+                }
+            )
         # monotonic per-category decline across the window
         for cat in cat_scores:
-            series = [overall if False else cat_scores[cat]] + [
-                (r.get("category_scores") or {}).get(cat) for r in rows]
+            series = [overall if False else cat_scores[cat]] + [(r.get("category_scores") or {}).get(cat) for r in rows]
             series = [s for s in series if s is not None]
             if len(series) >= look and all(series[i] < series[i + 1] for i in range(len(series) - 1)):
-                trends.append({"scope": cat, "from": series[-1], "to": series[0],
-                               "message": f"{cat} declining {series[-1]}→{series[0]} over {len(series)} runs"})
+                trends.append(
+                    {
+                        "scope": cat,
+                        "from": series[-1],
+                        "to": series[0],
+                        "message": f"{cat} declining {series[-1]}→{series[0]} over {len(series)} runs",
+                    }
+                )
     return trends
 
 
 # ── escalation enqueue (feeds the existing handler + coder_dispatch) ─────────────────────────────────
+
 
 def enqueue_escalations(policy: dict, findings_flat: list[dict]):
     """Append remediable findings to claude_escalation_queue.json (deduped by component:type).
@@ -4218,9 +5815,10 @@ def enqueue_escalations(policy: dict, findings_flat: list[dict]):
     count_box = [0]  # mutable container so the lambda can write to it
 
     def _update(existing):
-        seen = {f"{i.get('component')}:{i.get('detail','')[:40]}" for i in existing}
-        existing_components = {i.get("component") for i in existing
-                              if (i.get("source") or "") in ("health_agent", "health_agent_meta")}
+        seen = {f"{i.get('component')}:{i.get('detail', '')[:40]}" for i in existing}
+        existing_components = {
+            i.get("component") for i in existing if (i.get("source") or "") in ("health_agent", "health_agent_meta")
+        }
         existing_by_comp = {}
         for ei in existing:
             comp = ei.get("component")
@@ -4250,11 +5848,15 @@ def enqueue_escalations(policy: dict, findings_flat: list[dict]):
                 retry = _rewrite_remediation_cmd(retry)
                 try:
                     from lib.agent_jobs_containment import guard_agent_jobs_execution
+
                     g = guard_agent_jobs_execution(retry, source="health_agent.enqueue_escalations")
                 except Exception:
                     if "process_watchlist_agent_jobs" in str(retry).lower():
-                        g = {"blocked": True, "remediation_status": "CONTAINMENT_CHECK_FAILED",
-                             "message": "CONTAINMENT_CHECK_FAILED"}
+                        g = {
+                            "blocked": True,
+                            "remediation_status": "CONTAINMENT_CHECK_FAILED",
+                            "message": "CONTAINMENT_CHECK_FAILED",
+                        }
                     else:
                         g = {"blocked": False}
                 if g.get("blocked"):
@@ -4281,6 +5883,7 @@ def enqueue_escalations(policy: dict, findings_flat: list[dict]):
 
     try:
         from lib.queue_file import atomic_update
+
         atomic_update(QUEUE_FILE, _update)
     except Exception:
         # Fallback: direct read/write if queue_file module is unavailable
@@ -4307,11 +5910,18 @@ def enqueue_escalations(policy: dict, findings_flat: list[dict]):
 
 def persist(snapshot: dict, policy: dict | None = None):
     ensure_snapshot_table()
-    _db("""INSERT INTO health_agent_snapshots (overall_score,status,category_scores,findings,mode)
+    _db(
+        """INSERT INTO health_agent_snapshots (overall_score,status,category_scores,findings,mode)
            VALUES (%s,%s,%s,%s,%s)""",
-        (snapshot["overall_score"], snapshot["status"],
-         json.dumps(snapshot["category_scores"]), json.dumps(snapshot["findings"]),
-         snapshot["mode"]), fetch=None)
+        (
+            snapshot["overall_score"],
+            snapshot["status"],
+            json.dumps(snapshot["category_scores"]),
+            json.dumps(snapshot["findings"]),
+            snapshot["mode"],
+        ),
+        fetch=None,
+    )
     try:
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         STATUS_FILE.write_text(json.dumps(snapshot, indent=2, default=str))
@@ -4320,11 +5930,20 @@ def persist(snapshot: dict, policy: dict | None = None):
     try:
         AUDIT_JSONL.parent.mkdir(parents=True, exist_ok=True)
         with open(AUDIT_JSONL, "a") as fh:
-            fh.write(json.dumps({"captured_at": snapshot["captured_at"],
-                                 "overall": snapshot["overall_score"], "status": snapshot["status"],
-                                 "category_scores": snapshot["category_scores"],
-                                 "trends": snapshot["trends"], "enqueued": snapshot.get("enqueued", 0)},
-                                default=str) + "\n")
+            fh.write(
+                json.dumps(
+                    {
+                        "captured_at": snapshot["captured_at"],
+                        "overall": snapshot["overall_score"],
+                        "status": snapshot["status"],
+                        "category_scores": snapshot["category_scores"],
+                        "trends": snapshot["trends"],
+                        "enqueued": snapshot.get("enqueued", 0),
+                    },
+                    default=str,
+                )
+                + "\n"
+            )
     except Exception:
         pass
 
@@ -4369,8 +5988,11 @@ def _alert_suppressed(policy: dict, snapshot: dict) -> bool:
         prev_at = _parse_iso(prev.get("at", ""))
         # Flapping back to a status we alerted on within flap_suppress_minutes, at a score
         # no worse than last time → not news. A real drop still passes via `worsened`.
-        if prev_at and (now - prev_at).total_seconds() < flap_m * 60 \
-                and score > float(prev.get("score", -1)) - drop_pts:
+        if (
+            prev_at
+            and (now - prev_at).total_seconds() < flap_m * 60
+            and score > float(prev.get("score", -1)) - drop_pts
+        ):
             changed = False
     # Worsening is judged against the last alerted score FOR THIS STATUS when we have one,
     # so an oscillation between two stable (status, score) pairs cannot re-arm it each flip.
@@ -4384,19 +6006,22 @@ def _alert_suppressed(policy: dict, snapshot: dict) -> bool:
         recent[status] = {"at": now.isoformat(), "score": score}
         # prune per-status entries too old to matter for flap/worsening decisions
         horizon = max(realert_m, flap_m) * 60
-        recent = {s: v for s, v in recent.items()
-                  if (_parse_iso((v or {}).get("at", "")) or now) >= now - timedelta(seconds=horizon)}
+        recent = {
+            s: v
+            for s, v in recent.items()
+            if (_parse_iso((v or {}).get("at", "")) or now) >= now - timedelta(seconds=horizon)
+        }
         ALERT_STATE.parent.mkdir(parents=True, exist_ok=True)
-        ALERT_STATE.write_text(json.dumps({"at": now.isoformat(), "status": status,
-                                           "score": score, "recent": recent}))
+        ALERT_STATE.write_text(json.dumps({"at": now.isoformat(), "status": status, "score": score, "recent": recent}))
     except Exception:
         pass
     return False
 
 
 def alert(policy: dict, snapshot: dict):
-    if snapshot["status"] not in policy.get("alert", {}).get("telegram_on_status", ["unhealthy", "degraded"]) \
-            and not (snapshot["trends"] and policy.get("alert", {}).get("telegram_on_trend_drop", True)):
+    if snapshot["status"] not in policy.get("alert", {}).get("telegram_on_status", ["unhealthy", "degraded"]) and not (
+        snapshot["trends"] and policy.get("alert", {}).get("telegram_on_trend_drop", True)
+    ):
         return
     if _alert_suppressed(policy, snapshot):
         return
@@ -4414,8 +6039,11 @@ def alert(policy: dict, snapshot: dict):
     # originating check was re-run and the finding no longer fires. It used to be
     # claimed on exit code 0, which is how a 24h stale repricer was reported fixed
     # every cycle.
-    fixed = [r for r in (snapshot.get("remediated") or [])
-             if r.get("outcome") == "CLEARED" or (r.get("ok") and "outcome" not in r)]
+    fixed = [
+        r
+        for r in (snapshot.get("remediated") or [])
+        if r.get("outcome") == "CLEARED" or (r.get("ok") and "outcome" not in r)
+    ]
     if fixed:
         lines.append(f"✅ Auto-fixed (re-checked): {', '.join(r.get('type', '?') for r in fixed)}")
     worsened = [r for r in (snapshot.get("remediated") or []) if r.get("outcome") == "WORSENED"]
@@ -4424,35 +6052,47 @@ def alert(policy: dict, snapshot: dict):
         lines.append(
             f"🚨 WORSENED — {r.get('type', '?')}: {esc.get('metric_trend', 'condition regressed')}. "
             f"Stopped retrying. Cause: {r.get('root_cause') or 'UNDIAGNOSED'}. "
-            f"Command that did not help: {esc.get('command_that_did_not_help') or r.get('cmd', '?')}")
+            f"Command that did not help: {esc.get('command_that_did_not_help') or r.get('cmd', '?')}"
+        )
     # An INEFFECTIVE attempt that has not yet tripped the breaker is reported
     # without paging. Staying silent until attempt 2 would leave the operator
     # seeing a critical finding with no indication that a fix had been tried and
     # had not worked -- which is the same information gap, one cycle narrower.
-    trying = [r for r in (snapshot.get("remediated") or [])
-              if r.get("outcome") == "INEFFECTIVE" and not r.get("ineffective")]
+    trying = [
+        r for r in (snapshot.get("remediated") or []) if r.get("outcome") == "INEFFECTIVE" and not r.get("ineffective")
+    ]
     for r in trying:
         lines.append(
             f"↻ Remediation ineffective (attempt recorded, not yet escalated) — "
             f"{r.get('type', '?')}: cause {r.get('root_cause') or 'UNDIAGNOSED'}. "
-            f"Command that did not help: {r.get('cmd', '?')}")
-    ineffective = [r for r in (snapshot.get("remediated") or [])
-                   if r.get("ineffective") and r.get("outcome") != "WORSENED"]
+            f"Command that did not help: {r.get('cmd', '?')}"
+        )
+    ineffective = [
+        r for r in (snapshot.get("remediated") or []) if r.get("ineffective") and r.get("outcome") != "WORSENED"
+    ]
     for r in ineffective:
         esc = r.get("escalate") or {}
         lines.append(
             f"🔁 Remediation ineffective (needs operator) — {r.get('type', '?')}: "
             f"cause {r.get('root_cause') or 'UNDIAGNOSED'}; {esc.get('metric_trend', '')}. "
-            f"Command that did not help: {esc.get('command_that_did_not_help') or r.get('cmd', '?')}")
+            f"Command that did not help: {esc.get('command_that_did_not_help') or r.get('cmd', '?')}"
+        )
     unverified = [r for r in (snapshot.get("remediated") or []) if r.get("outcome") == "UNVERIFIED"]
     if unverified:
-        lines.append(f"❓ Could not re-check (no success claimed): "
-                     f"{', '.join(r.get('type', '?') for r in unverified)}")
+        lines.append(f"❓ Could not re-check (no success claimed): {', '.join(r.get('type', '?') for r in unverified)}")
     # Intent: P1 when the operator must act (unhealthy, a remediation that worsened or stopped working),
     # otherwise P3 -- a degraded score with nothing for the operator to do is FYI for the digest.
-    needs_operator = snapshot.get("status") == "unhealthy" or bool(worsened) or bool(ineffective)
+    held = [r for r in (snapshot.get("remediated") or []) if r.get("outcome") == "HELD"]
+    for r in held:
+        lines.append(
+            f"👤 Operator review required — {r.get('type', '?')}: "
+            f"{r.get('note') or r.get('root_cause') or 'automatic retries are held'}; "
+            f"hold until {r.get('hold_until') or 'review'}"
+        )
+    needs_operator = snapshot.get("status") == "unhealthy" or bool(worsened) or bool(ineffective) or bool(held)
     try:
         from telegram_alert import send_telegram
+
         send_telegram("\n".join(lines), priority=("P1" if needs_operator else "P3"), producer="health_agent")
     except Exception:
         pass
@@ -4470,9 +6110,10 @@ def main():
     try:
         from lib.agent_heartbeat import AgentHeartbeat
         from db_adapter import _get_conn
+
         hb_conn = _get_conn()
         if hb_conn:
-            hb = AgentHeartbeat(hb_conn, 'health_agent', task='health_scoring')
+            hb = AgentHeartbeat(hb_conn, "health_agent", task="health_scoring")
             hb.register()
     except Exception:
         pass
@@ -4511,14 +6152,19 @@ def main():
     hist_cfg = policy.get("history") or {}
     snapshot = {
         "captured_at": datetime.now(timezone.utc).isoformat(),
-        "overall_score": overall, "status": status, "mode": mode,
-        "category_scores": cat_scores, "findings": findings_flat,
-        "trends": trends, "enqueued": enqueued, "remediated": remediated,
+        "overall_score": overall,
+        "status": status,
+        "mode": mode,
+        "category_scores": cat_scores,
+        "findings": findings_flat,
+        "trends": trends,
+        "enqueued": enqueued,
+        "remediated": remediated,
         "rescored_after_remediation": rescored,
         "scheduler": scheduler,
         "history_retention_days": int(hist_cfg.get("retention_days", 90)),
-        "summary": f"{status} {overall}/100 · {len([f for f in findings_flat if f['severity']=='critical'])} critical · "
-                   f"{len([f for f in findings_flat if f['severity']=='warning'])} warnings",
+        "summary": f"{status} {overall}/100 · {len([f for f in findings_flat if f['severity'] == 'critical'])} critical · "
+        f"{len([f for f in findings_flat if f['severity'] == 'warning'])} warnings",
     }
     persist(snapshot, policy)
     if not args.no_alert:
@@ -4527,10 +6173,12 @@ def main():
     if args.json:
         print(json.dumps(snapshot, indent=2, default=str))
     else:
-        print(f"Health: {status.upper()} {overall}/100  |  " +
-              "  ".join(f"{c}={s}" for c, s in cat_scores.items()) +
-              f"  |  {len(findings_flat)} findings, {enqueued} enqueued, "
-              f"{len(remediated)} auto-remediated, {len(trends)} trends")
+        print(
+            f"Health: {status.upper()} {overall}/100  |  "
+            + "  ".join(f"{c}={s}" for c, s in cat_scores.items())
+            + f"  |  {len(findings_flat)} findings, {enqueued} enqueued, "
+            f"{len(remediated)} auto-remediated, {len(trends)} trends"
+        )
 
     # Mark heartbeat done
     if hb:

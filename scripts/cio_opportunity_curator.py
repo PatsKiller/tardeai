@@ -129,6 +129,13 @@ def run(apply: bool, limit_print: int = 10) -> dict:
         "types": dict(Counter(a.get("type") for a in assessments)),
         "stances": dict(Counter(a.get("stance") for a in assessments)),
         "material_versions": len(lines),
+        # Which source decided "owned" (positions_current only once reader batch #4 is granted; else the holdings
+        # file with the reason) and how many names the broker-synced set overrode (operator 2026-10-23, NAVN).
+        "held_basis": dict(Counter(str((a.get("position_basis") or {}).get("source")) for a in assessments)),
+        "held_basis_reason": next(((a.get("position_basis") or {}).get("reason") for a in assessments
+                                   if a.get("position_basis")), None),
+        "held_overridden": sorted(a["symbol"] for a in assessments
+                                  if (a.get("position_basis") or {}).get("holdings_file_disagrees")),
         "top": [{"rank": a["rank"], "symbol": a["symbol"], "conviction": a["conviction"],
                  "rr": (a.get("risk_reward") or {}).get("rr"), "upside_pct": a.get("upside_pct"),
                  "type": a.get("type")} for a in top],

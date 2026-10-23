@@ -974,6 +974,30 @@
       "routing_decision_20261015": "Operator decision 2026-10-15 (verbatim): \"in terms of n8n, then, we should try OAuth first. And if OAuth fails or if the answer needs higher reasoning, then we go to DeepSeek.\" Routing: grok OAuth -> chatgpt OAuth -> deepseek FAST (llm_routing_policy route_profile n8n_oauth_first); an OAuth lane not enabled on the host (CIO_BRIDGE_OAUTH_TRANSPORTS) is skipped; an empty/invalid OAuth answer falls through to the next lane; reasoning_tier high puts the routing row's reasoning_lane (DeepSeek PRO_THINK) first. The routing row is read only by cio_governed_model_bridge, so the cron line's in-process path is unchanged."
     },
     {
+      "id": "grok_stop_review",
+      "name": "Grok Stop Review (advisory stop curation)",
+      "category": "Risk",
+      "lane_policy": "grok_only",
+      "default_mode": "automated",
+      "description": "scripts/grok_stop_review.py (crontab 10:05 and 15:05 ET weekdays, paused since the SPCX incident 2026-10-14): one Grok OAuth call per held live stop asking for a risk:reward judgement of the stop. Writes stop_grok_reviews and a Hermes stop_curation row. ADVISORY ONLY: never places, moves or cancels an order. No tools. No fallback model: a failed or refused call is an error on that stop, never a call on another lane.",
+      "allowed_lanes": [
+        "grok"
+      ],
+      "max_input_tokens": 4000,
+      "max_output_tokens": 2048,
+      "daily_soft_cap": 30,
+      "daily_cost_cap_usd": 0.05,
+      "max_stops_per_run": 12,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "circuit_breaker": true,
+      "reasoning_tier": "standard",
+      "registered_by": "incident-spcx-resume-20261022",
+      "registered_at": "2026-10-22T18:00:00Z",
+      "notes": "2026-10-22 (operator, verbatim: \"yes\" to keeping L497 paused until it is registered with the LLM spend gate, then \"switch on after your fix\"): before this row the script called llm_lane.generate(prompt, lane=\"grok\", timeout=90) with no process_id, so lib.llm_consumption.gate_and_generate never ran: no registration check, no cap check, no llm_consumption_log row. Grok is an external provider (AGENTS.md §2A egress: position, P&L and stop data leave the box), so the binding caps are counts, not dollars: max_stops_per_run 12 (the script clamps --limit to it) and daily_soft_cap 30 calls/day (2 cron runs x 12 + 6 manual), enforced by the script through llm_consumption.over_daily_cap before every call, so a call past the cap is refused with DAILY_CALL_CAP and nothing is sent. Grok OAuth settles $0.00; daily_cost_cap_usd 0.05 exists so the gate's check_cost_cap and the bridge's validate_paid_cap_config have a declared ceiling. allowed_lanes is grok only, so the model chooser (advise/enforce) cannot move it to another lane and should_call refuses any --lane other than grok (POLICY_NOT_ALLOWED). Bridge route: caller advisory_desk task grok_stop_review (CALLER_TASK_PROCESS_MAP and lib/governed_process_routes) with a grok-only routing row (primary, secondary and fallback all grok: the routing schema needs three lanes and none may be another model; on_health_unknown refuse), used only when TRADEAI_LLM_VIA_BRIDGE is set; the cron line calls in-process through the gate. Operator after merge: python3 scripts/sync_cio_process_caps.py and a bridge restart (§9.2)."
+    },
+    {
       "id": "watchlist_entry_planner",
       "name": "Watchlist Entry Planner",
       "category": "Watch",

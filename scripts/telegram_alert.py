@@ -181,6 +181,9 @@ def with_provenance_footer(message: str, footer: Optional[str] = None) -> str:
 # Cleared at the START of every send, so a failed or suppressed send can never
 # be attributed the id of the previous one.
 _LAST_MESSAGE_IDS: list[str] = []
+#: First provider message id per chat of the most recent raw send ({chat_id: message_id}). A threaded alert
+#: (lib/unified_momentum_alert.py, Gate 4 2026-10-22) replies per chat, so it needs the id of ITS chat's root.
+_LAST_MESSAGE_IDS_BY_CHAT: dict[str, str] = {}
 #: Sentinel default for ``_best_effort_comms_publish(provider_message_id=...)``: "read the ambient store above" (this
 #: module's own send path only). Any explicit value — including None — is used as given (review 2026-10-18, N2).
 _AMBIENT_ID: Any = object()
@@ -189,6 +192,7 @@ _AMBIENT_ID: Any = object()
 def reset_last_message_ids() -> None:
     """Forget the previous send. Called at the start of each publish path."""
     _LAST_MESSAGE_IDS.clear()
+    _LAST_MESSAGE_IDS_BY_CHAT.clear()
 
 
 def _held_bucket() -> dict:
@@ -247,6 +251,11 @@ def last_message_ids() -> list[str]:
     return list(_LAST_MESSAGE_IDS)
 
 
+def last_message_ids_by_chat() -> dict[str, str]:
+    """{chat_id: first provider message id} of the most recent raw send in this process ({} when none)."""
+    return dict(_LAST_MESSAGE_IDS_BY_CHAT)
+
+
 def last_message_id() -> str | None:
     """First provider message id of the most recent send, or None."""
     return _LAST_MESSAGE_IDS[0] if _LAST_MESSAGE_IDS else None
@@ -259,6 +268,7 @@ def _raw_send_telegram_result(
     reply_markup: dict | None = None,
     thread_id: str | None = None,
     link_preview_options: dict | None = None,
+    reply_to_message_ids: dict | None = None,
 ) -> dict:
     """Low-level Telegram send with provider message ids. No routing."""
     # FQDN/v3 normalization at the send chokepoint: rewrite any internal IP/localhost + legacy /v2/
@@ -274,6 +284,8 @@ def _raw_send_telegram_result(
         return {"ok": False, "message_ids": [], "chat_ids": [], "held": []}
     ok = True
     message_ids: list[str] = []
+    by_chat: dict[str, str] = {}
+    replies = {str(k): v for k, v in (reply_to_message_ids or {}).items() if v not in (None, "")}
     attempted = 0
     try:
         chunks = _smart_split(message, MAX_MSG_LEN)
@@ -289,6 +301,8 @@ def _raw_send_telegram_result(
                     reply_markup=markup,
                     thread_id=thread_id,
                     link_preview_options=link_preview_options if i == 0 else None,
+                    # Threaded alert: the first chunk replies to this chat's root message (absent = no reply).
+                    **({"reply_to_message_id": replies[str(cid)]} if (i == 0 and str(cid) in replies) else {}),
                 )
                 if not result.get("ok"):
                     print(f"[telegram] Error to {cid}: {result.get('status_code')}")
@@ -299,6 +313,7 @@ def _raw_send_telegram_result(
                 mid = result.get("message_id")
                 if mid is not None and str(mid).strip():
                     message_ids.append(str(mid))
+                    by_chat.setdefault(str(cid), str(mid))
     except Exception as e:
         print(f"[telegram] Error: {e}")
         ok = False
@@ -311,6 +326,8 @@ def _raw_send_telegram_result(
     # Record before returning: callers holding only the legacy bool read this.
     _LAST_MESSAGE_IDS.clear()
     _LAST_MESSAGE_IDS.extend(message_ids)
+    _LAST_MESSAGE_IDS_BY_CHAT.clear()
+    _LAST_MESSAGE_IDS_BY_CHAT.update(by_chat)
     _record_attempt(ok=ok, reason=None if ok else "transport_error", message_ids=len(message_ids), held=len(held),
                     chunks=attempted)
     return {
@@ -420,6 +437,7 @@ def _legacy_send(
     priority: str | None = None,
     dedupe_minutes: int | None = None,
     producer: str | None = None,
+    reply_to_message_ids: dict | None = None,
 ) -> bool:
     """Pre-normalization behaviour, unchanged. Requires no new table.
 
@@ -436,7 +454,8 @@ def _legacy_send(
             message, priority,
             lambda: _raw_send_telegram_result(
                 message, targets, reply_markup=reply_markup, thread_id=thread_id,
-                link_preview_options=link_preview_options).get("ok"),
+                link_preview_options=link_preview_options,
+                **({"reply_to_message_ids": reply_to_message_ids} if reply_to_message_ids else {})).get("ok"),
             dedupe_minutes=dedupe_minutes, producer=producer)
     if not bypass_router:
         try:
@@ -475,6 +494,7 @@ def _legacy_send(
             reply_markup=reply_markup,
             thread_id=thread_id,
             link_preview_options=link_preview_options,
+            **({"reply_to_message_ids": reply_to_message_ids} if reply_to_message_ids else {}),
         ).get("ok")
     )
 
@@ -867,6 +887,7 @@ def send_telegram(
     priority: str | None = None,
     dedupe_minutes: int | None = None,
     producer: str | None = None,
+    reply_to_message_ids: dict | None = None,
 ) -> bool:
     """Send/publish an operator alert. Returns True when the event was ACCEPTED.
 
@@ -950,7 +971,10 @@ def send_telegram(
 
     # OFF/SHADOW or class not allowlisted: legacy send + best-effort ledger publish.
     # Keyboards / explicit destinations stay on legacy transport until outbox owns them.
-    if reply_markup is not None or chat_ids is not None or thread_id is not None or link_preview_options is not None:
+    # A threaded reply (reply_to_message_ids) is an explicit destination too. A gateway-owned class above keeps
+    # its gateway path and is delivered unthreaded: a reply never routes around the gateway.
+    if (reply_markup is not None or chat_ids is not None or thread_id is not None or link_preview_options is not None
+            or reply_to_message_ids):
         ok = _legacy_send(
             message,
             bypass_router,
@@ -958,6 +982,7 @@ def send_telegram(
             chat_ids=chat_ids,
             thread_id=thread_id,
             link_preview_options=link_preview_options,
+            **({"reply_to_message_ids": reply_to_message_ids} if reply_to_message_ids else {}),
             **intent,
         )
         _best_effort_comms_publish(message, message_class=mc, delivered=bool(ok))

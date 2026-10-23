@@ -523,7 +523,9 @@ def test_sync_caps_dry_run_touches_no_database(capsys):
 # ── broker READ-ONLY lanes wait for AGENTS 18.0.0; the forbidden-token rule is untouched ─────────────────────────
 
 
-def test_holdings_writer_n8n_lane_is_gated_on_18_0_0_and_still_refused():
+def test_holdings_writer_n8n_lane_is_gated_on_19_0_0_and_still_refused():
+    # Gate moved 18.0.0 -> 19.0.0 on 2026-10-22: 18.0.0 (ratified) is the data foundation and grants no n8n or
+    # broker access; operator, verbatim: "It moves to the n8n lane after 19.0.0."
     from scripts.lib import lane_dispatch as LD
     from scripts.pipelines.pipeline_manifest import FORBIDDEN_COMMAND_TOKENS
 
@@ -531,8 +533,8 @@ def test_holdings_writer_n8n_lane_is_gated_on_18_0_0_and_still_refused():
     allow = {e["lane_id"] for e in json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text())["lanes"]}
     row = reg["schwab-position-sync"]
     gate = row["f09_staged"]["gated_on"]
-    assert "18.0.0" in gate["policy"] and gate["status_required"] == "ACTIVE"
-    assert "host cron line 501" in row["f09_staged"]["host_schedule_until_18"]
+    assert "19.0.0" in gate["policy"] and gate["status_required"] == "ACTIVE"
+    assert "host cron line 501" in row["f09_staged"]["host_schedule_until_19"]
     assert "schwab-position-sync" not in allow and "dispatch" not in row
     # the check is not weakened: the token and the word still refuse the lane
     assert "schwab_position_sync.py" in FORBIDDEN_COMMAND_TOKENS and "schwab" in LD.EXTRA_FORBIDDEN_WORDS

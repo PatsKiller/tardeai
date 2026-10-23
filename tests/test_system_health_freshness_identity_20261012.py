@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 NOW = datetime(2026, 10, 12, 14, 15, tzinfo=timezone.utc)
 LANE = "finviz-screener-runner"
 SCRIPT = "finviz_screener_runner.py"
-COVERS = ["scripts/system_health_agent.py:799"]
+COVERS = ["scripts/system_health_agent.py:807"]
 
 
 def test_repeated_stale_escalation_keeps_content_when_database_dedupe_fails(agent, monkeypatch):
@@ -238,7 +238,11 @@ def test_non_object_receipts_fail_closed(document):
     assert lane_receipt_freshness(document, lane_id=LANE, script=SCRIPT, now=NOW, max_age_min=60)["status"] == "ERROR"
 
 
-@pytest.mark.parametrize("document", [None, "{bad json", receipt(status="failed", exit=1)])
+@pytest.mark.parametrize(
+    "document",
+    # the failed receipt carries a 2 h old ok_at: outside the 2026-10-23 failure debounce window
+    [None, "{bad json", receipt(status="failed", exit=1, ok_at=(NOW - timedelta(hours=2)).isoformat())],
+)
 def test_receipt_missing_unreadable_or_failed_never_falls_back_to_fresh_log(agent, monkeypatch, document):
     state = Path(os.environ["TRADEAI_STATE_ROOT"])
     log_file(state / "logs" / "finviz_screener.log", NOW - timedelta(minutes=1))
@@ -274,7 +278,10 @@ def core_health_loop(agent):
 
 def test_failed_receipt_is_actionable_and_disarm_reason_survives_core_loop(agent, monkeypatch):
     state = Path(os.environ["TRADEAI_STATE_ROOT"])
-    (state / "data" / "runtime" / (LANE + "_last.json")).write_text(json.dumps(receipt(status="failed", exit=1)))
+    # 2026-10-23: no success inside the component's failure debounce window (the carried ok_at is 2 h old), so the
+    # failed attempt is still actionable; a failure between recent successes is debounced (test_..._20261023).
+    failed = receipt(status="failed", exit=1, ok_at=(NOW - timedelta(hours=2)).isoformat())
+    (state / "data" / "runtime" / (LANE + "_last.json")).write_text(json.dumps(failed))
     escalations = []
     statements = []
 

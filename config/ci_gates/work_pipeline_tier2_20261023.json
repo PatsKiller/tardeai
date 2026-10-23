@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "work_pipeline_tier2_20261023",
+  "files": [
+    "tests/test_work_pipeline_tier2_20261023.py"
+  ],
+  "anchor": "WORK_PIPELINE_TIER2_20261023",
+  "comment": [
+    "ANCHOR: WORK_PIPELINE_TIER2_20261023 — Work pipeline Tier 2 (operator 2026-10-23 'both'): Ops Controls kinds pipeline.approve_design / contract_reviewed / approve_item / merge_pr / release_now; each a RISKY applier kind needing a fresh passkey assertion + exact typed phrase; agent callers refused; approve_design and contract_reviewed write append-only ledgers in the claims dir only through the host applier (operator words, actor, request id) and the design registry overlays the approval; merge_pr, release_now and approve_item OFF by default (FEATURE_OFF before any request); merge only when every required check is exactly success at the expected head (--match-head-commit); release only with an active release-write grant. Hermetic (Ops Controls harness, fake gh/deploy)."
+  ]
+}
