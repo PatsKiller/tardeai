@@ -13,6 +13,7 @@ sector-relative + protection. No writes anywhere. NaN/Decimal-safe.
 """
 import os
 import json
+import logging
 from datetime import datetime, timezone, timedelta
 
 PROJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -45,6 +46,13 @@ _ETF_SECTOR = {
 
 _STRATEGY_PURPOSE_CACHE = None
 
+log = logging.getLogger("open_trades_intelligence")
+
+# watchlist_state / directive_state when the membership lookup itself failed. Distinct from "none"
+# (looked up, not on the list): before 2026-10-22 the lookup called an undefined `_db_query`, the
+# NameError was swallowed, and every held position read "none" — indistinguishable from the truth.
+WATCH_STATE_UNAVAILABLE = "unavailable"
+
 
 def _strategy_purposes():
     """Load each strategy's `purpose:` from config/strategies/*.yaml — the 'why this strategy' rationale."""
@@ -71,7 +79,8 @@ def _strategy_purposes():
 def _derive_decision(*, upnl_pct, protected, stop, tp_missing, big_gain_unprot, below, stop_near, rsi,
                      stale_tech, basis_reliable, cost_basis_source, basis_kind, market_value, strategy,
                      trend_label, sec_label, vs_sec5, latest_news_age_h, last_hermes_at, on_watchlist,
-                     directive, is_fund, family="position", mutual_fund=False, broker_protected=False):
+                     directive, is_fund, family="position", mutual_fund=False, broker_protected=False, small=False,
+                     watch_unavailable=False):
     """Derive the read-only operator-decision fields. Pure function of already-computed signals — no writes,
     no source-of-truth changes. Action language is review/consider only, never execute."""
     high_value = (market_value or 0) >= 50000
@@ -118,7 +127,11 @@ def _derive_decision(*, upnl_pct, protected, stop, tp_missing, big_gain_unprot, 
                      # audit showed reconstructed basis can be wildly wrong while wearing the badge
                      "reconstructed" if cost_basis_source == "reconstructed_from_amounts" else
                      "verified" if basis_reliable else "unknown")
-    watchlist_state = "directive" if directive else ("watchlist" if on_watchlist else "none")
+    if watch_unavailable:
+        watchlist_state = directive_state = WATCH_STATE_UNAVAILABLE
+    else:
+        watchlist_state = "directive" if directive else ("watchlist" if on_watchlist else "none")
+        directive_state = "active" if directive else "none"
     # decision (most important text) — priority-ordered
     if not basis_reliable and high_value:
         decision, reason, pr = "Cost basis uncertain", "High-value position with unverified cost basis — resolve before any tax/exit decision.", "high"
@@ -130,7 +143,8 @@ def _derive_decision(*, upnl_pct, protected, stop, tp_missing, big_gain_unprot, 
             f"+{round(upnl_pct or 0)}% in a fund with no exchange stop available — protect the gain with a "
             "tax-aware trim / rebalance, not a stop order.", "high")
         nxt = "Review trim / rebalance (no stop on a fund)"
-    elif big_gain_unprot or (not protected and not stop and (upnl_pct or 0) > 10):
+    elif big_gain_unprot or (not small and not protected and not stop and (upnl_pct or 0) > 10):
+        # `small`: a fractional position too small for a stop order is never "needs protection" (audit 2026-10-22).
         decision, reason, pr = "Needs protection review", f"+{round(upnl_pct or 0)}% gain with no active protection{', bullish trend' if 'bullish_trend' in opp_flags else ''}{', trailing candidate' if 'trailing_candidate' in opp_flags else ''}.", "high"
         nxt = "Review protection / trailing-stop placement"
     elif stale_tech and high_value:
@@ -187,7 +201,7 @@ def _derive_decision(*, upnl_pct, protected, stop, tp_missing, big_gain_unprot, 
         "risk_flags": risk_flags, "opportunity_flags": opp_flags,
         "data_freshness": data_freshness, "news_freshness": news_freshness,
         "protection_state": protection_state, "basis_quality": basis_quality,
-        "watchlist_state": watchlist_state, "directive_state": ("active" if directive else "none"),
+        "watchlist_state": watchlist_state, "directive_state": directive_state,
         "last_hermes_review_at": last_hermes_at, "latest_news_age_hours": latest_news_age_h,
         "primary_next_review": nxt, "recommended_manual_actions": actions[:6],
         "strategy_rationale": (_strategy_purposes().get(str(strategy), None)),
@@ -198,6 +212,28 @@ def _conn():
     import psycopg2
     return psycopg2.connect(host=os.environ["DB_HOST"], port=os.environ["DB_PORT"], dbname=os.environ["DB_NAME"],
                             user=os.environ["DB_USER"], password=os.environ["DB_PASSWORD"])
+
+
+def _watch_membership(symbols):
+    """(watchlist_set, directive_set, available) for the held symbols — read through the Watch data broker.
+
+    Membership comes from the approved readers, not SQL in this file: watchlist_items via
+    lib.data_broker.watch_domains.membership_watchlist (the one membership list) and watch_directives via
+    lib.data_broker.watch_intelligence.active_ticker_directives (the watch_directives projection owner,
+    config/data_source_authority.json). Both are called strict, so a failed lookup is logged and reported as
+    available=False (watchlist_state "unavailable"), never silently as "not on the watchlist".
+    """
+    try:
+        from lib.data_broker.watch_domains import membership_watchlist
+        from lib.data_broker.watch_intelligence import active_ticker_directives
+        wl = set(membership_watchlist(symbols))
+        dirs = {str(r.get("symbol") or "").strip().upper() for r in active_ticker_directives(strict=True)}
+        dirs.discard("")
+        return wl, dirs, True
+    except Exception as exc:
+        log.warning("open_trades: watchlist/directive membership lookup failed (%s: %s); "
+                    "watchlist_state=%s", type(exc).__name__, exc, WATCH_STATE_UNAVAILABLE)
+        return set(), set(), False
 
 
 def _norm_acct(a):
@@ -261,6 +297,146 @@ def _hold(ed):
         return None
 
 
+# ── Open Trades accuracy (audit 2026-10-22) ──────────────────────────────────────────────────────────
+# A mark older than this is stale: its day move is hidden and the row says how old the price is.
+PRICE_STALE_HOURS = 18.0
+# Positions worth less than this (fractional dividend reinvestments) are "small": too small for a stop
+# order, so they never raise "large gain unprotected" and the page folds them into one drawer.
+SMALL_POSITION_USD = 500.0
+# Holdings keys that differ from broker_accounts.account_key (same aliases as api_v2's protective-stop map).
+_ACCOUNT_KEY_ALIASES = {"schwab_roth": "schwab_roth_ira", "schwab_rollover": "schwab_rollover_ira",
+                        "alpaca_paper": "tradeai_automated"}
+_ET_TZ = None
+
+
+def _et_tz():
+    global _ET_TZ
+    if _ET_TZ is None:
+        try:
+            from zoneinfo import ZoneInfo
+            _ET_TZ = ZoneInfo("America/New_York")
+        except Exception:  # pragma: no cover - zoneinfo is stdlib on 3.9+
+            _ET_TZ = timezone(timedelta(hours=-4))
+    return _ET_TZ
+
+
+def _parse_ts(v):
+    """Parse a timestamp from any store into an aware datetime, or None.
+
+    The rows mix tz-aware UTC ISO strings, naive ISO strings (host local, ET), 'YYYY-MM-DD HH:MM:SS ET'
+    and bare dates; comparing them as strings picked the wrong maximum (audit 2026-10-22). Naive values
+    are host-local Eastern time; a bare date is taken as 16:00 ET (the close it describes)."""
+    if v is None or v == "":
+        return None
+    if isinstance(v, datetime):
+        return v if v.tzinfo else v.replace(tzinfo=_et_tz())
+    s = str(v).strip()
+    if s.endswith(" ET"):
+        s = s[:-3].strip()
+    try:
+        if len(s) == 10:
+            d = datetime.fromisoformat(s)
+            return d.replace(hour=16, tzinfo=_et_tz())
+        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return d if d.tzinfo else d.replace(tzinfo=_et_tz())
+
+
+def _iso_utc(dt):
+    return dt.astimezone(timezone.utc).isoformat() if dt else None
+
+
+def _pos_num(v):
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
+def _holdings_mark(h, file_as_of=None):
+    """One mark per holdings row: canonical_mark with its own time (never the stale `price` alias).
+
+    Returns {mark, source, as_of (aware dt or None), day_change_pct}. `price` is only used when the row has
+    no canonical or current mark at all, and then its time is the row's update time."""
+    cm = _pos_num(h.get("canonical_mark"))
+    if cm is not None:
+        src = "holdings.canonical_mark" + (f":{h['canonical_mark_source']}" if h.get("canonical_mark_source") else "")
+        as_of = _parse_ts(h.get("canonical_mark_as_of")) or _parse_ts(h.get("canonical_mark_ingested_at")) \
+            or _parse_ts(h.get("updated_at")) or _parse_ts(file_as_of)
+        return {"mark": cm, "source": src, "as_of": as_of, "day_change_pct": h.get("day_change_pct")}
+    cp = _pos_num(h.get("current_price"))
+    if cp is not None:
+        return {"mark": cp, "source": "holdings.current_price",
+                "as_of": _parse_ts(h.get("updated_at")) or _parse_ts(file_as_of),
+                "day_change_pct": h.get("day_change_pct")}
+    pr = _pos_num(h.get("price"))
+    if pr is not None:
+        return {"mark": pr, "source": "holdings.price",
+                "as_of": _parse_ts(h.get("updated_at")) or _parse_ts(file_as_of),
+                "day_change_pct": h.get("day_change_pct")}
+    return {"mark": None, "source": None, "as_of": None, "day_change_pct": None}
+
+
+def _quote_mark(q):
+    """The market_quotes row as one source: price, day move and fetched time together."""
+    px = _pos_num((q or {}).get("price"))
+    if px is None:
+        return {"mark": None, "source": None, "as_of": None, "day_change_pct": None}
+    return {"mark": px, "source": "market_quotes", "as_of": _parse_ts(q.get("fetched_at")),
+            "day_change_pct": q.get("day_change_pct")}
+
+
+def _mark_fields(m, *, now=None):
+    """Age / staleness for one mark; the day move is hidden when the mark is stale (it describes a
+    different session) or has no time at all."""
+    now = now or datetime.now(timezone.utc)
+    as_of = m.get("as_of")
+    age_h = round((now - as_of).total_seconds() / 3600.0, 2) if as_of else None
+    stale = age_h is None or age_h > PRICE_STALE_HOURS
+    dcp = m.get("day_change_pct")
+    try:
+        dcp = float(dcp) if dcp is not None else None
+    except (TypeError, ValueError):
+        dcp = None
+    return {"mark_as_of": _iso_utc(as_of), "mark_age_hours": age_h, "mark_stale": stale,
+            "today_move_pct": None if stale else dcp}
+
+
+def _position_pnl(shares, mark, basis):
+    """Unrealized P/L = shares × mark − cost basis (never the broker's cached gain field)."""
+    if mark is None or basis is None or not shares:
+        return None, None
+    value = shares * mark
+    pnl = value - basis
+    pct = (pnl / basis * 100.0) if basis else None
+    return round(pnl, 2), (round(pct, 4) if pct is not None else None)
+
+
+def _account_labels():
+    """account_key → display_name from broker_accounts (read-only). Empty on any error."""
+    try:
+        c = _conn()
+        try:
+            cur = c.cursor()
+            cur.execute("SELECT account_key, display_name, environment FROM broker_accounts")
+            return {str(k): {"label": d or str(k), "environment": e} for k, d, e in cur.fetchall() if k}
+        finally:
+            c.close()
+    except Exception:
+        return {}
+
+
+def _account_label(account, labels):
+    raw = str(account or "")
+    key = _ACCOUNT_KEY_ALIASES.get(raw.lower(), raw.lower())
+    hit = labels.get(key) or labels.get(raw)
+    if hit:
+        return hit["label"]
+    return raw.replace("_", " ").strip().title() or "—"
+
+
 def _rsi_bucket(rsi):
     if rsi is None:
         return "missing"
@@ -313,16 +489,18 @@ def _load_base_positions():
                                  "reason": "non_ticker_security_id", "source": "holdings.json"})
                 continue
             cb = h.get("cost_basis")
+            # Mark = canonical_mark with its own time (audit 2026-10-22: h["price"] was a 10-16 alias).
+            # P/L and value are recomputed from it in build_intelligence (shares × mark − basis).
+            hm = _holdings_mark(h, hj.get("last_repriced"))
             base.append({
                 "account": acct, "broker": _broker_norm(h.get("broker") or acct),
                 "environment": "paper" if "paper" in (acct or "").lower() else "live", "symbol": sym, "company_name": h.get("name"),
-                "shares": sh, "current_price": float(h["price"]) if h.get("price") is not None else None,
+                "shares": sh, "current_price": hm["mark"], "mark": hm,
                 "market_value": mv, "cost_basis": float(cb) if cb is not None else None,
                 "avg_cost": (float(cb) / sh) if (cb and sh) else None,
-                "unrealized_pnl": float(h["gain_loss"]) if h.get("gain_loss") is not None else None,
-                "unrealized_pnl_pct": float(h["gain_loss_pct"]) if h.get("gain_loss_pct") is not None else None,
-                "today_move_pct": float(h["day_change_pct"]) if h.get("day_change_pct") is not None else None,
-                "is_fund": bool(h.get("is_fund")), "price_updated_at": h.get("updated_at") or hj.get("last_repriced"),
+                "unrealized_pnl": None, "unrealized_pnl_pct": None, "today_move_pct": None,
+                "is_fund": bool(h.get("is_fund")), "delisted": bool(h.get("delisted")),
+                "price_updated_at": _iso_utc(hm["as_of"]),
                 "src": "holdings",
                 "cost_basis_source": h.get("cost_basis_source"), "basis_partial_flag": bool(h.get("basis_partial")),
             })
@@ -814,15 +992,7 @@ def build_intelligence():
             out["short_float_pct"] = en.get("short_float_pct")
         return out
 
-    wl_set, dir_set = set(), set()
-    try:
-        for r in (_db_query("SELECT DISTINCT symbol FROM watchlist_items WHERE status IN ('active','researched') AND symbol = ANY(%s)", (syms,)) or []):
-            wl_set.add(r["symbol"])
-        for r in (_db_query("SELECT DISTINCT UPPER(spec->>'symbol') sym FROM watch_directives WHERE status='active' AND spec ? 'symbol'", None) or []):
-            if r.get("sym"):
-                dir_set.add(r["sym"])
-    except Exception:
-        pass
+    wl_set, dir_set, watch_ok = _watch_membership(syms)
     # proxy-mapped fund codes (FID-CONTRA-F etc.) now carry proxy-computed technicals in
     # ticker_snapshot_daily (technicals_gap_backfill, 2026-06-12) — include them in the lookup
     try:
@@ -972,15 +1142,20 @@ def build_intelligence():
                     _pilot_stop_ids.add(str(_pr[0]))
         except Exception:
             pass
+        acct_labels = _account_labels()
         positions = []
         for p in base:
             sym = p["symbol"]
             lot = lots.get((_norm_acct(p["account"]), sym)) or {}
             pl = (paper_lots.get(sym) or {}) if p["environment"] == "paper" else {}
             q = quote.get(sym) or {}
-            cur_px = p.get("current_price")
-            if cur_px is None and q.get("price") is not None:
-                cur_px = float(q["price"])
+            # ONE quote source per row: the holdings canonical mark when the row has one, else the
+            # market_quotes row — mark, day move and time always come from the same source.
+            _m = p.get("mark") or {}
+            if _m.get("mark") is None:
+                _m = _quote_mark(q)
+            _mf = _mark_fields(_m)
+            cur_px = _m.get("mark")
             ent = p.get("entry_price") or p.get("avg_cost")
             _stop = lot.get("stop") if lot.get("stop") is not None else pl.get("stop")
             _tgt = lot.get("tgt") if lot.get("tgt") is not None else pl.get("tgt")
@@ -1023,12 +1198,14 @@ def build_intelligence():
                     "pilot_placed": (_oid in _pilot_stop_ids) if _oid else False,
                 }
             sh = p["shares"]
-            # paper P&L (holdings already has it)
-            upnl = p.get("unrealized_pnl")
-            upnl_pct = p.get("unrealized_pnl_pct")
-            if upnl is None and cur_px is not None and ent is not None:
-                upnl = (cur_px - ent) * sh
-                upnl_pct = ((cur_px - ent) / ent * 100) if ent else None
+            # P/L = shares × mark − cost basis for every row (audit 2026-10-22: the broker's cached
+            # gain_loss was priced at a different time than the mark shown beside it).
+            _basis = p.get("cost_basis")
+            if _basis is None and ent is not None:
+                _basis = ent * sh
+            upnl, upnl_pct = _position_pnl(sh, cur_px, _basis)
+            _raw_upnl, _raw_pct = upnl, upnl_pct   # before any basis-reliability masking (write-off test)
+            _value = (sh * cur_px) if cur_px is not None else p.get("market_value")
             # ── basis validation. Prefer the explicit cost_basis_source set by the import repair: a
             #    trusted source (operator_provided, reconstructed_from_amounts, fidelity_positions_pdf)
             #    is honoured as-is even with a large legit gain (e.g. V at $43 → +600%). Only fall back
@@ -1050,9 +1227,7 @@ def build_intelligence():
                     basis_reliable, basis_warning = False, "basis_unverified"
             if not basis_reliable:
                 upnl, upnl_pct = None, None  # do not show P&L derived from unreliable basis
-            today = p.get("today_move_pct")
-            if today is None and q.get("day_change_pct") is not None:
-                today = float(q["day_change_pct"])
+            today = _mf["today_move_pct"]   # same source as the mark; None when the mark is stale
             rvol = (float(q["volume"]) / float(q["avg_volume"])) if (q.get("volume") and q.get("avg_volume")) else None
             t = tech.get(sym) or {}
             cf = conf.get(sym) or {}
@@ -1076,15 +1251,28 @@ def build_intelligence():
             below = bool(cur_px is not None and ent is not None and cur_px < ent)
             # Worthless / likely-delisted equity: a real ticker (not a fund) that has collapsed to ~zero.
             # Its cached technicals (RSI/SMA) are meaningless noise — don't present them as live signals.
-            worthless = bool(_is_ticker(sym) and not p.get("is_fund") and cur_px is not None
-                             and cur_px < 0.05 and upnl_pct is not None and upnl_pct < -90)
+            worthless = bool(_is_ticker(sym) and not p.get("is_fund") and cur_px is not None and cur_px < 0.05
+                             and ((_raw_pct is not None and _raw_pct < -90) or p.get("delisted")))
             if worthless:
                 stale_tech = True
                 rsi = sma50 = sma200 = None
+            # Stop proximity from the row's own mark (audit 2026-10-22: "stop near" fired off a 6-day-old price).
             stop_near = bool(cur_px is not None and stop is not None and stop and abs(cur_px - stop) / cur_px < 0.02)
+            stop_distance_pct = (round((cur_px - stop) / cur_px * 100.0, 2)
+                                 if (cur_px is not None and stop) else None)
             tp_missing = tgt is None or tgt == 0
-            # a live broker stop (incl. a trailing one) IS protection → not "large gain UNPROTECTED"
-            big_gain_unprot = bool(upnl_pct is not None and upnl_pct > 10 and tp_missing and not broker_protected)
+            try:
+                from holding_family import classify_family, is_unstoppable_fund
+                _fam, _ = classify_family(sym)
+                _is_mf = is_unstoppable_fund(sym)   # mutual fund OR 401k/proxy fund code → no exchange stop
+            except Exception:
+                _fam, _is_mf = "position", False
+            small_position = bool(p.get("environment") != "paper" and _value is not None
+                                  and _value < SMALL_POSITION_USD)
+            # a live broker stop (incl. a trailing one) IS protection → not "large gain UNPROTECTED".
+            # Never raised for a fund that cannot take a stop order or a position too small for one.
+            big_gain_unprot = bool(upnl_pct is not None and upnl_pct > 10 and tp_missing and not broker_protected
+                                   and not _is_mf and not small_position)
             # ALIGNMENT with the stop supervisor (operator 2026-07-06: "data here doesn't align with
             # stop page audit"): when the account's LIVE stop read succeeded, the broker is the only
             # truth — a record-level stop with no broker order is NOT protection (AGNC #31 showed
@@ -1127,13 +1315,7 @@ def build_intelligence():
                         _news_age_h = _age if _news_age_h is None else min(_news_age_h, _age)
                     except Exception:
                         pass
-            _mv = p.get("market_value") or (cur_px * sh if cur_px else None)
-            try:
-                from holding_family import classify_family, is_unstoppable_fund
-                _fam, _ = classify_family(sym)
-                _is_mf = is_unstoppable_fund(sym)   # mutual fund OR 401k/proxy fund code → no exchange stop
-            except Exception:
-                _fam, _is_mf = "position", False
+            _mv = _value
             _decision = _derive_decision(
                 upnl_pct=upnl_pct, protected=pr["protected"], stop=stop, tp_missing=tp_missing,
                 big_gain_unprot=big_gain_unprot, below=below, stop_near=stop_near, rsi=rsi,
@@ -1144,7 +1326,8 @@ def build_intelligence():
                 latest_news_age_h=(round(_news_age_h, 1) if _news_age_h is not None else None),
                 last_hermes_at=herm.get(sym, {}).get("research_at"),
                 on_watchlist=(sym in wl_set), directive=(sym in dir_set), is_fund=p.get("is_fund", False),
-                family=_fam, mutual_fund=_is_mf, broker_protected=broker_protected)
+                family=_fam, mutual_fund=_is_mf, broker_protected=broker_protected, small=small_position,
+                watch_unavailable=(not watch_ok))
             positions.append({
                 **_decision,
                 **_card_enrichment(sym, cur_px),
@@ -1157,12 +1340,18 @@ def build_intelligence():
                 "basis_kind": ("entry" if p.get("src") == "paper_trades" else "avg_cost"),
                 "basis_reliable": basis_reliable, "basis_warning": basis_warning,
                 "cost_basis_source": p.get("cost_basis_source"),
-                "current_price": cur_px, "market_value": p.get("market_value") or (cur_px * sh if cur_px else None),
+                "current_price": cur_px, "market_value": _value,
+                # mark lineage (audit 2026-10-22): one source per row, with its own time and age
+                "quote_source": _m.get("source"), "mark_as_of": _mf["mark_as_of"],
+                "mark_age_hours": _mf["mark_age_hours"], "mark_stale": _mf["mark_stale"],
+                "stop_distance_pct": stop_distance_pct, "small_position": small_position,
+                "write_off_pnl": (_raw_upnl if worthless else None),
+                "account_label": _account_label(p["account"], acct_labels),
                 "stop_price": stop, "target_price": tgt, "unrealized_pnl": upnl, "unrealized_pnl_pct": upnl_pct,
                 "broker_stop": broker_stop_payload,
                 "today_move_pct": today, "r_multiple": float(lot["rmult"]) if lot.get("rmult") is not None else None,
                 "lot_count": lot.get("lot_count", 1), "hold_duration": _hold(ent_date),
-                "price_updated_at": p.get("price_updated_at"),
+                "price_updated_at": _mf["mark_as_of"],
                 "is_ticker": _is_ticker(sym),
                 "technical": {"rsi": rsi, "rsi_bucket": _rsi_bucket(rsi), "rsi_direction": None,
                               "sma20_pct": (float(t["sma20_pct"]) if t.get("sma20_pct") is not None else None),
@@ -1182,7 +1371,15 @@ def build_intelligence():
             })
         positions.sort(key=lambda p: (-(p["market_value"] or 0)))
 
-        total_pnl = sum(p["unrealized_pnl"] for p in positions if p["unrealized_pnl"] is not None)
+        # Write-offs (worthless / delisted) never distort the headline: they leave the totals and are
+        # listed on their own (audit 2026-10-22: SRNE −$13,177 at a $0.0005 mark from 10-16).
+        active = [p for p in positions if not p["worthless"]]
+        write_offs = [{"symbol": p["symbol"], "account": p["account"], "account_label": p["account_label"],
+                       "shares": p["shares"], "mark": p["current_price"], "mark_as_of": p["mark_as_of"],
+                       "cost_basis": p["cost_basis"], "unrealized_pnl": p["write_off_pnl"]}
+                      for p in positions if p["worthless"]]
+        total_pnl = sum(p["unrealized_pnl"] for p in active if p["unrealized_pnl"] is not None)
+        _mark_times = [d for d in (_parse_ts(p["mark_as_of"]) for p in active) if d]
         by_acct, by_broker = {}, {}
         for p in positions:
             by_acct[p["account"]] = by_acct.get(p["account"], 0) + 1
@@ -1192,10 +1389,23 @@ def build_intelligence():
         summary = {
             "total_positions": len(positions), "visible_positions": len(positions), "total_unrealized_pnl": total_pnl,
             "source_of_truth": "current_holdings_plus_paper_positions",
+            "watch_membership": ("ok" if watch_ok else WATCH_STATE_UNAVAILABLE),
             "excluded_stale_trade_rows": stale_count, "excluded_zero_share_rows": excl_counts["zero_share"],
             "excluded_non_ticker_rows": excl_counts["non_ticker"], "excluded_cash_rows": excl_counts["cash"],
             "basis_unverified_count": sum(1 for p in positions if not p["basis_reliable"]),
-            "last_price_update": max([p["price_updated_at"] for p in positions if p["price_updated_at"]] or [None]),
+            # Compared as datetimes, never as strings (mixed naive-ET and UTC values sorted wrong).
+            "last_price_update": _iso_utc(max(_mark_times)) if _mark_times else None,
+            "oldest_price_update": _iso_utc(min(_mark_times)) if _mark_times else None,
+            "stale_price_count": sum(1 for p in active if p["mark_stale"]),
+            "price_stale_after_hours": PRICE_STALE_HOURS,
+            "active_positions": len(active),
+            "write_off_count": len(write_offs),
+            "write_off_unrealized_pnl": round(sum(w["unrealized_pnl"] or 0 for w in write_offs), 2),
+            "total_unrealized_pnl_excludes": "write_offs",
+            "unpriced_basis_count": sum(1 for p in active if p["unrealized_pnl"] is None),
+            "small_position_count": sum(1 for p in active if p["small_position"]),
+            "small_position_usd": SMALL_POSITION_USD,
+            "account_labels": {a: _account_label(a, acct_labels) for a in sorted({p["account"] for p in positions})},
             "last_hermes_update": last_hermes, "last_technical_update": last_tech,
             "broker_stops_fetched_at": broker_stops_fetched_at(),
             "by_account": by_acct, "by_broker": by_broker,
@@ -1212,7 +1422,8 @@ def build_intelligence():
                    "sectors": sorted({p["sector_relative"]["sector"] for p in positions if p["sector_relative"]["sector"]}),
                    "technical_buckets": ["oversold", "neutral", "overbought", "missing"],
                    "protection_states": ["protected", "tp_missing", "stop_near", "below_entry", "trailing_candidate"]}
-        return _nan_clean({"summary": summary, "filters": filters, "positions": positions, "excluded_items": excluded})
+        return _nan_clean({"summary": summary, "filters": filters, "positions": positions, "excluded_items": excluded,
+                           "write_offs": write_offs})
     finally:
         c.close()
 

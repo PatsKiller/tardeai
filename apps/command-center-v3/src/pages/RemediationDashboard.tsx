@@ -3,6 +3,7 @@ import { useApi } from '../hooks/useApi'
 import { StatusBadge } from '../components/StatusBadge'
 import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
 import { useTerminalUi } from '../lib/terminalUi'
+import { isPageVisible, subscribePageVisibility, REMEDIATION_POLL_MS } from '../lib/pageVisibility'
 
 // ── Types ──────────────────────────────────────────────────────────────────────────────
 interface RemediationEvent {
@@ -77,9 +78,14 @@ function fmtElapsed(ts?: string): string {
 // ── Component ───────────────────────────────────────────────────────────────────────────
 export default function RemediationDashboard() {
   const [terminalUi] = useTerminalUi()
+  // Poll every 5 min and only while the tab is visible (2026-10-22 memory incident); returning to
+  // the tab re-enables useApi, which fetches once immediately.
+  const [pageVisible, setPageVisible] = useState(() => isPageVisible(typeof document === 'undefined' ? undefined : document))
+  useEffect(() => subscribePageVisibility(typeof document === 'undefined' ? undefined : document, setPageVisible), [])
   const { data, loading, error } = useApi<RemediationData>(
     '/api/v2/health/remediation',
-    60_000
+    REMEDIATION_POLL_MS,
+    { enabled: pageVisible }
   )
 
   const remediations = useMemo(() => data?.remediations || [], [data])

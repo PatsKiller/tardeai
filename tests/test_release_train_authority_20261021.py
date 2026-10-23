@@ -1011,6 +1011,14 @@ def test_libraries_are_wired_into_nothing():
         # (release_delegation.load) and the control view (ReleaseControl.view) to decide P2 vs P3 for the
         # calendar item. Read-only: it never arms, writes or issues anything.
         "scripts/lib/needs_action.py",
+        # Ops -> Controls (feat/ops-controls-20261022; AGENTS.md 19.0.0 §27.3, ACTIVE): ops_controls_core calls
+        # ReleaseControl.request_pause with Actor("cc", <tailnet operator>) -- a REQUEST_KINDS act -- and
+        # ops_controls_api reads ReleaseControl.view(). Since feat/ops-controls-sudo-window-20261022 ops_controls_core
+        # also calls resume / arm, only from the host applier, with Actor("passkey", ...) and a PasskeyProof that its
+        # hook accepts only for the one HMAC-signed approval stepped up with a fresh passkey (§25.4 as ratified in
+        # 19.0.0). It never builds a HostCliProof and never calls change_scope / revoke (still NOT_SUPPORTED).
+        "scripts/lib/ops_controls_core.py",
+        "scripts/lib/ops_controls_api.py",
     }
     hits = []
     for base in ("scripts", "config", "deploy", "systemd", "n8n", "src", "bin"):

@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "work_pipeline_20261023",
+  "files": [
+    "tests/test_work_pipeline_20261023.py",
+    "tests/test_work_pipeline_commands_20261023.py"
+  ],
+  "anchor": "WORK_PIPELINE_20261023",
+  "comment": [
+    "ANCHOR: WORK_PIPELINE_20261023 — Work pipeline (operator 2026-10-23 13:15 ET): one row per work item (task, PR, design phase) staged proposed→approved→queued→claimed→building→pr_open→ci→in_batch→merged→released→verified with RAG; green CI not in a batch is AMBER waiting for batch, never stale; stale only pre-PR without heartbeat or CI failed and idle >2 h; next step + owner; bounded (single-flight 30 s view, gh census only in a background thread >=60 s apart, read-only gh, byte caps). Tier 1 commands POST /api/v2/coordination/commands: operator principal only, hard CSRF, idempotency replay, append-only audit; note, priority, hold/unhold (next/take skip held tasks, batch builder skips held PRs), next-batch queue, new/split task, release a red-stale claim; Tier 2 and broker/kill-switch/grant commands refused. Hermetic."
+  ]
+}

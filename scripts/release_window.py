@@ -122,7 +122,15 @@ GUARDED_ENV: dict[str, frozenset[str]] = {
 HOME = Path.home()
 CANONICAL_SOURCE = Path(os.environ.get("CANONICAL_SOURCE", str(HOME / "trade-ai-v12-rebuild" / "trade-ai-v12-rebuild")))
 RELEASES_BASE = Path(os.environ.get("TRADEAI_RELEASES_BASE", str(HOME / "trade-ai-releases" / "portfolio-server")))
-RELEASE_CHECKOUT = Path(os.environ.get("TRADEAI_RELEASE_CHECKOUT", str(HOME / "tradeai-exact-main-20260827")))
+#: The release checkout (2026-10-22, RELEASE_TRAIN_CHECKOUT_20261022): a dedicated, detached work tree the release
+#: train fetches into, integrates from and prepares in. It used to default to a dated dev worktree
+#: (~/tradeai-exact-main-20260827) that no longer existed, so every selection read MAIN_UNREADABLE. Now the default
+#: is this stable path, ``TRADEAI_RELEASE_CHECKOUT`` overrides it (the claimer unit sets it explicitly), and
+#: ``Host.ensure_checkout`` creates it when absent (a locked linked worktree of CANONICAL_SOURCE, detached at
+#: origin/main) and fetches origin main into it; any failure is a MAIN_UNREADABLE reason that names the path.
+RELEASE_CHECKOUT_DEFAULT = HOME / "trade-ai-releases" / "train-checkout"
+RELEASE_CHECKOUT = Path(os.environ.get("TRADEAI_RELEASE_CHECKOUT") or str(RELEASE_CHECKOUT_DEFAULT))
+RELEASE_CHECKOUT_SOURCE = "env:TRADEAI_RELEASE_CHECKOUT" if os.environ.get("TRADEAI_RELEASE_CHECKOUT") else "default"
 STATE_ROOT = Path(os.environ.get("TRADEAI_STATE_ROOT", str(HOME / "trade-ai-releases" / "persistent-state")))
 STATE_DIR = Path(os.environ.get("TRADEAI_RELEASE_WINDOW_STATE_DIR", str(STATE_ROOT / "data" / "runtime" / "release_window")))
 #: Where STATE_DIR came from (arming finding 4): ``status`` prints it beside the path so the operator can compare the
@@ -323,6 +331,11 @@ def deploy_env(base: dict[str, str], window: Window, pr: Optional[int],
 
 # ── host adapter (everything with a side effect or a network read) ─────────────────────────────────
 
+class CheckoutUnavailable(RuntimeError):
+    """The release checkout could not be created, fetched or read. The message names the path; callers turn it into
+    a MAIN_UNREADABLE (selection) or REFUSED_MAIN_UNREADABLE (quarantine lineage) halt."""
+
+
 class Host:
     """Real host. Tests substitute a fake; nothing here is called at import."""
 
@@ -331,6 +344,7 @@ class Host:
         self.checkout, self.releases, self.canonical = checkout, releases, canonical
         self.deploy = checkout / "scripts" / "cio_phase2_exact_main_deploy.sh"
         self.python = canonical / ".venv" / "bin" / "python"
+        self._checkout_ready = ""
 
     def now(self) -> datetime:
         return datetime.now(timezone.utc)
@@ -342,11 +356,58 @@ class Host:
         except (OSError, subprocess.SubprocessError) as exc:
             return 127, f"{type(exc).__name__}: {str(exc)[:200]}"
 
+    def _checkout_fail(self, what: str, out: str = "") -> CheckoutUnavailable:
+        tail = " ".join(out.strip().split())[-120:]
+        return CheckoutUnavailable(f"release checkout {self.checkout}: {what}" + (f" ({tail})" if tail else ""))
+
+    def ensure_checkout(self) -> str:
+        """Make the release checkout real and current; return what was done ("created" | "fetched").
+
+        Absent: fetch origin main into CANONICAL_SOURCE, then ``git worktree add --detach <checkout>
+        refs/remotes/origin/main`` and lock it (``git worktree prune`` and disk hygiene skip a locked worktree).
+        Present: it must be the top of a git work tree (an existing non-git directory is refused, never replaced:
+        AGENTS §0 rule 6); fetch origin main into it. HEAD is never moved here (``checkout_sha`` does that for a
+        deploy). Fails closed with ``CheckoutUnavailable`` naming the path. Runs once per Host."""
+        if self._checkout_ready:
+            return self._checkout_ready
+        refspec = "+refs/heads/main:refs/remotes/origin/main"
+        if not self.checkout.exists():
+            rc, out = self._run(["git", "-C", str(self.canonical), "fetch", "-q", "origin", refspec], timeout=300)
+            if rc != 0:
+                raise self._checkout_fail(f"absent, and fetch origin main in {self.canonical} failed", out)
+            try:
+                self.checkout.parent.mkdir(parents=True, exist_ok=True)
+            except OSError as exc:
+                raise self._checkout_fail("absent, and its parent cannot be created", str(exc)) from exc
+            rc, out = self._run(["git", "-C", str(self.canonical), "worktree", "add", "-q", "--detach",
+                                 str(self.checkout), "refs/remotes/origin/main"], timeout=600)
+            if rc != 0:
+                raise self._checkout_fail("absent, and git worktree add failed", out)
+            self._run(["git", "-C", str(self.canonical), "worktree", "lock", "--reason",
+                       "release train checkout (scripts/release_window.py RELEASE_CHECKOUT)", str(self.checkout)])
+            done = "created"
+        else:
+            rc, out = self._run(["git", "-C", str(self.checkout), "rev-parse", "--show-toplevel"])
+            top = out.strip().splitlines()[-1] if rc == 0 and out.strip() else ""
+            try:
+                same = bool(top) and Path(top).resolve() == self.checkout.resolve()
+            except OSError:
+                same = False
+            if not same:
+                raise self._checkout_fail("exists but is not the top of a git work tree (refused; never replaced)")
+            rc, out = self._run(["git", "-C", str(self.checkout), "fetch", "-q", "origin", refspec], timeout=300)
+            if rc != 0:
+                raise self._checkout_fail("fetch origin main failed", out)
+            done = "fetched"
+        self._checkout_ready = done
+        return done
+
     def main_head(self) -> str:
+        self.ensure_checkout()
         rc, out = self._run(["git", "-C", str(self.checkout), "ls-remote", "origin", "refs/heads/main"])
         m = re.match(r"^([0-9a-f]{40})\s+refs/heads/main$", out.strip().splitlines()[0] if out.strip() else "")
         if rc != 0 or not m:
-            raise RuntimeError("could not read origin/main head")
+            raise self._checkout_fail("could not read origin/main head (ls-remote origin)", out if rc != 0 else "")
         return m.group(1)
 
     def canonical_head(self) -> str:
@@ -826,7 +887,9 @@ class Runner:
         return EXIT_OK, {"state_dir": str(root), "state_dir_source": source, "latch_path": str(self.state.latch),
                          "latch_state": latch_state, "latch": latch, "last": self.state.read(self.state.last),
                          "multi_window_grant_status": MULTI_WINDOW_GRANT_STATUS, "windows_et": sorted(WINDOWS),
-                         "grace_min": GRACE_MIN, "grant_token": WINDOW_TOKEN_HELP}
+                         "grace_min": GRACE_MIN, "grant_token": WINDOW_TOKEN_HELP,
+                         "release_checkout": str(getattr(self.host, "checkout", RELEASE_CHECKOUT)),
+                         "release_checkout_source": RELEASE_CHECKOUT_SOURCE}
 
 
 def _json_or_none(text: str) -> Any:

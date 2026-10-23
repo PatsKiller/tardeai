@@ -21,6 +21,10 @@ on:
   # registered file plus the Postgres shard in a median 6 minutes. cio-hardening-full stays
   # available on workflow_dispatch as the isolation reference.
 
+# Default token access is read-only; jobs that need a narrower write scope declare it locally.
+permissions:
+  contents: read
+
 # A new push to a PR branch supersedes the run in flight (group per ref, cancel-in-progress).
 # Push-to-main runs get ONE GROUP PER SHA (2026-10-21, alignment audit H2). With a group per ref,
 # cancel-in-progress=false only protects the RUNNING run: GitHub keeps one PENDING run per group,

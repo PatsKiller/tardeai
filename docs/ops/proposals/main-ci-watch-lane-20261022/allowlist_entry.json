@@ -1,0 +1,29 @@
+{
+ "lane_id": "main-ci-watch",
+ "command": [
+  "$PY",
+  "scripts/main_ci_watch.py"
+ ],
+ "dry_run_arg": [
+  "--dry-run"
+ ],
+ "live_arg": null,
+ "lock": "/tmp/tradeai_main_ci_watch.lock",
+ "lock_kind": "flock",
+ "timeout_s": 120,
+ "market_gate": false,
+ "output_signal": "data/runtime/main-ci-watch_last.json",
+ "output_receipt": "v2",
+ "env_names": [
+  "GH_CONFIG_DIR",
+  "GH_NO_UPDATE_NOTIFIER",
+  "GH_PROMPT_DISABLED",
+  "GIT_TERMINAL_PROMPT",
+  "TRADEAI_PERSISTENT_STATE_ROOT",
+  "TRADEAI_PR_HYGIENE_REPO",
+  "TRADEAI_PR_HYGIENE_SLUG"
+ ],
+ "env_allowlist_mode": "enforce",
+ "env_evidence": "scripts/main_ci_watch.py reuses pr_hygiene_audit.resolve_repo / resolve_slug (TRADEAI_PR_HYGIENE_REPO / _SLUG, else the canonical checkout's origin URL) and Gh (gh CLI config under HOME or GH_CONFIG_DIR); lib/lane_last_receipt.py TRADEAI_STATE_ROOT + TRADEAI_PERSISTENT_STATE_ROOT. No token is named or read by the script.",
+ "source": "PROPOSED fix/releases-page-queue-ci-20261022. SHADOW: live_arg null; dry_run_arg --dry-run prints only."
+}

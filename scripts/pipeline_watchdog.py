@@ -5,35 +5,182 @@ pipeline_watchdog.py — The nervous system. Runs every 5 min weekdays.
 3. Acts on stale IER entities
 4. Daily summary at 8:30 AM
 """
-import json, logging, os, subprocess, sys, time
+
+import json, logging, os, signal, subprocess, sys, time
 import os
+from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import psycopg2
 
 log = logging.getLogger(__name__)
-PROJECT_ROOT = os.environ.get('TRADEAI_DEV_ROOT') or '/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild'
+PROJECT_ROOT = os.environ.get("TRADEAI_DEV_ROOT") or "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
 MAX_RETRIES = 3
 # Enrichment attempts per entity per week before backing off to weekly.
-MAX_ENRICH_ATTEMPTS = int(os.getenv('WATCHDOG_MAX_ENRICH_ATTEMPTS', '6'))
+MAX_ENRICH_ATTEMPTS = int(os.getenv("WATCHDOG_MAX_ENRICH_ATTEMPTS", "6"))
+# TIME SETTINGS — docs/ops/PIPELINE_TIME_SETTINGS.md. Do not lower without
+# measured runtime evidence (pipeline_runs, pipeline_key='symbol_enrichment').
+#
+# symbol_enrichment.py takes p50 136s / p90 209s / p95 241s / max 419s
+# (3,178 uncensored successes 2026-09-20..10-07, before the health tick). From
+# 2026-10-08 the tick reaped these children after orphan_wait_s=30: 224 failed
+# / 1 succeeded in the 36h to 2026-10-22, every failure at 29-33s.
+#
+# The watchdog now owns its children (own sessions, so health_tick's orphan
+# reaper never sees them) and waits for them. The batch is bounded by
+# ENRICHMENT_BATCH_TIMEOUT_S (240s = measured p95) AND by what the health tick
+# left this step (HEALTH_TICK_STEP_TIMEOUT_S, exported by health_tick.run_step)
+# minus ENRICHMENT_RESERVE_S, so the watchdog terminates, reaps and records its
+# children itself instead of being killed by the tick (tick_deadline_s=300,
+# unit TimeoutStartSec=330).
+ENRICHMENT_BATCH_TIMEOUT_S = max(1, int(os.getenv("WATCHDOG_ENRICHMENT_BATCH_TIMEOUT_S", "240")))
+ENRICHMENT_TERM_GRACE_S = 5.0
+# SIGTERM grace (5s) + SIGKILL reap wait (2s) + post-batch receipts/log_action (8s).
+ENRICHMENT_RESERVE_S = 15.0
+_STEP_STARTED_MONO = time.monotonic()
+
+
+def _enrichment_batch_timeout_s(now=None):
+    """Seconds the enrichment batch may still wait, measured from now.
+
+    min(ENRICHMENT_BATCH_TIMEOUT_S, step budget left - ENRICHMENT_RESERVE_S),
+    never below 1s. Without HEALTH_TICK_STEP_TIMEOUT_S (cron, manual run) only
+    the fixed bound applies.
+    """
+    budget = float(ENRICHMENT_BATCH_TIMEOUT_S)
+    raw = os.getenv("HEALTH_TICK_STEP_TIMEOUT_S")
+    if raw:
+        try:
+            step_timeout = float(raw)
+        except ValueError:
+            step_timeout = None
+        if step_timeout is not None and step_timeout > 0:
+            now = time.monotonic() if now is None else now
+            left = step_timeout - (now - _STEP_STARTED_MONO) - ENRICHMENT_RESERVE_S
+            budget = min(budget, left)
+    return max(1.0, budget)
+
+
+class _EnrichmentInterrupted(Exception):
+    def __init__(self, signum):
+        self.signum = signum
+
+
+def _signal_enrichment_groups(children, sig):
+    """Signal only the independently supervised enrichment process groups."""
+    for entity_id, proc in children:
+        if not _process_group_alive(proc.pid):
+            continue
+        try:
+            os.killpg(proc.pid, sig)
+        except ProcessLookupError:
+            pass
+        except OSError as exc:
+            log.error("[watchdog] could not signal enrichment %s pid=%s: %s", entity_id, proc.pid, type(exc).__name__)
+
+
+def _process_group_alive(pgid):
+    try:
+        os.killpg(pgid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+
+
+def _terminate_enrichment_groups(children, grace_s=ENRICHMENT_TERM_GRACE_S):
+    """Terminate, escalate, and reap all still-running enrichment trees."""
+    alive = [(entity_id, proc) for entity_id, proc in children if _process_group_alive(proc.pid)]
+    if not alive:
+        return
+    _signal_enrichment_groups(alive, signal.SIGTERM)
+    deadline = time.monotonic() + grace_s
+    while time.monotonic() < deadline and any(_process_group_alive(proc.pid) for _, proc in alive):
+        # Reap direct children promptly; otherwise their zombie leaders keep
+        # killpg(pgid, 0) reporting an apparently live group for the full grace.
+        for _, proc in alive:
+            proc.poll()
+        time.sleep(0.05)
+    remaining = [(entity_id, proc) for entity_id, proc in alive if _process_group_alive(proc.pid)]
+    _signal_enrichment_groups(remaining, signal.SIGKILL)
+    for _, proc in alive:
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            log.error("[watchdog] enrichment pid=%s did not reap after SIGKILL", proc.pid)
+
+
+@contextmanager
+def _supervise_enrichment_batch(children, timeout_s=None, outcomes=None):
+    """Bound the batch and always clean up its children on exit.
+
+    A SIGTERM/SIGHUP to the watchdog is converted into an exception so this
+    function can stop child process groups before the supervisor's kill grace
+    expires. Child groups are independent because health_tick supervises the
+    watchdog as one step and must not mistake its owned children for orphans.
+    """
+    old_handlers = {}
+
+    def interrupted(signum, _frame):
+        raise _EnrichmentInterrupted(signum)
+
+    try:
+        for sig in (signal.SIGTERM, signal.SIGHUP):
+            old_handlers[sig] = signal.getsignal(sig)
+            signal.signal(sig, interrupted)
+        yield
+        if timeout_s is None:
+            # Measured after every child is spawned, against the step's real budget.
+            timeout_s = _enrichment_batch_timeout_s()
+        deadline = time.monotonic() + timeout_s
+        pending = list(children)
+        while pending and time.monotonic() < deadline:
+            pending = [
+                (entity_id, proc)
+                for entity_id, proc in pending
+                if proc.poll() is None or _process_group_alive(proc.pid)
+            ]
+            if pending:
+                time.sleep(min(0.1, max(0.0, deadline - time.monotonic())))
+        if pending:
+            if outcomes is not None:
+                outcomes.update({entity_id: "batch_timeout" for entity_id, _ in pending})
+            log.error(
+                "[watchdog] enrichment batch exceeded %.0fs; terminating %d child process trees",
+                timeout_s,
+                len(pending),
+            )
+            _terminate_enrichment_groups(pending)
+    except _EnrichmentInterrupted as exc:
+        log.warning("[watchdog] received signal %s; terminating enrichment children", exc.signum)
+        _terminate_enrichment_groups(children)
+        raise
+    finally:
+        # Also covers spawn/wait failures. Completed children are already reaped
+        # by poll()/wait(); only live groups are signalled here.
+        _terminate_enrichment_groups(children)
+        for sig, handler in old_handlers.items():
+            signal.signal(sig, handler)
+
 
 def _load_env():
-    env_path = Path(PROJECT_ROOT, '.env')
+    env_path = Path(PROJECT_ROOT, ".env")
     if not env_path.is_file():
         # CI and tests have no rendered .env; production always does. Nothing to load.
         return
     for line in env_path.read_text().splitlines():
         line = line.strip()
-        if line and not line.startswith('#') and '=' in line:
-            k, v = line.split('=', 1)
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
             if k.strip() not in os.environ:
                 os.environ[k.strip()] = v.strip()
 
+
 _load_env()
 
-DB_CONFIG = dict(host='127.0.0.1', port=5432, dbname='trade_ai', user='trade_ai',
-                 password=os.getenv('DB_PASSWORD', ''))
+DB_CONFIG = dict(host="127.0.0.1", port=5432, dbname="trade_ai", user="trade_ai", password=os.getenv("DB_PASSWORD", ""))
 
 
 def send_telegram(message, urgent=False):
@@ -42,7 +189,8 @@ def send_telegram(message, urgent=False):
         if scripts_dir not in sys.path:
             sys.path.insert(0, scripts_dir)
         from telegram_alert import send_telegram as _tg
-        prefix = '🚨' if urgent else '⚠️'
+
+        prefix = "🚨" if urgent else "⚠️"
         text = f"{prefix} WATCHDOG: {message}"
         # Intent: urgent (a script failed N times, manual check needed) is P1; the rest is FYI (P3).
         _tg(text, priority=("P1" if urgent else "P3"), producer="pipeline_watchdog")
@@ -51,13 +199,20 @@ def send_telegram(message, urgent=False):
             if root not in sys.path:
                 sys.path.insert(0, root)
             from lib.comms import CommunicationEvent, publish_communication
-            publish_communication(CommunicationEvent(
-                direction="OUTBOUND", event_type="alert", message_class="ops",
-                producer="pipeline_watchdog", subject_key="ops:pipeline_watchdog",
-                retention_class="operational",
-                severity="critical" if urgent else "warning",
-                sanitized_body=text[:500], short_summary=text[:120],
-            ))
+
+            publish_communication(
+                CommunicationEvent(
+                    direction="OUTBOUND",
+                    event_type="alert",
+                    message_class="ops",
+                    producer="pipeline_watchdog",
+                    subject_key="ops:pipeline_watchdog",
+                    retention_class="operational",
+                    severity="critical" if urgent else "warning",
+                    sanitized_body=text[:500],
+                    short_summary=text[:120],
+                )
+            )
         except Exception:
             # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
             pass
@@ -66,11 +221,13 @@ def send_telegram(message, urgent=False):
         pass
 
 
-def log_action(conn, action_type, target, reason, success, result=''):
+def log_action(conn, action_type, target, reason, success, result=""):
     try:
         cur = conn.cursor()
-        cur.execute("INSERT INTO watchdog_actions (action_type,target,reason,success,result,created_at) VALUES (%s,%s,%s,%s,%s,NOW())",
-                   [action_type, target, reason, success, result[:200]])
+        cur.execute(
+            "INSERT INTO watchdog_actions (action_type,target,reason,success,result,created_at) VALUES (%s,%s,%s,%s,%s,NOW())",
+            [action_type, target, reason, success, result[:200]],
+        )
         conn.commit()
     except Exception:
         # ALARM-DELIVERY-DECLARED: shadow ledger best-effort; never blocks operator alert
@@ -80,11 +237,13 @@ def log_action(conn, action_type, target, reason, success, result=''):
 def was_alerted_recently(conn, target, hours=1.0):
     try:
         cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM watchdog_actions WHERE action_type='alert' AND target=%s AND created_at > NOW() - INTERVAL '%s hours'", [target, hours])
+        cur.execute(
+            "SELECT COUNT(*) FROM watchdog_actions WHERE action_type='alert' AND target=%s AND created_at > NOW() - INTERVAL '%s hours'",
+            [target, hours],
+        )
         return (cur.fetchone()[0] or 0) > 0
     except Exception:
         return False
-
 
 
 def _runs_today(run_days, now) -> bool:
@@ -97,7 +256,7 @@ def _runs_today(run_days, now) -> bool:
     spec = (run_days or "*").strip()
     if spec in ("*", ""):
         return True
-    dow = (now.weekday() + 1) % 7          # Python Mon=0 -> cron Sun=0
+    dow = (now.weekday() + 1) % 7  # Python Mon=0 -> cron Sun=0
     try:
         for part in spec.split(","):
             part = part.strip()
@@ -114,6 +273,7 @@ def _runs_today(run_days, now) -> bool:
 
 # ── FUNCTION 1: Pipeline Execution Monitor ──
 
+
 def check_pipeline_execution(conn):
     issues = []
     now = datetime.now()
@@ -126,85 +286,100 @@ def check_pipeline_execution(conn):
     cur.execute("""SELECT script_name, display_name, expected_hour, expected_min,
         max_latency_min, min_rows, critical, command, run_days
         FROM pipeline_schedule WHERE active=true""")
-    for (script, display, exp_h, exp_m, latency, min_rows, critical, command,
-         run_days) in cur.fetchall():
-        if exp_h is None: continue
-        if not _runs_today(run_days, now): continue
+    for script, display, exp_h, exp_m, latency, min_rows, critical, command, run_days in cur.fetchall():
+        if exp_h is None:
+            continue
+        if not _runs_today(run_days, now):
+            continue
         expected = now.replace(hour=exp_h, minute=exp_m, second=0, microsecond=0)
         deadline = expected + timedelta(minutes=latency)
-        if now < deadline: continue  # Not yet overdue
+        if now < deadline:
+            continue  # Not yet overdue
 
         window_start = expected - timedelta(minutes=5)
-        cur.execute("""SELECT id, status, summary FROM pipeline_runs
+        cur.execute(
+            """SELECT id, status, summary FROM pipeline_runs
             WHERE pipeline_key=%s AND started_at BETWEEN %s AND NOW()
-            ORDER BY started_at DESC LIMIT 1""", [script, window_start])
+            ORDER BY started_at DESC LIMIT 1""",
+            [script, window_start],
+        )
         run = cur.fetchone()
 
         if not run:
-            issues.append({'script': script, 'display': display, 'issue': 'not_started',
-                          'critical': critical, 'command': command})
-        elif run[1] == 'failed':
-            issues.append({'script': script, 'display': display, 'issue': 'failed',
-                          'critical': critical, 'command': command})
+            issues.append(
+                {"script": script, "display": display, "issue": "not_started", "critical": critical, "command": command}
+            )
+        elif run[1] == "failed":
+            issues.append(
+                {"script": script, "display": display, "issue": "failed", "critical": critical, "command": command}
+            )
     return issues
 
 
 def handle_pipeline_issues(conn, issues, no_telegram=False):
     for issue in issues:
-        script = issue['script']
-        if not issue.get('critical'): continue
+        script = issue["script"]
+        if not issue.get("critical"):
+            continue
 
         cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM pipeline_runs WHERE pipeline_key=%s AND run_label LIKE 'retry%%' AND started_at>NOW()-INTERVAL '24 hours'", [script])
+        cur.execute(
+            "SELECT COUNT(*) FROM pipeline_runs WHERE pipeline_key=%s AND run_label LIKE 'retry%%' AND started_at>NOW()-INTERVAL '24 hours'",
+            [script],
+        )
         retries_today = cur.fetchone()[0] or 0
 
-        if retries_today < MAX_RETRIES and issue.get('command'):
-            log.info(f"[watchdog] Retrying {script} (attempt {retries_today+1})")
+        if retries_today < MAX_RETRIES and issue.get("command"):
+            log.info(f"[watchdog] Retrying {script} (attempt {retries_today + 1})")
             rid = None
             run_fail = None
             try:
                 from pipeline_registry import run_start, run_complete, run_fail
-                rid = run_start(script, run_label=f'retry_{retries_today+1}', triggered_by='watchdog')
-                result = subprocess.run(issue['command'], shell=True, timeout=300,
-                                       capture_output=True, text=True, cwd=PROJECT_ROOT)
+
+                rid = run_start(script, run_label=f"retry_{retries_today + 1}", triggered_by="watchdog")
+                result = subprocess.run(
+                    issue["command"], shell=True, timeout=300, capture_output=True, text=True, cwd=PROJECT_ROOT
+                )
                 if result.returncode == 0:
                     run_complete(rid)
-                    log_action(conn, 'retry', script, issue['issue'], True, 'success')
+                    log_action(conn, "retry", script, issue["issue"], True, "success")
                 else:
-                    _record_retry_failure(conn, issue, retries_today, no_telegram,
-                                          result.stderr, rid=rid, run_fail=run_fail)
+                    _record_retry_failure(
+                        conn, issue, retries_today, no_telegram, result.stderr, rid=rid, run_fail=run_fail
+                    )
             except Exception as e:
                 # A retry that RAISES (typically subprocess.TimeoutExpired at 300s) is still just a
                 # failed retry. It used to log a bare ERROR every cycle -- flooding the
                 # execution_health log_errors check (PR #140, 2026-07-08) -- while leaving the
                 # pipeline_runs row stuck 'running' and never escalating at MAX_RETRIES.
                 log.warning(f"[watchdog] Retry error for {script}: {str(e)[:200]}")
-                _record_retry_failure(conn, issue, retries_today, no_telegram,
-                                      str(e), rid=rid, run_fail=run_fail)
+                _record_retry_failure(conn, issue, retries_today, no_telegram, str(e), rid=rid, run_fail=run_fail)
 
 
 def _record_retry_failure(conn, issue, retries_today, no_telegram, detail, *, rid=None, run_fail=None):
     """One failed-retry path for a non-zero exit AND a raised retry: close the run as failed,
     record the action, and escalate once at MAX_RETRIES (deduped by was_alerted_recently)."""
-    script = issue['script']
-    detail = str(detail or '')
+    script = issue["script"]
+    detail = str(detail or "")
     if rid is not None and run_fail is not None:
         try:
             run_fail(rid, detail[-200:])
         except Exception as e:  # the registry being down must not hide the escalation below
             log.warning(f"[watchdog] could not mark retry run failed for {script}: {e}")
-    log_action(conn, 'retry', script, issue['issue'], False, detail[-100:])
+    log_action(conn, "retry", script, issue["issue"], False, detail[-100:])
     if retries_today + 1 >= MAX_RETRIES and not no_telegram:
         if not was_alerted_recently(conn, script):
             send_telegram(f"CRITICAL: {script} failed {MAX_RETRIES}x. Manual check needed.", urgent=True)
-            log_action(conn, 'alert', script, 'max_retries', True, '')
+            log_action(conn, "alert", script, "max_retries", True, "")
 
 
 # ── FUNCTION 2: GO Signal Coverage ──
 
+
 def check_go_coverage(conn):
     now = datetime.now()
-    if now.hour < 10 or now.hour >= 18 or now.weekday() >= 5: return 0
+    if now.hour < 10 or now.hour >= 18 or now.weekday() >= 5:
+        return 0
 
     cur = conn.cursor()
     cur.execute("""
@@ -219,21 +394,23 @@ def check_go_coverage(conn):
     missing = cur.fetchall()
     fixed = 0
 
-    for (symbol, score, decision, scanned_at, readiness) in missing:
+    for symbol, score, decision, scanned_at, readiness in missing:
         age_h = (datetime.now(timezone.utc) - scanned_at.replace(tzinfo=timezone.utc)).total_seconds() / 3600
         try:
-            cur.execute("""INSERT INTO watchlist_agent_jobs
+            cur.execute(
+                """INSERT INTO watchlist_agent_jobs
                 (symbol, requested_agent, task_type, priority, status, submitted_from, context_data, created_at)
                 VALUES (%s,'maria_research','scalp_discovery','high','pending','pipeline_watchdog',%s::jsonb,NOW())
                 ON CONFLICT DO NOTHING""",
-                [symbol, json.dumps({'score': score, 'trigger': 'watchdog_coverage', 'age_h': round(age_h, 1)})])
+                [symbol, json.dumps({"score": score, "trigger": "watchdog_coverage", "age_h": round(age_h, 1)})],
+            )
             conn.commit()
             fixed += 1
-            log_action(conn, 'queue_agent', symbol, f'GO {score}pts {age_h:.1f}hr no analysis', True, '')
+            log_action(conn, "queue_agent", symbol, f"GO {score}pts {age_h:.1f}hr no analysis", True, "")
 
-            if age_h > 4 and not was_alerted_recently(conn, f'go_{symbol}', hours=4):
+            if age_h > 4 and not was_alerted_recently(conn, f"go_{symbol}", hours=4):
                 send_telegram(f"{symbol} {decision} {score}pts for {age_h:.1f}hr with 0 analyses. Queued.")
-                log_action(conn, 'alert', f'go_{symbol}', f'{age_h:.1f}hr gap', True, '')
+                log_action(conn, "alert", f"go_{symbol}", f"{age_h:.1f}hr gap", True, "")
         except Exception:
             pass
 
@@ -242,9 +419,11 @@ def check_go_coverage(conn):
 
 # ── FUNCTION 3: IER Action Engine ──
 
+
 def run_ier_engine(conn):
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         SELECT e.entity_id, e.entity_type, e.intelligence_score, e.iris_freshness,
                e.screener_decision
         FROM intelligence_entities e
@@ -266,39 +445,114 @@ def run_ier_engine(conn):
               OR e.last_enriched < NOW()-INTERVAL '7 days'
             )
         ORDER BY e.intelligence_score NULLS FIRST LIMIT 15
-    """, [MAX_ENRICH_ATTEMPTS])
+    """,
+        [MAX_ENRICH_ATTEMPTS],
+    )
     actions = 0
-    for (eid, etype, score, freshness, decision) in cur.fetchall():
-        if was_alerted_recently(conn, f'ier_{eid}', hours=4): continue
+    enrichments = []
+    children = []
+    enrichment_outcomes = {}
+    with _supervise_enrichment_batch(children, outcomes=enrichment_outcomes):
+        for eid, etype, score, freshness, decision in cur.fetchall():
+            if was_alerted_recently(conn, f"ier_{eid}", hours=4):
+                continue
 
-        if etype == 'market':
-            try:
-                subprocess.Popen([sys.executable, 'scripts/symbol_enrichment.py', eid, str(int(score or 0))],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=PROJECT_ROOT)
-                cur.execute("UPDATE intelligence_entities SET last_enriched=NOW() WHERE entity_id=%s", [eid])
-                conn.commit()
-                log_action(conn, 'trigger_enrichment', eid, f'score={score} fresh={freshness}', True, '')
-                actions += 1
-            except Exception:
-                pass
-        elif etype == 'subject' and freshness == 'CRITICAL':
-            try:
-                cur.execute("""INSERT INTO watchdog_actions (action_type,target,reason,success,result,created_at)
-                    VALUES ('queue_alex_refresh',%s,'subject CRITICAL',true,'queued',NOW())""", [eid])
-                conn.commit()
-                actions += 1
-            except Exception:
-                pass
+            if etype == "market":
+                # Claim the four-hour slot atomically before spawning. Two
+                # watchdog invocations may have read the same stale row; only
+                # one can update it from stale to current and launch a writer.
+                claim_time = None
+                try:
+                    cur.execute(
+                        """UPDATE intelligence_entities SET last_enriched=NOW()
+                        WHERE entity_id=%s
+                          AND (last_enriched IS NULL OR last_enriched < NOW()-INTERVAL '4 hours')
+                        RETURNING last_enriched""",
+                        [eid],
+                    )
+                    claim = cur.fetchone()
+                    if not claim:
+                        conn.commit()
+                        continue
+                    claim_time = claim[0]
+                    conn.commit()
+                    proc = subprocess.Popen(
+                        [sys.executable, "scripts/symbol_enrichment.py", eid, str(int(score or 0))],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        cwd=PROJECT_ROOT,
+                        start_new_session=True,
+                    )
+                    children.append((eid, proc))
+                    enrichments.append((eid, score, freshness, proc))
+                except Exception as exc:
+                    log.warning("[watchdog] could not start enrichment for %s: %s", eid, type(exc).__name__)
+                    if claim_time is not None:
+                        try:
+                            conn.rollback()
+                            cur.execute(
+                                """UPDATE intelligence_entities SET last_enriched=NULL
+                                WHERE entity_id=%s AND last_enriched=%s""",
+                                [eid, claim_time],
+                            )
+                            conn.commit()
+                        except Exception as reset_exc:
+                            log.error(
+                                "[watchdog] could not release enrichment claim for %s: %s",
+                                eid,
+                                type(reset_exc).__name__,
+                            )
+                        finally:
+                            del claim_time
+                    log_action(
+                        conn,
+                        "trigger_enrichment",
+                        eid,
+                        f"score={score} fresh={freshness}",
+                        False,
+                        f"spawn failed: {type(exc).__name__}",
+                    )
+            elif etype == "subject" and freshness == "CRITICAL":
+                try:
+                    cur.execute(
+                        """INSERT INTO watchdog_actions (action_type,target,reason,success,result,created_at)
+                        VALUES ('queue_alex_refresh',%s,'subject CRITICAL',true,'queued',NOW())""",
+                        [eid],
+                    )
+                    conn.commit()
+                    actions += 1
+                except Exception:
+                    pass
+
+    # No fire-and-forget children: this step returns only after every child has
+    # completed, or its bounded supervisor has terminated and reaped it.
+    for eid, score, freshness, proc in enrichments:
+        if proc.returncode == 0 and eid not in enrichment_outcomes:
+            log_action(
+                conn,
+                "trigger_enrichment",
+                eid,
+                f"score={score} fresh={freshness}",
+                True,
+                "child exit=0; may be a safe no-op because another session owns the symbol lock",
+            )
+            actions += 1
+        else:
+            detail = enrichment_outcomes.get(eid, f"exit={proc.returncode}")
+            log.warning("[watchdog] symbol enrichment for %s ended with %s", eid, detail)
+            log_action(conn, "trigger_enrichment", eid, f"score={score} fresh={freshness}", False, detail)
     return actions
 
 
 # ── MAIN ──
 
+
 def main():
     import argparse
+
     parser = argparse.ArgumentParser()
-    parser.add_argument('--no-telegram', action='store_true')
-    parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument("--no-telegram", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     conn = psycopg2.connect(**DB_CONFIG)
@@ -309,24 +563,32 @@ def main():
         if issues and not args.dry_run:
             handle_pipeline_issues(conn, issues, no_telegram=args.no_telegram)
         elif issues:
-            for i in issues: log.info(f"[DRY] Would handle: {i['script']} ({i['issue']})")
+            for i in issues:
+                log.info(f"[DRY] Would handle: {i['script']} ({i['issue']})")
 
         # Function 2: GO coverage
         if not args.dry_run:
             fixed = check_go_coverage(conn)
-            if fixed: log.info(f"[watchdog] GO coverage: fixed {fixed}")
+            if fixed:
+                log.info(f"[watchdog] GO coverage: fixed {fixed}")
 
         # Function 3: IER engine
         if not args.dry_run:
             actions = run_ier_engine(conn)
-            if actions: log.info(f"[watchdog] IER: {actions} actions")
+            if actions:
+                log.info(f"[watchdog] IER: {actions} actions")
 
     finally:
         conn.close()
 
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s',
-                       handlers=[logging.FileHandler(os.path.join(PROJECT_ROOT, 'logs/pipeline_watchdog.log')),
-                                 logging.StreamHandler()])
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+        handlers=[
+            logging.FileHandler(os.path.join(PROJECT_ROOT, "logs/pipeline_watchdog.log")),
+            logging.StreamHandler(),
+        ],
+    )
     main()

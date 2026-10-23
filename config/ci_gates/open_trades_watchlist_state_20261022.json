@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "open_trades_watchlist_state_20261022",
+  "files": [
+    "tests/test_open_trades_watchlist_state_20261022.py"
+  ],
+  "anchor": "OPEN_TRADES_WATCHLIST_STATE_20261022",
+  "comment": [
+    "ANCHOR: OPEN_TRADES_WATCHLIST_STATE_20261022 — Open Trades watchlist_state (operator fix 2026-10-22): build_intelligence",
+    "called an undefined _db_query and swallowed the NameError, so every position read 'none'. Membership now reads through the",
+    "Watch data broker (membership_watchlist, active_ticker_directives strict); a failed lookup reports 'unavailable' and logs.",
+    "Hermetic: fake broker readers and holdings in memory, no DB, broker or data/ file."
+  ]
+}

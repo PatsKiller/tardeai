@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "calibration_shadow_harness_20261022",
+  "files": [
+    "tests/test_calibration_shadow_harness_20261022.py"
+  ],
+  "anchor": "CALIBRATION_SHADOW_HARNESS_20261022",
+  "comment": [
+    "ANCHOR: CALIBRATION_SHADOW_HARNESS_20261022 — Gate 4 calibration loop (operator design 2026-10-22): each PROPOSED",
+    "signal_calibration threshold is frozen as a trial and evaluated beside the current one over the next N forward",
+    "sessions of journaled decisions (read-only); comparison report + recommendation, always a proposal (operator",
+    "ratifies). n8n-native report lane calibration-shadow-harness at shadow (dry_run writes nothing), DRAFT contract.",
+    "Hermetic: tmp AT/state roots; no broker, sender, model call or config write."
+  ]
+}

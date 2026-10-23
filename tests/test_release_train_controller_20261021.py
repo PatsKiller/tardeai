@@ -600,8 +600,10 @@ def test_0800_macro_calendar_and_measured_latest_start(tmp_path, calendar, reaso
 
 def test_0800_latest_start_is_09_minus_measured_promote_verify_rollback_minus_buffer(tmp_path):
     m = T.Measurements(tmp_path / "m.jsonl")
-    m.append({"promote_s": 300, "verify_s": 120})
+    m.append({"promote_s": 300, "verify_s": 120, "rollback_s": 90})
     m.append({"promote_s": 240, "verify_s": 60, "rollback_s": 180})
+    # Phase 7 (2026-10-22): three samples of each are required; the worst of each is used
+    m.append({"promote_s": 200, "verify_s": 100, "rollback_s": 150})
     w = T.TrainWindow("0800", "last", datetime(2026, 10, 22, 8, 0, tzinfo=ET), 30, True, None, True)
     latest, why = T.latest_activation_start(w, m, buffer_min=10)
     assert latest == datetime(2026, 10, 22, 9, 0, tzinfo=ET) - timedelta(seconds=300 + 120 + 180, minutes=10)

@@ -10,8 +10,11 @@ RULES ENCODED HERE, ONCE:
   • open/pending proposals
   • today's GO/WAIT scans
   • ACTIVE watchlist items
-  • OPERATOR DIRECTIVES — in_directive_watch=true, ANY lifecycle status except removed.
+  • OPERATOR DIRECTIVES — the in_directive_watch flag, ANY lifecycle status except removed.
     Operator standing instructions OUTRANK scores and statuses. Always.
+    Since 2026-10-22 (operator-approved) the flag means an ACTIVE operator-created directive matches:
+    automated directives no longer set it, and directive_promotion's reconciler clears it when the
+    operator directive expires or is archived (docs/ops/DIRECTIVE_WATCH_FLAG_2026-10-22.md).
 
 Use UNIVERSE_SQL inside a larger query, or symbols(cur) for the resolved set.
 audit_enrichment_coverage.py verifies every consumer actually honors this — daily, with alerts.
