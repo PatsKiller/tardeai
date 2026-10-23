@@ -356,6 +356,9 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
     # The operator's2026-10-12 admission adds two new native metadata lanes;
     # neither retires or impersonates a legacy host trigger.
     n8n_native_lanes = {
+        # 2026-10-23 cio-ask-research: n8n-native report dispatcher row at shadow, hourly 07:20-21:20 dry_run
+        # (no host line; tests/test_cio_ask_research_lane_20261023.py).
+        "cio-ask-research",
         "heartbeat-watch",
         "momentum-lifecycle-monitor",
         "momentum-cache-reconcile",

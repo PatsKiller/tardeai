@@ -514,6 +514,9 @@ def test_registry_dispatch_errors_hook():
 #: 2026-10-22 - pr-hygiene-audit: promoted to N8N_NATIVE_CANARY by the release train H.0 shadow-enable PR.
 N8N_NATIVE_SHADOW = frozenset(
     {
+        # 2026-10-23 operator-approved Ask the CIO Phase 9: research lane, n8n-native report, hourly dry_run
+        # (tests/test_cio_ask_research_lane_20261023.py).
+        "cio-ask-research",
         "momentum-lifecycle-monitor",
         "momentum-cache-reconcile",
         "hermes-discovery-yield-on-learning",

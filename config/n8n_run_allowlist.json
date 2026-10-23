@@ -4313,6 +4313,33 @@
       "env_report_reason": "New lane (2026-10-21): report until one dry-run RunReceipt env_allowlist block confirms that enforce would drop nothing the lane reads. Base names cover TRADEAI_STATE_ROOT, HOME (delegation file) and the run identity.",
       "env_evidence": "SOURCE_ONLY read of scripts/release_train_window_request.py and its closure: os.environ reads are TRADEAI_RELEASE_WINDOW_STATE_DIR and TRADEAI_STATE_ROOT (scripts/lib/release_train_view.resolve_state_dir), TRADEAI_PERSISTENT_STATE_ROOT only when TRADEAI_STATE_ROOT is unset (lane_last_receipt fallback) and the executor-set TRADEAI_RUN_ID/ATTEMPT/MODE and TRADEAI_CODE_SHA. No DB, broker, model, messaging or GitHub credential name; release_window.py is never imported (NO_RELEASE_WINDOW sentinel).",
       "source": "Release Train v2 Phase 4 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md): request lane for the 08:00 ET window. Called only by tradeai-fabric-release-train through Run Lane. SHADOW ONLY: live_arg [\"--append\", \"--shadow-only\"] since the H.0 shadow-enable PR (2026-10-22; contract §11 train-shadow step), so a live run appends only shadow: true (simulate-only) requests whatever the delegation says; --dry-run builds and validates the request and writes nothing. With --append its only effect is one O_EXCL TrainWindowRequest@v1 file (journal + pending link) and its LaneRunReceipt. Not a release-deploy lane: no merge, push, promote, rollback, capability, STOP write, credential or send (AGENTS.md §23.3/§23.14 never-list unchanged)."
+    },
+    {
+      "lane_id": "cio-ask-research",
+      "command": [
+        "$PY",
+        "scripts/cio_ask_research.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/cio_ask_research.lock",
+      "lock_kind": "flock",
+      "timeout_s": 600,
+      "market_gate": false,
+      "output_signal": "data/runtime/cio-ask-research_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "CIO_ASK_REQUESTS_DIR",
+        "CIO_ASK_ANSWERS_DIR",
+        "CIO_ASK_RESEARCH_PER_QUESTION_USD",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/cio_ask_research.py reads CIO_ASK_REQUESTS_DIR, CIO_ASK_ANSWERS_DIR and the executor-set TRADEAI_RUN_ID; scripts/lib/cio_ask_research.py reads CIO_ASK_RESEARCH_PER_QUESTION_USD. Its read closure (identity registry, data broker readers, db_adapter, search_router, llm_consumption) resolves the state root and DB settings; the dry run opens no DB and no provider. No broker, messaging or provider credential name.",
+      "env_report_reason": "New lane (2026-10-23): report until a dry-run RunReceipt env_allowlist block confirms enforce would drop nothing; the live closure (db_adapter, search_router, governed_cloud_generation) is re-inventoried for enforce at canary.",
+      "source": "operator 2026-10-23 (Ask the CIO, Phase 9 approved: research pipeline 'runnable as an n8n lane cio-ask-research registered at SHADOW with a DRAFT contract (operator reviews)'); cron freeze 2026-10-09 in force, no crontab line. SHADOW ONLY: live_arg null, registry dispatch.mode dry_run. No cron line exists, so the lock is new (a dry run takes <lock>.dryrun). Canary live_arg (separate PR, after the operator approves the cio_ask_deep_research spend cap): []. Not a sender, not execution: no broker, order, stop or send (MBI_BEHAVIOR=0)."
     }
   ],
   "blocked_reasons": {
