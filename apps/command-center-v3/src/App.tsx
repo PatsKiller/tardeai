@@ -37,6 +37,8 @@ import SchwabReauthHub from './pages/SchwabReauthHub'
 import BrokerAccessPage from './pages/BrokerAccessPage'
 import ReleasesSchedules from './pages/ReleasesSchedules'
 import OpsControlsPage from './pages/OpsControls'
+import AskCioBar from './components/AskCioBar'
+import MyQuestions from './pages/MyQuestions'
 import SchwabReauthBanner from './components/SchwabReauthBanner'
 import FinvizCookieBanner from './components/FinvizCookieBanner'
 import YoutubeCookieBanner from './components/YoutubeCookieBanner'
@@ -211,6 +213,7 @@ function Shell() {
       <YoutubeCookieBanner />
       <ReconnectingBar />
       <MetricStrip onDrill={setDrill} />
+      <AskCioBar />
       <div className="app-body" style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
         <NavRail />
         <main className="app-main" style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', padding: '16px 24px' }}>
@@ -253,6 +256,8 @@ function Shell() {
             <Route path="rec-intel" element={<RouteErrorBoundary route="/v3/rec-intel"><RecommendationIntelligence /></RouteErrorBoundary>} />
             <Route path="advisory" element={<RouteErrorBoundary route="/v3/advisory"><AdvisoryDeskHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="cio" element={<RouteErrorBoundary route="/v3/cio"><CioHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="cio/questions" element={<RouteErrorBoundary route="/v3/cio/questions"><MyQuestions /></RouteErrorBoundary>} />
+            <Route path="cio/questions/:threadId" element={<RouteErrorBoundary route="/v3/cio/questions/:threadId"><MyQuestions /></RouteErrorBoundary>} />
             <Route path="health" element={<RouteErrorBoundary route="/v3/health"><HealthHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="communications" element={<RouteErrorBoundary route="/v3/communications"><CommunicationsHub /></RouteErrorBoundary>} />
             <Route path="consumption" element={<RouteErrorBoundary route="/v3/consumption"><ConsumptionHub /></RouteErrorBoundary>} />

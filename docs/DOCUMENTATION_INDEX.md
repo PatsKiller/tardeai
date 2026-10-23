@@ -37,6 +37,7 @@ ACTIVE; 11.0.0 (§23.24) is PROPOSED.
 |----------|---------|--------|
 | `docs/ops/OPS_CONTROLS.md` | The operator Controls surface and its one governed host applier: components, threat model, change kinds (and the NOT_SUPPORTED ones with reasons), data-dictionary coordination with the 19.0.0 package, the operator activation steps (migration, approval key, applier unit, TOTP recovery, passkey enrollment) and rollback; §8 how to read the Jobs & schedules tab (plain status, crontab-vs-registry mismatches, filters, cron in words) | Draft (branch feat/ops-controls-20261022) |
 | `docs/ops/OPS_CONTROLS_API.md` | Response contract for `/api/v2/ops/controls/*` (state read model, request lifecycle, WebAuthn step-up, undo) | Draft |
+| `docs/ops/ASK_THE_CIO.md` | Ask the CIO (Phases 8–11): ask bar + My questions, one brain with the CIO Telegram bot, persistent CIO memory keyed by security_guid, auto-tracking, re-answer on material change, caps and approvals | Draft |
 
 ## Agent claim board (2026-10-22) — advisory until AGENTS.md 19.1.0
 

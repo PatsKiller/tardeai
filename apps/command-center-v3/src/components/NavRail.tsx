@@ -20,7 +20,8 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
   {
     label: 'Intel',
     hubs: [
-      { to: '/cio', label: 'CIO Desk' },
+      { to: '/cio', label: 'CIO Desk', exact: true },
+      { to: '/cio/questions', label: 'My questions' },
       { to: '/communications', label: 'Communications' },
       { to: '/research-intelligence', label: 'Research Intel' },
     ],
