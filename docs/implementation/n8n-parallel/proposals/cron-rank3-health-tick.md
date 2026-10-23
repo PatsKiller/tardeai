@@ -57,6 +57,14 @@ steps; leftover process-group members get `orphan_wait_s` (30) and are then term
 those monitors' outputs; `systemctl --failed` / health_agent's `systemd_unit_failed` now mean what they
 say — the scheduler is broken.
 
+> **2026-10-22 — time settings are measured and pinned; read before changing any.** The 30 s
+> `orphan_wait_s` reaped every `symbol_enrichment.py` child (224 failed / 1 success in 36 h; real
+> runtime p50 136 s / p95 241 s). `pipeline_watchdog.py` now supervises its children under
+> `min(240 s, HEALTH_TICK_STEP_TIMEOUT_S − 15 s)`, `health_tick` exports `HEALTH_TICK_STEP_TIMEOUT_S`
+> to every step, and `pipeline-watchdog` runs **last** in the tick. `orphan_wait_s` stays 30 s (legacy
+> safety net only). Numbers, evidence and arithmetic: `docs/ops/PIPELINE_TIME_SETTINGS.md`; pinned by
+> `tests/test_pipeline_time_settings_20261022.py`.
+
 **Nothing in this PR is installed.** The unit files carry a PROPOSAL ONLY header, the lane row is
 `NEVER_SCHEDULED`, the crontab is untouched. Every action below is an operator step under a grant.
 

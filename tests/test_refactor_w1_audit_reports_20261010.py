@@ -54,16 +54,21 @@ class _Cur:
 
 @pytest.fixture
 def aec(tmp_path, monkeypatch):
+    """Rescoped 2026-10-22 (tests/test_enrichment_coverage_audit_20261022.py has the rules): membership and
+    evidence are stubbed; this file keeps the wave-1 promises — dry run never sends or writes, honest receipts."""
     mod = importlib.import_module("audit_enrichment_coverage")
-    monkeypatch.setattr(mod, "PROJECT_ROOT", tmp_path)  # no holdings / pills files -> empty sets
+    monkeypatch.setattr(mod, "PROJECT_ROOT", tmp_path)  # no pills file -> empty analyst set
     cur = _Cur()
-    conn = types.SimpleNamespace(cursor=lambda: cur)
+    conn = types.SimpleNamespace(cursor=lambda: cur, set_session=lambda **k: None, rollback=lambda: None)
     monkeypatch.setitem(sys.modules, "db_adapter", types.SimpleNamespace(_get_conn=lambda: conn))
-    wu = types.SimpleNamespace(symbols=lambda c: mod._UNI, directive_symbols=lambda c: {"AAA"})
-    monkeypatch.setitem(sys.modules, "watch_universe", wu)
-    mod._UNI = {"AAA", "BBB"}
+    monkeypatch.setattr(mod, "resolve_members",
+                        lambda c: ({"AAA": {"held"}, "BBB": {"active"}}, {"source": "interim", "label": "stub"}))
+    monkeypatch.setattr(mod, "gather_evidence", lambda c, m: ({"tech_ok": {"AAA", "BBB"}, "analyst_ok": {"BBB"},
+                                                               "news_measured": False, "prot_ok": {"AAA"},
+                                                               "llm_ok": {"AAA"}}, {}))
+    monkeypatch.setattr(mod, "lane_receipts", lambda: {})
     sent = []
-    monkeypatch.setattr(mod, "_alert", lambda gaps: sent.append(len(gaps)))
+    monkeypatch.setattr(mod, "_alert", lambda msg, n: sent.append(n) or True)
     mod._sent, mod._cur = sent, cur
     return mod
 
@@ -71,22 +76,25 @@ def aec(tmp_path, monkeypatch):
 def test_aec_dry_run_alert_previews_but_never_sends(state, aec, capsys):
     assert aec.main(["--alert", "--dry-run"]) == 0
     out = capsys.readouterr().out
-    assert "would send alert (1 directive gaps)" in out and "AAA: missing" in out
+    assert "would send P3 alert (1 members with gaps" in out and "AAA [held]: analyst" in out
     assert aec._sent == []
     assert _receipt(state, "audit-enrichment-coverage") is None
+    assert not (state / "data" / "runtime" / "audit-enrichment-coverage_state.json").exists()
+    assert not (state / "data" / "runtime" / "audit-enrichment-coverage_manifest.json").exists()
     assert all(q.lstrip().upper().startswith("SELECT") for q in aec._cur.sql)
 
 
 def test_aec_dry_run_json_keeps_stdout_json(state, aec, capsys):
     aec.main(["--alert", "--dry-run", "--json"])
     cap = capsys.readouterr()
-    assert json.loads(cap.out)["symbols_with_gaps"] == 2 and "would send alert" in cap.err
+    assert json.loads(cap.out)["symbols_with_gaps"] == 1 and "would send P3 alert" in cap.err
 
 
 def test_aec_dry_run_source_order():
     src = (ROOT / "scripts" / "audit_enrichment_coverage.py").read_text()
-    body = src[src.index("def run(") : src.index("def _table_exists")]
-    assert body.index("if dry_run:") < body.index("        _alert(directive_gaps)")
+    body = src[src.index("def run(") : src.index("def _emit_output")]
+    assert body.index("if dry_run:") < body.index("_alert(msg")
+    assert body.index("if dry_run:") < body.index("atomic_write_json(")
 
 
 def test_aec_live_alert_sends_once_and_writes_ok_receipt(state, aec):
@@ -94,7 +102,13 @@ def test_aec_live_alert_sends_once_and_writes_ok_receipt(state, aec):
     assert aec._sent == [1]
     rec = _receipt(state, "audit-enrichment-coverage")
     assert rec["status"] == "ok" and rec["ok_at"]
-    assert rec["summary"] == {"universe": 2, "symbols_with_gaps": 2, "directive_gaps": 1, "alert_requested": True}
+    assert rec["summary"]["members"] == 2 and rec["summary"]["symbols_with_gaps"] == 1
+    assert rec["summary"]["alert_decision"] == "first_run" and rec["summary"]["alert_sent"] is True
+    assert rec["produced_count"] == 2
+    # the same gap set the next day is not sent again
+    assert aec.main(["--alert"]) == 0
+    assert aec._sent == [1]
+    assert _receipt(state, "audit-enrichment-coverage")["summary"]["alert_decision"] == "unchanged"
 
 
 def test_aec_gaps_are_findings_not_failure_without_alert(state, aec):

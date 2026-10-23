@@ -151,7 +151,8 @@ button.at-motion-rail__row:focus-visible{outline:2px solid var(--at-blue);outlin
 .at-kpi{background:var(--at-panel);border:1px solid var(--at-line);border-radius:var(--radius-lg);padding:14px 16px;display:flex;flex-direction:column;gap:4px;min-width:0}
 .at-kpi small{color:var(--at-muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
 .at-kpi strong{font-size:28px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.1}
-.at-kpi span{color:var(--at-muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* P3 2026-10-23 (operator-approved): captions wrap. nowrap+ellipsis cut every caption at 1440 px, so what each number counts was unreadable. */
+.at-kpi span{color:var(--at-muted);font-size:12px;white-space:normal;overflow-wrap:break-word;line-height:1.3}
 .at-kpi--green strong{color:var(--at-green)}.at-kpi--amber strong{color:var(--at-amber)}.at-kpi--blue strong{color:var(--at-blue)}.at-kpi--muted strong{color:var(--at-text)}
 .at-alerts__grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px;align-items:start}
 .at-alerts__side{display:flex;flex-direction:column;gap:16px;min-width:0}

@@ -3,10 +3,8 @@
 Schedule (weekdays):
   4:00 AM            ' Full run (use launcher/run_0400.bat instead)
   5:00 AM            ' Full run (use launcher/run_0500.bat instead)
-  6:00 --9:00 AM       ' Every 15 min, Full anchors at 6:00, 7:00, 8:00
-  9:00 --10:00 AM      ' Every 10 min (market open  -- highest frequency)
-  10:00 --11:00 AM     ' Every 15 min
-  Self-terminates at 11:00 AM
+  6:00 AM --12:00 PM   ' Every 5 min (scalp window, operator 2026-10-23), Full anchors hourly
+  Self-terminates at 12:00 PM (hard cutoff; was 11:30)
 
 Modes:
   LIVE    -- Fast cycle: Finviz + scoring (no LLM), alert on significant changes only
@@ -39,14 +37,24 @@ from dotenv import load_dotenv
 
 # "   "    Schedule config "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
 
+# Scalp window cadence (operator 2026-10-23, P1: "these are supposed to be running like every 5 minutes …
+# we can't have that long of a period on micro scalps"). 06:00-12:00 ET used to be 15/10/15-minute cycles and
+# the runner hard-stopped at 11:30, so the Trade AI page could show a scan 15-25 minutes old (cycle + the */8
+# cache warm) and nothing at all after 11:30. A LIVE cycle measured ~105 s on 2026-10-23 (sleep 795 s of a
+# 900 s interval), so a 5-minute grid fits; FULL anchors stay hourly.
+SCALP_WINDOW = ("06:00", "12:00")
+SCALP_CADENCE_MIN = 5
+HARD_CUTOFF_HM = SCALP_WINDOW[1]
+
 SCHEDULE = [
     # (start_hhmm, end_hhmm, interval_minutes, is_full_at_start)
     ("03:00", "04:00", 30, True),   # deep pre-market: 30-min cycles (Ollama catalyst prep)
     ("04:00", "06:00", 30, True),   # early pre-market: 30-min LIVE cycles
-    ("06:00", "09:00", 15, True),   # pre-market: 15-min cycles, full at :00
-    ("09:00", "10:00", 10, True),   # market open: 10-min cycles
-    ("10:00", "11:00", 15, True),   # first-hour wind-down
-    ("11:30", "12:15", 15, True),   # midday: post-morning momentum continuation
+    ("06:00", "09:00", SCALP_CADENCE_MIN, True),   # pre-market scalp window: 5-min cycles, full at :00
+    ("09:00", "10:00", SCALP_CADENCE_MIN, True),   # market open
+    ("10:00", "11:00", SCALP_CADENCE_MIN, True),   # first-hour wind-down
+    ("11:00", "12:00", SCALP_CADENCE_MIN, True),   # late-morning scalp continuation (was a dead 11:30 window)
+    # Windows below never ran: the hard cutoff (11:30, now 12:00) stops the loop first. Kept for reference.
     ("13:30", "14:15", 15, True),   # afternoon: pre-close setups forming
     ("15:15", "16:00", 15, True),   # final window: last 45min entry window
     ("16:15", "20:00", 30, False),  # after-hours: swing prep (Schwab-validated quotes)
@@ -1084,6 +1092,8 @@ def run_full_cycle(root: Path, run_label: str, date_str: str) -> None:
            "--allow-underfilled"]
     print("  [FULL] Launching complete pipeline...")
     try:
+        # 45 min hard limit. Must stay above process_reaper's trade_ai_orchestrator cap (30m):
+        # docs/ops/PIPELINE_TIME_SETTINGS.md, tests/test_pipeline_time_settings_20261022.py.
         subprocess.run(cmd, env=os.environ.copy(), timeout=2700)  # 45 min hard limit
     except subprocess.TimeoutExpired:
         print("  [FULL]            Pipeline timed out after 45 min  -- killing and continuing")
@@ -1165,6 +1175,31 @@ def _best_run_label(now: datetime) -> str:
     if h < 10: return "0900"
     return "1000"
 
+def in_scalp_window(now_min: int) -> bool:
+    return _hm_to_min(SCALP_WINDOW[0]) <= now_min < _hm_to_min(SCALP_WINDOW[1])
+
+
+def _rewarm_trade_ai_cache(root: Path, now_min: Optional[int] = None, popen=None) -> Optional[list]:
+    """Start a non-blocking rewarm of data/runtime/trade_ai_cache.json (the cache /api/v2/trade-ai/scanner
+    serves) after a scalp-window cycle. Shares the */8 warm's lock (`flock -n`): if that warm is already
+    running it recomputes trade_ai itself, so this one simply skips. Proof of work is the cache mtime and the
+    trade-ai-rewarm receipt warm_caches.py writes. Returns the command started, or None when skipped."""
+    m = _now_min() if now_min is None else now_min
+    if not in_scalp_window(m):
+        return None
+    cmd = ["flock", "-n", "/tmp/warm_caches.lock", sys.executable,
+           str(root / "scripts" / "warm_caches.py"), "--only", "trade_ai"]
+    try:
+        log = open(root / "logs" / "trade_ai_rewarm.log", "a")
+        (popen or subprocess.Popen)(cmd, cwd=str(root), env=os.environ.copy(),
+                                     stdout=log, stderr=subprocess.STDOUT)
+        print("  [runner] trade_ai cache rewarm started")
+        return cmd
+    except Exception as e:  # never let a cache warm break the scan loop
+        print(f"  [runner] trade_ai cache rewarm not started: {e}")
+        return None
+
+
 def _current_interval() -> int:
     """Return the current cycle interval in minutes based on time of day."""
     m = _now_min()
@@ -1222,10 +1257,10 @@ def main() -> int:
 
     print(f"\n{'='*60}")
     print("  Trade AI v12  -- Advanced Continuous Runner")
-    print("  Schedule: 4 --6 AM (30min)   * 6 --9 AM (15min)   * 9 --10 AM (10min)   * 10 --11 AM (15min)")
+    print(f"  Schedule: 4 --6 AM (30min)   * {SCALP_WINDOW[0]}-{SCALP_WINDOW[1]} ({SCALP_CADENCE_MIN}min scalp window)")
     print("  Startup FULL run: fires immediately on launch")
     print(f"  Full anchors at: {', '.join(sorted(HOURLY_FULL_ANCHORS))}")
-    print(f"  Self-terminates at {end_hm}")
+    print(f"  Self-terminates at {HARD_CUTOFF_HM}")
     print(f"{'='*60}\n")
 
     # "   "    Startup: run FULL pipeline immediately on launch "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   "   
@@ -1251,9 +1286,9 @@ def main() -> int:
         date_str = now.strftime("%Y-%m-%d")
         time_str = _now_hm()
 
-        # Hard safety net  -- force exit if past 11:30 AM no matter what
-        if now_min >= _hm_to_min("11:30"):
-            print(f"[{time_str}] Hard cutoff 11:30 AM  -- forcing shutdown.")
+        # Hard safety net  -- force exit at the end of the scalp window (12:00 ET) no matter what
+        if now_min >= _hm_to_min(HARD_CUTOFF_HM):
+            print(f"[{time_str}] Hard cutoff {HARD_CUTOFF_HM}  -- forcing shutdown.")
             break
 
         if now_min >= end_min:
@@ -1296,6 +1331,10 @@ def main() -> int:
             import traceback
             print(f"  [ERROR] {e}")
             traceback.print_exc()
+
+        # Rewarm the Trade AI scanner cache now that this cycle wrote trade_ai_scans (scalp window only),
+        # instead of leaving the page on the */8 warm (up to 8 more minutes).
+        _rewarm_trade_ai_cache(root)
 
         # Digest triggers (6:55 AM premarket, 9:25 AM preopen)
         _now = datetime.now()

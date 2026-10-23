@@ -44,6 +44,7 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | Paper trades | **paper_trades** | PROPOSED | `paper_trades` (table) | UNCONSOLIDATED → `scripts/paper_execution_sweep.py` (exists) | host: paper-execution-sweep, alpaca-paper-reconciler · n8n never-list → host | 5 min in market hours | Proposals, Open Trades, Home |
 | Alerts | **alert_events** | PROPOSED | `alert_events` (table) | UNCONSOLIDATED → `scripts/alert_event_writer.py` (exists (wire it; AGENTS.md §13.5 — do not build a second)) | event: the producing lanes | event-driven | Home, Watch, Open Trades, Telegram |
 | Operator messages | **comms_intents** | PROPOSED | `communication_events` (table) | UNCONSOLIDATED → `scripts/lib/comms/client.py` (exists) | host: n8n-comms-intent-consumer (canary) orchestrates; the gateway sends · n8n never-list → host | P1 immediate; P2 held 22:00-07:00 ET to the digest | Telegram, Home |
+| Operator settings and controls | **operator_settings** | PROPOSED | `operator_settings` (table) | UNCONSOLIDATED → `scripts/ops/operator_controls_applier.py` (to_build) | host: operator-controls-applier (to build) · n8n never-list → host | applied in the applier run that follows the operator's confirmed action; history append-only (one row per change: who, when, factor, old and new value) | Ops, Home |
 
 ## Entity by entity
 
@@ -341,6 +342,7 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | `alert_occurrences` (table) | derived | occurrence dedupe view of alert_events | 0 |
 | `open_trade_alerts` (table) | derived | per-desk alert table; writer unknown in the 2026-10-22 inventory — classify before approval | 1 |
 | `watch_alerts` (table) | derived | Watch desk alert view (watch_alerts_eval) | 1 |
+| `runtime/unified_momentum_alerts.jsonl` (file) | history | Gate 4 unified momentum alert ledger (2026-10-22): shadow builds and live thread roots (first message id per chat), one writer scripts/lib/unified_momentum_alert.py; proposed, folds into alert_events at grant | — |
 
 ### Notification intents and deliveries — `comms_intents` (PROPOSED)
 
@@ -362,6 +364,19 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | `telegram_outbox` (table) | derived | second outbox (report_capture); becomes a view | 1 |
 | `runtime/notification_intent_receipts.jsonl` (file) | history | router receipt of the same send | — |
 | `notification_log` (table) | retiring | fourth record of a send; archive + tripwire | 1 |
+
+### Operator settings (Ops → Controls) — `operator_settings` (PROPOSED)
+
+**Operator decision (§17):** Grant operator_settings as the one store of operator settings with history (a row overrides the repository default), written only by the governed host applier.
+
+- **Facts:** operator setting, setting change history, controls action audit
+- **Store of record:** `operator_settings` (table)
+- **Single writer:** UNCONSOLIDATED → `scripts/ops/operator_controls_applier.py` (to_build) — AGENTS.md 19.0.0 §27.2 (PROPOSED): one governed host applier (backup, audit, undo) is the only writer, and it also applies the crontab, the n8n relay live list and guard grants. Today settings are repository defaults and hand-edited host files. Agents never call the applier.
+- **Cadence:** event-driven (operator action on Ops → Controls) · stale after 24 h
+- **Freshness SLA:** applied in the applier run that follows the operator's confirmed action; history append-only (one row per change: who, when, factor, old and new value)
+- **Refresh lane:** host: operator-controls-applier (to build) · n8n never-list → host — operator acts only (AGENTS.md §17, §27.2): never an n8n lane, never an agent
+- **Read path (projection):** `operator_settings` — to_build
+- **Readers:** Ops, Home
 
 ## Field level
 
@@ -435,7 +450,7 @@ These carry no dictionary block yet; their store, writer and read path are in [`
 
 `scripts/api_v2.py`, `scripts/api_v3_*.py`, `scripts/portfolio_server.py`, `scripts/telegram_command_handler.py`
 
-- **Home** — apps/command-center-v3 Home -> /api/v3/cio/home, /api/v2/portfolio
+- **Home** — apps/command-center-v3 Home -> /api/v2/home/do-now (home_do_now projection: the Do now queue and the three numbers), /api/v2/overview and /api/v2/portfolio/performance (header, accounts, movers; holdings.json until a positions_current reader batch covers Home), /api/v3/cio/home
 - **Watch** — Watch desk -> /api/v3/data-broker/watch (watch_intelligence)
 - **Trade AI** — Trade AI scanner -> /api/v2 trade-ai routes
 - **Options** — Trading -> Options -> /api/v2 options routes

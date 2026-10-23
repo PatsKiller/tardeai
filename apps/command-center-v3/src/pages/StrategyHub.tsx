@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { fmt$ } from '../lib/format'
+import { humanizeIdentifier } from '../lib/displayLabels'
 import { BarChart, Bar, XAxis, YAxis, ReferenceLine, ResponsiveContainer, LineChart, Line, Tooltip, Legend, Cell } from 'recharts'
 import type { DrillContext } from '../components/DetailDrawer'
 
@@ -349,12 +350,12 @@ export default function StrategyHub({ onDrill }: Props) {
               {snaps.map((s: any, i: number) => (
                 <div key={i} onClick={() => onDrill({ title: s.strategy_id, subtitle: s.assessment ?? '', endpoint: '/api/v2/plan-vs-performance', rows: [s] })}
                   style={{ display: 'grid', gridTemplateColumns: '1.6fr 0.6fr 0.7fr 0.6fr 0.8fr 1fr', padding: '4px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center' }}>
-                  <span style={{ color: 'var(--text1)', fontWeight: 600 }}>{(s.strategy_id ?? '').replace(/_/g, ' ')}</span>
+                  <span style={{ color: 'var(--text1)', fontWeight: 600 }} title={s.strategy_id ?? undefined}>{humanizeIdentifier(s.strategy_id ?? '')}</span>
                   <span style={{ color: 'var(--text3)' }}>{s.trades_closed ?? 0}</span>
                   <span style={{ color: (s.win_rate ?? 0) >= 50 ? '#22c55e' : '#f59e0b' }}>{s.win_rate != null ? `${Math.round(s.win_rate <= 1 ? s.win_rate * 100 : s.win_rate)}` : '—'}</span>
                   <span style={{ color: (s.avg_r ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{s.avg_r != null ? Number(s.avg_r).toFixed(2) : '—'}</span>
                   <span style={{ color: (s.total_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{fmt$(s.total_pnl ?? 0, 0)}</span>
-                  <span style={{ color: 'var(--text3)', fontSize: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.assessment ?? ''}</span>
+                  <span style={{ color: 'var(--text3)', fontSize: 8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={s.assessment ?? undefined}>{humanizeIdentifier(s.assessment ?? '')}</span>
                 </div>
               ))}
               <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/plan-vs-performance — planned vs actual execution, strategy snapshots, regime fit.</div>
@@ -414,16 +415,18 @@ function StrategyLeaderboard({ data, onDrill, onTab }: any) {
             const rc = (lv.avg_r ?? 0) >= 0 ? '#22c55e' : '#ef4444'
             return <tr key={r.strategy_id} onClick={() => drillRow(r)} title="open strategy detail" style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
               <td style={{ ...td, textAlign: 'left', fontWeight: 700, color: 'var(--text0)' }}>
-                <span style={{ color: r.rank <= 2 ? '#fbbf24' : 'var(--text3)', marginRight: 7 }}>{r.rank <= 2 ? '★' : r.rank}</span>{r.strategy_id}
+                <span style={{ color: r.rank <= 2 ? '#fbbf24' : 'var(--text3)', marginRight: 7 }}>{r.rank <= 2 ? '★' : r.rank}</span><span title={r.strategy_id} data-strategy-id={r.strategy_id}>{humanizeIdentifier(r.strategy_id)}</span>
               </td>
-              <td style={{ ...td, color: rc, fontWeight: 800 }}>{lv.avg_r ?? '—'}</td>
+              <td style={{ ...td, color: lv.avg_r_suspect ? BB.amber : rc, fontWeight: 800 }}
+                title={lv.avg_r_suspect ? `${lv.r_sign_conflicts} of ${lv.n} closed trades store an R multiple whose sign disagrees with their P&L — Live R (and this row's rank) is unreliable until r_multiple is rewritten at close. Win% and Total P&L are from pnl.` : undefined}>
+                {lv.avg_r ?? '—'}{lv.avg_r_suspect ? ' ⚠' : ''}</td>
               <td style={td}>{lv.win_rate ?? '—'}%</td>
               <td style={td}>{lv.wins ?? 0}/{lv.n ?? 0}</td>
               <td style={{ ...td, color: (lv.total_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{lv.total_pnl != null ? fmt$(lv.total_pnl) : '—'}</td>
               <td style={{ ...td, color: CONF[r.confidence] }}>{r.confidence}</td>
               <td style={{ ...td, fontWeight: 800, color: r.excluded ? 'var(--text3)' : (r.tilt > 1.02 ? '#22c55e' : r.tilt < 0.98 ? '#ef4444' : 'var(--text3)') }} title={r.excluded ? 'momentum_scalp — excluded from tilt (pinned 1.0)' : 'allocation tilt: boosts candidate ranking + risk budget'}>{r.tilt != null ? `${r.tilt}×` : '—'}{r.excluded ? ' 🔒' : ''}</td>
               <td style={td}>{bt ? <span title={bt.data_suspect ? 'backtest expectancy out of realistic range — data suspect, ignored in ranking' : ''}>{bt.sample ?? '—'} · {bt.expectancy_r ?? '—'}R {bt.data_suspect ? '⚠' : ''}</span> : '—'}</td>
-              <td style={{ ...td, textAlign: 'left', fontSize: 10.5, color: 'var(--text3)' }}>{sn?.recommendation || sn?.assessment || '—'}</td>
+              <td style={{ ...td, textAlign: 'left', fontSize: 10.5, color: 'var(--text3)' }} title={sn?.recommendation || sn?.assessment || undefined}>{humanizeIdentifier(sn?.recommendation || sn?.assessment) || '—'}</td>
               <td style={{ ...td, textAlign: 'left' }} onClick={e => e.stopPropagation()}>
                 <span style={{ display: 'flex', gap: 5 }}>
                   <a href="/v3/journal" onClick={(e) => { e.preventDefault(); try { sessionStorage.setItem('journal_tab', 'Backtesting') } catch { /* */ } window.location.href = '/v3/journal' }}

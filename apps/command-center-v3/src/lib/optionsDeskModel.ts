@@ -121,8 +121,10 @@ export function sessionLabel(session: unknown): string | null {
 
 export const DEFAULT_CHAIN_CAP_S = 300
 export const DEFAULT_QUOTE_CAP_S = 120
+/** The page's own threshold for calling the open-position monitor stale (a day). */
+export const OPEN_MONITOR_STALE_S = 24 * 3600
 
-export function freshnessChips(proposals: Any | null, ideasRaw: Any[], now: Date = new Date()): Chip[] {
+export function freshnessChips(proposals: Any | null, ideasRaw: Any[], now: Date = new Date(), openPositions: Any | null = null): Chip[] {
   const p = unwrap(proposals) || {}
   const chips: Chip[] = []
   // 1 · Market session — served only.
@@ -192,6 +194,17 @@ export function freshnessChips(proposals: Any | null, ideasRaw: Any[], now: Date
         + (p.coverage?.pending_evaluation_count != null ? ` ${p.coverage.pending_evaluation_count} pending evaluation.` : '') })
   } else {
     chips.push({ key: 'scan', label: 'Scan coverage', glossaryKey: 'fresh.scan_coverage', value: '—', tone: 'neutral', detail: 'not provided by this server version' })
+  }
+  // 6 · Open positions — when the monitor last ran over the broker legs.
+  const op = unwrap(openPositions)
+  if (op?.monitored_at) {
+    const age = Math.max(0, (now.getTime() - new Date(op.monitored_at).getTime()) / 1000)
+    const stale = fin(age) && age > OPEN_MONITOR_STALE_S
+    chips.push({ key: 'open', label: 'Open positions', glossaryKey: 'fresh.open_positions', value: `monitored ${etTime(op.monitored_at, now)}`,
+      tone: stale ? 'warning' : 'success',
+      detail: `${num(op.position_count) ?? arr(op.positions).length} open leg(s); monitor run ${ageText(age)}${stale ? ' (older than a day: marks and P/L may be stale)' : ''}. Status ${op.status || 'not served'}.` })
+  } else {
+    chips.push({ key: 'open', label: 'Open positions', glossaryKey: 'fresh.open_positions', value: '—', tone: 'neutral', detail: 'not provided by this server version' })
   }
   return chips
 }
@@ -301,6 +314,7 @@ export type NextStep =
   | { kind: 'validate'; label: string; proposalId: string }
   | { kind: 'chain'; label: string; proposalId: string }
   | { kind: 'stage'; label: string; source: { directive_id?: number | string; play?: string; contract_guid?: string } }
+  | { kind: 'view'; label: string; view: 'Lifecycle' | 'Open Options' }
   | { kind: 'none'; label: string; reason: string }
 
 export type Scenario = { move: string; stockOnly: string; withThis: string; saved: string }
@@ -334,6 +348,12 @@ export type Idea = {
   tier?: string | null
   sleeve?: string | null
   flags: string[]
+  /** Freshness of the Cost cell's number: the quote (or monitor run) it came from, and its age. */
+  costAge: string
+  /** Open positions only: the monitor's urgency (protect = defend phase, act = harvest phase). */
+  urgency?: OpenUrgency
+  /** Open positions only: the monitor's rule line and run time. */
+  monitor?: { criterion: string; note: string; monitoredAt: string | null; alerts: string[] }
 }
 
 /** Group key: a served `group_key` wins; else symbol·strategy·type·strike(s)·expiry. */
@@ -390,12 +410,34 @@ function nextFor(lane: LaneKey, lead: Any, blockers: Blocker[]): NextStep {
   return { kind: 'none', label: '—', reason: 'No step on this page for this stage.' }
 }
 
+/** The quote behind an idea's numbers and its age now. The contract's own quote_time wins (age
+ *  computed against now); else the served request-time quote_age_s; else the generation-time
+ *  quote_age_seconds (labelled "at generation"); else the chain fetch time. Never invented. */
+export function quoteFreshness(p: Any, now: Date = new Date()): { text: string; seconds: number | null } {
+  const qt = p?.quote_time
+  if (qt) {
+    const t = new Date(qt).getTime()
+    if (!Number.isNaN(t)) {
+      const s = Math.max(0, (now.getTime() - t) / 1000)
+      return { text: `quote ${etTime(qt, now)} · ${ageText(s)}`, seconds: s }
+    }
+  }
+  const served = num(p?.quote_age_s)
+  if (served != null) return { text: `quote ${ageText(served)}`, seconds: served }
+  const gen = num(p?.quote_age_seconds)
+  if (gen != null) return { text: `quote ${ageText(gen)} at generation`, seconds: gen }
+  if (p?.chain_fetched_at) return { text: `chain ${etTime(p.chain_fetched_at, now)} (contract quote time not served)`, seconds: null }
+  return { text: 'quote time not provided by this server version', seconds: null }
+}
+
 /** Liquidity gate result for edge display: false hides the edge. Unknown keeps it with its basis. */
 const liquidityPass = (p: Any): boolean | null => (typeof p?.enterprise?.liquidity?.pass === 'boolean' ? p.enterprise.liquidity.pass : null)
 
 function econFor(members: Any[], contracts: number, shares: number | null, cost: number | null, now: Date): Econ[] {
   const p = members[0]
   const k = num(p.strike), prem = num(p.premium), dte = num(p.dte), spot = num(p.underlying_price)
+  const q = quoteFreshness(p, now)
+  const qNote = (basis?: string) => [basis, q.text].filter(Boolean).join(' · ')
   const qs = p.quote_session ?? p.market_session
   const spotStale = qs && String(qs).toUpperCase() !== 'REGULAR'
   const spotAt = p.underlying_price_time ?? p.price_source?.quote_time ?? p.price_source?.as_of
@@ -404,34 +446,34 @@ function econFor(members: Any[], contracts: number, shares: number | null, cost:
   if (p.strategy === 'protective_put') {
     const floorServed = members.map(m => num(m.floor_value ?? m.economics?.floor_value_after_premium))
     const floor = floorServed.every(fin) ? floorServed.reduce((a, b) => a + (b as number), 0) : null
-    e.push({ label: 'Premium', value: usd2(prem), glossaryKey: 'term.premium', note: p.premium_basis ? `${p.premium_basis} price` : undefined },
-      { label: 'Total cost', value: usd(cost), glossaryKey: 'term.total_cost' },
-      { label: 'Floor', value: usd(floor), glossaryKey: 'term.floor' },
-      { label: 'Days', value: dte != null ? String(dte) : '—', glossaryKey: 'term.dte' })
+    e.push({ label: 'Premium', value: usd2(prem), glossaryKey: 'term.premium', note: qNote(p.premium_basis ? `${p.premium_basis} price` : undefined) },
+      { label: 'Total cost', value: usd(cost), glossaryKey: 'term.total_cost', note: qNote() },
+      { label: 'Floor', value: usd(floor), glossaryKey: 'term.floor', note: floor == null ? undefined : `served per account, summed · ${q.text}` },
+      { label: 'Days', value: dte != null ? String(dte) : '—', glossaryKey: 'term.dte', note: dte != null ? `to ${p.expiration ?? 'expiry'}` : undefined })
   } else if (p.strategy === 'cash_secured_put') {
     const coll = k != null ? cspCollateral(k, contracts) : null
     const poc = num(p.premium_over_collateral_pct) ?? (prem != null && k != null ? premiumOverCollateralPct(prem, k) : null)
     const ann = num(p.simple_annualized_yield_pct) ?? (poc != null && dte != null ? simpleAnnualizedPct(poc / 100, dte) : null)
-    e.push({ label: 'Credit', value: usd2(prem), glossaryKey: 'term.premium', note: p.premium_basis ? `${p.premium_basis} price` : undefined },
-      { label: 'Cash held', value: usd(num(p.economics?.cash_committed) ?? coll), glossaryKey: 'term.collateral' },
-      { label: 'Cost if assigned', value: usd(num(p.economics?.net_cost_if_assigned_total)), glossaryKey: 'term.breakeven', note: 'total, after the premium' },
-      { label: 'Breakeven', value: usd2(num(p.economics?.net_cost_if_assigned_per_share) ?? (k != null && prem != null ? breakevenPerShare('cash_secured_put', k, prem) : null)), glossaryKey: 'term.breakeven' },
-      { label: 'Premium / collateral', value: pct(poc, 2), glossaryKey: 'term.premium_over_collateral' },
-      { label: 'Simple annualized', value: pct(ann, 1), glossaryKey: 'term.simple_annualized', note: 'not repeatable' },
-      { label: 'Days', value: dte != null ? String(dte) : '—', glossaryKey: 'term.dte' })
+    e.push({ label: 'Credit', value: usd2(prem), glossaryKey: 'term.premium', note: qNote(p.premium_basis ? `${p.premium_basis} price` : undefined) },
+      { label: 'Cash held', value: usd(num(p.economics?.cash_committed) ?? coll), glossaryKey: 'term.collateral', note: 'strike × 100 × contracts' },
+      { label: 'Cost if assigned', value: usd(num(p.economics?.net_cost_if_assigned_total)), glossaryKey: 'term.breakeven', note: qNote('total, after the premium') },
+      { label: 'Breakeven', value: usd2(num(p.economics?.net_cost_if_assigned_per_share) ?? (k != null && prem != null ? breakevenPerShare('cash_secured_put', k, prem) : null)), glossaryKey: 'term.breakeven', note: qNote() },
+      { label: 'Premium / collateral', value: pct(poc, 2), glossaryKey: 'term.premium_over_collateral', note: qNote() },
+      { label: 'Simple annualized', value: pct(ann, 1), glossaryKey: 'term.simple_annualized', note: qNote('not repeatable') },
+      { label: 'Days', value: dte != null ? String(dte) : '—', glossaryKey: 'term.dte', note: dte != null ? `to ${p.expiration ?? 'expiry'}` : undefined })
   } else {
     const be = num(p.economics?.breakeven ?? p.breakeven)
-    e.push({ label: isCredit(p.strategy) ? 'Credit' : 'Premium', value: usd2(prem), glossaryKey: 'term.premium' },
-      { label: isCredit(p.strategy) ? 'Total credit' : 'Total cost', value: usd(cost), glossaryKey: 'term.total_cost' },
-      { label: 'Breakeven', value: usd2(be ?? (k != null && prem != null ? breakevenPerShare(p.strategy, k, prem, num(p.short_strike)) : null)), glossaryKey: 'term.breakeven' },
-      { label: 'Days', value: dte != null ? String(dte) : '—', glossaryKey: 'term.dte' })
+    e.push({ label: isCredit(p.strategy) ? 'Credit' : 'Premium', value: usd2(prem), glossaryKey: 'term.premium', note: qNote(p.premium_basis ? `${p.premium_basis} price` : undefined) },
+      { label: isCredit(p.strategy) ? 'Total credit' : 'Total cost', value: usd(cost), glossaryKey: 'term.total_cost', note: qNote() },
+      { label: 'Breakeven', value: usd2(be ?? (k != null && prem != null ? breakevenPerShare(p.strategy, k, prem, num(p.short_strike)) : null)), glossaryKey: 'term.breakeven', note: qNote() },
+      { label: 'Days', value: dte != null ? String(dte) : '—', glossaryKey: 'term.dte', note: dte != null ? `to ${p.expiration ?? 'expiry'}` : undefined })
   }
   const edge = num(p.edge_score)
   const withheld = liquidityPass(p) === false || p.edge_status === 'WITHHELD_LIQUIDITY'
   const conv = p.edge_inputs?.conviction_basis
   e.push({ label: 'Edge', value: withheld || edge == null ? '—' : edge.toFixed(1), glossaryKey: 'term.edge',
     note: withheld ? `hidden: ${p.edge_withheld_reason || 'liquidity gate failed'}` : edge == null ? 'not provided by this server version'
-      : `heuristic, not a return${num(p.edge_liquidity_penalty) ? ` · −${num(p.edge_liquidity_penalty)} liquidity penalty` : ''}${conv ? ` · ${conv}` : ''}` })
+      : `heuristic, not a return${num(p.edge_liquidity_penalty) ? ` · −${num(p.edge_liquidity_penalty)} liquidity penalty` : ''}${conv ? ` · ${conv}` : ''}${p.chain_fetched_at ? ` · inputs from the chain read ${etTime(p.chain_fetched_at, now)}` : ''}` })
   void shares
   return e
 }
@@ -567,9 +609,10 @@ export function buildIdeas(proposals: Any[], now: Date = new Date()): Idea[] {
       checks: checksFor(lead, blockers, lane), model: modelLine(lead), quoteTimes: quoteTimesFor(lead, now),
       memberIds: members.map(m => String(m.id)), raw: members, tier: lead.desk_tier ?? null, sleeve: lead.sleeve ?? null,
       flags: arr(lead.flags).map(f => String(f?.key || '')).filter(Boolean),
+      costAge: quoteFreshness(lead, now).text,
     })
   }
-  return ideas.sort((a, b) => LANE_ORDER.indexOf(b.lane) - LANE_ORDER.indexOf(a.lane) || a.symbol.localeCompare(b.symbol))
+  return actFirstSort(ideas)
 }
 
 const BLOCK_RANK = ['blocker.thesis_missing', 'blocker.thesis_required', 'blocker.low_open_interest', 'blocker.wide_spread', 'blocker.low_volume',
@@ -578,7 +621,7 @@ const rank = (k: string) => { const i = BLOCK_RANK.indexOf(k); return i < 0 ? BL
 
 // ── Plans (standing intents) ─────────────────────────────────────────────────────────────────────
 
-export type PlanBest = { kind: string; glossaryKey: string; contract: string; note: string; cta: NextStep; does?: string; cost?: string; costValue?: number | null }
+export type PlanBest = { kind: string; glossaryKey: string; contract: string; note: string; cta: NextStep; does?: string; cost?: string; costValue?: number | null; quoteAt?: string }
 export type Plan = { symbol: string; goal: string; facts: string; badges: string[]; warnings: string[]; best: PlanBest[]; directiveId?: number | string }
 
 const PLAY_NAME: Record<string, string> = { cash_secured_put: 'Best cash-secured put', covered_call: 'Best covered call', leap_call: 'Best LEAP (stock substitute)' }
@@ -641,6 +684,7 @@ export function buildPlans(intentFeed: Any | null, ideas: Idea[], now: Date = ne
       const costValue = pk === 'leap_call' ? debit : credit
       const cost = costValue == null ? '—' : pk === 'leap_call' ? usd(costValue) : `+${usd(costValue)} credit`
       return { kind: PLAY_NAME[pk], glossaryKey: PLAY_KEY[pk], contract, note, does, cost, costValue,
+        quoteAt: r.quote_time ? `${etTime(r.quote_time, now)} · ${ageText(Math.max(0, (now.getTime() - new Date(r.quote_time).getTime()) / 1000))}` : undefined,
         cta: r.contract_guid ? { kind: 'stage', label: 'Stage ›', source: { directive_id: it.directive_id, play: pk, contract_guid: r.contract_guid } } as NextStep
           : { kind: 'none', label: '—', reason: 'This match has no contract id, so it cannot be staged.' } as NextStep }
     })
@@ -667,17 +711,118 @@ export function planIdeas(plans: Plan[]): Idea[] {
           { mark: '○', text: 'Your decision', glossaryKey: 'lifecycle.you' },
           { mark: '○', text: 'Fresh preflight + per-order 2FA (you, at the broker step)', glossaryKey: 'lifecycle.place' }],
         model: 'not reviewed yet', quoteTimes: b.note.split(' · ').pop() || '', memberIds: [], raw: [], flags: [],
+        costAge: b.quoteAt ? `quote ${b.quoteAt}` : 'quote time not provided by this server version',
       })
     }
   }
   return out
 }
 
+// ── Open positions (Step 7) ──────────────────────────────────────────────────────────────────────
+
+export type OpenUrgency = 'protect' | 'act' | 'calm'
+
+/** Urgency from the monitor's own classification (scripts/options_engine.py:_monitor_position):
+ *  the "defend" phase — or a position the monitor says is no longer working — is protect-first;
+ *  "harvest" (take profit / expiry approaching) is act-first; everything else is calm. */
+export function openUrgency(pos: Any): OpenUrgency {
+  const phase = String(pos?.lifecycle_phase || '').toLowerCase()
+  if (phase === 'defend' || pos?.still_working === false) return 'protect'
+  if (phase === 'harvest') return 'act'
+  return 'calm'
+}
+
+const OPEN_STRATEGY: Record<string, string> = { short_put: 'Short put', short_call: 'Short call', long_put: 'Long put', long_call: 'Long call' }
+
+/** One row per open option leg from /api/v2/options/open-positions (broker legs only). Read-only:
+ *  the next step opens the existing Lifecycle view, where close / roll live. */
+export function openPositionRows(openPositions: Any | null, now: Date = new Date()): Idea[] {
+  const op = unwrap(openPositions)
+  const runAt = op?.monitored_at ?? null
+  const alerts = arr(op?.alerts)
+  const nowYear = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric' }).format(now))
+  return arr(op?.positions).map((pos: Any, n: number) => {
+    const sym = String(pos.underlying || pos.symbol || '').toUpperCase()
+    const typ = String(pos.option_type || '').toLowerCase()
+    const short = String(pos.side || '').toLowerCase() === 'short'
+    const strategy = String(pos.strategy || `${short ? 'short' : 'long'}_${typ}`)
+    const qty = num(pos.qty)
+    const k = num(pos.strike), dte = num(pos.dte), mark = num(pos.mark), entry = num(pos.avg_entry), spot = num(pos.underlying_price)
+    const pnl = num(pos.unrealized_pnl)
+    const ecd = num(pos.entry_credit_debit)
+    const at = pos.monitored_at ?? runAt
+    const atAge = at ? Math.max(0, (now.getTime() - new Date(at).getTime()) / 1000) : null
+    const fresh = at ? `monitored ${etTime(at, now)}${fin(atAge) ? ` · ${ageText(atAge)}` : ''}` : 'monitor time not provided by this server version'
+    const urgency = openUrgency(pos)
+    const typL = typ === 'put' ? 'P' : typ === 'call' ? 'C' : ''
+    const contract = `${shortDate(pos.expiration, nowYear)} $${k ?? '—'}${typL} × ${qty ?? '—'}`
+    const label = OPEN_STRATEGY[strategy] || strategyLabel(strategy)
+    const does = `${short ? 'Sold' : 'Bought'} ${qty ?? '—'} ${typ || 'option'}${qty === 1 ? '' : 's'} at $${k ?? '—'} · ${pos.moneyness || '—'} · ${dte ?? '—'} days left · P/L ${pnl == null ? '—' : usd(pnl, true)}`
+    const criterion = String(pos.action_criterion || '')
+    const action = String(pos.recommended_action || '')
+    const stuck = urgency === 'calm'
+      ? (pos.maturity_note ? String(pos.maturity_note) : `Monitor: ${action || 'hold'}`)
+      : `Monitor says ${action || 'act'}${criterion ? ` (${criterion})` : ''}`
+    const symAlerts = alerts.filter(a => pos.id != null && String(a?.id) === String(pos.id)).map(a => String(a?.message || a?.title || a?.kind || '')).filter(Boolean)
+    const markNote = `chain mid · ${fresh} · provider quote time not served`
+    const econ: Econ[] = [
+      { label: 'Spot', value: usd2(spot), glossaryKey: 'term.spot', note: fresh },
+      { label: 'Mark', value: usd2(mark), glossaryKey: 'term.mark', note: mark == null ? 'no chain mark this run' : markNote },
+      { label: 'Entry', value: usd2(entry), glossaryKey: 'term.entry_price', note: entry == null ? 'fill basis missing' : 'average fill, per share' },
+      { label: 'Unrealized P/L', value: usd(pnl, true), glossaryKey: 'term.unrealized_pnl', note: pnl == null ? String(pos.pnl_unknown_reason || 'not computed') : `at the mark · ${fresh}` },
+      { label: 'Days', value: dte != null ? String(dte) : '—', glossaryKey: 'term.dte', note: pos.expiration ? `to ${pos.expiration}` : undefined },
+      { label: 'Moneyness', value: String(pos.moneyness || '—'), glossaryKey: 'term.moneyness', note: fresh },
+      { label: short ? 'POP OTM' : 'Finish ITM', value: pct(num(short ? pos.pop_otm_pct : pos.pop_itm_pct), 0), glossaryKey: 'term.pop_monitor', note: `model estimate · ${fresh}` },
+      { label: 'Delta', value: num(pos.delta) != null ? (num(pos.delta) as number).toFixed(2) : '—', glossaryKey: 'term.delta', note: fresh },
+    ]
+    if (short) econ.push({ label: 'Premium captured', value: pct(num(pos.profit_captured_pct), 0), glossaryKey: 'term.profit_captured', note: fresh })
+    const checks: Check[] = [
+      urgency === 'calm' ? { mark: '✓', text: `Still working: ${criterion || 'no close/roll rule fired'}`, glossaryKey: 'concept.monitor_rule' }
+        : { mark: '✗', text: `${action || 'Act'}: ${criterion || 'monitor rule fired'}`, glossaryKey: 'concept.monitor_rule' },
+      pnl == null ? { mark: '✗', text: `P/L unknown: ${pos.pnl_unknown_reason || 'not computed'}`, glossaryKey: 'term.unrealized_pnl' }
+        : { mark: '✓', text: `P/L computed from the chain mark (${fresh})`, glossaryKey: 'term.unrealized_pnl' },
+      { mark: '○', text: 'Close or roll: your decision, at the broker with per-order 2FA, then record it in the manual log', glossaryKey: 'lifecycle.open' },
+    ]
+    return {
+      id: `open:${pos.unified_id || pos.id || `${sym}-${n}`}`, groupKey: `open|${pos.id || n}`, lane: 'open' as LaneKey, symbol: sym, strategy,
+      strategyLabel: label, contract, accounts: acctName(pos.account_key) || 'account not served', does,
+      cost: ecd == null ? '—' : ecd > 0 ? `+${usd(ecd)} credit` : usd(-ecd), costValue: ecd == null ? null : Math.abs(ecd),
+      costAge: entry == null ? 'entry basis missing' : `at open · ${fresh}`,
+      stuck, stuckKey: 'concept.monitor_rule', next: { kind: 'view', label: 'Manage in Lifecycle', view: 'Lifecycle' } as NextStep,
+      plain: `${pos.rationale ? `${pos.rationale}. ` : ''}${pos.maturity_note || ''}`.trim() || does,
+      econ, scenarios: [], scenarioNote: '', checks, model: 'not part of the open-position monitor',
+      quoteTimes: fresh, memberIds: [], raw: [pos], flags: [], urgency,
+      monitor: { criterion, note: String(pos.maturity_note || ''), monitoredAt: at, alerts: symAlerts },
+    }
+  })
+}
+
+// ── Act-first ordering ───────────────────────────────────────────────────────────────────────────
+
+const PROTECT_STRATEGIES = new Set(['protective_put', 'collar'])
+
+/** Bucket for the act-first order: protect an open position, then decisions only you can make,
+ *  then open positions to act on, then ideas ready to place, then work owned by others (data,
+ *  research), then plan matches to stage, then calm open positions, then found names. */
+export function actBucket(i: Pick<Idea, 'lane' | 'urgency'>): number {
+  if (i.lane === 'open') return i.urgency === 'protect' ? 0 : i.urgency === 'act' ? 2 : 7
+  return { you: 1, place: 3, data: 4, research: 5, plan: 6, scan: 8 }[i.lane as Exclude<LaneKey, 'open'>] ?? 8
+}
+
+/** Act first: bucket, then protection (insuring held shares) before income or direction, then the
+ *  larger dollar amount, then symbol. */
+export function actFirstSort<T extends Pick<Idea, 'lane' | 'urgency' | 'strategy' | 'costValue' | 'symbol'>>(rows: T[]): T[] {
+  return [...rows].sort((a, b) => actBucket(a) - actBucket(b)
+    || (PROTECT_STRATEGIES.has(b.strategy) ? 1 : 0) - (PROTECT_STRATEGIES.has(a.strategy) ? 1 : 0)
+    || Math.abs(b.costValue ?? 0) - Math.abs(a.costValue ?? 0)
+    || a.symbol.localeCompare(b.symbol))
+}
+
 // ── Lane counts ──────────────────────────────────────────────────────────────────────────────────
 
 export type LaneCount = { key: LaneKey; n: number | null; note: string }
 
-export function laneCounts(proposals: Any | null, ideas: Idea[], intentFeed: Any | null, openPositions: Any | null): LaneCount[] {
+export function laneCounts(proposals: Any | null, ideas: Idea[], intentFeed: Any | null, openPositions: Any | null, now: Date = new Date()): LaneCount[] {
   const p = unwrap(proposals)
   const feed = unwrap(intentFeed)
   const op = unwrap(openPositions)
@@ -685,18 +830,22 @@ export function laneCounts(proposals: Any | null, ideas: Idea[], intentFeed: Any
   const inv = num(p?.coverage?.inventory_count ?? p?.universe_census?.inventory_count)
   const unstaged = num(feed?.unstaged_count)
   const open = num(op?.position_count ?? op?.unified_count) ?? (Array.isArray(op?.positions) ? op.positions.length : null)
+  const ideasAt = p?.snapshot?.generated_at ?? p?.generated_at
+  const asOf = (iso: unknown) => (iso ? `; as of ${etTime(String(iso), now)}` : '; time not provided by this server version')
   return LANES.map(l => {
-    if (l.key === 'scan') return { key: l.key, n: inv, note: inv == null ? 'not provided by this server version' : 'names in inventory, not ideas' }
-    if (l.key === 'plan') return { key: l.key, n: unstaged ?? count('plan'), note: unstaged != null ? `${unstaged} contract matches; the table shows the best per strategy` : 'best plan matches' }
-    if (l.key === 'open') return { key: l.key, n: open, note: open == null ? 'not provided by this server version' : 'open option positions' }
-    return { key: l.key, n: count(l.key), note: 'ideas (accounts merged)' }
+    if (l.key === 'scan') return { key: l.key, n: inv, note: inv == null ? 'not provided by this server version' : `names in inventory, not ideas${asOf(ideasAt)}` }
+    if (l.key === 'plan') return { key: l.key, n: unstaged ?? count('plan'), note: `${unstaged != null ? `${unstaged} contract matches; the table shows the best per strategy` : 'best plan matches'}${asOf(feed?.generated_at ?? feed?.as_of)}` }
+    if (l.key === 'open') return { key: l.key, n: open, note: open == null ? 'not provided by this server version' : `open option legs at the broker; monitored${asOf(op?.monitored_at).replace('; as of', '')}` }
+    return { key: l.key, n: count(l.key), note: `ideas (accounts merged)${asOf(ideasAt)}` }
   })
 }
 
 /** Every glossary key the model can emit, for the coverage test. */
 export const MODEL_GLOSSARY_KEYS: string[] = [
   ...LANES.map(l => l.glossaryKey), ...BLOCKER_KEYS,
-  'fresh.market', 'fresh.stock_quotes', 'fresh.option_chain', 'fresh.holdings', 'fresh.scan_coverage', 'exec.state',
+  'fresh.market', 'fresh.stock_quotes', 'fresh.option_chain', 'fresh.holdings', 'fresh.scan_coverage', 'fresh.open_positions', 'exec.state',
+  'term.mark', 'term.entry_price', 'term.unrealized_pnl', 'term.moneyness', 'term.pop_monitor', 'term.delta', 'term.profit_captured',
+  'concept.monitor_rule', 'concept.act_first', 'lifecycle.open',
   'term.spot', 'term.strike', 'term.premium', 'term.total_cost', 'term.floor', 'term.dte', 'term.collateral', 'term.breakeven',
   'term.premium_over_collateral', 'term.simple_annualized', 'term.edge', 'term.spread_pct',
   'concept.thesis', 'concept.cio_decision', 'concept.standing_plan',

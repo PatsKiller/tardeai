@@ -1,0 +1,22 @@
+{
+  "_note": "One symbol held in two accounts (SPCX: 200 sh Schwab Individual + 700 sh Schwab Rollover IRA, the live book read-only 2026-10-23 from holdings.json). Fixture only; no production call. Movers are the operator's 13:00 ET example.",
+  "top_movers": [
+    {"symbol": "SPCX", "day_change": 1488, "day_change_pct": 1.6, "account": "schwab_rollover_ira", "account_id": "schwab_rollover_ira", "account_label": "Schwab Rollover IRA"},
+    {"symbol": "SCHD", "day_change": -850, "day_change_pct": -0.5, "account": "schwab_rollover_ira", "account_id": "schwab_rollover_ira", "account_label": "Schwab Rollover IRA"},
+    {"symbol": "V", "day_change": -752, "day_change_pct": -2.1, "account": "schwab_roth", "account_id": "schwab_roth_ira", "account_label": "Schwab Roth IRA"},
+    {"symbol": "SPCX", "day_change": 507, "day_change_pct": 1.6, "account": "schwab_taxable", "account_id": "schwab_taxable", "account_label": "Schwab Individual"},
+    {"symbol": "XLB", "day_change": -141, "day_change_pct": -0.3, "account": "schwab_rollover_ira", "account_id": "schwab_rollover_ira", "account_label": "Schwab Rollover IRA"},
+    {"symbol": "SCHG", "day_change": -98, "day_change_pct": -0.1, "account": "schwab_rollover_ira", "account_id": "schwab_rollover_ira", "account_label": "Schwab Rollover IRA"}
+  ],
+  "today_change": 37,
+  "risk_positions": [
+    {"symbol": "SPCX", "account": "schwab_rollover_ira", "account_id": "schwab_rollover_ira", "account_label": "Schwab Rollover IRA", "market_value": 93100, "max_loss": 9310, "has_stop": false, "triggered": false, "stop_price": null, "current_price": 133.0, "environment": "real"},
+    {"symbol": "SPCX", "account": "schwab_taxable", "account_id": "schwab_taxable", "account_label": "Schwab Individual", "market_value": 26600, "max_loss": 2660, "has_stop": false, "triggered": false, "stop_price": null, "current_price": 133.0, "environment": "real"},
+    {"symbol": "SCHD", "account": "schwab_rollover_ira", "account_id": "schwab_rollover_ira", "account_label": "Schwab Rollover IRA", "market_value": 137409, "max_loss": 6870, "has_stop": true, "triggered": false, "stop_price": 25.0, "current_price": 27.5, "environment": "real"},
+    {"symbol": "XLB", "account": "schwab_rollover_ira", "account_id": "schwab_rollover_ira", "account_label": "Schwab Rollover IRA", "market_value": 45000, "max_loss": 4000, "has_stop": true, "triggered": true, "stop_price": 90.0, "current_price": 88.6, "distance_to_stop_pct": -1.6, "environment": "real"}
+  ],
+  "journal_trades": [
+    {"trade_key": "SPCX:schwab_rollover_ira:2026-10-20", "symbol": "SPCX", "account": "schwab_rollover_ira", "account_label": "Schwab Rollover IRA", "open_date": "2026-10-01", "close_date": "2026-10-20", "buy_price": 120.0, "sell_price": 131.0, "shares": 100, "pnl": 1100, "pnl_pct": 9.2, "hold_days": 19},
+    {"trade_key": "SPCX:schwab_taxable:2026-10-21", "symbol": "SPCX", "account": "schwab_taxable", "account_label": "Schwab Individual", "open_date": "2026-10-02", "close_date": "2026-10-21", "buy_price": 121.0, "sell_price": 129.0, "shares": 50, "pnl": 400, "pnl_pct": 6.6, "hold_days": 19}
+  ]
+}

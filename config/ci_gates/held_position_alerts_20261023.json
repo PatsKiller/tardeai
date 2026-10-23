@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "held_position_alerts_20261023",
+  "files": [
+    "tests/test_held_position_alerts_20261023.py"
+  ],
+  "anchor": "HELD_POSITION_ALERTS_20261023",
+  "comment": [
+    "ANCHOR: HELD_POSITION_ALERTS_20261023 — P1 2026-10-23 (NVDA): a moomoo account-opening reward (0.133 sh, $28, no",
+    "basis) paged 'STOP HIT … your plan stop' on a watchlist ENTRY-plan stop. STOP HIT needs a real stop (broker-reported or",
+    "operator-set) and names its owner; held notices name every account by name (never digits); promo/tiny positions get no",
+    "stop/exit page unless opted in (config/held_position_alerts.json); comms editor tags the account on held notices; chart",
+    "URL unique per minute; HIT is alert chrome. Hermetic: fixtures; no DB, network, broker or Telegram."
+  ]
+}

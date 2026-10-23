@@ -6,7 +6,8 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 
 export interface TradingDeskHealthProps {
-  openCount: number
+  /** Open positions from /api/v2/open-trades/intelligence (holdings + paper, write-offs excluded); null while loading. */
+  openCount: number | null
   paperPending: number | null
   brokerQueue: number | null
   readinessLevel?: string | null
@@ -78,11 +79,11 @@ export default function TradingDeskHealth(props: TradingDeskHealthProps) {
     >
       <span style={{ fontSize: 10, fontWeight: 800, color: 'var(--text2)', letterSpacing: 0.3 }}>DESK</span>
       <span
-        title="Automated / open-trade intelligence count (not holdings lots)."
+        title="Open positions across all accounts from /api/v2/open-trades/intelligence (holdings + paper; write-offs excluded)."
         style={chip()}
         data-testid="desk-health-open"
       >
-        {openCount} open
+        {openCount == null ? '—' : openCount} open
       </span>
       {!pureSchwabTabs && (
         <>

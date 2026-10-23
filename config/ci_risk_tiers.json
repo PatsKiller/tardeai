@@ -180,7 +180,8 @@
         "cc_header_truth_v2",
         "cc_v3_boot_no_reload_loop",
         "cc_runtime_harness",
-        "cc_needs_action_20261021"
+        "cc_needs_action_20261021",
+        "home_do_now_20261022"
       ]
     },
     "telegram_routing": {

@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "calibration_shadow_harness_lane_20261022",
+  "files": [
+    "tests/test_calibration_shadow_harness_lane_20261022.py"
+  ],
+  "anchor": "CALIBRATION_SHADOW_HARNESS_LANE_20261022",
+  "comment": [
+    "ANCHOR: CALIBRATION_SHADOW_HARNESS_LANE_20261022 — n8n-native report lane calibration-shadow-harness at stage",
+    "shadow (operator design 2026-10-22): dispatcher row dry_run, allowlist live_arg null + flock, DRAFT health contract",
+    "(operator review required), import closure free of senders / brokers / order placement."
+  ]
+}

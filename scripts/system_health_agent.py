@@ -105,13 +105,19 @@ MONITORED_COMPONENTS = [
     {
         "component": "finviz_screener_runner",
         "display": "Finviz Screener",
-        "schedule": "0 8 * * 1-5",
+        # 2026-10-23: was "0 8 * * 1-5" (stale; the lane moved to 10:00). The registry row is authoritative
+        # (schedule_source); this literal is only the fallback and a test pins it to the registry.
+        "schedule": "0 10 * * 1-5",
+        "schedule_source": "lane_registry",
         "log_file": "finviz_screener.log",
         "monitor_lane_ids": ["finviz-screener-runner"],
         "receipt_lane_id": "finviz-screener-runner",
         "receipt_script": "finviz_screener_runner.py",
         "max_age_min": 1500,
-        "max_runtime_sec": 600,
+        # the 10:00 full --run measured 556-1161 s (2026-10-15..22); 600 left the run-grace shorter than the run
+        "max_runtime_sec": 1500,
+        "failure_debounce_min": 10,
+        "failure_alert_consecutive": 3,
         "critical": True,
         "retry_cmd": ".venv/bin/python scripts/finviz_screener_runner.py --apply",
         "downstream": "scanner input data",
@@ -782,10 +788,11 @@ def _log_event(conn, component, event_type, severity, message, action=None, succ
         log.warning(f"Failed to log event: {e}")
 
 
-def _send_alert(message, urgent=False, *, dedupe_minutes=None):
+def _send_alert(message, urgent=False, *, dedupe_minutes=None, priority=None):
     """Send alert through central router. NEVER bypass.
 
     CRITICAL escalations are P1 intents with dedupe off; WARN escalations are P3, archived for the digest.
+    ``priority`` overrides the non-urgent tier (the recovered note is P2: delivered now, held overnight).
     The return value reports intent acceptance; it cannot establish delivery.
     """
     try:
@@ -796,7 +803,8 @@ def _send_alert(message, urgent=False, *, dedupe_minutes=None):
             if urgent
             else ({"dedupe_minutes": dedupe_minutes} if dedupe_minutes is not None else {})
         )
-        return send_telegram(message, priority=("P1" if urgent else "P3"), producer="system_health_agent", **options)
+        tier = "P1" if urgent else (priority or "P3")
+        return send_telegram(message, priority=tier, producer="system_health_agent", **options)
     except Exception as e:
         log.error(f"Alert send failed: {e}")
         return False
@@ -1011,8 +1019,36 @@ def _check_component_freshness(comp, *, now=None, prev_fire=None, grace_min=15):
         max_age_min=comp.get("max_age_min", 60),
         prev_fire=prev_fire,
         grace_min=grace_min,
+        failure_debounce_min=comp.get("failure_debounce_min"),
+        failure_alert_consecutive=comp.get("failure_alert_consecutive"),
     )
     return dict(metadata, **result)
+
+
+def _resolve_component_schedule(comp, registry=None):
+    """The schedule a component is judged against (2026-10-23).
+
+    A component that declares ``schedule_source: "lane_registry"`` takes its schedule from the ACTIVE
+    ``config/lane_registry.json`` rows of its ``monitor_lane_ids`` (the hardcoded "0 8 * * 1-5" for the Finviz
+    screener outlived the lane's move to 10:00 and put a wrong "Expected" on the page). Any other component, or a
+    registry that cannot be read or yields no ACTIVE schedule, keeps its literal ``schedule`` -- fail back to the
+    reviewed literal, never to "unscheduled". Opt-in per component: other components' literal/registry drift is
+    reported by ``schedule_evidence`` and is not silently adopted here.
+    """
+    if comp.get("schedule_source") != "lane_registry":
+        return comp
+    from lib.system_health_freshness import schedule_intent
+
+    if registry is None:
+        try:
+            registry = json.loads((PROJECT_ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            registry = None
+    intent = schedule_intent(comp, registry)
+    active = [s for row in intent.get("source_intent") or [] if row.get("state") == "ACTIVE" for s in row["schedules"]]
+    if not active:
+        return dict(comp, schedule_resolved_from="literal_fallback:" + str(intent.get("reason")))
+    return dict(comp, schedule=active[0] if len(active) == 1 else active, schedule_resolved_from="lane_registry")
 
 
 def _component_schedule_intent(comp):
@@ -1664,6 +1700,76 @@ def _escalate(comp, check_result, conn):
     )
 
 
+#: A recovered note is owed only for an escalation newer than this (older pages were already answered or moot).
+RECOVERY_NOTICE_LOOKBACK_HOURS = 24
+#: On an OK poll, the component's still-open ESCALATION rows are resolved (lifecycle only; rows are never deleted).
+SQL_RESOLVE_ESCALATIONS = (
+    "UPDATE system_health_events SET lifecycle_state='resolved', resolved_at=NOW(), "
+    "resolved_by='system_health_agent:recovered' "
+    "WHERE component=%s AND event_type='ESCALATION' AND COALESCE(lifecycle_state,'active') <> 'resolved'"
+)
+
+
+def _notify_recovered(comp, check_result, conn):
+    """Send one "recovered" note when a component that was escalated is OK again (2026-10-23).
+
+    Owed when a successful ESCALATION for the component is newer than its latest RECOVERY_NOTICE (within
+    RECOVERY_NOTICE_LOOKBACK_HOURS). One note per escalation: the RECOVERY_NOTICE event is the marker, so the next
+    5-minute poll finds nothing owed. A rejected intent logs RECOVERY_NOTICE_REJECTED and is retried next poll.
+    P2 (delivered now, held in the 22:00-07:00 quiet window, never dropped) with a declared 120-minute content
+    dedupe: informational, not an operator action. Every OK poll also resolves the component's still-open
+    ESCALATION rows (SQL_RESOLVE_ESCALATIONS), which closes the mirrored SIEM P1 incident. Returns a short status
+    string; never raises.
+    """
+    component = comp["component"]
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT MAX(created_at) FILTER (WHERE event_type='ESCALATION' AND success IS TRUE),
+                      MAX(created_at) FILTER (WHERE event_type='RECOVERY_NOTICE')
+            FROM system_health_events
+            WHERE component=%s AND created_at > NOW() - (%s || ' hours')::interval""",
+            [component, str(RECOVERY_NOTICE_LOOKBACK_HOURS)],
+        )
+        row = cur.fetchone() or (None, None)
+        # The SIEM (/api/v2/system/siem -> siem_critical_notify) re-reads every non-resolved ESCALATION row for 14
+        # days and re-pages it as "SIEM P1 <component> PIPELINE_FAILURE" (the message carries OUTPUT_INVALID). A
+        # recovered component's escalations are history: close them so the SIEM incident closes with it.
+        cur.execute(SQL_RESOLVE_ESCALATIONS, [component])
+        resolved = cur.rowcount if isinstance(getattr(cur, "rowcount", None), int) else 0
+        conn.commit()
+    except Exception as exc:
+        log.warning(f"recovery-notice lookup failed for {component}: {type(exc).__name__}")
+        return "lookup_failed"
+    escalated_at, noticed_at = row[0], row[1]
+    if escalated_at is None or (noticed_at is not None and noticed_at >= escalated_at):
+        return "not_owed" + (f"; resolved {resolved}" if resolved > 0 else "")
+    evidence = check_result.get("freshness_evidence") or {}
+    lines = [
+        f"✅ SYSTEM HEALTH: {comp['display']} — recovered",
+        "",
+        f"Component: {component}",
+        f"Expected: {_fmt_schedule(comp.get('schedule', 'unknown'))}",
+        f"Last observed output: {evidence.get('success_at') or evidence.get('activity_at') or 'NOT_MEASURED'}",
+        f"Alerted at: {escalated_at.isoformat() if hasattr(escalated_at, 'isoformat') else escalated_at}",
+        f"Status: {check_result.get('status')}",
+    ]
+    if evidence.get("debounced"):
+        lines.append("Note: latest attempt failed but a success landed inside the debounce window")
+    msg = "\n".join(lines)
+    accepted = bool(_send_alert(msg, urgent=False, dedupe_minutes=120, priority="P2"))
+    _log_event(
+        conn,
+        component,
+        "RECOVERY_NOTICE" if accepted else "RECOVERY_NOTICE_REJECTED",
+        "INFO",
+        msg[:500],
+        action="notification_intent",
+        success=accepted,
+    )
+    return "sent" if accepted else "rejected"
+
+
 def run_health_check(dry_run=True, verbose=False):
     """Run all health checks. Returns full report."""
     conn = _get_conn()
@@ -1731,6 +1837,7 @@ def run_health_check(dry_run=True, verbose=False):
                 log.error("DB connection lost mid-run and could not be re-established")
                 report["error"] = "db_lost"
                 break
+        comp = _resolve_component_schedule(comp)
         component = comp["component"]
         log_file = comp.get("log_file", "")
 
@@ -1808,6 +1915,11 @@ def run_health_check(dry_run=True, verbose=False):
             report["summary"]["locked"] += 1
         else:
             report["summary"]["ok"] += 1
+            if freshness.get("debounced"):
+                check["output_reason"] = freshness.get("reason", "")
+                report["summary"]["debounced"] = report["summary"].get("debounced", 0) + 1
+            if not dry_run and comp.get("critical"):
+                check["recovery_notice"] = _notify_recovered(comp, check, conn)
 
         # 5. Self-heal
         if needs_action and not dry_run:

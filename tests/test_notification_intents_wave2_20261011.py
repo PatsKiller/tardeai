@@ -316,7 +316,7 @@ MIGRATED_WAVE2 = {
     "scripts/cio_bridge_watchdog.py": {"P1"},
     "scripts/send_telegram_proposal_alert.py": {"P1"},            # operator-action, dedupe 0
     "scripts/claude_escalation_handler.py": {"P3"},
-    "scripts/system_health_agent.py": {"P1", "P3"},
+    "scripts/system_health_agent.py": {"P1", "P2", "P3"},  # P2: one "recovered" note per escalation (2026-10-23)
     "scripts/health_agent.py": {"P1", "P3"},
     "scripts/notify_material_change.py": {"P1", "P2"},
     "scripts/research_lane_health.py": {"P3"},

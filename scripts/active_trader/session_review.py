@@ -135,6 +135,12 @@ class ReviewConfig:
 
 # ── bars ──────────────────────────────────────────────────────────────────────
 
+
+try:  # account NAMES on your fills, never account numbers (operator 2026-10-23)
+    from lib.account_display import account_label as _acct_name
+except ImportError:  # pragma: no cover - imported as scripts.lib.*
+    from scripts.lib.account_display import account_label as _acct_name
+
 def _f(v: Any) -> Optional[float]:
     try:
         return None if v is None else float(v)
@@ -431,15 +437,19 @@ def grade(symbol: str, ideal: Mapping[str, Any], journal: Sequence[Mapping[str, 
         ref = f", {_mmss(al.get('lag_s') or 0)} after the {str(al.get('at') or '')[11:16]} {kname}" if al else ""
         after_top = bool(top and bts > top["ts"] + 60)
         best = min(entries, key=lambda e: abs(e["ts"] - bts)) if entries else None
+        acct_name = _acct_name(t.get("account")) if t.get("account") else None
         table.append({"ts": bts, "time": et(bts), "price": t.get("buy_price"), "engine": f"Your buy{ref}",
+                      "account_label": acct_name,
                       "should": "After the top" if after_top else
                       (f"vs ideal {best['price']:.2f} at {et(best['ts'], False)}" if best else ""), "source": "you"})
         if t.get("sell_at"):
             sts = bts + float(t.get("held_s") or 0)
             table.append({"ts": sts, "time": et(sts), "price": t.get("sell_price"),
-                          "engine": f"Your sell, {_money(t.get('pnl'))}", "should": "—", "source": "you"})
+                          "engine": f"Your sell, {_money(t.get('pnl'))}", "should": "—", "source": "you",
+                          "account_label": acct_name})
         you.append({"buy_ts": bts, "buy": t.get("buy_price"), "sell": t.get("sell_price"), "qty": t.get("qty"),
                     "pnl": t.get("pnl"), "after_top": after_top,
+                    "account": t.get("account"), "account_label": acct_name,
                     "vs_best_entry": round(t["buy_price"] - best["price"], 4) if best else None})
     table.sort(key=lambda x: (x["ts"], {"ideal_entry": 0, "engine": 1, "you": 2, "top": 3, "ideal_exit": 4}[x["source"]]))
     ideal_pnl = round(sum(t["pnl_per_share"] for t in trades), 4)
@@ -453,7 +463,9 @@ def grade(symbol: str, ideal: Mapping[str, Any], journal: Sequence[Mapping[str, 
                     "ideal_pnl_per_share": ideal_pnl,
                     "ideal_pnl_pct": round(sum(t["pnl_pct"] for t in trades), 3),
                     "you": you,
-                    "your_pnl": round(sum((x.get("pnl") or 0) for x in you), 2) if you else None},
+                    "your_pnl": round(sum((x.get("pnl") or 0) for x in you), 2) if you else None,
+                    # which account(s) your fills were in, by NAME (operator 2026-10-23)
+                    "your_accounts": list(dict.fromkeys(x["account_label"] for x in you if x.get("account_label")))},
     }
 
 

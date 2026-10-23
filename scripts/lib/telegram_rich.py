@@ -38,6 +38,7 @@ from __future__ import annotations
 import html
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Iterable, Optional
 from urllib.parse import quote
 
@@ -115,7 +116,12 @@ def cc_symbol_url(symbol: str) -> str:
 
 
 def cc_trading_url(symbol: str, *, tab: str = "Scalp") -> str:
-    """Actionable Trading Hub deep-link — GO/scalp facts live here, not on Intelligence."""
+    """Actionable deep-link — GO/scalp facts live here, not on Intelligence.
+
+    The scalp list moved from Trading → Scalp to Active Trader → Scalp (Trading tabs 8 → 4, operator
+    2026-10-22); the old /v3/trading?tab=Scalp link still redirects there. Other tabs stay on Trading."""
+    if tab == "Scalp":
+        return f"{cc_base()}/v3/active-trader?tab=Scalp&symbol={quote(symbol.upper())}"
     return f"{cc_base()}/v3/trading?tab={quote(tab)}&symbol={quote(symbol.upper())}"
 
 
@@ -127,9 +133,18 @@ def yahoo_url(symbol: str) -> str:
     return f"https://finance.yahoo.com/quote/{quote(symbol.upper())}"
 
 
-def chart_image_url(symbol: str) -> str:
-    """Daily candlestick PNG (Finviz). Measured 2026-09-14: HTTP 200 image/png."""
-    return f"https://charts2-node.finviz.com/chart.ashx?cs=l&t={quote(symbol.upper())}&tf=d&s=linear&ct=candle_stick"
+def chart_image_url(symbol: str, *, now: Optional[datetime] = None) -> str:
+    """Daily candlestick PNG (Finviz). Measured 2026-09-14: HTTP 200 image/png.
+
+    P1 2026-10-23: an NVDA page showed a chart dated Dec 11. Finviz returned today's chart for the
+    same URL (measured 2026-10-23 before 17:55Z: header "Oct 23", byte-identical with and without an extra
+    query parameter), so the stale image was Telegram's link-preview cache, which is keyed by URL and
+    shared across Telegram; the URL never changed. ``v`` makes it unique per minute, so every send
+    is fetched fresh.
+    """
+    ts = (now or datetime.now(timezone.utc)).astimezone(timezone.utc).strftime("%Y%m%d%H%M")
+    return (f"https://charts2-node.finviz.com/chart.ashx?cs=l&t={quote(symbol.upper())}"
+            f"&tf=d&s=linear&ct=candle_stick&v={ts}")
 
 
 def symbol_links(symbol: str, *, surface: str = "intelligence") -> str:

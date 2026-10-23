@@ -62,12 +62,32 @@ def _ensure_table(cur) -> None:
                      created_at TIMESTAMPTZ DEFAULT NOW())""")
 
 
-def _audit(cur, action: str, level: str, scope: str, reason: str, confirm: str = "", actor: str = "operator") -> None:
+def _audit(cur, action: str, level: str, scope: str, reason: str, *,
+           confirm_phrase: str = "", actor: str = "operator") -> None:
+    """One audit row, written on the caller's cursor so it commits (or rolls back) together with
+    the state change. ``confirm_phrase`` lands in the ``kill_switch_audit.confirm_phrase`` column.
+
+    2026-10-22: the parameter used to be ``confirm`` while ``disable()`` passed ``confirm_phrase=``,
+    so every correctly-confirmed disable raised TypeError (present since the file was created
+    2026-06-26; no test reached the success path). Keyword-only now, named after the column."""
     cur.execute(
         """INSERT INTO kill_switch_audit (action, level, scope, reason, confirm_phrase, actor)
            VALUES (%s,%s,%s,%s,%s,%s)""",
-        (action, level, scope or "", reason or "", confirm or "", actor),
+        (action, level, scope or "", reason or "", confirm_phrase or "", actor),
     )
+
+
+def _rollback_quietly(conn) -> None:
+    try:
+        conn.rollback()
+    except Exception:
+        pass
+
+
+def expected_disable_phrase(level: str, today: dt.date | None = None) -> str:
+    """The exact, date-bound phrase ``disable()`` requires. ``today`` is the host's local date."""
+    day = (today or dt.date.today()).isoformat()
+    return f"DISABLE {level.upper()} KILL SWITCH {day}"
 
 
 def list_active(*, broker: str | None = None, account_key: str | None = None,
@@ -168,18 +188,23 @@ def enable(level: str, *, scope: str = "", reason: str = "", actor: str = "opera
     conn = _conn()
     if not conn:
         return {"ok": False, "error": "db_unavailable"}
-    cur = conn.cursor()
-    _ensure_table(cur)
-    now = dt.datetime.now(dt.timezone.utc)
-    cur.execute(
-        """INSERT INTO kill_switch_state (level, scope, enabled, reason, enabled_at, updated_at)
-           VALUES (%s,%s,TRUE,%s,%s,NOW())
-           ON CONFLICT (level, scope) DO UPDATE SET enabled=TRUE, reason=EXCLUDED.reason,
-             enabled_at=EXCLUDED.enabled_at, updated_at=NOW()""",
-        (level, scope or "", reason or "operator_enabled", now),
-    )
-    _audit(cur, "enable", level, scope, reason, actor=actor)
-    conn.commit()
+    # State change + audit row are one transaction: both commit, or neither does.
+    try:
+        cur = conn.cursor()
+        _ensure_table(cur)
+        now = dt.datetime.now(dt.timezone.utc)
+        cur.execute(
+            """INSERT INTO kill_switch_state (level, scope, enabled, reason, enabled_at, updated_at)
+               VALUES (%s,%s,TRUE,%s,%s,NOW())
+               ON CONFLICT (level, scope) DO UPDATE SET enabled=TRUE, reason=EXCLUDED.reason,
+                 enabled_at=EXCLUDED.enabled_at, updated_at=NOW()""",
+            (level, scope or "", reason or "operator_enabled", now),
+        )
+        _audit(cur, "enable", level, scope, reason, actor=actor)
+        conn.commit()
+    except Exception as exc:
+        _rollback_quietly(conn)
+        return {"ok": False, "error": f"enable_failed_rolled_back: {type(exc).__name__}: {exc}"}
     try:
         from audit_ledger import record_event
         record_event("kill_switch_change", decision="enabled", reason=reason,
@@ -193,24 +218,30 @@ def enable(level: str, *, scope: str = "", reason: str = "", actor: str = "opera
 def disable(level: str, *, scope: str = "", confirm: str = "", actor: str = "operator") -> dict:
     if level not in LEVELS:
         return {"ok": False, "error": f"unknown level {level!r}"}
-    today = dt.date.today().isoformat()
-    want = f"DISABLE {level.upper()} KILL SWITCH {today}"
-    if level == "global":
-        want = f"DISABLE GLOBAL KILL SWITCH {today}"
+    want = expected_disable_phrase(level)
     if confirm != want:
         return {"ok": False, "error": f"must be exactly: {want!r}"}
     conn = _conn()
     if not conn:
         return {"ok": False, "error": "db_unavailable"}
-    cur = conn.cursor()
-    _ensure_table(cur)
-    cur.execute(
-        """UPDATE kill_switch_state SET enabled=FALSE, disabled_at=NOW(), updated_at=NOW()
-           WHERE level=%s AND scope=%s""",
-        (level, scope or ""),
-    )
-    _audit(cur, "disable", level, scope, "operator_disabled", confirm_phrase=confirm, actor=actor)
-    conn.commit()
+    # State change + audit row are one transaction: both commit, or neither does. The connection
+    # is db_adapter's thread-local one (autocommit off), so without the rollback a failure here
+    # would leave the UPDATE pending for the next unrelated commit on this thread to persist —
+    # a disable with no audit row.
+    try:
+        cur = conn.cursor()
+        _ensure_table(cur)
+        cur.execute(
+            """UPDATE kill_switch_state SET enabled=FALSE, disabled_at=NOW(), updated_at=NOW()
+               WHERE level=%s AND scope=%s""",
+            (level, scope or ""),
+        )
+        rows = getattr(cur, "rowcount", None)
+        _audit(cur, "disable", level, scope, "operator_disabled", confirm_phrase=confirm, actor=actor)
+        conn.commit()
+    except Exception as exc:
+        _rollback_quietly(conn)
+        return {"ok": False, "error": f"disable_failed_rolled_back: {type(exc).__name__}: {exc}"}
     try:
         from audit_ledger import record_event
         record_event("kill_switch_change", decision="disabled", reason=confirm,
@@ -218,7 +249,7 @@ def disable(level: str, *, scope: str = "", confirm: str = "", actor: str = "ope
                      snapshot={"level": level, "scope": scope})
     except Exception:
         pass
-    return {"ok": True, "level": level, "scope": scope, "status": status()}
+    return {"ok": True, "level": level, "scope": scope, "rows_updated": rows, "status": status()}
 
 
 def main() -> int:
@@ -230,12 +261,15 @@ def main() -> int:
     ap.add_argument("--reason", default="")
     ap.add_argument("--confirm", default="")
     args = ap.parse_args()
-    if args.enable:
-        print(json.dumps(enable(args.enable, scope=args.scope, reason=args.reason), indent=2, default=str))
-    elif args.disable:
-        print(json.dumps(disable(args.disable, scope=args.scope, confirm=args.confirm), indent=2, default=str))
-    else:
-        print(json.dumps(status(), indent=2, default=str))
+    if args.enable or args.disable:
+        if args.enable:
+            res = enable(args.enable, scope=args.scope, reason=args.reason)
+        else:
+            res = disable(args.disable, scope=args.scope, confirm=args.confirm)
+        print(json.dumps(res, indent=2, default=str))
+        # A refused or failed change exits non-zero: callers (ops_controls) read rc 0 as APPLIED.
+        return 0 if res.get("ok") else 1
+    print(json.dumps(status(), indent=2, default=str))
     return 0
 
 

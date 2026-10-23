@@ -1,3 +1,4 @@
+import { accountName } from '../../lib/accountLabels'
 import { useEffect, useState, type CSSProperties } from 'react'
 import { fmt$ } from '../../lib/format'
 import SetupFamilyPicker from './SetupFamilyPicker'
@@ -135,7 +136,7 @@ export default function TradeInViewDetail({ trade, onClose, onReplay, onSaved, i
           <div>
             <span style={{ fontSize: 20, fontWeight: 800, fontFamily: 'monospace' }}>{trade.symbol}</span>
             <span style={{ marginLeft: 10, fontSize: 14, fontWeight: 700, color: (trade.pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{fmt$(trade.pnl, 2)}</span>
-            <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 600, color: 'var(--text1)' }}>{trade.na ?? trade.account} · {trade.exitDate ?? 'open'}</span>
+            <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 600, color: 'var(--text1)' }}>{accountName(trade.account ?? trade.na, trade.account_label)} · {trade.exitDate ?? 'open'}</span>
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             {onReplay && (

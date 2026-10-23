@@ -385,9 +385,12 @@ def test_shared_candidates_endpoint_has_no_producer_or_engine_calls(tree, monkey
 
 
 def test_both_views_consume_the_identical_shared_candidate_component():
-    for page in ("TradingHub.tsx", "ActiveTraderHub.tsx"):
-        src = (ROOT / "apps/command-center-v3/src/pages" / page).read_text()
-        assert "<SharedMomentumCandidates" in src
+    # Trade AI renders it inside its Opportunities page (Shared Momentum drawer, Gate 3 2026-10-22).
+    trading = (ROOT / "apps/command-center-v3/src/pages/TradingHub.tsx").read_text()
+    opportunities = (ROOT / "apps/command-center-v3/src/components/tradeai/TradeAiOpportunities.tsx").read_text()
+    assert "<TradeAiOpportunities" in trading and "<SharedMomentumCandidates" in opportunities
+    active = (ROOT / "apps/command-center-v3/src/pages/ActiveTraderHub.tsx").read_text()
+    assert "<SharedMomentumCandidates" in active
     comp = (ROOT / "apps/command-center-v3/src/components/tradeai/SharedMomentumCandidates.tsx").read_text()
     assert "/api/v2/trade-ai/candidates" in comp
     assert "snapshot_id" in comp

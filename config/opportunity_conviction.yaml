@@ -147,3 +147,10 @@ advice:
 cio_review:
   enabled: true
   auto_top_n: 10
+
+# Held conflict (silo audit 2026-10-23, NAVN): when the broker ledger shows a sale newer than the holdings snapshot
+# (positions_context.sold_after_snapshot), the assessment always carries position_conflict and says so in its
+# rationale. suppress_add_hold: true would also turn an ADD/HOLD on that position into WATCH until the sync confirms
+# — that changes what Home's ADD list ranks (AGENTS.md §17), so it stays false until the operator turns it on.
+position_conflict:
+  suppress_add_hold: false

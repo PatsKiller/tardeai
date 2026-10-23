@@ -24,6 +24,7 @@ Cron: every ~3 min.
     .venv/bin/python scripts/process_reaper.py            # advisory unless enabled
     .venv/bin/python scripts/process_reaper.py --dry-run  # force advisory regardless of policy
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,17 +44,51 @@ POLICY_FILE = PROJECT_ROOT / "config" / "process_reaper_policy.json"
 SELF_PID = os.getpid()
 
 # Reapable batch jobs ONLY. (pattern matched against full cmdline.) Anything not here is never touched.
+# TIME SETTINGS — docs/ops/PIPELINE_TIME_SETTINGS.md. Do not lower a max_runtime_min without
+# measured runtime evidence. trade_ai_orchestrator: 30m since 2026-10-22 (20m reaped every
+# market-hours run on 10-21/22 at 1216-1377s); must equal config/process_reaper_policy.json and
+# stay under continuous_runner.py's 2700s hard limit (tests/test_pipeline_time_settings_20261022.py).
 DEFAULT_RULES = [
-    {"name": "trade_ai_orchestrator",         "pattern": "trade_ai_orchestrator.py",         "max_concurrent": 1, "max_runtime_min": 20},
-    {"name": "process_watchlist_agent_jobs",  "pattern": "process_watchlist_agent_jobs.py",  "max_concurrent": 2, "max_runtime_min": 15},
-    {"name": "health_agent",                  "pattern": "scripts/health_agent.py",          "max_concurrent": 1, "max_runtime_min": 8},
-    {"name": "system_health_agent",           "pattern": "system_health_agent.py",           "max_concurrent": 1, "max_runtime_min": 10},
-    {"name": "hermes_embedding_worker",       "pattern": "hermes_embedding_worker.py",        "max_concurrent": 1, "max_runtime_min": 15},
-    {"name": "watchlist_enrichment_sweep",    "pattern": "watchlist_enrichment_sweep.py",     "max_concurrent": 1, "max_runtime_min": 15},
+    {
+        "name": "trade_ai_orchestrator",
+        "pattern": "trade_ai_orchestrator.py",
+        "max_concurrent": 1,
+        "max_runtime_min": 30,
+    },
+    {
+        "name": "process_watchlist_agent_jobs",
+        "pattern": "process_watchlist_agent_jobs.py",
+        "max_concurrent": 2,
+        "max_runtime_min": 15,
+    },
+    {"name": "health_agent", "pattern": "scripts/health_agent.py", "max_concurrent": 1, "max_runtime_min": 8},
+    {"name": "system_health_agent", "pattern": "system_health_agent.py", "max_concurrent": 1, "max_runtime_min": 10},
+    {
+        "name": "hermes_embedding_worker",
+        "pattern": "hermes_embedding_worker.py",
+        "max_concurrent": 1,
+        "max_runtime_min": 15,
+    },
+    {
+        "name": "watchlist_enrichment_sweep",
+        "pattern": "watchlist_enrichment_sweep.py",
+        "max_concurrent": 1,
+        "max_runtime_min": 15,
+    },
 ]
 # Hard never-kill guard: even if a rule pattern somehow matched these, skip. Belt-and-suspenders.
-NEVER_KILL = ("portfolio_server", "api_v2", "ollama", "postgres", "continuous_runner",
-              "process_reaper.py", "uvicorn", "gunicorn", "nginx", "systemd")
+NEVER_KILL = (
+    "portfolio_server",
+    "api_v2",
+    "ollama",
+    "postgres",
+    "continuous_runner",
+    "process_reaper.py",
+    "uvicorn",
+    "gunicorn",
+    "nginx",
+    "systemd",
+)
 
 
 def _load_policy() -> dict:
@@ -86,7 +121,13 @@ def _ps_snapshot() -> list[dict]:
             # genuinely hung proc gets a correct reading on the next 3-min pass and is reaped then).
             if etimes < 0 or etimes > 2_592_000:
                 etimes = 0
-            out.append({"pid": pid, "etimes": etimes, "args": args})
+            try:
+                identity = _proc_identity(pid)
+            except (OSError, ValueError):
+                # A process may exit between ps and procfs reads. Keep the snapshot row for
+                # diagnostics, but it cannot be signalled without a captured identity.
+                identity = None
+            out.append({"pid": pid, "etimes": etimes, "args": args, "identity": identity})
     except Exception:
         pass
     return out
@@ -128,40 +169,106 @@ def _flag(rule: dict, procs: list[dict]) -> tuple[list[dict], list[str]]:
     over = [p for p in matches if p["etimes"] > cap_sec]
     reap = {p["pid"]: p for p in over}
     if over:
-        reasons.append(f"{len(over)} over runtime cap {rule['max_runtime_min']}m "
-                       f"({', '.join(str(p['pid']) + '@' + str(round(p['etimes']/60)) + 'm' for p in over)})")
+        reasons.append(
+            f"{len(over)} over runtime cap {rule['max_runtime_min']}m "
+            f"({', '.join(str(p['pid']) + '@' + str(round(p['etimes'] / 60)) + 'm' for p in over)})"
+        )
     # pile-up among the not-over-runtime ones: keep the oldest max_concurrent, flag newer extras
     healthy = sorted([p for p in matches if p["pid"] not in reap], key=lambda p: -p["etimes"])  # oldest first
     if len(healthy) > max_conc:
         excess = healthy[max_conc:]  # the newest beyond the cap = pile-on duplicates
         for p in excess:
             reap[p["pid"]] = p
-        reasons.append(f"pile-up {len(matches)} > max_concurrent {max_conc} "
-                       f"(reaping {len(excess)} newest dup(s))")
+        reasons.append(f"pile-up {len(matches)} > max_concurrent {max_conc} (reaping {len(excess)} newest dup(s))")
     return list(reap.values()), reasons
 
 
-def _kill(pid: int, enabled: bool) -> str:
+def _proc_identity(pid: int) -> tuple[int, bytes]:
+    """Return Linux process start ticks and raw argv, failing closed if unreadable."""
+    stat = Path(f"/proc/{pid}/stat").read_text()
+    # comm is parenthesized and may itself contain spaces or ')' characters.
+    tail = stat[stat.rfind(")") + 1 :].split()
+    if len(tail) <= 19:
+        raise ValueError("short /proc stat record")
+    start_ticks = int(tail[19])  # field 22; tail starts at field 3
+    cmdline = Path(f"/proc/{pid}/cmdline").read_bytes()
+    if not cmdline:
+        raise ValueError("empty cmdline")
+    return start_ticks, cmdline
+
+
+def _same_identity(target: dict) -> bool:
+    expected = target.get("identity")
+    if expected is None:
+        return False
+    try:
+        return _proc_identity(int(target["pid"])) == expected
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def _open_pidfd(pid: int) -> int | None:
+    opener = getattr(os, "pidfd_open", None)
+    sender = getattr(signal, "pidfd_send_signal", None)
+    if opener is None or sender is None:
+        return None
+    try:
+        return opener(pid, 0)
+    except (OSError, NotImplementedError):
+        # Older kernels and restricted proc environments use the checked fallback below.
+        return None
+
+
+def _send_signal(target: dict, sig: int, pidfd: int | None) -> None:
+    if pidfd is not None:
+        signal.pidfd_send_signal(pidfd, sig, None, 0)
+    else:
+        # Fallback for kernels without pidfd: revalidate immediately before each numeric-PID signal.
+        if not _same_identity(target):
+            raise ProcessLookupError("process identity changed")
+        os.kill(int(target["pid"]), sig)
+
+
+def _kill(target: dict, enabled: bool) -> str:
     if not enabled:
         return "advisory"
+    pid = int(target["pid"])
+    if target.get("identity") is None:
+        return "identity_unavailable"
+    pidfd = _open_pidfd(pid)
     try:
-        os.kill(pid, signal.SIGTERM)
-    except ProcessLookupError:
-        return "already_gone"
-    except Exception as e:
-        return f"sigterm_err:{e}"
-    time.sleep(3)
-    try:
-        os.kill(pid, 0)  # still alive?
-    except ProcessLookupError:
-        return "terminated"
-    except Exception:
-        return "terminated"
-    try:
-        os.kill(pid, signal.SIGKILL)
-        return "killed_sigkill"
-    except Exception as e:
-        return f"sigkill_err:{e}"
+        # pidfd pins the process instance. Also compare starttime + argv to the candidate
+        # snapshot so a process that exec'd into something else is never signalled.
+        if not _same_identity(target):
+            return "identity_changed"
+        try:
+            _send_signal(target, signal.SIGTERM, pidfd)
+        except ProcessLookupError:
+            return "already_gone"
+        except Exception as e:
+            return f"sigterm_err:{e}"
+        try:
+            time.sleep(3)
+            current = _proc_identity(pid)
+        except (ProcessLookupError, FileNotFoundError):
+            return "terminated"
+        except Exception:
+            return "identity_unavailable"
+        if current != target["identity"]:
+            return "identity_changed_after_sigterm"
+        try:
+            _send_signal(target, signal.SIGKILL, pidfd)
+            return "killed_sigkill"
+        except ProcessLookupError:
+            return "terminated"
+        except Exception as e:
+            return f"sigkill_err:{e}"
+    finally:
+        if pidfd is not None:
+            try:
+                os.close(pidfd)
+            except OSError:
+                pass
 
 
 def main():
@@ -173,8 +280,7 @@ def main():
     policy = _load_policy()
     rules = policy.get("rules") or DEFAULT_RULES
     enabled = (not args.dry_run) and (
-        str(os.getenv("REAP_ENABLED", "")).lower() in ("1", "true", "yes")
-        or bool(policy.get("enabled", False))
+        str(os.getenv("REAP_ENABLED", "")).lower() in ("1", "true", "yes") or bool(policy.get("enabled", False))
     )
     procs = _ps_snapshot()
     now = datetime.now(timezone.utc).isoformat()
@@ -185,7 +291,7 @@ def main():
             continue
         actions = []
         for p in to_reap:
-            result = _kill(p["pid"], enabled)
+            result = _kill(p, enabled)
             actions.append({"pid": p["pid"], "age_min": round(p["etimes"] / 60, 1), "result": result})
         findings.append({"rule": rule["name"], "reasons": reasons, "enabled": enabled, "actions": actions})
 
@@ -199,6 +305,7 @@ def main():
         # Alert (advisory or action) — free Telegram lane, best-effort.
         try:
             from telegram_alert import send_telegram
+
             verb = "🔪 Reaped" if enabled else "⚠️ Would reap (advisory)"
             lines = [f"{verb} hung/piled-up batch jobs:"]
             for f in findings:
@@ -215,8 +322,10 @@ def main():
         print(json.dumps({"at": now, "enabled": enabled, "findings": findings}, indent=2))
     else:
         n_reap = sum(len(f["actions"]) for f in findings)
-        print(f"[process_reaper] enabled={enabled} · {len(findings)} rule(s) tripped · "
-              f"{n_reap} proc(s) {'reaped' if enabled else 'flagged (advisory)'}")
+        print(
+            f"[process_reaper] enabled={enabled} · {len(findings)} rule(s) tripped · "
+            f"{n_reap} proc(s) {'reaped' if enabled else 'flagged (advisory)'}"
+        )
 
 
 if __name__ == "__main__":

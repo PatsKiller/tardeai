@@ -1,7 +1,7 @@
 """scripts/n8n_run_executor.py (n8n scheduler-of-record tranche N1, 2026-10-08).
 
 `--once` against a tmp_path ledger and state root, with the REAL scripts/safe_flock.sh wrapper and a fake
-runner script in tmp_path: exit 0 -> RUN_DONE, exit 3 -> RUN_FAILED, a live pid file -> RUN_SKIPPED_LOCK,
+runner script in tmp_path: exit 0 -> RUN_DONE, exit 3 -> RUN_FAILED, a held kernel lock -> RUN_SKIPPED_LOCK,
 a sleeper under a 1 s timeout -> RUN_TIMEOUT, a lane missing from the allowlist -> RUN_REFUSED, and a mode
 whose argument is null -> RUN_REFUSED. Every row ends with a RunReceipt@v1 on the row, in n8n_runs/<run_id>.json
 and in n8n_run_executor_last.json. Never touches the live ledger, crontab or token store."""
@@ -98,9 +98,16 @@ def bench(tmp_path, monkeypatch):
     (tmp_path / "locks").mkdir()
     # 2026-10-10: main applies the §23.11 stage clamp; registered non-dispatcher rows keep the requested mode.
     (code / "config").mkdir()
-    (code / "config" / "lane_registry.json").write_text(json.dumps({"lanes": [
-        {"lane_id": lane["lane_id"], "scheduler": {"kind": "cron", "expression": "0 * * * *"}}
-        for lane in allow["lanes"]]}))
+    (code / "config" / "lane_registry.json").write_text(
+        json.dumps(
+            {
+                "lanes": [
+                    {"lane_id": lane["lane_id"], "scheduler": {"kind": "cron", "expression": "0 * * * *"}}
+                    for lane in allow["lanes"]
+                ]
+            }
+        )
+    )
     allow_path = tmp_path / "allow.json"
     allow_path.write_text(json.dumps(allow))
     ledger_path = tmp_path / "ledger.sqlite"
@@ -186,7 +193,7 @@ def test_nonzero_exit_is_run_failed(bench, monkeypatch):
     assert row["state"] == "RUN_FAILED" and row["exit_code"] == 3 and row["receipt"]["reason"] == "exit_3"
 
 
-def test_a_live_pid_file_on_the_lane_lock_is_run_skipped_lock(bench):
+def test_a_live_pid_file_without_kernel_lock_does_not_skip_the_lane(bench):
     lock = bench["locks"] / "fake.lock"
     sleeper = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
     try:
@@ -198,14 +205,11 @@ def test_a_live_pid_file_on_the_lane_lock_is_run_skipped_lock(bench):
         sleeper.kill()
         sleeper.wait()
     row = _row(bench, "run-lock0-0000000001")
-    assert row["state"] == "RUN_SKIPPED_LOCK" and row["exit_code"] == 0
+    assert row["state"] == "RUN_DONE" and row["exit_code"] == 0
     r = row["receipt"]
-    assert (
-        r["lock_skipped"] is True
-        and r["reason"] == "safe_flock_pid_running"
-        and "safe_flock: skipped" in r["stderr_tail"]
-    )
-    assert r["output_signal_mtime_after"] is None  # exit 0, nothing ran: visible on the receipt
+    assert r["lock_skipped"] is False
+    assert r["reason"] != "safe_flock_pid_running"
+    assert r["output_signal_mtime_after"] is not None  # command ran despite unrelated live PID metadata
 
 
 def test_flock_kind_reuses_a_cron_style_lock_and_reports_conflict_as_skipped(bench):
@@ -343,16 +347,26 @@ def _registry(bench, lanes):
 def test_stage_clamp_runs_a_shadow_lane_dry_whatever_was_requested(bench):
     """AGENTS.md §23.11 (added 2026-10-10): the executor clamps the mode to the row's stage; canary/cutover keep it."""
     disp = {"kind": "n8n", "expression": "dispatcher", "cadence": "*/5 * * * *"}
-    _registry(bench, [{"lane_id": "fake-lane", "scheduler": {**disp, "stage": "shadow"}},
-                      {"lane_id": "flock-lane", "scheduler": {**disp, "stage": "cutover"}}])
+    _registry(
+        bench,
+        [
+            {"lane_id": "fake-lane", "scheduler": {**disp, "stage": "shadow"}},
+            {"lane_id": "flock-lane", "scheduler": {**disp, "stage": "cutover"}},
+        ],
+    )
     _request(bench["ledger"], "run-clamp-0000000001", "fake-lane", "live", T0)
     _request(bench["ledger"], "run-clamp-0000000002", "flock-lane", "live", T0 + 1)
     assert _once(bench) == 0
     shadow = _row(bench, "run-clamp-0000000001")["receipt"]
     assert shadow["mode"] == "dry_run" and shadow["requested_mode"] == "live" and shadow["argv"][-1] == "--dry-run"
-    assert shadow["stage_clamp"] == {"requested_mode": "live", "effective_mode": "dry_run", "stage": "shadow",
-                                     "clamped": True, "reason": "stage_shadow"}
-    assert "fake lane mode=--dry-run" in shadow["stdout_tail"]                     # the child ran dry
+    assert shadow["stage_clamp"] == {
+        "requested_mode": "live",
+        "effective_mode": "dry_run",
+        "stage": "shadow",
+        "clamped": True,
+        "reason": "stage_shadow",
+    }
+    assert "fake lane mode=--dry-run" in shadow["stdout_tail"]  # the child ran dry
     cut = _row(bench, "run-clamp-0000000002")["receipt"]
     assert cut["mode"] == "live" and cut["argv"][-1] == "--apply" and cut["stage_clamp"]["reason"] == "stage_cutover"
 
@@ -367,8 +381,10 @@ def test_stage_clamp_fails_closed_to_dry_run_when_the_stage_is_unknown(bench, re
     elif registry == "no_row":
         _registry(bench, [])
     elif registry == "bad_stage":
-        _registry(bench, [{"lane_id": "fake-lane", "scheduler": {"kind": "n8n", "expression": "dispatcher",
-                                                                  "stage": "Cutover "}}])
+        _registry(
+            bench,
+            [{"lane_id": "fake-lane", "scheduler": {"kind": "n8n", "expression": "dispatcher", "stage": "Cutover "}}],
+        )
     else:
         _registry(bench, [{"lane_id": "fake-lane", "scheduler": {"kind": "n8n", "expression": "dispatcher"}}])
     _request(bench["ledger"], "run-unkno-0000000001", "fake-lane", "live", T0)
@@ -381,18 +397,20 @@ def test_stage_clamp_rules():
     from scripts.lib import lane_stage_clamp as S
 
     disp = {"kind": "n8n", "expression": "dispatcher"}
-    rows = [{"lane_id": "sh", "scheduler": {**disp, "stage": "shadow"}},
-            {"lane_id": "ca", "scheduler": {**disp, "stage": "canary"}},
-            {"lane_id": "cu", "scheduler": {**disp, "stage": "cutover"}},
-            {"lane_id": "wf", "scheduler": {"kind": "n8n", "expression": "722fac0e043ea5c4"}},   # lane-specific wf
-            {"lane_id": "cron", "scheduler": {"kind": "cron", "expression": "0 * * * *", "stage": "shadow"}}]
+    rows = [
+        {"lane_id": "sh", "scheduler": {**disp, "stage": "shadow"}},
+        {"lane_id": "ca", "scheduler": {**disp, "stage": "canary"}},
+        {"lane_id": "cu", "scheduler": {**disp, "stage": "cutover"}},
+        {"lane_id": "wf", "scheduler": {"kind": "n8n", "expression": "722fac0e043ea5c4"}},  # lane-specific wf
+        {"lane_id": "cron", "scheduler": {"kind": "cron", "expression": "0 * * * *", "stage": "shadow"}},
+    ]
     eff = {lane: S.clamp_mode(lane, "live", rows)["effective_mode"] for lane in ("sh", "ca", "cu", "wf", "cron", "x")}
     assert eff == {"sh": "dry_run", "ca": "live", "cu": "live", "wf": "live", "cron": "dry_run", "x": "dry_run"}
     assert S.clamp_mode("cu", "live", None)["reason"] == "registry_unreadable"
     assert all(S.clamp_mode(lane, "dry_run", rows)["effective_mode"] == "dry_run" for lane in ("sh", "cu", "x"))
     assert [S.live_rerun_allowed(lane, rows) for lane in ("sh", "ca", "cu", "wf")] == [False, False, True, False]
     assert S.live_rerun_allowed("cu", None) is False
-    assert S.load_stage_rows(ROOT / "config" / "lane_registry.json")      # the shipped registry parses
+    assert S.load_stage_rows(ROOT / "config" / "lane_registry.json")  # the shipped registry parses
 
 
 def test_market_gate_and_tokens_resolve_in_build_argv(tmp_path):

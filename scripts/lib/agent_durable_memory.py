@@ -53,6 +53,12 @@ from scripts.lib.agent_memory_provider import (
 
 STATUS_ADMITTED = "ADMITTED"
 
+# Bounded reads of the append-only receipt logs (2026-10-23): aif_memory_retrievals.jsonl is
+# never rotated (574 MB / 1,066,782 lines on 2026-10-23) and was read whole per request.
+# See scripts/lib/jsonl_bounded.py and docs/ops/SERVER_MEMORY_SPIKES_2026-10-23.md.
+from scripts.lib.jsonl_bounded import count_jsonl_lines, tail_jsonl_lines  # noqa: E402,F401
+
+
 TTL_DAYS = {
     "OPERATOR_EXPLICIT_PREFERENCE": 365,
     "OPERATOR_INFERRED_PREFERENCE": 180,
@@ -361,12 +367,10 @@ class DurableJsonlMemoryProvider(LocalTestMemoryProvider):
     def tail_jsonl(self, path: Path, n: int = 20) -> list[dict[str, Any]]:
         if not path.is_file():
             return []
-        try:
-            lines = [ln for ln in path.read_text(encoding="utf-8", errors="replace").splitlines() if ln.strip()]
-        except OSError:
-            return []
+        # Bounded backwards read: the retrievals log is hundreds of MB (never rotated).
+        lines = tail_jsonl_lines(path, n)
         out: list[dict[str, Any]] = []
-        for line in lines[-n:]:
+        for line in lines:
             try:
                 rec = json.loads(line)
             except json.JSONDecodeError:

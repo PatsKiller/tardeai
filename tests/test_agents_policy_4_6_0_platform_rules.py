@@ -28,6 +28,18 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from scripts import check_agents_policy_state as STATE  # noqa: E402
 
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+# AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+# checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+# the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+from tests.test_agents_policy_20_0_0_agent_operations import pre_20_0_0, pre_20_0_0_adapter  # noqa: E402
+
+AGENTS = pre_20_0_0(AGENTS)
+# AGENTS.md 19.0.0 (§27.5): once 19.0.0 is ACTIVE its four clause edits in §17, §23.14 and §25.4 are undone before
+# the pins below are checked; tests/test_agents_policy_19_0_0_broker_read_controls.py pins those edits and the
+# post-ratification digests. While 19.0.0 is PROPOSED the text is unchanged.
+from tests.test_agents_policy_19_0_0_broker_read_controls import pre_19_0_0  # noqa: E402
+
+AGENTS = pre_19_0_0(AGENTS)
 TOKEN = "APPROVE_AGENTS_POLICY_4_6_0"
 
 SECTION_23_14_SHA256 = "bb8722f69b8e54a8582011bdbe266d55ea7c2c0c6b120d123a1d4e43394311e7"
@@ -180,7 +192,11 @@ def test_banner_states_the_numbering_dependency_and_the_class_reasoning():
     # 17.0.0 (PROPOSED, header block set by its patch) supersedes the last ACTIVE version: 15.0.0 while 16.0.0 is
     # PROPOSED, 16.0.0 once it is ratified.
     # 18.0.0 (PROPOSED, header block set by its operator-applied patch) supersedes 17.0.0 (ACTIVE, #1914).
-    allowed = {(17, 0, 0): {"15.0.0", "16.0.0"}, (18, 0, 0): {"17.0.0"}}.get(
+    # 19.0.0 (PROPOSED, operator-applied patch) supersedes 18.0.0 (ACTIVE, #1931).
+    # 20.0.0 (PROPOSED, operator-applied patch) supersedes 19.0.0 (ACTIVE, #1962).
+    # 20.1.0 (PROPOSED, MINOR, operator-applied patch) supersedes 20.0.0 (ACTIVE, #2013).
+    allowed = {(17, 0, 0): {"15.0.0", "16.0.0"}, (18, 0, 0): {"17.0.0"}, (19, 0, 0): {"18.0.0"},
+               (20, 0, 0): {"19.0.0"}, (20, 1, 0): {"20.0.0"}}.get(
         _version(), {supersedes.get(_version(), "5.1.0")})
     assert _control("Supersedes") in allowed
     assert f"{TOKEN} <pr_number> <head_sha>" in f
@@ -212,7 +228,7 @@ def test_23_14_is_byte_identical():
 def test_claude_md_adapter_restates_no_new_rule():
     # The adapter repeats §0 verbatim, so once 5.0.0 is ratified it carries the rule 2 sentence; not a new rule.
     text = (
-        (ROOT / "CLAUDE.md").read_text(encoding="utf-8").replace(RULE_2_EXCEPTION_5_0_0, "").replace(RULE_2_EXCEPTION_14_0_0, "")
+        pre_20_0_0_adapter((ROOT / "CLAUDE.md").read_text(encoding="utf-8")).replace(RULE_2_EXCEPTION_5_0_0, "").replace(RULE_2_EXCEPTION_14_0_0, "")
         .replace(RULE_6_EXCEPTION_15_0_0, "")
     )
     assert "n8n" not in text.lower() and "§24" not in text
