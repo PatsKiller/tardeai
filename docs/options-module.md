@@ -488,8 +488,46 @@ rendered key has a glossary entry; the desk does not fetch or POST). E2E: `e2e/o
 **No-op controls disabled with the reason:** Request scan (when `scan_capacity.status` is `DISABLED`),
 position Close/Roll, and Skip on proposal cards.
 
-The earlier views (Lifecycle, Proposals, All coverage, Open Options, Strategy Overview, Options Trends)
-stay as secondary tabs for rollback and power use until the operator retires them.
+**2026-10-22 (later) — Lifecycle desk completion (Gate 3 `Options.dc.html`, after the #1924/#1925/#1947
+accuracy audit).** Frontend only; it reads existing endpoints and adds no projection or route.
+
+- **Step 7 is real.** Every open broker leg from `GET /api/v2/options/open-positions` (paper legs are excluded
+  by the server) is a row in the table: contract, what it does (side · moneyness · days left · P/L), cost at
+  open (credit received or debit paid), and the monitor's own rule as "Stuck on"
+  (`recommended_action` + `action_criterion` from `scripts/options_engine.py:_monitor_position`). The detail
+  panel shows spot, mark, entry, unrealized P/L, days, moneyness, POP OTM / finish ITM, delta and premium
+  captured, each with the monitor run time, and "What the monitor says" instead of the place checklist.
+  Its next step, **Manage in Lifecycle**, opens the existing Lifecycle view; nothing is sent from the desk.
+- **Act first.** The table order is: open legs the monitor says to defend (`lifecycle_phase = defend` or
+  `still_working = false`), your decisions, open legs to harvest, ready to place, needs data, needs research,
+  plan matches to stage, calm open legs. Inside a group, protection (protective put, collar) comes before
+  income or direction, then the larger dollar amount. An **Act first** strip above the table lists the
+  defend/harvest legs (shown only when there are any). Model: `optionsDeskModel.ts:actFirstSort`.
+- **Freshness on every number.** Under every cost is the time of the quote it came from (the contract's own
+  `quote_time` with its age now; else the served `quote_age_s`; else the generation-time
+  `quote_age_seconds`, labelled; else the chain fetch time), or the monitor run for an open leg. Economics
+  tiles carry the same note, lifecycle counts state their as-of, and a sixth chip shows when the monitor last
+  ran (warning after a day).
+- **Tooltips say what the server does.** New glossary entries (mark, entry, unrealized P/L, moneyness,
+  POP OTM / finish ITM, premium captured, monitor rule, act first, open-positions freshness) cite
+  `scripts/options_engine.py:_monitor_position` / `monitor_positions` and state the thresholds exactly,
+  including that the long-leg cut-loss rule compares against half of one contract's entry premium and is not
+  scaled by quantity.
+- **Classic view, one release.** In desk mode the old tab strip is hidden. `?tab=Options&view=classic` opens
+  the previous views on Proposals (the pre-Gate-3 default); `?otab=<view>` deep links (Defense's
+  `otab=Lifecycle`) still land on that view. A "← Lifecycle desk" button returns.
+- **`?symbol=X`** pre-filters the desk (visible, removable filter). Open Trades → "Protective put ideas" now
+  passes the symbol; `tradingDeepLink.ts` keeps `symbol` for Options and drops `view` when leaving it.
+
+Known gap: the monitor stamps no provider quote time on an open leg's mark, so the page shows the monitor
+run time and says the provider time is not served. Adding it is a change to the monitor writer, not a
+read-only projection, so it is left for a separate change.
+
+Tests (in `npm run build`): `optionsLifecycleDesk.test.ts` on the captured proposals fixture plus a synthetic
+open-positions fixture (`optionsOpenPositions.fixture.ts`, shaped exactly like `_monitor_position` output
+because the live book had no open legs on 2026-10-22); `tradingDeepLink.test.ts` (symbol/view params).
+E2E: `e2e/options-lifecycle-desk.spec.ts` (order, freshness lines, act-first strip, open-leg detail, Manage
+in Lifecycle → classic, `?view=classic`, `?otab=Lifecycle`, `?symbol=`, no writes).
 
 Earlier tabs: **Proposals**, **Open Positions**, **Strategy Overview**
 
