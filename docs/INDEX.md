@@ -1748,8 +1748,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/AGENTS_GUARD_HOOK.md` | AGENTS.md guard hook for Claude Code (PreToolUse) |
 | `docs/ops/AGENT_CLAIM_BOARD.md` | Agent claim board — who is working on which files |
 | `docs/ops/AGENT_START_HERE.md` | Agent start here — any vendor (Claude, Codex, Cursor) |
-| `docs/ops/AT_TRADEAI_ALIGNMENT_2026-10-23.md` | Active Trader ↔ Trade AI alignment — 2026-10-23 |
 | `docs/ops/ASK_THE_CIO_RESEARCH.md` | Ask the CIO — Phase 9: the research pipeline |
+| `docs/ops/AT_TRADEAI_ALIGNMENT_2026-10-23.md` | Active Trader ↔ Trade AI alignment — 2026-10-23 |
 | `docs/ops/AUTONOMOUS_ADVISORY_LOOP_CLOSURE_RESULT_2026-08-23.md` | Trade AI Autonomous Advisory Loop Closure Result |
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Autonomous Advisor Session Closeout — 2026-08-20 |
 | `docs/ops/AUTONOMY_OPERATOR_RUNBOOK.md` | Autonomy Operator Runbook (READ_ONLY_ADVISORY) |
@@ -2024,6 +2024,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/SYMBOL_THESIS_CANARY_DRY_RUN_2026-08-20.md` | Bounded canary dry-run — SCHG / CSCO / ANET |
 | `docs/ops/SYMBOL_THESIS_JOB_REPAIR_2026-10-09.md` | Symbol-thesis job repair (2026-10-09) |
 | `docs/ops/TELEGRAM_FEED_REMEDIATION_2026-08-22.md` | Telegram feed audit — P0 gates (freeze window) + P1 queue |
+| `docs/ops/TRADEINVIEW_JOURNEY_2026-10-22.md` | TradeInView — the per-trade journey (2026-10-22) |
 | `docs/ops/TRADE_AI_M2_MEMORY_SUBSTRATE_BENCHMARK_2026-08-24.md` | M2 memory substrate benchmark |
 | `docs/ops/TRADE_AI_M3_MEMORY_CONSOLIDATION_2026-08-24.md` | M3 memory consolidation |
 | `docs/ops/TRADE_AI_M4_CONTEXT_ENVELOPE_AND_CC_SPEC_2026-08-24.md` | M4 ContextEnvelope@v2 + Command Center spec |
@@ -2034,9 +2035,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/TRADE_AI_R10_MEMORY_AUTONOMOUS_AGENT_CLOSEOUT_2026-08-24.md` | R10.2 closeout (in progress) |
 | `docs/ops/TRADE_AI_RUN_AGE_AND_POPULATIONS_2026-10-23.md` | Trade AI: the run's age and its two populations (2026-10-23) |
 | `docs/ops/TRADE_AI_SCALP_5MIN_2026-10-09.md` | Trade-AI scalp scan every 5 minutes, one feed for both engines, runner GO with catalyst (2026-10-09) |
-| `docs/ops/TRADING_PORTFOLIO_STRIP_2026-10-23.md` | Trading page portfolio strip restored (2026-10-23) |
 | `docs/ops/TRADE_AI_SCALP_CADENCE_2026-10-23.md` | Trade AI scalp cadence: 5 minutes from 06:00 to 12:00 ET (2026-10-23) |
-| `docs/ops/TRADEINVIEW_JOURNEY_2026-10-22.md` | TradeInView — the per-trade journey (2026-10-22) |
+| `docs/ops/TRADING_PORTFOLIO_STRIP_2026-10-23.md` | Trading page portfolio strip restored (2026-10-23) |
 | `docs/ops/TRANSFERSON_UNIVERSE_CANONICAL_CLOSEOUT_2026-08-25.md` | Transferson canonical universe — local closeout |
 | `docs/ops/TRANSFERSON_UNIVERSE_LIVE_ACCEPTANCE_GATE_2026-08-25.md` | Transferson canonical universe — live CURRENT/DB acceptance gate |
 | `docs/ops/VALIDATED_LEARNING_REMEDIATION.md` | Validated learning remediation: release and operations |
