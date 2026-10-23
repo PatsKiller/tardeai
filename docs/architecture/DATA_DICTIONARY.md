@@ -45,6 +45,7 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | Alerts | **alert_events** | PROPOSED | `alert_events` (table) | UNCONSOLIDATED → `scripts/alert_event_writer.py` (exists (wire it; AGENTS.md §13.5 — do not build a second)) | event: the producing lanes | event-driven | Home, Watch, Open Trades, Telegram |
 | Operator messages | **comms_intents** | PROPOSED | `communication_events` (table) | UNCONSOLIDATED → `scripts/lib/comms/client.py` (exists) | host: n8n-comms-intent-consumer (canary) orchestrates; the gateway sends · n8n never-list → host | P1 immediate; P2 held 22:00-07:00 ET to the digest | Telegram, Home |
 | Operator settings and controls | **operator_settings** | PROPOSED | `operator_settings` (table) | UNCONSOLIDATED → `scripts/ops/operator_controls_applier.py` (to_build) | host: operator-controls-applier (to build) · n8n never-list → host | applied in the applier run that follows the operator's confirmed action; history append-only (one row per change: who, when, factor, old and new value) | Ops, Home |
+| Operator questions to the CIO (Ask the CIO) | **cio_asks** | PROPOSED | `data/cio/cio_ask_events.jsonl` (file) | UNCONSOLIDATED → `scripts/lib/cio_ask_store.py` (built_inert_until_grant) | host: cio-ask-reanswer (proposed, shadow) | appended in the request that answers the question; re-answers within one re-answer lane run of the triggering event | CIO Desk, My questions, Telegram (CIO bot), Watch, Home |
 
 ## Entity by entity
 
@@ -377,6 +378,19 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 - **Refresh lane:** host: operator-controls-applier (to build) · n8n never-list → host — operator acts only (AGENTS.md §17, §27.2): never an n8n lane, never an agent
 - **Read path (projection):** `operator_settings` — to_build
 - **Readers:** Ops, Home
+
+### Ask the CIO — questions, answer versions, tracking (ledger + thread projection) — `cio_asks` (PROPOSED)
+
+**Operator decision (§17):** Grant cio_asks as the one store of operator questions to the CIO and their answer versions, written only by scripts/lib/cio_ask_store.py, read through the cio_ask_threads projection; every security-level event is also appended to CIO memory keyed by security_guid.
+
+- **Facts:** operator question, answer version, ask thread, ask tracking change, ask channel link, ask research cost
+- **Store of record:** `data/cio/cio_ask_events.jsonl` (file)
+- **Single writer:** UNCONSOLIDATED → `scripts/lib/cio_ask_store.py` (built_inert_until_grant) — Append-only, idempotent (deterministic event_id). A projection, not a silo: every event about a security is also appended to CIO memory (SecurityResearchSpine, silo=cio, keyed by security_guid) by scripts/lib/cio_ask_memory.py; per-security judgment stays on the CIO prospect record. Private entities (no listed security) are keyed by entity_guid here and never get a ticker. Postgres-portable shape (table cio_ask_events) in docs/ops/ASK_THE_CIO.md.
+- **Cadence:** event-driven (operator ask on CC or Telegram; material-change re-answer) · stale after 168 h
+- **Freshness SLA:** appended in the request that answers the question; re-answers within one re-answer lane run of the triggering event
+- **Refresh lane:** host: cio-ask-reanswer (proposed, shadow) — the ask itself is operator-initiated; only re-answers are scheduled (n8n lane proposed at shadow)
+- **Read path (projection):** `cio_ask_threads` — to_build
+- **Readers:** CIO Desk, My questions, Telegram (CIO bot), Watch, Home
 
 ## Field level
 
