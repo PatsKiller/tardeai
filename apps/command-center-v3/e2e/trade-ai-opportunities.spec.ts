@@ -50,7 +50,7 @@ test('analysis panel shows served Level 2 entry signals; cards view works', asyn
   await page.getByRole('button', { name: 'Show analysis for BHVN' }).click({ timeout: 60_000 })
   const panel = page.getByTestId('ta-analysis')
   await expect(panel).toContainText('BHVN')
-  await expect(page.getByTestId('ta-l2-state')).toHaveText('APPROACHING')
+  await expect(page.getByTestId('ta-l2-state')).toHaveText('AT approaching')
   await expect(page.getByTestId('l2-spread')).toHaveAttribute('data-on', 'true')
   await expect(page.getByTestId('l2-volume_acceleration')).toHaveAttribute('data-on', 'true')
   await expect(page.getByTestId('l2-tape_flip')).toHaveAttribute('data-on', 'null')
@@ -73,3 +73,49 @@ test('narrow viewport: no horizontal page overflow', async ({ page }) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
   expect(overflow).toBeFalsy()
 })
+
+// 2026-10-23 alignment (SAIQ): an unverified headline is labelled with the SHARED verdict, the readiness block
+// says what is missing, and the AT veto is named as AT's (not "L2 veto · 0/5") — at desktop and 412 px.
+const SAIQ_ROW = {
+  symbol: 'SAIQ', decision: 'MANUAL_REVIEW', float_m: '2.21', volume: 2025083, rvol: 12.84, change_pct: '25.76',
+  catalyst: 'WISeSat.Space and SEALSQ Advance Satellite Cybersecurity Hardening', catalyst_source: 'yahoo_finance',
+  catalyst_verified: false, catalyst_confidence: 0,
+  setup_readiness: {
+    schema: 'SetupReadiness@v1', status: 'NOT_READY', ready: false, passed: 4, required: 5, blockers: [],
+    driven_by: [{ id: 'rvol', label: 'RVOL', status: 'PASSED', value_text: '12.8x', rule: '≥ 5x' },
+      { id: 'catalyst', label: 'Verified catalyst', status: 'FAILED', value_text: 'unverified headline', rule: 'verified, current session' }],
+    missing: ['Verified catalyst: unverified headline — scan marked it NOT verified (yahoo_finance, confidence 0); Hermes 08:25: no clear catalyst (no primary source)'],
+    summary: 'NOT READY — needs 5/5, has 4/5',
+    catalyst: { status: 'UNVERIFIED_HEADLINE', text: 'WISeSat.Space and SEALSQ Advance Satellite Cybersecurity Hardening', reason: 'scan marked it NOT verified (yahoo_finance, confidence 0); Hermes 08:25: no clear catalyst (no primary source)' },
+  },
+}
+const SAIQ_ALERT = { symbol: 'SAIQ', kind: 'PREMARKET_WATCH', verdict: 'VETO', at: '2026-10-23T08:55:01-04:00', ts_epoch: 4e9,
+  veto_reasons: ['BELOW_PM_VWAP', 'L2_ASK_HEAVY'], l2: { source: 'moomoo', levels: 10, spread_bps: 14.9, depth_ratio: 0.191, age_s: 1 }, signals: null }
+
+for (const width of [1440, 412]) {
+  test(`SAIQ unverified headline + readiness + AT veto label @${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 })
+    await page.route('**/api/**', async route => {
+      const url = new URL(route.request().url())
+      const body = url.pathname === '/api/v2/trade-ai/scanner'
+        ? { ...TRADE_AI_FIXTURE.scanner, tickers: [SAIQ_ROW, ...(TRADE_AI_FIXTURE.scanner.tickers as any[])] }
+        : url.pathname === '/api/v3/active-trader/alerts'
+          ? { ...TRADE_AI_FIXTURE.alerts, decisions: [SAIQ_ALERT, ...((TRADE_AI_FIXTURE.alerts as any).decisions ?? [])] }
+          : { ok: true, data: {} }
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
+    })
+    await page.goto('/v3/trading?tab=Trade+AI')
+    const row = page.locator('[data-testid="ta-row"][data-symbol="SAIQ"]')
+    await expect(row).toBeVisible({ timeout: 60_000 })
+    await expect(row.getByTestId('ta-catalyst-verdict')).toHaveAttribute('data-status', 'UNVERIFIED_HEADLINE')
+    await expect(row.getByTestId('ta-l2-brief')).toHaveText('AT veto · L2 1/2')
+    await expect(row.getByTestId('ta-ready')).toHaveText('not ready · 4/5')
+    await page.getByRole('button', { name: 'Show analysis for SAIQ' }).click()
+    const ready = page.getByTestId('ta-readiness')
+    await expect(ready).toHaveAttribute('data-ready', 'NOT_READY')
+    await expect(ready).toContainText('Missing: Verified catalyst: unverified headline')
+    await expect(ready).toContainText('Hermes 08:25')
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
+    expect(overflow).toBeLessThanOrEqual(1)
+  })
+}
