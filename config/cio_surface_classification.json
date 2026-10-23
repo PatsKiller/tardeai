@@ -1168,6 +1168,13 @@
       "owner_hint": "scripts/lib/cio_prospect_builder.py"
     },
     {
+      "name": "schema:CioProspectWriterRun@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "The CIO prospect writer's run receipt (data/runtime/cio_prospect_writer_<caller>_last.json): counts of built / written / unchanged / refused rows, the Postgres dual-write mode and recorded conflicts, written by the curator and entry-state runner passes. Freshness and failure evidence for the lane owner (§0 rule 8), not an operator product; the prospects themselves surface through the cio_prospect projection when the §7 P3 reader batches land.",
+      "owner_hint": "scripts/lib/cio_prospect_writer.py"
+    },
+    {
       "name": "schema:CioProspectSurfaceComparison@v1",
       "kind": "schema",
       "classification": "NOT_OPERATOR_RELEVANT",
