@@ -2101,6 +2101,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/n8n-relay-env-allowlist-20261021/README.md` | n8n run relay: allowlisted secrets env, strict fail-closed (operator packet, 2026-10-21) |
 | `docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/README.md` | n8n shadow wave LD-W1 (2026-10-15): operator packet |
 | `docs/ops/packets/nightly-cutover-controller-20261016/README.md` | Nightly cutover controller 2026-10-16: an enforced state machine for the approved n8n cutover |
+| `docs/ops/packets/premarket-1min-20261023/README.md` | Premarket 1-minute cadence — operator crontab packet (2026-10-23) |
 | `docs/ops/packets/registry-runtime-truth-20261018/README.md` | Registry / runtime truth — packet (review 2026-10-18, built 2026-10-19) |
 | `docs/ops/packets/release-train-20261021/README.md` | Release train: merge when green, release main in the 12:00 and 17:30 windows |
 | `docs/ops/packets/release-train-arming-20261021/README.md` | Release Train v2: arming packet for phases 5–7 (shadow, 18:00 canary, expand) |
