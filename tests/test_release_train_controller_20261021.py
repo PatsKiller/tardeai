@@ -501,7 +501,9 @@ def test_cli_live_is_refused_while_build_only(capsys):
     assert "REFUSED_BUILD_ONLY" in capsys.readouterr().out
 
 
-def test_real_github_writer_refuses_until_d2_and_policy_are_active():
+def test_real_github_writer_refuses_until_d2_and_policy_are_active(monkeypatch):
+    # Arming packet I.4 PR 2 flipped GITHUB_WRITES_STATUS to ACTIVE; the refusal while not ACTIVE stays pinned.
+    monkeypatch.setattr(T, "GITHUB_WRITES_STATUS", "PROPOSED")
     with pytest.raises(T.WriterNotArmed):
         T.GhCliWriter(RW.Host(), T.GhCliReader(RW.Host()))
 
