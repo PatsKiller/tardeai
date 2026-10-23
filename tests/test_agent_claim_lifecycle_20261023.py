@@ -48,6 +48,15 @@ class Clock:
         self.t = self.t + timedelta(**kw)
 
 
+@pytest.fixture(autouse=True)
+def _pin_real_clock(monkeypatch):
+    """Claims are stamped at T0; paths that build their own board (CLI.main, board_view) read the module clock.
+    Pin it to T0 so the 2-hour staleness rule never ages a fixture claim with the wall clock (batch 9: these
+    tests passed before 16:00Z on 2026-10-23 and failed after)."""
+    monkeypatch.setattr(B, "utc_now", lambda: T0)
+    monkeypatch.setattr(LC, "_utc_now", lambda: T0)
+
+
 class FakeGH:
     """Answers ``gh api --method GET <path>`` from a dict; records every command."""
 
@@ -728,7 +737,8 @@ def _run_hook(repo, claims, **env):
 def test_hook_script_policy_gated(tmp_path, version, rc):
     repo = _hook_repo(tmp_path, version)
     claims = tmp_path / "claims"
-    B.ClaimBoard(claims).claim(
+    # the hook subprocess reads the wall clock, so stamp this claim with it (not the pinned T0)
+    B.ClaimBoard(claims, now=lambda: datetime.now(timezone.utc)).claim(
         vendor="codex", session="other", agent=None, task="t", paths=["docs"], branch="feat/theirs"
     )
     proc = _run_hook(repo, claims)
