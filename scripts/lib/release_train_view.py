@@ -162,7 +162,7 @@ def read_latch_file(latch: Path) -> tuple[str, Optional[dict]]:
     """Same semantics as release_window.State.read_latch (branch ops/release-train-20261021): ("ABSENT", None) only
     when no path exists; ("SET", body) for a readable JSON object; ("UNREADABLE", {"error"}) otherwise. Fail closed."""
     try:
-        os.stat(latch)
+        os.lstat(latch)   # lstat: a dangling symlink exists, so it is UNREADABLE (a STOP), never ABSENT (2026-10-23)
     except FileNotFoundError:
         return "ABSENT", None
     except OSError as exc:

@@ -17,6 +17,12 @@
     {"local_time": "06:00", "role": "premarket_drain", "enable_order": 3, "enabled": false, "note": "Needs a proven drain or a non-disruptive release path first."},
     {"local_time": "08:00", "role": "premarket_last", "enable_order": 4, "enabled": false, "note": "Enabled last. Skipped on 08:30 macro days or when calendar data is stale."}
   ],
+  "shadow": {
+    "integrate": true,
+    "local_test": false,
+    "past_window_rules": true,
+    "_note": "Phase 5 shadow (2026-10-23, DSN-20261021-release-train-P5-T1). Read by release_train_controller.shadow_policy() for SHADOW requests only; a live controller never reads it. integrate: merge the frozen members in an isolated per-slot scratch worktree (~/.cache/rtc/shadow-<slot>/wt, a worktree of the release checkout) and regenerate once, so the shadow report names a real candidate SHA; nothing is pushed. local_test: also run the local test worker on the candidate (off: the full suite is heavy; CI qualifies the candidate anyway). past_window_rules: when a 06:00 drain or 08:00 macro-calendar / latest-start rule would make a live train skip, record it as LIVE_WOULD_REFUSE and rehearse the rest of the pipeline. Any value other than true is off (fail closed)."
+  },
   "census": {
     "lane_id": "pr-hygiene-audit",
     "stale_after_hours": 36,
