@@ -261,6 +261,18 @@ KINDS: dict[str, KindSpec] = {k.kind: k for k in (
     KindSpec("grant.revoke", "Revoke a guard grant", RISKY, EXEC_APPLIER, "grants"),
     KindSpec("passkey.register", "Add a passkey", RISKY, EXEC_CC, "passkeys"),
     KindSpec("passkey.revoke", "Revoke a passkey", RISKY, EXEC_CC, "passkeys"),
+    # Work pipeline Tier 2 (operator 2026-10-23, "both"): scripts/lib/work_pipeline_tier2.py; each also gated by
+    # config/ops_controls.json work_pipeline.<flag> (merge, release and package approval default OFF).
+    KindSpec("pipeline.approve_design", "Work pipeline: approve a design, phase or packet", RISKY, EXEC_APPLIER,
+             "pipeline"),
+    KindSpec("pipeline.contract_reviewed", "Work pipeline: mark a DRAFT n8n health contract reviewed", RISKY,
+             EXEC_APPLIER, "pipeline"),
+    KindSpec("pipeline.approve_item", "Work pipeline: approve approval-package items", RISKY, EXEC_APPLIER,
+             "pipeline"),
+    KindSpec("pipeline.merge_pr", "Work pipeline: merge a PR (required checks exactly success)", RISKY,
+             EXEC_APPLIER, "pipeline"),
+    KindSpec("pipeline.release_now", "Work pipeline: release now (exact-main prepare + promote)", RISKY,
+             EXEC_APPLIER, "pipeline"),
 )}
 
 
@@ -287,6 +299,10 @@ def phrase_for(kind: str, params: Mapping[str, Any], today: str) -> Optional[str
     spec = kind_spec(kind)
     if spec.direction == SAFE:
         return None
+    if kind.startswith("pipeline."):
+        from scripts.lib import work_pipeline_tier2 as T2
+
+        return T2.phrase(kind, params, today)
     target = {
         "crontab.pause": lambda: params.get("lane_id") or str(params.get("line_sha256", ""))[:8],
         "crontab.resume": lambda: params.get("lane_id") or str(params.get("line_sha256", ""))[:8],
@@ -566,6 +582,10 @@ def plan_change(kind: str, params: Mapping[str, Any], hosts: Hosts, store: Any, 
         raise OpsError("PARAMS_INVALID", "params must be an object", 400)
     p = dict(params)
     today = hosts.clock().astimezone(timezone.utc).strftime("%Y-%m-%d")
+    if kind.startswith("pipeline."):
+        from scripts.lib import work_pipeline_tier2 as T2
+
+        return T2.plan(kind, p, hosts, store, request_id=request_id, actor=actor)
 
     if kind in ("crontab.pause", "crontab.resume"):
         sha = _req_str(p, "line_sha256", SHA_RE)
@@ -772,6 +792,10 @@ def apply_change(kind: str, params: Mapping[str, Any], expected_digest: Optional
     plan = plan_change(kind, params, hosts, store, request_id=request_id, actor=actor)
     if expected_digest and plan.digest != "n/a" and plan.digest != expected_digest:
         raise OpsError("STATE_CHANGED", "the target changed since the preview; preview again", 409)
+    if kind.startswith("pipeline."):
+        from scripts.lib import work_pipeline_tier2 as T2
+
+        return T2.apply(kind, plan, hosts, store, request_id=request_id, actor=actor)
     res: dict[str, Any] = {"kind": kind, "summary": plan.summary, "undo": plan.undo, "undo_reason": plan.undo_reason}
 
     if kind in ("crontab.pause", "crontab.resume"):
