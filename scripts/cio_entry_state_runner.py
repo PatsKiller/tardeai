@@ -534,6 +534,23 @@ def cio_card_payload(result: dict, evidence: dict, *, review: dict | None = None
     return cio_entry_alert(item).render()
 
 
+def write_cio_prospects(changed: list[str]) -> dict:
+    """CIO prospect P1 writer (docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md §11 item 2) for the names whose
+    entry state changed this run. A subset build: it never overwrites the full shadow artifact (the curator's);
+    with TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE=1 it calls InstrumentRecordStore.upsert_prospect per changed prospect.
+    Fail-soft: never raises into the runner. Advisory only — no size, order or stop (MBI_BEHAVIOR = 0)."""
+    if not changed:
+        return {"skipped": "no entry-state change this run"}
+    try:
+        from scripts.lib import cio_prospect_writer as pw
+        from scripts.lib.canonical_store_registry import production_state_root
+
+        return pw.summary(pw.write_prospects(production_state_root(), caller="cio-entry-state", apply=True,
+                                             scope="subset", symbols=changed, with_db=True))
+    except Exception as e:  # noqa: BLE001 — the prospect writer never blocks the runner
+        return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true", help="record states, write CIO decisions and send alerts")
@@ -622,9 +639,12 @@ def main() -> int:
                     primary_symbols=digest_syms,
                 ),
             })
+        changed = sorted(sym for sym, r in results.items() if prior.get(sym) != r["state"])
+        prospect_writer = write_cio_prospects(changed)
         RECEIPT.parent.mkdir(parents=True, exist_ok=True)
         RECEIPT.write_text(json.dumps({"as_of": datetime.now(timezone.utc).isoformat(), "counts": counts,
-                                       "alerts": sent}, indent=2, default=str))
+                                       "alerts": sent, "cio_prospect_writer": prospect_writer},
+                                      indent=2, default=str))
     else:
         conn.rollback()
     report = {"mode": "apply" if a.apply else "dry_run", "tracked": len(results), "states": counts,

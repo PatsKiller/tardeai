@@ -309,7 +309,7 @@ no lane is past shadow, no page reads anything new. Each piece names what turns 
 |---|---|---|---|
 | Migration `cio_prospect` + `cio_prospect_events` (append-only trigger, no-delete trigger, writer column CHECKed to `InstrumentRecordStore`, least-privilege grants) and its archive-by-rename reverse | `migrations/2026_10_22_cio_prospect.sql`, `.down.sql` | written, **not applied**; proven on a throwaway initdb cluster in the test | the P1 migration grant naming the file's sha256 (printed by the plan tool) |
 | Plan / dry run (static checks, inventory, grant strings bound to sha256; no `--apply`, no DB contact) | `scripts/cio_prospect_migration_plan.py` | runnable | — |
-| `InstrumentRecord@v1` extended: `apply_prospect` rail (BEHAVIOR_FIELDS refused anywhere, MBI = 0), `conviction_from_components`, `unified_edge_component` (the unified edge persisted with its inputs), `prospect_row` / `prospect_event`, `InstrumentRecordStore.upsert_prospect` (jsonl first, then the Postgres dual-write), `ProspectPgBackend` | `scripts/lib/cio_instrument_record.py` | built; dual-write **inert** (`prospect_store_status`: row not granted, flag off) | row grant + migration + `TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE=1`; no production caller yet (the curator/entry-state wiring is the next PR) |
+| `InstrumentRecord@v1` extended: `apply_prospect` rail (BEHAVIOR_FIELDS refused anywhere, MBI = 0), `conviction_from_components`, `unified_edge_component` (the unified edge persisted with its inputs), `prospect_row` / `prospect_event`, `InstrumentRecordStore.upsert_prospect` (jsonl first, then the Postgres dual-write), `ProspectPgBackend` | `scripts/lib/cio_instrument_record.py` | built; dual-write **inert** (`prospect_store_status`: row not granted, flag off) | row grant + migration + `TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE=1`; production callers: the curator and the entry-state runner through `scripts/lib/cio_prospect_writer.py` (§11A, 2026-10-23) |
 | Shadow builder (one prospect per security_guid from the opportunity projection, theses, spine, instrument records, re-entry desk, Hermes, scanner cache, the positions_context projection for the held set, and read-only DB inputs) + comparison vs Home / Watch / Telegram | `scripts/lib/cio_prospect_builder.py`, `scripts/cio_prospect_shadow_build.py` | runnable; `--dry-run` writes nothing | — |
 | Watchlist curation rules (one membership, ways in with a reason, expiry/invalidation out, size cap per stage, operator adds/stars and held never auto-dropped) | `config/cio_prospect_watchlist_rules.json` (PROPOSED), `scripts/lib/cio_prospect_watchlist_rules.py` | evaluated in the shadow; proposes only | the operator sets the caps and rules ("what is ranked onto an operator surface") |
 | n8n lane `cio-prospect-shadow` (registry row, allowlist entry `--with-db`, DRAFT contract), `*/30 9-16 * * 1-5` ET | **stacked PR** `feat/cio-prospect-shadow-lane-20261022` (lane registry, allowlist, contract) | **shadow** (dispatcher fires `--dry-run`; `live_arg` null) | the cio owner marks the contract REVIEWED (§23.19; the contract gates fail until then, by design); canary (`--write-shadow`) is a later registry PR |
@@ -328,8 +328,140 @@ assembly, so the builder is new. For the position lifecycle (NAVN scope, 2026-10
 
 **Reader batch PROPOSED for the lane (not self-approved, §17):** the `cio-prospect-shadow` lane reads, READ ONLY, `schwab_round_trips` (+ `trade_closed.stop_used`), `trade_transactions` (proposed domain `transactions`), `stop_lifecycle` (proposed domain `broker_stops`, an observation), `trade_recommendation_links` (when the learning-loop migration is applied) and `ticker_prices` closes, to build the lifecycle. None is `positions_current`, so the UNAPPROVED_READER gate does not fire, but each is a reader the dictionary will count once those rows are granted; the operator grants or narrows this batch.
 
+### 11A. The writer — the curator and the entry-state runner call `upsert_prospect` (2026-10-23)
+
+`Status: ACTIVE (code), INERT until the operator steps in 11A.6 · as_of 2026-10-23T15:30:00-04:00 · Measured at:
+origin/main 98bef2794 + branch feat/cio-prospect-writer-20261023; read-only dry run against production_state_root()
+2026-10-23 ~14:55 ET (files only, no DB session, nothing written).` Task `T-20261023-e95684` (split from
+`T-20261023-16202b`); module `scripts/lib/cio_prospect_writer.py`; CI gate `cio_prospect_writer_20261023` (ANCHOR
+`CIO_PROSPECT_WRITER_20261023`), test `tests/test_cio_prospect_writer_20261023.py`. `MBI_BEHAVIOR = 0`: the prospect
+record holds stance and priority only — no size, order, stop or weight. (Written here rather than as a new
+`docs/ops` page because `docs/INDEX.md` was held by another live claim when this landed.)
+
+#### 11A.1 The gap this closes
+
+`[VERIFIED]` §12 audit (PR #2030, 2026-10-23): even with the row granted, the migration applied and the flag set, no
+`cio_prospect` row would persist, because nothing in production called `InstrumentRecordStore.upsert_prospect` —
+only tests did. `grep -rn upsert_prospect scripts/` on origin/main 98bef2794 returns its definition and a message string in `cio_prospect_migration_plan.py` — no call.
+
+#### 11A.2 What is wired
+
+| Caller | When | Scope | Shadow artifact | Store write |
+|---|---|---|---|---|
+| `scripts/cio_opportunity_curator.py` (`cio-opportunity-curator`, `*/30 9-16 * * 1-5`) | `--apply` only, after the projection is rewritten | the whole universe | rewrites `data/cio/cio_prospect_shadow.json` | flag ON only |
+| `scripts/cio_entry_state_runner.py` (`cio-entry-state`, `*/10 9-16 * * 1-5`) | `--apply` only, after the states are committed | the names whose entry state changed this run (none → skipped) | never (a subset never overwrites the full shadow) | flag ON only |
+
+Both call `scripts/lib/cio_prospect_writer.write_prospects`, which builds with `cio_prospect_builder.build` (the one
+assembler — the writer re-derives nothing) through a server-enforced READ ONLY DB session (`enforce_readonly`), then:
+
+- **Flag OFF (default — `TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE` unset):** the shadow artifact (curator only) and the
+  receipt `data/runtime/cio_prospect_writer_<caller>_last.json`. No row in `cio_instrument_records.jsonl`, no Postgres
+  connection (the backend is never constructed).
+- **Flag ON (`=1`):** additionally, per security_guid whose prospect changed materially,
+  `InstrumentRecordStore.upsert_prospect` — the jsonl row first (store of record in P1), then, only when
+  `prospect_store_status` is live (row granted + flag + both tables present, probed once per run), the
+  `cio_prospect` upsert and its `cio_prospect_events` rows (the revision event + the lifecycle facts) in one
+  transaction.
+
+**Rules.**
+
+- **One row per security_guid.** The record is merged onto the latest stored prospect for the same GUID, whatever its
+  `subject_key` (`WATCH:X` → `HELD:X` keeps the revision line).
+- **Idempotent.** An identical rebuild is a `CognitionNoOp` (nothing written). Postgres upserts only when the revision
+  advances and events are `ON CONFLICT (security_guid, event_key) DO NOTHING`.
+- **A version only on material change.** `[VERIFIED]` measured 2026-10-23: a full prospect is ~4.3 KB; 1,685
+  prospects ≈ 7.3 MB per full write. The jsonl is append-only, so a write of every prospect on every curator run
+  would add ~100 MB a day. A run whose only change is timestamps (at any depth), provenance or a conviction move
+  under 1.0 point writes nothing until the stored record is `TRADEAI_CIO_PROSPECT_REFRESH_HOURS` old (default 4).
+  Stage, stance, conflicts, triggers, gaps, next action, watchlist, research, lifecycle and component values are
+  always material. *Consequence, stated:* a reader of the store (P3, not yet built) sees `stale` after a record's
+  `expires_at` (0.5 h in market hours) when only timestamps moved; the shadow artifact stays fresh every run. The
+  refresh window is an operator setting.
+- **No self-feedback loop.** The builder reads `cio_instrument_records.jsonl` as an input; that file's as_of moves on
+  every write, so the writer drops it from `provenance.sources` (`self_source_excluded`). Without this every run
+  rewrote every prospect (found by the idempotency test).
+- **Conflicts recorded, never resolved (§0 rule 5).** Builder `conflicts[]` pass through untouched; one GUID under two
+  symbols adds a `symbol` conflict to the record; a Postgres row whose revision did not advance (the table is ahead of
+  the jsonl) is listed in the receipt (`pg_revision_not_advanced`) with the jsonl revision — neither copy is changed.
+- **Fail-soft.** A build, DB-connect, probe, jsonl or Postgres error never raises into the curator or the runner; each
+  is logged to stderr and counted in the receipt (`counts.pg_errors`, `counts.jsonl_errors`, `errors[]`). After 3
+  consecutive Postgres write failures the run stops calling Postgres (jsonl continues) and the receipt says so.
+- **MBI_BEHAVIOR = 0.** Any `BEHAVIOR_FIELDS` key (`stop`, `size_usd`, `order`, `qty`, …) anywhere in a prospect or in
+  its lifecycle events refuses that row (`counts.refused_behavior`), never written and never silently filtered.
+
+#### 11A.3 Dry run (§0 rule 7) — quoted
+
+Read-only, files only (no DB session), against `production_state_root()`, 2026-10-23 ~14:55 ET, `apply=False`:
+
+```
+{"mode": "dry_run", "ok": true, "flag": false, "counts": {"built": 1685, "unchanged": 0, "jsonl_written": 0,
+ "pg_upserted": 0, "pg_not_advanced": 0, "pg_errors": 0, "jsonl_errors": 0, "refused_behavior": 0, "invalid": 0,
+ "builder_conflicts": 27, "writer_conflicts": 0, "events_appended": 0},
+ "pg": {"mode": "off", "reasons": ["dual_write_flag_off"]}, "wrote": [], "seconds": 3.65,
+ "build": {"universe": 1880, "prospects": 1685, "identity_unresolved": 195, "duplicate_guid": 0, "errors": 0}}
+```
+
+A `find … -newer` over `data/cio` and `data/runtime` for `*prospect*` after the run returned nothing (no write).
+A read-only merge simulation over the same 1,685 rows against the live `cio_instrument_records.jsonl` (0 stored
+prospects today): 1,685 would be minted on the first flag-ON run, 0 refused by the MBI rail, 0 invalid.
+The build added 3.65 s (files only); with the READ ONLY DB inputs it is longer — the first `--apply` receipt records it
+(`seconds`). The curator's lane timeout is 600 s.
+
+#### 11A.4 Builder fixes the writer depends on (not edited here)
+
+`scripts/lib/cio_prospect_builder.py` is held by PR #2028's claim (`20261023T180656Z-claude-c6ffbe12`), so this PR does
+not edit it (subtask `T-20261023-0ab508`). The writer calls `builder.build` and copies its fields, so it picks up with
+no code change: **#2028** stop_lifecycle ordering by broker order time (NAVN "raised 5x", not "raised 1x") and
+**#1996** (stacked #2001) catalyst facts on the one record with two verdicts recorded as a conflict. Merge them
+before the flag is set if those fields should be right in the first stored revisions; a later fix lands as an
+ordinary material change (a new revision), never a rewrite.
+
+#### 11A.5 Cadence — lane proposal (shadow first; not applied)
+
+The writer has no lane of its own: it runs inside `cio-opportunity-curator` (`*/30 9-16 * * 1-5`, the §7A
+`cio_prospect` row's cadence: */30 09:00–16:00 ET weekdays) and `cio-entry-state`. Proposed registry wiring, **held**
+because `config/lane_registry.json` is claimed by PR #2016 (jsonl-rotate) — a follow-up PR once that claim releases:
+
+1. `cio-opportunity-curator` row: add `"writes_also": ["data/cio/cio_prospect_shadow.json",
+   "data/runtime/cio_prospect_writer_cio-opportunity-curator_last.json"]` and a second `output_signal` on the writer
+   receipt's `as_of`, so a writer that stops is a breach and not silence.
+2. `cio-entry-state` row: the same for `cio_prospect_writer_cio-entry-state_last.json` (event-driven: only on change).
+3. Stage: **shadow** = flag unset (today, after merge). **Canary** = the operator sets the flag in the curator lane's
+   environment only (entry-state stays OFF), one market day, compare `cio_prospect` count against the receipt's
+   `pg_upserted`. **Live** = the flag in both lanes.
+4. When PR #1953 (`cio-prospect-shadow` n8n lane) merges, that lane keeps running `--dry-run` only; it never calls the
+   store by design. The writer is the curator's pass, not a second lane.
+
+#### 11A.6 Operator order (§17 — each step is the operator's)
+
+1. Merge **#2030** (records approval E: the `cio_prospect` row moves to `domains[]` with its approval).
+2. Run the migration — the command is in the session scratchpad `cio_prospect_operator_apply.sh`
+   (`scripts/cio_prospect_migration_plan.py` prints the file and sha256 `6bac8924…`; rolled-back dry run, typed
+   confirm, apply, verify `to_regclass` for both tables).
+3. Merge **this PR** (and, ideally first, #2028 and #1996/#2001 — 11A.4).
+4. Set `TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE=1` in the `cio-opportunity-curator` lane's environment (canary), later in
+   `cio-entry-state`'s.
+5. The next curator `--apply` (≤ 30 min in market hours) writes the first rows. Proof (§0 rule 8):
+   `data/runtime/cio_prospect_writer_cio-opportunity-curator_last.json` shows `pg.mode = dual_write`,
+   `counts.pg_upserted > 0`, and `SELECT count(*), max(as_of) FROM cio_prospect` matches.
+
+Rollback: unset the flag. The jsonl and the table keep what was written (nothing is deleted); the shadow artifact
+continues.
+
+#### 11A.7 Evidence
+
+- `tests/test_cio_prospect_writer_20261023.py` — 32 tests: dry run writes nothing; OFF writes the shadow and receipt
+  only and never constructs a backend; subset never overwrites the shadow; ON one upsert per GUID, reruns write
+  nothing; ungranted stays inert; changed input → revision + 1; builder conflicts pass through; GUID-under-two-symbols
+  conflict; Postgres-ahead listed; Postgres failure fail-soft with circuit; build/backend/probe errors never raise;
+  MBI keys in four places × four names refused; curator and runner wiring under `--apply`, fail-soft; NAVN's 14
+  lifecycle events pass the rail; timestamp-only moves are not a version; and on a throwaway `initdb` cluster (unix
+  socket only, skipped without server binaries or psycopg2) ON upserts 3 rows, identical reruns add no row or event,
+  a changed input advances `revision` to 2.
+- `tests/test_cio_prospect_foundation_20261022.py` — unchanged, still green.
+
 Backlog (open, in order): (1) operator grants — row `cio_prospect`, the P1 migration, the contract review;
-(2) wire the curator and entry-state runner to call `upsert_prospect` (P1 dual-write); (3) the P2 compare job;
+(2) ~~wire the curator and entry-state runner to call `upsert_prospect` (P1 dual-write)~~ — built 2026-10-23 (§11A), inert until the flag; (3) the P2 compare job;
 (4) a `catalyst_grade` (Gate 2) and `fused_score` producer keyed by GUID; (5) the reader batches (Home + Telegram
 cards first); (6) AGENTS.md cites the behaviour rail as `cio_instrument_record.py:390`; it is now at line 450 (it was
 already at 422 before this change) — the citation should name the symbol (`apply_cognition` raises
