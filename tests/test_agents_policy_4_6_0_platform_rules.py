@@ -28,6 +28,12 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from scripts import check_agents_policy_state as STATE  # noqa: E402
 
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+# AGENTS.md 19.0.0 (§27.5): once 19.0.0 is ACTIVE its four clause edits in §17, §23.14 and §25.4 are undone before
+# the pins below are checked; tests/test_agents_policy_19_0_0_broker_read_controls.py pins those edits and the
+# post-ratification digests. While 19.0.0 is PROPOSED the text is unchanged.
+from tests.test_agents_policy_19_0_0_broker_read_controls import pre_19_0_0  # noqa: E402
+
+AGENTS = pre_19_0_0(AGENTS)
 TOKEN = "APPROVE_AGENTS_POLICY_4_6_0"
 
 SECTION_23_14_SHA256 = "bb8722f69b8e54a8582011bdbe266d55ea7c2c0c6b120d123a1d4e43394311e7"
@@ -180,7 +186,8 @@ def test_banner_states_the_numbering_dependency_and_the_class_reasoning():
     # 17.0.0 (PROPOSED, header block set by its patch) supersedes the last ACTIVE version: 15.0.0 while 16.0.0 is
     # PROPOSED, 16.0.0 once it is ratified.
     # 18.0.0 (PROPOSED, header block set by its operator-applied patch) supersedes 17.0.0 (ACTIVE, #1914).
-    allowed = {(17, 0, 0): {"15.0.0", "16.0.0"}, (18, 0, 0): {"17.0.0"}}.get(
+    # 19.0.0 (PROPOSED, operator-applied patch) supersedes 18.0.0 (ACTIVE, #1931).
+    allowed = {(17, 0, 0): {"15.0.0", "16.0.0"}, (18, 0, 0): {"17.0.0"}, (19, 0, 0): {"18.0.0"}}.get(
         _version(), {supersedes.get(_version(), "5.1.0")})
     assert _control("Supersedes") in allowed
     assert f"{TOKEN} <pr_number> <head_sha>" in f

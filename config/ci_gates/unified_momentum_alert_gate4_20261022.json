@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "unified_momentum_alert_gate4_20261022",
+  "files": [
+    "tests/test_unified_momentum_alert_gate4_20261022.py"
+  ],
+  "anchor": "UNIFIED_MOMENTUM_ALERT_GATE4_20261022",
+  "comment": [
+    "ANCHOR: UNIFIED_MOMENTUM_ALERT_GATE4_20261022 — Gate 4 (operator design 2026-10-22): one threaded alert per",
+    "symbol/event/day (WATCH -> APPROACHING -> ARMED -> TRIGGERED -> STAND DOWN + EXTENDED / PULLBACK_ZONE /",
+    "TRIGGER_CANCELLED), each state change a reply to the first message's id per chat; transition-only dedupe;",
+    "flag off = today's alert byte for byte, shadow = today's alert + a logged unified row, live = unified instead",
+    "(legacy fallback when not accepted). L2 book signals spread_bps + bid/ask imbalance (v1 priors, fail closed).",
+    "Hermetic: tmp ledgers, fake transports, injected lookups; no Telegram, store, network or broker."
+  ]
+}

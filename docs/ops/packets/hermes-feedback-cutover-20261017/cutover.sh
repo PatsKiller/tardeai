@@ -151,7 +151,9 @@ case "$STEP" in
     controller_hold
     served_state || fail "serve the feedback cutover PR (and the consumer PR) first"
     need_grant; quiet_minute
-    "$CRONTAB_BIN" -l | grep -qF -- "$LEARN_LINE" || fail "the learn cron line does not claim effects (PIPELINE_EFFECT_CLAIM=1)"
+    # captured, not piped: `crontab -l | grep -q` under pipefail is a false failure (SIGPIPE, 2026-10-22)
+    CT="$("$CRONTAB_BIN" -l)" || fail "crontab -l failed"
+    grep -qF -- "$LEARN_LINE" <<<"$CT" || fail "the learn cron line does not claim effects (PIPELINE_EFFECT_CLAIM=1)"
     listed "$CONSUMER" || fail "$CONSUMER is not live: queued alerts would never reach the operator"
     listed "$LANE" || fail "relay not applied ($LANE not in the live list)"
     read -r cur ep <<<"$(owner_of)"

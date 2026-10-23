@@ -24,8 +24,8 @@ eq('ENTRY is chrome', isChromeSymbol('ENTRY'), true)
 eq('READY is chrome', isChromeSymbol('ready'), true)
 eq('ADV is real', isChromeSymbol('ADV'), false)
 eq('realSymbols drops chrome', realSymbols(['ALERT', 'ENTRY', 'ADV', 'ALERT', 'TROW']), ['ADV', 'TROW'])
-eq('entry href scopes ADV to Scalp', entryPrimaryHref('ADV'), '/v3/trading?tab=Scalp&symbol=ADV')
-eq('entry href never ALERT dossier', entryPrimaryHref('ALERT'), '/v3/trading?tab=Scalp')
+eq('entry href scopes ADV to Scalp', entryPrimaryHref('ADV'), '/v3/active-trader?tab=Scalp&symbol=ADV')
+eq('entry href never ALERT dossier', entryPrimaryHref('ALERT'), '/v3/active-trader?tab=Scalp')
 eq('dossier suppresses ALERT', dossierHref('ALERT'), null)
 eq('dossier keeps ADV', dossierHref('ADV'), '/v3/watch/intelligence/ADV')
 
@@ -37,9 +37,9 @@ const packets = {
 }
 const entryRows = rowsFromBuyReadyPackets(packets)
 eq('entry row count', entryRows.length, 2)
-eq('ADV primary is Scalp', entryRows[0].href, '/v3/trading?tab=Scalp&symbol=ADV')
+eq('ADV primary is Scalp', entryRows[0].href, '/v3/active-trader?tab=Scalp&symbol=ADV')
 ok('ALERT packet has empty symbols', entryRows[1].symbols.length === 0)
-ok('ALERT packet primary is Scalp root', entryRows[1].href === '/v3/trading?tab=Scalp')
+ok('ALERT packet primary is Scalp root', entryRows[1].href === '/v3/active-trader?tab=Scalp')
 ok('ALERT packet has no dossier', entryRows[1].dossierHref == null)
 
 const events = {

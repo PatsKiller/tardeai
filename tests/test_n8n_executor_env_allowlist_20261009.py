@@ -47,6 +47,16 @@ _REVIEWED_NEW_COMMON_MODULES = frozenset(
     {
         # AGENTS 7.0.0 (2026-10-14): lane_dispatch imports the §23.20 static guard lazily; stdlib only, no env read.
         "scripts/lib/advisory_lane_guard.py",
+        # AGENTS 19.0.0 §27.1 (2026-10-22, PR #1962): pipelines/pipeline_manifest.py forbidden_command_tokens()
+        # consults the carve-out lazily. The carve-out imports only stdlib (functools, re, shlex, sys, pathlib,
+        # typing) and the §24.11 policy; the policy is stdlib only (ast, re, dataclasses, pathlib) and imports the
+        # static capability analyzer lazily inside audit(), which parses repository source and is stdlib only. No
+        # environment read, no network, no subprocess, no write on the import path. The broker-adjacent runtime
+        # readers (ops/broker_read_sync -> trading_lock / schwab_access_mode) are NOT in this closure: they live in
+        # scripts/lib/n8n_broker_read_carveout_runtime.py, which nothing in a lane closure imports.
+        "scripts/audit_lane_transitive_capabilities.py",
+        "scripts/lib/broker_read_sync_policy.py",
+        "scripts/lib/n8n_broker_read_carveout.py",
         "scripts/lib/cron_schedule.py",
         # 2026-10-22 (Shared Momentum Gate 1): imported lazily by scripts/lib/scanner_candidate_projection.py for
         # read-side catalyst event ids (SecurityEvent@v1) and the Hermes scalp-catalyst record pick; both stdlib only

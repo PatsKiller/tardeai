@@ -82,6 +82,25 @@ def membership_screener() -> set[str]:
     return out
 
 
+def membership_watchlist(symbols) -> set[str]:
+    """Which of ``symbols`` are on the watchlist (watchlist_items, status active or researched).
+
+    watchlist_items is the one membership list (data_source_authority.json, watchlist_membership);
+    this broker module is its reader so callers outside the Watch layer (Open Trades) do not grow
+    their own SQL. NOT fail-soft: a DB error raises, so the caller can say "unavailable" instead of
+    reporting every symbol as off the watchlist (the Open Trades `_db_query` bug, 2026-10-22).
+    """
+    syms = sorted({str(s).strip().upper() for s in (symbols or []) if s and str(s).strip()})
+    if not syms:
+        return set()
+    rows = _db_query(
+        "SELECT DISTINCT upper(symbol) AS s FROM watchlist_items "
+        "WHERE status IN ('active','researched') AND upper(symbol) = ANY(%s)",
+        (syms,),
+    )
+    return {(r["s"] if hasattr(r, "keys") else r[0]) for r in rows or []}
+
+
 # ── Held positions — one source for every Watch layer (2026-10-22 Watch audit) ─────────────────────────────
 #
 # Before: three readers disagreed. membership_held() asked portfolio_snapshot for "holdings" — a key that projection

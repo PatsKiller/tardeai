@@ -334,6 +334,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_GAP_2026-09-29-2107.md` | CIO Persistent Agent — GAP (2026-09-29 21:07 ET) |
 | `docs/architecture/CIO_GAP_2026-09-29-2153.md` | CIO Persistent Agent — GAP (2026-09-29 21:53 ET) |
 | `docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md` | CIO prospect data foundation — one store, one writer, the CIO as integrator |
+| `docs/architecture/CIO_PROSPECT_SHADOW_COMPARISON_2026-10-22.md` | CIO prospect shadow build — comparison vs today's surfaces, and the NAVN round trip (2026-10-22) |
 | `docs/architecture/COST_BASIS_FEED_CORRECTION_2026_06_05.md` | Cost Basis Feed Correction (2026-06-05) |
 | `docs/architecture/DATA_DICTIONARY.md` | Data dictionary — one source for every fact |
 | `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` | Decision Packet Operator Card + RTH Few-Hour Refresh |
@@ -492,6 +493,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/TRADE_AI_WORKLOG_2026-09-16.md` | Trade-AI work log — 2026-09-16 |
 | `docs/architecture/TRADE_AI_WORKLOG_2026-10-04.md` | Trade AI — Work log 2026-10-03 → 2026-10-05 (00:30 ET) |
 | `docs/architecture/TRADE_INTELLIGENCE_JOURNAL_DESIGN.md` | Trade Intelligence Journal -- Design Document |
+| `docs/architecture/TRADING_HUB.md` | Trading hub (Command Center v3 `/v3/trading`) |
 | `docs/architecture/V3_3_IMPLEMENTATION_STATUS_2026-09-27.md` | v3.3 implementation status |
 | `docs/architecture/V3_OPENCLAW_TRADEAI_SYSTEM_TABS.md` | Command Center v3 — OpenClaw + TradeAI System Tabs — 2026-06-07 |
 | `docs/architecture/V3_OPEN_TRADES_INTELLIGENCE_2026_06_05.md` | v3 Open Trades — Actionable Position Intelligence (2026-06-05) |
@@ -1429,6 +1431,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/ACTIVE_TRADER_STAGE0_BASELINE.md` | Active Trader Stage 0 — Baseline |
 | `docs/implementation/ACTIVE_TRADER_VENUE_ELIGIBILITY_v1.md` | Active Trader — Venue Eligibility & Schwab Compliance-Block Prompt (Stage 1a) |
 | `docs/implementation/CADI_OFFLINE_HISTORICAL_REPLAY_ARCHIVE_CONTRACT.md` | Offline CADI historical replay archive contract |
+| `docs/implementation/CALIBRATION_SHADOW_HARNESS.md` | Calibration shadow harness |
+| `docs/implementation/UNIFIED_MOMENTUM_ALERT_GATE4.md` | Unified momentum alert (Gate 4) and Level 2 book signals |
 | `docs/implementation/backup/restore-drill-proposal-20261009.md` | Backup and recovery coverage: inventory, gate, and monthly restore drill proposal |
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_00_PREFLIGHT.md` | Stage 0 · Pre-flight |
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_01_AGENTS_POLICY_RECONCILIATION.md` | Stage 1 · Constitutional cleanup and conflict matrix |
@@ -1565,6 +1569,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/incidents/PHASE67C_FINVIZ_SECRET_UPDATE_CHECKPOINT.md` | Phase 67C — Finviz Secret Update Checkpoint |
 | `docs/incidents/PHASE67D_FINVIZ_POST_UPDATE_VALIDATION.md` | Phase 67D — Finviz Post-Update Validation |
 | `docs/incidents/PHASE67E_MARIA_RESEARCH_STALENESS_TRUE_FIX_AUDIT.md` | Phase 67E — Maria Research Staleness True-Fix Audit |
+| `docs/incidents/POSTMORTEM_20261014_SPCX.md` | Postmortem — INC-20261014-SPCX: resting Schwab stops filled; the stop alerts were digested |
 | `docs/infra/DOCKER_CONTAINERIZATION_ARCHITECTURE_AUDIT_2026_05_31.md` | Docker Containerization Architecture Audit |
 | `docs/infra/DOCKER_PHASE11B_NONPROD_PREVIEW_PILOT_REPORT.md` | Docker Phase 11B — Non-Production Preview Pilot |
 | `docs/infra/DOCKER_PHASE12A_VERSION_CHECK_PILOT_DESIGN.md` | Docker Phase 12A — Version-Check Pilot Design |
@@ -1735,6 +1740,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/ACTIVE_TRADER_ARMED_QUALITY_2026-10-09.md` | Active Trader: ARMED quality, stand-down, Trade-AI verdict (2026-10-09) |
 | `docs/ops/ADVICE_DIGESTS_2026-10-08.md` | Advice digests — 10:00 / 15:00 / 17:00 ET (2026-10-08) |
 | `docs/ops/AGENTS_GUARD_HOOK.md` | AGENTS.md guard hook for Claude Code (PreToolUse) |
+| `docs/ops/AGENT_CLAIM_BOARD.md` | Agent claim board — who is working on which files |
 | `docs/ops/AUTONOMOUS_ADVISORY_LOOP_CLOSURE_RESULT_2026-08-23.md` | Trade AI Autonomous Advisory Loop Closure Result |
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Autonomous Advisor Session Closeout — 2026-08-20 |
 | `docs/ops/AUTONOMY_OPERATOR_RUNBOOK.md` | Autonomy Operator Runbook (READ_ONLY_ADVISORY) |
@@ -1892,6 +1898,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/COMMS_HUB_2026-10-07.md` | Communications hub — decision support, re-entry focus, enforced TTL (2026-10-07) |
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 |
 | `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` | CURRENT cutover — execute after 2026-08-27 close |
+| `docs/ops/DATA_DOMAIN_APPROVAL_READINESS_2026-10-22.md` | Data-domain approval readiness — 2026-10-22 |
 | `docs/ops/DECISION_PAYLOAD_LANDING_2026-08-21.md` | DecisionPayload landing check — 2026-08-21 19:31 ET |
 | `docs/ops/DECISION_SPEED_REDESIGN_2026-10-08.md` | Decision-speed redesign — Telegram cards, Home, Communications, Watch (2026-10-08) |
 | `docs/ops/DEEPSEEK_BULK_WINDOW_ET_2026-08-19.md` | DeepSeek bulk window: 10:00–21:00 US Eastern |
@@ -1907,12 +1914,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md` | GitHub Actions outage — repo visibility flip exhausted the private-repo minute quota |
 | `docs/ops/GROK_BUILD_PROMPT_B_MATERIAL_NOTIFY_AND_LOOP.md` | Grok Build — B material notify + loop continuity |
 | `docs/ops/HEALTH_AGENT_MATURITY_PLAN_2026-08-27.md` | Health Agent Maturity Plan — from "it ran" to "it worked" |
+| `docs/ops/HEALTH_REMEDIATION_MEMORY_2026-10-22.md` | Health remediation route memory bound (2026-10-22) |
 | `docs/ops/HERMES_DEEPSEEK_HYBRID_FREE_OAUTH_ROLLOVER_2026-08-04.md` | Hermes + DeepSeek hybrid policy (free OAuth bottleneck → Flash) |
 | `docs/ops/HERMES_FREE_FIRST_MEMORY_GRAPH_CONVERGENCE_2026-08-23.md` | Hermes free-first + identity v2 closeout |
 | `docs/ops/HERMES_FREE_FIRST_NATURAL_SCHEDULER_2026-08-23.md` | FREE_FIRST_ONLY natural scheduler |
 | `docs/ops/HERMES_LIBRARIAN_CURATION_MATURITY_2026-08-23.md` | Librarian + curation maturity (PR C) |
 | `docs/ops/HERMES_TICKER_INTELLIGENCE_WIRING_CLOSEOUT_2026-08-23.md` | Hermes Ticker Intelligence Wiring Closeout |
 | `docs/ops/HOLDINGS_STATE_RECONCILIATION_2026-09-01.md` | Holdings state — per-file reconciliation plan |
+| `docs/ops/HOME_DO_NOW_2026-10-22.md` | Command Center Home — the "Do now" layout (2026-10-22) |
 | `docs/ops/INSTRUMENT_RECORD_V1.md` | InstrumentRecord@v1 |
 | `docs/ops/INVESTMENT_COMMAND_CENTER_2026-10-08.md` | Investment Command Center — PR-A: engine, CIO memory, ranking, filters, modal, Telegram line (2026-10-08) |
 | `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Lane Quality Bake-Off — 2026-08-21 |
@@ -1935,12 +1944,15 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/OPERATOR_ACTION_REQUIRED.md` | OPERATOR_ACTION_REQUIRED — live advisory notification canary |
 | `docs/ops/OPERATOR_CLOSE_BRIEF_AEC_MATURITY_2026-09-20.md` | Operator close brief — Trade AI AEC maturity goal |
 | `docs/ops/OPERATOR_DEPLOYMENT_REQUIRED.md` | OPERATOR_DEPLOYMENT_REQUIRED |
+| `docs/ops/OPS_CONTROLS.md` | Ops → Controls: one operator surface, one governed host applier |
+| `docs/ops/OPS_CONTROLS_API.md` | Ops → Controls: Command Center API contract |
 | `docs/ops/OPTIONS_DESK_FIELDS.md` | Options Desk served fields: accuracy contract |
 | `docs/ops/OPTIONS_SCAN_CAPACITY_2026-10-05.md` | Options coverage and scan capacity — 2026-10-05 |
 | `docs/ops/OUTPUT_SIGNAL_COVERAGE_20261018.md` | Output-signal coverage — ACTIVE lanes with no output signal (2026-10-18 review, recounted 2026-10-19) |
 | `docs/ops/PHASE189D_HEALTH_AGENT_MISSING_STOP_FAILURE_ANALYSIS.md` | PHASE 189D — Health-Agent Missing-Stop Failure Analysis |
 | `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix |
 | `docs/ops/PHONE_OPS_20261009.md` | Phone operations for the operator on ms01-openclaw (2026-10-09) |
+| `docs/ops/PIPELINE_TIME_SETTINGS.md` | Pipeline time settings — measured, pinned, and why |
 | `docs/ops/PORTFOLIO_RECONCILIATION_2026-10-05.md` | Portfolio reconciliation — Command Center vs broker (2026-10-05) |
 | `docs/ops/POSITIONS_FIXES_2026-10-06.md` | Positions fixes and phase 1 — 2026-10-06 |
 | `docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md` | DEFERRED — operator continue-park (AGENTS.md §17) |
@@ -1973,6 +1985,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/R23_ADMIN_OBSERVABILITY_CLOSEOUT.md` | R23 Research, Data, Identity, and Notification Observability |
 | `docs/ops/R24_LEARNING_MATURITY_AUDIT_CLOSEOUT.md` | R24 Learning, Maturity, and Audit Closeout |
 | `docs/ops/R9_2_PORTFOLIO_BRAIN_LIVE_CLOSEOUT_2026-08-23.md` | Trade AI v12 R9.2 - Portfolio Brain Live Closeout |
+| `docs/ops/RELEASES_SCHEDULES_PAGE.md` | Releases & schedules — Command Center page and read model |
 | `docs/ops/RELEASE_TRAIN_API.md` | Release train: read-only Command Center API (Phase 1) |
 | `docs/ops/RELEASE_TRAIN_GITHUB_APP.md` | Release train GitHub App: operator setup (decision D2) |
 | `docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md` | Release train: n8n coordination contract (Phase 4) |
@@ -2008,6 +2021,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/TRANSFERSON_UNIVERSE_LIVE_ACCEPTANCE_GATE_2026-08-25.md` | Transferson canonical universe — live CURRENT/DB acceptance gate |
 | `docs/ops/VALIDATED_LEARNING_REMEDIATION.md` | Validated learning remediation: release and operations |
 | `docs/ops/WATCH_DECISION_STANDARDS_2026-10-08.md` | Watch decision standards — the Communications standards on the Watchlist (2026-10-08) |
+| `docs/ops/WATCH_PROSPECTS_PAGE_2026-10-22.md` | Watch — prospect lanes (the Gate 3 Watch redesign, 2026-10-22) |
 | `docs/ops/WEEKLY_OVERSIGHT_CHATGPT_OAUTH.md` | Weekly oversight — ChatGPT OAuth auto, paid manual |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye — first institutional-brain audit |
 | `docs/ops/alerts/PHASE126_TELEGRAM_ENFORCEMENT_REPORT.md` | Phase 126 — Telegram Actionable-Only Enforcement Report |
@@ -2066,6 +2080,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/hermes-learning-cutover-20261015/README.md` | hermes-learning on the n8n fabric: cutover packet (learn stage) |
 | `docs/ops/packets/hermes-scorer-canary-20261021/README.md` | hermes-watchlist-scorer: n8n canary → cutover, 2026-10-21 (operator packet) |
 | `docs/ops/packets/hermes-worker-pool-wire-20261015/README.md` | hermes-research-worker-pool — real lane runners + fail closed on zero output (2026-10-15) |
+| `docs/ops/packets/incident-spcx-resume-20261022/README.md` | Incident SPCX resume packet and double-run fix (2026-10-22) |
 | `docs/ops/packets/lane-repair-indicator-engine-20261015/README.md` | Lane repair 2026-10-15: build-symbol-profiles, watchlist entry planner, indicator-engine |
 | `docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/03_apply.md` | Apply the RI overnight crontab changes (operator) |
 | `docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/04_rollback.md` | Roll back the RI overnight crontab changes (operator) |
@@ -2095,6 +2110,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/run-from-release-cohort1-20261015/04_rollback.md` | Roll back cohort 1 (operator) |
 | `docs/ops/packets/run-from-release-cohort1-20261015/README.md` | Run from the release: cohort 1 operator packet (2026-10-15) |
 | `docs/ops/packets/swing-alert-single-sender-20261019/README.md` | Swing entry alerts: one sender (2026-10-19) |
+| `docs/ops/packets/tmp-hygiene-auto-apply-20261022/README.md` | /tmp hygiene that deletes — auto-apply on host timers (2026-10-22) |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution |
 | `docs/ops/ready-three-2026-10-21/AGENT_HANDOFF.md` | Agent handoff — 2026-10-21 |
 | `docs/ops/ready-three-2026-10-21/CHANGELOG.md` | Change and release log — 2026-10-21 |

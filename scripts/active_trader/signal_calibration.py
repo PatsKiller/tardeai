@@ -58,6 +58,10 @@ FEATURE_KNOBS = {"depth_ratio": ("active_trader_alerts.min_depth_ratio_armed", "
                  "buy_ratio": ("active_trader_alerts.min_buy_ratio", "min"),
                  "spread_bps": ("active_trader_alerts.max_spread_bps", "max"),
                  "risk_pct": ("min_stop.pct_of_price", "min")}
+# feature units → knob units (2026-10-22 unit fix). risk_pct is measured in PERCENT of price; the knob
+# min_stop.pct_of_price is a FRACTION (0.01 = 1 %). Proposing the percent as written (1.767) would have meant a
+# minimum stop of 176.7 % of price. proposed_value is in knob units; proposed_feature_value keeps the measured one.
+KNOB_UNIT_SCALE = {"min_stop.pct_of_price": 0.01}
 
 
 def _rate(rows) -> Optional[float]:
@@ -110,8 +114,12 @@ def calibrate(records: list[Mapping[str, Any]], *, sessions: int, min_sample: in
         if len(w) >= min_bucket and len(st) >= min_bucket:
             wm, sm = row["worked_median"], row["stopped_median"]
             if (direction == "min" and wm > sm) or (direction == "max" and wm < sm):
+                feat_val = round((wm + sm) / 2, 3)
+                scale = KNOB_UNIT_SCALE.get(knob, 1.0)
                 out["proposals"].append({"type": "threshold", "knob": knob, "feature": f,
-                                         "proposed_value": round((wm + sm) / 2, 3),
+                                         "proposed_value": round(feat_val * scale, 6),
+                                         "proposed_feature_value": feat_val,
+                                         "knob_unit_scale": scale,
                                          "why": f"worked median {wm} vs stopped median {sm}",
                                          "status": "PROPOSED — operator ratifies"})
     return out

@@ -1159,6 +1159,27 @@
       "classification": "NOT_OPERATOR_RELEVANT",
       "reason": "Rules-as-data for the AGENTS.md §2A single egress sanitiser (config/egress_sanitiser_policy.json): the categories and regular expressions sanitise_for_external() applies before every governed-bridge provider call, plus the §2A permitted set as documentation. Read only by scripts/lib/cio_egress_sanitiser.py; a change is a reviewed config PR. No investment content and no operator surface.",
       "owner_hint": "scripts/lib/cio_egress_sanitiser.py"
+    },
+    {
+      "name": "schema:CioProspectShadowBuild@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "The cio-prospect-shadow build (one prospect per security_guid, read-only, written only to data/cio/cio_prospect_shadow.json at canary; --dry-run writes nothing). Evidence for the operator's grants, quoted in docs/architecture/CIO_PROSPECT_SHADOW_COMPARISON_2026-10-22.md, not an operator product. Shadow stage of the CIO prospect foundation (AGENTS.md §26, P1): no page or alert reads it yet — the reader batches of docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md §7 P3 (TradeInView / Open Trades / Watch through lib/data_broker/cio_prospect.get_position_view, Home and Telegram through get_prospects) are each an operator decision (§17, §26.3). Reclassify as SURFACE with a record_edge when the first batch lands.",
+      "owner_hint": "scripts/lib/cio_prospect_builder.py"
+    },
+    {
+      "name": "schema:CioProspectSurfaceComparison@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Per-symbol agreements/conflicts between the shadow prospect and Home, Watch and Telegram; a migration compare artifact (P1/P2), read by the operator as the committed report, not through a CIO surface. Shadow stage of the CIO prospect foundation (AGENTS.md §26, P1): no page or alert reads it yet — the reader batches of docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md §7 P3 (TradeInView / Open Trades / Watch through lib/data_broker/cio_prospect.get_position_view, Home and Telegram through get_prospects) are each an operator decision (§17, §26.3). Reclassify as SURFACE with a record_edge when the first batch lands.",
+      "owner_hint": "scripts/lib/cio_prospect_builder.py::compare"
+    },
+    {
+      "name": "schema:CioProspectLifecycle@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "The position-lifecycle blocks of the prospect record (origin attribution, observed stops, excursion, exit cause, post-exit review, re-entry advice; operator 2026-10-22 NAVN). Operator-relevant once a surface reads it; today only the shadow build and the projection carry it. Shadow stage of the CIO prospect foundation (AGENTS.md §26, P1): no page or alert reads it yet — the reader batches of docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md §7 P3 (TradeInView / Open Trades / Watch through lib/data_broker/cio_prospect.get_position_view, Home and Telegram through get_prospects) are each an operator decision (§17, §26.3). Reclassify as SURFACE with a record_edge when the first batch lands.",
+      "owner_hint": "scripts/lib/cio_prospect_lifecycle.py"
     }
   ]
 }

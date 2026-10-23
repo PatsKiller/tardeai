@@ -68,6 +68,13 @@ def get_detail(symbol: str) -> dict[str, Any]:
     return out
 
 
+def get_prospects(query: dict | None = None) -> dict[str, Any]:
+    """GET /api/v3/data-broker/watch-prospects — the Watch page's prospect lanes (interim adapter until the
+    cio_prospect projection is live; lib/data_broker/watch_prospects.py)."""
+    from lib.data_broker.watch_prospects import list_watch_prospects
+    return list_watch_prospects(query or {})
+
+
 def get_filters() -> dict[str, Any]:
     from lib.data_broker.watch_intelligence import watch_filters
     out = watch_filters()

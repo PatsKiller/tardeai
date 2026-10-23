@@ -147,7 +147,9 @@ EOF
   c3)
     served_state || fail "serve PR-1 + PR-2 first"
     need_grant; quiet_minute
-    crontab -l | grep -qF -- "$NEW_LINE" || fail "c2 not applied (learn line must claim effects before n8n owns them)"
+    # captured, not piped: `crontab -l | grep -q` under pipefail is a false failure (SIGPIPE, 2026-10-22)
+    CT="$(crontab -l)" || fail "crontab -l failed"
+    grep -qF -- "$NEW_LINE" <<<"$CT" || fail "c2 not applied (learn line must claim effects before n8n owns them)"
     for lane in "${LIVE[@]}"; do
       read -r cur ep <<<"$(owner_of "$lane")"
       [[ "$cur" == n8n ]] && { echo "  $lane already n8n (epoch $ep)"; continue; }
