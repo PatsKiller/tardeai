@@ -2115,7 +2115,12 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
     }
   }, [tab, focus.decision])
 
-  const home = data
+  // /api/v3/cio/home answers {ok:false, error, detail} on an exception and useApi passes that object
+  // through as data; treating it as a home crashed Decisions on home.cio_now.attention (site
+  // validation 2026-10-23). A payload without cio_now is "unavailable", with the server's error.
+  const homeOk = !!(data && (data as any).cio_now)
+  const home = homeOk ? data : null
+  const homeErr = error ?? (data && !homeOk ? ((data as any).error ? `${(data as any).error}${(data as any).detail ? ` — ${(data as any).detail}` : ''}` : 'payload has no cio_now') : null)
 
   return (
     <div className="cio-hub" style={{ padding: '16px 24px', maxWidth: 1240 }} data-testid="cio-hub">
@@ -2181,9 +2186,9 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
               Loading office home…
             </div>
           )}
-          {error && !home && (
+          {homeErr && !home && (
             <div style={{ padding: '12px 0', color: 'var(--amber)', fontSize: 13 }} data-testid="cio-home-error">
-              Office home unavailable: {String(error)}
+              Office home unavailable: {String(homeErr)}
             </div>
           )}
           {home && (
