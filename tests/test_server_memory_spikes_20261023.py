@@ -494,6 +494,7 @@ def _daily(sym, last_day_offset, n=300):
 @pytest.mark.parametrize("rth", [True, False])
 @pytest.mark.parametrize("case", ["current", "stale", "none", "lowercase_only", "forming_only"])
 def test_freshness_state_matches_full_history_path(monkeypatch, rth, case):
+    pytest.importorskip("pandas")  # technical_intelligence imports pandas; CI installs only pytest + pyyaml
     import technical_intelligence as ti
     import packet_invalidation as pi
 
@@ -512,6 +513,19 @@ def test_freshness_state_matches_full_history_path(monkeypatch, rth, case):
     if case in ("current", "stale"):
         # one indexed query (exact symbol, LIMIT 1), no full-history read
         assert len(conn.log) == 1 and "symbol = %s" in conn.log[0] and "LIMIT 1" in conn.log[0], conn.log
+
+
+def test_freshness_state_reads_one_indexed_row_source():
+    """Pandas-free pin (CI): freshness asks for the last closed bar by exact symbol, LIMIT 1."""
+    src = (ROOT / "scripts" / "technical_intelligence.py").read_text(encoding="utf-8")
+    fn = src[src.index("def technical_freshness_state("):src.index("def _bar_closed(")]
+    assert "_last_closed_bar_state(symbol, base_tf, conn)" in fn
+    # the full-history read runs only as the fallback after the indexed read found no row
+    assert fn.index("native_states[base_tf] = _last_closed_bar_state(") < fn.index(
+        "if state is None:\n                meta = load_bars(symbol, tf, conn, allow_fetch=False)")
+    helper = fn[fn.index("def _last_closed_bar_state("):]
+    assert "WHERE symbol = %s AND timeframe = %s AND bar_time <= %s" in helper
+    assert "ORDER BY bar_time DESC LIMIT 1" in helper and "upper(symbol)" not in helper
 
 
 # ── 7. watchdog: post-kill verify polls instead of one early probe ───────────
