@@ -71,8 +71,9 @@ def _snap(w):
 
 def _claim(w, *, pol=SHADOW_ON, **kw):
     w.before = getattr(w, "before", None) or _snap(w)
-    return T.process_requests(w.state, lambda live: w.controller(live=live, **kw), apply=True,
-                              now=lambda: w.clock.t, shadow_pol=pol)
+    return T.process_requests(
+        w.state, lambda live: w.controller(live=live, **kw), apply=True, now=lambda: w.clock.t, shadow_pol=pol
+    )
 
 
 def _nothing_written(w):
@@ -82,8 +83,9 @@ def _nothing_written(w):
     assert after == {k: v for k, v in w.before.items() if k != "train_requests"}, sorted(after)
     assert not w.state.latch.exists()
     assert w.writer.calls == [] and [c for c in w.host.calls if c[0] in ("deploy", "checkout")] == []
-    origin_refs = subprocess.run(["git", "-C", str(w.repo.origin), "for-each-ref", "--format=%(refname)"],
-                                 capture_output=True, text=True).stdout.split()
+    origin_refs = subprocess.run(
+        ["git", "-C", str(w.repo.origin), "for-each-ref", "--format=%(refname)"], capture_output=True, text=True
+    ).stdout.split()
     assert not [r for r in origin_refs if r.startswith("refs/heads/train/")]
 
 
@@ -134,8 +136,12 @@ def test_a_head_the_census_saw_fail_never_rides(tmp_path):
     heads = w.repo.heads
     fail = {"status": "FAIL", "failed": ["ci-gate"], "head": heads[11]}
     stale_fail = {"status": "FAIL", "failed": ["ci-gate"], "head": "e" * 40}  # recorded for an older head
-    q = StaticQueue([T.QueueEntry(pr=11, head_sha=heads[11], census={"required_checks": fail}),
-                     T.QueueEntry(pr=12, head_sha=heads[12], census={"required_checks": stale_fail})])
+    q = StaticQueue(
+        [
+            T.QueueEntry(pr=11, head_sha=heads[11], census={"required_checks": fail}),
+            T.QueueEntry(pr=12, head_sha=heads[12], census={"required_checks": stale_fail}),
+        ]
+    )
     code, rec = w.controller(live=False, queue=q).run(NOW)
     assert rec["selection"]["excluded"] == {"11": "CHECKS_FAILING:ci-gate"}
     assert rec["selection"]["members"] == [12]
@@ -150,8 +156,10 @@ def test_policy_shadow_block_is_on_in_the_repo_and_fails_closed():
     assert pol["armed"] is False and all(x["enabled"] is False for x in pol["windows"])
 
 
-@pytest.mark.parametrize("body", ["{broken", json.dumps({"schema": "x"}),
-                                  json.dumps({"shadow": {"integrate": "true", "past_window_rules": 1}})])
+@pytest.mark.parametrize(
+    "body",
+    ["{broken", json.dumps({"schema": "x"}), json.dumps({"shadow": {"integrate": "true", "past_window_rules": 1}})],
+)
 def test_shadow_policy_anything_but_true_is_off(tmp_path, body):
     p = tmp_path / "policy.json"
     p.write_text(body)
@@ -178,8 +186,9 @@ def test_shadow_request_builds_a_real_candidate_and_writes_a_report(tmp_path):
     cand = r["candidate_sha"]
     assert cand and len(cand) == 40
     wt = tmp_path / "scratch" / "shadow-1800" / "wt"
-    parents = subprocess.run(["git", "-C", str(wt), "log", "--format=%P", "-1", cand], capture_output=True,
-                             text=True).stdout.split()
+    parents = subprocess.run(
+        ["git", "-C", str(wt), "log", "--format=%P", "-1", cand], capture_output=True, text=True
+    ).stdout.split()
     assert w.repo.heads[12] in parents  # the merge of #12 onto the candidate built from #11
     rid = req["request_id"]
     assert r["evidence_refs"] == [f"report:train_requests/reports/{rid}.json"]
@@ -204,8 +213,9 @@ def test_a_second_tick_reuses_the_slot_scratch_and_never_rewrites_a_report(tmp_p
     put(w, second)
     _claim(w)
     assert receipt(w, second["request_id"])["state"] == "COMPLETED"
-    wts = subprocess.run(["git", "-C", str(w.repo.checkout), "worktree", "list", "--porcelain"], capture_output=True,
-                         text=True).stdout
+    wts = subprocess.run(
+        ["git", "-C", str(w.repo.checkout), "worktree", "list", "--porcelain"], capture_output=True, text=True
+    ).stdout
     assert wts.count("shadow-1800") == 1
     spool = T.RequestSpool(w.state_dir)
     assert spool.write_report(first["request_id"], {"schema": "x"}) is None  # written once, never rewritten
@@ -226,11 +236,20 @@ def test_without_the_policy_the_claimer_keeps_the_simulated_integration(tmp_path
 
 
 def test_live_would_refuse_rows_survive_a_long_not_riding_list():
-    rec = {"selection": {"excluded": {str(n): "held:x" for n in range(100, 140)}},
-           "would_refuse": ["control CONTROL_UNARMED", "delegation PAUSED", "window 1800 is disabled"],
-           "would_halt": None}
-    doc = T._receipt(request(), state="COMPLETED", mode="simulate", now=NOW.timestamp(), acknowledged_at="x",
-                     rec=rec, outcome="NO_OP")
+    rec = {
+        "selection": {"excluded": {str(n): "held:x" for n in range(100, 140)}},
+        "would_refuse": ["control CONTROL_UNARMED", "delegation PAUSED", "window 1800 is disabled"],
+        "would_halt": None,
+    }
+    doc = T._receipt(
+        request(),
+        state="COMPLETED",
+        mode="simulate",
+        now=NOW.timestamp(),
+        acknowledged_at="x",
+        rec=rec,
+        outcome="NO_OP",
+    )
     codes = [n["code"] for n in doc["needs_action"]]
     assert len(codes) == 20 and codes[:3] == ["LIVE_WOULD_REFUSE"] * 3 and codes[3:] == ["NOT_RIDING"] * 17
 
@@ -303,8 +322,12 @@ def test_stop_during_each_phase_halts_shadow_there(tmp_path, label):
     assert rec["outcome"] == "STOPPED" and rec["reason"] == "STOP_REQUESTED", rec["steps"][-3:]
     assert rec["would_halt"]["at"] == label
     steps = "\n".join(rec["steps"])
-    after = {"select": "WOULD push", "qualify": "WOULD merge batch PR", "merge": "WOULD merge batch PR",
-             "promote": "WOULD re-check STOP + epoch at activation"}[label]
+    after = {
+        "select": "WOULD push",
+        "qualify": "WOULD merge batch PR",
+        "merge": "WOULD merge batch PR",
+        "promote": "WOULD re-check STOP + epoch at activation",
+    }[label]
     if label != "merge":
         assert after not in steps
     # simulated halt: the STOP request is the only control write; shadow never acknowledges or settles it
@@ -369,13 +392,23 @@ def test_corrupt_latch_refuses_live_and_the_request_lane(tmp_path, kind):
     _corrupt(w, kind)
     code, rec, _ = w.run()
     assert rec["reason"] == "REFUSED_STOP_UNREADABLE" and w.writer.calls == []
-    d = W.decide({"stop_state": W.host_snapshot(NOW, "1800", W.load_config(), stop_dir=w.state_dir,
-                                                delegation_loader=lambda: ("PAUSED", "test"))["stop_state"],
-                  "armed": False, "shadow_enabled": True, "delegation_state": "PAUSED", "window_enabled": False},
-                 "off_window", shadow_only=True)
+    d = W.decide(
+        {
+            "stop_state": W.host_snapshot(
+                NOW, "1800", W.load_config(), stop_dir=w.state_dir, delegation_loader=lambda: ("PAUSED", "test")
+            )["stop_state"],
+            "armed": False,
+            "shadow_enabled": True,
+            "delegation_state": "PAUSED",
+            "window_enabled": False,
+        },
+        "off_window",
+        shadow_only=True,
+    )
     assert d["disposition"] == "no_op" and d["no_op_reason"] == "stop_unreadable"
     # the Command Center's STOP reader agrees (a dangling link used to read ABSENT there and in the request lane)
     from scripts.lib import release_train_view as RTV  # noqa: PLC0415
+
     assert RTV.read_latch_file(w.state.latch)[0] == "UNREADABLE"
     assert WV.read_latch(w.state_dir) == "UNREADABLE"
 
@@ -385,8 +418,16 @@ def test_corrupt_latch_refuses_live_and_the_request_lane(tmp_path, kind):
 
 def test_an_old_green_run_superseded_by_a_rerun_in_flight_is_not_green():
     sha = "c" * 40
-    runs = runs_for(sha) + [{"id": 900, "name": "ci-gate", "head_sha": sha, "status": "in_progress",
-                             "conclusion": None, "app": "github-actions"}]
+    runs = runs_for(sha) + [
+        {
+            "id": 900,
+            "name": "ci-gate",
+            "head_sha": sha,
+            "status": "in_progress",
+            "conclusion": None,
+            "app": "github-actions",
+        }
+    ]
     verdict, why = T.evidence_verdict(T.check_evidence(runs, sha, now=0))
     assert verdict == "PENDING" and why == ["ci-gate:in_progress"]
 
@@ -408,7 +449,7 @@ def test_evidence_turning_red_after_qualification_stops_the_merge(tmp_path):
     def runs(sha):
         if w.writer.calls and sha == w.writer.calls[0][2]:
             reads["n"] += 1
-            if reads["n"] >= 2:   # the re-read immediately before the merge sees a failed rerun
+            if reads["n"] >= 2:  # the re-read immediately before the merge sees a failed rerun
                 return runs_for(sha) + runs_for(sha, "failure", names=("ci-gate",), start_id=500)
         return real(sha)
 
@@ -461,13 +502,20 @@ def test_shadow_tick_apply_appends_and_waits_for_the_claimer(tmp_path):
     w = World(tmp_path)
 
     def claimer_runs(_s):  # the installed claimer, answering while the tick waits
-        T.process_requests(w.state, lambda live: w.controller(live=live), apply=True, now=lambda: w.clock.t,
-                           shadow_pol=SHADOW_ON)
+        T.process_requests(
+            w.state, lambda live: w.controller(live=live), apply=True, now=lambda: w.clock.t, shadow_pol=SHADOW_ON
+        )
 
     clock = {"t": 0.0}
-    code, out = T.shadow_tick(["1800"], apply=True, inject="corrupt-latch", wait_s=60, state=w.state,
-                              clock=lambda: clock["t"], sleep=lambda s: (clock.__setitem__("t", clock["t"] + s),
-                                                                         claimer_runs(s)))
+    code, out = T.shadow_tick(
+        ["1800"],
+        apply=True,
+        inject="corrupt-latch",
+        wait_s=60,
+        state=w.state,
+        clock=lambda: clock["t"],
+        sleep=lambda s: (clock.__setitem__("t", clock["t"] + s), claimer_runs(s)),
+    )
     row = out["windows"][0]
     assert code == T.EXIT_OK and row["result"] == "ANSWERED", row
     assert row["receipt_state"] == "REFUSED" and row["refusal"]["code"] == "STOP_UNREADABLE"
@@ -490,8 +538,15 @@ def test_back_to_back_forced_ticks_get_distinct_requests(tmp_path):
 def test_shadow_tick_reports_a_missing_claimer(tmp_path):
     state = RW.State(tmp_path / "rw")
     clock = {"t": 0.0}
-    code, out = T.shadow_tick(["0000"], apply=True, inject=None, wait_s=30, state=state,
-                              clock=lambda: clock["t"], sleep=lambda s: clock.__setitem__("t", clock["t"] + s))
+    code, out = T.shadow_tick(
+        ["0000"],
+        apply=True,
+        inject=None,
+        wait_s=30,
+        state=state,
+        clock=lambda: clock["t"],
+        sleep=lambda s: clock.__setitem__("t", clock["t"] + s),
+    )
     assert code == 1 and out["windows"][0]["result"].startswith("NO TERMINAL RECEIPT")
     assert len(os.listdir(tmp_path / "rw" / "train_requests" / "pending")) == 1  # left for the claimer
 
