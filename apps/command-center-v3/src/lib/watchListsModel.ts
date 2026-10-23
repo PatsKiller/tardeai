@@ -10,6 +10,7 @@
  *  tooltip of each filter is the server's own description of what it does (``position_filters[key].server``).
  *  This file shapes values for display only. No colour literals (design tokens). */
 import type { ProspectRow } from './watchProspectsModel.ts'
+import { accountName } from './accountLabels.ts'
 
 export type PositionState = 'held' | 'formerly_held' | 'never_held'
 export type RoundTrip = {
@@ -18,6 +19,7 @@ export type RoundTrip = {
   r: number | null; r_basis: string | null; exit_cause: string; exit_cause_label: string
   exit_cause_evidence?: string | null; stop_raised?: number | null; stop_initial?: number | null; stop_last?: number | null
   hold_days?: number | null; noise_vs_trend?: string | null; noise_vs_trend_basis?: string | null
+  account?: string | null; account_label?: string | null
 }
 export type ReentryAdvice = {
   state: string; readiness: 'ready' | 'near' | 'waiting' | 'invalidated'; action?: string | null; reason?: string | null
@@ -28,6 +30,9 @@ export type ReentryAdvice = {
 export type PositionFacts = {
   position_state?: PositionState; position_label?: string; last_sell_at?: string | null
   last_round_trip?: RoundTrip | null; reentry?: ReentryAdvice | null
+  /** Which account(s) hold it / which account sold — NAMES only (operator 2026-10-23), never an account number. */
+  held_accounts?: string[]; held_account_labels?: string[]
+  last_sell_account?: string | null; last_sell_account_label?: string | null
 }
 export type Membership = { kind: string; label: string; at: string | null; ref: unknown }
 export type ListRow = ProspectRow & PositionFacts & {
@@ -150,11 +155,30 @@ export function riskRewardCell(rr: { risk_pct?: number | null; reward_pct?: numb
   return `${risk} / ${reward} · ${ratio}`
 }
 
+/** Names of the accounts that hold the symbol now (names only). */
+export function heldAccountNames(f: PositionFacts): string[] {
+  const keys = f.held_accounts || []
+  return keys.map((k, i) => accountName(k, (f.held_account_labels || [])[i]))
+}
+
+/** Name of the account that sold (last sell, else the last round trip's account), or '' when unknown. */
+export function soldByName(f: PositionFacts): string {
+  const k = f.last_sell_account || f.last_round_trip?.account || ''
+  const l = f.last_sell_account_label || f.last_round_trip?.account_label || ''
+  return k || l ? accountName(k, l) : ''
+}
+
 export function positionChip(f: PositionFacts): { label: string; tone: 'info' | 'ai' | 'neutral'; tip: string } | null {
-  if (f.position_state === 'held') return { label: 'held', tone: 'info', tip: 'Held now, per the broker-synced Watch held reader.' }
+  if (f.position_state === 'held') {
+    const names = heldAccountNames(f)
+    const where = names.length > 1 ? ` · ${names.length} accounts` : names.length === 1 ? ` · ${names[0]}` : ''
+    return { label: `held${where}`, tone: 'info',
+      tip: `Held now${names.length ? ` in ${names.join(', ')}` : ''}, per the broker-synced Watch held reader.` }
+  }
   if (f.position_state === 'formerly_held') {
-    return { label: `formerly held · sold ${day(f.last_sell_at)}`, tone: 'ai',
-      tip: 'Not held now; the broker ledger shows a sell inside the last year. The last round trip and re-entry advice come from the CIO prospect lifecycle.' }
+    const by = soldByName(f)
+    return { label: `formerly held · sold ${day(f.last_sell_at)}${by ? ` · ${by}` : ''}`, tone: 'ai',
+      tip: `Not held now; the broker ledger shows a sell${by ? ` in ${by}` : ''} inside the last year. The last round trip and re-entry advice come from the CIO prospect lifecycle.` }
   }
   return null
 }

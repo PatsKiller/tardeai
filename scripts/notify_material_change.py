@@ -442,6 +442,7 @@ def _watch_context(cur, change: dict, out: dict) -> None:
     held = holding_for(sym)
     if held:
         out["holding"] = held
+        _safe(cur, lambda: _real_stop(cur, sym, out))
     plan = None
     cur.execute(
         """SELECT entry_zone_low, entry_zone_high, stop_price, target_price FROM watchlist_entry_plans
@@ -504,13 +505,53 @@ def _watch_context(cur, change: dict, out: dict) -> None:
         out["size"] = pill(cap_label(b * 1000.0))
 
 
+def _real_stop(cur, sym: str, out: dict) -> None:
+    """A REAL stop on a held name: a broker-reported working stop order, or one the operator set.
+
+    P1 2026-10-23: STOP HIT fired on the $213.00 stop of a watchlist ENTRY plan (an LLM-proposed level
+    below a buy zone) for a position the plan never covered, and called it "your plan stop". Only these
+    two stores hold a stop that exists: stop_last_known (origin schwab_read = broker-reported, origin
+    operator = operator-recorded; dead statuses excluded) and manual_broker_stops (active rows the
+    operator entered). Highest stop wins (the first a long position meets on the way down).
+    """
+    found: list[dict] = []
+    cur.execute(
+        """SELECT broker, account, stop_price, origin FROM stop_last_known
+            WHERE upper(symbol) = %s AND stop_price IS NOT NULL
+              AND coalesce(status, '') NOT IN ('filled','canceled','cancelled','rejected','expired','replaced','not_in_read')""",
+        (sym,),
+    )
+    for broker, account, price, origin in cur.fetchall() or []:
+        found.append({"price": _f(price), "broker": broker, "account": account,
+                      "source": "operator" if str(origin or "") == "operator" else "broker"})
+    cur.execute(
+        """SELECT broker, account, stop_price FROM manual_broker_stops
+            WHERE upper(symbol) = %s AND active AND stop_price IS NOT NULL""",
+        (sym,),
+    )
+    for broker, account, price in cur.fetchall() or []:
+        found.append({"price": _f(price), "broker": broker, "account": account, "source": "operator"})
+    found = [f for f in found if f["price"] is not None]
+    if found:
+        out["real_stop"] = max(found, key=lambda f: f["price"])
+
+
 _HOLDINGS: dict | None = None
 HOLDINGS_PATH = Path(__file__).resolve().parent.parent / "data" / "portfolios" / "state" / "holdings.json"
 
 
+def _hpa():
+    try:
+        from lib import held_position_alerts as hpa
+    except ImportError:  # imported as scripts.notify_material_change
+        from scripts.lib import held_position_alerts as hpa
+    return hpa
+
+
 def _account_label(account: str) -> str:
-    a = str(account or "").lower().replace("schwab_", "").replace("fidelity_", "").replace("_", " ").strip()
-    return {"rollover ira": "Rollover IRA", "roth ira": "Roth IRA", "taxable": "Taxable"}.get(a, a.title() or "account")
+    """The account's NAME (account_display, PR #2020) — never digits. P1 2026-10-23: the NVDA page
+    never said which account held the 0.133 share, so the operator could not recognise it."""
+    return _hpa().account_label(account)
 
 
 def holding_for(symbol: str, holdings: dict | None = None) -> dict | None:
@@ -539,9 +580,13 @@ def holding_for(symbol: str, holdings: dict | None = None) -> dict | None:
     value = sum(float(h.get("market_value") or 0) for h in rows)
     if shares <= 0:
         return None
+    hpa = _hpa()
+    positions = hpa.positions_for(symbol, holdings)
     out = {
         "shares": shares,
         "accounts": sorted({_account_label(h.get("account")) for h in rows}),
+        "positions": positions,
+        "stop_exit_alerts": hpa.stop_exit_alerts_allowed({"positions": positions}),
         "cost_basis": cost or None,
         "market_value": value or None,
     }
@@ -773,12 +818,22 @@ def classify(c: dict, info: dict) -> dict:
         )
         return out
     if held:
-        if lv["hit_stop"]:
-            return {**out, "route": ROUTE_PAGE, "state": "STOP_HIT"}
-        if lv["hit_target"]:
-            return {**out, "route": ROUTE_PAGE, "state": "TARGET_HIT"}
-        if kind == "price_excursion" and float(c.get("magnitude") or 0) >= PAGE_MIN_MAGNITUDE:
-            return {**out, "route": ROUTE_PAGE, "state": "BIG_MOVE"}
+        # P1 2026-10-23 (NVDA): STOP HIT needs a REAL stop (broker-reported or operator-set, see
+        # _real_stop). A system plan level crossed on a held name is named in the digest as what it is.
+        # Tiny / promo positions get no stop or exit page unless opted in (config/held_position_alerts.json).
+        real = info.get("real_stop") or {}
+        rs = _f(real.get("price"))
+        out["real_stop_hit"] = rs is not None and price is not None and price <= rs
+        out["system_level_hit"] = bool(lv["hit_stop"])
+        allowed = (info.get("holding") or {}).get("stop_exit_alerts", True) is not False
+        out["stop_exit_alerts"] = allowed
+        if allowed:
+            if out["real_stop_hit"]:
+                return {**out, "route": ROUTE_PAGE, "state": "STOP_HIT"}
+            if lv["hit_target"]:
+                return {**out, "route": ROUTE_PAGE, "state": "TARGET_HIT"}
+            if kind == "price_excursion" and float(c.get("magnitude") or 0) >= PAGE_MIN_MAGNITUDE:
+                return {**out, "route": ROUTE_PAGE, "state": "BIG_MOVE"}
         return {**out, "route": ROUTE_DIGEST, "state": "HELD_NEWS"}
     if lv["hit_stop"]:
         return {**out, "route": ROUTE_DIGEST, "state": "PLAN_INVALIDATED"}
@@ -809,12 +864,28 @@ _PAGE_HEAD = {
     "BUY_READY": ("🟢", "BUY READY"),
 }
 _ACTION = {
-    "STOP_HIT": "review exit — price is through your plan stop",
-    "TARGET_HIT": "review taking profit — price is at or through your plan target",
+    # STOP_HIT / TARGET_HIT name the owner of the level at render time (action_text): "your stop" only
+    # for a stop the operator set (P1 2026-10-23 — "your plan stop" was a system entry-plan level).
+    "STOP_HIT": "review exit — price is through the stop",
+    "TARGET_HIT": "review taking profit — price is at or through the plan target",
     "BIG_MOVE": "review the position",
     "BUY_READY": "review entry — the CIO entry check is green on a fresh quote",
     "PLAN_INVALIDATED": "re-plan or drop",
 }
+
+
+def action_text(info: dict, route: dict) -> str:
+    """The one action line, naming who owns the level it refers to."""
+    state = route["state"]
+    if state == "STOP_HIT":
+        owner = _hpa().stop_owner(info.get("real_stop")) or "the stop"
+        if owner == "your stop":
+            return "review exit — price is through your stop"
+        return f"review exit — price is through the {owner}"
+    if state == "TARGET_HIT":
+        src = _hpa().system_level_name((info.get("plan") or {}).get("source")).replace(" level", "")
+        return f"review taking profit — price is at or through the {src} target (not a target you set)"
+    return _ACTION[state]
 
 
 def _money(v: float | None) -> str:
@@ -854,11 +925,9 @@ def _what_text(info: dict) -> str:
 
 
 def _position_text(info: dict) -> str | None:
-    h = info.get("holding")
-    if not h:
-        return None
-    shares = f"{h['shares']:,.0f}" if float(h["shares"]).is_integer() else f"{h['shares']:,.3f}"
-    return f"held, {shares} sh"
+    """'held · <account name> 0.133 sh (promo/reward)' — every account by NAME, with its shares
+    (operator 2026-10-23: "on these notices, we need to tag what account it came from")."""
+    return _hpa().held_text(info.get("holding"))
 
 
 def page_lines(c: dict, info: dict, route: dict) -> list[str]:
@@ -878,14 +947,18 @@ def page_lines(c: dict, info: dict, route: dict) -> list[str]:
     lines.append(" · ".join(price_bits))
     plan = info.get("plan") or {}
     lv = route.get("levels") or {}
-    if route["state"] == "STOP_HIT" and plan.get("stop") is not None:
-        lines[-1] += f" · stop {_money(plan['stop'])}"
+    real = info.get("real_stop") or {}
+    hpa = _hpa()
+    if route["state"] == "STOP_HIT" and real.get("price") is not None:
+        lines[-1] += f" · stop {_money(real['price'])} ({hpa.stop_owner(real)})"
     elif route["state"] == "TARGET_HIT" and plan.get("target") is not None:
-        lines[-1] += f" · target {_money(plan['target'])}"
-    elif plan.get("stop") is not None and lv.get("dist_pct") is not None:
-        lines[-1] += f" · stop {_money(plan['stop'])}"
+        lines[-1] += f" · target {_money(plan['target'])} ({hpa.system_level_name(plan.get('source'))})"
+    elif route.get("held") and real.get("price") is not None:
+        lines[-1] += f" · stop {_money(real['price'])} ({hpa.stop_owner(real)})"
+    elif not route.get("held") and plan.get("stop") is not None and lv.get("dist_pct") is not None:
+        lines[-1] += f" · plan stop {_money(plan['stop'])} ({hpa.system_level_name(plan.get('source'))})"
     lines.append(f"CIO: {route['verdict']['text']} · {_what_text(info)}")
-    lines.append(f"▶ Action: {_ACTION[route['state']]}")
+    lines.append(f"▶ Action: {action_text(info, route)}")
     return lines
 
 
@@ -926,6 +999,12 @@ def digest_line(c: dict, info: dict, route: dict) -> str:
     plan = info.get("plan") or {}
     if route["state"] == "PLAN_INVALIDATED" and plan.get("stop") is not None:
         bits.append(f"through stop {_money(plan['stop'])}")
+    if route.get("held") and route.get("system_level_hit") and plan.get("stop") is not None:
+        lvl = _hpa().system_level_name(plan.get("source"))
+        bits.append(f"below {lvl} {_money(plan['stop'])} (not a stop you set)")
+    if route.get("held") and route.get("real_stop_hit") and route.get("stop_exit_alerts") is False:
+        real = info.get("real_stop") or {}
+        bits.append(f"through {_hpa().stop_owner(real)} {_money(real.get('price'))} (no page: tiny/promo position)")
     if route["state"] == "TARGET_PASSED" and plan.get("target") is not None:
         bits.append(f"past target {_money(plan['target'])}")
     bits.append(stance_short(info))
@@ -1045,6 +1124,7 @@ def render_rich(changes: list[dict], ctx: dict[str, dict]) -> dict:
         from lib import telegram_rich as tr  # type: ignore
     out: list[str] = []
     symbols: list[str] = []
+    chart_ok = True
     for c in dedupe_by_symbol(changes):
         info = ctx.get(str(c["change_guid"]), {})
         route = classify(c, info)
@@ -1052,6 +1132,7 @@ def render_rich(changes: list[dict], ctx: dict[str, dict]) -> dict:
             continue
         sym = str(c["symbol"]).upper()
         symbols.append(sym)
+        chart_ok = chart_ok and bool(route.get("fresh"))
         lines = page_lines(c, info, route)
         if out:
             out.append("")
@@ -1064,9 +1145,12 @@ def render_rich(changes: list[dict], ctx: dict[str, dict]) -> dict:
     return {
         "text": "\n".join(out),
         "reply_markup": None,
+        # P1 2026-10-23: the NVDA page showed a Dec-dated chart. Finviz serves today's chart for the
+        # URL, but Telegram caches link previews per URL and the URL never changed; chart_image_url now
+        # carries a per-minute version. With no fresh quote the chart cannot be vouched for: omitted.
         "link_preview_options": (
             {"url": tr.chart_image_url(symbols[0]), "prefer_large_media": True, "show_above_text": False}
-            if len(symbols) == 1
+            if len(symbols) == 1 and chart_ok
             else {"is_disabled": True}
         ),
     }

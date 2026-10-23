@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_ask_research_phase9_20261023",
+  "files": [
+    "tests/test_cio_ask_research.py"
+  ],
+  "anchor": "CIO_ASK_RESEARCH_PHASE9_20261023",
+  "comment": [
+    "ANCHOR: CIO_ASK_RESEARCH_PHASE9_20261023 — Ask the CIO Phase 9 research pipeline (scripts/lib/cio_ask_research.py, scripts/cio_ask_research.py): parallel gather with per-source timeouts, as_of+citation on every number, panel dissent, MBI strip log, per-question/daily caps fail closed, private tracked entities, idempotent CIO memory append. Hermetic: fake search/LLM/stores."
+  ]
+}

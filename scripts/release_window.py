@@ -14,6 +14,7 @@ process for urgent fixes." Packet: docs/ops/packets/release-windows-20261016/REA
   train-status | train-reconcile [--live]     release_train_controller.py): select -> freeze -> integrate ->
   train-quarantine-resolve ... [--live]       local test -> qualify -> merge -> promote -> verify. Dry run is the
   train-claim [--apply]                       (n8n window requests: shadow = simulate only; lists unless --apply)
+  train-shadow-tick [--window W] [--apply]    Phase 5 forced shadow tick per window (dry run unless --apply)
                                               default; --live is refused while the controller is BUILD_ONLY. The
                                               commands above (plan/run/status/clear-stop) are unchanged.
 
@@ -953,6 +954,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     k.add_argument("--apply", action="store_true", help="claim by rename and write receipts (shadow = simulate)")
     k.add_argument("--orphan-after-min", type=float, default=None,
                    help="orphan watchdog age (default: TRADEAI_RELEASE_TRAIN_ORPHAN_AFTER_MIN, else 2x the 3 h max run)")
+    st = sub.add_parser("train-shadow-tick", help="Phase 5: force one SHADOW tick per window through the request "
+                                                  "lane's code and wait for the installed claimer's receipts; dry run "
+                                                  "unless --apply; never live")
+    st.add_argument("--window", choices=["all", "1800", "0000", "0600", "0800"], default="all")
+    st.add_argument("--apply", action="store_true", help="append the shadow request(s) and wait for the receipt(s)")
+    st.add_argument("--inject", choices=["red-check", "conflict", "stop-midrun", "corrupt-latch", "crash"],
+                    help="one simulated failure per request (shadow only), recorded in injected_failures")
+    st.add_argument("--wait-s", type=float, default=900.0, help="per window: how long to wait for the receipt")
+    st.add_argument("--json", action="store_true")
     o = sub.add_parser("train-orphan-resolve", help="close an orphaned claim (after train-reconcile); dry run unless "
                                                     "--apply; never re-runs the request")
     o.add_argument("--request-id", required=True)

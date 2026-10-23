@@ -18044,6 +18044,52 @@
       }
     },
     {
+      "lane_id": "calibration-shadow-harness",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/calibration_shadow_harness.py",
+        "cadence": "25 12 * * 1-5",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 24.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-22",
+      "state_reason": "operator 2026-10-22 (Gate 4 design item 3: 'add a shadow-test harness ... Run as an n8n lane in shadow (registry row + allowlist + DRAFT contract; no broker calls)'); cron freeze 2026-10-09 in force, no crontab line. SHADOW: dispatch mode dry_run, allowlist live_arg null; a fire runs --dry-run (reads the AT calibration report and decision journal, evaluates every PROPOSED threshold beside the current one, prints; writes nothing).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/calibration_shadow_harness.py --dry-run (write-free; tests/test_calibration_shadow_harness_20261022.py::test_dry_run_writes_nothing); no env read, no DB, no provider or model call.",
+      "review_by": "2026-11-05",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/calibration-shadow-harness_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Low",
+      "note": "Forward shadow test of signal_calibration threshold proposals (CalibrationShadowReport@v1). Weekdays 12:25 ET, after at-signal-calibration (12:10). A live run (canary, separate PR) writes data/runtime/calibration_shadow_report.{json,md} and its LaneRunReceipt. Recommendations are proposals; the operator ratifies.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "25 12 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "report",
+        "priority": 5,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {

@@ -826,6 +826,18 @@ class EditorDecision:
         return d
 
 
+def _held_account_line(symbols: list[str], body: str) -> Optional[str]:
+    """The '📁 Held in SYM: <account> <n> sh' line, or None. Never costs the message."""
+    try:
+        try:
+            from scripts.lib import held_position_alerts as hpa  # noqa: PLC0415
+        except ImportError:  # pragma: no cover - scripts/ on path
+            from lib import held_position_alerts as hpa  # type: ignore  # noqa: PLC0415
+        return hpa.held_account_line(symbols, body)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def edit(
     text: str,
     *,
@@ -958,6 +970,14 @@ def edit(
     if _recommendation_shaped(body) and len(html_body) < MAX_BODY_FOR_FOOTER:
         footer.extend(_publish_packet_lines(body, views, syms))
         changes.append("publish_packet")
+
+    # P1 2026-10-23 (NVDA): every notice about a held position names the account(s) holding it, by
+    # name only — the central chokepoint, so every template is covered (held_position_alerts).
+    if syms and len(html_body) < MAX_BODY_FOR_FOOTER:
+        acct_line = _held_account_line(syms, body)
+        if acct_line:
+            footer.append(html.escape(acct_line))
+            changes.append("held_account_tag")
 
     if len(html_body) < MAX_BODY_FOR_FOOTER:
         ids = " ".join(f"{s['symbol']}:{s['guid'][:8]}" for s in subs[:4] if s.get("guid"))

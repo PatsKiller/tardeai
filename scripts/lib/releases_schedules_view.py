@@ -543,7 +543,10 @@ def read_windows(now: datetime, *, rw_state_dir: Path, summary: Optional[Mapping
         cov = coverage.get(slot) or {}
         out.append({**w, "slot": slot, "state": state, "reason": reason,
                     "last_shadow_request_at": cov.get("last_requested_at"),
-                    "last_shadow_receipt_state": cov.get("receipt_state")})
+                    "last_shadow_receipt_state": cov.get("receipt_state"),
+                    "last_shadow": {k: cov.get(k) for k in ("request_id", "outcome", "reason", "queue_open",
+                                                            "queue_complete", "riding", "candidate_sha", "train_id",
+                                                            "has_report")} if cov.get("request_id") else None})
     value = {"windows": out, "armed": rd.get("armed"), "shadow_enabled": rd.get("shadow_enabled"),
              "delegation": rd.get("delegation"), "stop": stop, "policy_version": rd.get("policy_version"),
              "manual_path": "Until the train is armed, releases are manual: scripts/release_window.py 12:00 / 17:30 "

@@ -6,6 +6,7 @@ import N8nToday from './N8nToday'
 import ReleaseTrainTab from './ReleaseTrainTab'
 import AgentClaimsPanel from './AgentClaimsPanel'
 import WorkBoardPanel from './WorkBoardPanel'
+import WorkPipelinePanel from './WorkPipelinePanel'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { projectionReadPath } from '../lib/projectionReadProtocol'
@@ -33,9 +34,11 @@ const PHASES: Array<[CoordinationRow['phase'], string]> = [
 // Tabs: the events ledger (events + outbox + approvals), the n8n migration board (stream G, 2026-10-08) and the
 // release train (Release Train v2, 2026-10-21: queue, trains, history, census, STOP RELEASES) and the agent claim board
 // (2026-10-22: who's working on what — Claude, Codex, Cursor sessions and the files each has claimed).
-const TABS = ['operations', 'today', 'events', 'migration', 'release', 'agents', 'work'] as const
+// 2026-10-23 (operator, 13:15 ET): the Work pipeline — one row per work item, incubator stages with RAG and next step —
+// is the DEFAULT tab; the per-file claim table is kept as "Files held" (?tab=agents); Automation moved to ?tab=operations.
+const TABS = ['pipeline', 'operations', 'today', 'events', 'migration', 'release', 'agents', 'work'] as const
 type CoordinationTab = (typeof TABS)[number]
-const TAB_LABEL: Record<CoordinationTab, string> = { operations: 'Automation', today: 'n8n today', events: 'Events', migration: 'Migration board', release: 'Release train', agents: "Who's working", work: 'Work board' }
+const TAB_LABEL: Record<CoordinationTab, string> = { pipeline: 'Work pipeline', operations: 'Automation', today: 'n8n today', events: 'Events', migration: 'Migration board', release: 'Release train', agents: 'Files held', work: 'Work board' }
 const tabButton = (active: boolean): CSSProperties => ({
   padding: '7px 14px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`,
   background: active ? TOKENS.bg[2] : TOKENS.bg[1], color: active ? TOKENS.text[0] : TOKENS.text[2],
@@ -90,14 +93,18 @@ export default function CoordinationPage() {
   const approvalsApi = useApi<ApprovalBoardPayload>('/api/v2/coordination/approvals', 60_000)
   const approvals = useMemo(() => projectApprovalBoard(approvalsApi.loading && !approvalsApi.data ? null : approvalsApi.data), [approvalsApi.data, approvalsApi.loading])
   const [searchParams, setSearchParams] = useSearchParams()
-  const [tab, setTab] = useState<CoordinationTab>(() => (searchParams.get('tab') === 'migration' ? 'migration' : searchParams.get('tab') === 'events' ? 'events' : searchParams.get('tab') === 'today' ? 'today' : searchParams.get('tab') === 'release' ? 'release' : searchParams.get('tab') === 'agents' ? 'agents' : searchParams.get('tab') === 'work' ? 'work' : 'operations'))
+  const [tab, setTab] = useState<CoordinationTab>(() => {
+    const t = searchParams.get('tab')
+    return (TABS as readonly string[]).includes(t || '') ? (t as CoordinationTab) : 'pipeline'
+  })
   const boardApi = useApi<MigrationBoardPayload>('/api/v2/coordination/migration-board', 60_000, { enabled: tab === 'migration' })
   const board = useMemo(() => projectMigrationBoard(boardApi.loading && !boardApi.data ? null : boardApi.data), [boardApi.data, boardApi.loading])
   const boardSort = useSort(board.rows, { key: 'tranche', dir: 'asc' }, boardGetter)
   const selectTab = (t: CoordinationTab) => {
     setTab(t)
     const next = new URLSearchParams(searchParams)
-    if (t === 'operations') next.delete('tab'); else next.set('tab', t)
+    if (t === 'pipeline') next.delete('tab'); else next.set('tab', t)
+    if (t !== 'pipeline') for (const k of ['preset', 'stage', 'rag', 'owner', 'vendor', 'design', 'batch', 'q', 'finished']) next.delete(k)
     setSearchParams(next, { replace: true })
   }
   return (
@@ -109,7 +116,7 @@ export default function CoordinationPage() {
           </button>
         ))}
       </nav>
-      {tab === 'operations' ? <SchedulerOperations /> : tab === 'today' ? <N8nToday /> : tab === 'agents' ? <AgentClaimsPanel /> : tab === 'work' ? <WorkBoardPanel /> : tab === 'release' ? (
+      {tab === 'pipeline' ? <WorkPipelinePanel /> : tab === 'operations' ? <SchedulerOperations /> : tab === 'today' ? <N8nToday /> : tab === 'agents' ? <AgentClaimsPanel /> : tab === 'work' ? <WorkBoardPanel /> : tab === 'release' ? (
         <div style={{ display: 'grid', gap: 12 }}>
           {/* Releases & schedules (2026-10-22): the full page (serving release, main HEAD, windows, queue, shipped history,
               release errors, n8n + cron timeline) is linked from here; the queue/trains/events views and STOP RELEASES stay on this tab. */}

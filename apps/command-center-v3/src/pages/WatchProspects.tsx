@@ -8,6 +8,7 @@
  *  you size it, it goes to Proposals for approval); Set alert → ReEntryAlertArmModal (POST /api/v2/watch/alerts,
  *  advisory notifications); Protect first → Open Trades; Ask the CIO → POST /api/v3/opportunities/:sym/review-request.
  *  Nothing here sizes, orders or stops on its own. */
+import { AccountChip } from '../components/AccountChip'
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
@@ -22,7 +23,7 @@ import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
 import PositionFilterBar from '../components/watch/PositionFilterBar'
 import { StarToggle } from '../components/watch/MineControls'
 import {
-  alertLevelsLabel, money, positionChip, positionQuery, readinessTone, reentryLabel, resultTone, roundTripLabel,
+  alertLevelsLabel, money, positionChip, soldByName, positionQuery, readinessTone, reentryLabel, resultTone, roundTripLabel,
   roundTripPath, withQuery, type ListRow,
 } from '../lib/watchListsModel'
 
@@ -210,6 +211,7 @@ export function PositionDetail({ r }: { r: ListRow }) {
         <div data-testid="watch-round-trip">
           <span style={label} title="The last closed round trip, from the CIO prospect lifecycle (fills, observed stop path, exit cause).">Last trade · {r.position_label}</span>
           <div style={{ fontFamily: FONT.mono }}>{roundTripPath(rt)}</div>
+          {soldByName(r) && <div data-testid="watch-sold-account" style={{ color: TOKENS.text[2] }}>Sold in <AccountChip account={r.last_sell_account || rt.account} label={soldByName(r)} compact /></div>}
           <div style={{ color: toneVars(resultTone(rt)).color, fontWeight: 700 }}>{roundTripLabel(rt)}</div>
           <div style={{ color: TOKENS.text[2] }} title={rt.r_basis ? `R measured against the ${rt.r_basis}` : undefined}>
             {rt.stop_raised != null ? `Stop raised ${rt.stop_raised}× (${money(rt.stop_initial)} → ${money(rt.stop_last)})` : 'No stop history'}
