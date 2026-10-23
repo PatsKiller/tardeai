@@ -140,6 +140,12 @@ SORTS: dict[str, str] = {
 }
 
 
+
+try:  # account NAMES, never account numbers (operator 2026-10-23)
+    from lib.account_display import account_label as _acct_name
+except ImportError:  # pragma: no cover - imported as scripts.lib.*
+    from scripts.lib.account_display import account_label as _acct_name
+
 def _f(v: Any) -> Optional[float]:
     try:
         return float(v) if v is not None and v != "" else None
@@ -209,6 +215,9 @@ def round_trip_view(life: Optional[dict[str, Any]], review: Optional[dict[str, A
         "stop_last": stops.get("last"),
         "hold_days": life.get("hold_days"),
         "round_trip_key": life.get("round_trip_key"),
+        # which account sold, by NAME (operator 2026-10-23); the key stays for filters, never an account number
+        "account": life.get("account"),
+        "account_label": _acct_name(life.get("account")) if life.get("account") else None,
         "noise_vs_trend": nvt.get("verdict"),
         "noise_vs_trend_basis": nvt.get("basis"),
     }
@@ -241,10 +250,13 @@ def advice_view(advice: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
 
 
 def facts_for(
-    symbol: str, *, held: set[str], last_sell: dict[str, Any], lifecycle: dict[str, dict[str, Any]], now: datetime
+    symbol: str, *, held: set[str], last_sell: dict[str, Any], lifecycle: dict[str, dict[str, Any]], now: datetime,
+    held_accounts: Optional[dict[str, list[str]]] = None,
 ) -> dict[str, Any]:
     s = symbol.upper()
-    sold = _ts(last_sell.get(s))
+    ls = last_sell.get(s)
+    sold_account = ls.get("account") if isinstance(ls, dict) else None
+    sold = _ts(ls.get("at") if isinstance(ls, dict) else ls)
     lc = lifecycle.get(s) or {}
     if s in held:
         state = "held"
@@ -257,7 +269,16 @@ def facts_for(
     rt = round_trip_view(lc.get("life"), lc.get("review")) if state == "formerly_held" else None
     if rt and rt.get("exit_at") and (sold is None or (_ts(rt["exit_at"]) or sold) > sold):
         sold = _ts(rt["exit_at"])
+        sold_account = rt.get("account") or sold_account
+    accts = list((held_accounts or {}).get(s) or []) if state == "held" else []
+    former = state == "formerly_held" and sold is not None
     return {
+        # Which account(s) hold it now and which account sold, by NAME (operator 2026-10-23: "two SpaceX and two
+        # different accounts" / "just a name, not the account numbers").
+        "held_accounts": accts,
+        "held_account_labels": [_acct_name(a) for a in accts],
+        "last_sell_account": sold_account if former else None,
+        "last_sell_account_label": _acct_name(sold_account) if (former and sold_account) else None,
         "position_state": state,
         "position_label": {"held": "held", "formerly_held": "formerly held", "never_held": "never held"}[state],
         "last_sell_at": sold.isoformat() if (sold and state == "formerly_held") else None,
@@ -390,13 +411,16 @@ def _db() -> Optional[Callable[..., Any]]:
 def last_sells(db_query: Callable[..., Any]) -> dict[str, Any]:
     rows = (
         db_query(
-            """SELECT upper(symbol) AS s, max(coalesce(trade_time, trade_date::timestamptz)) AS at FROM trade_transactions
-            WHERE lower(action) LIKE 'sell%%' AND trade_date > now() - (%s || ' days')::interval GROUP BY 1""",
+            """SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS s, coalesce(trade_time, trade_date::timestamptz) AS at,
+                   account FROM trade_transactions
+            WHERE lower(action) LIKE 'sell%%' AND trade_date > now() - (%s || ' days')::interval
+            ORDER BY upper(symbol), coalesce(trade_time, trade_date::timestamptz) DESC""",
             (str(FORMER_DAYS),),
         )
         or []
     )
-    return {str(r["s"]).upper(): r.get("at") for r in rows if r.get("s")}
+    # {SYM: {"at", "account"}} — the most recent sell and the account that sold it (facts_for also accepts a bare time)
+    return {str(r["s"]).upper(): {"at": r.get("at"), "account": r.get("account")} for r in rows if r.get("s")}
 
 
 def lifecycles(
@@ -450,15 +474,18 @@ def load(
     db_query: Optional[Callable[..., Any]] = None,
     now: Optional[datetime] = None,
     fresh: bool = False,
+    held_accounts: Optional[dict[str, list[str]]] = None,
 ) -> dict[str, Any]:
     """{facts_for: fn(sym), source, status, as_of} — cached CACHE_S (the lifecycle reads are a few hundred rows)."""
     now = now or datetime.now(timezone.utc)
+    if held_accounts is None and db_query is None:
+        held_accounts = _held_accounts()
     if not fresh and db_query is None and _CACHE["val"] is not None and time.monotonic() - _CACHE["at"] < CACHE_S:
         cached = _CACHE["val"]
         return {
             **cached,
             "facts_for": lambda s: facts_for(
-                s, held=held, last_sell=cached["_sells"], lifecycle=cached["_life"], now=now
+                s, held=held, last_sell=cached["_sells"], lifecycle=cached["_life"], now=now, held_accounts=held_accounts
             ),
         }
     q = db_query or _db()
@@ -486,7 +513,20 @@ def load(
     }
     if db_query is None:
         _CACHE.update(at=time.monotonic(), val=val)
-    return {**val, "facts_for": lambda s: facts_for(s, held=held, last_sell=sells, lifecycle=life, now=now)}
+    return {**val, "facts_for": lambda s: facts_for(s, held=held, last_sell=sells, lifecycle=life, now=now,
+                                                     held_accounts=held_accounts)}
+
+
+def _held_accounts() -> dict[str, list[str]]:
+    """{SYM: [account keys]} from the one Watch held reader (cached there); {} when it cannot answer."""
+    try:
+        try:
+            from lib.data_broker.watch_domains import WATCH_SURFACE, held_positions
+        except ImportError:  # pragma: no cover
+            from scripts.lib.data_broker.watch_domains import WATCH_SURFACE, held_positions  # type: ignore
+        return dict(held_positions(surface=WATCH_SURFACE).get("accounts_by_symbol") or {})
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def public(meta: dict[str, Any]) -> dict[str, Any]:

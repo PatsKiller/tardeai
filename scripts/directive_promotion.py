@@ -354,12 +354,31 @@ def classify_tradeable(symbol, tech):
 # it commits once at the end (or defers to the caller when a shared conn is passed).
 # This keeps one promote = one transaction, so concurrent promote load holds row
 # locks for the shortest possible window instead of committing ~5x per symbol.
+#: watch_directives.created_by values that mean "the operator made this directive". Only these set
+#: watchlist_items.in_directive_watch (operator-approved 2026-10-22: "Yes, I agree with your recommendations.").
+#: Automated producers (think_tank, sector_universe, advisory, rotation_advisor, reentry, defense,
+#: claude_challenger, cio) keep their membership in their own records (watch_directive_hits, directive_id,
+#: origin_system) but do not set the flag. Mirrors lib.data_broker.watch_intelligence.OPERATOR_DIRECTIVE_CREATORS.
+OPERATOR_DIRECTIVE_CREATORS = ("operator", "operator_audit")
+
+#: TRUE when directive %s is ACTIVE and operator-created. Two params: (directive_id, list(creators)).
+_OPERATOR_DIRECTIVE_SQL = ("EXISTS (SELECT 1 FROM watch_directives wd_op WHERE wd_op.id = %s "
+                           "AND wd_op.status = 'active' AND wd_op.created_by = ANY(%s))")
+
+
 def _upsert_watchlist_master(conn, symbol, origin_system, origin_detail, directive_id,
                              source_tier, provenance_reason):
     """UPSERT curated provenance onto watchlist_items (base table of the master VIEW).
-    No unique-constraint dependency: UPDATE then INSERT-if-absent. No commit — caller owns."""
+    No unique-constraint dependency: UPDATE then INSERT-if-absent. No commit — caller owns.
+
+    The flag (2026-10-22, operator-approved): ``in_directive_watch`` is set only when the directive is an ACTIVE
+    operator-created one, and only such a directive un-removes a row the operator removed. An automated directive
+    still records its provenance (origin_detail, directive_id, source_tier) but never sets the flag, never
+    resurrects a removed row, and a row it inserts lands as 'researched', not 'active'. Nothing here clears the
+    flag; ``reconcile_directive_watch_flag`` does, with a backup."""
     cur = conn.cursor()
-    cur.execute("""
+    creators = list(OPERATOR_DIRECTIVE_CREATORS)
+    cur.execute(f"""
         UPDATE watchlist_items SET
             origin_system = COALESCE(origin_system, %s),
             origin_detail = %s::jsonb,
@@ -374,11 +393,14 @@ def _upsert_watchlist_master(conn, symbol, origin_system, origin_detail, directi
                     THEN watchlist_items.directive_id
                 ELSE %s
             END,
-            in_directive_watch = true,
+            -- only an ACTIVE operator-created directive sets the flag (2026-10-22); an existing flag is kept
+            -- here and cleared only by reconcile_directive_watch_flag.
+            in_directive_watch = (COALESCE(in_directive_watch, false) OR {_OPERATOR_DIRECTIVE_SQL}),
             -- operator explicitly added this as a directive → un-remove it so it's VISIBLE on the
             -- watchlist (this was the "Maria added it but it's not showing" bug: a previously-removed
             -- symbol got in_directive_watch=true but kept status='removed', which the UI filters out).
-            status = CASE WHEN status = 'removed' THEN 'active' ELSE status END,
+            -- An automated directive never un-removes what the operator removed.
+            status = CASE WHEN status = 'removed' AND {_OPERATOR_DIRECTIVE_SQL} THEN 'active' ELSE status END,
             source_tier = %s,
             first_seen_at = COALESCE(first_seen_at, NOW()),
             last_validated_at = NOW(),
@@ -388,16 +410,164 @@ def _upsert_watchlist_master(conn, symbol, origin_system, origin_detail, directi
         WHERE symbol = %s
     """, (origin_system, json.dumps(origin_detail, default=str),
           directive_id, directive_id, directive_id, directive_id,
+          directive_id, creators, directive_id, creators,
           source_tier, provenance_reason, symbol))
     if cur.rowcount == 0:
-        cur.execute("""
+        cur.execute(f"""
             INSERT INTO watchlist_items
                 (symbol, source, status, origin_system, origin_detail, directive_id,
                  in_directive_watch, source_tier, first_seen_at, last_validated_at,
                  seen_count, provenance_reason)
-            VALUES (%s, %s, 'active', %s, %s::jsonb, %s, true, %s, NOW(), NOW(), 1, %s)
+            SELECT %s, %s, CASE WHEN op.flag THEN 'active' ELSE 'researched' END, %s, %s::jsonb, %s,
+                   op.flag, %s, NOW(), NOW(), 1, %s
+              FROM (SELECT {_OPERATOR_DIRECTIVE_SQL} AS flag) op
         """, (symbol, origin_system, origin_system, json.dumps(origin_detail, default=str),
-              directive_id, source_tier, provenance_reason))
+              directive_id, source_tier, provenance_reason, directive_id, creators))
+
+
+# ── in_directive_watch reconciler (operator-approved 2026-10-22) ────────────────────────────────────────────────
+# The flag means "an ACTIVE operator-created directive matches this symbol". Before 2026-10-22 every directive set it
+# (automated think_tank / sector_universe trend + sector directives ≈1,729 symbols) and nothing cleared it (273
+# symbols from expired/archived directives), so 2,310 symbols carried it and every consumer (news_ingestion,
+# hermes_top20_external_intel, pro_analyst_fetch, build_pro_analyst_read_model, external_market_data_ingest, the
+# enrichment audit) treated them as operator standing instructions. This module is the flag's only writer, so the
+# clearing lives here too: one writer per store (AGENTS.md §7A rule 1). It never deletes a row (§0 rule 6) and
+# records every before-value in a backup before it writes (§0 rule 7: the CLI's dry run comes first).
+
+#: A flagged row KEEPS the flag when an ACTIVE operator-created directive matches it by any of:
+#:   1. ownership — watchlist_items.directive_id is that directive;
+#:   2. a ticker directive whose spec symbol is this symbol;
+#:   3. a promoted watch_directive_hits row of that directive (promotion is what set the flag; ownership can move to a
+#:      later automated directive through the directive_id CASE above, the match does not).
+#: Named params: %(creators)s.
+FLAG_KEEP_SQL = """(
+       wi.directive_id IN (SELECT wd_k.id FROM watch_directives wd_k
+                            WHERE wd_k.status = 'active' AND wd_k.created_by = ANY(%(creators)s))
+    OR UPPER(wi.symbol) IN (SELECT UPPER(TRIM(wd_t.spec->>'symbol')) FROM watch_directives wd_t
+                             WHERE wd_t.kind = 'ticker' AND wd_t.status = 'active'
+                               AND wd_t.created_by = ANY(%(creators)s)
+                               AND COALESCE(TRIM(wd_t.spec->>'symbol'), '') <> '')
+    OR UPPER(wi.symbol) IN (SELECT UPPER(h_k.symbol) FROM watch_directive_hits h_k
+                              JOIN watch_directives wd_h ON wd_h.id = h_k.directive_id
+                             WHERE h_k.promoted AND wd_h.status = 'active'
+                               AND wd_h.created_by = ANY(%(creators)s))
+)"""
+
+FLAG_BACKUP_SCHEMA = "DirectiveWatchFlagBackup@v1"
+
+
+def _rowdict(cur, row):
+    if isinstance(row, dict):
+        return dict(row)
+    cols = [d[0] for d in (cur.description or [])]
+    return dict(zip(cols, row))
+
+
+def plan_directive_watch_flag_reconcile(cur, *, sample=20):
+    """Read-only plan: counts before/after and every row whose flag would be cleared.
+
+    Returns {before: {rows, symbols}, after: {rows, symbols}, clear_rows, clear_symbols, clear: [rows],
+    by_directive: [{created_by, directive_status, rows}], sample: [...]}. ``symbols`` counts exactly what
+    watch_universe.directive_symbols() returns (flag true, status <> 'removed', symbol not null).
+    """
+    p = {"creators": list(OPERATOR_DIRECTIVE_CREATORS)}
+    cur.execute(f"""
+        SELECT count(*) AS rows,
+               count(DISTINCT wi.symbol) FILTER (WHERE wi.status <> 'removed' AND wi.symbol IS NOT NULL) AS symbols,
+               count(*) FILTER (WHERE {FLAG_KEEP_SQL}) AS keep_rows,
+               count(DISTINCT wi.symbol) FILTER (WHERE wi.status <> 'removed' AND wi.symbol IS NOT NULL
+                                                 AND {FLAG_KEEP_SQL}) AS keep_symbols
+          FROM watchlist_items wi
+         WHERE wi.in_directive_watch = true
+    """, p)
+    c = _rowdict(cur, cur.fetchone() or (0, 0, 0, 0))
+    cur.execute(f"""
+        SELECT wi.id, wi.symbol, wi.status, wi.source, wi.directive_id,
+               wd.created_by AS directive_created_by, wd.status AS directive_status, wd.kind AS directive_kind
+          FROM watchlist_items wi
+          LEFT JOIN watch_directives wd ON wd.id = wi.directive_id
+         WHERE wi.in_directive_watch = true AND NOT {FLAG_KEEP_SQL}
+         ORDER BY wi.symbol, wi.id
+    """, p)
+    clear = [_rowdict(cur, r) for r in cur.fetchall()]
+    by: dict = {}
+    for r in clear:
+        k = (r.get("directive_created_by") or "(no directive)", r.get("directive_status") or "-")
+        by[k] = by.get(k, 0) + 1
+    clear_syms = {r["symbol"] for r in clear if r.get("symbol")}
+    return {
+        "before": {"rows": int(c.get("rows") or 0), "symbols": int(c.get("symbols") or 0)},
+        "after": {"rows": int(c.get("keep_rows") or 0), "symbols": int(c.get("keep_symbols") or 0)},
+        "clear_rows": len(clear), "clear_symbols": len(clear_syms), "clear": clear,
+        "by_directive": [{"created_by": k[0], "directive_status": k[1], "rows": n}
+                         for k, n in sorted(by.items(), key=lambda kv: -kv[1])],
+        "sample": [{k: r.get(k) for k in ("symbol", "status", "directive_id", "directive_created_by",
+                                          "directive_status")} for r in clear[:sample]],
+        "creators": list(OPERATOR_DIRECTIVE_CREATORS),
+    }
+
+
+def _write_flag_backup(backup_path, rows, *, reason):
+    """Append the before-values, one JSON line per row, and fsync — BEFORE any write (never a delete)."""
+    from datetime import datetime, timezone
+    backup_path = Path(backup_path)
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    at = datetime.now(timezone.utc).isoformat()
+    with open(backup_path, "a", encoding="utf-8") as fh:
+        for r in rows:
+            fh.write(json.dumps({"schema": FLAG_BACKUP_SCHEMA, "at": at, "reason": reason, "id": r.get("id"),
+                                 "symbol": r.get("symbol"), "status": r.get("status"),
+                                 "directive_id": r.get("directive_id"),
+                                 "directive_created_by": r.get("directive_created_by"),
+                                 "directive_status": r.get("directive_status"),
+                                 "in_directive_watch_before": True}, default=str) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    return str(backup_path)
+
+
+def apply_directive_watch_flag_reconcile(conn, plan, *, backup_path, max_clear=None, reason="reconcile"):
+    """Clear the flag on the plan's rows: backup first, then one UPDATE that re-checks the keep rule at write time.
+
+    ``max_clear`` bounds one call (the servicer's incremental pass). Never deletes a row; never touches any other
+    column but ``updated_at``. Commits. Returns {cleared, attempted, backup}."""
+    rows = list(plan.get("clear") or [])
+    if max_clear is not None:
+        rows = rows[:max(0, int(max_clear))]
+    if not rows:
+        return {"cleared": 0, "attempted": 0, "backup": None}
+    backup = _write_flag_backup(backup_path, rows, reason=reason)
+    cur = conn.cursor()
+    cur.execute(f"""
+        UPDATE watchlist_items wi SET in_directive_watch = false, updated_at = NOW()
+         WHERE wi.id = ANY(%(ids)s) AND wi.in_directive_watch = true AND NOT {FLAG_KEEP_SQL}
+    """, {"ids": [r["id"] for r in rows], "creators": list(OPERATOR_DIRECTIVE_CREATORS)})
+    cleared = cur.rowcount
+    conn.commit()
+    return {"cleared": int(cleared if cleared is not None and cleared >= 0 else 0), "attempted": len(rows),
+            "backup": backup}
+
+
+def restore_directive_watch_flag(conn, backup_path, *, dry_run=True):
+    """Rollback: set the flag back on every row id in a backup file (only rows still false). Commits unless dry."""
+    ids = []
+    with open(backup_path, encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            d = json.loads(line)
+            if d.get("schema") == FLAG_BACKUP_SCHEMA and d.get("in_directive_watch_before") and d.get("id") is not None:
+                ids.append(int(d["id"]))
+    ids = sorted(set(ids))
+    if dry_run or not ids:
+        return {"restore_ids": len(ids), "restored": 0, "dry_run": dry_run}
+    cur = conn.cursor()
+    cur.execute("""UPDATE watchlist_items SET in_directive_watch = true, updated_at = NOW()
+                    WHERE id = ANY(%s) AND in_directive_watch = false""", (ids,))
+    restored = cur.rowcount
+    conn.commit()
+    return {"restore_ids": len(ids), "restored": int(restored or 0), "dry_run": False}
 
 
 def _insert_watchpool_row(conn, strategy_id, symbol, snapshot, cfg, origin_system, directive_id):

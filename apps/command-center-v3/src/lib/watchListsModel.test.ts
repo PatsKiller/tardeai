@@ -5,6 +5,7 @@ import { WATCH_LISTS_FIXTURE as FIX } from '../fixtures/watchLists.fixture.ts'
 import {
   POSITION_FILTER_KEYS, activeCount, alertLevelsLabel, chipsFor, positionChip, positionQuery, reentryLabel,
   riskRewardCell, roundTripLabel, roundTripPath, toggleOption, unwrapAny, withQuery, type ListRow,
+  heldAccountNames, soldByName,
 } from './watchListsModel.ts'
 
 let failed = 0
@@ -74,6 +75,18 @@ ok('every server filter has its rule', Object.values(specs).every((s: any) => ty
 const chips = chipsFor('position', specs.position, U.position_facets)
 eq('position chips', chips.map(c => c.opt), ['held', 'formerly_held', 'never_held'])
 ok('formerly held chip counts', chips[1].count > 0)
+
+// Which account (operator 2026-10-23: "two SpaceX and two different accounts" / names only, never numbers)
+const heldTwo = positionChip({ position_state: 'held', held_accounts: ['schwab_rollover_ira', 'schwab_taxable'] })
+eq('held in two accounts', heldTwo?.label, 'held · 2 accounts')
+ok('held tooltip names both accounts', !!heldTwo?.tip.includes('Schwab Rollover IRA, Schwab Individual'))
+eq('held in one account names it', positionChip({ position_state: 'held', held_accounts: ['schwab_roth'] })?.label, 'held · Schwab Roth IRA')
+eq('held account names', heldAccountNames({ held_accounts: ['schwab_taxable'] }), ['Schwab Individual'])
+const soldChip = positionChip({ position_state: 'formerly_held', last_sell_at: '2026-10-22T15:00:00Z', last_sell_account: 'schwab_rollover_ira' })
+ok('formerly held names the account that sold', !!soldChip?.label.endsWith('· Schwab Rollover IRA'))
+eq('sold by falls back to the round trip account', soldByName({ last_round_trip: { account: 'schwab_taxable' } as any }), 'Schwab Individual')
+eq('sold by unknown is empty', soldByName({}), '')
+ok('no account number in a chip', !/\d{3,}/.test(positionChip({ position_state: 'formerly_held', last_sell_at: null, last_sell_account: '12345678' })!.label.replace(/sold .*?·/, '')))
 
 if (failed) { console.error(`${failed} watchListsModel test(s) failed`); process.exit(1) }
 console.log('watchListsModel: ok')

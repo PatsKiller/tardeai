@@ -165,12 +165,29 @@ def _tokens(cmd: str) -> list[str]:
         return cmd.split()
 
 
-def parse_lane_argv(cmd: str, entry_command: list[str]) -> dict[str, Any]:
+#: The env var that switches the effect-claim wrapper on for one lane (scripts/effect_claim_cron.sh: OFF unless it
+#: equals the wrapper's LANE_ID argument).
+EFFECT_CLAIM_ENV = "TRADEAI_EFFECT_CLAIM"
+
+
+def _is_effect_claim_wrapper(tok: str) -> bool:
+    return tok == EFFECT_CLAIM_WRAPPER or tok.endswith("/" + EFFECT_CLAIM_WRAPPER)
+
+
+def parse_lane_argv(cmd: str, entry_command: list[str], lane_id: Optional[str] = None) -> dict[str, Any]:
     """Locate the allowlist command inside the cron command and return the live argv, wrappers and problems.
 
     The lane command is found by its script token (the first entry token ending .py/.sh); every token after the
     script up to the first shell operator is the cron argv. Tokens of the entry command that follow the script must
-    be the first cron args (they are already in `command`); the rest is live_arg."""
+    be the first cron args (they are already in `command`); the rest is live_arg.
+
+    2026-10-23 (T-20261023-f7771f): the §23.25 cron-side effect-claim wrapper is recognised, not reported as an
+    unmapped wrapper. `[env] TRADEAI_EFFECT_CLAIM=<lane> bash scripts/effect_claim_cron.sh <lane> <command>` is
+    cron-only: it makes the cron twin claim the same fx: key the n8n executor claims (n8n_claim), so the executor
+    has nothing to reproduce. It is accepted only when it is switched ON for its own lane (env value == wrapper
+    lane argument, and == `lane_id` when the caller names one); otherwise the wrapper is a pass-through `exec` and
+    the line is not effect-claimed, which is a problem, never a silent pass. Every other env assignment stays
+    unmapped (the executor does not reproduce it)."""
     toks = _tokens(cmd)
     problems: list[str] = []
     script = next((t for t in entry_command if t.endswith((".py", ".sh")) and "/" in t), None)
@@ -199,9 +216,24 @@ def parse_lane_argv(cmd: str, entry_command: list[str]) -> dict[str, Any]:
     market_gate = _MARKET_GATE in prefix or any(t.endswith("/market_day_gate.sh") for t in prefix)
     offpeak = None
     unmapped: list[str] = []
+    claim_env: list[str] = []          # values of TRADEAI_EFFECT_CLAIM=... in the prefix
+    claim_lanes: list[str] = []        # LANE_ID arguments of effect_claim_cron.sh in the prefix
+    has_wrapper = any(_is_effect_claim_wrapper(t) for t in prefix)
     i = 0
     while i < len(prefix):
         t = prefix[i]
+        if has_wrapper and t == "env":
+            # `env VAR=val ... cmd`: the assignments are judged one by one below; `env` itself is inert.
+            i += 1
+            continue
+        if has_wrapper and t.startswith(EFFECT_CLAIM_ENV + "="):
+            claim_env.append(t.split("=", 1)[1])
+            i += 1
+            continue
+        if _is_effect_claim_wrapper(t):
+            claim_lanes.append(prefix[i + 1] if i + 1 < len(prefix) else "")
+            i += 2
+            continue
         if t.endswith("run_with_deepseek_offpeak.sh"):
             nxt = prefix[i + 1] if i + 1 < len(prefix) else ""
             offpeak = _OFFPEAK_FLAGS.get(nxt, "bulk" if nxt == "--" else None)
@@ -224,10 +256,24 @@ def parse_lane_argv(cmd: str, entry_command: list[str]) -> dict[str, Any]:
         i += 1
     for u in unmapped:
         problems.append(f"unmapped_wrapper:{u}")
+    effect_claim: Optional[str] = None
+    if claim_lanes:
+        wl = claim_lanes[0]
+        if len(claim_lanes) > 1 or len(claim_env) > 1:
+            problems.append(f"effect_claim_wrapper_repeated:lanes={claim_lanes} env={claim_env}")
+        elif not wl or wl.startswith("-") or wl.startswith("$"):
+            problems.append(f"effect_claim_wrapper_no_lane_arg:{wl!r}")
+        elif claim_env != [wl]:
+            problems.append(f"effect_claim_wrapper_off ({EFFECT_CLAIM_ENV}={claim_env[0] if claim_env else '<unset>'}"
+                            f" does not switch on wrapper lane {wl!r}: the wrapper execs the command unclaimed)")
+        elif lane_id is not None and wl != lane_id:
+            problems.append(f"effect_claim_wrapper_lane_mismatch:{wl} (registry lane {lane_id})")
+        else:
+            effect_claim = wl
     if any(t.endswith("safe_flock.sh") for t in toks[:idx]):
         problems.append("cron_line_uses_safe_flock (executor live lock is flock; needs a flock -n line first)")
     return {"problems": problems, "live_arg": live, "cron_args": args, "market_gate": market_gate,
-            "offpeak_gate": offpeak, "script": script}
+            "offpeak_gate": offpeak, "script": script, "effect_claim": effect_claim}
 
 
 # ── per-lane builders ──────────────────────────────────────────────────────────────────────────
@@ -420,7 +466,7 @@ def plan_lane(lane_id: str, disp: Mapping[str, str], *, reg_rows: Mapping[str, A
     elif len(set(locks)) > 1:
         reasons.append(f"several_cron_locks:{sorted(set(locks))}")
     lock = locks[0] if locks else None
-    parsed_all = [parse_lane_argv(command_of(ln), list(entry.get("command") or [])) for _, ln in lines]
+    parsed_all = [parse_lane_argv(command_of(ln), list(entry.get("command") or []), lane_id) for _, ln in lines]
     for p in parsed_all:
         reasons.extend(p["problems"])
     lives = {json.dumps(p.get("live_arg")) for p in parsed_all}
