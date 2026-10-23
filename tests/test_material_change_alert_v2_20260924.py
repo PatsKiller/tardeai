@@ -175,10 +175,11 @@ def test_near_entry_distance_is_never_signed_wrong():
 
 # ── golden snapshots ────────────────────────────────────────────────────────
 
-GOLDEN_PAGE = """🚨 STOP HIT — MDT (held, 120 sh)
-$78.10 · quote 3m · -6.1% (3.4× its normal daily move) · stop $78.50
+# P1 2026-10-23: the account is named and the stop's owner is stated ("your stop" only when the operator set it).
+GOLDEN_PAGE = """🚨 STOP HIT — MDT (held · Taxable 120 sh)
+$78.10 · quote 3m · -6.1% (3.4× its normal daily move) · stop $78.50 (your stop)
 CIO: TRIM REVIEW (2026-09-23) · no news explains the move
-▶ Action: review exit — price is through your plan stop
+▶ Action: review exit — price is through your stop
 Material change · Advisory only. No position action taken or implied."""
 
 GOLDEN_DIGEST = f"""📋 Material change — daily digest · Thu 24 Sep · 16:15 ET
@@ -208,7 +209,7 @@ def test_golden_digest_for_the_pasted_notice():
 
 def test_the_rich_page_has_one_link_and_one_footer():
     text = m.render_rich([CHANGES["MDT"]], CTX)["text"]
-    assert text.splitlines()[0] == "<b>🚨 STOP HIT — MDT (held, 120 sh)</b>"
+    assert text.splitlines()[0] == "<b>🚨 STOP HIT — MDT (held · Taxable 120 sh)</b>"
     assert text.count("<a href=") == 1 and f"{CC}/v3/watch/intelligence/MDT" in text
     assert text.count("Advisory only") == 1
     for noise in ("finviz.com/quote", "finance.yahoo.com", "Sector:", "Thesis", "found by"):
