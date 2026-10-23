@@ -29,7 +29,8 @@ def test_lane_is_registered_at_shadow_and_dry_run_only():
     assert not any(n.startswith(("SCHWAB", "ALPACA", "SNAPTRADE", "MOOMOO", "IBKR", "TELEGRAM"))
                    for n in al["env_names"])
     c = _row("config/n8n_health_contracts.json", "id", "cio-prospect-shadow", "contracts")
-    assert c["status"] == "DRAFT" and c["stage"] == "shadow" and c["workflow_id"] == "dispatcher"
+    # Operator approve-all item F (2026-10-22): contract REVIEWED; stage stays shadow.
+    assert c["status"] == "REVIEWED" and c["stage"] == "shadow" and c["workflow_id"] == "dispatcher"
     assert c["healthy"][0]["check"] == "dry_run_writes_nothing"
 
 

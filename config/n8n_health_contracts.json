@@ -32672,7 +32672,7 @@
       "id": "cio-prospect-shadow",
       "kind": "lane",
       "workflow_id": "dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "stage:shadow",
       "stage": "shadow",
       "purpose": {
@@ -32843,6 +32843,7 @@
         "expected_output_basis": "expected_output 2026-10-22 from scripts/cio_prospect_shadow_build.py main(): produced = prospects assembled; zero prospects is exit 1 (dependency_unavailable), never an allowed empty."
       },
       "review_by": "2026-11-05",
+      "review": {"prepared_by": "agent draft (CIO prospect shadow lane, 2026-10-22)", "status": "REVIEWED", "reviewed_by": "operator 2026-10-22 (approve all, item F)", "reviewed_on": "2026-10-22", "reference": "Operator reply 2026-10-22 (verbatim): \"yes i approve 'approve all' (A–L)\" — item F: mark the #1953 cio-prospect-shadow contract REVIEWED. Stage stays shadow."},
       "state_note": "DRAFT, agent-written 2026-10-22; awaiting the cio owner's REVIEWED (AGENTS.md \u00a723.19: a new lane's contract is REVIEWED by its owner before its registry PR merges; check_n8n_health_contracts reports DRAFT_NOT_GRANDFATHERED until then). Promotion to canary (--write-shadow) is the operator's word.",
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
