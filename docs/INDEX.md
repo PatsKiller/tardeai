@@ -999,11 +999,31 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/design/signal_freshness_audit_2026-05-15/AUDIT_FINDINGS.md` | Signal Freshness & Persistence Audit — 2026-05-15 |
 | `docs/design/watchlist-intelligence-v3/CECO_REVIEW_AUTHORIZATION_AUDIT.md` | CECO Maria/CIO authorization audit (read-only) |
 | `docs/design/watchlist-intelligence-v3/DATA_BROKER_WATCH_CONSUMERS.md` | Data Broker — Watch Intelligence consumers |
+| `docs/designs/DSN-20261010-db-retention-iris.md` | DSN-20261010-db-retention-iris.md |
+| `docs/designs/DSN-20261021-release-batches.md` | DSN-20261021-release-batches.md |
 | `docs/designs/DSN-20261021-release-train.md` | DSN-20261021-release-train.md |
 | `docs/designs/DSN-20261022-cio-prospect-store.md` | DSN-20261022-cio-prospect-store.md |
 | `docs/designs/DSN-20261022-data-domains.md` | DSN-20261022-data-domains.md |
+| `docs/designs/DSN-20261022-dependency-upgrades.md` | DSN-20261022-dependency-upgrades.md |
+| `docs/designs/DSN-20261022-finviz-alerting.md` | DSN-20261022-finviz-alerting.md |
 | `docs/designs/DSN-20261022-momentum-alerts.md` | DSN-20261022-momentum-alerts.md |
+| `docs/designs/DSN-20261022-n8n-promotions.md` | DSN-20261022-n8n-promotions.md |
+| `docs/designs/DSN-20261022-operator-approvals.md` | DSN-20261022-operator-approvals.md |
+| `docs/designs/DSN-20261022-ops-controls.md` | DSN-20261022-ops-controls.md |
+| `docs/designs/DSN-20261022-schwab-readonly-baseline.md` | DSN-20261022-schwab-readonly-baseline.md |
+| `docs/designs/DSN-20261022-site-validation.md` | DSN-20261022-site-validation.md |
+| `docs/designs/DSN-20261022-watch-redesign.md` | DSN-20261022-watch-redesign.md |
+| `docs/designs/DSN-20261023-account-labels.md` | DSN-20261023-account-labels.md |
+| `docs/designs/DSN-20261023-agent-ops.md` | DSN-20261023-agent-ops.md |
 | `docs/designs/DSN-20261023-ask-the-cio.md` | DSN-20261023-ask-the-cio.md |
+| `docs/designs/DSN-20261023-at-tradeai-alignment.md` | DSN-20261023-at-tradeai-alignment.md |
+| `docs/designs/DSN-20261023-jsonl-retention.md` | DSN-20261023-jsonl-retention.md |
+| `docs/designs/DSN-20261023-nvda-false-alert.md` | DSN-20261023-nvda-false-alert.md |
+| `docs/designs/DSN-20261023-open-pr-triage.md` | DSN-20261023-open-pr-triage.md |
+| `docs/designs/DSN-20261023-premarket-focus.md` | DSN-20261023-premarket-focus.md |
+| `docs/designs/DSN-20261023-push-policy-v2.md` | DSN-20261023-push-policy-v2.md |
+| `docs/designs/DSN-20261023-server-memory.md` | DSN-20261023-server-memory.md |
+| `docs/designs/DSN-20261023-work-pipeline.md` | DSN-20261023-work-pipeline.md |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
 | `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence |
@@ -1772,6 +1792,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_CLOSED_LOOP_LINEAGE_CLOSEOUT_2026-08-20.md` | CIO Closed-Loop Lineage — Phase A Closeout (2026-08-20) |
 | `docs/ops/CIO_COMMAND_CENTER_MODEL_2026-08-29.md` | Command Center — the mental model, verified (2026-08-29) |
 | `docs/ops/CIO_DATA_ASOF_GAPS_2026-09-01.md` | Three gaps #825 left, closed |
+| `docs/ops/CIO_DATA_QUALITY_2026-10-23.md` | CIO data quality — stop ordering and Hermes catalyst identity (2026-10-23) |
 | `docs/ops/CIO_DECISION_PAYLOAD_PHASE1_2026-08-21.md` | CIO DecisionPayload@v1 — Phase 1 (2026-08-21) |
 | `docs/ops/CIO_DESK_MEMO_CONTINUOUS_2026-08-20.md` | CIO desk memo continuous regen — Phase C (2026-08-20) |
 | `docs/ops/CIO_DILIGENCE_GAP_REGISTER_CLOSEOUT_2026-08-30.md` | CIO Diligence — gap register closeout (PR-G) |
@@ -1954,6 +1975,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/MATURE_INVESTMENT_OFFICE_LIVE_CONVERGENCE_2026-08-23.md` | Trade AI v12 R9.1 - Mature Investment Office Live Convergence |
 | `docs/ops/MATURITY_GAP_CLOSEOUT_2026-09-20-1445.md` | Maturity gap closeout — 2026-09-20 14:45 ET |
 | `docs/ops/MATURITY_SCORECARD.md` | Maturity scorecard (GET-only) |
+| `docs/ops/N8N_CUTOVER_EFFECT_CLAIM_WRAPPER_20261023.md` | n8n cutover factory: the effect-claim wrapper, and four canary rows (2026-10-23) |
 | `docs/ops/N8N_MOMENTUM_SCALP_ACTIVATION_20261013.md` | n8n momentum-scalp activation — 2026-10-13 |
 | `docs/ops/N8N_PROMOTION_READINESS_2026-10-22.md` | n8n promotion readiness — 2026-10-22 |
 | `docs/ops/OPERATOR_ACTION_REQUIRED.md` | OPERATOR_ACTION_REQUIRED — live advisory notification canary |
