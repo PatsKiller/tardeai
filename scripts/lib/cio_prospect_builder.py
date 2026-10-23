@@ -309,6 +309,8 @@ LIFECYCLE_QUERIES = {
         "SELECT upper(symbol) AS symbol, account, lower(action) AS action, price AS fill_price, trade_date, "
         "trade_time, dedupe_key FROM trade_transactions WHERE trade_date > now() - interval '120 days' "
         "AND (lower(action) LIKE 'buy%%' OR lower(action) LIKE 'sell%%') ORDER BY trade_date, trade_time"),
+    # stop_lifecycle ids run backwards in time per position: load_lifecycle_inputs re-orders these rows by broker
+    # order id (order_stops_by_broker_order).
     "stop_history": (
         "SELECT upper(symbol) AS symbol, account, order_id, order_type, status, stop_price, snapshot_at, id AS seq "
         "FROM stop_lifecycle WHERE stop_price IS NOT NULL ORDER BY symbol, id"),
@@ -317,6 +319,27 @@ LIFECYCLE_QUERIES = {
         "l.r_multiple, l.planned_rr FROM trade_recommendation_links l "
         "WHERE to_regclass('public.trade_recommendation_links') IS NOT NULL"),
 }
+
+
+def order_stops_by_broker_order(rows: list[dict]) -> list[dict]:
+    """Put one symbol's stop_lifecycle rows in time order, in place, and return them.
+
+    stop_lifecycle is rewritten newest-first on every scan, so its row ``id`` runs BACKWARDS in time for one
+    position (NAVN 2026-10-23: ids 3735550..3735559 hold 26.02 .. 24.59, which read as "raised 1x from 26.02"; the
+    stop was set at 24.59, cut to 24.31, then raised 5x to 26.02). Broker order ids are monotonic in time, so
+    ``seq`` becomes the numeric broker order id — the rule PR #2008's Watch code applies
+    (lib/data_broker/watch_position_facts.lifecycles). The row id is kept as ``row_id``. Only when EVERY row of the
+    symbol has a numeric order id: a mixed set keeps the row-id ``seq`` (the two numberings are not comparable)."""
+    oids = [str(r.get("order_id") or "").strip() for r in rows]
+    if not rows or not all(o.isdigit() for o in oids):
+        return rows
+    for r, o in zip(rows, oids):
+        if "row_id" not in r:
+            r["row_id"] = r.get("seq")
+        r["seq"] = int(o)
+        r["seq_basis"] = "broker_order_id"
+    rows.sort(key=lambda r: r["seq"])
+    return rows
 
 
 def load_lifecycle_inputs(db_query: Optional[Callable[..., list[dict]]],
@@ -341,6 +364,9 @@ def load_lifecycle_inputs(db_query: Optional[Callable[..., list[dict]]],
             k = str(r.get(key) or "")
             if k:
                 by.setdefault(k.upper() if key == "symbol" else k, []).append(dict(r))
+        if name == "stop_history":
+            for srows in by.values():
+                order_stops_by_broker_order(srows)
         out[name] = _source(name, path, by, None, status)
     bars = (captured or {}).get("bars")
     out["bars"] = _source("bars", "captured:bars" if bars is not None else "db:ticker_prices",
