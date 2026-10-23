@@ -24,7 +24,9 @@ T0 = datetime(2026, 10, 23, 19, 0, tzinfo=timezone.utc)
 
 
 def setup(tmp_path):
-    b = B.ClaimBoard(tmp_path / "claims", now=lambda: T0)
+    # Real clock: the CLI below reads the board with the real clock, so a claim stamped at a fixed T0 went stale
+    # 2 h later and `take` stopped being refused (time bomb, main CI 2026-10-23 ~21:20Z).
+    b = B.ClaimBoard(tmp_path / "claims")
     tb = TB.TaskBoard(b)
     t = tb.add(title="release batch 9", kind="build", areas=["scripts/busy.py"])
     # Another session holds the task's area, so `take` would be refused.
