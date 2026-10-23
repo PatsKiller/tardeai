@@ -19,7 +19,7 @@ import {
   type Decision, type Filters, type L2Chip, type Opportunity, type SortKey,
 } from '../../lib/tradeAiOpportunities'
 import { tradeAiSurfaceFreshness } from '../../lib/surfaceFreshness'
-import { latestRunPhrase, scanRunAge } from '../../lib/scanRunAge'
+import { latestRunPhrase, payloadRunAge } from '../../lib/scanRunAge'
 import { classifyRunHealth, runHealthChipColor, runHealthReasonCodes } from '../../lib/runHealth'
 import SharedMomentumCandidates from './SharedMomentumCandidates'
 
@@ -102,7 +102,7 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
   // Slot 0700 is re-run through the morning; the page used to print "7:00 AM scan" over data
   // from the 08:52 attempt. Lead with the run's finished time (ET) and age instead.
   const slot = summary.run_label || tradeAi?.latest_run_label || tradeAi?.run_label
-  const age = scanRunAge(tradeAi?.latest_run_timestamp ?? summary.run_timestamp, slot, now)
+  const age = payloadRunAge({ ...tradeAi, latest_run_timestamp: tradeAi?.latest_run_timestamp ?? summary.run_timestamp }, slot, now)
   const ageColor = age.tone === 'bad' ? toneVars('danger').color : age.tone === 'warn' ? toneVars('warning').color : TOKENS.text[1]
   const latestPhrase = latestRunPhrase(summary)
   const l2For = (sym: string) => l2View(latestAlertFor(alerts, sym))
@@ -143,9 +143,9 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
           <h2 style={{ margin: 0, fontSize: TYPE.lg + 4, fontWeight: 700, color: TOKENS.text[0] }}>Opportunities</h2>
           <div data-testid="ta-run-line" style={{ fontSize: TYPE.md - 1, color: TOKENS.text[2], display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 6, rowGap: 2 }}>
-            <span data-testid="ta-run-age" data-run-age-min={age.ageMin != null ? String(age.ageMin) : ''} data-run-age-tone={age.tone} title={age.tip}
+            <span data-testid="ta-run-age" data-run-age-min={age.ageMin != null ? String(age.ageMin) : ''} data-run-age-tone={age.tone} data-run-age-source={age.source} title={age.tip}
               style={{ color: ageColor, fontWeight: 800, fontSize: TYPE.md + 1 }}>
-              {age.tone === 'bad' ? '▲ ' : ''}Latest run {age.label}
+              {age.tone === 'bad' ? '▲ ' : ''}{age.source === 'scan' ? 'Data: ' : 'Latest run '}{age.label}
             </span>
             <span>· {summary.run_date ?? tradeAi?.run_date ?? '—'}{age.slotLabel ? ` · ${age.slotLabel}` : ''}</span>
             <span>·{' '}

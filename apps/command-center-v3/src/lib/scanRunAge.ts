@@ -129,3 +129,34 @@ export function latestRunPhrase(s: any): string | null {
 }
 
 export const LATEST_RUN_TIP = 'Latest run only. The Trading → Trade AI tiles count today\'s whole scanner universe (every row from every run today), so they are larger by design.'
+
+/**
+ * The freshest clock the payload serves, and the age read from it.
+ *
+ * Follow-up 2026-10-23 (cadence PR 1992): the rows the page shows come from the
+ * continuous runner's scan cycles (trade_ai_scans), not from the hourly run summary.
+ * The 08:18 / 08:32 / 08:50 "0700" attempts were health-agent re-runs, and the run summary is
+ * not rewritten by each cycle. So when the API serves `scan_freshness` /
+ * `latest_scan_at` (the newest scanned_at among the served rows), that is the age the
+ * operator needs. `latest_run_timestamp` is the fallback only when that field is absent.
+ * The server's STALE status (over 10 min inside 06:00–12:00 ET) wins: it forces red.
+ */
+export function payloadRunAge(payload: any, slot: unknown, now: Date): RunAge & { source: 'scan' | 'run' } {
+  const sf = payload?.scan_freshness && typeof payload.scan_freshness === 'object' ? payload.scan_freshness : null
+  const scanAt = sf?.latest_scan_at ?? payload?.latest_scan_at ?? null
+  if (scanAt) {
+    const a = scanRunAge(scanAt, slot, now)
+    const serverStale = sf?.status === 'STALE'
+    const tone: RunAgeTone = serverStale ? 'bad' : a.tone
+    return {
+      ...a,
+      tone,
+      label: a.label.replace(/^finished /, 'latest scan '),
+      tip: a.tip.replace(/^Run finished /, 'Newest scanned row ')
+        + (sf?.status ? ` Server freshness: ${sf.status}${sf.age_sec != null ? ` (${Math.round(Number(sf.age_sec) / 60)} min)` : ''}.` : ''),
+      source: 'scan',
+    }
+  }
+  const run = payload?.latest_run_timestamp ?? payload?.setup_run_summary?.run_timestamp
+  return { ...scanRunAge(run, slot, now), source: 'run' }
+}
