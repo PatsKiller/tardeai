@@ -55564,6 +55564,29 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__}
 
+    # Work-package structure (operator 2026-10-23: "structure: problem, definition of done, agent prompt, operator
+    # commands, and proof of completion" ... "the above should be part of the board"). GET only, all bounded:
+    # ?id=<task_id> reads one task file (the drawer's five sections + the B0-prefixed prompt); the playbook is
+    # docs/ops/OPERATING_PLAYBOOK.md parsed once per mtime; the handoff export is rebuilt at most once per 30 s.
+    if base_path in ("/api/v2/coordination/task", "/api/v2/coordination/playbook", "/api/v2/coordination/handoff-export"):
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from lib import work_pipeline as _wpl
+
+            if base_path.endswith("/playbook"):
+                from lib.handoff_playbook import load_playbook as _load_playbook
+
+                return 200, {"ok": True, "data": _load_playbook()}
+            if base_path.endswith("/handoff-export"):
+                return 200, {"ok": True, "data": _wpl.handoff_export()}
+            _tid = (query or {}).get("id")
+            _tid = (_tid or [None])[0] if isinstance(_tid, list) else _tid
+            return 200, {"ok": True, "data": _wpl.task_detail(str(_tid or "")[:120])}
+        except Exception as e:
+            _status = 404 if type(e).__name__ == "TaskError" else 500
+            return _status, {"ok": False, "error": type(e).__name__}
+
     # Work pipeline commands, Tier 1 (operator 2026-10-23: "both"): note, priority, hold/unhold, next-batch queue,
     # new/split task, release a red-stale claim. Operator tailnet identity only (agents/service token refused), CSRF
     # enforced here (cc_auth.command_csrf_check), idempotency key, append-only audit in the claims dir.

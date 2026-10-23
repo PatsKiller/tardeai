@@ -21,6 +21,16 @@ tasks); it claims the areas, opens the worklog with the task's
 acceptance criteria as the Plan seed (the operator quote in the Goal), and marks the task taken -- all under the
 task lock and the claim board's own lock. On re-pick after a release the new worklog carries the old one forward.
 
+Work-package structure (operator 2026-10-23: "this is what should be done inside of the board also. structure:
+problem, definition of done, agent prompt, operator commands, and proof of completion."). Every task may carry the
+optional markdown sections ``STRUCTURE_FIELDS`` (problem, definition_of_done, agent_prompt, operator_commands, proof,
+proof_evidence, notes) and the labels ``wp_id`` (``WP-07``), ``stage`` (``Stage 2``), ``owner_kind``
+(AGENT | OPERATOR | BOTH), ``related_tasks`` and ``wp_status``. All are optional: a task without them reads and works
+exactly as before. A task that has a ``proof`` cannot be marked done without ``proof_evidence`` (links, SHAs, receipt
+paths). ``next`` never hands an OPERATOR-owned task to an agent (agents propose and stop, AGENTS.md §0 rule 9).
+Stage intros live in ``<claims_dir>/tasks/wp_stages.json`` (``set_stages`` / ``stages``). Agent prompts are stored
+short: the standard B0 preamble is prepended at copy time from ``docs/ops/OPERATING_PLAYBOOK.md``.
+
 Stdlib only. AUTHORITY: READ_ONLY_ADVISORY (coordination files only; no broker, DB, Telegram, scheduler or remote).
 """
 
@@ -53,6 +63,23 @@ MAX_TASKS_READ = 2000
 _ID_RE = re.compile(r"^(T-[0-9]{8}-[0-9a-f]{6}|DSN-[0-9]{8}-[a-z0-9]+(?:-[a-z0-9]+)*-P[0-9]{1,3}-T[0-9]{1,3})$")
 DESIGN_TASK_RE = re.compile(r"^DSN-[0-9]{8}-[a-z0-9]+(?:-[a-z0-9]+)*-P[0-9]{1,3}-T[0-9]{1,3}$")
 IN_PROGRESS_STAGES = ("building", "pr_open", "ci_green", "merged", "released")
+# Work-package structure (all optional; operator 2026-10-23). Markdown sections and their size caps (characters).
+STRUCTURE_FIELDS = (
+    "problem",
+    "definition_of_done",
+    "agent_prompt",
+    "operator_commands",
+    "proof",
+    "proof_evidence",
+    "notes",
+)
+STRUCTURE_MAX_CHARS = 20000
+OWNER_KINDS = ("AGENT", "OPERATOR", "BOTH")
+WP_ID_RE = re.compile(r"^WP-[0-9]{2,3}$")
+WP_STATUSES = ("not_started", "in_progress", "done", "repeating")
+STAGES_NAME = "wp_stages.json"
+STAGES_SCHEMA = "WorkStages@v1"
+MAX_STAGES = 30
 
 
 class TaskError(Exception):
@@ -61,6 +88,76 @@ class TaskError(Exception):
 
 def valid_task_id(task_id: str) -> bool:
     return bool(_ID_RE.match(task_id or ""))
+
+
+def _text(value: Any, cap: int = STRUCTURE_MAX_CHARS) -> str | None:
+    """A markdown section: stripped of trailing whitespace, capped, None when empty. Line endings kept as LF."""
+    if value is None:
+        return None
+    s = str(value).replace("\r\n", "\n").rstrip()
+    s = s.strip("\n")
+    if not s.strip():
+        return None
+    return s if len(s) <= cap else s[: cap - 20].rstrip() + "\n…(truncated)"
+
+
+def normalize_structure(fields: dict[str, Any]) -> dict[str, Any]:
+    """Validate the optional structure fields; returns only the keys given (None clears a field)."""
+    out: dict[str, Any] = {}
+    for k, v in fields.items():
+        if k in STRUCTURE_FIELDS:
+            out[k] = _text(v)
+        elif k == "wp_id":
+            if v is not None and not WP_ID_RE.match(str(v)):
+                raise TaskError(f"wp_id must look like WP-07, got {v!r}")
+            out[k] = None if v is None else str(v)
+        elif k == "stage":
+            out[k] = B.clip(v, 60) if v is not None else None
+        elif k == "owner_kind":
+            if v is not None and str(v).upper() not in OWNER_KINDS:
+                raise TaskError(f"owner_kind must be one of {', '.join(OWNER_KINDS)}")
+            out[k] = None if v is None else str(v).upper()
+        elif k == "wp_status":
+            if v is not None and v not in WP_STATUSES:
+                raise TaskError(f"wp_status must be one of {', '.join(WP_STATUSES)}")
+            out[k] = v
+        elif k == "wp_status_note":
+            out[k] = _text(v, 2000)
+        elif k == "related_tasks":
+            ids = [str(x) for x in (v or []) if x]
+            for x in ids:
+                if not valid_task_id(x):
+                    raise TaskError(f"bad related task id {x!r}")
+            out[k] = ids[:20]
+        elif k == "source_ref":
+            out[k] = B.clip(v, 400) if v is not None else None
+        elif k == "owner_label":
+            out[k] = B.clip(v, 300) if v is not None else None
+        else:
+            raise TaskError(f"unknown structure field {k!r}")
+    return out
+
+
+def mark_wp_done(t: dict[str, Any]) -> None:
+    if t.get("wp_id"):
+        t["wp_status"] = "done"
+
+
+EDITABLE_EXTRA = (
+    "wp_id",
+    "stage",
+    "owner_kind",
+    "owner_label",
+    "wp_status",
+    "wp_status_note",
+    "related_tasks",
+    "source_ref",
+)
+
+
+def is_operator_task(t: dict[str, Any]) -> bool:
+    """An operator to-do: owner_kind OPERATOR, or the legacy ``OPERATOR: …`` title."""
+    return t.get("owner_kind") == "OPERATOR" or bool(re.match(r"^\s*OPERATOR\s*:", str(t.get("title") or ""), re.I))
 
 
 class TaskBoard:
@@ -150,7 +247,9 @@ class TaskBoard:
         parent: str | None = None,
         task_id: str | None = None,
         source: str | None = None,
+        structure: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        extra = normalize_structure(dict(structure or {}))
         if task_id is not None and not DESIGN_TASK_RE.match(task_id):
             raise TaskError(f"--id must be a design task id DSN-<YYYYMMDD>-<slug>-P<n>-T<m>, got {task_id!r}")
         if kind not in KINDS:
@@ -206,6 +305,7 @@ class TaskBoard:
                 "handoff": None,
                 "history": [],
             }
+            doc.update({k: v for k, v in extra.items() if v is not None})
             if task_id and self.path(task_id).exists():
                 raise TaskError(f"task {task_id} already exists")
             while self.path(doc["task_id"]).exists():
@@ -301,6 +401,7 @@ class TaskBoard:
                 for t in tasks
                 if t.get("status") == "free"
                 and not t.get("held")
+                and t.get("owner_kind") != "OPERATOR"  # agents propose and stop (AGENTS.md §0 rule 9)
                 and (not kind or t.get("kind") == kind)
                 and not self.blocked_by(t, done)
             ]
@@ -319,6 +420,11 @@ class TaskBoard:
                     h = want["held"]
                     raise TaskError(
                         f"task {task_id} is on hold by {h.get('by')} since {h.get('at')}: {h.get('reason') or ''}"
+                    )
+                if want.get("owner_kind") == "OPERATOR":
+                    raise TaskError(
+                        f"task {task_id} is owned by the OPERATOR ({want.get('wp_id') or 'operator to-do'}): an agent "
+                        "prepares the exact commands and stops (AGENTS.md §0 rule 9); the operator closes it"
                     )
                 blocked = self.blocked_by(want, done)
                 if blocked:
@@ -399,10 +505,16 @@ class TaskBoard:
         summary: str | None = None,
         force: bool = False,
         actual_cost: str | None = None,
+        proof_evidence: str | None = None,
     ) -> dict[str, Any]:
-        """Mark done and check every acceptance box in the claim's worklog."""
+        """Mark done and check every acceptance box in the claim's worklog. A task with a ``proof`` needs
+        ``proof_evidence`` (given here, or already recorded with ``task edit``)."""
+        evidence = _text(proof_evidence)
         with self.locked():
             t = self._own_taken(task_id, session, force)
+            self.require_evidence(t, evidence)
+            if evidence:
+                t["proof_evidence"] = evidence
             wl = self.claims.worklog(t["claim_id"]) if t.get("claim_id") else None
             if wl is not None and wl.exists():
                 for acc in t.get("acceptance") or []:
@@ -414,14 +526,137 @@ class TaskBoard:
             now = self.claims.now()
             t["status"] = "done"
             t["done_at"] = B.iso(now)
+            mark_wp_done(t)
             started = B.parse_iso(t.get("taken_at"))
             t["actual"] = {
                 "minutes": round((now - started).total_seconds() / 60, 1) if started else None,
                 "cost": B.clip(actual_cost, 80),
             }
-            self._event(t, "done", by=session, summary=B.clip(summary, 500))
+            self._event(t, "done", by=session, summary=B.clip(summary, 500), proof_evidence=B.clip(evidence, 500))
             self._write(t)
         return t
+
+    def evidence_done(
+        self,
+        task_id: str,
+        *,
+        actor: dict[str, Any],
+        summary: str | None,
+        evidence: Iterable[str],
+        mode: str = "evidence_only",
+    ) -> dict[str, Any]:
+        """Close a FREE task whose work already shipped, without taking it (``task done --evidence-only`` and the
+        handoff importer for ``[x]`` work packages). The summary and links are recorded as the task's evidence and
+        as its ``proof_evidence``. Refused unless the task is free and both a summary and one link are given."""
+        summary = B.clip(summary, 500)
+        links = [e for e in (B.clip(x, 400) for x in evidence or []) if e]
+        if not summary or not links:
+            raise TaskError("--evidence-only needs --summary and at least one --evidence <PR/commit/receipt link>")
+        with self.locked():
+            t = self.get(task_id)
+            if t.get("status") != "free":
+                raise TaskError(
+                    f"task {task_id} is {t.get('status')}; --evidence-only closes free tasks only "
+                    "(a taken task is closed by its owner with task done)"
+                )
+            t["status"] = "done"
+            t["done_at"] = self.now_iso()
+            t["closed_by"] = actor
+            t["done_mode"] = mode
+            t["evidence"] = links
+            t["summary"] = summary
+            if not t.get("proof_evidence"):
+                t["proof_evidence"] = _text(summary + "\n" + "\n".join(f"- {x}" for x in links))
+            mark_wp_done(t)
+            self._event(t, "done", by=actor.get("session"), mode=mode, actor=actor, summary=summary, evidence=links)
+            self._write(t)
+        return t
+
+    @staticmethod
+    def require_evidence(t: dict[str, Any], evidence: str | None) -> None:
+        """Refuse to close a task that names how completion is proven but carries no proof evidence."""
+        if t.get("proof") and not (evidence or t.get("proof_evidence")):
+            raise TaskError(
+                f"task {t['task_id']} has a proof of completion ({B.clip(t['proof'], 120)!r}); "
+                "done needs --proof-evidence (links, SHAs, receipt paths)"
+            )
+
+    def edit(self, task_id: str, *, by: str | None, title: str | None = None, **fields: Any) -> dict[str, Any]:
+        """Set or clear structure fields (``STRUCTURE_FIELDS`` + ``EDITABLE_EXTRA``), the title, priority or
+        dependencies on any task. The history records which fields changed (not their text)."""
+        deps = fields.pop("depends_on", None)
+        prio = fields.pop("priority", None)
+        extra = normalize_structure(fields)
+        with self.locked():
+            t = self.get(task_id)
+            changed: list[str] = []
+            for k, v in extra.items():
+                if t.get(k) != v:
+                    if v is None:
+                        t.pop(k, None)
+                    else:
+                        t[k] = v
+                    changed.append(k)
+            if title is not None:
+                nt = B.clip(title, 200)
+                if nt and nt != t.get("title"):
+                    t["title"] = nt
+                    changed.append("title")
+            if prio is not None and int(prio) != t.get("priority"):
+                t["priority"] = int(prio)
+                changed.append("priority")
+            if deps is not None:
+                dl = [d for d in deps if d]
+                for d in dl:
+                    if not valid_task_id(d) or not self.path(d).is_file():
+                        raise TaskError(f"dependency {d} does not exist")
+                    if d == task_id:
+                        raise TaskError("a task cannot depend on itself")
+                if dl != list(t.get("depends_on") or []):
+                    t["depends_on"] = dl
+                    changed.append("depends_on")
+            if not changed:
+                return t
+            self._event(t, "edited", by=by, fields=changed)
+            self._write(t)
+        return t
+
+    # -- work-package stages (stage intros from the handoff) -----------------------------------------------
+
+    @property
+    def stages_path(self) -> Path:
+        return self.dir / STAGES_NAME
+
+    def stages(self) -> dict[str, Any]:
+        """``{"schema", "source", "updated_at", "stages": [{"stage", "title", "description"}]}``; empty when absent."""
+        try:
+            d = json.loads(self.stages_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {"schema": STAGES_SCHEMA, "stages": []}
+        if not isinstance(d, dict) or d.get("schema") != STAGES_SCHEMA:
+            return {"schema": STAGES_SCHEMA, "stages": []}
+        return d
+
+    def set_stages(self, stages: list[dict[str, Any]], *, source: str | None, by: str | None) -> dict[str, Any]:
+        rows = []
+        for st in stages[:MAX_STAGES]:
+            name = B.clip(st.get("stage"), 60)
+            if not name:
+                raise TaskError("each stage needs a name")
+            rows.append(
+                {
+                    "stage": name,
+                    "title": B.clip(st.get("title"), 200),
+                    "description": _text(st.get("description"), 8000),
+                }
+            )
+        doc = {"schema": STAGES_SCHEMA, "source": B.clip(source, 400), "updated_at": self.now_iso(), "by": by,
+               "stages": rows}  # fmt: skip
+        with self.locked():
+            tmp = self.dir / f".{STAGES_NAME}.{os.getpid()}.{secrets.token_hex(4)}.tmp"
+            tmp.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            os.replace(str(tmp), str(self.stages_path))
+        return doc
 
     def release(self, task_id: str, *, session: str | None, handoff: str, force: bool = False) -> dict[str, Any]:
         """Put a taken task back on the board (free) with its history and the hand-off note; the claim is released
@@ -501,12 +736,16 @@ class TaskBoard:
         return t
 
     def operator_done(self, task_id: str, *, by: str, summary: str | None = None) -> dict[str, Any]:
-        """The operator marks one of their own to-dos (title ``OPERATOR: …``) done from the Work pipeline. Agent
-        tasks finish through ``done`` by their owning session, never here."""
+        """The operator marks one of their own to-dos (title ``OPERATOR: …`` or ``owner_kind`` OPERATOR) done from
+        the Work pipeline. Agent tasks finish through ``done`` by their owning session, never here. A task with a
+        ``proof`` needs the summary, which is recorded as its proof evidence."""
         with self.locked():
             t = self.get(task_id)
-            if not re.match(r"^\s*OPERATOR\s*:", str(t.get("title") or ""), re.I):
+            if not is_operator_task(t):
                 raise TaskError(f"task {task_id} is not an OPERATOR: to-do; its agent finishes it with task done")
+            self.require_evidence(t, _text(summary))
+            if t.get("proof") and not t.get("proof_evidence"):
+                t["proof_evidence"] = _text(summary)
             if t.get("status") in ("done", "split"):
                 raise TaskError(f"task {task_id} is already {t.get('status')}")
             cid = t.get("claim_id") if t.get("status") == "taken" else None
@@ -517,11 +756,18 @@ class TaskBoard:
             now = self.claims.now()
             t["status"] = "done"
             t["done_at"] = B.iso(now)
+            mark_wp_done(t)
             self._event(t, "done", by=by, summary=B.clip(summary, 500))
             self._write(t)
         return t
 
     # -- read model -----------------------------------------------------------------------------------
+
+    def detail(self, task_id: str, *, history_cap: int = 50) -> dict[str, Any]:
+        """One task with every structure section (the Work pipeline drawer and ``task show``); history capped."""
+        t = self.get(task_id)
+        hist = list(t.get("history") or [])
+        return {**t, "history": hist[-history_cap:], "history_len": len(hist), "sections": [k for k in STRUCTURE_FIELDS if t.get(k)]}
 
     def board(self) -> dict[str, Any]:
         tasks = self.read_all()
@@ -558,8 +804,17 @@ class TaskBoard:
                             "done_at",
                             "handoff",
                             "held",
+                            "wp_id",
+                            "stage",
+                            "owner_kind",
+                            "owner_label",
+                            "wp_status",
+                            "wp_status_note",
+                            "related_tasks",
                         )
                     },
+                    # the section texts are served by task_detail(); the board carries which ones exist (memory bound)
+                    "sections": [k for k in STRUCTURE_FIELDS if t.get(k)],
                     "column": self.column(t, views, done),
                     "blocked_by": self.blocked_by(t, done),
                     "claim_stage": v.stage if v is not None else None,
