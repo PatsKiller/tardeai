@@ -288,13 +288,14 @@ def resolve_cusip_symbols(cusips, registry: dict | None = None) -> dict[str, str
 def _positions_store_rows(db_query) -> tuple[list[dict], Any]:
     """positions_current rows of the latest promoted complete sync run, plus that run's finish time."""
     rows = db_query(
-        """SELECT upper(pc.symbol) AS symbol, pc.qty, pc.is_cash, pc.as_of, runs.finished_at
+        """SELECT upper(pc.symbol) AS symbol, pc.qty, pc.is_cash, pc.as_of, runs.finished_at, pc.account_key AS account
              FROM positions_current pc
              JOIN positions_sync_runs runs ON runs.run_id = pc.sync_run_id
             WHERE runs.promoted AND runs.status = 'complete'"""
     ) or []
     out = [dict(r) if hasattr(r, "keys") else {"symbol": r[0], "qty": r[1], "is_cash": r[2], "as_of": r[3],
-                                                 "finished_at": r[4]} for r in rows]
+                                                 "finished_at": r[4], "account": r[5] if len(r) > 5 else None}
+           for r in rows]
     last = max((r.get("finished_at") for r in out if r.get("finished_at")), default=None)
     return out, last
 
@@ -336,7 +337,7 @@ def _holdings_rows(holdings_path: Path | None) -> tuple[list[dict], Any]:
         except Exception:
             doc = {}
     rows = [{"symbol": str(h.get("symbol") or "").upper(), "qty": h.get("shares", h.get("quantity")),
-             "market_value": h.get("market_value"), "is_cash": bool(h.get("is_cash"))}
+             "market_value": h.get("market_value"), "is_cash": bool(h.get("is_cash")), "account": h.get("account")}
             for h in (doc.get("holdings") or []) if isinstance(h, dict)]
     return rows, doc.get("updated_at") or doc.get("as_of") or doc.get("data_as_of")
 
@@ -394,16 +395,23 @@ def held_positions(*, db_query=None, holdings_path: Path | None = None, registry
             limit = float(cfg.get("holdings_stale_after_hours") or 24) * 3600
             fresh = {"age_s": age, "limit_s": limit, "stale": age is None or age > limit}
     held_raw: set[str] = set()
+    # Which account(s) hold each symbol — account KEYS only, the UI shows the account NAME (operator 2026-10-23:
+    # "two SpaceX and two different accounts"; never an account number).
+    accounts_raw: dict[str, list[str]] = {}
     for r in raw:
         sym = str(r.get("symbol") or "").upper().strip()
         if not sym or r.get("is_cash") or sym in _NOT_POSITIONS:
             continue
         if _num(r.get("qty")) > 0 or _num(r.get("market_value")) > 0:
             held_raw.add(sym)
+            acct = str(r.get("account") or "").strip()
+            if acct and acct not in accounts_raw.setdefault(sym, []):
+                accounts_raw[sym].append(acct)
     cusips = {s for s in held_raw if looks_like_cusip(s)}
     resolved = resolve_cusip_symbols(cusips, registry) if cusips else {}
     out = {
         "symbols": (held_raw - cusips) | set(resolved.values()),
+        "accounts_by_symbol": {resolved.get(s, s): a for s, a in accounts_raw.items() if s not in cusips or s in resolved},
         "source": source,
         "as_of": as_of.isoformat() if hasattr(as_of, "isoformat") else as_of,
         "age_s": fresh.get("age_s"),
@@ -423,7 +431,8 @@ def held_positions(*, db_query=None, holdings_path: Path | None = None, registry
 def held_detail_public(h: dict[str, Any] | None = None) -> dict[str, Any]:
     """JSON-safe held verdict for payloads (symbols as a count, never a list of positions sizes)."""
     h = h if h is not None else held_positions(surface=WATCH_SURFACE)
-    return {k: (len(v) if k == "symbols" else v) for k, v in h.items()} | {"count": len(h.get("symbols") or ())}
+    return {k: (len(v) if k in ("symbols", "accounts_by_symbol") else v) for k, v in h.items()} | {
+        "count": len(h.get("symbols") or ())}
 
 
 def membership_held(surface: str | None = None) -> tuple[set[str], str]:

@@ -146,3 +146,28 @@ def test_active_trader_review_names_the_account_of_your_fills():
 
     src = (ROOT / "scripts" / "active_trader" / "session_review.py").read_text(encoding="utf-8")
     assert '"your_accounts": list(dict.fromkeys(x["account_label"] for x in you if x.get("account_label")))' in src
+
+
+def test_watch_facts_name_the_account_that_holds_and_that_sold():
+    from datetime import datetime, timezone
+
+    from scripts.lib.data_broker import watch_position_facts as wpf
+
+    now = datetime(2026, 10, 23, 17, 0, tzinfo=timezone.utc)
+    held = wpf.facts_for("SPCX", held={"SPCX"}, last_sell={}, lifecycle={}, now=now,
+                         held_accounts={"SPCX": ["schwab_rollover_ira", "schwab_taxable"]})
+    assert held["held_account_labels"] == ["Schwab Rollover IRA", "Schwab Individual"]
+    sold = wpf.facts_for("NAVN", held=set(), now=now, lifecycle={},
+                         last_sell={"NAVN": {"at": "2026-10-22T15:00:00+00:00", "account": "schwab_rollover_ira"}})
+    assert sold["position_state"] == "formerly_held"
+    assert sold["last_sell_account_label"] == "Schwab Rollover IRA"
+    # a bare timestamp (older cache shape) still works, with no account
+    old = wpf.facts_for("NAVN", held=set(), now=now, lifecycle={}, last_sell={"NAVN": "2026-10-22T15:00:00+00:00"})
+    assert old["position_state"] == "formerly_held" and old["last_sell_account_label"] is None
+
+
+def test_watch_held_reader_keeps_accounts_out_of_the_public_payload():
+    from scripts.lib.data_broker import watch_domains as wd
+
+    pub = wd.held_detail_public({"symbols": {"SPCX"}, "accounts_by_symbol": {"SPCX": ["schwab_taxable", "schwab_rollover_ira"]}})
+    assert pub["accounts_by_symbol"] == 1 and pub["count"] == 1

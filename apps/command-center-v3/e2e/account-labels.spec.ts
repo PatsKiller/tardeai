@@ -48,6 +48,37 @@ for (const width of [1440, 412]) {
   test.describe(`at ${width}px`, () => {
     test.use({ viewport: { width, height: width > 600 ? 1000 : 900 } })
 
+    test(`Home movers: SPCX is one row "2 accounts" that expands per account; footer sums unchanged (${width})`, async ({ page }) => {
+      const errors: string[] = []
+      page.on('pageerror', e => errors.push(e.message))
+      await fixtures(page)
+      await page.goto('/v3/')
+      const card = page.getByTestId('home-movers')
+      await expect(card).toBeVisible()
+      const spcx = card.locator('[data-testid="mover-group"][data-symbol="SPCX"]')
+      await expect(spcx).toHaveCount(1)
+      await expect(spcx).toHaveAttribute('data-multi', 'true')
+      await expect(spcx.getByTestId('accounts-badge')).toHaveText('2 accounts')
+      await expect(spcx).toContainText('+$1,995')
+      // single-account rows name their account
+      await expect(card.locator('[data-symbol="V"]').getByTestId('account-chip')).toHaveText('Schwab Roth IRA')
+      await expect(card.locator('[data-symbol="SCHD"]').getByTestId('account-chip')).toHaveText('Schwab Rollover IRA')
+      await expect(card).toContainText('Shown +$154 · rest of the book −$117 · day +$37')
+      await card.scrollIntoViewIfNeeded()
+      await shot(page, `home-movers-collapsed-${width}.png`)
+      await spcx.getByTestId('mover-expand').click()
+      const parts = spcx.getByTestId('mover-account-row')
+      await expect(parts).toHaveCount(2)
+      await expect(parts.nth(0)).toContainText('Schwab Rollover IRA')
+      await expect(parts.nth(0)).toContainText('+$1,488')
+      await expect(parts.nth(1)).toContainText('Schwab Individual')
+      await expect(parts.nth(1)).toContainText('+$507')
+      await expect(card).toContainText('Shown +$154 · rest of the book −$117 · day +$37')
+      expect(await card.innerText()).not.toMatch(NUMBER_LEAK)
+      await card.screenshot({ path: path.join(SHOTS, `home-movers-expanded-${width}.png`) })
+      expect(errors).toEqual([])
+    })
+
     test(`Risk: each SPCX chip names its account (${width})`, async ({ page }) => {
       const errors: string[] = []
       page.on('pageerror', e => errors.push(e.message))

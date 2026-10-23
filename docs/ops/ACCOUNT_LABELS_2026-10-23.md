@@ -19,6 +19,9 @@ expands to the per-account rows.
 
 ## One source for names
 
+The backend lookup went out first, as its own PR, #2020: config, `account_display.py` and gate `account_display_lib_20261023`. The NVDA Telegram notices reuse it.
+
+
 | Where | What |
 |---|---|
 | `config/account_display_names.json` | `names` (account key → name, broker, type, `status`) and `aliases` (`schwab_roth` → `schwab_roth_ira`). Every name is digit-free and unique (test). |
@@ -62,17 +65,34 @@ Before this change:
 | Risk: triggered / no-stop chips | key | no (raw key in the drill subtitle) | duplicated, unlabelled, duplicate React keys | an `AccountChip` on each chip, keyed per account. `/api/v2/risk` positions carry `account_label`. |
 | Risk: Recovery | key | yes | per row | already right (uses the one map now) |
 | Trading: Open Trades | key + label | yes | per account | the excluded-rows drawer now shows the name instead of the key |
-| Trading: Schwab accounts monitor | key | key, uppercased | grouped per account | after batch 9 merges (file held by #2014 / batch 9) |
+| Trading: Schwab accounts monitor | key | key, uppercased | grouped per account | the panel header, filter chips and orders column show the name |
 | Trading: Proposals (card V4) | key | key with `_` → space | per proposal | name |
-| Watch: held / formerly held / last trade / re-entry | no (`last_sells` GROUP BY symbol, `round_trip_view` dropped `life.account`) | no | merged | after batch 9 merges (files held by #2008 / batch 9) |
+| Watch: held / formerly held / last trade / re-entry | no (`last_sells` GROUP BY symbol, `round_trip_view` dropped `life.account`) | no | merged | See the notes below this table. |
 | Re-entry exit workbench | key | raw keys | merged, with an accounts list | names, plus a "2 accounts" badge |
 | Active Trader session review | key on fills | no | P&L summed per symbol | `you[].account_label`, `metrics.your_accounts`. The name is shown on your buy and sell rows and in the header. |
 | Journal / TradeInView log table, detail | key | raw normalized key | per account | names. Journal trades carry `account_label`. |
-| CIO Desk: NOW decisions | `accounts[]` | `accounts[0]` only | merged and mislabelled | cards carry `accounts` + `account_labels` (all of them). UI after batch 9 merges (CioHub.tsx held). |
+| CIO Desk: NOW decisions, action book | `accounts[]` | `accounts[0]` only | merged and mislabelled | Cards carry `accounts` + `account_labels` (all of them). The card shows every account chip, plus a "2 accounts" badge when there are two. Action-book rows name their accounts when the row carries them. |
+| Home classic (`?view=classic`): stops, winners/losers | raw key; `/api/v2/command` day movers summed per symbol | raw key / none | merged | Stops show names. Day movers carry `accounts`, `account_labels` and `by_account`. A row shows its account name, or "2 accounts" with the per-account split in the tooltip. |
+
+Watch (held / formerly held / last trade / re-entry):
+- The held reader (`watch_domains.held_positions`) now also returns `accounts_by_symbol`, read from `positions_current.account_key` or the holdings row's `account`. The public payload shows only a count.
+- `last_sells` now returns the most recent sell and its account.
+- `round_trip_view` keeps `account` and `account_label`.
+- `facts_for` adds `held_accounts`, `held_account_labels`, `last_sell_account` and `last_sell_account_label`.
+- The chips read "held · 2 accounts" or "held · Schwab Roth IRA", and "formerly held · sold Oct 22 · Schwab Rollover IRA".
+- The detail view says "Sold in <account>".
 
 ## Home movers
 
-To be completed once batch 9 merges: grouped row, expand per account, footer sums unchanged.
+`moversBars()` (`lib/homeDoNow.ts`) groups `top_movers` by symbol but keeps every account:
+- Each group carries the per-account amounts, each with its account name.
+- `multi` is true when the symbol is in 2 or more accounts.
+- The card shows "SPCX · 2 accounts +$1,995" with an expand control. Expanded, it shows "Schwab Rollover IRA +$1,488" and "Schwab Individual +$507".
+- A single-account row shows its account chip.
+
+`shownSum` is the sum of the groups shown, so the footer still reconciles. On the operator's example it reads "Shown +$154 · rest of the book −$117 · day +$37".
+
+The accounts table on Home uses the same names ("Schwab Roth IRA", not "Schwab Roth").
 
 ## Tests
 

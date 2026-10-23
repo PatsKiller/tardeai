@@ -29665,8 +29665,12 @@ def _morning_command():
                 "day_change": 0.0,
                 "market_value": 0.0,
                 "price": pos.get("price", 0),
+                "by_account": {},
             },
         )
+        # keep each account's part: a symbol in two accounts is named per account, never merged silently
+        _ak = _acct_disp.canonical_key(pos.get("account"))
+        a["by_account"][_ak] = round(a["by_account"].get(_ak, 0.0) + dc, 2)
         a["day_change"] += dc
         a["market_value"] += mv
         if pos.get("price"):
@@ -29687,6 +29691,12 @@ def _morning_command():
                 "change_pct": pct,  # UI convenience alias
                 "price": a.get("price") or 0,
                 "market_value": round(mv, 2),
+                "accounts": list(a["by_account"].keys()),
+                "account_labels": [_acct_disp.account_label(k) for k in a["by_account"]],
+                "by_account": [
+                    {"account_id": k, "account_label": _acct_disp.account_label(k), "day_change": v}
+                    for k, v in a["by_account"].items()
+                ],
             }
         )
     top_day_gainers = sorted(
