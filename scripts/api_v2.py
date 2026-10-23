@@ -52,6 +52,10 @@ try:  # YouTube cookie jar lives outside the release dir (lib/youtube_cookie_pat
     from lib import youtube_cookie_path as _yt_cookie_path  # noqa: E402
 except ImportError:  # pragma: no cover - imported as scripts.<module>
     from scripts.lib import youtube_cookie_path as _yt_cookie_path  # noqa: E402
+try:  # one short human name per account, never an account number (operator 2026-10-23)
+    from lib import account_display as _acct_disp  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib import account_display as _acct_disp  # noqa: E402
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 # Dev tree often owns the venv while portfolio-server runs from a release stamp
 # that has scripts/ but no .venv (Fix-now Errno 2 on live/.venv/bin/python).
@@ -3896,9 +3900,16 @@ def overview():
                 "name": (m.get("name") or "")[:30],
                 "day_change": m.get("day_change", 0),
                 "day_change_pct": m.get("day_change_pct", 0),
+                # Which account (operator 2026-10-23: "two SpaceX and two different accounts").
+                # One row per account holding; the label is a name only, never an account number.
+                "account_id": _acct_disp.canonical_key(m.get("account") or m.get("account_id")),
+                "account_label": _acct_disp.account_label(m.get("account") or m.get("account_id")),
             }
             for m in movers
         ],
+        "account_labels": _acct_disp.labels_map(
+            sorted({str(p.get("account") or "") for p in holdings if p.get("account")})
+        ),
         "trade_ai": {
             "vix": tai.get("vix"),
             "vix_source": tai.get("vix_source"),
