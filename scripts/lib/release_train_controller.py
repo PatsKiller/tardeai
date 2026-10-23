@@ -3865,7 +3865,7 @@ def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], T
 SHADOW_TICK_ORDER = ("1800", "0000", "0600", "0800")
 
 
-def _request_writer(argv: list[str]) -> tuple[int, Optional[dict]]:
+def _request_writer(argv: list[str], environ: Optional[dict] = None) -> tuple[int, Optional[dict]]:
     """Run the n8n request lane's own code (``release_train_window_request.run``) and parse its one JSON line. The
     request is built and validated exactly as n8n's lane builds it; nothing here constructs a request by hand."""
     import contextlib  # noqa: PLC0415
@@ -3877,7 +3877,7 @@ def _request_writer(argv: list[str]) -> tuple[int, Optional[dict]]:
         import release_train_window_request as RQ  # type: ignore[no-redef]  # noqa: PLC0415
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        code = RQ.run(argv)
+        code = RQ.run(argv, environ=environ)
     doc = None
     for line in reversed(buf.getvalue().splitlines()):
         text = line[len("DRY-RUN "):] if line.startswith("DRY-RUN ") else line
@@ -3906,7 +3906,7 @@ def _tick_line(slot: str, rid: Optional[str], receipt: Optional[dict], report: O
 
 
 def shadow_tick(windows: list[str], *, apply: bool, inject: Optional[str], wait_s: float, state: RW.State,
-                writer: Callable[[list[str]], tuple[int, Optional[dict]]] = _request_writer,
+                writer: Callable[..., tuple[int, Optional[dict]]] = _request_writer,
                 clock: Callable[[], float] = time.time, sleep: Callable[[float], None] = time.sleep,
                 poll_s: float = 5.0) -> tuple[int, dict]:
     """Force one SHADOW tick per window, in the operator order 18:00, 00:00, 06:00, 08:00.
@@ -3924,7 +3924,10 @@ def shadow_tick(windows: list[str], *, apply: bool, inject: Optional[str], wait_
     for slot in windows:
         argv = ["--window", slot, "--append" if apply else "--dry-run", "--shadow-only",
                 "--state-dir", str(state.root)] + (["--inject", inject] if inject else [])
-        code, doc = writer(argv)
+        # A run id of its own per forced tick: the off-window request id hashes the run id, and the lane's default
+        # (manual-<lane>-<second>) made two ticks in the same second one duplicate request (measured 2026-10-23).
+        run_id = f"manual-shadow-tick-{slot}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')}-{uuid.uuid4().hex[:8]}"
+        code, doc = writer(argv, {**os.environ, "TRADEAI_RUN_ID": run_id})
         summ = (doc or {}).get("summary") if isinstance((doc or {}).get("summary"), dict) else (doc or {})
         rid = summ.get("request_id")
         row: dict = {"slot": slot, "request_id": rid, "writer_exit": code,

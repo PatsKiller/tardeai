@@ -476,6 +476,17 @@ def test_shadow_tick_apply_appends_and_waits_for_the_claimer(tmp_path):
     assert not w.state.latch.exists()  # the drill is simulated
 
 
+def test_back_to_back_forced_ticks_get_distinct_requests(tmp_path):
+    state = RW.State(tmp_path / "rw")
+    ids = []
+    for _ in range(3):
+        code, out = T.shadow_tick(["1800"], apply=True, inject=None, wait_s=0, state=state)
+        ids.append(out["windows"][0]["request_id"])
+        assert out["windows"][0]["disposition"] == "requested"
+    assert len(set(ids)) == 3
+    assert len(os.listdir(tmp_path / "rw" / "train_requests" / "pending")) == 3
+
+
 def test_shadow_tick_reports_a_missing_claimer(tmp_path):
     state = RW.State(tmp_path / "rw")
     clock = {"t": 0.0}
