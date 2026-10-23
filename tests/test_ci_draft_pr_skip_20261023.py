@@ -26,12 +26,16 @@ DRAFT_QUICK = "draft-quick-check.yml"
 # running on drafts too, so a draft's required `agent-governance` context is a real result, not a skip.
 ALWAYS_ON = "agent-governance.yml"
 AGENT_BRANCH_PATTERNS = ("fix/", "feat/", "feature/", "wt/", "aif/", "hardening/")
-# Workflows whose draft guard is pending because another live session holds the file on the claim board
-# (AGENTS.md rule 11; never edit a claimed file). Each entry names the holder. Remove the entry in the PR that
+# Workflows whose draft guard is pending: another live session holds the file on the claim board (AGENTS.md
+# rule 11; never edit a claimed file), or the workflow's own scope guard needs the edit in its own PR. Each entry
+# says why. Remove the entry in the PR that
 # adds the three hunks (types incl. ready_for_review, concurrency group, job draft guard) to that workflow.
 PENDING_CLAIMED = {
     # held by claude/acctlabel (claim 20261023T171134Z-claude-877eaed7, feat/cc-account-labels-20261023)
     "cc-surface-agreement-ci.yml",
+    # not claimed, but its PR scope guard (scripts/lib/research_governance/pr_scope_guard.py) fails any PR that
+    # touches it together with a file outside the R1 allowlist; its three hunks ship in a PR of their own
+    "research-governance-ci.yml",
 }
 
 
@@ -132,6 +136,9 @@ def test_no_push_trigger_fires_on_agent_branches(path: Path):
     branches = push.get("branches")
     if path.name == "watch-quality-governance-ci.yml":
         assert branches == ["agent/watch-quality-governance-v1"]  # a retired branch name; inert
+        return
+    if path.name == "research-governance-ci.yml" and path.name in PENDING_CLAIMED:
+        assert set(branches) <= {"main", "feature/research-governance-v1"}  # retired branch; dropped in its own PR
         return
     assert branches, f"{path.name}: a push trigger with no branch filter fires on every agent WIP push"
     for b in branches:

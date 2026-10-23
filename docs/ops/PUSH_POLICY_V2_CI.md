@@ -45,10 +45,15 @@ release-readiness 2.1 min, agent-governance 1.3 min, provider-cost 1.0 min (`gh 
    still runs on drafts. It is about one runner-minute, and it means a draft's required governance context is a real
    result. No path filter was added to a required context.
 
-6. **One workflow pending.** `cc-surface-agreement-ci.yml` is held on the claim board by another live session
+6. **Two workflows pending.** `cc-surface-agreement-ci.yml` is held on the claim board by another live session
    (claude/acctlabel, `feat/cc-account-labels-20261023`), so this PR does not edit it (rule 11). It is path-filtered to
    a handful of CC v3 files, so it rarely fires on a draft. The test lists it in `PENDING_CLAIMED`, and a companion test
    fails once the file gains the guard, so whoever adds the three hunks also removes the entry.
+   `research-governance-ci.yml` is pending too: its PR scope guard fails any PR that changes it together with a file
+   outside the research-governance allowlist, so its three hunks ship in a PR of their own. It is path-filtered as well.
+   `agent-intelligence-foundation-ci.yml` and `financial-senses-ci.yml` were CRLF files and are now LF:
+   `git diff --check` (active-trader-policy-ci `deterministic-policy`) reports every added CRLF line as trailing
+   whitespace.
 
 Required checks on `main` (read with `gh api .../branches/main/protection/required_status_checks`, 2026-10-23):
 `cio-hardening`, `agent-governance`, `release-readiness`, `ci-gate`. Job names are unchanged. On a ready PR each one
