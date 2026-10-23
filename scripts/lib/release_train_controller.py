@@ -32,8 +32,10 @@ Pipeline: select -> freeze -> integrate -> local test -> (wait for window) -> qu
              epoch re-checked at activation; failed verification -> roll back to the bound target, latch STOP,
              quarantine the artifact (and its lineage until the operator resolves it).
 
-Windows (operator 2026-10-21): 18:00 and 00:00 general; 06:00 needs a proven drain (``DrainProbe``; none is proven,
-so it is skipped); 08:00 latest activation start = 09:00 minus measured promote + verify + rollback minus a buffer,
+Windows (operator 2026-10-21): 18:00 and 00:00 general; 06:00 needs a proven drain (``DrainProbe``: the production
+path wires ``release_train_drain.ReadOnlyDrainProbe``, read-only and fail closed; a controller built without one keeps
+``UnprovenDrain`` and skips 06:00); 08:00 latest activation start = 09:00 minus measured promote + verify + rollback
+(``release_train_timing.DurationHistory``: at least 3 samples of each, else skipped) minus a buffer,
 skipped on 08:30 macro-release days or when the calendar is missing/stale. The calendar is
 ``scripts/lib/macro_calendar.py`` (``<state root>/data/runtime/macro_calendar.json``, written by the n8n lane
 ``macro-calendar-refresh`` from FRED + overrides; stale after 72 h); until that lane writes it, 08:00 is skipped
@@ -82,6 +84,8 @@ try:
     from scripts.lib import release_train_queue as Q
     from scripts.lib import release_train_window_view as WV
     from scripts.lib import macro_calendar as MC
+    from scripts.lib import release_train_drain as DR
+    from scripts.lib import release_train_timing as TM
 except ImportError:  # pragma: no cover - scripts/ on sys.path
     import release_window as RW  # type: ignore[no-redef]
     from lib import release_capability as CAP  # type: ignore[no-redef]
@@ -91,6 +95,8 @@ except ImportError:  # pragma: no cover - scripts/ on sys.path
     from lib import release_train_queue as Q  # type: ignore[no-redef]
     from lib import release_train_window_view as WV  # type: ignore[no-redef]
     from lib import macro_calendar as MC  # type: ignore[no-redef]
+    from lib import release_train_drain as DR  # type: ignore[no-redef]
+    from lib import release_train_timing as TM  # type: ignore[no-redef]
 
 CONTROLLER_VERSION = "release_train_controller/1"
 SCHEMA_MANIFEST = "TrainCandidate@v1"
@@ -124,6 +130,10 @@ PROTECTED_SURFACES = (
     "scripts/lib/release_grant_binding.py",
     "scripts/lib/release_train_classify.py",
     "config/release_train_policy.json",
+    # Phase 7 window gates (2026-10-22): the 06:00 drain probe, its policy, and the measured-duration history.
+    "scripts/lib/release_train_drain.py",
+    "scripts/lib/release_train_timing.py",
+    "config/release_train_drain_policy.json",
     "config/release_train_delegation.example.json",
     "config/schemas/release_delegation_v1.schema.json",
     ".github/workflows/",
@@ -335,15 +345,19 @@ class Measurements:
     def append(self, row: dict) -> None:
         RC._append_jsonl(self.path, row)
 
+    def worst_all(self) -> tuple[Optional[dict], str]:
+        """This file alone as a duration history (``TM.MIN_SAMPLES`` per key, worst of the last ``window``)."""
+        return TM.DurationHistory(self.path, None, window=self.window).worst_all()
 
-def latest_activation_start(window: TrainWindow, m: Measurements, *, buffer_min: float,
+
+def latest_activation_start(window: TrainWindow, m: Any, *, buffer_min: float,
                             deadline: str = "09:00") -> tuple[Optional[datetime], str]:
     """09:00 minus measured promote + verify + rollback minus the buffer; also capped by the delegation's static
-    ``latest_start_et``. None (skip) when any of the three has never been measured."""
-    parts = {k: m.worst(k) for k in ("promote_s", "verify_s", "rollback_s")}
-    missing = [k for k, v in parts.items() if v is None]
-    if missing:
-        return None, f"unmeasured: {','.join(missing)} (08:00 needs measured promote, verify and rollback)"
+    ``latest_start_et``. ``m`` is a ``TM.DurationHistory`` (or ``Measurements``). None (skip) unless each of the three
+    has at least ``TM.MIN_SAMPLES`` (3) valid measurements. DST-safe: 09:00 is that day's local 09:00."""
+    parts, why = m.worst_all()
+    if parts is None:
+        return None, f"{why} (08:00 needs measured promote, verify and rollback)"
     dl = local_start(window.start.date(), deadline.replace(":", ""))
     if dl is None:
         return None, "deadline does not exist on this day"
@@ -1465,7 +1479,7 @@ class TrainController:
                  config: Optional[TrainConfig] = None, env: Optional[dict] = None,
                  drain: Optional[DrainProbe] = None, calendar: Optional[MC.ReleaseTrainCalendar] = None,
                  workspace_factory: Optional[Callable[[Path], GitWorkspace]] = None,
-                 allow_repo_delegation: bool = False) -> None:
+                 allow_repo_delegation: bool = False, durations: Optional[TM.DurationHistory] = None) -> None:
         self.host, self.state, self.github, self.queue, self.classifier = host, state, github, queue, classifier
         self.live = live
         self.cfg = config or TrainConfig()
@@ -1489,6 +1503,9 @@ class TrainController:
         self.drain = drain or UnprovenDrain()
         self.calendar = calendar or MC.ReleaseTrainCalendar()
         self.measure = Measurements(state.root / "train_measurements.jsonl")
+        # What the 08:00 latest start reads: this train's rows, plus the deploy receipt history when the production
+        # path (build_controller) passes it. Default: train rows only (hermetic).
+        self.durations = durations or TM.DurationHistory(self.measure.path, None)
         self.workspace_factory = workspace_factory or (lambda p: GitWorkspace(host.checkout, p, env=worker_env(
             self.env, home=p.parent / "home", tmp=p.parent / "tmp")))
         self.control = RC.ReleaseControl(state.root, clock=self._ts)
@@ -1914,6 +1931,9 @@ class TrainController:
         if w.slot == "0600":
             ok, why = self.drain.check(w)
             rec["drain"] = {"ok": ok, "detail": why}
+            report = getattr(self.drain, "last_report", None)
+            if isinstance(report, dict) and report:
+                rec["drain"]["report"] = report
             if not ok:
                 raise Halt(NO_OP, "WINDOW_SKIPPED_NO_DRAIN", why)
         if w.slot == "0800" or w.skip_on_macro_days:
@@ -1922,7 +1942,7 @@ class TrainController:
             if verdict != "CLEAR":
                 raise Halt(NO_OP, f"WINDOW_SKIPPED_MACRO_{verdict}", why)
         if w.slot == "0800" or w.latest_start_et:
-            latest, why = latest_activation_start(w, self.measure, buffer_min=self.cfg.buffer_min)
+            latest, why = latest_activation_start(w, self.durations, buffer_min=self.cfg.buffer_min)
             rec["latest_activation_start"] = {"at": latest.isoformat() if latest else None, "detail": why}
             if latest is None:
                 raise Halt(NO_OP, "WINDOW_SKIPPED_UNMEASURED", why)
@@ -1936,6 +1956,15 @@ class TrainController:
         if latest is not None and self._ts() > latest:
             raise Halt(FAILED_PRE_MERGE if label == "merge" else MERGED_NOT_LIVE, "PAST_LATEST_ACTIVATION_START",
                        f"{label} after {utc_iso(latest)}")
+
+    def _check_drain(self, label: str) -> None:
+        """06:00: the drain is re-proven immediately before activation (a lane that overran, a lock now held)."""
+        w = self.window
+        if w is None or w.slot != "0600":
+            return
+        ok, why = self.drain.check(w)
+        if not ok:
+            raise Halt(MERGED_NOT_LIVE, "DRAIN_LOST_AT_ACTIVATION", f"{label}: {why}")
 
     def _claim(self, w: TrainWindow, dv: RD.DelegationVerdict) -> None:
         root = self.state.root
@@ -2649,6 +2678,7 @@ class TrainController:
         def recheck_activation() -> None:
             current_unchanged()
             self._check_latest("activation")
+            self._check_drain("activation")
             self._boundary("activation")
 
         before = self.host.units_active(tuple(units))
@@ -2670,8 +2700,11 @@ class TrainController:
             raise Halt("UNCERTAIN", "ACTIVATION_UNCERTAIN", str(exc)[:200], code=EXIT_UNCERTAIN) from exc
         rec["verification"] = checks
         ok = all(c.get("ok") for c in checks.values())
-        timing = {"train_id": self.train_id, "at": utc_iso(self._ts()), "prepare_s": round(t_act - t0, 1),
-                  "promote_s": round(t_ver - t_act, 1), "verify_s": round(t_done - t_ver, 1)}
+        # sha / rollback_sha let release_train_timing count a promote or rollback that the deploy receipt history
+        # also recorded only once.
+        timing = {"train_id": self.train_id, "sha": merged, "rollback_sha": prev_sha, "at": utc_iso(self._ts()),
+                  "prepare_s": round(t_act - t0, 1), "promote_s": round(t_ver - t_act, 1),
+                  "verify_s": round(t_done - t_ver, 1)}
         if ok:
             res.succeeded({"verified": True, "main_sha": merged})
             self._effect(key, "SUCCEEDED", {"verified": True})
@@ -3007,8 +3040,12 @@ def build_controller(*, live: bool, config: Optional[TrainConfig] = None, host: 
     # D2 (a): the live writer is the GitHub App writer (1-hour installation tokens), never the host gh user.
     # Raises WriterNotArmed while GITHUB_WRITES_STATUS is not ACTIVE (D2 + AGENTS 17.0.0).
     writer = GitHubAppWriter(host, reader) if live else None
+    # Phase 7: the 06:00 drain probe (read-only, fail closed) and the measured-duration history that includes the
+    # deploy receipt history. Both are consulted only for their slots; every slot ships disabled.
     return TrainController(host=host, state=state, github=reader, queue=default_queue_source(),
-                           classifier=load_classifier(), live=live, writer=writer, config=config)
+                           classifier=load_classifier(), live=live, writer=writer, config=config,
+                           drain=DR.default_drain_probe(state.root),
+                           durations=TM.DurationHistory(state.root / "train_measurements.jsonl", TM.DEPLOY_HISTORY))
 
 
 def render(code: int, body: dict) -> str:

@@ -403,12 +403,14 @@ operator's fallback, together with a grant and the deploy script.
 | verify | `release_window` verification: promote exit, CURRENT, BUILD_SHA, units, /api/health, served copy, CC pages, platform-health, needs-action. | any check fails: roll back to the bound target, latch STOP, quarantine the artifact and its lineage, send a P1 through the host notifier |
 | outcome | Writes a `TrainOutcome@v1` (validated); `control.train_terminal`. | |
 
-**Windows** (America/New_York). 18:00 and 00:00 are general windows. 06:00 is skipped until a drain is proven
-(`DrainProbe`; none is). 08:00 has a latest activation start of 09:00 minus the measured promote, verify and
-rollback times (the worst of the last 10 `train_measurements.jsonl` rows), minus a 10-minute buffer, capped by the
-delegation's `latest_start_et`. It is checked at the start, before the merge and at activation, and the window is
-skipped when any of the three times is unmeasured. 08:00 is also skipped on an 08:30 macro-release day, or when the
-calendar is missing or stale.
+**Windows** (America/New_York). 18:00 and 00:00 are general windows. 06:00 needs a proven drain: the production
+controller wires `release_train_drain.ReadOnlyDrainProbe` (Phase 7 prerequisites, 2026-10-22; read-only, fail
+closed: measured restart impact, market hours, critical-lane schedule, running `pipeline_runs`, held `flock` locks; see
+the arming packet §J.2). 08:00 has a latest activation start of 09:00 minus the measured promote, verify and
+rollback times (`release_train_timing.DurationHistory`: the worst of the last 10 samples from `train_measurements.jsonl`
+and the deploy receipt history), minus a 10-minute buffer, capped by the delegation's `latest_start_et`. It is checked
+at the start, before the merge and at activation, and the window is skipped until each of the three has 3 samples.
+08:00 is also skipped on an 08:30 macro-release day, or when the calendar is missing or stale.
 
 **Macro calendar (updated in release 3).** The controller now reads `scripts/lib/macro_calendar.py`
 (`MacroCalendar@v1` at `<state root>/data/runtime/macro_calendar.json`, from the n8n lane `macro-calendar-refresh`;

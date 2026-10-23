@@ -232,6 +232,66 @@ def build_receipt(
     return rec, not errors
 
 
+def _started(value: str) -> datetime | None:
+    """The deploy script's start time (``date +%s.%N``); None when absent or not a sane epoch."""
+    try:
+        ts = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not (1_500_000_000 < ts < 4_000_000_000):
+        return None
+    return datetime.fromtimestamp(ts, timezone.utc)
+
+
+HISTORY_SCHEMA = "CioExactMainDeployReceiptHistory@v1"
+HISTORY_NAME = "deploy_receipt_history.jsonl"
+
+
+def history_row(receipt: dict, started_at: str = "") -> dict:
+    """The compact, append-only history row (scripts/lib/release_train_timing.py reads it). Release train Phase 7
+    (2026-10-22): it carries the operation's measured duration (``--started-at`` to the receipt's ``at``), so the
+    08:00 latest start and the 06:00 drain probe plan around measured promote and rollback times. The receipt itself
+    keeps its exact v2 field set (report_lane_governance_packet.py pins it); the duration lives only here."""
+    attempted = receipt.get("attempted_target") or {}
+    started = _started(started_at)
+    try:
+        finished = datetime.fromisoformat(str(receipt.get("at")))
+    except ValueError:
+        finished = None
+    duration = None
+    if started and finished and started <= finished:
+        duration = round((finished - started).total_seconds(), 1)
+    return {
+        "schema": HISTORY_SCHEMA,
+        "at": receipt.get("at"),
+        "mode": receipt.get("mode"),
+        "ok": receipt.get("ok") is True,
+        "health": receipt.get("health"),
+        "rolled_back": receipt.get("rolled_back"),
+        "sha": attempted.get("sha"),
+        "deployed_sha": receipt.get("deployed_sha"),
+        "started_at": started.isoformat() if started else None,
+        "duration_s": duration,
+        "extra": receipt.get("extra"),
+    }
+
+
+def append_history(path: Path, receipt: dict, started_at: str = "") -> bool:
+    """Append one row (O_APPEND, fsync). Never rewrites or truncates; a failure is reported, not raised: a missing
+    row only leaves a duration unmeasured, and every reader of the history fails closed on unmeasured."""
+    raw = (json.dumps(history_row(receipt, started_at), sort_keys=True, allow_nan=False) + "\n").encode("utf-8")
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        try:
+            os.write(fd, raw)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        return True
+    except OSError:
+        return False
+
+
 def atomic_write(path: Path, receipt: dict) -> None:
     raw = (json.dumps(receipt, indent=2, allow_nan=False) + "\n").encode("utf-8")
     fd, temp = tempfile.mkstemp(prefix=".deploy-receipt-", dir=path.parent)
@@ -268,17 +328,22 @@ def main(argv: list[str] | None = None) -> int:
         "rollback-target",
         "rollback-sha",
         "rolled-from",
+        "started-at",
     ):
         parser.add_argument("--" + name, default="")
     parser.add_argument("--ok", choices=("true", "false"), required=True)
     parser.add_argument("--rolled-back", choices=("true", "false"), required=True)
     args = vars(parser.parse_args(argv))
     destination = args.pop("receipt_file")
+    started_at = args.pop("started_at")
     args["ok"] = args["ok"] == "true"
     args["rolled_back"] = args["rolled_back"] == "true"
     receipt, valid = build_receipt(**args)
     atomic_write(destination, receipt)
     print("wrote deploy receipt", destination)
+    history = Path(destination).parent / HISTORY_NAME
+    if not append_history(history, receipt, started_at):
+        print("WARN: deploy receipt history not appended", history)
     return 0 if valid else 1
 
 
