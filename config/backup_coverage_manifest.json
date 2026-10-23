@@ -223,7 +223,8 @@
     "store:watch_directives",
     "store:watch_discovery",
     "store:social_posts",
-    "store:yfinance_info_snapshot"
+    "store:yfinance_info_snapshot",
+    "store:cio_prospect"
    ]
   },
   {

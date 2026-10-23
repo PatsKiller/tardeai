@@ -1337,9 +1337,9 @@
             "approved_on": "2026-10-22",
             "reference": "Operator reply 2026-10-22 (verbatim): \"yes i approve 'approve all' (A–L)\" — item G: \"Home reads positions from the broker-synced store (reader batch #3; you already said yes, this confirms it)\".",
             "scope": "positions_store phase-3 reader batch #3: the Home do-now held filter via watch_domains.held_positions(surface='home'); same reader and freshness/fallback contract as batch #1"
-            }
-          },
-          {
+          }
+        },
+        {
           "batch": 4,
           "reader": "scripts/lib/data_broker/watch_domains.py::held_positions",
           "files": [
@@ -3106,7 +3106,8 @@
           "max_per_day": 1,
           "expected_seconds": 0
         }
-      ]
+      ],
+      "dictionary_superseded_by": "cio_prospect"
     },
     {
       "domain": "finviz_enrichment",
@@ -3389,12 +3390,9 @@
         "measured_at": "2026-10-22T11:35-04:00",
         "method": "read-only registry_check (file stat / to_regclass) 2026-10-22"
       }
-    }
-  ],
-  "proposed_domains": [
+    },
     {
       "domain": "cio_prospect",
-      "status": "proposed",
       "entity": "CIO prospect — the per-security truth",
       "title": "CIO prospect record",
       "class": "derived",
@@ -3537,17 +3535,17 @@
           "expected_seconds": 7200
         }
       ],
-      "approval": null,
-      "proposal": {
-        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
-        "proposed_on": "2026-10-22",
-        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
-        "decision": "Grant cio_prospect as the single per-security store: a Postgres table keyed by security_guid, written only by InstrumentRecordStore (scripts/lib/cio_instrument_record.py); opportunity_assessment becomes its export (superseded, not removed)."
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-22",
+        "reference": "Operator reply 2026-10-22 ~22:30 ET (verbatim): \"yes i approve 'approve all' (A–L)\" — item E, as presented: \"Approve the `cio_prospect` registry row, the migration (sha `6bac8924…`), and the read-only reader batch for its shadow lane. I apply the migration in a release after a dry run.\" Migration up file migrations/2026_10_22_cio_prospect.sql sha256=6bac89245fd6b990dc8a59c8fa6aeb85f34e6a97a5dd61e2fd3fa9b6e861f2be. Migration and InstrumentRecordStore backend built inert in PR #1944; shadow lane PR #1953. Recorded by task T-20261023-9c7a5c.",
+        "scope": "P1 shadow: cio_prospect + cio_prospect_events (migrations/2026_10_22_cio_prospect.sql, sha256 6bac8924…) written only by InstrumentRecordStore.upsert_prospect as a dual-write; cio/cio_instrument_records.jsonl stays the store of record; the Postgres write runs only when TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE=1 (operator) and the table exists. Reader batch: the cio-prospect-shadow lane's READ ONLY inputs (schwab_round_trips + trade_closed.stop_used, trade_transactions, stop_lifecycle, trade_recommendation_links when present, ticker_prices closes). No page reader moves (P3 batches are separate decisions); MBI_BEHAVIOR = 0."
       },
-      "measured": {
-        "at": "2026-10-22 (repo scan, scripts/lib/data_dictionary.measure)",
-        "writer_files": 0,
-        "surface_reads": {
+      "dictionary": {
+        "schema": "DataDictionary@v1",
+        "entity": "CIO prospect — the per-security truth",
+        "writer_ceiling": 1,
+        "surface_read_ceilings": {
           "file:data/cio/cio_opportunity_projection.json": 1,
           "file:cio/cio_instrument_records.jsonl": 0,
           "file:cio/ticker_research_state.jsonl": 0,
@@ -3555,9 +3553,45 @@
           "file:cio/cio_investment_brief.json": 1,
           "table:watchlist_research_cards": 1,
           "table:advisor_recommendations": 1
-        }
+        },
+        "readers": [
+          "Home",
+          "Watch",
+          "Trade AI",
+          "Options",
+          "Open Trades",
+          "Telegram",
+          "Proposals",
+          "Re-entry"
+        ],
+        "refresh_lane": {
+          "runner": "n8n_shadow_then_live",
+          "lane": "cio-opportunity-curator, cio-entry-state (dispatcher rows; shadow -> canary -> cutover under AGENTS.md §23.21)",
+          "never_list": false,
+          "note": "n8n schedules gathering and refresh; the host runs the lane; only the CIO writer writes. Model calls only through registered capabilities (AGENTS.md §23.4)."
+        },
+        "freshness_sla": "stage/conviction 30 min in market hours; thesis 24 h; every field carries evidence_at and expires_at and renders its age",
+        "facts": [
+          "stage",
+          "conviction",
+          "stance",
+          "catalyst grade",
+          "next trigger",
+          "what's missing",
+          "next action",
+          "conflicts",
+          "unified edge"
+        ]
+      },
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
+        "decision": "Grant cio_prospect as the single per-security store: a Postgres table keyed by security_guid, written only by InstrumentRecordStore (scripts/lib/cio_instrument_record.py); opportunity_assessment becomes its export (superseded, not removed)."
       }
-    },
+    }
+  ],
+  "proposed_domains": [
     {
       "domain": "security_identity",
       "status": "proposed",

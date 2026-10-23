@@ -334,3 +334,20 @@ Backlog (open, in order): (1) operator grants — row `cio_prospect`, the P1 mig
 cards first); (6) AGENTS.md cites the behaviour rail as `cio_instrument_record.py:390`; it is now at line 450 (it was
 already at 422 before this change) — the citation should name the symbol (`apply_cognition` raises
 `BehaviorWriteRefused`) instead of a line (§20 PATCH).
+
+## 12. Why the store is still shadow after approval E (audit 2026-10-23, task T-20261023-9c7a5c)
+
+The operator approved item E on 2026-10-22 (~22:30 ET, "yes i approve 'approve all' (A–L)"): the `cio_prospect`
+registry row, the migration (sha256 `6bac8924…`) and the read-only reader batch for the shadow lane. On 2026-10-23
+the store still persisted nothing. Each live condition, checked:
+
+| Condition | State found 2026-10-23 | Who closes it |
+|---|---|---|
+| Registry row granted (`domains[]` with an approval) | was still in `proposed_domains[]`, `approval: null` — the approval was never recorded | **recorded by this PR** (`data_dictionary.promote`, approval E quoted verbatim, scope = P1 dual-write + the lane's read-only reader batch) |
+| Migration applied | `to_regclass('public.cio_prospect')` and `…_events` are NULL (read-only probe, role `trade_ai`, which has CREATE on `public`) | operator: rolled-back dry run, typed confirm, apply, verify (`scripts/cio_prospect_migration_plan.py` prints the file and sha) |
+| `TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE=1` | set in no environment file | operator, in the writer lane's environment, after the table exists |
+| Lane `cio-prospect-shadow` | not on main: only in open PR #1953 (rebase task T-20261023-70df13); not in `n8n-live-lanes.env`; contract DRAFT (approval F marks it REVIEWED when it merges) | #1953 merge; the shadow lane never calls the store by design |
+| A production caller of `InstrumentRecordStore.upsert_prospect` | **none** — only tests call it (backlog item 2 above) | a build PR: wire the curator / entry-state runner to call `upsert_prospect` |
+
+So even with all four operator steps done, no row persists until item 2 of the backlog is built: the writer has no
+caller. The registry grant and the migration are prerequisites, not the switch.

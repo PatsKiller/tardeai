@@ -63,7 +63,8 @@ def test_plan_tool_static_checks_pass_and_name_the_grants():
     assert doc["applies"] is False and doc["db_contact"] is False
     assert doc["inventory"]["tables"] == ["cio_prospect", "cio_prospect_events"]
     assert any("sha256=" + doc["files"]["up"]["sha256"] in g for g in doc["operator_grants"])
-    assert doc["registry_row"]["granted"] is False and doc["registry_row"]["proposed"] is True
+    # Approval E (operator 2026-10-22) recorded 2026-10-23 (T-20261023-9c7a5c): the row is granted, no longer proposed.
+    assert doc["registry_row"]["granted"] is True and doc["registry_row"]["proposed"] is False
 
 
 def test_plan_tool_catches_a_drop_and_a_delete():
@@ -258,9 +259,12 @@ def test_unified_edge_is_persisted_with_its_inputs_and_reproducible():
 
 def test_dual_write_is_inert_by_default_and_never_probes_an_ungranted_store(tmp_path):
     probed = []
-    st = ir.prospect_store_status(env={ir.PROSPECT_DUAL_WRITE_ENV: "1"}, table_probe=lambda: probed.append(1))
+    st = ir.prospect_store_status(registry={"domains": []}, env={ir.PROSPECT_DUAL_WRITE_ENV: "1"},
+                                  table_probe=lambda: probed.append(1))
     assert st["live"] is False and "registry_row_not_granted" in st["reasons"] and probed == []
-    assert ir.prospect_row_granted() is False      # the repo registry: proposed, not granted
+    assert ir.prospect_row_granted() is True       # the repo registry: granted by approval E (2026-10-22)
+    st = ir.prospect_store_status(env={})            # granted, but the operator flag is off: still inert
+    assert st["live"] is False and st["reasons"] == ["dual_write_flag_off"]
 
     class Backend:
         calls: list = []
@@ -469,7 +473,7 @@ def test_projection_serves_the_shadow_labelled_and_says_so_on_gap(tmp_path):
     art.write_text(json.dumps(doc))
     res = cp.get_prospect("NVDA", shadow_base=art, now=NOW, market_closed=False)
     assert res["source"]["kind"] == "shadow" and res["source"]["label"].startswith("SHADOW")
-    assert "registry_row_not_granted" in res["source"]["store_not_live"]
+    assert "dual_write_flag_off" in res["source"]["store_not_live"]   # row granted (approval E); flag still off
     assert res["stale_after_hours"] == 0.5 and res["stale"] is False
     assert res["prospect"]["conflict_count"] == 2 and res["prospect"]["stale"] is False
     later = cp.get_prospects(shadow_base=art, now=NOW + timedelta(hours=3), market_closed=False)

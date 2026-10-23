@@ -38,7 +38,9 @@ from lib import data_dictionary as DD  # noqa: E402
 
 AUTH = json.loads((ROOT / "config" / "data_source_authority.json").read_text(encoding="utf-8"))
 ROWS = {r["domain"]: r for r in AUTH["proposed_domains"]}
-GAPS = ("cio_prospect", "broker_stops", "watchlist_membership", "scanner_results", "catalyst_events", "fused_signals",
+GRANTED = {d["domain"]: d for d in AUTH["domains"] if d.get("dictionary")}
+# cio_prospect left this tuple when approval E (operator 2026-10-22) was recorded 2026-10-23 (T-20261023-9c7a5c).
+GAPS = ("broker_stops", "watchlist_membership", "scanner_results", "catalyst_events", "fused_signals",
         "cio_decisions", "cio_theses", "options_ideas", "paper_proposals", "paper_trades", "alert_events",
         "comms_intents", "positions_store", "security_identity", "transactions")
 GRANT = {"approved_by": "operator", "approved_on": "2026-10-23", "reference": "test grant", "scope": "test"}
@@ -107,7 +109,10 @@ def test_positions_one_authority_and_holdings_json_becomes_an_export():
 
 
 def test_cio_prospect_is_one_store_one_writer_superseding_the_opportunity_file():
-    r = ROWS["cio_prospect"]
+    assert "cio_prospect" not in ROWS
+    r = GRANTED["cio_prospect"]
+    assert r["approval"]["approved_by"] == "operator" and "6bac8924" in r["approval"]["reference"]
+    assert r["dictionary"]["writer_ceiling"] == 1
     assert r["store"] == {"table": "cio_prospect"}
     assert r["writer"] == "scripts/lib/cio_instrument_record.py" and (ROOT / r["writer"]).exists()
     assert r["supersedes"] == ["opportunity_assessment"]

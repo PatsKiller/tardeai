@@ -2110,6 +2110,7 @@ it with `UNAPPROVED_SOURCE`. That is the point.
 | **yfinance_info_snapshot** | ingested | `yfinance_info_snapshot` | `scripts/lib/writers/yfinance_info_snapshot_writer.py` | unscheduled — no producer until the yfinance-reference-ingest owner lane is decided (§D.12); migration migrations/2026_10_10_yfinance_info_snapshot.sql not yet applied | 48h | `yfinance_info` | yfinance | — | fmp | `say_so` | operator 2026-10-10 |
 | **earnings_calendar** | ingested | `runtime/alpha_vantage/earnings_calendar_latest.json` | `scripts/alpha_vantage_owner.py` | 06:05 ET daily (1 EARNINGS_CALENDAR call) — once a cron/n8n grant schedules it | 26h | `earnings_calendar` | alpha_vantage | — | fmp | `say_so` | operator 2026-10-10 |
 | **news_sentiment** | ingested | `runtime/alpha_vantage/news_sentiment_latest.json` | `scripts/alpha_vantage_owner.py` | 14 windowed NEWS_SENTIMENT pulls 06:00-20:00 ET — once a cron/n8n grant schedules them | 3h | `news_sentiment` | alpha_vantage | — | newsapi, finnhub, polygon, fmp | `say_so` | operator 2026-10-10 |
+| **cio_prospect** | derived | `cio_prospect` | `scripts/lib/cio_instrument_record.py` | */30 09:00-16:00 Mon-Fri curator pass + */10 entry-state pass + event-driven wake writes | 0.5h | `cio_prospect` | derived | — | — | `say_so` | operator 2026-10-22 |
 <!-- SOURCE_OF_TRUTH_TABLE_END -->
 
 §0 rule 5 still governs the one case the gate cannot decide: **two divergent copies of an
