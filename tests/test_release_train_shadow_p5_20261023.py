@@ -524,7 +524,14 @@ def test_shadow_tick_apply_appends_and_waits_for_the_claimer(tmp_path):
     assert not w.state.latch.exists()  # the drill is simulated
 
 
-def test_back_to_back_forced_ticks_get_distinct_requests(tmp_path):
+def test_back_to_back_forced_ticks_get_distinct_requests(tmp_path, monkeypatch):
+    # Pin the request lane's clock to 12:00 ET (off-window for 18:00). Between 16:30 and 18:15 ET a real-clock tick is
+    # on-window, takes the window's fixed "-win" id, and the second tick is (correctly) a duplicate: a time bomb.
+    import functools  # noqa: PLC0415
+
+    from scripts import release_train_window_request as RQ  # noqa: PLC0415
+
+    monkeypatch.setattr(RQ, "run", functools.partial(RQ.run, now=datetime(2026, 10, 21, 12, 0, tzinfo=ET)))
     state = RW.State(tmp_path / "rw")
     ids = []
     for _ in range(3):
