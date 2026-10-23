@@ -14,7 +14,7 @@ import { Link } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../../lib/designTokens'
 import {
-  applyFilters, buildTiles, chgText, filterChips, floatBand, floatText, GATE2_TIP, l2View, latestAlertFor,
+  applyFilters, buildTiles, chgText, filterChips, floatBand, floatText, GATE2_TIP, l2Brief, l2View, latestAlertFor,
   NO_FILTERS, rvolText, sortOpportunities, stars, toOpportunity, volText,
   type Decision, type Filters, type L2Chip, type Opportunity, type SortKey,
 } from '../../lib/tradeAiOpportunities'
@@ -38,6 +38,27 @@ function pill(d: Decision): CSSProperties {
 
 function Gate2({ children, inline }: { children?: ReactNode; inline?: boolean }) {
   return <span title={GATE2_TIP} data-gate2="true" style={{ color: TOKENS.text[3], cursor: 'help', borderBottom: inline ? `1px dotted ${TOKENS.text[3]}` : undefined }}>{children ?? '—'}</span>
+}
+
+const DEC_TIP = 'Scanner decision. MANUAL = the scanner routed it to manual review (Entry Desk only) — not a validated setup. '
+  + 'Ready / not ready is the shared 5-fact verdict below (the same one the Active Trader alert prints as "Ready: YES/NO").'
+
+/** The catalyst as the SHARED verdict states it: a headline is the catalyst only when source-verified. */
+function CatalystBadge({ r }: { r: Opportunity }) {
+  const v = r.catalystVerdict
+  if (v.status === 'VERIFIED') return null
+  const tone: Tone = v.status === 'HERMES_FOUND' ? 'warning' : v.status === 'UNVERIFIED_HEADLINE' ? 'warning' : 'neutral'
+  return (
+    <span data-testid="ta-catalyst-verdict" data-status={v.status} title={`${v.label}${v.reason ? ` — ${v.reason}` : ''}${v.served ? '' : ' (shared verdict not served for this row; read from the scan flag)'}`}
+      style={{ flex: '0 0 auto', fontSize: TYPE.xs, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', padding: '1px 5px', borderRadius: RADIUS.sm,
+        color: tc(tone), border: `1px solid ${tone === 'neutral' ? TOKENS.border : toneVars(tone).border}`, cursor: 'help' }}>
+      {v.status === 'UNVERIFIED_HEADLINE' ? 'unverified' : v.status === 'HERMES_FOUND' ? 'Hermes only' : v.status === 'NONE_FOUND' ? 'none found' : 'not checked'}
+    </span>
+  )
+}
+
+function catalystText(r: Opportunity): string {
+  return r.catalystVerdict.text ?? (r.catalystVerdict.status === 'NONE_FOUND' ? 'No catalyst found (scan + Hermes)' : 'No catalyst found by the scan')
 }
 
 function Chip({ c }: { c: L2Chip }) {
@@ -106,12 +127,7 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
   const ageColor = age.tone === 'bad' ? toneVars('danger').color : age.tone === 'warn' ? toneVars('warning').color : TOKENS.text[1]
   const latestPhrase = latestRunPhrase(summary)
   const l2For = (sym: string) => l2View(latestAlertFor(alerts, sym))
-  const l2Short = (sym: string) => {
-    const v = l2For(sym)
-    if (!v.watched) return 'L2 · —'
-    const lit = v.entry.filter(c => c.on === true && !c.warn).length
-    return `L2 ${v.state.toLowerCase()} · ${lit}/5${v.stale ? ' · stale' : ''}`
-  }
+  const l2Short = (sym: string) => l2Brief(latestAlertFor(alerts, sym))
   const cands: any[] = Array.isArray(candidates?.candidates) ? candidates.candidates : []
   const conflicts = cands.filter(c => (c?.conflicts ?? []).length > 0).length
   const gaps = Object.values(candidates?.source_metadata ?? {}).filter((m: any) => m?.stale || (m?.status && m.status !== 'OK' && m.status !== 'ok')).length
@@ -234,13 +250,17 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
                       <span style={{ ...mono, fontSize: TYPE.base, color: r.chg == null ? TOKENS.text[3] : r.chg > 0 ? toneVars('success').color : r.chg < 0 ? toneVars('danger').color : TOKENS.text[2] }}>{chgText(r.chg)}</span>
                       <button type="button" onClick={() => setSel(r.sym)}
                         style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: TOKENS.text[0], display: 'flex', flexDirection: 'column', gap: 3, minHeight: 32, minWidth: 0, fontFamily: 'inherit' }}>
-                        <span title={r.catalyst ?? 'No catalyst found by the scan'} style={{ fontSize: TYPE.base, lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%', color: r.catalyst ? TOKENS.text[0] : TOKENS.text[2] }}>{r.catalyst ?? 'No catalyst found by the scan'}</span>
+                        <span style={{ display: 'flex', gap: 6, alignItems: 'center', minWidth: 0, maxWidth: '100%' }}>
+                          <CatalystBadge r={r} />
+                          <span title={`${catalystText(r)}${r.catalystVerdict.reason ? `\n${r.catalystVerdict.label} — ${r.catalystVerdict.reason}` : ''}`} style={{ fontSize: TYPE.base, lineHeight: 1.3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0, color: r.catalystVerdict.status === 'VERIFIED' ? TOKENS.text[0] : TOKENS.text[2], fontStyle: r.catalystVerdict.status === 'UNVERIFIED_HEADLINE' ? 'italic' : undefined }}>{catalystText(r)}</span>
+                        </span>
                         {catalystLine(r)}
                       </button>
                       <span style={{ ...mono, fontWeight: 600, fontSize: TYPE.md - 1 }}>{r.act != null ? r.act : <Gate2 />}</span>
                       <span style={{ display: 'flex', flexDirection: 'column', gap: 3, alignItems: 'flex-start', minWidth: 0 }}>
-                        <span style={pill(r.decision)} title={`Scanner decision ${r.decisionRaw}${r.score != null ? ` · score ${r.score}` : ''}${r.setupGrade ? ` · setup grade ${r.setupGrade}` : ''}`}>{DEC_LABEL[r.decision]}</span>
-                        <span style={{ fontSize: TYPE.xs, color: TOKENS.text[2], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 108 }} title="Level 2 state from the Active Trader alert feed">{l2Short(r.sym)}</span>
+                        <span style={pill(r.decision)} title={`Scanner decision ${r.decisionRaw}${r.score != null ? ` · score ${r.score}` : ''}${r.setupGrade ? ` · setup grade ${r.setupGrade}` : ''}\n${DEC_TIP}${r.readiness ? `\n${r.readiness.summary}` : ''}`}>{DEC_LABEL[r.decision]}</span>
+                        {r.readiness && <span data-testid="ta-ready" data-ready={r.readiness.status} title={r.readiness.summary} style={{ fontSize: TYPE.xs, fontWeight: 700, color: r.readiness.status === 'READY' ? tc('success') : TOKENS.text[2] }}>{r.readiness.status === 'READY' ? 'ready' : `not ready · ${r.readiness.passed ?? '—'}/${r.readiness.required}`}</span>}
+                        <span data-testid="ta-l2-brief" style={{ fontSize: TYPE.xs, color: TOKENS.text[2], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 108 }} title={l2Short(r.sym).tip}>{l2Short(r.sym).text}</span>
                       </span>
                     </div>
                   )
@@ -259,7 +279,7 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
                       <span style={pill(r.decision)}>{DEC_LABEL[r.decision]}</span>
-                      <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{l2Short(r.sym)}</span>
+                      <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }} title={l2Short(r.sym).tip}>{l2Short(r.sym).text}</span>
                     </div>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
@@ -268,7 +288,7 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
                     ))}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    <span style={{ fontSize: TYPE.md, lineHeight: 1.4, color: r.catalyst ? TOKENS.text[0] : TOKENS.text[2] }}>{r.catalyst ?? 'No catalyst found by the scan'}</span>
+                    <span style={{ display: 'flex', gap: 6, alignItems: 'baseline', flexWrap: 'wrap' }}><CatalystBadge r={r} /><span style={{ fontSize: TYPE.md, lineHeight: 1.4, color: r.catalystVerdict.status === 'VERIFIED' ? TOKENS.text[0] : TOKENS.text[2] }}>{catalystText(r)}</span></span>
                     {catalystLine(r)}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, fontSize: TYPE.base }}>
@@ -313,8 +333,31 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
                   <span style={{ ...mono, fontWeight: 700, fontSize: TYPE.xl - 2 }}>{r.sym}</span>
                   <span style={pill(r.decision)}>{DEC_LABEL[r.decision]}</span>
                 </div>
-                <div style={{ fontSize: TYPE.md + 1, lineHeight: 1.4, fontWeight: 600, color: r.catalyst ? TOKENS.text[0] : TOKENS.text[2] }}>{r.catalyst ?? 'No catalyst found by the scan'}</div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                  <CatalystBadge r={r} />
+                  <span style={{ fontSize: TYPE.md + 1, lineHeight: 1.4, fontWeight: 600, color: r.catalystVerdict.status === 'VERIFIED' ? TOKENS.text[0] : TOKENS.text[2] }}>{catalystText(r)}</span>
+                </div>
+                {r.catalystVerdict.reason && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2], lineHeight: 1.4 }} data-testid="ta-catalyst-reason">{r.catalystVerdict.label} — {r.catalystVerdict.reason}</div>}
                 {catalystLine(r)}
+                <div data-testid="ta-readiness" data-ready={r.readiness?.status ?? 'UNKNOWN'} style={{ background: TOKENS.bg[2], borderRadius: RADIUS.sm, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <span style={caps}>Driven by · ready? <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}>(same verdict as the Active Trader alert)</span></span>
+                  {!r.readiness && <span style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>Not served for this row — the shared 5-fact verdict is attached to GO / WAIT / manual-review rows.</span>}
+                  {r.readiness && (
+                    <>
+                      {r.readiness.drivenBy.map(d => (
+                        <div key={d.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, fontSize: TYPE.base }}>
+                          <span style={{ color: TOKENS.text[1] }}>{d.label} <span style={{ ...mono, color: TOKENS.text[0] }}>{d.valueText}</span> <span style={{ color: TOKENS.text[3] }}>({d.rule})</span></span>
+                          <span style={{ fontWeight: 800, color: d.status === 'PASSED' ? tc('success') : d.status === 'FAILED' ? tc('danger') : TOKENS.text[3] }}>{d.status === 'PASSED' ? '✓' : d.status === 'FAILED' ? '✗' : '?'}</span>
+                        </div>
+                      ))}
+                      <span style={{ fontSize: TYPE.md - 1, fontWeight: 700, color: r.readiness.status === 'READY' ? tc('success') : tc('warning') }}>
+                        {r.readiness.status === 'READY' ? 'Ready' : 'Not ready'} — {r.readiness.passed ?? '—'}/{r.readiness.required} source facts
+                      </span>
+                      {r.readiness.missing.map(m => <span key={m} style={{ fontSize: TYPE.base, color: TOKENS.text[1], lineHeight: 1.4 }}>Missing: {m}</span>)}
+                      {r.readiness.blockers.length > 0 && <span style={{ fontSize: TYPE.base, color: TOKENS.text[1] }}>Active Trader veto: {r.readiness.blockers.map(b => b.replace(/_/g, ' ').toLowerCase()).join(', ')}</span>}
+                    </>
+                  )}
+                </div>
                 <div style={{ background: TOKENS.bg[2], borderRadius: RADIUS.sm, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="ta-verdict">
                   <span style={caps}>AI verdict · confidence <Gate2 inline /></span>
                   <span style={{ fontSize: TYPE.md, lineHeight: 1.5, color: TOKENS.text[2] }}><Gate2 inline>Not computed yet — arrives with the CIO prospect record (Gate 2).</Gate2></span>
@@ -335,7 +378,7 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: TYPE.base, color: TOKENS.text[1] }} data-testid="ta-scanner-facts">
                   <span style={caps}>Scanner facts</span>
                   <span>Score {r.score ?? '—'}{r.setupGrade ? ` · setup grade ${r.setupGrade}` : ''} · decision {r.decisionRaw}</span>
-                  <span>Catalyst {r.catalystVerified === true ? 'verified by the scan' : r.catalystVerified === false ? 'not verified by the scan' : 'verification unknown'}{r.catalystConfidence != null ? ` · confidence ${r.catalystConfidence}` : ''}{r.catalystSource ? ` · ${r.catalystSource}` : ''}</span>
+                  <span>Catalyst: {r.catalystVerdict.label}{r.catalystConfidence != null ? ` · scan confidence ${r.catalystConfidence}` : ''}{r.catalystSource ? ` · ${r.catalystSource}` : ''}</span>
                   {r.pill && <span>{r.pill}{r.subtitle ? ` — ${r.subtitle}` : ''}</span>}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${TOKENS.border}`, paddingTop: 12 }} data-testid="ta-l2">
@@ -344,7 +387,7 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
                     <span style={{ fontSize: TYPE.sm, color: l2.stale ? toneVars('warning').color : TOKENS.text[2] }}>{l2.feed}</span>
                   </div>
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                    <span data-testid="ta-l2-state" style={{ fontSize: TYPE.md - 1, fontWeight: 800, color: l2.watched ? toneVars('warning').color : TOKENS.text[2] }}>{l2.state}</span>
+                    <span data-testid="ta-l2-state" title="The Active Trader decision for this symbol (its veto can come from VWAP, gap, volume or tape, not only the book)" style={{ fontSize: TYPE.md - 1, fontWeight: 800, color: l2.watched ? toneVars('warning').color : TOKENS.text[2] }}>{l2.watched ? `AT ${l2.state.toLowerCase()}` : l2.state}</span>
                     <span style={{ fontSize: TYPE.base, color: TOKENS.text[1] }}>{l2.summary}</span>
                   </div>
                   <span style={{ ...caps, color: TOKENS.text[3] }}>Entry signals</span>

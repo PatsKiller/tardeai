@@ -43,7 +43,52 @@ export interface Opportunity {
   critic: { verdict: string; confidence: number | null; reasoning: string | null; flags: string[] } | null
   pill: string | null
   subtitle: string | null
+  // Shared SetupReadiness@v1 (lib/momentum_setup_evidence.setup_readiness, served on each scanner row as
+  // setup_readiness): the SAME "driven by / ready / missing" verdict the Active Trader alert prints.
+  readiness: Readiness | null
+  catalystVerdict: CatalystVerdict
   raw: any
+}
+
+export type CatalystStatus = 'VERIFIED' | 'HERMES_FOUND' | 'UNVERIFIED_HEADLINE' | 'NONE_FOUND' | 'UNKNOWN'
+export interface CatalystVerdict { status: CatalystStatus; label: string; reason: string | null; text: string | null; served: boolean }
+export interface ReadinessFact { id: string; label: string; status: string; valueText: string; rule: string }
+export interface Readiness { status: 'READY' | 'NOT_READY' | 'UNKNOWN'; passed: number | null; required: number; drivenBy: ReadinessFact[]; missing: string[]; blockers: string[]; summary: string }
+
+const CAT_LABEL: Record<CatalystStatus, string> = {
+  VERIFIED: 'verified catalyst', HERMES_FOUND: 'Hermes catalyst (not source-verified)',
+  UNVERIFIED_HEADLINE: 'unverified headline', NONE_FOUND: 'no catalyst found', UNKNOWN: 'catalyst not checked',
+}
+
+export function readinessOf(t: any): Readiness | null {
+  const r = t?.setup_readiness
+  if (!r || typeof r !== 'object' || r.schema !== 'SetupReadiness@v1') return null
+  const status = r.status === 'READY' || r.status === 'NOT_READY' ? r.status : 'UNKNOWN'
+  return {
+    status,
+    passed: num(r.passed),
+    required: num(r.required) ?? 5,
+    drivenBy: (Array.isArray(r.driven_by) ? r.driven_by : []).map((d: any) => ({
+      id: String(d?.id ?? ''), label: String(d?.label ?? ''), status: String(d?.status ?? 'UNKNOWN'),
+      valueText: String(d?.value_text ?? '—'), rule: String(d?.rule ?? '—') })),
+    missing: (Array.isArray(r.missing) ? r.missing : []).map(String),
+    blockers: (Array.isArray(r.blockers) ? r.blockers : []).map(String),
+    summary: String(r.summary ?? ''),
+  }
+}
+
+/** The served shared verdict when present; otherwise the scan's own flag, read conservatively: a headline is
+ *  never "the catalyst" unless verified. Never invents a VERIFIED. */
+export function catalystVerdictOf(t: any): CatalystVerdict {
+  const c = t?.setup_readiness?.catalyst
+  const text = t?.catalyst ? String(t.catalyst) : null
+  if (c && typeof c === 'object' && (CAT_LABEL as any)[c.status]) {
+    const status = c.status as CatalystStatus
+    return { status, label: CAT_LABEL[status], reason: c.reason ? String(c.reason) : null, text: c.text ? String(c.text) : text, served: true }
+  }
+  if (!text) return { status: 'UNKNOWN', label: CAT_LABEL.UNKNOWN, reason: 'no headline on the scan row', text: null, served: false }
+  const why = t?.catalyst_verified === false ? 'scan marked it NOT verified' : 'verification not served for this row'
+  return { status: 'UNVERIFIED_HEADLINE', label: CAT_LABEL.UNVERIFIED_HEADLINE, reason: `${why}${t?.catalyst_source ? ` (${t.catalyst_source})` : ''}`, text, served: false }
 }
 
 const num = (v: unknown): number | null => {
@@ -92,6 +137,8 @@ export function toOpportunity(t: any): Opportunity {
     critic,
     pill: t?.operator_pill ?? null,
     subtitle: t?.operator_subtitle ?? null,
+    readiness: readinessOf(t),
+    catalystVerdict: catalystVerdictOf(t),
     raw: t,
   }
 }
@@ -236,6 +283,27 @@ export function latestAlertFor(feed: any, sym: string): any | null {
   return mine.reduce((a, b) => ((Number(b?.ts_epoch) || 0) > (Number(a?.ts_epoch) || 0) ? b : a))
 }
 
+/** One honest line for the table: the Active Trader verdict is named as AT's (a VETO can come from VWAP, gap,
+ *  volume or tape — not only the book), and the lit count is over the signals actually computed for this row,
+ *  never over five when the premarket row computed two. */
+export function l2Brief(row: any | null, maxAgeS = 15): { text: string; tip: string } {
+  if (!row) return { text: 'AT · not watched', tip: 'Not on the Active Trader watch — no book subscribed' }
+  const v = l2View(row, maxAgeS)
+  const computed = v.entry.filter(c => c.on != null && !c.warn)
+  const lit = computed.filter(c => c.on === true).length
+  const verdict = String(row.verdict || '').toUpperCase()
+  const reasons: string[] = Array.isArray(row.veto_reasons) ? row.veto_reasons.map(String) : []
+  const head = verdict === 'VETO' ? 'AT veto' : verdict === 'ALERT' ? 'AT alert' : `AT ${v.state.toLowerCase()}`
+  const book = computed.length ? `L2 ${lit}/${computed.length}` : 'L2 n/a'
+  const at = row.at ? String(row.at).slice(11, 16) : null
+  return {
+    text: `${head} · ${book}${v.stale ? ' · stale' : ''}`,
+    tip: `Active Trader ${String(row.kind || 'decision').replace(/_/g, ' ').toLowerCase()}${at ? ` at ${at} ET` : ''}: ${verdict || '—'}`
+      + (reasons.length ? ` — ${reasons.map(r => r.replace(/_/g, ' ').toLowerCase()).join(', ')}` : '')
+      + `\nBook signals lit: ${lit} of ${computed.length} computed (${computed.map(c => c.label).join(', ') || 'none computed'}) · ${v.feed}`,
+  }
+}
+
 export function l2View(row: any | null, maxAgeS = 15): L2View {
   const blankEntry = ENTRY_DEFS.map(d => ({ key: d.key, label: d.label, on: null, value: '—', warn: !!d.warn, tip: d.tip }))
   const exit = EXIT_DEFS.map(d => ({ key: d.key, label: d.label, on: null, value: '—', warn: true, tip: `${d.tip}. ${NOT_SERVED}` }))
@@ -267,7 +335,7 @@ export function l2View(row: any | null, maxAgeS = 15): L2View {
     stale,
     summary: row.signals?.status && row.signals.status !== 'OK'
       ? `Signals: ${String(row.signals.status).replace(/_/g, ' ').toLowerCase()}`
-      : `${lit} of ${ENTRY_DEFS.length - 3} entry signals lit${warns ? ` · ${warns} warning${warns > 1 ? 's' : ''}` : ' · no warnings'}`,
+      : `${lit} of ${entry.filter(c => c.on != null && !c.warn).length} computed entry signals lit (${ENTRY_DEFS.length - 3} defined)${warns ? ` · ${warns} warning${warns > 1 ? 's' : ''}` : ' · no warnings'}`,
     entry, exit, at: row.at ?? null,
   }
 }
