@@ -7,7 +7,7 @@ and kept no report; the receipt's 20-row needs_action dropped every LIVE_WOULD_R
 
 This file pins the fix and the Phase 5 injected-failure list (plan "Phases 5-7", enhanced design §10):
 
-* shadow reads the open-PR census (ShadowQueueSource); the live source is unchanged;
+* shadow reads the open-PR census (ShadowQueueSource); since D7 (P6-T9) live reads it too;
 * a shadow request integrates the frozen members in an isolated per-slot scratch worktree (policy ``shadow``), writes
   a ShadowTrainReport@v1 named in the receipt, and never pushes, merges, promotes, claims, issues or writes control /
   latch / store / release state;
@@ -101,10 +101,8 @@ def test_shadow_queue_reads_the_census_when_the_store_is_readable_and_empty():
     snap = q.snapshot()
     assert snap.complete and [e.pr for e in snap.entries] == [11, 12]
     assert "store ok, 0 riding" in snap.source
-    # the live default is unchanged: a readable empty store stays a real empty
-    live = T.FallbackQueueSource(StaticQueue([]), StaticQueue([_entry(11)]))
-    assert live.snapshot().entries == []
-    assert isinstance(T.default_queue_source(), T.FallbackQueueSource)
+    # D7 (DSN-20261021-release-train-P6-T9): the live default is census-first too (no store-first fallback)
+    assert isinstance(T.default_queue_source(), T.ShadowQueueSource)
     assert isinstance(T.default_queue_source(shadow=True), T.ShadowQueueSource)
 
 
