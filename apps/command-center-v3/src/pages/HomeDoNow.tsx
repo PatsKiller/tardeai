@@ -16,7 +16,7 @@ import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars, type Tone } from '../lib/designTokens'
 import {
-  doNowFrom, positionsFreshness, moversBars, accountRows, cashPct, money, pct, ageLabel,
+  doNowFrom, positionsFreshness, moversBars, accountRows, cashPct, money, pct, ageLabel, briefingSummary,
 } from '../lib/homeDoNow'
 import { platformHealthFrom, countsLabel } from '../lib/platformHealth'
 import { renderSetupCounts } from '../lib/setupRunSummary'
@@ -162,7 +162,8 @@ export default function HomeDoNow() {
   ]
 
   const llm = cmd.llm_intelligence
-  const briefSummary = llm?.portfolio_risk ? String(llm.portfolio_risk).replace(/\s+/g, ' ').slice(0, 110) + '…' : command ? 'no briefing in /api/v2/command' : 'loading…'
+  const briefText = briefingSummary(llm?.portfolio_risk)
+  const briefSummary = briefText || (command ? 'no briefing in /api/v2/command' : 'loading…')
   const agentsN = (cmd.agent_health ?? []).length
   const newsN = (cmd.top_news ?? []).length
 
