@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "setup_readiness_20261023",
+  "files": [
+    "tests/test_setup_readiness_20261023.py"
+  ],
+  "anchor": "SETUP_READINESS_20261023",
+  "comment": [
+    "ANCHOR: SETUP_READINESS_20261023 — operator 2026-10-23 (SAIQ): one SetupReadiness@v1 'driven by / ready /",
+    "missing' object (lib/momentum_setup_evidence.setup_readiness + catalyst_verdict + format_readiness) shared by",
+    "/api/v2/trade-ai/scanner rows, the Shared Momentum projection and the Gate 4 unified alert; an unverified",
+    "headline is never printed as the catalyst. Hermetic: fixtures, tmp state root; no store, network or broker."
+  ]
+}

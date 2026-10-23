@@ -51,8 +51,10 @@ from zoneinfo import ZoneInfo
 
 try:  # scripts/ on sys.path (lanes) or the repo root (tests)
     from lib import l2_book_signals as l2sig
+    from lib import momentum_setup_evidence as mse
 except ImportError:  # pragma: no cover
     from scripts.lib import l2_book_signals as l2sig  # type: ignore
+    from scripts.lib import momentum_setup_evidence as mse  # type: ignore
 
 SCHEMA = "UnifiedMomentumAlert@v1"
 PRODUCER = "unified_momentum_alert"
@@ -110,6 +112,12 @@ class UnifiedAlertEvent:
     lit_signals: list = field(default_factory=list)   # extra engine signals, display tokens ("● Broke PMH")
     levels: dict = field(default_factory=dict)    # trigger / entry / stop / r
     detail: Optional[str] = None
+    # The shared "driven by / ready / missing" object (lib.momentum_setup_evidence.setup_readiness, operator
+    # 2026-10-23): built from the same MomentumSetupEvidence@v1 block the Trade AI page and the Active Trader alert
+    # read, so the unified message cannot disagree with either. ``evidence`` is the input, never rendered raw.
+    evidence: Optional[dict] = None
+    veto_reasons: list = field(default_factory=list)
+    readiness: Optional[dict] = None
 
     @property
     def day(self) -> str:
@@ -199,9 +207,16 @@ def render(event: UnifiedAlertEvent, *, root: Optional[dict] = None) -> str:
     lines = [f"{ICON.get(event.state, '•')} {label(event.state)} · {sym} · {_hhmm(event.ts_epoch)} ET"]
     if root:
         lines.append(f"↳ update to {label(str(root.get('state')))} · {sym} {_hhmm(float(root.get('ts_epoch') or 0))}")
+    readiness = event.readiness
+    if readiness is None and event.evidence is not None:
+        readiness = mse.setup_readiness(event.evidence, veto_reasons=event.veto_reasons)
     cat = _clean(event.catalyst_title)
     origin = _clean(event.catalyst_origin, 40)
-    lines.append(f"Catalyst: {cat or DASH}" + (f" ({origin})" if cat and origin else ""))
+    verdict = ((readiness or {}).get("catalyst") or {}).get("status")
+    # A headline is THE catalyst only when it is source-verified (operator 2026-10-23, SAIQ): otherwise it is
+    # printed labelled, so this line can never read as a verified catalyst the readiness line says is missing.
+    tag = "UNVERIFIED headline — " if cat and verdict in ("UNVERIFIED_HEADLINE", "HERMES_FOUND") else ""
+    lines.append(f"Catalyst: {tag}{cat or DASH}" + (f" ({origin})" if cat and origin else ""))
     conf = DASH if event.confidence is None else _num(event.confidence, "{:.2f}")
     lines.append(f"Grade {_clean(event.grade, 12) or DASH} · {_clean(event.verdict, 80) or 'AI ' + DASH}"
                  f" · confidence {conf}")
@@ -228,6 +243,7 @@ def render(event: UnifiedAlertEvent, *, root: Optional[dict] = None) -> str:
     det = _clean(event.detail, 200)
     if det:
         lines.append(det)
+    lines.extend(mse.format_readiness(readiness))
     lines.append(ADVISORY_LINE)
     return "\n".join(lines)
 
@@ -438,6 +454,7 @@ def emit(event: UnifiedAlertEvent, *, mode: Optional[str] = None, ledger: Option
 def _event_json(event: UnifiedAlertEvent) -> dict:
     d = asdict(event)
     d.pop("l2", None)
+    d.pop("evidence", None)  # the input block is large and lives in its own store; the readiness verdict is kept
     d["l2_summary"] = ({k: (event.l2 or {}).get(k) for k in ("status", "spread_bps", "imbalance", "levels")}
                        if event.l2 else None)
     return d
@@ -445,8 +462,8 @@ def _event_json(event: UnifiedAlertEvent) -> dict:
 
 # ── adapters ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-def catalyst_from_hermes(symbol: str, day: str, lookup: Optional[Callable[[str, str], dict]] = None) -> dict:
-    """AI verdict + confidence from today's Hermes scalp-catalyst research (read-only projection). {} when none."""
+def hermes_record(symbol: str, day: str, lookup: Optional[Callable[[str, str], dict]] = None) -> dict:
+    """Today's raw Hermes scalp-catalyst record for ``symbol`` (status FOUND | NONE_FOUND | ...). {} when none."""
     try:
         if lookup is None:
             try:
@@ -463,6 +480,12 @@ def catalyst_from_hermes(symbol: str, day: str, lookup: Optional[Callable[[str, 
             rec = lookup(symbol, day) or {}
     except Exception:  # noqa: BLE001 -- an unavailable projection renders "—", never blocks the alert
         return {}
+    return rec if isinstance(rec, dict) else {}
+
+
+def catalyst_from_hermes(symbol: str, day: str, lookup: Optional[Callable[[str, str], dict]] = None) -> dict:
+    """AI verdict + confidence from today's Hermes scalp-catalyst research (read-only projection). {} when none."""
+    rec = hermes_record(symbol, day, lookup)
     status = rec.get("status")
     if status == "FOUND":
         ctype = str(rec.get("catalyst_type") or "catalyst").replace("_", " ")
@@ -475,10 +498,14 @@ def catalyst_from_hermes(symbol: str, day: str, lookup: Optional[Callable[[str, 
 
 
 def enrich_catalyst(event: UnifiedAlertEvent, lookup: Optional[Callable[[str, str], dict]] = None) -> UnifiedAlertEvent:
-    """Fill a missing AI verdict / confidence / catalyst title from today's Hermes research (read-only)."""
+    """Fill a missing AI verdict / confidence / catalyst title from today's Hermes research (read-only), and
+    build the shared readiness object with the same Hermes record (one lookup)."""
+    rec = hermes_record(event.symbol, event.day, lookup)
+    if event.evidence is not None:
+        event.readiness = mse.setup_readiness(event.evidence, hermes=rec, veto_reasons=event.veto_reasons)
     if event.verdict is not None and event.confidence is not None and event.catalyst_title:
         return event
-    cat = catalyst_from_hermes(event.symbol, event.day, lookup)
+    cat = catalyst_from_hermes(event.symbol, event.day, lambda _s, _d: rec)
     if event.verdict is None:
         event.verdict = cat.get("verdict")
     if event.confidence is None:
@@ -545,6 +572,8 @@ def event_from_at_row(row: dict) -> Optional[UnifiedAlertEvent]:
         l2=l2, lit_signals=_at_signal_tokens(row.get("signals")),
         levels={"trigger": cand.get("break_level"), "entry": entry, "stop": stop, "r": r},
         detail=(f"Stand-down: {cand.get('stand_down_reason')}" if cand.get("stand_down_reason") else None),
+        evidence=ev if ev else None,
+        veto_reasons=[str(v) for v in (row.get("veto_reasons") or []) if isinstance(v, str)],
     )
 
 
@@ -600,7 +629,8 @@ def event_from_scalp(symbol: str, *, score: int, grade: str, decision: str, finv
     """The social scalp scanner's GO / A+ alert -> a WATCH event (scan + social agree; L2 from the AT journal)."""
     sym = str(symbol).upper()
     day = datetime.fromtimestamp(float(ts_epoch), tz=ET).strftime("%Y-%m-%d")
-    cat = catalyst_from_hermes(sym, day, catalyst_lookup)
+    hermes = hermes_record(sym, day, catalyst_lookup)
+    cat = catalyst_from_hermes(sym, day, lambda _s, _d: hermes)
     try:
         raw_l2 = (l2_lookup or (lambda s, d: latest_at_l2(s, d)))(sym, day)
     except Exception:  # noqa: BLE001 -- no L2 evidence renders as "not computed", never blocks the alert
@@ -610,6 +640,16 @@ def event_from_scalp(symbol: str, *, score: int, grade: str, decision: str, finv
     lit = [s for s in ("tight_spread", "bid_ask_imbalance") if l2_ok and l2["signals"][s].get("on")]
     heavy = bool(l2_ok and l2["signals"]["ask_heavy"].get("on"))
     fd = finviz_data or {}
+    observed = datetime.fromtimestamp(float(ts_epoch), tz=timezone.utc).isoformat()
+    try:
+        evidence = mse.build_setup_evidence(
+            {"symbol": sym, "price": fd.get("price"), "float_m": fd.get("float_m"), "rvol": fd.get("rvol"),
+             "gap_pct": fd.get("gap_pct") if fd.get("gap_pct") is not None else fd.get("change_pct"),
+             "observed_at": observed, "run_date": day},
+            now=datetime.fromtimestamp(float(ts_epoch), tz=timezone.utc), observed_at=observed,
+            source_name="SOCIAL_SCALP")
+    except Exception:  # noqa: BLE001 -- evidence is annotation; an unbuildable block renders "UNKNOWN"
+        evidence = None
     return UnifiedAlertEvent(
         symbol=sym, state="WATCH", ts_epoch=float(ts_epoch), origin="social",
         origin_ref=f"scalp:{day}:{sym}:{int(ts_epoch)}",
@@ -622,4 +662,6 @@ def event_from_scalp(symbol: str, *, score: int, grade: str, decision: str, finv
         source_detail={"scan": f"{decision} {score}/55", "social": f"{mention_count}x " + ", ".join(
             str(s) for s in (sources or [])[:2]), "l2": f"{len(lit)}/2 lit" if l2_ok else "not armed"},
         l2=l2,
+        evidence=evidence,
+        readiness=mse.setup_readiness(evidence, hermes=hermes),
     )
