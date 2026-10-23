@@ -578,11 +578,40 @@ Each window goes live once its own proof passes. Windows can go live in consecut
    - Allowlist `release-train-request-0000` `live_arg` becomes `["--append"]` (reviewed PR).
    - Proof: one 00:00 train reaches `RELEASED_VERIFIED`. A `NO_OP` with nothing eligible proves only the tick path.
 2. **06:00, with its drain proof.**
-   - The controller hardcodes `UnprovenDrain`, so 06:00 is always `WINDOW_SKIPPED_NO_DRAIN`.
-   - Needed: a reviewed PR that replaces it with a real `DrainProbe`. The controller is a protected surface, so it ships
-     by L.1.
-   - The probe must show that no lane is running or due inside the promote span. The evidence is the 05:30–07:00
-     schedule (crontab, n8n `/due`, user timers), and that every lock the five named services hold is free.
+   - Built (2026-10-22, `feat/train-phase7-prereqs-20261022`): `build_controller` wires
+     `scripts/lib/release_train_drain.py` `ReadOnlyDrainProbe` in place of the hardcoded `UnprovenDrain`. A controller
+     built without a probe (tests, library callers) keeps `UnprovenDrain`, so 06:00 is still skipped there.
+   - The probe is read-only and fails closed: any signal it cannot read is `WINDOW_SKIPPED_NO_DRAIN`. The span is
+     `[start - 5 min, window end + measured restart impact + 10 min]`, and it checks, in order:
+     1. **policy** — `config/release_train_drain_policy.json` loads and names slot 0600;
+     2. **impact** — promote, verify and rollback each have 3 measured samples (see 3. below) and their worst sum is
+        at most `max_restart_impact_s` (1200 s);
+     3. **market** — on a NYSE trading day the span ends at least 60 min before the regular open
+        (`cio_market_session`: holidays, early closes, DST);
+     4. **schedule** — no critical lane is due inside the span. Critical = ACTIVE `config/lane_registry.json` rows
+        whose `value_class` is `Business Critical`, plus `critical_lanes_extra`. Fires come from
+        `cron_schedule.fires_between` (DST-safe). A daemon (`*.service`) has no schedule. An unreadable schedule refuses;
+     5. **running** — no `pipeline_runs` row for a critical lane in `running` / `started` / `in_progress` within 6 h
+        (READ ONLY transaction; DB unreadable refuses);
+     6. **locks** — no `flock` path named by a critical lane's crontab line is held, read from `/proc/locks` by inode.
+        No lock is ever taken.
+   - The probe runs again immediately before activation. If it fails there, the train ends `MERGED_NOT_LIVE` /
+     `DRAIN_LOST_AT_ACTIVATION`, like the latest-start recheck.
+   - The run record carries `drain.ok`, `drain.detail` and `drain.report` (ReleaseTrainDrain@v1: every check, the
+     span, the critical lanes, the duration summary).
+   - **Today the drain is not proven (read-only dry run, 2026-10-22 ~22:05 ET, quoted):**
+     `(False, 'impact: unmeasured: promote_s 0/3, verify_s 0/3, rollback_s 0/3 (needs 3 measured promote, verify and
+     rollback durations)')`. With durations assumed for diagnosis only, the schedule check refuses on 12 Business
+     Critical lanes due in the span: `cio-wake-dispatch@06:00, rotation-autopilot@06:00,
+     alpaca-stop-manager-oco-repair@06:00, finviz-momentum-scalp-early-lane@06:00, scalp-hot-list@06:00,
+     active-trader-premarket-watch@06:00, active-trader-micro-recorder-premarket@06:00, options-tick@06:07,
+     hermes-watchlist-scorer@06:00, atm-auto-approver@06:00, paper-trade-advisory@06:15,
+     run-scalp-shadow-logger@06:00`. `news_ingestion` also had `running` rows (started 22:00 ET). 12 critical lock
+     paths, none held.
+   - **Operator decision needed before 06:00 can pass (§17 scope change, by reviewed PR to the policy):** for each lane
+     above, either move its schedule out of 05:55–07:15, or add it to `restart_tolerant` with a reason (it tolerates a
+     portfolio-server restart and re-fires). `restart_tolerant` exempts a lane from the due check only; its running
+     rows and locks still block.
    - Then enable the slot, and change `live_arg` as for 00:00.
    - Proof: a 06:00 train whose receipt records `drain.ok true` and `RELEASED_VERIFIED`.
 3. **08:00, with the macro calendar.**
@@ -591,12 +620,25 @@ Each window goes live once its own proof passes. Windows can go live in consecut
      `config/macro_calendar_overrides.json`; `docs/ops/MACRO_CALENDAR.md`), and stale after 72 h. While the file is
      absent, 08:00 is always `WINDOW_SKIPPED_MACRO_UNAVAILABLE`, so the lane must run live first. Its needs-action row
      is P3 until 08:00 is enabled and the train is armed, and P2 after that.
-   - The latest start is 09:00 minus the worst measured promote, verify and rollback time minus 10 minutes. It needs
-     measured rows in `train_measurements.jsonl`, and rollback is measured only by I.5(3). The delegation's
-     `latest_start_et` (example `08:10`) caps it.
-   - Until three durations are measured, 08:00 is `WINDOW_SKIPPED_UNMEASURED` even with a calendar.
+   - The latest start is 09:00 (that day's local 09:00, DST-safe) minus the worst measured promote, verify and
+     rollback time minus 10 minutes. The delegation's `latest_start_et` (example `08:10`) caps it.
+   - **Measured durations (2026-10-22):** `scripts/lib/release_train_timing.py` `DurationHistory` merges two sources:
+     - the train's own rows, `train_measurements.jsonl` (promote, verify; rollback only after a failed verification);
+     - the deploy receipt history, `~/.local/state/cio-phase2-exact-main/deploy_receipt_history.jsonl`. Every
+       `cio_phase2_exact_main_deploy.sh` receipt now appends one row with the action's `duration_s` (the script
+       passes `--started-at`). A successful `promote` row is a promote sample, and a successful `rollback` row is a
+       rollback sample, so manual releases and rollback drills count. The receipt file keeps its exact v2 fields.
+     A promote seen by both sources (same SHA) is counted once. Samples must be positive and at most 3600 s. The worst
+     of the last 10 is used.
+   - Until each of promote, verify and rollback has **3** samples, 08:00 is `WINDOW_SKIPPED_UNMEASURED` even with a
+     calendar. Verify is measured only by trains, and rollback mostly by I.5(3) drills, so plan at least three of each
+     before enabling 08:00.
    - Proof: a non-macro day releases with `latest_start` recorded, and a macro day records
      `WINDOW_SKIPPED_MACRO_MACRO_DAY`. A stale calendar records `WINDOW_SKIPPED_MACRO_STALE`.
+4. **Both stay inert.** Every slot ships disabled (`DEFAULT_SLOTS` and the example delegation). A live train refuses a
+   disabled slot (`REFUSED_WINDOW_DISABLED`) before any window rule runs, so neither the drain probe nor the
+   duration rule can start a release on its own. Tests: `tests/test_release_train_phase7_prereqs_20261022.py` (CI gate
+   `release_train_phase7_prereqs_20261022`).
 
 ## K. The standing-release blocker
 
