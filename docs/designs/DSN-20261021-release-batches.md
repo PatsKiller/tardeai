@@ -43,9 +43,11 @@ phases:
     board_task: DSN-20261023-agent-ops-P1-T2
   - id: DSN-20261021-release-batches-P9-T2
     title: 'Close #2004 and #2010: their heads are in main via batch 9 (278a90ec9, 41847187d) but the PRs are still open'
-    status: PROPOSED
+    status: DONE
     areas:
     - operator/prs/close-2004-2010
+    evidence: '#2004 closed 2026-10-23T18:21:49Z and #2010 closed 18:21:52Z by the coordinator; heads in main via batch 9
+      (278a90ec9, 41847187d)'
 - id: DSN-20261021-release-batches-P10
   title: Batch 10 — integration in progress (board task T-20261023-9ad805)
   status: IN_PROGRESS
