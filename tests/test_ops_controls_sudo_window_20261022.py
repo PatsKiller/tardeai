@@ -1,13 +1,14 @@
 """Ops -> Controls sudo window, release-train passkey proof, kill-switch read, audit reasons: ANCHOR OPS_CONTROLS_SUDO_WINDOW_20261022.
 
-Operator decision 2026-10-22, verbatim: "approve sudo window"; its policy text ships in AGENTS.md 19.1.0, so the window
-is built INERT (setting ``ops_controls.sudo_window_enabled`` default false AND 19.1.0 ACTIVE with its heading).
+Operator decision 2026-10-22, verbatim: "approve sudo window"; its policy text ships in AGENTS.md 20.0.0 §28.5 (approved
+as "19.1.0", numbered MAJOR 20.0.0), so the window is built INERT (setting ``ops_controls.sudo_window_enabled`` default
+false AND AGENTS.md >= 20.0.0 ACTIVE with the §28.5 heading).
 AGENTS.md 19.0.0 §25.4 (ACTIVE) names the passkey + typed phrase as the release-train resume / arm proof.
 
 Hermetic, on the fixtures of tests/test_ops_controls_20261022.py (in-memory store, fake host runner, fake WebAuthn
 verifier, tmp release-train state dir, tmp AGENTS.md). Nothing touches production state (§24.6).
 
-Proves: the window is inert while the setting is false or 19.1.0 is not ACTIVE; one passkey assertion opens it; inside
+Proves: the window is inert while the setting is false or no version >= 20.0.0 is ACTIVE; one passkey assertion opens it; inside
 it a risky act needs only the phrase; it ends on its time, on 15 idle minutes, on "End window now", on revoking its
 passkey and when the gate closes; a token from another session or identity is refused; the always-fresh kinds are
 refused inside a window at step-up, at approve and in the applier; every act in a window is audited with the opening
@@ -30,11 +31,12 @@ from tests.test_ops_controls_20261022 import (  # noqa: F401 — env is a fixtur
 )
 
 API_PREFIX = "/requests"
-AGENTS_19_1 = ACTIVE_AGENTS + ("\n## 27.6 Sudo window\n\n"
-                               "| 19.1.0 | 2026-10-23 | ACTIVE | MINOR | sudo window | ratified |\n")
+SUDO_HEADING = "## 28.5 The Ops → Controls sudo window"
+AGENTS_20 = ACTIVE_AGENTS + (f"\n{SUDO_HEADING}\n\n"
+                             "| 20.0.0 | 2026-10-23 | ACTIVE | MAJOR | sudo window | ratified |\n")
 
 
-def enable(e, minutes=None, on=True, agents=AGENTS_19_1):
+def enable(e, minutes=None, on=True, agents=AGENTS_20):
     e.agents.write_text(agents)
     e.store.settings[SW.SETTING_ENABLED] = {"key": SW.SETTING_ENABLED, "value": on, "active": True}
     if minutes is not None:
@@ -78,15 +80,18 @@ def pause_beta_params():
 def test_repository_agents_md_keeps_the_window_inert_until_19_1_0():
     root = Path(__file__).resolve().parents[1]
     g = SW.gate(type("S", (), {"setting_get": lambda self, k: {"value": True, "active": True}})(), root / "AGENTS.md")
-    if "| 19.1.0 |" not in (root / "AGENTS.md").read_text():
-        assert g["state"] == "INERT" and "19.1.0" in g["reason"]
+    text = (root / "AGENTS.md").read_text()
+    if "| 20.0.0 |" not in text and "| 21." not in text:
+        assert g["state"] == "INERT" and "20.0.0" in g["reason"]
+    assert SW.SUDO_POLICY_VERSION == "20.0.0" and SW.SUDO_POLICY_ANCHOR == SUDO_HEADING
 
 
 @pytest.mark.parametrize("agents,on,why", [
-    (AGENTS_19_1, False, "sudo_window_enabled is false"),
-    (ACTIVE_AGENTS, True, "19.1.0 is not ACTIVE"),
-    (AGENTS_19_1.replace("| 19.1.0 | 2026-10-23 | ACTIVE", "| 19.1.0 | 2026-10-23 | PROPOSED"), True, "19.1.0"),
-    (AGENTS_19_1.replace("## 27.6 Sudo window", "## 27.6 Something else"), True, "heading absent"),
+    (AGENTS_20, False, "sudo_window_enabled is false"),
+    (ACTIVE_AGENTS, True, "20.0.0 or later is not ACTIVE"),
+    (AGENTS_20.replace("| 20.0.0 | 2026-10-23 | ACTIVE", "| 20.0.0 | 2026-10-23 | PROPOSED"), True, "20.0.0"),
+    (AGENTS_20.replace("| 20.0.0 |", "| 19.1.0 |"), True, "20.0.0"),          # a 19.1.0 row is not enough
+    (AGENTS_20.replace(SUDO_HEADING, "## 28.5 Something else"), True, "absent"),
 ])
 def test_window_is_inert_when_the_setting_is_false_or_policy_is_below_19_1(env, agents, on, why):
     enroll_passkey(env)
@@ -104,8 +109,16 @@ def test_window_is_inert_when_the_setting_is_false_or_policy_is_below_19_1(env, 
     assert any(a["action"] == "refused.sudo_window_inert" for a in env.store.audit)
 
 
+@pytest.mark.parametrize("later", ["20.0.0", "20.1.0", "21.0.0"])
+def test_window_gate_accepts_20_0_0_or_later(env, later):
+    enroll_passkey(env)
+    enable(env, agents=AGENTS_20.replace("| 20.0.0 |", f"| {later} |"))
+    assert SW.gate(env.store, env.agents)["state"] == "ACTIVE"
+    assert open_window(env)[1]["sudo_window"]["opened"] is True
+
+
 def test_default_setting_is_off_and_minutes_default_60_max_120(env):
-    env.agents.write_text(AGENTS_19_1)
+    env.agents.write_text(AGENTS_20)
     g = SW.gate(env.store, env.agents)
     assert (g["state"], g["enabled"], g["minutes"], g["max_minutes"], g["idle_minutes"]) == ("INERT", False, 60,
                                                                                             120, 15)

@@ -1,10 +1,11 @@
 """Ops -> Controls sudo window: one passkey assertion opens a short window in which a risky act needs only the phrase.
 
-Operator decision 2026-10-22, verbatim: "approve sudo window". The policy text ships in AGENTS.md 19.1.0, so this is
-built INERT: the window opens only while BOTH hold, read at call time —
+Operator decision 2026-10-22, verbatim: "approve sudo window". The policy text ships in AGENTS.md 20.0.0 (MAJOR:
+§28.5, and the §27.3 clause it adds; approved as "19.1.0", renumbered by the version policy), so this is built INERT:
+the window opens only while BOTH hold, read at call time —
 
-* AGENTS.md 19.1.0 is ACTIVE with its sudo-window heading present (``ops_controls_core.policy_state`` with
-  ``required=SUDO_POLICY_VERSION`` and ``anchor=SUDO_POLICY_ANCHOR``; no environment override), and
+* AGENTS.md 20.0.0 or later is ACTIVE and the §28.5 heading is present (``ops_controls_core.policy_state`` with
+  ``required=SUDO_POLICY_VERSION``, ``anchor=SUDO_POLICY_ANCHOR``, ``or_later=True``; no environment override), and
 * the operator setting ``ops_controls.sudo_window_enabled`` is true in ``operator_settings`` (default false).
 
 The window (``SudoWindows``):
@@ -36,9 +37,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Mapping, Optional
 
-SUDO_POLICY_VERSION = "19.1.0"
-#: The heading the 19.1.0 policy text must carry; without it the window stays inert even if a 19.1.0 row is ACTIVE.
-SUDO_POLICY_ANCHOR = "## 27.6 Sudo window"
+SUDO_POLICY_VERSION = "20.0.0"
+#: The heading the 20.0.0 policy text carries (§28.5); without it the window stays inert whatever row is ACTIVE.
+SUDO_POLICY_ANCHOR = "## 28.5 The Ops → Controls sudo window"
 SETTING_ENABLED = "ops_controls.sudo_window_enabled"
 SETTING_MINUTES = "ops_controls.sudo_window_minutes"
 SUDO_SETTING_KEYS = frozenset({SETTING_ENABLED, SETTING_MINUTES})
@@ -73,10 +74,10 @@ def _setting(store: Any, key: str) -> Any:
 
 
 def gate(store: Any, agents_path: Optional[Path] = None) -> dict:
-    """ACTIVE only when AGENTS.md 19.1.0 is ACTIVE (with its heading) AND the operator turned the window on."""
+    """ACTIVE only when AGENTS.md >= 20.0.0 is ACTIVE (with §28.5) AND the operator turned the window on."""
     from scripts.lib import ops_controls_core as C
 
-    pol = C.policy_state(agents_path, required=SUDO_POLICY_VERSION, anchor=SUDO_POLICY_ANCHOR)
+    pol = C.policy_state(agents_path, required=SUDO_POLICY_VERSION, anchor=SUDO_POLICY_ANCHOR, or_later=True)
     enabled = _setting(store, SETTING_ENABLED) is True
     raw = _setting(store, SETTING_MINUTES)
     try:
@@ -85,8 +86,8 @@ def gate(store: Any, agents_path: Optional[Path] = None) -> dict:
         minutes = DEFAULT_MINUTES
     minutes = max(1, min(HARD_MAX_MINUTES, minutes))
     if pol["state"] != C.POLICY_ACTIVE:
-        state, reason = "INERT", (f"AGENTS.md {SUDO_POLICY_VERSION} is not ACTIVE ({pol['detail']}); the sudo-window "
-                                  f"policy text ships in {SUDO_POLICY_VERSION}")
+        state, reason = "INERT", (f"AGENTS.md {SUDO_POLICY_VERSION} or later is not ACTIVE ({pol['detail']}); the "
+                                  f"sudo-window policy text ships in {SUDO_POLICY_VERSION} §28.5")
     elif not enabled:
         state, reason = "INERT", f"operator setting {SETTING_ENABLED} is false (the default)"
     else:

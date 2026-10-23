@@ -10,7 +10,7 @@ Order of refusals on every POST: POLICY_NOT_ACTIVE (19.0.0 not ACTIVE, read at r
 (handler-side same-origin check, enforced whatever report_only says) -> STORE_NOT_MIGRATED -> the route's own checks.
 GET routes skip only the policy check. AUTHORITY: OPERATOR_ONLY. MBI_BEHAVIOR = 0.
 
-Sudo window (scripts/lib/ops_controls_sudo.py; operator decision 2026-10-22; INERT until AGENTS.md 19.1.0 is ACTIVE and
+Sudo window (scripts/lib/ops_controls_sudo.py; operator decision 2026-10-22; INERT until AGENTS.md >= 20.0.0 is ACTIVE and
 the operator sets ops_controls.sudo_window_enabled): a passkey step-up may open a window (``open_window: true``); inside
 it ``POST /requests/{id}/step-up/window {sudo_token, phrase}`` steps up a risky request with the phrase only, except
 for the always-fresh kinds; ``POST /sudo/end`` ends it. Every act in a window is audited with the opening assertion.
@@ -774,7 +774,7 @@ AUDIT_REASONS = {
     "refused.totp": "wrong, expired or reused TOTP code",
     "refused.fresh_passkey_required": "this kind needs a fresh passkey assertion, even inside a sudo window",
     "refused.sudo_window": "the sudo window could not be used",
-    "refused.sudo_window_inert": "the sudo window is inert (AGENTS.md 19.1.0 not ACTIVE or the setting is off)",
+    "refused.sudo_window_inert": "the sudo window is inert (AGENTS.md >= 20.0.0 not ACTIVE or the setting is off)",
     "request.created": "previewed (dry run); nothing changed yet",
     "request.approved": "approved",
     "request.cancelled": "cancelled by the operator before it was applied",

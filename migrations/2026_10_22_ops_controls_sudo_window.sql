@@ -1,9 +1,9 @@
--- Ops -> Controls sudo window (operator decision 2026-10-22 "approve sudo window"; policy text in AGENTS.md 19.1.0):
+-- Ops -> Controls sudo window (operator decision 2026-10-22 "approve sudo window"; policy text in AGENTS.md 20.0.0 §28.5):
 -- let ops_applier_requests.stepup_factor record 'sudo_window' for a risky act stepped up inside an open window.
 --
 -- NEEDS OPERATOR. Written, not applied. Apply AFTER migrations/2026_10_22_ops_controls.sql. Until it runs, a step-up
 -- inside a sudo window is refused by the database CHECK (the window fails closed; nothing else changes). The window
--- itself is also inert until AGENTS.md 19.1.0 is ACTIVE and ops_controls.sudo_window_enabled is true.
+-- itself is also inert until AGENTS.md >= 20.0.0 is ACTIVE and ops_controls.sudo_window_enabled is true.
 --
 -- Widens one CHECK constraint ('passkey', 'totp') -> ('passkey', 'totp', 'sudo_window'). No row is read, changed or
 -- removed; no table, column or grant changes. Idempotent (the constraint is replaced by name each run).

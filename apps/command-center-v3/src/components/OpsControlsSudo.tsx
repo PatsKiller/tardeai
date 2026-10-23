@@ -1,7 +1,7 @@
 // Ops → Controls additions (feat/ops-controls-sudo-window-20261022), kept out of OpsControls.tsx so the page diff stays
 // small while the Jobs & schedules tab is reworked on another branch.
 //   SudoBanner      the open sudo window: remaining time, idle limit, the opening passkey, "End window now".
-//                   The window is INERT until AGENTS.md 19.1.0 is ACTIVE and ops_controls.sudo_window_enabled is true;
+//                   The window is INERT until AGENTS.md >= 20.0.0 is ACTIVE and ops_controls.sudo_window_enabled is true;
 //                   then one passkey assertion opens it and a risky act inside it needs only the typed phrase (except
 //                   the always-fresh kinds). Server: scripts/lib/ops_controls_sudo.py.
 //   KillSwitchCell  the global trading kill switch's real state, read-only, from the existing route

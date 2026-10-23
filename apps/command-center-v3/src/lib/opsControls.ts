@@ -59,7 +59,7 @@ export type SudoWindowView = {
   minutes: number; credential_id8: string; credential_name?: string | null; opening_assertion_id: string
   opening_request_id: string; uses: number
 }
-/** The sudo window (inert until AGENTS.md 19.1.0 is ACTIVE and ops_controls.sudo_window_enabled is true). */
+/** The sudo window (inert until AGENTS.md >= 20.0.0 is ACTIVE and ops_controls.sudo_window_enabled is true). */
 export type SudoWindowState = {
   state: 'ACTIVE' | 'INERT' | 'UNAVAILABLE'; reason?: string | null; enabled?: boolean; minutes?: number
   max_minutes?: number; idle_minutes?: number; fresh_kinds?: string[]; fresh_settings?: string[]

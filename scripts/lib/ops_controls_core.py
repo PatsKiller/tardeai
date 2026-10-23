@@ -117,9 +117,18 @@ def new_request_id() -> str:
 # ── policy gate (AGENTS.md 19.0.0) ──────────────────────────────────────────────────────────────────────────────────
 
 
+def _version_tuple(v: str) -> Optional[tuple[int, int, int]]:
+    m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", v.strip())
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3))) if m else None
+
+
 def policy_state(agents_path: Optional[Path] = None, *, required: str = "19.0.0",
-                 anchor: str = "## 27.3 Safe direction one click; risky direction a passkey and a typed phrase") -> dict:
+                 anchor: str = "## 27.3 Safe direction one click; risky direction a passkey and a typed phrase",
+                 or_later: bool = False) -> dict:
     """ACTIVE only when AGENTS.md's version-history row for ``required`` begins with ACTIVE and ``anchor`` is present.
+
+    With ``or_later`` any ACTIVE version-history row at or above ``required`` satisfies the version part (the anchor
+    is still required), so a gate keyed to the version that introduced a rule survives later versions.
 
     Read at call time (no cache), so ratification + promotion arms the surface and nothing else does. Fail closed: an
     unreadable file is UNREADABLE, which every caller treats as not active. There is no environment override.
@@ -129,6 +138,17 @@ def policy_state(agents_path: Optional[Path] = None, *, required: str = "19.0.0"
         text = p.read_text(encoding="utf-8")
     except OSError as exc:
         return {"state": POLICY_UNREADABLE, "required": required, "detail": f"{p}: {type(exc).__name__}"}
+    if or_later:
+        floor = _version_tuple(required)
+        rows = re.findall(r"^\|\s*(\d+\.\d+\.\d+)\s*\|[^|]*\|\s*([^|]*)\|", text, re.M)
+        hit = [v for v, s in rows if floor and (_version_tuple(v) or (0, 0, 0)) >= floor
+               and s.strip().upper().startswith("ACTIVE")]
+        if not hit:
+            return {"state": POLICY_NOT_ACTIVE, "required": required,
+                    "detail": f"no ACTIVE version-history row at or above {required}"}
+        if anchor not in text:
+            return {"state": POLICY_NOT_ACTIVE, "required": required, "detail": f"heading {anchor!r} absent"}
+        return {"state": POLICY_ACTIVE, "required": required, "detail": f"{max(hit, key=_version_tuple)} ACTIVE"}
     row_re = re.compile(r"^\|\s*" + re.escape(required) + r"\s*\|[^|]*\|\s*([^|]*)\|", re.M)
     m = row_re.search(text)
     if not m:

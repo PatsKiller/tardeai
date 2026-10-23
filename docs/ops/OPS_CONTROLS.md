@@ -37,7 +37,7 @@ audits and offers an undo). The safe direction (release-train STOP or pause, kil
 | Policy gate, change kinds, preview/apply/undo | `scripts/lib/ops_controls_core.py` | `policy_state()` reads `AGENTS.md` at call time: ACTIVE only if the 19.0.0 history row is ACTIVE and §27.3 exists. No env override. |
 | Routes | `scripts/lib/ops_controls_api.py`, wired in `scripts/api_v2.py` | Records and authorises requests. Applies no host change itself (except the release-train STOP/pause writers and the passkey store). |
 | Factors | `scripts/lib/ops_controls_auth.py` | py_webauthn (`webauthn`) registration and assertion, `userVerification: required`, RP id `ms01-openclaw.tail163d14.ts.net`; pyotp TOTP (recovery only); step-up tokens; approval HMAC. |
-| Sudo window | `scripts/lib/ops_controls_sudo.py` | The window gate (AGENTS.md 19.1.0 ACTIVE with heading `## 27.6 Sudo window` AND setting `ops_controls.sudo_window_enabled`), the always-fresh kinds, the in-memory window registry. §6a. |
+| Sudo window | `scripts/lib/ops_controls_sudo.py` | The window gate (AGENTS.md >= 20.0.0 ACTIVE with heading `## 28.5 The Ops → Controls sudo window` AND setting `ops_controls.sudo_window_enabled`), the always-fresh kinds, the in-memory window registry. §6a. |
 | Stores | `scripts/lib/ops_controls_store.py` | `PgStore` (production) and `MemoryStore` (tests), one interface. |
 | Migration | `migrations/2026_10_22_ops_controls.sql` (+ `.down.sql`) | 7 tables, refuse-delete triggers, append-only `ops_audit` and `operator_settings_history`. Not applied. |
 | Plan tool | `scripts/ops/ops_controls_migration_plan.py` | Dry run of the migration (`--probe`: read-only existence check). |
@@ -140,8 +140,9 @@ Branch `feat/ops-controls-sudo-window-20261022`. Tests: `tests/test_ops_controls
 `OPS_CONTROLS_SUDO_WINDOW_20261022`), `src/lib/opsControls.test.ts` (in `npm run build`).
 
 **Sudo window** (operator decision 2026-10-22, verbatim: "approve sudo window"). **INERT** until both hold, read at
-every request: AGENTS.md **19.1.0** is ACTIVE and carries the heading `## 27.6 Sudo window`
-(`ops_controls_core.policy_state(required="19.1.0", anchor=…)`, no environment override), and the operator setting
+every request: AGENTS.md **20.0.0 or later** is ACTIVE and carries the §28.5 heading `## 28.5 The Ops → Controls sudo window`
+(`ops_controls_core.policy_state(required="20.0.0", anchor=…, or_later=True)`, no environment override; the package
+was approved as "19.1.0" and numbered 20.0.0 MAJOR by the version policy), and the operator setting
 `ops_controls.sudo_window_enabled` is `true` (default `false`). Then:
 
 - One passkey assertion opens it: the operator ticks "Also open a sudo window" on a risky step-up, and the same
@@ -162,7 +163,7 @@ every request: AGENTS.md **19.1.0** is ACTIVE and carries the heading `## 27.6 S
   `request.approved` and `request.applied` rows (the same linkage, also kept in the request's `result.sudo_window`),
   and `sudo.ended` with its reason (expired, idle, ended by the operator, passkey revoked, inert, replaced).
 - **Agents** are refused on every new route exactly as on the others (`AGENT_CALLER_REFUSED`).
-- **Activation (operator, after 19.1.0 is ACTIVE):** apply `migrations/2026_10_22_ops_controls_sudo_window.sql` (it
+- **Activation (operator, after 20.0.0 is ACTIVE):** apply `migrations/2026_10_22_ops_controls_sudo_window.sql` (it
   widens the `stepup_factor` CHECK to allow `sudo_window`; dry run and verify are in its header; reverse:
   `.down.sql`, NOT VALID, keeps every row), then set `ops_controls.sudo_window_enabled = true` on the page (a fresh
   passkey). Until the migration runs, a window step-up is refused by the database (fails closed).

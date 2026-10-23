@@ -146,7 +146,7 @@ t('windowCovers refuses always-fresh kinds, sudo settings, safe kinds, no token 
   assert.equal(windowCovers(open, 'setting.set', { key: 'ops_controls.sudo_window_minutes' }), false)
   assert.equal(windowCovers(open, 'release_train.stop'), false)
   assert.equal(windowCovers(open, 'crontab.pause', {}, false), false)
-  assert.equal(windowCovers(state({ kinds: SUDO_KINDS as any, sudo_window: { state: 'INERT', reason: '19.1.0 not ACTIVE', window: null } }), 'crontab.pause'), false)
+  assert.equal(windowCovers(state({ kinds: SUDO_KINDS as any, sudo_window: { state: 'INERT', reason: '20.0.0 not ACTIVE', window: null } }), 'crontab.pause'), false)
   assert.equal(windowCovers(state({ kinds: SUDO_KINDS as any, sudo_window: { state: 'ACTIVE', window: { ...WIN, remaining_s: 0 } } }), 'crontab.pause'), false)
   assert.equal(windowCovers(state(), 'crontab.pause'), false)
 })

@@ -49,7 +49,7 @@ All under `/api/v2/ops/controls`.
 | POST | `/requests/{id}/approve` | Safe kind: body `{}`. Risky kind: body `{step_up_token}`. Marks the request `APPROVED` (HMAC-signed); the host applier applies it within 120 s. |
 | POST | `/requests/{id}/step-up/options` | WebAuthn `PublicKeyCredentialRequestOptions` (JSON, base64url) with a single-use challenge bound to this request, `userVerification: "required"`, every active passkey allowed. |
 | POST | `/requests/{id}/step-up/verify` | Body `{credential, phrase, open_window?}`. `credential` is the `PublicKeyCredential` JSON (base64url fields). Verifies the typed phrase and the assertion; returns `{step_up_token, expires_at}` (2 minutes, single use, this request only). With `open_window: true` the same assertion also opens a sudo window when the window is ACTIVE: the response adds `sudo_window: {opened: true, sudo_token, window}` (the token is shown once; the server keeps its SHA-256) or `{opened: false, reason}`. |
-| POST | `/requests/{id}/step-up/window` | Sudo window (inert until AGENTS.md 19.1.0 is ACTIVE and `ops_controls.sudo_window_enabled` is true). Body `{sudo_token, phrase}`. Steps a risky request up inside the open window with the typed phrase only; returns `{step_up_token, expires_at, sudo_window}`. Refused: `FRESH_PASSKEY_REQUIRED` (always-fresh kind), `SUDO_WINDOW_INERT`, `SUDO_WINDOW_TOKEN_MISSING`, `SUDO_WINDOW_NOT_OPEN` (expired, idle, ended, revoked passkey, restart, other identity), `PHRASE_MISMATCH`. |
+| POST | `/requests/{id}/step-up/window` | Sudo window (inert until AGENTS.md >= 20.0.0 is ACTIVE and `ops_controls.sudo_window_enabled` is true). Body `{sudo_token, phrase}`. Steps a risky request up inside the open window with the typed phrase only; returns `{step_up_token, expires_at, sudo_window}`. Refused: `FRESH_PASSKEY_REQUIRED` (always-fresh kind), `SUDO_WINDOW_INERT`, `SUDO_WINDOW_TOKEN_MISSING`, `SUDO_WINDOW_NOT_OPEN` (expired, idle, ended, revoked passkey, restart, other identity), `PHRASE_MISMATCH`. |
 | POST | `/sudo/end` | "End window now": ends every window of this operator; returns `{ended}`. Audited `sudo.ended`. |
 | POST | `/requests/{id}/step-up/totp` | Body `{code, phrase}`. Recovery only: accepted only for `passkey.register` when **no** active passkey exists. Returns `{step_up_token, expires_at}`. |
 | POST | `/requests/{id}/cancel` | Cancel a request that is not yet applying. |
@@ -66,7 +66,7 @@ Passkey revocation is the change kind `passkey.revoke` (risky).
 - **Risky (three steps):** (1) `POST /requests` → show `preview` and `phrase`; (2) `POST .../step-up/options` →
   `navigator.credentials.get({publicKey})` → `POST .../step-up/verify {credential, phrase}` → `step_up_token`;
   (3) `POST .../approve {step_up_token}` → poll until terminal.
-- **Sudo window (inert until 19.1.0):** a risky step-up with `open_window: true` opens it; later risky requests go
+- **Sudo window (inert until AGENTS.md >= 20.0.0):** a risky step-up with `open_window: true` opens it; later risky requests go
   `POST /requests` → `POST .../step-up/window {sudo_token, phrase}` → `POST .../approve {step_up_token}`. The page keeps
   `sudo_token` in `sessionStorage` only. Always-fresh kinds (`grant.issue`, `kill_switch.clear`, `passkey.register`,
   `passkey.revoke`, every `release_train.*` operator kind, and `setting.set`/`.unset` of
@@ -119,7 +119,7 @@ Passkey revocation is the change kind `passkey.revoke` (risky).
                       "request_id": "…", "outcome": "ok", "detail": {}, "undo_available": true,
                       "reason": "one line, never empty (the row's code/detail first, else the action's meaning)"}]},
   "requests": [/* the 20 most recent request objects (section 4) */],
-  "sudo_window": {"state": "ACTIVE" | "INERT" | "UNAVAILABLE", "reason": null | "AGENTS.md 19.1.0 is not ACTIVE …",
+  "sudo_window": {"state": "ACTIVE" | "INERT" | "UNAVAILABLE", "reason": null | "AGENTS.md 20.0.0 or later is not ACTIVE …",
                   "enabled": false, "minutes": 60, "max_minutes": 120, "idle_minutes": 15,
                   "fresh_kinds": ["grant.issue", "…"], "fresh_settings": ["ops_controls.sudo_window_enabled", "…"],
                   "window": null | {"window_id8": "sudo_…", "opened_at": "…", "expires_at": "…",
