@@ -62,7 +62,8 @@ def test_resume_preconditions_backup_confirmation_and_rollback():
     src = RESUME.read_text()
     for needle in ('EXPECT_HOST="ms01-openclaw"', 'EXPECT_USER="johnclaw"', "read_only", 'lock_state(broker="schwab")',
                    'crontab.bak-$STAMP', 'Type RESUME', 'ROLLBACK: crontab', "--days 10 --dry-run",
-                   "grok_stop_review.py --plan", "cmp -s -", "grep -qxF"):
+                   "grok_stop_review.py --plan", "cmp -s ", "grep -qxF",
+                   'crontab -l > "$WORK/after-installed.$s"'):
         assert needle in src, needle
     assert src.count("read -r -p") == 1  # one confirmation, after every dry run
     assert not re.search(r"(^|[;&|(]\s*|\s)rm\s", src, re.M)  # never deletes (backup kept)
@@ -175,7 +176,8 @@ def test_no_effect_keys_are_added_by_this_pr():
 def test_double_run_script_guards():
     src = DOUBLE.read_text()
     for needle in ("mode=ro", "PRAGMA query_only=1", "live:RUN_DONE", ">= 3", "Type APPLY", "crontab.bak-$STAMP",
-                   "REFUSED: the crontab changed since the preview", "grep -qxF"):
+                   "REFUSED: the crontab changed since the preview", "grep -qxF",
+                   'crontab -l > "$WORK/after-installed"'):
         assert needle in src, needle
     assert src.count("read -r -p") == 1
     assert "crontab -r" not in src and not re.search(r"(^|[;&|(]\s*|\s)rm\s", src, re.M)

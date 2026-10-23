@@ -219,19 +219,22 @@ for s in "${RUN_STEPS[@]}"; do
   crontab -l > "$WORK/before.$s"
   "$PY" "$WORK/edit.py" "$WORK/before.$s" "$WORK/targets.tsv" "$s" "$WORK/after.$s" >/dev/null || { echo "FAILED at step $s (match)"; rollback_hint; exit 5; }
   crontab - < "$WORK/after.$s" || { echo "FAILED at step $s (install)"; rollback_hint; exit 5; }
-  crontab -l | cmp -s - "$WORK/after.$s" || { echo "FAILED at step $s (read-back differs)"; rollback_hint; exit 5; }
+  # Read back ONCE into a file and verify against the file. Never `crontab -l | grep -q`: grep -q exits at the
+  # first match, crontab -l takes SIGPIPE writing the rest of a large crontab, and pipefail turns that 141 into a
+  # false FAILED (2026-10-22 operator run: every step applied, every verify printed FAILED).
+  crontab -l > "$WORK/after-installed.$s" || { echo "FAILED at step $s (read-back)"; rollback_hint; exit 5; }
+  cmp -s "$WORK/after-installed.$s" "$WORK/after.$s" || { echo "FAILED at step $s (read-back differs)"; rollback_hint; exit 5; }
   # verify: each un-paused line is now present as an ACTIVE line
   while IFS=$'\t' read -r st line; do
     [[ "$st" == "$s" ]] || continue
     if [[ "$s" == "retire214" ]]; then
-      crontab -l | grep -qF "# RETIRED 2026-10-22 superseded-by drive-syncs-hourly" || { echo "FAILED: L214 annotation missing"; rollback_hint; exit 5; }
+      grep -qF "# RETIRED 2026-10-22 superseded-by drive-syncs-hourly" "$WORK/after-installed.$s" || { echo "FAILED: L214 annotation missing"; rollback_hint; exit 5; }
     else
       active="$(printf '%s' "$line" | sed -E 's/^# PAUSED 2026-10-1[45] schwab-app-deactivated \(incident SPCX(, grant 0f9de907)?\) //')"
-      crontab -l | grep -qxF -- "$active" || { echo "FAILED at step $s: line not active after install"; rollback_hint; exit 5; }
+      grep -qxF -- "$active" "$WORK/after-installed.$s" || { echo "FAILED at step $s: line not active after install"; rollback_hint; exit 5; }
     fi
   done < "$WORK/targets.tsv"
-  crontab -l > "$WORK/check.$s"
-  check_keep "$WORK/check.$s" || { echo "FAILED at step $s: kept-paused lines changed"; rollback_hint; exit 5; }
+  check_keep "$WORK/after-installed.$s" || { echo "FAILED at step $s: kept-paused lines changed"; rollback_hint; exit 5; }
   echo "   [$s] active and verified (crontab -l)"
 done
 echo "DONE. Backup: $BACKUP   Rollback: crontab \"$BACKUP\""
