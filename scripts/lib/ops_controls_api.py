@@ -592,7 +592,13 @@ def jobs_view(ctx: Ctx) -> dict:
                      "line_sha256": C.sha256_text(line) if line else None,
                      "display": C.redact(line) if line else None,
                      "paused_on": pm.group(1) if pm else None, "paused_note": pm.group(2) if pm else None,
-                     "broker_class": bool(tokens), "broker_tokens": tokens, "note": (r.get("note") or "")[:200]})
+                     "broker_class": bool(tokens), "broker_tokens": tokens, "note": (r.get("note") or "")[:200],
+                     # Additive (jobs readability, 2026-10-22): lets the page say "runs on n8n" for a cut-over lane,
+                     # date the registry state, and read an AMBIGUOUS row as running vs paused. Display only.
+                     "dispatch_mode": (r.get("dispatch") or {}).get("mode"),
+                     "registry_since": r.get("state_since"),
+                     "registry_reason": (str(r.get("state_reason") or "")[:200] or None),
+                     "match_counts": {"active": len(a), "paused": len(p)}})
     return {"state": "OK", "reason": None, "as_of": C.iso(ctx.clock()), "rows": rows,
             "unmatched_active_lines": len([ln for ln in active if ln not in matched])}
 

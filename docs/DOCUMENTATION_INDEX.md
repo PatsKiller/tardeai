@@ -35,7 +35,7 @@ ACTIVE; 11.0.0 (§23.24) is PROPOSED.
 
 | Document | Purpose | Status |
 |----------|---------|--------|
-| `docs/ops/OPS_CONTROLS.md` | The operator Controls surface and its one governed host applier: components, threat model, change kinds (and the NOT_SUPPORTED ones with reasons), data-dictionary coordination with the 19.0.0 package, the operator activation steps (migration, approval key, applier unit, TOTP recovery, passkey enrollment) and rollback | Draft (branch feat/ops-controls-20261022) |
+| `docs/ops/OPS_CONTROLS.md` | The operator Controls surface and its one governed host applier: components, threat model, change kinds (and the NOT_SUPPORTED ones with reasons), data-dictionary coordination with the 19.0.0 package, the operator activation steps (migration, approval key, applier unit, TOTP recovery, passkey enrollment) and rollback; §8 how to read the Jobs & schedules tab (plain status, crontab-vs-registry mismatches, filters, cron in words) | Draft (branch feat/ops-controls-20261022) |
 | `docs/ops/OPS_CONTROLS_API.md` | Response contract for `/api/v2/ops/controls/*` (state read model, request lifecycle, WebAuthn step-up, undo) | Draft |
 
 ## Live changes (2026-10-20)
