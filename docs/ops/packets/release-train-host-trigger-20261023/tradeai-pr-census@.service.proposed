@@ -1,0 +1,21 @@
+# PROPOSED, NOT INSTALLED (packet docs/ops/packets/release-train-host-trigger-20261023/). The PR census
+# (scripts/pr_hygiene_audit.py, n8n lane pr-hygiene-audit) 20 minutes before window %i, so the train selects from a
+# census under 30 minutes old. Same argv as the allowlist's live run (no args) and the same flock file, so it can
+# never run beside an n8n fire of the lane; a held lock exits 75 (skipped, not a failure). Read-only on GitHub and
+# git; writes data/runtime/pr-hygiene-audit_last.json. Dry run first:
+#   cd ~/trade-ai-releases/portfolio-server/CURRENT && .venv/bin/python scripts/pr_hygiene_audit.py --dry-run
+[Unit]
+Description=Trade AI release train: PR census before the %i window (read-only)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=TRADEAI_RUN_ID=host-timer-census-%i
+Environment=GH_PROMPT_DISABLED=1
+Environment=GH_NO_UPDATE_NOTIFIER=1
+Environment=GIT_TERMINAL_PROMPT=0
+ExecStart=/usr/bin/flock -n -E 75 /tmp/tradeai_pr_hygiene_audit.lock %h/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python scripts/pr_hygiene_audit.py
+SuccessExitStatus=75
+TimeoutStartSec=630
+Nice=10

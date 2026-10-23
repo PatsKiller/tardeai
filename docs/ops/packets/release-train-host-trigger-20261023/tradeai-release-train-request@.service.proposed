@@ -1,0 +1,25 @@
+# PROPOSED, NOT INSTALLED (operator item: release-train host trigger, packet
+# docs/ops/packets/release-train-host-trigger-20261023/). The operator installs it with install.sh --apply.
+# One oneshot per window slot (%i = 1800 | 0000 | 0600 | 0800). It runs the n8n request lane's own writer,
+# scripts/release_train_window_request.py, from the served release and appends ONE shadow TrainWindowRequest@v1
+# (or nothing: a STOP latch or a duplicate is a result, exit 0). --shadow-only: it never requests a live train.
+# It never merges, pushes, promotes, reads a credential or sends. The installed claimer
+# (tradeai-release-train-claim.*) answers the request. Dry run first:
+#   cd ~/trade-ai-releases/portfolio-server/CURRENT && .venv/bin/python scripts/release_train_window_request.py --window 1800 --dry-run
+[Unit]
+Description=Trade AI release train: host-timer window request for slot %i (shadow only)
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+# The state dir the installed claimer resolves (it sets no state env, so release_window.py's default; arming step G
+# proves every reader agrees). Named explicitly so the writer and the claimer can never drift apart.
+Environment=TRADEAI_RELEASE_WINDOW_STATE_DIR=%h/trade-ai-releases/persistent-state/data/runtime/release_window
+# Run identity in the request and the lane receipt. The writer reads TRADEAI_RUN_ID (scripts/lib/lane_last_receipt.py
+# RUN_ID_ENV); TRADEAI_N8N_RUN_ID is set too, as the plan names it, and nothing reads it.
+Environment=TRADEAI_RUN_ID=host-timer-%i
+Environment=TRADEAI_N8N_RUN_ID=host-timer-%i
+ExecStart=%h/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python scripts/release_train_window_request.py --window %i --append --shadow-only
+TimeoutStartSec=120
+Nice=10
