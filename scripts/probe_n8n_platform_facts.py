@@ -114,7 +114,7 @@ def default_runner(argv: list[str], timeout: int = 30) -> tuple[int, str, str]:
 
 def env_template(keys: tuple[str, ...] = ENV_ALLOWLIST) -> str:
     cond = " ".join(f'(eq $k "{k}")' for k in keys)
-    return '{{range .Config.Env}}{{$k := index (split . "=") 0}}{{if or ' + cond + '}}{{println .}}{{end}}{{end}}'
+    return '{{range .Config.Env}}{{$k := index (split . "=") 0}}{{if or ' + cond + "}}{{println .}}{{end}}{{end}}"
 
 
 def read_env(container: str, run: Runner) -> dict[str, str]:
@@ -198,8 +198,21 @@ def p2_facts(n8n_env: dict[str, str], db_env: dict[str, str], run: Runner) -> di
         f"from pg_roles where rolname = '{role}'), json_build_object('role', '{role}', 'missing', true))"
     )
     rc, out, err = run(
-        ["docker", "exec", "-e", "PGOPTIONS=-c default_transaction_read_only=on", DB_CONTAINER,
-         "psql", "-X", "-U", admin, "-d", db, "-tAc", sql]
+        [
+            "docker",
+            "exec",
+            "-e",
+            "PGOPTIONS=-c default_transaction_read_only=on",
+            DB_CONTAINER,
+            "psql",
+            "-X",
+            "-U",
+            admin,
+            "-d",
+            db,
+            "-tAc",
+            sql,
+        ]
     )
     if rc != 0:
         return {"n8n_db_role_superuser": _fact(None, f"pg_roles read failed: exit {rc}: {err.strip()[:120]}")}
@@ -291,7 +304,9 @@ def p6_facts(root: Path, now: datetime, run: Runner) -> dict[str, dict]:
         if rec.get("runs_inside_n8n") is not False or not str(rec.get("alert_path") or "").startswith("host:"):
             problems.append("receipt does not show a host alert path outside n8n")
     ev = f"{DEADMAN_TIMER} {t.get('is-enabled')}/{t.get('is-active')}; {DEADMAN_REL} {rec.get('status', 'absent')} age {age} min"
-    return {"host_dead_man_outside_n8n": _fact(not problems, ev + ("" if not problems else " — " + "; ".join(problems)))}
+    return {
+        "host_dead_man_outside_n8n": _fact(not problems, ev + ("" if not problems else " — " + "; ".join(problems)))
+    }
 
 
 # ── FW-P4: ufw ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -308,8 +323,13 @@ def parse_ufw(text: str) -> dict[str, Any]:
         if not m or "(v6)" in line:
             continue
         rules.append(
-            {"n": int(m.group(1)), "to": m.group(2).strip(), "action": m.group(3), "dir": m.group(4) or "IN",
-             "from": m.group(5).strip()}
+            {
+                "n": int(m.group(1)),
+                "to": m.group(2).strip(),
+                "action": m.group(3),
+                "dir": m.group(4) or "IN",
+                "from": m.group(5).strip(),
+            }
         )
     return {
         "status": status.group(1).lower() if status else None,
@@ -397,8 +417,16 @@ def ufw_verdict(text: str, *, relay_ip: str, port: int, subnet: str, bridge: str
 
 def p4_facts(root: Path, now: datetime, run: Runner, ufw_path: Path) -> dict[str, dict]:
     problems: list[str] = []
-    rc, out, err = run(["docker", "network", "inspect", LAB_NETWORK, "--format",
-                        "{{.Id}} {{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}}"])
+    rc, out, err = run(
+        [
+            "docker",
+            "network",
+            "inspect",
+            LAB_NETWORK,
+            "--format",
+            "{{.Id}} {{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}}",
+        ]
+    )
     netid = subnet = gateway = None
     if rc == 0 and len(out.split()) >= 3:
         netid, subnet, gateway = out.split()[:3]
@@ -406,14 +434,21 @@ def p4_facts(root: Path, now: datetime, run: Runner, ufw_path: Path) -> dict[str
         problems.append(f"docker network inspect {LAB_NETWORK}: exit {rc} {err.strip()[:80]}")
     bridge = f"br-{netid[:12]}" if netid else None
     rc, out, _ = run(["ss", "-ltnH"])
-    binds = sorted({ln.split()[3] for ln in out.splitlines() if len(ln.split()) >= 4 and ln.split()[3].endswith(f":{RELAY_PORT}")})
+    binds = sorted(
+        {ln.split()[3] for ln in out.splitlines() if len(ln.split()) >= 4 and ln.split()[3].endswith(f":{RELAY_PORT}")}
+    )
     if gateway and f"{gateway}:{RELAY_PORT}" not in binds:
         problems.append(f"relay not listening on {gateway}:{RELAY_PORT} (binds {binds})")
     wide = [b for b in binds if b.startswith(("0.0.0.0:", "*:", "[::]:"))]
     if wide:
         problems.append(f"relay bound wide: {wide}")
-    detail: dict[str, Any] = {"bridge": bridge, "subnet": subnet, "gateway": gateway, "binds": binds,
-                              "ufw_capture": str(ufw_path)}
+    detail: dict[str, Any] = {
+        "bridge": bridge,
+        "subnet": subnet,
+        "gateway": gateway,
+        "binds": binds,
+        "ufw_capture": str(ufw_path),
+    }
     rc_v, verbose, err_v = run([SUDO_BIN, "-n", UFW_BIN, "status", "verbose"])
     rc_n, numbered, err_n = run([SUDO_BIN, "-n", UFW_BIN, "status", "numbered"])
     text = ""
@@ -439,13 +474,15 @@ def p4_facts(root: Path, now: datetime, run: Runner, ufw_path: Path) -> dict[str
         except OSError as exc:
             problems.append(f"ufw capture unreadable: {type(exc).__name__}")
     if text and gateway and subnet and bridge:
-        _ok, ufw_problems, picked = ufw_verdict(
-            text, relay_ip=gateway, port=RELAY_PORT, subnet=subnet, bridge=bridge
-        )
+        _ok, ufw_problems, picked = ufw_verdict(text, relay_ip=gateway, port=RELAY_PORT, subnet=subnet, bridge=bridge)
         problems.extend(ufw_problems)
         detail["ufw"] = picked
     ev = f"relay binds {binds or 'none'}; lab {bridge} {subnet}; ufw evidence={detail['ufw_evidence_source']}"
-    return {"relay_bind_firewall_verified": _fact(not problems, ev + ("" if not problems else " — " + "; ".join(problems)), **detail)}
+    return {
+        "relay_bind_firewall_verified": _fact(
+            not problems, ev + ("" if not problems else " — " + "; ".join(problems)), **detail
+        )
+    }
 
 
 # ── FW-P5 ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -466,9 +503,7 @@ def p5_facts(env: dict[str, str], run: Runner) -> dict[str, dict]:
         image = lines[0].strip() if lines else None
         image_id = lines[1].strip() if len(lines) > 1 else None
     if image_id and re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
-        rc_img, out_img, _err_img = run(
-            ["docker", "image", "inspect", image_id, "--format", "{{json .RepoDigests}}"]
-        )
+        rc_img, out_img, _err_img = run(["docker", "image", "inspect", image_id, "--format", "{{json .RepoDigests}}"])
         if rc_img == 0:
             try:
                 parsed = json.loads(out_img.strip())
@@ -487,7 +522,9 @@ def p5_facts(env: dict[str, str], run: Runner) -> dict[str, dict]:
     community = _bool(env.get("N8N_COMMUNITY_PACKAGES_ENABLED"))
     return {
         "image_pinned": _fact(image_value, ev_img),
-        "block_env_access_in_node": _fact(block is True, f"N8N_BLOCK_ENV_ACCESS_IN_NODE={env.get('N8N_BLOCK_ENV_ACCESS_IN_NODE', '<unset>')}"),
+        "block_env_access_in_node": _fact(
+            block is True, f"N8N_BLOCK_ENV_ACCESS_IN_NODE={env.get('N8N_BLOCK_ENV_ACCESS_IN_NODE', '<unset>')}"
+        ),
         "community_packages_disabled": _fact(
             community is False, f"N8N_COMMUNITY_PACKAGES_ENABLED={env.get('N8N_COMMUNITY_PACKAGES_ENABLED', '<unset>')}"
         ),
@@ -498,7 +535,10 @@ def p5_facts(env: dict[str, str], run: Runner) -> dict[str, dict]:
 
 
 def probe(
-    *, root: Optional[Path] = None, now: Optional[datetime] = None, run: Optional[Runner] = None,
+    *,
+    root: Optional[Path] = None,
+    now: Optional[datetime] = None,
+    run: Optional[Runner] = None,
     ufw_status: Optional[Path] = None,
 ) -> dict[str, Any]:
     """All six elements, measured now. Raises RuntimeError only when the n8n container itself cannot be read."""
