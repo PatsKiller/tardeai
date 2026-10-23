@@ -105,8 +105,9 @@ See [`CC_NEEDS_ACTION_2026-10-21.md`](CC_NEEDS_ACTION_2026-10-21.md).
 
 ## 4. The n8n lane `pr-hygiene-audit`
 
-- **Registry row:** `scheduler.kind: n8n`, `expression: dispatcher`, `stage: shadow`, and a `dispatch` block with
-  mode `dry_run`, cron `30 6 * * *` America/New_York, class `monitor` and retry policy `transient-2`. You can also
+- **Registry row:** `scheduler.kind: n8n`, `expression: dispatcher`, `stage: canary` (promoted by the H.0
+  shadow-enable PR, `2ccd4ab8e`, 2026-10-22 09:21 ET; on the relay live list since 11:13 ET), and a `dispatch` block
+  with mode `live`, cron `30 6 * * *` America/New_York, class `monitor` and retry policy `transient-2`. You can also
   fire it on demand through `coordination/run`. There is no crontab line and no systemd unit (cron freeze).
 - **Allowlist:** argv `$PY scripts/pr_hygiene_audit.py`, `dry_run_arg ["--dry-run"]`, `live_arg null`, and its own
   flock `/tmp/tradeai_pr_hygiene_audit.lock`. `env_names` holds no secret and no broker name. The gh CLI reads its
@@ -117,8 +118,17 @@ See [`CC_NEEDS_ACTION_2026-10-21.md`](CC_NEEDS_ACTION_2026-10-21.md).
   `tests/test_agents_policy_7_0_0_advisory_market_data.py` pass with no new exception, and this file's tests pin the
   closure.
 - **Promotion to live is the operator's decision.** It needs a registry and allowlist PR that sets `live_arg []` and
-  `dispatch.mode live`, plus a REVIEWED contract. For the merge-tree and unpushed scans, the operator also sets
-  `TRADEAI_PR_HYGIENE_REPO` in the executor environment.
+  `dispatch.mode live`, plus a REVIEWED contract.
+- **Which clone (2026-10-22, fix/releases-page-queue-ci-20261022).** The executor runs the lane from
+  `portfolio-server/CURRENT`, which is not a git clone. Releases before `ee38621b1` carried a stray worktree `.git`
+  file, so the script's own directory resolved by accident.
+  - `resolve_repo` order: `--repo`, then `TRADEAI_PR_HYGIENE_REPO`, then the script's own clone, then the canonical
+    checkout `~/trade-ai-v12-rebuild/trade-ai-v12-rebuild`. An explicit value that is not a clone is never replaced.
+  - With no slug, a real run writes a failed receipt (`no_github_slug`, exit 2) instead of nothing.
+  - Optionally, set `TRADEAI_PR_HYGIENE_REPO` in the executor environment to pin the clone explicitly. This is an
+    operator host step.
+  - Missing receipt: the Releases page shows the census lane's last ledger attempt and its next fire
+    (`docs/ops/RELEASES_SCHEDULES_PAGE.md`).
 
 ## 5. Measured 2026-10-21 16:09 ET (`--report`, read-only, origin/main `7faa8cddf`)
 

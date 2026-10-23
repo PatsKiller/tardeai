@@ -17,7 +17,13 @@ export type Serving = { sha: string; short_sha: string; release_name: string | n
   deploy_receipt: { ok?: boolean; mode?: string; health?: string; at?: string; deployed_sha?: string; readback_errors?: string[] } | null }
 export type NextRelease = { sha: string; short_sha: string; subject: string | null; committed_at: string | null; fetched_at: string | null; is_serving: boolean
   commits_ahead: number | null; prs_since_serving: number[] | null; prs_reason: string | null
-  ci: { state: 'OK' | 'NOT_GREEN' | 'UNAVAILABLE'; reason: string | null; checks?: number; success?: number; not_success?: Array<{ name?: string; conclusion?: string | null }> } }
+  ci: MainCi }
+// Exact-SHA CI of main HEAD: SUCCESS | FAILURE | PENDING from the main-ci-watch receipt (scripts/main_ci_watch.py),
+// OK | NOT_GREEN from post_merge_ci.json, else UNAVAILABLE with the reason.
+export type MainCi = { state: 'SUCCESS' | 'FAILURE' | 'PENDING' | 'OK' | 'NOT_GREEN' | 'UNAVAILABLE'; reason: string | null; source?: string
+  checked_at?: string | null; age_s?: number | null; stale?: boolean; checks?: number; success?: number
+  not_success?: Array<{ name?: string; conclusion?: string | null }>
+  workflows?: Array<{ name?: string; state?: string; url?: string | null; updated_at?: string | null }> }
 export type TrainWindow = { window_id: string; local_time: string; starts_at: string; starts_in_seconds: number; role: string | null; enabled: boolean; note: string | null
   slot: string; state: 'LIVE' | 'SHADOW' | 'OFF' | 'STOPPED'; reason: string | null; last_shadow_request_at: string | null; last_shadow_receipt_state: string | null }
 export type Windows = { windows: TrainWindow[]; armed: boolean | null; shadow_enabled: boolean | null; delegation: { state?: string; source?: string } | null
@@ -25,7 +31,9 @@ export type Windows = { windows: TrainWindow[]; armed: boolean | null; shadow_en
 export type QueueRow = { pr_number?: number; title?: string | null; state?: string; class?: string | null; census_bucket?: string | null; [k: string]: unknown }
 export type OpenPr = { pr: number; title: string | null; bucket: string; why_not_riding: string; riding: boolean }
 export type Queue = { store: { freshness?: string; reason?: string | null; as_of?: string | null; total?: number | null; rows?: QueueRow[] | null }
-  census: { freshness?: string; reason?: string | null; as_of?: string | null; open_prs?: number | null; status?: string | null }; open_prs: OpenPr[] }
+  census: { freshness?: string; reason?: string | null; as_of?: string | null; open_prs?: number | null; status?: string | null
+    alert?: string | null; attempt?: { last_attempt?: { requested_at?: string | null; mode?: string; state?: string } | null; next_fire_at?: string | null } | null }
+  open_prs: OpenPr[] }
 export type ReleaseRow = { receipt: string; mode: string | null; at: string | null; sha: string | null; short_sha?: string | null; sha_basis: string; release_name?: string | null
   serving?: boolean; prs: number[] | null; prs_reason: string | null; verify: { ok?: boolean; health?: string; rolled_back?: boolean; readback_errors?: string[] } | null
   verify_reason: string | null; error?: string }
@@ -138,4 +146,26 @@ export function lastRunText(r: TimelineRow): string {
 
 export function countOrUnavailable(v: number | null | undefined): string {
   return typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('en-US') : 'UNAVAILABLE'
+}
+
+/** Tone for main-HEAD CI: green only on SUCCESS/OK, red on FAILURE/NOT_GREEN, info while PENDING, warning otherwise. */
+export function ciTone(state: string | null | undefined): Tone {
+  if (state === 'SUCCESS' || state === 'OK') return 'success'
+  if (state === 'FAILURE' || state === 'NOT_GREEN') return 'danger'
+  if (state === 'PENDING') return 'info'
+  return 'warning'
+}
+
+/** "PENDING · 12m ago" — the state with the age of the receipt it came from (no age for UNAVAILABLE). */
+export function ciLabel(ci: MainCi | null | undefined): string {
+  if (!ci) return 'UNAVAILABLE'
+  if (ci.state === 'UNAVAILABLE' || ci.age_s == null) return ci.state
+  return `${ci.state} · ${ageText(ci.age_s)}${ci.stale ? ' (stale)' : ''}`
+}
+
+/** The queue-store chip. While the census is not OK its count must not read as "nothing is waiting". */
+export function queueStoreText(q: Queue): string {
+  if (q.store.freshness !== 'OK') return `queue store UNAVAILABLE · ${q.store.reason ?? ''}`
+  const n = `${countOrUnavailable(q.store.total)} queued`
+  return q.census.freshness === 'OK' ? `queue store ${n}` : `queue store ${n} (explicit train queue only) · open PRs UNKNOWN`
 }
