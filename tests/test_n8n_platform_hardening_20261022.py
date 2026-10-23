@@ -303,7 +303,9 @@ def test_a_fresh_forged_host_probe_file_cannot_authorize_pass(tmp_path):
 
 
 def test_only_direct_host_probe_can_authorize_fresh_pass(tmp_path):
-    facts = _probe(tmp_path)
+    # platform_report() judges freshness against the real clock, so the probe must be stamped "now", not NOW.
+    now = datetime.now(timezone.utc)
+    facts = P.probe(root=_host_root(tmp_path, now=now), now=now, run=FakeHost())
     loaded, source = IR.load_platform_facts(probe_host=True, prober=lambda: facts)
     report = IR.platform_report(loaded)
 
