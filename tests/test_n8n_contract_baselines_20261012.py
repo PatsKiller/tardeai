@@ -63,11 +63,9 @@ def test_all_operative_baselines_have_applicable_fields_and_order():
     # operator 2026-10-21; tests/test_release_train_n8n_20261021.py) = 155 (release-2 integration, recounted).
     # + 1 (2026-10-21 macro-calendar-refresh n8n-native ingest shadow; tests/test_macro_calendar_20261021.py)
     # = 156 (release-3 integration: counted in config/n8n_health_contracts.json after the merge).
-    # + 1 (2026-10-22 cio-prospect-shadow n8n-native shadow, CIO prospect foundation P1: DRAFT pending the cio
-    # owner's REVIEW; tests/test_cio_prospect_shadow_lane_20261022.py) = 157.
     # + 1 (2026-10-22 calibration-shadow-harness n8n-native report shadow, DRAFT;
-    # tests/test_calibration_shadow_harness_20261022.py) = 158 (release batch 10 integration).
-    assert len(catalogue["contracts"]) == 158
+    # tests/test_calibration_shadow_harness_20261022.py) = 157.
+    assert len(catalogue["contracts"]) == 157
     assert not {row["id"]: A.baseline_errors(row) for row in catalogue["contracts"] if A.baseline_errors(row)}
 
 

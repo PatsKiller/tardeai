@@ -524,9 +524,6 @@ N8N_NATIVE_SHADOW = frozenset(
         # 2026-10-21 operator ruling: macro calendar for the release train's 08:00 window,
         # n8n-native ingest lane, daily 05:05 dry_run (tests/test_macro_calendar_20261021.py).
         "macro-calendar-refresh",
-        # 2026-10-22 operator directive (CIO prospect foundation, AGENTS.md §26): the read-only shadow
-        # builder, */30 market hours dry_run (tests/test_cio_prospect_shadow_lane_20261022.py).
-        "cio-prospect-shadow",
         # 2026-10-22 operator Gate 4 design: calibration shadow harness, n8n-native report lane, weekdays 12:25
         # dry_run (tests/test_calibration_shadow_harness_20261022.py).
         "calibration-shadow-harness",
