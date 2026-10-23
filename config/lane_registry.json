@@ -16952,6 +16952,28 @@
       "severity": "Medium"
     },
     {
+      "lane_id": "agent-claim-compact",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-claim-compact.timer",
+        "match": "scripts/agent_claim.py compact"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-22",
+      "state_reason": "Weekly compaction of the multi-vendor agent claim board (operator-approved design 2026-10-22): scripts/agent_claim.py compact --apply --lane-receipt appends every done/abandoned claim, and every active claim stale (no heartbeat) for more than 7 days, to <persistent-state>/data/coordination/claims/claims_history.jsonl (append-only, fsynced, read back by sha256) and only then removes that claim file; live claims are never touched. Host timer (Sun 06:50 ET), not n8n: a file-local coordination chore with no LLM/ingest work. NEVER_SCHEDULED until the operator installs the unit (docs/ops/AGENT_CLAIM_BOARD.md, Operator install), then ACTIVE.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/agent-claim-compact_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_agent_claim_board_20261022.py; linux_launchers/systemd/tradeai-agent-claim-compact.{service,timer}; docs/ops/AGENT_CLAIM_BOARD.md",
+      "note": "Removes only claim files it has just archived (the archive line is the durable copy; a later lookup of an archived claim id answers from the history). Never writes outside the claims directory and data/runtime. Dry run: scripts/agent_claim.py compact --dry-run.",
+      "severity": "Low"
+    },
+    {
       "lane_id": "hermes-watchlist-scorer",
       "owner": "research",
       "scheduler": {
