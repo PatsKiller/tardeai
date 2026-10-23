@@ -1798,6 +1798,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_MATCHER_POSITION_DIRECTIVES_2026-08-29.md` | Imperative matcher — position directives (2026-08-29) |
 | `docs/ops/CIO_MATERIAL_NOTIFY_CANARY_2026-08-20.md` | CIO material notify canary — 2026-08-20 |
 | `docs/ops/CIO_MEMORY_SHADOW_MEASURE_PHASE2_2026-08-21.md` | CIO Memory Shadow Measure — Phase 2 start (2026-08-21) |
+| `docs/ops/CIO_MEMORY_SILO_AUDIT_2026-10-23.md` | CIO memory silo audit — every per-security fact vs the CIO record (2026-10-23) |
 | `docs/ops/CIO_NATURAL_PERSISTENT_COGNITION_L5_CLOSEOUT_2026-08-24.md` | CIO natural persistent cognition L5 closeout |
 | `docs/ops/CIO_NOTIFY_PRECONDITIONS_2026-08-29.md` | Notify preconditions — four checks (2026-08-29) |
 | `docs/ops/CIO_OPERATOR_DESK_LOOP_P0_2026-08-20.md` | CIO operator desk loop — P0 intent routing (2026-08-20) |
