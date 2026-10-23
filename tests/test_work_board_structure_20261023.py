@@ -90,7 +90,13 @@ def test_add_with_structure_validates_and_normalizes(tmp_path):
     t = board(tmp_path)
     d = t.add(title="WP-41 board", kind="build", areas=["handoff/WP-41"], structure=STRUCT)
     assert d["owner_kind"] == "AGENT" and d["wp_id"] == "WP-41" and d["proof"].startswith("`task show`")
-    assert t.board()["tasks"][0]["sections"] == ["problem", "definition_of_done", "agent_prompt", "operator_commands", "proof"]
+    assert t.board()["tasks"][0]["sections"] == [
+        "problem",
+        "definition_of_done",
+        "agent_prompt",
+        "operator_commands",
+        "proof",
+    ]
     with pytest.raises(TB.TaskError, match="wp_id"):
         t.add(title="x", kind="build", areas=["a"], structure={"wp_id": "W7"})
     with pytest.raises(TB.TaskError, match="owner_kind"):
@@ -178,7 +184,9 @@ def test_next_and_take_never_hand_an_operator_package_to_an_agent(tmp_path):
 def test_stages_store_round_trip(tmp_path):
     t = board(tmp_path)
     assert t.stages()["stages"] == []
-    t.set_stages([{"stage": "Stage 2", "title": "Release train", "description": "> what we build"}], source="h.md", by="x")
+    t.set_stages(
+        [{"stage": "Stage 2", "title": "Release train", "description": "> what we build"}], source="h.md", by="x"
+    )
     st = t.stages()
     assert st["schema"] == TB.STAGES_SCHEMA and st["stages"][0]["title"] == "Release train" and st["source"] == "h.md"
     with pytest.raises(TB.TaskError):
@@ -202,7 +210,13 @@ def test_cli_add_edit_show_done(tmp_path):
     assert rc == 0, err
     tid = out.strip()
     rc, out, _ = run_cli(tmp_path, "task", "show", tid)
-    for title in ("## Problem", "## Definition of done", "## Agent prompt", "## Operator commands", "## Proof of completion"):
+    for title in (
+        "## Problem",
+        "## Definition of done",
+        "## Agent prompt",
+        "## Operator commands",
+        "## Proof of completion",
+    ):
         assert title in out
     assert "(WP-07 Stage 2 AGENT)" in out and "run x" in out
     rc, out, _ = run_cli(tmp_path, "task", "show", tid, "--full-prompt")
@@ -306,7 +320,10 @@ def test_parse_handoff_maps_every_section(tmp_path):
     assert s1["problem"] == "code merged to `main` does nothing until released."
     assert s1["definition_of_done"] == "- The served `git_sha` equals main."
     assert s1["agent_prompt"] == "Deploy current `origin/main`.\n1. Wait for CI."  # B0 marker stripped
-    assert s1["operator_commands"].startswith("(only if there is no grant)\n```") and "**Not a label:**" in s1["operator_commands"]
+    assert (
+        s1["operator_commands"].startswith("(only if there is no grant)\n```")
+        and "**Not a label:**" in s1["operator_commands"]
+    )
     assert s1["proof"].startswith("`curl /v3/build-meta.json`")
     assert s1["notes"].startswith("**Traps:**")
     assert w1["wp_status"] == "in_progress" and "#2033" in w1["wp_status_note"] and w1["prs"] == [2033]
@@ -386,7 +403,12 @@ def test_export_handoff_is_an_import_fixed_point(tmp_path, capsys):
 
 def test_pipeline_items_carry_the_wp_block_and_operator_owner(tmp_path):
     tb = board(tmp_path)
-    a = tb.add(title="WP-07 proof", kind="build", areas=["handoff/WP-07"], structure={**STRUCT, "wp_id": "WP-07", "stage": "Stage 2"})
+    a = tb.add(
+        title="WP-07 proof",
+        kind="build",
+        areas=["handoff/WP-07"],
+        structure={**STRUCT, "wp_id": "WP-07", "stage": "Stage 2"},
+    )
     o = tb.add(title="WP-05 App config", kind="review", areas=["handoff/WP-05"], depends_on=[a["task_id"]],
                structure={"wp_id": "WP-05", "owner_kind": "OPERATOR", "stage": "Stage 2", "proof": "stat 600"})  # fmt: skip
     legacy = tb.add(title="plain", kind="fix", areas=["p.py"])

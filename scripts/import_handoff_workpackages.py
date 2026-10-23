@@ -228,7 +228,12 @@ def parse_wp(wp_id: str, title: str, body: list[str], stage: dict[str, Any] | No
                 text = (aside + "\n" + text).strip() if text else aside
             text = _strip_b0(text)
             primary = label.lower() in PRIMARY["agent_prompt"] and not aside
-            put(f, text if primary and not fields.get(f) else f"**{label}{' ' + aside if aside and not text.startswith(aside) else ''}:**\n{text}")
+            put(
+                f,
+                text
+                if primary and not fields.get(f)
+                else f"**{label}{' ' + aside if aside and not text.startswith(aside) else ''}:**\n{text}",
+            )
             continue
         body_text = _trim(lines)
         if aside:
@@ -435,9 +440,13 @@ def print_plan(rows: list[dict[str, Any]], parsed: dict[str, Any], *, stream=Non
     print("", file=out)
     for r in rows:
         wp = r["wp"]
-        secs = ",".join(k for k in ("problem", "definition_of_done", "agent_prompt", "operator_commands", "proof", "notes") if wp["sections"].get(k))
+        secs = ",".join(
+            k
+            for k in ("problem", "definition_of_done", "agent_prompt", "operator_commands", "proof", "notes")
+            if wp["sections"].get(k)
+        )
         wp_of = {x["task_id"]: x["wp"]["wp_id"] for x in rows}
-        deps = [wp_of[d] for d in deps_for(r, rows)]
+        deps = [wp_of[d] for d in deps_for(r, rows)] if r["owned"] else []
         print(
             f"{r['action']:<9} {wp['wp_id']} -> {r['task_id']}  [{wp['owner_kind']}, {wp.get('stage') or '-'}, "
             f"{wp['wp_status']}] {wp['title'][:70]}",
@@ -491,7 +500,9 @@ def apply(rows: list[dict[str, Any]], parsed: dict[str, Any], tb: TB.TaskBoard, 
             tb.edit(r["task_id"], by=by, **extra)
         if r["close"]:
             note = r["wp"].get("wp_status_note") or "marked [x] in the handoff"
-            links = re.findall(r"#\d{3,5}|\b[0-9a-f]{9,40}\b|\S+/\S+\.json", note) or [f"{source}#{r['wp']['wp_id'].lower()}"]
+            links = re.findall(r"#\d{3,5}|\b[0-9a-f]{9,40}\b|\S+/\S+\.json", note) or [
+                f"{source}#{r['wp']['wp_id'].lower()}"
+            ]
             tb.evidence_done(
                 r["task_id"],
                 actor={"vendor": "import", "session": by, "agent": "import_handoff_workpackages"},
@@ -539,7 +550,9 @@ def main(argv: list[str] | None = None) -> int:
     except (TB.TaskError, B.ClaimError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    print(f"applied: created {res['created']} · updated {res['updated']} · closed {res['closed']} · stages {res['stages']}")
+    print(
+        f"applied: created {res['created']} · updated {res['updated']} · closed {res['closed']} · stages {res['stages']}"
+    )
     return 0
 
 

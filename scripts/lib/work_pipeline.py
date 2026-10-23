@@ -146,6 +146,8 @@ def wp_block(task: Mapping[str, Any] | None) -> dict[str, Any] | None:
         "related_tasks": list(task.get("related_tasks") or []),
         "status": task.get("status"),
     }
+
+
 _TS_RE = re.compile(r"`(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)`")
 _PR_REF_RE = re.compile(r"#(\d{2,6})\b")
 _OK_CONCLUSIONS = ("SUCCESS", "SKIPPED", "NEUTRAL")

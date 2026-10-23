@@ -4,18 +4,25 @@
 // what, when, where, how, the blocker and the NEXT STEP with its owner. Filters live in the URL.
 // Read: GET /api/v2/coordination/pipeline (scripts/lib/work_pipeline.py). Act (Tier 1, operator only):
 // POST /api/v2/coordination/commands (scripts/lib/work_pipeline_commands.py). Model: lib/workPipeline.ts.
+// Work-package structure (operator 2026-10-23: "structure: problem, definition of done, agent prompt, operator commands,
+// and proof of completion"): rows show the WP id and stage; Details opens a drawer with the five sections read from
+// GET /api/v2/coordination/task?id=… (Copy prompt = B0 preamble + the task prompt; Copy commands); a Stage/WP filter
+// with the stage intro; the "Next up" preset (first ready WP per owner); Export handoff (the offline file, from the board).
 import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { Chip } from '../components/primitives'
 import { RADIUS, TOKENS, TYPE, FONT, toneVars } from '../lib/designTokens'
 import {
-  PIPELINE_STAGES, PRESETS, STAGE_LABEL, ageLabel, cardActions, cellTitle, filterFromParams, filterItems, filterOptions,
-  filterToParams, planLabel, queuedSections, ragTone, summarize, type PipelineFilter, type PipelineItem, type PipelinePayload,
+  PIPELINE_STAGES, PRESETS, SECTION_ORDER, STAGE_LABEL, ageLabel, cardActions, cellTitle, commandsToCopy, filterFromParams,
+  filterItems, filterOptions, filterToParams, needsEvidence, nextUp, planLabel, queuedSections, ragTone, summarize, wpOptions,
+  type PipelineFilter, type PipelineItem, type PipelinePayload, type TaskDetail,
 } from '../lib/workPipeline'
 import { copyText, parseSplitParts, sendCommand, type CommandName, type CommandResult } from '../lib/workPipelineActions'
 import { canCreate, disabledReason, needsWords, phraseMatches, requestParams, type Tier2Action } from '../lib/workPipelineTier2'
 import { opsApi, passkeyStepUp, type OpsRequest } from '../lib/opsControls'
+import MiniMarkdown from '../components/MiniMarkdown'
+import { ExportHandoffButton } from './PlaybookPanel'
 
 const QUEUE_CAP = 6
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 12, minWidth: 0 }
@@ -100,8 +107,82 @@ function Tier2Button({ a, onDone }: { a: Tier2Action; onDone: () => void }) {
 
 type Busy = { itemId: string; text: string; ok?: boolean } | null
 
-function ItemCard({ it, onAct, busy, onWorklog, onRefresh }: {
+function WpChips({ it }: { it: PipelineItem }) {
+  const w = it.wp
+  if (!w?.wp_id && !w?.stage) return null
+  return <>
+    {w.wp_id ? <span data-testid="wp-id" style={{ ...mono, color: TOKENS.info, fontWeight: 700 }}>{w.wp_id}</span> : null}
+    {w.stage ? <span data-testid="wp-stage" style={{ ...mono, color: TOKENS.text[2] }}>{w.stage}</span> : null}
+    {w.owner_kind ? <span data-testid="wp-owner" style={{ ...mono, color: w.owner_kind === 'OPERATOR' ? TOKENS.info : TOKENS.text[2] }}>{w.owner_kind}</span> : null}
+  </>
+}
+
+function CopyButton({ text, label, testId }: { text: string; label: string; testId: string }) {
+  const [done, setDone] = useState<boolean | null>(null)
+  return <button type="button" style={btn} data-testid={testId} disabled={!text}
+    onClick={async () => { setDone(await copyText(text)); setTimeout(() => setDone(null), 2500) }}>{done === true ? 'Copied' : done === false ? 'Copy failed' : label}</button>
+}
+
+/** The five sections of one task (Problem, Definition of done, Agent prompt, Operator commands, Proof of completion). */
+function TaskDrawer({ taskId, item, onClose, onAct, busy }: {
+  taskId: string; item: PipelineItem | null; onClose: () => void
+  onAct: (it: PipelineItem, cmd: CommandName, params: Record<string, unknown>) => void; busy: Busy
+}) {
+  const api = useApi<TaskDetail>(`/api/v2/coordination/task?id=${encodeURIComponent(taskId)}`)
+  const d = api.data
+  const [evidence, setEvidence] = useState('')
+  const canDone = !!item && cardActions(item).includes('task_done') && d?.status !== 'done'
+  return <div role="dialog" aria-label={`Task ${taskId}`} data-testid="task-drawer" style={{ ...panel, position: 'fixed', top: 'min(80px, 8vh)', bottom: 8, right: 8, left: 'max(8px, calc(100vw - 776px))', boxSizing: 'border-box', overflow: 'auto', zIndex: 55, boxShadow: 'var(--shadow-3)' }}>
+    {/* an <article>, not a div: the phone overlay rules in index.css resize direct div children of fixed overlays */}
+    <article style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start', minWidth: 0 }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+          {d?.wp_id ? <b style={{ ...mono, color: TOKENS.info }}>{d.wp_id}</b> : null}
+          {d?.stage ? <span style={mono}>{d.stage}</span> : null}
+          {d?.owner_kind ? <Chip tone={d.owner_kind === 'OPERATOR' ? 'info' : 'neutral'} variant={d.owner_kind === 'OPERATOR' ? 'solid' : 'outline'}>{d.owner_kind}</Chip> : null}
+          <span style={{ ...mono, color: TOKENS.text[3] }}>{taskId}</span>
+        </div>
+        <div style={{ fontSize: TYPE.md, fontWeight: 700, color: TOKENS.text[0], overflowWrap: 'anywhere' }} data-testid="task-drawer-title">{d?.title || item?.what.title || taskId}</div>
+        {d?.owner_label ? <div style={small}>Owner: {d.owner_label}</div> : null}
+        {d?.wp_status_note ? <div style={small} data-testid="task-drawer-status">Status: <MiniMarkdown text={d.wp_status_note} /></div> : null}
+      </div>
+      <button type="button" style={btn} data-testid="task-drawer-close" onClick={onClose}>Close</button>
+    </div>
+    {api.loading && !d ? <div style={small}>Loading…</div> : null}
+    {api.error && !d ? <div style={{ ...small, color: TOKENS.danger }}>Task unavailable: {api.error}</div> : null}
+    {d ? SECTION_ORDER.map(({ key, label }) => {
+      const body = d[key]
+      return <section key={key} data-testid={`section-${key}`} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
+          <h3 style={{ margin: 0, fontSize: TYPE.base, color: TOKENS.text[0], textTransform: 'uppercase', letterSpacing: 0.4 }}>{label}</h3>
+          {key === 'agent_prompt' && d.agent_prompt ? <CopyButton testId="copy-prompt" label="Copy prompt" text={d.full_prompt || d.agent_prompt} /> : null}
+          {key === 'agent_prompt' && d.agent_prompt ? <span style={small} data-testid="prompt-preamble-note">{d.preamble?.present ? 'Copy includes the B0 preamble from the playbook' : 'B0 preamble unavailable: copies the task prompt only'}</span> : null}
+          {key === 'operator_commands' && d.operator_commands ? <CopyButton testId="copy-operator" label="Copy commands" text={commandsToCopy(d.operator_commands)} /> : null}
+        </div>
+        {body ? <MiniMarkdown text={body} testId={`section-${key}-body`} /> : <div style={small}>Not written yet.</div>}
+        {key === 'proof' ? <div data-testid="proof-evidence" style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
+          {d.proof_evidence ? <><span style={dt}>Evidence{d.done_at ? ` · done ${et(d.done_at)}` : ''}</span><MiniMarkdown text={d.proof_evidence} /></>
+            : <span style={small}>{d.status === 'done' ? 'Done without recorded evidence.' : d.proof ? 'No evidence yet: done needs links, SHAs or receipt paths.' : ''}</span>}
+        </div> : null}
+      </section>
+    }) : null}
+    {d?.notes ? <details style={{ borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8, minWidth: 0 }} data-testid="section-notes"><summary style={{ ...small, cursor: 'pointer' }}>Notes and traps</summary><MiniMarkdown text={d.notes} /></details> : null}
+    {d?.related_tasks?.length ? <div style={{ ...small, minWidth: 0, overflowWrap: 'anywhere' }} data-testid="related-tasks">Related board tasks: <span style={mono}>{d.related_tasks.join(', ')}</span></div> : null}
+    {canDone && item ? <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'flex-start', minWidth: 0, borderTop: `1px solid ${TOKENS.borderSubtle}`, paddingTop: 8 }}>
+      <textarea style={{ ...select, minWidth: 240, flex: 1, minHeight: 48 }} data-testid="evidence-text" value={evidence} onChange={e => setEvidence(e.target.value)} maxLength={500}
+        placeholder={d?.proof ? 'Proof evidence (required): PR, SHA, receipt path…' : 'Summary (optional)'} />
+      <button type="button" style={btn} data-testid="drawer-task-done" disabled={!!d?.proof && !evidence.trim()}
+        onClick={() => onAct(item, 'task_done', { task_id: taskId, summary: evidence.trim() || undefined })}>Mark done</button>
+      {busy && busy.itemId === item.id ? <span data-testid="drawer-action-result" style={{ ...small, color: busy.ok === false ? TOKENS.danger : TOKENS.success }}>{busy.text}</span> : null}
+    </div> : null}
+    </article>
+  </div>
+}
+
+function ItemCard({ it, onAct, busy, onWorklog, onRefresh, onDetail }: {
   onRefresh: () => void
+  onDetail: (it: PipelineItem) => void
   it: PipelineItem
   onAct: (it: PipelineItem, cmd: CommandName, params: Record<string, unknown>) => void
   busy: Busy
@@ -129,6 +210,7 @@ function ItemCard({ it, onAct, busy, onWorklog, onRefresh }: {
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: TYPE.md, fontWeight: 650, color: TOKENS.text[0], overflowWrap: 'anywhere' }}>{it.what.title || it.id}</div>
         <div style={{ ...mono, color: TOKENS.text[2], display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <WpChips it={it} />
           <span>{it.id}</span>
           {it.what.design_id ? <span>{it.what.design_id}</span> : null}
           {it.what.priority ? <span>P{it.what.priority}</span> : null}
@@ -168,6 +250,7 @@ function ItemCard({ it, onAct, busy, onWorklog, onRefresh }: {
       {it.links?.ci ? <a style={linkStyle} href={it.links.ci} target="_blank" rel="noreferrer" data-testid="link-ci">CI log</a> : null}
       {it.links?.diff ? <a style={linkStyle} href={it.links.diff} target="_blank" rel="noreferrer" data-testid="link-diff">Diff</a> : null}
       {it.links?.worklog_claim ? <button type="button" style={{ ...btn, background: 'transparent', color: TOKENS.info, border: 'none', padding: 0 }} data-testid="link-worklog" onClick={() => onWorklog(it.links!.worklog_claim!)}>Worklog</button> : null}
+      {it.wp && it.what.task_id ? <button type="button" style={{ ...btn, borderColor: TOKENS.info }} data-testid="open-detail" onClick={() => onDetail(it)}>Details</button> : null}
       <span style={{ flex: 1 }} />
       {acts.includes('note') ? <button type="button" style={btn} data-testid="act-note" onClick={() => setCompose(compose === 'note' ? null : 'note')}>Add note</button> : null}
       {acts.includes('set_priority') && it.what.task_id ? <select style={select} aria-label="Priority" data-testid="act-priority" value={String(it.what.priority ?? '')}
@@ -178,7 +261,8 @@ function ItemCard({ it, onAct, busy, onWorklog, onRefresh }: {
       {acts.includes('unhold') ? <button type="button" style={btn} data-testid="act-unhold" onClick={() => onAct(it, 'unhold', { item: it.what.task_id || prItem })}>Unhold</button> : null}
       {acts.includes('batch_add') ? <button type="button" style={btn} data-testid="act-batch-add" onClick={() => onAct(it, 'batch_add', { pr })}>Add to next batch</button> : null}
       {acts.includes('batch_remove') ? <button type="button" style={btn} data-testid="act-batch-remove" onClick={() => onAct(it, 'batch_remove', { pr })}>Remove from next batch</button> : null}
-      {acts.includes('task_done') && it.what.task_id ? <button type="button" style={btn} data-testid="act-task-done" onClick={() => onAct(it, 'task_done', { task_id: it.what.task_id })}>Mark done</button> : null}
+      {acts.includes('task_done') && it.what.task_id ? <button type="button" style={btn} data-testid="act-task-done" title={needsEvidence(it) ? 'Needs proof evidence: opens the details' : undefined}
+        onClick={() => needsEvidence(it) ? onDetail(it) : onAct(it, 'task_done', { task_id: it.what.task_id })}>Mark done</button> : null}
       {acts.includes('task_split') ? <button type="button" style={btn} data-testid="act-split" onClick={() => setCompose(compose === 'split' ? null : 'split')}>Split</button> : null}
       {(it.actions?.tier2 || []).map(a => <Tier2Button key={a.kind + JSON.stringify(a.params)} a={a} onDone={onRefresh} />)}
       {acts.includes('release_stale_claim') ? <button type="button" style={{ ...btn, color: TOKENS.danger, borderColor: TOKENS.danger }} data-testid="act-release-stale" onClick={() => setCompose('release')}>Release stale claim</button> : null}
@@ -206,10 +290,11 @@ function Tile({ label, value, tone, active, onClick, testId, title }: { label: s
   </button>
 }
 
-function QueueCard({ it, children }: { it: PipelineItem; children?: ReactNode }) {
+function QueueCard({ it, children, onDetail }: { it: PipelineItem; children?: ReactNode; onDetail?: (it: PipelineItem) => void }) {
   const tone = toneVars(ragTone(it.rag))
   return <div data-testid="queued-card" data-item-id={it.id} style={{ border: `1px solid ${TOKENS.borderSubtle}`, borderLeft: `3px solid ${tone.color}`, borderRadius: RADIUS.sm, padding: '6px 8px', background: TOKENS.bg[0], minWidth: 0 }}>
-    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>{children}</div>
+    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>{children}<WpChips it={it} />
+      {onDetail && it.wp && it.what.task_id ? <button type="button" style={{ ...btn, padding: '1px 6px' }} data-testid="queued-open-detail" onClick={() => onDetail(it)}>Details</button> : null}</div>
     <div style={{ fontSize: TYPE.base, color: TOKENS.text[0], fontWeight: 600, overflowWrap: 'anywhere' }}>{it.what.title}</div>
     <div style={{ ...mono, color: TOKENS.text[2] }}>{it.id}{it.blocker ? <span style={{ color: TOKENS.danger }}> · {it.blocker}</span> : null}</div>
   </div>
@@ -250,6 +335,7 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
   const setF = useCallback((patch: Partial<PipelineFilter>) => setParams(filterToParams({ ...f, ...patch }, params), { replace: true }), [f, params, setParams])
   const [busy, setBusy] = useState<Busy>(null)
   const [worklog, setWorklog] = useState<string | null>(null)
+  const [detail, setDetail] = useState<PipelineItem | null>(null)
   const [queueOpen, setQueueOpen] = useState(true)
   const [queueAll, setQueueAll] = useState(false)
   const cap = <T,>(xs: T[]) => (queueAll ? xs : xs.slice(0, QUEUE_CAP))
@@ -259,7 +345,10 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
   const opts = useMemo(() => filterOptions(items), [items])
   const shown = useMemo(() => filterItems(items, f), [items, f])
   const q = useMemo(() => queuedSections(items), [items])
-  const filtering = !!(f.preset || f.stage || f.rag || f.owner || f.vendor || f.design || f.batch || f.q)
+  const wpo = useMemo(() => wpOptions(items, api.data?.wp_stages || []), [items, api.data])
+  const up = useMemo(() => nextUp(items), [items])
+  const stageInfo = f.wp.startsWith('Stage') ? wpo.stages.find(s => s.stage === f.wp) : null
+  const filtering = !!(f.preset || f.stage || f.rag || f.owner || f.vendor || f.design || f.batch || f.wp || f.q)
   const list = filtering ? shown : shown.filter(i => i.stage !== 'queued')
 
   const act = useCallback(async (it: PipelineItem | null, cmd: CommandName, p: Record<string, unknown>) => {
@@ -294,6 +383,7 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
             {served?.sha ? ` · served ${String(served.sha).slice(0, 9)} health ${served.ok ? 'ok' : served.ok === false ? 'FAILED' : 'unknown'}` : ''}
             {census?.warning ? <span style={{ color: TOKENS.warning }}> · {census.warning}</span> : null}
           </div>
+          <div style={{ marginTop: 6 }}><ExportHandoffButton /></div>
         </div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', ...small }}>
           {(['green', 'amber', 'red', 'grey'] as const).map(r => <span key={r} style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
@@ -336,16 +426,39 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
         <select style={select} aria-label="Design" data-testid="filter-design" value={f.design} onChange={e => setF({ design: e.target.value })}>
           <option value="">Design: all</option>{opts.designs.map(v => <option key={v} value={v}>{v}</option>)}
         </select>
+        <select style={select} aria-label="Stage or work package" data-testid="filter-wp" value={f.wp} onChange={e => setF({ wp: e.target.value })}>
+          <option value="">Stage/WP: all</option>
+          {wpo.stages.map(st => <option key={st.stage} value={st.stage}>{st.stage}{st.title ? `: ${st.title.length > 48 ? st.title.slice(0, 47) + '…' : st.title}` : ''}</option>)}
+          {wpo.wps.map(w => <option key={w.id} value={w.id}>{w.title.startsWith(w.id) ? w.title.slice(0, 60) : `${w.id} ${w.title}`.slice(0, 60)}</option>)}
+        </select>
         <select style={select} aria-label="PR or batch" data-testid="filter-batch" value={f.batch} onChange={e => setF({ batch: e.target.value })}>
           <option value="">PR/batch: all</option><option value="none">Green, not in a batch</option>{opts.batches.map(b => <option key={b} value={String(b)}>In batch PR {b}</option>)}
         </select>
         <input style={{ ...select, minWidth: 180, flex: '1 1 180px' }} aria-label="Search" data-testid="filter-q" placeholder="Search title, PR, branch, file…" value={f.q} onChange={e => setF({ q: e.target.value })} />
         <label style={{ ...small, display: 'inline-flex', gap: 4, alignItems: 'center' }}><input type="checkbox" data-testid="filter-finished" checked={f.finished} onChange={e => setF({ finished: e.target.checked })} /> show finished ({s.finished})</label>
-        {filtering ? <button type="button" style={btn} data-testid="filter-clear" onClick={() => setF({ preset: '', stage: '', rag: '', owner: '', vendor: '', design: '', batch: '', q: '' })}>Clear</button> : null}
+        {filtering ? <button type="button" style={btn} data-testid="filter-clear" onClick={() => setF({ preset: '', stage: '', rag: '', owner: '', vendor: '', design: '', batch: '', wp: '', q: '' })}>Clear</button> : null}
       </div>
     </div>
 
     {api.error && !api.data ? <div style={{ ...panel, color: TOKENS.danger }}>Work pipeline unavailable: {api.error}</div> : null}
+
+    {stageInfo ? <div style={panel} data-testid="stage-intro">
+      <h2 style={{ margin: '0 0 6px', fontSize: TYPE.md, color: TOKENS.text[0] }}>{stageInfo.stage}{stageInfo.title ? `: ${stageInfo.title}` : ''}</h2>
+      {stageInfo.description ? <MiniMarkdown text={stageInfo.description} /> : <div style={small}>No stage introduction in the plan.</div>}
+    </div> : null}
+
+    {f.preset === 'next-up' ? <div style={panel} data-testid="next-up">
+      <h2 style={{ margin: '0 0 6px', fontSize: TYPE.md, color: TOKENS.text[0] }}>Next up <span style={{ ...small, fontWeight: 400 }}>the first work package whose dependencies are met, per owner</span></h2>
+      <div className="wp-queue" style={{ display: 'grid', gap: 10 }}>
+        {up.map(g => <div key={g.owner} data-testid={`next-up-${g.owner}`} style={{ display: 'grid', gap: 6, alignContent: 'start' }}>
+          <div style={small}>{g.owner === 'AGENT' ? 'Agents' : g.owner === 'OPERATOR' ? 'Operator (you)' : 'Operator + agent'} · {1 + g.rest.length} ready</div>
+          <QueueCard it={g.first} onDetail={setDetail}><Chip tone={g.owner === 'AGENT' ? 'neutral' : 'info'} variant="solid">NEXT</Chip></QueueCard>
+          {g.rest.slice(0, 2).map(it => <QueueCard key={it.id} it={it} onDetail={setDetail} />)}
+          {g.rest.length > 2 ? <div style={small}>…and {g.rest.length - 2} more below</div> : null}
+        </div>)}
+        {!up.length ? <div style={small}>No work package is ready: every one is done or waits for a dependency.</div> : null}
+      </div>
+    </div> : null}
 
     <div style={panel} data-testid="queued-section">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -359,7 +472,7 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
       {queueOpen ? <div className="wp-queue" style={{ display: 'grid', gap: 10, marginTop: 8 }}>
         <div data-testid="queued-tasks" style={{ display: 'grid', gap: 6, alignContent: 'start' }}>
           <div style={small}>Task board: free, not started (agents pick with <code>agent_claim.py next</code>)</div>
-          {cap(q.tasks).map(it => <QueueCard key={it.id} it={it}><Chip tone="neutral">P{it.what.priority ?? '?'}</Chip>{it.what.kind ? <Chip tone="neutral">{it.what.kind}</Chip> : null}{it.held ? <Chip tone="warning">held</Chip> : null}</QueueCard>)}
+          {cap(q.tasks).map(it => <QueueCard key={it.id} it={it} onDetail={setDetail}><Chip tone="neutral">P{it.what.priority ?? '?'}</Chip>{it.what.kind ? <Chip tone="neutral">{it.what.kind}</Chip> : null}{it.held ? <Chip tone="warning">held</Chip> : null}</QueueCard>)}
           {!q.tasks.length ? <div style={small}>No free tasks.</div> : null}
         </div>
         <div data-testid="queued-green" style={{ display: 'grid', gap: 6, alignContent: 'start' }}>
@@ -369,9 +482,9 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
         </div>
         <div data-testid="queued-operator" style={{ display: 'grid', gap: 6, alignContent: 'start' }}>
           <div style={small}>Operator to-dos</div>
-          {cap(q.operator).map(it => <QueueCard key={it.id} it={it}><Chip tone="info" variant="solid">OPERATOR</Chip>
+          {cap(q.operator).map(it => <QueueCard key={it.id} it={it} onDetail={setDetail}><Chip tone="info" variant="solid">OPERATOR</Chip>
             {it.next.command ? <code style={{ ...mono, color: TOKENS.text[2] }}>{it.next.command}</code> : null}
-            {cardActions(it).includes('task_done') ? <button type="button" style={btn} data-testid="queued-task-done" onClick={() => act(null, 'task_done', { task_id: it.what.task_id })}>Mark done</button> : null}</QueueCard>)}
+            {cardActions(it).includes('task_done') ? <button type="button" style={btn} data-testid="queued-task-done" onClick={() => needsEvidence(it) ? setDetail(it) : act(null, 'task_done', { task_id: it.what.task_id })}>Mark done</button> : null}</QueueCard>)}
           {!q.operator.length ? <div style={small}>Nothing for you.</div> : null}
         </div>
       </div> : null}
@@ -382,11 +495,12 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
     <div style={panel}>
       <h2 style={{ margin: '0 0 6px', fontSize: TYPE.md, color: TOKENS.text[0] }}>{filtering ? 'Matching items' : 'In flight'} <span style={{ ...small, fontWeight: 400 }} data-testid="pipeline-count">{list.length} shown</span></h2>
       <div style={{ display: 'grid', gap: 8 }}>
-        {list.map(it => <ItemCard key={it.id} it={it} onAct={act} busy={busy} onWorklog={setWorklog} onRefresh={api.refetch} />)}
+        {list.map(it => <ItemCard key={it.id} it={it} onAct={act} busy={busy} onWorklog={setWorklog} onRefresh={api.refetch} onDetail={setDetail} />)}
         {!list.length && !api.loading ? <div style={small} data-testid="pipeline-empty">Nothing matches.</div> : null}
         {api.loading && !api.data ? <div style={small}>Loading…</div> : null}
       </div>
     </div>
     {worklog ? <WorklogDrawer claimId={worklog} onClose={() => setWorklog(null)} /> : null}
+    {detail?.what.task_id ? <TaskDrawer key={detail.what.task_id} taskId={detail.what.task_id} item={detail} onClose={() => setDetail(null)} onAct={act} busy={busy} /> : null}
   </section>
 }

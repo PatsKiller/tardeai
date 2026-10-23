@@ -231,7 +231,7 @@ def export_handoff(
     if playbook_text is not None:
         body = playbook_text
         m = re.search(r"^# Section A", body, re.M)
-        lines.append((body[m.start():] if m else body).rstrip() + "\n")
+        lines.append((body[m.start() :] if m else body).rstrip() + "\n")
     lines.extend(["---", "", "# Section B: the work, in order", "", "## Ordered index of work packages", ""])
     lines.extend(["| # | Work package | Owner | Status |", "|---|---|---|---|"])
     for name in stage_names:

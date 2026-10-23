@@ -7,6 +7,7 @@ import ReleaseTrainTab from './ReleaseTrainTab'
 import AgentClaimsPanel from './AgentClaimsPanel'
 import WorkBoardPanel from './WorkBoardPanel'
 import WorkPipelinePanel from './WorkPipelinePanel'
+import PlaybookPanel from './PlaybookPanel'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { projectionReadPath } from '../lib/projectionReadProtocol'
@@ -36,9 +37,10 @@ const PHASES: Array<[CoordinationRow['phase'], string]> = [
 // (2026-10-22: who's working on what — Claude, Codex, Cursor sessions and the files each has claimed).
 // 2026-10-23 (operator, 13:15 ET): the Work pipeline — one row per work item, incubator stages with RAG and next step —
 // is the DEFAULT tab; the per-file claim table is kept as "Files held" (?tab=agents); Automation moved to ?tab=operations.
-const TABS = ['pipeline', 'operations', 'today', 'events', 'migration', 'release', 'agents', 'work'] as const
+// 2026-10-23 (operator: "the above should be part of the board"): Playbook renders docs/ops/OPERATING_PLAYBOOK.md.
+const TABS = ['pipeline', 'playbook', 'operations', 'today', 'events', 'migration', 'release', 'agents', 'work'] as const
 type CoordinationTab = (typeof TABS)[number]
-const TAB_LABEL: Record<CoordinationTab, string> = { pipeline: 'Work pipeline', operations: 'Automation', today: 'n8n today', events: 'Events', migration: 'Migration board', release: 'Release train', agents: 'Files held', work: 'Work board' }
+const TAB_LABEL: Record<CoordinationTab, string> = { pipeline: 'Work pipeline', playbook: 'Playbook', operations: 'Automation', today: 'n8n today', events: 'Events', migration: 'Migration board', release: 'Release train', agents: 'Files held', work: 'Work board' }
 const tabButton = (active: boolean): CSSProperties => ({
   padding: '7px 14px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`,
   background: active ? TOKENS.bg[2] : TOKENS.bg[1], color: active ? TOKENS.text[0] : TOKENS.text[2],
@@ -104,7 +106,7 @@ export default function CoordinationPage() {
     setTab(t)
     const next = new URLSearchParams(searchParams)
     if (t === 'pipeline') next.delete('tab'); else next.set('tab', t)
-    if (t !== 'pipeline') for (const k of ['preset', 'stage', 'rag', 'owner', 'vendor', 'design', 'batch', 'q', 'finished']) next.delete(k)
+    if (t !== 'pipeline') for (const k of ['preset', 'stage', 'rag', 'owner', 'vendor', 'design', 'batch', 'wp', 'q', 'finished']) next.delete(k)
     setSearchParams(next, { replace: true })
   }
   return (
@@ -116,7 +118,7 @@ export default function CoordinationPage() {
           </button>
         ))}
       </nav>
-      {tab === 'pipeline' ? <WorkPipelinePanel /> : tab === 'operations' ? <SchedulerOperations /> : tab === 'today' ? <N8nToday /> : tab === 'agents' ? <AgentClaimsPanel /> : tab === 'work' ? <WorkBoardPanel /> : tab === 'release' ? (
+      {tab === 'pipeline' ? <WorkPipelinePanel /> : tab === 'playbook' ? <PlaybookPanel /> : tab === 'operations' ? <SchedulerOperations /> : tab === 'today' ? <N8nToday /> : tab === 'agents' ? <AgentClaimsPanel /> : tab === 'work' ? <WorkBoardPanel /> : tab === 'release' ? (
         <div style={{ display: 'grid', gap: 12 }}>
           {/* Releases & schedules (2026-10-22): the full page (serving release, main HEAD, windows, queue, shipped history,
               release errors, n8n + cron timeline) is linked from here; the queue/trains/events views and STOP RELEASES stay on this tab. */}

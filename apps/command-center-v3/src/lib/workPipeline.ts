@@ -15,6 +15,40 @@ export const STAGE_LABEL: Record<PipelineStage, string> = {
   pr_open: 'PR open', ci: 'CI', in_batch: 'In batch', merged: 'Merged', released: 'Released', verified: 'Verified live',
 }
 
+/** Work-package labels of a task (operator 2026-10-23: problem / definition of done / agent prompt / operator
+ *  commands / proof of completion on every task). Section TEXT is fetched per task from /api/v2/coordination/task. */
+export type OwnerKind = 'AGENT' | 'OPERATOR' | 'BOTH'
+export type WpBlock = {
+  wp_id?: string | null
+  stage?: string | null
+  owner_kind?: OwnerKind | null
+  owner_label?: string | null
+  wp_status?: 'not_started' | 'in_progress' | 'done' | 'repeating' | null
+  status_note?: string | null
+  sections: string[]
+  depends_on: string[]
+  blocked_by: string[]
+  related_tasks?: string[]
+  status?: string | null
+}
+export type WpStage = { stage: string; title?: string | null; description?: string | null }
+export type TaskDetail = {
+  task_id: string; title?: string; status?: string; wp_id?: string | null; stage?: string | null; owner_kind?: OwnerKind | null
+  owner_label?: string | null; wp_status?: string | null; wp_status_note?: string | null; depends_on?: string[] | null; related_tasks?: string[] | null
+  problem?: string | null; definition_of_done?: string | null; agent_prompt?: string | null; operator_commands?: string | null
+  proof?: string | null; proof_evidence?: string | null; notes?: string | null; full_prompt?: string | null; done_at?: string | null
+  preamble?: { source?: string | null; sha256?: string | null; present?: boolean }
+  evidence?: string[] | null; summary?: string | null; source_ref?: string | null; priority?: number | null; kind?: string | null
+  history?: Array<Record<string, unknown>>; history_len?: number; schema?: string
+}
+export const SECTION_ORDER = [
+  { key: 'problem', label: 'Problem' },
+  { key: 'definition_of_done', label: 'Definition of done' },
+  { key: 'agent_prompt', label: 'Agent prompt' },
+  { key: 'operator_commands', label: 'Operator commands' },
+  { key: 'proof', label: 'Proof of completion' },
+] as const
+
 export type StageCell = { stage: PipelineStage; rag: Rag; label: string; at?: string | null; evidence?: string }
 export type PipelineItem = {
   id: string
@@ -35,7 +69,8 @@ export type PipelineItem = {
   held?: { by?: string; at?: string; reason?: string | null } | null
   queue_position?: number | null
   who: { kind: string; label: string; vendor?: string | null; agent?: string | null; session?: string | null }
-  what: { title: string; design_id?: string | null; task_id?: string | null; pr_number?: number | null; pr_url?: string | null; batch?: number | null; kind?: string | null; priority?: number | null }
+  what: { title: string; design_id?: string | null; task_id?: string | null; pr_number?: number | null; pr_url?: string | null; batch?: number | null; kind?: string | null; priority?: number | null; wp_id?: string | null; stage?: string | null }
+  wp?: WpBlock | null
   when: { started?: string | null; last_activity?: string | null; stage_since?: string | null; stage_age_minutes?: number | null; idle_minutes?: number | null }
   where: { branch?: string | null; worktree?: string | null; file_count: number; files: string[] }
   how: { plan_done?: number | null; plan_total?: number | null; latest?: string | null; worklog?: boolean; claim_ids?: string[]; operator_note?: { by?: string; at?: string; text?: string } | null }
@@ -51,6 +86,8 @@ export type PipelinePayload = {
   batch_queue?: { next_batch: number[]; held_prs: number[]; updated_at?: string | null }
   tier2?: { kinds?: Array<{ kind: string; label: string; enabled: boolean; policy_note?: string | null }>; release?: import('./workPipelineTier2').Tier2Action & { merged_waiting?: number } }
   stale_hours?: number
+  wp_stages?: WpStage[]
+  stages?: string[]
 }
 
 export const PRESETS = [
@@ -59,6 +96,7 @@ export const PRESETS = [
   { id: 'waiting-batch', label: 'Waiting for batch' },
   { id: 'red', label: 'Blocked/red' },
   { id: 'live-today', label: 'Live today' },
+  { id: 'next-up', label: 'Next up' },
 ] as const
 export type PresetId = (typeof PRESETS)[number]['id']
 
@@ -70,11 +108,12 @@ export type PipelineFilter = {
   vendor: string
   design: string
   batch: string // '' | 'none' (green, not in a batch) | '<batch pr number>'
+  wp: string // '' | 'Stage 2' | 'WP-07'
   q: string
   finished: boolean
 }
-export const EMPTY_FILTER: PipelineFilter = { preset: '', stage: '', rag: '', owner: '', vendor: '', design: '', batch: '', q: '', finished: false }
-const KEYS = ['preset', 'stage', 'rag', 'owner', 'vendor', 'design', 'batch', 'q'] as const
+export const EMPTY_FILTER: PipelineFilter = { preset: '', stage: '', rag: '', owner: '', vendor: '', design: '', batch: '', wp: '', q: '', finished: false }
+const KEYS = ['preset', 'stage', 'rag', 'owner', 'vendor', 'design', 'batch', 'wp', 'q'] as const
 
 /** URL search params → filter (unknown values ignored). */
 export function filterFromParams(p: URLSearchParams): PipelineFilter {
@@ -90,6 +129,8 @@ export function filterFromParams(p: URLSearchParams): PipelineFilter {
   f.vendor = (p.get('vendor') || '').slice(0, 40)
   f.design = (p.get('design') || '').slice(0, 80)
   f.batch = (p.get('batch') || '').slice(0, 12)
+  const wp = (p.get('wp') || '').slice(0, 20)
+  if (/^(Stage \d{1,2}|WP-\d{2,3})$/.test(wp)) f.wp = wp
   f.q = (p.get('q') || '').slice(0, 120)
   f.finished = p.get('finished') === '1'
   return f
@@ -125,6 +166,7 @@ export function matchesPreset(it: PipelineItem, preset: PresetId | '', now: Date
     case 'waiting-batch': return !it.finished && !!it.waiting_for_batch
     case 'red': return !it.finished && it.rag === 'red'
     case 'live-today': return liveToday(it, now)
+    case 'next-up': return isReadyWp(it)
     default: return true
   }
 }
@@ -141,8 +183,9 @@ export function filterItems(items: PipelineItem[], f: PipelineFilter, now: Date 
     if (f.design && (it.what.design_id || '') !== f.design) return false
     if (f.batch === 'none' && !it.waiting_for_batch) return false
     if (f.batch && f.batch !== 'none' && String(it.batch ?? '') !== f.batch) return false
+    if (f.wp && !matchesWp(it, f.wp)) return false
     if (q) {
-      const hay = [it.id, it.what.title, it.what.design_id, it.what.task_id, it.pr_number ? `#${it.pr_number}` : '', it.where.branch,
+      const hay = [it.id, it.what.title, it.what.design_id, it.what.task_id, it.wp?.wp_id, it.wp?.stage, it.pr_number ? `#${it.pr_number}` : '', it.where.branch,
         it.who.label, it.next.text, it.blocker, ...(it.where.files || [])].join(' ').toLowerCase()
       if (!hay.includes(q)) return false
     }
@@ -176,11 +219,72 @@ export function summarize(items: PipelineItem[]) {
 }
 
 const OPERATOR_TITLE = /^\s*OPERATOR\s*:/i
+const isOperatorTask = (i: PipelineItem) => OPERATOR_TITLE.test(i.what.title || '') || i.wp?.owner_kind === 'OPERATOR'
+
+/** `WP-07` → 7 (unknown → a large number, so labelled work sorts first). */
+export function wpNumber(id?: string | null): number {
+  const m = /^WP-(\d+)$/.exec(id || '')
+  return m ? Number(m[1]) : 1e6
+}
+
+/** Stage filter value: `Stage 2` matches the WP's stage, `WP-07` the WP itself. */
+export function matchesWp(it: PipelineItem, v: string): boolean {
+  if (!v) return true
+  if (v.startsWith('WP-')) return it.wp?.wp_id === v
+  return it.wp?.stage === v
+}
+
+/** A work package whose dependencies are met and which is not finished (the "Next up" candidates). */
+export function isReadyWp(it: PipelineItem): boolean {
+  const w = it.wp
+  if (!w?.wp_id || it.finished) return false
+  if (w.wp_status === 'done' || w.status === 'done' || w.status === 'split') return false
+  return (w.blocked_by || []).length === 0
+}
+
+/** "Next up": per owner kind (AGENT / OPERATOR / BOTH), the ready work packages in plan order; `first` is the next one. */
+export function nextUp(items: PipelineItem[]): Array<{ owner: OwnerKind; first: PipelineItem; rest: PipelineItem[] }> {
+  const ready = items.filter(isReadyWp).sort((a, b) => wpNumber(a.wp?.wp_id) - wpNumber(b.wp?.wp_id))
+  const out: Array<{ owner: OwnerKind; first: PipelineItem; rest: PipelineItem[] }> = []
+  for (const owner of ['AGENT', 'OPERATOR', 'BOTH'] as const) {
+    const xs = ready.filter(i => (i.wp?.owner_kind || 'AGENT') === owner)
+    if (xs.length) out.push({ owner, first: xs[0], rest: xs.slice(1) })
+  }
+  return out
+}
+
+/** Stage / WP select options: the imported stages (with titles) and every WP id, in plan order. */
+export function wpOptions(items: PipelineItem[], stages: WpStage[] = []): { stages: WpStage[]; wps: Array<{ id: string; title: string }> } {
+  const seen = new Set(stages.map(s => s.stage))
+  const extra: WpStage[] = []
+  const wps = new Map<string, string>()
+  for (const it of items) {
+    const st = it.wp?.stage
+    if (st && !seen.has(st)) { seen.add(st); extra.push({ stage: st }) }
+    if (it.wp?.wp_id) wps.set(it.wp.wp_id, it.what.title)
+  }
+  return {
+    stages: [...stages, ...extra.sort((a, b) => a.stage.localeCompare(b.stage, 'en', { numeric: true }))],
+    wps: [...wps.entries()].sort((a, b) => wpNumber(a[0]) - wpNumber(b[0])).map(([id, title]) => ({ id, title })),
+  }
+}
+
+/** The text "Copy commands" puts on the clipboard: the fenced code blocks' bodies when there are any, else the text. */
+export function commandsToCopy(md?: string | null): string {
+  const text = md || ''
+  const blocks = [...text.matchAll(/```[^\n]*\n([\s\S]*?)```/g)].map(m => m[1].replace(/\n$/, ''))
+  return blocks.length ? blocks.join('\n') : text.trim()
+}
+
+/** Marking a task done needs evidence when it names a proof of completion. */
+export function needsEvidence(it: PipelineItem): boolean {
+  return (it.wp?.sections || []).includes('proof')
+}
 
 /** The Queued section: free task-board tasks, green PRs not yet in a batch, operator to-dos. */
 export function queuedSections(items: PipelineItem[]) {
   const live = items.filter(i => !i.finished)
-  const operator = live.filter(i => i.kind === 'task' && OPERATOR_TITLE.test(i.what.title || '') && i.stage === 'queued')
+  const operator = live.filter(i => i.kind === 'task' && isOperatorTask(i) && i.stage === 'queued')
   const tasks = live.filter(i => i.kind === 'task' && i.stage === 'queued' && !operator.includes(i))
     .sort((a, b) => (a.what.priority ?? 9) - (b.what.priority ?? 9) || a.id.localeCompare(b.id))
   const green = live.filter(i => i.waiting_for_batch)

@@ -1,8 +1,9 @@
 // Coordination → Work pipeline model: URL filters, presets, summary strip, Queued section, card actions, commands body.
 // Runs in the CC-v3 build:  node --experimental-strip-types src/lib/workPipeline.test.ts
 import {
-  EMPTY_FILTER, PIPELINE_STAGES, ageLabel, cardActions, cellTitle, filterFromParams, filterItems, filterOptions, filterToParams,
-  liveToday, planLabel, queuedSections, ragTone, summarize, type PipelineItem,
+  EMPTY_FILTER, PIPELINE_STAGES, ageLabel, cardActions, cellTitle, commandsToCopy, filterFromParams, filterItems, filterOptions,
+  filterToParams, isReadyWp, liveToday, needsEvidence, nextUp, planLabel, queuedSections, ragTone, summarize, wpNumber, wpOptions,
+  type PipelineItem, type WpBlock,
 } from './workPipeline.ts'
 import { COMMANDS_PATH, commandBody, parseSplitParts } from './workPipelineActions.ts'
 declare const process: { exit(code?: number): never }
@@ -41,7 +42,7 @@ const ITEMS: PipelineItem[] = [
 t('URL params round-trip and unknown values are dropped', () => {
   const p = new URLSearchParams('tab=pipeline&preset=needs-me&stage=ci&rag=red&owner=operator&vendor=claude&design=DSN-x&batch=2018&q=shard&finished=1')
   const f = filterFromParams(p)
-  eq(f, { preset: 'needs-me', stage: 'ci', rag: 'red', owner: 'operator', vendor: 'claude', design: 'DSN-x', batch: '2018', q: 'shard', finished: true })
+  eq(f, { preset: 'needs-me', stage: 'ci', rag: 'red', owner: 'operator', vendor: 'claude', design: 'DSN-x', batch: '2018', wp: '', q: 'shard', finished: true })
   const back = filterToParams(f, new URLSearchParams('tab=pipeline'))
   eq(back.get('tab'), 'pipeline'); eq(back.get('rag'), 'red'); eq(back.get('finished'), '1')
   eq(filterFromParams(new URLSearchParams('preset=bogus&stage=nope&rag=purple&owner=x')), EMPTY_FILTER)
@@ -108,6 +109,63 @@ t('commands: one endpoint, the actor is never in the body; split grammar', () =>
     { title: 'half 1', areas: ['scripts/a.py', 'docs/a.md'], acceptance: ['tests', 'docs'] },
     { title: 'half 2', areas: [], acceptance: [] },
   ])
+})
+
+// Work-package structure (operator 2026-10-23): WP id/stage filter, Next up per owner, copy helpers.
+function wpItem(id: string, owner: WpBlock['owner_kind'], extra: Partial<WpBlock> = {}, p: Partial<PipelineItem> = {}): PipelineItem {
+  const tid = `DSN-20261023-handoff-v3-P2-T${id.slice(3)}`
+  return item({
+    id: tid, kind: 'task', stage: 'queued', rag: 'amber', what: { title: `${id} title`, task_id: tid, wp_id: id, stage: 'Stage 2' },
+    wp: { wp_id: id, stage: 'Stage 2', owner_kind: owner, sections: ['problem', 'proof'], depends_on: [], blocked_by: [], status: 'free', wp_status: 'not_started', ...extra },
+    ...p,
+  })
+}
+const WPS = [
+  wpItem('WP-05', 'OPERATOR'),
+  wpItem('WP-04', 'OPERATOR', { blocked_by: ['DSN-x'] }),
+  wpItem('WP-07', 'AGENT', { blocked_by: ['DSN-y'] }),
+  wpItem('WP-06', 'AGENT', { wp_status: 'in_progress' }),
+  wpItem('WP-08', 'BOTH'),
+  wpItem('WP-03', 'AGENT', { wp_status: 'done', status: 'done' }, { finished: true }),
+  wpItem('WP-12', 'AGENT', { stage: 'Stage 3', sections: [] }),
+]
+
+t('wp filter: URL round trip, stage and WP id, junk ignored', () => {
+  eq(filterFromParams(new URLSearchParams('wp=Stage%202')).wp, 'Stage 2')
+  eq(filterFromParams(new URLSearchParams('wp=WP-07')).wp, 'WP-07')
+  eq(filterFromParams(new URLSearchParams('wp=DROP%20TABLE')).wp, '')
+  eq(filterToParams({ ...EMPTY_FILTER, wp: 'WP-07' }, new URLSearchParams('tab=x')).toString(), 'tab=x&wp=WP-07')
+  eq(filterItems(WPS, { ...EMPTY_FILTER, wp: 'Stage 3' }, NOW).map(i => i.wp?.wp_id), ['WP-12'])
+  eq(filterItems(WPS, { ...EMPTY_FILTER, wp: 'WP-05' }, NOW).map(i => i.wp?.wp_id), ['WP-05'])
+  eq(filterItems([...ITEMS, ...WPS], { ...EMPTY_FILTER, q: 'wp-08' }, NOW).map(i => i.wp?.wp_id), ['WP-08'])
+})
+
+t('next up: first ready WP per owner in plan order; blocked and done excluded', () => {
+  eq(wpNumber('WP-07'), 7); eq(wpNumber('x') > 1000, true)
+  eq(isReadyWp(WPS[1]), false); eq(isReadyWp(WPS[5]), false); eq(isReadyWp(ITEMS[4]), false)
+  const up = nextUp([...ITEMS, ...WPS])
+  eq(up.map(g => [g.owner, g.first.wp?.wp_id, g.rest.map(r => r.wp?.wp_id)]), [
+    ['AGENT', 'WP-06', ['WP-12']], ['OPERATOR', 'WP-05', []], ['BOTH', 'WP-08', []],
+  ])
+  eq(filterItems([...ITEMS, ...WPS], { ...EMPTY_FILTER, preset: 'next-up' }, NOW).map(i => i.wp?.wp_id).sort(), ['WP-05', 'WP-06', 'WP-08', 'WP-12'])
+})
+
+t('wp options: imported stages first, then stages seen on tasks; WPs in plan order', () => {
+  const o = wpOptions(WPS, [{ stage: 'Stage 2', title: 'Release train' }])
+  eq(o.stages.map(s => s.stage), ['Stage 2', 'Stage 3'])
+  eq(o.wps.map(w => w.id), ['WP-03', 'WP-04', 'WP-05', 'WP-06', 'WP-07', 'WP-08', 'WP-12'])
+})
+
+t('operator WPs land in the operator to-dos; evidence needed when a proof exists', () => {
+  const q = queuedSections(WPS)
+  eq(q.operator.map(i => i.wp?.wp_id), ['WP-05', 'WP-04'])
+  eq(needsEvidence(WPS[0]), true); eq(needsEvidence(WPS[6]), false); eq(needsEvidence(ITEMS[0]), false)
+})
+
+t('copy commands: fenced code bodies, else the text', () => {
+  eq(commandsToCopy('(only if no grant)\n```\nbin/guard grant x\n```\nthen\n```bash\ngh pr merge 1\n```'), 'bin/guard grant x\ngh pr merge 1')
+  eq(commandsToCopy('  `gh pr merge 1991 --merge`, then release.  '), '`gh pr merge 1991 --merge`, then release.')
+  eq(commandsToCopy(null), '')
 })
 
 console.log(`workPipeline: ${n} passed`)

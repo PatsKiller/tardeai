@@ -767,7 +767,12 @@ class TaskBoard:
         """One task with every structure section (the Work pipeline drawer and ``task show``); history capped."""
         t = self.get(task_id)
         hist = list(t.get("history") or [])
-        return {**t, "history": hist[-history_cap:], "history_len": len(hist), "sections": [k for k in STRUCTURE_FIELDS if t.get(k)]}
+        return {
+            **t,
+            "history": hist[-history_cap:],
+            "history_len": len(hist),
+            "sections": [k for k in STRUCTURE_FIELDS if t.get(k)],
+        }
 
     def board(self) -> dict[str, Any]:
         tasks = self.read_all()

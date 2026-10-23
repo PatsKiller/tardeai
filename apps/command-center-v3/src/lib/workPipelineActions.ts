@@ -61,3 +61,32 @@ export function parseSplitParts(text: string): Array<{ title: string; areas: str
     return { title, areas: areas.split(',').map(s => s.trim()).filter(Boolean), acceptance: acc.split(';').map(s => s.trim()).filter(Boolean) }
   }).filter(p => p.title)
 }
+
+// "Export handoff" (operator 2026-10-23: the offline handoff is always produced from the board). GET only: the server
+// regenerates the markdown from the board + docs/ops/OPERATING_PLAYBOOK.md (cached 30 s); the browser saves it.
+export const HANDOFF_EXPORT_PATH = '/api/v2/coordination/handoff-export'
+export type HandoffExport = { markdown: string; filename: string; bytes: number; work_packages: number; truncated?: boolean; as_of?: string }
+
+export async function fetchHandoff(): Promise<HandoffExport> {
+  const r = await fetch(HANDOFF_EXPORT_PATH, { method: 'GET', credentials: 'same-origin', cache: 'no-store' })
+  const body = await r.json().catch(() => null) as { ok?: boolean; data?: HandoffExport; error?: string } | null
+  if (!r.ok || !body?.ok || !body.data) throw new Error(body?.error || `HTTP ${r.status}`)
+  return body.data
+}
+
+/** Fetch the export and hand the browser a .md file to save. Returns the export (for the status line). */
+export async function downloadHandoff(): Promise<HandoffExport> {
+  const d = await fetchHandoff()
+  const doc = (globalThis as { document?: Document }).document
+  const url = URL.createObjectURL(new Blob([d.markdown], { type: 'text/markdown;charset=utf-8' }))
+  try {
+    if (doc) {
+      const a = doc.createElement('a')
+      a.href = url; a.download = d.filename || 'HANDOFF_ORDERED_WORK.md'; a.style.display = 'none'
+      doc.body.appendChild(a); a.click(); doc.body.removeChild(a)
+    }
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 5000)
+  }
+  return d
+}
