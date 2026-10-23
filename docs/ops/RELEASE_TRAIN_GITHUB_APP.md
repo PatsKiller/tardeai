@@ -131,12 +131,55 @@ token passed to `git push` only through that child's `GIT_CONFIG_*` environment 
 4. Mint a fresh token for each reservation, and do not cache one across reservations. A token outliving its capability
    is the failure the capability exists to prevent.
 
+## 5a. Writing `github-app.json` with the helper (operator-run, 2026-10-23)
+
+`scripts/ops/release_train_github_app_config.py` writes the non-secret identifiers file for you. **The operator runs
+it; agents write and test it but never run it against the real key (§24.7).** It reuses the controller's signer and
+minter (`GitHubAppTokenMinter.jwt` / `.mint`), so it proves the same code path the train will use.
+
+What it does:
+
+1. Reads `~/.config/tradeai/release_train/github-app.pem` locally. The file must be a regular file you own, mode 600,
+   or it is refused. It signs an RS256 JWT (`iat` now−60, `exp` now+540) with `iss` set to the App ID, or to
+   `--client-id` if you give one.
+2. Calls `GET /app/installations` and picks the one installation whose account matches the repository owner
+   (`PatsKiller`). It refuses if there is none, more than one, or the installation is suspended.
+3. Mints one installation token narrowed to the repository and the train's permission set
+   (`POST /app/installations/<id>/access_tokens`). It calls `GET /installation/repositories` with that token, then
+   drops the token. It refuses if the repository is not listed. This is the §6 "mint a token by hand once" check.
+4. Writes `github-app.json` atomically (temp file in the same directory, mode 600, fsync, rename). The file holds
+   `app_id` (an integer), `installation_id` (an integer), `repository` and, if given, `client_id`. A different
+   existing file is first archived beside it as `github-app.json.<UTC>.archived` and never deleted. An identical
+   re-run reports `unchanged`.
+
+It prints a JSON summary: the config, the installation, the repositories the token could see, and the token's
+`expires_at` and permissions. It never prints the key, the JWT or the token. Exit codes: 0 means written (or would
+be, or unchanged); 2 means refused, with the reason on stderr after `REFUSED:`.
+
+**The exact operator command.** Get the App ID from GitHub → Settings → Developer settings → GitHub Apps → the train
+App → "App ID". The App recorded on 2026-10-22 (the pins in PR #1935) is `5419776`, installation `173961421`. The
+helper discovers the installation itself, and its output should agree with that.
+
+```
+cd ~/trade-ai-releases/portfolio-server/CURRENT
+.venv/bin/python scripts/ops/release_train_github_app_config.py --app-id 5419776 --repository PatsKiller/tardeai --dry-run
+# check the summary: config.installation_id, and verified.repositories == ["PatsKiller/tardeai"]; then write it:
+.venv/bin/python scripts/ops/release_train_github_app_config.py --app-id 5419776 --repository PatsKiller/tardeai
+stat -c '%a %U' ~/.config/tradeai/release_train/github-app.json     # expect: 600 <user>
+```
+
+The dry run talks to GitHub. On GitHub it is read-only, apart from minting one 1-hour token that it discards, and it
+writes nothing locally. `--key-path` and `--out` override the two default paths. The helper must be on CURRENT, so
+its PR has to be released first. Writing the file arms nothing: `GITHUB_WRITES_STATUS` stays `PROPOSED` until its own
+flip PR is merged.
+
 ## 6. Operator checklist
 
 - [ ] Create the App with exactly the permissions in §2, webhook off, installable only on this account.
 - [ ] Install it on `tardeai` only, and record the app id, client id and installation id.
 - [ ] Place the key per §5. Run `stat -c '%a %U' ~/.config/tradeai/release_train/github-app.pem`, which should print `600 <user>`.
-- [ ] Mint a token by hand once and run `GET /installation/repositories` (total_count 1). Discard the token.
+- [ ] Mint a token by hand once and run `GET /installation/repositories` (total_count 1). Discard the token. The §5a
+      helper does exactly this and writes `github-app.json`: run it `--dry-run` first, then without.
 - [ ] Decide §4 (1) and (2), and apply the rulesets. These are §17 branch-protection decisions.
 - [ ] Do not arm anything. Arming the delegation is `scripts/release_control_cli.py arm` at the host, a separate
       §17 act after 17.0.0 is ratified.
