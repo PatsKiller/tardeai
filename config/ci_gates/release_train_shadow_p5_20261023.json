@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_shadow_p5_20261023",
+  "files": [
+    "tests/test_release_train_shadow_p5_20261023.py"
+  ],
+  "anchor": "RELEASE_TRAIN_SHADOW_P5_20261023",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_SHADOW_P5_20261023 — Phase 5 shadow is real. A shadow request reads the open-PR census",
+    "(ShadowQueueSource; the live source is unchanged), integrates the frozen members in a per-slot scratch worktree",
+    "(config/release_train_policy.json shadow block, fail closed), writes a ShadowTrainReport@v1 named in the receipt,",
+    "and never pushes, merges, promotes, claims, issues or writes control/latch/store/release state. STOP during each",
+    "phase halts shadow and live at that boundary; a corrupt latch (bad JSON, empty, directory, dangling link) fails",
+    "closed in the controller, the request lane and the CC reader; stale or wrong-SHA CI evidence never qualifies.",
+    "release_window.py train-shadow-tick forces one shadow tick per window. Hermetic: temp git repos, fake GitHub/host."
+  ]
+}

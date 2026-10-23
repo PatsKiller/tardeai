@@ -544,7 +544,39 @@ class FallbackQueueSource:
         return fb
 
 
-def default_queue_source() -> QueueSource:
+class ShadowQueueSource:
+    """Shadow and dry runs (Phase 5, 2026-10-23): the open-PR census (PR-hygiene receipt + ``gh pr list``) is the
+    queue, annotated with the Phase 1 store's state for any PR the store also holds.
+
+    Why: nothing writes ``submitted`` rows to the store (its only writer is the live controller's event sink), so the
+    migrated store reads OK and EMPTY, and ``FallbackQueueSource`` rightly treats a readable empty store as a real
+    empty. Every shadow train therefore selected nothing (measured 2026-10-23: ``select: phase1:release_queue: 0
+    open, complete=True`` with 49 open PRs in the census). Shadow exists to rehearse the train on the real queue, so it
+    reads the census. A store row for a PR the census does not list as open never rides (the census decides openness).
+    Completeness is the census's: a missing, stale or unreadable receipt, or a ``gh`` failure, is incomplete and the
+    train selects nothing (fail closed). The live source is unchanged (``default_queue_source``)."""
+
+    def __init__(self, store: QueueSource, census: QueueSource) -> None:
+        self.store, self.census = store, census
+        self.name = f"shadow:{census.name}+{store.name}"
+
+    def snapshot(self) -> QueueSnapshot:
+        c = self.census.snapshot()
+        s = self.store.snapshot()
+        by_pr = {e.pr: e for e in s.entries} if s.complete else {}
+        for e in c.entries:
+            row = by_pr.pop(e.pr, None)
+            if row is not None:
+                e.census = {**e.census, "store": dict(row.census)}
+        store_note = (f"store ok, {len(s.entries)} riding" if s.complete else f"store {';'.join(s.reasons)}")
+        if by_pr:
+            store_note += f", {len(by_pr)} store rows not open in the census (never ride): {sorted(by_pr)[:10]}"
+        return QueueSnapshot(f"{self.name} ({store_note})", c.as_of, c.complete, list(c.entries), list(c.reasons))
+
+
+def default_queue_source(*, shadow: bool = False) -> QueueSource:
+    if shadow:
+        return ShadowQueueSource(Phase1StoreQueueSource(), HygieneReceiptGhQueueSource())
     return FallbackQueueSource(Phase1StoreQueueSource(), HygieneReceiptGhQueueSource())
 
 
@@ -713,11 +745,17 @@ class GitWorkspace:
 
     def create(self, base: str) -> None:
         if (self.path / ".git").exists():
+            # A reused scratch tree (shadow keeps one per slot): drop any half-finished merge, then move to the base.
+            self.git("merge", "--abort")
             rc, out = self.git("checkout", "-q", "-f", "--detach", base)
         else:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            rc, out = _run(["git", "-C", str(self.repo), "worktree", "add", "-q", "--detach", str(self.path), base],
-                           timeout=600)
+            argv = ["git", "-C", str(self.repo), "worktree", "add", "-q", "--detach", str(self.path), base]
+            rc, out = _run(argv, timeout=600)
+            if rc != 0 and "already registered" in out:
+                # The scratch directory was cleared but git still lists it: re-add over the stale registration
+                # (git's own override; nothing of the release checkout is touched).
+                rc, out = _run(argv[:4] + ["add", "-f", "-q", "--detach", str(self.path), base], timeout=600)
         if rc != 0:
             raise Halt(FAILED_PRE_MERGE, "SCRATCH_WORKTREE_FAILED", out.strip()[-300:])
 
@@ -1416,6 +1454,13 @@ class TrainConfig:
     regenerators: tuple = REGENERATORS
     dry_run_integrate: bool = False
     dry_run_local_test: bool = False
+    #: Shadow (Phase 5): a window rule that would make a live train skip (06:00 drain, 08:00 macro calendar / latest
+    #: start) is recorded as LIVE_WOULD_REFUSE and the rehearsal runs on (select, freeze, integrate, simulate). Never
+    #: honoured by a live controller.
+    shadow_past_window_rules: bool = False
+    #: Scratch directory name under scratch_root (default: the train id). Shadow reuses one per slot
+    #: ("shadow-<slot>") so four ticks a day do not leave four new full worktrees behind (§0 rule 6: never removed).
+    scratch_key: Optional[str] = None
     simulate_classifier: Optional[str] = None     # dry run only: "allow" previews the pipeline past the stub
     inject: Optional[str] = None                  # dry run / shadow only: one of INJECTIONS (arming finding 5)
     force_window: Optional[str] = None            # operator-forced canary run (finding 8): the slot whose timing
@@ -1546,6 +1591,9 @@ class TrainController:
 
     def _train_dir(self) -> Path:
         return self.state.root / "trains" / str(self.train_id)
+
+    def _scratch(self) -> Path:
+        return self.cfg.scratch_root / str(self.cfg.scratch_key or self.train_id)
 
     _LEGACY = {"claimed": "selected", "outcome": "outcome_recorded"}
     _JOURNAL_ONLY = frozenset({"intent", "effect", "uncertain", "reconciled"})
@@ -1928,6 +1976,26 @@ class TrainController:
         return w
 
     def _rules(self, w: TrainWindow, now: datetime, rec: dict) -> None:
+        """06:00 drain, 08:00 macro calendar, 08:00 latest activation start: each a NO_OP skip for a live train (in
+        that order; the first skip ends the run). A shadow train with ``shadow_past_window_rules`` evaluates every
+        rule, records each skip a live train would take, and rehearses the rest of the pipeline."""
+        skips: list[dict] = []
+        for rule in (self._rule_drain, self._rule_macro, self._rule_latest):
+            try:
+                rule(w, now, rec)
+            except Halt as h:
+                if self.live or not self.cfg.shadow_past_window_rules or h.outcome != NO_OP:
+                    raise
+                skips.append({"reason": h.reason, "detail": h.detail})
+                self._would(f"window rules: live would skip ({h.reason}: {str(h.detail)[:100]})")
+        if skips:
+            rec["window_rules_live_would_skip"] = skips[0]
+            rec["window_rules_live_would_skip_all"] = skips
+            self.say(f"window rules: shadow continues past {len(skips)} skip(s) (simulated)")
+            return
+        self.say("window rules: pass")
+
+    def _rule_drain(self, w: TrainWindow, now: datetime, rec: dict) -> None:  # noqa: ARG002
         if w.slot == "0600":
             ok, why = self.drain.check(w)
             rec["drain"] = {"ok": ok, "detail": why}
@@ -1936,11 +2004,15 @@ class TrainController:
                 rec["drain"]["report"] = report
             if not ok:
                 raise Halt(NO_OP, "WINDOW_SKIPPED_NO_DRAIN", why)
+
+    def _rule_macro(self, w: TrainWindow, now: datetime, rec: dict) -> None:
         if w.slot == "0800" or w.skip_on_macro_days:
             verdict, why = self.calendar.verdict(w.start.date(), now)
             rec["macro_calendar"] = {"verdict": verdict, "detail": why}
             if verdict != "CLEAR":
                 raise Halt(NO_OP, f"WINDOW_SKIPPED_MACRO_{verdict}", why)
+
+    def _rule_latest(self, w: TrainWindow, now: datetime, rec: dict) -> None:
         if w.slot == "0800" or w.latest_start_et:
             latest, why = latest_activation_start(w, self.durations, buffer_min=self.cfg.buffer_min)
             rec["latest_activation_start"] = {"at": latest.isoformat() if latest else None, "detail": why}
@@ -1949,7 +2021,6 @@ class TrainController:
             if max(now, w.start) > latest:
                 raise Halt(NO_OP, "WINDOW_SKIPPED_PAST_LATEST_START", why)
             self.tstate["latest_activation_start"] = latest.timestamp()
-        self.say("window rules: pass")
 
     def _check_latest(self, label: str) -> None:
         latest = self.tstate.get("latest_activation_start")
@@ -2095,6 +2166,12 @@ class TrainController:
             return f"HELD_BY_HYGIENE:{e.census.get('holds')}"
         if e.census.get("conflict") is True:
             return "CONFLICTING"
+        rc = e.census.get("required_checks")
+        if (isinstance(rc, dict) and str(rc.get("status") or "").upper() == "FAIL"
+                and rc.get("head") in (None, e.head_sha)):
+            # Ready means green: the census saw a required check fail on this very head (more restrictive only; a
+            # FAIL recorded for an older head is not applied, the head has moved since the census).
+            return "CHECKS_FAILING:" + ",".join(str(x) for x in (rc.get("failed") or [])[:4])
         if e.files is not None:
             bad = [f for f in e.files if is_protected(f)]
             if bad:
@@ -2173,8 +2250,8 @@ class TrainController:
             return {"sha": None, "members": members, "simulated": True}
         self._phase("integrating")
         for d in ("home", "tmp"):
-            (self.cfg.scratch_root / str(self.train_id) / d).mkdir(parents=True, exist_ok=True)
-        ws = self.workspace_factory(self.cfg.scratch_root / str(self.train_id) / "wt")
+            (self._scratch() / d).mkdir(parents=True, exist_ok=True)
+        ws = self.workspace_factory(self._scratch() / "wt")
         base = manifest["base_sha"]
         ws.create(base)
         members = [dict(m) for m in manifest["members"]]
@@ -2252,8 +2329,8 @@ class TrainController:
 
     def _regenerate(self, ws: GitWorkspace, base: str) -> str:  # noqa: ARG002
         python = str(getattr(self.host, "python", "python3"))
-        env = worker_env(self.env, home=self.cfg.scratch_root / str(self.train_id) / "home",
-                         tmp=self.cfg.scratch_root / str(self.train_id) / "tmp")
+        env = worker_env(self.env, home=self._scratch() / "home",
+                         tmp=self._scratch() / "tmp")
         for d in (env["HOME"], env["TMPDIR"]):
             Path(d).mkdir(parents=True, exist_ok=True)
         env["TRADEAI_PY"] = python
@@ -2283,7 +2360,7 @@ class TrainController:
                           ejected: dict, rec: dict) -> dict:
         t_end = self._ts() + self.cfg.test_budget_s
         attempts: list[dict] = []
-        scratch = self.cfg.scratch_root / str(self.train_id)
+        scratch = self._scratch()
 
         def test(subset: list[dict], label: str) -> Optional[bool]:
             if len(attempts) >= self.cfg.test_attempts or self._ts() >= t_end:
@@ -2526,6 +2603,7 @@ class TrainController:
         base, sha = manifest["base_sha"], cand.get("sha")
         heads = [{"pr": m["pr"], "head_sha": m["head_sha"]} for m in cand["members"]]
         if not self.live:
+            self._boundary("merge")   # shadow halts on STOP here, as live does (Phase 5: STOP during each phase)
             self.say(f"WOULD re-read the 4 checks on the candidate, then issue a merge capability (expected base "
                      f"{base[:12]}, candidate, artifact {manifest['manifest_digest'][:19]}, evidence digest, rollback "
                      f"target main_ref {base[:12]})")
@@ -2591,6 +2669,7 @@ class TrainController:
         heads = [{"pr": m["pr"], "head_sha": m["head_sha"]} for m in cand["members"]]
         units = list(self.host_units())
         if not self.live:
+            self._boundary("promote")
             self.say(f"WOULD wait <= {self.cfg.main_ci_timeout_s:.0f}s for exact-SHA push/main checks "
                      f"{[c for c in REQUIRED_CHECKS if c != BATCH_QUALIFIER]} on the merge commit")
             self.say("WOULD refuse if the merge commit or its prepared artifact is quarantined, or CURRENT moved")
@@ -2603,6 +2682,7 @@ class TrainController:
                      f"rollback target = CURRENT ({self.host.current_release()}), batch evidence bound")
             self.say("WOULD re-check STOP + epoch at activation, then bash cio_phase2_exact_main_deploy.sh promote "
                      "<prepared dir>")
+            self._boundary("activation")
             self.say("WOULD verify: promote exit, CURRENT, BUILD_SHA, units, /api/health, served copy, CC pages "
                      f"{list(RW.VERIFY_PAGES)}, platform-health, needs-action")
             self.say("WOULD on failure: rollback <bound target>, latch STOP, quarantine the artifact")
@@ -3042,7 +3122,9 @@ def build_controller(*, live: bool, config: Optional[TrainConfig] = None, host: 
     writer = GitHubAppWriter(host, reader) if live else None
     # Phase 7: the 06:00 drain probe (read-only, fail closed) and the measured-duration history that includes the
     # deploy receipt history. Both are consulted only for their slots; every slot ships disabled.
-    return TrainController(host=host, state=state, github=reader, queue=default_queue_source(),
+    # A dry run / shadow train reads the open-PR census (ShadowQueueSource); a live train keeps the store-first
+    # source (Phase 6 decision: what submits PRs to the store, see the readiness report 2026-10-23).
+    return TrainController(host=host, state=state, github=reader, queue=default_queue_source(shadow=not live),
                            classifier=load_classifier(), live=live, writer=writer, config=config,
                            drain=DR.default_drain_probe(state.root),
                            durations=TM.DurationHistory(state.root / "train_measurements.jsonl", TM.DEPLOY_HISTORY))
@@ -3100,6 +3182,8 @@ def cli(args: Any, *, stdin: Any = None) -> int:
     if args.cmd == "train-status":
         print(json.dumps(status(RW.State()), indent=2, sort_keys=True, default=str))
         return EXIT_OK
+    if args.cmd == "train-shadow-tick":
+        return cli_shadow_tick(args)
     if args.cmd == "train-claim":
         return cli_claim(args)
     if args.cmd == "train-orphan-resolve":
@@ -3208,6 +3292,95 @@ def validate_request(body: Any, filename: str) -> list[str]:
 
 
 INJECTION_SCHEMA = "TrainInjection@v1"
+SHADOW_REPORT_SCHEMA = "ShadowTrainReport@v1"
+_CODE_ROOT = Path(__file__).resolve().parents[2]
+_CODE_SHA: list = []
+
+
+def code_sha() -> Optional[str]:
+    """The SHA of the code answering a request: the release dir's ``BUILD_SHA`` (CURRENT), else the checkout's HEAD.
+    None when neither reads as a full SHA (never a guess)."""
+    if not _CODE_SHA:
+        sha = None
+        try:
+            sha = (_CODE_ROOT / "BUILD_SHA").read_text(encoding="utf-8").strip()
+        except OSError:
+            rc, out = _run(["git", "-C", str(_CODE_ROOT), "rev-parse", "HEAD"], timeout=10)
+            sha = out.strip() if rc == 0 else None
+        _CODE_SHA.append(sha if sha and SHA_RE.match(sha) else None)
+    return _CODE_SHA[0]
+
+
+#: ``config/release_train_policy.json`` ``shadow`` block (Phase 5). Fail closed: anything missing or not exactly
+#: ``true`` reads as off, and the shadow train then only simulates integration (the pre-2026-10-23 behaviour).
+SHADOW_POLICY_KEYS = ("integrate", "local_test", "past_window_rules")
+
+
+def shadow_policy(path: Optional[Path] = None) -> dict:
+    try:
+        body = json.loads(Path(path or WV.POLICY_PATH).read_text(encoding="utf-8"))
+        block = body.get("shadow") if isinstance(body, dict) else None
+    except (OSError, ValueError):
+        block = None
+    block = block if isinstance(block, dict) else {}
+    return {k: block.get(k) is True for k in SHADOW_POLICY_KEYS}
+
+
+def apply_shadow_policy(cfg: TrainConfig, slot: str, policy: dict) -> TrainConfig:
+    """The TrainConfig a SHADOW request runs with: integrate (and optionally test) in a per-slot scratch worktree and
+    rehearse past a window rule a live train would skip. Only ever applied to a non-live controller."""
+    from dataclasses import replace  # noqa: PLC0415
+
+    integrate = policy.get("integrate") is True
+    return replace(cfg, dry_run_integrate=cfg.dry_run_integrate or integrate,
+                   dry_run_local_test=cfg.dry_run_local_test or (integrate and policy.get("local_test") is True),
+                   shadow_past_window_rules=policy.get("past_window_rules") is True,
+                   scratch_key=cfg.scratch_key or f"shadow-{slot}")
+
+
+def shadow_report(req: dict, rec: dict, receipt: dict, *, started_at: str, config: Optional[TrainConfig]) -> dict:
+    """ShadowTrainReport@v1: everything the shadow train saw and decided, for the Releases page and the operator. The
+    receipt is the contract record (C1-C13); this is the evidence behind it. No credential, token or file content."""
+    sel = rec.get("selection") or {}
+    man = rec.get("manifest") or {}
+    integ = rec.get("integration") or {}
+    excluded = sel.get("excluded") or {}
+    buckets: dict[str, int] = {}
+    for why in excluded.values():
+        k = str(why).split(":", 1)[0]
+        buckets[k] = buckets.get(k, 0) + 1
+    return {
+        "schema": SHADOW_REPORT_SCHEMA, "authority": "SHADOW_SIMULATE_ONLY",
+        "request_id": req.get("request_id"), "window_slot": req.get("window_slot"),
+        "window_id": req.get("window_id"), "tick": req.get("tick"), "train_id": receipt.get("train_id"),
+        "controller": {"version": CONTROLLER_VERSION, "code_sha": code_sha(), "host": os.uname().nodename},
+        "started_at": started_at, "finished_at": receipt.get("finished_at"),
+        "receipt_state": receipt.get("state"), "outcome": receipt.get("outcome"),
+        "refusal": receipt.get("refusal"), "reason": rec.get("reason"), "detail": str(rec.get("detail") or "")[:300],
+        "shadow_config": ({"integrate": config.dry_run_integrate, "local_test": config.dry_run_local_test,
+                           "past_window_rules": config.shadow_past_window_rules, "scratch_key": config.scratch_key}
+                          if config is not None else None),
+        "queue": rec.get("queue"),
+        "selection": {"members": sel.get("members") or [], "excluded_count": len(excluded),
+                      "excluded_by_reason": dict(sorted(buckets.items())),
+                      "excluded": dict(list(excluded.items())[:120])},
+        "manifest": {"base_sha": man.get("base_sha"), "manifest_digest": man.get("manifest_digest"),
+                     "members": [{"pr": m.get("pr"), "head_sha": m.get("head_sha"), "title": m.get("title")}
+                                 for m in man.get("members") or []],
+                     "classifier_version": man.get("classifier_version"), "policy_status": man.get("policy_status")}
+        if man else None,
+        "integration": {"candidate_sha": integ.get("candidate"), "kept": integ.get("kept") or [],
+                        "ejected": integ.get("ejected") or {}, "simulated": bool(integ.get("simulated"))}
+        if integ else None,
+        "window_rules": {k: rec.get(k) for k in ("drain", "macro_calendar", "latest_activation_start",
+                                                 "window_rules_live_would_skip", "window_rules_live_would_skip_all")
+                         if rec.get(k) is not None},
+        "would_refuse": list(rec.get("would_refuse") or [])[:20], "would_halt": rec.get("would_halt"),
+        "injected_failures": list(rec.get("injected_failures") or [])[:10],
+        "simulated_writes": [a.get("action") for a in rec.get("simulated_writes") or []][:20],
+        "steps": [str(x)[:300] for x in (rec.get("steps") or [])][-200:],
+        "never": "no push, merge, promote, release dir, STOP latch, control, capability or store write",
+    }
 
 
 class RequestSpool:
@@ -3218,6 +3391,7 @@ class RequestSpool:
         self.root = Path(state_root) / "train_requests"
         self.pending, self.claimed, self.receipts = self.root / "pending", self.root / "claimed", self.root / "receipts"
         self.orphaned, self.owners = self.root / "orphaned", self.root / "owners"
+        self.reports = self.root / "reports"
 
     def record_owner(self, request_id: str, claimed_at: str) -> None:
         """owners/<request_id>.json: the claiming process (pid + start time + host), for the orphan watchdog."""
@@ -3270,6 +3444,22 @@ class RequestSpool:
         except (OSError, ValueError):
             return None
 
+    def report(self, request_id: str) -> Optional[dict]:
+        try:
+            body = json.loads((self.reports / f"{request_id}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return body if isinstance(body, dict) else None
+
+    def write_report(self, request_id: str, body: dict) -> Optional[str]:
+        """``reports/<request_id>.json`` (ShadowTrainReport@v1): written once, never rewritten or deleted. Returns the
+        spool-relative path for the receipt's ``evidence_refs``, or None when one already exists."""
+        path = self.reports / f"{request_id}.json"
+        if os.path.lexists(path):
+            return None
+        RC._atomic_write_json(path, body)
+        return f"report:train_requests/reports/{request_id}.json"
+
     def write_receipt(self, request_id: str, body: dict) -> bool:
         prior = self.receipt(request_id)
         if prior and prior.get("state") in TERMINAL_RECEIPT_STATES:
@@ -3279,16 +3469,21 @@ class RequestSpool:
 
 
 def _receipt(req: dict, *, state: str, mode: str, now: float, acknowledged_at: Optional[str] = None,
-             refusal: Optional[dict] = None, rec: Optional[dict] = None, outcome: Optional[str] = None) -> dict:
+             refusal: Optional[dict] = None, rec: Optional[dict] = None, outcome: Optional[str] = None,
+             evidence: Optional[list] = None) -> dict:
     rec = rec or {}
     sel = rec.get("selection") or {}
-    needs = [{"code": "NOT_RIDING", "pr": int(k), "text": str(v)[:160]} for k, v in
-             list((sel.get("excluded") or {}).items())[:16]]
+    # Order (2026-10-23): the halt, then why a live train would refuse, then the PRs not riding. The array is capped
+    # at 20; with ~50 open PRs the NOT_RIDING rows used to push every LIVE_WOULD_REFUSE row off the end.
+    needs: list[dict] = []
     wh = rec.get("would_halt")
     if isinstance(wh, dict):
-        needs.insert(0, {"code": "WOULD_HALT", "pr": None,
-                         "text": f"{wh.get('reason')} at {wh.get('at')}: {wh.get('detail') or ''}"[:160]})
-    needs += [{"code": "LIVE_WOULD_REFUSE", "pr": None, "text": str(x)[:160]} for x in rec.get("would_refuse") or []]
+        needs.append({"code": "WOULD_HALT", "pr": None,
+                      "text": f"{wh.get('reason')} at {wh.get('at')}: {wh.get('detail') or ''}"[:160]})
+    needs += [{"code": "LIVE_WOULD_REFUSE", "pr": None, "text": str(x)[:160]}
+              for x in (rec.get("would_refuse") or [])[:8]]
+    needs += [{"code": "NOT_RIDING", "pr": int(k), "text": str(v)[:160]} for k, v in
+              list((sel.get("excluded") or {}).items())[:max(0, 20 - len(needs))]]
     manifest = rec.get("manifest") or {}
     members = [{"pr": m["pr"], "head_sha": m["head_sha"]} for m in manifest.get("members") or []]
     sims = [a["action"] for a in (rec.get("simulated_writes") or [])]
@@ -3299,16 +3494,17 @@ def _receipt(req: dict, *, state: str, mode: str, now: float, acknowledged_at: O
             "window_slot": req.get("window_slot"), "shadow": req.get("shadow"), "mode": mode, "state": state,
             "acknowledged_at": acknowledged_at, "finished_at": utc_iso(now) if state in TERMINAL_RECEIPT_STATES
             else None,
-            "controller": {"version": CONTROLLER_VERSION, "code_sha": None, "host": os.uname().nodename},
+            "controller": {"version": CONTROLLER_VERSION, "code_sha": code_sha(), "host": os.uname().nodename},
             "train_id": rec.get("train_id") if T_ID_RE.match(str(rec.get("train_id") or "")) else None,
             "outcome": outcome if state == "COMPLETED" else None, "refusal": refusal, "members": members,
-            "candidate_sha": (rec.get("batch") or {}).get("candidate"),
+            "candidate_sha": (rec.get("batch") or {}).get("candidate") or (rec.get("integration") or {}).get(
+                "candidate"),
             "main_sha": (rec.get("merge") or {}).get("main_sha"), "served_sha": None,
             "needs_action": needs[:20], "simulated_effects": list(dict.fromkeys(sims)) if mode == "simulate" else [],
             "injected_failures": [dict(x) for x in (rec.get("injected_failures") or [])][:20],
             "p1_alert": ({"sent_by": "host_notifier", "incident_key": f"release-train:{rec.get('train_id')}",
                           "at": rec.get("finished_at")} if notif.get("priority") == "P1" else None),
-            "evidence_refs": []}
+            "evidence_refs": [str(x)[:300] for x in (evidence or [])][:40]}
 
 
 T_ID_RE = re.compile(r"^rt-[0-9]{8}-[0-9]{4}-[a-z0-9]{4,12}$")
@@ -3500,10 +3696,13 @@ def _pending_trains(state: RW.State) -> list[str]:
 def process_requests(state: RW.State, factory: Callable[[bool], TrainController], *, apply: bool,
                      now: Optional[Callable[[], float]] = None, live_status: Optional[str] = None,
                      orphan_after: Optional[float] = None,
-                     notify: Optional[Callable[[str, str], Any]] = None) -> tuple[int, dict]:
+                     notify: Optional[Callable[[str, str], Any]] = None,
+                     shadow_pol: Optional[dict] = None) -> tuple[int, dict]:
     """Claim and answer pending TrainWindowRequest@v1 files (C1-C11). Without ``apply``: list what would be claimed
     and answered, run nothing, write nothing. With ``apply``: claim by rename, acknowledge, run the train (shadow ->
-    dry run only, C3; live -> refused while the controller is BUILD_ONLY), write the terminal receipt."""
+    dry run only, C3; live -> refused while the controller is BUILD_ONLY), write the terminal receipt. A shadow
+    request also gets a ShadowTrainReport@v1 (``reports/<request_id>.json``) named in the receipt's evidence_refs;
+    ``shadow_pol`` (``shadow_policy()``) makes it integrate in a scratch worktree (Phase 5)."""
     clock = now or time.time
     spool = RequestSpool(state.root)
     out: dict = {"schema": "ReleaseTrainClaimRun@v1", "mode": "apply" if apply else "dry_run", "requests": []}
@@ -3530,15 +3729,34 @@ def process_requests(state: RW.State, factory: Callable[[bool], TrainController]
         bodies.sort(key=lambda pb: (str((pb[1] or {}).get("requested_at") or ""), pb[0].name)
                     if isinstance(pb[1], dict) else ("", pb[0].name))
         for p, body in bodies:
-            out["requests"].append(_answer(spool, p, body, factory, apply=apply, clock=clock, status_=status_))
+            out["requests"].append(_answer(spool, p, body, factory, apply=apply, clock=clock, status_=status_,
+                                           shadow_pol=shadow_pol))
     finally:
         if lock is not None:
             lock.release()
     return EXIT_OK, out
 
 
+def _with_report(spool: RequestSpool, req: dict, rec: dict, receipt: dict, started_at: str,
+                 ctl: Optional["TrainController"], shadow: bool) -> dict:
+    """Shadow only: write the ShadowTrainReport@v1 BEFORE the terminal receipt, and name it in the receipt's
+    evidence_refs, so a terminal receipt never points at a report that does not exist. A report failure never
+    blocks the receipt (the receipt is the contract record); it is named in evidence_refs as unwritten."""
+    if not shadow or not isinstance(receipt, dict):
+        return receipt
+    rid = str(req.get("request_id") or "")
+    try:
+        ref = spool.write_report(rid, shadow_report(req, rec or {}, receipt, started_at=started_at,
+                                                    config=getattr(ctl, "cfg", None)))
+    except (OSError, ValueError, TypeError) as exc:
+        ref = f"report:unwritten:{type(exc).__name__}"
+    if ref is None:
+        ref = f"report:train_requests/reports/{rid}.json"   # an earlier attempt's report (never rewritten)
+    return dict(receipt, evidence_refs=list(receipt.get("evidence_refs") or []) + [ref])
+
+
 def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], TrainController], *, apply: bool,
-            clock: Callable[[], float], status_: str) -> dict:
+            clock: Callable[[], float], status_: str, shadow_pol: Optional[dict] = None) -> dict:
     name = p.name
     rid = (body or {}).get("request_id") if isinstance(body, dict) else None
     rid = rid if isinstance(rid, str) and REQUEST_ID_RE.match(rid) and name == f"{rid}.json" else name[:-5]
@@ -3590,10 +3808,13 @@ def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], T
                      refusal=_refusal("CONTROLLER_BUILD_ONLY", f"TRAIN_CONTROLLER_STATUS={status_}")))
         item["result"] = "REFUSED CONTROLLER_BUILD_ONLY"
         return item
+    ctl = None
     try:
         ctl = factory(not shadow)
         if shadow and ctl.live:
             raise Halt("REFUSED", "SHADOW_LIVE_MISMATCH", "a shadow request produced a live controller", refusal=True)
+        if shadow and shadow_pol is not None:
+            ctl.cfg = apply_shadow_policy(ctl.cfg, str(req["window_slot"]), shadow_pol)
         if inject:
             ctl.set_injection(inject)
             item["inject"] = inject
@@ -3602,14 +3823,16 @@ def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], T
         code, rec = ctl.run(at)
     except Halt as h:
         ref = _refusal(refusal_code(h.reason), f"{h.reason}: {h.detail}")
-        put(_receipt(req, state=_refused_state(ref), mode=mode, now=clock(), acknowledged_at=ack, refusal=ref))
+        doc = _receipt(req, state=_refused_state(ref), mode=mode, now=clock(), acknowledged_at=ack, refusal=ref)
+        put(_with_report(spool, req, {"reason": h.reason, "detail": h.detail}, doc, ack, ctl, shadow))
         item["result"] = f"{_refused_state(ref)} {h.reason}"
         return item
     except Exception as exc:  # noqa: BLE001 - the controller itself failed: FAILED, exception type only
         # C9 rev 3: CONTROLLER_FAILED (state FAILED); a busy lock stays LOCK_HELD. Detail = exception type only.
         code9 = "LOCK_HELD" if isinstance(exc, RC.LockBusy) else "CONTROLLER_FAILED"
-        put(_receipt(req, state="FAILED", mode=mode, now=clock(), acknowledged_at=ack,
-                     refusal={"code": code9, "detail": type(exc).__name__}))
+        doc = _receipt(req, state="FAILED", mode=mode, now=clock(), acknowledged_at=ack,
+                       refusal={"code": code9, "detail": type(exc).__name__})
+        put(_with_report(spool, req, {"reason": code9, "detail": type(exc).__name__}, doc, ack, ctl, shadow))
         item["result"] = f"FAILED {type(exc).__name__}"
         return item
     if isinstance(ctl.writer, SimulatedGitHubWriter):
@@ -3631,10 +3854,126 @@ def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], T
             oc = NO_OP                                  # simulate: never a release, never a fake success (§7)
         receipt = _receipt(req, state="COMPLETED", mode=mode, now=clock(), acknowledged_at=ack, rec=rec,
                            outcome=oc if oc in TERMINAL_OUTCOMES else CANCELLED)
-    receipt = put(receipt)
+    receipt = put(_with_report(spool, req, rec, receipt, ack, ctl, shadow))
     item["result"] = f"{receipt['state']} {receipt.get('outcome') or (receipt.get('refusal') or {}).get('code')}"
     item["train_id"] = rec.get("train_id")
     return item
+
+
+# ── forced shadow tick (Phase 5; arming packet H.1(b) as one command) ──────────────────────────────────────────
+
+SHADOW_TICK_ORDER = ("1800", "0000", "0600", "0800")
+
+
+def _request_writer(argv: list[str]) -> tuple[int, Optional[dict]]:
+    """Run the n8n request lane's own code (``release_train_window_request.run``) and parse its one JSON line. The
+    request is built and validated exactly as n8n's lane builds it; nothing here constructs a request by hand."""
+    import contextlib  # noqa: PLC0415
+    import io  # noqa: PLC0415
+
+    try:
+        from scripts import release_train_window_request as RQ  # noqa: PLC0415
+    except ImportError:  # pragma: no cover - scripts/ on sys.path
+        import release_train_window_request as RQ  # type: ignore[no-redef]  # noqa: PLC0415
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        code = RQ.run(argv)
+    doc = None
+    for line in reversed(buf.getvalue().splitlines()):
+        text = line[len("DRY-RUN "):] if line.startswith("DRY-RUN ") else line
+        try:
+            doc = json.loads(text)
+            break
+        except ValueError:
+            continue
+    return code, doc if isinstance(doc, dict) else None
+
+
+def _tick_line(slot: str, rid: Optional[str], receipt: Optional[dict], report: Optional[dict]) -> str:
+    if not receipt:
+        return f"{slot}  {rid or '-'}  NO RECEIPT"
+    rep = report or {}
+    q = rep.get("queue") or {}
+    sel = rep.get("selection") or {}
+    integ = rep.get("integration") or {}
+    cand = integ.get("candidate_sha") or receipt.get("candidate_sha")
+    inj = ", ".join(f"{x.get('name')}@{x.get('phase')}={x.get('behaved')}" for x in receipt.get("injected_failures")
+                    or [])
+    return (f"{slot}  {rid}  {receipt.get('state')}/{receipt.get('mode')}  "
+            f"{receipt.get('outcome') or (receipt.get('refusal') or {}).get('code')}"
+            f"  reason={rep.get('reason') or '-'}  open={q.get('open', '-')} riding={len(sel.get('members') or [])}"
+            f"  candidate={(cand or '-')[:12]}" + (f"  injected: {inj}" if inj else ""))
+
+
+def shadow_tick(windows: list[str], *, apply: bool, inject: Optional[str], wait_s: float, state: RW.State,
+                writer: Callable[[list[str]], tuple[int, Optional[dict]]] = _request_writer,
+                clock: Callable[[], float] = time.time, sleep: Callable[[float], None] = time.sleep,
+                poll_s: float = 5.0) -> tuple[int, dict]:
+    """Force one SHADOW tick per window, in the operator order 18:00, 00:00, 06:00, 08:00.
+
+    Without ``apply``: the request lane's own dry run per window (builds and validates the request, writes nothing).
+    With ``apply``: append each request through the lane's code (``--append --shadow-only``, plus the injection
+    marker for ``inject``), then wait up to ``wait_s`` for the installed claimer
+    (``tradeai-release-train-claim.path`` / ``.timer``) to write the terminal receipt, before the next window.
+    It never claims, never runs a train itself, and never requests a live train: every request is ``shadow: true``.
+    Exit 0 when every window has a terminal receipt (dry run: when every request validates); 1 otherwise."""
+    spool = RequestSpool(state.root)
+    out: dict = {"schema": "ReleaseTrainShadowTick@v1", "mode": "apply" if apply else "dry_run",
+                 "state_dir": str(state.root), "inject": inject, "windows": []}
+    ok = True
+    for slot in windows:
+        argv = ["--window", slot, "--append" if apply else "--dry-run", "--shadow-only",
+                "--state-dir", str(state.root)] + (["--inject", inject] if inject else [])
+        code, doc = writer(argv)
+        summ = (doc or {}).get("summary") if isinstance((doc or {}).get("summary"), dict) else (doc or {})
+        rid = summ.get("request_id")
+        row: dict = {"slot": slot, "request_id": rid, "writer_exit": code,
+                     "disposition": summ.get("disposition"), "no_op_reason": summ.get("no_op_reason")}
+        if code != 0 or not rid or summ.get("disposition") not in ("request", "requested"):
+            row["result"] = "NOT_REQUESTED"
+            ok = False
+            out["windows"].append(row)
+            continue
+        if not apply:
+            row["result"] = "WOULD_REQUEST (shadow); the claimer would simulate it"
+            out["windows"].append(row)
+            continue
+        deadline = clock() + max(0.0, wait_s)
+        rec = spool.receipt(rid)
+        while (rec is None or rec.get("state") not in TERMINAL_RECEIPT_STATES) and clock() < deadline:
+            sleep(poll_s)
+            rec = spool.receipt(rid)
+        report = spool.report(rid)
+        row.update(receipt_state=(rec or {}).get("state"), outcome=(rec or {}).get("outcome"),
+                   refusal=(rec or {}).get("refusal"), train_id=(rec or {}).get("train_id"),
+                   receipt=str(spool.receipts / f"{rid}.json"),
+                   report=str(spool.reports / f"{rid}.json") if report else None,
+                   line=_tick_line(slot, rid, rec, report))
+        if not rec or rec.get("state") not in TERMINAL_RECEIPT_STATES:
+            row["result"] = (f"NO TERMINAL RECEIPT within {wait_s:.0f}s: is tradeai-release-train-claim.timer "
+                             "active? (systemctl --user list-timers | grep release-train)")
+            ok = False
+        else:
+            row["result"] = "ANSWERED"
+        out["windows"].append(row)
+    return (EXIT_OK if ok else 1), out
+
+
+def cli_shadow_tick(args: Any) -> int:
+    win = getattr(args, "window", "all")
+    windows = list(SHADOW_TICK_ORDER) if win in (None, "all") else [str(win)]
+    code, body = shadow_tick(windows, apply=bool(getattr(args, "apply", False)), inject=getattr(args, "inject", None),
+                             wait_s=float(getattr(args, "wait_s", 900) or 0), state=RW.State())
+    if getattr(args, "json", False):
+        print(json.dumps(body, indent=2, default=str))
+    else:
+        print(f"release train shadow tick ({body['mode']}), state dir {body['state_dir']}")
+        for r in body["windows"]:
+            print("  " + (r.get("line") or f"{r['slot']}  {r.get('request_id') or '-'}  {r.get('result')}"
+                          + (f" ({r.get('no_op_reason')})" if r.get("no_op_reason") else "")))
+            if r.get("report"):
+                print(f"        report  {r['report']}")
+    return code
 
 
 def cli_claim(args: Any) -> int:
@@ -3643,6 +3982,6 @@ def cli_claim(args: Any) -> int:
     apply = bool(getattr(args, "apply", False))
     code, body = process_requests(RW.State(), factory, apply=apply,
                                   orphan_after=getattr(args, "orphan_after_min", None),
-                                  notify=RW.Host().notify if apply else None)
+                                  notify=RW.Host().notify if apply else None, shadow_pol=shadow_policy())
     print(json.dumps(body, indent=2, default=str))
     return code

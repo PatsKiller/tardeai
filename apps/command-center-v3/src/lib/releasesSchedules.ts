@@ -25,7 +25,12 @@ export type MainCi = { state: 'SUCCESS' | 'FAILURE' | 'PENDING' | 'OK' | 'NOT_GR
   not_success?: Array<{ name?: string; conclusion?: string | null }>
   workflows?: Array<{ name?: string; state?: string; url?: string | null; updated_at?: string | null }> }
 export type TrainWindow = { window_id: string; local_time: string; starts_at: string; starts_in_seconds: number; role: string | null; enabled: boolean; note: string | null
-  slot: string; state: 'LIVE' | 'SHADOW' | 'OFF' | 'STOPPED'; reason: string | null; last_shadow_request_at: string | null; last_shadow_receipt_state: string | null }
+  slot: string; state: 'LIVE' | 'SHADOW' | 'OFF' | 'STOPPED'; reason: string | null; last_shadow_request_at: string | null; last_shadow_receipt_state: string | null
+  last_shadow?: LastShadow | null }
+// The newest shadow tick's ShadowTrainReport@v1 summary (release_train_window_view.shadow_coverage). Absent values
+// stay null: a missing count is never shown as 0.
+export type LastShadow = { request_id: string | null; outcome: string | null; reason: string | null; queue_open: number | null
+  queue_complete: boolean | null; riding: number | null; candidate_sha: string | null; train_id: string | null; has_report: boolean }
 export type Windows = { windows: TrainWindow[]; armed: boolean | null; shadow_enabled: boolean | null; delegation: { state?: string; source?: string } | null
   stop: { state?: string; effective_stop?: boolean } | null; policy_version: string | null; manual_path: string }
 export type QueueRow = { pr_number?: number; title?: string | null; state?: string; class?: string | null; census_bucket?: string | null; [k: string]: unknown }
@@ -168,4 +173,17 @@ export function queueStoreText(q: Queue): string {
   if (q.store.freshness !== 'OK') return `queue store UNAVAILABLE · ${q.store.reason ?? ''}`
   const n = `${countOrUnavailable(q.store.total)} queued`
   return q.census.freshness === 'OK' ? `queue store ${n}` : `queue store ${n} (explicit train queue only) · open PRs UNKNOWN`
+}
+
+// One line for a window card: what the newest shadow train decided, on how much of the queue, and what it built.
+// e.g. "shadow: NO_OP · NOTHING_ELIGIBLE · queue 49 open · 0 riding". Unknown counts read "?" (never 0).
+export function shadowLine(x: LastShadow): string {
+  const parts = [`shadow: ${x.outcome ?? 'no receipt'}`]
+  if (x.reason) parts.push(x.reason)
+  if (x.has_report) {
+    parts.push(`queue ${x.queue_open ?? '?'} open${x.queue_complete === false ? ' (INCOMPLETE)' : ''}`)
+    parts.push(`${x.riding ?? '?'} riding`)
+  }
+  if (x.candidate_sha) parts.push(`candidate ${x.candidate_sha.slice(0, 9)}`)
+  return parts.join(' · ')
 }
