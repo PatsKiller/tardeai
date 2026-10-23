@@ -2002,6 +2002,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/SCALP_CATALYST_BULK_2026-10-09.md` | Scalp lane bulk catalyst read — 2026-10-09 |
 | `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` | Session closeout — 2026-08-22 |
 | `docs/ops/SIEM_HEALTH_REPAIR_2026-10-06.md` | SIEM incident visibility and recovery |
+| `docs/ops/SITE_VALIDATION_2026-10-23_53aa1b619.md` | Command Center v3 site validation: 2026-10-22/23 (f7c1e96cb → 0f5bf2453 → 53aa1b619) |
 | `docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md` | Stance organic park — CLOSED by OBSERVED_LIVE |
 | `docs/ops/SYMBOL_THESIS_ACQUISITION_PIPELINE_LIVE_2026-08-20.md` | Symbol-thesis acquisition pipeline — live (autonomous, debt-sensitive) — 2026-08-20 |
 | `docs/ops/SYMBOL_THESIS_CANARY_DRY_RUN_2026-08-20.md` | Bounded canary dry-run — SCHG / CSCO / ANET |
