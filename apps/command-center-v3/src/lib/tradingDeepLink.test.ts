@@ -1,9 +1,11 @@
 // Pure-logic tests for tradingDeepLink.ts. Runnable with Node 22 type-stripping:
 //   node apps/command-center-v3/src/lib/tradingDeepLink.test.ts
 import {
+  legacyTradingRedirect,
   parseTradingDeepLink,
   resolveTradingTab,
   tradingTabSearchParams,
+  TRADING_TABS,
 } from './tradingDeepLink.ts'
 
 declare const process: { exit(code?: number): never }
@@ -17,7 +19,7 @@ function check(name: string, cond: boolean) {
 console.log('tradingDeepLink')
 
 check('default tab Trade AI', resolveTradingTab(null) === 'Trade AI')
-check('alias Manual ToS', resolveTradingTab('Manual ToS') === 'Entry Desk')
+check('alias Manual ToS → Proposals', resolveTradingTab('Manual ToS') === 'Proposals')
 check('alias Broker Proposals', resolveTradingTab('Broker Proposals') === 'Proposals')
 check('plus encoded Open+Trades', resolveTradingTab('Open+Trades') === 'Open Trades')
 check('proposal without tab → Proposals', resolveTradingTab(null, true) === 'Proposals')
@@ -65,6 +67,55 @@ check('proposal without tab → Proposals', resolveTradingTab(null, true) === 'P
   const prev = new URLSearchParams('tab=Broker Orders&intent=i1')
   const next = tradingTabSearchParams(prev, 'Trade AI')
   check('intent cleared', next.get('intent') === null)
+}
+
+// ── Tabs 8 → 4 (operator-approved 2026-10-22) ──
+check('four visible tabs', TRADING_TABS.join('|') === 'Trade AI|Options|Open Trades|Proposals')
+{
+  const d = parseTradingDeepLink(new URLSearchParams('tab=Entry+Desk&symbol=abc'))
+  check('Entry Desk → Proposals', d.tab === 'Proposals')
+  check('Entry Desk → section path-a', d.section === 'path-a')
+  check('Entry Desk keeps symbol', d.symbol === 'ABC')
+}
+{
+  const d = parseTradingDeepLink(new URLSearchParams('tab=Manual%20ToS'))
+  check('Manual%20ToS → Proposals path-a', d.tab === 'Proposals' && d.section === 'path-a')
+}
+{
+  const d = parseTradingDeepLink(new URLSearchParams('tab=Broker+Recon'))
+  check('Broker Recon → Open Trades', d.tab === 'Open Trades')
+  check('Broker Recon → recon drawer', d.drawer === 'recon')
+}
+{
+  const d = parseTradingDeepLink(new URLSearchParams('tab=Schwab+Accounts'))
+  check('Schwab Accounts → Broker Orders desk', d.tab === 'Broker Orders' && d.section === 'schwab-accounts')
+}
+{
+  const d = parseTradingDeepLink(new URLSearchParams('tab=Broker%20Orders&intent=abc'))
+  check('Broker Orders desk still reachable from approval links', d.tab === 'Broker Orders' && d.intent === 'abc')
+}
+check('Scalp leaves the hub with its symbol', legacyTradingRedirect(new URLSearchParams('tab=Scalp&symbol=adv')) === '/active-trader?tab=Scalp&symbol=ADV')
+check('Scalp root', legacyTradingRedirect(new URLSearchParams('tab=Scalp')) === '/active-trader?tab=Scalp')
+check('ATM Controls → System Broker Access', legacyTradingRedirect(new URLSearchParams('tab=ATM+Controls')) === '/system/broker-access#automation-controls')
+check('Execution → Journal', legacyTradingRedirect(new URLSearchParams('tab=Execution')) === '/journal')
+check('in-hub tabs never redirect', legacyTradingRedirect(new URLSearchParams('tab=Open+Trades')) === null
+  && legacyTradingRedirect(new URLSearchParams('tab=Entry+Desk')) === null
+  && legacyTradingRedirect(new URLSearchParams('')) === null)
+check('unknown tab → Trade AI', resolveTradingTab('Nope') === 'Trade AI')
+{
+  const next = tradingTabSearchParams(new URLSearchParams('tab=Proposals&section=path-a&symbol=X'), 'Open Trades')
+  check('section dropped leaving Proposals', next.get('section') === null && next.get('symbol') === 'X')
+  const back = tradingTabSearchParams(new URLSearchParams('tab=Open+Trades&drawer=recon'), 'Trade AI')
+  check('drawer dropped leaving Open Trades', back.get('drawer') === null)
+}
+{
+  // Options lifecycle desk (2026-10-22): symbol filters the desk; the classic view param stays on Options only.
+  const opt = tradingTabSearchParams(new URLSearchParams('tab=Open+Trades&symbol=SPCX'), 'Options')
+  check('symbol kept for the Options desk', opt.get('symbol') === 'SPCX')
+  const away = tradingTabSearchParams(new URLSearchParams('tab=Options&view=classic&otab=Lifecycle'), 'Open Trades')
+  check('classic view + otab dropped leaving Options', away.get('view') === null && away.get('otab') === null)
+  const stay = tradingTabSearchParams(new URLSearchParams('tab=Options&view=classic&otab=Lifecycle'), 'Options')
+  check('classic view kept on Options', stay.get('view') === 'classic' && stay.get('otab') === 'Lifecycle')
 }
 
 console.log(`\n${pass} passed, ${fail} failed`)

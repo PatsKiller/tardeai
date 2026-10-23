@@ -103,3 +103,10 @@ Until #1852 lands, those two steps remain operator-only.
   Excluded: 9 for recent activity (pytest dirs and live sessions, 55.2k inodes), 2 for an open fd, 1 for a live
   transcript, and 1 for a dirty git worktree. 17,991 entries match no rule and were never scanned (505 on the
   never-touch globs).
+
+## 2026-10-22: the /tmp rules delete
+
+Operator 2026-10-22: "It needs to be able to delete it. Just looking at it won't do anything." The tmp-hygiene lane
+here stays `--plan`; deletion moved to host timers (`scripts/tmp_hygiene_auto.py`, lanes `tmp-hygiene-apply` and
+`tmp-hygiene-pressure`) with wider rules (B, E, G) and future-dated mtimes ignored. See
+`docs/ops/packets/tmp-hygiene-auto-apply-20261022/README.md`.

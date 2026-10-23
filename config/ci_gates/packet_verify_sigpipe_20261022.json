@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "packet_verify_sigpipe_20261022",
+  "files": [
+    "tests/test_packet_verify_sigpipe_20261022.py"
+  ],
+  "anchor": "PACKET_VERIFY_SIGPIPE_20261022",
+  "comment": [
+    "ANCHOR: PACKET_VERIFY_SIGPIPE_20261022 — operator packet read-backs never pipe crontab -l into grep -q/head under pipefail: grep -q exits at the first match, crontab -l takes SIGPIPE (141), and pipefail reports a present line as missing (2026-10-22 incident-spcx resume run: every step applied, every verify printed FAILED). Runs the real verify blocks against a >200 KB fake crontab that dies on SIGPIPE, and lints every pipefail packet/ops script."
+  ]
+}

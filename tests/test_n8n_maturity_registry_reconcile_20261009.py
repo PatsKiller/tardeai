@@ -407,9 +407,12 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
     # wire-advisory-lessons, incubator-rolloff-engine, pattern-extractor); merged 2026-10-15 (DD01 ruling PR): 214 - 4 = 210.
     # Scorer hardening 2026-10-21 adopts hermes-watchlist-scorer (operator-approved n8n shadow, dispatch dry_run;
     # tests/test_hermes_scorer_hardening_20261021.py): 210 - 1 = 209.
-    # Desk truth 2026-10-22 adopts schwab-position-sync (state PAUSED: its cron line is commented; f09_staged record;
-    # tests/test_registry_runtime_truth_20261018.py): 209 - 1 = 208.
-    assert len(gen) >= 208
+    # Incident SPCX resume packet (2026-10-22, tests/test_incident_spcx_resume_packet_20261022.py) adopts the 13
+    # generated rows whose crontab line is commented "# PAUSED 2026-10-1x schwab-app-deactivated" (state PAUSED,
+    # incident INC-20261014-SPCX), and desk truth 2026-10-22 adopts schwab-position-sync (state PAUSED: its cron
+    # line is commented; f09_staged record; tests/test_registry_runtime_truth_20261018.py), or the generator would
+    # re-derive them ACTIVE: 209 - 13 - 1 = 195.
+    assert len(gen) >= 195
     adopted = [r for r in committed["lanes"] if r.get("adopted_from_generator") == R.GENERATOR_VERSION]
     # D3 rows carry an r1_pending block (inert until AGENTS 4.4.0 is ACTIVE) instead of a dispatch block;
     # build-symbol-profiles-at-0-19, social-ingest-stocktwits and overnight-batch-tax are adopted unchanged only to keep
@@ -425,6 +428,8 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
             or r["lane_id"] in ("build-symbol-profiles-at-0-19", "social-ingest-stocktwits", "overnight-batch-tax")
             # train 2026-10-15 d: adopted unchanged to keep its lane_id (else re-derived as ...-overnight-2)
             or r["lane_id"] == "run-research-intelligence-overnight-archive"
+            # incident SPCX resume packet (2026-10-22): PAUSED with the incident id until the operator resumes the line
+            or (r.get("state") == "PAUSED" and r.get("incident") == "INC-20261014-SPCX")
             # desk truth 2026-10-22: PAUSED (cron line commented) + f09_staged record (staged n8n lane, mode off)
             or "f09_staged" in r
         )

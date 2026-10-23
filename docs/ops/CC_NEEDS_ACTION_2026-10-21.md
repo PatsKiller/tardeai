@@ -56,6 +56,11 @@ P0 0 / P1 5 / P2 13 / P3 4.
   failing pipelines, 243 failed runs in 24 h (symbol_enrichment 164, mostly "zombie run cleared").
 - **P3:** 4 grants expired in the last 24 h.
 
+**Update 2026-10-22 (Home redesign).** On the default Home, the Needs action card is replaced by the "Do now" queue.
+That queue reads this endpoint as one of six sources and merges and sorts what it finds
+([`HOME_DO_NOW_2026-10-22.md`](HOME_DO_NOW_2026-10-22.md)). The card itself is unchanged, and it is still shown on
+`/v3/?view=classic` for one release.
+
 ## Verify
 
 ```bash

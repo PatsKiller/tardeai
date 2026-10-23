@@ -3,10 +3,11 @@
 // Schwab token state per account (no token values), auto-reauth schedule, how to re-login, per-broker sync
 // freshness (OK / STALE / DEGRADED / PAUSED / NEEDS_REAUTH, each with its reason), stop health, the operator's
 // read-only sync command. There is NO run-sync control: it requires a broker-read grant + a ratified amendment.
-import { useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { Chip, ChipRow } from '../components/primitives'
+import ATMControlPanel from '../components/ATMControlPanel'
 import { TOKENS, TYPE } from '../lib/watchTokens'
 import { FONT, RADIUS, type Tone } from '../lib/designTokens'
 
@@ -110,10 +111,14 @@ export default function BrokerAccessPage() {
   const auto = d?.schwab_tokens?.auto_reauth || {}
   const log = d?.operator_sync_log
   const cmd = d?.sync_command
+  // /system/broker-access#automation-controls — the old Trading → ATM Controls links land on the section.
+  useEffect(() => {
+    if (window.location.hash === '#automation-controls') document.getElementById('automation-controls')?.scrollIntoView?.({ block: 'start' })
+  }, [!!d]) // eslint-disable-line react-hooks/exhaustive-deps
   return <section data-testid="broker-access" style={{ display: 'grid', gap: 12, minWidth: 0, maxWidth: '100%' }}>
     <div style={panel}>
       <h1 style={{ margin: 0, fontSize: TYPE.lg, color: TOKENS.text[0] }}>Broker Access & Sync</h1>
-      <p style={muted}>Read-only. Access mode, trading lock, Schwab login state, sync freshness per broker and stop health, from receipts, logs and token metadata. No broker is called from this page.</p>
+      <p style={muted}>Access mode, trading lock, Schwab login state, sync freshness per broker and stop health are read-only, from receipts, logs and token metadata; no broker is called from this page. The Automation controls section at the bottom (moved from Trading → ATM Controls) writes per-account automation policy through the admin guard.</p>
       <ChipRow>
         {api.error ? <Chip tone="warning">UNAVAILABLE</Chip> : api.loading && !d ? <Chip tone="neutral">Loading</Chip> : <StateChip state={d?.overall} />}
         <Chip tone={d?.access?.paused ? 'info' : 'neutral'}>Schwab mode {s(d?.access?.mode)}</Chip>
@@ -176,6 +181,12 @@ export default function BrokerAccessPage() {
         rows={(log.steps || []).map(st => [s(st.name), <Chip tone={st.rc === 0 ? 'neutral' : 'danger'}>rc={s(st.rc)}</Chip>, (st.signals || []).join(', ') || '—'])} />
         : <p style={muted}>{s(log?.note)}</p>}
     </Panel>
+
+    <section id="automation-controls" data-testid="automation-controls" aria-label="Automation controls" style={{ ...panel, display: 'grid', gap: 8, minWidth: 0 }}>
+      <h2 style={{ ...h2, margin: 0 }}>Automation controls</h2>
+      <p style={muted}>Moved from Trading → ATM Controls (2026-10-22). Per-account automation mode, including EMERGENCY_STOP and PAUSED_ENTRIES, and broker API connections. Every change goes through the admin confirmation; live arming is not available here.</p>
+      <ATMControlPanel />
+    </section>
 
     <Panel title="Related">
       <ChipRow>

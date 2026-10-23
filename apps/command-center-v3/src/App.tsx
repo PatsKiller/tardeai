@@ -35,6 +35,8 @@ import ConsumptionHub from './pages/ConsumptionHub'
 import CoordinationPage from './pages/CoordinationPage'
 import SchwabReauthHub from './pages/SchwabReauthHub'
 import BrokerAccessPage from './pages/BrokerAccessPage'
+import ReleasesSchedules from './pages/ReleasesSchedules'
+import OpsControlsPage from './pages/OpsControls'
 import SchwabReauthBanner from './components/SchwabReauthBanner'
 import FinvizCookieBanner from './components/FinvizCookieBanner'
 import YoutubeCookieBanner from './components/YoutubeCookieBanner'
@@ -219,11 +221,11 @@ function Shell() {
             <Route path="portfolio/re-entry" element={<RouteErrorBoundary route="/v3/portfolio/re-entry"><ReEntryPage /></RouteErrorBoundary>} />
             <Route path="risk" element={<RouteErrorBoundary route="/v3/risk"><RiskHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="trading" element={<RouteErrorBoundary route="/v3/trading"><TradingHub onDrill={setDrill} /></RouteErrorBoundary>} />
-            <Route path="active-trader" element={<RouteErrorBoundary route="/v3/active-trader"><ActiveTraderHub /></RouteErrorBoundary>} />
+            <Route path="active-trader" element={<RouteErrorBoundary route="/v3/active-trader"><ActiveTraderHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="trading/active-trader" element={<RouteErrorBoundary route="/v3/trading/active-trader"><Navigate to="/active-trader" replace /></RouteErrorBoundary>} />
             <Route path="go/order/:intentId" element={<RouteErrorBoundary route="/v3/go/order/:intentId"><GoOrderDeepLink /></RouteErrorBoundary>} />
             <Route path="go/proposal/:proposalId" element={<RouteErrorBoundary route="/v3/go/proposal/:proposalId"><GoProposalDeepLink /></RouteErrorBoundary>} />
-            <Route path="manual-execution" element={<RouteErrorBoundary route="/v3/manual-execution"><Navigate to="/trading?tab=Entry+Desk" replace /></RouteErrorBoundary>} />
+            <Route path="manual-execution" element={<RouteErrorBoundary route="/v3/manual-execution"><Navigate to="/trading?tab=Proposals&section=path-a" replace /></RouteErrorBoundary>} />
             <Route path="strategy" element={<RouteErrorBoundary route="/v3/strategy"><StrategyHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="agents" element={<RouteErrorBoundary route="/v3/agents"><AgentRuntimeHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="intelligence" element={<RouteErrorBoundary route="/v3/intelligence"><IntelligenceHub onDrill={setDrill} /></RouteErrorBoundary>} />
@@ -258,6 +260,8 @@ function Shell() {
             <Route path="system" element={<RouteErrorBoundary route="/v3/system"><SystemHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="system/schwab-reauth" element={<RouteErrorBoundary route="/v3/system/schwab-reauth"><SchwabReauthHub /></RouteErrorBoundary>} />
             <Route path="system/broker-access" element={<RouteErrorBoundary route="/v3/system/broker-access"><BrokerAccessPage /></RouteErrorBoundary>} />
+            <Route path="system/releases" element={<RouteErrorBoundary route="/v3/system/releases"><ReleasesSchedules /></RouteErrorBoundary>} />
+            <Route path="system/ops-controls" element={<RouteErrorBoundary route="/v3/system/ops-controls"><OpsControlsPage /></RouteErrorBoundary>} />
             {/* Shadow control-plane namespace. Does not replace live routes. */}
             <Route path="control-plane" element={<RouteErrorBoundary route="/v3/control-plane"><><SurfaceModeBanner route="/v3/control-plane" /><ControlPlaneHub /></></RouteErrorBoundary>} />
             <Route path="control-plane/system" element={<RouteErrorBoundary route="/v3/control-plane/system"><><SurfaceModeBanner route="/v3/control-plane/system" /><ControlPlaneSystemPage /></></RouteErrorBoundary>} />

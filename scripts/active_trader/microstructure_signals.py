@@ -42,6 +42,12 @@ class SignalConfig:
     climax_wick_frac: float = 0.5       # … with an upper wick ≥ this share of the bar's range
     wall_x_median: float = 4.0          # an ask level ≥ this × the median ask size is a wall
     schwab_mm_stack: int = 4            # ≥ this many market makers at the Schwab inside ask
+    # Level 2 book signals (operator-approved Gate 4 design 2026-10-22). Same computation and priors as
+    # scripts/lib/l2_book_signals.py (parity-tested), which the unified alert uses.
+    spread_bps_max: float = 50.0        # inside spread ≤ this → tight_spread (config/scalp_confirmations.yaml bound)
+    imbalance_min: float = 1.5          # bid size ÷ ask size over the top imbalance_levels ≥ this → bid_ask_imbalance
+    ask_heavy_max: float = 0.67         # that ratio ≤ this → ask_heavy (exit-side warning)
+    imbalance_levels: int = 5
 
     @classmethod
     def from_mapping(cls, raw: Optional[Mapping[str, Any]]) -> "SignalConfig":
@@ -234,6 +240,55 @@ def schwab_book(row: Optional[Mapping[str, Any]], cfg: SignalConfig) -> dict:
                 bid_mm=(bids[0] if bids else {}).get("mm_count"))
 
 
+def _latest_book(snaps, now: float, cfg: SignalConfig) -> Optional[tuple[list, list]]:
+    w = _window(snaps, now, cfg.window_s)
+    for s in reversed(w):
+        bids, asks = _levels(s, "b"), _levels(s, "a")
+        if bids and asks:
+            return bids, asks
+    return None
+
+
+def tight_spread(snaps, now, cfg: SignalConfig) -> dict:
+    """Inside spread in bps on the latest book in the window. A missing, one-sided or crossed book is None."""
+    book = _latest_book(snaps, now, cfg)
+    if book is None:
+        return _sig(None, threshold=cfg.spread_bps_max)
+    bid, ask = book[0][0][0], book[1][0][0]
+    if bid <= 0 or ask <= 0 or ask < bid:
+        return _sig(None, threshold=cfg.spread_bps_max, note="crossed or one-sided")
+    bps = round((ask - bid) / ((ask + bid) / 2) * 1e4, 1)
+    return _sig(bps <= cfg.spread_bps_max, bps, cfg.spread_bps_max, best_bid=bid, best_ask=ask)
+
+
+def _imbalance(snaps, now, cfg: SignalConfig) -> tuple[Optional[float], int]:
+    book = _latest_book(snaps, now, cfg)
+    if book is None:
+        return None, 0
+    n = min(int(cfg.imbalance_levels), len(book[0]), len(book[1]))
+    ask = sum(s for _, s in book[1][:n])
+    if n <= 0 or ask <= 0:
+        return None, n
+    return round(sum(s for _, s in book[0][:n]) / ask, 2), n
+
+
+def bid_ask_imbalance(snaps, now, cfg: SignalConfig) -> dict:
+    """Bid size ÷ ask size over the top levels: bids stacked under the offer support the break."""
+    r, n = _imbalance(snaps, now, cfg)
+    if r is None:
+        return _sig(None, threshold=cfg.imbalance_min)
+    return _sig(r >= cfg.imbalance_min, r, cfg.imbalance_min, levels=n)
+
+
+def ask_heavy(snaps, now, cfg: SignalConfig) -> dict:
+    """Warning: the offer outweighs the bid over the top levels. Shown on the alert; deliberately NOT part of
+    exit_signals(), whose fired() count drives exit_watch (adding it there would change exit alerts)."""
+    r, n = _imbalance(snaps, now, cfg)
+    if r is None:
+        return _sig(None, threshold=cfg.ask_heavy_max)
+    return _sig(r <= cfg.ask_heavy_max, r, cfg.ask_heavy_max, levels=n)
+
+
 def entry_signals(snaps: Sequence[Mapping[str, Any]], bars: Sequence[Mapping[str, Any]], *, now: float,
                   cfg: SignalConfig, last: Optional[float] = None, premarket_high: Optional[float] = None,
                   schwab_row: Optional[Mapping[str, Any]] = None) -> dict:
@@ -248,6 +303,8 @@ def entry_signals(snaps: Sequence[Mapping[str, Any]], bars: Sequence[Mapping[str
         "high_break": high_break(bars, cfg, premarket_high=premarket_high),
         "vwap_distance": vwap_distance(bars, last, cfg),
         "schwab_mm_stack": schwab_book(schwab_row, cfg),
+        "tight_spread": tight_spread(snaps, now, cfg),
+        "bid_ask_imbalance": bid_ask_imbalance(snaps, now, cfg),
     }
 
 

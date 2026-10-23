@@ -110,10 +110,14 @@ def _iso(dt: Optional[datetime] = None) -> str:
 
 
 def _quote_session(*contracts: Optional[dict]) -> Optional[str]:
-    """Session of the oldest quote among ``contracts`` (2026-10-22); the session now when none
-    carries a quote time. Never the run-start session."""
+    """Session of the oldest quote among ``contracts`` (2026-10-22).
+
+    With no quote time there is no evidence the quote is a closed-market one, so fall back to
+    the run's recorded session (unset → None → no liquidity deferral), never the wall clock:
+    a wall-clock fallback deferred every timestamp-less liquidity miss after 16:00 ET and hid
+    the named NO_LIQUID_CONTRACT drop (main red 2026-10-22, test_everything_blocked)."""
     from lib.options_desk_accuracy import quote_session_of
-    return quote_session_of(*contracts, fallback=_market_session_now())
+    return quote_session_of(*contracts, fallback=_SESSION.get("now"))
 
 
 _EXEC_NOTE_CACHE: Optional[str] = None
@@ -3011,8 +3015,10 @@ def _stamp_truth_flags(p: dict) -> None:
     elif p.get("options_thesis"):
         flags.append({"key": "THESIS_COMPLETE", "label": "Thesis complete", "tone": "green"})
     try:
-        from lib.options_desk_accuracy import quote_time_of as _qt
-        session = _quote_session({"quote_time": _qt(p)})
+        from lib.options_desk_accuracy import quote_session_of, quote_time_of as _qt
+        # A WARNING flag: with no quote time, fall back to the session now (conservative -- an
+        # off-hours read is flagged). Liquidity deferral, which LOOSENS a gate, never does this.
+        session = quote_session_of({"quote_time": _qt(p)}, fallback=_market_session_now())
     except Exception:  # noqa: BLE001
         session = _market_session_now()
     if session and session != "REGULAR":

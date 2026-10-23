@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import HomeDecision from '../components/decision/HomeDecision'
 import { Collapsible } from '../components/primitives/Collapsible'
 import { makeEnvelope, retainObservation, stateLabel, stateAriaLabel, formatBusinessDate, freshnessFromOverviewObservation } from '../lib/observationEnvelope.ts'
@@ -23,6 +23,7 @@ import ReleaseTrainCard from '../components/home/ReleaseTrainCard'
 import { healthFindingCta } from '../lib/healthCta'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
+import HomeDoNow from './HomeDoNow'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
@@ -56,7 +57,14 @@ function acctPretty(a: string) {
   return a.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
+/** Home router (operator-approved Home redesign, 2026-10-22): the "Do now" layout is the default; the previous Home
+ *  (HomeClassic below, unchanged) stays reachable at /v3/?view=classic for one release. */
 export default function HomeHub({ onDrill }: Props) {
+  const [params] = useSearchParams()
+  return params.get('view') === 'classic' ? <HomeClassic onDrill={onDrill} /> : <HomeDoNow />
+}
+
+function HomeClassic({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
   const { data: overview, loading: overviewLoading, receivedAt: overviewReceivedAt, transport: overviewTransport } = useApi<any>('/api/v2/overview', 60_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
@@ -181,10 +189,13 @@ export default function HomeHub({ onDrill }: Props) {
           <div style={hubTitle()}>Home</div>
           <div style={hubSubtitle(terminalUi)}>{overviewLoading ? <Skel w={180} h={12} /> : <>{fmt$(pv ?? 0, 0)} · {overview?.position_count ?? 0} positions · command router</>}</div>
         </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Link to="/" data-testid="new-home-link" style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textDecoration: 'none' }}>New Home (Do now) →</Link>
         <Link to="/reports" style={{
           padding: '6px 14px', fontSize: 11, fontWeight: 700, borderRadius: 6, textDecoration: 'none',
           background: 'rgba(96,165,250,.12)', color: '#60a5fa', border: '1px solid rgba(96,165,250,.35)',
         }}>Morning brief → Reports</Link>
+        </div>
       </div>
 
       {/* Needs action (audit 2026-10-21): failures from every source, one card; empty only when all answered */}
