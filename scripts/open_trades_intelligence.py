@@ -13,6 +13,7 @@ sector-relative + protection. No writes anywhere. NaN/Decimal-safe.
 """
 import os
 import json
+import logging
 from datetime import datetime, timezone, timedelta
 
 PROJ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -45,6 +46,13 @@ _ETF_SECTOR = {
 
 _STRATEGY_PURPOSE_CACHE = None
 
+log = logging.getLogger("open_trades_intelligence")
+
+# watchlist_state / directive_state when the membership lookup itself failed. Distinct from "none"
+# (looked up, not on the list): before 2026-10-22 the lookup called an undefined `_db_query`, the
+# NameError was swallowed, and every held position read "none" — indistinguishable from the truth.
+WATCH_STATE_UNAVAILABLE = "unavailable"
+
 
 def _strategy_purposes():
     """Load each strategy's `purpose:` from config/strategies/*.yaml — the 'why this strategy' rationale."""
@@ -71,7 +79,8 @@ def _strategy_purposes():
 def _derive_decision(*, upnl_pct, protected, stop, tp_missing, big_gain_unprot, below, stop_near, rsi,
                      stale_tech, basis_reliable, cost_basis_source, basis_kind, market_value, strategy,
                      trend_label, sec_label, vs_sec5, latest_news_age_h, last_hermes_at, on_watchlist,
-                     directive, is_fund, family="position", mutual_fund=False, broker_protected=False, small=False):
+                     directive, is_fund, family="position", mutual_fund=False, broker_protected=False, small=False,
+                     watch_unavailable=False):
     """Derive the read-only operator-decision fields. Pure function of already-computed signals — no writes,
     no source-of-truth changes. Action language is review/consider only, never execute."""
     high_value = (market_value or 0) >= 50000
@@ -118,7 +127,11 @@ def _derive_decision(*, upnl_pct, protected, stop, tp_missing, big_gain_unprot, 
                      # audit showed reconstructed basis can be wildly wrong while wearing the badge
                      "reconstructed" if cost_basis_source == "reconstructed_from_amounts" else
                      "verified" if basis_reliable else "unknown")
-    watchlist_state = "directive" if directive else ("watchlist" if on_watchlist else "none")
+    if watch_unavailable:
+        watchlist_state = directive_state = WATCH_STATE_UNAVAILABLE
+    else:
+        watchlist_state = "directive" if directive else ("watchlist" if on_watchlist else "none")
+        directive_state = "active" if directive else "none"
     # decision (most important text) — priority-ordered
     if not basis_reliable and high_value:
         decision, reason, pr = "Cost basis uncertain", "High-value position with unverified cost basis — resolve before any tax/exit decision.", "high"
@@ -188,7 +201,7 @@ def _derive_decision(*, upnl_pct, protected, stop, tp_missing, big_gain_unprot, 
         "risk_flags": risk_flags, "opportunity_flags": opp_flags,
         "data_freshness": data_freshness, "news_freshness": news_freshness,
         "protection_state": protection_state, "basis_quality": basis_quality,
-        "watchlist_state": watchlist_state, "directive_state": ("active" if directive else "none"),
+        "watchlist_state": watchlist_state, "directive_state": directive_state,
         "last_hermes_review_at": last_hermes_at, "latest_news_age_hours": latest_news_age_h,
         "primary_next_review": nxt, "recommended_manual_actions": actions[:6],
         "strategy_rationale": (_strategy_purposes().get(str(strategy), None)),
@@ -199,6 +212,28 @@ def _conn():
     import psycopg2
     return psycopg2.connect(host=os.environ["DB_HOST"], port=os.environ["DB_PORT"], dbname=os.environ["DB_NAME"],
                             user=os.environ["DB_USER"], password=os.environ["DB_PASSWORD"])
+
+
+def _watch_membership(symbols):
+    """(watchlist_set, directive_set, available) for the held symbols — read through the Watch data broker.
+
+    Membership comes from the approved readers, not SQL in this file: watchlist_items via
+    lib.data_broker.watch_domains.membership_watchlist (the one membership list) and watch_directives via
+    lib.data_broker.watch_intelligence.active_ticker_directives (the watch_directives projection owner,
+    config/data_source_authority.json). Both are called strict, so a failed lookup is logged and reported as
+    available=False (watchlist_state "unavailable"), never silently as "not on the watchlist".
+    """
+    try:
+        from lib.data_broker.watch_domains import membership_watchlist
+        from lib.data_broker.watch_intelligence import active_ticker_directives
+        wl = set(membership_watchlist(symbols))
+        dirs = {str(r.get("symbol") or "").strip().upper() for r in active_ticker_directives(strict=True)}
+        dirs.discard("")
+        return wl, dirs, True
+    except Exception as exc:
+        log.warning("open_trades: watchlist/directive membership lookup failed (%s: %s); "
+                    "watchlist_state=%s", type(exc).__name__, exc, WATCH_STATE_UNAVAILABLE)
+        return set(), set(), False
 
 
 def _norm_acct(a):
@@ -957,15 +992,7 @@ def build_intelligence():
             out["short_float_pct"] = en.get("short_float_pct")
         return out
 
-    wl_set, dir_set = set(), set()
-    try:
-        for r in (_db_query("SELECT DISTINCT symbol FROM watchlist_items WHERE status IN ('active','researched') AND symbol = ANY(%s)", (syms,)) or []):
-            wl_set.add(r["symbol"])
-        for r in (_db_query("SELECT DISTINCT UPPER(spec->>'symbol') sym FROM watch_directives WHERE status='active' AND spec ? 'symbol'", None) or []):
-            if r.get("sym"):
-                dir_set.add(r["sym"])
-    except Exception:
-        pass
+    wl_set, dir_set, watch_ok = _watch_membership(syms)
     # proxy-mapped fund codes (FID-CONTRA-F etc.) now carry proxy-computed technicals in
     # ticker_snapshot_daily (technicals_gap_backfill, 2026-06-12) — include them in the lookup
     try:
@@ -1299,7 +1326,8 @@ def build_intelligence():
                 latest_news_age_h=(round(_news_age_h, 1) if _news_age_h is not None else None),
                 last_hermes_at=herm.get(sym, {}).get("research_at"),
                 on_watchlist=(sym in wl_set), directive=(sym in dir_set), is_fund=p.get("is_fund", False),
-                family=_fam, mutual_fund=_is_mf, broker_protected=broker_protected, small=small_position)
+                family=_fam, mutual_fund=_is_mf, broker_protected=broker_protected, small=small_position,
+                watch_unavailable=(not watch_ok))
             positions.append({
                 **_decision,
                 **_card_enrichment(sym, cur_px),
@@ -1361,6 +1389,7 @@ def build_intelligence():
         summary = {
             "total_positions": len(positions), "visible_positions": len(positions), "total_unrealized_pnl": total_pnl,
             "source_of_truth": "current_holdings_plus_paper_positions",
+            "watch_membership": ("ok" if watch_ok else WATCH_STATE_UNAVAILABLE),
             "excluded_stale_trade_rows": stale_count, "excluded_zero_share_rows": excl_counts["zero_share"],
             "excluded_non_ticker_rows": excl_counts["non_ticker"], "excluded_cash_rows": excl_counts["cash"],
             "basis_unverified_count": sum(1 for p in positions if not p["basis_reliable"]),

@@ -130,6 +130,19 @@ New response fields: per row `quote_source`, `mark_as_of`, `mark_age_hours`, `ma
 `write_off_unrealized_pnl`, `total_unrealized_pnl_excludes`, `unpriced_basis_count`, `small_position_count`,
 `small_position_usd`, `account_labels`; top level `write_offs`. Existing fields keep their names.
 
+## Watchlist and directive membership (`watchlist_state`, fixed 2026-10-22)
+
+Root cause: the membership lookup in `build_intelligence()` called `_db_query`, which the module never
+defined; the `NameError` was swallowed, so every row read `watchlist_state: none`. Now
+`_watch_membership()` reads through the Watch data broker, not SQL in this file:
+`lib.data_broker.watch_domains.membership_watchlist` (watchlist_items, status active/researched — the one
+membership list) and `lib.data_broker.watch_intelligence.active_ticker_directives(strict=True)` (the
+watch_directives projection owner per `config/data_source_authority.json`). Both raise on a DB error, so a
+failed lookup is logged and every row reports `watchlist_state` and `directive_state` = `unavailable` (never
+`none`); `summary.watch_membership` is `ok` or `unavailable`. The UI treats `unavailable` like `none` (no
+tag). Pinned by `tests/test_open_trades_watchlist_state_20261022.py` (gate
+`open_trades_watchlist_state_20261022`).
+
 ## Triage chips
 
 `tradingCommandTriage.ts`: the near-stop chip's samples now come from the `stop_near` flag (it filtered on
@@ -138,8 +151,6 @@ unprotected chip skips funds that cannot take a stop, small positions and write-
 
 ## Known gaps
 
-- `open_trades_intelligence.py` calls an undefined `_db_query` for watchlist and directive membership; the
-  NameError is swallowed, so `watchlist_state` is always `none`. Found during this change, not fixed here.
 - The intelligence endpoint still reads `holdings.json` directly (allowlisted in
   `tests/fixtures/holdings_json_direct_readers_allowlist_20261005.txt`); moving it to the positions projection
   is a §26 migration step, not part of this change.
