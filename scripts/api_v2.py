@@ -52,6 +52,10 @@ try:  # YouTube cookie jar lives outside the release dir (lib/youtube_cookie_pat
     from lib import youtube_cookie_path as _yt_cookie_path  # noqa: E402
 except ImportError:  # pragma: no cover - imported as scripts.<module>
     from scripts.lib import youtube_cookie_path as _yt_cookie_path  # noqa: E402
+try:  # one short human name per account, never an account number (operator 2026-10-23)
+    from lib import account_display as _acct_disp  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib import account_display as _acct_disp  # noqa: E402
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 # Dev tree often owns the venv while portfolio-server runs from a release stamp
 # that has scripts/ but no .venv (Fix-now Errno 2 on live/.venv/bin/python).
@@ -3896,9 +3900,16 @@ def overview():
                 "name": (m.get("name") or "")[:30],
                 "day_change": m.get("day_change", 0),
                 "day_change_pct": m.get("day_change_pct", 0),
+                # Which account (operator 2026-10-23: "two SpaceX and two different accounts").
+                # One row per account holding; the label is a name only, never an account number.
+                "account_id": _acct_disp.canonical_key(m.get("account") or m.get("account_id")),
+                "account_label": _acct_disp.account_label(m.get("account") or m.get("account_id")),
             }
             for m in movers
         ],
+        "account_labels": _acct_disp.labels_map(
+            sorted({str(p.get("account") or "") for p in holdings if p.get("account")})
+        ),
         "trade_ai": {
             "vix": tai.get("vix"),
             "vix_source": tai.get("vix_source"),
@@ -8115,6 +8126,7 @@ def journal():
             {
                 "trade_key": f"{t.get('symbol', '')}:{t.get('account', '')}:{t.get('close_date', '')}",
                 **t,
+                "account_label": _acct_disp.account_label(t.get("account")),
             }
             for t in trades[:500]
         ],
@@ -8170,7 +8182,7 @@ def risk():
                 "total_unprotected_mv": snap.get("portfolio", {}).get("total_unprotected_mv", 0),
                 "position_count": snap.get("portfolio", {}).get("position_count_real", 0),
                 "paper_position_count": snap.get("portfolio", {}).get("position_count_paper", 0),
-                "positions": snap.get("positions", []),
+                "positions": _acct_disp.label_rows(snap.get("positions", [])),
                 "stops": snap.get("stops_map", {}),
                 "escalation": snap.get("escalation", {}),
                 "correlation": snap.get("correlation", []),
@@ -8303,6 +8315,8 @@ def risk():
                     "symbol": p.get("symbol", ""),
                     "market_value": p.get("market_value", 0),
                     "account": p.get("account", ""),
+                    "account_id": _acct_disp.canonical_key(p.get("account", "")),
+                    "account_label": _acct_disp.account_label(p.get("account", "")),
                     "environment": p.get("environment", "real"),
                     "risk_excluded": bool(p.get("risk_excluded")),
                     # CANONICAL protection hierarchy: (1) live broker stop order [API accounts], (2) operator-confirmed
@@ -29651,8 +29665,12 @@ def _morning_command():
                 "day_change": 0.0,
                 "market_value": 0.0,
                 "price": pos.get("price", 0),
+                "by_account": {},
             },
         )
+        # keep each account's part: a symbol in two accounts is named per account, never merged silently
+        _ak = _acct_disp.canonical_key(pos.get("account"))
+        a["by_account"][_ak] = round(a["by_account"].get(_ak, 0.0) + dc, 2)
         a["day_change"] += dc
         a["market_value"] += mv
         if pos.get("price"):
@@ -29673,6 +29691,12 @@ def _morning_command():
                 "change_pct": pct,  # UI convenience alias
                 "price": a.get("price") or 0,
                 "market_value": round(mv, 2),
+                "accounts": list(a["by_account"].keys()),
+                "account_labels": [_acct_disp.account_label(k) for k in a["by_account"]],
+                "by_account": [
+                    {"account_id": k, "account_label": _acct_disp.account_label(k), "day_change": v}
+                    for k, v in a["by_account"].items()
+                ],
             }
         )
     top_day_gainers = sorted(

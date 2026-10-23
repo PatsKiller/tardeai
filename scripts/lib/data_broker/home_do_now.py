@@ -39,6 +39,15 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
+try:  # account NAMES on every item (operator 2026-10-23), never an account number
+    from lib.account_display import account_label as _acct_name
+except ImportError:  # pragma: no cover - imported as scripts.lib.*
+    from scripts.lib.account_display import account_label as _acct_name
+
+
+def _acct_names(accounts: Any) -> list[str]:
+    return [_acct_name(a) for a in (accounts or []) if a]
+
 SCHEMA = "HomeDoNow@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 SEVERITIES = ("P0", "P1", "P2", "P3")
@@ -248,14 +257,19 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
             if sym not in not_held:
                 not_held.append(sym)
             continue
-        row = by_sym.setdefault(sym, {"value": 0.0, "accounts": [], "stop": False, "triggered": False,
-                                      "near": None, "max_loss": 0.0, "day_pct": None})
-        row["value"] += _num(p.get("market_value")) or 0.0
+        row = by_sym.setdefault(sym, {"value": 0.0, "accounts": [], "stop": True, "triggered": False,
+                                      "near": None, "max_loss": 0.0, "day_pct": None, "by_account": {}})
+        mv = _num(p.get("market_value")) or 0.0
+        row["value"] += mv
         acct = str(p.get("account") or "")
         if acct and acct not in row["accounts"]:
             row["accounts"].append(acct)
-        if p.get("stop_price") is not None:
-            row["stop"] = True
+        # Per account (2026-10-23): one account's stop never hides the other account's unprotected shares.
+        pa = row["by_account"].setdefault(acct, {"value": 0.0, "stop": True})
+        pa["value"] += mv
+        if p.get("stop_price") is None:
+            pa["stop"] = False
+            row["stop"] = False
         if p.get("triggered"):
             row["triggered"] = True
         dist = _num(p.get("distance_to_stop_pct"))
@@ -267,30 +281,48 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
 
     out: list[dict] = []
     for sym, r in by_sym.items():
-        accts = ", ".join(r["accounts"]) or "account unknown"
+        accts = ", ".join(_acct_names(r["accounts"])) or "account unknown"
         if r["triggered"]:
             out.append(item(f"stop:{sym}", "protect", "P0", f"{sym} is below its stop",
                             f"Price is through the stop on record ({accts}). Verify the broker executed it.",
                             f"Review {sym}", f"{R_RISK}?symbol={sym}", "risk", money=r["value"],
                             money_basis="market value of the position", since=as_of,
-                            evidence={"symbol": sym, "accounts": r["accounts"]}))
+                            evidence={"symbol": sym, "accounts": r["accounts"],
+                                      "account_labels": _acct_names(r["accounts"])}))
         elif r["near"] is not None:
             out.append(item(f"stop:{sym}", "protect", "P2", f"{sym} stop {r['near']:.1f}% away",
                             f"Stop on record is within {NEAR_STOP_PCT:g}% of price ({accts}).", f"Open {sym}",
                             f"{R_RISK}?symbol={sym}", "risk", money=r["max_loss"] or None,
                             money_basis="loss if the stop fills (max_loss_dollar)", since=as_of,
-                            evidence={"symbol": sym, "distance_pct": r["near"]}))
+                            evidence={"symbol": sym, "distance_pct": r["near"], "accounts": r["accounts"],
+                                      "account_labels": _acct_names(r["accounts"])}))
 
     # No-stop items. When working-stop coverage is measured, it is the truth (§26: one fact, one source): only
     # its UNCOVERED symbols are items. Otherwise fall back to "no stop on record" from the snapshot, labelled.
     total_value = sum(r["value"] for r in by_sym.values()) or None
     if cov.get("measured"):
-        no_stop = {s: by_sym.get(s, {"value": 0.0, "accounts": a, "day_pct": None}) for s, a in cov["uncovered"].items()}
+        no_stop = {}
+        for s_, a in cov["uncovered"].items():
+            r = by_sym.get(s_, {"value": 0.0, "accounts": a, "day_pct": None, "by_account": {}})
+            unc = [x for x in (a or []) if x] if isinstance(a, list) else []
+            per = r.get("by_account") or {}
+            if unc and any(x in per for x in unc):  # value of the UNCOVERED accounts only
+                no_stop[s_] = {**r, "accounts": unc, "value": sum((per.get(x) or {}).get("value", 0.0) for x in unc)}
+            else:
+                no_stop[s_] = r
         basis = "no WORKING stop at the broker (held-exit-coverage monitor"
         basis += f", as of {cov.get('as_of')})" if cov.get("as_of") else ")"
         src = "desk_truth"
     else:
-        no_stop = {s: r for s, r in by_sym.items() if not r["stop"]}
+        no_stop = {}
+        for s_, r in by_sym.items():
+            if r["stop"]:
+                continue
+            bare = [a for a, pa in (r.get("by_account") or {}).items() if not pa["stop"]]
+            if bare and len(bare) < len(r.get("by_account") or {}):  # only the accounts without a stop
+                r = {**r, "accounts": [a for a in bare if a],
+                     "value": sum(r["by_account"][a]["value"] for a in bare)}
+            no_stop[s_] = r
         basis = "no stop on record (risk snapshot); working-stop coverage not measured"
         basis += f" — {cov.get('reason')}" if cov.get("reason") else ""
         src = "risk"
@@ -302,12 +334,13 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
         share = f", {v / total_value * 100:.1f}% of invested value" if total_value else ""
         day = r.get("day_pct")
         day_txt = f" · {day:+.2f}% today" if day is not None else ""
-        accts = ", ".join(r.get("accounts") or []) or "account unknown"
+        accts = ", ".join(_acct_names(r.get("accounts"))) or "account unknown"
         out.append(item(f"stop:{sym}", "protect", "P1", f"{sym} {_usd(v)} has no stop",
                         f"{accts}{share}{day_txt}. Basis: {basis}.", f"Review {sym}",
                         f"{R_RISK}?symbol={sym}", src, money=v, money_basis="market value with no stop",
                         since=cov.get("as_of") if src == "desk_truth" else as_of,
-                        evidence={"symbol": sym, "accounts": r.get("accounts")}))
+                        evidence={"symbol": sym, "accounts": r.get("accounts"),
+                                  "account_labels": _acct_names(r.get("accounts"))}))
     if no_stop:
         unprot_value = sum(r.get("value") or 0.0 for r in no_stop.values())
         syms = [s for s, _ in ranked]
