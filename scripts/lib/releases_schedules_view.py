@@ -7,14 +7,19 @@ Backs ``GET /api/v2/ops/releases-schedules`` (the System → Releases & schedule
   serving        CURRENT symlink + its BUILD_SHA pins (exact_release_receipt.observed_identity), the
                  ACTIVE_RELEASE / EXPECTED_RELEASE pin files and the last deploy receipt.
   next_release   main HEAD as the canonical checkout last fetched it (local ref, no network), the
-                 first-parent PRs since the served SHA, and exact-SHA CI only from post_merge_ci.json
-                 when that receipt names the same SHA. GitHub is never called from the request path.
+                 first-parent PRs since the served SHA, and exact-SHA CI from the main-ci-watch receipt
+                 (scripts/main_ci_watch.py: SUCCESS | FAILURE | PENDING with its age), else from
+                 post_merge_ci.json, each only when it names the same SHA. GitHub is never called from the
+                 request path.
   windows        the release-train windows (release_train_view.upcoming_windows) with the host gate's
                  state and reason (release_train_window.readiness_view + decide).
-  queue          the release-train queue store and the PR-hygiene census (release_train_view.build_queue).
+  queue          the release-train queue store and the PR-hygiene census (release_train_view.build_queue). When
+                 the census is not OK, ``census.alert`` says so loudly: why, the lane's last ledger attempt
+                 (any mode) and its next scheduled fire, so "0 queued" is never read as "nothing is waiting".
   history        release pin receipts (apply / rollback) + the deploy receipt, PRs per release from git.
   release_errors refused / stopped release-window receipts, rollbacks, a failed deploy receipt, the STOP
-                 latch, and non-success checks in post_merge_ci.json. CI on main beyond that: UNAVAILABLE.
+                 latch, non-success checks in post_merge_ci.json, and FAILURE workflows in the main-ci-watch
+                 receipt. CI on main beyond those: not covered (said so in the response).
   n8n_today      the n8n coordination ledger (SQLite, mode=ro): runs by mode/state today (America/New_York,
                  by requested_at), failures, lock skips, unreleased dead letters, busiest lanes.
   timeline       the next 3 hours of host cron (``crontab -l`` or its fresh snapshot, including
@@ -59,6 +64,8 @@ MAX_HISTORY = 12
 MAX_ERRORS = 50
 COLLAPSE_AFTER = 4  # a schedule firing more often than this in the horizon becomes one "every N min" row
 FETCH_STALE_AFTER_S = 6 * 3600
+MAIN_CI_STALE_AFTER_S = 2 * 3600
+CENSUS_LANE = "pr-hygiene-audit"
 ET = ZoneInfo("America/New_York")
 ROOT = Path(__file__).resolve().parents[2]
 HOME = Path.home()
@@ -168,6 +175,8 @@ def default_paths(env: Optional[Mapping[str, str]] = None) -> dict[str, Path]:
         # scripts/check_registry_runtime_truth.DEFAULT_LIVE_LANES_ENV (names only are read)
         "live_lanes_env": HOME / ".config" / "tradeai" / "n8n-live-lanes.env",
         "registry": ROOT / "config" / "lane_registry.json",
+        # scripts/main_ci_watch.py (lib/lane_last_receipt.receipt_path("main-ci-watch"))
+        "main_ci_receipt": state_root / "data" / "runtime" / "main-ci-watch_last.json",
     }
 
 
@@ -265,8 +274,41 @@ def _ci_summary(ci: Mapping[str, Any]) -> dict[str, Any]:
             "success": concl.count("success"), "not_success": bad, "latest_check_at": latest}
 
 
+def main_ci_from_receipt(path: Optional[Path], head: str, now: datetime) -> tuple[Optional[dict[str, Any]], str]:
+    """(ci, why_not): the main-ci-watch receipt's verdict for exactly ``head``, else None and a reason."""
+    if path is None:
+        return None, "no main-ci-watch receipt path"
+    doc = _read_json(Path(path))
+    if doc is None:
+        return None, ("no main-ci-watch receipt (scripts/main_ci_watch.py has not run; lane proposed in "
+                      "docs/ops/proposals/main-ci-watch-lane-20261022)" if not Path(path).exists()
+                      else "main-ci-watch receipt unreadable")
+    s = doc.get("summary") if isinstance(doc.get("summary"), dict) else {}
+    at = s.get("checked_at") or doc.get("finished_at")
+    ts = _parse(at)
+    age = max(0, int((now - ts).total_seconds())) if ts else None
+    age_txt = f"{age // 60} min old" if age is not None else "age unknown"
+    if str(doc.get("status")) != "ok":
+        return None, (f"main-ci-watch last run failed at {doc.get('finished_at') or '?'}: "
+                      f"{str(doc.get('error') or '')[:120]}")
+    if s.get("head_sha") != head:
+        return None, (f"main-ci-watch receipt ({age_txt}) names {str(s.get('head_sha'))[:9]}, "
+                      f"not main HEAD {head[:9]}")
+    state = s.get("state") if s.get("state") in ("SUCCESS", "FAILURE", "PENDING") else "UNAVAILABLE"
+    stale = age is None or age > MAIN_CI_STALE_AFTER_S
+    reason = None
+    if stale and state == "PENDING":
+        reason = f"PENDING as of {age_txt}; re-run scripts/main_ci_watch.py for the current state"
+    elif stale:
+        reason = f"checked {age_txt}"
+    return {"state": state, "source": "receipt:main-ci-watch", "reason": reason, "checked_at": at, "age_s": age,
+            "stale": stale, "counts": s.get("counts"), "workflows": s.get("workflows"),
+            "candidate_sha": head}, ""
+
+
 def read_next_release(canonical: Path, deploy_state_dir: Path, serving_sha: Optional[str], now: datetime,
-                      git: Optional[Callable[[list[str]], tuple[int, str]]] = None) -> dict[str, Any]:
+                      git: Optional[Callable[[list[str]], tuple[int, str]]] = None,
+                      main_ci_receipt: Optional[Path] = None) -> dict[str, Any]:
     src = "git:canonical refs/remotes/origin/main (local ref as last fetched; no network)"
     git = git or git_runner(canonical)
     rc, out = git(["rev-parse", "--verify", "--quiet", "refs/remotes/origin/main"])
@@ -289,14 +331,17 @@ def read_next_release(canonical: Path, deploy_state_dir: Path, serving_sha: Opti
     else:
         pr_reason = "serving SHA unavailable"
     ci_doc = _read_json(Path(deploy_state_dir) / "post_merge_ci.json")
-    if ci_doc and ci_doc.get("candidate_sha") == head:
+    watched, why_not = main_ci_from_receipt(main_ci_receipt, head, now)
+    if watched is not None:
+        ci = watched
+    elif ci_doc and ci_doc.get("candidate_sha") == head:
         ci = {"state": "OK" if ci_doc.get("ok") else "NOT_GREEN", "source": "post_merge_ci.json", "reason": None,
               **_ci_summary(ci_doc)}
     else:
-        ci = {"state": "UNAVAILABLE", "source": "post_merge_ci.json",
-              "reason": ("post_merge_ci.json names " + str(ci_doc.get("candidate_sha"))[:9] + ", not main HEAD"
-                         if ci_doc else "no post_merge_ci.json receipt")
-              + "; exact-SHA CI for main HEAD has no cached source and GitHub is not called from this page"}
+        ci = {"state": "UNAVAILABLE", "source": "receipt:main-ci-watch + post_merge_ci.json",
+              "reason": why_not + "; " + ("post_merge_ci.json names " + str(ci_doc.get("candidate_sha"))[:9]
+                                          + ", not main HEAD" if ci_doc else "no post_merge_ci.json receipt")
+              + "; GitHub is not called from this page"}
     value = {"sha": head, "short_sha": head[:9], "subject": subject, "committed_at": committed_at,
              "fetched_at": fetched_at, "is_serving": head == serving_sha, "commits_ahead": ahead,
              "prs_since_serving": prs, "prs_reason": pr_reason, "ci": ci}
@@ -374,7 +419,8 @@ def read_history(releases_base: Path, deploy_state_dir: Path, now: datetime,
 
 
 def read_release_errors(deploy_state_dir: Path, rw_state_dir: Path, now: datetime,
-                        stop: Optional[Mapping[str, Any]] = None, hours: int = 48) -> dict[str, Any]:
+                        stop: Optional[Mapping[str, Any]] = None, hours: int = 48,
+                        main_ci_receipt: Optional[Path] = None) -> dict[str, Any]:
     """Each row: {at, kind, detail, source}. Sources this can see; anything else is listed as not covered."""
     src = "release_window/windows/*.json + release_pins/rollback-*.json + deploy_receipt.json + post_merge_ci.json"
     since = now - timedelta(hours=hours)
@@ -428,13 +474,23 @@ def read_release_errors(deploy_state_dir: Path, rw_state_dir: Path, now: datetim
                 rows.append({"at": c.get("updated_at"), "kind": "main CI " + str(c.get("conclusion") or c.get("status")),
                              "detail": f"{c.get('name')} on {str(ci.get('candidate_sha'))[:9]}",
                              "source": "post_merge_ci.json", "url": c.get("url")})
+    watch = _read_json(Path(main_ci_receipt)) if main_ci_receipt is not None else None
+    ws = (watch or {}).get("summary") if isinstance((watch or {}).get("summary"), dict) else {}
+    if watch and str(watch.get("status")) == "ok" and ws.get("state") == "FAILURE":
+        read_any = True
+        for w in ws.get("workflows") or []:
+            if isinstance(w, Mapping) and w.get("state") == "FAILURE":
+                rows.append({"at": w.get("updated_at") or ws.get("checked_at"),
+                             "kind": "main CI " + str(w.get("conclusion") or "failure"),
+                             "detail": f"{w.get('name')} on main {str(ws.get('head_sha'))[:9]}",
+                             "source": "receipt:main-ci-watch", "url": w.get("url")})
     if stop and stop.get("effective_stop"):
         rows.append({"at": stop.get("latched_at"), "kind": f"release STOP {stop.get('state')}",
                      "detail": str(stop.get("latch_reason") or "")[:240], "source": "release_window/STOP.json"})
     if not read_any:
         return _unavailable(src, "no release error source readable", now)
     rows.sort(key=lambda r: str(r.get("at") or ""), reverse=True)
-    not_covered = ("CI timeouts and cancellations on main for SHAs that were never deployed: no cached source "
+    not_covered = ("main CI failures of SHAs other than the one the main-ci-watch receipt last checked "
                    "(GitHub is not called from this page)")
     return field({"rows": rows[:MAX_ERRORS], "window_hours": hours, "not_covered": not_covered},
                  _iso(now), "OK", src, None, now=now)
@@ -495,10 +551,83 @@ def read_windows(now: datetime, *, rw_state_dir: Path, summary: Optional[Mapping
     return field(value, rd.get("as_of") or _iso(now), "OK", src, None, now=now)
 
 
-def read_queue(db_query, now: datetime) -> dict[str, Any]:
+def census_attempt(ledger: Optional[Path], registry: Optional[Path], now: datetime) -> dict[str, Any]:
+    """The census lane's last ledger attempt (any mode, any day) and its next scheduled fire. Read-only; every
+    failure is a reason string, never an exception."""
+    out: dict[str, Any] = {"lane_id": CENSUS_LANE, "last_attempt": None, "last_attempt_reason": None,
+                           "last_live_attempt": None, "dispatch_mode": None, "stage": None, "next_fire_at": None}
+    if ledger is not None:
+        try:
+            conn = _connect_ro(Path(ledger))
+            try:
+                rows = conn.execute("SELECT run_id, mode, state, requested_at, finished_at, exit_code FROM runs "
+                                    "WHERE lane_id = ? ORDER BY requested_at DESC LIMIT 20", (CENSUS_LANE,)).fetchall()
+            finally:
+                conn.close()
+            def row(r):
+                return {"run_id": r[0], "mode": r[1], "state": r[2], "requested_at": r[3], "finished_at": r[4],
+                        "exit_code": r[5]}
+            out["last_attempt"] = row(rows[0]) if rows else None
+            out["last_live_attempt"] = next((row(r) for r in rows if r[1] == "live"), None)
+            if not rows:
+                out["last_attempt_reason"] = "no run of this lane in the coordination ledger"
+        except (OSError, sqlite3.Error) as exc:
+            out["last_attempt_reason"] = f"ledger unreadable: {type(exc).__name__}"
+    if registry is not None:
+        try:
+            reg = json.loads(Path(registry).read_text(encoding="utf-8"))
+            lane = next((r for r in reg.get("lanes") or [] if isinstance(r, dict) and r.get("lane_id") == CENSUS_LANE),
+                        None)
+        except (OSError, ValueError):
+            lane = None
+        if lane:
+            d = lane.get("dispatch") if isinstance(lane.get("dispatch"), dict) else {}
+            out["dispatch_mode"] = d.get("mode")
+            out["stage"] = (lane.get("scheduler") or {}).get("stage")
+            fires = []
+            for expr in d.get("cron") or []:
+                f = _fires(str(expr), now, now + timedelta(hours=48), tz=str(d.get("tz") or "America/New_York"))
+                fires.extend(f or [])
+            out["next_fire_at"] = _iso(min(fires)) if fires else None
+    return out
+
+
+def _et_text(ts: Any) -> str:
+    d = _parse(ts)
+    return d.astimezone(ET).strftime("%m/%d %H:%M ET") if d else str(ts or "?")
+
+
+def census_alert(census: Mapping[str, Any], attempt: Mapping[str, Any]) -> Optional[str]:
+    """One loud sentence when the census is not OK; None when it is."""
+    if census.get("freshness") == "OK":
+        return None
+    why = {"no_receipt": "pr-hygiene-audit has never written a receipt",
+           "last_run_failed": "pr-hygiene-audit's last run failed",
+           "receipt_unreadable": "the pr-hygiene-audit receipt is unreadable"}.get(
+        str(census.get("reason")), f"census {census.get('freshness') or 'UNAVAILABLE'}: {census.get('reason')}")
+    la = attempt.get("last_attempt")
+    if la:
+        last = f"last attempt {_et_text(la.get('requested_at'))} {la.get('mode')} {la.get('state')}"
+        if la.get("mode") == "dry_run":
+            last += " (a dry run writes no receipt)"
+    else:
+        last = attempt.get("last_attempt_reason") or "last attempt unknown"
+    nxt = (f"next fire {_et_text(attempt['next_fire_at'])} ({attempt.get('dispatch_mode')})"
+           if attempt.get("next_fire_at")
+           else "no scheduled fire found in the registry")
+    label = "MISSING" if census.get("freshness") == "UNAVAILABLE" else "STALE"
+    prs = ("Open PRs are UNKNOWN" if label == "MISSING" else "The open-PR list is from the last good census")
+    return (f"PR census {label} — {why}; {last}; {nxt}. {prs}: the queue store's count is only PRs explicitly "
+            f"queued for the train, not what is waiting.")
+
+
+def read_queue(db_query, now: datetime, *, ledger: Optional[Path] = None,
+               registry: Optional[Path] = None) -> dict[str, Any]:
     src = "postgres:release_queue + receipt:pr-hygiene-audit (release_train_view.build_queue)"
     q = RTV.build_queue(db_query, {})
     census = q.get("census") or {}
+    attempt = census_attempt(ledger, registry, now) if census.get("freshness") != "OK" else None
+    alert = census_alert(census, attempt) if attempt is not None else None
     titles = RTV._receipt_titles(None)
     open_prs = []
     for b in ((census.get("value") or {}).get("buckets") or []):
@@ -511,16 +640,17 @@ def read_queue(db_query, now: datetime) -> dict[str, Any]:
              "census": {"freshness": census.get("freshness"), "reason": census.get("reason"),
                         "as_of": census.get("as_of"),
                         "open_prs": (census.get("value") or {}).get("open_prs"),
-                        "status": (census.get("value") or {}).get("status")},
+                        "status": (census.get("value") or {}).get("status"),
+                        "attempt": attempt, "alert": alert},
              "open_prs": open_prs}
     if q.get("freshness") != "OK" and census.get("freshness") == "UNAVAILABLE":
         return field(value, None, "UNAVAILABLE", src,
-                     f"queue store: {q.get('reason')}; census: {census.get('reason')}", now=now)
+                     alert or f"queue store: {q.get('reason')}; census: {census.get('reason')}", now=now)
     fresh = "OK" if q.get("freshness") == "OK" and census.get("freshness") == "OK" else "STALE"
     reasons = [f"queue store {q.get('freshness')}: {q.get('reason')}" if q.get("freshness") != "OK" else None,
                f"census {census.get('freshness')}: {census.get('reason')}" if census.get("freshness") != "OK" else None]
     return field(value, census.get("as_of") or q.get("as_of"), fresh, src,
-                 "; ".join(r for r in reasons if r) or None, now=now)
+                 "; ".join(r for r in [alert, *reasons] if r) or None, now=now)
 
 
 # ── n8n side ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -658,7 +788,7 @@ def _short_command(command: str) -> str:
     return m.group(1) if m else command.split(">>")[0].strip()[:80]
 
 
-def _fires(expr: str, start: datetime, end: datetime) -> Optional[list[datetime]]:
+def _fires(expr: str, start: datetime, end: datetime, tz: Optional[str] = None) -> Optional[list[datetime]]:
     try:
         from lib import cron_schedule as CS
     except ImportError:  # pragma: no cover
@@ -667,7 +797,7 @@ def _fires(expr: str, start: datetime, end: datetime) -> Optional[list[datetime]
     if not fields or fields == CS.REBOOT:
         return None
     try:
-        return [f.at for f in CS.fires_between(fields, start, end)]
+        return [f.at for f in (CS.fires_between(fields, start, end, tz) if tz else CS.fires_between(fields, start, end))]
     except ValueError:
         return None
 
@@ -805,7 +935,9 @@ def kpis(sections: Mapping[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
              (f"since {sv.get('since')}" if sv.get("since") else None), "success" if sv.get("pins_agree") else "warning",
              sections["serving"]),
         _kpi("next_release", "Releasing next", nx.get("short_sha"), nx_detail,
-             "neutral" if nx.get("is_serving") else ("success" if ci.get("state") == "OK" else "warning"),
+             "neutral" if nx.get("is_serving") else ("success" if ci.get("state") in ("OK", "SUCCESS") else
+                                                     "danger" if ci.get("state") in ("FAILURE", "NOT_GREEN") else
+                                                     "warning"),
              sections["next_release"]),
         _kpi("next_window", "Next train window", nxt.get("local_time") if nxt else None,
              (f"{nxt.get('role')} · {nxt.get('state')}" + (f" · {nxt.get('reason')}" if nxt.get("reason") else ""))
@@ -830,7 +962,7 @@ def build(db_query, *, now: Optional[datetime] = None, paths: Optional[Mapping[s
         "serving": lambda: read_serving(p["releases_base"], p["deploy_state_dir"], now),
         "history": lambda: read_history(p["releases_base"], p["deploy_state_dir"], now, git=g),
         "windows": lambda: read_windows(now, rw_state_dir=p["release_window_state_dir"], readiness=readiness),
-        "queue": lambda: read_queue(db_query, now),
+        "queue": lambda: read_queue(db_query, now, ledger=p["ledger"], registry=p["registry"]),
         "n8n_today": lambda: read_ledger_today(p["ledger"], now),
         "stop": lambda: RTV.read_stop(p["release_window_state_dir"]),
     }, timeout_s, executor=ex)
@@ -850,9 +982,9 @@ def build(db_query, *, now: Optional[datetime] = None, paths: Optional[Mapping[s
     remaining = max(0.5, timeout_s - 0.5)
     res2 = RTV.run_probes({
         "next_release": lambda: read_next_release(p["canonical_source"], p["deploy_state_dir"], serving_sha, now,
-                                                  git=g),
+                                                  git=g, main_ci_receipt=p.get("main_ci_receipt")),
         "release_errors": lambda: read_release_errors(p["deploy_state_dir"], p["release_window_state_dir"], now,
-                                                      stop=stop),
+                                                      stop=stop, main_ci_receipt=p.get("main_ci_receipt")),
         "timeline": lambda: read_timeline(now, registry_path=p["registry"], live_lanes_path=p["live_lanes_env"],
                                           crontab_reader=crontab_reader, last_run_by_lane=ledger_last),
     }, remaining, executor=ex)
@@ -895,4 +1027,5 @@ def clear_cache() -> None:
 
 __all__ = ["SCHEMA", "ROUTE", "build", "handle", "clear_cache", "parse_crontab", "read_serving", "read_next_release",
            "read_history", "read_release_errors", "read_windows", "read_queue", "read_ledger_today", "read_timeline",
+           "main_ci_from_receipt", "census_attempt", "census_alert",
            "kpis", "default_paths"]

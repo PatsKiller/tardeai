@@ -31,11 +31,11 @@ pattern of `scripts/lib/release_train_view.py`); the response is cached 30 s.
 | Section | Source (existing reader reused) | Notes |
 |---|---|---|
 | `serving` | `~/trade-ai-releases/portfolio-server/CURRENT` via `exact_release_receipt.observed_identity` (BUILD_SHA = GIT_SHA = SOURCE_COMMIT), `ACTIVE_RELEASE` / `EXPECTED_RELEASE`, `~/.local/state/cio-phase2-exact-main/deploy_receipt.json` | STALE when a pin file does not name CURRENT. `since` is the deploy receipt's `at` when it names the served SHA, else the CURRENT symlink mtime (labelled). |
-| `next_release` | canonical checkout `refs/remotes/origin/main` (local `git rev-parse` / `git log`; **no fetch, no network**); PRs since serving via `release_window.prs_from_messages`; CI from `post_merge_ci.json` only when it names the same SHA | STALE when `.git/FETCH_HEAD` is older than 6 h. Exact-SHA CI for main HEAD is otherwise **UNAVAILABLE**: no cached source exists and GitHub is never called from the request path. |
+| `next_release` | canonical checkout `refs/remotes/origin/main` (local `git rev-parse` / `git log`; **no fetch, no network**); PRs since serving via `release_window.prs_from_messages`; CI from the **main-ci-watch receipt** (`<state root>/data/runtime/main-ci-watch_last.json`, `scripts/main_ci_watch.py`: SUCCESS / FAILURE / PENDING per required workflow, with `checked_at` and `age_s`), else `post_merge_ci.json` (OK / NOT_GREEN), each only when it names the same SHA | STALE when `.git/FETCH_HEAD` is older than 6 h. A watch receipt older than 2 h is flagged `stale` (a stale PENDING says "re-run"). Otherwise CI is **UNAVAILABLE** with the reason: no receipt, the last watch run failed (with its time), or the receipt names another SHA (both SHAs shown). GitHub is never called from the request path. |
 | `windows` | `config/release_train_policy.json` + `release_train_view.upcoming_windows`; state and reason from `release_train_window.readiness_view` + `decide` (STOP latch, armed, delegation, shadow, window enabled) | States LIVE / SHADOW / OFF / STOPPED; last shadow tick per slot. |
-| `queue` | `release_train_view.build_queue` (Postgres `release_queue`) + the PR-hygiene census receipt (`release_train_census`) | Each open PR with its census bucket as "why not riding". |
+| `queue` | `release_train_view.build_queue` (Postgres `release_queue`) + the PR-hygiene census receipt (`release_train_census`); when the census is not OK, the census lane's last ledger attempt (`runs`, any mode, `mode=ro`) and its next fire (registry `dispatch.cron`) | Each open PR with its census bucket as "why not riding". A census that is not OK sets `census.alert` ("PR census MISSING — <why>; last attempt <ET> <mode> <state>; next fire <ET> (<mode>). Open PRs are UNKNOWN …"), shown as a red banner, and the store chip reads "N queued (explicit train queue only) · open PRs UNKNOWN": the queue store counts only PRs explicitly queued for the train. |
 | `history` | `~/.local/state/cio-phase2-exact-main/release_pins/{apply,rollback}-*.json` (ReleasePinReceipt@v1), SHA from the target's `BUILD_SHA` (else the dir-name prefix, labelled), PRs per release from first-parent `git log` between consecutive releases, verify from `deploy_receipt.json` | Verify is shown only for the release the deploy receipt names; older releases say "not retained" (the receipt is overwritten on every operation). |
-| `release_errors` | `release_window/windows/*.json` outcomes other than RELEASED / NO_CHANGE, `release_pins/rollback-*`, a not-ok deploy receipt, non-success checks in `post_merge_ci.json`, the STOP latch (last 48 h) | Not covered, stated in the payload: CI timeouts / cancellations on main for SHAs that were never deployed. |
+| `release_errors` | `release_window/windows/*.json` outcomes other than RELEASED / NO_CHANGE, `release_pins/rollback-*`, a not-ok deploy receipt, non-success checks in `post_merge_ci.json`, FAILURE workflows in the main-ci-watch receipt, the STOP latch (last 48 h) | Not covered, stated in the payload: main CI failures of SHAs other than the one the watch receipt last checked. |
 | `n8n_today` | `<state root>/data/governance/n8n_coordination_ledger.sqlite`, opened `mode=ro` + `PRAGMA query_only`, `runs` and `dead_letters` | Day = America/New_York, by `requested_at`. Totals by mode/state, failures (reason only; receipt env names never leave the ledger), lock skips, unreleased dead letters, busiest 10 lanes. |
 | `timeline` | host crontab (`crontab_snapshot.read_crontab`: `crontab -l`, else its fresh snapshot) including `# PAUSED <date> <note> <line>`; `config/lane_registry.json` (n8n `cadence`, dispatcher `stage`); relay live list names (`check_registry_runtime_truth.read_live_lanes`); fires from `cron_schedule.fires_between` | Next 3 h. A schedule firing more than 4 times becomes one "every N min" recurring row. Cron rows have no last-run (not in the ledger); n8n rows show today's last ledger run. |
 | `kpis` | derived | A KPI over an UNAVAILABLE section is null → "UNAVAILABLE". |
@@ -75,10 +75,40 @@ Covers every section, UNAVAILABLE-is-null for each, window states (SHADOW / STOP
 ledger day boundary, env-name redaction, route GET-only + cache, wiring order in `api_v2.handle`, and the git runner
 refusing non-read subcommands.
 
+## 2026-10-22 evening: "I don't see anything queued up" (fix/releases-page-queue-ci-20261022)
+
+The operator viewed the page on served build `f7c1e96cb`. The Queue panel showed "queue store 0 queued · PR census
+UNAVAILABLE · no_receipt" while 30 PRs were open. Next release showed "main CI UNAVAILABLE".
+
+**Why the census was missing `[VERIFIED]`** (ledger `mode=ro`, registry, executor unit, relay live list):
+
+- `pr-hygiene-audit` has exactly one ledger run: `d:pr-hygiene-audit:dry_run:20261022T0630`, RUN_DONE, exit 0, at
+  06:30 ET.
+- The lane was then still at shadow, where a dry run writes nothing by design. It was promoted to canary/live at
+  09:21 ET (`2ccd4ab8e`) and added to `n8n-live-lanes.env` at 11:13 ET. Both happened after that day's only slot.
+  The next live slot is 2026-10-23 06:30 ET.
+- **Latent defect:** that live fire would also have written no receipt. The executor runs lanes from
+  `portfolio-server/CURRENT`. Until release `ee38621b1` (18:57 ET), release dirs carried a stray worktree `.git`
+  file. CURRENT (`f7c1e96cb`) does not, and the executor environment sets neither `TRADEAI_PR_HYGIENE_REPO` nor
+  `_SLUG`. So `resolve_slug` returned None, and the script exited 2 without a receipt.
+- This was reproduced with `--dry-run` from CURRENT: "no GitHub slug". With the repo set, the same dry run gave
+  `open_prs=36`.
+
+**Fixed:**
+
+- `resolve_repo` falls back to the canonical checkout. An explicit `--repo` or env value is still never replaced.
+- A no-slug real run writes a failed receipt (`no_github_slug`).
+- The page says loudly why the census is missing, with the last attempt and the next fire.
+- `scripts/main_ci_watch.py` provides the main-HEAD CI.
+
+Its n8n lane is proposed with a DRAFT contract in `docs/ops/proposals/main-ci-watch-lane-20261022/`; registering the
+lane is the owner's step. Tests: `tests/test_releases_page_queue_ci_20261022.py` (gate
+`releases_page_queue_ci_20261022`).
+
 ## Open gaps
 
-- Main-HEAD exact-SHA CI and CI timeouts / cancellations on main are UNAVAILABLE until a cached, read-only CI source
-  exists (the release-window runner and the deploy query GitHub at release time only).
+- Main-HEAD exact-SHA CI is UNAVAILABLE ("no main-ci-watch receipt …") until `scripts/main_ci_watch.py` is scheduled.
+  The proposed lane is in `docs/ops/proposals/main-ci-watch-lane-20261022/`. A manual run also fills it.
 - Verify / rollback detail for releases older than the latest operation is not retained by the deploy script.
 - Refused promotes inside the manual deploy script (for example an exact-SHA CI refusal before retry) leave no
   durable record this view can read; only release-window receipts and rollbacks are visible.
