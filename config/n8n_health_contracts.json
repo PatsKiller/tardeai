@@ -32878,7 +32878,7 @@
       "id": "calibration-shadow-harness",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "operator_approved_shadow_20261022",
       "stage": "shadow",
       "purpose": {
@@ -33040,7 +33040,10 @@
       "review_by": "2026-11-05",
       "review": {
         "prepared_by": "agent draft (Gate 4 calibration loop, 2026-10-22)",
-        "status": "DRAFT"
+        "status": "REVIEWED",
+        "reviewed_by": "operator 2026-10-22 (approve all, item F)",
+        "reviewed_on": "2026-10-22",
+        "reference": "Operator reply 2026-10-22 (verbatim): \"yes i approve 'approve all' (A–L)\" — item F: mark the #1957 calibration-shadow-harness contract REVIEWED (stage stays shadow)."
       },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
