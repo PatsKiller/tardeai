@@ -31192,7 +31192,7 @@
       "target_reason": "stage:shadow",
       "stage": "shadow",
       "purpose": {
-        "text": "Weekdays at 16:45 ET (after the close), rotate the oversized append-only JSONL stores named in config/disk_hygiene_rules.json jsonl_retention.stores: the closed history before each store's hot tail moves byte-exact to <state>/archive/file_prune/<store>/<store>.<UTC>.jsonl.gz (sha256 + line-count manifest, RetentionArchiveTripwire@v1), the hot tail stays in place. Writer-safe: rename aside, quiesce, renameat2 install, late-byte sweep. At SHADOW it prints the plan only. It archives; it deletes no archive segment.",
+        "text": "Weekdays at 16:45 ET (after the close), rotate the oversized append-only JSONL stores named in config/disk_hygiene_rules.json jsonl_retention.stores: the closed history before each store's hot tail moves byte-exact to <state>/<file-prune archive root>/<store>/<store>.<UTC>.jsonl.gz (sha256 + line-count manifest, RetentionArchiveTripwire@v1), the hot tail stays in place. Writer-safe: rename aside, quiesce, renameat2 install, late-byte sweep. At SHADOW it prints the plan only. It archives; it deletes no archive segment.",
         "business_function": "platform-ops",
         "source": "scripts/ops/jsonl_archive_rotate.py; operator 2026-10-23 ~11:05 ET \"approved\" (rotate, archive, never delete the oversized append-only JSONL stores) and ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\""
       },
@@ -31229,7 +31229,7 @@
           "source": "rename aside + tail re-install on live runs only"
         },
         {
-          "name": "<state>/archive/file_prune/<store>/ (archive, manifest, TRIPWIRE.jsonl)",
+          "name": "<state>/<file-prune archive root>/<store>/ (archive, manifest, TRIPWIRE.jsonl)",
           "kind": "store",
           "direction": "write",
           "source": "lib/retention_archive.write_manifest; read nightly by lib/retention_tripwire.py"
@@ -31373,7 +31373,7 @@
           },
           {
             "kind": "file_artifact",
-            "ref": "<state>/archive/file_prune/<store>/<store>.<UTC>.jsonl.gz.manifest.json (RetentionArchiveManifest@v1)"
+            "ref": "<state>/<file-prune archive root>/<store>/<store>.<UTC>.jsonl.gz.manifest.json (RetentionArchiveManifest@v1)"
           }
         ],
         "on_violation": {

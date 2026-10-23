@@ -28,8 +28,8 @@ cd "$CODE"
 
 echo "== code and rules (pinned)"
 sha256sum -c - <<EOF2
-f6d66bfc5b2071beffd6c64414afee2731101975cb7c0d055a5087deba24d084  scripts/ops/jsonl_archive_rotate.py
-02e7296490c1094e5589121b3f3ea15042c6abdd4b36c58d5ce8189e459c1836  config/disk_hygiene_rules.json
+a3e5d2227a64e0c15851d10ff9e31d7ff9769db3561adcada636dba8f7cf6799  scripts/ops/jsonl_archive_rotate.py
+f86feb0a12bc02a838c55ecc38627337afa105147dda1f99b688ab721e0386cb  config/disk_hygiene_rules.json
 EOF2
 echo "code root $CODE @ $(git rev-parse --short HEAD); state root $STATE"
 

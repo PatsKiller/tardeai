@@ -122,7 +122,8 @@ def state_root(explicit: Optional[str] = None) -> Path:
 
 
 def archive_dir(cfg: Mapping[str, Any], root: Path, store_id: str) -> Path:
-    return root / str(cfg.get("archive_subdir") or "archive/file_prune") / store_id
+    """<root>/archive/file_prune/<store id> — the same root as retention_archive.file_archive_root()."""
+    return root / "archive" / "file_prune" / store_id
 
 
 # ── time window ────────────────────────────────────────────────────────────────────────────────────────────────────

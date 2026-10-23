@@ -438,13 +438,12 @@
     }
   },
   "jsonl_retention": {
-    "_why": "JSONL rotation + retention (2026-10-23). Rotation (scripts/ops/jsonl_archive_rotate.py) moves the closed history of an append-only JSONL store to <state>/archive/file_prune/<id>/<id>.<UTC>.jsonl.gz (byte-exact, sha256 + line-count manifest, RetentionArchiveTripwire@v1 record) and keeps a hot tail of hot_days (at least min_tail_rows rows) in place; writers reopen per write (O_APPEND), so the store is renamed aside and the tail re-installed with renameat2(RENAME_NOREPLACE), and rows appended meanwhile are merged, never lost. Retention: retention_days and max_archive_bytes define which archive segments are selected (jsonl_archive_rotate.py --retention-preview, read-only). REMOVAL IS NOT AUTOMATED: no code path removes a segment; enabled=false; persistent-state stays on the hard never-touch list of scripts/disk_hygiene.py, and AGENTS.md §24.12 keeps stores and archives out of the automated-deletion scope until an amendment names this rule. Changing this block is a reviewed config change (§24.12).",
+    "_why": "JSONL rotation + retention (2026-10-23). Rotation (scripts/ops/jsonl_archive_rotate.py) moves the closed history of an append-only JSONL store to <id>/<id>.<UTC>.jsonl.gz under the file-prune archive root (scripts/lib/retention_archive.file_archive_root) (byte-exact, sha256 + line-count manifest, RetentionArchiveTripwire@v1 record) and keeps a hot tail of hot_days (at least min_tail_rows rows) in place; writers reopen per write (O_APPEND), so the store is renamed aside and the tail re-installed with renameat2(RENAME_NOREPLACE), and rows appended meanwhile are merged, never lost. Retention: retention_days and max_archive_bytes define which archive segments are selected (jsonl_archive_rotate.py --retention-preview, read-only). REMOVAL IS NOT AUTOMATED: no code path removes a segment; enabled=false; persistent-state stays on the hard never-touch list of scripts/disk_hygiene.py, and AGENTS.md §24.12 keeps stores and archives out of the automated-deletion scope until an amendment names this rule. Changing this block is a reviewed config change (§24.12).",
     "authority": [
       "operator 2026-10-23 ~11:05 ET, \"approved\" (rotate, archive, never delete: aif_memory_retrievals, research_call_accounting, cio_workflow_lineage)",
       "operator 2026-10-23 ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\""
     ],
     "enabled": false,
-    "archive_subdir": "archive/file_prune",
     "min_rotate_bytes": 33554432,
     "quiesce_timeout_s": 30,
     "max_install_attempts": 20,

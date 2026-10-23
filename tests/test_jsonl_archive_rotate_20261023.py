@@ -27,7 +27,6 @@ NOW = datetime(2026, 10, 23, 20, 45, tzinfo=timezone.utc)  # Fri 16:45 ET, after
 def _cfg(**over):
     cfg = {
         "enabled": False,
-        "archive_subdir": "archive/file_prune",
         "min_rotate_bytes": 0,
         "quiesce_timeout_s": 2,
         "max_install_attempts": 20,
