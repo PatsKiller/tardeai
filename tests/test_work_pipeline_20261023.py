@@ -235,7 +235,7 @@ def test_build_items_groups_by_work_item_and_summarizes():
 
 
 def test_operator_merge_command_has_real_pr_and_sha():
-    batches = {2018: {"number": 2018, "members": [], "excluded": {1997: "Active Trader"}, "ci": {"state": "green"}}}
+    batches = {2018: {"number": 2018, "members": [], "excluded": {1997: "Active Trader files. The operator merges those."}, "ci": {"state": "green"}}}
     items = W.build_items(
         tasks=[],
         claims=[],
@@ -434,3 +434,10 @@ def test_merged_batch_keeps_its_standing_exclusion():
     }
     d = W.derive(pr=open_pr(1997), batches=batches, now=NOW)
     assert d["label"] == "operator merge" and d["next"]["owner"] == "operator"
+
+
+def test_transient_exclusion_waits_for_batch_not_operator():
+    batches = {2002: {"number": 2002, "members": [], "merged": True,
+                      "excluded": {1953: "failing required checks.", 1997: "touch scripts/active_trader/**. The operator merges those."}}}  # fmt: skip
+    assert W.derive(pr=open_pr(1953), batches=batches, now=NOW)["label"] == "waiting for batch"
+    assert W.derive(pr=open_pr(1997), batches=batches, now=NOW)["label"] == "operator merge"

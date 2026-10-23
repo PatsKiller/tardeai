@@ -50,7 +50,7 @@ Hovering a cell gives its time and evidence (claim id, PR, check names, release 
 | Claimed / Building | a claim, no PR | amber; **red "stale" when no heartbeat for 2 h** | Agent: start / build / take over |
 | PR open | PR open, no CI seen, a draft, or closed unmerged (red) | amber | Agent |
 | CI | checks running (amber) or failing (red; **"stale" only when nothing happened for 2 h**) | | Agent: fix the named checks |
-| In batch | CI green: **"waiting for batch"** (amber, never stale), "next batch #n" (operator-queued), "#2018" (in an open batch PR), "operator merge" (excluded from the batch), "stacked" (base is not main) | amber | Coordinator: add to batch / Agent: fix the batch / Operator: merge |
+| In batch | CI green: **"waiting for batch"** (amber, never stale), "next batch #n" (operator-queued), "#2018" (in an open batch PR), "operator merge" (a standing exclusion in an open or recent batch PR, e.g. "the operator merges those"; an exclusion for pending or failing checks only means it waits for the next batch), "stacked" (base is not main) | amber | Coordinator: add to batch / Agent: fix the batch / Operator: merge |
 | Merged | merged, not in a release yet | amber | Agent: ship it |
 | Released | in a release receipt, not verified | amber; red when deploy health failed | Agent: verify live |
 | Verified live | the served release contains the merge and `deploy_receipt.json` says health ok | green, finished | — |
