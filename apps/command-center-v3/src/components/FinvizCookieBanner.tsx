@@ -42,7 +42,8 @@ export default function FinvizCookieBanner() {
       }
     }
     load()
-    const id = window.setInterval(load, 60_000)
+    // Background tabs do not poll (2026-10-22); the server also caches the verdict per 5 min.
+    const id = window.setInterval(() => { if (document.visibilityState !== 'hidden') void load() }, 60_000)
     return () => { cancelled = true; window.clearInterval(id) }
   }, [])
 
