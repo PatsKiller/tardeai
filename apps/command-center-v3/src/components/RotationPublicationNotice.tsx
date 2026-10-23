@@ -28,7 +28,9 @@ export default function RotationPublicationNotice({ summary, error }: { summary:
     style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 8px', padding: '6px 10px', marginBottom: 12,
       fontSize: TYPE.base, color: observation.ready ? 'var(--text2)' : tone.color, background: tone.bg,
       border: `1px solid ${tone.border}`, borderRadius: RADIUS.md }}>
-    <strong>{observation.ready ? 'Rotation advisory ready' : `Rotation advisory withheld${observation.status === 'STALE' ? ' · stale' : ''}`}</strong>
+    {/* The status word stays visible: the retained-response contract (rotationRetainedError.browser.test.mjs)
+        reads "Rotation advisory UNAVAILABLE|STALE" off the page to prove retained advice is withheld. */}
+    <strong>Rotation advisory {observation.status}{observation.ready ? '' : ' · withheld'}</strong>
     {chips.map(c => <span key={c} data-testid="rotation-reason-chip"
       style={{ border: `1px solid ${tone.border}`, borderRadius: RADIUS.sm, padding: '0 5px', whiteSpace: 'nowrap' }}>{c}</span>)}
     <span style={{ color: 'var(--text3)' }}>

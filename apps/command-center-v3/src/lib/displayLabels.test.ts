@@ -28,7 +28,7 @@ eq('TRADING value', tradingTileValue(47.9, 238, '$25,505'), '47.9% win · 238 ·
 check('TRADING value no longer repeats "trades"', !/trades/.test(tradingTileValue(47.9, 238, '$25,505')))
 eq('TRADING without count', tradingTileValue(50, 0, '$1'), '50% win · $1 P&L')
 eq('TRADING without P&L', tradingTileValue(50, 3, null), '50% win · 3')
-eq('TRADING without win rate', tradingTileValue(null, 3, '$1'), '—')
+eq('TRADING face without a journal win rate', tradingTileValue(null, 3, '$1'), '—')
 
 // Header price stamp and VIX provenance (captured /api/v2/overview + trade-ai/summary 2026-10-22).
 eq('price source short', shortPriceSource('finviz_afterhours'), 'after-hours')

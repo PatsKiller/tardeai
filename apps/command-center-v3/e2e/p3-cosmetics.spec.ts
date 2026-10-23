@@ -55,6 +55,7 @@ for (const width of [1440, 412]) {
       const notice = page.getByTestId('rotation-publication-notice').first()
       await expect(notice).toBeVisible({ timeout: 60_000 })
       await expect(notice).toHaveAttribute('data-rotation-status', 'UNAVAILABLE')
+      await expect(notice).toContainText('Rotation advisory UNAVAILABLE · withheld')
       await expect(notice.getByTestId('rotation-reason-chip')).toHaveText(['account data stale', 'position evidence stale', 'stop claim unsupported'])
       await expect(notice).toContainText('Source as of Oct 22 (date only) · checked Oct 23 08:09 ET')
       await expect(notice).not.toContainText('T00:00:00')
