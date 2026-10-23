@@ -92,7 +92,8 @@ def label_row(row: dict) -> dict:
 
 
 def label_rows(rows: Iterable[Any]) -> list:
-    return [label_row(r) if isinstance(r, dict) else r for r in (rows or [])]
+    """Shallow copies of the rows with ``account_id`` + ``account_label`` (a cached input is never mutated)."""
+    return [label_row(dict(r)) if isinstance(r, dict) else r for r in (rows or [])]
 
 
 def multi_account_symbols(rows: Iterable[Mapping[str, Any]], symbol_field: str = "symbol") -> dict[str, list[str]]:

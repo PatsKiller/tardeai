@@ -8126,6 +8126,7 @@ def journal():
             {
                 "trade_key": f"{t.get('symbol', '')}:{t.get('account', '')}:{t.get('close_date', '')}",
                 **t,
+                "account_label": _acct_disp.account_label(t.get("account")),
             }
             for t in trades[:500]
         ],
@@ -8181,7 +8182,7 @@ def risk():
                 "total_unprotected_mv": snap.get("portfolio", {}).get("total_unprotected_mv", 0),
                 "position_count": snap.get("portfolio", {}).get("position_count_real", 0),
                 "paper_position_count": snap.get("portfolio", {}).get("position_count_paper", 0),
-                "positions": snap.get("positions", []),
+                "positions": _acct_disp.label_rows(snap.get("positions", [])),
                 "stops": snap.get("stops_map", {}),
                 "escalation": snap.get("escalation", {}),
                 "correlation": snap.get("correlation", []),
@@ -8314,6 +8315,8 @@ def risk():
                     "symbol": p.get("symbol", ""),
                     "market_value": p.get("market_value", 0),
                     "account": p.get("account", ""),
+                    "account_id": _acct_disp.canonical_key(p.get("account", "")),
+                    "account_label": _acct_disp.account_label(p.get("account", "")),
                     "environment": p.get("environment", "real"),
                     "risk_excluded": bool(p.get("risk_excluded")),
                     # CANONICAL protection hierarchy: (1) live broker stop order [API accounts], (2) operator-confirmed

@@ -1,4 +1,5 @@
 import { fmt$ } from '../../lib/format'
+import { accountName } from '../../lib/accountLabels'
 
 const COLS = [
   { k: 'symbol', l: 'Symbol' },
@@ -40,7 +41,7 @@ export default function TradeLogTable({ trades, onRow, sortCol, sortDir, onSort,
         </thead>
         <tbody>
           {trades.map((t, i) => (
-            <tr key={i} onClick={() => onRow(t)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
+            <tr key={i} data-account={String(t.account ?? t.na ?? '')} onClick={() => onRow(t)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
               {COLS.map(c => {
                 let v: any = t[c.k]
                 if (c.k === 'critique') {
@@ -48,6 +49,7 @@ export default function TradeLogTable({ trades, onRow, sortCol, sortDir, onSort,
                   const cr = critiqueByKey?.[trk]
                   v = cr?.has_critique ? (cr.stale ? 'stale' : (cr.takeaway?.slice(0, 28) || '✓')) : '—'
                 }
+                if (c.k === 'na') v = accountName(t.account ?? t.na, t.account_label)
                 if (c.k === 'pnl') v = fmt$(v, 2)
                 if (c.k === 'pnlPct' && v != null) v = `${Number(v).toFixed(1)}%`
                 if (c.k === 'ep' || c.k === 'xp') v = v != null ? `$${Number(v).toFixed(2)}` : '—'
