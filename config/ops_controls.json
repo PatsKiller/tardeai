@@ -72,6 +72,26 @@
       "default_source": "scripts/active_trader/momentum_alerts.py dataclass default (a config file may override it)",
       "consumer": "scripts/active_trader/momentum_alerts.py",
       "wired": false
+    },
+    {
+      "key": "ops_controls.sudo_window_enabled",
+      "label": "Ops Controls: sudo window (one passkey opens a short window; risky acts then need only the phrase)",
+      "type": "bool",
+      "default": false,
+      "default_source": "scripts/lib/ops_controls_sudo.py (off unless set here); inert until AGENTS.md >= 20.0.0 is ACTIVE",
+      "consumer": "scripts/lib/ops_controls_sudo.py",
+      "wired": true
+    },
+    {
+      "key": "ops_controls.sudo_window_minutes",
+      "label": "Ops Controls: sudo window length (minutes; it also ends after 15 idle minutes)",
+      "type": "int",
+      "min": 5,
+      "max": 120,
+      "default": 60,
+      "default_source": "scripts/lib/ops_controls_sudo.py DEFAULT_MINUTES (hard ceiling HARD_MAX_MINUTES = 120)",
+      "consumer": "scripts/lib/ops_controls_sudo.py",
+      "wired": true
     }
   ]
 }

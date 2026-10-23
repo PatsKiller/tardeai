@@ -20,6 +20,8 @@ export type RequestStatus = 'PREVIEWED' | 'AWAITING_STEP_UP' | 'STEP_UP_VERIFIED
 export type KindInfo = {
   kind: string; label: string; direction: Direction; supported: boolean; reason: string | null
   executor: 'applier' | 'cc' | null; tab: string | null
+  /** Needs a fresh passkey assertion even inside a sudo window (server: ops_controls_sudo.needs_fresh_passkey). */
+  fresh_passkey?: boolean
 }
 export type JobRow = {
   lane_id: string; registry_state?: string; scheduler_kind?: string
@@ -41,6 +43,8 @@ export type Passkey = { credential_id8: string; credential_id?: string; name: st
 export type AuditRow = {
   seq: number; at?: string; actor?: string; action?: string; kind?: string | null; request_id?: string | null
   outcome?: string | null; detail?: Record<string, unknown> | null; undo_available?: boolean
+  /** Why the row exists, one line; the server never sends it empty (2026-10-22). */
+  reason?: string | null
 }
 export type Preview = { summary?: string; before?: string | null; after?: string | null; diff?: string[]; warnings?: string[] }
 export type OpsRequest = {
@@ -52,6 +56,17 @@ export type OpsRequest = {
   undo?: { available: boolean; kind?: string | null; direction?: Direction | null; reason?: string | null } | null
 }
 type Section = { state: SectionState; reason?: string | null }
+export type SudoWindowView = {
+  window_id8: string; opened_at: string; expires_at: string; idle_expires_at: string; remaining_s: number
+  minutes: number; credential_id8: string; credential_name?: string | null; opening_assertion_id: string
+  opening_request_id: string; uses: number
+}
+/** The sudo window (inert until AGENTS.md >= 20.0.0 is ACTIVE and ops_controls.sudo_window_enabled is true). */
+export type SudoWindowState = {
+  state: 'ACTIVE' | 'INERT' | 'UNAVAILABLE'; reason?: string | null; enabled?: boolean; minutes?: number
+  max_minutes?: number; idle_minutes?: number; fresh_kinds?: string[]; fresh_settings?: string[]
+  window?: SudoWindowView | null
+}
 export type OpsControlsState = {
   ok?: boolean; schema?: string; as_of?: string; operator?: string
   policy: { state: PolicyState; required?: string; detail?: string }
@@ -71,10 +86,11 @@ export type OpsControlsState = {
   grants: Section & { tiers?: string[]; active?: ActiveGrant[] }
   // per-domain readiness (scripts/lib/data_domain_readiness.py); older servers send rows with domain/title/status only
   data_approvals: Section & Omit<DataApprovals, 'state' | 'reason'>
-  release_train: Section & { mode?: string; epoch?: number | null; latch?: string }
+  release_train: Section & { mode?: string; epoch?: number | null; latch?: string; stop_phase?: string | null; stop_reason?: string | null }
   passkeys: Passkey[]
   audit: Section & { rows?: AuditRow[] }
   requests: OpsRequest[]
+  sudo_window?: SudoWindowState
 }
 
 // ── pure gates ─────────────────────────────────────────────────────────────────────────────────────────
@@ -252,23 +268,82 @@ export const opsApi = {
   cancel: async (id: string) => req(await call('POST', `/requests/${encodeURIComponent(id)}/cancel`, {})),
   undo: async (id: string) => req(await call('POST', `/requests/${encodeURIComponent(id)}/undo`, { idempotency_key: newIdempotencyKey() })),
   stepUpOptions: (id: string) => call<JsonObj>('POST', `/requests/${encodeURIComponent(id)}/step-up/options`, {}),
-  stepUpVerify: (id: string, credential: JsonObj, phrase: string) =>
-    call<{ step_up_token: string; expires_at?: string }>('POST', `/requests/${encodeURIComponent(id)}/step-up/verify`, { credential, phrase }),
+  stepUpVerify: (id: string, credential: JsonObj, phrase: string, openWindow = false) =>
+    call<{ step_up_token: string; expires_at?: string; sudo_window?: { opened: boolean; reason?: string; sudo_token?: string } }>(
+      'POST', `/requests/${encodeURIComponent(id)}/step-up/verify`, { credential, phrase, ...(openWindow ? { open_window: true } : {}) }),
+  stepUpWindow: (id: string, sudoToken: string, phrase: string) =>
+    call<{ step_up_token: string; expires_at?: string }>('POST', `/requests/${encodeURIComponent(id)}/step-up/window`, { sudo_token: sudoToken, phrase }),
+  sudoEnd: () => call<{ ended: number }>('POST', '/sudo/end', {}),
   stepUpTotp: (id: string, code: string, phrase: string) =>
     call<{ step_up_token: string; expires_at?: string }>('POST', `/requests/${encodeURIComponent(id)}/step-up/totp`, { code, phrase }),
   registerOptions: (requestId: string) => call<JsonObj>('POST', '/passkeys/register/options', { request_id: requestId }),
   registerVerify: (requestId: string, credential: JsonObj) => call<JsonObj>('POST', '/passkeys/register/verify', { request_id: requestId, credential }),
 }
 
-/** Passkey step-up for one request: options → navigator.credentials.get → verify {credential, phrase}. */
-export async function passkeyStepUp(requestId: string, phrase: string): Promise<string> {
+/** Passkey step-up for one request: options → navigator.credentials.get → verify {credential, phrase}.
+ *  With openWindow the same assertion also asks the server to open a sudo window; its token is kept in this
+ *  browser session only (sessionStorage) and the server keeps only its hash. */
+export async function passkeyStepUp(requestId: string, phrase: string, openWindow = false): Promise<string> {
   const nav: any = (globalThis as any).navigator
   if (!nav?.credentials?.get) throw new OpsApiError(0, 'WEBAUTHN_UNAVAILABLE', 'this browser/context has no WebAuthn (needs HTTPS)')
   const opts = await opsApi.stepUpOptions(requestId)
   const cred = await nav.credentials.get({ publicKey: toPublicKeyRequestOptions(opts) })
   if (!cred) throw new OpsApiError(0, 'WEBAUTHN_CANCELLED', 'no credential returned')
-  const r = await opsApi.stepUpVerify(requestId, credentialToJSON(cred), phrase)
+  const r = await opsApi.stepUpVerify(requestId, credentialToJSON(cred), phrase, openWindow)
+  if (r.sudo_window?.opened && r.sudo_window.sudo_token) sudoToken.set(r.sudo_window.sudo_token)
   return r.step_up_token
+}
+
+// ── sudo window (client side) ─────────────────────────────────────────────────────────────────────────
+const SUDO_KEY = 'tradeai.opsControls.sudoToken'
+/** The window token lives in this browser session only; every access is guarded (private mode, blocked storage). */
+export const sudoToken = {
+  get(): string | null {
+    try { return (globalThis as any).sessionStorage?.getItem(SUDO_KEY) || null } catch { return null }
+  },
+  set(v: string): void {
+    try { (globalThis as any).sessionStorage?.setItem(SUDO_KEY, v) } catch { /* no storage: no window here */ }
+  },
+  clear(): void {
+    try { (globalThis as any).sessionStorage?.removeItem(SUDO_KEY) } catch { /* nothing to clear */ }
+  },
+}
+
+/** Whether a risky kind may be stepped up with the open sudo window (phrase only) instead of a fresh passkey. */
+export function windowCovers(state: OpsControlsState | null | undefined, kind: string, params?: Record<string, unknown>, hasToken = true): boolean {
+  const sw = state?.sudo_window
+  if (!hasToken || !sw || sw.state !== 'ACTIVE' || !sw.window || sw.window.remaining_s <= 0) return false
+  const k = kindFor(state, kind)
+  if (!k || k.direction !== 'risky' || k.fresh_passkey) return false
+  if ((kind === 'setting.set' || kind === 'setting.unset') && (sw.fresh_settings || []).includes(String(params?.key ?? ''))) return false
+  return true
+}
+
+/** "47m 05s" / "45s": the banner's remaining time. */
+export function fmtRemaining(seconds: number | null | undefined): string {
+  if (typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds <= 0) return '0s'
+  const s = Math.floor(seconds), m = Math.floor(s / 60), r = s % 60
+  return m ? `${m}m ${String(r).padStart(2, '0')}s` : `${r}s`
+}
+
+// ── kill switch (read-only; GET /api/v2/execution/kill-switches, the route the Execution panel already reads) ──
+export type KillSwitchWire = {
+  ok?: boolean; error?: string; active?: Array<{ level?: string; scope?: string; reason?: string | null; enabled_at?: string | null }>
+  switches?: Array<{ level?: string; scope?: string; enabled?: boolean; reason?: string | null; enabled_at?: string | null; disabled_at?: string | null }>
+}
+export type KillSwitchSummary = { state: 'ENGAGED' | 'CLEAR' | 'UNAVAILABLE'; text: string; others: number }
+/** The global switch's state, fail closed: anything unreadable is UNAVAILABLE, never CLEAR. */
+export function killSwitchSummary(w: KillSwitchWire | null | undefined, error?: string | null): KillSwitchSummary {
+  if (!w) return { state: 'UNAVAILABLE', text: error ? `could not read the kill-switch state: ${error}` : 'loading the kill-switch state', others: 0 }
+  if (w.ok === false || !Array.isArray(w.switches)) {
+    return { state: 'UNAVAILABLE', text: `kill-switch state unreadable (${w.error || 'no switch table in the response'}); the order path treats this as engaged`, others: 0 }
+  }
+  const active = (w.active || w.switches.filter(s => s.enabled))
+  const g = active.find(s => s.level === 'global' && !s.scope)
+  const others = active.filter(s => s !== g).length
+  if (g) return { state: 'ENGAGED', text: `engaged${g.enabled_at ? ` since ${g.enabled_at}` : ''}${g.reason ? ` — ${g.reason}` : ''}`, others }
+  const last = w.switches.find(s => s.level === 'global' && !s.scope)
+  return { state: 'CLEAR', text: last?.disabled_at ? `clear since ${last.disabled_at}` : 'clear (never engaged)', others }
 }
 
 /** After the passkey.register request is APPROVED: options → navigator.credentials.create → verify. */

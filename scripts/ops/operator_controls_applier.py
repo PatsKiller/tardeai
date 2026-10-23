@@ -2,8 +2,9 @@
 """The one governed host applier for Ops -> Controls (AGENTS.md 19.0.0 §27.2, PROPOSED). OPERATOR-ONLY.
 
 It is the only writer of the host changes the Controls page asks for: crontab lines (pause / resume by exact text),
-the n8n relay live list, operator_settings (+ history), guard grants (bin/guard), and kill-switch ENGAGE (the existing
-operator CLI, never modified). Every change: re-plan, refuse if the target moved since the preview, backup, apply,
+the n8n relay live list, operator_settings (+ history), guard grants (bin/guard), kill-switch ENGAGE (the existing
+operator CLI, never modified), and release-train resume / arm (2026-10-22: the signed, fresh-passkey approval is the
+operator proof the release-train library's passkey hook checks; AGENTS.md 19.0.0 §25.4). Every change: re-plan, refuse if the target moved since the preview, backup, apply,
 verify, append-only audit row, Telegram notification (notification only), and an undo request the operator can make.
 
 It applies only requests that are APPROVED in ops_applier_requests AND carry a valid HMAC approval signature (the key
@@ -95,12 +96,22 @@ def process_once(*, cfg: dict, store: Any, hosts: C.Hosts, hmac_key: Optional[by
                                outcome="expired", detail={"max_age_s": max_age})
             out.append({"request_id": rid, "outcome": "EXPIRED"})
             continue
+        fresh = API.SW.needs_fresh_passkey(req["kind"], req.get("params"))
+        if fresh and req.get("stepup_factor") not in ("passkey", "totp"):
+            # Defence in depth (sudo window, 2026-10-22): the CC refuses this at approve; the applier re-checks the
+            # factor inside the signed approval, so an always-fresh kind is never applied on a window step-up.
+            r = store.transition(rid, ("APPROVED",), "APPLYING")
+            if r:
+                API.finish(ctx, r, {"outcome": "REFUSED", "code": "FRESH_PASSKEY_REQUIRED", "detail": fresh},
+                           actor=APPLIER_ACTOR)
+            out.append({"request_id": rid, "outcome": "REFUSED", "code": "FRESH_PASSKEY_REQUIRED"})
+            continue
         r = store.transition(rid, ("APPROVED",), "APPLYING")
         if not r:
             continue
         try:
             result = C.apply_change(r["kind"], r["params"], r.get("expected_state_digest"), hosts, store,
-                                    request_id=rid, actor=r["actor"])
+                                    request_id=rid, actor=r["actor"], approval=req, hmac_key=hmac_key)
         except (C.OpsError, S.StoreError) as exc:
             result = {"outcome": "REFUSED", "code": exc.code, "detail": exc.detail}
         except Exception as exc:  # noqa: BLE001 — recorded, never retried blindly
