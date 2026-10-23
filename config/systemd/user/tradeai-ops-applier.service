@@ -1,0 +1,26 @@
+# Ops -> Controls host applier (AGENTS.md 19.0.0 §27.2; docs/ops/OPS_CONTROLS.md). Committed here; INSTALLED BY
+# THE OPERATOR ONLY (a new systemd entry is §17), after AGENTS.md 19.0.0 is ACTIVE and the migration is applied:
+#   install -m 0644 "$HOME/trade-ai-releases/portfolio-server/CURRENT/config/systemd/user/tradeai-ops-applier.service" \
+#       "$HOME/.config/systemd/user/tradeai-ops-applier.service"
+#   systemctl --user daemon-reload && systemctl --user enable --now tradeai-ops-applier.service
+# No agent installs, enables, starts or calls it. It applies only HMAC-signed, operator-approved requests from
+# ops_applier_requests; while 19.0.0 is not ACTIVE it applies nothing and heartbeats "inert".
+# Single writer: an exclusive flock (~/.local/state/tradeai/ops_applier/applier.lock); a second copy exits 3.
+
+[Unit]
+Description=Trade AI Ops Controls host applier (crontab, n8n live list, settings, grants; backup + audit + undo)
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+EnvironmentFile=-%t/tradeai/env
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python %h/trade-ai-releases/portfolio-server/CURRENT/scripts/ops/operator_controls_applier.py serve
+Restart=on-failure
+RestartSec=10
+Nice=5
+MemoryMax=256M
+
+[Install]
+WantedBy=default.target

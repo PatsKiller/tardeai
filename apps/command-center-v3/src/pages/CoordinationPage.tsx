@@ -4,6 +4,7 @@ import { useMemo, useState, type CSSProperties } from 'react'
 import SchedulerOperations from './SchedulerOperations'
 import N8nToday from './N8nToday'
 import ReleaseTrainTab from './ReleaseTrainTab'
+import AgentClaimsPanel from './AgentClaimsPanel'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { projectionReadPath } from '../lib/projectionReadProtocol'
@@ -29,10 +30,11 @@ const PHASES: Array<[CoordinationRow['phase'], string]> = [
 ]
 
 // Tabs: the events ledger (events + outbox + approvals), the n8n migration board (stream G, 2026-10-08) and the
-// release train (Release Train v2, 2026-10-21: queue, trains, history, census, STOP RELEASES).
-const TABS = ['operations', 'today', 'events', 'migration', 'release'] as const
+// release train (Release Train v2, 2026-10-21: queue, trains, history, census, STOP RELEASES) and the agent claim board
+// (2026-10-22: who's working on what — Claude, Codex, Cursor sessions and the files each has claimed).
+const TABS = ['operations', 'today', 'events', 'migration', 'release', 'agents'] as const
 type CoordinationTab = (typeof TABS)[number]
-const TAB_LABEL: Record<CoordinationTab, string> = { operations: 'Automation', today: 'n8n today', events: 'Events', migration: 'Migration board', release: 'Release train' }
+const TAB_LABEL: Record<CoordinationTab, string> = { operations: 'Automation', today: 'n8n today', events: 'Events', migration: 'Migration board', release: 'Release train', agents: "Who's working" }
 const tabButton = (active: boolean): CSSProperties => ({
   padding: '7px 14px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`,
   background: active ? TOKENS.bg[2] : TOKENS.bg[1], color: active ? TOKENS.text[0] : TOKENS.text[2],
@@ -87,7 +89,7 @@ export default function CoordinationPage() {
   const approvalsApi = useApi<ApprovalBoardPayload>('/api/v2/coordination/approvals', 60_000)
   const approvals = useMemo(() => projectApprovalBoard(approvalsApi.loading && !approvalsApi.data ? null : approvalsApi.data), [approvalsApi.data, approvalsApi.loading])
   const [searchParams, setSearchParams] = useSearchParams()
-  const [tab, setTab] = useState<CoordinationTab>(() => (searchParams.get('tab') === 'migration' ? 'migration' : searchParams.get('tab') === 'events' ? 'events' : searchParams.get('tab') === 'today' ? 'today' : searchParams.get('tab') === 'release' ? 'release' : 'operations'))
+  const [tab, setTab] = useState<CoordinationTab>(() => (searchParams.get('tab') === 'migration' ? 'migration' : searchParams.get('tab') === 'events' ? 'events' : searchParams.get('tab') === 'today' ? 'today' : searchParams.get('tab') === 'release' ? 'release' : searchParams.get('tab') === 'agents' ? 'agents' : 'operations'))
   const boardApi = useApi<MigrationBoardPayload>('/api/v2/coordination/migration-board', 60_000, { enabled: tab === 'migration' })
   const board = useMemo(() => projectMigrationBoard(boardApi.loading && !boardApi.data ? null : boardApi.data), [boardApi.data, boardApi.loading])
   const boardSort = useSort(board.rows, { key: 'tranche', dir: 'asc' }, boardGetter)
@@ -106,7 +108,17 @@ export default function CoordinationPage() {
           </button>
         ))}
       </nav>
-      {tab === 'operations' ? <SchedulerOperations /> : tab === 'today' ? <N8nToday /> : tab === 'release' ? <ReleaseTrainTab /> : tab === 'migration' ? (
+      {tab === 'operations' ? <SchedulerOperations /> : tab === 'today' ? <N8nToday /> : tab === 'agents' ? <AgentClaimsPanel /> : tab === 'release' ? (
+        <div style={{ display: 'grid', gap: 12 }}>
+          {/* Releases & schedules (2026-10-22): the full page (serving release, main HEAD, windows, queue, shipped history,
+              release errors, n8n + cron timeline) is linked from here; the queue/trains/events views and STOP RELEASES stay on this tab. */}
+          <div data-testid="coordination-releases-link" style={{ ...panel, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>Serving release, what releases next, train windows, shipped history, release errors and the next 3 hours of n8n and cron are on one page.</div>
+            <a href="/v3/system/releases" style={{ fontSize: TYPE.sm, fontWeight: 750, color: TOKENS.primary, textDecoration: 'none' }}>Open Releases &amp; schedules →</a>
+          </div>
+          <ReleaseTrainTab />
+        </div>
+      ) : tab === 'migration' ? (
       <div style={panel} data-testid="coordination-migration-board">
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
           <div style={{ fontSize: TYPE.lg, fontWeight: 800, color: TOKENS.text[0] }}>Migration board</div>

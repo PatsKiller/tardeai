@@ -1,0 +1,721 @@
+{
+ "_provenance": {
+  "captured_at": "2026-10-22T20:35Z",
+  "round_trips": "GET http://127.0.0.1:7777/api/v2/journal?symbol=NAVN (trade_closed srt:607228; read-only)",
+  "stop_history": "coordinator relay of the operator's read-only stop_lifecycle read 2026-10-22: 24.31\u219224.59\u219224.70\u219224.97\u219225.51\u219225.61\u219226.02, all replaced, last filled 2026-10-22 (order ids and times not relayed; seq gives the order)",
+  "bars": "GET /api/v3/opportunities/NAVN chart.bars (ticker_prices.close; daily closes only)",
+  "assessment_versions": "data/cio/cio_opportunity_assessments.jsonl NAVN v25-v27 (trimmed)",
+  "entry_signal": "data/cio/cio_events.jsonl watch.new_signal cio_entry_state NAVN",
+  "opportunity_now": "data/cio/cio_opportunity_projection.json items.NAVN (2026-10-22 20:30Z)",
+  "thesis": "data/cio/cio_theses_projection.json current.symbol_navn",
+  "holdings": "data/portfolios/state/holdings.json NAVN row (updated_at 2026-10-22T20:30:19Z: still lists 500 sh after the 15:59 ET stop fill)",
+  "identity": "identity_carriage.resolve_security_identity('NAVN') (CONFIRMED)"
+ },
+ "identity": {
+  "symbol": "NAVN",
+  "security_guid": "1b1fd2bf-78cf-5755-bdea-9248cd007907",
+  "issuer_guid": "95757d71-8dfe-5236-818a-6e846fc71669",
+  "subject_guid": "1b1fd2bf-78cf-5755-bdea-9248cd007907",
+  "identity_status": "CONFIRMED"
+ },
+ "opportunity_now": {
+  "symbol": "NAVN",
+  "as_of": "2026-10-22T20:30:16.494762+00:00",
+  "conviction": 86.6,
+  "coverage": 0.9,
+  "rank": 3,
+  "stance": "ADD",
+  "type": "add_on",
+  "position_status": "owned",
+  "risk_reward": {
+   "entry_ref": 24.95,
+   "entry_source": "entry_plan.suggested_entry",
+   "current_price": 26.02,
+   "entry_zone": [
+    24.8,
+    25.1
+   ],
+   "invalidation_level": 23.9,
+   "invalidation_source": "entry_plan",
+   "targets": [
+    {
+     "label": "T1 (+1R)",
+     "px": 26.0,
+     "source": "entry_plan",
+     "tier": "T1",
+     "reward_pct": 4.21
+    },
+    {
+     "label": "T2 (plan target)",
+     "px": 30.0,
+     "source": "entry_plan",
+     "tier": "T2",
+     "reward_pct": 20.24,
+     "primary": true
+    },
+    {
+     "label": "T3 (runner)",
+     "px": 31.05,
+     "source": "entry_plan",
+     "tier": "T3",
+     "reward_pct": 24.45
+    }
+   ],
+   "risk_per_share": 1.05,
+   "risk_pct": 4.21,
+   "primary_target": 30.0,
+   "reward_pct": 20.24,
+   "rr": 4.81,
+   "level_trust": 1.0
+  },
+  "factors": {
+   "technical": {
+    "score": 86.2,
+    "detail": "RSI 72, bullish; strategy-qualified, base 95",
+    "source": "hermes_score_components",
+    "label": "Technical",
+    "weight": 0.22
+   },
+   "analyst": {
+    "score": 85.2,
+    "detail": "strong_buy \u00b7 15 analysts \u00b7 +18.4% to mean target",
+    "source": "yahoo_analyst_targets_history",
+    "label": "Analyst",
+    "weight": 0.18
+   },
+   "momentum": {
+    "score": 95.5,
+    "detail": "1W +3.3%, 1M +32.4%",
+    "source": "price_stats",
+    "label": "Momentum",
+    "weight": 0.15
+   },
+   "risk_reward": {
+    "score": 97.6,
+    "detail": "R:R 4.8x \u00b7 risk 4.21% \u00b7 reward 20.24%",
+    "source": "risk_reward",
+    "label": "Risk/Reward",
+    "weight": 0.22
+   },
+   "portfolio_fit": {
+    "score": 60.0,
+    "detail": "no concentration flag",
+    "source": "portfolio_snapshot",
+    "label": "Portfolio Fit",
+    "weight": 0.13
+   }
+  },
+  "factors_missing": [
+   "fundamental"
+  ]
+ },
+ "assessment_versions": [
+  {
+   "symbol": "NAVN",
+   "version": 25,
+   "written_at": "2026-10-15T19:00:18.759575+00:00",
+   "change_reasons": [
+    "rank band 59\u219230"
+   ],
+   "assessment": {
+    "symbol": "NAVN",
+    "as_of": "2026-10-15T19:00:17.754601+00:00",
+    "conviction": 78.3,
+    "coverage": 0.9,
+    "rank": 30,
+    "stance": "WATCH",
+    "type": "new_position",
+    "position_status": "watchlist",
+    "risk_reward": {
+     "entry_ref": 21.8,
+     "entry_source": "entry_plan.suggested_entry",
+     "current_price": 25.06,
+     "entry_zone": [
+      20.5,
+      23.0
+     ],
+     "invalidation_level": 18.9,
+     "invalidation_source": "entry_plan",
+     "targets": [
+      {
+       "label": "T1 (+1R)",
+       "px": 24.7,
+       "source": "entry_plan",
+       "tier": "T1",
+       "reward_pct": 13.3
+      },
+      {
+       "label": "T2 (plan target)",
+       "px": 29.6,
+       "source": "entry_plan",
+       "tier": "T2",
+       "reward_pct": 35.78,
+       "primary": true
+      },
+      {
+       "label": "T3 (runner)",
+       "px": 32.5,
+       "source": "entry_plan",
+       "tier": "T3",
+       "reward_pct": 49.08
+      }
+     ],
+     "risk_per_share": 2.9,
+     "risk_pct": 13.3,
+     "primary_target": 29.6,
+     "reward_pct": 35.78,
+     "rr": 2.69,
+     "level_trust": 1.0
+    }
+   }
+  },
+  {
+   "symbol": "NAVN",
+   "version": 26,
+   "written_at": "2026-10-16T13:00:13.526566+00:00",
+   "change_reasons": [
+    "conviction 78\u219286",
+    "rank band 30\u21924",
+    "entry level moved",
+    "invalidation level moved",
+    "target level moved"
+   ],
+   "assessment": {
+    "symbol": "NAVN",
+    "as_of": "2026-10-16T13:00:13.029182+00:00",
+    "conviction": 85.6,
+    "coverage": 0.9,
+    "rank": 4,
+    "stance": "WATCH",
+    "type": "new_position",
+    "position_status": "watchlist",
+    "risk_reward": {
+     "entry_ref": 24.95,
+     "entry_source": "entry_plan.suggested_entry",
+     "current_price": 25.205,
+     "entry_zone": [
+      24.8,
+      25.1
+     ],
+     "invalidation_level": 23.9,
+     "invalidation_source": "entry_plan",
+     "targets": [
+      {
+       "label": "T1 (+1R)",
+       "px": 26.0,
+       "source": "entry_plan",
+       "tier": "T1",
+       "reward_pct": 4.21
+      },
+      {
+       "label": "T2 (plan target)",
+       "px": 30.0,
+       "source": "entry_plan",
+       "tier": "T2",
+       "reward_pct": 20.24,
+       "primary": true
+      },
+      {
+       "label": "T3 (runner)",
+       "px": 31.05,
+       "source": "entry_plan",
+       "tier": "T3",
+       "reward_pct": 24.45
+      }
+     ],
+     "risk_per_share": 1.05,
+     "risk_pct": 4.21,
+     "primary_target": 30.0,
+     "reward_pct": 20.24,
+     "rr": 4.81,
+     "level_trust": 1.0
+    }
+   }
+  },
+  {
+   "symbol": "NAVN",
+   "version": 27,
+   "written_at": "2026-10-22T15:30:14.607566+00:00",
+   "change_reasons": [
+    "stance WATCH\u2192ADD",
+    "type new_position\u2192add_on"
+   ],
+   "assessment": {
+    "symbol": "NAVN",
+    "as_of": "2026-10-22T15:30:13.415547+00:00",
+    "conviction": 87.6,
+    "coverage": 0.9,
+    "rank": 1,
+    "stance": "ADD",
+    "type": "add_on",
+    "position_status": "owned",
+    "risk_reward": {
+     "entry_ref": 24.95,
+     "entry_source": "entry_plan.suggested_entry",
+     "current_price": 27.115,
+     "entry_zone": [
+      24.8,
+      25.1
+     ],
+     "invalidation_level": 23.9,
+     "invalidation_source": "entry_plan",
+     "targets": [
+      {
+       "label": "T1 (+1R)",
+       "px": 26.0,
+       "source": "entry_plan",
+       "tier": "T1",
+       "reward_pct": 4.21
+      },
+      {
+       "label": "T2 (plan target)",
+       "px": 30.0,
+       "source": "entry_plan",
+       "tier": "T2",
+       "reward_pct": 20.24,
+       "primary": true
+      },
+      {
+       "label": "T3 (runner)",
+       "px": 31.05,
+       "source": "entry_plan",
+       "tier": "T3",
+       "reward_pct": 24.45
+      }
+     ],
+     "risk_per_share": 1.05,
+     "risk_pct": 4.21,
+     "primary_target": 30.0,
+     "reward_pct": 20.24,
+     "rr": 4.81,
+     "level_trust": 1.0
+    }
+   }
+  }
+ ],
+ "entry_signal": {
+  "event_id": "evt-cb6ad4a5e735",
+  "event_type": "watch.new_signal",
+  "timestamp": "2026-10-16T17:40:13.617096+00:00",
+  "payload": {
+   "symbol": "NAVN",
+   "symbols": [
+    "NAVN"
+   ],
+   "signal": "cio_entry_state",
+   "state": "BUY_READY",
+   "entry_low": 24.8,
+   "entry_high": 25.1,
+   "price": 24.98,
+   "rr": 4.08,
+   "market_cap_label": "MID_CAP"
+  },
+  "source": "cio_entry_state_runner",
+  "priority": "MEDIUM",
+  "source_event_id": "",
+  "semantic_event_key": "cio_entry:NAVN:BUY_READY:2026-10-16",
+  "prev_hash": "86159c9237f9942ca0b83749d4ef5165201f703e09c23162fc5e4137d9ddc71f",
+  "event_hash": "50a2f52ed0ecda9e4160593c0439d68418c76fab8ab832e1b7c19d55015aaf0a"
+ },
+ "thesis": {
+  "stance": "",
+  "status": "active",
+  "thesis_version": "symbol_navn@v2",
+  "published_ts": "2026-09-16T16:26:54.930037+00:00",
+  "updated_ts": "2026-09-16T16:26:54.930037+00:00",
+  "linked_symbols": [
+   "NAVN"
+  ]
+ },
+ "holdings": {
+  "as_of": "2026-10-22",
+  "updated_at": "2026-10-22T20:30:19.128488+00:00",
+  "holdings": [
+   {
+    "symbol": "NAVN",
+    "account": "schwab_rollover_ira",
+    "shares": 500.0
+   }
+  ]
+ },
+ "captured": {
+  "_provenance": {
+   "captured_at": "2026-10-22T20:35Z",
+   "round_trips": "GET http://127.0.0.1:7777/api/v2/journal?symbol=NAVN (trade_closed srt:607228; read-only)",
+   "stop_history": "coordinator relay of the operator's read-only stop_lifecycle read 2026-10-22: 24.31\u219224.59\u219224.70\u219224.97\u219225.51\u219225.61\u219226.02, all replaced, last filled 2026-10-22 (order ids and times not relayed; seq gives the order)",
+   "bars": "GET /api/v3/opportunities/NAVN chart.bars (ticker_prices.close; daily closes only)"
+  },
+  "round_trips": [
+   {
+    "round_trip_key": "srt:607228",
+    "account": "schwab_rollover_ira",
+    "symbol": "NAVN",
+    "entry_time": "2026-10-19 11:01:04-04",
+    "exit_time": "2026-10-22 15:59:21-04",
+    "entry_price": 25.64,
+    "exit_price": 26.02,
+    "net_pnl": 189.73,
+    "classification": "swing",
+    "journal_stop": null
+   }
+  ],
+  "fills": [],
+  "stop_history": [
+   {
+    "symbol": "NAVN",
+    "account": "schwab_rollover_ira",
+    "order_id": "navn-stop-1",
+    "order_type": "STOP",
+    "status": "REPLACED",
+    "stop_price": 24.31,
+    "snapshot_at": null,
+    "seq": 1
+   },
+   {
+    "symbol": "NAVN",
+    "account": "schwab_rollover_ira",
+    "order_id": "navn-stop-2",
+    "order_type": "STOP",
+    "status": "REPLACED",
+    "stop_price": 24.59,
+    "snapshot_at": null,
+    "seq": 2
+   },
+   {
+    "symbol": "NAVN",
+    "account": "schwab_rollover_ira",
+    "order_id": "navn-stop-3",
+    "order_type": "STOP",
+    "status": "REPLACED",
+    "stop_price": 24.7,
+    "snapshot_at": null,
+    "seq": 3
+   },
+   {
+    "symbol": "NAVN",
+    "account": "schwab_rollover_ira",
+    "order_id": "navn-stop-4",
+    "order_type": "STOP",
+    "status": "REPLACED",
+    "stop_price": 24.97,
+    "snapshot_at": null,
+    "seq": 4
+   },
+   {
+    "symbol": "NAVN",
+    "account": "schwab_rollover_ira",
+    "order_id": "navn-stop-5",
+    "order_type": "STOP",
+    "status": "REPLACED",
+    "stop_price": 25.51,
+    "snapshot_at": null,
+    "seq": 5
+   },
+   {
+    "symbol": "NAVN",
+    "account": "schwab_rollover_ira",
+    "order_id": "navn-stop-6",
+    "order_type": "STOP",
+    "status": "REPLACED",
+    "stop_price": 25.61,
+    "snapshot_at": null,
+    "seq": 6
+   },
+   {
+    "symbol": "NAVN",
+    "account": "schwab_rollover_ira",
+    "order_id": "navn-stop-7",
+    "order_type": "STOP",
+    "status": "FILLED",
+    "stop_price": 26.02,
+    "snapshot_at": null,
+    "seq": 7
+   }
+  ],
+  "rec_links": [],
+  "bars": {
+   "NAVN": [
+    {
+     "time": "2026-07-20",
+     "close": 27.74
+    },
+    {
+     "time": "2026-07-21",
+     "close": 26.62
+    },
+    {
+     "time": "2026-07-22",
+     "close": 23.565
+    },
+    {
+     "time": "2026-07-23",
+     "close": 22.2
+    },
+    {
+     "time": "2026-07-24",
+     "close": 23.21
+    },
+    {
+     "time": "2026-07-27",
+     "close": 25.765
+    },
+    {
+     "time": "2026-07-28",
+     "close": 26.35
+    },
+    {
+     "time": "2026-07-29",
+     "close": 26.56
+    },
+    {
+     "time": "2026-07-30",
+     "close": 26.735
+    },
+    {
+     "time": "2026-07-31",
+     "close": 26.66
+    },
+    {
+     "time": "2026-08-03",
+     "close": 27.46
+    },
+    {
+     "time": "2026-08-04",
+     "close": 27.87
+    },
+    {
+     "time": "2026-08-05",
+     "close": 27.635
+    },
+    {
+     "time": "2026-08-06",
+     "close": 27.855
+    },
+    {
+     "time": "2026-08-07",
+     "close": 29.085
+    },
+    {
+     "time": "2026-08-08",
+     "close": 29.085
+    },
+    {
+     "time": "2026-08-10",
+     "close": 28.67
+    },
+    {
+     "time": "2026-08-11",
+     "close": 28.93
+    },
+    {
+     "time": "2026-08-12",
+     "close": 28.78
+    },
+    {
+     "time": "2026-08-13",
+     "close": 29.72
+    },
+    {
+     "time": "2026-08-14",
+     "close": 29.25
+    },
+    {
+     "time": "2026-08-17",
+     "close": 28.71
+    },
+    {
+     "time": "2026-08-18",
+     "close": 29.2
+    },
+    {
+     "time": "2026-08-19",
+     "close": 29.18
+    },
+    {
+     "time": "2026-08-20",
+     "close": 28.555
+    },
+    {
+     "time": "2026-08-21",
+     "close": 29.15
+    },
+    {
+     "time": "2026-08-24",
+     "close": 29.365
+    },
+    {
+     "time": "2026-08-25",
+     "close": 29.305
+    },
+    {
+     "time": "2026-08-26",
+     "close": 29.33
+    },
+    {
+     "time": "2026-08-27",
+     "close": 30.585
+    },
+    {
+     "time": "2026-08-28",
+     "close": 28.49
+    },
+    {
+     "time": "2026-08-31",
+     "close": 29.035
+    },
+    {
+     "time": "2026-09-01",
+     "close": 27.31
+    },
+    {
+     "time": "2026-09-02",
+     "close": 26.875
+    },
+    {
+     "time": "2026-09-03",
+     "close": 27.71
+    },
+    {
+     "time": "2026-09-04",
+     "close": 27.765
+    },
+    {
+     "time": "2026-09-07",
+     "close": 27.765
+    },
+    {
+     "time": "2026-09-08",
+     "close": 26.64
+    },
+    {
+     "time": "2026-09-09",
+     "close": 25.92
+    },
+    {
+     "time": "2026-09-10",
+     "close": 20.27
+    },
+    {
+     "time": "2026-09-11",
+     "close": 21.01
+    },
+    {
+     "time": "2026-09-14",
+     "close": 21.37
+    },
+    {
+     "time": "2026-09-15",
+     "close": 22.4
+    },
+    {
+     "time": "2026-09-16",
+     "close": 22.55
+    },
+    {
+     "time": "2026-09-17",
+     "close": 22.12
+    },
+    {
+     "time": "2026-09-18",
+     "close": 21.35
+    },
+    {
+     "time": "2026-09-21",
+     "close": 21.52
+    },
+    {
+     "time": "2026-09-22",
+     "close": 20.96
+    },
+    {
+     "time": "2026-09-23",
+     "close": 19.655
+    },
+    {
+     "time": "2026-09-24",
+     "close": 19.425
+    },
+    {
+     "time": "2026-09-25",
+     "close": 19.415
+    },
+    {
+     "time": "2026-09-28",
+     "close": 19.985
+    },
+    {
+     "time": "2026-09-29",
+     "close": 20.67
+    },
+    {
+     "time": "2026-09-30",
+     "close": 21.0
+    },
+    {
+     "time": "2026-10-01",
+     "close": 21.505
+    },
+    {
+     "time": "2026-10-02",
+     "close": 21.44
+    },
+    {
+     "time": "2026-10-05",
+     "close": 21.82
+    },
+    {
+     "time": "2026-10-06",
+     "close": 21.335
+    },
+    {
+     "time": "2026-10-07",
+     "close": 22.28
+    },
+    {
+     "time": "2026-10-08",
+     "close": 23.08
+    },
+    {
+     "time": "2026-10-09",
+     "close": 23.645
+    },
+    {
+     "time": "2026-10-12",
+     "close": 23.565
+    },
+    {
+     "time": "2026-10-13",
+     "close": 23.9
+    },
+    {
+     "time": "2026-10-14",
+     "close": 24.015
+    },
+    {
+     "time": "2026-10-15",
+     "close": 25.205
+    },
+    {
+     "time": "2026-10-16",
+     "close": 25.38
+    },
+    {
+     "time": "2026-10-19",
+     "close": 25.67
+    },
+    {
+     "time": "2026-10-20",
+     "close": 26.295
+    },
+    {
+     "time": "2026-10-21",
+     "close": 26.625
+    },
+    {
+     "time": "2026-10-22",
+     "close": 26.03
+    }
+   ]
+  }
+ }
+}

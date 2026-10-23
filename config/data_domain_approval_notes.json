@@ -1,0 +1,12 @@
+{
+  "schema": "DataDomainApprovalNotes@v1",
+  "_why": "Operator decisions about data-dictionary rows that are not (yet) recorded in config/data_source_authority.json. A row is granted only when a reviewed PR calls scripts/lib/data_dictionary.promote with the operator's approval record (AGENTS.md §17, §26.6); until then this file only lets Ops -> Controls -> Data approvals say that the decision exists. It grants nothing, and no gate reads it. Read by scripts/lib/data_domain_readiness.py.",
+  "domains": {
+    "cio_prospect": {
+      "approval_given": true,
+      "decision": "operator approval E (2026-10-22, approve-all)",
+      "pending": "promotion into domains[] in its own reviewed PR (data_dictionary.promote); not applied here",
+      "recorded_by": "agent, relaying the operator's 2026-10-22 approve-all ruling (session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)"
+    }
+  }
+}

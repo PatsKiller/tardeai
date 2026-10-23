@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "home_do_now_20261022",
+  "files": [
+    "tests/test_home_do_now_20261022.py"
+  ],
+  "anchor": "HOME_DO_NOW_20261022",
+  "comment": [
+    "ANCHOR: HOME_DO_NOW_20261022 — operator-approved Home redesign: one 'Do now' queue (protect / decide / fix) replaces",
+    "Needs action, Requires attention, Operator inbox, Top risks and Platform. GET /api/v2/home/do-now is the data-broker",
+    "projection home_do_now (HomeDoNow@v1): needs-action, inbox, risk snapshot, held-exit-coverage receipt, pending",
+    "proposals and redeploys merged by id, sorted money at risk first, every source with as_of / basis / age / stale; an",
+    "unreadable source is an item. No broker read, no write. Hermetic: in-memory payloads and a fake db_query."
+  ]
+}

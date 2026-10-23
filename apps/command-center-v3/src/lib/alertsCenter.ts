@@ -54,11 +54,11 @@ export function realSymbols(candidates: Iterable<string | null | undefined>): st
   return out
 }
 
-/** Primary surface for BUY_READY / ENTRY_NEAR — Scalp tab, never /watch/intelligence/ALERT. */
+/** Primary surface for BUY_READY / ENTRY_NEAR — Active Trader → Scalp (moved from Trading 2026-10-22), never /watch/intelligence/ALERT. */
 export function entryPrimaryHref(symbol: string | null | undefined): string {
   const s = realSymbols([symbol])[0]
-  if (!s) return '/v3/trading?tab=Scalp'
-  return `/v3/trading?tab=Scalp&symbol=${encodeURIComponent(s)}`
+  if (!s) return '/v3/active-trader?tab=Scalp'
+  return `/v3/active-trader?tab=Scalp&symbol=${encodeURIComponent(s)}`
 }
 
 export function dossierHref(symbol: string | null | undefined): string | null {
@@ -245,6 +245,6 @@ export function shortcuts(): Array<{ label: string; href: string }> {
   return [
     { label: 'Communications', href: '/v3/communications' },
     { label: 'Re-Entry · Entry alerts', href: '/v3/portfolio/re-entry' },
-    { label: 'Trading · Scalp', href: '/v3/trading?tab=Scalp' },
+    { label: 'Active Trader · Scalp', href: '/v3/active-trader?tab=Scalp' },
   ]
 }

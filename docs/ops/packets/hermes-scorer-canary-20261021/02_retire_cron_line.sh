@@ -46,9 +46,13 @@ ARGS=(comment-cron --code-root "$SERVED" --lanes "$LANE" --date "$DATE")
 
 [[ $PROOF == 0 ]] || fail "no live n8n RUN_DONE with rows written yet: the cron line is still the only proven writer"
 "$PY" "$SERVED/scripts/n8n_cutover_wave.py" "${ARGS[@]}" --apply
-crontab -l | grep -c "^# RETIRED $DATE n8n-cutover $LANE .*scripts/hermes_watchlist_scorer.py" | grep -qx 1 \
+# Read back once into a variable. Never `crontab -l | grep -v ... | grep -q`: grep -q exits at the first match, the
+# upstream stage takes SIGPIPE, and pipefail turns a FOUND line into "not found" (2026-10-22 SIGPIPE fix).
+CT="$(crontab -l)" || fail "READ-BACK FAILED: crontab -l failed"
+grep -c "^# RETIRED $DATE n8n-cutover $LANE .*scripts/hermes_watchlist_scorer.py" <<<"$CT" | grep -qx 1 \
   || fail "READ-BACK FAILED: the retired line is not in the crontab (backup under ~/.local/state/tradeai/backups)"
-if crontab -l | grep -v '^[[:space:]]*#' | grep -q 'scripts/hermes_watchlist_scorer.py'; then
+ACTIVE_LINES="$(grep -v '^[[:space:]]*#' <<<"$CT" || true)"
+if grep -qF 'scripts/hermes_watchlist_scorer.py' <<<"$ACTIVE_LINES"; then
   fail "READ-BACK FAILED: an uncommented scorer line remains"
 fi
 echo "APPLIED: cron L451 retired (fallback: bash 03_fallback.sh --apply)."

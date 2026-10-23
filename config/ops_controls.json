@@ -1,0 +1,74 @@
+{
+  "schema": "OpsControlsConfig@v1",
+  "_comment": "Ops -> Controls (AGENTS.md 19.0.0 §27.2-§27.3, PROPOSED; docs/ops/OPS_CONTROLS.md). Read by scripts/lib/ops_controls_core.py (Command Center) and scripts/ops/operator_controls_applier.py (the one host applier). Nothing here is a secret: secret files are named by path only and never read by an agent (§24.7). Changed only by reviewed PR.",
+  "policy": {
+    "required_version": "19.0.0",
+    "section_anchor": "## 27.3 Safe direction one click; risky direction a passkey and a typed phrase"
+  },
+  "webauthn": {
+    "rp_id": "ms01-openclaw.tail163d14.ts.net",
+    "rp_name": "Trade AI Ops Controls",
+    "origins": ["https://ms01-openclaw.tail163d14.ts.net"],
+    "user_name": "operator",
+    "challenge_ttl_s": 120
+  },
+  "step_up": {"ttl_s": 120},
+  "applier": {
+    "lock_file": "~/.local/state/tradeai/ops_applier/applier.lock",
+    "heartbeat_file": "~/.local/state/tradeai/ops_applier/heartbeat.json",
+    "backup_dir": "~/.local/state/tradeai/ops_applier/backups",
+    "poll_s": 2,
+    "max_approval_age_s": 120,
+    "heartbeat_stale_s": 60
+  },
+  "secrets": {
+    "hmac_key_file": "~/.config/tradeai/ops_controls_hmac.key",
+    "totp_secret_file": "~/.config/tradeai/ops_totp_secret"
+  },
+  "live_list": {
+    "file": "~/.config/tradeai/n8n-live-lanes.env",
+    "restart_units": ["tradeai-n8n-run-relay.service", "tradeai-n8n-coordination-gateway.service"]
+  },
+  "guard": {
+    "bin": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/bin/guard",
+    "max_for_s": 21600,
+    "max_uses": 50
+  },
+  "release_train": {
+    "state_dir": "~/trade-ai-releases/persistent-state/data/runtime/release_window"
+  },
+  "kill_switch": {
+    "cli": "scripts/brokers/kill_switches.py",
+    "level": "global"
+  },
+  "notify": {
+    "producer": "ops_controls",
+    "domain": "host",
+    "kind": "ops_controls_change",
+    "ledger": "~/trade-ai-releases/persistent-state/data/governance/n8n_coordination_ledger.sqlite"
+  },
+  "settings_catalog": [
+    {
+      "key": "active_trader_alerts.min_buy_ratio",
+      "label": "Active Trader alerts: minimum tape buy ratio",
+      "type": "float",
+      "min": 0.3,
+      "max": 0.9,
+      "default": 0.55,
+      "default_source": "scripts/active_trader/momentum_alerts.py dataclass default (a config file may override it)",
+      "consumer": "scripts/active_trader/momentum_alerts.py",
+      "wired": false
+    },
+    {
+      "key": "active_trader_alerts.max_spread_bps",
+      "label": "Active Trader alerts: maximum spread (bps)",
+      "type": "float",
+      "min": 5,
+      "max": 300,
+      "default": 80.0,
+      "default_source": "scripts/active_trader/momentum_alerts.py dataclass default (a config file may override it)",
+      "consumer": "scripts/active_trader/momentum_alerts.py",
+      "wired": false
+    }
+  ]
+}

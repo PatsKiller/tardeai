@@ -120,7 +120,9 @@ _mr_step() {
     set +e
     local -a stepenv=()
     _mr_step_env "$envnames"
-    env -i "${stepenv[@]}" flock -n "/tmp/pipeline_step_${PIPELINE}_${id}.lock" \
+    # PIPELINE_LOCK_DIR (default /tmp, as every cron line uses): tests point it at their tmp_path, so their unique
+    # pipeline names no longer leave one /tmp lock file per step per run (2026-10-22: ~3,900 such files in /tmp).
+    env -i "${stepenv[@]}" flock -n "${PIPELINE_LOCK_DIR:-/tmp}/pipeline_step_${PIPELINE}_${id}.lock" \
       timeout -k 30 "${tmo}s" bash -c "cd \"\$PROJ\" && $cmd" < /dev/null >> "$steplog" 2>&1
     rc=$?
     set -e
@@ -202,6 +204,13 @@ manifest_pipeline_main() {
   local STEPS_JSONL="$LOG_DIR/${STAGE}_steps.jsonl"
   local SUMMARY="$PROJ/data/runtime/pipeline_${PIPELINE}_${STAGE}_last.json"
   local RESULTS; RESULTS="$(mktemp "${TMPDIR:-/tmp}/pipeline_${NAME}_results.XXXXXX")"
+  # Removed on EVERY return (lock busy, safety refusal, corrupt .env, a failed plan), not only the happy path: the
+  # early returns left one file each in /tmp (2026-10-22: 141 pipeline_*_results.* files). RETURN trap: this is a
+  # function, and the trap clears itself so it never fires for a later function in the same shell; EXIT covers a
+  # set -e abort, which leaves the shell without a RETURN.
+  _MR_RESULTS_TMP="$RESULTS"
+  trap 'rm -f -- "$_MR_RESULTS_TMP"; trap - RETURN' RETURN
+  trap 'rm -f -- "$_MR_RESULTS_TMP"' EXIT
   local STARTED_AT; STARTED_AT="$(_ts)"
 
   exec > >(tee -a "$RUN_LOG") 2>&1
