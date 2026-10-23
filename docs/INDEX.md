@@ -1950,6 +1950,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/GROK_BUILD_PROMPT_B_MATERIAL_NOTIFY_AND_LOOP.md` | Grok Build — B material notify + loop continuity |
 | `docs/ops/HEALTH_AGENT_MATURITY_PLAN_2026-08-27.md` | Health Agent Maturity Plan — from "it ran" to "it worked" |
 | `docs/ops/HEALTH_REMEDIATION_MEMORY_2026-10-22.md` | Health remediation route memory bound (2026-10-22) |
+| `docs/ops/HELD_POSITION_ALERTS_2026-10-23.md` | Held-position alerts: account names, real stops, promo and tiny positions (P1 2026-10-23, NVDA) |
 | `docs/ops/HERMES_DEEPSEEK_HYBRID_FREE_OAUTH_ROLLOVER_2026-08-04.md` | Hermes + DeepSeek hybrid policy (free OAuth bottleneck → Flash) |
 | `docs/ops/HERMES_FREE_FIRST_MEMORY_GRAPH_CONVERGENCE_2026-08-23.md` | Hermes free-first + identity v2 closeout |
 | `docs/ops/HERMES_FREE_FIRST_NATURAL_SCHEDULER_2026-08-23.md` | FREE_FIRST_ONLY natural scheduler |

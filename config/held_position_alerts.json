@@ -1,0 +1,25 @@
+{
+  "schema": "HeldPositionAlertPolicy@v1",
+  "_comment": [
+    "Who may be paged about a held position, and how the position is named (P1 2026-10-23, NVDA).",
+    "A moomoo account-opening reward (0.133 NVDA, $28, no cost basis) paged 'STOP HIT ... your plan stop' 31 times",
+    "since 2026-09-28 on a system entry-plan level. Operator, verbatim: 'Momo gave me that for free for opening my",
+    "account. Okay, so on these notices, we need to tag what account it came from.'",
+    "Reader: scripts/lib/held_position_alerts.py. Doc: docs/ops/held-position-alerts-20261023.md.",
+    "Edit here (no code change): de_minimis_usd, promo_max_usd, the two exclude_* switches, opt_in, promo_positions."
+  ],
+  "de_minimis_usd": 100,
+  "promo_max_usd": 100,
+  "exclude_tiny_from_stop_exit_alerts": true,
+  "exclude_promo_from_stop_exit_alerts": true,
+  "comms_editor_account_tag": true,
+  "opt_in": [],
+  "_opt_in_help": "Positions that still get stop / exit pages although tiny or promo: \"SYMBOL\" (every account) or \"account_key:SYMBOL\".",
+  "promo_positions": [
+    {
+      "account": "moomoo_taxable_live",
+      "symbol": "NVDA",
+      "note": "operator 2026-10-23 (Telegram): moomoo gave it for free for opening the account"
+    }
+  ]
+}
