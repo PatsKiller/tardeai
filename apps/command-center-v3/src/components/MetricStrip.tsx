@@ -6,7 +6,7 @@ import { pricingStampLine } from '../lib/pricingStamp'
 import { runLabel } from '../lib/homeLabels'
 import { overviewSurfaceFreshness, tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
 import { renderSetupCounts } from '../lib/setupRunSummary'
-import { scanRunAge, LATEST_RUN_TIP } from '../lib/scanRunAge'
+import { payloadRunAge, LATEST_RUN_TIP } from '../lib/scanRunAge'
 // Same classifier the Trading panel uses, so the two surfaces cannot disagree
 // about one run — the header said healthy while the panel said UNDERFILLED.
 import { runHealthReasonCodes, reasonCodeOneLiner, runHealthLabel } from '../lib/runHealth'
@@ -385,7 +385,7 @@ export default function MetricStrip({ onDrill }: Props) {
   // Finished time in ET + AGE (operator 2026-10-23: slot 0700 is re-run through the
   // morning, so "0700 slot" alone read as two hours stale while the data was 4 minutes
   // old). latest_run_timestamp is UTC-zoned; a naive stamp renders "age unknown".
-  const runAge = scanRunAge(tradeAi?.latest_run_timestamp ?? runFinishedRaw, runSlot, now)
+  const runAge = tradeAi ? payloadRunAge(tradeAi, runSlot, now) : payloadRunAge({ latest_run_timestamp: runFinishedRaw }, runSlot, now)
   const runFinishedMark = runAge.label
 
   const setupsTone: Tone = worseTone(

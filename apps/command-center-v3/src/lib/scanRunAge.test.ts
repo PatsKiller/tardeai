@@ -1,6 +1,6 @@
 // Pure-logic tests for scanRunAge.ts.
 //   node --experimental-strip-types src/lib/scanRunAge.test.ts
-import { scanRunAge, inScalpWindow, latestRunPhrase, ageText } from './scanRunAge.ts'
+import { payloadRunAge, scanRunAge, inScalpWindow, latestRunPhrase, ageText } from './scanRunAge.ts'
 
 declare const process: { exit(code?: number): never }
 let pass = 0, fail = 0
@@ -43,6 +43,16 @@ check('ageText formats hours', ageText(125) === '2 h 5 min ago' && ageText(0) ==
 check('latest-run phrase from SetupRunSummary', latestRunPhrase({ scanned_count: 17, go_count: 0, wait_count: 0, nogo_count: 6, review_count: 11 })
   === 'latest run: 17 scanned · 0 GO / 0 WAIT / 6 NOGO / 11 review')
 check('latest-run phrase is null without a summary', latestRunPhrase(null) === null && latestRunPhrase({}) === null)
+
+// Follow-up (cadence #1992): the served scan clock wins over the run summary, and server STALE forces red.
+const P = { latest_run_timestamp: '2026-10-23T12:52:29+00:00', scan_freshness: { latest_scan_at: '2026-10-23T09:01:10-04:00', age_sec: 170, status: 'FRESH' } }
+const pa = payloadRunAge(P, '0700', at('09:04'))
+check('scan_freshness.latest_scan_at preferred over latest_run_timestamp', pa.source === 'scan' && pa.finishedEt === '09:01 ET' && pa.ageMin === 2 && pa.tone === 'ok')
+check('scan label says latest scan, not finished', /^latest scan 09:01 ET/.test(pa.label))
+const ps = payloadRunAge({ ...P, scan_freshness: { ...P.scan_freshness, status: 'STALE' } }, '0700', at('09:04'))
+check('server STALE forces red', ps.tone === 'bad')
+const pr = payloadRunAge({ latest_run_timestamp: '2026-10-23T12:52:29+00:00' }, '0700', at('09:04'))
+check('falls back to the run stamp when scan_freshness is absent', pr.source === 'run' && pr.finishedEt === '08:52 ET' && pr.tone === 'bad')
 
 console.log(`\nscanRunAge: ${pass} passed, ${fail} failed`)
 if (fail) process.exit(1)

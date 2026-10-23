@@ -34,3 +34,14 @@ Slot `0700` is **re-run** through the morning. `run_history` shows attempts fini
 - **Cadence.** The 0700 slot re-runs roughly every 15–20 minutes, not every 5. Wiring the 5-minute scalp lanes into this page is owned by the cadence work item. This change only makes the age visible and loud.
 
 Authority: READ_ONLY_ADVISORY presentation change. No API, broker, Telegram or DB effect.
+
+## Follow-up: the served scan clock wins (stacked on this PR, pairs with cadence PR #1992)
+
+The page's rows come from the continuous runner's scan cycles (`trade_ai_scans`). They do not come from the hourly
+run summary, which those cycles never rewrite. The extra 08:18, 08:32 and 08:50 "0700" attempts were health-agent
+re-runs.
+
+When the API serves `scan_freshness` / `latest_scan_at` (#1992), `payloadRunAge` in `src/lib/scanRunAge.ts`
+takes the age from the newest scanned row and labels it "Data: latest scan HH:MM ET · N min ago". The server's
+`STALE` status (over 10 minutes inside 06:00–12:00 ET) forces red. Without that field it falls back to
+`latest_run_timestamp`, which is this PR's behaviour.

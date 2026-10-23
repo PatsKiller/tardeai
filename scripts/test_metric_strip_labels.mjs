@@ -178,7 +178,7 @@ check('the underfill floor is stated beside the scanned count',
 // the Trading → Trade AI run line). The wording is asserted there; here, that the header uses it.
 const ageLib = fs.readFileSync(path.join(here, '..', 'apps', 'command-center-v3', 'src', 'lib', 'scanRunAge.ts'), 'utf8')
 check('the two run clocks are named scheduled vs finished',
-  code.includes('runSlot') && code.includes('scanRunAge(') && ageLib.includes('`slot ${slotStr}') && ageLib.includes('finished ${'))
+  code.includes('runSlot') && (code.includes('scanRunAge(') || code.includes('payloadRunAge(')) && ageLib.includes('`slot ${slotStr}') && ageLib.includes('finished ${'))
 check('an unzoned run stamp is marked unzoned, never given an assumed zone',
   code.includes('runFinishedZoned') && ageLib.includes('unzoned · age unknown'))
 check('the source no longer claims the run zone is stated', !/the zone is stated/.test(raw))
