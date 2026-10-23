@@ -22,7 +22,7 @@ export const ACCOUNT_NAMES: Record<string, string> = {
   fidelity_rollover_ira: 'Fidelity Rollover IRA',
   alpaca_taxable_live: 'Alpaca Individual',
   alpaca_ira_live: 'Alpaca IRA',
-  moomoo_taxable_live: 'Moomoo Individual',
+  moomoo_taxable_live: 'moomoo Taxable',
   tradeai_automated: 'Alpaca Paper',
 }
 

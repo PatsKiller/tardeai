@@ -13,7 +13,7 @@
     "fidelity_rollover_ira": {"name": "Fidelity Rollover IRA", "broker": "fidelity", "type": "rollover_ira", "status": "registry"},
     "alpaca_taxable_live": {"name": "Alpaca Individual", "broker": "alpaca", "type": "taxable", "status": "proposed", "registry_name": "Alpaca Taxable (Live · read-only data)"},
     "alpaca_ira_live": {"name": "Alpaca IRA", "broker": "alpaca", "type": "ira", "status": "proposed"},
-    "moomoo_taxable_live": {"name": "Moomoo Individual", "broker": "moomoo", "type": "taxable", "status": "proposed", "registry_name": "Moomoo Taxable (Live · read-only data)"},
+    "moomoo_taxable_live": {"name": "moomoo Taxable", "broker": "moomoo", "type": "taxable", "status": "operator_confirmed", "registry_name": "Moomoo Taxable (Live · read-only data)"},
     "tradeai_automated": {"name": "Alpaca Paper", "broker": "alpaca", "type": "paper", "status": "proposed", "registry_name": "Alpaca Paper (TradeAI Automated)"}
   }
 }

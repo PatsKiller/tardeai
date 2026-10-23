@@ -36,7 +36,7 @@ expands to the per-account rows.
 | `fidelity_rollover_ira` | Fidelity Rollover IRA | from the registry |
 | `alpaca_taxable_live` | Alpaca Individual | **proposed** (registry: "Alpaca Taxable (Live · read-only data)") |
 | `alpaca_ira_live` | Alpaca IRA | **proposed** |
-| `moomoo_taxable_live` | Moomoo Individual | **proposed** (registry: "Moomoo Taxable (Live · read-only data)") |
+| `moomoo_taxable_live` | moomoo Taxable | **operator-confirmed** 2026-10-23 (via coordinator) |
 | `tradeai_automated` | Alpaca Paper | **proposed** (the operator's own example) |
 
 ## The live case
