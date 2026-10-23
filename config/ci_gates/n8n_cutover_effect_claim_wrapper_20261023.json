@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "n8n_cutover_effect_claim_wrapper_20261023",
+  "files": [
+    "tests/test_n8n_cutover_effect_claim_wrapper_20261023.py"
+  ],
+  "anchor": "N8N_CUTOVER_EFFECT_CLAIM_WRAPPER_20261023",
+  "comment": [
+    "ANCHOR: N8N_CUTOVER_EFFECT_CLAIM_WRAPPER_20261023 — T-20261023-f7771f: the cutover factory",
+    "(scripts/n8n_cutover_wave.py parse_lane_argv) recognises the AGENTS §23.25 cron-side effect-claim wrapper",
+    "(`env TRADEAI_EFFECT_CLAIM=<lane> bash scripts/effect_claim_cron.sh <lane> ...`) instead of reporting it as",
+    "unmapped, accepts it only when switched ON for its own lane, and keeps every other env prefix unmapped.",
+    "Before: plan SKIP for every wrapped canary lane (PR #1972 finding 3). Hermetic: scratch code root, in-memory crontab."
+  ]
+}
