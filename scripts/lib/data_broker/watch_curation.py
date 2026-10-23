@@ -571,3 +571,107 @@ def list_watch_curation(query: Optional[dict[str, Any]] = None) -> dict[str, Any
         "provider_calls": 0,
     }
     return out
+
+
+# ── "Add symbol" typeahead (operator 2026-10-23: "I still don't see an area where I can select what I want to
+# watch") ───────────────────────────────────────────────────────────────────────────────────────────────────────
+
+SEARCH_LIMIT = 12
+
+
+def search_symbols(
+    q: str,
+    *,
+    by_symbol: dict[str, Any],
+    entities: dict[str, Any],
+    names: dict[str, str],
+    mine: set[str],
+    limit: int = SEARCH_LIMIT,
+) -> list[dict[str, Any]]:
+    """Pure: ticker or company-name search. Tickers come from the security (identity) registry ``by_symbol``; names
+    from the broker instrument feed and the curator projection (``names``: SYM → name). Ranked exact ticker →
+    ticker prefix → name prefix → name contains; CUSIP-shaped keys are never offered."""
+    from lib.data_broker.watch_domains import looks_like_cusip
+
+    qq = str(q or "").strip().upper()
+    if not qq:
+        return []
+    cands: dict[str, int] = {}
+    universe = set(by_symbol) | set(names)
+    for s in universe:
+        if not s or looks_like_cusip(s):
+            continue
+        name = str(names.get(s) or "").upper()
+        score = None
+        if s == qq:
+            score = 0
+        elif s.startswith(qq):
+            score = 1
+        elif len(qq) >= 2 and name.startswith(qq):
+            score = 2
+        elif len(qq) >= 3 and qq in name:
+            score = 3
+        if score is not None:
+            cands[s] = score
+    out = []
+    for s in sorted(cands, key=lambda x: (cands[x], len(x), x))[:limit]:
+        ent = None
+        guid = by_symbol.get(s)
+        if guid:
+            ent = entities.get(guid) or {}
+        out.append(
+            {
+                "symbol": s,
+                "name": names.get(s),
+                "identity_status": (ent or {}).get("identity_status"),
+                "security_guid": (ent or {}).get("security_guid"),
+                "in_registry": bool(guid),
+                "on_my_list": s in mine,
+                "match": ("ticker" if cands[s] <= 1 else "name"),
+            }
+        )
+    return out
+
+
+def list_symbol_search(query: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """GET /api/v3/data-broker/watch-symbol-search?q= — typeahead for My Watchlist's "Add symbol" box. Read-only."""
+    q = str((query or {}).get("q") or "")[:40]
+    by_symbol: dict[str, Any] = {}
+    entities: dict[str, Any] = {}
+    try:
+        from lib import identity_registry as ir
+
+        doc = ir.load_cached()
+        by_symbol, entities = dict(doc.get("by_symbol") or {}), dict(doc.get("entities") or {})
+    except Exception:  # noqa: BLE001
+        pass
+    names: dict[str, str] = {}
+    try:
+        try:
+            from scripts.lib.company_name_index import _instruments
+        except ImportError:  # pragma: no cover
+            from lib.company_name_index import _instruments  # type: ignore
+        for s, rec in (_instruments() or {}).items():
+            if (rec or {}).get("description"):
+                names[str(s).upper()] = str(rec["description"])
+    except Exception:  # noqa: BLE001
+        pass
+    mine: set[str] = set()
+    try:
+        from lib.data_broker.watch_prospects import _curator_projection, gather
+
+        for s, a in ((_curator_projection().get("items")) or {}).items():
+            if isinstance(a, dict) and a.get("company") and str(s).upper() not in names:
+                names[str(s).upper()] = str(a["company"])
+        mine = set((gather({}).get("operator") or {}))
+    except Exception:  # noqa: BLE001
+        pass
+    return {
+        "ok": True,
+        "schema": "WatchSymbolSearch@v1",
+        "q": q,
+        "results": search_symbols(q, by_symbol=by_symbol, entities=entities, names=names, mine=mine),
+        "sources": {"tickers": "identity registry by_symbol", "names": "broker instrument feed + curator"},
+        "read_only": True,
+        "provider_calls": 0,
+    }

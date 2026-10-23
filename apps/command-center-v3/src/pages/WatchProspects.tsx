@@ -20,6 +20,7 @@ import {
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
 import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
 import PositionFilterBar from '../components/watch/PositionFilterBar'
+import { StarToggle } from '../components/watch/MineControls'
 import {
   alertLevelsLabel, money, positionChip, positionQuery, readinessTone, reentryLabel, resultTone, roundTripLabel,
   roundTripPath, withQuery, type ListRow,
@@ -70,8 +71,9 @@ function Chip({ tone, children, tip, testId }: { tone: Tone; children: ReactNode
   )
 }
 
-export function Row({ r, selected, onSelect, onStep, alerts }: {
+export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extra }: {
   r: ProspectRow; selected: boolean; onSelect: () => void; onStep: (r: ProspectRow) => void; alerts: number
+  onMineChanged?: (msg: string) => void; extra?: ReactNode
 }) {
   const ct = convictionTone(r.conviction)
   const lr = r as ListRow
@@ -86,16 +88,18 @@ export function Row({ r, selected, onSelect, onStep, alerts }: {
         borderLeft: `3px solid ${selected ? TOKENS.info : 'transparent'}`,
       }}
     >
+      <span style={{ display: 'flex', gap: 4, alignItems: 'flex-start', minWidth: 0 }}>
+      <StarToggle symbol={r.symbol} on={!!lr.mine} onChanged={onMineChanged} surface="watch.row" size="sm" />
       <button
         type="button" onClick={onSelect} aria-pressed={selected} title={`Open the ${r.symbol} record`}
         style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: TOKENS.text[0], fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.md, minHeight: 26 }}
       >
-        {lr.starred && <span title="Starred by you" style={{ color: TOKENS.warning, marginRight: 2 }}>★</span>}
         {r.symbol}
         {lr.mine && !lr.starred && <span title={(lr.membership || []).map(m => m.label).join(' · ') || 'Your name'} style={{ marginLeft: 3, fontSize: TYPE.xs, color: TOKENS.info }}>●</span>}
         {alerts > 0 && <span title={`${alerts} armed Watch alert(s) on this symbol`} style={{ marginLeft: 4, fontSize: TYPE.xs, color: TOKENS.warning }}>🔔{alerts}</span>}
         {pchip && <span title={pchip.tip} data-testid="watch-position-chip" style={{ display: 'block', fontFamily: FONT.sans, fontWeight: 600, fontSize: TYPE.xs, color: toneVars(pchip.tone).color }}>{pchip.label}</span>}
       </button>
+      </span>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }} title={TOOLTIPS.conviction}>
         <span style={{ ...numStyle, fontWeight: 700, color: r.conviction == null ? TOKENS.text[3] : TOKENS.text[0] }}>
           {r.conviction == null ? 'n/a' : r.conviction.toFixed(0)}
@@ -115,7 +119,7 @@ export function Row({ r, selected, onSelect, onStep, alerts }: {
         ))}
       </span>
       <span title={TOOLTIPS.trigger} style={{ fontFamily: FONT.mono, fontSize: TYPE.base, color: TOKENS.text[1] }}>{r.next_trigger.label}</span>
-      <span><StepButton row={r} onStep={onStep} /></span>
+      <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}><StepButton row={r} onStep={onStep} />{extra}</span>
     </div>
   )
 }
@@ -376,7 +380,7 @@ export default function WatchProspects() {
             )}
             {(current?.items || []).map(r => (
               <Row key={r.symbol} r={r} selected={sel === r.symbol} onSelect={() => setSel(r.symbol)} onStep={onStep}
-                alerts={(tied.bySymbol[r.symbol] || []).length} />
+                alerts={(tied.bySymbol[r.symbol] || []).length} onMineChanged={m => { setToast(m); refetch() }} />
             ))}
             {current && current.overflow.length > 0 && (
               <div data-testid="watch-overflow" style={{ padding: '10px 16px', fontSize: TYPE.base, color: TOKENS.text[2] }}

@@ -142,7 +142,28 @@ def membership_operator(db_query=None) -> dict[str, Any]:
             add(sym, kind, at=at, ref=ref, label=label)
             n += 1
         sources[kind] = {"status": "ok", "count": n}
-    return {"names": names, "sources": sources}
+    # "Remove from my watchlist" (operator 2026-10-23): the latest watch_mine_added / watch_mine_removed event per
+    # symbol in watchlist_events decides; a removal hides the name unless a reason is newer than the removal.
+    removed: list[str] = []
+    try:
+        ev = q("SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS s, event_type, created_at FROM watchlist_events "
+               "WHERE event_type IN ('watch_mine_added', 'watch_mine_removed') "
+               "ORDER BY upper(symbol), created_at DESC, id DESC") or []
+        for r in ev:
+            g = (lambda k, i: r.get(k) if hasattr(r, "get") else r[i])  # noqa: E731
+            sym, et, at = str(g("s", 0) or "").upper(), g("event_type", 1), _iso_or_none(g("created_at", 2))
+            if et != "watch_mine_removed" or sym not in names:
+                continue
+            t_rm = _as_dt(at)
+            newer = [x for x in names[sym]["reasons"]
+                     if t_rm is not None and _as_dt(x.get("at")) is not None and _as_dt(x.get("at")) > t_rm]
+            if not newer:
+                names.pop(sym)
+                removed.append(sym)
+        sources["removed"] = {"status": "ok", "count": len(removed)}
+    except Exception as e:  # noqa: BLE001
+        sources["removed"] = {"status": "error", "error": type(e).__name__, "count": 0}
+    return {"names": names, "sources": sources, "removed": sorted(removed)}
 
 
 def membership_screener() -> set[str]:
@@ -212,9 +233,9 @@ def membership_watchlist(symbols) -> set[str]:
 HELD_CACHE_S = 60
 _held_cache: dict[str, Any] = {}          # surface -> {"at": monotonic, "val": verdict}
 WATCH_SURFACE = "watch"                   # positions_store reader batch #1 (operator 2026-10-22)
-# The CIO opportunity curator's held flag (lib/data_broker/opportunity.gather). PROPOSED reader batch #4 — not in
-# held.positions_store_reader_surfaces until the operator grants it (config/data_source_authority.json
-# positions_store.proposed_readers); until then held_positions(surface=OPPORTUNITY_SURFACE) reads holdings.json.
+# The CIO opportunity curator's held flag (lib/data_broker/opportunity.gather): positions_store reader batch #4,
+# operator 2026-10-23 ("Yes, I approve" to "approve positions reader batch #4 (curator held flag)");
+# config/data_source_authority.json positions_store.approved_readers[batch 4].
 OPPORTUNITY_SURFACE = "opportunity"
 _NOT_POSITIONS = ("CASH", "SPAXX", "FDRXX")
 

@@ -14,6 +14,7 @@ import { TOOLTIPS, alertIntel, proposeSeed, type ProspectRow } from '../lib/watc
 import { armedBySymbol, askCioReview, positionQuery, unwrapAny, withQuery, type ListRow } from '../lib/watchListsModel'
 import { Detail, GRID, Row } from './WatchProspects'
 import PositionFilterBar from '../components/watch/PositionFilterBar'
+import { AddSymbolBox, MINE_TIPS, RemoveButton } from '../components/watch/MineControls'
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
 import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
 
@@ -48,10 +49,14 @@ export default function WatchMyList() {
     if (r.next_action.kind === 'propose') setProposeFor(proposeSeed(r) as WatchlistProposeSeed)
     else if (r.next_action.kind === 'set_alert') setAlertFor(r)
   }
+  const changed = (m: string) => { setToast(m); refetch() }
   if (!c) {
-    return <div data-testid="watch-my-list" style={{ ...panel, padding: 16, color: TOKENS.text[2] }}>
-      {loading ? 'Loading your watchlist…' : `Your watchlist is unavailable${error ? ` — ${String(error)}` : ''}.`}
-      {!loading && <button type="button" onClick={() => refetch()} style={{ marginLeft: 8, ...chipStyle('info', 'outline', 'md'), cursor: 'pointer' }}>Retry</button>}
+    return <div data-testid="watch-my-list" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <AddSymbolBox onAdded={changed} />
+      <div style={{ ...panel, padding: 16, color: TOKENS.text[2] }}>
+        {loading ? 'Loading your watchlist…' : `Your watchlist is unavailable${error ? ` — ${String(error)}` : ''}.`}
+        {!loading && <button type="button" onClick={() => refetch()} style={{ marginLeft: 8, ...chipStyle('info', 'outline', 'md'), cursor: 'pointer' }}>Retry</button>}
+      </div>
     </div>
   }
   const srcCount = (k: string) => (mw?.sources?.[k]?.count ?? 0)
@@ -60,6 +65,7 @@ export default function WatchMyList() {
   const failed = Object.entries(mw?.sources || {}).filter(([, v]: any) => v?.status !== 'ok')
   return (
     <div data-testid="watch-my-list" style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: TYPE.md, color: TOKENS.text[0] }}>
+      <AddSymbolBox onAdded={changed} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
         <span style={{ fontSize: TYPE.base + 1, color: TOKENS.text[1] }}
           title="Your names are never dropped by a cap or by expiry. When a signal expires the row says so and suggests a review; only you remove a name.">
@@ -86,10 +92,11 @@ export default function WatchMyList() {
               <span title="Stage and why · the last trade and re-entry for names you sold · what is missing">Stage · last trade · missing</span>
               <span title={TOOLTIPS.trigger}>Next trigger</span><span title={TOOLTIPS.step}>Next step</span>
             </div>
-            {rows.length === 0 && <div style={{ padding: 12, color: TOKENS.text[2] }}>{mw?.filters && Object.keys(mw.filters).length ? 'None of your names match these filters.' : 'No names yet — star a name or add one from System Suggests.'}</div>}
+            {rows.length === 0 && <div data-testid="mine-empty" style={{ padding: 12, color: TOKENS.text[2] }}>{(mw?.filters && Object.keys(mw.filters).length) || kind ? `None of your names match these filters. ${MINE_TIPS.empty}` : MINE_TIPS.empty}</div>}
             {rows.map(r => (
               <div key={r.symbol} data-testid="mine-row" data-symbol={r.symbol}>
-                <Row r={{ ...r, why: `${laneWord(r.lane)} · ${r.why}` }} selected={sel === r.symbol} onSelect={() => setSel(r.symbol)} onStep={onStep} alerts={armed[r.symbol] || 0} />
+                <Row r={{ ...r, why: `${laneWord(r.lane)} · ${r.why}` }} selected={sel === r.symbol} onSelect={() => setSel(r.symbol)} onStep={onStep} alerts={armed[r.symbol] || 0}
+                  onMineChanged={changed} extra={<RemoveButton symbol={r.symbol} onChanged={changed} />} />
               </div>
             ))}
           </div>

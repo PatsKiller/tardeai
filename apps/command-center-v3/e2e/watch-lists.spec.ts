@@ -31,7 +31,7 @@ test('My Watchlist is the default: every operator name, starred first, never cap
   expect(writes).toEqual([])
 })
 
-test('System Suggests: top of the Full universe ranking; Add and Dismiss use the existing writes', async ({ page }) => {
+test('System Suggests: top of the Full universe ranking; Add (mine command) and Dismiss are the only writes', async ({ page }) => {
   const writes: string[] = []; const seen: string[] = []
   await mockApi(page, writes, seen)
   await page.goto('/v3/watch?tab=suggests')
@@ -41,7 +41,7 @@ test('System Suggests: top of the Full universe ranking; Add and Dismiss use the
   await rows.first().getByTestId('suggest-add').click()
   page.once('dialog', d => d.accept('not for me'))
   await rows.nth(1).getByTestId('suggest-dismiss').click()
-  await expect.poll(() => writes).toEqual(['POST /api/v2/watch/directives', 'POST /api/v3/watch/commands/suggest-dismiss'])
+  await expect.poll(() => writes).toEqual(['POST /api/v3/watch/commands/mine', 'POST /api/v3/watch/commands/suggest-dismiss'])
 })
 
 test('Full universe: NAVN is Re-entry / formerly held with its last trade; filters go to the server via the URL', async ({ page }) => {

@@ -372,17 +372,19 @@ def test_curator_held_basis_follows_the_broker_synced_reader_only_when_approved_
     assert stale["symbols"] is None and stale["reason"] == "positions_store_stale"
 
 
-def test_opportunity_surface_is_not_yet_an_approved_positions_reader():
+def test_opportunity_surface_is_approved_reader_batch_4():
     import json
 
     import yaml
 
     cfg = yaml.safe_load((ROOT / "config/watch_decision_standards.yaml").read_text())["held"]
-    assert wdom.OPPORTUNITY_SURFACE not in cfg["positions_store_reader_surfaces"], "batch #4 is the operator's grant"
+    assert wdom.OPPORTUNITY_SURFACE in cfg["positions_store_reader_surfaces"]
     reg = json.loads((ROOT / "config/data_source_authority.json").read_text())
     ps = next(d for d in reg["domains"] if d["domain"] == "positions_store")
-    prop = ps["proposed_readers"][0]
-    assert prop["batch"] == 4 and prop["approval"] is None and prop["surfaces"] == ["opportunity"]
+    b4 = next(e for e in ps["approved_readers"] if e["batch"] == 4)
+    assert b4["surfaces"] == ["opportunity"] and b4["approval"]["approved_by"] == "operator"
+    assert "Yes, I approve" in b4["approval"]["reference"] and b4["approval"]["approved_on"] == "2026-10-23"
+    assert "proposed_readers" not in ps
 
 
 def test_rank_history_is_carried_by_the_projection_writer(tmp_path):
@@ -524,3 +526,78 @@ def _no_behavior(obj, path=""):
     elif isinstance(obj, list):
         for i, v in enumerate(obj):
             _no_behavior(v, f"{path}[{i}]")
+
+
+# ── choose what to watch: add / remove / search (operator 2026-10-23) ─────────
+
+
+def test_mine_add_and_remove_are_logged_with_the_principal_and_never_trade(monkeypatch):
+    import api_v3_watch_commands as cmd
+
+    monkeypatch.setattr(cmd, "_principal", lambda: "tailnet:john@example")
+    ex, archived = [], []
+    import lib.writers.watch_directives_writer as wdw
+
+    monkeypatch.setattr(
+        wdw, "set_watch_directive_status", lambda q, did, st, source: archived.append((did, st, source))
+    )
+    q = lambda sql, params=None, fetch="all": [{"id": 1352}] if "watch_directives" in sql else []  # noqa: E731
+    out = cmd.post_mine_decision(
+        {"symbol": "nvda", "action": "add", "note": "AI capex", "by": "spoofed"},
+        db_execute=lambda sql, p=None: ex.append((sql, p)),
+        db_query=q,
+    )
+    assert out["ok"] and out["event_type"] == "watch_mine_added" and out["by"] == "tailnet:john@example"
+    assert out["broker_write"] is False
+    assert ex[0][0].startswith("INSERT INTO operator_starred_symbols") and ex[0][1] == ("NVDA", "tailnet:john@example")
+    assert ex[1][0].startswith("INSERT INTO watchlist_events") and '"note": "AI capex"' in ex[1][1][3]
+    ex.clear()
+    out = cmd.post_mine_decision(
+        {"symbol": "SKYD", "action": "remove", "reason": "done"},
+        db_execute=lambda sql, p=None: ex.append((sql, p)),
+        db_query=q,
+    )
+    assert (
+        out["ok"]
+        and out["archived_directives"] == [1352]
+        and archived == [(1352, "archived", "watch_my_watchlist_remove")]
+    )
+    assert ex[0][0].startswith("DELETE FROM operator_starred_symbols") and ex[-1][1][0] == "watch_mine_removed"
+    assert (
+        cmd.post_mine_decision({"symbol": "X", "action": "buy"}, db_execute=lambda *a: None, db_query=q)["ok"] is False
+    )
+    src = (ROOT / "scripts/api_v2.py").read_text()
+    assert 'if cmd == "mine":' in src
+
+
+def test_a_removed_name_leaves_my_watchlist_until_added_again():
+    def q(sql, params=None):
+        if "operator_starred" in sql:
+            return []
+        if "personal_watchlist" in sql and "source = 'personal_watchlist'" in sql:
+            return [
+                {"s": "PLTR", "at": "2026-06-01T00:00:00+00:00", "ref": None, "label": None},
+                {"s": "MSFT", "at": "2026-06-01T00:00:00+00:00", "ref": None, "label": None},
+            ]
+        if "watch_mine_added" in sql:
+            return [
+                {"s": "PLTR", "event_type": "watch_mine_removed", "created_at": "2026-10-23T14:00:00+00:00"},
+                {"s": "MSFT", "event_type": "watch_mine_added", "created_at": "2026-10-23T14:05:00+00:00"},
+            ]
+        return []
+
+    out = wdom.membership_operator(db_query=q)
+    assert "PLTR" not in out["names"] and "MSFT" in out["names"] and out["removed"] == ["PLTR"]
+
+
+def test_symbol_search_ranks_ticker_then_name_and_skips_cusips():
+    by_symbol = {"NVDA": "g1", "NVDQ": "g2", "NAVN": "g3", "543354104": "g4"}
+    ents = {"g1": {"identity_status": "CONFIRMED", "security_guid": "s1"}}
+    names = {"NVDA": "NVIDIA CORP", "NVDQ": "T REX 2X INVERSE NVIDIA DAILY ETF", "NAVN": "NAVAN INC A"}
+    r = wc.search_symbols("nvda", by_symbol=by_symbol, entities=ents, names=names, mine={"NVDA"})
+    assert r[0]["symbol"] == "NVDA" and r[0]["on_my_list"] and r[0]["identity_status"] == "CONFIRMED"
+    assert [
+        x["symbol"] for x in wc.search_symbols("nvidia", by_symbol=by_symbol, entities=ents, names=names, mine=set())
+    ] == ["NVDA", "NVDQ"]
+    assert wc.search_symbols("5433", by_symbol=by_symbol, entities=ents, names=names, mine=set()) == []
+    assert wc.search_symbols("", by_symbol=by_symbol, entities=ents, names=names, mine=set()) == []

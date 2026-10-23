@@ -100,12 +100,14 @@ board:
 #   Watch held flag ("I take your recommendations on above", reply to "Use the broker-synced store for 'held' on
 #   Watch: Watch becomes positions batch #1 … Recommend: yes"). The grant is recorded in
 #   config/data_source_authority.json, domain positions_store, approved_readers[batch 1] (AGENTS.md §7A, §17).
-# positions_store_reader_surfaces: the callers that may read the store. Only "watch" (batch #1). A held_positions()
+# positions_store_reader_surfaces: the callers that may read the store: "watch" (batch #1) and "opportunity" (batch #4,
+#   operator 2026-10-23, verbatim "Yes, I approve" to "approve positions reader batch #4 (curator held flag)": the
+#   CIO opportunity curator's held flag via held_positions(surface='opportunity')). A held_positions()
 #   caller with no surface (advice digest, opportunity) reads holdings.json only. Adding a surface is a new reader
 #   batch — an operator grant, recorded in the registry in the same PR.
 # A stale, empty or unreadable store falls back to holdings.json with an explicit fallback_reason, never silently.
 # holdings_stale_after_hours: holdings.json older than this is served with stale=true (registry stale_after_hours).
 held:
   positions_store_reader: true
-  positions_store_reader_surfaces: [watch]
+  positions_store_reader_surfaces: [watch, opportunity]
   holdings_stale_after_hours: 24

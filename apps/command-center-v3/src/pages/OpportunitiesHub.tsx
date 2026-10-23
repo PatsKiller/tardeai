@@ -17,6 +17,7 @@ import { tint } from '../components/comms/CommsHubParts'
 import { useOpenSymbol } from '../components/opportunity/OpportunityContext'
 import { condLabel, convictionColor, money, pct, typeLabel } from '../components/opportunity/format'
 import PositionFilterBar from '../components/watch/PositionFilterBar'
+import { MINE_TIPS, StarToggle } from '../components/watch/MineControls'
 import {
   alertLevelsLabel, positionChip, positionQuery, readinessTone, reentryLabel, resultTone, riskRewardCell,
   roundTripLabel, roundTripPath, unwrapAny, withQuery, type ListRow,
@@ -48,6 +49,7 @@ const KEYS = ['preset', 'sort', 'sector', 'q', 'limit', 'page', ...FILTERS.map(f
 const sel: CSSProperties = { fontSize: TYPE.sm, padding: '2px 4px', background: 'var(--bg1)', border: `1px solid ${BORDER}`, color: TEXT, borderRadius: RADIUS.sm }
 const td: CSSProperties = { padding: '2px 6px', whiteSpace: 'nowrap' }
 const HEAD: [string, string][] = [
+  ['★', `Your watchlist. ${MINE_TIPS.starOff}`],
   ['#', 'Rank in the curator ranking (conviction order).'], ['Symbol', 'Ticker · company · position status.'],
   ['Conv', 'CIO conviction 0–100.'], ['Type · stance', 'Opportunity type and stance as Watch shows them (a sold name is Re-entry; the curator value is in the detail).'],
   ['Risk / Reward · R:R', 'Risk % to invalidation / reward % to the primary target · reward-to-risk ratio.'],
@@ -59,6 +61,7 @@ export default function OpportunitiesHub() {
   const [sp, setSp] = useSearchParams()
   const open = useOpenSymbol()
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [note, setNote] = useState('')
   const q = useMemo(() => {
     const base = Object.fromEntries(KEYS.map(k => [k, sp.get(k) || '']).filter(([, v]) => v)) as Record<string, string>
     return { limit: '100', ...base, ...positionQuery(sp) }
@@ -128,6 +131,7 @@ export default function OpportunitiesHub() {
         <PositionFilterBar specs={body?.position_filters} facets={body?.position_facets} testId="universe-position-filters" />
       </div>
 
+      {note && <div role="status" style={{ color: TEXT2, fontSize: TYPE.base, marginBottom: 4 }}>{note}</div>}
       {loading && !body && <div style={{ color: MUTED, fontSize: TYPE.base }}>Loading the Full universe…</div>}
       {error && !body && <div style={{ color: TOKENS.danger, fontSize: TYPE.base }}>Error: {String(error)}</div>}
       {body && !body.as_of && <div style={{ color: TOKENS.warning, fontSize: TYPE.base, marginBottom: 6 }}>The CIO curator has not run yet — no curated ranking in CIO memory.</div>}
@@ -150,6 +154,7 @@ export default function OpportunitiesHub() {
                   <Fragment key={a.symbol}>
                     <tr onClick={() => setExpanded(isOpen ? null : a.symbol)} data-opportunity-row={a.symbol} aria-expanded={isOpen}
                       style={{ cursor: 'pointer', borderBottom: `1px solid ${BORDER}`, background: isOpen ? 'var(--bg2)' : undefined }}>
+                      <td style={{ ...td, width: 22 }}><StarToggle symbol={a.symbol} on={!!a.mine} surface="watch.full_universe" size="sm" onChanged={setNote} /></td>
                       <td style={{ ...td, ...numStyle, color: TEXT2 }}>{(a as any).rank ?? '—'}</td>
                       <td style={{ ...td, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis' }} title={(a as any).company || ''}>
                         <b style={{ fontFamily: 'var(--font-mono)' }}>{a.symbol}</b>

@@ -48,7 +48,7 @@ test('Prospects (now the third Watch tab): interim label, chips, five lanes, one
   await expect(page.getByTestId('watch-overflow')).toContainText('12 more below the 8-row cap')
 
   // Detail: components, conflicts with both sides, same record everywhere.
-  await navn.getByRole('button', { name: /NAVN/ }).click()
+  await navn.getByRole('button', { name: 'NAVN', exact: true }).click()
   const detail = page.getByTestId('watch-detail')
   await expect(detail).toContainText('Conviction 88')
   await expect(page.getByTestId('watch-components')).toContainText('Risk/Reward')

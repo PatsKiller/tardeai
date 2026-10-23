@@ -84,6 +84,12 @@ def get_curation(query: dict | None = None) -> dict[str, Any]:
     return list_watch_curation(query or {})
 
 
+def get_symbol_search(query: dict | None = None) -> dict[str, Any]:
+    """GET /api/v3/data-broker/watch-symbol-search?q= — ticker / company typeahead for the Add-symbol box."""
+    from lib.data_broker.watch_curation import list_symbol_search
+    return list_symbol_search(query or {})
+
+
 def get_universe(query: dict | None = None) -> dict[str, Any]:
     """GET /api/v3/data-broker/watch-universe — the curator's ranked list with held / formerly held / never held,
     the last round trip and re-entry advice per row, and the position filters (lib/data_broker/watch_universe.py)."""

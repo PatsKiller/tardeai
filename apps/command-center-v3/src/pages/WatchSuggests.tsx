@@ -4,8 +4,8 @@
  *  GET /api/v3/data-broker/watch-curation?n=20 (scripts/lib/data_broker/watch_curation.py): the top N (default 20,
  *  max 30) of the SAME ranked list Watch › Full universe shows (the CIO curator's rank), minus what you hold, what is
  *  already yours and what you dismissed — every skip and every entry / exit named. Rows are the same rows Prospects
- *  shows. Actions use existing writes: "Add to my watchlist" → POST /api/v2/watch/directives (an operator ticker
- *  directive, label "Watchlist"); "Dismiss" → POST /api/v3/watch/commands/suggest-dismiss (recorded in the
+ *  shows. "Add to my watchlist" and the ★ on each row → POST /api/v3/watch/commands/mine (the operator star + a
+ *  logged watchlist_events row); "Dismiss" → POST /api/v3/watch/commands/suggest-dismiss (recorded in the
  *  watchlist_events log with who and why; 30 days; "Restore" undoes it). Nothing here sizes or orders. */
 import { useMemo, useState, type CSSProperties } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -15,13 +15,13 @@ import { TOOLTIPS, alertIntel, proposeSeed, type ProspectRow } from '../lib/watc
 import { armedBySymbol, askCioReview, unwrapAny, type ListRow } from '../lib/watchListsModel'
 import { Detail, GRID, Row } from './WatchProspects'
 import { laneWord } from './WatchMyList'
+import { MINE_TIPS, mineAction } from '../components/watch/MineControls'
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
 import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.lg, minWidth: 0 }
 const head: CSSProperties = { fontSize: TYPE.xs, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: TOKENS.text[2] }
 const btn = (tone: 'success' | 'neutral' | 'info'): CSSProperties => ({ ...chipStyle(tone, 'outline', 'sm'), cursor: 'pointer', whiteSpace: 'nowrap' })
-const STATUS_TONE: Record<string, string> = { entered: TOKENS.success, holding: TOKENS.warning, steady: TOKENS.text[2], listed: TOKENS.text[2] }
 
 async function post(path: string, body: unknown): Promise<any> {
   const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -52,20 +52,9 @@ export default function WatchSuggests() {
 
   const add = async (r: ListRow) => {
     setBusy(r.symbol)
-    try {
-      const d = await post('/api/v2/watch/directives', {
-        kind: 'ticker', label: 'Watchlist', spec: { symbol: r.symbol }, created_by: 'operator',
-        rationale: `Added from Watch › System Suggests (#${r.universe_rank ?? '?'} in the Full universe)`,
-      })
-      say(r.symbol, d.reused ? `Already watched by directive #${d.directive_id}; star it to make it yours.` : `Added to your watchlist (directive #${d.directive_id}).`)
-      setBump(b => b + 1)
-    } catch (e) { say(r.symbol, `Could not add: ${String((e as Error).message || e).slice(0, 100)}`) }
-    setBusy('')
-  }
-  const star = async (sym: string) => {
-    setBusy(sym)
-    try { await post('/api/v2/watchlist/star', { symbol: sym, starred: true }); say(sym, 'Starred — it is on your watchlist.'); setBump(b => b + 1) }
-    catch (e) { say(sym, `Could not star: ${String((e as Error).message || e).slice(0, 100)}`) }
+    const res = await mineAction(r.symbol, 'add', `From System Suggests (#${r.universe_rank ?? '?'} in the Full universe)`, 'watch.system_suggests')
+    say(r.symbol, res.message)
+    if (res.ok) setBump(b => b + 1)
     setBusy('')
   }
   const dismiss = async (r: ListRow) => {
@@ -122,33 +111,29 @@ export default function WatchSuggests() {
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
         <section aria-label="System Suggests" style={{ ...panel, flex: '999 1 700px', overflowX: 'auto' }}>
-          <div style={{ minWidth: 900 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: `52px 1fr 200px`, gap: 8, padding: '6px 12px', borderBottom: `1px solid ${TOKENS.borderSubtle}`, ...head }}>
-              <span title="Rank in the Full universe (the curator's conviction order).">#</span>
-              <span style={{ display: 'grid', gridTemplateColumns: GRID, gap: 8 }}>
-                <span>Symbol</span><span title={TOOLTIPS.conviction}>Conviction</span><span title={TOOLTIPS.stance}>Stance</span>
-                <span>Why suggested · stage</span><span title={TOOLTIPS.trigger}>Next trigger</span><span title={TOOLTIPS.step}>Next step</span>
-              </span>
-              <span>Your call</span>
+          <div style={{ minWidth: 760 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '6px 12px', borderBottom: `1px solid ${TOKENS.borderSubtle}`, ...head }}>
+              <span title="★ = on your watchlist. The # is the rank in the Full universe (the curator's conviction order).">★ Symbol · #</span>
+              <span title={TOOLTIPS.conviction}>Conviction</span><span title={TOOLTIPS.stance}>Stance</span>
+              <span title="Why it is suggested (entered / steady / holding, with the reason) · stage">Why suggested · stage</span>
+              <span title={TOOLTIPS.trigger}>Next trigger</span>
+              <span title={`${TOOLTIPS.step} Add puts it on My Watchlist; Dismiss hides it for 30 days.`}>Next step · your call</span>
             </div>
             {rows.length === 0 && <div style={{ padding: 12, color: TOKENS.text[2] }}>Nothing to suggest right now.</div>}
             {rows.map(r => {
               const sg = r.suggestion!
               return (
-                <div key={r.symbol} data-testid="suggest-row" data-symbol={r.symbol}
-                  style={{ display: 'grid', gridTemplateColumns: `52px 1fr 200px`, gap: 8, alignItems: 'center', padding: '0 12px', borderBottom: `1px solid ${TOKENS.borderSubtle}` }}>
-                  <span style={{ fontFamily: FONT.mono, color: TOKENS.text[2] }} title={`Position ${sg.position} among eligible names.`}>#{sg.universe_rank}</span>
-                  <Row r={{ ...r, why: `${sg.reason}${sg.top_factor ? ` · ${sg.top_factor}` : ''} · ${laneWord(r.lane)}` }} selected={sel === r.symbol}
-                    onSelect={() => setSel(r.symbol)} onStep={onStep} alerts={armed[r.symbol] || 0} />
-                  <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span style={{ fontSize: TYPE.xs, fontWeight: 700, color: STATUS_TONE[sg.status] || TOKENS.text[2] }} title={sg.reason}>{sg.status}</span>
-                    <button type="button" disabled={busy === r.symbol} onClick={() => add(r)} data-testid="suggest-add" style={btn('success')}
-                      title="Adds it to My Watchlist as your ticker watch directive (POST /api/v2/watch/directives, label “Watchlist”). It leaves Suggests with the reason “added to your watchlist”.">Add to my watchlist</button>
-                    <button type="button" disabled={busy === r.symbol} onClick={() => dismiss(r)} data-testid="suggest-dismiss" style={btn('neutral')}
-                      title="Hides it from Suggests for 30 days. Recorded with who, when and why (watchlist_events). Restore any time below.">Dismiss</button>
-                    {msg[r.symbol] && <span style={{ fontSize: TYPE.xs, color: TOKENS.text[2], width: '100%' }}>{msg[r.symbol]}
-                      {/star it/.test(msg[r.symbol]) && <button type="button" onClick={() => star(r.symbol)} style={{ ...btn('info'), marginLeft: 4 }}>★ Star</button>}</span>}
-                  </span>
+                <div key={r.symbol} data-testid="suggest-row" data-symbol={r.symbol}>
+                  <Row r={{ ...r, why: `${sg.status === 'listed' ? sg.reason : `#${sg.universe_rank} · ${sg.status}: ${sg.reason}`}${sg.top_factor ? ` · ${sg.top_factor}` : ''} · ${laneWord(r.lane)}` }}
+                    selected={sel === r.symbol} onSelect={() => setSel(r.symbol)} onStep={onStep} alerts={armed[r.symbol] || 0}
+                    onMineChanged={m => { say(r.symbol, m); setBump(b => b + 1) }}
+                    extra={<>
+                      <button type="button" disabled={busy === r.symbol} onClick={() => add(r)} data-testid="suggest-add" style={btn('success')}
+                        title={`${MINE_TIPS.starOff} It then leaves Suggests with the reason “added to your watchlist”.`}>Add</button>
+                      <button type="button" disabled={busy === r.symbol} onClick={() => dismiss(r)} data-testid="suggest-dismiss" style={btn('neutral')}
+                        title="Hides it from Suggests for 30 days. Recorded with who, when and why (watchlist_events). Restore any time below.">Dismiss</button>
+                      {msg[r.symbol] && <span role="status" style={{ fontSize: TYPE.xs, color: TOKENS.text[2], width: '100%' }}>{msg[r.symbol]}</span>}
+                    </>} />
                 </div>
               )
             })}

@@ -1311,26 +1311,12 @@
             "reference": "Operator reply 2026-10-22 (verbatim): \"You just start executing immediately with multiple agents for everything that's not built and not live\" to the list item \"Reader batch #2 (monitors read the positions and stop tables): approve?\"; earlier the operator accepted the recommendation to approve stop_health_check and positions_proof_daily as part of the reader batches (\"I take your recommendations on above.\") (session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
             "scope": "Phase-3 reader batch #2: desk truth monitors (read-only, alerts only), stop health (shares for stop coverage) and the positions proof grader. No page or API surface."
           }
-        }
-      ],
-      "reader_gate": {
-        "_why": "AGENTS.md §7A: nothing reads the positions store until the operator approves each phase-3 reader batch. check_data_source_authority.py fails UNAPPROVED_READER when a file under scripts/ reads one of these tables (FROM/JOIN) and is not the writer, an approved_readers file, or a measured pre-batch reader below. positions_sync_runs is the heartbeat and is not gated.",
-        "tables": [
-          "positions_current",
-          "position_lots",
-          "realized_lots",
-          "position_snapshots"
-        ],
-        "measured_unbatched_readers": {}
-      },
-      "proposed_readers": [
+        },
         {
           "batch": 4,
-          "status": "proposed",
           "reader": "scripts/lib/data_broker/watch_domains.py::held_positions",
           "files": [
-            "scripts/lib/data_broker/watch_domains.py",
-            "scripts/lib/data_broker/opportunity.py"
+            "scripts/lib/data_broker/watch_domains.py"
           ],
           "tables": [
             "positions_current"
@@ -1343,17 +1329,26 @@
             "scripts/lib/data_broker/opportunity.py",
             "scripts/cio_opportunity_curator.py"
           ],
-          "switch": "config/watch_decision_standards.yaml held.positions_store_reader_surfaces gains 'opportunity'",
+          "switch": "config/watch_decision_standards.yaml held.positions_store_reader + held.positions_store_reader_surfaces (opportunity)",
           "freshness_guard": "positions_sync.freshness() (30 min in session, 72 h closed); stale, empty or unreadable -> holdings_accounts (holdings.json) with fallback_reason, stamped on every assessment as position_basis and in the curator receipt",
-          "why": "Operator 2026-10-23: NAVN showed Add-On / ADD on Watch › Opportunities the morning after it was sold — the curator's 09:00 run read the holdings file, which still listed NAVN, while positions_current (synced 09:09, and 16:54 the day before) did not.",
-          "approval": null,
-          "proposal": {
-            "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
-            "proposed_on": "2026-10-23",
-            "grant_phrase": "approve positions reader batch #4 (curator held flag)"
+          "approval": {
+            "approved_by": "operator",
+            "approved_on": "2026-10-23",
+            "reference": "Operator reply 2026-10-23 ~10:55 ET (verbatim): \"Yes, I approve. Paper right. Playwright every one of those. Pages on the watch list. I still don't see an area where I can select what I want to watch. Make sure everything is as you design.\" — \"Yes, I approve\" answers the ask in PR #2008 \"approve positions reader batch #4 (curator held flag)\" (relayed by the coordinator; session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko). \"Paper right\" is NOT read as a paper_proposals grant. Cause: NAVN showed Add-On / ADD on Watch the morning after it was sold because the curator's 09:00 run read the holdings file while positions_current had already dropped it.",
+            "scope": "positions_store phase-3 reader batch #4: the CIO opportunity curator's held flag (owned / not owned, and so type, stance and position_status) via watch_domains.held_positions(surface='opportunity'); held flag only — shares, basis and value stay the holdings file's; same reader and freshness/fallback contract as batch #1; position_basis stamped on every assessment and held_basis on the curator receipt"
           }
         }
-      ]
+      ],
+      "reader_gate": {
+        "_why": "AGENTS.md §7A: nothing reads the positions store until the operator approves each phase-3 reader batch. check_data_source_authority.py fails UNAPPROVED_READER when a file under scripts/ reads one of these tables (FROM/JOIN) and is not the writer, an approved_readers file, or a measured pre-batch reader below. positions_sync_runs is the heartbeat and is not gated.",
+        "tables": [
+          "positions_current",
+          "position_lots",
+          "realized_lots",
+          "position_snapshots"
+        ],
+        "measured_unbatched_readers": {}
+      }
     },
     {
       "domain": "options_iv",

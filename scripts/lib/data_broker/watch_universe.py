@@ -163,6 +163,10 @@ def list_watch_universe(query: Optional[dict[str, Any]] = None) -> dict[str, Any
         "position_facts": wpf.public(pmeta),
     }
     out = build_universe(g.get("opps") or {}, facts_for=pmeta["facts_for"], q=q, now=now, meta=meta)
+    mine = g.get("operator") or {}
+    for it in out["items"]:  # the star toggle on every row (operator 2026-10-23)
+        m = mine.get(it["symbol"])
+        it["mine"], it["starred"] = bool(m), bool((m or {}).get("starred"))
     out["data_broker"] = {
         "package": "scripts/lib/data_broker",
         "projection": "watch_universe",

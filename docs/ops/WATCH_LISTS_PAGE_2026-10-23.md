@@ -90,16 +90,19 @@ with its next run".
 - **Re-entry advice** (Re-Entry Desk classifier `reentry_rules.derive_intel_state`): NAVN WAIT, +3.7% above the
   zone $24.80–$25.10, or a close back above $26.02; alert levels 25.853 / 25.1 / 26.02.
 
-### The curator's own held flag — needs the operator (§7A, §17)
+### The curator's own held flag — reader batch #4 (APPROVED 2026-10-23)
 
 `opportunity.gather` now asks the one held reader `watch_domains.held_positions(surface="opportunity")` and stamps
 `position_basis` on every assessment (and `held_basis`, `held_basis_reason`, `held_overridden` on the curator
-receipt). It reads `positions_current` **only** when the operator grants **positions_store reader batch #4**
-(proposed in `config/data_source_authority.json` → `positions_store.proposed_readers[0]`; switch:
-`held.positions_store_reader_surfaces` gains `opportunity` in `config/watch_decision_standards.yaml`). Until then it
-is fail-closed: the holdings file decides, with `reason = reader_batch_4_not_approved`. Dry run 2026-10-23 09:40
+receipt). It reads `positions_current` (fresh) through **positions_store reader batch #4** — granted by the operator
+2026-10-23 ~10:55 ET, verbatim "Yes, I approve" to "approve positions reader batch #4 (curator held flag)";
+recorded in `config/data_source_authority.json` → `positions_store.approved_readers[batch 4]`; switch
+`held.positions_store_reader_surfaces: [watch, opportunity]`. "Paper right" in the same reply is not read as a
+paper_proposals grant. A stale, empty or unreadable store falls back to the holdings file with the reason. Dry run
+after the grant: `held_basis {positions_store.positions_current: 1643}`, reason none, `held_overridden []` (NAVN
+had already left the holdings file at 09:15). It takes effect on the served curator after release. Dry run 2026-10-23 09:40
 (`scripts/cio_opportunity_curator.py`, no `--apply`): universe 1,642, `held_basis {holdings_accounts.holdings_json:
-1642}`, reason `reader_batch_4_not_approved …`, `held_overridden []`. PR #2000 (open) adds a complementary ledger
+1642}`, reason `reader_batch_4_not_approved …`, `held_overridden []` (before the grant). PR #2000 (open) adds a complementary ledger
 check (sale newer than the holdings snapshot → shown conflict).
 
 ## Position filters (all three lists)
@@ -147,7 +150,31 @@ run build`), fixture `src/fixtures/watchLists.fixture.ts`, e2e `e2e/watch-lists.
 
 ## Operator decisions (§17)
 
-1. Grant positions_store reader batch #4 (curator held flag) — phrase proposed: "approve positions reader batch #4
-   (curator held flag)". Effect: the curator's type/stance/status follow `positions_current` when fresh.
+1. ~~Grant positions_store reader batch #4~~ — granted 2026-10-23 ("Yes, I approve").
 2. Merging this PR changes what Watch opens on and ranks (My Watchlist default; Suggests = top of the curator rank).
 3. Optional: register `watchlist_events` suggest decisions under the proposed `watchlist_membership` domain.
+
+## Choose what you watch (operator 2026-10-23 ~10:55: "I still don't see an area where I can select what I want to watch")
+
+- **＋ Add symbol** box at the top of My Watchlist, always visible: typeahead by ticker or company name
+  (`GET /api/v3/data-broker/watch-symbol-search?q=` — tickers from the identity registry `by_symbol`, names from the
+  broker instrument feed and the curator; CUSIP keys never offered), optional note, Enter or click to add.
+- **★ / ☆ on every row** of My Watchlist, System Suggests, Prospects and Full universe: one click adds to / removes
+  from My Watchlist. "Add" in Suggests is the same action.
+- **Remove** on every My Watchlist row (with an optional reason).
+- One write: `POST /api/v3/watch/commands/mine {symbol, action: add|remove, note}` —
+  add = the operator star (starred_by = the signed-in user) + `watchlist_events` `watch_mine_added`;
+  remove = unstar + archive the operator's own active ticker directive(s) for it (governed writer) +
+  `watch_mine_removed`. `membership_operator()` hides a name whose latest add/remove event is a removal unless a
+  membership reason is newer. Watching only — no order, size or stop (MBI_BEHAVIOR = 0).
+- Empty state: "Search a ticker above, or ★ any row in Suggests/Full universe."
+
+## Playwright (fixtures only)
+
+`e2e/watch-pages.spec.ts` drives every tab at 1440 px and 412 px: My Watchlist (add box, typeahead, add with note,
+star off, Remove with reason, detail, filters, empty hint), System Suggests (star, Add, Dismiss), Prospects (lanes,
+star, filters, detail), Full universe (NAVN formerly held, row detail with alert levels, star, position filters,
+Re-entry preset) — 14 tests with `watch-lists` and `watch-prospects`, all green. Every `/api` call is fulfilled in the
+browser; the preview ran with an offline proxy so nothing reached `:7777`. Screenshots (`WATCH_SHOTS_DIR`):
+`~/.cache/rtc/watch-playwright/*_{1440,412}.png`. The live read-only smoke was dropped (coordinator: agent traffic
+on `:7777` caused today's `portfolio-server` SIGKILLs).
