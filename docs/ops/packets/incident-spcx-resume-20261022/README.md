@@ -13,6 +13,15 @@ Two scripts. Both are previews until you type the confirmation word, both take o
 (`~/.cache/crontab.bak-<UTC>`, never deleted), match every crontab line by its **exact text** (never by line number),
 read the result back byte for byte, and stop at the first failure with the rollback command printed.
 
+> **2026-10-22 operator run: steps applied but verify falsely reported FAILED (SIGPIPE under pipefail); fixed in
+> PR #1965.** The verify was `crontab -l | grep -qxF -- "$line"` under `set -euo pipefail`. `grep -q` stops at the
+> first match, `crontab -l` is killed by SIGPIPE writing the rest of the ~174 KB crontab (exit 141), and pipefail
+> fails the whole check although the line is present. For every step the crontab ended exactly as intended.
+> Both scripts now read back once into a file (`crontab -l > "$WORK/after-installed.<step>"`) and grep the file.
+> The same pattern is fixed in the hermes learning/tune/feedback cutovers and the hermes-scorer canary retire step.
+> `tests/test_packet_verify_sigpipe_20261022.py` runs the real verify blocks against a >200 KB fake crontab that
+> dies on SIGPIPE, and lints every pipefail packet script for `crontab -l |` into an early-exit reader.
+
 ## 1. `resume-operator.sh` — resume the paused read/report lines
 
 ```bash
