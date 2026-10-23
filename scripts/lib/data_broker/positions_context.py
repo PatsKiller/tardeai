@@ -91,4 +91,89 @@ def get_positions_context(db_query, symbols: list[str], *, today: date | None = 
                         "days_held": "positions_store position_lots reader awaits operator phase-3 approval"}
     for o in out.values():
         o["owned"] = bool(o.get("shares"))
+    _mark_sold_after_snapshot(db_query, doc, out, today=today)
     return out
+
+
+SOLD_AFTER_SNAPSHOT_LOOKBACK_DAYS = 7
+
+
+def _ts(v: Any):
+    from datetime import datetime, timezone  # noqa: PLC0415
+    if v in (None, ""):
+        return None
+    if isinstance(v, datetime):
+        dt = v
+    elif isinstance(v, date):                # a bare date: midnight UTC (a conservative, early snapshot time)
+        dt = datetime(v.year, v.month, v.day, tzinfo=timezone.utc)
+    else:
+        try:
+            dt = datetime.fromisoformat(str(v).strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _mark_sold_after_snapshot(db_query, doc: dict[str, Any], out: dict[str, dict[str, Any]], *,
+                              today: date | None = None) -> None:
+    """NAVN (silo audit 2026-10-23): a broker sync that no-ops for an account leaves its holdings in the file, and every
+    CIO held check reads them. For each owned symbol, a broker SELL fill newer than the snapshot of the accounts that
+    hold it is an observed contradiction. It is MARKED (``sold_after_snapshot`` + both facts), never resolved here:
+    ``owned`` stays what the holdings store says (§26.5, §0 rule 5).
+
+    Snapshot time per account = ``account_summaries[acct].state_as_of`` (else the file's ``positions_built_at``). A
+    TIMED snapshot marks any later sale. Most accounts stamp a DATE (midnight), which cannot order a same-day sale, so
+    a date-only snapshot marks (a) a sale on a later calendar day than the snapshot, or (b) a same-day sale when the
+    account has not synced since (snapshot date before today), the sales cover the listed shares, nothing was bought
+    back, and the listed position was opened inside the lookback (the NAVN shape: bought 10-19, sold 10-22 15:59,
+    sync no-op until 10-23 09:07). Known blind spot of (b): an older position topped up in the window and then cut by
+    exactly the top-up reads as covered — the mark is a conflict SHOWN for review, never a resolution."""
+    owned = sorted(s for s, o in out.items() if o.get("owned"))
+    if not owned:
+        return
+    try:
+        rows = db_query(
+            """SELECT upper(symbol) AS s, lower(action) AS action, trade_time, trade_date, quantity
+                 FROM trade_transactions
+                WHERE upper(symbol) = ANY(%s) AND (lower(action) LIKE 'sell%%' OR lower(action) LIKE 'buy%%')
+                  AND trade_date > current_date - %s ORDER BY trade_time""",
+            (owned, SOLD_AFTER_SNAPSHOT_LOOKBACK_DAYS)) or []
+    except Exception:
+        return
+    summaries = doc.get("account_summaries") or {}
+    built = str(doc.get("positions_built_at") or "")
+    fallback = _ts(built.replace(" ET", ""))
+    if fallback is not None and built.endswith(" ET"):
+        from zoneinfo import ZoneInfo  # noqa: PLC0415
+        fallback = fallback.replace(tzinfo=ZoneInfo("America/New_York"))
+    fallback = fallback or _ts(doc.get("as_of"))
+    for s in owned:
+        o = out[s]
+        snaps = [_ts((summaries.get(a) or {}).get("state_as_of")) for a in (o.get("accounts") or [])]
+        snaps = [t for t in snaps if t is not None] or ([fallback] if fallback else [])
+        if not snaps:
+            continue
+        snap = min(snaps)
+        date_only = (snap.hour, snap.minute, snap.second, snap.microsecond) == (0, 0, 0, 0)
+        fills = [(r, _ts(r.get("trade_time")) or _ts(r.get("trade_date"))) for r in rows if r.get("s") == s]
+        sells = [(r, t) for r, t in fills if t is not None and t > snap and str(r.get("action")).startswith("sell")]
+        if not sells:
+            continue
+        qty = sum(abs(_f(r.get("quantity")) or 0.0) for r, _ in sells)
+        last = max(t for _, t in sells)
+        rebought = any(t is not None and t > last and str(r.get("action")).startswith("buy") for r, t in fills)
+        covers = bool(o.get("shares")) and qty >= float(o.get("shares") or 0) - 1e-9
+        if date_only:
+            later_day = last.date() > snap.date()
+            bought_in_window = sum(abs(_f(r.get("quantity")) or 0.0) for r, t in fills
+                                   if t is not None and str(r.get("action")).startswith("buy"))
+            opened_in_window = bought_in_window >= float(o.get("shares") or 0) - 1e-9
+            stale_same_day = (snap.date() < (today or date.today()) and covers and not rebought and opened_in_window)
+            if not (later_day or stale_same_day):
+                continue
+        o["sold_after_snapshot"] = {
+            "snapshot_as_of": snap.isoformat(), "snapshot_resolution": "date" if date_only else "time",
+            "snapshot_source": "holdings_accounts state_as_of", "sell_fills": len(sells), "sell_quantity": qty,
+            "last_sell_at": last.isoformat(), "rebought_after": rebought, "sell_source": "trade_transactions",
+            "held_shares": o.get("shares"), "covers_position": covers,
+        }

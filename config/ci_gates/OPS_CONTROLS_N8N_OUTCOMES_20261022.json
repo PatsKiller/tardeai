@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "OPS_CONTROLS_N8N_OUTCOMES_20261022",
+  "files": [
+    "tests/test_ops_controls_n8n_outcomes_20261022.py"
+  ],
+  "anchor": "OPS_CONTROLS_N8N_OUTCOMES_20261022",
+  "comment": [
+    "ANCHOR: OPS_CONTROLS_N8N_OUTCOMES_20261022 — Ops -> Controls n8n lanes tab outcomes (operator 2026-10-22 'I don't know if the last one was success or failure'): ledger read-only + bounded (no full-table scan of runs/run_outcomes/dead_letters), outcome aggregation, health OK/FAILING/STALE/NEVER_RAN/OFF, promotion readiness per N8N_ONBOARDING_STANDARD.md + AGENTS.md §23.21, summary strip, 60 s cache. Hermetic fixture sqlite ledger."
+  ]
+}

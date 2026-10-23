@@ -37,6 +37,7 @@ audits and offers an undo). The safe direction (release-train STOP or pause, kil
 | Policy gate, change kinds, preview/apply/undo | `scripts/lib/ops_controls_core.py` | `policy_state()` reads `AGENTS.md` at call time: ACTIVE only if the 19.0.0 history row is ACTIVE and §27.3 exists. No env override. |
 | Routes | `scripts/lib/ops_controls_api.py`, wired in `scripts/api_v2.py` | Records and authorises requests. Applies no host change itself (except the release-train STOP/pause writers and the passkey store). |
 | Factors | `scripts/lib/ops_controls_auth.py` | py_webauthn (`webauthn`) registration and assertion, `userVerification: required`, RP id `ms01-openclaw.tail163d14.ts.net`; pyotp TOTP (recovery only); step-up tokens; approval HMAC. |
+| Sudo window | `scripts/lib/ops_controls_sudo.py` | The window gate (AGENTS.md >= 20.0.0 ACTIVE with heading `## 28.5 The Ops → Controls sudo window` AND setting `ops_controls.sudo_window_enabled`), the always-fresh kinds, the in-memory window registry. §6a. |
 | Stores | `scripts/lib/ops_controls_store.py` | `PgStore` (production) and `MemoryStore` (tests), one interface. |
 | Migration | `migrations/2026_10_22_ops_controls.sql` (+ `.down.sql`) | 7 tables, refuse-delete triggers, append-only `ops_audit` and `operator_settings_history`. Not applied. |
 | Plan tool | `scripts/ops/ops_controls_migration_plan.py` | Dry run of the migration (`--probe`: read-only existence check). |
@@ -82,10 +83,9 @@ See the table in `docs/ops/OPS_CONTROLS_API.md` §5. Safe: `release_train.stop`,
   2026-06-26) and is fixed. Enable and disable now write the state row and the audit row in one transaction that
   rolls back on any failure, and the CLI exits 1 when a change is refused or fails, so an engage that did not apply
   reports `FAILED`, not `APPLIED`.
-- **`release_train.resume` / `.arm` / `.change_scope` / `.revoke`:** `release_control.OPERATOR_KINDS` is pinned to
-  the D3 host-CLI and Telegram proofs by `tests/test_agents_policy_17_0_0_release_train.py`. Adding a passkey proof
-  kind is its own reviewed PR after 19.0.0 is ACTIVE. Until then the host CLI is the path
-  (`scripts/release_control_cli.py`).
+- **`release_train.change_scope` / `.revoke`:** not built on this page yet; each is its own reviewed PR. The host CLI
+  is the path (`scripts/release_control_cli.py`). `release_train.resume` and `.arm` are supported since 2026-10-22
+  (§6a).
 - **Data approvals (registry rows):** these are a reviewed PR to `config/data_source_authority.json` (§26.6). The tab
   is read-only. It shows each row's readiness for that decision (§9); it never approves one.
 
@@ -138,6 +138,59 @@ Nothing below is done by an agent. Each step that writes durable state has its d
 **Rollback:** stop and disable `tradeai-ops-applier.service`. Run `migrations/2026_10_22_ops_controls.down.sql`; it
 archives by rename and never drops. Revert the PR. Applied host changes are restored from their backups (paths in the
 request results and the audit).
+
+## 6a. Sudo window, release-train passkey proof, kill-switch state, audit reasons (2026-10-22)
+
+Branch `feat/ops-controls-sudo-window-20261022`. Tests: `tests/test_ops_controls_sudo_window_20261022.py` (CI gate
+`OPS_CONTROLS_SUDO_WINDOW_20261022`), `src/lib/opsControls.test.ts` (in `npm run build`).
+
+**Sudo window** (operator decision 2026-10-22, verbatim: "approve sudo window"). **INERT** until both hold, read at
+every request: AGENTS.md **20.0.0 or later** is ACTIVE and carries the §28.5 heading `## 28.5 The Ops → Controls sudo window`
+(`ops_controls_core.policy_state(required="20.0.0", anchor=…, or_later=True)`, no environment override; the package
+was approved as "19.1.0" and numbered 20.0.0 MAJOR by the version policy), and the operator setting
+`ops_controls.sudo_window_enabled` is `true` (default `false`). Then:
+
+- One passkey assertion opens it: the operator ticks "Also open a sudo window" on a risky step-up, and the same
+  assertion (user verification required) opens a window for `ops_controls.sudo_window_minutes` (default 60, ceiling
+  120). It ends after 15 minutes without use, on **End window now**, when its passkey is revoked, when the setting is
+  turned off or the policy is not ACTIVE, and when the Command Center restarts (windows are in memory only, so a
+  restart fails closed). There is no Command Center logout today; closing the browser session drops the token
+  (`sessionStorage`) and the server window then idles out.
+- Inside it, a risky act needs only the typed phrase (`POST /requests/{id}/step-up/window`). The window is bound to the
+  operator identity, the opening credential and the browser session: the server returns a random token once and keeps
+  only its SHA-256.
+- **Always a fresh passkey, even inside a window:** `grant.issue`, `kill_switch.clear`, `passkey.register`,
+  `passkey.revoke`, the release-train operator kinds (`resume`, `arm`, `change_scope`, `revoke` — added beyond the
+  operator's list because §25.4 names a passkey for them and the release-train proof hook accepts only factor
+  `passkey`), and setting or unsetting either sudo-window setting. Refused at window step-up, again at approve, and
+  again in the host applier, which reads the factor inside the signed approval (`FRESH_PASSKEY_REQUIRED`).
+- **Audit:** `sudo.opened` (opening assertion id `asrt_…`, credential, time, request), every act's `step_up.verified`,
+  `request.approved` and `request.applied` rows (the same linkage, also kept in the request's `result.sudo_window`),
+  and `sudo.ended` with its reason (expired, idle, ended by the operator, passkey revoked, inert, replaced).
+- **Agents** are refused on every new route exactly as on the others (`AGENT_CALLER_REFUSED`).
+- **Activation (operator, after 20.0.0 is ACTIVE):** apply `migrations/2026_10_22_ops_controls_sudo_window.sql` (it
+  widens the `stepup_factor` CHECK to allow `sudo_window`; dry run and verify are in its header; reverse:
+  `.down.sql`, NOT VALID, keeps every row), then set `ops_controls.sudo_window_enabled = true` on the page (a fresh
+  passkey). Until the migration runs, a window step-up is refused by the database (fails closed).
+
+**Release-train resume and arm with a passkey.** `release_control.OPERATOR_KINDS` is now `{host_cli, telegram,
+passkey}` (AGENTS.md 19.0.0 §25.4, as ratified: "resume, arming, re-arming, scope changes and revoke are operator acts
+made with a WebAuthn passkey and a typed confirmation phrase (§27.3), or at the host CLI"); the pin in
+`tests/test_agents_policy_17_0_0_release_train.py` follows it. A `passkey` actor needs a `PasskeyProof` that a
+`PasskeyApprovalHook` vouches for; the default hook refuses. The host applier passes `ApprovalPasskeyHook`, bound to the
+one approval it is applying: valid HMAC signature, same kind and request, factor `passkey` (not a window, not TOTP),
+same credential, and the phrase the library expects now (`RESUME EPOCH <n>` / `ARM EPOCH <n>`), so a stale approval
+cannot act on a later stop. Resume records readiness (state shown at apply time); arm reads the host delegation
+(`release_delegation.load`) and refuses if its digest changed since the preview. Scope change and revoke stay host CLI.
+
+**Kill-switch row.** The Jobs tab shows the global trading kill switch as ENGAGED / CLEAR / UNAVAILABLE (fail closed),
+read-only, from the existing route `GET /api/v2/execution/kill-switches` that the Execution panel already reads. No
+broker-execution code was changed or newly called by this surface; clear stays host terminal.
+
+**Audit reasons.** Every audit row in `GET /state` has a one-line `reason` (the row's own code and detail first, else
+the action's meaning, plus the factor and any sudo-window linkage), shown in a new **Why** column. Every section that
+is not OK has a reason; a store that is not migrated names the missing tables and the migration to apply. The page no
+longer prints "NOT_MIGRATED — no reason given".
 
 ## 7. Telegram
 
@@ -215,8 +268,8 @@ paused lines on 2026-10-22.
 An older server leaves these fields out. The page then falls back: AMBIGUOUS rows read "Several crontab lines match",
 and a cut-over lane reads as "Off — but registry says it should run".
 
-**n8n lanes tab.** This tab has a one-line explainer and tooltips on Stage, Mode, On live list, Workflow and Action. A
-lane fires for real only when its mode is `live` and it is on the relay live list.
+**n8n lanes tab.** Section 10 describes it. This tab has a one-line explainer and tooltips on Stage, Mode, On live
+list, Workflow and Action. A lane fires for real only when its stage allows `live` and it is on the relay live list.
 
 ## 9. Reading the Data approvals tab (UI, 2026-10-22)
 
@@ -287,3 +340,128 @@ The dictionary scan got an exact pre-filter in `data_dictionary.writer_files` / 
 scan, so it is faster too. On 2026-10-22 `evaluate` took 39 s before the pre-filter and 3.8 s after. The measurements
 were identical, and a test checks them against the bare regex.
 
+## 10. Reading the n8n lanes tab (dashboard, 2026-10-22)
+
+The operator's feedback on 2026-10-22: "Why do some of these say live? Some of them say dry runs. I don't know if the
+last one was success or failure. This is not a real dashboard... When is everything going live?" The tab used to show
+configuration only. Each row now also carries what the lane actually did and whether it may climb the ladder.
+
+The server function `n8n_view` adds two blocks to each row, `outcome` and `readiness`, plus a section-level `summary`.
+They come from `scripts/lib/ops_controls_n8n_outcomes.py`, and the contract is in `OPS_CONTROLS_API.md`. The module
+reads the following, all read-only:
+
+- **The n8n coordination ledger.** The path is `n8n_ledger.file` in `config/ops_controls.json`. It is opened with
+  sqlite `mode=ro` and `PRAGMA query_only`. Tables read: `run_outcomes`, `runs`, `dead_letters` and `breakers`.
+- **The registry, the run allowlist and the health contracts.**
+- **The cutover policy, the effect keys and the disposition CSV.** These are the same inputs as
+  `n8n_cutover_wave.py`.
+- **The relay live list and `crontab -l`.**
+
+**Bounded reads.** Every ledger query is per lane and uses an index: `run_outcomes_lane`, `runs_lane_state`, the `runs`
+primary key, or `dead_letters_lane`. Older history is walked newest-first, at most 500 rows per lane. History from
+before the run-outcome callback (2026-10-15) is found by run-key prefix (`d:`, `f:` and `e:`). No query scans a whole
+table: `tests/test_ops_controls_n8n_outcomes_20261022.py` checks every query's `EXPLAIN QUERY PLAN`. The result is
+cached for 60 s per process. On the host on 2026-10-22 one computation took 0.23 s for 120 lanes, and the process
+peaked at 40 MB RSS.
+
+**Summary strip.** Click a tile to filter the table.
+
+| Tile | Counts |
+|---|---|
+| Live & healthy | Lanes whose fires are real today (effective mode `live`) with health OK. |
+| Live & failing | Live lanes with health FAILING or STALE. |
+| Rehearsing (shadow) | Lanes whose fires are dry runs today: shadow lanes, and canary lanes that are not on the live list. |
+| Ready to promote | Lanes with readiness READY_FOR_CANARY or READY_FOR_CUTOVER. |
+| Never ran | Active lanes with no run in the ledger. |
+
+**Stage column.** The registry stage in plain words, corrected by what a fire really does today:
+
+| Label | Meaning |
+|---|---|
+| Rehearsing — not doing real work yet | Shadow. |
+| Live, watched (canary) | Canary and on the live list. |
+| Canary on paper — not on the live list, still a dry run | Canary, but not on the live list. |
+| Fully moved to n8n | Cutover. |
+| n8n-native | No stage; n8n owns the workflow outright. |
+| Off — … | The lane is not dispatched. |
+
+The tooltips state the platform rules:
+
+- The shadow stage forces `dry_run`.
+- At canary, the cron line and n8n share one lock, so only one runs per slot and the other records SKIPPED.
+- At cutover, the cron line is commented as `# RETIRED … n8n-cutover` and kept as the rollback.
+- A `dry_run` is write-free by contract.
+- The relay refuses a live fire for a lane that is not on the live list.
+
+**Last run.** The icon shows the outcome, followed by how long ago it ran and the mode:
+
+- ✓ — the run succeeded.
+- ✗ — the run failed or timed out. The tooltip gives the reason (for example `output_unverifiable` or
+  `timeout_exit_124`) and the run id.
+- ↷ — the run was skipped because the other scheduler held the shared lock. This is expected at canary; it is not a
+  failure and not a live proof.
+- · — the lane never ran.
+
+**Health.**
+
+| Verdict | Meaning |
+|---|---|
+| OK | The last run succeeded or was skipped. |
+| FAILING | The last run FAILED, TIMED OUT or was REFUSED, or there is a dead letter newer than the last success that has not been released, or the breaker is open. |
+| STALE | The registry schedule (`dispatch.cron`, else the n8n `cadence`, else a cron `expression`, in `dispatch.tz`) had a fire more than 45 min ago that has no run. A lane with no cron schedule uses 2 × `expected_cadence_hours`. |
+| NEVER_RAN | The lane has no run in the ledger. |
+| OFF | The registry state is not ACTIVE, or `mode: off`. |
+
+The badge counts FAILED, TIMEOUT and REFUSED runs in the last 24 h and 7 d.
+
+**7 days** shows the runs recorded in the last 7 days, by mode.
+
+**Next run** is the next fire of the same schedule, in ET.
+
+**Promotion.** The readiness verdict uses the documented ladder only.
+
+*Shadow → canary* (`N8N_ONBOARDING_STANDARD.md` steps 3, 5, 8 and 9, rule 5 and §2 rule 4) needs all of:
+
+- a REVIEWED health contract;
+- an allowlist entry;
+- an n8n `dry_run` RUN_DONE as the latest dry fire;
+- for a cron row, the cron line's `flock -n` lock equal to the allowlist lock;
+- a `live_arg` the cutover factory can derive from the line (`parse_lane_argv`);
+- for a sender, a cron line wrapped with `effect_claim_cron.sh`.
+
+*Canary → cutover* (AGENTS.md §23.21) needs all of:
+
+- the latest live run is not failed;
+- a clean dry run;
+- at least one live RUN_DONE whose `output_signal` advanced;
+- the lane is on the live list;
+- the cron line is present, and its lock equals the allowlist lock (`r1_canary_lock_matches`). A RUN_SKIPPED_LOCK never
+  counts.
+
+Two §23.21 items cannot be measured here, so each verdict lists them as *owed in the PR*:
+
+- (3) the lane's regression tests;
+- the per-wave `cron` grant and the effect key.
+
+A lane is **BLOCKED** if any of the following holds:
+
+- the registry state is not ACTIVE;
+- the lane has an operator hold;
+- the lane is a held lane;
+- the lane is F07 or registry_systemd;
+- the lane fails `lane_dispatch.dispatch_eligible` (the never-list);
+- the lane is in the allowlist's `blocked_reasons`;
+- the lane has no allowlist entry;
+- the health contract is missing, not REVIEWED, or has UNKNOWN fields.
+
+The risk tier is the factory's own classifier, `cutover_lane_facts.tier_of`. Expand a row to see the missing and
+blocking items, the evidence, and what is owed.
+
+**Promotion is never applied from this tab.** It is an operator decision made by a reviewed registry PR (§23.11). The
+only actions here are the existing live-list Add and Remove, unchanged: risky, with a preview, a passkey and the typed
+phrase. The one-time report for 2026-10-22 is `docs/ops/N8N_PROMOTION_READINESS_2026-10-22.md`.
+
+**Degraded states.** If the ledger cannot be read, `outcomes_state` is `UNAVAILABLE`, a banner says so, health shows
+"Not measured", and readiness is at most NOT_READY. A missing ledger never reads as "never ran". If `crontab -l` fails,
+lock proofs read "not measured". An older server sends no `outcome` block; the page then shows "not measured" and no
+summary strip, never zeros.

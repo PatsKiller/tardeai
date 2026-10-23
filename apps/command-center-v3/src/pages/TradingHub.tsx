@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 // Trade AI = Opportunities page (Gate 3 Main.dc.html, 2026-10-22); Shared Momentum is its collapsed drawer.
 import TradeAiOpportunities from '../components/tradeai/TradeAiOpportunities'
-import { Navigate, useSearchParams } from 'react-router-dom'
+import { Navigate, useLocation, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import {
+  canonicalTradingSearch,
   legacyTradingRedirect,
   parseTradingDeepLink,
   tradingTabSearchParams,
@@ -82,8 +83,13 @@ function isTradeAiStaleSession(tradeAi: any): boolean {
  */
 export default function TradingHub(props: Props) {
   const [searchParams] = useSearchParams()
+  const { hash } = useLocation()
   const redirect = legacyTradingRedirect(searchParams)
   if (redirect) return <Navigate to={redirect} replace />
+  // Retired in-hub names (Entry Desk, Broker Recon, Schwab Accounts, Broker Proposals …) are rewritten
+  // to the canonical URL with a history replace before the desk mounts (P3 2026-10-23).
+  const canonical = canonicalTradingSearch(searchParams)
+  if (canonical) return <Navigate to={{ search: `?${canonical.toString()}`, hash }} replace />
   return <TradingHubDesk {...props} />
 }
 

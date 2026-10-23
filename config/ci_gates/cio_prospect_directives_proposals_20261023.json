@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_prospect_directives_proposals_20261023",
+  "files": [
+    "tests/test_cio_prospect_directives_proposals_20261023.py"
+  ],
+  "anchor": "CIO_PROSPECT_DIRECTIVES_PROPOSALS_20261023",
+  "comment": [
+    "ANCHOR: CIO_PROSPECT_DIRECTIVES_PROPOSALS_20261023 — silo audit 2026-10-23 P2: active ticker watch directives reach the",
+    "CIO prospect as the protected way-in operator_directive (through the watch_directives projection); open proposals set",
+    "stage proposed only once the operator grants registry row paper_proposals (inert until then, AGENTS.md §26.6)."
+  ]
+}
