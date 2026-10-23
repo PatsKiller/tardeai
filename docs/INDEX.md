@@ -1741,6 +1741,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/ADVICE_DIGESTS_2026-10-08.md` | Advice digests — 10:00 / 15:00 / 17:00 ET (2026-10-08) |
 | `docs/ops/AGENTS_GUARD_HOOK.md` | AGENTS.md guard hook for Claude Code (PreToolUse) |
 | `docs/ops/AGENT_CLAIM_BOARD.md` | Agent claim board — who is working on which files |
+| `docs/ops/AGENT_START_HERE.md` | Agent start here — any vendor (Claude, Codex, Cursor) |
 | `docs/ops/AUTONOMOUS_ADVISORY_LOOP_CLOSURE_RESULT_2026-08-23.md` | Trade AI Autonomous Advisory Loop Closure Result |
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Autonomous Advisor Session Closeout — 2026-08-20 |
 | `docs/ops/AUTONOMY_OPERATOR_RUNBOOK.md` | Autonomy Operator Runbook (READ_ONLY_ADVISORY) |
@@ -2026,6 +2027,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WATCH_PROSPECTS_PAGE_2026-10-22.md` | Watch — prospect lanes (the Gate 3 Watch redesign, 2026-10-22) |
 | `docs/ops/WEEKLY_OVERSIGHT_CHATGPT_OAUTH.md` | Weekly oversight — ChatGPT OAuth auto, paid manual |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye — first institutional-brain audit |
+| `docs/ops/agent_start/codex-note.md` | Codex note — agent claim board (operator installs) |
+| `docs/ops/agent_start/cursor-rule.md` | Cursor rules snippet — agent claim board (operator installs) |
 | `docs/ops/alerts/PHASE126_TELEGRAM_ENFORCEMENT_REPORT.md` | Phase 126 — Telegram Actionable-Only Enforcement Report |
 | `docs/ops/alerts/PHASE132_STOP_ALERT_INTELLIGENCE_REPORT.md` | Phase 132 — Stop Alert Intelligence Report |
 | `docs/ops/alerts/telegram_notification_normalization_2026_07_28/ALERT_POLICY_DIFF.md` | Alert Policy Diff |

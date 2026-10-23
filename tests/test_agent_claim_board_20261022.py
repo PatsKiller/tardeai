@@ -546,6 +546,9 @@ def test_precommit_script_is_warn_only(tmp_path):
         "scripts/agent_claim.py",
         "scripts/agent_claim_precommit.sh",
         "scripts/lib/agent_claim_board.py",
+        "scripts/lib/agent_claim_lifecycle.py",
+        "scripts/lib/agent_claim_worklog.py",
+        "scripts/lib/agent_task_board.py",
         "scripts/lib/agent_file_lease.py",
         "scripts/lib/persistent_state_root.py",
     ):
@@ -578,7 +581,8 @@ def test_hooks_framework_left_untouched_operator_surface():
     hook = (ROOT / ".githooks" / "pre-commit").read_text()
     assert "agent_claim" not in hook
     script = (ROOT / "scripts" / "agent_claim_precommit.sh").read_text()
-    assert 'bash "$ROOT/scripts/agent_claim_precommit.sh" || true' in script and "exit 0" in script
+    # 2026-10-23: policy-gated (warn below AGENTS.md 20.0.0 ACTIVE, block from it); the install line keeps the rc
+    assert 'bash "$ROOT/scripts/agent_claim_precommit.sh" || exit 1' in script and "exit 0" in script
 
 
 # ------------------------------------------------------------------------------------------- API
