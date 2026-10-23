@@ -157,6 +157,16 @@ This installs the reviewed `docs/ops/packets/release-train-20261021/tradeai-rele
 byte for byte into `~/.config/systemd/user/`.
 
 - The service is a oneshot: `CURRENT/.venv/bin/python scripts/release_window.py train-claim --apply`.
+- The service sets `Environment=TRADEAI_RELEASE_CHECKOUT=%h/trade-ai-releases/train-checkout` (2026-10-22). That is
+  the release checkout the train fetches into, integrates from and prepares in. When it is absent the controller
+  creates it: a locked linked worktree of the canonical repo, detached at origin/main. When it is present the
+  controller fetches origin main into it. If that fails, selection halts `MAIN_UNREADABLE` with a reason that names
+  the path. The old default `~/tradeai-exact-main-20260827` no longer existed, so every selection read
+  `MAIN_UNREADABLE`.
+- **Already installed before 2026-10-22?** The installed `.service` then differs from the reviewed file, and step D
+  refuses (`DIFFERS:tradeai-release-train-claim.service`). After the release that carries the change, run Rollback D
+  (archive the three units, never delete them), then `TRADEAI_RELEASE_TRAIN_ARM_ACK=D $ARM D --apply`. That
+  re-installs them, runs `daemon-reload` and re-enables them. Check with `$ARM D --verify`.
 - The path unit watches `…/release_window/train_requests/pending`.
 - The timer is the 1-minute fallback.
 - While `TRAIN_CONTROLLER_STATUS` is `BUILD_ONLY`, a live request is refused `CONTROLLER_BUILD_ONLY`, and a shadow
@@ -215,7 +225,10 @@ in `~/.config/tradeai/n8n-live-lanes.env`. The relay and the gateway both read t
 - It then runs `scripts/check_n8n_relay_contract.py --ids tradeai-fabric-release-train` with the scratch relay probe.
   The probe starts its own relay and never touches the live one.
 - It is idempotent:
-  - all five lanes listed, and both services started after the last edit: `NOOP`;
+  - all five lanes listed, and both services started after the last edit: `NOOP`. Since 2026-10-22 a NOOP still runs
+    the relay contract check and writes its result into the receipt (`NOOP … relay contract PASS (probe)`, or
+    `FAILED … relay contract check FAILED`, exit 1). So a re-arm after a FAILED receipt leaves a durable PASS
+    receipt without editing the list or restarting anything;
   - lanes listed but a service started before the edit: it only restarts.
 
 **Do E after H.0 is released.** Until then each lane has `live_arg: null` and stage `shadow`. The executor's stage
