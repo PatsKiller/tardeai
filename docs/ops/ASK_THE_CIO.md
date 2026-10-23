@@ -24,7 +24,7 @@ sizes."
 - **My questions** (`/v3/cio/questions`) lists every thread from the Command Center and Telegram. Each thread shows its
   status (quick, deep pending, deep, re-answered, capped), every answer version, sources, what it is tracking, and a
   follow-up box.
-- Telegram questions use the same path. A question asked in the Command Center is mirrored to the CIO Telegram chat.
+- Telegram questions use the same path. A question asked in the Command Center is mirrored to the CIO Telegram chat through the CIO notification outbox.
   - Replying in Telegram to any message in a thread adds a follow-up to that thread.
   - So does any message that names the thread id (`thr_…`).
   - A follow-up typed in the Command Center lands in the same thread.
@@ -148,8 +148,9 @@ CC  POST /api/v2/cio/ask ─┐                                  ┌─ Telegram
   - Postgres-portable shape for the move (§24.9):
     `cio_ask_events(event_id text primary key, kind text, thread_id text, ask_id text, at timestamptz, payload jsonb)`.
 - **CIO memory.** `data/cio/security_research_spine.jsonl`, through `upsert_research_memory`.
-  - An optional second copy goes to M2 (`CIOEnvelopeIntegrator`, predicate `ask_cio_exchange`) when
-    `CIO_ASK_M2_APPLY=1`. M2 production writes are separately authorised.
+  - This module does not write the M2 bitemporal memory. The memory chokepoint (`scripts/check_memory_chokepoint.py`)
+    allows M2 only through `scripts/lib/intelligence_client.py`, and the Phase 9 research path already appends its
+    sourced facts to M2 through `CIOEnvelopeIntegrator`.
 - **Config.** `config/cio_ask.json`: caps, mirror, auto-track steps, re-answer mode and guards, reference stop.
 
 ## 6. Cost
@@ -195,8 +196,17 @@ Under pytest, the ask path refuses default (production) dependencies unless a te
 - **Gate 4 alert threads.** A re-answer is posted to Telegram as a new message naming the thread. It does not reply to
   a Gate 4 unified-alert thread root: those are keyed by `day:SYM:event_key` in `unified_momentum_alerts.jsonl`, and
   no Command Center thread surface exists for them yet.
-- **Telegram replies.** `send_cio_message` fans out to the allowlist without `reply_to`, so Telegram replies chain by
-  the thread id in the footer and by recorded outbound message ids.
+- **Telegram delivery.** Mirrored Command Center answers, deep answers and re-answers are queued in the CIO
+  notification outbox (`scripts/lib/cio_notification_outbox.py`, `message_class: advisory`). They are not sent
+  directly: the CIO send entrypoints are a shrink-only allowlist (`tests/test_cio_origin_gate_20260916.py`), so
+  delivery, live or shadow, is the outbox delivery worker's to decide.
+  - The outbox returns no Telegram message id. Replies chain through the thread id in the body: a Telegram reply quotes
+    it (`reply_to_text`).
+  - Questions asked on Telegram are answered in place by the bot, as before, and their message ids are recorded.
+- **Completeness census.** The seven ask schemas are classified `NOT_OPERATOR_RELEVANT` in
+  `config/cio_surface_classification.json`, each with a census-gap caveat. `scripts/cio_api_contract_census.py` does
+  not trace modules delegated from `api_v2.handle` (Ops Controls has the same gap), so no `record_edge` can verify.
+  Reclassify `AskAnswer@v1` as SURFACE once it does.
 - **"Flagged on Watch / Home."**
   - The ask bar in the header shows a chip for each tracked name on every page, Home and Watch included
     (`GET /api/v2/cio/asks/tracked`). Each chip links to its thread.

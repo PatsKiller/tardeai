@@ -1180,6 +1180,55 @@
       "classification": "NOT_OPERATOR_RELEVANT",
       "reason": "The position-lifecycle blocks of the prospect record (origin attribution, observed stops, excursion, exit cause, post-exit review, re-entry advice; operator 2026-10-22 NAVN). Operator-relevant once a surface reads it; today only the shadow build and the projection carry it. Shadow stage of the CIO prospect foundation (AGENTS.md §26, P1): no page or alert reads it yet — the reader batches of docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md §7 P3 (TradeInView / Open Trades / Watch through lib/data_broker/cio_prospect.get_position_view, Home and Telegram through get_prospects) are each an operator decision (§17, §26.3). Reclassify as SURFACE with a record_edge when the first batch lands.",
       "owner_hint": "scripts/lib/cio_prospect_lifecycle.py"
+    },
+    {
+      "name": "schema:AskAnswer@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "One versioned answer to an operator question (quick, deep, re-answer); its text is what the operator reads on the Ask the CIO bar, My questions (/v3/cio/questions) and Telegram, stored in data/cio/cio_ask_events.jsonl. Census gap, not a relevance judgment: the Ask the CIO API is a module delegated from api_v2.handle (scripts/lib/cio_ask_api.py), which scripts/cio_api_contract_census.py does not trace (Ops Controls has the same gap), so no record_edge can verify. Operator visibility is proven by tests/test_cio_ask_20261023.py and apps/command-center-v3/e2e/ask-cio.spec.ts. Reclassify SURFACE with a record_edge when the census traces delegated modules.",
+      "owner_hint": "scripts/lib/cio_ask_contract.py"
+    },
+    {
+      "name": "schema:AskRequest@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "The normalised operator question (channel, thread, resolved entities, optional operator-named quantities) handed between Phase 8 and the Phase 9 research pipeline; the operator sees the question text, not this envelope. Census gap, not a relevance judgment: the Ask the CIO API is a module delegated from api_v2.handle (scripts/lib/cio_ask_api.py), which scripts/cio_api_contract_census.py does not trace (Ops Controls has the same gap), so no record_edge can verify. Operator visibility is proven by tests/test_cio_ask_20261023.py and apps/command-center-v3/e2e/ask-cio.spec.ts. Reclassify SURFACE with a record_edge when the census traces delegated modules.",
+      "owner_hint": "scripts/lib/cio_ask_contract.py"
+    },
+    {
+      "name": "schema:AskProspectus@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Per-security 3/6/12-month bear/base/bull prospectus carried inside AskAnswer@v1 deep answers (Phase 9); rendered as part of the answer on My questions, not as its own record. Census gap, not a relevance judgment: the Ask the CIO API is a module delegated from api_v2.handle (scripts/lib/cio_ask_api.py), which scripts/cio_api_contract_census.py does not trace (Ops Controls has the same gap), so no record_edge can verify. Operator visibility is proven by tests/test_cio_ask_20261023.py and apps/command-center-v3/e2e/ask-cio.spec.ts. Reclassify SURFACE with a record_edge when the census traces delegated modules.",
+      "owner_hint": "scripts/lib/cio_ask_contract.py"
+    },
+    {
+      "name": "schema:AskSizingContext@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Exposure and risk for quantities the operator named (never a recommended size, MBI_BEHAVIOR=0); carried inside AskAnswer@v1 and rendered in the answer's sizing block on My questions. Census gap, not a relevance judgment: the Ask the CIO API is a module delegated from api_v2.handle (scripts/lib/cio_ask_api.py), which scripts/cio_api_contract_census.py does not trace (Ops Controls has the same gap), so no record_edge can verify. Operator visibility is proven by tests/test_cio_ask_20261023.py and apps/command-center-v3/e2e/ask-cio.spec.ts. Reclassify SURFACE with a record_edge when the census traces delegated modules.",
+      "owner_hint": "scripts/lib/cio_ask_contract.py"
+    },
+    {
+      "name": "schema:AskSizeSuggestion@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Designed-but-gated advisory size suggestion: always omitted unless AGENTS.md is at or above 21.0.0 ACTIVE, so it is produced nowhere today; operator-relevant only if the operator ratifies that amendment. Census gap, not a relevance judgment: the Ask the CIO API is a module delegated from api_v2.handle (scripts/lib/cio_ask_api.py), which scripts/cio_api_contract_census.py does not trace (Ops Controls has the same gap), so no record_edge can verify. Operator visibility is proven by tests/test_cio_ask_20261023.py and apps/command-center-v3/e2e/ask-cio.spec.ts. Reclassify SURFACE with a record_edge when the census traces delegated modules.",
+      "owner_hint": "scripts/lib/cio_ask_contract.py"
+    },
+    {
+      "name": "schema:AskResearchContext@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Hand-off envelope from the ask core to the Phase 9 deep-research entry point (request, recall, budget; position dollars stripped for egress); internal plumbing between two modules, never shown. Census gap, not a relevance judgment: the Ask the CIO API is a module delegated from api_v2.handle (scripts/lib/cio_ask_api.py), which scripts/cio_api_contract_census.py does not trace (Ops Controls has the same gap), so no record_edge can verify. Operator visibility is proven by tests/test_cio_ask_20261023.py and apps/command-center-v3/e2e/ask-cio.spec.ts. Reclassify SURFACE with a record_edge when the census traces delegated modules.",
+      "owner_hint": "scripts/lib/cio_ask_contract.py"
+    },
+    {
+      "name": "schema:CioAskEvent@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "One append-only row of the asks ledger data/cio/cio_ask_events.jsonl (asked, entity resolved, answer version, tracking change, channel link, cost); My questions reads the thread projection folded from it. Census gap, not a relevance judgment: the Ask the CIO API is a module delegated from api_v2.handle (scripts/lib/cio_ask_api.py), which scripts/cio_api_contract_census.py does not trace (Ops Controls has the same gap), so no record_edge can verify. Operator visibility is proven by tests/test_cio_ask_20261023.py and apps/command-center-v3/e2e/ask-cio.spec.ts. Reclassify SURFACE with a record_edge when the census traces delegated modules.",
+      "owner_hint": "scripts/lib/cio_ask_store.py"
     }
   ]
 }

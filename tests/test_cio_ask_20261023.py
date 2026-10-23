@@ -301,6 +301,21 @@ def test_cc_ask_mirrored_to_telegram_and_reply_there_is_a_follow_up(tmp_path, _o
     assert out["ask"]["thread_id"] == tid and out["ask"]["turn_kind"] == "follow_up"
 
 
+def test_reply_quoting_a_mirrored_message_attaches_without_its_message_id(tmp_path, _offline):
+    """The default mirror queues into the CIO outbox (no Telegram message id comes back); the reply still lands in
+    the thread because Telegram quotes the mirrored body, which carries the thread footer."""
+    deps = make_deps(tmp_path)
+    deps.telegram_send = lambda text: {"ok": True, "queued": "ntf_x", "message_id": None}
+    r = cc_ask(deps, _offline, "Is TSLA a buy into 2027?")
+    out, _ = tg_ask(deps, _offline, "and the downside?", reply_to="555", reply_to_text=r["answer_text"])
+    assert out["ask"]["thread_id"] == r["thread_id"] and out["ask"]["turn_kind"] == "follow_up"
+
+
+def test_ask_core_never_calls_the_cio_send_entrypoint_directly():
+    src = (ROOT / "scripts" / "lib" / "cio_ask_core.py").read_text(encoding="utf-8")
+    assert "send_cio_message(" not in src and "NotificationOutbox" in src
+
+
 def test_thread_id_typed_on_telegram_attaches(tmp_path, _offline):
     deps = make_deps(tmp_path, mirror=False)
     tid = cc_ask(deps, _offline, "Is TSLA a buy?")["thread_id"]
@@ -336,7 +351,7 @@ def test_memory_appended_keyed_by_security_guid_and_recalled_across_channels(tmp
 def test_recall_from_the_real_research_spine(tmp_path):
     """The default memory writes CIO-owned spine contributions and reads them back — no fake."""
     store = AskEventStore(tmp_path / "ev.jsonl")
-    mem = SpineAskMemory(spine_path=tmp_path / "spine.jsonl", ledger=store, m2_apply=False)
+    mem = SpineAskMemory(spine_path=tmp_path / "spine.jsonl", ledger=store)
     ent = C.EntityRef(name="Tesla", symbol="TSLA", security_guid=TSLA_GUID, issuer_guid=TSLA_ISSUER)
     rc = mem.append(entity=ent, kind="ask.asked", summary="Is TSLA a buy?", ref="ask_aaaaaaaaaaaaaaaa")
     assert rc["spine"]["ok"] is True, rc

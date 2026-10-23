@@ -201,12 +201,33 @@ class DefaultResolver:
 
 
 def _default_telegram_send(text: str) -> dict:
-    from scripts.lib.cio_telegram_converse import allowlist_chat_ids, send_cio_message  # noqa: PLC0415
+    """Queue a CIO-origin advisory message in the CIO notification outbox. Never a direct send: the CIO send
+    entrypoints are a shrink-only allowlist (tests/test_cio_origin_gate_20260916.py), and delivery (live or shadow)
+    stays governed by the outbox's delivery worker. Cross-channel follow-up does not need the outbound message id:
+    the body carries the thread id, and a Telegram reply quotes it (``reply_to_text``)."""
+    import hashlib  # noqa: PLC0415
 
-    chats = sorted(allowlist_chat_ids() or [])
-    if not chats:
-        return {"ok": False, "error": "no CIO Telegram allowlist"}
-    return send_cio_message(chats[0], text)
+    from scripts.lib.cio_notification_outbox import NotificationOutbox  # noqa: PLC0415
+
+    nid = "ntf_ask_" + uuid.uuid4().hex[:16]
+    body = str(text or "")[:3800]
+    note = {
+        "notification_id": nid,
+        "message_class": "advisory",
+        "channel_targets": ["telegram"],
+        "subject": "CIO · Ask the CIO",
+        "body": body,
+        "body_hash": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+        "sender": "cio_ask",
+        "trace_id": f"trace_{nid}",
+        "dedupe_key": "cio_ask:" + hashlib.sha256(body.encode("utf-8")).hexdigest()[:24],
+        "idempotency_key": f"cio_ask:{nid}",
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": False,
+        "parse_mode": None,
+    }
+    NotificationOutbox().enqueue(note, actor_id="cio_ask", actor_type="agent", authority="advisory")
+    return {"ok": True, "queued": nid, "message_id": None}
 
 
 def _default_deep_provider() -> Optional[Callable[[AskResearchContext], AskAnswer]]:

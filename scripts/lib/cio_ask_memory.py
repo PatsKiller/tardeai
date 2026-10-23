@@ -12,9 +12,9 @@ across channels (CC and Telegram) and across threads.
 A private entity (no listed security, e.g. a pre-IPO company) has no spine (the spine needs a ticker and a registry
 GUID, and we never invent a ticker). Its memory is the ask ledger keyed by ``entity_guid``; ``recall`` reads it there.
 
-Optional second write: the M2 bitemporal memory (``CIOEnvelopeIntegrator``) with the multi-valued predicate
-``ask_cio_exchange``. Off unless ``CIO_ASK_M2_APPLY=1`` (M2 production writes are separately authorised —
-``TRADEAI_M2_PRODUCTION_MEMORY_AUTHORIZED``); the spine write does not depend on it.
+The M2 bitemporal memory is not written from here: the memory chokepoint (scripts/check_memory_chokepoint.py) allows
+M2 only through scripts/lib/intelligence_client.py, and the Phase 9 research path already appends its sourced facts
+to M2 through CIOEnvelopeIntegrator. The spine is the memory of record for asks.
 
 Nothing written here carries a BEHAVIOR_FIELDS key (§2): memory items are text summaries and ids only — never an
 operator-named quantity, exposure dollars or a reference stop.
@@ -22,14 +22,12 @@ operator-named quantity, exposure dollars or a reference stop.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Optional, Protocol
 
 from scripts.lib.cio_ask_contract import EntityRef, MEMORY_KINDS
 
 ASK_TAG = "ask_the_cio"
-M2_PREDICATE = "ask_cio_exchange"
 
 
 class AskMemory(Protocol):
@@ -46,16 +44,15 @@ def _excerpt(text: Any, n: int) -> str:
 class SpineAskMemory:
     """Default memory: research spine for securities, ask ledger for private entities."""
 
-    def __init__(self, *, spine_path: Optional[Path] = None, ledger=None, m2_apply: Optional[bool] = None):
+    def __init__(self, *, spine_path: Optional[Path] = None, ledger=None):
         self.spine_path = spine_path
         self.ledger = ledger
-        self.m2_apply = (os.environ.get("CIO_ASK_M2_APPLY", "0") == "1") if m2_apply is None else m2_apply
 
     # ── write ──────────────────────────────────────────────────────────────────────────────────────────────────────
     def append(self, *, entity: EntityRef, kind: str, summary: str, ref: str, extra: Optional[dict] = None) -> dict:
         if kind not in MEMORY_KINDS:
             raise ValueError(f"unknown memory kind {kind!r}")
-        receipt: dict[str, Any] = {"kind": kind, "ref": ref, "key": entity.memory_key, "spine": None, "m2": None}
+        receipt: dict[str, Any] = {"kind": kind, "ref": ref, "key": entity.memory_key, "spine": None}
         if entity.kind == "security" and entity.symbol and entity.security_guid:
             from scripts.lib.cross_asset.security_research_spine import upsert_research_memory  # noqa: PLC0415
 
@@ -78,27 +75,7 @@ class SpineAskMemory:
             receipt["spine"] = {k: res.get(k) for k in ("ok", "error", "path") if k in res}
         else:
             receipt["spine"] = {"ok": False, "skipped": "no listed security — ledger is the memory (entity_guid)"}
-        if self.m2_apply and entity.security_guid:
-            receipt["m2"] = self._m2(entity, kind, summary, ref)
         return receipt
-
-    def _m2(self, entity: EntityRef, kind: str, summary: str, ref: str) -> dict:
-        try:
-            from scripts.lib.cio_memory_integration import CIOEnvelopeIntegrator  # noqa: PLC0415
-
-            env = {
-                "subject_guid": entity.security_guid,
-                "issuer_guid": entity.issuer_guid,
-                "symbol": entity.symbol,
-                "predicate": M2_PREDICATE,
-                "source_type": "ask_the_cio",
-                "object": {"kind": kind, "summary": _excerpt(summary, 700), "ref": ref},
-                "source_id": ref,
-            }
-            r = CIOEnvelopeIntegrator().integrate_envelope(env, apply=True, dry_run=False)
-            return {k: r.get(k) for k in ("memory_version_id", "reason", "writer") if k in r}
-        except Exception as exc:  # noqa: BLE001 — the spine is the memory of record; M2 is a second copy
-            return {"ok": False, "error": f"{type(exc).__name__}"}
 
     # ── read ───────────────────────────────────────────────────────────────────────────────────────────────────────
     def recall(self, *, entity: EntityRef, limit: int = 6, exclude_refs: tuple[str, ...] = ()) -> list[dict]:
@@ -184,4 +161,4 @@ def format_recall(entity: EntityRef, items: list[dict], *, max_items: int = 4) -
     return "\n".join(lines)
 
 
-__all__ = ["AskMemory", "SpineAskMemory", "format_recall", "ASK_TAG", "M2_PREDICATE"]
+__all__ = ["AskMemory", "SpineAskMemory", "format_recall", "ASK_TAG"]

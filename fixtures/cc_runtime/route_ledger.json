@@ -27,6 +27,14 @@
       "path": "cio"
     },
     {
+      "url": "/v3/cio/questions",
+      "path": "cio/questions"
+    },
+    {
+      "url": "/v3/cio/questions/:threadId",
+      "path": "cio/questions/:threadId"
+    },
+    {
       "url": "/v3/closed-loop",
       "path": "closed-loop"
     },
@@ -245,6 +253,9 @@
     },
     {
       "route": "/v3/cio"
+    },
+    {
+      "route": "/v3/cio/questions"
     },
     {
       "route": "/v3/closed-loop"
