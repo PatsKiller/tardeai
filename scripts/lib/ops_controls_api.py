@@ -613,14 +613,33 @@ def n8n_view(ctx: Ctx) -> dict:
     except OSError as exc:
         live, live_state, reason = [], "UNAVAILABLE", f"{path}: {type(exc).__name__}"
     rows = []
+    reg_rows: dict[str, dict] = {}
     for r in ctx.hosts.lane_registry().get("lanes") or []:
         s, d = r.get("scheduler") or {}, r.get("dispatch") or {}
         if not d and s.get("kind") != "n8n":
             continue
+        reg_rows[str(r.get("lane_id"))] = r
         rows.append({"lane_id": r.get("lane_id"), "stage": s.get("stage"), "mode": d.get("mode"),
                      "on_live_list": r.get("lane_id") in live if live_state == "OK" else None,
-                     "workflow": s.get("workflow_id") or s.get("expression"), "registry_state": r.get("state")})
-    return {"state": live_state, "reason": reason, "live_list_path": str(path), "live_lanes": live, "rows": rows}
+                     "workflow": s.get("workflow_id") or s.get("expression"), "registry_state": r.get("state"),
+                     # Additive (n8n outcomes, 2026-10-22): display only.
+                     "scheduler_kind": s.get("kind"), "dispatch_class": d.get("class")})
+    out = {"state": live_state, "reason": reason, "live_list_path": str(path), "live_lanes": live, "rows": rows}
+    # Additive (n8n outcomes dashboard, 2026-10-22): last run / health / next run / promotion readiness per lane, read
+    # from the coordination ledger (sqlite mode=ro, bounded per-lane indexed queries) and cached 60 s. Read-only.
+    from scripts.lib import ops_controls_n8n_outcomes as NO
+
+    ledger = ctx.hosts.n8n_ledger_path
+    key = ("n8n_outcomes", str(ledger), str(ctx.hosts.code_root), tuple(live), live_state)
+
+    def compute() -> dict:
+        rs = [dict(r) for r in rows]
+        extra = NO.enrich(rs, reg_rows, code_root=ctx.hosts.code_root, ledger_path=ledger,
+                          crontab=ctx.hosts.crontab_read, now=ctx.clock())
+        return {"rows": rs, **extra}
+
+    out.update(NO.cached(key, compute))
+    return out
 
 
 def settings_view(ctx: Ctx, store_ok: bool) -> dict:

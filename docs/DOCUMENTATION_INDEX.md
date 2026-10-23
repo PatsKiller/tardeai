@@ -35,8 +35,9 @@ ACTIVE; 11.0.0 (§23.24) is PROPOSED.
 
 | Document | Purpose | Status |
 |----------|---------|--------|
-| `docs/ops/OPS_CONTROLS.md` | The operator Controls surface and its one governed host applier: components, threat model, change kinds (and the NOT_SUPPORTED ones with reasons), data-dictionary coordination with the 19.0.0 package, the operator activation steps (migration, approval key, applier unit, TOTP recovery, passkey enrollment) and rollback; §8 how to read the Jobs & schedules tab (plain status, crontab-vs-registry mismatches, filters, cron in words) | Draft (branch feat/ops-controls-20261022) |
+| `docs/ops/OPS_CONTROLS.md` | The operator Controls surface and its one governed host applier: components, threat model, change kinds (and the NOT_SUPPORTED ones with reasons), data-dictionary coordination with the 19.0.0 package, the operator activation steps (migration, approval key, applier unit, TOTP recovery, passkey enrollment) and rollback; §8 how to read the Jobs & schedules tab (plain status, crontab-vs-registry mismatches, filters, cron in words); §9 how to read the n8n lanes dashboard (last run, health, next run, promotion readiness against the documented ladder) | Draft (branch feat/ops-controls-20261022) |
 | `docs/ops/OPS_CONTROLS_API.md` | Response contract for `/api/v2/ops/controls/*` (state read model, request lifecycle, WebAuthn step-up, undo) | Draft |
+| `docs/ops/N8N_PROMOTION_READINESS_2026-10-22.md` | One-time read-only report: every shadow/canary n8n lane with ledger evidence and its promotion verdict (§23.21 / onboarding standard), and a proposed 2026-10-23 promotion batch as an operator approval list (A–F). Not applied | Proposal |
 
 ## Live changes (2026-10-20)
 
