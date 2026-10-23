@@ -40,7 +40,7 @@ export type PipelineItem = {
   where: { branch?: string | null; worktree?: string | null; file_count: number; files: string[] }
   how: { plan_done?: number | null; plan_total?: number | null; latest?: string | null; worklog?: boolean; claim_ids?: string[]; operator_note?: { by?: string; at?: string; text?: string } | null }
   links?: { pr?: string | null; ci?: string | null; diff?: string | null; worklog_claim?: string | null }
-  actions?: { available: string[]; stale_claims: string[] }
+  actions?: { available: string[]; stale_claims: string[]; tier2?: import('./workPipelineTier2').Tier2Action[] }
 }
 export type PipelinePayload = {
   schema?: string
@@ -49,6 +49,7 @@ export type PipelinePayload = {
   summary?: { counts: Record<string, number>; red: number; amber: number; needs_me: number; waiting_for_batch: number; finished: number; total: number }
   sources?: { census?: { refreshed_at?: string | null; warning?: string | null; refreshing?: boolean }; census_age_s?: number | null; served?: { sha?: string | null; ok?: boolean | null; at?: string | null }; batches?: number[] | null }
   batch_queue?: { next_batch: number[]; held_prs: number[]; updated_at?: string | null }
+  tier2?: { kinds?: Array<{ kind: string; label: string; enabled: boolean; policy_note?: string | null }>; release?: import('./workPipelineTier2').Tier2Action & { merged_waiting?: number } }
   stale_hours?: number
 }
 

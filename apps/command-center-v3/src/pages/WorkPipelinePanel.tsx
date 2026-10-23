@@ -14,6 +14,8 @@ import {
   filterToParams, planLabel, queuedSections, ragTone, summarize, type PipelineFilter, type PipelineItem, type PipelinePayload,
 } from '../lib/workPipeline'
 import { copyText, parseSplitParts, sendCommand, type CommandName, type CommandResult } from '../lib/workPipelineActions'
+import { canCreate, disabledReason, needsWords, phraseMatches, requestParams, type Tier2Action } from '../lib/workPipelineTier2'
+import { opsApi, passkeyStepUp, type OpsRequest } from '../lib/opsControls'
 
 const QUEUE_CAP = 6
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 12, minWidth: 0 }
@@ -48,9 +50,58 @@ function StageCells({ it }: { it: PipelineItem }) {
   </div>
 }
 
+/** Tier 2: one Ops → Controls request per act — create, then a fresh passkey assertion + the typed phrase, then approve;
+ *  the host applier executes it. Disabled acts show why (policy flag off until ratified). */
+function Tier2Button({ a, onDone }: { a: Tier2Action; onDone: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [words, setWords] = useState('')
+  const [typed, setTyped] = useState('')
+  const [req, setReq] = useState<OpsRequest | null>(null)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+  const why = disabledReason(a)
+  const create = async () => {
+    setBusy(true); setMsg(null)
+    try { setReq(await opsApi.createRequest(a.kind, requestParams(a, words))) } catch (e) { setMsg({ ok: false, text: String((e as Error).message || e) }) }
+    setBusy(false)
+  }
+  const confirm = async () => {
+    if (!req) return
+    setBusy(true); setMsg(null)
+    try {
+      const token = await passkeyStepUp(req.request_id, typed)
+      const r = await opsApi.approve(req.request_id, token)
+      setMsg({ ok: true, text: `${r.status}: the host applier applies it (request ${r.request_id})` }); onDone()
+    } catch (e) { setMsg({ ok: false, text: String((e as Error).message || e) }) }
+    setBusy(false)
+  }
+  return <>
+    <button type="button" style={{ ...btn, borderColor: a.enabled ? TOKENS.info : TOKENS.border, color: a.enabled ? TOKENS.info : TOKENS.text[3], cursor: a.enabled ? 'pointer' : 'not-allowed' }}
+      data-testid="tier2-button" data-kind={a.kind} disabled={!a.enabled} title={why || 'Passkey + typed phrase; applied by the host applier'} onClick={() => setOpen(true)}>
+      {a.label}{a.enabled ? ' 🔑' : ' (off)'}
+    </button>
+    {open ? <div role="dialog" aria-label={a.label} data-testid="tier2-dialog" style={{ ...panel, position: 'fixed', inset: '12% 6% auto 6%', zIndex: 60, display: 'grid', gap: 8, boxShadow: 'var(--shadow-3)', maxWidth: 640, margin: '0 auto' }}>
+      <b style={{ color: TOKENS.text[0] }}>{a.label}</b>
+      <div style={small}>One request, a fresh passkey assertion and the exact phrase; the host applier applies it. {Object.entries(a.params).map(([k, v]) => `${k}=${String(v)}`).join(' · ')}</div>
+      {!req ? <>
+        {needsWords(a.kind) ? <input style={select} data-testid="tier2-words" placeholder="Your words (recorded with the approval)" value={words} onChange={e => setWords(e.target.value)} maxLength={1000} /> : null}
+        <button type="button" style={btn} data-testid="tier2-create" disabled={busy || !canCreate(a, words)} onClick={create}>Preview request</button>
+      </> : <>
+        <div style={small}>Preview: {req.preview?.summary || req.kind}</div>
+        <div style={{ ...small, color: TOKENS.text[0] }}>Type exactly: <code data-testid="tier2-phrase">{req.phrase}</code></div>
+        <input style={select} data-testid="tier2-typed" value={typed} onChange={e => setTyped(e.target.value)} placeholder="typed phrase" />
+        <button type="button" style={btn} data-testid="tier2-confirm" disabled={busy || !phraseMatches(typed, req.phrase)} onClick={confirm}>Confirm with passkey</button>
+      </>}
+      {msg ? <div data-testid="tier2-result" style={{ ...small, color: msg.ok ? TOKENS.success : TOKENS.danger }}>{msg.text}</div> : null}
+      <button type="button" style={{ ...btn, color: TOKENS.text[2] }} onClick={() => { setOpen(false); setReq(null); setTyped(''); setMsg(null) }}>Close</button>
+    </div> : null}
+  </>
+}
+
 type Busy = { itemId: string; text: string; ok?: boolean } | null
 
-function ItemCard({ it, onAct, busy, onWorklog }: {
+function ItemCard({ it, onAct, busy, onWorklog, onRefresh }: {
+  onRefresh: () => void
   it: PipelineItem
   onAct: (it: PipelineItem, cmd: CommandName, params: Record<string, unknown>) => void
   busy: Busy
@@ -129,6 +180,7 @@ function ItemCard({ it, onAct, busy, onWorklog }: {
       {acts.includes('batch_remove') ? <button type="button" style={btn} data-testid="act-batch-remove" onClick={() => onAct(it, 'batch_remove', { pr })}>Remove from next batch</button> : null}
       {acts.includes('task_done') && it.what.task_id ? <button type="button" style={btn} data-testid="act-task-done" onClick={() => onAct(it, 'task_done', { task_id: it.what.task_id })}>Mark done</button> : null}
       {acts.includes('task_split') ? <button type="button" style={btn} data-testid="act-split" onClick={() => setCompose(compose === 'split' ? null : 'split')}>Split</button> : null}
+      {(it.actions?.tier2 || []).map(a => <Tier2Button key={a.kind + JSON.stringify(a.params)} a={a} onDone={onRefresh} />)}
       {acts.includes('release_stale_claim') ? <button type="button" style={{ ...btn, color: TOKENS.danger, borderColor: TOKENS.danger }} data-testid="act-release-stale" onClick={() => setCompose('release')}>Release stale claim</button> : null}
     </div>
     {compose ? <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'flex-start' }} data-testid="composer">
@@ -250,6 +302,10 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
           </span>)}
         </div>
       </div>
+      {api.data?.tier2?.release ? <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }} data-testid="release-now">
+        <span style={small}>{api.data.tier2.release.merged_waiting ?? 0} merged item(s) waiting for a release{api.data.tier2.release.params?.sha ? ` · origin/main ${String(api.data.tier2.release.params.sha).slice(0, 9)}` : ''}</span>
+        <Tier2Button a={{ ...api.data.tier2.release, label: 'Release now' }} onDone={api.refetch} />
+      </div> : null}
       <div className="wp-strip" data-testid="pipeline-strip" style={{ display: 'grid', gap: 6, marginTop: 10 }}>
         {PIPELINE_STAGES.map(st => <Tile key={st} label={STAGE_LABEL[st]} value={s.counts[st]} active={f.stage === st} testId={`strip-${st}`} title={`Items whose current step is ${STAGE_LABEL[st]}`} onClick={() => setF({ stage: f.stage === st ? '' : st, preset: '' })} />)}
         <Tile label="Red" value={s.red} tone="danger" active={f.rag === 'red'} testId="strip-red" onClick={() => setF({ rag: f.rag === 'red' ? '' : 'red' })} />
@@ -326,7 +382,7 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
     <div style={panel}>
       <h2 style={{ margin: '0 0 6px', fontSize: TYPE.md, color: TOKENS.text[0] }}>{filtering ? 'Matching items' : 'In flight'} <span style={{ ...small, fontWeight: 400 }} data-testid="pipeline-count">{list.length} shown</span></h2>
       <div style={{ display: 'grid', gap: 8 }}>
-        {list.map(it => <ItemCard key={it.id} it={it} onAct={act} busy={busy} onWorklog={setWorklog} />)}
+        {list.map(it => <ItemCard key={it.id} it={it} onAct={act} busy={busy} onWorklog={setWorklog} onRefresh={api.refetch} />)}
         {!list.length && !api.loading ? <div style={small} data-testid="pipeline-empty">Nothing matches.</div> : null}
         {api.loading && !api.data ? <div style={small}>Loading…</div> : null}
       </div>
