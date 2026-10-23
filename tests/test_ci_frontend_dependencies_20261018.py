@@ -49,7 +49,10 @@ def test_all_actual_test_jobs_install_before_executing_the_existing_runner():
     hardening = yaml.safe_load((ROOT / ".github/workflows/cio-production-hardening-ci.yml").read_text())
     shards = yaml.safe_load((ROOT / ".github/workflows/cio-full-suite-sharded.yml").read_text())
     for workflow, job, selector in [
-        (hardening, "cio-hardening", None),
+        # 2026-10-23: cio-hardening is the aggregate of these three test jobs; it runs no test itself.
+        (hardening, "cio-shard", "${{ matrix.shard }}/${{ env.CIO_SHARDS }}"),
+        (hardening, "cio-serial", "serial/${{ env.CIO_SHARDS }}"),
+        (hardening, "cio-pg", "pg/${{ env.CIO_SHARDS }}"),
         (hardening, "cio-hardening-full", None),
         (shards, "shard", "${{ matrix.shard }}/${{ env.CIO_SHARDS }}"),
         (shards, "serial", "serial/${{ env.CIO_SHARDS }}"),
