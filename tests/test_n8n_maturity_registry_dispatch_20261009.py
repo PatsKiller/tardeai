@@ -524,6 +524,9 @@ N8N_NATIVE_SHADOW = frozenset(
         # 2026-10-21 operator ruling: macro calendar for the release train's 08:00 window,
         # n8n-native ingest lane, daily 05:05 dry_run (tests/test_macro_calendar_20261021.py).
         "macro-calendar-refresh",
+        # 2026-10-23 operator "approved": JSONL archive rotation, n8n-native hygiene lane,
+        # weekdays 16:45 ET dry_run (tests/test_jsonl_archive_rotate_20261023.py).
+        "jsonl-archive-rotate",
     }
 )
 #: 2026-10-17 + n8n-comms-intent-consumer (operator D2 "Queue reader first"; tests/support/comms_intent_consumer_live.py).

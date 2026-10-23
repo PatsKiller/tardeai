@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "jsonl_archive_rotate_20261023",
+  "files": [
+    "tests/test_jsonl_archive_rotate_20261023.py"
+  ],
+  "anchor": "JSONL_ARCHIVE_ROTATE_20261023",
+  "comment": [
+    "ANCHOR: JSONL_ARCHIVE_ROTATE_20261023 — operator 2026-10-23 ~11:05 ET \"approved\": rotate (archive, never",
+    "delete) the oversized append-only JSONL stores. scripts/ops/jsonl_archive_rotate.py: hot tail kept in place, head",
+    "byte-exact to archive/file_prune/<store>/<store>.<UTC>.jsonl.gz + sha256/line-count manifest + tripwire; writer-safe",
+    "(rename aside, quiesce, renameat2 NOREPLACE/EXCHANGE, late sweep; a concurrent O_APPEND writer loses no row);",
+    "refuses Mon-Fri 04:00-16:15 ET and without --confirm APPLY; cio_workflow_lineage rotate=false; retention preview",
+    "reads only. Hermetic: tmp state roots, a fake /proc."
+  ]
+}

@@ -4123,6 +4123,29 @@
       "output_receipt": "v2"
     },
     {
+      "lane_id": "jsonl-archive-rotate",
+      "command": [
+        "$PY",
+        "scripts/ops/jsonl_archive_rotate.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_jsonl_archive_rotate.lock",
+      "lock_kind": "flock",
+      "timeout_s": 1800,
+      "market_gate": false,
+      "output_signal": "data/runtime/jsonl-archive-rotate_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "enforce",
+      "env_evidence": "Literal reads across the import closure (scripts/ops/jsonl_archive_rotate.py, lib/lane_last_receipt.py, lib/retention_archive.py, lib/persistent_state_root.py, lib/atomic_json_store.py): TRADEAI_PERSISTENT_STATE_ROOT (lib/persistent_state_root.py); TRADEAI_STATE_ROOT and TRADEAI_RUN_ID are executor base names. No credential, no DB, no model, no broker name.",
+      "source": "operator 2026-10-23 ~11:05 ET \"approved\" (rotate, archive, never delete the oversized append-only JSONL stores) and ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\". n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run prints the rotation plan and writes nothing. Removal of archive segments is never an argv here (AGENTS.md §23.14, §24.12)."
+    },
+    {
       "lane_id": "tmp-hygiene",
       "env_names": [
         "TRADEAI_DISK_HYGIENE_GRANT",

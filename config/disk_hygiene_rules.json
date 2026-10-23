@@ -436,5 +436,154 @@
         "top_n": 3
       }
     }
+  },
+  "jsonl_retention": {
+    "_why": "JSONL rotation + retention (2026-10-23). Rotation (scripts/ops/jsonl_archive_rotate.py) moves the closed history of an append-only JSONL store to <state>/archive/file_prune/<id>/<id>.<UTC>.jsonl.gz (byte-exact, sha256 + line-count manifest, RetentionArchiveTripwire@v1 record) and keeps a hot tail of hot_days (at least min_tail_rows rows) in place; writers reopen per write (O_APPEND), so the store is renamed aside and the tail re-installed with renameat2(RENAME_NOREPLACE), and rows appended meanwhile are merged, never lost. Retention: retention_days and max_archive_bytes define which archive segments are selected (jsonl_archive_rotate.py --retention-preview, read-only). REMOVAL IS NOT AUTOMATED: no code path removes a segment; enabled=false; persistent-state stays on the hard never-touch list of scripts/disk_hygiene.py, and AGENTS.md §24.12 keeps stores and archives out of the automated-deletion scope until an amendment names this rule. Changing this block is a reviewed config change (§24.12).",
+    "authority": [
+      "operator 2026-10-23 ~11:05 ET, \"approved\" (rotate, archive, never delete: aif_memory_retrievals, research_call_accounting, cio_workflow_lineage)",
+      "operator 2026-10-23 ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\""
+    ],
+    "enabled": false,
+    "archive_subdir": "archive/file_prune",
+    "min_rotate_bytes": 33554432,
+    "quiesce_timeout_s": 30,
+    "max_install_attempts": 20,
+    "refuse_window_et": {
+      "days": "Mon-Fri",
+      "start": "04:00",
+      "end": "16:15",
+      "why": "rotation --apply runs after the close (operator 2026-10-23); the window is checked in code"
+    },
+    "stores": [
+      {
+        "id": "aif_memory_retrievals",
+        "path": "data/cio/aif_memory_retrievals.jsonl",
+        "ts_fields": [
+          "at"
+        ],
+        "rotate": true,
+        "hot_days": 3,
+        "min_tail_rows": 2000,
+        "retention_days": 7,
+        "max_archive_bytes": 2147483648,
+        "legacy_archive_globs": [
+          "data/cio/archive/aif_memory_retrievals-*.jsonl"
+        ],
+        "approval": [
+          "operator 2026-10-23 ~11:05 ET, \"approved\" (rotate, archive, never delete: aif_memory_retrievals, research_call_accounting, cio_workflow_lineage)",
+          "operator 2026-10-23 ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\""
+        ],
+        "readers": "24h/today windows (autonomy_watchdog collect_memory, cross_agent_memory_agreement 24h), tails (agent_durable_memory last 20 rows, cio_cross_surface_links 512 KB, cio_operator_evidence 1 MB); all-time count get_memory_summary_v1.retrieval_receipts and PR #2012 count_jsonl_lines drop to the hot tail (already understated since the 2026-09-27 rotation).",
+        "measured": "574 MB live 2026-10-23, rows 2026-09-27..10-23, ~21 MB/day"
+      },
+      {
+        "id": "research_call_accounting",
+        "path": "data/cio/research_call_accounting.jsonl",
+        "ts_fields": [
+          "timestamp"
+        ],
+        "rotate": true,
+        "hot_days": 3,
+        "min_tail_rows": 2000,
+        "retention_days": 14,
+        "max_archive_bytes": 4294967296,
+        "legacy_archive_globs": [
+          "data/cio/archive/research_call_accounting-*.jsonl"
+        ],
+        "approval": [
+          "operator 2026-10-23 ~11:05 ET, \"approved\" (rotate, archive, never delete: aif_memory_retrievals, research_call_accounting, cio_workflow_lineage)",
+          "operator 2026-10-23 ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\""
+        ],
+        "readers": "research_call_accounting.read_events (24h default; research_call_accounting_daily --hours), n8n_pilot_observations 4 MB tail / 24h; cio_model_learning.mine_historical_performance samples the head of the file (sample changes, nothing breaks).",
+        "measured": "1.73 GB live 2026-10-23, rows 2026-09-27..10-23, ~63 MB/day"
+      },
+      {
+        "id": "cio_workflow_lineage",
+        "path": "data/cio/cio_workflow_lineage.jsonl",
+        "ts_fields": [
+          "recorded_at"
+        ],
+        "rotate": false,
+        "rotate_blocked_reason": "NOT rotated (finding 2026-10-23, AGENTS §0 rule 10): cio_lineage.LineageStore._existing_keys dedups over every semantic_key and latest_envelope/upsert_envelope merge a workflow's envelope from its full history; moving old rows out would re-append duplicates and fork a late-updated workflow's envelope (lost stage_status and ids). Rotate only after cio_lineage keeps a key index and a latest-envelope projection. 165 MB, ~2.7 MB/day.",
+        "approval": [
+          "operator 2026-10-23 ~11:05 ET, \"approved\" (rotate, archive, never delete: aif_memory_retrievals, research_call_accounting, cio_workflow_lineage)",
+          "operator 2026-10-23 ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\""
+        ]
+      },
+      {
+        "id": "health_inspector_fixes",
+        "path": "data/runtime/health_inspector_fixes.jsonl",
+        "ts_fields": [
+          "timestamp"
+        ],
+        "rotate": true,
+        "hot_days": 14,
+        "min_tail_rows": 500,
+        "retention_days": 14,
+        "max_archive_bytes": 536870912,
+        "approval": [
+          "operator 2026-10-23 ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\""
+        ],
+        "readers": "api_v2 /api/v2/health/remediation (last 8 MB, newest 50, 24h counts); ~/.openclaw ops_daily_digest (24h). Writer ~/.openclaw/skills/tradeai-health-inspect remediation_runner.py opens per write.",
+        "measured": "115 MB 2026-10-23, rows 2026-08-07..10-23, ~1.5 MB/day"
+      },
+      {
+        "id": "advisory_notif_decisions",
+        "path": "data/runtime/advisory_notif_broker/decisions.jsonl",
+        "ts_fields": [
+          "ts"
+        ],
+        "rotate": true,
+        "hot_days": 7,
+        "min_tail_rows": 500,
+        "retention_days": 14,
+        "max_archive_bytes": 536870912,
+        "approval": [
+          "operator 2026-10-23 ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\""
+        ],
+        "readers": "none in the repo (notification-routing SHADOW decisions log; not broker/order data). Writer scripts/lib/advisory/notification_broker.py opens per write.",
+        "measured": "156 MB 2026-10-23, rows 2026-08-11..10-23, ~2.1 MB/day"
+      },
+      {
+        "id": "daily_intelligence_heartbeats",
+        "path": "data/cio/daily_intelligence_heartbeats.jsonl",
+        "ts_fields": [
+          "generated_at",
+          "date"
+        ],
+        "rotate": true,
+        "hot_days": 35,
+        "min_tail_rows": 200,
+        "retention_days": 14,
+        "max_archive_bytes": 536870912,
+        "approval": [
+          "operator 2026-10-23 ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\""
+        ],
+        "readers": "autonomy_watchdog.heartbeat.load_history (last 30 distinct days; api_v3_maturity, autonomy_watchdog engine). Writer heartbeat.persist_receipt opens per write.",
+        "measured": "124 MB 2026-10-23, rows 2026-08-18..10-23, ~1.9 MB/day"
+      }
+    ],
+    "not_candidates": [
+      {
+        "path": "data/cio/research_contradiction_candidates.jsonl",
+        "why": "301 MB; research_contradiction.persist_candidates dedups over every candidate_id in the whole file, and three readers read from the head"
+      },
+      {
+        "path": "data/cio/memory_contexts.jsonl",
+        "why": "153 MB; cio_operator_evidence decision lookups scan the whole file and agent_memory_shadow_measure counts all rows; candidate after an archive fallback"
+      },
+      {
+        "path": "data/cio/cio_production_cases.jsonl",
+        "why": "canonical CIO case ledger (operator dispositions)"
+      },
+      {
+        "path": "data/cio/cio_plans.jsonl",
+        "why": "source of truth for plans (projection rebuilt from all events)"
+      },
+      {
+        "path": "data/runtime/advisory_kb_lessons.jsonl",
+        "why": "already rotated by scripts/rotate_advisory_kb_lessons.py"
+      }
+    ]
   }
 }
