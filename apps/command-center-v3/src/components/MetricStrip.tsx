@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useApi } from '../hooks/useApi'
 import { useNavigate } from 'react-router-dom'
 import { fmt$ } from '../lib/format'
@@ -6,6 +6,7 @@ import { pricingStampLine } from '../lib/pricingStamp'
 import { runLabel } from '../lib/homeLabels'
 import { overviewSurfaceFreshness, tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
 import { renderSetupCounts } from '../lib/setupRunSummary'
+import { scanRunAge, LATEST_RUN_TIP } from '../lib/scanRunAge'
 // Same classifier the Trading panel uses, so the two surfaces cannot disagree
 // about one run — the header said healthy while the panel said UNDERFILLED.
 import { runHealthReasonCodes, reasonCodeOneLiner, runHealthLabel } from '../lib/runHealth'
@@ -62,6 +63,12 @@ function readHeaderExpanded(): boolean {
 export default function MetricStrip({ onDrill }: Props) {
   const navigate = useNavigate()
   const [alertsOpen, setAlertsOpen] = useState(false)
+  // Ticks the run-age mark between API refreshes (120 s), so "4 min ago" does not freeze.
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 30_000)
+    return () => window.clearInterval(id)
+  }, [])
   // Phones only (CSS shows .ms-compact at <=820px): one line by default, the full
   // strip on demand. Remembered per device; storage failure just means collapsed.
   const [mobileExpanded, setMobileExpanded] = useState<boolean>(readHeaderExpanded)
@@ -375,14 +382,17 @@ export default function MetricStrip({ onDrill }: Props) {
   const runSlot = tradeAi?.run_label ?? setupRun.runId?.split('::')[1] ?? null
   const runFinishedRaw = setupRun.runTimestamp ? String(setupRun.runTimestamp) : null
   const runFinishedZoned = !!(runFinishedRaw && /(Z|[+-]\d{2}:?\d{2})$/.test(runFinishedRaw))
-  const runFinishedMark = runFinishedRaw
-    ? `finished ${runFinishedRaw.slice(11, 16)}${runFinishedZoned ? '' : ' unzoned'}`
-    : null
+  // Finished time in ET + AGE (operator 2026-10-23: slot 0700 is re-run through the
+  // morning, so "0700 slot" alone read as two hours stale while the data was 4 minutes
+  // old). latest_run_timestamp is UTC-zoned; a naive stamp renders "age unknown".
+  const runAge = scanRunAge(tradeAi?.latest_run_timestamp ?? runFinishedRaw, runSlot, now)
+  const runFinishedMark = runAge.label
 
   const setupsTone: Tone = worseTone(
     setupRun.runHealth === 'failed' ? 'bad' : setupRun.healthDegraded ? 'warn' : 'ok',
     setupRun.degraded ? 'warn' : 'ok',
     scanStale ? 'warn' : 'ok',
+    runAge.tone,
   )
 
   // The value is the DECISION triple and nothing else. The population it was
@@ -499,13 +509,15 @@ export default function MetricStrip({ onDrill }: Props) {
       // tooltip and the drill — it identifies the run but tells you nothing
       // about it, so it is the first thing to lose the width contest.
       asOfNote: [
+        // An aged run in the scalp window leads the line (amber > 5 min, red > 10 min).
+        runAge.tone !== 'ok' ? `${runAge.tone === 'bad' ? '▲ ' : ''}${runFinishedMark}` : null,
         setupRun.healthDegraded ? runHealthMark : null,
         setupRun.unaccounted ? `${setupRun.unaccounted} UNACCOUNTED` : null,
         setupRun.degraded && !setupRun.healthDegraded ? setupRun.integrity : null,
         !setupRun.healthDegraded && !setupRun.unaccounted ? runHealthMark : null,
         setupRun.population || null,
-        showRunClocksOnFace && runSlot ? `${runSlot} slot` : null,
-        showRunClocksOnFace ? runFinishedMark : null,
+        showRunClocksOnFace && runAge.tone === 'ok' ? runFinishedMark : null,
+        showRunClocksOnFace ? runAge.slotLabel : null,
       ].filter(Boolean).join(' · ') || (setupRun.runId ? `id ${setupRun.runId}` : null),
       tone: setupsTone,
       valueSize: VALUE_COMPACT,
@@ -523,17 +535,20 @@ export default function MetricStrip({ onDrill }: Props) {
         'data-run-floor': runFloor != null ? String(runFloor) : '',
         'data-run-health': setupRun.runHealth,
         'data-run-integrity': setupRun.integrity,
+        'data-run-age-min': runAge.ageMin != null ? String(runAge.ageMin) : '',
+        'data-run-age-tone': runAge.tone,
       },
       color: scanStale ? BB.amber : setupRun.degraded ? BB.amber : setupRun.goPositive ? BB.green : 'var(--text3)',
       tip: scanStale
         ? `Scanner surface is STALE (${setupsFresh.reason || 'prior/empty cache'}). ${setupsRun}${setupsAsOfMark}. HTTP 200 is not a live claim — Trading → Trade AI shows the same payload.`
-        : `Latest scanner run · ${setupRun.population || '—'}\n\n`
+        : `${LATEST_RUN_TIP}\n\nLatest scanner run · ${setupRun.population || '—'}\n\n`
           + `RUN HEALTH: ${setupRun.runHealthStatus ?? 'not reported'}`
           + `${scannedVsFloor ? ` — scanned ${scannedVsFloor} against the health floor` : ''}`
           + `${runReasonCodes.length ? `\n · ${runReasonCodes.map(c => reasonCodeOneLiner(c)).join('\n · ')}` : ''}`
           + `\n\nRECONCILIATION: ${setupRun.integrity}. Separate from run health — a run can`
           + ` reconcile perfectly and still have scanned too little to be worth trusting.`
-          + `\n\nCLOCKS: scheduled slot ${runSlot ?? '—'} (ET) · finished ${runFinishedRaw ?? '—'}`
+          + `\n\nAGE: ${runAge.tip}`
+          + `\n\nCLOCKS: scheduled slot ${runSlot ?? '—'} (ET)${runAge.rerun ? ' — re-run' : ''} · finished ${runFinishedRaw ?? '—'}`
           + `${runFinishedRaw && !runFinishedZoned ? ' — the producer writes this with no timezone, so it is shown as published and cannot be converted' : ''}`
           + `\nrun id ${setupRun.runId ?? '—'}`,
       drill: { title: 'Trade Setups', subtitle: scanStale ? (setupsFresh.surfaceLabel || `STALE — last ${setupsRun}`) : `Latest scanner run · ${setupRun.population || '—'}${setupRun.runId ? ` · run ${setupRun.runId}` : ''}`, endpoint: '/api/v2/trade-ai',
@@ -544,7 +559,9 @@ export default function MetricStrip({ onDrill }: Props) {
           health_degraded: setupRun.healthDegraded, count_integrity: setupRun.integrity,
           reconciliation_degraded: setupRun.degraded,
           run_scheduled_slot_et: runSlot, run_finished_stamp: runFinishedRaw,
-          run_finished_zone_stated: runFinishedZoned }] : [] },
+          run_finished_zone_stated: runFinishedZoned, run_finished_et: runAge.finishedEt, run_age_min: runAge.ageMin,
+          run_age_tone: runAge.tone, run_slot_rerun: runAge.rerun,
+          universe_note: 'Trading → Trade AI tiles count today\'s whole universe (universe_go / universe_wait / universe_nogo above), not this run.' }] : [] },
     },
   ]
 

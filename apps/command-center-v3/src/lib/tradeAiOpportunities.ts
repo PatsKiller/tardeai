@@ -135,13 +135,20 @@ export function floatBand(f: number | null): number | null {
 
 export interface Tile { key: string; label: string; value: number | null; hint: string; tone: 'success' | 'warning' | 'ai' | 'info' | 'neutral'; active: boolean; disabled: boolean; patch: (active: boolean) => Partial<Filters>; tip?: string }
 
+// The decision tiles count TODAY'S UNIVERSE (every row any run surfaced today), never the latest run.
+// The header SETUPS · LATEST RUN tile counts only the latest run, so the two differ by design
+// (operator 2026-10-23: "0 GO · 0 WAIT · 7 NOGO" in the header vs "19 WAIT · 71 MANUAL REVIEW" here).
+export const UNIVERSE_TILE_TIP = "Counts every row in today's scanner universe: each symbol any run surfaced today, at its latest decision. "
+  + 'The header SETUPS · LATEST RUN tile counts only the most recent run, so the two numbers differ by design.'
+
 export function buildTiles(all: Opportunity[], f: Filters): Tile[] {
   const count = (fn: (r: Opportunity) => boolean) => all.filter(fn).length
   const hasGate2 = all.some(r => r.catalystGrade != null)
+  const uni = `today's universe · ${all.length} rows`
   return [
-    { key: 'go', label: 'GO', value: count(r => r.decision === 'GO'), hint: 'scanner universe', tone: 'success', active: f.dec === 'GO', disabled: false, patch: a => ({ dec: a ? null : 'GO' }) },
-    { key: 'wait', label: 'WAIT', value: count(r => r.decision === 'WAIT'), hint: 'scanner universe', tone: 'warning', active: f.dec === 'WAIT', disabled: false, patch: a => ({ dec: a ? null : 'WAIT' }) },
-    { key: 'manual', label: 'Manual review', value: count(r => r.decision === 'MANUAL'), hint: 'Entry Desk only', tone: 'ai', active: f.dec === 'MANUAL', disabled: false, patch: a => ({ dec: a ? null : 'MANUAL' }) },
+    { key: 'go', label: 'GO', value: count(r => r.decision === 'GO'), hint: uni, tip: UNIVERSE_TILE_TIP, tone: 'success', active: f.dec === 'GO', disabled: false, patch: a => ({ dec: a ? null : 'GO' }) },
+    { key: 'wait', label: 'WAIT', value: count(r => r.decision === 'WAIT'), hint: uni, tip: UNIVERSE_TILE_TIP, tone: 'warning', active: f.dec === 'WAIT', disabled: false, patch: a => ({ dec: a ? null : 'WAIT' }) },
+    { key: 'manual', label: 'Manual review', value: count(r => r.decision === 'MANUAL'), hint: `${uni} · Entry Desk only`, tip: UNIVERSE_TILE_TIP, tone: 'ai', active: f.dec === 'MANUAL', disabled: false, patch: a => ({ dec: a ? null : 'MANUAL' }) },
     { key: 'grade', label: 'Grade ★4+', value: hasGate2 ? count(r => (r.catalystGrade ?? 0) >= 4) : null, hint: hasGate2 ? 'strong catalysts' : 'Gate 2', tone: 'warning', active: f.minGrade === 4, disabled: !hasGate2, tip: hasGate2 ? undefined : GATE2_TIP, patch: a => ({ minGrade: a ? 0 : 4 }) },
     { key: 'float', label: 'Float < 5M', value: count(r => r.float != null && r.float < 5), hint: 'micro float', tone: 'info', active: f.floatMax === 5, disabled: false, patch: a => ({ floatMax: a ? null : 5 }) },
     { key: 'rvol', label: 'RVOL ≥ 10×', value: count(r => r.rvol != null && r.rvol >= 10), hint: 'high attention', tone: 'info', active: f.rvolMin === 10, disabled: false, patch: a => ({ rvolMin: a ? null : 10 }) },
