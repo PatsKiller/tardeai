@@ -124,7 +124,11 @@ def test_in_batch_member_and_batch_pr():
     assert "shard 5" in m["blocker"] and m["next"]["text"] == "Agent: fix batch #2018 CI"
     ex = W.derive(pr=open_pr(1997), batches=batches, now=NOW)
     assert ex["label"] == "operator merge" and ex["next"]["owner"] == "operator" and "merge #1997" in ex["next"]["text"]
-    b = W.derive(pr=open_pr(2018, "failing", branch="release/batch-9-20261023", updated_at=ago(minutes=10)), batches=batches, now=NOW)
+    b = W.derive(
+        pr=open_pr(2018, "failing", branch="release/batch-9-20261023", updated_at=ago(minutes=10)),
+        batches=batches,
+        now=NOW,
+    )
     assert b["is_batch"] and b["stage"] == "ci" and b["rag"] == "red"
     bg = W.derive(pr=open_pr(2018, "green", branch="release/batch-9-20261023"), batches=batches, now=NOW)
     assert bg["stage"] == "in_batch" and bg["next"] == {"owner": "operator", "text": "Operator: merge batch #2018"}
@@ -137,14 +141,24 @@ def test_merged_released_verified():
     rel = {"at": ago(hours=1), "sha": "80e93c99f", "basis": "release_pins/apply-x.json"}
     r = W.derive(pr={**merged, "released": rel}, health={"ok": None, "sha": None}, now=NOW)
     assert r["stage"] == "released" and r["rag"] == "amber" and not r["finished"]
-    bad = W.derive(pr={**merged, "released": rel}, health={"ok": False, "sha": "80e93c99f", "health": "degraded"}, now=NOW)
+    bad = W.derive(
+        pr={**merged, "released": rel}, health={"ok": False, "sha": "80e93c99f", "health": "degraded"}, now=NOW
+    )
     assert bad["rag"] == "red"
-    v = W.derive(pr={**merged, "released": rel}, health={"ok": True, "sha": "80e93c99f", "at": ago(minutes=50)}, now=NOW)
+    v = W.derive(
+        pr={**merged, "released": rel}, health={"ok": True, "sha": "80e93c99f", "at": ago(minutes=50)}, now=NOW
+    )
     assert v["stage"] == "verified" and v["finished"] and all(c["rag"] == "green" for c in v["cells"])
 
 
 def test_queued_task_blocked_and_operator_todo():
-    t = {"task_id": "T-20261023-fc7872", "title": "Server memory kills", "status": "free", "created_at": ago(hours=3), "blocked_by": []}
+    t = {
+        "task_id": "T-20261023-fc7872",
+        "title": "Server memory kills",
+        "status": "free",
+        "created_at": ago(hours=3),
+        "blocked_by": [],
+    }
     q = W.derive(task=t, now=NOW)
     assert q["stage"] == "queued" and q["rag"] == "amber" and q["next"]["owner"] == "agent"
     assert cell(q, "proposed")["rag"] == "green" and cell(q, "claimed")["rag"] == "grey"
@@ -155,14 +169,24 @@ def test_queued_task_blocked_and_operator_todo():
 
 
 def test_held_and_queue_position():
-    held = W.derive(pr=open_pr(2005), held={"by": "tailnet:op", "at": ago(minutes=5), "reason": "wait for review"}, now=NOW)
+    held = W.derive(
+        pr=open_pr(2005), held={"by": "tailnet:op", "at": ago(minutes=5), "reason": "wait for review"}, now=NOW
+    )
     assert held["label"] == "held" and held["next"]["owner"] == "operator" and "wait for review" in held["blocker"]
     q = W.derive(pr=open_pr(2005), queue_position=2, now=NOW)
     assert q["label"] == "next batch #2" and q["waiting_for_batch"]
 
 
 def test_design_awaiting_is_proposed_operator_owned():
-    d = W.derive(design={"id": "DSN-20261022-data-domains", "awaiting": True, "approval": "awaiting operator", "title": "Data domains"}, now=NOW)
+    d = W.derive(
+        design={
+            "id": "DSN-20261022-data-domains",
+            "awaiting": True,
+            "approval": "awaiting operator",
+            "title": "Data domains",
+        },
+        now=NOW,
+    )
     assert d["stage"] == "proposed" and d["next"]["owner"] == "operator"
 
 
@@ -211,7 +235,12 @@ def test_build_items_groups_by_work_item_and_summarizes():
 
 def test_operator_merge_command_has_real_pr_and_sha():
     batches = {2018: {"number": 2018, "members": [], "excluded": {1997: "Active Trader"}, "ci": {"state": "green"}}}
-    items = W.build_items(tasks=[], claims=[], census={"open": [open_pr(1997, head_sha="0123456789ab")], "merged": [], "batches": batches}, now=NOW)
+    items = W.build_items(
+        tasks=[],
+        claims=[],
+        census={"open": [open_pr(1997, head_sha="0123456789ab")], "merged": [], "batches": batches},
+        now=NOW,
+    )
     assert items[0]["next"]["command"] == "gh pr merge 1997 --merge --match-head-commit 0123456789ab"
 
 
@@ -314,7 +343,11 @@ def test_census_failure_keeps_last_good():
 def test_gh_runner_refuses_writes(monkeypatch):
     called = []
     monkeypatch.setattr(W.subprocess, "run", lambda *a, **k: called.append(a))
-    for argv in (["gh", "pr", "merge", "1"], ["gh", "api", "repos/x/pulls/1/merge"], ["gh", "api", "--method", "PUT", "x"]):
+    for argv in (
+        ["gh", "pr", "merge", "1"],
+        ["gh", "api", "repos/x/pulls/1/merge"],
+        ["gh", "api", "--method", "PUT", "x"],
+    ):
         out, warn = W._gh_runner(argv)
         assert out is None and "refused" in warn
     assert called == []
@@ -346,7 +379,19 @@ def test_latest_worklog_line_bounded_tail(tmp_path):
 
 
 def test_release_health_reads_receipt(tmp_path):
-    (tmp_path / "deploy_receipt.json").write_text(json.dumps({"ok": True, "health": "ok", "deployed_sha": "80e93c99f", "at": "2026-10-23T16:06:35Z"}))
+    (tmp_path / "deploy_receipt.json").write_text(
+        json.dumps({"ok": True, "health": "ok", "deployed_sha": "80e93c99f", "at": "2026-10-23T16:06:35Z"})
+    )
     h = W.release_health(tmp_path)
     assert h["ok"] is True and h["sha"] == "80e93c99f"
     assert W.release_health(tmp_path / "nope")["ok"] is None
+
+
+def test_claim_without_pr_is_matched_to_its_branch_pr_not_stale():
+    c = claim(state="stale", hb_min=240, branch="release/batch-8-20261023")
+    merged = {**open_pr(2002, branch="release/batch-8-20261023"), "state": "merged", "merged_at": ago(hours=2), "merge_sha": "80e93c99f", "ci": None,
+              "released": {"at": ago(hours=1), "sha": "80e93c99f", "basis": "served CURRENT/BUILD_SHA"}}  # fmt: skip
+    items = W.build_items(tasks=[], claims=[c], census={"open": [], "merged": [merged], "batches": {}},
+                          health={"ok": True, "sha": "80e93c99f", "at": ago(minutes=30)}, now=NOW)  # fmt: skip
+    assert [i["id"] for i in items] == ["PR-2002"]
+    assert items[0]["stage"] == "verified" and not items[0]["stale"] and items[0]["how"]["claim_ids"] == [c["claim_id"]]

@@ -76,8 +76,15 @@ def add_task(tmp_path, title="Fix it", areas=("scripts/a.py",), **kw):
 
 
 def test_agent_service_token_and_non_proxy_refused_and_audited(tmp_path):
-    for principal, listener in (("service-token", "service"), (OP, "service"), ("tailnet:someone@else", "serve_proxy"), ("", None)):
-        st, body = post(make_ctx(tmp_path, principal=principal, listener=listener), "note", {"item": "PR-1", "text": "x"})
+    for principal, listener in (
+        ("service-token", "service"),
+        (OP, "service"),
+        ("tailnet:someone@else", "serve_proxy"),
+        ("", None),
+    ):
+        st, body = post(
+            make_ctx(tmp_path, principal=principal, listener=listener), "note", {"item": "PR-1", "text": "x"}
+        )
         assert st == 403 and body["error"] == "AGENT_CALLER_REFUSED"
     rows = audit(tmp_path)
     assert len(rows) == 4 and all(r["outcome"] == "refused" for r in rows)
@@ -92,7 +99,9 @@ def test_csrf_refused(tmp_path):
 
 def test_actor_comes_from_auth_never_the_body(tmp_path):
     ctx = make_ctx(tmp_path)
-    st, body = post(ctx, "hold", {"item": "PR-77", "reason": "r", "by": "agent:evil"}, actor="agent:evil", principal="x")
+    st, body = post(
+        ctx, "hold", {"item": "PR-77", "reason": "r", "by": "agent:evil"}, actor="agent:evil", principal="x"
+    )
     assert st == 200 and body["actor"] == OP
     assert C.read_queue(tmp_path / "claims")["held_prs"]["77"]["by"] == OP
     assert audit(tmp_path)[-1]["actor"] == OP
@@ -157,7 +166,12 @@ def test_set_priority(tmp_path):
     assert st == 200 and body["result"]["priority"] == 1
     _cb, tb = boards(tmp_path)
     got = tb.get(t["task_id"])
-    assert got["priority"] == 1 and got["history"][-1] == {**got["history"][-1], "event": "priority", "old": 3, "new": 1}
+    assert got["priority"] == 1 and got["history"][-1] == {
+        **got["history"][-1],
+        "event": "priority",
+        "old": 3,
+        "new": 1,
+    }
     st, body = post(ctx, "set_priority", {"task_id": t["task_id"], "priority": 9})
     assert st == 400
 
@@ -210,13 +224,32 @@ def test_batch_add_validates_against_census(tmp_path):
 
 def test_task_add_and_split(tmp_path):
     ctx = make_ctx(tmp_path)
-    st, body = post(ctx, "task_add", {"title": "New thing", "kind": "build", "areas": "scripts/x.py, docs/x.md", "priority": 2, "acceptance": "tests; docs"})
+    st, body = post(
+        ctx,
+        "task_add",
+        {
+            "title": "New thing",
+            "kind": "build",
+            "areas": "scripts/x.py, docs/x.md",
+            "priority": 2,
+            "acceptance": "tests; docs",
+        },
+    )
     assert st == 200
     tid = body["result"]["task_id"]
     _cb, tb = boards(tmp_path)
     t = tb.get(tid)
-    assert t["source"] == "operator" and t["created_by"] == OP and t["areas"] == ["scripts/x.py", "docs/x.md"] and t["priority"] == 2
-    st, body = post(ctx, "task_split", {"task_id": tid, "parts": [{"title": "half 1", "areas": ["scripts/x.py"]}, "half 2 | docs/x.md | doc done"]})
+    assert (
+        t["source"] == "operator"
+        and t["created_by"] == OP
+        and t["areas"] == ["scripts/x.py", "docs/x.md"]
+        and t["priority"] == 2
+    )
+    st, body = post(
+        ctx,
+        "task_split",
+        {"task_id": tid, "parts": [{"title": "half 1", "areas": ["scripts/x.py"]}, "half 2 | docs/x.md | doc done"]},
+    )
     assert st == 200 and len(body["result"]["children"]) == 2
     _cb, tb = boards(tmp_path)
     assert tb.get(tid)["status"] == "split"
@@ -226,7 +259,9 @@ def test_task_add_and_split(tmp_path):
 
 def _stale_claim(tmp_path, clock):
     cb = B.ClaimBoard(tmp_path / "claims", now=clock)
-    c = cb.claim(vendor="claude", session="old-sess", agent="old", task="stale work", paths=["scripts/s.py"], branch="feat/s")
+    c = cb.claim(
+        vendor="claude", session="old-sess", agent="old", task="stale work", paths=["scripts/s.py"], branch="feat/s"
+    )
     cb.worklog(c["claim_id"]).create(c, plan=["step one"])
     return c["claim_id"]
 
@@ -307,3 +342,17 @@ def test_default_context_without_request_refuses(tmp_path, monkeypatch):
         C._CTX = None
     assert st in (403, 503) and body["ok"] is False
     assert not C.queue_path(tmp_path / "claims").exists()
+
+
+def test_batch_queue_cli_reads_without_writing(tmp_path, capsys):
+    from scripts import batch_queue
+
+    ctx = make_ctx(tmp_path)
+    post(ctx, "batch_add", {"pr": 2005})
+    post(ctx, "batch_add", {"pr": 1996})
+    post(ctx, "hold", {"item": "PR-1996"})
+    before = C.queue_path(tmp_path / "claims").read_text()
+    assert batch_queue.main(["next", "--claims-dir", str(tmp_path / "claims")]) == 0
+    out = capsys.readouterr()
+    assert out.out.strip() == "2005" and "1996" in out.err
+    assert C.queue_path(tmp_path / "claims").read_text() == before

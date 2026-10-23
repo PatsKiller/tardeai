@@ -317,7 +317,9 @@ class TaskBoard:
                     )
                 if want.get("held"):
                     h = want["held"]
-                    raise TaskError(f"task {task_id} is on hold by {h.get('by')} since {h.get('at')}: {h.get('reason') or ''}")
+                    raise TaskError(
+                        f"task {task_id} is on hold by {h.get('by')} since {h.get('at')}: {h.get('reason') or ''}"
+                    )
                 blocked = self.blocked_by(want, done)
                 if blocked:
                     raise TaskError(f"task {task_id} waits on {', '.join(blocked)}")

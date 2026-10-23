@@ -386,7 +386,10 @@ def _hold(cd: Path, op: str, p: Mapping[str, Any], ctx: Ctx, held: bool) -> dict
             else:
                 hp.pop(str(ref), None)
             q["held_prs"] = hp
-            q["history"] = [*(q.get("history") or []), {"at": _iso(ctx.now()), "by": op, "event": "hold" if held else "unhold", "pr": ref}]
+            q["history"] = [
+                *(q.get("history") or []),
+                {"at": _iso(ctx.now()), "by": op, "event": "hold" if held else "unhold", "pr": ref},
+            ]
             q["updated_at"] = _iso(ctx.now())
         return {"pr": ref, "held": held}
     raise CommandError(400, "BAD_ITEM", "hold applies to a task or a PR")
@@ -449,7 +452,10 @@ def cmd_batch_remove(cd: Path, op: str, p: Mapping[str, Any], ctx: Ctx) -> dict[
         removed = len(nb) != len(q.get("next_batch") or [])
         q["next_batch"] = nb
         if removed:
-            q["history"] = [*(q.get("history") or []), {"at": _iso(ctx.now()), "by": op, "event": "batch_remove", "pr": n}]
+            q["history"] = [
+                *(q.get("history") or []),
+                {"at": _iso(ctx.now()), "by": op, "event": "batch_remove", "pr": n},
+            ]
             q["updated_at"] = _iso(ctx.now())
     return {"pr": n, "removed": removed}
 
@@ -487,7 +493,13 @@ def cmd_task_split(cd: Path, op: str, p: Mapping[str, Any], ctx: Ctx) -> dict[st
             part = TB.parse_part(part)
         if not isinstance(part, Mapping) or not str(part.get("title") or "").strip():
             raise CommandError(400, "PARAMS_INVALID", "every part needs a title")
-        clean.append({"title": str(part["title"])[:200], "areas": list(part.get("areas") or []), "acceptance": list(part.get("acceptance") or [])})
+        clean.append(
+            {
+                "title": str(part["title"])[:200],
+                "areas": list(part.get("areas") or []),
+                "acceptance": list(part.get("acceptance") or []),
+            }
+        )
     _cb, tb = _boards(cd, ctx.now)
     try:
         kids = tb.split(tid, clean, by=op)
@@ -529,15 +541,34 @@ def cmd_release_stale_claim(cd: Path, op: str, p: Mapping[str, Any], ctx: Ctx) -
     summary = f"released by the operator ({op}) from the Work pipeline: stale ({why}); files freed, worklog kept"
     task = next((t for t in tb.read_all() if t.get("claim_id") == cid and t.get("status") == "taken"), None)
     if task is not None:
-        tb.release(task["task_id"], session=op, handoff=f"operator released the stale claim {cid}: continue from its worklog", force=True)
+        tb.release(
+            task["task_id"],
+            session=op,
+            handoff=f"operator released the stale claim {cid}: continue from its worklog",
+            force=True,
+        )
     else:
-        cb.release(cid, session=op, status="abandoned", note="operator takeover: stale", summary=summary if cb.worklog(cid).exists() else None, force=True, released_by=op)
+        cb.release(
+            cid,
+            session=op,
+            status="abandoned",
+            note="operator takeover: stale",
+            summary=summary if cb.worklog(cid).exists() else None,
+            force=True,
+            released_by=op,
+        )
     if cb.worklog(cid).exists():
         try:
             cb.worklog(cid).status(f"operator takeover: {summary}")
         except Exception:  # noqa: BLE001 - the release stands; the audit line is the record
             pass
-    return {"claim_id": cid, "released": "abandoned", "why": why, "task_id": (task or {}).get("task_id"), "takeover": "operator"}
+    return {
+        "claim_id": cid,
+        "released": "abandoned",
+        "why": why,
+        "task_id": (task or {}).get("task_id"),
+        "takeover": "operator",
+    }
 
 
 HANDLERS: dict[str, Callable[[Path, str, Mapping[str, Any], Ctx], dict[str, Any]]] = {
@@ -588,7 +619,10 @@ def handle(method: str, body: Any, *, ctx: Optional[Ctx] = None) -> tuple[int, d
     row: dict[str, Any] = {
         "at": _iso(now),
         "command": cmd,
-        "params": {k: (str(v)[:300] if not isinstance(v, (list, dict)) else json.dumps(v, default=str)[:600]) for k, v in list(params.items())[:12]},
+        "params": {
+            k: (str(v)[:300] if not isinstance(v, (list, dict)) else json.dumps(v, default=str)[:600])
+            for k, v in list(params.items())[:12]
+        },
         "idempotency_key": key[:100] or None,
         "principal": (ctx.principal() or "")[:80],
         "listener": ctx.listener(),
@@ -603,15 +637,23 @@ def handle(method: str, body: Any, *, ctx: Optional[Ctx] = None) -> tuple[int, d
 
     op = operator_of(ctx)
     if not op:
-        return refuse(403, "AGENT_CALLER_REFUSED", "only the operator's tailnet identity may act on the Work pipeline; agents, n8n and the service token are refused")
+        return refuse(
+            403,
+            "AGENT_CALLER_REFUSED",
+            "only the operator's tailnet identity may act on the Work pipeline; agents, n8n and the service token are refused",
+        )
     row["actor"] = op
     ok, why = ctx.csrf("POST", PATH)
     if not ok:
         return refuse(403, "CSRF_REFUSED", why)
     if cmd in NEVER_ON_BOARD:
-        return refuse(403, "NEVER_ON_BOARD", "broker orders, stops, kill-switch clearing and grants are never on the board")
+        return refuse(
+            403, "NEVER_ON_BOARD", "broker orders, stops, kill-switch clearing and grants are never on the board"
+        )
     if cmd in TIER2:
-        return refuse(403, "STEP_UP_REQUIRED", f"{cmd} is a Tier 2 act: passkey assertion + typed phrase through the host applier")
+        return refuse(
+            403, "STEP_UP_REQUIRED", f"{cmd} is a Tier 2 act: passkey assertion + typed phrase through the host applier"
+        )
     if cmd not in HANDLERS:
         return refuse(400, "UNKNOWN_COMMAND", f"command must be one of {', '.join(COMMANDS)}")
     if not IDEM_RE.match(key):

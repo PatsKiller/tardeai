@@ -499,7 +499,9 @@ def _who(claims: list[Mapping[str, Any]], task: Mapping[str, Any] | None, pr: Ma
         return {"kind": "operator", "label": "OPERATOR", "vendor": "operator", "agent": None, "session": None}
     if claims:
         c = claims[0]
-        agents = sorted({f"{x.get('vendor') or '?'}/{x.get('agent') or str(x.get('session') or '?')[:14]}" for x in claims})
+        agents = sorted(
+            {f"{x.get('vendor') or '?'}/{x.get('agent') or str(x.get('session') or '?')[:14]}" for x in claims}
+        )
         label = agents[0] + (f" · {len(claims)} claims" if len(claims) > 1 else "")
         return {
             "kind": "agent",
@@ -727,8 +729,10 @@ def derive(
             rag, label = "red", "blocked"
             blocker = "waits for " + ", ".join(deps)
             ev["queued"] = f"blocked by {', '.join(deps)}"
-            next_owner, next_text = "agent", f"After {deps[0]} is done: " + (
-                "operator acts" if is_op else f"agent_claim.py take {task.get('task_id')}"
+            next_owner, next_text = (
+                "agent",
+                f"After {deps[0]} is done: "
+                + ("operator acts" if is_op else f"agent_claim.py take {task.get('task_id')}"),
             )
             if is_op:
                 next_owner = "operator"
@@ -739,12 +743,17 @@ def derive(
     elif design:
         if design.get("awaiting"):
             stage, rag, label = "proposed", "amber", "awaiting operator"
-            ev["proposed"] = f"{design.get('kind') or 'design'} {design.get('id')}: {design.get('approval') or 'awaiting operator'}"
+            ev["proposed"] = (
+                f"{design.get('kind') or 'design'} {design.get('id')}: {design.get('approval') or 'awaiting operator'}"
+            )
             next_owner, next_text = "operator", f"Operator: approve or reject {design.get('id')}"
         else:
             stage, rag, label = "approved", "amber", "no tasks"
             ev["approved"] = f"{design.get('id')} approved; no task registered on the task board"
-            next_owner, next_text = "agent", f"Agent: register tasks (agent_claim.py task add --id {design.get('id')}-T1 ...)"
+            next_owner, next_text = (
+                "agent",
+                f"Agent: register tasks (agent_claim.py task add --id {design.get('id')}-T1 ...)",
+            )
     else:
         stage, rag, label = "queued", "amber", ""
     if wl_next and stage in ("claimed", "building", "pr_open", "ci") and not held:
@@ -830,8 +839,13 @@ def _script_index(root: Path | None = None) -> dict[str, str]:
     return _SCRIPT_INDEX
 
 
-def operator_command(item: Mapping[str, Any], pr: Mapping[str, Any] | None, task: Mapping[str, Any] | None,
-                     design: Mapping[str, Any] | None, index: Callable[[], dict[str, str]] = _script_index) -> str | None:
+def operator_command(
+    item: Mapping[str, Any],
+    pr: Mapping[str, Any] | None,
+    task: Mapping[str, Any] | None,
+    design: Mapping[str, Any] | None,
+    index: Callable[[], dict[str, str]] = _script_index,
+) -> str | None:
     """The exact command the operator runs for an operator-owned next step (copied client-side), else None."""
     nxt = item.get("next") or {}
     if nxt.get("owner") != "operator":
@@ -855,11 +869,18 @@ def operator_command(item: Mapping[str, Any], pr: Mapping[str, Any] | None, task
     return None
 
 
-def item_actions(item: Mapping[str, Any], task: Mapping[str, Any] | None, claims: list[Mapping[str, Any]],
-                 queued_prs: list[int], held_prs: Mapping[str, Any]) -> dict[str, Any]:
+def item_actions(
+    item: Mapping[str, Any],
+    task: Mapping[str, Any] | None,
+    claims: list[Mapping[str, Any]],
+    queued_prs: list[int],
+    held_prs: Mapping[str, Any],
+) -> dict[str, Any]:
     """Which Tier 1 commands the UI offers on this card (the endpoint re-validates every one)."""
     num = item.get("pr_number")
     acts: list[str] = ["note"]
+    if item.get("stage") in ("merged", "released", "verified"):
+        return {"available": acts, "stale_claims": []}
     if task:
         acts.append("set_priority")
         acts.append("unhold" if task.get("held") else "hold")
@@ -874,8 +895,12 @@ def item_actions(item: Mapping[str, Any], task: Mapping[str, Any] | None, claims
     stale_claims = [
         c.get("claim_id")
         for c in claims
-        if c.get("state") == "stale" and c.get("status") == "active"
-        and (c.get("stage") in ("claimed", "building") or (c.get("stage") == "pr_open" and (c.get("ci") or {}).get("state") == "failing"))
+        if c.get("state") == "stale"
+        and c.get("status") == "active"
+        and (
+            c.get("stage") in ("claimed", "building")
+            or (c.get("stage") == "pr_open" and (c.get("ci") or {}).get("state") == "failing")
+        )
     ]
     if item.get("stale") and stale_claims:
         acts.append("release_stale_claim")
@@ -912,6 +937,17 @@ def build_items(
     batches = {int(k): v for k, v in (census.get("batches") or {}).items()}
     open_by = {int(p["number"]): p for p in census.get("open") or [] if p.get("number")}
     merged_by = {int(p["number"]): p for p in census.get("merged") or [] if p.get("number")}
+    # a claim that never recorded its PR is matched to the census PR of its branch (else it looks stale forever)
+    by_branch: dict[str, int] = {}
+    for p in [*(census.get("merged") or []), *(census.get("open") or [])]:
+        if p.get("branch") and p.get("number"):
+            by_branch[str(p["branch"])] = int(p["number"])
+    claims = [
+        {**c, "pr_number": by_branch[str(c.get("branch"))]}
+        if not c.get("pr_number") and str(c.get("branch") or "") in by_branch
+        else c
+        for c in claims
+    ]
     live_claims = [c for c in claims if c.get("state") != "abandoned" and c.get("stage") != "abandoned"]
     by_id = {c["claim_id"]: c for c in live_claims if c.get("claim_id")}
     used: set[str] = set()
@@ -986,7 +1022,10 @@ def build_items(
         pr_url = (pr or {}).get("url") or next((c.get("pr_url") for c in cs if c.get("pr_url")), None)
         design_id = (task or {}).get("design_id") or ((g.get("design") or {}).get("id") if g.get("design") else None)
         if not design_id:
-            m = re.search(r"DSN-\d{8}-[a-z0-9-]+?(?=-P\d|\b)", " ".join([str(d["title"]), *(str(c.get("task") or "") for c in cs)]))
+            m = re.search(
+                r"DSN-\d{8}-[a-z0-9-]+?(?=-P\d|\b)",
+                " ".join([str(d["title"]), *(str(c.get("task") or "") for c in cs)]),
+            )
             design_id = m.group(0) if m else None
         items.append(
             {
@@ -1022,7 +1061,9 @@ def build_items(
                     "pr": pr_url,
                     "ci": f"{pr_url}/checks" if pr_url else None,
                     "diff": f"{pr_url}/files" if pr_url else None,
-                    "worklog_claim": next((c.get("claim_id") for c in cs if (c.get("worklog") or {}).get("exists")), None),
+                    "worklog_claim": next(
+                        (c.get("claim_id") for c in cs if (c.get("worklog") or {}).get("exists")), None
+                    ),
                 },
             }
         )
