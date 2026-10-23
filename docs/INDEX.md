@@ -1928,6 +1928,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Lane Quality Bake-Off — 2026-08-21 |
 | `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` | Blind ranking sheet — Lane bake-off 2026-08-21 |
 | `docs/ops/LANE_REGISTRY_AND_RETIREMENT_CONVENTION.md` | Lane registry and the retirement convention |
+| `docs/ops/JSONL_ARCHIVE_ROTATION.md` | JSONL archive rotation — the oversized append-only stores |
 | `docs/ops/LEARNING_LOOP_PR1_2026-10-21.md` | Learning loop PR1 — stable recommendation ids, trade linkage, R attribution (2026-10-21) |
 | `docs/ops/LIVE_CHANGES_20261020.md` | Live changes — 2026-10-20 |
 | `docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md` | LIVE-cio-stance-governance — 24/7 universal CIO stance maturity |

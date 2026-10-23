@@ -63,7 +63,9 @@ def test_all_operative_baselines_have_applicable_fields_and_order():
     # operator 2026-10-21; tests/test_release_train_n8n_20261021.py) = 155 (release-2 integration, recounted).
     # + 1 (2026-10-21 macro-calendar-refresh n8n-native ingest shadow; tests/test_macro_calendar_20261021.py)
     # = 156 (release-3 integration: counted in config/n8n_health_contracts.json after the merge).
-    assert len(catalogue["contracts"]) == 156
+    # + 1 (2026-10-23 jsonl-archive-rotate n8n-native hygiene shadow, DRAFT; tests/test_jsonl_archive_rotate_20261023.py)
+    # = 157.
+    assert len(catalogue["contracts"]) == 157
     assert not {row["id"]: A.baseline_errors(row) for row in catalogue["contracts"] if A.baseline_errors(row)}
 
 

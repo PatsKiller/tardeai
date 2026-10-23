@@ -58,6 +58,9 @@ ALLOWLIST_REL: frozenset[str] = frozenset({
     # for Google Drive; it never parses rows back into a live store, never deletes, and the local copy stays
     # authoritative and tripwired. Any other reader still fires ARCHIVE_TRIPWIRE.
     "scripts/archive_offbox_sync.py",
+    # 2026-10-23 (operator "approved": rotate the oversized append-only JSONL stores): the WRITER of
+    # archive/file_prune/<store>/; it writes archives and their tripwire records and never reads one back.
+    "scripts/ops/jsonl_archive_rotate.py",
 })
 
 SCAN_DIRS: tuple[str, ...] = ("scripts", "config", "linux_launchers")
