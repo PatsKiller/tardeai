@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "work_board_structure_20261023",
+  "files": [
+    "tests/test_work_board_structure_20261023.py"
+  ],
+  "anchor": "WORK_BOARD_STRUCTURE_20261023",
+  "comment": [
+    "ANCHOR: WORK_BOARD_STRUCTURE_20261023 — Work-package structure on the task board (operator 2026-10-23: \"structure: problem, definition of done, agent prompt, operator commands, and proof of completion\"; \"the above should be part of the board\"): optional problem/definition_of_done/agent_prompt/operator_commands/proof/proof_evidence/notes + wp_id/stage/owner_kind on tasks, old tasks unchanged; task edit; done (agent, --evidence-only, operator) needs proof evidence when a proof exists; next/take never hand an OPERATOR package to an agent; importer scripts/import_handoff_workpackages.py (header, sections, multi-line status, inline prompts, deps, related links, adoption by wp_id, [x] closes, idempotent, dry run writes nothing); export-handoff is an import fixed point; Work pipeline wp block, stage intros, task detail with the B0-prefixed prompt, cached export, GET-only routes. Hermetic, pinned clocks."
+  ]
+}

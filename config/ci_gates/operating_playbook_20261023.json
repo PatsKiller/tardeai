@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "operating_playbook_20261023",
+  "files": [
+    "tests/test_operating_playbook_20261023.py"
+  ],
+  "anchor": "OPERATING_PLAYBOOK_20261023",
+  "comment": [
+    "ANCHOR: OPERATING_PLAYBOOK_20261023 — docs/ops/OPERATING_PLAYBOOK.md is the versioned single source of the handoff's Section A and B0: AGENTS.md §14 header, pinned section headings (the B0 extractor and the Playbook anchors read them), B0 preamble extraction and full_prompt, load_playbook never raises and caches by mtime, no secret-looking values. Hermetic."
+  ]
+}

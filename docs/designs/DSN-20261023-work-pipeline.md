@@ -21,6 +21,18 @@ phases:
     status: PROPOSED
     areas:
     - apps/command-center-v3/src/pages/Coordination/WorkPipelineActions.tsx
+- id: DSN-20261023-work-pipeline-P3
+  title: 'Work-package structure on every task (problem / definition of done / agent prompt / operator commands / proof),
+    handoff importer, playbook tab, Next up, export-handoff (WP-41)'
+  status: IN_PROGRESS
+  tasks:
+  - id: DSN-20261023-work-pipeline-P3-T1
+    title: Board structure + importer + playbook + export (docs/ops/WORK_BOARD_STRUCTURE.md)
+    status: IN_PROGRESS
+    areas:
+    - scripts/lib/agent_task_board.py
+    - scripts/import_handoff_workpackages.py
+    - apps/command-center-v3/src/pages/WorkPipelinePanel.tsx
 ---
 
 Backfill 2026-10-23. Claim 20261023T171911Z-claude-fb4ed81b (pr_open, plan 8/11), handoff: "Watch PR #2021 CI; then

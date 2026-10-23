@@ -37,7 +37,14 @@ reports them clear, and the board marks them "(shared)". The rest of a change st
 
 task done <id> --evidence-only --summary S --evidence L [L ...] closes a FREE task whose work already shipped,
 without taking it (no claim, so an overlapping live claim does not block it); actor, summary and evidence links go to
-the task and tasks_history.jsonl.
+the task (also as its proof_evidence) and tasks_history.jsonl.
+
+Work-package structure (operator 2026-10-23: "structure: problem, definition of done, agent prompt, operator
+commands, and proof of completion"): ``task add`` and ``task edit`` take --problem-file --dod-file --prompt-file
+--operator-file --proof-file (markdown; ``-`` reads stdin) plus --wp-id --stage --owner-kind; ``task show`` prints
+every section (--full-prompt: the agent prompt with the B0 preamble of docs/ops/OPERATING_PLAYBOOK.md prepended);
+``task done`` on a task with a proof needs --proof-evidence (or --proof-evidence-file). ``export-handoff --out F``
+regenerates the full handoff (playbook + ordered work packages, status, proof evidence) from the board.
 
 Exit codes: 0 ok · 1 conflict / refused claim · 2 usage or ownership error.
 AUTHORITY: READ_ONLY_ADVISORY — coordination files only; no broker, DB, Telegram, scheduler or remote write
@@ -618,13 +625,77 @@ def _tasks(a: argparse.Namespace) -> TB.TaskBoard:
     return TB.TaskBoard(_board(a))
 
 
-def _print_task(t: dict, *, full: bool = False) -> None:
+SECTION_TITLES = (
+    ("problem", "Problem"),
+    ("definition_of_done", "Definition of done"),
+    ("agent_prompt", "Agent prompt"),
+    ("operator_commands", "Operator commands"),
+    ("proof", "Proof of completion"),
+    ("proof_evidence", "Proof evidence"),
+    ("notes", "Notes"),
+)
+STRUCT_FILE_FLAGS = (
+    ("problem", "problem_file"),
+    ("definition_of_done", "dod_file"),
+    ("agent_prompt", "prompt_file"),
+    ("operator_commands", "operator_file"),
+    ("proof", "proof_file"),
+    ("notes", "notes_file"),
+    ("proof_evidence", "proof_evidence_file"),
+)
+
+
+def _read_text_arg(path: str | None) -> str | None:
+    if path is None:
+        return None
+    if path == "-":
+        return sys.stdin.read()
+    return Path(path).read_text(encoding="utf-8")
+
+
+def _structure_args(a: argparse.Namespace) -> dict:
+    """The structure fields given on the command line (files, plus the short labels)."""
+    out: dict = {}
+    for field, flag in STRUCT_FILE_FLAGS:
+        v = _read_text_arg(getattr(a, flag, None))
+        if v is not None:
+            out[field] = v
+    if getattr(a, "proof_evidence", None):
+        out["proof_evidence"] = a.proof_evidence
+    for k in ("wp_id", "stage", "owner_kind"):
+        v = getattr(a, k, None)
+        if v:
+            out[k] = v
+    for k in getattr(a, "clear", None) or []:
+        out[k] = None
+    return out
+
+
+def _print_task(t: dict, *, full: bool = False, full_prompt: bool = False) -> None:
     own = t.get("owner") or {}
+    label = " ".join(x for x in (t.get("wp_id"), t.get("stage"), t.get("owner_kind")) if x)
     print(
         f"{t['task_id']}  [{t['status']}] P{t.get('priority')} {t.get('kind')}  {t.get('title')}"
+        + (f"  ({label})" if label else "")
         + (f"  — {own.get('vendor')}/{own.get('agent') or own.get('session')}" if own else "")
     )
     if full:
+        if any(t.get(k) for k, _ in SECTION_TITLES):  # a legacy task without sections keeps the compact output
+            from scripts.lib import handoff_playbook as HP
+
+            for k, title in SECTION_TITLES:
+                body = t.get(k)
+                if k == "agent_prompt" and body and full_prompt:
+                    body = HP.full_prompt(body, HP.load_playbook().get("b0_preamble"))
+                if body or k not in ("proof_evidence", "notes"):
+                    print(f"\n## {title}\n\n{body or '(none)'}")
+            print()
+        for k in ("related_tasks",):
+            if t.get(k):
+                print(f"  {k}: " + "; ".join(map(str, t[k])))
+        for k in ("owner_label", "wp_status", "wp_status_note"):
+            if t.get(k):
+                print(f"  {k}: {t[k]}")
         for k in ("areas", "depends_on", "acceptance", "children"):
             if t.get(k):
                 print(f"  {k}: " + "; ".join(map(str, t[k])))
@@ -655,8 +726,19 @@ def cmd_task(a: argparse.Namespace) -> int:
                 estimate=a.estimate,
                 source=a.source,
                 created_by=who,
+                structure=_structure_args(a),
             )
             print(json.dumps(t, indent=2, sort_keys=True) if a.json else t["task_id"])
+        elif a.task_cmd == "edit":
+            t = tb.edit(
+                a.task_id,
+                by=who,
+                title=a.title,
+                priority=a.priority,
+                depends_on=a.depends_on,
+                **_structure_args(a),
+            )
+            print(json.dumps(t, indent=2, sort_keys=True) if a.json else f"{t['task_id']} edited")
         elif a.task_cmd == "split":
             kids = tb.split(a.task_id, [TB.parse_part(p) for p in a.part], by=who)
             for k in kids:
@@ -670,8 +752,12 @@ def cmd_task(a: argparse.Namespace) -> int:
                 for r in rows:
                     blocked = f"  blocked by {', '.join(r['blocked_by'])}" if r["blocked_by"] else ""
                     own = r.get("owner") or {}
+                    if a.wp and not r.get("wp_id"):
+                        continue
                     print(
-                        f"{r['task_id']}  {r['column']:<11} P{r['priority']} {r['kind']:<6} {r['title']}"
+                        f"{r['task_id']}  {r['column']:<11} P{r['priority']} {r['kind']:<6} "
+                        + (f"{r['wp_id']} " if r.get("wp_id") and not str(r["title"]).startswith(r["wp_id"]) else "")
+                        + f"{r['title']}"
                         + (f"  — {own.get('vendor')}/{own.get('agent') or own.get('session')}" if own else "")
                         + blocked
                     )
@@ -682,14 +768,17 @@ def cmd_task(a: argparse.Namespace) -> int:
             if a.json:
                 print(json.dumps(t, indent=2, sort_keys=True))
             else:
-                _print_task(t, full=True)
+                _print_task(t, full=True, full_prompt=a.full_prompt)
         elif a.task_cmd == "done" and a.evidence_only:
             t = _task_done_evidence_only(tb, a)
             print(
                 f"{t['task_id']} done {t['done_at']} (evidence-only by {t['closed_by']['vendor']}/{t['closed_by']['session']})"
             )
         elif a.task_cmd == "done":
-            t = tb.done(a.task_id, session=_session(a), summary=a.summary, force=a.force, actual_cost=a.cost)
+            ev = a.proof_evidence or _read_text_arg(a.proof_evidence_file)
+            t = tb.done(
+                a.task_id, session=_session(a), summary=a.summary, force=a.force, actual_cost=a.cost, proof_evidence=ev
+            )
             print(f"{t['task_id']} done {t['done_at']} (actual {t['actual']})")
             print(
                 "next: open/finish the PR; the claim moves on to merged/released by itself. Then: agent_claim.py next",
@@ -707,42 +796,14 @@ def cmd_task(a: argparse.Namespace) -> int:
 def _task_done_evidence_only(tb, a: argparse.Namespace) -> dict:
     """``task done <id> --evidence-only --summary S --evidence URL ...``: close a FREE task whose work already shipped
     (e.g. its PR merged, its batch released) without taking it. No claim is made or needed -- taking it could be
-    refused because its areas overlap a live claim. Records the actor, summary and evidence links on the task and in
-    tasks_history.jsonl. Refused unless the task is free and both --summary and at least one --evidence are given."""
-    from scripts.lib import agent_task_board as TB
-
+    refused because its areas overlap a live claim. Records the actor, summary and evidence links on the task (also as
+    its ``proof_evidence``) and in tasks_history.jsonl. Refused unless the task is free and both --summary and at least
+    one --evidence are given."""
     session = _session(a)
     if not session:
         raise TB.TaskError("--evidence-only needs --session (or AGENT_CLAIM_SESSION): the actor is recorded")
-    summary = B.clip(a.summary, 500)
-    evidence = [e for e in (B.clip(x, 400) for x in a.evidence or []) if e]
-    if not summary or not evidence:
-        raise TB.TaskError("--evidence-only needs --summary and at least one --evidence <PR/commit/receipt link>")
-    with tb.locked():
-        t = tb.get(a.task_id)
-        if t.get("status") != "free":
-            raise TB.TaskError(
-                f"task {a.task_id} is {t.get('status')}; --evidence-only closes free tasks only "
-                "(a taken task is closed by its owner with task done)"
-            )
-        actor = {"vendor": a.vendor or B.detect_vendor(), "session": session, "agent": a.agent or None}
-        t["status"] = "done"
-        t["done_at"] = tb.now_iso()
-        t["closed_by"] = actor
-        t["done_mode"] = "evidence_only"
-        t["evidence"] = evidence
-        t["summary"] = summary
-        tb._event(
-            t,
-            "done",
-            by=session,
-            mode="evidence_only",
-            actor=actor,
-            summary=summary,
-            evidence=evidence,
-        )
-        tb._write(t)
-    return t
+    actor = {"vendor": a.vendor or B.detect_vendor(), "session": session, "agent": a.agent or None}
+    return tb.evidence_done(a.task_id, actor=actor, summary=a.summary, evidence=a.evidence or [])
 
 
 def cmd_take(a: argparse.Namespace) -> int:
@@ -957,6 +1018,47 @@ def _receipt(*, ok: bool, started: datetime, summary: dict, history: Path, error
     )
 
 
+def _structure_flags(sp: argparse.ArgumentParser) -> None:
+    sp.add_argument("--problem-file", default=None, help="markdown: the problem ('-' = stdin)")
+    sp.add_argument("--dod-file", default=None, help="markdown: the definition of done")
+    sp.add_argument("--prompt-file", default=None, help="markdown: the agent prompt (B0 is prepended on copy)")
+    sp.add_argument("--operator-file", default=None, help="markdown: the operator commands")
+    sp.add_argument("--proof-file", default=None, help="markdown: how completion is proven")
+    sp.add_argument("--notes-file", default=None, help="markdown: traps and other notes")
+    sp.add_argument("--wp-id", default=None, help="work package id, e.g. WP-07")
+    sp.add_argument("--stage", default=None, help='e.g. "Stage 2"')
+    sp.add_argument("--owner-kind", default=None, choices=list(TB.OWNER_KINDS))
+
+
+def cmd_export_handoff(a: argparse.Namespace) -> int:
+    from scripts.lib import handoff_playbook as HP
+
+    tb = _tasks(a)
+    pb_path = Path(a.playbook) if a.playbook else ROOT / HP.PLAYBOOK_REL
+    pb = HP.load_playbook(pb_path)
+    if not pb.get("ok"):
+        print(f"error: playbook {pb_path}: {pb.get('error')}", file=sys.stderr)
+        return 2
+    text = HP.export_handoff(
+        tb.read_all(),
+        tb.stages(),
+        pb,
+        as_of=tb.now_iso(),
+        playbook_text=pb_path.read_text(encoding="utf-8"),
+    )
+    if a.out == "-":
+        sys.stdout.write(text)
+        return 0
+    out = Path(a.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_name(f".{out.name}.{os.getpid()}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, out)
+    n = sum(1 for t in tb.read_all() if t.get("wp_id"))
+    print(f"wrote {out} ({len(text.encode('utf-8'))} bytes, {n} work packages)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="agent_claim.py", description=__doc__.split("\n\n")[0])
     p.add_argument("--claims-dir", default=None, help="default: TRADEAI_AGENT_CLAIMS_DIR or persistent-state")
@@ -1030,7 +1132,7 @@ def build_parser() -> argparse.ArgumentParser:
     ss.add_argument("--limit", type=int, default=40)
     ss.set_defaults(fn=cmd_status)
 
-    tk = sub.add_parser("task", help="the task board: add, split, list, show, done, release")
+    tk = sub.add_parser("task", help="the task board: add, edit, split, list, show, done, release")
     tsub = tk.add_subparsers(dest="task_cmd", required=True)
     ta = tsub.add_parser("add")
     ta.add_argument(
@@ -1047,15 +1149,30 @@ def build_parser() -> argparse.ArgumentParser:
     ta.add_argument(
         "--source", default=None, help="agent | operator (an operator to-do) | design; shown on the Work board"
     )
+    _structure_flags(ta)
     ta.add_argument("--json", action="store_true")
+    te = tsub.add_parser("edit", help="set or clear the structure sections, title, priority or dependencies")
+    te.add_argument("task_id")
+    te.add_argument("--title", default=None)
+    te.add_argument("--priority", type=int, default=None)
+    te.add_argument("--depends-on", nargs="*", default=None)
+    _structure_flags(te)
+    te.add_argument("--proof-evidence", default=None, help="proof evidence text (links, SHAs, receipt paths)")
+    te.add_argument("--proof-evidence-file", default=None)
+    te.add_argument(
+        "--clear", nargs="+", default=None, choices=[*TB.STRUCTURE_FIELDS, *TB.EDITABLE_EXTRA], help="fields to clear"
+    )
+    te.add_argument("--json", action="store_true")
     tp = tsub.add_parser("split")
     tp.add_argument("task_id")
     tp.add_argument("--part", action="append", required=True, help="'title | area1,area2 | acc1; acc2'")
     tl = tsub.add_parser("list")
     tl.add_argument("--status", default=None, help="free | taken | in_progress | done | split")
+    tl.add_argument("--wp", action="store_true", help="work packages only (tasks with a wp_id)")
     tl.add_argument("--json", action="store_true")
-    tw = tsub.add_parser("show")
+    tw = tsub.add_parser("show", help="every section: problem, definition of done, prompt, operator commands, proof")
     tw.add_argument("task_id")
+    tw.add_argument("--full-prompt", action="store_true", help="prepend the B0 preamble (OPERATING_PLAYBOOK.md)")
     tw.add_argument("--json", action="store_true")
     td = tsub.add_parser("done")
     td.add_argument("task_id")
@@ -1068,11 +1185,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="close a FREE task whose work already shipped, with no claim; needs --summary and --evidence",
     )
     td.add_argument("--evidence", nargs="+", default=None, help="PR / commit / release-receipt links (--evidence-only)")
+    td.add_argument("--proof-evidence", default=None, help="required when the task has a proof: links, SHAs, receipts")
+    td.add_argument("--proof-evidence-file", default=None)
     tr = tsub.add_parser("release")
     tr.add_argument("task_id")
     tr.add_argument("--handoff", required=True, help="the exact next step for whoever picks it up")
     tr.add_argument("--force", action="store_true")
     tk.set_defaults(fn=cmd_task)
+
+    ex = sub.add_parser("export-handoff", help="regenerate the full markdown handoff from the board + playbook")
+    ex.add_argument("--out", required=True, help="output file ('-' for stdout)")
+    ex.add_argument("--playbook", default=None, help="default: docs/ops/OPERATING_PLAYBOOK.md")
+    ex.set_defaults(fn=cmd_export_handoff)
 
     nx = sub.add_parser("next", help="pick, claim and start the highest-priority free task")
     nx.add_argument("--kind", default=None, choices=list(TB.KINDS))
