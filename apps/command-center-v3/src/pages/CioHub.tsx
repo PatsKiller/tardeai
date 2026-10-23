@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, useCallback, type CSSProperties, type ReactNode } from 'react'
+import { AccountChip, AccountsBadge } from '../components/AccountChip'
+import { accountName } from '../lib/accountLabels'
 import { useSearchParams, Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { hubTitle, hubSubtitle } from '../lib/terminalHubChrome'
@@ -63,6 +65,8 @@ type Decision = {
   kind: 'position' | 'action'
   symbol?: string | null
   account?: string | null
+  accounts?: string[] | null
+  account_labels?: string[] | null
   stance?: string
   delta_usd?: number | null
   value_usd?: number | null
@@ -502,7 +506,17 @@ function DecisionCard({ d, dispositions, legacyUnversioned, onAct }: {
     <div style={{ ...card, borderLeft: `3px solid ${act.color}` }} data-testid="cio-decision-card">
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'baseline' }}>
         <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text0)' }}>{title}</span>
-        {d.account && d.kind === 'position' && <span style={faint}>{d.account.replace(/_/g, ' ')}</span>}
+        {d.kind === 'position' && (() => {
+          // Every account the decision spans, by NAME (operator 2026-10-23) — never only the first one.
+          const keys: string[] = Array.isArray(d.accounts) && d.accounts.length ? d.accounts : (d.account ? [d.account] : [])
+          const names: string[] = keys.map((k: string, i: number) => accountName(k, Array.isArray(d.account_labels) ? d.account_labels[i] : undefined))
+          return keys.length ? (
+            <span data-testid="cio-decision-accounts" style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+              {keys.length > 1 && <AccountsBadge n={keys.length} />}
+              {keys.map((k: string, i: number) => <AccountChip key={k} account={k} label={names[i]} compact />)}
+            </span>
+          ) : null
+        })()}
         <span style={{ fontSize: 11, fontWeight: 700, color: act.color, letterSpacing: '.3px', textTransform: 'uppercase' }}>
           {act.label}
         </span>
@@ -1362,7 +1376,7 @@ function InvestmentBooksPanel() {
         <div key={k} style={{ marginTop: 8 }}>
           <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--text3)' }}>{cioLabel(k)}</div>
           {((act as any)[k] || []).slice(0, 8).map((r: any, i: number) => (
-            <div key={k + i} style={{ fontSize: 13 }}>{r.symbol} — {r.action}: {r.why ?? r.why_still_held ?? r.thesis_state ?? '—'}</div>
+            <div key={k + i} style={{ fontSize: 13 }}>{r.symbol}{(r.accounts?.length || r.account) ? <> <span style={{ fontSize: 11, color: 'var(--text3)' }}>({(r.accounts?.length ? r.accounts : [r.account]).map((a: string) => accountName(a)).join(', ')})</span></> : null} — {r.action}: {r.why ?? r.why_still_held ?? r.thesis_state ?? '—'}</div>
           ))}
           {((act as any)[k] || []).length === 0 && (
             <div style={{ fontSize: 12, color: 'var(--text3)' }}>
@@ -2115,7 +2129,12 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
     }
   }, [tab, focus.decision])
 
+  // /api/v3/cio/home answers {ok:false, error, detail} on an exception and useApi passes that object
+  // through as data; treating it as a home crashed Decisions on home.cio_now.attention (site
+  // validation 2026-10-23). A payload without cio_now is "unavailable", with the server's error.
   const home = data
+  const homeOk = !!(home && (home as any).cio_now)
+  const homeErr = error ?? (data && !homeOk ? ((data as any).error ? `${(data as any).error}${(data as any).detail ? ` — ${(data as any).detail}` : ''}` : 'payload has no cio_now') : null)
 
   return (
     <div className="cio-hub" style={{ padding: '16px 24px', maxWidth: 1240 }} data-testid="cio-hub">
@@ -2176,17 +2195,17 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
               <CioDecisionLineagePanel decisionId={focus.decision} />
             </div>
           )}
-          {loading && !home && (
+          {loading && !homeOk && (
             <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }} data-testid="cio-home-loading">
               Loading office home…
             </div>
           )}
-          {error && !home && (
+          {homeErr && !homeOk && (
             <div style={{ padding: '12px 0', color: 'var(--amber)', fontSize: 13 }} data-testid="cio-home-error">
-              Office home unavailable: {String(error)}
+              Office home unavailable: {String(homeErr)}
             </div>
           )}
-          {home && (
+          {homeOk && (
             <>
               <CioNowSection home={home} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />
               <div style={{ marginTop: 28 }}>
@@ -2227,7 +2246,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
       {tab === 'capital-policy' && (
         <div role="tabpanel" aria-label={TAB_LABEL['capital-policy']}>
           <OperatorPolicyPanel />
-          {home && (
+          {homeOk && (
             <>
               <div style={{ marginTop: 28 }}>
                 <CapitalPlanSection cp={home.capital_plan} />
@@ -2237,7 +2256,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
               </div>
             </>
           )}
-          {!home && loading && (
+          {!homeOk && loading && (
             <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }}>Loading capital plan…</div>
           )}
         </div>
@@ -2249,8 +2268,8 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
             active={evidenceSub}
             onSelect={(sub) => selectTab('evidence-comms', sub)}
           />
-          {evidenceSub === 'report' && home && <ReportSection report={home.report} />}
-          {evidenceSub === 'audit' && home && <EvidenceSection evidence={home.evidence} />}
+          {evidenceSub === 'report' && homeOk && <ReportSection report={home.report} />}
+          {evidenceSub === 'audit' && homeOk && <EvidenceSection evidence={home.evidence} />}
           {evidenceSub === 'notification-gate' && <NotificationGatePanel />}
           {evidenceSub === 'telegram-receipts' && <TelegramReceiptsPanel />}
           {evidenceSub === 'senses-evidence' && <SensesEvidencePanel />}
@@ -2262,7 +2281,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           {evidenceSub === 'capability-coverage' && <CioOperatorEvidencePanel section="coverage" />}
           {evidenceSub === 'decision-lineage' && <CioDecisionLineagePanel decisionId={decisionRaw || null} />}
           {evidenceSub === 'cio-outputs' && <CioOperatorArtifactsPanel />}
-          {!home && (evidenceSub === 'report' || evidenceSub === 'audit') && (
+          {!homeOk && (evidenceSub === 'report' || evidenceSub === 'audit') && (
             <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }}>Loading evidence…</div>
           )}
         </div>

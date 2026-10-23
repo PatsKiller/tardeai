@@ -27,6 +27,7 @@ PROC="scripts/portfolio_server.py"
 FAILS=3          # consecutive failed probes before acting (was 2 — too twitchy; a transiently
                  # backed-up single-threaded server got cold-killed and re-wedged on restart = kill-loop)
 TIMEOUT=12       # seconds per probe (was 8)
+VERIFY_SEC=45    # post-kill verify window (RestartSec=5 + bind time); worst-case run stays < the 2-min cron period
 
 mkdir -p "$(dirname "$LOG")"
 log() { echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $1" >> "$LOG"; }
@@ -132,10 +133,21 @@ if kill -0 "$pid" 2>/dev/null; then
   log "pid $pid survived SIGTERM — sending SIGKILL"
   kill -9 "$pid" 2>/dev/null
 fi
-# brief verify
-sleep 6
-if curl -s -o /dev/null --max-time "$TIMEOUT" "$URL" 2>/dev/null; then
-  log "RECOVERED — server responding again."
+# Verify the respawn. systemd waits RestartSec=5 after the kill and the server needs ~2 s to
+# bind, so a single probe 6 s after SIGKILL always lands before the new process exists: on
+# 2026-10-23 every "still not responding ... escalate" line (09:15:04, 09:31:03 ET) was written
+# 1 s before systemd's "Started" and ~3 s before the new pid served /api/health. Poll instead.
+killed_at=$(date +%s)
+verify_deadline=$(( killed_at + VERIFY_SEC ))
+recovered=0
+while [ "$(date +%s)" -lt "$verify_deadline" ]; do
+  sleep 3
+  if curl -s -o /dev/null --max-time 5 "$URL" 2>/dev/null; then
+    recovered=1; break
+  fi
+done
+if [ "$recovered" = "1" ]; then
+  log "RECOVERED — server responding again ($(( $(date +%s) - killed_at ))s after kill)."
 else
-  log "still not responding after restart attempt — escalate (check systemd)."
+  log "still not responding ${VERIFY_SEC}s after restart attempt — escalate (check systemd)."
 fi

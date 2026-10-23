@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from .momentum_setup_evidence import build_setup_evidence, observation_lineage
+from .momentum_setup_evidence import build_setup_evidence, observation_lineage, setup_readiness
 
 SCHEMA = "SharedMomentumCandidates@v1"
 AT_CONTRACT = "active-trader-momentum-alert-v1"
@@ -281,6 +281,17 @@ def build_candidate_projection(
         observation["security_guid"] = guid
         observation["security_guid_basis"] = basis
         observation["catalyst_event"] = _bind_event(identity_registry, symbol, evidence_row)
+        # SetupReadiness@v1 (operator 2026-10-23): the one "driven by / ready / missing" verdict every surface
+        # prints, from this observation's own evidence + today's Hermes research + (AT) its veto codes.
+        hermes = None
+        if catalyst_lookup is not None and observation.get("session_date"):
+            try:
+                hermes = catalyst_lookup(symbol, observation["session_date"])
+            except Exception:  # noqa: BLE001 - a failed lookup is an absent record, never a crash
+                hermes = None
+        observation["readiness"] = setup_readiness(
+            observation.get("setup_evidence"), hermes=hermes, veto_reasons=observation.get("veto_reasons")
+        )
         scope = (
             guid or f"unresolved:{symbol}",
             lineage.get("session_date"),
@@ -373,6 +384,7 @@ def build_candidate_projection(
                     "run_id": c.get("run_id") if isinstance(c.get("run_id"), str) else None,
                     "kind": row.get("kind") if isinstance(row.get("kind"), str) else "UNKNOWN",
                     "sent": row.get("sent") if isinstance(row.get("sent"), bool) else None,
+                    "veto_reasons": [str(v) for v in (row.get("veto_reasons") or []) if isinstance(v, str)],
                     "source": "ACTIVE_TRADER",
                     "lineage": lineage,
                     "observation_basis": "ADVISORY_PUBLICATION" if not c.get("observed_at") else "SOURCE_OBSERVATION",
@@ -661,12 +673,25 @@ def _hermes_catalyst_lookup(state_root: Path):
     Same status vocabulary. Zero provider calls, never writes; one read per day file per projection."""
     try:
         try:
-            from scripts.lib.hermes_scalp_catalyst_record import select_scalp_catalyst
+            from scripts.lib.hermes_scalp_catalyst_record import SEC_TICKERS_REL, sec_name_index, select_scalp_catalyst
         except ModuleNotFoundError:
-            from lib.hermes_scalp_catalyst_record import select_scalp_catalyst  # type: ignore
+            from lib.hermes_scalp_catalyst_record import (  # type: ignore
+                SEC_TICKERS_REL, sec_name_index, select_scalp_catalyst)
     except Exception:  # noqa: BLE001
         return None
     files = {}
+    names_index = {}
+
+    def _names(symbol):
+        # 2026-10-23: FOUND only when the headline or its source names the company, else UNVERIFIED_IDENTITY.
+        # The SEC ticker map at the state root, read once per projection; missing -> the ticker alone must match.
+        if "index" not in names_index:
+            try:
+                doc = json.loads((Path(state_root) / SEC_TICKERS_REL).read_text(encoding="utf-8"))
+                names_index["index"] = sec_name_index(doc)
+            except Exception:  # noqa: BLE001
+                names_index["index"] = {}
+        return names_index["index"].get(str(symbol or "").upper(), [])
 
     def lookup(symbol, day):
         if day not in files:
@@ -677,7 +702,7 @@ def _hermes_catalyst_lookup(state_root: Path):
                 files[day] = None
         if files[day] is None:
             return {"symbol": symbol, "day": day, "status": "STORE_MISSING", "provider_calls": 0}
-        found = select_scalp_catalyst(symbol, files[day])
+        found = select_scalp_catalyst(symbol, files[day], _names(symbol))
         return {"symbol": symbol, "day": day, "provider_calls": 0, **(found or {"status": "NOT_RESEARCHED"})}
 
     return lookup

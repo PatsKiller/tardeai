@@ -1,0 +1,9 @@
+[Unit]
+Description=TradeAI /tmp hygiene pressure trigger — every 5 min (acts only at >= 85% /tmp inode use)
+
+[Timer]
+OnCalendar=*-*-* *:00/5:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target

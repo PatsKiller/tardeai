@@ -1328,6 +1328,24 @@
             "policy": "PRO_THINK"
           }
         },
+        "grok_stop_review": {
+          "primary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "secondary": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "fallback": {
+            "provider": "grok",
+            "policy": "FAST"
+          },
+          "health_gate": true,
+          "on_health_unknown": "refuse",
+          "latency_budget_ms": 150000,
+          "cost_ceiling_usd": 0.05
+        },
         "watchlist_entry_planner": {
           "primary": {
             "provider": "grok",

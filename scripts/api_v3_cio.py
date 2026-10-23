@@ -2545,13 +2545,16 @@ def get_memory_summary_v1() -> dict[str, Any]:
     """Read-only durable memory health; memory remains non-authoritative context."""
     try:
         from scripts.lib.agent_durable_memory import get_durable_provider
+        from scripts.lib.jsonl_bounded import count_jsonl_lines
 
         provider = get_durable_provider(PROJECT_ROOT)
         health = provider.health()
         counts = provider.counts()
-        retrieval_count = sum(1 for line in provider.retrievals_path.read_text(
-            encoding="utf-8", errors="replace"
-        ).splitlines() if line.strip()) if provider.retrievals_path.exists() else 0
+        # Streamed, incrementally cached count: the retrievals log is ~574 MB / 1M lines and
+        # read_text().splitlines() here cost +1.2 GB per brain build (2026-10-23).
+        retrieval_count = (
+            count_jsonl_lines(provider.retrievals_path) if provider.retrievals_path.exists() else 0
+        )
         return {
             "schema": "CIOMemorySummary@v1",
             "status": health.get("status"),

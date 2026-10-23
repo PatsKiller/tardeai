@@ -1,0 +1,186 @@
+{
+ "provenance": {
+  "stop_history": "read-only (enforce_readonly session) SELECT id, account, order_id, order_type, status, stop_price, snapshot_at FROM stop_lifecycle WHERE upper(symbol)='NAVN' ORDER BY id, 2026-10-23 ~14:10 ET; id AS seq exactly as LIFECYCLE_QUERIES['stop_history'] returns it",
+  "YMAT": "data/hermes/momentum_catalysts/2026-10-23_catalysts.jsonl YMAT line (verbatim)",
+  "INVE": "data/hermes/momentum_catalysts/2026-10-23_catalysts.jsonl INVE line (verbatim)",
+  "AARD": "RECONSTRUCTED from the operator's report (AARD resolved to an Archrock headline): the 2026-10-23 day file's surviving AARD line is no_clear_catalyst, so the Archrock source row is shaped like the researcher's output, not copied",
+  "sec_company_tickers": "data/runtime/sec_company_tickers.json rows for AARD, AROC, INVE, YMAT (verbatim titles)"
+ },
+ "stop_history": [
+  {
+   "symbol": "NAVN",
+   "account": "schwab_rollover_ira",
+   "order_id": "1008390164604",
+   "order_type": "STOP",
+   "status": "filled",
+   "stop_price": 26.02,
+   "snapshot_at": "2026-10-23 14:05:13.835026-04:00",
+   "seq": 3735550
+  },
+  {
+   "symbol": "NAVN",
+   "account": "schwab_rollover_ira",
+   "order_id": "1008390164603",
+   "order_type": "STOP",
+   "status": "replaced",
+   "stop_price": 25.61,
+   "snapshot_at": "2026-10-23 14:05:13.835026-04:00",
+   "seq": 3735551
+  },
+  {
+   "symbol": "NAVN",
+   "account": "schwab_rollover_ira",
+   "order_id": "1008380699460",
+   "order_type": "STOP",
+   "status": "replaced",
+   "stop_price": 25.51,
+   "snapshot_at": "2026-10-23 14:05:13.835026-04:00",
+   "seq": 3735555
+  },
+  {
+   "symbol": "NAVN",
+   "account": "schwab_rollover_ira",
+   "order_id": "1008362273101",
+   "order_type": "STOP",
+   "status": "replaced",
+   "stop_price": 24.97,
+   "snapshot_at": "2026-10-23 14:05:13.835026-04:00",
+   "seq": 3735556
+  },
+  {
+   "symbol": "NAVN",
+   "account": "schwab_rollover_ira",
+   "order_id": "1008345101300",
+   "order_type": "STOP",
+   "status": "replaced",
+   "stop_price": 24.7,
+   "snapshot_at": "2026-10-23 14:05:13.835026-04:00",
+   "seq": 3735557
+  },
+  {
+   "symbol": "NAVN",
+   "account": "schwab_rollover_ira",
+   "order_id": "1008345101170",
+   "order_type": "STOP",
+   "status": "replaced",
+   "stop_price": 24.31,
+   "snapshot_at": "2026-10-23 14:05:13.835026-04:00",
+   "seq": 3735558
+  },
+  {
+   "symbol": "NAVN",
+   "account": "schwab_rollover_ira",
+   "order_id": "1008345100877",
+   "order_type": "STOP",
+   "status": "replaced",
+   "stop_price": 24.59,
+   "snapshot_at": "2026-10-23 14:05:13.835026-04:00",
+   "seq": 3735559
+  }
+ ],
+ "expected_stop_path_in_time": [
+  24.59,
+  24.31,
+  24.7,
+  24.97,
+  25.51,
+  25.61,
+  26.02
+ ],
+ "catalysts": {
+  "YMAT": {
+   "symbol": "YMAT",
+   "research_timestamp": "2026-10-23T13:25:12.383918",
+   "catalyst_type": "news_momentum",
+   "catalyst_summary": "ALL NEWS",
+   "catalyst_strength": "low",
+   "confidence": 0.4,
+   "source_count": 1,
+   "source_domains": [
+    "www.nfl.com"
+   ],
+   "sources": [
+    {
+     "title": "ALL NEWS",
+     "url": "https://www.nfl.com/news/series/all-news",
+     "content": "NEWS. Steelers vs. Saints: Three must-know storylines for NFL's first-ever Paris game. Will Aaron Rodgers provide a performance to remember on the international stage? Can Tyler Shough take care of ..",
+     "engine": "bing news",
+     "published": null
+    }
+   ],
+   "advisory_only": true,
+   "not_trade_signal": true,
+   "no_execution": true
+  },
+  "INVE": {
+   "symbol": "INVE",
+   "research_timestamp": "2026-10-23T11:25:53.283919",
+   "catalyst_type": "news_momentum",
+   "catalyst_summary": "ALL NEWS",
+   "catalyst_strength": "low",
+   "confidence": 0.4,
+   "source_count": 1,
+   "source_domains": [
+    "www.nfl.com"
+   ],
+   "sources": [
+    {
+     "title": "ALL NEWS",
+     "url": "https://www.nfl.com/news/series/all-news",
+     "content": "NEWS. Marshall Faulk, Hall of Fame RB for Rams and Colts, says he's been diagnosed with Parkinson's. Marshall Faulk revealed his diagnosis on the podcast \u201cThe Caring Neurologist\u201d on Wednesday, telling",
+     "engine": "bing news",
+     "published": null
+    }
+   ],
+   "advisory_only": true,
+   "not_trade_signal": true,
+   "no_execution": true
+  },
+  "AARD": {
+   "symbol": "AARD",
+   "research_timestamp": "2026-10-23T09:25:00.000000",
+   "catalyst_type": "earnings",
+   "catalyst_summary": "Archrock Reports Third Quarter 2026 Results and Raises Full-Year Guidance",
+   "catalyst_strength": "high",
+   "confidence": 0.6,
+   "source_count": 3,
+   "source_domains": [
+    "www.globenewswire.com"
+   ],
+   "sources": [
+    {
+     "title": "Archrock Reports Third Quarter 2026 Results and Raises Full-Year Guidance",
+     "url": "https://www.globenewswire.com/news-release/2026/10/22/archrock-reports-third-quarter-2026-results.html",
+     "content": "HOUSTON -- Archrock, Inc. (NYSE: AROC) today reported financial results for the third quarter ...",
+     "engine": "bing news",
+     "published": null
+    }
+   ],
+   "advisory_only": true,
+   "not_trade_signal": true,
+   "no_execution": true
+  }
+ },
+ "sec_company_tickers": {
+  "0": {
+   "cik_str": 1774857,
+   "ticker": "AARD",
+   "title": "Aardvark Therapeutics, Inc."
+  },
+  "1": {
+   "cik_str": 1389050,
+   "ticker": "AROC",
+   "title": "Archrock, Inc."
+  },
+  "2": {
+   "cik_str": 1036044,
+   "ticker": "INVE",
+   "title": "INVE Technologies, Inc."
+  },
+  "3": {
+   "cik_str": 1875016,
+   "ticker": "YMAT",
+   "title": "J-Star Holding Co., Ltd."
+  }
+ }
+}

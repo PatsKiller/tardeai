@@ -202,6 +202,62 @@ PROJECTIONS: list[dict[str, Any]] = [
         "consumers": ["Re-Entry", "Watch"],
     },
     {
+        "id": "watch_prospects",
+        "module": "lib.data_broker.watch_prospects",
+        "entrypoints": ["list_watch_prospects", "build_watch_prospects", "from_cio_prospect"],
+        "http": ["GET /api/v3/data-broker/watch-prospects"],
+        "domain": "watch",
+        "description": (
+            "Watch prospect lanes (Actionable now / Setup forming / Re-entry near / Manage / Expired): one row per "
+            "security with conviction + components, stance, conflicts shown never resolved, next trigger (reference "
+            "level) and one next step. Reads the cio_prospect projection when it is live; until then an interim "
+            "adapter over cio_opportunity_projection, watch_decision.v1, the Trade AI decision projection, the "
+            "Watch held reader and the re-entry desk, labelled interim."
+        ),
+        "contract_version": "WatchProspects@v1",
+        "read_only": True,
+        "provider_calls": 0,
+        "consumers": ["Watch (/v3/watch)"],
+    },
+    {
+        "id": "watch_curation",
+        "module": "lib.data_broker.watch_curation",
+        "entrypoints": ["list_watch_curation", "build_curation", "suggest", "rotate", "ownership_conflicts"],
+        "http": ["GET /api/v3/data-broker/watch-curation"],
+        "domain": "watch",
+        "description": (
+            "My Watchlist (every operator name — stars, personal watchlist, operator directives, operator adds — "
+            "starred first, never capped, expiry only suggests) and System Suggests (top N, default 20, max 30, of "
+            "the curator's Full universe ranking minus held / yours / dismissed, rotating with hysteresis and a "
+            "reason for every entry and exit). Rows come from the same watch_prospects.gather() composition as the "
+            "Prospects lanes. Ownership conflicts between the curator and the Watch held reader are listed, never "
+            "resolved."
+        ),
+        "contract_version": "WatchCuration@v1",
+        "read_only": True,
+        "provider_calls": 0,
+        "consumers": ["Watch (/v3/watch?tab=my-watchlist, ?tab=suggests, ?tab=opportunities)"],
+    },
+    {
+        "id": "watch_universe",
+        "module": "lib.data_broker.watch_universe",
+        "entrypoints": ["list_watch_universe", "build_universe", "overlay"],
+        "http": ["GET /api/v3/data-broker/watch-universe"],
+        "domain": "watch",
+        "description": (
+            "Watch › Full universe: the CIO curator's ranked list (cio_opportunity_projection.json) with position "
+            "facts per row — held / formerly held / never held from the Watch held reader, the last round trip "
+            "(entry, exit, P/L, R, exit cause) and the re-entry advice from the CIO prospect lifecycle "
+            "(watch_position_facts). A sold name the curator still treats as owned shows Type Re-entry / formerly "
+            "held with the curator's own values kept beside it. Curator filters plus position filters and sorts, "
+            "all URL parameters; count chips per option."
+        ),
+        "contract_version": "WatchUniverse@v1",
+        "read_only": True,
+        "provider_calls": 0,
+        "consumers": ["Watch (/v3/watch?tab=opportunities)"],
+    },
+    {
         "id": "watch_intelligence",
         "module": "lib.data_broker.watch_intelligence",
         "entrypoints": [
@@ -489,6 +545,26 @@ PROJECTIONS: list[dict[str, Any]] = [
         "consumers": ["Opportunity modal portfolio context"],
     },
     {
+        "id": "trade_journey",
+        "module": "lib.data_broker.trade_journey",
+        "entrypoints": ["list_trade_journeys", "detail_trade_journey", "build_trade_journeys", "from_cio_prospect"],
+        "http": ["GET /api/v3/data-broker/trade-journeys", "GET /api/v3/data-broker/trade-journeys/{trade_id}"],
+        "domain": "trade_journal",
+        "description": (
+            "TradeInView per-trade journey (operator 2026-10-22): open + recently closed trades with origin (internal "
+            "surface, rank and conviction at entry, CIO entry call — or the operator's own pick), stop path, conviction/"
+            "stance changes, exit cause, post-exit review (facts first, model prose labelled advisory) and re-entry "
+            "conditions from the re-entry desk record Watch reads. Reads the cio_prospect projection when its store is "
+            "live; until then an interim adapter over schwab_round_trips, holdings_accounts, trade_transactions, "
+            "recommendation links, cio_entry_states, stop_last_known, the CIO opportunity history and ohlc_bars, "
+            "labelled interim."
+        ),
+        "contract_version": "TradeJourneys@v1",
+        "read_only": True,
+        "provider_calls": 0,
+        "consumers": ["TradeInView (/v3/journal)"],
+    },
+    {
         "id": "opportunity",
         "module": "lib.data_broker.opportunity",
         "entrypoints": ["universe", "gather", "assess", "rank"],
@@ -528,6 +604,39 @@ PROJECTIONS: list[dict[str, Any]] = [
         "envelope": "BrokerReadEnvelope@v1",
         "consumers": ["scripts/catalyst_enrichment.py (alpha_vantage slot)",
                       "scripts/external_market_data_ingest.py --news-sentiment"],
+    },    {
+        "id": "home_do_now",
+        "module": "lib.data_broker.home_do_now",
+        "entrypoints": ["build", "probe_pending_proposals"],
+        "http": ["/api/v2/home/do-now"],
+        "domain": "home_do_now",
+        "authority_domain": None,
+        "contract_version": "HomeDoNow@v1",
+        "description": "Home 'Do now' queue (operator-approved Home redesign 2026-10-22): one deduplicated, "
+                       "money-at-risk-first queue (protect / decide / fix) composed from needs-action, the operator "
+                       "inbox, the risk snapshot, the held-exit-coverage receipt, pending paper proposals and open "
+                       "redeploys; per-source as_of / age / stale; an unreadable source is an item. Owns no store; "
+                       "positions via risk_snapshot (holdings.json) until a positions_current reader batch covers Home",
+        "read_only": True,
+        "provider_calls": 0,
+        "consumers": ["Command Center v3 Home (Do now queue, three numbers)"],
+    },
+    {
+        "id": "cio_prospect",
+        "module": "lib.data_broker.cio_prospect",
+        "entrypoints": ["get_prospects", "get_prospect", "get_position_view"],
+        "http": [],
+        "domain": "cio_prospect",
+        "authority_domain": "cio_prospect (PROPOSED 2026-10-22, AGENTS.md §26; operator grant pending)",
+        "description": "The CIO prospect — one record per security_guid (stage, conviction + components, stance, "
+                       "next trigger, what's missing, next action, conflicts, evidence_at/expires_at). Reads the "
+                       "cio_prospect store only when it is live (row granted + flag + table); otherwise the shadow "
+                       "build, labelled SHADOW; say_so on gap; per-row stale after expires_at. get_position_view: "
+                       "origin, lifecycle, post-exit review and re-entry advice for TradeInView / Open Trades / Watch",
+        "read_only": True,
+        "provider_calls": 0,
+        "envelope": "BrokerReadEnvelope@v1",
+        "consumers": [],
     },
 ]
 

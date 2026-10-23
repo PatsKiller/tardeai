@@ -98,6 +98,21 @@ def test_engine_liquidity_deferral_follows_the_quote_session(monkeypatch):
     assert summary["session"] == "AFTER_HOURS" and summary["run_started_session"] == "PRE_MARKET"
 
 
+def test_quote_without_a_time_is_never_deferred_by_the_wall_clock(monkeypatch):
+    """Main red 2026-10-22 16:24 ET: a timestamp-less liquidity miss was deferred because the
+    fallback read the wall clock (AFTER_HOURS); the named NO_LIQUID_CONTRACT drop vanished."""
+    import options_engine as oe
+    monkeypatch.setattr(oe, "_DESK_CFG", {})
+    monkeypatch.setattr(oe, "_market_session_now", lambda: "AFTER_HOURS")
+    monkeypatch.delitem(oe._SESSION, "now", raising=False)
+    oe.LIQUIDITY_DEFERRED.clear()
+    oe.INCOME_SCREEN_DROPS.clear()
+    thin = {"strike": 90.0, "mid": 2.0, "bid": 1.0, "ask": 3.0, "oi": 0, "dte": 30}
+    assert oe._income_screen("cash_secured_put", "XYZ", thin, "schwab_chain", 100.0) == "NO_LIQUID_CONTRACT"
+    assert oe.LIQUIDITY_DEFERRED == []
+    oe.INCOME_SCREEN_DROPS.clear()
+
+
 def test_served_payload_carries_the_current_session_and_restamps_cached_cards():
     card = _spcx(economics={"market_session": "PRE_MARKET"},
                  price_basis="ask estimate; not a fill; session PRE_MARKET; fees and slippage excluded from premium")

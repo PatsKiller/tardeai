@@ -1,0 +1,174 @@
+{
+ "schema": "N8nHealthContract@v1",
+ "id": "main-ci-watch",
+ "kind": "lane",
+ "workflow_id": "dispatcher",
+ "status": "DRAFT",
+ "target_reason": "stage:shadow",
+ "stage": "shadow",
+ "purpose": {
+  "text": "Every 10 minutes, read main HEAD from GitHub and the push/main workflow runs for exactly that SHA (GET-only gh api), and write one receipt: per required workflow (agent-governance, cio-production-hardening-ci, release-readiness; the promote gate's set) SUCCESS | FAILURE | PENDING | MISSING and one overall state. The Releases & schedules page shows it with its age; it never acts.",
+  "business_function": "engineering-hygiene",
+  "source": "scripts/main_ci_watch.py; operator 2026-10-22 (Releases page: main CI UNAVAILABLE)"
+ },
+ "owner": "platform",
+ "connects_to": [
+  {
+   "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+   "kind": "service",
+   "direction": "calls",
+   "source": "AGENTS.md §23.3"
+  },
+  {
+   "name": "$PY scripts/main_ci_watch.py",
+   "kind": "runner",
+   "direction": "calls",
+   "source": "allowlist command"
+  },
+  {
+   "name": "/tmp/tradeai_main_ci_watch.lock",
+   "kind": "lock",
+   "direction": "read_write",
+   "source": "allowlist lock (flock)"
+  },
+  {
+   "name": "GitHub API through the gh CLI (GET repos/<slug>/commits/main, GET actions/runs?head_sha=…&event=push&branch=main)",
+   "kind": "external_api",
+   "direction": "read",
+   "source": "pr_hygiene_audit._assert_read_only_gh"
+  },
+  {
+   "name": "data/runtime/main-ci-watch_last.json",
+   "kind": "receipt",
+   "direction": "write",
+   "source": "LaneRunReceipt@v2"
+  },
+  {
+   "name": "GET /api/v2/ops/releases-schedules (scripts/lib/releases_schedules_view.py next_release.ci, release_errors)",
+   "kind": "consumer",
+   "direction": "read",
+   "source": "reads the receipt"
+  }
+ ],
+ "healthy": [
+  {
+   "check": "dry_run_writes_nothing",
+   "text": "at shadow every fire runs --dry-run: RUN_DONE mode dry_run, no receipt"
+  },
+  {
+   "check": "last_live_run_done",
+   "text": "after promotion: every fire ends RUN_DONE in mode live"
+  },
+  {
+   "check": "fresh",
+   "text": "receipt ok_at within 20 min (2x cadence)"
+  },
+  {
+   "check": "duration_within_baseline",
+   "text": "duration <= 96 s (80% of timeout_s 120)"
+  },
+  {
+   "check": "output_produced",
+   "text": "produced_count = 3 (one row per required workflow)"
+  }
+ ],
+ "degraded": [
+  {
+   "check": "late",
+   "text": "ok_at older than 20 min but younger than 30 min"
+  },
+  {
+   "check": "slow",
+   "text": "duration above 96 s"
+  }
+ ],
+ "failed": [
+  {
+   "check": "run_failed",
+   "text": "RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED"
+  },
+  {
+   "check": "github_unreadable",
+   "text": "exit 1, receipt ok false (dependency_unavailable), ok_at carried forward; the page shows 'last run failed at …'"
+  },
+  {
+   "check": "stale",
+   "text": "ok_at older than 30 min (3x cadence)"
+  },
+  {
+   "check": "empty_output",
+   "text": "an exit-0 live run produced fewer than 3 workflow rows"
+  }
+ ],
+ "baseline": {
+  "freshness_degraded_after_h": 0.34,
+  "freshness_failed_after_h": 0.5,
+  "freshness_rule": "degraded beyond 2x cadence, failed beyond 3x",
+  "timeout_s": 120,
+  "class": "monitor",
+  "computed_on": "2026-10-22",
+  "basis": "CLASS_DEFAULT_PROVISIONAL",
+  "source": "one read-only --dry-run 2026-10-22 22:05 ET took about 2 s",
+  "runs_considered": 0,
+  "duration_degraded_above_s": 96.0
+ },
+ "alerting": {
+  "lane_severity": "Low",
+  "severity_basis": "a missed fire delays a page cell, never a trade",
+  "failed": {
+   "siem_severity": "WARN",
+   "notifier_priority": "P3"
+  },
+  "degraded": {
+   "siem_severity": "INFO",
+   "notifier_priority": "P3"
+  },
+  "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; no operator intent. Never PAGE.",
+  "enforced": "NOT_MEASURED"
+ },
+ "remediation": {
+  "catalogue_entry": false,
+  "diagnosis_excluded": false,
+  "note": "not in the remediation catalogue; a person re-runs or fixes gh auth. Runbook: docs/ops/RELEASES_SCHEDULES_PAGE.md."
+ },
+ "evidence": {
+  "receipt": "data/runtime/main-ci-watch_last.json",
+  "verify": [
+   "python3 scripts/main_ci_watch.py --dry-run",
+   "jq '.summary.state, .summary.head_sha, .summary.checked_at' data/runtime/main-ci-watch_last.json"
+  ],
+  "never": "an n8n execution status; prove work with the ledger and the receipt"
+ },
+ "review_by": "<owner review date>",
+ "review": {
+  "prepared_by": "agent draft (fix/releases-page-queue-ci-20261022)",
+  "status": "DRAFT",
+  "reviewed_by": null,
+  "reviewed_on": null
+ },
+ "state_note": "Agent-written 2026-10-22, NOT registered: an agent never marks a contract REVIEWED (AGENTS.md §23.19). Owner reviews, then one PR adds this contract (REVIEWED), the registry row and the allowlist entry at shadow.",
+ "expected_output": {
+  "schema": "N8nExpectedOutput@v1",
+  "unit": "required workflows evaluated",
+  "rule": "min_produced",
+  "min_produced": 3,
+  "window_h": null,
+  "produced_field": "produced_count",
+  "fatal_skip_reasons": [
+   "dependency_unavailable",
+   "config_missing"
+  ],
+  "empty_allowed_reasons": [],
+  "evidence": [
+   {
+    "kind": "receipt_field",
+    "ref": "data/runtime/main-ci-watch_last.json produced_count"
+   }
+  ],
+  "on_violation": {
+   "run_state": "RUN_FAILED",
+   "reason": "empty_output",
+   "notifier_priority": "P3"
+  }
+ }
+}

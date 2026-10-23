@@ -31,6 +31,22 @@ ACTIVE; 11.0.0 (§23.24) is PROPOSED.
 | Workflow development standards | `docs/implementation/n8n-maturity/N8N_ONBOARDING_STANDARD.md` §0 | Active |
 | Production readiness checklist | `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` "Production readiness checklist" | Active |
 
+## Ops → Controls (2026-10-22) — BUILT INERT, awaits AGENTS.md 19.0.0
+
+| Document | Purpose | Status |
+|----------|---------|--------|
+| `docs/ops/OPS_CONTROLS.md` | The operator Controls surface and its one governed host applier: components, threat model, change kinds (and the NOT_SUPPORTED ones with reasons), data-dictionary coordination with the 19.0.0 package, the operator activation steps (migration, approval key, applier unit, TOTP recovery, passkey enrollment) and rollback; §8 how to read the Jobs & schedules tab (plain status, crontab-vs-registry mismatches, filters, cron in words); §9 how to read the Data approvals tab; §10 how to read the n8n lanes dashboard (last run, health, next run, promotion readiness against the documented ladder) | Draft (branch feat/ops-controls-20261022) |
+| `docs/ops/OPS_CONTROLS_API.md` | Response contract for `/api/v2/ops/controls/*` (state read model, request lifecycle, WebAuthn step-up, undo) | Draft |
+| `docs/ops/N8N_PROMOTION_READINESS_2026-10-22.md` | One-time read-only report: every shadow/canary n8n lane with ledger evidence and its promotion verdict (§23.21 / onboarding standard), and a proposed 2026-10-23 promotion batch as an operator approval list (A–F). Not applied | Proposal |
+
+## Agent claim board (2026-10-22) — advisory until AGENTS.md 19.1.0
+
+| Document | Purpose | Status |
+|----------|---------|--------|
+| `docs/ops/AGENT_CLAIM_BOARD.md` | Multi-vendor claim board (Claude, Codex, Cursor as equal peers): one JSON per claim, overlap/glob rules, 2 h stale takeover, compaction to `claims_history.jsonl`, draft-PR fallback for cloud agents, `GET /api/v2/coordination/claims`, Coordination → Who's working, operator install (timer + pre-commit line); 2026-10-23: lifecycle stages claimed→building→pr_open→ci_green→merged→released with times (GitHub GET + release receipts), files freed at merge, kanban board, policy-gated pre-commit (warn below AGENTS.md 20.0.0 ACTIVE, block from it, logged override) | Active (lifecycle: branch feat/claim-board-lifecycle-20261023) |
+| `docs/ops/AGENT_START_HERE.md` | Vendor-neutral start for any agent session (Claude, Codex, Cursor): the 5 commands (status, next/take, worklog, stage, task done) + Cursor/Codex adapter notes and the optional SessionStart hook | Active (branch feat/claim-board-lifecycle-20261023) |
+| `docs/designs/README.md` | Design registry: one file per design `docs/designs/DSN-<date>-<slug>.md` (YAML front matter; phases P<n>, tasks T<m>); seeded with release train, momentum Gates 1–4, Ask the CIO, CIO prospect store, data domains; read by the Work board | Active (branch feat/work-board-designs-20261023) |
+
 ## Live changes (2026-10-20)
 
 | Document | Purpose | Status |
@@ -138,6 +154,7 @@ Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `sc
 
 ## TIER 2 — Active Operational Docs
 
+- **ops/RELEASES_SCHEDULES_PAGE.md** — System → Releases & schedules (2026-10-22, DRAFT until served): `GET /api/v2/ops/releases-schedules` read model — serving release, main HEAD, train windows, queue, shipped history, release errors, n8n ledger today and the next-3-hours cron + n8n timeline; every section with as_of / age / source, UNAVAILABLE never 0.
 - **OPTIONS_LIFECYCLE_DESK.md** — Options Lifecycle Desk architecture & acceptance (2026-07-19, v1.1 same day): strategy-aware open-position management, journal bridge into trade_instances, ticker attribution, free-lane oversight. Supersedes the per-leg monitor sections of options-module.md for management decisions.
 - **architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md** — Watchlist decision packet **operator card** + RTH **4h** plan refresh / `should_be_stale` (2026-07-21): compact READY/WAIT/REFRESH/BLOCKED/NO TRADE/MANAGE, timestamps, material technical hash, shadow-batch RTH freshness. Advisory only.
 - **sessions/ALPACA_TAXONOMY_BUILD_2026-07-21.md** — Alpaca multi-account **R1–R5 build handoff** (registry, credentials, migration, live scaffolds, TV stub). Tip `4fa3ba33`.
@@ -148,7 +165,7 @@ Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `sc
 
 | Document | Purpose | Status |
 |----------|---------|--------|
-| `docs/options-module.md` | **Canonical** — current proposal flow (income screen → enterprise gates → options thesis + lifecycle → CIO review → Schwab Validate → operator approval → per-order 2FA), gates/thresholds with config keys, API routes | Active (canonical, 2026-09-26) |
+| `docs/options-module.md` | **Canonical** — current proposal flow (income screen → enterprise gates → options thesis + lifecycle → CIO review → Schwab Validate → operator approval → per-order 2FA), gates/thresholds with config keys, API routes; the CC v3 Options lifecycle desk (Gate 3: act-first table incl. open legs, freshness on every number, classic view at `view=classic`) | Active (canonical, 2026-09-26; desk 2026-10-22) |
 | `docs/OPTIONS_LIFECYCLE_DESK.md` | Open-position management (lifecycle desk) | Active |
 | `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Broker routing labels + manual-execution logging; defers to options-module.md for the proposal path | Active |
 | `docs/OPTIONS_STRATEGY_PIPELINE.md` | Alpaca paper strategy lane — **training only** | Active (training only) |

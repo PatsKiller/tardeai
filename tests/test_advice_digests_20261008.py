@@ -75,7 +75,9 @@ def test_material_change_buy_ready_is_digested_but_held_moves_still_page(holds_o
     monkeypatch.setattr(mc, "cio_verdict", lambda info: {"state": "BUY_READY"})
     assert mc.classify({"kind": "price_excursion", "magnitude": 1}, {})["route"] == mc.ROUTE_DIGEST
     monkeypatch.setattr(mc, "plan_levels", lambda plan, price: {"hit_stop": True, "hit_target": False})
-    assert mc.classify({"kind": "price_excursion"}, {"holding": {"shares": 1}})["route"] == mc.ROUTE_PAGE
+    # P1 2026-10-23: a held STOP HIT needs a real stop (operator-set or broker-reported), not a plan level.
+    real = {"holding": {"shares": 1}, "price": 10.0, "real_stop": {"price": 11.0, "source": "operator"}}
+    assert mc.classify({"kind": "price_excursion"}, real)["route"] == mc.ROUTE_PAGE
 
 
 def test_cio_bot_advisory_notes_wait_for_the_digest(holds_on):

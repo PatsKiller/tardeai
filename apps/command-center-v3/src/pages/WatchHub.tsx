@@ -5,6 +5,10 @@ import WatchpoolHub from './WatchpoolHub'
 import SectorsHub from './SectorsHub'
 import PullbackMacdHub from './PullbackMacdHub'
 import WatchIntelligenceUnified from './WatchIntelligenceUnified'
+import WatchProspects from './WatchProspects'
+import WatchMyList from './WatchMyList'
+import WatchSuggests from './WatchSuggests'
+import { HOW_FALLBACK, TAB_TIPS } from '../lib/watchListsModel'
 import OpportunitiesHub from './OpportunitiesHub'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, BB, TYPE, RAIL } from '../lib/watchTokens'
@@ -13,9 +17,19 @@ import { useApi } from '../hooks/useApi'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
-/** Secondary research lenses only — Watchlist/Intelligence/Screener are NOT tabs. */
-const TABS = ['Intelligence', 'Opportunities', 'Watchpool', 'Sectors', 'Pullback/MACD'] as const
+/** My Watchlist is the default Watch view (operator 2026-10-23: "where is my traditional watch list ... and where is
+ *  the automated watch list"): My Watchlist (your names) · System Suggests (the system's proposals) · Prospects (every
+ *  Watch name by stage) · Full universe (research; the curator's whole ranked list, slug "opportunities" kept for old
+ *  links). The old Intelligence view stays reachable as "Classic view" (?tab=intelligence). */
+const TABS = ['MyWatchlist', 'Suggests', 'Prospects', 'Opportunities', 'Watchpool', 'Sectors', 'Pullback/MACD', 'Intelligence'] as const
+const TAB_LABEL: Record<typeof TABS[number], string> = {
+  MyWatchlist: 'My Watchlist', Suggests: 'System Suggests', Prospects: 'Prospects', Opportunities: 'Full universe',
+  Watchpool: 'Watchpool', Sectors: 'Sectors', 'Pullback/MACD': 'Pullback/MACD', Intelligence: 'Classic view',
+}
 const TAB_SLUG: Record<typeof TABS[number], string> = {
+  MyWatchlist: 'my-watchlist',
+  Suggests: 'suggests',
+  Prospects: 'prospects',
   Intelligence: 'intelligence',
   Opportunities: 'opportunities',
   Watchpool: 'watchpool',
@@ -29,25 +43,26 @@ export default function WatchHub({ onDrill }: Props) {
   const [searchParams, setSearchParams] = useSearchParams()
   const raw = searchParams.get('tab') ?? ''
 
-  // Legacy tab redirects → primary Intelligence (no Watchlist/Screener nav)
+  // No tab → My Watchlist (operator 2026-10-23). Legacy watchlist / screener deep links carry a classic `view`, so they open
+  // the Classic (Intelligence) view they were written for.
   useEffect(() => {
-    if (raw === 'watchlist' || raw === 'screener-finds' || raw === '') {
+    if (raw === 'watchlist' || raw === 'screener-finds') {
       const next = new URLSearchParams(searchParams)
       next.set('tab', 'intelligence')
       // preserve view query if present
       if (!next.get('view') && raw === 'screener-finds') next.set('view', 'screener_finds')
-      if (!next.get('view') && (raw === 'watchlist' || raw === '')) next.set('view', 'top_ideas')
+      if (!next.get('view') && raw === 'watchlist') next.set('view', 'top_ideas')
       setSearchParams(next, { replace: true })
       return
     }
     if (!SLUG_TAB[raw]) {
       const next = new URLSearchParams(searchParams)
-      next.set('tab', 'intelligence')
+      next.set('tab', 'my-watchlist')
       setSearchParams(next, { replace: true })
     }
   }, [raw, searchParams, setSearchParams])
 
-  const tab = SLUG_TAB[raw] ?? 'Intelligence'
+  const tab = SLUG_TAB[raw] ?? 'MyWatchlist'
 
   const selectTab = (nextTab: typeof TABS[number]) => {
     const next = new URLSearchParams(searchParams)
@@ -60,13 +75,19 @@ export default function WatchHub({ onDrill }: Props) {
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={hubTitle()}>
-            Watch <span style={{ color: BB.text3 }}>›</span> {tab === 'Intelligence' ? 'Intelligence' : tab}
+            Watch <span style={{ color: BB.text3 }}>›</span> {TAB_LABEL[tab]}
           </div>
           <div style={hubSubtitle(terminalUi)}>
-            {tab === 'Intelligence'
-              ? 'Primary workspace · Screener filters integrated · legacy Watchlist hidden'
+            {tab === 'MyWatchlist'
+              ? 'Your names — starred first · never dropped by caps or expiry · last trade and re-entry for names you sold'
+              : tab === 'Suggests'
+              ? 'What the system proposes for your list · top of the Full universe ranking · add or dismiss'
+              : tab === 'Prospects'
+              ? 'Every Watch name by stage · yours always listed · conflicts shown, not hidden'
+              : tab === 'Intelligence'
+              ? 'Classic Intelligence view · kept for one release · Prospects is the primary Watch view'
               : tab === 'Opportunities'
-                ? 'Ranked by conviction · risk/reward · Street upside — curated in CIO memory'
+                ? 'Research: everything the CIO curator scored, ranked by conviction · System Suggests is its top'
                 : 'Secondary research lens'}
           </div>
         </div>
@@ -78,8 +99,10 @@ export default function WatchHub({ onDrill }: Props) {
               aria-pressed={tab === candidate}
               onClick={() => selectTab(candidate)}
               style={hubTab(tab === candidate, terminalUi)}
+              data-testid={`watch-tab-${TAB_SLUG[candidate]}`}
+              title={candidate === 'Intelligence' ? 'The previous Watch Intelligence view, kept for one release.' : TAB_TIPS[TAB_SLUG[candidate]]}
             >
-              {candidate}
+              {TAB_LABEL[candidate]}
             </button>
           ))}
           <Link
@@ -92,6 +115,17 @@ export default function WatchHub({ onDrill }: Props) {
         </div>
       </div>
       <WatchRegimeStrip />
+      <details data-testid="watch-how" style={{ margin: '2px 0 6px', fontSize: TYPE.sm, color: BB.text3 }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 700 }} title="What each Watch list is, and how it differs from Trading → Proposals.">How this page works — My Watchlist vs System Suggests vs Full universe vs Proposals</summary>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8, marginTop: 4 }}>
+          {HOW_FALLBACK.map(h => (
+            <div key={h.id} data-how={h.id}><b style={{ color: BB.text1 }}>{h.title}</b><div>{h.body}</div></div>
+          ))}
+        </div>
+      </details>
+      {tab === 'MyWatchlist' && <WatchMyList />}
+      {tab === 'Suggests' && <WatchSuggests />}
+      {tab === 'Prospects' && <WatchProspects />}
       {tab === 'Intelligence' && <WatchIntelligenceUnified />}
       {tab === 'Opportunities' && <OpportunitiesHub />}
       {tab === 'Watchpool' && <WatchpoolHub onDrill={onDrill} embedded />}

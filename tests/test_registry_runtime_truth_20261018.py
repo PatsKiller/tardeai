@@ -544,8 +544,11 @@ def test_unreadable_crontab_leaves_the_cron_state_rules_not_measured():
 
 
 def test_the_committed_schwab_position_sync_row_tells_the_truth():
-    """The registry row fixed 2026-10-22: PAUSED (its line is commented since 2026-10-15), with a review date."""
+    """ACTIVE (cron) from 2026-10-22 on the operator's word (resume of host cron line 501, which was PAUSED
+    2026-10-15 for incident SPCX). Operator 2026-10-22, verbatim: "keep step (a) as-is and resume it on cron now"."""
     row = REG["schwab-position-sync"]
-    assert row["state"] == "PAUSED"
-    assert row["state_since"] == "2026-10-15" and row.get("review_by")
-    assert "PAUSED 2026-10-15" in row["state_reason"]
+    assert row["state"] == "ACTIVE" and row["scheduler"]["kind"] == "cron"
+    assert row["scheduler"]["expression"] == "7,22,37,52 9-16 * * 1-5"
+    assert row["state_since"] == "2026-10-22" and "review_by" not in row
+    assert "keep step (a) as-is and resume it on cron now" in row["state_reason"]
+    assert "PAUSED 2026-10-15" in row["state_reason"]          # the pause history is kept

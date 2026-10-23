@@ -20,24 +20,38 @@ import {
 
 const panel: CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6 }
 
-function useJson(url: string, refreshMs = 120_000) {
+// `enabled` (site validation 2026-10-22): the bridge is mounted app-wide but renders only on /watch and
+// /journal. Unconditionally it fetched five prefs on EVERY page — one of them
+// (portfolio.shared-symbol-context.v1) is ~9.4 MB and re-polled every 2 min — while the server was
+// OOM-cycling at its 2 GiB cgroup limit. Nothing is fetched where nothing is shown.
+function useJson(url: string, refreshMs = 120_000, enabled = true) {
   const [data, setData] = useState<any>(null)
   const [error, setError] = useState('')
   const [tick, setTick] = useState(0)
   useEffect(() => {
+    if (!enabled) return
     let dead = false
     const controller = new AbortController()
     fetch(url, { cache: 'no-store', signal: controller.signal })
       .then(async response => {
         const payload = await response.json().catch(() => ({}))
         if (!response.ok || payload?.ok === false) throw new Error(payload?.error || String(response.status))
-        if (!dead) setData(payload?.data && typeof payload.data === 'object' ? payload.data : payload)
+        // A later success clears an earlier failure (2026-10-23: one 502 during an API restart stayed on the banner).
+        if (!dead) { setData(payload?.data && typeof payload.data === 'object' ? payload.data : payload); setError('') }
       })
       .catch(value => { if (!dead && value?.name !== 'AbortError') setError(String(value?.message || value)) })
     const timer = refreshMs > 0 ? window.setTimeout(() => setTick(value => value + 1), refreshMs) : 0
     return () => { dead = true; controller.abort(); if (timer) window.clearTimeout(timer) }
-  }, [url, tick, refreshMs])
+  }, [url, tick, refreshMs, enabled])
   return { data, error, refetch: () => setTick(value => value + 1) }
+}
+/** One readable line for the two prefs reads (2026-10-23: the banner printed a bare red "502 · 502"). */
+export function prefErrorText(exitErr: string, sharedErr: string): string {
+  const errs = [exitErr && `exit list (${exitErr})`, sharedErr && `shared context (${sharedErr})`].filter(Boolean)
+  const gateway = [exitErr, sharedErr].some(e => /^(502|503|504)$/.test(String(e)))
+  return gateway
+    ? `Re-entry context unavailable — the Command Center API did not answer (${errs.join(', ')}); showing the last saved copy, retrying.`
+    : `Re-entry context could not be read: ${errs.join(', ')}.`
 }
 function money(value: number | null): string { return value === null ? '—' : `$${value.toFixed(2)}` }
 function tone(state: string): string { return state === 'CLASSIFIED' ? BB.green : state === 'AUTO-TAGGED' ? BB.amber : BB.text3 }
@@ -47,11 +61,11 @@ export default function SharedIntelligenceBridge() {
   const showWatch = location.pathname === '/watch' || location.pathname.startsWith('/watch/')
   const showJournal = location.pathname === '/journal' || location.pathname.startsWith('/journal/')
   const show = showWatch || showJournal
-  const exitPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(EXIT_CACHE_KEY)}`, 120_000)
-  const mandatePref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(MANDATE_KEY)}`, 0)
-  const eventPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(EVENT_KEY)}`, 0)
-  const dispositionPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(DISPOSITION_KEY)}`, 0)
-  const sharedPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(SHARED_CONTEXT_KEY)}`, 120_000)
+  const exitPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(EXIT_CACHE_KEY)}`, 120_000, show)
+  const mandatePref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(MANDATE_KEY)}`, 0, show)
+  const eventPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(EVENT_KEY)}`, 0, show)
+  const dispositionPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(DISPOSITION_KEY)}`, 0, show)
+  const sharedPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(SHARED_CONTEXT_KEY)}`, 120_000, show)
   const [expanded, setExpanded] = useState(false)
   const [query, setQuery] = useState('')
 
@@ -99,6 +113,9 @@ export default function SharedIntelligenceBridge() {
     <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}><div><div style={{ fontSize: 11.5, fontWeight: 900, color: BB.blue }}>{title}</div><div style={{ fontSize: 10, color: BB.text3 }}>{subtitle}</div></div><div style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}><button onClick={() => setExpanded(value => !value)} title="Expand the shared symbol annotations" style={{ fontSize: 10, fontWeight: 800, padding: '4px 8px', borderRadius: 4, border: `1px solid ${BB.blue}`, background: expanded ? BB.blueDim : 'var(--bg2)', color: BB.blue, cursor: 'pointer' }}>{expanded ? 'HIDE CONTEXT' : 'SHOW CONTEXT'}</button><button onClick={() => window.location.assign('/v3/portfolio/re-entry')} title="Open the full Re-Entry classification and rotation workstation" style={{ fontSize: 10, fontWeight: 800, padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text2)', cursor: 'pointer' }}>OPEN RE-ENTRY</button></div></div>
     <div style={{ display: 'flex', gap: 12, marginTop: 6, fontSize: 10 }}><span title="Operator-saved mandate, event or queue data" style={{ color: BB.green }}>{classified} classified</span><span title="Latest event inferred or saved as stopped out" style={{ color: BB.red }}>{stopped} stopped out</span><span title="No closed-session or Watch fallback resistance evidence" style={{ color: resistanceMissing ? BB.amber : BB.green }}>{resistanceMissing} resistance missing</span><span style={{ color: BB.text3 }}>shared cache {prefValue(sharedPref.data)?.generated_at ? String(prefValue(sharedPref.data).generated_at).slice(0, 16).replace('T', ' ') : 'not refreshed'}</span></div>
     {expanded && <><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Filter shared symbols or annotations…" style={{ width: '100%', boxSizing: 'border-box', marginTop: 7, fontSize: 10, padding: '5px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }} /><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 6, marginTop: 7 }}>{symbols.slice(0, 24).map(row => { const color = tone(row.state); const resistance = row.context?.resistance; return <div key={row.symbol} title={row.context?.journal_annotation ?? row.event.reason} style={{ ...panel, padding: 7, background: 'var(--bg2)', borderColor: color }}><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}><b>{row.symbol}</b><span style={{ color, border: `1px solid ${color}88`, borderRadius: 3, padding: '1px 4px', fontSize: 10, fontWeight: 900 }}>{classificationLabel(row.state)}</span><span style={{ marginLeft: 'auto', fontSize: 10, color: row.event.eventType === 'stopped_out' ? BB.red : BB.amber }}>{row.event.eventType.replace(/_/g, ' ').toUpperCase()}</span></div><div style={{ fontSize: 10, color: BB.text3, marginTop: 3 }}>{row.latest.trade_date ?? 'date unavailable'} · {row.latest.account ?? 'account unavailable'} · {row.shares ? `${row.shares.toLocaleString()} sh` : 'shares unavailable'} · avg {money(row.avgExit)}</div><div style={{ fontSize: 10, marginTop: 3 }}>{row.event.reason}</div><div style={{ fontSize: 10, color: resistance?.state === 'UNAVAILABLE' ? BB.amber : BB.text3, marginTop: 3 }}>resistance {resistance?.state ?? 'UNAVAILABLE'} {resistance?.resistance == null ? '' : `at ${money(Number(resistance.resistance))}`} · Watch {row.context?.watch?.recommendation ?? 'unavailable'}</div></div> })}</div></>}
-    {(exitPref.error || sharedPref.error) && <div style={{ color: BB.red, fontSize: 10, marginTop: 5 }}>{[exitPref.error, sharedPref.error].filter(Boolean).join(' · ')}</div>}
+    {(exitPref.error || sharedPref.error) && <div data-testid="reentry-context-error" style={{ color: BB.amber, fontSize: 10, marginTop: 5 }}
+      title="The banner reads two saved Re-Entry caches through /api/v2/ui/prefs/get. HTTP 502/503/504 means the Command Center API did not answer (restarting or overloaded) — the proxy, not the data. It retries every 2 minutes.">
+      {prefErrorText(exitPref.error, sharedPref.error)}
+    </div>}
   </div>
 }
