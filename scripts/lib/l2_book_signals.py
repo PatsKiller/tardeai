@@ -7,9 +7,10 @@ Trader entry signals use, so an alert can show which are lit:
 - ``bid_ask_imbalance`` on when bid size / ask size over the top ``levels`` >= ``imbalance_min``.
   ``ask_heavy`` is the matching WARNING: on when that ratio <= ``ask_heavy_max``.
 
-Thresholds are v1 PRIORS in ``config/scalp_signal_engine.yaml`` section ``l2_book_signals``; changes are
-operator-ratified only (signal_calibration proposes, the operator ratifies). Defaults below equal the shipped
-priors and are pinned by tests.
+Thresholds are v1 PRIORS in ``config/scalp_signal_engine.yaml`` section ``microstructure_signals`` (the same
+keys ``active_trader/microstructure_signals.SignalConfig`` reads: spread_bps_max, imbalance_min, ask_heavy_max,
+imbalance_levels); changes are operator-ratified only. Defaults below equal the shipped priors; parity with
+SignalConfig is pinned by tests.
 
 Inputs are read-only: a recorder snapshot (``{"b": [[px, sz], ...], "a": [...], "t": epoch}``, the
 ``active_trader_microstructure`` data-broker domain), or the ``l2`` block an Active Trader journal row already
@@ -22,12 +23,14 @@ advisory alert, never a size, order or stop).
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
 SCHEMA = "L2BookSignals@v1"
-CONFIG_SECTION = "l2_book_signals"
+CONFIG_SECTION = "microstructure_signals"
+_KEYS = {"spread_bps_max": "spread_bps_max", "imbalance_min": "imbalance_min", "ask_heavy_max": "ask_heavy_max",
+         "imbalance_levels": "levels"}
 REPO = Path(__file__).resolve().parents[2]
 CONFIG_PATH = REPO / "config" / "scalp_signal_engine.yaml"
 
@@ -43,7 +46,7 @@ class L2BookSignalConfig:
 
 
 def load_config(path: Optional[Path] = None) -> L2BookSignalConfig:
-    """Read the ``l2_book_signals`` section; unknown keys are ignored, a bad value keeps the prior."""
+    """Read the ``microstructure_signals`` section; other keys are ignored, a bad value keeps the prior."""
     try:
         import yaml  # type: ignore
 
@@ -54,10 +57,10 @@ def load_config(path: Optional[Path] = None) -> L2BookSignalConfig:
     if not isinstance(sec, dict):
         return L2BookSignalConfig()
     base = asdict(L2BookSignalConfig())
-    for f in fields(L2BookSignalConfig):
-        if f.name in sec:
+    for key, name in _KEYS.items():
+        if key in sec:
             try:
-                base[f.name] = int(sec[f.name]) if f.name == "levels" else float(sec[f.name])
+                base[name] = int(sec[key]) if name == "levels" else float(sec[key])
             except (TypeError, ValueError):
                 pass
     return L2BookSignalConfig(**base)

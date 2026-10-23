@@ -483,8 +483,10 @@ def test_committed_config_ships_shadow():
 
     doc = yaml.safe_load((ROOT / "config/scalp_signal_engine.yaml").read_text())
     assert doc["unified_momentum_alert"]["mode"] == "shadow"
-    assert doc["l2_book_signals"] == {"spread_bps_max": 50.0, "imbalance_min": 1.5, "ask_heavy_max": 0.67,
-                                      "levels": 5}
+    ms = doc["microstructure_signals"]
+    assert {k: ms[k] for k in ("spread_bps_max", "imbalance_min", "ask_heavy_max", "imbalance_levels")} == {
+        "spread_bps_max": 50.0, "imbalance_min": 1.5, "ask_heavy_max": 0.67, "imbalance_levels": 5}
+    assert "l2_book_signals" not in doc, "one home for the priors: microstructure_signals"
 
 
 def test_ci_gate_registered():

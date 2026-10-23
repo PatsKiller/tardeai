@@ -277,6 +277,12 @@ microstructure_signals:
   climax_wick_frac: 0.5
   wall_x_median: 4.0
   schwab_mm_stack: 4
+  # Level 2 book signals (Gate 4, operator-approved design 2026-10-22): tight_spread, bid_ask_imbalance (entry)
+  # and ask_heavy (warning). v1 priors; read by SignalConfig and by scripts/lib/l2_book_signals.py (unified alert).
+  spread_bps_max: 50.0         # same bound as config/scalp_confirmations.yaml max_spread_bps
+  imbalance_min: 1.5
+  ask_heavy_max: 0.67
+  imbalance_levels: 5
 
 # Exit signals on YOUR open alert-tagged scalps. shadow = journal only; send = also Telegram (operator decides)
 active_trader_exit_watch:
@@ -371,18 +377,6 @@ active_trader_fast_loop:
   near_trigger_pct: 0.5        # APPROACHING within 0.5 % (or 3 ticks) below the break level
   near_trigger_ticks: 3
   tick_size: 0.01
-
-# ── Level 2 book signals (operator-approved design 2026-10-22, Gate 4). Two computed signals from the book:
-#    tight_spread (spread_bps <= spread_bps_max) and bid_ask_imbalance (bid/ask size over the top `levels`
-#    >= imbalance_min; <= ask_heavy_max is the ask_heavy WARNING). v1 PRIORS — changed only by operator
-#    ratification (signal_calibration PROPOSES). Computed by scripts/lib/l2_book_signals.py; shown in the
-#    unified alert. Wiring them into active_trader/microstructure_signals.SignalConfig and the served AT payload
-#    is held for an execution-engineering grant (scripts/active_trader/** is the broker execution file set). ──
-l2_book_signals:
-  spread_bps_max: 50.0         # same bound as config/scalp_confirmations.yaml max_spread_bps
-  imbalance_min: 1.5
-  ask_heavy_max: 0.67
-  levels: 5
 
 # ── Unified momentum alert (Gate 4, operator-approved design 2026-10-22). ONE alert per symbol/event/day
 #    replacing the separate Momentum Scalp (social_scalp_scanner) and Active Trader alerts: WATCH →
