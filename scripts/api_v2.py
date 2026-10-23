@@ -25142,7 +25142,11 @@ def _strategy_leaderboard():
                    count(*) AS n, count(*) FILTER (WHERE pnl>0) AS wins,
                    round(100.0*count(*) FILTER (WHERE pnl>0)/NULLIF(count(*),0),1) AS win_rate,
                    round(avg(pnl)::numeric,2) AS avg_pnl, round(sum(pnl)::numeric,2) AS total_pnl,
-                   round(avg(pnl_pct)::numeric,2) AS avg_pct, round(avg(r_multiple)::numeric,2) AS avg_r
+                   round(avg(pnl_pct)::numeric,2) AS avg_pct, round(avg(r_multiple)::numeric,2) AS avg_r,
+                   -- site validation 2026-10-22: a closed trade's stored r_multiple can disagree in sign with
+                   -- its pnl (reit_income: 1 trade, +$298.86, avg_r -1.93), so Live R is flagged, not trusted.
+                   count(*) FILTER (WHERE r_multiple IS NOT NULL AND pnl <> 0
+                                      AND sign(r_multiple) <> sign(pnl)) AS r_sign_conflicts
               FROM paper_trades
              WHERE status='closed' AND pnl IS NOT NULL
              GROUP BY strategy_id""")
@@ -25201,9 +25205,19 @@ def _strategy_leaderboard():
                 {
                     "strategy_id": sid,
                     "live": {
-                        k: _json_clean(lv[k])
-                        for k in ("n", "wins", "win_rate", "avg_pnl", "total_pnl", "avg_pct", "avg_r")
-                    },
+                        k: _json_clean(lv.get(k))
+                        for k in (
+                            "n",
+                            "wins",
+                            "win_rate",
+                            "avg_pnl",
+                            "total_pnl",
+                            "avg_pct",
+                            "avg_r",
+                            "r_sign_conflicts",
+                        )
+                    }
+                    | {"avg_r_suspect": bool(lv.get("r_sign_conflicts"))},
                     "backtest": (
                         {k: _json_clean(b.get(k)) for k in ("sample", "win_rate", "expectancy_r", "profit_factor")}
                         | {"data_suspect": bt_suspect}

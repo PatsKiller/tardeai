@@ -416,7 +416,9 @@ function StrategyLeaderboard({ data, onDrill, onTab }: any) {
               <td style={{ ...td, textAlign: 'left', fontWeight: 700, color: 'var(--text0)' }}>
                 <span style={{ color: r.rank <= 2 ? '#fbbf24' : 'var(--text3)', marginRight: 7 }}>{r.rank <= 2 ? '★' : r.rank}</span>{r.strategy_id}
               </td>
-              <td style={{ ...td, color: rc, fontWeight: 800 }}>{lv.avg_r ?? '—'}</td>
+              <td style={{ ...td, color: lv.avg_r_suspect ? BB.amber : rc, fontWeight: 800 }}
+                title={lv.avg_r_suspect ? `${lv.r_sign_conflicts} of ${lv.n} closed trades store an R multiple whose sign disagrees with their P&L — Live R (and this row's rank) is unreliable until r_multiple is rewritten at close. Win% and Total P&L are from pnl.` : undefined}>
+                {lv.avg_r ?? '—'}{lv.avg_r_suspect ? ' ⚠' : ''}</td>
               <td style={td}>{lv.win_rate ?? '—'}%</td>
               <td style={td}>{lv.wins ?? 0}/{lv.n ?? 0}</td>
               <td style={{ ...td, color: (lv.total_pnl ?? 0) >= 0 ? '#22c55e' : '#ef4444' }}>{lv.total_pnl != null ? fmt$(lv.total_pnl) : '—'}</td>
