@@ -51,16 +51,21 @@ def _pr_workflows() -> list[Path]:
 
 
 def _full_fleet() -> list[Path]:
-    return [p for p in _pr_workflows() if p.name not in (DRAFT_QUICK, ALWAYS_ON) and p.name not in PENDING_CLAIMED]
+    return [
+        p
+        for p in _pr_workflows()
+        if p.name not in (DRAFT_QUICK, ALWAYS_ON)
+        # a pending workflow is pinned like the rest as soon as it carries the guard, whichever PR merges first
+        and (p.name not in PENDING_CLAIMED or GUARD in p.read_text(encoding="utf-8"))
+    ]
 
 
-def test_pending_claimed_entries_are_real_and_still_pending():
-    """A pending entry must name a real pull_request workflow that still lacks the guard; once it is guarded,
-    the entry must be removed so the workflow is pinned like the rest."""
+def test_pending_claimed_entries_are_real():
+    """A pending entry must name a real pull_request workflow. Once that workflow carries the guard it is pinned by
+    every per-workflow test below (see _full_fleet), so merge order with its own PR does not matter; the entry is
+    then dead and may be dropped by any later PR."""
     for name in PENDING_CLAIMED:
-        path = WF_DIR / name
-        assert path in _pr_workflows(), name
-        assert GUARD not in path.read_text(encoding="utf-8"), f"{name} is guarded now: remove it from PENDING_CLAIMED"
+        assert (WF_DIR / name) in _pr_workflows(), name
 
 
 def test_always_on_governance_is_unchanged_and_runs_on_drafts():

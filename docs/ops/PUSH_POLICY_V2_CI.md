@@ -47,8 +47,8 @@ release-readiness 2.1 min, agent-governance 1.3 min, provider-cost 1.0 min (`gh 
 
 6. **One workflow pending.** `research-governance-ci.yml`: its PR scope guard fails any PR that changes it together
    with a file outside the research-governance allowlist, so its three hunks ship in a PR of their own. It is
-   path-filtered, so it seldom fires on a draft. The test lists it in `PENDING_CLAIMED`, and a companion test fails
-   once it gains the guard, so that PR also removes the entry.
+   path-filtered, so it seldom fires on a draft. The test lists it in `PENDING_CLAIMED`, and the per-workflow tests
+   pin it as soon as it carries the guard, so the two PRs can merge in either order.
    `agent-intelligence-foundation-ci.yml` and `financial-senses-ci.yml` were CRLF files and are now LF:
    `git diff --check` (active-trader-policy-ci `deterministic-policy`) reports every added CRLF line as trailing
    whitespace.
