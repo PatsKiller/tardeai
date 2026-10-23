@@ -806,7 +806,46 @@ def _dependency_next_runs(schedule: dict[str, Any]) -> dict[str, dict[str, Any]]
     return out
 
 
+# 2026-10-23: one /v3/advisory page load issued 5 concurrent GET /api/v3/advisory; each built
+# the whole desk (27-45 s, +314 MB peak RSS, 3.8 MB body), so a single visit held ~1.5 GB of
+# transient memory against a 1.5 GB MemoryHigh (docs/ops/SERVER_MEMORY_SPIKES_2026-10-23.md).
+# The composed desk is now shared per row_class for _DESK_VIEW_TTL_S and built single-flight:
+# concurrent requests wait for the one in-flight build instead of starting their own.
+# force=1 always rebuilds (still single-flight). run_now is also served fresh by /run-status.
+import os as _os
+import threading as _threading
+import time as _time
+
+_DESK_VIEW_TTL_S = float(_os.environ.get("TRADEAI_ADVISORY_DESK_TTL_S") or 30)
+_DESK_VIEW_LOCK = _threading.RLock()
+_DESK_VIEW_CACHE: dict[Any, tuple[float, tuple, dict[str, Any]]] = {}
+
+
+def _file_sig(path: Any) -> tuple:
+    try:
+        st = _os.stat(path)
+        return (str(path), st.st_size, st.st_mtime_ns)
+    except OSError:
+        return (str(path), None, None)
+
+
 def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> dict[str, Any]:
+    # A rewritten desk or opinion cache (desk run, run-now) invalidates the shared view at once.
+    sig = (_file_sig(CACHE_FILE), _file_sig(OPINIONS_CACHE))
+    key = row_class or ""
+    with _DESK_VIEW_LOCK:
+        hit = _DESK_VIEW_CACHE.get(key)
+        if not force and hit and hit[1] == sig and _time.monotonic() - hit[0] < _DESK_VIEW_TTL_S:
+            return dict(hit[2])  # fresh top level; nested rows are shared read-only
+        out = _get_advisory_desk_uncached(force=force, row_class=row_class)
+        if isinstance(out, dict) and out.get("ok") is not False:
+            # Signature after the build: the build itself may rewrite the desk cache file.
+            _DESK_VIEW_CACHE[key] = (_time.monotonic(), (_file_sig(CACHE_FILE), _file_sig(OPINIONS_CACHE)), out)
+            return dict(out)
+        return out
+
+
+def _get_advisory_desk_uncached(*, force: bool = False, row_class: str | None = None) -> dict[str, Any]:
     desk = _load_desk(force=force)
     opinions = desk.get("opinions") or _load_opinions_blob()
     # Operator-grade join: watch intelligence, re-entry, durable memory, FS.

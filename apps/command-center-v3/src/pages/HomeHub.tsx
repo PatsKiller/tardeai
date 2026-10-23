@@ -187,7 +187,7 @@ function HomeClassic({ onDrill }: Props) {
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={hubTitle()}>Home</div>
-          <div style={hubSubtitle(terminalUi)}>{overviewLoading ? <Skel w={180} h={12} /> : <>{fmt$(pv ?? 0, 0)} · {overview?.position_count ?? 0} positions · command router</>}</div>
+          <div style={hubSubtitle(terminalUi)}>{overviewLoading ? <Skel w={180} h={12} /> : <>{fmt$(pv ?? 0, 0)} · <span title={'overview.position_count: non-cash holdings over $100 (all accounts). Risk Hub counts risk-tracked positions and Portfolio counts every holding row per account, so the numbers differ by scope (observation.position_counts).'}>{overview?.position_count ?? 0} positions over $100</span> · command router</>}</div>
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <Link to="/" data-testid="new-home-link" style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', textDecoration: 'none' }}>New Home (Do now) →</Link>

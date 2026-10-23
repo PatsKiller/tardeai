@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "server_memory_spikes_20261023",
+  "files": [
+    "tests/test_server_memory_spikes_20261023.py"
+  ],
+  "anchor": "SERVER_MEMORY_SPIKES_20261023",
+  "comment": [
+    "ANCHOR: SERVER_MEMORY_SPIKES_20261023 — portfolio-server SIGKILLs at MemoryHigh after release 7: maturity/memory and CIO brain read the 574 MB retrievals log whole (+1.2 GB each); advisory parsed the 26.5 MB spine once per row; watchlist freshness read full bar history via a non-indexable predicate; identical heavy GETs ran side by side. Bounded tail/count, spine offset index, advisory single-flight, LIMIT 1 freshness, GET coalescing, watchdog verify window."
+  ]
+}

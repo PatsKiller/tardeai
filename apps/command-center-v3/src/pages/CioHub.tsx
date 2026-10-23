@@ -2115,7 +2115,12 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
     }
   }, [tab, focus.decision])
 
+  // /api/v3/cio/home answers {ok:false, error, detail} on an exception and useApi passes that object
+  // through as data; treating it as a home crashed Decisions on home.cio_now.attention (site
+  // validation 2026-10-23). A payload without cio_now is "unavailable", with the server's error.
   const home = data
+  const homeOk = !!(home && (home as any).cio_now)
+  const homeErr = error ?? (data && !homeOk ? ((data as any).error ? `${(data as any).error}${(data as any).detail ? ` — ${(data as any).detail}` : ''}` : 'payload has no cio_now') : null)
 
   return (
     <div className="cio-hub" style={{ padding: '16px 24px', maxWidth: 1240 }} data-testid="cio-hub">
@@ -2176,17 +2181,17 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
               <CioDecisionLineagePanel decisionId={focus.decision} />
             </div>
           )}
-          {loading && !home && (
+          {loading && !homeOk && (
             <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }} data-testid="cio-home-loading">
               Loading office home…
             </div>
           )}
-          {error && !home && (
+          {homeErr && !homeOk && (
             <div style={{ padding: '12px 0', color: 'var(--amber)', fontSize: 13 }} data-testid="cio-home-error">
-              Office home unavailable: {String(error)}
+              Office home unavailable: {String(homeErr)}
             </div>
           )}
-          {home && (
+          {homeOk && (
             <>
               <CioNowSection home={home} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />
               <div style={{ marginTop: 28 }}>
@@ -2227,7 +2232,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
       {tab === 'capital-policy' && (
         <div role="tabpanel" aria-label={TAB_LABEL['capital-policy']}>
           <OperatorPolicyPanel />
-          {home && (
+          {homeOk && (
             <>
               <div style={{ marginTop: 28 }}>
                 <CapitalPlanSection cp={home.capital_plan} />
@@ -2237,7 +2242,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
               </div>
             </>
           )}
-          {!home && loading && (
+          {!homeOk && loading && (
             <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }}>Loading capital plan…</div>
           )}
         </div>
@@ -2249,8 +2254,8 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
             active={evidenceSub}
             onSelect={(sub) => selectTab('evidence-comms', sub)}
           />
-          {evidenceSub === 'report' && home && <ReportSection report={home.report} />}
-          {evidenceSub === 'audit' && home && <EvidenceSection evidence={home.evidence} />}
+          {evidenceSub === 'report' && homeOk && <ReportSection report={home.report} />}
+          {evidenceSub === 'audit' && homeOk && <EvidenceSection evidence={home.evidence} />}
           {evidenceSub === 'notification-gate' && <NotificationGatePanel />}
           {evidenceSub === 'telegram-receipts' && <TelegramReceiptsPanel />}
           {evidenceSub === 'senses-evidence' && <SensesEvidencePanel />}
@@ -2262,7 +2267,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           {evidenceSub === 'capability-coverage' && <CioOperatorEvidencePanel section="coverage" />}
           {evidenceSub === 'decision-lineage' && <CioDecisionLineagePanel decisionId={decisionRaw || null} />}
           {evidenceSub === 'cio-outputs' && <CioOperatorArtifactsPanel />}
-          {!home && (evidenceSub === 'report' || evidenceSub === 'audit') && (
+          {!homeOk && (evidenceSub === 'report' || evidenceSub === 'audit') && (
             <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }}>Loading evidence…</div>
           )}
         </div>

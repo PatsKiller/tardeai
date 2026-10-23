@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "system_health_receipt_debounce_20261023",
+  "files": [
+    "tests/test_system_health_receipt_debounce_20261023.py"
+  ],
+  "anchor": "SYSTEM_HEALTH_RECEIPT_DEBOUNCE_20261023",
+  "comment": [
+    "ANCHOR: SYSTEM_HEALTH_RECEIPT_DEBOUNCE_20261023 — 2026-10-23 09:10 ET false page 'Finviz Screener OUTPUT_INVALID':",
+    "a failed latest receipt is debounced while a success is <= failure_debounce_min old and consecutive_failures < N;",
+    "lane receipts record consecutive_failures; finviz --screener runs write finviz-screener-runner-subset; the Finviz",
+    "An OK poll resolves the component's open ESCALATION rows so the SIEM P1 mirror (siem_critical_notify) closes.",
+    "component's schedule comes from the lane registry (literal pinned equal); one P2 recovered note per escalation.",
+    "Hermetic: tmp state roots, fake cursors, fake telegram transport, AST-isolated health loop."
+  ]
+}

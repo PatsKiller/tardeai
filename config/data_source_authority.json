@@ -1337,6 +1337,32 @@
             "approved_on": "2026-10-22",
             "reference": "Operator reply 2026-10-22 (verbatim): \"yes i approve 'approve all' (A–L)\" — item G: \"Home reads positions from the broker-synced store (reader batch #3; you already said yes, this confirms it)\".",
             "scope": "positions_store phase-3 reader batch #3: the Home do-now held filter via watch_domains.held_positions(surface='home'); same reader and freshness/fallback contract as batch #1"
+            }
+          },
+          {
+          "batch": 4,
+          "reader": "scripts/lib/data_broker/watch_domains.py::held_positions",
+          "files": [
+            "scripts/lib/data_broker/watch_domains.py"
+          ],
+          "tables": [
+            "positions_current"
+          ],
+          "surfaces": [
+            "opportunity"
+          ],
+          "facts": "held flag only: the set of symbols with qty > 0 decides the curator's owned / not owned (and so its type, stance and position_status); shares, basis and value stay the holdings file's",
+          "consumers": [
+            "scripts/lib/data_broker/opportunity.py",
+            "scripts/cio_opportunity_curator.py"
+          ],
+          "switch": "config/watch_decision_standards.yaml held.positions_store_reader + held.positions_store_reader_surfaces (opportunity)",
+          "freshness_guard": "positions_sync.freshness() (30 min in session, 72 h closed); stale, empty or unreadable -> holdings_accounts (holdings.json) with fallback_reason, stamped on every assessment as position_basis and in the curator receipt",
+          "approval": {
+            "approved_by": "operator",
+            "approved_on": "2026-10-23",
+            "reference": "Operator reply 2026-10-23 ~10:55 ET (verbatim): \"Yes, I approve. Paper right. Playwright every one of those. Pages on the watch list. I still don't see an area where I can select what I want to watch. Make sure everything is as you design.\" — \"Yes, I approve\" answers the ask in PR #2008 \"approve positions reader batch #4 (curator held flag)\" (relayed by the coordinator; session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko). \"Paper right\" is NOT read as a paper_proposals grant. Cause: NAVN showed Add-On / ADD on Watch the morning after it was sold because the curator's 09:00 run read the holdings file while positions_current had already dropped it.",
+            "scope": "positions_store phase-3 reader batch #4: the CIO opportunity curator's held flag (owned / not owned, and so type, stance and position_status) via watch_domains.held_positions(surface='opportunity'); held flag only — shares, basis and value stay the holdings file's; same reader and freshness/fallback contract as batch #1; position_basis stamped on every assessment and held_basis on the curator receipt"
           }
         }
       ],

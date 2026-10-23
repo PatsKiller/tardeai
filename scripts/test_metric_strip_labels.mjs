@@ -174,10 +174,13 @@ check('run health and reconciliation stay separately named on the tile', (() => 
 })())
 check('the underfill floor is stated beside the scanned count',
   code.includes('scannedVsFloor') && /expected_min_symbols/.test(code))
+// 2026-10-23: the run clocks moved into src/lib/scanRunAge.ts (finished ET + age, shared with
+// the Trading → Trade AI run line). The wording is asserted there; here, that the header uses it.
+const ageLib = fs.readFileSync(path.join(here, '..', 'apps', 'command-center-v3', 'src', 'lib', 'scanRunAge.ts'), 'utf8')
 check('the two run clocks are named scheduled vs finished',
-  code.includes('runSlot') && code.includes('slot`') && code.includes('finished '))
+  code.includes('runSlot') && (code.includes('scanRunAge(') || code.includes('payloadRunAge(')) && ageLib.includes('`slot ${slotStr}') && ageLib.includes('finished ${'))
 check('an unzoned run stamp is marked unzoned, never given an assumed zone',
-  code.includes('runFinishedZoned') && code.includes('unzoned'))
+  code.includes('runFinishedZoned') && ageLib.includes('unzoned · age unknown'))
 check('the source no longer claims the run zone is stated', !/the zone is stated/.test(raw))
 // I had put a literal "clocks ok" zero-state on the face. origin/main's later
 // operator decision makes the face divergence-only, and that is defensible: the

@@ -2,7 +2,7 @@
 //   node --experimental-strip-types src/lib/tradeAiOpportunities.test.ts
 import {
   applyFilters, buildTiles, chgText, filterChips, floatBand, floatText, l2View, latestAlertFor, NO_FILTERS,
-  normDecision, sortOpportunities, stars, toOpportunity,
+  normDecision, sortOpportunities, stars, toOpportunity, l2Brief, catalystVerdictOf, readinessOf,
 } from './tradeAiOpportunities.ts'
 import { TRADE_AI_FIXTURE } from './tradeAiOpportunities.fixture.ts'
 
@@ -25,6 +25,10 @@ check('Gate 2 fields are null until served', all.every(r => r.catalystGrade === 
 const tiles = buildTiles(all, NO_FILTERS)
 check('six tiles', tiles.length === 6)
 check('GO tile counts GO rows', tiles[0].value === all.filter(r => r.decision === 'GO').length)
+check('decision tiles name today\'s universe, not the latest run', ['go', 'wait', 'manual'].every(k => {
+  const t = tiles.find(x => x.key === k)
+  return !!t && t.hint.startsWith(`today's universe · ${all.length} rows`) && /LATEST RUN/.test(t.tip ?? '')
+}))
 check('grade tile disabled without Gate 2', tiles.find(t => t.key === 'grade')?.disabled === true && tiles.find(t => t.key === 'grade')?.value === null)
 check('float tile counts < 5M', tiles.find(t => t.key === 'float')?.value === all.filter(r => r.float != null && r.float < 5).length)
 const micro = applyFilters(all, { ...NO_FILTERS, floatMax: 5 })
@@ -53,6 +57,34 @@ check('summary counts lit entry signals', /entry signals lit/.test(l2.summary))
 const none = l2View(latestAlertFor(TRADE_AI_FIXTURE.alerts, 'SKYQ'))
 check('unwatched symbol says so', !none.watched && none.state === 'NOT WATCHED' && none.entry.every(c => c.on === null))
 check('stale book flagged', l2View({ l2: { age_s: 240 }, signals: {} }).stale === true)
+
+// ── 2026-10-23 alignment (SAIQ): shared catalyst verdict + readiness, honest L2 line ──────────────────────────
+const SAIQ = {
+  symbol: 'SAIQ', decision: 'MANUAL_REVIEW', catalyst: 'WISeSat.Space and SEALSQ Advance Satellite Cybersecurity',
+  catalyst_source: 'yahoo_finance', catalyst_verified: false, catalyst_confidence: 0.0,
+  setup_readiness: {
+    schema: 'SetupReadiness@v1', status: 'NOT_READY', ready: false, passed: 4, required: 5,
+    driven_by: [{ id: 'float', label: 'Float', status: 'PASSED', value_text: '2.21M', rule: '≤ 20M' },
+      { id: 'catalyst', label: 'Verified catalyst', status: 'FAILED', value_text: 'unverified headline', rule: 'verified, current session' }],
+    missing: ['Verified catalyst: unverified headline — scan marked it NOT verified (yahoo_finance, confidence 0); Hermes 08:25: no clear catalyst (no primary source)'],
+    blockers: [], summary: 'NOT READY — needs 5/5, has 4/5 · missing: …',
+    catalyst: { status: 'UNVERIFIED_HEADLINE', reason: 'scan marked it NOT verified (yahoo_finance, confidence 0); Hermes 08:25: no clear catalyst (no primary source)', text: 'WISeSat.Space and SEALSQ Advance Satellite Cybersecurity' },
+  },
+}
+const saiq = toOpportunity(SAIQ)
+check('SAIQ: served verdict is UNVERIFIED_HEADLINE, never the catalyst', saiq.catalystVerdict.status === 'UNVERIFIED_HEADLINE' && saiq.catalystVerdict.served && saiq.catalystVerdict.label === 'unverified headline')
+check('SAIQ: readiness parsed — 4/5, one missing line naming Hermes', saiq.readiness?.status === 'NOT_READY' && saiq.readiness.passed === 4 && /Hermes 08:25/.test(saiq.readiness.missing[0]))
+check('no served verdict + verified=false → unverified headline (fallback)', catalystVerdictOf({ catalyst: 'X', catalyst_verified: false }).status === 'UNVERIFIED_HEADLINE')
+check('fallback never invents VERIFIED', catalystVerdictOf({ catalyst: 'X', catalyst_verified: true }).status === 'UNVERIFIED_HEADLINE')
+check('no headline → UNKNOWN', catalystVerdictOf({}).status === 'UNKNOWN')
+check('readiness absent → null', readinessOf({}) === null && readinessOf({ setup_readiness: { schema: 'Other' } }) === null)
+const veto = { symbol: 'SAIQ', kind: 'PREMARKET_WATCH', verdict: 'VETO', at: '2026-10-23T08:55:01-04:00',
+  veto_reasons: ['BELOW_PM_VWAP', 'L2_ASK_HEAVY'], l2: { spread_bps: 14.9, depth_ratio: 0.191, age_s: 1, source: 'moomoo', levels: 10 }, signals: null }
+const b = l2Brief(veto)
+check('AT veto is named as AT, not as L2', b.text.startsWith('AT veto') && !/L2 veto/.test(b.text))
+check('lit count is over computed signals (2), not 5', b.text.includes('L2 1/2'))
+check('veto reasons in the tooltip', /below pm vwap, l2 ask heavy/.test(b.tip) && /08:55 ET/.test(b.tip))
+check('unwatched brief', l2Brief(null).text === 'AT · not watched')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

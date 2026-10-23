@@ -4,7 +4,7 @@ Status:      ACTIVE
 as_of:       2026-09-13T18:00:00-04:00
 Measured at: e8a173e7d / not measured
 
-_Last updated: 2026-09-13 (data-source health decay view; prior 2026-08-08)_
+_Last updated: 2026-10-23 (receipt-failure debounce, recovered note, SIEM close); prior 2026-09-13_
 
 > **Correction 2026-10-14 (measured at served `3e9dc5e14`):** the agent does **not** run from cron every 30 min. It runs
 > as the `tradeai-health-agent.service` daemon (adaptive cadence 1800/300/90 s, entry via drop-in
@@ -438,6 +438,45 @@ Like the Schwab case, systemd-unit findings are **detection-only** today — but
 **Status — DIAGNOSED, not yet implemented.** The two *failing services themselves* were fixed 2026-07-07
 (hermes `{schema}` `str.format` bug, commit b1717d65; operator gcloud re-auth for mcporter); the three
 **agent-coverage** fixes above are proposed follow-ups.
+
+## Receipt-failure debounce, recovered note, SIEM close (2026-10-23)
+
+**Incident (2026-10-22 and 10-23, 09:10 ET):** "🚨 SYSTEM HEALTH: Finviz Screener — OUTPUT_INVALID · Expected:
+0 8 * * 1-5 · Error: latest_receipt_failed", then "🚨 SIEM P1: finviz_screener_runner — PIPELINE_FAILURE". Both
+false. `finviz_screener_runner.py` runs ~120×/hour 06:00–09:30 ET as `--screener <id>` children of the
+`scalp-hot-list` (*/2) and `finviz-momentum-scalp-early-lane` (*/5) wrappers, and every child wrote the
+scheduled lane's receipt `data/runtime/finviz-screener-runner_last.json`. The hot-list wrapper gives its 4-screener
+sweep 85 s (`MOMENTUM_SCALP_OUTER_DEADLINE_S=100` minus 15 s headroom) and clamps each child to what is left, so a
+slow child (Finviz global throttle wait) is SIGTERMed by its parent at 13–61 s. One such failed receipt between
+successes paged. The SIEM page was the same event: `/api/v2/system/siem` classifies the agent's ESCALATION row
+(message contains `OUTPUT_INVALID`) as `PIPELINE_FAILURE` P1 and kept it open for 14 days.
+
+What changed (`scripts/system_health_agent.py`, `scripts/lib/system_health_freshness.py`):
+
+- **Debounce.** A receipt component may declare `failure_debounce_min` and `failure_alert_consecutive` (Finviz: 10
+  and 3). A failed latest attempt whose carried `ok_at` is no older than the window, with fewer than N
+  `consecutive_failures`, is `OK` with `reason: latest_receipt_failed_debounced` (counted in
+  `summary.debounced`; `latest_attempt_status: failed` stays visible). No success inside the window, or N
+  consecutive failures, is `FAILED` → `OUTPUT_INVALID` exactly as before. Unset knobs keep the strict verdict.
+- **`consecutive_failures`** is written by `lib/lane_last_receipt.write_lane_receipt` on every receipt (0 after a
+  success, previous + 1 after a failure). Additive; v1 readers ignore it.
+- **Recovered note.** On an OK poll (live mode, critical component) the agent sends one `✅ SYSTEM HEALTH: <name> —
+  recovered` P2 intent (120-min content dedupe) when a successful ESCALATION in the last 24 h is newer than the
+  component's latest `RECOVERY_NOTICE` event. A rejected intent logs `RECOVERY_NOTICE_REJECTED` and retries next poll.
+- **SIEM close.** The same OK poll sets the component's open ESCALATION rows to `lifecycle_state='resolved'`
+  (`resolved_by='system_health_agent:recovered'`; never deleted), so the SIEM incident and
+  `siem_critical_notify` stop re-paging it.
+- **Schedule from the registry.** `schedule_source: "lane_registry"` makes the component take its schedule from the
+  ACTIVE `config/lane_registry.json` row(s) of `monitor_lane_ids`; the literal is the fallback and a test pins it
+  equal to the registry (Finviz: `0 10 * * 1-5`, matching the crontab). Opt-in: other components' drift
+  (`trade_ai_orchestrator` literal vs registry `30 17 * * 1-5`) is reported in `schedule_evidence`, not adopted.
+- **Run grace.** Finviz `max_runtime_sec` 600 → 1500: the 10:00 full `--run` measured 556–1161 s (2026-10-15..22).
+
+`scripts/finviz_screener_runner.py`: a `--screener <id>` run writes `finviz-screener-runner-subset_last.json`; only a
+full run (the scheduled lane) writes `finviz-screener-runner_last.json`.
+
+Tests: `tests/test_system_health_receipt_debounce_20261023.py` (CI gate
+`config/ci_gates/system_health_receipt_debounce_20261023.json`).
 
 ## Model bridge watchdog (2026-09-14)
 

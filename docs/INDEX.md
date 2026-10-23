@@ -999,6 +999,12 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/design/signal_freshness_audit_2026-05-15/AUDIT_FINDINGS.md` | Signal Freshness & Persistence Audit — 2026-05-15 |
 | `docs/design/watchlist-intelligence-v3/CECO_REVIEW_AUTHORIZATION_AUDIT.md` | CECO Maria/CIO authorization audit (read-only) |
 | `docs/design/watchlist-intelligence-v3/DATA_BROKER_WATCH_CONSUMERS.md` | Data Broker — Watch Intelligence consumers |
+| `docs/designs/DSN-20261021-release-train.md` | DSN-20261021-release-train.md |
+| `docs/designs/DSN-20261022-cio-prospect-store.md` | DSN-20261022-cio-prospect-store.md |
+| `docs/designs/DSN-20261022-data-domains.md` | DSN-20261022-data-domains.md |
+| `docs/designs/DSN-20261022-momentum-alerts.md` | DSN-20261022-momentum-alerts.md |
+| `docs/designs/DSN-20261023-ask-the-cio.md` | DSN-20261023-ask-the-cio.md |
+| `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
 | `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence |
 | `docs/diligence/current/CLOUD_OAUTH_USAGE.md` | Cloud-OAuth Lane Usage |
@@ -1741,6 +1747,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/ADVICE_DIGESTS_2026-10-08.md` | Advice digests — 10:00 / 15:00 / 17:00 ET (2026-10-08) |
 | `docs/ops/AGENTS_GUARD_HOOK.md` | AGENTS.md guard hook for Claude Code (PreToolUse) |
 | `docs/ops/AGENT_CLAIM_BOARD.md` | Agent claim board — who is working on which files |
+| `docs/ops/AGENT_START_HERE.md` | Agent start here — any vendor (Claude, Codex, Cursor) |
+| `docs/ops/AT_TRADEAI_ALIGNMENT_2026-10-23.md` | Active Trader ↔ Trade AI alignment — 2026-10-23 |
 | `docs/ops/AUTONOMOUS_ADVISORY_LOOP_CLOSURE_RESULT_2026-08-23.md` | Trade AI Autonomous Advisory Loop Closure Result |
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Autonomous Advisor Session Closeout — 2026-08-20 |
 | `docs/ops/AUTONOMY_OPERATOR_RUNBOOK.md` | Autonomy Operator Runbook (READ_ONLY_ADVISORY) |
@@ -2001,9 +2009,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/RESEARCH_TIER_LLM_CADENCE.md` | Research tiers, watchlist, and when each gets an LLM |
 | `docs/ops/ROLLBACK_COMMANDS.md` | CURRENT rollback (exact-main phase2) |
 | `docs/ops/SCALP_CATALYST_BULK_2026-10-09.md` | Scalp lane bulk catalyst read — 2026-10-09 |
+| `docs/ops/SERVER_MEMORY_SPIKES_2026-10-23.md` | portfolio-server memory spikes after release 7 (2026-10-23) |
 | `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` | Session closeout — 2026-08-22 |
 | `docs/ops/SETUP_READINESS_SHARED_VERDICT_2026-10-23.md` | SetupReadiness@v1 — one "driven by / ready / missing" verdict (2026-10-23) |
 | `docs/ops/SIEM_HEALTH_REPAIR_2026-10-06.md` | SIEM incident visibility and recovery |
+| `docs/ops/SITE_VALIDATION_2026-10-23_53aa1b619.md` | Command Center v3 site validation: 2026-10-22/23 (f7c1e96cb → 0f5bf2453 → 53aa1b619) |
 | `docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md` | Stance organic park — CLOSED by OBSERVED_LIVE |
 | `docs/ops/SYMBOL_THESIS_ACQUISITION_PIPELINE_LIVE_2026-08-20.md` | Symbol-thesis acquisition pipeline — live (autonomous, debt-sensitive) — 2026-08-20 |
 | `docs/ops/SYMBOL_THESIS_CANARY_DRY_RUN_2026-08-20.md` | Bounded canary dry-run — SCHG / CSCO / ANET |
@@ -2017,14 +2027,20 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/TRADE_AI_N8N_LADDER_EXECUTION_PLAN_20261013.md` | Trade AI → n8n ladder — execution plan |
 | `docs/ops/TRADE_AI_PAGE_N8N_DILIGENCE_20261013.md` | Trade AI page — n8n diligence (host vs n8n) |
 | `docs/ops/TRADE_AI_R10_MEMORY_AUTONOMOUS_AGENT_CLOSEOUT_2026-08-24.md` | R10.2 closeout (in progress) |
+| `docs/ops/TRADE_AI_RUN_AGE_AND_POPULATIONS_2026-10-23.md` | Trade AI: the run's age and its two populations (2026-10-23) |
 | `docs/ops/TRADE_AI_SCALP_5MIN_2026-10-09.md` | Trade-AI scalp scan every 5 minutes, one feed for both engines, runner GO with catalyst (2026-10-09) |
+| `docs/ops/TRADING_PORTFOLIO_STRIP_2026-10-23.md` | Trading page portfolio strip restored (2026-10-23) |
+| `docs/ops/TRADE_AI_SCALP_CADENCE_2026-10-23.md` | Trade AI scalp cadence: 5 minutes from 06:00 to 12:00 ET (2026-10-23) |
 | `docs/ops/TRANSFERSON_UNIVERSE_CANONICAL_CLOSEOUT_2026-08-25.md` | Transferson canonical universe — local closeout |
 | `docs/ops/TRANSFERSON_UNIVERSE_LIVE_ACCEPTANCE_GATE_2026-08-25.md` | Transferson canonical universe — live CURRENT/DB acceptance gate |
 | `docs/ops/VALIDATED_LEARNING_REMEDIATION.md` | Validated learning remediation: release and operations |
 | `docs/ops/WATCH_DECISION_STANDARDS_2026-10-08.md` | Watch decision standards — the Communications standards on the Watchlist (2026-10-08) |
+| `docs/ops/WATCH_LISTS_PAGE_2026-10-23.md` | Watch — My Watchlist, System Suggests, Full universe (2026-10-23) |
 | `docs/ops/WATCH_PROSPECTS_PAGE_2026-10-22.md` | Watch — prospect lanes (the Gate 3 Watch redesign, 2026-10-22) |
 | `docs/ops/WEEKLY_OVERSIGHT_CHATGPT_OAUTH.md` | Weekly oversight — ChatGPT OAuth auto, paid manual |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye — first institutional-brain audit |
+| `docs/ops/agent_start/codex-note.md` | Codex note — agent claim board (operator installs) |
+| `docs/ops/agent_start/cursor-rule.md` | Cursor rules snippet — agent claim board (operator installs) |
 | `docs/ops/alerts/PHASE126_TELEGRAM_ENFORCEMENT_REPORT.md` | Phase 126 — Telegram Actionable-Only Enforcement Report |
 | `docs/ops/alerts/PHASE132_STOP_ALERT_INTELLIGENCE_REPORT.md` | Phase 132 — Stop Alert Intelligence Report |
 | `docs/ops/alerts/telegram_notification_normalization_2026_07_28/ALERT_POLICY_DIFF.md` | Alert Policy Diff |

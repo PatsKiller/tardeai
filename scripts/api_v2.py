@@ -16042,6 +16042,9 @@ def _compute_trade_ai():
         "avoid_count": current_run_nogo,
         "ticker_count": current_run_total or latest.get("ticker_count", 0),
         "universe_count": len(tickers),
+        # Newest trade_ai_scans.scanned_at among the served rows (LIVE cycles refresh rows between the FULL runs
+        # that write run_summary.json). scan_freshness is derived from it on every serve. Operator 2026-10-23.
+        "latest_scan_at": _scan_latest_at(tickers),
         "universe_go": go_count,
         "universe_wait": wait_count,
         "universe_nogo": avoid_count,
@@ -18232,6 +18235,9 @@ def trade_ai_summary():
         "cache_age_sec",
         "cached_at",
         "cache_missing",
+        # Header run-age chip (operator 2026-10-23): newest scan + its freshness verdict.
+        "latest_scan_at",
+        "scan_freshness",
     )
     return {k: d.get(k) for k in keys}
 
@@ -18255,7 +18261,24 @@ def _refresh_trade_ai_cache_age(data: dict, now: float) -> dict:
     data["cached_at"] = data.get("_cached_at") or data.get("cached_at")
     data["cache_age_sec"] = round(age)
     data["stale"] = bool(data.get("cache_missing")) or age > 600
+    # Age of the newest scan (not of the cache file): FRESH / STALE (>10 min in the 06:00-12:00 ET scalp
+    # window) / OFF_WINDOW / UNKNOWN. Recomputed per serve so it moves between warms.
+    try:
+        from lib.scan_freshness import scan_freshness
+
+        data["scan_freshness"] = scan_freshness(data.get("latest_scan_at"))
+    except Exception:
+        data["scan_freshness"] = {"contract": "ScanFreshness@v1", "status": "UNKNOWN", "error": "compute_failed"}
     return data
+
+
+def _scan_latest_at(tickers):
+    try:
+        from lib.scan_freshness import latest_scan_at
+
+        return latest_scan_at(tickers)
+    except Exception:
+        return None
 
 
 def _trade_ai_with_etag(data, disk=None):
@@ -54855,6 +54878,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, _dbw.get_list(query or {})
             if p == "watch-prospects":
                 return 200, _dbw.get_prospects(query or {})
+            if p == "watch-curation":
+                return 200, _dbw.get_curation(query or {})
+            if p == "watch-symbol-search":
+                return 200, _dbw.get_symbol_search(query or {})
+            if p == "watch-universe":
+                return 200, _dbw.get_universe(query or {})
             if p == "watch-filters":
                 return 200, _dbw.get_filters()
             if p == "watch-lists":
@@ -54889,6 +54918,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, _wcmd.post_alert(body or {})
             if cmd in ("refresh-data", "refresh_data"):
                 return 200, _wcmd.post_refresh_data(body or {})
+            if cmd == "mine":
+                _out = _wcmd.post_mine_decision(body or {})
+                return (200 if _out.get("ok") else 400), _out
+            if cmd in ("suggest-dismiss", "suggest-restore"):
+                _out = _wcmd.post_suggest_decision(cmd.split("-", 1)[1], body or {})
+                return (200 if _out.get("ok") else 400), _out
             return 404, {"ok": False, "error": "unknown_command"}
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
@@ -55445,7 +55480,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # Agent claim board (operator-approved 2026-10-22): which agent session (Claude, Codex, Cursor -- equal
     # peers) holds which files, on which branch/PR, since when, last heartbeat. One JSON per claim under
     # persistent-state data/coordination/claims (scripts/lib/agent_claim_board.py). Read-only: never creates
-    # the directory, never claims, releases or compacts. ?active=1 hides done/abandoned.
+    # the directory, never claims, releases or compacts. ?active=1 hides done/abandoned; ?worklog=<claim_id>
+    # returns one claim's worklog. Lifecycle stages + task board are additive fields (2026-10-23).
     if base_path == "/api/v2/coordination/claims":
         if method != "GET":
             return 405, {"ok": False, "error": "read_only"}
@@ -55455,7 +55491,27 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _act = (query or {}).get("active")
             _act = (_act or [None])[0] if isinstance(_act, list) else _act
             finished = str(_act or "") not in ("1", "true")
+            # ?worklog=<claim_id> (2026-10-23): that claim's worklog text (live file, else its archive)
+            _wl = (query or {}).get("worklog")
+            _wl = (_wl or [None])[0] if isinstance(_wl, list) else _wl
+            if _wl:
+                return 200, {"ok": True, "data": _claims_board(worklog=str(_wl)[:64])}
             return 200, {"ok": True, "data": _claims_board(include_finished=finished)}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
+    # Work board (operator 2026-10-23): ALL queued work broken into tasks, and designs awaiting approval.
+    # scripts/lib/design_registry.py. GET only; single-flight in-process cache, rebuilt at most once per 30 s;
+    # design files re-parsed only when they change; open PRs read by a background thread (gh api GET).
+    # Writes go only through scripts/agent_claim.py (CLI).
+    if base_path in ("/api/v2/coordination/tasks", "/api/v2/coordination/designs"):
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from lib.design_registry import work_board as _work_board
+
+            _wb = _work_board()
+            return 200, {"ok": True, "data": _wb.tasks() if base_path.endswith("/tasks") else _wb.designs()}
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__}
 

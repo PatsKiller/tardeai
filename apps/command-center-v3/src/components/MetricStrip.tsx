@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useApi } from '../hooks/useApi'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { fmt$ } from '../lib/format'
 import { pricingStampLine } from '../lib/pricingStamp'
 import { runLabel } from '../lib/homeLabels'
 import { overviewSurfaceFreshness, tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
 import { renderSetupCounts } from '../lib/setupRunSummary'
+import { payloadRunAge, LATEST_RUN_TIP } from '../lib/scanRunAge'
 // Same classifier the Trading panel uses, so the two surfaces cannot disagree
 // about one run — the header said healthy while the panel said UNDERFILLED.
 import { runHealthReasonCodes, reasonCodeOneLiner, runHealthLabel } from '../lib/runHealth'
@@ -49,44 +50,31 @@ const VALUE_BIG = TYPE.lg
 const VALUE_COMPACT = TYPE.md
 
 const HEADER_PREF_KEY = 'cc_mobile_header_expanded'
-const TRADING_DRAWER_PREF_KEY = 'cc_trading_metric_drawer_open'
 
 function readHeaderExpanded(): boolean {
   try { return window.localStorage.getItem(HEADER_PREF_KEY) === '1' } catch { return false }
 }
 
-function readTradingDrawerOpen(): boolean {
-  try { return window.localStorage.getItem(TRADING_DRAWER_PREF_KEY) === '1' } catch { return false }
-}
-
-/** Trading / Trade AI / Active Trader: portfolio chrome is not actionable — collapse by default. */
-function isTradingSurfacePath(pathname: string): boolean {
-  const p = pathname.replace(/\/+$/, '') || '/'
-  return p === '/trading' || p.endsWith('/trading')
-    || p === '/active-trader' || p.endsWith('/active-trader')
-}
-
-const ALWAYS_VISIBLE_TILE_LABELS = new Set(['VIX', 'SETUPS · LATEST RUN'])
-const DRAWER_TILE_LABELS = new Set(['PORTFOLIO', 'TODAY', 'TRADING', 'REALIZED', 'REGIME'])
+// The 10-13 trading-route drawer (PORTFOLIO…REGIME hidden behind a "▸ PORTFOLIO drawer"
+// toggle on /trading and /active-trader) was removed 2026-10-23 at the operator's request:
+// "I'm missing my portfolio information on the top of the trading page". The header is
+// app-shell chrome and renders the same tiles on every route.
 
 export default function MetricStrip({ onDrill }: Props) {
   const navigate = useNavigate()
-  const location = useLocation()
-  const tradingSurface = isTradingSurfacePath(location.pathname)
   const [alertsOpen, setAlertsOpen] = useState(false)
+  // Ticks the run-age mark between API refreshes (120 s), so "4 min ago" does not freeze.
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 30_000)
+    return () => window.clearInterval(id)
+  }, [])
   // Phones only (CSS shows .ms-compact at <=820px): one line by default, the full
   // strip on demand. Remembered per device; storage failure just means collapsed.
   const [mobileExpanded, setMobileExpanded] = useState<boolean>(readHeaderExpanded)
   const toggleMobileExpanded = () => setMobileExpanded(v => {
     const next = !v
     try { window.localStorage.setItem(HEADER_PREF_KEY, next ? '1' : '0') } catch { /* private mode */ }
-    return next
-  })
-  // Trading surfaces: PORTFOLIO…REGIME live in a drawer (default closed). SETUPS + VIX stay visible.
-  const [tradingDrawerOpen, setTradingDrawerOpen] = useState<boolean>(readTradingDrawerOpen)
-  const toggleTradingDrawer = () => setTradingDrawerOpen(v => {
-    const next = !v
-    try { window.localStorage.setItem(TRADING_DRAWER_PREF_KEY, next ? '1' : '0') } catch { /* private mode */ }
     return next
   })
 
@@ -394,14 +382,17 @@ export default function MetricStrip({ onDrill }: Props) {
   const runSlot = tradeAi?.run_label ?? setupRun.runId?.split('::')[1] ?? null
   const runFinishedRaw = setupRun.runTimestamp ? String(setupRun.runTimestamp) : null
   const runFinishedZoned = !!(runFinishedRaw && /(Z|[+-]\d{2}:?\d{2})$/.test(runFinishedRaw))
-  const runFinishedMark = runFinishedRaw
-    ? `finished ${runFinishedRaw.slice(11, 16)}${runFinishedZoned ? '' : ' unzoned'}`
-    : null
+  // Finished time in ET + AGE (operator 2026-10-23: slot 0700 is re-run through the
+  // morning, so "0700 slot" alone read as two hours stale while the data was 4 minutes
+  // old). latest_run_timestamp is UTC-zoned; a naive stamp renders "age unknown".
+  const runAge = tradeAi ? payloadRunAge(tradeAi, runSlot, now) : payloadRunAge({ latest_run_timestamp: runFinishedRaw }, runSlot, now)
+  const runFinishedMark = runAge.label
 
   const setupsTone: Tone = worseTone(
     setupRun.runHealth === 'failed' ? 'bad' : setupRun.healthDegraded ? 'warn' : 'ok',
     setupRun.degraded ? 'warn' : 'ok',
     scanStale ? 'warn' : 'ok',
+    runAge.tone,
   )
 
   // The value is the DECISION triple and nothing else. The population it was
@@ -518,13 +509,15 @@ export default function MetricStrip({ onDrill }: Props) {
       // tooltip and the drill — it identifies the run but tells you nothing
       // about it, so it is the first thing to lose the width contest.
       asOfNote: [
+        // An aged run in the scalp window leads the line (amber > 5 min, red > 10 min).
+        runAge.tone !== 'ok' ? `${runAge.tone === 'bad' ? '▲ ' : ''}${runFinishedMark}` : null,
         setupRun.healthDegraded ? runHealthMark : null,
         setupRun.unaccounted ? `${setupRun.unaccounted} UNACCOUNTED` : null,
         setupRun.degraded && !setupRun.healthDegraded ? setupRun.integrity : null,
         !setupRun.healthDegraded && !setupRun.unaccounted ? runHealthMark : null,
         setupRun.population || null,
-        showRunClocksOnFace && runSlot ? `${runSlot} slot` : null,
-        showRunClocksOnFace ? runFinishedMark : null,
+        showRunClocksOnFace && runAge.tone === 'ok' ? runFinishedMark : null,
+        showRunClocksOnFace ? runAge.slotLabel : null,
       ].filter(Boolean).join(' · ') || (setupRun.runId ? `id ${setupRun.runId}` : null),
       tone: setupsTone,
       valueSize: VALUE_COMPACT,
@@ -542,17 +535,20 @@ export default function MetricStrip({ onDrill }: Props) {
         'data-run-floor': runFloor != null ? String(runFloor) : '',
         'data-run-health': setupRun.runHealth,
         'data-run-integrity': setupRun.integrity,
+        'data-run-age-min': runAge.ageMin != null ? String(runAge.ageMin) : '',
+        'data-run-age-tone': runAge.tone,
       },
       color: scanStale ? BB.amber : setupRun.degraded ? BB.amber : setupRun.goPositive ? BB.green : 'var(--text3)',
       tip: scanStale
         ? `Scanner surface is STALE (${setupsFresh.reason || 'prior/empty cache'}). ${setupsRun}${setupsAsOfMark}. HTTP 200 is not a live claim — Trading → Trade AI shows the same payload.`
-        : `Latest scanner run · ${setupRun.population || '—'}\n\n`
+        : `${LATEST_RUN_TIP}\n\nLatest scanner run · ${setupRun.population || '—'}\n\n`
           + `RUN HEALTH: ${setupRun.runHealthStatus ?? 'not reported'}`
           + `${scannedVsFloor ? ` — scanned ${scannedVsFloor} against the health floor` : ''}`
           + `${runReasonCodes.length ? `\n · ${runReasonCodes.map(c => reasonCodeOneLiner(c)).join('\n · ')}` : ''}`
           + `\n\nRECONCILIATION: ${setupRun.integrity}. Separate from run health — a run can`
           + ` reconcile perfectly and still have scanned too little to be worth trusting.`
-          + `\n\nCLOCKS: scheduled slot ${runSlot ?? '—'} (ET) · finished ${runFinishedRaw ?? '—'}`
+          + `\n\nAGE: ${runAge.tip}`
+          + `\n\nCLOCKS: scheduled slot ${runSlot ?? '—'} (ET)${runAge.rerun ? ' — re-run' : ''} · finished ${runFinishedRaw ?? '—'}`
           + `${runFinishedRaw && !runFinishedZoned ? ' — the producer writes this with no timezone, so it is shown as published and cannot be converted' : ''}`
           + `\nrun id ${setupRun.runId ?? '—'}`,
       drill: { title: 'Trade Setups', subtitle: scanStale ? (setupsFresh.surfaceLabel || `STALE — last ${setupsRun}`) : `Latest scanner run · ${setupRun.population || '—'}${setupRun.runId ? ` · run ${setupRun.runId}` : ''}`, endpoint: '/api/v2/trade-ai',
@@ -563,7 +559,9 @@ export default function MetricStrip({ onDrill }: Props) {
           health_degraded: setupRun.healthDegraded, count_integrity: setupRun.integrity,
           reconciliation_degraded: setupRun.degraded,
           run_scheduled_slot_et: runSlot, run_finished_stamp: runFinishedRaw,
-          run_finished_zone_stated: runFinishedZoned }] : [] },
+          run_finished_zone_stated: runFinishedZoned, run_finished_et: runAge.finishedEt, run_age_min: runAge.ageMin,
+          run_age_tone: runAge.tone, run_slot_rerun: runAge.rerun,
+          universe_note: 'Trading → Trade AI tiles count today\'s whole universe (universe_go / universe_wait / universe_nogo above), not this run.' }] : [] },
     },
   ]
 
@@ -621,35 +619,7 @@ export default function MetricStrip({ onDrill }: Props) {
           >{priceStampShort}</div>
         )}
       </div>
-      {tradingSurface && (
-        <button
-          type="button"
-          data-testid="metric-strip-trading-drawer-toggle"
-          aria-expanded={tradingDrawerOpen}
-          aria-controls="ms-trading-drawer-tiles"
-          title={tradingDrawerOpen
-            ? 'Hide portfolio / P&L / regime tiles (not actionable on this page)'
-            : 'Show portfolio / P&L / regime tiles'}
-          onClick={toggleTradingDrawer}
-          style={{
-            flex: '0 0 auto', alignSelf: 'stretch', display: 'flex', flexDirection: 'column',
-            justifyContent: 'center', gap: 2, padding: '4px 10px', marginRight: 4,
-            border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg1)',
-            color: 'var(--text2)', cursor: 'pointer', fontSize: TYPE.xs, fontWeight: 700,
-          }}
-        >
-          <span>{tradingDrawerOpen ? '▾ PORTFOLIO' : '▸ PORTFOLIO'}</span>
-          <span style={{ color: 'var(--text3)', fontWeight: 500, maxWidth: 88, ...NOWRAP }}>
-            {tradingDrawerOpen ? 'hide extras' : 'drawer'}
-          </span>
-        </button>
-      )}
-      {tiles.filter(t => {
-        if (!tradingSurface) return true
-        if (ALWAYS_VISIBLE_TILE_LABELS.has(t.label)) return true
-        if (DRAWER_TILE_LABELS.has(t.label)) return tradingDrawerOpen
-        return true
-      }).map(t => {
+      {tiles.map(t => {
         // Exception-driven: the tone decides whether this tile is quiet or loud.
         // 'ok' renders a dim dot and grey meta; 'warn'/'bad' recolour the meta
         // line and swap the glyph. No extra line, so height is invariant.
