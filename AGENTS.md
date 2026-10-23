@@ -1,15 +1,15 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      20.0.0
+Policy-Version:      20.1.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
 Effective-Date:      2026-10-23
-Last-Reviewed:       2026-10-22T23:00:00-04:00
+Last-Reviewed:       2026-10-23T12:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          19.0.0
+Supersedes:          20.0.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
@@ -110,6 +110,19 @@ asks the operator to decide needs `dedupe_minutes=0`; #1685 sets it only for `ap
 `stop_decision_brief.py` (a stop decision brief) is P1 with the default 60-minute exact-content dedupe — the
 operator classifies it before #1685 merges. **Numbering:** follows 5.0.0 (ACTIVE, PR #1686, merged `0ec320486`);
 `Supersedes` is 5.0.0. Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>`.
+
+**20.1.0 is ACTIVE (MINOR) — agent UI and validation traffic never targets the live server during market
+hours (§28.8).** Operator decision 2026-10-23 ~11:05 ET, "approved", on the rule after five portfolio-server
+SIGKILLs between 09:14 and 10:24 ET that agent crawls and previews drove (PR #2012). Between 04:00 and 16:15
+America/New_York on a market day no agent sends Playwright, crawler, `vite preview` or dev-proxy traffic to the
+served `/api` on `127.0.0.1:7777`; agents validate with fixtures or a mock or replay backend, and a live smoke check
+runs after the close at no more than 1 request per second, GET only. **Why MINOR:** it adds one restriction and
+removes none; no agent gains a permission and no guarantee weakens. **Byte-identical:** every section other than
+§28.8, this banner, the header block and the 20.1.0 history row is byte-identical to 20.0.0, before and after
+ratification; the ratifying edit changes only the header, this banner, the §28.8 status line and the row.
+**Numbering:** after 20.0.0 (PR #2013, ACTIVE); `Supersedes` 20.0.0. Ratified by the operator 2026-10-23 (`APPROVE_AGENTS_POLICY_20_1_0 2019 d24a29054865a9bc09d3c50bb33dfe9c4be728af`, §20; PR #2019 comment by PatsKiller 2026-10-23T16:53:47Z, https://github.com/PatsKiller/tardeai/pull/2019#issuecomment-6370144385, verbatim: "APPROVE_AGENTS_POLICY_20_1_0 2019 d24a29054865a9bc09d3c50bb33dfe9c4be728af"); ratified by this edit, which set the header block
+to 20.1.0 ACTIVE and §28.8 to ACTIVE, and changed nothing else. Approval phrase as proposed:
+`APPROVE_AGENTS_POLICY_20_1_0 <pr_number> <head_sha>`.
 
 **20.0.0 is ACTIVE (MAJOR) — agent operations and the read-only broker baseline (§28).** Operator decisions
 2026-10-22, verbatim: "So can we do A through E? Is there any problem?", "approve sudo window", and "yes i approve
@@ -7046,12 +7059,38 @@ quoted in §28.7. Every rule binds every agent equally, whatever its model or ve
       `agent_claim.py takeover`, never by starting over. How to pick up work: AGENTS.md §28.3a.
   ```
 
+## 28.8 No agent UI or validation traffic to the live server during market hours (20.1.0, ACTIVE)
+
+**Status: ACTIVE (MINOR).** Ratified 2026-10-23 (`APPROVE_AGENTS_POLICY_20_1_0 2019 d24a29054865a9bc09d3c50bb33dfe9c4be728af`, §20). It adds
+the restriction below and removes none. Test: `tests/test_agents_policy_20_1_0_live_server_market_hours.py`.
+
+- **No agent traffic to the live server from 04:00 to 16:15 ET on a market day.** In that window (America/New_York;
+  any weekday, unless the day is an NYSE holiday) no agent of any vendor sends UI or validation traffic to the live
+  portfolio server: `127.0.0.1:7777`, its served `/api`, or any host, tunnel or proxy that reaches it. That covers
+  Playwright and any other browser automation, crawlers (`tools/crawl.mjs` or any other), `vite preview` or a dev
+  server proxying to the served `/api`, and curl or script loops. A harness that cannot tell whether its target is
+  the live server treats it as live. *Cause (§20): 2026-10-23, five portfolio-server SIGKILLs between 09:14 and
+  10:24 ET driven by agent crawls and previews against the live server (PR #2012,
+  `docs/ops/SERVER_MEMORY_SPIKES_2026-10-23.md`); operator 2026-10-23 ~11:05 ET, "approved".*
+- **Validate with fixtures or a mock or replay backend.** Inside the window, UI work is validated against fixtures,
+  a mock or replay backend, or an offline build; never by pointing a preview, a browser or a crawler at the served
+  `/api`. *Cause (§20): the same five kills; a fixture run cannot take the server down.*
+- **A live smoke check runs after the close, slowly, GET only.** Outside the window, a smoke check against the live
+  server sends at most 1 request per second, GET only (never POST, PUT, PATCH or DELETE), and stops at the first 5xx
+  or timeout. A code guard that refuses `:7777` inside the window lets a run through only when
+  `TRADEAI_LIVE_SMOKE_AFTER_CLOSE=1` is set, and that variable is never set inside the window. *Cause (§20): the
+  same kills; a slow GET-only check after the close exercises the served build without load during trading.*
+- **Agents only; nothing else changes.** The rule binds agents, not the operator's own browser, and it changes no
+  service, timer, port or server setting. *Cause (§20): §0 rule 9 — the operator's own use is the operator's; the
+  incident was agent traffic.*
+
 ---
 
 # Version history
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 20.1.0 | 2026-10-23 | ACTIVE | MINOR | §28.8 "No agent UI or validation traffic to the live server during market hours" added. Operator decision 2026-10-23 ~11:05 ET, "approved", after five portfolio-server SIGKILLs (09:14–10:24 ET) driven by agent crawls and previews (PR #2012): from 04:00 to 16:15 ET on a market day no agent sends Playwright, crawler, `vite preview` or dev-proxy traffic to the served `/api` on `127.0.0.1:7777`; fixtures or a mock or replay backend instead; live smoke after the close at ≤1 req/s, GET only. MINOR: one added restriction, none removed. Every other section is byte-identical to 20.0.0 before and after ratification. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_1_0 2019 d24a29054865a9bc09d3c50bb33dfe9c4be728af` (operator, PR #2019 comment by PatsKiller 2026-10-23T16:53:47Z, https://github.com/PatsKiller/tardeai/pull/2019#issuecomment-6370144385, verbatim: "APPROVE_AGENTS_POLICY_20_1_0 2019 d24a29054865a9bc09d3c50bb33dfe9c4be728af"); ratified by this edit on #2019's branch, which set the header block and §28.8 to 20.1.0 ACTIVE and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_1_0 <pr_number> <head_sha>`. Effective 2026-10-23. |
 | 20.0.0 | 2026-10-22 | ACTIVE | MAJOR | §28 "Agent operations and the read-only broker baseline" added. Operator decisions 2026-10-22 (verbatim in the banner; approved as "19.1.0", numbered 20.0.0 by the version policy): measured caps and receipts for the four automations that end or rewrite a run (§28.1, absorbing the withdrawn 18.1.0), agent temp discipline (§28.2), multi-vendor coordination and the claim board `scripts/agent_claim.py` (§28.3), approval provenance (§28.4), the Ops → Controls sudo window (§28.5), the read-only Schwab baseline with the `live_submit` kill switch as an extra barrier (§28.6). While PROPOSED §0, §2, §7, §13, §17, §24, §25, §27 and the four adapters are byte-identical; the ratifying edit makes exactly the nine clause edits quoted in §28.7: §0 rule 11 "Claim, log, hand off" (and the four adapters), a second §0 rule 6 exception and the host `/tmp` hygiene lanes in §24.12, the claimer in §25.8, the §7 time-cap trap, the behaviour rail cited by symbol, the sudo window in §27.3, the corrected §27.4 and the read-only baseline in §17. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_0_0 2013 c766b497d5d63a49f08aad247f194f884a8030b1` (operator, PR #2013 comment by PatsKiller 2026-10-23T14:42:00Z, https://github.com/PatsKiller/tardeai/pull/2013#issuecomment-6367515961, verbatim: "APPROVE_AGENTS_POLICY_20_0_0 2013 c766b497d5d63a49f08aad247f194f884a8030b1"); ratified by this edit on #2013's branch, which set the header block to 20.0.0 ACTIVE and made the nine clause edits quoted in §28.7; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_0_0 <pr_number> <head_sha>`; per-PR word, because it is MAJOR. Effective 2026-10-23. |
 | 19.0.0 | 2026-10-22 | ACTIVE | MAJOR | §27 "n8n broker reads and the operator controls surface" added. Operator decisions 2026-10-22 (verbatim in the banner): n8n may read the broker because only reading is done (§27.1: a closed set of audited read lanes, host execution, every trading lock LOCKED, Schwab `read_only`, no credential in n8n; the never-list unchanged); Ops → Controls (§27.2–§27.3: settings in a Postgres `operator_settings` table with history, one governed host applier, safe direction one click, risky direction a WebAuthn passkey plus a typed phrase, TOTP recovery only, Telegram notification only), superseding decision D3 and the kill switch's terminal-only clear. Code: `scripts/lib/n8n_broker_read_carveout.py` (`CARVEOUT_STATUS` PROPOSED), consulted by `pipeline_manifest.forbidden_command_tokens()`; registry row `operator_settings` proposed. While PROPOSED §17, §23.14 and §25 are byte-identical; the ratifying edit inserts one §23.14 bullet, replaces the §25.4 "Who may do what." bullet and one §17 sentence, appends one §17 paragraph (§27.5) and sets `CARVEOUT_STATUS` ACTIVE. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_19_0_0 1962 bb54a14a89347a1c17dd0d326b0720c882bbd61f` (operator, PR #1962 comment by PatsKiller 2026-10-22T22:10:31Z, https://github.com/PatsKiller/tardeai/pull/1962#issuecomment-6352416425, verbatim: "APPROVE_AGENTS_POLICY_19_0_0 1962 bb54a14a89347a1c17dd0d326b0720c882bbd61f"); ratified by this edit on #1962's branch, which set the header block to 19.0.0 ACTIVE, made the four clause edits quoted in §27.5 and set `CARVEOUT_STATUS` to `ACTIVE`; approval phrase as proposed `APPROVE_AGENTS_POLICY_19_0_0 <pr_number> <head_sha>`; per-PR word, because it is MAJOR. Effective 2026-10-22. |
 | 18.0.0 | 2026-10-22 | ACTIVE | MAJOR | §26 "Data foundation — one store, one writer, the CIO as integrator" added. Operator direction 2026-10-22 (verbatim in the banner): one data store with everything, the CIO agent and n8n tie it together, hard-coded in AGENTS.md, a data dictionary that shows one source of data. The CIO prospect record (`InstrumentRecord@v1` extended, one row per `security_guid`, written only by `InstrumentRecordStore`) is the single per-security truth; every fact has one authoritative store and one writer in the §7A registry and the dictionary rendered from it binds row by row as each is granted; pages and alerts read only through registered projections; n8n schedules gathering inside the §23.14 never-list; conflicts are recorded and shown, never silently resolved; new stores and writers stay §17; copies retire by archive and tripwire. §0, §2, §2A, §7A, §17, §22, §23.14, §24, §25 and the adapters byte-identical; the NO SILOS section byte-identical while PROPOSED, one clause replaced at ratification (§26.7). MAJOR: agent role authority (the CIO becomes the only writer of per-security judgment); grants no row, broker, order, stop, egress or n8n authority. Header block 18.0.0 PROPOSED, `Effective-Date` PENDING, `Supersedes` 17.0.0. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_18_0_0 1931 894bbd954ca174453e7339d30157e082d4403c84` (operator, PR #1931 comment by PatsKiller 2026-10-22T16:59:09Z, https://github.com/PatsKiller/tardeai/pull/1931#issuecomment-6346416104, verbatim: "APPROVE_AGENTS_POLICY_18_0_0 1931 894bbd954ca174453e7339d30157e082d4403c84"); ratified by this edit on #1931's branch, which set the header block to 18.0.0 ACTIVE and replaced the NO SILOS methodology rule 1 quoted in §26.7; approval phrase as proposed `APPROVE_AGENTS_POLICY_18_0_0 <pr_number> <head_sha>`; per-PR word, because it is MAJOR. Effective 2026-10-22. |

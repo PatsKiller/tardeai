@@ -127,6 +127,7 @@ function ItemCard({ it, onAct, busy, onWorklog }: {
       {acts.includes('unhold') ? <button type="button" style={btn} data-testid="act-unhold" onClick={() => onAct(it, 'unhold', { item: it.what.task_id || prItem })}>Unhold</button> : null}
       {acts.includes('batch_add') ? <button type="button" style={btn} data-testid="act-batch-add" onClick={() => onAct(it, 'batch_add', { pr })}>Add to next batch</button> : null}
       {acts.includes('batch_remove') ? <button type="button" style={btn} data-testid="act-batch-remove" onClick={() => onAct(it, 'batch_remove', { pr })}>Remove from next batch</button> : null}
+      {acts.includes('task_done') && it.what.task_id ? <button type="button" style={btn} data-testid="act-task-done" onClick={() => onAct(it, 'task_done', { task_id: it.what.task_id })}>Mark done</button> : null}
       {acts.includes('task_split') ? <button type="button" style={btn} data-testid="act-split" onClick={() => setCompose(compose === 'split' ? null : 'split')}>Split</button> : null}
       {acts.includes('release_stale_claim') ? <button type="button" style={{ ...btn, color: TOKENS.danger, borderColor: TOKENS.danger }} data-testid="act-release-stale" onClick={() => setCompose('release')}>Release stale claim</button> : null}
     </div>
@@ -312,7 +313,9 @@ export default function WorkPipelinePanel({ active = true }: { active?: boolean 
         </div>
         <div data-testid="queued-operator" style={{ display: 'grid', gap: 6, alignContent: 'start' }}>
           <div style={small}>Operator to-dos</div>
-          {cap(q.operator).map(it => <QueueCard key={it.id} it={it}><Chip tone="info" variant="solid">OPERATOR</Chip></QueueCard>)}
+          {cap(q.operator).map(it => <QueueCard key={it.id} it={it}><Chip tone="info" variant="solid">OPERATOR</Chip>
+            {it.next.command ? <code style={{ ...mono, color: TOKENS.text[2] }}>{it.next.command}</code> : null}
+            {cardActions(it).includes('task_done') ? <button type="button" style={btn} data-testid="queued-task-done" onClick={() => act(null, 'task_done', { task_id: it.what.task_id })}>Mark done</button> : null}</QueueCard>)}
           {!q.operator.length ? <div style={small}>Nothing for you.</div> : null}
         </div>
       </div> : null}

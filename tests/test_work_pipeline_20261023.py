@@ -227,6 +227,7 @@ def test_build_items_groups_by_work_item_and_summarizes():
     op = next(i for i in items if i["id"] == "T-20261023-aaaaaa")
     assert op["who"]["label"] == "OPERATOR" and op["next"]["owner"] == "operator"
     assert op["next"]["command"].startswith("python3 scripts/agent_claim.py task show")
+    assert "task_done" in op["actions"]["available"]
     pr17 = next(i for i in items if i["id"] == "PR-2017")
     assert pr17["where"]["file_count"] == 3 and pr17["links"]["ci"].endswith("/pull/2017/checks")
     s = W.summarize(items)
@@ -395,3 +396,41 @@ def test_claim_without_pr_is_matched_to_its_branch_pr_not_stale():
                           health={"ok": True, "sha": "80e93c99f", "at": ago(minutes=30)}, now=NOW)  # fmt: skip
     assert [i["id"] for i in items] == ["PR-2002"]
     assert items[0]["stage"] == "verified" and not items[0]["stale"] and items[0]["how"]["claim_ids"] == [c["claim_id"]]
+
+
+def test_batch_member_merge_command_names_the_batch_pr_and_its_head():
+    batches = {2018: {"number": 2018, "members": [2012], "excluded": {}, "ci": {"state": "green"}}}
+    census = {
+        "open": [open_pr(2012), open_pr(2018, branch="release/batch-9-x", head_sha="b" * 40)],
+        "merged": [],
+        "batches": batches,
+    }
+    items = {i["id"]: i for i in W.build_items(tasks=[], claims=[], census=census, now=NOW)}
+    assert items["PR-2012"]["next"]["text"] == "Operator: merge batch #2018"
+    assert items["PR-2012"]["next"]["command"] == "gh pr merge 2018 --merge --match-head-commit " + "b" * 40
+
+
+def test_operator_task_command_has_no_placeholder():
+    t = {
+        "task_id": "T-20261023-73f31d",
+        "title": "OPERATOR: run hotlist-budget-operator.sh",
+        "status": "free",
+        "created_at": ago(hours=1),
+        "areas": ["x"],
+    }
+    items = W.build_items(tasks=[t], claims=[], census={}, now=NOW)
+    cmd = items[0]["next"]["command"]
+    assert "<" not in cmd and ">" not in cmd
+
+
+def test_merged_batch_keeps_its_standing_exclusion():
+    batches = {
+        2018: {
+            "number": 2018,
+            "members": [],
+            "excluded": {1997: "Active Trader files. The operator merges those."},
+            "merged": True,
+        }
+    }
+    d = W.derive(pr=open_pr(1997), batches=batches, now=NOW)
+    assert d["label"] == "operator merge" and d["next"]["owner"] == "operator"
