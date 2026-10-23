@@ -55515,6 +55515,32 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__}
 
+    # Work pipeline (operator 2026-10-23 13:15 ET): one row per work item (task, PR, design phase) staged
+    # proposed -> ... -> verified live with RAG, who/what/when/where/how, blocker and next step + owner.
+    # scripts/lib/work_pipeline.py: single-flight 30 s cache; the GitHub census runs only in a background thread,
+    # at most once per 60 s; a request never waits on GitHub. GET only.
+    if base_path == "/api/v2/coordination/pipeline":
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from lib.work_pipeline import work_pipeline as _work_pipeline
+
+            return 200, {"ok": True, "data": _work_pipeline().view()}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
+    # Work pipeline commands, Tier 1 (operator 2026-10-23: "both"): note, priority, hold/unhold, next-batch queue,
+    # new/split task, release a red-stale claim. Operator tailnet identity only (agents/service token refused), CSRF
+    # enforced here (cc_auth.command_csrf_check), idempotency key, append-only audit in the claims dir.
+    # scripts/lib/work_pipeline_commands.py. Never broker orders, stops, kill-switch clearing or grants.
+    if base_path == "/api/v2/coordination/commands":
+        try:
+            from lib import work_pipeline_commands as _wpc
+
+            return _wpc.handle(method, body)
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
     # Migration board (n8n scheduler-of-record program, stream G, 2026-10-08): per lane the
     # scheduler of record, phase, last run, output-signal age, rollback readiness and risk flags, plus
     # the registry's dispatcher stage counts (scheduler.stage). Computed live, read-only, 60 s cache

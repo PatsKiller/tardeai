@@ -120,6 +120,12 @@ cc_auth:
       - action: ops_controls_command
         methods: [POST, PUT, PATCH, DELETE]
         pattern: /api/v2/ops/controls(/.*)?
+      # Work pipeline commands (operator 2026-10-23, Tier 1): note, priority, hold, next-batch queue, tasks, release
+      # a red-stale claim. Same-origin enforced here even in report_only; the handler re-checks it
+      # (cc_auth.command_csrf_check) and answers only the operator's tailnet identity on serve_proxy.
+      - action: work_pipeline_command
+        methods: [POST, PUT, PATCH, DELETE]
+        pattern: /api/v2/coordination/commands
     # Signed CIO action links render a same-origin HTML <form method="post"> (urlencoded). Allowed
     # content types widen to application/x-www-form-urlencoded, but Origin or Sec-Fetch-Site must be
     # PRESENT and same-origin on every listener (a cross-site form post carries a foreign Origin).
