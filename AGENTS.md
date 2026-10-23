@@ -4,8 +4,8 @@
 Policy-Version:      20.0.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              PROPOSED
-Effective-Date:      PENDING
+Status:              ACTIVE
+Effective-Date:      2026-10-23
 Last-Reviewed:       2026-10-22T23:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
@@ -111,7 +111,7 @@ asks the operator to decide needs `dedupe_minutes=0`; #1685 sets it only for `ap
 operator classifies it before #1685 merges. **Numbering:** follows 5.0.0 (ACTIVE, PR #1686, merged `0ec320486`);
 `Supersedes` is 5.0.0. Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>`.
 
-**20.0.0 is PROPOSED (MAJOR) — agent operations and the read-only broker baseline (§28).** Operator decisions
+**20.0.0 is ACTIVE (MAJOR) — agent operations and the read-only broker baseline (§28).** Operator decisions
 2026-10-22, verbatim: "So can we do A through E? Is there any problem?", "approve sudo window", and "yes i approve
 “approve all” (A–L)", covering the host `/tmp` hygiene lanes, measured caps and receipts for the automations that
 end or rewrite a run (§28.1), agent temp discipline (§28.2), multi-vendor coordination and the claim board (§28.3),
@@ -119,8 +119,8 @@ approval provenance (§28.4), the Ops → Controls sudo window (§28.5), the rea
 installed release-train claimer, two stale references, §0 rule 11 "Claim, log, hand off", how any agent picks up work (§28.3a) and
 design, phase and task ids (§28.3b) (operator 2026-10-23:
 "We shouldn't lose anything just because different developers or agents working on it."). These were approved as a "19.1.0"; the version policy
-numbers them 20.0.0 (§0 rule 10). Awaiting the operator's `APPROVE_AGENTS_POLICY_20_0_0 <pr_number> <head_sha>` (§20); until it is ratified
-and merged nothing here binds and the 19.0.0 text governs. **Why MAJOR:** it narrows §0 rule 6 "Never delete" for
+numbers them 20.0.0 (§0 rule 10). Ratified by the operator 2026-10-23 (`APPROVE_AGENTS_POLICY_20_0_0 2013 c766b497d5d63a49f08aad247f194f884a8030b1`, §20; PR #2013 comment by PatsKiller 2026-10-23T14:42:00Z, https://github.com/PatsKiller/tardeai/pull/2013#issuecomment-6367515961, verbatim: "APPROVE_AGENTS_POLICY_20_0_0 2013 c766b497d5d63a49f08aad247f194f884a8030b1"); ratified by this edit, which set the header block
+to 20.0.0 ACTIVE and made the nine clause edits quoted in §28.7. **Why MAJOR:** it narrows §0 rule 6 "Never delete" for
 a second set of lanes (the host `/tmp` hygiene timers), and it relaxes §27.3's one passkey assertion per risky act
 with a bounded sudo window; each removes a restriction, and a change that removes a restriction is classed by the
 weakest guarantee after it (precedents 5.0.0, 14.0.0 and 15.0.0, each narrowing §0). It cannot be MINOR. Every rule
@@ -608,8 +608,8 @@ This section is unnumbered on purpose: it governs the document, not the agent.
 
 # 0 · If you read nothing else
 
-These ten prevent irreversible harm. They are repeated verbatim in every tool adapter, because an
-agent that reads fifteen lines and stops must still know them.
+These ten prevent irreversible harm, and rule 11 keeps work recoverable. They are repeated verbatim
+in every tool adapter, because an agent that reads fifteen lines and stops must still know them.
 
 1. **`MBI_BEHAVIOR = 0`.** The agent never sizes, orders, stops, weights, or writes to a broker.
    Ever, for any reason, under any framing. (`MBI_BEHAVIOR` is the shorthand, not a variable —
@@ -639,6 +639,9 @@ agent that reads fifteen lines and stops must still know them.
    One exception, binding only once AGENTS.md 15.0.0 is ACTIVE: the n8n lane `disk-hygiene` may
    remove the reclaimable items its reviewed rules select (scripts/disk_hygiene.py,
    config/disk_hygiene_rules.json), and nothing else (AGENTS.md §24.12).
+   A second exception, binding only once AGENTS.md 20.0.0 is ACTIVE: the host /tmp hygiene lanes
+   may remove the /tmp items their reviewed tmp.* rules select (scripts/tmp_hygiene_auto.py),
+   and nothing else (AGENTS.md §24.12).
 7. **Dry-run before any live run** that writes durable state, sends to an operator surface, spends
    money, or touches a scheduled job. Quote the dry run's output.
 8. **Exit code 0 is not evidence of work.** Prove by a durable artifact that would not exist if the
@@ -646,6 +649,13 @@ agent that reads fifteen lines and stops must still know them.
 9. **Operator-only decisions: propose and stop.** The list is §17.
 10. **When a finding contradicts this file, the finding wins.** Report it once, continue, and open
     an amendment PR (§20).
+11. **Claim, log, hand off.** Before editing, read the claim board and the active worklogs
+    (`scripts/agent_claim.py status`); claim your files; keep your worklog current (plan, changes,
+    decisions, blockers, handoff); when you stop for any reason, leave the exact next step. Work in
+    progress must be recoverable by any agent of any vendor: commit locally at least every hour,
+    record branch, worktree path and head SHA in the worklog, and push a draft PR, within the push
+    budget, for anything a cloud agent may need. Taking over a stale or abandoned claim is done with
+    `agent_claim.py takeover`, never by starting over. How to pick up work: AGENTS.md §28.3a.
 
 ---
 
@@ -721,7 +731,8 @@ READ_ONLY_ADVISORY
 > `agent_feature_flags.py` — "memory may shape advisory context (default 0)" — but it is a
 > different control, and most of its read sites copy it into a payload for reporting.
 >
-> **The rail is the unconditional raise at `scripts/lib/cio_instrument_record.py:390`.** It
+> **The rail is the unconditional `BehaviorWriteRefused` raise in `apply_cognition()`
+> (`scripts/lib/cio_instrument_record.py`).** It
 > consults no environment variable and no flag. `BEHAVIOR_FIELDS` is the list; the raise is the
 > enforcement; `"MBI_BEHAVIOR=0"` appears only inside the error string.
 >
@@ -1058,6 +1069,36 @@ question:
 | a source grep for a fixed string | the string appearing anywhere | the difference between code and a comment quoting it |
 | `attempts_24h` on a research lane | **rows the child wrote** | a child that never started — `subprocess.run` raising `FileNotFoundError` writes no row, so *called and failing quietly* and *no caller* read identically |
 
+## Timeouts, reaper caps and kill windows — measured, never guessed `[VERIFIED]` 2026-10-22
+
+Single reference: `docs/ops/PIPELINE_TIME_SETTINGS.md`. Pinned by
+`tests/test_pipeline_time_settings_20261022.py` (CI gate `pipeline_time_settings_20261022`).
+
+- **Never lower a timeout, reaper cap, orphan wait or tick deadline without measured runtime
+  evidence in the PR**: the query, the window, the output. The test, the doc table and the setting
+  change together. *Cause: two caps nobody had measured killed two `pipeline_critical` pipelines on
+  every run.*
+  - `trade_ai_orchestrator` at the 20 m reaper cap: every market-hours run on 2026-10-21/22 was SIGTERMed
+    at 1216–1377 s (20 + 22 failed).
+  - `symbol_enrichment` under the health tick's `orphan_wait_s: 30`: 224 failed / 1 success in 36 h.
+- **A runtime measured under a kill is censored, not a distribution.** If runs die at the cap, the longest
+  "observed" runtime is the cap. Read the pre-cap era or the uncensored completions.
+  - *Cause:* "enrichment takes 25–50 s" was the survivors of a 30 s kill.
+  - The uncensored distribution, 2026-09-20..10-07 (n=3,178), is p50 136 s / p95 241 s / max 419 s.
+  - The orchestrator's 1377 s is a floor.
+- **Current values; do not lower them:**
+  - **orchestrator reaper cap.** `max_runtime_min` is **30** in `config/process_reaper_policy.json` and
+    `scripts/process_reaper.py` `DEFAULT_RULES`, and the two must be equal. 30 m ≥ 1377 s + 300 s, and it stays
+    under `continuous_runner.py`'s 2700 s.
+  - **health tick.** `tick_deadline_s` is **300**; 300 + 10 s kill grace + receipt < unit `TimeoutStartSec=330`.
+  - **watchdog enrichment.** The batch wait is **min(240 s, `HEALTH_TICK_STEP_TIMEOUT_S` − 15 s)**, and
+    `pipeline-watchdog` runs **last** in the tick.
+  - **`orphan_wait_s`.** It stays **30**, as a legacy safety net only.
+- **A step that needs its children to finish supervises them; it does not get a longer orphan wait.**
+  `orphan_wait_s` is paid once per step against the shared 300 s tick.
+  - A step that waits for children must run where waiting cannot defer the steps after it.
+  - At 4th place, a 240 s wait would have deferred seven monitors on every even-hour tick.
+
 ## Caches and derived stores — fail closed, never open
 
 - **A cache that fails OPEN converts a transient outage into permanent data loss.** When a producer
@@ -1180,7 +1221,7 @@ some code path reads it.**
 | `BehaviorWriteRefused` | behaviour writes are refused | InstrumentRecord path only; broker transport not covered |
 | `shadow` (situation detector) | detections are held back | written into a payload, a plan's `extra`, and a run summary. Gates no emission, no plan, no routing. `notify` is the real gate. |
 | `BLOCKED_ACTIONS_WHEN_NOT_READY` | these actions are blocked | defined once, read nowhere |
-| `MBI_BEHAVIOR` | an env var holding the behaviour rail at 0 | not an env var; nothing reads it. All 51 occurrences are prose. The rail is an unconditional raise at `cio_instrument_record.py:390`. |
+| `MBI_BEHAVIOR` | an env var holding the behaviour rail at 0 | not an env var; nothing reads it. All 51 occurrences are prose. The rail is the unconditional `BehaviorWriteRefused` raise in `cio_instrument_record.apply_cognition()`. |
 
 Three severities:
 
@@ -3666,7 +3707,7 @@ S  snapshot-derived  reproduced from a stored artifact; may disagree with a live
 ```
 MBI_BEHAVIOR  = 0    cognition may NEVER move size, weight, order, stop.
                      BehaviorWriteRefused raises — refused outright, never silently filtered.
-                     Not an env var: an unconditional raise at cio_instrument_record.py:390.
+                     Not an env var: the unconditional raise in cio_instrument_record.apply_cognition().
 MBI_COGNITION = 1    cognition MAY move next_research_question, next_eligible_at,
                      notify_priority, cc_narrative. A write moving none of these raises
                      CognitionNoOp and is a FAILED persist.
@@ -3985,8 +4026,8 @@ Collapsing the two holdings copies · changing what is ranked onto an operator s
 production cron or systemd entry · **what portfolio data may be sent to an external model
 provider** (§2A) · **whether to fund off-box backup of `persistent-state`** (§18) ·
 **weakening the behaviour rail in any form** — editing
-`BEHAVIOR_FIELDS`, altering or conditionalising the unconditional raise at
-`scripts/lib/cio_instrument_record.py:390`, or routing a cognition write around it; there is no
+`BEHAVIOR_FIELDS`, altering or conditionalising the unconditional raise in
+`apply_cognition()` (`scripts/lib/cio_instrument_record.py`), or routing a cognition write around it; there is no
 variable to raise, the control surface is the code · re-enabling the retired
 overnight LLM window · merging divergent copies of any authoritative store · **adding, replacing or
 retiring a data source, or a writer of an authoritative store** (§7A — an agent proposes the
@@ -4020,6 +4061,10 @@ relay live list · issuing a grant from Ops → Controls · registering or revok
 broker read lane into one that writes, or widening any read lane's reach (§27.1). A risky act is made by the
 operator on Ops → Controls with a passkey and a typed phrase, or at the host terminal; no agent ever calls a
 Controls endpoint or the host applier.
+
+**Schwab stays read-only (20.0.0, §28.6):** changing the Schwab access mode away from `read_only` · unlocking a
+broker trading lock · clearing a `live_submit` or `broker` kill switch. Each is the operator's alone, made with a
+passkey on Ops → Controls or at the host terminal; never by an agent, a release, the release train or n8n.
 
 ---
 
@@ -6070,6 +6115,18 @@ under "Never delete. Archive with a tripwire".
   manifests and receipts. No other deletion code is covered by analogy. *Cause (§20): operator directive 2026-10-18,
   "i approve automatic deletion would need an AGENTS.md amendment"; §0 rule 3 — the exception is one code path, so
   a refusal elsewhere is never routed through it.*
+- **Named addition (20.0.0): the host `/tmp` hygiene lanes.** Besides `scripts/disk_hygiene.py`, exactly these may
+  remove items under this exception: `scripts/tmp_hygiene_auto.py`, run on the host by the systemd user timers
+  `tradeai-tmp-hygiene-apply` (hourly) and `tradeai-tmp-hygiene-pressure` (every 5 minutes; it acts only at 85% or
+  more `/tmp` inode use, and at most once per 15 minutes). They remove only items the reviewed `tmp.*` rules in
+  `config/disk_hygiene_rules.json` select, and only under `/tmp`; they never run under the n8n executor. The
+  standing approval is `tmp.auto_apply.standing_approval` and the kill switch is `tmp.auto_apply.enabled`; a manual
+  `scripts/tmp_hygiene.py --apply` still needs the grant. They never touch a dirty, unpushed or unregistered
+  worktree, never run `git worktree remove --force`, and never touch a `tmp.never_touch_globs` path (including
+  `tradeai-*`); every run writes a deletions ledger and a `LaneRunReceipt`. These lanes are named here; nothing
+  broader is added, and no other deletion code is covered by analogy. *Cause (§20): operator 2026-10-22,
+  verbatim: "It needs to be able to delete it. Just looking at it won't do anything." (`/tmp`, a tmpfs, at 99%
+  inodes while the tmp lane ran plan-only), and "approve all" for the 20.0.0 package; PR #1954.*
 - **What is reclaimable — two kinds of item, and only these.** (a) A git clone or worktree, only when its working tree
   is clean, it has no untracked files and no commit unpushed to its upstream, its HEAD is merged into `origin/main`,
   nothing references it (the served `CURRENT` release, a systemd unit, a crontab line), no running process has its
@@ -6325,6 +6382,13 @@ arms the delegation at the host (§25.2) and enables a window (§25.3), each a �
   not yet a block, until the operator applies a `main` ruleset or the guard patches. *Cause (§20): measured on
   `feat/release-train-authority-20261021`, on origin/main `4104effb9` (release 2) and on `065f1083c` (16.0.0
   ACTIVE), 2026-10-21.*
+- **The release-train claimer is installed and refuses live work.** `tradeai-release-train-claim.service`, with its
+  `.timer` (every minute) and `.path` units, is installed on the host and answers n8n `TrainWindowRequest` files.
+  While `TRAIN_CONTROLLER_STATUS` is `BUILD_ONLY` it refuses every live request with `CONTROLLER_BUILD_ONLY` and
+  never pushes, merges or promotes. It must be declared in the lane registry, and its unit header must say it is
+  installed; both are code follow-ups. *Cause (§20): measured on the host 2026-10-22 (`systemctl --user
+  list-timers`; the unit header still reads "PROPOSED, NOT INSTALLED", and `scripts/ai_local_acceptance.sh`
+  stops on the undeclared timer).*
 
 ## 25.9 Ratifying edit
 
@@ -6541,6 +6605,14 @@ edit), consulted by `scripts/pipelines/pipeline_manifest.py` `forbidden_command_
   server shows for it. This supersedes decision D3 (resume and scope only at the host CLI or by a Telegram button) and
   the kill switch's terminal-only clear (`scripts/brokers/kill_switches.py --disable … --confirm`); the host terminal
   stays the fallback. *Cause (§20): operator decisions 2026-10-22, "yes on passkey".*
+- **Sudo window (20.0.0, §28.5).** One passkey assertion may open a window, bound to that browser session and
+  that passkey, during which a risky act needs only its typed phrase. The window lasts the operator setting
+  `ops_controls.sudo_window_minutes` (default 60, at most 120) and ends on 15 minutes idle, on logout or on "End
+  window now"; the page shows the time left. Issuing a grant, clearing the kill switch, adding or revoking a
+  passkey and changing the window settings always need a fresh assertion. Every act inside a window is audited
+  with the assertion that opened it, and agents still never call a Controls endpoint. *Cause (§20): operator
+  2026-10-22, verbatim: "we need a time to live for this. Maybe 1 hour or 2 hours. So it caches." and "approve
+  sudo window".*
 - **Passkeys are named devices; recovery and notification are not factors.** Several named passkeys may be
   registered and each revoked alone; adding or removing one needs an existing passkey and the phrase. Google
   Authenticator TOTP is recovery only (re-enrolling when no passkey remains), never a factor for a risky act. Telegram
@@ -6549,13 +6621,15 @@ edit), consulted by `scripts/pipelines/pipeline_manifest.py` `forbidden_command_
 
 ## 27.4 Open gaps, stated
 
-- **Nothing is built; ratification arms nothing.** There is no carve-out executor wrapper, no allowlist entry or
-  dispatcher row for a carve-out lane, and `scripts/lib/lane_dispatch.py` still refuses every
-  `FORBIDDEN_COMMAND_TOKENS` hit; the Controls surface, the applier, the `operator_settings` table and the passkey
-  store do not exist. Each comes in its own reviewed PR, and activating a workflow or adding a dispatcher row stays §17
-  (§23.11). Until the passkey step-up is built and verified, a risky act is made at the host CLI only (§25.4). The
-  kill-switch code is in the broker execution set: changing its clear path needs an `execution-engineering` grant (§0
-  rule 2). *Cause (§20): measured 2026-10-22 on `2d8fc9574`.*
+- **Ops → Controls is built and served; the carve-out lanes are not.** The page, its API, the host applier
+  (`tradeai-ops-applier.service`), the `operator_settings` tables and the passkey store exist (PR #1941, served
+  from release 6), and the operator enrolled the first passkey on 2026-10-22. There is no carve-out executor
+  wrapper, no allowlist entry or dispatcher row for a carve-out lane, and `scripts/lib/lane_dispatch.py` still
+  refuses every `FORBIDDEN_COMMAND_TOKENS` hit; each comes in its own reviewed PR, and activating a workflow or
+  adding a dispatcher row stays §17 (§23.11). Release-train resume and arm stay at the host CLI until a passkey
+  proof kind for `release_control` ships in its own reviewed PR. The kill-switch code is in the broker execution
+  set: changing its clear path needs an `execution-engineering` grant (§0 rule 2). *Cause (§20): measured
+  2026-10-22 on `2d8fc9574`; corrected by 20.0.0 after PR #1941 shipped and was served (§0 rule 10).*
 
 ## 27.5 Ratifying edit
 
@@ -6627,10 +6701,10 @@ edit), consulted by `scripts/pipelines/pipeline_manifest.py` `forbidden_command_
 
 ---
 
-# 28 · Agent operations and the read-only broker baseline (20.0.0, PROPOSED)
+# 28 · Agent operations and the read-only broker baseline (20.0.0, ACTIVE)
 
-**Status: PROPOSED (MAJOR).** Binding only once AGENTS.md 20.0.0 is ACTIVE; until then 19.0.0 governs, and
-§0, §2, §7, §13, §17, §24, §25, §27 and the four adapters stay byte-identical. §28 adds the rules of §28.1–§28.6
+**Status: ACTIVE (MAJOR).** Ratified 2026-10-23 (`APPROVE_AGENTS_POLICY_20_0_0 2013 c766b497d5d63a49f08aad247f194f884a8030b1`, §20); the clauses quoted in §28.7 are in place in
+§0, §2, §7, §13, §17, §24.12, §25.8, §27.3, §27.4 and the four adapters. §28 adds the rules of §28.1–§28.6
 and extends §0 rule 6 and §24.12 (the host `/tmp` hygiene lanes), §25.8 (the claimer), §27.3 (the sudo window),
 §27.4 (stated gaps) and §17 (the read-only baseline); the ratifying edit makes exactly the nine clause edits
 quoted in §28.7. Every rule binds every agent equally, whatever its model or vendor. Test:
@@ -6978,7 +7052,7 @@ quoted in §28.7. Every rule binds every agent equally, whatever its model or ve
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 20.0.0 | 2026-10-22 | PROPOSED | MAJOR | §28 "Agent operations and the read-only broker baseline" added. Operator decisions 2026-10-22 (verbatim in the banner; approved as "19.1.0", numbered 20.0.0 by the version policy): measured caps and receipts for the four automations that end or rewrite a run (§28.1, absorbing the withdrawn 18.1.0), agent temp discipline (§28.2), multi-vendor coordination and the claim board `scripts/agent_claim.py` (§28.3), approval provenance (§28.4), the Ops → Controls sudo window (§28.5), the read-only Schwab baseline with the `live_submit` kill switch as an extra barrier (§28.6). While PROPOSED §0, §2, §7, §13, §17, §24, §25, §27 and the four adapters are byte-identical; the ratifying edit makes exactly the nine clause edits quoted in §28.7: §0 rule 11 "Claim, log, hand off" (and the four adapters), a second §0 rule 6 exception and the host `/tmp` hygiene lanes in §24.12, the claimer in §25.8, the §7 time-cap trap, the behaviour rail cited by symbol, the sudo window in §27.3, the corrected §27.4 and the read-only baseline in §17. | **PENDING** — awaiting `APPROVE_AGENTS_POLICY_20_0_0 <pr_number> <head_sha>` (§20); per-PR word, because it is MAJOR. |
+| 20.0.0 | 2026-10-22 | ACTIVE | MAJOR | §28 "Agent operations and the read-only broker baseline" added. Operator decisions 2026-10-22 (verbatim in the banner; approved as "19.1.0", numbered 20.0.0 by the version policy): measured caps and receipts for the four automations that end or rewrite a run (§28.1, absorbing the withdrawn 18.1.0), agent temp discipline (§28.2), multi-vendor coordination and the claim board `scripts/agent_claim.py` (§28.3), approval provenance (§28.4), the Ops → Controls sudo window (§28.5), the read-only Schwab baseline with the `live_submit` kill switch as an extra barrier (§28.6). While PROPOSED §0, §2, §7, §13, §17, §24, §25, §27 and the four adapters are byte-identical; the ratifying edit makes exactly the nine clause edits quoted in §28.7: §0 rule 11 "Claim, log, hand off" (and the four adapters), a second §0 rule 6 exception and the host `/tmp` hygiene lanes in §24.12, the claimer in §25.8, the §7 time-cap trap, the behaviour rail cited by symbol, the sudo window in §27.3, the corrected §27.4 and the read-only baseline in §17. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_0_0 2013 c766b497d5d63a49f08aad247f194f884a8030b1` (operator, PR #2013 comment by PatsKiller 2026-10-23T14:42:00Z, https://github.com/PatsKiller/tardeai/pull/2013#issuecomment-6367515961, verbatim: "APPROVE_AGENTS_POLICY_20_0_0 2013 c766b497d5d63a49f08aad247f194f884a8030b1"); ratified by this edit on #2013's branch, which set the header block to 20.0.0 ACTIVE and made the nine clause edits quoted in §28.7; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_0_0 <pr_number> <head_sha>`; per-PR word, because it is MAJOR. Effective 2026-10-23. |
 | 19.0.0 | 2026-10-22 | ACTIVE | MAJOR | §27 "n8n broker reads and the operator controls surface" added. Operator decisions 2026-10-22 (verbatim in the banner): n8n may read the broker because only reading is done (§27.1: a closed set of audited read lanes, host execution, every trading lock LOCKED, Schwab `read_only`, no credential in n8n; the never-list unchanged); Ops → Controls (§27.2–§27.3: settings in a Postgres `operator_settings` table with history, one governed host applier, safe direction one click, risky direction a WebAuthn passkey plus a typed phrase, TOTP recovery only, Telegram notification only), superseding decision D3 and the kill switch's terminal-only clear. Code: `scripts/lib/n8n_broker_read_carveout.py` (`CARVEOUT_STATUS` PROPOSED), consulted by `pipeline_manifest.forbidden_command_tokens()`; registry row `operator_settings` proposed. While PROPOSED §17, §23.14 and §25 are byte-identical; the ratifying edit inserts one §23.14 bullet, replaces the §25.4 "Who may do what." bullet and one §17 sentence, appends one §17 paragraph (§27.5) and sets `CARVEOUT_STATUS` ACTIVE. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_19_0_0 1962 bb54a14a89347a1c17dd0d326b0720c882bbd61f` (operator, PR #1962 comment by PatsKiller 2026-10-22T22:10:31Z, https://github.com/PatsKiller/tardeai/pull/1962#issuecomment-6352416425, verbatim: "APPROVE_AGENTS_POLICY_19_0_0 1962 bb54a14a89347a1c17dd0d326b0720c882bbd61f"); ratified by this edit on #1962's branch, which set the header block to 19.0.0 ACTIVE, made the four clause edits quoted in §27.5 and set `CARVEOUT_STATUS` to `ACTIVE`; approval phrase as proposed `APPROVE_AGENTS_POLICY_19_0_0 <pr_number> <head_sha>`; per-PR word, because it is MAJOR. Effective 2026-10-22. |
 | 18.0.0 | 2026-10-22 | ACTIVE | MAJOR | §26 "Data foundation — one store, one writer, the CIO as integrator" added. Operator direction 2026-10-22 (verbatim in the banner): one data store with everything, the CIO agent and n8n tie it together, hard-coded in AGENTS.md, a data dictionary that shows one source of data. The CIO prospect record (`InstrumentRecord@v1` extended, one row per `security_guid`, written only by `InstrumentRecordStore`) is the single per-security truth; every fact has one authoritative store and one writer in the §7A registry and the dictionary rendered from it binds row by row as each is granted; pages and alerts read only through registered projections; n8n schedules gathering inside the §23.14 never-list; conflicts are recorded and shown, never silently resolved; new stores and writers stay §17; copies retire by archive and tripwire. §0, §2, §2A, §7A, §17, §22, §23.14, §24, §25 and the adapters byte-identical; the NO SILOS section byte-identical while PROPOSED, one clause replaced at ratification (§26.7). MAJOR: agent role authority (the CIO becomes the only writer of per-security judgment); grants no row, broker, order, stop, egress or n8n authority. Header block 18.0.0 PROPOSED, `Effective-Date` PENDING, `Supersedes` 17.0.0. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_18_0_0 1931 894bbd954ca174453e7339d30157e082d4403c84` (operator, PR #1931 comment by PatsKiller 2026-10-22T16:59:09Z, https://github.com/PatsKiller/tardeai/pull/1931#issuecomment-6346416104, verbatim: "APPROVE_AGENTS_POLICY_18_0_0 1931 894bbd954ca174453e7339d30157e082d4403c84"); ratified by this edit on #1931's branch, which set the header block to 18.0.0 ACTIVE and replaced the NO SILOS methodology rule 1 quoted in §26.7; approval phrase as proposed `APPROVE_AGENTS_POLICY_18_0_0 <pr_number> <head_sha>`; per-PR word, because it is MAJOR. Effective 2026-10-22. |
 | 17.0.0 | 2026-10-21 | ACTIVE | MAJOR | §25 "Release train — agents queue, the train releases" added (Release Train v2, Phase 2). Operator directive 2026-10-21 (plan record): agents queue PRs only; a scheduled train integrates, releases and reports at 00:00, 06:00, 08:00 and 18:00 ET; decisions D1 (standing revocable delegation, no daily or 7-day renewal), D2 (GitHub App, 1-hour installation tokens, operator-created), D3 (resume and scope changes only via the host CLI or a Telegram button confirmation). Once the delegation is first armed agents never merge, push `main` or `train/*`, or release; until then the manual process is unchanged. ReleaseDelegation@v1 on the host, accepted by digest; ReleaseCapability@v1 per train and phase (build/publish cannot merge or promote); one global release lock, intent before effect, refusals consume nothing, UNCERTAIN reconciled before retry. Windows 18:00, 00:00, 06:00, 08:00 ET (enabled in that order, DST-aware, no catch-up) with a merge freeze; operator-forced off-window canary runs (operator approval 2026-10-21: TTY plus phrase, canary phase only, every other gate still enforced; they count as canary proofs). Shadow, canary and expand end when their proofs pass, with no minimum days (operator 2026-10-21). STOP: latch plus epoch, requested → acknowledged → settling → stopped, fail closed; CC may only request STOP or pause; resume issues a new epoch. Operator-only items added to §17 at ratification (arming or revoking the delegation, clearing STOP, resume, scope expansion, GitHub App custody). `AI_WORK_POLICY.md` §28: train pushes are the only automated remote sync. §24.5 and §24.8 gained one quoted bullet each at ratification; §17, §24.5 and §24.8 were byte-identical until then. §0, §2, §2A, §7A, §22, §23.14 and the adapters byte-identical. MAJOR: an automated actor may push `train/*` and merge under a standing delegation. Header block 17.0.0 PROPOSED, `Effective-Date` PENDING while PROPOSED; the ratifying edit set it to 17.0.0 ACTIVE, `Effective-Date` 2026-10-21, `Supersedes` 16.0.0. Numbered after 15.0.0 (PR #1852) and 16.0.0 (PR #1911), both ACTIVE; `Supersedes` 16.0.0. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_17_0_0 1914 aeb5e6fd70dcefac0df8541c496bebb4a5e904ec` (operator, PR #1914 comment by PatsKiller 2026-10-22T03:22:17Z, https://github.com/PatsKiller/tardeai/pull/1914#issuecomment-6331877455, verbatim: "APPROVE_AGENTS_POLICY_17_0_0 1914 aeb5e6fd70dcefac0df8541c496bebb4a5e904ec"); ratified by this edit on #1914's branch, which inserted the three clauses quoted in §25.9 into §17, §24.5 and §24.8 and marked `AI_WORK_POLICY.md` §28 ACTIVE; approval phrase as proposed `APPROVE_AGENTS_POLICY_17_0_0 <pr_number> <head_sha>`; per-PR word, because it changes `AGENTS.md` §17 and `AI_WORK_POLICY.md`. Effective 2026-10-21. |
