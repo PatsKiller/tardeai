@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 python3 "$ROOT/scripts/check_no_secrets.py"
+bash "$ROOT/scripts/agent_claim_precommit.sh" || exit 1   # claim board: AGENTS 20.0.0 §28.3
 if [[ -x "$ROOT/scripts/githooks/pre-commit" ]]; then
   exec "$ROOT/scripts/githooks/pre-commit"
 fi
