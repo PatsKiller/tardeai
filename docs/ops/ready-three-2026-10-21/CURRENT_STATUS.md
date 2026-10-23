@@ -1,4 +1,31 @@
-# Current execution status — 2026-10-23 02:17 UTC
+# Current execution status — 2026-10-23 Claude takeover
+
+## Takeover by Claude — 2026-10-23
+
+Status: three topic PRs open on GitHub; hosted CI is the validation of record. Nothing merged, released or deployed by this takeover.
+Owner: Claude (took over after the Codex session ended; operator instruction 2026-10-22: "pick up their work also from the email and from here")
+as_of: 2026-10-23
+Measured at: base `origin/main` `0f5bf2453`; pipeline `f86d70958`; n8n `8ce9dd326`; docs = this commit.
+
+- **Publication:** operator authorized the PR-branch pushes (approve-all A). Opened #1979 (pipeline/locks, `review/pipeline-lock-hardening-20261022`), #1980 (n8n probe evidence, `review/n8n-probe-evidence-20261022`) and this docs PR (`review/ready-three-docs-20261022`). Each was pushed once. The release train integrates them after review and green CI. No candidate deployment.
+- **Production identity:** the served build is main `f7c1e96cb` (build metadata, 2026-10-23 00:33Z). Release 7 = main `0f5bf2453` is pending on the release train. Current health was not re-measured in this takeover; the historical 78/degraded figure is not current.
+- **Duplicate work dropped:** #1956 (merged) already carries `481d10dc1` (supervised watchdog enrichment children), `30a70e59a` (orchestrator reaper cap 30 min), `docs/ops/PIPELINE_TIME_SETTINGS.md`, and the pinned time-settings tests. The pipeline topic touches none of `config/health_tick_steps.json`, `config/process_reaper_policy.json`, `scripts/health_tick.py`, `docs/ops/PIPELINE_TIME_SETTINGS.md` or `tests/test_pipeline_time_settings_20261022.py`. No time setting changed. What remains in the pipeline topic is new work: `safe_flock` path hardening plus adversarial tests, pidfd identity checks in `process_reaper`, remediation and failure-count alignment, HELD outcomes, and the per-symbol lock cleanup in `symbol_enrichment`.
+- **Docs topic scope corrected:** two changes left this topic.
+  - The `docs/HEALTH_AGENT.md` section on HELD component-pipeline failures moved to #1979. It describes behaviour that exists only in that PR's code.
+  - The `docs/ops/DESK_TRUTH_MONITORS.md` "HOLD: UNAPPROVED_READER" banner was dropped. #1947 fixed that defect, and `test_data_source_authority_20260913.py::test_gate_is_clean_on_the_live_repo` passes on `0f5bf2453`.
+- **Local re-validation:** run with the repo `.venv` and `TMPDIR=~/.cache/rtc`. The runner's local-socket/hermetic limitation is the hermetic guard on DB-backed tests. GitHub CI runs those tests and is the validation of record.
+  - Pipeline: changed and related suites gave 250 passed / 2 failed. Both failures are `test_escalation_verify_autonomy` DB cases, and they fail identically on main. The `ci_self_guards` gate and registry gave 281 passed. The changed-file quality floor passed.
+  - n8n: 63 passed in platform hardening and the import guard; 499 passed in the wider n8n and release-train regression; changed-file quality passed.
+- **Open findings not addressed by these PRs:**
+  - The `safe_flock` same-UID check-then-open (TOCTOU) race. The fix needs `O_NOFOLLOW` and directory-FD opening.
+  - The `process_reaper` race between the identity check and the signal (exec in between).
+  - Live n8n host facts are unverified: UFW provenance, DB app-role membership, and running-image RepoDigests. The proposed units and sudoers are not installed.
+  - The exposed Cursor credential still needs owner rotation.
+  - `/api/v2/communications/health` (and the deliveries summary) answer unauthenticated on loopback. `cc_auth` is still report-only.
+  - Dependency upgrades are queued last tonight by operator approval M and are not part of these PRs: four npm audit findings in vite/esbuild/react-router.
+  - C3 stays disabled.
+
+The sections below are the original agent's checkpoints. They are historical wherever they conflict with this section, including every "unpushed / no git-push grant" statement.
 
 ## Email handoff reconciliation — 2026-10-23 02:23 UTC
 

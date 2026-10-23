@@ -2,7 +2,7 @@
 
 ## Email handoff reconciliation — 2026-10-23 02:23 UTC
 
-Status: local review packets in preparation; qualification BLOCKED by test-runner socket restrictions.
+Status: historical as of 2026-10-23 02:23 UTC. Superseded by the Claude takeover section in [current status](CURRENT_STATUS.md): the three topic PRs are open (#1979, #1980 and the docs PR).
 Owner: Codex
 as_of: 2026-10-23 02:23 UTC
 Measured at: pipeline `1e8a388122f12d88bd5b89d4f30ea7297459731c`; n8n `8ce9dd326`; base `0f5bf2453`.
