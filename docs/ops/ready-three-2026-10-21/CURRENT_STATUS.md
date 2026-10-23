@@ -1,3 +1,28 @@
+# Current execution status — 2026-10-23 02:17 UTC
+
+## Resumed session: pipeline topic rebased and focused checks passed
+
+Status: LOCAL-ONLY; release qualification incomplete; no remote push or deployment.
+Owner: Codex / operator release train
+as_of: 2026-10-23 02:17 UTC
+Measured at: pipeline `fcf489d5b`, fetched main `0f5bf24537bed1bc0e9c4e76f2efbb607311bf3f`.
+
+This section supersedes the historical profile-progress and unmerged-PR statements below.
+
+- **OBSERVED:** main contains PR #1947 as `6ba761f0d` and PR #1956 as `2548c5b7c`. Rebased `review/pipeline-lock-hardening-20261022` in `/home/johnclaw/pr-pipeline-lock-hardening`; local commits are `d5f51dbef` and `fcf489d5b`. Removed duplicated supervision/timing changes and the obsolete test that required the now-fixed desk-truth reader defect. The repository-wide reader assertion is restored to main's version.
+- **OBSERVED:** `config/health_tick_steps.json`, `config/process_reaper_policy.json`, `scripts/health_tick.py`, and `tests/test_pipeline_time_settings_20261022.py` are byte-identical to fetched main. The watchdog retains main's remaining-step-budget calculation and cleanup reserve. No measured runtime setting was changed.
+- **OBSERVED:** the combined 11-suite regression run on `fcf489d5b` completed **149 passed / 1 skipped**. It covers failure counting/remediation, log roots, PID identity, hostile flock paths, enrichment supervision, orchestrator runtime, pinned timings, environment redaction, n8n executor, reader authority, and self-heal fixer. The skip is the existing host-only bubblewrap proof. Log: `/home/johnclaw/t/pipeline-rebased-tests-20261022.log`. All temporary test paths use `/home/johnclaw/t`.
+- **OBSERVED:** changed-file quality passes with Ruff 0.16.2 (lint and formatting). Formatting was restricted to changed Python files and checked to preserve their ASTs. This introduces formatting-only diff in legacy files, particularly `health_agent.py`; review semantic changes separately from whitespace. `git diff --check` passes.
+- **OBSERVED:** data-source authority validator completes with **0 findings / 31 warnings** (proposed dictionary rows and inherited drift remain warnings). CI coverage reports **0 new unlisted tests**; 920 inherited unlisted files remain. These are source checks, not proof of runtime data correctness.
+- **OBSERVED:** unchanged n8n topic `909f359e2` passes **52 tests** in `test_n8n_platform_hardening_20261022.py`; log `/home/johnclaw/t/n8n-topic-tests-20261022.log`. It has not been rebased or remotely verified in this session.
+- **UNKNOWN:** no full acceptance or full-profile result exists for the new pipeline head. The old aggregate **589 PASS / 7 FAIL gates** belongs only to integration head `a7508b039`; its later 94-test recovery belongs only to `88b5a1950`. Neither qualifies the rebased topic or current main.
+- **OBSERVED:** the live pin resolved to `/home/johnclaw/trade-ai-releases/portfolio-server/f7c1e96cb-main-exact-phase2-20261022-203201`. This is pin evidence only, not an endpoint/health verification. Peer release activity is separate from this work.
+- **OBSERVED:** canonical guard inspection shows release-write and execution-engineering grants for other named work, but no git-push grant. No grant was consumed. The operator's no-candidate-deploy, release-train, dependency-deferral, and outside-`/tmp` instructions remain binding. Four npm audit findings are historical unresolved findings, not a newly executed audit. C3 was not changed; its live activation state was not rechecked.
+
+Next: complete remaining acceptance on the exact pipeline head, then obtain the required branch-scoped push authority before publishing topic PRs. Keep n8n and docs as separate topics; let the release train integrate and release. Do not treat focused tests as full release approval.
+
+## Historical checkpoints (superseded where inconsistent with the section above)
+
 # Current execution status — 2026-10-22 21:40 UTC
 
 ## Profile update — 2026-10-22 21:40 UTC

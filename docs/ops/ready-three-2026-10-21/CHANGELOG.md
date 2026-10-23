@@ -1,3 +1,13 @@
+# Change and release log — resumed 2026-10-23 02:17 UTC
+
+## Pipeline topic rebase and validation
+
+- Rebased pipeline/locks onto fetched main `0f5bf2453`, incorporating merged #1947/#1956 and preserving pinned runtime settings. Local head `fcf489d5b`, two commits ahead of that base.
+- Restored main's repository-wide reader test after removing the stale assertion that expected the repaired defect.
+- Combined focused regression: **149 passed, 1 skipped**. Changed-file Ruff lint/format and diff checks pass; formatting preserves Python ASTs. Separate unchanged n8n topic: **52 passed**.
+- Full acceptance remains incomplete. No push, PR creation, merge, release, deployment, dependency change, C3 activation or notification send occurred in this resumed session.
+- Current evidence and next steps are at the top of `CURRENT_STATUS.md`; older progress snapshots below are historical.
+
 # Change and release log — 2026-10-21
 
 # Change and release log — 2026-10-21
