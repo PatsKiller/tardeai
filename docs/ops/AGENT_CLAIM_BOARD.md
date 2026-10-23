@@ -67,6 +67,9 @@ Default directory `~/trade-ai-releases/persistent-state/data/coordination/claims
 - **Stale = no heartbeat for 2 hours** (`--stale-hours`, `TRADEAI_AGENT_CLAIMS_STALE_HOURS`). A stale claim
   stops blocking. A new claim over it records `takeover_of`. The old owner's next `heartbeat` is refused
   ("taken over … stop and coordinate").
+- **Shared-additive paths never conflict** (2026-10-23; §15). The files listed in
+  `config/agent_claim_shared_paths.json` (docs/INDEX.md, docs/DOCUMENTATION_INDEX.md,
+  apps/command-center-v3/package.json, the docs/AGENTS update backlog) can be claimed by any number of sessions.
 - **Release** is owner-only. `--force` releases another session's claim and records `released_by`.
 - **Merged frees the files.** A claim at stage `merged` or `released` no longer blocks, even while live (§9).
 - **Compaction.** A claim becomes eligible when it is `done` or `abandoned`, or `active` but stale, or `released`, and
@@ -370,3 +373,37 @@ estimate/actual, dependencies (blocked or done), acceptance count and hand-off.
   - open PRs are read by a background thread through `gh api --method GET` and degrade to a warning.
 - **Writes** go only through `scripts/agent_claim.py`. `take <task-id>` is refused on a file-level overlap.
 - **Registry format:** `docs/designs/README.md`.
+
+## 15. Shared-additive paths (2026-10-23)
+
+Almost every PR adds exactly one row to `docs/INDEX.md` and one entry to the `apps/command-center-v3/package.json`
+`"build"` line. While they were exclusive, one claim on them blocked every other agent: on 2026-10-23, p3ui held
+INDEX.md 16:32–18:32Z, then nvda-alert took it, and cio-quality, n8n-cutover and the designs backfill waited only for
+it. Merging these files is mechanical, so they are now a **shared-additive** class.
+
+- **Config:** `config/agent_claim_shared_paths.json` (`AgentClaimSharedPaths@v1`). Each entry has an exact `path`
+  (globs are ignored), a `merge` strategy, a `how` and a `reason`:
+
+  | Path | Merge | How |
+  |---|---|---|
+  | `docs/INDEX.md` | regenerate | `python3 scripts/report_docs_inventory.py --write-index` (CI runs `--check-index`) |
+  | `docs/DOCUMENTATION_INDEX.md` | append rows | keep both sides' rows on a rebase conflict |
+  | `apps/command-center-v3/package.json` | union_build | the batch builder unions the `"build"` line entries |
+  | `DOCS_AND_AGENTS_UPDATE_BACKLOG.md` (also `~/n8n-maturity-verification/…`) | append rows | append one row; never rewrite another's |
+
+- **Semantics:**
+  - a claim on a shared path never conflicts with another session's claim (`claim`, `claim --add`, `take`, `next`,
+    `check`, and the draft-PR fallback). A broad claim such as `docs/**` still holds every other file under `docs/`;
+  - the pre-commit gate treats a staged shared file as covered by **any** active claim of the committing session.
+    The committer still needs a claim, and every other staged file must be covered by it as before;
+  - the board marks these paths: `list` shows `docs/INDEX.md (shared)`, `status` prints a `shared (never
+    conflicts)` line, the API row has `shared_paths`, and the board has a top-level `shared_paths` map;
+  - `check` and `claim` print `shared (never conflicts, merged mechanically): <path> [merge: <strategy>]`.
+- **Safe default:** a missing, unreadable or wrong-schema config means no shared paths, so every file is exclusive
+  again. To make a path exclusive again, remove its entry.
+- **Rebase discipline:** a shared file conflicts in git, not on the board. Rebase onto main, then apply the merge
+  strategy: regenerate INDEX.md, or keep both sides' rows or build entries.
+- **Rollout:** sessions running an older `scripts/agent_claim.py` still treat these paths as exclusive. Until every
+  worktree is on a main that has this change, do not list shared paths in your claim; the new gate does not need
+  them listed.
+- Tests: `tests/test_agent_claim_shared_paths_20261023.py` (CI gate `config/ci_gates/agent_claim_shared_paths_20261023.json`).

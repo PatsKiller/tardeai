@@ -31,6 +31,10 @@ Identity: --vendor/--session/--agent, else AGENT_CLAIM_VENDOR / AGENT_CLAIM_SESS
 best-effort environment hint. Claims dir: --claims-dir, else TRADEAI_AGENT_CLAIMS_DIR, else
 ~/trade-ai-releases/persistent-state/data/coordination/claims/.
 
+Shared-additive paths (config/agent_claim_shared_paths.json: docs/INDEX.md, docs/DOCUMENTATION_INDEX.md, the CC v3
+package.json build line, the docs/AGENTS update backlog) never conflict: any number of sessions may claim them, check
+reports them clear, and the board marks them "(shared)". The rest of a change still needs an exclusive claim.
+
 Exit codes: 0 ok · 1 conflict / refused claim · 2 usage or ownership error.
 AUTHORITY: READ_ONLY_ADVISORY — coordination files only; no broker, DB, Telegram, scheduler or remote write
 (``gh pr list`` is a read).
@@ -77,6 +81,25 @@ def _board(a: argparse.Namespace, *, observe: bool = True) -> B.ClaimBoard:
 
 def _session(a: argparse.Namespace) -> str | None:
     return a.session or B.detect_session()
+
+
+def _fmt_path(p: str, row: dict) -> str:
+    return f"{p} (shared)" if p in (row.get("shared_paths") or ()) else p
+
+
+def _note_shared(paths: list[str] | None, stream=None) -> None:
+    """Tell the caller which of its paths are shared-additive (config/agent_claim_shared_paths.json)."""
+    entries = B.shared_path_entries()
+    hits = []
+    for p in paths or []:
+        try:
+            c = B.canonical_pattern(p)
+        except (B.ClaimError, ValueError):
+            continue
+        if c in entries:
+            hits.append(f"{c} [merge: {entries[c].get('merge')}]")
+    if hits:
+        print("shared (never conflicts, merged mechanically): " + "; ".join(hits), file=stream or sys.stderr)
 
 
 def _print_conflicts(rows: list[dict], *, stream=None, prefix: str = "CONFLICT") -> None:
@@ -174,6 +197,7 @@ def cmd_claim(a: argparse.Namespace) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 2
         print(json.dumps(doc, indent=2, sort_keys=True) if a.json else f"{cid} paths: {', '.join(doc['paths'])}")
+        _note_shared(a.add)
         return 0
     if not a.task or not a.paths:
         print("error: claim needs --task and --paths (or --add <paths> to extend a claim)", file=sys.stderr)
@@ -211,6 +235,7 @@ def cmd_claim(a: argparse.Namespace) -> int:
             f"next: add your plan -- python3 scripts/agent_claim.py plan '<step>'  (worklog {B.WL.path_for(board.dir, doc['claim_id'])})",
             file=sys.stderr,
         )
+    _note_shared(a.paths)
     if a.json:
         print(json.dumps(doc, indent=2, sort_keys=True))
     else:
@@ -556,6 +581,7 @@ def cmd_status(a: argparse.Namespace) -> int:
             f"head {str(r.get('live_head_sha') or r.get('worktree_head_sha') or r.get('head_sha') or '?')[:12]}\n"
             f"    task: {r.get('task')}\n    worktree: {r.get('worktree') or '?'}   plan {plan}\n"
             f"    handoff: {w.get('next_step') or '(not set)'}"
+            + (f"\n    shared (never conflicts): {', '.join(r['shared_paths'])}" if r.get("shared_paths") else "")
         )
 
     print(f"# Agent board status  {out['at']}  ({out['claims_dir']})")
@@ -783,7 +809,7 @@ def cmd_list(a: argparse.Namespace) -> int:
                 (r["started_at"] or "-")[:16],
                 "-" if hb is None else f"{hb:.0f}m",
                 (r["task"] or "")[:40],
-                ",".join(r["paths"])[:60],
+                ",".join(_fmt_path(x, r) for x in r["paths"])[:60],
                 r["claim_id"],
             ]
         )
@@ -835,6 +861,7 @@ def cmd_check(a: argparse.Namespace) -> int:
         return 1
     if not a.json and not a.quiet:
         print("clear: no live claim of another session and no open draft PR overlaps these paths")
+        _note_shared(a.paths, stream=sys.stdout)
     return 0
 
 
