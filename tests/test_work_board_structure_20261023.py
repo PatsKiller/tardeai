@@ -37,6 +37,12 @@ from scripts.lib import work_pipeline as WP  # noqa: E402
 T0 = datetime(2026, 10, 23, 21, 0, tzinfo=timezone.utc)
 
 
+@pytest.fixture(autouse=True)
+def _pin_cli_clock(monkeypatch):
+    """The CLI and the importer build their own ClaimBoard: pin their clock to T0 as well (no real-clock reads)."""
+    monkeypatch.setattr(B, "utc_now", lambda: T0)
+
+
 class Clock:
     def __init__(self, t: datetime = T0):
         self.t = t
