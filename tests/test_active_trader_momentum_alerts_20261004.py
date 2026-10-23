@@ -349,3 +349,16 @@ def test_exchange_time_parsing():
     assert exchange_time_to_epoch("") is None and exchange_time_to_epoch("nan") is None
     assert exchange_time_to_epoch("2026-10-02 16:00:00") == pytest.approx(1790971200.0)   # 16:00 ET = 20:00 UTC
     assert exchange_time_to_epoch("2026-10-02 16:00:00.614") == pytest.approx(1790971200.614)
+
+
+def test_stale_tape_is_never_a_current_buy_ratio_20261023():
+    """SAIQ 2026-10-23 08:55 ET: moomoo held the prior session's prints (age ~60,900 s); the premarket alert
+    printed "tape 94% buys" and vetoed TAPE_SELLERS on them. Stale tape keeps its ratio for diagnosis only."""
+    now = 1_000_000.0
+    ticks = [{"ts_epoch": now - 60_900, "price": 6.7, "volume": 100, "direction": "BUY"}] * 49 + [
+        {"ts_epoch": now - 60_900, "price": 6.7, "volume": 100, "direction": "SELL"}]
+    ev = ma.tape_evidence(ticks, now=now, cfg=ma.AlertConfig(), source="moomoo")
+    assert ev["ok"] is False and "TAPE_STALE" in ev["reasons"]
+    assert ev["buy_ratio"] is None and ev["stale_buy_ratio"] == 0.98
+    fresh = ma.tape_evidence([dict(t, ts_epoch=now - 2) for t in ticks], now=now, cfg=ma.AlertConfig(), source="moomoo")
+    assert fresh["ok"] is True and fresh["buy_ratio"] == 0.98 and "stale_buy_ratio" not in fresh

@@ -188,11 +188,16 @@ def tape_evidence(ticks: Optional[Sequence[Mapping[str, Any]]], *, now: float,
     ev["age_s"] = None if age is None else round(age, 1)
     buy = sum(_num(r.get("volume")) or 0.0 for r in rows if str(r.get("direction")).upper() == "BUY")
     sell = sum(_num(r.get("volume")) or 0.0 for r in rows if str(r.get("direction")).upper() == "SELL")
-    ev.update(prints=len(rows), buy_volume=buy, sell_volume=sell,
-              buy_ratio=round(buy / (buy + sell), 3) if (buy + sell) > 0 else None,
+    ratio = round(buy / (buy + sell), 3) if (buy + sell) > 0 else None
+    ev.update(prints=len(rows), buy_volume=buy, sell_volume=sell, buy_ratio=ratio,
               last_price=_num(rows[-1].get("price")))
     if age is None or age > cfg.max_tape_age_s:
         ev["reasons"].append("TAPE_STALE")
+        # 2026-10-23 (SAIQ & every premarket row): moomoo's ticker held the PRIOR session's last prints (age
+        # ~60,900 s at 08:55 ET), and the premarket alert printed "tape 94% buys" and vetoed TAPE_SELLERS on them.
+        # A stale tape is not a current buy ratio: keep it for diagnosis only, never as ``buy_ratio``.
+        ev["buy_ratio"] = None
+        ev["stale_buy_ratio"] = ratio
     if len(rows) < cfg.min_tape_prints:
         ev["reasons"].append("TAPE_THIN")
     ev["ok"] = not ev["reasons"]
@@ -518,6 +523,27 @@ def _broker_catalyst(symbol: str, day: Optional[str]) -> Optional[dict]:
         return None
 
 
+def _shared_catalyst_verdict(trade_ai, text, source, hermes) -> Optional[dict]:
+    """lib.momentum_setup_evidence.catalyst_verdict over the scan row's evidence block (None when unavailable)."""
+    try:
+        try:
+            from lib.momentum_setup_evidence import catalyst_verdict  # type: ignore
+        except ModuleNotFoundError:
+            from scripts.lib.momentum_setup_evidence import catalyst_verdict  # type: ignore
+    except Exception:  # noqa: BLE001
+        return None
+    t = trade_ai or {}
+    facts = t.get("setup_evidence") if isinstance(t.get("setup_evidence"), Mapping) else {}
+    cat = dict(facts.get("catalyst")) if isinstance(facts.get("catalyst"), Mapping) else {}
+    cat["text"] = cat.get("text") or text
+    cat["source"] = cat.get("source") or source
+    if not isinstance(cat.get("reported_verified"), bool) and isinstance(t.get("catalyst_verified"), bool):
+        cat["reported_verified"] = t.get("catalyst_verified")
+    if cat.get("model_confidence") is None and t.get("catalyst_confidence") is not None:
+        cat["model_confidence"] = t.get("catalyst_confidence")
+    return catalyst_verdict(cat, hermes if isinstance(hermes, Mapping) else None)
+
+
 def catalyst_line(symbol: str, trade_ai: Optional[Mapping[str, Any]], day: Optional[str], *,
                   broker_fn=None) -> str:
     """One explicit catalyst line on every Active Trader alert (operator 2026-10-16: "some scalp and active
@@ -529,6 +555,13 @@ def catalyst_line(symbol: str, trade_ai: Optional[Mapping[str, Any]], day: Optio
     does not repeat an UNKNOWN catalyst block (lib/momentum_setup_evidence.enrich_active_trader_notification)."""
     text, source = _trade_ai_catalyst(trade_ai)
     if text:
+        # 2026-10-23 (SAIQ): one verdict with the Trade AI page — lib.momentum_setup_evidence.catalyst_verdict.
+        # A scan headline is THE catalyst only when it is source-verified; otherwise it is labelled.
+        verdict = _shared_catalyst_verdict(trade_ai, text, source, (broker_fn or _broker_catalyst)(symbol, day))
+        if verdict is not None and verdict.get("status") != "VERIFIED":
+            return (f"catalyst: UNVERIFIED headline — {text[:120]}"
+                    + (f" · {str(source)[:30]}" if source else " · Trade-AI scan")
+                    + (f" ({str(verdict.get('reason'))[:160]})" if verdict.get("reason") else ""))
         return f"catalyst: {text[:120]}" + (f" · {str(source)[:30]}" if source else " · Trade-AI scan")
     rec = (broker_fn or _broker_catalyst)(symbol, day)
     status = (rec or {}).get("status")
