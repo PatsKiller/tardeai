@@ -18041,9 +18041,9 @@
       "post_snapshot_install": {
         "installed_on": "2026-10-22",
         "evidence": "systemctl --user is-active tradeai-ops-applier.service = active (2026-10-22 ~20:34 ET, operator setup script after release 6); check_lane_registry.py --fail-on-new discovered it as undeclared until this row"
-        }
-      },
-      {
+      }
+    },
+    {
       "lane_id": "calibration-shadow-harness",
       "owner": "cio",
       "scheduler": {
