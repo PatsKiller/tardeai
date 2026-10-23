@@ -1,0 +1,288 @@
+{
+ "_note": "P3 cosmetics e2e fixture (2026-10-23). Shapes from the 10-22/10-23 site-crawl captures; money values are synthetic.",
+ "/api/v2/overview": {
+  "ok": true,
+  "data": {
+   "portfolio_value": 500000,
+   "today_change": -1200,
+   "today_pct": -0.24,
+   "pricing": {
+    "last_repriced": "2026-10-22 16:45:03 ET",
+    "reprice_source": "finviz_afterhours",
+    "finviz_cache_updated": "2026-10-22 16:45:03 ET",
+    "holdings_as_of": "2026-10-22",
+    "derived_total_value": 500000,
+    "canonical_total_value": 500000
+   },
+   "quote_selection": {
+    "contract_version": "QuoteSelection@v1",
+    "scope": "aggregate_portfolio_quote",
+    "selected_provider": "finviz",
+    "selected_observation_time": "2026-10-22 16:45:03 ET",
+    "selection_reason": "repricer_source=finviz_afterhours",
+    "fallback_used": false,
+    "fallback_reason": null,
+    "freshness": "CURRENT",
+    "status": "SELECTED",
+    "quality": "OK",
+    "session_date": "2026-10-22",
+    "total_symbols": 12,
+    "covered_symbols": 12,
+    "degraded_symbol_count": 0,
+    "unpriced_symbol_count": 0,
+    "coverage_pct": 100
+   },
+   "journal": {
+    "trade_count": 238,
+    "total_pnl": 25504.93,
+    "win_rate": 47.9,
+    "realized_count": 244,
+    "realized_pnl": 40000,
+    "realized_win_rate": 47.5,
+    "long_term_trim_pnl": 14559.64,
+    "source": "journal",
+    "basis": "broker_round_trips",
+    "last_close_date": "2026-10-22",
+    "last_ingested_at": "2026-10-22T18:15:05.932127-04:00",
+    "ledger_last_trade_time": "2026-10-22T15:59:21-04:00",
+    "calculation_version": "JournalMetrics@v1",
+    "account_scope": "schwab",
+    "time_window": "all_time",
+    "as_of": "2026-10-22T18:15:05.932127-04:00",
+    "quality": "OK"
+   }
+  }
+ },
+ "/api/v2/trade-ai/summary": {
+  "ok": true,
+  "data": {
+   "vix": 16.68,
+   "market_regime": "Neutral",
+   "breadth": "Neutral",
+   "run_health_status": "RUN_UNDERFILLED",
+   "run_health_reason_codes": [
+    "PREOPEN_WINDOW_BY_DESIGN"
+   ],
+   "reason_codes": [
+    "PREOPEN_WINDOW_BY_DESIGN"
+   ],
+   "expected_min_symbols": 40,
+   "run_health_scope": "exact_run",
+   "run_health_run_label": "1730",
+   "latest_run_label": "1730",
+   "latest_run_timestamp": "2026-10-23T02:21:58.964617+00:00",
+   "run_label": "1730",
+   "run_date": "2026-10-22",
+   "run_id": "2026-10-22::1730",
+   "setup_run_summary": {
+    "contract_version": "SetupRunSummary@v1",
+    "run_id": "2026-10-22::1730",
+    "run_label": "1730",
+    "run_date": "2026-10-22",
+    "run_timestamp": "2026-10-23T02:21:58.964617+00:00",
+    "source": "trade_ai_orchestrator:run_summary",
+    "calculation_version": "SetupRunSummary@v1",
+    "scanned_count": 21,
+    "classified_count": 9,
+    "go_count": 2,
+    "wait_count": 2,
+    "nogo_count": 5,
+    "review_count": 12,
+    "excluded_count": 0,
+    "error_count": 0,
+    "unclassified_count": 0,
+    "accounted_count": 21,
+    "unaccounted_count": 0,
+    "reconciled_scanned": 21,
+    "freshness_status": "UNKNOWN",
+    "quality": "UNKNOWN",
+    "count_integrity": "RECONCILED",
+    "count_integrity_reason": null,
+    "scanned_population": "producer_run_observations"
+   },
+   "vix_source": "trade_ai_run_summary",
+   "vix_observation_time": "2026-10-23T02:21:58.964617+00:00",
+   "latest_run_go_count": 2,
+   "latest_run_wait_count": 2,
+   "latest_run_no_go_count": 5,
+   "go_count": 2,
+   "wait_count": 2,
+   "avoid_count": 5,
+   "universe_go": 3,
+   "universe_wait": 33,
+   "universe_nogo": 503,
+   "ticker_count": 21,
+   "current_run_scanned": 21,
+   "latest_run_symbols_scanned": 21,
+   "stale": false,
+   "cache_age_sec": 333,
+   "cached_at": "2026-10-23T02:26:37.156104+00:00",
+   "cache_missing": null
+  }
+ },
+ "/api/v2/rotation/summary": {
+  "ok": true,
+  "data": {
+   "ok": false,
+   "advisory_only": true,
+   "summary": {
+    "trim_review": 99,
+    "add_review": 88,
+    "rotation_ideas": 77
+   },
+   "top_rotation_ideas": [
+    {
+     "from_symbol": "AAA",
+     "to_symbol": "BBB",
+     "action_class": "ROTATE_REVIEW"
+    }
+   ],
+   "publication": {
+    "schema": "RotationPublication@v1",
+    "status": "UNAVAILABLE",
+    "reasons": [
+     "account_stale",
+     "position_evidence_stale",
+     "unsupported_stop_claim"
+    ],
+    "producer_ok": true,
+    "checked_at": "2026-10-23T12:09:53.669391+00:00",
+    "input_sha256": "9ceeb48ca1f2aba0f8ac5c58626a3e5a09794a2b7d3fe249d5d8d237be54b86d",
+    "source_as_of": "2026-10-22T00:00:00+00:00",
+    "source_as_of_basis": "oldest_required_position_or_account_timestamp",
+    "holdings_reported_as_of": "2026-10-23",
+    "coverage": {
+     "required_positions": 5,
+     "dated_positions": 5,
+     "accounts": 2,
+     "dated_accounts": 2
+    },
+    "cache_generated_at": "2026-10-23T12:08:01.557594+00:00",
+    "cached_at": "2026-10-23T08:08:08",
+    "accounts": [
+     {
+      "account_key": "fixture_taxable",
+      "state": "STALE",
+      "source_as_of": "2026-10-22T00:00:00+00:00"
+     },
+     {
+      "account_key": "fixture_live",
+      "state": "LIVE",
+      "source_as_of": "2026-10-22T20:45:13.673977+00:00"
+     }
+    ]
+   }
+  }
+ },
+ "/api/v2/strategy-leaderboard": {
+  "ok": true,
+  "data": {
+   "strategy_gate": {
+    "active": true,
+    "min_trades_required": 5,
+    "wr_gate": "25% at >=10 closed trades",
+    "suppressed_last_7d": [],
+    "note": "Dormant until a strategy reaches >=10 closed trades at <25% WR"
+   },
+   "note": "Ranked by LIVE expectancy (avg R per trade), tiebreak total P&L then win-rate. Backtest + assessment shown as context (expectancy clamped at \u00b13R; data_suspect flags corrupt rows). LOW confidence = <8 live trades \u2014 directional only, not proven.",
+   "leaderboard": [
+    {
+     "strategy_id": "fib_retracement_bounce",
+     "live": {
+      "n": 2,
+      "wins": 2,
+      "win_rate": 100,
+      "avg_pnl": 34.49,
+      "total_pnl": 68.97,
+      "avg_pct": 12.42,
+      "avg_r": 2.03
+     },
+     "backtest": {
+      "sample": 781,
+      "win_rate": 41.8,
+      "expectancy_r": 1.88,
+      "profit_factor": 5.41,
+      "data_suspect": false
+     },
+     "snapshot": {
+      "win_rate": 0,
+      "avg_r": null,
+      "profit_factor": 0,
+      "assessment": null,
+      "recommendation": "maintain_current",
+      "snapshot_date": "2026-09-17"
+     },
+     "blended_expectancy_r": 1.9,
+     "confidence": "low",
+     "tilt": 1.5,
+     "excluded": false,
+     "rank": 1
+    },
+    {
+     "strategy_id": "pullback_macd_reversal",
+     "live": {
+      "n": 121,
+      "wins": 56,
+      "win_rate": 46.3,
+      "avg_pnl": -2.13,
+      "total_pnl": -258.0,
+      "avg_pct": -0.3,
+      "avg_r": 1.73
+     },
+     "backtest": {
+      "sample": 233480,
+      "win_rate": 0.5,
+      "expectancy_r": -9.69,
+      "profit_factor": 0.67,
+      "data_suspect": true
+     },
+     "snapshot": {
+      "win_rate": 0.512,
+      "avg_r": 2.46,
+      "profit_factor": 0.524,
+      "assessment": null,
+      "recommendation": "review_risk_reward",
+      "snapshot_date": "2026-10-22"
+     },
+     "blended_expectancy_r": 1.73,
+     "confidence": "high",
+     "tilt": 1.432,
+     "excluded": false,
+     "rank": 2
+    },
+    {
+     "strategy_id": "momentum_scalp",
+     "live": {
+      "n": 3,
+      "wins": 1,
+      "win_rate": 33.3,
+      "avg_pnl": 3.34,
+      "total_pnl": 10.02,
+      "avg_pct": 2.58,
+      "avg_r": 1.02
+     },
+     "backtest": {
+      "sample": 4072,
+      "win_rate": 41.6,
+      "expectancy_r": 0.05,
+      "profit_factor": 1.01,
+      "data_suspect": false
+     },
+     "snapshot": {
+      "win_rate": 0,
+      "avg_r": null,
+      "profit_factor": 0,
+      "assessment": null,
+      "recommendation": "maintain_current",
+      "snapshot_date": "2026-09-17"
+     },
+     "blended_expectancy_r": 0.2,
+     "confidence": "low",
+     "tilt": 1,
+     "excluded": true,
+     "rank": 3
+    }
+   ]
+  }
+ }
+}

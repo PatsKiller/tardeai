@@ -18,6 +18,7 @@
       "operator_add":   {"protected": true,  "requires": "operator command (watchlist_items origin operator / operator_ui)"},
       "operator_star":  {"protected": true,  "requires": "operator star (operator_starred_symbols or watchlist_items origin operator_star)"},
       "held_position":  {"protected": true,  "requires": "positions_current row with qty > 0 through the approved positions reader"},
+      "operator_directive": {"protected": true, "requires": "an active ticker watch directive (watch_directives, read through the watch_intelligence projection) — the operator asked to watch it (silo audit 2026-10-23)"},
       "cio_curator":    {"protected": false, "requires": "opportunity projection stance BUY_SETUP/ADD or conviction >= min_conviction"},
       "cio_thesis":     {"protected": false, "requires": "cio_theses stance watch/buy with a thesis version"},
       "reentry_desk":   {"protected": false, "requires": "re-entry desk candidate (stage re_entry)"},

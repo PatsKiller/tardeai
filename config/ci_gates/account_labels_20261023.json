@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "account_labels_20261023",
+  "files": [
+    "tests/test_account_display_labels_20261023.py"
+  ],
+  "anchor": "ACCOUNT_LABELS_20261023",
+  "comment": [
+    "ANCHOR: ACCOUNT_LABELS_20261023 — every Command Center position / trade row names its account (operator 2026-10-23:",
+    "\"two SpaceX and two different accounts\" / \"just a name, not the account numbers\"). config/account_display_names.json",
+    "names are digit-free and unique; lib/account_display never echoes an account number; the TS map mirrors the config;",
+    "overview movers, risk positions and journal trades carry account_id + account_label; Home do-now names accounts and",
+    "one account's stop never hides another's unprotected shares; CIO cards keep every account. Hermetic: no DB, no server."
+  ]
+}

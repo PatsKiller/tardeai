@@ -1,5 +1,6 @@
 /** Risk visualization math — payoff curves, thesis scores, contribution weights */
 
+import { multiAccountSymbols, rowAccountKey, rowAccountName } from './accountLabels'
 import type { ThesisValidity } from './brokerThesis'
 
 export function thesisValidityScore(tv?: ThesisValidity | null): number {
@@ -64,16 +65,22 @@ export function optionsPayoffCurve(opts: {
 export function riskContributionRows(
   positions: any[],
   opts?: { max?: number; useMaxLoss?: boolean },
-): { name: string; value: number; symbol: string; pct: number }[] {
+): { name: string; value: number; symbol: string; pct: number; account: string; accountLabel: string; key: string }[] {
   const max = opts?.max ?? 12
   const useMaxLoss = opts?.useMaxLoss !== false
+  // A symbol held in 2+ accounts is one bar PER ACCOUNT, named with the account (operator 2026-10-23).
+  const multi = multiAccountSymbols(positions || [])
   const rows = (positions || [])
     .filter(p => !p.risk_excluded)
     .map(p => {
       const v = useMaxLoss
         ? Math.max(0, Number(p.max_loss) || 0)
         : Math.max(0, Number(p.market_value) || 0)
-      return { name: p.symbol || '?', symbol: p.symbol || '?', value: v }
+      const account = rowAccountKey(p)
+      const accountLabel = rowAccountName(p)
+      const sym = p.symbol || '?'
+      const name = multi.has(String(sym).toUpperCase()) ? `${sym} · ${accountLabel}` : sym
+      return { name, symbol: sym, value: v, account, accountLabel, key: `${sym}:${account}` }
     })
     .filter(r => r.value > 0)
     .sort((a, b) => b.value - a.value)

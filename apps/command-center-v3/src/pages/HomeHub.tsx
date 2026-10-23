@@ -1,4 +1,5 @@
 import { Link, useSearchParams } from 'react-router-dom'
+import { accountName, accountsBadge } from '../lib/accountLabels'
 import HomeDecision from '../components/decision/HomeDecision'
 import { Collapsible } from '../components/primitives/Collapsible'
 import { makeEnvelope, retainObservation, stateLabel, stateAriaLabel, formatBusinessDate, freshnessFromOverviewObservation } from '../lib/observationEnvelope.ts'
@@ -553,7 +554,7 @@ function HomeClassic({ onDrill }: Props) {
                   <div onClick={() => onDrill({ title: `${triggered.length} Stops Triggered`, subtitle: 'Positions below stop', endpoint: '/api/v2/risk', rows: triggered })}
                     style={{ cursor: 'pointer' }}>
                     <div style={{ fontSize: 12, fontWeight: 700, color: '#ef4444' }}>{triggered.length} stops triggered</div>
-                    <div style={{ fontSize: 10, color: '#fca5a5', marginTop: 2 }}>{triggered.map((p: any) => p.symbol).join(' ')}</div>
+                    <div style={{ fontSize: 10, color: '#fca5a5', marginTop: 2 }}>{triggered.map((p: any) => p.account ? `${p.symbol} (${accountName(p.account, p.account_label)})` : p.symbol).join(' · ')}</div>
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
                     <Link to="/risk" style={{ fontSize: 10, fontWeight: 700, color: '#60a5fa', textDecoration: 'none' }}>Risk → Exposure</Link>
@@ -676,7 +677,7 @@ function HomeClassic({ onDrill }: Props) {
               <SCard title="Stops Triggered — action required" count={cmd.triggered_detail.length} accent="#ef4444">
                 {cmd.triggered_detail.slice(0, 6).map((s: any, i: number) => (
                   <a key={i} href={`/v3/risk?symbol=${s.symbol}`} title="open Risk focused on this symbol" style={{ textDecoration: 'none' }}>
-                    <Line color="#ef4444"><span style={{ fontFamily: 'var(--mono)', fontWeight: 600 }}>{s.symbol}</span><span>Stop {fmt$(s.stop_price ?? s.stop, 2)} · {s.account ?? ''}</span></Line>
+                    <Line color="#ef4444"><span style={{ fontFamily: 'var(--mono)', fontWeight: 600 }}>{s.symbol}</span><span>Stop {fmt$(s.stop_price ?? s.stop, 2)}{s.account ? ` · ${accountName(s.account, s.account_label)}` : ''}</span></Line>
                   </a>
                 ))}
               </SCard>
@@ -705,6 +706,18 @@ function HomeClassic({ onDrill }: Props) {
                 : (overview?.top_movers ?? []).filter((m: any) => (m.day_change ?? 0) < 0)
               ) as any[]
               if (!dayG.length && !dayL.length) return null
+              // Which account (operator 2026-10-23): names only; a symbol in 2+ accounts says so.
+              const moverAccts = (m: any): string[] => (Array.isArray(m.by_account) && m.by_account.length
+                ? m.by_account.map((b: any) => accountName(b.account_id, b.account_label))
+                : (m.account || m.account_id) ? [accountName(m.account_id ?? m.account, m.account_label)] : [])
+              const moverAccounts = (m: any) => {
+                const n = moverAccts(m)
+                return n.length ? <span style={{ fontFamily: 'inherit', fontSize: 10, color: 'var(--text3)', marginLeft: 6 }}>{n.length > 1 ? accountsBadge(n.length) : n[0]}</span> : null
+              }
+              const moverAccountsTip = (m: any) => {
+                const parts = Array.isArray(m.by_account) ? m.by_account : []
+                return parts.length > 1 ? parts.map((b: any) => `${accountName(b.account_id, b.account_label)} ${fmt$(b.day_change, 0)}`).join(' · ') : moverAccts(m).join(', ')
+              }
               const fmtDay = (m: any) => {
                 const d = Number(m.day_change ?? 0)
                 const p = m.day_change_pct ?? m.change_pct
@@ -717,7 +730,7 @@ function HomeClassic({ onDrill }: Props) {
                   {dayG.slice(0, 3).map((g: any, i: number) => (
                     <a key={'dg' + i} href={`/v3/portfolio?symbol=${g.symbol}`} style={{ textDecoration: 'none' }}>
                       <Line color="#22c55e">
-                        <span style={{ fontFamily: 'var(--mono)' }}>{g.symbol}</span>
+                        <span style={{ fontFamily: 'var(--mono)' }} title={moverAccountsTip(g)}>{g.symbol}{moverAccounts(g)}</span>
                         <span>{fmtDay(g)}</span>
                       </Line>
                     </a>
@@ -725,7 +738,7 @@ function HomeClassic({ onDrill }: Props) {
                   {dayL.slice(0, 3).map((l: any, i: number) => (
                     <a key={'dl' + i} href={`/v3/portfolio?symbol=${l.symbol}`} style={{ textDecoration: 'none' }}>
                       <Line color="#ef4444">
-                        <span style={{ fontFamily: 'var(--mono)' }}>{l.symbol}</span>
+                        <span style={{ fontFamily: 'var(--mono)' }} title={moverAccountsTip(l)}>{l.symbol}{moverAccounts(l)}</span>
                         <span>{fmtDay(l)}</span>
                       </Line>
                     </a>

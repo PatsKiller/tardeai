@@ -646,7 +646,7 @@ def test_api_route_get_only_and_never_creates_the_dir(tmp_path, monkeypatch):
 
 def test_cc_panel_wired_with_tooltips():
     page = (ROOT / "apps/command-center-v3/src/pages/CoordinationPage.tsx").read_text()
-    assert "import AgentClaimsPanel from './AgentClaimsPanel'" in page and 'agents: "Who\'s working"' in page
+    assert "import AgentClaimsPanel from './AgentClaimsPanel'" in page and "agents: 'Files held'" in page and "pipeline: 'Work pipeline'" in page
     assert "today: 'n8n today'" in page  # the n8n-today test's anchor survives
     comp = (ROOT / "apps/command-center-v3/src/pages/AgentClaimsPanel.tsx").read_text()
     assert "/api/v2/coordination/claims" in comp and "designTokens" in comp

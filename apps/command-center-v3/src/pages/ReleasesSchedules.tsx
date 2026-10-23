@@ -10,7 +10,7 @@ import { Chip, ChipRow } from '../components/primitives'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import {
   ciLabel, ciTone, countOrUnavailable, etDateTime, etTime, freshnessTone, queueStoreText, kpiDisplay, lastRunText, prList, RELEASES_SCHEDULES_PATH,
-  sectionView, stageTone, verifyLabel, windowTone,
+  sectionView, shadowLine, stageTone, verifyLabel, windowTone,
   type LedgerToday, type NextRelease, type Queue, type ReleaseError, type ReleaseRow, type ReleasesSchedulesWire,
   type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow, type Windows,
 } from '../lib/releasesSchedules'
@@ -82,6 +82,7 @@ function TrainTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
             <span style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>{x.role ?? '—'} window · {etDateTime(x.starts_at)}</span>
             <span style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }}>{x.reason ?? (x.enabled ? 'enabled' : 'not enabled')}{x.note ? ` · ${x.note}` : ''}</span>
             <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>last shadow tick: {x.last_shadow_request_at ? `${etDateTime(x.last_shadow_request_at)} · ${x.last_shadow_receipt_state ?? 'no receipt'}` : 'never'}</span>
+            {x.last_shadow ? <span data-testid={`rs-shadow-${x.slot}`} style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>{shadowLine(x.last_shadow)}</span> : null}
           </div>
         ))}
       </div>

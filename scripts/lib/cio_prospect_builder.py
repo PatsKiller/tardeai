@@ -23,6 +23,12 @@ Inputs (every one read-only; a missing input is reported, never invented):
          import closure reaches positions_sync / broker transport
   db     decision_packets, cio_decisions, cio_entry_states, watchlist_items, operator_starred_symbols —
          only when a read-only ``db_query`` is injected (bulk DISTINCT ON SELECTs; no positions_current)
+  proj   data_broker.catalyst_record.get_catalyst_records_bulk (catalyst_events through its registered projection)
+         — typed catalysts per security, folded into ``catalyst_grade`` with the scanner's and the re-entry desk's
+         catalyst; two verdicts for one security are a recorded conflict (silo audit 2026-10-23, SAIQ)
+  file   data/hermes/momentum_catalysts/<day>_catalysts.jsonl   Hermes momentum catalyst research (newest 2 days)
+  proj   data_broker.watch_intelligence.active_ticker_directives (watch_directives, granted) — operator_directive way-in
+  db     paper_trade_proposals — stage ``proposed``; INERT until the operator grants registry row paper_proposals
 
 Identity: ``identity_carriage.resolve_security_identity`` (lookup only, never mints). A symbol without a
 CONFIRMED registry GUID gets no prospect and is listed as "identity unresolved" (§7, §26.1).
@@ -60,7 +66,8 @@ COMPONENT_WEIGHTS = {
 }
 NOT_WIRED_COMPONENTS = {
     "fused_score": "fused_signals has no GUID and no registry domain yet (proposed row fused_signals)",
-    "catalyst_grade": "Gate 2 Momentum Core grade is not produced yet (catalyst_events proposed)",
+    "catalyst_grade": "no grade producer yet (Gate 2 Momentum Core); the catalyst FACTS are carried on the record's "
+                      "catalyst_grade block, and weighting them into conviction is an operator decision (§17)",
     "regime_fit": "no per-security regime-fit producer exists",
 }
 
@@ -288,7 +295,9 @@ DB_QUERIES = {
     "watchlist_items": (
         "SELECT upper(symbol) AS symbol, source, status, hermes_composite_score, first_seen_at, updated_at "
         "FROM watchlist_items WHERE status IN ('active', 'queued', 'researching', 'researched', 'review', 'promoted')"),
-    "starred": "SELECT upper(symbol) AS symbol, created_at FROM operator_starred_symbols",
+    # the table's column is starred_at (api_v2 DDL); selecting created_at errored and the operator_star way-in never
+    # fired (silo audit 2026-10-23, information_schema verified). Aliased so the record shape is unchanged.
+    "starred": "SELECT upper(symbol) AS symbol, starred_at AS created_at FROM operator_starred_symbols",
 }
 _DB_TIME = {"decision_packets": "generated_at", "cio_decisions": "created_at", "entry_states": "evaluated_at",
             "scanner_db": "scanned_at", "watchlist_items": "updated_at", "starred": "created_at"}
@@ -309,6 +318,8 @@ LIFECYCLE_QUERIES = {
         "SELECT upper(symbol) AS symbol, account, lower(action) AS action, price AS fill_price, trade_date, "
         "trade_time, dedupe_key FROM trade_transactions WHERE trade_date > now() - interval '120 days' "
         "AND (lower(action) LIKE 'buy%%' OR lower(action) LIKE 'sell%%') ORDER BY trade_date, trade_time"),
+    # stop_lifecycle ids run backwards in time per position: load_lifecycle_inputs re-orders these rows by broker
+    # order id (order_stops_by_broker_order).
     "stop_history": (
         "SELECT upper(symbol) AS symbol, account, order_id, order_type, status, stop_price, snapshot_at, id AS seq "
         "FROM stop_lifecycle WHERE stop_price IS NOT NULL ORDER BY symbol, id"),
@@ -317,6 +328,27 @@ LIFECYCLE_QUERIES = {
         "l.r_multiple, l.planned_rr FROM trade_recommendation_links l "
         "WHERE to_regclass('public.trade_recommendation_links') IS NOT NULL"),
 }
+
+
+def order_stops_by_broker_order(rows: list[dict]) -> list[dict]:
+    """Put one symbol's stop_lifecycle rows in time order, in place, and return them.
+
+    stop_lifecycle is rewritten newest-first on every scan, so its row ``id`` runs BACKWARDS in time for one
+    position (NAVN 2026-10-23: ids 3735550..3735559 hold 26.02 .. 24.59, which read as "raised 1x from 26.02"; the
+    stop was set at 24.59, cut to 24.31, then raised 5x to 26.02). Broker order ids are monotonic in time, so
+    ``seq`` becomes the numeric broker order id — the rule PR #2008's Watch code applies
+    (lib/data_broker/watch_position_facts.lifecycles). The row id is kept as ``row_id``. Only when EVERY row of the
+    symbol has a numeric order id: a mixed set keeps the row-id ``seq`` (the two numberings are not comparable)."""
+    oids = [str(r.get("order_id") or "").strip() for r in rows]
+    if not rows or not all(o.isdigit() for o in oids):
+        return rows
+    for r, o in zip(rows, oids):
+        if "row_id" not in r:
+            r["row_id"] = r.get("seq")
+        r["seq"] = int(o)
+        r["seq_basis"] = "broker_order_id"
+    rows.sort(key=lambda r: r["seq"])
+    return rows
 
 
 def load_lifecycle_inputs(db_query: Optional[Callable[..., list[dict]]],
@@ -341,6 +373,9 @@ def load_lifecycle_inputs(db_query: Optional[Callable[..., list[dict]]],
             k = str(r.get(key) or "")
             if k:
                 by.setdefault(k.upper() if key == "symbol" else k, []).append(dict(r))
+        if name == "stop_history":
+            for srows in by.values():
+                order_stops_by_broker_order(srows)
         out[name] = _source(name, path, by, None, status)
     bars = (captured or {}).get("bars")
     out["bars"] = _source("bars", "captured:bars" if bars is not None else "db:ticker_prices",
@@ -371,6 +406,206 @@ def load_db_inputs(db_query: Optional[Callable[[str], list[dict]]]) -> dict[str,
         newest = max((str(r.get(tcol) or "") for r in by.values()), default=None)
         out[name] = _source(name, f"db:{name}", by, newest, None)
     return out
+
+
+CATALYST_WINDOW_DAYS = 30      # a catalyst older than this is not a current fact for the record
+CATALYST_GAP_HOURS = 24.0      # a cited catalyst this much newer than the store's freshest row is a coverage gap
+CATALYST_FACTS_MAX = 6
+
+
+def load_catalyst_inputs(db_query: Optional[Callable[..., list[dict]]]) -> dict[str, dict[str, Any]]:
+    """Typed catalysts per symbol through the registered ``catalyst_record`` projection (one bulk read-only query)."""
+    if db_query is None:
+        return {"catalyst_events": _source("catalyst_events", "projection:catalyst_record", {}, None,
+                                           "not_read (no read-only db_query injected)")}
+    try:
+        try:
+            from scripts.lib.data_broker.catalyst_record import get_catalyst_records_bulk
+        except ImportError:  # scripts/ on sys.path
+            from lib.data_broker.catalyst_record import get_catalyst_records_bulk  # type: ignore
+        by = get_catalyst_records_bulk(db_query, days=CATALYST_WINDOW_DAYS) or {}
+    except Exception as exc:  # noqa: BLE001 — reported, never invented
+        return {"catalyst_events": _source("catalyst_events", "projection:catalyst_record", {}, None,
+                                           f"error:{type(exc).__name__}")}
+    newest = max((str((v or [{}])[0].get("at") or "") for v in by.values()), default=None)
+    return {"catalyst_events": _source("catalyst_events", "projection:catalyst_record", dict(by), newest, None)}
+
+
+HERMES_CATALYST_DIR = "data/hermes/momentum_catalysts"   # lib/hermes_catalyst_store.REL (one file per day)
+HERMES_CATALYST_DAYS = 2
+
+
+def load_hermes_catalysts(state_root: Path) -> dict[str, dict[str, Any]]:
+    """Hermes momentum catalyst research (``<day>_catalysts.jsonl``, newest two days): the last row per symbol."""
+    d = Path(state_root) / HERMES_CATALYST_DIR
+    rows: dict[str, dict] = {}
+    files = sorted(d.glob("*_catalysts.jsonl"))[-HERMES_CATALYST_DAYS:] if d.is_dir() else []
+    for f in files:
+        got, _err = _last_rows_by(f, lambda r: str(r.get("symbol") or "").upper() or None)
+        rows.update(got)
+    newest = max((str(r.get("research_timestamp") or "") for r in rows.values()), default=None)
+    return {"hermes_catalysts": _source("hermes_catalysts", HERMES_CATALYST_DIR, rows, newest,
+                                        None if files else "missing")}
+
+
+def load_directive_inputs(db_query: Optional[Callable[..., list[dict]]]) -> dict[str, dict[str, Any]]:
+    """Active ticker watch directives through their projection (``watch_intelligence.active_ticker_directives``,
+    registry domain ``watch_directives``, granted) on the injected read-only session. Silo audit 2026-10-23 #23."""
+    if db_query is None:
+        return {"directives": _source("directives", "projection:watch_intelligence.active_ticker_directives", {},
+                                      None, "not_read (no read-only db_query injected)")}
+    try:
+        try:
+            from scripts.lib.data_broker.watch_intelligence import active_ticker_directives
+        except ImportError:  # scripts/ on sys.path
+            from lib.data_broker.watch_intelligence import active_ticker_directives  # type: ignore
+        rows = active_ticker_directives(strict=True, db_query=db_query) or []
+    except Exception as exc:  # noqa: BLE001 — reported, never invented
+        return {"directives": _source("directives", "projection:watch_intelligence.active_ticker_directives", {},
+                                      None, f"error:{type(exc).__name__}")}
+    by = {str(r.get("symbol") or "").upper(): dict(r) for r in rows if r.get("symbol")}
+    newest = max((str(_iso(_ts(r.get("updated_at") or r.get("created_at"))) or "") for r in by.values()), default=None)
+    return {"directives": _source("directives", "projection:watch_intelligence.active_ticker_directives", by,
+                                  newest, None)}
+
+
+# Open proposals (stage ``proposed``, §26.1). ``paper_trade_proposals`` is the PROPOSED registry domain
+# ``paper_proposals`` (51 writer files, no projection): NOT read until the operator grants that row (§26.6, §17).
+# The read below is inert until then — the source reports why, and no prospect reaches ``proposed``.
+PROPOSALS_DOMAIN = "paper_proposals"
+PROPOSALS_SQL = (
+    "SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS symbol, id AS proposal_id, status, created_at "
+    "FROM paper_trade_proposals WHERE lower(status) IN ('pending', 'pending_approval', 'proposed', 'open') "
+    "AND created_at > now() - interval '7 days' ORDER BY upper(symbol), created_at DESC")
+
+
+def domain_granted(domain: str, registry: Optional[dict[str, Any]] = None) -> bool:
+    """True only when ``domain`` sits in the registry's ``domains[]`` with an approval naming who approved it."""
+    doc = registry if registry is not None else ir._registry_doc()
+    for row in doc.get("domains") or []:
+        if isinstance(row, dict) and row.get("domain") == domain:
+            appr = row.get("approval") or {}
+            return bool(isinstance(appr, dict) and str(appr.get("approved_by") or "").strip())
+    return False
+
+
+def load_proposal_inputs(db_query: Optional[Callable[..., list[dict]]], *,
+                         registry: Optional[dict[str, Any]] = None) -> dict[str, dict[str, Any]]:
+    path = "db:paper_trade_proposals"
+    if not domain_granted(PROPOSALS_DOMAIN, registry):
+        return {"proposals": _source("proposals", path, {}, None,
+                                     f"not_read (registry row {PROPOSALS_DOMAIN} not granted — §26.6; inert)")}
+    if db_query is None:
+        return {"proposals": _source("proposals", path, {}, None, "not_read (no read-only db_query injected)")}
+    try:
+        rows = db_query(PROPOSALS_SQL) or []
+    except Exception as exc:  # noqa: BLE001
+        return {"proposals": _source("proposals", path, {}, None, f"error:{type(exc).__name__}")}
+    by = {str(r.get("symbol") or "").upper(): dict(r) for r in rows if r.get("symbol")}
+    newest = max((str(_iso(_ts(r.get("created_at"))) or "") for r in by.values()), default=None)
+    return {"proposals": _source("proposals", path, by, newest, None)}
+
+
+def _fact_at(f: dict[str, Any]) -> Optional[datetime]:
+    return _ts(f.get("published_at")) or _ts(f.get("observed_at"))
+
+
+def catalyst_facts(sym: str, inputs: dict[str, dict[str, Any]], identity: dict[str, Any], *,
+                   now: datetime) -> tuple[Optional[dict[str, Any]], list[dict[str, Any]], list[str]]:
+    """(catalyst_grade block, conflicts, gaps) for one security from every catalyst producer the builder reads.
+
+    Sources: ``catalyst_events`` (the catalyst store, via its projection), the Trade AI scanner verdict's catalyst
+    (``trade_ai_cache.json``), the Hermes momentum catalyst research (``data/hermes/momentum_catalysts``; a search
+    result, never "verified"), and — only when the store was not read — the re-entry desk's copy of the same
+    projection (a derived copy, never counted as a second voice). No grade is invented: Gate 2 has no producer, so
+    ``grade`` is null and says so. Two sources whose freshest catalyst disagrees on "verified" are a recorded
+    conflict (§26.5); a catalyst the scanner cites that the store does not hold is a gap, named.
+    """
+    g = lambda name: (inputs.get(name) or {}).get("rows", {}).get(sym)  # noqa: E731
+    cutoff = now - timedelta(days=CATALYST_WINDOW_DAYS)
+    facts: list[dict[str, Any]] = []
+    conflicts: list[dict[str, Any]] = []
+    gaps: list[str] = []
+    store_read = (inputs.get("catalyst_events") or {}).get("status") == "ok"
+    for r in g("catalyst_events") or []:
+        facts.append({"source": "catalyst_events", "event_id": r.get("id"), "feed": r.get("source"),
+                      "headline": r.get("headline"), "catalyst_type": r.get("catalyst_type"),
+                      "verified": bool(r.get("verified")), "verification_basis": r.get("verification_basis"),
+                      "factual_verification_status": r.get("factual_verification_status"),
+                      "confidence": r.get("confidence"), "published_at": r.get("at"), "url": r.get("source_url"),
+                      "subject_guid": r.get("subject_guid")})
+    scan = g("scanner")
+    if scan and scan.get("catalyst"):
+        facts.append({"source": "trade_ai_scans", "feed": scan.get("catalyst_source"), "headline": scan.get("catalyst"),
+                      "catalyst_type": scan.get("catalyst_type"), "verified": bool(scan.get("catalyst_verified")),
+                      "verification_basis": "TRADE_AI_SCANNER", "confidence": scan.get("catalyst_confidence"),
+                      "published_at": scan.get("catalyst_published_at"), "observed_at": scan.get("observed_at"),
+                      "url": scan.get("catalyst_url")})
+    hc = g("hermes_catalysts")
+    if hc:
+        none_found = str(hc.get("catalyst_type") or "").lower() in ("no_clear_catalyst", "none", "")
+        ts = str(hc.get("research_timestamp") or "")
+        if ts and len(ts) <= 26 and "+" not in ts[10:] and not ts.endswith("Z"):
+            ts += "+00:00"          # the researcher stamps naive UTC (datetime.utcnow)
+        facts.append({"source": "hermes_momentum_catalysts", "headline": "no clear catalyst found" if none_found
+                      else hc.get("catalyst_summary"), "catalyst_type": hc.get("catalyst_type"), "verified": False,
+                      "verification_basis": "HERMES_SEARCH_" + ("NONE_FOUND" if none_found else "FOUND"),
+                      "strength": hc.get("catalyst_strength"), "confidence": hc.get("confidence"),
+                      "observed_at": ts or None, "source_count": hc.get("source_count")})
+    re_cat = ((g("reentry") or {}).get("catalyst") or {}) if not store_read else {}
+    if re_cat.get("headline"):
+        facts.append({"source": "reentry_decision_desk (derived: catalyst_record)", "headline": re_cat.get("headline"),
+                      "catalyst_type": re_cat.get("catalyst_type"), "verified": bool(re_cat.get("verified")),
+                      "verification_basis": re_cat.get("verification_basis"),
+                      "factual_verification_status": re_cat.get("factual_verification_status"),
+                      "confidence": re_cat.get("confidence"), "published_at": re_cat.get("published_at") or re_cat.get("at"),
+                      "url": re_cat.get("source_url")})
+    facts = [f for f in facts if (_fact_at(f) is None or _fact_at(f) >= cutoff)]
+    sources_seen = sorted({f["source"] for f in facts})
+    if not facts:
+        if not store_read and not scan and not hc:
+            return None, [], []
+        return ({"grade": None, "grade_status": "not_produced", "verdict": "NONE", "freshest": None, "facts": [],
+                 "coverage_gaps": [], "window_days": CATALYST_WINDOW_DAYS,
+                 "store_status": (inputs.get("catalyst_events") or {}).get("status")}, [], [])
+    facts.sort(key=lambda f: (_fact_at(f) or datetime.min.replace(tzinfo=timezone.utc)), reverse=True)
+
+    # identity: a catalyst row filed under another GUID is a conflict, never silently re-keyed
+    sg = str(identity.get("security_guid") or "")
+    for f in facts:
+        if f.get("subject_guid") and sg and str(f["subject_guid"]) != sg:
+            conflicts.append(_conflict("catalyst_identity", (f["subject_guid"], f"catalyst_events#{f.get('event_id')}",
+                                                             f.get("published_at")),
+                                       (sg, "security_identity", None),
+                                       note="the catalyst row is filed under another GUID than this security"))
+            break
+    # verdict: the freshest fact per source; two sources disagreeing on "verified" is one recorded conflict
+    head: dict[str, dict[str, Any]] = {}
+    for f in facts:
+        head.setdefault(f["source"], f)
+    yes = [f for f in head.values() if f["verified"]]
+    no = [f for f in head.values() if not f["verified"]]
+    if yes and no:
+        a, b = yes[0], no[0]
+        conflicts.append(_conflict("catalyst",
+                                   (f"verified: {str(a.get('headline'))[:120]}", a["source"], a.get("published_at")),
+                                   (f"unverified: {str(b.get('headline'))[:120]}", b["source"], b.get("published_at")),
+                                   note="two catalyst verdicts for one security; shown on every surface until the "
+                                        "CIO resolves it with a recorded reason (§26.5)"))
+        verdict = "DISAGREE"
+    else:
+        verdict = "VERIFIED" if yes else "UNVERIFIED"
+    # coverage: the scanner cites a catalyst newer than anything the catalyst store holds for this security
+    store_newest = max((_fact_at(f) for f in facts if f["source"] == "catalyst_events" and _fact_at(f)), default=None)
+    sc = head.get("trade_ai_scans")
+    if sc and store_read and _fact_at(sc) is not None and (
+            store_newest is None or (_fact_at(sc) - store_newest).total_seconds() > CATALYST_GAP_HOURS * 3600):
+        gaps.append(f"catalyst_events holds no row for the catalyst trade_ai_scans cites "
+                    f"({str(sc.get('headline'))[:80]!r}, {sc.get('published_at') or sc.get('observed_at')})")
+    block = {"grade": None, "grade_status": "not_produced", "verdict": verdict, "freshest": facts[0],
+             "facts": facts[:CATALYST_FACTS_MAX], "sources": sources_seen, "coverage_gaps": gaps,
+             "window_days": CATALYST_WINDOW_DAYS, "store_status": (inputs.get("catalyst_events") or {}).get("status")}
+    return block, conflicts, gaps
 
 
 def _positions_context_held(state_root: Path) -> dict:
@@ -611,6 +846,11 @@ def assemble(sym: str, inputs: dict[str, dict[str, Any]], held: dict[str, Any], 
                                        "at": (opp or {}).get("as_of")}
     else:
         stage, why = "watching", {"source": "default", "reason": "no setup evidence"}
+    proposal = g("proposals")
+    if proposal and stage in ("watching", "setup_forming", "actionable"):
+        # §26.1: "proposed means a paper or operator proposal exists" (inert until paper_proposals is granted)
+        stage, why = "proposed", {"source": "paper_trade_proposals", "proposal_id": proposal.get("proposal_id"),
+                                  "status": proposal.get("status"), "at": _iso(_ts(proposal.get("created_at")))}
 
     thesis_stance = str((thesis or {}).get("stance") or "").upper() or None
     if opp_stance:
@@ -704,6 +944,8 @@ def assemble(sym: str, inputs: dict[str, dict[str, Any]], held: dict[str, Any], 
 
     if lc:
         conflicts.extend(lc.get("conflicts") or [])
+    cat_block, cat_conflicts, cat_gaps = catalyst_facts(sym, inputs, identity, now=now)
+    conflicts.extend(cat_conflicts)
 
     # ---- evidence / expiry ----
     times = [_ts(x) for x in (opp_at, (spine or {}).get("as_of"), t_at, (irec or {}).get("updated_ts"),
@@ -743,6 +985,7 @@ def assemble(sym: str, inputs: dict[str, dict[str, Any]], held: dict[str, Any], 
     for name in ("hermes_score", "thesis_quality", "scanner_score"):
         if comps[name]["value"] is None:
             missing.append(f"conviction component {name} has no value")
+    missing.extend(cat_gaps)
     if advice:
         cause = (((lc or {}).get("life") or {}).get("exit_cause") or {}).get("class")
         next_action = {"who": "operator", "what": f"read the post-exit review ({cause}); re-entry: "
@@ -767,6 +1010,12 @@ def assemble(sym: str, inputs: dict[str, dict[str, Any]], held: dict[str, Any], 
     if wl_item and str(wl_item.get("source") or "").lower() in ("operator", "operator_ui", "manual"):
         cands.append({"origin": "operator_add", "reason": f"operator added ({wl_item.get('source')})",
                       "at": _iso(_ts(wl_item.get("first_seen_at")))})
+    directive = g("directives")
+    if directive:
+        label = str(directive.get("label") or directive.get("rationale") or "").strip()
+        cands.append({"origin": "operator_directive",
+                      "reason": f"watch directive #{directive.get('id')}" + (f": {label[:80]}" if label else ""),
+                      "at": _iso(_ts(directive.get("created_at")))})
     if is_held:
         cands.append({"origin": "held_position", "reason": f"held per {held_src}", "at": held.get("as_of")})
     min_conv = float(((rules.get("ways_in") or {}).get("min_conviction")) or 60)
@@ -815,7 +1064,7 @@ def assemble(sym: str, inputs: dict[str, dict[str, Any]], held: dict[str, Any], 
     block = {
         "security_guid": identity["security_guid"], "issuer_guid": identity["issuer_guid"],
         "stage": stage, "stage_evidence": why, "conviction": conviction if conviction is not None else 0.0,
-        "conviction_components": comps, "stance": stance, "catalyst_grade": None,
+        "conviction_components": comps, "stance": stance, "catalyst_grade": cat_block,
         "next_trigger": next_trigger, "whats_missing": missing, "next_action": next_action,
         "research": research, "position_ref": {"held": is_held, "source": held_src, "as_of": held.get("as_of")},
         "watchlist": watch, "conflicts": conflicts, "evidence_at": _iso(evidence_at),
@@ -840,13 +1089,18 @@ def build(state_root: Path, *, db_query: Optional[Callable[[str], list[dict]]] =
           identity_resolver: Optional[Callable[[str], dict]] = None,
           symbols: Optional[Iterable[str]] = None, now: Optional[datetime] = None,
           rules: Optional[dict[str, Any]] = None,
-          captured: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+          captured: Optional[dict[str, Any]] = None,
+          registry: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     """Assemble every prospect. Pure with respect to stores: reads, never writes. ``captured`` supplies the
     lifecycle rows (round trips, fills, observed stops, links, bars) captured read-only elsewhere."""
     now = now or datetime.now(timezone.utc)
     rules = rules if rules is not None else wl_rules.load_rules()
     inputs = load_file_inputs(Path(state_root))
     inputs.update(load_db_inputs(db_query))
+    inputs.update(load_catalyst_inputs(db_query))
+    inputs.update(load_directive_inputs(db_query))
+    inputs.update(load_proposal_inputs(db_query, registry=registry))
+    inputs.update(load_hermes_catalysts(Path(state_root)))
     inputs.update(load_lifecycle_inputs(db_query, captured))
     held = load_held(Path(state_root), held_reader)
     if inputs["bars"]["status"] == "deferred" and db_query is not None:
@@ -865,7 +1119,7 @@ def build(state_root: Path, *, db_query: Optional[Callable[[str], list[dict]]] =
             return resolve_security_identity(s, root=Path(state_root))
     universe: set[str] = set(held["symbols"])
     for name in ("opportunity", "theses", "instrument_records", "reentry", "watchlist_items", "starred",
-                 "round_trips"):
+                 "round_trips", "directives", "proposals"):
         universe |= set((inputs.get(name) or {}).get("rows", {}).keys())
     if symbols is not None:
         universe = {str(s).upper() for s in symbols}

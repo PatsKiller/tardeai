@@ -28,6 +28,22 @@ on:
       - 'apps/command-center-v3/src/pages/CoordinationPage.tsx'
       - 'apps/command-center-v3/src/pages/SchedulerOperations.tsx'
       - 'apps/command-center-v3/src/lib/schedulerOperations.ts'
+      - 'apps/command-center-v3/e2e/account-labels.spec.ts'
+      - 'apps/command-center-v3/e2e/fixtures/accountLabels.fixture.json'
+      - 'apps/command-center-v3/src/lib/accountLabels.ts'
+      - 'apps/command-center-v3/src/components/AccountChip.tsx'
+      - 'apps/command-center-v3/src/lib/homeDoNow.ts'
+      - 'apps/command-center-v3/src/pages/HomeDoNow.tsx'
+      - 'apps/command-center-v3/src/pages/RiskHub.tsx'
+      - 'apps/command-center-v3/src/lib/riskMath.ts'
+      - 'apps/command-center-v3/src/components/tradeinview/TradeLogTable.tsx'
+      - 'apps/command-center-v3/e2e/work-pipeline.spec.ts'
+      - 'apps/command-center-v3/e2e/work-pipeline-tier2.spec.ts'
+      - 'apps/command-center-v3/src/lib/workPipelineTier2.ts'
+      - 'apps/command-center-v3/src/pages/WorkPipelinePanel.tsx'
+      - 'apps/command-center-v3/src/lib/workPipeline.ts'
+      - 'apps/command-center-v3/src/lib/workPipelineActions.ts'
+      - 'apps/command-center-v3/src/fixtures/workPipeline.fixture.ts'
       - '.github/workflows/cc-surface-agreement-ci.yml'
   workflow_dispatch: {}
 permissions:
@@ -63,7 +79,7 @@ jobs:
       - name: Header and Trading panel must state the same run
         env:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:4173
-        run: npx playwright test e2e/run_health_agreement.spec.ts e2e/scheduler-operations.spec.ts e2e/trading-portfolio-strip.spec.ts e2e/trade-ai-opportunities.spec.ts --project=chromium --reporter=line
+        run: npx playwright test e2e/run_health_agreement.spec.ts e2e/scheduler-operations.spec.ts e2e/trading-portfolio-strip.spec.ts e2e/trade-ai-opportunities.spec.ts e2e/account-labels.spec.ts e2e/work-pipeline.spec.ts e2e/work-pipeline-tier2.spec.ts --project=chromium --reporter=line
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4

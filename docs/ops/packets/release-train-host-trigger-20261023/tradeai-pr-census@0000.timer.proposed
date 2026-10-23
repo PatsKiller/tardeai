@@ -1,0 +1,13 @@
+# PROPOSED, NOT INSTALLED (packet docs/ops/packets/release-train-host-trigger-20261023/). The PR census 20 minutes
+# before the 00:00 ET window. Persistent=false: a missed census is not replayed.
+[Unit]
+Description=Trade AI release train: PR census at 23:40 America/New_York (window 0000)
+
+[Timer]
+OnCalendar=*-*-* 23:40:00 America/New_York
+Persistent=false
+AccuracySec=30s
+Unit=tradeai-pr-census@0000.service
+
+[Install]
+WantedBy=timers.target

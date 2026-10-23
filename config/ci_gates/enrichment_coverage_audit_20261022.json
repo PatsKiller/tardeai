@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "enrichment_coverage_audit_20261022",
+  "files": [
+    "tests/test_enrichment_coverage_audit_20261022.py"
+  ],
+  "anchor": "ENRICHMENT_COVERAGE_AUDIT_20261022",
+  "comment": [
+    "ANCHOR: ENRICHMENT_COVERAGE_AUDIT_20261022 — operator-approved 2026-10-22 (\"Yes, I agree with your recommendations.\"):",
+    "the enrichment-coverage audit scopes to the curated Watch membership (cio_prospect store when granted; interim",
+    "active + held + operator ticker directives), never the in_directive_watch flag; funded-policy expectations; P3",
+    "digest deduped on count/set; truthful lane-receipt causes; capped manifest. Hermetic: fake cursors, tmp state root."
+  ]
+}

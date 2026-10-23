@@ -30,6 +30,11 @@ Compaction (``compact``): ``done`` / ``abandoned`` claims, and ``active`` claims
 only then is the claim file removed. Looking up a compacted claim id answers from the history: the
 archived path trips loudly instead of reading as "never existed".
 
+Shared-additive paths (``config/agent_claim_shared_paths.json``: docs/INDEX.md, the CC v3 package.json build line,
+...): files nearly every PR appends one row to, merged mechanically (regenerate / union / append). A claim on one never
+conflicts with another session's claim, and the pre-commit gate treats a staged shared file as covered by any own
+active claim. The rest of the change still needs a claim. Missing config means no shared paths (exclusive default).
+
 Paths are repo-relative POSIX paths or globs (``*`` within a segment, ``**`` across segments, ``?``,
 ``[...]``). Claiming a directory claims everything under it. Overlap between two globs is decided
 conservatively (may report overlap for two globs that share no real file; never misses a real one
@@ -270,8 +275,67 @@ def patterns_overlap(a: str, b: str) -> bool:
 
 
 def overlapping_pairs(mine: Iterable[str], theirs: Iterable[str]) -> list[tuple[str, str]]:
+    """Overlapping (mine, theirs) pairs that CONFLICT. A pair where either side is a shared-additive path
+    (``config/agent_claim_shared_paths.json``) never conflicts: two sessions may both claim docs/INDEX.md, and a
+    claim on ``docs/**`` does not collide with another session's claim on docs/INDEX.md."""
+    shared = shared_paths()
     theirs_l = list(theirs)
-    return [(m, t) for m in mine for t in theirs_l if patterns_overlap(m, t)]
+    return [(m, t) for m in mine for t in theirs_l if m not in shared and t not in shared and patterns_overlap(m, t)]
+
+
+# --------------------------------------------------------------------------------------------- shared-additive
+
+SHARED_SCHEMA = "AgentClaimSharedPaths@v1"
+ENV_SHARED = "TRADEAI_AGENT_CLAIM_SHARED_PATHS"
+SHARED_CONFIG = Path(__file__).resolve().parents[2] / "config" / "agent_claim_shared_paths.json"
+
+
+def shared_config_path() -> Path:
+    env = os.environ.get(ENV_SHARED)
+    return Path(env).expanduser() if env else SHARED_CONFIG
+
+
+@lru_cache(maxsize=8)
+def _load_shared(path: str, mtime_ns: int) -> dict[str, dict[str, Any]]:
+    try:
+        doc = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(doc, dict) or doc.get("schema") != SHARED_SCHEMA:
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for e in doc.get("paths") or []:
+        if not isinstance(e, dict) or not isinstance(e.get("path"), str):
+            continue
+        try:
+            canon = canonical_pattern(e["path"])
+        except (ClaimError, ValueError):
+            continue
+        if is_glob(canon):  # exact paths only: a glob would make a whole tree conflict-free
+            continue
+        out[canon] = {k: e.get(k) for k in ("path", "merge", "how", "reason")}
+    return out
+
+
+def shared_path_entries() -> dict[str, dict[str, Any]]:
+    """Canonical shared-additive path -> its config entry. Missing/unreadable/invalid config -> {} (all exclusive)."""
+    p = shared_config_path()
+    try:
+        mtime = p.stat().st_mtime_ns
+    except OSError:
+        return {}
+    return _load_shared(str(p), mtime)
+
+
+def shared_paths() -> frozenset[str]:
+    return frozenset(shared_path_entries())
+
+
+def is_shared(path: str) -> bool:
+    try:
+        return canonical_pattern(path) in shared_paths()
+    except (ClaimError, ValueError):
+        return False
 
 
 # --------------------------------------------------------------------------------------------- identity
@@ -1115,6 +1179,7 @@ class ClaimBoard:
             "stage_help": dict(LC.STAGE_HELP),
             "lifecycle": lifecycle_meta or {"observed_at": None, "warning": "GitHub not consulted by this reader"},
             "unreadable": bad,
+            "shared_paths": shared_path_entries(),  # claims on these never conflict; rows list them under shared_paths
             "truncated": len(rows) > limit,
             "claims": rows[:limit],
         }
@@ -1184,6 +1249,7 @@ def public_row(v: ClaimView, now: datetime | None = None) -> dict[str, Any]:
         "agent": d.get("agent"),
         "task": d.get("task"),
         "paths": list(d.get("paths") or []),
+        "shared_paths": [p for p in d.get("paths") or [] if p in shared_paths()],
         "branch": d.get("branch"),
         "pr": d.get("pr"),
         "started_at": d.get("started_at"),
@@ -1356,8 +1422,13 @@ def precommit_gate(
             and not v.taken_over_by
             and v.lifecycle.get("locks_held", True) is not False
         ]
+        # A shared-additive staged file (docs/INDEX.md, ...) is covered by ANY own active claim: the committer must
+        # still hold a claim for the change, but need not have listed the shared file in it.
+        shared = shared_paths()
         uncovered = [
-            p for p in staged if not any(patterns_overlap(p, q) for v in own for q in v.doc.get("paths") or [])
+            p
+            for p in staged
+            if not (own if p in shared else any(patterns_overlap(p, q) for v in own for q in v.doc.get("paths") or []))
         ]
         # Worklog discipline: every own claim covering a staged file needs a plan and an agent entry in the last 2 h.
         now = board.now()

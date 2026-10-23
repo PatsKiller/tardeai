@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "trade_journey_20261022",
+  "files": [
+    "tests/test_trade_journey_20261022.py"
+  ],
+  "anchor": "TRADE_JOURNEY_20261022",
+  "comment": [
+    "ANCHOR: TRADE_JOURNEY_20261022 — TradeInView per-trade journey (operator directive 2026-10-22, NAVN): origin from the",
+    "recommendation link, else the CIO opportunity version in force at entry + a CIO BUY_READY/ENTRY_NEAR call within 10 days,",
+    "else operator pick only when the linker says so, else unknown (never guessed); stop path from stop_last_known; exit cause",
+    "(stop-out / trailing ratchet / target / manual / stop likely filled, unconfirmed); review facts first, model prose",
+    "labelled advisory; re-entry = the re-entry desk record Watch reads; conflicts shown never resolved (AGENTS.md §26.5);",
+    "cio_prospect overlay only when its store is live; no BEHAVIOR_FIELDS key; read-only SELECTs; one route, one catalog",
+    "entry; the CC-v3 fixture is the projection output (drift-checked)."
+  ]
+}

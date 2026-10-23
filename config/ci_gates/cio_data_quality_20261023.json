@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_data_quality_20261023",
+  "files": [
+    "tests/test_cio_data_quality_20261023.py"
+  ],
+  "anchor": "CIO_DATA_QUALITY_20261023",
+  "comment": [
+    "ANCHOR: CIO_DATA_QUALITY_20261023 — CIO data quality (operator 2026-10-23). (1) cio_prospect_builder orders",
+    "stop_lifecycle rows by the numeric broker order id (the row id runs backwards in time per position), as PR #2008's",
+    "Watch code does: NAVN's real seven rows read 24.59 -> 24.31 -> 24.70 -> 24.97 -> 25.51 -> 25.61 -> 26.02, raised 5x,",
+    "not 'raised 1x from 26.02'. (2) A Hermes momentum-catalyst record is FOUND only when its headline or source names",
+    "the company or ticker as a whole word (operator ruling 2026-10-10) and is not a generic index page; otherwise",
+    "UNVERIFIED_IDENTITY (AARD -> Archrock headline, YMAT / INVE -> nfl.com ALL NEWS). Read-side validator only; the",
+    "researcher, its prompts and live lanes are unchanged. Hermetic: fixtures and tmp_path roots."
+  ]
+}

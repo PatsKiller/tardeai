@@ -10,6 +10,8 @@ import { useApi } from '../hooks/useApi'
 import { Chip, ChipRow, Tooltip } from '../components/primitives'
 import { TOKENS, TYPE } from '../lib/watchTokens'
 import { FONT, RADIUS, SHADOW, toneVars, type Tone } from '../lib/designTokens'
+import { KillSwitchCell, SudoBanner } from '../components/OpsControlsSudo'
+import { OpsApiError, sudoToken, windowCovers } from '../lib/opsControls'
 import {
   actBlockReason, canAct, isTerminal, kindFor, opsApi, passkeyStepUp, phraseMatches, registerPasskey, validateSetting,
   type OpsControlsState, type OpsRequest, type SettingRow,
@@ -19,6 +21,10 @@ import {
   CHECK_TIP, DATA_FILTERS, EXPLAINER, findingText, freshnessView, matchesDataFilter, scanText, sortRows, summarize, SUMMARY_TIP,
   VERDICT_TIP, verdictView, writerText, type DataFilter, type DataRow, type FileList,
 } from '../lib/opsControlsData'
+import {
+  failuresBadge, GLOSSARY, healthView, lastRunView, matchesN8nFilter, matchesN8nQuery, N8N_FILTERS, n8nFilterCounts, nextRunView,
+  readinessView, runsText, sortRows as sortN8nRows, stageView, summaryOf, type N8nFilter, type N8nRowX,
+} from '../lib/opsControlsN8n'
 
 // ── styles ──────────────────────────────────────────────────────────────────────────────────────────
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0 }
@@ -79,7 +85,7 @@ function Banner({ tone, title, children }: { tone: Tone; title: string; children
 function SectionGate({ sec, children }: { sec?: { state?: string; reason?: string | null } | null; children: ReactNode }) {
   if (!sec || sec.state !== 'OK') {
     return <p role="alert" style={{ ...muted, color: TOKENS.warning, fontWeight: 600 }}>
-      {sec?.state === 'NOT_MIGRATED' ? 'NOT_MIGRATED' : 'UNAVAILABLE'} — {s(sec?.reason || (sec ? 'no reason given' : 'section missing from state'))}
+      {sec?.state === 'NOT_MIGRATED' ? 'NOT_MIGRATED' : 'UNAVAILABLE'} — {s(sec?.reason || (sec ? `the server sent ${sec.state || 'no state'} without a reason (an old server build); see the store banner above` : 'section missing from state'))}
     </p>
   }
   return <>{children}</>
@@ -115,6 +121,7 @@ function FlowModal({ flow, state, onClose }: { flow: FlowStart; state: OpsContro
   const [typed, setTyped] = useState('')
   const [totp, setTotp] = useState('')
   const [timedOut, setTimedOut] = useState(false)
+  const [openWin, setOpenWin] = useState(false)
   const started = useRef(false)
 
   const isRegister = req?.kind === 'passkey.register'
@@ -175,8 +182,23 @@ function FlowModal({ flow, state, onClose }: { flow: FlowStart; state: OpsContro
   const approveSafe = () => act(async () => { if (req) afterApproved(await opsApi.approve(req.request_id)) })
   const stepUpPasskey = () => act(async () => {
     if (!req) return
-    const token = await passkeyStepUp(req.request_id, typed)
+    const token = await passkeyStepUp(req.request_id, typed, openWin)
     afterApproved(await opsApi.approve(req.request_id, token))
+  })
+  // Sudo window: inside an open window a risky act needs only the phrase (never for the always-fresh kinds).
+  const winToken = sudoToken.get()
+  const inWindow = !!req && windowCovers(state, req.kind, req.params, !!winToken)
+  const freshOnly = !!req && !!kindFor(state, req.kind)?.fresh_passkey
+  const canOpenWin = state?.sudo_window?.state === 'ACTIVE' && !state?.sudo_window?.window
+  const stepUpWindow = () => act(async () => {
+    if (!req || !winToken) return
+    try {
+      const r = await opsApi.stepUpWindow(req.request_id, winToken, typed)
+      afterApproved(await opsApi.approve(req.request_id, r.step_up_token))
+    } catch (e) {
+      if (e instanceof OpsApiError && e.code.startsWith('SUDO_WINDOW')) sudoToken.clear()
+      throw e
+    }
   })
   const stepUpTotp = () => act(async () => {
     if (!req) return
@@ -238,7 +260,12 @@ function FlowModal({ flow, state, onClose }: { flow: FlowStart; state: OpsContro
           <label style={label}>TOTP code
             <input value={totp} onChange={e => setTotp(e.target.value.replace(/\D/g, '').slice(0, 8))} inputMode="numeric" autoComplete="one-time-code" style={{ ...input, maxWidth: 160 }} />
           </label>
-        </> : <p style={muted}>Then confirm with a passkey on this device{state?.factors?.webauthn_library === 'missing' ? ' — the server WebAuthn library is missing; verification will fail' : ''}.</p>}
+        </> : inWindow ? <p style={muted}>Sudo window open: the typed phrase is enough for this change (it is audited with the passkey assertion that opened the window).</p>
+          : <p style={muted}>Then confirm with a passkey on this device{state?.factors?.webauthn_library === 'missing' ? ' — the server WebAuthn library is missing; verification will fail' : ''}.{freshOnly && state?.sudo_window?.window ? ' This change always needs a fresh passkey, even inside a sudo window.' : ''}</p>}
+        {!useTotp && !inWindow && canOpenWin ? <label style={{ ...label, display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input type="checkbox" checked={openWin} onChange={e => setOpenWin(e.target.checked)} />
+          Also open a sudo window ({state?.sudo_window?.minutes ?? 60} min, ends after {state?.sudo_window?.idle_minutes ?? 15} idle min) for this browser session
+        </label> : null}
         <p style={{ ...muted, fontStyle: 'italic' }}>Telegram is notified; it confirms nothing.</p>
       </div> : null}
 
@@ -267,8 +294,10 @@ function FlowModal({ flow, state, onClose }: { flow: FlowStart; state: OpsContro
         {req && stage === 'preview' && !risky ? <button type="button" disabled={busy || !allowed} onClick={approveSafe} style={btnStyle('success', busy || !allowed)}>Approve (safe)</button> : null}
         {req && stage === 'auth' && useTotp ? <button type="button" disabled={busy || !allowed || !phraseOk || totp.length < 6} onClick={stepUpTotp}
           style={btnStyle('danger', busy || !allowed || !phraseOk || totp.length < 6)}>Verify TOTP and approve</button> : null}
+        {req && stage === 'auth' && !useTotp && inWindow ? <button type="button" disabled={busy || !allowed || !phraseOk} onClick={stepUpWindow}
+          style={btnStyle('danger', busy || !allowed || !phraseOk)}>{busy ? 'Approving…' : 'Approve in sudo window'}</button> : null}
         {req && stage === 'auth' && !useTotp ? <button type="button" disabled={busy || !allowed || !phraseOk} onClick={stepUpPasskey}
-          style={btnStyle('danger', busy || !allowed || !phraseOk)}>{busy ? 'Waiting for passkey…' : 'Use passkey and approve'}</button> : null}
+          style={btnStyle(inWindow ? 'plain' : 'danger', busy || !allowed || !phraseOk)}>{busy ? 'Waiting for passkey…' : 'Use passkey and approve'}</button> : null}
         {req && stage === 'register' ? <button type="button" disabled={busy} onClick={createPasskey} style={btnStyle('success', busy)}>{busy ? 'Creating…' : 'Create passkey'}</button> : null}
       </div>
     </div>
@@ -283,10 +312,11 @@ function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   const [reason, setReason] = useState('')
   const rt = d?.release_train
   const safeParams = reason.trim() ? { reason: reason.trim() } : {}
+  const relParams = { reason: reason.trim().length >= 4 ? reason.trim() : 'operator, Ops Controls' }
   const jobs = d?.jobs
   return <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <Panel title="Release train & kill switch">
-      <p style={muted}>STOP, Pause and Engage are the safe direction: one click, no passkey. The way back (resume, arm, clear) is host terminal only for now.</p>
+      <p style={muted}>STOP, Pause and Engage are the safe direction: one click, no passkey. Resume and Arm need a fresh passkey and the typed phrase (“RESUME EPOCH n” / “ARM EPOCH n”) and are applied by the host applier; clearing the kill switch stays host terminal only.</p>
       <label style={{ ...label, maxWidth: 420, marginBottom: 8 }}>Reason (optional, recorded in the audit trail)
         <input value={reason} onChange={e => setReason(e.target.value)} maxLength={200} style={input} />
       </label>
@@ -294,9 +324,9 @@ function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
         ['Release train', rt?.state === 'OK' ? <ChipRow><Chip tone="neutral">{s(rt.mode)}</Chip><Chip tone="neutral">epoch {s(rt.epoch)}</Chip><Chip tone={rt.latch === 'ABSENT' ? 'neutral' : 'warning'}>STOP latch {s(rt.latch)}</Chip></ChipRow> : <SectionGate sec={rt}>{null}</SectionGate>,
           <ChipRow><ActionButton state={d} kind="release_train.stop" text="STOP" params={safeParams} title="STOP the release train" run={run} />
             <ActionButton state={d} kind="release_train.pause" text="Pause" params={safeParams} title="Pause the release train" run={run} /></ChipRow>,
-          <ChipRow><ActionButton state={d} kind="release_train.resume" text="Resume" params={{}} run={run} />
-            <ActionButton state={d} kind="release_train.arm" text="Arm" params={{}} run={run} /></ChipRow>],
-        ['Global kill switch', <span style={{ color: TOKENS.text[2] }}>state not in this read model</span>,
+          <ChipRow><ActionButton state={d} kind="release_train.resume" text="Resume" params={relParams} title="Resume the release train" run={run} />
+            <ActionButton state={d} kind="release_train.arm" text="Arm" params={relParams} title="Arm the release train" run={run} /></ChipRow>],
+        ['Global kill switch', <KillSwitchCell />,
           <ActionButton state={d} kind="kill_switch.engage" text="Engage" params={{ scope: 'global', ...safeParams }} title="Engage the global kill switch" run={run} />,
           <ActionButton state={d} kind="kill_switch.clear" text="Clear" params={{ scope: 'global' }} run={run} />],
       ]} />
@@ -466,25 +496,140 @@ function JobsSchedules({ d, run }: { d: OpsControlsState | null; run: Run }) {
   </Panel>
 }
 
+// ── n8n lanes dashboard (outcomes, 2026-10-22) ──────────────────────────────────────────────────────────────────────
+// Operator: "Why do some of these say live? Some of them say dry runs. I don't know if the last one was success or
+// failure. This is not a real dashboard... When is everything going live?" Each row is one registry n8n lane joined (on
+// the server, scripts/lib/ops_controls_n8n_outcomes.py) with the n8n coordination ledger: last run, health, next run and
+// promotion readiness against the documented ladder. src/lib/opsControlsN8n.ts turns it into words. The live-list
+// actions are unchanged (risky: preview + passkey + typed phrase).
+const N8N_COLS = 8
+const pl: CSSProperties = { whiteSpace: 'pre-line' }
+function Tip({ tip, children }: { tip: string; children: ReactNode }) {
+  return <Tooltip content={<span style={pl}>{tip}</span>}><span style={tipHead}>{children}</span></Tooltip>
+}
+const TILES: Array<{ key: 'live_healthy' | 'live_failing' | 'rehearsing' | 'ready_to_promote' | 'never_ran'; label: string; tone: Tone; filter: N8nFilter | null; tip: string }> = [
+  { key: 'live_healthy', label: 'Live & healthy', tone: 'success', filter: 'live', tip: 'Lanes whose fires are real (live) today and whose last run succeeded, with no unanswered slot, open dead letter or breaker.' },
+  { key: 'live_failing', label: 'Live & failing', tone: 'danger', filter: 'failing', tip: 'Live lanes whose last run failed or timed out, that have an unreleased dead letter or open breaker, or that missed a scheduled slot.' },
+  { key: 'rehearsing', label: 'Rehearsing (shadow)', tone: 'info', filter: 'shadow', tip: 'Lanes n8n runs as a dry run today: shadow lanes, and canary lanes not on the live list. The cron line still does the real work.' },
+  { key: 'ready_to_promote', label: 'Ready to promote', tone: 'info', filter: 'ready', tip: 'Lanes that meet every measurable documented condition for their next step (shadow → canary, or canary → cutover). Promotion is still the operator’s call by a reviewed registry PR.' },
+  { key: 'never_ran', label: 'Never ran', tone: 'warning', filter: null, tip: 'Active lanes with no run in the n8n coordination ledger.' },
+]
+
 function N8nTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   const n = d?.n8n
-  return <Panel title="n8n lanes">
+  const rows = (n?.rows || []) as N8nRowX[]
+  const [filter, setFilter] = useState<N8nFilter>('all')
+  const [q, setQ] = useState('')
+  const [open, setOpen] = useState<Set<string>>(() => new Set())
+  const nowMs = Date.parse(String(n?.outcomes_as_of || d?.as_of || '')) || Date.now()
+  const counts = n8nFilterCounts(rows)
+  const summary = summaryOf(rows, n?.summary)
+  const shown = sortN8nRows(rows.filter(r => matchesN8nFilter(r, filter) && matchesN8nQuery(r, q)))
+  const toggle = (id: string) => setOpen(prev => { const x = new Set(prev); if (x.has(id)) x.delete(id); else x.add(id); return x })
+  const head = (text: string, tip: string) => <th style={{ ...cell, color: TOKENS.text[3], whiteSpace: 'nowrap' }}><Tip tip={tip}>{text}</Tip></th>
+
+  return <Panel title="n8n lanes" right={n?.outcomes_as_of ? <span style={muted}>run data as of {et(n.outcomes_as_of)} · refreshes every {n.cache_ttl_s ?? 60} s</span> : null}>
     <SectionGate sec={n}>
       <p style={{ ...muted, color: TOKENS.text[1] }} data-testid="ops-n8n-explainer">
-        Lanes that <b>n8n</b> schedules or dispatches (registry rows with an n8n scheduler or a dispatch block). n8n can fire a lane for real only
-        when its mode is <b>live</b> <i>and</i> it is on the relay <b>live list</b>; otherwise the relay refuses or runs it as a dry run. Cron jobs are on the Jobs &amp; schedules tab.
+        Every lane <b>n8n</b> schedules or dispatches, with what its <b>last run</b> actually did (from the n8n coordination ledger), when it runs
+        <b> next</b>, and whether it may climb the ladder <Tip tip={GLOSSARY.shadow}>shadow</Tip> → <Tip tip={GLOSSARY.canary}>canary</Tip> → <Tip tip={GLOSSARY.cutover}>cutover</Tip>.
+        A lane fires for real only when its stage allows <Tip tip={GLOSSARY.live}>live</Tip> <i>and</i> it is on the <Tip tip={GLOSSARY.live_list}>live list</Tip>; otherwise n8n runs it as a <Tip tip={GLOSSARY.dry_run}>dry run</Tip>.
+        <b> When does it go live?</b> <Tip tip={GLOSSARY.promotion}>Promotion</Tip> is your decision, made by a reviewed registry PR; the Promotion column shows the evidence and what is missing.
       </p>
-      <p style={muted}>Live list <span style={mono}>{s(n?.live_list_path)}</span>: {(n?.live_lanes || []).length ? (n?.live_lanes || []).join(', ') : 'empty'}. Changing it restarts the relay and gateway.</p>
-      <Table label="n8n lanes" heads={['Lane',
-        <HeadTip text="Stage" tip={<span>The registry’s rollout step for this lane (<span style={mono}>scheduler.stage</span>): <b>shadow</b> n8n fires a dry run beside cron · <b>canary</b> n8n fires live with the cron line still present under the same lock · <b>cutover</b> n8n only.</span>} />,
-        <HeadTip text="Mode" tip={<span>The registry’s <span style={mono}>dispatch.mode</span>: <b>live</b> the n8n run is a real run · <b>dry_run</b> the lane runs with its dry-run argument and writes nothing · <b>off</b> never dispatched.</span>} />,
-        <HeadTip text="On live list" tip={<span>Whether the lane id is in <span style={mono}>TRADEAI_N8N_RELAY_LIVE_LANES</span> in the live-list file. The relay refuses a live fire for any lane not listed.</span>} />,
-        <HeadTip text="Workflow" tip={<span>The n8n workflow id, or the schedule expression when the row has no workflow id.</span>} />,
-        <HeadTip text="Action" tip={<span>Add or remove the lane on the live list. Both are risky on the server: dry-run preview, then a passkey and the typed phrase “ADD LIVE &lt;lane&gt; &lt;date&gt;” or “REMOVE LIVE &lt;lane&gt; &lt;date&gt;”. The host applier backs up the file, edits it, restarts the relay and gateway, and offers an undo.</span>} />]}
-        rows={(n?.rows || []).map(r => [<span style={{ color: TOKENS.text[0], fontWeight: 600 }}>{r.lane_id}</span>, s(r.stage), s(r.mode),
-          <Chip tone={r.on_live_list ? 'info' : 'neutral'}>{r.on_live_list ? 'yes' : 'no'}</Chip>, <span style={mono}>{s(r.workflow)}</span>,
-          r.on_live_list ? <ActionButton state={d} kind="n8n_live_list.remove" text="Remove" params={{ lane_id: r.lane_id }} title={`Remove ${r.lane_id} from the n8n live list`} run={run} />
-            : <ActionButton state={d} kind="n8n_live_list.add" text="Add to live list" params={{ lane_id: r.lane_id }} title={`Add ${r.lane_id} to the n8n live list`} run={run} />])} />
+      {n?.outcomes_state === 'UNAVAILABLE' ? <Banner tone="warning" title="Run outcomes unavailable">{s(n.outcomes_reason)} — last run, health and readiness are not measured; nothing is assumed.</Banner> : null}
+
+      {summary ? <div role="group" aria-label="n8n summary" data-testid="ops-n8n-summary"
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, margin: '8px 0', minWidth: 0 }}>
+        {TILES.map(tile => {
+          const v = summary[tile.key], tv = toneVars(v ? tile.tone : 'neutral'), sel = tile.filter !== null && filter === tile.filter
+          return <Tooltip key={tile.key} content={tile.tip} as="div">
+            <button type="button" aria-pressed={sel} disabled={tile.filter === null} onClick={() => tile.filter && setFilter(sel ? 'all' : tile.filter)}
+              style={{ width: '100%', textAlign: 'left', background: tv.bg, border: `1px solid ${sel ? tv.color : tv.border}`, borderRadius: RADIUS.md, padding: '8px 10px', cursor: tile.filter ? 'pointer' : 'default', minWidth: 0 }}>
+              <div style={{ fontFamily: FONT.mono, fontSize: TYPE.lg, fontWeight: 700, color: tv.color }}>{v}</div>
+              <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }}>{tile.label}</div>
+            </button>
+          </Tooltip>
+        })}
+      </div> : null}
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', margin: '8px 0' }} role="group" aria-label="Filter n8n lanes">
+        {N8N_FILTERS.map(([k, text]) => {
+          const sel = filter === k
+          return <button key={k} type="button" aria-pressed={sel} onClick={() => setFilter(k)}
+            style={{ ...btnStyle(sel ? (k === 'failing' && counts.failing ? 'danger' : 'info') : 'plain'), padding: '4px 10px', minHeight: 28, fontSize: TYPE.sm }}>
+            {text} <span style={{ fontFamily: FONT.mono, color: TOKENS.text[2] }}>{counts[k]}</span>
+          </button>
+        })}
+        <input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Search lane" aria-label="Search lane"
+          style={{ ...input, flex: '1 1 180px', maxWidth: 280, minHeight: 28, fontSize: TYPE.sm }} />
+      </div>
+
+      <div style={{ overflowX: 'auto', minWidth: 0 }}>
+        <table aria-label="n8n lanes" style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr>
+            <th style={{ ...cell, color: TOKENS.text[3] }}>Lane</th>
+            {head('Stage', `${GLOSSARY.shadow}\n\n${GLOSSARY.canary}\n\n${GLOSSARY.cutover}`)}
+            {head('Last run', '✓ succeeded · ✗ failed or timed out · ↷ skipped (the other scheduler held the shared lock) · · never ran. Hover a cell for the reason, mode and run id.')}
+            {head('Health', 'OK · Failing (last run failed, dead letter or breaker open) · Stale (a scheduled slot has no run, 45 min grace) · Never ran · Off. The badge counts failed and timed-out runs.')}
+            {head('7 days', 'Runs recorded in the last 7 days by mode: live (real) and dry (rehearsal).')}
+            {head('Next run', 'Next fire of the registry schedule (dispatch cron, else the workflow cadence), in ET.')}
+            {head('Promotion', GLOSSARY.promotion)}
+            {head('Live list', `${GLOSSARY.live_list}\nBoth directions are risky on the server: dry-run preview, then a passkey and the typed phrase “ADD LIVE <lane> <date>” or “REMOVE LIVE <lane> <date>”. The host applier backs up the file, edits it, restarts the relay and gateway, and offers an undo.`)}
+          </tr></thead>
+          <tbody>
+            {shown.map(r => {
+              const isOpen = open.has(r.lane_id)
+              const st = stageView(r), lr = lastRunView(r, nowMs), hv = healthView(r), fb = failuresBadge(r)
+              const nx = nextRunView(r, nowMs), rv = readinessView(r), rd = r.readiness
+              return [
+                <tr key={r.lane_id} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }} data-testid="ops-n8n-row">
+                  <td style={cell}>
+                    <button type="button" aria-expanded={isOpen} onClick={() => toggle(r.lane_id)}
+                      style={{ background: 'transparent', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: TOKENS.text[0], fontWeight: 600, fontSize: TYPE.sm, overflowWrap: 'anywhere' }}>
+                      <span aria-hidden style={{ color: TOKENS.text[3], marginRight: 4 }}>{isOpen ? '▾' : '▸'}</span>{r.lane_id}
+                    </button>
+                  </td>
+                  <td style={{ ...cell, minWidth: 170 }}><Tooltip content={<span style={pl}>{st.tip}</span>}><span style={{ color: toneVars(st.tone).color, fontWeight: 600, ...tipHead }}>{st.label}</span></Tooltip></td>
+                  <td style={{ ...cell, whiteSpace: 'nowrap' }}><Tooltip content={<span style={pl}>{lr.tip}</span>}>
+                    <span style={{ color: toneVars(lr.tone).color, ...tipHead }}><b aria-hidden>{lr.icon}</b> {lr.text}</span></Tooltip></td>
+                  <td style={cell}><ChipRow>
+                    <Tooltip content={<span style={pl}>{hv.reason ? `${hv.tip}\n\n${hv.reason}` : hv.tip}</span>}><Chip tone={hv.tone}>{hv.label}</Chip></Tooltip>
+                    {fb ? <Chip tone={fb.tone}>{fb.text}</Chip> : null}
+                  </ChipRow></td>
+                  <td style={{ ...cell, whiteSpace: 'nowrap', fontFamily: FONT.mono }}>{runsText(r) ?? '—'}</td>
+                  <td style={{ ...cell, whiteSpace: 'nowrap' }}>{nx ? <Tip tip={nx.tip}>{nx.text}</Tip> : '—'}</td>
+                  <td style={cell}><Tooltip content={<span style={pl}>{rv.tip}</span>}><Chip tone={rv.tone}>{rv.label}</Chip></Tooltip></td>
+                  <td style={cell}>
+                    <span style={{ display: 'inline-grid', gap: 4, minWidth: 0 }}>
+                      <Chip tone={r.on_live_list ? 'info' : 'neutral'}>{r.on_live_list === null || r.on_live_list === undefined ? 'unknown' : r.on_live_list ? 'on list' : 'not listed'}</Chip>
+                      {r.on_live_list ? <ActionButton state={d} kind="n8n_live_list.remove" text="Remove" params={{ lane_id: r.lane_id }} title={`Remove ${r.lane_id} from the n8n live list`} run={run} />
+                        : <ActionButton state={d} kind="n8n_live_list.add" text="Add to live list" params={{ lane_id: r.lane_id }} title={`Add ${r.lane_id} to the n8n live list`} run={run} />}
+                    </span>
+                  </td>
+                </tr>,
+                isOpen ? <tr key={`${r.lane_id}:detail`}>
+                  <td colSpan={N8N_COLS} style={{ ...cell, background: TOKENS.bg[2], paddingLeft: 18 }}>
+                    <div style={{ display: 'grid', gap: 4, minWidth: 0, overflowWrap: 'anywhere' }} data-testid="ops-n8n-detail">
+                      <span><b>Registry:</b> stage <span style={mono}>{s(r.stage)}</span> · mode <span style={mono}>{s(r.mode)}</span> · state {s(r.registry_state)} · scheduler {s(r.scheduler_kind)} · class {s(r.dispatch_class)} · workflow <span style={mono}>{s(r.workflow)}</span></span>
+                      {r.outcome ? <span><b>Runs today:</b> {s(r.outcome.effective_mode)}{r.outcome.last_success_at ? ` · last success ${et(r.outcome.last_success_at)}` : ''}{r.outcome.last_live_success_at ? ` · last live success ${et(r.outcome.last_live_success_at)}` : ''}{r.outcome.dead_letters_open ? ` · ${r.outcome.dead_letters_open} open dead letter(s)` : ''}{r.outcome.breaker_open ? ' · breaker open' : ''}</span> : null}
+                      {hv.reason ? <span><b>Health:</b> {hv.reason}</span> : null}
+                      {rd ? <>
+                        <span><b>Promotion{rd.target ? ` to ${rd.target}` : ''}:</b> {rv.label}{rd.risk_tier_name ? ` · risk tier ${rd.risk_tier} (${rd.risk_tier_name})` : ''}{rd.p1_last ? ' · P1 lane (moves last)' : ''}</span>
+                        {(rd.blocked_by || []).map((x, i) => <span key={`b${i}`} style={{ color: TOKENS.danger }}>Blocked: {x}</span>)}
+                        {(rd.missing || []).map((x, i) => <span key={`m${i}`} style={{ color: TOKENS.warning }}>Missing: {x}</span>)}
+                        {(rd.evidence || []).map((x, i) => <span key={`e${i}`}>Evidence: {x}</span>)}
+                        {(rd.owed || []).map((x, i) => <span key={`o${i}`} style={{ color: TOKENS.text[2] }}>Owed in the PR: {x}</span>)}
+                      </> : null}
+                    </div>
+                  </td>
+                </tr> : null,
+              ]
+            })}
+            {!shown.length ? <tr><td colSpan={N8N_COLS} style={{ ...cell, color: TOKENS.text[2] }}>No lanes match.</td></tr> : null}
+          </tbody>
+        </table>
+      </div>
+      <p style={muted}>Live list <span style={mono}>{s(n?.live_list_path)}</span> · {(n?.live_lanes || []).length} lane(s). Changing it restarts the relay and gateway.</p>
     </SectionGate>
   </Panel>
 }
@@ -730,13 +875,15 @@ function AuditTab({ d, startFlow }: { d: OpsControlsState | null; startFlow: (f:
   return <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <Panel title="Audit & undo">
       <SectionGate sec={a}>
-        <Table label="Audit trail" heads={['Seq', 'At', 'Actor', 'Action', 'Kind', 'Outcome', 'Request', 'Undo']}
+        <Table label="Audit trail" heads={['Seq', 'At', 'Actor', 'Action', 'Kind', 'Outcome', 'Why', 'Request', 'Undo']}
           rows={(a?.rows || []).map(r => {
             const undoKind = r.request_id ? byId.get(r.request_id)?.undo?.kind : null
             // Gate on the inverse kind when the request is in the recent list, else on the applied kind.
             const block = actBlockReason(d, undoKind || r.kind || '')
             return [<span style={mono}>{r.seq}</span>, et(r.at), s(r.actor), s(r.action), <span style={mono}>{s(r.kind)}</span>,
-              <Chip tone={r.outcome === 'ok' ? 'success' : r.outcome ? 'warning' : 'neutral'}>{s(r.outcome)}</Chip>, <span style={mono}>{s(r.request_id)}</span>,
+              <Chip tone={r.outcome === 'ok' ? 'success' : r.outcome ? 'warning' : 'neutral'}>{s(r.outcome)}</Chip>,
+              <span style={{ fontSize: TYPE.sm, color: TOKENS.text[1], whiteSpace: 'normal', maxWidth: 360, display: 'inline-block' }}>{r.reason || `${s(r.action)} (${s(r.outcome)}) — the server sent no reason`}</span>,
+              <span style={mono}>{s(r.request_id)}</span>,
               r.undo_available && r.request_id ? <button type="button" disabled={!!block} title={block || undefined}
                 onClick={() => startFlow({ title: `Undo ${s(r.kind)}`, start: () => opsApi.undo(r.request_id as string) })} style={btnStyle('info', !!block)}>Undo</button> : '—']
           })} />
@@ -828,6 +975,7 @@ export default function OpsControlsPage() {
     </Banner> : null}
     {d && d.factors?.webauthn_library === 'missing' ? <Banner tone="warning" title="WebAuthn library missing on the server">Passkey step-up and registration will be refused until it is installed.</Banner> : null}
     {d && d.factors?.hmac_key === 'missing' ? <Banner tone="warning" title="HMAC key missing">Approvals cannot be signed, so the applier would refuse them.</Banner> : null}
+    {d ? <SudoBanner sw={d.sudo_window} onChanged={api.refetch} /> : null}
 
     <div role="tablist" aria-label="Controls sections" style={{ display: 'flex', gap: 6, overflowX: 'auto', minWidth: 0, paddingBottom: 2 }}>
       {TABS.map(([k, text, n]) => {

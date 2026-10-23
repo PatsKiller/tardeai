@@ -55,10 +55,24 @@ export function rotationAvailability(summary: unknown, error?: unknown, now = Da
 const REASONS: Record<string, string> = {
   request_failed: 'The latest request failed.', account_stale: 'Account data is stale.',
   account_evidence_stale: 'Account data is stale.', publication_expired: 'The last validation is stale.',
-  unsupported_stop_claim: 'The claimed stop evidence is not supported.',
+  position_evidence_stale: 'Position evidence is stale.', unsupported_stop_claim: 'The claimed stop evidence is not supported.',
   conflicting_account_state: 'Account status records disagree.',
   missing_publication_evidence: 'Current source verification is unavailable.',
 }
 export function rotationAvailabilityMessage(value: RotationAvailability): string {
   return [...new Set(value.reasons.map(x => REASONS[x] ?? 'Source verification is incomplete.'))].join(' ')
+}
+
+// Short chip labels for the one-line withheld notice (P3, operator-approved 2026-10-23). The sentence
+// form above stays in the tooltip; an unknown code is shown as its own words rather than hidden.
+const REASON_CHIPS: Record<string, string> = {
+  request_failed: 'request failed', account_stale: 'account data stale', account_evidence_stale: 'account data stale',
+  position_evidence_stale: 'position evidence stale', publication_expired: 'validation stale',
+  unsupported_stop_claim: 'stop claim unsupported', conflicting_account_state: 'account records disagree',
+  missing_publication_evidence: 'verification unavailable', missing_input: 'input missing',
+  malformed_publication: 'malformed publication', incomplete_publication: 'publication incomplete',
+  invalid_publication_clock: 'publication clock invalid',
+}
+export function rotationReasonChips(value: RotationAvailability): string[] {
+  return [...new Set(value.reasons.map(x => REASON_CHIPS[x] ?? x.replace(/_/g, ' ')))]
 }

@@ -2,6 +2,7 @@ name: research-governance
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "scripts/lib/research_governance/**"
       - "tests/test_research_governance*"
@@ -28,14 +29,20 @@ on:
       - "tests/test_research_empirical*"
   push:
     branches:
-      - "feature/research-governance-v1"
       - "main"
 
 permissions:
   contents: read
 
+# Push policy v2 (2026-10-23): a new push to a PR supersedes the run in flight; a push to main gets
+# one group per SHA so a merged SHA is never left without CI evidence.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   research-governance:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     env:
       READ_ONLY_ADVISORY: "1"

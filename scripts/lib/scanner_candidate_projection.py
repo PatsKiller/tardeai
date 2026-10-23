@@ -673,12 +673,25 @@ def _hermes_catalyst_lookup(state_root: Path):
     Same status vocabulary. Zero provider calls, never writes; one read per day file per projection."""
     try:
         try:
-            from scripts.lib.hermes_scalp_catalyst_record import select_scalp_catalyst
+            from scripts.lib.hermes_scalp_catalyst_record import SEC_TICKERS_REL, sec_name_index, select_scalp_catalyst
         except ModuleNotFoundError:
-            from lib.hermes_scalp_catalyst_record import select_scalp_catalyst  # type: ignore
+            from lib.hermes_scalp_catalyst_record import (  # type: ignore
+                SEC_TICKERS_REL, sec_name_index, select_scalp_catalyst)
     except Exception:  # noqa: BLE001
         return None
     files = {}
+    names_index = {}
+
+    def _names(symbol):
+        # 2026-10-23: FOUND only when the headline or its source names the company, else UNVERIFIED_IDENTITY.
+        # The SEC ticker map at the state root, read once per projection; missing -> the ticker alone must match.
+        if "index" not in names_index:
+            try:
+                doc = json.loads((Path(state_root) / SEC_TICKERS_REL).read_text(encoding="utf-8"))
+                names_index["index"] = sec_name_index(doc)
+            except Exception:  # noqa: BLE001
+                names_index["index"] = {}
+        return names_index["index"].get(str(symbol or "").upper(), [])
 
     def lookup(symbol, day):
         if day not in files:
@@ -689,7 +702,7 @@ def _hermes_catalyst_lookup(state_root: Path):
                 files[day] = None
         if files[day] is None:
             return {"symbol": symbol, "day": day, "status": "STORE_MISSING", "provider_calls": 0}
-        found = select_scalp_catalyst(symbol, files[day])
+        found = select_scalp_catalyst(symbol, files[day], _names(symbol))
         return {"symbol": symbol, "day": day, "provider_calls": 0, **(found or {"status": "NOT_RESEARCHED"})}
 
     return lookup

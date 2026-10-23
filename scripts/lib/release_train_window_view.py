@@ -58,6 +58,7 @@ SLOT_RE = re.compile(r"^(0000|0600|0800|1800)$")
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,160}$")
 SPOOL_DIR = "train_requests"
 JOURNAL, PENDING, CLAIMED, RECEIPTS = "journal", "pending", "claimed", "receipts"
+REPORTS = "reports"  # ShadowTrainReport@v1 per shadow request (controller, Phase 5 2026-10-23)
 REQUEST_STATES = ("PENDING", "CLAIMED", "NOT_FOUND")
 TERMINAL_RECEIPT_STATES = ("COMPLETED", "REFUSED", "EXPIRED", "FAILED")
 DELEGATION_STATES = ("ACTIVE", "PAUSED", "REVOKED", "NOT_CONFIGURED", "INVALID", "UNAVAILABLE")
@@ -232,7 +233,7 @@ def read_latch(state_dir: Path) -> str:
     exists; SET for a readable JSON object; UNREADABLE otherwise (a STOP). Same semantics as Phase 1's file reader."""
     latch = Path(state_dir) / "STOP.json"
     try:
-        os.stat(latch)
+        os.lstat(latch)   # lstat: a dangling symlink exists, so it is UNREADABLE (a STOP), never ABSENT (2026-10-23)
     except FileNotFoundError:
         return "ABSENT"
     except OSError:
@@ -440,9 +441,30 @@ def shadow_coverage(state_dir: Path) -> list[dict[str, Any]]:
             continue
         rec = _read_json(base / RECEIPTS / f"{doc['request_id']}.json")
         newest[slot] = {"slot": slot, "last_requested_at": doc["requested_at"], "request_id": doc["request_id"],
-                        "receipt_state": rec.get("state") if isinstance(rec, dict) else None}
-    return [newest.get(s, {"slot": s, "last_requested_at": None, "request_id": None, "receipt_state": None})
-            for s in SLOTS]
+                        "receipt_state": rec.get("state") if isinstance(rec, dict) else None,
+                        **_report_summary(base / REPORTS / f"{doc['request_id']}.json", rec)}
+    empty = {"last_requested_at": None, "request_id": None, "receipt_state": None, **_report_summary(None, None)}
+    return [newest.get(s, {"slot": s, **empty}) for s in SLOTS]
+
+
+def _report_summary(path: Optional[Path], receipt: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    """What the Releases page shows for a shadow tick: the outcome and why, how much of the queue it saw, how many
+    rode, and the candidate it built. From the ShadowTrainReport@v1 when one exists, else from the receipt alone;
+    absent values stay None (never 0)."""
+    rep = _read_json(path) if path is not None else None
+    rec = receipt if isinstance(receipt, Mapping) else {}
+    rep = rep if isinstance(rep, dict) and rep.get("schema") == "ShadowTrainReport@v1" else None
+    q = (rep or {}).get("queue") or {}
+    sel = (rep or {}).get("selection") or {}
+    integ = (rep or {}).get("integration") or {}
+    refusal = rec.get("refusal") if isinstance(rec.get("refusal"), Mapping) else {}
+    return {"outcome": rec.get("outcome") or (refusal or {}).get("code"),
+            "reason": (rep or {}).get("reason"),
+            "queue_open": q.get("open") if rep else None,
+            "queue_complete": q.get("complete") if rep else None,
+            "riding": len(sel.get("members") or []) if rep else len(rec.get("members") or []) if rec else None,
+            "candidate_sha": integ.get("candidate_sha") or rec.get("candidate_sha"),
+            "train_id": rec.get("train_id"), "has_report": rep is not None}
 
 
 def _census(path: Optional[Path]) -> Optional[dict[str, Any]]:
