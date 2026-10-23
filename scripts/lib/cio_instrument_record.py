@@ -1141,7 +1141,7 @@ def prospect_event(prior: Optional[dict[str, Any]], row: dict[str, Any]) -> dict
         etype, change = "mint", {k: row.get(k) for k in ("stage", "stance", "conviction")}
     else:
         diff = {k: {"from": prior.get(k), "to": row.get(k)}
-                for k in ("stage", "stance", "conviction", "conflicts", "next_trigger", "expires_at")
+                for k in ("stage", "stance", "conviction", "catalyst_grade", "conflicts", "next_trigger", "expires_at")
                 if prior.get(k) != row.get(k)}
         n_new, n_old = len(row.get("conflicts") or []), len(prior.get("conflicts") or [])
         if "stage" in diff:

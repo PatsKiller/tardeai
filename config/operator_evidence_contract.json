@@ -31,7 +31,7 @@
       "active_trader_microstructure", "price_stats", "ohlc_bars", "positions_context", "opportunity",
       "earnings_calendar", "news_sentiment",
       "finviz_enrichment_snapshot", "scalp_list", "latest_quote", "social_feed", "yfinance_info",
-      "watch_prospects", "cio_prospect", "watch_curation", "watch_universe"
+      "watch_prospects", "cio_prospect", "watch_curation", "watch_universe", "trade_journey"
     ]
   },
   "fact_spec_format": {
@@ -168,6 +168,7 @@
       "retirement": "Retirement roadmap (Roth ladder, golden window, income floor) is a planning surface; no operator-desk intent asks it today. Claim it under a retirement intent when one exists -- do not fold it into freeform, where a model would restate it."
     },
     "broker_projections": {
+      "trade_journey": "TradeInView per-trade journey (2026-10-22, AGENTS.md \u00a726.3): origin, stop path, exit cause, post-exit review and re-entry for one trade, read by the TradeInView page only. No operator-desk intent reads it yet; claim it under the reentry/attention intents when a desk answer needs a trade's origin or exit cause.",
       "watch_prospects": "Watch redesign (2026-10-22): the Watch page's prospect lanes (cio_prospect when the store is live, else the labelled interim adapter over opportunity + watch_decision + re-entry desk + the Watch held reader). No operator-desk intent reads it; desk answers keep reading watch_intelligence and opportunity, whose facts it composes. Claim it under the attention intent when the desk answers from the prospect record.",
       "watch_curation": "Watch IA (2026-10-23): My Watchlist + System Suggests on the Watch page, composed from watch_prospects (same rows) + the curator ranking + watchlist_events dismissals. No operator-desk intent reads it; claim it under the attention intent when the desk answers 'what is on my watchlist'.",
       "watch_universe": "Watch IA (2026-10-23): the curator's ranked list on the Watch page with position facts (held / formerly held, last round trip, re-entry advice). Desk answers keep reading opportunity; claim it under the reentry intent when the desk answers from it.",

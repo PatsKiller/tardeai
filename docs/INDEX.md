@@ -999,11 +999,31 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/design/signal_freshness_audit_2026-05-15/AUDIT_FINDINGS.md` | Signal Freshness & Persistence Audit — 2026-05-15 |
 | `docs/design/watchlist-intelligence-v3/CECO_REVIEW_AUTHORIZATION_AUDIT.md` | CECO Maria/CIO authorization audit (read-only) |
 | `docs/design/watchlist-intelligence-v3/DATA_BROKER_WATCH_CONSUMERS.md` | Data Broker — Watch Intelligence consumers |
+| `docs/designs/DSN-20261010-db-retention-iris.md` | DSN-20261010-db-retention-iris.md |
+| `docs/designs/DSN-20261021-release-batches.md` | DSN-20261021-release-batches.md |
 | `docs/designs/DSN-20261021-release-train.md` | DSN-20261021-release-train.md |
 | `docs/designs/DSN-20261022-cio-prospect-store.md` | DSN-20261022-cio-prospect-store.md |
 | `docs/designs/DSN-20261022-data-domains.md` | DSN-20261022-data-domains.md |
+| `docs/designs/DSN-20261022-dependency-upgrades.md` | DSN-20261022-dependency-upgrades.md |
+| `docs/designs/DSN-20261022-finviz-alerting.md` | DSN-20261022-finviz-alerting.md |
 | `docs/designs/DSN-20261022-momentum-alerts.md` | DSN-20261022-momentum-alerts.md |
+| `docs/designs/DSN-20261022-n8n-promotions.md` | DSN-20261022-n8n-promotions.md |
+| `docs/designs/DSN-20261022-operator-approvals.md` | DSN-20261022-operator-approvals.md |
+| `docs/designs/DSN-20261022-ops-controls.md` | DSN-20261022-ops-controls.md |
+| `docs/designs/DSN-20261022-schwab-readonly-baseline.md` | DSN-20261022-schwab-readonly-baseline.md |
+| `docs/designs/DSN-20261022-site-validation.md` | DSN-20261022-site-validation.md |
+| `docs/designs/DSN-20261022-watch-redesign.md` | DSN-20261022-watch-redesign.md |
+| `docs/designs/DSN-20261023-account-labels.md` | DSN-20261023-account-labels.md |
+| `docs/designs/DSN-20261023-agent-ops.md` | DSN-20261023-agent-ops.md |
 | `docs/designs/DSN-20261023-ask-the-cio.md` | DSN-20261023-ask-the-cio.md |
+| `docs/designs/DSN-20261023-at-tradeai-alignment.md` | DSN-20261023-at-tradeai-alignment.md |
+| `docs/designs/DSN-20261023-jsonl-retention.md` | DSN-20261023-jsonl-retention.md |
+| `docs/designs/DSN-20261023-nvda-false-alert.md` | DSN-20261023-nvda-false-alert.md |
+| `docs/designs/DSN-20261023-open-pr-triage.md` | DSN-20261023-open-pr-triage.md |
+| `docs/designs/DSN-20261023-premarket-focus.md` | DSN-20261023-premarket-focus.md |
+| `docs/designs/DSN-20261023-push-policy-v2.md` | DSN-20261023-push-policy-v2.md |
+| `docs/designs/DSN-20261023-server-memory.md` | DSN-20261023-server-memory.md |
+| `docs/designs/DSN-20261023-work-pipeline.md` | DSN-20261023-work-pipeline.md |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
 | `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence |
@@ -1743,11 +1763,13 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/operations/overnight_activity_repair/overnight_activity_root_cause.md` | Root Cause Analysis |
 | `docs/operations/overnight_activity_repair/overnight_activity_safety_audit.md` | Safety Audit |
 | `docs/operator/ATM_RUNBOOK.md` | ATM Operator Runbook |
+| `docs/ops/ACCOUNT_LABELS_2026-10-23.md` | Account names on every position and trade row (2026-10-23) |
 | `docs/ops/ACTIVE_TRADER_ARMED_QUALITY_2026-10-09.md` | Active Trader: ARMED quality, stand-down, Trade-AI verdict (2026-10-09) |
 | `docs/ops/ADVICE_DIGESTS_2026-10-08.md` | Advice digests — 10:00 / 15:00 / 17:00 ET (2026-10-08) |
 | `docs/ops/AGENTS_GUARD_HOOK.md` | AGENTS.md guard hook for Claude Code (PreToolUse) |
 | `docs/ops/AGENT_CLAIM_BOARD.md` | Agent claim board — who is working on which files |
 | `docs/ops/AGENT_START_HERE.md` | Agent start here — any vendor (Claude, Codex, Cursor) |
+| `docs/ops/ASK_THE_CIO_RESEARCH.md` | Ask the CIO — Phase 9: the research pipeline |
 | `docs/ops/AT_TRADEAI_ALIGNMENT_2026-10-23.md` | Active Trader ↔ Trade AI alignment — 2026-10-23 |
 | `docs/ops/AUTONOMOUS_ADVISORY_LOOP_CLOSURE_RESULT_2026-08-23.md` | Trade AI Autonomous Advisory Loop Closure Result |
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Autonomous Advisor Session Closeout — 2026-08-20 |
@@ -1759,6 +1781,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CANONICAL_OBSERVATION_CONTRACT.md` | Canonical observation contract |
 | `docs/ops/CANON_SOURCE_ACQUISITION_QUEUE_2026-08-23.md` | Canon Source Acquisition Queue - 2026-08-23 |
 | `docs/ops/CC_NEEDS_ACTION_2026-10-21.md` | Command Center — the "Needs action" inbox and the failures that had no page (2026-10-21) |
+| `docs/ops/CC_P3_COSMETICS_2026-10-23.md` | Command Center v3 — P3 cosmetic fixes from the site validation (2026-10-23) |
 | `docs/ops/CIO_ADVISORY_TRUTH_HARDENING_CLOSEOUT_2026-08-20.md` | CIO/Advisory truth + presentation hardening — closeout 2026-08-20 |
 | `docs/ops/CIO_AFTERNOON_FIVE_2026-09-01.md` | Afternoon five — closeout |
 | `docs/ops/CIO_BANNER_DATA_ASOF_2026-09-01.md` | PORTFOLIO chip — freshness is `data_as_of`, not the loader run |
@@ -1769,6 +1792,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_CLOSED_LOOP_LINEAGE_CLOSEOUT_2026-08-20.md` | CIO Closed-Loop Lineage — Phase A Closeout (2026-08-20) |
 | `docs/ops/CIO_COMMAND_CENTER_MODEL_2026-08-29.md` | Command Center — the mental model, verified (2026-08-29) |
 | `docs/ops/CIO_DATA_ASOF_GAPS_2026-09-01.md` | Three gaps #825 left, closed |
+| `docs/ops/CIO_DATA_QUALITY_2026-10-23.md` | CIO data quality — stop ordering and Hermes catalyst identity (2026-10-23) |
 | `docs/ops/CIO_DECISION_PAYLOAD_PHASE1_2026-08-21.md` | CIO DecisionPayload@v1 — Phase 1 (2026-08-21) |
 | `docs/ops/CIO_DESK_MEMO_CONTINUOUS_2026-08-20.md` | CIO desk memo continuous regen — Phase C (2026-08-20) |
 | `docs/ops/CIO_DILIGENCE_GAP_REGISTER_CLOSEOUT_2026-08-30.md` | CIO Diligence — gap register closeout (PR-G) |
@@ -1913,9 +1937,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DEEPSEEK_BULK_WINDOW_ET_2026-08-19.md` | DeepSeek bulk window: 10:00–21:00 US Eastern |
 | `docs/ops/DESK_GAP_FIX_CLOSEOUT_2026-08-19.md` | Desk gap-fix closeout — Advisory/CIO accuracy + daily shadow-receipt producer |
 | `docs/ops/DESK_TRUTH_MONITORS.md` | Desk truth monitors and the options quote refresh — n8n first |
+| `docs/ops/DIRECTIVE_WATCH_FLAG_2026-10-22.md` | `in_directive_watch` fixed at the source (2026-10-22) |
 | `docs/ops/DISK_HYGIENE_ENFORCER_2026-09-10.md` | Disk hygiene enforcer (2026-09-10) |
 | `docs/ops/DRIVE_ARCHIVE_2026-09-01.md` | Drive archive — 2026-09-01 |
 | `docs/ops/DRIVE_MUTATION_SAFETY.md` | Drive mutation safety (gog v0.12.x) |
+| `docs/ops/ENRICHMENT_COVERAGE_AUDIT_2026-10-22.md` | Enrichment-coverage audit — rescoped to the curated Watch (2026-10-22) |
 | `docs/ops/F6_UTC_CRON_PROPOSALS.md` | F6 — UTC scheduling proposals for LLM-heavy jobs |
 | `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (operator-approved, exact-SHA) |
 | `docs/ops/FLASH_ACTIVATION_AND_THESIS_CANARY_2026-08-20.md` | Flash activation + thesis canary — 2026-08-20 |
@@ -1924,6 +1950,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/GROK_BUILD_PROMPT_B_MATERIAL_NOTIFY_AND_LOOP.md` | Grok Build — B material notify + loop continuity |
 | `docs/ops/HEALTH_AGENT_MATURITY_PLAN_2026-08-27.md` | Health Agent Maturity Plan — from "it ran" to "it worked" |
 | `docs/ops/HEALTH_REMEDIATION_MEMORY_2026-10-22.md` | Health remediation route memory bound (2026-10-22) |
+| `docs/ops/HELD_POSITION_ALERTS_2026-10-23.md` | Held-position alerts: account names, real stops, promo and tiny positions (P1 2026-10-23, NVDA) |
 | `docs/ops/HERMES_DEEPSEEK_HYBRID_FREE_OAUTH_ROLLOVER_2026-08-04.md` | Hermes + DeepSeek hybrid policy (free OAuth bottleneck → Flash) |
 | `docs/ops/HERMES_FREE_FIRST_MEMORY_GRAPH_CONVERGENCE_2026-08-23.md` | Hermes free-first + identity v2 closeout |
 | `docs/ops/HERMES_FREE_FIRST_NATURAL_SCHEDULER_2026-08-23.md` | FREE_FIRST_ONLY natural scheduler |
@@ -1949,7 +1976,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/MATURE_INVESTMENT_OFFICE_LIVE_CONVERGENCE_2026-08-23.md` | Trade AI v12 R9.1 - Mature Investment Office Live Convergence |
 | `docs/ops/MATURITY_GAP_CLOSEOUT_2026-09-20-1445.md` | Maturity gap closeout — 2026-09-20 14:45 ET |
 | `docs/ops/MATURITY_SCORECARD.md` | Maturity scorecard (GET-only) |
+| `docs/ops/N8N_CUTOVER_EFFECT_CLAIM_WRAPPER_20261023.md` | n8n cutover factory: the effect-claim wrapper, and four canary rows (2026-10-23) |
 | `docs/ops/N8N_MOMENTUM_SCALP_ACTIVATION_20261013.md` | n8n momentum-scalp activation — 2026-10-13 |
+| `docs/ops/N8N_PROMOTION_READINESS_2026-10-22.md` | n8n promotion readiness — 2026-10-22 |
 | `docs/ops/OPERATOR_ACTION_REQUIRED.md` | OPERATOR_ACTION_REQUIRED — live advisory notification canary |
 | `docs/ops/OPERATOR_CLOSE_BRIEF_AEC_MATURITY_2026-09-20.md` | Operator close brief — Trade AI AEC maturity goal |
 | `docs/ops/OPERATOR_DEPLOYMENT_REQUIRED.md` | OPERATOR_DEPLOYMENT_REQUIRED |
@@ -2019,6 +2048,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/SYMBOL_THESIS_CANARY_DRY_RUN_2026-08-20.md` | Bounded canary dry-run — SCHG / CSCO / ANET |
 | `docs/ops/SYMBOL_THESIS_JOB_REPAIR_2026-10-09.md` | Symbol-thesis job repair (2026-10-09) |
 | `docs/ops/TELEGRAM_FEED_REMEDIATION_2026-08-22.md` | Telegram feed audit — P0 gates (freeze window) + P1 queue |
+| `docs/ops/TRADEINVIEW_JOURNEY_2026-10-22.md` | TradeInView — the per-trade journey (2026-10-22) |
 | `docs/ops/TRADE_AI_M2_MEMORY_SUBSTRATE_BENCHMARK_2026-08-24.md` | M2 memory substrate benchmark |
 | `docs/ops/TRADE_AI_M3_MEMORY_CONSOLIDATION_2026-08-24.md` | M3 memory consolidation |
 | `docs/ops/TRADE_AI_M4_CONTEXT_ENVELOPE_AND_CC_SPEC_2026-08-24.md` | M4 ContextEnvelope@v2 + Command Center spec |
@@ -2029,8 +2059,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/TRADE_AI_R10_MEMORY_AUTONOMOUS_AGENT_CLOSEOUT_2026-08-24.md` | R10.2 closeout (in progress) |
 | `docs/ops/TRADE_AI_RUN_AGE_AND_POPULATIONS_2026-10-23.md` | Trade AI: the run's age and its two populations (2026-10-23) |
 | `docs/ops/TRADE_AI_SCALP_5MIN_2026-10-09.md` | Trade-AI scalp scan every 5 minutes, one feed for both engines, runner GO with catalyst (2026-10-09) |
-| `docs/ops/TRADING_PORTFOLIO_STRIP_2026-10-23.md` | Trading page portfolio strip restored (2026-10-23) |
 | `docs/ops/TRADE_AI_SCALP_CADENCE_2026-10-23.md` | Trade AI scalp cadence: 5 minutes from 06:00 to 12:00 ET (2026-10-23) |
+| `docs/ops/TRADING_PORTFOLIO_STRIP_2026-10-23.md` | Trading page portfolio strip restored (2026-10-23) |
 | `docs/ops/TRANSFERSON_UNIVERSE_CANONICAL_CLOSEOUT_2026-08-25.md` | Transferson canonical universe — local closeout |
 | `docs/ops/TRANSFERSON_UNIVERSE_LIVE_ACCEPTANCE_GATE_2026-08-25.md` | Transferson canonical universe — live CURRENT/DB acceptance gate |
 | `docs/ops/VALIDATED_LEARNING_REMEDIATION.md` | Validated learning remediation: release and operations |
@@ -2038,6 +2068,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WATCH_LISTS_PAGE_2026-10-23.md` | Watch — My Watchlist, System Suggests, Full universe (2026-10-23) |
 | `docs/ops/WATCH_PROSPECTS_PAGE_2026-10-22.md` | Watch — prospect lanes (the Gate 3 Watch redesign, 2026-10-22) |
 | `docs/ops/WEEKLY_OVERSIGHT_CHATGPT_OAUTH.md` | Weekly oversight — ChatGPT OAuth auto, paid manual |
+| `docs/ops/WORK_PIPELINE_2026-10-23.md` | Work pipeline: the default Coordination view, keyed by work item (2026-10-23) |
+| `docs/ops/WORK_PIPELINE_TIER2_2026-10-23.md` | Work pipeline Tier 2: passkey acts through the host applier (2026-10-23) |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye — first institutional-brain audit |
 | `docs/ops/agent_start/codex-note.md` | Codex note — agent claim board (operator installs) |
 | `docs/ops/agent_start/cursor-rule.md` | Cursor rules snippet — agent claim board (operator installs) |

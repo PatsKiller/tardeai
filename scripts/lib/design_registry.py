@@ -248,7 +248,46 @@ def approval_state(raw: str | None) -> str:
     return "unknown"
 
 
-def designs_awaiting(root: Path, designs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def apply_ledger_approvals(designs: list[dict[str, Any]], claims_dir: Path | None) -> list[dict[str, Any]]:
+    """Overlay the operator's passkey approvals (Work pipeline Tier 2, <claims_dir>/designs/approvals.jsonl): a design
+    approved there reads APPROVED at once, with ``file_pending`` until its file says so in a reviewed commit."""
+    try:
+        try:
+            from scripts.lib import work_pipeline_tier2 as T2
+        except ImportError:
+            from lib import work_pipeline_tier2 as T2  # type: ignore[no-redef]
+        recs = T2.design_approvals(Path(claims_dir) if claims_dir else B.default_claims_dir())
+    except Exception:  # noqa: BLE001 - the overlay is additive; the registry still renders
+        return designs
+    out = []
+    for d in designs:
+        r = recs.get(d["id"])
+        if r and d.get("status") in ("PROPOSED", "HELD") or (r and "await" in str(d.get("approval") or "").lower()):
+            d = {
+                **d,
+                "status": "APPROVED" if d.get("status") in ("PROPOSED", "HELD") else d["status"],
+                "approval": f"approved by {r.get('actor')} {r.get('at')}: {r.get('words')}",
+                "file_pending": True,
+                "approval_record": {k: r.get(k) for k in ("at", "actor", "words", "request_id")},
+            }
+        out.append(d)
+    return out
+
+
+def ledger_approved_ids(claims_dir: Path | None) -> set[str]:
+    try:
+        try:
+            from scripts.lib import work_pipeline_tier2 as T2
+        except ImportError:
+            from lib import work_pipeline_tier2 as T2  # type: ignore[no-redef]
+        return set(T2.design_approvals(Path(claims_dir) if claims_dir else B.default_claims_dir()))
+    except Exception:  # noqa: BLE001
+        return set()
+
+
+def designs_awaiting(
+    root: Path, designs: list[dict[str, Any]], approved_ids: set[str] | None = None
+) -> list[dict[str, Any]]:
     """Operator-pending items: PROPOSED designs, packets whose README Status says PROPOSED/awaiting, and design
     entries whose approval says awaiting operator."""
     out = []
@@ -269,7 +308,7 @@ def designs_awaiting(root: Path, designs: list[dict[str, Any]]) -> list[dict[str
     if pk.is_dir():
         for readme in sorted(pk.glob("*/README.md"))[:MAX_PACKETS]:
             raw = packet_status(readme)
-            if raw and approval_state(raw) == "awaiting operator":
+            if raw and approval_state(raw) == "awaiting operator" and readme.parent.name not in (approved_ids or set()):
                 out.append(
                     {
                         "kind": "packet",
@@ -500,13 +539,14 @@ class WorkBoard:
 
     def _build_designs(self) -> dict[str, Any]:
         designs, errors = self.store.load()
+        designs = apply_ledger_approvals(designs, self.claims_dir)
         _c, _view, tb = self._boards()
         return {
             "schema": "WorkBoardDesigns@v1",
             "as_of": B.iso(B.utc_now()),
             "statuses": list(STATUSES),
             "designs": design_tree(designs, tb["tasks"]),
-            "awaiting_approval": designs_awaiting(self.root, designs),
+            "awaiting_approval": designs_awaiting(self.root, designs, ledger_approved_ids(self.claims_dir)),
             "errors": errors,
             "store": DESIGNS_REL,
             "refresh_s": self.ttl,

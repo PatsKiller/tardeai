@@ -1,3 +1,4 @@
+import { accountName } from '../lib/accountLabels'
 import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
@@ -50,10 +51,10 @@ const normalizeAcct = (a: string) => {
   if (l === 'schwab_roth') return 'schwab_roth_ira'
   return l
 }
-const ACCT_LABEL: Record<string, string> = {
-  schwab_rollover_ira: 'Schwab Rollover IRA', schwab_taxable: 'Schwab Taxable',
-  schwab_roth_ira: 'Schwab Roth IRA', alpaca_paper: 'Alpaca Paper',
-}
+// Account names from the one map (lib/accountLabels.ts): names only, never an account number.
+const ACCT_LABEL: Record<string, string> = new Proxy({} as Record<string, string>, {
+  get: (_t, k) => (typeof k === 'string' ? accountName(k) : undefined),
+})
 const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 const PIE_COLORS = ['#60a5fa', '#22c55e', '#a855f7', '#06b6d4', '#f59e0b', '#ef4444']
 
