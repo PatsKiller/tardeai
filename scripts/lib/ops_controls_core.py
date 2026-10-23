@@ -55,7 +55,57 @@ EXEC_CC = "cc"
 
 TERMINAL = frozenset({"APPLIED", "FAILED", "REFUSED", "EXPIRED", "CANCELLED"})
 
-PAUSED_RE = re.compile(r"^#\s*PAUSED\s+(\d{4}-\d{2}-\d{2})\s+(\S+)\s+(.+)$")
+_PAUSED_PREFIX_RE = re.compile(r"^#\s*PAUSED\s+(\d{4}-\d{2}-\d{2})\s+(.+)$")
+_CRON_FIELD_RE = re.compile(r"^(\*|\d+(-\d+)?)(/\d+)?(,(\*|\d+(-\d+)?)(/\d+)?)*$")
+
+
+class PausedLine:
+    """``# PAUSED <date> <note…> <cron line>`` split at the first token where a valid cron line starts.
+
+    2026-10-22: the old single-regex parse took ONE word as the note, so a multi-word note such as
+    ``schwab-app-deactivated (incident SPCX)`` or ``WS7-02 coder-agent autolaunch (grant a67b8f21)`` left the rest of
+    the note in front of the schedule and a Resume would have installed ``(incident SPCX) 31 9 …`` — not a cron
+    line. ``group(1)`` date, ``group(2)`` note (one or more words), ``group(3)`` the cron line, as before."""
+
+    __slots__ = ("_g",)
+
+    def __init__(self, date: str, note: str, line: str) -> None:
+        self._g = (None, date, note, line)
+
+    def group(self, n: int) -> str:
+        return self._g[n]
+
+
+def _cron_start(tokens: list[str], k: int) -> bool:
+    if tokens[k].startswith("@"):
+        return len(tokens) > k + 1 and tokens[k] in ("@reboot", "@yearly", "@annually", "@monthly", "@weekly",
+                                                     "@daily", "@midnight", "@hourly")
+    if len(tokens) < k + 6:
+        return False
+    return all(_CRON_FIELD_RE.match(t) for t in tokens[k:k + 5])
+
+
+class _PausedParser:
+    """Drop-in for the old ``PAUSED_RE``: ``.match(text)`` returns a PausedLine or None."""
+
+    @staticmethod
+    def match(text: str) -> "PausedLine | None":
+        m = _PAUSED_PREFIX_RE.match(text)
+        if not m:
+            return None
+        rest = m.group(2)
+        tokens = rest.split()
+        for k in range(1, len(tokens)):  # the note is at least one word
+            if _cron_start(tokens, k):
+                # keep the cron line's own spacing: cut the original text after the k-th note token
+                idx = 0
+                for t in tokens[:k]:
+                    idx = rest.index(t, idx) + len(t)
+                return PausedLine(m.group(1), " ".join(tokens[:k]), rest[idx:].lstrip())
+        return None
+
+
+PAUSED_RE = _PausedParser()
 CRON_LINE_RE = re.compile(r"^(@[a-z]+\s+\S|(\S+\s+){5}\S)")
 LANE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,80}$")
 SHA_RE = re.compile(r"^[0-9a-f]{64}$")

@@ -190,6 +190,9 @@ PAUSED_ROWS = {
     "options-lifecycle-digest", "schwab-econfirm-reconcile", "broker-stop-reconcile", "sweep-schwab-instruments",
     "positions-shadow-diff", "positions-proof-daily",
 }
+#: Resumed by the operator on 2026-10-22 (resume-operator.sh, typed RESUME); kept paused: defense, options lifecycle x2,
+#: coder dispatch.
+RESUMED_20261022 = PAUSED_ROWS - {"coder-dispatch", "defense-execution", "options-lifecycle-run", "options-lifecycle-digest"}
 #: Disabled timers stay ACTIVE + DISABLED_UNRULED + operator_decision_pending (an operator ruling turns them off;
 #: tests/test_expected_services_lane_states_20261008.py). This PR does not flip them.
 STALE_TIMERS = {"db-retention-timer", "systemd-tmpfiles-clean", "tradeai-agent-runtime-atlas",
@@ -200,10 +203,16 @@ STALE_TIMERS = {"db-retention-timer", "systemd-tmpfiles-clean", "tradeai-agent-r
 def test_paused_lines_are_paused_rows():
     for lid in STALE_TIMERS:
         assert ROWS[lid]["status"] == "DISABLED_UNRULED" and ROWS[lid]["operator_decision_pending"] is True, lid
+    # 2026-10-22: the operator ran resume-operator.sh (typed RESUME) and approved "approve all" item D (verbatim:
+    # "yes i approve 'approve all' (A–L)"), so the resumed rows are ACTIVE since 2026-10-22; the held four stay PAUSED.
     for lid in PAUSED_ROWS:
         r = ROWS[lid]
-        assert r["state"] == "PAUSED", lid
-        assert r["state_since"] and r["state_reason"] and r.get("review_by") == "2026-10-29", lid
+        if lid in RESUMED_20261022:
+            assert r["state"] == "ACTIVE" and r["state_since"] == "2026-10-22", lid
+            assert "approve all" in r["state_reason"] and "resume-operator.sh" in r["state_reason"], lid
+        else:
+            assert r["state"] == "PAUSED", lid
+            assert r["state_since"] and r["state_reason"] and r.get("review_by") == "2026-10-29", lid
         assert "generated_by" not in r, lid  # adopted: the generator must not reset the state
     for lid in PAUSED_ROWS:
         assert ROWS[lid]["incident"] == "INC-20261014-SPCX"

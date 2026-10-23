@@ -61,7 +61,9 @@ def _store(finished_at=None, *, rows=True, boom=False):
 def test_config_turns_the_reader_on_for_watch_only():
     held = wd.load_config()["held"]
     assert held["positions_store_reader"] is True
-    assert held["positions_store_reader_surfaces"] == ["watch"]
+    # 2026-10-22: operator "approve all" item G added "home" as reader batch #3
+    # (tests/test_positions_reader_batch3_home_20261022.py); "watch" stays first, nothing else is admitted.
+    assert held["positions_store_reader_surfaces"] == ["watch", "home"]
     assert wdom.WATCH_SURFACE == "watch"
 
 

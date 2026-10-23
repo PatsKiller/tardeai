@@ -766,3 +766,26 @@ def test_migration_is_additive_and_least_privilege():
     assert not re.search(r"\bDELETE\b(?!\s+(ON|OR))", code.replace("BEFORE DELETE", "").replace("UPDATE OR DELETE", ""))
     down = MP._code((ROOT / "migrations" / "2026_10_22_ops_controls.down.sql").read_text())
     assert "DROP" not in down.upper() and down.count("RENAME TO") == 7
+
+
+# ── 2026-10-22: multi-word pause notes (operator "approve all": fix the Resume parse) ──────────────────────────────
+
+@pytest.mark.parametrize("line,note,cron", [
+    ("# PAUSED 2026-10-14 schwab-app-deactivated (incident SPCX) 31 9 * * 1-5 cd $PROJ && run",
+     "schwab-app-deactivated (incident SPCX)", "31 9 * * 1-5 cd $PROJ && run"),
+    ("# PAUSED 2026-10-15 schwab-app-deactivated (incident SPCX, grant 0f9de907) 7,22,37,52 9-16 * * 1-5 run",
+     "schwab-app-deactivated (incident SPCX, grant 0f9de907)", "7,22,37,52 9-16 * * 1-5 run"),
+    ("# PAUSED 2026-10-14 WS7-02 coder-agent autolaunch (grant a67b8f21) 0 9-18/3 * * 1-5 run",
+     "WS7-02 coder-agent autolaunch (grant a67b8f21)", "0 9-18/3 * * 1-5 run"),
+    ("# PAUSED 2026-10-22 ops-controls:opsreq_abc */5 * * * * cmd  a", "ops-controls:opsreq_abc", "*/5 * * * * cmd  a"),
+    ("# PAUSED 2026-10-14 note @reboot sleep 60", "note", "@reboot sleep 60"),
+])
+def test_paused_parse_keeps_multi_word_notes_out_of_the_cron_line(line, note, cron):
+    m = C.PAUSED_RE.match(line)
+    assert m is not None and m.group(1)[:4] == "2026" and m.group(2) == note and m.group(3) == cron
+    assert C.CRON_LINE_RE.match(m.group(3))
+
+
+def test_paused_parse_refuses_a_note_with_no_cron_line():
+    assert C.PAUSED_RE.match("# PAUSED 2026-10-14 just a note") is None
+    assert C.PAUSED_RE.match("# PAUSED 2026-10-14 31 9 * * 1-5 run") is None  # a note is required

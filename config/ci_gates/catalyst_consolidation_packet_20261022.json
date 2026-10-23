@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "catalyst_consolidation_packet_20261022",
+  "files": [
+    "tests/test_catalyst_consolidation_packet_20261022.py"
+  ],
+  "anchor": "CATALYST_CONSOLIDATION_PACKET_20261022",
+  "comment": [
+    "ANCHOR: CATALYST_CONSOLIDATION_PACKET_20261022 — operator packet for the B8 catalyst cron consolidation:",
+    "preview writes nothing, APPLY installs exactly the plan, verify uses a captured file (no SIGPIPE false failure),",
+    "refuses when the legacy lines are not as expected; the family keeps env ALPACA_MODE=paper."
+  ]
+}

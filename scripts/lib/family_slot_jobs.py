@@ -102,8 +102,12 @@ _RESEARCH = (
     "env LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tmp/research_sched.lock env RESEARCH_SKIP_GATE=1 $PY "
     "{root}/scripts/research_scheduler.py --mode %s --apply --budget %d"
 )
+#: 2026-10-22: the two --generate-proposals lines gained ``env ALPACA_MODE=paper`` on the live crontab after B8 was
+#: written (crontab L381/L382). The consolidated job must run exactly that command, so the proposal modes carry it;
+#: installing the B8 crontab lines without it would silently drop the paper-mode guard.
+CATALYST_PAPER_ENV = "env ALPACA_MODE=paper "
 _CATALYST = (
-    "bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_%s.lock $PY scripts/catalyst_momentum_engine.py "
+    "%sbash $PROJ/scripts/safe_flock.sh /tmp/catalyst_%s.lock $PY scripts/catalyst_momentum_engine.py "
     "--band %s --apply%s"
 )
 #: The work bound (RI overnight lane repair 2026-10-15, its C3/C4 absorbed here after the C1 consolidation retired
@@ -178,11 +182,11 @@ FAMILIES: tuple[Family, ...] = (
         lane_id="catalyst-momentum-engine",
         design_id="B8",
         modes=(
-            Mode("premarket_scalp", _CATALYST % ("premarket", "premarket_scalp", " --generate-proposals"),
+            Mode("premarket_scalp", _CATALYST % (CATALYST_PAPER_ENV, "premarket", "premarket_scalp", " --generate-proposals"),
                  "logs/catalyst_momentum_engine.log", "catalyst-momentum-engine-premarket", "*/30 4-9 * * 1-5"),
-            Mode("market_swing", _CATALYST % ("swing", "market_swing", " --generate-proposals"),
+            Mode("market_swing", _CATALYST % (CATALYST_PAPER_ENV, "swing", "market_swing", " --generate-proposals"),
                  "logs/catalyst_momentum_engine.log", "catalyst-momentum-engine-market", "30 9-15 * * 1-5"),
-            Mode("overnight", _CATALYST % ("overnight", "overnight", ""),
+            Mode("overnight", _CATALYST % ("", "overnight", "overnight", ""),
                  "logs/catalyst_momentum_engine.log", "catalyst-momentum-engine-overnight", "0 18,22 * * *"),
         ),
         slots=(

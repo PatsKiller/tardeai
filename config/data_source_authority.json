@@ -1311,6 +1311,33 @@
             "reference": "Operator reply 2026-10-22 (verbatim): \"You just start executing immediately with multiple agents for everything that's not built and not live\" to the list item \"Reader batch #2 (monitors read the positions and stop tables): approve?\"; earlier the operator accepted the recommendation to approve stop_health_check and positions_proof_daily as part of the reader batches (\"I take your recommendations on above.\") (session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
             "scope": "Phase-3 reader batch #2: desk truth monitors (read-only, alerts only), stop health (shares for stop coverage) and the positions proof grader. No page or API surface."
           }
+        },
+        {
+          "batch": 3,
+          "reader": "scripts/lib/data_broker/watch_domains.py::held_positions",
+          "files": [
+            "scripts/lib/data_broker/watch_domains.py",
+            "scripts/lib/data_broker/home_do_now.py"
+          ],
+          "tables": [
+            "positions_current"
+          ],
+          "surfaces": [
+            "home"
+          ],
+          "facts": "held flag only: the set of symbols with qty > 0, used to drop risk-snapshot positions the broker no longer holds from Home do-now items (no qty, basis or value is served from the store)",
+          "consumers": [
+            "scripts/lib/data_broker/home_do_now.py",
+            "scripts/api_v2.py"
+          ],
+          "switch": "config/watch_decision_standards.yaml held.positions_store_reader + held.positions_store_reader_surfaces (home)",
+          "freshness_guard": "positions_sync.freshness() (30 min in session, 72 h closed); stale, empty or unreadable -> holdings_accounts (holdings.json) with fallback_reason positions_store_stale | positions_store_empty | positions_store_error:<type>",
+          "approval": {
+            "approved_by": "operator",
+            "approved_on": "2026-10-22",
+            "reference": "Operator reply 2026-10-22 (verbatim): \"yes i approve 'approve all' (A–L)\" — item G: \"Home reads positions from the broker-synced store (reader batch #3; you already said yes, this confirms it)\".",
+            "scope": "positions_store phase-3 reader batch #3: the Home do-now held filter via watch_domains.held_positions(surface='home'); same reader and freshness/fallback contract as batch #1"
+          }
         }
       ],
       "reader_gate": {

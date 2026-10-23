@@ -107,6 +107,7 @@ def membership_screener() -> set[str]:
 HELD_CACHE_S = 60
 _held_cache: dict[str, Any] = {}          # surface -> {"at": monotonic, "val": verdict}
 WATCH_SURFACE = "watch"                   # positions_store reader batch #1 (operator 2026-10-22)
+HOME_SURFACE = "home"                     # positions_store reader batch #3 (operator 2026-10-22, "approve all" item G)
 _NOT_POSITIONS = ("CASH", "SPAXX", "FDRXX")
 
 
