@@ -167,7 +167,8 @@ Clear the STOP before reading a missing request as a defect.
 
 - **Registry rows.** `config/lane_registry.json` declares the 8 lanes as `release-train-request-timer-<slot>` and
   `pr-census-timer-<slot>`:
-  - `scheduler.kind` is `systemd` and `stage` is `shadow`;
+  - `scheduler.kind` is `systemd`, and `rollout_stage` is `shadow`. It is deliberately not `scheduler.stage`: that
+    field is the n8n §23.11 stage, and it would make each row an n8n health-contract target;
   - `state` is `NEVER_SCHEDULED` until the install.
   After the install, a follow-up registry PR moves them to `ACTIVE`, citing `list-timers` and the first receipt, the
   same way the claimer rows were done on 2026-10-22. Until then, `check_registry_runtime_truth` reports these 8 rows

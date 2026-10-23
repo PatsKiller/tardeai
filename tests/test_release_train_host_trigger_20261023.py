@@ -330,7 +330,7 @@ def test_lane_registry_rows_declare_the_eight_timers_at_shadow():
             row = rows[lane]
             assert LRG.validate_row(row) == []
             assert row["scheduler"]["kind"] == "systemd" and row["scheduler"]["expression"] == timer
-            assert row["scheduler"]["stage"] == "shadow"
+            assert row["rollout_stage"] == "shadow" and "stage" not in row["scheduler"]
             assert row["state"] == "NEVER_SCHEDULED"  # until the operator installs; then ACTIVE by a follow-up PR
             assert (PACKET / f"{timer}.proposed").exists()
         assert rows[f"release-train-request-timer-{slot}"]["output_signal"]["path"] == (
