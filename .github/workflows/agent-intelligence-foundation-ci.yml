@@ -14,7 +14,7 @@ name: agent-intelligence-foundation-ci
 
 on:
   push:
-    branches: ["main", "feature/**", "wt/**", "aif/**"]
+    branches: ["main"]
     paths:
       - "scripts/lib/agent_*.py"
       - "scripts/lib/mcp_*.py"
@@ -25,6 +25,7 @@ on:
       - "docs/agent-intelligence/**"
       - ".github/workflows/agent-intelligence-foundation-ci.yml"
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "scripts/lib/agent_*.py"
       - "scripts/lib/mcp_*.py"
@@ -36,8 +37,15 @@ on:
       - ".github/workflows/agent-intelligence-foundation-ci.yml"
   workflow_dispatch:
 
+# Push policy v2 (2026-10-23): a new push to a PR supersedes the run in flight; a push to main gets
+# one group per SHA so a merged SHA is never left without CI evidence.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   aif-foundation:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     env:
       TRADE_AI_CI: "1"

@@ -1,0 +1,71 @@
+name: draft-quick-check
+
+# Push policy v2 (2026-10-23, docs/ops/PUSH_POLICY_V2_CI.md). A DRAFT pull request is a continuity
+# checkpoint (AGENTS.md rule 11 "Claim, log, hand off"): every other PR workflow skips its jobs while
+# the PR is a draft, and this one job runs instead. It checks only the files the PR changes: Python
+# compiles, JSON and YAML parse, shell scripts pass `bash -n`, and the tree has no secret. About one
+# runner-minute. It is NOT a required check and proves nothing about behaviour; marking the PR
+# "Ready for review" starts the full fleet (pull_request type `ready_for_review`) on the same head.
+# READ_ONLY_ADVISORY: no broker writes, no Telegram, no network beyond the GitHub API.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, converted_to_draft]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  draft-quick:
+    if: github.event.pull_request.draft == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      TRADE_AI_CI: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 1
+      - name: Changed files (GitHub API; no history fetch)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}/files" --paginate --jq '.[] | select(.status != "removed") | .filename' > "$RUNNER_TEMP/changed.txt"
+          echo "changed files: $(wc -l < "$RUNNER_TEMP/changed.txt")"
+      - name: Syntax of changed files
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pyyaml
+          python3 - "$RUNNER_TEMP/changed.txt" <<'PY'
+          import json, py_compile, subprocess, sys
+          from pathlib import Path
+          import yaml
+          bad = []
+          for name in Path(sys.argv[1]).read_text().split():
+              p = Path(name)
+              if not p.is_file():
+                  continue
+              try:
+                  if p.suffix == ".py":
+                      py_compile.compile(str(p), doraise=True)
+                  elif p.suffix == ".json":
+                      json.loads(p.read_text(encoding="utf-8"))
+                  elif p.suffix in (".yml", ".yaml"):
+                      list(yaml.safe_load_all(p.read_text(encoding="utf-8")))
+                  elif p.suffix == ".sh":
+                      subprocess.run(["bash", "-n", str(p)], check=True, capture_output=True, text=True)
+              except Exception as exc:  # noqa: BLE001 - every failure is reported by name
+                  bad.append(f"{name}: {type(exc).__name__}: {str(exc)[:200]}")
+          print("\n".join(bad) or "syntax ok")
+          sys.exit(1 if bad else 0)
+          PY
+      - name: No secrets in the tree
+        run: python3 scripts/check_no_secrets.py --tree

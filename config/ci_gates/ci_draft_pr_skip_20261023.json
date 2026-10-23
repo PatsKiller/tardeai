@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ci_draft_pr_skip_20261023",
+  "files": [
+    "tests/test_ci_draft_pr_skip_20261023.py"
+  ],
+  "anchor": "CI_DRAFT_PR_SKIP_20261023",
+  "comment": [
+    "ANCHOR: CI_DRAFT_PR_SKIP_20261023 — push policy v2, CI half: draft PRs run draft-quick-check (+ always-on",
+    "agent-governance) only; ready_for_review starts the full fleet; superseded PR runs are cancelled; no push",
+    "trigger fires on agent branches."
+  ]
+}
