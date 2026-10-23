@@ -1553,3 +1553,33 @@ def active_ticker_directives(*, strict: bool = False, db_query: Any = None) -> l
     out = [dict(r) for r in rows or []]
     out.sort(key=lambda r: r["created_at"], reverse=True)
     return out
+
+
+#: watch_directives.created_by values that mean "the operator made this directive". Every other creator
+#: (think_tank, sector_universe, advisory, rotation_advisor, reentry, defense, claude_challenger, cio) is automated.
+OPERATOR_DIRECTIVE_CREATORS = ("operator", "operator_audit")
+
+
+def active_operator_ticker_symbols(db_query=None) -> set[str] | None:
+    """Symbols of ACTIVE ticker directives the operator created — part of the curated Watch membership.
+
+    Read here (the watch_directives projection owner) so lanes do not grow direct reads of the store
+    (enrichment-coverage audit, operator-approved 2026-10-22). None when the store could not be read,
+    so a caller can say so instead of treating an outage as "no directives".
+    """
+    try:
+        if db_query is None:
+            from db_adapter import _execute as db_query  # noqa: N813
+        rows = db_query(
+            """
+            SELECT DISTINCT UPPER(TRIM(spec->>'symbol')) AS symbol
+              FROM watch_directives
+             WHERE status = 'active' AND kind = 'ticker' AND created_by = ANY(%s)
+               AND COALESCE(TRIM(spec->>'symbol'), '') <> ''
+            """,
+            (list(OPERATOR_DIRECTIVE_CREATORS),),
+            fetch="all",
+        )
+    except Exception:
+        return None
+    return {str(r["symbol"] if isinstance(r, dict) else r[0]).upper() for r in rows or [] if r}
