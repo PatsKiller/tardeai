@@ -317,6 +317,54 @@ An INCOMPLETE census still lists its buckets, but no count from it may be presen
 `freshness` is `STALE` when the receipt's `summary.as_of` is more than 36 hours old. It is `UNAVAILABLE` with `value`
 `null` when there is no receipt or the receipt is unreadable.
 
+## 4a. How a train picks its PRs (D7, census-first; DSN-20261021-release-train-P6-T9, 2026-10-23)
+
+Every train, live, shadow or dry run, reads the census first (`ShadowQueueSource` in
+`scripts/lib/release_train_controller.py`, returned by `default_queue_source()` for all three). The store-first
+`FallbackQueueSource` is gone. **Why:** nothing submits PRs to `release_queue`; its only writer is the controller's
+own event sink, so the store reads OK and empty, and the old live source selected nothing while ~50 PRs were open
+(measured 2026-10-23). The `release_queue` store is now metadata only: its row for a PR the census lists is attached
+to that entry as `census.store`, and it never adds a PR. The controller still writes its events there
+(`Q.append_event`), so `/queue`, `/trains` and `/events` are unchanged.
+
+The census order is shaped by the Work pipeline's batch queue, `<claims dir>/tasks/batch_queue.json`
+(`BatchQueue@v1`). The Work pipeline's operator actions (hold / unhold, Add to next batch / remove) write it, and
+`scripts/batch_queue.py show` prints it. Selection then works like this:
+
+1. **Held PRs never ride.** A PR in `held_prs` is excluded as `HELD_BY_OPERATOR`, even if it is also listed next.
+2. **"Next batch" PRs go first,** in the operator's list order.
+3. **Then every other PR, oldest (lowest number) first.**
+4. **Every rider must be green on its exact head.** The census must have seen `required_checks.status == "PASS"`
+   with `required_checks.head` equal to the PR's current head. Otherwise the PR is excluded:
+   - `CHECKS_FAILING:<checks>` for a red check on that head;
+   - `NOT_GREEN_ON_HEAD:PENDING` or `NOT_GREEN_ON_HEAD:UNKNOWN`;
+   - `NOT_GREEN_ON_HEAD:HEAD_MOVED:<sha>` when the verdict is for an older head;
+   - `NOT_GREEN_ON_HEAD:NO_CENSUS_ROW` when the PR opened after the census ran.
+
+   This applies to next-batch PRs too.
+5. **Dependencies still come first.** A PR is placed after the PRs it depends on. `max_prs` (12) then truncates the
+   ordered list, so next-batch PRs keep their place, and the rest are excluded as `OVER_TRAIN_LIMIT`.
+6. **No batch queue file means census-only** (no holds, no priority). A file that exists but is unreadable, not
+   JSON, or not `BatchQueue@v1` fails closed. The snapshot is then incomplete (`batch_queue_unreadable:<why>`), and
+   the train ends `NO_OP / QUEUE_INCOMPLETE`, because riding a PR the operator held is worse than skipping a
+   window.
+
+Eligibility is otherwise unchanged. These exclusions still apply:
+
+- `TRAIN_INTERNAL` and `DRAFT`;
+- `HELD_BY_HYGIENE` (DO-NOT-MERGE / PROPOSED markers);
+- `CONFLICTING` (census);
+- `BLOCKED_SELF_MODIFICATION` (the train's protected surfaces, including AGENTS.md, guards and workflows);
+- the risk classifier (`config/release_train_policy.json`; broker and Active Trader paths are always held).
+
+A PR that conflicts or fails at integration is ejected from that train only (`MERGE_CONFLICT`, bisect). The census
+still lists it, so the next train considers it again on its new head.
+
+The controller records the choice in `rec["selection"]`: `members` (in merge order), `excluded` (PR → reason) and
+`next_batch`. The queue source string ends with `batch_queue <ok|absent|unreadable>: next [...], held [...]`.
+The tests are `tests/test_release_train_census_live_p6_t9_20261023.py`, gate
+`release_train_census_live_p6_t9_20261023`.
+
 ## 5. `GET /api/v2/coordination/release-train/queue`
 
 Query parameters:

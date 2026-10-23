@@ -484,7 +484,8 @@ class Phase1StoreQueueSource:
     """The Phase 1 store: ``release_queue`` projection rows (``release_train_queue.read_queue``) in a riding state
     (submitted / classified / ready). The controller re-classifies every row itself and re-reads each head from
     GitHub at freeze. NOT_MIGRATED / DB_UNAVAILABLE give an incomplete snapshot whose reason starts with
-    ``store:`` so ``FallbackQueueSource`` can tell "store absent" from "store empty"."""
+    ``store:``. Since D7 (2026-10-23) the store is metadata only: ``ShadowQueueSource`` annotates census entries
+    with its rows and never adds a PR from it."""
 
     name = "phase1:release_queue"
     RIDING = ("submitted", "classified", "ready")
@@ -526,39 +527,101 @@ class Phase1StoreQueueSource:
         return QueueSnapshot(self.name, res.get("as_of"), not reasons, entries, reasons)
 
 
-class FallbackQueueSource:
-    """Phase 1 store first; when it is NOT_MIGRATED or unreachable (reason ``store:*``), the PR-hygiene receipt +
-    gh source. A readable store that is empty is a real empty and never falls back."""
+#: The Work pipeline's batch queue (``BatchQueue@v1``, written only by the Work pipeline's operator actions,
+#: ``scripts/lib/work_pipeline_commands.py``; read by ``scripts/batch_queue.py``): ``<claims_dir>/tasks/batch_queue.json``.
+BATCH_QUEUE_SCHEMA = "BatchQueue@v1"
+BATCH_QUEUE_RELPATH = Path("tasks") / "batch_queue.json"
 
-    def __init__(self, primary: QueueSource, fallback: QueueSource) -> None:
-        self.primary, self.fallback = primary, fallback
-        self.name = f"{primary.name}|{fallback.name}"
 
-    def snapshot(self) -> QueueSnapshot:
-        snap = self.primary.snapshot()
-        if snap.complete or not any(str(r).startswith("store:") for r in snap.reasons):
-            return snap
-        fb = self.fallback.snapshot()
-        fb.reasons = list(fb.reasons)
-        fb.source = f"{fb.source} (fallback: {self.primary.name} {';'.join(snap.reasons)})"
-        return fb
+def default_batch_queue_path() -> Path:
+    """``<claims_dir>/tasks/batch_queue.json``; the claims dir is the claim board's (TRADEAI_AGENT_CLAIMS_DIR, else
+    persistent-state ``data/coordination/claims``)."""
+    try:
+        from scripts.lib.agent_claim_board import default_claims_dir
+    except ImportError:  # pragma: no cover - both layouts ship the module
+        try:
+            from lib.agent_claim_board import default_claims_dir  # type: ignore[no-redef]
+        except ImportError:
+            env = os.environ.get("TRADEAI_AGENT_CLAIMS_DIR")
+            root = Path(env).expanduser() if env else STATE_ROOT / "data" / "coordination" / "claims"
+            return root / BATCH_QUEUE_RELPATH
+    return Path(default_claims_dir()) / BATCH_QUEUE_RELPATH
+
+
+@dataclass
+class PipelineControls:
+    """The operator's Work pipeline controls, as the train reads them: ``held`` PRs never ride; ``next_batch`` PRs go
+    first, in list order. ``state`` is ``ok``, ``absent`` (no file: census-only) or ``unreadable`` (fail closed)."""
+    state: str
+    held: frozenset = frozenset()
+    next_batch: tuple = ()
+    path: str = ""
+    reason: str = ""
+
+
+class BatchQueueControls:
+    """Read-only reader of ``tasks/batch_queue.json`` (D7, DSN-20261021-release-train-P6-T9).
+
+    Absent file: census-only (no holds, no priority). A file that exists but is unreadable, not JSON, not an object
+    or not ``BatchQueue@v1`` fails closed (the snapshot is incomplete and the train selects nothing), because riding
+    a PR the operator held is worse than skipping a window. A PR listed both held and next-batch is held."""
+
+    def __init__(self, path: Optional[Path] = None) -> None:
+        self._path = Path(path) if path else None
+
+    @property
+    def path(self) -> Path:
+        return self._path or default_batch_queue_path()
+
+    def read(self) -> PipelineControls:
+        p = self.path
+        try:
+            raw = p.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return PipelineControls("absent", path=str(p))
+        except OSError as exc:
+            return PipelineControls("unreadable", path=str(p), reason=f"batch_queue_unreadable:{type(exc).__name__}")
+        try:
+            doc = json.loads(raw)
+        except ValueError:
+            return PipelineControls("unreadable", path=str(p), reason="batch_queue_unreadable:json")
+        if not isinstance(doc, dict) or doc.get("schema") != BATCH_QUEUE_SCHEMA:
+            return PipelineControls("unreadable", path=str(p), reason="batch_queue_unreadable:schema")
+        held_raw, nb_raw = doc.get("held_prs") or {}, doc.get("next_batch") or []
+        if not isinstance(held_raw, (dict, list)) or not isinstance(nb_raw, list):
+            return PipelineControls("unreadable", path=str(p), reason="batch_queue_unreadable:shape")
+        try:
+            held = frozenset(int(k) for k in held_raw)
+            nb = [int(e["pr"]) if isinstance(e, dict) else int(e) for e in nb_raw]
+        except (KeyError, TypeError, ValueError):
+            return PipelineControls("unreadable", path=str(p), reason="batch_queue_unreadable:pr_number")
+        order = tuple(dict.fromkeys(n for n in nb if n not in held))
+        return PipelineControls("ok", held=held, next_batch=order, path=str(p))
 
 
 class ShadowQueueSource:
-    """Shadow and dry runs (Phase 5, 2026-10-23): the open-PR census (PR-hygiene receipt + ``gh pr list``) is the
-    queue, annotated with the Phase 1 store's state for any PR the store also holds.
+    """The census-first queue, for live, shadow and dry runs alike (Phase 5 for shadow, 2026-10-23; D7 made it the
+    live source too, DSN-20261021-release-train-P6-T9): the open-PR census (PR-hygiene receipt + ``gh pr list``) is
+    the queue, annotated with the Phase 1 store's state for any PR the store also holds, and ordered by the operator's
+    Work pipeline controls.
 
-    Why: nothing writes ``submitted`` rows to the store (its only writer is the live controller's event sink), so the
-    migrated store reads OK and EMPTY, and ``FallbackQueueSource`` rightly treats a readable empty store as a real
-    empty. Every shadow train therefore selected nothing (measured 2026-10-23: ``select: phase1:release_queue: 0
-    open, complete=True`` with 49 open PRs in the census). Shadow exists to rehearse the train on the real queue, so it
-    reads the census. A store row for a PR the census does not list as open never rides (the census decides openness).
-    Completeness is the census's: a missing, stale or unreadable receipt, or a ``gh`` failure, is incomplete and the
-    train selects nothing (fail closed). The live source is unchanged (``default_queue_source``)."""
+    Why: nothing writes ``submitted`` rows to the store (its only writer is the controller's own event sink), so the
+    migrated store reads OK and EMPTY, and the old store-first source rightly treated a readable empty store as a real
+    empty. Every train therefore selected nothing (measured 2026-10-23: ``select: phase1:release_queue: 0 open,
+    complete=True`` with 49 open PRs in the census). The census decides openness; store rows are metadata only (a
+    store row for a PR the census does not list as open never rides), and the controller keeps writing its events to
+    the store. Completeness is the census's: a missing, stale or unreadable receipt, or a ``gh`` failure, is
+    incomplete and the train selects nothing (fail closed); so is an unreadable batch queue.
 
-    def __init__(self, store: QueueSource, census: QueueSource) -> None:
-        self.store, self.census = store, census
-        self.name = f"shadow:{census.name}+{store.name}"
+    With ``controls`` (the Work pipeline batch queue), every entry is annotated with ``census["pipeline"]`` (held,
+    next-batch position) and ``census["green_required"]``, and the entries are ordered: next-batch PRs first in list
+    order, then every other PR oldest (lowest number) first. Held PRs stay in the snapshot so the selection records
+    why they did not ride; ``_pre_exclusion`` excludes them."""
+
+    def __init__(self, store: QueueSource, census: QueueSource,
+                 controls: Optional[BatchQueueControls] = None) -> None:
+        self.store, self.census, self.controls = store, census, controls
+        self.name = f"census-first:{census.name}+{store.name}" + ("+batch_queue" if controls else "")
 
     def snapshot(self) -> QueueSnapshot:
         c = self.census.snapshot()
@@ -571,13 +634,34 @@ class ShadowQueueSource:
         store_note = (f"store ok, {len(s.entries)} riding" if s.complete else f"store {';'.join(s.reasons)}")
         if by_pr:
             store_note += f", {len(by_pr)} store rows not open in the census (never ride): {sorted(by_pr)[:10]}"
-        return QueueSnapshot(f"{self.name} ({store_note})", c.as_of, c.complete, list(c.entries), list(c.reasons))
+        entries, reasons, complete = list(c.entries), list(c.reasons), c.complete
+        if self.controls is not None:
+            ctl = self.controls.read()
+            if ctl.state == "unreadable":
+                complete = False
+                reasons.append(ctl.reason)
+            pos = {n: i for i, n in enumerate(ctl.next_batch)}
+            for e in entries:
+                e.census = {**e.census, "green_required": True,
+                            "pipeline": {"held": e.pr in ctl.held, "next_batch": pos.get(e.pr),
+                                         "controls": ctl.state}}
+            entries.sort(key=lambda e: pipeline_rank(e))
+            open_prs = {e.pr for e in entries}
+            store_note += (f"; batch_queue {ctl.state}: next {[n for n in ctl.next_batch if n in open_prs]}, "
+                           f"held {sorted(n for n in ctl.held if n in open_prs)}")
+        return QueueSnapshot(f"{self.name} ({store_note})", c.as_of, complete, entries, reasons)
 
 
-def default_queue_source(*, shadow: bool = False) -> QueueSource:
-    if shadow:
-        return ShadowQueueSource(Phase1StoreQueueSource(), HygieneReceiptGhQueueSource())
-    return FallbackQueueSource(Phase1StoreQueueSource(), HygieneReceiptGhQueueSource())
+def pipeline_rank(e: QueueEntry) -> tuple:
+    """Selection priority: a next-batch PR first, in the operator's list order; then oldest (lowest PR number)."""
+    nb = (e.census.get("pipeline") or {}).get("next_batch") if isinstance(e.census, dict) else None
+    return (0, int(nb), e.pr) if isinstance(nb, int) else (1, 0, e.pr)
+
+
+def default_queue_source(*, shadow: bool = False) -> QueueSource:  # noqa: ARG001 - kept for callers
+    """Live, shadow and dry runs all read the census first, ordered by the Work pipeline batch queue (D7, operator
+    plan 2026-10-23 §2, option a plus the Work pipeline controls). There is no store-first or fallback source."""
+    return ShadowQueueSource(Phase1StoreQueueSource(), HygieneReceiptGhQueueSource(), BatchQueueControls())
 
 
 class Classifier(Protocol):
@@ -669,8 +753,9 @@ def change_from_git(repo: Path, base: str, entry: QueueEntry) -> Optional[dict]:
 
 
 def order_members(entries: list[QueueEntry]) -> tuple[list[QueueEntry], dict[int, str]]:
-    """Dependency order (each PR after the PRs it depends on), ties by PR number. A PR whose dependency is not in
-    the set, or that sits in a cycle, is excluded with a reason."""
+    """Dependency order (each PR after the PRs it depends on), ties by ``pipeline_rank`` (the operator's next-batch
+    PRs first in list order, then PR number; with no Work pipeline annotation that is plain PR number). A PR whose
+    dependency is not in the set, or that sits in a cycle, is excluded with a reason."""
     by = {e.pr: e for e in entries}
     excluded: dict[int, str] = {}
     changed = True
@@ -686,12 +771,12 @@ def order_members(entries: list[QueueEntry]) -> tuple[list[QueueEntry], dict[int
     placed: set[int] = set()
     remaining = dict(by)
     while remaining:
-        ready = sorted(p for p, e in remaining.items() if all(d in placed for d in e.depends_on))
+        ready = sorted((pipeline_rank(e), p) for p, e in remaining.items() if all(d in placed for d in e.depends_on))
         if not ready:
             for p in remaining:
                 excluded[p] = "DEPENDENCY_CYCLE"
             break
-        p = ready[0]
+        p = ready[0][1]
         out.append(remaining.pop(p))
         placed.add(p)
     return out, excluded
@@ -2113,7 +2198,7 @@ class TrainController:
             raise Halt(NO_OP, "MAIN_UNREADABLE", str(exc)[:160]) from exc
         self.tstate["select_base"] = base
         eligible, excluded = [], {}
-        for e in sorted(snap.entries, key=lambda e: e.pr):
+        for e in sorted(snap.entries, key=pipeline_rank):
             why = self._pre_exclusion(e)
             if why:
                 excluded[e.pr] = why
@@ -2146,7 +2231,9 @@ class TrainController:
             ordered, more = order_members(ordered)
             excluded.update(more)
         self.tstate["select_excluded"] = {str(k): v for k, v in excluded.items()}
-        rec["selection"] = {"members": [e.pr for e in ordered], "excluded": {str(k): v for k, v in excluded.items()}}
+        rec["selection"] = {"members": [e.pr for e in ordered], "excluded": {str(k): v for k, v in excluded.items()},
+                            "next_batch": [e.pr for e in snap.entries
+                                           if isinstance((e.census.get("pipeline") or {}).get("next_batch"), int)]}
         self.say(f"select: {len(ordered)} eligible {[e.pr for e in ordered]}; {len(excluded)} not riding")
         held = sum(1 for v in excluded.values() if v.startswith("held:"))
         if held:
@@ -2164,6 +2251,9 @@ class TrainController:
             return "HEAD_SHA_UNKNOWN"
         if e.census.get("holds"):
             return f"HELD_BY_HYGIENE:{e.census.get('holds')}"
+        if (e.census.get("pipeline") or {}).get("held"):
+            # The operator held it on the Work pipeline (tasks/batch_queue.json held_prs): it never rides (D7).
+            return "HELD_BY_OPERATOR"
         if e.census.get("conflict") is True:
             return "CONFLICTING"
         rc = e.census.get("required_checks")
@@ -2172,6 +2262,16 @@ class TrainController:
             # Ready means green: the census saw a required check fail on this very head (more restrictive only; a
             # FAIL recorded for an older head is not applied, the head has moved since the census).
             return "CHECKS_FAILING:" + ",".join(str(x) for x in (rc.get("failed") or [])[:4])
+        if e.census.get("green_required"):
+            # D7: the census-first source rides only PRs whose required checks the census saw PASS on this exact head
+            # (a next-batch PR too). Pending, unknown, no census row, or a verdict for an older head: not this train.
+            if not isinstance(rc, dict):
+                return "NOT_GREEN_ON_HEAD:NO_CENSUS_ROW"
+            status = str(rc.get("status") or "UNKNOWN").upper()
+            if status != "PASS":
+                return f"NOT_GREEN_ON_HEAD:{status}"
+            if rc.get("head") != e.head_sha:
+                return f"NOT_GREEN_ON_HEAD:HEAD_MOVED:{str(rc.get('head'))[:9]}"
         if e.files is not None:
             bad = [f for f in e.files if is_protected(f)]
             if bad:
@@ -3122,8 +3222,8 @@ def build_controller(*, live: bool, config: Optional[TrainConfig] = None, host: 
     writer = GitHubAppWriter(host, reader) if live else None
     # Phase 7: the 06:00 drain probe (read-only, fail closed) and the measured-duration history that includes the
     # deploy receipt history. Both are consulted only for their slots; every slot ships disabled.
-    # A dry run / shadow train reads the open-PR census (ShadowQueueSource); a live train keeps the store-first
-    # source (Phase 6 decision: what submits PRs to the store, see the readiness report 2026-10-23).
+    # D7 (DSN-20261021-release-train-P6-T9): live, shadow and dry runs all read the open-PR census first, ordered by
+    # the Work pipeline batch queue; the store is metadata and the controller's event log (Q.append_event).
     return TrainController(host=host, state=state, github=reader, queue=default_queue_source(shadow=not live),
                            classifier=load_classifier(), live=live, writer=writer, config=config,
                            drain=DR.default_drain_probe(state.root),

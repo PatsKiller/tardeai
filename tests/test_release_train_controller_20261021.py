@@ -1417,7 +1417,9 @@ def test_incomplete_queue_selects_nothing(tmp_path):
     assert rec["outcome"] == "NO_OP" and rec["reason"] == "QUEUE_INCOMPLETE"
 
 
-def test_fallback_queue_uses_receipt_source_only_when_store_absent():
+def test_census_first_queue_reads_the_census_whether_the_store_is_absent_or_empty():
+    # D7 (DSN-20261021-release-train-P6-T9): the store-first FallbackQueueSource is gone; live reads the census too,
+    # and the store (absent, or readable and empty) never empties the queue.
     class Store:
         name = "phase1"
 
@@ -1427,11 +1429,12 @@ def test_fallback_queue_uses_receipt_source_only_when_store_absent():
         def snapshot(self):
             return self.snap
 
-    fb = StaticQueue([T.QueueEntry(pr=5, head_sha="a" * 40)])
-    absent = T.FallbackQueueSource(Store(T.QueueSnapshot("phase1", None, False, [], ["store:not_migrated"])), fb)
-    assert [e.pr for e in absent.snapshot().entries] == [5]
-    empty = T.FallbackQueueSource(Store(T.QueueSnapshot("phase1", "t", True, [], [])), fb)
-    assert empty.snapshot().entries == []
+    census = StaticQueue([T.QueueEntry(pr=5, head_sha="a" * 40)])
+    absent = T.ShadowQueueSource(Store(T.QueueSnapshot("phase1", None, False, [], ["store:not_migrated"])), census)
+    assert [e.pr for e in absent.snapshot().entries] == [5] and absent.snapshot().complete
+    empty = T.ShadowQueueSource(Store(T.QueueSnapshot("phase1", "t", True, [], [])), census)
+    assert [e.pr for e in empty.snapshot().entries] == [5]
+    assert not hasattr(T, "FallbackQueueSource")
 
 
 def test_phase1_store_queue_source_reads_riding_rows(monkeypatch):
