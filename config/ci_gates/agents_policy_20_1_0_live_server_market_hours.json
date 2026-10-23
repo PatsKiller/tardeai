@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agents_policy_20_1_0_live_server_market_hours",
+  "files": [
+    "tests/test_agents_policy_20_1_0_live_server_market_hours.py"
+  ],
+  "anchor": "AGENTS_POLICY_20_1_0_LIVE_SERVER_MARKET_HOURS",
+  "comment": [
+    "ANCHOR: AGENTS_POLICY_20_1_0_LIVE_SERVER_MARKET_HOURS — PROPOSED (MINOR), operator-applied and",
+    "operator-committed package (agents never edit AGENTS.md): §28.8 — no agent UI or validation traffic",
+    "(Playwright, crawlers, vite preview or dev proxies to the served /api) to the live server 127.0.0.1:7777",
+    "from 04:00 to 16:15 ET on a market day; fixtures or a mock/replay backend instead; live smoke after the",
+    "close at <= 1 req/s, GET only. Cause: 2026-10-23, five portfolio-server SIGKILLs (09:14-10:24 ET), PR #2012.",
+    "MINOR: with the 20.1.0 header, banner, §28.8 and row taken out, AGENTS.md is byte-identical to 20.0.0."
+  ]
+}
