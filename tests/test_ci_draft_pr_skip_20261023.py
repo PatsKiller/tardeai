@@ -31,8 +31,6 @@ AGENT_BRANCH_PATTERNS = ("fix/", "feat/", "feature/", "wt/", "aif/", "hardening/
 # says why. Remove the entry in the PR that
 # adds the three hunks (types incl. ready_for_review, concurrency group, job draft guard) to that workflow.
 PENDING_CLAIMED = {
-    # held by claude/acctlabel (claim 20261023T171134Z-claude-877eaed7, feat/cc-account-labels-20261023)
-    "cc-surface-agreement-ci.yml",
     # not claimed, but its PR scope guard (scripts/lib/research_governance/pr_scope_guard.py) fails any PR that
     # touches it together with a file outside the R1 allowlist; its three hunks ship in a PR of their own
     "research-governance-ci.yml",

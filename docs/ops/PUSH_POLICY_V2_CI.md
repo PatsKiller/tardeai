@@ -2,8 +2,8 @@
 
 ```
 Status:      PROPOSED (this PR); the hook half is an operator-applied package (AI_WORK_POLICY.md §29, PROPOSED)
-as_of:       2026-10-23T14:15-04:00 (rebased onto origin/main 98bef2794, after release batches 8 and 9)
-Measured at: origin/main 53aa1b619 (run sample); workflow set re-checked at 98bef2794
+as_of:       2026-10-23T14:15-04:00 (rebased onto origin/main c04a09498, after release batches 8, 9 and 10)
+Measured at: origin/main 53aa1b619 (run sample); workflow set re-checked at c04a09498
 ```
 
 Operator 2026-10-23: "redesign the push policy then. And how does the push policy actually coincide with the new
@@ -45,12 +45,10 @@ release-readiness 2.1 min, agent-governance 1.3 min, provider-cost 1.0 min (`gh 
    still runs on drafts. It is about one runner-minute, and it means a draft's required governance context is a real
    result. No path filter was added to a required context.
 
-6. **Two workflows pending.** `cc-surface-agreement-ci.yml` is held on the claim board by another live session
-   (claude/acctlabel, `feat/cc-account-labels-20261023`), so this PR does not edit it (rule 11). It is path-filtered to
-   a handful of CC v3 files, so it rarely fires on a draft. The test lists it in `PENDING_CLAIMED`, and a companion test
-   fails once the file gains the guard, so whoever adds the three hunks also removes the entry.
-   `research-governance-ci.yml` is pending too: its PR scope guard fails any PR that changes it together with a file
-   outside the research-governance allowlist, so its three hunks ship in a PR of their own. It is path-filtered as well.
+6. **One workflow pending.** `research-governance-ci.yml`: its PR scope guard fails any PR that changes it together
+   with a file outside the research-governance allowlist, so its three hunks ship in a PR of their own. It is
+   path-filtered, so it seldom fires on a draft. The test lists it in `PENDING_CLAIMED`, and a companion test fails
+   once it gains the guard, so that PR also removes the entry.
    `agent-intelligence-foundation-ci.yml` and `financial-senses-ci.yml` were CRLF files and are now LF:
    `git diff --check` (active-trader-policy-ci `deterministic-policy`) reports every added CRLF line as trailing
    whitespace.
