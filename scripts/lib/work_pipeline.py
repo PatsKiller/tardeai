@@ -571,8 +571,11 @@ def derive(
         for bn, b in batches.items():
             if not b.get("merged") and int(pr_num) in (b.get("members") or []) and int(pr_num) != int(bn):
                 batch_of = b
-            if int(pr_num) in (b.get("excluded") or {}):
-                excluded_reason = b["excluded"][int(pr_num)]
+            reason = (b.get("excluded") or {}).get(int(pr_num))
+            # only a standing exclusion ("the operator merges those") routes the merge to the operator; "checks
+            # pending / failing at batch time" was transient and the PR simply waits for the next batch
+            if reason and re.search(r"\boperator\b", reason, re.I):
+                excluded_reason = reason
     hb = _max_iso(*(c.get("heartbeat_at") for c in claims))
     wl_last = _max_iso(*(((c.get("worklog") or {}).get("last_entry_at")) for c in claims))
     last_activity = _max_iso(hb, wl_last, (pr or {}).get("updated_at"), (task or {}).get("taken_at"))
