@@ -37,6 +37,15 @@
   "release_train": {
     "state_dir": "~/trade-ai-releases/persistent-state/data/runtime/release_window"
   },
+  "work_pipeline": {
+    "_comment": "Work pipeline Tier 2 (operator 2026-10-23, 'both'; scripts/lib/work_pipeline_tier2.py). Each kind is a passkey + typed phrase act through the host applier. merge_pr, release_now and approve_item stay false until an AGENTS.md clause ratifies them (docs/ops/WORK_PIPELINE_TIER2_2026-10-23.md). Changed only by reviewed PR.",
+    "approve_design_enabled": true,
+    "contract_reviewed_enabled": true,
+    "approve_item_enabled": false,
+    "merge_pr_enabled": false,
+    "release_now_enabled": false,
+    "claims_dir": null
+  },
   "kill_switch": {
     "cli": "scripts/brokers/kill_switches.py",
     "level": "global"

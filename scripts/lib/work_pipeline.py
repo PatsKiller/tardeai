@@ -364,6 +364,8 @@ class PrCensus:
             )  # fmt: skip
             if w:
                 warnings.append(w)
+            main_doc, _w = self._json(["gh", "api", "--method", "GET", f"repos/{LC.default_repo()}/commits/main"])
+            main_sha = main_doc.get("sha") if isinstance(main_doc, dict) else None
             if not isinstance(opened, list):
                 raise RuntimeError(warnings[0] if warnings else "open PR list unavailable")
             open_prs = [_norm_open_pr(p, required) for p in opened[:MAX_OPEN_PRS] if isinstance(p, dict)]
@@ -383,7 +385,13 @@ class PrCensus:
                         except Exception as exc:  # noqa: BLE001 - release detection degrades, never raises
                             warnings.append(f"release detection failed ({type(exc).__name__})")
                             break
-            value = {"open": open_prs, "merged": merged_prs, "batches": batches, "required": required}
+            value = {
+                "open": open_prs,
+                "merged": merged_prs,
+                "batches": batches,
+                "required": required,
+                "main_sha": main_sha,
+            }
             with self._lock:
                 self.value = value
                 self.warning = "; ".join(dict.fromkeys(warnings))[:300] or None
@@ -907,6 +915,56 @@ def item_actions(
     return {"available": acts, "stale_claims": stale_claims}
 
 
+def tier2_actions(
+    item: Mapping[str, Any],
+    pr: Mapping[str, Any] | None,
+    design: Mapping[str, Any] | None,
+    tier2: Mapping[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Tier 2 acts (passkey + typed phrase, Ops Controls kinds ``pipeline.*``) the card offers, with their flag state.
+    The UI shows a disabled act with its policy note; the server refuses it FEATURE_OFF anyway."""
+    if not tier2:
+        return []
+    flags = tier2.get("flags") or {}
+    notes = tier2.get("notes") or {}
+    out: list[dict[str, Any]] = []
+
+    def add(kind: str, label: str, params: dict[str, Any]) -> None:
+        out.append(
+            {
+                "kind": kind,
+                "label": label,
+                "params": params,
+                "enabled": bool(flags.get(kind)),
+                "policy_note": notes.get(kind),
+            }
+        )
+
+    if item.get("finished"):
+        return out
+    if design and design.get("kind") in ("design", "packet"):
+        add("pipeline.approve_design", "Approve", {"design_id": design.get("id")})
+    if design and design.get("kind") == "package":
+        add("pipeline.approve_item", "Approve package", {"package_id": design.get("id"), "items": "all"})
+    num = item.get("pr_number")
+    nxt = item.get("next") or {}
+    if (
+        num
+        and pr
+        and pr.get("state") == "open"
+        and pr.get("head_sha")
+        and nxt.get("owner") == "operator"
+        and re.search(rf"\bmerge\b.*#{int(num)}\b", str(nxt.get("text") or ""), re.I)
+    ):
+        add("pipeline.merge_pr", f"Merge #{num}", {"pr": int(num), "head_sha": pr["head_sha"]})
+    title = str((pr or {}).get("title") or item.get("title") or "")
+    for lane in tier2.get("draft_lanes") or []:
+        if len(lane) >= 6 and re.search(rf"(?<![a-z0-9-]){re.escape(lane)}(?![a-z0-9-])", title):
+            add("pipeline.contract_reviewed", f"Contract reviewed: {lane}", {"lane_id": lane})
+            break
+    return out
+
+
 # --------------------------------------------------------------------------------------------- grouping
 
 
@@ -930,6 +988,7 @@ def build_items(
     stale_hours: float = DEFAULT_STALE_HOURS,
     latest_line: Callable[[str | None], str | None] = latest_worklog_line,
     queue: Mapping[str, Any] | None = None,
+    tier2: Mapping[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Group the sources into work items (task > PR > claim > design) and derive each one."""
     now = now or _utc_now()
@@ -1015,6 +1074,7 @@ def build_items(
         )  # fmt: skip
         d["next"]["command"] = operator_command(d, pr, task, g.get("design"))
         d["actions"] = item_actions(d, task, cs, queued_prs, held_prs)
+        d["actions"]["tier2"] = tier2_actions(d, pr, g.get("design"), tier2)
         lead = cs[0] if cs else None
         wl = (lead or {}).get("worklog") or {}
         files = _files_of(task, cs, pr)
@@ -1137,11 +1197,14 @@ class WorkPipeline:
             from scripts.lib import work_pipeline_commands as WPC
         except ImportError:
             from lib import work_pipeline_commands as WPC  # type: ignore[no-redef]
+        tier2 = tier2_context()
+        packages = open_approval_packages()
         return {
+            "tier2": tier2,
             "queue": WPC.read_queue(self.claims_dir or view.get("claims_dir")),
             "claims": view.get("claims") or [],
             "tasks": (view.get("task_board") or {}).get("tasks") or [],
-            "awaiting": awaiting,
+            "awaiting": [*awaiting, *packages],
             "stale_hours": view.get("stale_after_hours") or DEFAULT_STALE_HOURS,
             "lifecycle": view.get("lifecycle"),
         }
@@ -1160,9 +1223,23 @@ class WorkPipeline:
             now=now,
             stale_hours=float(src.get("stale_hours") or DEFAULT_STALE_HOURS),
             queue=src.get("queue"),
+            tier2=src.get("tier2"),
         )
+        t2 = src.get("tier2") or {}
+        merged_waiting = sum(1 for i in items if i["stage"] in ("merged",))
         q = src.get("queue") or {}
         return {
+            "tier2": {
+                "kinds": t2.get("kinds") or [],
+                "release": {
+                    "kind": "pipeline.release_now",
+                    "params": {"sha": (census or {}).get("main_sha")},
+                    "enabled": bool((t2.get("flags") or {}).get("pipeline.release_now"))
+                    and bool((census or {}).get("main_sha")),
+                    "policy_note": (t2.get("notes") or {}).get("pipeline.release_now"),
+                    "merged_waiting": merged_waiting,
+                },
+            },
             "batch_queue": {
                 "next_batch": [e.get("pr") for e in q.get("next_batch") or []],
                 "held_prs": sorted(int(k) for k in (q.get("held_prs") or {})),
@@ -1195,6 +1272,56 @@ class WorkPipeline:
     def view(self, *, background: bool = True) -> dict[str, Any]:
         self.census.kick(background=background)
         return self.cached.get()
+
+
+def tier2_context(cfg_path: Path | None = None) -> dict[str, Any]:
+    """Flags and policy notes of the Tier 2 kinds (config/ops_controls.json) and the DRAFT contract lanes. Never raises."""
+    try:
+        try:
+            from scripts.lib import work_pipeline_tier2 as T2
+        except ImportError:
+            from lib import work_pipeline_tier2 as T2  # type: ignore[no-redef]
+        root = Path(__file__).resolve().parents[2]
+        cfg = json.loads(Path(cfg_path or root / "config" / "ops_controls.json").read_text(encoding="utf-8"))
+        return {
+            "flags": T2.flags(cfg),
+            "notes": dict(T2.POLICY_NOTE),
+            "kinds": T2.kinds_view(cfg),
+            "draft_lanes": T2.draft_contract_lanes(root),
+        }
+    except Exception:  # noqa: BLE001 - Tier 2 is additive
+        return {}
+
+
+MAX_PACKAGE_LEDGER_BYTES = 5 * 1024 * 1024
+
+
+def open_approval_packages() -> list[dict[str, Any]]:
+    """Open approval packages (SUBMITTED / PARTIAL) as proposed work items. Bounded: skipped above 5 MB."""
+    try:
+        try:
+            from scripts.lib import approval_package as AP
+        except ImportError:
+            from lib import approval_package as AP  # type: ignore[no-redef]
+        path = AP.ledger_path()
+        if not path.is_file() or path.stat().st_size > MAX_PACKAGE_LEDGER_BYTES:
+            return []
+        led = AP.Ledger(path)
+        ids = []
+        for r in led.rows():
+            pid = r.get("package_id")
+            if r.get("event") == "PACKAGE_CREATED" and pid and pid not in ids:
+                ids.append(pid)
+        out = []
+        for pid in ids[-50:]:
+            pkg = led.package(pid) or {}
+            if pkg.get("state") in ("SUBMITTED", "PARTIAL"):
+                pending = sum(1 for it in pkg.get("items") or [] if it.get("state") in ("PENDING", "DEFERRED"))
+                out.append({"kind": "package", "id": pid, "title": f"Approval package: {pkg.get('summary') or pid} ({pending} pending)",
+                            "status": pkg.get("state"), "approval": "awaiting operator", "path": None})  # fmt: skip
+        return out
+    except Exception:  # noqa: BLE001
+        return []
 
 
 _PIPELINE: WorkPipeline | None = None
