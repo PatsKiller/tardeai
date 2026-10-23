@@ -1503,12 +1503,14 @@ def get_watch_intelligence() -> dict[str, Any]:
     return projection
 
 
-def active_ticker_directives() -> list[dict[str, Any]]:
+def active_ticker_directives(*, strict: bool = False) -> list[dict[str, Any]]:
     """Active ticker watch directives, newest per symbol, for the hub's /api/v2/watchlist.
 
     The symbol lives in spec->>'symbol'. Read here (the watch_directives projection
     owner) so hub handlers do not grow direct reads of the store. Fail-soft: no DB or
-    a query error yields [] — the caller still serves its manual list.
+    a query error yields [] — the caller still serves its manual list. ``strict=True``
+    re-raises instead, for a caller that must tell "no directives" from "lookup failed"
+    (Open Trades' directive_state, 2026-10-22).
     """
     try:
         from db_adapter import _execute
@@ -1525,6 +1527,8 @@ def active_ticker_directives() -> list[dict[str, Any]]:
             fetch="all",
         )
     except Exception:
+        if strict:
+            raise
         return []
     out = [dict(r) for r in rows or []]
     out.sort(key=lambda r: r["created_at"], reverse=True)
