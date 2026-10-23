@@ -21,11 +21,11 @@ Freshness is per source: ``sources[name] = {status, as_of, as_of_basis, age_s, s
 raises, times out or answers malformed becomes one P2 "fix" item and ``all_sources_answered`` is false — the page
 never shows an all-clear it did not measure (the needs-action invariant, tests/test_cc_needs_action_20261021.py).
 
-Positions come from the risk snapshot (holdings.json: values, stops, heat), filtered by the positions_store reader
+Positions come from the risk snapshot (the holdings file: values, stops, heat), filtered by the positions_store reader
 batch #3 (operator 2026-10-22, "approve all" item G; config/data_source_authority.json positions_store
 approved_readers batch 3): when watch_domains.held_positions(surface=HOME_SURFACE) answers fresh from
 positions_current, a symbol the broker no longer holds is not a Home item. A stale, empty or unreadable store falls
-back to holdings.json with an explicit fallback_reason. Every number names that basis.
+back to the holdings file with an explicit fallback_reason. Every number names that basis.
 
 AUTHORITY: READ_ONLY_ADVISORY. MBI_BEHAVIOR = 0: nothing here sizes, orders, stops, weights, sends, writes or calls a
 broker. The risk snapshot is read without the /api/v2/risk broker-stop overlay on purpose — working-stop truth comes
@@ -215,16 +215,16 @@ def held_filter(held: Any) -> tuple[Optional[set[str]], str, Optional[str]]:
     Operator 2026-10-22, verbatim: "yes i approve 'approve all' (A–L)" (item G: Home reads positions through the
     broker-synced store, reader batch #3; config/data_source_authority.json positions_store approved_readers batch 3).
     Only a fresh positions_current answer filters the risk snapshot (a symbol the broker no longer holds — e.g. a
-    stop that filled after holdings.json was written — is not a Home item). A stale, empty or unreadable store
-    falls back to holdings.json with the reader's explicit fallback_reason, never silently."""
+    stop that filled after the holdings file was written — is not a Home item). A stale, empty or unreadable store
+    falls back to the holdings file with the reader's explicit fallback_reason, never silently."""
     if not isinstance(held, dict):
-        return None, "holdings.json via data_broker.risk_snapshot (held reader not answered)", "held_reader_unavailable"
+        return None, "the holdings file via data_broker.risk_snapshot (held reader not answered)", "held_reader_unavailable"
     src = held.get("source")
     if src == "positions_store.positions_current" and not held.get("stale"):
         syms = {str(x).upper() for x in (held.get("symbols") or ())}
         return syms, f"positions_store.positions_current (reader batch #3, as of {held.get('as_of')}) filtering the risk snapshot", None
     reason = held.get("fallback_reason") or ("holdings_stale" if held.get("stale") else "positions_store_reader_off")
-    return None, f"holdings.json via data_broker.risk_snapshot (fallback: {reason})", reason
+    return None, f"the holdings file via data_broker.risk_snapshot (fallback: {reason})", reason
 
 
 def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any = None) -> tuple[list[dict], dict]:
@@ -235,7 +235,7 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any 
     as_of = snapshot.get("computed_at")
     cov = coverage or {"measured": False, "uncovered": {}, "reason": "desk truth not read"}
     held_syms, positions_source, held_fallback = held_filter(held) if held is not None else (
-        None, "holdings.json via data_broker.risk_snapshot (held reader not wired)", "held_reader_not_wired")
+        None, "the holdings file via data_broker.risk_snapshot (held reader not wired)", "held_reader_not_wired")
     not_held: list[str] = []
     by_sym: dict[str, dict[str, Any]] = {}
     for p in snapshot["positions"]:
