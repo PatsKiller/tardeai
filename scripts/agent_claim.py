@@ -9,6 +9,13 @@ commits, ``check`` tells it whether another live session holds them. Store and s
              refuse (exit 1) if any live claim of another session overlaps a path/glob; prints the holder,
              branch and since. A stale claim (no heartbeat for 2 h) is taken over and recorded.
   heartbeat  CLAIM_ID [--pr N] [--note X]          refresh; refused once taken over
+  stage      CLAIM_ID building|pr_open [--pr N]    declare a lifecycle stage (owner only); ci_green, merged and
+             released are observed, never declared
+  sync       --dry-run | --apply [--json]          auto-advance stages from GitHub (GET only) + release receipts;
+             --apply writes the lifecycle cache files (lifecycle/<claim_id>.json)
+  precommit  --paths P [P ...]                     the pre-commit gate: warn-only below AGENTS.md 20.0.0 ACTIVE;
+             from 20.0.0 ACTIVE exit 10 (hook: 1) when a staged file is held by another live session or not covered by
+             one of this session's claims. TRADEAI_CLAIM_OVERRIDE=<reason> bypasses and is logged to the history
   release    CLAIM_ID [--status done|abandoned] [--note X]
   list       [--json] [--all]                      live + stale by default; --all adds done/abandoned
   check      --paths P [P ...] [--no-gh] [--warn-only] [--exclude-branch B]
@@ -16,6 +23,9 @@ commits, ``check`` tells it whether another live session holds them. Store and s
              path); --warn-only prints the same and exits 0 (the pre-commit hook mode)
   compact    --dry-run | --apply [--lane-receipt]  archive done/stale > 7 days to claims_history.jsonl, then
              remove the claim files (the archive is the durable copy)
+
+Lifecycle: claimed -> building -> pr_open -> ci_green -> merged -> released (live) | abandoned. A claim frees its
+files at merged and stays on the board until released. --no-gh (or AGENT_CLAIM_NO_GH=1) never calls GitHub.
 
 Identity: --vendor/--session/--agent, else AGENT_CLAIM_VENDOR / AGENT_CLAIM_SESSION / AGENT_CLAIM_AGENT, else a
 best-effort environment hint. Claims dir: --claims-dir, else TRADEAI_AGENT_CLAIMS_DIR, else
@@ -30,6 +40,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -41,11 +52,25 @@ if str(ROOT) not in sys.path:
 from scripts.lib import agent_claim_board as B  # noqa: E402
 
 LANE_ID = "agent-claim-compact"
+PRECOMMIT_BLOCK = 10  # precommit: the gate blocked (distinct from 1, a Python crash); the hook maps it to exit 1
 SCRIPT = "scripts/agent_claim.py"
 
 
-def _board(a: argparse.Namespace) -> B.ClaimBoard:
-    return B.ClaimBoard(a.claims_dir, stale_after_hours=a.stale_hours, compact_after_days=a.compact_days)
+def _observer(a: argparse.Namespace) -> B.LC.LifecycleObserver:
+    no_gh = (
+        getattr(a, "no_gh_global", False) or getattr(a, "no_gh", False) or os.environ.get("AGENT_CLAIM_NO_GH") == "1"
+    )
+    gh = None if no_gh else B.LC.GitHubReader(timeout_s=a.gh_call_timeout)
+    return B.LC.LifecycleObserver(gh, B.LC.ReleaseReader())
+
+
+def _board(a: argparse.Namespace, *, observe: bool = True) -> B.ClaimBoard:
+    return B.ClaimBoard(
+        a.claims_dir,
+        stale_after_hours=a.stale_hours,
+        compact_after_days=a.compact_days,
+        observer=_observer(a) if observe else None,
+    )
 
 
 def _session(a: argparse.Namespace) -> str | None:
@@ -127,6 +152,64 @@ def cmd_heartbeat(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_stage(a: argparse.Namespace) -> int:
+    try:
+        doc = _board(a, observe=False).stage(a.claim_id, a.stage, session=_session(a), pr=a.pr, note=a.note)
+    except (B.ClaimError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(
+        json.dumps(doc, indent=2, sort_keys=True) if a.json else f"{doc['claim_id']} {a.stage} {doc['stages'][a.stage]}"
+    )
+    return 0
+
+
+def cmd_sync(a: argparse.Namespace) -> int:
+    board = _board(a)
+    try:
+        res = board.sync(apply=a.apply)
+    except OSError as exc:
+        print(f"error: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+    if res.get("github_warning"):
+        print(f"WARN: {res['github_warning']}", file=sys.stderr)
+    if a.json:
+        print(json.dumps(res, indent=2, sort_keys=True))
+    else:
+        print(f"{res['mode']}: observed {res['observed']} claim(s); {len(res['changes'])} stage change(s)")
+        for c in res["changes"]:
+            print(
+                f"  {c['claim_id']}: {c['from']} -> {c['to']}" + ("  (files released)" if c["locks_released"] else "")
+            )
+    return 0
+
+
+def cmd_precommit(a: argparse.Namespace) -> int:
+    try:
+        return _precommit(a)
+    except Exception as exc:  # noqa: BLE001 - rc 3 = the gate could not run; the hook decides by policy state
+        print(f"agent-claim: precommit gate crashed ({type(exc).__name__}: {exc})", file=sys.stderr)
+        return 3
+
+
+def _precommit(a: argparse.Namespace) -> int:
+    branch = a.exclude_branch if a.exclude_branch is not None else B.current_branch()
+    res = B.precommit_gate(
+        _board(a),
+        a.paths,
+        session=_session(a),
+        vendor=a.vendor or B.detect_vendor(),
+        branch=branch,
+        agents_md=Path(a.agents_md) if a.agents_md else ROOT / "AGENTS.md",
+        override=os.environ.get(B.ENV_OVERRIDE),
+    )
+    for line in res["messages"]:
+        print(line, file=sys.stderr)
+    if a.json:
+        print(json.dumps(res, indent=2, sort_keys=True))
+    return PRECOMMIT_BLOCK if res["exit_code"] else 0
+
+
 def cmd_release(a: argparse.Namespace) -> int:
     session = _session(a)
     try:
@@ -143,7 +226,10 @@ def cmd_release(a: argparse.Namespace) -> int:
 
 
 def cmd_list(a: argparse.Namespace) -> int:
-    view = _board(a).board(include_finished=a.all)
+    board = _board(a)
+    if not a.no_observe:
+        board.refresh_claims(write=False)
+    view = board.board(include_finished=a.all)
     if a.json:
         print(json.dumps(view, indent=2, sort_keys=True))
         return 0
@@ -155,17 +241,32 @@ def cmd_list(a: argparse.Namespace) -> int:
             f"no claims ({'dir ' + view['claims_dir'] + ' absent' if not view['dir_present'] else view['claims_dir']})"
         )
         return 0
-    heads = ["STATE", "VENDOR", "AGENT/SESSION", "BRANCH", "PR", "SINCE", "HB AGE", "TASK", "PATHS", "CLAIM"]
+    heads = [
+        "STATE",
+        "STAGE",
+        "CI",
+        "VENDOR",
+        "AGENT/SESSION",
+        "BRANCH",
+        "PR",
+        "SINCE",
+        "HB AGE",
+        "TASK",
+        "PATHS",
+        "CLAIM",
+    ]
     table = []
     for r in rows:
         hb = r["heartbeat_age_minutes"]
         table.append(
             [
                 r["state"],
+                r["stage"] + ("" if r["locks_held"] or r["stage"] == "abandoned" else " (files free)"),
+                ((r.get("ci") or {}).get("state") or "-"),
                 r["vendor"] or "-",
                 (r["agent"] or r["session"] or "-")[:28],
                 (r["branch"] or "-")[:40],
-                str(r["pr"] or "-"),
+                str(r["pr_number"] or r["pr"] or "-"),
                 (r["started_at"] or "-")[:16],
                 "-" if hb is None else f"{hb:.0f}m",
                 (r["task"] or "")[:40],
@@ -186,6 +287,8 @@ def cmd_check(a: argparse.Namespace) -> int:
     branch = a.exclude_branch if a.exclude_branch is not None else B.current_branch()
     try:
         rows = board.conflicts(a.paths, session=session, branch=branch)
+        if rows and board.refresh_claims([r["claim_id"] for r in rows]):
+            rows = board.conflicts(a.paths, session=session, branch=branch)  # merged holders free their files
     except (B.ClaimError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 0 if a.warn_only else 2
@@ -272,6 +375,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--vendor", default=None, help="claude | codex | cursor | any label (all equal)")
     p.add_argument("--session", default=None)
     p.add_argument("--agent", default=None)
+    p.add_argument(
+        "--no-gh", dest="no_gh_global", action="store_true", help="never call GitHub (stages from receipts only)"
+    )
+    p.add_argument("--gh-call-timeout", type=float, default=B.LC.GH_TIMEOUT_S, help="seconds per GitHub GET")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     c = sub.add_parser("claim")
@@ -291,6 +398,28 @@ def build_parser() -> argparse.ArgumentParser:
     h.add_argument("--json", action="store_true")
     h.set_defaults(fn=cmd_heartbeat)
 
+    st = sub.add_parser("stage", help="declare building or pr_open (owner only)")
+    st.add_argument("claim_id")
+    st.add_argument("stage", choices=list(B.LC.DECLARABLE))
+    st.add_argument("--pr", default=None)
+    st.add_argument("--note", default=None)
+    st.add_argument("--json", action="store_true")
+    st.set_defaults(fn=cmd_stage)
+
+    sy = sub.add_parser("sync", help="auto-advance stages from GitHub + release receipts")
+    gs = sy.add_mutually_exclusive_group(required=True)
+    gs.add_argument("--dry-run", action="store_true")
+    gs.add_argument("--apply", action="store_true")
+    sy.add_argument("--json", action="store_true")
+    sy.set_defaults(fn=cmd_sync)
+
+    pc = sub.add_parser("precommit", help="pre-commit gate (warn-only below AGENTS.md 20.0.0 ACTIVE)")
+    pc.add_argument("--paths", nargs="+", required=True)
+    pc.add_argument("--exclude-branch", default=None, help="own branch (default: current git branch)")
+    pc.add_argument("--agents-md", default=None, help="AGENTS.md to read the policy state from (default: repo root)")
+    pc.add_argument("--json", action="store_true")
+    pc.set_defaults(fn=cmd_precommit)
+
     r = sub.add_parser("release")
     r.add_argument("claim_id")
     r.add_argument("--status", choices=["done", "abandoned"], default="done")
@@ -303,6 +432,7 @@ def build_parser() -> argparse.ArgumentParser:
     ls = sub.add_parser("list")
     ls.add_argument("--json", action="store_true")
     ls.add_argument("--all", action="store_true", help="include done/abandoned")
+    ls.add_argument("--no-observe", action="store_true", help="show cached stages only (no GitHub, no receipts)")
     ls.set_defaults(fn=cmd_list)
 
     k = sub.add_parser("check")

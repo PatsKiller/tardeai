@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agent_claim_lifecycle_20261023",
+  "files": [
+    "tests/test_agent_claim_lifecycle_20261023.py"
+  ],
+  "anchor": "AGENT_CLAIM_LIFECYCLE_20261023",
+  "comment": [
+    "ANCHOR: AGENT_CLAIM_LIFECYCLE_20261023 — claim board lifecycle (operator 2026-10-23): stages claimed→building→pr_open→ci_green→merged→released|abandoned with timestamps; declared building/pr_open; auto-advance from gh api GET (PR state, required checks of the head SHA) and release receipts (merge commit ancestor of an apply-receipt / served SHA); file locks freed at merge, card kept until released; gh missing/slow/failing degrades to declared stage and keeps blocking; read-only API projection with background cache; policy-gated pre-commit (warn below AGENTS.md 20.0.0 ACTIVE, block from it, TRADEAI_CLAIM_OVERRIDE logged). Hermetic: temp dirs, fake gh, fake receipts."
+  ]
+}

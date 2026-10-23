@@ -42,7 +42,7 @@ ACTIVE; 11.0.0 (§23.24) is PROPOSED.
 
 | Document | Purpose | Status |
 |----------|---------|--------|
-| `docs/ops/AGENT_CLAIM_BOARD.md` | Multi-vendor claim board (Claude, Codex, Cursor as equal peers): one JSON per claim, overlap/glob rules, 2 h stale takeover, compaction to `claims_history.jsonl`, draft-PR fallback for cloud agents, `GET /api/v2/coordination/claims`, Coordination → Who's working, operator install (timer + warn-only pre-commit line) | Active (branch feat/agent-claim-board-20261022) |
+| `docs/ops/AGENT_CLAIM_BOARD.md` | Multi-vendor claim board (Claude, Codex, Cursor as equal peers): one JSON per claim, overlap/glob rules, 2 h stale takeover, compaction to `claims_history.jsonl`, draft-PR fallback for cloud agents, `GET /api/v2/coordination/claims`, Coordination → Who's working, operator install (timer + pre-commit line); 2026-10-23: lifecycle stages claimed→building→pr_open→ci_green→merged→released with times (GitHub GET + release receipts), files freed at merge, kanban board, policy-gated pre-commit (warn below AGENTS.md 20.0.0 ACTIVE, block from it, logged override) | Active (lifecycle: branch feat/claim-board-lifecycle-20261023) |
 
 ## Live changes (2026-10-20)
 
