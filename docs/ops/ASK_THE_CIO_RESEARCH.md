@@ -2,7 +2,7 @@
 
 ```
 Status:      DRAFT (code merged-ready; lane at SHADOW in a stacked PR, its health contract DRAFT awaiting owner review)
-as_of:       2026-10-23T14:30:00Z
+as_of:       2026-10-23T14:05:00Z
 Measured at: origin/main 53aa1b619 + branch feat/ask-cio-phase9-research-20261023
 ```
 
@@ -27,7 +27,8 @@ One `AskRequest@v1` produces one `AskAnswer@v1` prospectus per security. Each pr
 
 | Piece | Where |
 |---|---|
-| Library (in-process, the deep path calls it) | `scripts/lib/cio_ask_research.py` → `run_research(request, …)` |
+| Contract entry point (the deep path) | `scripts/lib/cio_ask_research.py` → `run_deep_research(AskResearchContext) -> AskAnswer@v1` (`DEEP_RESEARCH_ENTRYPOINT`) |
+| Library core (lane and tests) | `run_research(request, …)` → the internal research result; `to_contract_answer` maps it |
 | Host executor (the n8n lane `cio-ask-research`) | `scripts/cio_ask_research.py` (`--dry-run` = shadow) |
 | Tests (hermetic) | `tests/test_cio_ask_research.py`; CI gate `config/ci_gates/cio_ask_research_phase9_20261023.json` |
 
@@ -38,7 +39,7 @@ One `AskRequest@v1` produces one `AskAnswer@v1` prospectus per security. Each pr
    - A name goes through `company_name_index.resolve_name` first. That index is built from the stored broker
      instrument feed, and it never guesses.
    - If the name does not resolve, the company is a **private / unlisted tracked entity**. Its key is the
-     deterministic `security_identity.issuer_guid(company=…)`, with `symbol = None`. No ticker is invented.
+     contract's deterministic `private_entity_guid(name)` (`ent_…`), with `symbol = None`. No ticker is invented.
      Its status is `TRACKED_PRIVATE_UNREGISTERED`, because registering it in the identity table is a store write
      (§26.6, operator).
    - An unresolved symbol gets "identity unresolved" and no record.
@@ -74,8 +75,11 @@ One `AskRequest@v1` produces one `AskAnswer@v1` prospectus per security. Each pr
      pending, 2026-10-23).
 7. **CIO memory (no silos).**
    - Every gathered fact and the final answer are appended through `CIOEnvelopeIntegrator.integrate_envelope`.
-   - They are keyed by `security_guid`, or by `issuer_guid` for a private tracked entity.
-   - Predicates are `ask_research_fact` and `ask_answer`.
+   - They are keyed by `security_guid`, or by `entity_guid` for a private tracked entity.
+   - Predicates are the contract's memory kinds `ask.source` (one per fact) and `ask.answer_version`. On the deep
+     path the core (`cio_ask_core`) appends `ask.answer_version` itself, so Phase 9 appends only `ask.source`.
+   - Writes go through the integrator in dry-run mode unless `CIO_ASK_MEMORY_APPLY=1` (deep path) or
+     `--apply-memory` (lane) is set. A dry run records nothing in the idempotency ledger.
    - Appends are idempotent: a deterministic `event_key` per event, plus a local ledger. A refused envelope is
      reported in `memory_receipt.refused` and never retried blindly.
    - Sizing never enters memory.
@@ -99,7 +103,7 @@ One `AskRequest@v1` produces one `AskAnswer@v1` prospectus per security. Each pr
 | sec | XBRL fundamentals | `fundamentals_feed.card_block` |
 | news | stored articles | `data_broker.catalyst_record.get_symbol_news` (`news_articles`) |
 | web | governed search | `search_router.route_query(caller="web_research")`: class `operator`, existing cache / free tiers / Brave budget |
-| LLM | DeepSeek (flash), Grok OAuth, ChatGPT OAuth | `governed_cloud_generation.generate_cloud(process_id="cio_ask_research_panel", lanes=(lane,))`; through the bridge when `TRADEAI_LLM_VIA_BRIDGE` is on |
+| LLM | DeepSeek (flash), Grok OAuth, ChatGPT OAuth | `governed_cloud_generation.generate_cloud(process_id="cio_ask_deep_research", lanes=(lane,))`; through the bridge when `TRADEAI_LLM_VIA_BRIDGE` is on |
 | LLM | Claude oversight | **NOT AVAILABLE**: no governed Claude process exists for this path (bridge and registry have none). Recorded, not improvised. |
 
 ### Read-only evidence `[VERIFIED]` 2026-10-23
@@ -130,7 +134,8 @@ applied), alerts (NO_DATA) and thesis (NO_DATA). The answer JSON is at `~/.cache
 
 ## Operator approvals needed (§17)
 
-1. **Spend cap and process registration.** Register `cio_ask_research_panel` in `config/llm_process_registry.json`,
+1. **Spend cap and process registration.** Register `cio_ask_deep_research` (the contract's
+   `ResearchBudget.process_id`) in `config/llm_process_registry.json`,
    plus `governed_process_routes` and the bridge map if it goes through the bridge. The proposed row is
    `lane_policy: ensemble`, `allowed_lanes: [deepseek-flash, grok, chatgpt]` and `daily_cost_cap_usd`.
    The proposed research cap was $5/day, but **the global cap is $2.00/day** (§12). A $5 process cap cannot be
@@ -146,11 +151,33 @@ applied), alerts (NO_DATA) and thesis (NO_DATA). The answer JSON is at `~/.cache
 
 ## Contract reconciliation
 
-`cio_ask_contract.py` had not landed when this was written (checked `git branch -r`, `gh pr list` and the claim
-board). The module reads `ASK_REQUEST_SCHEMA` / `ASK_ANSWER_SCHEMA` from the contract when it exists, and it
-calls the contract's `parse_ask_request` / `validate_ask_answer` hooks. `answer["contract_source"]` says which was
-used. When the contract lands, map its field names in `normalize_request` and `synthesize` and drop the local
-draft.
+The shared contract landed on `feat/ask-cio-phase8-11-20261023` (commits 3eed4d4bc and 50fbd7059). It is not on
+`main` yet. The module imports it lazily:
+
+- `run_deep_research(ctx)` returns a contract `AskAnswer`, and that answer passes `validate_answer` (tested).
+- Without the contract, `run_deep_research` raises `ImportError`. The core then treats the deep path as
+  `deep_pending`.
+- The two adapter tests `importorskip` the contract, so they start running when it merges.
+
+These items are aligned with the contract:
+
+- the process id `cio_ask_deep_research`
+- `private_entity_guid`
+- the memory kinds
+- the `quick`/`deep` depths
+- `EntityRef` inputs (pre-resolved entities are trusted)
+- `NamedQuantity{amount, unit}`, including `usd`
+- the MBI guard: the contract's patterns run inside this module's strip as well
+
+**`sizing_context` is left empty in the contract answer.** The core computes it on the host. Phase 9 hands over
+`provenance.reference_prices` with each value's `as_of` and `fact_id`.
+
+**Contract gaps for the contract owner:**
+
+1. `StreetTarget` has `median`, but the sources publish a **mean**. `median` is left `None`, and the mean is in
+   `provenance.street_mean`. Proposal: add `mean` to `StreetTarget`.
+2. `Scenario` has no citation field. The anchor and its `as_of` are written into the narrative, and the full
+   facts are in `provenance.facts`.
 
 ## Findings
 

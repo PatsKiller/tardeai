@@ -41,7 +41,7 @@ def fake_name(name: str):
 
 
 def fake_issuer(name: str) -> str:
-    return "iss-private-" + name.lower().replace(" ", "-")
+    return "ent_private-" + name.lower().replace(" ", "-")
 
 
 def _src(name, family, facts_fn, timeout=2.0, needs_symbol=True, delay=0.0):
@@ -426,7 +426,7 @@ def test_private_company_is_a_tracked_entity_without_a_ticker():
     ans = run(question="Should I invest in Skydance after Musk's $1B?", subjects=[{"name": "Skydance"}])
     ent = ans["entities"][0]
     assert ent["kind"] == "private" and ent["symbol"] is None
-    assert ent["subject_key"] == "iss-private-skydance"
+    assert ent["subject_key"] == "ent_private-skydance"
     assert ent["identity_status"] == "TRACKED_PRIVATE_UNREGISTERED"
     gap_sources = {g["source"] for g in ans["gaps"] if g["reason"] == "NOT_APPLICABLE_PRIVATE_ENTITY"}
     assert {"street", "price", "catalysts", "holdings"} <= gap_sources
@@ -461,7 +461,7 @@ def test_memory_append_is_idempotent_and_keyed_by_guid(tmp_path):
     n = len(sink)
     assert a1["memory_receipt"]["appended"] == n == len(a1["facts"]) + 1
     assert {e["subject_guid"] for e in sink} == {TSLA_GUID}
-    assert {e["predicate"] for e in sink} == {"ask_research_fact", "ask_answer"}
+    assert {e["predicate"] for e in sink} == {"ask.source", "ask.answer_version"}
     # same request again, fresh appender over the same ledger: nothing new
     mem2 = car.MemoryAppender(ledger_path=tmp_path / "ledger.jsonl", sink=sink.append)
     a2 = run(panel=panel, memory=mem2)
@@ -474,14 +474,14 @@ def test_n8n_origin_keeps_model_text_out_of_memory(tmp_path):
     sink = []
     mem = car.MemoryAppender(ledger_path=tmp_path / "l.jsonl", sink=sink.append)
     run(panel=[car.PanelMember("grok", lambda p: model_reply("bullish"), est_usd=0.0)], memory=mem, origin="n8n")
-    ans_ev = next(e for e in sink if e["predicate"] == "ask_answer")
+    ans_ev = next(e for e in sink if e["predicate"] == "ask.answer_version")
     assert "panel_views" not in ans_ev["object"] and ans_ev["object"]["model_text"].startswith("OMITTED_ON_N8N_PATH")
 
 
 def test_private_entity_memory_keyed_by_issuer(tmp_path):
     sink = []
     run(subjects=[{"name": "Skydance"}], memory=car.MemoryAppender(sink=sink.append))
-    assert sink and {e["subject_guid"] for e in sink} == {"iss-private-skydance"}
+    assert sink and {e["subject_guid"] for e in sink} == {"ent_private-skydance"}
     assert all(e["symbol"] is None and e["entity_kind"] == "private" for e in sink)
 
 
@@ -553,3 +553,120 @@ def test_executor_dry_run_writes_nothing(tmp_path):
 def test_ci_gate_registered():
     gate = json.loads((ROOT / "config" / "ci_gates" / "cio_ask_research_phase9_20261023.json").read_text())
     assert "tests/test_cio_ask_research.py" in gate["files"]
+
+
+def test_private_entity_guid_matches_the_contract_formula():
+    import uuid
+
+    expect = "ent_" + str(uuid.uuid5(uuid.NAMESPACE_URL, "tradeai:private-entity:skydance media"))
+    assert car.private_entity_guid("Skydance Media!") == expect
+    e = car.resolve_entity({"name": "Skydance Media"}, identity_fn=fake_identity, name_fn=fake_name)
+    assert (e.kind, e.symbol, e.subject_key) == ("private", None, expect)
+
+
+def test_integrator_dry_run_records_nothing_as_appended(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(car.MemoryAppender, "_default_sink", lambda self, env: calls.append(env))
+    mem = car.MemoryAppender(ledger_path=tmp_path / "l.jsonl", apply=False)
+    ans = run(memory=mem)
+    assert calls and ans["memory_receipt"]["dry_run"] is True
+    assert not (tmp_path / "l.jsonl").exists()  # a later apply must still write every event
+
+
+def test_operator_named_dollars_are_arithmetic_too():
+    ans = run(question="Is $22,000 of TSLA too much?", subjects=[{"symbol": "TSLA"}])
+    rows = ans["prospectus"][0]["sizing_context"]
+    assert rows == [] or rows[0]["unit"] in ("shares", "usd")
+    req = {
+        "question": "TSLA?",
+        "subjects": [{"symbol": "TSLA"}],
+        "named_quantities": [{"symbol": "TSLA", "amount": 22000, "unit": "usd"}],
+    }
+    a = car.run_research(
+        req,
+        sources=base_sources(),
+        panel=[],
+        governor=Gov(),
+        identity_fn=fake_identity,
+        name_fn=fake_name,
+        issuer_guid_fn=fake_issuer,
+    )
+    row = a["prospectus"][0]["sizing_context"][0]
+    assert row["notional_usd"] == 22000 and row["share_equivalent"] == 100.0
+
+
+# ------------------------------------------------------------------------------------------------ shared contract
+def _ctx(C, *, entities, question="Should I own 100 or 1,000 TSLA?", max_usd=1.0, depth="deep"):
+    req = C.AskRequest(question=question, channel="cc", source_ref="req-1", depth=depth, entities=entities)
+    return C.AskResearchContext(
+        request=req, thread_id=C.make_thread_id(req.ask_id), version=1, budget=C.ResearchBudget(max_usd=max_usd)
+    )
+
+
+def test_run_deep_research_returns_a_valid_contract_answer():
+    C = pytest.importorskip("scripts.lib.cio_ask_contract")
+    sink = []
+    ctx = _ctx(C, entities=[C.EntityRef(name="TSLA", symbol="TSLA", security_guid=TSLA_GUID)])
+    panel = [
+        car.PanelMember("deepseek", lambda p: model_reply("bullish", extra_text="Buy 500 shares now."), est_usd=0.0),
+        car.PanelMember("grok", lambda p: model_reply("bearish"), est_usd=0.0),
+        car.PanelMember("chatgpt", lambda p: model_reply("bullish"), est_usd=0.0),
+    ]
+    ans = car.run_deep_research(
+        ctx,
+        sources=base_sources(),
+        panel=panel,
+        governor=Gov(),
+        memory=car.MemoryAppender(sink=sink.append),
+        identity_fn=fake_identity,
+        name_fn=fake_name,
+        issuer_guid_fn=fake_issuer,
+    )
+    assert C.validate_answer(ans) == [], ans.provenance.get("validation_problems")
+    assert (ans.status, ans.depth, ans.ask_id, ans.version) == ("deep", "deep", ctx.request.ask_id, 1)
+    pr = ans.prospectus[0]
+    assert pr.street_target.low == 150.0 and pr.street_target.high == 400.0 and pr.street_target.median is None
+    assert pr.horizons["12m"]["bull"].price == 400.0 and pr.horizons["3m"]["base"].price is None
+    assert pr.stance == "constructive"
+    assert [d.model for d in ans.model_dissent if d.differs_on == "stance"] == ["grok"]
+    shown = json.dumps({k: v for k, v in ans.to_dict().items() if k not in ("mbi_guard",)})
+    assert ans.mbi_guard["stripped"] >= 1 and "500 shares" not in shown  # recorded in mbi_guard, never shown
+    assert ans.sizing_context == [] and "size_suggestion" not in ans.to_dict(allow_size_suggestion=False)
+    assert {e["predicate"] for e in sink} == {"ask.source"}  # the core appends ask.answer_version itself
+    assert all(s.as_of for s in ans.sources)
+
+
+def test_run_deep_research_private_entity_and_cap():
+    C = pytest.importorskip("scripts.lib.cio_ask_contract")
+    guid = C.private_entity_guid("Skydance")
+    ctx = _ctx(
+        C,
+        entities=[
+            C.EntityRef(name="Skydance", kind="private_entity", entity_guid=guid, resolution="UNRESOLVED_PRIVATE")
+        ],
+        question="Invest in Skydance?",
+        max_usd=0.0,
+    )
+    called = []
+    ans = car.run_deep_research(
+        ctx,
+        sources=base_sources(),
+        panel=[car.PanelMember("deepseek", lambda p: called.append(1) or "{}", est_usd=0.01)],
+        governor=car.CostGovernor(
+            per_question_usd=0.0, registered_fn=lambda pid: True, check_fn=lambda *a, **k: {"allow": True}
+        ),
+        memory=None,
+        identity_fn=fake_identity,
+        name_fn=fake_name,
+    )
+    assert called == []
+    assert C.validate_answer(ans) == [], ans.provenance.get("validation_problems")
+    e = ans.prospectus[0].entity
+    assert (e.kind, e.symbol, e.entity_guid) == ("private_entity", None, guid)
+    assert ans.provenance["partial"] and "PER_QUESTION_CAP_EXCEEDED" in ans.summary
+
+
+def test_deep_path_without_the_contract_raises_import_error(monkeypatch):
+    monkeypatch.setattr(car, "_contract", None)
+    with pytest.raises(ImportError):
+        car.run_deep_research(object())

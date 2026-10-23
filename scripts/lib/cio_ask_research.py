@@ -49,7 +49,7 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 LANE_ID = "cio-ask-research"
 #: Proposed governed process id for the panel. It is NOT registered in config/llm_process_registry.json until
 #: the operator approves its spend cap. Until then the governor refuses every panel call (PROCESS_NOT_REGISTERED).
-PROCESS_ID = "cio_ask_research_panel"
+PROCESS_ID = "cio_ask_deep_research"
 FACT_SCHEMA = "AskResearchFact@v1"
 RUN_SCHEMA = "AskResearchRun@v1"
 MEMORY_SCHEMA = "AskResearchMemoryEvent@v1"
@@ -138,7 +138,7 @@ class Fact:
     source: str  # e.g. "internal.catalysts", "web.brave", "sec.filings", "street.targets"
     family: str  # internal | web | sec | news | street | market
     kind: str  # catalyst | news | filing | fundamental | target | price | thesis | prospect | ...
-    subject_key: str  # security_guid (listed) or issuer_guid (private tracked entity)
+    subject_key: str  # security_guid (listed) or entity_guid (private tracked entity)
     claim: str
     as_of: str
     citation: dict[str, Any]
@@ -209,17 +209,18 @@ class Entity:
     symbol: Optional[str] = None
     security_guid: Optional[str] = None
     issuer_guid: Optional[str] = None
+    entity_guid: Optional[str] = None  # private / unlisted tracked entity (contract EntityRef.entity_guid)
     identity_status: str = "UNRESOLVED"
     identity_source: str = ""
 
     @property
     def subject_key(self) -> Optional[str]:
         """Memory key. A listed security is keyed by security_guid (§26.1). A private company has no security,
-        so its tracked key is the deterministic issuer_guid (no ticker is invented). Unresolved: None."""
+        so its tracked key is the contract's deterministic entity_guid (no ticker is invented). Unresolved: None."""
         if self.kind == "listed":
             return self.security_guid
         if self.kind == "private":
-            return self.issuer_guid
+            return self.entity_guid
         return None
 
     def to_dict(self) -> dict[str, Any]:
@@ -287,9 +288,18 @@ def default_name_fn(name: str) -> Optional[dict[str, Any]]:
     return mod.resolve_name(name)
 
 
-def default_issuer_guid_fn(name: str) -> Optional[str]:
-    mod = _imp("scripts.lib.security_identity", "lib.security_identity")
-    return mod.issuer_guid(company=name)
+def private_entity_guid(name: str) -> str:
+    """The contract's stable id for an entity with no listed security ("ent_" + uuid5). Never a ticker. Same formula
+    as ``cio_ask_contract.private_entity_guid`` so Phases 8-11 and Phase 9 key one private company identically."""
+    if _contract is not None and hasattr(_contract, "private_entity_guid"):
+        return _contract.private_entity_guid(name)
+    import uuid
+
+    norm = re.sub(r"[^a-z0-9]+", " ", str(name or "").lower()).strip()
+    return "ent_" + str(uuid.uuid5(uuid.NAMESPACE_URL, "tradeai:private-entity:" + norm))
+
+
+default_issuer_guid_fn = private_entity_guid  # name kept for callers; it returns the private entity_guid
 
 
 def _resolve_symbol(symbol: str, label: str, identity_fn: Callable[[str], Mapping[str, Any]]) -> Entity:
@@ -328,8 +338,8 @@ def resolve_entity(
     * ``{"symbol": "TSLA"}`` → the identity registry's security_guid, or ``unresolved`` (identity unresolved: no
       memory record, §26.1).
     * ``{"name": "Skydance"}`` → the broker instrument name index. If it resolves, it is resolved as a symbol.
-      Otherwise the company is a **private / unlisted tracked entity**: deterministic ``issuer_guid`` from the
-      name, ``symbol=None``, status ``TRACKED_PRIVATE_UNREGISTERED`` (registering it in the identity table is a
+      Otherwise the company is a **private / unlisted tracked entity**: deterministic ``entity_guid`` from the
+      name (``cio_ask_contract.private_entity_guid``), ``symbol=None``, status ``TRACKED_PRIVATE_UNREGISTERED`` (registering it in the identity table is a
       store write the operator grants, §26.6).
     """
     if isinstance(subject, str):
@@ -340,6 +350,25 @@ def resolve_entity(
         )
     sym = str(subject.get("symbol") or "").strip()
     name = str(subject.get("name") or "").strip()
+    kind = str(subject.get("kind") or "")
+    if kind == "security" and subject.get("security_guid"):  # already resolved by the core (EntityRef@contract)
+        return Entity(
+            label=name or sym.upper(),
+            kind="listed",
+            symbol=sym.upper() or None,
+            security_guid=str(subject["security_guid"]),
+            issuer_guid=subject.get("issuer_guid"),
+            identity_status="RESOLVED",
+            identity_source="cio_ask_core (EntityRef)",
+        )
+    if kind == "private_entity" and subject.get("entity_guid"):
+        return Entity(
+            label=name,
+            kind="private",
+            entity_guid=str(subject["entity_guid"]),
+            identity_status="TRACKED_PRIVATE_UNREGISTERED",
+            identity_source="cio_ask_core (EntityRef)",
+        )
     if sym:
         return _resolve_symbol(sym, name or sym.upper(), identity_fn)
     if not name:
@@ -354,19 +383,19 @@ def resolve_entity(
         ent.identity_source = "company_name_index"
         return ent
     try:
-        issuer = issuer_guid_fn(name)
+        guid = issuer_guid_fn(name)
     except Exception:  # noqa: BLE001
-        issuer = None
-    if not issuer:
+        guid = None
+    if not guid:
         return Entity(label=name, kind="unresolved", identity_status="NAME_UNRESOLVED")
     return Entity(
         label=name,
         kind="private",
         symbol=None,
         security_guid=None,
-        issuer_guid=str(issuer),
+        entity_guid=str(guid),
         identity_status="TRACKED_PRIVATE_UNREGISTERED",
-        identity_source="security_identity.issuer_guid(company)",
+        identity_source="cio_ask_contract.private_entity_guid(name)",
     )
 
 
@@ -412,22 +441,32 @@ def parse_named_quantities(question: str) -> list[dict[str, Any]]:
 def normalize_request(
     request: Mapping[str, Any], *, known_symbol: Callable[[str], bool] | None = None
 ) -> dict[str, Any]:
-    if _contract is not None and hasattr(_contract, "parse_ask_request"):  # pragma: no cover - reconcile hook
-        request = _contract.parse_ask_request(request)  # type: ignore[attr-defined]
-        if not isinstance(request, Mapping):
-            request = asdict(request) if hasattr(request, "__dataclass_fields__") else dict(request)
+    """Accepts the contract's ``AskRequest.to_dict()`` (entities, named_quantities {amount, unit}, depth, ask_id) or
+    the lane's draft shape (subjects, named_quantities {quantity}, mode, request_id)."""
     q = str(request.get("question") or "").strip()
     if not q:
         raise ValueError("AskRequest without question")
-    subjects = list(request.get("subjects") or []) or extract_subjects(q, known_symbol=known_symbol)
-    named = list(request.get("named_quantities") or []) or parse_named_quantities(q)
+    subjects = (
+        list(request.get("entities") or [])
+        or list(request.get("subjects") or [])
+        or extract_subjects(q, known_symbol=known_symbol)
+    )
+    named = []
+    for n in list(request.get("named_quantities") or []) or parse_named_quantities(q):
+        n = dict(n)
+        if "quantity" not in n and "amount" in n:
+            n["quantity"] = n.get("amount")
+        n.setdefault("unit", "shares")
+        named.append(n)
+    depth = str(request.get("depth") or request.get("mode") or "deep")
+    rid = request.get("ask_id") or request.get("request_id")
     return {
         "schema": ASK_REQUEST_SCHEMA,
-        "request_id": str(request.get("request_id") or "ask_" + _sha(q, request.get("asked_at"), n=12)),
+        "request_id": str(rid or "ask_" + _sha(q, request.get("asked_at"), n=12)),
         "question": q,
         "asked_at": _iso(request.get("asked_at")) or _iso(_now()),
         "channel": str(request.get("channel") or "unknown"),
-        "mode": str(request.get("mode") or "deep"),
+        "mode": "fast" if depth in ("fast", "quick") else "deep",
         "subjects": subjects,
         "named_quantities": named,
     }
@@ -1033,6 +1072,9 @@ def strip_behavior_text(text: str, *, where: str, log: list[dict[str, Any]]) -> 
         if reason is None:
             imp = _imperative(sent)
             reason = f"execution_imperative:{imp[:40]}" if imp else None
+        if reason is None and _contract is not None and hasattr(_contract, "mbi_guard_text"):
+            _, cf_hits = _contract.mbi_guard_text(sent)  # the shared contract's patterns, so both guards agree
+            reason = f"contract_mbi:{cf_hits[0]['rule']}" if cf_hits else None
         if reason:
             log.append({"where": where, "reason": reason, "excerpt": sent.strip()[:160], "excerpt_sha": _sha(sent)})
             continue
@@ -1515,18 +1557,25 @@ def _sizing_context(
         q = _num(n.get("quantity"))
         if not q:
             continue
+        unit = str(n.get("unit") or "shares")
         row: dict[str, Any] = {
             "symbol": ent.symbol,
             "quantity": q,
+            "unit": unit,
             "named_by": "operator",
             "reference_price": _fact_ref(price),
             "egress": "local_only",
         }
-        if price is None:
+        if price is None or not price.value:
             row["gap"] = "NO_SOURCED_REFERENCE_PRICE"
             out.append(row)
             continue
-        row["notional_usd"] = round(q * price.value, 2)
+        if unit == "usd":  # "$10k of TSLA": the operator named dollars; the share-equivalent is arithmetic
+            row["notional_usd"] = round(q, 2)
+            q = q / price.value
+            row["share_equivalent"] = round(q, 4)
+        else:
+            row["notional_usd"] = round(q * price.value, 2)
         row["scenario_pnl_usd"] = {
             h: {
                 c: (
@@ -1683,8 +1732,6 @@ def synthesize(
         "cost": governor.summary() if governor else None,
         "source_runs": list(runs),
     }
-    if _contract is not None and hasattr(_contract, "validate_ask_answer"):  # pragma: no cover - reconcile hook
-        _contract.validate_ask_answer(answer)  # type: ignore[attr-defined]
     return answer
 
 
@@ -1713,7 +1760,7 @@ def assert_numbers_cited(answer: Mapping[str, Any]) -> list[str]:
 
 # --------------------------------------------------------------------------------------------------- memory
 class MemoryAppender:
-    """Append every gathered fact and the final answer to CIO memory, keyed by subject (security_guid; issuer_guid
+    """Append every gathered fact and the final answer to CIO memory, keyed by subject (security_guid; entity_guid
     for a private tracked entity), through the existing integrator (``CIOEnvelopeIntegrator``).
 
     Idempotent: each event has a deterministic ``event_key``. Keys already appended (the local ledger) are skipped,
@@ -1752,8 +1799,12 @@ class MemoryAppender:
         except Exception as exc:  # noqa: BLE001 - a refused envelope is reported, never retried blindly
             receipt["refused"].append({"event_key": key, "reason": f"{type(exc).__name__}: {str(exc)[:160]}"})
             return
-        self._seen.add(key)
         receipt["appended"] += 1
+        if not (self.apply or self._sink is not None):
+            # integrator dry run: nothing was written, so nothing is recorded as appended (a later apply must write)
+            receipt["dry_run"] = True
+            return
+        self._seen.add(key)
         if self.ledger_path:
             self.ledger_path.parent.mkdir(parents=True, exist_ok=True)
             with self.ledger_path.open("a", encoding="utf-8") as fh:
@@ -1776,6 +1827,7 @@ class MemoryAppender:
         answer: Mapping[str, Any],
         *,
         origin: str = "in_process",
+        include_answer: bool = True,
     ) -> dict[str, Any]:
         receipt: dict[str, Any] = {
             "schema": MEMORY_SCHEMA,
@@ -1802,15 +1854,19 @@ class MemoryAppender:
             }
             if f.value is not None and f.egress == "model_ok":
                 obj["value"], obj["unit"], obj["field"] = f.value, f.unit, f.field
-            self._emit(key, self._envelope(ent, "ask_research_fact", obj, f.claim, f.as_of, key), receipt)
-        for p in answer.get("prospectus") or []:
+            self._emit(key, self._envelope(ent, "ask.source", obj, f.claim, f.as_of, key), receipt)
+        # The contract's core (cio_ask_core) appends ask.answer_version itself on the deep path; Phase 9 then
+        # appends only its sourced facts (include_answer=False) so one answer is one memory event.
+        for p in (answer.get("prospectus") or []) if include_answer else []:
             ent = ent_by_key.get((p.get("entity") or {}).get("subject_key"))
             if ent is None:
                 continue
             key = "askanswer:" + _sha(ent.subject_key, answer.get("request_id"), n=24)
             obj = self._answer_object(answer, p, origin=origin)
             claim = f"Ask the CIO: {answer.get('question')}"[:300]
-            self._emit(key, self._envelope(ent, "ask_answer", obj, claim, answer.get("answered_at"), key), receipt)
+            self._emit(
+                key, self._envelope(ent, "ask.answer_version", obj, claim, answer.get("answered_at"), key), receipt
+            )
         return receipt
 
     @staticmethod
@@ -1828,6 +1884,7 @@ class MemoryAppender:
             "subject_guid": ent.subject_key,
             "security_guid": ent.security_guid,
             "issuer_guid": ent.issuer_guid,
+            "entity_guid": ent.entity_guid,
             "symbol": ent.symbol,
             "entity_kind": ent.kind,
             "identity_status": ent.identity_status,
@@ -1880,6 +1937,7 @@ def run_research(
     governor: Optional[CostGovernor] = None,
     memory: Optional[MemoryAppender] = None,
     origin: str = "in_process",
+    include_answer_in_memory: bool = True,
     dry_run: bool = False,
     identity_fn: Callable[[str], Mapping[str, Any]] = default_identity_fn,
     name_fn: Callable[[str], Optional[Mapping[str, Any]]] = default_name_fn,
@@ -1940,7 +1998,312 @@ def run_research(
     answer["origin"] = origin
     answer["claude_oversight"] = "NOT_AVAILABLE: no governed Claude process for this path (not improvised)"
     if memory is not None:
-        answer["memory_receipt"] = memory.append(entities, g["facts"], answer, origin=origin)
+        answer["memory_receipt"] = memory.append(
+            entities, g["facts"], answer, origin=origin, include_answer=include_answer_in_memory
+        )
+    return answer
+
+
+# --------------------------------------------------------------------------------------------------- contract adapter
+_STANCE_TO_CONTRACT = {"bullish": "constructive", "neutral": "neutral", "bearish": "cautious"}
+_FAMILY_TO_SOURCE_KIND = {
+    "internal": "house_store",
+    "market": "house_store",
+    "street": "street",
+    "sec": "sec",
+    "news": "news",
+    "web": "web",
+}
+
+
+def _require_contract():
+    if _contract is None:
+        raise ImportError("scripts.lib.cio_ask_contract is not importable: the deep path stays deep_pending")
+    return _contract
+
+
+def _entity_from_dict(d: Mapping[str, Any]) -> Entity:
+    return Entity(**{k: d.get(k) for k in Entity.__dataclass_fields__ if k in d})
+
+
+def _contract_entity(e: Entity):
+    C = _require_contract()
+    if e.kind == "listed":
+        return C.EntityRef(
+            name=e.label or str(e.symbol),
+            kind="security",
+            symbol=e.symbol,
+            security_guid=e.security_guid,
+            issuer_guid=e.issuer_guid,
+            resolution="CONFIRMED",
+        )
+    if e.kind == "private":
+        return C.EntityRef(
+            name=e.label,
+            kind="private_entity",
+            entity_guid=e.entity_guid,
+            resolution="UNRESOLVED_PRIVATE",
+            note="tracked private / unlisted entity: no listed security, no ticker invented",
+        )
+    return C.EntityRef(
+        name=e.label or str(e.symbol or "?"),
+        kind="unresolved",
+        symbol=e.symbol,
+        resolution="UNRESOLVED",
+        note=e.identity_status,
+    )
+
+
+def _contract_prospectus(p: Mapping[str, Any], ent: Entity, facts: Sequence[Mapping[str, Any]], refusals: str):
+    C = _require_contract()
+    ref = (p.get("reference_price") or {}).get("value")
+    horizons: dict[str, dict[str, Any]] = {}
+    for h in HORIZONS:
+        horizons[h] = {}
+        for case in CASES:
+            cell = (p.get("horizons") or {}).get(h, {}).get(case) or {}
+            anchor = cell.get("anchor") or {}
+            price = cell.get("price")
+            assumptions = "; ".join(a["text"] for a in cell.get("assumptions") or [] if a.get("text"))
+            if price is not None:
+                lead = f"{cell.get('anchor_basis') or 'sourced anchor'}: {price} (as of {anchor.get('as_of')})."
+            else:
+                lead = "No sourced number for this horizon (gap; none invented)."
+            narrative = (lead + (" Assumption: " + assumptions if assumptions else "")).strip()
+            ret = round((price / ref - 1.0) * 100.0, 2) if price is not None and ref else None
+            horizons[h][case] = C.Scenario(narrative=narrative, price=price, return_pct=ret)
+    st = p.get("street") or {}
+    street = None
+    if st.get("range") or st.get("analyst_count"):
+        as_ofs = [v.get("as_of") for v in (st.get(k) for k in ("target_low", "target_high", "analyst_count")) if v]
+        cnt = (st.get("analyst_count") or {}).get("value")
+        street = C.StreetTarget(
+            low=(st.get("target_low") or {}).get("value"),
+            median=None,  # sources publish a mean, not a median: the mean is in provenance.street_mean
+            high=(st.get("target_high") or {}).get("value"),
+            n_analysts=int(cnt) if cnt is not None else None,
+            as_of=max(as_ofs) if as_ofs else None,
+            source=(st.get("target_low") or st.get("target_high") or {}).get("source"),
+        )
+    catalysts = []
+    for c in p.get("catalysts") or []:
+        cit = c.get("citation") or {}
+        verified = "(verified)" in str(c.get("event")) or str(c.get("event", "")).startswith(("8-K", "10-"))
+        catalysts.append(
+            C.Catalyst(
+                event=str(c.get("event"))[:300],
+                date=str(c.get("date") or "")[:10] or None,
+                date_confidence="confirmed" if verified else "estimated",
+                source=cit.get("url") or cit.get("store"),
+            )
+        )
+    risks = list(dict.fromkeys(r["text"] for r in p.get("risks") or [] if r.get("text")))
+    changes = list(dict.fromkeys(c["text"] for c in p.get("what_changes_view") or [] if c.get("text")))
+    if not changes:
+        changes = [f"No sourced view-changer yet: the model panel did not answer ({refusals or 'no panel'})."]
+    stances = [v.get("stance") for v in p.get("panel_views") or [] if v.get("stance") in STANCES]
+    stance = _STANCE_TO_CONTRACT.get(max(set(stances), key=stances.count)) if stances else None
+    sub_asof = [f["as_of"] for f in facts if f.get("subject_key") == ent.subject_key]
+    return C.SecurityProspectus(
+        entity=_contract_entity(ent),
+        horizons=horizons,
+        street_target=street,
+        catalysts=catalysts,
+        risks=risks,
+        what_changes_view=changes,
+        stance=stance,
+        as_of=max(sub_asof) if sub_asof else _iso(_now()),
+    )
+
+
+def _contract_dissent(internal: Mapping[str, Any]) -> list[Any]:
+    C = _require_contract()
+    out = []
+    views = {(v.get("member")): v for p in internal.get("prospectus") or [] for v in p.get("panel_views") or []}
+    for d in internal.get("dissent") or []:
+        pos = d.get("positions") or {}
+        if d.get("kind") == "stance":
+            vals = list(pos.values())
+            majority = max(set(vals), key=vals.count)
+            tie = vals.count(majority) * 2 <= len(vals)
+            for member, st in sorted(pos.items()):
+                if tie or st != majority:
+                    summ = (views.get(member) or {}).get("summary") or ""
+                    out.append(C.ModelDissent(model=member, view=f"{st}: {summ}".strip(": "), differs_on="stance"))
+        else:
+            for member, val in sorted(pos.items()):
+                out.append(
+                    C.ModelDissent(
+                        model=member,
+                        view=f"anchor {val}" if val is not None else "no sourced anchor",
+                        differs_on=f"{d.get('horizon')} {d.get('case')} price anchor",
+                    )
+                )
+    return out
+
+
+def to_contract_answer(internal: Mapping[str, Any], ctx: Any):
+    """Map this module's research result onto the shared ``AskAnswer@v1`` (scripts/lib/cio_ask_contract.py).
+
+    ``sizing_context`` stays empty: the core adds it on the host from house facts (contract: it is never passed to
+    or produced by Phase 9's model path). ``size_suggestion`` is never set (MBI_BEHAVIOR=0, AGENTS < 21.0.0).
+    """
+    C = _require_contract()
+    ents = [_entity_from_dict(e) for e in internal.get("entities") or []]
+    facts = list(internal.get("facts") or [])
+    refusals = ", ".join(f"{r.get('member')}: {r.get('reason')}" for r in internal.get("refusals") or [])
+    by_key = {e.subject_key: e for e in ents if e.subject_key}
+    pros, lines = [], []
+    for p in internal.get("prospectus") or []:
+        ent = by_key.get((p.get("entity") or {}).get("subject_key"))
+        if ent is None or p.get("status") != "researched":
+            lines.append(f"{(p.get('entity') or {}).get('label')}: identity unresolved (no record, nothing invented).")
+            continue
+        cp = _contract_prospectus(p, ent, facts, refusals)
+        pros.append(cp)
+        rng = (p.get("street") or {}).get("range")
+        ref = p.get("reference_price") or {}
+        name = ent.symbol or ent.label
+        parts = [f"{name}:"]
+        if ref.get("value") is not None:
+            parts.append(f"last {ref['value']} (as of {ref.get('as_of')});")
+        parts.append(f"street range {rng[0]}-{rng[1]};" if rng else "no sourced street range;")
+        if cp.stance:
+            parts.append(f"panel view {cp.stance};")
+        parts.append(f"confidence {(p.get('confidence') or {}).get('label')}.")
+        lines.append(" ".join(parts))
+    if refusals:
+        lines.append(f"Partial: model panel refused ({refusals}). Sourced facts are shown; nothing was invented.")
+    gaps = internal.get("gaps") or []
+    if gaps:
+        lines.append(f"{len(gaps)} named data gap(s); see provenance.gaps.")
+    summary, _ = C.mbi_guard_text("\n".join(lines))
+    researched = bool(pros)
+    req = ctx.request
+    cap_refused = refusals and all(
+        str(r.get("reason", "")).startswith(("PER_QUESTION_CAP", "COST_CAP", "PROCESS_NOT_REGISTERED"))
+        for r in internal.get("refusals") or []
+    )
+    if req.depth == "quick":
+        status = "quick"
+    elif researched:
+        status = "deep"
+    elif cap_refused:
+        status = "capped"
+    else:
+        status = "failed"
+    scores = [
+        (p.get("confidence") or {}).get("score") or 0.0
+        for p in internal.get("prospectus") or []
+        if p.get("status") == "researched"
+    ]
+    score = round(sum(scores) / len(scores), 3) if scores else 0.0
+    level = "high" if score >= 0.75 else "medium" if score >= 0.45 else "low"
+    fact_subject = {f["fact_id"]: f.get("subject_key") for f in facts}
+    sources = []
+    for s in internal.get("sources") or []:
+        cit = s.get("citation") or {}
+        fam = (s.get("source") or "").split(".")[0]
+        subj = fact_subject.get((s.get("fact_ids") or [None])[0])
+        ent = by_key.get(subj)
+        sources.append(
+            C.Source(
+                title=f"{s.get('source')}: {cit.get('store') or cit.get('projection') or cit.get('url') or ''}"[:200],
+                kind=_FAMILY_TO_SOURCE_KIND.get(fam, "house_store"),
+                as_of=s.get("as_of"),
+                url=cit.get("url"),
+                store=cit.get("store"),
+                security_guid=ent.security_guid if ent else None,
+            )
+        )
+    for o in internal.get("panel") or []:
+        if o.get("ok"):
+            sources.append(
+                C.Source(title=f"model panel: {o['member']}", kind="model", as_of=internal.get("answered_at"))
+            )
+    mbi = list(internal.get("mbi_strip_log") or [])
+    street_mean = {
+        (by_key.get((p.get("entity") or {}).get("subject_key")) or Entity("", "")).symbol: (p.get("street") or {}).get(
+            "target_mean"
+        )
+        for p in internal.get("prospectus") or []
+        if (p.get("street") or {}).get("target_mean")
+    }
+    answer = C.AskAnswer(
+        ask_id=req.ask_id,
+        thread_id=ctx.thread_id,
+        version=int(ctx.version),
+        depth=req.depth,
+        status=status,
+        summary=summary,
+        entities=[_contract_entity(e) for e in ents],
+        prospectus=pros,
+        sources=sources,
+        confidence=C.Confidence(
+            level=level, score=score, rationale="source-family coverage, panel stance agreement, sourced street range"
+        ),
+        model_dissent=_contract_dissent(internal),
+        mbi_guard={"stripped": len(mbi), "findings": mbi},
+        cost_usd=float((internal.get("cost") or {}).get("admitted_projected_usd") or 0.0),
+        produced_by="cio_ask_research",
+        provenance={
+            "phase": 9,
+            "partial": internal.get("partial"),
+            "refusals": internal.get("refusals"),
+            "gaps": gaps,
+            "conflicts": internal.get("conflicts"),
+            "ungrounded_log": internal.get("ungrounded_log"),
+            "reference_prices": {
+                (by_key.get((p.get("entity") or {}).get("subject_key")) or Entity("", "")).symbol: p.get(
+                    "reference_price"
+                )
+                for p in internal.get("prospectus") or []
+                if p.get("reference_price")
+            },
+            "street_mean": street_mean,
+            "facts": [f for f in facts if f.get("egress") == "model_ok"],
+            "panel": internal.get("panel"),
+            "source_runs": internal.get("source_runs"),
+            "claude_oversight": internal.get("claude_oversight"),
+            "memory_receipt": internal.get("memory_receipt"),
+            "house_facts_keys": sorted((getattr(ctx, "house_facts", None) or {}).keys()),
+        },
+    )
+    return answer
+
+
+def _default_deep_memory() -> Optional[MemoryAppender]:
+    """CIO memory for the deep path: integrator dry run unless CIO_ASK_MEMORY_APPLY=1 (operator, §26.6)."""
+    apply = os.environ.get("CIO_ASK_MEMORY_APPLY", "").strip() == "1"
+    root = Path(os.environ.get("TRADEAI_PERSISTENT_STATE_ROOT") or Path(__file__).resolve().parents[2])
+    ledger = os.environ.get("CIO_ASK_MEMORY_LEDGER") or str(root / "data" / "cio" / "cio_ask_memory_ledger.jsonl")
+    return MemoryAppender(ledger_path=ledger, apply=apply)
+
+
+def run_deep_research(ctx: Any, **kw: Any):
+    """The contract entry point (``DEEP_RESEARCH_ENTRYPOINT``): ``AskResearchContext`` -> ``AskAnswer@v1``.
+
+    The per-question cap is ``ctx.budget.max_usd`` under ``ctx.budget.process_id``. Sourced facts are appended to
+    CIO memory as ``ask.source``; the core appends ``ask.answer_version`` itself (no duplicate). Test seams
+    (sources, panel, governor, memory, identity_fn, ...) pass through ``kw`` to ``run_research``.
+    """
+    C = _require_contract()
+    req = ctx.request
+    budget = getattr(ctx, "budget", None)
+    kw.setdefault(
+        "governor",
+        CostGovernor(
+            per_question_usd=float(getattr(budget, "max_usd", 0.0) or 0.0),
+            process_id=str(getattr(budget, "process_id", "") or PROCESS_ID),
+        ),
+    )
+    if "memory" not in kw:
+        kw["memory"] = _default_deep_memory()
+    internal = run_research(req.to_dict(), origin="in_process", include_answer_in_memory=False, **kw)
+    answer = to_contract_answer(internal, ctx)
+    problems = C.validate_answer(answer)
+    if problems:
+        answer.provenance["validation_problems"] = problems
     return answer
 
 
@@ -1974,4 +2337,7 @@ __all__ = [
     "MemoryAppender",
     "run_research",
     "contract_source",
+    "private_entity_guid",
+    "to_contract_answer",
+    "run_deep_research",
 ]
