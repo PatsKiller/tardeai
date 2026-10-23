@@ -2184,6 +2184,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/telegram_channel_diligence_20260916/05_COMMAND_CENTER_COVERAGE_GAPS.md` | Phase 5 — Command Center Coverage Gap Analysis |
 | `docs/ops/telegram_channel_diligence_20260916/06_IMPLEMENTATION_ROADMAP.md` | Phase 6 — Implementation Roadmap |
 | `docs/ops/telegram_channel_diligence_20260916/07_EXECUTION_PLAN.md` | Phase 7 — Execution Plan & Maturity Scorecard |
+| `docs/ops/train-smoke/T2.md` | Release train smoke job T2: proves select → merge → release |
 | `docs/options-desk-operator-contract-20260924.md` | Options Desk — operator contract (skim) |
 | `docs/options-module.md` | Options Module — Architecture & Operations |
 | `docs/paper_trading/PHASE179A_PAPER_TRADE_SOURCE_INVENTORY.md` | Phase 179A: Paper Trade Source Inventory |
