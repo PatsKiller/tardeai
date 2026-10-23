@@ -724,6 +724,10 @@ def test_state_read_model_sections(env):
     rows = {r["lane_id"]: r for r in s["jobs"]["rows"]}
     assert rows["alpha"]["cron_state"] == "ACTIVE" and rows["alpha"]["line_sha256"] == sha(CRON_A)
     assert rows["gamma"]["cron_state"] == "PAUSED" and rows["gamma"]["paused_on"] == "2026-10-14"
+    # additive display fields (jobs readability 2026-10-22)
+    assert rows["alpha"]["match_counts"] == {"active": 1, "paused": 0}
+    assert rows["gamma"]["match_counts"] == {"active": 0, "paused": 1}
+    assert all(k in rows["alpha"] for k in ("dispatch_mode", "registry_since", "registry_reason"))
     assert s["n8n"]["live_lanes"] == ["lane-a", "lane-b"]
     assert {r["lane_id"]: r["on_live_list"] for r in s["n8n"]["rows"]} == {"lane-a": True, "lane-c": False}
     assert s["data_approvals"]["rows"][0]["domain"] == "operator_settings"
