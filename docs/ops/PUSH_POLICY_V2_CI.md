@@ -49,9 +49,10 @@ release-readiness 2.1 min, agent-governance 1.3 min, provider-cost 1.0 min (`gh 
    with a file outside the research-governance allowlist, so its three hunks ship in a PR of their own. It is
    path-filtered, so it seldom fires on a draft. The test lists it in `PENDING_CLAIMED`, and the per-workflow tests
    pin it as soon as it carries the guard, so the two PRs can merge in either order.
-   `agent-intelligence-foundation-ci.yml` and `financial-senses-ci.yml` were CRLF files and are now LF:
-   `git diff --check` (active-trader-policy-ci `deterministic-policy`) reports every added CRLF line as trailing
-   whitespace.
+   `agent-intelligence-foundation-ci.yml`, `financial-senses-ci.yml` and `research-governance-ci.yml` stay CRLF, because
+   the line-ending churn guard (`scripts/check_line_endings.py`) refuses a CRLF-to-LF rewrite. The `deterministic-policy`
+   job in `active-trader-policy-ci` now runs `git -c core.whitespace=cr-at-eol diff --check`, so the CRLF on added lines
+   is no longer reported as trailing whitespace.
 
 Required checks on `main` (read with `gh api .../branches/main/protection/required_status_checks`, 2026-10-23):
 `cio-hardening`, `agent-governance`, `release-readiness`, `ci-gate`. Job names are unchanged. On a ready PR each one

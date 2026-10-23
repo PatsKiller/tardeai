@@ -51,7 +51,9 @@ jobs:
         run: |
           BASE_SHA="${{ github.event.pull_request.base.sha }}"
           if [[ -z "$BASE_SHA" ]]; then BASE_SHA="$(git rev-parse HEAD^)"; fi
-          git diff --check "$BASE_SHA...HEAD"
+          # CRLF files are legitimate here (scripts/check_line_endings.py refuses CRLF->LF rewrites), so a CR at
+          # end of line is not trailing whitespace; everything else --check catches still fails.
+          git -c core.whitespace=cr-at-eol diff --check "$BASE_SHA...HEAD"
           python -m compileall -q scripts/active_trader
       - name: Policy and runtime tests
         run: |
