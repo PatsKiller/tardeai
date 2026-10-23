@@ -60,8 +60,9 @@ export default function ProtectionPanel({ onDrill }: Props) {
 
       {/* Coverage strip */}
       {coverage && (
-        <div style={{ display: 'flex', gap: 12, marginBottom: 14, fontSize: 10 }}>
-          <span title="Open positions that have a protective stop active at the broker." style={{ color: '#22c55e', cursor: 'help' }}>Protected: {cov.protected_at_broker ?? 0}/{cov.total_open_positions ?? 0} ⓘ</span>
+        <div style={{ display: 'flex', gap: 12, marginBottom: 14, fontSize: 10, flexWrap: 'wrap' }} data-testid="protection-coverage-strip">
+          <span title="This coverage strip counts the automated paper account (Alpaca, tradeai_automated) only — real Schwab/Fidelity stops are on Open Trades and Portfolio → Stop Management." style={{ fontWeight: 800, color: 'var(--text1)', cursor: 'help' }}>Paper account only ⓘ</span>
+          <span title="Open paper positions that have a protective stop active at Alpaca." style={{ color: '#22c55e', cursor: 'help' }}>Protected: {cov.protected_at_broker ?? 0}/{cov.total_open_positions ?? 0} ⓘ</span>
           <span title="Open positions with no take-profit target set." style={{ color: cov.take_profit_missing > 0 ? '#f59e0b' : 'var(--text3)', cursor: 'help' }}>TP missing: {cov.take_profit_missing ?? 0} ⓘ</span>
           <span title="Positions up significantly but with no profit protection (stop still ≤ entry) — gains at risk of giving back." style={{ color: cov.large_gain_no_profit_protection > 0 ? '#ef4444' : 'var(--text3)', cursor: 'help' }}>Large gain unprotected: {cov.large_gain_no_profit_protection ?? 0} ⓘ</span>
           <span title="Positions using a trailing stop that follows price up." style={{ color: 'var(--text3)', cursor: 'help' }}>Trailing: {cov.trailing_active ?? 0} ⓘ</span>

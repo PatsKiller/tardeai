@@ -185,12 +185,14 @@ def test_banner_cookie_dead_token_ok_is_informational(monkeypatch):
     monkeypatch.setattr(sv, "_key", lambda name: values.get(name))
     monkeypatch.setattr(sv, "_finviz_cookie", lambda k: (False, "login page or empty export — cookie expired"))
     monkeypatch.setattr(sv, "_finviz_token", lambda k: (True, "37 screener rows"))
+    api_v2._FINVIZ_CRED_HEALTH_CACHE.update(ts=0.0, result=None)
     out = api_v2._finviz_credential_health()
     assert out["ok"] is True and out["status"] == "token_ok" and out["show_banner"] is False
     assert "token OK" in out["message"] and "empty" not in out["message"]
     _no_secret(out)
 
     monkeypatch.setattr(sv, "_finviz_token", lambda k: (False, "token rejected or empty export"))
+    api_v2._FINVIZ_CRED_HEALTH_CACHE.update(ts=0.0, result=None)  # verdict is cached per TTL (2026-10-22)
     out = api_v2._finviz_credential_health()
     assert out["ok"] is False and out["show_banner"] is True
     assert "both failing" in out["message"]

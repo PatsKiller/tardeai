@@ -1233,6 +1233,84 @@
             "reference": "Operator reply 2026-10-22 (verbatim): \"I take your recommendations on above.\" to the recommendation \"Use the broker-synced store for 'held' on Watch: Watch becomes positions batch #1 … Recommend: yes\" (session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko); reader built in PR #1926; switch flipped in branch feat/positions-reader-batch1-watch-held-20261022",
             "scope": "Phase-3 reader batch #1: the Watch held flag reads positions_current through watch_domains.held_positions(surface='watch') only. No other surface, file or fact; advice digest and opportunity callers keep holdings.json until a later batch is approved."
           }
+        },
+        {
+          "batch": 2,
+          "reader": "scripts/desk_truth_monitor.py",
+          "files": [
+            "scripts/desk_truth_monitor.py"
+          ],
+          "tables": [
+            "positions_current"
+          ],
+          "surfaces": [
+            "desk_truth_monitors"
+          ],
+          "facts": "symbol, account, qty and sync time for holdings-drift and held-exit-coverage checks; read-only, no value served to a page",
+          "consumers": [
+            "scripts/desk_truth_monitor.py"
+          ],
+          "switch": "lane stage (shadow) in config/lane_registry.json",
+          "freshness_guard": "positions_sync.freshness(); stale store -> finding marked STALE, never a false clean",
+          "approval": {
+            "approved_by": "operator",
+            "approved_on": "2026-10-22",
+            "reference": "Operator reply 2026-10-22 (verbatim): \"You just start executing immediately with multiple agents for everything that's not built and not live\" to the list item \"Reader batch #2 (monitors read the positions and stop tables): approve?\"; earlier the operator accepted the recommendation to approve stop_health_check and positions_proof_daily as part of the reader batches (\"I take your recommendations on above.\") (session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+            "scope": "Phase-3 reader batch #2: desk truth monitors (read-only, alerts only), stop health (shares for stop coverage) and the positions proof grader. No page or API surface."
+          }
+        },
+        {
+          "batch": 2,
+          "reader": "scripts/stop_health_check.py",
+          "files": [
+            "scripts/stop_health_check.py"
+          ],
+          "tables": [
+            "positions_current"
+          ],
+          "surfaces": [
+            "stop_health_alerts"
+          ],
+          "facts": "broker-actual held shares for stop coverage (LEFT JOIN)",
+          "consumers": [
+            "scripts/stop_health_check.py"
+          ],
+          "switch": "none (reader since 2026-10-06, now approved)",
+          "freshness_guard": "stop_lifecycle_monitor holdings fallback",
+          "approval": {
+            "approved_by": "operator",
+            "approved_on": "2026-10-22",
+            "reference": "Operator reply 2026-10-22 (verbatim): \"You just start executing immediately with multiple agents for everything that's not built and not live\" to the list item \"Reader batch #2 (monitors read the positions and stop tables): approve?\"; earlier the operator accepted the recommendation to approve stop_health_check and positions_proof_daily as part of the reader batches (\"I take your recommendations on above.\") (session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+            "scope": "Phase-3 reader batch #2: desk truth monitors (read-only, alerts only), stop health (shares for stop coverage) and the positions proof grader. No page or API surface."
+          }
+        },
+        {
+          "batch": 2,
+          "reader": "scripts/positions_proof_daily.py",
+          "files": [
+            "scripts/positions_proof_daily.py"
+          ],
+          "tables": [
+            "positions_current",
+            "position_lots",
+            "realized_lots",
+            "position_snapshots"
+          ],
+          "surfaces": [
+            "positions_proof"
+          ],
+          "facts": "phase-2 proof grader comparing positions_current with holdings.json",
+          "consumers": [
+            "scripts/positions_proof_daily.py"
+          ],
+          "switch": "none",
+          "freshness_guard": "grader reports stale inputs",
+          "approval": {
+            "approved_by": "operator",
+            "approved_on": "2026-10-22",
+            "reference": "Operator reply 2026-10-22 (verbatim): \"You just start executing immediately with multiple agents for everything that's not built and not live\" to the list item \"Reader batch #2 (monitors read the positions and stop tables): approve?\"; earlier the operator accepted the recommendation to approve stop_health_check and positions_proof_daily as part of the reader batches (\"I take your recommendations on above.\") (session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+            "scope": "Phase-3 reader batch #2: desk truth monitors (read-only, alerts only), stop health (shares for stop coverage) and the positions proof grader. No page or API surface."
+          }
         }
       ],
       "reader_gate": {
@@ -1243,10 +1321,7 @@
           "realized_lots",
           "position_snapshots"
         ],
-        "measured_unbatched_readers": {
-          "scripts/positions_proof_daily.py": "phase-2 proof grader (positions_current vs holdings.json, nightly) — part of the approved phase-2 plan, not a serving reader",
-          "scripts/stop_health_check.py": "MEASURED 2026-10-22, not a batch approval: LEFT JOIN positions_current for stop-recovery reconciliation since dc79d189e (2026-10-06). Reported to the operator; it may only leave this list (by a batch approval or by removing the read)."
-        }
+        "measured_unbatched_readers": {}
       }
     },
     {
@@ -4798,6 +4873,62 @@
           "table:notification_log": 1
         }
       }
+    },
+    {
+      "domain": "operator_settings",
+      "status": "proposed",
+      "entity": "Operator settings and controls",
+      "title": "Operator settings (Ops → Controls)",
+      "class": "native",
+      "supersedes": [],
+      "facts": [
+        "operator setting",
+        "setting change history",
+        "controls action audit"
+      ],
+      "store": {
+        "table": "operator_settings"
+      },
+      "writer": null,
+      "writer_status": "UNCONSOLIDATED",
+      "writer_target": "scripts/ops/operator_controls_applier.py",
+      "writer_target_status": "to_build",
+      "_writer_note": "AGENTS.md 19.0.0 §27.2 (PROPOSED): one governed host applier (backup, audit, undo) is the only writer, and it also applies the crontab, the n8n relay live list and guard grants. Today settings are repository defaults and hand-edited host files. Agents never call the applier.",
+      "cadence": "event-driven (operator action on Ops → Controls)",
+      "stale_after_hours": 24,
+      "freshness_sla": "applied in the applier run that follows the operator's confirmed action; history append-only (one row per change: who, when, factor, old and new value)",
+      "refresh_lane": {
+        "runner": "host",
+        "lane": "operator-controls-applier (to build)",
+        "never_list": true,
+        "note": "operator acts only (AGENTS.md §17, §27.2): never an n8n lane, never an agent"
+      },
+      "projection": "operator_settings",
+      "projection_status": "to_build",
+      "readers": [
+        "Ops",
+        "Home"
+      ],
+      "derived_copies": [],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": null,
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-22",
+        "reference": "Operator decisions 2026-10-22 (Ops → Controls): settings live in a Postgres operator-settings table with history that overrides repository defaults, registered in the data dictionary; one governed host applier (backup, audit, undo) for crontab, n8n live list, settings and grants; agents never call these endpoints. AGENTS.md 19.0.0 §27.2 (PROPOSED).",
+        "decision": "Grant operator_settings as the one store of operator settings with history (a row overrides the repository default), written only by the governed host applier."
+      }
     }
   ],
   "data_dictionary": {
@@ -4821,7 +4952,7 @@
       "scripts/telegram_command_handler.py"
     ],
     "surfaces": {
-      "Home": "apps/command-center-v3 Home -> /api/v3/cio/home, /api/v2/portfolio",
+      "Home": "apps/command-center-v3 Home -> /api/v2/home/do-now (home_do_now projection: the Do now queue and the three numbers), /api/v2/overview and /api/v2/portfolio/performance (header, accounts, movers; holdings.json until a positions_current reader batch covers Home), /api/v3/cio/home",
       "Watch": "Watch desk -> /api/v3/data-broker/watch (watch_intelligence)",
       "Trade AI": "Trade AI scanner -> /api/v2 trade-ai routes",
       "Options": "Trading -> Options -> /api/v2 options routes",

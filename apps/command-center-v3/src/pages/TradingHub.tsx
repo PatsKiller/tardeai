@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import SharedMomentumCandidates from '../components/tradeai/SharedMomentumCandidates'
-import { useSearchParams } from 'react-router-dom'
+// Trade AI = Opportunities page (Gate 3 Main.dc.html, 2026-10-22); Shared Momentum is its collapsed drawer.
+import TradeAiOpportunities from '../components/tradeai/TradeAiOpportunities'
+import { Navigate, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import {
+  legacyTradingRedirect,
   parseTradingDeepLink,
   tradingTabSearchParams,
   TRADING_TABS,
@@ -23,11 +25,6 @@ import TradingDeskHealth from '../components/TradingDeskHealth'
 import TradingCommandTriage from '../components/TradingCommandTriage'
 import { Link } from 'react-router-dom'
 import {
-  downloadExecutionQualityCsv,
-  filterExecutionByDays,
-} from '../lib/exportExecutionQualityCsv'
-import { summarizeReconByBroker } from '../lib/brokerReconSummary'
-import {
   pageSlice, toggleSelectedSymbol, selectSymbols, deselectSymbols, dedupeSymbols,
   formatThinkorswimSymbols, selectionStorageKey, getSocialScoutPill, getTopGainerPill,
   getSqueezePill, getRunnerPill, getMicroFloatPill, getLowPricePill,
@@ -36,17 +33,14 @@ import {
   sortTickerList, type ScannerSortMode, type TosFormat,
 } from '../lib/scannerSelection'
 import SchwabAccountsMonitor from '../components/SchwabAccountsMonitor'
-import ScalpSetupsPanel from '../components/ScalpSetupsPanel'
 import ActiveTraderFiresStrip from '../components/tradeai/ActiveTraderFiresStrip'
-import ScalpStrategyModal, { type Setup } from '../components/ScalpStrategyModal'
-import { fmt$, fmtVol } from '../lib/format'
+import { fmtVol } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
-import ProtectionPanel from '../components/ProtectionPanel'
 // ProposalsRich archived (_archive/20260702) — Proposals tab uses <BrokerProposals/> only.
 import BrokerOrders from '../components/BrokerOrders'
-import TimeExitProposals from '../components/TimeExitProposals'
-import ATMControlPanel from '../components/ATMControlPanel'
-import OpenTradesIntelligence from '../components/OpenTradesIntelligence'
+// Open Trades = the protect-first desk (Gate 3, 2026-10-22). It renders PositionDecisionCardV4 unchanged for
+// the Stage 2c protective-stop ARM + per-order 2FA flow. The dead time-exit widget is no longer shown.
+import OpenTradesDesk from '../components/OpenTradesDesk'
 import ProAnalystPill, { useProAnalystMap } from '../components/ProAnalystPill'
 import CountryFlag from '../components/CountryFlag'
 import ManualTosDesk from './ManualTosDesk'
@@ -80,54 +74,20 @@ function isTradeAiStaleSession(tradeAi: any): boolean {
 }
 
 
-/** Rank for scalp signal selection: GO > WAIT > others. */
-function scalpDecisionRank(decision?: string): number {
-  const d = String(decision || '').toUpperCase().replace(/_/g, '-')
-  if (d === 'GO') return 3
-  if (d === 'WAIT') return 2
-  return 1
-}
 
-/** Grade rank: A > B > C > D > F > unknown. */
-function scalpGradeRank(grade?: string): number {
-  const g = String(grade || '').toUpperCase()
-  if (g === 'A') return 5
-  if (g === 'B') return 4
-  if (g === 'C') return 3
-  if (g === 'D') return 2
-  if (g === 'F') return 1
-  return 0
-}
-
-/** True when `a` is the better row for dedupe (decision → grade → score). */
-function isBetterScalpSignal(a: any, b: any): boolean {
-  const da = scalpDecisionRank(a?.decision)
-  const db = scalpDecisionRank(b?.decision)
-  if (da !== db) return da > db
-  const ga = scalpGradeRank(a?.grade)
-  const gb = scalpGradeRank(b?.grade)
-  if (ga !== gb) return ga > gb
-  return (Number(a?.score) || 0) > (Number(b?.score) || 0)
-}
 
 /**
- * Client-side dedupe of /api/v2/scalp/live signals by uppercase symbol.
- * Keeps the best-ranked row per symbol. Display-only — does not change backend contracts.
+ * Retired tabs (Scalp → Active Trader, ATM Controls → System → Broker Access, Execution → Journal)
+ * redirect before the hub mounts, so an old Telegram or bookmark link never starts the hub polls.
  */
-function dedupeScalpSignalsBySymbol(sigs: any[]): { unique: any[]; rawCount: number } {
-  const best = new Map<string, any>()
-  for (const row of sigs) {
-    const sym = String(row?.symbol || '').toUpperCase()
-    if (!sym) continue
-    const normalized = { ...row, symbol: sym }
-    const prev = best.get(sym)
-    if (!prev || isBetterScalpSignal(normalized, prev)) best.set(sym, normalized)
-  }
-  return { unique: [...best.values()], rawCount: sigs.length }
+export default function TradingHub(props: Props) {
+  const [searchParams] = useSearchParams()
+  const redirect = legacyTradingRedirect(searchParams)
+  if (redirect) return <Navigate to={redirect} replace />
+  return <TradingHubDesk {...props} />
 }
 
-
-export default function TradingHub({ onDrill }: Props) {
+function TradingHubDesk({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
   // Deep-link support (WP-T1): /trading?tab=…&symbol=…&proposal=…&intent=…
   // Telegram /go/order and /go/proposal rewrite into these params (App.tsx).
@@ -144,7 +104,6 @@ export default function TradingHub({ onDrill }: Props) {
   }
   // C2 monitor → "edit as DRAFT" hands a seeded intent to the Broker Orders Active Trader panel
   const [draftSeed, setDraftSeed] = useState<any | null>(null)
-  const [activeTraderStrategiesOpen, setActiveTraderStrategiesOpen] = useState(false)
   const [tradeFilter, setTradeFilter] = useState<'ACTIONABLE' | 'GO' | 'WAIT' | 'MANUAL' | 'SCOUT' | 'AWARENESS'>('ACTIONABLE')
   const scannerFilterRef = useRef<HTMLDivElement | null>(null)
   const applyTileFilter = (f: 'GO' | 'WAIT') => {
@@ -170,12 +129,19 @@ export default function TradingHub({ onDrill }: Props) {
   const [scannerPage, setScannerPage] = useState(1)
   const [tosFormat, setTosFormat] = useState<TosFormat>('comma')
   const [tosCopied, setTosCopied] = useState(false)
-  // WP-T6: TCA lookback window (client-side filter)
-  const [execDays, setExecDays] = useState<number | 'all'>(90)
   // Broker desk tab: skip heavy hub polls so single-threaded API can serve broker-proposals first.
-  const brokerDesk = tab === 'Proposals' || tab === 'Broker Orders' || tab === 'Schwab Accounts'
-  // Pure Schwab program tabs — hub chrome is Schwab-specific (not paper vs Path B counts).
-  const pureSchwabTabs = tab === 'Broker Orders' || tab === 'Schwab Accounts'
+  const brokerDesk = tab === 'Proposals' || tab === 'Broker Orders'
+  // Broker Orders desk (approval links only) — hub chrome is Schwab-specific (not paper vs Path B counts).
+  const pureSchwabTabs = tab === 'Broker Orders'
+  // Proposals: Path B queue (default) or Path A Entry Desk (merged 2026-10-22). Broker Orders: the
+  // Schwab account monitor section (was the Schwab Accounts tab).
+  const section = deepLink.section
+  const setSection = (next: string | null) => {
+    const sp = new URLSearchParams(searchParams)
+    if (next) sp.set('section', next)
+    else sp.delete('section')
+    setSearchParams(sp, { replace: true })
+  }
   // Slim scanner projection (~10% of the full /trade-ai payload) — full universe rows are
   // trimmed server-side; the multi-MB full endpoint 500-looped under load (2026-07-17).
   const { data: tradeAi, error: tradeAiError, loading: tradeAiLoading } = useApi<any>('/api/v2/trade-ai/scanner', 60_000, { enabled: tab === 'Trade AI' })
@@ -184,7 +150,6 @@ export default function TradingHub({ onDrill }: Props) {
   // Do not stampede the single-process API while the default Trade AI tab
   // is still painting the scanner (941-row payload + 8 sibling polls = empty desk).
   const scannerSettled = tab !== 'Trade AI' || !!tradeAi || !!tradeAiError
-  const { data: openTrades } = useApi<any>('/api/v2/open-trades', 30_000, { enabled: (tab === 'Open Trades' || !brokerDesk) && scannerSettled })
   // WP-T3 triage: position intelligence summary (risk flags) — hub-wide, slower poll
   const { data: openIntel, loading: openIntelLoading } = useApi<any>('/api/v2/open-trades/intelligence', 120_000, {
     enabled: !pureSchwabTabs && scannerSettled,
@@ -200,39 +165,16 @@ export default function TradingHub({ onDrill }: Props) {
   const { data: paperStatus } = useApi<any>('/api/v2/paper-status', 30_000, { enabled: scannerSettled })
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000, { enabled: !brokerDesk && scannerSettled })
   const { data: execState } = useApi<any>('/api/v2/execution/current-state', 120_000, { enabled: !brokerDesk && scannerSettled })
-  const { data: execQual, loading: execQualLoading, error: execQualError } = useApi<any>('/api/v2/execution-quality', 120_000, { enabled: tab === 'Execution' })
-  const { data: scalpData } = useApi<any>('/api/v2/scalp/live', 120_000, { enabled: tab === 'Scalp' })
-  const { data: scalpExt } = useApi<any>('/api/v2/hermes/subject-intel-map?type=scalp', 120_000, { enabled: tab === 'Scalp' })
-  const scalpExtMap: Record<string, any[]> = scalpExt?.map ?? {}
-  const { data: setupAdvisory } = useApi<any>('/api/v2/atm/setup-advisory', 120_000, { enabled: tab === 'Open Trades' || tab === 'ATM Controls' })
-  // Recon for tab body + hub triage (unmatched breaks)
+  // Recon for hub triage (unmatched breaks); the reconciliation detail is a drawer on Open Trades.
   const { data: recon } = useApi<any>('/api/v2/broker-reconciliation', 120_000, {
-    enabled: (tab === 'Broker Recon' || !pureSchwabTabs) && scannerSettled,
+    enabled: !pureSchwabTabs && scannerSettled,
   })
   // Pilot standing approvals for 2FA triage chip
   const { data: pilotStatus } = useApi<any>('/api/v2/broker-orders/pilot/status', 60_000, {
     enabled: (!pureSchwabTabs || tab === 'Broker Orders') && scannerSettled,
   })
 
-  const advMap: Record<string, any> = {}
-  const advBySym: Record<string, any> = {}
-  for (const a of (setupAdvisory?.advisories ?? [])) {
-    advMap[String(a.proposal_id)] = a
-    // Map advisory to symbol for open-position enrichment; prefer non-expired / higher-confidence
-    const prev = advBySym[a.symbol]
-    if (!prev || (prev.status === 'EXPIRED' && a.status !== 'EXPIRED')) advBySym[a.symbol] = a
-  }
-  const advColor = (f?: string) => f === 'caution' ? '#ef4444' : f === 'favorable' ? '#22c55e' : 'var(--text3)'
 
-  const trades = openTrades?.trades ?? []
-  const execRaw: any[] = Array.isArray(execQual)
-    ? execQual
-    : Array.isArray((execQual as any)?.fills)
-      ? (execQual as any).fills
-      : Array.isArray((execQual as any)?.rows)
-        ? (execQual as any).rows
-        : []
-  const execList: any[] = filterExecutionByDays(execRaw, execDays)
   const propList = proposals?.proposals ?? []
   const pending = propList.filter((p: any) => p.status === 'PENDING' || p.status === 'APPROVED_FOR_PAPER_TEST')
   // Paper pending = API whole-table PENDING+AFPT (not the LIMIT-50 list; not Path B broker queue).
@@ -250,7 +192,10 @@ export default function TradingHub({ onDrill }: Props) {
     return null
   })()
   const alpaca = paperStatus?.alpaca ?? {}
-  const fmtCount = (n: number | null) => (n == null ? '—' : String(n))
+  // Open count from the position intelligence (holdings + paper, write-offs excluded) — not paper_trades.
+  const openCount: number | null = openIntel?.summary
+    ? Number(openIntel.summary.active_positions ?? openIntel.summary.total_positions ?? 0)
+    : null
 
   // WP-T3: command triage chips (pure, fail-closed)
   const queueForTriage = brokerQueueSummary ?? brokerQueueList?.queue_summary ?? null
@@ -279,7 +224,7 @@ export default function TradingHub({ onDrill }: Props) {
         <div>
           <div style={hubTitle()}>Trading</div>
           <div style={hubSubtitle(terminalUi)}>
-            Path A Entry Desk · Path B Proposals + per-order 2FA · AUTO LIVE BLOCKED unless 2FA path · Stop Management on Portfolio
+            Proposals (Path B queue + Path A Entry Desk) · per-order 2FA · AUTO LIVE BLOCKED unless 2FA path · Stop Management on Portfolio
           </div>
         </div>
         <div className="hub-tabs" role="tablist" aria-label="Trading desk tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
@@ -293,13 +238,26 @@ export default function TradingHub({ onDrill }: Props) {
               style={hubTab(tab === t, terminalUi)}
             >
               {t}
+              {t === 'Proposals' && brokerQueueCount != null && brokerQueueCount > 0 && (
+                <span data-testid="proposals-tab-count" title="Path B broker queue (active entries)" style={{ marginLeft: 6, fontFamily: 'monospace', color: 'var(--warning-color)' }}>{brokerQueueCount}</span>
+              )}
             </button>
           ))}
+          {tab === 'Broker Orders' && (
+            <span role="tab" aria-selected="true" data-testid="trading-desk-broker-orders" style={hubTab(true, terminalUi)} title="Broker Orders opens from its Telegram approval links (/v3/go/order/…); it is not a tab.">
+              Broker Orders
+            </span>
+          )}
         </div>
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--text3)', margin: '-4px 0 10px' }} data-testid="trading-moved-note">
+        Broker Orders opens from its approval links · ATM controls moved to{' '}
+        <Link to="/system/broker-access#automation-controls" style={{ color: 'var(--text2)' }}>System → Broker Access</Link>
+        {' '}· Scalp list moved to <Link to="/active-trader?tab=Scalp" style={{ color: 'var(--text2)' }}>Active Trader → Scalp</Link>
       </div>
 
       <TradingDeskHealth
-        openCount={trades.length}
+        openCount={openCount}
         paperPending={paperPendingCount}
         brokerQueue={brokerQueueCount}
         readinessLevel={readiness?.level}
@@ -346,19 +304,26 @@ export default function TradingHub({ onDrill }: Props) {
         </div>
       )}
       {tab === 'Proposals' && (
+        <div role="tablist" aria-label="Proposals sections" data-testid="proposals-sections" style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+          <button type="button" role="tab" aria-selected={section !== 'path-a'} data-testid="proposals-section-path-b" onClick={() => setSection(null)} style={hubTab(section !== 'path-a', terminalUi)}>Path B queue</button>
+          <button type="button" role="tab" aria-selected={section === 'path-a'} data-testid="proposals-section-path-a" onClick={() => setSection('path-a')} style={hubTab(section === 'path-a', terminalUi)}>Path A · Entry Desk</button>
+        </div>
+      )}
+      {tab === 'Proposals' && section !== 'path-a' && (
         <div className={terminalUi ? 'cc-panel' : undefined} style={{ marginBottom: 14, ...(terminalUi ? hubPanel(terminalUi) : { padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8 }), fontSize: terminalUi ? 9 : 10, color: 'var(--text2)', lineHeight: 1.45 }}>
           Path B operator route — P0 validation caps are advisory. <span style={{ color: 'var(--text0)', fontWeight: 700 }}>Auto route (2FA)</span> opens trade review (edit size/risk) before Schwab approval.
         </div>
       )}
-      {tab === 'Entry Desk' && (
+      {tab === 'Proposals' && section === 'path-a' && (
         <div className={terminalUi ? 'cc-panel' : undefined} style={{ marginBottom: 14, ...(terminalUi ? hubPanel(terminalUi) : { padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8 }), fontSize: terminalUi ? 9 : 10, color: 'var(--text2)', lineHeight: 1.45 }}>
           Path A — manual Thinkorswim. Rating, R:R, and exit ladder are <b>deterministic</b> on this tab; watchlist agent maturity shows when DB has it. <b>Stage 2b + Auto route (2FA)</b> are on{' '}
-          <button type="button" onClick={() => setTab('Proposals')} style={{ background: 'none', border: 'none', padding: 0, color: '#60a5fa', fontWeight: 700, cursor: 'pointer', fontSize: 10 }}>Proposals</button>.
+          <button type="button" onClick={() => setSection(null)} style={{ background: 'none', border: 'none', padding: 0, color: '#60a5fa', fontWeight: 700, cursor: 'pointer', fontSize: 10 }}>Path B queue</button>.
         </div>
       )}
 
-      {tab === 'Trade AI' && <SharedMomentumCandidates />}
-      {tab === 'Trade AI' && (() => {
+      {/* The previous scanner view stays reachable as the page's "Scanner tools" drawer (run health,
+          run history, sector mix, Thinkorswim copy, Warrior audit). */}
+      {tab === 'Trade AI' && <TradeAiOpportunities tradeAi={tradeAi} error={tradeAiError} loading={tradeAiLoading} classic={tradeAi ? (() => {
         // Phase 203: do NOT render the KPI grid as 0/0/0/no-run when the API fetch is loading or
         // errored — that silently masks a transient backend issue (e.g. DB contention) as an empty
         // scanner. Show an explicit state instead. Genuine empty data still renders below.
@@ -535,7 +500,7 @@ export default function TradingHub({ onDrill }: Props) {
                 {tradeAi?.run_health_status && (
                   <span
                     style={{ marginLeft: 6, color: runHealthChipColor(healthTier), fontWeight: 800 }}
-                    data-testid="trade-ai-run-health-chip"
+                    data-testid="trade-ai-run-health-chip-classic"
                     data-run-id={tradeAi?.run_id ?? ''}
                     data-run-scanned={scannedN != null ? String(scannedN) : ''}
                     data-run-floor={healthFloor && isFinite(healthFloor) ? String(healthFloor) : ''}
@@ -973,389 +938,34 @@ export default function TradingHub({ onDrill }: Props) {
             </div>
           </div>
         )
-      })()}
+      })() : null} />}
 
       {tab === 'Options' && <OptionsHub onDrill={onDrill} />}
 
       {tab === 'Open Trades' && (
-        <>
-          <TimeExitProposals />
-          <OpenTradesIntelligence onDrill={onDrill} focusSymbol={deepLink.symbol || undefined} />
-          <details style={{ marginTop: 14 }}>
-            <summary style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', cursor: 'pointer' }}>Protection Advisory (all proposals)</summary>
-            <div style={{ marginTop: 10 }}><ProtectionPanel onDrill={onDrill} /></div>
-          </details>
-        </>
+        <OpenTradesDesk onDrill={onDrill} focusSymbol={deepLink.symbol || undefined} initialDrawer={deepLink.drawer} />
       )}
 
-      {tab === 'Proposals' && (
+      {tab === 'Proposals' && section !== 'path-a' && (
         <BrokerProposals
           focusSymbol={deepLink.symbol || undefined}
           focusProposalId={urlProposal ? Number(urlProposal) : undefined}
         />
       )}
+      {tab === 'Proposals' && section === 'path-a' && <ManualTosDesk focusSymbol={deepLink.symbol || undefined} />}
+      {tab === 'Broker Orders' && (
+        <div className={terminalUi ? 'cc-panel' : undefined} data-testid="broker-orders-desk-note" style={{ marginBottom: 10, ...(terminalUi ? hubPanel(terminalUi) : { padding: '8px 14px', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8 }), fontSize: 11, color: 'var(--text2)', display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span>Broker Orders desk — opened from an approval link. Every live order still needs its per-order 2FA.</span>
+          <button type="button" onClick={() => setSection(section === 'schwab-accounts' ? null : 'schwab-accounts')} style={hubTab(section === 'schwab-accounts', terminalUi)}>
+            {section === 'schwab-accounts' ? 'Hide Schwab account monitor' : 'Schwab account monitor'}
+          </button>
+        </div>
+      )}
+      {tab === 'Broker Orders' && section === 'schwab-accounts' && (
+        <SchwabAccountsMonitor onEditDraft={(intent: any) => { setDraftSeed(intent); setSection(null) }} />
+      )}
       {tab === 'Broker Orders' && <BrokerOrders draftSeed={draftSeed} />}
-      {tab === 'Schwab Accounts' && (
-        <SchwabAccountsMonitor onEditDraft={(intent: any) => { setDraftSeed(intent); setTab('Broker Orders') }} />
-      )}
 
-      {tab === 'Execution' && execQualLoading && (
-        <div className={terminalUi ? 'cc-panel' : undefined} style={{ ...(terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 24 }), textAlign: 'center' }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>Execution Quality</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)' }}>Loading transaction cost analysis from /api/v2/execution-quality…</div>
-        </div>
-      )}
-      {tab === 'Execution' && !execQualLoading && execQualError && (
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>Execution data unavailable</div>
-          <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 10 }}>{execQualError}</div>
-          <Link to="/journal" style={{ fontSize: 11, fontWeight: 700, color: 'var(--text1)' }}>Journal closed trades →</Link>
-        </div>
-      )}
-      {tab === 'Execution' && !execQualLoading && !execQualError && execQual == null && (
-        <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>No execution quality data yet</div>
-          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10, lineHeight: 1.5 }}>TCA fills appear after broker orders execute. Check Journal closed trades or Broker Orders.</div>
-          <Link to="/journal" style={{ fontSize: 11, fontWeight: 700, color: 'var(--text1)', marginRight: 14 }}>Journal →</Link>
-          <Link to="/trading?tab=Broker+Orders" style={{ fontSize: 11, fontWeight: 700, color: 'var(--text1)' }}>Broker Orders →</Link>
-        </div>
-      )}
-      {tab === 'Execution' && !execQualLoading && !execQualError && execQual != null && (() => {
-        // ── Transaction Cost Analysis: aggregate the rich per-fill data into a clear, actionable view ──
-        const QC = (q?: string) => { const u = (q || '').toUpperCase(); return u === 'EXCELLENT' ? 'var(--text1)' : u === 'GOOD' ? 'var(--text1)' : u === 'ACCEPTABLE' ? 'var(--text2)' : u === 'POOR' ? 'var(--text0)' : 'var(--text3)' }
-        const ex = execList
-        const n = ex.length
-        const q = { EXCELLENT: 0, GOOD: 0, ACCEPTABLE: 0, POOR: 0, OTHER: 0 } as Record<string, number>
-        ex.forEach((e: any) => { const u = (e.fill_quality || '').toUpperCase(); if (q[u] != null) q[u]++; else q.OTHER++ })
-        const slips = ex.map((e: any) => e.slippage_pct).filter((v: any) => v != null)
-        const avgSlip = slips.length ? slips.reduce((a: number, b: number) => a + Math.abs(b), 0) / slips.length : null
-        const totSlipD = ex.reduce((a: number, e: any) => a + (e.slippage_dollars || 0), 0)
-        const ttf = ex.map((e: any) => e.time_to_fill_seconds).filter((v: any) => v != null)
-        const avgTtf = ttf.length ? ttf.reduce((a: number, b: number) => a + b, 0) / ttf.length : null
-        const partials = ex.filter((e: any) => e.partial_fill).length
-        const improved = ex.filter((e: any) => (e.price_improvement_pct || 0) > 0).length
-        const poor = ex.filter((e: any) => (e.fill_quality || '').toUpperCase() === 'POOR')
-          .sort((a: any, b: any) => Math.abs(b.slippage_pct || 0) - Math.abs(a.slippage_pct || 0))
-        const ordered = [...ex].sort((a: any, b: any) => {
-          const pa = (a.fill_quality || '').toUpperCase() === 'POOR' ? 1 : 0, pb = (b.fill_quality || '').toUpperCase() === 'POOR' ? 1 : 0
-          if (pa !== pb) return pb - pa
-          return Math.abs(b.slippage_pct || 0) - Math.abs(a.slippage_pct || 0)
-        })
-        const Tip = ({ t, children }: { t: string; children: any }) => (
-          <span title={t} style={{ cursor: 'help', borderBottom: '1px dotted var(--text3)' }}>{children}</span>
-        )
-        const Metric = ({ label, value, color, tip }: { label: string; value: any; color?: string; tip: string }) => (
-          <div title={tip} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', cursor: 'help', minWidth: 110, flex: '1 1 110px' }}>
-            <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{label} ⓘ</div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: color || 'var(--text0)', marginTop: 2 }}>{value}</div>
-          </div>
-        )
-        return (
-        <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 8 }}>
-            <div style={{ fontSize: terminalUi ? 11 : 13, fontWeight: 700, color: 'var(--text0)' }}>Execution Quality — Transaction Cost Analysis</div>
-            <span style={{ flex: 1 }} />
-            <label style={{ fontSize: 10, color: 'var(--text3)', display: 'flex', alignItems: 'center', gap: 6 }}>
-              Lookback
-              <select
-                aria-label="TCA lookback days"
-                value={String(execDays)}
-                onChange={e => setExecDays(e.target.value === 'all' ? 'all' : Number(e.target.value))}
-                style={{ fontSize: 10, padding: '4px 8px', borderRadius: 5, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text0)' }}
-              >
-                <option value="7">7d</option>
-                <option value="30">30d</option>
-                <option value="90">90d</option>
-                <option value="180">180d</option>
-                <option value="365">1y</option>
-                <option value="all">All</option>
-              </select>
-            </label>
-            <button
-              type="button"
-              data-testid="execution-export-csv"
-              disabled={!execList.length}
-              title="Download filtered TCA fills as CSV (client-side; no broker write)."
-              onClick={() => downloadExecutionQualityCsv(execList)}
-              style={{
-                fontSize: 10, fontWeight: 800, padding: '4px 10px', borderRadius: 5, cursor: execList.length ? 'pointer' : 'not-allowed',
-                opacity: execList.length ? 1 : 0.45, border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text1)',
-              }}
-            >
-              Export CSV ({execList.length})
-            </button>
-            <Link to="/journal" style={{ fontSize: 10, fontWeight: 800, color: 'var(--text1)' }}>Journal →</Link>
-          </div>
-          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 12 }}>
-            How well orders filled vs. intended. Window: {execDays === 'all' ? 'all available' : `last ${execDays} days`} · {execRaw.length} raw · {n} shown.
-            Clean execution is part of live-readiness — not auto-trade authority.
-          </div>
-
-          {n === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No execution quality data in this lookback.</div> : (<>
-          {/* POOR-fill alert */}
-          {poor.length > 0 && (
-            <div style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.4)', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#ef4444' }}>⚠ {poor.length} POOR fill{poor.length > 1 ? 's' : ''} — investigate</div>
-              <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                {poor.slice(0, 6).map((e: any) => (
-                  <span key={e.id} onClick={() => onDrill({ title: `${e.symbol} TCA`, subtitle: `POOR · slip ${e.slippage_pct?.toFixed(2)}%`, endpoint: '/api/v2/execution-quality', rows: [e] })} style={{ cursor: 'pointer', textDecoration: 'underline dotted' }}>
-                    <b style={{ fontFamily: 'monospace' }}>{e.symbol}</b> {e.slippage_pct != null ? `${e.slippage_pct.toFixed(2)}%` : ''} {e.market_session ? `(${e.market_session})` : ''}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Summary band */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-            <Metric label="Fills" value={n} tip="Total recorded fills in this window." />
-            <Metric label="Avg Slippage" value={avgSlip != null ? `${avgSlip.toFixed(3)}%` : '—'} color={avgSlip == null ? undefined : avgSlip < 0.1 ? '#22c55e' : avgSlip < 0.3 ? '#f59e0b' : '#ef4444'} tip="Average absolute difference between intended and actual fill price, as % of price. Lower is better; under ~0.1% is excellent." />
-            <Metric label="Total Slip $" value={fmt$(totSlipD)} color={totSlipD <= 0 ? '#22c55e' : '#ef4444'} tip="Net dollar cost (or gain) from slippage across all fills. Negative/zero = you paid no cost; positive = slippage ate into returns." />
-            <Metric label="Avg Time-to-Fill" value={avgTtf != null ? `${avgTtf.toFixed(1)}s` : '—'} tip="Average seconds from order submit to fill. Faster reduces adverse price drift." />
-            <Metric label="Partial Fills" value={`${partials}/${n}`} color={partials === 0 ? '#22c55e' : '#f59e0b'} tip="Orders that filled only partially. Frequent partials suggest thin liquidity or sizing too large." />
-            <Metric label="Price Improved" value={`${improved}/${n}`} color={improved > 0 ? '#22c55e' : undefined} tip="Fills that executed BETTER than intended (positive price improvement)." />
-          </div>
-
-          {/* Graphical quality distribution bar */}
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}><Tip t="Distribution of fill-quality grades. Aim for mostly EXCELLENT/GOOD; any POOR is worth a look.">FILL QUALITY DISTRIBUTION ⓘ</Tip></div>
-            <div style={{ display: 'flex', height: 22, borderRadius: 5, overflow: 'hidden', border: '1px solid var(--border)' }}>
-              {(['EXCELLENT', 'GOOD', 'ACCEPTABLE', 'POOR', 'OTHER'] as const).map(k => q[k] > 0 && (
-                <div key={k} title={`${k}: ${q[k]} (${((q[k] / n) * 100).toFixed(0)}%)`} style={{ width: `${(q[k] / n) * 100}%`, background: QC(k), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#0a0a0a' }}>
-                  {(q[k] / n) > 0.08 ? q[k] : ''}
-                </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 12, marginTop: 4, fontSize: 9, color: 'var(--text2)', flexWrap: 'wrap' }}>
-              {(['EXCELLENT', 'GOOD', 'ACCEPTABLE', 'POOR'] as const).map(k => q[k] > 0 && (
-                <span key={k}><span style={{ color: QC(k) }}>■</span> {k} {q[k]}</span>
-              ))}
-            </div>
-          </div>
-
-          {/* Fills table — poor first, color-coded */}
-          <div style={{ display: 'flex', fontSize: 9, color: 'var(--text3)', padding: '0 6px 4px', textTransform: 'uppercase', letterSpacing: 0.3 }}>
-            <span style={{ flex: '0 0 64px' }}>Symbol</span>
-            <span style={{ flex: '0 0 90px' }}><Tip t="Fill-quality grade for this order.">Quality</Tip></span>
-            <span style={{ flex: '0 0 80px' }}><Tip t="Slippage: intended vs actual fill price as %.">Slip %</Tip></span>
-            <span style={{ flex: '0 0 80px' }}><Tip t="Bid-ask spread at submit, as %. Wider spreads make good fills harder.">Spread</Tip></span>
-            <span style={{ flex: '0 0 70px' }}><Tip t="Seconds from submit to fill.">Fill (s)</Tip></span>
-            <span style={{ flex: '1 1 auto' }}>Session · Strategy</span>
-          </div>
-          {ordered.slice(0, 30).map((e: any) => {
-            const isPoor = (e.fill_quality || '').toUpperCase() === 'POOR'
-            return (
-            <div key={e.id} onClick={() => onDrill({ title: `${e.symbol} — Transaction Cost Analysis`, subtitle: `${e.fill_quality ?? '—'} · slip ${e.slippage_pct != null ? e.slippage_pct.toFixed(2) + '%' : '—'} · intended ${e.intended_entry ?? '—'} → fill ${e.fill_price ?? '—'}`, endpoint: '/api/v2/execution-quality', rows: [e] })}
-              style={{ display: 'flex', alignItems: 'center', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, background: isPoor ? 'rgba(239,68,68,.06)' : undefined }}>
-              <span style={{ flex: '0 0 64px', fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{e.symbol}</span>
-              <span style={{ flex: '0 0 90px' }}><span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: QC(e.fill_quality), color: '#0a0a0a' }}>{e.fill_quality ?? '—'}</span></span>
-              <span style={{ flex: '0 0 80px', color: e.slippage_pct == null ? 'var(--text3)' : Math.abs(e.slippage_pct) < 0.1 ? '#22c55e' : Math.abs(e.slippage_pct) < 0.5 ? '#f59e0b' : '#ef4444' }}>{e.slippage_pct != null ? `${e.slippage_pct.toFixed(2)}%` : '—'}</span>
-              <span style={{ flex: '0 0 80px', color: 'var(--text2)' }}>{e.spread_pct != null ? `${e.spread_pct.toFixed(2)}%` : '—'}</span>
-              <span style={{ flex: '0 0 70px', color: 'var(--text2)' }}>{e.time_to_fill_seconds != null ? `${e.time_to_fill_seconds.toFixed(0)}s` : '—'}</span>
-              <span style={{ flex: '1 1 auto', fontSize: 9, color: 'var(--text3)' }}>{e.market_session ?? '—'}{e.strategy_id ? ` · ${e.strategy_id}` : ''}</span>
-            </div>
-          )})}
-          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/execution-quality · click any row for full TCA. Export is client-side only.</div>
-          </>)}
-        </div>
-        )
-      })()}
-
-      {tab === 'Broker Recon' && (() => {
-        const r = recon?.data ?? recon ?? {}
-        const runs = r.runs ?? []
-        const items = r.items ?? []
-        const latest = runs[0] ?? {}
-        const venues = summarizeReconByBroker(runs, items)
-        const stClr = (s: string) => /ok|matched|clean/i.test(s || '') ? 'var(--text1)' : /unmatched|mismatch|orphan|issue|break/i.test(s || '') ? 'var(--text0)' : 'var(--text3)'
-        return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(100px,1fr))', gap: 10 }}>
-              {[
-                { k: 'Orders seen', v: latest.orders_seen ?? '—', c: 'var(--text0)' },
-                { k: 'Trades matched', v: latest.trades_matched ?? '—', c: 'var(--text1)' },
-                { k: 'Unmatched broker', v: latest.unmatched_broker_orders ?? 0, c: (latest.unmatched_broker_orders ?? 0) > 0 ? 'var(--text0)' : 'var(--text3)' },
-                { k: 'Unmatched local', v: latest.unmatched_local_trades ?? 0, c: (latest.unmatched_local_trades ?? 0) > 0 ? 'var(--text0)' : 'var(--text3)' },
-              ].map(s => (
-                <div key={s.k} style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 8, padding: '10px 8px', textAlign: 'center' }}>
-                  <div style={{ fontSize: 17, fontWeight: 700, color: s.c }}>{s.v}</div>
-                  <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase' }}>{s.k}</div>
-                </div>
-              ))}
-            </div>
-
-            <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text0)', marginBottom: 8 }}>Venues · next action</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {venues.map(v => (
-                  <div key={v.broker} style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg2)' }}>
-                    <b style={{ fontSize: 11, color: 'var(--text0)', minWidth: 140 }}>{v.broker}</b>
-                    <span style={{ fontSize: 10, color: stClr(v.status), fontWeight: 800 }}>{v.status.toUpperCase()}</span>
-                    <span style={{ fontSize: 10, color: 'var(--text3)' }}>brokerΔ {v.unmatched_broker} · localΔ {v.unmatched_local}</span>
-                    <span style={{ fontSize: 10, color: 'var(--text2)', flex: 1 }}>{v.next_action}</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                <Link to="/journal" style={{ fontSize: 10, fontWeight: 800, color: 'var(--text1)' }}>Journal →</Link>
-                <Link to="/trading?tab=Broker+Orders" style={{ fontSize: 10, fontWeight: 800, color: 'var(--text1)' }}>Broker Orders →</Link>
-                <Link to="/trading?tab=Open+Trades" style={{ fontSize: 10, fontWeight: 800, color: 'var(--text1)' }}>Open Trades →</Link>
-              </div>
-            </div>
-
-            <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 14 }}>
-              <div style={{ fontSize: terminalUi ? 10 : 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Reconciliation items ({items.length})</div>
-              {items.length === 0 ? <div style={{ color: 'var(--text1)', fontSize: 11 }}>No unmatched items — broker and local in sync for latest run.</div> :
-              items.slice(0, 20).map((it: any, i: number) => (
-                <div key={i} onClick={() => onDrill({ title: it.symbol ?? it.broker_order_id, subtitle: it.reconciliation_state, endpoint: '/api/v2/broker-reconciliation', rows: [it] })}
-                  style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 1fr', gap: 8, padding: '5px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 10, alignItems: 'center' }}>
-                  <span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--text0)' }}>{it.symbol ?? '—'}</span>
-                  <span style={{ color: stClr(it.reconciliation_state), fontSize: 10 }}>{it.reconciliation_state ?? ''}</span>
-                  <span style={{ color: 'var(--text3)', fontSize: 10 }}>{it.issue_code ?? it.broker ?? ''}</span>
-                </div>
-              ))}
-              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 8 }}>Source: /api/v2/broker-reconciliation — multi-venue runs + items. Latest: {latest.broker ?? ''} {latest.run_status ?? ''} {latest.started_at ? new Date(latest.started_at).toLocaleString() : ''}</div>
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* ActiveTrader moved to its own top-level section: /v3/active-trader */}
-      {tab === 'Scalp' && <ScalpSetupsPanel />}
-      {tab === 'Scalp' && scalpData && (() => {
-        // ── Live scalp signals: unwrap {timestamp,data:{...}} and present clearly + actionably ──
-        const GC = (g?: string) => { const u = (g || '').toUpperCase(); return u === 'A' ? '#22c55e' : u === 'B' ? '#84cc16' : u === 'C' ? '#f59e0b' : u === 'D' || u === 'F' ? '#ef4444' : 'var(--text3)' }
-        // Social Scout pill — operator-awareness ONLY. Distinct violet (var(--social-scout)), never
-        // green/GO. No execution/validate/buy affordance: it is a watch/surface state, never tradeable.
-        const SCOUT_COLOR = 'var(--social-scout)'
-        const ScoutPill = ({ d }: { d: any }) => {
-          if (d.scout_status !== 'SOCIAL_SCOUT' || !d.operator_pill) return null
-          const hints = (d.operator_tooltip_hints || []).join(' · ')
-          const tip = `${d.operator_subtitle || 'Not quite there yet'}${hints ? ' — ' + hints : ''}\n`
-            + 'Awareness only — not a GO, not validation-fast-path eligible, not a standard momentum_scalp trade.'
-          return (
-            <span title={tip} style={{ fontSize: 8.5, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
-              background: 'var(--social-scout-dim)', color: SCOUT_COLOR, border: `1px solid ${SCOUT_COLOR}`,
-              whiteSpace: 'nowrap', cursor: 'help', marginRight: 6 }}>{d.operator_pill}</span>
-          )
-        }
-        const raw: any[] = scalpData.signals ?? []
-        const expanded = raw.map((s: any) => ({ ...(s.data || s), _ts: s.timestamp })).filter((d: any) => d.symbol)
-        // API can emit the same symbol twice; dedupe by symbol keeping best rank (GO>WAIT>others, grade, score).
-        const { unique: sigs, rawCount: rawSignalCount } = dedupeScalpSignalsBySymbol(expanded)
-        const n = sigs.length
-        const byG: Record<string, number> = {}; sigs.forEach((d: any) => { const g = (d.grade || '?').toUpperCase(); byG[g] = (byG[g] || 0) + 1 })
-        const byD = { GO: 0, WAIT: 0, 'NO-GO': 0 } as Record<string, number>
-        sigs.forEach((d: any) => { const k = (d.decision || '').toUpperCase().replace('_', '-'); if (byD[k] != null) byD[k]++ })
-        const catalyst = sigs.filter((d: any) => d.catalyst_verified).length
-        const scouts = sigs.filter((d: any) => d.scout_status === 'SOCIAL_SCOUT').length
-        const avgScore = n ? Math.round(sigs.reduce((a: number, d: any) => a + (d.score || 0), 0) / n) : 0
-        // "prime" actionable scalp = GO + grade A + catalyst verified (the criteria that actually matter)
-        const prime = sigs.filter((d: any) => (d.decision || '').toUpperCase() === 'GO' && (d.grade || '').toUpperCase() === 'A' && d.catalyst_verified)
-        const ordered = [...sigs].sort((a: any, b: any) => {
-          const da = scalpDecisionRank(a.decision), db = scalpDecisionRank(b.decision)
-          if (da !== db) return db - da
-          const ga = scalpGradeRank(a.grade), gb = scalpGradeRank(b.grade)
-          if (ga !== gb) return gb - ga
-          return (Number(b.score) || 0) - (Number(a.score) || 0)
-        })
-        const Tip = ({ t, children }: { t: string; children: any }) => (
-          <span title={t} style={{ cursor: 'help', borderBottom: '1px dotted var(--text3)' }}>{children}</span>
-        )
-        const Metric = ({ label, value, color, tip }: { label: string; value: any; color?: string; tip: string }) => (
-          <div title={tip} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 10px', cursor: 'help', minWidth: 100, flex: '1 1 100px' }}>
-            <div style={{ fontSize: 9, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: 0.4 }}>{label} ⓘ</div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: color || 'var(--text0)', marginTop: 2 }}>{value}</div>
-          </div>
-        )
-        return (
-        <div className={terminalUi ? 'cc-panel' : undefined} style={terminalUi ? hubPanel(terminalUi) : { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
-          <div style={{ fontSize: terminalUi ? 11 : 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 4 }}>Scalp Live — Signal Screen</div>
-          <div style={{ fontSize: 10, color: 'var(--text3)', marginBottom: 12 }}>Live scalp candidates, graded. Prime setups = GO · grade A · catalyst-verified (with high RVOL). These are advisory — execution is gated.</div>
-
-          {n === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11 }}>No live scalp signals.</div> : (<>
-
-          {/* Prime-setup alert */}
-          <div style={{ background: prime.length ? 'rgba(34,197,94,.1)' : 'var(--bg2)', border: `1px solid ${prime.length ? 'rgba(34,197,94,.4)' : 'var(--border)'}`, borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>
-            {prime.length ? (<>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#22c55e' }}>✦ {prime.length} prime setup{prime.length > 1 ? 's' : ''} — GO · A · catalyst</div>
-              <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                {prime.slice(0, 8).map((d: any, i: number) => (
-                  <span key={i} onClick={() => onDrill({ title: `${d.symbol} — Scalp Signal`, subtitle: `GO · A · score ${d.score} · RVOL ${d.rvol}`, endpoint: '/api/v2/scalp/live', rows: [d], subjectType: 'scalp', subjectKey: d.symbol })} style={{ cursor: 'pointer', textDecoration: 'underline dotted' }}>
-                    <b style={{ fontFamily: 'monospace' }}>{d.symbol}</b> {d.change_percent ? `${d.change_percent}` : ''} {d.rvol ? `RVOL ${d.rvol}` : ''}
-                  </span>
-                ))}
-              </div>
-            </>) : <div style={{ fontSize: 11, color: 'var(--text3)' }}>No prime setups right now (need GO + grade A + verified catalyst). Watching {n} candidates.</div>}
-          </div>
-
-          {/* Summary band */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-            <Metric label="Signals" value={n} tip="Live scalp candidates on the screen." />
-            <Metric label="GO" value={byD.GO} color={byD.GO > 0 ? '#22c55e' : undefined} tip="Candidates graded GO — passed the scalp decision gate." />
-            <Metric label="Grade A" value={byG['A'] || 0} color={(byG['A'] || 0) > 0 ? '#22c55e' : undefined} tip="Top-grade setups. Grade reflects setup quality (float/RVOL/catalyst/structure)." />
-            <Metric label="Catalyst ✓" value={`${catalyst}/${n}`} tip="Signals with a verified catalyst. A real catalyst is required for a prime scalp." />
-            <Metric label="Social Scouts" value={scouts} color={scouts > 0 ? 'var(--social-scout)' : undefined} tip="Partial social setups meeting ≥2 of 5 scout pillars — interesting, not there yet. Awareness only: never GO, never validation-eligible, never a standard momentum_scalp." />
-            <Metric label="Avg Score" value={avgScore} tip="Mean composite score across candidates (higher = stronger setup)." />
-          </div>
-
-          {/* Decision + grade distribution bars */}
-          <div style={{ marginBottom: 14, display: 'flex', gap: 18, flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 240px' }}>
-              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}><Tip t="GO = actionable, WAIT = watch, NO-GO = rejected.">DECISION ⓘ</Tip></div>
-              <div style={{ display: 'flex', height: 20, borderRadius: 5, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                {(['GO', 'WAIT', 'NO-GO'] as const).map(k => byD[k] > 0 && (
-                  <div key={k} title={`${k}: ${byD[k]}`} style={{ width: `${(byD[k] / n) * 100}%`, background: decisionColor(k === 'NO-GO' ? 'NO' : k), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#0a0a0a' }}>{(byD[k] / n) > 0.08 ? byD[k] : ''}</div>
-                ))}
-              </div>
-            </div>
-            <div style={{ flex: '1 1 240px' }}>
-              <div style={{ fontSize: 9, color: 'var(--text3)', marginBottom: 4 }}><Tip t="Setup-quality grade distribution. A is best.">GRADE ⓘ</Tip></div>
-              <div style={{ display: 'flex', height: 20, borderRadius: 5, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                {['A', 'B', 'C', 'D', 'F', '?'].map(k => (byG[k] || 0) > 0 && (
-                  <div key={k} title={`${k}: ${byG[k]}`} style={{ width: `${(byG[k] / n) * 100}%`, background: GC(k), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700, color: '#0a0a0a' }}>{(byG[k] / n) > 0.08 ? `${k}:${byG[k]}` : ''}</div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Signals table — GO + best grade first */}
-          <div style={{ display: 'flex', fontSize: 9, color: 'var(--text3)', padding: '0 6px 4px', textTransform: 'uppercase', letterSpacing: 0.3 }}>
-            <span style={{ flex: '0 0 66px' }}>Symbol</span>
-            <span style={{ flex: '0 0 48px' }}>Grade</span>
-            <span style={{ flex: '0 0 56px' }}>Decision</span>
-            <span style={{ flex: '0 0 50px' }}>Score</span>
-            <span style={{ flex: '0 0 60px' }}><Tip t="Relative volume vs average. Scalps want high RVOL (5x+).">RVOL</Tip></span>
-            <span style={{ flex: '0 0 60px' }}>Chg %</span>
-            <span style={{ flex: '0 0 54px' }}><Tip t="Catalyst verified?">Catalyst</Tip></span>
-            <span style={{ flex: '1 1 auto' }}>Source</span>
-          </div>
-          {ordered.slice(0, 30).map((d: any) => {
-            const isGo = (d.decision || '').toUpperCase() === 'GO'
-            return (
-            <div key={d.symbol} onClick={() => onDrill({ title: `${d.symbol} — Scalp Signal`, subtitle: `${d.decision ?? '—'} · grade ${d.grade ?? '—'} · score ${d.score ?? '—'} · RVOL ${d.rvol ?? '—'}${d.critic_verdict ? ' · ' + d.critic_verdict : ''}`, endpoint: '/api/v2/scalp/live', rows: [d], subjectType: 'scalp', subjectKey: d.symbol })}
-              style={{ display: 'flex', alignItems: 'center', padding: '6px 6px', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 11, background: isGo ? 'rgba(34,197,94,.05)' : undefined }}>
-              <span style={{ flex: '0 0 66px', fontWeight: 600, color: 'var(--text0)', fontFamily: 'monospace' }}>{d.symbol}
-                {(scalpExtMap[d.symbol] || []).map((e: any, j: number) => <span key={j} title={`${e.lane === 'grok' ? 'Grok' : e.lane === 'chatgpt' ? 'ChatGPT' : e.lane}: ${e.recommendation || ''}\n${e.at ? new Date(e.at).toLocaleString() : ''}`} style={{ marginLeft: 4, fontSize: 8, fontWeight: 700, color: e.lane === 'grok' ? '#1d9bf0' : '#10a37f', cursor: 'help' }}>✦</span>)}</span>
-              <span style={{ flex: '0 0 48px' }}><span style={{ fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 4, background: GC(d.grade), color: '#0a0a0a' }}>{d.grade ?? '—'}</span></span>
-              <span style={{ flex: '0 0 56px', fontWeight: 600, color: decisionColor((d.decision || '').toUpperCase().startsWith('NO') ? 'NO' : (d.decision || '').toUpperCase()), fontSize: 10 }}>{d.decision ?? '—'}</span>
-              <span style={{ flex: '0 0 50px', color: 'var(--text2)' }}>{d.score ?? '—'}</span>
-              <span style={{ flex: '0 0 60px', color: (d.rvol || 0) >= 5 ? '#22c55e' : (d.rvol || 0) >= 2 ? '#f59e0b' : 'var(--text3)' }}>{d.rvol != null ? `${d.rvol}x` : '—'}</span>
-              <span style={{ flex: '0 0 60px', color: 'var(--text2)' }}>{d.change_percent || '—'}</span>
-              <span style={{ flex: '0 0 54px', textAlign: 'center' }}>{d.catalyst_verified ? <span style={{ color: '#22c55e' }}>✓</span> : <span style={{ color: 'var(--text3)' }}>—</span>}</span>
-              <span style={{ flex: '1 1 auto', fontSize: 9, color: 'var(--text3)', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}><ScoutPill d={d} />{d.source ?? '—'}</span>
-            </div>
-          )})}
-          <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 8 }} data-testid="scalp-dedupe-footer">
-            Deduped {rawSignalCount} → {n} unique symbols.
-            {' · '}Source: /api/v2/scalp/live · click any row for the full signal. Hover ⓘ for definitions. Advisory only — scalp execution is gated.
-          </div>
-          </>)}
-        </div>
-        )
-      })()}
-      {tab === 'Entry Desk' && <ManualTosDesk focusSymbol={deepLink.symbol || undefined} />}
-      {tab === 'ATM Controls' && <ATMControlPanel />}
     </div>
   )
 }

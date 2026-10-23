@@ -79,20 +79,6 @@
       "note": "crontab line 1007: */5 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/cio_bridge_watchdog.lock $PY scripts/cio_bridge_watchdog.py --apply >> logs/cio_bridge_watchdog.log 2>&1  # 2026-09-14 bridge wedge: restart after 2 unanswered /health probes, alert on state change (lane cio-bridge-watchdog)"
     },
     {
-      "step_id": "pipeline-watchdog",
-      "command": ["$PY", "scripts/pipeline_watchdog.py"],
-      "cadence_minutes": 120,
-      "minute_offset": 0,
-      "hours": null,
-      "weekdays": null,
-      "lock": "/tmp/health_tick_pipeline_watchdog.lock",
-      "timeout_s": 600,
-      "needs_env": false,
-      "market_day_gate": false,
-      "log": "logs/pipeline_watchdog.log",
-      "note": "crontab line 277: 0 */2 * * * cd $PROJ && $PY scripts/pipeline_watchdog.py >> logs/pipeline_watchdog.log 2>&1 | lock added by health_tick (cron line had none); NOTE the script hardcodes PROJECT_ROOT to the dev tree and retries scripts there — pre-existing, not changed here | 2026-10-09: moved ahead of the 15-minute steps. It is due only at :00 of even hours and system_health_agent treats it as CRITICAL (max age 150 min), so a deferral costs 2 hours of a critical lane; deferring health-agent (every 15 min) costs 15 minutes. It leaves fire-and-forget symbol_enrichment.py children, which health_tick now reaps after orphan_wait_s"
-    },
-    {
       "step_id": "health-agent",
       "command": ["$PY", "scripts/health_agent.py"],
       "cadence_minutes": 15,
@@ -261,6 +247,20 @@
       "market_day_gate": true,
       "log": "logs/system_health_alerts_cron.log",
       "note": "crontab line 178: 10 12,15 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh $PY scripts/system_health_alerts.py >> logs/system_health_alerts_cron.log 2>&1 | lock added by health_tick (cron line had none); market_day_gate=true prefixes `bash scripts/market_day_gate.sh` exactly as the line did (the gate skips weekends/holidays and FAILS OPEN on a broken session check)"
+    },
+    {
+      "step_id": "pipeline-watchdog",
+      "command": ["$PY", "scripts/pipeline_watchdog.py"],
+      "cadence_minutes": 120,
+      "minute_offset": 0,
+      "hours": null,
+      "weekdays": null,
+      "lock": "/tmp/health_tick_pipeline_watchdog.lock",
+      "timeout_s": 600,
+      "needs_env": false,
+      "market_day_gate": false,
+      "log": "logs/pipeline_watchdog.log",
+      "note": "crontab line 277: 0 */2 * * * cd $PROJ && $PY scripts/pipeline_watchdog.py >> logs/pipeline_watchdog.log 2>&1 | lock added by health_tick (cron line had none); NOTE the script hardcodes PROJECT_ROOT to the dev tree and retries scripts there — pre-existing, not changed here | 2026-10-09: had been moved ahead of the 15-minute steps (a deferral costs 2 hours of a CRITICAL lane; system_health_agent max age 150 min). 2026-10-22: moved to LAST. The watchdog now owns and waits for its symbol_enrichment.py children (p50 136s / p95 241s, measured 2026-09-20..10-07) under min(240s, HEALTH_TICK_STEP_TIMEOUT_S - 15s); run anywhere earlier it would spend the tick and defer every step after it. Last is safe from deferral as measured: the other steps of an even-hour tick took p50 40s / p95 90s / max 246s (161 undeferred ticks 2026-10-07..10-22) against the 280s start budget, leaving the watchdog ~200-250s. Do not move it earlier or shorten its timeout without new measurements: docs/ops/PIPELINE_TIME_SETTINGS.md. health_tick's process-group cleanup (orphan_wait_s) remains the outer safety net."
     }
   ]
 }

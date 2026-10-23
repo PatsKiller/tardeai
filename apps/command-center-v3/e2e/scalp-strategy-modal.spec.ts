@@ -3,13 +3,13 @@ import { test, expect } from '@playwright/test'
 /**
  * Scalp setup taxonomy UI: the SETUPS & STRATEGY RULES modal is registry-driven, keyboard-accessible,
  * responsive (desktop + narrow), and strictly read-only (no order/submit/approve/2FA/broker control).
- * The panel + button render on the Trading hub Scalp tab.
+ * The panel + button render on Active Trader → Scalp (moved from the retired Trading → Scalp tab,
+ * 2026-10-22); the old /v3/trading?tab=Scalp link redirects there.
  */
 
 async function openScalpTab(page: import('@playwright/test').Page) {
-  await page.goto('/v3/trading')
-  await expect(page.getByRole('button', { name: 'Scalp', exact: true })).toBeVisible({ timeout: 20_000 })
-  await page.getByRole('button', { name: 'Scalp', exact: true }).click()
+  await page.goto('/v3/trading?tab=Scalp')
+  await expect(page).toHaveURL(/\/v3\/active-trader\?tab=Scalp/, { timeout: 20_000 })
   await expect(page.getByRole('button', { name: /SETUPS & STRATEGY RULES/ })).toBeVisible({ timeout: 20_000 })
 }
 

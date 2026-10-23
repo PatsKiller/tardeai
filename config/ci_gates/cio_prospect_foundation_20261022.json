@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_prospect_foundation_20261022",
+  "files": [
+    "tests/test_cio_prospect_foundation_20261022.py"
+  ],
+  "anchor": "CIO_PROSPECT_FOUNDATION_20261022",
+  "comment": [
+    "ANCHOR: CIO_PROSPECT_FOUNDATION_20261022 — AGENTS.md §26 (18.0.0) P0/P1, inert until the operator grants the",
+    "cio_prospect row and the P1 migration (§17): migrations/2026_10_22_cio_prospect.sql (not applied; proven on a",
+    "throwaway initdb cluster, unix socket only, never production), InstrumentRecord@v1 extended (apply_prospect rail,",
+    "MBI_BEHAVIOR = 0, unified edge persisted, Postgres dual-write inert), the read-only shadow builder + watchlist",
+    "curation rules, the n8n lane cio-prospect-shadow at SHADOW, and the cio_prospect data-broker projection."
+  ]
+}
