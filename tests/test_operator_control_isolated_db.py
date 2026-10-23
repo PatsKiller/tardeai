@@ -24,6 +24,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -175,7 +176,11 @@ def test_probe_ran_against_the_isolated_cluster_only(probe):
     assert ident["dbname"].startswith("tradeai_test_")
     assert ident["usr"].startswith("tradeai_test_")
     assert ident["host"] == "127.0.0.1"
-    assert str(ident["data_directory"]).startswith("/tmp/tradeai_testpg_")
+    # IsolatedPostgres creates its cluster below tempfile.gettempdir(); this
+    # must remain valid when the test runner uses a non-/tmp TMPDIR.
+    data_directory = Path(ident["data_directory"])
+    assert data_directory.parent.parent == Path(tempfile.gettempdir())
+    assert data_directory.parent.name.startswith("tradeai_testpg_")
     assert probe["rail"]["verdict"] == "ISOLATED"
     assert probe["audit_rows_before"] == 0, "the isolated audit log must start empty"
 
