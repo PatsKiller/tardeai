@@ -18,6 +18,7 @@ Commands (``COMMANDS``); every one writes only the coordination store under the 
                                                      that is not open, not CI green, or already in an open batch.
 * ``task_add``             {title, kind, areas, priority?, acceptance?}   a new task on the board (source operator).
 * ``task_split``           {task_id, parts:[{title, areas?, acceptance?}]}
+* ``task_done``            {task_id, summary?}      only an ``OPERATOR: …`` to-do; agent tasks finish by their session
 * ``release_stale_claim``  {claim_id}               only for a RED-stale claim (no heartbeat for the stale window and
                                                      pre-PR, or CI failing): released ``abandoned`` with
                                                      ``released_by=operator:<login>``, worklog kept with a final
@@ -78,6 +79,7 @@ COMMANDS = (
     "batch_remove",
     "task_add",
     "task_split",
+    "task_done",
     "release_stale_claim",
 )
 TIER2 = ("approve_design", "contract_reviewed", "merge_pr", "release_now", "approve_item")
@@ -508,6 +510,18 @@ def cmd_task_split(cd: Path, op: str, p: Mapping[str, Any], ctx: Ctx) -> dict[st
     return {"task_id": tid, "children": [k["task_id"] for k in kids]}
 
 
+def cmd_task_done(cd: Path, op: str, p: Mapping[str, Any], ctx: Ctx) -> dict[str, Any]:
+    tid = str(p.get("task_id") or "")
+    if not TB.valid_task_id(tid):
+        raise CommandError(400, "PARAMS_INVALID", "task_id is required")
+    _cb, tb = _boards(cd, ctx.now)
+    try:
+        t = tb.operator_done(tid, by=op, summary=_text(p, "summary", 500, required=False))
+    except TB.TaskError as exc:
+        raise CommandError(409, "TASK_REFUSED", str(exc)) from None
+    return {"task_id": tid, "status": t["status"], "done_at": t["done_at"]}
+
+
 def red_stale(v: "B.ClaimView") -> tuple[bool, str]:
     """A claim the board shows RED stale: no heartbeat for the stale window and pre-PR, or CI failing and idle."""
     if v.doc.get("status") != "active":
@@ -580,6 +594,7 @@ HANDLERS: dict[str, Callable[[Path, str, Mapping[str, Any], Ctx], dict[str, Any]
     "batch_remove": cmd_batch_remove,
     "task_add": cmd_task_add,
     "task_split": cmd_task_split,
+    "task_done": cmd_task_done,
     "release_stale_claim": cmd_release_stale_claim,
 }
 

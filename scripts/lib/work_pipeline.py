@@ -375,6 +375,14 @@ class PrCensus:
                     warnings.append(w)
                 parsed = parse_batch_body((doc or {}).get("body") if isinstance(doc, dict) else None)
                 batches[p["number"]] = {**parsed, "number": p["number"], "title": p["title"], "ci": p["ci"]}
+            # the last merged batches still carry standing exclusions ("the operator merges those")
+            for p in [p for p in merged_prs if BATCH_BRANCH_RE.match(str(p.get("branch") or ""))][:2]:
+                doc, w = self._json(["gh", "pr", "view", str(p["number"]), "--json", "body"])
+                if w:
+                    warnings.append(w)
+                parsed = parse_batch_body((doc or {}).get("body") if isinstance(doc, dict) else None)
+                batches[p["number"]] = {"members": [], "excluded": parsed["excluded"], "number": p["number"],
+                                        "title": p["title"], "ci": None, "merged": True}  # fmt: skip
             if self.release is not None:
                 for p in merged_prs:
                     if p.get("merge_sha"):
@@ -561,7 +569,7 @@ def derive(
     excluded_reason = None
     if pr_num:
         for bn, b in batches.items():
-            if int(pr_num) in (b.get("members") or []) and int(pr_num) != int(bn):
+            if not b.get("merged") and int(pr_num) in (b.get("members") or []) and int(pr_num) != int(bn):
                 batch_of = b
             if int(pr_num) in (b.get("excluded") or {}):
                 excluded_reason = b["excluded"][int(pr_num)]
@@ -845,6 +853,7 @@ def operator_command(
     task: Mapping[str, Any] | None,
     design: Mapping[str, Any] | None,
     index: Callable[[], dict[str, str]] = _script_index,
+    heads: Mapping[int, str] | None = None,
 ) -> str | None:
     """The exact command the operator runs for an operator-owned next step (copied client-side), else None."""
     nxt = item.get("next") or {}
@@ -852,16 +861,19 @@ def operator_command(
         return None
     text = str(nxt.get("text") or "")
     num = item.get("pr_number")
-    sha = (pr or {}).get("head_sha")
-    if num and re.search(r"\bmerge\b", text, re.I):
-        return f"gh pr merge {num} --merge" + (f" --match-head-commit {sha}" if sha else "")
+    m = re.search(r"\bmerge\b[^#]*#(\d+)", text, re.I)
+    if m:
+        # the PR the step names (a batch member's step names its batch PR), with that PR's head when known
+        target = int(m.group(1))
+        sha = (pr or {}).get("head_sha") if num and target == int(num) else (heads or {}).get(target)
+        return f"gh pr merge {target} --merge" + (f" --match-head-commit {sha}" if sha else "")
     if task:
         tid = task.get("task_id")
         hit = _SH_RE.search(str(task.get("title") or ""))
         path = index().get(hit.group(1)) if hit else None
         run = (f"bash {path}" if path.endswith(".sh") else f"python3 {path}") if path else None
-        done = f'python3 scripts/agent_claim.py task done {tid} --summary "<what you did>"'
-        return f"{run} && {done}" if run else f"python3 scripts/agent_claim.py task show {tid}"
+        # marking it done is the card's "Mark done" button (task_done): `task done` needs the owning session
+        return run or f"python3 scripts/agent_claim.py task show {tid}"
     if design and design.get("path"):
         return f"${{EDITOR:-nano}} {design['path']}  # status: APPROVED, with your words and the date"
     if num:
@@ -881,6 +893,12 @@ def item_actions(
     acts: list[str] = ["note"]
     if item.get("stage") in ("merged", "released", "verified"):
         return {"available": acts, "stale_claims": []}
+    if (
+        task
+        and re.match(r"^\s*OPERATOR\s*:", str(task.get("title") or ""), re.I)
+        and task.get("status") in ("free", "taken")
+    ):
+        acts.append("task_done")
     if task:
         acts.append("set_priority")
         acts.append("unhold" if task.get("held") else "hold")
@@ -1003,6 +1021,7 @@ def build_items(
     held_prs = {str(k): v for k, v in (queue.get("held_prs") or {}).items()}
     queued_prs = [int(e.get("pr")) for e in queue.get("next_batch") or [] if str(e.get("pr") or "").isdigit()]
     pr_notes = queue.get("pr_notes") or {}
+    heads = {int(n): p.get("head_sha") for n, p in open_by.items() if p.get("head_sha")}
     items = []
     for g in groups[:MAX_ITEMS]:
         task, cs, pr = g["task"], g["claims"], g["pr"]
@@ -1013,7 +1032,7 @@ def build_items(
             task=task, claims=cs, pr=pr, design=g.get("design"), batches=batches, health=health, now=now,
             stale_hours=stale_hours, held=held, queue_position=qpos,
         )  # fmt: skip
-        d["next"]["command"] = operator_command(d, pr, task, g.get("design"))
+        d["next"]["command"] = operator_command(d, pr, task, g.get("design"), heads=heads)
         d["actions"] = item_actions(d, task, cs, queued_prs, held_prs)
         lead = cs[0] if cs else None
         wl = (lead or {}).get("worklog") or {}

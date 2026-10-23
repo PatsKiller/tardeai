@@ -6,7 +6,7 @@
 export const COMMANDS_PATH = '/api/v2/coordination/commands'
 
 export type CommandName =
-  | 'note' | 'set_priority' | 'hold' | 'unhold' | 'batch_add' | 'batch_remove' | 'task_add' | 'task_split' | 'release_stale_claim'
+  | 'note' | 'set_priority' | 'hold' | 'unhold' | 'batch_add' | 'batch_remove' | 'task_add' | 'task_split' | 'task_done' | 'release_stale_claim'
 
 export type CommandResult = { ok: boolean; status: number | null; error?: string; detail?: string; result?: unknown; replayed?: boolean }
 

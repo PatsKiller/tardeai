@@ -500,6 +500,27 @@ class TaskBoard:
             self._write(t)
         return t
 
+    def operator_done(self, task_id: str, *, by: str, summary: str | None = None) -> dict[str, Any]:
+        """The operator marks one of their own to-dos (title ``OPERATOR: …``) done from the Work pipeline. Agent
+        tasks finish through ``done`` by their owning session, never here."""
+        with self.locked():
+            t = self.get(task_id)
+            if not re.match(r"^\s*OPERATOR\s*:", str(t.get("title") or ""), re.I):
+                raise TaskError(f"task {task_id} is not an OPERATOR: to-do; its agent finishes it with task done")
+            if t.get("status") in ("done", "split"):
+                raise TaskError(f"task {task_id} is already {t.get('status')}")
+            cid = t.get("claim_id") if t.get("status") == "taken" else None
+            if cid:
+                wl = self.claims.worklog(cid)
+                if wl.exists():
+                    wl.status(f"task {task_id} done by the operator" + (f": {summary}" if summary else ""))
+            now = self.claims.now()
+            t["status"] = "done"
+            t["done_at"] = B.iso(now)
+            self._event(t, "done", by=by, summary=B.clip(summary, 500))
+            self._write(t)
+        return t
+
     # -- read model -----------------------------------------------------------------------------------
 
     def board(self) -> dict[str, Any]:

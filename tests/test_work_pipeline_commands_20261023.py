@@ -356,3 +356,16 @@ def test_batch_queue_cli_reads_without_writing(tmp_path, capsys):
     out = capsys.readouterr()
     assert out.out.strip() == "2005" and "1996" in out.err
     assert C.queue_path(tmp_path / "claims").read_text() == before
+
+
+def test_task_done_only_for_operator_todos(tmp_path):
+    ctx = make_ctx(tmp_path)
+    op_task = add_task(tmp_path, title="OPERATOR: rotate DB password")
+    agent_task = add_task(tmp_path, title="Fix it", areas=["scripts/z.py"])
+    st, body = post(ctx, "task_done", {"task_id": agent_task["task_id"]})
+    assert st == 409 and body["error"] == "TASK_REFUSED"
+    st, body = post(ctx, "task_done", {"task_id": op_task["task_id"], "summary": "rotated"})
+    assert st == 200 and body["result"]["status"] == "done"
+    _cb, tb = boards(tmp_path)
+    ev = tb.get(op_task["task_id"])["history"][-1]
+    assert ev["event"] == "done" and ev["by"] == OP and ev["summary"] == "rotated"

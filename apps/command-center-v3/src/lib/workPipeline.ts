@@ -209,7 +209,7 @@ export function cellTitle(c: StageCell): string {
 }
 
 /** Which buttons a card shows: the server's `actions.available`, intersected with what the UI implements. */
-export const UI_ACTIONS = ['note', 'set_priority', 'hold', 'unhold', 'batch_add', 'batch_remove', 'task_split', 'release_stale_claim'] as const
+export const UI_ACTIONS = ['note', 'set_priority', 'hold', 'unhold', 'batch_add', 'batch_remove', 'task_split', 'task_done', 'release_stale_claim'] as const
 export function cardActions(it: PipelineItem): string[] {
   const avail = it.actions?.available || []
   return UI_ACTIONS.filter(a => avail.includes(a))
