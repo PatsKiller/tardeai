@@ -21,7 +21,12 @@ test('six tiles filter the float-first table; Gate 2 fields show —', async ({ 
   await mockApi(page, writes)
   await page.goto('/v3/trading?tab=Trade+AI')
   await expect(page.getByTestId('trade-ai-opportunities')).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByTestId('ta-run-line')).toContainText('awareness only')
+  await expect(page.getByTestId('ta-population-line')).toContainText('awareness only')
+  // Latest run vs today's universe are named separately (operator 2026-10-23).
+  await expect(page.getByTestId('ta-latest-run-tally')).toContainText('latest run:')
+  await expect(page.getByTestId('ta-universe-count')).toContainText('rows today (all runs)')
+  await expect(page.getByTestId('ta-run-age')).toContainText('Latest run')
+  await expect(page.getByTestId('ta-tile-go')).toContainText("today's universe")
   const rows = page.getByTestId('ta-row')
   const total = await rows.count()
   expect(total).toBeGreaterThan(20)
@@ -72,4 +77,25 @@ test('narrow viewport: no horizontal page overflow', async ({ page }) => {
   await expect(page.getByTestId('trade-ai-opportunities')).toBeVisible({ timeout: 60_000 })
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
   expect(overflow).toBeFalsy()
+})
+
+test('run age: red after 10 min in the scalp window, on the page and in the header', async ({ page }) => {
+  // Fixture run finished 2026-10-22T13:02:47Z = 09:02 ET (Thursday). At 09:20 ET it is 17 min old.
+  await page.clock.setFixedTime(new Date('2026-10-22T09:20:00-04:00'))
+  await mockApi(page, [])
+  // The header reads the same run from /trade-ai/summary; serve it the same fixture (later routes win).
+  await page.route(/\/api\/v2\/trade-ai\/summary/, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(TRADE_AI_FIXTURE.scanner) }))
+  await page.goto('/v3/trading?tab=Trade+AI')
+  const age = page.getByTestId('ta-run-age')
+  await expect(age).toBeVisible({ timeout: 60_000 })
+  await expect(age).toHaveAttribute('data-run-age-tone', 'bad')
+  await expect(age).toContainText('finished 09:02 ET · 17 min ago')
+  await expect(page.locator('.metric-strip-tile [data-run-age-tone]').first()).toHaveAttribute('data-run-age-tone', 'bad')
+})
+
+test('run age: fresh run is not flagged', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-10-22T09:05:00-04:00'))
+  await mockApi(page, [])
+  await page.goto('/v3/trading?tab=Trade+AI')
+  await expect(page.getByTestId('ta-run-age')).toHaveAttribute('data-run-age-tone', 'ok', { timeout: 60_000 })
 })

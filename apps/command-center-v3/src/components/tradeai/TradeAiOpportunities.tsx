@@ -9,7 +9,7 @@
  *  Gate 2 fields (catalyst type, grade, validation, action score, AI checks) show "—" with a tooltip until
  *  the CIO prospect record exists. Awareness only: no order, approval or 2FA control lives here.
  */
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../../lib/designTokens'
@@ -19,7 +19,7 @@ import {
   type Decision, type Filters, type L2Chip, type Opportunity, type SortKey,
 } from '../../lib/tradeAiOpportunities'
 import { tradeAiSurfaceFreshness } from '../../lib/surfaceFreshness'
-import { runLabel } from '../../lib/homeLabels'
+import { latestRunPhrase, scanRunAge } from '../../lib/scanRunAge'
 import { classifyRunHealth, runHealthChipColor, runHealthReasonCodes } from '../../lib/runHealth'
 import SharedMomentumCandidates from './SharedMomentumCandidates'
 
@@ -60,6 +60,12 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
   const [view, setView] = useState<'table' | 'cards'>('table')
   const [sel, setSel] = useState<string | null>(null)
   const [drawer, setDrawer] = useState<{ momentum: boolean; classic: boolean }>({ momentum: false, classic: false })
+  // Ticks the run-age chip between scanner refreshes so "4 min ago" does not freeze.
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 30_000)
+    return () => window.clearInterval(id)
+  }, [])
   const { data: alerts } = useApi<any>('/api/v3/active-trader/alerts?limit=300', 60_000, { enabled: !!tradeAi })
   const { data: candidates } = useApi<any>('/api/v2/trade-ai/candidates', 120_000, { enabled: !!tradeAi && !drawer.momentum })
 
@@ -93,6 +99,12 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
   const healthFloor = Number(tradeAi?.expected_min_symbols)
   const scannedN = tradeAi?.current_run_scanned ?? tradeAi?.latest_run_symbols_scanned ?? tradeAi?.ticker_count
   const scanned = summary.scanned_count ?? scannedN
+  // Slot 0700 is re-run through the morning; the page used to print "7:00 AM scan" over data
+  // from the 08:52 attempt. Lead with the run's finished time (ET) and age instead.
+  const slot = summary.run_label || tradeAi?.latest_run_label || tradeAi?.run_label
+  const age = scanRunAge(tradeAi?.latest_run_timestamp ?? summary.run_timestamp, slot, now)
+  const ageColor = age.tone === 'bad' ? toneVars('danger').color : age.tone === 'warn' ? toneVars('warning').color : TOKENS.text[1]
+  const latestPhrase = latestRunPhrase(summary)
   const l2For = (sym: string) => l2View(latestAlertFor(alerts, sym))
   const l2Short = (sym: string) => {
     const v = l2For(sym)
@@ -130,17 +142,26 @@ export default function TradeAiOpportunities({ tradeAi, error, loading, classic 
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
           <h2 style={{ margin: 0, fontSize: TYPE.lg + 4, fontWeight: 700, color: TOKENS.text[0] }}>Opportunities</h2>
-          <div data-testid="ta-run-line" style={{ fontSize: TYPE.md - 1, color: TOKENS.text[2] }}>
-            Run {summary.run_date ?? tradeAi?.run_date ?? '—'} · {runLabel(summary.run_label || tradeAi?.latest_run_label || tradeAi?.run_label, summary.run_date || tradeAi?.run_date)} slot
-            {scanned != null ? ` · ${scanned} scanned` : ''} ·{' '}
+          <div data-testid="ta-run-line" style={{ fontSize: TYPE.md - 1, color: TOKENS.text[2], display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 6, rowGap: 2 }}>
+            <span data-testid="ta-run-age" data-run-age-min={age.ageMin != null ? String(age.ageMin) : ''} data-run-age-tone={age.tone} title={age.tip}
+              style={{ color: ageColor, fontWeight: 800, fontSize: TYPE.md + 1 }}>
+              {age.tone === 'bad' ? '▲ ' : ''}Latest run {age.label}
+            </span>
+            <span>· {summary.run_date ?? tradeAi?.run_date ?? '—'}{age.slotLabel ? ` · ${age.slotLabel}` : ''}</span>
+            <span>·{' '}
             <span data-testid="trade-ai-run-health-chip" data-run-id={tradeAi?.run_id ?? ''}
               data-run-scanned={scannedN != null ? String(scannedN) : ''}
               data-run-floor={healthFloor && isFinite(healthFloor) ? String(healthFloor) : ''}
               data-run-health={healthTier} data-run-integrity={summary.count_integrity ?? ''}
               title={healthCodes.length ? healthCodes.join(', ') : health}
-              style={{ color: runHealthChipColor(healthTier), fontWeight: 700 }}>{health}</span>
-            {fresh.stale && <span data-testid="trade-ai-stale-session" style={{ color: toneVars('warning').color, fontWeight: 700 }}> · STALE SESSION</span>}
-            {' '}· {all.length} in the scanner universe · awareness only, verdicts never grant approval
+              style={{ color: runHealthChipColor(healthTier), fontWeight: 700 }}>{health}</span></span>
+            {fresh.stale && <span data-testid="trade-ai-stale-session" style={{ color: toneVars('warning').color, fontWeight: 700 }}>· STALE SESSION</span>}
+          </div>
+          <div data-testid="ta-population-line" style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}
+            title="The header SETUPS · LATEST RUN tile counts the latest run. The tiles below count today's whole universe. The two differ by design.">
+            <span data-testid="ta-latest-run-tally">{latestPhrase ?? `latest run: ${scanned ?? '—'} scanned`}</span>
+            {' '}· <span data-testid="ta-universe-count">universe: {all.length} rows today (all runs) — the tiles below count this</span>
+            {' '}· awareness only, verdicts never grant approval
           </div>
         </div>
       </div>

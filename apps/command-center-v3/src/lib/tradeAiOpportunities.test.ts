@@ -25,6 +25,10 @@ check('Gate 2 fields are null until served', all.every(r => r.catalystGrade === 
 const tiles = buildTiles(all, NO_FILTERS)
 check('six tiles', tiles.length === 6)
 check('GO tile counts GO rows', tiles[0].value === all.filter(r => r.decision === 'GO').length)
+check('decision tiles name today\'s universe, not the latest run', ['go', 'wait', 'manual'].every(k => {
+  const t = tiles.find(x => x.key === k)
+  return !!t && t.hint.startsWith(`today's universe · ${all.length} rows`) && /LATEST RUN/.test(t.tip ?? '')
+}))
 check('grade tile disabled without Gate 2', tiles.find(t => t.key === 'grade')?.disabled === true && tiles.find(t => t.key === 'grade')?.value === null)
 check('float tile counts < 5M', tiles.find(t => t.key === 'float')?.value === all.filter(r => r.float != null && r.float < 5).length)
 const micro = applyFilters(all, { ...NO_FILTERS, floatMax: 5 })
