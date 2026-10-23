@@ -9,6 +9,7 @@
     "paths": [
       "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
       "~/tradeai-exact-main-20260827",
+      "~/trade-ai-releases/train-checkout",
       "~/trade-ai-releases/portfolio-server/CURRENT"
     ]
   },

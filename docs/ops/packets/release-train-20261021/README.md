@@ -201,7 +201,9 @@ unless the operator rules otherwise.
 
 The units:
 - `OnCalendar` is set to 12:00:00 and 17:30:00 `America/New_York`, with `Persistent=false`.
-- `ExecStart` is `<canonical>/.venv/bin/python ~/tradeai-exact-main-20260827/scripts/release_window.py run`.
+- `ExecStart` is `<canonical>/.venv/bin/python <release checkout>/scripts/release_window.py run`. The release
+  checkout is `${TRADEAI_RELEASE_CHECKOUT:-~/trade-ai-releases/train-checkout}` (2026-10-22). Before that it was
+  `~/tradeai-exact-main-20260827`, a dated path that no longer exists.
   The runner is read from the release checkout (reviewed main code with a git remote), never the dev tree.
 - `SuccessExitStatus=2 3`: disarmed and stopped windows are receipts. Exit codes 4 and 5 (rolled back, rollback
   failed) leave a failed `tradeai-*` unit, which Needs-action also shows.

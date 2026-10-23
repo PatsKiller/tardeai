@@ -1979,6 +1979,17 @@ class TrainController:
 
     # -- select / freeze -------------------------------------------------------------------------------
     def _select(self, rec: dict) -> tuple[list[QueueEntry], dict]:
+        # The release checkout first (RELEASE_TRAIN_CHECKOUT_20261022): the queue's `gh pr list`, the changesets and
+        # main_head all run in it. Created when absent, fetched when present; a failure names the path.
+        ensure = getattr(self.host, "ensure_checkout", None)
+        if ensure is not None:
+            try:
+                done = ensure()
+            except (RuntimeError, ValueError) as exc:
+                rec["release_checkout"] = {"path": str(getattr(self.host, "checkout", "")), "ok": False}
+                raise Halt(NO_OP, "MAIN_UNREADABLE", str(exc)[:300]) from exc
+            rec["release_checkout"] = {"path": str(getattr(self.host, "checkout", "")), "ok": True, "action": done}
+            self.say(f"release checkout {getattr(self.host, 'checkout', '')}: {done}")
         snap = self.queue.snapshot()
         rec["queue"] = {"source": snap.source, "as_of": snap.as_of, "complete": snap.complete,
                         "reasons": snap.reasons, "open": len(snap.entries)}

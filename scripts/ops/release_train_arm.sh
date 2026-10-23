@@ -591,7 +591,18 @@ step_E() {
       [[ -n "${TRADEAI_CONFIG_WRITE_GRANT:-}" ]] || { receipt E REFUSED "no grant"; refuse "set TRADEAI_CONFIG_WRITE_GRANT=<config-write grant id naming n8n-live-lanes.env>"; }
       e_preflight_warn >/dev/null
       miss="$(e_missing)"
-      if [[ -z "$miss" && "$(e_restart_needed)" == 0 ]]; then receipt E NOOP "listed; services current"; say "NOOP: all 5 lanes listed and both services started after the last edit"; return 0; fi
+      if [[ -z "$miss" && "$(e_restart_needed)" == 0 ]]; then
+        # NOOP still re-runs the relay contract probe, so a re-arm after a FAILED receipt can produce a durable
+        # PASS (or FAILED) receipt without editing the live list or restarting anything.
+        local how; how="$( [[ "$RELAY_PROBE" == 1 ]] && echo probe || echo static )"
+        if ! e_relay_check probe; then
+          receipt E FAILED "NOOP (listed; services current); relay contract check FAILED ($how)"
+          echo "FAILED: lanes listed and services current, but check_n8n_relay_contract.py refused"; exit 1
+        fi
+        receipt E NOOP "listed; services current; relay contract PASS ($how)"
+        say "NOOP: all 5 lanes listed and both services started after the last edit; relay contract PASS"
+        return 0
+      fi
       if [[ -n "$miss" ]]; then
         install -d -m 700 "$(dirname "$LIVE_ENV")"
         [[ -f "$LIVE_ENV" ]] && cp -p "$LIVE_ENV" "$LIVE_ENV.bak-$(stamp)-release-train-arm"
