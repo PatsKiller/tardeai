@@ -28,7 +28,7 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 
 | Entity | Domain | Status | Authoritative store | Single writer | Refresh lane | Freshness SLA | Readers |
 |---|---|---|---|---|---|---|---|
-| CIO prospect — the per-security truth | **cio_prospect** | PROPOSED | `cio_prospect` (table) | `scripts/lib/cio_instrument_record.py` | n8n_shadow_then_live: cio-opportunity-curator, cio-entry-state (dispatcher rows; shadow -> canary -> cutover under AGENTS.md §23.21) | stage/conviction 30 min in market hours; thesis 24 h; every field carries evidence_at and expires_at and renders its age | Home, Watch, Trade AI, Options, Open Trades, Telegram, Proposals, Re-entry |
+| CIO prospect — the per-security truth | **cio_prospect** | APPROVED | `cio_prospect` (table) | `scripts/lib/cio_instrument_record.py` | n8n_shadow_then_live: cio-opportunity-curator, cio-entry-state (dispatcher rows; shadow -> canary -> cutover under AGENTS.md §23.21) | stage/conviction 30 min in market hours; thesis 24 h; every field carries evidence_at and expires_at and renders its age | Home, Watch, Trade AI, Options, Open Trades, Telegram, Proposals, Re-entry |
 | Security identity | **security_identity** | PROPOSED | `runtime/identity_registry.json` (file) | `scripts/lib/identity_registry.py` | n8n: catalyst-graph, identity-sweep-stage0, mint-identity-registry | 24 h; a symbol without a CONFIRMED GUID renders 'identity unresolved', never a placeholder | Home, Watch, Trade AI, Options, Open Trades, Telegram, Proposals, Re-entry |
 | Positions, cash and cost basis | **positions_store** | PROPOSED | `positions_current` (table) | `scripts/positions_sync.py` | host: positions-sync · n8n never-list → host | 30 min in market hours (positions_sync.stale_after_minutes_market) | Home, Open Trades, Re-entry, Options, Telegram, Proposals |
 | Transactions and lots | **transactions** | PROPOSED | `trade_transactions` (table) | UNCONSOLIDATED → `scripts/schwab_transaction_ingest.py` (exists) | host: schwab-transaction-ingest-at-3-18-33-48-9-16 · n8n never-list → host | 15 min in market hours; lots with each positions run | Open Trades, Re-entry, Home |
@@ -48,9 +48,9 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 
 ## Entity by entity
 
-### CIO prospect record — `cio_prospect` (PROPOSED)
+### CIO prospect record — `cio_prospect` (APPROVED)
 
-**Operator decision (§17):** Grant cio_prospect as the single per-security store: a Postgres table keyed by security_guid, written only by InstrumentRecordStore (scripts/lib/cio_instrument_record.py); opportunity_assessment becomes its export (superseded, not removed).
+**Granted:** operator 2026-10-22 — Operator reply 2026-10-22 ~22:30 ET (verbatim): "yes i approve 'approve all' (A–L)" — item E, as presented: "Approve the `cio_prospect` registry row, the migration (sha `6bac8924…`), and the read-only reader batch for its shadow lane. I apply the migration in a release after a dry run." Migration up file migrations/2026_10_22_cio_prospect.sql sha256=6bac89245fd6b990dc8a59c8fa6aeb85f34e6a97a5dd61e2fd3fa9b6e861f2be. Migration and InstrumentRecordStore backend built inert in PR #1944; shadow lane PR #1953. Recorded by task T-20261023-9c7a5c.
 
 - **Facts:** stage, conviction, stance, catalyst grade, next trigger, what's missing, next action, conflicts, unified edge
 - **Store of record:** `cio_prospect` (table) — One row per security_guid (current state) plus cio_prospect_events (append-only change log, same writer). Postgres, so it is Supabase-portable (AGENTS.md §24.9). Not created: the migration is its own operator-approved PR after this row is granted.
@@ -61,19 +61,18 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 - **Read path (projection):** `cio_prospect` — to_build (scripts/lib/data_broker/cio_prospect.py)
 - **Readers:** Home, Watch, Trade AI, Options, Open Trades, Telegram, Proposals, Re-entry
 - **Supersedes (on grant):** opportunity_assessment — marked, never removed, until their readers move
-- **Measured 2026-10-22 (repo scan, scripts/lib/data_dictionary.measure):** 0 writer file(s) of the store
 
 | Copy | Role | How | Page/API files reading it (measured) |
 |---|---|---|---|
-| `data/cio/cio_opportunity_projection.json` (file) | derived | opportunity view exported from cio_prospect by the CIO writer; registry domain opportunity_assessment is superseded, not removed, until its readers move | 1 |
-| `cio/cio_instrument_records.jsonl` (file) | derived | today InstrumentRecordStore's file; phase 1 dual-writes it beside the table, phase 4 makes it an export; retired later by archive + tripwire, never deleted | 0 |
-| `cio/ticker_research_state.jsonl` (file) | retiring | per-symbol decision/evidence watermark folds into cio_prospect; archive + tripwire after the compare phase | 0 |
+| `data/cio/cio_opportunity_projection.json` (file) | derived | opportunity view exported from cio_prospect by the CIO writer; registry domain opportunity_assessment is superseded, not removed, until its readers move | — |
+| `cio/cio_instrument_records.jsonl` (file) | derived | today InstrumentRecordStore's file; phase 1 dual-writes it beside the table, phase 4 makes it an export; retired later by archive + tripwire, never deleted | — |
+| `cio/ticker_research_state.jsonl` (file) | retiring | per-symbol decision/evidence watermark folds into cio_prospect; archive + tripwire after the compare phase | — |
 | `cio/security_research_spine.jsonl` (file) | history | SecurityResearchSpine@v1 contribution ledger (NO SILOS); its summary becomes the prospect's research section; view_for_silo reads the prospect | — |
-| `cio_entry_states` (table) | retiring | entry state becomes cio_prospect.stage written through InstrumentRecordStore; readers (options_engine, notify_material_change) move to the projection; then archive + tripwire | 0 |
+| `cio_entry_states` (table) | retiring | entry state becomes cio_prospect.stage written through InstrumentRecordStore; readers (options_engine, notify_material_change) move to the projection; then archive + tripwire | — |
 | `decision_packets` (table) | history | per-run Watch decision log; the current per-symbol decision is read from cio_prospect | — |
-| `cio/cio_investment_brief.json` (file) | derived | operator product rendered from cio_prospect (CIOOperatorProduct@v1) | 1 |
-| `watchlist_research_cards` (table) | retiring | private per-desk research (NO SILOS defect); contribute into the spine; archive + tripwire | 1 |
-| `advisor_recommendations` (table) | retiring | dead since 2026-07-20; archive + tripwire | 1 |
+| `cio/cio_investment_brief.json` (file) | derived | operator product rendered from cio_prospect (CIOOperatorProduct@v1) | — |
+| `watchlist_research_cards` (table) | retiring | private per-desk research (NO SILOS defect); contribute into the spine; archive + tripwire | — |
+| `advisor_recommendations` (table) | retiring | dead since 2026-07-20; archive + tripwire | — |
 
 ### Identity registry (GUIDs) — `security_identity` (PROPOSED)
 
