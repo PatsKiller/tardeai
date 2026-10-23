@@ -138,6 +138,16 @@ def reentry_rows() -> dict[str, dict[str, Any]]:
                 "distance_pct": intel.get("distance_pct"),
                 "price_as_of": r.get("price_as_of"),
                 "plan_as_of": r.get("plan_as_of"),
+                # Reference levels and context for the Watch prospects adapter (never orders; _ref keys are not
+                # cio_instrument_record.BEHAVIOR_FIELDS names).
+                "price": _f(r.get("price")),
+                "rsi": _f(r.get("rsi")),
+                "entry_low_ref": _f(r.get("entry_low")),
+                "entry_high_ref": _f(r.get("entry_high")),
+                "stop_ref": _f(r.get("stop")),
+                "target_ref": _f(r.get("target")),
+                "company": r.get("company"),
+                "held": bool(r.get("held")),
             }
     except Exception:
         rows = {}
@@ -178,6 +188,12 @@ def facts(card: dict[str, Any], inp: dict[str, Any], *, now: datetime) -> dict[s
         "plan_confidence": _f(plan.get("confidence")) if plan_fresh else None,
         "plan_rr": _f(plan.get("risk_reward")) if plan_fresh else None,
         "plan_stop": _f(plan.get("stop_price")) if plan_fresh else None,
+        # Reference levels only (MBI_BEHAVIOR = 0): the Watch prospects page seeds the operator's existing
+        # Propose form with them; nothing here sizes, orders or stops. Keys end in _ref so none is a
+        # cio_instrument_record.BEHAVIOR_FIELDS name.
+        "plan_levels": ({"entry_low_ref": lo, "entry_high_ref": hi, "limit_ref": _f(plan.get("limit_price")),
+                         "stop_ref": _f(plan.get("stop_price")), "target_ref": _f(plan.get("target_price")),
+                         "created_at": plan_at.isoformat() if plan_at else None} if plan_fresh else None),
         "in_zone": in_zone,
         "strategy_confidence": _f(strat.get("confidence")),
         "strategy_rr": _f(strat.get("risk_reward")),
@@ -368,7 +384,9 @@ def decide(card: dict[str, Any], inp: dict[str, Any], *, now: Optional[datetime]
             "in_zone": fx["in_zone"],
             "near_trigger": fx["near_trigger"],
             "synthesis": fx["synthesis"] or None,
+            "synthesis_at": fx["synthesis_at"].isoformat() if fx["synthesis_at"] else None,
             "earnings_days": fx["earnings_days"],
+            "plan_levels": fx["plan_levels"],
         },
     }
 

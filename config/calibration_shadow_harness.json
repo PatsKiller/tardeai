@@ -1,0 +1,17 @@
+{
+  "schema": "CalibrationShadowHarnessConfig@v1",
+  "_comment": "scripts/calibration_shadow_harness.py (operator design 2026-10-22). Evaluates each PROPOSED signal_calibration threshold beside the current one over the next `sessions` forward sessions. Recommendations are proposals; the operator ratifies (AGENTS.md §17). current_values: the CURRENT production value of a knob the operator has not set in config/scalp_signal_engine.yaml (a set value there wins). Changed by reviewed PR only.",
+  "sessions": 5,
+  "min_sample": 30,
+  "min_edge": 0.03,
+  "max_exit_regression_pct": 0.10,
+  "drift_tolerance": 0.10,
+  "_current_values": "The engine defaults in scripts/active_trader/momentum_alerts.AlertConfig, read under execution-engineering grant e88bf21e (2026-10-22). The harness lane does not import the broker execution set; tests/test_calibration_shadow_harness_20261022.py pins these equal to AlertConfig so a change there turns the test red.",
+  "current_values": {
+    "active_trader_alerts.max_spread_bps": 80.0,
+    "active_trader_alerts.min_buy_ratio": 0.55,
+    "active_trader_alerts.min_depth_ratio_armed": 1.0
+  },
+  "_current_scale": "Multiplier from a knob's config units to its journal feature's units. min_stop.pct_of_price is a fraction of price (0.01 = 1%); the journal feature risk_pct is a percent. signal_calibration now proposes in knob units with proposed_feature_value beside it (KNOB_UNIT_SCALE, 2026-10-22 unit fix); the harness compares in feature units.",
+  "current_scale": {"min_stop.pct_of_price": 100}
+}

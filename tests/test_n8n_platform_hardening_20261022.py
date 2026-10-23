@@ -2,7 +2,7 @@
 
 Pinned here:
 
-* the platform probe measures each element from host evidence (fake runner: docker inspect with an env template
+* the platform probe measures each element from host evidence (fake runner: docker container/image inspect, an env template
   that names only allowlisted keys, pg_roles, systemctl --user, ss, docker network inspect, an operator ufw
   capture) and an element PASSes only from a fresh host probe — a cited or stale file caps at PARTIAL;
 * the ufw verdict needs active + default deny + ALLOW (lab subnet, lab bridge) before DENY, and refuses a
@@ -48,6 +48,7 @@ from tests.test_n8n_workflow_drift_20261009 import _gen_dir, _git_doc, _live  # 
 PACKET = ROOT / "docs" / "ops" / "packets" / "n8n-platform-hardening-20261022"
 NOW = datetime(2026, 10, 22, 14, 0, tzinfo=timezone.utc)
 DIGEST = "sha256:c6a3a0461d1d3ffc16d849adf57606c2b028667ade70cce2faa2ff094734873c"
+IMAGE_ID = "sha256:" + "a" * 64
 
 UFW_GOOD = """Status: active
 Logging: on (low)
@@ -85,6 +86,8 @@ class FakeHost:
         }
         self.env.update(over.pop("env", {}))
         self.image = over.pop("image", f"n8nio/n8n:2.43.0@{DIGEST}")
+        self.repo_digests = over.pop("repo_digests", [f"n8nio/n8n@{DIGEST}"])
+        self.ufw_probe = over.pop("ufw_probe", True)
         self.rolsuper = over.pop("rolsuper", False)
         self.timers = over.pop("timers", {P.DRIFT_TIMER: ("enabled", "active"), P.DEADMAN_TIMER: ("enabled", "active")})
         self.binds = over.pop("binds", ["127.0.0.1:5678", "172.19.0.1:18092"])
@@ -94,18 +97,51 @@ class FakeHost:
         self.calls.append(list(argv))
         if argv[:2] == ["docker", "inspect"] and "Config.Env" in argv[-1]:
             if argv[2] == P.N8N_CONTAINER:
-                return 0, "".join(f"{k}={v}\n" for k, v in self.env.items()) + "N8N_ENCRYPTION_KEY=SHOULD-BE-DROPPED\n", ""
+                return (
+                    0,
+                    "".join(f"{k}={v}\n" for k, v in self.env.items()) + "N8N_ENCRYPTION_KEY=SHOULD-BE-DROPPED\n",
+                    "",
+                )
             return 0, "POSTGRES_USER=n8n\nPOSTGRES_DB=n8n\n", ""
         if argv[:2] == ["docker", "inspect"]:
-            return 0, f"{self.image} {DIGEST}\n", ""
+            assert "RepoDigests" not in argv[-1], "RepoDigests must be read from ImageInspect"
+            assert argv[2:4] == ["--type=container", P.N8N_CONTAINER]
+            return 0, f"{self.image}\n{IMAGE_ID}\n", ""
+        if argv[:3] == ["docker", "image", "inspect"]:
+            assert argv[3] == IMAGE_ID
+            assert "RepoDigests" in argv[-1]
+            return 0, json.dumps(self.repo_digests) + "\n", ""
+        if argv[:3] == [P.SUDO_BIN, "-n", P.UFW_BIN]:
+            if self.ufw_probe and argv[3:5] == ["status", "verbose"]:
+                return 0, UFW_GOOD.split("[ 1]")[0], ""
+            if self.ufw_probe and argv[3:5] == ["status", "numbered"]:
+                return 0, UFW_GOOD, ""
+            return 1, "", "not authorized"
         if argv[:2] == ["docker", "exec"]:
-            return 0, json.dumps({"role": "n8n_app", "rolsuper": self.rolsuper, "rolcreaterole": False,
-                                  "rolcreatedb": False, "rolreplication": False, "rolbypassrls": False}) + "\n", ""
+            return (
+                0,
+                json.dumps(
+                    {
+                        "role": "n8n_app",
+                        "rolsuper": self.rolsuper,
+                        "rolcreaterole": False,
+                        "rolcreatedb": False,
+                        "rolreplication": False,
+                        "rolbypassrls": False,
+                    }
+                )
+                + "\n",
+                "",
+            )
         if argv[:3] == ["docker", "network", "inspect"]:
             return 0, "fdc1921eeccb00c873de34a39e25a2c4879f322be49b2ae5272d54c3f29135c8 172.19.0.0/16 172.19.0.1\n", ""
         if argv[0] == "systemctl":
             en, ac = self.timers.get(argv[3], ("not-found", "inactive"))
-            return (0 if argv[2] == "is-enabled" and en == "enabled" else 1), (en if argv[2] == "is-enabled" else ac) + "\n", ""
+            return (
+                (0 if argv[2] == "is-enabled" and en == "enabled" else 1),
+                (en if argv[2] == "is-enabled" else ac) + "\n",
+                "",
+            )
         if argv[0] == "ss":
             return 0, "".join(f"LISTEN 0 64 {b} 0.0.0.0:*\n" for b in self.binds), ""
         return 127, "", "unexpected " + " ".join(argv)
@@ -115,14 +151,38 @@ def _host_root(tmp_path: Path, *, now=NOW, ufw=UFW_GOOD) -> Path:
     root = tmp_path / "state"
     rt = root / "data" / "runtime"
     rt.mkdir(parents=True)
-    (rt / "n8n_drift_watch_last.json").write_text(json.dumps(
-        {"schema": "N8nDriftWatch@v1", "as_of": (now - timedelta(minutes=10)).isoformat(), "mode": "live",
-         "verdict": "CLEAN", "p1_path": PG.P1_PATH}))
-    (rt / "n8n_workflow_drift_last.json").write_text(json.dumps(
-        {"schema": "N8nWorkflowDriftReceipt@v1", "as_of": (now - timedelta(minutes=10)).isoformat(), "verdict": "CLEAN"}))
-    (rt / "n8n_host_deadman_last.json").write_text(json.dumps(
-        {"schema": "N8nHostDeadman@v1", "checked_at": (now - timedelta(minutes=3)).isoformat(), "mode": "live",
-         "status": "OK", "runs_inside_n8n": False, "alert_path": PG.P1_PATH}))
+    (rt / "n8n_drift_watch_last.json").write_text(
+        json.dumps(
+            {
+                "schema": "N8nDriftWatch@v1",
+                "as_of": (now - timedelta(minutes=10)).isoformat(),
+                "mode": "live",
+                "verdict": "CLEAN",
+                "p1_path": PG.P1_PATH,
+            }
+        )
+    )
+    (rt / "n8n_workflow_drift_last.json").write_text(
+        json.dumps(
+            {
+                "schema": "N8nWorkflowDriftReceipt@v1",
+                "as_of": (now - timedelta(minutes=10)).isoformat(),
+                "verdict": "CLEAN",
+            }
+        )
+    )
+    (rt / "n8n_host_deadman_last.json").write_text(
+        json.dumps(
+            {
+                "schema": "N8nHostDeadman@v1",
+                "checked_at": (now - timedelta(minutes=3)).isoformat(),
+                "mode": "live",
+                "status": "OK",
+                "runs_inside_n8n": False,
+                "alert_path": PG.P1_PATH,
+            }
+        )
+    )
     if ufw is not None:
         cap = rt / "ufw_status_n8n_relay.txt"
         cap.write_text(ufw)
@@ -143,6 +203,17 @@ def test_a_hardened_host_passes_all_six_from_a_fresh_probe(tmp_path):
     assert facts["schema"] == F.PLATFORM_FACTS_SCHEMA and facts["source_kind"] == "host_probe"
     plat = F.score_platform(facts, now=NOW)
     assert {k: v["status"] for k, v in plat.items()} == {f"FW-P{i}": F.PASS for i in range(1, 7)}, plat
+
+
+def test_fw_p5_reads_container_reference_and_repo_digests_from_distinct_objects(tmp_path):
+    host = FakeHost()
+    plat = F.score_platform(_probe(tmp_path, host), now=NOW)
+    container_calls = [c for c in host.calls if c[:2] == ["docker", "inspect"] and "Config.Image" in c[-1]]
+    image_calls = [c for c in host.calls if c[:3] == ["docker", "image", "inspect"]]
+    assert len(container_calls) == len(image_calls) == 1
+    assert container_calls[0][-1] == "{{.Config.Image}}\n{{.Image}}"
+    assert image_calls[0][3:5] == [IMAGE_ID, "--format"]
+    assert plat["FW-P5"]["status"] == F.PASS
 
 
 def test_the_probe_never_reads_a_secret_env_value(tmp_path):
@@ -176,9 +247,23 @@ def test_each_element_fails_on_its_own_host_evidence(tmp_path, over, element, ne
 
 
 def test_a_digest_pin_that_is_not_the_running_image_is_not_a_pin(tmp_path):
-    host = FakeHost(image="n8nio/n8n:2.43.0@sha256:" + "0" * 64)
+    host = FakeHost(repo_digests=["n8nio/n8n@sha256:" + "0" * 64])
     plat = F.score_platform(_probe(tmp_path, host), now=NOW)
-    assert plat["FW-P5"]["status"] == F.PARTIAL and "NOT the running image" in plat["FW-P5"]["evidence"]
+    assert (
+        plat["FW-P5"]["status"] == F.PARTIAL
+        and "NOT present in the running image RepoDigests" in plat["FW-P5"]["evidence"]
+    )
+
+
+def test_saved_ufw_capture_cannot_authorize_firewall_pass(tmp_path):
+    facts = _probe(tmp_path, FakeHost(ufw_probe=False))
+    platform = F.score_platform(facts, now=NOW)
+    assert platform["FW-P4"]["status"] == F.FAIL
+    assert "saved capture cannot authorize PASS" in platform["FW-P4"]["evidence"]
+    assert (
+        facts["facts"]["relay_bind_firewall_verified"]["detail"]["ufw_evidence_source"]
+        == "untrusted_capture_or_unavailable"
+    )
 
 
 def test_stale_or_cannot_run_receipts_fail_p3_and_p6(tmp_path):
@@ -194,11 +279,38 @@ def test_stale_or_cannot_run_receipts_fail_p3_and_p6(tmp_path):
 def test_a_cited_or_stale_facts_file_can_never_pass(tmp_path):
     facts = _probe(tmp_path)
     cited = {k: v for k, v in facts.items() if k not in ("source_kind", "probed_at")}
-    assert all(v["status"] == F.PARTIAL and "PASS withheld" in v["evidence"] for v in F.score_platform(cited, now=NOW).values())
+    assert all(
+        v["status"] == F.PARTIAL and "PASS withheld" in v["evidence"] for v in F.score_platform(cited, now=NOW).values()
+    )
     stale = F.score_platform(facts, now=NOW + timedelta(hours=25))
     assert all(v["status"] == F.PARTIAL for v in stale.values())
     committed = json.loads((ROOT / F.DEFAULT_PLATFORM).read_text())
     assert F.score_platform(committed)["FW-P2"]["status"] == F.FAIL  # the 2026-10-15 measurement is unchanged
+
+
+def test_a_fresh_forged_host_probe_file_cannot_authorize_pass(tmp_path):
+    facts = _probe(tmp_path)
+    facts["probed_at"] = datetime.now(timezone.utc).isoformat()
+    f = tmp_path / "forged-host-probe.json"
+    f.write_text(json.dumps(facts))
+
+    loaded, source = IR.load_platform_facts(str(f))
+    report = IR.platform_report(loaded)
+
+    assert source["kind"] == "cited_file"
+    assert loaded["source_kind"] == "cited_file"
+    assert all(v["status"] == F.PARTIAL for v in report.values()), report
+
+
+def test_only_direct_host_probe_can_authorize_fresh_pass(tmp_path):
+    # platform_report() judges freshness against the real clock, so the probe must be stamped "now", not NOW.
+    now = datetime.now(timezone.utc)
+    facts = P.probe(root=_host_root(tmp_path, now=now), now=now, run=FakeHost())
+    loaded, source = IR.load_platform_facts(probe_host=True, prober=lambda: facts)
+    report = IR.platform_report(loaded)
+
+    assert source["kind"] == "host_probe"
+    assert {k: v["status"] for k, v in report.items()} == {f"FW-P{i}": F.PASS for i in range(1, 7)}
 
 
 # ── ufw (FW-P4) ──────────────────────────────────────────────────────────────────────────────────────────────────
@@ -216,11 +328,24 @@ def test_ufw_good_rules_pass():
     [
         (lambda t: t.replace("Status: active", "Status: inactive"), "ufw status inactive"),
         (lambda t: t.replace("Default: deny (incoming)", "Default: allow (incoming)"), "default incoming"),
-        (lambda t: t.replace("[ 2] 172.19.0.1 18092/tcp       DENY IN     Anywhere", "[ 2] 22/tcp DENY IN Anywhere"), "no DENY"),
+        (
+            lambda t: t.replace("[ 2] 172.19.0.1 18092/tcp       DENY IN     Anywhere", "[ 2] 22/tcp DENY IN Anywhere"),
+            "no DENY",
+        ),
         (lambda t: t.replace("on br-fdc1921eeccb ", "on br-000000000000 "), "no ALLOW"),
-        (lambda t: t.replace("[ 1] 172.19.0.1 18092/tcp on br-fdc1921eeccb ALLOW IN    172.19.0.0/16",
-                             "[ 9] 172.19.0.1 18092/tcp on br-fdc1921eeccb ALLOW IN    172.19.0.0/16"), "after the DENY"),
-        (lambda t: t.replace("[ 3] 22/tcp", "[ 0] Anywhere                   ALLOW IN    172.16.0.0/12\n[ 3] 22/tcp"), "shadows"),
+        (
+            lambda t: t.replace(
+                "[ 1] 172.19.0.1 18092/tcp on br-fdc1921eeccb ALLOW IN    172.19.0.0/16",
+                "[ 9] 172.19.0.1 18092/tcp on br-fdc1921eeccb ALLOW IN    172.19.0.0/16",
+            ),
+            "after the DENY",
+        ),
+        (
+            lambda t: t.replace(
+                "[ 3] 22/tcp", "[ 0] Anywhere                   ALLOW IN    172.16.0.0/12\n[ 3] 22/tcp"
+            ),
+            "shadows",
+        ),
         (lambda t: t + "[ 0] 18000:19000/tcp            ALLOW IN    Anywhere\n", "shadows"),
     ],
 )
@@ -229,14 +354,14 @@ def test_ufw_rejects_each_gap(mutate, needle):
     assert not ok and any(needle in p for p in problems), problems
 
 
-def test_missing_or_old_ufw_capture_fails_p4_with_the_operator_command(tmp_path):
+def test_live_ufw_probe_does_not_depend_on_saved_capture(tmp_path):
     root = _host_root(tmp_path, ufw=None)
     ev = F.score_platform(_probe(tmp_path, root=root), now=NOW)["FW-P4"]
-    assert ev["status"] == F.FAIL and "sudo ufw status verbose" in ev["evidence"]
+    assert ev["status"] == F.PASS
     root2 = _host_root(tmp_path / "old")
     cap = root2 / P.UFW_CAPTURE_REL
     os.utime(cap, (NOW.timestamp() - 9 * 86400,) * 2)
-    assert "d old" in F.score_platform(_probe(tmp_path, root=root2), now=NOW)["FW-P4"]["evidence"]
+    assert F.score_platform(_probe(tmp_path, root=root2), now=NOW)["FW-P4"]["status"] == F.PASS
 
 
 # ── the pager (onset / remind / recover) ─────────────────────────────────────────────────────────────────────────
@@ -290,9 +415,15 @@ class Sender:
 def _dw(tmp_path, workflows, *, live, sender=None, now=NOW, previewer=None):
     gen = _gen_dir(tmp_path)
     return DW.run_once(
-        live=live, root=tmp_path / "state", workflows=workflows, now=now, sender=sender,
+        live=live,
+        root=tmp_path / "state",
+        workflows=workflows,
+        now=now,
+        sender=sender,
         previewer=previewer or (lambda *a, **k: {"would_send": True, "reason": "would_send"}),
-        generated_dir=gen, generic_dir=tmp_path / "no-generic", index_path=gen / "INDEX.json",
+        generated_dir=gen,
+        generic_dir=tmp_path / "no-generic",
+        index_path=gen / "INDEX.json",
     )
 
 
@@ -353,13 +484,23 @@ def test_drift_watch_cannot_run_is_not_drift_and_pages_nothing(tmp_path):
 def _hb(root: Path, age_min: float):
     p = root / DM.HEARTBEAT_REL
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({"schema": "LaneRunReceipt@v1", "lane_id": "heartbeat-watch",
-                             "ok_at": (NOW - timedelta(minutes=age_min)).isoformat()}))
+    p.write_text(
+        json.dumps(
+            {
+                "schema": "LaneRunReceipt@v1",
+                "lane_id": "heartbeat-watch",
+                "ok_at": (NOW - timedelta(minutes=age_min)).isoformat(),
+            }
+        )
+    )
 
 
 def _dm(root, *, ok=True, live=True, sender=None, now=NOW):
     return DM.run_once(
-        live=live, root=root, now=now, sender=sender,
+        live=live,
+        root=root,
+        now=now,
+        sender=sender,
         prober=lambda u: {"ok": ok, "http_status": 200 if ok else None, "error": None if ok else "connection_refused"},
         previewer=lambda *a, **k: {"would_send": True, "reason": "would_send"},
     )
@@ -403,15 +544,18 @@ def test_deadman_and_drift_watch_never_import_n8n_paths():
 def test_scram_verifier_matches_rfc7677():
     v = R.scram_verifier("pencil", salt=base64.b64decode("W22ZaJ0SNY7soEsUEjb6gQ=="))
     server_key = base64.b64decode(v.split("$")[2].split(":")[1])
-    auth = ("n=user,r=rOprNGfwEbeRWgbNEkqO,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,"
-            "s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096,c=biws,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0")
+    auth = (
+        "n=user,r=rOprNGfwEbeRWgbNEkqO,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,"
+        "s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096,c=biws,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0"
+    )
     sig = base64.b64encode(hmac.new(server_key, auth.encode(), hashlib.sha256).digest()).decode()
     assert v.startswith("SCRAM-SHA-256$4096:") and sig == "6rriTRBi23WpRR/wtup+mMhUZUn/dB5nLTJRsjl95G4="
 
 
 class DB:
-    def __init__(self, exists=False, rolsuper=False, connects="n8n"):
+    def __init__(self, exists=False, rolsuper=False, connects="n8n", role_memberships=None):
         self.exists, self.rolsuper, self.connects = exists, rolsuper, connects
+        self.role_memberships = role_memberships or []
         self.inputs: list[str] = []
 
     def __call__(self, argv, *, input_text=None, **_):
@@ -422,11 +566,21 @@ class DB:
         if input_text and input_text.startswith("BEGIN"):
             self.exists = True
             return 0, "", ""
-        inv = {"role_exists": self.exists, "role": {"rolsuper": self.rolsuper, "rolcanlogin": True} if self.exists else None,
-               "admin_rolsuper": True, "owners": {"n8n:r": 157}, "functions": {"n8n:own": 2}, "not_owned_by_role": 0,
-               "functions_not_owned_by_role": 0, "db_connect": True if self.exists else None,
-               "schema_create": True if self.exists else None, "extensions": ["plpgsql", "uuid-ossp"],
-               "password_encryption": "scram-sha-256", "server_version": "16.15"}
+        inv = {
+            "role_exists": self.exists,
+            "role": {"rolsuper": self.rolsuper, "rolcanlogin": True} if self.exists else None,
+            "admin_rolsuper": True,
+            "owners": {"n8n:r": 157},
+            "functions": {"n8n:own": 2},
+            "not_owned_by_role": 0,
+            "role_memberships": self.role_memberships,
+            "functions_not_owned_by_role": 0,
+            "db_connect": True if self.exists else None,
+            "schema_create": True if self.exists else None,
+            "extensions": ["plpgsql", "uuid-ossp"],
+            "password_encryption": "scram-sha-256",
+            "server_version": "16.15",
+        }
         return 0, json.dumps(inv) + "\n", ""
 
 
@@ -458,6 +612,7 @@ def test_role_verify_and_rollback_never_drop(tmp_path, capsys):
     assert R.main(["--verify"], run=DB(exists=True, connects="n8n")) == 1  # compose switch pending
     assert R.main(["--verify"], run=DB(exists=True, connects="n8n_app")) == 0
     assert R.main(["--verify"], run=DB(exists=True, rolsuper=True, connects="n8n_app")) == 1
+    assert R.main(["--verify"], run=DB(exists=True, connects="n8n_app", role_memberships=["pg_write_all_data"])) == 1
     assert "DROP ROLE" not in R.ROLLBACK_SQL and "NOLOGIN" in R.ROLLBACK_SQL
     db = DB(exists=True)
     assert R.main(["--rollback"], run=db) == 0 and not any(i.startswith("BEGIN") for i in db.inputs)
@@ -468,19 +623,29 @@ def test_role_verify_and_rollback_never_drop(tmp_path, capsys):
 WF = "docs/implementation/n8n-maturity/workflows/fabric/tradeai-fabric-release-train.json"
 
 
-def test_import_guard_prints_each_platform_element_from_a_probe_file(tmp_path, capsys):
+def test_import_guard_does_not_trust_fresh_host_probe_file_claim(tmp_path, capsys):
     facts = _probe(tmp_path)
     facts["probed_at"] = datetime.now(timezone.utc).isoformat()
     f = tmp_path / "facts.json"
     f.write_text(json.dumps(facts))
-    rc = IR.main([WF, "--relay-url", "http://172.19.0.1:18092", "--known-id", "tradeai-fabric-error",
-                  "--platform-facts", str(f), "--json"])
+    rc = IR.main(
+        [
+            WF,
+            "--relay-url",
+            "http://172.19.0.1:18092",
+            "--known-id",
+            "tradeai-fabric-error",
+            "--platform-facts",
+            str(f),
+            "--json",
+        ]
+    )
     doc = json.loads(capsys.readouterr().out)
     assert rc == 1  # runtime evidence is still owed: the gate is not weakened
-    assert doc["platform_source"]["kind"] == "host_probe"
-    assert {k: v["status"] for k, v in doc["platform"].items()} == {f"FW-P{i}": "pass" for i in range(1, 7)}
+    assert doc["platform_source"]["kind"] == "cited_file"
+    assert {k: v["status"] for k, v in doc["platform"].items()} == {f"FW-P{i}": "partial" for i in range(1, 7)}
     blocking = doc["files"][0]["framework_gate"]["blocking"]
-    assert blocking and not any(b.startswith("platform FW-P") for b in blocking), blocking
+    assert any(b.startswith("platform FW-P") for b in blocking), blocking
 
 
 def test_import_guard_default_still_reads_the_committed_measurement(capsys, monkeypatch):
@@ -509,12 +674,15 @@ def test_probe_host_mode_uses_the_probe_and_fails_closed(tmp_path):
 def test_compose_patches_compose_to_the_proposed_file_and_hold_no_secret():
     c = PACKET / "compose"
     proposed = (c / "docker-compose.n8n.yml.proposed").read_text()
-    n8n_service = proposed[proposed.index("\n  n8n:\n"):]
+    n8n_service = proposed[proposed.index("\n  n8n:\n") :]
     assert f"image: n8nio/n8n:2.43.0@{DIGEST}" in n8n_service
     assert "EXECUTIONS_DATA_SAVE_ON_SUCCESS: all" in n8n_service and 'EXECUTIONS_DATA_PRUNE: "true"' in n8n_service
     assert "DB_POSTGRESDB_USER: n8n_app" in n8n_service and "DB_POSTGRESDB_PASSWORD:" not in n8n_service
     assert "DB_POSTGRESDB_PASSWORD_FILE: /run/secrets/n8n_app_pg_password" in n8n_service
-    assert 'N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"' in n8n_service and 'N8N_COMMUNITY_PACKAGES_ENABLED: "false"' in n8n_service
+    assert (
+        'N8N_BLOCK_ENV_ACCESS_IN_NODE: "true"' in n8n_service
+        and 'N8N_COMMUNITY_PACKAGES_ENABLED: "false"' in n8n_service
+    )
     for f in c.iterdir():  # every secret-bearing key is an interpolation or a file path, never a value
         for line in f.read_text().splitlines():
             body = line.lstrip("+- ").strip()
@@ -571,14 +739,18 @@ def test_the_three_step_patches_equal_the_combined_patch():
 
 def test_units_are_proposed_outside_n8n_and_point_at_committed_scripts():
     u = PACKET / "units"
-    for name, script in (("tradeai-n8n-drift-watch", "scripts/n8n_drift_watch.py"),
-                         ("tradeai-n8n-host-deadman", "scripts/n8n_host_deadman.py")):
+    for name, script in (
+        ("tradeai-n8n-drift-watch", "scripts/n8n_drift_watch.py"),
+        ("tradeai-n8n-host-deadman", "scripts/n8n_host_deadman.py"),
+    ):
         svc = (u / f"{name}.service.proposed").read_text()
         tmr = (u / f"{name}.timer.proposed").read_text()
         assert svc.startswith("# PROPOSED, NOT INSTALLED") and tmr.startswith("# PROPOSED, NOT INSTALLED")
         assert f"CURRENT/{script} --live" in svc and (ROOT / script).exists()
         assert "SuccessExitStatus=1" in svc and f"Unit={name}.service" in tmr and "OnCalendar=" in tmr
-        assert "n8n" not in svc.split("ExecStart=", 1)[1].split("\n", 1)[0].replace(script, "").replace("tradeai-n8n", "")
+        assert "n8n" not in svc.split("ExecStart=", 1)[1].split("\n", 1)[0].replace(script, "").replace(
+            "tradeai-n8n", ""
+        )
 
 
 def test_readme_has_an_ordered_step_for_every_element():

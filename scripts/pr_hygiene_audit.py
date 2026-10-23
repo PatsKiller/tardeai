@@ -775,13 +775,28 @@ def scan_unpushed(git: Git, heads: Optional[Mapping[str, Mapping[str, Any]]] = N
     return {"measured": True, "pr_map": heads is not None, "branches": out, "settled_local": settled}
 
 
+#: The canonical checkout (scripts/cio_phase2_exact_main_deploy.sh CANONICAL_SOURCE default). The n8n executor runs
+#: lanes from the release directory (portfolio-server/CURRENT), which is NOT a git clone: until release ee38621b1
+#: (2026-10-22 18:57 ET) release dirs carried a stray worktree ``.git`` file, so the script's own directory resolved to
+#: a clone by accident; from then on the slug was unresolvable and a real run exited 2 with no receipt
+#: (fix/releases-page-queue-ci-20261022). Used only when neither --repo nor TRADEAI_PR_HYGIENE_REPO is given and the
+#: script's own directory is not a clone.
+CANONICAL_CLONE = Path.home() / "trade-ai-v12-rebuild" / "trade-ai-v12-rebuild"
+
+
 def resolve_repo(explicit: Optional[str]) -> Optional[Path]:
-    """--repo, else TRADEAI_PR_HYGIENE_REPO, else the clone this script lives in (if it is one). A worktree resolves
-    to its main repo (the common dir's parent) so branches of every worktree are seen."""
-    cand = explicit or os.environ.get("TRADEAI_PR_HYGIENE_REPO") or str(_SCRIPTS.parent)
-    p = Path(cand)
-    if not (p / ".git").exists():
-        return None
+    """--repo, else TRADEAI_PR_HYGIENE_REPO, else the clone this script lives in (if it is one), else the canonical
+    checkout (:data:`CANONICAL_CLONE`). An explicit --repo / env value that is not a clone is None (never silently
+    replaced). A worktree resolves to its main repo (the common dir's parent) so branches of every worktree are seen."""
+    given = explicit or os.environ.get("TRADEAI_PR_HYGIENE_REPO")
+    if given:
+        p = Path(given)
+        if not (p / ".git").exists():
+            return None
+    else:
+        p = next((c for c in (_SCRIPTS.parent, CANONICAL_CLONE) if (c / ".git").exists()), None)
+        if p is None:
+            return None
     try:
         r = _default_run(["git", "-C", str(p), "rev-parse", "--path-format=absolute", "--git-common-dir"], timeout=10)
         if r.returncode == 0 and r.stdout.strip():
@@ -1062,12 +1077,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     repo = resolve_repo(a.repo)
     git = Git(repo, allow_fetch=a.fetch)
     slug = resolve_slug(a.slug, git)
-    if not slug:
-        print("[pr-hygiene] no GitHub slug (pass --slug or run inside a clone)", file=sys.stderr)
-        return 2
-    gh = Gh(slug)
     from lib.lane_last_receipt import dry_run_report, now_iso, receipt_path, write_lane_receipt
     started = now_iso()
+    if not slug:
+        print("[pr-hygiene] no GitHub slug (pass --slug or run inside a clone)", file=sys.stderr)
+        if not dry:
+            # A failed receipt, never silence: the Releases page and needs-action show "last run failed" with the
+            # time and this reason instead of "no receipt" forever (fix/releases-page-queue-ci-20261022).
+            write_lane_receipt(LANE_ID, ok=False, exit_code=2, started_at=started, script="pr_hygiene_audit.py",
+                               error="no_github_slug: no clone at --repo / TRADEAI_PR_HYGIENE_REPO / script dir / "
+                                     "canonical checkout, and no --slug / TRADEAI_PR_HYGIENE_SLUG",
+                               output={"produced_count": 0, "attempted_count": 0,
+                                       "skipped_reasons": {"config_missing": 1}})
+        return 2
+    gh = Gh(slug)
     try:
         report = audit(gh, git, scan_local=not a.no_local)
     except AuditError as exc:

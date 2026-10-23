@@ -32,7 +32,7 @@ export function InfluenceBadge() {
 }
 
 export function MemoryPanel() {
-  const { data, loading, error } = useApi<any>('/api/v3/maturity/memory', 30_000)
+  const { data, loading, error } = useApi<any>('/api/v3/maturity/memory?limit=40', 120_000)  // bounded page; counts stay whole (2026-10-23)
   const [msg, setMsg] = useState('')
   const counts = data?.counts || {}
   const recs = data?.records || []
@@ -68,6 +68,7 @@ export function MemoryPanel() {
       {Object.entries(counts).map(([k, v]) => <Badge key={k}>{`${k} ${String(v)}`}</Badge>)}
       <Badge>{`shadow_runs ${String(shadow.comparator_runs ?? 0)}`}</Badge>
       <Badge>{`retrievals ${String(shadow.real_retrievals ?? retrievals.length)}`}</Badge>
+      <Badge>{`showing newest ${String(recs.length)} of ${String(data?.records_total ?? recs.length)}`}</Badge>
     </div>
     {loading && <div>Loading…</div>}
     {error && <div style={{ color: 'var(--amber)' }}>{String(error)}</div>}

@@ -620,8 +620,10 @@ def sandbox(tmp_path):
     _exe(bindir / "claude", FAKE_CLAUDE.format(py=sys.executable))
     _exe(bindir / "gh", FAKE_GH)
     state = tmp_path / "state"
+    configured_python = CFG.get("repo", {}).get("python")
+    test_python = configured_python if configured_python and Path(configured_python).is_file() else sys.executable
     cfg = _cfg(
-        repo={"repo_root": str(repo), "worktree_root": str(tmp_path / "wt"), "python": sys.executable},
+        repo={"repo_root": str(repo), "worktree_root": str(tmp_path / "wt"), "python": test_python},
         claude={"bin": str(bindir / "claude"), "env_names": ["HOME", "PATH"], "auth": {"mode": "none"}},
         sandbox={"enabled": False},
         agent_sandbox={"enabled": False},

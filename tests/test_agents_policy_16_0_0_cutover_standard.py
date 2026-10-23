@@ -47,6 +47,18 @@ from tests import test_agents_policy_11_0_0_workflow_framework as T11  # noqa: E
 from tests.test_agents_policy_5_2_0_validation import SECTION_23_14_SHA256  # noqa: E402
 
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+# AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+# checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+# the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+from tests.test_agents_policy_20_0_0_agent_operations import pre_20_0_0  # noqa: E402
+
+AGENTS = pre_20_0_0(AGENTS)
+# AGENTS.md 19.0.0 (§27.5): once 19.0.0 is ACTIVE its four clause edits in §17, §23.14 and §25.4 are undone before
+# the pins below are checked; tests/test_agents_policy_19_0_0_broker_read_controls.py pins those edits and the
+# post-ratification digests. While 19.0.0 is PROPOSED the text is unchanged.
+from tests.test_agents_policy_19_0_0_broker_read_controls import pre_19_0_0  # noqa: E402
+
+AGENTS = pre_19_0_0(AGENTS)
 TOKEN = "APPROVE_AGENTS_POLICY_16_0_0"
 REBUILD_WORD = "yes rebuild 1727"
 OPERATOR_WORDS = (

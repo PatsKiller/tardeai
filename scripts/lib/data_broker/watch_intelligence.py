@@ -70,6 +70,15 @@ def _starred_set() -> set[str]:
     return membership_starred()
 
 
+def _operator_names() -> set[str]:
+    """The operator's own names (stars, personal watchlist, operator directives, operator adds) — never bounded out."""
+    from lib.data_broker.watch_domains import membership_operator
+    try:
+        return set(membership_operator()["names"])
+    except Exception:  # noqa: BLE001
+        return set()
+
+
 def _screener_origin_set() -> set[str]:
     from lib.data_broker.watch_domains import membership_screener
     return membership_screener()
@@ -106,22 +115,30 @@ def _universe_symbols(*, view: str, page_size: int, extra: list[str] | None = No
         base = list(DEFAULT_PRIORITY)
         # enrich top ideas with strong street candidates later after cards built
     else:
-        # all / needs_* / near_trigger / avoid / reviewed — start with priority + starred + held
+        # all / needs_* / near_trigger / avoid / reviewed — start with priority + starred + the operator's own names
+        # + held. The operator's names are never bounded out (operator 2026-10-23: "I don't see stuff that I had
+        # starred that I was watching"; watch_domains.membership_operator).
         seen = set()
-        for s in list(DEFAULT_PRIORITY) + sorted(starred) + sorted(held) + sorted(list(screener)[:40]):
+        for s in (list(DEFAULT_PRIORITY) + sorted(starred) + sorted(_operator_names()) + sorted(held)
+                  + sorted(list(screener)[:40])):
             if s not in seen:
                 seen.add(s)
                 base.append(s)
-        # add more active watchlist items up to bound
+        # add more watchlist items up to bound: active first, then the most recently updated. Until 2026-10-23 the
+        # DISTINCT ON forced alphabetical order, so the 120-row bound kept "824430300"…"ACLZ" of 5,648 names.
         try:
             from db_adapter import _get_conn
             cur = _get_conn().cursor()
             cur.execute(
                 """
-                SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS s
-                  FROM watchlist_items
-                 WHERE status IN ('active','researched')
-                 ORDER BY upper(symbol), updated_at DESC NULLS LAST
+                SELECT s FROM (
+                    SELECT DISTINCT ON (upper(symbol)) upper(symbol) AS s, (status = 'active') AS is_active,
+                           updated_at
+                      FROM watchlist_items
+                     WHERE status IN ('active','researched')
+                     ORDER BY upper(symbol), (status = 'active') DESC, updated_at DESC NULLS LAST
+                ) w
+                 ORDER BY is_active DESC, updated_at DESC NULLS LAST, s
                  LIMIT 120
                 """
             )
@@ -696,36 +713,17 @@ def _enrich_card_semantics(card: dict, *, enrich: dict, held_source: str) -> dic
     return c
 
 
-def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
-    """GET /api/v3/data-broker/watch-intelligence — broker projection compose path.
+def compose_universe(*, view: str = "all", page_size: int = 80) -> dict[str, Any]:
+    """The Watch universe as broker items with cards, membership, held and the decision block attached.
 
-    Dependency direction (target):
-      watch_domains + existing broker modules → this projection → API → React
-
-    Still uses list_intelligence for Trade AI / street / quote assembly until those
-    domains are fully split; membership, ranking, near-trigger, review auth, and
-    quality live in watch_domains.
+    Shared by list_watch_intelligence (paged, filtered, ranked) and the Watch prospects adapter
+    (lib/data_broker/watch_prospects.py), so both read one composition. Zero provider calls.
     """
     from lib.watchlist_intelligence import list_intelligence
-    from lib.data_broker.watch_domains import (
-        rank_top_ideas,
-        content_snapshot_id,
-        assess_data_quality,
-        enrichment_batch,
-        DIRECT_DEPENDENCIES,
-        RANK_VERSION,
-    )
-
-    q = dict(query or {})
-    view = (q.get("view") or "top_ideas").lower()
-    if view not in VIEWS:
-        view = "top_ideas"
-    page = max(1, int(q.get("page") or 1))
-    page_size = min(100, max(1, int(q.get("page_size") or q.get("limit") or 40)))
-    sort = str(q.get("sort") or "watch_rank")
+    from lib.data_broker.watch_domains import enrichment_batch
 
     # Universe from membership domains — not DEFAULT_PRIORITY as production rank
-    syms = _universe_symbols(view="all" if view == "top_ideas" else view, page_size=max(page_size, 80))
+    syms = _universe_symbols(view=view, page_size=page_size)
     raw = list_intelligence(symbols=syms, limit=len(syms) or 1, priority_only=False, offset=0)
     cards = raw.get("cards") or []
 
@@ -770,6 +768,42 @@ def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
     _wd.attach([i["card"] for i in items])
     for i in items:
         i["domains"]["WatchDecision"] = {"decision": field(i["card"].get("decision"), source=_wd.DECISION_VERSION)}
+    return {"items": items, "starred": starred, "screener": screener, "held": held,
+            "held_source": held_source, "held_detail": held_detail}
+
+
+def list_watch_intelligence(query: dict | None = None) -> dict[str, Any]:
+    """GET /api/v3/data-broker/watch-intelligence — broker projection compose path.
+
+    Dependency direction (target):
+      watch_domains + existing broker modules → this projection → API → React
+
+    Still uses list_intelligence for Trade AI / street / quote assembly until those
+    domains are fully split; membership, ranking, near-trigger, review auth, and
+    quality live in watch_domains.
+    """
+    from lib.data_broker.watch_domains import (
+        rank_top_ideas,
+        content_snapshot_id,
+        assess_data_quality,
+        DIRECT_DEPENDENCIES,
+        RANK_VERSION,
+    )
+
+    q = dict(query or {})
+    view = (q.get("view") or "top_ideas").lower()
+    if view not in VIEWS:
+        view = "top_ideas"
+    page = max(1, int(q.get("page") or 1))
+    page_size = min(100, max(1, int(q.get("page_size") or q.get("limit") or 40)))
+    sort = str(q.get("sort") or "watch_rank")
+
+    from lib.data_broker import watch_decision as _wd
+
+    composed = compose_universe(view="all" if view == "top_ideas" else view, page_size=max(page_size, 80))
+    items = composed["items"]
+    starred, screener, held = composed["starred"], composed["screener"], composed["held"]
+    held_source, held_detail = composed["held_source"], composed["held_detail"]
     # The re-entry tile carries the desk's own READY/NEAR count (the desk rows are already cached by attach()).
     decision_board = _wd.board([i["card"] for i in items], desk=_wd.reentry_desk_counts())
     dq = dict(q)
@@ -1486,29 +1520,66 @@ def get_watch_intelligence() -> dict[str, Any]:
     return projection
 
 
-def active_ticker_directives() -> list[dict[str, Any]]:
-    """Active ticker watch directives, newest per symbol, for the hub's /api/v2/watchlist.
-
-    The symbol lives in spec->>'symbol'. Read here (the watch_directives projection
-    owner) so hub handlers do not grow direct reads of the store. Fail-soft: no DB or
-    a query error yields [] — the caller still serves its manual list.
-    """
-    try:
-        from db_adapter import _execute
-
-        rows = _execute(
-            """
+ACTIVE_TICKER_DIRECTIVES_SQL = """
             SELECT DISTINCT ON (UPPER(TRIM(spec->>'symbol')))
                    UPPER(TRIM(spec->>'symbol')) AS symbol, id, label, rationale,
                    trade_ai_enabled, hermes_enabled, created_at, updated_at
               FROM watch_directives
              WHERE status = 'active' AND kind = 'ticker' AND COALESCE(TRIM(spec->>'symbol'), '') <> ''
              ORDER BY UPPER(TRIM(spec->>'symbol')), created_at DESC, id DESC
-            """,
-            fetch="all",
-        )
+            """
+
+
+def active_ticker_directives(*, strict: bool = False, db_query: Any = None) -> list[dict[str, Any]]:
+    """Active ticker watch directives, newest per symbol, for the hub's /api/v2/watchlist.
+
+    The symbol lives in spec->>'symbol'. Read here (the watch_directives projection
+    owner) so hub handlers do not grow direct reads of the store. Fail-soft: no DB or
+    a query error yields [] — the caller still serves its manual list. ``strict=True``
+    re-raises instead, for a caller that must tell "no directives" from "lookup failed"
+    (Open Trades' directive_state, 2026-10-22).
+    """
+    try:
+        if db_query is not None:   # an injected read-only ``db_query(sql) -> rows`` (the CIO prospect builder, 2026-10-23)
+            rows = db_query(ACTIVE_TICKER_DIRECTIVES_SQL)
+        else:
+            from db_adapter import _execute
+
+            rows = _execute(ACTIVE_TICKER_DIRECTIVES_SQL, fetch="all")
     except Exception:
+        if strict:
+            raise
         return []
     out = [dict(r) for r in rows or []]
     out.sort(key=lambda r: r["created_at"], reverse=True)
     return out
+
+
+#: watch_directives.created_by values that mean "the operator made this directive". Every other creator
+#: (think_tank, sector_universe, advisory, rotation_advisor, reentry, defense, claude_challenger, cio) is automated.
+OPERATOR_DIRECTIVE_CREATORS = ("operator", "operator_audit")
+
+
+def active_operator_ticker_symbols(db_query=None) -> set[str] | None:
+    """Symbols of ACTIVE ticker directives the operator created — part of the curated Watch membership.
+
+    Read here (the watch_directives projection owner) so lanes do not grow direct reads of the store
+    (enrichment-coverage audit, operator-approved 2026-10-22). None when the store could not be read,
+    so a caller can say so instead of treating an outage as "no directives".
+    """
+    try:
+        if db_query is None:
+            from db_adapter import _execute as db_query  # noqa: N813
+        rows = db_query(
+            """
+            SELECT DISTINCT UPPER(TRIM(spec->>'symbol')) AS symbol
+              FROM watch_directives
+             WHERE status = 'active' AND kind = 'ticker' AND created_by = ANY(%s)
+               AND COALESCE(TRIM(spec->>'symbol'), '') <> ''
+            """,
+            (list(OPERATOR_DIRECTIVE_CREATORS),),
+            fetch="all",
+        )
+    except Exception:
+        return None
+    return {str(r["symbol"] if isinstance(r, dict) else r[0]).upper() for r in rows or [] if r}

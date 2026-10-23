@@ -292,3 +292,45 @@ def get_symbol_catalysts(db_query, symbol: str, *, days: int = 90, limit: int = 
         if len(out) >= int(limit):
             break
     return out
+
+
+def get_catalyst_records_bulk(db_query, *, days: int = 30, per_symbol: int = 3) -> dict[str, list[dict[str, Any]]]:
+    """{SYMBOL: [typed catalysts newest first]} for every symbol with a typed catalyst in the window, in ONE query.
+
+    For the CIO prospect builder (silo audit 2026-10-23, operator: "anything for the security, the CIO agent needs to
+    have it in memory"): the same normalization and verified rule as ``get_symbol_catalysts`` (``catalyst_type``
+    'other' is untyped news and is excluded; quote pages are not news), plus the row ``id`` and ``subject_guid`` so
+    the prospect can name the event and check its identity, and ``source`` (the producing feed). Read-only."""
+    rows = db_query(
+        f"""
+        SELECT id, symbol, subject_guid, catalyst_type, headline, severity, impact_score, confidence, source,
+               source_url, at
+        FROM (
+            SELECT id, upper(symbol) AS symbol, subject_guid::text AS subject_guid, catalyst_type, headline, severity,
+                   impact_score, confidence, source, source_url, COALESCE(published_at, created_at) AS at,
+                   row_number() OVER (PARTITION BY upper(symbol)
+                                      ORDER BY COALESCE(published_at, created_at) DESC, id DESC) AS rn
+            FROM catalyst_events
+            WHERE catalyst_type <> 'other'
+              AND COALESCE(published_at, created_at) > now() - make_interval(days => %s)
+              AND {not_news_sql("headline")}
+        ) t
+        WHERE rn <= %s
+        ORDER BY symbol, at DESC, id DESC
+        """,
+        (int(days), int(per_symbol) * 3),
+    ) or []
+    out: dict[str, list[dict[str, Any]]] = {}
+    seen: dict[str, set[str]] = {}
+    for r in rows:
+        sym = str(r.get("symbol") or "").upper()
+        key = title_key(r.get("headline"))
+        if not sym or not key or key in seen.setdefault(sym, set()) or len(out.get(sym, [])) >= int(per_symbol):
+            continue
+        seen[sym].add(key)
+        n = normalize_catalyst_row(r) or {}
+        at = r.get("at") or n.get("at")
+        n["at"] = at.isoformat() if hasattr(at, "isoformat") else at
+        n.update({"id": r.get("id"), "subject_guid": r.get("subject_guid"), "source": r.get("source")})
+        out.setdefault(sym, []).append(_jsonable(n))
+    return out

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "work_board_designs_20261023",
+  "files": [
+    "tests/test_work_board_designs_20261023.py"
+  ],
+  "anchor": "WORK_BOARD_DESIGNS_20261023",
+  "comment": [
+    "ANCHOR: WORK_BOARD_DESIGNS_20261023 — Work board (operator 2026-10-23): design registry docs/designs/DSN-*.md (YAML front matter; DSN-<date>-<slug> → P<n> → T<m>), design tree with task-board holders, work items from task board / operator to-dos / claims / open PRs (open→claimed→in_progress→in_review→merged→live), designs awaiting approval (designs + packet READMEs), single-flight 30 s cache, GET-only /api/v2/coordination/{tasks,designs}, take <DSN task> refused on overlap. Hermetic."
+  ]
+}

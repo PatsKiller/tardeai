@@ -92,8 +92,14 @@ try {
         assert.match(text, /Rotation advisory (UNAVAILABLE|STALE)/, 'failed refresh must withhold retained advice')
         assert.doesNotMatch(text, /AAA|BBB|Trim review/i, 'retained advice and drill actions must be absent')
         assert.equal(await page.getByText('99', { exact: true }).count(), 0, 'retained advisory counter must be absent')
-        assert.match(text, /Source as of:/)
-        assert.ok(text.includes(fixtureTime), 'last-good source/generated/checked time must remain visible')
+        assert.match(text, /Source as of/)
+        // The notice renders clocks in ET (P3, operator-approved 2026-10-23); the raw ISO stamp is in its title.
+        const fixtureEt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric',
+          hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(fixtureTime))
+          .reduce((o, p) => ({ ...o, [p.type]: p.value }), {})
+        const fixtureMark = `${fixtureEt.month} ${fixtureEt.day} ${fixtureEt.hour}:${fixtureEt.minute} ET`
+        assert.ok(text.includes(fixtureMark), `last-good source/generated/checked time must remain visible (${fixtureMark})`)
+        assert.ok((await page.getByRole('status').first().getAttribute('title') || '').includes(fixtureTime), 'raw last-good stamp stays in the tooltip')
         assert.equal(await page.locator('a').count(), 0, 'held view must not expose the advisory desk action')
       }
       if (scenario === '200 recovery') {

@@ -120,6 +120,20 @@ def previous_ok_at(path: Path | str) -> str | None:
 _previous_ok_at = previous_ok_at  # W1/W3/W4 spelling
 
 
+def previous_consecutive_failures(path: Path | str) -> int:
+    """``consecutive_failures`` of the receipt being replaced (0 when absent, unreadable or not an int).
+
+    2026-10-23: lets a reader (system_health_freshness) tell one killed attempt between successes from a lane
+    that keeps failing, without a history store. Several writers can race on one ``_last.json``; the count is
+    then approximate, never a reason to fail the run."""
+    try:
+        prev = json.loads(Path(path).read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 -- no or unreadable previous receipt
+        return 0
+    val = prev.get("consecutive_failures") if isinstance(prev, dict) else None
+    return val if type(val) is int and val >= 0 else 0
+
+
 def _scrub_error(value: Any) -> Any:
     """``"OSError: No space left on device"`` -> ``"OSError"``; other strings are length-capped."""
     if not isinstance(value, str):
@@ -164,6 +178,7 @@ def build_receipt(
     empty_reason: str | None = None,
     run_id: str | None = None,
     output: Mapping[str, Any] | None = None,
+    previous_consecutive_failures: int | None = None,
 ) -> dict[str, Any]:
     finished = finished_at or now_iso()
     doc: dict[str, Any] = {
@@ -179,6 +194,9 @@ def build_receipt(
         "pid": os.getpid(),
         "summary": _scrub_summary(summary),
     }
+    if previous_consecutive_failures is not None:
+        # additive (v1 readers ignore unknown keys): 0 after a success, previous + 1 after a failure
+        doc["consecutive_failures"] = 0 if ok else int(previous_consecutive_failures) + 1
     if error:
         doc["error"] = _scrub_error(str(error))
     rid = run_id if run_id is not None else os.environ.get(RUN_ID_ENV)
@@ -286,6 +304,7 @@ def write_lane_receipt(
             summary=summary,
             error=error,
             previous_ok_at=previous_ok_at(target),
+            previous_consecutive_failures=previous_consecutive_failures(target),
             produced_count=produced_count,
             attempted_count=attempted_count,
             skipped_reasons=skipped_reasons,

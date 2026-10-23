@@ -48,6 +48,8 @@ on:
   pull_request:
     paths: *lifecycle_paths
   workflow_dispatch: {}
+permissions:
+  contents: read
 jobs:
   backend:
     runs-on: ubuntu-latest
@@ -72,7 +74,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
-      - run: pip install pytest psycopg2-binary pyyaml requests
+      - run: pip install -c requirements.lock.txt pytest psycopg2-binary pyyaml requests
       - name: pure + REAL-PG + eConfirm tests (skips are FAILURES; JUnit published)
         run: |
           pytest tests/test_options_desk_complete.py tests/test_options_full_chain.py \

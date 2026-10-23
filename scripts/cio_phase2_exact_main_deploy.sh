@@ -32,6 +32,9 @@ CI_RECEIPT_FILE="${STATE_DIR}/post_merge_ci.json"
 LABEL="${CIO_EXACT_LABEL:-main-exact-phase2}"
 
 MODE="${1:-status}"
+# Release train Phase 7 (2026-10-22): when this action started (epoch seconds), so every deploy receipt carries the
+# operation's measured duration (exact_release_receipt.py --started-at; history in deploy_receipt_history.jsonl).
+DEPLOY_STARTED_AT="$(date +%s.%N)"
 
 log() { echo "[phase2 $(date -u +%H:%M:%S)] $*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -142,7 +145,8 @@ write_deploy_receipt() {
     --ok "$ok_flag" --mode "$mode" --health "$health" --rolled-back "$rolled" --extra "$extra" \
     --attempted-dir "$attempted_dir" --attempted-sha "$attempted_sha" --source-pr "${CIO_SOURCE_PR:-}" \
     --prev-release "${PREV_RELEASE:-}" --pin-receipt "${RELEASE_PIN_RECEIPT:-}" \
-    --rollback-target "$rollback_target" --rollback-sha "$rollback_sha" --rolled-from "$rolled_from"
+    --rollback-target "$rollback_target" --rollback-sha "$rollback_sha" --rolled-from "$rolled_from" \
+    --started-at "${DEPLOY_STARTED_AT:-}"
 }
 
 run_integrity_hook() {

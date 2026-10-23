@@ -1,6 +1,8 @@
 """R-02 (2026-09-15): a retired provider's old 401 is not 'operator must rotate the key'."""
+
 from __future__ import annotations
 
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,5 +29,6 @@ def test_activity_after_the_retirement_day_means_a_caller_still_reaches_it():
 def test_the_health_agent_skips_retired_sources_before_the_auth_classification():
     src = (ROOT / "scripts" / "health_agent.py").read_text()
     i_skip = src.index("if is_retired(src):")
-    i_auth = src.index('"data_source_auth_failed", "critical"')
+    # Whitespace-tolerant: ruff format may split the finding's arguments across lines.
+    i_auth = re.search(r'"data_source_auth_failed",\s*"critical"', src).start()
     assert i_skip < i_auth and "retired_provider_still_called" in src

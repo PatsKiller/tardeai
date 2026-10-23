@@ -15,6 +15,8 @@ export default function RiskContributionBars({
   positions, title = 'Risk contribution', mode = 'risk', max = 10, height = 200,
 }: Props) {
   const rows = riskContributionRows(positions, { max, useMaxLoss: mode === 'risk' })
+  // a symbol held in two accounts is labelled "SPCX · Schwab Individual": widen the axis so the name is not clipped
+  const yWidth = rows.some(r => r.name.includes(' · ')) ? Math.min(170, 12 + 5.6 * Math.max(...rows.map(r => r.name.length))) : 44
   if (!rows.length) {
     return (
       <div style={{ fontSize: 10, color: 'var(--text3)', padding: 12, fontStyle: 'italic' }}>
@@ -28,7 +30,7 @@ export default function RiskContributionBars({
       <ResponsiveContainer width="100%" height={height}>
         <BarChart data={rows} layout="vertical" margin={{ left: 4, right: 12, top: 4, bottom: 4 }}>
           <XAxis type="number" tick={{ fontSize: 9, fill: 'var(--text3)' }} tickFormatter={v => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
-          <YAxis type="category" dataKey="name" width={44} tick={{ fontSize: 9, fill: 'var(--text1)', fontFamily: 'monospace' }} />
+          <YAxis type="category" dataKey="name" width={yWidth} interval={0} tick={{ fontSize: 9, fill: 'var(--text1)', fontFamily: 'monospace' }} />
           <Tooltip
             contentStyle={{ background: 'var(--bg1)', border: '1px solid var(--border)', fontSize: 10 }}
             formatter={(v: number) => [`$${Math.round(v).toLocaleString()}`, mode === 'risk' ? 'Max risk' : 'Exposure']}

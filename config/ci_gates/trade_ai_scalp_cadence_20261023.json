@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "trade_ai_scalp_cadence_20261023",
+  "files": [
+    "tests/test_trade_ai_scalp_cadence_20261023.py"
+  ],
+  "anchor": "TRADE_AI_SCALP_CADENCE_20261023",
+  "comment": [
+    "ANCHOR: TRADE_AI_SCALP_CADENCE_20261023 — operator P1: Trade AI scalp universe refreshed every 5 min",
+    "06:00-12:00 ET (continuous_runner grid + 12:00 cutoff), cache rewarm after each cycle, and a per-serve",
+    "scan_freshness verdict (STALE after 10 min in the window) on /trade-ai/scanner and /trade-ai/summary."
+  ]
+}

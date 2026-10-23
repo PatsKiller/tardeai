@@ -1,0 +1,10 @@
+[Unit]
+Description=TradeAI agent claim board — weekly compaction (Sun 06:50 ET)
+
+[Timer]
+OnCalendar=Sun *-*-* 06:50:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

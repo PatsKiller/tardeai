@@ -8,12 +8,16 @@ import ActiveTraderAlertsTab from './ActiveTraderAlertsTab';
 import ActiveTraderSessionReviewTab from './ActiveTraderSessionReviewTab';
 import ScalpStrategyModal from '../components/ScalpStrategyModal';
 import type { Setup } from '../components/ScalpStrategyModal';
+import ScalpSetupsPanel from '../components/ScalpSetupsPanel';
+import ScalpLiveSignals from '../components/tradeai/ScalpLiveSignals';
+import type { DrillContext } from '../components/DetailDrawer';
 
-type SubTab = 'Alerts' | 'Session review' | 'Review' | 'Configuration' | 'Setups';
-const SUBTABS: SubTab[] = ['Alerts', 'Session review', 'Review', 'Configuration', 'Setups'];
+// 'Scalp' = the live scalp signal list, moved here from the retired Trading → Scalp tab (2026-10-22).
+type SubTab = 'Alerts' | 'Scalp' | 'Session review' | 'Review' | 'Configuration' | 'Setups';
+const SUBTABS: SubTab[] = ['Alerts', 'Scalp', 'Session review', 'Review', 'Configuration', 'Setups'];
 
 // Own top-level section (/v3/active-trader). Read-only market-state review; account binding is separate.
-export default function ActiveTraderHub() {
+export default function ActiveTraderHub({ onDrill }: { onDrill?: (c: DrillContext) => void } = {}) {
   const [params, setParams] = useSearchParams();
   // Alerts is the landing tab (2026-10-04): the L2-confirmed decision feed is what the desk acts on.
   const raw = (params.get('tab') || 'Alerts') as SubTab;
@@ -82,6 +86,13 @@ export default function ActiveTraderHub() {
       )}
 
       {tab === 'Alerts' && <ActiveTraderAlertsTab />}
+
+      {tab === 'Scalp' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <ScalpSetupsPanel />
+          <ScalpLiveSignals onDrill={onDrill ?? (() => {})} focusSymbol={params.get('symbol') || undefined} />
+        </div>
+      )}
 
       {tab === 'Session review' && <ActiveTraderSessionReviewTab />}
 

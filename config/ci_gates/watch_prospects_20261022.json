@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_prospects_20261022",
+  "files": [
+    "tests/test_watch_prospects_20261022.py"
+  ],
+  "anchor": "WATCH_PROSPECTS_20261022",
+  "comment": [
+    "ANCHOR: WATCH_PROSPECTS_20261022 — Watch redesign (Gate 3 mockup, operator directive 2026-10-22): one lane per",
+    "security (held → Manage; expired/invalidated → Expired; proposable and not Trade-AI-failed → Actionable; desk",
+    "NEAR → Re-entry; else Setup forming), size caps with the overflow named, conflicts kept with both values/sources/",
+    "times and never resolved (AGENTS.md §26.5), ONE next step (Protect first > Resolve conflict > Propose / Set alert),",
+    "no BEHAVIOR_FIELDS key in the payload, cio_prospect projection preferred when live else the labelled interim",
+    "adapter, one route and one catalog entry, list_watch_intelligence and the adapter share compose_universe."
+  ]
+}

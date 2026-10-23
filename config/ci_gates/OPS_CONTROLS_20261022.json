@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "OPS_CONTROLS_20261022",
+  "files": [
+    "tests/test_ops_controls_20261022.py",
+    "tests/test_ops_controls_pg_webauthn_20261022.py"
+  ],
+  "anchor": "OPS_CONTROLS_20261022",
+  "comment": [
+    "ANCHOR: OPS_CONTROLS_20261022 — Ops -> Controls (AGENTS.md 19.0.0 §27.2-§27.3, PROPOSED): inert before 19.0.0 ACTIVE; agent callers refused; safe one click; risky needs passkey + typed phrase; step-up replay/expiry refused; host applier preview/backup/apply/verify/undo; append-only audit. PG part runs on a throwaway cluster; WebAuthn part skips without py_webauthn."
+  ]
+}

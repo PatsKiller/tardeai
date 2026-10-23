@@ -6,6 +6,11 @@ Measured at: efcc51365 / not measured
 
 _Last updated 2026-07-21 (operator decision card + RTH few-hour plan refresh). Route: `/v3/watch`._
 
+> **2026-10-22:** `/v3/watch` now opens on **Prospects** (the Gate 3 Watch redesign) —
+> `docs/ops/WATCH_PROSPECTS_PAGE_2026-10-22.md`. The Propose flow described below
+> (`WatchlistProposeModal` → `POST /api/v2/watchlist/:sym/propose`) is reused there as the Actionable lane's one
+> next step. The rest of this document describes the legacy WatchlistHub card wall.
+
 Decision-first watchlist: one full-width card per symbol with CIO view, plan levels, data-quality
 flags, and a unified verdict → CTA matrix. Operators can propose entries directly from a card
 without waiting for the cron bridge.

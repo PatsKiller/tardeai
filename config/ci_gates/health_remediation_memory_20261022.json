@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "health_remediation_memory_20261022",
+  "files": [
+    "tests/test_health_remediation_memory_20261022.py"
+  ],
+  "anchor": "HEALTH_REMEDIATION_MEMORY_20261022",
+  "comment": [
+    "ANCHOR: HEALTH_REMEDIATION_MEMORY_20261022 — /api/v2/health/remediation tail-reads a bounded window with a single-flight cache (was a full parse of 174 MB per poll; 69 watchdog SIGKILLs on 2026-10-22); finviz credential-health serves a cached verdict instead of a live probe per poll."
+  ]
+}

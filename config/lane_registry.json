@@ -5745,7 +5745,8 @@
         "class": "monitor",
         "priority": 4,
         "retry_policy": "transient-2"
-      }
+      },
+      "live_list_note": "2026-10-22: maturity-remeasure is on ~/.config/tradeai/n8n-live-lanes.env TRADEAI_N8N_RELAY_LIVE_LANES while this row's dispatch.mode is dry_run and stage shadow. Measured: every coordination-ledger row for the lane is mode=dry_run (10-11, 10-12 rc 73, 10-19), so n8n never ran it live and it did not double-run with crontab L1016. The registry is the intended state (cron owns it); the live-list entry is the stale side. Operator: remove it from the live list (host env, operator-owned) when convenient; check_registry_runtime_truth reports it as LIVE_LIST_REGISTRY_NOT_LIVE until then."
     },
     {
       "lane_id": "finviz-momentum-scalp-early-lane",
@@ -6276,9 +6277,9 @@
     {
       "owner": "portfolio",
       "state": "ACTIVE",
-      "state_since": "2026-10-06",
+      "state_since": "2026-10-22",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "PR #1460 (merged 65fbeecf3, live 2026-10-06); docs/ops/POSITIONS_FIXES_2026-10-06.md; tests/test_positions_store_phase1_20261006.py.",
+      "reason_evidence": "crontab -l L1036 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
       "lane_id": "positions-shadow-diff",
       "scheduler": {
         "kind": "cron",
@@ -6287,7 +6288,7 @@
         "match": "scripts/positions_sync.py --diff"
       },
       "expected_cadence_hours": 24,
-      "state_reason": "Phase 2 evidence: nightly shadow diff of positions_current vs holdings.json plus the freshness contract; writes data/runtime/positions_shadow_diff_latest.json. Read-only toward brokers and holdings.json.",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/positions_shadow_diff_latest.json"
@@ -6309,7 +6310,8 @@
         "token": "positions_sync.py",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "incident": "INC-20261014-SPCX"
     },
     {
       "lane_id": "positions-proof-daily",
@@ -6322,14 +6324,14 @@
       },
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
-      "state_since": "2026-10-06",
-      "state_reason": "Positions plan phase 2 (operator 2026-10-06 'start phase 2'; 30-min threshold approved): nightly grade of the day's positions_sync runs, heartbeat, shadow diff and lot gaps; ledger data/runtime/positions_proof_ledger.jsonl; one Telegram line 'day N of 10'. Read-only.",
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/positions_proof_ledger.jsonl"
       },
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md; tests/test_positions_proof_phase2_20261006.py.",
+      "reason_evidence": "crontab -l L1038 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
       "value_class": "Business Critical",
       "recommendation": "KEEP_ON_CRON",
       "rationalization": {
@@ -6342,7 +6344,8 @@
         "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
       },
-      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible)."
+      "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+      "incident": "INC-20261014-SPCX"
     },
     {
       "lane_id": "approval-reminder-reconcile",
@@ -9738,13 +9741,14 @@
       "lane_id": "materialize-watchlist-strategy-cards",
       "owner": "portfolio",
       "scheduler": {
-        "kind": "cron",
-        "expression": "*/30 6-16 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/materialize_watchlist_strategy_cards.py",
-        "stage": "canary",
+        "cadence": "*/30 6-16 * * 1-5",
+        "stage": "cutover",
         "wave": "D1b",
-        "command_text": "cd $PROJ && flock -n /tmp/materialize_cards.lock $PY scripts/materialize_watchlist_strategy_cards.py >> logs/watchlist_strategy_cards.log 2>&1",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CW1",
+        "command_text": "cd $PROJ && flock -n /tmp/materialize_cards.lock $PY scripts/materialize_watchlist_strategy_cards.py >> logs/watchlist_strategy_cards.log 2>&1"
       },
       "expected_cadence_hours": 61.5,
       "state": "ACTIVE",
@@ -9781,7 +9785,18 @@
         "class": "pipeline",
         "priority": 5,
         "retry_policy": "transient-2"
-      }
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "*/30 6-16 * * 1-5",
+        "match": "scripts/materialize_watchlist_strategy_cards.py",
+        "stage": "canary",
+        "wave": "D1b",
+        "command_text": "cd $PROJ && flock -n /tmp/materialize_cards.lock $PY scripts/materialize_watchlist_strategy_cards.py >> logs/watchlist_strategy_cards.log 2>&1",
+        "cutover_wave": "CW1"
+      },
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the double-run fix (double-run-operator.sh, typed APPLY at the TTY; n8n live RUN_DONE proven in the coordination ledger) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D). The cron line is commented \"# N8N-OWNED 2026-10-22 double-run fix (n8n live RUN_DONE proven; cron side retired)\"; the dispatcher fires this lane live. Row written by scripts/n8n_cutover_wave.py cutover --wave CW1."
     },
     {
       "lane_id": "materialize-income-engine",
@@ -13085,13 +13100,14 @@
       "lane_id": "sync-social-to-intelligence",
       "owner": "research",
       "scheduler": {
-        "kind": "cron",
-        "expression": "30 11,15 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/sync_social_to_intelligence.py",
-        "stage": "canary",
+        "cadence": "30 11,15 * * 1-5",
+        "stage": "cutover",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/sync_social_to_intelligence.lock $PY scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1",
-        "cutover_wave": "CW2"
+        "cutover_wave": "CW1",
+        "command_text": "cd $PROJ && flock -n /tmp/sync_social_to_intelligence.lock $PY scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1"
       },
       "expected_cadence_hours": 68.0,
       "state": "ACTIVE",
@@ -13128,7 +13144,18 @@
         "class": "ingest",
         "priority": 5,
         "retry_policy": "none"
-      }
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "30 11,15 * * 1-5",
+        "match": "scripts/sync_social_to_intelligence.py",
+        "stage": "canary",
+        "wave": "W4",
+        "command_text": "cd $PROJ && flock -n /tmp/sync_social_to_intelligence.lock $PY scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1",
+        "cutover_wave": "CW2"
+      },
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the double-run fix (double-run-operator.sh, typed APPLY at the TTY; n8n live RUN_DONE proven in the coordination ledger) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D). The cron line is commented \"# N8N-OWNED 2026-10-22 double-run fix (n8n live RUN_DONE proven; cron side retired)\"; the dispatcher fires this lane live. Row written by scripts/n8n_cutover_wave.py cutover --wave CW1."
     },
     {
       "lane_id": "hermes-social-sentiment",
@@ -16707,13 +16734,14 @@
       "lane_id": "hermes-discovery-scorecard",
       "owner": "learning",
       "scheduler": {
-        "kind": "cron",
-        "expression": "30 5 * * *",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/hermes_discovery_scorecard.py",
-        "stage": "canary",
+        "cadence": "30 5 * * *",
+        "stage": "cutover",
         "wave": "LD-W1",
-        "command_text": "cd $PROJ && flock -n /tmp/hermes_discovery_scorecard.lock $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1",
-        "cutover_wave": "CW3"
+        "cutover_wave": "CW1",
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_discovery_scorecard.lock $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
@@ -16750,7 +16778,18 @@
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-15",
-      "adopted_reason": "shadow wave LD-W1 (lane disposition 2026-10-15, M1): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. Cron line L837 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline dry run only. output_signal moved from the cron log / file mtime to the LaneRunReceipt@v1 the script writes on a real run."
+      "adopted_reason": "shadow wave LD-W1 (lane disposition 2026-10-15, M1): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. Cron line L837 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline dry run only. output_signal moved from the cron log / file mtime to the LaneRunReceipt@v1 the script writes on a real run.",
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "30 5 * * *",
+        "match": "scripts/hermes_discovery_scorecard.py",
+        "stage": "canary",
+        "wave": "LD-W1",
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_discovery_scorecard.lock $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1",
+        "cutover_wave": "CW3"
+      },
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the double-run fix (double-run-operator.sh, typed APPLY at the TTY; n8n live RUN_DONE proven in the coordination ledger) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D). The cron line is commented \"# N8N-OWNED 2026-10-22 double-run fix (n8n live RUN_DONE proven; cron side retired)\"; the dispatcher fires this lane live. Row written by scripts/n8n_cutover_wave.py cutover --wave CW1."
     },
     {
       "lane_id": "release-window",
@@ -16879,7 +16918,7 @@
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "state_since": "2026-10-19",
-      "state_reason": "Operator 2026-10-19, after /tmp (tmpfs) hit 97% inodes with 20G bytes free and tools failed with ENOSPC: a daily /tmp plan on n8n. n8n-native host lane fired by tradeai-dispatcher 05:00 ET. live_arg is --plan: the tmp rules of config/disk_hygiene_rules.json (ended Claude session scratch dirs idle > 2 days with no cwd / open fd / live transcript; pytest temp older than 1 day; every other /tmp entry never touched) produce a DiskHygieneManifest@v1 scope tmp (path, kind, file_count, size, rule evidence) and a LaneRunReceipt; it DELETES NOTHING. --apply is operator-only (TRADEAI_DISK_HYGIENE_GRANT, a fresh manifest, per-item re-validation, item / byte / file caps) and refuses under the n8n executor (TRADEAI_RUN_ID): AGENTS.md §23.14. Live only once in TRADEAI_N8N_RELAY_LIVE_LANES (docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh relay).",
+      "state_reason": "Operator 2026-10-19, after /tmp (tmpfs) hit 97% inodes with 20G bytes free and tools failed with ENOSPC: a daily /tmp plan on n8n. n8n-native host lane fired by tradeai-dispatcher 05:00 ET. live_arg is --plan: the tmp rules of config/disk_hygiene_rules.json (ended Claude session scratch dirs idle > 2 days with no cwd / open fd / live transcript; pytest temp older than 1 day; every other /tmp entry never touched) produce a DiskHygieneManifest@v1 scope tmp (path, kind, file_count, size, rule evidence) and a LaneRunReceipt; it DELETES NOTHING. --apply is operator-only (TRADEAI_DISK_HYGIENE_GRANT, a fresh manifest, per-item re-validation, item / byte / file caps) and refuses under the n8n executor (TRADEAI_RUN_ID): AGENTS.md §23.14. Live only once in TRADEAI_N8N_RELAY_LIVE_LANES (docs/ops/packets/disk-hygiene-n8n-20261018/cutover.sh relay). 2026-10-22 (operator: 'It needs to be able to delete it.'): the same plan now also evaluates rules B (pytest --basetemp trees), E (named ephemeral entries) and G (top-level /tmp git trees) and ignores future-dated fixture mtimes; this n8n lane still deletes nothing, the deletion runs on the host lanes tmp-hygiene-apply (hourly) and tmp-hygiene-pressure (inode trigger).",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/tmp-hygiene_last.json",
@@ -16901,6 +16940,72 @@
         "priority": 3,
         "retry_policy": "transient-2"
       }
+    },
+    {
+      "lane_id": "tmp-hygiene-apply",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-tmp-hygiene-apply.timer",
+        "match": "scripts/tmp_hygiene_auto.py"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-22",
+      "state_reason": "Hourly /tmp auto-apply: scripts/tmp_hygiene_auto.py = a fresh tmp plan (rules S, P, B, E, G of config/disk_hygiene_rules.json tmp) then tmp_hygiene.apply (re-validation, caps), deletions ledger + run report + this LaneRunReceipt; P2 >= 90% / P1 >= 97% /tmp inode use via telegram_alert (alert_condition_state dedupe). Operator 2026-10-22 (verbatim): \"It needs to be able to delete it. Just looking at it won't do anything.\" (config/disk_hygiene_rules.json tmp.auto_apply.standing_approval). Host timer, never n8n: AGENTS.md §24.12 admits only lane disk-hygiene to n8n-executed deletion and the allowlist never-list keeps destructive retention off n8n; n8n keeps tmp-hygiene (--plan, daily) and disk-usage-monitor (inode bands) and watches this lane's receipt. NEVER_SCHEDULED until the operator installs the unit (docs/ops/packets/tmp-hygiene-auto-apply-20261022/README.md activation), then ACTIVE.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/tmp-hygiene-apply_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_tmp_hygiene_auto_apply_20261022.py; linux_launchers/systemd/tradeai-tmp-hygiene-apply.{service,timer}; docs/ops/packets/tmp-hygiene-auto-apply-20261022/01_auto_dry_run_20261022.txt",
+      "note": "Deletes only what the reviewed tmp rules select, only under /tmp, never --force; writes <state root>/data/runtime/disk_hygiene/{tmp_hygiene_manifest_auto_latest.json, tmp_hygiene_auto_apply_latest.json, tmp_hygiene_deletions_<yyyymm>.jsonl}. Kill switch: tmp.auto_apply.enabled=false or stop the timer.",
+      "severity": "Medium"
+    },
+    {
+      "lane_id": "tmp-hygiene-pressure",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-tmp-hygiene-pressure.timer",
+        "match": "scripts/tmp_hygiene_auto.py --pressure-only"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-22",
+      "state_reason": "Every 5 min: /tmp inode use >= tmp.auto_apply.pressure_trigger_pct (85%) runs the same auto-apply early (at most once per pressure_min_interval_minutes); below it writes only its receipt. Operator 2026-10-22 (verbatim): \"It needs to be able to delete it. Just looking at it won't do anything.\" (config/disk_hygiene_rules.json tmp.auto_apply.standing_approval). Host timer, never n8n: AGENTS.md §24.12 admits only lane disk-hygiene to n8n-executed deletion and the allowlist never-list keeps destructive retention off n8n; n8n keeps tmp-hygiene (--plan, daily) and disk-usage-monitor (inode bands) and watches this lane's receipt. NEVER_SCHEDULED until the operator installs the unit (docs/ops/packets/tmp-hygiene-auto-apply-20261022/README.md activation), then ACTIVE.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/tmp-hygiene-pressure_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_tmp_hygiene_auto_apply_20261022.py; linux_launchers/systemd/tradeai-tmp-hygiene-pressure.{service,timer}",
+      "note": "Below the trigger: receipt only (acted false). At or above: the tmp-hygiene-apply run (its receipt is tmp-hygiene-apply's).",
+      "severity": "Medium"
+    },
+    {
+      "lane_id": "agent-claim-compact",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-claim-compact.timer",
+        "match": "scripts/agent_claim.py compact"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-22",
+      "state_reason": "Weekly compaction of the multi-vendor agent claim board (operator-approved design 2026-10-22): scripts/agent_claim.py compact --apply --lane-receipt appends every done/abandoned claim, and every active claim stale (no heartbeat) for more than 7 days, to <persistent-state>/data/coordination/claims/claims_history.jsonl (append-only, fsynced, read back by sha256) and only then removes that claim file; live claims are never touched. Host timer (Sun 06:50 ET), not n8n: a file-local coordination chore with no LLM/ingest work. NEVER_SCHEDULED until the operator installs the unit (docs/ops/AGENT_CLAIM_BOARD.md, Operator install), then ACTIVE.",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/agent-claim-compact_last.json",
+        "key": "ok_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_agent_claim_board_20261022.py; linux_launchers/systemd/tradeai-agent-claim-compact.{service,timer}; docs/ops/AGENT_CLAIM_BOARD.md",
+      "note": "Removes only claim files it has just archived (the archive line is the durable copy; a later lookup of an archived claim id answers from the history). Never writes outside the claims directory and data/runtime. Dry run: scripts/agent_claim.py compact --dry-run.",
+      "severity": "Low"
     },
     {
       "lane_id": "hermes-watchlist-scorer",
@@ -17098,7 +17203,8 @@
         "key": "ok_at"
       },
       "severity": "Medium",
-      "note": "Fired only by tradeai-fabric-release-train through Run Lane (one lane per window slot: a run request names only lane and mode, AGENTS.md §23.3, so the slot is in the reviewed argv), never by the generic dispatcher (no dispatch block). Its whole effect with --append is one TrainWindowRequest@v1 file in the release-window request spool; it never merges, pushes, promotes, rolls back, issues a capability, writes the STOP latch, reads a credential or sends. A request is REQUEST_ONLY: the host controller re-validates every gate."
+      "note": "Fired only by tradeai-fabric-release-train through Run Lane (one lane per window slot: a run request names only lane and mode, AGENTS.md §23.3, so the slot is in the reviewed argv), never by the generic dispatcher (no dispatch block). Its whole effect with --append is one TrainWindowRequest@v1 file in the release-window request spool; it never merges, pushes, promotes, rolls back, issues a capability, writes the STOP latch, reads a credential or sends. A request is REQUEST_ONLY: the host controller re-validates every gate.",
+      "live_list_note": "2026-10-22: live-listed while NEVER_SCHEDULED is intended by H.0 (docs/ops/packets/release-train-arming-20261021): the lane is pre-listed so a run is live (shadow-only append) the moment step F publishes the workflow; until then nothing can fire it (the §23.24 import gate refuses the workflow). Not a defect; check_registry_runtime_truth LIVE_LIST_REGISTRY_NOT_LIVE on these four rows is expected until step F."
     },
     {
       "lane_id": "release-train-request-0000",
@@ -17122,7 +17228,8 @@
         "key": "ok_at"
       },
       "severity": "Medium",
-      "note": "Fired only by tradeai-fabric-release-train through Run Lane (one lane per window slot: a run request names only lane and mode, AGENTS.md §23.3, so the slot is in the reviewed argv), never by the generic dispatcher (no dispatch block). Its whole effect with --append is one TrainWindowRequest@v1 file in the release-window request spool; it never merges, pushes, promotes, rolls back, issues a capability, writes the STOP latch, reads a credential or sends. A request is REQUEST_ONLY: the host controller re-validates every gate."
+      "note": "Fired only by tradeai-fabric-release-train through Run Lane (one lane per window slot: a run request names only lane and mode, AGENTS.md §23.3, so the slot is in the reviewed argv), never by the generic dispatcher (no dispatch block). Its whole effect with --append is one TrainWindowRequest@v1 file in the release-window request spool; it never merges, pushes, promotes, rolls back, issues a capability, writes the STOP latch, reads a credential or sends. A request is REQUEST_ONLY: the host controller re-validates every gate.",
+      "live_list_note": "2026-10-22: live-listed while NEVER_SCHEDULED is intended by H.0 (docs/ops/packets/release-train-arming-20261021): the lane is pre-listed so a run is live (shadow-only append) the moment step F publishes the workflow; until then nothing can fire it (the §23.24 import gate refuses the workflow). Not a defect; check_registry_runtime_truth LIVE_LIST_REGISTRY_NOT_LIVE on these four rows is expected until step F."
     },
     {
       "lane_id": "release-train-request-0600",
@@ -17146,7 +17253,8 @@
         "key": "ok_at"
       },
       "severity": "Medium",
-      "note": "Fired only by tradeai-fabric-release-train through Run Lane (one lane per window slot: a run request names only lane and mode, AGENTS.md §23.3, so the slot is in the reviewed argv), never by the generic dispatcher (no dispatch block). Its whole effect with --append is one TrainWindowRequest@v1 file in the release-window request spool; it never merges, pushes, promotes, rolls back, issues a capability, writes the STOP latch, reads a credential or sends. A request is REQUEST_ONLY: the host controller re-validates every gate."
+      "note": "Fired only by tradeai-fabric-release-train through Run Lane (one lane per window slot: a run request names only lane and mode, AGENTS.md §23.3, so the slot is in the reviewed argv), never by the generic dispatcher (no dispatch block). Its whole effect with --append is one TrainWindowRequest@v1 file in the release-window request spool; it never merges, pushes, promotes, rolls back, issues a capability, writes the STOP latch, reads a credential or sends. A request is REQUEST_ONLY: the host controller re-validates every gate.",
+      "live_list_note": "2026-10-22: live-listed while NEVER_SCHEDULED is intended by H.0 (docs/ops/packets/release-train-arming-20261021): the lane is pre-listed so a run is live (shadow-only append) the moment step F publishes the workflow; until then nothing can fire it (the §23.24 import gate refuses the workflow). Not a defect; check_registry_runtime_truth LIVE_LIST_REGISTRY_NOT_LIVE on these four rows is expected until step F."
     },
     {
       "lane_id": "release-train-request-0800",
@@ -17170,7 +17278,8 @@
         "key": "ok_at"
       },
       "severity": "Medium",
-      "note": "Fired only by tradeai-fabric-release-train through Run Lane (one lane per window slot: a run request names only lane and mode, AGENTS.md §23.3, so the slot is in the reviewed argv), never by the generic dispatcher (no dispatch block). Its whole effect with --append is one TrainWindowRequest@v1 file in the release-window request spool; it never merges, pushes, promotes, rolls back, issues a capability, writes the STOP latch, reads a credential or sends. A request is REQUEST_ONLY: the host controller re-validates every gate."
+      "note": "Fired only by tradeai-fabric-release-train through Run Lane (one lane per window slot: a run request names only lane and mode, AGENTS.md §23.3, so the slot is in the reviewed argv), never by the generic dispatcher (no dispatch block). Its whole effect with --append is one TrainWindowRequest@v1 file in the release-window request spool; it never merges, pushes, promotes, rolls back, issues a capability, writes the STOP latch, reads a credential or sends. A request is REQUEST_ONLY: the host controller re-validates every gate.",
+      "live_list_note": "2026-10-22: live-listed while NEVER_SCHEDULED is intended by H.0 (docs/ops/packets/release-train-arming-20261021): the lane is pre-listed so a run is live (shadow-only append) the moment step F publishes the workflow; until then nothing can fire it (the §23.24 import gate refuses the workflow). Not a defect; check_registry_runtime_truth LIVE_LIST_REGISTRY_NOT_LIVE on these four rows is expected until step F."
     },
     {
       "lane_id": "schwab-position-sync",
@@ -17181,12 +17290,11 @@
         "match": "scripts/schwab_position_sync.py"
       },
       "expected_cadence_hours": 64.25,
-      "state": "PAUSED",
-      "state_since": "2026-10-15",
-      "state_reason": "Crontab line 501 is commented: \"# PAUSED 2026-10-15 schwab-app-deactivated (incident SPCX, grant 0f9de907)\" (crontab -l, read 2026-10-22). The row said ACTIVE for a week while the scheduled holdings.json writer did not run, and lane_state_drift classified the pair UNCLASSIFIED, so no gate saw it; scripts/check_registry_runtime_truth.py now reports that shape as ACTIVE_CRON_LINE_ABSENT. Schwab reads were re-enabled by the operator 2026-10-16 (config/schwab_access_mode.yaml mode read_only). Until AGENTS.md 18.0.0 (broker READ-ONLY lanes on n8n) is ACTIVE this writer stays a HOST cron line: the operator's cron resume packet re-enables line 501 and flips this row back to ACTIVE in the same change (§9.3: a crontab edit is a registry edit). The n8n lane in f09_staged stays inert until 18.0.0 is ACTIVE.",
+      "state": "ACTIVE",
+      "state_since": "2026-10-22",
+      "state_reason": "ACTIVE (cron): operator decision 2026-10-22, verbatim: \"keep step (a) as-is and resume it on cron now, because the holdings data matters. I'll flip its registry row to 'ACTIVE (cron)' in the same change, so the truth monitor doesn't flag a mismatch. It moves to the n8n lane after 19.0.0.\" The runner is HOST cron line 501 (7,22,37,52 9-16 * * 1-5, America/New_York, Mon-Fri), un-paused by step (a) of docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh (unchanged; operator-run, never by an agent), and this row flips in the same change (§9.3: a crontab edit is a registry edit). History: the line was commented \"# PAUSED 2026-10-15 schwab-app-deactivated (incident SPCX, grant 0f9de907)\" from 2026-10-15 to the resume; the row was PAUSED from 2026-10-22 (PR #1927) until this flip. Until the operator runs step (a), scripts/check_registry_runtime_truth.py reports ACTIVE_CRON_LINE_ABSENT for this row on the host; that finding clears when line 501 is live. The n8n lane in f09_staged stays inert until AGENTS.md 19.0.0 is ACTIVE.",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "crontab -l line 501 text (quoted in f09_staged.cron_lines); tests/test_registry_runtime_truth_20261018.py test_the_committed_schwab_position_sync_row_tells_the_truth",
-      "review_by": "2026-10-29",
+      "reason_evidence": "operator decision 2026-10-22 (quoted in state_reason and note); resume-operator.sh step a targets the exact line-501 text; tests/test_registry_runtime_truth_20261018.py test_the_committed_schwab_position_sync_row_tells_the_truth",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/schwab_position_sync.log",
@@ -17205,7 +17313,7 @@
         "f_evidence": "runs :07/:22/:37/:52 while positions_sync runs :09/:24/:39/:54; last log lines `\"added\": [], \"removed\": []`; schwab_positions_live 0 rows today (db_fresh)"
       },
       "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one. 2026-10-22 operator decision (verbatim): \"keep step (a) as-is and resume it on cron now, because the holdings data matters. I'll flip its registry row to 'ACTIVE (cron)' in the same change, so the truth monitor doesn't flag a mismatch. It moves to the n8n lane after 19.0.0.\" Row set ACTIVE (cron, line 501) with the incident SPCX resume packet step (a); the f09_staged n8n lane record stays attached and inert, gated on AGENTS.md 19.0.0 ACTIVE.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
       "stay_on_cron": {
         "class": "broker_order",
@@ -17215,7 +17323,7 @@
       "f09_staged": {
         "policy": "operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\"); AGENTS.md 12.0.0 §23.25 (ACTIVE) makes F09 a cutover target: n8n schedules the HOST lane, the host executes under the trading lock and config/schwab_access_mode.yaml; same staged shape as PR #1795 (F09 batch 1)",
         "since": "2026-10-22",
-        "why_off": "Staged inert, gated on AGENTS.md 18.0.0 ACTIVE: no allowlist entry and no dispatch block. Today lib/lane_dispatch.dispatch_eligible refuses the forbidden tokens 'schwab' (EXTRA_FORBIDDEN_WORDS) and 'schwab_position_sync.py' (pipeline_manifest.FORBIDDEN_COMMAND_TOKENS), and the broker-read lanes are on the §23 n8n never-list; this change does not touch either. 18.0.0 (operator-directed 2026-10-22, not yet ratified) is the amendment that admits broker READ-ONLY lanes.",
+        "why_off": "Staged inert, gated on AGENTS.md 19.0.0 ACTIVE (operator 2026-10-22: \"It moves to the n8n lane after 19.0.0.\"): no allowlist entry and no dispatch block. Today lib/lane_dispatch.dispatch_eligible refuses the forbidden tokens 'schwab' (EXTRA_FORBIDDEN_WORDS) and 'schwab_position_sync.py' (pipeline_manifest.FORBIDDEN_COMMAND_TOKENS), and the broker-read lanes are on the §23 n8n never-list; this change does not touch either. AGENTS.md 18.0.0 was ratified 2026-10-22 as the data foundation (§26) and grants no n8n or broker authority, so the broker READ-ONLY amendment this lane waits for is 19.0.0 (not yet proposed or ratified).",
         "order_path": false,
         "entry_script": "scripts/schwab_position_sync.py",
         "cron_lines": [
@@ -17284,7 +17392,7 @@
         },
         "health_contract": "config/n8n_health_contracts.json id schwab-position-sync (DRAFT, owner execution; operator REVIEW)",
         "activation_needs": [
-          "AGENTS.md 18.0.0 ACTIVE (broker READ-ONLY lanes on n8n: read_only mode + trading lock LOCKED + read-only allowlist) and the code that implements it, reviewed in its own PR; nothing in this lane's record weakens the forbidden-token check before then",
+          "AGENTS.md 19.0.0 ACTIVE (broker READ-ONLY lanes on n8n: read_only mode + trading lock LOCKED + read-only allowlist) and the code that implements it, reviewed in its own PR; nothing in this lane's record weakens the forbidden-token check before then",
           "the --dry-run guard above (write-free, broker-call-free) and a LaneRunReceipt@v2 with produced_count (today output_signal is a log mtime)",
           "the read_only access-mode preflight above",
           "live env: env_names is [] (report mode renders TRADEAI_ENV like cron); a live entry reads Schwab tokens through schwab_token_manager on the host, never through n8n (§23.23 C5: no broker credential in n8n)",
@@ -17293,17 +17401,693 @@
         ],
         "relation_to_f09_batch_1": "PR #1795 stages the other read/sync lanes (alpaca/moomoo live read, snaptrade, positions_sync, ...) in this shape; it does not stage schwab-position-sync. Same activation decision for all of them.",
         "gated_on": {
-          "policy": "AGENTS.md 18.0.0 (operator-directed 2026-10-22: n8n may schedule broker READ-ONLY lanes under read_only mode + trading lock LOCKED + a read-only allowlist)",
+          "policy": "AGENTS.md 19.0.0 (the broker READ-ONLY lanes amendment: n8n may schedule broker READ-ONLY lanes under read_only mode + trading lock LOCKED + a read-only allowlist); operator 2026-10-22: \"It moves to the n8n lane after 19.0.0.\" (18.0.0, ratified 2026-10-22, is the data foundation and does not admit this lane)",
           "status_required": "ACTIVE",
-          "status_today": "NOT RATIFIED (2026-10-22)",
+          "status_today": "NOT PROPOSED (2026-10-22)",
           "until_then": "this lane stays inert: no allowlist entry, no dispatch, and the forbidden-token rule (pipeline_manifest.FORBIDDEN_COMMAND_TOKENS, lane_dispatch.EXTRA_FORBIDDEN_WORDS) is NOT weakened"
         },
-        "host_schedule_until_18": "host cron line 501, resumed by the operator's cron resume packet (not by this PR); the registry row returns to ACTIVE in that packet",
-        "trading_lock_condition": "the activation preflight also refuses unless lib.trading_lock.lock_state() is LOCKED for schwab (18.0.0 condition), in addition to access mode read_only"
+        "host_schedule_until_19": "host cron line 501, resumed by step (a) of the operator's incident SPCX resume packet (docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh), not by this PR; the registry row is ACTIVE (cron) from 2026-10-22 (operator decision quoted in the row's state_reason)",
+        "trading_lock_condition": "the activation preflight also refuses unless lib.trading_lock.lock_state() is LOCKED for schwab (19.0.0 condition), in addition to access mode read_only"
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-22",
-      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented) and the f09_staged record added; reconcile_lane_registry.py re-derives generated rows from live crontab lines and would drop both, so the row is hand-maintained from here."
+      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented) and the f09_staged record added; reconcile_lane_registry.py re-derives generated rows from live crontab lines and would drop both, so the row is hand-maintained from here. 2026-10-22 (later): state ACTIVE (cron) by operator decision with the incident SPCX resume packet step (a); still hand-maintained (the generator would drop f09_staged)."
+    },
+    {
+      "lane_id": "schwab-stream-daemon",
+      "owner": "execution",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "31 9 * * 1-5",
+        "match": "scripts/schwab_stream_daemon.py\""
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "schwab_stream_quotes",
+        "column": "captured_at",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): the 09:31 start ran from an old release without line buffering, so logs/schwab_stream.log is unflushed while the daemon streams; DB max(captured_at) 2026-10-09 19:44:41, 167,971 rows that day. Side bug (code, not here): _market_open() uses "
+      },
+      "value_class": "Technical Debt",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L460",
+        "pipeline": "P09",
+        "value_class": "Technical Debt",
+        "recommendation": "MIGRATE_N8N",
+        "f_recommendation": "INVESTIGATE then REDESIGN",
+        "event_driven_candidate": false,
+        "f_evidence": "log stale-1 (cron audit)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "stay_on_cron": {
+        "class": "broker_order",
+        "token": "schwab",
+        "source": "config/lane_stay_on_cron_tokens.json"
+      },
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l L462 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
+      "incident": "INC-20261014-SPCX",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-22",
+      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented since the SPCX incident); reconcile_lane_registry.py re-derives generated rows from live crontab lines and would reset the state, so the row is hand-maintained from here."
+    },
+    {
+      "lane_id": "sync-basis-from-broker",
+      "owner": "execution",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "33 16 * * 1-5",
+        "match": "scripts/sync_basis_from_broker.py"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/basis_sync.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Business Critical",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L466",
+        "pipeline": "P09",
+        "value_class": "Business Critical",
+        "recommendation": "KEEP_ON_CRON",
+        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
+        "event_driven_candidate": false,
+        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "stay_on_cron": {
+        "class": "broker_order",
+        "token": "sync_basis_from_broker.py",
+        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+      },
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l L468 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
+      "incident": "INC-20261014-SPCX",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-22",
+      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented since the SPCX incident); reconcile_lane_registry.py re-derives generated rows from live crontab lines and would reset the state, so the row is hand-maintained from here."
+    },
+    {
+      "lane_id": "audit-position-basis",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "35 16 * * 1-5",
+        "match": "scripts/audit_position_basis.py"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/position_basis_audit.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P12",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L467",
+        "pipeline": "P12",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P12",
+        "f_recommendation": "CONSOLIDATE → P12 health plane (one check registry, one receipt, one incident router)",
+        "event_driven_candidate": false,
+        "f_evidence": "~73 health/monitor mechanisms across cron (23), timers (23), health-tick steps (17), services (4), n8n (6); ≥18 independently check \"is X fresh\""
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l L469 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
+      "incident": "INC-20261014-SPCX",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-22",
+      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented since the SPCX incident); reconcile_lane_registry.py re-derives generated rows from live crontab lines and would reset the state, so the row is hand-maintained from here."
+    },
+    {
+      "lane_id": "grok-stop-review",
+      "owner": "defense",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 10,15 * * 1-5",
+        "match": "scripts/grok_stop_review.py"
+      },
+      "expected_cadence_hours": 67.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/grok_stop_review_cron.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Business Critical",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L495",
+        "pipeline": "P08",
+        "value_class": "Business Critical",
+        "recommendation": "KEEP_ON_CRON",
+        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
+        "event_driven_candidate": false,
+        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "stay_on_cron": {
+        "class": "broker_order",
+        "token": "stop",
+        "source": "config/lane_stay_on_cron_tokens.json"
+      },
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l L497 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
+      "incident": "INC-20261014-SPCX",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-22",
+      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented since the SPCX incident); reconcile_lane_registry.py re-derives generated rows from live crontab lines and would reset the state, so the row is hand-maintained from here."
+    },
+    {
+      "lane_id": "coder-dispatch",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 9-18/3 * * 1-5",
+        "match": "scripts/coder_dispatch.py"
+      },
+      "expected_cadence_hours": 63.0,
+      "state": "PAUSED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/coder_dispatch_cron.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L556",
+        "pipeline": "P14",
+        "value_class": "Operationally Important",
+        "recommendation": "KEEP_ON_CRON",
+        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
+        "event_driven_candidate": false,
+        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-14",
+      "state_reason": "Crontab L558 is commented with the prefix \"# PAUSED 2026-10-14 WS7-02 coder-agent autolaunch (grant a67b8f21)\" (crontab -l, read 2026-10-22 ~12:00 ET). INC-20261014-SPCX (docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md). The row said ACTIVE while the line was off (review scratchpad incident-pause/REVIEW.md §3). Stays paused in the resume packet (operator decision 2026-10-22: \"yes\" to the 4-item proposal). Paused for WS7-02 (coder-agent autolaunch), not for the incident; stays paused until the WS7 agent boundaries land (docs/implementation/n8n-maturity/PROGRAM_TRACKER_20261015.md #36, AGENTS.md §24.5). Lean retire in favour of self-heal-fixer. ",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l L558 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
+      "review_by": "2026-10-29",
+      "incident": "INC-20261014-SPCX",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-22",
+      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented since the SPCX incident); reconcile_lane_registry.py re-derives generated rows from live crontab lines and would reset the state, so the row is hand-maintained from here."
+    },
+    {
+      "lane_id": "stop-drift-alert",
+      "owner": "defense",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "35 17 * * 1-5",
+        "match": "scripts/stop_drift_alert.py"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/stop_drift_alert.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Business Critical",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L643",
+        "pipeline": "P08",
+        "value_class": "Business Critical",
+        "recommendation": "KEEP_ON_CRON",
+        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
+        "event_driven_candidate": false,
+        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "stay_on_cron": {
+        "class": "broker_order",
+        "token": "stop_drift_alert",
+        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+      },
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l L652 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
+      "incident": "INC-20261014-SPCX",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-22",
+      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented since the SPCX incident); reconcile_lane_registry.py re-derives generated rows from live crontab lines and would reset the state, so the row is hand-maintained from here."
+    },
+    {
+      "lane_id": "options-chain-snapshot",
+      "owner": "execution",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "35 17 * * 1-5 + 0 10 * * 1-5",
+        "match": "scripts/options_chain_snapshot.py\"",
+        "schedules": [
+          "35 17 * * 1-5",
+          "0 10 * * 1-5"
+        ]
+      },
+      "expected_cadence_hours": 64.42,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/hedging_radar_latest.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/options_chain_snapshot.py:28 SNAP hedging radar snapshot; host mtime 2026-10-09T10:00:52"
+      },
+      "value_class": "Nice to Have",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L759",
+        "pipeline": "P09",
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P09",
+        "f_recommendation": "CONSOLIDATE-into P09",
+        "event_driven_candidate": false,
+        "f_evidence": "Unverified use: no consumer check run for this line"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "stay_on_cron": {
+        "class": "broker_order",
+        "token": "options_chain_snapshot.py",
+        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+      },
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 2.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l L772 + L778 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
+      "incident": "INC-20261014-SPCX",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-22",
+      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented since the SPCX incident); reconcile_lane_registry.py re-derives generated rows from live crontab lines and would reset the state, so the row is hand-maintained from here."
+    },
+    {
+      "lane_id": "defense-execution",
+      "owner": "execution",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/10 9-16 * * 1-5",
+        "match": "import defense_execution as d;"
+      },
+      "expected_cadence_hours": 64.17,
+      "state": "PAUSED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/defense_fills.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Operationally Important",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L761",
+        "pipeline": "P09",
+        "value_class": "Operationally Important",
+        "recommendation": "MIGRATE_N8N",
+        "f_recommendation": "MOVE into P09 options loop",
+        "event_driven_candidate": false,
+        "f_evidence": "inline poll_fills every 10 min"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "stay_on_cron": {
+        "class": "broker_order",
+        "token": "defense_execution",
+        "source": "config/lane_stay_on_cron_tokens.json"
+      },
+      "state_since": "2026-10-14",
+      "state_reason": "Crontab L774 is commented with the prefix \"# PAUSED 2026-10-14 schwab-app-deactivated (incident SPCX)\" (crontab -l, read 2026-10-22 ~12:00 ET). INC-20261014-SPCX (docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md). The row said ACTIVE while the line was off (review scratchpad incident-pause/REVIEW.md §3). Stays paused in the resume packet (operator decision 2026-10-22: \"yes\" to the 4-item proposal). Execution-adjacent (defense_execution is excluded by AGENTS.md §24.11), a router-bypassing sender, and its only open intent is a stale paper intent from 07-18. ",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l L774 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
+      "review_by": "2026-10-29",
+      "incident": "INC-20261014-SPCX",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-22",
+      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented since the SPCX incident); reconcile_lane_registry.py re-derives generated rows from live crontab lines and would reset the state, so the row is hand-maintained from here."
+    },
+    {
+      "lane_id": "options-lifecycle-run",
+      "owner": "execution",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/20 9-16 * * 1-5",
+        "match": "scripts/options_lifecycle_run.py\""
+      },
+      "expected_cadence_hours": 64.33,
+      "state": "PAUSED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/options_lifecycle_latest.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/options_lifecycle_run.py:34 SNAP UI snapshot; host mtime 2026-10-09T16:00:06"
+      },
+      "value_class": "Business Critical",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L768",
+        "pipeline": "P09",
+        "value_class": "Business Critical",
+        "recommendation": "KEEP_ON_CRON",
+        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
+        "event_driven_candidate": true,
+        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-14",
+      "state_reason": "Crontab L781 is commented with the prefix \"# PAUSED 2026-10-14 schwab-app-deactivated (incident SPCX)\" (crontab -l, read 2026-10-22 ~12:00 ET). INC-20261014-SPCX (docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md). The row said ACTIVE while the line was off (review scratchpad incident-pause/REVIEW.md §3). Stays paused in the resume packet (operator decision 2026-10-22: \"yes\" to the 4-item proposal). No options book to manage (0 strategies; the options_lifecycle family is excluded by §24.11); resume only when an options position opens. ",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l L781 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
+      "review_by": "2026-10-29",
+      "incident": "INC-20261014-SPCX",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-22",
+      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented since the SPCX incident); reconcile_lane_registry.py re-derives generated rows from live crontab lines and would reset the state, so the row is hand-maintained from here."
+    },
+    {
+      "lane_id": "options-lifecycle-digest",
+      "owner": "comms",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 8 * * 1-5",
+        "match": "scripts/options_lifecycle_digest.py\""
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "PAUSED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/options_lifecycle.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Duplicated",
+      "recommendation": "MERGE_INTO:P11",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L769",
+        "pipeline": "P11",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P11",
+        "f_recommendation": "MERGE-into the 10/15/17 advice digests (P11)",
+        "event_driven_candidate": false,
+        "f_evidence": "9+ separate digests/briefs coexist with the comprehensive 10/15/17 digests (memory 10-08 \"old digests folded\"); rotation/smart_alerts/hermes logs end \"Suppressed (delivery_with_shadow_evaluation)\"; analyst digest writes DOCX into release dirs that rotation deletes"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "state_since": "2026-10-14",
+      "state_reason": "Crontab L782 is commented with the prefix \"# PAUSED 2026-10-14 schwab-app-deactivated (incident SPCX)\" (crontab -l, read 2026-10-22 ~12:00 ET). INC-20261014-SPCX (docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md). The row said ACTIVE while the line was off (review scratchpad incident-pause/REVIEW.md §3). Stays paused in the resume packet (operator decision 2026-10-22: \"yes\" to the 4-item proposal). Paired with L781. ",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l L782 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
+      "review_by": "2026-10-29",
+      "incident": "INC-20261014-SPCX",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-22",
+      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented since the SPCX incident); reconcile_lane_registry.py re-derives generated rows from live crontab lines and would reset the state, so the row is hand-maintained from here."
+    },
+    {
+      "lane_id": "schwab-econfirm-reconcile",
+      "owner": "execution",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "35 18 * * 1-5",
+        "match": "scripts/schwab_econfirm_reconcile.py"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/econfirm.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Business Critical",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L771",
+        "pipeline": "P09",
+        "value_class": "Business Critical",
+        "recommendation": "KEEP_ON_CRON",
+        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
+        "event_driven_candidate": false,
+        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "stay_on_cron": {
+        "class": "broker_order",
+        "token": "schwab_econfirm_reconcile.py",
+        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+      },
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-15 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l L784 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
+      "incident": "INC-20261014-SPCX",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-22",
+      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented since the SPCX incident); reconcile_lane_registry.py re-derives generated rows from live crontab lines and would reset the state, so the row is hand-maintained from here."
+    },
+    {
+      "lane_id": "broker-stop-reconcile",
+      "owner": "defense",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "12 6 * * 1-5",
+        "match": "scripts/broker_stop_reconcile.py"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/broker_stop_reconcile.log",
+        "evidence": "CRON_LOG_REDIRECT"
+      },
+      "value_class": "Business Critical",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L781",
+        "pipeline": "P08",
+        "value_class": "Business Critical",
+        "recommendation": "KEEP_ON_CRON",
+        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
+        "event_driven_candidate": false,
+        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "stay_on_cron": {
+        "class": "broker_order",
+        "token": "broker_stop_reconcile.py",
+        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+      },
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l L794 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
+      "incident": "INC-20261014-SPCX",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-22",
+      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented since the SPCX incident); reconcile_lane_registry.py re-derives generated rows from live crontab lines and would reset the state, so the row is hand-maintained from here."
+    },
+    {
+      "lane_id": "sweep-schwab-instruments",
+      "owner": "execution",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 3 * * 6",
+        "match": "scripts/sweep_schwab_instruments.py"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/schwab_instrument_evidence.json",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "scripts/lib/schwab_instrument_evidence.py:34 EVIDENCE_RELATIVE; scripts/sweep_schwab_instruments.py:191-192 save_evidence(doc) unconditionally when --apply; host mtime 2026-10-03T03:30:31 (cron 30 3 * * 6)"
+      },
+      "value_class": "Business Critical",
+      "recommendation": "KEEP_ON_CRON",
+      "rationalization": {
+        "source": "F_rationalization.json",
+        "f_id": "L880",
+        "pipeline": "P09",
+        "value_class": "Business Critical",
+        "recommendation": "KEEP_ON_CRON",
+        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
+        "event_driven_candidate": false,
+        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
+      },
+      "reconciled_on": "2026-10-09",
+      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+      "stay_on_cron": {
+        "class": "broker_order",
+        "token": "schwab",
+        "source": "config/lane_stay_on_cron_tokens.json"
+      },
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-15 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l L896 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
+      "incident": "INC-20261014-SPCX",
+      "adopted_from_generator": "reconcile_lane_registry@v1",
+      "adopted_on": "2026-10-22",
+      "adopted_reason": "2026-10-22: state corrected to PAUSED (cron line commented since the SPCX incident); reconcile_lane_registry.py re-derives generated rows from live crontab lines and would reset the state, so the row is hand-maintained from here."
+    },
+    {
+      "lane_id": "sync-docs-to-drive",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 * * * *",
+        "match": "scripts/sync-docs-to-drive.py"
+      },
+      "expected_cadence_hours": 1,
+      "state": "RETIRED",
+      "state_since": "2026-10-07",
+      "state_reason": "Crontab L214 reads \"# PAUSED_MASTER_REWRITE 5 * * * * cd .../CURRENT && $PY scripts/sync-docs-to-drive.py >> /home/johnclaw/logs/drive-docs-sync.log 2>&1\" (crontab -l, 2026-10-22). Superseded by drive-syncs-hourly (crontab L1048, scripts/run_drive_syncs.sh; ACTIVE, returned OK 2026-10-22 12:05). drive-docs-sync.log was last written 2026-08-20. The line stays commented (never deleted, §0 rule 6); the operator may relabel its prefix to RETIRED. scripts/sync-docs-to-drive.py is kept; archive it only with a tripwire.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab -l L214 text; drive-syncs-hourly row state_reason (Step 3 done 2026-10-07 22:40Z); log mtimes",
+      "superseded_by": "drive-syncs-hourly",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/logs/drive-docs-sync.log"
+      },
+      "note": "Row added 2026-10-22 (incident-pause review: L214 had no registry row). RETIRED, archive note: superseded, not deleted."
+    },
+    {
+      "lane_id": "release-train-claim",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-release-train-claim.timer"
+      },
+      "expected_cadence_hours": 0.05,
+      "state": "ACTIVE",
+      "state_since": "2026-10-22",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "a pass with no pending TrainWindowRequest writes nothing; receipts appear only when a request is claimed"
+      },
+      "state_reason": "Installed and enabled on the host (operator item O7, release-train packet docs/ops/packets/release-train-20261021/): tradeai-release-train-claim.timer fires every minute (fallback tick), .path starts the claimer on n8n TrainWindowRequest files, .service runs `scripts/release_window.py train-claim --apply`. While TRAIN_CONTROLLER_STATUS is BUILD_ONLY every live request is refused CONTROLLER_BUILD_ONLY; nothing is pushed, merged or promoted (AGENTS.md §25). Declared 2026-10-22 because the unit ran undeclared and failed check_lane_registry --fail-on-new for every agent. Operator 2026-10-22, verbatim: \"yes i approve 'approve all' (A–L)\" (item D: lane-registry truth).",
+      "note": "Declared by registry-truth PR (approval D). Companion units: tradeai-release-train-claim.service, tradeai-release-train-claim.path.",
+      "post_snapshot_install": {
+        "installed_on": "2026-10-22",
+        "evidence": "systemctl --user list-timers: tradeai-release-train-claim.timer active, firing every minute (2026-10-22); check_lane_registry.py --fail-on-new discovered it as undeclared until this row"
+      }
+    },
+    {
+      "lane_id": "ops-controls-applier",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-ops-applier.service"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-22",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "long-running applier; heartbeat is read by GET /api/v2/ops/controls/state, not a file this row can watch"
+      },
+      "state_reason": "Ops → Controls host applier (scripts/ops/operator_controls_applier.py serve; unit config/systemd/user/tradeai-ops-applier.service), AGENTS.md 19.0.0 §27 (ACTIVE 2026-10-22). Installed and enabled 2026-10-22 ~20:34 ET by the operator's setup script after release 6 (operator ran it at the TTY). Applies only HMAC-signed operator approvals; agents cannot use it. Operator 2026-10-22, verbatim: \"yes i approve 'approve all' (A–L)\" (item D: lane-registry truth).",
+      "note": "Declared by registry-truth PR (approval D). The operator_settings store is a separate data-dictionary row proposed by the 19.0.0 package.",
+      "post_snapshot_install": {
+        "installed_on": "2026-10-22",
+        "evidence": "systemctl --user is-active tradeai-ops-applier.service = active (2026-10-22 ~20:34 ET, operator setup script after release 6); check_lane_registry.py --fail-on-new discovered it as undeclared until this row"
+      }
+    },
+    {
+      "lane_id": "calibration-shadow-harness",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/calibration_shadow_harness.py",
+        "cadence": "25 12 * * 1-5",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 24.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-22",
+      "state_reason": "operator 2026-10-22 (Gate 4 design item 3: 'add a shadow-test harness ... Run as an n8n lane in shadow (registry row + allowlist + DRAFT contract; no broker calls)'); cron freeze 2026-10-09 in force, no crontab line. SHADOW: dispatch mode dry_run, allowlist live_arg null; a fire runs --dry-run (reads the AT calibration report and decision journal, evaluates every PROPOSED threshold beside the current one, prints; writes nothing).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/calibration_shadow_harness.py --dry-run (write-free; tests/test_calibration_shadow_harness_20261022.py::test_dry_run_writes_nothing); no env read, no DB, no provider or model call.",
+      "review_by": "2026-11-05",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/calibration-shadow-harness_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Low",
+      "note": "Forward shadow test of signal_calibration threshold proposals (CalibrationShadowReport@v1). Weekdays 12:25 ET, after at-signal-calibration (12:10). A live run (canary, separate PR) writes data/runtime/calibration_shadow_report.{json,md} and its LaneRunReceipt. Recommendations are proposals; the operator ratifies.",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "25 12 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "report",
+        "priority": 5,
+        "retry_policy": "transient-2"
+      }
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",
@@ -19764,45 +20548,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "schwab-stream-daemon",
-      "owner": "execution",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "31 9 * * 1-5",
-        "match": "scripts/schwab_stream_daemon.py\""
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "db_max",
-        "table": "schwab_stream_quotes",
-        "column": "captured_at",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): the 09:31 start ran from an old release without line buffering, so logs/schwab_stream.log is unflushed while the daemon streams; DB max(captured_at) 2026-10-09 19:44:41, 167,971 rows that day. Side bug (code, not here): _market_open() uses "
-      },
-      "value_class": "Technical Debt",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L460",
-        "pipeline": "P09",
-        "value_class": "Technical Debt",
-        "recommendation": "MIGRATE_N8N",
-        "f_recommendation": "INVESTIGATE then REDESIGN",
-        "event_driven_candidate": false,
-        "f_evidence": "log stale-1 (cron audit)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "stay_on_cron": {
-        "class": "broker_order",
-        "token": "schwab",
-        "source": "config/lane_stay_on_cron_tokens.json"
-      }
-    },
-    {
       "lane_id": "compute-source-weights",
       "owner": "learning",
       "scheduler": {
@@ -19828,75 +20573,6 @@
         "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
         "event_driven_candidate": false,
         "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "sync-basis-from-broker",
-      "owner": "execution",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "33 16 * * 1-5",
-        "match": "scripts/sync_basis_from_broker.py"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/basis_sync.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Business Critical",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L466",
-        "pipeline": "P09",
-        "value_class": "Business Critical",
-        "recommendation": "KEEP_ON_CRON",
-        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
-        "event_driven_candidate": false,
-        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "stay_on_cron": {
-        "class": "broker_order",
-        "token": "sync_basis_from_broker.py",
-        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
-      }
-    },
-    {
-      "lane_id": "audit-position-basis",
-      "owner": "platform",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "35 16 * * 1-5",
-        "match": "scripts/audit_position_basis.py"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/position_basis_audit.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P12",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L467",
-        "pipeline": "P12",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P12",
-        "f_recommendation": "CONSOLIDATE → P12 health plane (one check registry, one receipt, one incident router)",
-        "event_driven_candidate": false,
-        "f_evidence": "~73 health/monitor mechanisms across cron (23), timers (23), health-tick steps (17), services (4), n8n (6); ≥18 independently check \"is X fresh\""
       },
       "generated_by": "reconcile_lane_registry@v1",
       "reconciled_on": "2026-10-09",
@@ -20265,43 +20941,6 @@
       }
     },
     {
-      "lane_id": "grok-stop-review",
-      "owner": "defense",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "5 10,15 * * 1-5",
-        "match": "scripts/grok_stop_review.py"
-      },
-      "expected_cadence_hours": 67.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/grok_stop_review_cron.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Business Critical",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L495",
-        "pipeline": "P08",
-        "value_class": "Business Critical",
-        "recommendation": "KEEP_ON_CRON",
-        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
-        "event_driven_candidate": false,
-        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "stay_on_cron": {
-        "class": "broker_order",
-        "token": "stop",
-        "source": "config/lane_stay_on_cron_tokens.json"
-      }
-    },
-    {
       "lane_id": "oauth-lane-keepalive",
       "owner": "platform",
       "scheduler": {
@@ -20522,38 +21161,6 @@
         "recommendation": "KEEP_ON_CRON",
         "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
         "event_driven_candidate": true,
-        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "coder-dispatch",
-      "owner": "portfolio",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "0 9-18/3 * * 1-5",
-        "match": "scripts/coder_dispatch.py"
-      },
-      "expected_cadence_hours": 63.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/coder_dispatch_cron.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L556",
-        "pipeline": "P14",
-        "value_class": "Operationally Important",
-        "recommendation": "KEEP_ON_CRON",
-        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
-        "event_driven_candidate": false,
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
       },
       "generated_by": "reconcile_lane_registry@v1",
@@ -21327,43 +21934,6 @@
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
     },
     {
-      "lane_id": "stop-drift-alert",
-      "owner": "defense",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "35 17 * * 1-5",
-        "match": "scripts/stop_drift_alert.py"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/stop_drift_alert.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Business Critical",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L643",
-        "pipeline": "P08",
-        "value_class": "Business Critical",
-        "recommendation": "KEEP_ON_CRON",
-        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
-        "event_driven_candidate": false,
-        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "stay_on_cron": {
-        "class": "broker_order",
-        "token": "stop_drift_alert",
-        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
-      }
-    },
-    {
       "lane_id": "news-ingestion-tail",
       "owner": "research",
       "scheduler": {
@@ -21918,56 +22488,6 @@
       ]
     },
     {
-      "lane_id": "options-chain-snapshot",
-      "owner": "execution",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "35 17 * * 1-5 + 0 10 * * 1-5",
-        "match": "scripts/options_chain_snapshot.py\"",
-        "schedules": [
-          "35 17 * * 1-5",
-          "0 10 * * 1-5"
-        ]
-      },
-      "expected_cadence_hours": 64.42,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/hedging_radar_latest.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/options_chain_snapshot.py:28 SNAP hedging radar snapshot; host mtime 2026-10-09T10:00:52"
-      },
-      "value_class": "Nice to Have",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L759",
-        "pipeline": "P09",
-        "value_class": "Nice to Have",
-        "recommendation": "PIPELINE:P09",
-        "f_recommendation": "CONSOLIDATE-into P09",
-        "event_driven_candidate": false,
-        "f_evidence": "Unverified use: no consumer check run for this line",
-        "f_ids": [
-          "L759",
-          "L765"
-        ],
-        "f_recommendations": [
-          "PIPELINE:P09",
-          "PIPELINE:P09"
-        ]
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "stay_on_cron": {
-        "class": "broker_order",
-        "token": "options_chain_snapshot.py",
-        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
-      }
-    },
-    {
       "lane_id": "defense-recommendations",
       "owner": "portfolio",
       "scheduler": {
@@ -22011,43 +22531,6 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "defense-execution",
-      "owner": "execution",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "*/10 9-16 * * 1-5",
-        "match": "import defense_execution as d;"
-      },
-      "expected_cadence_hours": 64.17,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/defense_fills.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Operationally Important",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L761",
-        "pipeline": "P09",
-        "value_class": "Operationally Important",
-        "recommendation": "MIGRATE_N8N",
-        "f_recommendation": "MOVE into P09 options loop",
-        "event_driven_candidate": false,
-        "f_evidence": "inline poll_fills every 10 min"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "stay_on_cron": {
-        "class": "broker_order",
-        "token": "defense_execution",
-        "source": "config/lane_stay_on_cron_tokens.json"
-      }
     },
     {
       "lane_id": "defense-weekly-paid-review",
@@ -22112,108 +22595,6 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "options-lifecycle-run",
-      "owner": "execution",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "*/20 9-16 * * 1-5",
-        "match": "scripts/options_lifecycle_run.py\""
-      },
-      "expected_cadence_hours": 64.33,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/options_lifecycle_latest.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/options_lifecycle_run.py:34 SNAP UI snapshot; host mtime 2026-10-09T16:00:06"
-      },
-      "value_class": "Business Critical",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L768",
-        "pipeline": "P09",
-        "value_class": "Business Critical",
-        "recommendation": "KEEP_ON_CRON",
-        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
-        "event_driven_candidate": true,
-        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "options-lifecycle-digest",
-      "owner": "comms",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "5 8 * * 1-5",
-        "match": "scripts/options_lifecycle_digest.py\""
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/options_lifecycle.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Duplicated",
-      "recommendation": "MERGE_INTO:P11",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L769",
-        "pipeline": "P11",
-        "value_class": "Duplicated",
-        "recommendation": "MERGE_INTO:P11",
-        "f_recommendation": "MERGE-into the 10/15/17 advice digests (P11)",
-        "event_driven_candidate": false,
-        "f_evidence": "9+ separate digests/briefs coexist with the comprehensive 10/15/17 digests (memory 10-08 \"old digests folded\"); rotation/smart_alerts/hermes logs end \"Suppressed (delivery_with_shadow_evaluation)\"; analyst digest writes DOCX into release dirs that rotation deletes"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "schwab-econfirm-reconcile",
-      "owner": "execution",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "35 18 * * 1-5",
-        "match": "scripts/schwab_econfirm_reconcile.py"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/econfirm.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Business Critical",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L771",
-        "pipeline": "P09",
-        "value_class": "Business Critical",
-        "recommendation": "KEEP_ON_CRON",
-        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
-        "event_driven_candidate": false,
-        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "stay_on_cron": {
-        "class": "broker_order",
-        "token": "schwab_econfirm_reconcile.py",
-        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
-      }
     },
     {
       "lane_id": "defense-inverse-stoplights",
@@ -22311,43 +22692,6 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "broker-stop-reconcile",
-      "owner": "defense",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "12 6 * * 1-5",
-        "match": "scripts/broker_stop_reconcile.py"
-      },
-      "expected_cadence_hours": 72.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "logs/broker_stop_reconcile.log",
-        "evidence": "CRON_LOG_REDIRECT"
-      },
-      "value_class": "Business Critical",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L781",
-        "pipeline": "P08",
-        "value_class": "Business Critical",
-        "recommendation": "KEEP_ON_CRON",
-        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
-        "event_driven_candidate": false,
-        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "stay_on_cron": {
-        "class": "broker_order",
-        "token": "broker_stop_reconcile.py",
-        "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
-      }
     },
     {
       "lane_id": "incubator-llm-screener",
@@ -22721,44 +23065,6 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)"
-    },
-    {
-      "lane_id": "sweep-schwab-instruments",
-      "owner": "execution",
-      "scheduler": {
-        "kind": "cron",
-        "expression": "30 3 * * 6",
-        "match": "scripts/sweep_schwab_instruments.py"
-      },
-      "expected_cadence_hours": 168.0,
-      "state": "ACTIVE",
-      "output_signal": {
-        "kind": "file_mtime",
-        "path": "data/runtime/schwab_instrument_evidence.json",
-        "evidence": "SCRIPT_RECEIPT",
-        "evidence_ref": "scripts/lib/schwab_instrument_evidence.py:34 EVIDENCE_RELATIVE; scripts/sweep_schwab_instruments.py:191-192 save_evidence(doc) unconditionally when --apply; host mtime 2026-10-03T03:30:31 (cron 30 3 * * 6)"
-      },
-      "value_class": "Business Critical",
-      "recommendation": "KEEP_ON_CRON",
-      "rationalization": {
-        "source": "F_rationalization.json",
-        "f_id": "L880",
-        "pipeline": "P09",
-        "value_class": "Business Critical",
-        "recommendation": "KEEP_ON_CRON",
-        "f_recommendation": "KEEP on cron/systemd; n8n watches heartbeat",
-        "event_driven_candidate": false,
-        "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
-      },
-      "generated_by": "reconcile_lane_registry@v1",
-      "reconciled_on": "2026-10-09",
-      "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
-      "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "stay_on_cron": {
-        "class": "broker_order",
-        "token": "schwab",
-        "source": "config/lane_stay_on_cron_tokens.json"
-      }
     },
     {
       "lane_id": "refresh-operator-product",
