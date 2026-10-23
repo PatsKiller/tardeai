@@ -330,6 +330,7 @@ AGENTS.md 20.0.0 §28.3a pins these names. Code: `scripts/lib/agent_task_board.p
 | `take <task-id>` | the same for one task; a refusal says why (taken by whom, waiting on what, overlapping claim) |
 | `claim --add <paths>` | extend your claim; refused on overlap |
 | `task done <id> [--summary] [--cost]` | checks the acceptance boxes in the worklog; records the actual time (taken to done) and cost |
+| `task done <id> --evidence-only --summary S --evidence L [L ...]` | closes a **free** task whose work already shipped (PR merged, batch released), without taking it: no claim is made, so a live claim overlapping its areas does not block it. The actor (vendor/session/agent), summary and evidence links are written to the task (`closed_by`, `done_mode: evidence_only`, `evidence`) and to `tasks_history.jsonl`. Refused on a taken, done or split task, or without a summary and at least one link (2026-10-23) |
 | `task release <id> --handoff "<next step>"` | back to free, with its history; the claim is released as abandoned; the next picker's worklog carries the old one forward |
 
 **What `next` picks.** Under the task lock, it takes the highest-priority free task (1 is highest, then oldest)

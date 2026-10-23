@@ -2,10 +2,12 @@
   "schema": "CiGate@v1",
   "name": "agent_claim_shared_paths_20261023",
   "files": [
-    "tests/test_agent_claim_shared_paths_20261023.py"
+    "tests/test_agent_claim_shared_paths_20261023.py",
+    "tests/test_agent_task_done_evidence_only_20261023.py"
   ],
   "anchor": "AGENT_CLAIM_SHARED_PATHS_20261023",
   "comment": [
-    "ANCHOR: AGENT_CLAIM_SHARED_PATHS_20261023 — claim board shared-additive paths (config/agent_claim_shared_paths.json: docs/INDEX.md, docs/DOCUMENTATION_INDEX.md, apps/command-center-v3/package.json, the docs/AGENTS update backlog): two sessions both claim INDEX.md with no conflict, an exclusive file still conflicts, check/take/next never refuse on a shared path, the pre-commit gate covers a staged shared file by any own claim and still requires a claim for the rest. Hermetic: temp dirs, no gh."
+    "ANCHOR: AGENT_CLAIM_SHARED_PATHS_20261023 \u2014 claim board shared-additive paths (config/agent_claim_shared_paths.json: docs/INDEX.md, docs/DOCUMENTATION_INDEX.md, apps/command-center-v3/package.json, the docs/AGENTS update backlog): two sessions both claim INDEX.md with no conflict, an exclusive file still conflicts, check/take/next never refuse on a shared path, the pre-commit gate covers a staged shared file by any own claim and still requires a claim for the rest. Hermetic: temp dirs, no gh.",
+    "Also: task done --evidence-only closes a FREE task whose work shipped, no claim needed; actor, summary and evidence links recorded in tasks_history.jsonl."
   ]
 }

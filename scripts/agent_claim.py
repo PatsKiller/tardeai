@@ -35,6 +35,10 @@ Shared-additive paths (config/agent_claim_shared_paths.json: docs/INDEX.md, docs
 package.json build line, the docs/AGENTS update backlog) never conflict: any number of sessions may claim them, check
 reports them clear, and the board marks them "(shared)". The rest of a change still needs an exclusive claim.
 
+task done <id> --evidence-only --summary S --evidence L [L ...] closes a FREE task whose work already shipped,
+without taking it (no claim, so an overlapping live claim does not block it); actor, summary and evidence links go to
+the task and tasks_history.jsonl.
+
 Exit codes: 0 ok · 1 conflict / refused claim · 2 usage or ownership error.
 AUTHORITY: READ_ONLY_ADVISORY — coordination files only; no broker, DB, Telegram, scheduler or remote write
 (``gh pr list`` is a read).
@@ -679,6 +683,11 @@ def cmd_task(a: argparse.Namespace) -> int:
                 print(json.dumps(t, indent=2, sort_keys=True))
             else:
                 _print_task(t, full=True)
+        elif a.task_cmd == "done" and a.evidence_only:
+            t = _task_done_evidence_only(tb, a)
+            print(
+                f"{t['task_id']} done {t['done_at']} (evidence-only by {t['closed_by']['vendor']}/{t['closed_by']['session']})"
+            )
         elif a.task_cmd == "done":
             t = tb.done(a.task_id, session=_session(a), summary=a.summary, force=a.force, actual_cost=a.cost)
             print(f"{t['task_id']} done {t['done_at']} (actual {t['actual']})")
@@ -693,6 +702,47 @@ def cmd_task(a: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     return 0
+
+
+def _task_done_evidence_only(tb, a: argparse.Namespace) -> dict:
+    """``task done <id> --evidence-only --summary S --evidence URL ...``: close a FREE task whose work already shipped
+    (e.g. its PR merged, its batch released) without taking it. No claim is made or needed -- taking it could be
+    refused because its areas overlap a live claim. Records the actor, summary and evidence links on the task and in
+    tasks_history.jsonl. Refused unless the task is free and both --summary and at least one --evidence are given."""
+    from scripts.lib import agent_task_board as TB
+
+    session = _session(a)
+    if not session:
+        raise TB.TaskError("--evidence-only needs --session (or AGENT_CLAIM_SESSION): the actor is recorded")
+    summary = B.clip(a.summary, 500)
+    evidence = [e for e in (B.clip(x, 400) for x in a.evidence or []) if e]
+    if not summary or not evidence:
+        raise TB.TaskError("--evidence-only needs --summary and at least one --evidence <PR/commit/receipt link>")
+    with tb.locked():
+        t = tb.get(a.task_id)
+        if t.get("status") != "free":
+            raise TB.TaskError(
+                f"task {a.task_id} is {t.get('status')}; --evidence-only closes free tasks only "
+                "(a taken task is closed by its owner with task done)"
+            )
+        actor = {"vendor": a.vendor or B.detect_vendor(), "session": session, "agent": a.agent or None}
+        t["status"] = "done"
+        t["done_at"] = tb.now_iso()
+        t["closed_by"] = actor
+        t["done_mode"] = "evidence_only"
+        t["evidence"] = evidence
+        t["summary"] = summary
+        tb._event(
+            t,
+            "done",
+            by=session,
+            mode="evidence_only",
+            actor=actor,
+            summary=summary,
+            evidence=evidence,
+        )
+        tb._write(t)
+    return t
 
 
 def cmd_take(a: argparse.Namespace) -> int:
@@ -1012,6 +1062,12 @@ def build_parser() -> argparse.ArgumentParser:
     td.add_argument("--summary", default=None)
     td.add_argument("--cost", default=None, help="actual cost, free text")
     td.add_argument("--force", action="store_true")
+    td.add_argument(
+        "--evidence-only",
+        action="store_true",
+        help="close a FREE task whose work already shipped, with no claim; needs --summary and --evidence",
+    )
+    td.add_argument("--evidence", nargs="+", default=None, help="PR / commit / release-receipt links (--evidence-only)")
     tr = tsub.add_parser("release")
     tr.add_argument("task_id")
     tr.add_argument("--handoff", required=True, help="the exact next step for whoever picks it up")
