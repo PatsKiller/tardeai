@@ -16042,6 +16042,9 @@ def _compute_trade_ai():
         "avoid_count": current_run_nogo,
         "ticker_count": current_run_total or latest.get("ticker_count", 0),
         "universe_count": len(tickers),
+        # Newest trade_ai_scans.scanned_at among the served rows (LIVE cycles refresh rows between the FULL runs
+        # that write run_summary.json). scan_freshness is derived from it on every serve. Operator 2026-10-23.
+        "latest_scan_at": _scan_latest_at(tickers),
         "universe_go": go_count,
         "universe_wait": wait_count,
         "universe_nogo": avoid_count,
@@ -18232,6 +18235,9 @@ def trade_ai_summary():
         "cache_age_sec",
         "cached_at",
         "cache_missing",
+        # Header run-age chip (operator 2026-10-23): newest scan + its freshness verdict.
+        "latest_scan_at",
+        "scan_freshness",
     )
     return {k: d.get(k) for k in keys}
 
@@ -18255,7 +18261,24 @@ def _refresh_trade_ai_cache_age(data: dict, now: float) -> dict:
     data["cached_at"] = data.get("_cached_at") or data.get("cached_at")
     data["cache_age_sec"] = round(age)
     data["stale"] = bool(data.get("cache_missing")) or age > 600
+    # Age of the newest scan (not of the cache file): FRESH / STALE (>10 min in the 06:00-12:00 ET scalp
+    # window) / OFF_WINDOW / UNKNOWN. Recomputed per serve so it moves between warms.
+    try:
+        from lib.scan_freshness import scan_freshness
+
+        data["scan_freshness"] = scan_freshness(data.get("latest_scan_at"))
+    except Exception:
+        data["scan_freshness"] = {"contract": "ScanFreshness@v1", "status": "UNKNOWN", "error": "compute_failed"}
     return data
+
+
+def _scan_latest_at(tickers):
+    try:
+        from lib.scan_freshness import latest_scan_at
+
+        return latest_scan_at(tickers)
+    except Exception:
+        return None
 
 
 def _trade_ai_with_etag(data, disk=None):
