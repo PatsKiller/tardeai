@@ -23,8 +23,14 @@ def _run_failing(tmp_path, body: str) -> str:
         keep = ("PATH", "HOME", "LANG", "TMPDIR", "VIRTUAL_ENV", "PYTHONUSERBASE")
         env = {k: os.environ[k] for k in keep if k in os.environ}
         env.update(REDACTION_CANARY_SECRET=CANARY, PYTHONDONTWRITEBYTECODE="1")
-        r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-vv", str(t)],
-                           cwd=ROOT, env=env, capture_output=True, text=True, timeout=300)
+        r = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "-vv", str(t)],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
     finally:
         t.unlink()
     return r.stdout + r.stderr

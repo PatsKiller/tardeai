@@ -79,7 +79,9 @@ def test_target_gone_during_grace_is_not_escalated(monkeypatch):
 def test_pidfd_is_used_and_always_closed(monkeypatch):
     sent, closed = [], []
     monkeypatch.setattr(reaper.os, "pidfd_open", lambda _pid, _flags: 99, raising=False)
-    monkeypatch.setattr(reaper.signal, "pidfd_send_signal", lambda fd, sig, _info, _flags: sent.append((fd, sig)), raising=False)
+    monkeypatch.setattr(
+        reaper.signal, "pidfd_send_signal", lambda fd, sig, _info, _flags: sent.append((fd, sig)), raising=False
+    )
     monkeypatch.setattr(reaper, "_proc_identity", lambda _pid: IDENTITY)
     monkeypatch.setattr(reaper.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(reaper.os, "close", lambda fd: closed.append(fd))
@@ -92,7 +94,9 @@ def test_pidfd_is_used_and_always_closed(monkeypatch):
 def test_pidfd_is_closed_when_identity_changed_before_term(monkeypatch):
     closed = []
     monkeypatch.setattr(reaper.os, "pidfd_open", lambda _pid, _flags: 98, raising=False)
-    monkeypatch.setattr(reaper.signal, "pidfd_send_signal", lambda *_args: pytest.fail("must not signal"), raising=False)
+    monkeypatch.setattr(
+        reaper.signal, "pidfd_send_signal", lambda *_args: pytest.fail("must not signal"), raising=False
+    )
     monkeypatch.setattr(reaper, "_proc_identity", lambda _pid: (999, b"other"))
     monkeypatch.setattr(reaper.os, "close", lambda fd: closed.append(fd))
 
@@ -105,7 +109,11 @@ def test_live_owned_child_uses_identity_checked_fallback(monkeypatch):
     """Exercise real /proc identity and numeric-PID TERM/KILL on a test-owned child."""
     _without_pidfd(monkeypatch)
     child = subprocess.Popen(
-        [sys.executable, "-c", "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); print('ready', flush=True); time.sleep(60)"],
+        [
+            sys.executable,
+            "-c",
+            "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); print('ready', flush=True); time.sleep(60)",
+        ],
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         text=True,

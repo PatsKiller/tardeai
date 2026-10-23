@@ -15,6 +15,7 @@ Usage:
   .venv/bin/python scripts/remediate_pipeline_failures.py --diagnose-only
   .venv/bin/python scripts/remediate_pipeline_failures.py --strategy clear_zombie_pipeline_runs
 """
+
 from __future__ import annotations
 
 import argparse
@@ -78,6 +79,7 @@ def _py() -> str:
 
 def _conn():
     from db_adapter import get_connection
+
     return get_connection()
 
 
@@ -152,7 +154,9 @@ def _orchestrator_process_alive() -> bool:
     try:
         out = subprocess.run(
             ["pgrep", "-f", "scripts/trade_ai_orchestrator.py"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return bool((out.stdout or "").strip())
     except Exception:
@@ -166,6 +170,7 @@ def close_unrecovered_orchestrator(note: str = "health recovery after rate-limit
     full re-run is blocked by yfinance rate limits and orphans would pin score at 0.
     """
     import uuid
+
     try:
         conn = _conn()
         cur = conn.cursor()
@@ -191,17 +196,19 @@ def close_unrecovered_orchestrator(note: str = "health recovery after rate-limit
                RETURNING id""",
             (
                 run_id,
-                json.dumps({
-                    # Bookkeeping, not a run: it measured nothing, so null (not
-                    # measured), never 0. Its 0s were the only explicit
-                    # rows_produced values under trade_ai_orchestrator and fired
-                    # pipeline_zero_rows ("produced NOTHING") on 2026-10-21.
-                    "rows_produced": None,
-                    "note": note,
-                    "errors": [],
-                    "recovery": True,
-                    "cleared_zombies": zombies,
-                }),
+                json.dumps(
+                    {
+                        # Bookkeeping, not a run: it measured nothing, so null (not
+                        # measured), never 0. Its 0s were the only explicit
+                        # rows_produced values under trade_ai_orchestrator and fired
+                        # pipeline_zero_rows ("produced NOTHING") on 2026-10-21.
+                        "rows_produced": None,
+                        "note": note,
+                        "errors": [],
+                        "recovery": True,
+                        "cleared_zombies": zombies,
+                    }
+                ),
             ),
         )
         new_id = cur.fetchone()[0]
@@ -246,32 +253,42 @@ def diagnose() -> dict:
         if isinstance(unrecovered, dict) and unrecovered.get("_error"):
             d["db_error"] = unrecovered["_error"]
 
-    zombies = _db(
-        """SELECT count(*) AS c FROM pipeline_runs
+    zombies = (
+        _db(
+            """SELECT count(*) AS c FROM pipeline_runs
            WHERE status='running' AND started_at < now() - interval '2 hours'""",
-    ) or {}
+        )
+        or {}
+    )
     d["zombie_running"] = int(zombies.get("c") or 0) if not zombies.get("_error") else 0
 
     # SLA backlog (decision-feeding)
     try:
         from lib.watchlist_priority import TIME_SENSITIVE_REQUEST_TYPES as TS
+
         types = list(TS)
     except Exception:
         types = ["proposal_review", "full_analysis", "research_gap", "event", "go_signal_review"]
-    backlog = _db(
-        """SELECT count(*) AS c FROM watchlist_agent_jobs
+    backlog = (
+        _db(
+            """SELECT count(*) AS c FROM watchlist_agent_jobs
            WHERE status IN ('queued','pending')
              AND created_at < now() - interval '2 hours'
              AND request_type = ANY(%s)""",
-        (types,),
-    ) or {}
+            (types,),
+        )
+        or {}
+    )
     d["sla_backlog"] = int(backlog.get("c") or 0) if not backlog.get("_error") else 0
 
-    stuck = _db(
-        """SELECT count(*) AS c FROM watchlist_agent_jobs
+    stuck = (
+        _db(
+            """SELECT count(*) AS c FROM watchlist_agent_jobs
            WHERE status='processing'
              AND COALESCE(started_at, created_at) < now() - interval '30 minutes'"""
-    ) or {}
+        )
+        or {}
+    )
     d["stuck_processing"] = int(stuck.get("c") or 0) if not stuck.get("_error") else 0
 
     d["circuit_open_log_hits"] = _count_circuit_open_logs(6)
@@ -356,8 +373,7 @@ def clear_zombie_pipeline_runs(min_age_hours: float = 2.0) -> dict:
         rows = cur.fetchall()
         conn.commit()
         cur.close()
-        return {"ok": True, "cleared": len(rows), "ids": [r[0] for r in rows[:20]],
-                "summary_type": summary_type}
+        return {"ok": True, "cleared": len(rows), "ids": [r[0] for r in rows[:20]], "summary_type": summary_type}
     except Exception as e:
         try:
             conn = _conn()
@@ -375,8 +391,13 @@ def clear_zombie_pipeline_runs(min_age_hours: float = 2.0) -> dict:
             rows = cur.fetchall()
             conn.commit()
             cur.close()
-            return {"ok": True, "cleared": len(rows), "ids": [r[0] for r in rows[:20]],
-                    "fallback": True, "prev_error": str(e)[:160]}
+            return {
+                "ok": True,
+                "cleared": len(rows),
+                "ids": [r[0] for r in rows[:20]],
+                "fallback": True,
+                "prev_error": str(e)[:160],
+            }
         except Exception as e2:
             return {"ok": False, "error": str(e2)[:240]}
 
@@ -385,12 +406,21 @@ def _pick_run_label() -> str:
     """Map current America/New_York hour to trade_ai_orchestrator --run-label choices."""
     try:
         from zoneinfo import ZoneInfo
+
         hour = datetime.now(ZoneInfo("America/New_York")).hour
     except Exception:
         hour = datetime.now().hour
     # choices: 0400,0700,0900,1000,1200,1400,1600,1730 — pick nearest past or default 1000
-    slots = [(4, "0400"), (7, "0700"), (9, "0900"), (10, "1000"),
-             (12, "1200"), (14, "1400"), (16, "1600"), (17, "1730")]
+    slots = [
+        (4, "0400"),
+        (7, "0700"),
+        (9, "0900"),
+        (10, "1000"),
+        (12, "1200"),
+        (14, "1400"),
+        (16, "1600"),
+        (17, "1730"),
+    ]
     label = "1000"
     for h, lab in slots:
         if hour >= h:
@@ -422,8 +452,12 @@ def _spawn_detached(cmd: str) -> dict:
         # nohup + start_new_session so health_agent timeout cannot kill the pipeline
         wrapped = f"nohup bash -c {json.dumps(full)} >/dev/null 2>&1 & echo $!"
         proc = subprocess.run(
-            wrapped, shell=True, cwd=str(root),
-            capture_output=True, text=True, timeout=15,
+            wrapped,
+            shell=True,
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         pid_s = (proc.stdout or "").strip().splitlines()[-1] if proc.stdout else ""
         pid = int(pid_s) if pid_s.isdigit() else None
@@ -440,6 +474,7 @@ def _spawn_detached(cmd: str) -> dict:
         lock_held = False
         try:
             import fcntl
+
             lf = open("/tmp/screener_pm.lock", "a+")
             try:
                 fcntl.flock(lf.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -490,10 +525,16 @@ def _run_cmd(cmd: str, timeout: int = 600) -> dict:
     full = _rewrite_cmd(cmd)
     try:
         proc = subprocess.run(
-            full, shell=True, cwd=str(root),
-            capture_output=True, text=True, timeout=timeout,
-            env={**os.environ, "AGENT_JOBS_LOCK_HELD_EXTERNALLY":
-                 os.environ.get("AGENT_JOBS_LOCK_HELD_EXTERNALLY", "")},
+            full,
+            shell=True,
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env={
+                **os.environ,
+                "AGENT_JOBS_LOCK_HELD_EXTERNALLY": os.environ.get("AGENT_JOBS_LOCK_HELD_EXTERNALLY", ""),
+            },
         )
         # flock contention not hard fail
         ok = proc.returncode == 0
@@ -552,7 +593,8 @@ def run(strategy_id: str | None = None, diagnose_only: bool = False) -> dict:
         f"rc={root_cause}"
     )
     rcmem.record_error(
-        FINDING, err_msg,
+        FINDING,
+        err_msg,
         root_cause=root_cause if root_cause != "cleared" else None,
         diagnosis=diag,
         how_to_fix=diag.get("how_to_fix"),
@@ -580,18 +622,38 @@ def run(strategy_id: str | None = None, diagnose_only: bool = False) -> dict:
         selected = rcmem.select_next_strategy(FINDING)
         if selected and selected.get("id") == "hold":
             held_until = (rcmem.summary_for(FINDING) or {}).get("hold_until")
-            result.update({"ok": False, "outcome": "HELD", "strategy_id": "operator_review_component_failures",
-                           "held": True, "operator_action_required": True, "hold_until": held_until,
-                           "note": selected.get("how")})
+            result.update(
+                {
+                    "ok": False,
+                    "outcome": "HELD",
+                    "strategy_id": "operator_review_component_failures",
+                    "held": True,
+                    "operator_action_required": True,
+                    "hold_until": held_until,
+                    "note": selected.get("how"),
+                }
+            )
             return result
         note = "component pipeline failures require owner diagnosis; master orchestrator retry is not applicable"
         memory = rcmem.record_outcome(
-            FINDING, strategy_id="operator_review_component_failures", ok=False,
-            root_cause=root_cause, note=note, hold_minutes=60,
+            FINDING,
+            strategy_id="operator_review_component_failures",
+            ok=False,
+            root_cause=root_cause,
+            note=note,
+            hold_minutes=60,
         )
-        result.update({"ok": False, "outcome": "HELD", "strategy_id": "operator_review_component_failures",
-                       "held": True, "operator_action_required": True,
-                       "hold_until": (memory or {}).get("hold_until"), "note": note})
+        result.update(
+            {
+                "ok": False,
+                "outcome": "HELD",
+                "strategy_id": "operator_review_component_failures",
+                "held": True,
+                "operator_action_required": True,
+                "hold_until": (memory or {}).get("hold_until"),
+                "note": note,
+            }
+        )
         result["memory"] = rcmem.summary_for(FINDING)
         return result
 
@@ -599,7 +661,8 @@ def run(strategy_id: str | None = None, diagnose_only: bool = False) -> dict:
     prefer = strategy_id
     mem = rcmem.summary_for(FINDING)
     rerun_fails = sum(
-        1 for o in (mem.get("recent_outcomes") or [])
+        1
+        for o in (mem.get("recent_outcomes") or [])
         if o.get("strategy_id") == "rerun_trade_ai_orchestrator" and not o.get("ok")
     )
     if not prefer:
@@ -621,11 +684,7 @@ def run(strategy_id: str | None = None, diagnose_only: bool = False) -> dict:
             else:
                 prefer = "rerun_trade_ai_orchestrator"
         elif root_cause == "agent_flash_circuit_open":
-            prefer = (
-                "reset_stuck_jobs"
-                if int(diag.get("stuck_processing") or 0) > 0
-                else "drain_agent_jobs_small"
-            )
+            prefer = "reset_stuck_jobs" if int(diag.get("stuck_processing") or 0) > 0 else "drain_agent_jobs_small"
         elif root_cause == "jobs_sla_backlog":
             prefer = "drain_agent_jobs_small"
         elif root_cause == "db_connection_blip":
@@ -642,15 +701,23 @@ def run(strategy_id: str | None = None, diagnose_only: bool = False) -> dict:
 
     if strat.get("held") or sid == "hold":
         rcmem.record_outcome(
-            FINDING, strategy_id=sid, ok=True, root_cause=root_cause,
-            note="held", hold_minutes=30,
+            FINDING,
+            strategy_id=sid,
+            ok=True,
+            root_cause=root_cause,
+            note="held",
+            hold_minutes=30,
         )
         result.update({"ok": True, "held": True})
         return result
 
     if sid == "diagnose_only":
         rcmem.record_outcome(
-            FINDING, strategy_id=sid, ok=True, root_cause=root_cause, note="diagnosed",
+            FINDING,
+            strategy_id=sid,
+            ok=True,
+            root_cause=root_cause,
+            note="diagnosed",
         )
         rcmem.advance_strategy(FINDING)
         result.update({"ok": True, "note": "diagnosed; ladder advanced"})
@@ -662,8 +729,11 @@ def run(strategy_id: str | None = None, diagnose_only: bool = False) -> dict:
         cmd_ok = bool(run_res.get("ok"))
         cleared, vnote = verify_improved(diag)
         rcmem.record_outcome(
-            FINDING, strategy_id=sid, ok=cleared or (cmd_ok and run_res.get("cleared", 0) > 0),
-            root_cause=root_cause, note=vnote,
+            FINDING,
+            strategy_id=sid,
+            ok=cleared or (cmd_ok and run_res.get("cleared", 0) > 0),
+            root_cause=root_cause,
+            note=vnote,
             exit_code=0 if cmd_ok else 1,
         )
         result["verify"] = {"cleared": cleared, "note": vnote}
@@ -688,7 +758,9 @@ def run(strategy_id: str | None = None, diagnose_only: bool = False) -> dict:
         cleared = after.get("root_cause") == "cleared" or int(after.get("unrecovered_count") or 0) == 0
         vnote = "pipeline_cleared" if cleared else f"still unrecovered={after.get('unrecovered_count')}"
         rcmem.record_outcome(
-            FINDING, strategy_id=sid, ok=cleared,
+            FINDING,
+            strategy_id=sid,
+            ok=cleared,
             root_cause=root_cause if not cleared else "cleared",
             note=vnote,
             exit_code=0 if run_res.get("ok") else 1,
@@ -709,10 +781,14 @@ def run(strategy_id: str | None = None, diagnose_only: bool = False) -> dict:
     if "process_watchlist_agent_jobs" in cmd:
         try:
             from lib.agent_jobs_containment import guard_agent_jobs_execution
+
             g = guard_agent_jobs_execution(cmd, source="remediate_pipeline_failures")
             if g.get("blocked"):
                 rcmem.record_outcome(
-                    FINDING, strategy_id=sid, ok=False, root_cause=root_cause,
+                    FINDING,
+                    strategy_id=sid,
+                    ok=False,
+                    root_cause=root_cause,
                     note=g.get("remediation_status") or "CONTAINED",
                 )
                 result.update({"ok": False, "contained": True, "note": g.get("message")})
@@ -727,9 +803,11 @@ def run(strategy_id: str | None = None, diagnose_only: bool = False) -> dict:
     else:
         timeout = 400
         run_res = _run_cmd(cmd, timeout=timeout)
-    result["run"] = {k: run_res.get(k) for k in
-                     ("ok", "exit_code", "error", "cmd", "partial", "flock_contention",
-                      "note", "spawned", "pid") if run_res.get(k) is not None or k in run_res}
+    result["run"] = {
+        k: run_res.get(k)
+        for k in ("ok", "exit_code", "error", "cmd", "partial", "flock_contention", "note", "spawned", "pid")
+        if run_res.get(k) is not None or k in run_res
+    }
 
     cleared, vnote = verify_improved(diag)
     result["verify"] = {"cleared": cleared, "note": vnote}
@@ -740,9 +818,13 @@ def run(strategy_id: str | None = None, diagnose_only: bool = False) -> dict:
     if flocked or spawned:
         # Do not burn the strategy ladder while a peer/background run is in flight
         rcmem.record_outcome(
-            FINDING, strategy_id=sid, ok=True, root_cause=root_cause,
+            FINDING,
+            strategy_id=sid,
+            ok=True,
+            root_cause=root_cause,
             note=run_res.get("note") or ("spawned" if spawned else "flock_contention"),
-            cmd=run_res.get("cmd"), exit_code=run_res.get("exit_code"),
+            cmd=run_res.get("cmd"),
+            exit_code=run_res.get("exit_code"),
         )
         result["ok"] = True
         result["note"] = run_res.get("note") or (
@@ -750,16 +832,25 @@ def run(strategy_id: str | None = None, diagnose_only: bool = False) -> dict:
         )
     elif cleared:
         rcmem.record_outcome(
-            FINDING, strategy_id=sid, ok=True, root_cause=root_cause,
-            note=vnote, cmd=run_res.get("cmd"), exit_code=run_res.get("exit_code"),
+            FINDING,
+            strategy_id=sid,
+            ok=True,
+            root_cause=root_cause,
+            note=vnote,
+            cmd=run_res.get("cmd"),
+            exit_code=run_res.get("exit_code"),
         )
         result["ok"] = True
         result["note"] = f"fixed: {vnote}"
     else:
         rcmem.record_outcome(
-            FINDING, strategy_id=sid, ok=False, root_cause=root_cause,
+            FINDING,
+            strategy_id=sid,
+            ok=False,
+            root_cause=root_cause,
             note=vnote if cmd_ok else (run_res.get("error") or f"exit {run_res.get('exit_code')}"),
-            cmd=run_res.get("cmd"), exit_code=run_res.get("exit_code"),
+            cmd=run_res.get("cmd"),
+            exit_code=run_res.get("exit_code"),
         )
         # Partial orchestrator run still advances ladder (stage may need code fix)
         result["ok"] = cmd_ok

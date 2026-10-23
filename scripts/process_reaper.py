@@ -24,6 +24,7 @@ Cron: every ~3 min.
     .venv/bin/python scripts/process_reaper.py            # advisory unless enabled
     .venv/bin/python scripts/process_reaper.py --dry-run  # force advisory regardless of policy
 """
+
 from __future__ import annotations
 
 import argparse
@@ -48,16 +49,46 @@ SELF_PID = os.getpid()
 # market-hours run on 10-21/22 at 1216-1377s); must equal config/process_reaper_policy.json and
 # stay under continuous_runner.py's 2700s hard limit (tests/test_pipeline_time_settings_20261022.py).
 DEFAULT_RULES = [
-    {"name": "trade_ai_orchestrator",         "pattern": "trade_ai_orchestrator.py",         "max_concurrent": 1, "max_runtime_min": 30},
-    {"name": "process_watchlist_agent_jobs",  "pattern": "process_watchlist_agent_jobs.py",  "max_concurrent": 2, "max_runtime_min": 15},
-    {"name": "health_agent",                  "pattern": "scripts/health_agent.py",          "max_concurrent": 1, "max_runtime_min": 8},
-    {"name": "system_health_agent",           "pattern": "system_health_agent.py",           "max_concurrent": 1, "max_runtime_min": 10},
-    {"name": "hermes_embedding_worker",       "pattern": "hermes_embedding_worker.py",        "max_concurrent": 1, "max_runtime_min": 15},
-    {"name": "watchlist_enrichment_sweep",    "pattern": "watchlist_enrichment_sweep.py",     "max_concurrent": 1, "max_runtime_min": 15},
+    {
+        "name": "trade_ai_orchestrator",
+        "pattern": "trade_ai_orchestrator.py",
+        "max_concurrent": 1,
+        "max_runtime_min": 30,
+    },
+    {
+        "name": "process_watchlist_agent_jobs",
+        "pattern": "process_watchlist_agent_jobs.py",
+        "max_concurrent": 2,
+        "max_runtime_min": 15,
+    },
+    {"name": "health_agent", "pattern": "scripts/health_agent.py", "max_concurrent": 1, "max_runtime_min": 8},
+    {"name": "system_health_agent", "pattern": "system_health_agent.py", "max_concurrent": 1, "max_runtime_min": 10},
+    {
+        "name": "hermes_embedding_worker",
+        "pattern": "hermes_embedding_worker.py",
+        "max_concurrent": 1,
+        "max_runtime_min": 15,
+    },
+    {
+        "name": "watchlist_enrichment_sweep",
+        "pattern": "watchlist_enrichment_sweep.py",
+        "max_concurrent": 1,
+        "max_runtime_min": 15,
+    },
 ]
 # Hard never-kill guard: even if a rule pattern somehow matched these, skip. Belt-and-suspenders.
-NEVER_KILL = ("portfolio_server", "api_v2", "ollama", "postgres", "continuous_runner",
-              "process_reaper.py", "uvicorn", "gunicorn", "nginx", "systemd")
+NEVER_KILL = (
+    "portfolio_server",
+    "api_v2",
+    "ollama",
+    "postgres",
+    "continuous_runner",
+    "process_reaper.py",
+    "uvicorn",
+    "gunicorn",
+    "nginx",
+    "systemd",
+)
 
 
 def _load_policy() -> dict:
@@ -138,16 +169,17 @@ def _flag(rule: dict, procs: list[dict]) -> tuple[list[dict], list[str]]:
     over = [p for p in matches if p["etimes"] > cap_sec]
     reap = {p["pid"]: p for p in over}
     if over:
-        reasons.append(f"{len(over)} over runtime cap {rule['max_runtime_min']}m "
-                       f"({', '.join(str(p['pid']) + '@' + str(round(p['etimes']/60)) + 'm' for p in over)})")
+        reasons.append(
+            f"{len(over)} over runtime cap {rule['max_runtime_min']}m "
+            f"({', '.join(str(p['pid']) + '@' + str(round(p['etimes'] / 60)) + 'm' for p in over)})"
+        )
     # pile-up among the not-over-runtime ones: keep the oldest max_concurrent, flag newer extras
     healthy = sorted([p for p in matches if p["pid"] not in reap], key=lambda p: -p["etimes"])  # oldest first
     if len(healthy) > max_conc:
         excess = healthy[max_conc:]  # the newest beyond the cap = pile-on duplicates
         for p in excess:
             reap[p["pid"]] = p
-        reasons.append(f"pile-up {len(matches)} > max_concurrent {max_conc} "
-                       f"(reaping {len(excess)} newest dup(s))")
+        reasons.append(f"pile-up {len(matches)} > max_concurrent {max_conc} (reaping {len(excess)} newest dup(s))")
     return list(reap.values()), reasons
 
 
@@ -155,7 +187,7 @@ def _proc_identity(pid: int) -> tuple[int, bytes]:
     """Return Linux process start ticks and raw argv, failing closed if unreadable."""
     stat = Path(f"/proc/{pid}/stat").read_text()
     # comm is parenthesized and may itself contain spaces or ')' characters.
-    tail = stat[stat.rfind(")") + 1:].split()
+    tail = stat[stat.rfind(")") + 1 :].split()
     if len(tail) <= 19:
         raise ValueError("short /proc stat record")
     start_ticks = int(tail[19])  # field 22; tail starts at field 3
@@ -248,8 +280,7 @@ def main():
     policy = _load_policy()
     rules = policy.get("rules") or DEFAULT_RULES
     enabled = (not args.dry_run) and (
-        str(os.getenv("REAP_ENABLED", "")).lower() in ("1", "true", "yes")
-        or bool(policy.get("enabled", False))
+        str(os.getenv("REAP_ENABLED", "")).lower() in ("1", "true", "yes") or bool(policy.get("enabled", False))
     )
     procs = _ps_snapshot()
     now = datetime.now(timezone.utc).isoformat()
@@ -274,6 +305,7 @@ def main():
         # Alert (advisory or action) — free Telegram lane, best-effort.
         try:
             from telegram_alert import send_telegram
+
             verb = "🔪 Reaped" if enabled else "⚠️ Would reap (advisory)"
             lines = [f"{verb} hung/piled-up batch jobs:"]
             for f in findings:
@@ -290,8 +322,10 @@ def main():
         print(json.dumps({"at": now, "enabled": enabled, "findings": findings}, indent=2))
     else:
         n_reap = sum(len(f["actions"]) for f in findings)
-        print(f"[process_reaper] enabled={enabled} · {len(findings)} rule(s) tripped · "
-              f"{n_reap} proc(s) {'reaped' if enabled else 'flagged (advisory)'}")
+        print(
+            f"[process_reaper] enabled={enabled} · {len(findings)} rule(s) tripped · "
+            f"{n_reap} proc(s) {'reaped' if enabled else 'flagged (advisory)'}"
+        )
 
 
 if __name__ == "__main__":

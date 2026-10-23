@@ -1,4 +1,5 @@
 """Watchdog owns bounded enrichment children; enrichment writers are single-flight."""
+
 from __future__ import annotations
 
 import signal
@@ -23,6 +24,7 @@ def modules(monkeypatch):
         sys.modules.pop(name, None)
     import pipeline_watchdog
     import symbol_enrichment
+
     yield pipeline_watchdog, symbol_enrichment
     sys.modules.pop("pipeline_watchdog", None)
     sys.modules.pop("symbol_enrichment", None)
@@ -31,8 +33,9 @@ def modules(monkeypatch):
 def _child(tmp_path: Path, body: str) -> subprocess.Popen:
     script = tmp_path / "child.py"
     script.write_text(textwrap.dedent(body), encoding="utf-8")
-    return subprocess.Popen([sys.executable, str(script)], start_new_session=True,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return subprocess.Popen(
+        [sys.executable, str(script)], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
 
 
 def test_watchdog_waits_for_owned_children_before_return(tmp_path, modules):
@@ -65,11 +68,14 @@ def test_watchdog_signal_terminates_owned_children_before_unwinding(tmp_path, mo
 def test_watchdog_keeps_supervising_descendants_after_child_exits(tmp_path, modules):
     watchdog, _ = modules
     marker = tmp_path / "grandchild.pid"
-    child = _child(tmp_path, f"""
+    child = _child(
+        tmp_path,
+        f"""
         import subprocess, sys
         grandchild = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
         open({str(marker)!r}, 'w').write(str(grandchild.pid))
-    """)
+    """,
+    )
     with watchdog._supervise_enrichment_batch([("ABC", child)], timeout_s=0.2):
         pass
     assert child.poll() == 0
@@ -171,9 +177,13 @@ def test_enrichment_takes_and_releases_per_symbol_session_lock(modules, monkeypa
     _, enrichment = modules
     conn = _LockConn(True)
     called = []
-    monkeypatch.setattr(enrichment, "_enrich_symbol_impl",
-                        lambda symbol, score, db, force_full=False:
-                        called.append((symbol, score, db, force_full, db.commits)) or {"ok": True})
+    monkeypatch.setattr(
+        enrichment,
+        "_enrich_symbol_impl",
+        lambda symbol, score, db, force_full=False: (
+            called.append((symbol, score, db, force_full, db.commits)) or {"ok": True}
+        ),
+    )
     assert enrichment.enrich_symbol("abc", 55, conn, force_full=True) == {"ok": True}
     assert called == [("ABC", 55, conn, True, 1)]  # lock probe committed before source writers
     assert "pg_try_advisory_lock" in conn.cursors[0].statements[0][0]

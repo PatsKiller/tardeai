@@ -1,4 +1,5 @@
 """Focused, hermetic tests for pipeline remediation/health counter alignment."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -30,8 +31,9 @@ def test_health_and_remediator_share_empty_errors_filter(monkeypatch):
     from lib.pipeline_failure_counts import SUBSTANTIVE_FAILURE_FILTER
 
     health_queries = []
-    monkeypatch.setattr(ha, "_db", lambda sql, **kw: health_queries.append(sql) or
-                        [{"pipeline_key": "symbol_enrichment", "c": 3}])
+    monkeypatch.setattr(
+        ha, "_db", lambda sql, **kw: health_queries.append(sql) or [{"pipeline_key": "symbol_enrichment", "c": 3}]
+    )
     assert ha._count_real_pipeline_failures() == 3
     assert SUBSTANTIVE_FAILURE_FILTER in health_queries[0]
 
@@ -67,12 +69,17 @@ def test_escalation_notify_failure_is_durably_recorded(monkeypatch, tmp_path):
 
     monkeypatch.setattr(esc, "LOG_DIR", tmp_path)
     monkeypatch.setattr(esc, "_ensure_scripts_path", lambda: None)
-    monkeypatch.setitem(sys.modules, "telegram_alert", types.SimpleNamespace(
-        send_telegram=lambda *_a, **_kw: (_ for _ in ()).throw(RuntimeError("delivery down"))
-    ))
+    monkeypatch.setitem(
+        sys.modules,
+        "telegram_alert",
+        types.SimpleNamespace(send_telegram=lambda *_a, **_kw: (_ for _ in ()).throw(RuntimeError("delivery down"))),
+    )
 
     assert esc._notify("operator review") is False
-    rows = [json.loads(line) for line in (tmp_path / "claude_escalation_notification_failures.jsonl").read_text().splitlines()]
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "claude_escalation_notification_failures.jsonl").read_text().splitlines()
+    ]
     assert len(rows) == 1
     assert rows[0]["error_type"] == "RuntimeError"
     assert rows[0]["error"] == "Telegram delivery failed; exception details omitted to avoid credential leakage."
@@ -88,7 +95,10 @@ def test_escalation_notify_rejected_return_is_durably_recorded(monkeypatch, tmp_
     monkeypatch.setitem(sys.modules, "telegram_alert", types.SimpleNamespace(send_telegram=lambda *_a, **_kw: False))
 
     assert esc._notify("held for review") is False
-    rows = [json.loads(line) for line in (tmp_path / "claude_escalation_notification_failures.jsonl").read_text().splitlines()]
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "claude_escalation_notification_failures.jsonl").read_text().splitlines()
+    ]
     assert len(rows) == 1 and rows[0]["error_type"] == "RuntimeError"
     assert "held for review" not in json.dumps(rows[0])
 
@@ -100,9 +110,11 @@ def test_component_only_failures_are_not_classified_as_master_orchestrator_failu
         nonlocal db_calls
         db_calls += 1
         if "FROM pipeline_runs f" in sql:
-            return [{"pipeline_key": "symbol_enrichment", "c": 1, "last_sum": "x"},
-                    {"pipeline_key": "a1a_compliance", "c": 1, "last_sum": "y"},
-                    {"pipeline_key": "indicator_engine", "c": 1, "last_sum": "z"}]
+            return [
+                {"pipeline_key": "symbol_enrichment", "c": 1, "last_sum": "x"},
+                {"pipeline_key": "a1a_compliance", "c": 1, "last_sum": "y"},
+                {"pipeline_key": "indicator_engine", "c": 1, "last_sum": "z"},
+            ]
         return {"c": 0}
 
     monkeypatch.setattr(rp, "_db", db)
@@ -122,10 +134,12 @@ def test_component_only_failures_are_not_classified_as_master_orchestrator_failu
 def test_unrelated_failure_beyond_top_15_component_keys_is_not_hidden(monkeypatch):
     # Reproduce the old SQL LIMIT 15 behavior: the unrelated master failure sorts
     # below many component keys and must still reach root-cause classification.
-    rows = [{"pipeline_key": name, "c": 1, "last_sum": "x"}
-            for name in ["symbol_enrichment", "a1a_compliance", "indicator_engine"]
-            + [f"component_{i:02d}" for i in range(13)]
-            + ["trade_ai_orchestrator"]]
+    rows = [
+        {"pipeline_key": name, "c": 1, "last_sum": "x"}
+        for name in ["symbol_enrichment", "a1a_compliance", "indicator_engine"]
+        + [f"component_{i:02d}" for i in range(13)]
+        + ["trade_ai_orchestrator"]
+    ]
 
     def db(sql, params=None, fetch="one"):
         if "FROM pipeline_runs f" in sql:
@@ -146,16 +160,25 @@ def test_unrelated_failure_beyond_top_15_component_keys_is_not_hidden(monkeypatc
 
 def test_component_only_failure_holds_for_owner_review_without_running_orchestrator(monkeypatch):
     outcomes = []
-    diagnosis = {"root_cause": "component_stage_fail", "unrecovered_keys": ["symbol_enrichment"],
-                 "unrecovered_count": 1, "zombie_running": 0, "sla_backlog": 0}
+    diagnosis = {
+        "root_cause": "component_stage_fail",
+        "unrecovered_keys": ["symbol_enrichment"],
+        "unrecovered_count": 1,
+        "zombie_running": 0,
+        "sla_backlog": 0,
+    }
     monkeypatch.setattr(rp, "diagnose", lambda: diagnosis)
     monkeypatch.setattr(rp.rcmem, "record_error", lambda *a, **kw: None)
     monkeypatch.setattr(rp.rcmem, "select_next_strategy", lambda *_a, **_kw: {"id": "diagnose_only"})
-    monkeypatch.setattr(rp.rcmem, "record_outcome", lambda *a, **kw: (
-        outcomes.append((a, kw)) or {"hold_until": "2030-01-01T00:00:00Z"}))
+    monkeypatch.setattr(
+        rp.rcmem, "record_outcome", lambda *a, **kw: outcomes.append((a, kw)) or {"hold_until": "2030-01-01T00:00:00Z"}
+    )
     monkeypatch.setattr(rp.rcmem, "summary_for", lambda *_a, **_kw: {"hold_until": "2030-01-01T00:00:00Z"})
-    monkeypatch.setattr(rp, "_spawn_detached", lambda *_a, **_kw: (_ for _ in ()).throw(
-        AssertionError("must not run master orchestrator")))
+    monkeypatch.setattr(
+        rp,
+        "_spawn_detached",
+        lambda *_a, **_kw: (_ for _ in ()).throw(AssertionError("must not run master orchestrator")),
+    )
 
     result = rp.run()
     assert result["held"] is True and result["ok"] is False
@@ -191,20 +214,27 @@ def test_underfilled_monitor_queries_latest_receipt_per_distinct_run_date(monkey
 
 
 def test_health_pipeline_component_failures_are_owner_action(monkeypatch):
-    monkeypatch.setattr(ha, "_db", lambda sql, **kw: [
-        {"pipeline_key": "symbol_enrichment", "c": 2},
-        {"pipeline_key": "indicator_engine", "c": 1},
-    ])
+    monkeypatch.setattr(
+        ha,
+        "_db",
+        lambda sql, **kw: [
+            {"pipeline_key": "symbol_enrichment", "c": 2},
+            {"pipeline_key": "indicator_engine", "c": 1},
+        ],
+    )
     findings = ha.collect_execution_health()
     pipeline = next(f for f in findings if f["type"] == "pipeline_failures")
     assert pipeline["held"] is True
     assert pipeline["operator_action"] is True
     assert pipeline["owner"] == "Pipeline Operations"
     assert "owner review required" in pipeline["message"]
-    assert ha.run_auto_remediation(
-        {"auto_remediate": {"enabled": True, "finding_types": ["pipeline_failures"]}},
-        [pipeline],
-    ) == []
+    assert (
+        ha.run_auto_remediation(
+            {"auto_remediate": {"enabled": True, "finding_types": ["pipeline_failures"]}},
+            [pipeline],
+        )
+        == []
+    )
 
 
 def test_escalation_held_payload_is_detected_before_exit_status():
@@ -223,8 +253,7 @@ def test_escalation_held_payload_is_detected_before_exit_status():
 def test_executor_preserves_held_json_after_long_status_zero_stdout(monkeypatch):
     from scripts import claude_escalation_handler as eh
 
-    payload = {"outcome": "HELD", "held": True,
-               "hold_until": "2030-01-01T00:00:00Z", "note": "diagnosis " + "x" * 1200}
+    payload = {"outcome": "HELD", "held": True, "hold_until": "2030-01-01T00:00:00Z", "note": "diagnosis " + "x" * 1200}
 
     class FakeProcess:
         returncode = 0
@@ -240,7 +269,8 @@ def test_executor_preserves_held_json_after_long_status_zero_stdout(monkeypatch)
     monkeypatch.setattr(eh, "_cmd_timeout_seconds", lambda *_a: 1)
     monkeypatch.setattr(eh, "_log_retry", lambda *_a, **_kw: None)
     executed, success, output = eh._execute_retry_cmd(
-        {"retry_cmd": "python scripts/remediate_pipeline_failures.py"}, {}, dry_run=False)
+        {"retry_cmd": "python scripts/remediate_pipeline_failures.py"}, {}, dry_run=False
+    )
 
     assert executed is True and success is True
     parsed = eh._held_retry_outcome(output)
@@ -254,21 +284,36 @@ def test_escalation_handler_defers_held_result_without_verification_or_llm(monke
 
     queue = tmp_path / "queue.json"
     stale = tmp_path / "stale.json"
-    queue.write_text(json.dumps([{
-        "component": "health:execution_health:pipeline_failures",
-        "detail": "component stage failed", "fixable": True,
-        "retry_cmd": "python scripts/remediate_pipeline_failures.py",
-    }]))
+    queue.write_text(
+        json.dumps(
+            [
+                {
+                    "component": "health:execution_health:pipeline_failures",
+                    "detail": "component stage failed",
+                    "fixable": True,
+                    "retry_cmd": "python scripts/remediate_pipeline_failures.py",
+                }
+            ]
+        )
+    )
     stale.write_text("[]")
     monkeypatch.setattr(eh, "QUEUE_FILE", queue)
     monkeypatch.setattr(eh, "STALENESS_QUEUE_FILE", stale)
     monkeypatch.setattr(eh, "_get_conn", lambda: None)
     monkeypatch.setattr(eh, "_load_allowlist", lambda: {})
-    monkeypatch.setattr(eh, "_execute_retry_cmd", lambda *_a, **_kw: (
-        True, False, 'exit_code=0 {"outcome":"HELD","held":true,'
-        '"hold_until":"2030-01-01T00:00:00Z","note":"owner review required"}'))
-    monkeypatch.setattr(eh, "_verify_remediation", lambda *_a: (_ for _ in ()).throw(
-        AssertionError("HELD must bypass verification")))
+    monkeypatch.setattr(
+        eh,
+        "_execute_retry_cmd",
+        lambda *_a, **_kw: (
+            True,
+            False,
+            'exit_code=0 {"outcome":"HELD","held":true,'
+            '"hold_until":"2030-01-01T00:00:00Z","note":"owner review required"}',
+        ),
+    )
+    monkeypatch.setattr(
+        eh, "_verify_remediation", lambda *_a: (_ for _ in ()).throw(AssertionError("HELD must bypass verification"))
+    )
     monkeypatch.setattr(eh, "_notify", lambda msg: (alerts.append(msg), True)[1])
     monkeypatch.setattr(eh.time, "sleep", lambda *_a: None)
     alerts = []

@@ -30,7 +30,10 @@ def test_concurrent_invocation_is_skipped_until_command_finishes(tmp_path):
         _wait(entered, holder)
         contender = subprocess.run(
             ["bash", str(WRAPPER), str(lock), "bash", "-c", 'echo ran > "$1"', "_", str(tmp_path / "ran")],
-            env=env, text=True, capture_output=True, timeout=5,
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=5,
         )
         assert contender.returncode == 0
         assert "safe_flock: skipped" in contender.stderr
@@ -53,7 +56,10 @@ def test_outer_flock_same_inode_can_wrap_observable_wrapper(tmp_path):
     # must be recognized/reused so the inner wrapper does not skip itself.
     result = subprocess.run(
         ["flock", "-n", str(lock), "bash", str(WRAPPER), str(lock), "true"],
-        env=env, text=True, capture_output=True, timeout=5,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=5,
     )
     assert result.returncode == 0, result.stderr
     events = [json.loads(line) for line in (logdir / "safe_flock_events.jsonl").read_text().splitlines()]
@@ -68,7 +74,11 @@ def test_outer_flock_relative_path_is_recognized_by_inode(tmp_path):
     # path and the wrapper would otherwise compare a different path spelling.
     result = subprocess.run(
         ["flock", "-n", "shared.lock", "bash", str(WRAPPER), "shared.lock", "true"],
-        cwd=tmp_path, env=env, text=True, capture_output=True, timeout=5,
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=5,
     )
     assert result.returncode == 0, result.stderr
     events = [json.loads(line) for line in (logdir / "safe_flock_events.jsonl").read_text().splitlines()]
@@ -84,7 +94,10 @@ def test_reused_live_pid_metadata_does_not_skip_after_kernel_lock_acquired(tmp_p
 
     result = subprocess.run(
         ["bash", str(WRAPPER), str(lock), "bash", "-c", 'echo ran > "$1"', "_", str(tmp_path / "ran")],
-        env=env, text=True, capture_output=True, timeout=5,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=5,
     )
 
     assert result.returncode == 0, result.stderr
@@ -102,7 +115,9 @@ def test_precreated_lock_symlink_is_rejected_without_touching_target(tmp_path):
     result = subprocess.run(
         ["bash", str(WRAPPER), str(lock), "touch", str(ran)],
         env={**os.environ, "SAFE_FLOCK_LOG_DIR": str(tmp_path / "logs")},
-        text=True, capture_output=True, timeout=5,
+        text=True,
+        capture_output=True,
+        timeout=5,
     )
     assert result.returncode != 0
     assert "unsafe existing file" in result.stderr
@@ -119,7 +134,9 @@ def test_precreated_sidecar_symlinks_are_rejected_without_truncation(tmp_path):
     result = subprocess.run(
         ["bash", str(WRAPPER), str(tmp_path / "shared.lock"), "touch", str(ran)],
         env={**os.environ, "SAFE_FLOCK_LOG_DIR": str(tmp_path / "logs")},
-        text=True, capture_output=True, timeout=5,
+        text=True,
+        capture_output=True,
+        timeout=5,
     )
     assert result.returncode != 0
     assert "unsafe existing file" in result.stderr
@@ -135,7 +152,9 @@ def test_world_writable_non_sticky_lock_parent_is_rejected(tmp_path):
     result = subprocess.run(
         ["bash", str(WRAPPER), str(parent / "shared.lock"), "true"],
         env={**os.environ, "SAFE_FLOCK_LOG_DIR": str(tmp_path / "logs")},
-        text=True, capture_output=True, timeout=5,
+        text=True,
+        capture_output=True,
+        timeout=5,
     )
     assert result.returncode != 0
     assert "unsafe parent directory permissions" in result.stderr
@@ -152,7 +171,9 @@ def test_symlinked_log_directory_is_rejected_before_creating_target_path(tmp_pat
     result = subprocess.run(
         ["bash", str(WRAPPER), str(tmp_path / "shared.lock"), "true"],
         env={**os.environ, "SAFE_FLOCK_LOG_DIR": str(logdir)},
-        text=True, capture_output=True, timeout=5,
+        text=True,
+        capture_output=True,
+        timeout=5,
     )
 
     assert result.returncode != 0

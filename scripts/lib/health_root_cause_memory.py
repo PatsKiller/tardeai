@@ -11,6 +11,7 @@ Append-only audit: logs/health_root_cause_memory.jsonl
 
 Safe for concurrent readers; writers use atomic replace.
 """
+
 from __future__ import annotations
 
 import json
@@ -27,6 +28,7 @@ try:
     PROJECT_ROOT = get_live_project_root()
 except Exception:
     PROJECT_ROOT = DEV_ROOT
+
 
 # Prefer DEV runtime for durability across release stamps; fall back to live.
 def _default_memory_path() -> Path:
@@ -78,9 +80,7 @@ SEED_RECIPES: dict[str, dict[str, Any]] = {
                 "RVOL/gap zero (screener export gap) → score floor. Fix: finviz momentum scalp "
                 "scan / finviz refresh then social scanner."
             ),
-            "scanner_not_running": (
-                "No rows in 18h — freshness owns this; re-run social_scalp_scanner under flock."
-            ),
+            "scanner_not_running": ("No rows in 18h — freshness owns this; re-run social_scalp_scanner under flock."),
             "unknown": "Diagnose score distribution, catalyst_verified rate, feed freshness.",
         },
         "strategies": [
@@ -187,8 +187,7 @@ SEED_RECIPES: dict[str, dict[str, Any]] = {
             {
                 "id": "reset_stuck_jobs",
                 "cmd": (
-                    ".venv/bin/python scripts/reset_stuck_agent_jobs.py --apply "
-                    ">> logs/reset_stuck_agent_jobs.log 2>&1"
+                    ".venv/bin/python scripts/reset_stuck_agent_jobs.py --apply >> logs/reset_stuck_agent_jobs.log 2>&1"
                 ),
                 "how": "Requeue zombie processing agent jobs / synthesis rows.",
             },
@@ -348,7 +347,7 @@ def record_error(
         hist.append({"at": _now_iso(), "root_cause": root_cause, "error": (error or "")[:200]})
         rec["root_cause_history"] = hist[-30:]
     seed = SEED_RECIPES.get(finding_type) or {}
-    known = (seed.get("known_root_causes") or {})
+    known = seed.get("known_root_causes") or {}
     if how_to_fix:
         rec["last_how_to_fix"] = how_to_fix
     elif root_cause and root_cause in known:
@@ -508,9 +507,7 @@ def record_outcome(
         if ladder:
             rec["strategy_index"] = (int(rec.get("strategy_index") or 0) + 1) % len(ladder)
     if hold_minutes and hold_minutes > 0:
-        rec["hold_until"] = datetime.fromtimestamp(
-            time.time() + hold_minutes * 60, tz=timezone.utc
-        ).isoformat()
+        rec["hold_until"] = datetime.fromtimestamp(time.time() + hold_minutes * 60, tz=timezone.utc).isoformat()
     if root_cause:
         rec["last_root_cause"] = root_cause
         seed = SEED_RECIPES.get(finding_type) or {}
