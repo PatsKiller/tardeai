@@ -1,8 +1,9 @@
 // Ops → Controls pure helpers (docs/ops/OPS_CONTROLS_API.md). Runs in the CC-v3 build:
 //   node --experimental-strip-types src/lib/opsControls.test.ts
 import {
-  actBlockReason, base64urlToBuffer, bufferToBase64url, canAct, credentialToJSON, isTerminal, kindFor, phraseMatches,
-  toPublicKeyCreationOptions, toPublicKeyRequestOptions, validateSetting, type OpsControlsState,
+  actBlockReason, base64urlToBuffer, bufferToBase64url, canAct, credentialToJSON, fmtRemaining, isTerminal, kindFor,
+  killSwitchSummary, phraseMatches, toPublicKeyCreationOptions, toPublicKeyRequestOptions, validateSetting, windowCovers,
+  type OpsControlsState,
 } from './opsControls.ts'
 // No node:assert: CI's tsc has no @types/node (same local-assert pattern as designTokens.test.ts).
 declare const process: { exit(code?: number): never }
@@ -128,6 +129,44 @@ t('validateSetting enforces type, range and choices', () => {
   assert.deepEqual(validateSetting({ type: 'enum', choices: ['a', 'b'] }, 'b'), { ok: true, value: 'b' })
   assert.equal(validateSetting({ type: 'enum', choices: ['a'] }, 'c').ok, false)
   assert.equal(validateSetting({ type: 'string' }, '  ').ok, false)
+})
+
+// ── sudo window + kill switch (feat/ops-controls-sudo-window-20261022) ──
+const WIN = { window_id8: 'sudo_abc', opened_at: 'x', expires_at: 'x', idle_expires_at: 'x', remaining_s: 600, minutes: 60,
+  credential_id8: 'cred0001', opening_assertion_id: 'asrt_1', opening_request_id: 'opsreq_1', uses: 0 }
+const SUDO_KINDS = [...KINDS, { kind: 'grant.issue', label: 'Grant', direction: 'risky', supported: true, reason: null, executor: 'applier', tab: 'grants', fresh_passkey: true },
+  { kind: 'setting.set', label: 'Set', direction: 'risky', supported: true, reason: null, executor: 'applier', tab: 'flags' }]
+const open = state({ kinds: SUDO_KINDS as any, sudo_window: { state: 'ACTIVE', window: WIN, fresh_settings: ['ops_controls.sudo_window_minutes'] } })
+t('windowCovers: an open window covers an ordinary risky kind', () => {
+  assert.equal(windowCovers(open, 'crontab.pause'), true)
+  assert.equal(windowCovers(open, 'setting.set', { key: 'active_trader_alerts.min_buy_ratio' }), true)
+})
+t('windowCovers refuses always-fresh kinds, sudo settings, safe kinds, no token and inert/closed windows', () => {
+  assert.equal(windowCovers(open, 'grant.issue'), false)
+  assert.equal(windowCovers(open, 'setting.set', { key: 'ops_controls.sudo_window_minutes' }), false)
+  assert.equal(windowCovers(open, 'release_train.stop'), false)
+  assert.equal(windowCovers(open, 'crontab.pause', {}, false), false)
+  assert.equal(windowCovers(state({ kinds: SUDO_KINDS as any, sudo_window: { state: 'INERT', reason: '19.1.0 not ACTIVE', window: null } }), 'crontab.pause'), false)
+  assert.equal(windowCovers(state({ kinds: SUDO_KINDS as any, sudo_window: { state: 'ACTIVE', window: { ...WIN, remaining_s: 0 } } }), 'crontab.pause'), false)
+  assert.equal(windowCovers(state(), 'crontab.pause'), false)
+})
+t('fmtRemaining', () => {
+  assert.equal(fmtRemaining(3605), '60m 05s')
+  assert.equal(fmtRemaining(45), '45s')
+  assert.equal(fmtRemaining(0), '0s')
+  assert.equal(fmtRemaining(undefined), '0s')
+})
+t('killSwitchSummary is fail-closed and reads the global switch', () => {
+  assert.equal(killSwitchSummary(null).state, 'UNAVAILABLE')
+  assert.equal(killSwitchSummary(null, 'HTTP 500').state, 'UNAVAILABLE')
+  assert.equal(killSwitchSummary({ ok: false, error: 'db_unavailable' }).state, 'UNAVAILABLE')
+  assert.match(killSwitchSummary({ ok: false, error: 'db_unavailable' }).text, /db_unavailable/)
+  const eng = killSwitchSummary({ ok: true, switches: [{ level: 'global', scope: '', enabled: true, reason: 'incident', enabled_at: 'T1' }],
+    active: [{ level: 'global', scope: '', reason: 'incident', enabled_at: 'T1' }, { level: 'broker', scope: 'schwab' }] })
+  assert.equal(eng.state, 'ENGAGED'); assert.equal(eng.others, 1); assert.match(eng.text, /incident/)
+  const clr = killSwitchSummary({ ok: true, switches: [{ level: 'global', scope: '', enabled: false, disabled_at: 'T2' }], active: [] })
+  assert.equal(clr.state, 'CLEAR'); assert.match(clr.text, /T2/)
+  assert.equal(killSwitchSummary({ ok: true, switches: [], active: [] }).text, 'clear (never engaged)')
 })
 
 console.log(`opsControls: ${n} passed`)

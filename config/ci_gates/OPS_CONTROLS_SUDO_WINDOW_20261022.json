@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "OPS_CONTROLS_SUDO_WINDOW_20261022",
+  "files": [
+    "tests/test_ops_controls_sudo_window_20261022.py"
+  ],
+  "anchor": "OPS_CONTROLS_SUDO_WINDOW_20261022",
+  "comment": [
+    "ANCHOR: OPS_CONTROLS_SUDO_WINDOW_20261022 — Ops -> Controls sudo window (operator 2026-10-22 \"approve sudo window\"; inert until AGENTS.md 19.1.0 ACTIVE and ops_controls.sudo_window_enabled): open/expire/idle/end, always-fresh kinds refused inside a window (step-up, approve, applier), audit linkage to the opening assertion, agents refused; release-train resume/arm via the passkey proof (AGENTS 19.0.0 §25.4); kill-switch row reads the existing read route; audit rows and non-OK sections always carry a reason. Hermetic: in-memory store, fake host runner, tmp release-train state."
+  ]
+}

@@ -343,7 +343,11 @@ def test_code_named_in_section_25_exists_and_agrees():
     assert not str(RD.DEFAULT_PATH).startswith(str(ROOT))
     assert not (CAP.PHASE_ACTIONS[CAP.PHASE_BUILD] & (CAP.PHASE_ACTIONS[CAP.PHASE_MERGE]
                                                       | CAP.PHASE_ACTIONS[CAP.PHASE_PROMOTE]))
-    assert RC.OPERATOR_KINDS == frozenset({"host_cli", "telegram"}) and "cc" not in RC.OPERATOR_KINDS
+    # 19.0.0 (ACTIVE, §27.5 edit (2)) rewrote §25.4: resume, arming, re-arming, scope changes and revoke are made "with
+    # a WebAuthn passkey and a typed confirmation phrase (§27.3), or at the host CLI". The passkey proof kind
+    # (release_control.PasskeyProof, its hook a refusing stub by default) is that clause in code; "cc" stays out.
+    assert RC.OPERATOR_KINDS == frozenset({"host_cli", "telegram", "passkey"}) and "cc" not in RC.OPERATOR_KINDS
+    assert isinstance(RC.ReleaseControl(Path("/nonexistent")).passkey_hook, RC.PasskeyApprovalStub)
     assert "cc" in RC.REQUEST_KINDS
     assert list(RC.STOP_PHASE.values()) == ["requested", "acknowledged", "settling", "stopped"]
     assert RC.GLOBAL_LOCK_NAME == ".lock" and RC.LATCH_NAME == RW.State(Path("/nonexistent")).latch.name

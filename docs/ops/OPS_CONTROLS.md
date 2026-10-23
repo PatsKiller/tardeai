@@ -37,6 +37,7 @@ audits and offers an undo). The safe direction (release-train STOP or pause, kil
 | Policy gate, change kinds, preview/apply/undo | `scripts/lib/ops_controls_core.py` | `policy_state()` reads `AGENTS.md` at call time: ACTIVE only if the 19.0.0 history row is ACTIVE and §27.3 exists. No env override. |
 | Routes | `scripts/lib/ops_controls_api.py`, wired in `scripts/api_v2.py` | Records and authorises requests. Applies no host change itself (except the release-train STOP/pause writers and the passkey store). |
 | Factors | `scripts/lib/ops_controls_auth.py` | py_webauthn (`webauthn`) registration and assertion, `userVerification: required`, RP id `ms01-openclaw.tail163d14.ts.net`; pyotp TOTP (recovery only); step-up tokens; approval HMAC. |
+| Sudo window | `scripts/lib/ops_controls_sudo.py` | The window gate (AGENTS.md 19.1.0 ACTIVE with heading `## 27.6 Sudo window` AND setting `ops_controls.sudo_window_enabled`), the always-fresh kinds, the in-memory window registry. §6a. |
 | Stores | `scripts/lib/ops_controls_store.py` | `PgStore` (production) and `MemoryStore` (tests), one interface. |
 | Migration | `migrations/2026_10_22_ops_controls.sql` (+ `.down.sql`) | 7 tables, refuse-delete triggers, append-only `ops_audit` and `operator_settings_history`. Not applied. |
 | Plan tool | `scripts/ops/ops_controls_migration_plan.py` | Dry run of the migration (`--probe`: read-only existence check). |
@@ -77,10 +78,9 @@ See the table in `docs/ops/OPS_CONTROLS_API.md` §5. Safe: `release_train.stop`,
 - **`kill_switch.clear`:** its path is broker-execution code (`scripts/brokers/kill_switches.py --disable`). Calling or
   testing it from the applier needs an `execution-engineering` grant (§0 rule 2, §27.4). Engage only runs the existing
   CLI as a subprocess. Neither path's code is modified.
-- **`release_train.resume` / `.arm` / `.change_scope` / `.revoke`:** `release_control.OPERATOR_KINDS` is pinned to
-  the D3 host-CLI and Telegram proofs by `tests/test_agents_policy_17_0_0_release_train.py`. Adding a passkey proof
-  kind is its own reviewed PR after 19.0.0 is ACTIVE. Until then the host CLI is the path
-  (`scripts/release_control_cli.py`).
+- **`release_train.change_scope` / `.revoke`:** not built on this page yet; each is its own reviewed PR. The host CLI
+  is the path (`scripts/release_control_cli.py`). `release_train.resume` and `.arm` are supported since 2026-10-22
+  (§6a).
 - **Data approvals (registry rows):** these are a reviewed PR to `config/data_source_authority.json` (§26.6). The tab
   is read-only.
 
@@ -133,6 +133,58 @@ Nothing below is done by an agent. Each step that writes durable state has its d
 **Rollback:** stop and disable `tradeai-ops-applier.service`. Run `migrations/2026_10_22_ops_controls.down.sql`; it
 archives by rename and never drops. Revert the PR. Applied host changes are restored from their backups (paths in the
 request results and the audit).
+
+## 6a. Sudo window, release-train passkey proof, kill-switch state, audit reasons (2026-10-22)
+
+Branch `feat/ops-controls-sudo-window-20261022`. Tests: `tests/test_ops_controls_sudo_window_20261022.py` (CI gate
+`OPS_CONTROLS_SUDO_WINDOW_20261022`), `src/lib/opsControls.test.ts` (in `npm run build`).
+
+**Sudo window** (operator decision 2026-10-22, verbatim: "approve sudo window"). **INERT** until both hold, read at
+every request: AGENTS.md **19.1.0** is ACTIVE and carries the heading `## 27.6 Sudo window`
+(`ops_controls_core.policy_state(required="19.1.0", anchor=…)`, no environment override), and the operator setting
+`ops_controls.sudo_window_enabled` is `true` (default `false`). Then:
+
+- One passkey assertion opens it: the operator ticks "Also open a sudo window" on a risky step-up, and the same
+  assertion (user verification required) opens a window for `ops_controls.sudo_window_minutes` (default 60, ceiling
+  120). It ends after 15 minutes without use, on **End window now**, when its passkey is revoked, when the setting is
+  turned off or the policy is not ACTIVE, and when the Command Center restarts (windows are in memory only, so a
+  restart fails closed). There is no Command Center logout today; closing the browser session drops the token
+  (`sessionStorage`) and the server window then idles out.
+- Inside it, a risky act needs only the typed phrase (`POST /requests/{id}/step-up/window`). The window is bound to the
+  operator identity, the opening credential and the browser session: the server returns a random token once and keeps
+  only its SHA-256.
+- **Always a fresh passkey, even inside a window:** `grant.issue`, `kill_switch.clear`, `passkey.register`,
+  `passkey.revoke`, the release-train operator kinds (`resume`, `arm`, `change_scope`, `revoke` — added beyond the
+  operator's list because §25.4 names a passkey for them and the release-train proof hook accepts only factor
+  `passkey`), and setting or unsetting either sudo-window setting. Refused at window step-up, again at approve, and
+  again in the host applier, which reads the factor inside the signed approval (`FRESH_PASSKEY_REQUIRED`).
+- **Audit:** `sudo.opened` (opening assertion id `asrt_…`, credential, time, request), every act's `step_up.verified`,
+  `request.approved` and `request.applied` rows (the same linkage, also kept in the request's `result.sudo_window`),
+  and `sudo.ended` with its reason (expired, idle, ended by the operator, passkey revoked, inert, replaced).
+- **Agents** are refused on every new route exactly as on the others (`AGENT_CALLER_REFUSED`).
+- **Activation (operator, after 19.1.0 is ACTIVE):** apply `migrations/2026_10_22_ops_controls_sudo_window.sql` (it
+  widens the `stepup_factor` CHECK to allow `sudo_window`; dry run and verify are in its header; reverse:
+  `.down.sql`, NOT VALID, keeps every row), then set `ops_controls.sudo_window_enabled = true` on the page (a fresh
+  passkey). Until the migration runs, a window step-up is refused by the database (fails closed).
+
+**Release-train resume and arm with a passkey.** `release_control.OPERATOR_KINDS` is now `{host_cli, telegram,
+passkey}` (AGENTS.md 19.0.0 §25.4, as ratified: "resume, arming, re-arming, scope changes and revoke are operator acts
+made with a WebAuthn passkey and a typed confirmation phrase (§27.3), or at the host CLI"); the pin in
+`tests/test_agents_policy_17_0_0_release_train.py` follows it. A `passkey` actor needs a `PasskeyProof` that a
+`PasskeyApprovalHook` vouches for; the default hook refuses. The host applier passes `ApprovalPasskeyHook`, bound to the
+one approval it is applying: valid HMAC signature, same kind and request, factor `passkey` (not a window, not TOTP),
+same credential, and the phrase the library expects now (`RESUME EPOCH <n>` / `ARM EPOCH <n>`), so a stale approval
+cannot act on a later stop. Resume records readiness (state shown at apply time); arm reads the host delegation
+(`release_delegation.load`) and refuses if its digest changed since the preview. Scope change and revoke stay host CLI.
+
+**Kill-switch row.** The Jobs tab shows the global trading kill switch as ENGAGED / CLEAR / UNAVAILABLE (fail closed),
+read-only, from the existing route `GET /api/v2/execution/kill-switches` that the Execution panel already reads. No
+broker-execution code was changed or newly called by this surface; clear stays host terminal.
+
+**Audit reasons.** Every audit row in `GET /state` has a one-line `reason` (the row's own code and detail first, else
+the action's meaning, plus the factor and any sudo-window linkage), shown in a new **Why** column. Every section that
+is not OK has a reason; a store that is not migrated names the missing tables and the migration to apply. The page no
+longer prints "NOT_MIGRATED — no reason given".
 
 ## 7. Telegram
 

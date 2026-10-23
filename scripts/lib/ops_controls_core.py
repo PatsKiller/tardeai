@@ -10,8 +10,10 @@ version-history row says ACTIVE and §27.3 is present; every mutating caller ref
 Never touched here: broker-execution code, kill-switch code, credentials, AGENTS.md, guard surfaces. The kill-switch
 ENGAGE kind only runs the existing operator CLI (``scripts/brokers/kill_switches.py --enable``) as a subprocess; its
 CLEAR kind is NOT_SUPPORTED (an ``execution-engineering`` grant would be needed to call or test the clear path).
-Release-train resume / arm / scope / revoke are NOT_SUPPORTED: ``release_control.OPERATOR_KINDS`` is pinned to the D3
-host-CLI / Telegram proofs by the 17.0.0 policy test.
+Release-train resume and arm (2026-10-22, AGENTS.md 19.0.0 §25.4 / §27.3) are risky kinds executed by the host
+applier: the applier hands ``release_control`` a ``PasskeyProof`` and a hook bound to the one HMAC-signed approval it is
+applying, which must have been stepped up with a fresh passkey assertion (factor ``passkey``) and must carry the phrase
+``release_control`` expects now (``RESUME EPOCH <n>`` / ``ARM EPOCH <n>``). Scope change and revoke stay host-CLI only.
 
 Pre-build check (AGENTS §13.5): reuses ``check_registry_runtime_truth.parse_live_lanes`` / ``active_cron_lines``, the
 ``# PAUSED <date> <note> <line>`` crontab convention (``options_desk_accuracy``, ``pipeline_freshness_slo``), the
@@ -161,9 +163,10 @@ class KindSpec:
     reason: Optional[str] = None
 
 
-_NS_RELEASE = ("release_control.OPERATOR_KINDS is pinned to the D3 host-CLI / Telegram proofs by "
-               "tests/test_agents_policy_17_0_0_release_train.py; a passkey proof kind is its own reviewed PR after "
-               "AGENTS.md 19.0.0 is ACTIVE (§27.4). Host terminal: scripts/release_control_cli.py")
+_NS_RELEASE = ("scope change and revoke are not built on this page yet (only resume and arm have the passkey proof, "
+               "2026-10-22); each is its own reviewed PR. Host terminal: scripts/release_control_cli.py")
+_UNDO_RELEASE = ("the way back is the other direction: STOP or pause (one click); resume and arm issue a new epoch, "
+                 "and no earlier epoch is ever valid again")
 _NS_CLEAR = ("the kill-switch clear path (scripts/brokers/kill_switches.py --disable) is broker-execution code; calling "
              "or testing it from the applier needs an execution-engineering grant (§0 rule 2, §27.4). Host terminal: "
              "scripts/brokers/kill_switches.py --disable <level> --confirm <phrase>")
@@ -171,8 +174,8 @@ _NS_CLEAR = ("the kill-switch clear path (scripts/brokers/kill_switches.py --dis
 KINDS: dict[str, KindSpec] = {k.kind: k for k in (
     KindSpec("release_train.stop", "Release train: STOP", SAFE, EXEC_CC, "jobs"),
     KindSpec("release_train.pause", "Release train: pause after the current train", SAFE, EXEC_CC, "jobs"),
-    KindSpec("release_train.resume", "Release train: resume", RISKY, EXEC_CC, "jobs", False, _NS_RELEASE),
-    KindSpec("release_train.arm", "Release train: arm", RISKY, EXEC_CC, "jobs", False, _NS_RELEASE),
+    KindSpec("release_train.resume", "Release train: resume", RISKY, EXEC_APPLIER, "jobs"),
+    KindSpec("release_train.arm", "Release train: arm", RISKY, EXEC_APPLIER, "jobs"),
     KindSpec("release_train.change_scope", "Release train: change scope", RISKY, EXEC_CC, "jobs", False, _NS_RELEASE),
     KindSpec("release_train.revoke", "Release train: revoke delegation", RISKY, EXEC_CC, "jobs", False, _NS_RELEASE),
     KindSpec("kill_switch.engage", "Kill switch: engage", SAFE, EXEC_APPLIER, "jobs"),
@@ -255,6 +258,7 @@ class Hosts:
     runner: Runner = field(default=_run)
     clock: Callable[[], datetime] = field(default=utc_now)
     release_state_dir: Optional[Path] = None
+    release_delegation_path: Optional[Path] = None   # None: release_delegation.DEFAULT_PATH (host, outside the repo)
 
     # crontab
     def crontab_read(self) -> str:
@@ -408,6 +412,7 @@ class Plan:
     warnings: list[str] = field(default_factory=list)
     undo: Optional[dict] = None          # {"kind": ..., "params": {...}} or None
     undo_reason: Optional[str] = None
+    phrase: Optional[str] = None         # overrides phrase_for() when the target names its own (release epochs)
     payload: dict = field(default_factory=dict)  # private to apply(); never sent to the browser
 
     def public(self) -> dict:
@@ -638,6 +643,9 @@ def plan_change(kind: str, params: Mapping[str, Any], hosts: Hosts, store: Any, 
         return Plan(kind, {"reason": reason}, f"release train: {what}", None, None, "n/a",
                     undo=None, undo_reason=_NS_RELEASE)
 
+    if kind in ("release_train.resume", "release_train.arm"):
+        return _plan_release(kind, p, hosts)
+
     if kind == "kill_switch.engage":
         reason = str(p.get("reason") or "").strip() or "operator, Ops Controls"
         if len(reason) > 300 or any(ord(c) < 32 for c in reason):
@@ -677,11 +685,13 @@ def _backup(hosts: Hosts, name: str, text: str) -> str:
 
 
 def apply_change(kind: str, params: Mapping[str, Any], expected_digest: Optional[str], hosts: Hosts, store: Any, *,
-                 request_id: str, actor: str) -> dict:
+                 request_id: str, actor: str, approval: Optional[dict] = None,
+                 hmac_key: Optional[bytes] = None) -> dict:
     """Re-plan, refuse if the target changed since the preview, back up, apply, verify. Returns the result record.
 
     Raises OpsError on refusal before any write; a failure after the write is returned with outcome FAILED and the
-    backup reference (the operator restores from it; nothing auto-remediates, §0 rule 5).
+    backup reference (the operator restores from it; nothing auto-remediates, §0 rule 5). ``approval`` (the signed
+    request row) and ``hmac_key`` are needed only by the release-train operator kinds, whose proof is that approval.
     """
     plan = plan_change(kind, params, hosts, store, request_id=request_id, actor=actor)
     if expected_digest and plan.digest != "n/a" and plan.digest != expected_digest:
@@ -764,6 +774,10 @@ def apply_change(kind: str, params: Mapping[str, Any], expected_digest: Optional
         res["code"] = None if http < 300 else str(body.get("code") or body.get("error") or http)
         return res
 
+    if kind in ("release_train.resume", "release_train.arm"):
+        return _apply_release(kind, plan, hosts, request_id=request_id, actor=actor, approval=approval,
+                              hmac_key=hmac_key, res=res)
+
     if kind == "release_train.pause":
         from scripts.lib import release_control as RC
 
@@ -778,3 +792,126 @@ def apply_change(kind: str, params: Mapping[str, Any], expected_digest: Optional
         return res
 
     raise OpsError("KIND_NOT_SUPPORTED", f"{kind} is not applied by this path", 409)
+
+
+# ── release train: resume / arm with a passkey proof (AGENTS.md 19.0.0 §25.4, §27.3) ─────────────────────────────
+
+
+def _release_view(hosts: Hosts):
+    from scripts.lib import release_control as RC
+
+    ctl = RC.ReleaseControl(hosts.release_dir)
+    return RC, ctl, ctl.view()
+
+
+def _release_digest(v: Any, delegation_digest: Optional[str] = None) -> str:
+    return sha256_text(canonical({"mode": v.mode, "epoch": v.epoch, "version": v.version, "latch": v.latch_state,
+                                  "delegation": delegation_digest}))
+
+
+def _delegation(hosts: Hosts) -> Any:
+    from scripts.lib import release_delegation as RD
+
+    dv = RD.load(hosts.release_delegation_path)
+    if not dv.authorized:
+        raise OpsError(f"DELEGATION_{dv.code}", (dv.detail or "the standing release delegation is not authorized; "
+                                                 "create or fix it at the host first")[:200], 409)
+    return dv
+
+
+def _plan_release(kind: str, p: Mapping[str, Any], hosts: Hosts) -> Plan:
+    reason = " ".join(str(p.get("reason") or "").split())
+    if len(reason) < 4 or len(reason) > 400 or any(ord(c) < 32 for c in reason):
+        raise OpsError("PARAMS_INVALID", "reason must be 4-400 printable characters (it is recorded)", 400)
+    RC, ctl, v = _release_view(hosts)
+    command = kind.split(".", 1)[1]
+    before = {"mode": v.mode, "epoch": v.epoch, "latch": v.latch_state,
+              "stop_reason": (v.stop or {}).get("reason") if isinstance(v.stop, dict) else None}
+    if kind == "release_train.resume":
+        if v.mode in (RC.UNARMED, RC.CORRUPT, RC.REVOKED):
+            raise OpsError("RESUME_NOT_APPLICABLE", f"release train is {v.mode}: arm it instead", 409)
+        if v.mode in (RC.STOP_REQUESTED, RC.STOP_ACKNOWLEDGED, RC.SETTLING):
+            raise OpsError("STOP_NOT_SETTLED", f"{v.mode}: the controller has not reached stopped; wait", 409)
+        if v.mode == RC.RUNNING and v.latch_state == RC.LATCH_ABSENT:
+            raise OpsError("NO_CHANGE", "the release train is running; nothing to resume", 409)
+        dd = None
+        summary = (f"resume the release train: {v.mode} → RUNNING, epoch {v.epoch} → {int(v.epoch or 0) + 1}"
+                   + (", STOP latch archived by rename" if v.latch_state != RC.LATCH_ABSENT else ""))
+        warnings = ["every capability issued before the stop stays invalid; the train waits for its next window"]
+    else:
+        if v.mode not in (RC.UNARMED, RC.REVOKED):
+            raise OpsError("ALREADY_ARMED", f"release train is {v.mode}", 409)
+        if v.latch_state != RC.LATCH_ABSENT:
+            raise OpsError("STOP_LATCH_PRESENT", "a STOP latch is present; resume clears it", 409)
+        dd = _delegation(hosts).digest
+        summary = (f"arm the release train under delegation {str(dd)[:12]}: {v.mode} → RUNNING, epoch "
+                   f"{int(v.epoch or 0)} → {int(v.epoch or 0) + 1}")
+        warnings = ["the scheduled train may merge and release under the standing delegation once armed"]
+    after = {"mode": RC.RUNNING, "epoch": int(v.epoch or 0) + 1, "latch": RC.LATCH_ABSENT}
+    return Plan(kind, {"reason": reason}, summary, before, after, _release_digest(v, dd),
+                diff=[f"- mode {v.mode} epoch {v.epoch}", f"+ mode RUNNING epoch {after['epoch']}"],
+                warnings=warnings, undo=None, undo_reason=_UNDO_RELEASE, phrase=ctl.expected_phrase(command),
+                payload={"command": command, "delegation_digest": dd})
+
+
+class ApprovalPasskeyHook:
+    """Vouches for a ``release_control.PasskeyProof`` only when it matches the one approval being applied.
+
+    The approval must carry a valid HMAC signature (the key is a 0600 file only the Command Center and the applier
+    read), be for this exact command, have been stepped up with a FRESH passkey assertion (factor ``passkey``: a
+    sudo-window step-up or TOTP is refused), name the same credential and request, and carry the phrase the library
+    expects now (it names the next epoch, so a stale approval cannot resume a later stop)."""
+
+    def __init__(self, approval: Mapping[str, Any], hmac_key: Optional[bytes], kind: str) -> None:
+        self.approval = dict(approval)
+        self.hmac_key = hmac_key
+        self.kind = kind
+
+    def verify(self, proof: Any, *, command: str, expected_phrase: str) -> bool:
+        from scripts.lib import ops_controls_auth as A
+
+        a = self.approval
+        return bool(
+            A.verify_approval(self.hmac_key, a)
+            and a.get("kind") == self.kind == f"release_train.{command}"
+            and a.get("direction") == RISKY and a.get("executor") == EXEC_APPLIER
+            and a.get("stepup_factor") == "passkey" and a.get("stepup_credential_id")
+            and proof.credential_id == a.get("stepup_credential_id")
+            and proof.request_id == a.get("request_id")
+            and phrase_matches(proof.confirmation, a.get("phrase"))
+            and proof.confirmation == expected_phrase)
+
+
+def _apply_release(kind: str, plan: Plan, hosts: Hosts, *, request_id: str, actor: str, approval: Optional[dict],
+                   hmac_key: Optional[bytes], res: dict) -> dict:
+    from scripts.lib import release_control as RC
+
+    if not approval or approval.get("request_id") != request_id:
+        raise OpsError("PROOF_MISSING", "release-train operator kinds are applied only from a signed approval", 409)
+    hook = ApprovalPasskeyHook(approval, hmac_key, kind)
+    ctl = RC.ReleaseControl(hosts.release_dir, passkey_hook=hook)
+    who = RC.Actor("passkey", actor or str(approval.get("actor") or ""))
+    proof = RC.PasskeyProof(request_id=request_id, credential_id=str(approval.get("stepup_credential_id") or ""),
+                            approved_at=str(approval.get("approved_at") or ""),
+                            confirmation=" ".join(str(approval.get("phrase") or "").split()))
+    reason = f"{plan.params['reason']} (ops-controls {request_id})"
+    try:
+        if kind == "release_train.resume":
+            v = ctl.view()
+            readiness = {"checked_at": RC.utc_iso(ctl.clock()), "source": "ops_controls_applier",
+                         "shown": {"mode": v.mode, "epoch": v.epoch, "latch": v.latch_state, "stop": v.stop}}
+            out = ctl.resume(who, proof, reason=reason, readiness=readiness)
+        else:
+            dd = _delegation(hosts).digest
+            if dd != plan.payload.get("delegation_digest"):
+                raise OpsError("STATE_CHANGED", "the delegation changed since the preview; preview again", 409)
+            out = ctl.arm(who, proof, policy_digest=dd, reason=reason)
+    except RC.ControlRefused as exc:
+        raise OpsError(exc.code, str(exc.detail)[:200], 409) from exc
+    after = ctl.view()
+    ok = after.mode == RC.RUNNING and after.epoch == out.get("epoch")
+    res["verify"] = {"mode": after.mode, "epoch": after.epoch, "outcome": out.get("outcome"),
+                     "latch_archived": out.get("latch_archived")}
+    res["backup_ref"] = out.get("latch_archived")
+    res["outcome"] = "APPLIED" if ok else "FAILED"
+    return res

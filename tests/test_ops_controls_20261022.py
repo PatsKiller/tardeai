@@ -354,11 +354,12 @@ def test_one_click_is_ignored_for_a_risky_kind(env):
     assert body["request"]["status"] == "AWAITING_STEP_UP" and "one_click ignored" in body["note"]
 
 
-@pytest.mark.parametrize("kind", ["kill_switch.clear", "release_train.resume", "release_train.arm",
-                                  "release_train.change_scope", "release_train.revoke"])
+# release_train.resume / .arm are supported since 2026-10-22 (passkey proof, tests/test_ops_controls_sudo_window_20261022.py).
+@pytest.mark.parametrize("kind", ["kill_switch.clear", "release_train.change_scope", "release_train.revoke"])
 def test_unsupported_kinds_say_why(env, kind):
     st, body = post(env, "/requests", {"kind": kind, "params": {}, "idempotency_key": idem()})
-    assert (st, body["error"]) == (409, "KIND_NOT_SUPPORTED") and "grant" in body["detail"] or "D3" in body["detail"]
+    assert (st, body["error"]) == (409, "KIND_NOT_SUPPORTED")
+    assert "grant" in body["detail"] or "release_control_cli" in body["detail"]
 
 
 def test_kill_switch_clear_reason_names_the_execution_engineering_grant():

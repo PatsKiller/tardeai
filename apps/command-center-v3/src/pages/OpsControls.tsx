@@ -10,6 +10,8 @@ import { useApi } from '../hooks/useApi'
 import { Chip, ChipRow } from '../components/primitives'
 import { TOKENS, TYPE } from '../lib/watchTokens'
 import { FONT, RADIUS, SHADOW, toneVars, type Tone } from '../lib/designTokens'
+import { KillSwitchCell, SudoBanner } from '../components/OpsControlsSudo'
+import { OpsApiError, sudoToken, windowCovers } from '../lib/opsControls'
 import {
   actBlockReason, canAct, isTerminal, kindFor, opsApi, passkeyStepUp, phraseMatches, registerPasskey, validateSetting,
   type OpsControlsState, type OpsRequest, type SettingRow,
@@ -74,7 +76,7 @@ function Banner({ tone, title, children }: { tone: Tone; title: string; children
 function SectionGate({ sec, children }: { sec?: { state?: string; reason?: string | null } | null; children: ReactNode }) {
   if (!sec || sec.state !== 'OK') {
     return <p role="alert" style={{ ...muted, color: TOKENS.warning, fontWeight: 600 }}>
-      {sec?.state === 'NOT_MIGRATED' ? 'NOT_MIGRATED' : 'UNAVAILABLE'} — {s(sec?.reason || (sec ? 'no reason given' : 'section missing from state'))}
+      {sec?.state === 'NOT_MIGRATED' ? 'NOT_MIGRATED' : 'UNAVAILABLE'} — {s(sec?.reason || (sec ? `the server sent ${sec.state || 'no state'} without a reason (an old server build); see the store banner above` : 'section missing from state'))}
     </p>
   }
   return <>{children}</>
@@ -110,6 +112,7 @@ function FlowModal({ flow, state, onClose }: { flow: FlowStart; state: OpsContro
   const [typed, setTyped] = useState('')
   const [totp, setTotp] = useState('')
   const [timedOut, setTimedOut] = useState(false)
+  const [openWin, setOpenWin] = useState(false)
   const started = useRef(false)
 
   const isRegister = req?.kind === 'passkey.register'
@@ -170,8 +173,23 @@ function FlowModal({ flow, state, onClose }: { flow: FlowStart; state: OpsContro
   const approveSafe = () => act(async () => { if (req) afterApproved(await opsApi.approve(req.request_id)) })
   const stepUpPasskey = () => act(async () => {
     if (!req) return
-    const token = await passkeyStepUp(req.request_id, typed)
+    const token = await passkeyStepUp(req.request_id, typed, openWin)
     afterApproved(await opsApi.approve(req.request_id, token))
+  })
+  // Sudo window: inside an open window a risky act needs only the phrase (never for the always-fresh kinds).
+  const winToken = sudoToken.get()
+  const inWindow = !!req && windowCovers(state, req.kind, req.params, !!winToken)
+  const freshOnly = !!req && !!kindFor(state, req.kind)?.fresh_passkey
+  const canOpenWin = state?.sudo_window?.state === 'ACTIVE' && !state?.sudo_window?.window
+  const stepUpWindow = () => act(async () => {
+    if (!req || !winToken) return
+    try {
+      const r = await opsApi.stepUpWindow(req.request_id, winToken, typed)
+      afterApproved(await opsApi.approve(req.request_id, r.step_up_token))
+    } catch (e) {
+      if (e instanceof OpsApiError && e.code.startsWith('SUDO_WINDOW')) sudoToken.clear()
+      throw e
+    }
   })
   const stepUpTotp = () => act(async () => {
     if (!req) return
@@ -233,7 +251,12 @@ function FlowModal({ flow, state, onClose }: { flow: FlowStart; state: OpsContro
           <label style={label}>TOTP code
             <input value={totp} onChange={e => setTotp(e.target.value.replace(/\D/g, '').slice(0, 8))} inputMode="numeric" autoComplete="one-time-code" style={{ ...input, maxWidth: 160 }} />
           </label>
-        </> : <p style={muted}>Then confirm with a passkey on this device{state?.factors?.webauthn_library === 'missing' ? ' — the server WebAuthn library is missing; verification will fail' : ''}.</p>}
+        </> : inWindow ? <p style={muted}>Sudo window open: the typed phrase is enough for this change (it is audited with the passkey assertion that opened the window).</p>
+          : <p style={muted}>Then confirm with a passkey on this device{state?.factors?.webauthn_library === 'missing' ? ' — the server WebAuthn library is missing; verification will fail' : ''}.{freshOnly && state?.sudo_window?.window ? ' This change always needs a fresh passkey, even inside a sudo window.' : ''}</p>}
+        {!useTotp && !inWindow && canOpenWin ? <label style={{ ...label, display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input type="checkbox" checked={openWin} onChange={e => setOpenWin(e.target.checked)} />
+          Also open a sudo window ({state?.sudo_window?.minutes ?? 60} min, ends after {state?.sudo_window?.idle_minutes ?? 15} idle min) for this browser session
+        </label> : null}
         <p style={{ ...muted, fontStyle: 'italic' }}>Telegram is notified; it confirms nothing.</p>
       </div> : null}
 
@@ -262,8 +285,10 @@ function FlowModal({ flow, state, onClose }: { flow: FlowStart; state: OpsContro
         {req && stage === 'preview' && !risky ? <button type="button" disabled={busy || !allowed} onClick={approveSafe} style={btnStyle('success', busy || !allowed)}>Approve (safe)</button> : null}
         {req && stage === 'auth' && useTotp ? <button type="button" disabled={busy || !allowed || !phraseOk || totp.length < 6} onClick={stepUpTotp}
           style={btnStyle('danger', busy || !allowed || !phraseOk || totp.length < 6)}>Verify TOTP and approve</button> : null}
+        {req && stage === 'auth' && !useTotp && inWindow ? <button type="button" disabled={busy || !allowed || !phraseOk} onClick={stepUpWindow}
+          style={btnStyle('danger', busy || !allowed || !phraseOk)}>{busy ? 'Approving…' : 'Approve in sudo window'}</button> : null}
         {req && stage === 'auth' && !useTotp ? <button type="button" disabled={busy || !allowed || !phraseOk} onClick={stepUpPasskey}
-          style={btnStyle('danger', busy || !allowed || !phraseOk)}>{busy ? 'Waiting for passkey…' : 'Use passkey and approve'}</button> : null}
+          style={btnStyle(inWindow ? 'plain' : 'danger', busy || !allowed || !phraseOk)}>{busy ? 'Waiting for passkey…' : 'Use passkey and approve'}</button> : null}
         {req && stage === 'register' ? <button type="button" disabled={busy} onClick={createPasskey} style={btnStyle('success', busy)}>{busy ? 'Creating…' : 'Create passkey'}</button> : null}
       </div>
     </div>
@@ -278,10 +303,11 @@ function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   const [reason, setReason] = useState('')
   const rt = d?.release_train
   const safeParams = reason.trim() ? { reason: reason.trim() } : {}
+  const relParams = { reason: reason.trim().length >= 4 ? reason.trim() : 'operator, Ops Controls' }
   const jobs = d?.jobs
   return <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <Panel title="Release train & kill switch">
-      <p style={muted}>STOP, Pause and Engage are the safe direction: one click, no passkey. The way back (resume, arm, clear) is host terminal only for now.</p>
+      <p style={muted}>STOP, Pause and Engage are the safe direction: one click, no passkey. Resume and Arm need a fresh passkey and the typed phrase (“RESUME EPOCH n” / “ARM EPOCH n”) and are applied by the host applier; clearing the kill switch stays host terminal only.</p>
       <label style={{ ...label, maxWidth: 420, marginBottom: 8 }}>Reason (optional, recorded in the audit trail)
         <input value={reason} onChange={e => setReason(e.target.value)} maxLength={200} style={input} />
       </label>
@@ -289,9 +315,9 @@ function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
         ['Release train', rt?.state === 'OK' ? <ChipRow><Chip tone="neutral">{s(rt.mode)}</Chip><Chip tone="neutral">epoch {s(rt.epoch)}</Chip><Chip tone={rt.latch === 'ABSENT' ? 'neutral' : 'warning'}>STOP latch {s(rt.latch)}</Chip></ChipRow> : <SectionGate sec={rt}>{null}</SectionGate>,
           <ChipRow><ActionButton state={d} kind="release_train.stop" text="STOP" params={safeParams} title="STOP the release train" run={run} />
             <ActionButton state={d} kind="release_train.pause" text="Pause" params={safeParams} title="Pause the release train" run={run} /></ChipRow>,
-          <ChipRow><ActionButton state={d} kind="release_train.resume" text="Resume" params={{}} run={run} />
-            <ActionButton state={d} kind="release_train.arm" text="Arm" params={{}} run={run} /></ChipRow>],
-        ['Global kill switch', <span style={{ color: TOKENS.text[2] }}>state not in this read model</span>,
+          <ChipRow><ActionButton state={d} kind="release_train.resume" text="Resume" params={relParams} title="Resume the release train" run={run} />
+            <ActionButton state={d} kind="release_train.arm" text="Arm" params={relParams} title="Arm the release train" run={run} /></ChipRow>],
+        ['Global kill switch', <KillSwitchCell />,
           <ActionButton state={d} kind="kill_switch.engage" text="Engage" params={{ scope: 'global', ...safeParams }} title="Engage the global kill switch" run={run} />,
           <ActionButton state={d} kind="kill_switch.clear" text="Clear" params={{ scope: 'global' }} run={run} />],
       ]} />
@@ -443,13 +469,15 @@ function AuditTab({ d, startFlow }: { d: OpsControlsState | null; startFlow: (f:
   return <div style={{ display: 'grid', gap: 12, minWidth: 0 }}>
     <Panel title="Audit & undo">
       <SectionGate sec={a}>
-        <Table label="Audit trail" heads={['Seq', 'At', 'Actor', 'Action', 'Kind', 'Outcome', 'Request', 'Undo']}
+        <Table label="Audit trail" heads={['Seq', 'At', 'Actor', 'Action', 'Kind', 'Outcome', 'Why', 'Request', 'Undo']}
           rows={(a?.rows || []).map(r => {
             const undoKind = r.request_id ? byId.get(r.request_id)?.undo?.kind : null
             // Gate on the inverse kind when the request is in the recent list, else on the applied kind.
             const block = actBlockReason(d, undoKind || r.kind || '')
             return [<span style={mono}>{r.seq}</span>, et(r.at), s(r.actor), s(r.action), <span style={mono}>{s(r.kind)}</span>,
-              <Chip tone={r.outcome === 'ok' ? 'success' : r.outcome ? 'warning' : 'neutral'}>{s(r.outcome)}</Chip>, <span style={mono}>{s(r.request_id)}</span>,
+              <Chip tone={r.outcome === 'ok' ? 'success' : r.outcome ? 'warning' : 'neutral'}>{s(r.outcome)}</Chip>,
+              <span style={{ fontSize: TYPE.sm, color: TOKENS.text[1], whiteSpace: 'normal', maxWidth: 360, display: 'inline-block' }}>{r.reason || `${s(r.action)} (${s(r.outcome)}) — the server sent no reason`}</span>,
+              <span style={mono}>{s(r.request_id)}</span>,
               r.undo_available && r.request_id ? <button type="button" disabled={!!block} title={block || undefined}
                 onClick={() => startFlow({ title: `Undo ${s(r.kind)}`, start: () => opsApi.undo(r.request_id as string) })} style={btnStyle('info', !!block)}>Undo</button> : '—']
           })} />
@@ -541,6 +569,7 @@ export default function OpsControlsPage() {
     </Banner> : null}
     {d && d.factors?.webauthn_library === 'missing' ? <Banner tone="warning" title="WebAuthn library missing on the server">Passkey step-up and registration will be refused until it is installed.</Banner> : null}
     {d && d.factors?.hmac_key === 'missing' ? <Banner tone="warning" title="HMAC key missing">Approvals cannot be signed, so the applier would refuse them.</Banner> : null}
+    {d ? <SudoBanner sw={d.sudo_window} onChanged={api.refetch} /> : null}
 
     <div role="tablist" aria-label="Controls sections" style={{ display: 'flex', gap: 6, overflowX: 'auto', minWidth: 0, paddingBottom: 2 }}>
       {TABS.map(([k, text, n]) => {
