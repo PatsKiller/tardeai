@@ -156,7 +156,7 @@ Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `sc
 
 | Document | Purpose | Status |
 |----------|---------|--------|
-| `docs/options-module.md` | **Canonical** — current proposal flow (income screen → enterprise gates → options thesis + lifecycle → CIO review → Schwab Validate → operator approval → per-order 2FA), gates/thresholds with config keys, API routes | Active (canonical, 2026-09-26) |
+| `docs/options-module.md` | **Canonical** — current proposal flow (income screen → enterprise gates → options thesis + lifecycle → CIO review → Schwab Validate → operator approval → per-order 2FA), gates/thresholds with config keys, API routes; the CC v3 Options lifecycle desk (Gate 3: act-first table incl. open legs, freshness on every number, classic view at `view=classic`) | Active (canonical, 2026-09-26; desk 2026-10-22) |
 | `docs/OPTIONS_LIFECYCLE_DESK.md` | Open-position management (lifecycle desk) | Active |
 | `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Broker routing labels + manual-execution logging; defers to options-module.md for the proposal path | Active |
 | `docs/OPTIONS_STRATEGY_PIPELINE.md` | Alpaca paper strategy lane — **training only** | Active (training only) |

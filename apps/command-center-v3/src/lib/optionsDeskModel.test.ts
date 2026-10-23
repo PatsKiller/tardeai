@@ -102,11 +102,11 @@ ok('plan rows sit in Not staged and stage via the existing modal', pRows.length 
 
 // Freshness chips: never "closed" during REGULAR; missing → "—".
 const chips = freshnessChips(P, raw, NOW)
-eq('chip keys', chips.map(c => c.key), ['market', 'stock', 'chain', 'holdings', 'scan'])
+eq('chip keys', chips.map(c => c.key), ['market', 'stock', 'chain', 'holdings', 'scan', 'open'])
 ok('REGULAR session reads open, never closed', /Open/.test(chips[0].value) && !/closed/i.test(chips[0].value))
 eq('scan coverage chip', chips[4].value, '4 of 5,646 evaluated')
 eq('chain chip shows the oldest chain against the cap', [chips[2].value, chips[2].tone], ['87 min old', 'warning'])
-const bare = freshnessChips({ data: {} }, [], NOW)
+const bare = freshnessChips({ data: {} }, [], NOW, null)
 ok('absent fields show — and say not provided', bare.every(c => c.value === '—' && /not provided by this server version/.test(c.detail)))
 eq('no session → no label (never guessed closed)', sessionLabel(undefined), null)
 eq('pre-market label', sessionLabel('PRE_MARKET'), 'Pre-market')

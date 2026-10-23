@@ -210,6 +210,51 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     source: 'proposal.delta, plan match .delta',
     forYou: 'It is price sensitivity, not the probability of assignment.',
   },
+  'term.mark': {
+    term: 'Mark',
+    plain: 'The current value of one open option, per share: the chain mid price for that contract.',
+    formula: 'mid of the nearest matching chain contract (same type, strike, expiry window)',
+    computedBy: 'scripts/options_engine.py:_monitor_position (_pick_chain_contract → mid)',
+    source: '/api/v2/options/open-positions positions[].mark, positions[].monitored_at',
+    forYou: 'It is read during the monitor run, so its age is the run time shown beside it. The provider\'s own quote time is not served for open legs.',
+  },
+  'term.entry_price': {
+    term: 'Entry',
+    plain: 'The average fill price per share for the open leg, from the broker position.',
+    source: '/api/v2/options/open-positions positions[].avg_entry, entry_credit_debit',
+    forYou: 'Without it the page cannot compute P/L and says so.',
+  },
+  'term.unrealized_pnl': {
+    term: 'Unrealized P/L',
+    plain: 'What the open leg would gain or lose if closed at the mark.',
+    formula: 'short: (entry − mark) × 100 × qty; long: (mark − entry) × 100 × qty',
+    computedBy: 'scripts/options_engine.py:_monitor_position',
+    source: 'positions[].unrealized_pnl, pnl_status, pnl_unknown_reason',
+    forYou: 'Unknown when the entry basis or the chain mark is missing; the page shows "—" and the reason. No fees or slippage.',
+  },
+  'term.moneyness': {
+    term: 'Moneyness',
+    plain: 'Whether the option is in the money (ITM), out of the money (OTM) or at the money (ATM, within 1% of the strike).',
+    computedBy: 'scripts/options_engine.py:_monitor_position',
+    source: 'positions[].moneyness, positions[].itm, positions[].underlying_price',
+    forYou: 'A short option that is ITM near expiry carries assignment risk.',
+  },
+  'term.pop_monitor': {
+    term: 'POP OTM / finish ITM',
+    plain: 'The monitor\'s model estimate that a short option expires out of the money (short legs) or that a long option finishes in the money (long legs).',
+    formula: 'lognormal at the chain IV (0.25 when missing), days to expiry floored at 1',
+    computedBy: 'scripts/options_engine.py:_pop_otm_call / _pop_otm_put',
+    source: 'positions[].pop_otm_pct, positions[].pop_itm_pct',
+    forYou: 'A model estimate, not calibrated against real outcomes. The close/roll rules use it as a threshold.',
+  },
+  'term.profit_captured': {
+    term: 'Premium captured',
+    plain: 'For a short leg: how much of the premium you collected is now kept.',
+    formula: '100 × max(0, entry − mark) / entry',
+    computedBy: 'scripts/options_engine.py:_monitor_position',
+    source: 'positions[].profit_captured_pct',
+    forYou: 'Around 50% or more with three weeks or less left, the monitor suggests harvesting.',
+  },
   'term.premium': {
     term: 'Premium',
     plain: 'The price of one option, per share. Multiply by 100 per contract.',
@@ -448,6 +493,18 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   },
 
   // Lifecycle steps
+  'concept.monitor_rule': {
+    term: 'Monitor rule',
+    plain: 'The fixed rule the options monitor applied to this open leg. Short call ITM with 7 days or less: roll. Short call ITM: close or roll. Short put ITM with 10 days or less: close. Short leg with POP OTM at 75% (calls) or 70% (puts) and a gain: close for profit. Long leg losing more than half of one contract\'s entry premium (entry × 100 × 0.5; the server does not scale this by quantity): cut loss. Long leg with finish-ITM 65% or more and a gain: take profit. Otherwise hold.',
+    computedBy: 'scripts/options_engine.py:_monitor_position (action, action_criterion, lifecycle_phase, still_working)',
+    source: 'positions[].recommended_action, action_criterion, lifecycle_phase, maturity_note, still_working',
+    forYou: 'A rule, not a model vote and not an order. The monitor never closes or rolls anything; you decide, at the broker, with per-order 2FA.',
+  },
+  'concept.act_first': {
+    term: 'Act first',
+    plain: 'The order of the table: open legs the monitor says to defend, then decisions only you can make, then open legs to harvest, then ideas ready to place, then work owned by others (data, research), then plan matches to stage, then calm open legs. Inside each group, insurance on shares you hold comes before income or direction, then the larger dollar amount.',
+    forYou: 'Work from the top. Nothing on this page acts on its own.',
+  },
   'lifecycle.found': {
     term: 'Found',
     plain: 'Names in the desk\'s inventory (holdings, watchlist, re-entry, research). Being found is not being evaluated.',
@@ -487,8 +544,8 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
   'lifecycle.open': {
     term: 'Open',
     plain: 'Option positions currently held at the broker.',
-    source: '/api/v2/options/open-positions position_count',
-    forYou: 'Manage them in the Lifecycle view; close or roll at the broker and record it in the manual log.',
+    source: '/api/v2/options/open-positions position_count, positions[] (broker legs only; paper legs are excluded by the server)',
+    forYou: 'Each open leg is a row in step 7 with the monitor\'s rule. Manage it in the Lifecycle view; close or roll at the broker with per-order 2FA and record it in the manual log.',
   },
 
   // Freshness chips
@@ -523,6 +580,13 @@ export const GLOSSARY: Record<string, GlossaryEntry> = {
     plain: 'How many inventory names have actually been evaluated for options.',
     source: 'coverage.status_counts.EVALUATED, coverage.inventory_count, coverage.not_scanned, coverage.pending_evaluation_count, scan_status',
     forYou: 'A short list of ideas usually means few names were scanned, not that the market has nothing.',
+  },
+  'fresh.open_positions': {
+    term: 'Open positions',
+    plain: 'When the options monitor last read your open option legs from the broker and re-marked them from the chain.',
+    computedBy: 'scripts/options_engine.py:monitor_positions (writes state/options_monitor.json)',
+    source: '/api/v2/options/open-positions monitored_at, position_count, status',
+    forYou: 'Marks, P/L and the close/roll suggestions are as of this run. The page calls it stale after a day.',
   },
   'exec.state': {
     term: 'Execution state',
@@ -581,5 +645,6 @@ export const HOW_THIS_PAGE_WORKS = {
   ],
   readIdea: 'Each row is one idea: one contract, with accounts merged. "What it does" says the effect in plain English, "Cost" is the cash paid (or + credit received), and "Stuck on" names the first thing blocking it. Click the row for the full picture.',
   checklist: '✓ means the condition is met, ✗ means it is failing and says what to do, ○ means it has not happened yet. The last two items are always yours.',
+  order: 'The table is ordered act first: open legs to defend, your decisions, open legs to harvest, ideas ready to place, then work owned by others, plan matches, and calm open legs. Under each cost is the time of the quote (or monitor run) it came from.',
   never: 'The system never sizes, orders, stops, rolls or closes an option on its own. It never treats a model vote as a decision, and it never places an order without your per-order 2FA.',
 }

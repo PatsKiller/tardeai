@@ -14,13 +14,19 @@ intelligence endpoint follows.
 | Tab | What it is | Source |
 |---|---|---|
 | Trade AI (default) | Opportunities page (Gate 3 `Main.dc.html`) | `/api/v2/trade-ai/scanner`, `/api/v2/trade-ai/candidates`, `/api/v3/active-trader/alerts` |
-| Options | Options desk (Gate 3, separate PR) | `/api/v2/options/*` |
+| Options | Options lifecycle desk (Gate 3 `Options.dc.html`): act-first table with open legs in step 7, freshness on every cost; classic views at `view=classic` for one release (see `docs/options-module.md`) | `/api/v2/options/proposals`, `/intents`, `/open-positions`, `/execution/status`, `/validation` |
 | Open Trades | Protect-first position desk (this change) | `/api/v2/open-trades/intelligence`, `/api/v2/broker-reconciliation` (drawer) |
 | Proposals | Path B broker queue, plus the Path A Entry Desk as a section (`section=path-a`) | `/api/v2/broker-proposals`, Entry Desk endpoints |
 
 **Broker Orders is a desk, not a tab.** It opens only from its Telegram approval links
 (`/v3/go/order/<intent>` → `?tab=Broker+Orders&intent=…`) and from `?tab=Broker+Orders`. The header shows it as
 the selected desk when it is open. Its per-order 2FA flow (`BrokerOrders`) is unchanged.
+
+## Options deep links
+
+`?tab=Options` opens the lifecycle desk. `&symbol=X` pre-filters it (Open Trades → "Protective put ideas" passes
+the symbol). `&view=classic` opens the previous Options views on Proposals for one release; `&otab=<view>`
+(for example Defense's `otab=Lifecycle`) lands on that classic view. Leaving Options drops `view` and `otab`.
 
 ## Retired tabs and where they went
 

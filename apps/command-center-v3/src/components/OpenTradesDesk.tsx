@@ -301,7 +301,7 @@ export default function OpenTradesDesk({ onDrill, focusSymbol, initialDrawer }: 
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                   <button type="button" data-testid="ot-arm-stop" onClick={() => armStop(r)} style={btn('danger')}
                     title="Opens this position's stop controls (Stage 2c protective stop). Nothing is sent until you confirm the order and enter the 2FA code.">Arm stop (2FA)…</button>
-                  <Link to="/trading?tab=Options" style={btn('info')} title={`Protective put ideas for ${r.sym} are on the Options desk`}>Protective put ideas</Link>
+                  <Link to={`/trading?tab=Options&symbol=${encodeURIComponent(r.sym)}`} style={btn('info')} title={`Opens the Options desk filtered to ${r.sym}, where protective put ideas for it are listed`}>Protective put ideas</Link>
                   <button type="button" data-testid="ot-snooze" disabled={snooze.busy} onClick={() => doSnooze(r)} style={btn('info')}
                     title="Snoozes this position's stop ALERT for 7 days. Advisory only: it does not place, change or cancel any broker stop.">{snooze.busy ? '…' : 'Snooze 1 week'}</button>
                 </div>
