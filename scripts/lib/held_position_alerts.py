@@ -17,7 +17,7 @@ This module is the one place that answers, for every held-position notice:
   * who owns a stop: "your stop" only for an operator-set stop, the broker's name for a
     broker-reported stop order, and an explicit "system … level (not a stop you set)" otherwise.
 
-Pure apart from reading the policy file and (by default) holdings.json. No broker, no network,
+Pure apart from reading the policy file and (by default) the position store via portfolio_positions. No broker, no network,
 no DB. AUTHORITY: READ_ONLY_ADVISORY. MBI_BEHAVIOR = 0.
 """
 from __future__ import annotations
@@ -30,7 +30,6 @@ from typing import Any, Iterable, Mapping, Optional
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY_PATH = ROOT / "config" / "held_position_alerts.json"
-HOLDINGS_PATH = ROOT / "data" / "portfolios" / "state" / "holdings.json"
 
 TAG_PROMO = "promo/reward"
 TAG_TINY = "tiny/untracked"
@@ -97,23 +96,27 @@ def account_label(key: Any) -> str:
 _HOLDINGS_CACHE: dict[str, Any] = {"mtime": None, "doc": None}
 
 
-def load_holdings(path: Optional[Path] = None) -> dict:
-    """holdings.json, cached on mtime. Missing or unreadable → {} (no tag, never a guess)."""
-    if path is not None:
-        try:
-            return json.loads(Path(path).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
+def _pp():
     try:
-        mt = HOLDINGS_PATH.stat().st_mtime
-    except OSError:
+        from scripts.lib import portfolio_positions as pp  # noqa: PLC0415
+    except ImportError:  # pragma: no cover - scripts/ on path
+        from lib import portfolio_positions as pp  # type: ignore  # noqa: PLC0415
+    return pp
+
+
+def load_holdings(path: Optional[Path] = None) -> dict:
+    """The position store through portfolio_positions (the one accessor), cached on mtime.
+    Missing or unreadable → {} (no tag, never a guess)."""
+    pp = _pp()
+    if path is not None:
+        return pp.load_store(Path(path))
+    try:
+        p = pp.store_path()
+        mt = p.stat().st_mtime
+    except Exception:  # noqa: BLE001
         return {}
     if _HOLDINGS_CACHE["mtime"] != mt:
-        try:
-            doc = json.loads(HOLDINGS_PATH.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return {}
-        _HOLDINGS_CACHE.update(mtime=mt, doc=doc)
+        _HOLDINGS_CACHE.update(mtime=mt, doc=pp.load_store(p))
     return _HOLDINGS_CACHE["doc"] or {}
 
 
