@@ -378,3 +378,8 @@ PR #1889 exact head `7c187363191ade3c574c7a77bde8e0b3885ff370` was pushed around
 - The canonical guard still showed one active `release-write` grant scoped to PR #1915 (Finviz fix and related AGENTS 17.0.0 scope). No matching grant for `ready-three/final-20261022` was present. No push, PR, or deployment was performed.
 
 # Historical live validation — updated 2026-10-22 13:45 UTC
+# Superseding production check — 2026-10-23 02:00 UTC
+
+No production write or restart was performed. The most recent direct GET probes at 2026-10-22 21:23 UTC timed out for build metadata and health endpoints; `/` returned 302 and `/healthz` returned 404. Read-only systemd status showed `tradeai-portfolio-server.service` inactive (dead), while a separate listener remained on 127.0.0.1:7777 and its owner could not be inspected. The last known build metadata was main SHA `82180caba0e3ff2d31b11b109806094c5bf87c7a`; last health snapshot (20:48:30 UTC) was 78/degraded and unhealthy, with 3 criticals, 24 warnings, 16 info, and 27 actionable findings. These are historical observations; current build and health are unverified.
+
+At 21:55 UTC the canonical guard showed no active grants. GitHub API access failed, so PR #1947 and #1956 current states and checks could not be verified. No candidate push, merge, deployment, service restart, or release was performed. Production remains on HOLD and C3 remains disabled.

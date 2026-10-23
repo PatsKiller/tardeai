@@ -418,6 +418,14 @@ Coverage correction `8d14cb07f1b161ad2509a34e7d7d8e98ce6b49bf` was pushed to PR 
 - Production remains unchanged on `ef085ce76be4512da71a58e65ef4feb25d156206`. Direct audit at 04:21:28 UTC reports health 78/degraded with 3 criticals (global SPCX kill switch, stale SETUPS session, six underfilled 0700 runs); indicator unrecovered and orchestrator false. No merge, deployment, or production readiness is claimed.
 # 2026-10-21 — Final QA and production evidence reconciliation
 
+## 2026-10-23 02:00 UTC — terminal profile and focused test remediation
+
+- Reconciled the full candidate profile to its terminal result: **589 PASS / 7 FAIL gates** on SHA `a7508b039b1f39d06bfc216726656b82ae5d0ca6`. Three failures remain baseline defects assigned to PR #1947; four were TMPDIR/checkout-filesystem issues.
+- Relocated the completed candidate worktree from `/tmp` to `/home/johnclaw/ready-three-b980-integration`, freeing its temporary inode use. Corrected the isolated-database test’s `/tmp` assumption to use configured `tempfile.gettempdir()`.
+- Focused rerun of the four profile-affected suites passed **94 tests** with a short home-based TMPDIR and basetemp. Full profile has not been rerun on the corrected worktree.
+- Latest GitHub API status check failed due connectivity, so PR #1947 and #1956 states/checks are unverified. Canonical guard has no active grants. No push, merge, release, deployment, or service restart occurred.
+- Updated current status, test results, executive report, and live validation. Production status remains unverified; keep release HOLD and C3 disabled.
+
 - Corrected remote PR state from direct QA audit: #1887 OPEN/CLEAN, 20 pass/2 skipped; #1889 OPEN/DIRTY, 18 pass/2 skipped. Hosted checks are exact-head only; both skipped full-hardening and main-red-alert.
 - Recorded fresh production health (78/degraded, unhealthy; 2 critical, 23 warning, 14 info; 39 findings, 25 actionable) and communications counters at 13:20 local. Explicitly scoped communications and n8n responses as insufficient to prove ready-three activation.
 - Recorded full-hardening failure (18 gates), focused passes, combined loopback errors, unavailable cron inventory, partial system inventory, and absent expected receipts with their evidence limits.
