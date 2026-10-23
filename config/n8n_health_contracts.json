@@ -32872,6 +32872,236 @@
           "notifier_priority": "P2"
         }
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "cio-ask-research",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "target_reason": "operator_approved_shadow_20261023",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Research each pending Ask the CIO question (AskRequest@v1) into one sourced AskAnswer@v1 prospectus per security: parallel gather of internal, web, SEC, news and street facts (each with as_of + citation), an LLM panel with dissent kept, numbers only from facts, MBI guard, and every fact + answer appended to CIO memory keyed by security_guid. At shadow a fire only plans (dry run).",
+        "business_function": "research",
+        "source": "scripts/lib/cio_ask_research.py and scripts/cio_ask_research.py module docstrings; operator approval 2026-10-23 (Ask the CIO Phase 9)"
+      },
+      "owner": "cio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/cio_ask_research.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/cio_ask_research.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock (no cron line exists; a dry_run fire takes /tmp/cio_ask_research.lock.dryrun)"
+        },
+        {
+          "name": "data/runtime/cio-ask-research_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt@v2 / allowlist output_signal (live run only)"
+        },
+        {
+          "name": "CIO_ASK_REQUESTS_DIR (pending AskRequest@v1 JSON; Phase 8 store, pending \u00a726)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/cio_ask_research.py _pending()"
+        },
+        {
+          "name": "data/runtime/identity_registry.json (cio_subject_guid.lookup_identity_envelope)",
+          "kind": "store",
+          "direction": "read",
+          "source": "entity resolution, also in a dry run"
+        },
+        {
+          "name": "Postgres read-only: catalyst_events, news_articles, yahoo_analyst_targets_history, market_quotes, sec_filing_documents, sec_xbrl, hermes_research_intelligence, alert_events, trade_transactions (live run only)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/cio_ask_research.py default_sources()"
+        },
+        {
+          "name": "search_router (caller web_research, class operator; Brave budget + cache) (live run only)",
+          "kind": "service",
+          "direction": "calls",
+          "source": "_src_web"
+        },
+        {
+          "name": "governed LLM generation as process cio_ask_deep_research (refused until registered with an approved cap) (live run only)",
+          "kind": "service",
+          "direction": "calls",
+          "source": "default_panel(); CostGovernor"
+        },
+        {
+          "name": "CIO memory via CIOEnvelopeIntegrator (dry run unless --apply-memory) (live run only)",
+          "kind": "store",
+          "direction": "write",
+          "source": "MemoryAppender"
+        },
+        {
+          "name": "CIO_ASK_ANSWERS_DIR/<request_id>.json (live run only)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/cio_ask_research.py"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before for data/runtime/cio-ask-research_last.json (a dry run writes nothing, AGENTS.md \u00a76)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 480.0 s (80% of timeout_s 600)"
+        },
+        {
+          "check": "inputs_read",
+          "text": "the DRY-RUN summary carries pending >= 0 and, for each pending request, resolved entities and a panel plan (no error key)"
+        },
+        {
+          "check": "output_produced",
+          "text": "once live: every pending request gets one AskAnswer file (produced_count = answers written)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 2 h (2x cadence) inside 07:20-21:20 ET once live"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 480.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy transient-2) or ended RUN_SKIPPED_LOCK in two consecutive slots"
+        },
+        {
+          "check": "partial_answers",
+          "text": "once live: answers marked partial because the panel was refused (cost cap / process not registered) or a source timed out (not machine-checked yet)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 12 h once the lane runs live (overnight gap 21:20-07:20 ET is expected)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced 0 answers for a reason other than no_new_input (no pending request), or skipped for a fatal reason ['no_runner', 'disabled', 'dependency_unavailable'] -> RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 2.0,
+        "freshness_failed_after_h": 12.0,
+        "freshness_rule": "degraded beyond 2x cadence inside the window; failed beyond the overnight gap (10 h) plus margin",
+        "timeout_s": 600,
+        "class": "report",
+        "computed_on": "2026-10-23",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED: the lane has never been scheduled (no cron line, no timer, no prior dispatcher run); source class defaults only.",
+        "runs_considered": null,
+        "duration_degraded_above_s": 480.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "registry value_class Operationally Important; advisory research answers for the operator, nothing applied by code",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/cio-ask-research_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='cio-ask-research' ORDER BY requested_at DESC LIMIT 5\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:cio-ask-research' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: data/runtime/cio-ask-research_last.json; jq '{partial, refusals, gaps: (.gaps|length)}' $CIO_ASK_ANSWERS_DIR/<request_id>.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "evidence_class": "SOURCE_ONLY",
+        "expected_output_basis": "expected_output derived 2026-10-23 from scripts/cio_ask_research.py main(): produced_count = answers written (one per pending request); 0 with empty_reason no_new_input when no request is pending."
+      },
+      "review_by": "2026-11-06",
+      "review": {
+        "prepared_by": "agent draft (Ask the CIO Phase 9, 2026-10-23)",
+        "status": "DRAFT"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "AskAnswer prospectuses written",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/cio-ask-research_last.json produced_count (LaneRunReceipt@v2; the executor reads the immutable attempt copy data/runtime/lane_attempts/cio-ask-research/<run_id>.json)"
+          },
+          {
+            "kind": "file_artifact",
+            "ref": "$CIO_ASK_ANSWERS_DIR/<request_id>.json (atomic replace in main())"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
     }
   ]
 }

@@ -17975,6 +17975,54 @@
       "note": "Row added 2026-10-22 (incident-pause review: L214 had no registry row). RETIRED, archive note: superseded, not deleted."
     },
     {
+      "lane_id": "cio-ask-research",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/cio_ask_research.py",
+        "cadence": "20 7-21 * * *",
+        "timezone": "America/New_York",
+        "stage": "shadow",
+        "wave": "W5"
+      },
+      "expected_cadence_hours": 1.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "state": "ACTIVE",
+      "state_since": "2026-10-23",
+      "state_reason": "operator 2026-10-23 (Ask the CIO, Phase 9 approved: research pipeline 'runnable as an n8n lane cio-ask-research registered at SHADOW with a DRAFT contract (operator reviews)'); cron freeze 2026-10-09 in force, no crontab line. SHADOW: dispatch mode dry_run, allowlist live_arg null; a fire runs --dry-run (resolves the entities of pending AskRequests and plans sources + panel admission; no provider, no spend, writes nothing).",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/cio_ask_research.py --dry-run (write-free; tests/test_cio_ask_research.py::test_executor_dry_run_writes_nothing); panel calls refused until process cio_ask_deep_research is registered with an operator-approved cap.",
+      "review_by": "2026-11-06",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/cio-ask-research_last.json",
+        "key": "ok_at"
+      },
+      "value_class": "Operationally Important",
+      "severity": "Low",
+      "note": "Ask the CIO Phase 9 research pipeline (docs/ops/ASK_THE_CIO_RESEARCH.md). Hourly 07:20-21:20 ET sweep of pending AskRequests (CIO_ASK_REQUESTS_DIR; Phase 8 owns the store, pending §26). The deep path calls scripts/lib/cio_ask_research.run_research in-process. A live run (canary, separate PR, after the process cap is approved) writes one AskAnswer per request to CIO_ASK_ANSWERS_DIR, CIO memory via the integrator, and its LaneRunReceipt. Class report at shadow; the canary PR re-classes it llm with llm_route process cio_ask_deep_research (§23.18).",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "20 7-21 * * *"
+        ],
+        "tz": "America/New_York",
+        "wave": "W5",
+        "class": "report",
+        "priority": 5,
+        "retry_policy": "transient-2"
+      }
+    },
+    {
       "lane_id": "run-scheduled-quote-refresh-incubator",
       "owner": "portfolio",
       "scheduler": {
