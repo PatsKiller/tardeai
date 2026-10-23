@@ -60,7 +60,13 @@ export type OpsControlsState = {
   factors: { webauthn_library: 'available' | 'missing'; hmac_key: 'present' | 'missing'; totp: 'enrolled' | 'not_enrolled'; passkeys_active: number }
   kinds: KindInfo[]
   jobs: Section & { as_of?: string; rows?: JobRow[]; unmatched_active_lines?: number }
-  n8n: Section & { live_list_path?: string; live_lanes?: string[]; rows?: N8nRow[] }
+  n8n: Section & {
+    live_list_path?: string; live_lanes?: string[]; rows?: N8nRow[]
+    // Additive (n8n outcomes, 2026-10-22; scripts/lib/ops_controls_n8n_outcomes.py). Absent on an older server.
+    outcomes_state?: 'OK' | 'UNAVAILABLE'; outcomes_reason?: string | null; outcomes_as_of?: string; ledger_path?: string
+    crontab_read?: boolean; cache_ttl_s?: number
+    summary?: { live_healthy: number; live_failing: number; rehearsing: number; ready_to_promote: number; never_ran: number; off?: number; cut_over?: number }
+  }
   settings: Section & { rows?: SettingRow[]; history?: SettingHistory[] }
   grants: Section & { tiers?: string[]; active?: ActiveGrant[] }
   // per-domain readiness (scripts/lib/data_domain_readiness.py); older servers send rows with domain/title/status only

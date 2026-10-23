@@ -215,8 +215,8 @@ paused lines on 2026-10-22.
 An older server leaves these fields out. The page then falls back: AMBIGUOUS rows read "Several crontab lines match",
 and a cut-over lane reads as "Off — but registry says it should run".
 
-**n8n lanes tab.** This tab has a one-line explainer and tooltips on Stage, Mode, On live list, Workflow and Action. A
-lane fires for real only when its mode is `live` and it is on the relay live list.
+**n8n lanes tab.** Section 10 describes it. This tab has a one-line explainer and tooltips on Stage, Mode, On live
+list, Workflow and Action. A lane fires for real only when its stage allows `live` and it is on the relay live list.
 
 ## 9. Reading the Data approvals tab (UI, 2026-10-22)
 
@@ -287,3 +287,128 @@ The dictionary scan got an exact pre-filter in `data_dictionary.writer_files` / 
 scan, so it is faster too. On 2026-10-22 `evaluate` took 39 s before the pre-filter and 3.8 s after. The measurements
 were identical, and a test checks them against the bare regex.
 
+## 10. Reading the n8n lanes tab (dashboard, 2026-10-22)
+
+The operator's feedback on 2026-10-22: "Why do some of these say live? Some of them say dry runs. I don't know if the
+last one was success or failure. This is not a real dashboard... When is everything going live?" The tab used to show
+configuration only. Each row now also carries what the lane actually did and whether it may climb the ladder.
+
+The server function `n8n_view` adds two blocks to each row, `outcome` and `readiness`, plus a section-level `summary`.
+They come from `scripts/lib/ops_controls_n8n_outcomes.py`, and the contract is in `OPS_CONTROLS_API.md`. The module
+reads the following, all read-only:
+
+- **The n8n coordination ledger.** The path is `n8n_ledger.file` in `config/ops_controls.json`. It is opened with
+  sqlite `mode=ro` and `PRAGMA query_only`. Tables read: `run_outcomes`, `runs`, `dead_letters` and `breakers`.
+- **The registry, the run allowlist and the health contracts.**
+- **The cutover policy, the effect keys and the disposition CSV.** These are the same inputs as
+  `n8n_cutover_wave.py`.
+- **The relay live list and `crontab -l`.**
+
+**Bounded reads.** Every ledger query is per lane and uses an index: `run_outcomes_lane`, `runs_lane_state`, the `runs`
+primary key, or `dead_letters_lane`. Older history is walked newest-first, at most 500 rows per lane. History from
+before the run-outcome callback (2026-10-15) is found by run-key prefix (`d:`, `f:` and `e:`). No query scans a whole
+table: `tests/test_ops_controls_n8n_outcomes_20261022.py` checks every query's `EXPLAIN QUERY PLAN`. The result is
+cached for 60 s per process. On the host on 2026-10-22 one computation took 0.23 s for 120 lanes, and the process
+peaked at 40 MB RSS.
+
+**Summary strip.** Click a tile to filter the table.
+
+| Tile | Counts |
+|---|---|
+| Live & healthy | Lanes whose fires are real today (effective mode `live`) with health OK. |
+| Live & failing | Live lanes with health FAILING or STALE. |
+| Rehearsing (shadow) | Lanes whose fires are dry runs today: shadow lanes, and canary lanes that are not on the live list. |
+| Ready to promote | Lanes with readiness READY_FOR_CANARY or READY_FOR_CUTOVER. |
+| Never ran | Active lanes with no run in the ledger. |
+
+**Stage column.** The registry stage in plain words, corrected by what a fire really does today:
+
+| Label | Meaning |
+|---|---|
+| Rehearsing — not doing real work yet | Shadow. |
+| Live, watched (canary) | Canary and on the live list. |
+| Canary on paper — not on the live list, still a dry run | Canary, but not on the live list. |
+| Fully moved to n8n | Cutover. |
+| n8n-native | No stage; n8n owns the workflow outright. |
+| Off — … | The lane is not dispatched. |
+
+The tooltips state the platform rules:
+
+- The shadow stage forces `dry_run`.
+- At canary, the cron line and n8n share one lock, so only one runs per slot and the other records SKIPPED.
+- At cutover, the cron line is commented as `# RETIRED … n8n-cutover` and kept as the rollback.
+- A `dry_run` is write-free by contract.
+- The relay refuses a live fire for a lane that is not on the live list.
+
+**Last run.** The icon shows the outcome, followed by how long ago it ran and the mode:
+
+- ✓ — the run succeeded.
+- ✗ — the run failed or timed out. The tooltip gives the reason (for example `output_unverifiable` or
+  `timeout_exit_124`) and the run id.
+- ↷ — the run was skipped because the other scheduler held the shared lock. This is expected at canary; it is not a
+  failure and not a live proof.
+- · — the lane never ran.
+
+**Health.**
+
+| Verdict | Meaning |
+|---|---|
+| OK | The last run succeeded or was skipped. |
+| FAILING | The last run FAILED, TIMED OUT or was REFUSED, or there is a dead letter newer than the last success that has not been released, or the breaker is open. |
+| STALE | The registry schedule (`dispatch.cron`, else the n8n `cadence`, else a cron `expression`, in `dispatch.tz`) had a fire more than 45 min ago that has no run. A lane with no cron schedule uses 2 × `expected_cadence_hours`. |
+| NEVER_RAN | The lane has no run in the ledger. |
+| OFF | The registry state is not ACTIVE, or `mode: off`. |
+
+The badge counts FAILED, TIMEOUT and REFUSED runs in the last 24 h and 7 d.
+
+**7 days** shows the runs recorded in the last 7 days, by mode.
+
+**Next run** is the next fire of the same schedule, in ET.
+
+**Promotion.** The readiness verdict uses the documented ladder only.
+
+*Shadow → canary* (`N8N_ONBOARDING_STANDARD.md` steps 3, 5, 8 and 9, rule 5 and §2 rule 4) needs all of:
+
+- a REVIEWED health contract;
+- an allowlist entry;
+- an n8n `dry_run` RUN_DONE as the latest dry fire;
+- for a cron row, the cron line's `flock -n` lock equal to the allowlist lock;
+- a `live_arg` the cutover factory can derive from the line (`parse_lane_argv`);
+- for a sender, a cron line wrapped with `effect_claim_cron.sh`.
+
+*Canary → cutover* (AGENTS.md §23.21) needs all of:
+
+- the latest live run is not failed;
+- a clean dry run;
+- at least one live RUN_DONE whose `output_signal` advanced;
+- the lane is on the live list;
+- the cron line is present, and its lock equals the allowlist lock (`r1_canary_lock_matches`). A RUN_SKIPPED_LOCK never
+  counts.
+
+Two §23.21 items cannot be measured here, so each verdict lists them as *owed in the PR*:
+
+- (3) the lane's regression tests;
+- the per-wave `cron` grant and the effect key.
+
+A lane is **BLOCKED** if any of the following holds:
+
+- the registry state is not ACTIVE;
+- the lane has an operator hold;
+- the lane is a held lane;
+- the lane is F07 or registry_systemd;
+- the lane fails `lane_dispatch.dispatch_eligible` (the never-list);
+- the lane is in the allowlist's `blocked_reasons`;
+- the lane has no allowlist entry;
+- the health contract is missing, not REVIEWED, or has UNKNOWN fields.
+
+The risk tier is the factory's own classifier, `cutover_lane_facts.tier_of`. Expand a row to see the missing and
+blocking items, the evidence, and what is owed.
+
+**Promotion is never applied from this tab.** It is an operator decision made by a reviewed registry PR (§23.11). The
+only actions here are the existing live-list Add and Remove, unchanged: risky, with a preview, a passkey and the typed
+phrase. The one-time report for 2026-10-22 is `docs/ops/N8N_PROMOTION_READINESS_2026-10-22.md`.
+
+**Degraded states.** If the ledger cannot be read, `outcomes_state` is `UNAVAILABLE`, a banner says so, health shows
+"Not measured", and readiness is at most NOT_READY. A missing ledger never reads as "never ran". If `crontab -l` fails,
+lock proofs read "not measured". An older server sends no `outcome` block; the page then shows "not measured" and no
+summary strip, never zeros.

@@ -29,6 +29,9 @@
     "file": "~/.config/tradeai/n8n-live-lanes.env",
     "restart_units": ["tradeai-n8n-run-relay.service", "tradeai-n8n-coordination-gateway.service"]
   },
+  "n8n_ledger": {
+    "file": "~/trade-ai-releases/persistent-state/data/governance/n8n_coordination_ledger.sqlite"
+  },
   "guard": {
     "bin": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/bin/guard",
     "max_for_s": 21600,

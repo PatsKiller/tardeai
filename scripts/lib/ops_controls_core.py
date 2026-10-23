@@ -323,6 +323,12 @@ class Hosts:
     def live_list_path(self) -> Path:
         return expand(self.cfg["live_list"]["file"])
 
+    @property
+    def n8n_ledger_path(self) -> Path:
+        """The n8n coordination ledger (read-only here; n8n outcomes on the n8n lanes tab)."""
+        return expand((self.cfg.get("n8n_ledger") or {}).get(
+            "file", "~/trade-ai-releases/persistent-state/data/governance/n8n_coordination_ledger.sqlite"))
+
     def restart_units(self) -> list[dict]:
         out = []
         for unit in self.cfg["live_list"].get("restart_units") or []:
