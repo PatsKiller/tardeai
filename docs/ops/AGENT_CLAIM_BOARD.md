@@ -5,7 +5,7 @@ Status:      ACTIVE (code); compaction timer NOT INSTALLED; pre-commit gate NOT 
 as_of:       2026-10-23T09:45-04:00
 Measured at: origin/main 53aa1b619 (branch feat/claim-board-lifecycle-20261023); not measured live
 Changes:     2026-10-23 lifecycle stages + whiteboard (§9), policy-gated pre-commit (§10), worklog (§11),
-             carry-over status/takeover (§12), task board (§13)
+             carry-over status/takeover (§12), task board (§13), Work board + design registry (§14)
 ```
 
 Operator-approved design, 2026-10-22. One board that every coding-agent session uses before it edits files:
@@ -348,3 +348,25 @@ estimate/actual, claim_stage, handoff}. A taken task whose claim is at `building
 
 **Panel.** A Tasks section with the four columns. Each card shows id, kind, priority, areas, owner/vendor,
 estimate/actual, dependencies (blocked or done), acceptance count and hand-off.
+
+## 14. Work board and design registry (2026-10-23)
+
+**Coordination → Work board** (`WorkBoardPanel.tsx`) shows all queued work, broken into tasks.
+
+- **Read-only routes:**
+  - `GET /api/v2/coordination/tasks` returns `WorkBoardTasks@v1`, one item per piece of work. The sources are:
+    - task-board entries, including operator to-dos (`task add --source operator`) and design tasks;
+    - claims that have no task;
+    - open PRs that no claim covers.
+  - `GET /api/v2/coordination/designs` returns `WorkBoardDesigns@v1`:
+    - the design → phase → task tree, with each task's holder from the task board;
+    - **designs awaiting approval**: PROPOSED designs, designs whose approval says awaiting, and
+      `docs/ops/packets/*/README.md` whose Status says PROPOSED, DRAFT or PENDING.
+- **Item stages:** `open → claimed → in_progress → in_review → merged → live`, mapped from the claim stage.
+- **Item fields:** id, title, source, files, holder (`vendor:session-prefix`), claim time, worklog, and PR link.
+- **Bounded reads:**
+  - each view is rebuilt at most once per 30 s, with single-flight (a concurrent caller gets the last value);
+  - a design file is re-parsed only when its mtime or size changes;
+  - open PRs are read by a background thread through `gh api --method GET` and degrade to a warning.
+- **Writes** go only through `scripts/agent_claim.py`. `take <task-id>` is refused on a file-level overlap.
+- **Registry format:** `docs/designs/README.md`.

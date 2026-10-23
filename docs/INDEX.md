@@ -999,6 +999,12 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/design/signal_freshness_audit_2026-05-15/AUDIT_FINDINGS.md` | Signal Freshness & Persistence Audit — 2026-05-15 |
 | `docs/design/watchlist-intelligence-v3/CECO_REVIEW_AUTHORIZATION_AUDIT.md` | CECO Maria/CIO authorization audit (read-only) |
 | `docs/design/watchlist-intelligence-v3/DATA_BROKER_WATCH_CONSUMERS.md` | Data Broker — Watch Intelligence consumers |
+| `docs/designs/DSN-20261021-release-train.md` | DSN-20261021-release-train.md |
+| `docs/designs/DSN-20261022-cio-prospect-store.md` | DSN-20261022-cio-prospect-store.md |
+| `docs/designs/DSN-20261022-data-domains.md` | DSN-20261022-data-domains.md |
+| `docs/designs/DSN-20261022-momentum-alerts.md` | DSN-20261022-momentum-alerts.md |
+| `docs/designs/DSN-20261023-ask-the-cio.md` | DSN-20261023-ask-the-cio.md |
+| `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
 | `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence |
 | `docs/diligence/current/CLOUD_OAUTH_USAGE.md` | Cloud-OAuth Lane Usage |

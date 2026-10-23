@@ -623,6 +623,7 @@ def cmd_task(a: argparse.Namespace) -> int:
                 acceptance=a.acceptance or [],
                 operator_quote=a.quote,
                 estimate=a.estimate,
+                source=a.source,
                 created_by=who,
             )
             print(json.dumps(t, indent=2, sort_keys=True) if a.json else t["task_id"])
@@ -966,6 +967,9 @@ def build_parser() -> argparse.ArgumentParser:
     ta.add_argument("--acceptance", nargs="*", default=None, help="acceptance criteria (seed the worklog Plan)")
     ta.add_argument("--quote", default=None, help="the operator request, verbatim")
     ta.add_argument("--estimate", default=None, help="time/cost estimate, free text (e.g. '2h', '$3')")
+    ta.add_argument(
+        "--source", default=None, help="agent | operator (an operator to-do) | design; shown on the Work board"
+    )
     ta.add_argument("--json", action="store_true")
     tp = tsub.add_parser("split")
     tp.add_argument("task_id")

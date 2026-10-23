@@ -149,6 +149,7 @@ class TaskBoard:
         created_by: str | None = None,
         parent: str | None = None,
         task_id: str | None = None,
+        source: str | None = None,
     ) -> dict[str, Any]:
         if task_id is not None and not DESIGN_TASK_RE.match(task_id):
             raise TaskError(f"--id must be a design task id DSN-<YYYYMMDD>-<slug>-P<n>-T<m>, got {task_id!r}")
@@ -190,6 +191,7 @@ class TaskBoard:
                 "acceptance": [B.clip(x, 300) for x in acceptance if B.clip(x, 300)],
                 "operator_quote": B.clip(operator_quote, 4000),
                 "estimate": B.clip(estimate, 80),
+                "source": B.clip(source, 40) or ("design" if task_id else "agent"),
                 "actual": None,
                 "status": "free",
                 "owner": None,
@@ -463,6 +465,7 @@ class TaskBoard:
                             "task_id",
                             "design_id",
                             "phase_id",
+                            "source",
                             "title",
                             "kind",
                             "areas",

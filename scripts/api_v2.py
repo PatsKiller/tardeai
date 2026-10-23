@@ -55405,6 +55405,21 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__}
 
+    # Work board (operator 2026-10-23): ALL queued work broken into tasks, and designs awaiting approval.
+    # scripts/lib/design_registry.py. GET only; single-flight in-process cache, rebuilt at most once per 30 s;
+    # design files re-parsed only when they change; open PRs read by a background thread (gh api GET).
+    # Writes go only through scripts/agent_claim.py (CLI).
+    if base_path in ("/api/v2/coordination/tasks", "/api/v2/coordination/designs"):
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from lib.design_registry import work_board as _work_board
+
+            _wb = _work_board()
+            return 200, {"ok": True, "data": _wb.tasks() if base_path.endswith("/tasks") else _wb.designs()}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
     # Migration board (n8n scheduler-of-record program, stream G, 2026-10-08): per lane the
     # scheduler of record, phase, last run, output-signal age, rollback readiness and risk flags, plus
     # the registry's dispatcher stage counts (scheduler.stage). Computed live, read-only, 60 s cache
