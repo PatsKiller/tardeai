@@ -18469,8 +18469,11 @@ def _scanner_readiness_builder(payload):
             day = str(row.get("scan_run_date") or row.get("run_date") or "")[:10] or None
             observed = row.get("observed_at") or row.get("persisted_at")
             evidence = build_setup_evidence(
-                row, now=now, observed_at=observed if isinstance(observed, str) else None,
-                source_name="TRADE_AI", source_stale=stale,
+                row,
+                now=now,
+                observed_at=observed if isinstance(observed, str) else None,
+                source_name="TRADE_AI",
+                source_stale=stale,
             )
             hermes = lookup(str(row.get("symbol") or "").upper(), day) if lookup and day else None
             return {**row, "setup_readiness": setup_readiness(evidence, hermes=hermes)}
