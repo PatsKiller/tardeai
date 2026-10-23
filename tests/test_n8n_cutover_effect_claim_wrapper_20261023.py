@@ -54,7 +54,7 @@ def test_wrapped_line_with_timeout_after_wrapper():
 
 
 def test_wrapped_line_absolute_paths():
-    p = _p("cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /usr/bin/flock -n /tmp/demo.lock "
+    p = _p("cd /opt/tradeai/CURRENT && /usr/bin/flock -n /tmp/demo.lock "
            "env TRADEAI_EFFECT_CLAIM=demo-lane /bin/bash $PROJ/scripts/effect_claim_cron.sh demo-lane "
            "$PY scripts/demo_lane.py --apply >> l 2>&1")
     assert p["problems"] == [] and p["effect_claim"] == "demo-lane"
@@ -121,7 +121,7 @@ def test_live_crontab_shapes_parse_clean():
             "scripts/aegis_social_sentiment.py >> logs/aegis_social.log 2>&1",
             ["$PY", "scripts/aegis_social_sentiment.py"], []),
         "data-gap-resolver-pre": (
-            "0 18 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n "
+            "0 18 * * 1-5 cd /opt/tradeai/CURRENT && flock -n "
             "/tmp/data_gap_resolver.lock env TRADEAI_EFFECT_CLAIM=data-gap-resolver-pre bash "
             "scripts/effect_claim_cron.sh data-gap-resolver-pre $PY scripts/data_gap_resolver.py --pre-overnight "
             ">> logs/data_gap_resolver_pre_overnight.log 2>&1",
