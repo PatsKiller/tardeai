@@ -30,3 +30,14 @@ SAIQ at 08:52 renders: `Ready: NO — needs 5/5, has 4/5 · missing: verified ca
 marked it NOT verified (yahoo_finance, confidence 0); Hermes 08:25: no clear catalyst (no primary source)`.
 
 Tests: `tests/test_setup_readiness_20261023.py` (gate `config/ci_gates/setup_readiness_20261023.json`).
+
+## Active Trader side (stacked PR, execution-engineering grant e88bf21e, A1/A2)
+
+- The evidence appendix every AT alert carries (`format_notification_evidence`, appended by the transport or
+  printed by the premarket heads-up) now prints the same two `Driven by / Ready` lines instead of five
+  `PASSED/FAILED` rows, and labels an unverified headline.
+- `momentum_alerts.catalyst_line`: a scan headline that is not source-verified prints as
+  `catalyst: UNVERIFIED headline — <text> · <source> (<scan verdict>; Hermes HH:MM: …)`.
+- `momentum_alerts.tape_evidence`: a stale tape (age > `max_tape_age_s`) no longer reports `buy_ratio`
+  (kept as `stale_buy_ratio`). On 2026-10-23 every premarket row carried tape age ~60,900 s (the prior
+  session's prints): the alert printed "tape 94% buys" and vetoed `TAPE_SELLERS` on yesterday's tape.
