@@ -121,8 +121,9 @@ def pg():
     try:
         from support.isolated_pg import IsolatedPostgres, pg_bin_dir
         pg_bin_dir()
+        import psycopg2  # noqa: F401  (the db fixture needs it; some CI jobs have PG binaries but no driver)
     except Exception as exc:  # noqa: BLE001
-        pytest.skip(f"no PostgreSQL server binaries on this host ({type(exc).__name__})")
+        pytest.skip(f"no PostgreSQL server binaries or no psycopg2 on this host ({type(exc).__name__})")
     cluster = IsolatedPostgres()
     try:
         cluster.start()
