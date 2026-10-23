@@ -164,3 +164,61 @@ export function stageCounts(cards: ClaimCard[]): Record<Stage, number> {
   const g = groupByStage(cards)
   return Object.fromEntries(STAGES.map(s => [s, g[s].length])) as Record<Stage, number>
 }
+
+// ── worklog (per-claim hand-off file) ───────────────────────────────────────────────────────────────────────────
+export type WorklogSummary = {
+  exists?: boolean; path?: string; plan_total?: number; plan_done?: number; last_entry_at?: string | null
+  last_entry_age_minutes?: number | null; blockers?: number; next_step?: string | null; final_summary?: string | null
+}
+
+export function planProgress(w: WorklogSummary | null | undefined): { label: string; tone: Tone; title: string } {
+  if (!w || !w.exists) return { label: 'no worklog', tone: 'warning', title: 'This claim has no worklog: another agent could not pick it up.' }
+  const total = w.plan_total || 0, done = w.plan_done || 0
+  if (!total) return { label: 'no plan', tone: 'warning', title: 'The worklog has no plan steps yet (agent_claim.py plan "<step>").' }
+  const age = w.last_entry_age_minutes
+  const stale = age !== null && age !== undefined && age > 120
+  return {
+    label: `plan ${done}/${total}`,
+    tone: done === total ? 'success' : stale ? 'warning' : 'info',
+    title: `${done} of ${total} plan steps done.` + (w.next_step ? ` Next: ${w.next_step}.` : '') + (stale ? ' No worklog entry in the last 2 h.' : '') + (w.blockers ? ` ${w.blockers} blocker(s).` : ''),
+  }
+}
+
+// ── task board (free / taken / in progress / done) ──────────────────────────────────────────────────────────────
+export type TaskColumn = 'free' | 'taken' | 'in_progress' | 'done'
+export const TASK_COLUMNS: TaskColumn[] = ['free', 'taken', 'in_progress', 'done']
+export const TASK_COLUMN_LABEL: Record<TaskColumn, string> = { free: 'Free', taken: 'Taken', in_progress: 'In progress', done: 'Done' }
+export const TASK_COLUMN_HELP: Record<TaskColumn, string> = {
+  free: 'Open work any agent can pick up with agent_claim.py next (or take <task-id>). Blocked tasks wait on their dependencies.',
+  taken: 'An agent took it (its areas are claimed) but has not declared building yet.',
+  in_progress: "The task's claim is building, has a PR, or is merging.",
+  done: 'Marked done (acceptance boxes checked in the worklog).',
+}
+export type TaskRow = {
+  task_id: string; title?: string; kind?: string; areas?: string[]; depends_on?: string[]; blocked_by?: string[]
+  priority?: number; acceptance?: string[]; operator_quote?: string | null; estimate?: string | null
+  actual?: { minutes?: number | null; cost?: string | null } | null; status?: string; column?: TaskColumn | string
+  owner?: { vendor?: string; session?: string; agent?: string | null } | null; claim_id?: string | null
+  claim_stage?: string | null; created_at?: string; taken_at?: string | null; done_at?: string | null
+  handoff?: string | null; history_len?: number; children?: string[]; parent?: string | null
+}
+
+export function groupTasks(rows: TaskRow[]): Record<TaskColumn, TaskRow[]> {
+  const out = Object.fromEntries(TASK_COLUMNS.map(c => [c, [] as TaskRow[]])) as Record<TaskColumn, TaskRow[]>
+  for (const r of rows) out[(TASK_COLUMNS as string[]).includes(String(r.column)) ? r.column as TaskColumn : 'free'].push(r)
+  for (const c of TASK_COLUMNS) out[c].sort((a, b) => (a.priority ?? 9) - (b.priority ?? 9) || String(a.created_at).localeCompare(String(b.created_at)))
+  return out
+}
+
+export function ownerLabel(t: TaskRow): string {
+  const o = t.owner
+  if (!o) return 'unowned'
+  return `${o.vendor || '?'} / ${o.agent || o.session || '?'}`
+}
+
+export function costTimeLabel(t: TaskRow): string {
+  const est = t.estimate ? `est ${t.estimate}` : 'est —'
+  const m = t.actual?.minutes
+  const act = m === null || m === undefined ? 'actual —' : `actual ${ageLabel(m)}${t.actual?.cost ? ` · ${t.actual.cost}` : ''}`
+  return `${est} · ${act}`
+}

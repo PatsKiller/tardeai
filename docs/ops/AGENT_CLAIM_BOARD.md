@@ -4,7 +4,8 @@
 Status:      ACTIVE (code); compaction timer NOT INSTALLED; pre-commit gate NOT WIRED (operator steps below)
 as_of:       2026-10-23T09:45-04:00
 Measured at: origin/main 53aa1b619 (branch feat/claim-board-lifecycle-20261023); not measured live
-Changes:     2026-10-23 lifecycle stages + whiteboard (§9), policy-gated pre-commit (§10)
+Changes:     2026-10-23 lifecycle stages + whiteboard (§9), policy-gated pre-commit (§10), worklog (§11),
+             carry-over status/takeover (§12), task board (§13)
 ```
 
 Operator-approved design, 2026-10-22. One board that every coding-agent session uses before it edits files:
@@ -21,7 +22,10 @@ renumbered MAJOR). Until 20.0.0 is ACTIVE the pre-commit gate only warns; from t
 |---|---|
 | library | `scripts/lib/agent_claim_board.py` (`AgentClaim@v1`, `AgentClaimBoard@v1`) |
 | lifecycle | `scripts/lib/agent_claim_lifecycle.py` (`AgentClaimLifecycle@v1`; GitHub GET reader, release receipts) |
-| CLI | `scripts/agent_claim.py` — `claim`, `heartbeat`, `stage`, `sync`, `release`, `list`, `check`, `precommit`, `compact` |
+| worklog | `scripts/lib/agent_claim_worklog.py` (`<claim_id>.worklog.md`, §11) |
+| task board | `scripts/lib/agent_task_board.py` (`AgentTask@v1`, §13) |
+| CLI | `scripts/agent_claim.py` — `status`, `claim [--add]`, `heartbeat`, `stage`, `plan`, `done`, `note`, `blocker`, `handoff`, `takeover`, `task add\|split\|list\|show\|done\|release`, `next`, `take`, `sync`, `release --summary`, `list`, `check`, `precommit`, `compact` |
+| start here | `docs/ops/AGENT_START_HERE.md`; adapters `docs/ops/agent_start/`; optional hook `scripts/agent_session_start.sh` |
 | pre-commit gate (policy-gated) | `scripts/agent_claim_precommit.sh` — not wired; see §6 and §10 |
 | read-only API | `GET /api/v2/coordination/claims` (`?active=1` hides done/abandoned) |
 | Command Center | Coordination → **Who's working** (`/v3/coordination?tab=agents`) |
@@ -248,3 +252,99 @@ observation refreshed in a background thread every 120 s (stale-while-revalidate
 - **The gate itself fails** (crash, import error): the hook reads the policy with a stdlib-only parser and blocks
   only when 20.0.0+ is ACTIVE; otherwise it warns and the commit continues.
 - Open draft PRs (the cloud-agent signal) stay a `check` warning and are not part of the gate.
+
+## 11. Worklog per claim (2026-10-23)
+
+Operator 2026-10-23, verbatim: "put their complete changes and what are they planning to do into a file, and then
+annotate when it is actually done or complete … just in case I need another agent to pick up anything".
+
+`claim` creates `<claims_dir>/<claim_id>.worklog.md` (`scripts/lib/agent_claim_worklog.py`). It has seven fixed
+sections, and AGENTS.md 20.0.0 §28.3 uses these exact names:
+
+| section | written by |
+|---|---|
+| Goal | `claim --goal/--request` (the operator request quoted), or `next` (task title + operator quote) |
+| Plan | `claim --plan ...`, `plan "<step>"`, `done "<step>"` (checks the box; exact text or a unique substring); `next` seeds it from the task's acceptance criteria |
+| Changes made | `note --change "<text>"`, `heartbeat` (new commit SHAs since the last logged one), `claim --add` |
+| Decisions | `note "<text>"` |
+| Blockers | `blocker "<text>"` |
+| Status | stage changes: declared, and observed (marked `(auto)`); takeover lines; `release --summary` (required when a worklog exists) |
+| Handoff | `handoff --next "<exact next step>" --verify "<how>" [--worktree] [--branch]` |
+
+- Every entry starts with a UTC time. Entries marked `(auto)` do not count as the agent's own activity.
+- `plan`, `done`, `note`, `blocker` and `handoff` act on this session's one active claim. If the session has
+  several, they pick the one on the current branch, or you pass `--claim <id>`.
+- **Pre-commit gate (§10):**
+  - From AGENTS.md 20.0.0 ACTIVE it also blocks when a claim covering the staged files has no worklog, no plan, or
+    no agent entry in the last 2 h.
+  - Before 20.0.0 it only warns.
+- **Compaction** moves the worklog to `<claims_dir>/worklog_archive/` and never deletes it. The archive line names
+  it (`worklog_archive`).
+- **API:** `GET /api/v2/coordination/claims?worklog=<claim_id>` returns `AgentClaimWorklog@v1` {found, path, text,
+  summary}, read from the live file or else the archive. Each board row carries `worklog` {exists, plan_total,
+  plan_done, last_entry_at, blockers, next_step, final_summary}.
+- **Panel:** each card shows "plan 3/7" and a "worklog" chip that opens the file.
+
+## 12. Carry-over between sessions and vendors: status, takeover, SHAs (2026-10-23)
+
+- **`status`** is the first command any new session runs. It lists:
+  - in-flight claims: stage, age, vendor, branch, worktree path, live head SHA read from git, and the Handoff line;
+  - stale claims and claims that can be taken over;
+  - **local-only work at risk**: local branches committed in the last 14 days (`--days`) with commits on no remote
+    and no open PR (`gh pr list`, GET; `--no-gh` skips it).
+- **`takeover <claim_id>`** prints the Handoff section first, then the open plan steps, the blockers and where the
+  work is (`cd <worktree>`, or a `git worktree add` line when the worktree is not on this host).
+  - `--claim` takes the work over: a new claim on the same paths and branch, with a worklog that carries every
+    section forward.
+  - Both worklogs get the line "taken over by `<vendor/session>` at `<T>` from `<prev>`".
+  - A live claim must first be released, go stale, or merge.
+- **SHAs.** `claim` records `worktree` and `head_sha`. `heartbeat` records `head_sha` and `head_sha_at`, and appends
+  the commits since `logged_sha` to Changes made.
+- **Entry points** (the operator installs them):
+  - `docs/ops/AGENT_START_HERE.md` (the five commands);
+  - `docs/ops/agent_start/cursor-rule.md`;
+  - `docs/ops/agent_start/codex-note.md`;
+  - `scripts/agent_session_start.sh`, an optional Claude Code SessionStart hook (read-only, exits 0; install note in
+    its header).
+
+## 13. Task board (2026-10-23)
+
+AGENTS.md 20.0.0 §28.3a pins these names. Code: `scripts/lib/agent_task_board.py`. Store: `<claims_dir>/tasks/`.
+
+**Storage.**
+- One `AgentTask@v1` JSON per task, written atomically.
+- `tasks_history.jsonl` is append-only, with one `AgentTaskEvent@v1` per change. Each task also keeps its own
+  `history`.
+
+**Commands.**
+
+| command | does |
+|---|---|
+| `task add --title --kind design\|build\|fix\|review --areas <globs> [--depends-on ids] [--priority 1..] [--acceptance ...] [--quote] [--estimate] [--id DSN-…-P<n>-T<m>]` | a free task |
+| `task split <id> --part 'title \| areas \| acc1; acc2' ...` | children; the parent reads `split` and counts as done once every child is |
+| `task list [--status]`, `task show <id>` | the board; one task with its history |
+| `next [--kind]` | see below |
+| `take <task-id>` | the same for one task; a refusal says why (taken by whom, waiting on what, overlapping claim) |
+| `claim --add <paths>` | extend your claim; refused on overlap |
+| `task done <id> [--summary] [--cost]` | checks the acceptance boxes in the worklog; records the actual time (taken to done) and cost |
+| `task release <id> --handoff "<next step>"` | back to free, with its history; the claim is released as abandoned; the next picker's worklog carries the old one forward |
+
+**What `next` picks.** Under the task lock, it takes the highest-priority free task (1 is highest, then oldest)
+that passes three checks:
+- its kind matches `--kind`, if given;
+- its dependencies are done;
+- its areas overlap no live claim. The caller's own claims count too, so one session never holds two overlapping
+  tasks.
+
+It then claims the areas, opens the worklog (the Plan comes from the acceptance criteria) and marks the task taken.
+Concurrent `next` calls are serialized by the lock, and the tests run 6 processes against 12 partly overlapping
+tasks.
+
+**Design task ids.** `DSN-<YYYYMMDD>-<slug>-P<n>-T<m>` (AGENTS.md 20.0.0 §28) are accepted by `task add --id` and
+`take`. The task records `design_id` and `phase_id`. `next` prints the commit trailer `Design-Task: <id>` to use.
+
+**API.** The board field `task_board` {columns free/taken/in_progress/done, counts, tasks[] with blocked_by, owner,
+estimate/actual, claim_stage, handoff}. A taken task whose claim is at `building` or later shows as in progress.
+
+**Panel.** A Tasks section with the four columns. Each card shows id, kind, priority, areas, owner/vendor,
+estimate/actual, dependencies (blocked or done), acceptance count and hand-off.

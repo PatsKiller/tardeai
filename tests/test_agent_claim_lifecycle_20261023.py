@@ -171,6 +171,13 @@ def mk(b, session, paths, *, branch=None, pr=None):
     )
 
 
+def mkw(b, session, paths, *, branch=None, pr=None, plan=("step one",)):
+    """A claim with a worklog and a plan, as `agent_claim.py claim --plan ...` makes it."""
+    d = mk(b, session, paths, branch=branch, pr=pr)
+    b.worklog(d["claim_id"]).create(d, plan=list(plan))
+    return d
+
+
 def view(b, cid):
     return next(v for v in b.views()[0] if v.claim_id == cid)
 
@@ -621,7 +628,7 @@ def test_gate_blocks_at_20_when_no_claim_held(tmp_path):
 
 def test_gate_passes_at_20_when_own_claim_covers(tmp_path):
     b = board(tmp_path)
-    mk(b, "me", ["docs", "scripts/**/*.py"], branch="feat/mine")
+    mkw(b, "me", ["docs", "scripts/**/*.py"], branch="feat/mine")
     res = gate(tmp_path, b, ["docs/a.md", "scripts/lib/x.py"], agents_md(tmp_path, "20.0.0"))
     assert res["exit_code"] == 0 and res["messages"] == []
     # covered by branch alone (no session env in the hook)
@@ -631,7 +638,7 @@ def test_gate_passes_at_20_when_own_claim_covers(tmp_path):
 
 def test_gate_merged_holder_no_longer_blocks(tmp_path):
     b = board(tmp_path)
-    mk(b, "me", ["docs"], branch="feat/mine")
+    mkw(b, "me", ["docs"], branch="feat/mine")
     mk(board(tmp_path), "other", ["scripts/x.py"], branch="feat/theirs", pr="7")
     b.observer = observer(FakeGH(routes(pr_doc(merged=True))))
     res = gate(tmp_path, b, ["docs/a.md"], agents_md(tmp_path, "20.0.0"))
@@ -690,6 +697,8 @@ def _hook_repo(tmp_path: Path, version: str) -> Path:
         "scripts/agent_claim_precommit.sh",
         "scripts/lib/agent_claim_board.py",
         "scripts/lib/agent_claim_lifecycle.py",
+        "scripts/lib/agent_claim_worklog.py",
+        "scripts/lib/agent_task_board.py",
         "scripts/lib/agent_file_lease.py",
         "scripts/lib/persistent_state_root.py",
     ):
@@ -753,7 +762,8 @@ def test_ci_gate_registered():
 
     doc = json.loads((ROOT / "config" / "ci_gates" / "agent_claim_lifecycle_20261023.json").read_text())
     ci_gates.validate(doc, stem="agent_claim_lifecycle_20261023")
-    assert doc["files"] == ["tests/test_agent_claim_lifecycle_20261023.py"]
+    assert "tests/test_agent_claim_lifecycle_20261023.py" in doc["files"]
+    assert "tests/test_agent_task_board_20261023.py" in doc["files"]
 
 
 def test_ui_model_test_runs_in_build():

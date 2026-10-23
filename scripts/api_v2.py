@@ -55385,7 +55385,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # Agent claim board (operator-approved 2026-10-22): which agent session (Claude, Codex, Cursor -- equal
     # peers) holds which files, on which branch/PR, since when, last heartbeat. One JSON per claim under
     # persistent-state data/coordination/claims (scripts/lib/agent_claim_board.py). Read-only: never creates
-    # the directory, never claims, releases or compacts. ?active=1 hides done/abandoned.
+    # the directory, never claims, releases or compacts. ?active=1 hides done/abandoned; ?worklog=<claim_id>
+    # returns one claim's worklog. Lifecycle stages + task board are additive fields (2026-10-23).
     if base_path == "/api/v2/coordination/claims":
         if method != "GET":
             return 405, {"ok": False, "error": "read_only"}
@@ -55395,6 +55396,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _act = (query or {}).get("active")
             _act = (_act or [None])[0] if isinstance(_act, list) else _act
             finished = str(_act or "") not in ("1", "true")
+            # ?worklog=<claim_id> (2026-10-23): that claim's worklog text (live file, else its archive)
+            _wl = (query or {}).get("worklog")
+            _wl = (_wl or [None])[0] if isinstance(_wl, list) else _wl
+            if _wl:
+                return 200, {"ok": True, "data": _claims_board(worklog=str(_wl)[:64])}
             return 200, {"ok": True, "data": _claims_board(include_finished=finished)}
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__}

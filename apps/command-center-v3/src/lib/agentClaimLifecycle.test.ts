@@ -1,7 +1,7 @@
 // Coordination → Who's working: claim lifecycle grouping, filters, CI/PR/lock labels, timeline.
 // Runs in the CC-v3 build:  node --experimental-strip-types src/lib/agentClaimLifecycle.test.ts
 import {
-  STAGES, ageLabel, ciView, filterCards, groupByStage, isFinished, lockView, prLabel, stageCounts, stageOf, timeline,
+  STAGES, TASK_COLUMNS, costTimeLabel, groupTasks, ownerLabel, planProgress, ageLabel, ciView, filterCards, groupByStage, isFinished, lockView, prLabel, stageCounts, stageOf, timeline,
   vendorsOf, warningOf, type ClaimCard,
 } from './agentClaimLifecycle.ts'
 // No node:assert: CI's tsc has no @types/node (same local-assert pattern as opsControls.test.ts).
@@ -88,6 +88,31 @@ t('age and warning', () => {
   eq(warningOf(CARDS[2]), 'CI failing: ci-gate')
   eq(warningOf(CARDS[0]), null)
   eq(warningOf(base({ warnings: ['stale: no heartbeat'] })), 'stale: no heartbeat')
+})
+
+t('worklog plan progress chip', () => {
+  eq(planProgress(null).label, 'no worklog')
+  eq(planProgress({ exists: true, plan_total: 0 }).label, 'no plan')
+  const p = planProgress({ exists: true, plan_total: 7, plan_done: 3, next_step: 'write tests', last_entry_age_minutes: 10 })
+  eq([p.label, p.tone], ['plan 3/7', 'info'])
+  ok(p.title.includes('write tests'), 'next step in tooltip')
+  eq(planProgress({ exists: true, plan_total: 2, plan_done: 1, last_entry_age_minutes: 200 }).tone, 'warning')
+  eq(planProgress({ exists: true, plan_total: 2, plan_done: 2 }).tone, 'success')
+})
+
+t('task board columns, owner and cost/time', () => {
+  const g = groupTasks([
+    { task_id: 'T-1', column: 'free', priority: 2, created_at: 'b' },
+    { task_id: 'T-2', column: 'free', priority: 1, created_at: 'c' },
+    { task_id: 'T-3', column: 'in_progress', owner: { vendor: 'codex', session: 's9' } },
+    { task_id: 'T-4', column: 'weird' },
+  ])
+  eq(Object.keys(g), TASK_COLUMNS)
+  eq(g.free.map(x => x.task_id), ['T-2', 'T-1', 'T-4'])
+  eq(ownerLabel(g.in_progress[0]), 'codex / s9')
+  eq(ownerLabel(g.free[0]), 'unowned')
+  eq(costTimeLabel({ task_id: 'x', estimate: '2h', actual: { minutes: 150, cost: '$3' } }), 'est 2h · actual 2.5h · $3')
+  eq(costTimeLabel({ task_id: 'x' }), 'est — · actual —')
 })
 
 console.log(`agentClaimLifecycle: ${n} passed`)

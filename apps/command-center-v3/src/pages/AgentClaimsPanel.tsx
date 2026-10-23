@@ -8,11 +8,12 @@ import { useApi } from '../hooks/useApi'
 import { Chip, ChipRow } from '../components/primitives'
 import { RADIUS, TOKENS, TYPE, FONT, type Tone } from '../lib/designTokens'
 import {
-  STAGES, STAGE_HELP, STAGE_LABEL, STAGE_TONE, ageLabel as shortAge, ciView, filterCards, groupByStage, lockView,
-  prLabel, stageOf, timeline, vendorsOf, warningOf, type ClaimCard, type Stage,
+  STAGES, STAGE_HELP, STAGE_LABEL, STAGE_TONE, TASK_COLUMNS, TASK_COLUMN_HELP, TASK_COLUMN_LABEL, ageLabel as shortAge,
+  ciView, costTimeLabel, filterCards, groupByStage, groupTasks, lockView, ownerLabel, planProgress, prLabel, stageOf,
+  timeline, vendorsOf, warningOf, type ClaimCard, type Stage, type TaskRow, type WorklogSummary,
 } from '../lib/agentClaimLifecycle'
 
-export type AgentClaimRow = ClaimCard
+export type AgentClaimRow = ClaimCard & { worklog?: WorklogSummary | null; worktree?: string | null; head_sha?: string | null }
 
 export type AgentClaimBoardPayload = {
   schema?: string
@@ -29,6 +30,18 @@ export type AgentClaimBoardPayload = {
   unreadable?: string[]
   truncated?: boolean
   claims?: AgentClaimRow[]
+  task_board?: { columns?: string[]; counts?: Record<string, number>; tasks?: TaskRow[]; error?: string }
+}
+
+type WorklogPayload = { claim_id?: string; found?: boolean; path?: string | null; text?: string | null }
+
+function WorklogView({ claimId }: { claimId: string }) {
+  const api = useApi<WorklogPayload>(`/api/v2/coordination/claims?worklog=${encodeURIComponent(claimId)}`, 60_000)
+  const d = api.data
+  return <div data-testid="agent-claim-worklog" style={{ border: `1px solid ${TOKENS.borderSubtle}`, borderRadius: RADIUS.sm, padding: 8, maxHeight: 360, overflow: 'auto' }}>
+    <div style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }} title="The worklog file on the host (live, else archived)">{api.loading && !d ? 'Loading worklog…' : api.error ? 'Worklog unavailable.' : d?.found ? d.path : 'No worklog for this claim.'}</div>
+    {d?.text ? <pre style={{ whiteSpace: 'pre-wrap', fontFamily: FONT.mono, fontSize: TYPE.xs, color: TOKENS.text[1], margin: 0 }}>{d.text}</pre> : null}
+  </div>
 }
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0 }
@@ -73,7 +86,9 @@ function StageTimes({ c }: { c: ClaimCard }) {
   </span>
 }
 
-function Card({ c, staleH }: { c: ClaimCard; staleH: number }) {
+function Card({ c, staleH }: { c: AgentClaimRow; staleH: number }) {
+  const [open, setOpen] = useState(false)
+  const plan = planProgress(c.worklog)
   const ci = ciView(c)
   const lock = lockView(c)
   const warn = warningOf(c)
@@ -89,10 +104,48 @@ function Card({ c, staleH }: { c: ClaimCard; staleH: number }) {
       <Chip tone={ci.tone} title={ci.title}>{ci.label}</Chip>
       <Chip tone={c.state === 'stale' && c.locks_held !== false ? 'warning' : 'neutral'} title={lock.title}>{lock.label}</Chip>
       <Chip tone={STATE_TONE[c.state] || 'neutral'} title={STATE_HELP[c.state] + ` Stale after ${staleH} h without a heartbeat.`}>{c.state} · hb {shortAge(c.heartbeat_age_minutes)}</Chip>
+      <Chip tone={plan.tone} title={plan.title}>{plan.label}</Chip>
+      <Chip tone="info" onClick={() => setOpen(v => !v)} title="Open the worklog: goal, plan, changes, decisions, blockers, status, handoff">{open ? 'hide worklog' : 'worklog'}</Chip>
     </ChipRow>
+    {c.worklog?.next_step ? <div style={small} title="Handoff: the exact next step">next: {c.worklog.next_step}</div> : null}
+    {open ? <WorklogView claimId={c.claim_id} /> : null}
     <div style={small}><StageTimes c={c} /></div>
     <div style={small} title="Time since the claim was made (to release, once live)">age {shortAge(c.age_minutes)}</div>
     {warn ? <div role="alert" style={{ ...small, color: TOKENS.text[0] }} title={(c.warnings || [warn]).join('\n')}>⚠ {warn}</div> : null}
+  </div>
+}
+
+function TasksSection({ tb }: { tb?: AgentClaimBoardPayload['task_board'] }) {
+  const rows = tb?.tasks || []
+  const g = groupTasks(rows)
+  if (!rows.length && !tb?.error) return <div style={panel}>
+    <h2 style={{ margin: 0, fontSize: TYPE.md, color: TOKENS.text[0] }} title="Open work any agent can pick up">Tasks</h2>
+    <p style={muted}>No tasks on the board. Add with <code style={{ fontFamily: FONT.mono }}>agent_claim.py task add</code>; agents pick up with <code style={{ fontFamily: FONT.mono }}>next</code>.</p>
+  </div>
+  return <div style={{ ...panel, overflowX: 'auto' }} data-testid="agent-task-board">
+    <h2 style={{ margin: '0 0 8px', fontSize: TYPE.md, color: TOKENS.text[0] }} title="Open work any agent can pick up: agent_claim.py next / take <task-id>">Tasks</h2>
+    {tb?.error ? <p role="alert" style={muted}>Task board unavailable ({tb.error}).</p> : null}
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${TASK_COLUMNS.length}, minmax(220px, 1fr))`, gap: 10 }}>
+      {TASK_COLUMNS.map(col => <div key={col} data-testid={`agent-task-col-${col}`} style={{ display: 'grid', gap: 8, alignContent: 'start', minWidth: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Chip tone={col === 'done' ? 'success' : col === 'free' ? 'neutral' : 'info'} title={TASK_COLUMN_HELP[col]}>{TASK_COLUMN_LABEL[col]}</Chip>
+          <span style={small}>{g[col].length}</span>
+        </div>
+        {g[col].map(t => <div key={t.task_id} data-testid="agent-task-card" style={{ border: `1px solid ${t.blocked_by?.length ? TOKENS.warning : TOKENS.borderSubtle}`, borderRadius: RADIUS.sm, padding: 8, display: 'grid', gap: 4, background: TOKENS.bg[0], minWidth: 0 }}>
+          <div style={{ fontSize: TYPE.sm, color: TOKENS.text[0], overflowWrap: 'anywhere' }} title={t.operator_quote ? `operator: ${t.operator_quote}` : 'Task title'}>{t.title}</div>
+          <div style={small} title={`task ${t.task_id}${t.claim_id ? ` · claim ${t.claim_id}` : ''}`}>{t.task_id} · {t.kind} · P{t.priority}</div>
+          <div style={{ ...small, fontFamily: FONT.mono, overflowWrap: 'anywhere' }} title={(t.areas || []).join('\n')}>{(t.areas || []).slice(0, 3).join(', ')}{(t.areas?.length || 0) > 3 ? ` +${t.areas!.length - 3}` : ''}</div>
+          <ChipRow>
+            <Chip tone="neutral" title="Who holds it (vendor / agent)">{ownerLabel(t)}</Chip>
+            <Chip tone="neutral" title="Estimate and actual time/cost (actual: taken → done)">{costTimeLabel(t)}</Chip>
+            {t.depends_on?.length ? <Chip tone={t.blocked_by?.length ? 'warning' : 'success'} title={`Depends on: ${t.depends_on.join(', ')}${t.blocked_by?.length ? `; still waiting on ${t.blocked_by.join(', ')}` : ' (all done)'}`}>{t.blocked_by?.length ? `blocked by ${t.blocked_by.length}` : 'deps done'}</Chip> : null}
+            {t.acceptance?.length ? <Chip tone="neutral" title={t.acceptance.join('\n')}>{t.acceptance.length} acceptance</Chip> : null}
+          </ChipRow>
+          {t.handoff ? <div style={small} title="Hand-off left by the previous holder">hand-off: {t.handoff}</div> : null}
+        </div>)}
+        {!g[col].length ? <div style={small}>—</div> : null}
+      </div>)}
+    </div>
   </div>
 }
 
@@ -153,6 +206,7 @@ export default function AgentClaimsPanel({ active = true }: { active?: boolean }
       {api.error ? <p role="alert" style={muted}>Claim board unavailable. No claims are shown — that is not the same as nobody working.</p> : null}
       {d?.unreadable?.length ? <p role="alert" style={muted} title={d.unreadable.join(', ')}>{d.unreadable.length} claim file(s) unreadable — not counted above.</p> : null}
     </div>
+    <TasksSection tb={d?.task_board} />
     {view === 'board' ? <div style={{ ...panel, overflowX: 'auto' }}>
       <div data-testid="agent-claim-kanban" style={{ display: 'grid', gridTemplateColumns: `repeat(${columns.length}, minmax(220px, 1fr))`, gap: 10 }}>
         {columns.map(st => <div key={st} data-testid={`agent-claim-col-${st}`} style={{ display: 'grid', gap: 8, alignContent: 'start', minWidth: 0 }}>

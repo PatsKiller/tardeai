@@ -547,6 +547,8 @@ def test_precommit_script_is_warn_only(tmp_path):
         "scripts/agent_claim_precommit.sh",
         "scripts/lib/agent_claim_board.py",
         "scripts/lib/agent_claim_lifecycle.py",
+        "scripts/lib/agent_claim_worklog.py",
+        "scripts/lib/agent_task_board.py",
         "scripts/lib/agent_file_lease.py",
         "scripts/lib/persistent_state_root.py",
     ):

@@ -57,9 +57,11 @@ from typing import Any, Callable, Iterable, Mapping
 
 try:  # repo root on sys.path
     from scripts.lib import agent_claim_lifecycle as LC
+    from scripts.lib import agent_claim_worklog as WL
     from scripts.lib.agent_file_lease import canonicalize_claim_path
 except ImportError:  # scripts/ on sys.path (api_v2 inside portfolio_server)
     from lib import agent_claim_lifecycle as LC  # type: ignore[no-redef]
+    from lib import agent_claim_worklog as WL  # type: ignore[no-redef]
     from lib.agent_file_lease import canonicalize_claim_path  # type: ignore[no-redef]
 
 SCHEMA = "AgentClaim@v1"
@@ -572,6 +574,8 @@ class ClaimBoard:
         branch: str | None = None,
         pr: str | int | None = None,
         note: str | None = None,
+        worktree: str | None = None,
+        head_sha: str | None = None,
     ) -> dict[str, Any]:
         if not session:
             raise ClaimError("session is required (--session or AGENT_CLAIM_SESSION)")
@@ -595,7 +599,19 @@ class ClaimBoard:
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
             try:
                 return self._claim_locked(
-                    canon, vendor=vendor, session=session, agent=agent, task=task, branch=branch, pr=pr, note=note
+                    canon,
+                    vendor=vendor,
+                    session=session,
+                    agent=agent,
+                    task=task,
+                    branch=branch,
+                    pr=pr,
+                    note=note,
+                    extra={
+                        k: v
+                        for k, v in (("worktree", clip(worktree, 400)), ("head_sha", head_sha))
+                        if v and (k != "head_sha" or LC.SHA_RE.match(v))
+                    },
                 )
             finally:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
@@ -611,6 +627,7 @@ class ClaimBoard:
         branch: str | None,
         pr: str | int | None,
         note: str | None,
+        extra: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
         views, _bad = self.views()
         blocking = self.conflicts(canon, session=session, views=views)
@@ -655,7 +672,10 @@ class ClaimBoard:
             "note": clip(note, MAX_NOTE),
             "host": clip(socket.gethostname(), 80),
             "takeover_of": takeover,
+            **dict(extra or {}),
         }
+        if doc.get("head_sha"):
+            doc["logged_sha"] = doc["head_sha"]  # commits after this are appended to the worklog by heartbeat
         for _attempt in range(5):
             doc["claim_id"] = new_claim_id(vendor_s, now)
             try:
@@ -701,6 +721,9 @@ class ClaimBoard:
         pr: str | int | None = None,
         note: str | None = None,
         branch: str | None = None,
+        head_sha: str | None = None,
+        worktree: str | None = None,
+        logged_sha: str | None = None,
     ) -> dict[str, Any]:
         v = self._own(claim_id, session, force=False)
         if v.doc.get("status") != "active":
@@ -725,8 +748,65 @@ class ClaimBoard:
             d["note"] = clip(note, MAX_NOTE)
         if branch:
             d["branch"] = clip(branch, 200)
+        if head_sha and LC.SHA_RE.match(head_sha):
+            d["head_sha"] = head_sha
+            d["head_sha_at"] = d["heartbeat_at"]
+        if worktree:
+            d["worktree"] = clip(worktree, 400)
+        if logged_sha and LC.SHA_RE.match(logged_sha):
+            d["logged_sha"] = logged_sha
         _replace_own(v.path, d)
         return d
+
+    def extend(self, claim_id: str, paths: Iterable[str], *, session: str | None) -> dict[str, Any]:
+        """``claim --add``: add paths to an own active claim; refused if they overlap another live session's claim."""
+        canon = []
+        for p in paths:
+            c = canonical_pattern(p)
+            if c not in canon:
+                canon.append(c)
+        if not canon:
+            raise ClaimError("--add needs at least one path")
+        self.dir.mkdir(parents=True, exist_ok=True)
+        with open(self.dir / LOCK_NAME, "a", encoding="utf-8") as lock:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+            try:
+                v = self._own(claim_id, session, force=False)
+                if v.doc.get("status") != "active" or v.taken_over_by:
+                    raise ClaimError(f"claim {claim_id} is not an active claim of this session; --add refused")
+                blocking = self.conflicts(canon, session=session, exclude_ids=[claim_id])
+                if blocking and self.refresh_claims([r["claim_id"] for r in blocking]):
+                    blocking = self.conflicts(canon, session=session, exclude_ids=[claim_id])
+                if blocking:
+                    raise ClaimConflict(describe_conflicts(blocking), blocking)
+                d = {k: val for k, val in v.doc.items() if not k.startswith("_")}
+                added = [c for c in canon if c not in d["paths"]]
+                if len(d["paths"]) + len(added) > MAX_PATHS:
+                    raise ClaimError(f"too many paths (> {MAX_PATHS})")
+                d["paths"] = list(d["paths"]) + added
+                d["heartbeat_at"] = iso(self.now())
+                _replace_own(v.path, d)
+            finally:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        if added:
+            wl = self.worklog(claim_id)
+            if wl.exists():
+                try:
+                    wl.change("claim extended: " + ", ".join(added))
+                except (OSError, WL.WorklogError):
+                    pass
+        return d
+
+    def worklog(self, claim_id: str) -> "WL.Worklog":
+        return WL.Worklog(self.dir, claim_id, now=self.now)
+
+    def _wl_status(self, claim_id: str, text: str, *, auto: bool = False, at: str | None = None) -> None:
+        wl = self.worklog(claim_id)
+        if wl.exists():
+            try:
+                wl.status(text, auto=auto, at=at)
+            except (OSError, WL.WorklogError):
+                pass  # a worklog problem never breaks the claim operation; the board reports the file state
 
     def release(
         self,
@@ -738,6 +818,8 @@ class ClaimBoard:
         pr: str | int | None = None,
         force: bool = False,
         released_by: str | None = None,
+        summary: str | None = None,
+        require_summary: bool = False,
     ) -> dict[str, Any]:
         if status not in ("done", "abandoned"):
             raise ClaimError("release status must be done or abandoned")
@@ -753,6 +835,12 @@ class ClaimBoard:
             d["pr"] = clip(pr, 40)
         if force and session != v.doc.get("session"):
             d["released_by"] = clip(released_by or session or "unknown", 120)
+        wl = self.worklog(claim_id)
+        if summary is not None or (require_summary and wl.exists()):
+            if not (summary or "").strip():
+                raise ClaimError("release needs a final summary line for the worklog (--summary '...')")
+            if wl.exists():
+                wl.final_summary(summary or "", status)
         _replace_own(v.path, d)
         return d
 
@@ -797,6 +885,7 @@ class ClaimBoard:
         if note is not None:
             d["note"] = clip(note, MAX_NOTE)
         _replace_own(v.path, d)
+        self._wl_status(claim_id, f"stage {stage}" + (f" (PR {d['pr']})" if stage == "pr_open" and d.get("pr") else ""))
         return d
 
     def refresh_claims(self, claim_ids: Iterable[str] | None = None, *, write: bool = True) -> dict[str, Any]:
@@ -806,9 +895,23 @@ class ClaimBoard:
         docs, _bad = self.read_all()
         want = set(claim_ids) if claim_ids is not None else None
         docs = [d for d in docs if want is None or d.get("claim_id") in want]
-        got, warning = self.observer.observe(docs, self.observations())
+        before = self.observations()
+        got, warning = self.observer.observe(docs, before)
         if write and got and self.dir.is_dir():
             LC.write_sidecars(self.dir, got)
+            for cid, o in got.items():  # observed stage changes go to the worklog, marked (auto)
+                old = (before.get(cid) or {}).get("stages") or {}
+                for st in LC.STAGES:
+                    at = (o.get("stages") or {}).get(st)
+                    if at and st not in old:
+                        extra = ""
+                        if st == "merged" and o.get("merge_sha"):
+                            extra = f" (PR #{o.get('pr_number')} merge {str(o['merge_sha'])[:9]})"
+                        elif st == "released" and o.get("released"):
+                            extra = f" ({o['released'].get('basis')}, sha {str(o['released'].get('sha'))[:9]})"
+                        elif st == "pr_open" and o.get("pr_number"):
+                            extra = f" (PR #{o.get('pr_number')})"
+                        self._wl_status(cid, f"stage {st} observed{extra}", auto=True, at=at)
         else:
             for cid, o in got.items():
                 self.extra_obs[cid] = LC.merge_obs(self.extra_obs.get(cid), o)
@@ -924,6 +1027,9 @@ class ClaimBoard:
                         "sha256": digest,
                         "claim": doc,
                         "lifecycle": side_doc,
+                        "worklog_archive": str(WL.archive_dir(self.dir) / f"{item['claim_id']}{WL.SUFFIX}")
+                        if WL.path_for(self.dir, item["claim_id"]).is_file()
+                        else None,
                     }
                     line = json.dumps(rec, sort_keys=True) + "\n"
                     fd = os.open(str(self.history), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
@@ -943,6 +1049,12 @@ class ClaimBoard:
                             continue
                         p.unlink()
                         result["removed"] += 1
+                        try:  # the worklog is moved to worklog_archive/, never deleted
+                            moved = WL.archive(self.dir, item["claim_id"])
+                        except OSError as exc:
+                            moved = {"error": type(exc).__name__}
+                        if moved:
+                            result.setdefault("worklogs_archived", []).append({"claim_id": item["claim_id"], **moved})
                         if side_doc is not None:  # its observation cache is in the same archive line
                             try:
                                 side.unlink()
@@ -1061,6 +1173,9 @@ def public_row(v: ClaimView, now: datetime | None = None) -> dict[str, Any]:
         "age_minutes": None if age_s is None else round(age_s / 60, 1),
         "stale_warning": warns[0] if warns else None,
         "warnings": warns,
+        "worktree": d.get("worktree"),
+        "worktree_head_sha": d.get("head_sha"),  # recorded at claim/heartbeat (head_sha above is the PR head)
+        "worklog": WL.board_summary(v.path.parent, v.claim_id, now),
         "claim_id": v.claim_id,
         "state": v.state,
         "status": d.get("status"),
@@ -1221,6 +1336,7 @@ def precommit_gate(
         "branch": branch,
         "conflicts": [],
         "uncovered": [],
+        "worklog_issues": [],
         "override": None,
         "exit_code": 0,
         "messages": [],
@@ -1243,6 +1359,22 @@ def precommit_gate(
         uncovered = [
             p for p in staged if not any(patterns_overlap(p, q) for v in own for q in v.doc.get("paths") or [])
         ]
+        # Worklog discipline: every own claim covering a staged file needs a plan and an agent entry in the last 2 h.
+        now = board.now()
+        worklog_issues = []
+        for v in own:
+            if not any(patterns_overlap(p, q) for p in staged for q in v.doc.get("paths") or []):
+                continue
+            w = WL.board_summary(board.dir, v.claim_id, now)
+            why = None
+            if not w.get("exists"):
+                why = "has no worklog"
+            elif not w.get("plan_total"):
+                why = "worklog has no plan (agent_claim.py plan <id> '<step>')"
+            elif w.get("last_entry_age_minutes") is None or w["last_entry_age_minutes"] > WL.FRESH_HOURS * 60:
+                why = f"no worklog entry in the last {WL.FRESH_HOURS:g} h (plan/done/note/blocker)"
+            if why:
+                worklog_issues.append({"claim_id": v.claim_id, "issue": why})
     except (ClaimError, ValueError, OSError) as exc:
         msgs.append(f"agent-claim: gate could not evaluate ({type(exc).__name__}: {exc})")
         if not enforce:
@@ -1272,8 +1404,10 @@ def precommit_gate(
             f"set {ENV_OVERRIDE}=<reason> to bypass (logged)"
         )
         return res
-    res["conflicts"], res["uncovered"] = rows, uncovered
+    res["conflicts"], res["uncovered"], res["worklog_issues"] = rows, uncovered, worklog_issues
     tag = "BLOCK" if enforce else "WARN"
+    for w in worklog_issues:
+        msgs.append(f"{tag}: claim {w['claim_id']} {w['issue']}")
     for r in rows:
         held = ", ".join(sorted({o["held"] for o in r.get("overlaps") or []}))
         mine = ", ".join(sorted({o["path"] for o in r.get("overlaps") or []}))
@@ -1289,7 +1423,7 @@ def precommit_gate(
             + (f" +{len(uncovered) - 20}" if len(uncovered) > 20 else "")
         )
         msgs.append("       claim them first: python3 scripts/agent_claim.py claim --task '...' --paths <files>")
-    if not rows and not uncovered:
+    if not rows and not uncovered and not worklog_issues:
         return res
     if not enforce:
         msgs.append(
@@ -1309,6 +1443,7 @@ def precommit_gate(
             "policy_version": policy.get("version"),
             "paths": staged[:MAX_PATHS],
             "uncovered": uncovered[:MAX_PATHS],
+            "worklog_issues": worklog_issues,
             "conflicts": [
                 {k: r.get(k) for k in ("claim_id", "vendor", "session", "branch", "started_at")} for r in rows
             ],
@@ -1430,14 +1565,34 @@ def board_view(
     include_finished: bool = True,
     observer: "LC.CachedObserver | None" = None,
     background: bool = True,
+    worklog: str | None = None,
 ) -> dict[str, Any]:
     """Read-only projection served by GET /api/v2/coordination/claims. Never creates the directory and never writes:
     lifecycle observations come from the sidecar cache plus an in-memory cache refreshed in a background thread
     (GitHub GETs with a timeout; a request never waits on GitHub)."""
     board = ClaimBoard(claims_dir)
+    if worklog is not None:  # ?worklog=<claim_id>: one claim's worklog text (live file, else its archive)
+        found = WL.read_any(board.dir, worklog) if valid_claim_id(worklog) else None
+        return {
+            "schema": "AgentClaimWorklog@v1",
+            "claim_id": worklog,
+            "found": found is not None,
+            "path": found[0] if found else None,
+            "text": found[1] if found else None,
+            "summary": WL.summarize(found[1]) if found else None,
+        }
     docs, _bad = board.read_all()
     cache = observer or _api_observer()
     obs, meta = cache.snapshot(docs, LC.read_sidecars(board.dir) if docs else {}, background=background)
     board.extra_obs = obs
     meta["repo"] = getattr(cache, "repo", None)
-    return board.board(include_finished=include_finished, lifecycle_meta=meta)
+    out = board.board(include_finished=include_finished, lifecycle_meta=meta)
+    try:  # the task board (additive): free / taken / in_progress / done
+        try:
+            from scripts.lib import agent_task_board as TB
+        except ImportError:
+            from lib import agent_task_board as TB  # type: ignore[no-redef]
+        out["task_board"] = TB.TaskBoard(board).board()
+    except Exception as exc:  # noqa: BLE001 - the claim board must still render
+        out["task_board"] = {"error": type(exc).__name__, "tasks": []}
+    return out
