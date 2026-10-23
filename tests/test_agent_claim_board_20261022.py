@@ -579,7 +579,7 @@ def test_precommit_script_is_warn_only(tmp_path):
 def test_hooks_framework_left_untouched_operator_surface():
     """.githooks/ is operator-only (AGENTS.md §23.13 exclusion); the script ships with an install note instead."""
     hook = (ROOT / ".githooks" / "pre-commit").read_text()
-    assert "agent_claim" not in hook
+    assert 'bash "$ROOT/scripts/agent_claim_precommit.sh" || exit 1' in hook  # wired by the operator, PR #2031
     script = (ROOT / "scripts" / "agent_claim_precommit.sh").read_text()
     # 2026-10-23: policy-gated (warn below AGENTS.md 20.0.0 ACTIVE, block from it); the install line keeps the rc
     assert 'bash "$ROOT/scripts/agent_claim_precommit.sh" || exit 1' in script and "exit 0" in script
