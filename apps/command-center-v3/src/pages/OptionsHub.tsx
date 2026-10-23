@@ -37,8 +37,10 @@ import { BB, T, TYPE } from '../lib/watchTokens'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
-// 2026-10-22: 'Desk' is the operator-approved Gate 3 layout and the default view. The earlier views stay
-// reachable (rollback and power use) until the operator retires them.
+// 2026-10-22: 'Desk' is the operator-approved Gate 3 lifecycle desk and the default view. The earlier views
+// are the classic view, kept for one release: ?tab=Options&view=classic (opens on Proposals, the old
+// default) or ?otab=<view> (deep links such as Defense's otab=Lifecycle keep working). In desk mode the old
+// tab strip is hidden; the desk links to the classic view and opens Lifecycle / coverage / Proposals itself.
 const TABS = ['Desk', 'Lifecycle', 'Proposals', 'All coverage', 'Open Options', 'Strategy Overview', 'Options Trends'] as const
 const LEGACY_TAB_ALIASES: Record<string, typeof TABS[number]> = {
   'Open Positions': 'Open Options',
@@ -56,8 +58,9 @@ export default function OptionsHub({ onDrill }: Props) {
   // otab: deep-link param for THIS hub's tabs (tab= belongs to TradingHub —
   // Defense's lifecycle strip links /trading?tab=Options&otab=Lifecycle)
   const urlTab = searchParams.get('otab') || searchParams.get('tab')
+  const classicParam = searchParams.get('view') === 'classic'
   const resolveTab = (t: string | null): typeof TABS[number] => {
-    if (!t) return 'Desk'
+    if (!t || t === 'Options') return classicParam ? 'Proposals' : 'Desk'
     const mapped = LEGACY_TAB_ALIASES[t] || t
     return (TABS as readonly string[]).includes(mapped) ? mapped as typeof TABS[number] : 'Desk'
   }
@@ -257,7 +260,7 @@ export default function OptionsHub({ onDrill }: Props) {
     setTab(t)
     const next = new URLSearchParams(searchParams)
     next.set('tab', 'Options')
-    next.set('otab', t)
+    if (t === 'Desk') { next.delete('otab'); next.delete('view') } else { next.set('otab', t); next.set('view', 'classic') }
     setSearchParams(next, { replace: true })
   }
 
@@ -459,15 +462,19 @@ export default function OptionsHub({ onDrill }: Props) {
         {!deskMode && <div style={{ fontSize: 12, lineHeight: 1.45, color: BB.text2, marginTop: 8, maxWidth: 720 }}>
           This page: {optionsDeskPersonLine(propList as any[], posList.length)}
         </div>}
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        {!deskMode && <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }} data-testid="options-classic-tabs">
+          <button type="button" onClick={() => selectTab('Desk')} data-testid="options-back-to-desk" style={hubTab(false, terminalUi)}
+            title="The lifecycle desk: one act-first table of every idea and open leg, the 7-step lifecycle, freshness on every number.">
+            ← Lifecycle desk
+          </button>
+          <span style={{ fontSize: 11, color: 'var(--text3)' }}>Classic view · kept for one release</span>
           <div className="hub-tabs">
-          {TABS.map(t => (
+          {TABS.filter(t => t !== 'Desk').map(t => (
             <button
               key={t}
               aria-pressed={tab === t}
               title={
-                t === 'Desk' ? 'One table of every idea, the 7-step lifecycle, the checklist to place each one, and your plans.'
-                : t === 'Lifecycle' ? 'Open option positions by strategy: sell vs hold, P&L, roll guidance.'
+                t === 'Lifecycle' ? 'Open option positions by strategy: sell vs hold, P&L, roll guidance.'
                 : t === 'All coverage' ? 'Every security in the options inventory and whether it was evaluated.'
                 : t === 'Proposals' ? TAB_TIPS.proposals
                   : t === 'Open Options' ? TAB_TIPS.positions
@@ -479,7 +486,7 @@ export default function OptionsHub({ onDrill }: Props) {
             >{t}</button>
           ))}
           </div>
-        </div>
+        </div>}
       </div>
 
       {tab === 'All coverage' && <OptionsCoverage requestScan={forceRefresh} />}
@@ -505,6 +512,7 @@ export default function OptionsHub({ onDrill }: Props) {
           onChain={id => { const p = propList.find(x => String(x.id) === id); if (p) handleAction('review_chain', id, p) }}
           onNewPlan={() => setShowNewPlan(true)}
           onOpenView={v => selectTab(v)}
+          initialSymbol={searchParams.get('symbol')}
         />
       )}
       {showNewPlan && <StandingIntentModal intents={intentFeed?.intents ?? []} onClose={() => setShowNewPlan(false)} onSaved={() => refetchIntents()} />}

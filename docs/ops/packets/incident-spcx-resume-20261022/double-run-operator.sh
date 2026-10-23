@@ -96,11 +96,16 @@ read -r -p "Type APPLY to comment these $N cron line(s): " answer
 [[ "$answer" == "APPLY" ]] || { echo "Not confirmed — nothing changed."; exit 0; }
 
 # ── apply with read-back ─────────────────────────────────────────────────────────────────────────────────
-crontab -l | cmp -s - "$WORK/crontab.live" || { echo "REFUSED: the crontab changed since the preview; re-run."; exit 5; }
+# Every read-back is captured to a file first. Never `crontab -l | grep -q`: grep -q exits at the first match,
+# crontab -l takes SIGPIPE writing the rest of a large crontab, and pipefail turns that 141 into a false FAILED
+# (2026-10-22 operator run: the edit applied, the verify printed FAILED).
+crontab -l > "$WORK/before-install" || { echo "REFUSED: crontab -l failed"; exit 5; }
+cmp -s "$WORK/before-install" "$WORK/crontab.live" || { echo "REFUSED: the crontab changed since the preview; re-run."; exit 5; }
 crontab - < "$WORK/candidate" || { echo "FAILED: install"; rollback_hint; exit 5; }
-crontab -l | cmp -s - "$WORK/candidate" || { echo "FAILED: read-back differs"; rollback_hint; exit 5; }
+crontab -l > "$WORK/after-installed" || { echo "FAILED: read-back"; rollback_hint; exit 5; }
+cmp -s "$WORK/after-installed" "$WORK/candidate" || { echo "FAILED: read-back differs"; rollback_hint; exit 5; }
 while IFS=$'\t' read -r lane old; do
-  crontab -l | grep -qxF -- "$PREFIX$old" || { echo "FAILED: $lane line not as expected after install"; rollback_hint; exit 5; }
+  grep -qxF -- "$PREFIX$old" "$WORK/after-installed" || { echo "FAILED: $lane line not as expected after install"; rollback_hint; exit 5; }
   echo "   $lane: cron line commented, verified (crontab -l); n8n remains its scheduler"
 done < "$WORK/plan.tsv"
 echo "DONE. Backup: $BACKUP   Rollback: crontab \"$BACKUP\""

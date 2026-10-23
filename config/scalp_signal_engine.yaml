@@ -277,6 +277,12 @@ microstructure_signals:
   climax_wick_frac: 0.5
   wall_x_median: 4.0
   schwab_mm_stack: 4
+  # Level 2 book signals (Gate 4, operator-approved design 2026-10-22): tight_spread, bid_ask_imbalance (entry)
+  # and ask_heavy (warning). v1 priors; read by SignalConfig and by scripts/lib/l2_book_signals.py (unified alert).
+  spread_bps_max: 50.0         # same bound as config/scalp_confirmations.yaml max_spread_bps
+  imbalance_min: 1.5
+  ask_heavy_max: 0.67
+  imbalance_levels: 5
 
 # Exit signals on YOUR open alert-tagged scalps. shadow = journal only; send = also Telegram (operator decides)
 active_trader_exit_watch:
@@ -371,3 +377,16 @@ active_trader_fast_loop:
   near_trigger_pct: 0.5        # APPROACHING within 0.5 % (or 3 ticks) below the break level
   near_trigger_ticks: 3
   tick_size: 0.01
+
+# ── Unified momentum alert (Gate 4, operator-approved design 2026-10-22). ONE alert per symbol/event/day
+#    replacing the separate Momentum Scalp (social_scalp_scanner) and Active Trader alerts: WATCH →
+#    APPROACHING → ARMED → TRIGGERED → STAND DOWN (+ EXTENDED / PULLBACK_ZONE / TRIGGER_CANCELLED); each state
+#    change is a new message sent as a threaded reply to the first. ADVISORY ONLY — never an order.
+#    mode: off    = not built at all (pre-Gate-4 behaviour, byte for byte)
+#          shadow = today's alerts unchanged; the unified message is built and logged to
+#                   data/runtime/unified_momentum_alerts.jsonl (never sent)  ← default
+#          live   = the unified message is sent INSTEAD of the scalp scanner's alert (operator switch).
+#    Env UNIFIED_MOMENTUM_ALERT_MODE overrides for one process. Library: scripts/lib/unified_momentum_alert.py ──
+unified_momentum_alert:
+  mode: shadow
+  dedupe_minutes: 30           # intent-router content window (each state change is a new body)

@@ -7,13 +7,18 @@
 // disabled (the server also answers 409 POLICY_NOT_ACTIVE); data still renders. Missing data is UNAVAILABLE, never 0.
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useApi } from '../hooks/useApi'
-import { Chip, ChipRow } from '../components/primitives'
+import { Chip, ChipRow, Tooltip } from '../components/primitives'
 import { TOKENS, TYPE } from '../lib/watchTokens'
 import { FONT, RADIUS, SHADOW, toneVars, type Tone } from '../lib/designTokens'
 import {
   actBlockReason, canAct, isTerminal, kindFor, opsApi, passkeyStepUp, phraseMatches, registerPasskey, validateSetting,
   type OpsControlsState, type OpsRequest, type SettingRow,
 } from '../lib/opsControls'
+import { classifyJob, FILTERS, filterCounts, matchesFilter, matchesQuery, type JobFilter, type JobRowX } from '../lib/opsControlsJobs'
+import {
+  CHECK_TIP, DATA_FILTERS, EXPLAINER, findingText, freshnessView, matchesDataFilter, scanText, sortRows, summarize, SUMMARY_TIP,
+  VERDICT_TIP, verdictView, writerText, type DataFilter, type DataRow, type FileList,
+} from '../lib/opsControlsData'
 
 // ── styles ──────────────────────────────────────────────────────────────────────────────────────────
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0 }
@@ -50,10 +55,10 @@ function Panel({ title, right, children }: { title: string; right?: ReactNode; c
   </div>
 }
 
-function Table({ label: aria, heads, rows }: { label: string; heads: string[]; rows: Array<Array<ReactNode>> }) {
+function Table({ label: aria, heads, rows }: { label: string; heads: ReactNode[]; rows: Array<Array<ReactNode>> }) {
   return <div style={{ overflowX: 'auto', minWidth: 0 }}>
     <table aria-label={aria} style={{ width: '100%', borderCollapse: 'collapse' }}>
-      <thead><tr>{heads.map(h => <th key={h} style={{ ...cell, color: TOKENS.text[3], whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
+      <thead><tr>{heads.map((h, i) => <th key={i} style={{ ...cell, color: TOKENS.text[3], whiteSpace: 'nowrap' }}>{h}</th>)}</tr></thead>
       <tbody>
         {rows.map((r, i) => <tr key={i} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }}>{r.map((c, j) => <td key={j} style={cell}>{c ?? '—'}</td>)}</tr>)}
         {!rows.length ? <tr><td colSpan={heads.length} style={{ ...cell, color: TOKENS.text[2] }}>No rows</td></tr> : null}
@@ -296,37 +301,186 @@ function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
           <ActionButton state={d} kind="kill_switch.clear" text="Clear" params={{ scope: 'global' }} run={run} />],
       ]} />
     </Panel>
-    <Panel title="Jobs & schedules" right={jobs?.state === 'OK' ? <span style={muted}>as of {et(jobs.as_of)}</span> : null}>
-      <SectionGate sec={jobs}>
-        <Table label="Jobs and schedules" heads={['Job', 'Runs on', 'State', "What's missing while off · note", 'Schedule', 'Action']}
-          rows={(jobs?.rows || []).map(j => [
-            <span style={{ display: 'grid', gap: 2 }}><span style={{ color: TOKENS.text[0], fontWeight: 600 }}>{j.lane_id}</span>
-              {j.broker_class ? <Chip tone="warning" title={(j.broker_tokens || []).join(', ')}>broker job</Chip> : null}</span>,
-            s(j.scheduler_kind),
-            <ChipRow><Chip tone={j.cron_state === 'ACTIVE' ? 'success' : j.cron_state === 'PAUSED' ? 'warning' : 'danger'}>{j.cron_state}</Chip>
-              {j.registry_state ? <Chip tone="neutral">registry {j.registry_state}</Chip> : null}</ChipRow>,
-            <span style={{ display: 'grid', gap: 2 }}>
-              {j.paused_on || j.paused_note ? <span>paused {s(j.paused_on)}{j.paused_note ? ` · ${j.paused_note}` : ''}</span> : null}
-              {j.note ? <span>{j.note}</span> : null}
-              {j.display ? <span style={{ ...mono, color: TOKENS.text[2], whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{j.display}</span> : null}
-            </span>,
-            <span style={mono}>{s(j.schedule)}</span>,
-            j.cron_state === 'ACTIVE' && j.line_sha256 ? <ActionButton state={d} kind="crontab.pause" text="Pause" params={{ line_sha256: j.line_sha256, lane_id: j.lane_id }} title={`Pause ${j.lane_id}`} run={run} />
-              : j.cron_state === 'PAUSED' && j.line_sha256 ? <ActionButton state={d} kind="crontab.resume" text="Resume" params={{ line_sha256: j.line_sha256, lane_id: j.lane_id }} title={`Resume ${j.lane_id}`} run={run} />
-                : <span style={{ color: TOKENS.text[2] }}>{j.cron_state === 'AMBIGUOUS' ? 'more than one line — host terminal' : j.cron_state === 'ABSENT' ? 'no cron line' : 'no line hash'}</span>,
-          ])} />
-        {(jobs?.unmatched_active_lines ?? 0) > 0 ? <p style={muted}>{jobs?.unmatched_active_lines} active crontab line(s) match no registry lane; they are not controllable here.</p> : null}
-      </SectionGate>
-    </Panel>
+    <JobsSchedules d={d} run={run} />
   </div>
+}
+
+// ── Jobs & schedules (readability, 2026-10-22) ──────────────────────────────────────────────────────────────────────
+// Operator: "I have no idea how to interpret this … Is this actually N8N? There are no tooltips." Each row is one
+// registry cron lane matched to the host crontab; src/lib/opsControlsJobs.ts turns it into a plain status and flags
+// where the crontab and config/lane_registry.json disagree. Tooltip copy states what the server does (jobs_view,
+// plan_change in scripts/lib/ops_controls_{api,core}.py), nothing more.
+const tipHead: CSSProperties = { borderBottom: `1px dotted ${TOKENS.text[3]}`, cursor: 'help' }
+function HeadTip({ text, tip }: { text: string; tip: ReactNode }) {
+  return <Tooltip content={<div style={{ display: 'grid', gap: 4 }}>{tip}</div>} placement="bottom"><span style={tipHead}>{text}</span></Tooltip>
+}
+const LIVE_TIP: Record<string, string> = {
+  ACTIVE: 'Live crontab: exactly one uncommented line contains this job’s match text, so cron runs it on its schedule.',
+  PAUSED: 'Live crontab: the only matching line is commented out as “# PAUSED <date> <note> <line>”, so cron skips it. The date and note say when and why.',
+  ABSENT: 'Live crontab: no matching line at all, active or paused. Cron never runs it (n8n may — see the n8n lanes tab).',
+  AMBIGUOUS: 'Live crontab: more than one line contains this job’s match text. The page will not pick one, so it offers no action; change it at the host terminal.',
+}
+const REG_TIP: Record<string, string> = {
+  ACTIVE: 'Registry (config/lane_registry.json) says this job should run.',
+  PAUSED: 'Registry says this job is off for now; a paused row carries a review date so you are asked again.',
+  RETIRED: 'Registry says this job is off for good. The row is kept so its silence reads as expected, not as a failure.',
+  NEVER_SCHEDULED: 'Registry declares the job but it was never given a schedule.',
+}
+const LIVE_TONE: Record<string, Tone> = { ACTIVE: 'success', PAUSED: 'warning', ABSENT: 'neutral', AMBIGUOUS: 'warning' }
+const COLS = 6
+
+function JobsSchedules({ d, run }: { d: OpsControlsState | null; run: Run }) {
+  const jobs = d?.jobs
+  const rows = (jobs?.rows || []) as JobRowX[]
+  const [filter, setFilter] = useState<JobFilter>('all')
+  const [q, setQ] = useState('')
+  const [showQuiet, setShowQuiet] = useState(false)
+  const [open, setOpen] = useState<Set<string>>(() => new Set())
+  const views = rows.map(r => ({ r, v: classifyJob(r) }))
+  const counts = filterCounts(rows)
+  const attention = views.filter(x => x.v.mismatch)
+  const searching = q.trim() !== ''
+  const matched = views.filter(x => matchesFilter(x.r, x.v, filter) && matchesQuery(x.r, q))
+  const hideQuiet = filter === 'all' && !searching && !showQuiet
+  const quietN = matched.filter(x => x.v.quiet).length
+  const shown = hideQuiet ? matched.filter(x => !x.v.quiet) : matched
+  const toggle = (id: string) => setOpen(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const pauseKind = kindFor(d, 'crontab.pause')
+
+  return <Panel title="Jobs & schedules" right={jobs?.state === 'OK' ? <span style={muted}>as of {et(jobs.as_of)}</span> : null}>
+    <SectionGate sec={jobs}>
+      <p style={{ ...muted, color: TOKENS.text[1] }} data-testid="ops-jobs-explainer">
+        One row per <b>cron job</b> declared in the lane registry (<span style={mono}>config/lane_registry.json</span>), matched to the
+        live host crontab (<span style={mono}>crontab -l</span>). <b>Status</b> says, in words, what the crontab does right now and whether
+        the registry agrees. Jobs that <b>n8n</b> schedules live on the <b>n8n lanes</b> tab; a row here says “Runs on n8n” when its cron
+        line was removed at cut-over. Hover or tap any underlined heading or badge for its meaning. Times are host time (ET).
+      </p>
+
+      {attention.length ? <div role="region" aria-label="Needs attention" data-testid="ops-jobs-attention"
+        style={{ background: toneVars('danger').bg, border: `1px solid ${toneVars('danger').border}`, borderRadius: RADIUS.md, padding: '8px 10px', margin: '8px 0', display: 'grid', gap: 4, minWidth: 0 }}>
+        <div style={{ fontSize: TYPE.base, fontWeight: 700, color: toneVars('danger').color }}>
+          Needs attention · {attention.length} job{attention.length === 1 ? '' : 's'} where the crontab and the registry disagree
+        </div>
+        {attention.map(({ r, v }) => <div key={r.lane_id} style={{ fontSize: TYPE.sm, color: TOKENS.text[1], minWidth: 0, overflowWrap: 'anywhere' }}>
+          <button type="button" onClick={() => { setFilter('attention'); setOpen(prev => new Set(prev).add(r.lane_id)) }}
+            style={{ background: 'transparent', border: 'none', padding: 0, color: TOKENS.text[0], fontWeight: 600, cursor: 'pointer', fontSize: TYPE.sm, textDecoration: 'underline' }}>{r.lane_id}</button>
+          {' '}— {v.mismatch}.{r.broker_class ? ' Broker job.' : ''}
+        </div>)}
+      </div> : <p style={muted} data-testid="ops-jobs-attention-none">Needs attention: none — every job’s live crontab state agrees with the registry.</p>}
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', margin: '8px 0' }} role="group" aria-label="Filter jobs">
+        {FILTERS.map(([k, text]) => {
+          const sel = filter === k
+          return <button key={k} type="button" aria-pressed={sel} onClick={() => setFilter(k)}
+            style={{ ...btnStyle(sel ? (k === 'attention' && counts.attention ? 'danger' : 'info') : 'plain'), padding: '4px 10px', minHeight: 28, fontSize: TYPE.sm }}>
+            {text} <span style={{ fontFamily: FONT.mono, color: TOKENS.text[2] }}>{counts[k]}</span>
+          </button>
+        })}
+        <input type="search" value={q} onChange={e => setQ(e.target.value)} placeholder="Search job name" aria-label="Search job name"
+          style={{ ...input, flex: '1 1 180px', maxWidth: 280, minHeight: 28, fontSize: TYPE.sm }} />
+      </div>
+
+      <div style={{ overflowX: 'auto', minWidth: 0 }}>
+        <table aria-label="Jobs and schedules" style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr>
+            <th style={{ ...cell, color: TOKENS.text[3] }}>Job</th>
+            <th style={{ ...cell, color: TOKENS.text[3], whiteSpace: 'nowrap' }}><HeadTip text="Status" tip={<>
+              <span>Plain words for two facts: what the live crontab does, and what the registry declares.</span>
+              <span><b>Running</b> — cron runs it. <b>Paused since …</b> — the line is commented with a date and reason. <b>Retired</b> — off on purpose, no line. <b>Runs on n8n</b> — no cron line; n8n dispatches it live.</span>
+              <span>“— but registry says …” means the two disagree; those rows are pinned under Needs attention.</span></>} /></th>
+            <th style={{ ...cell, color: TOKENS.text[3], whiteSpace: 'nowrap' }}><HeadTip text="Runs on" tip={<>
+              <span><b>cron</b> — a line in the host crontab (<span style={mono}>crontab -l</span>), found by the registry’s match text.</span>
+              <span><b>cron + n8n</b> — the cron line is still there and n8n also fires it live under the same lock (canary).</span>
+              <span><b>n8n</b> — the cron line was removed at cut-over; manage it on the n8n lanes tab.</span></>} /></th>
+            <th style={{ ...cell, color: TOKENS.text[3], whiteSpace: 'nowrap' }}><HeadTip text="Crontab · registry" tip={<>
+              <span>The raw badges behind Status.</span>
+              <span><b>Crontab</b>: ACTIVE one live line · PAUSED one “# PAUSED” line · ABSENT no line · AMBIGUOUS several lines (no action here).</span>
+              <span><b>Registry</b>: what <span style={mono}>config/lane_registry.json</span> declares — ACTIVE, PAUSED, RETIRED or NEVER_SCHEDULED.</span></>} /></th>
+            <th style={{ ...cell, color: TOKENS.text[3] }}>Schedule</th>
+            <th style={{ ...cell, color: TOKENS.text[3], whiteSpace: 'nowrap' }}><HeadTip text="Action" tip={<>
+              <span><b>Pause</b> comments the exact line out as “# PAUSED &lt;today&gt; ops-controls:&lt;request&gt; …”; <b>Resume</b> uncomments it.</span>
+              <span>Pausing is the lower-risk direction, but the server treats both as {pauseKind?.direction === 'safe' ? 'safe (one click)' : 'risky'}: a dry-run preview, then a passkey and the typed phrase “PAUSE CRON &lt;job&gt; &lt;date&gt;” or “RESUME CRON &lt;job&gt; &lt;date&gt;”. The host applier backs up the crontab, applies within 120 s, and offers an undo.</span>
+              <span><b>Host terminal</b>: the page cannot act safely — several lines match, the paused note is more than one word, or there is no line.</span></>} /></th>
+          </tr></thead>
+          <tbody>
+            {shown.map(({ r, v }) => {
+              const isOpen = open.has(r.lane_id)
+              const runsOn = v.label.startsWith('Runs on n8n') ? 'n8n' : String(r.dispatch_mode || '') === 'live' && r.cron_state !== 'ABSENT' ? 'cron + n8n' : s(r.scheduler_kind)
+              const st = toneVars(v.tone)
+              return [
+                <tr key={r.lane_id} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }} data-testid="ops-jobs-row">
+                  <td style={cell}>
+                    <span style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+                      <button type="button" aria-expanded={isOpen} onClick={() => toggle(r.lane_id)}
+                        style={{ background: 'transparent', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: TOKENS.text[0], fontWeight: 600, fontSize: TYPE.sm, overflowWrap: 'anywhere' }}>
+                        <span aria-hidden style={{ color: TOKENS.text[3], marginRight: 4 }}>{isOpen ? '▾' : '▸'}</span>{r.lane_id}
+                      </button>
+                      {r.broker_class ? <Tooltip content={`Its command touches broker code (${(r.broker_tokens || []).join(', ') || 'broker tokens'}). Previews warn before pausing or resuming it.`}>
+                        <Chip tone="warning">broker job</Chip></Tooltip> : null}
+                    </span>
+                  </td>
+                  <td style={{ ...cell, color: st.color, fontWeight: 600, minWidth: 180 }}>{v.label}</td>
+                  <td style={{ ...cell, whiteSpace: 'nowrap' }}>{runsOn}</td>
+                  <td style={cell}><ChipRow>
+                    <Tooltip content={LIVE_TIP[r.cron_state] || 'Unknown crontab state'}><Chip tone={LIVE_TONE[r.cron_state] || 'neutral'}>crontab {r.cron_state}</Chip></Tooltip>
+                    {r.registry_state ? <Tooltip content={REG_TIP[r.registry_state] || `Registry declares ${r.registry_state}.`}><Chip tone="neutral">registry {r.registry_state}</Chip></Tooltip> : null}
+                  </ChipRow></td>
+                  <td style={cell}>
+                    <span style={{ display: 'grid', gap: 2 }}>
+                      {v.scheduleText ? <span style={{ color: TOKENS.text[0] }}>{v.scheduleText}</span> : null}
+                      <span style={{ ...mono, color: TOKENS.text[2] }}>{v.cronExpr || s(r.schedule)}</span>
+                    </span>
+                  </td>
+                  <td style={cell}>
+                    {v.action === 'pause' && r.line_sha256 ? <ActionButton state={d} kind="crontab.pause" text="Pause" params={{ line_sha256: r.line_sha256, lane_id: r.lane_id }} title={`Pause ${r.lane_id}`} run={run} />
+                      : v.action === 'resume' && r.line_sha256 ? <ActionButton state={d} kind="crontab.resume" text="Resume" params={{ line_sha256: r.line_sha256, lane_id: r.lane_id }} title={`Resume ${r.lane_id}`} run={run} />
+                        : <Tooltip content={v.actionNote || 'No action'}><span style={{ color: TOKENS.text[2], ...tipHead }}>{r.cron_state === 'ABSENT' ? 'none' : 'host terminal'}</span></Tooltip>}
+                  </td>
+                </tr>,
+                isOpen ? <tr key={`${r.lane_id}:detail`}>
+                  <td colSpan={COLS} style={{ ...cell, background: TOKENS.bg[2], paddingLeft: 18 }}>
+                    <div style={{ display: 'grid', gap: 4, minWidth: 0 }} data-testid="ops-jobs-detail">
+                      {v.mismatch ? <span style={{ color: TOKENS.danger, fontWeight: 600 }}>Disagreement: {v.mismatch}.</span> : null}
+                      <span><b>Registry:</b> {s(r.registry_state)}{r.registry_since ? ` since ${r.registry_since}` : ''}{r.registry_reason ? ` — ${r.registry_reason}` : ''}</span>
+                      {r.dispatch_mode ? <span><b>n8n dispatch mode:</b> {r.dispatch_mode}</span> : null}
+                      {r.match_counts ? <span><b>Matching crontab lines:</b> {r.match_counts.active} active, {r.match_counts.paused} paused</span> : null}
+                      {v.pausedReason ? <span><b>Paused:</b> {s(r.paused_on)} · {v.pausedReason}</span> : null}
+                      {v.actionNote ? <span><b>Action:</b> {v.actionNote}.</span> : null}
+                      {r.broker_tokens?.length ? <span><b>Broker tokens:</b> <span style={mono}>{r.broker_tokens.join(', ')}</span></span> : null}
+                      {r.note ? <span><b>Registry note:</b> {r.note}</span> : null}
+                      {r.display ? <><b>Crontab line (secrets redacted):</b><pre style={{ ...pre, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{r.display}</pre></> : <span><b>Crontab line:</b> none shown{r.cron_state === 'AMBIGUOUS' ? ' (several lines match)' : ''}</span>}
+                    </div>
+                  </td>
+                </tr> : null,
+              ]
+            })}
+            {!shown.length ? <tr><td colSpan={COLS} style={{ ...cell, color: TOKENS.text[2] }}>No jobs match.</td></tr> : null}
+          </tbody>
+        </table>
+      </div>
+      {hideQuiet && quietN ? <button type="button" onClick={() => setShowQuiet(true)} style={{ ...btnStyle('plain'), marginTop: 8 }} data-testid="ops-jobs-show-quiet">
+        Show {quietN} retired / never-scheduled job{quietN === 1 ? '' : 's'} (off on purpose, no crontab line)</button>
+        : filter === 'all' && showQuiet && !searching ? <button type="button" onClick={() => setShowQuiet(false)} style={{ ...btnStyle('plain'), marginTop: 8 }}>Hide retired / never-scheduled</button> : null}
+      {(jobs?.unmatched_active_lines ?? 0) > 0 ? <p style={muted}>{jobs?.unmatched_active_lines} active crontab line(s) match no registry job, so they are not listed or controllable here.</p> : null}
+    </SectionGate>
+  </Panel>
 }
 
 function N8nTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   const n = d?.n8n
   return <Panel title="n8n lanes">
     <SectionGate sec={n}>
+      <p style={{ ...muted, color: TOKENS.text[1] }} data-testid="ops-n8n-explainer">
+        Lanes that <b>n8n</b> schedules or dispatches (registry rows with an n8n scheduler or a dispatch block). n8n can fire a lane for real only
+        when its mode is <b>live</b> <i>and</i> it is on the relay <b>live list</b>; otherwise the relay refuses or runs it as a dry run. Cron jobs are on the Jobs &amp; schedules tab.
+      </p>
       <p style={muted}>Live list <span style={mono}>{s(n?.live_list_path)}</span>: {(n?.live_lanes || []).length ? (n?.live_lanes || []).join(', ') : 'empty'}. Changing it restarts the relay and gateway.</p>
-      <Table label="n8n lanes" heads={['Lane', 'Stage', 'Mode', 'On live list', 'Workflow', 'Action']}
+      <Table label="n8n lanes" heads={['Lane',
+        <HeadTip text="Stage" tip={<span>The registry’s rollout step for this lane (<span style={mono}>scheduler.stage</span>): <b>shadow</b> n8n fires a dry run beside cron · <b>canary</b> n8n fires live with the cron line still present under the same lock · <b>cutover</b> n8n only.</span>} />,
+        <HeadTip text="Mode" tip={<span>The registry’s <span style={mono}>dispatch.mode</span>: <b>live</b> the n8n run is a real run · <b>dry_run</b> the lane runs with its dry-run argument and writes nothing · <b>off</b> never dispatched.</span>} />,
+        <HeadTip text="On live list" tip={<span>Whether the lane id is in <span style={mono}>TRADEAI_N8N_RELAY_LIVE_LANES</span> in the live-list file. The relay refuses a live fire for any lane not listed.</span>} />,
+        <HeadTip text="Workflow" tip={<span>The n8n workflow id, or the schedule expression when the row has no workflow id.</span>} />,
+        <HeadTip text="Action" tip={<span>Add or remove the lane on the live list. Both are risky on the server: dry-run preview, then a passkey and the typed phrase “ADD LIVE &lt;lane&gt; &lt;date&gt;” or “REMOVE LIVE &lt;lane&gt; &lt;date&gt;”. The host applier backs up the file, edits it, restarts the relay and gateway, and offers an undo.</span>} />]}
         rows={(n?.rows || []).map(r => [<span style={{ color: TOKENS.text[0], fontWeight: 600 }}>{r.lane_id}</span>, s(r.stage), s(r.mode),
           <Chip tone={r.on_live_list ? 'info' : 'neutral'}>{r.on_live_list ? 'yes' : 'no'}</Chip>, <span style={mono}>{s(r.workflow)}</span>,
           r.on_live_list ? <ActionButton state={d} kind="n8n_live_list.remove" text="Remove" params={{ lane_id: r.lane_id }} title={`Remove ${r.lane_id} from the n8n live list`} run={run} />
@@ -385,13 +539,146 @@ function FlagsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
   </Panel>
 }
 
+// ── Data approvals (readiness, 2026-10-22) ──────────────────────────────────────────────────────────────────────────
+// Operator: the tab listed 17 domains, all "proposed", with no other information — "This is not a dashboard."
+// Each row is one data-dictionary domain (config/data_source_authority.json). The server
+// (scripts/lib/data_domain_readiness.py) promotes each proposed row in memory with today's ceilings and runs the real
+// gates on it; src/lib/opsControlsData.ts turns that into words. Read-only: nothing on this tab approves a row.
+function Stat({ label: l, value, tone, tip, testId }: { label: string; value: ReactNode; tone: Tone; tip: string; testId: string }) {
+  const t = toneVars(tone)
+  return <Tooltip content={tip} as="div">
+    <div data-testid={testId} style={{ background: t.bg, border: `1px solid ${t.border}`, borderRadius: RADIUS.md, padding: '8px 12px', minWidth: 120, cursor: 'help' }}>
+      <div style={{ fontSize: TYPE.xs, color: TOKENS.text[2] }}>{l}</div>
+      <div style={{ fontSize: TYPE.lg, fontWeight: 700, color: t.color, fontFamily: FONT.mono }}>{value}</div>
+    </div>
+  </Tooltip>
+}
+
+function FileListView({ fl, empty }: { fl?: FileList | null; empty: string }) {
+  if (!fl || !fl.count) return <span style={{ color: TOKENS.text[2] }}>{empty}</span>
+  return <span style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+    {fl.files.map(f => <span key={f} style={{ ...mono, overflowWrap: 'anywhere' }}>{f}</span>)}
+    {fl.truncated ? <span style={{ color: TOKENS.text[2] }}>… and {fl.count - fl.files.length} more</span> : null}
+  </span>
+}
+
+function DataDetail({ r }: { r: DataRow }) {
+  const kv: CSSProperties = { display: 'grid', gridTemplateColumns: 'minmax(110px, 160px) minmax(0, 1fr)', gap: '4px 10px', fontSize: TYPE.sm, color: TOKENS.text[1], minWidth: 0 }
+  const k: CSSProperties = { color: TOKENS.text[2] }
+  const fv = freshnessView(r.freshness)
+  const lane = r.refresh_lane
+  return <div data-testid={`ops-data-detail-${r.domain}`} style={{ display: 'grid', gap: 10, padding: '8px 4px 12px', minWidth: 0 }}>
+    {r.decision ? <p style={{ ...muted, color: TOKENS.text[1], margin: 0 }}><b>Decision asked:</b> {r.decision}</p> : null}
+    {r.verdict && r.verdict !== 'APPROVED' ? <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: TYPE.sm, fontWeight: 700, color: TOKENS.text[0], marginBottom: 4 }}>
+        <HeadTip text="Readiness checks" tip={<span>Each check is a gate that already exists. The row is promoted in memory with the ceilings measured now — exactly what the approval PR records — and run through it. Nothing is written.</span>} />
+      </div>
+      <div style={{ display: 'grid', gap: 3 }}>
+        {(r.criteria || []).map(c => <div key={c.id} style={{ fontSize: TYPE.sm, color: TOKENS.text[1], minWidth: 0, overflowWrap: 'anywhere' }}>
+          <Tooltip content={`Source: ${c.source}`}><Chip tone={c.ok ? 'success' : 'warning'}>{c.ok ? 'pass' : 'missing'}</Chip></Tooltip> {c.label}
+          {c.gaps.map((g, i) => <div key={i} style={{ marginLeft: 16, color: TOKENS.warning }}>– {g}</div>)}
+        </div>)}
+      </div>
+    </div> : null}
+    <div style={kv}>
+      <span style={k}>Store</span><span style={{ ...mono, overflowWrap: 'anywhere' }}>{s(r.store)}{r.store_detail ? <span style={{ ...muted, display: 'block', fontFamily: FONT.sans }}>{r.store_detail}</span> : null}</span>
+      <span style={k}>Writer</span><span style={{ overflowWrap: 'anywhere' }}>{writerText(r)}{r.writer_note ? <span style={{ ...muted, display: 'block' }}>{r.writer_note}</span> : null}</span>
+      <span style={k}>Writes today</span><FileListView fl={r.live?.writer_files} empty="none seen by the scan (it reads SQL verbs and file markers only)" />
+      <span style={k}>Read path</span><span>{r.projection ? <span style={mono}>{r.projection}</span> : 'no projection'}{r.projection_status ? ` (${r.projection_status})` : ''}</span>
+      <span style={k}>Pages that read it</span><span>{(r.readers_declared || []).join(', ') || '—'}</span>
+      <span style={k}>Files reading the store</span><FileListView fl={r.live?.store_readers} empty="none found" />
+      {r.reader_gate ? <><span style={k}>Reader gate</span><span>gated tables {s((r.reader_gate.tables || []).join(', '))} — a reader needs an approved batch</span></> : null}
+      {(r.approved_reader_batches || []).length ? <><span style={k}>Approved reader batches</span><span style={{ display: 'grid', gap: 2 }}>
+        {(r.approved_reader_batches || []).map(b => <span key={String(b.batch)}>#{b.batch} <span style={mono}>{s(b.reader)}</span> · {s((b.surfaces || []).join(', '))} · approved {s(b.approved_on)}{b.facts ? ` — ${b.facts}` : ''}</span>)}
+      </span></> : null}
+      <span style={k}>Freshness</span><span><Tooltip content={fv.tip}><Chip tone={fv.tone}>{fv.text}</Chip></Tooltip> {r.freshness_sla ? <span style={muted}>SLA: {r.freshness_sla}</span> : null}</span>
+      <span style={k}>Refresh lane</span><span>{lane ? `${s(lane.runner)} · ${s(lane.lane)}${lane.note ? ` — ${lane.note}` : ''}` : '—'}</span>
+      {(r.derived_copies || []).length ? <><span style={k}>Copies</span><span style={{ display: 'grid', gap: 2 }}>
+        {(r.derived_copies || []).map(c => <span key={String(c.store)}><span style={mono}>{s(c.store)}</span> <Chip tone={c.role === 'retiring' ? 'warning' : 'neutral'}>{s(c.role)}</Chip> {s(c.how)}</span>)}
+      </span></> : null}
+      {(r.supersedes || []).length ? <><span style={k}>Supersedes</span><span style={mono}>{(r.supersedes || []).join(', ')}</span></> : null}
+      <span style={k}>Approval</span><span>{r.approval ? `${s(r.approval.approved_by)} · ${s(r.approval.approved_on)} — ${s(r.approval.scope)}`
+        : r.operator_note?.approval_given ? `Operator approved: ${s(r.operator_note.decision)}; pending: ${s(r.operator_note.pending)}`
+        : 'none recorded (proposed)'}{r.extends_approved && r.base_domain_approval ? <span style={{ ...muted, display: 'block' }}>Already a granted §7A domain (approved {s(r.base_domain_approval.approved_on)}); this adds its dictionary block.</span> : null}</span>
+    </div>
+    {(r.live?.findings || []).length ? <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: TYPE.sm, fontWeight: 700, color: TOKENS.text[0], marginBottom: 4 }}>Live checker findings ({r.live?.findings.length})</div>
+      {(r.live?.findings || []).map((f, i) => <div key={i} style={{ fontSize: TYPE.sm, color: TOKENS.text[1], minWidth: 0, overflowWrap: 'anywhere', marginBottom: 2 }}>
+        <Tooltip content={CHECK_TIP[f.check] || f.check}><Chip tone={r.verdict === 'APPROVED' || f.check === 'UNAPPROVED_READER' ? 'danger' : 'warning'}>{f.check}</Chip></Tooltip> {findingText(f)}
+        {f.files?.files?.length ? <span style={{ ...mono, display: 'block', marginLeft: 16, color: TOKENS.text[2] }}>{f.files.files.slice(0, 6).join(' · ')}{f.files.count > 6 ? ` … +${f.files.count - 6}` : ''}</span> : null}
+      </div>)}
+    </div> : null}
+    {(r.approval_effects || []).length ? <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: TYPE.sm, fontWeight: 700, color: TOKENS.text[0], marginBottom: 4 }}>What approving changes</div>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: TYPE.sm, color: TOKENS.text[1] }}>{(r.approval_effects || []).map((e, i) => <li key={i}>{e}</li>)}</ul>
+    </div> : null}
+  </div>
+}
+
 function DataTab({ d }: { d: OpsControlsState | null }) {
   const da = d?.data_approvals
-  return <Panel title="Data dictionary approvals">
+  const rows = sortRows(da?.rows as DataRow[] | undefined)
+  const sum = summarize(rows)
+  const [filter, setFilter] = useState<DataFilter>('all')
+  const [open, setOpen] = useState<Set<string>>(() => new Set())
+  const toggle = (id: string) => setOpen(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
+  const shown = rows.filter(r => matchesDataFilter(r, filter))
+  const scan = scanText(da?.scan)
+  const legacy = rows.length > 0 && rows.every(r => r.verdict === undefined && r.store === undefined)
+  return <Panel title="Data approvals" right={<span style={{ ...muted, color: toneVars(scan.tone).color }} data-testid="ops-data-scan">{scan.text}</span>}>
     <SectionGate sec={da}>
+      <p style={{ ...muted, color: TOKENS.text[1] }} data-testid="ops-data-explainer">{EXPLAINER} Hover or tap any underlined heading, number or badge for its meaning.</p>
+      {legacy ? <p role="alert" style={{ ...muted, color: TOKENS.warning, fontWeight: 600 }}>This server sends only domain names and status; readiness needs the newer server.</p> : null}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '8px 0' }} role="group" aria-label="Data approvals summary">
+        <Stat testId="ops-data-approved" label="Approved" value={sum.approved} tone="success" tip={SUMMARY_TIP.approved} />
+        <Stat testId="ops-data-ready" label="Ready to approve" value={sum.ready} tone="info" tip={SUMMARY_TIP.ready} />
+        <Stat testId="ops-data-not-ready" label="Not ready" value={sum.notReady} tone={sum.notReady ? 'warning' : 'neutral'} tip={SUMMARY_TIP.not_ready} />
+        <Stat testId="ops-data-findings" label="Findings" value={sum.findings} tone={sum.findings ? 'warning' : 'neutral'} tip={SUMMARY_TIP.findings} />
+      </div>
+      {sum.pendingPr.length ? <p style={muted}>Operator-approved, waiting for its promotion PR: <span style={mono}>{sum.pendingPr.join(', ')}</span>. It binds only once that PR merges.</p> : null}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', margin: '8px 0' }} role="group" aria-label="Filter domains">
+        {DATA_FILTERS.map(([k, text]) => {
+          const sel = filter === k
+          const n = rows.filter(r => matchesDataFilter(r, k)).length
+          return <button key={k} type="button" aria-pressed={sel} onClick={() => setFilter(k)}
+            style={{ ...btnStyle(sel ? 'info' : 'plain'), padding: '4px 10px', minHeight: 28, fontSize: TYPE.sm }}>
+            {text} <span style={{ fontFamily: FONT.mono, color: TOKENS.text[2] }}>{n}</span>
+          </button>
+        })}
+      </div>
+      <div style={{ overflowX: 'auto', minWidth: 0 }}>
+        <table aria-label="Data approvals" style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr>
+            <th style={{ ...cell, color: TOKENS.text[3] }}>Domain</th>
+            <th style={{ ...cell, color: TOKENS.text[3], whiteSpace: 'nowrap' }}><HeadTip text="Verdict" tip={<>
+              <span><b>Approved</b> — {VERDICT_TIP.APPROVED}</span><span><b>Ready to approve</b> — {VERDICT_TIP.READY_TO_APPROVE}</span>
+              <span><b>Not ready</b> — {VERDICT_TIP.NOT_READY}</span></>} /></th>
+            <th style={{ ...cell, color: TOKENS.text[3] }}><HeadTip text="Store · writer" tip="The one authoritative store, and the one module allowed to write it. “Not consolidated” means several files write it today under a ceiling that may only fall, with the module that should become the single writer." /></th>
+            <th style={{ ...cell, color: TOKENS.text[3] }}><HeadTip text="Freshness" tip="How recently the store changed: file modification time for a file store; for a table, the newest value of a time column only when the registry declares one in the data dictionary. Shown as evidence; it is not a readiness check." /></th>
+            <th style={{ ...cell, color: TOKENS.text[3] }}><HeadTip text="Findings" tip={SUMMARY_TIP.findings} /></th>
+            <th style={{ ...cell, color: TOKENS.text[3] }}></th>
+          </tr></thead>
+          <tbody>
+            {shown.map(r => {
+              const v = verdictView(r)
+              const fv = freshnessView(r.freshness)
+              const isOpen = open.has(r.domain)
+              const nf = r.live?.findings?.length || 0
+              return [<tr key={r.domain} style={{ borderTop: `1px solid ${TOKENS.borderSubtle}` }}>
+                <td style={cell}><span style={{ display: 'grid', gap: 2 }}><span style={{ color: TOKENS.text[0], fontWeight: 600 }}>{s(r.title || r.domain)}</span><span style={{ ...mono, color: TOKENS.text[2] }}>{r.domain}</span></span></td>
+                <td style={cell}><span style={{ display: 'grid', gap: 2 }}><Tooltip content={v.tip}><Chip tone={v.tone}>{v.label}</Chip></Tooltip>
+                  {(r.missing || []).length ? <span style={{ color: TOKENS.warning, fontSize: TYPE.xs }}>{(r.missing || []).length} missing</span> : null}</span></td>
+                <td style={{ ...cell, overflowWrap: 'anywhere' }}><span style={mono}>{s(r.store)}</span><span style={{ display: 'block', color: TOKENS.text[2] }}>{writerText(r)}</span></td>
+                <td style={cell}><Tooltip content={fv.tip}><Chip tone={fv.tone}>{fv.text}</Chip></Tooltip></td>
+                <td style={cell}>{r.live ? <Chip tone={nf ? (r.verdict === 'APPROVED' ? 'danger' : 'warning') : 'success'}>{nf ? `${nf} finding${nf === 1 ? '' : 's'}` : 'none'}</Chip> : '—'}</td>
+                <td style={cell}><button type="button" aria-expanded={isOpen} onClick={() => toggle(r.domain)} style={{ ...btnStyle('plain'), padding: '4px 10px', minHeight: 28, fontSize: TYPE.sm }}>{isOpen ? 'Hide' : 'Details'}</button></td>
+              </tr>, isOpen ? <tr key={`${r.domain}-d`}><td colSpan={6} style={{ ...cell, background: TOKENS.bg[2] }}><DataDetail r={r} /></td></tr> : null]
+            })}
+            {!shown.length ? <tr><td colSpan={6} style={{ ...cell, color: TOKENS.text[2] }}>No rows</td></tr> : null}
+          </tbody>
+        </table>
+      </div>
       <p style={muted}>{s(da?.note || 'Read-only.')}</p>
-      <Table label="Data approvals" heads={['Domain', 'Title', 'Status']}
-        rows={(da?.rows || []).map(r => [<span style={mono}>{r.domain}</span>, s(r.title), <Chip tone={r.status === 'approved' ? 'success' : 'neutral'}>{s(r.status)}</Chip>])} />
     </SectionGate>
   </Panel>
 }

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "ops_controls_data_approvals_20261022",
+  "files": [
+    "tests/test_data_domain_readiness_20261022.py"
+  ],
+  "anchor": "OPS_CONTROLS_DATA_APPROVALS_20261022",
+  "comment": [
+    "ANCHOR: OPS_CONTROLS_DATA_APPROVALS_20261022 — Ops -> Controls -> Data approvals readiness (operator 2026-10-22: \"This is not a dashboard.\"). Hermetic fixture registry: READY_TO_APPROVE only when the row, promoted in memory with today's ceilings (data_dictionary.promote), passes the real gates (validate, check_domains, evaluate, check_readers) and a named single writer is the only writer (AGENTS.md §26.2); NOT_READY lists each gate finding; APPROVED carries its record; the scan writes nothing and never returns the simulated approval; the cache never blocks and refreshes once per TTL; the data_dictionary writer/reader pre-filter is identical to the bare regex. Read-only: no row is approved here (§17, §26.6)."
+  ]
+}

@@ -35,8 +35,14 @@ ACTIVE; 11.0.0 (§23.24) is PROPOSED.
 
 | Document | Purpose | Status |
 |----------|---------|--------|
-| `docs/ops/OPS_CONTROLS.md` | The operator Controls surface and its one governed host applier: components, threat model, change kinds (and the NOT_SUPPORTED ones with reasons), data-dictionary coordination with the 19.0.0 package, the operator activation steps (migration, approval key, applier unit, TOTP recovery, passkey enrollment) and rollback | Draft (branch feat/ops-controls-20261022) |
+| `docs/ops/OPS_CONTROLS.md` | The operator Controls surface and its one governed host applier: components, threat model, change kinds (and the NOT_SUPPORTED ones with reasons), data-dictionary coordination with the 19.0.0 package, the operator activation steps (migration, approval key, applier unit, TOTP recovery, passkey enrollment) and rollback; §8 how to read the Jobs & schedules tab (plain status, crontab-vs-registry mismatches, filters, cron in words) | Draft (branch feat/ops-controls-20261022) |
 | `docs/ops/OPS_CONTROLS_API.md` | Response contract for `/api/v2/ops/controls/*` (state read model, request lifecycle, WebAuthn step-up, undo) | Draft |
+
+## Agent claim board (2026-10-22) — advisory until AGENTS.md 19.1.0
+
+| Document | Purpose | Status |
+|----------|---------|--------|
+| `docs/ops/AGENT_CLAIM_BOARD.md` | Multi-vendor claim board (Claude, Codex, Cursor as equal peers): one JSON per claim, overlap/glob rules, 2 h stale takeover, compaction to `claims_history.jsonl`, draft-PR fallback for cloud agents, `GET /api/v2/coordination/claims`, Coordination → Who's working, operator install (timer + warn-only pre-commit line) | Active (branch feat/agent-claim-board-20261022) |
 
 ## Live changes (2026-10-20)
 
@@ -156,7 +162,7 @@ Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `sc
 
 | Document | Purpose | Status |
 |----------|---------|--------|
-| `docs/options-module.md` | **Canonical** — current proposal flow (income screen → enterprise gates → options thesis + lifecycle → CIO review → Schwab Validate → operator approval → per-order 2FA), gates/thresholds with config keys, API routes | Active (canonical, 2026-09-26) |
+| `docs/options-module.md` | **Canonical** — current proposal flow (income screen → enterprise gates → options thesis + lifecycle → CIO review → Schwab Validate → operator approval → per-order 2FA), gates/thresholds with config keys, API routes; the CC v3 Options lifecycle desk (Gate 3: act-first table incl. open legs, freshness on every number, classic view at `view=classic`) | Active (canonical, 2026-09-26; desk 2026-10-22) |
 | `docs/OPTIONS_LIFECYCLE_DESK.md` | Open-position management (lifecycle desk) | Active |
 | `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Broker routing labels + manual-execution logging; defers to options-module.md for the proposal path | Active |
 | `docs/OPTIONS_STRATEGY_PIPELINE.md` | Alpaca paper strategy lane — **training only** | Active (training only) |

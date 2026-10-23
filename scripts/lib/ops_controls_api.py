@@ -592,7 +592,13 @@ def jobs_view(ctx: Ctx) -> dict:
                      "line_sha256": C.sha256_text(line) if line else None,
                      "display": C.redact(line) if line else None,
                      "paused_on": pm.group(1) if pm else None, "paused_note": pm.group(2) if pm else None,
-                     "broker_class": bool(tokens), "broker_tokens": tokens, "note": (r.get("note") or "")[:200]})
+                     "broker_class": bool(tokens), "broker_tokens": tokens, "note": (r.get("note") or "")[:200],
+                     # Additive (jobs readability, 2026-10-22): lets the page say "runs on n8n" for a cut-over lane,
+                     # date the registry state, and read an AMBIGUOUS row as running vs paused. Display only.
+                     "dispatch_mode": (r.get("dispatch") or {}).get("mode"),
+                     "registry_since": r.get("state_since"),
+                     "registry_reason": (str(r.get("state_reason") or "")[:200] or None),
+                     "match_counts": {"active": len(a), "paused": len(p)}})
     return {"state": "OK", "reason": None, "as_of": C.iso(ctx.clock()), "rows": rows,
             "unmatched_active_lines": len([ln for ln in active if ln not in matched])}
 
@@ -650,10 +656,15 @@ def grants_view(ctx: Ctx) -> dict:
 
 
 def data_approvals_view(ctx: Ctx) -> dict:
-    doc = json.loads((ctx.hosts.code_root / C.AUTHORITY_REL).read_text(encoding="utf-8"))
-    rows = [{"domain": p.get("domain"), "title": p.get("title"), "status": p.get("status")}
-            for p in doc.get("proposed_domains") or []]
-    return {"state": "OK", "rows": rows, "note": "Registry grants are a reviewed PR (§26.6); this tab is read-only."}
+    """Per-domain readiness (scripts/lib/data_domain_readiness.py): store, writer, readers, live checker findings,
+    freshness, approval and a READY_TO_APPROVE / NOT_READY / APPROVED verdict. The scan runs in one background
+    thread at most once per ~60 s; this call never waits on it. Read-only: nothing here approves a row."""
+    from scripts.lib import data_domain_readiness as R
+
+    v = R.cached_view(ctx.hosts.code_root)
+    return {"state": "OK", **v,
+            "note": "Read-only. A grant is the operator's decision (AGENTS.md §17, §26.6), applied by a reviewed PR "
+                    "that records the approval with data_dictionary.promote; nothing on this tab approves a row."}
 
 
 def release_view(ctx: Ctx) -> dict:

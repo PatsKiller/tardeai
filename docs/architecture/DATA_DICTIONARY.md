@@ -342,6 +342,7 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | `alert_occurrences` (table) | derived | occurrence dedupe view of alert_events | 0 |
 | `open_trade_alerts` (table) | derived | per-desk alert table; writer unknown in the 2026-10-22 inventory — classify before approval | 1 |
 | `watch_alerts` (table) | derived | Watch desk alert view (watch_alerts_eval) | 1 |
+| `runtime/unified_momentum_alerts.jsonl` (file) | history | Gate 4 unified momentum alert ledger (2026-10-22): shadow builds and live thread roots (first message id per chat), one writer scripts/lib/unified_momentum_alert.py; proposed, folds into alert_events at grant | — |
 
 ### Notification intents and deliveries — `comms_intents` (PROPOSED)
 

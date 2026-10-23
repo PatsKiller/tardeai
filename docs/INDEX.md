@@ -1431,6 +1431,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/ACTIVE_TRADER_STAGE0_BASELINE.md` | Active Trader Stage 0 — Baseline |
 | `docs/implementation/ACTIVE_TRADER_VENUE_ELIGIBILITY_v1.md` | Active Trader — Venue Eligibility & Schwab Compliance-Block Prompt (Stage 1a) |
 | `docs/implementation/CADI_OFFLINE_HISTORICAL_REPLAY_ARCHIVE_CONTRACT.md` | Offline CADI historical replay archive contract |
+| `docs/implementation/CALIBRATION_SHADOW_HARNESS.md` | Calibration shadow harness |
+| `docs/implementation/UNIFIED_MOMENTUM_ALERT_GATE4.md` | Unified momentum alert (Gate 4) and Level 2 book signals |
 | `docs/implementation/backup/restore-drill-proposal-20261009.md` | Backup and recovery coverage: inventory, gate, and monthly restore drill proposal |
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_00_PREFLIGHT.md` | Stage 0 · Pre-flight |
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_01_AGENTS_POLICY_RECONCILIATION.md` | Stage 1 · Constitutional cleanup and conflict matrix |
@@ -1738,6 +1740,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/ACTIVE_TRADER_ARMED_QUALITY_2026-10-09.md` | Active Trader: ARMED quality, stand-down, Trade-AI verdict (2026-10-09) |
 | `docs/ops/ADVICE_DIGESTS_2026-10-08.md` | Advice digests — 10:00 / 15:00 / 17:00 ET (2026-10-08) |
 | `docs/ops/AGENTS_GUARD_HOOK.md` | AGENTS.md guard hook for Claude Code (PreToolUse) |
+| `docs/ops/AGENT_CLAIM_BOARD.md` | Agent claim board — who is working on which files |
 | `docs/ops/AUTONOMOUS_ADVISORY_LOOP_CLOSURE_RESULT_2026-08-23.md` | Trade AI Autonomous Advisory Loop Closure Result |
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Autonomous Advisor Session Closeout — 2026-08-20 |
 | `docs/ops/AUTONOMY_OPERATOR_RUNBOOK.md` | Autonomy Operator Runbook (READ_ONLY_ADVISORY) |
@@ -1895,6 +1898,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/COMMS_HUB_2026-10-07.md` | Communications hub — decision support, re-entry focus, enforced TTL (2026-10-07) |
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 |
 | `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` | CURRENT cutover — execute after 2026-08-27 close |
+| `docs/ops/DATA_DOMAIN_APPROVAL_READINESS_2026-10-22.md` | Data-domain approval readiness — 2026-10-22 |
 | `docs/ops/DECISION_PAYLOAD_LANDING_2026-08-21.md` | DecisionPayload landing check — 2026-08-21 19:31 ET |
 | `docs/ops/DECISION_SPEED_REDESIGN_2026-10-08.md` | Decision-speed redesign — Telegram cards, Home, Communications, Watch (2026-10-08) |
 | `docs/ops/DEEPSEEK_BULK_WINDOW_ET_2026-08-19.md` | DeepSeek bulk window: 10:00–21:00 US Eastern |

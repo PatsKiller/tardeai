@@ -6,10 +6,11 @@
  *
  * Supported query params on /v3/trading:
  *   tab       — hub tab name (Trade AI | Options | Open Trades | Proposals | Broker Orders)
- *   symbol    — ticker to focus (Open Trades, Proposals incl. Path A, Trade AI)
+ *   symbol    — ticker to focus (Open Trades, Proposals incl. Path A, Trade AI, Options desk filter)
  *   proposal  — broker proposal id (Proposals tab)
  *   intent    — broker order intent id (Broker Orders)
- *   otab      — Options nested subtab when tab=Options
+ *   otab      — Options nested subtab when tab=Options (any value other than Desk is the classic view)
+ *   view      — `classic` with tab=Options: the pre-Gate-3 Options views, kept for one release
  *   section   — Proposals: `path-a` (Entry Desk) · Broker Orders: `schwab-accounts`
  *   drawer    — Open Trades drawer to open: `recon` | `writeoffs` | `small` | `help`
  *   account   — optional account disambiguation
@@ -256,8 +257,8 @@ export function tradingTabSearchParams(
     clearProposalQueueParams(next)
   }
   if (tab !== 'Broker Orders') next.delete('intent')
-  if (tab !== 'Options') next.delete('otab')
+  if (tab !== 'Options') { next.delete('otab'); next.delete('view') }
   // keep symbol only for desks that honor it (Scalp moved to /active-trader with its symbol)
-  if (tab !== 'Open Trades' && tab !== 'Proposals' && tab !== 'Trade AI') next.delete('symbol')
+  if (tab !== 'Open Trades' && tab !== 'Proposals' && tab !== 'Trade AI' && tab !== 'Options') next.delete('symbol')
   return next
 }

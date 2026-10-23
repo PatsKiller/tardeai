@@ -55382,6 +55382,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
+    # Agent claim board (operator-approved 2026-10-22): which agent session (Claude, Codex, Cursor -- equal
+    # peers) holds which files, on which branch/PR, since when, last heartbeat. One JSON per claim under
+    # persistent-state data/coordination/claims (scripts/lib/agent_claim_board.py). Read-only: never creates
+    # the directory, never claims, releases or compacts. ?active=1 hides done/abandoned.
+    if base_path == "/api/v2/coordination/claims":
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from lib.agent_claim_board import board_view as _claims_board
+
+            _act = (query or {}).get("active")
+            _act = (_act or [None])[0] if isinstance(_act, list) else _act
+            finished = str(_act or "") not in ("1", "true")
+            return 200, {"ok": True, "data": _claims_board(include_finished=finished)}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
     # Migration board (n8n scheduler-of-record program, stream G, 2026-10-08): per lane the
     # scheduler of record, phase, last run, output-signal age, rollback readiness and risk flags, plus
     # the registry's dispatcher stage counts (scheduler.stage). Computed live, read-only, 60 s cache

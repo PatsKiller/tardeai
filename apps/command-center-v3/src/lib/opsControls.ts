@@ -5,6 +5,8 @@
 // phraseMatches (a mirror of the server's whitespace-collapsed exact compare), kindFor and validateSetting.
 // The server decides every kind's direction; nothing here chooses it. Pure module: no React, no DOM at import.
 
+import type { DataApprovals } from './opsControlsData'
+
 export const OPS_CONTROLS_BASE = '/api/v2/ops/controls'
 
 export type PolicyState = 'ACTIVE' | 'NOT_ACTIVE' | 'UNREADABLE'
@@ -61,7 +63,8 @@ export type OpsControlsState = {
   n8n: Section & { live_list_path?: string; live_lanes?: string[]; rows?: N8nRow[] }
   settings: Section & { rows?: SettingRow[]; history?: SettingHistory[] }
   grants: Section & { tiers?: string[]; active?: ActiveGrant[] }
-  data_approvals: Section & { rows?: Array<{ domain: string; title?: string; status?: string }>; note?: string }
+  // per-domain readiness (scripts/lib/data_domain_readiness.py); older servers send rows with domain/title/status only
+  data_approvals: Section & Omit<DataApprovals, 'state' | 'reason'>
   release_train: Section & { mode?: string; epoch?: number | null; latch?: string }
   passkeys: Passkey[]
   audit: Section & { rows?: AuditRow[] }

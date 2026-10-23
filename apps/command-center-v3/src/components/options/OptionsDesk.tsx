@@ -1,18 +1,22 @@
-/** Options desk (2026-10-22) — the operator-approved Gate 3 layout.
+/** Options lifecycle desk (2026-10-22) — the operator-approved Gate 3 layout (Options.dc.html).
  *
- *  Truth header → data-freshness chips → 7-step lifecycle row → one idea table (accounts merged)
- *  + detail panel → your plans → collapsed drawers. Every term and number carries a glossary
- *  tooltip (src/lib/optionsGlossary.ts).
+ *  Truth header → data-freshness chips → 7-step lifecycle row → act-first strip (open legs the
+ *  monitor says to defend or harvest) → one table, act-first order (open legs to defend, your
+ *  decisions, legs to harvest, ready to place, data, research, plan matches, calm open legs) +
+ *  detail panel → your plans → collapsed drawers. Every term and number carries a glossary tooltip
+ *  (src/lib/optionsGlossary.ts) and every cost states the quote or monitor run it came from.
+ *  The previous Options views stay reachable at ?tab=Options&view=classic for one release.
  *
  *  HARD BOUNDARY: this view never POSTs to an order, preflight, 2FA or broker route. Its next-step
  *  controls only call the hub's existing flows: the Strategy Proposal review modal, the existing
  *  quote-validation route, and the read-only chain drill.
  */
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars } from '../../lib/designTokens'
 import { HOW_THIS_PAGE_WORKS } from '../../lib/optionsGlossary'
 import {
-  buildIdeas, buildPlans, freshnessChips, laneCounts, LANES, planIdeas, strategyGlossaryKey, truthSentence,
+  actFirstSort, buildIdeas, buildPlans, freshnessChips, laneCounts, LANES, openPositionRows, planIdeas, strategyGlossaryKey, truthSentence,
   type Idea, type LaneKey, type NextStep, type Tone,
 } from '../../lib/optionsDeskModel'
 import ManualExecutionLog from '../ManualExecutionLog'
@@ -35,6 +39,8 @@ export type OptionsDeskProps = {
   onChain: (proposalId: string) => void
   onNewPlan: () => void
   onOpenView: (view: 'Proposals' | 'All coverage' | 'Lifecycle' | 'Open Options') => void
+  /** ?symbol=X deep link (for example Open Trades → "Protective put ideas"): pre-filters the table. */
+  initialSymbol?: string | null
 }
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md }
@@ -59,9 +65,10 @@ function btn(primary: boolean, danger = false): CSSProperties {
   }
 }
 
-function NextControl({ step, onReview, onStage, onValidate, onChain, danger }: {
+function NextControl({ step, onReview, onStage, onValidate, onChain, onOpenView, danger }: {
   step: NextStep; danger: boolean
   onReview: OptionsDeskProps['onReview']; onStage: OptionsDeskProps['onStage']; onValidate: OptionsDeskProps['onValidate']; onChain: OptionsDeskProps['onChain']
+  onOpenView: OptionsDeskProps['onOpenView']
 }) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
@@ -72,6 +79,7 @@ function NextControl({ step, onReview, onStage, onValidate, onChain, danger }: {
     if (step.kind === 'review') onReview(step.proposalId)
     else if (step.kind === 'stage') onStage(step.source)
     else if (step.kind === 'chain') onChain(step.proposalId)
+    else if (step.kind === 'view') onOpenView(step.view)
     else if (step.kind === 'validate') {
       setBusy(true); setMsg(null)
       try { setMsg(await onValidate(step.proposalId)) } finally { setBusy(false) }
@@ -80,6 +88,7 @@ function NextControl({ step, onReview, onStage, onValidate, onChain, danger }: {
   const what = step.kind === 'review' ? 'Opens the existing strategy review. Nothing is placed from it without your preflight and per-order 2FA.'
     : step.kind === 'stage' ? 'Opens the existing strategy review to pick an account and size for this plan match. Nothing is placed.'
       : step.kind === 'chain' ? 'Opens the read-only option chain so you can pick a more liquid strike or expiry.'
+        : step.kind === 'view' ? 'Opens the existing Lifecycle view for this open leg (sell vs hold, P&L, roll guidance). Nothing is sent from this desk; you close or roll at the broker with per-order 2FA.'
         : 'Re-reads this exact contract from the live chain (read-only market data) and recomputes the economics. No order is sent.'
   return (
     <span style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
@@ -113,7 +122,7 @@ export default function OptionsDesk(props: OptionsDeskProps) {
   const [selId, setSelId] = useState<string | null>(null)
   const [help, setHelp] = useState(false)
   const [fStrategy, setFStrategy] = useState('')
-  const [fSymbol, setFSymbol] = useState('')
+  const [fSymbol, setFSymbol] = useState(() => String(props.initialSymbol || '').trim().toUpperCase())
   const [fTier, setFTier] = useState('')
 
   const p = proposals && typeof proposals === 'object' ? (proposals.data && !Array.isArray(proposals.data) ? proposals.data : proposals) : null
@@ -121,15 +130,17 @@ export default function OptionsDesk(props: OptionsDeskProps) {
   const now = useMemo(() => new Date(), [proposals])
   const ideas = useMemo(() => buildIdeas(raw, now), [raw, now])
   const plans = useMemo(() => buildPlans(intentFeed, ideas, now), [intentFeed, ideas, now])
-  const allRows = useMemo(() => [...ideas, ...planIdeas(plans)], [ideas, plans])
-  const counts = useMemo(() => laneCounts(proposals, ideas, intentFeed, openPositions), [proposals, ideas, intentFeed, openPositions])
-  const chips = useMemo(() => freshnessChips(proposals, raw, now), [proposals, raw, now])
+  const openRows = useMemo(() => openPositionRows(openPositions, now), [openPositions, now])
+  const allRows = useMemo(() => actFirstSort([...ideas, ...planIdeas(plans), ...openRows]), [ideas, plans, openRows])
+  const counts = useMemo(() => laneCounts(proposals, ideas, intentFeed, openPositions, now), [proposals, ideas, intentFeed, openPositions, now])
+  const chips = useMemo(() => freshnessChips(proposals, raw, now, openPositions), [proposals, raw, now, openPositions])
+  const actNow = openRows.filter(r => r.urgency === 'protect' || r.urgency === 'act')
   const truth = truthSentence(proposals, execStatus, liveEligible)
 
   const filtered = allRows.filter(i => (!lane || i.lane === lane)
     && (!fStrategy || i.strategy === fStrategy) && (!fTier || i.tier === fTier)
     && (!fSymbol || i.symbol.includes(fSymbol.trim().toUpperCase())))
-  const sel: Idea | undefined = allRows.find(i => i.id === selId) || filtered.find(i => i.lane === 'you') || filtered[0]
+  const sel: Idea | undefined = allRows.find(i => i.id === selId) || filtered[0]
   const laneMeta = lane ? LANES.find(l => l.key === lane) : null
   const filtersOn = !!(fStrategy || fSymbol || fTier)
 
@@ -153,15 +164,22 @@ export default function OptionsDesk(props: OptionsDeskProps) {
             <Term k="exec.state">Execution</Term>: {truth} Every idea moves left to right.
           </div>
         </div>
-        <button type="button" onClick={() => setHelp(h => !h)} aria-expanded={help} aria-controls="options-desk-help" style={btn(false)}>
-          How this page works {help ? '▴' : '▾'}
-        </button>
+        <span style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          <Link to="/trading?tab=Options&view=classic" data-testid="options-classic-view-link" style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}
+            title="The previous Options views (Proposals, Lifecycle, All coverage, Open Options, Strategy Overview, Options Trends), kept for one release.">
+            Classic view
+          </Link>
+          <button type="button" onClick={() => setHelp(h => !h)} aria-expanded={help} aria-controls="options-desk-help" style={btn(false)}>
+            How this page works {help ? '▴' : '▾'}
+          </button>
+        </span>
       </div>
       {help && (
         <section id="options-desk-help" aria-label="How this page works" style={{ ...panel, padding: '12px 16px', fontSize: TYPE.base, lineHeight: 1.6, color: TOKENS.text[1] }}>
           <h3 style={{ margin: '0 0 6px', fontSize: TYPE.md, color: TOKENS.text[0] }}>How this page works</h3>
           <p style={{ margin: '0 0 8px' }}><b>The lifecycle.</b> {HOW_THIS_PAGE_WORKS.lifecycle.join(' ')}</p>
           <p style={{ margin: '0 0 8px' }}><b>How to read an idea.</b> {HOW_THIS_PAGE_WORKS.readIdea}</p>
+          <p style={{ margin: '0 0 8px' }}><b>The order.</b> {HOW_THIS_PAGE_WORKS.order}</p>
           <p style={{ margin: '0 0 8px' }}><b>The checklist.</b> {HOW_THIS_PAGE_WORKS.checklist}</p>
           <p style={{ margin: 0 }}><b>What the system never does on its own.</b> {HOW_THIS_PAGE_WORKS.never}</p>
           <p style={{ margin: '8px 0 0', color: TOKENS.text[2] }}>Every underlined term and number has a definition: hover it, tap it, or tab to it with the keyboard. A "—" means the server did not send that value; the page never estimates it.</p>
@@ -210,16 +228,50 @@ export default function OptionsDesk(props: OptionsDeskProps) {
         </div>
       )}
 
+      {actNow.length > 0 && (
+        <section aria-label="Act first" data-testid="options-desk-act-first"
+          style={{ ...panel, padding: '12px 16px', borderLeft: `4px solid ${toneVars('danger').color}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+            <h2 style={{ margin: 0, fontSize: TYPE.md + 2 }}><Term k="concept.act_first">Act first</Term> · open legs the monitor flags</h2>
+            <span style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}><Term k="concept.monitor_rule">a rule, not an order</Term> · nothing here closes or rolls anything</span>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 8 }}>
+            {actNow.map(r => (
+              <div key={r.id} data-testid="options-desk-act-card" data-urgency={r.urgency}
+                style={{ background: TOKENS.bg[2], border: `1px solid ${toneVars(r.urgency === 'protect' ? 'danger' : 'warning').border}`, borderRadius: RADIUS.sm, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+                  <button type="button" onClick={() => setSelId(r.id)} aria-label={`Show ${r.symbol} ${r.strategyLabel} details`}
+                    style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: TOKENS.text[0], ...mono, fontWeight: 600, fontSize: TYPE.md }}>{r.symbol}</button>
+                  <span style={{ ...caps, color: toneColor(r.urgency === 'protect' ? 'danger' : 'warning') }}>{r.urgency === 'protect' ? 'Defend' : 'Harvest'}</span>
+                </span>
+                <span style={{ ...mono, fontSize: TYPE.sm, color: TOKENS.text[2] }}>{r.strategyLabel} · {r.contract}</span>
+                <span style={{ fontSize: TYPE.base, color: toneColor(r.urgency === 'protect' ? 'danger' : 'warning') }}><Term k="concept.monitor_rule">{r.stuck}</Term></span>
+                <span style={{ fontSize: TYPE.sm, color: TOKENS.text[3] }}>{r.costAge.replace(/^at open · /, '')}</span>
+                <span onClick={e => e.stopPropagation()}>
+                  <NextControl step={r.next} danger={r.urgency === 'protect'} onReview={props.onReview} onStage={props.onStage} onValidate={props.onValidate} onChain={props.onChain} onOpenView={props.onOpenView} />
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
         <div style={{ flex: '999 1 680px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
           {/* 4 · One idea table */}
           <section aria-label="Ideas" data-testid="options-desk-ideas" style={panel}>
             <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '12px 16px', borderBottom: `1px solid ${TOKENS.border}` }}>
               <h2 style={{ margin: 0, fontSize: TYPE.md + 2 }}>
-                {laneMeta ? `${laneMeta.name} · ${filtered.length}` : `All ideas in flight · ${filtered.length}`}{filtersOn ? ' (filtered)' : ''}
+                {laneMeta ? `${laneMeta.name} · ${filtered.length}` : `All ideas and open legs · ${filtered.length}`}{filtersOn ? ' (filtered)' : ''}
               </h2>
+              {filtersOn && (
+                <button type="button" data-testid="options-desk-clear-filters" onClick={() => { setFStrategy(''); setFSymbol(''); setFTier('') }} style={btn(false)}
+                  title="Remove the symbol, strategy and tier filters">
+                  {[fSymbol && `Symbol ${fSymbol}`, fStrategy && `Strategy ${allRows.find(i => i.strategy === fStrategy)?.strategyLabel || fStrategy}`, fTier && `Tier ${fTier}`].filter(Boolean).join(' · ')} ×
+                </button>
+              )}
               <span style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>
-                one row per idea · <Term k="concept.merged">accounts merged</Term> · click a row for the full picture
+                <Term k="concept.act_first">act first</Term> · one row per idea · <Term k="concept.merged">accounts merged</Term> · click a row for the full picture
               </span>
             </div>
             <div style={{ overflowX: 'auto' }}>
@@ -236,7 +288,7 @@ export default function OptionsDesk(props: OptionsDeskProps) {
                 {!props.loading && filtered.length === 0 && (
                   <div style={{ padding: '18px 16px', color: TOKENS.text[2] }} data-testid="options-desk-empty">
                     {lane === 'scan' ? 'Found names are inventory, not ideas yet. Open "Scan coverage" below to see which were evaluated and why others were not built.'
-                      : lane === 'open' ? 'Open positions are managed in the Lifecycle view.'
+                      : lane === 'open' ? `No open option legs at the broker${chips.find(c => c.key === 'open')?.value && chips.find(c => c.key === 'open')?.value !== '—' ? ` (${chips.find(c => c.key === 'open')?.value})` : ''}.`
                         : laneMeta ? `Nothing in "${laneMeta.name}" right now.` : 'No ideas in flight. This is not a completed market search; see Scan coverage.'}
                     {lane === 'open' && <> <button type="button" onClick={() => props.onOpenView('Lifecycle')} style={btn(false)}>Open Lifecycle view</button></>}
                   </div>
@@ -261,12 +313,15 @@ export default function OptionsDesk(props: OptionsDeskProps) {
                         <span style={{ ...mono, fontSize: TYPE.sm, color: TOKENS.text[2] }}>{i.contract}</span>
                       </span>
                       <span role="cell" style={{ fontSize: TYPE.base, color: TOKENS.text[1], lineHeight: 1.35 }}>{i.does}</span>
-                      <span role="cell" style={{ ...mono, fontSize: TYPE.base }}>{i.costValue == null ? <Missing k="term.total_cost" /> : i.cost}</span>
-                      <span role="cell" style={{ fontSize: TYPE.base, lineHeight: 1.35, color: toneColor(LANE_TONE[i.lane]) }}>
+                      <span role="cell" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <span style={{ ...mono, fontSize: TYPE.base }}>{i.costValue == null ? <Missing k="term.total_cost" /> : i.cost}</span>
+                        <span data-testid="options-desk-cost-age" style={{ fontSize: TYPE.xs, color: TOKENS.text[3], lineHeight: 1.3 }}>{i.costAge}</span>
+                      </span>
+                      <span role="cell" style={{ fontSize: TYPE.base, lineHeight: 1.35, color: toneColor(i.lane === 'open' ? (i.urgency === 'protect' ? 'danger' : i.urgency === 'act' ? 'warning' : 'neutral') : LANE_TONE[i.lane]) }}>
                         <Term k={i.stuckKey}>{i.stuck}</Term>
                       </span>
                       <span role="cell" onClick={e => e.stopPropagation()}>
-                        <NextControl step={i.next} danger={i.lane === 'you'} onReview={props.onReview} onStage={props.onStage} onValidate={props.onValidate} onChain={props.onChain} />
+                        <NextControl step={i.next} danger={i.lane === 'you' || i.urgency === 'protect'} onReview={props.onReview} onStage={props.onStage} onValidate={props.onValidate} onChain={props.onChain} onOpenView={props.onOpenView} />
                       </span>
                     </div>
                   )
@@ -373,7 +428,7 @@ export default function OptionsDesk(props: OptionsDeskProps) {
                   ))}
                 </div>
               )}
-              {sel.quoteTimes && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}><Term k="fresh.stock_quotes">Quote times</Term>: {sel.quoteTimes}</div>}
+              {sel.quoteTimes && sel.lane !== 'open' && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}><Term k="fresh.stock_quotes">Quote times</Term>: {sel.quoteTimes}</div>}
               {sel.strategy === 'protective_put' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <span style={caps}><Term k="concept.scenario">If the stock falls by expiry</Term></span>
@@ -397,7 +452,7 @@ export default function OptionsDesk(props: OptionsDeskProps) {
                 </div>
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="options-desk-checklist">
-                <span style={caps}><Term k="concept.checklist">Checklist to place it</Term></span>
+                <span style={caps}>{sel.lane === 'open' ? <Term k="concept.monitor_rule">What the monitor says</Term> : <Term k="concept.checklist">Checklist to place it</Term>}</span>
                 {sel.checks.map((c, n) => (
                   <div key={`${c.text}-${n}`} style={{ display: 'grid', gridTemplateColumns: '18px 1fr', gap: 8, fontSize: TYPE.base + 1 }}>
                     <span aria-label={c.mark === '✓' ? 'done' : c.mark === '✗' ? 'failing' : 'not yet'} style={{ color: toneColor(MARK_TONE[c.mark]) }}>{c.mark}</span>
@@ -405,9 +460,16 @@ export default function OptionsDesk(props: OptionsDeskProps) {
                   </div>
                 ))}
               </div>
-              <div style={{ fontSize: TYPE.base, color: TOKENS.text[2], lineHeight: 1.45 }} data-testid="options-desk-model">
-                <Term k="concept.aegis_review">Model review (Aegis)</Term>: {sel.model}. A model vote is advice, not a decision.
-              </div>
+              {sel.lane === 'open' ? (
+                <div style={{ fontSize: TYPE.base, color: TOKENS.text[2], lineHeight: 1.45 }} data-testid="options-desk-model">
+                  <Term k="fresh.open_positions">Monitor run</Term>: {sel.quoteTimes}. The monitor applies fixed rules; it never closes or rolls anything.
+                  {sel.monitor?.alerts.length ? <> Alert: {sel.monitor.alerts.join(' · ')}.</> : null}
+                </div>
+              ) : (
+                <div style={{ fontSize: TYPE.base, color: TOKENS.text[2], lineHeight: 1.45 }} data-testid="options-desk-model">
+                  <Term k="concept.aegis_review">Model review (Aegis)</Term>: {sel.model}. A model vote is advice, not a decision.
+                </div>
+              )}
             </>
           )}
         </aside>

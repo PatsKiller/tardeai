@@ -108,6 +108,15 @@ check('unknown tab → Trade AI', resolveTradingTab('Nope') === 'Trade AI')
   const back = tradingTabSearchParams(new URLSearchParams('tab=Open+Trades&drawer=recon'), 'Trade AI')
   check('drawer dropped leaving Open Trades', back.get('drawer') === null)
 }
+{
+  // Options lifecycle desk (2026-10-22): symbol filters the desk; the classic view param stays on Options only.
+  const opt = tradingTabSearchParams(new URLSearchParams('tab=Open+Trades&symbol=SPCX'), 'Options')
+  check('symbol kept for the Options desk', opt.get('symbol') === 'SPCX')
+  const away = tradingTabSearchParams(new URLSearchParams('tab=Options&view=classic&otab=Lifecycle'), 'Open Trades')
+  check('classic view + otab dropped leaving Options', away.get('view') === null && away.get('otab') === null)
+  const stay = tradingTabSearchParams(new URLSearchParams('tab=Options&view=classic&otab=Lifecycle'), 'Options')
+  check('classic view kept on Options', stay.get('view') === 'classic' && stay.get('otab') === 'Lifecycle')
+}
 
 console.log(`\n${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)
