@@ -970,7 +970,44 @@ def send_scalp_alert(
     except Exception as exc:  # noqa: BLE001 — fail closed on gate errors
         logger.warning("%s — GO alert held: CIO stance gate error (%s)", symbol, type(exc).__name__)
         return
+    # Gate 4 (operator-approved design 2026-10-22): ONE threaded alert per symbol/event/day
+    # (lib/unified_momentum_alert.py). Mode from config/scalp_signal_engine.yaml unified_momentum_alert.mode:
+    # off = this block does nothing; shadow (default) = today's alert below is sent unchanged and the unified
+    # message is built and logged beside it; live = the unified message is sent INSTEAD, and today's alert is
+    # sent only if the unified send was not accepted (the operator is never left with nothing).
+    import time as _time
+
+    _unified_mode, _unified = "off", None
+    try:
+        from lib import unified_momentum_alert as _unified
+
+        _unified_mode = _unified.resolve_mode()
+    except Exception as exc:  # noqa: BLE001
+        # ALARM-DELIVERY-DECLARED: an unavailable unified module leaves today's alert path untouched.
+        logger.warning("%s — unified alert unavailable (%s); legacy alert only", symbol, type(exc).__name__)
+        _unified_mode = "off"
+
+    def _emit_unified(mode: str, legacy_alert):
+        try:
+            ev = _unified.event_from_scalp(
+                symbol, score=score, grade=grade, decision=decision, finviz_data=finviz_data,
+                mention_count=mention_count, sources=sources, ts_epoch=_time.time(),
+            )
+            return _unified.emit(ev, mode=mode, legacy_alert=legacy_alert)
+        except Exception as exc:  # noqa: BLE001
+            # ALARM-DELIVERY-DECLARED: shadow build failures never block the alert; a live failure falls back below.
+            logger.warning("%s — unified alert %s failed (%s)", symbol, mode, type(exc).__name__)
+            return {"action": "ERROR", "error": type(exc).__name__}
+
+    if _unified_mode == "live":
+        _u = _emit_unified("live", None)
+        if _u.get("action") in ("SENT", "ACCEPTED_NOT_DELIVERED", "DEDUPED_SAME_STATE", "DUPLICATE_ORIGIN"):
+            logger.info("%s — unified alert %s (%s)", symbol, _u.get("action"), _u.get("state"))
+            return
+        logger.warning("%s — unified alert %s; sending the legacy scalp alert", symbol, _u.get("action"))
     _send_symbol_alert(symbol, msg, priority="P1")  # GO scalp setup: time-critical
+    if _unified_mode == "shadow":
+        _emit_unified("shadow", "social_scalp_scanner.send_scalp_alert")
     try:
         from lib.comms import CommunicationEvent, publish_communication
 
