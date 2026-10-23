@@ -247,6 +247,12 @@ def test_no_active_row_maps_nothing(inputs, committed):
                 empty.append(r["lane_id"])
         elif sched.get("kind") == "systemd":
             names = {str(sched.get("match") or ""), str(sched.get("expression") or "").split(" ")[0]}
+            # 2026-10-22: a unit installed AFTER the frozen 2026-10-09 snapshot cannot map to it. Such a row names
+            # the install date (> captured_on) and live evidence; the live gate (check_lane_registry --fail-on-new)
+            # is what proves it maps a real unit. Anything else must still map the snapshot.
+            post = r.get("post_snapshot_install") or {}
+            if post.get("installed_on", "") > str(inputs["snap"].get("captured_on") or "2026-10-09")[:10] and post.get("evidence"):
+                continue
             if not names & units:
                 empty.append(r["lane_id"])
     assert not empty, empty
@@ -430,6 +436,10 @@ def test_generated_rows_have_evidence_or_are_flagged_unverified(committed):
             or r["lane_id"] == "run-research-intelligence-overnight-archive"
             # incident SPCX resume packet (2026-10-22): PAUSED with the incident id until the operator resumes the line
             or (r.get("state") == "PAUSED" and r.get("incident") == "INC-20261014-SPCX")
+            # ...and resumed by the operator 2026-10-22 (resume-operator.sh; "approve all" item D): stays adopted so
+            # the generator keeps the resume provenance instead of re-deriving a bare row
+            or (r.get("state") == "ACTIVE" and r.get("incident") == "INC-20261014-SPCX"
+                and r.get("state_since") == "2026-10-22")
             # desk truth 2026-10-22: PAUSED (cron line commented) + f09_staged record (staged n8n lane, mode off)
             or "f09_staged" in r
         )

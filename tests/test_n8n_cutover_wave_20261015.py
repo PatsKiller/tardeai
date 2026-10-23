@@ -381,4 +381,7 @@ def test_agent_reviewed_contracts_follow_the_registry_to_canary(lane):
     assert c["status"] == "REVIEWED" and c["stage"] == "canary"
     assert c["review"]["reviewed_by"].startswith("agent")
     assert c["review"]["stage_rereview"]["by"] == "n8n_cutover_wave.py contract-canary"
-    assert _repo_rows()[lane]["scheduler"]["stage"] == "canary"
+    row = _repo_rows()[lane]["scheduler"]
+    # 2026-10-22: hermes-discovery-scorecard was cut over (CW1, n8n_cutover_wave.py cutover; double-run fix approved
+    # by the operator) — kind n8n at stage cutover is the step after canary.
+    assert row["stage"] == "canary" or (row["kind"] == "n8n" and row["stage"] == "cutover")

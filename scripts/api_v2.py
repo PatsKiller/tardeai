@@ -30636,6 +30636,11 @@ def _home_do_now(query=None):
     from lib import needs_action as _na
     from lib.data_broker import home_do_now as _hdn
 
+    def _home_held():
+        from lib.data_broker import watch_domains as _wdom
+
+        return _wdom.held_positions(surface=_wdom.HOME_SURFACE)
+
     def _risk():
         from lib.data_broker.risk_snapshot import get_risk_snapshot as _grs
 
@@ -30648,6 +30653,8 @@ def _home_do_now(query=None):
         "desk_truth": _na.probe_desk_truth,
         "proposals": lambda: _hdn.probe_pending_proposals(_db_query),
         "deploy": lambda: _deploy_events({"status": "open", "days": "14"}),
+        # positions_store reader batch #3 (operator 2026-10-22, "approve all" item G): the one held reader.
+        "held": _home_held,
     }
     out = _hdn.build(probes)
     _HOME_DO_NOW_CACHE["v"] = (_t.monotonic(), out)

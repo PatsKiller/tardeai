@@ -2071,6 +2071,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/active-trader-motion-n8n-20261019/AGENTS_PATCH_DRAFT.md` | DRAFT: AGENTS.md PATCH for the motion marker path (not applied) |
 | `docs/ops/packets/active-trader-motion-n8n-20261019/README.md` | Active Trader motion runtime back up, supervised by n8n (2026-10-19) |
 | `docs/ops/packets/archive-offbox-20261021/README.md` | Archive off-box sync to Google Drive — install packet (2026-10-21) |
+| `docs/ops/packets/catalyst-consolidation-20261022/README.md` | Catalyst momentum engine — cron side of the B8 consolidation (2026-10-22) |
 | `docs/ops/packets/comms-intent-consumer-live-20261017/README.md` | comms-intent consumer LIVE on the n8n fabric (2026-10-17) |
 | `docs/ops/packets/consolidation-health-audit-c3-20261015/README.md` | consolidation-health-audit-c3-20261015: CONSOLIDATE wave C3, operator packet |
 | `docs/ops/packets/cron-effect-claim-wrap-20261016/README.md` | Cron effect-claim wrap 2026-10-16: the cron copy refuses itself when n8n owns the lane |

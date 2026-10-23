@@ -6276,8 +6276,8 @@
     },
     {
       "owner": "portfolio",
-      "state": "PAUSED",
-      "state_since": "2026-10-14",
+      "state": "ACTIVE",
+      "state_since": "2026-10-22",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "crontab -l L1036 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
       "lane_id": "positions-shadow-diff",
@@ -6288,7 +6288,7 @@
         "match": "scripts/positions_sync.py --diff"
       },
       "expected_cadence_hours": 24,
-      "state_reason": "Crontab L1036 is commented with the prefix \"# PAUSED 2026-10-14 schwab-app-deactivated (incident SPCX)\" (crontab -l, read 2026-10-22 ~12:00 ET). INC-20261014-SPCX (docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md). The row said ACTIVE while the line was off (review scratchpad incident-pause/REVIEW.md §3). resume step (a), same day as L501 and L1038. The operator resume packet resume-operator.sh (docs/ops/packets/incident-spcx-resume-20261022/) strips the prefix from this exact line; when it runs, flip this row back to ACTIVE with state_since the resume date (check_registry_runtime_truth DECLARED_OFF_CRON_LINE_ACTIVE, PR #1927, reports the row until then).",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/positions_shadow_diff_latest.json"
@@ -6311,7 +6311,6 @@
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
       },
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
-      "review_by": "2026-10-29",
       "incident": "INC-20261014-SPCX"
     },
     {
@@ -6324,9 +6323,9 @@
         "match": "scripts/positions_proof_daily.py"
       },
       "expected_cadence_hours": 24,
-      "state": "PAUSED",
-      "state_since": "2026-10-14",
-      "state_reason": "Crontab L1038 is commented with the prefix \"# PAUSED 2026-10-14 schwab-app-deactivated (incident SPCX)\" (crontab -l, read 2026-10-22 ~12:00 ET). INC-20261014-SPCX (docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md). The row said ACTIVE while the line was off (review scratchpad incident-pause/REVIEW.md §3). resume step (a), same day as L501 and L1036; the 10-day proof restarts at day 1 (ledger stops at 2026-10-13 day 1 of 10). The operator resume packet resume-operator.sh (docs/ops/packets/incident-spcx-resume-20261022/) strips the prefix from this exact line; when it runs, flip this row back to ACTIVE with state_since the resume date (check_registry_runtime_truth DECLARED_OFF_CRON_LINE_ACTIVE, PR #1927, reports the row until then).",
+      "state": "ACTIVE",
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/positions_proof_ledger.jsonl"
@@ -6346,7 +6345,6 @@
         "f_evidence": "broker/stop/order/daemon class (E-plan bucket C)"
       },
       "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
-      "review_by": "2026-10-29",
       "incident": "INC-20261014-SPCX"
     },
     {
@@ -9743,13 +9741,14 @@
       "lane_id": "materialize-watchlist-strategy-cards",
       "owner": "portfolio",
       "scheduler": {
-        "kind": "cron",
-        "expression": "*/30 6-16 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/materialize_watchlist_strategy_cards.py",
-        "stage": "canary",
+        "cadence": "*/30 6-16 * * 1-5",
+        "stage": "cutover",
         "wave": "D1b",
-        "command_text": "cd $PROJ && flock -n /tmp/materialize_cards.lock $PY scripts/materialize_watchlist_strategy_cards.py >> logs/watchlist_strategy_cards.log 2>&1",
-        "cutover_wave": "CW1"
+        "cutover_wave": "CW1",
+        "command_text": "cd $PROJ && flock -n /tmp/materialize_cards.lock $PY scripts/materialize_watchlist_strategy_cards.py >> logs/watchlist_strategy_cards.log 2>&1"
       },
       "expected_cadence_hours": 61.5,
       "state": "ACTIVE",
@@ -9786,7 +9785,18 @@
         "class": "pipeline",
         "priority": 5,
         "retry_policy": "transient-2"
-      }
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "*/30 6-16 * * 1-5",
+        "match": "scripts/materialize_watchlist_strategy_cards.py",
+        "stage": "canary",
+        "wave": "D1b",
+        "command_text": "cd $PROJ && flock -n /tmp/materialize_cards.lock $PY scripts/materialize_watchlist_strategy_cards.py >> logs/watchlist_strategy_cards.log 2>&1",
+        "cutover_wave": "CW1"
+      },
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the double-run fix (double-run-operator.sh, typed APPLY at the TTY; n8n live RUN_DONE proven in the coordination ledger) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D). The cron line is commented \"# N8N-OWNED 2026-10-22 double-run fix (n8n live RUN_DONE proven; cron side retired)\"; the dispatcher fires this lane live. Row written by scripts/n8n_cutover_wave.py cutover --wave CW1."
     },
     {
       "lane_id": "materialize-income-engine",
@@ -13090,13 +13100,14 @@
       "lane_id": "sync-social-to-intelligence",
       "owner": "research",
       "scheduler": {
-        "kind": "cron",
-        "expression": "30 11,15 * * 1-5",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/sync_social_to_intelligence.py",
-        "stage": "canary",
+        "cadence": "30 11,15 * * 1-5",
+        "stage": "cutover",
         "wave": "W4",
-        "command_text": "cd $PROJ && flock -n /tmp/sync_social_to_intelligence.lock $PY scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1",
-        "cutover_wave": "CW2"
+        "cutover_wave": "CW1",
+        "command_text": "cd $PROJ && flock -n /tmp/sync_social_to_intelligence.lock $PY scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1"
       },
       "expected_cadence_hours": 68.0,
       "state": "ACTIVE",
@@ -13133,7 +13144,18 @@
         "class": "ingest",
         "priority": 5,
         "retry_policy": "none"
-      }
+      },
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "30 11,15 * * 1-5",
+        "match": "scripts/sync_social_to_intelligence.py",
+        "stage": "canary",
+        "wave": "W4",
+        "command_text": "cd $PROJ && flock -n /tmp/sync_social_to_intelligence.lock $PY scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1",
+        "cutover_wave": "CW2"
+      },
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the double-run fix (double-run-operator.sh, typed APPLY at the TTY; n8n live RUN_DONE proven in the coordination ledger) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D). The cron line is commented \"# N8N-OWNED 2026-10-22 double-run fix (n8n live RUN_DONE proven; cron side retired)\"; the dispatcher fires this lane live. Row written by scripts/n8n_cutover_wave.py cutover --wave CW1."
     },
     {
       "lane_id": "hermes-social-sentiment",
@@ -16712,13 +16734,14 @@
       "lane_id": "hermes-discovery-scorecard",
       "owner": "learning",
       "scheduler": {
-        "kind": "cron",
-        "expression": "30 5 * * *",
+        "kind": "n8n",
+        "expression": "dispatcher",
         "match": "scripts/hermes_discovery_scorecard.py",
-        "stage": "canary",
+        "cadence": "30 5 * * *",
+        "stage": "cutover",
         "wave": "LD-W1",
-        "command_text": "cd $PROJ && flock -n /tmp/hermes_discovery_scorecard.lock $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1",
-        "cutover_wave": "CW3"
+        "cutover_wave": "CW1",
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_discovery_scorecard.lock $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
@@ -16755,7 +16778,18 @@
       },
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-15",
-      "adopted_reason": "shadow wave LD-W1 (lane disposition 2026-10-15, M1): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. Cron line L837 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline dry run only. output_signal moved from the cron log / file mtime to the LaneRunReceipt@v1 the script writes on a real run."
+      "adopted_reason": "shadow wave LD-W1 (lane disposition 2026-10-15, M1): a row carrying a reviewed dispatch block is hand-maintained (AGENTS 23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop it. Cron line L837 (crontab -l 2026-10-15, sha256 6a5c6768) keeps doing the real work; the dispatcher fires the offline dry run only. output_signal moved from the cron log / file mtime to the LaneRunReceipt@v1 the script writes on a real run.",
+      "scheduler_before_cutover": {
+        "kind": "cron",
+        "expression": "30 5 * * *",
+        "match": "scripts/hermes_discovery_scorecard.py",
+        "stage": "canary",
+        "wave": "LD-W1",
+        "command_text": "cd $PROJ && flock -n /tmp/hermes_discovery_scorecard.lock $PY scripts/hermes_discovery_scorecard.py >> logs/hermes_discovery_scorecard.log 2>&1",
+        "cutover_wave": "CW3"
+      },
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the double-run fix (double-run-operator.sh, typed APPLY at the TTY; n8n live RUN_DONE proven in the coordination ledger) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D). The cron line is commented \"# N8N-OWNED 2026-10-22 double-run fix (n8n live RUN_DONE proven; cron side retired)\"; the dispatcher fires this lane live. Row written by scripts/n8n_cutover_wave.py cutover --wave CW1."
     },
     {
       "lane_id": "release-window",
@@ -17388,7 +17422,7 @@
         "match": "scripts/schwab_stream_daemon.py\""
       },
       "expected_cadence_hours": 72.0,
-      "state": "PAUSED",
+      "state": "ACTIVE",
       "output_signal": {
         "kind": "db_max",
         "table": "schwab_stream_quotes",
@@ -17416,11 +17450,10 @@
         "token": "schwab",
         "source": "config/lane_stay_on_cron_tokens.json"
       },
-      "state_since": "2026-10-14",
-      "state_reason": "Crontab L462 is commented with the prefix \"# PAUSED 2026-10-14 schwab-app-deactivated (incident SPCX)\" (crontab -l, read 2026-10-22 ~12:00 ET). INC-20261014-SPCX (docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md). The row said ACTIVE while the line was off (review scratchpad incident-pause/REVIEW.md §3). resume step (i), last; takes effect at the next 09:31 session. The operator resume packet resume-operator.sh (docs/ops/packets/incident-spcx-resume-20261022/) strips the prefix from this exact line; when it runs, flip this row back to ACTIVE with state_since the resume date (check_registry_runtime_truth DECLARED_OFF_CRON_LINE_ACTIVE, PR #1927, reports the row until then).",
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "crontab -l L462 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
-      "review_by": "2026-10-29",
       "incident": "INC-20261014-SPCX",
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-22",
@@ -17435,7 +17468,7 @@
         "match": "scripts/sync_basis_from_broker.py"
       },
       "expected_cadence_hours": 72.0,
-      "state": "PAUSED",
+      "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/basis_sync.log",
@@ -17461,11 +17494,10 @@
         "token": "sync_basis_from_broker.py",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
       },
-      "state_since": "2026-10-14",
-      "state_reason": "Crontab L468 is commented with the prefix \"# PAUSED 2026-10-14 schwab-app-deactivated (incident SPCX)\" (crontab -l, read 2026-10-22 ~12:00 ET). INC-20261014-SPCX (docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md). The row said ACTIVE while the line was off (review scratchpad incident-pause/REVIEW.md §3). resume step (b), with L469. The operator resume packet resume-operator.sh (docs/ops/packets/incident-spcx-resume-20261022/) strips the prefix from this exact line; when it runs, flip this row back to ACTIVE with state_since the resume date (check_registry_runtime_truth DECLARED_OFF_CRON_LINE_ACTIVE, PR #1927, reports the row until then).",
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "crontab -l L468 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
-      "review_by": "2026-10-29",
       "incident": "INC-20261014-SPCX",
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-22",
@@ -17480,7 +17512,7 @@
         "match": "scripts/audit_position_basis.py"
       },
       "expected_cadence_hours": 72.0,
-      "state": "PAUSED",
+      "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/position_basis_audit.log",
@@ -17501,11 +17533,10 @@
       "reconciled_on": "2026-10-09",
       "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
       "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
-      "state_since": "2026-10-14",
-      "state_reason": "Crontab L469 is commented with the prefix \"# PAUSED 2026-10-14 schwab-app-deactivated (incident SPCX)\" (crontab -l, read 2026-10-22 ~12:00 ET). INC-20261014-SPCX (docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md). The row said ACTIVE while the line was off (review scratchpad incident-pause/REVIEW.md §3). resume step (b), with L468. The operator resume packet resume-operator.sh (docs/ops/packets/incident-spcx-resume-20261022/) strips the prefix from this exact line; when it runs, flip this row back to ACTIVE with state_since the resume date (check_registry_runtime_truth DECLARED_OFF_CRON_LINE_ACTIVE, PR #1927, reports the row until then).",
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "crontab -l L469 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
-      "review_by": "2026-10-29",
       "incident": "INC-20261014-SPCX",
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-22",
@@ -17520,7 +17551,7 @@
         "match": "scripts/grok_stop_review.py"
       },
       "expected_cadence_hours": 67.0,
-      "state": "PAUSED",
+      "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/grok_stop_review_cron.log",
@@ -17546,11 +17577,10 @@
         "token": "stop",
         "source": "config/lane_stay_on_cron_tokens.json"
       },
-      "state_since": "2026-10-14",
-      "state_reason": "Crontab L497 is commented with the prefix \"# PAUSED 2026-10-14 schwab-app-deactivated (incident SPCX)\" (crontab -l, read 2026-10-22 ~12:00 ET). INC-20261014-SPCX (docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md). The row said ACTIVE while the line was off (review scratchpad incident-pause/REVIEW.md §3). resume step (h), only once the served release carries the spend-gate fix (scripts/grok_stop_review.py PROCESS_ID = \"grok_stop_review\"; operator 2026-10-22 \"switch on after your fix\"). The operator resume packet resume-operator.sh (docs/ops/packets/incident-spcx-resume-20261022/) strips the prefix from this exact line; when it runs, flip this row back to ACTIVE with state_since the resume date (check_registry_runtime_truth DECLARED_OFF_CRON_LINE_ACTIVE, PR #1927, reports the row until then).",
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "crontab -l L497 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
-      "review_by": "2026-10-29",
       "incident": "INC-20261014-SPCX",
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-22",
@@ -17605,7 +17635,7 @@
         "match": "scripts/stop_drift_alert.py"
       },
       "expected_cadence_hours": 72.0,
-      "state": "PAUSED",
+      "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/stop_drift_alert.log",
@@ -17631,11 +17661,10 @@
         "token": "stop_drift_alert",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
       },
-      "state_since": "2026-10-14",
-      "state_reason": "Crontab L652 is commented with the prefix \"# PAUSED 2026-10-14 schwab-app-deactivated (incident SPCX)\" (crontab -l, read 2026-10-22 ~12:00 ET). INC-20261014-SPCX (docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md). The row said ACTIVE while the line was off (review scratchpad incident-pause/REVIEW.md §3). resume step (d). The operator resume packet resume-operator.sh (docs/ops/packets/incident-spcx-resume-20261022/) strips the prefix from this exact line; when it runs, flip this row back to ACTIVE with state_since the resume date (check_registry_runtime_truth DECLARED_OFF_CRON_LINE_ACTIVE, PR #1927, reports the row until then).",
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "crontab -l L652 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
-      "review_by": "2026-10-29",
       "incident": "INC-20261014-SPCX",
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-22",
@@ -17654,7 +17683,7 @@
         ]
       },
       "expected_cadence_hours": 64.42,
-      "state": "PAUSED",
+      "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/hedging_radar_latest.json",
@@ -17681,11 +17710,10 @@
         "token": "options_chain_snapshot.py",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
       },
-      "state_since": "2026-10-14",
-      "state_reason": "Crontab L772 + L778 is commented with the prefix \"# PAUSED 2026-10-14 schwab-app-deactivated (incident SPCX)\" (crontab -l, read 2026-10-22 ~12:00 ET). INC-20261014-SPCX (docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md). The row said ACTIVE while the line was off (review scratchpad incident-pause/REVIEW.md §3). resume step (f), both lines. The operator resume packet resume-operator.sh (docs/ops/packets/incident-spcx-resume-20261022/) strips the prefix from this exact line; when it runs, flip this row back to ACTIVE with state_since the resume date (check_registry_runtime_truth DECLARED_OFF_CRON_LINE_ACTIVE, PR #1927, reports the row until then).",
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 2.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "crontab -l L772 + L778 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
-      "review_by": "2026-10-29",
       "incident": "INC-20261014-SPCX",
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-22",
@@ -17826,7 +17854,7 @@
         "match": "scripts/schwab_econfirm_reconcile.py"
       },
       "expected_cadence_hours": 72.0,
-      "state": "PAUSED",
+      "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/econfirm.log",
@@ -17852,11 +17880,10 @@
         "token": "schwab_econfirm_reconcile.py",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
       },
-      "state_since": "2026-10-15",
-      "state_reason": "Crontab L784 is commented with the prefix \"# PAUSED 2026-10-15 schwab-app-deactivated (incident SPCX, grant 0f9de907)\" (crontab -l, read 2026-10-22 ~12:00 ET). INC-20261014-SPCX (docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md). The row said ACTIVE while the line was off (review scratchpad incident-pause/REVIEW.md §3). resume step (e), after a one-off --days 10 --dry-run backfill check (the 10-14 SPCX eConfirms fall outside a 7-day window). It makes no Schwab API call (Gmail via gog). The operator resume packet resume-operator.sh (docs/ops/packets/incident-spcx-resume-20261022/) strips the prefix from this exact line; when it runs, flip this row back to ACTIVE with state_since the resume date (check_registry_runtime_truth DECLARED_OFF_CRON_LINE_ACTIVE, PR #1927, reports the row until then).",
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-15 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "crontab -l L784 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
-      "review_by": "2026-10-29",
       "incident": "INC-20261014-SPCX",
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-22",
@@ -17871,7 +17898,7 @@
         "match": "scripts/broker_stop_reconcile.py"
       },
       "expected_cadence_hours": 72.0,
-      "state": "PAUSED",
+      "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/broker_stop_reconcile.log",
@@ -17897,11 +17924,10 @@
         "token": "broker_stop_reconcile.py",
         "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
       },
-      "state_since": "2026-10-14",
-      "state_reason": "Crontab L794 is commented with the prefix \"# PAUSED 2026-10-14 schwab-app-deactivated (incident SPCX)\" (crontab -l, read 2026-10-22 ~12:00 ET). INC-20261014-SPCX (docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md). The row said ACTIVE while the line was off (review scratchpad incident-pause/REVIEW.md §3). resume step (c); clears the 7 broker-sourced stops.json entries frozen since 10-14 (possible phantom protection). The operator resume packet resume-operator.sh (docs/ops/packets/incident-spcx-resume-20261022/) strips the prefix from this exact line; when it runs, flip this row back to ACTIVE with state_since the resume date (check_registry_runtime_truth DECLARED_OFF_CRON_LINE_ACTIVE, PR #1927, reports the row until then).",
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-14 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "crontab -l L794 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
-      "review_by": "2026-10-29",
       "incident": "INC-20261014-SPCX",
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-22",
@@ -17916,7 +17942,7 @@
         "match": "scripts/sweep_schwab_instruments.py"
       },
       "expected_cadence_hours": 168.0,
-      "state": "PAUSED",
+      "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/runtime/schwab_instrument_evidence.json",
@@ -17943,11 +17969,10 @@
         "token": "schwab",
         "source": "config/lane_stay_on_cron_tokens.json"
       },
-      "state_since": "2026-10-15",
-      "state_reason": "Crontab L896 is commented with the prefix \"# PAUSED 2026-10-15 schwab-app-deactivated (incident SPCX, grant 0f9de907)\" (crontab -l, read 2026-10-22 ~12:00 ET). INC-20261014-SPCX (docs/incidents/INCIDENT_20261014_SPCX_RESTING_STOPS.md). The row said ACTIVE while the line was off (review scratchpad incident-pause/REVIEW.md §3). resume step (g); weekly, Saturday 03:30. The operator resume packet resume-operator.sh (docs/ops/packets/incident-spcx-resume-20261022/) strips the prefix from this exact line; when it runs, flip this row back to ACTIVE with state_since the resume date (check_registry_runtime_truth DECLARED_OFF_CRON_LINE_ACTIVE, PR #1927, reports the row until then).",
+      "state_since": "2026-10-22",
+      "state_reason": "Operator 2026-10-22 approved the incident-SPCX resume packet (\"yes\" to the 4-item proposal; resume run by the operator at the TTY, typed RESUME) and, verbatim, \"yes i approve 'approve all' (A–L)\" (item D: registry rows match the resume). Resumed by docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh on 2026-10-22 ~21:40 ET; the crontab line was verified active line by line (crontab -l, read-only) when this row was flipped. Previously PAUSED since 2026-10-15 (incident SPCX, schwab-app-deactivated). Active crontab lines matching now: 1.",
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "crontab -l L896 text (prefix quoted above); docs/incidents/POSTMORTEM_20261014_SPCX.md; docs/ops/packets/incident-spcx-resume-20261022/README.md",
-      "review_by": "2026-10-29",
       "incident": "INC-20261014-SPCX",
       "adopted_from_generator": "reconcile_lane_registry@v1",
       "adopted_on": "2026-10-22",
@@ -17973,6 +17998,50 @@
         "path": "/home/johnclaw/logs/drive-docs-sync.log"
       },
       "note": "Row added 2026-10-22 (incident-pause review: L214 had no registry row). RETIRED, archive note: superseded, not deleted."
+    },
+    {
+      "lane_id": "release-train-claim",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-release-train-claim.timer"
+      },
+      "expected_cadence_hours": 0.05,
+      "state": "ACTIVE",
+      "state_since": "2026-10-22",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "a pass with no pending TrainWindowRequest writes nothing; receipts appear only when a request is claimed"
+      },
+      "state_reason": "Installed and enabled on the host (operator item O7, release-train packet docs/ops/packets/release-train-20261021/): tradeai-release-train-claim.timer fires every minute (fallback tick), .path starts the claimer on n8n TrainWindowRequest files, .service runs `scripts/release_window.py train-claim --apply`. While TRAIN_CONTROLLER_STATUS is BUILD_ONLY every live request is refused CONTROLLER_BUILD_ONLY; nothing is pushed, merged or promoted (AGENTS.md §25). Declared 2026-10-22 because the unit ran undeclared and failed check_lane_registry --fail-on-new for every agent. Operator 2026-10-22, verbatim: \"yes i approve 'approve all' (A–L)\" (item D: lane-registry truth).",
+      "note": "Declared by registry-truth PR (approval D). Companion units: tradeai-release-train-claim.service, tradeai-release-train-claim.path.",
+      "post_snapshot_install": {
+        "installed_on": "2026-10-22",
+        "evidence": "systemctl --user list-timers: tradeai-release-train-claim.timer active, firing every minute (2026-10-22); check_lane_registry.py --fail-on-new discovered it as undeclared until this row"
+      }
+    },
+    {
+      "lane_id": "ops-controls-applier",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-ops-applier.service"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-22",
+      "output_signal": {
+        "kind": "none",
+        "reason": "UNVERIFIED_OUTPUT",
+        "detail": "long-running applier; heartbeat is read by GET /api/v2/ops/controls/state, not a file this row can watch"
+      },
+      "state_reason": "Ops → Controls host applier (scripts/ops/operator_controls_applier.py serve; unit config/systemd/user/tradeai-ops-applier.service), AGENTS.md 19.0.0 §27 (ACTIVE 2026-10-22). Installed and enabled 2026-10-22 ~20:34 ET by the operator's setup script after release 6 (operator ran it at the TTY). Applies only HMAC-signed operator approvals; agents cannot use it. Operator 2026-10-22, verbatim: \"yes i approve 'approve all' (A–L)\" (item D: lane-registry truth).",
+      "note": "Declared by registry-truth PR (approval D). The operator_settings store is a separate data-dictionary row proposed by the 19.0.0 package.",
+      "post_snapshot_install": {
+        "installed_on": "2026-10-22",
+        "evidence": "systemctl --user is-active tradeai-ops-applier.service = active (2026-10-22 ~20:34 ET, operator setup script after release 6); check_lane_registry.py --fail-on-new discovered it as undeclared until this row"
+      }
     },
     {
       "lane_id": "run-scheduled-quote-refresh-incubator",
