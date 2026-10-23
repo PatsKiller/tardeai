@@ -285,7 +285,9 @@ def ledger_approved_ids(claims_dir: Path | None) -> set[str]:
         return set()
 
 
-def designs_awaiting(root: Path, designs: list[dict[str, Any]], approved_ids: set[str] | None = None) -> list[dict[str, Any]]:
+def designs_awaiting(
+    root: Path, designs: list[dict[str, Any]], approved_ids: set[str] | None = None
+) -> list[dict[str, Any]]:
     """Operator-pending items: PROPOSED designs, packets whose README Status says PROPOSED/awaiting, and design
     entries whose approval says awaiting operator."""
     out = []
