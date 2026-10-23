@@ -1,5 +1,5 @@
 import {
-  doNowFrom, visibleItems, routerPath, positionsFreshness, moversBars, accountRows, cashPct, inMarketHours, money, pct, ageLabel,
+  doNowFrom, visibleItems, routerPath, positionsFreshness, moversBars, accountRows, cashPct, inMarketHours, money, pct, ageLabel, briefingSummary, parseObservedTime,
 } from './homeDoNow.ts'
 declare const process: { exit(code?: number): never }
 let pass = 0, fail = 0
@@ -63,5 +63,28 @@ check('account rows; 1D falls back to overview', rows[1].name === 'Schwab Roth' 
 check('fallback to today_by_account when performance missing', accountRows(null, { portfolio_value: 1, today_by_account: { a_b: { value: 5, change: 1 } } })[1].name === 'A B')
 check('cash pct', Math.abs((cashPct({ total_cash: 823000, portfolio_value: 1255076 }) ?? 0) - 65.57) < 0.01 && cashPct({ portfolio_value: 0, total_cash: 1 }) === null && cashPct({}) === null)
 check('formatting', money(-6795, true) === '−$6,795' && money(25097, true) === '+$25,097' && money(null) === '—' && pct(-0.54) === '−0.54%' && ageLabel(3000) === '50 min')
+// briefingSummary — /api/v2/command serves {content, generated_at}; never "[object Object]" (site validation 2026-10-22)
+const bObj = briefingSummary({ content: 'The portfolio shows   limited exposure.', generated_at: '2026-10-22 16:20' })
+check('briefing object → its content', bObj === 'The portfolio shows limited exposure.')
+check('briefing never [object Object]', !briefingSummary({ content: 'x' }).includes('[object'))
+check('briefing plain string kept', briefingSummary('plain text') === 'plain text')
+check('briefing JSON string parsed', briefingSummary('{"content":"from json"}') === 'from json')
+check('briefing truncated with ellipsis', briefingSummary('a'.repeat(200)).length === 111 && briefingSummary('a'.repeat(200)).endsWith('…'))
+check('briefing empty/null → empty', briefingSummary(null) === '' && briefingSummary({}) === '' && briefingSummary('  ') === '')
+// "YYYY-MM-DD HH:MM:SS ET" observation stamps (server format) — Date.parse alone gives NaN (site validation 2026-10-22)
+check('ET stamp parsed (EDT)', parseObservedTime('2026-10-22 16:45:03 ET') === Date.parse('2026-10-22T20:45:03Z'))
+check('ET stamp parsed (EST)', parseObservedTime('2026-12-01 09:30 ET') === Date.parse('2026-12-01T14:30:00Z'))
+check('ISO still parsed', parseObservedTime('2026-10-22T15:10:43+00:00') === Date.parse('2026-10-22T15:10:43Z'))
+check('garbage is NaN', Number.isNaN(parseObservedTime('soon')))
+const etEnv = { observation: { envelopes: { holdings: { observed_at: '2026-10-22 16:45:03 ET', freshness: { status: 'FRESH' } } } } }
+const etF = positionsFreshness(etEnv, Date.parse('2026-10-23T02:06:33Z'))
+check('ET-stamped FRESH envelope after hours is not STALE / not age unknown', !etF.stale && !etF.label.includes('unknown'))
+const utcEnv = { observation: { envelopes: { holdings: { observed_at: 'bad', freshness: { status: 'FRESH', observed_at_utc: '2026-10-22T20:45:03+00:00' } } } } }
+check('observed_at_utc preferred', positionsFreshness(utcEnv, Date.parse('2026-10-22T21:00:00Z')).ageS === 897)
+const dup = moversBars({ today_change: -10836, top_movers: [
+  { symbol: 'SCHG', day_change: -0.21 }, { symbol: 'SPCX', day_change: -2912.2 }, { symbol: 'V', day_change: 846.27 }, { symbol: 'V', day_change: 5.16 },
+  { symbol: 'SPCX', day_change: -8736.6 }, { symbol: 'SCHG', day_change: -3686.4 }] })
+check('movers: one bar per symbol', new Set(dup.bars.map(b => b.sym)).size === dup.bars.length && dup.bars.length === 3)
+check('movers: per-symbol sum', dup.bars[0].sym === 'SPCX' && dup.bars[0].amount === -11648.8 && dup.bars[1].sym === 'SCHG' && dup.bars[1].amount === -3686.61)
 console.log(`homeDoNow: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

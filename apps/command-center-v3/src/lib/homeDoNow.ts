@@ -184,6 +184,24 @@ export function inMarketHours(nowMs: number): boolean {
   return mins >= 570 && mins < 960
 }
 
+/** Parse an observation time. The server stamps holdings as "2026-10-22 16:45:03 ET", which Date.parse
+ *  rejects (NaN in Chromium) — Home showed "Positions age unknown old · STALE" beside a FRESH envelope
+ *  (site validation 2026-10-22). A trailing " ET"/"EDT"/"EST" is read as America/New_York wall time. */
+export function parseObservedTime(raw: string): number {
+  const direct = Date.parse(raw)
+  if (Number.isFinite(direct)) return direct
+  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)\s*(ET|EDT|EST)$/i.exec(raw.trim())
+  if (!m) return NaN
+  for (const off of ['-04:00', '-05:00']) {
+    const t = Date.parse(`${m[1]}T${m[2]}${off}`)
+    if (!Number.isFinite(t)) continue
+    const wall = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .format(new Date(t)).replace(',', '')
+    if (wall === `${m[1]} ${m[2].slice(0, 5)}`) return t
+  }
+  return NaN
+}
+
 export interface PositionsFreshness { stale: boolean; ageS: number | null; label: string; tip: string }
 
 /** The header badge. Source: /api/v2/overview observation.envelopes.holdings (holdings.json). STALE when the server
@@ -191,8 +209,8 @@ export interface PositionsFreshness { stale: boolean; ageS: number | null; label
  *  positions_store freshness SLA in docs/architecture/DATA_DICTIONARY.md). */
 export function positionsFreshness(overview: any, nowMs: number): PositionsFreshness {
   const env = overview?.observation?.envelopes?.holdings
-  const observed = str(env?.observed_at) ?? str(overview?.last_repriced)
-  const t = observed ? Date.parse(observed) : NaN
+  const observed = str(env?.freshness?.observed_at_utc) ?? str(env?.observed_at) ?? str(overview?.last_repriced)
+  const t = observed ? parseObservedTime(observed) : NaN
   const ageS = Number.isFinite(t) ? Math.max(0, (nowMs - t) / 1000) : null
   const server = str(env?.freshness?.status)
   const market = inMarketHours(nowMs)
@@ -213,9 +231,20 @@ export interface MoverBar { sym: string; amount: number; widthPct: number; negat
 /** "What moved your book today": overview.top_movers (dollar day change per holding), largest absolute first.
  *  The bar width is relative to the largest absolute move shown. */
 export function moversBars(overview: any, max = 6): { bars: MoverBar[]; shownSum: number; total: number | null } {
-  const rows = (Array.isArray(overview?.top_movers) ? overview.top_movers : [])
-    .map((m: any) => ({ sym: String(m?.symbol ?? ''), amount: num(m?.day_change), dayPct: num(m?.day_change_pct) }))
-    .filter((m: any) => m.sym && m.amount != null && m.amount !== 0)
+  // top_movers is one row per account holding, so a symbol held in two accounts appeared twice
+  // (SPCX −$8,737 and SPCX −$2,912; site validation 2026-10-22). Sum the dollar move per symbol.
+  const bySym = new Map<string, { sym: string; amount: number; dayPct: number | null }>()
+  for (const m of (Array.isArray(overview?.top_movers) ? overview.top_movers : [])) {
+    const sym = String(m?.symbol ?? '').trim().toUpperCase()
+    const amount = num(m?.day_change)
+    if (!sym || amount == null) continue
+    const cur = bySym.get(sym)
+    if (cur) { cur.amount += amount; if (cur.dayPct == null) cur.dayPct = num(m?.day_change_pct) }
+    else bySym.set(sym, { sym, amount, dayPct: num(m?.day_change_pct) })
+  }
+  const rows = [...bySym.values()]
+    .map(m => ({ ...m, amount: Math.round(m.amount * 100) / 100 }))
+    .filter((m: any) => m.amount !== 0)
     .sort((a: any, b: any) => Math.abs(b.amount) - Math.abs(a.amount))
     .slice(0, max)
   const top = rows.length ? Math.abs(rows[0].amount) : 0
@@ -271,4 +300,29 @@ export function cashPct(overview: any): number | null {
   const pv = num(overview?.portfolio_value)
   if (cash == null || pv == null || pv <= 0) return null
   return (cash / pv) * 100
+}
+
+/** One-line summary of an LLM briefing section for the collapsed "AI briefing" drawer.
+ *  /api/v2/command serves each section as `{content, generated_at}`; String() of that object
+ *  rendered "[object Object]" on Home (site validation 2026-10-22). Accepts a plain string,
+ *  a `{content|summary|text}` object, or a JSON string of one. Empty → ''. */
+export function briefingSummary(raw: unknown, max = 110): string {
+  let s = ''
+  if (raw == null) return ''
+  if (typeof raw === 'object') {
+    const o = raw as Record<string, unknown>
+    s = String(o.content ?? o.summary ?? o.text ?? '')
+  } else {
+    s = String(raw)
+    const t = s.trim()
+    if (t.startsWith('{')) {
+      try {
+        const o = JSON.parse(t)
+        s = String(o?.content ?? o?.summary ?? o?.text ?? t)
+      } catch { /* keep the raw string */ }
+    }
+  }
+  s = s.replace(/\s+/g, ' ').trim()
+  if (!s) return ''
+  return s.length > max ? s.slice(0, max) + '…' : s
 }
