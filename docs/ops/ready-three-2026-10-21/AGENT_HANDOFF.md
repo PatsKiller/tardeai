@@ -1,5 +1,25 @@
 # Agent handoff — 2026-10-21
 
+## Email handoff reconciliation — 2026-10-23 02:23 UTC
+
+Status: local review packets in preparation; qualification BLOCKED by test-runner socket restrictions.
+Owner: Codex
+as_of: 2026-10-23 02:23 UTC
+Measured at: pipeline `1e8a388122f12d88bd5b89d4f30ea7297459731c`; n8n `8ce9dd326`; base `0f5bf2453`.
+
+Read the sent handoff (`1a16572de62c463f`) and its terminal-results follow-up (`1a16683ec25ad46f`). They are historical snapshots; the observations here supersede their pending-profile, unmerged-main, and production-timeout claims only where explicitly verified.
+
+- Pipeline topic now includes the previously omitted portable temporary-directory assertion from integration commit `88b5a1950`, cherry-picked as `1e8a38812`. The previous 149-pass/1-skip result applies to its parent `fcf489d5b`, not a full-profile run of this new head. Changed-file quality and shell syntax checks pass at the new head.
+- The isolated PostgreSQL test cannot start in this execution environment: `socket.socket(AF_INET, SOCK_STREAM)` raises `PermissionError: [Errno 1] Operation not permitted` in `_free_port`. Result: **13 passed, 1 failed, 21 setup errors**. This is a runner capability blocker, not evidence that the portable-path correction or operator controls are broken. No production database was used.
+- Full profile session `60681` was explicitly interrupted (exit **130**) after the socket blocker was confirmed. Log: `/home/johnclaw/t/pipeline-1e8a38812-full.log`. It is not still running and has no passing terminal aggregate. Rerun the exact-head full profile in an environment that permits disposable local sockets; do not skip its integration gates or disable the hermetic guard.
+- N8n topic rebased cleanly onto main and now ends at `8ce9dd326`. Platform/import guard suites: **63 passed**, log `/home/johnclaw/t/n8n-rebased-qualification.log`. Changed-file lint/format passes; formatting preserves ASTs. Host UFW, DB role, and image-digest observations remain outstanding.
+- Docs incorporated current main with a normal local merge. All three topics remain separate, unpushed, and undeployed.
+- Build metadata GET succeeded: served main **`f7c1e96cbcab399082de186e6367fa834df48e1c`**, built **2026-10-23T00:33:25.492Z**, matching CURRENT. The later health GET was denied at socket creation (`curl: (7) failed to open socket: Operation not permitted`); current health is **UNKNOWN**, not the historical 78/degraded value.
+- No git-push grant is active. Other active grants name overnight release work and specific execution-engineering files; they do not authorize these topic pushes. No grant was consumed, no approval notification was sent, and no new email was sent. Dependencies and C3 were not changed.
+
+Remaining blockers: a runner with local socket capability for full qualification; branch-scoped operator git-push authority before publication; hosted exact-head checks and independent review; live n8n facts and current health. Release remains the normal release train's responsibility, never a candidate-branch deployment.
+
+
 ## Current handoff — 2026-10-22 20:08 UTC
 
 Candidate implementation SHA `88fbafcc27b58b4ea1c78f5e78fcfa9059a5d170` is a local merge of `origin/main` b9804fa with ready-three hardening. Focused checks: self-heal **104 passed** on the authorized unsandboxed rerun; hardening/reaper/flock/pipeline **80 passed**; workflow checks **49 passed**. The four incoming feature suites have **111 passed / 1 failed** because the new desk-truth monitor reads gated `positions_current` outside approved phase-3 Watch scope. Do not add an approval or exemption: no compliant full-fact reader exists in the current registry. No full-profile qualification for this SHA or deployment is evidenced. The last supplied production observation (15:45Z) is degraded with 3 criticals; recheck live state and guard before release work. Keep C3 disabled.
