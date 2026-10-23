@@ -55568,7 +55568,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # commands, and proof of completion" ... "the above should be part of the board"). GET only, all bounded:
     # ?id=<task_id> reads one task file (the drawer's five sections + the B0-prefixed prompt); the playbook is
     # docs/ops/OPERATING_PLAYBOOK.md parsed once per mtime; the handoff export is rebuilt at most once per 30 s.
-    if base_path in ("/api/v2/coordination/task", "/api/v2/coordination/playbook", "/api/v2/coordination/handoff-export"):
+    if base_path in (
+        "/api/v2/coordination/task",
+        "/api/v2/coordination/playbook",
+        "/api/v2/coordination/handoff-export",
+    ):
         if method != "GET":
             return 405, {"ok": False, "error": "read_only"}
         try:

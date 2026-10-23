@@ -463,7 +463,7 @@ def test_build_handoff_export_from_a_board(tmp_path, monkeypatch):
 
 def test_api_routes_are_get_only_and_bounded():
     src = (ROOT / "scripts" / "api_v2.py").read_text(encoding="utf-8")
-    i = src.index('"/api/v2/coordination/task", "/api/v2/coordination/playbook", "/api/v2/coordination/handoff-export"')
+    i = src.index('"/api/v2/coordination/handoff-export",')
     block = src[i : i + 1400]
     assert 'if method != "GET":' in block and '"read_only"' in block
     assert "_wpl.task_detail(" in block and "_wpl.handoff_export()" in block and "_load_playbook()" in block
