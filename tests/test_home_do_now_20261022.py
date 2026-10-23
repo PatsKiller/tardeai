@@ -172,7 +172,9 @@ def test_no_stop_fallback_is_labelled_not_measured_when_no_receipt():
     assert roll["title"] == "2 positions with no stop" and roll["money_at_risk_usd"] == 136_000
     n = out["numbers"]
     assert n["unprotected_positions"] == 2 and n["unprotected_source"] == "risk"
-    assert "positions_current is not approved for Home" in n["positions_source"]
+    # 2026-10-22 operator "approve all" item G: Home is positions_store reader batch #3; with no held probe wired the
+    # source is still the holdings file and says why (tests/test_positions_reader_batch3_home_20261022.py).
+    assert n["positions_source"].startswith("the holdings file via data_broker.risk_snapshot")
     assert n["heat_pct"] == 0.1 and n["heat_limit_pct"] == 5.0
 
 

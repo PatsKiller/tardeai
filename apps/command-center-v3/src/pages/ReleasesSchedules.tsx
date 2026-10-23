@@ -9,7 +9,7 @@ import { useApi } from '../hooks/useApi'
 import { Chip, ChipRow } from '../components/primitives'
 import { FONT, RADIUS, TOKENS, TYPE, toneVars, type Tone } from '../lib/designTokens'
 import {
-  countOrUnavailable, etDateTime, etTime, freshnessTone, kpiDisplay, lastRunText, prList, RELEASES_SCHEDULES_PATH,
+  ciLabel, ciTone, countOrUnavailable, etDateTime, etTime, freshnessTone, queueStoreText, kpiDisplay, lastRunText, prList, RELEASES_SCHEDULES_PATH,
   sectionView, stageTone, verifyLabel, windowTone,
   type LedgerToday, type NextRelease, type Queue, type ReleaseError, type ReleaseRow, type ReleasesSchedulesWire,
   type SectionKey, type SectionView, type Serving, type Timeline, type TimelineRow, type Windows,
@@ -92,14 +92,17 @@ function TrainTab({ s }: { s: Record<SectionKey, SectionView<any>> }) {
       {nx ? <Table label="Next release" heads={['main HEAD', 'Subject', 'Ahead of serving', 'PRs since serving', 'Exact-SHA CI']} empty="—" rows={[[
         <span style={mono}>{nx.short_sha}</span>, nx.subject ?? '—', nx.is_serving ? 'serving now' : countOrUnavailable(nx.commits_ahead),
         prList(nx.prs_since_serving, nx.prs_reason),
-        <span><Pill tone={nx.ci.state === 'OK' ? 'success' : 'warning'}>{nx.ci.state}</Pill>{nx.ci.reason ? <span style={{ ...muted, display: 'block' }}>{nx.ci.reason}</span> : null}</span>,
+        <span title={nx.ci.source ?? ''}><Pill tone={ciTone(nx.ci.state)}>{ciLabel(nx.ci)}</Pill>
+          {(nx.ci.workflows ?? []).length ? <span style={{ ...muted, display: 'block' }}>{(nx.ci.workflows ?? []).map(w => `${w.name ?? '?'} ${w.state ?? '?'}`).join(' · ')}</span> : null}
+          {nx.ci.reason ? <span style={{ ...muted, display: 'block' }}>{nx.ci.reason}</span> : null}</span>,
       ]]} /> : null}
     </Section>
 
     <Section title="Queue · what rides next" sub="PR · state · why not riding" testId="rs-queue" v={s.queue}>
       {q ? <>
+        {q.census.alert ? <p role="alert" data-testid="rs-census-alert" style={{ margin: 0, padding: '8px 10px', borderRadius: RADIUS.sm, fontSize: TYPE.sm, fontWeight: 700, color: toneVars('danger').color, background: toneVars('danger').bg, border: `1px solid ${toneVars('danger').border}` }}>{q.census.alert}</p> : null}
         <ChipRow>
-          <Chip tone={q.store.freshness === 'OK' ? 'neutral' : 'warning'} title={q.store.reason ?? ''}>queue store {q.store.freshness === 'OK' ? `${countOrUnavailable(q.store.total)} queued` : `UNAVAILABLE · ${q.store.reason ?? ''}`}</Chip>
+          <Chip tone={q.store.freshness === 'OK' && q.census.freshness === 'OK' ? 'neutral' : 'warning'} title={q.store.reason ?? ''}>{queueStoreText(q)}</Chip>
           <Chip tone={q.census.freshness === 'OK' ? 'neutral' : 'warning'} title={q.census.reason ?? ''}>PR census {q.census.freshness ?? 'UNAVAILABLE'} · {countOrUnavailable(q.census.open_prs)} open{q.census.as_of ? ` · ${etDateTime(q.census.as_of)}` : ''}</Chip>
         </ChipRow>
         <Table label="Open PRs and why each is not riding" heads={['PR', 'Title', 'Bucket', 'Riding?', 'Why not riding']}

@@ -1798,6 +1798,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_MATCHER_POSITION_DIRECTIVES_2026-08-29.md` | Imperative matcher — position directives (2026-08-29) |
 | `docs/ops/CIO_MATERIAL_NOTIFY_CANARY_2026-08-20.md` | CIO material notify canary — 2026-08-20 |
 | `docs/ops/CIO_MEMORY_SHADOW_MEASURE_PHASE2_2026-08-21.md` | CIO Memory Shadow Measure — Phase 2 start (2026-08-21) |
+| `docs/ops/CIO_MEMORY_SILO_AUDIT_2026-10-23.md` | CIO memory silo audit — every per-security fact vs the CIO record (2026-10-23) |
 | `docs/ops/CIO_NATURAL_PERSISTENT_COGNITION_L5_CLOSEOUT_2026-08-24.md` | CIO natural persistent cognition L5 closeout |
 | `docs/ops/CIO_NOTIFY_PRECONDITIONS_2026-08-29.md` | Notify preconditions — four checks (2026-08-29) |
 | `docs/ops/CIO_OPERATOR_DESK_LOOP_P0_2026-08-20.md` | CIO operator desk loop — P0 intent routing (2026-08-20) |
@@ -1908,7 +1909,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DRIVE_ARCHIVE_2026-09-01.md` | Drive archive — 2026-09-01 |
 | `docs/ops/DRIVE_MUTATION_SAFETY.md` | Drive mutation safety (gog v0.12.x) |
 | `docs/ops/F6_UTC_CRON_PROPOSALS.md` | F6 — UTC scheduling proposals for LLM-heavy jobs |
-| `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (single-approval) |
+| `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (operator-approved, exact-SHA) |
 | `docs/ops/FLASH_ACTIVATION_AND_THESIS_CANARY_2026-08-20.md` | Flash activation + thesis canary — 2026-08-20 |
 | `docs/ops/GITHUB_ACTIONS_COST_REDUCTION_PLAN.md` | GitHub Actions cost-reduction plan |
 | `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md` | GitHub Actions outage — repo visibility flip exhausted the private-repo minute quota |
@@ -2001,6 +2002,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/ROLLBACK_COMMANDS.md` | CURRENT rollback (exact-main phase2) |
 | `docs/ops/SCALP_CATALYST_BULK_2026-10-09.md` | Scalp lane bulk catalyst read — 2026-10-09 |
 | `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` | Session closeout — 2026-08-22 |
+| `docs/ops/SETUP_READINESS_SHARED_VERDICT_2026-10-23.md` | SetupReadiness@v1 — one "driven by / ready / missing" verdict (2026-10-23) |
 | `docs/ops/SIEM_HEALTH_REPAIR_2026-10-06.md` | SIEM incident visibility and recovery |
 | `docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md` | Stance organic park — CLOSED by OBSERVED_LIVE |
 | `docs/ops/SYMBOL_THESIS_ACQUISITION_PIPELINE_LIVE_2026-08-20.md` | Symbol-thesis acquisition pipeline — live (autonomous, debt-sensitive) — 2026-08-20 |
@@ -2071,6 +2073,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/active-trader-motion-n8n-20261019/AGENTS_PATCH_DRAFT.md` | DRAFT: AGENTS.md PATCH for the motion marker path (not applied) |
 | `docs/ops/packets/active-trader-motion-n8n-20261019/README.md` | Active Trader motion runtime back up, supervised by n8n (2026-10-19) |
 | `docs/ops/packets/archive-offbox-20261021/README.md` | Archive off-box sync to Google Drive — install packet (2026-10-21) |
+| `docs/ops/packets/catalyst-consolidation-20261022/README.md` | Catalyst momentum engine — cron side of the B8 consolidation (2026-10-22) |
 | `docs/ops/packets/comms-intent-consumer-live-20261017/README.md` | comms-intent consumer LIVE on the n8n fabric (2026-10-17) |
 | `docs/ops/packets/consolidation-health-audit-c3-20261015/README.md` | consolidation-health-audit-c3-20261015: CONSOLIDATE wave C3, operator packet |
 | `docs/ops/packets/cron-effect-claim-wrap-20261016/README.md` | Cron effect-claim wrap 2026-10-16: the cron copy refuses itself when n8n owns the lane |
@@ -2110,16 +2113,18 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/run-from-release-cohort1-20261015/README.md` | Run from the release: cohort 1 operator packet (2026-10-15) |
 | `docs/ops/packets/swing-alert-single-sender-20261019/README.md` | Swing entry alerts: one sender (2026-10-19) |
 | `docs/ops/packets/tmp-hygiene-auto-apply-20261022/README.md` | /tmp hygiene that deletes — auto-apply on host timers (2026-10-22) |
+| `docs/ops/proposals/main-ci-watch-lane-20261022/README.md` | Proposed n8n lane `main-ci-watch` — main-HEAD exact-SHA CI for the Releases page |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution |
 | `docs/ops/ready-three-2026-10-21/AGENT_HANDOFF.md` | Agent handoff — 2026-10-21 |
-| `docs/ops/ready-three-2026-10-21/CHANGELOG.md` | Change and release log — 2026-10-21 |
-| `docs/ops/ready-three-2026-10-21/CURRENT_STATUS.md` | Current execution status — 2026-10-21 04:35 UTC |
+| `docs/ops/ready-three-2026-10-21/ARCHITECTURE_AND_DATA_FLOW.md` | Architecture and data flow — indicator JSON and ready-three |
+| `docs/ops/ready-three-2026-10-21/CHANGELOG.md` | Change and release log — resumed 2026-10-23 02:17 UTC |
+| `docs/ops/ready-three-2026-10-21/CURRENT_STATUS.md` | Current execution status — 2026-10-23 Claude takeover |
 | `docs/ops/ready-three-2026-10-21/DEPLOYMENT_AND_ROLLBACK.md` | Deployment and rollback gates — 2026-10-21 |
-| `docs/ops/ready-three-2026-10-21/EXECUTIVE_REPORT.md` | Executive gap and readiness report — 2026-10-21 |
-| `docs/ops/ready-three-2026-10-21/LIVE_VALIDATION.md` | Live validation — 2026-10-21 |
+| `docs/ops/ready-three-2026-10-21/EXECUTIVE_REPORT.md` | Executive gap and readiness report — 2026-10-22 |
+| `docs/ops/ready-three-2026-10-21/LIVE_VALIDATION.md` | Live validation — current read-only checkpoint 2026-10-22 21:25 UTC |
 | `docs/ops/ready-three-2026-10-21/README.md` | Ready-three evidence and readiness — 2026-10-21 |
 | `docs/ops/ready-three-2026-10-21/SYSTEM_INVENTORY.md` | System inventory snapshot — 2026-10-21 |
-| `docs/ops/ready-three-2026-10-21/TEST_RESULTS.md` | Test results — 2026-10-21 |
+| `docs/ops/ready-three-2026-10-21/TEST_RESULTS.md` | Test results — current provisional checkpoint 2026-10-22 21:40 UTC |
 | `docs/ops/self_heal_claude_fixer.md` | Self-heal Claude Code fixer — code defects fixed in iterations, shipped as a tested PR |
 | `docs/ops/telegram_channel_diligence_20260916/00_EXECUTIVE_SUMMARY.md` | Telegram Channel Diligence — Executive Summary |
 | `docs/ops/telegram_channel_diligence_20260916/01_CHANNEL_INVENTORY_SOURCE_MAP.md` | Phase 1 — Channel Inventory & Source Mapping |

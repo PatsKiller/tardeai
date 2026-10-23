@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_checkout_20261022",
+  "files": [
+    "tests/test_release_train_checkout_20261022.py"
+  ],
+  "anchor": "RELEASE_TRAIN_CHECKOUT_20261022",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_CHECKOUT_20261022 — the release checkout is explicit and real. scripts/release_window.py",
+    "defaults RELEASE_CHECKOUT to ~/trade-ai-releases/train-checkout (never a dated dev path), honours",
+    "TRADEAI_RELEASE_CHECKOUT (the claimer unit sets it), and Host.ensure_checkout creates it when absent (locked,",
+    "detached linked worktree of the canonical repo at origin/main) or fetches origin main into it; failure is a",
+    "MAIN_UNREADABLE reason naming the path, raised before the queue is read. release_train_arm.sh step E --apply",
+    "NOOP re-runs the relay contract check and writes a PASS/FAILED receipt. Hermetic: temp git repos + the",
+    "arming sandbox under $TMPDIR."
+  ]
+}

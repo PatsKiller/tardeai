@@ -18445,6 +18445,44 @@ _TRADE_AI_FLAG_KEYS = (
 )
 
 
+def _scanner_readiness_builder(payload):
+    """Row -> row + ``setup_readiness`` (SetupReadiness@v1, lib.momentum_setup_evidence.setup_readiness).
+
+    Operator 2026-10-23 (SAIQ): the Opportunities table printed a Yahoo headline the scan itself had marked
+    unverified (catalyst_verified=false, confidence 0.0) as THE catalyst, while the Active Trader alert, reading
+    the same row, said "Verified catalyst: FAILED". Each actionable row now carries the same "driven by / ready /
+    missing" object the alerts print -- built from the row's own MomentumSetupEvidence@v1 block plus today's
+    Hermes scalp research -- so the page renders the shared verdict instead of re-deriving one. Never raises:
+    a row whose evidence cannot be built is returned unchanged (the page then shows "—")."""
+    try:
+        from lib.momentum_setup_evidence import build_setup_evidence, setup_readiness
+        from lib.scanner_candidate_projection import _hermes_catalyst_lookup
+    except Exception:  # noqa: BLE001
+        return lambda row: row
+    now = datetime.now(timezone.utc)
+    stale = bool(payload.get("stale") or payload.get("cache_error"))
+    state = Path.home() / "trade-ai-releases" / "persistent-state"
+    lookup = _hermes_catalyst_lookup(state) if (state / "PERSISTENT_STATE_ROOT.json").is_file() else None
+
+    def build(row):
+        try:
+            day = str(row.get("scan_run_date") or row.get("run_date") or "")[:10] or None
+            observed = row.get("observed_at") or row.get("persisted_at")
+            evidence = build_setup_evidence(
+                row,
+                now=now,
+                observed_at=observed if isinstance(observed, str) else None,
+                source_name="TRADE_AI",
+                source_stale=stale,
+            )
+            hermes = lookup(str(row.get("symbol") or "").upper(), day) if lookup and day else None
+            return {**row, "setup_readiness": setup_readiness(evidence, hermes=hermes)}
+        except Exception:  # noqa: BLE001 - annotation only
+            return row
+
+    return build
+
+
 def trade_ai_scanner():
     """GET /api/v2/trade-ai/scanner — scanner-grade slim projection of /trade-ai.
 
@@ -18466,12 +18504,13 @@ def trade_ai_scanner():
         return dict(cached["data"])
     out = {k: v for k, v in d.items() if k not in ("tickers", "__etag__")}
     slim = []
+    readiness_for = _scanner_readiness_builder(d)
     for row in d.get("tickers") or []:
         if not isinstance(row, dict):
             continue
         dec = str(row.get("decision") or "").upper()
         if dec in ("GO", "WAIT", "MANUAL_REVIEW") or any(row.get(k) for k in _TRADE_AI_FLAG_KEYS):
-            slim.append(row)
+            slim.append(readiness_for(row))
         else:
             slim.append({k: row[k] for k in _TRADE_AI_TRIM_KEYS if k in row})
     out["tickers"] = slim
@@ -25142,7 +25181,11 @@ def _strategy_leaderboard():
                    count(*) AS n, count(*) FILTER (WHERE pnl>0) AS wins,
                    round(100.0*count(*) FILTER (WHERE pnl>0)/NULLIF(count(*),0),1) AS win_rate,
                    round(avg(pnl)::numeric,2) AS avg_pnl, round(sum(pnl)::numeric,2) AS total_pnl,
-                   round(avg(pnl_pct)::numeric,2) AS avg_pct, round(avg(r_multiple)::numeric,2) AS avg_r
+                   round(avg(pnl_pct)::numeric,2) AS avg_pct, round(avg(r_multiple)::numeric,2) AS avg_r,
+                   -- site validation 2026-10-22: a closed trade's stored r_multiple can disagree in sign with
+                   -- its pnl (reit_income: 1 trade, +$298.86, avg_r -1.93), so Live R is flagged, not trusted.
+                   count(*) FILTER (WHERE r_multiple IS NOT NULL AND pnl <> 0
+                                      AND sign(r_multiple) <> sign(pnl)) AS r_sign_conflicts
               FROM paper_trades
              WHERE status='closed' AND pnl IS NOT NULL
              GROUP BY strategy_id""")
@@ -25201,9 +25244,19 @@ def _strategy_leaderboard():
                 {
                     "strategy_id": sid,
                     "live": {
-                        k: _json_clean(lv[k])
-                        for k in ("n", "wins", "win_rate", "avg_pnl", "total_pnl", "avg_pct", "avg_r")
-                    },
+                        k: _json_clean(lv.get(k))
+                        for k in (
+                            "n",
+                            "wins",
+                            "win_rate",
+                            "avg_pnl",
+                            "total_pnl",
+                            "avg_pct",
+                            "avg_r",
+                            "r_sign_conflicts",
+                        )
+                    }
+                    | {"avg_r_suspect": bool(lv.get("r_sign_conflicts"))},
                     "backtest": (
                         {k: _json_clean(b.get(k)) for k in ("sample", "win_rate", "expectancy_r", "profit_factor")}
                         | {"data_suspect": bt_suspect}
@@ -30636,6 +30689,11 @@ def _home_do_now(query=None):
     from lib import needs_action as _na
     from lib.data_broker import home_do_now as _hdn
 
+    def _home_held():
+        from lib.data_broker import watch_domains as _wdom
+
+        return _wdom.held_positions(surface=_wdom.HOME_SURFACE)
+
     def _risk():
         from lib.data_broker.risk_snapshot import get_risk_snapshot as _grs
 
@@ -30648,6 +30706,8 @@ def _home_do_now(query=None):
         "desk_truth": _na.probe_desk_truth,
         "proposals": lambda: _hdn.probe_pending_proposals(_db_query),
         "deploy": lambda: _deploy_events({"status": "open", "days": "14"}),
+        # positions_store reader batch #3 (operator 2026-10-22, "approve all" item G): the one held reader.
+        "held": _home_held,
     }
     out = _hdn.build(probes)
     _HOME_DO_NOW_CACHE["v"] = (_t.monotonic(), out)

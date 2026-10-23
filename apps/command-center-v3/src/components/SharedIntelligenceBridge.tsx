@@ -20,11 +20,16 @@ import {
 
 const panel: CSSProperties = { background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6 }
 
-function useJson(url: string, refreshMs = 120_000) {
+// `enabled` (site validation 2026-10-22): the bridge is mounted app-wide but renders only on /watch and
+// /journal. Unconditionally it fetched five prefs on EVERY page — one of them
+// (portfolio.shared-symbol-context.v1) is ~9.4 MB and re-polled every 2 min — while the server was
+// OOM-cycling at its 2 GiB cgroup limit. Nothing is fetched where nothing is shown.
+function useJson(url: string, refreshMs = 120_000, enabled = true) {
   const [data, setData] = useState<any>(null)
   const [error, setError] = useState('')
   const [tick, setTick] = useState(0)
   useEffect(() => {
+    if (!enabled) return
     let dead = false
     const controller = new AbortController()
     fetch(url, { cache: 'no-store', signal: controller.signal })
@@ -36,7 +41,7 @@ function useJson(url: string, refreshMs = 120_000) {
       .catch(value => { if (!dead && value?.name !== 'AbortError') setError(String(value?.message || value)) })
     const timer = refreshMs > 0 ? window.setTimeout(() => setTick(value => value + 1), refreshMs) : 0
     return () => { dead = true; controller.abort(); if (timer) window.clearTimeout(timer) }
-  }, [url, tick, refreshMs])
+  }, [url, tick, refreshMs, enabled])
   return { data, error, refetch: () => setTick(value => value + 1) }
 }
 function money(value: number | null): string { return value === null ? '—' : `$${value.toFixed(2)}` }
@@ -47,11 +52,11 @@ export default function SharedIntelligenceBridge() {
   const showWatch = location.pathname === '/watch' || location.pathname.startsWith('/watch/')
   const showJournal = location.pathname === '/journal' || location.pathname.startsWith('/journal/')
   const show = showWatch || showJournal
-  const exitPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(EXIT_CACHE_KEY)}`, 120_000)
-  const mandatePref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(MANDATE_KEY)}`, 0)
-  const eventPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(EVENT_KEY)}`, 0)
-  const dispositionPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(DISPOSITION_KEY)}`, 0)
-  const sharedPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(SHARED_CONTEXT_KEY)}`, 120_000)
+  const exitPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(EXIT_CACHE_KEY)}`, 120_000, show)
+  const mandatePref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(MANDATE_KEY)}`, 0, show)
+  const eventPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(EVENT_KEY)}`, 0, show)
+  const dispositionPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(DISPOSITION_KEY)}`, 0, show)
+  const sharedPref = useJson(`/api/v2/ui/prefs/get?key=${encodeURIComponent(SHARED_CONTEXT_KEY)}`, 120_000, show)
   const [expanded, setExpanded] = useState(false)
   const [query, setQuery] = useState('')
 

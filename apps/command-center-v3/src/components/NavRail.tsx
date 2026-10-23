@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
+import { locateIn } from '../lib/navLocate'
 
 type Hub = { to: string; label: string; exact?: boolean; hardNav?: boolean }
 
@@ -58,18 +59,8 @@ const CONTROL_PLANE_PREVIEW: { label: string; hubs: Hub[] } = {
   ],
 }
 
-/** Longest-prefix match so /portfolio/re-entry resolves under Portfolio when Re-Entry is off-nav. */
 function locate(pathname: string): { section: string; page: string } {
-  let best: { section: string; page: string; len: number } | null = null
-  for (const sec of [...SECTIONS, CONTROL_PLANE_PREVIEW]) {
-    for (const h of sec.hubs) {
-      const hit = h.exact ? pathname === h.to : pathname === h.to || pathname.startsWith(h.to + '/')
-      if (hit && (!best || h.to.length > best.len)) {
-        best = { section: sec.label, page: h.label, len: h.to.length }
-      }
-    }
-  }
-  return best ? { section: best.section, page: best.page } : { section: 'Trade', page: 'Home' }
+  return locateIn(pathname, [...SECTIONS, CONTROL_PLANE_PREVIEW])
 }
 
 export default function NavRail() {

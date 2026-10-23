@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from .momentum_setup_evidence import build_setup_evidence, observation_lineage
+from .momentum_setup_evidence import build_setup_evidence, observation_lineage, setup_readiness
 
 SCHEMA = "SharedMomentumCandidates@v1"
 AT_CONTRACT = "active-trader-momentum-alert-v1"
@@ -281,6 +281,17 @@ def build_candidate_projection(
         observation["security_guid"] = guid
         observation["security_guid_basis"] = basis
         observation["catalyst_event"] = _bind_event(identity_registry, symbol, evidence_row)
+        # SetupReadiness@v1 (operator 2026-10-23): the one "driven by / ready / missing" verdict every surface
+        # prints, from this observation's own evidence + today's Hermes research + (AT) its veto codes.
+        hermes = None
+        if catalyst_lookup is not None and observation.get("session_date"):
+            try:
+                hermes = catalyst_lookup(symbol, observation["session_date"])
+            except Exception:  # noqa: BLE001 - a failed lookup is an absent record, never a crash
+                hermes = None
+        observation["readiness"] = setup_readiness(
+            observation.get("setup_evidence"), hermes=hermes, veto_reasons=observation.get("veto_reasons")
+        )
         scope = (
             guid or f"unresolved:{symbol}",
             lineage.get("session_date"),
@@ -373,6 +384,7 @@ def build_candidate_projection(
                     "run_id": c.get("run_id") if isinstance(c.get("run_id"), str) else None,
                     "kind": row.get("kind") if isinstance(row.get("kind"), str) else "UNKNOWN",
                     "sent": row.get("sent") if isinstance(row.get("sent"), bool) else None,
+                    "veto_reasons": [str(v) for v in (row.get("veto_reasons") or []) if isinstance(v, str)],
                     "source": "ACTIVE_TRADER",
                     "lineage": lineage,
                     "observation_basis": "ADVISORY_PUBLICATION" if not c.get("observed_at") else "SOURCE_OBSERVATION",
