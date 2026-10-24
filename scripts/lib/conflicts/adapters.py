@@ -39,7 +39,8 @@ def security_inputs(*, security_guid, symbol, canonical, held, card=None, reentr
     ``held=None`` is unknown and refuses stance evaluation; it never means unheld.
     Extras are typed Input observations, including W1's persisted stop states.
     """
-    subject = Subject("security", str(security_guid or ""), symbol, {"held": held})
+    subject = Subject("security" if security_guid else "identity", str(security_guid or symbol or "unresolved"),
+                      symbol, {"held": held})
     result = EvaluationInputs(subject, None)
     if not security_guid:
         result.gaps.append("confirmed security GUID unavailable")

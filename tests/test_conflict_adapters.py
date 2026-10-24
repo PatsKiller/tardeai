@@ -27,7 +27,7 @@ def test_exact_real_opportunity_rows_keep_evidence_clock_and_do_not_mint_guid():
         bundle = security_inputs(security_guid=None, symbol=symbol, canonical=row, held=None)
         assert bundle.canonical.as_of.isoformat() == row["as_of"]
         assert all(f.kind == "DATA_ERROR" for f in evaluate_inputs(bundle, now=NOW))
-        assert not bundle.subject.id
+        assert bundle.subject.kind == "identity" and bundle.subject.id == symbol
 
 
 def test_watch_review_and_synthesis_keep_their_distinct_evidence_times():
