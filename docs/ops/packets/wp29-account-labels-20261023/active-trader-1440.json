@@ -1,0 +1,56 @@
+{
+  "fixture": true,
+  "clock": "2026-10-23T20:30:00Z",
+  "symbol": "SPCX",
+  "accounts": [
+    {
+      "key": "schwab_rollover_ira",
+      "label": "Schwab Rollover IRA"
+    },
+    {
+      "key": "schwab_taxable",
+      "label": "Schwab Individual"
+    }
+  ],
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "route": "/v3/active-trader?tab=Session%20review",
+  "screenshot_full_page": false,
+  "traffic": {
+    "writes": [],
+    "external": [],
+    "seen": [
+      "/api/v2/ui/prefs/get",
+      "/api/v2/ui/prefs/get",
+      "/api/v2/brokers/schwab/token-health",
+      "/api/v2/data-sources/finviz/credential-health",
+      "/api/v2/system/pipeline-health",
+      "/api/v2/overview",
+      "/api/v2/paper-trade-readiness",
+      "/api/v2/risk-regime/latest",
+      "/api/v2/trade-ai/summary",
+      "/api/v2/live-trading-gate",
+      "/api/v2/health",
+      "/api/v2/design-features",
+      "/api/v2/trade-ai/candidates",
+      "/api/v3/active-trader/session-review",
+      "/api/v3/active-trader/scalp/setups",
+      "/api/v2/analyst-detail",
+      "/api/v2/reports/analyst/links"
+    ],
+    "errors": []
+  },
+  "account_labels": [
+    " · Schwab Rollover IRA",
+    " · Schwab Individual"
+  ],
+  "shared_signal_account_labels": 0,
+  "layout": {
+    "clientWidth": 1222,
+    "scrollWidth": 1222,
+    "scrollLeft": 0
+  },
+  "scope": "Synthetic per-account manual-fill review rows; shared advisory signal has no account authority."
+}

@@ -1,0 +1,58 @@
+{
+  "fixture": true,
+  "clock": "2026-10-23T20:30:00Z",
+  "symbol": "SPCX",
+  "accounts": [
+    {
+      "key": "schwab_rollover_ira",
+      "label": "Schwab Rollover IRA"
+    },
+    {
+      "key": "schwab_taxable",
+      "label": "Schwab Individual"
+    }
+  ],
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "route": "/v3/watch?tab=my-watchlist",
+  "screenshot_full_page": false,
+  "traffic": {
+    "writes": [],
+    "external": [],
+    "seen": [
+      "/api/v2/ui/prefs/get",
+      "/api/v2/ui/prefs/get",
+      "/api/v2/brokers/schwab/token-health",
+      "/api/v2/data-sources/finviz/credential-health",
+      "/api/v2/system/pipeline-health",
+      "/api/v2/overview",
+      "/api/v2/paper-trade-readiness",
+      "/api/v2/risk-regime/latest",
+      "/api/v2/ui/prefs/get",
+      "/api/v2/ui/prefs/get",
+      "/api/v2/ui/prefs/get",
+      "/api/v2/ui/prefs/get",
+      "/api/v2/ui/prefs/get",
+      "/api/v2/trade-ai/summary",
+      "/api/v2/live-trading-gate",
+      "/api/v2/health",
+      "/api/v2/design-features",
+      "/api/v2/risk-regime/latest",
+      "/api/v2/watch/alerts/list",
+      "/api/v3/data-broker/watch-curation",
+      "/api/v2/watch/alerts/list",
+      "/api/v2/analyst-detail",
+      "/api/v2/reports/analyst/links"
+    ],
+    "errors": []
+  },
+  "account_names_in_tooltip": "Held now in Schwab Rollover IRA, Schwab Individual, per the broker-synced Watch held reader.",
+  "visible_account_names": 0,
+  "layout": {
+    "clientWidth": 958,
+    "scrollWidth": 958
+  },
+  "gap": "Current held row names both accounts only in its title tooltip; screenshot shows count."
+}

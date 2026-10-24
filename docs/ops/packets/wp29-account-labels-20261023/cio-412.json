@@ -1,0 +1,49 @@
+{
+  "fixture": true,
+  "clock": "2026-10-23T20:30:00Z",
+  "symbol": "SPCX",
+  "accounts": [
+    {
+      "key": "schwab_rollover_ira",
+      "label": "Schwab Rollover IRA"
+    },
+    {
+      "key": "schwab_taxable",
+      "label": "Schwab Individual"
+    }
+  ],
+  "viewport": {
+    "width": 412,
+    "height": 1000
+  },
+  "route": "/v3/cio?tab=decisions",
+  "screenshot_full_page": false,
+  "traffic": {
+    "writes": [],
+    "external": [],
+    "seen": [
+      "/api/v2/ui/prefs/get",
+      "/api/v2/ui/prefs/get",
+      "/api/v2/brokers/schwab/token-health",
+      "/api/v2/data-sources/finviz/credential-health",
+      "/api/v2/system/pipeline-health",
+      "/api/v2/overview",
+      "/api/v2/paper-trade-readiness",
+      "/api/v2/risk-regime/latest",
+      "/api/v3/cio/dispositions",
+      "/api/v2/trade-ai/summary",
+      "/api/v2/live-trading-gate",
+      "/api/v2/health",
+      "/api/v2/design-features",
+      "/api/v3/cio/observability",
+      "/api/v3/cio/home",
+      "/api/v3/cio/scorecard",
+      "/api/v2/analyst-detail",
+      "/api/v2/reports/analyst/links",
+      "/api/v2/cio/youtube-research-queue"
+    ],
+    "errors": []
+  },
+  "visible_account_names": "2 accounts\nSchwab Rollover IRA\nSchwab Individual",
+  "scope": "One position decision spanning both declared accounts; no disposition button is clicked."
+}
