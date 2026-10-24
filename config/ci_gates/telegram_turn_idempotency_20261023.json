@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "telegram_turn_idempotency_20261023",
+  "files": [
+    "tests/test_telegram_turn_idempotency_20261023.py"
+  ],
+  "comment": [
+    "Private Unix-socket PostgreSQL: exact-page replay and concurrent intake persist once; preserve roles, subjects, corrections and historical rows."
+  ]
+}

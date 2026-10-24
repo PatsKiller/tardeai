@@ -205,6 +205,7 @@ def test_an_unknown_company_is_still_a_measured_gap(monkeypatch):
 # ── persistence: the loop only closes if it is written down ────────────────
 
 class _Cur:
+    rowcount = 1
     def __init__(self): self.rows = []
     def execute(self, sql, params): self.rows.append(params)
 
