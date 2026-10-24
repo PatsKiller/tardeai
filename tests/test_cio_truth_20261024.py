@@ -273,3 +273,36 @@ def test_unified_approval_projection_is_never_added_to_legacy_counts():
     result = truth.approvals_for(projection=unified, rows=[{"kind": "paper", "count": 38}], now=NOW)
     assert result == unified
     assert result is not unified
+
+
+def test_financial_queue_items_keep_source_ids_and_explicit_refs_only():
+    def query(sql, params=None, **kw):
+        assert sql.lstrip().startswith("SELECT")
+        if "FROM action_queue" in sql:
+            return [{"id": 1, "recommendation_id": "rec-1", "symbol": "SPCX", "status": "pending"}]
+        if "FROM paper_trade_proposals" in sql:
+            return [{"id": 1, "symbol": "SPCX", "account": "alpaca_paper", "status": "PENDING"}]
+        return []
+    result = truth.financial_queue_items(db_query=query, now=NOW)
+    assert result["complete"]
+    assert {r["key"] for r in result["items"]} == {"action_queue:1", "paper_trade_proposals:1"}
+    assert result["items"][0]["source_refs"][1] == {"source": "recommendation_registry", "id": "rec-1"}
+    assert result["items"][1]["kind"] == "paper"
+    assert all(r["can_decide"] is False for r in result["items"])
+    assert truth.financial_queue_items(now=NOW)["complete"] is False
+
+
+def test_financial_queue_truncation_is_a_gap_not_a_total():
+    result = truth.financial_queue_items(now=NOW, limit=1,
+        db_query=lambda sql, params=None, **kw: [{"id": 1}, {"id": 2}])
+    assert result["complete"] is False and len(result["gaps"]) == 4
+
+
+def test_projection_does_not_redate_positions_with_quote_clock(holdings, tmp_path):
+    holdings["positions_built_at"] = "2026-10-23T19:00:00-04:00"
+    doc = truth.resolve(tmp_path, NOW, inputs={"holdings": holdings, "companies": {}, "cio_status": {}, "policy": {}, "broker_stops": []})
+    risk = truth.risk_payload(document=doc)
+    header = truth.overview_payload({"pricing": {"canonical_total_value": 999}, "today_pnl": {"total_change": 999}}, document=doc)
+    assert risk["positions_as_of"] == holdings["positions_built_at"]
+    assert header["pricing"]["canonical_total_value"] == header["portfolio_value"]
+    assert header["today_pnl"]["total_change"] == header["today_change"]

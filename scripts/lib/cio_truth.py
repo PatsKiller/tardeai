@@ -79,7 +79,7 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
     for account in sorted({r["account_id"] for r in rows}):
         group = [r for r in rows if r["account_id"] == account]
         summary = summaries.get(account) or {}
-        dates = [_timestamp(r.get("broker_position_as_of") or r.get("as_of")) for r in group]
+        dates = [_timestamp(r.get("broker_position_as_of_at") or r.get("broker_position_as_of") or r.get("as_of")) for r in group]
         dates = [d for d in dates if d]
         accounts.append({"account_id": account, "account_label": account_label(account),
                          "total_usd": _sum_known(group, "market_value"),
@@ -90,6 +90,9 @@ def portfolio_for(holdings_doc: dict, *, now: datetime | None = None) -> dict:
     reason = "holdings unavailable" if not rows else (
         "holding value or day P&L missing" if total is None or day is None else None)
     return {"total_usd": total, "cash_usd": cash, "day_pl_usd": day,
+            "positions_as_of": holdings_doc.get("positions_built_at") or holdings_doc.get("data_as_of"),
+            "valuation_as_of": holdings_doc.get("generated_at"), "quote_as_of": holdings_doc.get("last_repriced"),
+            "quote_source": holdings_doc.get("reprice_source"),
             "day_pl_pct": round(day / (total - day) * 100, 3)
             if total is not None and day is not None and total - day > 0 else None,
             "position_count": len(keys) if rows else None,
@@ -399,6 +402,71 @@ def approvals_for(*, db_query=None, rows=None, projection=None, now=None) -> dic
                         now if rows is not None else None, now, reason="approval queues unavailable" if total is None else None)}
 
 
+def financial_queue_items(*, db_query=None, now=None, limit=200) -> dict:
+    """Bounded source rows for W11's unified queue; no decision capability.
+
+    Source IDs and explicit recommendation/proposal references support causal
+    de-duplication. A symbol or similar title is never an entity identifier.
+    Missing sources and truncation keep global completeness false.
+    """
+    now = now or datetime.now(timezone.utc)
+    limit = max(1, min(200, int(limit)))
+    sources = {
+        "action_queue": ("actions", "SELECT id,recommendation_id,symbol,action,status,created_at,expires_at,dedupe_key "
+                         "FROM action_queue WHERE status='pending' ORDER BY id LIMIT %s"),
+        "john_decision_queue": ("decisions", "SELECT id,category,title,status,created_at,provenance "
+                                "FROM john_decision_queue WHERE status='pending_john' ORDER BY id LIMIT %s"),
+        "paper_trade_proposals": ("proposals", "SELECT id,symbol,account,target_account,status,created_at "
+                                  "FROM paper_trade_proposals WHERE status='PENDING' ORDER BY id LIMIT %s"),
+        "options_approval_queue": ("options", "SELECT id,proposal_id,symbol,status,created_at "
+                                  "FROM options_approval_queue WHERE status='pending' ORDER BY id LIMIT %s"),
+    }
+    items, gaps = [], []
+    for table, (kind, sql) in sources.items():
+        rows = _query_rows(db_query, sql, (limit+1,))
+        if rows is None:
+            gaps.append({"source": table, "reason": "source unreadable"})
+            continue
+        if len(rows) > limit:
+            gaps.append({"source": table, "reason": "source exceeds bounded page; total not established"})
+        for row in rows[:limit]:
+            identifier = row.get("id")
+            if identifier is None:
+                gaps.append({"source": table, "reason": "stable source id unavailable"})
+                continue
+            source_key = f"{table}:{identifier}"
+            item_kind = kind
+            account = canonical_key(row.get("target_account") or row.get("account"))
+            if kind == "proposals":
+                account_type = location_facts({"account": account})["account_type"]
+                item_kind = "paper" if account_type == "paper" else "unclassified_proposals" if account_type == "unknown" else "broker"
+            refs = [{"source": table, "id": str(identifier)}]
+            if row.get("recommendation_id") is not None:
+                refs.append({"source": "recommendation_registry", "id": str(row["recommendation_id"])})
+            if row.get("proposal_id") is not None:
+                refs.append({"source": "options_proposal", "id": str(row["proposal_id"])})
+            provenance = row.get("provenance")
+            if isinstance(provenance, str):
+                try:
+                    provenance = json.loads(provenance)
+                except ValueError:
+                    provenance = {}
+            if isinstance(provenance, dict):
+                for ref in provenance.get("source_refs") or []:
+                    if isinstance(ref, dict) and ref.get("source") and ref.get("id") is not None:
+                        refs.append({"source": str(ref["source"]), "id": str(ref["id"])})
+            items.append({"key": source_key, "source": table, "source_id": str(identifier),
+                          "canonical_entity_id": source_key, "source_refs": refs, "kind": item_kind,
+                          "symbol": row.get("symbol"), "account_id": account or None,
+                          "account_label": account_label(account) if account else None,
+                          "status": row.get("status"), "created_at": row.get("created_at"),
+                          "expires_at": row.get("expires_at"), "category": row.get("category"),
+                          "title": row.get("title"), "action": row.get("action"),
+                          "read_only": True, "can_decide": False})
+    return {"items": items, "complete": not gaps, "gaps": gaps, "scope": "financial_source_rows",
+            "as_of": now.isoformat(), "source": "existing approval queue rows", "limit_per_source": limit}
+
+
 def paper_win_rate(*, db_query=None, stats=None, now=None) -> dict:
     """Same closed-trade denominator as live_trading_gate, including flat rows.
 
@@ -502,7 +570,10 @@ def status_for(root, *, now=None, db_query=None, scorecard=None) -> dict:
     now = now or datetime.now(timezone.utc)
     if scorecard is None:
         from .cio_scorecard import get_cio_scorecard
-        scorecard = get_cio_scorecard(root=Path(root), materialized_only=True)
+        try:
+            scorecard = get_cio_scorecard(root=Path(root), materialized_only=True)
+        except Exception:
+            scorecard = {}
     evaluations = deepcopy(scorecard.get("tiles") or [])
     rows = _query_rows(db_query, "SELECT recommendation,status,created_at FROM hermes_external_research "
                        "WHERE lane='deepseek' AND created_at >= %s", (now - timedelta(hours=24),))
@@ -544,7 +615,8 @@ def apply_status_evaluations(scorecards, canonical_status) -> list[dict]:
                                "blocked": "BLOCKED", "dark": "BLOCKED"}.get(state, "BLOCKED"),
                        value=evaluation.get("verdict"), blocker=evaluation.get("verdict") if state != "working" else None,
                        metrics=deepcopy(evaluation.get("metrics") or []),
-                       source="cio_truth.status_for", last_success=canonical_status.get("as_of"))
+                       source="cio_truth.status_for", last_success=evaluation.get("last_success"),
+                       observed_at=canonical_status.get("as_of"))
         result.append(row)
     return result
 
@@ -599,7 +671,7 @@ def risk_payload(*, root=None, now=None, db_query=None, inputs=None, document=No
             "total_unprotected_mv": unprotected, "position_count": portfolio.get("position_count"),
             "position_counts": portfolio.get("position_counts"), "paper_position_count": None,
             "positions": positions, "stops": {f"{p['account_id']}:{p['symbol']}": p for p in stops["rows"]},
-            "positions_basis": "holdings_live", "positions_as_of": portfolio.get("as_of"),
+            "positions_basis": "holdings_live", "positions_as_of": portfolio.get("positions_as_of"),
             "stop_health": {"protected_count": stops["active_count"], "pending_count": stops["pending_count"],
                             "filled_count": stops["filled_count"], "unprotected_count": stops["unprotected_count"]},
             "correlation": [], "escalation": {}, "source": "cio_truth", "truth": {k: portfolio[k] for k in
@@ -615,6 +687,14 @@ def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None
                today_pct=p["day_pl_pct"], position_count=p["position_count"], position_counts=p["position_counts"],
                pending_approvals=doc["approvals"]["total"], approval_counts=doc["approvals"],
                paper=doc["paper"], truth={k: p[k] for k in ("source", "as_of", "stale", "gap")})
+    out["derived_total_value"] = p["total_usd"]
+    pricing = out.setdefault("pricing", {})
+    pricing.update(canonical_total_value=p["total_usd"], derived_total_value=p["total_usd"],
+                   last_repriced=p["quote_as_of"], reprice_source=p["quote_source"])
+    today_pnl = out.setdefault("today_pnl", {})
+    today_pnl.update(total_change=p["day_pl_usd"], calculated_at=p["valuation_as_of"],
+                     session_date=str(p["quote_as_of"])[:10] if p["quote_as_of"] else None,
+                     mark_source=p["quote_source"])
     out.setdefault("periods", {})["1D"] = {"change": p["day_pl_usd"], "change_pct": p["day_pl_pct"],
                                            "estimated": False, "source": p["source"]}
     out["today_by_account"] = {r["account_id"]: {"value": r["total_usd"], "change": r["day_pl_usd"],
@@ -622,6 +702,8 @@ def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None
                                for r in p["accounts"]}
     aggregate = out.setdefault("portfolio_aggregate", {})
     aggregate["aggregate_value"] = p["total_usd"]
+    aggregate.update(valuation_time=p["valuation_as_of"], quote_observation_time=p["quote_as_of"],
+                     quote_source=p["quote_source"])
     old_accounts = {canonical_key(r.get("account")): r for r in aggregate.get("accounts") or []}
     aggregate["accounts"] = [{**old_accounts.get(r["account_id"], {}), **r,
                               "account": r["account_id"], "total_value": r["total_usd"], "display_value": r["total_usd"]}
@@ -922,6 +1004,7 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
                         "unprotected_value_usd": unprotected_mv, "largest_name": None,
                         "loss_basis": "loss to observed active stops; unprotected downside is not bounded",
                         **{k: portfolio[k] for k in ("source", "as_of", "stale", "gap")}}
+    position_section["as_of"] = portfolio["positions_as_of"]
     by_symbol = {}
     for p in positions:
         by_symbol[p["symbol"]] = by_symbol.get(p["symbol"], 0) + (_number(p.get("market_value")) or 0)
