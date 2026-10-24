@@ -111,9 +111,9 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
   closeRef.current = onClose
   useEffect(() => {
     if (!ctx) { phoneOpened.current = false; return }
+    if (phoneOpened.current && !phone.id) { phoneOpened.current = false; closeRef.current(); return }
     if (!phone.mobile) return
     if (!phoneOpened.current) { phoneOpened.current = true; phone.open('record') }
-    else if (!phone.id) { phoneOpened.current = false; closeRef.current() }
   }, [Boolean(ctx), phone.mobile, phone.id]) // URL entry is created once per visible drawer.
   const close = () => { if (phoneOpened.current && phone.id) phone.close(); else onClose() }
   const [intel, setIntel] = useState<any>(null)

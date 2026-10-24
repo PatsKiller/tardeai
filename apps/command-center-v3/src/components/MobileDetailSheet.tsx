@@ -37,7 +37,9 @@ export function MobileDetailSheet({title, onBack, children}: {title: string; onB
     const previousFocus = document.activeElement
     const overflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
-    sheet.current?.focus()
+    const focusTarget = sheet.current?.querySelector<HTMLElement>('[data-detail-focus]')
+    if (focusTarget) focusTarget.focus()
+    else sheet.current?.focus()
     return () => {
       document.body.style.overflow = overflow
       if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus()
