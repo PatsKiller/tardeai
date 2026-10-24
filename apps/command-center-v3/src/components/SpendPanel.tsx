@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { BB, T, TYPE, numCell, statePill } from '../lib/watchTokens'
 import { hubPanel } from '../lib/terminalHubChrome'
+import { useApi } from '../hooks/useApi'
 
 /**
  * Real paid AI + search spend (operator ask 2026-09-14): dollars and tokens by provider, model and
@@ -51,28 +52,10 @@ function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: 
 
 export default function SpendPanel() {
   const [period, setPeriod] = useState<Period>('week')
-  const [report, setReport] = useState<any>(null)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError('')
-    try {
-      const res = await fetch(`/api/v2/consumption/spend?period=${period}`, { cache: 'no-store' })
-      const j = await res.json()
-      const data = j?.data ?? j
-      if (!data?.ok) throw new Error(data?.error || 'spend report unavailable')
-      setReport(data.report)
-    } catch (e: any) {
-      setError(String(e?.message || e))
-      setReport(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [period])
-
-  useEffect(() => { void load() }, [load])
+  const read = useApi<any>(`/api/v2/consumption/spend?period=${period}`, 90_000)
+  const report = read.data?.report
+  const loading = read.loading
+  const error = read.error || (read.data?.ok === false ? read.data.error || 'spend report unavailable' : '')
 
   const t = report?.totals
   const cap = report?.global_cap_usd_per_day
@@ -102,7 +85,7 @@ export default function SpendPanel() {
         </div>
       </div>
 
-      {error ? <div style={{ ...statePill('red'), marginBottom: 8 }}>Spend unavailable: {error}</div> : null}
+      {error || read.stale ? <div role="alert" style={{ ...statePill('red'), marginBottom: 8 }}>Spend {report ? 'out of date' : 'unavailable'}: {error || 'refresh pending'}. Retrying automatically.</div> : null}
       {loading && !report ? <div style={{ color: BB.text3, fontSize: TYPE.sm }}>Loading spend…</div> : null}
 
       {t ? (

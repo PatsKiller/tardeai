@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { useApi } from '../hooks/useApi'
+import { TOKENS, toneVars } from '../lib/designTokens'
 import CloudLlmRunButtons from '../components/CloudLlmRunButtons'
 import { lanePolicyColor, lanePolicyHint, PROCESS_LANE_POLICIES, runManualCloud } from '../lib/cloudLlmRun'
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
@@ -8,7 +10,7 @@ import SpendPanel from '../components/SpendPanel'
 import LlmRoutingModal from '../components/LlmRoutingModal'
 import { BB, RAIL } from '../lib/watchTokens'
 
-const GREEN = '#22c55e', RED = '#ef4444', AMBER = '#f59e0b', BLUE = '#60a5fa', MUTED = '#94a3b8', TEXT = '#f8fafc'
+const GREEN = TOKENS.success, RED = TOKENS.danger, AMBER = TOKENS.warning, BLUE = TOKENS.info, MUTED = TOKENS.text[2], TEXT = TOKENS.text[0]
 
 type ProcessRow = {
   process_id: string
@@ -38,42 +40,35 @@ type LogRow = {
 export default function ConsumptionHub() {
   const [terminalUi] = useTerminalUi()
   const oauth = useOAuthLanes(90_000)
-  const [overview, setOverview] = useState<any>(null)
-  const [processes, setProcesses] = useState<ProcessRow[]>([])
-  const [logs, setLogs] = useState<LogRow[]>([])
   const [filterPid, setFilterPid] = useState<string | null>(null)
   const [busy, setBusy] = useState('')
   const [msg, setMsg] = useState('')
   const [routingOpen, setRoutingOpen] = useState(false)
 
-  const load = useCallback(async () => {
-    try {
-      const nocache = { cache: 'no-store' as RequestCache }
-      const [ov, pr, reg, lg] = await Promise.all([
-        fetch('/api/v2/consumption/overview', nocache).then(r => r.json()),
-        fetch('/api/v2/consumption/processes', nocache).then(r => r.json()),
-        fetch('/api/v2/consumption/lane-registry', nocache).then(r => r.json()).catch(() => null),
-        fetch(`/api/v2/consumption/logs?limit=40${filterPid ? `&process_id=${encodeURIComponent(filterPid)}` : ''}`, nocache).then(r => r.json()),
-      ])
-      setOverview((ov?.data ?? ov)?.overview ?? null)
-      const regData = reg?.data ?? reg
+  const overviewRead = useApi<any>('/api/v2/consumption/overview', 90_000)
+  const processRead = useApi<any>('/api/v2/consumption/processes', 90_000)
+  const registryRead = useApi<any>('/api/v2/consumption/lane-registry', 90_000)
+  const logRead = useApi<any>(`/api/v2/consumption/logs?limit=40${filterPid ? `&process_id=${encodeURIComponent(filterPid)}` : ''}`, 90_000)
+  const overview = overviewRead.data?.overview
+  const logs: LogRow[] = logRead.data?.logs ?? []
+  const processes = useMemo(() => {
+      const regData = registryRead.data
       const policyMap: Record<string, string> = regData?.processes ?? {}
       const policyLabels: Record<string, string> = regData?.policy_labels ?? {}
-      const prPayload = pr?.data ?? pr
+      const prPayload = processRead.data
       const raw: ProcessRow[] = prPayload?.processes ?? prPayload?.data?.processes ?? []
-      setProcesses(raw.map(p => {
+      return raw.map(p => {
         const lp = p.lane_policy || policyMap[p.process_id] || PROCESS_LANE_POLICIES[p.process_id] || 'either'
         return {
           ...p,
           lane_policy: lp,
           lane_policy_label: p.lane_policy_label || policyLabels[lp] || lanePolicyHint(lp),
         }
-      }))
-      setLogs((lg?.data ?? lg)?.logs ?? [])
-    } catch { /* surfaced via empty state */ }
-  }, [filterPid])
-
-  useEffect(() => { void load() }, [load])
+      })
+  }, [processRead.data, registryRead.data])
+  const load = useCallback(() => {
+    overviewRead.refetch(); processRead.refetch(); registryRead.refetch(); logRead.refetch()
+  }, [overviewRead.refetch, processRead.refetch, registryRead.refetch, logRead.refetch])
 
   const setMode = async (pid: string, mode: 'automated' | 'manual') => {
     setBusy(pid)
@@ -136,7 +131,13 @@ export default function ConsumptionHub() {
   const chatLane = oauth.chatgpt
 
   return (
-    <div style={{ maxWidth: 1100 }}>
+    <div data-testid="llm-consumption" style={{ maxWidth: 1100 }}>
+      {([['Usage summary', overviewRead], ['Processes', processRead], ['Lane policies', registryRead], ['Activity', logRead]] as const).map(([label, read]) => {
+        const reason = read.error || (read.data?.ok === false ? read.data.error || 'Read failed' : null)
+        return reason || read.stale ? <div key={label} role="alert" style={{ color: AMBER, fontSize: 12, marginBottom: 8 }}>
+          {label} {read.data ? 'is out of date' : 'unavailable'}: {reason || 'refresh pending'}. Retrying automatically.
+        </div> : null
+      })}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div style={hubTitle()}>LLM Consumption</div>
         {/* Off-peak routing is a spend decision, so it lives behind an explicit operator
@@ -149,13 +150,13 @@ export default function ConsumptionHub() {
         </button>
       </div>
       <LlmRoutingModal open={routingOpen} onClose={() => setRoutingOpen(false)} onSaved={load} />
-      <p style={{ ...hubSubtitle(terminalUi), marginBottom: 16, lineHeight: 1.5, fontSize: 9 }}>
-        Track and control <b style={{ color: TEXT }}>free OAuth</b> usage — Grok (xAI :8645) and ChatGPT (codex :8646),
-        plus <b style={{ color: '#a78bfa' }}>DeepSeek</b> metered API (Flash / Pro).
-        No metered API keys for OAuth. <b>Manual</b> mode blocks automatic calls; use per-lane <b>▶</b> buttons below.
-        <b>Automated</b> when you want hands-off cron.
+      <p style={{ ...hubSubtitle(terminalUi), marginBottom: 16, lineHeight: 1.5, fontSize: 10 }}>
+        Track <b style={{ color: TEXT }}>subscription usage</b> for Grok and ChatGPT,
+        plus <b style={{ color: 'var(--ai-color)' }}>DeepSeek</b> metered API (Flash / Pro).
+        Paid costs are shown in USD below. Relative usage units measure text volume and are not dollars.
+        <b>Manual</b> mode blocks automatic calls; <b>Automated</b> allows scheduled calls.
       </p>
-      <div className="cc-panel" style={{ ...hubPanel(terminalUi), marginBottom: 14, lineHeight: 1.5, fontSize: 9, color: MUTED }}>
+      <div className="cc-panel" style={{ ...hubPanel(terminalUi), marginBottom: 14, lineHeight: 1.5, fontSize: 10, color: MUTED }}>
         <b style={{ color: TEXT }}>Lane policies:</b>{' '}
         <span>Grok only</span> · <span>Grok or ChatGPT (pick one)</span> · <span>Both preferred</span> · <span>Ensemble (run both)</span>.
         Stop advisories stay <b>Manual</b> — use Grok batch (top 6) on Portfolio → Stop Management or the batch row here.
@@ -178,9 +179,9 @@ export default function ConsumptionHub() {
               : (id === 'deepseek-flash' ? (ln?.label || 'DeepSeek V4 Flash') : (ln?.label || 'DeepSeek V4 Pro')))
           const isDeepSeek = id.startsWith('deepseek')
           return (
-            <div key={id} style={{ padding: 14, borderRadius: 10, background: 'var(--bg1)', border: `1px solid ${ok ? (isDeepSeek ? '#a855f7' : GREEN) : RED}44` }}>
+            <div key={id} style={{ padding: 14, borderRadius: 10, background: 'var(--bg1)', border: `1px solid color-mix(in srgb, ${ok ? (isDeepSeek ? 'var(--ai-color)' : GREEN) : RED} 27%, transparent)` }}>
               <div style={{ fontSize: 11, fontWeight: 800, color: MUTED, textTransform: 'uppercase' }}>{label}</div>
-              <div style={{ fontSize: 18, fontWeight: 900, color: ok ? (isDeepSeek ? '#a855f7' : GREEN) : RED, marginTop: 4 }}>
+              <div style={{ fontSize: 18, fontWeight: 900, color: ok ? (isDeepSeek ? 'var(--ai-color)' : GREEN) : RED, marginTop: 4 }}>
                 {ok ? '✓ Ready' : (ln?.status || 'offline')}
               </div>
               <div style={{ fontSize: 10, color: MUTED, marginTop: 4 }}>
@@ -201,11 +202,11 @@ export default function ConsumptionHub() {
         <div style={{ padding: 14, borderRadius: 10, background: 'var(--bg1)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 8 }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             <button type="button" onClick={() => void testLane('grok')} disabled={!!busy}
-              style={{ fontSize: 10, fontWeight: 800, padding: '6px 10px', borderRadius: 6, border: '1px solid #1d9bf066', background: '#1d9bf014', color: '#1d9bf0', cursor: busy ? 'wait' : 'pointer' }}>
+              style={{ fontSize: 10, fontWeight: 800, padding: '6px 10px', borderRadius: 6, border: '1px solid color-mix(in srgb, var(--info-color) 40%, transparent)', background: 'color-mix(in srgb, var(--info-color) 8%, transparent)', color: 'var(--info-color)', cursor: busy ? 'wait' : 'pointer' }}>
               {busy === 'test-grok' ? '…' : '▶ Test Grok'}
             </button>
             <button type="button" onClick={() => void testLane('chatgpt')} disabled={!!busy}
-              style={{ fontSize: 10, fontWeight: 800, padding: '6px 10px', borderRadius: 6, border: '1px solid #10a37f66', background: '#10a37f14', color: '#10a37f', cursor: busy ? 'wait' : 'pointer' }}>
+              style={{ fontSize: 10, fontWeight: 800, padding: '6px 10px', borderRadius: 6, border: '1px solid color-mix(in srgb, var(--success-color) 40%, transparent)', background: 'color-mix(in srgb, var(--success-color) 8%, transparent)', color: 'var(--success-color)', cursor: busy ? 'wait' : 'pointer' }}>
               {busy === 'test-chatgpt' ? '…' : '▶ Test ChatGPT'}
             </button>
             <button
@@ -219,7 +220,7 @@ export default function ConsumptionHub() {
               }
               style={{
                 fontSize: 10, fontWeight: 800, padding: '6px 10px', borderRadius: 6,
-                border: '1px solid #a855f766', background: '#a855f714', color: '#a855f7',
+                border: '1px solid color-mix(in srgb, var(--ai-color) 40%, transparent)', background: 'color-mix(in srgb, var(--ai-color) 8%, transparent)', color: 'var(--ai-color)',
                 cursor: (busy || !(oauth.deepseek_flash?.ready ?? (oauth.deepseek_flash?.status === 'ready'))) ? 'not-allowed' : 'pointer',
                 opacity: (oauth.deepseek_flash?.ready ?? (oauth.deepseek_flash?.status === 'ready')) ? 1 : 0.45,
               }}>
@@ -227,7 +228,7 @@ export default function ConsumptionHub() {
             </button>
           </div>
           <button onClick={() => void runKeepalive()} disabled={!!busy}
-            style={{ fontSize: 12, fontWeight: 800, padding: '8px 12px', borderRadius: 6, border: `1px solid ${BLUE}`, background: `${BLUE}22`, color: BLUE, cursor: busy ? 'wait' : 'pointer' }}>
+            style={{ fontSize: 12, fontWeight: 800, padding: '8px 12px', borderRadius: 6, border: `1px solid ${BLUE}`, background: `color-mix(in srgb, ${BLUE} 13%, transparent)`, color: BLUE, cursor: busy ? 'wait' : 'pointer' }}>
             ↻ Roll OAuth tokens
           </button>
           <button onClick={() => { void oauth.refresh(); void load() }} style={{ fontSize: 11, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
@@ -243,14 +244,14 @@ export default function ConsumptionHub() {
             const t = overview?.by_lane?.[lane]?.today
             const w = overview?.by_lane?.[lane]?.week
             if (!t && !w) return []
-            const laneColor = lane === 'grok' ? '#1d9bf0' : (lane === 'chatgpt' ? '#10a37f' : '#a855f7')
+            const laneColor = lane === 'grok' ? 'var(--info-color)' : (lane === 'chatgpt' ? 'var(--success-color)' : 'var(--ai-color)')
             const label = lane === 'deepseek-v4-pro' ? 'DeepSeek V4 Pro' : lane
             const failToday = Number(t?.failures ?? 0)
             const failWeek = Number(w?.failures ?? 0)
             const okToday = Math.max(0, Number(t?.calls ?? 0) - failToday)
             const okWeek = Math.max(0, Number(w?.calls ?? 0) - failWeek)
             return [
-              <div key={`${lane}-today`} style={{ padding: 12, borderRadius: 8, background: 'var(--bg1)', border: `1px solid ${laneColor}44` }}>
+              <div key={`${lane}-today`} style={{ padding: 12, borderRadius: 8, background: 'var(--bg1)', border: `1px solid color-mix(in srgb, ${laneColor} 27%, transparent)` }}>
                 <div style={{ fontSize: 10, color: laneColor }}>{label} today</div>
                 <div style={{ fontSize: 20, fontWeight: 900, color: TEXT }}>{t?.calls ?? 0}</div>
                 <div style={{ fontSize: 10, color: MUTED }}>{(t?.relative_units ?? 0).toFixed(1)} rel. units</div>
@@ -260,7 +261,7 @@ export default function ConsumptionHub() {
                   <span style={{ color: failToday ? RED : MUTED }}>{failToday} fail</span>
                 </div>
               </div>,
-              <div key={`${lane}-week`} style={{ padding: 12, borderRadius: 8, background: 'var(--bg1)', border: `1px solid ${laneColor}44` }}>
+              <div key={`${lane}-week`} style={{ padding: 12, borderRadius: 8, background: 'var(--bg1)', border: `1px solid color-mix(in srgb, ${laneColor} 27%, transparent)` }}>
                 <div style={{ fontSize: 10, color: laneColor }}>{label} 7d</div>
                 <div style={{ fontSize: 20, fontWeight: 900, color: TEXT }}>{w?.calls ?? 0}</div>
                 <div style={{ fontSize: 10, color: MUTED }}>{(w?.relative_units ?? 0).toFixed(1)} rel. units</div>
@@ -299,7 +300,7 @@ export default function ConsumptionHub() {
                 <tr key={p.process_id} style={{ borderTop: '1px solid var(--border)' }}>
                   <td style={{ padding: '8px', color: TEXT, fontWeight: 700 }}>
                     {p.process_name}
-                    <div style={{ fontSize: 9, color: MUTED, fontWeight: 400 }}>{p.process_id}</div>
+                    <div style={{ fontSize: 10, color: MUTED, fontWeight: 400 }}>{p.process_id}</div>
                   </td>
                   <td style={{ color: MUTED }}>{p.category || '—'}</td>
                   <td style={{ fontSize: 10, whiteSpace: 'nowrap' }}>
@@ -323,8 +324,8 @@ export default function ConsumptionHub() {
                     <span style={{
                       fontSize: 10, fontWeight: 800, padding: '2px 8px', borderRadius: 999,
                       color: p.mode === 'automated' ? GREEN : AMBER,
-                      background: `${p.mode === 'automated' ? GREEN : AMBER}18`,
-                      border: `1px solid ${p.mode === 'automated' ? GREEN : AMBER}55`,
+                      background: `color-mix(in srgb, ${p.mode === 'automated' ? GREEN : AMBER} 9%, transparent)`,
+                      border: `1px solid color-mix(in srgb, ${p.mode === 'automated' ? GREEN : AMBER} 33%, transparent)`,
                     }}>{p.mode}</span>
                   </td>
                   <td style={{ color: TEXT }}>{p.calls_30d ?? 0}{p.calls_today ? ` (${p.calls_today} today)` : ''}</td>
@@ -351,7 +352,7 @@ export default function ConsumptionHub() {
             </tbody>
           </table>
         </div>
-        <div style={{ fontSize: 9, color: MUTED, marginTop: 8 }}>Default for new processes: Manual. Relative units ≈ (prompt+response chars)/1000 on free tier ($0).</div>
+        <div style={{ fontSize: 11, color: MUTED, marginTop: 8 }}>Relative usage units = prompt and response characters ÷ 1,000. This is a volume measure; USD costs are in the Spend panel. Refreshes every 90 seconds.</div>
       </div>
 
       {/* Recent activity */}
@@ -367,7 +368,7 @@ export default function ConsumptionHub() {
               <div key={l.id} style={{ padding: '8px 10px', borderRadius: 6, background: 'var(--bg2)', border: '1px solid var(--border)', fontSize: 11 }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                   <span style={{ color: MUTED }}>{new Date(l.created_at).toLocaleString()}</span>
-                  <span style={{ fontWeight: 800, color: l.model_lane === 'grok' ? '#1d9bf0' : (l.model_lane === 'chatgpt' ? '#10a37f' : (l.model_lane?.startsWith('deepseek') ? '#a855f7' : MUTED)) }}>{l.model_lane}</span>
+                  <span style={{ fontWeight: 800, color: l.model_lane === 'grok' ? 'var(--info-color)' : (l.model_lane === 'chatgpt' ? 'var(--success-color)' : (l.model_lane?.startsWith('deepseek') ? 'var(--ai-color)' : MUTED)) }}>{l.model_lane}</span>
                   <span style={{ color: TEXT, fontWeight: 700 }}>{l.process_name}</span>
                   <span style={{ color: l.trigger_mode === 'manual' ? AMBER : MUTED, fontSize: 10 }}>{l.trigger_mode}</span>
                   {!l.success && <span style={{ color: RED }}>failed</span>}

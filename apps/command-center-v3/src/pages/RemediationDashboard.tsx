@@ -4,6 +4,7 @@ import { StatusBadge } from '../components/StatusBadge'
 import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
 import { useTerminalUi } from '../lib/terminalUi'
 import { isPageVisible, subscribePageVisibility, REMEDIATION_POLL_MS } from '../lib/pageVisibility'
+import { recordedPercent, verifiedEventLabel } from '../lib/w9PageModel'
 
 // ── Types ──────────────────────────────────────────────────────────────────────────────
 interface RemediationEvent {
@@ -22,13 +23,18 @@ interface RemediationEvent {
   resolution?: string
   message?: string
   actor?: string
+  mode?: string
+  dry_run?: boolean
+  verified?: boolean
+  exit_code?: number | null
 }
 
 interface RemediationData {
   remediations?: RemediationEvent[]
   stats?: {
     total_fixes_24h?: number
-    success_rate?: number
+    success_rate?: string | number
+    stats_truncated?: boolean
     total_events?: number
     by_severity?: Record<string, number>
     by_agent?: Record<string, number>
@@ -126,7 +132,7 @@ export default function RemediationDashboard() {
       >
         <div style={{ fontSize: 32, marginBottom: 12 }}>🟢</div>
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--green)' }}>
-          No issues detected — all systems healthy
+          No remediation events recorded
         </div>
         <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
           The remediation log is empty. Events will appear here as the Health Inspector
@@ -137,8 +143,9 @@ export default function RemediationDashboard() {
   }
 
   // ── Summary bar ──────────────────────────────────────────────────────────────────────
-  const total24h = stats.total_fixes_24h ?? 0
-  const successRate = stats.success_rate ?? 0
+  // This legacy API counts every event, including dry runs. It does not count fixes.
+  const total24h = stats.total_fixes_24h ?? '—'
+  const successRate = recordedPercent(stats.success_rate)
 
   return (
     <div style={{ marginTop: 4 }}>
@@ -159,9 +166,9 @@ export default function RemediationDashboard() {
             borderRadius: 'var(--radius)',
           }}
         >
-          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--green)' }}>{total24h}</div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: 'var(--text0)' }}>{stats.stats_truncated ? 'At least ' : ''}{total24h}</div>
           <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', marginTop: 2 }}>
-            issues fixed in last 24h
+            events in last 24h (includes previews)
           </div>
         </div>
         <div
@@ -176,13 +183,13 @@ export default function RemediationDashboard() {
             style={{
               fontSize: 20,
               fontWeight: 800,
-              color: successRate >= 80 ? 'var(--green)' : successRate >= 50 ? 'var(--amber)' : 'var(--red)',
+              color: 'var(--text2)',
             }}
           >
-            {successRate}%
+            {successRate}
           </div>
           <div style={{ fontSize: 10, color: 'var(--text3)', textTransform: 'uppercase', marginTop: 2 }}>
-            success rate
+            recorded verification rate (all events)
           </div>
         </div>
         {Object.entries(stats.by_severity || {}).map(([sev, count]) => (
@@ -242,7 +249,8 @@ export default function RemediationDashboard() {
           const agent = evt.agent || evt.actor || 'health-inspector'
           const layer = evt.layer != null ? `L${evt.layer}` : 'L1'
           const ts = evt.timestamp || evt.at || ''
-          const success = evt.success !== false
+          const outcome = verifiedEventLabel(evt)
+          const success = outcome === 'Verified' || outcome === 'Completed'
           const action = evt.action || evt.resolution || 'remediated'
 
           return (
@@ -316,7 +324,7 @@ export default function RemediationDashboard() {
                       <span style={{ margin: '0 3px', color: 'var(--text3)' }}>→</span>
                     )}
                     {evt.new_state && (
-                      <span style={{ color: 'var(--green)' }} title="New state">
+                      <span style={{ color: success ? 'var(--green)' : 'var(--text2)' }} title="Recorded state">
                         {evt.new_state}
                       </span>
                     )}
@@ -352,11 +360,11 @@ export default function RemediationDashboard() {
                   textAlign: 'right',
                   fontSize: 14,
                   fontWeight: 800,
-                  color: success ? 'var(--green)' : 'var(--red)',
+                  color: success ? 'var(--green)' : outcome === 'Failed' ? 'var(--red)' : 'var(--text3)',
                 }}
-                title={success ? 'Success' : 'Failed'}
+                title={outcome}
               >
-                {success ? SUCCESS_ICON : FAIL_ICON}
+                {success ? SUCCESS_ICON : outcome === 'Failed' ? FAIL_ICON : outcome}
               </div>
             </div>
           )

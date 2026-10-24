@@ -275,16 +275,16 @@ function opsToIncidents(ops: OpsPayload | null): IncidentRow[] {
 
 // ── Main ────────────────────────────────────────────────────────────────────
 
-export default function OpsAutonomyDashboard() {
+export default function OpsAutonomyDashboard({ snapshot, snapshotError }: { snapshot?: any; snapshotError?: string | null } = {}) {
   const [terminalUi] = useTerminalUi()
   const { data: opsRaw, loading: opsLoading, error: opsError, refetch: refetchOps } =
     useApi<OpsPayload>('/api/v2/health/ops-autonomy', 60_000)
-  const { data: healthRaw, loading: healthLoading, refetch: refetchHealth } =
-    useApi<any>('/api/v2/health', 120_000)
+  const { data: healthRaw, loading: healthLoading, error: healthError, refetch: refetchHealth } =
+    useApi<any>('/api/v2/health', 120_000, { enabled: snapshot === undefined })
   const { data: activityRaw, refetch: refetchAct } =
     useApi<any>('/api/v2/health/activity', 60_000)
 
-  const health = unwrapHealth(healthRaw)
+  const health = unwrapHealth(snapshot ?? healthRaw)
   const activity: any[] = activityRaw?.activity || activityRaw?.data?.activity || []
 
   const opsAvailable = !opsError && !!opsRaw && !!(opsRaw.overview || opsRaw.discoveries || opsRaw.cadence)
@@ -361,14 +361,13 @@ export default function OpsAutonomyDashboard() {
     }))
   }, [actions, activity])
 
-  const score = ov.healthy_pct != null
-    ? ov.healthy_pct
-    : (health?.overall_score != null ? health.overall_score : null)
+  // The shared Health snapshot defines the headline in both tabs. L1 metrics remain below.
+  const score = health?.overall_score ?? null
   const scoreColor = score == null ? 'var(--text3)'
     : score >= 85 ? 'var(--green)' : score >= 65 ? 'var(--amber)' : 'var(--red)'
-  const statusLabel = ov.status || health?.status || 'unknown'
-  const crit = ov.critical ?? health?.counts?.critical ?? 0
-  const warn = ov.warnings ?? health?.counts?.warning ?? 0
+  const statusLabel = health?.status || 'unknown'
+  const crit = health?.counts?.critical
+  const warn = health?.counts?.warning
 
   if (loading) {
     return <div style={{ padding: 16, color: 'var(--text3)', fontSize: 12 }}>Loading Ops Command Board…</div>
@@ -402,13 +401,13 @@ export default function OpsAutonomyDashboard() {
         </div>
 
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
-          {chip('Health', score != null ? `${score}${ov.healthy_pct != null ? '%' : '/100'}` : '—', scoreColor, statusLabel)}
-          {chip('Critical', crit, crit > 0 ? 'var(--red)' : 'var(--text0)')}
-          {chip('Warnings', warn, warn > 0 ? 'var(--amber)' : 'var(--text0)')}
+          {chip('Health', score != null ? `${score}/100` : '—', scoreColor, statusLabel)}
+          {chip('Critical', crit ?? '—', crit > 0 ? 'var(--red)' : 'var(--text0)')}
+          {chip('Warnings', warn ?? '—', warn > 0 ? 'var(--amber)' : 'var(--text0)')}
           {/* health.remediated is an ARRAY of run records ({at, type, cmd, exit_code, …}); rendering it as a
               child crashed the board with React #31 whenever ops-autonomy lacked auto_fixed_today
               (e.g. unavailable) — site validation 2026-10-23. Show the count. */}
-          {chip('Auto fixed', ov.auto_fixed_today ?? (Array.isArray(health?.remediated) ? health.remediated.length : (typeof health?.remediated === 'number' ? health.remediated : null)) ?? '—', 'var(--green)', 'today / last cycle')}
+          {chip('Remediation attempts', Array.isArray(health?.remediated) ? health.remediated.length : '—', 'var(--text2)', 'last Health cycle; includes previews')}
           {chip('Learning', ov.learning_candidates ?? learning.candidates ?? 0, 'var(--amber)', 'ladder candidates')}
           {chip('Approved', learning.approved ?? 0, 'var(--green)', 'auto patterns')}
           {chip(

@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict'
+import { pageTab, observedTime, recordedPercent, syncEvidenceState, verifiedEventLabel } from './w9PageModel.ts'
+
+assert.equal(pageTab('HISTORY', ['overview', 'history'], 'overview'), 'history')
+assert.equal(pageTab('missing', ['overview', 'history'], 'overview'), 'overview')
+assert.equal(observedTime('2026-10-23'), '2026-10-23 · time not recorded')
+assert.equal(observedTime(undefined), 'Time unavailable')
+assert.equal(observedTime('bad timestamp'), 'Time unavailable')
+assert.match(observedTime('2026-10-24T22:10:00Z'), /18:10 ET$/)
+assert.equal(verifiedEventLabel({mode: 'dry_run', verified: true, success: true}), 'Preview')
+assert.equal(verifiedEventLabel({verified: true, exit_code: 1}), 'Failed')
+assert.equal(verifiedEventLabel({}), 'Unverified')
+assert.equal(verifiedEventLabel({verified: true}), 'Verified')
+assert.equal(recordedPercent('0%'), '0%')
+assert.equal(recordedPercent(87), '87%')
+assert.equal(recordedPercent('N/A'), 'Not recorded')
+assert.equal(recordedPercent(undefined), 'Not recorded')
+assert.equal(syncEvidenceState('OK', {rc: 1}, '2026-10-23', null), 'DEGRADED')
+assert.equal(syncEvidenceState('OK', {rc: 1}, '2026-10-24T22:10:00Z', '2026-10-24T22:00:00Z'), 'OK')
+assert.equal(syncEvidenceState('OK', {rc: 1}, '2026-10-24T21:00:00Z', '2026-10-24T22:00:00Z'), 'DEGRADED')
+assert.equal(syncEvidenceState('PAUSED', {rc: 1}, null, null), 'PAUSED')
+assert.equal(syncEvidenceState('OK', {rc: 0}, null, null), 'OK')
+console.log('W9 recorded-evidence presentation checks passed')
