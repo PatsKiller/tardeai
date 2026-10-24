@@ -1,0 +1,13 @@
+--- a/config/ops_controls.json
++++ b/config/ops_controls.json
+@@ -45,8 +45,8 @@
+     "approve_design_enabled": true,
+     "contract_reviewed_enabled": true,
+     "approve_item_enabled": false,
+-    "merge_pr_enabled": false,
+-    "release_now_enabled": false,
++    "merge_pr_enabled": true,
++    "release_now_enabled": true,
+     "claims_dir": null
+   },
+   "kill_switch": {
