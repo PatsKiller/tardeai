@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_app_token_reservation_20261022",
+  "files": [
+    "tests/test_release_train_app_token_reservation_20261022.py"
+  ],
+  "anchor": "RELEASE_TRAIN_APP_TOKEN_RESERVATION_20261022",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_APP_TOKEN_RESERVATION_20261022 — arming packet I.1 item 3: the GitHub App token is minted once per capability reservation (never outside one, never for another action), for the pinned App 5419776 / installation 173961421, and reaches only the writer child as GH_TOKEN (inherited GH_TOKEN/GITHUB_TOKEN stripped). GITHUB_WRITES_STATUS stays PROPOSED."
+  ]
+}

@@ -533,6 +533,15 @@ artifact above. There is no calendar wait.
    to `train/*` is refused. So a PR must first mint a 1-hour installation token per reservation (§5 of the App doc)
    and pass it as `GH_TOKEN` to the writer's child processes only. The PR touches a protected surface
    (`release_train_controller.py`), so it ships by the manual path (L.1).
+   **Status (2026-10-22): built, not armed** (branch `feat/release-train-app-token-reservation-20261022`, gate
+   `RELEASE_TRAIN_APP_TOKEN_RESERVATION_20261022`). Finding 3 had already replaced `GhCliWriter` with
+   `GitHubAppWriter` (a fresh token per write call). This PR binds the token to the reservation: `_cap_effect` enters
+   `writer.reservation(<intent id>, <action>)` right after `reserve()`; a write outside it, or for another action, is
+   refused before anything is minted; one token is minted per reservation and dropped when it ends. The App is
+   pinned (`APP_ID = 5419776`, `APP_INSTALLATION_ID = 173961421`, `PatsKiller/tardeai`): `github-app.json` is now
+   optional, and one naming another App, installation or repository is refused. The `git push` child gets the token
+   as `GH_TOKEN` (and as the scoped `http.extraheader`), with every inherited `GH_TOKEN`/`GITHUB_TOKEN` stripped; this
+   process's environment never holds it. `GITHUB_WRITES_STATUS` stays `PROPOSED`.
 4. **`ci-gate` as a required context on `main`** (D4; a branch-protection change, §17). `ci-gate` is the batch
    qualifier, and capabilities bind it.
 5. **The standing-release binding (K), or one grant per train.** Without either, `prepare` refuses, and a train that
@@ -729,6 +738,27 @@ release-train-20261021 §1.2).
   preflight; a reservation for another train.
 - It changes `scripts/release_grant_preflight.py` and `scripts/lib/release_grant_binding.py`, which are protected
   surfaces, so it ships by L.1 after 17.0.0 is ratified.
+
+**Status (2026-10-22): built, inert** (branch `feat/release-grant-capability-binding-20261022`).
+`release_grant_binding.decide_capability` implements every condition above, read-only and fail closed, behind the
+code constant `CAPABILITY_BINDING_STATUS = "PROPOSED"`. While it is PROPOSED the preflight never consults it and its
+output is unchanged; no environment variable, argument or file turns it on. When ACTIVE, the preflight tries the
+grant path first (a per-PR grant keeps working), and only a `release-train-<train_id>` campaign with no binding
+grant reaches the ledger. Accepted only when: the signed token at
+`<state_dir>/trains/<train_id>/capability/<prepare|promote>_release.rcap` (mode 600) verifies with the host key and
+equals the ledger's issued record; it is a promote-phase capability for this train that permits the action, binds
+`--sha` exactly, is inside its validity window and names services inside the delegation's; the ledger holds exactly
+one RESERVED intent for it whose observation carries the same candidate and artifact digest (and `--artifact-digest`
+when given); nothing is applied under it (replay) and nothing is UNCERTAIN; the global `.lock` is held (a dead
+holder's reservation is refused); the latch is ABSENT, the control admits a mutation for this train (RUNNING, or
+PAUSE_REQUESTED for the current train, as the issuer allows), and the epoch and accepted digest equal the
+capability's; the host delegation's digest, id and revocation epoch equal the capability's. The guard ledger is not
+consumed (`consumed: {"skipped": "capability_binding"}`); a promote still reads exact-SHA CI first. The state dir is
+the default one: a `TRADEAI_RELEASE_WINDOW_STATE_DIR` naming another directory is refused. Tests:
+`tests/test_release_grant_capability_binding_20261022.py` (CI gate `release_grant_capability_binding_20261022`).
+Still open, each a reviewed protected-surface change: the controller must write the reserved token with
+`release_grant_binding.write_reservation_token` inside `_cap_effect` before the deploy runs; the deploy's promote
+should pass `--artifact-digest` of the prepared dir; then the flag flip, after the operator says so.
 
 ## L. Fallback: the manual release, STOP and revoke
 
