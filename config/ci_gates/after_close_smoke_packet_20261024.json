@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "after_close_smoke_packet_20261024",
+  "files": [
+    "tests/test_after_close_smoke_packet_20261024.py"
+  ],
+  "anchor": "AFTER_CLOSE_SMOKE_PACKET_20261024",
+  "comment": [
+    "ANCHOR: AFTER_CLOSE_SMOKE_PACKET_20261024 — hermetic Node protocol fixtures for strict GET-only after-close smoke; global document/asset/API rate, exact origin/SHA, no credentials/clicks/WS, stop on refusal/timeouts, preserved HEAVY owner holds. No real network or live state in CI."
+  ]
+}

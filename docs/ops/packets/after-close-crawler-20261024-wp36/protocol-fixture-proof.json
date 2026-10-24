@@ -1,0 +1,27 @@
+{
+  "cases": [
+    "explicit flag, ET/DST market window boundaries and weekend",
+    "GET only including refusing HEAD",
+    "exact origin, port and no URL userinfo",
+    "credential headers and query inputs never reach transport",
+    "all existing HEAVY guard branches remain owner-held",
+    "business/auth/action endpoints refused before network",
+    "rate/origin configuration fail closed",
+    "global serialized >=1000ms spacing covers documents assets and APIs concurrently",
+    "early timer wakeups cannot shorten the global interval",
+    "auth redirects 4xx and 5xx stop queued requests without retries",
+    "timeout fail-stop without alternate route or retry",
+    "market-window guard rechecked immediately before send",
+    "closed-view requests never reach network and pending accounting settles",
+    "exact SHA pin and release drift stop subsequent requests",
+    "missing or short served identity cannot produce acceptance",
+    "browser fulfillment never loads Set-Cookie or auth response headers",
+    "browser mutation requests aborted before HTTP",
+    "direct HTTP has fixed GET whitelist headers and never follows redirects",
+    "absolute wall-clock deadline stops a hung request",
+    "response size cap refuses an oversized response",
+    "no click/profile/cookie/auth helper operations and WS/SW blocking present"
+  ],
+  "passed": 21,
+  "real_network_requests": 0
+}

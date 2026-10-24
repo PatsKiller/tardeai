@@ -1,0 +1,44 @@
+{
+  "source_path": "/home/johnclaw/.cache/rtc/site-crawl/tools/crawl.mjs",
+  "sha256": "b01d99c581ed84cd279cb3e3531a49bbb23ae7085a71b13b994f8ff221f3bda9",
+  "anchors": [
+    {
+      "line": 61,
+      "text": "const HEAVY = /\\/api\\/(v3\\/maturity\\/|v2\\/hermes\\/|v3\\/hermes\\/|v2\\/health\\/(remediation|log)|v2\\/ui\\/prefs\\/get\\?key=portfolio\\.shared-symbol-context|v2\\/watchlist\\/items\\?symbols=)/"
+    },
+    {
+      "line": 81,
+      "text": "    if (method !== 'GET' && method !== 'HEAD') {"
+    },
+    {
+      "line": 90,
+      "text": "      if (/^(data|blob):/.test(url)) return route.continue()"
+    },
+    {
+      "line": 91,
+      "text": "      rec({ url, method, external: true }, view); return route.continue()"
+    },
+    {
+      "line": 113,
+      "text": "      const resp = isApi ? await serverTurn(async () => { if (view !== cur) throw new Error('stale-view'); const hit = cache.get(ckey(url)); if (hit && Date.now() - hit.t < CACHE_TTL_MS) return { _cached: hit }; t0 = Date.now(); return route.fetch({ timeout: 90000 }) }) : await route.fetch({ timeout: 90000 })"
+    },
+    {
+      "line": 117,
+      "text": "      if (resp.status() < 500) cache.set(ckey(url), { t: Date.now(), status: resp.status(), headers, body })"
+    },
+    {
+      "line": 127,
+      "text": "      return route.abort('failed')"
+    },
+    {
+      "line": 283,
+      "text": "  const ctx = await browser.newContext({ viewport: { width: VP[vpName].width, height: VP[vpName].height }, isMobile: !!VP[vpName].isMobile, hasTouch: !!VP[vpName].hasTouch, deviceScaleFactor: 1, serviceWorkers: 'block' })"
+    },
+    {
+      "line": 317,
+      "text": "        try { await el.click({ timeout: 5000 }); clicked = true } catch (e) { tv.clickErr = String(e).slice(0, 200); clicked = true }"
+    }
+  ],
+  "live_requests_from_original_tool": 0,
+  "original_tool_executed": false
+}
