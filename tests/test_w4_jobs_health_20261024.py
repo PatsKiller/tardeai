@@ -167,3 +167,16 @@ def test_release_failures_survive_a_later_successful_receipt(tmp_path):
     (deploy / "deploy_receipt_history.jsonl").write_text(''.join(json.dumps(a)+'\n' for a in attempts))
     rows = RS.read_release_errors(deploy, windows, NOW)["value"]["rows"]
     assert len(rows) == 5 and all(r["detail"] == "wrapper refusal" for r in rows)
+
+
+def test_jobs_due_today_includes_future_fires_without_claiming_they_ran():
+    result = build([lane(scheduler={"kind": "cron", "expression": "0 20 * * 1-5"})])
+    assert result["summary"]["due_today"] == 1
+    assert result["rows"][0]["last_run_at"] is None
+    assert result["rows"][0]["result"] != "succeeded"
+
+
+def test_pending_live_request_is_due_but_never_success_or_run_start():
+    requested = {"run_id": "pending", "lane_id": "test-job", "mode": "live", "state": "REQUESTED", "requested_at": NOW.isoformat()}
+    row, = build(runs=[requested])["rows"]
+    assert row["result"] == "due" and row["last_run_at"] is None and row["last_success_at"] is None
