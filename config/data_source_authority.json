@@ -3646,7 +3646,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-24",
-        "reference": "Operator 2026-10-24 (session https://claude.ai/code/session_011AjwtDUpVLNhtFGHgNKrHU): \"push it live now ... I want everything live\" (Ask the CIO); store found still proposed when the operator's Ask returned 'turned off'",
+        "reference": "PR #2075 — operator 2026-10-24: \"push it live now ... I want everything live\" (Ask the CIO); store found still proposed when the operator's Ask returned 'turned off'",
         "scope": "authoritative ledger for Ask the CIO questions, answer versions, tracking and ask cost: store data/cio/cio_ask_events.jsonl written only by scripts/lib/cio_ask_store.py; per-security facts also appended to CIO memory (SecurityResearchSpine)"
       },
       "proposal": {
