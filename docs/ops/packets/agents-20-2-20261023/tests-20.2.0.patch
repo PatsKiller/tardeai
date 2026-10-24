@@ -1,0 +1,269 @@
+--- /dev/null
++++ b/tests/test_agents_policy_20_2_0_work_pipeline.py
+@@ -0,0 +1,166 @@
++"""20.2.0 operator-only package pins exact additions and preserves all prior authority rails."""
++
++from __future__ import annotations
++
++import hashlib
++import json
++import re
++import sys
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[1]
++for p in (str(ROOT), str(ROOT / "scripts")):
++    if p not in sys.path:
++        sys.path.insert(0, p)
++from scripts import check_agents_policy_state as STATE  # noqa: E402
++
++C = {
++    "base_header": {
++        "Policy-Version": "20.1.0",
++        "Status": "ACTIVE",
++        "Effective-Date": "2026-10-23",
++        "Last-Reviewed": "2026-10-23T12:00:00-04:00",
++        "Supersedes": "20.0.0",
++    },
++    "base_masked_sha256": "1f21d879f75130d7e7ce9458bd610b92916d395b8c81292015645cfe2eab8f50",
++    "banner": "<!-- AGENTS_20_2_BANNER_START -->\n**20.2.0 is PROPOSED (MINOR) — the Work pipeline is an operator surface, never an agent authority.**\nThe operator may make the named Tier 2 acts with a fresh passkey assertion and typed phrase through the existing\nhost applier once this version is ACTIVE. Agents never call the Controls endpoints. Grant-binding package approval\nis not included; `approve_item_enabled` stays off. Ratification flips no runtime feature flag. Coordination\nclarifications cover shared-additive paths, evidence-only closure and the five task sections. Adapter headings say\neleven; their §0 bodies stay byte-identical. The existing §28.8 smoke flag is\n`TRADEAI_LIVE_SMOKE_AFTER_CLOSE=1` and remains unchanged. **Why MINOR:** it records an operator surface for acts the\noperator already owns and adds evidence requirements; it grants an agent no permission. **Byte-identical:** outside\nthe header, this banner, the four labelled insertions and this version's history row, policy text is unchanged;\nthe generated §7A table is renderer-owned and excluded from whole-document comparisons. Existing authority rails\nand broker restrictions are unchanged. Awaiting `APPROVE_AGENTS_POLICY_20_2_0 <pr_number> <head_sha>` (§20).\n<!-- AGENTS_20_2_BANNER_END -->\n\n",
++    "clauses": {
++        "27.2": '- **The Work pipeline\'s Tier 2 acts are Controls acts (20.2.0).** Binding only once AGENTS.md 20.2.0 is\n  ACTIVE. From Ops → Coordination → Work pipeline the operator may, each time with a fresh passkey assertion and\n  the typed phrase, through the one host applier: approve a design, phase or packet, and mark a DRAFT n8n health\n  contract reviewed. Each is an append-only record in the coordination store (`designs/approvals.jsonl`,\n  `contracts/reviews.jsonl`) carrying the operator\'s words and the assertion. Such a record is the operator\'s\n  approval in their own words for §28.3b and §23.19, and is not a relayed approval under §28.4. An agent that carries\n  it into the design or contract file cites the record. The operator may also merge a PR whose required checks are\n  all exactly `success` at the head the operator saw (`--match-head-commit`), and run the exact-main release\n  (prepare + promote) under an active `release-write` grant; the existing release gates and grant binding still\n  apply. Approving an approval package that binds a guard grant is issuing a grant (§17), is not covered by this\n  clause, and leaves `approve_item_enabled` off. Agents never call these endpoints (§27.2). Ratification does not\n  enable `merge_pr_enabled` or `release_now_enabled`; each flag change needs its own reviewed PR after ratification.\n  *Cause (§20): operator 2026-10-23, "nothing is actionable on there" and "both"; Handoff v3 WP-15.*\n',
++        "28.3": "- **Shared-additive paths never conflict (20.2.0).** Binding only once AGENTS.md 20.2.0 is ACTIVE.\n  A path declared shared-additive by `config/agent_claim_shared_paths.json` never conflicts with another session's\n  claim; its declared mechanical merge procedure still applies. Every other path is exclusive and the committer\n  still needs a live claim and current worklog. A missing or invalid shared-path config means all paths are\n  exclusive. *Cause (§20): operator 2026-10-23; PR #2029; `docs/ops/AGENT_CLAIM_BOARD.md` §15.*\n",
++        "28.3a": "- **Evidence-only closure of shipped free tasks (20.2.0).** Binding only once AGENTS.md 20.2.0 is ACTIVE.\n  A free task whose work already shipped is closed with `task done --evidence-only`, a summary and PR/release\n  evidence, without claiming its files again. It never closes a taken task or overrides another session's\n  ownership. *Cause (§20): operator 2026-10-23; PR #2029 and Handoff v3 WP-03/WP-15.*\n",
++        "28.3b": '- **Every task carries the full work package (20.2.0).** Binding only once AGENTS.md 20.2.0 is ACTIVE.\n  Every task carries problem, definition of done, agent prompt, operator commands and proof of completion; done\n  requires evidence. The Work pipeline, CLI and exported handoff read the same task record; a PR-open label is not\n  proof of a served change. *Cause (§20): operator 2026-10-23, "this is what should be done inside of the board\n  also"; Handoff v3 WP-41.*\n',
++    },
++    "adapter_sha256": {
++        "CLAUDE.md": "04df92d64e45d372d31963aa006c97d6b03770f1b081c60c69a211fdbaaa8880",
++        ".cursor/rules/00-tradeai-work-policy.mdc": "b7308162f626bdb78212c18112a94061cfc1a9afa25f675cc0413edba8214f7c",
++        ".github/copilot-instructions.md": "1cfaa8fba009e5a142328ecdd9d30fe3bf0cc2d4861b6c35271e4d084b902a48",
++        ".goosehints": "ad79ef5fa172d34eaafad36392734aac0d4d37d7513529bef335b7de0dbec8df",
++    },
++}
++TOKEN = "APPROVE_AGENTS_POLICY_20_2_0"
++AGENTS = (ROOT / "AGENTS.md").read_text()
++
++
++def h(text):
++    return hashlib.sha256(text.encode()).hexdigest()
++
++
++def blank(text):
++    return re.sub(
++        r"(<!-- SOURCE_OF_TRUTH_TABLE_START -->).*?(<!-- SOURCE_OF_TRUTH_TABLE_END -->)",
++        r"\1\n<generated>\n\2",
++        text,
++        flags=re.S,
++    )
++
++
++def pre_20_2_0(text):
++    if not re.search(r"^\| 20\.2\.0 \|", text, re.M):
++        return text
++    text = re.sub(
++        r"<!-- AGENTS_20_2_BANNER_START -->.*?<!-- AGENTS_20_2_BANNER_END -->\n\n", "", text, count=1, flags=re.S
++    )
++    for clause in C["clauses"].values():
++        text = text.replace("\n" + clause, "", 1)
++    text = re.sub(r"^\| 20\.2\.0 \|.*\n", "", text, count=1, flags=re.M)
++    for key, value in C["base_header"].items():
++        text = re.sub(rf"^({re.escape(key)}:\s+).*$", lambda m, v=value: m.group(1) + v, text, count=1, flags=re.M)
++    return text
++
++
++def pre_20_2_0_adapter(text):
++    return text.replace("## The eleven rules, verbatim", "## The ten rules, verbatim", 1)
++
++
++def test_header_row_and_state_agree():
++    assert STATE.check(AGENTS, on_main=True) == []
++    assert STATE.check(AGENTS, on_main=False) == []
++    rows = re.findall(r"^\| 20\.2\.0 \|.*$", AGENTS, re.M)
++    assert len(rows) == 1
++    cb = STATE.control_block(AGENTS)
++    assert cb["Policy-Version"] == "20.2.0"
++    assert cb["Supersedes"] == "20.1.0"
++    if cb["Status"] == "PROPOSED":
++        assert cb["Effective-Date"] == "PENDING"
++        assert "PENDING" in rows[0] and TOKEN + " <pr_number> <head_sha>" in rows[0]
++    else:
++        assert cb["Status"] == "ACTIVE"
++        assert re.search(TOKEN + r" \d+ [0-9a-f]{40}", rows[0])
++
++
++def test_only_declared_policy_insertions_changed():
++    assert h(blank(pre_20_2_0(AGENTS))) == C["base_masked_sha256"]
++    for clause in C["clauses"].values():
++        assert AGENTS.count(clause) == 1
++        assert "Binding only once AGENTS.md 20.2.0 is" in clause
++        assert "*Cause (§20):" in clause
++
++
++def test_pin_detects_unrelated_authority_mutation():
++    changed = AGENTS.replace("The agent never sizes", "The agent may size", 1)
++    assert changed != AGENTS
++    assert h(blank(pre_20_2_0(changed))) != C["base_masked_sha256"]
++
++
++def test_generated_table_is_not_a_false_policy_mutation():
++    changed = re.sub(
++        r"(<!-- SOURCE_OF_TRUTH_TABLE_START -->).*?(<!-- SOURCE_OF_TRUTH_TABLE_END -->)",
++        r"\1\nrenderer-owned fixture row\n\2",
++        AGENTS,
++        flags=re.S,
++    )
++    assert h(blank(pre_20_2_0(changed))) == C["base_masked_sha256"]
++
++
++def test_adapters_change_heading_only_and_keep_original_digests():
++    for path, expected in C["adapter_sha256"].items():
++        text = (ROOT / path).read_text()
++        assert "## The eleven rules, verbatim" in text
++        assert h(pre_20_2_0_adapter(text)) == expected
++
++
++def test_operator_controls_keep_their_authority_boundaries():
++    clause = C["clauses"]["27.2"]
++    for text in (
++        "fresh passkey assertion",
++        "typed phrase",
++        "one host applier",
++        "all exactly `success`",
++        "--match-head-commit",
++        "active `release-write`",
++        "Agents never call these endpoints",
++        "is not covered by this",
++        "approve_item_enabled",
++        "Ratification does not",
++    ):
++        assert text in clause
++    flags = json.loads((ROOT / "config/ops_controls.json").read_text())["work_pipeline"]
++    assert flags["approve_item_enabled"] is False
++    if STATE.control_block(AGENTS)["Status"] == "PROPOSED":
++        assert flags["merge_pr_enabled"] is False and flags["release_now_enabled"] is False
++
++
++def test_coordination_and_smoke_obligations_are_explicit():
++    assert "shared-additive" in C["clauses"]["28.3"]
++    assert "`task done --evidence-only`" in C["clauses"]["28.3a"]
++    assert "never closes a taken task" in C["clauses"]["28.3a"]
++    for text in (
++        "problem",
++        "definition of done",
++        "agent prompt",
++        "operator commands",
++        "proof of completion",
++        "requires evidence",
++    ):
++        assert text in C["clauses"]["28.3b"]
++    assert "`TRADEAI_LIVE_SMOKE_AFTER_CLOSE=1`" in AGENTS
++
++
++def test_registered_gate_is_canonical():
++    from scripts.lib import ci_gates
++
++    path = ROOT / "config/ci_gates/agents_policy_20_2_0_work_pipeline.json"
++    gate = json.loads(path.read_text())
++    assert gate["files"] == ["tests/test_agents_policy_20_2_0_work_pipeline.py"]
++    assert gate["anchor"] == "AGENTS_POLICY_20_2_0_WORK_PIPELINE"
++    assert path.read_text() == ci_gates.render(gate)
+--- /dev/null
++++ b/config/ci_gates/agents_policy_20_2_0_work_pipeline.json
+@@ -0,0 +1,11 @@
++{
++  "schema": "CiGate@v1",
++  "name": "agents_policy_20_2_0_work_pipeline",
++  "files": [
++    "tests/test_agents_policy_20_2_0_work_pipeline.py"
++  ],
++  "anchor": "AGENTS_POLICY_20_2_0_WORK_PIPELINE",
++  "comment": [
++    "ANCHOR: AGENTS_POLICY_20_2_0_WORK_PIPELINE — operator-only 20.2.0 package; named Tier2 acts, unchanged authority rails, evidence and adapter parity."
++  ]
++}
+--- a/tests/test_agents_policy_20_1_0_live_server_market_hours.py
++++ b/tests/test_agents_policy_20_1_0_live_server_market_hours.py
+@@ -33,7 +33,9 @@
+
+ from scripts import check_agents_policy_state as STATE  # noqa: E402
+
++from tests.test_agents_policy_20_2_0_work_pipeline import pre_20_2_0, pre_20_2_0_adapter  # noqa: E402
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++AGENTS = pre_20_2_0(AGENTS)
+ TOKEN = "APPROVE_AGENTS_POLICY_20_1_0"
+ ADAPTERS = ("CLAUDE.md", ".cursor/rules/00-tradeai-work-policy.mdc", ".github/copilot-instructions.md", ".goosehints")
+
+@@ -160,7 +162,7 @@
+
+ def test_adapters_are_unchanged():
+     for a in ADAPTERS:
+-        assert h((ROOT / a).read_text(encoding="utf-8")) == ADAPTER_SHA256[a], a
++        assert h(pre_20_2_0_adapter((ROOT / a).read_text(encoding="utf-8"))) == ADAPTER_SHA256[a], a
+
+
+ def test_registered_as_a_ci_gate():
+--- a/tests/test_agents_policy_20_0_0_agent_operations.py
++++ b/tests/test_agents_policy_20_0_0_agent_operations.py
+@@ -33,7 +33,9 @@
+
+ from scripts import check_agents_policy_state as STATE  # noqa: E402
+
++from tests.test_agents_policy_20_2_0_work_pipeline import pre_20_2_0, pre_20_2_0_adapter  # noqa: E402
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++AGENTS = pre_20_2_0(AGENTS)
+ TOKEN = "APPROVE_AGENTS_POLICY_20_0_0"
+ ADAPTERS = ("CLAUDE.md", ".cursor/rules/00-tradeai-work-policy.mdc", ".github/copilot-instructions.md", ".goosehints")
+
+@@ -357,6 +359,7 @@
+
+
+ def pre_20_0_0(text: str) -> str:
++    text = pre_20_2_0(text)
+     """For the older policy tests' pins: the AGENTS.md text as it was before the 20.0.0 ratifying edit. Unchanged
+     while 20.0.0 is PROPOSED; once the 20.0.0 row is ACTIVE, the nine clause edits are undone."""
+     if re.search(r"^\| 20\.0\.0 \| 2026-10-22 \| ACTIVE", text, re.M):
+@@ -365,6 +368,7 @@
+
+
+ def pre_20_0_0_adapter(text: str) -> str:
++    text = pre_20_2_0_adapter(text)
+     """An adapter as it was before the 20.0.0 ratifying edit: the §0 rule 6 sentence, the intro sentence and
+     rule 11 undone when present (an adapter is a verbatim copy of §0)."""
+     text = text.replace(R0_ANCHOR + R0_INS, R0_ANCHOR, 1).replace(R8_INTRO_NEW, R8_INTRO_OLD, 1)
+@@ -524,7 +528,7 @@
+
+ @pytest.mark.parametrize("adapter", ADAPTERS)
+ def test_adapters_gain_the_rule_6_sentence_only_at_ratification(adapter):
+-    text = (ROOT / adapter).read_text(encoding="utf-8")
++    text = pre_20_2_0_adapter((ROOT / adapter).read_text(encoding="utf-8"))
+     assert text.count(R0_ANCHOR) == 1, f"{adapter} lost the 15.0.0 sentence"
+     if not _ratified():
+         assert R0_INS not in text and R8_INS not in text and h(text) == ADAPTER_SHA256[adapter], (
+--- a/tests/test_agents_section_zero_parity.py
++++ b/tests/test_agents_section_zero_parity.py
+@@ -1,4 +1,4 @@
+-"""The ten rules in AGENTS.md section 0 are duplicated into four adapters.
++"""The eleven rules in AGENTS.md section 0 are duplicated into four adapters.
+
+ Five copies of one block is the shape that drifts. Adapters exist because no
+ instruction-file name is guaranteed across AI products, and an agent that reads
+@@ -23,7 +23,7 @@
+     ROOT / ".github" / "copilot-instructions.md",
+     ROOT / ".goosehints",
+ )
+-MARKER = "## The ten rules, verbatim from `AGENTS.md` §0\n\n"
++MARKER = "## The eleven rules, verbatim from `AGENTS.md` §0\n\n"
+
+
+ def _hub_section_zero() -> str:
+--- a/tests/test_agents_policy_4_6_0_platform_rules.py
++++ b/tests/test_agents_policy_4_6_0_platform_rules.py
+@@ -196,7 +196,7 @@
+     # 20.0.0 (PROPOSED, operator-applied patch) supersedes 19.0.0 (ACTIVE, #1962).
+     # 20.1.0 (PROPOSED, MINOR, operator-applied patch) supersedes 20.0.0 (ACTIVE, #2013).
+     allowed = {(17, 0, 0): {"15.0.0", "16.0.0"}, (18, 0, 0): {"17.0.0"}, (19, 0, 0): {"18.0.0"},
+-               (20, 0, 0): {"19.0.0"}, (20, 1, 0): {"20.0.0"}}.get(
++               (20, 0, 0): {"19.0.0"}, (20, 1, 0): {"20.0.0"}, (20, 2, 0): {"20.1.0"}}.get(
+         _version(), {supersedes.get(_version(), "5.1.0")})
+     assert _control("Supersedes") in allowed
+     assert f"{TOKEN} <pr_number> <head_sha>" in f

@@ -1,0 +1,14 @@
+{
+  "AGENTS.md": "0a65c2e97e357a27c548114ad86a8a0bcdced7ae1814cfa411c1df82d75b4375",
+  "CLAUDE.md": "04df92d64e45d372d31963aa006c97d6b03770f1b081c60c69a211fdbaaa8880",
+  ".cursor/rules/00-tradeai-work-policy.mdc": "b7308162f626bdb78212c18112a94061cfc1a9afa25f675cc0413edba8214f7c",
+  ".github/copilot-instructions.md": "1cfaa8fba009e5a142328ecdd9d30fe3bf0cc2d4861b6c35271e4d084b902a48",
+  ".goosehints": "ad79ef5fa172d34eaafad36392734aac0d4d37d7513529bef335b7de0dbec8df",
+  "tests/test_agents_policy_20_2_0_work_pipeline.py": "ABSENT",
+  "config/ci_gates/agents_policy_20_2_0_work_pipeline.json": "ABSENT",
+  "tests/test_agents_policy_20_1_0_live_server_market_hours.py": "79c8c5cc8241334ea368c2b502a07bc83a8afb1f9084bc94c37a793d0f48b02c",
+  "tests/test_agents_policy_20_0_0_agent_operations.py": "47693f3fdd713ddf4cda71df7983247155bd97f10474f9be013c0fba6f531555",
+  "tests/test_agents_section_zero_parity.py": "2732afd664379b76f956a1709b689d0d7af21467fc1aef98209e1c6e814b3b5a",
+  "tests/test_agents_policy_4_6_0_platform_rules.py": "54c983c873af19f11fe245322891e452334042f8c5f0924de540975cf5edb73b",
+  "config/ops_controls.json": "414c394242e71a035aa79a8bdf7a79111569d6b959c89666f6630b27b900f508"
+}
