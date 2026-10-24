@@ -39,6 +39,8 @@ export type WatchMarketField = {
   value: number | null; as_of: string | null; source: string | null; source_label: string
   stale: boolean | null; freshness: string; reason: string | null
   compatibility?: string; as_of_basis?: string | null
+  broken_reference?: { value: number; source: string; source_label: string; as_of: string | null; relation: string } | null
+  fallback_status?: string | null
 }
 export type WatchMarketFacts = {
   schema: string; evaluated_at: string; price: WatchMarketField; support: WatchMarketField; resistance: WatchMarketField
