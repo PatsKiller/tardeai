@@ -70,7 +70,10 @@ def test_all_operative_baselines_have_applicable_fields_and_order():
     # shadow, options-desk-quote-refresh and schwab-position-sync staged; DRAFT until the owners REVIEW them;
     # tests/test_n8n_desk_truth_lanes_20261022.py) = 161.
     # Rebuilt on current main: preserve its158 plus all five desk contracts.
-    assert len(catalogue["contracts"]) == 163
+    # + 1 (2026-10-23 cio-ask-research n8n-native report shadow, DRAFT;
+    # tests/test_cio_ask_research_lane_20261023.py) = 157. Recount on rebase if #1953 / #1957 merge first.
+    # Integrated source census after 2006: all current-main and incoming contracts retained.
+    assert len(catalogue["contracts"]) == 164
     assert not {row["id"]: A.baseline_errors(row) for row in catalogue["contracts"] if A.baseline_errors(row)}
 
 
