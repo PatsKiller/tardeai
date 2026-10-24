@@ -1,0 +1,29 @@
+{
+  "status": "PASS",
+  "stop_code": null,
+  "expected_sha": "d0c8b70d8d915098094aa7180f25d6b0b0e0cffe",
+  "scope": "two metadata-only GETs; no page recapture",
+  "requests": [
+    {
+      "seq": 1,
+      "method": "GET",
+      "path": "/v3/build-meta.json",
+      "started_monotonic_ms": 48.804822,
+      "at": "2026-10-24T03:39:43.433Z",
+      "status": 200,
+      "bytes": 517,
+      "elapsed_ms": 5.7466110000000015
+    },
+    {
+      "seq": 2,
+      "method": "GET",
+      "path": "/v3/build-meta.json",
+      "started_monotonic_ms": 1055.786463,
+      "at": "2026-10-24T03:39:44.440Z",
+      "status": 200,
+      "bytes": 517,
+      "elapsed_ms": 2.2224590000000717
+    }
+  ],
+  "minimum_gap_ms": 1006.9816409999999
+}

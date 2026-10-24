@@ -1,0 +1,37 @@
+{
+  "schema": "WP36StrictSmokeVerification@v1",
+  "as_of": "2026-10-24T03:42:40+00:00",
+  "base_sha": "325ff34f2b3b272090b78d5210a2847c8c30bd2a",
+  "served_sha": "d0c8b70d8d915098094aa7180f25d6b0b0e0cffe",
+  "protocol_scenarios": 21,
+  "pytest_and_gate_registry_tests_passed": 26,
+  "browser_fixture": "PASS; zero real fixture HTTP/WS/external/mutation/credential transport",
+  "scoped_live_views": {
+    "WARN": 2,
+    "accepted_strict_final_UI_views": 0
+  },
+  "remaining_ordinary_view_cells": 62,
+  "heavy_status": "OWNER_HELD_NOT_MEASURED",
+  "live_gets": 51,
+  "initial_live_min_gap_ms": 999.0096080000003,
+  "initial_live_rate_contract": "NOT_ACCEPTED; corrected in delivered source",
+  "corrected_metadata_min_gap_ms": 1006.9816409999999,
+  "credentials_loaded": 0,
+  "mutations_sent": 0,
+  "broker_or_heavy_requests_sent": 0,
+  "original_crawler_executed": false,
+  "production_source_or_scheduler_changes": 0,
+  "artifact_sha256": {
+    "browser-fixture-proof.json": "b52abe4e3b9db589e50cd74bc7ca8f7fd598bf38ffc64fd8b30c9bf2399dd3f5",
+    "corrected-rate-proof.json": "36fb8f80f6c4d92297584cb747c166c7fb7438425eec87c59f08f57a44a58ff5",
+    "legacy-crawler-audit.json": "1ebedd49f2a75dbee28049022b96ac259f0241d6a7b86d3ccb9f35334ea7d37f",
+    "protocol-fixture-proof.json": "bf6998fa9302efbf870c7dbe18fd8b189fc05a9e509b33e23bbd710154b8b4ad",
+    "remaining-view-matrix.json": "0088f1827f91c9e2b953b2fbf137d6012941af18ed2c09b3f3cffe04d68c570c",
+    "scoped-live-observation.json": "3e7fd6ff03af8b8e65f7bb3868ab4a1419afa620207dd78fcbba38d692884a87",
+    "strict-smoke.mjs": "4d4fbd4bf573a3934d79e987de91dc331830954f159b538645e8bca7ea78b028"
+  },
+  "raw_protocol_log": {
+    "path": "/home/johnclaw/.cache/rtc/codex-wp36-20261024/protocol-final.log",
+    "sha256": "ac8dfced4a10d5623740a8128552f707e4ae31422be99992c0baf6a1cc5b6f2b"
+  }
+}
