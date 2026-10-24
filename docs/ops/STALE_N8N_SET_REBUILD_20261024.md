@@ -1,8 +1,8 @@
-# WP-33 registry/n8n stale-set preparation handoff
+# WP-33 registry/n8n stale-set rebuild
 
-Status: LOCAL SOURCE PREPARATION; continuation required, not complete or published
+Status: SOURCE IMPLEMENTED; archive contract review blocks admission/publication
 as_of: 2026-10-24
-Owner: codex-stale-n8n-set-20261024 prepares; root must take the task before final own-session review
+Owner: codex-stale-n8n-root-20261024; same-branch continuation from the preparation worker
 Design-Task: DSN-20261024-stale-n8n-set-P1-T1
 Source base: ca39056af0b67491310a7267d75e2a0c882bc7d0
 
@@ -33,25 +33,41 @@ Ask CIO's process/cap registry remains unchanged and the default governor still 
 `PROCESS_NOT_REGISTERED`. No broker/order/stop code, protected policy, credential or live scheduler
 was changed; the incoming options quote-refresh code delta only normalizes two empty-output reasons.
 
-## Review handoff boundary
+## Review decisions and remaining authority boundary
 
-The child does not act on peer-relayed approval (AGENTS.md §28.4). Root has the latest user's
-instruction directly and must legitimately take this same branch/task, then apply its narrow
-own-session review decision. No child authored fresh REVIEWED authority.
+The preparation worker did not act on peer-relayed approval (AGENTS.md §28.4). It voluntarily
+handed off the same branch and task at `cf1c7c9242e9f2c5bbce4201128716d36cc5178d`. Root took the
+task as claim `20261024T143535Z-codex-f72adc50`, read the carried worklog and applied the direct
+user instruction from its own session. No review authority was inferred from an agent message.
 
-`review-handoff.json` records the exact seven current review shapes. Root's stated authority
+`review-handoff.json` records the seven pre-change review shapes. The user's direct authority
 covers `cio-ask-research` and the five #1940 contracts: `holdings-drift-monitor`,
 `options-desk-staleness-monitor`, `held-exit-coverage-monitor`, `options-desk-quote-refresh`,
-`schwab-position-sync`. The five carry their incoming historical 2026-10-22 reviewer strings;
-Ask CIO is DRAFT with no reviewer/date. Fresh annotation must record the user's exact wording,
-date and provenance. `tests/test_n8n_desk_truth_lanes_20261022.py` still pins the historical reviewer
-and must be updated together with root's decision. Preserve the owner-reviewed assertion.
+`schwab-position-sync`. These six are now REVIEWED at both contract and review level, with
+`reviewed_by: operator 2026-10-24 ('go', via coordinator)` and `reviewed_on: 2026-10-24`.
+[authorized-review.json](packets/stale-n8n-set-20261024/authorized-review.json) preserves before/after
+review fields and hashes. Owner-reviewed assertions remain and now pin the direct decision's
+exact attribution/date. Existing main contracts and the operator-owned owner fields are unchanged.
 
 `jsonl-archive-rotate` is also DRAFT, with `reviewed_by` and `reviewed_on` null. Its contract review
 is outside that narrow fresh authority; root has requested clarification. Do not promote it or
 add a grandfathering exception. Approval K rotation provenance remains historical source material.
 
-## Preparation proof and remaining work
+## Integration corrections and verification
+
+The first affected-suite run reported 843 passed, four failed and one existing skip. Two failures
+were the same pending archive review. The other causes were corrected without weakening checks:
+
+- `cio-ask-research.env_names` is sorted/deduplicated without adding any environment name.
+- The shared Ask CIO contract no longer imports Ops Controls merely to inspect policy version/anchor
+  text. That optional dependency reached release-train and Telegram sender modules. Its existing
+  equivalent fail-closed document reader is retained; the sender-free closure assertion is unchanged.
+  Pinned fixtures preserve lower/proposed/active/superseding versions, missing anchors and unreadable
+  files, and reject any attempted operational-service import.
+
+After these changes, 250 targeted tests passed with psycopg2 hidden, including Ask CIO contract,
+lane, provenance, exact-review, environment and preservation checks. The original broader failure
+receipt is retained under the root worker's scratch directory; no all-green full-profile claim is made.
 
 Eleven new fixture tests pass with `psycopg2` hidden and effective import refusal verified.
 They check exact source preservation, duplicate/loss/authority mutations, SHADOW live-request
@@ -74,6 +90,12 @@ writing none. Its mixed input population is 348 captured active cron lines and 1
 units, so it is not a fresh complete host census. All six measured source files have identical
 SHA-256 values before and after both CHECK commands.
 
-Root must read the carried worklog, resolve only authorized reviews, run the affected suites and
-registry/contract/coverage/host/docs checks, verify source hashes before/after CHECK, commit the
-final source, and append one executable PUSH_NEEDED. No publication event is emitted by this child.
+After the six authorized reviews, the contract checker refuses exactly
+`DRAFT_NOT_GRANDFATHERED jsonl-archive-rotate`. Root asked whether approval K includes this contract
+review and is awaiting clarification; no grandfathering exception or invented reviewer was added.
+The root scratch directory is `/home/johnclaw/.cache/rtc/codex-stale-n8n-root-20261024/`.
+
+Remaining action: record the owner's archive-review decision, run the complete affected profile and
+final registry/contract/coverage/host/docs checks, verify no CHECK mutations, then record one executable
+PUSH_NEEDED. No PUSH_NEEDED, remote write, runtime/archive run or source-completion claim is issued
+while contract admission fails. The source claim is retained for this continuation.

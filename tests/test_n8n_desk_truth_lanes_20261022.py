@@ -91,9 +91,8 @@ def test_every_new_contract_is_owned_and_operator_reviewed():
     for lane in (*MONITORS, *STAGED):
         c = CONTRACTS[lane]
         assert c["status"] == "REVIEWED" and c["review"]["status"] == "REVIEWED", lane
-        assert c["review"]["reviewed_by"].startswith("operator PatsKiller 2026-10-22"), lane
-        assert "approve its 5 contracts" in c["review"]["reviewed_by"], lane
-        assert c["review"]["reviewed_on"] == "2026-10-22", lane
+        assert c["review"]["reviewed_by"] == "operator 2026-10-24 ('go', via coordinator)", lane
+        assert c["review"]["reviewed_on"] == "2026-10-24", lane
         assert c["owner"] and c["expected_output"]["schema"] == "N8nExpectedOutput@v1"
         assert c["alerting"]["failed"]["notifier_priority"] == "P2"
     assert CONTRACTS["options-desk-quote-refresh"]["purpose"]["text"].count("GPU") == 1

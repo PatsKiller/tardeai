@@ -6,6 +6,7 @@ or fetched Git history. No review authority is granted by these assertions.
 from __future__ import annotations
 
 import copy
+import builtins
 import hashlib
 import json
 from pathlib import Path
@@ -17,6 +18,7 @@ PACKET = ROOT / "docs/ops/packets/stale-n8n-set-20261024"
 RECEIPT = json.loads((PACKET / "preservation.json").read_text())
 NATIVE = {"holdings-drift-monitor", "options-desk-staleness-monitor", "held-exit-coverage-monitor",
           "cio-ask-research", "jsonl-archive-rotate"}
+USER_REVIEWED = (NATIVE - {"jsonl-archive-rotate"}) | {"options-desk-quote-refresh", "schwab-position-sync"}
 
 
 def _load(path):
@@ -86,8 +88,23 @@ def test_no_spend_registration_or_protected_policy_changed_and_default_governor_
 
     for path, digest in RECEIPT["protected_sha256"].items():
         assert hashlib.sha256((ROOT / path).read_bytes()).hexdigest() == digest
-    assert CostGovernor(check_fn=lambda *a, **k: {"allow": True}).admit("deepseek", 0.01) == (
-        False, "PROCESS_NOT_REGISTERED")
+    called = []
+
+    def must_not_check(*args, **kwargs):
+        called.append((args, kwargs))
+        raise AssertionError("Unregistered process must refuse before a cost check")
+
+    governor = CostGovernor(check_fn=must_not_check)
+    assert governor.admit("deepseek", 0.01) == (False, "PROCESS_NOT_REGISTERED")
+    assert called == [] and governor.admitted_usd == 0
+
+
+@pytest.mark.parametrize("lane", sorted(USER_REVIEWED))
+def test_direct_user_review_has_exact_attribution_and_date(lane):
+    contract = next(c for c in _load("config/n8n_health_contracts.json")["contracts"] if c["id"] == lane)
+    assert contract["status"] == contract["review"]["status"] == "REVIEWED"
+    assert contract["review"]["reviewed_by"] == "operator 2026-10-24 ('go', via coordinator)"
+    assert contract["review"]["reviewed_on"] == "2026-10-24" and contract["owner"]
 
 
 def test_archive_removal_stays_disabled_and_staged_argv_cannot_apply():
@@ -96,3 +113,35 @@ def test_archive_removal_stays_disabled_and_staged_argv_cannot_apply():
     assert entry["live_arg"] is None
     assert not any(arg in entry["command"] for arg in ("--apply", "--recover", "APPLY"))
     assert entry["lock"] == "/tmp/tradeai_jsonl_archive_rotate.lock" and entry["timeout_s"] == 1800
+
+
+@pytest.mark.parametrize("version,status,anchor,allowed", [
+    ("20.1.0", "ACTIVE", True, False),
+    ("21.0.0", "PROPOSED", True, False),
+    ("21.0.0", "ACTIVE", True, True),
+    ("22.0.0", "ACTIVE", True, True),
+    ("21.0.0", "ACTIVE", False, False),
+    ("invalid", "ACTIVE", True, False),
+])
+def test_research_policy_gate_keeps_version_and_anchor_rules_without_ops_import(
+        tmp_path, monkeypatch, version, status, anchor, allowed):
+    from scripts.lib import cio_ask_contract as contract
+
+    policy = tmp_path / "policy.md"
+    text = f"| {version} | fixture | {status} |\n"
+    if anchor:
+        text += contract.SIZE_SUGGESTION_POLICY_ANCHOR + "\n"
+    policy.write_text(text)
+    original_import = builtins.__import__
+    forbidden = []
+
+    def isolated_import(name, *args, **kwargs):
+        if name.startswith("scripts.lib.ops_controls_core"):
+            forbidden.append(name)
+            raise AssertionError("Research contract must not import operational services")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", isolated_import)
+    assert contract.size_suggestion_allowed(policy) is allowed
+    assert contract.size_suggestion_allowed(tmp_path / "missing.md") is False
+    assert forbidden == []

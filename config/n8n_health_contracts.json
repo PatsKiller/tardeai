@@ -31202,7 +31202,7 @@
           "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
           "kind": "service",
           "direction": "calls",
-          "source": "AGENTS.md \u00a723.3"
+          "source": "AGENTS.md §23.3"
         },
         {
           "name": "$PY scripts/ops/jsonl_archive_rotate.py",
@@ -31351,7 +31351,7 @@
         "reviewed_on": null
       },
       "review_by": "2026-10-30",
-      "state_note": "DRAFT, agent-written 2026-10-23; awaiting the platform owner's REVIEWED (AGENTS.md \u00a723.19). Promotion to live is the operator's word.",
+      "state_note": "DRAFT, agent-written 2026-10-23; awaiting the platform owner's REVIEWED (AGENTS.md §23.19). Promotion to live is the operator's word.",
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",
         "unit": "stores rotated",
@@ -33663,8 +33663,8 @@
       "review": {
         "prepared_by": "agent draft (desk truth 2026-10-22)",
         "status": "REVIEWED",
-        "reviewed_by": "operator PatsKiller 2026-10-22 (\"You just start executing immediately with multiple agents for everything that's not built and not live\", replying to \"#1928: OK for a fresh PR, and approve its 5 contracts?\")",
-        "reviewed_on": "2026-10-22"
+        "reviewed_by": "operator 2026-10-24 ('go', via coordinator)",
+        "reviewed_on": "2026-10-24"
       },
       "state_note": "Agent-written 2026-10-22; DRAFT until its owner REVIEWs it (check_n8n_health_contracts fails a DRAFT that is not grandfathered: this PR's contract gate stays red until then, by design).",
       "expected_output": {
@@ -33864,8 +33864,8 @@
       "review": {
         "prepared_by": "agent draft (desk truth 2026-10-22)",
         "status": "REVIEWED",
-        "reviewed_by": "operator PatsKiller 2026-10-22 (\"You just start executing immediately with multiple agents for everything that's not built and not live\", replying to \"#1928: OK for a fresh PR, and approve its 5 contracts?\")",
-        "reviewed_on": "2026-10-22"
+        "reviewed_by": "operator 2026-10-24 ('go', via coordinator)",
+        "reviewed_on": "2026-10-24"
       },
       "state_note": "Agent-written 2026-10-22; DRAFT until its owner REVIEWs it (check_n8n_health_contracts fails a DRAFT that is not grandfathered: this PR's contract gate stays red until then, by design).",
       "expected_output": {
@@ -34071,8 +34071,8 @@
       "review": {
         "prepared_by": "agent draft (desk truth 2026-10-22)",
         "status": "REVIEWED",
-        "reviewed_by": "operator PatsKiller 2026-10-22 (\"You just start executing immediately with multiple agents for everything that's not built and not live\", replying to \"#1928: OK for a fresh PR, and approve its 5 contracts?\")",
-        "reviewed_on": "2026-10-22"
+        "reviewed_by": "operator 2026-10-24 ('go', via coordinator)",
+        "reviewed_on": "2026-10-24"
       },
       "state_note": "Agent-written 2026-10-22; DRAFT until its owner REVIEWs it (check_n8n_health_contracts fails a DRAFT that is not grandfathered: this PR's contract gate stays red until then, by design).",
       "expected_output": {
@@ -34259,8 +34259,8 @@
       "review": {
         "prepared_by": "agent draft (desk truth 2026-10-22)",
         "status": "REVIEWED",
-        "reviewed_by": "operator PatsKiller 2026-10-22 (\"You just start executing immediately with multiple agents for everything that's not built and not live\", replying to \"#1928: OK for a fresh PR, and approve its 5 contracts?\")",
-        "reviewed_on": "2026-10-22"
+        "reviewed_by": "operator 2026-10-24 ('go', via coordinator)",
+        "reviewed_on": "2026-10-24"
       },
       "state_note": "Agent-written 2026-10-22; DRAFT until its owner REVIEWs it (check_n8n_health_contracts fails a DRAFT that is not grandfathered: this PR's contract gate stays red until then, by design).",
       "expected_output": {
@@ -34450,8 +34450,8 @@
       "review": {
         "prepared_by": "agent draft (desk truth 2026-10-22)",
         "status": "REVIEWED",
-        "reviewed_by": "operator PatsKiller 2026-10-22 (\"You just start executing immediately with multiple agents for everything that's not built and not live\", replying to \"#1928: OK for a fresh PR, and approve its 5 contracts?\")",
-        "reviewed_on": "2026-10-22"
+        "reviewed_by": "operator 2026-10-24 ('go', via coordinator)",
+        "reviewed_on": "2026-10-24"
       },
       "state_note": "Agent-written 2026-10-22; DRAFT until its owner REVIEWs it (check_n8n_health_contracts fails a DRAFT that is not grandfathered: this PR's contract gate stays red until then, by design).",
       "expected_output": {
@@ -34485,7 +34485,7 @@
       "id": "cio-ask-research",
       "kind": "lane",
       "workflow_id": "tradeai-dispatcher",
-      "status": "DRAFT",
+      "status": "REVIEWED",
       "target_reason": "operator_approved_shadow_20261023",
       "stage": "shadow",
       "purpose": {
@@ -34677,7 +34677,9 @@
       "review_by": "2026-11-06",
       "review": {
         "prepared_by": "agent draft (Ask the CIO Phase 9, 2026-10-23)",
-        "status": "DRAFT"
+        "status": "REVIEWED",
+        "reviewed_by": "operator 2026-10-24 ('go', via coordinator)",
+        "reviewed_on": "2026-10-24"
       },
       "expected_output": {
         "schema": "N8nExpectedOutput@v1",

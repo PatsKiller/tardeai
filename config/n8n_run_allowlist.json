@@ -4501,8 +4501,8 @@
       "output_signal": "data/runtime/cio-ask-research_last.json",
       "output_receipt": "v2",
       "env_names": [
-        "CIO_ASK_REQUESTS_DIR",
         "CIO_ASK_ANSWERS_DIR",
+        "CIO_ASK_REQUESTS_DIR",
         "CIO_ASK_RESEARCH_PER_QUESTION_USD",
         "TRADEAI_PERSISTENT_STATE_ROOT"
       ],

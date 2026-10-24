@@ -1,7 +1,7 @@
 """cio-ask-research as an n8n-native lane at stage shadow (operator approval 2026-10-23, Ask the CIO Phase 9).
 
 Registry row (dispatcher, shadow, dry_run), allowlist entry (dry_run_arg only, live_arg null, flock, no broker env),
-DRAFT health contract (only the operator reviews it, AGENTS.md §23.19), CI gate, and an import closure free of
+Operator-reviewed health contract (direct user decision 2026-10-24), CI gate, and an import closure free of
 senders, brokers and order placement.
 """
 
@@ -48,9 +48,10 @@ def test_lane_is_n8n_native_shadow_dry_run():
     assert LANE not in json.dumps(allow.get("never"))
 
     contract = next(c for c in _json("config/n8n_health_contracts.json")["contracts"] if c["id"] == LANE)
-    assert contract["status"] in ("DRAFT", "REVIEWED") and contract["stage"] == "shadow"
-    if contract["status"] == "REVIEWED":  # only the operator reviews a contract (AGENTS.md §23.19)
-        assert contract["review"]["reviewed_by"].startswith("operator ")
+    assert contract["status"] == "REVIEWED" and contract["stage"] == "shadow"
+    assert contract["review"]["status"] == "REVIEWED"
+    assert contract["review"]["reviewed_by"] == "operator 2026-10-24 ('go', via coordinator)"
+    assert contract["review"]["reviewed_on"] == "2026-10-24"
     assert contract["evidence"]["receipt"] == row["output_signal"]["path"]
     from scripts.lib.n8n_output_verdict import validate_expected_output
 
