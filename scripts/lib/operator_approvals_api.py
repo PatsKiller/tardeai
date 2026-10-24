@@ -53,7 +53,8 @@ def git_policy(root: Path = ROOT) -> dict:
     # A report is a derived view. Bind it back to an actual canonical proposal event.
     verified = any(row.get("event") == "AUDIT_FINDINGS" and row.get("hash_self") == report.get("event_hash")
                    and row.get("document_sha") == policy["document_sha"] for row in ledger.rows())
-    if verified and report.get("document_sha") == policy["document_sha"]:
+    if (verified and report.get("document_sha") == policy["document_sha"]
+            and report.get("code_sha") == _git(root, "rev-parse", "HEAD").strip()):
         measured = report.get("mechanical") or {}
         policy = core.policy_projection(text, source_sha=sha, enforcement=measured.get("proofs") or {})
         policy["audit"] = {"state": "PARTIAL", "last_audit": report.get("as_of"), "scope": report.get("review_scope"),
