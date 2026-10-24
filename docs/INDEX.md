@@ -2086,6 +2086,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WP32_BOUNDED_HOME_AND_PREFS_20261023.md` | WP-32 bounded CIO home reads and session verification |
 | `docs/ops/WP33_ITEM3_RUNTIME_REVALIDATION_20261023.md` | WP-33 item 3: receipt-window fix and lane revalidation |
 | `docs/ops/WP34_MANUAL_OPS_CONFIG_INVENTORY_20261024.md` | WP-34 item 4: operations configuration and Controls modal proposal |
+| `docs/ops/WP33_ITEM2_SYNC_SOCIAL_CRON_PACKET_20261024.md` | WP-33 item2: exact residual sync-social operator packet |
 | `docs/ops/WP36_ITEM6_RESEARCH_VERSION_LABELS_20261023.md` | WP-36 item 6: truthful research thesis-version labels |
 | `docs/ops/WP36_STALE_PRODUCERS_20261023.md` | WP-36 item5: stale feed and report-producer reconciliation |
 | `docs/ops/WP36_AFTER_CLOSE_CRAWLER_PREFLIGHT_20261024.md` | WP-36 after-close observer: strict packet and scoped live evidence |
@@ -2190,6 +2191,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/run-from-release-cohort1-20261015/04_rollback.md` | Roll back cohort 1 (operator) |
 | `docs/ops/packets/run-from-release-cohort1-20261015/README.md` | Run from the release: cohort 1 operator packet (2026-10-15) |
 | `docs/ops/packets/swing-alert-single-sender-20261019/README.md` | Swing entry alerts: one sender (2026-10-19) |
+| `docs/ops/packets/sync-social-residual-cron-20261024/README.md` | WP-33 item2: residual sync-social cron retirement packet |
 | `docs/ops/packets/tmp-hygiene-auto-apply-20261022/README.md` | /tmp hygiene that deletes — auto-apply on host timers (2026-10-22) |
 | `docs/ops/proposals/main-ci-watch-lane-20261022/README.md` | Proposed n8n lane `main-ci-watch` — main-HEAD exact-SHA CI for the Releases page |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution |

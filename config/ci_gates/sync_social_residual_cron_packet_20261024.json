@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "sync_social_residual_cron_packet_20261024",
+  "files": [
+    "tests/test_sync_social_residual_cron_packet_20261024.py"
+  ],
+  "anchor": "SYNC_SOCIAL_RESIDUAL_CRON_PACKET_20261024",
+  "comment": [
+    "ANCHOR: SYNC_SOCIAL_RESIDUAL_CRON_PACKET_20261024 — WP33 item2 operator-only exact unflocked absoluteCURRENT residual cron retirement.",
+    "Offline fixtures and a >200KB fake crontab prove one prefix-only edit, preserved old flocked line, private backup, preview/no write,",
+    "exact readback, missing/duplicate/drift/tamper/read-failure refusal and no whole-backup restoration; no host scheduler calls."
+  ]
+}
