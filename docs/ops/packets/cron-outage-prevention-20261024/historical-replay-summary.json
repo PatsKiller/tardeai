@@ -1,0 +1,44 @@
+{
+  "at": "2026-10-23T16:20:00Z",
+  "returncode": 1,
+  "would_alert": true,
+  "actual_send": false,
+  "actual_state_write": false,
+  "registry_rows_considered": 465,
+  "missed_lane_ids": [
+    "incident-notifier",
+    "n8n-siem-bridge",
+    "hermes-score-event-feeder",
+    "paper-execution-sweep",
+    "external-market-data-ingest",
+    "unified-stop-supervisor"
+  ],
+  "coverage_gaps": 226,
+  "known_stop_row": {
+    "lane_id": "unified-stop-supervisor",
+    "schedule_timezone": "America/New_York",
+    "status": "MISSED_RUNS",
+    "reason": "two_or_more_scheduled_successes_missing",
+    "missed_fires": 2,
+    "last_success_at": "2026-10-23T16:06:02Z",
+    "success_scope": "wrapper_or_receipt_execution; business output is separate"
+  },
+  "limitations": [
+    "Legacy completed+exit0 command matching proves execution only, not business outputs.",
+    "Untimestamped refusal lines excluded; cannot reconstruct their exact fire times.",
+    "Bounded copied journal may omit earlier history."
+  ],
+  "fixture_command": "python3 scripts/cron_outage_watchdog.py --registry COPIED_HISTORICAL_REGISTRY --snapshot REDACTED_TRUNCATED_JOURNAL --state-root OWNED_EMPTY_PATH --at 2026-10-23T12:20:00-04:00 --dry-run",
+  "source_provenance": {
+    "observations_at_or_before": "2026-10-23T12:20:00-04:00",
+    "source_window": [
+      45360482,
+      49554786
+    ],
+    "source_window_sha256": "68725e350430fa1c87e63da461c2cd1d2f80d1d4a27c87c04cdc2869ea62c362",
+    "original_source_sha256": "9d4f1444c6bd0c9722908f896ff512ccdd675480c00f2d58d8282f5be66aff28",
+    "registry_source_commit": "d5f51dbef",
+    "registry_sha256": "973d0afd58ce5381c39fc92193a812b3085088d8766329e799b35540b02faf8f",
+    "mode_derivation": "Only a bound scheduler_match contained in legacy command plus no dry-run/plan flag is classed business-execution; other legacy modes UNKNOWN. No command text retained."
+  }
+}

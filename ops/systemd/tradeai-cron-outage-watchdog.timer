@@ -1,0 +1,11 @@
+[Unit]
+Description=Check scheduled success and wrapper refusal independently each minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=5s
+Persistent=true
+Unit=tradeai-cron-outage-watchdog.service
+
+[Install]
+WantedBy=timers.target

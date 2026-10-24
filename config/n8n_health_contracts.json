@@ -33285,5 +33285,41 @@
         }
       }
     }
-  ]
+  ],
+  "pending_changes": {
+    "disk-hygiene-standing-apply-20261024": {
+      "status": "DRAFT",
+      "id": "disk-hygiene",
+      "operative": false,
+      "reviewer": null,
+      "reviewed_at": null,
+      "amendment": {
+        "status": "DRAFT_PENDING_REVIEW",
+        "old_review": "Old plan-only REVIEWED contract does not approve new behavior; preserve its provenance as history, never copy reviewer identity to this scope",
+        "purpose": "Native ET schedule collects fresh evidence, plans and conditionally applies only A/S/W, <=2h rules+manifest SHA binding and <=40GiB cap; manual grant retained; standing disabled until operator review",
+        "healthy": [
+          "expected native trigger -> exact host run_id/code_sha receipt -> fresh bound manifest -> per-item current checks -> measured planned/applied bytes per rule -> durable report -> monitor intent queued",
+          "zero candidates can be healthy only with complete measured evidence; zero removed after failure is failed",
+          "native LaneRunReceipt@v2 lane_id=disk-hygiene; produced_count1 means report written, not every planned byte reclaimed"
+        ],
+        "degraded": [
+          "caps/revalidation leave eligible planned-unapplied bytes",
+          "unmeasured size/activity/host/PR/coordination evidence is not zero"
+        ],
+        "failed": [
+          "RUN_FAILED/TIMEOUT/REFUSED",
+          "rules kill switch/hash or manifest/evidence changed/stale",
+          "removal failure or receipt write failure"
+        ],
+        "alerts": [
+          "monitor existing host intent path; DIGEST/P2 proposed, never P3-never-notify or direct send",
+          "one run-correlated digest intent per durable hygiene run; current transport may fan-in before operator delivery",
+          "disk used>85 on after-attempt sample OR later monitor crossing; eligible planned-unapplied>10GiB for two distinct known runs",
+          "queue/state failures retain run for retry; delivery not proven by queued intent"
+        ],
+        "cadence": "Max48h across ET/DST schedule; use applicable 48/96/144h baseline proposal, never retained weekly168/336/504h literals; empirical acceptance remains NOT_MEASURED"
+      },
+      "requires": "New apply-scope review; existing operative REVIEWED plan contract is preserved byte-for-byte as an object"
+    }
+  }
 }

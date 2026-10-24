@@ -42,6 +42,29 @@ PIDFILE="${LOCKFILE}.pid"
 META="${LOCKFILE}.meta"
 EVENT_LOG="$LOG_DIR/safe_flock_events.jsonl"
 
+# Observability only: these fields never participate in admission or locking.
+WRAPPER_RUN_ID="$$-$(date +%s%N)"
+WRAPPER_EVENT_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/lib/wrapper_events.py"
+WRAPPER_MODE="business"
+case " $* $LOCKFILE " in
+  *--dry-run*|*--dry_run*|*--plan*|*.dryrun*) WRAPPER_MODE="dry_run" ;;
+esac
+# A literal true child is the explicit zero-effect release probe protocol.
+# No new process environment variable changes normal wrapper behavior.
+[ "$#" = "1" ] && [ "$1" = "true" ] && WRAPPER_MODE="preflight"
+record_refusal() {
+  # A refused caller log path must not be followed just to report its refusal.
+  # The default physical release log is the sole fallback; the writer validates
+  # every component and refuses unsafe/immutable sinks without repairing them.
+  local sink="$PROJECT_ROOT/logs" job
+  [ -d "$sink" ] && sink="$(cd "$sink" && pwd -P)"
+  job="$(basename "$LOCKFILE" .lock)"
+  python3 "$WRAPPER_EVENT_HELPER" --journal "$sink/safe_flock_events.jsonl" \
+    --job-id "$job" --wrapper safe_flock --run-id "$WRAPPER_RUN_ID" --mode "$WRAPPER_MODE" \
+    --event refused --reason "$1" --exit-code 1 --stderr-fallback \
+    || echo "safe_flock: refusal_journal_unavailable reason=$1" >&2
+}
+
 # Check the existing portion of LOG_DIR before mkdir -p: otherwise a symlink
 # component could redirect directory creation outside the intended location.
 if ! python3 - "$LOG_DIR" <<'PY'
@@ -80,6 +103,7 @@ for part in path.split(os.path.sep):
         raise SystemExit(1)
 PY
 then
+  record_refusal log_path_preflight_refused
   exit 1
 fi
 
@@ -87,6 +111,7 @@ fi
 # preflight below validates the created path and event-log leaf before append.
 mkdir -p "$LOG_DIR" 2>/dev/null || {
   echo "safe_flock: cannot create log directory $LOG_DIR" >&2
+  record_refusal log_directory_creation_refused
   exit 1
 }
 
@@ -148,6 +173,7 @@ for path in paths:
         raise SystemExit(1)
 PY
 then
+  record_refusal lock_or_journal_path_preflight_refused
   exit 1
 fi
 
@@ -181,7 +207,7 @@ log_event() {
     if [ -n "$exit_code" ]; then
       printf ',"exit_code":%s' "$exit_code"
     fi
-    printf '}\n'
+    printf ',"job_id":"%s","run_id":"%s","mode":"%s"}\n' "$COMPONENT" "$WRAPPER_RUN_ID" "$WRAPPER_MODE"
   } >> "$EVENT_LOG"
 }
 
@@ -209,6 +235,7 @@ if [ -z "$LOCK_FD" ]; then
   # concurrent process to create a second inode and bypass the single-flight.
   exec {LOCK_FD}>"$LOCKFILE" || {
     echo "safe_flock: cannot open lock file $LOCKFILE" >&2
+    record_refusal lock_open_refused
     exit 1
   }
   if ! flock -n "$LOCK_FD"; then

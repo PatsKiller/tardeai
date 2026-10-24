@@ -1,0 +1,10 @@
+[Unit]
+Description=Independent TradeAI wrapper refusal and missed-success monitor
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
+ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/cron_outage_watchdog.py --run --send-alerts
+TimeoutStartSec=45
+# SOURCE ONLY: operator reviews coverage and installs; never safe_flock/notifier/n8n.
