@@ -5,7 +5,9 @@
  */
 import { test, expect, type Page } from '@playwright/test'
 
-const iso = (msAgo = 0) => new Date(Date.now() - msAgo).toISOString()
+const FIXTURE_NOW = Date.parse("2026-10-23T20:30:00Z")
+const iso = (msAgo = 0) => new Date(FIXTURE_NOW - msAgo).toISOString()
+test.beforeEach(async ({ page }) => { await page.clock.install({ time: new Date(FIXTURE_NOW) }) })
 
 function doNowItem(id: string, category: string, severity: string, title: string, money: number | null = null, where = '/v3/risk') {
   return { id, category, severity, title, why: `why ${id}`, action: { label: `Act ${id}`, where }, money_at_risk_usd: money,
@@ -15,7 +17,8 @@ function doNowItem(id: string, category: string, severity: string, title: string
 function doNow() {
   const items = [
     doNowItem('stops:unprotected', 'protect', 'P1', '8 positions with no stop', 410000),
-    doNowItem('stop:SPCX', 'protect', 'P1', 'SPCX $116,250 has no stop', 116250, '/v3/risk?symbol=SPCX'),
+    { ...doNowItem('stop:SPCX', 'protect', 'P1', 'SPCX $116,250 has no stop', 116250, '/v3/risk?symbol=SPCX'),
+      evidence: { symbol: 'SPCX', accounts: ['schwab_roth', 'schwab_individual'], account_labels: ['Schwab Roth IRA', 'Schwab Individual'] } },
     doNowItem('stop:XLB', 'protect', 'P2', 'XLB stop 1.6% away', 420),
     doNowItem('na:health:kill', 'protect', 'P1', 'Kill switch is on'),
     doNowItem('proposals:pending', 'decide', 'P2', '43 paper proposals waiting', null, '/v3/trading?tab=Proposals'),
@@ -106,7 +109,7 @@ test('slim header, one Do-now queue, right column, cards and collapsed drawers',
   await expect(page.getByTestId('home-decision')).toHaveCount(0)
 
   // Right column.
-  await expect(page.getByTestId('home-accounts')).toContainText('Schwab Rollover Ira')
+  await expect(page.getByTestId('home-accounts')).toContainText('Schwab Rollover IRA')
   await expect(page.getByTestId('home-movers').getByTestId('mover-row').first()).toContainText('SPCX')
   await expect(page.getByTestId('num-unprotected')).toContainText('8')
   await expect(page.getByTestId('num-unprotected')).toHaveAttribute('title', /positions_current is not approved for Home/)
@@ -152,4 +155,24 @@ test('390px: no horizontal page scroll', async ({ page }) => {
   await expect(page.getByTestId('do-now-item').first()).toBeVisible()
   const overflow = await page.getByTestId('home-do-now-page').evaluate(el => el.scrollWidth - el.clientWidth)
   expect(overflow).toBeLessThanOrEqual(1)
+})
+
+
+test('do-now account chips preserve scoped account names and actions at desktop and phone widths', async ({ page }) => {
+  await fixtures(page)
+  for (const width of [1440, 412]) {
+    await page.setViewportSize({ width, height: 1000 })
+    await page.goto('/v3/')
+    const item = page.getByTestId('do-now-item').filter({ hasText: 'SPCX $116,250 has no stop' })
+    const accounts = item.getByTestId('do-now-accounts')
+    await expect(accounts.getByTestId('account-chip')).toHaveText(['Schwab Roth IRA', 'Schwab Individual'])
+    await expect(item.getByTestId('do-now-action')).toHaveAttribute('href', '/v3/risk?symbol=SPCX')
+    await expect(item).toContainText('$116,250 at risk')
+    await expect(page.getByTestId('do-now-item').first().getByTestId('do-now-accounts')).toHaveCount(0)
+    const body = await accounts.innerText()
+    expect(body).not.toMatch(/\d{3,}/)
+    const box = await accounts.boundingBox()
+    expect(box!.x + box!.width).toBeLessThanOrEqual(width)
+    await item.screenshot({ path: `../../docs/ops/packets/home-account-chips-20261023/do-now-accounts-${width}.png` })
+  }
 })

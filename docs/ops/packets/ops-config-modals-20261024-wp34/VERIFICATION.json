@@ -1,0 +1,88 @@
+{
+  "schema": "WP34DesignVerification@v1",
+  "as_of": "2026-10-24T03:13:49+00:00",
+  "base_sha": "8ed8a246486317950df01f2a1846825627f369eb",
+  "status": "PROPOSED_DESIGN_ONLY",
+  "inventory_proof": {
+    "status": "PASS",
+    "base_sha": "8ed8a246486317950df01f2a1846825627f369eb",
+    "config_paths": 1110,
+    "top_level_paths": 248,
+    "populated_families": 20,
+    "family_source_anchors": 47,
+    "literal_reference_anchors": 2027,
+    "source_reference_files": 703,
+    "settings_catalogue": {
+      "keys": 4,
+      "wired": 2,
+      "unwired": 2
+    },
+    "design_status": "PROPOSED",
+    "runtime_writer_calls_or_effects": 0,
+    "live_server_requests": 0
+  },
+  "negative_mapping_proofs": [
+    {
+      "case": "missing-path",
+      "result": "REFUSED"
+    },
+    {
+      "case": "wrong-source-anchor",
+      "result": "REFUSED"
+    }
+  ],
+  "offline_browser_proof": {
+    "status": "PASS",
+    "family_options": 20,
+    "checks": [
+      "bounded sample threshold refusal",
+      "unwired setting remains stored-not-effective",
+      "contract stays DRAFT",
+      "integer cap validation",
+      "DB and registry readback remains required",
+      "native schedule proposal",
+      "phone no horizontal page scroll",
+      "financial/auth/generated dossiers have no editable values",
+      "apply disabled for every tested family",
+      "no browser errors",
+      "no network requests"
+    ],
+    "network_requests": 0,
+    "live_server_requests": 0,
+    "real_writes": 0,
+    "screenshots": [
+      "mockup-budget-desktop.png",
+      "mockup-schedule-mobile.png"
+    ]
+  },
+  "artifact_sha256": {
+    "config-path-census.json": "db16d8326e50a35dd64f4ef0627c08ac7631ff7b58af329626d1c310bb6a479a",
+    "inventory.json": "6d59c6d3715066af3832bae2ec642181dd01b5382d17dc89ae0ab874921f7f87",
+    "mockup-budget-desktop.png": "4f865ad1cfe1643c0bda18dede7164eee0ff6ee4561b5186c147783d6aac1759",
+    "mockup-schedule-mobile.png": "8654992eef3572875f37e42f817e988176eed2f7f6ec880bc7a2fadafff07b54",
+    "modal-mockup.html": "dcd4d03f0df17ae17e04e29e7e4048dbc8fcf8bfbf7a3f9c7ca01c86222fdd13",
+    "validate_inventory.py": "d0a88a9a0ebf88632ddbab6a554108a84deefa8f07890623ce1e30878093cb82"
+  },
+  "raw_evidence": {
+    "inventory-validation.json": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp34-20261024/inventory-validation.json",
+      "sha256": "305a244c7ed17116d77724b5e85c9dce1ba9481abcbda455fd8f52c86bcb2d2a"
+    },
+    "negative-validation.json": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp34-20261024/negative-validation.json",
+      "sha256": "a3543cf8657a812cdbcd2b94481dfb5e3319e6ab75b44c7ca2e6082166ac84a3"
+    },
+    "mockup-verification.json": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp34-20261024/mockup-verification.json",
+      "sha256": "e35f26f7125cb1edc6b830939284788914f496f7e260bd6a414facc70f3707b4"
+    }
+  },
+  "runtime_config_changes": 0,
+  "authority_or_credential_changes": 0,
+  "real_network_requests": 0,
+  "real_approvals": 0,
+  "pushes": 0,
+  "merges": 0,
+  "releases": 0,
+  "production_readiness": "NOT_MEASURED; source census and offline design proof only"
+}

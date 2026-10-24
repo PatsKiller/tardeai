@@ -1,0 +1,177 @@
+{
+  "as_of": "2026-10-24T03:20:56.941433+00:00",
+  "source_sha": "325ff34f2",
+  "served_directory": "d0c8b70d8-main-exact-phase2-20261023-182515",
+  "scope": "canonical default paths; runtime environment overrides NOT_MEASURED",
+  "rows": [
+    {
+      "key": "aegis_morning_brief",
+      "title": "Aegis Morning Brief (Telegram + md)",
+      "cadence": "daily",
+      "generator": "aegis_morning_brief_delivery.py",
+      "globs": {
+        "md": "data/portfolios/reports/aegis_morning_brief_*.md",
+        "json": "data/portfolios/reports/aegis_morning_brief_*.json"
+      },
+      "filesystem": {
+        "md": {
+          "count": 0,
+          "newest_name": null,
+          "mtime": null,
+          "evidence_class": "FILESYSTEM_METADATA_ONLY"
+        },
+        "json": {
+          "count": 0,
+          "newest_name": null,
+          "mtime": null,
+          "evidence_class": "FILESYSTEM_METADATA_ONLY"
+        }
+      }
+    },
+    {
+      "key": "weekly_review",
+      "title": "Weekly Portfolio Review",
+      "cadence": "weekly",
+      "generator": "generate_weekly_portfolio_review (Sun 20:30 controller)",
+      "globs": {
+        "docx": "data/portfolios/reports/weekly/weekly_*.docx",
+        "html": "data/portfolios/reports/weekly/weekly_*.html",
+        "json": "data/portfolios/reports/weekly/weekly_*.json"
+      },
+      "filesystem": {
+        "docx": {
+          "count": 0,
+          "newest_name": null,
+          "mtime": null,
+          "evidence_class": "FILESYSTEM_METADATA_ONLY"
+        },
+        "html": {
+          "count": 0,
+          "newest_name": null,
+          "mtime": null,
+          "evidence_class": "FILESYSTEM_METADATA_ONLY"
+        },
+        "json": {
+          "count": 0,
+          "newest_name": null,
+          "mtime": null,
+          "evidence_class": "FILESYSTEM_METADATA_ONLY"
+        }
+      }
+    },
+    {
+      "key": "monthly_review",
+      "title": "Monthly Portfolio Report",
+      "cadence": "monthly",
+      "generator": "portfolio monthly synthesis (day-1 07:35 controller)",
+      "globs": {
+        "docx": "data/portfolios/reports/monthly/monthly_*.docx",
+        "html": "data/portfolios/reports/monthly/monthly_*.html",
+        "json": "data/portfolios/reports/monthly/monthly_*.json"
+      },
+      "filesystem": {
+        "docx": {
+          "count": 0,
+          "newest_name": null,
+          "mtime": null,
+          "evidence_class": "FILESYSTEM_METADATA_ONLY"
+        },
+        "html": {
+          "count": 0,
+          "newest_name": null,
+          "mtime": null,
+          "evidence_class": "FILESYSTEM_METADATA_ONLY"
+        },
+        "json": {
+          "count": 0,
+          "newest_name": null,
+          "mtime": null,
+          "evidence_class": "FILESYSTEM_METADATA_ONLY"
+        }
+      }
+    },
+    {
+      "key": "enterprise_reports",
+      "title": "Enterprise Report Set (DOCX + PDF)",
+      "cadence": "on-event",
+      "generator": "generate_enterprise_reports.py",
+      "globs": {
+        "docx": "data/portfolios/reports/analyst/enterprise/enterprise_*.docx",
+        "pdf": "data/portfolios/reports/analyst/enterprise/enterprise_*.pdf"
+      },
+      "filesystem": {
+        "docx": {
+          "count": 0,
+          "newest_name": null,
+          "mtime": null,
+          "evidence_class": "FILESYSTEM_METADATA_ONLY"
+        },
+        "pdf": {
+          "count": 0,
+          "newest_name": null,
+          "mtime": null,
+          "evidence_class": "FILESYSTEM_METADATA_ONLY"
+        }
+      }
+    },
+    {
+      "key": "live_readiness",
+      "title": "Live Automation Readiness",
+      "cadence": "on-event",
+      "generator": "generate_live_readiness_report.py",
+      "globs": {
+        "md": "docs/governance/LIVE_AUTOMATION_READINESS_REPORT_latest.md"
+      },
+      "filesystem": {
+        "md": {
+          "count": 0,
+          "newest_name": null,
+          "mtime": null,
+          "evidence_class": "FILESYSTEM_METADATA_ONLY"
+        }
+      }
+    }
+  ],
+  "catalog_keys": [
+    "generated_at",
+    "types",
+    "note"
+  ],
+  "catalog_rows": [
+    {
+      "key": "aegis_morning_brief",
+      "status": "never-generated",
+      "last_generated_at": null,
+      "cadence": "daily",
+      "generator": "aegis_morning_brief_delivery.py"
+    },
+    {
+      "key": "weekly_review",
+      "status": "never-generated",
+      "last_generated_at": null,
+      "cadence": "weekly",
+      "generator": "generate_weekly_portfolio_review (Sun 20:30 controller)"
+    },
+    {
+      "key": "monthly_review",
+      "status": "never-generated",
+      "last_generated_at": null,
+      "cadence": "monthly",
+      "generator": "portfolio monthly synthesis (day-1 07:35 controller)"
+    },
+    {
+      "key": "enterprise_reports",
+      "status": "never-generated",
+      "last_generated_at": null,
+      "cadence": "on-event",
+      "generator": "generate_enterprise_reports.py"
+    },
+    {
+      "key": "live_readiness",
+      "status": "never-generated",
+      "last_generated_at": null,
+      "cadence": "on-event",
+      "generator": "generate_live_readiness_report.py"
+    }
+  ]
+}

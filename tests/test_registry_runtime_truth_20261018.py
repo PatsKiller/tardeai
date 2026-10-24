@@ -387,6 +387,59 @@ def test_apply_writes_v2_receipt_the_executor_accepts_and_queues_one_intent(env,
     assert [(r[0], r[5]) for r in _intents(env.ledger)] == [("fabric", 2)]
 
 
+def test_fractional_attempt_window_accepts_real_start_not_rounded_report_clock(env, monkeypatch):
+    """The report clock is second-rounded; the execution receipt must retain its actual start.
+
+    Reproduces the 2026-10-23 host failure with the real post-spawn consumer and
+    only fixture repo/ledger/receipt paths. No host probe or provider is called.
+    """
+    from scripts import n8n_run_executor as executor
+
+    host_start = datetime.fromisoformat("2026-10-23T11:20:04.215703+00:00")
+    producer_start = datetime.fromisoformat("2026-10-23T11:20:04.250000+00:00")
+    producer_end = datetime.fromisoformat("2026-10-23T11:20:04.474448+00:00")
+    host_end = datetime.fromisoformat("2026-10-23T11:20:04.533648+00:00")
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return producer_start
+
+    monkeypatch.setattr(RT, "datetime", Clock)
+    monkeypatch.setattr(R, "now_iso", lambda: producer_end.isoformat())
+    run_id = f"d:{LANE}:live:20261023T0720"
+    code_sha = "f" * 40
+    monkeypatch.setenv("TRADEAI_RUN_ID", run_id)
+    monkeypatch.setenv("TRADEAI_RUN_ATTEMPT", "1")
+    monkeypatch.setenv("TRADEAI_RUN_MODE", "live")
+    monkeypatch.setenv("TRADEAI_CODE_SHA", code_sha)
+    base = env.base[:env.base.index("--now")]
+    assert RT.main(base + ["--apply"]) == 0
+    attempt_path = R.attempt_receipt_path(LANE, run_id, env.state)
+    doc = json.loads(attempt_path.read_text())
+    envelope = {"run_id": run_id, "lane_id": LANE, "mode": "live", "state": "RUN_DONE", "reason": None,
+                "attempt": 1, "code_sha": code_sha, "started_at": host_start.isoformat(),
+                "finished_at": host_end.isoformat()}
+
+    def consume():
+        return executor.apply_output_verdict(dict(envelope), {LANE: CONTRACTS[LANE]["expected_output"]},
+                                            lane_id=LANE, mode="live", state_root=env.state,
+                                            entry={"output_receipt": "v2"})
+
+    accepted = consume()
+    assert accepted["state"] == "RUN_DONE", accepted
+    assert accepted["output_verdict"]["verdict"] == "produced"
+    assert datetime.fromisoformat(doc["started_at"]) == producer_start
+    # The domain report's observation/fingerprint clock keeps its existing precision.
+    report = json.loads(R.receipt_path(LANE, env.state).read_text())
+    assert report["summary"]["as_of"] == producer_start.replace(microsecond=0).isoformat()
+    # The strict consumer still rejects the exact rounded-start defect; no tolerance was added.
+    attempt_path.write_text(json.dumps({**doc, "started_at": producer_start.replace(microsecond=0).isoformat()}))
+    rejected = consume()
+    assert rejected["state"] == "RUN_FAILED"
+    assert rejected["output_verdict"]["why"] == "receipt_outside_attempt_window"
+
+
 def test_apply_without_contradictions_queues_nothing(env, monkeypatch):
     reg = env.root / "config" / "lane_registry.json"
     reg.write_text(json.dumps({"lanes": [_row(PRE_FIX)]}), encoding="utf-8")

@@ -1024,6 +1024,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261023-push-policy-v2.md` | DSN-20261023-push-policy-v2.md |
 | `docs/designs/DSN-20261023-server-memory.md` | DSN-20261023-server-memory.md |
 | `docs/designs/DSN-20261023-work-pipeline.md` | DSN-20261023-work-pipeline.md |
+| `docs/designs/DSN-20261024-ops-config-modals.md` | DSN-20261024-ops-config-modals.md |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
 | `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence |
@@ -2077,9 +2078,16 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WP15_AGENTS_20_2_OPERATOR_PACKAGE_20261023.md` | WP-15: AGENTS 20.2.0 package delivery |
 | `docs/ops/WP16_ADVISORY_POLICY_PACKAGE_20261023.md` | WP-16 advisory-policy package delivery |
 | `docs/ops/WP27_CONTINUOUS_FROM_CURRENT_20261023.md` | WP-27: continuous scanner root reconciliation |
+| `docs/ops/WP28_HERMES_RESEARCH_SOURCE_FILTER_20261023.md` | WP-28 item 2: Hermes research article selection |
+| `docs/ops/WP29_HOME_ACCOUNT_CHIPS_20261023.md` | WP-29 item b: account-name chips in the Home do-now queue |
+| `docs/ops/WP29_SPECIALIST_ACCOUNT_CONTEXT_20261023.md` | WP-29 item d: grounded account location in specialist context |
 | `docs/ops/WP29_TELEGRAM_TURN_DEDUP_20261023.md` | WP-29 item e: idempotent Telegram conversation capture |
 | `docs/ops/WP31_WATCH_LAYOUT_20261023.md` | WP-31 Watch rows and phone cards |
+| `docs/ops/WP32_BOUNDED_HOME_AND_PREFS_20261023.md` | WP-32 bounded CIO home reads and session verification |
+| `docs/ops/WP33_ITEM3_RUNTIME_REVALIDATION_20261023.md` | WP-33 item 3: receipt-window fix and lane revalidation |
+| `docs/ops/WP34_MANUAL_OPS_CONFIG_INVENTORY_20261024.md` | WP-34 item 4: operations configuration and Controls modal proposal |
 | `docs/ops/WP36_ITEM6_RESEARCH_VERSION_LABELS_20261023.md` | WP-36 item 6: truthful research thesis-version labels |
+| `docs/ops/WP36_STALE_PRODUCERS_20261023.md` | WP-36 item5: stale feed and report-producer reconciliation |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye — first institutional-brain audit |
 | `docs/ops/agent_start/codex-note.md` | Codex note — agent claim board (operator installs) |
 | `docs/ops/agent_start/cursor-rule.md` | Cursor rules snippet — agent claim board (operator installs) |
