@@ -1,0 +1,82 @@
+{
+  "would_have_fired": {
+    "path": "data/runtime/sector_momentum_wouldhavefired.json",
+    "exists": true,
+    "mtime": "2026-07-18T04:11:55.486520+00:00",
+    "declared_clocks": {
+      "generated_at": "2026-07-18T04:11:55.486356+00:00"
+    }
+  },
+  "redeploy_analytics_cache": {
+    "path": "data/portfolios/state/redeploy_analytics_cache.json",
+    "exists": true,
+    "mtime": "2026-09-02T20:45:32.773919+00:00",
+    "declared_clocks": {},
+    "latest_cache_clock": "1788381932.7651339"
+  },
+  "disposition_outcomes": {
+    "path": "data/cio/cio_outcome_maturity.json",
+    "exists": true,
+    "mtime": "2026-08-20T18:30:54.595896+00:00",
+    "declared_clocks": {
+      "updated_at": "2026-08-20T18:30:54.595765+00:00"
+    }
+  },
+  "warrior_weekly_audit": {
+    "path": "data/audit/warrior_weekly_latest.json",
+    "exists": true,
+    "mtime": "2026-10-19T17:30:03.273784+00:00",
+    "declared_clocks": {
+      "generated_at": "2026-10-19T13:30:03"
+    }
+  },
+  "declared_scheduler_intent": [
+    {
+      "lane_id": "sector-momentum-engine",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "25 17 * * 1-5",
+        "command_text": "sector_momentum_engine.py",
+        "match": "sector_momentum_engine.py"
+      }
+    },
+    {
+      "lane_id": "agent-watchlist-engine",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 7 * * *",
+        "match": "scripts/agent_watchlist_engine.py"
+      }
+    },
+    {
+      "lane_id": "run-warrior-weekly-audit",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 13 * * 1",
+        "match": "run_warrior_weekly_audit.sh"
+      }
+    },
+    {
+      "lane_id": "morning-brief-0730",
+      "state": "ACTIVE",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 7 * * 1-5",
+        "command_text": "send_morning_brief.py",
+        "match": "scripts/send_morning_brief.py"
+      },
+      "state_reason": null
+    },
+    {
+      "lane_id": "aegis-morning-brief-delivery-0805",
+      "state": "RETIRED",
+      "scheduler": {
+        "kind": "none"
+      },
+      "state_reason": "Duplicate morning-brief sender at 08:05 ET. Operator decision 2026-09-14: one brief at 07:30 ET (morning-brief-0730). Crontab line kept as a dated comment."
+    }
+  ]
+}
