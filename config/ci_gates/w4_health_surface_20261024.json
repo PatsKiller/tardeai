@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "w4_health_surface_20261024",
+  "files": [
+    "tests/test_w4_health_surface_20261024.py"
+  ],
+  "comment": [
+    "W4 Health deduplication and verified-vs-preview remediation evidence."
+  ]
+}

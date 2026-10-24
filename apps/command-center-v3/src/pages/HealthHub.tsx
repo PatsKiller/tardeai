@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { pageTab } from '../lib/w9PageModel'
+import JobsHealth from '../components/JobsHealth'
 import { useApi } from '../hooks/useApi'
 import { StateCard } from '../components/StateCard'
 import { StatusBadge } from '../components/StatusBadge'
@@ -12,7 +14,8 @@ import type { DrillContext } from '../components/DetailDrawer'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab, hubPanel } from '../lib/terminalHubChrome'
 
-interface Props { onDrill?: (ctx: DrillContext) => void }
+interface Props { onDrill?: (ctx: DrillContext) => void; jobsHealth?: ReactNode }
+const HEALTH_TABS = ['overview', 'jobs', 'coders', 'history', 'log', 'autonomy', 'intelligence-loop', 'daily-intelligence'] as const
 
 const SEV_COLOR: Record<string, string> = {
   critical: 'var(--red)', warning: 'var(--amber)', info: 'var(--text3)',
@@ -45,7 +48,8 @@ const CAT_HELP: Record<string, string> = {
 const TAB_HELP: Record<string, string> = {
   overview: 'Overall 0–100 health score, per-category breakdown, degrading trends, and active findings.',
   coders: 'Dispatch queue, full ledger (problem → coder → outcome), PR/diff links, and backend routing.',
-  history: 'Score trend over recent cron runs (every 30 min) with per-run context: what degraded, finding counts, deltas.',
+  jobs: 'Scheduled job results, missed runs and recorded failure causes.',
+  history: 'Score trend over recorded runs, with per-run context: what degraded, finding counts, deltas.',
   log: 'Health Inspector remediation log — every fix, remediation, and escalations across all 22+ producers and agent pipelines. Auto-refreshes every 60s.',
   autonomy: 'Ops Command Board — WHAT / WHY / WHO / WHEN / HOW / STATUS for Layer-1 Ops Agent + Layer-4 Health Agent.',
   'intelligence-loop': 'Agent-runtime, reflection, Financial Senses, notification, FinOps, and CURRENT provenance freshness.',
@@ -63,23 +67,23 @@ function deltaStr(d: number | null | undefined) {
   return `${sign}${d}`
 }
 
-export default function HealthHub({ onDrill }: Props) {
+export default function HealthHub({ onDrill, jobsHealth }: Props) {
   const [terminalUi] = useTerminalUi()
-  const [searchParams] = useSearchParams()
-  const urlTab = searchParams.get('tab')
-  const [tab, setTab] = useState<'overview' | 'coders' | 'history' | 'log' | 'autonomy' | 'intelligence-loop' | 'daily-intelligence'>(
-    urlTab === 'coders' || urlTab === 'history' || urlTab === 'log' || urlTab === 'autonomy' || urlTab === 'intelligence-loop' || urlTab === 'daily-intelligence' ? urlTab : 'overview')
-  useEffect(() => {
-    if (urlTab === 'coders' || urlTab === 'history' || urlTab === 'overview' || urlTab === 'log' || urlTab === 'autonomy' || urlTab === 'intelligence-loop' || urlTab === 'daily-intelligence') setTab(urlTab)
-  }, [urlTab])
-  const { data: health, loading, error } = useApi<any>('/api/v2/health', 120_000)
-  const { data: coders } = useApi<any>('/api/v2/health/coders', 120_000)
-  const { data: dispatches, loading: dispLoading } = useApi<any>('/api/v2/health/dispatches', 60_000)
-  const { data: hist } = useApi<any>('/api/v2/health/history', 300_000)
-  const { data: activity, refetch: refetchActivity } = useApi<any>('/api/v2/health/activity', 60_000)
-  const { data: propHealth } = useApi<any>('/api/v2/health/proposals', 120_000)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tab = pageTab(searchParams.get('tab'), HEALTH_TABS, 'overview')
+  const setTab = (nextTab: typeof HEALTH_TABS[number]) => {
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', nextTab)
+    setSearchParams(next)
+  }
+  const { data: health, loading, error, stale: healthStale } = useApi<any>('/api/v2/health', 120_000)
+  const { data: coders } = useApi<any>('/api/v2/health/coders', 120_000, { enabled: tab === 'coders' })
+  const { data: dispatches, loading: dispLoading } = useApi<any>('/api/v2/health/dispatches', 60_000, { enabled: tab === 'coders' })
+  const { data: hist } = useApi<any>('/api/v2/health/history', 300_000, { enabled: tab === 'history' })
+  const { data: activity, refetch: refetchActivity } = useApi<any>('/api/v2/health/activity', 60_000, { enabled: tab === 'overview' || tab === 'autonomy' })
+  const { data: propHealth } = useApi<any>('/api/v2/health/proposals', 120_000, { enabled: tab === 'overview' })
   const execReady = propHealth?.execution_readiness
-  const { data: riskData } = useApi<any>('/api/v2/risk', 120_000)
+  const { data: riskData } = useApi<any>('/api/v2/risk', 120_000, { enabled: tab === 'overview' })
   const [acting, setActing] = useState<Record<string, string>>({})
   const [histExpanded, setHistExpanded] = useState<number | null>(null)
 
@@ -110,9 +114,6 @@ export default function HealthHub({ onDrill }: Props) {
 
   const chartMax = useMemo(() => Math.max(100, ...histRows.map(h => h.overall_score || 0)), [histRows])
 
-  if (loading) return <div style={{ color: 'var(--text3)', fontSize: 11, padding: 20 }}>Loading health…</div>
-  if (error) return <div style={{ color: 'var(--red)', fontSize: 11, padding: 20 }}>Error: {error}</div>
-
   const overall = health?.overall_score
   const status = health?.status || 'unknown'
   const cats = health?.category_scores || {}
@@ -120,7 +121,7 @@ export default function HealthHub({ onDrill }: Props) {
   const trends: any[] = health?.trends || []
 
   return (
-    <div>
+    <div data-testid="health-hub" data-active-tab={tab}>
       {/* Header */}
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
@@ -133,15 +134,21 @@ export default function HealthHub({ onDrill }: Props) {
           </div>
         </div>
         <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
-          {(['overview', 'coders', 'history', 'log', 'autonomy', 'intelligence-loop', 'daily-intelligence'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)} title={TAB_HELP[t]} style={hubTab(tab === t, terminalUi)}>
-              {t === 'autonomy' ? 'Ops Command' : t === 'daily-intelligence' ? 'Daily Intelligence' : t.charAt(0).toUpperCase() + t.slice(1)}
+          {HEALTH_TABS.map(t => (
+            <button key={t} aria-pressed={tab === t} onClick={() => setTab(t)} title={TAB_HELP[t]} style={hubTab(tab === t, terminalUi)}>
+              {t === 'jobs' ? 'Jobs & health' : t === 'autonomy' ? 'Ops Command' : t === 'intelligence-loop' ? 'Intelligence loop' : t === 'daily-intelligence' ? 'Daily Intelligence' : t.charAt(0).toUpperCase() + t.slice(1)}
             </button>
           ))}
         </div>
       </div>
 
-      {tab === 'overview' && (
+      {loading && !health && <p style={{ color: 'var(--text3)', fontSize: 12 }}>Loading health…</p>}
+      {error || healthStale ? <p role="alert" style={{ color: 'var(--amber)', fontSize: 12 }}>
+        Health snapshot {health ? 'out of date' : 'unavailable'}: {error || 'refresh pending'}. Other tabs remain available.
+      </p> : null}
+      {tab === 'jobs' && (jobsHealth ?? <JobsHealth />)}
+
+      {tab === 'overview' && health && (
         <>
           <RiskHealthStrip
             heatPct={riskData?.portfolio_heat_pct ?? 0}
@@ -160,8 +167,8 @@ export default function HealthHub({ onDrill }: Props) {
             <div>
               <StatusBadge status={STATUS_TO_BADGE[status] || 'unknown'} label={status} size="md" />
               <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 6 }}>
-                {health?.counts?.critical || 0} critical · {health?.counts?.warning || 0} warnings
-                · {health?.counts?.actionable || 0} actionable
+                {health?.counts?.critical ?? '—'} critical · {health?.counts?.warning ?? '—'} warnings
+                · {health?.counts?.actionable ?? '—'} actionable
                 {health?.enqueued ? ` · ${health.enqueued} queued for auto-fix` : ''}
               </div>
               {health?.summary && <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>{health.summary}</div>}
@@ -483,8 +490,8 @@ export default function HealthHub({ onDrill }: Props) {
           {/* Context banner */}
           <div style={{ fontSize: 11, color: 'var(--text2)', lineHeight: 1.55, marginBottom: 14,
             padding: '10px 14px', background: 'var(--bg1)', border: '1px solid var(--border)',
-            borderRadius: 'var(--radius)', borderLeft: '3px solid #60a5fa' }}>
-            <b style={{ color: 'var(--text0)' }}>Run history.</b> {histSummary.schedule || 'health_agent.py every 30 min'}.
+            borderRadius: 'var(--radius)', borderLeft: '3px solid var(--info-color)' }}>
+            <b style={{ color: 'var(--text0)' }}>Run history.</b> {histSummary.schedule || 'Schedule not reported'}.
             Retains {histSummary.retention_days ?? 90}d · API shows up to {histSummary.api_limit ?? 500} runs.
             Each bar is one snapshot: score, status, finding counts, and which categories degraded.
             {histSummary.first_at && histSummary.last_at && (
@@ -521,7 +528,7 @@ export default function HealthHub({ onDrill }: Props) {
                   style={{
                     flex: 1, minWidth: 4, height: `${Math.round(((h.overall_score || 0) / chartMax) * 100)}%`,
                     background: scoreColor(h.overall_score), borderRadius: '2px 2px 0 0', alignSelf: 'flex-end',
-                    cursor: 'pointer', outline: histExpanded === i ? '2px solid #60a5fa' : 'none',
+                    cursor: 'pointer', outline: histExpanded === i ? '2px solid var(--info-color)' : 'none',
                   }} />
               ))}
             </div>
@@ -563,7 +570,7 @@ export default function HealthHub({ onDrill }: Props) {
               const idx = histRows.length - 1 - i
               const open = histExpanded === idx
               return (
-                <div key={idx} style={{ background: 'var(--bg1)', border: `1px solid ${open ? '#60a5fa55' : 'var(--border)'}`, borderRadius: 6, overflow: 'hidden' }}>
+                <div key={idx} style={{ background: 'var(--bg1)', border: `1px solid ${open ? 'color-mix(in srgb, var(--info-color) 33%, transparent)' : 'var(--border)'}`, borderRadius: 6, overflow: 'hidden' }}>
                   <button type="button" onClick={() => setHistExpanded(open ? null : idx)}
                     style={{ display: 'flex', width: '100%', gap: 10, alignItems: 'center', padding: '8px 12px',
                       border: 'none', background: 'transparent', cursor: 'pointer', textAlign: 'left' }}>
@@ -613,7 +620,7 @@ export default function HealthHub({ onDrill }: Props) {
       )}
 
       {tab === 'log' && <RemediationDashboard />}
-      {tab === 'autonomy' && <OpsAutonomyDashboard />}
+      {tab === 'autonomy' && <OpsAutonomyDashboard snapshot={health} snapshotError={error} />}
       {tab === 'intelligence-loop' && <><AutonomyLoopPanel /><div style={{ height: 12 }} /><MemoryPanel /></>}
       {tab === 'daily-intelligence' && <DailyIntelligencePanel />}
     </div>
