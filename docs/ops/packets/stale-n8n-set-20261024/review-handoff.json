@@ -1,0 +1,84 @@
+[
+  {
+    "id": "jsonl-archive-rotate",
+    "status": "DRAFT",
+    "stage": "shadow",
+    "review": {
+      "prepared_by": "agent draft (ops/jsonl-retention-20261023)",
+      "status": "DRAFT",
+      "reviewed_by": null,
+      "reviewed_on": null
+    },
+    "action": "ROOT own-session user review required; no child promotion"
+  },
+  {
+    "id": "holdings-drift-monitor",
+    "status": "REVIEWED",
+    "stage": "shadow",
+    "review": {
+      "prepared_by": "agent draft (desk truth 2026-10-22)",
+      "status": "REVIEWED",
+      "reviewed_by": "operator PatsKiller 2026-10-22 (\"You just start executing immediately with multiple agents for everything that's not built and not live\", replying to \"#1928: OK for a fresh PR, and approve its 5 contracts?\")",
+      "reviewed_on": "2026-10-22"
+    },
+    "action": "ROOT own-session user review required; no child promotion"
+  },
+  {
+    "id": "options-desk-staleness-monitor",
+    "status": "REVIEWED",
+    "stage": "shadow",
+    "review": {
+      "prepared_by": "agent draft (desk truth 2026-10-22)",
+      "status": "REVIEWED",
+      "reviewed_by": "operator PatsKiller 2026-10-22 (\"You just start executing immediately with multiple agents for everything that's not built and not live\", replying to \"#1928: OK for a fresh PR, and approve its 5 contracts?\")",
+      "reviewed_on": "2026-10-22"
+    },
+    "action": "ROOT own-session user review required; no child promotion"
+  },
+  {
+    "id": "held-exit-coverage-monitor",
+    "status": "REVIEWED",
+    "stage": "shadow",
+    "review": {
+      "prepared_by": "agent draft (desk truth 2026-10-22)",
+      "status": "REVIEWED",
+      "reviewed_by": "operator PatsKiller 2026-10-22 (\"You just start executing immediately with multiple agents for everything that's not built and not live\", replying to \"#1928: OK for a fresh PR, and approve its 5 contracts?\")",
+      "reviewed_on": "2026-10-22"
+    },
+    "action": "ROOT own-session user review required; no child promotion"
+  },
+  {
+    "id": "options-desk-quote-refresh",
+    "status": "REVIEWED",
+    "stage": null,
+    "review": {
+      "prepared_by": "agent draft (desk truth 2026-10-22)",
+      "status": "REVIEWED",
+      "reviewed_by": "operator PatsKiller 2026-10-22 (\"You just start executing immediately with multiple agents for everything that's not built and not live\", replying to \"#1928: OK for a fresh PR, and approve its 5 contracts?\")",
+      "reviewed_on": "2026-10-22"
+    },
+    "action": "ROOT own-session user review required; no child promotion"
+  },
+  {
+    "id": "schwab-position-sync",
+    "status": "REVIEWED",
+    "stage": null,
+    "review": {
+      "prepared_by": "agent draft (desk truth 2026-10-22)",
+      "status": "REVIEWED",
+      "reviewed_by": "operator PatsKiller 2026-10-22 (\"You just start executing immediately with multiple agents for everything that's not built and not live\", replying to \"#1928: OK for a fresh PR, and approve its 5 contracts?\")",
+      "reviewed_on": "2026-10-22"
+    },
+    "action": "ROOT own-session user review required; no child promotion"
+  },
+  {
+    "id": "cio-ask-research",
+    "status": "DRAFT",
+    "stage": "shadow",
+    "review": {
+      "prepared_by": "agent draft (Ask the CIO Phase 9, 2026-10-23)",
+      "status": "DRAFT"
+    },
+    "action": "ROOT own-session user review required; no child promotion"
+  }
+]

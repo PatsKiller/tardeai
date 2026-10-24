@@ -1,0 +1,42 @@
+{
+  "merge": "2006",
+  "incoming": "facace330215563380f92d4d88ba05d875c670a9",
+  "conflicts": [
+    {
+      "path": "docs/implementation/n8n-maturity/cron-inventory/README.md",
+      "hunks": 1,
+      "resolution": "preserve both additive row/test-intent blocks; integrated contract census"
+    },
+    {
+      "path": "tests/test_n8n_contract_baselines_20261012.py",
+      "hunks": 1,
+      "resolution": "preserve both additive row/test-intent blocks; integrated contract census"
+    }
+  ],
+  "counts": {
+    "config/lane_registry.json": {
+      "ours": 681,
+      "incoming": 666,
+      "merged": 682,
+      "new_ids": [
+        "cio-ask-research"
+      ]
+    },
+    "config/n8n_health_contracts.json": {
+      "ours": 163,
+      "incoming": 157,
+      "merged": 164,
+      "new_ids": [
+        "cio-ask-research"
+      ]
+    },
+    "config/n8n_run_allowlist.json": {
+      "ours": 137,
+      "incoming": 133,
+      "merged": 138,
+      "new_ids": [
+        "cio-ask-research"
+      ]
+    }
+  }
+}

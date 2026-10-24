@@ -9,7 +9,7 @@ Pins the registry PR that puts the scripts of tests/test_n8n_desk_truth_20261022
   * every new contract was DRAFT until its owner REVIEWed it (no agent self-certifies); the operator REVIEWED all
     five on 2026-10-22 ("You just start executing immediately with multiple agents for everything that's not built
     and not live", replying to "#1928: OK for a fresh PR, and approve its 5 contracts?");
-  * no crontab line: schwab-position-sync stays PAUSED with its line commented.
+  * no crontab line: schwab-position-sync preserves current-main ACTIVE cron lifecycle; n8n stays inert.
 """
 
 from __future__ import annotations
@@ -79,7 +79,10 @@ def test_staged_lanes_are_inert_and_carry_their_activation_record():
     assert qr["f09_staged"]["request_budget"]["per_run_cap"] == 25
     assert "GPU" in qr["f09_staged"]["gpu_window"]
     sps = REG["schwab-position-sync"]
-    assert sps["state"] == "PAUSED" and sps["scheduler"]["kind"] == "cron"
+    # Current main includes the later operator cron-resume decision. Do not import the old PR's PAUSED state.
+    assert sps["state"] == "ACTIVE" and sps["scheduler"]["kind"] == "cron"
+    assert sps["state_since"] == "2026-10-22" and "resume" in sps["state_reason"]
+    assert "dispatch" not in sps and sps["lane_id"] not in ALLOW
     assert sps["f09_staged"]["access_mode"]["required"] == "read_only"
     assert sps["f09_staged"]["cron_lines"][0]["text"].startswith("# PAUSED 2026-10-15")
 

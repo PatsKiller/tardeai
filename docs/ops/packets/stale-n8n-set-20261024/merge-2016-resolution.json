@@ -1,0 +1,27 @@
+{
+  "merge": "2016",
+  "incoming": "2ba735bd0ad63d87253d475f7368ba245594dae4",
+  "conflicts": [
+    {
+      "path": "docs/implementation/n8n-maturity/cron-inventory/README.md",
+      "hunks": 1,
+      "resolution": "preserve both additive row/test-intent blocks; integrated contract census"
+    },
+    {
+      "path": "tests/test_lane_registry_n8n_kind_20261008.py",
+      "hunks": 1,
+      "resolution": "preserve both additive row/test-intent blocks; integrated contract census"
+    },
+    {
+      "path": "tests/test_n8n_contract_baselines_20261012.py",
+      "hunks": 1,
+      "resolution": "preserve both additive row/test-intent blocks; integrated contract census"
+    },
+    {
+      "path": "tests/test_n8n_maturity_registry_dispatch_20261009.py",
+      "hunks": 1,
+      "resolution": "preserve both additive row/test-intent blocks; integrated contract census"
+    }
+  ],
+  "counts": {}
+}

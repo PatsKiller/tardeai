@@ -1,0 +1,80 @@
+{
+  "merge": "1940",
+  "incoming": "af24cde78bbce6d63e0378e40b6c03ba6582bd3b",
+  "conflicts": [
+    {
+      "path": "config/lane_registry.json.schwab-position-sync.state_reason",
+      "resolution": "preserve current-main value; incoming historical intent retained in receipt",
+      "ours": "ACTIVE (cron): operator decision 2026-10-22, verbatim: \"keep step (a) as-is and resume it on cron now, because the holdings data matters. I'll flip its registry row to 'ACTIVE (cron)' in the same change, so the truth monitor doesn't flag a mismatch. It moves to the n8n lane after 19.0.0.\" The runner is HOST cron line 501 (7,22,37,52 9-16 * * 1-5, America/New_York, Mon-Fri), un-paused by step (a) of docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh (unchanged; operator-run, never by an agent), and this row flips in the same change (\u00a79.3: a crontab edit is a registry edit). History: the line was commented \"# PAUSED 2026-10-15 schwab-app-deactivated (incident SPCX, grant 0f9de907)\" from 2026-10-15 to the resume; the row was PAUSED from 2026-10-22 (PR #1927) until this flip. Until the operator runs step (a), scripts/check_registry_runtime_truth.py reports ACTIVE_CRON_LINE_ABSENT for this row on the host; that finding clears when line 501 is live. The n8n lane in f09_staged stays inert until AGENTS.md 19.0.0 is ACTIVE.",
+      "incoming": "Crontab line 501 is commented: \"# PAUSED 2026-10-15 schwab-app-deactivated (incident SPCX, grant 0f9de907)\" (crontab -l, read 2026-10-22). The row said ACTIVE for a week while the scheduled holdings.json writer did not run, and lane_state_drift classified the pair UNCLASSIFIED, so no gate saw it; scripts/check_registry_runtime_truth.py now reports that shape as ACTIVE_CRON_LINE_ABSENT. Schwab reads were re-enabled by the operator 2026-10-16 (config/schwab_access_mode.yaml mode read_only). Until AGENTS.md 19.0.0 (broker READ-ONLY lanes on n8n) is ACTIVE this writer stays a HOST cron line: the operator's cron resume packet re-enables line 501 and flips this row back to ACTIVE in the same change (\u00a79.3: a crontab edit is a registry edit). The n8n lane in f09_staged stays inert until 19.0.0 is ACTIVE."
+    },
+    {
+      "path": "config/lane_registry.json.schwab-position-sync.f09_staged.why_off",
+      "resolution": "preserve current-main value; incoming historical intent retained in receipt",
+      "ours": "Staged inert, gated on AGENTS.md 19.0.0 ACTIVE (operator 2026-10-22: \"It moves to the n8n lane after 19.0.0.\"): no allowlist entry and no dispatch block. Today lib/lane_dispatch.dispatch_eligible refuses the forbidden tokens 'schwab' (EXTRA_FORBIDDEN_WORDS) and 'schwab_position_sync.py' (pipeline_manifest.FORBIDDEN_COMMAND_TOKENS), and the broker-read lanes are on the \u00a723 n8n never-list; this change does not touch either. AGENTS.md 18.0.0 was ratified 2026-10-22 as the data foundation (\u00a726) and grants no n8n or broker authority, so the broker READ-ONLY amendment this lane waits for is 19.0.0 (not yet proposed or ratified).",
+      "incoming": "Staged inert, gated on AGENTS.md 19.0.0 ACTIVE: no allowlist entry and no dispatch block. Today lib/lane_dispatch.dispatch_eligible refuses the forbidden tokens 'schwab' (EXTRA_FORBIDDEN_WORDS) and 'schwab_position_sync.py' (pipeline_manifest.FORBIDDEN_COMMAND_TOKENS), and the broker-read lanes are on the \u00a723 n8n never-list; this change does not touch either. 19.0.0 (operator-directed 2026-10-22, not yet ratified) is the amendment that admits broker READ-ONLY lanes."
+    },
+    {
+      "path": "config/lane_registry.json.schwab-position-sync.f09_staged.gated_on.policy",
+      "resolution": "preserve current-main value; incoming historical intent retained in receipt",
+      "ours": "AGENTS.md 19.0.0 (the broker READ-ONLY lanes amendment: n8n may schedule broker READ-ONLY lanes under read_only mode + trading lock LOCKED + a read-only allowlist); operator 2026-10-22: \"It moves to the n8n lane after 19.0.0.\" (18.0.0, ratified 2026-10-22, is the data foundation and does not admit this lane)",
+      "incoming": "AGENTS.md 19.0.0 (operator-directed 2026-10-22: n8n may schedule broker READ-ONLY lanes under read_only mode + trading lock LOCKED + a read-only allowlist)"
+    },
+    {
+      "path": "config/lane_registry.json.schwab-position-sync.f09_staged.host_schedule_until_19",
+      "resolution": "preserve current-main value",
+      "ours": "host cron line 501, resumed by step (a) of the operator's incident SPCX resume packet (docs/ops/packets/incident-spcx-resume-20261022/resume-operator.sh), not by this PR; the registry row is ACTIVE (cron) from 2026-10-22 (operator decision quoted in the row's state_reason)",
+      "incoming": "host cron line 501, resumed by the operator's cron resume packet (not by this PR); the registry row returns to ACTIVE in that packet"
+    },
+    {
+      "path": "docs/implementation/n8n-maturity/cron-inventory/README.md",
+      "hunks": 1,
+      "resolution": "preserve both additive row/test-intent blocks; count163 includes both sides"
+    },
+    {
+      "path": "tests/test_lane_registry_n8n_kind_20261008.py",
+      "hunks": 1,
+      "resolution": "preserve both additive row/test-intent blocks; count163 includes both sides"
+    },
+    {
+      "path": "tests/test_n8n_contract_baselines_20261012.py",
+      "hunks": 1,
+      "resolution": "preserve both additive row/test-intent blocks; count163 includes both sides"
+    },
+    {
+      "path": "tests/test_n8n_desk_truth_20261022.py",
+      "hunks": 1,
+      "resolution": "preserve both additive row/test-intent blocks; count163 includes both sides"
+    },
+    {
+      "path": "tests/test_n8n_maturity_registry_dispatch_20261009.py",
+      "hunks": 1,
+      "resolution": "preserve both additive row/test-intent blocks; count163 includes both sides"
+    }
+  ],
+  "counts": {
+    "config/lane_registry.json": {
+      "ours": 677,
+      "incoming": 665,
+      "merged": 681,
+      "new_ids": [
+        "holdings-drift-monitor",
+        "options-desk-staleness-monitor",
+        "held-exit-coverage-monitor",
+        "options-desk-quote-refresh"
+      ]
+    },
+    "config/n8n_health_contracts.json": {
+      "ours": 158,
+      "incoming": 161,
+      "merged": 163,
+      "new_ids": [
+        "holdings-drift-monitor",
+        "options-desk-staleness-monitor",
+        "held-exit-coverage-monitor",
+        "options-desk-quote-refresh",
+        "schwab-position-sync"
+      ]
+    }
+  }
+}
