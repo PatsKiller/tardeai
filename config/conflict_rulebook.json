@@ -1,0 +1,141 @@
+{
+  "schema": "ConflictRulebook@v1",
+  "version": 1,
+  "status": "PROPOSED",
+  "approval": null,
+  "live_enabled": false,
+  "source": "coordinator conflict-resolution-20261024/reference, 2026-10-24",
+  "never_auto": [
+    "safety",
+    "protection",
+    "policy",
+    "money_mismatch",
+    "schedule_state",
+    "flapping"
+  ],
+  "universal": {
+    "flap_limit": 3,
+    "flap_window_days": 7,
+    "roles": [
+      "claim",
+      "gate",
+      "safety",
+      "protection",
+      "policy"
+    ]
+  },
+  "security_stance": {
+    "canonical_max_age_hours": 72,
+    "default_supersede_days": 14,
+    "supersede_days": {
+      "watchlist CIO review": 14,
+      "watchlist_final_synthesis": 3,
+      "agent_escalation": 2,
+      "advisory_desk": 2,
+      "analyst_consensus": 30
+    },
+    "taxable_accounts": [
+      "schwab_taxable"
+    ],
+    "families": {
+      "buy": [
+        "ADD",
+        "BUY",
+        "ACCUMULATE",
+        "RE_ENTER",
+        "REENTER",
+        "ENTER",
+        "GO",
+        "NEAR_ENTRY",
+        "READY",
+        "BUY_READY",
+        "ENTRY_NEAR"
+      ],
+      "hold": [
+        "HOLD",
+        "KEEP",
+        "MAINTAIN"
+      ],
+      "stand_aside": [
+        "WATCH",
+        "AVOID",
+        "PASS",
+        "NO_GO",
+        "NOGO",
+        "WAIT"
+      ],
+      "reduce": [
+        "TRIM",
+        "SELL",
+        "EXIT",
+        "REDUCE"
+      ]
+    },
+    "held_keep": [
+      "WATCH",
+      "WAIT"
+    ],
+    "gate_clear": [
+      "PASS",
+      "OK",
+      "CLEAR"
+    ],
+    "protection_operator": [
+      "AWAITING_FILL",
+      "PENDING_ACTIVATION",
+      "NONE"
+    ],
+    "protection_known": [
+      "ACTIVE",
+      "FILLED",
+      "UNKNOWN",
+      "AWAITING_FILL",
+      "PENDING_ACTIVATION",
+      "NONE"
+    ],
+    "policy_known": [
+      "BREACH",
+      "CLEAR",
+      "OK",
+      "PASS"
+    ],
+    "safety_known": [
+      "ENGAGED",
+      "BLOCKED",
+      "LOCKED",
+      "CLEAR",
+      "DISENGAGED",
+      "UNLOCKED"
+    ],
+    "gate_known": [
+      "PASS",
+      "OK",
+      "CLEAR",
+      "DETERMINISTIC_FAIL",
+      "BLOCKED",
+      "AVOID",
+      "FAIL",
+      "BLACKOUT"
+    ]
+  },
+  "numeric_fact": {
+    "canonical_max_age_hours": 26,
+    "abs_tolerance": 1.0,
+    "rel_tolerance": 0.0,
+    "unit": "$",
+    "supersede_days": 2
+  },
+  "schedule_state": {
+    "canonical_max_age_days": 365,
+    "supersede_days": 3650,
+    "runs": {
+      "ACTIVE": true,
+      "LIVE": true,
+      "RUNNING": true,
+      "RETIRED": false,
+      "PAUSED": false,
+      "ABSENT": false,
+      "NOT_SCHEDULED": false
+    }
+  }
+}
