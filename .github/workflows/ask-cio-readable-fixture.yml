@@ -1,0 +1,46 @@
+name: ask-cio-readable-fixture
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/ask-cio-readable-fixture.yml'
+      - 'apps/command-center-v3/src/components/AskCio*'
+      - 'apps/command-center-v3/src/pages/MyQuestions.tsx'
+      - 'apps/command-center-v3/src/lib/askCio*'
+      - 'apps/command-center-v3/e2e/ask-cio-readable.fixture.mjs'
+      - 'apps/command-center-v3/e2e/fixtures/askCioReadable.fixture.json'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ask-cio-readable-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  ask-readable-proof:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/command-center-v3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Canonical copied-ledger answer, delayed completion and identity proof
+        run: node e2e/ask-cio-readable.fixture.mjs e2e/fixtures/askCioReadable.fixture.json "$RUNNER_TEMP/ask-readable-proof"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ask-cio-readable-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ask-readable-proof/
+          if-no-files-found: error

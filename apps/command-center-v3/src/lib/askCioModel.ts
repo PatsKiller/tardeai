@@ -233,7 +233,7 @@ export function unwrap<T>(res: unknown): T | null {
 
 export const TOOLTIPS = {
   bar: 'Ask the CIO anything — same brain as the CIO Telegram bot. ⌘K / Ctrl-K focuses this box.',
-  deep: 'Deep: a research pass (street targets, SEC filings, news, web search) read by a model panel — DeepSeek, Grok and ChatGPT — giving bear/base/bull cases at 3, 6 and 12 months with every number cited. Takes a few minutes; about $0.01–0.25 per question, inside the global LLM cap. Unchecked = Quick: an instant answer from what the CIO already knows (no model spend).',
+  deep: 'Deep: a research pass through the governed model panel and available sources. It may take a few minutes; spend follows the configured question and daily caps. Missing evidence is stated in the answer. Unchecked = Quick: an answer from what the CIO already knows (no model spend).',
   ask: 'Ask: answers from the CIO record, holdings, Watch, catalysts and earlier questions on the same name. The question and answer are saved to CIO memory and recalled next time this name comes up, here or on Telegram.',
   mic: 'Dictate: tap, speak your question, tap again (or pause) to stop. Uses your device microphone through the browser; edit the text before you press Ask.',
   myQuestions: 'Every question you asked (here or on Telegram), its answer versions, sources and what it started tracking.',

@@ -5,7 +5,7 @@
  * something material changed), sources, sizing context for quantities the operator named, and what the question is
  * tracking. Follow up here or reply in Telegram: same thread. READ_ONLY_ADVISORY.
  */
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle } from '../lib/designTokens'
@@ -15,14 +15,23 @@ import {
   type AnswerVersion, type Thread, type ThreadSummary, type Turn,
 } from '../lib/askCioModel'
 import { askCio, askErrorText, requestDeep, untrackEntity } from '../lib/askCioApi'
+import AskCioAnswer from '../components/AskCioAnswer'
+import { ASK_UPDATED_EVENT, answerPresentation, askUpdate, matchingThread, publishAskUpdate, threadVersionKey } from '../lib/askCioPresentation'
 
 const card = { border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.lg, background: TOKENS.bg[1], padding: 12 } as const
 const btn = { fontSize: TYPE.sm, padding: '4px 10px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[2], color: TOKENS.text[0], cursor: 'pointer' } as const
 
 export default function MyQuestions() {
   const { threadId } = useParams()
-  const list = useApi<unknown>(ASK_PATHS.list, 30_000)
+  const [pending, setPending] = useState(false)
+  const list = useApi<unknown>(ASK_PATHS.list, pending ? 5_000 : 30_000)
   const rows = useMemo(() => sortSummaries(unwrap<{ threads: ThreadSummary[] }>(list.data)?.threads ?? []), [list.data])
+  useEffect(() => { setPending(rows.some(row => isPending(row.status))) }, [rows])
+  useEffect(() => {
+    const refresh = (event: Event) => { if (askUpdate(event)) list.refetch() }
+    window.addEventListener(ASK_UPDATED_EVENT, refresh)
+    return () => window.removeEventListener(ASK_UPDATED_EVENT, refresh)
+  }, [list.refetch])
   const [filter, setFilter] = useState('')
   const shown = filterSummaries(rows, filter)
   return (
@@ -33,6 +42,7 @@ export default function MyQuestions() {
           style={{ width: '100%', boxSizing: 'border-box', fontSize: TYPE.base, padding: '5px 8px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[0], color: TOKENS.text[0], marginBottom: 8 }} />
         {list.loading && !rows.length && <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>Loading…</div>}
         {list.error && <div style={{ fontSize: TYPE.sm, color: TOKENS.danger }}>Could not load questions: {list.error}</div>}
+        {list.stale && <div role="status" style={{ fontSize: TYPE.sm, color: TOKENS.warning }}>Questions refresh unavailable — showing saved questions.</div>}
         {!list.loading && !rows.length && !list.error && (
           <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>No questions yet. Use the Ask the CIO bar above (⌘K), or message the CIO bot on Telegram.</div>
         )}
@@ -56,7 +66,7 @@ export default function MyQuestions() {
         </ul>
       </section>
       <section style={{ flex: '3 1 520px', minWidth: 0 }}>
-        {threadId ? <ThreadView threadId={threadId} onChanged={() => list.refetch()} /> : (
+        {threadId ? <ThreadView key={threadId} threadId={threadId} onChanged={() => list.refetch()} /> : (
           <div style={{ ...card, fontSize: TYPE.base, color: TOKENS.text[2] }}>Pick a question to see its thread, answers, sources and what it is tracking.</div>
         )}
       </section>
@@ -65,19 +75,33 @@ export default function MyQuestions() {
 }
 
 function ThreadView({ threadId, onChanged }: { threadId: string; onChanged: () => void }) {
-  const res = useApi<unknown>(ASK_PATHS.thread(threadId), 15_000)
-  const t = unwrap<{ thread: Thread }>(res.data)?.thread ?? null
+  const [pending, setPending] = useState(false)
+  const res = useApi<unknown>(ASK_PATHS.thread(threadId), pending ? 5_000 : 15_000)
+  const t = matchingThread(res.data, threadId)
+  const previous = useRef<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  useEffect(() => { setPending(isPending(t?.status)) }, [t?.status])
+  useEffect(() => {
+    if (!t) return
+    const key = threadVersionKey(t)
+    if (previous.current && previous.current !== key) publishAskUpdate({ threadId, source: 'thread' })
+    previous.current = key
+  }, [t, threadId])
+  useEffect(() => {
+    const refresh = (event: Event) => { const change = askUpdate(event); if (change?.threadId === threadId && change.source !== 'thread') res.refetch() }
+    window.addEventListener(ASK_UPDATED_EVENT, refresh)
+    return () => window.removeEventListener(ASK_UPDATED_EVENT, refresh)
+  }, [threadId, res.refetch])
   const refresh = () => { res.refetch(); onChanged() }
   if (res.loading && !t) return <div style={card}>Loading thread…</div>
-  if (!t) return <div style={{ ...card, color: TOKENS.danger }}>Thread not found{res.error ? `: ${res.error}` : ''}.</div>
+  if (!t) return <div style={{ ...card, color: TOKENS.danger }}>Thread unavailable{res.error ? `: ${res.error}` : res.data ? ' — the response could not be matched to this question' : ''}.</div>
   return (
     <div data-testid="ask-thread" style={{ display: 'grid', gap: 12 }}>
+      {res.stale && <div role="status" style={{ ...card, color: TOKENS.warning }}>Thread refresh unavailable — showing the saved thread from {t.updated_at}.</div>}
       <div style={card}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <h2 style={{ margin: 0, fontSize: TYPE.md, flex: '1 1 auto' }}>{t.title}</h2>
           <span style={chipStyle(statusTone(t.status), 'soft', 'md')}>{statusLabel(t.status)}</span>
-          <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3], fontFamily: FONT.mono }}>{t.thread_id}</span>
         </div>
         <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2], marginTop: 4 }}>
           Asked {relativeAge(t.created_at)} · channels: {t.channels.map(c => CHANNEL_LABEL[c] ?? c).join(', ')}
@@ -111,7 +135,7 @@ function TurnCard({ turn }: { turn: Turn }) {
   const older = (turn.answers ?? []).filter(a => a !== cur).sort((a, b) => b.version - a.version)
   const [showOld, setShowOld] = useState(false)
   return (
-    <div data-testid={`turn-${turn.turn_kind}`} style={card}>
+    <div data-testid={`turn-${turn.turn_kind}`} data-ask-id={turn.ask_id} style={card}>
       <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2], marginBottom: 6 }}>
         {turn.turn_kind === 'reanswer' ? 'Re-answered after a material change' : turn.turn_kind === 'follow_up' ? 'Follow-up' : 'You asked'}
         {' · '}{CHANNEL_LABEL[turn.channel] ?? turn.channel} · {relativeAge(turn.asked_at)}
@@ -129,6 +153,7 @@ function TurnCard({ turn }: { turn: Turn }) {
 }
 
 function AnswerBlock({ a }: { a: AnswerVersion }) {
+  const presentation = answerPresentation(a)
   return (
     <div>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
@@ -138,23 +163,12 @@ function AnswerBlock({ a }: { a: AnswerVersion }) {
         <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3] }}>{relativeAge(a.produced_at)}</span>
       </div>
       {a.what_changed && <div data-testid="what-changed" style={{ fontSize: TYPE.sm, color: TOKENS.success, marginBottom: 6 }}>What changed: {a.what_changed}</div>}
-      <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontFamily: FONT.sans, fontSize: TYPE.base, lineHeight: 1.5, color: TOKENS.text[0] }}>{a.summary}</pre>
+      <AskCioAnswer text={presentation.text} sources={presentation.sources} testId="ask-cio-thread-answer-text" />
       {!!a.sizing_context?.length && (
         <div data-testid="sizing-context" title={TOOLTIPS.sizing} style={{ marginTop: 8, fontSize: TYPE.sm, color: TOKENS.text[1] }}>
           <div style={{ fontWeight: 700 }}>Sizing context (quantities you named — not a recommendation)</div>
           <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{a.sizing_context.map((r, i) => <li key={i}>{sizingLine(r)}</li>)}</ul>
         </div>
-      )}
-      {!!a.sources?.length && (
-        <details style={{ marginTop: 8, fontSize: TYPE.sm }}>
-          <summary style={{ cursor: 'pointer', color: TOKENS.text[2] }}>Sources ({a.sources.length})</summary>
-          <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
-            {a.sources.map((s, i) => (
-              <li key={i}>{s.url && /^https?:\/\//i.test(s.url) ? <a href={s.url} target="_blank" rel="noreferrer" style={{ color: TOKENS.info }}>{s.title}</a> : s.title}
-                <span style={{ color: TOKENS.text[3] }}> · {s.kind}{s.as_of ? ` · as of ${s.as_of.slice(0, 16).replace('T', ' ')}` : ''}</span></li>
-            ))}
-          </ul>
-        </details>
       )}
     </div>
   )
