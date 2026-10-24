@@ -154,7 +154,6 @@ def _execute_jobs(*, role: str, dry_run: bool = False) -> dict:
         base["ok"] = False
         return base
 
-    ensure_cio_caps()
     cards = _load_cards()
     base["cards_loaded"] = len(cards)
 
@@ -178,6 +177,8 @@ def _execute_jobs(*, role: str, dry_run: bool = False) -> dict:
         base["jobs"] = jobs
         base["message"] = "dry_run — no provider calls"
         return base
+
+    ensure_cio_caps()
 
     # Materialize pending plan under workers_enabled (writes no-call + exec auth for QUEUE)
     plan_live = plan_jobs(cards, trigger_reason="SCHEDULED_MWF", dry_run=False)
@@ -224,7 +225,7 @@ def _execute_jobs(*, role: str, dry_run: bool = False) -> dict:
                     process_id=MARIA_SPEC["registered_process_id"],
                     model=MARIA_SPEC["model"],
                     policy=MARIA_SPEC["policy"],
-                    thinking="off",
+                    thinking=MARIA_SPEC["thinking"],
                     prompt=prompt,
                     text=res["text"],
                     prov=res["prov"],
@@ -275,7 +276,7 @@ def _execute_jobs(*, role: str, dry_run: bool = False) -> dict:
                     process_id=CIO_SPEC["registered_process_id"],
                     model=CIO_SPEC["model"],
                     policy=CIO_SPEC["policy"],
-                    thinking="off",
+                    thinking=CIO_SPEC["thinking"],
                     prompt=prompt,
                     text=res["text"],
                     prov=res["prov"],
