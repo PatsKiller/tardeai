@@ -1,0 +1,89 @@
+name: account-label-followups-ui-validation
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/account-label-followups-ui-validation.yml'
+      - 'apps/command-center-v3/e2e/account-label-followups.spec.ts'
+      - 'apps/command-center-v3/e2e/fixtures/accountLabelFollowups.fixture.json'
+      - 'apps/command-center-v3/e2e/support/account_label_static_server.py'
+      - 'apps/command-center-v3/src/pages/WatchMyList.tsx'
+      - 'apps/command-center-v3/src/pages/WatchProspects.tsx'
+      - 'apps/command-center-v3/src/pages/CioHub.tsx'
+      - 'apps/command-center-v3/src/pages/ActiveTraderSessionReviewTab.tsx'
+      - 'apps/command-center-v3/src/components/AccountChip.tsx'
+      - 'apps/command-center-v3/src/lib/accountLabels.ts'
+      - 'apps/command-center-v3/src/lib/watchListsModel.ts'
+  push:
+    branches: ['main']
+    paths:
+      - '.github/workflows/account-label-followups-ui-validation.yml'
+      - 'apps/command-center-v3/e2e/account-label-followups.spec.ts'
+      - 'apps/command-center-v3/e2e/fixtures/accountLabelFollowups.fixture.json'
+      - 'apps/command-center-v3/e2e/support/account_label_static_server.py'
+      - 'apps/command-center-v3/src/pages/WatchMyList.tsx'
+      - 'apps/command-center-v3/src/pages/WatchProspects.tsx'
+      - 'apps/command-center-v3/src/pages/CioHub.tsx'
+      - 'apps/command-center-v3/src/pages/ActiveTraderSessionReviewTab.tsx'
+      - 'apps/command-center-v3/src/components/AccountChip.tsx'
+      - 'apps/command-center-v3/src/lib/accountLabels.ts'
+      - 'apps/command-center-v3/src/lib/watchListsModel.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: account-label-followups-${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  account-label-followups-ui:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/command-center-v3
+    env:
+      WP29_SHOTS: ${{ runner.temp }}/wp29-account-scope
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Render all six fixture-only views (no API proxy)
+        shell: bash
+        run: |
+          set -euo pipefail
+          PORT_FILE="$RUNNER_TEMP/wp29-port-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          python3 e2e/support/account_label_static_server.py --dist dist --port 0 --port-file "$PORT_FILE" > "$RUNNER_TEMP/wp29-server.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 50); do
+            [ -s "$PORT_FILE" ] && break
+            sleep 0.2
+          done
+          test -s "$PORT_FILE"
+          export PLAYWRIGHT_BASE_URL="http://127.0.0.1:$(cat "$PORT_FILE")"
+          npx playwright test e2e/account-label-followups.spec.ts --project=chromium --reporter=line
+      - name: Upload screenshots and API-scope receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wp29-account-label-followups
+          path: |
+            ${{ runner.temp }}/wp29-account-scope/
+            ${{ runner.temp }}/wp29-server.log
+            apps/command-center-v3/test-results/
+          if-no-files-found: warn

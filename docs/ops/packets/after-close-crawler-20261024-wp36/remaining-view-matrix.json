@@ -1,0 +1,419 @@
+{
+  "schema": "WP36RemainingViews@v1",
+  "rows": [
+    {
+      "url": "/v3/retirement",
+      "width": 1440,
+      "status": "WARN_OBSERVATION_ONLY",
+      "next_action": "Strict final recapture; retain protected endpoint holds"
+    },
+    {
+      "url": "/v3/retirement",
+      "width": 412,
+      "status": "WARN_OBSERVATION_ONLY",
+      "next_action": "Strict final recapture; retain protected endpoint holds"
+    },
+    {
+      "url": "/v3/journal",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/journal",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/watch",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/watch",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/watch/discovery",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/watch/discovery",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/watch-legacy",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/watch-legacy",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/defense",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/defense",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/reports",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/reports",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/rotation",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/rotation",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/rotation?tab=advisor-guide",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/rotation?tab=advisor-guide",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/redeploy",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/redeploy",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/rec-intel",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/rec-intel",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/advisory",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/advisory",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/cio",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/cio",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/health",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/health",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/communications",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/communications",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/consumption",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/consumption",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/coordination",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/coordination",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/system",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/system",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/system/releases",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/system/releases",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/system/releases?tab=n8n",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/system/releases?tab=n8n",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/system/ops-controls",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/system/ops-controls",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/system",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/system",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/agents",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/agents",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/workflows",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/workflows",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/research",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/research",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/data",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/data",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/identity",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/identity",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/notifications",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/notifications",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/learning",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/learning",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/maturity",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/maturity",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/audit",
+      "width": 1440,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    },
+    {
+      "url": "/v3/control-plane/audit",
+      "width": 412,
+      "status": "NOT_MEASURED",
+      "next_action": "Not attempted in scoped run; coordinator continuation pending"
+    }
+  ],
+  "heavy_api_groups": [
+    {
+      "group": "/api/v2/hermes/",
+      "status": "OWNER_HELD_NOT_MEASURED"
+    },
+    {
+      "group": "/api/v3/hermes/",
+      "status": "OWNER_HELD_NOT_MEASURED"
+    },
+    {
+      "group": "/api/v3/maturity/",
+      "status": "OWNER_HELD_NOT_MEASURED"
+    },
+    {
+      "group": "/api/v2/health/remediation",
+      "status": "OWNER_HELD_NOT_MEASURED"
+    },
+    {
+      "group": "/api/v2/health/log",
+      "status": "OWNER_HELD_NOT_MEASURED"
+    },
+    {
+      "group": "portfolio shared-symbol context",
+      "status": "OWNER_HELD_NOT_MEASURED"
+    },
+    {
+      "group": "watchlist/items?symbols=",
+      "status": "OWNER_HELD_NOT_MEASURED"
+    }
+  ]
+}

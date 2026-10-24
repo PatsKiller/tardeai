@@ -1,0 +1,15 @@
+{
+  "schema": "SyncSocialResidualCronPlan@v1",
+  "status": "PLAN_READY",
+  "lane_id": "sync-social-to-intelligence",
+  "target_spec_sha256": "07099ffc8018844dfef32f991fb95be6a6e6149e9cd6842566baa489759515a6",
+  "target_line_sha256": "6005200955aa59b87e4fc68b3e83ef88def4bf001938e40b5393f6e4e972ff4e",
+  "retired_prefix": "# RETIRED WP33-20261024 sync-social-to-intelligence residual (operator packet; n8n owns) ",
+  "snapshot_sha256": "b2964826d90783d4a5c45a8227f7e602eed00825879f10ee868c23241ef6f90b",
+  "candidate_sha256": "6229abf4b63fb053873a92f9286cfbcd6133bfe84e8fe70d92745a3e8eb8ae2e",
+  "changed_lines": 1,
+  "line_number_in_snapshot": 1077,
+  "change": "PREFIX_ONE_EXACT_LINE_ONLY",
+  "n8n_acceptance": "NOT_MEASURED",
+  "observed_at": "2026-10-24T03:48:19Z"
+}

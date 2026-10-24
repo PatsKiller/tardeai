@@ -1,0 +1,56 @@
+[
+  {
+    "closedAt": "2026-10-24T03:36:10Z",
+    "headRefOid": "43422f605ac299dce94f518a71923b411f95588c",
+    "number": 1599,
+    "state": "CLOSED",
+    "url": "https://github.com/PatsKiller/tardeai/pull/1599",
+    "reason": "WP-33 audit: superseded on main by 9bb8c147d via 9decbb6e2. All five original relay-env helper functions remain AST-identical on current main; secret-name classes and renderer blobs match. Integration preserves current relay config names and moves the strict unit change to docs/ops/packets/n8n-relay-env-allowlist-20261021. Unit installation remains an operator packet, not a live-change claim.",
+    "verified_at": "2026-10-24T03:36:10.986808+00:00"
+  },
+  {
+    "closedAt": "2026-10-24T03:36:08Z",
+    "headRefOid": "8e505c97292c50d7758f296ba1787bfe6950bee3",
+    "number": 1628,
+    "state": "CLOSED",
+    "url": "https://github.com/PatsKiller/tardeai/pull/1628",
+    "reason": "WP-33 audit: superseded on main by aa0b9b8d9 via 9decbb6e2. All three production-file deltas match the accepted integration, and all 23 original test functions remain AST-identical on current main; the only integration harness adjustment points release_venv.sh at the repo fixture. No grant or release action performed.",
+    "verified_at": "2026-10-24T03:36:09.128199+00:00"
+  },
+  {
+    "closedAt": "2026-10-24T03:35:57Z",
+    "headRefOid": "dde77d2b2c00ffce2f3a7c8f93cee5054b339b06",
+    "number": 1804,
+    "state": "CLOSED",
+    "url": "https://github.com/PatsKiller/tardeai/pull/1804",
+    "reason": "WP-33 audit: superseded on main by ab741b0de and 7631eed0a via 9decbb6e2. Original first-batch source/test/process/routing deltas match the accepted integration; the three key-level allowlist changes exactly match current main. Caller max_tokens patch is equivalent. Source closure only: activation and persistent process seed remain separate.",
+    "verified_at": "2026-10-24T03:35:58.045523+00:00"
+  },
+  {
+    "closedAt": "2026-10-24T03:35:59Z",
+    "headRefOid": "eb64c276b89d6be9c426f4a7e59eb389f0805378",
+    "number": 1805,
+    "state": "CLOSED",
+    "url": "https://github.com/PatsKiller/tardeai/pull/1805",
+    "reason": "WP-33 audit: superseded on main by bb30d98d6 via 9decbb6e2; original eb64c276b is patch-equivalent and all seven incremental process rows exactly match current main. Base work is integrated by ab741b0de/7631eed0a. No workflow activation or process-seed claim.",
+    "verified_at": "2026-10-24T03:36:00.217410+00:00"
+  },
+  {
+    "closedAt": "2026-10-24T03:36:02Z",
+    "headRefOid": "836e356cfe944a755d3490fdd6c165746b81645c",
+    "number": 1806,
+    "state": "CLOSED",
+    "url": "https://github.com/PatsKiller/tardeai/pull/1806",
+    "reason": "WP-33 audit: superseded on main by 146c5eb6b via 9decbb6e2; original 836e356cf is patch-equivalent and all three incremental process rows exactly match current main. Earlier stack work is also integrated. No runtime activation claim.",
+    "verified_at": "2026-10-24T03:36:04.030300+00:00"
+  },
+  {
+    "closedAt": "2026-10-24T03:36:05Z",
+    "headRefOid": "cb6dd1064e78ba5e755b50356635aba5a15a8ea1",
+    "number": 1807,
+    "state": "CLOSED",
+    "url": "https://github.com/PatsKiller/tardeai/pull/1807",
+    "reason": "WP-33 audit: superseded on main by de6dc89fb via 9decbb6e2; original cb6dd1064 is patch-equivalent and all six incremental process rows exactly match current main. Earlier stack work is also integrated. No runtime activation claim.",
+    "verified_at": "2026-10-24T03:36:06.397861+00:00"
+  }
+]

@@ -1,0 +1,31 @@
+{
+  "kind": "SOURCE_SUPERSESSION_ONLY",
+  "main": "325ff34f2b3b272090b78d5210a2847c8c30bd2a",
+  "prs": [
+    1804,
+    1805,
+    1806,
+    1807,
+    1628,
+    1599
+  ],
+  "llm": {
+    "first_batch_zero_context_deltas_equal_except_allowlist": true,
+    "allowlist_changed_records_exact_current_state": "1804-allowlist-state-proof.json",
+    "remaining_four_commits_patch_equivalent": "patch-equivalence.txt",
+    "all25_incremental_process_records_equal_current": true
+  },
+  "1628": {
+    "production3_file_zero_context_deltas_equal": true,
+    "all23_original_test_functions_equal_current": true,
+    "sole_integration_test_harness_difference": "release_venv source path points to repo in tmp fixture"
+  },
+  "1599": {
+    "all_original_helper_functions_ast_equal_in_integration": true,
+    "secret_name_classes_and_renderer_exact_current_blobs": true,
+    "test_adaptations": "inventory adds n8n_due; unit target becomes operator packet and preserves current unit lines",
+    "runtime_unit_installation": "NOT_MEASURED; operator packet remains separate"
+  },
+  "replacement_commits_ancestor_proof": "replacement-ancestry.json",
+  "no_runtime_activation_claimed": true
+}

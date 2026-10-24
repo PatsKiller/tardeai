@@ -1,0 +1,271 @@
+{
+  "fixture": true,
+  "clock": "2026-10-23T20:30:00Z",
+  "symbol": "SPCX",
+  "accounts": [
+    {
+      "key": "schwab_rollover_ira",
+      "label": "Schwab Rollover IRA"
+    },
+    {
+      "key": "schwab_taxable",
+      "label": "Schwab Individual"
+    }
+  ],
+  "api": {
+    "/api/v2/overview": {
+      "portfolio_value": 0,
+      "today_change": 0,
+      "today_pct": 0,
+      "total_cash": 0,
+      "position_count": 0,
+      "top_movers": [],
+      "account_labels": {
+        "schwab_rollover_ira": "Schwab Rollover IRA",
+        "schwab_taxable": "Schwab Individual"
+      },
+      "observation": {
+        "envelopes": {
+          "holdings": {
+            "observed_at_utc": "2026-10-23T20:30:00Z",
+            "freshness": {
+              "status": "FRESH",
+              "observed_at_utc": "2026-10-23T20:30:00Z"
+            }
+          }
+        }
+      }
+    },
+    "/api/v3/data-broker/watch-curation": {
+      "ok": true,
+      "schema": "WatchCuration@v1",
+      "generated_at": "2026-10-23T20:30:00Z",
+      "source": "fixture",
+      "interim": false,
+      "source_label": "Synthetic fixture",
+      "my_watchlist": {
+        "count": 1,
+        "unfiltered_count": 1,
+        "starred": 1,
+        "rows": [
+          {
+            "schema": "WatchProspectRow@v1",
+            "symbol": "SPCX",
+            "company": "Fixture Corporation \u2014 synthetic two-account example",
+            "lane": "manage",
+            "stage": "held_review",
+            "why": "FIXTURE: same symbol held in two named accounts.",
+            "summary": "Synthetic account-scope baseline; no trading decision or real position is represented.",
+            "conviction": 65,
+            "conviction_components": [],
+            "conviction_missing": [],
+            "conviction_source": "fixture",
+            "conviction_as_of": "2026-10-23T20:30:00Z",
+            "conviction_stale": false,
+            "stance": "HOLD",
+            "whats_missing": [],
+            "conflicts": [],
+            "next_trigger": {
+              "label": "Review account scope",
+              "level_ref": null,
+              "inside": false,
+              "distance_pct": null,
+              "observed_by": "fixture"
+            },
+            "next_action": {
+              "kind": "none",
+              "label": "Observe",
+              "reason": "Read-only fixture."
+            },
+            "price": 100,
+            "price_as_of": "2026-10-23T20:30:00Z",
+            "rsi": 50,
+            "held": true,
+            "surfaces": [],
+            "evidence_at": "2026-10-23T20:30:00Z",
+            "expires_at": null,
+            "stale": false,
+            "mine": true,
+            "starred": true,
+            "membership": [
+              {
+                "kind": "starred",
+                "label": "Synthetic starred example",
+                "at": "2026-10-23T20:30:00Z",
+                "ref": null
+              }
+            ],
+            "position_state": "held",
+            "position_label": "held",
+            "held_accounts": [
+              "schwab_rollover_ira",
+              "schwab_taxable"
+            ],
+            "held_account_labels": [
+              "Schwab Rollover IRA",
+              "Schwab Individual"
+            ]
+          }
+        ],
+        "sources": {
+          "starred": {
+            "status": "ok",
+            "count": 1
+          }
+        },
+        "filters": {},
+        "position_filters": {},
+        "position_facets": {},
+        "never_capped": true
+      },
+      "suggests": {
+        "rows": []
+      },
+      "how": [],
+      "authority": "READ_ONLY_ADVISORY"
+    },
+    "/api/v2/watch/alerts/list": {
+      "alerts": []
+    },
+    "/api/v3/cio/home": {
+      "ok": true,
+      "authority": "READ_ONLY_ADVISORY",
+      "as_of": "2026-10-23T20:30:00Z",
+      "cio_now": {
+        "decisions": [
+          {
+            "kind": "position",
+            "decision_id": "dec_fixture_spcx_accounts",
+            "symbol": "SPCX",
+            "account": "schwab_rollover_ira",
+            "accounts": [
+              "schwab_rollover_ira",
+              "schwab_taxable"
+            ],
+            "account_labels": [
+              "Schwab Rollover IRA",
+              "Schwab Individual"
+            ],
+            "stance": "HOLD",
+            "action": "HOLD",
+            "why_now": "FIXTURE: one advisory position decision spans both named accounts.",
+            "act_now": false,
+            "recommended_delta_usd": null,
+            "delta_usd": null,
+            "value_usd": null,
+            "current_weight_pct": null,
+            "target_weight_pct": null,
+            "freshness": {
+              "state": "CURRENT"
+            },
+            "sizing_suppressed": true,
+            "sizing_suppression_reason": "FIXTURE_ONLY"
+          }
+        ],
+        "decision_count": 1,
+        "open_actions_count": 0,
+        "open_plans_count": 0,
+        "material_today_count": 1,
+        "attention": {
+          "investment_decisions": 1,
+          "workflow_actions": 0,
+          "open_plans": 0,
+          "material_today": 1
+        }
+      },
+      "operator_trust": {},
+      "opportunities": {
+        "watch": [],
+        "reentry": [],
+        "rotation": [],
+        "research_gaps": [],
+        "watch_total": 0,
+        "reentry_total": 0
+      }
+    },
+    "/api/v3/cio/dispositions": {
+      "ok": true,
+      "dispositions": {}
+    },
+    "/api/v3/cio/scorecard": {
+      "ok": true,
+      "tiles": [],
+      "schema": "CIOScorecard@v1"
+    },
+    "/api/v3/active-trader/session-review": {
+      "day": "2026-10-23",
+      "days": [
+        "2026-10-23"
+      ],
+      "review": {
+        "day": "2026-10-23",
+        "symbols": [
+          {
+            "symbol": "SPCX",
+            "bars": 3,
+            "table": [
+              {
+                "ts": 1792764000,
+                "time": "10:00",
+                "price": 100,
+                "engine": "Shared engine signal (fixture)",
+                "should": "Advisory signal shared across accounts",
+                "source": "engine"
+              },
+              {
+                "ts": 1792764060,
+                "time": "10:01",
+                "price": 100.1,
+                "engine": "Manual fill observation (fixture)",
+                "should": "Account-specific review only",
+                "source": "manual",
+                "account_label": "Schwab Rollover IRA"
+              },
+              {
+                "ts": 1792764120,
+                "time": "10:02",
+                "price": 100.2,
+                "engine": "Manual fill observation (fixture)",
+                "should": "Account-specific review only",
+                "source": "manual",
+                "account_label": "Schwab Individual"
+              }
+            ],
+            "ideal_trades": [],
+            "metrics": {
+              "latency_s": [],
+              "latency_max_s": null,
+              "missed": [],
+              "chases": [],
+              "correct_heads_up": 0,
+              "ideal_pnl_pct": 0,
+              "ideal_pnl_per_share": 0,
+              "your_pnl": null,
+              "your_accounts": [
+                "Schwab Rollover IRA",
+                "Schwab Individual"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/api/v2/ui/prefs/get": {
+      "ok": true,
+      "value": {}
+    },
+    "/api/v2/home/do-now": {
+      "status": "OK",
+      "as_of": "2026-10-23T20:30:00Z",
+      "items": [],
+      "counts": {
+        "all": 0
+      },
+      "sources": {}
+    },
+    "/api/v3/ui/runtime": {
+      "ok": true,
+      "read_only": true
+    }
+  }
+}

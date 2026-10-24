@@ -1,0 +1,5 @@
+--- crontab.before
++++ crontab.candidate
+@@ -1077 +1077 @@
+-30 11,15 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1
++# RETIRED WP33-20261024 sync-social-to-intelligence residual (operator packet; n8n owns) 30 11,15 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import random
+import subprocess
 import sys
 from pathlib import Path
 
@@ -271,7 +272,14 @@ class FakeIO:
                 "conclusion": "success",
             }
         ]
-        self.attestation = {"schema": tap.ATTESTATION_SCHEMA, "head_sha": H, "tested_tree": TREE, "ok": True}
+        self.attestation = {
+            "schema": tap.ATTESTATION_SCHEMA,
+            "head_sha": H,
+            "tested_tree": TREE,
+            "ok": True,
+            "run_id": "5001",
+            "run_attempt": "1",
+        }
         self.calls = []
         self.fail_gh = False
 
@@ -316,8 +324,9 @@ class FakeIO:
             raise tap.Unavailable("git_failed")
         return self.objects[(sha, path)]
 
-    def download_attestation(self, repo, run_id):
+    def download_attestation(self, repo, run_id, *, run_attempt):
         assert run_id == 5001
+        assert run_attempt == self.runs[0]["run_attempt"]
         return self.attestation
 
 
@@ -395,6 +404,49 @@ def test_attestation_missing_or_wrong_tree_falls_back():
     io = FakeIO()
     io.attestation = dict(io.attestation, tested_tree="e" * 40)
     assert "attestation_tree_mismatch" in tap.attest(M, repo=REPO, io=io)["reasons"]
+
+
+@pytest.mark.parametrize(
+    "field,value,reason",
+    [
+        ("run_id", "some-other-run", "attestation_run_mismatch"),
+        ("run_id", None, "attestation_run_mismatch"),
+        ("run_attempt", "1", "attestation_attempt_mismatch"),
+        ("run_attempt", None, "attestation_attempt_mismatch"),
+    ],
+)
+def test_attestation_must_match_the_latest_run_attempt(field, value, reason):
+    io = FakeIO()
+    io.runs[0]["run_attempt"] = 2
+    io.attestation["run_attempt"] = "2"
+    io.attestation[field] = value
+    result = tap.attest(M, repo=REPO, io=io)
+    assert not result["ok"] and reason in result["reasons"]
+
+
+def test_latest_rerun_with_matching_attestation_passes():
+    io = FakeIO()
+    io.runs[0]["run_attempt"] = 2
+    io.attestation["run_attempt"] = "2"
+    assert tap.attest(M, repo=REPO, io=io)["ok"]
+
+
+@pytest.mark.parametrize("available", [True, False])
+def test_real_io_requests_only_the_exact_attempt_artifact(tmp_path, monkeypatch, available):
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    calls = []
+
+    def runner(args, **kwargs):
+        calls.append(args)
+        assert args[:4] == ["gh", "run", "download", "5001"]
+        assert args[args.index("-n") + 1] == "ci-gate-attestation-attempt-2"
+        if available:
+            (Path(args[args.index("-D") + 1]) / tap.ATTESTATION_FILE).write_text(json.dumps({"run_attempt": "2"}))
+        return subprocess.CompletedProcess(args, 0 if available else 1, "", "")
+
+    result = tap.SubprocessIO(tmp_path, runner=runner).download_attestation(REPO, 5001, run_attempt=2)
+    assert result == ({"run_attempt": "2"} if available else None)
+    assert len(calls) == 1  # no fallback to an older static artifact
 
 
 def test_superseded_workflow_run_falls_back():

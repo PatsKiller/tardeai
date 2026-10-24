@@ -712,6 +712,9 @@ def run_shard(shard_arg: str, *, jobs: int, out: Path | None) -> int:
         units=results,
         wall=wall,
     )
+    if os.environ.get("GITHUB_RUN_ID"):
+        manifest["run_id"] = os.environ["GITHUB_RUN_ID"]
+        manifest["run_attempt"] = int(os.environ["GITHUB_RUN_ATTEMPT"])
     out = out or Path(os.environ.get("RUNNER_TEMP") or tempfile.gettempdir()) / f"cio_shard_{sid}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(manifest, indent=1) + "\n", encoding="utf-8")
@@ -749,6 +752,13 @@ def verify_shards(
             manifests.append(json.loads(p.read_text(encoding="utf-8")))
         except (OSError, ValueError):
             manifests.append({"schema": "unreadable", "shard": p.name})
+    attempt_errors = []
+    if os.environ.get("GITHUB_RUN_ID"):
+        manifests, attempt_errors = ci_shards.latest_attempt_manifests(
+            manifests,
+            run_id=os.environ["GITHUB_RUN_ID"],
+            run_attempt=os.environ.get("GITHUB_RUN_ATTEMPT", ""),
+        )
     expected = ci_shards.registered_files(GATES, lambda p: (REPO / p).is_file())
     missing = missing_registered_files(GATES)
     needs = json.loads(os.environ.get("CI_GATE_NEEDS") or "null")
@@ -760,6 +770,11 @@ def verify_shards(
         expected_digest=shard_plan(n)["digest"],
         needs=needs if isinstance(needs, dict) else None,
     )
+    if attempt_errors:
+        res["ok"] = False
+        res["errors"].extend(attempt_errors)
+    if os.environ.get("GITHUB_RUN_ID"):
+        res["selected_attempts"] = {str(m["shard"]): m["run_attempt"] for m in manifests}
     if missing:
         res["ok"] = False
         res["errors"] = list(res.get("errors") or []) + [f"registered_file_missing:{p}" for _n, p in missing]

@@ -1,0 +1,106 @@
+{
+  "fixture": true,
+  "product_source_base": "325ff34f2b3b272090b78d5210a2847c8c30bd2a",
+  "clock": "2026-10-23T20:30:00Z",
+  "browser_stats": {
+    "startTime": "2026-10-24T03:41:40.280Z",
+    "duration": 3442.566,
+    "expected": 6,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "source_sha256": {
+    ".github/workflows/account-label-followups-ui-validation.yml": "6894e452e32b0163250a981fbeecc5fa458aae216332d038e482a473fad72ba0",
+    "apps/command-center-v3/e2e/account-label-followups.spec.ts": "14c059d78493ca3bdcb27e07d87217399fa7483a5c97183472e4e590d4111062",
+    "apps/command-center-v3/e2e/fixtures/accountLabelFollowups.fixture.json": "198e36b5cae46937ba46a7eed80ba6305637ce62194a821341be645842fab26d",
+    "apps/command-center-v3/e2e/support/account_label_static_server.py": "d98c9c775977d907b585ec290b7e2acc8943e6b945e6e82538e9b5aca131029b"
+  },
+  "artifacts": {
+    "active-trader-1440.json": {
+      "sha256": "58d5999690c8151f450aa537317aba428fefd5431b565130fe653d23299e63a3",
+      "bytes": 1449
+    },
+    "active-trader-1440.png": {
+      "sha256": "66af08c65330b1aec60aec1250b5760e504f2e50cf931cc56b995a49876dec75",
+      "bytes": 150470,
+      "pixels": [
+        1440,
+        1000
+      ]
+    },
+    "active-trader-412.json": {
+      "sha256": "28200a1b85071df4742563c7bdd107273503280dc21ebe1121b081b454eb823c",
+      "bytes": 1446
+    },
+    "active-trader-412.png": {
+      "sha256": "c944b177f76ca160e8d75d75f65badea691324f566b90f7a7db5518a4c5948b3",
+      "bytes": 78311,
+      "pixels": [
+        412,
+        1000
+      ]
+    },
+    "cio-1440.json": {
+      "sha256": "cb87e9c253372f6cb01b3b8a03d7503ba422600e9957fcf3fd978aee6298062f",
+      "bytes": 1337
+    },
+    "cio-1440.png": {
+      "sha256": "080973c76d61e885f6fcf7698b0b00714913577da67c11b9e94f89a25f239b90",
+      "bytes": 163375,
+      "pixels": [
+        1440,
+        1000
+      ]
+    },
+    "cio-412.json": {
+      "sha256": "ee15a4d17d9239ba353989e7188f26e539092d2c2d6a98e901345b25873c0e82",
+      "bytes": 1336
+    },
+    "cio-412.png": {
+      "sha256": "03320b628be8569b357654382aa89271feb4377e002a6b12e53109b133db1944",
+      "bytes": 64616,
+      "pixels": [
+        412,
+        1000
+      ]
+    },
+    "watch-1440.json": {
+      "sha256": "3f5bee2fea64fd5b1a8441fc6cbda9ffbf92a6b3251ac0ce586e4ce7fd109297",
+      "bytes": 1610
+    },
+    "watch-1440.png": {
+      "sha256": "88d3c97471091446b499d6aae4f5606b5c6b688ac86fc1d631897adc0c4a185e",
+      "bytes": 126114,
+      "pixels": [
+        1440,
+        1000
+      ]
+    },
+    "watch-412.json": {
+      "sha256": "a8234f61c5e8ed6d6b59e9eec88b70d742c230cd0902ea9089303faa5570ae5d",
+      "bytes": 1609
+    },
+    "watch-412.png": {
+      "sha256": "02ac03a44b3506febfd76c8b412bfb8a540f6e789130c9a476aa3449d0a1f488",
+      "bytes": 85747,
+      "pixels": [
+        412,
+        1000
+      ]
+    }
+  },
+  "workflow_regression": {
+    "tests": 87,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0
+  },
+  "build": {
+    "command": "npm run build",
+    "exit_code": 0,
+    "product_source_unchanged": true,
+    "log": "~/.cache/rtc/codex-wp29c-20261023/build.log",
+    "log_sha256": "54e80ab4c6a0fb82124f618dbdcbdbb5d8bdc74d6ca83bc70d5a125e17849372"
+  }
+}

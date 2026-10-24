@@ -420,9 +420,9 @@ def load_catalyst_inputs(db_query: Optional[Callable[..., list[dict]]]) -> dict[
                                            "not_read (no read-only db_query injected)")}
     try:
         try:
-            from scripts.lib.data_broker.catalyst_record import get_catalyst_records_bulk
+            from scripts.lib.data_broker.catalyst_record_readonly import get_catalyst_records_bulk
         except ImportError:  # scripts/ on sys.path
-            from lib.data_broker.catalyst_record import get_catalyst_records_bulk  # type: ignore
+            from lib.data_broker.catalyst_record_readonly import get_catalyst_records_bulk  # type: ignore
         by = get_catalyst_records_bulk(db_query, days=CATALYST_WINDOW_DAYS) or {}
     except Exception as exc:  # noqa: BLE001 — reported, never invented
         return {"catalyst_events": _source("catalyst_events", "projection:catalyst_record", {}, None,
@@ -456,9 +456,9 @@ def load_directive_inputs(db_query: Optional[Callable[..., list[dict]]]) -> dict
                                       None, "not_read (no read-only db_query injected)")}
     try:
         try:
-            from scripts.lib.data_broker.watch_intelligence import active_ticker_directives
+            from scripts.lib.data_broker.watch_directives_readonly import active_ticker_directives
         except ImportError:  # scripts/ on sys.path
-            from lib.data_broker.watch_intelligence import active_ticker_directives  # type: ignore
+            from lib.data_broker.watch_directives_readonly import active_ticker_directives  # type: ignore
         rows = active_ticker_directives(strict=True, db_query=db_query) or []
     except Exception as exc:  # noqa: BLE001 — reported, never invented
         return {"directives": _source("directives", "projection:watch_intelligence.active_ticker_directives", {},
