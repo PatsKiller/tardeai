@@ -1,0 +1,17 @@
+{
+  "schema": "WP14SourcePackage@v1",
+  "source_path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/scratchpad-20261023/push-policy-v2",
+  "source_base_sha": "53aa1b619c9bac6cf8715d3f64b03d1ca0b5ab9a",
+  "source_files_sha256": {
+    "BASE_SHA": "080ecc3079552192fec161fbe84c1051f1c997de98c9c5a6b83c30ffb53a8caa",
+    "COMMIT_MSG.txt": "c00208fd9b98373d4e8cc62e51fabf5d1eca40c8ff1fd3d81f533371fcabeb2f",
+    "DESIGN.md": "12d7c3a953981b72cba833d9abffc766c2c73ea0129e491bab0a3188c2e7dc8c",
+    "PR_BODY.md": "62ab608b3e4bb75381fd152c1d555b6f4d485df68a673f2f72651d0c8cc3f1b2",
+    "SHA256SUMS": "f0dc9a63bf2d7874f7da8c4b0db8615523e8f6d36be602494f5b553667a2bf1b",
+    "apply-push-policy-v2.sh": "22f2611dc5336bedbbce4f09ad8c0d7f4ba1e7367595ed311066e5ca35f3b11e",
+    "push-policy-v2.patch": "982ef939f0513aba808cce41a6f1538e18b474522497685785b7baf2a43575c6",
+    "ratify-push-policy-v2.sh": "22db71914b48fe2c07c7352d3e6ce3f3736e4be0e374bcd4a0aeae8b749c3d2d",
+    "verify-push-policy-v2.sh": "bbe5798a131047d07805bdd3e57eff299504dffec1c94ecd5ab8c7174030878d"
+  },
+  "rebuilt_base_sha": "4acb33ada3eed278c5f7652fcdcd6cbda15e68e5"
+}

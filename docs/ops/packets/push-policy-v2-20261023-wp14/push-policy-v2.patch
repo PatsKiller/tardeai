@@ -1,0 +1,1714 @@
+diff --git a/.githooks/pre-push b/.githooks/pre-push
+index a52e3f364..f620704f2 100755
+--- a/.githooks/pre-push
++++ b/.githooks/pre-push
+@@ -1,11 +1,18 @@
+ #!/usr/bin/env bash
+-# Trade AI tracked pre-push: auth + per-branch push budget, then secrets tree scan,
+-# and only then the guard grant use and the budget count (2026-10-21).
++# Trade AI tracked pre-push: auth + push policy (v1 per-branch budget, or v2 push classes once
++# AI_WORK_POLICY.md §29 is ACTIVE), then secrets tree scan, and only then the guard grant use, the
++# budget count and the push ledger line (2026-10-21; v2 2026-10-23).
+ set -euo pipefail
+
+ repo_root="$(git rev-parse --show-toplevel)"
+ cd "$repo_root"
+-export PYTHONPATH="${repo_root}${PYTHONPATH:+:$PYTHONPATH}"
++# Push policy v2 (2026-10-23): the policy code and the policy text are read from the checkout this hook lives in
++# (core.hooksPath points at the operator's checkout), never from the branch being pushed -- a branch cannot loosen
++# the rules that judge its own push. In a single-checkout repository the two roots are the same directory.
++policy_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
++[[ -f "$policy_root/scripts/lib/tradeai_push_budget.py" ]] || policy_root="$repo_root"
++export TRADEAI_PUSH_POLICY_ROOT="$policy_root"
++export PYTHONPATH="${policy_root}:${repo_root}${PYTHONPATH:+:$PYTHONPATH}"
+
+ # git hands the hook one "<local ref> <local sha> <remote ref> <remote sha>" line per pushed ref.
+ # The budget is charged to the PUSHED branch(es), not to HEAD; HEAD is only the fallback when the
+@@ -62,23 +69,88 @@ guard_reason="$(jget "$guard_meta" reason)"
+ guard_grant_id="$(jget "$guard_meta" grant_id)"
+ [[ "$guard_ok" == "1" ]] && authorized=1
+
++# Serialize the enforcing decision and its durable reservation across ALL linked worktrees.
++# The shell owns fd 9 until exit, including secrets/guard preflights. No other enforcing hook
++# can observe the same unreserved balance. A refused hook writes no effective_allow reservation.
++# Ledger append below must succeed before this hook can authorize an upload.
++mode_preflight="$(python3 - <<'PY_MODE'
++import os
++from scripts.lib.tradeai_push_budget import read_policy_mode
++print(read_policy_mode(os.environ["TRADEAI_PUSH_POLICY_ROOT"])[0])
++PY_MODE
++)"
++if [[ "$mode_preflight" == "enforce" ]]; then
++  reservation_lock="$(python3 - <<'PY_LOCK'
++from scripts.lib.tradeai_push_budget import reservation_lock_path
++print(reservation_lock_path())
++PY_LOCK
++)"
++  mkdir -p "$(dirname "$reservation_lock")"
++  exec 9>"$reservation_lock"
++  flock -x 9
++fi
++
+ # Budget decision per pushed branch, counted per (git common dir, branch) so a new worktree or a
+ # branch switch cannot reset it. A guard grant no longer lifts the cap by itself (2026-10-21): only
+ # a grant whose reason says "override", or the operator's TRADEAI_REMOTE_PUSH_OVERRIDE=1, does.
+-decision="$(AUTHORIZED="$authorized" ENV_OVERRIDE="$env_override" GUARD_OK="$guard_ok" GUARD_REASON="$guard_reason" python3 - <<'PY'
++# Push policy v2 (2026-10-23, AI_WORK_POLICY.md §29): hook_decide runs v1 in legacy and shadow modes and v2 in
++# enforce mode. The mode comes from AI_WORK_POLICY.md's `Push-Policy-v2:` line in the policy root.
++decision="$(AUTHORIZED="$authorized" ENV_OVERRIDE="$env_override" GUARD_OK="$guard_ok" GUARD_REASON="$guard_reason" \
++  GUARD_GRANT_ID="$guard_grant_id" python3 - <<'PY'
+ import os, json, sys
+ sys.path.insert(0, os.environ.get("PYTHONPATH", "").split(":")[0] or ".")
+-from scripts.lib.tradeai_push_budget import decide_push, pushed_branches
+-d = decide_push(
+-    pushed_branches(os.environ.get("PUSH_REFS", "")),
++from scripts.lib.tradeai_push_budget import hook_decide
++d = hook_decide(
++    push_refs=os.environ.get("PUSH_REFS", ""),
++    policy_root=os.environ.get("TRADEAI_PUSH_POLICY_ROOT", "."),
+     authorized=os.environ.get("AUTHORIZED") == "1",
+     env_override=os.environ.get("ENV_OVERRIDE") == "1",
+-    grant_reason=os.environ.get("GUARD_REASON") if os.environ.get("GUARD_OK") == "1" else None,
++    guard_ok=os.environ.get("GUARD_OK") == "1",
++    guard_reason=os.environ.get("GUARD_REASON") or None,
++    guard_grant_id=os.environ.get("GUARD_GRANT_ID") or None,
++    push_class=os.environ.get("TRADEAI_PUSH_CLASS") or None,
++    reason=os.environ.get("TRADEAI_PUSH_REASON") or None,
++    release_train_id=os.environ.get("TRADEAI_RELEASE_TRAIN_ID") or None,
+ )
+-print(json.dumps({**d, "guard_grant": os.environ.get("GUARD_OK") == "1"}))
++legacy = d["legacy"]
++v2 = d.get("v2") or {}
++print(json.dumps({**legacy, "allow": d["allow"], "reason": d["code"], "mode": d["mode"], "mode_why": d["mode_why"],
++                  "engine": d["engine"], "v2_code": v2.get("code") or "", "v2_allow": v2.get("allow"),
++                  "v2_why": v2.get("why") or "", "v2_class": v2.get("class") or "",
++                  "v2_notes": " | ".join(v2.get("notes") or []), "guard_grant": os.environ.get("GUARD_OK") == "1",
++                  "_full": d}))
+ PY
+ )"
+
++# Append-only audit in shadow; required durable budget reservation in enforce mode.
++ledger() {
++  STAGE="$1" DECISION="$decision" python3 - <<'PY'
++import os, json, sys
++sys.path.insert(0, os.environ.get("PYTHONPATH", "").split(":")[0] or ".")
++try:
++    from scripts.lib.tradeai_push_budget import append_ledger, ledger_event
++    d = json.loads(os.environ["DECISION"])["_full"]
++    append_ledger(ledger_event(d, refs_text=os.environ.get("PUSH_REFS", ""), stage=os.environ["STAGE"],
++                               reason=os.environ.get("TRADEAI_PUSH_REASON")))
++except Exception as exc:  # noqa: BLE001
++    print(f"push ledger: not written ({type(exc).__name__})", file=sys.stderr)
++    sys.exit(1 if json.loads(os.environ["DECISION"])["mode"] == "enforce" else 0)
++PY
++}
++
++mode="$(jget "$decision" mode)"
++v2_code="$(jget "$decision" v2_code)"
++v2_why="$(jget "$decision" v2_why)"
++v2_class="$(jget "$decision" v2_class)"
++v2_notes="$(jget "$decision" v2_notes)"
++if [[ "$mode" == "shadow" ]]; then
++  v2_allow="$(jget "$decision" v2_allow)"
++  v2_verdict="REFUSE"
++  [[ "$v2_allow" == "True" ]] && v2_verdict="ALLOW"
++  echo "push policy v2 (shadow, decides nothing): class=${v2_class} would ${v2_verdict} ${v2_code} -- ${v2_why}"
++  if [[ -n "$v2_notes" ]]; then echo "push policy v2 (shadow) note: ${v2_notes}"; fi
++fi
++
+ reason="$(jget "$decision" reason)"
+ allow="$(jget "$decision" allow)"
+ count="$(jget "$decision" state_count)"
+@@ -86,7 +158,24 @@ budget="$(jget "$decision" budget)"
+ blocked_branch="$(jget "$decision" branch)"
+
+ if [[ "$allow" != "True" ]]; then
+-  if [[ "$reason" == "BUDGET_EXCEEDED" ]]; then
++  ledger decided
++  if [[ "$mode" == "enforce" ]]; then
++    cat >&2 <<EOF
++REMOTE PUSH BLOCKED (push policy v2: ${v2_code}).
++
++class=${v2_class}: ${v2_why}
++${v2_notes:+note: ${v2_notes}}
++
++Push classes (AI_WORK_POLICY.md §29):
++    continuity  TRADEAI_PUSH_CLASS=wip    TRADEAI_PUSH_REASON=claim:<claim id> TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push
++                (draft PR; fast-forward only; one per 15 min per branch)
++    review      TRADEAI_PUSH_CLASS=review TRADEAI_PUSH_REASON=claim:<claim id> TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push
++                (ready PR; budgeted in CI runner-minutes per branch and per repository per 24 h)
++    operator    an operator git-push grant; TRADEAI_PUSH_CLASS=operator TRADEAI_PUSH_REASON=operator:<grant id>
++Agents never push main or train/*. TRADEAI_REMOTE_PUSH_OVERRIDE is retired and lifts nothing.
++A local checkpoint is git commit. Never route around this refusal (AGENTS.md §0 rule 3).
++EOF
++  elif [[ "$reason" == "BUDGET_EXCEEDED" ]]; then
+     cat >&2 <<EOF
+ REMOTE PUSH BLOCKED (push budget).
+
+@@ -128,7 +217,11 @@ EOF
+   exit 1
+ fi
+
+-echo "Remote synchronization explicitly authorized for this command (reason=$reason count=$count)."
++echo "Remote synchronization explicitly authorized for this command (reason=$reason count=$count mode=${mode:-legacy})."
++if [[ "$mode" != "enforce" && "$env_override" == "1" ]]; then
++  echo "WARNING: TRADEAI_REMOTE_PUSH_OVERRIDE=1 is set. It is operator-only and is retired once push policy v2 enforces;"
++  echo "         this use is in the push ledger. Name the claim instead: TRADEAI_PUSH_REASON=claim:<claim id>."
++fi
+ if [[ "$guard_ok" == "1" ]]; then
+   echo "Cursor git-push grant active: $guard_reason"
+ fi
+@@ -164,6 +257,9 @@ if [[ "$guard_ok" == "1" && "${TRADEAI_GUARD_CONSUMED_BY_SHELL:-0}" != "1" && "$
+   fi
+ fi
+
++# v1 counters belong only to legacy/shadow. Enforce uses the durable ledger exclusively,
++# so a failed reservation cannot spend a separate counter before returning a refusal.
++if [[ "$mode" != "enforce" ]]; then
+ python3 - <<'PY'
+ import os, sys
+ sys.path.insert(0, os.environ.get("PYTHONPATH", "").split(":")[0] or ".")
+@@ -172,5 +268,8 @@ shas = {r["branch"]: r["local_sha"] for r in parse_push_refs(os.environ.get("PUS
+ for branch in pushed_branches(os.environ.get("PUSH_REFS", "")):
+     record_authorized_push(branch, sha=shas.get(branch))
+ PY
++fi
++# This is a pre-upload reservation; transport failure remains charged until operator reconciliation.
++ledger pushed
+
+ exit 0
+diff --git a/AI_WORK_POLICY.md b/AI_WORK_POLICY.md
+index d57037231..85488a0f6 100644
+--- a/AI_WORK_POLICY.md
++++ b/AI_WORK_POLICY.md
+@@ -700,3 +700,107 @@ never pushes `main` or any `train/*` ref, never merges, and never sets
+ A release STOP (AGENTS.md section 25.4) halts train pushes and merges at the
+ next mutation boundary. Clearing it, resuming, widening the train's scope and
+ custody of the GitHub App are operator-only.
++
++---
++
++# 29. PUSH CLASSES — PUSH POLICY v2 (PROPOSED)
++
++Push-Policy-v2: PROPOSED
++
++Status: PROPOSED
++
++While the marker above reads PROPOSED, sections 1-28 govern alone and nothing in this section
++authorizes anything. The pre-push hook runs v2 in SHADOW: it prints what v2 would decide
++and writes it to the push ledger, and the v1 budget of section 17 still decides every push.
++The ratifying edit changes that one line to `Push-Policy-v2: ACTIVE`. The hook enforces v2 only
++when that line reads ACTIVE **and** AGENTS.md is at 20.0.0 or later and ACTIVE (rule 11 "Claim,
++log, hand off" is the standing operator intent for continuity pushes, and makes the claim board
++mandatory). Until both hold the hook stays in shadow.
++
++Cause: operator 2026-10-23, "redesign the push policy then. And how does the push policy actually
++coincide with the new train?" Rule 11 (AGENTS.md 20.0.0, ACTIVE) asks agents to keep work
++recoverable by any vendor, including with draft PR pushes. A flat budget of 2 pushes per branch
++cannot hold hourly continuity pushes. So agents set `TRADEAI_REMOTE_PUSH_OVERRIDE=1` out of
++habit, and on 2026-10-22/23 that tripped safety-bypass flags.
++
++When ACTIVE, this section supersedes sections 3, 4, 11, 14 and 17 for the classes it defines.
++"One push per tranche" becomes "one **review** push per tranche, ideally". Sections 1, 2, 5-10,
++12, 13, 15, 16, 18-28 are unchanged.
++
++## 29.1 The four classes
++
++Every push names its class (`TRADEAI_PUSH_CLASS`, default `review`) and a typed reason
++(`TRADEAI_PUSH_REASON`). `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` (or an active guard `git-push` grant)
++is still required for `wip` and `review`, as AGENTS.md §0 rule 4 says.
++
++| class | what it is | reason | limit | GitHub CI it starts |
++|---|---|---|---|---|
++| `wip` | continuity push of an agent branch whose PR is a **proven draft** | `claim:<claim id>` | 1 per 15 min per branch, 32 per branch per 24 h; fast-forward only; refused unless PR state proves draft | `draft-quick-check` + `agent-governance` (~2 runner-min) |
++| `review` | push of a branch whose PR is, or is about to be, **ready for review** | `claim:<claim id>` | estimated CI runner-minutes: 300 per branch and 3000 per repository per rolling 24 h (75 per full-fleet push) | the full fleet (~60-80 runner-min) |
++| `train` | the host release service, `refs/heads/train/<TRADEAI_RELEASE_TRAIN_ID>` only | `train:<train id>` | section 28; the ReleaseCapability@v1 reservation | the train's qualifying checks |
++| `operator` | the operator's own push | `operator:<grant id>` of an active guard `git-push` grant | none beyond the grant | as pushed |
++
++The train class is present but this package does not wire the generic hook to a verified
++host-service ReleaseCapability reservation. It therefore refuses matching train requests with
++`TRAIN_AUTHORITY_UNPROVEN`, including requests carrying AUTHORIZED or a guard override.
++`TRADEAI_RELEASE_TRAIN_ID` and `train:<id>` identify a request only. A separately reviewed
++reservation bridge is required before the train checkout can use this class; do not enable it
++by setting another environment variable. The operator path remains a separate operator act.
++
++## 29.2 Rules
++
++- **Reasons are typed and validated.** `claim:<id>` must name a live claim on the claim board
++  (`scripts/agent_claim.py`, heartbeat within the stale window, not merged or released) whose
++  branch is the pushed branch. A free-text, missing or mismatched reason is refused.
++- **`TRADEAI_REMOTE_PUSH_OVERRIDE` is retired.** Under v2 it lifts nothing. Going over a budget
++  needs an operator guard `git-push` grant whose reason says "override", named by
++  `TRADEAI_PUSH_REASON=operator:<grant id>`. While v2 is in shadow the flag works as in
++  section 17, and each use is written to the ledger with a warning.
++- **Agents never push `main`, `master`, `train/*` or tags**, in any class (AGENTS.md §25.1;
++  section 28). Deleting a remote branch is operator-only (AGENTS.md §0 rule 6).
++- **A `wip` push never rewrites history** (non-fast-forward is refused), so a cloud agent or another
++  vendor that fetched the branch never loses work.
++- **Open continuity PRs as drafts** (`gh pr create --draft`). Mark the PR ready only when local
++  acceptance (section 5) is green. That one transition starts the full fleet. Section 7 still holds:
++  a red review push is fixed locally, then one corrective review push.
++- **Budget decisions and reservations are serialized.** One shared lock spans the enforcing
++  decision, local preflights and durable ledger reservation across every worktree. Refusals
++  consume no ledger budget. Unreadable ledger state or failed writes refuse enforcement.
++  A successful pre-push hook reserves budget before transport; a later network failure stays
++  charged until operator reconciliation. A reservation is not proof of remote acceptance.
++- **WIP requires proven draft state.** Missing PRs, disabled lookup, API failures and unknown
++  state refuse WIP; initial branch publication uses review class before a draft can be opened.
++- **Every decision is logged.** The hook appends one line per decision, allowed or refused, to
++  `$(git rev-parse --git-common-dir)/tradeai-push-ledger.v2.jsonl` (`TradeAIPushEvent@v2`:
++  time, mode, class, branch, SHA, reason, claim, v1 and v2 verdicts, estimated cost, PR state,
++  whether the override flag was set). It is local, append-only and never source-controlled.
++- **The rules are read from the operator's checkout.** The hook loads `scripts/lib/tradeai_push_budget.py`,
++  `AI_WORK_POLICY.md` and `AGENTS.md` from the checkout the hook lives in (`core.hooksPath`), never
++  from the branch being pushed.
++- **This is not cryptographic security**, exactly as section 17 says. Cloud agents push from hosts
++  without this hook. For them the controls are GitHub-side: draft PRs run only the quick checks,
++  superseded runs are cancelled, and only ready, green PRs are trained.
++
++## 29.3 How this meets the release train (section 28; AGENTS.md §25)
++
++    local commits (hourly)
++      → initial review-class publication → DRAFT PR             (draft-quick-check only; never queued by the train)
++      → ... more wip pushes ...
++      → local acceptance green
++      → mark READY (or review push)     (full fleet once)
++      → required checks exactly success on the head
++      → the train's next window freezes it, integrates train/<id>, merges the batch PR, releases
++
++The train refuses drafts, held, stacked and conflicting PRs, and any PR whose required checks are
++not exactly `success` on its head (`release_train_controller` `_pre_exclusion`; AGENTS.md §25.2).
++A draft's skipped checks therefore never qualify anything. Train pushes are class `train`. They are
++not counted against any agent budget (section 28).
++
++## 29.4 Ratification
++
++The operator ratifies this section with `APPROVE_AI_WORK_POLICY_PUSH_V2 <pr_number> <head_sha>` on
++its PR. The ratifying edit changes three lines of this section and nothing else: the heading's
++`(PROPOSED)` to `(ACTIVE)`, `Push-Policy-v2: PROPOSED` to `Push-Policy-v2: ACTIVE`, and
++`Status: PROPOSED` to `Status: ACTIVE (ratified <date>, PR #<n>)`.
++Rollback: set the line to `Push-Policy-v2: WITHDRAWN`. The hook then runs v1 exactly as before
++(legacy mode).
+diff --git a/config/ci_gates/push_policy_v2_20261023.json b/config/ci_gates/push_policy_v2_20261023.json
+new file mode 100644
+index 000000000..82fa3c103
+--- /dev/null
++++ b/config/ci_gates/push_policy_v2_20261023.json
+@@ -0,0 +1,12 @@
++{
++  "schema": "CiGate@v1",
++  "name": "push_policy_v2_20261023",
++  "files": [
++    "tests/test_push_policy_v2_20261023.py"
++  ],
++  "anchor": "PUSH_POLICY_V2_20261023",
++  "comment": [
++    "ANCHOR: PUSH_POLICY_V2_20261023 — proposed wip/review/train/operator push classes; typed live-claim reasons, minute budgets, immutable hook policy root, and legacy/shadow/enforce rollback.",
++    "Train ref and reason are identifiers only: absent a verified host-service reservation bridge, train class fails closed with TRAIN_AUTHORITY_UNPROVEN even with AUTHORIZED or a guard override. Hermetic tests use fixture repos only."
++  ]
++}
+diff --git a/scripts/lib/tradeai_push_budget.py b/scripts/lib/tradeai_push_budget.py
+index b86681455..b20f89dfa 100644
+--- a/scripts/lib/tradeai_push_budget.py
++++ b/scripts/lib/tradeai_push_budget.py
+@@ -16,6 +16,7 @@ fresh worktree -- or a branch switch -- therefore started at 0 pushes. v2:
+ * a guard git-push grant no longer lifts the cap by itself: only a grant whose reason says
+   "override" (or the operator's TRADEAI_REMOTE_PUSH_OVERRIDE=1) does (grant_overrides_budget).
+ """
++
+ from __future__ import annotations
+
+ import fcntl
+@@ -29,7 +30,7 @@ from pathlib import Path
+ from typing import Any, Iterable, Iterator
+
+ MAX_WITHOUT_OVERRIDE = 2
+-STATE_NAME = "tradeai-push-budget.json"          # v1 name: read-only legacy floor
++STATE_NAME = "tradeai-push-budget.json"  # v1 name: read-only legacy floor
+ STATE_NAME_V2 = "tradeai-push-budget.v2.json"
+ LOCK_NAME_V2 = "tradeai-push-budget.v2.lock"
+ SCHEMA_V2 = "TradeAIPushBudget@v2"
+@@ -106,7 +107,7 @@ def counter_key(branch: str, common: str | None = None) -> str:
+
+ def branch_of_ref(remote_ref: str) -> str:
+     ref = str(remote_ref or "").strip()
+-    return ref[len("refs/heads/"):] if ref.startswith("refs/heads/") else ref
++    return ref[len("refs/heads/") :] if ref.startswith("refs/heads/") else ref
+
+
+ def parse_push_refs(text: str | None) -> list[dict[str, Any]]:
+@@ -117,10 +118,16 @@ def parse_push_refs(text: str | None) -> list[dict[str, Any]]:
+         if len(parts) != 4:
+             continue
+         local_ref, local_sha, remote_ref, remote_sha = parts
+-        refs.append({
+-            "local_ref": local_ref, "local_sha": local_sha, "remote_ref": remote_ref, "remote_sha": remote_sha,
+-            "branch": branch_of_ref(remote_ref), "delete": local_sha == ZERO_SHA,
+-        })
++        refs.append(
++            {
++                "local_ref": local_ref,
++                "local_sha": local_sha,
++                "remote_ref": remote_ref,
++                "remote_sha": remote_sha,
++                "branch": branch_of_ref(remote_ref),
++                "delete": local_sha == ZERO_SHA,
++            }
++        )
+     return refs
+
+
+@@ -217,7 +224,7 @@ def count_for(branch: str) -> int:
+ def load_state(branch: str | None = None) -> dict[str, Any]:
+     """v1-shaped view for one branch (default: HEAD's) -- callers that print a status."""
+     branch = branch or current_branch()
+-    rec = (_load_v2(state_path())["counters"].get(counter_key(branch)) or {})
++    rec = _load_v2(state_path())["counters"].get(counter_key(branch)) or {}
+     return {
+         "tranche_id": branch,
+         "counter_key": counter_key(branch),
+@@ -344,11 +351,588 @@ def decide_push(
+     per = []
+     for b in branches:
+         c = count_for(b)
+-        per.append({**decide(authorized=authorized, override=override, count=c, branch=b, now=now),
+-                    "branch": b, "state_count": c, "counter_key": counter_key(b)})
++        per.append(
++            {
++                **decide(authorized=authorized, override=override, count=c, branch=b, now=now),
++                "branch": b,
++                "state_count": c,
++                "counter_key": counter_key(b),
++            }
++        )
+     blocked = next((d for d in per if not d["allow"]), None)
+     head = blocked or (per[0] if per else decide(authorized=authorized, override=override, count=0))
+-    return {"allow": blocked is None and bool(per), "reason": head["reason"], "branch": head.get("branch"),
+-            "state_count": head.get("state_count", 0), "budget": head["budget"], "override": override,
+-            "override_source": ("env" if env_override else "grant_reason") if override else None,
+-            "branches": per}
++    return {
++        "allow": blocked is None and bool(per),
++        "reason": head["reason"],
++        "branch": head.get("branch"),
++        "state_count": head.get("state_count", 0),
++        "budget": head["budget"],
++        "override": override,
++        "override_source": ("env" if env_override else "grant_reason") if override else None,
++        "branches": per,
++    }
++
++
++# =========================================================================== push policy v2 (2026-10-23)
++#
++# AI_WORK_POLICY.md §29. Four push classes instead of one flat per-branch count:
++#
++#   wip      continuity push of an agent branch whose PR is a draft (or not yet open): not counted against the
++#            review budget; at most one per WIP_MIN_INTERVAL_S per branch and WIP_DAILY_MAX per branch per day;
++#            fast-forward only; refused when the branch already has a READY PR (that push would start full CI).
++#   review   push of a branch whose PR is (or will be) ready for review: budgeted by estimated CI runner-minutes,
++#            per branch per rolling 24 h and for the whole repository per rolling 24 h, not by a flat count.
++#   train    the host release service only, and only refs/heads/train/<TRADEAI_RELEASE_TRAIN_ID>.
++#   operator the operator's own push, authorized by a guard git-push grant the reason names (operator:<grant id>).
++#
++# Every wip and review push names an active claim on the claim board (TRADEAI_PUSH_REASON=claim:<claim id>) whose
++# branch is the pushed branch. TRADEAI_REMOTE_PUSH_OVERRIDE=1 no longer lifts a cap once v2 enforces: only an
++# operator guard grant whose reason says "override" does. `main`, `master`, `train/*` and tags are refused to every
++# class except operator (and train, for its one ref). Deleting a remote branch is operator-only (§0 rule 6).
++#
++# Mode, read from the OPERATOR's checkout (the directory the hook itself lives in), never from the branch pushed:
++#   legacy   AI_WORK_POLICY.md has no `Push-Policy-v2:` line (or it is unreadable): v1 exactly as before.
++#   shadow   `Push-Policy-v2: PROPOSED`, or ACTIVE while AGENTS.md is below 20.0.0 ACTIVE: v1 decides; v2's verdict
++#            is printed and written to the ledger, and nothing it says changes the outcome.
++#   enforce  `Push-Policy-v2: ACTIVE` and AGENTS.md >= 20.0.0 ACTIVE (rule 11 is the standing operator intent
++#            for continuity pushes; the claim board is mandatory there).
++#
++# Not cryptographic security: like v1 it makes accidental push loops and habitual overrides fail closed, and it
++# writes every decision, allowed or refused, to an append-only local ledger.
++
++POLICY_V2_SCHEMA = "TradeAIPushPolicy@v2"
++LEDGER_EVENT_SCHEMA = "TradeAIPushEvent@v2"
++PUSH_LEDGER_NAME = "tradeai-push-ledger.v2.jsonl"
++MODE_LEGACY, MODE_SHADOW, MODE_ENFORCE = "legacy", "shadow", "enforce"
++CLASSES = ("wip", "review", "train", "operator")
++DEFAULT_CLASS = "review"
++POLICY_V2_MARKER_RE = re.compile(r"^Push-Policy-v2:\s*(PROPOSED|ACTIVE|WITHDRAWN)\b", re.MULTILINE)
++AGENTS_MIN_VERSION_FOR_ENFORCE = (20, 0, 0)
++
++WIP_MIN_INTERVAL_S = 15 * 60
++WIP_DAILY_MAX = 32
++WIP_COST_MIN = 1  # draft-quick-check: about one runner-minute
++DAY_S = 24 * 3600
++# Estimated GitHub-hosted runner-minutes per full-fleet PR run. Basis: 2026-10-23 sample, 200 pull_request runs over
++# 27 PR pushes, every PR runs cio-hardening (~9 min), cio-full-suite-sharded (11 jobs, ~6-7 min each), release-
++# readiness, agent-governance, aif-financial-senses, provider-cost, plus path-filtered UI jobs. A measured reconciler
++# (GitHub run timings) may replace the estimate; until then the estimate is the budget unit.
++REVIEW_COST_POLICY: dict[str, Any] = {
++    "est_minutes_per_push": 75,
++    "branch_daily_minutes": 300,  # ~4 full CI cycles per branch per rolling 24 h
++    "global_daily_minutes": 3000,  # ~40 full CI cycles per rolling 24 h for this repository (this host's ledger)
++    "basis": "estimate; docs/ops/PUSH_POLICY_V2.md (2026-10-23 sample)",
++}
++PROTECTED_EXACT = ("main", "master")
++PROTECTED_PREFIXES = ("train/", "refs/")  # refs/ = anything that is not refs/heads/* (tags, notes)
++TRAIN_ID_RE = re.compile(r"^(?:train-\d{8}-\d{4}(?:-[a-z0-9]{1,12})?|rt-\d{8}-\d{4}-[a-z0-9]{4,12})$")
++REASON_RE = re.compile(r"^(claim|operator|train):([A-Za-z0-9_.:-]{4,80})(?:\s+(.{0,200}))?$")
++
++
++def policy_marker(text: str | None) -> str | None:
++    """`PROPOSED` | `ACTIVE` | `WITHDRAWN` from AI_WORK_POLICY.md's `Push-Policy-v2:` line, or None."""
++    m = POLICY_V2_MARKER_RE.search(text or "")
++    return m.group(1) if m else None
++
++
++def agents_version_active(text: str | None) -> tuple[tuple[int, int, int] | None, bool]:
++    """(Policy-Version, Status is ACTIVE) from AGENTS.md's header block."""
++    v = re.search(r"^Policy-Version:\s*(\d+)\.(\d+)\.(\d+)\s*$", text or "", re.MULTILINE)
++    s = re.search(r"^Status:\s*(\S+)", text or "", re.MULTILINE)
++    ver = (int(v.group(1)), int(v.group(2)), int(v.group(3))) if v else None
++    return ver, bool(s and s.group(1).upper() == "ACTIVE")
++
++
++def policy_mode(policy_text: str | None, agents_text: str | None) -> tuple[str, str]:
++    """(mode, why). Fails toward legacy (v1, today's behaviour) when the policy cannot be read."""
++    marker = policy_marker(policy_text)
++    if marker is None or marker == "WITHDRAWN":
++        return MODE_LEGACY, f"Push-Policy-v2 marker {marker or 'absent'}"
++    if marker == "PROPOSED":
++        return MODE_SHADOW, "Push-Policy-v2: PROPOSED"
++    ver, active = agents_version_active(agents_text)
++    if ver is None or ver < AGENTS_MIN_VERSION_FOR_ENFORCE or not active:
++        shown = ".".join(map(str, ver)) if ver else "unknown"
++        return (
++            MODE_SHADOW,
++            f"Push-Policy-v2: ACTIVE but AGENTS.md {shown} {'ACTIVE' if active else 'not ACTIVE'} (< 20.0.0 ACTIVE)",
++        )
++    return MODE_ENFORCE, "Push-Policy-v2: ACTIVE and AGENTS.md >= 20.0.0 ACTIVE"
++
++
++def read_policy_mode(policy_root: Path | str) -> tuple[str, str]:
++    root = Path(policy_root)
++
++    def _read(name: str) -> str | None:
++        try:
++            return (root / name).read_text(encoding="utf-8")
++        except OSError:
++            return None
++
++    return policy_mode(_read("AI_WORK_POLICY.md"), _read("AGENTS.md"))
++
++
++def parse_reason(text: str | None) -> dict[str, str] | None:
++    """`claim:<id>`, `operator:<grant id>` or `train:<train id>`, optionally followed by free text."""
++    m = REASON_RE.match(str(text or "").strip())
++    if not m:
++        return None
++    return {"kind": m.group(1), "id": m.group(2), "note": (m.group(3) or "").strip()}
++
++
++def is_protected(branch: str) -> bool:
++    b = str(branch or "")
++    return b in PROTECTED_EXACT or b.startswith(PROTECTED_PREFIXES)
++
++
++# --------------------------------------------------------------------------- ledger (append-only)
++
++
++def ledger_path() -> Path:
++    return state_path().parent / PUSH_LEDGER_NAME
++
++
++def reservation_lock_path() -> Path:
++    """Shared across linked worktrees; held by the hook from decision through reservation."""
++    return ledger_path().with_name(PUSH_LEDGER_NAME + ".reservation.lock")
++
++
++def read_ledger(
++    *, since_ts: float | None = None, path: Path | None = None, strict: bool = False
++) -> list[dict[str, Any]]:
++    p = path or ledger_path()
++    out: list[dict[str, Any]] = []
++    try:
++        with p.open("r", encoding="utf-8") as fh:
++            for line in fh:
++                try:
++                    ev = json.loads(line)
++                except ValueError:
++                    if strict:
++                        raise
++                    continue
++                if not isinstance(ev, dict):
++                    if strict:
++                        raise ValueError("ledger row is not an object")
++                    continue
++                if since_ts is not None and float(ev.get("ts") or 0) < since_ts:
++                    continue
++                out.append(ev)
++    except FileNotFoundError:
++        return []
++    except OSError:
++        if strict:
++            raise
++        return []
++    return out
++
++
++def ledger_writable() -> bool:
++    """Tests (TRADE_AI_CI=1) write a ledger only into the scratch budget path they set (AGENTS.md §24.6)."""
++    return os.environ.get("TRADE_AI_CI") != "1" or bool(os.environ.get("TRADEAI_PUSH_BUDGET_PATH"))
++
++
++def append_ledger(event: dict[str, Any], *, path: Path | None = None) -> None:
++    """One JSON line per decision, under the budget lock. Never rewritten, never truncated."""
++    if path is None and not ledger_writable():
++        return
++    p = path or ledger_path()
++    ev = {"schema": LEDGER_EVENT_SCHEMA, **event}
++    with _locked(p):
++        with p.open("a", encoding="utf-8") as fh:
++            fh.write(json.dumps(ev, sort_keys=True) + "\n")
++            fh.flush()
++            os.fsync(fh.fileno())
++
++
++# --------------------------------------------------------------------------- probes (injectable for tests)
++
++
++def claim_check(claim_id: str, branch: str) -> tuple[bool, str]:
++    """An active, live (not stale) claim on the claim board whose branch is the pushed branch."""
++    if os.environ.get("TRADE_AI_CI") == "1" and not os.environ.get("TRADEAI_AGENT_CLAIMS_DIR"):
++        return False, "TRADE_AI_CI=1 without TRADEAI_AGENT_CLAIMS_DIR: tests never read the production claim board"
++    try:
++        from scripts.lib import agent_claim_board as CB  # noqa: PLC0415
++    except ImportError as exc:  # pragma: no cover - the board ships on main since #1977
++        return False, f"claim board unavailable ({type(exc).__name__})"
++    try:
++        view = CB.ClaimBoard().get(claim_id)
++    except Exception as exc:  # noqa: BLE001 - ClaimError and unreadable stores are both a refusal
++        return False, f"claim {claim_id}: {str(exc)[:160]}"
++    if view.state != "live":
++        return False, f"claim {claim_id} is {view.state} (needs a live claim: heartbeat within the stale window)"
++    cbranch = str(view.doc.get("branch") or "")
++    if cbranch != branch:
++        return False, f"claim {claim_id} is for branch {cbranch or '(none)'!r}, not {branch!r}"
++    stage = str(view.doc.get("stage") or "")
++    if stage in ("merged", "released"):
++        return False, f"claim {claim_id} is at stage {stage}: the work has landed; open a new claim"
++    return True, f"claim {claim_id} live on {branch}"
++
++
++def fast_forward(remote_sha: str, local_sha: str) -> bool | None:
++    """True: new branch or remote is an ancestor of local. False: a rewrite. None: remote object unknown here."""
++    if not remote_sha or remote_sha == ZERO_SHA:
++        return True
++    try:
++        rc = subprocess.run(
++            ["git", "merge-base", "--is-ancestor", remote_sha, local_sha], capture_output=True, timeout=30
++        ).returncode
++    except (OSError, subprocess.TimeoutExpired):
++        return None
++    return True if rc == 0 else (False if rc == 1 else None)
++
++
++def pr_lookup(branch: str) -> dict[str, Any]:
++    """The branch's open PR: {"state": "none"|"draft"|"ready"|"unknown", "number": int|None, "why": str}."""
++    if os.environ.get("TRADEAI_PUSH_PR_LOOKUP", "").lower() in ("off", "0", "false"):
++        return {"state": "unknown", "number": None, "why": "lookup disabled (TRADEAI_PUSH_PR_LOOKUP=off)"}
++    if os.environ.get("TRADE_AI_CI") == "1":
++        return {"state": "unknown", "number": None, "why": "TRADE_AI_CI=1: no GitHub lookup from tests"}
++    try:
++        p = subprocess.run(
++            ["gh", "pr", "list", "--head", branch, "--state", "open", "--json", "number,isDraft", "--limit", "5"],
++            capture_output=True,
++            text=True,
++            timeout=15,
++        )
++    except (OSError, subprocess.TimeoutExpired) as exc:
++        return {"state": "unknown", "number": None, "why": f"gh unavailable ({type(exc).__name__})"}
++    if p.returncode != 0:
++        return {"state": "unknown", "number": None, "why": f"gh rc={p.returncode}: {p.stderr.strip()[:120]}"}
++    try:
++        rows = json.loads(p.stdout or "[]")
++    except ValueError:
++        return {"state": "unknown", "number": None, "why": "gh output unreadable"}
++    if not rows:
++        return {"state": "none", "number": None, "why": "no open PR"}
++    ready = [r for r in rows if not r.get("isDraft")]
++    row = (ready or rows)[0]
++    return {"state": "ready" if ready else "draft", "number": row.get("number"), "why": "gh pr list"}
++
++
++# --------------------------------------------------------------------------- decision
++
++
++def _v2(code: str, allow: bool, why: str, **extra: Any) -> dict[str, Any]:
++    return {"allow": allow, "code": code, "why": why, **extra}
++
++
++def decide_v2(
++    refs: list[dict[str, Any]],
++    *,
++    push_class: str | None,
++    reason: str | None,
++    authorized: bool,
++    env_override: bool,
++    guard_ok: bool,
++    guard_reason: str | None,
++    guard_grant_id: str | None,
++    release_train_id: str | None,
++    events: list[dict[str, Any]],
++    now_ts: float,
++    claim_probe=claim_check,
++    ff_probe=fast_forward,
++    pr_probe=pr_lookup,
++) -> dict[str, Any]:
++    """The v2 verdict for one push (every ref must pass). Pure apart from the three injected probes."""
++    cls = (push_class or DEFAULT_CLASS).strip().lower()
++    notes: list[str] = []
++    if env_override:
++        notes.append(
++            "TRADEAI_REMOTE_PUSH_OVERRIDE is retired under v2 and lifts nothing; an over-budget push needs "
++            "an operator git-push grant whose reason says override, named by TRADEAI_PUSH_REASON=operator:<id>"
++        )
++    base = {"class": cls, "notes": notes, "cost_min": 0, "branches": [r["branch"] for r in refs]}
++    if cls not in CLASSES:
++        return _v2("REFUSED_CLASS", False, f"TRADEAI_PUSH_CLASS={cls!r} is not one of {', '.join(CLASSES)}", **base)
++    if not refs:
++        return _v2("REFUSED_NO_REFS", False, "no refs on the pre-push input", **base)
++    r = parse_reason(reason)
++
++    # train: the host release service's one ref, nothing else
++    if cls == "train":
++        tid = str(release_train_id or "")
++        want = f"train/{tid}"
++        if not TRAIN_ID_RE.match(tid):
++            return _v2("REFUSED_TRAIN", False, "TRADEAI_RELEASE_TRAIN_ID missing or malformed", **base)
++        if [x["branch"] for x in refs] != [want] or refs[0]["delete"]:
++            return _v2("REFUSED_TRAIN", False, f"class train pushes exactly {want} and nothing else", **base)
++        if not r or r["kind"] != "train" or r["id"] != tid:
++            return _v2("REFUSED_REASON", False, f"class train needs TRADEAI_PUSH_REASON=train:{tid}", **base)
++        # §25: an environment variable identifies a train; it cannot prove host-service
++        # identity or a reserved ReleaseCapability. The generic pre-push hook has no
++        # verified reservation bridge yet. Keep this class fail closed until that
++        # integration is separately reviewed; neither AUTHORIZED nor a guard override
++        # substitutes for the train's own reservation.
++        return _v2(
++            "TRAIN_AUTHORITY_UNPROVEN",
++            False,
++            "train ref/reason match, but verified host-service ReleaseCapability reservation "
++            "proof is not wired; environment variables identify only",
++            **base,
++        )
++
++    # operator: an operator-issued guard grant, named by the reason
++    if cls == "operator":
++        gid = str(guard_grant_id or "")
++        if not guard_ok or not gid:
++            return _v2(
++                "REFUSED_OPERATOR",
++                False,
++                "class operator needs an active guard git-push grant covering every "
++                "pushed ref (bin/guard grant git-push ..., issued by the operator)",
++                **base,
++            )
++        if not r or r["kind"] != "operator" or len(r["id"]) < 8 or not gid.startswith(r["id"]):
++            return _v2("REFUSED_REASON", False, f"class operator needs TRADEAI_PUSH_REASON=operator:{gid[:12]}", **base)
++        return _v2("OPERATOR", True, f"operator grant {gid[:12]}", **base)
++
++    # wip / review (agents)
++    for x in refs:
++        if x["delete"]:
++            return _v2(
++                "REFUSED_DELETE", False, f"deleting remote branch {x['branch']!r} is operator-only (§0 rule 6)", **base
++            )
++        if is_protected(x["branch"]):
++            return _v2(
++                "REFUSED_PROTECTED_REF",
++                False,
++                f"agents never push {x['branch']!r}: main and train/* are the "
++                "release train's and the operator's (AGENTS.md §25.1; AI_WORK_POLICY.md §28-§29)",
++                **base,
++            )
++    if not authorized:
++        return _v2(
++            "UNAUTHORIZED", False, "TRADEAI_REMOTE_PUSH_AUTHORIZED=1 (or an active git-push grant) is required", **base
++        )
++    if not r or r["kind"] != "claim":
++        return _v2(
++            "REFUSED_REASON",
++            False,
++            "set TRADEAI_PUSH_REASON=claim:<claim id> (scripts/agent_claim.py claim "
++            "...); an untyped or missing reason is refused",
++            **base,
++        )
++    for x in refs:
++        ok, why = claim_probe(r["id"], x["branch"])
++        if not ok:
++            return _v2("REFUSED_CLAIM", False, why, claim_id=r["id"], **base)
++    base["claim_id"] = r["id"]
++    over_grant = bool(guard_ok and grant_overrides_budget(guard_reason))
++
++    if cls == "wip":
++        for x in refs:
++            ff = ff_probe(x["remote_sha"], x["local_sha"])
++            if ff is False:
++                return _v2(
++                    "REFUSED_REWRITE", False, f"a wip push never rewrites {x['branch']!r} (non-fast-forward)", **base
++                )
++            if ff is None:
++                return _v2(
++                    "REFUSED_FF_UNKNOWN",
++                    False,
++                    f"cannot prove {x['branch']!r} fast-forwards: git fetch origin {x['branch']} first",
++                    **base,
++                )
++            pr = pr_probe(x["branch"])
++            base["pr_state"] = pr["state"]
++            if pr["state"] == "ready":
++                return _v2(
++                    "REFUSED_READY_PR",
++                    False,
++                    f"{x['branch']!r} has a READY PR #{pr['number']}; a push there "
++                    "starts full CI and is a review push (TRADEAI_PUSH_CLASS=review), or convert it to draft",
++                    **base,
++                )
++            if pr["state"] != "draft":
++                return _v2(
++                    "REFUSED_DRAFT_UNPROVEN",
++                    False,
++                    f"{x['branch']!r} needs a proven draft PR; state={pr['state']} "
++                    f"({pr['why']}). Unknown, absent or unreadable PR state cannot authorize WIP CI",
++                    **base,
++                )
++            mine = [
++                e
++                for e in events
++                if x["branch"] in (e.get("branches") or [e.get("branch")])
++                and e.get("class") == "wip"
++                and e.get("effective_allow")
++            ]
++            last = max((float(e.get("ts") or 0) for e in mine), default=0.0)
++            if last and now_ts - last < WIP_MIN_INTERVAL_S:
++                wait = int(WIP_MIN_INTERVAL_S - (now_ts - last))
++                return _v2(
++                    "RATE_LIMITED",
++                    False,
++                    f"one wip push per {WIP_MIN_INTERVAL_S // 60} min per branch; "
++                    f"{x['branch']!r} may push again in {wait} s (commit locally meanwhile)",
++                    **base,
++                )
++            today = [e for e in mine if now_ts - float(e.get("ts") or 0) < DAY_S]
++            if len(today) >= WIP_DAILY_MAX and not over_grant:
++                return _v2(
++                    "WIP_DAILY_CAP",
++                    False,
++                    f"{len(today)} wip pushes of {x['branch']!r} in 24 h (cap {WIP_DAILY_MAX})",
++                    **base,
++                )
++        base["cost_min"] = WIP_COST_MIN * len(refs)
++        return _v2("WIP", True, "continuity push (draft PR: draft-quick-check only)", **base)
++
++    # review: budgeted by estimated CI runner-minutes
++    est = int(REVIEW_COST_POLICY["est_minutes_per_push"])
++    day = [
++        e
++        for e in events
++        if now_ts - float(e.get("ts") or 0) < DAY_S
++        and e.get("effective_allow")
++        and e.get("class") in ("review", "operator")
++    ]
++    total_cost = 0
++    for x in refs:
++        pr = pr_probe(x["branch"])
++        base["pr_state"] = pr["state"]
++        cost = WIP_COST_MIN if pr["state"] == "draft" else est
++        if pr["state"] == "draft":
++            notes.append(
++                f"{x['branch']!r} has a DRAFT PR: this push runs draft-quick-check only; class wip is the "
++                "usual class for it"
++            )
++        spent_branch = sum(int(e.get("cost_min") or 0) for e in day if x["branch"] in (e.get("branches") or []))
++        spent_global = sum(int(e.get("cost_min") or 0) for e in day)
++        cap_b, cap_g = int(REVIEW_COST_POLICY["branch_daily_minutes"]), int(REVIEW_COST_POLICY["global_daily_minutes"])
++        base.update(
++            spent_branch_min=spent_branch, spent_global_min=spent_global, branch_cap_min=cap_b, global_cap_min=cap_g
++        )
++        if (spent_branch + cost > cap_b or spent_global + total_cost + cost > cap_g) and not over_grant:
++            which = "branch" if spent_branch + cost > cap_b else "repository"
++            return _v2(
++                "BUDGET_EXCEEDED_COST",
++                False,
++                f"{which} CI budget: {x['branch']!r} would reach "
++                f"{spent_branch + cost}/{cap_b} min, repository {spent_global + total_cost + cost}/{cap_g} min "
++                "in 24 h. Fix locally, or ask the operator for a git-push grant whose reason says override "
++                "and push with TRADEAI_PUSH_REASON=operator:<grant id> TRADEAI_PUSH_CLASS=operator",
++                **base,
++            )
++        total_cost += cost
++    base["cost_min"] = total_cost
++    return _v2("REVIEW_OVERRIDE_GRANT" if over_grant else "REVIEW", True, "review push", **base)
++
++
++def hook_decide(
++    *,
++    push_refs: str,
++    policy_root: Path | str,
++    authorized: bool,
++    env_override: bool,
++    guard_ok: bool,
++    guard_reason: str | None,
++    guard_grant_id: str | None,
++    push_class: str | None,
++    reason: str | None,
++    release_train_id: str | None,
++    now: datetime | None = None,
++    claim_probe=claim_check,
++    ff_probe=fast_forward,
++    pr_probe=pr_lookup,
++) -> dict[str, Any]:
++    """The pre-push decision: v1 (`decide_push`) in legacy and shadow modes, v2 in enforce mode."""
++    mode, mode_why = read_policy_mode(policy_root)
++    legacy = decide_push(
++        pushed_branches(push_refs),
++        authorized=authorized,
++        env_override=env_override,
++        grant_reason=guard_reason if guard_ok else None,
++        now=now,
++    )
++    out: dict[str, Any] = {"mode": mode, "mode_why": mode_why, "legacy": legacy, "v2": None}
++    if mode == MODE_LEGACY:
++        out.update(allow=legacy["allow"], code=legacy["reason"], engine="v1")
++        return out
++    at = _now(now).timestamp()
++    refs = parse_push_refs(push_refs)
++    if not refs:
++        b = current_branch()
++        refs = [
++            {
++                "local_ref": "HEAD",
++                "local_sha": "",
++                "remote_ref": f"refs/heads/{b}",
++                "remote_sha": ZERO_SHA,
++                "branch": b,
++                "delete": False,
++            }
++        ]
++    try:
++        events = read_ledger(since_ts=at - DAY_S, strict=mode == MODE_ENFORCE)
++        v2 = decide_v2(
++            refs,
++            push_class=push_class,
++            reason=reason,
++            authorized=authorized,
++            env_override=env_override,
++            guard_ok=guard_ok,
++            guard_reason=guard_reason,
++            guard_grant_id=guard_grant_id,
++            release_train_id=release_train_id,
++            events=events,
++            now_ts=at,
++            claim_probe=claim_probe,
++            ff_probe=ff_probe,
++            pr_probe=pr_probe,
++        )
++    except Exception as exc:  # noqa: BLE001 - a v2 fault never changes a shadow outcome; enforce fails closed
++        v2 = _v2(
++            "V2_ERROR",
++            False,
++            f"{type(exc).__name__}: {str(exc)[:160]}",
++            **{
++                "class": push_class or DEFAULT_CLASS,
++                "notes": [],
++                "cost_min": 0,
++                "branches": [r["branch"] for r in refs],
++            },
++        )
++    out["v2"] = v2
++    if mode == MODE_SHADOW:
++        out.update(allow=legacy["allow"], code=legacy["reason"], engine="v1 (v2 shadow)")
++    else:
++        out.update(allow=v2["allow"], code=v2["code"], engine="v2")
++    return out
++
++
++def ledger_event(
++    decision: dict[str, Any], *, refs_text: str, stage: str, now: datetime | None = None, reason: str | None = None
++) -> dict[str, Any]:
++    """One hook decision; `pushed` reserves budget before upload, not proof of remote acceptance."""
++    v2 = decision.get("v2") or {}
++    at = _now(now)
++    refs = parse_push_refs(refs_text)
++    return {
++        "ts": at.timestamp(),
++        "at": at.replace(microsecond=0).isoformat(),
++        "stage": stage,
++        "mode": decision.get("mode"),
++        "engine": decision.get("engine"),
++        "effective_allow": bool(decision.get("allow")) and stage == "pushed",
++        "effective_code": decision.get("code"),
++        "legacy_code": (decision.get("legacy") or {}).get("reason"),
++        "v2_code": v2.get("code"),
++        "v2_allow": v2.get("allow"),
++        "v2_why": v2.get("why"),
++        "class": v2.get("class") or DEFAULT_CLASS,
++        "branches": v2.get("branches") or pushed_branches(refs_text),
++        "branch": (v2.get("branches") or pushed_branches(refs_text) or [""])[0],
++        "shas": {x["branch"]: x["local_sha"] for x in refs},
++        "cost_min": int(v2.get("cost_min") or 0) if decision.get("mode") == MODE_ENFORCE or v2.get("allow") else 0,
++        "pr_state": v2.get("pr_state"),
++        "claim_id": v2.get("claim_id"),
++        "reason": str(reason or "")[:240] or None,
++        "override_flag": os.environ.get("TRADEAI_REMOTE_PUSH_OVERRIDE") == "1",
++        "vendor": os.environ.get("AGENT_CLAIM_VENDOR") or None,
++        "session": os.environ.get("AGENT_CLAIM_SESSION") or None,
++    }
+diff --git a/tests/test_guard_push_auth.py b/tests/test_guard_push_auth.py
+index b4af07083..a3f0f1c80 100644
+--- a/tests/test_guard_push_auth.py
++++ b/tests/test_guard_push_auth.py
+@@ -114,7 +114,9 @@ def test_pre_push_allows_push_under_git_push_grant(tmp_path: Path) -> None:
+         "GUARD_APPROVALS_DIR": str(adir),
+         "PYTHONPATH": str(src),
+     }
+-    proc = _run(["bash", str(PRE_PUSH)], cwd=src, env=env)
++    # This is the legacy grant-consumption fixture. Run its copied hook so an
++    # ACTIVE policy in the source checkout cannot silently change fixture mode.
++    proc = _run(["bash", str(src / ".githooks/pre-push")], cwd=src, env=env)
+     assert proc.returncode == 0, proc.stderr + proc.stdout
+     assert "Cursor git-push grant active" in proc.stdout
+
+diff --git a/tests/test_push_policy_v2_20261023.py b/tests/test_push_policy_v2_20261023.py
+new file mode 100644
+index 000000000..ec601b02b
+--- /dev/null
++++ b/tests/test_push_policy_v2_20261023.py
+@@ -0,0 +1,729 @@
++"""Push policy v2 (2026-10-23, AI_WORK_POLICY.md §29): push classes, claim-typed reasons, CI-minute budget.
++
++Pins:
++  * mode: no marker -> legacy (v1 exactly); PROPOSED -> shadow (v1 decides, v2 logged); ACTIVE needs AGENTS.md
++    >= 20.0.0 ACTIVE as well, else it stays shadow; WITHDRAWN -> legacy;
++  * v2 classes: wip (claim, fast-forward, proven draft PR, 15-min rate limit, daily cap), review (claim, runner-minute
++    budget per branch and per repository), train (its one ref), operator (a grant the reason names);
++  * main / train/* / tags / deletes are refused to agents; TRADEAI_REMOTE_PUSH_OVERRIDE lifts nothing under v2;
++  * the hook: shadow behaves exactly as v1 and writes a ledger line per decision; enforce counts wip pushes outside
++    the v1 counter, refuses a second wip push inside 15 minutes, refuses main and an untyped reason; the policy is
++    read from the hook's own checkout, not from the pushed branch.
++"""
++
++from __future__ import annotations
++
++import json
++import os
++import shutil
++import stat
++import subprocess
++import sys
++from datetime import datetime, timezone
++from pathlib import Path
++
++import pytest
++
++ROOT = Path(__file__).resolve().parents[1]
++if str(ROOT) not in sys.path:
++    sys.path.insert(0, str(ROOT))
++
++from scripts.lib import tradeai_push_budget as B  # noqa: E402
++
++PRE_PUSH = ROOT / ".githooks" / "pre-push"
++SHA_A, SHA_B, ZERO = "a" * 40, "b" * 40, "0" * 40
++NOW = 1_800_000_000.0
++AGENTS_20_ACTIVE = "Policy-Version:      20.0.0\nStatus:              ACTIVE\n"
++AGENTS_19_ACTIVE = "Policy-Version:      19.0.0\nStatus:              ACTIVE\n"
++POLICY_PROPOSED = "# 29. PUSH CLASSES\n\nPush-Policy-v2: PROPOSED\n"
++POLICY_ACTIVE = "# 29. PUSH CLASSES\n\nPush-Policy-v2: ACTIVE\n"
++CLAIM = "20261023T134307Z-claude-7ebccee4"
++
++
++def ref(branch: str, local: str = SHA_A, remote: str = ZERO) -> dict:
++    return {
++        "local_ref": f"refs/heads/{branch}",
++        "local_sha": local,
++        "remote_ref": f"refs/heads/{branch}",
++        "remote_sha": remote,
++        "branch": branch,
++        "delete": local == ZERO,
++    }
++
++
++def decide(refs, **kw):
++    args = dict(
++        push_class="wip",
++        reason=f"claim:{CLAIM}",
++        authorized=True,
++        env_override=False,
++        guard_ok=False,
++        guard_reason=None,
++        guard_grant_id=None,
++        release_train_id=None,
++        events=[],
++        now_ts=NOW,
++        claim_probe=lambda cid, br: (True, "live"),
++        ff_probe=lambda r, l: True,
++        pr_probe=lambda br: {"state": "draft", "number": 7, "why": "t"},
++    )
++    args.update(kw)
++    return B.decide_v2(refs, **args)
++
++
++# ------------------------------------------------------------------------------------------------ mode
++
++
++@pytest.mark.parametrize(
++    "policy, agents, mode",
++    [
++        (None, AGENTS_20_ACTIVE, B.MODE_LEGACY),
++        ("# policy without the line\n", AGENTS_20_ACTIVE, B.MODE_LEGACY),
++        (POLICY_PROPOSED, AGENTS_20_ACTIVE, B.MODE_SHADOW),
++        (POLICY_ACTIVE, AGENTS_19_ACTIVE, B.MODE_SHADOW),
++        (POLICY_ACTIVE, "Policy-Version:      20.0.0\nStatus:              PROPOSED\n", B.MODE_SHADOW),
++        (POLICY_ACTIVE, None, B.MODE_SHADOW),
++        (POLICY_ACTIVE, AGENTS_20_ACTIVE, B.MODE_ENFORCE),
++        (POLICY_ACTIVE, "Policy-Version:      21.3.1\nStatus:              ACTIVE\n", B.MODE_ENFORCE),
++        ("Push-Policy-v2: WITHDRAWN\n", AGENTS_20_ACTIVE, B.MODE_LEGACY),
++    ],
++)
++def test_policy_mode(policy, agents, mode):
++    assert B.policy_mode(policy, agents)[0] == mode
++
++
++def test_shipped_policy_marker_selects_its_explicit_rollout_mode():
++    policy = (ROOT / "AI_WORK_POLICY.md").read_text()
++    marker = B.policy_marker(policy)
++    assert marker in ("PROPOSED", "ACTIVE", "WITHDRAWN")
++    mode, _ = B.policy_mode(policy, AGENTS_20_ACTIVE)
++    assert mode == {"PROPOSED": B.MODE_SHADOW, "ACTIVE": B.MODE_ENFORCE, "WITHDRAWN": B.MODE_LEGACY}[marker]
++
++
++def test_reason_grammar():
++    assert B.parse_reason(f"claim:{CLAIM}") == {"kind": "claim", "id": CLAIM, "note": ""}
++    assert B.parse_reason(f"claim:{CLAIM} hourly checkpoint")["note"] == "hourly checkpoint"
++    assert B.parse_reason("operator:abcdef12")["kind"] == "operator"
++    for bad in (None, "", "override", "push it", "claim:", "claim:x", "CLAIM:abcd1234", "claim abcd1234"):
++        assert B.parse_reason(bad) is None, bad
++
++
++@pytest.mark.parametrize(
++    "branch, protected",
++    [
++        ("main", True),
++        ("master", True),
++        ("train/train-20261023-1800", True),
++        ("refs/tags/v1", True),
++        ("feat/x", False),
++        ("release/batch-8", False),
++        ("mainline/x", False),
++    ],
++)
++def test_protected_refs(branch, protected):
++    assert B.is_protected(branch) is protected
++
++
++# ------------------------------------------------------------------------------------------------ wip
++
++
++def test_wip_with_a_live_claim_on_a_draft_is_allowed_and_cheap():
++    d = decide([ref("feat/x")])
++    assert d["allow"] and d["code"] == "WIP" and d["cost_min"] == B.WIP_COST_MIN
++
++
++def test_wip_needs_a_typed_claim_reason():
++    for reason in (None, "override", "hourly checkpoint", "operator:abcdef12"):
++        d = decide([ref("feat/x")], reason=reason)
++        assert not d["allow"] and d["code"] == "REFUSED_REASON", reason
++
++
++def test_wip_claim_must_be_live_and_for_this_branch():
++    d = decide([ref("feat/x")], claim_probe=lambda cid, br: (False, f"claim {cid} is for branch 'feat/y'"))
++    assert not d["allow"] and d["code"] == "REFUSED_CLAIM" and "feat/y" in d["why"]
++
++
++def test_wip_is_rate_limited_per_branch():
++    ev = {"class": "wip", "branch": "feat/x", "effective_allow": True, "ts": NOW - 300}
++    d = decide([ref("feat/x")], events=[ev])
++    assert not d["allow"] and d["code"] == "RATE_LIMITED" and "600 s" in d["why"]
++    assert decide([ref("feat/y")], events=[ev])["allow"]  # another branch is not limited
++    assert decide([ref("feat/x")], events=[{**ev, "ts": NOW - B.WIP_MIN_INTERVAL_S}])["allow"]
++    assert decide([ref("feat/x")], events=[{**ev, "effective_allow": False}])["allow"]  # a refusal is not a push
++
++
++def test_wip_daily_cap():
++    evs = [
++        {"class": "wip", "branch": "feat/x", "effective_allow": True, "ts": NOW - 1000 - i * 1000}
++        for i in range(B.WIP_DAILY_MAX)
++    ]
++    d = decide([ref("feat/x")], events=evs)
++    assert not d["allow"] and d["code"] == "WIP_DAILY_CAP"
++
++
++def test_wip_never_rewrites_and_must_prove_fast_forward():
++    assert decide([ref("feat/x", remote=SHA_B)], ff_probe=lambda r, l: False)["code"] == "REFUSED_REWRITE"
++    assert decide([ref("feat/x", remote=SHA_B)], ff_probe=lambda r, l: None)["code"] == "REFUSED_FF_UNKNOWN"
++
++
++def test_wip_on_a_ready_pr_is_refused_as_a_review_push():
++    d = decide([ref("feat/x")], pr_probe=lambda br: {"state": "ready", "number": 1990, "why": "t"})
++    assert not d["allow"] and d["code"] == "REFUSED_READY_PR" and "#1990" in d["why"]
++
++
++@pytest.mark.parametrize("state,why", [("unknown", "gh offline"), ("unknown", "API failure"), ("none", "no PR")])
++def test_wip_requires_proven_draft_and_refuses_unknown_or_absent_pr(state, why):
++    d = decide([ref("feat/x")], pr_probe=lambda br: {"state": state, "number": None, "why": why})
++    assert not d["allow"] and d["code"] == "REFUSED_DRAFT_UNPROVEN"
++
++
++# ------------------------------------------------------------------------------------------------ protected, delete
++
++
++@pytest.mark.parametrize("cls", ["wip", "review"])
++@pytest.mark.parametrize("branch", ["main", "train/train-20261023-1800", "refs/tags/v9"])
++def test_agents_never_push_main_or_train(cls, branch):
++    d = decide([ref(branch)], push_class=cls)
++    assert not d["allow"] and d["code"] == "REFUSED_PROTECTED_REF"
++
++
++def test_deleting_a_remote_branch_is_operator_only():
++    assert decide([ref("feat/x", local=ZERO, remote=SHA_A)])["code"] == "REFUSED_DELETE"
++
++
++def test_unauthorized_is_refused_before_any_probe():
++    def boom(*a):
++        raise AssertionError("probe called")
++
++    d = decide([ref("feat/x")], authorized=False, claim_probe=boom, ff_probe=boom, pr_probe=boom)
++    assert d["code"] == "UNAUTHORIZED"
++
++
++def test_unknown_class_is_refused():
++    assert decide([ref("feat/x")], push_class="yolo")["code"] == "REFUSED_CLASS"
++
++
++# ------------------------------------------------------------------------------------------------ review
++
++
++def _review(**kw):
++    kw.setdefault("pr_probe", lambda br: {"state": "ready", "number": 9, "why": "t"})
++    return decide([ref("feat/x")], push_class="review", **kw)
++
++
++def test_review_push_costs_the_full_fleet_estimate():
++    d = _review()
++    assert d["allow"] and d["code"] == "REVIEW" and d["cost_min"] == B.REVIEW_COST_POLICY["est_minutes_per_push"]
++
++
++def test_review_on_a_draft_costs_the_quick_check_and_says_so():
++    d = _review(pr_probe=lambda br: {"state": "draft", "number": 9, "why": "t"})
++    assert d["allow"] and d["cost_min"] == B.WIP_COST_MIN and any("class wip" in n for n in d["notes"])
++
++
++def _spent(branch, minutes, cls="review"):
++    return {
++        "class": cls,
++        "branch": branch,
++        "branches": [branch],
++        "effective_allow": True,
++        "ts": NOW - 3600,
++        "cost_min": minutes,
++    }
++
++
++def test_review_branch_budget_in_runner_minutes():
++    cap = B.REVIEW_COST_POLICY["branch_daily_minutes"]
++    est = B.REVIEW_COST_POLICY["est_minutes_per_push"]
++    assert _review(events=[_spent("feat/x", cap - est)])["allow"]
++    d = _review(events=[_spent("feat/x", cap - est + 1)])
++    assert not d["allow"] and d["code"] == "BUDGET_EXCEEDED_COST" and "branch CI budget" in d["why"]
++    old = {**_spent("feat/x", cap), "ts": NOW - B.DAY_S - 1}
++    assert _review(events=[old])["allow"]  # rolling 24 h
++
++
++def test_review_global_budget_in_runner_minutes():
++    cap = B.REVIEW_COST_POLICY["global_daily_minutes"]
++    d = _review(events=[_spent(f"feat/o{i}", cap // 10) for i in range(10)])
++    assert not d["allow"] and d["code"] == "BUDGET_EXCEEDED_COST" and "repository CI budget" in d["why"]
++
++
++def test_env_override_lifts_nothing_under_v2_but_an_operator_override_grant_does():
++    spent = [_spent("feat/x", B.REVIEW_COST_POLICY["branch_daily_minutes"])]
++    d = _review(events=spent, env_override=True)
++    assert not d["allow"] and any("retired" in n for n in d["notes"])
++    g = _review(events=spent, guard_ok=True, guard_reason="override: CI flake on #1990, operator 10-23")
++    assert g["allow"] and g["code"] == "REVIEW_OVERRIDE_GRANT"
++    assert not _review(events=spent, guard_ok=True, guard_reason="push feat/x")["allow"]
++
++
++# ------------------------------------------------------------------------------------------------ train, operator
++
++
++def test_train_class_pushes_only_its_own_ref():
++    tid = "train-20261023-1800"
++    ok = decide(
++        [ref(f"train/{tid}")], push_class="train", reason=f"train:{tid}", release_train_id=tid, authorized=False
++    )
++    assert not ok["allow"] and ok["code"] == "TRAIN_AUTHORITY_UNPROVEN"
++    for refs, rid, reason in (
++        ([ref("main")], tid, f"train:{tid}"),
++        ([ref(f"train/{tid}"), ref("main")], tid, f"train:{tid}"),
++        ([ref("train/train-20261023-0000")], tid, f"train:{tid}"),
++        ([ref(f"train/{tid}")], tid, "train:train-20261023-0000"),
++        ([ref(f"train/{tid}")], "nope", "train:nope"),
++    ):
++        assert not decide(refs, push_class="train", reason=reason, release_train_id=rid)["allow"], refs
++
++
++@pytest.mark.parametrize("authorized", [False, True])
++@pytest.mark.parametrize("guard_ok", [False, True])
++def test_train_env_and_guard_override_never_prove_service_authority(authorized, guard_ok):
++    tid = "train-20261023-1800"
++    d = decide(
++        [ref(f"train/{tid}")],
++        push_class="train",
++        reason=f"train:{tid}",
++        release_train_id=tid,
++        authorized=authorized,
++        env_override=True,
++        guard_ok=guard_ok,
++        guard_reason="override: train env fixture",
++        guard_grant_id="0123abcd99887766",
++    )
++    assert d["allow"] is False
++    assert d["code"] == "TRAIN_AUTHORITY_UNPROVEN"
++    assert "environment variables identify only" in d["why"]
++
++
++def test_active_hook_train_class_fails_closed_without_a_reservation_bridge(tmp_path, monkeypatch):
++    (tmp_path / "AI_WORK_POLICY.md").write_text(POLICY_ACTIVE)
++    (tmp_path / "AGENTS.md").write_text(AGENTS_20_ACTIVE)
++    monkeypatch.setenv("TRADEAI_PUSH_BUDGET_PATH", str(tmp_path / "budget.json"))
++    tid = "train-20261023-1800"
++    d = B.hook_decide(
++        push_refs=f"refs/heads/train/{tid} {SHA_A} refs/heads/train/{tid} {ZERO}",
++        policy_root=tmp_path,
++        authorized=True,
++        env_override=False,
++        guard_ok=True,
++        guard_reason="override: untrusted env fixture",
++        guard_grant_id="0123abcd99887766",
++        push_class="train",
++        reason=f"train:{tid}",
++        release_train_id=tid,
++        now=datetime.fromtimestamp(NOW, timezone.utc),
++    )
++    assert d["mode"] == B.MODE_ENFORCE
++    assert d["allow"] is False and d["code"] == "TRAIN_AUTHORITY_UNPROVEN"
++
++
++def test_operator_class_needs_the_grant_the_reason_names():
++    ok = decide(
++        [ref("main")],
++        push_class="operator",
++        reason="operator:0123abcd",
++        guard_ok=True,
++        guard_grant_id="0123abcd99887766",
++    )
++    assert ok["allow"] and ok["code"] == "OPERATOR"
++    assert not decide([ref("main")], push_class="operator", reason="operator:0123abcd")["allow"]
++    assert not decide(
++        [ref("main")],
++        push_class="operator",
++        reason="operator:ffffffff",
++        guard_ok=True,
++        guard_grant_id="0123abcd99887766",
++    )["allow"]
++
++
++# ------------------------------------------------------------------------------------------------ hook_decide
++
++
++def test_shadow_mode_returns_the_v1_decision(tmp_path, monkeypatch):
++    monkeypatch.setenv("TRADEAI_PUSH_BUDGET_PATH", str(tmp_path / "budget.json"))
++    (tmp_path / "AI_WORK_POLICY.md").write_text(POLICY_PROPOSED)
++    (tmp_path / "AGENTS.md").write_text(AGENTS_20_ACTIVE)
++    refs = f"refs/heads/main {SHA_A} refs/heads/main {ZERO}\n"
++    d = B.hook_decide(
++        push_refs=refs,
++        policy_root=tmp_path,
++        authorized=True,
++        env_override=False,
++        guard_ok=False,
++        guard_reason=None,
++        guard_grant_id=None,
++        push_class=None,
++        reason=None,
++        release_train_id=None,
++        claim_probe=lambda c, b: (True, ""),
++        ff_probe=lambda r, l: True,
++        pr_probe=lambda b: {"state": "none", "number": None, "why": ""},
++    )
++    assert d["mode"] == B.MODE_SHADOW and d["allow"] is True and d["code"] == "AUTHORIZED"  # v1 allows main today
++    assert d["v2"]["code"] == "REFUSED_PROTECTED_REF"  # ... and v2 says what it would do
++
++
++def test_legacy_mode_never_runs_v2(tmp_path, monkeypatch):
++    monkeypatch.setenv("TRADEAI_PUSH_BUDGET_PATH", str(tmp_path / "budget.json"))
++
++    def boom(*a):
++        raise AssertionError("v2 probe in legacy mode")
++
++    d = B.hook_decide(
++        push_refs=f"refs/heads/feat/x {SHA_A} refs/heads/feat/x {ZERO}\n",
++        policy_root=tmp_path,
++        authorized=True,
++        env_override=False,
++        guard_ok=False,
++        guard_reason=None,
++        guard_grant_id=None,
++        push_class="wip",
++        reason=None,
++        release_train_id=None,
++        claim_probe=boom,
++        ff_probe=boom,
++        pr_probe=boom,
++    )
++    assert d["mode"] == B.MODE_LEGACY and d["v2"] is None and d["allow"]
++
++
++def test_v2_fault_fails_closed_in_enforce_only(tmp_path, monkeypatch):
++    monkeypatch.setenv("TRADEAI_PUSH_BUDGET_PATH", str(tmp_path / "budget.json"))
++    (tmp_path / "AGENTS.md").write_text(AGENTS_20_ACTIVE)
++
++    def boom(*a):
++        raise RuntimeError("board down")
++
++    kw = dict(
++        push_refs=f"refs/heads/feat/x {SHA_A} refs/heads/feat/x {ZERO}\n",
++        policy_root=tmp_path,
++        authorized=True,
++        env_override=False,
++        guard_ok=False,
++        guard_reason=None,
++        guard_grant_id=None,
++        push_class="wip",
++        reason=f"claim:{CLAIM}",
++        release_train_id=None,
++        claim_probe=boom,
++    )
++    (tmp_path / "AI_WORK_POLICY.md").write_text(POLICY_PROPOSED)
++    assert B.hook_decide(**kw)["allow"] is True
++    (tmp_path / "AI_WORK_POLICY.md").write_text(POLICY_ACTIVE)
++    d = B.hook_decide(**kw)
++    assert d["allow"] is False and d["code"] == "V2_ERROR"
++
++
++def test_ledger_is_append_only_jsonl(tmp_path, monkeypatch):
++    monkeypatch.setenv("TRADEAI_PUSH_BUDGET_PATH", str(tmp_path / "budget.json"))
++    B.append_ledger({"ts": 1.0, "class": "wip"})
++    B.append_ledger({"ts": 2.0, "class": "review"})
++    lines = B.ledger_path().read_text().splitlines()
++    assert [json.loads(x)["class"] for x in lines] == ["wip", "review"]
++    assert all(json.loads(x)["schema"] == B.LEDGER_EVENT_SCHEMA for x in lines)
++    assert [e["ts"] for e in B.read_ledger(since_ts=1.5)] == [2.0]
++
++
++def test_tests_never_write_the_production_ledger(monkeypatch):
++    monkeypatch.setenv("TRADE_AI_CI", "1")
++    monkeypatch.delenv("TRADEAI_PUSH_BUDGET_PATH", raising=False)
++    assert B.ledger_writable() is False
++    monkeypatch.delenv("TRADEAI_AGENT_CLAIMS_DIR", raising=False)
++    assert B.claim_check(CLAIM, "feat/x")[0] is False
++    assert B.pr_lookup("feat/x")["state"] == "unknown"
++
++
++def test_claim_check_against_a_real_board(tmp_path, monkeypatch):
++    from scripts.lib import agent_claim_board as CB
++
++    monkeypatch.setenv("TRADEAI_AGENT_CLAIMS_DIR", str(tmp_path / "claims"))
++    board = CB.ClaimBoard(tmp_path / "claims")
++    out = board.claim(task="t", paths=["scripts/x.py"], branch="feat/x", vendor="claude", session="s1", agent="a")
++    cid = out["claim_id"] if isinstance(out, dict) else getattr(out, "claim_id", None) or out.doc["claim_id"]
++    assert B.claim_check(cid, "feat/x")[0] is True
++    ok, why = B.claim_check(cid, "feat/y")
++    assert not ok and "feat/y" in why
++    assert B.claim_check("20261023T000000Z-claude-00000000", "feat/x")[0] is False
++
++
++# ------------------------------------------------------------------------------------------------ the hook itself
++
++
++def _run(cmd, cwd, env=None, check=False):
++    return subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True, check=check, timeout=120)
++
++
++def _mini(tmp: Path, *, policy: str | None, agents: str = AGENTS_20_ACTIVE) -> Path:
++    src, remote = tmp / "src", tmp / "remote.git"
++    src.mkdir()
++    _run(["git", "init", "-q", "--bare", str(remote)], tmp, check=True)
++    _run(["git", "init", "-q", "-b", "main"], src, check=True)
++    _run(["git", "config", "user.email", "p@t.local"], src, check=True)
++    _run(["git", "config", "user.name", "p"], src, check=True)
++    (src / ".githooks").mkdir()
++    shutil.copy2(PRE_PUSH, src / ".githooks/pre-push")
++    os.chmod(src / ".githooks/pre-push", os.stat(src / ".githooks/pre-push").st_mode | stat.S_IEXEC)
++    lib = src / "scripts" / "lib"
++    lib.mkdir(parents=True)
++    for name in (
++        "tradeai_push_budget.py",
++        "guard_push_auth.py",
++        "agent_claim_board.py",
++        "agent_claim_lifecycle.py",
++        "agent_claim_worklog.py",
++        "agent_file_lease.py",
++    ):
++        shutil.copy2(ROOT / "scripts/lib" / name, lib / name)
++    (src / "scripts" / "__init__.py").write_text("")
++    (lib / "__init__.py").write_text("")
++    (src / "scripts" / "check_no_secrets.py").write_text("import sys\nsys.exit(0)\n")
++    if policy is not None:
++        (src / "AI_WORK_POLICY.md").write_text(policy)
++    (src / "AGENTS.md").write_text(agents)
++    (src / "README").write_text("0\n")
++    _run(["git", "add", "."], src, check=True)
++    _run(["git", "commit", "-qm", "init"], src, check=True)
++    _run(["git", "remote", "add", "origin", str(remote)], src, check=True)
++    _run(["git", "config", "core.hooksPath", ".githooks"], src, check=True)
++    return src
++
++
++def _env(src: Path, tmp: Path, **extra: str) -> dict:
++    env = {k: v for k, v in os.environ.items() if not k.startswith(("TRADEAI_", "AGENT_CLAIM_"))}
++    env.update(
++        {
++            "HOME": str(tmp / "home"),
++            "XDG_CONFIG_HOME": str(tmp / "home/.config"),
++            "GUARD_APPROVALS_DIR": str(tmp / "approvals"),
++            "TRADEAI_SKIP_SECRETS_SCAN": "1",
++            "TRADEAI_PUSH_BUDGET_PATH": str(src / ".git/tradeai-push-budget.v2.json"),
++            "TRADEAI_AGENT_CLAIMS_DIR": str(tmp / "claims"),
++            "TRADE_AI_CI": "1",
++            "PYTHONPATH": str(src),
++        }
++    )
++    env.update(extra)
++    return env
++
++
++def _commit(src: Path, n: int) -> None:
++    (src / "README").write_text(f"{n}\n")
++    _run(["git", "commit", "-qam", f"c{n}"], src, check=True)
++
++
++def _claim(tmp: Path, branch: str) -> str:
++    from scripts.lib import agent_claim_board as CB
++
++    out = CB.ClaimBoard(tmp / "claims").claim(
++        task="t", paths=["README"], branch=branch, vendor="claude", session="s1", agent="a"
++    )
++    return out["claim_id"] if isinstance(out, dict) else out.doc["claim_id"]
++
++
++def _ledger(src: Path) -> list[dict]:
++    p = src / ".git" / B.PUSH_LEDGER_NAME
++    return [json.loads(x) for x in p.read_text().splitlines()] if p.exists() else []
++
++
++def test_hook_shadow_is_v1_exactly_and_logs_every_decision(tmp_path):
++    src = _mini(tmp_path, policy=POLICY_PROPOSED)
++    _run(["git", "checkout", "-qb", "feat/x"], src, check=True)
++    env = _env(src, tmp_path, TRADEAI_REMOTE_PUSH_AUTHORIZED="1")
++    res = []
++    for n in range(1, 4):
++        _commit(src, n)
++        res.append(_run(["git", "push", "-q", "origin", "feat/x"], src, env))
++    assert [r.returncode == 0 for r in res] == [True, True, False]
++    assert "REMOTE PUSH BLOCKED (push budget)" in res[2].stderr
++    assert "push policy v2 (shadow, decides nothing)" in res[0].stdout
++    over = _run(["git", "push", "-q", "origin", "feat/x"], src, {**env, "TRADEAI_REMOTE_PUSH_OVERRIDE": "1"})
++    assert over.returncode == 0 and "TRADEAI_REMOTE_PUSH_OVERRIDE=1 is set" in over.stdout
++    led = _ledger(src)
++    assert [e["stage"] for e in led] == ["pushed", "pushed", "decided", "pushed"]
++    assert all(e["mode"] == "shadow" for e in led) and led[3]["override_flag"] is True
++    assert led[0]["v2_code"] == "REFUSED_REASON"  # no claim named: v2 would have refused
++
++
++def test_hook_enforce_wip_is_outside_the_v1_count_and_rate_limited(tmp_path):
++    src = _mini(tmp_path, policy=POLICY_ACTIVE)
++    _run(["git", "checkout", "-qb", "feat/x"], src, check=True)
++    cid = _claim(tmp_path, "feat/x")
++    env = _env(
++        src, tmp_path, TRADEAI_REMOTE_PUSH_AUTHORIZED="1", TRADEAI_PUSH_CLASS="wip", TRADEAI_PUSH_REASON=f"claim:{cid}"
++    )
++    env = _draft_gh_fixture(tmp_path, env)
++    _commit(src, 1)
++    first = _run(["git", "push", "-q", "origin", "feat/x"], src, env)
++    assert first.returncode == 0, first.stderr
++    _commit(src, 2)
++    second = _run(["git", "push", "-q", "origin", "feat/x"], src, env)
++    assert second.returncode != 0 and "push policy v2: RATE_LIMITED" in second.stderr
++    # the v1 counter is untouched by a wip push
++    state = src / ".git/tradeai-push-budget.v2.json"
++    assert not state.exists() or "feat/x" not in state.read_text()
++    led = _ledger(src)
++    assert [(e["stage"], e["v2_code"]) for e in led] == [("pushed", "WIP"), ("decided", "RATE_LIMITED")]
++    assert led[0]["claim_id"] == cid and led[0]["class"] == "wip"
++
++
++def test_hook_enforce_refuses_main_untyped_reasons_and_the_override_habit(tmp_path):
++    src = _mini(tmp_path, policy=POLICY_ACTIVE)
++    cid = _claim(tmp_path, "main")
++    base = _env(src, tmp_path, TRADEAI_REMOTE_PUSH_AUTHORIZED="1", TRADEAI_REMOTE_PUSH_OVERRIDE="1")
++    p = _run(["git", "push", "-q", "origin", "main"], src, {**base, "TRADEAI_PUSH_REASON": f"claim:{cid}"})
++    assert p.returncode != 0 and "REFUSED_PROTECTED_REF" in p.stderr
++    _run(["git", "checkout", "-qb", "feat/y"], src, check=True)
++    q = _run(["git", "push", "-q", "origin", "feat/y"], src, {**base, "TRADEAI_PUSH_REASON": "just push it"})
++    assert q.returncode != 0 and "REFUSED_REASON" in q.stderr and "retired" in q.stderr
++
++
++def test_hook_enforce_waits_for_agents_20(tmp_path):
++    src = _mini(tmp_path, policy=POLICY_ACTIVE, agents=AGENTS_19_ACTIVE)
++    env = _env(src, tmp_path, TRADEAI_REMOTE_PUSH_AUTHORIZED="1")
++    p = _run(["git", "push", "-q", "origin", "main"], src, env)
++    assert p.returncode == 0 and "push policy v2 (shadow" in p.stdout  # v1 decides until AGENTS 20.0.0 is ACTIVE
++
++
++def test_hook_reads_the_policy_from_its_own_checkout_not_the_pushed_tree(tmp_path):
++    """A branch that flips its own AI_WORK_POLICY.md to WITHDRAWN does not leave enforce mode."""
++    src = _mini(tmp_path, policy=POLICY_ACTIVE)
++    wt = tmp_path / "wt"
++    _run(["git", "worktree", "add", "-q", "-b", "feat/z", str(wt)], src, check=True)
++    (wt / "AI_WORK_POLICY.md").write_text("Push-Policy-v2: WITHDRAWN\n")
++    _run(["git", "commit", "-qam", "loosen"], wt, check=True)
++    _run(["git", "config", "core.hooksPath", str(src / ".githooks")], src, check=True)
++    p = _run(["git", "push", "-q", "origin", "feat/z"], wt, _env(src, tmp_path, TRADEAI_REMOTE_PUSH_AUTHORIZED="1"))
++    assert p.returncode != 0 and "push policy v2: REFUSED_REASON" in p.stderr
++
++
++def test_now_is_timezone_aware():
++    assert B._now(datetime(2026, 10, 23)).tzinfo is timezone.utc
++
++
++def _draft_gh_fixture(tmp: Path, env: dict) -> dict:
++    bins = tmp / "fixture-bin"
++    bins.mkdir(exist_ok=True)
++    gh = bins / "gh"
++    gh.write_text("#!/bin/sh\nprintf '%s\\n' '[{\"number\":7,\"isDraft\":true}]'\n")
++    gh.chmod(0o755)
++    return {**env, "TRADE_AI_CI": "0", "PATH": str(bins) + os.pathsep + env.get("PATH", "")}
++
++
++@pytest.mark.parametrize("failure", ["api", "malformed", "unavailable"])
++def test_pr_lookup_failures_never_authorize_wip(monkeypatch, failure):
++    monkeypatch.delenv("TRADE_AI_CI", raising=False)
++    monkeypatch.delenv("TRADEAI_PUSH_PR_LOOKUP", raising=False)
++
++    def gh_failure(*args, **kwargs):
++        if failure == "unavailable":
++            raise OSError("offline")
++        return subprocess.CompletedProcess(args[0], 1 if failure == "api" else 0, "invalid", "API unavailable")
++
++    monkeypatch.setattr(B.subprocess, "run", gh_failure)
++    pr = B.pr_lookup("feat/x")
++    assert pr["state"] == "unknown"
++    assert decide([ref("feat/x")], pr_probe=lambda br: pr)["code"] == "REFUSED_DRAFT_UNPROVEN"
++
++
++def test_hook_concurrent_review_reservations_cannot_exceed_repository_cap(tmp_path):
++    src = _mini(tmp_path, policy=POLICY_ACTIVE)
++    _run(["git", "checkout", "-qb", "feat/x"], src, check=True)
++    cid = _claim(tmp_path, "feat/x")
++    env = _env(
++        src,
++        tmp_path,
++        TRADEAI_REMOTE_PUSH_AUTHORIZED="1",
++        TRADEAI_PUSH_CLASS="review",
++        TRADEAI_PUSH_REASON=f"claim:{cid}",
++    )
++    cost = int(B.REVIEW_COST_POLICY["est_minutes_per_push"])
++    cap = int(B.REVIEW_COST_POLICY["global_daily_minutes"])
++    import time
++
++    seed = {
++        "ts": time.time(),
++        "class": "review",
++        "effective_allow": True,
++        "cost_min": cap - cost,
++        "branches": ["feat/other"],
++        "branch": "feat/other",
++    }
++    ledger = src / ".git" / B.PUSH_LEDGER_NAME
++    ledger.write_text(json.dumps(seed) + "\n")
++    head = _run(["git", "rev-parse", "HEAD"], src, check=True).stdout.strip()
++    refs = f"refs/heads/feat/x {head} refs/heads/feat/x {ZERO}\n"
++    # Direct hook invocations exercise the real cross-process lock without remote traffic.
++    ps = [
++        subprocess.Popen(
++            ["bash", str(src / ".githooks/pre-push")],
++            cwd=src,
++            env=env,
++            stdin=subprocess.PIPE,
++            stdout=subprocess.PIPE,
++            stderr=subprocess.PIPE,
++            text=True,
++        )
++        for _ in range(5)
++    ]
++    outputs = [p.communicate(refs, timeout=120) for p in ps]
++    assert sum(p.returncode == 0 for p in ps) == 1, outputs
++    rows = _ledger(src)
++    accepted = [r for r in rows if r.get("effective_allow")]
++    assert sum(r["cost_min"] for r in accepted) == cap
++    rejected = [r for r in rows if r.get("stage") == "decided"]
++    assert len(rejected) == 4 and all(r["v2_code"] == "BUDGET_EXCEEDED_COST" for r in rejected)
++    assert all(not r["effective_allow"] for r in rejected)
++
++
++@pytest.mark.parametrize("bad_ledger", ["not-json\n", "[]\n"])
++def test_enforce_fails_closed_on_unreadable_ledger_without_reservation(tmp_path, monkeypatch, bad_ledger):
++    (tmp_path / "AI_WORK_POLICY.md").write_text(POLICY_ACTIVE)
++    (tmp_path / "AGENTS.md").write_text(AGENTS_20_ACTIVE)
++    monkeypatch.setenv("TRADEAI_PUSH_BUDGET_PATH", str(tmp_path / "budget.json"))
++    B.ledger_path().write_text(bad_ledger)
++    d = B.hook_decide(
++        push_refs=f"refs/heads/feat/x {SHA_A} refs/heads/feat/x {ZERO}",
++        policy_root=tmp_path,
++        authorized=True,
++        env_override=False,
++        guard_ok=False,
++        guard_reason=None,
++        guard_grant_id=None,
++        push_class="review",
++        reason=f"claim:{CLAIM}",
++        release_train_id=None,
++        claim_probe=lambda cid, br: (True, "fixture"),
++    )
++    assert not d["allow"] and d["code"] == "V2_ERROR"
++    assert B.ledger_path().read_text() == bad_ledger
++
++
++def test_hook_failed_durable_reservation_refuses_and_consumes_no_budget(tmp_path):
++    src = _mini(tmp_path, policy=POLICY_ACTIVE)
++    _run(["git", "checkout", "-qb", "feat/x"], src, check=True)
++    cid = _claim(tmp_path, "feat/x")
++    lib = src / "scripts/lib/tradeai_push_budget.py"
++    # Inject only in the disposable fixture: simulate fsync/disk failure after decision.
++    with lib.open("a") as fh:
++        fh.write("\ndef append_ledger(*args, **kwargs):\n    raise OSError('fixture disk full')\n")
++    env = _env(
++        src,
++        tmp_path,
++        TRADEAI_REMOTE_PUSH_AUTHORIZED="1",
++        TRADEAI_PUSH_CLASS="review",
++        TRADEAI_PUSH_REASON=f"claim:{cid}",
++    )
++    head = _run(["git", "rev-parse", "HEAD"], src, check=True).stdout.strip()
++    p = subprocess.run(
++        ["bash", str(src / ".githooks/pre-push")],
++        cwd=src,
++        env=env,
++        input=f"refs/heads/feat/x {head} refs/heads/feat/x {ZERO}\n",
++        capture_output=True,
++        text=True,
++        timeout=120,
++    )
++    assert p.returncode != 0 and "push ledger: not written (OSError)" in p.stderr
++    assert not _ledger(src)
++    assert not (src / ".git/tradeai-push-budget.v2.json").exists()
