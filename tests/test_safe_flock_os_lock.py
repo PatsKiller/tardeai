@@ -180,3 +180,37 @@ def test_symlinked_log_directory_is_rejected_before_creating_target_path(tmp_pat
     assert "log path component is not a real directory" in result.stderr
     assert not redirected_logs.exists()
     assert not (tmp_path / "shared.lock").exists()
+
+
+def test_project_root_reached_through_release_symlink_runs(tmp_path):
+    """Cron runs from portfolio-server/CURRENT (a symlink to the release dir); the default log dir must work."""
+    release = tmp_path / "release-abc"
+    (release / "scripts").mkdir(parents=True)
+    shutil.copy(WRAPPER, release / "scripts" / "safe_flock.sh")
+    current = tmp_path / "CURRENT"
+    current.symlink_to(release)
+    ran = tmp_path / "ran"
+    env = {k: v for k, v in os.environ.items() if k not in ("SAFE_FLOCK_LOG_DIR", "PROJECT_ROOT")}
+    env["PROJECT_ROOT"] = str(current)
+    result = subprocess.run(
+        ["bash", str(current / "scripts" / "safe_flock.sh"), str(tmp_path / "job.lock"), "touch", str(ran)],
+        env=env, text=True, capture_output=True, timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert ran.exists()
+    assert (release / "logs" / "safe_flock_events.jsonl").exists()
+
+
+def test_symlinked_explicit_log_dir_is_still_rejected(tmp_path):
+    real = tmp_path / "real-logs"
+    real.mkdir()
+    link = tmp_path / "logs"
+    link.symlink_to(real)
+    ran = tmp_path / "ran"
+    result = subprocess.run(
+        ["bash", str(WRAPPER), str(tmp_path / "job.lock"), "touch", str(ran)],
+        env={**os.environ, "SAFE_FLOCK_LOG_DIR": str(link)}, text=True, capture_output=True, timeout=10,
+    )
+    assert result.returncode != 0
+    assert "not a real directory" in result.stderr
+    assert not ran.exists()
