@@ -1,10 +1,10 @@
 {
   "schema": "CioAskProcessSourceVerification@v1",
-  "observed_at": "2026-10-24T23:13:36.173943+00:00",
+  "observed_at": "2026-10-24T23:29:44.191583+00:00",
   "base_sha": "9228634873392073f5849aaa77ec9b9121eb6094",
   "task": "DSN-20261024-cio-ask-process-P1-T1",
   "claim": "20261024T221725Z-codex-f455bd69",
-  "status": "MANUAL_INTENT_SOURCE_READY_WITH_UNCHANGED_BASELINE_FINDING_NOT_LIVE",
+  "status": "SETTLEMENT_READBACK_SOURCE_READY_WITH_UNCHANGED_BASELINE_FINDING_NOT_LIVE",
   "production_scope": [
     "config/llm_process_registry.json",
     "config/llm_routing_policy.json",
@@ -172,18 +172,10 @@
   "checks": {
     "read_only_source_guards": 10,
     "all_exit_zero": true,
-    "compile_passed": [
-      "scripts/lib/cio_governed_model_bridge.py",
-      "scripts/lib/governed_process_routes.py",
-      "scripts/lib/n8n_model_job.py",
-      "scripts/lib/governed_cloud_generation.py",
-      "scripts/lib/llm_bridge_route.py",
-      "scripts/sync_cio_process_caps.py",
-      "tests/test_cio_ask_process_registration_20261024.py"
-    ],
+    "compile_passed": true,
     "config_writes": [],
     "code_frozen": true,
-    "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-manual-frozen-no-write.json",
+    "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-settlement-frozen-no-write.json",
     "CRLF": "inherited style preserved; native cr-at-eol whitespace and line-ending-churn checks pass"
   },
   "runtime": {
@@ -196,13 +188,13 @@
   "source_sha256": {
     "config/llm_process_registry.json": "f72d4e8caeb57e81621b193b5be52b65f9080b3d22ea34697daa10c4568077d7",
     "config/llm_routing_policy.json": "084f98acb1b8016f8406d28cb5088a14dd88923952af0a9d2f32d599f430822d",
-    "scripts/lib/cio_governed_model_bridge.py": "de013cf56376a9b0b3d26a049fc14389bab636f08edd9745610a8f04a482386d",
+    "scripts/lib/cio_governed_model_bridge.py": "183047e224624d6b3fabbe7a1244d568d4702c720cd7d089e0f10f9b33cc5956",
     "scripts/lib/governed_process_routes.py": "503b218ff17b850303833953c61e69a8fff985ff5019adfdb513ea4e3419be25",
     "scripts/sync_cio_process_caps.py": "b25223a3fd236ed8e9f242cffe6c7827149a55f17c78aa9575980ef1ab76a3df",
     "scripts/lib/n8n_model_job.py": "0b807f7b906b6f09a6c908e9a11230e159ea5aa371b42eebcb6397b76f75aa91",
     "scripts/lib/governed_cloud_generation.py": "bb42dd3e822f06f08bcb930c2dd0beb7f3d5595aa8bdf4956b455d029872e18d",
     "scripts/lib/llm_bridge_route.py": "f87c25da0e8e0041b8383489c591dd6de248d3c605883fa41236765bdd5a6769",
-    "tests/test_cio_ask_process_registration_20261024.py": "fa5e9d6cec22b76ab145a43938c54dac74427212f690de7aef6ad43a9e4e1f08",
+    "tests/test_cio_ask_process_registration_20261024.py": "5ea2d162ed6db330f1b0c9a684b179f60dc1df5de0fcdd90a3de63a006bbdb21",
     "config/ci_gates/cio_ask_process_registration_20261024.json": "b18e3d74c88d07671bc529c163081cce970bd9fe716ebfc56a01b6a65207c1c2"
   },
   "receipt_sha256": {
@@ -210,7 +202,9 @@
     "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/baseline-stale-mode-test.json": "d1b97b990d8e62f1772d4700c48e0f132f55f85852783f8f3aaba786cf3f9272",
     "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/cap-sync-selected-dry-run.log": "7a512c0849d380b81d936942b606c91f43e256e3c5238916cc81598650a3de6b",
     "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-context-final-no-write.json": "fb24b52ee4066d0cd1b54028357f790573aebf055d16cf8a0499b98a377792e6",
-    "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-manual-frozen-no-write.json": "4d1eabff956d9cb800b946c0ba4ba8e7b96ac22079d22baf4f6a9aa39e762ea9"
+    "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-manual-frozen-no-write.json": "4d1eabff956d9cb800b946c0ba4ba8e7b96ac22079d22baf4f6a9aa39e762ea9",
+    "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-settlement-frozen-no-write.json": "47fdeec73314f77ceb3dd58b778b1f6375d747db123835e83800205182915343",
+    "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/settlement-compatibility.json": "7bde4a0aeef3fc22cfac2dc4142d2dde2ceb8a912814dbde68295da09260f1f1"
   },
   "manual_intent_followup": {
     "request": "/home/johnclaw/.cache/rtc/coordinator-batch21-20261024/ask-process-manual-intent.md",
@@ -231,5 +225,53 @@
     "failed": 0,
     "errors": 0,
     "full_project_ci": false
+  },
+  "settlement_readback_followup": {
+    "schema": "AskSettlementReceipt@v1",
+    "new_settlement_cases": 23,
+    "final_registration_cases": 62,
+    "final_focused_cases_with_helpers": 70,
+    "compatibility_cases": 199,
+    "overlap_helper_cases": 8,
+    "read_only_seam": "existing lc._conn cursor SELECT; no schema initialization/commit/rollback/primitive change",
+    "verified": "canary non-mock + measured finite nonnegative amount + exact reservation/process/request/status settled + NUMERIC6dp amount match",
+    "unknown": "unmeasured OAuth actual stays NOT_MEASURED; missing/error/mismatch/mock never verified; sanitized reason/actual_usd null",
+    "currency_precision": "ROUND_HALF_UP to six decimal places; provider_actual_usd separate from persisted actual_usd",
+    "tests": [
+      {
+        "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/settlement-focused.xml",
+        "sha256": "6d5b908dec14227192f39fec464560d9189f1a2664e160a163f5a983c5ba5f2f",
+        "tests": "61",
+        "failures": "1",
+        "errors": "0",
+        "skipped": "0",
+        "time": "0.740"
+      },
+      {
+        "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/settlement-final-focused.xml",
+        "sha256": "b491d7ac123f09ad692361e74e4218d7172737e05a3ef2ebe76855dc588e233d",
+        "tests": "69",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "2.204"
+      },
+      {
+        "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/settlement-zero-final-focused.xml",
+        "sha256": "e44d2bc450064f81d7d3cf5667ae4c5704e5ad8b9973bd9e1cb16271d6bd2ebd",
+        "tests": "70",
+        "failures": "0",
+        "errors": "0",
+        "skipped": "0",
+        "time": "2.784"
+      }
+    ],
+    "compatibility_receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/settlement-compatibility.json",
+    "initial_invocation_error": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/settlement-focused-missing-test-path.log",
+    "qualification": "First61-case receipt has60pass/1 own wrong-schema fixture failure; corrected69pass then zero-edge70pass. No gate/assertion relaxation. No runtime settlement acceptance.",
+    "companion_mobile_source": "2441cb2a303962a9f5ce9b5cceeb0454f97c6979",
+    "companion_mobile_proof": "separate real 412x915/390x844 touch receipts; not backend-generated or live acceptance",
+    "consumer_dependency": "separate Ask quality fix strictly consumes this receipt and owns async admission/cost booking; publish combined source before operator real-question proof",
+    "live_sql_or_models": false
   }
 }

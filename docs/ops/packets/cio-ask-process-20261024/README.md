@@ -20,6 +20,7 @@ one process ID, `cio_ask_deep_research`. No second cap bucket is created.
 | Research context | Explicit `context_id` becomes `X-TradeAI-Context-Id`; omitted uses only the existing current context. No ID is generated. Missing context is omitted so Ring2 still decides; unsafe IDs/current-reader failure refuse before transport. |
 | Policy | Omit `routing_policy` for the registered default. No arbitrary provider/model/tier parameter is added. |
 | Success | Require `_tradeai.governance_pass is True`, matching `_tradeai.process_id`, valid reservation/provenance, and a non-mock result before claiming a real run. Content is `choices[0].message.content`. |
+| Settlement | Ask-only `_tradeai.settlement_receipt` must be `VERIFIED_SETTLED` with matching reservation/process/request IDs and measured amount. `UNVERIFIED` / `NOT_MEASURED` is not a zero charge. See contract below. |
 | Provenance | `_tradeai.provider`, `model_id`, `requested_policy`, `request_id`, `reservation_id`, `route_receipts`, `reasoning_tier`, `cost_estimate`, `cost_basis`; top-level `model` mirrors the served model. Preserve actual serving identity. |
 | Refusal | `error.code`, `error.status`, retry classification and returned route receipts. A refused call is not success or a cue for an ungoverned provider fallback. |
 
@@ -63,3 +64,43 @@ operator re-asks only after the combined quality fix is actually served.
 Private receipts live under
 `/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/`.
 `verification.json` records current source/test hashes and all qualification.
+
+
+Settlement receipt contract (source only):
+
+```json
+{
+  "schema": "AskSettlementReceipt@v1",
+  "status": "VERIFIED_SETTLED",
+  "reason": "MATCHED_RESERVATION_READBACK",
+  "reservation_id": 4242,
+  "process_id": "cio_ask_deep_research",
+  "request_id": "ask-fixture-answer-v1",
+  "provider_actual_usd": 0.0005006,
+  "actual_usd": 0.000501,
+  "amount_precision_usd": "0.000001",
+  "readback": {
+    "reservation_id": 4242,
+    "process_id": "cio_ask_deep_research",
+    "request_id": "ask-fixture-answer-v1",
+    "status": "settled",
+    "actual_usd": 0.000501
+  }
+}
+```
+
+The example is a synthetic fixture. Raw provider cost is quantized with
+`ROUND_HALF_UP` to the reservation table's six-decimal precision before matching;
+the persisted amount is the charge. Matching must include all IDs and the
+non-mock outer envelope. The read uses only a parameterized SELECT through the
+existing consumption connection seam. A missing row, DB exception, wrong ID,
+wrong status or wrong amount returns `UNVERIFIED` / `actual_usd: null`. Missing
+provider actual returns `NOT_MEASURED`, even if legacy settlement stored a
+projection; mock returns `UNVERIFIED`. No raw database exception is exposed.
+Other processes and every budget primitive retain their existing behavior.
+
+Pending follow-up: the separate Ask caller consumes strict receipts; operator
+publication, selected live cap sync and actual served-question acceptance remain
+unperformed. Current fixture/guard receipts preserve earlier failures separately,
+including the first new other-process fixture's wrong-schema failure and the
+mistyped test-path invocation. No fixture assertion or output guard was relaxed.

@@ -25,6 +25,7 @@ import contextvars
 import threading
 import time
 import uuid
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from typing import Any
 
@@ -2191,6 +2192,83 @@ def escalate_once(
     return info
 
 
+def _ask_settlement_receipt(
+    consumption: Any, *, reservation_id: int | None, process_id: str,
+    request_id: str, provider_actual_usd: Any, mock: bool,
+) -> dict[str, Any]:
+    """Ask-only SELECT readback; a settlement function's return is not proof.
+
+    Existing reservations store six decimal places. Unknown provider cost must
+    never become the conservative projected amount stored by legacy settlement.
+    No schema initialization, transaction mutation, or budget-policy change.
+    """
+    receipt: dict[str, Any] = {
+        "schema": "AskSettlementReceipt@v1", "status": "UNVERIFIED",
+        "reservation_id": reservation_id, "process_id": process_id,
+        "request_id": request_id, "provider_actual_usd": None,
+        "actual_usd": None, "amount_precision_usd": "0.000001", "readback": None,
+    }
+    if mock:
+        return dict(receipt, reason="MOCK_RESPONSE")
+    if provider_actual_usd is None:
+        return dict(receipt, status="NOT_MEASURED", reason="PROVIDER_ACTUAL_NOT_MEASURED")
+    try:
+        if isinstance(provider_actual_usd, bool):
+            raise ValueError("boolean amount")
+        measured = Decimal(str(provider_actual_usd))
+        if not measured.is_finite() or measured < 0:
+            raise ValueError("invalid amount")
+        expected = measured.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+    except (InvalidOperation, ValueError, TypeError):
+        return dict(receipt, reason="PROVIDER_ACTUAL_INVALID")
+    receipt["provider_actual_usd"] = float(measured)
+    if (process_id != "cio_ask_deep_research" or not isinstance(reservation_id, int)
+            or isinstance(reservation_id, bool) or reservation_id <= 0
+            or not isinstance(request_id, str) or not request_id):
+        return dict(receipt, reason="RESERVATION_IDENTITY_INVALID")
+    cursor = None
+    try:
+        cursor = consumption._conn().cursor()
+        cursor.execute(
+            "SELECT id, process_id, metadata_json->>'request_id', status, actual_usd "
+            "FROM llm_cost_reservations WHERE id=%s",
+            (reservation_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return dict(receipt, reason="RESERVATION_NOT_FOUND")
+        row_id, row_pid, row_request, row_status, row_actual = row
+        try:
+            stored = Decimal(str(row_actual))
+            if not stored.is_finite() or stored < 0:
+                raise ValueError("invalid stored amount")
+        except (InvalidOperation, ValueError, TypeError):
+            stored = None
+        receipt["readback"] = {
+            "reservation_id": row_id, "process_id": row_pid,
+            "request_id": row_request, "status": row_status,
+            "actual_usd": float(stored) if stored is not None else None,
+        }
+        if (row_id, row_pid, row_request) != (reservation_id, process_id, request_id):
+            return dict(receipt, reason="RESERVATION_IDENTITY_MISMATCH")
+        if row_status != "settled":
+            return dict(receipt, reason="RESERVATION_NOT_SETTLED")
+        if stored is None or stored != expected:
+            return dict(receipt, reason="SETTLED_AMOUNT_MISMATCH")
+        return dict(receipt, status="VERIFIED_SETTLED", reason="MATCHED_RESERVATION_READBACK",
+                    actual_usd=float(stored))
+    except Exception:
+        # A failed read is not evidence of zero spend or successful persistence.
+        # Keep database/connection diagnostics out of caller-visible metadata.
+        return dict(receipt, reason="SETTLEMENT_READBACK_UNAVAILABLE")
+    finally:
+        if cursor is not None:
+            try:
+                cursor.close()
+            except Exception:
+                pass
+
+
 def execute_governed_call(
     messages: list[dict],
     *,
@@ -2884,6 +2962,12 @@ def execute_governed_call(
             else None
         ),
     }
+
+    if process_id == "cio_ask_deep_research":
+        response["_tradeai"]["settlement_receipt"] = _ask_settlement_receipt(
+            lc, reservation_id=reservation_id, process_id=process_id,
+            request_id=rid, provider_actual_usd=actual_cost, mock=is_mock,
+        )
 
     agent_gate.annotate_response(response, process_id, _egress.get("verdict"))
 

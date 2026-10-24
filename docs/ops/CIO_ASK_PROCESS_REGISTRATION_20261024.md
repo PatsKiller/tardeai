@@ -21,7 +21,7 @@ still refuse Ask-CIO before its process allowance is exhausted.
 | Operator intent | `generate_cloud(..., manual_trigger=False)` forwards true only when explicitly supplied. Without bridge env, the existing real `llm_lane.generate` / `gate_and_generate` / `should_call` enforces manual mode. On the bridge path, Ask requires explicit true at the helper and exact `X-TradeAI-Manual-Trigger: 1` after server caller auth. Genuine operator-turn validation is in the authenticated core entry path. No inference from origin/depth/process; automated/re-answer defaults are refused. |
 | Client overrides | Arbitrary body model/provider/policy/tier cannot select the execution policy. The existing handler ignores them; arbitrary process injection remains refused. Only the declared server task selects depth. |
 | Per-call ceiling | Routing policy refuses projected cost above $0.50 before reservation. This is not an answer-wide cap. |
-| Per-question cap | The Ask caller must enforce the existing cumulative $0.50 budget across actual panel/retry/depth work. Actual settled-cost booking is a separate quality-fix package. |
+| Per-question cap | The Ask caller must enforce the existing cumulative $0.50 budget across actual panel/retry/depth work. Actual settled-cost booking remains in the separate quality-fix caller; this package now supplies an independently read-back Ask-only settlement receipt. |
 | Process/day and global | Existing real cap checker, reservation and settlement paths remain unchanged. Process cap $5/day; actual global cap remains independent and unchanged. |
 | Count | Thirty requests per day: a restrictive engineering bound from three existing panel members × ten full $0.50 budget slots. This is not measured demand or a promise of ten answers. Free OAuth calls still use count slots on the bridge route. Legacy in-process OAuth does not reserve those slots or apply the bridge routing ceiling; production Ask uses the explicit bridge route. |
 | Sync | Optional `--process-id` narrows the existing script to one declared process. No-argument behavior remains a full sync. Unknown IDs refuse before database import. New Ask rows start manual; conflict updates preserve existing modes. |
@@ -91,3 +91,48 @@ continues through all real admission functions. Ten guards and compilation pass
 on a frozen source snapshot; configuration hashes are unchanged during CHECK.
 The coordinator requested an updated push-only handoff on this same branch;
 the earlier ab148 checkpoint is superseded for publication, not rewritten.
+
+
+The settlement follow-up addresses a real trust gap: the legacy settlement
+function can swallow persistence failures. Its return and the existing numeric
+`cost_estimate` are not proof of a settled row. Only Ask adds
+`_tradeai.settlement_receipt` (`AskSettlementReceipt@v1`) after the final model
+result. A parameterized SELECT independently matches reservation ID, process ID,
+request ID from the reservation metadata, `settled` status, and measured amount.
+The stored amount has six decimal places; `ROUND_HALF_UP` comparison preserves
+that database precision, including a known zero charge. Receipt `actual_usd` is
+available only on `VERIFIED_SETTLED`; raw measured `provider_actual_usd` and the
+selected row fields remain separate evidence. Missing/error/mismatched rows are
+`UNVERIFIED`, with sanitized reasons. Unknown provider actual cost remains
+`NOT_MEASURED`; conservative projected reservation spend is never relabelled as
+measured cost. Mock responses never receive verified real-cost receipts.
+
+This adds no schema initialization or transaction mutation: no new reservation,
+settlement, commit, rollback, budget primitive or other-process reader. An
+escalated final amount that cannot match the base reservation remains explicitly
+unverified; the caller must not manufacture aggregate settlement proof. The
+consumer must check receipt schema/status and all identities against the outer
+non-mock governed envelope before charging an answer. Parent quality-fix code
+owns that strict check and async answer admission.
+
+Remaining acceptance work is unchanged: publish the combined source, check the
+real PR, perform operator-only selected cap synchronization/restart/deployment,
+and then obtain an authorized real question's context/provider/settlement and
+consumer readback. These are not established by fixtures. The Ask UI companion
+is source `2441cb2a303962a9f5ce9b5cceeb0454f97c6979`; its actual 412×915 and
+390×844 touch proof is in the separate companion's browser receipt, not an image
+invented for this backend-only change. Neither companion is called deployed here.
+
+
+Final settlement-focused proof: **70 cases pass**, containing all **62 new
+registration/context/manual/settlement cases** and eight helper cases. The
+**199 cases in eight isolated compatibility files** also pass; those runs
+share the eight helper cases and are not added together. Initial fixture
+failures remain recorded separately: 60 passes/one wrong-schema fixture, then
+a mistyped test-file invocation with no cases run, followed by corrected
+69-pass and final zero-cost-edge 70-pass runs. Assertions and guards were
+preserved. Existing unrelated baseline qualifications remain in the packet.
+
+The final frozen settlement source passes all ten source guards and compilation;
+CHECK changes no configuration bytes. These are source checks, not live CI or
+operator acceptance. No budget primitives or unrelated process rows changed.
