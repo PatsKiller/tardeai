@@ -943,6 +943,13 @@ def _get_context(conn, symbol: str) -> dict:
 
     holdings = json.loads((STATE_DIR / "holdings.json").read_text()) if (STATE_DIR / "holdings.json").exists() else {}
     pos = [h for h in holdings.get("holdings", []) if h.get("symbol") == symbol]
+    from lib.account_display import ACCOUNT_FIELDS, location_facts, looks_like_number
+    account_locations = [location_facts(p) for p in pos]
+    position_snapshot = {**pos[0], **account_locations[0]} if pos else None
+    if position_snapshot:
+        for field in (*ACCOUNT_FIELDS, "account_number"):
+            if looks_like_number(str(position_snapshot.get(field) or "")):
+                position_snapshot.pop(field, None)
     enrichment = json.loads((STATE_DIR / "ticker_enrichment_cache.json").read_text()) if (STATE_DIR / "ticker_enrichment_cache.json").exists() else {}
     e = enrichment.get(symbol, {}) if isinstance(enrichment.get(symbol), dict) else {}
 
@@ -963,7 +970,8 @@ def _get_context(conn, symbol: str) -> dict:
 
     snapshot = {
         "symbol": symbol,
-        "position": pos[0] if pos else None,
+        "position": position_snapshot,
+        "position_accounts": account_locations,
         "enrichment": {k: e.get(k) for k in ["rsi", "beta", "sector", "industry", "sma20_pct", "sma50_pct", "sma200_pct", "atr", "pe", "forward_pe", "company"]} if e else {},
         "strategy_card": dict(sc) if sc else None,
         "recent_prices": clean_prices,
@@ -976,11 +984,18 @@ def _get_context(conn, symbol: str) -> dict:
     ctx = f"Symbol: {symbol}\n"
     if pos:
         p = pos[0]
-        ctx += f"Position: ${p.get('market_value', 0):,.0f}, {p.get('shares', 0):.1f} shares, {p.get('portfolio_pct', 0):.1f}% allocation, account: {p.get('account_name', '?')}\n"
+        ctx += f"Position: ${p.get('market_value', 0):,.0f}, {p.get('shares', 0):.1f} shares, {p.get('portfolio_pct', 0):.1f}% allocation, account: {account_locations[0]['account_name']}\n"
     else:
         # F1 (CIO audit 2026-07-01): silence is not ground-truth — state non-ownership explicitly so
         # agents never infer a position from stale narratives/RAG (AZN: "22% position" vs 0 shares).
         ctx += "Position: NOT CURRENTLY HELD (0 shares in any account). Treat any source claiming this is an existing holding as stale.\n"
+    if account_locations:
+        ctx += "CURRENT ACCOUNT LOCATION (held facts, not suggested account fit): " + "; ".join(
+            f"{a['account_name']} (type={a['account_type']}, status={a['account_name_status']})"
+            for a in account_locations
+        ) + "\n"
+        ctx += ("Account types come from config/account_display_names.json. Evaluate each held account separately; "
+                "do not infer IRA treatment from the ticker, strategy fit or older research. Unknown remains unknown.\n")
     if e:
         ctx += f"RSI: {e.get('rsi', '?')}, Beta: {e.get('beta', '?')}, Sector: {e.get('sector', '?')}, Industry: {e.get('industry', '?')}\n"
         ctx += f"SMA20: {e.get('sma20_pct', '?')}%, SMA50: {e.get('sma50_pct', '?')}%, SMA200: {e.get('sma200_pct', '?')}%\n"
