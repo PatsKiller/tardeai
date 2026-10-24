@@ -37,6 +37,7 @@ opt-in step so that a tag written by this module is always deterministic.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -601,6 +602,9 @@ def persist_turn(tag: dict[str, Any], *, conn, text: str, role: str,
     GRAIN: one row per (turn, resolved entity). A turn that resolved nothing
     still writes one row with null guids, because an unresolvable turn is the
     measurement of what the spine cannot reach.
+
+    Exact replays with provider coordinates are idempotent across intake paths
+    and concurrent callers. Return newly inserted rows, never delete history.
     """
     if role not in ("operator", "agent"):
         raise ValueError(f"role must be 'operator' or 'agent', got {role!r}")
@@ -611,15 +615,39 @@ def persist_turn(tag: dict[str, Any], *, conn, text: str, role: str,
                             parent_event_id=parent_event_id)
     lin_cols = "".join(f", {k}" for k in lineage)
     lin_ph = ",%s" * len(lineage)
+    # Atomic intake and the legacy conversation entry point can both capture
+    # the same provider page. Serialize those writers before taking the next
+    # READ COMMITTED statement snapshot, then skip an exact existing entity row.
+    # Never collapse missing coordinates, edited text, roles or distinct subjects.
+    identified = chat_id not in (None, "") and message_id not in (None, "")
+    if identified:
+        if getattr(conn, "autocommit", False):
+            raise ValueError("conversation replay guard requires a transaction")
+        cur.execute("SHOW transaction_isolation")
+        if cur.fetchone() != ("read committed",):
+            raise ValueError("conversation replay guard requires READ COMMITTED")
+        key = repr((role, channel, str(chat_id), int(message_id))).encode("utf-8")
+        lock_id = int.from_bytes(hashlib.sha256(key).digest()[:8], "big", signed=True)
+        cur.execute("SELECT pg_advisory_xact_lock(%s)", (lock_id,))
     written = 0
     for r in rows:
+        same = (r or {})
+        replay_sql = """ WHERE NOT EXISTS (
+            SELECT 1 FROM operator_conversation_turns
+            WHERE role=%s AND channel=%s AND chat_id=%s AND message_id=%s AND text=%s
+              AND subject_guid IS NOT DISTINCT FROM %s
+              AND issuer_guid IS NOT DISTINCT FROM %s
+              AND symbol IS NOT DISTINCT FROM %s
+        )""" if identified else ""
+        replay_params = (role, channel, str(chat_id), int(message_id), text,
+                         same.get("subject_guid"), same.get("issuer_guid"), same.get("symbol")) if identified else ()
         cur.execute(
             f"""INSERT INTO operator_conversation_turns
                  (role, channel, chat_id, message_id, thread_id,
                   reply_to_message_id, turn_index, text,
                   symbol, subject_guid, issuer_guid, identity_status,
                   matched_via, matched_text, topics, unresolved_mentions{lin_cols})
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s{lin_ph})""",
+               SELECT %s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s{lin_ph}{replay_sql}""",
             (role, channel,
              str(chat_id) if chat_id is not None else None,
              int(message_id) if message_id is not None else None,
@@ -636,8 +664,8 @@ def persist_turn(tag: dict[str, Any], *, conn, text: str, role: str,
              (r or {}).get("matched_text"),
              list(tag.get("topics") or []),
              list(tag.get("unresolved_mentions") or []),
-             *lineage.values()))
-        written += 1
+             *lineage.values(), *replay_params))
+        written += int(cur.rowcount > 0)
     conn.commit()
     return written
 

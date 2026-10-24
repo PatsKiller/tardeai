@@ -149,6 +149,8 @@ def test_list_aware_sql_matches_joined_ids():
 
 # ── turns ────────────────────────────────────────────────────────────────────
 class TurnCursor:
+    rowcount = 1
+
     def __init__(self, columns_present: bool):
         self.present = columns_present
         self.sql: list = []
@@ -158,6 +160,8 @@ class TurnCursor:
 
     def fetchone(self):
         sql, _ = self.sql[-1]
+        if sql == "SHOW transaction_isolation":
+            return ("read committed",)
         if "information_schema.columns" in sql:
             return (1,) if self.present else None
         return None
@@ -208,7 +212,7 @@ def test_operator_turn_records_its_inbound_event():
     )
     ((sql, params),) = _inserts(cur)
     assert "event_id, causation_id, parent_event_id" in sql
-    assert params[-3:] == (INBOUND, SENT, SENT)
+    assert params[16:19] == (INBOUND, SENT, SENT)
 
 
 def test_agent_turn_inherits_the_open_scope():
@@ -221,7 +225,7 @@ def test_agent_turn_inherits_the_open_scope():
         )
     ((sql, params),) = _inserts(cur)
     assert "causation_id, parent_event_id" in sql and "event_id," not in sql.split("unresolved_mentions")[1]
-    assert params[-2:] == (INBOUND, INBOUND)
+    assert params[16:18] == (INBOUND, INBOUND)
 
 
 def test_turn_write_survives_an_unmigrated_table():

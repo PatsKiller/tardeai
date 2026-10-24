@@ -246,9 +246,11 @@ def test_the_alias_that_broke_it_still_demonstrates_the_asymmetry():
 # ---------------------------------------------------------------------------
 
 class _TurnCur:
+    rowcount = 1
     def __init__(self): self.rows = []
     def execute(self, sql, params=None): self.rows.append((sql, params))
-    def fetchone(self): return None
+    def fetchone(self):
+        return ("read committed",) if self.rows[-1][0] == "SHOW transaction_isolation" else None
 
 
 class _TurnConn:
@@ -271,7 +273,7 @@ ROWS_TWO = [
 
 
 def _params(conn):
-    return [p for _sql, p in conn._c.rows]
+    return [p for sql, p in conn._c.rows if "INSERT INTO operator_conversation_turns" in sql]
 
 
 def test_an_alert_is_recorded_once_per_delivered_message_id():

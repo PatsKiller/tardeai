@@ -35,6 +35,11 @@ async function shot(page: Page, name: string) {
 async function noSideScroll(page: Page) {
   const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth])
   expect(sw, 'no horizontal page scroll').toBeLessThanOrEqual(iw + 1)
+  if (iw <= 820) {
+    const panels = await page.locator('.watch-record-panel, .watch-universe-panel, [data-opportunity-table]').evaluateAll(els =>
+      els.map(el => ({ width: el.clientWidth, scroll: el.scrollWidth })))
+    for (const panel of panels) expect(panel.scroll, 'key record fields fit without panel sideways scroll').toBeLessThanOrEqual(panel.width + 1)
+  }
 }
 
 for (const w of WIDTHS) {
@@ -52,6 +57,20 @@ for (const w of WIDTHS) {
       await expect(page.getByTestId('mine-row')).toHaveCount(FIX.curation.my_watchlist.rows.length)
       await expect(page.getByTestId('mine-row').first().getByTestId('mine-star')).toHaveAttribute('data-on', '1')
       await noSideScroll(page)
+      if (w === 1440) {
+        const whys = page.locator('.watch-row-why')
+        expect(await whys.count()).toBe(FIX.curation.my_watchlist.rows.length)
+        const oneLine = await whys.evaluateAll(els => els.every(el => {
+          const st = getComputedStyle(el)
+          return st.whiteSpace === 'nowrap' && el.clientHeight <= parseFloat(st.lineHeight) + 1 && el.getAttribute('title') === el.textContent
+        }))
+        expect(oneLine, 'why is one line with full source text retained in tooltip').toBe(true)
+      } else {
+        await expect(page.locator('.watch-table-head').first()).toBeHidden()
+        await expect(page.locator('.watch-mobile-facts').first()).toBeVisible()
+        await expect(page.locator('.watch-mobile-facts').first()).toContainText('Account')
+        await expect(page.locator('.watch-mobile-facts').first()).toContainText('Last P/L')
+      }
       await shot(page, `my-watchlist_${w}`)
       // typeahead → add with a note
       await page.getByTestId('mine-add-input').fill('nvid')
@@ -106,6 +125,12 @@ for (const w of WIDTHS) {
       await expect(page.getByTestId('watch-row').first().getByTestId('mine-star')).toBeVisible()
       await expect(page.getByTestId('prospects-position-filters')).toBeVisible()
       await noSideScroll(page)
+      if (w === 412) {
+        const first = await page.getByTestId('watch-lane-actionable').boundingBox()
+        const second = await page.getByTestId('watch-lane-forming').boundingBox()
+        expect(first && second && Math.abs(first.y - second.y) < 2, 'two stage cards share each phone row').toBe(true)
+        await expect(page.locator('.watch-table-head').first()).toBeHidden()
+      }
       await shot(page, `prospects_${w}`)
       await page.getByTestId('watch-row').first().getByTestId('mine-star').click()
       await page.getByTestId('watch-lane-manage').click()
@@ -125,6 +150,12 @@ for (const w of WIDTHS) {
       await expect(navn).not.toContainText('Add-On')
       await expect(navn.getByTestId('mine-star')).toBeVisible()
       await noSideScroll(page)
+      if (w === 412) {
+        await expect(page.locator('[data-opportunity-table] thead')).toBeHidden()
+        await expect(navn.locator('.watch-universe-mobile-facts')).toBeVisible()
+        await expect(navn.locator('[data-label="Last P/L"]')).toBeVisible()
+        await expect(navn.locator('[data-label="Re-entry · next trigger"]')).toBeVisible()
+      }
       await shot(page, `full-universe_${w}`)
       await navn.click()
       await expect(page.locator('[data-opportunity-detail="NAVN"]')).toContainText('25.853 / 25.1 / 26.02')
