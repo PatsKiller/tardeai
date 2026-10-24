@@ -10240,6 +10240,15 @@
           "retry_policy": "transient-2"
         },
         "adopted_from_generator": "reconcile_lane_registry@v1"
+      },
+      "writer_binding": {
+        "manifest": "config/pipelines/premarket.json",
+        "stage": "premarket",
+        "step_id": "refresh_symbol_cards",
+        "lane_id": "premarket-data-pipeline",
+        "scope": "retired_standalone_schedule_continuing_parent_writer",
+        "source": "config/n8n_writer_restoration.json",
+        "evidence": "docs/ops/packets/w8-writers-20261024/copied-state-audit.json"
       }
     },
     {
@@ -13989,6 +13998,15 @@
         "stage": "premarket",
         "step_id": "market_regime_classifier",
         "on": "2026-10-11"
+      },
+      "writer_binding": {
+        "manifest": "config/pipelines/premarket.json",
+        "stage": "premarket",
+        "step_id": "market_regime_classifier",
+        "lane_id": "premarket-data-pipeline",
+        "scope": "retired_standalone_schedule_continuing_parent_writer",
+        "source": "config/n8n_writer_restoration.json",
+        "evidence": "docs/ops/packets/w8-writers-20261024/copied-state-audit.json"
       }
     },
     {
@@ -14032,6 +14050,15 @@
         "stage": "premarket",
         "step_id": "sync_dividend_data",
         "on": "2026-10-11"
+      },
+      "writer_binding": {
+        "manifest": "config/pipelines/premarket.json",
+        "stage": "premarket",
+        "step_id": "sync_dividend_data",
+        "lane_id": "premarket-data-pipeline",
+        "scope": "retired_standalone_schedule_continuing_parent_writer",
+        "source": "config/n8n_writer_restoration.json",
+        "evidence": "docs/ops/packets/w8-writers-20261024/copied-state-audit.json"
       }
     },
     {
@@ -14240,6 +14267,15 @@
         "stage": "premarket",
         "step_id": "recommendation_intelligence_engine",
         "on": "2026-10-11"
+      },
+      "writer_binding": {
+        "manifest": "config/pipelines/premarket.json",
+        "stage": "premarket",
+        "step_id": "recommendation_intelligence_engine",
+        "lane_id": "premarket-data-pipeline",
+        "scope": "retired_standalone_schedule_continuing_parent_writer",
+        "source": "config/n8n_writer_restoration.json",
+        "evidence": "docs/ops/packets/w8-writers-20261024/copied-state-audit.json"
       }
     },
     {
@@ -25632,6 +25668,49 @@
         "dst_note": "ET cron retains04:00 local: fall-back gap49 elapsed hours, spring-forward47; Sunday→Monday24 nominal hours."
       },
       "requires": "Atomic contract/admission/enable review; current operative schedule remains plan-only"
+    },
+    "w8-writer-restoration-20261024": {
+      "status": "DRAFT_PENDING_OWNER_REVIEW",
+      "operative": false,
+      "activation_allowed": false,
+      "catalog": "config/n8n_writer_restoration.json",
+      "health_drafts": "docs/ops/packets/w8-writers-20261024/health-drafts.json",
+      "lane_ids": [
+        "risk-management-refresh",
+        "market-regime-classifier",
+        "sync-dividend-data",
+        "refresh-symbol-cards",
+        "recommendation-intelligence-engine",
+        "generate-dual-opinion-advisory",
+        "advisory-opinion-session",
+        "portfolio-correlation",
+        "defense-cash-alternatives",
+        "morning-brief-0730",
+        "portfolio-ai-analyst",
+        "eod-open-trade-alert",
+        "hermes-score-alerts",
+        "cio-decision-engine",
+        "options-lifecycle-run",
+        "options-lifecycle-digest",
+        "defense-execution",
+        "sector-momentum-engine",
+        "run-pullback-macd-screener",
+        "run-pullback-macd-monitor"
+      ],
+      "authority": "Source preparation only; operator/coordinator reviews and activates. Existing operative schedules, allowlist entries, contracts and reviewer provenance are unchanged.",
+      "watchdog": "W4 integration and measured pipeline completion deadlines pending; mtime is never success.",
+      "requested_risk_schedule": {
+        "lane_id": "risk-management-refresh",
+        "cron": [
+          "30,45 9 * * 1-5",
+          "*/15 10-15 * * 1-5",
+          "0,10 16 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "respect_calendar": true,
+        "status": "REQUIRES_CACHED_INPUT_WRITER_AND_ADMISSION",
+        "operative": false
+      }
     }
   }
 }

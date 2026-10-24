@@ -128,6 +128,31 @@ def test_missing_or_renamed_pipeline_binding_does_not_revive_retired_leaf_schedu
     assert "pipeline_ownership_binding_not_measured" in row["admission_blockers"]
 
 
+def test_conflicting_declared_registry_writer_binding_cannot_claim_active_parent():
+    args = source_fixture()
+    args[1]["lanes"][0]["writer_binding"] = {**BINDING, "step_id": "other_step"}
+    result = w.audit(*args, now=NOW)
+    assert result["rows"][0]["schedule_owner"] is None
+    assert result["watchdog_registry"]["lanes"] == []
+
+
+def test_source_registry_declares_exact_existing_parent_without_changing_leaf_scheduler():
+    catalog = json.loads((ROOT / "config/n8n_writer_restoration.json").read_text())
+    registry = json.loads((ROOT / "config/lane_registry.json").read_text())
+    rows = {row["lane_id"]: row for row in registry["lanes"]}
+    for writer in catalog["writers"]:
+        if writer.get("pipeline"):
+            row = rows[writer["lane_id"]]
+            assert row["state"] == "RETIRED"
+            assert row["scheduler"]["kind"] == "cron"
+            assert all(row["writer_binding"][key] == value for key, value in writer["pipeline"].items())
+    for filename in ("lane_registry.json", "n8n_run_allowlist.json", "n8n_health_contracts.json"):
+        doc = json.loads((ROOT / "config" / filename).read_text())
+        proposal = doc["pending_changes"]["w8-writer-restoration-20261024"]
+        assert proposal["operative"] is False and proposal["activation_allowed"] is False
+        assert len(proposal["lane_ids"]) == len(catalog["writers"])
+
+
 def test_paused_execution_lane_is_visible_and_never_becomes_watchdog_or_workflow_candidate():
     args = source_fixture()
     args[0]["writers"][0].pop("pipeline")

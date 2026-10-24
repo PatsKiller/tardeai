@@ -229,7 +229,10 @@ def audit(catalog: dict, registry: dict, allowlist: dict, contracts: dict,
             stage = manifest.get("document", {}).get("stages", {}).get(binding["stage"], {})
             matches = [x for x in stage.get("steps", []) if x.get("id") == binding["step_id"]]
             parent = lanes.get(binding["lane_id"])
-            if (len(matches) == 1 and parent and lane
+            declared = (lane or {}).get("writer_binding")
+            declared_matches = not declared or all(declared.get(key) == binding[key]
+                for key in ("manifest", "stage", "step_id", "lane_id"))
+            if (len(matches) == 1 and parent and lane and declared_matches
                     and lane.get("superseded_by") == parent["lane_id"]):
                 step, scheduler_lane = matches[0], parent
                 pipeline_receipt = (parent.get("output_signal") or {}).get("path")
@@ -259,6 +262,8 @@ def audit(catalog: dict, registry: dict, allowlist: dict, contracts: dict,
                "source": writer["source"], "artifact": writer["artifact"], "registry_state": state,
                "effective_writer_state": effective_state,
                "schedule_owner": scheduler_lane.get("lane_id") if scheduler_lane else None,
+               "registry_writer_binding_status": ("DECLARED" if lane and lane.get("writer_binding") else
+                   "INFERRED_SOURCE_ONLY") if binding else "NOT_APPLICABLE",
                "retired_schedule_with_continuing_writer": source_drift,
                "current_cron": expressions, "timezone": tz,
                "requested_cron": writer.get("requested_cron", []),

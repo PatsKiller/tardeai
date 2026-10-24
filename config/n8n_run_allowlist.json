@@ -4525,6 +4525,136 @@
       ],
       "dependency_closure": "Read-only gh api GET through existing sanctioned GitHubReader; configured gh identity/availability required. No new credential values/env requested. Other reads: cron, unit files, proc cwd/fds, pointer files, coordination documents; writes: bound manifests/reports, non-force worktree remove/prune or exact approved archive/RTC item removal. No direct sender/provider/model/broker.",
       "requires": "Review new closure/env/rules; current operative --plan remains accepted"
+    },
+    "w8-writer-restoration-20261024": {
+      "status": "DRAFT_PENDING_OWNER_REVIEW",
+      "operative": false,
+      "activation_allowed": false,
+      "catalog": "config/n8n_writer_restoration.json",
+      "health_drafts": "docs/ops/packets/w8-writers-20261024/health-drafts.json",
+      "lane_ids": [
+        "risk-management-refresh",
+        "market-regime-classifier",
+        "sync-dividend-data",
+        "refresh-symbol-cards",
+        "recommendation-intelligence-engine",
+        "generate-dual-opinion-advisory",
+        "advisory-opinion-session",
+        "portfolio-correlation",
+        "defense-cash-alternatives",
+        "morning-brief-0730",
+        "portfolio-ai-analyst",
+        "eod-open-trade-alert",
+        "hermes-score-alerts",
+        "cio-decision-engine",
+        "options-lifecycle-run",
+        "options-lifecycle-digest",
+        "defense-execution",
+        "sector-momentum-engine",
+        "run-pullback-macd-screener",
+        "run-pullback-macd-monitor"
+      ],
+      "authority": "Source preparation only; operator/coordinator reviews and activates. Existing operative schedules, allowlist entries, contracts and reviewer provenance are unchanged.",
+      "watchdog": "W4 integration and measured pipeline completion deadlines pending; mtime is never success.",
+      "admission_granted": false,
+      "blocked_by": {
+        "risk-management-refresh": [
+          "standalone_cached_input_writer_required",
+          "risk_writer_owner_handoff_required"
+        ],
+        "market-regime-classifier": [
+          "bounded_env_audit_required",
+          "health_owner_review_required"
+        ],
+        "sync-dividend-data": [
+          "bounded_env_and_provider_owner_audit_required",
+          "health_owner_review_required"
+        ],
+        "refresh-symbol-cards": [
+          "live_server_materialization_dependency",
+          "honest_profiles_subprocess_exit_required",
+          "bounded_env_audit_required",
+          "health_owner_review_required"
+        ],
+        "recommendation-intelligence-engine": [
+          "write_free_dry_run_and_success_receipt_required",
+          "bounded_env_audit_required",
+          "health_owner_review_required"
+        ],
+        "generate-dual-opinion-advisory": [
+          "standalone_lane_contract_required",
+          "bounded_env_audit_required",
+          "schedule_owner_decision_required",
+          "health_owner_review_required"
+        ],
+        "advisory-opinion-session": [
+          "standalone_lane_contract_required",
+          "governed_model_and_memory_owner_handoff_required",
+          "schedule_owner_decision_required",
+          "health_owner_review_required"
+        ],
+        "portfolio-correlation": [
+          "standalone_cached_input_writer_required",
+          "provider_owner_routing_required",
+          "schedule_owner_decision_required",
+          "health_owner_review_required"
+        ],
+        "defense-cash-alternatives": [
+          "write_free_dry_run_and_success_receipt_required",
+          "provider_owner_routing_required",
+          "schedule_owner_decision_required",
+          "health_owner_review_required"
+        ],
+        "morning-brief-0730": [
+          "notification_intent_handoff_required",
+          "offline_dry_run_and_success_receipt_required",
+          "health_owner_review_required"
+        ],
+        "portfolio-ai-analyst": [
+          "standalone_report_writer_required",
+          "execution_and_sender_closure_excluded",
+          "health_owner_review_required"
+        ],
+        "eod-open-trade-alert": [
+          "notification_intent_handoff_required",
+          "success_receipt_required",
+          "health_owner_review_required"
+        ],
+        "hermes-score-alerts": [
+          "notification_intent_handoff_required",
+          "success_receipt_required",
+          "health_owner_review_required"
+        ],
+        "cio-decision-engine": [
+          "cio_truth_owner_handoff_required",
+          "pause_requires_operator_activation",
+          "health_owner_review_required"
+        ],
+        "options-lifecycle-run": [
+          "execution_engineering_and_operator_resume_required"
+        ],
+        "options-lifecycle-digest": [
+          "execution_engineering_and_operator_resume_required"
+        ],
+        "defense-execution": [
+          "execution_engineering_and_operator_resume_required"
+        ],
+        "sector-momentum-engine": [
+          "success_receipt_required",
+          "health_owner_review_required",
+          "bounded_dependency_audit_required"
+        ],
+        "run-pullback-macd-screener": [
+          "success_receipt_required",
+          "health_owner_review_required",
+          "bounded_dependency_audit_required"
+        ],
+        "run-pullback-macd-monitor": [
+          "success_receipt_required",
+          "health_owner_review_required",
+          "bounded_dependency_audit_required"
+        ]
+      }
     }
   }
 }
