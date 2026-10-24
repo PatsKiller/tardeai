@@ -16371,7 +16371,7 @@ def _defense_posture(query=None):
     # with its age and the desk can say so.
     from lib.data_broker.sector_momentum import get_sector_momentum_snapshot as _brk_sm_snap
 
-    _sm = _brk_sm_snap()
+    _sm = _brk_sm_snap(db_query=_db_query)
     snap = _sm.get("snapshot")
     _sm_env = {k: _sm.get(k) for k in ("as_of", "age_hours", "source", "stale", "stale_after_hours", "gap") if k in _sm}
     out.update(_sm_env)
@@ -16380,7 +16380,7 @@ def _defense_posture(query=None):
     if not snap:
         # --- Data Broker: sector_momentum as fallback (Phase D wiring) ---
         # When the sector_momentum_engine snapshot is missing (first run, disk error),
-        # compute sector-relative-strength live from market_quotes via the broker module.
+        # derive multi-session strength from stored closes via the broker projection.
         try:
             from lib.data_broker.sector_momentum import get_sector_momentum
 
@@ -16393,7 +16393,10 @@ def _defense_posture(query=None):
                         "sector": etf,
                         "chg_pct": data.get("chg_pct"),
                         "rel_pct": data.get("rel_pct"),
-                        "state": (data.get("label") or "").upper(),
+                        "state": data.get("state"),
+                        "rs5": data.get("rs5"), "rs20": data.get("rs20"), "rs60": data.get("rs60"),
+                        "cio_posture": data.get("cio_posture"), "as_of": data.get("as_of"),
+                        "gap": data.get("gap"),
                     }
                 )
             snap = {
@@ -16401,20 +16404,20 @@ def _defense_posture(query=None):
                 "spy_chg_pct": bm.get("spy_chg_pct"),
                 "computed_at": bm.get("computed_at"),
                 "source": "data_broker.sector_momentum",
-                "note": "Broker fallback; snapshot file absent/empty. Sector states are fresh momentum labels only.",
+                "note": "Stored-close projection; snapshot absent/empty. Missing horizons remain explicit.",
             }
             # The served momentum now comes from the live recompute, so the top-level envelope
-            # describes THAT read (market_quotes-derived, its own as_of); the file's no_coverage
+            # describes that stored-close read and its source as_of; the file's no_coverage
             # envelope stays visible under feeds.sector_momentum.
             from lib.data_broker.envelope import envelope as _brk_envelope
 
             _fb_env = _brk_envelope(
                 "sector_momentum",
-                bm.get("computed_at") or None,
+                bm.get("as_of") or None,
                 source={
                     "file": None,
-                    "table": "market_quotes",
-                    "fallback": "data_broker.sector_momentum live recompute",
+                    "table": "ticker_prices",
+                    "fallback": "data_broker.sector_momentum stored-close projection",
                 },
             )
             out.update(
@@ -45079,215 +45082,9 @@ _SECTOR_ETF_MAP = {
 
 
 def _sectors_monitor(query=None):
-    """GET /api/v2/sectors/monitor — per-sector: ETF, momentum (leading/lagging/neutral vs SPY from
-    market_quotes), constituent count, # flagging setups, sample watch candidates, is_watched.
-    Advisory; no fabrication (unknown when no ETF data). Watched sectors sort to top."""
-    import json as _j
-
-    # One Source of Truth Phase 4 (2026-09-13): quotes come from the market_quote projection in ONE
-    # batch (skip_live — a bulk page never blocks on the provider waterfall) and the RS history from
-    # the sector_momentum projection. This hub no longer SELECTs market_quotes / sector_rs_daily itself;
-    # the response carries the read envelope (as_of, age_hours, source, stale) for both feeds.
-    from lib.data_broker.envelope import envelope as _brk_envelope, newest as _brk_newest
-    from lib.data_broker.market_quote import get_price_batch as _brk_prices
-    from lib.data_broker.sector_momentum import get_sector_rs_history as _brk_rs_hist
-
-    _etfs = list(dict.fromkeys(["SPY"] + list(_SECTOR_ETF_MAP.values())))
-    _quotes = _brk_prices(_db_query, _etfs, max_age_hours=168, skip_live=True)
-    spy_chg = float((_quotes.get("SPY") or {}).get("chg_pct") or 0)
-    watched = {}
-    for d in _db_query("SELECT id, label, spec FROM watch_directives WHERE kind='sector' AND status='active'") or []:
-        spec = d["spec"] if isinstance(d["spec"], dict) else _j.loads(d["spec"])
-        key = spec.get("finviz_sector") or spec.get("gics_sector") or ""
-        if key:
-            # A4: normalize 'Financial' vs 'Financials' so the watching chip
-            # matches regardless of which variant the directive stored
-            watched[key.strip().lower().rstrip("s")] = {"id": d["id"], "label": d["label"]}
-    # v4 (E1): RS history — one grouped read of sector_rs_daily for all ETFs (via the projection)
-    _rs_hist_env = _brk_rs_hist(_db_query, days=95)
-    _rs_hist: dict = _rs_hist_env.get("series") or {}
-
-    def _rs_block(etf: str):
-        ser = _rs_hist.get(etf) or []
-        if len(ser) < 5:
-            return {"rs_series": ser[-30:], "rs_n": len(ser), "rs_20d_pct": None, "rs_60d_pct": None, "rs_trend": "n/a"}
-        cur = ser[-1]
-        d20 = round((cur / ser[-21] - 1) * 100, 2) if len(ser) >= 21 else round((cur / ser[0] - 1) * 100, 2)
-        d60 = round((cur / ser[-61] - 1) * 100, 2) if len(ser) >= 61 else None
-        trend = (
-            "improving"
-            if d20 is not None and d20 > 0.5
-            else "deteriorating"
-            if d20 is not None and d20 < -0.5
-            else "flat"
-        )
-        return {
-            "rs_series": [round(x, 5) for x in ser[-30:]],
-            "rs_n": len(ser),
-            "rs_20d_pct": d20,
-            "rs_60d_pct": d60,
-            "rs_trend": trend,
-        }
-
-    # v4 (E2): book overlay — actual sector weights from canonical holdings.json
-    # resolved_sectors (the pipeline's fund LOOK-THROUGH decomposition, so SCHG/tech
-    # concentration shows honestly). Read-only. Names aliased to the monitor's keys.
-    _book: dict = {}
-    try:
-        _h = _load_json(STATE_DIR / "holdings.json") or {}
-        _rs = _h.get("resolved_sectors") or []
-        _tot = sum(float(r.get("value") or 0) for r in _rs)
-        _alias = {"Financial Services": "Financials", "Communication Services": "Communication Services"}
-        if _tot > 0:
-            for r in _rs:
-                _sname = _alias.get(r.get("sector") or "", r.get("sector") or "")
-                if _sname:
-                    _book[_sname] = _book.get(_sname, 0.0) + round(float(r.get("value") or 0) / _tot * 100, 1)
-    except Exception:
-        _book = {}
-
-    out = []
-    for sec, etf in _SECTOR_ETF_MAP.items():
-        q = _quotes.get(etf) or {}
-        etf_chg = q.get("chg_pct")
-        if etf_chg is None:
-            # Watch Desk v2 (A4): honest empty state — the calc didn't fail
-            # mysteriously, the ETF quote row is missing (XLRE class)
-            momentum, rel = "n/a · quote missing", None
-        else:
-            rel = round(float(etf_chg) - spy_chg, 2)
-            momentum = "leading" if rel > 0.15 else "lagging" if rel < -0.15 else "neutral"
-        cons = (
-            _db_query("SELECT count(DISTINCT symbol) AS n FROM incubator_universe WHERE sector=%s", (sec,), fetch="one")
-            or {}
-        )
-        # Reconcile each per-sector momentum candidate against the CIO verdict + analyst coverage so a
-        # score-ranked "setup" the CIO says AVOID (or with thin coverage) is flagged, not surfaced as a buy.
-        cands = (
-            _db_query(
-                """SELECT DISTINCT wi.symbol, wi.rsi, wi.trend, wi.score, wi.origin_system,
-                                wi.setup_advisory, wi.watch_score_kind,
-                                fs.recommendation AS cio_view, an.nop AS analyst_opinions
-                             FROM watchlist_items wi
-                             LEFT JOIN LATERAL (SELECT recommendation FROM watchlist_final_synthesis f
-                                                WHERE upper(f.symbol)=upper(wi.symbol) ORDER BY created_at DESC LIMIT 1) fs ON true
-                             LEFT JOIN LATERAL (SELECT number_of_analyst_opinions nop FROM yahoo_analyst_targets_history y
-                                                WHERE upper(y.symbol)=upper(wi.symbol) ORDER BY created_at DESC LIMIT 1) an ON true
-                             WHERE wi.status IN ('active','researched') AND wi.score IS NOT NULL
-                               AND wi.symbol IN (SELECT DISTINCT symbol FROM incubator_universe WHERE sector=%s)
-                             ORDER BY wi.score DESC NULLS LAST LIMIT 12""",
-                (sec,),
-            )
-            or []
-        )
-        for _c in cands:
-            _cv = (_c.get("cio_view") or "").upper()
-            _c["cio_view"] = _cv or None
-            _c["cio_avoid"] = _cv in ("AVOID", "IGNORE", "REBALANCE_TRIM")
-            _nop = _c.get("analyst_opinions")
-            _c["thin_coverage"] = _nop is None or int(_nop) < 3
-        cands = [c for c in cands if not c["cio_avoid"]][:8]
-        _rsb = _rs_block(etf)
-        _bw = _book.get(sec)
-        out.append(
-            {
-                "sector": sec,
-                "etf": etf,
-                "etf_change_pct": _json_clean(etf_chg),
-                "quote_as_of": q.get("as_of"),
-                "spy_change_pct": spy_chg,
-                "rel_strength": rel,
-                "momentum": momentum,
-                "constituent_count": cons.get("n", 0),
-                "setup_count": len(cands),
-                "candidates": [{k: _json_clean(v) for k, v in c.items()} for c in cands],
-                "is_watched": sec.strip().lower().rstrip("s") in watched,
-                "directive": watched.get(sec.strip().lower().rstrip("s")),
-                **_rsb,
-                "book_weight_pct": _bw,
-                # E2: one-glance answer to "am I overweight what's lagging?" — deterministic copy
-                "book_flag": (
-                    "overweight_lagging" if (_bw or 0) >= 10 and _rsb["rs_trend"] == "deteriorating" else None
-                ),
-            }
-        )
-    out.sort(key=lambda s: (not s["is_watched"], {"leading": 0, "neutral": 1, "lagging": 2}.get(s["momentum"], 3)))
-    # Stale quarantine + field truth ledger. Additive: every pre-existing key is left
-    # exactly as the frontend already reads it. A stale sector keeps its row and its
-    # numbers — nothing is deleted — but loses recommendation eligibility, so a
-    # four-day-old observation can no longer originate a new add.
-    quality_block = {}
-    try:
-        from datetime import date as _date
-        from defense_data_quality import (
-            Quality,
-            field_ledger,
-            quarantine_stale_rows,
-        )
-
-        _today = _date.today()
-        _rows = [{"symbol": s.get("etf"), "sector": s.get("sector"), "as_of": s.get("as_of")} for s in out]
-        _q = quarantine_stale_rows(_rows, as_of=_today, max_age_days=4)
-        _stale = {r.get("sector") for r in _q["quarantined"]}
-        for s in out:
-            is_stale = s.get("sector") in _stale
-            s["stale"] = is_stale
-            s["source_age_days"] = next(
-                (r.get("age_days") for r in (_q["quarantined"] + _q["current"]) if r.get("sector") == s.get("sector")),
-                None,
-            )
-            s["stale_sla_days"] = 4
-            s["quarantine_reason"] = "source_older_than_sla" if is_stale else None
-            # Legacy recommendations remain authoritative; this flag is advisory input
-            # to the shadow lane and to the UI, and does not itself remove a live card.
-            s["recommendation_eligible"] = not is_stale
-        quality_block = {
-            "sectors_total": len(out),
-            "sectors_stale": len(_stale),
-            "stale_sla_days": 4,
-            "ledger": field_ledger(
-                source="sector_momentum_state",
-                provider="sector_momentum_engine",
-                source_as_of=max((s.get("as_of") or "" for s in out), default=None) or None,
-                cadence="daily_close",
-                value=[s.get("sector") for s in out],
-                coverage_n=len(out) - len(_stale),
-                coverage_total=len(out),
-                quality=Quality("ok") if not _stale else Quality("partial_stale", (f"stale_sectors={len(_stale)}",)),
-            ),
-        }
-    except Exception as _e:
-        quality_block = {"error": f"quality block unavailable: {str(_e)[:120]}"}
-    # quote_price has two registry windows: 0.25h in RTH, 72h when the market is closed
-    # (weekend/holiday/after-hours). Ask the session calendar which one applies.
-    try:
-        from market_session import is_market_open as _brk_mkt_open
-
-        _mkt_closed = not _brk_mkt_open()
-    except Exception:
-        _mkt_closed = None
-    _q_env = _brk_envelope(
-        "quote_price", _brk_newest([v.get("as_of") for v in _quotes.values()]), market_closed=_mkt_closed
-    )
-    _rs_env = {
-        k: _rs_hist_env.get(k)
-        for k in ("as_of", "age_hours", "source", "stale", "stale_after_hours", "gap")
-        if k in _rs_hist_env
-    }
-    return {
-        **_q_env,
-        "feeds": {"market_quotes": {k: v for k, v in _q_env.items() if k != "schema"}, "sector_rs_daily": _rs_env},
-        "spy_change_pct": spy_chg,
-        "sectors": out,
-        "data_quality": quality_block,
-        # A4 legend: on-page semantics instead of implied meaning
-        "legend": (
-            "setups/N: setups = score-ranked candidates surviving the CIO-verdict + "
-            "coverage filters; N = tracked constituents in incubator_universe for the "
-            "sector. 'n/a · quote missing' = sector ETF has no quote row (not a calc failure). "
-            "'watching' chip = an active sector directive exists for this sector."
-        ),
-    }
+    """Watch Sectors — canonical multi-horizon read model (W3)."""
+    from lib.sectors_monitor import monitor
+    return monitor(_db_query, STATE_DIR, sector_map=_SECTOR_ETF_MAP, query=query)
 
 
 def _llm_retry_health(query=None):
