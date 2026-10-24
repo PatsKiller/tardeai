@@ -32,4 +32,6 @@ PYTHONPATH=/home/johnclaw/.cache/rtc/nopg \
   tests/test_ci_gates_registry_20261021.py
 ```
 
-Host-path and test-coverage `--fail-on-new` ratchets both pass with zero new violations. Generated docs index and whitespace checks pass. Effective hidden-driver refusal was separately verified as `ModuleNotFoundError.name == "psycopg2"`. Local receipts are retained under `/home/johnclaw/.cache/rtc/codex-watch-quote-isolation-20261024/`. The parent/operator owns publication and subsequent exact-head checks, merge and release. Source-test success does not establish a new production quote observation or deployment.
+The exact supplementary regression profile requested after the two failures also passes: **146 tests in86.42seconds**, with psycopg2 hidden, across `test_watch_canonical_quote.py`, `test_data_source_authority_20260913.py` and `test_ci_draft_pr_skip_20261023.py`. This is a result on the corrected test branch, not Watch integration or production acceptance.
+
+Host-path and test-coverage `--fail-on-new` ratchets both pass with zero new violations. Generated docs index and whitespace checks pass. Effective hidden-driver refusal was separately verified as `ModuleNotFoundError.name == "psycopg2"`. Local receipts are retained under `/home/johnclaw/.cache/rtc/codex-watch-quote-isolation-20261024/`. The coordinator/operator owns publication and subsequent exact-head checks, merge and release. Source-test success does not establish a new production quote observation or deployment.
