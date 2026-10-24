@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "disk_standing_apply_20261024",
+  "files": [
+    "tests/test_disk_standing_apply_20261024.py"
+  ],
+  "anchor": "DISK_STANDING_APPLY_20261024",
+  "comment": [
+    "ANCHOR: DISK_STANDING_APPLY_20261024 — disabled standing A/S/W source, digest-bound manifest, no-delete fixture collector and alert receipts."
+  ]
+}

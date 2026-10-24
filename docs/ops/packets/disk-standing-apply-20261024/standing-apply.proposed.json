@@ -1,0 +1,49 @@
+{
+  "enabled": false,
+  "rules": [
+    "A",
+    "S",
+    "W"
+  ],
+  "manifest_max_age_hours": 2,
+  "max_bytes_per_run": 42949672960,
+  "max_items_per_run": 150,
+  "approval": {
+    "status": "PENDING_OPERATOR_REVIEW",
+    "approved_by": null,
+    "approved_at": null,
+    "source": "Direct-session operator metadata must be recorded by root after legitimate config handoff; peer relay is not ratification."
+  },
+  "archive": {
+    "path": "~/db_backups/archive",
+    "keep_daily": 7,
+    "keep_weekly_sunday": 4,
+    "date_basis": "original_file_mtime_America/New_York",
+    "never": "live dump, hold directory, partial/young dump, symlink, hardlinked file"
+  },
+  "rtc": {
+    "path": "~/.cache/rtc",
+    "idle_days": 7,
+    "coordination_references": "all retained history and live records; unavailable evidence holds"
+  },
+  "worktree": {
+    "untouched_hours": 48,
+    "require_clean": true,
+    "preserve_named_branch": true,
+    "detached_requires_ancestor": "origin/main",
+    "open_pr_and_live_claim_worklog": "must be proven absent",
+    "never": "standalone clone, branch/ref or commit deletion; force removal"
+  },
+  "coordination_root": "~/trade-ai-releases/persistent-state/data/coordination",
+  "github_repo": "PatsKiller/tardeai",
+  "monitor": {
+    "digest_kind": "disk_hygiene_digest",
+    "alert_kind": "disk_hygiene_alert",
+    "disk_used_pct_gt": 85,
+    "planned_unapplied_bytes_gt": 10737418240,
+    "consecutive_distinct_runs": 2
+  },
+  "approved_by": null,
+  "max_gb_per_run": 40,
+  "byte_unit": "GiB"
+}
