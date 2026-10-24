@@ -1,5 +1,5 @@
 """Binding T0–T4/R1–R16 security rules. All inputs and clocks are supplied."""
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 import math
 from zoneinfo import ZoneInfo
@@ -69,6 +69,8 @@ class SecurityStanceProfile:
 
     def evaluate_domain(self, subject, canonical, inputs, *, now, history):
         ctx = subject.context
+        inputs = [replace(item, role="claim") if item.source == "trade_ai" and normalize(item.value) == "AVOID"
+                  and item.role == "gate" else item for item in inputs]
         if ctx.get("archived") or ctx.get("unwatched") or ctx.get("expired") or ctx.get("paper"):
             return []
         pre = f"{subject.kind}:{subject.id}"
