@@ -257,13 +257,17 @@ def queue_summary(*, root: Path = ROOT, state_root: Path | None = None, now: dat
     from scripts.lib.approval_package import governance_dir
     ledger = core.DecisionLedger((state_root / "data/governance" if state_root else governance_dir()) / "operator_decisions.jsonl",
                                  approved=lambda: False)
-    data = core.queue_projection(_default_sources(root), decisions=ledger.rows(), now=now or core.utc_now())
+    sources = _default_sources(root)
+    sources["rule_proposals"] = ledger.proposal_rows
+    data = core.queue_projection(sources, decisions=ledger.rows(), now=now or core.utc_now())
     by_type = {}
     for row in data["items"]:
         kind = row.get("financial_kind") if row["kind"] == "FINANCIAL" else row["kind"].lower()
         by_type[kind] = by_type.get(kind, 0) + 1
     return {key: data[key] for key in ("pending_count", "known_pending_count", "complete", "gaps", "as_of")} | {
-        "scope": "all_operator_approvals", "by_type": by_type}
+        "scope": "all_operator_approvals", "by_type": by_type, "total": data["pending_count"],
+        "source": "operator_approvals_api.queue_summary", "stale": False,
+        "gap": None if data["complete"] else {"reason": "Global queue incomplete", "gaps": data["gaps"]}}
 
 
 def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = None):
