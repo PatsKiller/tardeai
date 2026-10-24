@@ -2075,28 +2075,28 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WORK_PIPELINE_TIER2_2026-10-23.md` | Work pipeline Tier 2: passkey acts through the host applier (2026-10-23) |
 | `docs/ops/WP03_BOARD_RECONCILIATION_20261023.md` | WP-03: board, PR and worktree reconciliation |
 | `docs/ops/WP13_CIO_HARDENING_SHARDS_20261023.md` | WP-13 parallel CIO hardening delivery |
+| `docs/ops/WP13_RERUN_MANIFESTS_20261024.md` | WP-13 follow-up: aggregate manifests across rerun attempts |
 | `docs/ops/WP13_SHADOW_DRY_RUN_ISOLATION_20261024.md` | WP-13 shadow-wave dry-run proof isolation |
 | `docs/ops/WP14_PUSH_POLICY_V2_REBUILD_20261023.md` | WP-14 push-policy-v2 operator package rebuild |
-| `docs/ops/WP13_RERUN_MANIFESTS_20261024.md` | WP-13 follow-up: aggregate manifests across rerun attempts |
 | `docs/ops/WP15_AGENTS_20_2_OPERATOR_PACKAGE_20261023.md` | WP-15: AGENTS 20.2.0 package delivery |
 | `docs/ops/WP16_ADVISORY_POLICY_PACKAGE_20261023.md` | WP-16 advisory-policy package delivery |
 | `docs/ops/WP27_CONTINUOUS_FROM_CURRENT_20261023.md` | WP-27: continuous scanner root reconciliation |
 | `docs/ops/WP28_HERMES_RESEARCH_SOURCE_FILTER_20261023.md` | WP-28 item 2: Hermes research article selection |
+| `docs/ops/WP29_ACCOUNT_LABEL_FIXTURES_20261023.md` | WP-29(c): account-label browser evidence |
 | `docs/ops/WP29_HOME_ACCOUNT_CHIPS_20261023.md` | WP-29 item b: account-name chips in the Home do-now queue |
 | `docs/ops/WP29_SPECIALIST_ACCOUNT_CONTEXT_20261023.md` | WP-29 item d: grounded account location in specialist context |
 | `docs/ops/WP29_TELEGRAM_TURN_DEDUP_20261023.md` | WP-29 item e: idempotent Telegram conversation capture |
+| `docs/ops/WP30_MOOMOO_RETIREMENT_READERS_WRITERS_20261023.md` | WP-30: moomoo retirement state readers and writers |
 | `docs/ops/WP31_WATCH_LAYOUT_20261023.md` | WP-31 Watch rows and phone cards |
 | `docs/ops/WP32_BOUNDED_HOME_AND_PREFS_20261023.md` | WP-32 bounded CIO home reads and session verification |
-| `docs/ops/WP33_ITEM3_RUNTIME_REVALIDATION_20261023.md` | WP-33 item 3: receipt-window fix and lane revalidation |
-| `docs/ops/WP34_MANUAL_OPS_CONFIG_INVENTORY_20261024.md` | WP-34 item 4: operations configuration and Controls modal proposal |
 | `docs/ops/WP33_ITEM2_SYNC_SOCIAL_CRON_PACKET_20261024.md` | WP-33 item2: exact residual sync-social operator packet |
+| `docs/ops/WP33_ITEM3_RUNTIME_REVALIDATION_20261023.md` | WP-33 item 3: receipt-window fix and lane revalidation |
+| `docs/ops/WP33_OPEN_STACK_TRIAGE_20261023.md` | WP-33 item 5: exact-head PR stack triage |
+| `docs/ops/WP34_MANUAL_OPS_CONFIG_INVENTORY_20261024.md` | WP-34 item 4: operations configuration and Controls modal proposal |
+| `docs/ops/WP36_AFTER_CLOSE_CRAWLER_PREFLIGHT_20261024.md` | WP-36 after-close observer: strict packet and scoped live evidence |
 | `docs/ops/WP36_ITEM6_RESEARCH_VERSION_LABELS_20261023.md` | WP-36 item 6: truthful research thesis-version labels |
 | `docs/ops/WP36_STALE_PRODUCERS_20261023.md` | WP-36 item5: stale feed and report-producer reconciliation |
-| `docs/ops/WP36_AFTER_CLOSE_CRAWLER_PREFLIGHT_20261024.md` | WP-36 after-close observer: strict packet and scoped live evidence |
-| `docs/ops/WP33_OPEN_STACK_TRIAGE_20261023.md` | WP-33 item 5: exact-head PR stack triage |
-| `docs/ops/WP29_ACCOUNT_LABEL_FIXTURES_20261023.md` | WP-29(c): account-label browser evidence |
 | `docs/ops/WP39_RETENTION_RULINGS_AUDIT_20261023.md` | WP-39: retention rulings source and runtime evidence |
-| `docs/ops/WP30_MOOMOO_RETIREMENT_READERS_WRITERS_20261023.md` | WP-30: moomoo retirement state readers and writers |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye — first institutional-brain audit |
 | `docs/ops/agent_start/codex-note.md` | Codex note — agent claim board (operator installs) |
 | `docs/ops/agent_start/cursor-rule.md` | Cursor rules snippet — agent claim board (operator installs) |
@@ -2184,9 +2184,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/n8n-relay-env-allowlist-20261021/README.md` | n8n run relay: allowlisted secrets env, strict fail-closed (operator packet, 2026-10-21) |
 | `docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/README.md` | n8n shadow wave LD-W1 (2026-10-15): operator packet |
 | `docs/ops/packets/nightly-cutover-controller-20261016/README.md` | Nightly cutover controller 2026-10-16: an enforced state machine for the approved n8n cutover |
+| `docs/ops/packets/open-stack-triage-20261023/README.md` | WP-33 item 5: open stack triage evidence |
 | `docs/ops/packets/push-policy-v2-20261023-wp14/DESIGN.md` | WP-14: rebuilt push-policy-v2 operator package |
 | `docs/ops/packets/push-policy-v2-20261023-wp14/PR_BODY.md` | WP-14 operator-only push-policy proposal |
-| `docs/ops/packets/open-stack-triage-20261023/README.md` | WP-33 item 5: open stack triage evidence |
 | `docs/ops/packets/registry-runtime-truth-20261018/README.md` | Registry / runtime truth — packet (review 2026-10-18, built 2026-10-19) |
 | `docs/ops/packets/release-train-20261021/README.md` | Release train: merge when green, release main in the 12:00 and 17:30 windows |
 | `docs/ops/packets/release-train-arming-20261021/README.md` | Release Train v2: arming packet for phases 5–7 (shadow, 18:00 canary, expand) |
