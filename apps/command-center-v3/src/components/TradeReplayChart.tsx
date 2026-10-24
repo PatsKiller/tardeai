@@ -1,3 +1,4 @@
+import { replayPriceFormat } from '../lib/tradeInViewModel'
 import { useTheme } from '../hooks/useTheme'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createChart, IChartApi, ISeriesApi, LineType } from 'lightweight-charts'
@@ -104,8 +105,9 @@ export default function TradeReplayChart({ trade, onClose, embedded = false, pro
     configurePriceScale(pc)
 
     allBarsRef.current = data.bars || []
-    const candle = data.kind === 'closes' ? pc.addLineSeries({ color: p.series[0], lineWidth: 2 }) : pc.addCandlestickSeries({
-      upColor: p.success, downColor: p.danger, borderVisible: false, wickUpColor: p.success, wickDownColor: p.danger,
+    const priceFormat = replayPriceFormat([...(data.bars || []).flatMap((b: any) => [b.open,b.high,b.low,b.close]), ...(data.markers || []).map((m: any) => m.price)])
+    const candle = data.kind === 'closes' ? pc.addLineSeries({ color: p.series[0], lineWidth: 2, priceFormat }) : pc.addCandlestickSeries({
+      priceFormat, upColor: p.success, downColor: p.danger, borderVisible: false, wickUpColor: p.success, wickDownColor: p.danger,
       autoscaleInfoProvider: makeCandleAutoscaleProvider(
         () => visibleBarsRef.current,
         () => levelPricesRef.current,

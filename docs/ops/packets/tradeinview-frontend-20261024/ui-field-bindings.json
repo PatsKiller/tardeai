@@ -15,7 +15,8 @@
         "counts.operator",
         "counts.unknown",
         "window_days",
-        "as_of"
+        "as_of",
+        "source_label"
       ]
     },
     {
@@ -113,7 +114,15 @@
         "summary.realized_pl",
         "summary.green_days",
         "summary.active_days",
-        "summary.coverage"
+        "summary.coverage",
+        "non_grid_days[].date",
+        "non_grid_days[].trade_count",
+        "non_grid_days[].realized_pl",
+        "summary.trade_count",
+        "summary.known_trade_count",
+        "days[].symbols[].realized_pl",
+        "days[].symbols[].known_realized_pl",
+        "weeks[].trade_count"
       ]
     },
     {
@@ -138,7 +147,9 @@
         "account_options[].id",
         "account_options[].label",
         "gaps[].source",
-        "gaps[].reason"
+        "gaps[].reason",
+        "events[].date_basis",
+        "events[].source_ref"
       ]
     },
     {

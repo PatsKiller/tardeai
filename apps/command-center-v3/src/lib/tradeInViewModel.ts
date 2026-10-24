@@ -57,7 +57,7 @@ export type NormalisedTrip = {
   return_pct: number | null; hold_days: number | null; hold_days_basis: string | null; basis_unknown: boolean; basis_reason: string | null
   source: string; provenance: unknown[]
 }
-export type CalendarEvent = { id: string; type: string; symbol: string | null; title: string; date: string; source: string | null; source_ref: string | null; as_of: string | null; missing_reason: string | null; source_event_type?: string | null }
+export type CalendarEvent = { id: string; type: string; symbol: string | null; title: string; date: string; source: string | null; source_ref: string | null; as_of: string | null; missing_reason: string | null; source_event_type?: string | null; date_basis?: string | null }
 export type CalendarDay = {
   date: string; realized_pl: number | null; known_realized_pl: number | null; trade_count: number | null; known_trade_count: number
   unpriced_trade_count: number; symbols: { symbol: string; realized_pl: number | null; known_realized_pl: number | null; trade_count: number | null }[]
@@ -67,7 +67,7 @@ export type TradeCalendarPayload = {
   schema: 'TradeCalendar@v1'; ok: boolean; as_of: string; month: string; account: string | null; names: 'held' | 'held_watch'
   summary: { realized_pl: number | null; known_realized_pl: number | null; trade_count: number | null; known_trade_count: number; green_days: number | null; active_days?: number | null; unpriced_trade_count: number; coverage: Coverage }
   days: CalendarDay[]; weeks: { start_date: string; end_date: string; days: (string | null)[]; realized_pl: number | null; known_realized_pl: number | null; trade_count: number | null; known_trade_count: number; coverage: Coverage }[]
-  events: CalendarEvent[]; account_options: { id: string; label: string }[]; gaps: SourceGap[]
+  non_grid_days?: CalendarDay[]; events: CalendarEvent[]; account_options: { id: string; label: string }[]; gaps: SourceGap[]
 }
 export type TradeReplayPayload = {
   schema: 'TradeReplay@v1'; trade?: NormalisedTrip | null; ok: boolean; as_of: string; trade_id: string; symbol: string; account_id: string | null; account_label: string | null
@@ -77,14 +77,58 @@ export type TradeReplayPayload = {
   stats: { max_gain_pct: number | null; max_drawdown_pct: number | null; metrics_basis: string; metrics_missing_reason: string | null; exit_kind: 'stop' | 'target' | 'manual' | 'unknown'; exit_label: string; exit_basis: string; coach_note: string | null }
   source: { table: string | null; as_of: string | null; stored_only: boolean; bar_basis: string }; gaps: SourceGap[]
 }
+const object = (v: unknown): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v)
+const numeric = (v: unknown) => v === null || typeof v === 'number' && Number.isFinite(v)
+const objects = (v: unknown): v is Record<string, any>[] => Array.isArray(v) && v.every(object)
+const coverage = (v: unknown) => object(v) && typeof v.status === 'string'
+  && (v.reasons === undefined || Array.isArray(v.reasons) && v.reasons.every((x: unknown) => typeof x === 'string'))
+  && (v.missing_sources === undefined || Array.isArray(v.missing_sources) && v.missing_sources.every((x: unknown) => typeof x === 'string'))
+const gapList = (v: unknown) => objects(v) && v.every(g => typeof g.source === 'string' && typeof g.reason === 'string')
 export function calendarPayload(raw: any): TradeCalendarPayload | null {
   const d = raw?.data ?? raw
-  return d?.schema === 'TradeCalendar@v1' && Array.isArray(d.days) && Array.isArray(d.weeks) && d.summary && Array.isArray(d.events) && Array.isArray(d.account_options) && Array.isArray(d.gaps) ? d : null
+  if (!object(d) || d.schema !== 'TradeCalendar@v1' || !object(d.summary) || !coverage(d.summary.coverage)
+      || !objects(d.days) || !objects(d.weeks) || !objects(d.events) || !objects(d.account_options) || !gapList(d.gaps)) return null
+  if (!['realized_pl','trade_count','green_days'].every(k => numeric(d.summary[k]))) return null
+  if (!d.days.every(day => typeof day.date === 'string' && numeric(day.realized_pl) && numeric(day.trade_count)
+      && objects(day.symbols) && objects(day.trades) && objects(day.events) && coverage(day.coverage))) return null
+  if (!d.weeks.every(week => typeof week.start_date === 'string' && Array.isArray(week.days) && week.days.length === 5
+      && week.days.every((day: unknown) => day === null || typeof day === 'string') && numeric(week.realized_pl) && coverage(week.coverage))) return null
+  if (!d.events.every(e => typeof e.id === 'string' && typeof e.type === 'string' && typeof e.title === 'string' && typeof e.date === 'string')
+      || !d.account_options.every(a => typeof a.id === 'string' && typeof a.label === 'string')) return null
+  return d as TradeCalendarPayload
 }
 export function replayPayload(raw: any): TradeReplayPayload | null {
   const d = raw?.data ?? raw
-  return d?.schema === 'TradeReplay@v1' && Array.isArray(d.bars) && Array.isArray(d.available_intervals) && d.stats && d.source && Array.isArray(d.gaps) ? d : null
+  if (!object(d) || d.schema !== 'TradeReplay@v1' || !objects(d.bars) || !objects(d.markers)
+      || !Array.isArray(d.available_intervals) || !d.available_intervals.every((x: unknown) => typeof x === 'string')
+      || !object(d.stats) || !object(d.source) || d.source.stored_only !== true || !gapList(d.gaps)
+      || !['candles','closes','none'].includes(d.kind)) return null
+  if (!['max_gain_pct','max_drawdown_pct'].every(k => numeric(d.stats[k])) || typeof d.stats.metrics_basis !== 'string'
+      || typeof d.stats.exit_label !== 'string' || typeof d.stats.exit_basis !== 'string'
+      || !['stop','target','manual','unknown'].includes(d.stats.exit_kind)
+      || d.stats.coach_note !== null && typeof d.stats.coach_note !== 'string') return null
+  // Chart libraries require numeric source points. Missing OHLC is never back-filled from a close.
+  if (!d.bars.every(bar => typeof bar.time === 'string' && typeof bar.close === 'number' && Number.isFinite(bar.close) && bar.close > 0
+      && (d.kind !== 'candles' || ['open','high','low'].every(k => typeof bar[k] === 'number' && Number.isFinite(bar[k]) && bar[k] > 0)))) return null
+  if (!d.markers.every(m => typeof m.time === 'string' && ['buy','sell','stop','cio'].includes(m.kind) && typeof m.label === 'string' && numeric(m.price))) return null
+  return d as TradeReplayPayload
+}
+export function responseReason(raw: any): string | null {
+  const d = raw?.data ?? raw
+  return typeof d?.reason === 'string' ? d.reason : typeof d?.error === 'string' ? d.error : null
 }
 export function coverageReason(coverage?: Coverage | null): string {
-  return coverage?.reasons?.join(' · ') || coverage?.missing_sources?.join(' · ') || 'Source coverage unavailable'
+  return coverage?.reasons?.join(' · ') || coverage?.missing_sources?.join(' · ')
+    || (coverage?.status.toUpperCase() === 'COMPLETE' ? 'Source coverage: complete (server declaration)' : 'Source coverage unavailable')
+}
+
+/** Axis formatting only; retain stored price precision without manufacturing OHLC or performance metrics. */
+export function replayPriceFormat(values: (number | null | undefined)[]): { type: 'price'; precision: number; minMove: number } {
+  let precision = 2
+  for (const value of values) {
+    if (value == null || !Number.isFinite(value) || value <= 0) continue
+    const [coefficient, exponent = '0'] = String(value).toLowerCase().split('e')
+    precision = Math.max(precision, Math.min(16, (coefficient.split('.')[1]?.length || 0) - Number(exponent)))
+  }
+  return { type: 'price', precision, minMove: 10 ** -precision }
 }

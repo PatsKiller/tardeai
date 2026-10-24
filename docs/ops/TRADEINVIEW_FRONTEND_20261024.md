@@ -23,7 +23,9 @@ Replay addresses actual trade IDs through `stored_only=1`, displays only server-
 
 The backend contract is owned by package A. The UI field binding map is [in this packet](packets/tradeinview-frontend-20261024/ui-field-bindings.json); A owns the complete store/column/writer lineage in its master report. The frontend uses the agreed `TradeCalendar@v1` / `TradeReplay@v1` fields and additive Journey fields, and rejects incomplete payload envelopes with a visible gap.
 
-Current focused model tests and the TypeScript checkpoint pass. This does not replace the required final native build, backend-generated schema fixtures, old Journey/browser regressions, screenshots and repository gates.
+Current focused model tests, the TypeScript checkpoint and the native frontend checkpoint pass. Existing actual-App Journey and Classic navigation regressions pass (3 tests). A Calendar-only preliminary browser run passed eight cases: populated, empty, day drawer and unavailable source at 1440/412, using A's pure builder and synthetic unit inputs. It verifies source totals, Replay links, phone controls at least 44×44, minimum visible text contrast 6.23:1 and zero unexpected/mutating/external traffic. Its [compact receipt](packets/tradeinview-frontend-20261024/calendar-preliminary-proof.json) records tested source hashes and scope; this remains preliminary until the frozen A/C integration is verified.
+
+The staged checkpoint also passes the dark-contract, retention, test-coverage and host-path guards with no new violations, plus 44 isolated registry tests with injected scheduler discovery. These checks do not establish host scheduler state. The two strict real-tree CIO checks remain in flight at this checkpoint. Final native build, backend-generated fixtures, all-screen screenshots and integrated repository gates remain required.
 
 Before final `PUSH_NEEDED`:
 

@@ -23,7 +23,7 @@ import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.lg, minWidth: 0 }
 const label: CSSProperties = { fontSize: TYPE.xs, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: TOKENS.text[2] }
-const GRID = '70px minmax(150px, 1.3fr) 90px 90px 120px minmax(140px, 1fr)'
+const GRID = '90px 200px 110px 110px 150px minmax(0, 1fr)'
 
 function Chip({ tone, children, tip, testId, size = 'md' }: { tone: Tone; children: ReactNode; tip?: string; testId?: string; size?: 'sm' | 'md' }) {
   return (
@@ -39,7 +39,7 @@ function Row({ j, selected, onSelect }: { j: Journey; selected: boolean; onSelec
   const end = j.status === 'closed' ? j.exit : j.mark
   return (
     <div className="tradeinview-journey-row" data-testid="tj-row" data-symbol={j.symbol} data-status={j.status} data-origin={j.origin.kind}
-      style={{ display: 'grid', gridTemplateColumns: GRID, gap: 10, padding: '8px 16px', alignItems: 'center',
+      style={{ display: 'grid', gridTemplateColumns: GRID, gap: 12, padding: '12px 16px', alignItems: 'start',
         borderBottom: `1px solid ${TOKENS.borderSubtle}`, background: selected ? TOKENS.bg[2] : undefined,
         borderLeft: `3px solid ${selected ? TOKENS.info : 'transparent'}` }}>
       <button type="button" onClick={onSelect} aria-pressed={selected} title={`Open the ${j.symbol} journey`}
@@ -350,7 +350,7 @@ export default function TradeJourney({ payload, loading, error, embedded = false
         <div style={{ flex: '999 1 600px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <section aria-label="Trades" className="tradeinview-journey-table" style={panel}>
             <div style={{ minWidth: 660 }}>
-              <div className="tradeinview-journey-head" style={{ display: 'grid', gridTemplateColumns: GRID, gap: 10, padding: '8px 16px', borderBottom: `1px solid ${TOKENS.border}`, ...label }}>
+              <div className="tradeinview-journey-head" style={{ display: 'grid', gridTemplateColumns: GRID, gap: 12, padding: '10px 16px', borderBottom: `1px solid ${TOKENS.border}`, ...label }}>
                 <span>Symbol</span><span title={TOOLTIPS.origin}>Origin · account</span><span style={{ textAlign: 'right' }}>Entry</span>
                 <span style={{ textAlign: 'right' }}>Exit / mark</span><span style={{ textAlign: 'right' }} title={TOOLTIPS.pl}>P/L</span>
                 <span title={TOOLTIPS.exit}>Status</span>

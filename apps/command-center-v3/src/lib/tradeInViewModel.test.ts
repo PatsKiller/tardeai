@@ -2,7 +2,7 @@ const assert = {
   equal(actual: unknown, expected: unknown) { if (actual !== expected) throw new Error(`${String(actual)} != ${String(expected)}`) },
   match(actual: string, expected: RegExp) { if (!expected.test(actual)) throw new Error(`${actual} does not match ${expected}`) },
 }
-import { TRADE_TABS, calendarPayload, replayPayload, etMonth, monthLabel, monthShift, serverMoney, serverNumber, storedReplayPath, tabParams, tradeLink, tradeTab } from './tradeInViewModel.ts'
+import { TRADE_TABS, calendarPayload, coverageReason, replayPayload, replayPriceFormat, responseReason, etMonth, monthLabel, monthShift, serverMoney, serverNumber, storedReplayPath, tabParams, tradeLink, tradeTab } from './tradeInViewModel.ts'
 assert.equal(tradeTab(new URLSearchParams()), 'journeys')
 for (const [tab] of TRADE_TABS) assert.equal(tradeTab(new URLSearchParams({ tab }), true), tab)
 assert.equal(tradeTab(new URLSearchParams('view=classic')), 'classic')
@@ -29,3 +29,22 @@ assert.equal(calendarPayload({schema:'TradeCalendar@v1',days:[],weeks:[]}), null
 assert.equal(calendarPayload({schema:'wrong',days:[],weeks:[],summary:{},events:[],account_options:[],gaps:[]}), null)
 assert.equal(replayPayload({schema:'TradeReplay@v1',bars:[],available_intervals:[]}), null)
 assert.equal(replayPayload({data:{schema:'TradeCalendar@v1'}}), null)
+
+assert.equal(coverageReason({status:'COMPLETE',reasons:[],missing_sources:[]}), 'Source coverage: complete (server declaration)')
+assert.equal(coverageReason({status:'PARTIAL',missing_sources:['fixture-ledger']}), 'fixture-ledger')
+
+assert.equal(responseReason({data:{reason:'explicit month required'}}), 'explicit month required')
+assert.equal(responseReason({error:{unsafe:'object'}}), null)
+const emptyReplay = {schema:'TradeReplay@v1',kind:'none',bars:[],markers:[],available_intervals:[],stats:{max_gain_pct:null,max_drawdown_pct:null,metrics_basis:'no stored bars',exit_label:'Unknown',exit_basis:'No stored exit evidence',exit_kind:'unknown',coach_note:null},source:{stored_only:true},gaps:[]}
+assert.equal(replayPayload(emptyReplay), emptyReplay)
+assert.equal(replayPayload({...emptyReplay,source:{stored_only:false}}), null)
+assert.equal(replayPayload({...emptyReplay,kind:'candles',bars:[{time:'2032-04-09',close:19}]}), null)
+assert.equal(replayPayload({...emptyReplay,kind:'closes',bars:[{time:'2032-04-09',close:19}]} )?.kind, 'closes')
+assert.equal(replayPayload({...emptyReplay,kind:'closes',bars:[{time:'2032-04-09',close:0}]}), null)
+
+assert.equal(replayPriceFormat([0.0042,0.0043]).precision, 4)
+assert.equal(replayPriceFormat([4.2e-7]).precision, 8)
+assert.equal(replayPriceFormat([150.125]).precision, 3)
+assert.equal(replayPriceFormat([null,undefined,Number.NaN]).precision, 2)
+
+assert.equal(replayPayload({...emptyReplay,stats:{...emptyReplay.stats,coach_note:{text:'unsupported object'}}}), null)

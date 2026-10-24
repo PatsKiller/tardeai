@@ -4,6 +4,7 @@
  *  schema TradeJourneys@v1) — the CIO prospect record when its store is live, an interim adapter until then (labelled).
  *  The server owns origin, stop path, exit cause, review facts, re-entry conditions and conflicts; this file only
  *  decides filters, words, tones, tooltips and chart geometry. */
+import { marketAmount } from './watchMarketFactsPresentation.ts'
 import type { Tone } from './designTokens.ts'
 
 export type OriginKind = 'internal' | 'operator' | 'unknown'
@@ -125,7 +126,7 @@ export function money(v: number | null | undefined, signed = false): string {
   return `${v < 0 ? '−' : '+'}$${s}`
 }
 export function px(v: number | null | undefined): string {
-  return v == null || !Number.isFinite(v) ? '—' : `$${v.toFixed(2)}`
+  return v == null || !Number.isFinite(v) ? '—' : v > 0 && v < 1 ? marketAmount(v) : `$${v.toFixed(2)}`
 }
 export function pct(v: number | null | undefined, digits = 1): string {
   return v == null || !Number.isFinite(v) ? '—' : `${v > 0 ? '+' : v < 0 ? '−' : ''}${Math.abs(v).toFixed(digits)}%`
@@ -136,6 +137,7 @@ export function plTone(v: number | null | undefined): Tone {
 /** "10-19 10:02" in New York time (no seconds, no zone suffix — the page states ET once). */
 export function etShort(at: string | null | undefined): string {
   if (!at) return '—'
+  if (/^\d{4}-\d{2}-\d{2}$/.test(at)) return `${at.slice(5)} · date only`
   const d = new Date(at)
   if (Number.isNaN(d.getTime())) return String(at).slice(0, 10)
   const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: '2-digit', day: '2-digit',

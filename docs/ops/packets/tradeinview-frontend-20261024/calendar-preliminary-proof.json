@@ -1,0 +1,214 @@
+{
+  "fixture": true,
+  "scope": [
+    "calendar"
+  ],
+  "tested_source": {
+    "head": "9c83ea2c02e3343bed0a1550065a748b9850317a",
+    "working_patch_sha256": "34eafbbab54896ee16de5526a975ceee57d78287455d29cb8980da1fc0e9569b",
+    "file_sha256": {
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/httpOutcome.ts": "08e2eccff818cfbfd31d2cc33e907df430f80fbd41979f5b6a3cfa8d85aabb85",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/hooks/useApi.ts": "56c09da5ec4d3bc41db7d13c0b1ab02c6f0caabb7d54eb1917ce06ef4e2d4e27",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/designTokens.ts": "3f18f482e0a832b39a52d3154363f3776b8dd396f494fed961ebcbcb986fe1a1",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/tradeInViewModel.ts": "3d4e6bae7c50d20ecf5328b6c14e4df8933299c8a49e780471e7f494c4b144f0",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/TradeInViewLayout.css": "a7fa9566e35b69d2f1c1d31b82abd1ce92fb2fafa56bda904d8af9508b66973c",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/TradeCalendar.tsx": "4bc77fbc6f47a70404d553d7469c5613f98aecdba07094f8ab4a85db709d42d1",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/accountLabels.ts": "97cec698fc1896a62cfb25897745da93d41f76bed40b555e5342bcb6063ae4fd",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/format.ts": "a181c7fd13f00a5a8792110501fec1004d4b8ad724cd2fabbae2934f07c7ece7",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/hooks/useTheme.ts": "2753066d47111b79d8fdebe9b5ac47fc64566c93f65a07c4ab4d6a6d260507c4",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/replayChartScale.ts": "ecdc60adc991371a62f1f8b57cd8d0e1ac5827caeb22aaa805bbf623036f54f4",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/TradeReplayChart.tsx": "6fc173e0522039f4e710707873d780a0e152b9fe3836e2c58b8f30641b15dd5e",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/replayTrade.ts": "f701af113f8eb8372897cdc9eff73241becf4a2b25b8c27707a8a510c619ccbd",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/ProtectionOutcomesPanel.tsx": "766cc5a36abd212d5c0408694dba502cada4769fc458861dc25a8859711a0783",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/BacktestPanel.tsx": "bdb26a053c185fad1af408b01f946312083dd66dcbc7dff3bd1990e9d2fd72bf",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/ExecutionHypothesesPanel.tsx": "649650677d1148ac4553a1cf0921ad21517278ca1b0e3b2a892c8d09685aad6d",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/SchwabJournal.tsx": "0a29c21a83eeb14104df37209d7fbaef99712b8467557540d982d20b9f8a83fe",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/ExecutionCoachPanel.tsx": "42cd1b057fadcc2216793b9b321974ba96947c19742dd74bd43d277eb91b4386",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/risk/DrawdownChart.tsx": "765ca1494bc9a18a5a3d7905c127ab6a2e68529c2f7c132651a22e96aee04122",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/ZellaScoreCard.tsx": "b84a63488e47e0f9746578fd7ca065fbcf4b391a5e94a9279d326074cdb77e8e",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/ExitIntelligencePanel.tsx": "0387dcba2919247bbb3aae7a48cbcf6cb1003554fbef9bc4f96e701d77080fd2",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/terminalUi.ts": "47e83e01a24a0110f46c697f6778f4bf713e1954c64c07f848ad814736322106",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/watchlistCardTokens.ts": "053574352a3255f5a6a9608b9449bbf63c142eb2ce6f3875f8d275f41df31443",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/watchlistTerminalTokens.ts": "829a21f72cd09e967a7b6e979988bc78e0f41ead194c8fc8ae4f5294380f197b",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/terminalHubChrome.ts": "ebafc7f9951ab63aff217b2034962a9b406c6c9421d22ecc6b12b2c7ab1d21f2",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/BehavioralPanel.tsx": "d9c9432c393607710eedaf0f66122f93da244c41c41eda33fb33afc4240b25d6",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/SavedFilterBar.tsx": "901fa88051813bd8bda36c21a5083d26f14dcdb2af7dc777a57086e42f29be97",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/TradeLogTable.tsx": "644bed8ff570492f39bfeb65285a204845b03216dcfee530b5876e2b1005c737",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/journalVocab.ts": "db61f43b2a0c386fe4f7630190523fb5f126a43ac16957afbab6ae4002712be9",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/JournalVocabPicker.tsx": "00801c7749f5481ab6fa42eefef4592aea80fb2f0e0643af2da21424e84ccc2d",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/setupFamilies.ts": "ac2ffe24a7bb25c6a4bf3eb16af6866854a95bf94d36fafde8f7426ff9fbde8f",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/SetupFamilyPicker.tsx": "65c8e4e62b33b7224941c081ef8219026bdd40fa63b8e20d562f155f59a58082",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/psychologyBefore.ts": "766b0804cc13cc1c36ad634768345a6c96a608f916a1599e9d30e2a781cc5693",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/PsychologyBeforePicker.tsx": "ecad722f2da165191c7366cc41f3adc75c346cbf944c7de0e73c90614fbd79f7",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/marketRegimes.ts": "d08108cf9f1478fd8ae0addec6742d71cc6ee33e721667cc4ec9647fa59fa861",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/MarketRegimePicker.tsx": "5bea5e38ee687fc27fbf2a8af787b06cbcacc1508c5a1546178c3995f1b105de",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/TradeReportReadiness.tsx": "727208e0ff680897117db4a7450b4562f5d7574c714aaf12b63d538917bb8d0d",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/AiTradeCritique.tsx": "0544551b7e356fa56c0d68991bd37d5c64e33b783ca0c3a02188014d41409124",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/StopIntelligencePanel.tsx": "ac875c4c1195ff53bba5d93d21b9d1099cbb7844280de930e13093e63005a3e0",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/journalTagVocab.ts": "52c313851e6af8795421d0a1e4baa210a87457f10dbadcba58505dfec09a4498",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/IndustryPicker.tsx": "9ae65bad622bef6f5aa73a3e540147c56ac45ad6907d69b2028a54641494cb40",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/TradePlanPicker.tsx": "4c62b15266d6729aea41509b1ff06f0622fffb6b3c19cb6f6bb5be3a8d3e7817",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/ExitTypePicker.tsx": "017fd286872dae2140beae7378b5f5b8d0cfac8e580b6a466a71ce77e663d098",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/StopContextPanel.tsx": "5799f8fb8e037dbb63b4159a9c2166aca986d7b1b14e96b7cdf1bd7eb35a50bd",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/TagChipGrid.tsx": "df2ee654ec51304687bf494cd813fd02de15b4dfc4b3269bbef9ac4d558c66e1",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/recommendationOrigin.ts": "fee543b98c200d095e713be82a18a42641fc11d24a4ea1813faa65f8487945b2",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/RecommendationOrigin.tsx": "d8020d48ebdaeada75aa8cfc854fd7729408f998b088f15ea553a5f03ccfd29c",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/TradeInViewDetail.tsx": "9fedcdad6867b7c39edffe4c95d459d41d2494fbfd326abc79d59349870a1497",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/CsvImportPanel.tsx": "b3f5a088b5a41e9924bdb6888c0d826fa851de191c38415e543dadcd081fb8fa",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/ManualEntryPanel.tsx": "a09b72888e1f4e77fa74a7c713ecac3d57c2f4cf3733b92978a5c04bef92882c",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/OptionsJournalPanel.tsx": "25abe8e965fc85eaccad0f7fcbc6a56d098133f8d4ebd782eda7a14a79394d48",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/SessionRecapPanel.tsx": "29ef64c9f40f5b3dfeef53d3f17940a59f8e094ec692dec90e807df6ab64ca2c",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/MonteCarloPanel.tsx": "a9215546385dea3ad50e2e0102a87f3377bd04bb5843e6d1997f90d6856ce923",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/ReportingAuditPanel.tsx": "1e6d38bc46bccf2690bd1cd24b7346afa18504aa1d6e914d55ff17e3831e0eb5",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/AiCritiqueInsightsPanel.tsx": "8ae08c66e62647d17e5f241018f37199bb9d459c30b0af00e2b6c881b88b8ea4",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/AdvancedReportsPanel.tsx": "2c8210567f2bf5814f4a8bb62742e535d70ff59c7583dd2483243bdcc353cac2",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/TradeCompareReplay.tsx": "52b3c44b7d3170093ac56de4d98718ab698dc17e4ceafeaa19c80d8f261d0d61",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/BulkTagModal.tsx": "a2752d80ef31b3171ff112aee7e661c5dbda980ac8d25767671eee4c545e6fac",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/TaggingQueuePanel.tsx": "8bfa710d4590e1257936ffb505228f264ba642fb7fd19ef52c4e15484d5e4a7b",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/ByTickerPanel.tsx": "b2b9065c169631a84e7a0437b28447aad4bcb6c482fbef964b1b05b842f1ac55",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/watchTokens.ts": "2e7205d768136f0fed83d6d4444b897ab98eed4b8c07ab80234d3ce0a0247f15",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/CostsPanel.tsx": "54c3439c291f4544c5ac6150d795f5669f27770e5b0065d6df38a023c19b2a07",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/cloudLlmRun.ts": "7abfe5f5b60c5a752131cbdce0d51b4bee796751026ce095573b168155b09c57",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/hooks/useOAuthLanes.ts": "c05d5f778d2e47144a8d63510a2268c60ea04f2dcdd34c14536ed7b508d2161e",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/pages/JournalHub.tsx": "db8b4a5fb52ea75d1a4f4112289fb25797528620499f24f72a1fad7c072bd098",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/observationEnvelope.ts": "257881dd6a7d9fa1787accda75246dc7b7d3589fa1b1a1fcc998b9b5888cafc8",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/watchMarketFactsPresentation.ts": "f752c6c15fc06bfdac341cd5c1f356a43f626c9d7c701f6603c13dc728e63220",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/tradeJourneyModel.ts": "7da4197c6d197f8a7602ea2f414bb7b955b1391514cdd93f06a30aa5ac864e94",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/lib/holdingsTerminalTokens.ts": "1fa9eb0e1e34e42e6a438405e948dccafeed3696d9494674041e39e92110a3f7",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/reentry/ReEntryAlertArmModal.tsx": "a846cb072a40066b8b2a87d20c8dfe1da263ed69802dbd1584f750dfcaa5de2c",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/pages/TradeJourney.tsx": "5c2986c021fe75062065970b47ee4b125029371cf86439a59a6dafaf8e117924",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/components/tradeinview/TradeReplayPage.tsx": "875a8fc058db14e25d4688317c6d4611df2b5441d79d89b4e87b46223c84c4cb",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/pages/TradeInViewPage.tsx": "1b2a1d4588f63cc3ec9c2ff68ae11298fffe97ed9c9c7a1a1108a84cd70e44a6",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/styles/tokens.css": "90286378bab81e0e1b7a79cdbbfd2e7ccc8a62772c3e89ffe9e43690bb3ec25e",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/src/index.css": "66b67e709cf771c243104d6bbd79bf15dcfa3c9174d59203235e4c833d2134ed",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/package.json": "294b8bdfc929528947aeda3c97ce5ddc6d7beb8388cebf3533c8ec7e11bab486",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/package-lock.json": "044d61c448bae21d84b9f6d7f890b0fd2bbfaea4c6315a4ffaceb4a80905e7f6",
+      "/home/johnclaw/wt-codex-tradeinview-b-20261024/apps/command-center-v3/e2e/tradeinview-redesign.fixture.mjs": "d79efdb0a553bd0613ae94df4574ffe1dfbef6569f7ee8c6e6971ad0201b0da6"
+    }
+  },
+  "clock": "2026-11-04T17:00:00+00:00",
+  "input_sha256": "6716c7f96f8b999af3079b0a28616686cff9c8a7d18ad796bc32cc3e535d178c",
+  "status": "PRELIMINARY_CALENDAR_ONLY_NOT_FINAL_A_C_INTEGRATION",
+  "cases": [
+    {
+      "screen": "calendar",
+      "state": "month-data",
+      "width": 1440,
+      "file": "impl-calendar-month-data-1440.png",
+      "geometry": {
+        "width": 1440,
+        "document": 1440
+      },
+      "minimum_contrast": 6.225703484456847,
+      "unexpected_requests": 0,
+      "external_requests": 0,
+      "mutations": 0,
+      "browser_errors": 0
+    },
+    {
+      "screen": "calendar",
+      "state": "empty-month",
+      "width": 1440,
+      "file": "impl-calendar-empty-month-1440.png",
+      "geometry": {
+        "width": 1440,
+        "document": 1440
+      },
+      "minimum_contrast": 6.5509866388442255,
+      "unexpected_requests": 0,
+      "external_requests": 0,
+      "mutations": 0,
+      "browser_errors": 0
+    },
+    {
+      "screen": "calendar",
+      "state": "day-drawer",
+      "width": 1440,
+      "file": "impl-calendar-day-drawer-1440.png",
+      "geometry": {
+        "width": 1440,
+        "document": 1440
+      },
+      "minimum_contrast": 6.225703484456847,
+      "unexpected_requests": 0,
+      "external_requests": 0,
+      "mutations": 0,
+      "browser_errors": 0
+    },
+    {
+      "screen": "calendar",
+      "state": "missing-source",
+      "width": 1440,
+      "file": "impl-calendar-missing-source-1440.png",
+      "geometry": {
+        "width": 1440,
+        "document": 1440
+      },
+      "minimum_contrast": 6.5509866388442255,
+      "unexpected_requests": 0,
+      "external_requests": 0,
+      "mutations": 0,
+      "browser_errors": 0
+    },
+    {
+      "screen": "calendar",
+      "state": "month-data",
+      "width": 412,
+      "file": "impl-calendar-month-data-412.png",
+      "geometry": {
+        "width": 412,
+        "document": 412
+      },
+      "minimum_contrast": 6.225703484456847,
+      "unexpected_requests": 0,
+      "external_requests": 0,
+      "mutations": 0,
+      "browser_errors": 0
+    },
+    {
+      "screen": "calendar",
+      "state": "empty-month",
+      "width": 412,
+      "file": "impl-calendar-empty-month-412.png",
+      "geometry": {
+        "width": 412,
+        "document": 412
+      },
+      "minimum_contrast": 6.5509866388442255,
+      "unexpected_requests": 0,
+      "external_requests": 0,
+      "mutations": 0,
+      "browser_errors": 0
+    },
+    {
+      "screen": "calendar",
+      "state": "day-drawer",
+      "width": 412,
+      "file": "impl-calendar-day-drawer-412.png",
+      "geometry": {
+        "width": 412,
+        "document": 412
+      },
+      "minimum_contrast": 6.225703484456847,
+      "unexpected_requests": 0,
+      "external_requests": 0,
+      "mutations": 0,
+      "browser_errors": 0
+    },
+    {
+      "screen": "calendar",
+      "state": "missing-source",
+      "width": 412,
+      "file": "impl-calendar-missing-source-412.png",
+      "geometry": {
+        "width": 412,
+        "document": 412
+      },
+      "minimum_contrast": 6.5509866388442255,
+      "unexpected_requests": 0,
+      "external_requests": 0,
+      "mutations": 0,
+      "browser_errors": 0
+    }
+  ]
+}

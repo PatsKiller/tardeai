@@ -3,7 +3,7 @@ import TradeReplayChart from '../TradeReplayChart'
 import { useApi } from '../../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle } from '../../lib/designTokens'
 import { buildReplayTrade } from '../../lib/replayTrade'
-import { replayPayload, serverMoney, storedReplayPath } from '../../lib/tradeInViewModel'
+import { replayPayload, responseReason, serverMoney, storedReplayPath } from '../../lib/tradeInViewModel'
 
 /** Compare recorded trade identities. The new page never falls through to provider chart fetching. */
 export default function TradeCompareReplay({ trades, onClose, storedOnly = false, initialTradeId }: { trades: any[]; onClose: () => void; storedOnly?: boolean; initialTradeId?: string }) {
@@ -31,7 +31,7 @@ export default function TradeCompareReplay({ trades, onClose, storedOnly = false
   return <div ref={dialog} role="dialog" aria-modal="true" aria-label="Compare recorded trades" className="tradeinview-compare" data-testid="trade-compare" style={{ position: 'fixed', inset: '4vh 2vw', zIndex: 1001, background: TOKENS.bg[0], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.lg, padding: 16, overflowY: 'auto', color: TOKENS.text[0] }}>
     <div className="tradeinview-heading"><h2 style={{ margin: 0, fontSize: TYPE.lg }}>Compare with a win</h2><button ref={close} type="button" aria-label="Close comparison" onClick={onClose} style={{ ...chipStyle('neutral', 'outline', 'md'), cursor: 'pointer' }}>Close</button></div>
     <div className="tradeinview-compare-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12, marginTop: 12 }}>
-      {[{ t: a, side: 'a', label: storedOnly ? 'Selected trade' : 'A (pick)', show: showA }, { t: b, side: 'b', label: storedOnly ? 'Winning trade' : 'B (pick)', show: showB }].map(({ t, side, label, show }) => <section key={side} style={{ minWidth: 0, padding: 12, background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md }}>
+      {[{ t: a, side: 'a', label: storedOnly ? 'Selected trade' : 'A (pick)', show: showA }, { t: storedOnly && a?.trade_id === b?.trade_id ? null : b, side: 'b', label: storedOnly ? 'Winning trade' : 'B (pick)', show: showB }].map(({ t, side, label, show }) => <section key={side} style={{ minWidth: 0, padding: 12, background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md }}>
         <label style={{ fontSize: TYPE.base }}>{label}<select aria-label={label} value={t ? identity(t, trades.indexOf(t)) : ''} onChange={e => { const chosen = trades.find((x, i) => identity(x, i) === e.target.value); if (side === 'a') setA(chosen); else setB(chosen) }} style={{ width: '100%', margin: '8px 0', background: TOKENS.bg[2], color: TOKENS.text[0], border: `1px solid ${TOKENS.border}`, padding: 8, fontSize: TYPE.base }}>
           {!t && <option value="">Recorded comparison trade unavailable</option>}{trades.filter(x => !storedOnly || side !== 'b' || x.pnl > 0 && x.trade_id !== a?.trade_id).map((x) => <option key={identity(x, trades.indexOf(x))} value={identity(x, trades.indexOf(x))}>{x.symbol} · {x.account_label || 'Unlabelled account'} · {x.entry_date || 'entry date unavailable'} → {x.exit_date || 'open'} · {serverMoney(x.pnl)}</option>)}
         </select></label>
@@ -44,6 +44,6 @@ function StoredChart({ trade }: { trade: any }) {
   const api = useApi<any>(storedReplayPath(trade.trade_id || '', '1D'), undefined, { enabled: !!trade.trade_id })
   const data = replayPayload(api.data)
   if (!trade.trade_id) return <p className="tradeinview-gap">Recorded trade identity unavailable; no chart request made.</p>
-  if (!data) return <p className="tradeinview-gap">{api.loading ? 'Loading stored comparison…' : `Stored comparison unavailable — ${api.error || 'response schema unavailable'}`}</p>
+  if (!data) return <p className="tradeinview-gap">{api.loading ? 'Loading stored comparison…' : `Stored comparison unavailable — ${api.error || responseReason(api.data) || 'response schema unavailable'}`}</p>
   return <><TradeReplayChart key={trade.trade_id} trade={buildReplayTrade(trade)} embedded providedData={data} onClose={() => {}} /><p className="tradeinview-gap" style={{ fontSize: TYPE.sm }}>{data.source.table || 'Source unavailable'} · {data.source.bar_basis} · {data.stats.metrics_missing_reason || data.stats.metrics_basis}</p>{data.gaps.map((g, i) => <div key={i} className="tradeinview-gap" style={{ fontSize: TYPE.sm }}>{g.source}: {g.reason}</div>)}</>
 }

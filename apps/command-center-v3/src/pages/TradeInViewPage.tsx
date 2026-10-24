@@ -8,7 +8,7 @@ import TradeCalendar from '../components/tradeinview/TradeCalendar'
 import TradeReplayPage from '../components/tradeinview/TradeReplayPage'
 import { useApi } from '../hooks/useApi'
 import { FONT, TOKENS, TYPE } from '../lib/designTokens'
-import { API_LIST, unwrap } from '../lib/tradeJourneyModel'
+import { API_LIST, TOOLTIPS, unwrap } from '../lib/tradeJourneyModel'
 import { TRADE_TABS, serverNumber, tabParams, tradeTab } from '../lib/tradeInViewModel'
 import '../components/tradeinview/TradeInViewLayout.css'
 
@@ -23,6 +23,7 @@ export default function TradeInViewPage({ onDrill, historyView }: { onDrill: (ct
     <div className="tradeinview-heading"><h1 style={{ margin: 0, fontSize: TYPE.xl - 2, fontWeight: 600 }}>TradeInView</h1>
       {payload && (tab === 'journeys' || tab === 'replay') && <span style={{ color: TOKENS.text[2] }}>{serverNumber(payload.counts.open)} open · {serverNumber(payload.counts.closed)} closed{payload.window_days != null ? ` in ${payload.window_days} days` : ' · range unavailable'} · {serverNumber(payload.counts.internal)} from internal · {serverNumber(payload.counts.unknown)} origin unknown</span>}
     </div>
+    {payload?.interim && (tab === 'journeys' || tab === 'replay') && <span data-testid="tj-interim" title={TOOLTIPS.interim} style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{payload.source_label}</span>}
     <nav className="tradeinview-tabs" role="tablist" aria-label="TradeInView sections">{TRADE_TABS.map(([key, label]) => <button type="button" role="tab" key={key} id={`trade-tab-${key}`} aria-selected={tab === key} aria-controls={`trade-panel-${key}`} tabIndex={tab === key ? 0 : -1} onClick={() => choose(key)} onKeyDown={e => {
       if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return
       e.preventDefault(); const index = TRADE_TABS.findIndex(([value]) => value === key)

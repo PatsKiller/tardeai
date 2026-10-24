@@ -22,6 +22,7 @@
 .tradeinview-gap { color: var(--text-2); overflow-wrap: anywhere; }
 @media(max-width: 1000px) { .tradeinview-journey-layout, .tradeinview-calendar-layout { grid-template-columns: minmax(0, 1fr); } }
 @media(max-width: 820px) {
+ .tradeinview button { min-width: 44px; }
  .tradeinview button, .tradeinview select, .tradeinview input:not([type="range"]) { min-height: 44px; }
  .tradeinview-journey-table > div { min-width: 0 !important; }
  .tradeinview-journey-head { display: none !important; }
@@ -33,5 +34,5 @@
  .tradeinview-compare-grid { grid-template-columns: minmax(0, 1fr) !important; }
  .tradeinview-replay-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
  .tradeinview-calendar-week { grid-template-columns: repeat(5, minmax(0, 1fr)) 48px; gap: 3px; }
- .tradeinview-calendar-day { padding: 5px 3px; min-height: 104px; font-size: var(--tradeinview-font-sm); }
+ .tradeinview .tradeinview-calendar-day { padding: 5px 3px; min-height: 104px; font-size: var(--tradeinview-font-sm); }
 }
