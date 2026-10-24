@@ -17,6 +17,8 @@ The `if:` expressions are evaluated by a small interpreter for exactly the forms
 
 from __future__ import annotations
 
+import fnmatch
+import json
 import re
 import sys
 from pathlib import Path
@@ -144,7 +146,7 @@ def test_aggregate_needs_every_part_and_verifies_the_manifests():
     assert set(AGG["needs"]) == set(PARTS)
     steps = AGG["steps"]
     dl = next(s for s in steps if s.get("uses", "").startswith("actions/download-artifact"))
-    assert dl["with"]["pattern"] == "cio-hardening-shard-*" and "if" not in dl
+    assert dl["with"]["pattern"] == "cio-hardening-shard-*-attempt-*" and "if" not in dl
     gate = next(s for s in steps if "scripts/run_cio_hardening_ci.py" in s.get("run", ""))
     assert gate["env"]["CI_GATE_NEEDS"] == "${{ toJSON(needs) }}"
     assert '--shards "$CIO_SHARDS"' in gate["run"] and "--verify-shards" in gate["run"]
@@ -152,6 +154,143 @@ def test_aggregate_needs_every_part_and_verifies_the_manifests():
     assert steps.index(dl) < steps.index(gate)
     all_runs = [str(s.get("run", "")) for jid, j in JOBS.items() if jid != "cio-hardening-full" for s in j["steps"]]
     assert not any("--profile pr" in r or "--profile fast" in r for r in all_runs)
+
+
+def test_raw_attempt_artifacts_cannot_include_aggregate_copies_or_overwrite_each_other():
+    dl = next(s for s in AGG["steps"] if s.get("uses", "").startswith("actions/download-artifact"))
+    assert dl["with"]["merge-multiple"] is False
+    for job in ("cio-shard", "cio-serial", "cio-pg"):
+        upload = next(s for s in JOBS[job]["steps"] if s.get("uses", "").startswith("actions/upload-artifact"))
+        name = upload["with"]["name"]
+        assert "${{ github.run_attempt }}" in name
+        assert fnmatch.fnmatchcase(name, dl["with"]["pattern"])
+    timings = next(s for s in AGG["steps"] if s.get("uses", "").startswith("actions/upload-artifact"))
+    assert "${{ github.run_attempt }}" in timings["with"]["name"]
+    assert not fnmatch.fnmatchcase(timings["with"]["name"], dl["with"]["pattern"])
+
+
+def test_shard_producer_stamps_the_run_and_numeric_attempt(tmp_path, monkeypatch):
+    from scripts import run_cio_hardening_ci as R
+
+    monkeypatch.setattr(R, "shard_plan", lambda n: {"shards": {"0": []}, "loads": {"0": 0}, "digest": "d"})
+    monkeypatch.setattr(R, "plan_units", lambda *args, **kwargs: ([], []))
+    monkeypatch.setattr(R, "_git_value", lambda *args: "t")
+    monkeypatch.setenv("GITHUB_RUN_ID", "40057184808")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", "2")
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    out = tmp_path / "cio_shard_0.json"
+    assert R.run_shard("0/8", jobs=1, out=out) == 0
+    manifest = json.loads(out.read_text())
+    assert manifest["run_id"] == "40057184808" and manifest["run_attempt"] == 2
+
+
+def _attempt_fixture(tmp_path, monkeypatch, *, current_attempt=2):
+    """Actual file-loader/aggregate with all ten shard identities; no test execution or remote calls."""
+    from scripts import run_cio_hardening_ci as R
+    from scripts.lib import ci_shards
+
+    manifests = []
+    files = []
+    for sid in ci_shards.shard_ids(N):
+        path = f"test_{sid}.py"
+        (tmp_path / path).write_text("# fixture\n")
+        files.append(path)
+        manifests.append({**_manifest(sid, [path]), "run_id": "40057184808", "run_attempt": 1})
+    monkeypatch.setattr(R, "REPO", tmp_path)
+    monkeypatch.setattr(R, "GATES", [("fixture", files)])
+    monkeypatch.setattr(R, "shard_plan", lambda n: {"digest": "d"})
+    monkeypatch.setattr(R, "_git_value", lambda *args: "t")
+    monkeypatch.setenv("GITHUB_RUN_ID", "40057184808")
+    monkeypatch.setenv("GITHUB_RUN_ATTEMPT", str(current_attempt))
+    monkeypatch.setenv("CI_GATE_NEEDS", json.dumps({j: {"result": "success"} for j in PARTS}))
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    return R, manifests
+
+
+def _write_attempts(tmp_path, manifests):
+    directory = tmp_path / "manifests"
+    for index, manifest in enumerate(manifests):
+        artifact = directory / f"artifact-{index}"
+        artifact.mkdir(parents=True)
+        (artifact / f"cio_shard_{manifest['shard']}.json").write_text(json.dumps(manifest))
+    return directory
+
+
+@pytest.mark.parametrize("mode", ["failed_jobs", "aggregate_only", "numeric_attempt_order"])
+def test_rerun_aggregate_uses_latest_attempt_per_shard(tmp_path, monkeypatch, capsys, mode):
+    R, manifests = _attempt_fixture(tmp_path, monkeypatch, current_attempt=10 if mode == "numeric_attempt_order" else 2)
+    if mode != "aggregate_only":
+        previous = manifests[0]
+        previous["ok"] = False
+        previous["units"][0]["passed"] = False
+        previous["run_attempt"] = 2 if mode == "numeric_attempt_order" else 1
+        manifests.append(
+            {
+                **_manifest("0", previous["files"]),
+                "run_id": "40057184808",
+                "run_attempt": 10 if mode == "numeric_attempt_order" else 2,
+            }
+        )
+    directory = _write_attempts(tmp_path, manifests)
+    assert R.verify_shards(directory, n=N, timings_out=tmp_path / "timings.json") == 0
+    out = capsys.readouterr().out
+    assert '"ran_files": 10' in out and "CI-GATE: PASS" in out
+    assert json.loads((tmp_path / "timings.json").read_text())["schema"] == "CiShardTimings@v1"
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "missing",
+        "latest_failed",
+        "duplicate",
+        "old_duplicate",
+        "foreign_run",
+        "future_attempt",
+        "missing_attempt",
+        "string_attempt",
+        "bool_attempt",
+        "bad_schema",
+        "old_bad_schema",
+        "wrong_tree",
+        "wrong_plan",
+    ],
+)
+def test_rerun_does_not_mask_invalid_or_genuinely_duplicated_shards(tmp_path, monkeypatch, capsys, defect):
+    R, manifests = _attempt_fixture(tmp_path, monkeypatch)
+    latest = {**_manifest("0", manifests[0]["files"]), "run_id": "40057184808", "run_attempt": 2}
+    manifests.append(latest)
+    if defect == "missing":
+        manifests = [m for m in manifests if m["shard"] != "pg"]
+    elif defect == "latest_failed":
+        latest["ok"] = False
+        latest["units"][0]["passed"] = False
+    elif defect == "duplicate":
+        manifests.append(dict(latest))
+    elif defect == "old_duplicate":
+        manifests.append(dict(manifests[0]))
+    elif defect == "foreign_run":
+        latest["run_id"] = "some-other-run"
+    elif defect == "future_attempt":
+        latest["run_attempt"] = 3
+    elif defect == "missing_attempt":
+        latest.pop("run_attempt")
+    elif defect == "string_attempt":
+        latest["run_attempt"] = "2"
+    elif defect == "bool_attempt":
+        latest["run_attempt"] = True
+    elif defect == "bad_schema":
+        latest["schema"] = "unknown"
+    elif defect == "old_bad_schema":
+        manifests[0]["schema"] = "unknown"
+    elif defect == "wrong_tree":
+        latest["tree"] = "wrong"
+    elif defect == "wrong_plan":
+        latest["plan_digest"] = "wrong"
+    directory = _write_attempts(tmp_path, manifests)
+    assert R.verify_shards(directory, n=N) == 1
+    assert "CI-GATE: FAIL" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize(

@@ -109,7 +109,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cio-hardening-shard-${{ matrix.shard }}
+          name: cio-hardening-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/shard/
           if-no-files-found: ignore
 
@@ -156,7 +156,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cio-hardening-shard-serial
+          name: cio-hardening-shard-serial-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/shard/
           if-no-files-found: ignore
 
@@ -224,7 +224,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cio-hardening-shard-pg
+          name: cio-hardening-shard-pg-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/shard/
           if-no-files-found: ignore
 
@@ -440,9 +440,12 @@ jobs:
       - name: Download shard manifests
         uses: actions/download-artifact@v4
         with:
-          pattern: cio-hardening-shard-*
+          # Keep every raw attempt in its own directory; the verifier selects the newest
+          # attempt per shard, including older successful jobs not rerun by GitHub.
+          # Aggregate timing artifacts must never match this pattern (they contain copies).
+          pattern: cio-hardening-shard-*-attempt-*
           path: ${{ runner.temp }}/manifests
-          merge-multiple: true
+          merge-multiple: false
       - name: CIO hardening gates (every job passed; every registered file ran exactly once)
         env:
           CI_GATE_NEEDS: ${{ toJSON(needs) }}
@@ -454,7 +457,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cio-hardening-shard-timings
+          name: cio-hardening-timings-attempt-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/timings/
             ${{ runner.temp }}/manifests/

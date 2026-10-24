@@ -301,6 +301,43 @@ def verify_manifests(
     }
 
 
+def latest_attempt_manifests(
+    manifests: Sequence[dict], *, run_id: str, run_attempt: str
+) -> tuple[list[dict], list[str]]:
+    """Select the newest attempt of EACH shard in this GitHub run, never the newest successful one.
+
+    A failed-jobs rerun retains successful shards from older attempts. Two manifests for
+    the same shard/attempt are still an error, even if a later attempt exists. Invalid or
+    foreign run identities fail closed rather than falling back to older passing evidence.
+    Local, non-GitHub aggregates keep the original strict verifier unchanged.
+    """
+    if not run_id or not re.fullmatch(r"[1-9][0-9]*", run_attempt or ""):
+        return [], ["invalid_run_identity"]
+    current = int(run_attempt)
+    latest: dict[str, dict] = {}
+    seen: set[tuple[str, int]] = set()
+    errors: list[str] = []
+    for manifest in manifests:
+        if not isinstance(manifest, dict) or manifest.get("schema") != MANIFEST_SCHEMA:
+            errors.append("bad_schema")
+            continue
+        sid = str(manifest.get("shard"))
+        if manifest.get("run_id") != run_id:
+            errors.append(f"run_id_mismatch:{sid}")
+            continue
+        attempt = manifest.get("run_attempt")
+        if type(attempt) is not int or not 1 <= attempt <= current:
+            errors.append(f"invalid_run_attempt:{sid}")
+            continue
+        key = (sid, attempt)
+        if key in seen:
+            errors.append(f"duplicate_manifest:{sid}:attempt:{attempt}")
+        seen.add(key)
+        if sid not in latest or attempt > latest[sid]["run_attempt"]:
+            latest[sid] = manifest
+    return [latest[sid] for sid in sorted(latest)], errors
+
+
 def merge_timings(manifests: Sequence[dict]) -> dict:
     """One hint candidate from every shard's measured per-file seconds (artifact for refresh)."""
     files: dict[str, float] = {}
