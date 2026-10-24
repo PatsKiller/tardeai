@@ -264,7 +264,8 @@
     "store:redeploy_analytics",
     "store:research_write_path_receipts",
     "store:sec_filing_events",
-    "store:finviz_enrichment"
+    "store:finviz_enrichment",
+    "store:cio_asks"
    ]
   },
   {
