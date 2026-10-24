@@ -75,8 +75,8 @@ W7 never derives posture or favoured sectors from daily returns.
 Local evidence at the source checkpoint: 49 affected tests passed with
 `psycopg2` hidden; the final W7 subset has 10 passing tests. Full `npm run build`,
 the four integrity ratchets, lane registry, CIO completeness and docs-index
-checks passed. A copied-tree check with W1 source `01dac4e21` returned 27
-positions, 14 industry groups and a 221,856-byte response. It made no DB or
+checks passed. A copied-tree check with W1 source `8a81111c4` returned 27
+positions, 14 industry groups and a 224,724-byte response. It made no DB or
 provider calls and verified all copied/source hashes unchanged. Live status
 and broker observations were explicitly unavailable in that check.
 
