@@ -2089,6 +2089,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/alerts/telegram_notification_normalization_2026_07_28/TRADE_AI_TELEGRAM_NOTIFICATION_DUE_DILIGENCE_2026-07-28.md` | Trade AI Telegram Notification Due-Diligence Report |
 | `docs/ops/bakeoff-2026-08-21/README.md` | Lane bake-off 2026-08-21 — operator-blind quality half |
 | `docs/ops/bakeoff-2026-08-21/operator_blind.md` | Blind ranking sheet — Lane bake-off 2026-08-21 |
+| `docs/ops/ci-smoke/WP12_DRAFT_READY_20261023.md` | WP-12: draft and ready CI smoke control |
 | `docs/ops/cio_maturity_nearterm_dry_package/README.md` | CIO maturity near-term dry + live ceiling package |
 | `docs/ops/cio_maturity_nearterm_dry_package/closeout/DESIGNED.md` | DESIGNED — cio-maturity-nearterm-dry-20260909 |
 | `docs/ops/cio_maturity_nearterm_dry_package/closeout/EXECUTED.md` | EXECUTED — cio-maturity-nearterm-dry-20260909 |
