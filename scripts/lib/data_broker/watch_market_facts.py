@@ -170,6 +170,8 @@ def _price(snapshot: dict, sym: str, now: datetime) -> dict:
 
 def _level(snapshot: dict, sym: str, kind: str, price: float | None) -> dict:
     notes: list[str] = []
+    broken: list[dict] = []
+    fallbacks: list[dict] = []
     specs = [("master", "watchlist_symbol_master", "Watch symbol master"),
              ("strategy", "watchlist_strategy_cards", "Strategy card")]
     if kind == "resistance":
@@ -186,22 +188,35 @@ def _level(snapshot: dict, sym: str, kind: str, price: float | None) -> dict:
             notes.append(f"{label} {kind} {reason}.")
             continue
         crossed = price is not None and (value > price if kind == "support" else value < price)
-        if crossed:
-            notes.append(f"{label} {kind} is {'above' if kind == 'support' else 'below'} the shown price.")
-            continue
         observed = _iso(rec.get("created_at")) if name == "strategy" else _iso(rec.get("as_of")) if name == "closed" else None
         basis = "strategy card created_at" if name == "strategy" else "last closed session" if name == "closed" else "not exposed by source"
+        if crossed:
+            notes.append(f"{label} {kind} is {'above' if kind == 'support' else 'below'} the shown price.")
+            broken.append({"value": value, "source": source, "source_label": label, "as_of": observed,
+                           "relation": "ABOVE_PRICE" if kind == "support" else "BELOW_PRICE"})
+            continue
         compatibility = "UNKNOWN" if price is None else "BELOW_OR_AT_PRICE" if kind == "support" else "ABOVE_OR_AT_PRICE"
+        candidate = {"value": value, "as_of": observed, "as_of_basis": basis, "source": source, "source_label": label,
+                     "stale": None, "freshness": "UNKNOWN", "compatibility": compatibility,
+                     "source_state": rec.get("state") if name == "closed" else None}
+        fallbacks.append(candidate)
+        if not broken:
+            break  # A valid primary keeps the established source precedence.
+    if fallbacks:
+        # After a break, 'nearest' means the nearest EXISTING compatible reference,
+        # not a new technical level or a substitute target/stop/average.
+        selected = min(fallbacks, key=lambda row: abs(row["value"] - price)) if broken else fallbacks[0]
         if price is None:
             notes.append("Price unavailable; nearest-level relation is unknown.")
-        notes.append("Level observation time unavailable." if observed is None else
-                     "Closed-session date; level freshness is not assessed." if name == "closed" else
+        notes.append("Level observation time unavailable." if selected["as_of"] is None else
+                     "Closed-session date; level freshness is not assessed." if selected["as_of_basis"] == "last closed session" else
                      "Strategy-card creation time; level freshness is not assessed.")
-        return {"value": value, "as_of": observed, "as_of_basis": basis, "source": source, "source_label": label,
-                "stale": None, "freshness": "UNKNOWN", "compatibility": compatibility, "reason": " ".join(notes),
-                "source_state": rec.get("state") if name == "closed" else None}
+        return {**selected, "reason": " ".join(notes), "broken_reference": broken[0] if broken else None,
+                "fallback_status": "nearest_compatible_reference" if broken else None}
     return {"value": None, "as_of": None, "source": None, "source_label": "No reference", "stale": None,
-            "freshness": "MISSING", "compatibility": "UNKNOWN", "reason": " ".join(notes), "as_of_basis": None}
+            "freshness": "MISSING", "compatibility": "UNKNOWN", "reason": " ".join(notes), "as_of_basis": None,
+            "broken_reference": broken[0] if broken else None,
+            "fallback_status": ("none_below_price" if kind == "support" else "none_above_price") if broken else None}
 
 
 def view(snapshot: dict | None, symbol: str, *, now: datetime) -> dict:
@@ -213,4 +228,4 @@ def view(snapshot: dict | None, symbol: str, *, now: datetime) -> dict:
     return {"schema": SCHEMA, "evaluated_at": now.isoformat(), "price": price,
             "support": _level(snapshot, sym, "support", price["value"]),
             "resistance": _level(snapshot, sym, "resistance", price["value"]), "provider_calls": 0,
-            "selection": "First compatible symbol-master reference, strategy fallback, then closed-session resistance."}
+            "selection": "Primary stored reference; nearest compatible stored fallback after a break."}

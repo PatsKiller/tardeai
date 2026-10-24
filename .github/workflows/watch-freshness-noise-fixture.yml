@@ -1,0 +1,49 @@
+name: watch-freshness-noise-fixture
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/watch-freshness-noise-fixture.yml'
+      - 'apps/command-center-v3/e2e/watch-freshness-noise.fixture.mjs'
+      - 'apps/command-center-v3/src/components/watch/WatchMarketFacts.tsx'
+      - 'apps/command-center-v3/src/lib/watchMarketFactsPresentation*'
+      - 'apps/command-center-v3/src/lib/observationEnvelope.ts'
+      - 'apps/command-center-v3/src/lib/watchListsModel.ts'
+      - 'apps/command-center-v3/src/pages/WatchLayout.css'
+      - 'apps/command-center-v3/src/pages/WatchMyList.tsx'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: watch-freshness-noise-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  watch-freshness-fixture:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/command-center-v3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: node --experimental-strip-types src/lib/watchMarketFactsPresentation.test.ts
+      - run: npm run build
+      - name: Actual MyList closed-session, levels and failed transport fixtures without a server
+        run: node e2e/watch-freshness-noise.fixture.mjs "$RUNNER_TEMP/watch-freshness-noise"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: watch-freshness-noise-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/watch-freshness-noise/
+          if-no-files-found: error
