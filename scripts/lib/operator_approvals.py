@@ -21,10 +21,24 @@ from typing import Callable
 DECISION_REL = "data/governance/operator_decisions.jsonl"
 WRITER = "scripts/lib/operator_approvals.py"
 KINDS = ("POLICY", "RELEASE", "SPEND", "ACTIVATE", "DESIGN", "CONFLICT", "FINDING", "FINANCIAL")
-MAX_DOCUMENT = 900_000
+# AGENTS.md itself is about 630 KB; a real before/after pair must fit.
+MAX_DOCUMENT = 1_800_000
 MAX_LEDGER = 32_000_000
 REVIEW_TTL = timedelta(minutes=30)
 SHA = re.compile(r"^[0-9a-f]{40}$")
+PLAIN_RULES = {
+    "MBI_BEHAVIOR": "An AI may advise, but it never places, sizes or changes a trade.",
+    "Broker code is buildable only": "A named, time-limited operator grant is required even to build or simulate broker-related code. It never grants live trading authority.",
+    "Never route around a permission denial": "When permission is refused, stop and report it. Do not try another route.",
+    "A checkpoint is": "Save progress with a local commit. Sending it to GitHub needs separate authorization.",
+    "Never auto-remediate divergent copies": "If authoritative copies disagree, show both to the operator instead of choosing one automatically.",
+    "Never delete.": "Keep records by archiving them. Only the specifically approved cleanup jobs may delete their approved items.",
+    "Dry-run before any live run": "Preview a consequential change before applying it.",
+    "Exit code 0 is not evidence": "A successful exit alone does not prove work happened. Check the actual output.",
+    "Operator-only decisions: propose and stop": "Agents prepare proposals. You make the decisions reserved for the operator.",
+    "When a finding contradicts this file": "Report observed facts that conflict with the written rule and propose a correction.",
+    "Claim, log, hand off.": "Reserve the files you will edit and keep notes so another worker can continue the work.",
+}
 
 
 class Refused(ValueError):
@@ -389,7 +403,8 @@ def policy_projection(text: str, *, source_sha: str, enforcement: dict | None = 
             status = "VIOLATED"
         elif same and proof.get("test_passed") and proof.get("test_receipt"):
             status = "ENFORCED" if proof.get("runtime_passed") and proof.get("runtime_receipt") else "TESTED"
-        rules.append({"id": key, **block, "plain": proof.get("plain"), "status": status,
+        plain = next((meaning for anchor, meaning in PLAIN_RULES.items() if anchor in block["text"]), None)
+        rules.append({"id": key, **block, "plain": proof.get("plain") if same and proof.get("plain") else plain, "status": status,
                       "evidence": proof if same else {}, "reason": None if same else "No evidence for this document version"})
     counts = {s: sum(r["status"] == s for r in rules) for s in ("ENFORCED", "TESTED", "WRITTEN-only", "VIOLATED")}
     return {"document_sha": doc["document_sha"], "source_sha": source_sha, "sections": doc["sections"],
