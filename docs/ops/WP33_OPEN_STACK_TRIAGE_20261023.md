@@ -76,4 +76,4 @@ Verification used exact Git object/mode comparisons, main ancestry, stable delta
 
 Remaining work is now explicit: nine preserved PRs with the actions above, operator-only relay unit installation/process seed acceptance still separate, and publication of this report. No fresh broker, database, credential, host or release action is authorized by these receipts.
 
-Evidence manifest SHA-256: `596528441a7dae055594c81c6bb0fb40ca07673d58f3e739f022330fa74ac5ab`.
+Evidence manifest SHA-256: `c1bb7efd9a618da7bdf2a8a2d2ce0c99cf5eb067974283c83bbf87febfa60183`.

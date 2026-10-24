@@ -12,7 +12,7 @@
   "llm": {
     "first_batch_zero_context_deltas_equal_except_allowlist": true,
     "allowlist_changed_records_exact_current_state": "1804-allowlist-state-proof.json",
-    "remaining_four_commits_patch_equivalent": "llm-cherry.txt",
+    "remaining_four_commits_patch_equivalent": "patch-equivalence.txt",
     "all25_incremental_process_records_equal_current": true
   },
   "1628": {
