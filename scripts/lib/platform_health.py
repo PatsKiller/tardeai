@@ -653,6 +653,40 @@ def probe_postgres(deps: Deps) -> list[dict]:
     return [_item(*PG_SPEC, "OK", value, None, as_of, detail)]
 
 
+WRAPPER_WATCHDOG_SPEC = ("schedulers.wrapper_watchdog", "host", "scheduled success / wrapper refusals",
+                         "independent systemd cron_outage_watchdog receipt")
+
+
+def probe_wrapper_watchdog(deps: Deps) -> list[dict]:
+    """Readback only; a missing, stale or dry-run receipt never means healthy."""
+    root = deps.state_root or _default_state_root()
+    path = Path(root) / "data/runtime/cron_outage_watchdog_latest.json"
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(2 * 1024 * 1024 + 1)
+        if len(raw) > 2 * 1024 * 1024:
+            raise ValueError("oversized")
+        report = json.loads(raw)
+        observed = datetime.fromisoformat(str(report.get("observed_at")).replace("Z", "+00:00"))
+        if observed.tzinfo is None:
+            raise ValueError("naive")
+    except (OSError, ValueError, TypeError, AttributeError):
+        return [_unknown(WRAPPER_WATCHDOG_SPEC, "watchdog receipt unavailable; installation/observation not proven", None)]
+    age = (deps.now() - observed).total_seconds()
+    detail = {"missed_lane_ids": report.get("missed_lane_ids") or [],
+              "coverage_gap_lane_ids": report.get("coverage_gap_lane_ids") or [],
+              "monitor_incidents": report.get("monitor_incidents") or [],
+              "refusal_count": len(report.get("refusals") or []), "notification": report.get("notification"),
+              "age_seconds": age, "collection_gaps": report.get("collection_gaps") or []}
+    if report.get("schema") != "CronOutageWatchdog@v1" or report.get("mode") != "monitor" or age < 0 or age > 180:
+        return [_item(*WRAPPER_WATCHDOG_SPEC, "UNKNOWN", None, "watchdog receipt stale, future or not an operational run",
+                      _iso(observed), detail)]
+    status = report.get("status") if report.get("status") in STATUSES else "UNKNOWN"
+    value = f"{len(detail['missed_lane_ids'])} proven missed; {detail['refusal_count']} refusals; {len(detail['coverage_gap_lane_ids'])} unmeasured; {len(detail['monitor_incidents'])} monitor incidents"
+    return [_item(*WRAPPER_WATCHDOG_SPEC, status, value,
+                  None if status == "OK" else "inspect independent watchdog findings / coverage", _iso(observed), detail)]
+
+
 # ── collection ───────────────────────────────────────────────────────────────
 
 #: (probe, the item specs it owns — used to emit UNKNOWN rows when the probe itself times out or raises).
@@ -670,6 +704,7 @@ PROBES: list[tuple[Callable[[Deps], list], list[tuple]]] = [
     (probe_backup_artifact, [("backup.latest_artifact", "backup", "newest DB backup", str(BACKUP_DIR))]),
     (probe_backup_unit, [BACKUP_UNIT_SPEC]),
     (probe_postgres, [PG_SPEC]),
+    (probe_wrapper_watchdog, [WRAPPER_WATCHDOG_SPEC]),
 ]
 
 _POOL = ThreadPoolExecutor(max_workers=len(PROBES), thread_name_prefix="platform-health")

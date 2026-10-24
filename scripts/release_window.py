@@ -345,6 +345,7 @@ class Host:
         self.checkout, self.releases, self.canonical = checkout, releases, canonical
         self.deploy = checkout / "scripts" / "cio_phase2_exact_main_deploy.sh"
         self.python = canonical / ".venv" / "bin" / "python"
+        self.wrapper_preflight_receipt = Path.home() / ".local/state/cio-phase2-exact-main/wrapper_preflight.json"
         self._checkout_ready = ""
 
     def now(self) -> datetime:
@@ -846,6 +847,9 @@ class Runner:
         checks["units"] = {"ok": not dropped, "inactive_after_promote": dropped, "after": after}
         rc, out = self.host.served_copy(cur)
         checks["served_copy"] = {"ok": rc == 0, "rc": rc, "tail": "\n".join(out.strip().splitlines()[-3:])}
+        from scripts.lib.release_wrapper_preflight import receipt_check
+        checks["wrapper_preflight"] = receipt_check(
+            cur, sha, getattr(self.host, "wrapper_preflight_receipt", None), self.host.now())
         checks.update(self._verify_surfaces())
         return checks
 
