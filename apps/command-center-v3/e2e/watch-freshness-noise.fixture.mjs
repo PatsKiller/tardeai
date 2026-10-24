@@ -44,7 +44,7 @@ const bundled = await build({ stdin: { contents: `import React from 'react'; imp
   jsx: 'automatic', platform: 'browser', define: { 'process.env.NODE_ENV': '"production"' } })
 const js = bundled.outputFiles.find(f => f.path.endsWith('.js')).text
 const css = bundled.outputFiles.find(f => f.path.endsWith('.css')).text
-const html = `<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body>
+const html = `<html data-theme="dark"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style></head><body>
   <div id="root"></div><script>${js.replace(/<\/script/gi, '<\\/script')}</script></body></html>`
 const browser = await chromium.launch({ args: ['--no-sandbox'] })
 const results = []
@@ -74,26 +74,26 @@ try {
     const first = page.locator('[data-testid="mine-row"][data-symbol="AAA"]')
     const price = first.getByTestId('watch-market-price')
     await expect(price.locator('[data-state]')).toHaveText('Closed session · 2026-10-23')
-    await expect(price).toContainText('Intraday observation')
-    await expect(price).toContainText('03:45:00 PM EDT')
+    await expect(price).toContainText('intraday 15:45 ET')
+    await expect(price).toHaveAttribute('title', /03:45:00 PM EDT/)
     await expect(price).not.toContainText('2026-10-23 close')
     await expect(first.getByTestId('watch-market-resistance')).toContainText('$8.00 broken — nearest valid level: $11.00')
-    await expect(first.getByTestId('watch-market-resistance').locator('.watch-market-source')).toHaveText('Closed session')
-    await expect(first.getByTestId('watch-market-resistance').locator('[title]')).toHaveAttribute('title', /ui_prefs:portfolio\.reentry\.resistance\.v1/)
+    await expect(first.locator('.watch-market-level-notes')).toContainText('Closed session')
+    await expect(first.getByTestId('watch-market-resistance')).toHaveAttribute('title', /ui_prefs:portfolio\.reentry\.resistance\.v1/)
     await expect(first.getByTestId('watch-market-time-unknown')).toHaveCount(1)
     assert.equal((await first.innerText()).match(/time unknown/g)?.length, 1)
     await expect(page.locator('[data-symbol="BBB"][data-testid="mine-row"]').getByTestId('watch-market-price').locator('[data-state]')).toHaveText('Stale')
     await expect(page.locator('[data-symbol="BBB"][data-testid="mine-row"]').getByTestId('watch-market-resistance')).toContainText('none above price')
     await expect(page.locator('[data-symbol="CCC"][data-testid="mine-row"]').getByTestId('watch-market-support')).toContainText('none below price')
-    const source = await price.locator('.watch-market-source').getAttribute('title')
-    const observed = await price.locator('time').getAttribute('datetime')
+    const source = await price.getAttribute('title')
+    const observed = await first.getByTestId('watch-price-provenance').locator('time').getAttribute('datetime')
     if (status !== 200) {
       await page.clock.runFor(120001)
       await expect(page.getByTestId('watch-market-refresh-warning')).toContainText('last successful snapshot')
       await expect(price.locator('[data-state]')).toHaveText('Last snapshot')
       await expect(price).toContainText('$10.00')
-      assert.equal(await price.locator('.watch-market-source').getAttribute('title'), source)
-      assert.equal(await price.locator('time').getAttribute('datetime'), observed)
+      assert.equal(await price.getAttribute('title'), source)
+      assert.equal(await first.getByTestId('watch-price-provenance').locator('time').getAttribute('datetime'), observed)
       assert.equal(curation, 2)
       if (status === 403) { await page.clock.runFor(120001); assert.equal(curation, 2, 'denial stops automatic polling') }
     }
@@ -108,12 +108,12 @@ try {
     await expect(first.locator('details')).toHaveAttribute('open', '')
     await expect(first.locator('details')).toContainText('Broken reference: Watch symbol master')
     await page.keyboard.press('Enter')
-    const name = `watch-freshness-${width}-${status}`
+    const name = `impl-c2-retention-${width}-${status}`
     await page.screenshot({ path: path.join(out, name + '.png'), fullPage: true, animations: 'disabled' })
     results.push({ name, fixture: true, clock, width, status, geometry, curation, source, observed,
       displayed: await first.innerText(), traffic })
     await context.close()
   }
 } finally { await browser.close() }
-fs.writeFileSync(path.join(out, 'results.json'), JSON.stringify({ fixture: true, cases: results }, null, 2) + '\n')
+fs.writeFileSync(path.join(out, 'impl-c2-retention-results.json'), JSON.stringify({ fixture: true, cases: results }, null, 2) + '\n')
 console.log(`Watch freshness actual MyList fixture: ${results.length} cases passed; ${out}`)

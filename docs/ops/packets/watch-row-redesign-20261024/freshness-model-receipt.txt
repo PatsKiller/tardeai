@@ -1,0 +1,1 @@
+watchMarketFactsPresentation: 35 assertions passed

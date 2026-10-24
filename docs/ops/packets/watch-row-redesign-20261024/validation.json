@@ -1,0 +1,171 @@
+{
+  "schema": "WatchRowRedesignValidation@v1",
+  "design_task": "DSN-20261024-watch-row-redesign-P1-T1",
+  "session": "codex-watch-redesign-20261024",
+  "claim": "20261024T161036Z-codex-5ced82f6",
+  "generated_at": "2026-10-24T16:54:42.168046+00:00",
+  "acceptance": "LOCAL_SOURCE_ONLY_NOT_REMOTE_CI_OR_RUNTIME",
+  "base": "e5fa288ecc6971d1a55a79f7e3ba5bbbb46c5dd0",
+  "dependencies": {
+    "C1": "7ab9a37c9bd055608d4b516c21670c720d81b874",
+    "C2": "593246bb84bbe821e67f672092e23e324a155458"
+  },
+  "local_dependency_merges": [
+    "c7463a4e3",
+    "313afad70"
+  ],
+  "pre_implementation_head": "313afad705d13770fa4924f20e5e82455eea94b9",
+  "source_sha256": {
+    ".github/workflows/watch-row-redesign-fixture.yml": "7ffc7b2786a4fbf3cd4d0adb4700d29f6cc831f5342266dcd4d575da3a5ebd08",
+    "apps/command-center-v3/e2e/watch-account-names-visible.spec.ts": "8bb523dfbfffa03fc772c7a5dc1886ee33011dc7962b91051debb072104a60a6",
+    "apps/command-center-v3/e2e/watch-company-facts.spec.ts": "6d11dd42b6eea217b4b9a45c5c531adebbd594d8bd6d16a58f0b383d9999c346",
+    "apps/command-center-v3/e2e/watch-freshness-noise.fixture.mjs": "d4a5b71af193cd33f549f436bd804ef86869bdd87b73b6c1321e25cadd54b419",
+    "apps/command-center-v3/e2e/watch-lists.spec.ts": "89269e48c9f7bd26e50e880b327946d20d53ce7fc313203d96971d319c8cdcbe",
+    "apps/command-center-v3/e2e/watch-market-facts.spec.ts": "7cc7cbadea7e066338ea28f5fe5c62c6639c28c0300dc15424ebaf0714e9335b",
+    "apps/command-center-v3/e2e/watch-pages.spec.ts": "f225f2f16b03141ef6604bbb1f845c4d143e09dfed6dc8e847161edb3b4d99f1",
+    "apps/command-center-v3/e2e/watch-prospects.spec.ts": "dc4bbd1a7804729b8e1523225aa45595905b5090731b4b35e970a411109d80cc",
+    "apps/command-center-v3/e2e/watch-row-redesign.fixture.mjs": "8700b06ef59deb8499993df9fbfff81d4109fe5dbc295d5cc6bad8b44a7029db",
+    "apps/command-center-v3/src/components/watch/PositionFilterBar.tsx": "8b5403d503388c42f8725464affbf1ae64b2def78692b9dadb5bf20ad57f8c13",
+    "apps/command-center-v3/src/components/watch/WatchCompanyFacts.css": "3324e87423d21b7d4aef755c893e7f40bd1744660a83e6f9b13a84c32029dd8a",
+    "apps/command-center-v3/src/components/watch/WatchCompanyFacts.tsx": "8e701b1e30b6c12843c950f9ed5448050609aa070f48c97aa350b5082fef3b75",
+    "apps/command-center-v3/src/components/watch/WatchLevelLadder.tsx": "5ed3a16b528bcbf7779055e4b6608eef0f6ff9bdb76aafcab047286a00c1d3cf",
+    "apps/command-center-v3/src/components/watch/WatchMarketFacts.tsx": "8c4862ef0202371ef12fe225403394ea940e13dae2a4ae0e9516f480eeb3c848",
+    "apps/command-center-v3/src/components/watch/WatchRecordCard.css": "c3864c00607cfb2eba59c6cbc44b9023f6146a189d926b62bcf4fb33dcc7fa88",
+    "apps/command-center-v3/src/components/watch/WatchRecordCard.tsx": "b84f02ef8275f90b8234b137b7f8d082d1325899d777dbba08f07b096d9e10d8",
+    "apps/command-center-v3/src/lib/watchListsModel.ts": "65d84e5da228daf4ba7b22198a225e61c57fc43a2f7e39f230c52de0451cad63",
+    "apps/command-center-v3/src/lib/watchRecordCardModel.test.ts": "6097ceb894931128c4a92a28e0de3734931c309931ab8ccac97698c5e576c771",
+    "apps/command-center-v3/src/lib/watchRecordCardModel.ts": "ad36fbbe0a8d8573fb0626b0114b8cd7492e23c9d8418ed80f475d408ddcf509",
+    "apps/command-center-v3/src/pages/WatchMyList.tsx": "45e0c78cb364957e7b32ec9e9549cf3303f651c571ae850008b6e2456266598d",
+    "apps/command-center-v3/src/pages/WatchProspects.tsx": "d25546794e4b3c09143fa3b161bbbc555dcd6d97a71479f452e700e93e804704",
+    "config/ci_gates/watch_row_sort_filter_20261024.json": "123cc92f55fabe4ebc16c87531f9116c755e407335b9085a0cc2125367e926c3",
+    "scripts/lib/data_broker/watch_curation.py": "2c8e56921f1c00f1c4bb47ac9e3242fdf5974295b1f96a50283e2b255ce2327e",
+    "scripts/lib/data_broker/watch_position_facts.py": "62209fab83aa01ccd9c9643a56f42963d86bcf0bee8a4bf33bf29db0f9a5dc79",
+    "scripts/lib/data_broker/watch_prospects.py": "b3df3bc90399dfbd17508b7594a0948d4434b31863372711a84ec1d0b5b5e151",
+    "tests/test_watch_row_sort_filter_20261024.py": "341ef6dd134e453afff1acd3bc2ff66bbf9e87d79e885f32519fad8d4a1e5b4f"
+  },
+  "operator_reference_sha256": {
+    "mockup-phone-412.html": "ccb66c634c86c4bcd36d02db98c9f713a22f50a13282749707b6f78e7689ebda",
+    "mockup-desktop-1440.dc.html": "442f89e495ee13e4b2cda83048c14bba3bfd55b45663462c3aeff9a9700e08db",
+    "mockup-desktop-1440.png": "77584e2be0115519c64cea8e0e162765b4817b01cf24d81279d0d7bc5674ffdc",
+    "mockup-phone-412.png": "5a0ebeed599fd8b4c24eedcec5593cb102bb6fd902902651ba0b72b1b5b5ada3",
+    "mockup-phone-412.dc.html": "e64954437abb9bb1e8ed7dabe7f1a0822f0c0b47e92edc8ea4e54c3fac11fca7",
+    "mockup-desktop-1440.html": "3f074498b16d2883e2f2b5215825af7fe96174077ce2cab8c786f9bc941b206f",
+    "SPEC.md": "251025a00108b3cb3910db57586dd1301ba5d449055042ab4e01191db1db45b4"
+  },
+  "required_screenshots": [
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/watch-row-redesign-20261024/impl-held-1440.png",
+      "sha256": "49bfa40e1836da331a5164683f304f7d474b2d43df1a4dd8c346e991c53e7a81"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/watch-row-redesign-20261024/impl-held-412.png",
+      "sha256": "cd4cbbc8174a8f65bac0ab63401f5296fc41c55da9754a904fac372d73ea2b19"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/watch-row-redesign-20261024/impl-formerly-held-1440.png",
+      "sha256": "4cba61cdd586fb221c53b8438ed56a93f4f48a578ac77484ed6c754ea08a7bc8"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/watch-row-redesign-20261024/impl-formerly-held-412.png",
+      "sha256": "56474689a1da4116b59d789cdf20bee20d8d95c777a36c00893054e16a5ed670"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/watch-row-redesign-20261024/impl-never-held-1440.png",
+      "sha256": "7afe082049bc2557174845eed4f5843591a1db16d8c056dc4ad73db454edcd9c"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/watch-row-redesign-20261024/impl-never-held-412.png",
+      "sha256": "0294ac26428f098c6cb82da70a694c9a0170240fcd5ac9ce4eeeb5ff71fabe49"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/watch-row-redesign-20261024/impl-conflict-1440.png",
+      "sha256": "0f054e805de1f2dbbf107f0eba8437dbbe2defc943b8aab2e7c05caccf325725"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/watch-row-redesign-20261024/impl-conflict-412.png",
+      "sha256": "22ca7e306de6921eff9a09bb548adac07b46becb71949664d83d2ffbd9a159e3"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/watch-row-redesign-20261024/impl-no-catalyst-1440.png",
+      "sha256": "09e8bf6b5c0a0c379fe9455dafa423491fa69027781aef0d9df45900c9ec1b09"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/watch-row-redesign-20261024/impl-no-catalyst-412.png",
+      "sha256": "13c6883a2439ab6d7f49366cc287af68117bfeba302416bcff15579a79c4cc3b"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/watch-row-redesign-20261024/impl-missing-level-1440.png",
+      "sha256": "335274fd0417eeee3703e55f0a651631b00035669693c23c4f6931a705bd656a"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/watch-row-redesign-20261024/impl-missing-level-412.png",
+      "sha256": "0a07577e7386107c4baa3aa1385bb1e7d6c8d641c3aea7ced8117a8717a69501"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/watch-row-redesign-20261024/impl-missing-price-1440.png",
+      "sha256": "66757cc74d31f77189e52ed232667a75936f06cfbed11bc5d8ac7ddc2edbf68f"
+    },
+    {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/watch-row-redesign-20261024/impl-missing-price-412.png",
+      "sha256": "60bdfafb11498c2db9f02a779aad10d2f45f57d1359f83798a29d2acf44b3cff"
+    }
+  ],
+  "checks": {
+    "hidden_driver_integration": "36 passed in61.66s, after staging new source paths; both real-tree completeness checks included",
+    "new_card_model": "22 assertions passed",
+    "retained_c2_model": "35 assertions passed",
+    "existing_models": [
+      "watchListsModel:ok",
+      "watchProspectsModel:all checks passed"
+    ],
+    "actual_app_playwright": "47 passed in11.3s; empty-env static preview, configFile:false, proxy:{}; mocked APIs",
+    "new_card_fixture": {
+      "state_cases": 14,
+      "url_cases": 2,
+      "clock": "2026-10-24T14:00:00Z",
+      "min_visible_contrast": 6.068444747484882,
+      "phone_buttons": "all visible including open secondary controls44x44",
+      "traffic": "no external/unexpected/mutating requests or page errors"
+    },
+    "retained_refresh_fixture": "6 passed (1440/412 x200/503/403); original source/asof preserved",
+    "build": "npm run build passed; existing chunk-size advisory only",
+    "host_paths": "18 files against24 baseline;0new",
+    "coverage": "unlisted_new=[]; inherited gaps retained",
+    "new_workflow": "watch-row-redesign-fixture.yml; no job-level runner context; attempt-specific artifact"
+  },
+  "commands": [
+    "npm ci --ignore-scripts --no-audit --no-fund",
+    "node --experimental-strip-types src/lib/watchRecordCardModel.test.ts",
+    "node --experimental-strip-types src/lib/watchMarketFactsPresentation.test.ts",
+    "node --experimental-strip-types src/lib/watchListsModel.test.ts",
+    "node --experimental-strip-types src/lib/watchProspectsModel.test.ts",
+    "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg .venv/bin/python -m pytest -q tests/test_watch_row_sort_filter_20261024.py tests/test_watch_lists_20261023.py tests/test_cio_payload_flow_20261002.py::test_real_tree_every_non_surfaced_item_is_classified_and_none_is_stale tests/test_cio_operator_artifacts_20261003.py::test_completeness_leaves_no_operator_relevant_output_unsurfaced",
+    "npm run build",
+    "node e2e/watch-row-redesign.fixture.mjs HANDOFF_SHOTS_DIR",
+    "node e2e/watch-freshness-noise.fixture.mjs HANDOFF_SHOTS_DIR",
+    "playwright test e2e/watch-pages.spec.ts e2e/watch-lists.spec.ts e2e/watch-prospects.spec.ts e2e/watch-account-names-visible.spec.ts e2e/watch-market-facts.spec.ts e2e/watch-company-facts.spec.ts --project=chromium --reporter=line --max-failures=4 --timeout=20000 (isolated preview orchestration as checked workflow)",
+    "scripts/check_test_host_paths.py --fail-on-new",
+    "scripts/check_test_coverage.py --fail-on-new --json"
+  ],
+  "limitations": [
+    "No remote CI, publication, release or live runtime acceptance",
+    "MyList controls evaluate full uncapped rows; Prospects explicitly evaluates shown lane rows and preserves unevaluated overflow",
+    "Closed-session intraday LAST remains qualified and never becomes an official close",
+    "Existing source declarations do not establish independent factual verification",
+    "Existing weekday calendar retains holiday/early-close limitation"
+  ],
+  "packet_file_sha256": {
+    "watch-browser-receipt.txt": "739b76e910ae83bc2349dbb2e8a4b12b61051e35542c400ae1260213fe6846e4",
+    "prospects-model-receipt.txt": "cce1f97d57e5afb68f4be7b088cdeafc42708f18b5d1f5cd712294f4b125e28a",
+    "host-paths-receipt.txt": "35e284022d0751bcc0bb4fa920ab50a99bcbb8957f454ef45a19300aa540bca6",
+    "freshness-model-receipt.txt": "e83f970861010ec6a0bcd85c93cca120c4621a55bb6ce047a4b625c56b7b232f",
+    "coverage.json": "a29fbd0ca7483a6190ba21923fe9c0fd14a696e13ccae7997c85b5b9576f7510",
+    "impl-receipts.json": "4a4efd825ff355b1765b75ba4e20f7fef28b71a2e5e4b5197b1aa83add0fe9ec",
+    "impl-c2-retention-results.json": "350677ef6c38a0f2c841e5bcee732c746e24e03fc1ae72faad1c5b456cca3664",
+    "backend-integration-receipt.txt": "5b86399f261822a942b782fe48d335c50e28294e0d8956af2fc43d5529803e5d",
+    "preview-isolation.json": "e3b25818393b8b367e4fa4ed3357e28b046e5d4fc4daab7ba93e4e1e71a38e62",
+    "build-receipt.txt": "1592dd5693656982783346389cb6c20fc135bea7b138ada1d7ada832477a2330",
+    "lists-model-receipt.txt": "9eac9529bea80679da1aacc69b2e045b3fcd38aa692f0316c6af3c4a5b6d288c",
+    "card-model-receipt.txt": "033ff17cab4693a9d02915a17f949700a74cc52999365de6a67451e6db36f3e1"
+  }
+}
