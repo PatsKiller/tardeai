@@ -1,0 +1,8 @@
+{
+  "algorithm": "sha256",
+  "sources": {
+    "scripts/lib/cio_ask_tracking.py": "5e8e87a4f0b2f5a3e39a859190775905ee0e5dab66f88374195d520b42cc7a67",
+    "tests/test_cio_ask_tracking_canonical_20261024.py": "d4479a0e173616e2d7929a4fdbfa69a104505f8360c8db308980a43def454fa3",
+    "config/ci_gates/cio_ask_tracking_canonical_20261024.json": "f242629e78cdaa43843562e3c67c08b96facd6ae3bd7cc7f1214b22d9f186e91"
+  }
+}
