@@ -1,6 +1,7 @@
 """Exact-version reviews, actor/CSRF checks, source gaps and no authority escalation."""
 from datetime import datetime, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import pytest
 
@@ -253,3 +254,26 @@ def test_rule_disagreement_becomes_proposal_without_changing_policy(rig):
     assert ctx.ledger.proposal_rows()[0]["kind"] == "DESIGN"
     with pytest.raises(c.Refused, match="DOCUMENT_CHANGED"):
         ctx.ledger.feedback(ctx.principal(), lambda: policy, {**body, "document_sha": "old"})
+
+
+def test_actual_rulebook_before_after_pair_fits_and_offsets_name_exact_changed_text():
+    text = (Path(__file__).resolve().parents[1] / "AGENTS.md").read_text()
+    updated = text + "\nAn additional fixture sentence for exact review.\n"
+    doc = c.document(updated, base_text=text, source_sha=SHA, version="20.2.0")
+    additions = [change for change in doc["changes"] if change["kind"] == "added"]
+    assert additions
+    for change in additions:
+        offset = change["after_offset"]
+        assert updated[offset:offset + len(change["after"])] == change["after"]
+
+
+def test_audit_proposals_cannot_embed_a_decision_or_invent_evidence(rig):
+    ctx, _, _ = rig
+    policy = c.policy_projection("# 0 · Rules\n\nNever delete.", source_sha=SHA)
+    finding = {"title": "Review cleanup evidence", "detail": "No receipt was supplied.", "rule_id": "rule", "evidence_refs": ["receipt:1"], "decision": "APPROVE", "auto_apply": True}
+    event = ctx.ledger.audit_findings(policy=policy, audit_key="c" * 40, findings=[finding], evidence_refs={"receipt:1"})
+    assert event["event"] == "AUDIT_FINDINGS" and event["effect"] == "PROPOSAL_ONLY"
+    assert "decision" not in event["findings"][0] and event["findings"][0]["auto_apply"] is False
+    assert ctx.ledger.proposal_rows()[0]["kind"] == "FINDING"
+    with pytest.raises(c.Refused, match="UNSUPPORTED_AUDIT_FINDING"):
+        ctx.ledger.audit_findings(policy=policy, audit_key="d" * 40, findings=[finding], evidence_refs=set())

@@ -39,9 +39,28 @@ def _git(root: Path, *args: str) -> str:
 
 
 def git_policy(root: Path = ROOT) -> dict:
-    sha = _git(root, "rev-parse", "HEAD").strip()
+    sha = _git(root, "log", "-1", "--format=%H", "--", "AGENTS.md").strip()
     # Read from the commit, not a concurrently edited worktree file.
-    return core.policy_projection(_git(root, "show", f"{sha}:AGENTS.md"), source_sha=sha)
+    text = _git(root, "show", f"{sha}:AGENTS.md")
+    policy = core.policy_projection(text, source_sha=sha)
+    from scripts.lib.lane_last_receipt import runtime_dir
+    from scripts.lib.approval_package import governance_dir
+    report_path = runtime_dir() / "policy_enforcement_audit_last_report.json"
+    if not report_path.is_file() or report_path.stat().st_size > 4_000_000:
+        return policy
+    report = json.loads(report_path.read_text())
+    ledger = core.DecisionLedger(governance_dir() / "operator_decisions.jsonl", approved=lambda: False)
+    # A report is a derived view. Bind it back to an actual canonical proposal event.
+    verified = any(row.get("event") == "AUDIT_FINDINGS" and row.get("hash_self") == report.get("event_hash")
+                   and row.get("document_sha") == policy["document_sha"] for row in ledger.rows())
+    if verified and report.get("document_sha") == policy["document_sha"]:
+        measured = report.get("mechanical") or {}
+        policy = core.policy_projection(text, source_sha=sha, enforcement=measured.get("proofs") or {})
+        policy["audit"] = {"state": "PARTIAL", "last_audit": report.get("as_of"), "scope": report.get("review_scope"),
+                           "mapped_count": measured.get("mapped_count"), "unmapped_count": measured.get("unmapped_count"),
+                           "reviewer_called": report.get("reviewer_called"), "gaps": report.get("evidence_gaps") or [],
+                           "findings": report.get("findings") or []}
+    return policy
 
 
 def _default_sources(root: Path) -> dict:
@@ -238,13 +257,17 @@ def queue_summary(*, root: Path = ROOT, state_root: Path | None = None, now: dat
     from scripts.lib.approval_package import governance_dir
     ledger = core.DecisionLedger((state_root / "data/governance" if state_root else governance_dir()) / "operator_decisions.jsonl",
                                  approved=lambda: False)
-    data = core.queue_projection(_default_sources(root), decisions=ledger.rows(), now=now or core.utc_now())
+    sources = _default_sources(root)
+    sources["rule_proposals"] = ledger.proposal_rows
+    data = core.queue_projection(sources, decisions=ledger.rows(), now=now or core.utc_now())
     by_type = {}
     for row in data["items"]:
         kind = row.get("financial_kind") if row["kind"] == "FINANCIAL" else row["kind"].lower()
         by_type[kind] = by_type.get(kind, 0) + 1
     return {key: data[key] for key in ("pending_count", "known_pending_count", "complete", "gaps", "as_of")} | {
-        "scope": "all_operator_approvals", "by_type": by_type}
+        "scope": "all_operator_approvals", "by_type": by_type, "total": data["pending_count"],
+        "source": "operator_approvals_api.queue_summary", "stale": False,
+        "gap": None if data["complete"] else {"reason": "Global queue incomplete", "gaps": data["gaps"]}}
 
 
 def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = None):
