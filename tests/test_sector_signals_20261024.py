@@ -22,7 +22,8 @@ def price_rows():
     rows = []
     for i, day in enumerate(days):
         for symbol, price in (("SPY", 100 + i * .1), ("XLK", 130 - i * .3),
-                              ("XLP", 80 + i * .4), ("ABT", 50 + i * .2)):
+                              ("XLP", 80 + i * .4), ("ABT", 50 + i * .2),
+                              ("MSFT", 130 - i * .3), ("PG", 80 + i * .4)):
             rows.append({"symbol": symbol, "price_date": day, "close_price": price})
     return rows
 
@@ -39,7 +40,8 @@ def database(rows=None):
         if "count(DISTINCT symbol)" in sql:
             return {"n": 1}
         if "watchlist_items wi" in sql:
-            return [{"symbol": "ABT", "score": 80, "analyst_opinions": 5}]
+            symbol = {"Technology": "MSFT", "Healthcare": "ABT", "Consumer Defensive": "PG"}.get((params or [None])[0])
+            return [{"symbol": symbol, "score": 80, "analyst_opinions": 5}] if symbol else []
         if "sector_momentum_state" in sql:
             return [{"sector": "Technology", "etf": "XLK", "state": "LEADING",
                      "rs20": 9, "rs60": 12, "book_pct": 4}]
@@ -133,7 +135,7 @@ def test_monitor_one_day_opposition_and_missing_spy_are_context_only(tmp_path, m
     assert tech["rel_strength"] is None and result["spy_change_pct"] is None
     assert tech["book_weight_pct"] == 4.25  # the owner's pct, never recomputed
     assert tech["book_dollars"] == 2000
-    assert tech["leaders"][0]["symbol"] == "ABT"
+    assert tech["leaders"][0]["symbol"] == "MSFT"
     assert tech["leaders"][0]["rs20"] is not None
 
 
@@ -171,3 +173,12 @@ def test_monitor_reads_candidate_stance_only_through_w1(tmp_path, monkeypatch):
     result = monitor(database(), tmp_path, sector_map={"Healthcare": "XLV"}, now=NOW)
     assert called == [["ABT"]]
     assert result["sectors"][0]["candidates"][0]["cio_view"] == "HOLD"
+
+
+def test_favoured_names_format_canonical_posture_without_another_rule():
+    out = projection.get_sector_signals(database())
+    assert out["favoured"] == ["Consumer Staples"]
+    assert out["sectors"]["XLP"]["sector"] == "Consumer Staples"
+    missing = projection.get_sector_signals(database([]))
+    assert missing["favoured"] is None
+    assert missing["favoured_gap"]

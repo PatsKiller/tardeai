@@ -62,10 +62,10 @@ def monitor(db_query, state_dir, *, sector_map=None, query=None, now=None):
             watched[key.strip().lower().rstrip("s")] = {"id": d["id"], "label": d["label"]}
     signals = get_sector_signals(_db_query)
     _rs_hist_env = _brk_envelope("sector_momentum", signals.get("as_of"), now=now,
-                                 stale_after_hours=96, source={"table": "ticker_prices", "writer": "scripts/lib/writers/ticker_prices_writer.py"})
+                                 stale_after_hours=96, source={"table": "ticker_prices", "file": None, "provider": "internal:ticker_prices", "writer": "scripts/lib/writers/ticker_prices_writer.py"})
 
     def _rs_block(etf):
-        signal = signals["sectors"].get(etf) or {}
+        signal = {k: v for k, v in (signals["sectors"].get(etf) or {}).items() if k != "sector"}
         return {**signal, "rs_5d_pct": signal.get("rs5"), "rs_20d_pct": signal.get("rs20"),
                 "rs_60d_pct": signal.get("rs60"), "rs_series": [], "rs_n": None,
                 "rs_trend": signal.get("momentum", "missing")}
@@ -260,4 +260,3 @@ def monitor(db_query, state_dir, *, sector_map=None, query=None, now=None):
             "'watching' chip = an active sector directive exists for this sector."
         ),
     }
-

@@ -40,8 +40,20 @@ def get_sector_signals(db_query, *, symbols=None) -> dict[str, Any]:
         prices.setdefault(str(row["symbol"]).upper(), []).append((row["price_date"], row["close_price"]))
     sectors = {etf: relative_strength(prices.get(etf, []), prices.get("SPY", [])) for etf in requested}
     as_of = max((r["as_of"] or "" for r in sectors.values()), default="") or None
+    try:
+        sector_names = json.loads((PROJECT_ROOT / "config" / "sector_momentum.json").read_text())["sectors"]
+    except (OSError, ValueError, KeyError):
+        sector_names = {}
+    for etf, signal in sectors.items():
+        signal["sector"] = sector_names.get(etf)
+    measured = any(not signal.get("gap") for etf, signal in sectors.items() if etf in sector_names)
+    favoured = ([sector_names[etf] for etf, signal in sectors.items()
+                 if etf in sector_names and signal["cio_posture"] == "Favoured"]
+                if measured and sector_names else None)
     return {"as_of": as_of, "sectors": sectors, "source": "ticker_prices",
-            "posture_basis": "20d_60d_vs_spy", "provider_calls": 0}
+            "posture_basis": "20d_60d_vs_spy", "provider_calls": 0,
+            "favoured": favoured,
+            "favoured_gap": None if favoured is not None else "Complete sector strength or sector names unavailable"}
 
 
 def _build(db_query) -> dict[str, Any]:
