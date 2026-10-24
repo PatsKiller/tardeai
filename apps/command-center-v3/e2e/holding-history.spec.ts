@@ -33,7 +33,7 @@ async function fixture(page: Page, response: (u: URL) => { status?: number; body
     if (u.pathname === '/fixture.js') return route.fulfill({ contentType: 'text/javascript', body: js })
     if (u.pathname === '/fixture.css') return route.fulfill({ contentType: 'text/css', body: css })
     if (u.pathname === '/api/v3/data-broker/holding-history') { requests.push(u.search); const r = response(u); return route.fulfill({ status: r.status || 200, contentType: 'application/json', body: JSON.stringify(r.body) }) }
-    if (u.pathname === '/') return route.fulfill({ contentType: 'text/html', body: '<html><head><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/fixture.css"></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>' })
+    if (u.pathname === '/') return route.fulfill({ contentType: 'text/html', body: '<html data-theme="dark"><head><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/fixture.css"></head><body><div id="root"></div><script src="/fixture.js"></script></body></html>' })
     forbidden.push('unlisted:' + req.url()); return route.abort()
   })
   return { forbidden, requests }
@@ -95,3 +95,46 @@ test('server order URL selection and stale transport keep original clocks', asyn
   expect(await page.locator('.hh-request-status').innerText()).toBe(original)
   expect(state.forbidden).toEqual([])
 })
+
+
+// Private source-copy evidence stays outside git; no mockup financial data is imported.
+// This optional protocol proof is also used by coordinator B for real History -> Replay wiring.
+const copyPath = process.env.HISTORY_COPY_FIXTURE
+if (copyPath) {
+  const sourceCopy = JSON.parse(readFileSync(copyPath, 'utf8'))
+  for (const width of [1440, 412]) test(`actual A source-copy history ${width}`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1100 })
+    const state = await fixture(page, () => ({ body: sourceCopy }))
+    const detail = sourceCopy.detail
+    expect(detail?.symbol).toBeTruthy()
+    await page.goto(origin + '/?tab=history&symbol=' + encodeURIComponent(detail.symbol))
+    await expect(page.locator('.hh-detail-heading')).toContainText(detail.symbol)
+    const rows = page.getByTestId('history-name')
+    await expect(rows).toHaveCount(sourceCopy.symbols.length)
+    for (const [i, row] of sourceCopy.symbols.entries()) await expect(rows.nth(i)).toContainText(row.symbol)
+    expect(await rows.evaluateAll(es => es.every((el, i) => i === es.length - 1 || el.getBoundingClientRect().bottom <= es[i + 1].getBoundingClientRect().top))).toBe(true)
+    for (const required of ['AXTI', 'V', 'SCHD', 'SCHG', 'SPCX', 'NFLX']) expect(sourceCopy.symbols.some((r: any) => r.symbol === required)).toBe(true)
+    await expect(page.getByTestId('history-trip')).toHaveCount(detail.trips.length)
+    await expect(page.getByTestId('history-account-timeline')).toHaveCount(detail.account_segments.length)
+    await expect(page.getByTestId('history-stat-times_held')).toContainText(detail.stats.times_held == null ? '—' : String(detail.stats.times_held))
+    if (detail.stats.realized_pl == null) await expect(page.getByTestId('history-stat-realized_pl')).toContainText('—')
+    if (detail.stats.round_trip_count == null) await expect(page.getByTestId('history-stat-round_trip_count')).toContainText('—')
+    await expect(page.locator('.hh-timelines')).toContainText('do not prove uninterrupted ownership')
+    const replay = detail.trips.find((t: any) => t.trade_id)
+    if (replay) {
+      const row = page.getByTestId('history-trip').filter({ has: page.locator('[data-trade-id=' + JSON.stringify(replay.trade_id) + ']') })
+      await row.getByText('Provenance', { exact: true }).click()
+      for (const ref of replay.provenance || []) {
+        if (ref.writer) await expect(row).toContainText(ref.writer)
+        if (ref.record_id) await expect(row).toContainText('Record ' + ref.record_id)
+      }
+      await row.getByTestId('history-replay').click()
+      expect(await page.evaluate(() => (window as any).__replayed)).toBe(replay.trade_id)
+    }
+    for (const gap of detail.gaps || []) {
+      await expect(page.getByTestId('history-gaps').filter({ hasText: detail.symbol + ' source gaps' })).toContainText(gap.reason.replace(/_/g, ' '))
+    }
+    await noOverflow(page); expect(state.forbidden).toEqual([])
+    await shot(page, 'actual-' + detail.symbol.toLowerCase(), width)
+  })
+}

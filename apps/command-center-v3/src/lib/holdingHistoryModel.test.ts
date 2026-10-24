@@ -1,4 +1,4 @@
-import { dateText, decodeHistory, gapText, historyUrl, money, numberText, percent, provenanceText, segmentGeometry, sortFrom } from './holdingHistoryModel.ts'
+import { dateText, decodeHistory, gapText, historyUrl, money, namedGaps, numberText, percent, provenanceText, segmentGeometry, sortFrom } from './holdingHistoryModel.ts'
 import type { HoldingHistoryPayload } from './holdingHistoryModel.ts'
 let n = 0
 function eq(label: string, actual: unknown, expected: unknown) { n++; if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error(`${label}: ${JSON.stringify(actual)} != ${JSON.stringify(expected)}`) }
@@ -28,4 +28,10 @@ eq('backwards segment rejected', segmentGeometry(p.range, { start_date: '2024-01
 eq('geometry clipped to server range', segmentGeometry(p.range, { start_date: '2023-12-25', end_date: '2024-01-03' }), { left: 0, width: 20 })
 eq('provenance whitelist excludes raw account identifiers', provenanceText([{ source: 'stored_fixture', table: 'closed_rows', account_id: 'DO_NOT_RENDER_ACCOUNT_NUMBER', secret: 'not a public field' }]), ['stored_fixture · closed_rows'])
 eq('only actual source gap', gapText({ source: 'fixture', reason: 'explicit_missing_capture' }), 'fixture · explicit missing capture')
+eq('actual producer provenance retains source clock and writer', provenanceText([{ source: 'stored trips', record_id: 'source-fixture-id', writer: 'fixture_writer', observed_at: '2024-01-02T12:00:00Z', account_id: 'RAW_ACCOUNT_MUST_NEVER_RENDER' }]), ['stored trips · Record source-fixture-id · fixture_writer · Observed Jan 2, 2024, 7:00 AM EST'])
+eq('account gap gets only server public label', namedGaps([{ account_id: 'fixture', symbol: 'TEST', reason: 'overlap' }], [{ id: 'fixture', label: 'Named fixture account' }])[0].account_label, 'Named fixture account')
+eq('unknown gap account never emits raw id', gapText(namedGaps([{ account_id: 'RAW_ACCOUNT_MUST_NEVER_RENDER', reason: 'missing' }])[0]), 'Account name unavailable · missing')
+eq('gap identity and original calendar date survive', gapText({ symbol: 'TEST', date: '2024-01-02', account_label: 'Named fixture account', source: 'ledger', reason: 'unlinked_overlap' }), 'TEST · Named fixture account · 2024-01-02 · ledger · unlinked overlap')
+eq('null segment fails schema instead of crashing presentation', decodeHistory({ ...p, detail: { ...p.detail, account_segments: [{ account_label: 'fixture', segments: [null] }] } }), null)
+eq('malformed coverage fails schema instead of crashing explanation', decodeHistory({ ...p, range: { ...p.range, coverage: { reasons: 'not an array' } } }), null)
 console.log(`Holding history presentation model: ${n} assertions passed`)

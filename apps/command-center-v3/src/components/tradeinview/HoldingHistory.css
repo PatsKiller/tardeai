@@ -14,7 +14,7 @@
 .hh-sorts button { padding: 5px 8px; font-size: var(--hh-small); border-radius: var(--radius-pill); }
 .hh-sorts button[aria-pressed="true"] { color: var(--warning-color); border-color: var(--warning-border); background: var(--warning-bg); }
 .hh-name-list { display: flex; flex-direction: column; gap: 8px; max-height: 800px; overflow-y: auto; padding: 2px; }
-.holding-history .hh-name { display: flex; flex-direction: column; gap: 4px; text-align: left; min-width: 0; padding: 10px; width: 100%; background: transparent; }
+.holding-history .hh-name { flex: 0 0 auto; display: flex; flex-direction: column; gap: 4px; text-align: left; min-width: 0; padding: 10px; width: 100%; background: transparent; }
 .hh-name[aria-pressed="true"] { background: var(--info-bg); border-color: var(--info-border); }
 .hh-name-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
 .hh-name-heading b, .hh-detail-heading h2 span { font-family: var(--hh-mono); }
@@ -55,6 +55,9 @@
 .hh-trip details ul { padding-left: 12px; margin: 6px 0; }
 .holding-history .hh-replay { padding: 4px 0; background: transparent; color: var(--hh-info); border: 0; text-align: left; margin-top: 4px; font-size: var(--hh-small); }
 .hh-gaps { border: 1px solid; padding: 12px 14px; border-radius: var(--radius-md); line-height: 1.5; overflow-wrap: anywhere; }
+.hh-gaps details { margin-top: 6px; }
+.hh-gaps summary { cursor: pointer; }
+.hh-panel > .hh-gaps { margin-bottom: 12px; }
 .hh-gaps ul { margin: 6px 0 0; padding-left: 18px; }
 .hh-empty { padding: 16px; }
 .hh-transport-warning { color: var(--warning-color); background: var(--warning-bg); padding: 10px; border-radius: var(--radius-md); }

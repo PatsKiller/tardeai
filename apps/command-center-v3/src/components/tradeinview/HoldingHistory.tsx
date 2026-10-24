@@ -2,7 +2,7 @@
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
 import { TOKENS, TYPE, FONT, toneVars } from '../../lib/designTokens'
-import { HISTORY_SORTS, dateText, decodeHistory, finite, gapText, historyUrl, missingReason, money, numberText, percent, provenanceText, reasonText, segmentGeometry, sortFrom,
+import { HISTORY_SORTS, dateText, decodeHistory, finite, gapText, historyUrl, missingReason, money, namedGaps, numberText, percent, provenanceText, reasonText, segmentGeometry, sortFrom,
   type Gap, type HistoryDetail, type HistorySymbol, type HistoryTrip, type HoldingHistoryPayload } from '../../lib/holdingHistoryModel'
 import './HoldingHistory.css'
 
@@ -11,7 +11,7 @@ const colorFor = (value: unknown) => finite(value) && value !== 0 ? (value > 0 ?
 function Gaps({ gaps, heading = 'Data gaps, shown not hidden' }: { gaps: Gap[]; heading?: string }) {
   if (!gaps.length) return null
   return <aside className="hh-gaps" data-testid="history-gaps" aria-label={heading} style={{ background: toneVars('warning').bg, borderColor: toneVars('warning').border, color: toneVars('warning').color }}>
-    <strong>{heading}</strong><ul>{gaps.map((g, i) => <li key={`${g.source}-${i}`}>{gapText(g)}</li>)}</ul>
+    <strong>{heading}</strong>{gaps.length > 6 ? <details><summary>{gaps.length} source findings · view all</summary><ul>{gaps.map((g, i) => <li key={`${g.source}-${i}`}>{gapText(g)}</li>)}</ul></details> : <ul>{gaps.map((g, i) => <li key={`${g.source}-${i}`}>{gapText(g)}</li>)}</ul>}
   </aside>
 }
 function Name({ row, selected, onSelect }: { row: HistorySymbol; selected: boolean; onSelect: () => void }) {
@@ -40,7 +40,7 @@ function Stats({ detail }: { detail: HistoryDetail }) {
   </div>)}</div>
 }
 function Timelines({ data, detail }: { data: HoldingHistoryPayload; detail: HistoryDetail }) {
-  return <section className="hh-timelines" aria-label="When you held it by account"><h3>When you held it · by account</h3>
+  return <section className="hh-timelines" aria-label="When you held it by account"><h3>Recorded holding observations · by account</h3><p className="hh-muted">Bars show stored observations and recorded trip intervals; they do not prove uninterrupted ownership.</p>
     {!detail.account_segments.length && <p className="hh-muted">No holding segments on file. {missingReason(detail.stats.coverage)}</p>}
     {detail.account_segments.map((a, i) => <div className="hh-account-timeline" key={a.account_id || i} data-testid="history-account-timeline">
       <div><strong>{a.account_label || 'Account name unavailable'}</strong><small>Observed {dateText(a.as_of)}</small></div>
@@ -58,7 +58,7 @@ function Timelines({ data, detail }: { data: HoldingHistoryPayload; detail: Hist
     </div>)}
   </section>
 }
-function Trip({ trip: t, onReplay }: { trip: HistoryTrip; onReplay: Props['onReplay'] }) {
+function Trip({ trip: t, onReplay, accountOptions }: { trip: HistoryTrip; onReplay: Props['onReplay']; accountOptions?: { id: string; label: string }[] }) {
   const provenance = provenanceText(t.provenance)
   return <div className="hh-trip" data-testid="history-trip" role="row">
     <div role="cell" data-label="Account"><span>{t.account_label || 'Account name unavailable'}</span></div>
@@ -69,6 +69,7 @@ function Trip({ trip: t, onReplay }: { trip: HistoryTrip; onReplay: Props['onRep
     <div role="cell" data-label="Result"><b style={{ color: colorFor(t.realized_pl) }}>{money(t.realized_pl)}</b><small>{percent(t.return_pct)}</small>{(t.basis_unknown || t.realized_pl == null) && <small className="hh-gap-reason">{t.basis_unknown ? 'Basis unknown' : 'Result unavailable'} · {reasonText(t.basis_reason)}</small>}</div>
     <div role="cell" data-label="Source"><span className="hh-muted">{t.source || 'Source unavailable'}</span>
       <details><summary>Provenance</summary>{provenance.length ? <ul>{provenance.map((p, i) => <li key={i}>{p}</li>)}</ul> : <small>No additional provenance on file</small>}</details>
+      {!!t.gaps?.length && <small className="hh-gap-reason">{namedGaps(t.gaps, accountOptions).map(gapText).join(' · ')}</small>}
       {t.trade_id ? <button type="button" className="hh-replay" data-testid="history-replay" data-trade-id={t.trade_id} onClick={() => onReplay(t.trade_id!)} aria-label={`Replay ${t.symbol || ''} trade`}>Replay this trip →</button> : <small>Replay unavailable: trade ID missing</small>}
     </div>
   </div>
@@ -91,6 +92,7 @@ function Request({ path, selectedSymbol, onSelect, sort, onSort, onReplay }: Pro
       {!data.symbols.length && <p>No names returned by holding history. {missingReason(data.range.coverage)}</p>}
       <div className="hh-name-list">{data.symbols.map(row => <Name key={row.symbol} row={row} selected={row.symbol === (selectedSymbol || detail?.symbol)} onSelect={() => onSelect(row.symbol)} />)}</div>
     </aside><div className="hh-main">
+      <Gaps gaps={namedGaps(data.gaps, data.account_options)} />
       {!data.ok && <p role="status" className="hh-transport-warning">Stored history coverage is incomplete. See the source gaps below.</p>}
       {mismatch && <p role="alert">Selected history unavailable: the server detail does not match {selectedSymbol}.</p>}
       {!detail && !mismatch && <div className="hh-panel"><p>{selectedSymbol ? `No stored detail for ${selectedSymbol}.` : 'Choose a name to see its account history.'}</p></div>}
@@ -98,13 +100,12 @@ function Request({ path, selectedSymbol, onSelect, sort, onSort, onReplay }: Pro
         <p>{selected?.held_now === true ? 'Held now' : selected?.held_now === false ? 'Not held now' : 'Current holding state unavailable'} · {numberText(selected?.account_count, 0)} accounts</p>
         {selected?.account_count == null && <small>Account count not supplied in the symbol summary</small>}
         {!detail.company_name && <small>{reasonText(detail.company_missing_reason)}</small>}</header>
-        <Stats detail={detail} /><Timelines data={data} detail={detail} /></div>
+        <Gaps gaps={namedGaps(detail.gaps, data.account_options)} heading={`${detail.symbol} source gaps`} /><Stats detail={detail} /><Timelines data={data} detail={detail} /></div>
         <section className="hh-trips hh-panel" aria-label="Every recorded trip">
           {!detail.trips.length && <p className="hh-empty">No trip rows returned for this name. {missingReason(detail.stats.coverage)}</p>}
           <div role="table" aria-label="Holding history trips"><div className="hh-trip-head" role="row">{['Account', 'Bought', 'Sold', 'Shares', 'Days', 'Result', 'Source'].map(label => <span key={label} role="columnheader">{label}</span>)}</div>
-          {detail.trips.map((t, i) => <Trip key={t.trade_id || i} trip={t} onReplay={onReplay} />)}</div>
+          {detail.trips.map((t, i) => <Trip key={t.trade_id || i} trip={t} onReplay={onReplay} accountOptions={data.account_options} />)}</div>
         </section></>}
-      <Gaps gaps={[...data.gaps, ...(detail?.gaps || [])]} />
     </div></div>}
   </section>
 }

@@ -6,7 +6,7 @@ export const HISTORY_SORTS = [
   { id: 'held_now', label: 'Held now' },
 ] as const
 export type HistorySort = typeof HISTORY_SORTS[number]['id']
-export type Gap = { source?: string | null; reason?: string | null; account_label?: string | null; as_of?: string | null; [key: string]: unknown }
+export type Gap = { source?: string | null; reason?: string | null; symbol?: string | null; date?: string | null; account_id?: string | null; account_label?: string | null; as_of?: string | null; [key: string]: unknown }
 export type Coverage = { status?: string; reasons?: (string | Gap)[]; missing_sources?: string[]; missing_reasons?: Record<string, string> }
 export type HistoryAccount = { account_id?: string | null; account_label?: string | null; held_quantity?: number | null; as_of?: string | null }
 export type HistorySymbol = {
@@ -43,6 +43,10 @@ export const finite = (v: unknown): v is number => typeof v === 'number' && Numb
 const optionalNumber = (v: unknown) => v === null || finite(v)
 const textOrNull = (v: unknown) => v == null || typeof v === 'string'
 const gapRows = (v: unknown): boolean => Array.isArray(v) && v.every(g => object(g) && textOrNull(g.reason) && textOrNull(g.source))
+const coverageShape = (v: unknown): boolean => v == null || (object(v)
+  && (v.reasons == null || (Array.isArray(v.reasons) && v.reasons.every(r => typeof r === 'string' || (object(r) && textOrNull(r.reason)))))
+  && (v.missing_sources == null || (Array.isArray(v.missing_sources) && v.missing_sources.every(r => typeof r === 'string')))
+  && (v.missing_reasons == null || (object(v.missing_reasons) && Object.values(v.missing_reasons).every(r => typeof r === 'string'))))
 export function sortFrom(value: string | null): HistorySort { return HISTORY_SORTS.find(s => s.id === value)?.id || 'round_trips' }
 export function historyUrl(symbol: string | null, sort: HistorySort) {
   const q = new URLSearchParams({ range: 'all', sort })
@@ -52,14 +56,16 @@ export function historyUrl(symbol: string | null, sort: HistorySort) {
 export function decodeHistory(raw: unknown): HoldingHistoryPayload | null {
   const x = object(raw) && object(raw.data) ? raw.data : raw
   if (!object(x) || x.schema !== 'HoldingHistory@v1' || typeof x.ok !== 'boolean' || !Array.isArray(x.symbols)
-    || !object(x.range) || !gapRows(x.gaps) || x.read_only !== true || x.provider_calls !== 0 || x.writes !== 0) return null
+    || !object(x.range) || !textOrNull(x.as_of) || !textOrNull(x.range.start_date) || !textOrNull(x.range.end_date) || !coverageShape(x.range.coverage) || !gapRows(x.gaps) || x.read_only !== true || x.provider_calls !== 0 || x.writes !== 0) return null
+  if (x.account_options != null && (!Array.isArray(x.account_options) || !x.account_options.every(a => object(a) && typeof a.id === 'string' && typeof a.label === 'string'))) return null
   if (!x.symbols.every(s => object(s) && typeof s.symbol === 'string' && textOrNull(s.company_name) && optionalNumber(s.account_count)
     && optionalNumber(s.round_trip_count) && optionalNumber(s.realized_pl) && optionalNumber(s.known_realized_pl)
     && (s.held_now === null || typeof s.held_now === 'boolean') && Array.isArray(s.accounts)
     && s.accounts.every(a => object(a) && textOrNull(a.account_label) && optionalNumber(a.held_quantity)) && gapRows(s.gaps))) return null
   if (x.detail !== null && (!object(x.detail) || typeof x.detail.symbol !== 'string' || !object(x.detail.stats)
-    || !Array.isArray(x.detail.account_segments) || !x.detail.account_segments.every(a => object(a) && Array.isArray(a.segments))
-    || !Array.isArray(x.detail.trips) || !x.detail.trips.every(t => object(t) && textOrNull(t.account_label) && textOrNull(t.source)) || !gapRows(x.detail.gaps))) return null
+    || !Array.isArray(x.detail.account_segments) || !x.detail.account_segments.every(a => object(a) && textOrNull(a.account_label) && Array.isArray(a.segments)
+      && a.segments.every(g => object(g) && ['start_date', 'end_date', 'start_at', 'end_at', 'status', 'source', 'precision'].every(k => textOrNull(g[k])) && (g.gaps == null || gapRows(g.gaps))))
+    || !coverageShape(x.detail.stats.coverage) || !Array.isArray(x.detail.trips) || !x.detail.trips.every(t => object(t) && textOrNull(t.account_label) && textOrNull(t.source) && (t.gaps == null || gapRows(t.gaps))) || !gapRows(x.detail.gaps))) return null
   if (object(x.detail) && object(x.detail.stats) && !['times_held', 'known_holding_stretches', 'round_trip_count', 'win_rate_pct', 'realized_pl', 'known_realized_pl', 'avg_hold_days', 'median_hold_days', 'best_trip_pct', 'worst_trip_pct'].every(k => optionalNumber((x.detail as Record<string, unknown> & { stats: Record<string, unknown> }).stats[k]))) return null
   if (object(x.detail) && Array.isArray(x.detail.trips) && !x.detail.trips.every(t => object(t) && (t.trade_id === null || typeof t.trade_id === 'string') && ['entry_price', 'exit_price', 'shares', 'realized_pl', 'return_pct', 'hold_days'].every(k => optionalNumber(t[k])))) return null
   return x as unknown as HoldingHistoryPayload
@@ -74,7 +80,11 @@ export function dateText(v: unknown): string {
   return new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(new Date(v))
 }
 export const reasonText = (value: unknown) => typeof value === 'string' && value ? value.replace(/_/g, ' ') : 'Reason not supplied by the source'
-export function gapText(g: Gap | string): string { return typeof g === 'string' ? reasonText(g) : [g.account_label, g.source, reasonText(g.reason), g.as_of ? `as of ${dateText(g.as_of)}` : null].filter(Boolean).join(' · ') }
+export function gapText(g: Gap | string): string { return typeof g === 'string' ? reasonText(g) : [g.symbol, g.account_label, g.date ? dateText(g.date) : null, g.source, reasonText(g.reason), g.as_of ? `as of ${dateText(g.as_of)}` : null].filter(Boolean).join(' · ') }
+/** Resolve display names only through the server's public account-label map. */
+export function namedGaps(gaps: Gap[], accounts: { id: string; label: string }[] = []): Gap[] {
+  return gaps.map(g => ({ ...g, account_label: g.account_label || accounts.find(a => a.id === g.account_id)?.label || (g.account_id ? 'Account name unavailable' : null) }))
+}
 export function missingReason(coverage?: Coverage, key?: string): string {
   if (key && coverage?.missing_reasons?.[key]) return reasonText(coverage.missing_reasons[key])
   const reasons = coverage?.reasons?.map(gapText).filter(Boolean) || []
@@ -93,5 +103,5 @@ export function segmentGeometry(range: HoldingHistoryPayload['range'], segment: 
 /** Expose only public provenance fields; never dump account identifiers or raw objects. */
 export function provenanceText(value: unknown): string[] {
   const rows = Array.isArray(value) ? value : object(value) ? [value] : []
-  return rows.filter(object).map(r => [r.source, r.table, r.as_of ? dateText(r.as_of) : null].filter(x => typeof x === 'string' && x).join(' · ')).filter(Boolean)
+  return rows.filter(object).map(r => [r.source, r.table, typeof r.record_id === 'string' ? `Record ${r.record_id}` : null, r.writer, r.observed_at ? `Observed ${dateText(r.observed_at)}` : (r.as_of ? `As of ${dateText(r.as_of)}` : null)].filter(x => typeof x === 'string' && x).join(' · ')).filter(Boolean)
 }
