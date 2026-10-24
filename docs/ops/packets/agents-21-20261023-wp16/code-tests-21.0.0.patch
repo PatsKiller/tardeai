@@ -1,0 +1,1170 @@
+diff --git a/config/ci_gates/agents_policy_21_0_0_advisory_sizing.json b/config/ci_gates/agents_policy_21_0_0_advisory_sizing.json
+new file mode 100644
+--- /dev/null
++++ b/config/ci_gates/agents_policy_21_0_0_advisory_sizing.json
+@@ -0,0 +1,12 @@
++{
++  "schema": "CiGate@v1",
++  "name": "agents_policy_21_0_0_advisory_sizing",
++  "files": [
++    "tests/test_agents_policy_21_0_0_advisory_sizing.py"
++  ],
++  "anchor": "AGENTS_POLICY_21_0_0_ADVISORY_SIZING",
++  "comment": [
++    "ANCHOR: AGENTS_POLICY_21_0_0_ADVISORY_SIZING — operator-applied MAJOR proposal; inert until actual ratification.",
++    "Pins exact clause scope, pure deterministic arithmetic, complete facts, model-key stripping and unchanged behavior rail."
++  ]
++}
+diff --git a/scripts/lib/cio_advisory_sizing.py b/scripts/lib/cio_advisory_sizing.py
+new file mode 100644
+--- /dev/null
++++ b/scripts/lib/cio_advisory_sizing.py
+@@ -0,0 +1,169 @@
++"""The CIO's ADVISORY size suggestion (AGENTS.md 21.0.0 §29). Pure, deterministic, never actionable.
++
++`advisory_size_suggestion()` is the only thing that may fill an "Ask the CIO" answer's `size_suggestion`, and only
++`scripts/lib/cio_ask_contract.py` may import this module (§29.3). It returns None until AGENTS.md 21.0.0 is ACTIVE,
++read at call time with no flag or environment override (§29.4), and None for any missing or invalid input.
++
++    shares = floor(min(V*r / (E - S), (V*p - P) / E, (V*s - X) / E)), never below zero          (§29.2)
++
++V portfolio value, r the operator's risk budget per idea (default 1%, at most 5%), E reference price, S stop reference
++(long only, S < E), p / s the operator's position / sector limits, P / X the current position / sector exposure.
++
++No key of the result is a `BEHAVIOR_FIELDS` key, and this module imports nothing but the standard library: no broker,
++order, stop or proposal code, so nothing here can place, stage or arm anything. The behaviour rail
++(`BehaviorWriteRefused` in `cio_instrument_record.apply_cognition()`) is untouched.
++"""
++
++from __future__ import annotations
++
++import re
++from decimal import ROUND_FLOOR, Decimal, InvalidOperation
++from pathlib import Path
++from typing import Any, Mapping, Optional
++
++REPO_ROOT = Path(__file__).resolve().parents[2]
++REQUIRED_POLICY = "21.0.0"
++POLICY_ANCHOR = "# 29 · Advisory size suggestions"
++LABEL = "ADVISORY"
++DEFAULT_RISK_BUDGET_PCT = Decimal("0.01")
++MAX_RISK_BUDGET_PCT = Decimal("0.05")
++ALLOWED_IMPORTERS = ("scripts/lib/cio_ask_contract.py",)
++FORMULA = "shares = floor(min(V*r / (E - S), (V*p - P) / E, (V*s - X) / E)), never below zero"
++# The keys a model's answer may never carry (cio_instrument_record.BEHAVIOR_FIELDS, copied so this module imports
++# nothing; the 21.0.0 policy test asserts the two are equal), plus the field the deterministic suggestion owns.
++BEHAVIOR_FIELDS = (
++    "recommended_delta_usd",
++    "size_usd",
++    "shares",
++    "qty",
++    "order",
++    "stop",
++    "limit",
++    "target_weight_pct",
++    "trade",
++    "execution",
++)
++MODEL_STRIPPED_KEYS = BEHAVIOR_FIELDS + ("size_suggestion",)
++
++_ROW = re.compile(r"^\|\s*" + re.escape(REQUIRED_POLICY) + r"\s*\|[^|]*\|\s*([^|]*)\|", re.M)
++
++
++def policy_active(policy_root: Optional[Path] = None) -> bool:
++    """True only when AGENTS.md's 21.0.0 row begins with ACTIVE and §29's heading is present. Fails closed."""
++    try:
++        text = (Path(policy_root) if policy_root else REPO_ROOT).joinpath("AGENTS.md").read_text(encoding="utf-8")
++    except OSError:
++        return False
++    m = _ROW.search(text)
++    return bool(m and m.group(1).strip().upper().startswith("ACTIVE") and POLICY_ANCHOR in text)
++
++
++def _dec(value: Any) -> Optional[Decimal]:
++    if value is None or isinstance(value, bool):
++        return None
++    try:
++        d = Decimal(str(value))
++    except (InvalidOperation, ValueError):
++        return None
++    return d if d.is_finite() else None
++
++
++def _floor(d: Decimal) -> int:
++    return max(0, int(d.to_integral_value(rounding=ROUND_FLOOR)))
++
++
++def advisory_size_suggestion(
++    *,
++    symbol: str,
++    portfolio_value: Any,
++    reference_price: Any,
++    stop_reference_price: Any,
++    max_position_pct: Any,
++    max_sector_pct: Any,
++    sector_exposure_usd: Any,
++    as_of: str,
++    risk_budget_pct: Any = DEFAULT_RISK_BUDGET_PCT,
++    existing_position_usd: Any = None,
++    policy_root: Optional[Path] = None,
++) -> Optional[dict[str, Any]]:
++    """The §29 suggestion as a dict, or None (policy below 21.0.0 ACTIVE, or any input missing or invalid)."""
++    if not policy_active(policy_root):
++        return None
++    if not symbol or not as_of:
++        return None
++    v, e, s = _dec(portfolio_value), _dec(reference_price), _dec(stop_reference_price)
++    r, p, sx = _dec(risk_budget_pct), _dec(max_position_pct), _dec(max_sector_pct)
++    x, pos = _dec(sector_exposure_usd), _dec(existing_position_usd)
++    if any(d is None for d in (v, e, s, r, p, sx, x, pos)):
++        return None
++    if v <= 0 or e <= 0 or s <= 0 or s >= e or x < 0 or pos < 0:
++        return None
++    if not (0 < r <= MAX_RISK_BUDGET_PCT) or not (0 < p <= 1) or not (0 < sx <= 1):
++        return None
++
++    caps = {
++        "by_risk_budget": _floor(v * r / (e - s)),
++        "by_position_limit": _floor((v * p - pos) / e),
++        "by_sector_limit": _floor((v * sx - x) / e),
++    }
++    binding = min(caps, key=lambda k: (caps[k], tuple(caps).index(k)))
++    n = caps[binding]
++    names = {"by_risk_budget": "risk_budget", "by_position_limit": "position_limit", "by_sector_limit": "sector_limit"}
++    notional = (e * n).quantize(Decimal("0.01"))
++    at_risk = ((e - s) * n).quantize(Decimal("0.01"))
++    return {
++        "label": LABEL,
++        "not_actionable": True,
++        "policy": "AGENTS.md 21.0.0 §29",
++        "source": "deterministic",
++        "symbol": symbol,
++        "as_of": as_of,
++        "suggested_share_count": n,
++        "suggested_notional_usd": str(notional),
++        "risk_at_stop_reference_usd": str(at_risk),
++        "binding_constraint": names[binding],
++        "formula": FORMULA,
++        "caps": caps,
++        "inputs": {
++            "portfolio_value_usd": str(v),
++            "risk_budget_pct": str(r),
++            "reference_price": str(e),
++            "stop_reference_price": str(s),
++            "max_position_pct": str(p),
++            "max_sector_pct": str(sx),
++            "existing_position_usd": str(pos),
++            "sector_exposure_usd": str(x),
++        },
++        "reasoning": (
++            f"{LABEL}, not an order. Risk budget {r} of {v} over {e - s} per share at risk caps at "
++            f"{caps['by_risk_budget']}; position limit {p} caps at {caps['by_position_limit']}; sector limit {sx} "
++            f"caps at {caps['by_sector_limit']}. The {names[binding].replace('_', ' ')} binds: {n} shares, "
++            f"{notional} notional, {at_risk} at risk to the stop reference, as of {as_of}."
++        ),
++    }
++
++
++def _strip(node: Any, path: str, stripped: list[str]) -> Any:
++    if isinstance(node, Mapping):
++        out = {}
++        for k, val in node.items():
++            here = f"{path}.{k}" if path else str(k)
++            if k in MODEL_STRIPPED_KEYS:
++                stripped.append(here)
++                continue
++            out[k] = _strip(val, here, stripped)
++        return out
++    if isinstance(node, list):
++        return [_strip(val, f"{path}[{i}]", stripped) for i, val in enumerate(node)]
++    return node
++
++
++def attach_size_suggestion(model_answer: Mapping[str, Any], suggestion: Optional[dict[str, Any]]) -> dict[str, Any]:
++    """A copy of a model's answer with every model-originated quantity stripped (any `size_suggestion` and any
++    `BEHAVIOR_FIELDS` key, at any depth; each stripped path recorded in `stripped_model_quantities`), then the
++    deterministic `size_suggestion` attached (None when there is none). §29.2."""
++    stripped: list[str] = []
++    out = _strip(dict(model_answer), "", stripped)
++    out["stripped_model_quantities"] = stripped
++    out["size_suggestion"] = suggestion
++    return out
+diff --git a/tests/test_agents_policy_10_0_0_n8n_fabric.py b/tests/test_agents_policy_10_0_0_n8n_fabric.py
+--- a/tests/test_agents_policy_10_0_0_n8n_fabric.py
++++ b/tests/test_agents_policy_10_0_0_n8n_fabric.py
+@@ -32,6 +32,8 @@
+ from tests import test_agents_policy_5_2_0_validation as P520  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_11_0_0_workflow_framework.py b/tests/test_agents_policy_11_0_0_workflow_framework.py
+--- a/tests/test_agents_policy_11_0_0_workflow_framework.py
++++ b/tests/test_agents_policy_11_0_0_workflow_framework.py
+@@ -28,6 +28,8 @@
+ from tests import test_agents_policy_10_0_0_n8n_fabric as T10  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_12_0_0_cutover_directive.py b/tests/test_agents_policy_12_0_0_cutover_directive.py
+--- a/tests/test_agents_policy_12_0_0_cutover_directive.py
++++ b/tests/test_agents_policy_12_0_0_cutover_directive.py
+@@ -16,6 +16,8 @@
+ from scripts import check_agents_policy_state as STATE  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_14_0_0_broker_read.py b/tests/test_agents_policy_14_0_0_broker_read.py
+--- a/tests/test_agents_policy_14_0_0_broker_read.py
++++ b/tests/test_agents_policy_14_0_0_broker_read.py
+@@ -38,6 +38,8 @@
+ from tests import test_agents_policy_5_0_0_execution_ops as T5  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_15_0_0_disk_hygiene.py b/tests/test_agents_policy_15_0_0_disk_hygiene.py
+--- a/tests/test_agents_policy_15_0_0_disk_hygiene.py
++++ b/tests/test_agents_policy_15_0_0_disk_hygiene.py
+@@ -38,6 +38,8 @@
+ from tests import test_agents_policy_14_0_0_broker_read as T14  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_16_0_0_cutover_standard.py b/tests/test_agents_policy_16_0_0_cutover_standard.py
+--- a/tests/test_agents_policy_16_0_0_cutover_standard.py
++++ b/tests/test_agents_policy_16_0_0_cutover_standard.py
+@@ -47,6 +47,8 @@
+ from tests.test_agents_policy_5_2_0_validation import SECTION_23_14_SHA256  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_17_0_0_release_train.py b/tests/test_agents_policy_17_0_0_release_train.py
+--- a/tests/test_agents_policy_17_0_0_release_train.py
++++ b/tests/test_agents_policy_17_0_0_release_train.py
+@@ -44,6 +44,8 @@
+ from scripts import check_agents_policy_state as STATE  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_18_0_0_data_foundation.py b/tests/test_agents_policy_18_0_0_data_foundation.py
+--- a/tests/test_agents_policy_18_0_0_data_foundation.py
++++ b/tests/test_agents_policy_18_0_0_data_foundation.py
+@@ -41,6 +41,8 @@
+ from scripts import check_agents_policy_state as STATE  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_19_0_0_broker_read_controls.py b/tests/test_agents_policy_19_0_0_broker_read_controls.py
+--- a/tests/test_agents_policy_19_0_0_broker_read_controls.py
++++ b/tests/test_agents_policy_19_0_0_broker_read_controls.py
+@@ -39,6 +39,8 @@
+ from scripts import check_agents_policy_state as STATE  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_1_3_0_amendment.py b/tests/test_agents_policy_1_3_0_amendment.py
+--- a/tests/test_agents_policy_1_3_0_amendment.py
++++ b/tests/test_agents_policy_1_3_0_amendment.py
+@@ -13,6 +13,8 @@
+
+ ROOT = Path(__file__).resolve().parent.parent
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_20_0_0_agent_operations.py b/tests/test_agents_policy_20_0_0_agent_operations.py
+--- a/tests/test_agents_policy_20_0_0_agent_operations.py
++++ b/tests/test_agents_policy_20_0_0_agent_operations.py
+@@ -34,6 +34,8 @@
+ from scripts import check_agents_policy_state as STATE  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ TOKEN = "APPROVE_AGENTS_POLICY_20_0_0"
+ ADAPTERS = ("CLAUDE.md", ".cursor/rules/00-tradeai-work-policy.mdc", ".github/copilot-instructions.md", ".goosehints")
+
+@@ -307,7 +309,7 @@
+
+
+ def _s28() -> str:
+-    m = re.search(r"^# 28 · Agent operations.*?(?=^# Version history)", AGENTS, re.M | re.S)
++    m = re.search(r"^# 28 · Agent operations.*?(?=^# 29 · |^# Version history)", AGENTS, re.M | re.S)
+     assert m, "§28 missing: the 20.0.0 patch is not applied"
+     return m.group(0)
+
+@@ -524,7 +526,7 @@
+
+ @pytest.mark.parametrize("adapter", ADAPTERS)
+ def test_adapters_gain_the_rule_6_sentence_only_at_ratification(adapter):
+-    text = (ROOT / adapter).read_text(encoding="utf-8")
++    text = pre_21_0_0_adapter((ROOT / adapter).read_text(encoding="utf-8"))
+     assert text.count(R0_ANCHOR) == 1, f"{adapter} lost the 15.0.0 sentence"
+     if not _ratified():
+         assert R0_INS not in text and R8_INS not in text and h(text) == ADAPTER_SHA256[adapter], (
+diff --git a/tests/test_agents_policy_20_1_0_live_server_market_hours.py b/tests/test_agents_policy_20_1_0_live_server_market_hours.py
+--- a/tests/test_agents_policy_20_1_0_live_server_market_hours.py
++++ b/tests/test_agents_policy_20_1_0_live_server_market_hours.py
+@@ -34,6 +34,8 @@
+ from scripts import check_agents_policy_state as STATE  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0_document, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0_document(AGENTS)
+ TOKEN = "APPROVE_AGENTS_POLICY_20_1_0"
+ ADAPTERS = ("CLAUDE.md", ".cursor/rules/00-tradeai-work-policy.mdc", ".github/copilot-instructions.md", ".goosehints")
+
+@@ -160,7 +162,7 @@
+
+ def test_adapters_are_unchanged():
+     for a in ADAPTERS:
+-        assert h((ROOT / a).read_text(encoding="utf-8")) == ADAPTER_SHA256[a], a
++        assert h(pre_21_0_0_adapter((ROOT / a).read_text(encoding="utf-8"))) == ADAPTER_SHA256[a], a
+
+
+ def test_registered_as_a_ci_gate():
+diff --git a/tests/test_agents_policy_21_0_0_advisory_sizing.py b/tests/test_agents_policy_21_0_0_advisory_sizing.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_agents_policy_21_0_0_advisory_sizing.py
+@@ -0,0 +1,665 @@
++"""AGENTS.md 21.0.0 (PROPOSED, MAJOR) — §29 advisory size suggestions from the CIO.
++
++Shipped as an OPERATOR-COMMITTED package (operator, 2026-10-23: "It can suggest sizes, or I can say sizes." and
++option "B"; agents do not edit AGENTS.md or its pinning tests). Built on the 20.1.0-ACTIVE AGENTS.md.
++
++What this pins:
++  * one 21.0.0 history row, PROPOSED with PENDING and the §20 phrase until ratified; while PROPOSED the header block
++    reads 21.0.0 PROPOSED, `Effective-Date` PENDING, `Supersedes` 20.1.0; the state checker passes;
++  * the banner states the class and why, what does not change, the byte-identical list and the phrase;
++  * §29 states every rule, and every §29 bullet cites its cause;
++  * §2, §2A, §7, §7A, §13, §22, §23, §24 and §27 are byte-identical to 20.0.0;
++  * §0, §17, §26 and the four adapters are byte-identical while PROPOSED; once ratified they differ by exactly the
++    three clause edits §29.7 quotes, whose sha256 and post-ratification digests are pinned here;
++  * `scripts/lib/cio_advisory_sizing.py`: inert below 21.0.0 ACTIVE, deterministic math with the position and sector
++    caps, no `BEHAVIOR_FIELDS` key in its output, model quantities stripped and recorded, an import closure with no
++    broker, order, stop or proposal module, and only `scripts/lib/cio_ask_contract.py` may import it;
++  * the behaviour rail is unchanged: every `BEHAVIOR_FIELDS` write through `apply_cognition()` still raises;
++  * `pre_21_0_0()` gives the older policy tests the text as it was before the 21.0.0 ratifying edit.
++
++Read-only: reads repository files; writes AGENTS.md fixtures under pytest's tmp_path only. TRADE_AI_CI=1.
++"""
++
++from __future__ import annotations
++
++import ast
++import hashlib
++import inspect
++import json
++import re
++import subprocess
++import sys
++from decimal import Decimal
++from pathlib import Path
++
++import pytest
++
++ROOT = Path(__file__).resolve().parents[1]
++for _p in (str(ROOT), str(ROOT / "scripts")):
++    if _p not in sys.path:
++        sys.path.insert(0, _p)
++
++from scripts import check_agents_policy_state as STATE  # noqa: E402
++
++AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++TOKEN = "APPROVE_AGENTS_POLICY_21_0_0"
++ADAPTERS = ("CLAUDE.md", ".cursor/rules/00-tradeai-work-policy.mdc", ".github/copilot-instructions.md", ".goosehints")
++MODULE = "scripts/lib/cio_advisory_sizing.py"
++
++
++def h(t: str) -> str:
++    return hashlib.sha256(t.encode("utf-8")).hexdigest()
++
++
++# The three clause edits of the ratifying edit, byte for byte as build_ratify21.py makes them and §29.7 quotes them.
++R1_ANCHOR = "   the rail is an unconditional raise in code. See `AGENTS.md` §2.)\n"
++R1_INS = (
++    '   One advisory exception, binding only once AGENTS.md 21.0.0 is ACTIVE: an "Ask the CIO" answer\n'
++    "   may state one ADVISORY size suggestion, computed only by `scripts/lib/cio_advisory_sizing.py`\n"
++    "   from the operator's risk budget, with its formula, inputs and as_of shown. It is never executed,\n"
++    "   never read by an order, stop or proposal path, and never originated by a model; the agent still\n"
++    "   never orders, stops, arms, weights a live portfolio, or writes to a broker (AGENTS.md §29).\n"
++)
++R2_ANCHOR = "  (§12, §23.4). *Cause (§20): §0 rule 1; the §13.4 cognition boundary.*\n"
++R2_INS = (
++    '- **The one size the CIO may state is advisory (21.0.0, §29).** An "Ask the CIO" answer may carry the ADVISORY\n'
++    "  suggestion of §29. It is logged with the answer in CIO memory, keyed by `security_guid`, never as a prospect\n"
++    "  field and never under a `BEHAVIOR_FIELDS` key, and nothing that reads the record acts on it. *Cause (§20):\n"
++    "  operator 2026-10-23, option B; §0 rule 1 as amended by 21.0.0.*\n"
++)
++R3_ANCHOR = (
++    "\npasskey on Ops → Controls or at the host terminal; never by an agent, a release, the release train or n8n.\n"
++)
++R3_INS = (
++    "\n"
++    "**Advisory sizing (21.0.0, §29):** the risk budget per idea that §29's advisory size suggestion uses (default 1%\n"
++    "of portfolio value, at most 5%) · the position and sector concentration limits it caps against. Each is the\n"
++    "operator's setting alone; an agent never sets, raises or infers one, and a model never supplies one.\n"
++)
++
++CLAUSE_SHA256 = {
++    "R1_ANCHOR": "2cb56789a535cb28db161cde7c567f8634a70b3503120828a1b0184f5df38c6a",
++    "R1_INS": "afdf914fa2e55cb92118fdd320420056d3bff8a5a3a47ba8e202842f3eaf574c",
++    "R2_ANCHOR": "2d901915b5f6096cf5d31189fa00125f867c575fc5dae412923c8b4c668b6900",
++    "R2_INS": "0c8abc8d4b1a5dd469295e1275dda5f4a3f0680f3e86e2fc1268792df3ad12f3",
++    "R3_ANCHOR": "387481a00fb97300b55578680788fefcb9647ffc199a9d660d3683920e1d8439",
++    "R3_INS": "27f8047bec97127aa951a0609fb53d7bb8b72f96d1d7750afc3cb88aa3cb74f8",
++}
++
++# Section digests on the 20.0.0-ACTIVE base; while PROPOSED, and after the clause edits are undone, they are equal.
++SECTION_SHA256 = {
++    "§0": "58d094fbc2a30dbfb5b1f53db75c9c31e1c5b6e87c22265085a43ec71edd8980",
++    "§17": "8bbcf7890b4557ae3089fb0194637a3a768b1f637833d74e5b446e1bfcca7eb8",
++    "§26": "80b1d81d7198c5cca2c78a3beb86e22516ca1252bfc9c56e6013063d4eccf511",
++    "§2": "dc64e8149afc60a8bbd4c33194e112c2147a1503c53bf19ab731e5524ae7d4db",
++    "§2A": "38c78841b9b7cc3bf8ef3dea6be825ad5f892a6d4c7c8209404e4ef3855b79bb",
++    "§7": "f2e1b15d8ce064893858ec5e47f9f303f29a50a7903ded6ea06d23d51168e706",
++    "§7A": "6d20888d1329397351c75a54a4c3e2e7978d5974cef6c3c306dc708580b5ca90",
++    "§13": "7eefee9e485e12daa33c60f6fc1ec2facd47d67e2b73d3f775dfee26ef21f37e",
++    "§22": "81f1646a64e38047882c7375ab18739111ba8349471fbaa0351fc1069f9717e9",
++    "§23": "7dbf3e88196ee4e7fa3fee186da00886ecf61bd6bf673a5e4ab1279e71b8dd76",
++    "§24": "0f6a01f549bf36e489231183244bf001a4c370f04c714bb73cc863533fcf505f",
++    "§27": "f6934ac1d4fd824563f3f1a1cb1f8daca8eb2b182f313f2e412cdd7e489680fa",
++}
++# Post-ratification digests, pinned in advance (the clause edits carry no PR, SHA or date).
++SECTION_RATIFIED_SHA256 = {
++    "§0": "83f1562806ecefa4bec67bf120201c2edad06aedebe61ee0cbda410a8c369211",
++    "§17": "25c0066d81a450a6cd97cd40424d664f9560a40d2b8b65ae23e219b87951d2ee",
++    "§26": "735e8c0bdd85a1e77fb3f25ce34513c3fdeef2f69c79bcdfa3313582c2918618",
++}
++ADAPTER_SHA256 = {
++    "CLAUDE.md": "04df92d64e45d372d31963aa006c97d6b03770f1b081c60c69a211fdbaaa8880",
++    ".cursor/rules/00-tradeai-work-policy.mdc": "b7308162f626bdb78212c18112a94061cfc1a9afa25f675cc0413edba8214f7c",
++    ".github/copilot-instructions.md": "1cfaa8fba009e5a142328ecdd9d30fe3bf0cc2d4861b6c35271e4d084b902a48",
++    ".goosehints": "ad79ef5fa172d34eaafad36392734aac0d4d37d7513529bef335b7de0dbec8df",
++}
++ADAPTER_RATIFIED_SHA256 = {
++    "CLAUDE.md": "523595ec9b1455c7e0f579720f6ad39b1878dcc266cd4bc4e1f0638936e02ec6",
++    ".cursor/rules/00-tradeai-work-policy.mdc": "83ded9c540b88e9e7160062250b5e99127c39154a5f93c30f83a8dcecc10b4da",
++    ".github/copilot-instructions.md": "8590a47b78b3be462cdc5251d4d1f3d03bad3efeaabd4c340c35bdaafee1ca56",
++    ".goosehints": "235d4617efaf26d32182fc6470ba0ff071d9b15c00efdd8412da23a1bc980fa7",
++}
++
++BOUNDS = {
++    "§0": ("# 0 · If you read nothing else", "# 1 · Identity and responsibilities"),
++    "§2": ("# 2 · Authority rails", "# 2A ·"),
++    "§2A": ("# 2A ·", "# 2B ·"),
++    "§7": ("# 7 · ", "# 7A ·"),
++    "§7A": ("# 7A ·", "# 8 ·"),
++    "§13": ("# 13 · ", "# 14 · "),
++    "§17": ("# 17 · Operator-only decisions", "# 17A ·"),
++    "§22": ("# 22 · ", "# 23 · "),
++    "§23": ("# 23 · ", "# 24 · "),
++    "§24": ("# 24 · ", "# 25 · "),
++    "§26": ("# 26 · ", "# 27 · "),
++    "§27": ("# 27 · ", "# 28 · "),
++}
++CHANGING = ("§0", "§17", "§26")
++FIXED = ("§2", "§2A", "§7", "§7A", "§13", "§22", "§23", "§24", "§27")
++
++
++def _flat(text: str) -> str:
++    return re.sub(r"\s+", " ", text)
++
++
++def _section(text: str, name: str) -> str:
++    start, end = BOUNDS[name]
++    s = re.search(rf"^{re.escape(start)}", text, re.M)
++    assert s, start
++    e = re.search(rf"^{re.escape(end)}", text[s.start() + 1 :], re.M)
++    assert e, end
++    block = text[s.start() : s.start() + 1 + e.start()]
++    return re.sub(
++        r"(<!-- SOURCE_OF_TRUTH_TABLE_START -->).*?(<!-- SOURCE_OF_TRUTH_TABLE_END -->)",
++        r"\1\n<generated>\n\2",
++        block,
++        flags=re.S,
++    )
++
++
++def _sub(text: str, num: str) -> str:
++    m = re.search(rf"^## {re.escape(num)} .*?(?=^## |^---$|^# |\Z)", text, re.M | re.S)
++    assert m, f"§{num} missing"
++    return m.group(0).rstrip("\n").rstrip("-").rstrip("\n")
++
++
++def _row() -> re.Match:
++    m = re.search(r"^\| 21\.0\.0 \| 2026-10-23 \| (PROPOSED|ACTIVE)[^|]* \| MAJOR \|(.*)$", AGENTS, re.M)
++    assert m, "no `| 21.0.0 | 2026-10-23 | PROPOSED|ACTIVE | MAJOR |` row: the 21.0.0 patch is not applied"
++    return m
++
++
++def _ratified() -> bool:
++    return _row().group(1) == "ACTIVE"
++
++
++def _s29() -> str:
++    m = re.search(r"^# 29 · Advisory size suggestions.*?(?=^# 30 · |^# Version history)", AGENTS, re.M | re.S)
++    assert m, "§29 missing: the 21.0.0 patch is not applied"
++    return m.group(0)
++
++
++# Each edit as (text before the ratifying edit, text after it), in the order the ratifying edit applies them.
++EDITS = (
++    (R1_ANCHOR + "2. **Broker code", R1_ANCHOR + R1_INS + "2. **Broker code"),
++    (R2_ANCHOR, R2_ANCHOR + R2_INS),
++    (R3_ANCHOR, R3_ANCHOR + R3_INS),
++)
++
++
++def redo_21_0_0(text: str) -> str:
++    """The three clause edits applied (what the ratifying edit does to the body)."""
++    for old, new in EDITS:
++        assert text.count(old) == 1, old[:80]
++        text = text.replace(old, new, 1)
++    return text
++
++
++def undo_21_0_0(text: str) -> str:
++    """The text with the three 21.0.0 ratifying clause edits reversed (each must be present exactly once)."""
++    for old, new in reversed(EDITS):
++        assert text.count(new) == 1, new[:80]
++        text = text.replace(new, old, 1)
++    return text
++
++
++def pre_21_0_0(text: str) -> str:
++    """For the older policy tests' pins: the AGENTS.md text as it was before the 21.0.0 ratifying edit. Unchanged
++    while 21.0.0 is PROPOSED; once the 21.0.0 row is ACTIVE, the three clause edits are undone."""
++    if re.search(r"^\| 21\.0\.0 \| 2026-10-23 \| ACTIVE", text, re.M):
++        return undo_21_0_0(text)
++    return text
++
++
++def pre_21_0_0_adapter(text: str) -> str:
++    """An adapter as it was before the 21.0.0 ratifying edit (the §0 rule 1 sentence removed when present)."""
++    return text.replace(R1_ANCHOR + R1_INS, R1_ANCHOR, 1)
++
++
++# ------------------------------------------------------------------------------------- header, row, banner
++
++
++def test_one_row_and_state_checker_passes():
++    _row()
++    assert len(re.findall(r"^\| 21\.0\.0 \|", AGENTS, re.M)) == 1
++    assert STATE.check(AGENTS, on_main=False) == []
++    assert STATE.check(AGENTS, on_main=True) == []
++
++
++def test_row_waits_for_the_operator_or_records_the_token():
++    status, rest = _row().group(1), _row().group(2)
++    if status == "PROPOSED":
++        assert "PENDING" in rest and f"{TOKEN} <pr_number> <head_sha>" in rest
++        assert re.search(r"^Policy-Version:\s+21\.0\.0$", AGENTS, re.M)
++        assert re.search(r"^Status:\s+PROPOSED$", AGENTS, re.M) and re.search(
++            r"^Effective-Date:\s+PENDING$", AGENTS, re.M
++        )
++        assert re.search(r"^Supersedes:\s+20\.1\.0$", AGENTS, re.M)
++    else:
++        assert re.search(rf"{TOKEN} \d+ [0-9a-f]{{40}}", rest), "ACTIVE 21.0.0 row must record token, PR and sha"
++
++
++def test_banner_explains_class_scope_what_stays_and_decisions():
++    start = AGENTS.index("**21.0.0 is ")
++    banner = _flat(AGENTS[start : AGENTS.index("\n\n**", start + 10)])
++    for frag in (
++        "Why MAJOR:",
++        "narrows §0 rule 1",
++        "weakest guarantee",
++        "It cannot be MINOR",
++        "It can suggest sizes, or I can say sizes.",
++        '"B"',
++        "`size_suggestion`",
++        "ADVISORY",
++        "`scripts/lib/cio_advisory_sizing.py`",
++        "What does not change:",
++        "never orders, stops, arms, weights",
++        "`BehaviorWriteRefused`",
++        "`BEHAVIOR_FIELDS` are unchanged",
++        "`read_only`",
++        "`live_submit`",
++        "a proposal still needs the operator",
++        "Byte-identical:",
++        "§29.7",
++        "`Supersedes` 20.1.0",
++        f"{TOKEN} <pr_number> <head_sha>",
++    ):
++        assert _flat(frag) in banner, frag
++
++
++# --------------------------------------------------------------------------------------------------- §29
++
++
++@pytest.mark.parametrize(
++    "sub,frags",
++    [
++        (
++            "29.1",
++            (
++                'Only the "Ask the CIO" answer\'s `size_suggestion`',
++                "No other answer, alert, page, prospect field",
++                "labelled ADVISORY",
++                "`not_actionable`",
++                "formula, every input and its as_of",
++                "states no size",
++                "The operator may always name a size instead",
++                "does not substitute its own",
++            ),
++        ),
++        (
++            "29.2",
++            (
++                "One deterministic function",
++                "`advisory_size_suggestion()`",
++                "`scripts/lib/cio_advisory_sizing.py`",
++                "long only",
++                "default 1%, at most 5%",
++                "floor(min(V·r / (E − S), (V·p − P) / E, (V·s − X) / E))",
++                "binding constraint named",
++                "nothing is defaulted except r",
++                "Models may not invent sizes",
++                "is stripped",
++                "every stripped path is recorded",
++            ),
++        ),
++        (
++            "29.3",
++            (
++                "No order, stop or proposal path reads it",
++                "imports nothing from the broker, order, stop or",
++                "only `scripts/lib/cio_ask_contract.py` may import it",
++                "never auto-executed",
++                "a proposal still needs the operator",
++                "The rails stay as they are",
++                "`BehaviorWriteRefused`",
++                "`BEHAVIOR_FIELDS` are unchanged",
++                "no key of the suggestion is a `BEHAVIOR_FIELDS` key",
++                "`read_only`",
++                "`live_submit`",
++            ),
++        ),
++        ("29.4", ("returns None unless", "21.0.0 history row begins with ACTIVE", "no flag or environment override")),
++        ("29.5", ("written to CIO memory", "keyed by `security_guid`", "never as a prospect field")),
++        ("29.6", ("operator settings (§17)", "never sets, raises or infers")),
++        ("29.7", ("These clause edits", "(1) In §0 rule 1", "(2) In §26.1", "(3) In §17")),
++    ],
++)
++def test_section_29_states_every_rule(sub, frags):
++    text = _flat(_sub(_s29(), sub))
++    for frag in frags:
++        assert _flat(frag) in text, f"§{sub}: {frag!r}"
++
++
++def test_every_section_29_bullet_cites_its_cause():
++    bullets = re.split(r"\n(?=- \*\*)", _s29())[1:]
++    assert len(bullets) >= 9, len(bullets)
++    for b in bullets:
++        assert "*Cause (§20):" in b, b[:120]
++
++
++def _quoted(body: str) -> str:
++    return "  ```\n" + "\n".join(("  " + line) if line else "" for line in body.rstrip("\n").split("\n")) + "\n  ```"
++
++
++def test_section_29_7_quotes_every_clause_verbatim():
++    s297 = _sub(_s29(), "29.7")
++    for key, digest in CLAUSE_SHA256.items():
++        clause = globals()[key]
++        assert h(clause) == digest, f"{key} digest"
++        if key.endswith("_ANCHOR"):
++            continue
++        body = clause.lstrip("\n") if key == "R3_INS" else clause
++        assert _quoted(body) in s297, f"{key} is not quoted verbatim in §29.7"
++
++
++# ---------------------------------------------------------------------------------- byte-identical rails
++
++
++@pytest.mark.parametrize("name", FIXED)
++def test_fixed_sections_are_byte_identical(name):
++    assert h(_section(AGENTS, name)) == SECTION_SHA256[name], f"{name} changed"
++
++
++def test_changing_sections_differ_only_by_the_quoted_clauses_and_only_at_ratification():
++    if not _ratified():
++        rest = AGENTS.replace(_s29(), "")
++        for key in ("R1_INS", "R2_INS", "R3_INS"):
++            assert globals()[key].strip("\n") not in rest, f"{key} in force before ratification"
++        text = AGENTS
++    else:
++        text = undo_21_0_0(AGENTS)
++    for name in CHANGING:
++        assert h(_section(text, name)) == SECTION_SHA256[name], f"{name} changed beyond the quoted clauses"
++
++
++def test_post_ratification_digests_are_pinned_in_advance():
++    ratified = AGENTS if _ratified() else redo_21_0_0(AGENTS)
++    for name in CHANGING:
++        assert h(_section(ratified, name)) == SECTION_RATIFIED_SHA256[name], name
++    assert undo_21_0_0(ratified) == pre_21_0_0(AGENTS)
++
++
++@pytest.mark.parametrize("adapter", ADAPTERS)
++def test_adapters_gain_the_rule_1_sentence_only_at_ratification(adapter):
++    text = (ROOT / adapter).read_text(encoding="utf-8")
++    assert text.count(R1_ANCHOR) == 1, f"{adapter} lost §0 rule 1"
++    if not _ratified():
++        assert R1_INS not in text and h(text) == ADAPTER_SHA256[adapter], f"{adapter} ahead of ratification"
++    else:
++        assert text.count(R1_ANCHOR + R1_INS) == 1, f"{adapter} paraphrases the 21.0.0 sentence"
++        assert h(text) == ADAPTER_RATIFIED_SHA256[adapter]
++        assert h(pre_21_0_0_adapter(text)) == ADAPTER_SHA256[adapter]
++
++
++# ---------------------------------------------------------------------------------------- code agrees
++
++
++from scripts.lib import cio_advisory_sizing as SZ  # noqa: E402
++from scripts.lib import cio_instrument_record as CIR  # noqa: E402
++
++ROW_21_ACTIVE = "| 21.0.0 | 2026-10-23 | ACTIVE | MAJOR | x | y |\n"
++ROW_21_PROPOSED = "| 21.0.0 | 2026-10-23 | PROPOSED | MAJOR | x | y |\n"
++ROW_20_ACTIVE = "| 20.0.0 | 2026-10-22 | ACTIVE | MAJOR | x | y |\n"
++BROKERISH = re.compile(
++    r"broker|order|schwab|alpaca|ibkr|trading_lock|kill_switch|proposal|execution|stop_|live_submit", re.I
++)
++
++
++def _policy(tmp_path: Path, *rows: str, anchor: bool = True) -> Path:
++    body = ("# 29 · Advisory size suggestions (21.0.0, ACTIVE)\n\n" if anchor else "") + "# Version history\n\n"
++    (tmp_path / "AGENTS.md").write_text(
++        body + "| Version | Date | Status |\n|---|---|---|\n" + "".join(rows), encoding="utf-8"
++    )
++    return tmp_path
++
++
++BASE_KW = dict(
++    symbol="TSLA",
++    portfolio_value=100_000,
++    reference_price=250,
++    stop_reference_price=230,
++    max_position_pct="0.10",
++    max_sector_pct="0.25",
++    sector_exposure_usd=5_000,
++    existing_position_usd=0,
++    as_of="2026-10-23T15:00:00Z",
++)
++
++
++def test_code_named_in_section_29_exists():
++    s29 = _s29()
++    for path in (MODULE, "scripts/lib/cio_instrument_record.py", "tests/test_agents_policy_21_0_0_advisory_sizing.py"):
++        assert (ROOT / path).exists(), path
++        assert path in s29 or path.rsplit("/", 1)[-1] in s29, path
++    assert SZ.ALLOWED_IMPORTERS == ("scripts/lib/cio_ask_contract.py",)
++    assert SZ.REQUIRED_POLICY == "21.0.0" and SZ.POLICY_ANCHOR in _s29()
++    assert SZ.DEFAULT_RISK_BUDGET_PCT == Decimal("0.01") and SZ.MAX_RISK_BUDGET_PCT == Decimal("0.05")
++    assert "floor(min(V·r / (E − S), (V·p − P) / E, (V·s − X) / E))" in _flat(_s29())
++    assert SZ.FORMULA == "shares = floor(min(V*r / (E - S), (V*p - P) / E, (V*s - X) / E)), never below zero"
++
++
++@pytest.mark.parametrize(
++    "rows,anchor",
++    [
++        ((ROW_20_ACTIVE,), True),
++        ((ROW_21_PROPOSED, ROW_20_ACTIVE), True),
++        ((ROW_21_ACTIVE,), False),
++        ((), True),
++    ],
++)
++def test_inert_below_21_0_0_active(tmp_path, rows, anchor):
++    root = _policy(tmp_path, *rows, anchor=anchor)
++    assert SZ.policy_active(root) is False
++    assert SZ.advisory_size_suggestion(policy_root=root, **BASE_KW) is None
++
++
++def test_inert_when_agents_md_is_unreadable(tmp_path):
++    assert SZ.policy_active(tmp_path / "missing") is False
++    assert SZ.advisory_size_suggestion(policy_root=tmp_path / "missing", **BASE_KW) is None
++
++
++def test_repository_state_decides_and_nothing_else(monkeypatch):
++    monkeypatch.setenv("MBI_BEHAVIOR", "1")
++    monkeypatch.setenv("CIO_ADVISORY_SIZING", "1")
++    got = SZ.advisory_size_suggestion(**BASE_KW)
++    assert (got is not None) == _ratified()
++
++
++def test_risk_budget_binds(tmp_path):
++    s = SZ.advisory_size_suggestion(policy_root=_policy(tmp_path, ROW_21_ACTIVE), **BASE_KW)
++    # V*r/(E-S) = 1000/20 = 50; position (10000-0)/250 = 40 ... the position cap binds below
++    assert s["caps"] == {"by_risk_budget": 50, "by_position_limit": 40, "by_sector_limit": 80}
++    assert s["suggested_share_count"] == 40 and s["binding_constraint"] == "position_limit"
++    kw = dict(BASE_KW, max_position_pct="0.30")
++    s = SZ.advisory_size_suggestion(policy_root=tmp_path, **kw)
++    assert s["caps"] == {"by_risk_budget": 50, "by_position_limit": 120, "by_sector_limit": 80}
++    assert s["suggested_share_count"] == 50 and s["binding_constraint"] == "risk_budget"
++    assert s["suggested_notional_usd"] == "12500.00" and s["risk_at_stop_reference_usd"] == "1000.00"
++
++
++def test_sector_cap_binds_and_never_goes_negative(tmp_path):
++    root = _policy(tmp_path, ROW_21_ACTIVE)
++    s = SZ.advisory_size_suggestion(
++        policy_root=root, **dict(BASE_KW, max_position_pct="0.30", sector_exposure_usd=24_000)
++    )
++    assert s["caps"]["by_sector_limit"] == 4 and s["suggested_share_count"] == 4
++    assert s["binding_constraint"] == "sector_limit"
++    s = SZ.advisory_size_suggestion(policy_root=root, **dict(BASE_KW, sector_exposure_usd=40_000))
++    assert s["suggested_share_count"] == 0 and s["caps"]["by_sector_limit"] == 0
++    s = SZ.advisory_size_suggestion(policy_root=root, **dict(BASE_KW, existing_position_usd=12_000))
++    assert s["caps"]["by_position_limit"] == 0 and s["suggested_share_count"] == 0
++
++
++def test_deterministic_and_fully_shown(tmp_path):
++    root = _policy(tmp_path, ROW_21_ACTIVE)
++    a = SZ.advisory_size_suggestion(policy_root=root, **BASE_KW)
++    b = SZ.advisory_size_suggestion(policy_root=root, **dict(BASE_KW, portfolio_value="100000.0"))
++    assert json.dumps(a, sort_keys=True) == json.dumps(
++        SZ.advisory_size_suggestion(policy_root=root, **BASE_KW), sort_keys=True
++    )
++    assert a["suggested_share_count"] == b["suggested_share_count"]
++    assert a["label"] == "ADVISORY" and a["not_actionable"] is True and a["source"] == "deterministic"
++    assert a["formula"] == SZ.FORMULA and a["as_of"] == BASE_KW["as_of"] and a["policy"] == "AGENTS.md 21.0.0 §29"
++    assert set(a["inputs"]) == {
++        "portfolio_value_usd",
++        "risk_budget_pct",
++        "reference_price",
++        "stop_reference_price",
++        "max_position_pct",
++        "max_sector_pct",
++        "existing_position_usd",
++        "sector_exposure_usd",
++    }
++    assert a["inputs"]["risk_budget_pct"] == "0.01"
++    assert "ADVISORY, not an order" in a["reasoning"] and "position limit binds" in a["reasoning"]
++
++
++@pytest.mark.parametrize(
++    "bad",
++    [
++        {"portfolio_value": None},
++        {"portfolio_value": 0},
++        {"reference_price": "x"},
++        {"stop_reference_price": 250},
++        {"stop_reference_price": 260},
++        {"stop_reference_price": 0},
++        {"risk_budget_pct": "0.06"},
++        {"risk_budget_pct": 0},
++        {"max_position_pct": None},
++        {"max_sector_pct": "1.5"},
++        {"sector_exposure_usd": None},
++        {"sector_exposure_usd": -1},
++        {"existing_position_usd": -5},
++        {"existing_position_usd": None},
++        {"as_of": ""},
++        {"symbol": ""},
++        {"portfolio_value": float("nan")},
++        {"reference_price": True},
++    ],
++)
++def test_missing_or_invalid_inputs_give_no_suggestion(tmp_path, bad):
++    root = _policy(tmp_path, ROW_21_ACTIVE)
++    assert SZ.advisory_size_suggestion(policy_root=root, **dict(BASE_KW, **bad)) is None
++
++
++def test_suggestion_carries_no_behaviour_field(tmp_path):
++    s = SZ.advisory_size_suggestion(policy_root=_policy(tmp_path, ROW_21_ACTIVE), **BASE_KW)
++    assert not [k for k in CIR._walk_keys(s) if k in CIR.BEHAVIOR_FIELDS]
++    assert SZ.BEHAVIOR_FIELDS == CIR.BEHAVIOR_FIELDS
++
++
++def test_model_quantities_are_stripped_and_recorded(tmp_path):
++    s = SZ.advisory_size_suggestion(policy_root=_policy(tmp_path, ROW_21_ACTIVE), **BASE_KW)
++    model = {
++        "answer": "text",
++        "size_suggestion": {"shares": 1000},
++        "options": [{"symbol": "TSLA", "qty": 100, "note": "n"}],
++        "plan": {"stop": 1, "order": {"x": 1}},
++    }
++    out = SZ.attach_size_suggestion(model, s)
++    assert out["size_suggestion"] == s and out["answer"] == "text"
++    assert sorted(out["stripped_model_quantities"]) == ["options[0].qty", "plan.order", "plan.stop", "size_suggestion"]
++    assert out["options"] == [{"symbol": "TSLA", "note": "n"}] and out["plan"] == {}
++    assert model["size_suggestion"] == {"shares": 1000}, "the model's dict is not mutated"
++    none = SZ.attach_size_suggestion({"size_suggestion": {"shares": 5}}, None)
++    assert none["size_suggestion"] is None and none["stripped_model_quantities"] == ["size_suggestion"]
++
++
++def test_module_imports_only_the_standard_library():
++    tree = ast.parse((ROOT / MODULE).read_text(encoding="utf-8"))
++    mods = set()
++    for node in ast.walk(tree):
++        if isinstance(node, ast.Import):
++            mods.update(a.name.split(".")[0] for a in node.names)
++        elif isinstance(node, ast.ImportFrom):
++            assert node.level == 0, "no relative imports"
++            mods.add(node.module.split(".")[0])
++    assert mods <= {"__future__", "re", "decimal", "pathlib", "typing"}, mods
++
++
++def test_import_closure_holds_no_broker_order_stop_or_proposal_module():
++    code = (
++        "import sys; before = set(sys.modules); sys.path.insert(0, sys.argv[1]); "
++        "import scripts.lib.cio_advisory_sizing; print('\\n'.join(sorted(set(sys.modules) - before)))"
++    )
++    out = subprocess.run([sys.executable, "-I", "-c", code, str(ROOT)], capture_output=True, text=True, check=True)
++    new = [m for m in out.stdout.split() if m]
++    assert "scripts.lib.cio_advisory_sizing" in new
++    assert not [m for m in new if BROKERISH.search(m)], new
++    assert not [
++        m
++        for m in new
++        if m.startswith("scripts.") and m not in ("scripts", "scripts.lib", "scripts.lib.cio_advisory_sizing")
++    ], new
++
++
++def test_only_the_ask_contract_imports_the_module():
++    skip = {".git", ".venv", "venv", "node_modules", "tests", "__pycache__", ".cache"}
++    importers = []
++    for p in ROOT.rglob("*.py"):
++        rel = p.relative_to(ROOT)
++        if skip & set(rel.parts[:-1]) or rel.as_posix() == MODULE:
++            continue
++        try:
++            tree = ast.parse(p.read_text(encoding="utf-8", errors="ignore"))
++        except (OSError, SyntaxError):
++            continue
++        names = []
++        for node in ast.walk(tree):
++            if isinstance(node, ast.Import):
++                names.extend(a.name for a in node.names)
++            elif isinstance(node, ast.ImportFrom):
++                names.append(node.module or "")
++                names.extend((node.module or "") + "." + a.name for a in node.names)
++        if any(name.rsplit(".", 1)[-1] == "cio_advisory_sizing" for name in names):
++            importers.append(rel.as_posix())
++    assert set(importers) <= set(SZ.ALLOWED_IMPORTERS), importers
++
++
++@pytest.mark.parametrize("field", CIR.BEHAVIOR_FIELDS)
++def test_behaviour_rail_still_raises_for_every_behaviour_field(field):
++    with pytest.raises(CIR.BehaviorWriteRefused):
++        CIR.apply_cognition({}, next_research_question="q", **{field: 1})
++
++
++def test_behaviour_rail_is_unconditional():
++    assert CIR.BEHAVIOR_FIELDS == (
++        "recommended_delta_usd",
++        "size_usd",
++        "shares",
++        "qty",
++        "order",
++        "stop",
++        "limit",
++        "target_weight_pct",
++        "trade",
++        "execution",
++    )
++    src = inspect.getsource(CIR.apply_cognition)
++    body = src[src.index('"""', src.index('"""') + 3) + 3 :]
++    assert body.lstrip().startswith("if forbidden:"), "the rail must be the first statement"
++    assert "raise BehaviorWriteRefused(" in body.split("rec = dict(record)")[0]
++    assert "environ" not in body and "getenv" not in body
++
++
++BASE_POLICY_HEADER = {
++    "Policy-Version": "20.1.0",
++    "Status": "ACTIVE",
++    "Effective-Date": "2026-10-23",
++    "Last-Reviewed": "2026-10-23T12:00:00-04:00",
++    "Supersedes": "20.0.0",
++}
++
++
++def pre_21_0_0_document(text):
++    text = pre_21_0_0(text)
++    if not re.search(r"^\| 21\.0\.0 \|", text, re.M):
++        return text
++    start = text.index("**21.0.0 is ")
++    text = text[:start] + text[text.index("**20.1.0 is ", start) :]
++    start = text.index("\n# 29 · Advisory size suggestions")
++    text = text[:start] + text[text.index("\n# Version history", start) :]
++    text = re.sub(r"^\| 21\.0\.0 \|.*\n", "", text, count=1, flags=re.M)
++    for key, value in BASE_POLICY_HEADER.items():
++        text = re.sub(r"^(" + re.escape(key) + r":\s+).*$", lambda m: m.group(1) + value, text, count=1, flags=re.M)
++    return text
+diff --git a/tests/test_agents_policy_3_0_0_amendment.py b/tests/test_agents_policy_3_0_0_amendment.py
+--- a/tests/test_agents_policy_3_0_0_amendment.py
++++ b/tests/test_agents_policy_3_0_0_amendment.py
+@@ -14,6 +14,8 @@
+
+ ROOT = Path(__file__).resolve().parent.parent
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_4_0_0_scalp_lane.py b/tests/test_agents_policy_4_0_0_scalp_lane.py
+--- a/tests/test_agents_policy_4_0_0_scalp_lane.py
++++ b/tests/test_agents_policy_4_0_0_scalp_lane.py
+@@ -19,6 +19,8 @@
+ from scripts import check_agents_policy_state as C  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_4_1_0_amendment.py b/tests/test_agents_policy_4_1_0_amendment.py
+--- a/tests/test_agents_policy_4_1_0_amendment.py
++++ b/tests/test_agents_policy_4_1_0_amendment.py
+@@ -39,6 +39,8 @@
+ from scripts.pipelines import pipeline_manifest as PM  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_4_3_0_r1_classes.py b/tests/test_agents_policy_4_3_0_r1_classes.py
+--- a/tests/test_agents_policy_4_3_0_r1_classes.py
++++ b/tests/test_agents_policy_4_3_0_r1_classes.py
+@@ -42,6 +42,8 @@
+ from scripts.lib import lane_dispatch as LD  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_4_4_0_r1_shadow_shape.py b/tests/test_agents_policy_4_4_0_r1_shadow_shape.py
+--- a/tests/test_agents_policy_4_4_0_r1_shadow_shape.py
++++ b/tests/test_agents_policy_4_4_0_r1_shadow_shape.py
+@@ -35,6 +35,8 @@
+ from scripts.lib import lane_dispatch as LD  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_4_6_0_platform_rules.py b/tests/test_agents_policy_4_6_0_platform_rules.py
+--- a/tests/test_agents_policy_4_6_0_platform_rules.py
++++ b/tests/test_agents_policy_4_6_0_platform_rules.py
+@@ -28,6 +28,8 @@
+ from scripts import check_agents_policy_state as STATE  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+@@ -196,7 +198,7 @@
+     # 20.0.0 (PROPOSED, operator-applied patch) supersedes 19.0.0 (ACTIVE, #1962).
+     # 20.1.0 (PROPOSED, MINOR, operator-applied patch) supersedes 20.0.0 (ACTIVE, #2013).
+     allowed = {(17, 0, 0): {"15.0.0", "16.0.0"}, (18, 0, 0): {"17.0.0"}, (19, 0, 0): {"18.0.0"},
+-               (20, 0, 0): {"19.0.0"}, (20, 1, 0): {"20.0.0"}}.get(
++               (20, 0, 0): {"19.0.0"}, (20, 1, 0): {"20.0.0"}, (21, 0, 0): {"20.1.0"}}.get(
+         _version(), {supersedes.get(_version(), "5.1.0")})
+     assert _control("Supersedes") in allowed
+     assert f"{TOKEN} <pr_number> <head_sha>" in f
+@@ -228,7 +230,7 @@
+ def test_claude_md_adapter_restates_no_new_rule():
+     # The adapter repeats §0 verbatim, so once 5.0.0 is ratified it carries the rule 2 sentence; not a new rule.
+     text = (
+-        pre_20_0_0_adapter((ROOT / "CLAUDE.md").read_text(encoding="utf-8")).replace(RULE_2_EXCEPTION_5_0_0, "").replace(RULE_2_EXCEPTION_14_0_0, "")
++        pre_20_0_0_adapter(pre_21_0_0_adapter((ROOT / "CLAUDE.md").read_text(encoding="utf-8"))).replace(RULE_2_EXCEPTION_5_0_0, "").replace(RULE_2_EXCEPTION_14_0_0, "")
+         .replace(RULE_6_EXCEPTION_15_0_0, "")
+     )
+     assert "n8n" not in text.lower() and "§24" not in text
+diff --git a/tests/test_agents_policy_5_0_0_execution_ops.py b/tests/test_agents_policy_5_0_0_execution_ops.py
+--- a/tests/test_agents_policy_5_0_0_execution_ops.py
++++ b/tests/test_agents_policy_5_0_0_execution_ops.py
+@@ -38,6 +38,8 @@
+ from scripts import check_agents_policy_state as STATE  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_5_1_0_notification_intents.py b/tests/test_agents_policy_5_1_0_notification_intents.py
+--- a/tests/test_agents_policy_5_1_0_notification_intents.py
++++ b/tests/test_agents_policy_5_1_0_notification_intents.py
+@@ -35,6 +35,8 @@
+ from scripts import check_agents_policy_state as STATE  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_5_2_0_validation.py b/tests/test_agents_policy_5_2_0_validation.py
+--- a/tests/test_agents_policy_5_2_0_validation.py
++++ b/tests/test_agents_policy_5_2_0_validation.py
+@@ -32,6 +32,8 @@
+ from scripts import check_agents_policy_state as STATE  # noqa: E402
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+diff --git a/tests/test_agents_policy_7_0_0_advisory_market_data.py b/tests/test_agents_policy_7_0_0_advisory_market_data.py
+--- a/tests/test_agents_policy_7_0_0_advisory_market_data.py
++++ b/tests/test_agents_policy_7_0_0_advisory_market_data.py
+@@ -44,6 +44,8 @@
+ )
+
+ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
++from tests.test_agents_policy_21_0_0_advisory_sizing import pre_21_0_0, pre_21_0_0_adapter  # noqa: E402
++AGENTS = pre_21_0_0(AGENTS)
+ # AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+ # checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+ # the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
