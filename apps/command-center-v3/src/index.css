@@ -270,20 +270,61 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
 .metric-strip > div > div[style*="borderRight"] {
   flex-shrink: 0;
 }
-/* The row's height is DECLARED, not emergent.
-   Without this the strip measured 65px at three widths and 61px at 2000px —
-   the 4px is the horizontal scrollbar, which appears only when the tiles
-   overflow. "Locked to one row" has to mean the height does not move when the
-   viewport does, so the scrollbar is taken out of the flow. Scoped above the
-   820px breakpoint so the existing mobile wrap is untouched. */
+/* Mobile keeps the original row/wrap behavior through transparent wrappers.
+   Desktop gives only the metric group a scroll viewport; the attention controls
+   remain outside it, fully visible at the right edge. */
+.ms-metrics, .ms-metric-track, .ms-actions { display: contents; }
+.ms-scroll-cue { display: none; }
 @media (min-width: 821px) {
   .metric-strip .metric-strip-row {
     height: 62px;
-    box-sizing: content-box;
-    overflow-y: hidden;
-    scrollbar-width: none;
+    min-height: 62px;
+    max-height: 62px;
+    box-sizing: border-box;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    overflow: hidden;
+    min-width: 0;
+    max-width: 100%;
   }
-  .metric-strip .metric-strip-row::-webkit-scrollbar { height: 0; }
+  .ms-metrics {
+    display: flex;
+    align-items: center;
+    flex: 1 1 0;
+    min-width: 0;
+    height: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--text2) var(--bg0);
+  }
+  .ms-metric-track {
+    display: flex;
+    align-items: center;
+    width: max-content;
+    min-width: 100%;
+    flex: 0 0 auto;
+  }
+  .metric-strip .ms-metrics .metric-strip-tile { padding-top: 0 !important; padding-bottom: 0 !important; }
+  .ms-metrics::-webkit-scrollbar { height: 6px; }
+  .ms-metrics::-webkit-scrollbar-thumb { background: var(--text2); }
+  .ms-metrics:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+  .ms-actions {
+    display: flex;
+    align-items: center;
+    flex: 0 0 auto;
+    margin-left: auto;
+    padding-left: 8px;
+    white-space: nowrap;
+  }
+  .ms-actions > div { flex: 0 0 auto; }
+  .ms-scroll-cue {
+    display: block;
+    flex: 0 0 16px;
+    text-align: center;
+    color: var(--text2);
+    font: 12px var(--mono);
+  }
 }
 
 /* ── Compact mobile header (2026-10-03) ─────────────────────────────────────

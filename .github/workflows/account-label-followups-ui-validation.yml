@@ -46,8 +46,8 @@ jobs:
     defaults:
       run:
         working-directory: apps/command-center-v3
-    env:
-      WP29_SHOTS: ${{ runner.temp }}/wp29-account-scope
+    # WP29_SHOTS is set on the render step: the `runner` context is not available in
+    # job-level env, and using it there made GitHub reject the workflow (0 jobs, failure).
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,6 +64,8 @@ jobs:
       - run: npm run build
       - name: Render all six fixture-only views (no API proxy)
         shell: bash
+        env:
+          WP29_SHOTS: ${{ runner.temp }}/wp29-account-scope
         run: |
           set -euo pipefail
           PORT_FILE="$RUNNER_TEMP/wp29-port-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
