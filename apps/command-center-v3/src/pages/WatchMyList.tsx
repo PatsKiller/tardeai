@@ -1,3 +1,4 @@
+import ListPager, { useListOffset } from '../components/ListPager'
 /** Watch › My Watchlist (default tab) — the operator's own names (operator 2026-10-23: "I don't see stuff that I had
  *  starred that I was watching ... where is my traditional watch list").
  *
@@ -32,11 +33,13 @@ const KINDS: [string, string, string][] = [
 export default function WatchMyList() {
   const [sp, setSp] = useSearchParams()
   const pq = positionQuery(sp)
-  const { data: raw, loading, error, stale: snapshotStale, refetch } = useApi<any>(withQuery('/api/v3/data-broker/watch-curation', pq), 120_000)
+  const paging = useListOffset(JSON.stringify(pq) + (sp.get('mine') || ''))
+  const { data: raw, loading, error, stale: snapshotStale, refetch } = useApi<any>(withQuery('/api/v3/data-broker/watch-curation', { ...pq, mine: sp.get('mine') || '', view: 'mine', offset: String(paging.offset), limit: '25' }), 120_000)
   const { data: alertsRaw } = useApi<any>('/api/v2/watch/alerts/list', 120_000)
   const c = useMemo(() => unwrapAny<any>(raw), [raw])
   const armed = useMemo(() => armedBySymbol(alertsRaw), [alertsRaw])
-  const [sel, setSel] = useState<string | null>(null)
+  const sel = sp.get('symbol')
+  const setSel = (symbol: string | null) => setSp(p => { if (symbol) p.set('symbol', symbol); else p.delete('symbol'); return p })
   const [proposeFor, setProposeFor] = useState<WatchlistProposeSeed | null>(null)
   const [alertFor, setAlertFor] = useState<ProspectRow | null>(null)
   const [toast, setToast] = useState('')
@@ -62,8 +65,7 @@ export default function WatchMyList() {
     </div>
   }
   const srcCount = (k: string) => (mw?.sources?.[k]?.count ?? 0)
-  const kindCount = (k: string) => k === '' ? (mw?.rows || []).length : k === 'starred' ? (mw?.rows || []).filter((r: ListRow) => r.starred).length
-    : (mw?.rows || []).filter((r: ListRow) => (r.membership || []).some(m => m.kind === k)).length
+  const kindCount = (k: string) => mw?.kind_counts?.[k || 'all'] ?? (k === '' ? mw?.count : null) ?? '—'
   const failed = Object.entries(mw?.sources || {}).filter(([, v]: any) => v?.status !== 'ok')
   return (
     <div data-testid="watch-my-list" style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: TYPE.md, color: TOKENS.text[0] }}>
@@ -76,8 +78,8 @@ export default function WatchMyList() {
         </span>
         {KINDS.map(([k, l, tip]) => (
           <button key={k || 'all'} type="button" aria-pressed={kind === k} data-testid={`mine-kind-${k || 'all'}`}
-            title={`${tip} Narrows this list in the browser (${k ? srcCount(k) : (mw?.unfiltered_count ?? 0)} from the source).`}
-            onClick={() => { const n = new URLSearchParams(sp); if (k) n.set('mine', k); else n.delete('mine'); setSp(n, { replace: true }) }}
+            title={`${tip} Filters your complete list on the server (${k ? srcCount(k) : (mw?.unfiltered_count ?? 0)} from the source).`}
+            onClick={() => { paging.reset(); const n = new URLSearchParams(sp); if (k) n.set('mine', k); else n.delete('mine'); setSp(n, { replace: true }) }}
             style={{ ...chipStyle(kind === k ? 'info' : 'neutral', kind === k ? 'soft' : 'outline', 'sm'), cursor: 'pointer' }}>
             {l} <b>{kindCount(k)}</b>
           </button>
@@ -90,6 +92,7 @@ export default function WatchMyList() {
       {refreshUnavailable && <div role="status" data-testid="watch-market-refresh-warning" style={{ color: TOKENS.warning, fontSize: TYPE.base }}>
         Refresh unavailable — showing the last successful snapshot. Values and observation times have not been refreshed.
       </div>}
+      <ListPager page={mw?.pagination} previous={paging.previous} next={paging.next} busy={loading} gap={mw?.payload_gap} />
       <div className="watch-card-list-viewport">
         <section className="watch-record-panel" aria-label="My Watchlist" style={{ minWidth: 0 }}>
           <div className="watch-record-table watch-card-list">
@@ -104,7 +107,7 @@ export default function WatchMyList() {
           </div>
         </section>
         {selected && <aside className="watch-card-detail" aria-label="Record" style={panel}>
-          <button type="button" onClick={() => setSel(null)} style={{ ...chipStyle('neutral', 'outline', 'md'), minHeight: 44, cursor: 'pointer' }}>Close record</button>
+          <button type="button" autoFocus onClick={() => setSel(null)} style={{ ...chipStyle('neutral', 'outline', 'md'), minHeight: 44, cursor: 'pointer' }}>Back to list</button>
           <Detail r={selected} cioMsg={cioMsg} onAskCio={async r => { setCioMsg('Queuing…'); setCioMsg(await askCioReview(r.symbol, `Watch conflict: ${r.conflicts.map(x => x.summary).join(' | ')}`)) }} />
         </aside>}
       </div>

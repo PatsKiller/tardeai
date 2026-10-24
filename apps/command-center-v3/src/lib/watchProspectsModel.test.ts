@@ -91,5 +91,12 @@ ok('manage tooltip: held always manage', /managed, never entered/.test(TOOLTIPS.
 ok('source tooltip names the interim inputs', /opportunity projection/.test(TOOLTIPS.source(P)) && /re-entry desk/.test(TOOLTIPS.source(P)))
 ok('step tooltip: you size it', /you size it/.test(TOOLTIPS.step))
 
+// An alert remains tied when its prospect is on another server page.
+const paged = { ...P, lane_membership: Object.fromEntries(P.lanes.flatMap(l => [...l.items.map(r => [r.symbol, l.id]), ...l.overflow.map(sym => [sym, l.id])])),
+  conflict_count: conflictCount(P), lanes: P.lanes.map(l => ({ ...l, items: [], overflow: [] })) }
+const pagedTies = tieAlerts(paged, FIX.alerts)
+eq('paging does not manufacture orphaned alerts', pagedTies.orphans.map(a => a.symbol), T.orphans.map(a => a.symbol))
+eq('paging retains full curated conflict count', conflictCount(paged), conflictCount(P))
+
 if (failed) { console.error(`watchProspectsModel: ${failed} failure(s)`); process.exit(1) }
 console.log('watchProspectsModel: all checks passed')

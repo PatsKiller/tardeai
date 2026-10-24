@@ -70,6 +70,8 @@ export type ProspectsPayload = {
   curation: { one_membership: boolean; caps: Record<string, number>; sort_order: string; expiry: string }
   lanes: Lane[]
   counts: Record<string, number>
+  lane_membership?: Record<string, LaneId>
+  conflict_count?: number
 }
 export type WatchAlert = {
   id: number
@@ -158,6 +160,7 @@ export function orphanWhy(a: WatchAlert): string {
 export function tieAlerts(p: ProspectsPayload | null, rawAlerts: any): TiedAlerts {
   const armed = alertsOf(rawAlerts).filter(a => a.active)
   const laneOf = new Map<string, LaneId>()
+  for (const [symbol, lane] of Object.entries(p?.lane_membership || {})) laneOf.set(symbol.toUpperCase(), lane)
   if (p) {
     for (const l of p.lanes) {
       for (const r of l.items) laneOf.set(r.symbol.toUpperCase(), l.id)
@@ -231,6 +234,7 @@ export function fmtTime(iso: string | null | undefined): string {
 }
 
 export function conflictCount(p: ProspectsPayload): number {
+  if (p.conflict_count != null) return p.conflict_count
   return LANE_ORDER.filter(l => l !== 'expired')
     .reduce((n, id) => n + (laneById(p, id)?.items || []).reduce((m, r) => m + r.conflicts.length, 0), 0)
 }
@@ -251,7 +255,7 @@ export function headerChips(p: ProspectsPayload): Chip[] {
       key: 'holdings', label: 'Holdings', value: `${held.source || 'unknown'}${held.stale ? ' · stale' : ''}`,
       tone: held.stale ? 'danger' : 'success', tip: TOOLTIPS.holdings,
     },
-    { key: 'conflicts', label: 'Conflicts', value: `${nConf} shown, not hidden`, tone: nConf ? 'warning' : 'neutral', tip: TOOLTIPS.conflicts },
+    { key: 'conflicts', label: 'Conflicts', value: p.conflict_count != null ? `${nConf} across curated prospects` : `${nConf} shown, not hidden`, tone: nConf ? 'warning' : 'neutral', tip: TOOLTIPS.conflicts },
   ]
 }
 
