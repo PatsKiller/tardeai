@@ -3,8 +3,8 @@
   "owner": "cio",
   "state": "ACTIVE",
   "state_since": "2026-10-24",
-  "reason_confidence": "ESTABLISHED",
-  "state_reason": "Only populate after actual owner-reviewed contract and operator workflow activation; this file is a proposal.",
+  "reason_confidence": "CORRELATED",
+  "state_reason": "Source proposal only; native admission and runtime coverage are not proven. Keep unscheduled until an actual reviewed contract, schema capability and exact workflow activation are accepted.",
   "scheduler": {
     "kind": "n8n",
     "expression": "tradeai-cio-company-facts-populate-native",

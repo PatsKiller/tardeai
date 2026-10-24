@@ -1,16 +1,24 @@
 {
   "schema": "C1PopulationPackageHashes@v1",
-  "authority": "PROPOSED_SOURCE_ONLY",
+  "authority": "PROPOSED_SOURCE_ONLY; NO_ACTIVATION_APPROVAL",
   "files": {
     "migrations/2026_10_24_cio_company_facts_only.sql": "36036cf671611a0786e05cae4956d4558111393af139982a152f14f8e26c4054",
     "scripts/lib/cio_instrument_record.py": "425459209f19f331a9711669948575c85b116cb8d13339b69307103ff1d71a61",
-    "scripts/lib/cio_company_population.py": "c5c343d72ff0e5261b2ab26c56dd40a9d657964e114a15fdb7db89530fc11f67",
+    "scripts/lib/portfolio_positions.py": "44d5e326e2db8c3bc4fb9da90819250d1375620c45b3009dc260296a0fd56159",
+    "scripts/lib/cio_company_population.py": "ff2b95e559ae74d9313d921f5a4f803b744d4e076c24ce221a835261fd0cb374",
     "scripts/cio_company_facts_populate.py": "7c41dd8a59fdbc6286961ac992425a4d1c2e9b98980c0c56feab971708d427d5",
     "scripts/build_cio_company_facts_workflow.py": "cb4a993f38a386baebb8b01ece13fa568325cc51d27fcc5b7c97a6ee0b3dc2c9",
+    "config/lane_registry.json": "fab09ac523c360462500f78d13545061b864b4fe9954aa7d18bd5d72bebe41fc",
+    "config/n8n_health_contracts.json": "05d269794609b11f1b9f4f974bcd1f187260c1714e3fb4097b953d29052adfb2",
+    "config/n8n_run_allowlist.json": "7479ee4fea4020a275f4f735f813a360cb2e7aa655aba51689e8644d4a99b536",
+    "config/data_retention_policy.json": "f788ff6faa71cc0b5aa98d151721f10fae9b63f1d5b249d99dc5a1abb91d5a59",
     "docs/ops/packets/c1-company-population-20261024/ALLOWLIST_PROPOSAL.json": "c89b27ad28b69db1f924a7f44b0226daf585cb779a5deb864bc7ac871c519274",
+    "docs/ops/packets/c1-company-population-20261024/CI_FOLLOWUP_VALIDATION.json": "d6957c82e5790b82841baba14da8cb4145ebd4c04d22f81cf56ffe07393f3814",
     "docs/ops/packets/c1-company-population-20261024/COPY_PROOF.json": "c40fa7a49fd5e0223e52c21320fb9425cec7585b4bc249723bfca9650e2ee1c8",
     "docs/ops/packets/c1-company-population-20261024/HEALTH_CONTRACT_DRAFT.json": "f7be85cb3f1c8b02c3a284980ae5e7c8a80f20af497e79d7366386a9261b4be2",
-    "docs/ops/packets/c1-company-population-20261024/REGISTRY_ACTIVATION_PROPOSAL.json": "3a6746e6386591670fe9b959ce6aeeebde73c4cd50a738451f320a6fbc8263ac",
+    "docs/ops/packets/c1-company-population-20261024/REGISTRY_ACTIVATION_PROPOSAL.json": "f630868adf1fce391d48d88b07081a29a409afef96b5b810b22b54efd8e2cc1f",
+    "docs/ops/packets/c1-company-population-20261024/VALIDATION.json": "179d4cd82437b706cbf35464198ce9ec973c8d813d6f7445c48f3f61ae754697",
+    "docs/ops/packets/c1-company-population-20261024/VALIDATION_B81_INITIAL.json": "ade1d63b71a51030bf0e95f2df927c6b139f2e4338ee5cf6304b50322b4431de",
     "docs/ops/packets/c1-company-population-20261024/workflow.json": "26976632806d389ed9b1a85851c7cb0c875f5e4a967074a1ecb293e5956d2eea"
   }
 }

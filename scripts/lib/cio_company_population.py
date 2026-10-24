@@ -201,12 +201,12 @@ def capture_readonly_inputs(root: Path, query, *, now=None) -> dict:
     """
     from scripts.lib.data_broker.watch_domains import membership_operator
     from scripts.lib.data_broker.symbol_profile import get_symbol_profiles
-    from scripts.lib.portfolio_positions import load_store
+    from scripts.lib import portfolio_positions
     now = now or datetime.now(timezone.utc)
     membership = membership_operator(query)
     gaps = [{'scope': 'membership:'+k, 'reason': v.get('error') or v.get('status')}
             for k, v in membership['sources'].items() if v.get('status') != 'ok']
-    held_doc = load_store(Path(root) / 'data/portfolios/state/holdings.json')
+    held_doc = portfolio_positions.load_store(portfolio_positions.store_path(root))
     held = sorted({str(r.get('symbol') or '').upper() for r in held_doc.get('holdings') or []
                    if r.get('symbol') and float(r.get('shares', r.get('quantity')) or 0) > 0})
     if not held_doc:

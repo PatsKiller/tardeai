@@ -324,3 +324,27 @@ def test_stale_normal_writer_cannot_erase_new_facts_and_sibling_research(world):
     actual=tip(root)
     assert actual['stance']=='HOLD' and actual['research']['company_facts']==newfacts
     assert actual['research']['review_lifecycle']=={'request_id':'fixture'}
+
+
+def test_capture_uses_canonical_position_accessor_with_explicit_copy_root(tmp_path,monkeypatch):
+    from scripts.lib import portfolio_positions as pp
+    from scripts.lib.data_broker import watch_domains as wd
+    root=tmp_path/'copy';canonical=pp.store_path(root)
+    assert canonical==root.joinpath(*pp.STORE_REL)
+    calls=[]
+    monkeypatch.setattr(pp,'load_store',lambda path:(calls.append(path) or {'holdings':[{'symbol':'AAA','shares':2}], 'as_of':NOW.isoformat()}))
+    monkeypatch.setattr(wd,'membership_operator',lambda q:{'names':{'AAA':{}},'sources':{'fixture':{'status':'ok'}}})
+    capture=P.capture_readonly_inputs(root,lambda *args:[],now=NOW)
+    assert calls==[canonical] and capture['held']==['AAA']
+    assert capture['held_source']['as_of']==NOW.isoformat()
+    assert not root.exists(), 'path selection/read fixture must never write or fall back to live state'
+
+
+def test_company_lane_admission_precedes_the_generated_registry_suffix():
+    from scripts import reconcile_lane_registry as R
+    rows=json.loads((ROOT/'config/lane_registry.json').read_text())['lanes']
+    own=next(i for i,r in enumerate(rows) if r['lane_id']==P.LANE_ID)
+    generated=next(i for i,r in enumerate(rows) if r.get('generated_by')==R.GENERATOR_VERSION)
+    assert own<generated, 'manual native admission must survive regeneration without reordering'
+    assert rows[own].get('generated_by') is None
+    assert rows[own]['state']=='NEVER_SCHEDULED' and rows[own]['scheduler']['kind']=='none'

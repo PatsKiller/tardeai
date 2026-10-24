@@ -100,5 +100,32 @@ source tooltips, two-line descriptions and no horizontal overflow.
 Native hidden-PG affected tests, exact real-tree completeness tests, captured registry/reconciliation/health/retention gates,
 host-path and coverage ratchets, docs index and npm build are recorded in `VALIDATION.json`. Effective psycopg2 refusal is
 verified. The scheduler reconciliation uses the **historical2026-10-09 snapshot** and pinned coordinator discovery, never a fresh
-host census. Historical reconciliation reports195 proposed additions against that old snapshot; it is planning output, not a claim of no current drift. Before/after file hashes prove CHECK did not rewrite source/config/captures. Required GitHub CI and exact-CURRENT
+host census. The CLI reconstructs195 existing generated suffix rows; those events are not195 newly admitted lane IDs. Pure keyed comparison reports0new/0removed/0field-changed lanes; the follow-up corrects only C1 row ordering. This is historical planning output, not a current host census. Before/after file hashes prove CHECK did not rewrite source/config/captures. Required GitHub CI and exact-CURRENT
 runtime/consumer/alert acceptance remain pending publication and operator work.
+
+## PR2074 CI follow-up
+
+b81 local203-test validation did not cover two CI guards. This follow-up centralizes explicit state-root path selection inside
+`portfolio_positions.store_path(root)` and uses its approved `load_store`, without a reader exemption. The lane and planned
+activation row now say CORRELATED with admission/runtime coverage **not proven**, rather than inventing ESTABLISHED evidence.
+The full registered profile also caught C1 being appended after generated rows. Only that row moves677→482 before the suffix;
+every row object, other row order and top-level field is conserved. A dedicated admission-order regression now protects it.
+
+The complete registered native fast profile (same coverage as serial full, jobs2,1403unique files/1438refs/675gates) finished
+exit1 after2117s:686pass/26fail **execution units** out of712, spanning25failed gate names. Case execution summaries, including
+35duplicate file references:25420passed,167failed,57errors,287skipped,2xfailed. These are not unique-test counts. Complete unique
+failed nodeids remain NOT_MEASURED because the native runner truncates failure output. All seven frozen source hashes matched
+at completion. This run was b81 plus the accessor/confidence working-tree fixes **before** the ordering correction; it is not
+a full-green receipt for the final commit.
+
+After the ordering fix, all four requested entire files pass124tests; the whole affected gate union passes234tests in14files.
+Actual CIO reader/copy/race tests pass202 with2existing PG skips. Canonical Ruff PATH and the exact hash-pinned pure classifier
+fixture rerun pass67tests; root's normally reviewed five ephemeral/forkserver nodes pass. Original full failures are retained.
+Remaining socket/dependency/command-fixture failures and blocked genuine production-state attempts remain explicit. In particular,
+private-PG telegram-turn tests all skip under hidden psycopg2 and their gate correctly refuses an all-skipped run; no guard or
+tolerance is weakened. Late immutable-fixture tests fail at socket creation, while git shows the tracked fixture tree clean.
+
+[CI_FOLLOWUP_VALIDATION.json](packets/c1-company-population-20261024/CI_FOLLOWUP_VALIDATION.json) records the distinctions and
+raw receipt hashes. Native admission remains inactive/DRAFT and production acceptance is unmeasured. The coordinator updates
+the existing PR branch; no new PR or agent push is requested. A committed-head affected-gate receipt will be saved outside
+the commit so it can name the actual final SHA without a self-referential file hash.
