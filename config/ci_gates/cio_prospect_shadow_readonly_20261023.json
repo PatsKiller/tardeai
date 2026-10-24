@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_prospect_shadow_readonly_20261023",
+  "files": [
+    "tests/test_cio_prospect_shadow_readonly_20261023.py"
+  ],
+  "anchor": "CIO_PROSPECT_SHADOW_READONLY_20261023",
+  "comment": [
+    "ANCHOR: CIO_PROSPECT_SHADOW_READONLY_20261023 — WP-21 restores the shadow-only lane after extracting the existing injected-query projection cores. The actual AST closure must reach no forbidden broker, order or sender capability, without a new DD01 baseline exception. Query, identity, provenance and strict/fail-soft behavior remain canonical."
+  ]
+}
