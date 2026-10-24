@@ -454,8 +454,6 @@ def apply_synthesis_to_thesis(
         "portfolio_role": synthesis_result.get("portfolio_role") or packet.get("portfolio_role"),
         "financial_truth_refs": list(synthesis_result.get("cited_evidence_ids") or []),
         "result_id": synthesis_result.get("result_id") or packet.get("packet_id"),
-        "review_request_ids": list(packet.get("review_request_ids") or []),
-        "security_guid": packet.get("review_security_guid"),
     }
     review = reconcile_symbol_thesis(
         symbol,

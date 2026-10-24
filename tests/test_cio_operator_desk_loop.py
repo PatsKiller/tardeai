@@ -72,8 +72,7 @@ def test_handle_llm_ask_no_reentry_dump(monkeypatch):
 def test_meta_facts_mention_flash():
     facts = load_runtime_llm_facts()
     reply = format_meta_system_reply(facts)
-    assert "deepseek-flash" in reply
-    assert "call_governed_llm" in reply
+    assert "deepseek-v4-flash" in reply
     assert "READ_ONLY_ADVISORY" in reply
     assert "READY TO REVIEW" not in reply
 
@@ -108,20 +107,11 @@ def test_gather_answers_when_desk_present():
         )
 
 
-def test_handle_does_not_emit_s0_wallpaper(monkeypatch, tmp_path):
-    import scripts.lib.cio_operator_desk_loop as desk
-    import scripts.lib.cio_telegram_converse as tg
-    # A resolvable named subject and an explicitly empty fixture desk exercise
-    # the real missing-data/deferred guard without depending on the host book.
-    monkeypatch.setattr(desk, "_known_symbols", lambda: frozenset({"TSLA"}))
-    monkeypatch.setattr(desk, "PROJECT_ROOT", tmp_path)
-    monkeypatch.setattr(desk, "_attach_subject_dossier", lambda *a: None)
-    monkeypatch.setattr(tg, "load_reentry_desk_rows", lambda: ([], "2026-10-24T16:00:00+00:00", "fixture reentry"))
+def test_handle_does_not_emit_s0_wallpaper(monkeypatch):
     monkeypatch.setenv("CIO_OPERATOR_INTENT_FLASH", "0")
     monkeypatch.setenv("CIO_REENTRY_FLASH", "0")
     out = handle_operator_desk_question(
-        "what can i reenter TSLA now support resistance 50day",
-        dry_run=True,
+        "what can i reenter now support resistance 50day",
         chat_id="1",
         message_id="2",
     )

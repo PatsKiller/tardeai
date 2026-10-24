@@ -48,12 +48,9 @@ def review_state(sym: str) -> dict[str, Any]:
         q = stp.open_requests_ranked()
         reqs = [r for r in stp._rows(stp._root(None).joinpath(*stp.RELPATH)) if str(r.get("symbol") or "").upper() == sym]
         last = max(reqs, key=lambda r: str(r.get("requested_at") or "")) if reqs else None
-        from scripts.lib.cio_review_lifecycle import read
-        lifecycle = read(sym)
-        pending = bool(lifecycle.get("request_id")) and lifecycle.get("status") != "CONFLICT_RESOLVED"
-        return {"lifecycle": lifecycle, "queue_eligible": sym in q, "open": sym in q or pending, "queue_position": (q.index(sym) + 1) if sym in q else None, "queue_length": len(q),
+        return {"open": sym in q, "queue_position": (q.index(sym) + 1) if sym in q else None, "queue_length": len(q),
                 "requested_at": (last or {}).get("requested_at"), "requested_by": (last or {}).get("source"),
-                "next_run": REVIEW_RUN if sym in q else ("Not queue-eligible; saved CIO review remains pending" if pending else REVIEW_RUN)}
+                "next_run": REVIEW_RUN}
     except Exception as e:  # noqa: BLE001
         return {"open": False, "error": type(e).__name__}
 
@@ -67,10 +64,10 @@ def request_review(symbol: str, body: dict | None = None) -> tuple[int, dict[str
     if state.get("open"):
         return 200, {"ok": True, "already_open": True, "symbol": sym, "review": state}
     note = str((body or {}).get("note") or "").strip()[:240]
-    queued = _priority().request(sym, reason=("operator flagged from the opportunity view" + (f": {note}" if note else "")),
+    _priority().request(sym, reason=("operator flagged from the opportunity view" + (f": {note}" if note else "")),
                         source=REVIEW_SOURCE)
     return 200, {"ok": True, "already_open": False, "symbol": sym, "review": review_state(sym),
-                 "authority": "READ_ONLY_ADVISORY", "lifecycle_persist": (queued or {}).get("lifecycle_persist")}
+                 "authority": "READ_ONLY_ADVISORY"}
 
 
 def watch_state(sym: str) -> dict[str, Any]:

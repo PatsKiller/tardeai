@@ -6,7 +6,6 @@ import { useState, type CSSProperties, type ReactNode } from 'react'
 import { useApi } from '../../hooks/useApi'
 import { RADIUS, TOKENS, numStyle } from '../../lib/designTokens'
 import Modal from '../primitives/Modal'
-import CioReviewLifecyclePanel from './CioReviewLifecyclePanel'
 import OpportunityChart, { type ChartLevel } from './OpportunityChart'
 import { big, condLabel, convictionColor, money, num, pct, STANCE_COLOR, typeLabel, vol } from './format'
 
@@ -175,14 +174,13 @@ export default function OpportunityModal({ symbol, onClose }: { symbol: string; 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6, alignItems: 'center' }}>
         {a.conviction != null && <Pill text={`Conviction ${Math.round(a.conviction)}/100`} color={convictionColor(a.conviction)} />}
         {a.rank != null && <Pill text={`Rank #${a.rank}`} color={TOKENS.info} />}
-        {a.stance && <span data-testid="opportunity-assessment-state" title={`Opportunity assessment snapshot as of ${a.as_of || d?.curated_as_of || 'not measured'}`}><Pill text={`Assessment ${String(a.stance).replace('_', '-')}`} color={STANCE_COLOR[a.stance] || TOKENS.neutral} /></span>}
+        {a.stance && <Pill text={String(a.stance).replace('_', '-')} color={STANCE_COLOR[a.stance] || TOKENS.neutral} />}
         <Pill text={typeLabel(a.type)} color={TOKENS.ai} />
         <Pill text={condLabel(a.technical_condition)} color={TOKENS.neutral} />
         {a.cap_band && <Pill text={`${a.cap_band} cap · ${big(a.market_cap_usd)}`} color={TOKENS.neutral} />}
         {(prof.sector || a.sector) && <span style={{ fontSize: 11, color: MUTED }}>{prof.sector || a.sector}{prof.industry ? ` · ${prof.industry}` : ''}</span>}
       </div>
       {d && <ActionBar symbol={symbol} a={a} watch={d.watchlist} review={d.cio_review} onDone={refetch} />}
-      {d && <CioReviewLifecyclePanel review={d.cio_review} assessment={{ ...a, as_of: a.as_of || d.curated_as_of }} />}
     </div>
   )
 
@@ -335,7 +333,7 @@ export default function OpportunityModal({ symbol, onClose }: { symbol: string; 
               ) : (
                 <div style={{ fontSize: 12, color: TEXT, lineHeight: 1.45 }} data-testid="opportunity-cio-memory">
                   <div style={{ marginBottom: 6 }}>
-                    <b style={{ color: TEXT2 }}>Opportunity assessment snapshot:</b> {a.stance ? `${String(a.stance).replace('_', '-')} — ` : ''}{a.stance_rationale || 'assessed, no stance rationale recorded'}
+                    <b style={{ color: TEXT2 }}>CIO memory:</b> {a.stance ? `${String(a.stance).replace('_', '-')} — ` : ''}{a.stance_rationale || 'assessed, no stance rationale recorded'}
                   </div>
                   {a.conviction != null && (
                     <div style={{ color: TEXT2, marginBottom: 6 }}>
@@ -345,8 +343,8 @@ export default function OpportunityModal({ symbol, onClose }: { symbol: string; 
                   )}
                   <div style={{ fontSize: 11, color: d.cio_review?.open ? TOKENS.warning : MUTED }}>
                     {d.cio_review?.open
-                      ? `Thesis detail not included in this response — review queued${d.cio_review.queue_position ? ` (#${d.cio_review.queue_position} of ${d.cio_review.queue_length})` : ''}${d.cio_review.requested_by === 'cio_opportunity_curator' ? ' automatically for a top-ranked name' : ''} · ${d.cio_review.next_run}.`
-                      : `Thesis detail not included in this response. See the saved CIO review outcome above or request a review.`}
+                      ? `No CIO research thesis yet — review queued${d.cio_review.queue_position ? ` (#${d.cio_review.queue_position} of ${d.cio_review.queue_length})` : ''}${d.cio_review.requested_by === 'cio_opportunity_curator' ? ' automatically for a top-ranked name' : ''} · ${d.cio_review.next_run}.`
+                      : `No CIO research thesis yet. Use ⚑ Request CIO review above to queue one.`}
                   </div>
                 </div>
               )}
@@ -354,7 +352,7 @@ export default function OpportunityModal({ symbol, onClose }: { symbol: string; 
           </div>
 
           <div style={{ fontSize: 10, color: MUTED, display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-            <span>{d.assessment_source === 'cio_memory' ? `Opportunity assessment snapshot ${d.curated_as_of ? new Date(d.curated_as_of).toLocaleString() : ''}` : 'Not yet curated — assessed on demand'}{(d.history || []).length ? ` · ${d.history.length} assessment versions` : ''}</span>
+            <span>{d.assessment_source === 'cio_memory' ? `Curated in CIO memory ${d.curated_as_of ? new Date(d.curated_as_of).toLocaleString() : ''}` : 'Not yet curated — assessed on demand'}{(d.history || []).length ? ` · ${d.history.length} assessment versions` : ''}</span>
             <span>Read-only analysis · levels are references, not orders</span>
           </div>
         </div>

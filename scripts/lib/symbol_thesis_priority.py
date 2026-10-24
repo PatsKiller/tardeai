@@ -36,13 +36,7 @@ def _rows(path: Path) -> list[dict[str, Any]]:
                 out.append(row)
     except OSError:
         pass
-    # Fold append-only consumer receipts into one logical new request ID;
-    # legacy rows keep their historical representation and attribution.
-    indexed, legacy = {}, []
-    for row in out:
-        if row.get("request_id"): indexed[row["request_id"]] = row
-        else: legacy.append(row)
-    return legacy + list(indexed.values())
+    return out
 
 
 def request(symbol: str, *, reason: str, source: str, root: Any = None,
@@ -50,20 +44,10 @@ def request(symbol: str, *, reason: str, source: str, root: Any = None,
     now = now or datetime.now(timezone.utc)
     row = {"schema": "SymbolThesisPriorityRequest@v1", "symbol": str(symbol).upper(), "reason": reason[:300],
            "source": source, "requested_at": now.isoformat(), "authority": "READ_ONLY_ADVISORY"}
-    from scripts.lib.cio_review_lifecycle import request_id, identity, safe_observe
-    row.update(request_id=request_id(row["symbol"], source, row["requested_at"]), **identity(row["symbol"], root))
     path = _root(root).joinpath(*RELPATH)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(row, sort_keys=True) + "\n")
-    # Enqueue must exist before CIO/memory can claim REQUESTED. A queue failure
-    # propagates to the operator and cannot leave a fictitious canonical request.
-    row["lifecycle_persist"] = safe_observe(row, "REQUESTED", root=_root(root), at=row["requested_at"], reason=reason)
-    try:
-        with path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps({**row, "event": "REVIEW_LIFECYCLE_RECEIPT"}, sort_keys=True) + "\n")
-    except OSError as exc:
-        row["lifecycle_receipt_error"] = type(exc).__name__
     return row
 
 
@@ -77,7 +61,7 @@ def open_requests(root: Any = None, *, now: Optional[datetime] = None, ttl_days:
         if not sym or not at:
             continue
         try:
-            if datetime.fromisoformat(at) < now - timedelta(days=ttl_days) and not r.get("request_id"):
+            if datetime.fromisoformat(at) < now - timedelta(days=ttl_days):
                 continue
         except ValueError:
             continue
@@ -90,24 +74,7 @@ def open_requests(root: Any = None, *, now: Optional[datetime] = None, ttl_days:
         sym = str(r.get("symbol") or "").upper()
         if sym in first and r.get("status") in DONE:
             done_at[sym] = max(done_at.get(sym, ""), str(r.get("as_of") or ""))
-    pending = []
-    all_requests = _rows(base.joinpath(*RELPATH))
-    ledger = _rows(base.joinpath(*LEDGER_RELPATH))
-    for sym, at in sorted(first.items(), key=lambda kv: kv[1]):
-        current = [r for r in all_requests if str(r.get("symbol") or "").upper() == sym and str(r.get("requested_at") or "") >= at]
-        causal = [r for r in current if r.get("request_id")]
-        if causal:
-            ids = {r["request_id"] for r in causal}
-            done_ids = {r.get("review_request_id") for r in ledger if r.get("status") in DONE and str(r.get("symbol") or "").upper() == sym}
-            from scripts.lib.cio_review_lifecycle import read
-            for request in causal:
-                saved = read(sym, root=base, security_guid=request.get("security_guid"))
-                if saved.get("request_id") == request["request_id"] and saved.get("status") == "CONFLICT_RESOLVED":
-                    done_ids.add(request["request_id"])
-            if ids - done_ids: pending.append(sym)
-        elif done_at.get(sym, "") < at:
-            pending.append(sym)
-    return pending
+    return [s for s, at in sorted(first.items(), key=lambda kv: kv[1]) if done_at.get(s, "") < at]
 
 
 # Who asked, in serving order (operator 2026-10-09): a name the operator flags from the opportunity view first, then
@@ -131,8 +98,3 @@ def open_requests_ranked(root: Any = None, *, now: Optional[datetime] = None, tt
     pos = {s: i for i, s in enumerate(syms)}
     return sorted(syms, key=lambda s: (best.get(s, len(SOURCE_ORDER)), pos[s]))
 
-
-
-def latest_request(symbol: str, root=None) -> dict:
-    reqs = [r for r in _rows(_root(root).joinpath(*RELPATH)) if str(r.get("symbol") or "").upper() == symbol.upper()]
-    return max(reqs, key=lambda r: r.get("requested_at") or "") if reqs else {}

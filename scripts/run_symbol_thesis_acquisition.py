@@ -349,7 +349,6 @@ def run_one(
     skip_publish: bool,
     enqueue_refresh: bool,
     llm_budget_left: list[int],
-    review_request: dict | None = None,
 ) -> dict[str, Any]:
     # COGX W1 shadow: memory context around thesis acquisition (receipt only)
     _ic_ctx = None
@@ -375,7 +374,6 @@ def run_one(
             enqueue_refresh=enqueue_refresh,
             llm_budget_left=llm_budget_left,
             conn=conn,
-            review_request=review_request,
         )
         try:
             if _ic_ctx and isinstance(_res, dict):
@@ -400,7 +398,6 @@ def _run_one_impl(
     enqueue_refresh: bool,
     llm_budget_left: list[int],
     conn=None,
-    review_request: dict | None = None,
 ) -> dict[str, Any]:
     fields = thesis_fields_for_symbol(sym, root=root)
     memberships = list(fields.get("memberships") or [])
@@ -484,9 +481,6 @@ def _run_one_impl(
         thesis_fields=fields,
         portfolio_role=role,
     )
-    if review_request:
-        packet["review_request_ids"] = [review_request.get("request_id")]
-        packet["review_security_guid"] = review_request.get("security_guid")
     gate = packet.get("gate")
     out["gate"] = gate
     out["sufficiency"] = (final_catalog.get("sufficiency") or {})
@@ -556,14 +550,11 @@ def _run_one_impl(
         "classification": (review.get("review") or {}).get("classification"),
         "version_published": (review.get("review") or {}).get("version_published"),
         "new_version": (review.get("review") or {}).get("new_version"),
-        "thesis_id": (review.get("review") or {}).get("thesis_id"),
     }
     if review.get("ok") and (review.get("review") or {}).get("version_published"):
         out["status"] = "PUBLISHED"
-    elif review.get("ok") and (review.get("review") or {}).get("classification") == "NO_MATERIAL_CHANGE":
-        out["status"] = "SYNTHESIZED_NO_MATERIAL_CHANGE"
     else:
-        out["status"] = "RECONCILIATION_PENDING"
+        out["status"] = "SYNTHESIZED_NO_MATERIAL_CHANGE"
     return out
 
 
@@ -581,9 +572,6 @@ def run(
     skip_publish: bool = False,
     enqueue_refresh: bool = False,
 ) -> dict[str, Any]:
-    if apply:
-        from scripts.lib.cio_review_lifecycle import refresh_pending
-        refresh_pending(root, apply=True)
     if symbols:
         queue = [{"symbol": s.upper(), "_priority": "MANUAL"} for s in symbols]
     else:
@@ -611,11 +599,6 @@ def run(
         if skip:
             results.append({"symbol": sym, "status": "BACKOFF_BLOCKED", "note": skip, "authority": AUTHORITY})
             continue
-        from scripts.lib.symbol_thesis_priority import latest_request
-        from scripts.lib.cio_review_lifecycle import safe_observe, observe_cio_readback
-        request = latest_request(sym, root) if row.get("_priority") == "REQUESTED" else {}
-        if apply and request:
-            safe_observe(request, "RESEARCHING", root=root, reason="Governed acquisition started")
         rec = run_one(
             sym,
             root=root,
@@ -626,26 +609,7 @@ def run(
             skip_publish=skip_publish,
             enqueue_refresh=enqueue_refresh,
             llm_budget_left=llm_budget,
-            review_request=request,
         )
-        if request:
-            rec["review_request_id"] = request.get("request_id")
-        if apply and request:
-            rec["completed_at"] = _now()
-            status = rec.get("status")
-            stage = "ANSWERED_PENDING_CIO" if status in ("PUBLISHED", "SYNTHESIZED_NO_MATERIAL_CHANGE", "SYNTHESIZED_NOT_PUBLISHED") else (
-                "FAILED" if "FAILED" in str(status) else "BLOCKED")
-            review = rec.get("review") or {}
-            rec["lifecycle_persist"] = safe_observe(request, stage, root=root, at=rec.get("completed_at"),
-                publication={"published_version": review.get("new_version"), "thesis_id": review.get("thesis_id")} if status == "PUBLISHED" else None,
-                reason=f"Acquisition {status}; draft stance is not authoritative", evidence_refs=[x for x in
-                    (review.get("thesis_id"), review.get("new_version")) if x])
-            if status == "PUBLISHED":
-                try:
-                    rec["cio_readback"] = observe_cio_readback({**request, "review_request_id": request.get("request_id"),
-                        "published_version": review.get("new_version"), "thesis_id": review.get("thesis_id")}, root=root, apply=True)
-                except Exception as exc:
-                    rec["cio_readback"] = {"ok": False, "reason": f"readback_failed:{type(exc).__name__}"}
         if apply:
             _append_ledger(root, rec)
         results.append(rec)
