@@ -1024,6 +1024,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261023-push-policy-v2.md` | DSN-20261023-push-policy-v2.md |
 | `docs/designs/DSN-20261023-server-memory.md` | DSN-20261023-server-memory.md |
 | `docs/designs/DSN-20261023-work-pipeline.md` | DSN-20261023-work-pipeline.md |
+| `docs/designs/DSN-20261024-doc-index-pr-flow.md` | DSN-20261024-doc-index-pr-flow.md |
 | `docs/designs/DSN-20261024-ops-config-modals.md` | DSN-20261024-ops-config-modals.md |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
@@ -1920,6 +1921,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_WAVE3D_HOP_2026-08-29.md` | Wave 3D — the one live hop, executed (2026-08-29) |
 | `docs/ops/CIO_WAVE3E_2026-08-29.md` | CIO Wave 3E — notification decisions on the Command Center (2026-08-29) |
 | `docs/ops/CI_FAST_CORE_20260925.md` | CI fast core, risk tiers and digest-free evidence (2026-09-25) |
+| `docs/ops/CLAIM_MERGE_PATHS_20261024.md` | WP-02 follow-up: merge-aware claim precommit scope |
 | `docs/ops/CLOSE_OPERATOR_GAPS_TO_100_2026-08-19.md` | Close remaining operator gaps to 100% |
 | `docs/ops/COGNITIVE_MEMORY_PRODUCTION_RUNBOOK.md` | Cognitive memory in production: runbook |
 | `docs/ops/COGX_WAVE1_APPROVAL_PACKAGE_2026-09-27.md` | COGX Wave 1 approval package — pkg-20260927-cogx-w1-d9e1 |
@@ -1941,6 +1943,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DESK_TRUTH_MONITORS.md` | Desk truth monitors and the options quote refresh — n8n first |
 | `docs/ops/DIRECTIVE_WATCH_FLAG_2026-10-22.md` | `in_directive_watch` fixed at the source (2026-10-22) |
 | `docs/ops/DISK_HYGIENE_ENFORCER_2026-09-10.md` | Disk hygiene enforcer (2026-09-10) |
+| `docs/ops/DOC_INDEX_PR_FLOW_20261024.md` | WP-02 documentation-index conflict correction and proposed PR flow |
 | `docs/ops/DRIVE_ARCHIVE_2026-09-01.md` | Drive archive — 2026-09-01 |
 | `docs/ops/DRIVE_MUTATION_SAFETY.md` | Drive mutation safety (gog v0.12.x) |
 | `docs/ops/ENRICHMENT_COVERAGE_AUDIT_2026-10-22.md` | Enrichment-coverage audit — rescoped to the curated Watch (2026-10-22) |
@@ -2026,6 +2029,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/R23_ADMIN_OBSERVABILITY_CLOSEOUT.md` | R23 Research, Data, Identity, and Notification Observability |
 | `docs/ops/R24_LEARNING_MATURITY_AUDIT_CLOSEOUT.md` | R24 Learning, Maturity, and Audit Closeout |
 | `docs/ops/R9_2_PORTFOLIO_BRAIN_LIVE_CLOSEOUT_2026-08-23.md` | Trade AI v12 R9.2 - Portfolio Brain Live Closeout |
+| `docs/ops/REGISTRY_RECONCILE_SEMANTIC_AUDIT_20261024.md` | Registry reconciliation: frozen-input audit and unresolved live-input diff |
 | `docs/ops/RELEASES_SCHEDULES_PAGE.md` | Releases & schedules — Command Center page and read model |
 | `docs/ops/RELEASE_TRAIN_API.md` | Release train: read-only Command Center API (Phase 1) |
 | `docs/ops/RELEASE_TRAIN_GITHUB_APP.md` | Release train GitHub App: operator setup (decision D2) |
@@ -2159,6 +2163,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/cron-effect-claim-wrap-20261016/README.md` | Cron effect-claim wrap 2026-10-16: the cron copy refuses itself when n8n owns the lane |
 | `docs/ops/packets/cutover-fail-closed-txn-20261016/README.md` | Cutover fail-closed + controller transactions (2026-10-16) |
 | `docs/ops/packets/disk-hygiene-n8n-20261018/README.md` | Disk hygiene + disk-usage monitor on n8n (PR #1863) |
+| `docs/ops/packets/doc-index-pr-flow-20261024/REVIEW.md` | Proposed documentation-index PR flow |
 | `docs/ops/packets/hermes-learning-cutover-20261015/README.md` | hermes-learning on the n8n fabric: cutover packet (learn stage) |
 | `docs/ops/packets/hermes-scorer-canary-20261021/README.md` | hermes-watchlist-scorer: n8n canary → cutover, 2026-10-21 (operator packet) |
 | `docs/ops/packets/hermes-worker-pool-wire-20261015/README.md` | hermes-research-worker-pool — real lane runners + fail closed on zero output (2026-10-15) |
@@ -2187,6 +2192,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/open-stack-triage-20261023/README.md` | WP-33 item 5: open stack triage evidence |
 | `docs/ops/packets/push-policy-v2-20261023-wp14/DESIGN.md` | WP-14: rebuilt push-policy-v2 operator package |
 | `docs/ops/packets/push-policy-v2-20261023-wp14/PR_BODY.md` | WP-14 operator-only push-policy proposal |
+| `docs/ops/packets/registry-reconcile-audit-20261024/OPERATOR_CAPTURE.md` | Operator-only capture of the missing reconciliation inputs |
+| `docs/ops/packets/registry-reconcile-audit-20261024/README.md` | Registry reconciliation evidence packet |
 | `docs/ops/packets/registry-runtime-truth-20261018/README.md` | Registry / runtime truth — packet (review 2026-10-18, built 2026-10-19) |
 | `docs/ops/packets/release-train-20261021/README.md` | Release train: merge when green, release main in the 12:00 and 17:30 windows |
 | `docs/ops/packets/release-train-arming-20261021/README.md` | Release Train v2: arming packet for phases 5–7 (shadow, 18:00 canary, expand) |

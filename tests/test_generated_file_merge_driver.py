@@ -14,9 +14,9 @@ Any two concurrent PRs therefore conflicted BY CONSTRUCTION, whatever they
 changed. Four resolutions that day were all this; none was a disagreement about
 code. Resolving them four times fixed the effect, not the cause.
 
-Line-merging them is not merely noisy, it is WRONG: a hand-merged digest is a
-hash that matches nothing, and a line-merged index describes neither tree. The
-only correct resolution is to recompute over the merged tree.
+Hand-merging a digest is wrong: it can match neither tree. Local Git's union
+driver can preserve path/title index rows, which the checker validates, but it
+does not guarantee GitHub mergeability. Recompute over the integrated tree.
 
 These tests run a REAL git merge in a temp repo — two branches that both edit a
 generated file — and assert the mechanism resolves it. Asserting that
@@ -161,3 +161,180 @@ def test_the_driver_never_repairs_by_deleting():
     src = (ROOT / "scripts" / "git_merge_regenerate.sh").read_text(encoding="utf-8")
     for banned in ("rm -", "git checkout --theirs", "git reset --hard"):
         assert banned not in src, f"merge driver must not {banned!r}"
+
+
+# Proposal only: no active gate, policy, hook or train behavior changes here.
+def _projection_module():
+    import importlib.util
+
+    path = ROOT / "docs/ops/packets/doc-index-pr-flow-20261024/project_index.py"
+    spec = importlib.util.spec_from_file_location("proposed_docs_index_projection", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+@pytest.fixture
+def projection_repo(tmp_path):
+    r = tmp_path / "projection"
+    r.mkdir()
+    _git("init", "-q", "-b", "main", cwd=r)
+    _git("config", "user.email", "t@t", cwd=r)
+    _git("config", "user.name", "t", cwd=r)
+    (r / "scripts").mkdir()
+    (r / "scripts/report_docs_inventory.py").write_bytes((ROOT / "scripts/report_docs_inventory.py").read_bytes())
+    (r / "docs").mkdir()
+    # Explicit text merge: this proof must not depend on union being honored.
+    (r / ".gitattributes").write_text("docs/INDEX.md merge=text\n")
+    (r / "docs/a.md").write_text("# Alpha\nStatus: ACTIVE\n")
+    (r / "docs/z.md").write_text("# Zed\n")  # existing header debt stays measured
+    mod = _projection_module()
+    gen = mod.generator(r)
+    entries = [
+        {"path": "docs/a.md", "filename": "a.md", "ext": ".md", "title": "Alpha"},
+        {"path": "docs/z.md", "filename": "z.md", "ext": ".md", "title": "Zed"},
+    ]
+    (r / "docs/INDEX.md").write_text(gen.render_index_md(entries, {}))
+    _git("add", ".gitattributes", "scripts", "docs", cwd=r)
+    _git("commit", "-qm", "base", cwd=r)
+    base = _git("rev-parse", "HEAD", cwd=r).stdout.strip()
+    return r, mod, base
+
+
+def _add_projection_doc(r, filename="m1.md", title="Em one"):
+    (r / "docs" / filename).write_text(f"# {title}\nStatus: PROPOSED\n")
+    _git("add", "docs/" + filename, cwd=r)
+    _git("commit", "-qm", "add source doc only", cwd=r)
+    return _git("rev-parse", "HEAD", cwd=r).stdout.strip()
+
+
+def test_proposed_source_only_siblings_merge_and_batch_index_covers_both(projection_repo):
+    r, mod, base = projection_repo
+    before = (r / "docs/INDEX.md").read_bytes()
+    for branch, name in (("pr1", "m1.md"), ("pr2", "m2.md")):
+        _git("checkout", "-qb", branch, base, cwd=r)
+        head = _add_projection_doc(r, name, branch)
+        text, receipt = mod.build_projection(r, base, head)
+        assert receipt["markdown_total"] == 3
+        assert receipt["missing_header"] == 1
+        assert receipt["committed_index_current"] is False
+        assert (r / "docs/INDEX.md").read_bytes() == before
+        mod.validate_projection(r, receipt, text)
+    _git("checkout", "-q", "pr1", cwd=r)
+    assert _git("merge", "--no-edit", "pr2", cwd=r).returncode == 0
+    head = _git("rev-parse", "HEAD", cwd=r).stdout.strip()
+    text, receipt = mod.build_projection(r, base, head)
+    assert receipt["markdown_total"] == 4
+    assert all(f"`docs/{n}.md`" in text for n in ("a", "m1", "m2", "z"))
+    assert not _git("status", "--porcelain", cwd=r).stdout
+    # Coordinator-only future batch step, demonstrated solely in this toy repo.
+    (r / "docs/INDEX.md").write_text(text)
+    checked = subprocess.run([sys.executable, "scripts/report_docs_inventory.py", "--check-index"],
+                             cwd=r, capture_output=True, text=True, timeout=60)
+    assert checked.returncode == 0, checked.stdout + checked.stderr
+
+
+def test_index_editing_siblings_conflict_under_plain_text_merge(projection_repo):
+    r, mod, base = projection_repo
+    for branch, name in (("pr1", "m1.md"), ("pr2", "m2.md")):
+        _git("checkout", "-qb", branch, base, cwd=r)
+        head = _add_projection_doc(r, name, branch)
+        inventory, _ = mod.snapshot(r, head, mod.generator(r))
+        (r / "docs/INDEX.md").write_text(mod.generator(r).render_index_md(inventory, {}))
+        _git("add", "docs/INDEX.md", cwd=r)
+        _git("commit", "-qm", "per-PR index", cwd=r)
+    _git("checkout", "-q", "pr1", cwd=r)
+    merged = _git("merge", "--no-edit", "pr2", cwd=r, check=False)
+    assert merged.returncode != 0
+    assert "docs/INDEX.md" in _git("diff", "--name-only", "--diff-filter=U", cwd=r).stdout
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda t: t.replace("| `docs/a.md` | Alpha |\n", ""),
+    lambda t: t + "| `docs/gone.md` | Gone |\n",
+    lambda t: t.replace("| Alpha |", "| Wrong |"),
+    lambda t: t + "| `docs/a.md` | Alpha |\n",
+    lambda t: t + "junk\n",
+    lambda t: t.replace("# Docs Index", "# Wrong preamble"),
+])
+def test_proposed_projection_rejects_invalid_baseline_and_tampered_artifact(projection_repo, mutation):
+    r, mod, base = projection_repo
+    head = _add_projection_doc(r)
+    text, receipt = mod.build_projection(r, base, head)
+    with pytest.raises(mod.ProjectionRefused, match="identity/content"):
+        mod.validate_projection(r, receipt, mutation(text))
+    _git("checkout", "-qb", "invalid-baseline", base, cwd=r)
+    index = r / "docs/INDEX.md"
+    index.write_text(mutation(index.read_text()))
+    _git("add", "docs/INDEX.md", cwd=r)
+    _git("commit", "-qm", "invalid baseline control", cwd=r)
+    invalid = _git("rev-parse", "HEAD", cwd=r).stdout.strip()
+    head = _add_projection_doc(r)
+    with pytest.raises(mod.ProjectionRefused, match="invalid base index"):
+        mod.build_projection(r, invalid, head)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("head_tree", "0" * 40), ("index_sha256", "0" * 64),
+    ("markdown_total", 0), ("missing_header", 0), ("source_digest", "0" * 64),
+    ("rollout", "ACTIVE"), ("authority", "RELEASE_ALLOWED"),
+])
+def test_proposed_receipt_never_authorizes_or_hides_identity_drift(projection_repo, field, value):
+    r, mod, base = projection_repo
+    head = _add_projection_doc(r)
+    text, receipt = mod.build_projection(r, base, head)
+    receipt[field] = value
+    with pytest.raises(mod.ProjectionRefused, match="identity/content"):
+        mod.validate_projection(r, receipt, text)
+
+
+def test_proposed_projection_rejects_wrong_head_and_nonancestor(projection_repo):
+    r, mod, base = projection_repo
+    head = _add_projection_doc(r)
+    with pytest.raises(mod.ProjectionRefused, match="head identity"):
+        mod.build_projection(r, base, base)
+    with pytest.raises(mod.ProjectionRefused, match="full base/head"):
+        mod.build_projection(r, base[:12], head)
+    _git("checkout", "-qb", "sibling", base, cwd=r)
+    sibling = _add_projection_doc(r, "sibling.md")
+    with pytest.raises(mod.ProjectionRefused, match="git read failed"):
+        mod.build_projection(r, head, sibling)
+
+
+@pytest.mark.parametrize("boundary", ["tracked-dirty", "untracked-doc", "index-edit", "symlink"])
+def test_proposed_projection_fails_closed_at_source_boundaries(projection_repo, boundary):
+    r, mod, base = projection_repo
+    head = _add_projection_doc(r)
+    if boundary == "tracked-dirty":
+        (r / "docs/a.md").write_text("# Uncommitted\n")
+    elif boundary == "untracked-doc":
+        (r / "docs/not-staged.md").write_text("# Invisible doc\n")
+    elif boundary == "index-edit":
+        index = r / "docs/INDEX.md"
+        index.write_text(index.read_text() + "\n")
+        _git("add", "docs/INDEX.md", cwd=r)
+        _git("commit", "-qm", "index edit", cwd=r)
+        head = _git("rev-parse", "HEAD", cwd=r).stdout.strip()
+    else:
+        (r / "docs/linked.md").symlink_to("a.md")
+        _git("add", "docs/linked.md", cwd=r)
+        _git("commit", "-qm", "symlink control", cwd=r)
+        head = _git("rev-parse", "HEAD", cwd=r).stdout.strip()
+    with pytest.raises(mod.ProjectionRefused):
+        mod.build_projection(r, base, head)
+
+
+def test_proposed_projection_cli_only_emits_outside_clean_checkout(projection_repo, tmp_path):
+    r, _mod, base = projection_repo
+    head = _add_projection_doc(r)
+    script = ROOT / "docs/ops/packets/doc-index-pr-flow-20261024/project_index.py"
+    args = [sys.executable, str(script), "--root", str(r), "--base", base, "--head", head, "--out"]
+    out = tmp_path / "artifact"
+    run = subprocess.run([*args, str(out)], capture_output=True, text=True, timeout=60)
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert (out / "INDEX.md").is_file() and (out / "receipt.json").is_file()
+    assert not _git("status", "--porcelain", cwd=r).stdout
+    refused = subprocess.run([*args, str(r / "artifact")], capture_output=True, text=True, timeout=60)
+    assert refused.returncode == 2
+    assert "output must be outside" in refused.stdout
+    assert not (r / "artifact").exists()
