@@ -30,6 +30,8 @@ attempt 2) also reproduced the failure. An aggregate-only rerun already passed.
   own directory; manifests cannot silently overwrite one another.
 - The aggregate's timing upload has a separate name with its attempt, and never
   matches the raw download glob.
+- The integrity evidence upload is attempt-specific too: immutable artifact v4
+  uploads cannot conflict with evidence left by an earlier failed integrity job.
 - Each GitHub-produced manifest records `run_id` and integer `run_attempt`.
   The consumer selects the numerically latest attempt **per shard** from the
   current run, including earlier successful shards GitHub did not rerun.
@@ -43,9 +45,10 @@ attempt 2) also reproduced the failure. An aggregate-only rerun already passed.
 
 ## Verification
 
-The final focused workflow/shard suites passed **101 tests**, including two
-additional malformed-schema cases. The broader CI-tooling regression passed
-**259 tests** in 54.73 seconds; the gate-registry suite passed another **25**:
+The focused workflow/shard suites passed **101 tests**, including two
+additional malformed-schema cases. The combined CI-tooling and registry
+regression passed **286 tests**; the command below plus
+`tests/test_ci_gates_registry_20261021.py` exercises that complete selection:
 
 ```bash
 python -m pytest -q -p no:cacheprovider \

@@ -398,7 +398,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cio-hardening-evidence
+          name: cio-hardening-evidence-attempt-${{ github.run_attempt }}
           path: |
             docs/investment-office/RELEASE_MANIFEST.md
             docs/investment-office/RELEASE_MANIFEST.json

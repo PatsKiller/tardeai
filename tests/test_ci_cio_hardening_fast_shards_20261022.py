@@ -167,6 +167,12 @@ def test_raw_attempt_artifacts_cannot_include_aggregate_copies_or_overwrite_each
     timings = next(s for s in AGG["steps"] if s.get("uses", "").startswith("actions/upload-artifact"))
     assert "${{ github.run_attempt }}" in timings["with"]["name"]
     assert not fnmatch.fnmatchcase(timings["with"]["name"], dl["with"]["pattern"])
+    # An integrity-job rerun also uploads evidence after failure; a static v4 name
+    # conflicts with its immutable first-attempt artifact and fails the job again.
+    for job in JOBS.values():
+        for step in job["steps"]:
+            if step.get("uses", "").startswith("actions/upload-artifact"):
+                assert "${{ github.run_attempt }}" in step["with"]["name"]
 
 
 def test_shard_producer_stamps_the_run_and_numeric_attempt(tmp_path, monkeypatch):
@@ -321,7 +327,7 @@ def test_every_rail_of_the_single_job_still_runs_exactly_once():
     for smoke in SMOKES:
         assert names.count(smoke) == 1, smoke
     ev = next(s for s in integ if s.get("name") == "Upload CIO CI evidence")
-    assert ev["with"]["name"] == "cio-hardening-evidence" and ev["if"] == "always()"
+    assert ev["with"]["name"] == "cio-hardening-evidence-attempt-${{ github.run_attempt }}" and ev["if"] == "always()"
     # everything the sharded workflow's integrity job runs, cio-integrity runs too
     for s in SHARD["jobs"]["integrity"]["steps"]:
         if "run" in s and "pip install" not in s["run"]:
