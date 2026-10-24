@@ -22,6 +22,7 @@ import importlib.util
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -170,30 +171,80 @@ def _clean_env(tmp_path: Path) -> dict:
     return env
 
 
+def _offline_fixture(tmp_path: Path, script: str) -> tuple[Path, Path]:
+    # __file__-derived logs/data and cwd-relative paths must all belong to this test,
+    # rather than a shared checkout where unrelated CI receipts are still arriving.
+    code = tmp_path / "code"
+    entry = code / script
+    entry.parent.mkdir(parents=True)
+    shutil.copy2(ROOT / script, entry)
+    for name in ("logs", "data", "state", "tmp", "home", "flock-logs"):
+        (code / name).mkdir()
+    (code / "logs" / "existing.log").write_text("fixture log\n")
+    # Child interpreters do not inherit pytest's in-process network guards.
+    (code / "sitecustomize.py").write_text(
+        "import sys\n"
+        "def offline_only(event, args):\n"
+        "    if event in ('socket.connect', 'socket.getaddrinfo', 'subprocess.Popen', 'os.system'):\n"
+        "        raise RuntimeError('offline dry-run fixture forbids network and child execution')\n"
+        "sys.addaudithook(offline_only)\n"
+    )
+    return code, entry
+
+
+def _fixture_snapshot(root: Path) -> dict:
+    return {
+        str(p.relative_to(root)): (p.is_dir(), p.stat().st_mtime_ns, None if p.is_dir() else p.read_bytes())
+        for p in (root, *root.rglob("*"))
+    }
+
+
+def _assert_offline_no_writes(code: Path, entry: Path, extra: list[str]) -> None:
+    # Keep only runtime basics and the test's explicit paths: no inherited provider,
+    # DB, auth or production-root configuration, and no existing home credentials.
+    env = {k: v for k, v in os.environ.items() if k in ("PATH", "LANG", "LC_ALL", "TZ")}
+    env.update(_clean_env(code))
+    env = {k: v for k, v in env.items() if k in (
+        "PATH", "LANG", "LC_ALL", "TZ", "TRADEAI_STATE_ROOT", "SAFE_FLOCK_LOG_DIR",
+        "TRADEAI_VENV_PYTHON", "TRADEAI_N8N_EXECUTOR_WORKERS", "PYTHONDONTWRITEBYTECODE",
+    )}
+    env.update(HOME=str(code / "home"), TMPDIR=str(code / "tmp"), PYTHONPATH=str(code),
+               TRADE_AI_PROJECT_ROOT=str(code), TRADE_AI_CI="1")
+    before = _fixture_snapshot(code)
+    r = subprocess.run(
+        [sys.executable, str(entry), *extra, "--dry-run"], cwd=code, env=env,
+        capture_output=True, text=True, timeout=120,
+    )
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "DRY-RUN" in r.stdout
+    assert _fixture_snapshot(code) == before, "dry-run modified its isolated fixture"
+    assert list((code / "state").rglob("*")) == []
+
+
 @pytest.mark.parametrize("lane", HERMETIC)
 def test_offline_dry_run_writes_nothing(tmp_path, lane):
     _ln, _k, script, _l, _o = WAVE[lane]
-    (tmp_path / "state").mkdir()
-    logs_before = {p.name: p.stat().st_mtime for p in (ROOT / "logs").glob("*")} if (ROOT / "logs").is_dir() else {}
-    # --dry-run wins over every live switch the cron line carries
+    code, entry = _offline_fixture(tmp_path, script)
+    # --dry-run wins over every live switch the cron line carries.
     extra = {
         "incubator-rolloff-engine": ["--apply"],
         "goal-gate-bridge": ["--write-measurements"],
         "opening-intelligence-render": ["--persist", "--render"],
     }.get(lane, [])
-    r = subprocess.run(
-        [sys.executable, script, *extra, "--dry-run"],
-        cwd=ROOT,
-        env=_clean_env(tmp_path),
-        capture_output=True,
-        text=True,
-        timeout=120,
+    _assert_offline_no_writes(code, entry, extra)
+
+
+@pytest.mark.parametrize("relative", ["logs/new.log", "logs/existing.log", "tmp/new.tmp", "state/receipt.json"])
+def test_offline_fixture_detects_log_temp_and_state_writes(tmp_path, relative):
+    code, entry = _offline_fixture(tmp_path, WAVE["pattern-extractor"][2])
+    # Mutation control: an exit-zero DRY-RUN that writes must still fail the proof.
+    entry.write_text(
+        "from pathlib import Path\n"
+        f"(Path(__file__).resolve().parents[1] / {relative!r}).write_text('unexpected write')\n"
+        "print('DRY-RUN mutation control')\n"
     )
-    assert r.returncode == 0, r.stdout + r.stderr
-    assert "DRY-RUN" in r.stdout
-    assert list((tmp_path / "state").rglob("*")) == []
-    logs_after = {p.name: p.stat().st_mtime for p in (ROOT / "logs").glob("*")} if (ROOT / "logs").is_dir() else {}
-    assert logs_after == logs_before
+    with pytest.raises(AssertionError, match="modified its isolated fixture"):
+        _assert_offline_no_writes(code, entry, [])
 
 
 def test_real_executor_clamps_a_live_request_to_the_offline_dry_run(tmp_path, monkeypatch):
