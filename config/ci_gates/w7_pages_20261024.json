@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "w7_pages_20261024",
+  "files": [
+    "tests/test_w7_pages_20261024.py"
+  ],
+  "anchor": "W7_PAGES_20261024",
+  "comment": [
+    "ANCHOR: W7_PAGES_20261024; W7 current-basis look-through, immutable CIO fields and duplicate-removal regressions."
+  ]
+}
