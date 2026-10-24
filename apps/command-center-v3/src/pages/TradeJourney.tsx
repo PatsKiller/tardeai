@@ -13,15 +13,17 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle, numStyle, toneVars, type Tone } from '../lib/designTokens'
 import {
-  API_LIST, EXIT_TONE, FILTERS, TIMELINE_LABEL, TOOLTIPS, alertIntel, apiDetail, chartGeom, conditionsMet, drawers,
-  etShort, exitText, filterCounts, filterJourneys, originBadge, pct, plText, plTone, px, spreadLabels, stopSegments, timelineTone, unwrap,
+  API_LIST, EXIT_TONE, FILTERS, TIMELINE_LABEL, TOOLTIPS, alertIntel, apiDetail, chartGeom, drawers,
+  etShort, exitText, filterJourneys, originBadge, pct, plText, plTone, px, spreadLabels, stopSegments, timelineTone, unwrap,
   unwrapDetail, type Chart, type FilterId, type Journey, type JourneysPayload,
 } from '../lib/tradeJourneyModel'
+import { serverNumber, tradeLink } from '../lib/tradeInViewModel'
+import '../components/tradeinview/TradeInViewLayout.css'
 import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.lg, minWidth: 0 }
 const label: CSSProperties = { fontSize: TYPE.xs, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: TOKENS.text[2] }
-const GRID = '64px minmax(140px, 1.3fr) 84px 84px 104px minmax(110px, 1fr) 76px'
+const GRID = '70px minmax(150px, 1.3fr) 90px 90px 120px minmax(140px, 1fr)'
 
 function Chip({ tone, children, tip, testId, size = 'md' }: { tone: Tone; children: ReactNode; tip?: string; testId?: string; size?: 'sm' | 'md' }) {
   return (
@@ -36,7 +38,7 @@ function Row({ j, selected, onSelect }: { j: Journey; selected: boolean; onSelec
   const exitTone = EXIT_TONE[j.exit_cause.kind]
   const end = j.status === 'closed' ? j.exit : j.mark
   return (
-    <div data-testid="tj-row" data-symbol={j.symbol} data-status={j.status} data-origin={j.origin.kind}
+    <div className="tradeinview-journey-row" data-testid="tj-row" data-symbol={j.symbol} data-status={j.status} data-origin={j.origin.kind}
       style={{ display: 'grid', gridTemplateColumns: GRID, gap: 10, padding: '8px 16px', alignItems: 'center',
         borderBottom: `1px solid ${TOKENS.borderSubtle}`, background: selected ? TOKENS.bg[2] : undefined,
         borderLeft: `3px solid ${selected ? TOKENS.info : 'transparent'}` }}>
@@ -46,23 +48,19 @@ function Row({ j, selected, onSelect }: { j: Journey; selected: boolean; onSelec
       </button>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
         <span title={`${j.origin.label}\n\n${TOOLTIPS.origin}`} data-testid="tj-origin" style={{ ...chipStyle(ob.tone, 'soft', 'sm'), alignSelf: 'flex-start', cursor: 'help', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ob.text}</span>
-        <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.account ?? '—'}</span>
+        <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2], whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.account_label || 'Unlabelled account'}</span>
       </span>
-      <span style={{ ...numStyle, fontSize: TYPE.base, textAlign: 'right' }} title={`Entry fill · ${j.entry.source ?? 'source unknown'}`}>
+      <span data-label="Entry" style={{ ...numStyle, fontSize: TYPE.base, textAlign: 'right' }} title={`Entry fill · ${j.entry.source ?? 'source unknown'}`}>
         {px(j.entry.price_ref)}<span style={{ display: 'block', color: TOKENS.text[3], fontSize: TYPE.sm }}>{j.entry.at ? etShort(j.entry.at).slice(0, 5) : '—'}</span>
       </span>
-      <span style={{ ...numStyle, fontSize: TYPE.base, textAlign: 'right' }} title={j.status === 'closed' ? 'Exit fill' : 'Latest mark'}>
+      <span data-label={j.status === 'closed' ? 'Exit' : 'Mark'} style={{ ...numStyle, fontSize: TYPE.base, textAlign: 'right' }} title={j.status === 'closed' ? 'Exit fill' : 'Latest mark'}>
         {px(end?.price_ref ?? null)}<span style={{ display: 'block', color: TOKENS.text[3], fontSize: TYPE.sm }}>{j.status === 'closed' ? (end?.at ? etShort(end.at).slice(0, 5) : '—') : 'mark'}</span>
       </span>
-      <span style={{ ...numStyle, fontSize: TYPE.base, textAlign: 'right', color: toneVars(plTone(j.pl.amount ?? j.pl.pct)).color }} title={TOOLTIPS.pl}>{plText(j)}</span>
+      <span data-label="P/L" style={{ ...numStyle, fontSize: TYPE.base, textAlign: 'right', color: toneVars(plTone(j.pl.amount ?? j.pl.pct)).color }} title={TOOLTIPS.pl}>{plText(j)}</span>
       <span style={{ fontSize: TYPE.base, color: toneVars(exitTone).color, lineHeight: 1.3 }} title={`${j.exit_cause.detail}\n\n${TOOLTIPS.exit}`} data-testid="tj-exit">
-        {exitText(j)}
-        {j.conflicts.length > 0 && <span style={{ display: 'block', color: TOKENS.warning, fontSize: TYPE.sm }} title={TOOLTIPS.conflicts}>⚠ {j.conflicts.length} conflict{j.conflicts.length === 1 ? '' : 's'}</span>}
+        <span style={{ ...chipStyle(exitTone, 'soft', 'sm') }}>{exitText(j)}</span>
+        <span style={{ display: 'block', color: TOKENS.text[2], fontSize: TYPE.sm, marginTop: 4 }}>{j.exit_cause.detail}</span>
       </span>
-      <button type="button" onClick={onSelect}
-        style={{ whiteSpace: 'nowrap', fontSize: TYPE.base, fontWeight: 700, padding: '6px 10px', borderRadius: RADIUS.md, minHeight: 32, cursor: 'pointer', background: TOKENS.bg[2], border: `1px solid ${TOKENS.border}`, color: TOKENS.text[1] }}>
-        Journey
-      </button>
     </div>
   )
 }
@@ -122,13 +120,13 @@ function PriceBand({ c }: { c: Chart }) {
   )
 }
 
-function Detail({ j, onAlert }: { j: Journey; onAlert: (j: Journey) => void }) {
-  const detail = useApi<any>(apiDetail(j.trade_id))
+function Detail({ j: initial, onAlert }: { j: Journey; onAlert: (j: Journey) => void }) {
+  const detail = useApi<any>(apiDetail(initial.trade_id))
   const full = unwrapDetail(detail.data)
+  const j = full?.trade_id === initial.trade_id ? full : initial
   const chart = full?.chart ?? j.chart ?? null
   const ob = originBadge(j.origin)
   const re = j.re_entry
-  const cm = conditionsMet(re)
   const tiles: [string, string, string][] = [
     ['Entry', `${px(j.entry.price_ref)} · ${etShort(j.entry.at).slice(0, 5)}${j.entry.at_basis ? ' ≈' : ''}`, `Entry fill · ${j.entry.source ?? '—'}${j.entry.at_basis ? ` · date ${j.entry.at_basis}` : ''}`],
     [j.status === 'closed' ? 'Exit' : 'Mark', j.status === 'closed' ? `${px(j.exit?.price_ref)} · ${etShort(j.exit?.at).slice(0, 5)}` : px(j.mark?.price_ref), j.status === 'closed' ? 'Exit fill' : 'Latest mark'],
@@ -140,8 +138,32 @@ function Detail({ j, onAlert }: { j: Journey; onAlert: (j: Journey) => void }) {
   return (
     <div data-testid="tj-detail" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.lg + 2 }}>{j.symbol} · {j.account ?? '—'}</span>
+        <span style={{ fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.lg + 2 }}>{j.symbol} · {j.account_label || 'Unlabelled account'}</span>
         <span style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>{j.company ?? ''}</span>
+      </div>
+
+      {j.exit_cause.kind === 'stop_likely_filled' && <section data-testid="tj-awaiting-fill" style={{ background: toneVars('info').bg, border: `1px solid ${toneVars('info').border}`, borderRadius: RADIUS.md, padding: 10 }}>
+        <b style={{ color: TOKENS.info, fontSize: TYPE.md }}>Awaiting fill confirmation</b>
+        <div style={{ fontSize: TYPE.base, marginTop: 4 }}>{j.exit_cause.detail}</div>
+      </section>}
+      {j.reconciliation_facts?.length ? <section aria-label="Reconciliation evidence" data-testid="tj-conflicts">
+        <div className="tradeinview-reconciliation">
+          {j.reconciliation_facts.map(f => <div key={f.key} style={{ background: TOKENS.bg[2], borderRadius: RADIUS.md, padding: 8 }} title={f.source || 'Source unavailable'}>
+            <span style={{ ...label, display: 'block' }}>{f.label}</span>
+            <span style={{ fontSize: TYPE.base }}>{f.value == null ? f.missing_reason || 'Evidence unavailable' : String(f.value)}</span>
+            <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2], display: 'block' }}>{f.at ? etShort(f.at) : 'Time unavailable'}</span>
+          </div>)}
+        </div>
+        {j.conflicts.length > 0 && <details style={{ marginTop: 8, fontSize: TYPE.base }}><summary>Source disagreement details</summary>
+          {j.conflicts.map((c, i) => <div key={i} style={{ padding: '6px 0' }}><b>{c.summary}</b><div>{String(c.a.value)} · {c.a.source || 'Source unavailable'} · {c.a.at ? etShort(c.a.at) : 'Time unavailable'}</div><div>{String(c.b.value)} · {c.b.source || 'Source unavailable'} · {c.b.at ? etShort(c.b.at) : 'Time unavailable'}</div></div>)}
+        </details>}
+      </section> : <section data-testid="tj-conflicts" className="tradeinview-gap" style={{ fontSize: TYPE.base }}>
+        Reconciliation evidence unavailable — the server has not supplied the Holdings / Stop vs mark / Fills ledger facts.
+        {j.conflicts.map((c, i) => <div key={i}>{c.summary} · {String(c.a.value)} ({c.a.source || 'source unknown'}) vs {String(c.b.value)} ({c.b.source || 'source unknown'})</div>)}
+      </section>}
+      <div className="tradeinview-controls">
+        <Link data-testid="tj-replay" to={tradeLink('replay', { trade_id: j.trade_id })} style={{ ...chipStyle('info', 'soft', 'md'), padding: 10 }}>Replay this trade</Link>
+        <Link data-testid="tj-history" to={tradeLink('history', { symbol: j.symbol })} style={{ ...chipStyle('neutral', 'outline', 'md'), padding: 10 }}>All {j.symbol} history</Link>
       </div>
 
       <section aria-label="Origin" data-testid="tj-origin-card" title={TOOLTIPS.origin}
@@ -184,18 +206,6 @@ function Detail({ j, onAlert }: { j: Journey; onAlert: (j: Journey) => void }) {
         })}
       </section>
 
-      {j.conflicts.length > 0 && (
-        <section aria-label="Conflicts" data-testid="tj-conflicts" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={label} title={TOOLTIPS.conflicts}>Conflicts — shown, not resolved</span>
-          {j.conflicts.map((c, i) => (
-            <div key={i} style={{ fontSize: TYPE.base, lineHeight: 1.45, border: `1px solid ${toneVars('warning').border}`, borderRadius: RADIUS.md, padding: 8 }}>
-              <div style={{ color: TOKENS.warning, fontWeight: 700 }}>{c.summary}</div>
-              <div><b>{String(c.a.value)}</b> · {c.a.source || '—'} · {c.a.at ? etShort(c.a.at) : 'time unknown'}</div>
-              <div><b>{String(c.b.value)}</b> · {c.b.source || '—'} · {c.b.at ? etShort(c.b.at) : 'time unknown'}</div>
-            </div>
-          ))}
-        </section>
-      )}
 
       <section aria-label="Review" data-testid="tj-review" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <span style={label} title={TOOLTIPS.review}>{j.status === 'closed' ? 'Post-exit review — facts' : 'Review so far — facts'}</span>
@@ -235,7 +245,7 @@ function Detail({ j, onAlert }: { j: Journey; onAlert: (j: Journey) => void }) {
         )}
         {re.conditions.length > 0 && (
           <div data-testid="tj-conditions" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-            <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{cm.met} of {cm.total} conditions met</span>
+            <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{serverNumber(re.conditions_met)} of {serverNumber(re.conditions_required)} conditions met{re.conditions_met == null || re.conditions_required == null ? ' · server counts unavailable' : ''}</span>
             {re.conditions.map(c => (
               <span key={c.id} title={c.detail ?? undefined} style={{ fontSize: TYPE.base, color: c.met === true ? TOKENS.success : c.met === false ? TOKENS.text[2] : TOKENS.text[3] }}>
                 {c.met === true ? '✓' : c.met === false ? '○' : '?'} {c.label}{c.detail ? <span style={{ color: TOKENS.text[3] }}> — {c.detail}</span> : null}
@@ -256,17 +266,17 @@ function Detail({ j, onAlert }: { j: Journey; onAlert: (j: Journey) => void }) {
   )
 }
 
-export default function TradeJourney() {
+export default function TradeJourney({ payload, loading, error, embedded = false }: { payload?: JourneysPayload | null; loading?: boolean; error?: string | null; embedded?: boolean } = {}) {
   const [params, setParams] = useSearchParams()
-  const api = useApi<any>(API_LIST)
-  const p: JourneysPayload | null = useMemo(() => unwrap(api.data), [api.data])
+  const api = useApi<any>(API_LIST, 60_000, { enabled: payload === undefined })
+  const p: JourneysPayload | null = useMemo(() => payload === undefined ? unwrap(api.data) : payload, [api.data, payload])
   const filter = (FILTERS.find(f => f.id === params.get('filter'))?.id ?? 'all') as FilterId
   const [selId, setSelId] = useState<string | null>(params.get('trade'))
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [alertFor, setAlertFor] = useState<Journey | null>(null)
   const [alertMsg, setAlertMsg] = useState('')
   const rows = useMemo(() => (p ? filterJourneys(p.journeys, filter) : []), [p, filter])
-  const counts = useMemo(() => (p ? filterCounts(p.journeys) : null), [p])
+  const counts: Record<string, number | undefined> | null = p ? { ...p.counts, attention: p.counts.awaiting_fill, mine: p.counts.operator } : null
 
   // ?symbol=NAVN (Open Trades / Watch deep links) selects that symbol's most recent journey.
   const deepSym = (params.get('symbol') || '').trim().toUpperCase()
@@ -291,19 +301,19 @@ export default function TradeJourney() {
 
   if (!p) {
     return (
-      <div data-testid="trade-journey" style={{ padding: 16, color: TOKENS.text[2], fontSize: TYPE.base }}>
-        {api.loading ? 'Loading trade journeys…' : `Trade journeys unavailable${api.error ? ` — ${api.error}` : ''}.`}
+      <div className="tradeinview" data-testid="trade-journey" style={{ padding: 16, color: TOKENS.text[2], fontSize: TYPE.base }}>
+        {(loading ?? api.loading) ? 'Loading trade journeys…' : `Trade journeys unavailable${(error ?? api.error) ? ` — ${error ?? api.error}` : ''}.`}
       </div>
     )
   }
   const c = p.counts
   return (
-    <div data-testid="trade-journey" style={{ display: 'flex', flexDirection: 'column', gap: 14, fontFamily: FONT.sans, color: TOKENS.text[0] }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+    <div className="tradeinview" data-testid="trade-journey" style={{ display: 'flex', flexDirection: 'column', gap: 14, fontFamily: FONT.sans, color: TOKENS.text[0] }}>
+      {!embedded && <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <h1 style={{ margin: 0, fontSize: TYPE.xl - 2, fontWeight: 700 }}>TradeInView · trade journeys</h1>
+          {!embedded && <h1 style={{ margin: 0, fontSize: TYPE.xl - 2, fontWeight: 700 }}>TradeInView · trade journeys</h1>}
           <div style={{ fontSize: TYPE.base + 1, color: TOKENS.text[1] }}>
-            {c.open} open · {c.closed} closed in {p.window_days ?? 30} days · <b style={{ color: toneVars('ai').color }}>{c.internal} from internal</b> · {c.operator} your picks · {c.unknown} origin unknown
+            {serverNumber(c.open)} open · {serverNumber(c.closed)} closed in {p.window_days == null ? 'an unknown number of' : p.window_days} days · <b style={{ color: toneVars('ai').color }}>{serverNumber(c.internal)} from internal</b> · {serverNumber(c.operator)} your picks · {serverNumber(c.unknown)} origin unknown
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -316,12 +326,13 @@ export default function TradeJourney() {
           <Link to="/journal?view=classic" data-testid="tj-classic" title="The previous TradeInView journal: analytics, tagging, costs, import."
             style={{ fontSize: TYPE.base, color: TOKENS.info }}>Classic journal →</Link>
         </div>
-      </div>
+      </div>}
 
       <div role="group" aria-label="Data freshness" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {p.freshness.map(ch => (
-          <Chip key={ch.key} tone={ch.tone} tip={`${ch.tip}${ch.at ? `\nas of ${ch.at}` : ''}`} testId={`tj-chip-${ch.key}`}><b>{ch.label}</b>&nbsp;{ch.value}</Chip>
+        {(p.freshness_chips || []).map(ch => (
+          <Chip key={ch.key} tone={ch.tone} tip={`${ch.tip}${ch.at ? `\nas of ${ch.at}` : ''}`} testId={`tj-chip-${ch.key}`}><b>{ch.label}</b>&nbsp;{ch.value ?? ch.missing_reason ?? 'Sync evidence unavailable'}</Chip>
         ))}
+        {!p.freshness_chips && <span className="tradeinview-gap" style={{ fontSize: TYPE.base }}>Freshness receipt fields unavailable — sync times are not inferred from fill or stop observations.</span>}
       </div>
 
       <div role="group" aria-label="Filter" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -330,19 +341,19 @@ export default function TradeJourney() {
             style={{ borderRadius: RADIUS.pill, padding: '6px 12px', fontSize: TYPE.base, fontWeight: 600, cursor: 'pointer', minHeight: 32,
               background: filter === f.id ? TOKENS.bg[3] : 'transparent', border: `1px solid ${filter === f.id ? TOKENS.info : TOKENS.border}`,
               color: filter === f.id ? TOKENS.text[0] : TOKENS.text[2] }}>
-            {f.label} <span style={{ fontFamily: FONT.mono, opacity: 0.85 }}>{counts?.[f.id] ?? 0}</span>
+            {f.label} <span style={{ fontFamily: FONT.mono, opacity: 0.85 }}>{serverNumber(counts?.[f.id])}</span>
           </button>
         ))}
       </div>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
+      <div className="tradeinview-journey-layout">
         <div style={{ flex: '999 1 600px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <section aria-label="Trades" style={{ ...panel, overflowX: 'auto' }}>
+          <section aria-label="Trades" className="tradeinview-journey-table" style={panel}>
             <div style={{ minWidth: 660 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 10, padding: '8px 16px', borderBottom: `1px solid ${TOKENS.border}`, ...label }}>
+              <div className="tradeinview-journey-head" style={{ display: 'grid', gridTemplateColumns: GRID, gap: 10, padding: '8px 16px', borderBottom: `1px solid ${TOKENS.border}`, ...label }}>
                 <span>Symbol</span><span title={TOOLTIPS.origin}>Origin · account</span><span style={{ textAlign: 'right' }}>Entry</span>
                 <span style={{ textAlign: 'right' }}>Exit / mark</span><span style={{ textAlign: 'right' }} title={TOOLTIPS.pl}>P/L</span>
-                <span title={TOOLTIPS.exit}>Why it ended</span><span />
+                <span title={TOOLTIPS.exit}>Status</span>
               </div>
               {rows.length === 0 && <div style={{ padding: 16, fontSize: TYPE.base, color: TOKENS.text[2] }}>No trades in this filter.</div>}
               {rows.map(j => <Row key={j.trade_id} j={j} selected={sel?.trade_id === j.trade_id} onSelect={() => select(j)} />)}
@@ -361,7 +372,7 @@ export default function TradeJourney() {
             ))}
           </div>
         </div>
-        <aside aria-label="Trade journey" style={{ ...panel, flex: '1 1 480px', maxWidth: 580, padding: 16 }}>
+        <aside aria-label="Trade journey" style={{ ...panel, padding: 16 }}>
           {sel ? <Detail key={sel.trade_id} j={sel} onAlert={setAlertFor} />
             : <div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>Click a trade to see where it came from, what happened, why it ended and when to get back in.</div>}
           {alertMsg && <div data-testid="tj-alert-armed" style={{ color: TOKENS.success, fontSize: TYPE.base, marginTop: 8 }}>{alertMsg}</div>}

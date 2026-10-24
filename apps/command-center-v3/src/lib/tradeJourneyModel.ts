@@ -29,6 +29,7 @@ export type Fact = { key: string; label: string; value: string; source: string; 
 export type Advisory = { text: string; model?: string | null; provider?: string | null; generated_at?: string | null; label: string; source: string; stop_quality?: string | null; reentry_risk?: string | null }
 export type Condition = { id: string; label: string; met: boolean | null; detail?: string | null }
 export type ReEntry = {
+  conditions_met?: number | null; conditions_required?: number | null
   source: string; desk_as_of: string | null; stale: boolean | null; state: string | null; action: string | null
   reason: string | null; distance_pct: number | null; price_ref: number | null; price_as_of: string | null
   zone_low_ref: number | null; zone_high_ref: number | null; invalidation_ref: number | null; target_ref: number | null
@@ -44,21 +45,22 @@ export type Chart = {
     low_at: string | null; zone_low_ref: number | null; zone_high_ref: number | null }
 }
 export type Journey = {
-  trade_id: string; symbol: string; company?: string | null; account: string | null; status: 'open' | 'closed'
+  trade_id: string; symbol: string; company?: string | null; account: string | null; account_label?: string | null; status: 'open' | 'closed'
   fill_qty: number | null; entry: { price_ref: number | null; at: string | null; source?: string | null; at_basis?: string | null }
   exit: { price_ref: number | null; at: string | null; source?: string | null } | null
   mark: { price_ref: number | null; at: string | null } | null
   pl: { amount: number | null; pct: number | null; basis: 'realized' | 'unrealized' | 'pending'; note: string | null }
   hold_days: number | null; origin: Origin; exit_cause: ExitCause; stop_path: StopStep[]; timeline: TimelineEvent[]
   review: { facts: Fact[]; metrics: Record<string, number | null>; advisory: Advisory | null }
+  reconciliation_facts?: { key: string; label: string; value: string | number | null; source: string | null; at: string | null; missing_reason?: string | null }[]; next_sync_at?: string | null
   re_entry: ReEntry; conflicts: Conflict[]; conviction_now: number | null; stance_now: string | null
   rank_now: number | null; stage: string | null; chart?: Chart | null; security_guid?: string | null; identity_status?: string
 }
-export type Chip = { key: string; label: string; value: string; tone: Tone; at: string | null; tip: string }
+export type Chip = { key: string; label: string; value: string | null; tone: Tone; at: string | null; tip: string; source?: string | null; missing_reason?: string | null; last_closing_fill_at?: string | null; ledger_synced_at?: string | null }
 export type JourneysPayload = {
   schema: string; as_of: string; interim: boolean; source_label: string
   source: { kind: string; cio_prospect_status: string; reads: string[] }
-  window_days: number | null; counts: Record<string, number>; freshness: Chip[]
+  window_days: number | null; counts: Record<string, number>; freshness: Chip[]; freshness_chips?: Chip[]
   gaps: { input: string; why: string }[]; journeys: Journey[]
 }
 
@@ -80,8 +82,8 @@ export function unwrapDetail(raw: any): Journey | null {
 export type FilterId = 'all' | 'attention' | 'open' | 'closed' | 'internal' | 'mine'
 export const FILTERS: { id: FilterId; label: string; tip: string; test: (j: Journey) => boolean }[] = [
   { id: 'all', label: 'All', tip: 'Every open position and every trade closed in the window.', test: () => true },
-  { id: 'attention', label: 'Needs a look', tip: 'A stop that has likely filled but is not confirmed, or a conflict between sources.',
-    test: j => j.exit_cause.kind === 'stop_likely_filled' || j.conflicts.length > 0 },
+  { id: 'attention', label: 'Awaiting fill', tip: 'Mark is under a recorded stop; no closing fill is confirmed in the synced ledger.',
+    test: j => j.exit_cause.kind === 'stop_likely_filled' },
   { id: 'open', label: 'Open', tip: 'Positions you still hold.', test: j => j.status === 'open' },
   { id: 'closed', label: 'Closed', tip: 'Round trips closed in the window (from the broker transaction ledger).', test: j => j.status === 'closed' },
   { id: 'internal', label: 'From internal', tip: 'Trades whose idea came from an internal surface (Home, Proposals, Trade AI, a CIO entry call).', test: j => j.origin.kind === 'internal' },
@@ -99,7 +101,7 @@ export function filterCounts(js: Journey[]): Record<FilterId, number> {
 
 export const ORIGIN_TONE: Record<OriginKind, Tone> = { internal: 'ai', operator: 'info', unknown: 'neutral' }
 export const EXIT_TONE: Record<ExitKind, Tone> = {
-  stop_out: 'danger', trailing_ratchet: 'warning', target: 'success', manual: 'info', stop_likely_filled: 'warning',
+  stop_out: 'danger', trailing_ratchet: 'warning', target: 'success', manual: 'info', stop_likely_filled: 'info',
   open: 'neutral', unknown: 'neutral',
 }
 
@@ -149,6 +151,7 @@ export function plText(j: Journey): string {
   return [a, p ? `(${p})` : ''].filter(Boolean).join(' ')
 }
 export function exitText(j: Journey): string {
+  if (j.exit_cause.kind === 'stop_likely_filled') return 'Awaiting fill'
   if (j.status === 'open' && j.exit_cause.kind === 'open') {
     return j.exit_cause.level_ref != null ? `open · stop ${px(j.exit_cause.level_ref)}` : 'open · no stop on record'
   }
@@ -210,13 +213,13 @@ export const TOOLTIPS = {
 export function drawers(p: JourneysPayload): { id: string; title: string; summary: string; body: string }[] {
   const conflicts = p.journeys.flatMap(j => j.conflicts.map(c => `${j.symbol}: ${c.summary} — ${String(c.a.value)} (${c.a.source ?? '—'}) vs ${String(c.b.value)} (${c.b.source ?? '—'})`))
   return [
-    { id: 'conflicts', title: 'Conflicts', summary: conflicts.length ? `${conflicts.length} shown, not resolved` : 'none',
+    { id: 'conflicts', title: 'Conflicts', summary: p.counts.conflicts == null ? 'count unavailable' : `${p.counts.conflicts} shown, not resolved`,
       body: conflicts.length ? conflicts.join('\n') : 'No source disagrees about any trade in the window.' },
-    { id: 'gaps', title: 'Data gaps', summary: p.gaps.length ? `${p.gaps.length} input${p.gaps.length === 1 ? '' : 's'} missing` : 'none',
+    { id: 'gaps', title: 'Data gaps', summary: 'source coverage and missing reasons',
       body: p.gaps.length ? p.gaps.map(g => `${g.input}: ${g.why}`).join('\n') : 'Every input answered.' },
     { id: 'how', title: 'How this page works', summary: 'where each column comes from',
       body: [
-        'One row per trade: positions you hold and round trips closed in the last ' + (p.window_days ?? 30) + ' days.',
+        'One row per trade: positions you hold and round trips closed in the last ' + (p.window_days == null ? 'unknown range' : p.window_days + ' days') + '.',
         'Origin: ' + TOOLTIPS.origin,
         'Exit: ' + TOOLTIPS.exit,
         'P/L: ' + TOOLTIPS.pl,

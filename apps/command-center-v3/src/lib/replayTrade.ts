@@ -2,6 +2,7 @@
 
 export type ReplayTradeInput = {
   symbol: string
+  trade_id?: string
   trade_key?: string
   account?: string
   open_date?: string
@@ -44,6 +45,7 @@ export function buildReplayTrade(row: ReplayTradeInput) {
   const exit_time = row.exit_time || row.exitTimeFull || ex?.exit_time || null
   return {
     symbol,
+    trade_id: row.trade_id,
     trade_key,
     account,
     entry_date,

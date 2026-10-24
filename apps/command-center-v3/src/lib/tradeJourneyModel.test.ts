@@ -43,8 +43,11 @@ eq('unknown origin badge', originBadge(v.origin), { text: 'ORIGIN ?', tone: 'neu
 eq('open trade exit text', exitText(v), 'open · stop $399.82')
 
 // filters
-eq('filter counts', filterCounts(P.journeys), { all: 3, attention: 1, open: 1, closed: 2, internal: 1, mine: 1 })
-eq('attention = NAVN (a conflict)', filterJourneys(P.journeys, 'attention').map(j => j.symbol), ['NAVN'])
+eq('filter counts', filterCounts(P.journeys), { all: 3, attention: 0, open: 1, closed: 2, internal: 1, mine: 1 })
+eq('a closed source conflict is not an awaiting fill', filterJourneys(P.journeys, 'attention').map(j => j.symbol), [])
+const waiting = { ...v, exit_cause: { ...v.exit_cause, kind: 'stop_likely_filled' as const } }
+eq('awaiting fill retains the unconfirmed machine kind', filterJourneys([waiting, navn], 'attention').map(j => j.trade_id), [waiting.trade_id])
+eq('awaiting fill copy/tone is informational', [exitText(waiting), EXIT_TONE[waiting.exit_cause.kind]], ['Awaiting fill', 'info'])
 ok('every filter has a tooltip', FILTERS.every(f => f.tip.length > 20))
 ok('every tooltip is a sentence', Object.values(TOOLTIPS).every(t => t.length > 40))
 

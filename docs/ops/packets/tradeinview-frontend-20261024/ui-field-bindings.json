@@ -1,0 +1,223 @@
+{
+  "status": "Frontend field map for A master lineage; store/column/writer attribution remains A responsibility, not inferred",
+  "package": "B",
+  "base": "8b6cd3be6d9776d3051ea24fbbcfc65248431c45",
+  "bindings": [
+    {
+      "ui": "Journeys heading/filter counts",
+      "endpoint": "/api/v3/data-broker/trade-journeys",
+      "json_fields": [
+        "counts.all",
+        "counts.awaiting_fill",
+        "counts.open",
+        "counts.closed",
+        "counts.internal",
+        "counts.operator",
+        "counts.unknown",
+        "window_days",
+        "as_of"
+      ]
+    },
+    {
+      "ui": "Journeys receipt chips",
+      "endpoint": "/api/v3/data-broker/trade-journeys",
+      "json_fields": [
+        "freshness_chips[].key",
+        "freshness_chips[].label",
+        "freshness_chips[].value",
+        "freshness_chips[].tone",
+        "freshness_chips[].at",
+        "freshness_chips[].source",
+        "freshness_chips[].tip",
+        "freshness_chips[].missing_reason",
+        "freshness_chips[].last_closing_fill_at",
+        "freshness_chips[].ledger_synced_at"
+      ]
+    },
+    {
+      "ui": "Journey row and detail values",
+      "endpoint": "/api/v3/data-broker/trade-journeys/{trade_id}",
+      "json_fields": [
+        "journey.trade_id",
+        "journey.symbol",
+        "journey.account_label",
+        "journey.entry.price_ref",
+        "journey.entry.at",
+        "journey.entry.source",
+        "journey.exit.price_ref",
+        "journey.exit.at",
+        "journey.mark.price_ref",
+        "journey.mark.at",
+        "journey.pl.amount",
+        "journey.pl.pct",
+        "journey.pl.note",
+        "journey.hold_days",
+        "journey.fill_qty",
+        "journey.origin.*",
+        "journey.exit_cause.label",
+        "journey.exit_cause.kind",
+        "journey.exit_cause.detail",
+        "journey.next_sync_at"
+      ]
+    },
+    {
+      "ui": "Three-fact strip and source disclosure",
+      "endpoint": "/api/v3/data-broker/trade-journeys/{trade_id}",
+      "json_fields": [
+        "journey.reconciliation_facts[].key",
+        "journey.reconciliation_facts[].label",
+        "journey.reconciliation_facts[].value",
+        "journey.reconciliation_facts[].source",
+        "journey.reconciliation_facts[].at",
+        "journey.reconciliation_facts[].missing_reason",
+        "journey.conflicts[].summary",
+        "journey.conflicts[].a.value",
+        "journey.conflicts[].a.source",
+        "journey.conflicts[].a.at",
+        "journey.conflicts[].b.value",
+        "journey.conflicts[].b.source",
+        "journey.conflicts[].b.at"
+      ]
+    },
+    {
+      "ui": "Retained journey evidence sections",
+      "endpoint": "/api/v3/data-broker/trade-journeys/{trade_id}",
+      "json_fields": [
+        "journey.chart.*",
+        "journey.timeline[].*",
+        "journey.review.facts[].*",
+        "journey.review.advisory.*",
+        "journey.conviction_now",
+        "journey.re_entry.*",
+        "journey.re_entry.conditions_met",
+        "journey.re_entry.conditions_required"
+      ]
+    },
+    {
+      "ui": "Calendar month/day/week totals",
+      "endpoint": "/api/v3/data-broker/trade-calendar?month=&account=&names=",
+      "json_fields": [
+        "month",
+        "as_of",
+        "names",
+        "days[].date",
+        "days[].realized_pl",
+        "days[].trade_count",
+        "days[].symbols[].symbol",
+        "days[].heat_intensity",
+        "days[].coverage",
+        "weeks[].start_date",
+        "weeks[].days",
+        "weeks[].realized_pl",
+        "weeks[].coverage",
+        "summary.realized_pl",
+        "summary.green_days",
+        "summary.active_days",
+        "summary.coverage"
+      ]
+    },
+    {
+      "ui": "Calendar events/day drawer/selects",
+      "endpoint": "/api/v3/data-broker/trade-calendar?month=&account=&names=",
+      "json_fields": [
+        "events[].id",
+        "events[].type",
+        "events[].source_event_type",
+        "events[].title",
+        "events[].symbol",
+        "events[].date",
+        "events[].source",
+        "events[].as_of",
+        "events[].missing_reason",
+        "days[].trades[].trade_id",
+        "days[].trades[].symbol",
+        "days[].trades[].account_label",
+        "days[].trades[].realized_pl",
+        "days[].trades[].basis_unknown",
+        "days[].trades[].basis_reason",
+        "account_options[].id",
+        "account_options[].label",
+        "gaps[].source",
+        "gaps[].reason"
+      ]
+    },
+    {
+      "ui": "Replay picker",
+      "endpoint": "/api/v3/data-broker/trade-journeys",
+      "json_fields": [
+        "journeys[].trade_id",
+        "journeys[].symbol",
+        "journeys[].account_label",
+        "journeys[].entry.at",
+        "journeys[].exit.at",
+        "journeys[].status",
+        "journeys[].pl.amount",
+        "journeys[].pl.pct",
+        "journeys[].pl.note"
+      ]
+    },
+    {
+      "ui": "Replay header/statistics/source",
+      "endpoint": "/api/v2/trade-chart?trade_id=&stored_only=1&interval=",
+      "json_fields": [
+        "symbol",
+        "account_label",
+        "trade.entry_price",
+        "trade.entry_at",
+        "trade.entry_date",
+        "trade.exit_price",
+        "trade.exit_at",
+        "trade.exit_date",
+        "trade.realized_pl",
+        "trade.hold_days",
+        "trade.hold_days_basis",
+        "available_intervals",
+        "interval",
+        "stats.max_gain_pct",
+        "stats.max_drawdown_pct",
+        "stats.metrics_basis",
+        "stats.metrics_missing_reason",
+        "stats.exit_label",
+        "stats.exit_basis",
+        "stats.coach_note",
+        "source.table",
+        "source.as_of",
+        "source.bar_basis",
+        "as_of",
+        "gaps[].source",
+        "gaps[].reason"
+      ]
+    },
+    {
+      "ui": "Replay plot and annotations",
+      "endpoint": "/api/v2/trade-chart?trade_id=&stored_only=1&interval=",
+      "json_fields": [
+        "kind",
+        "bars[].time",
+        "bars[].open",
+        "bars[].high",
+        "bars[].low",
+        "bars[].close",
+        "markers[].time",
+        "markers[].kind",
+        "markers[].label",
+        "markers[].price",
+        "markers[].source",
+        "markers[].at",
+        "stop_steps[].time (pending A capability)",
+        "stop_steps[].price (pending A capability)"
+      ]
+    }
+  ],
+  "non_business_controls": [
+    "tab selection and URL",
+    "month navigation formats query range only",
+    "search/filter view over returned records; no displayed statistics computed",
+    "replay cursor/speed are UI interaction state",
+    "chart scaling/geometry is presentation, not performance measurement"
+  ],
+  "interim_dependencies": [
+    "actual A generated fixture/schema",
+    "actual C HoldingHistory component before final wrapper publication"
+  ]
+}
