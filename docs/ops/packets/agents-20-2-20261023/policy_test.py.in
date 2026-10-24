@@ -1,0 +1,112 @@
+"""20.2.0 operator-only package pins exact additions and preserves all prior authority rails."""
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+for p in (str(ROOT),str(ROOT/'scripts')):
+    if p not in sys.path:
+        sys.path.insert(0,p)
+from scripts import check_agents_policy_state as STATE  # noqa: E402
+
+C = __CONSTANTS__
+TOKEN = 'APPROVE_AGENTS_POLICY_20_2_0'
+AGENTS = (ROOT/'AGENTS.md').read_text()
+
+
+def h(text):
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def blank(text):
+    return re.sub(r'(<!-- SOURCE_OF_TRUTH_TABLE_START -->).*?(<!-- SOURCE_OF_TRUTH_TABLE_END -->)',r'\1\n<generated>\n\2',text,flags=re.S)
+
+
+def pre_20_2_0(text):
+    if not re.search(r'^\| 20\.2\.0 \|',text,re.M):
+        return text
+    text=re.sub(r'<!-- AGENTS_20_2_BANNER_START -->.*?<!-- AGENTS_20_2_BANNER_END -->\n\n','',text,count=1,flags=re.S)
+    for clause in C['clauses'].values():
+        text=text.replace('\n'+clause,'',1)
+    text=re.sub(r'^\| 20\.2\.0 \|.*\n','',text,count=1,flags=re.M)
+    for key,value in C['base_header'].items():
+        text=re.sub(rf'^({re.escape(key)}:\s+).*$',lambda m,v=value:m.group(1)+v,text,count=1,flags=re.M)
+    return text
+
+
+def pre_20_2_0_adapter(text):
+    return text.replace('## The eleven rules, verbatim','## The ten rules, verbatim',1)
+
+
+def test_header_row_and_state_agree():
+    assert STATE.check(AGENTS,on_main=True)==[]
+    assert STATE.check(AGENTS,on_main=False)==[]
+    rows=re.findall(r'^\| 20\.2\.0 \|.*$',AGENTS,re.M)
+    assert len(rows)==1
+    cb=STATE.control_block(AGENTS)
+    assert cb['Policy-Version']=='20.2.0'
+    assert cb['Supersedes']=='20.1.0'
+    if cb['Status']=='PROPOSED':
+        assert cb['Effective-Date']=='PENDING'
+        assert 'PENDING' in rows[0] and TOKEN+' <pr_number> <head_sha>' in rows[0]
+    else:
+        assert cb['Status']=='ACTIVE'
+        assert re.search(TOKEN+r' \d+ [0-9a-f]{40}',rows[0])
+
+
+def test_only_declared_policy_insertions_changed():
+    assert h(blank(pre_20_2_0(AGENTS)))==C['base_masked_sha256']
+    for clause in C['clauses'].values():
+        assert AGENTS.count(clause)==1
+        assert 'Binding only once AGENTS.md 20.2.0 is' in clause
+        assert '*Cause (§20):' in clause
+
+
+def test_pin_detects_unrelated_authority_mutation():
+    changed=AGENTS.replace('The agent never sizes','The agent may size',1)
+    assert changed != AGENTS
+    assert h(blank(pre_20_2_0(changed))) != C['base_masked_sha256']
+
+
+def test_generated_table_is_not_a_false_policy_mutation():
+    changed=re.sub(r'(<!-- SOURCE_OF_TRUTH_TABLE_START -->).*?(<!-- SOURCE_OF_TRUTH_TABLE_END -->)',r'\1\nrenderer-owned fixture row\n\2',AGENTS,flags=re.S)
+    assert h(blank(pre_20_2_0(changed)))==C['base_masked_sha256']
+
+
+def test_adapters_change_heading_only_and_keep_original_digests():
+    for path,expected in C['adapter_sha256'].items():
+        text=(ROOT/path).read_text()
+        assert '## The eleven rules, verbatim' in text
+        assert h(pre_20_2_0_adapter(text))==expected
+
+
+def test_operator_controls_keep_their_authority_boundaries():
+    clause=C['clauses']['27.2']
+    for text in ('fresh passkey assertion','typed phrase','one host applier','all exactly `success`','--match-head-commit','active `release-write`','Agents never call these endpoints','is not covered by this','approve_item_enabled','Ratification does not'):
+        assert text in clause
+    flags=json.loads((ROOT/'config/ops_controls.json').read_text())['work_pipeline']
+    assert flags['approve_item_enabled'] is False
+    if STATE.control_block(AGENTS)['Status']=='PROPOSED':
+        assert flags['merge_pr_enabled'] is False and flags['release_now_enabled'] is False
+
+
+def test_coordination_and_smoke_obligations_are_explicit():
+    assert 'shared-additive' in C['clauses']['28.3']
+    assert '`task done --evidence-only`' in C['clauses']['28.3a']
+    assert 'never closes a taken task' in C['clauses']['28.3a']
+    for text in ('problem','definition of done','agent prompt','operator commands','proof of completion','requires evidence'):
+        assert text in C['clauses']['28.3b']
+    assert '`TRADEAI_LIVE_SMOKE_AFTER_CLOSE=1`' in AGENTS
+
+
+def test_registered_gate_is_canonical():
+    from scripts.lib import ci_gates
+    path=ROOT/'config/ci_gates/agents_policy_20_2_0_work_pipeline.json'
+    gate=json.loads(path.read_text())
+    assert gate['files']==['tests/test_agents_policy_20_2_0_work_pipeline.py']
+    assert gate['anchor']=='AGENTS_POLICY_20_2_0_WORK_PIPELINE'
+    assert path.read_text()==ci_gates.render(gate)
