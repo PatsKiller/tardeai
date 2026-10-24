@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any, Optional
+import math
 
 from ..engine import COMPATIBLE, OPPOSITE, SAME, UNKNOWN, Finding, Input, Subject, side
 
@@ -108,6 +109,8 @@ class NumericFactProfile:
             x, y = float(a), float(b)
         except (TypeError, ValueError):
             return UNKNOWN
+        if not math.isfinite(x) or not math.isfinite(y):
+            return UNKNOWN
         d = abs(x - y)
         if d <= self.abs_tolerance:
             return SAME
@@ -165,5 +168,8 @@ class ScheduleStateProfile:
     def owner_review_action(self) -> str:
         return "notify_operator"        # schedule truth is an operator/coordinator decision (registry is §17-governed)
 
+
+from .security import SecurityStanceProfile
+from .vocabulary import posture
 
 PROFILES = {p.name: p for p in (SecurityStanceProfile(), NumericFactProfile(), ScheduleStateProfile())}

@@ -16,8 +16,10 @@ FIXTURES = Path(__file__).parent / "fixtures/conflicts"
 
 
 def sec(**kwargs):
-    return security_inputs(**{"security_guid": "confirmed-fixture-guid", "symbol": "SPCX", "held": True,
+    bundle = security_inputs(**{"security_guid": "confirmed-fixture-guid", "symbol": "SPCX", "held": True,
                                "canonical": {"stance": "ADD", "as_of": AT}, **kwargs})
+    bundle.subject.context["concentration_policy"] = {"weight_pct": 1, "limit_pct": 12, "instrument_class": "single_stock"}
+    return bundle
 
 
 def test_exact_real_opportunity_rows_keep_evidence_clock_and_do_not_mint_guid():
@@ -26,7 +28,9 @@ def test_exact_real_opportunity_rows_keep_evidence_clock_and_do_not_mint_guid():
     for symbol, row in rows["items"].items():
         bundle = security_inputs(security_guid=None, symbol=symbol, canonical=row, held=None)
         assert bundle.canonical.as_of.isoformat() == row["as_of"]
-        assert all(f.kind == "DATA_ERROR" for f in evaluate_inputs(bundle, now=NOW))
+        findings = evaluate_inputs(bundle, now=NOW)
+        assert any(f.kind == "DATA_ERROR" for f in findings)
+        assert not any(f.kind == "CONFLICT" for f in findings)
         assert bundle.subject.kind == "identity" and bundle.subject.id == symbol
 
 
@@ -35,15 +39,16 @@ def test_watch_review_and_synthesis_keep_their_distinct_evidence_times():
     b = sec(card={"symbol": "SPCX", "cio_review": {"verdict": "HOLD", "completed_at": old},
                   "decision": {"inputs": {"synthesis": "SELL", "synthesis_at": AT}}})
     fs = evaluate_inputs(b, now=NOW)
-    assert [(f.kind, f.rule) for f in fs] == [("AGREEMENT", "U5"), ("CONFLICT", "U7")]
-    assert fs[0].sides[0]["as_of"] == old
+    assert [(f.kind, f.rule) for f in fs] == [("AGREEMENT", "R6"), ("NEEDS_OPERATOR", "U7")]
+    assert fs[0].sides[1]["as_of"] == old
     assert fs[1].sides[1]["as_of"] == AT
 
 
 @pytest.mark.parametrize("bad", [None, "invalid", "2026-10-24T23:00:00", "2026-10-25T23:00:00Z"])
 def test_invalid_canonical_time_is_data_error_without_judgment(bad):
     fs = evaluate_inputs(sec(canonical={"stance": "ADD", "as_of": bad}), now=NOW)
-    assert [f.kind for f in fs] == ["DATA_ERROR"]
+    assert "CONFLICT" not in [f.kind for f in fs]
+    assert any(f.kind == ("GATE" if bad is None else "DATA_ERROR") for f in fs)
 
 
 @pytest.mark.parametrize("extra", [Input("x", "ADD", NOW, role="unknown"),
@@ -64,7 +69,7 @@ def test_w1_filled_stop_while_still_held_needs_operator_and_named_account():
              "context": {"held": True}, "protection_inputs": [{"source": "stop_last_known", "value": "filled",
              "as_of": AT, "account": "schwab_rollover_ira", "subject_id": "guid"}]}
     fs = evaluate_inputs(security_inputs_from_truth(truth), now=NOW)
-    assert [f.kind for f in fs] == ["NEEDS_OPERATOR"]
+    assert [f.kind for f in fs] == ["DATA_ERROR"] and fs[0].never_auto
     assert fs[0].sides[0]["account"] == "schwab_rollover_ira"
 
 

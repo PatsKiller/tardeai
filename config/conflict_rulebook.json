@@ -1,6 +1,6 @@
 {
   "schema": "ConflictRulebook@v1",
-  "version": 1,
+  "version": 2,
   "status": "PROPOSED",
   "approval": null,
   "live_enabled": false,
@@ -11,7 +11,13 @@
     "policy",
     "money_mismatch",
     "schedule_state",
-    "flapping"
+    "flapping",
+    "ownership",
+    "pending_fill",
+    "wash_window",
+    "cross_instrument",
+    "nway_recorded_split",
+    "held_exit_vs_add"
   ],
   "universal": {
     "flap_limit": 3,
@@ -21,18 +27,21 @@
       "gate",
       "safety",
       "protection",
-      "policy"
+      "policy",
+      "fact",
+      "judgment"
     ]
   },
   "security_stance": {
     "canonical_max_age_hours": 72,
     "default_supersede_days": 14,
     "supersede_days": {
-      "watchlist CIO review": 14,
-      "watchlist_final_synthesis": 3,
+      "watchlist CIO review": 7,
+      "watchlist_final_synthesis": 14,
+      "plan": 7,
       "agent_escalation": 2,
       "advisory_desk": 2,
-      "analyst_consensus": 30
+      "analyst_consensus": 14
     },
     "taxable_accounts": [
       "schwab_taxable"
@@ -48,8 +57,10 @@
         "GO",
         "NEAR_ENTRY",
         "READY",
-        "BUY_READY",
-        "ENTRY_NEAR"
+        "ENTRY_NEAR",
+        "BUY_SETUP",
+        "STRONG_BUY",
+        "LONG"
       ],
       "hold": [
         "HOLD",
@@ -62,13 +73,19 @@
         "PASS",
         "NO_GO",
         "NOGO",
-        "WAIT"
+        "WAIT",
+        "MONITOR",
+        "NEUTRAL",
+        "NOT_YET"
       ],
       "reduce": [
         "TRIM",
         "SELL",
         "EXIT",
-        "REDUCE"
+        "REDUCE",
+        "TRIM_REVIEW",
+        "EXIT_REVIEW",
+        "INVALIDATED"
       ]
     },
     "held_keep": [
@@ -115,7 +132,37 @@
       "BLOCKED",
       "AVOID",
       "FAIL",
-      "BLACKOUT"
+      "BLACKOUT",
+      "STALE",
+      "DATA_UNAVAILABLE",
+      "UNKNOWN",
+      "READY",
+      "WAIT",
+      "MANAGING"
+    ],
+    "canonical_max_age_trading_days": 2,
+    "refresh_after_trading_days": 10,
+    "unmapped_labels": [
+      "ADD_ON_PULLBACK",
+      "RESEARCH_MORE",
+      "MORE_RESEARCH",
+      "INSUFFICIENT_DATA",
+      "HOLD / MONITOR",
+      "BUY_READY",
+      "NO_ACTION",
+      "DEFER",
+      "SELL_TAXABLE"
+    ],
+    "ordinal": {
+      "ADD": 0,
+      "HOLD": 1,
+      "TRIM": 2,
+      "EXIT": 3
+    },
+    "trade_go_clear": [
+      "READY",
+      "WAIT",
+      "MANAGING"
     ]
   },
   "numeric_fact": {
@@ -137,5 +184,22 @@
       "ABSENT": false,
       "NOT_SCHEDULED": false
     }
-  }
+  },
+  "matrix_sha256": "e40e97179386206cf04ac568dff8a36b90922befcabe407403a200a3575d73c9",
+  "precedence": {
+    "safety": 0,
+    "fact": 1,
+    "policy": 2,
+    "deterministic_gate": 3,
+    "operator_decision": 4,
+    "cio_decision": 5,
+    "curator": 6,
+    "opinion": 7
+  },
+  "hysteresis": {
+    "consecutive_runs": 2,
+    "conviction_delta": 5
+  },
+  "concentration_source": "W1 canonical IPS policy input; no threshold copies",
+  "concentration_approval_ref": "conflict-engine-build.md ADDENDUM3; EXCEPTIONS_MATRIX R13 operator decision 2026-10-24"
 }
