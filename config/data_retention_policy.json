@@ -1687,6 +1687,18 @@
    "note": "2026-10-15 bridge OOM fix: the journal was never rotated (71 MB, 147k rows)"
   },
   {
+   "id": "jsonl_archive_rotate",
+   "scripts": [
+    "scripts/ops/jsonl_archive_rotate.py"
+   ],
+   "kind": "FILE_PRUNE",
+   "targets": "the append-only JSONL stores in config/disk_hygiene_rules.json jsonl_retention.stores with rotate=true (aif_memory_retrievals, research_call_accounting, health_inspector_fixes, advisory_notif_broker/decisions, daily_intelligence_heartbeats): rows before the hot tail (hot_days, min_tail_rows) move out; cio_workflow_lineage is rotate=false",
+   "scheduler": "none yet: operator packet docs/ops/packets/jsonl-rotation-20261023 (after 16:15 ET); n8n lane jsonl-archive-rotate registered at SHADOW (dry_run, 45 16 * * 1-5 ET); promotion is the operator's",
+   "archive": "archive-then-rewrite: head byte-for-byte to archive/file_prune/<store>/<store>.<UTC>.jsonl.gz + sha256/line-count manifest + RetentionArchiveTripwire@v1; the two renamed-aside intermediates are unlinked only after every byte is verified in the archive or the live file",
+   "state": "UNSCHEDULED",
+   "note": "operator 2026-10-23 ~11:05 ET \"approved\" (rotate, archive, never delete). Archive segments are NOT deleted by any code path; retention_days/max_archive_bytes only select (jsonl_archive_rotate.py --retention-preview)."
+  },
+  {
    "id": "hermes_universe_history_retention",
    "scripts": [
     "scripts/hermes_universe_history_retention.py"

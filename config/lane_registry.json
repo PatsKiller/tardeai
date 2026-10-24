@@ -16905,6 +16905,46 @@
       }
     },
     {
+      "lane_id": "jsonl-archive-rotate",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "n8n",
+        "expression": "dispatcher",
+        "match": "scripts/ops/jsonl_archive_rotate.py",
+        "cadence": "45 16 * * 1-5",
+        "stage": "shadow",
+        "wave": "W4",
+        "timezone": "America/New_York"
+      },
+      "expected_cadence_hours": 72.0,
+      "state": "ACTIVE",
+      "state_since": "2026-10-23",
+      "state_reason": "operator 2026-10-23 ~11:05 ET \"approved\" (rotate, archive, never delete the oversized append-only JSONL stores) and ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\". n8n-native dispatcher hygiene lane at stage SHADOW, weekdays 16:45 ET (after the close) plus on-demand: the stage clamp runs it --dry-run (reads the stores, prints the rotation plan: sizes, line counts, split, the archive each store would get; writes nothing). Promotion to live (live_arg [\"--apply\",\"--confirm\",\"APPLY\"]) is the operator's word. It ARCHIVES only; it deletes no archive segment: removal of archive segments is not automated (AGENTS.md §24.12 keeps stores and archives out of the automated-deletion scope; §23.14 keeps destructive retention off n8n). No cron line or unit exists or is added (cron freeze).",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/jsonl-archive-rotate_last.json",
+        "key": "ok_at",
+        "evidence": "SOURCE_ONLY",
+        "evidence_ref": "scripts/ops/jsonl_archive_rotate.py main() writes the LaneRunReceipt on --plan and --apply (tests/test_jsonl_archive_rotate_20261023.py); at shadow no real run happens, so runtime is NOT_MEASURED"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_jsonl_archive_rotate_20261023.py (split, dry run writes nothing, byte-exact archive + manifest + tripwire, concurrent O_APPEND writer loses no row, live file recreated mid-rotation merged, long-lived fd holder refused, failure merges back, recover, market-hours refusal, retention preview reads only); docs/ops/packets/jsonl-rotation-20261023/00_dry_run_20261023.txt",
+      "review_by": "2026-10-30",
+      "note": "Reads the stores named in config/disk_hygiene_rules.json jsonl_retention.stores (rotate=true). A live run (after promotion) renames each store aside, archives the head to <state>/archive/file_prune/<store>/<store>.<UTC>.jsonl.gz with a sha256/line-count manifest and a RetentionArchiveTripwire@v1 record, re-installs the hot tail with renameat2 (writers reopen per write, so no row is lost), and writes data/runtime/jsonl_archive_rotate/rotate_<UTC>.json and the LaneRunReceipt. --apply refuses Mon-Fri 04:00-16:15 ET. No DB, no model, no sender, no broker. Exit 0 ok; 1 a store failed or a refusal; 75 another rotation holds the lock.",
+      "severity": "Low",
+      "dispatch": {
+        "mode": "dry_run",
+        "cron": [
+          "45 16 * * 1-5"
+        ],
+        "tz": "America/New_York",
+        "wave": "W4",
+        "class": "hygiene",
+        "priority": 3,
+        "retry_policy": "none"
+      }
+    },
+    {
       "lane_id": "tmp-hygiene",
       "owner": "platform",
       "scheduler": {

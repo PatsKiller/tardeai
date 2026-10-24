@@ -399,6 +399,9 @@ def test_native_monitor_rows_do_not_flip_a_host_scheduler():
         "holdings-drift-monitor",
         "options-desk-staleness-monitor",
         "held-exit-coverage-monitor",
+        # 2026-10-23 jsonl-archive-rotate: n8n-native hygiene dispatcher row at shadow, weekdays 16:45
+        # dry_run (no host line; tests/test_jsonl_archive_rotate_20261023.py).
+        "jsonl-archive-rotate",
     }
     assert all(native[lane]["scheduler"]["expression"] == "dispatcher" for lane in n8n_native_lanes)
     # 2026-10-15: the step lanes of the n8n fabric process hermes-learning (AGENTS.md §23.23). Fired only by the

@@ -31185,6 +31185,206 @@
     },
     {
       "schema": "N8nHealthContract@v1",
+      "id": "jsonl-archive-rotate",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "DRAFT",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Weekdays at 16:45 ET (after the close), rotate the oversized append-only JSONL stores named in config/disk_hygiene_rules.json jsonl_retention.stores: the closed history before each store's hot tail moves byte-exact to <state>/<file-prune archive root>/<store>/<store>.<UTC>.jsonl.gz (sha256 + line-count manifest, RetentionArchiveTripwire@v1), the hot tail stays in place. Writer-safe: rename aside, quiesce, renameat2 install, late-byte sweep. At SHADOW it prints the plan only. It archives; it deletes no archive segment.",
+        "business_function": "platform-ops",
+        "source": "scripts/ops/jsonl_archive_rotate.py; operator 2026-10-23 ~11:05 ET \"approved\" (rotate, archive, never delete the oversized append-only JSONL stores) and ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\""
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md \u00a723.3"
+        },
+        {
+          "name": "$PY scripts/ops/jsonl_archive_rotate.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_jsonl_archive_rotate.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "config/disk_hygiene_rules.json jsonl_retention",
+          "kind": "store",
+          "direction": "read",
+          "source": "load_config"
+        },
+        {
+          "name": "the rotate=true stores under data/cio and data/runtime",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "rename aside + tail re-install on live runs only"
+        },
+        {
+          "name": "<state>/<file-prune archive root>/<store>/ (archive, manifest, TRIPWIRE.jsonl)",
+          "kind": "store",
+          "direction": "write",
+          "source": "lib/retention_archive.write_manifest; read nightly by lib/retention_tripwire.py"
+        },
+        {
+          "name": "data/runtime/jsonl-archive-rotate_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no archive, no receipt"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt ok_at advances on each successful live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at within 144 h (2x expected_cadence_hours 72, weekend included)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 1440 s (80% of timeout_s 1800)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = stores rotated; 0 is allowed with empty_reason nothing_due (every store within its hot tail)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 144 h but younger than 216 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 1440 s"
+        },
+        {
+          "check": "store_refused",
+          "text": "a store was refused (long_lived_fd_holder, source_not_quiescent): the store is left as it was"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no receipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 216 h"
+        },
+        {
+          "check": "verify_failed",
+          "text": "archive_verify_failed / tail_verify_failed / line_accounting_mismatch: the source is merged back, nothing lost, exit 1"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run with produced_count 0 and no empty_reason -> RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 3x",
+        "timeout_s": 1800,
+        "class": "hygiene",
+        "computed_on": "2026-10-23",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs yet (shadow); the read-only dry run over the real stores took 25 s on 2026-10-23",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 1440.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "lane_registry.json row severity (a missed rotation only lets a store grow; readers are unaffected)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py. The lane itself sends nothing. Never PAGE.",
+        "enforced": "NOT_MEASURED (shadow)"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json. A crashed rotation is recovered with jsonl_archive_rotate.py --recover --confirm APPLY (operator)."
+      },
+      "evidence": {
+        "receipt": "data/runtime/jsonl-archive-rotate_last.json",
+        "verify": [
+          "python3 scripts/ops/jsonl_archive_rotate.py --dry-run   # the plan; writes nothing",
+          "python3 scripts/ops/jsonl_archive_rotate.py --retention-preview   # archive segments the rules would select; removes nothing",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='jsonl-archive-rotate' ORDER BY requested_at DESC LIMIT 10\""
+        ],
+        "never": "an n8n execution status; prove work with the ledger, the receipt and the archive manifests",
+        "expected_output_basis": "a live run reports rotated stores; a run where every store is within its hot tail rotates nothing and is still healthy"
+      },
+      "review": {
+        "prepared_by": "agent draft (ops/jsonl-retention-20261023)",
+        "status": "DRAFT",
+        "reviewed_by": null,
+        "reviewed_on": null
+      },
+      "review_by": "2026-10-30",
+      "state_note": "DRAFT, agent-written 2026-10-23; awaiting the platform owner's REVIEWED (AGENTS.md \u00a723.19). Promotion to live is the operator's word.",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "stores rotated",
+        "rule": "empty_allowed",
+        "min_produced": null,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "unconfigured"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/jsonl-archive-rotate_last.json produced_count (LaneRunReceipt@v2; the executor reads the immutable attempt copy data/runtime/lane_attempts/jsonl-archive-rotate/<run_id>.json)"
+          },
+          {
+            "kind": "file_artifact",
+            "ref": "<state>/<file-prune archive root>/<store>/<store>.<UTC>.jsonl.gz.manifest.json (RetentionArchiveManifest@v1)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
       "id": "tmp-hygiene",
       "kind": "lane",
       "workflow_id": "dispatcher",
