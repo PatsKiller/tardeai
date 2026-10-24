@@ -189,3 +189,33 @@ Raw test logs and eight screenshots are at `/home/johnclaw/.cache/rtc/codex-c3-r
 No runtime data application, privileged query, provider call, live send, credential read, schedule change, grant,
 service-bus retry, release or remote publication was performed. The observed legacy-only canonical coverage still
 requires a legitimate CIO-owner promotion/acceptance before runtime lifecycle coverage can be claimed.
+
+## Separate completeness follow-up
+
+The strict real-tree completeness tests were run on C3 head `86aa9507449169cc8b8c1c89766f0d92f0385e39`:
+both failed only on `CIOReviewLifecycle@v1` and `CIOReviewAging@v1`. The lifecycle now has a real **SURFACE**
+record edge from the consumed opportunity-detail route through `cio_review.lifecycle`, the saved-record reader,
+actual `observe` writer and shared `cio_instrument_records.jsonl` into the actual modal.
+
+This follow-up has an explicit source dependency on C1 generic discovery commit
+`7ab9a37c9bd055608d4b516c21670c720d81b874`. Only its identical census/measurement support and generic source-flow
+fixtures were integrated into this C3 branch. No C1 company schema classification, backend/frontend implementation
+or documentation was copied. The coordinator must retain the union of C1 and C3 classification/test rows when
+integrating both independently validated branches. The two generic source files are byte-identical to that pin.
+
+`CIOReviewAging@v1` is precisely an operational DRAFT diagnostic printed by the read-only acceptance CLI:
+request count, queue phase ages, missing lineage/input and failed consumer acknowledgements. It does not emit
+company facts, authoritative stances or published investment outcomes, and has no operator investment API or
+notification reader. Its specific diagnostic classification does not claim a live health surface. The actual
+operator-facing lifecycle remains verified as SURFACE. A future reviewed health consumer requires a real edge;
+operative admission and alert delivery remain held / NOT_MEASURED.
+
+No production or frontend behavior changed in this follow-up. The earlier real publisher/Ask and eight browser
+captures remain the evidence for the unchanged implementation. Source completeness does not establish runtime
+canonical coverage, live health delivery or deployment.
+
+Follow-up validation: 73 affected native tests passed with effective `psycopg2` import refusal, including both
+previous failures, 22 C3 acceptance cases, the census/payload/artifact suites and CI registry integrity. Host-path
+and coverage fail-on-new, docs index and diff checks passed. The source-only Aging classification is explicitly
+asserted as not visible; the lifecycle edge must verify every link. Raw before/after logs are
+`/home/johnclaw/.cache/rtc/codex-c3-review-lifecycle-20261024/completeness-{before,after}.log`.

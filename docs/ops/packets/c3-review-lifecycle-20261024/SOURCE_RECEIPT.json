@@ -20,5 +20,18 @@
     "native": "/home/johnclaw/.cache/rtc/codex-c3-review-lifecycle-20261024/final-pytest.log",
     "browser": "/home/johnclaw/.cache/rtc/codex-c3-review-lifecycle-20261024/playwright-final-approved.log",
     "build": "/home/johnclaw/.cache/rtc/codex-c3-review-lifecycle-20261024/npm-build-final.log"
+  },
+  "completeness_followup": {
+    "previous_head": "86aa9507449169cc8b8c1c89766f0d92f0385e39",
+    "generic_source_dependency": "7ab9a37c9bd055608d4b516c21670c720d81b874",
+    "generic_files_byte_identical": {
+      "scripts/cio_api_contract_census.py": "77c951de849feffcea4baf6120ba8ea14f8f7605325ed84bc23d3a0fb79a7853",
+      "scripts/cio_completeness_measurement.py": "1696eb26dee610021f8db11624e4820a6893e1903c0695b498250337604c1461"
+    },
+    "native": "73 passed, no skips; effective psycopg2 refusal",
+    "lifecycle": "SURFACE actual opportunities API/panel/shared canonical record edge, every link verified",
+    "aging": "DRAFT operational diagnostic only, not claimed as an operator investment/health surface; alert delivery NOT_MEASURED",
+    "integration": "retain C1+C3 classification/test row union; no unrelated C1 implementation copied",
+    "frontend_runtime_changes": 0
   }
 }

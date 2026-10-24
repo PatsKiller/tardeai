@@ -55,7 +55,7 @@ MIN_REASON_CHARS = 60
 sys.path.insert(0, str(ROOT))
 
 from scripts.cio_api_contract_census import build_census  # noqa: E402
-from scripts.cio_payload_flow import PayloadFlow, consumer_reads_path  # noqa: E402
+from scripts.cio_payload_flow import PayloadFlow, consumer_reads_path, _imports, _module_file  # noqa: E402
 
 SCHEMA_DEF_RE = re.compile(
     r"(?:^(?:[A-Z_][A-Z0-9_]*)?SCHEMA[A-Z0-9_]*\s*=\s*|[\"'](?:schema|schema_version|contract)[\"']\s*:\s*)[\"']([A-Z][A-Za-z0-9]+@v\d+)[\"']",
@@ -150,9 +150,18 @@ def render_closure_text(root: Path, consumer: str, bound_names: list[str]) -> st
         return ""
     text = path.read_text(encoding="utf-8", errors="replace")
     names = {n for n in bound_names if n and n not in ("loading", "error", "refetch", "stale", "refreshing")}
-    for n in list(names):
-        for m in re.finditer(rf"(?:const|let)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:\(?\s*){re.escape(n)}\b", text):
-            names.add(m.group(1))
+    # Follow local derived bindings (useMemo/unwrap/filter) and map row aliases.
+    # Merely importing a child never counts: its payload must derive from the fetched value.
+    for _ in range(8):
+        before = set(names)
+        for m in re.finditer(r"(?:const|let)\s+([A-Za-z_$][\w$]*)\s*(?::[^=\n]+)?=([^;\n]+)", text):
+            if any(re.search(rf"\b{re.escape(n)}\b", m.group(2)) for n in names):
+                names.add(m.group(1))
+        for n in list(names):
+            for m in re.finditer(rf"\b{re.escape(n)}(?:\?\.)?\.map\(\s*\(?\s*([A-Za-z_$][\w$]*)", text):
+                names.add(m.group(1))
+        if names == before:
+            break
     if not names:
         return text
     imports: dict[str, str] = {}
@@ -242,6 +251,53 @@ def _fn_source(root: Path, ref: str) -> str:
     return ""
 
 
+def _function_reaches_store(root: Path, ref: str, store: str, flow: PayloadFlow, seen=None) -> bool:
+    """A named reader/writer reaches a literal store via actual calls/used imports.
+
+    Existing InstrumentRecord facades import DEFAULT_PATH and call _store_for_root;
+    their consumers need not repeat a storage filename or add a second store.
+    Unused imports, arbitrary caller modules and unrelated literals do not count.
+    """
+    seen = set() if seen is None else seen
+    if not store or ref in seen or len(seen) >= 120 or "::" not in ref:
+        return False
+    seen.add(ref)
+    rel, fn_name = ref.split("::", 1)
+    mod = flow._mod_by_rel(rel)
+    fn = mod.functions.get(fn_name) if mod else None
+    if fn is None:
+        return False
+    source = ast.get_source_segment(mod.path.read_text(encoding="utf-8"), fn) or ""
+    literal = re.compile(r"[\"'][^\"'\n]*\b" + re.escape(store) + r"[\"']")
+    if literal.search(source):
+        return True
+    imports = {**mod.imports, **_imports(list(fn.body), skip_defs=True)}
+    used = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name)}
+    for item in mod.tree.body:
+        targets = item.targets if isinstance(item, ast.Assign) else [item.target] if isinstance(item, ast.AnnAssign) else []
+        if any(isinstance(t, ast.Name) and t.id in used for t in targets):
+            if literal.search(ast.get_source_segment(mod.path.read_text(encoding="utf-8"), item) or ""):
+                return True
+    for local in used:
+        spec = imports.get(local)
+        if not spec or not spec[1]:
+            continue
+        imported = _module_file(root, spec[0], mod.path, spec[2])
+        if imported:
+            tree = ast.parse(imported.read_text(encoding="utf-8"))
+            for item in tree.body:
+                targets = item.targets if isinstance(item, ast.Assign) else [item.target] if isinstance(item, ast.AnnAssign) else []
+                if any(isinstance(t, ast.Name) and t.id == spec[1] for t in targets):
+                    if literal.search(ast.get_source_segment(imported.read_text(encoding="utf-8"), item) or ""):
+                        return True
+    cls = fn_name.rsplit(".", 1)[0] if "." in fn_name else None
+    for call in (n for n in ast.walk(fn) if isinstance(n, ast.Call)):
+        target = flow._resolve_call(mod, imports, cls, call.func)
+        if target and _function_reaches_store(root, target, store, flow, seen):
+            return True
+    return False
+
+
 def verify_record_edge(
     name: str, edge: dict[str, Any], endpoints: list[dict[str, Any]], flow: PayloadFlow, root: Path,
 ) -> dict[str, Any]:
@@ -292,7 +348,10 @@ def verify_record_edge(
         fn = writer.split("::", 1)[1].split(".")[-1]
         writer_side += [p for p in (root / "scripts").rglob("*.py")
                         if "tests" not in p.parts and re.search(rf"\b{re.escape(fn)}\s*\(", p.read_text(encoding="utf-8", errors="replace"))]
-    checks["store_shared"] = any(has_store(p) for p in reader_side) and any(has_store(p) for p in writer_side)
+    reader_store = _function_reaches_store(root, reader, store, flow) or any(
+        _function_reaches_store(root, str(e.get("producer") or ""), store, flow) for e in hits)
+    writer_store = _function_reaches_store(root, writer, store, flow)
+    checks["store_shared"] = (any(has_store(p) for p in reader_side) or reader_store) and (any(has_store(p) for p in writer_side) or writer_store)
     return {"name": name, **{k: edge.get(k) for k in ("route", "path", "reader", "writer", "store")},
             "checks": checks, "verified": all(checks.values())}
 
@@ -338,7 +397,19 @@ def build_measurement(
 ) -> dict[str, Any]:
     root = Path(root) if root else ROOT
     composed = now or datetime.now(timezone.utc).isoformat()
-    census = census if census is not None else build_census(root)
+    classification = classification if classification is not None else load_classification(root)
+    if census is None:
+        census = build_census(root)
+        # Record-backed CIO facts are also consumed outside the five original pages.
+        # Discover only declared surfaces/routes with the same static scanner; declarations
+        # still must pass handler, payload placement, render and store-edge verification.
+        edge_rows = [r.get("record_edge") or {} for r in classification.get("entries") or []]
+        supplemental = {k: v for edge in edge_rows for k, v in (edge.get("surfaces") or {}).items()}
+        if supplemental:
+            extra = build_census(root, surfaces=supplemental)
+            routes = {edge.get("route") for edge in edge_rows if edge.get("surfaces")}
+            census = dict(census, endpoints=[*census.get("endpoints", []),
+                *[e for e in extra.get("endpoints", []) if e.get("route") in routes]])
     if evidence is None:
         from scripts.lib.cio_operator_evidence import build_operator_evidence
 

@@ -1250,6 +1250,33 @@
       "classification": "NOT_OPERATOR_RELEVANT",
       "reason": "One append-only row of the asks ledger data/cio/cio_ask_events.jsonl (asked, entity resolved, answer version, tracking change, channel link, cost); My questions reads the thread projection folded from it. Census gap, not a relevance judgment: the Ask the CIO API is a module delegated from api_v2.handle (scripts/lib/cio_ask_api.py), which scripts/cio_api_contract_census.py does not trace (Ops Controls has the same gap), so no record_edge can verify. Operator visibility is proven by tests/test_cio_ask_20261023.py and apps/command-center-v3/e2e/ask-cio.spec.ts. Reclassify SURFACE with a record_edge when the census traces delegated modules.",
       "owner_hint": "scripts/lib/cio_ask_store.py"
+    },
+    {
+      "name": "schema:CIOReviewLifecycle@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Confirmed-GUID review state is saved through the existing InstrumentRecord prospect facade and native CIO memory after actual queue/research events. Opportunity detail serves the same saved lifecycle, and the modal renders phase clocks, causal request/research IDs, published rationale and verified old/new stance. Ask CIO consumes the same outcome; source visibility does not claim runtime canonical coverage or alert delivery.",
+      "owner_hint": "scripts/lib/cio_review_lifecycle.py::observe",
+      "record_edge": {
+        "route": "/api/v3/opportunities/{param}",
+        "path": [
+          "cio_review",
+          "lifecycle"
+        ],
+        "reader": "lib/cio_review_lifecycle.py::read",
+        "writer": "lib/cio_review_lifecycle.py::observe",
+        "store": "cio_instrument_records.jsonl",
+        "surfaces": {
+          "Opportunity detail": "components/opportunity/OpportunityModal.tsx"
+        }
+      }
+    },
+    {
+      "name": "schema:CIOReviewAging@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "DRAFT source-side diagnostic report returned by cio_review_lifecycle.aging and printed by scripts/cio_review_lifecycle_health.py against explicitly supplied state/captures. It measures proposed review-age and missing-lineage findings for contract acceptance; no operator API, dashboard or notification consumes this report, and the operative health catalogue/schedule is unchanged. The operator-facing review phases are the separately verified CIOReviewLifecycle record. Reclassify this diagnostic with its actual route/notification edge when a reviewed health consumer is implemented; alert delivery remains NOT_MEASURED.",
+      "owner_hint": "scripts/cio_review_lifecycle_health.py::main"
     }
   ]
 }
