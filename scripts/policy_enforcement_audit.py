@@ -50,11 +50,12 @@ def audit_identity(policy: dict, *, trigger: str, now: datetime, amendment_sha: 
     return core.digest([event, policy["document_sha"]])[:40]
 
 
-def mechanical(policy: dict, mapping: dict, *, root: Path, test_receipt: dict | None = None) -> dict:
+def mechanical(policy: dict, mapping: dict, *, root: Path, test_receipt: dict | None = None, code_sha: str | None = None) -> dict:
     rules = core.policy_projection(policy["text"], source_sha=policy["source_sha"])["rules"]
     proofs, findings = {}, []
     receipt = test_receipt or {}
-    exact = receipt.get("source_sha") == policy["source_sha"] and receipt.get("document_sha") == policy["document_sha"]
+    exact = (receipt.get("source_sha") == policy["source_sha"] and receipt.get("document_sha") == policy["document_sha"]
+             and bool(code_sha) and receipt.get("code_sha") == code_sha)
     passed = set(receipt.get("passed_tests") or []) if exact else set()
     runtime = set(receipt.get("passed_runtime_checks") or []) if exact else set()
     for rule in rules:
@@ -110,7 +111,11 @@ def evidence_snapshot(root: Path, state_root: Path) -> tuple[list[dict], list[st
             gaps.append("An execution receipt could not be read")
     if not any(row["kind"] == "lane_receipt" for row in evidence):
         gaps.append("Execution/incident receipt evidence unavailable; raw logs are not sent")
-    return evidence[:40], list(dict.fromkeys(gaps))
+    commits = [row for row in evidence if row["kind"] == "merged_commit"]
+    receipts = [row for row in evidence if row["kind"] == "lane_receipt"]
+    receipts.sort(key=lambda row: (row["status"] != "ok", row.get("finished_at") or ""), reverse=True)
+    # Keep both kinds in the bounded model sample; a long commit list must not crowd out incidents/executions.
+    return commits[:6] + receipts[:6], list(dict.fromkeys(gaps))
 
 
 def registered_process(registry: dict) -> bool:
@@ -147,7 +152,7 @@ def review_findings(policy: dict, measured: dict, evidence: list[dict], *, audit
                 {"role": "user", "content": materials}]
     redacted = sanitise(messages, PROCESS)["messages"]  # unconditional, even if the bridge's own mode is report-only
     result = generate(redacted, process_id=PROCESS, max_tokens=1024, request_id="policy-audit-" + audit_key,
-                      budget={"cost_ceiling_usd": .02, "latency_budget_ms": 30000}, tools=None)
+                      budget={"cost_ceiling_usd": .02}, tools=None)
     provenance = result.get("_tradeai") or {}
     if (result.get("error") or provenance.get("governance_pass") is not True or provenance.get("mock") is not False
             or provenance.get("process_id") != PROCESS or provenance.get("provider") != "deepseek"):
@@ -181,10 +186,11 @@ def run(*, root: Path, state_root: Path, trigger: str, now: datetime, apply: boo
             test_receipt = json.loads(receipt_path.read_text())
         except (OSError, ValueError):
             pass
-    measured = mechanical(policy, mapping, root=root, test_receipt=test_receipt)
+    code_sha = git(root, "rev-parse", "HEAD").strip()
+    measured = mechanical(policy, mapping, root=root, test_receipt=test_receipt, code_sha=code_sha)
     evidence, gaps = evidence_snapshot(root, state_root)
     plan = {"mode": "apply" if apply else "dry_run", "audit_key": key, "trigger": trigger,
-            "source_sha": sha, "document_sha": policy["document_sha"], "mapped_count": measured["mapped_count"],
+            "source_sha": sha, "code_sha": code_sha, "document_sha": policy["document_sha"], "mapped_count": measured["mapped_count"],
             "unmapped_count": measured["unmapped_count"], "review_scope": "bounded sample (8 mapped/sensitive rule blocks, first 12 evidence records)",
             "evidence_gaps": gaps, "would_call_reviewer": llm_review, "auto_apply": False}
     if not apply:

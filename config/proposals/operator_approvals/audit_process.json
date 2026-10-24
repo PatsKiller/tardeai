@@ -6,9 +6,14 @@
     "category": "Governance",
     "lane_policy": "deepseek_only",
     "default_mode": "manual",
-    "allowed_lanes": ["fast", "deepseek-flash"],
+    "allowed_lanes": [
+      "fast",
+      "deepseek-flash"
+    ],
     "deepseek_default_policy": "FAST",
-    "deepseek_allowed_policies": ["FAST"],
+    "deepseek_allowed_policies": [
+      "FAST"
+    ],
     "max_input_tokens": 6000,
     "max_output_tokens": 1024,
     "daily_soft_cap": 2,
@@ -19,7 +24,9 @@
     "circuit_breaker": true,
     "dedupe_policy": "request_id_only"
   },
-  "per_call_narrowing": {"cost_ceiling_usd": 0.02, "latency_budget_ms": 30000},
+  "per_call_narrowing": {
+    "cost_ceiling_usd": 0.02
+  },
   "global_cap_change": false,
   "approval": null,
   "activation": false

@@ -35,7 +35,7 @@ operator_decisions source sign-off, measured full-run timing and W8 admission.
 Step 1 reads every document block, maps the reviewed anchors to tests, CI gates
 and runtime source files, and reports missing files and unmapped blocks. File
 existence proves only existence. Passing tests/runtime checks require an exact
-source SHA AND document hash receipt at
+policy source SHA, implementation commit AND document hash receipt at
 `data/runtime/policy_enforcement_tests_last.json`; an absent/stale receipt never
 earns TESTED or ENFORCED. This runner does not execute arbitrary test commands or
 runtime gates from a map. The initial map is partial and reports that gap.
@@ -43,7 +43,7 @@ runtime gates from a map. The initial map is partial and reports that gap.
 Step 2 is optional `--llm-review`. It requires dedicated registered process
 `policy_enforcement_audit`, DeepSeek only, no tools/fallback, ≤6,000 input tokens,
 ≤1,024 output tokens and ≤$0.05 per day. Each bridge call additionally narrows to
-$0.02 and a 30-second latency budget. The global cap stays unchanged. Model
+$0.02. Transport timeouts remain the existing governed bridge’s; no unmeasured timeout is introduced. The global cap stays unchanged. Model
 registration, cap refusal, mock output or missing governance provenance refuses
 the review. The runner never borrows another process or directly calls a model.
 
