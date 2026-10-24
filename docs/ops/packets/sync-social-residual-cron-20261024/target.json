@@ -1,0 +1,9 @@
+{
+  "schema": "SyncSocialResidualCronTarget@v1",
+  "lane_id": "sync-social-to-intelligence",
+  "target_line": "30 11,15 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1",
+  "retired_prefix": "# RETIRED WP33-20261024 sync-social-to-intelligence residual (operator packet; n8n owns) ",
+  "historical_source": "docs/ops/N8N_CUTOVER_EFFECT_CLAIM_WRAPPER_20261023.md:109",
+  "historical_line_number": 1077,
+  "runtime_census": "NOT_MEASURED_BY_THIS_PACKET_AUTHOR"
+}

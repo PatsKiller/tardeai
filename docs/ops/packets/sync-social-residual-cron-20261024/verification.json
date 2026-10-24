@@ -1,0 +1,49 @@
+{
+  "schema": "WP33ResidualCronPacketVerification@v1",
+  "status": "OFFLINE_FIXTURES_ONLY_HOST_UNCHANGED",
+  "base_sha": "ef115e38e5d9b9a52c3b480898afe72b30678121",
+  "verified_at": "2026-10-24T03:56:49.726184Z",
+  "fixture_clock": "2026-10-24T03:48:19Z",
+  "host_crontab_census": "NOT_MEASURED",
+  "n8n_acceptance": "NOT_MEASURED",
+  "local_gate": "sync_social_residual_cron_packet_20261024",
+  "source_sha256": {
+    "docs/ops/packets/sync-social-residual-cron-20261024/target.json": "07099ffc8018844dfef32f991fb95be6a6e6149e9cd6842566baa489759515a6",
+    "docs/ops/packets/sync-social-residual-cron-20261024/retire_packet.py": "ee1c69988b12ddaef033c13b0d1f71b9a15601826759e76bd3c922592a86f158",
+    "docs/ops/packets/sync-social-residual-cron-20261024/operator.sh": "34da9c4b8565f9b5a4c7ea7b5e6c00eb3acb217735eb4d388551ec3afa487068",
+    "tests/test_sync_social_residual_cron_packet_20261024.py": "28f6b74e6258427bbf9e6e229d39a2cb8557548ba74d75aa8e0ef89bcd59dd3a",
+    "config/ci_gates/sync_social_residual_cron_packet_20261024.json": "efe5619407f05f48281b2d372cdd9f7e78d844149f6671a084b639dcf4c50d7f"
+  },
+  "tests": {
+    "new": {
+      "tests": 27,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "xml_sha256": "9acdc5f2f2591dd017c950ff25102f22e5e08457449825427fec037b094cf441"
+    },
+    "compatible": {
+      "tests": 113,
+      "errors": 0,
+      "failures": 0,
+      "skipped": 0,
+      "xml_sha256": "b0f5acc79c7d20da1323ede1dfb5a08a586315cd3d3de32e967386e6432c3ac4"
+    }
+  },
+  "example_plan": {
+    "schema": "SyncSocialResidualCronPlan@v1",
+    "status": "PLAN_READY",
+    "lane_id": "sync-social-to-intelligence",
+    "target_spec_sha256": "07099ffc8018844dfef32f991fb95be6a6e6149e9cd6842566baa489759515a6",
+    "target_line_sha256": "6005200955aa59b87e4fc68b3e83ef88def4bf001938e40b5393f6e4e972ff4e",
+    "retired_prefix": "# RETIRED WP33-20261024 sync-social-to-intelligence residual (operator packet; n8n owns) ",
+    "snapshot_sha256": "b2964826d90783d4a5c45a8227f7e602eed00825879f10ee868c23241ef6f90b",
+    "candidate_sha256": "6229abf4b63fb053873a92f9286cfbcd6133bfe84e8fe70d92745a3e8eb8ae2e",
+    "changed_lines": 1,
+    "line_number_in_snapshot": 1077,
+    "change": "PREFIX_ONE_EXACT_LINE_ONLY",
+    "n8n_acceptance": "NOT_MEASURED",
+    "observed_at": "2026-10-24T03:48:19Z"
+  },
+  "example_diff_sha256": "64d1270f4cdf0eeb2f1b89b3f7ae050b4e6fe0d250c6cfea039d31adea3170dc"
+}
