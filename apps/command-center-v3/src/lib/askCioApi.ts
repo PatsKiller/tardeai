@@ -4,6 +4,7 @@
  */
 import { ASK_PATHS, buildAskBody, newRequestId, unwrap } from './askCioModel'
 import type { Thread } from './askCioModel'
+import { publishAskUpdate } from './askCioPresentation'
 
 export class AskApiError extends Error {
   code: string
@@ -30,12 +31,16 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 
 export interface AskResult { ask_id: string; thread_id: string; answer_text: string; thread: Thread | null }
 
-export function askCio(question: string, opts: { deep?: boolean; threadId?: string | null } = {}): Promise<AskResult> {
-  return post<AskResult>(ASK_PATHS.ask, buildAskBody(question, { ...opts, requestId: newRequestId() }))
+export async function askCio(question: string, opts: { deep?: boolean; threadId?: string | null } = {}): Promise<AskResult> {
+  const result = await post<AskResult>(ASK_PATHS.ask, buildAskBody(question, { ...opts, requestId: newRequestId() }))
+  if (result.thread_id) publishAskUpdate({ threadId: result.thread_id, source: 'mutation' })
+  return result
 }
 
-export function requestDeep(threadId: string, askId?: string): Promise<{ status: string }> {
-  return post(ASK_PATHS.deep(threadId), askId ? { ask_id: askId } : {})
+export async function requestDeep(threadId: string, askId?: string): Promise<{ status: string }> {
+  const result = await post<{ status: string }>(ASK_PATHS.deep(threadId), askId ? { ask_id: askId } : {})
+  publishAskUpdate({ threadId, source: 'mutation' })
+  return result
 }
 
 export function untrackEntity(threadId: string, entityKey: string): Promise<{ ok: boolean }> {
