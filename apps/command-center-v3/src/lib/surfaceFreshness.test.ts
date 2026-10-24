@@ -95,6 +95,40 @@ check('garbage → null', parseTimestamp('not-a-date') == null)
   check('prior run_date is stale', f.stale === true)
 }
 
+// ---- tradeAi: "prior session" means older than the latest OPENED session ----
+// 2026-10-24 00:59 ET (Sat): the header read "STALE · prior session" for Friday's 22:19 ET
+// scan because run_date was compared with the calendar date. A fresh-cache Friday run is
+// current all weekend and through Monday pre-market; it goes stale at Monday 09:30 ET.
+{
+  const friRun = (at: string) => tradeAiSurfaceFreshness({
+    stale: false, go_count: 3, wait_count: 2, ticker_count: 40, current_run_scanned: 40,
+    run_date: '2026-10-23', cached_at: at, cache_age_sec: 3600,
+  }, new Date(at))
+  check('Fri run, Sat 00:59 ET: not stale', friRun('2026-10-24T04:59:00Z').stale === false)
+  check('Fri run, Sun 20:00 ET: not stale', friRun('2026-10-26T00:00:00Z').stale === false)
+  check('Fri run, Mon 09:29 ET: not stale', friRun('2026-10-26T13:29:00Z').stale === false)
+  const mon = friRun('2026-10-26T13:31:00Z')
+  check('Fri run, Mon 09:31 ET: prior session', mon.stale === true && mon.reason === 'prior session')
+}
+{
+  // Mid-week overnight: Wednesday's run is current until Thursday's open.
+  const wedRun = (at: string) => tradeAiSurfaceFreshness({
+    stale: false, go_count: 1, ticker_count: 10, current_run_scanned: 10,
+    run_date: '2026-10-21', cached_at: at, cache_age_sec: 600,
+  }, new Date(at))
+  check('Wed run, Thu 02:00 ET: not stale', wedRun('2026-10-22T06:00:00Z').stale === false)
+  check('Wed run, Thu 10:00 ET: stale', wedRun('2026-10-22T14:00:00Z').stale === true)
+}
+{
+  // DST ends Sun 2026-11-01: Friday 10-30's run stays current until Mon 11-02 09:30 EST (14:30Z).
+  const run = (at: string) => tradeAiSurfaceFreshness({
+    stale: false, go_count: 1, ticker_count: 10, current_run_scanned: 10,
+    run_date: '2026-10-30', cached_at: at, cache_age_sec: 600,
+  }, new Date(at))
+  check('DST weekend Mon 09:29 EST: not stale', run('2026-11-02T14:29:00Z').stale === false)
+  check('DST weekend Mon 09:31 EST: stale', run('2026-11-02T14:31:00Z').stale === true)
+}
+
 // ---- overview: the PORTFOLIO chip dates the DATA, not the loader run ----
 // as_of is written `= today` by portfolio_loader: it records WHEN THE LOADER RAN.
 // On 2026-09-01 it read 2026-08-29 while the Schwab rows carried 08-31 and the
