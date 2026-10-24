@@ -35,7 +35,16 @@ export type PositionFacts = {
   last_sell_account?: string | null; last_sell_account_label?: string | null
 }
 export type Membership = { kind: string; label: string; at: string | null; ref: unknown }
+export type WatchMarketField = {
+  value: number | null; as_of: string | null; source: string | null; source_label: string
+  stale: boolean | null; freshness: string; reason: string | null
+  compatibility?: string; as_of_basis?: string | null
+}
+export type WatchMarketFacts = {
+  schema: string; evaluated_at: string; price: WatchMarketField; support: WatchMarketField; resistance: WatchMarketField
+}
 export type ListRow = ProspectRow & PositionFacts & {
+  market_facts?: WatchMarketFacts | null
   mine?: boolean; starred?: boolean; membership?: Membership[]
   expiry_suggestion?: { reason: string; suggest: string } | null
   universe_rank?: number | null

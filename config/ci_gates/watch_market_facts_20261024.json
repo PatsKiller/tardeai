@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_market_facts_20261024",
+  "files": [
+    "tests/test_watch_market_facts_20261024.py"
+  ],
+  "anchor": "WATCH_MARKET_FACTS_20261024",
+  "comment": [
+    "ANCHOR: WATCH_MARKET_FACTS_20261024 — MyList stored price/support/resistance with per-field source and observation time.",
+    "Injected four-source batches only for operator symbols; partial/malformed read degradation; primary/strategy/closed-resistance precedence;",
+    "real canonical quote identity retained; request-time freshness over cached evidence; no provider, DB, credential, writer or decision effects."
+  ]
+}
