@@ -4194,6 +4194,10 @@ def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
 def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[str, Any]:
     """The branch's answer, then the dossier; a pill says who wrote each part."""
     cur = _curate_from_evidence_core(operator_text, evidence)
+    from scripts.lib.cio_review_lifecycle import answer_note
+    note = answer_note(((evidence or {}).get("available") or {}).get("cio_record_research") or {})
+    if note:
+        cur = {**cur, "text": note + "\n\n" + str(cur.get("text") or "")}
     avail = (evidence or {}).get("available") or {}
     # Stamp LLM-produced curation onto shared spine (CIO-owned; tagged; not tip thesis).
     try:
@@ -4499,6 +4503,11 @@ def handle_operator_desk_question(
             "model": None,
         }
     evidence = gather_tradeai_evidence(intent)
+    from scripts.lib.cio_review_lifecycle import research_for_symbols
+    shared = research_for_symbols(intent.get("symbols") or [], root=PROJECT_ROOT)
+    evidence.setdefault("available", {})["cio_record_research"] = shared
+    if isinstance(evidence["available"].get("freeform_context"), dict):
+        evidence["available"]["freeform_context"]["cio_record_research"] = shared
     pending_id = f"opr_{uuid.uuid4().hex[:12]}"
 
     result: dict[str, Any] = {

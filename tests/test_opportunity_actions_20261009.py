@@ -47,9 +47,14 @@ def test_request_review_api_queues_once(tmp_path, monkeypatch):
     rows = [json.loads(x) for x in (tmp_path / "data/cio/symbol_thesis_priority_queue.jsonl").read_text().splitlines()]
     assert rows[0]["symbol"] == "BRCC" and rows[0]["source"] == "operator_opportunity_view"
     assert "rank 2, no thesis" in rows[0]["reason"] and rows[0]["authority"] == "READ_ONLY_ADVISORY"
+    path = tmp_path / "data/cio/symbol_thesis_priority_queue.jsonl"
+    before = path.read_bytes()
+    # Request + its consumer receipt are append-only events for ONE request ID.
+    assert len(stp._rows(path)) == 1
+    assert len({r["request_id"] for r in rows}) == 1
     code, out = api.request_review("BRCC", {})
     assert out["already_open"] is True
-    assert len((tmp_path / "data/cio/symbol_thesis_priority_queue.jsonl").read_text().splitlines()) == 1
+    assert path.read_bytes() == before, "dedup must append neither another request nor another receipt"
     assert api.request_review("bad sym!", {})[0] == 400
 
 

@@ -89,7 +89,7 @@ class SpineAskMemory:
                 if entity.security_guid and sp.get("subject_guid") and sp["subject_guid"] != entity.security_guid:
                     sp = {}  # a different security under the same ticker: never recall across identities
                 for c in sp.get("contributions") or []:
-                    if ASK_TAG not in (c.get("tags") or []):
+                    if ASK_TAG not in (c.get("tags") or []) and "cio_review_lifecycle" not in (c.get("tags") or []):
                         continue
                     items.append(
                         {
@@ -152,7 +152,7 @@ def format_recall(entity: EntityRef, items: list[dict], *, max_items: int = 4) -
         when = str(it.get("at") or "")[:10]
         body = str(it.get("summary") or "")
         body = body.split("] ", 1)[1] if body.startswith("[") and "] " in body else body
-        verb = "you asked" if it.get("kind") in ("ask.asked", "ask.follow_up") else "I answered"
+        verb = "review state" if it.get("kind") == "cio_review_lifecycle" else ("you asked" if it.get("kind") in ("ask.asked", "ask.follow_up") else "I answered")
         if it.get("kind") == "ask.tracking_changed":
             verb = "tracking"
         elif it.get("kind") == "ask.reanswer_triggered":

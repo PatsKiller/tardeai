@@ -135,7 +135,7 @@ def review_questions(symbol: str) -> list[dict[str, str]]:
     ]
 
 
-def _emit_via_desk_research(symbol: str, source: str) -> dict[str, Any]:
+def _emit_via_desk_research(symbol: str, source: str, review_id=None, review_at=None) -> dict[str, Any]:
     """Queue the CIO research pull the desk uses for a named symbol."""
     from datetime import timedelta
 
@@ -164,7 +164,8 @@ def _emit_via_desk_research(symbol: str, source: str) -> dict[str, Any]:
     )
     if not isinstance(plan, dict) or not plan.get("plan_id"):
         return {"ok": False, "error": "no_plan_id"}
-    plan = {**plan, "hermes_requested": True}
+    member = {"symbol": symbol, "review_request_id": review_id, "requested_at": review_at, **_identity(symbol)}
+    plan = {**plan, **member, "hermes_requested": True, "review_requests": [member]}
     emit = emit_research_for_plan(
         plan,
         reason="cio_stance_missing_review",
@@ -219,6 +220,7 @@ def request_cio_review(
     caller: Optional[str] = None,
     now: Optional[datetime] = None,
     emitter: Optional[Callable[[str, str], dict[str, Any]]] = None,
+    root=None,
 ) -> dict[str, Any]:
     """Queue a CIO stance review for ``symbol``. Returns fields for the hold row.
 
@@ -250,9 +252,12 @@ def request_cio_review(
                 "review_status": "deduped",
                 "review_request_id": prior.get("research_id"),
                 "review_requested_at": prior.get("as_of"),
+                "lifecycle_request_id": prior.get("lifecycle_request_id"),
                 "classification_requested": bool(prior.get("classification_requested")),
             }
-        emit = (emitter or _emit_via_desk_research)(sym, src)
+        from scripts.lib.cio_review_lifecycle import request_id, safe_observe
+        review_id = request_id(sym, src, when.isoformat())
+        emit = emitter(sym, src) if emitter else _emit_via_desk_research(sym, src, review_id, when.isoformat())
         ok = bool(emit.get("ok", False))
         research_id = emit.get("research_id")
         status = str(emit.get("reason") or emit.get("status") or ("created" if ok else emit.get("error") or "failed"))
@@ -266,6 +271,7 @@ def request_cio_review(
             "ok": ok,
             "status": status[:80],
             "research_id": research_id,
+            "review_request_id": review_id,
             "plan_id": emit.get("plan_id"),
             "priority": review_priority(),
             "mbi_behavior": 0,
@@ -273,6 +279,8 @@ def request_cio_review(
             "classification_requested": classification_enabled(),
             **_identity(sym),
         }
+        row["lifecycle_persist"] = safe_observe(row, "REQUESTED" if ok else "FAILED", root=root, at=as_of,
+                                                reason="Research requested" if ok else status)
         try:
             ledger.parent.mkdir(parents=True, exist_ok=True)
             with ledger.open("a", encoding="utf-8") as fh:
@@ -283,6 +291,7 @@ def request_cio_review(
             "ts": when.timestamp(),
             "as_of": as_of,
             "research_id": research_id,
+            "lifecycle_request_id": review_id,
             "classification_requested": row["classification_requested"],
         }
         if not ok:

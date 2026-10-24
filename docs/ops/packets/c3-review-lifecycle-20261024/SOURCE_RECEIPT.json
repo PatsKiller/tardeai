@@ -1,0 +1,24 @@
+{
+  "schema": "C3SourceFixtureReceipt@v1",
+  "task": "DSN-20261024-cio-review-lifecycle-P1-T1",
+  "base": "e5fa288ecc6971d1a55a79f7e3ba5bbbb46c5dd0",
+  "audit_checkpoint": "647c81155",
+  "worker_session": "codex-c3-wp14-20261024",
+  "source_acceptance": "FIXTURE_VERIFIED",
+  "runtime_acceptance": "NOT_MEASURED; observed canonical records require CIO-owned promotion",
+  "python": "175 passed, no skips; PYTHONPATH=/home/johnclaw/.cache/rtc/nopg; TRADE_AI_CI=1; driver refusal verified",
+  "focus": "22 C3 cases, real publisher/projection + IR facade + spine/recall + actual quick Ask/persisted answer",
+  "browser": "8 passed (3.0s); actual OpportunityModal; API/publisher-generated requested/answered/resolved plus labelled stale-assessment conflict at 1440/412",
+  "browser_artifacts": "/home/johnclaw/.cache/rtc/codex-c3-review-lifecycle-20261024/screenshots",
+  "build": "npm run build PASS, existing large-bundle/classic-script warnings only",
+  "ratchets": "test host paths --fail-on-new PASS; coverage --fail-on-new PASS; docs index and diff checks PASS",
+  "historical_test_repairs": "Three identical e5fa baseline failures corrected with isolated named-subject/empty-desk fixtures and current governed alias; no production guard weakened",
+  "health_contract": "DRAFT proposal; evaluator implemented; delivery NOT_MEASURED",
+  "source_only": true,
+  "live_operations": 0,
+  "logs": {
+    "native": "/home/johnclaw/.cache/rtc/codex-c3-review-lifecycle-20261024/final-pytest.log",
+    "browser": "/home/johnclaw/.cache/rtc/codex-c3-review-lifecycle-20261024/playwright-final-approved.log",
+    "build": "/home/johnclaw/.cache/rtc/codex-c3-review-lifecycle-20261024/npm-build-final.log"
+  }
+}

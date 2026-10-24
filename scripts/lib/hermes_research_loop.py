@@ -741,6 +741,14 @@ def on_hermes_completed(
         except Exception as e:
             out["overlay_error"] = f"{type(e).__name__}:{e}"
 
+    # Completion records an answer, never an approved stance or settled conflict.
+    from scripts.lib.cio_review_lifecycle import safe_observe
+    out["review_lifecycle"] = safe_observe(
+        request, "ANSWERED_PENDING_CIO" if (eligibility.get("eligible") and research_complete_is_attachable(result, out.get("critique"))) else "BLOCKED", at=_now(),
+        reason="Hermes research answered; canonical CIO decision/readback still required" if eligibility.get("eligible") and research_complete_is_attachable(result, out.get("critique")) else "Research result failed quality/identity/freshness checks; no answer accepted",
+        research_id=result.get("research_id"), evidence_refs=[str(result.get("result_id") or ""),
+            "research_as_of=" + str(result.get("completed_ts") or result.get("as_of") or "NOT_MEASURED")])
+
     # Missing R6.8 link: persist a new investment product + what_changed + notify.
     # Fail-soft. Never reruns paid research. Never grants RE_ENTER.
     try:
@@ -871,11 +879,12 @@ def on_hermes_reused(plan: dict[str, Any], enqueue_result: dict[str, Any]) -> di
     """TTL reuse: attach existing result evidence without re-running Hermes."""
     existing = enqueue_result.get("existing") or {}
     result = {
+        **existing,
         "result_id": existing.get("result_id") or enqueue_result.get("result_id"),
         "research_id": enqueue_result.get("research_id"),
         "plan_id": plan.get("plan_id"),
         "as_of": existing.get("as_of") or existing.get("completed_ts"),
-        "status": "completed",
+        "status": existing.get("status") or "completed",
         "summary": existing.get("summary") or "",
         "findings": existing.get("findings") or [],
         "answers": existing.get("answers") or [],
@@ -890,7 +899,7 @@ def on_hermes_reused(plan: dict[str, Any], enqueue_result: dict[str, Any]) -> di
         if isinstance(full, dict):
             result = {**full, "reused": True}
     return on_hermes_completed(
-        {"plan_id": plan.get("plan_id"), "research_id": result.get("research_id")},
+        {**plan, "plan_id": plan.get("plan_id"), "research_id": result.get("research_id")},
         result,
         resynth=True,
         notify=False,  # pure reuse: no Telegram

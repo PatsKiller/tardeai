@@ -53,7 +53,7 @@ def publish_symbol_thesis(
     }
     # Optional provenance keys: present only when the caller supplied them, so a
     # version written without them keeps the exact prior shape.
-    for key in ("scope", "source_result_id"):
+    for key in ("scope", "source_result_id", "review_request_ids", "security_guid"):
         if supplied.get(key):
             write_provenance[key] = supplied.get(key)
     bullets = []

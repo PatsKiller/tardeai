@@ -1,0 +1,121 @@
+{
+  "fixture_only": true,
+  "generated_by": "actual API request_review/review_state + real CIO publisher/IR/spine in isolated pinned fixtures",
+  "requested": {
+    "lifecycle": {
+      "status": "REQUESTED",
+      "request_id": "review-45899d70115b610b4244e35c",
+      "created_at": "2026-10-24T14:00:00+00:00",
+      "requested_at": "2026-10-24T14:00:00+00:00",
+      "updated_at": "2026-10-24T14:00:00+00:00",
+      "old_stance": "WATCH",
+      "new_stance": null,
+      "reason": "operator flagged from the opportunity view: Resolve the guidance conflict",
+      "evidence_refs": [],
+      "security_guid": "5f0c6a3e-2222-5222-8222-000000000001"
+    },
+    "queue_eligible": true,
+    "open": true,
+    "queue_position": 1,
+    "queue_length": 1,
+    "requested_at": "2026-10-24T14:00:00+00:00",
+    "requested_by": "operator_opportunity_view",
+    "next_run": "weekdays 17:17 ET (governed symbol-thesis acquisition; open requests first)"
+  },
+  "answered": {
+    "lifecycle": {
+      "status": "ANSWERED_PENDING_CIO",
+      "request_id": "review-45899d70115b610b4244e35c",
+      "created_at": "2026-10-24T14:00:00+00:00",
+      "requested_at": "2026-10-24T14:00:00+00:00",
+      "researching_at": "2026-10-24T14:10:00+00:00",
+      "started_at": "2026-10-24T14:10:00+00:00",
+      "answered_at": "2026-10-24T15:00:00+00:00",
+      "completed_at": "2026-10-24T15:00:00+00:00",
+      "updated_at": "2026-10-24T15:00:00+00:00",
+      "research_id": "res-fixture",
+      "old_stance": "WATCH",
+      "new_stance": null,
+      "reason": "Evidence A accepted, canonical decision pending",
+      "evidence_refs": [],
+      "security_guid": "5f0c6a3e-2222-5222-8222-000000000001"
+    },
+    "queue_eligible": true,
+    "open": true,
+    "queue_position": 1,
+    "queue_length": 1,
+    "requested_at": "2026-10-24T14:00:00+00:00",
+    "requested_by": "operator_opportunity_view",
+    "next_run": "weekdays 17:17 ET (governed symbol-thesis acquisition; open requests first)"
+  },
+  "resolved": {
+    "lifecycle": {
+      "status": "CONFLICT_RESOLVED",
+      "request_id": "review-45899d70115b610b4244e35c",
+      "created_at": "2026-10-24T14:00:00+00:00",
+      "requested_at": "2026-10-24T14:00:00+00:00",
+      "researching_at": "2026-10-24T14:10:00+00:00",
+      "started_at": "2026-10-24T14:10:00+00:00",
+      "answered_at": "2026-10-24T15:00:00+00:00",
+      "completed_at": "2026-10-24T15:00:00+00:00",
+      "conflict_resolved_at": "2026-10-24T16:00:00+00:00",
+      "updated_at": "2026-10-24T16:00:00+00:00",
+      "research_id": "res-fixture",
+      "old_stance": "WATCH",
+      "new_stance": "ADD",
+      "reason": "Cited filing resolves the outdated guidance conflict",
+      "evidence_refs": [
+        "symbol_tsla",
+        "symbol_tsla@v1"
+      ],
+      "security_guid": "5f0c6a3e-2222-5222-8222-000000000001"
+    },
+    "queue_eligible": false,
+    "open": false,
+    "queue_position": null,
+    "queue_length": 0,
+    "requested_at": "2026-10-24T14:00:00+00:00",
+    "requested_by": "operator_opportunity_view",
+    "next_run": "weekdays 17:17 ET (governed symbol-thesis acquisition; open requests first)"
+  },
+  "answer_text": "CIO review TSLA: CONFLICT_RESOLVED \u2014 Cited filing resolves the outdated guidance conflict CIO stance WATCH \u2192 ADD. [request review-45899d70115b610b4244e35c; research res-fixture].\n\nThe saved CIO review evidence is available. READ_ONLY_ADVISORY\n\nEarlier on TSLA (CIO memory):\n- 2026-10-23 I answered: \"fixture stored inputs (house_store, as of 2026-10-24T15:54:21.886925Z)\"\n- 2026-10-23 I answered: \"v1 quick: Key: \ud83d\udfe2 green = Trade-AI's own stored data \u00b7 \ud83d\udd35 blue = looked up outside Trade-AI for this reply \u00b7 \ud83d\udfe3 purple = written by an AI model (DeepSeek), check\u2026\"\n- 2026-10-23 I answered: \"Tesla \u2192 TSLA (CONFIRMED)\"\n- 2026-10-23 you asked: \"(ask_ad8145001c4d860b via cc) Explain the TSLA review outcome\"\n\nTracking: TSLA \u2192 My Watchlist, catalyst watch, CIO record\n\nThread thr_36a3844456bba938 \u00b7 reply here or open My questions in the Command Center to follow up.\nOrigin: \ud83d\udfe2 Trade-AI data (1 store) \u00b7 \ud83d\udd35 Looked up outside Trade-AI: offline fixture \u2014 general knowledge where labelled; numbers from the stores above \u00b7 \ud83d\udfe3 AI model (DeepSeek): general knowledge where labelled\nSources: fixture stored inputs | offline fixture \u2014 general knowledge where labelled; numbers from the stores above\nWent outside: offline fixture \u2014 general knowledge where labelled; numbers from the stores above\nNo orders/stops from chat \u00b7 READ_ONLY_ADVISORY",
+  "assessment_snapshot": {
+    "symbol": "TSLA",
+    "security_guid": "5f0c6a3e-2222-5222-8222-000000000001",
+    "stance": "WATCH",
+    "conviction": 61,
+    "as_of": "2026-10-24T14:00:00+00:00"
+  },
+  "canonical_assessment": {
+    "symbol": "TSLA",
+    "security_guid": "5f0c6a3e-2222-5222-8222-000000000001",
+    "stance": "ADD",
+    "conviction": 61,
+    "as_of": "2026-10-24T16:00:00+00:00"
+  },
+  "published_thesis": {
+    "thesis_version": "symbol_tsla@v1",
+    "summary": "Cited filing resolves the outdated guidance conflict",
+    "stance": "add",
+    "owner_agent": "alex",
+    "updated_at": null,
+    "created_at": null,
+    "write_provenance": {
+      "writer": "symbol_thesis_publish",
+      "writer_version": "symbol_thesis_publish@v1",
+      "source_research_ids": [
+        "res-fixture"
+      ],
+      "delta_id": null,
+      "trigger": "unspecified",
+      "run_id": null,
+      "source_sha": null,
+      "previous_version": null,
+      "reason_for_change": "Cited filing resolves the outdated guidance conflict",
+      "review_request_ids": [
+        "review-45899d70115b610b4244e35c"
+      ],
+      "security_guid": "5f0c6a3e-2222-5222-8222-000000000001"
+    }
+  }
+}

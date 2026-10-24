@@ -3,7 +3,7 @@
 Design-Task: DSN-20261024-cio-review-lifecycle-P1-T1
 Source baseline: e5fa288ecc6971d1a55a79f7e3ba5bbbb46c5dd0
 Observation window: 2026-10-24 14:58–15:15 UTC.
-Status: READ_ONLY_AUDIT_COMPLETE; implementation and publication pending.
+Audit status: READ_ONLY_AUDIT_COMPLETE. Historical findings below precede the source implementation continuation; publication and runtime application remain pending.
 
 The opportunity-panel review button and the 187-row stance-review ledger are **different request paths**.
 The button writes the CIO symbol-thesis priority queue. The stance-review ledger records automated
@@ -102,3 +102,90 @@ visible beyond the old TTL, and the health check detects an overdue `created` re
 Publication prerequisites remain the psycopg2-hidden tests, host-path and coverage ratchets,
 docs index, frontend build and actual mocked-page screenshots at 1440/412 for any UI change.
 The coordinator owns merge and release. This audit does not mark the runtime or the work package done.
+
+## Source implementation continuation — worker C3
+
+Source status: IMPLEMENTED_AND_FIXTURE_VERIFIED; publication/runtime application pending. The audit above is an
+unchanged historical observation, not a claim that these source changes or a new health monitor are live.
+
+The operator priority queue now stamps stable request IDs and confirmed identity. It appends the actual request
+before claiming REQUESTED on the CIO record, then appends its consumer acknowledgement to the **same existing
+queue**. The reader folds those events into one logical request; a duplicate API call appends neither another
+request nor another receipt. New causal requests remain pending beyond the old TTL until their exact terminal
+receipt or canonical resolution exists. Legacy rows preserve their historical TTL/association semantics and are
+reported as unmeasured lineage, not retroactively relabelled as failed research.
+
+Both real request paths now carry their causal IDs into existing consumers:
+
+- Governed acquisition records RESEARCHING, then ANSWERED_PENDING_CIO / BLOCKED / FAILED from the actual outcome.
+  The existing synthesis/reconciliation/publication chain carries request IDs and security GUID as provenance.
+  A non-published insufficient/failed reconciliation no longer masquerades as verified no-material-change.
+- Hermes enqueue retains review lineage, including in-flight joins; running/failure/completion hooks record their
+  factual phase. Fresh-result reuse keeps the new request's identity and original research ID, with no new paid
+  research or notification. Failed, truncated or quality/identity/freshness-negative results remain blocked.
+- An answered review remains pending. Only a real CIO publication with matching GUID, symbol, causal request and
+  research IDs, exact version and valid publication time can resolve it, together with a matching conflict-free
+  canonical CIO record. The observer changes no stance, conviction or conflict. Existing acquisition passes revisit
+  saved pending publication references after the CIO owner updates the record.
+- The outcome reason comes from the actual CIO publication's reason/change note. Missing rationale stays unknown;
+  transport verification is a separate field, not an invented investment explanation.
+
+`cio_review_lifecycle.observe` uses existing `apply_prospect → upsert_prospect`, including gated PG dual-write, and
+`upsert_research_memory` with `thesis_patch=None`. It preserves sibling research (including C1 company facts),
+identity, source clocks and judgments. No new canonical store, queue, schema, scheduler or paid process is introduced.
+Missing, ambiguous, unconfirmed or legacy-only records are held; no prospect is minted or silently promoted.
+
+Multiple planes are not claimed to be a transaction. PG inert/failure and spine failure are reported independently;
+the queue/worker receipt exposes incomplete acknowledgement. Duplicate/delayed events make no additional write and
+report consumer acknowledgement NOT_MEASURED rather than turning a partial failure green. Automatic repair of
+possibly divergent authoritative stores remains an owner action.
+
+The actual quick-Ask path is wired: `ask_from_cc → process_operator_message → handle_operator_desk_question`
+reads the saved GUID record into real model facts and adds the same deterministic outcome to the visible reply.
+The Ask spine reader now recalls the lifecycle contribution. It does not route through a Watch-only store or call a
+request-time provider. Saved company catalysts use the same original-date aging rule as C1. C1's shared
+cognition/Telegram/Phase9 consumers retain their sibling review fields when the coordinator batches both branches.
+No C1-owned file was copied or modified by C3.
+
+The existing Opportunity modal reads `cio_review.lifecycle` from the same saved record. Its panel displays Created,
+Researching, Answered—awaiting CIO, Conflict resolved, Blocked or Failed with event clocks, actual rationale,
+old/new authoritative stance and request/research/evidence references. Existing assessment judgments remain under
+their original producer; this change does not overwrite a separate materialized assessment with research text.
+
+## Read-only aging evaluator and proposed health contract
+
+`python scripts/cio_review_lifecycle_health.py --root <isolated-or-authorized-state-root> --now <aware-ISO-time>`
+is a real read-only evaluator, not a documentation-only proposed monitor. The explicit optional `--stance-requests`
+input accepts a captured JSONL path; it never calls a Hermes store loader, service bus, API or sender. Missing,
+unreadable and malformed input is NOT_MEASURED/PARTIAL, never a measured empty healthy queue.
+
+Findings match exact request IDs. They distinguish research-age from CIO-decision-age, failed/incomplete consumers,
+unknown identity/clock and legacy/missing canonical coverage. A newer resolved request cannot hide an older
+unattributed request. The captured 187 auto enqueue rows are **not** classified as 187 stalled research jobs.
+
+The packet's `HEALTH_CONTRACT_PROPOSAL.json` is explicitly DRAFT with proposed thresholds and owner/route decisions.
+No operative contract was reviewed/admitted and no workflow or schedule was activated. Alert delivery remains
+NOT_MEASURED. Recovery proposes owner reconciliation; it never launches paid research or changes a stance.
+
+## Final local verification
+
+- 175 native tests passed with `psycopg2` hidden, including 22 C3 acceptance cases and CI registry integrity.
+- The actual paired fixture uses the real temporary CIO thesis publisher/projection, InstrumentRecord facade,
+  native spine/recall, actual quick-Ask model boundary and persisted Ask answer. WATCH → ADD and its **published
+  rationale**, research ID and causal references agree across the source record and visible answer.
+- Negative fixtures cover wrong/old/future/unlinked publications, unresolved identity, legacy records, delayed
+  events, partial consumer writes/replay, missing health input, exact-request aging and queue append failure.
+- Eight Playwright cases render the actual Opportunity modal at 1440/412 with states generated by the actual API
+  and paired publisher fixture, consistent current IR/thesis readbacks and a separately labelled stale-assessment
+  conflict; pending is not shown as resolved, full references wrap and no panel overflow occurs.
+- `npm run build`, host-path/coverage fail-on-new, docs index and diff checks passed.
+- Three older desk tests failed identically on untouched `e5fa288e` under the same hidden-driver environment:
+  two depended on a host book for a subjectless re-entry ask, one expected a stale model alias. Their fixtures now
+  supply a resolvable named subject and empty fixture desk in dry-run, and assert the current governed alias.
+  Production answerability and no-write guards remain unchanged. The request-dedupe test checks logical IDs and
+  unchanged bytes on duplicate, accounting for the append-only consumer receipt.
+
+Raw test logs and eight screenshots are at `/home/johnclaw/.cache/rtc/codex-c3-review-lifecycle-20261024/`.
+No runtime data application, privileged query, provider call, live send, credential read, schedule change, grant,
+service-bus retry, release or remote publication was performed. The observed legacy-only canonical coverage still
+requires a legitimate CIO-owner promotion/acceptance before runtime lifecycle coverage can be claimed.
