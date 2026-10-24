@@ -1,0 +1,75 @@
+{
+  "case": "canonical",
+  "root": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
+  "head": "d0c8b70d8d915098094aa7180f25d6b0b0e0cffe",
+  "snapshot_source": "committed historical Oct09 fixture, not live census",
+  "snapshot_captured_on": "2026-10-09",
+  "census_network_subprocess_barrier": "ENFORCED; any attempt raises AssertionError",
+  "inputs": [
+    {
+      "path": "config/lane_registry.json",
+      "sha256": "516e39ab35d5ede1a413ef7be836fe4634a77d1dd761a54dfae780b3fcead0d3",
+      "bytes": 1398098
+    },
+    {
+      "path": "scripts/reconcile_lane_registry.py",
+      "sha256": "800c19b59a91b8a5aefb0e2492dcb68a4cdda6d9096a789df02462a5b7bfe13c",
+      "bytes": 76976
+    },
+    {
+      "path": "scripts/lib/lane_registry.py",
+      "sha256": "583a8534ba2d4f912c87df63c2bb252d96799769dfc493e82cc4f317a622a554",
+      "bytes": 66761
+    },
+    {
+      "path": "scripts/lib/lane_dispatch.py",
+      "sha256": "20868a4cb49a543572ffa48b837296e1c1dc49eda4ba5ac908b3c3017cc1aacc",
+      "bytes": 78147
+    },
+    {
+      "path": "scripts/lib/n8n_coordination_gateway.py",
+      "sha256": "20703bc4d2c3c98b024cb0b0a495505b2cc5acde2a2b04da8d4d000ee8a73f43",
+      "bytes": 66223
+    },
+    {
+      "path": "scripts/pipelines/pipeline_manifest.py",
+      "sha256": "5248d335d28f5afc0f173a3d4cfdadf4f11843079fee2a1c0c38be301f77a70a",
+      "bytes": 27863
+    },
+    {
+      "path": "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json",
+      "sha256": "add3f84f6608297092d20b7857ed1773bf274a5d0ea10dbcb35d29d14c88612f",
+      "bytes": 176768
+    },
+    {
+      "path": "docs/implementation/n8n-maturity/data/F_rationalization.json",
+      "sha256": "8cb58fd07703e52603a57aba32a05a2773e24c1076a06742ef8a7d664898cd83",
+      "bytes": 233435
+    },
+    {
+      "path": "docs/implementation/n8n-maturity/data/lane_output_evidence.json",
+      "sha256": "cbff0d1c4178b2686c503db4a7a875811613ed2b3c6c736e9fc7e4f5d5a6ec31",
+      "bytes": 46109
+    },
+    {
+      "path": "config/lane_stay_on_cron_tokens.json",
+      "sha256": "cb693e2245370202cbd0e6f3db9db8e528e195130e5150545b984082cfc7ab2b",
+      "bytes": 1216
+    }
+  ],
+  "before_sha256": "516e39ab35d5ede1a413ef7be836fe4634a77d1dd761a54dfae780b3fcead0d3",
+  "candidate_sha256": "516e39ab35d5ede1a413ef7be836fe4634a77d1dd761a54dfae780b3fcead0d3",
+  "bytes_identical": true,
+  "rows_before": 676,
+  "rows_after": 676,
+  "lane_order_unchanged": true,
+  "added_ids": [],
+  "removed_ids": [],
+  "changed_lanes": [],
+  "top_level_changes": [],
+  "diff_added_lines": 0,
+  "diff_removed_lines": 0,
+  "problems": [],
+  "snapshot_cron_lines": 446,
+  "snapshot_units": 140
+}
