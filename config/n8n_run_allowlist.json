@@ -606,6 +606,97 @@
       "source": "Operator-approved process plan 2026-10-21 (PR hygiene audited every iteration). n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run prints only."
     },
     {
+      "lane_id": "holdings-drift-monitor",
+      "command": [
+        "$PY",
+        "scripts/desk_truth_monitor.py",
+        "--check",
+        "holdings-drift"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_desk_truth_holdings_drift.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/holdings-drift-monitor_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_N8N_COORDINATION_LEDGER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "report: the executor renders the host env file as the cron line would; the monitor reads DB_* for its read-only psycopg2 session and the ledger / state-root names for its receipt and intent. No broker name, no sender, no model.",
+      "source": "operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\"). n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run prints only.",
+      "env_evidence": "scripts/desk_truth_monitor.py reads DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD (pg_connect, read-only session), TRADEAI_N8N_COORDINATION_LEDGER / TRADEAI_STATE_ROOT (ledger path for the intent), TRADEAI_RUN_ID (executor); lib/lane_last_receipt.py and lib/persistent_overlay.py read TRADEAI_STATE_ROOT / TRADEAI_PERSISTENT_STATE_ROOT. No .env loader, no broker name, no sender, no model."
+    },
+    {
+      "lane_id": "options-desk-staleness-monitor",
+      "command": [
+        "$PY",
+        "scripts/desk_truth_monitor.py",
+        "--check",
+        "options-desk-staleness"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_desk_truth_options_desk_staleness.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/options-desk-staleness-monitor_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "TRADEAI_N8N_COORDINATION_LEDGER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "report: the executor renders the host env file as the cron line would; the monitor reads the ledger / state-root names for its receipt and intent. No broker name, no sender, no model.",
+      "source": "operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\"). n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run prints only.",
+      "env_evidence": "scripts/desk_truth_monitor.py reads TRADEAI_N8N_COORDINATION_LEDGER / TRADEAI_STATE_ROOT (ledger path for the intent), TRADEAI_RUN_ID (executor); lib/lane_last_receipt.py and lib/persistent_overlay.py read TRADEAI_STATE_ROOT / TRADEAI_PERSISTENT_STATE_ROOT. No .env loader, no broker name, no sender, no model."
+    },
+    {
+      "lane_id": "held-exit-coverage-monitor",
+      "command": [
+        "$PY",
+        "scripts/desk_truth_monitor.py",
+        "--check",
+        "held-exit-coverage"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/tradeai_desk_truth_held_exit_coverage.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/held-exit-coverage-monitor_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "DB_HOST",
+        "DB_NAME",
+        "DB_PASSWORD",
+        "DB_PORT",
+        "DB_USER",
+        "TRADEAI_N8N_COORDINATION_LEDGER",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_report_reason": "report: the executor renders the host env file as the cron line would; the monitor reads DB_* for its read-only psycopg2 session and the ledger / state-root names for its receipt and intent. No broker name, no sender, no model.",
+      "source": "operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\"). n8n-native lane: no cron line, no systemd unit; the lock is the lane's own. SHADOW: live_arg null; dry_run_arg --dry-run prints only.",
+      "env_evidence": "scripts/desk_truth_monitor.py reads DB_HOST / DB_PORT / DB_NAME / DB_USER / DB_PASSWORD (pg_connect, read-only session), TRADEAI_N8N_COORDINATION_LEDGER / TRADEAI_STATE_ROOT (ledger path for the intent), TRADEAI_RUN_ID (executor); lib/lane_last_receipt.py and lib/persistent_overlay.py read TRADEAI_STATE_ROOT / TRADEAI_PERSISTENT_STATE_ROOT. No .env loader, no broker name, no sender, no model."
+    },
+    {
       "lane_id": "macro-calendar-refresh",
       "command": [
         "$PY",

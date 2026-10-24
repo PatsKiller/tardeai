@@ -66,7 +66,11 @@ def test_all_operative_baselines_have_applicable_fields_and_order():
     # + 1 (2026-10-22 calibration-shadow-harness n8n-native report shadow, DRAFT;
     # tests/test_calibration_shadow_harness_20261022.py) = 157.
     # WP-21 restores the unchanged owner-reviewed cio-prospect-shadow contract from #1953.
-    assert len(catalogue["contracts"]) == 158
+    # + 5 (2026-10-22 desk truth: holdings-drift-monitor, options-desk-staleness-monitor, held-exit-coverage-monitor at
+    # shadow, options-desk-quote-refresh and schwab-position-sync staged; DRAFT until the owners REVIEW them;
+    # tests/test_n8n_desk_truth_lanes_20261022.py) = 161.
+    # Rebuilt on current main: preserve its158 plus all five desk contracts.
+    assert len(catalogue["contracts"]) == 163
     assert not {row["id"]: A.baseline_errors(row) for row in catalogue["contracts"] if A.baseline_errors(row)}
 
 
