@@ -1,4 +1,4 @@
-import { answerForAsk, answerPresentation, answerSourceTime, askUpdate, matchingThread, newerHeaderAnswer, statusForAsk, threadVersionKey } from './askCioPresentation.ts'
+import { answerForAsk, answerPresentation, answerSourceTime, askUpdate, keepNewestAnswer, keepNewestThread, matchingThread, newerHeaderAnswer, readableAnswerForAsk, readableVersion, statusForAsk, threadVersionKey } from './askCioPresentation.ts'
 import type { AnswerVersion, Thread } from './askCioModel.ts'
 function equal(actual: unknown, expected: unknown) { if (actual !== expected) throw new Error(`${String(actual)} != ${String(expected)}`) }
 const quick: AnswerVersion = { version:1,status:'quick',depth:'quick',summary:'Exact saved answer.\n\nIts reasoning remains intact.',produced_at:'2032-04-12T14:30:00Z',sources:[{title:'Stored evidence',kind:'fixture',as_of:'2032-04-12T14:29:00Z'}] }
@@ -31,4 +31,16 @@ equal(askUpdate({detail:{threadId:'fixture-thread',source:'unrecognised'}} as un
 equal(answerSourceTime('2032-04-12'),'2032-04-12 (date only)')
 equal(answerSourceTime('2032-04-12 14:30:00'),'2032-04-12 14:30:00 (timezone unavailable)')
 equal(answerSourceTime('2032-04-12T14:30:00Z'),'Apr 12, 10:30 AM ET')
+equal(keepNewestAnswer(deep,quick),deep)
+equal(keepNewestAnswer(quick,deep),deep)
+equal(keepNewestAnswer(deep,null),deep)
+equal(keepNewestThread(completed,thread),completed)
+equal(keepNewestThread(thread,completed),completed)
+equal(keepNewestThread(completed,{...completed,turns:[]}),completed)
+equal(keepNewestThread(completed,{...completed,updated_at:quick.produced_at}),completed)
+const queued: AnswerVersion={...quick,version:2,status:'deep_pending',summary:'Actual saved pending notice.'}
+const pendingTurn={...thread.turns[0],answers:[quick,queued]}
+equal(readableVersion(pendingTurn),quick)
+equal(readableAnswerForAsk({...thread,turns:[pendingTurn]},'fixture-ask'),quick)
+equal(newerHeaderAnswer(initial,{...thread,turns:[pendingTurn]}),null)
 console.log('askCioPresentation: verbatim body, source references, matching identities, monotonic versions and update events passed')

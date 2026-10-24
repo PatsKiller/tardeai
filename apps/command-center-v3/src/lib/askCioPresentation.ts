@@ -1,5 +1,5 @@
 /** Presentation and refresh identity only. The backend owns canonical prose and all financial facts. */
-import { currentVersion, unwrap, type AnswerVersion, type AskStatus, type Thread } from './askCioModel.ts'
+import { currentVersion, unwrap, type AnswerVersion, type AskStatus, type Thread, type Turn } from './askCioModel.ts'
 
 export const ASK_UPDATED_EVENT = 'cc-cio-ask-updated'
 export type AskUpdate = { threadId: string; source: 'mutation' | 'header' | 'thread' }
@@ -21,14 +21,36 @@ export function answerForAsk(thread: Thread | null | undefined, askId: string): 
   const turn = thread?.turns.find(turn => turn.ask_id === askId)
   return turn ? currentVersion(turn) : null
 }
+/** A queued/running status record does not replace the actual saved answer's reasoning. */
+export function readableVersion(turn: Turn): AnswerVersion | null {
+  return currentVersion({ ...turn, answers: turn.answers.filter(answer => answer.status !== 'deep_pending') }) ?? currentVersion(turn)
+}
+export function readableAnswerForAsk(thread: Thread | null | undefined, askId: string): AnswerVersion | null {
+  const turn = thread?.turns.find(turn => turn.ask_id === askId)
+  return turn ? readableVersion(turn) : null
+}
 export function newerHeaderAnswer(initial: { ask_id: string; thread_id: string; thread: Thread | null }, live: Thread | null): AnswerVersion | null {
   if (live?.thread_id !== initial.thread_id) return null
-  const answer = answerForAsk(live, initial.ask_id), baseline = answerForAsk(matchingThread({ thread: initial.thread }, initial.thread_id), initial.ask_id)
+  const answer = readableAnswerForAsk(live, initial.ask_id), baseline = answerForAsk(matchingThread({ thread: initial.thread }, initial.thread_id), initial.ask_id)
   return answer && answer.version > (baseline?.version ?? 0) ? answer : null
 }
 export function statusForAsk(thread: Thread | null | undefined, askId: string): AskStatus {
   if (thread?.status === 'deep_pending' && thread.turns[thread.turns.length - 1]?.ask_id === askId) return 'deep_pending'
   return answerForAsk(thread, askId)?.status ?? 'quick'
+}
+export function keepNewestAnswer(previous: AnswerVersion | null, next: AnswerVersion | null): AnswerVersion | null {
+  return next && (!previous || next.version > previous.version) ? next : previous
+}
+/** An append-only thread snapshot cannot lose an observed turn/version or move its source clock backwards. */
+export function keepNewestThread(previous: Thread | null, next: Thread | null): Thread | null {
+  if (!next) return previous
+  if (!previous || previous.thread_id !== next.thread_id) return next
+  if (previous.turns.some(turn => {
+    const candidate = next.turns.find(item => item.ask_id === turn.ask_id)
+    return !candidate || (currentVersion(candidate)?.version ?? 0) < (currentVersion(turn)?.version ?? 0)
+  })) return previous
+  const before = Date.parse(previous.updated_at), after = Date.parse(next.updated_at)
+  return Number.isFinite(before) && Number.isFinite(after) && after < before ? previous : next
 }
 export function threadVersionKey(thread: Thread): string {
   return JSON.stringify([thread.thread_id, thread.status, thread.updated_at,

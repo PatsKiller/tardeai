@@ -8,11 +8,11 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { FONT, RADIUS, SHADOW, TOKENS, TYPE, chipStyle } from '../lib/designTokens'
 import { ASK_PATHS, TOOLTIPS, isAskShortcut, statusLabel, statusTone, trackedChips, unwrap, validateQuestion } from '../lib/askCioModel'
-import type { TrackedRow } from '../lib/askCioModel'
+import type { AnswerVersion, TrackedRow } from '../lib/askCioModel'
 import { useApi } from '../hooks/useApi'
 import { askCio, askErrorText, type AskResult } from '../lib/askCioApi'
 import AskCioAnswer from './AskCioAnswer'
-import { ASK_UPDATED_EVENT, answerForAsk, askUpdate, matchingThread, newerHeaderAnswer, publishAskUpdate, statusForAsk, threadVersionKey } from '../lib/askCioPresentation'
+import { ASK_UPDATED_EVENT, answerForAsk, askUpdate, keepNewestAnswer, matchingThread, newerHeaderAnswer, publishAskUpdate, readableAnswerForAsk, statusForAsk, threadVersionKey } from '../lib/askCioPresentation'
 
 export default function AskCioBar() {
   const [q, setQ] = useState('')
@@ -152,18 +152,24 @@ function LiveAnswer({ result, children }: { result: AskResult; children: React.R
   const [pending, setPending] = useState(result.thread?.status === 'deep_pending')
   const api = useApi<unknown>(ASK_PATHS.thread(result.thread_id), pending ? 5_000 : 30_000)
   const live = matchingThread(api.data, result.thread_id)
-  const newer = newerHeaderAnswer(result, live)
+  const [retained, setRetained] = useState<AnswerVersion | null>(null)
+  const candidate = newerHeaderAnswer(result, live)
+  const newer = keepNewestAnswer(retained, candidate)
   const initial = matchingThread({ thread: result.thread }, result.thread_id)
-  const baseline = answerForAsk(initial, result.ask_id)
-  const status = statusForAsk(live ?? initial, result.ask_id)
+  const baseline = readableAnswerForAsk(initial, result.ask_id)
+  const liveVersion = answerForAsk(live, result.ask_id)
+  const regressed = Boolean(newer && liveVersion && liveVersion.version < newer.version)
+  const keepStatus = newer && (!liveVersion || liveVersion.version < newer.version)
+  const status = keepStatus ? newer!.status : statusForAsk(live ?? initial, result.ask_id)
   const previous = useRef(initial ? threadVersionKey(initial) : 'none')
   useEffect(() => { setPending(status === 'deep_pending') }, [status])
+  useEffect(() => { if (candidate) setRetained(previous => keepNewestAnswer(previous, candidate)) }, [candidate])
   useEffect(() => {
-    if (!live) return
+    if (!live || regressed) return
     const key = threadVersionKey(live)
     if (previous.current !== key) publishAskUpdate({ threadId: result.thread_id, source: 'header' })
     previous.current = key
-  }, [live, result.thread_id])
+  }, [live, regressed, result.thread_id])
   useEffect(() => {
     const refresh = (event: Event) => { const change = askUpdate(event); if (change?.threadId === result.thread_id && change.source !== 'header') api.refetch() }
     window.addEventListener(ASK_UPDATED_EVENT, refresh)
@@ -173,6 +179,7 @@ function LiveAnswer({ result, children }: { result: AskResult; children: React.R
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}><span style={chipStyle(statusTone(status))}>{statusLabel(status)}</span>{children}</div>
     <AskCioAnswer text={newer?.summary ?? result.answer_text} sources={newer?.sources ?? baseline?.sources} testId="ask-cio-answer-text" />
     {Boolean(api.data) && !live && <div role="status" style={{ color: TOKENS.warning, fontSize: TYPE.sm, marginTop: 8 }}>The update could not be matched to this question — showing its saved answer.</div>}
+    {regressed && <div role="status" style={{ color: TOKENS.warning, fontSize: TYPE.sm, marginTop: 8 }}>The latest response contains an older version — keeping the newer saved answer.</div>}
     {api.stale && <div role="status" style={{ color: TOKENS.warning, fontSize: TYPE.sm, marginTop: 8 }}>Answer refresh unavailable — showing the last saved answer. {newer?.produced_at || baseline?.produced_at || ''}</div>}
   </>
 }

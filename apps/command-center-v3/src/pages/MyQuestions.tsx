@@ -16,7 +16,7 @@ import {
 } from '../lib/askCioModel'
 import { askCio, askErrorText, requestDeep, untrackEntity } from '../lib/askCioApi'
 import AskCioAnswer from '../components/AskCioAnswer'
-import { ASK_UPDATED_EVENT, answerPresentation, askUpdate, matchingThread, publishAskUpdate, threadVersionKey } from '../lib/askCioPresentation'
+import { ASK_UPDATED_EVENT, answerPresentation, askUpdate, keepNewestThread, matchingThread, publishAskUpdate, readableVersion, threadVersionKey } from '../lib/askCioPresentation'
 
 const card = { border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.lg, background: TOKENS.bg[1], padding: 12 } as const
 const btn = { fontSize: TYPE.sm, padding: '4px 10px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[2], color: TOKENS.text[0], cursor: 'pointer' } as const
@@ -77,9 +77,12 @@ export default function MyQuestions() {
 function ThreadView({ threadId, onChanged }: { threadId: string; onChanged: () => void }) {
   const [pending, setPending] = useState(false)
   const res = useApi<unknown>(ASK_PATHS.thread(threadId), pending ? 5_000 : 15_000)
-  const t = matchingThread(res.data, threadId)
+  const candidate = matchingThread(res.data, threadId)
+  const [retained, setRetained] = useState<Thread | null>(null)
+  const t = keepNewestThread(retained, candidate)
   const previous = useRef<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  useEffect(() => { if (candidate) setRetained(previous => keepNewestThread(previous, candidate)) }, [candidate])
   useEffect(() => { setPending(isPending(t?.status)) }, [t?.status])
   useEffect(() => {
     if (!t) return
@@ -97,6 +100,7 @@ function ThreadView({ threadId, onChanged }: { threadId: string; onChanged: () =
   if (!t) return <div style={{ ...card, color: TOKENS.danger }}>Thread unavailable{res.error ? `: ${res.error}` : res.data ? ' — the response could not be matched to this question' : ''}.</div>
   return (
     <div data-testid="ask-thread" style={{ display: 'grid', gap: 12 }}>
+      {Boolean(res.data) && t !== candidate && <div role="status" style={{ ...card, color: TOKENS.warning }}>The update could not advance this thread — showing its newer saved version.</div>}
       {res.stale && <div role="status" style={{ ...card, color: TOKENS.warning }}>Thread refresh unavailable — showing the saved thread from {t.updated_at}.</div>}
       <div style={card}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -131,8 +135,8 @@ function ThreadView({ threadId, onChanged }: { threadId: string; onChanged: () =
 }
 
 function TurnCard({ turn }: { turn: Turn }) {
-  const cur = currentVersion(turn)
-  const older = (turn.answers ?? []).filter(a => a !== cur).sort((a, b) => b.version - a.version)
+  const newest = currentVersion(turn), cur = readableVersion(turn)
+  const older = (turn.answers ?? []).filter(a => a !== cur && a.status !== 'deep_pending').sort((a, b) => b.version - a.version)
   const [showOld, setShowOld] = useState(false)
   return (
     <div data-testid={`turn-${turn.turn_kind}`} data-ask-id={turn.ask_id} style={card}>
@@ -141,6 +145,7 @@ function TurnCard({ turn }: { turn: Turn }) {
         {' · '}{CHANNEL_LABEL[turn.channel] ?? turn.channel} · {relativeAge(turn.asked_at)}
       </div>
       {turn.turn_kind !== 'reanswer' && <div style={{ fontSize: TYPE.base, fontWeight: 600, marginBottom: 8 }}>{turn.question}</div>}
+      {newest?.status === 'deep_pending' && newest !== cur && <div role="status" style={{ color: TOKENS.text[2], fontSize: TYPE.sm, marginBottom: 8 }}>{newest.summary}</div>}
       {cur ? <AnswerBlock a={cur} /> : <div style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>No answer recorded yet.</div>}
       {older.length > 0 && (
         <button type="button" style={{ ...btn, marginTop: 8 }} onClick={() => setShowOld(s => !s)}>
