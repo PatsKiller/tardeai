@@ -1,0 +1,40 @@
+{
+  "capture": {
+    "captured_at": "2026-10-24T04:35:03Z",
+    "grant_id": "7cf078bf",
+    "line_number": 643,
+    "line_sha256": "60b635023d4bca2ac3190552bed3a69458ebad277bb4e9810c9f203e9751394a",
+    "lines": 1077,
+    "operator": "claude-coordinator-66faaf81",
+    "path": "/home/johnclaw/.cache/rtc/codex-wp37-20261024/census-20261024-coordinator-capture/crontab.txt",
+    "sha256": "b2097df25a62e6824b6e7046d55a3f279b9b058e76b1bcd09c2da89b5a748626"
+  },
+  "captured_input_unchanged": true,
+  "dispatcher": {
+    "deadline_s": 100,
+    "mode": "dry_run",
+    "parity_review": "PENDING: 180s exceeds120s cadence; existing admission tests retained",
+    "timeout_s": 110,
+    "unchanged": true
+  },
+  "external_inventory": {
+    "after_sha256": "c3785b4f6499bdb2c4400ecd63b4031ae3085fb8d287f6efa2a44a44455f31c3",
+    "append_only": true,
+    "backup": "/home/johnclaw/.cache/rtc/codex-wp37-20261024/CRON_INVENTORY_LATEST.before-hot-list-20261024.md",
+    "before_sha256": "6f6ffb482dcb32d9ca38b74aa2242ac8a7472edff0e0616f4a15be9fdac08cfe",
+    "path": "/home/johnclaw/n8n-maturity-verification/cron-inventory/CRON_INVENTORY_LATEST.md"
+  },
+  "host_read_retries": 0,
+  "observed_at": "2026-10-24T04:42:52.843334+00:00",
+  "observed_schedule": "*/2 6-9 * * 1-5",
+  "proposal": {
+    "all_other_registry_fields_unchanged": true,
+    "field": "scheduler.command_text",
+    "lane_id": "scalp-hot-list",
+    "new": "cd $PROJ && SCALP_HOT_TIER=1 MOMENTUM_SCALP_OUTER_DEADLINE_S=170 flock -n /tmp/tradeai_scalp_hot_list.lock timeout 180 bash scripts/market_day_gate.sh $PY scripts/run_finviz_momentum_scalp_scan.py --hot-list-only --apply >> logs/scalp_hot_list.log 2>&1  # TRADEAI_LANE scalp-hot-list  (budget 170s, operator 2026-10-23)",
+    "old": "cd $PROJ && SCALP_HOT_TIER=1 MOMENTUM_SCALP_OUTER_DEADLINE_S=100 flock -n /tmp/tradeai_scalp_hot_list.lock timeout 110 bash scripts/market_day_gate.sh $PY scripts/run_finviz_momentum_scalp_scan.py --hot-list-only --apply >> logs/scalp_hot_list.log 2>&1  # TRADEAI_LANE scalp-hot-list"
+  },
+  "scheduler_write_attempts": 0,
+  "schema": "HotListCapturedRegistryReconciliation@v1",
+  "source_base_sha": "0764cad27840f7e3de2af7e77f2d921d256925d2"
+}
