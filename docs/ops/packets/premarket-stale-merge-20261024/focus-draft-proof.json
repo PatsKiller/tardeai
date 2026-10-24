@@ -1,0 +1,9 @@
+{
+  "status": "PROVISIONAL_SCRATCH_ONLY",
+  "assertions": 4,
+  "failed": 0,
+  "candidate_sha256": "6a208bed5ac66f86e0ff3eb8bdc27f0e93b169543b2875ababfdec4303053ded",
+  "fixture_sha256": "f399c15d8cc9201821e2f3907daa16ad67d982782a0c7907e8daf7dfa95ddb4b",
+  "production_source_modified": false,
+  "provider_calls": 0
+}

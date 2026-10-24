@@ -1,0 +1,13 @@
+{
+  "main_sha": "ca39056af0b67491310a7267d75e2a0c882bc7d0",
+  "incoming_sha": "d23a2440a2b9eb71bb7b70adeedd78af0e02b09c",
+  "timestamp": "2026-10-24T14:25:04.404820+00:00",
+  "main_baseline": {
+    "tests": 131,
+    "failed": 0,
+    "psycopg2_hidden": true,
+    "receipt_sha256": "8c28735f45bf2aed5f4884ef245d67377a247f1df22291287cdf692da0f79308"
+  },
+  "merge_not_started": true,
+  "registry_held_by": "20261024T142155Z-codex-7d52b03c"
+}

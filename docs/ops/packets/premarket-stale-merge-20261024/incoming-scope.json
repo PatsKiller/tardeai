@@ -1,0 +1,166 @@
+{
+  "main": "ca39056af0b67491310a7267d75e2a0c882bc7d0",
+  "incoming": "d23a2440a2b9eb71bb7b70adeedd78af0e02b09c",
+  "mergebase": "53aa1b619c9bac6cf8715d3f64b03d1ca0b5ab9a",
+  "scope": [
+    {
+      "path": "config/ci_gates/premarket_1min_threaded_20261023.json",
+      "main_sha256": null,
+      "incoming_sha256": "3989667b6883120772e3f2307b4a14647848d827e2ed971456e9f9c06983cf9c",
+      "mergebase_sha256": null
+    },
+    {
+      "path": "config/data_source_authority.json",
+      "main_sha256": "392647ade4965d17077fc8dc05bf231a68ba44b3fc1e772e5a7f62455d5b38ce",
+      "incoming_sha256": "5350990b6d178f628ff3e47f232d11c95545bb18cbb8a7f79c793f369e946bf9",
+      "mergebase_sha256": "8f4af8383ccd2d9b57426d96d7b1a2d004b6b1b491b52fb38371f00db262a89c"
+    },
+    {
+      "path": "config/lane_registry.json",
+      "main_sha256": "af07aa36963900b6c0b701d7f3342d19a6fa8acb7c533b37dc634104e1c263ff",
+      "incoming_sha256": "f943b27288ce70f32781dd8111b8f452a695a12a184e70d178f3eb041e6042f8",
+      "mergebase_sha256": "94be33bcb007f5fbc57ae74499c6aac12e3785af688025d5f36386a82def6829"
+    },
+    {
+      "path": "config/scalp_signal_engine.yaml",
+      "main_sha256": "970ba82d7309b4c6bfc2ea30379e6d3ab9683b8386d5f8393ea7ca0904bce30d",
+      "incoming_sha256": "044d8e03116c82abc38073f6625ac60083d29005a4498209d59707b069aecd29",
+      "mergebase_sha256": "970ba82d7309b4c6bfc2ea30379e6d3ab9683b8386d5f8393ea7ca0904bce30d"
+    },
+    {
+      "path": "docs/INDEX.md",
+      "main_sha256": "2b803819f8579233ef2625d457e2bda726ba33c6855ce37d978238c9bca7196b",
+      "incoming_sha256": "15ed4d88d00592a9ca83f2b39221bde108dfb3c6c88abdef70b54cf1512538e9",
+      "mergebase_sha256": "3755628a6a4f0d3217f9e950f54002bb4d7035e3326436821d21a9f7a8d08c74"
+    },
+    {
+      "path": "docs/architecture/DATA_DICTIONARY.md",
+      "main_sha256": "57fceac7291cb88d0aca52daacc4f1a919351061b2404b63fca660d1f48b4aea",
+      "incoming_sha256": "b1ce1c106ab865a45496c99f421260a1a8dc93b87fa1b4afc3f5a807f910dac3",
+      "mergebase_sha256": "a2ace17b71c0780f7ddfc7f51d38798d851bc417d2fd6cbb93849d8005076a36"
+    },
+    {
+      "path": "docs/implementation/PREMARKET_1MIN_THREADED.md",
+      "main_sha256": null,
+      "incoming_sha256": "919433f0c3fab643c53aa63514a1d72f2fdda33729409e525593f27a276616cf",
+      "mergebase_sha256": null
+    },
+    {
+      "path": "docs/ops/packets/premarket-1min-20261023/README.md",
+      "main_sha256": null,
+      "incoming_sha256": "4f1dc2c87629f8745522a81e0628c7511cfee8811cfb7ac7b8de12c3d39e506d",
+      "mergebase_sha256": null
+    },
+    {
+      "path": "docs/ops/packets/premarket-1min-20261023/install.sh",
+      "main_sha256": null,
+      "incoming_sha256": "d19223ea8d41d3e966f71de8ed8a9688e304e3061b2b0be4caf55c525e239992",
+      "mergebase_sha256": null
+    },
+    {
+      "path": "scripts/active_trader/momentum_alerts_api.py",
+      "main_sha256": "f65f6940779bb8d38d90d190304ad8a8edbdca193a232f6ae203ba4af6750718",
+      "incoming_sha256": "7aa55e8b8768f52483c5c9aad0524ff37b995677377cd1d4537336303b36be7b",
+      "mergebase_sha256": "f65f6940779bb8d38d90d190304ad8a8edbdca193a232f6ae203ba4af6750718"
+    },
+    {
+      "path": "scripts/active_trader/premarket_watch.py",
+      "main_sha256": "c4e9444c1c25c00419ef8a971e951a9376b794f4faddf537f627deafff391163",
+      "incoming_sha256": "8cd8cf97ba472982c653c587a45bd38808318c745bcb8d4c8eee1c9a214c5161",
+      "mergebase_sha256": "c4e9444c1c25c00419ef8a971e951a9376b794f4faddf537f627deafff391163"
+    },
+    {
+      "path": "scripts/hermes_momentum_catalyst_researcher.py",
+      "main_sha256": "2f059b3eac8137ebbda5e38a2dde9026eb322a9c1657d793874162062a3470d7",
+      "incoming_sha256": "2c932b8cb687a5c4dcfd48b286d49396a0d77ebf5d72908fbdfb9142408f7fa6",
+      "mergebase_sha256": "b50e5c5655017fa2eabbf1b45bd7d7e7709ddcf4f570187dd6fdfe75f6b82cfb"
+    },
+    {
+      "path": "scripts/lib/data_broker/scalp_list.py",
+      "main_sha256": "7f899737a9dfad90aaeca602b1abc64bb7042b3a115ac3456c7a89eac477cbcc",
+      "incoming_sha256": "e0ef9828354a6b0bf5779a84e53c72cc796dbfeaecd7f7ba5f4d84befd9c778d",
+      "mergebase_sha256": "36af8e3f0cc349ffda66a38fa7277029c4281801ebac4ac72e66a1fabaae1821"
+    },
+    {
+      "path": "scripts/lib/momentum_setup_evidence.py",
+      "main_sha256": "be716fac5cd88d8e73da6cf8bfee53b21c436e89cceaee40e6bf3ad196eb92e4",
+      "incoming_sha256": "b15c609e74777f25f7cb23558d55b8179930a271c71ed056baf0d1bedb8a9721",
+      "mergebase_sha256": "5d35a5433fc6d4ed979059300ed330fcb00548b1f612e009a81e6dea13ee8925"
+    },
+    {
+      "path": "scripts/lib/scalp_focus.py",
+      "main_sha256": null,
+      "incoming_sha256": "3e5a9036c405dd2428544657c2feacb65958082e6fb92bceb3323a262acd6da3",
+      "mergebase_sha256": null
+    },
+    {
+      "path": "scripts/lib/unified_momentum_alert.py",
+      "main_sha256": "c74f562a840449b9a1473dad298f79d313c4569daa7655c33e81511f676193f9",
+      "incoming_sha256": "a8bd5a7e84e9af751723233cf4b43c9948cd6dfe2cdd60f6e2202ba8235e2892",
+      "mergebase_sha256": "71a16f21c1a81577beb4802385f50d8da12326d07cba5144c9b6b4119f2058f9"
+    },
+    {
+      "path": "scripts/premarket_cadence_compare.py",
+      "main_sha256": null,
+      "incoming_sha256": "0ec039fcca6e2743a5027462fbbe045c315928a39f14db3440c27d9a378861fe",
+      "mergebase_sha256": null
+    },
+    {
+      "path": "tests/test_premarket_1min_threaded_20261023.py",
+      "main_sha256": null,
+      "incoming_sha256": "2c7cbb6adf5b41948ffd5606a8ec6ef3da7291db492dc83673019b9121a614bd",
+      "mergebase_sha256": null
+    }
+  ],
+  "readonly_conflict_summary": [
+    [
+      "  base   100644 8a03eb2028509649028e2635e223712930833744 config/data_source_authority.json",
+      "  our    100644 b5ce95e45ab3398d81a3ddea73e8e131b29736d0 config/data_source_authority.json",
+      "  their  100644 5a101d79a285edd0cfdf75b8e415284b1d309c39 config/data_source_authority.json",
+      "@@ -4155,6 +4155,26 @@"
+    ],
+    [
+      "  base   100644 5a102832d00ff49648e7ab7e478d39d8d231fd66 config/lane_registry.json",
+      "  our    100644 c41576893ee59b959a69eaeb1cd6d60efad26507 config/lane_registry.json",
+      "  their  100644 8f667f01ee5b109b277e5e6aaf438d3c2e03e87e config/lane_registry.json",
+      "@@ -5783,7 +5783,18 @@"
+    ],
+    [
+      "  base   100644 d33ee81ccfa66a52816663716102213a1c45c728 docs/INDEX.md",
+      "  our    100644 9538b2c08c2ec929cf6f85761262041da9712884 docs/INDEX.md",
+      "  their  100644 ea5bf8efbb97e7c0d77022e01c8df7e16f80cf34 docs/INDEX.md",
+      "@@ -1460,6 +1460,7 @@"
+    ],
+    [
+      "  base   100644 5906951db7bb0922efa59f6a86dca2426df7c4eb docs/architecture/DATA_DICTIONARY.md",
+      "  our    100644 e401b1398117b772c0bd8933665075578e5214f2 docs/architecture/DATA_DICTIONARY.md",
+      "  their  100644 c9075bf6e6cda60efeb9c463e37d21353fe4a115 docs/architecture/DATA_DICTIONARY.md",
+      "@@ -196,6 +196,8 @@"
+    ],
+    [
+      "  base   100644 073eb15314ec698c4ee5c66edf6b908c30db6d61 scripts/hermes_momentum_catalyst_researcher.py",
+      "  our    100644 390c6c1f2c4d06afb986f84f42579d7c77bd97d6 scripts/hermes_momentum_catalyst_researcher.py",
+      "  their  100644 514fdb3847e1f1bce1d461641260ef8c358fb292 scripts/hermes_momentum_catalyst_researcher.py",
+      "@@ -377,6 +377,17 @@"
+    ],
+    [
+      "  base   100644 bfc9a81c4dc99dfb134b78a6b98c45d8049633e2 scripts/lib/data_broker/scalp_list.py",
+      "  our    100644 cf80f8632189616d9cefd266407363d6873999a6 scripts/lib/data_broker/scalp_list.py",
+      "  their  100644 2c0460d23dc5a4e3bfd4fbf1edc1a821049dd3d7 scripts/lib/data_broker/scalp_list.py",
+      "@@ -476,3 +476,21 @@"
+    ],
+    [
+      "  base   100644 e93adb1050d286e3c2655b56d5f29c6bff85dabd scripts/lib/momentum_setup_evidence.py",
+      "  our    100644 474dc2e0fc479fae8d7d1906d3b49ec8491003aa scripts/lib/momentum_setup_evidence.py",
+      "  their  100644 7f7d2aa02165f459348d5b4e175937872c2ef717 scripts/lib/momentum_setup_evidence.py",
+      "@@ -597,6 +597,7 @@"
+    ],
+    [
+      "  base   100644 eb09bb5416eacfa4066fbac6c45b4830ad8dd9f9 scripts/lib/unified_momentum_alert.py",
+      "  our    100644 d27d15a0d95bb442b358e765ff41aad541e7c974 scripts/lib/unified_momentum_alert.py",
+      "  their  100644 84ccda2e48eefcd86285e9d74236acd411221aed scripts/lib/unified_momentum_alert.py",
+      "@@ -112,12 +112,18 @@"
+    ]
+  ],
+  "merge_tree_sha256": "d944587c022b4654b53205e0b51fa4dafc0321881689b1a1499f58cdeb5bc14b"
+}

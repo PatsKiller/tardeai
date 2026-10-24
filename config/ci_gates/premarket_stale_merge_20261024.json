@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "premarket_stale_merge_20261024",
+  "files": [
+    "tests/test_premarket_stale_merge_20261024.py"
+  ],
+  "anchor": "PREMARKET_STALE_MERGE_20261024",
+  "comment": [
+    "ANCHOR: PREMARKET_STALE_MERGE_20261024 — main source-proof readiness/vetoes and incoming live-fact block coexist; SHADOW focus cannot restrict research, injected legacy-send/unified-live settings cannot send new cadence alerts; pinned isolated fixtures, no live state."
+  ]
+}

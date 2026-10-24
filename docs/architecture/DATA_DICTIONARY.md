@@ -196,6 +196,8 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 |---|---|---|---|
 | `runtime/trade_ai_cache.json` (file) | derived | UI read path today; becomes a projection stamped with run_id | 1 |
 | `scalp_scan_results` (table) | retiring | fold into trade_ai_scans run_type; archive + tripwire | 1 |
+| `runtime/scalp_focus_list.json` (file) | derived | scalp FOCUS list (2026-10-23, operator "critiqued at least the top 20"): the ranked top N (<=30) of the scalp hot list's pool with hysteresis and entry reasons, re-ranked each closed 1-min candle; one writer scripts/active_trader/premarket_watch.py via scripts/lib/scalp_focus.py; readers lib.data_broker.scalp_list.get_focus_list, AT alerts API focus_list, the Hermes critique gate; proposed | — |
+| `runtime/scalp_focus_events.jsonl` (file) | history | focus list ENTER / LEAVE / HOLD events with reasons (ScalpFocusEvent@v1), append-only; same writer; proposed | — |
 
 ### Catalyst events (SecurityEvent@v1) — `catalyst_events` (PROPOSED)
 
@@ -343,6 +345,7 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | `open_trade_alerts` (table) | derived | per-desk alert table; writer unknown in the 2026-10-22 inventory — classify before approval | 1 |
 | `watch_alerts` (table) | derived | Watch desk alert view (watch_alerts_eval) | 1 |
 | `runtime/unified_momentum_alerts.jsonl` (file) | history | Gate 4 unified momentum alert ledger (2026-10-22): shadow builds and live thread roots (first message id per chat), one writer scripts/lib/unified_momentum_alert.py; proposed, folds into alert_events at grant | — |
+| `active_trader/momentum_alerts_premarket_1m.jsonl` (file) | history | premarket 1-minute cadence journal (2026-10-23): per-minute lifecycle state changes (PremarketCadence@v1) and tick summaries; one writer scripts/active_trader/premarket_watch.py; the alert itself is the unified ledger row; proposed | — |
 
 ### Notification intents and deliveries — `comms_intents` (PROPOSED)
 
