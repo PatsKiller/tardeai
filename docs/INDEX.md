@@ -2080,6 +2080,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WP29_TELEGRAM_TURN_DEDUP_20261023.md` | WP-29 item e: idempotent Telegram conversation capture |
 | `docs/ops/WP31_WATCH_LAYOUT_20261023.md` | WP-31 Watch rows and phone cards |
 | `docs/ops/WP36_ITEM6_RESEARCH_VERSION_LABELS_20261023.md` | WP-36 item 6: truthful research thesis-version labels |
+| `docs/ops/WP29_HOME_ACCOUNT_CHIPS_20261023.md` | WP-29 item b: account-name chips in the Home do-now queue |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye — first institutional-brain audit |
 | `docs/ops/agent_start/codex-note.md` | Codex note — agent claim board (operator installs) |
 | `docs/ops/agent_start/cursor-rule.md` | Cursor rules snippet — agent claim board (operator installs) |

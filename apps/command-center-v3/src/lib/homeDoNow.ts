@@ -34,6 +34,7 @@ export interface DoNowItem {
   moneyBasis: string | null
   sources: string[]
   since: string | null
+  accounts: { account: string; label: string }[]
 }
 
 export interface DoNowSource { name: string; status: string; asOf: string | null; basis: string | null; ageS: number | null; stale: boolean; error: string | null }
@@ -77,6 +78,21 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
 const CATS: Category[] = ['protect', 'decide', 'fix']
 
+function itemAccounts(evidence: any): { account: string; label: string }[] {
+  const keys = Array.isArray(evidence?.accounts) ? evidence.accounts : []
+  const labels = Array.isArray(evidence?.account_labels) ? evidence.account_labels : []
+  const rows = new Map<string, { account: string; label: string }>()
+  for (let n = 0; n < Math.max(keys.length, labels.length); n++) {
+    const raw = typeof keys[n] === 'string' ? keys[n] : ''
+    const supplied = typeof labels[n] === 'string' ? labels[n] : ''
+    if (!raw && !supplied) continue
+    const account = rowAccountKey({ account: raw })
+    const label = accountLabelName(raw, supplied)
+    rows.set(account || label, { account, label })
+  }
+  return [...rows.values()]
+}
+
 function numbersFrom(n: any): DoNowNumbers {
   const ok = n && typeof n === 'object' && n.status === 'OK'
   return {
@@ -115,6 +131,7 @@ export function doNowFrom(
       actionLabel: String(i.action?.label ?? 'Open'), where: routerPath(i.action?.where),
       money: num(i.money_at_risk_usd), moneyBasis: str(i.money_basis),
       sources: Array.isArray(i.sources) ? i.sources.map(String) : [], since: str(i.since),
+      accounts: itemAccounts(i.evidence),
     }))
   // The server sorts (money at risk, then severity, then category); the client keeps that order.
   const counts: Record<Tab, number> = { all: items.length, protect: 0, decide: 0, fix: 0 }
