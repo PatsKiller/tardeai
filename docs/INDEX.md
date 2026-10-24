@@ -2146,6 +2146,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/deepseek-v4-mainline-2026-08-03/SERVICE_RUNTIME_OPERATOR_STEPS.md` | Service-runtime DeepSeek credential wiring (operator-approved only) |
 | `docs/ops/deepseek-v4-mainline-2026-08-03/V3_ROUTE_TEST_RESULTS.md` | V3 route/subtab maturity results |
 | `docs/ops/incident-gate-a-canonical-store-hygiene.md` | Gate A Canonical Store Hygiene Incident |
+| `docs/ops/incidents/INCIDENT_20261023_SAFE_FLOCK_CRON_OUTAGE.md` | 2026-10-23 safe_flock cron outage |
 | `docs/ops/litmus/LITMUS_CC_ROUTES_2026-09-01.md` | Litmus slice C — Command Center routes (discovery only) |
 | `docs/ops/litmus/LITMUS_COVERAGE_2026-09-01.md` | Litmus · D coverage (holdings vs plans vs watch vs re-entry vs S3) |
 | `docs/ops/litmus/LITMUS_LANES_2026-09-01.md` | Litmus A — lanes |
@@ -2173,6 +2174,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/consolidation-health-audit-c3-20261015/README.md` | consolidation-health-audit-c3-20261015: CONSOLIDATE wave C3, operator packet |
 | `docs/ops/packets/continuous-from-current-20261023/README.md` | WP-27: continuous scanner from CURRENT operator packet |
 | `docs/ops/packets/cron-effect-claim-wrap-20261016/README.md` | Cron effect-claim wrap 2026-10-16: the cron copy refuses itself when n8n owns the lane |
+| `docs/ops/packets/cron-outage-prevention-20261024/README.md` | Cron outage prevention: source review and operator packet |
 | `docs/ops/packets/cutover-fail-closed-txn-20261016/README.md` | Cutover fail-closed + controller transactions (2026-10-16) |
 | `docs/ops/packets/disk-hygiene-n8n-20261018/README.md` | Disk hygiene + disk-usage monitor on n8n (PR #1863) |
 | `docs/ops/packets/doc-index-pr-flow-20261024/REVIEW.md` | Proposed documentation-index PR flow |

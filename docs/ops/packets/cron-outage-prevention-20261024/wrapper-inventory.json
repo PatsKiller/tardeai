@@ -1,0 +1,198 @@
+{
+  "schema": "WrapperNoopInventory@v1",
+  "base_sha": "8b6cd3be6d9776d3051ea24fbbcfc65248431c45",
+  "capture_sha256": "b2097df25a62e6824b6e7046d55a3f279b9b058e76b1bcd09c2da89b5a748626",
+  "capture_shell_path_count": 30,
+  "nested_generic_entrypoints": [
+    "scripts/cron_wrapper.sh"
+  ],
+  "rows": [
+    {
+      "path": "bin/run_with_deepseek_offpeak.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/agent_router_cron.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/cc_curl.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/cron_wrapper.sh",
+      "protocol": "explicit_preflight_before_environment",
+      "source_status": "FIXTURE_PROVEN_REVIEW_PENDING",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/effect_claim_cron.sh",
+      "protocol": "unarmed_child_true",
+      "source_status": "FIXTURE_PROVEN_REVIEW_PENDING",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/llm_priority_guard.sh",
+      "protocol": "clock_gate_only",
+      "source_status": "FIXTURE_PROVEN_REVIEW_PENDING",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/market_day_gate.sh",
+      "protocol": "calendar_then_child_true",
+      "source_status": "FIXTURE_PROVEN_REVIEW_PENDING",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/non_trading_hours_gate.sh",
+      "protocol": "declared_dry_run_child_true",
+      "source_status": "FIXTURE_PROVEN_REVIEW_PENDING",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/pipelines/run_after_close_pipeline.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/pipelines/run_hermes_pipeline.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/pipelines/run_premarket_data_pipeline.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/portfolio_server_watchdog.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/run_afterhours_candidate_preparation.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/run_broker_proposal_curator.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": true
+    },
+    {
+      "path": "scripts/run_broker_queue_autocal.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": true
+    },
+    {
+      "path": "scripts/run_drive_syncs.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/run_governed_symbol_thesis_acquisition.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/run_orchestrator_slot.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/run_profit_capture_refresh.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/run_protection_pipeline.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": true
+    },
+    {
+      "path": "scripts/run_research_intelligence_overnight.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/run_scalp_shadow_logger.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/run_scalp_volume_profile_refresh.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/run_scheduled_quote_refresh.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/run_scheduled_stale_proposal_sweeper.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/run_scheduled_strategy_audits.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/run_scheduled_two_way_curation.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/run_scheduled_watchpool_alerts.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/run_watchlist_agent_jobs_offpeak.sh",
+      "protocol": null,
+      "source_status": "NO_SAFE_NOOP_PROTOCOL; NEVER_EXECUTED",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/run_with_deepseek_offpeak.sh",
+      "protocol": "offpeak_then_child_true",
+      "source_status": "FIXTURE_PROVEN_REVIEW_PENDING",
+      "engineering_scope_required": false
+    },
+    {
+      "path": "scripts/safe_flock.sh",
+      "protocol": "safe_flock_true",
+      "source_status": "FIXTURE_PROVEN_REVIEW_PENDING",
+      "engineering_scope_required": false
+    }
+  ],
+  "authority": "No wrapper protocol is permission to execute a business producer. Source and operator admission are separate."
+}
