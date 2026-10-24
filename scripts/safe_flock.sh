@@ -25,7 +25,19 @@ if [ -z "$LOCKFILE" ] || [ "$#" -lt 1 ]; then
 fi
 
 PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
-LOG_DIR="${SAFE_FLOCK_LOG_DIR:-$PROJECT_ROOT/logs}"
+# The release root is reached through the operator-owned CURRENT symlink (cron runs from
+# portfolio-server/CURRENT). Resolve the trusted project root to its physical path once, so
+# the symlink-component checks below apply to the real release tree instead of refusing
+# every cron job (regression from d5f51dbef, 2026-10-23). Caller-supplied lock paths and
+# SAFE_FLOCK_LOG_DIR are still checked unresolved.
+PROJECT_ROOT="$(cd "$PROJECT_ROOT" 2>/dev/null && pwd -P || printf '%s' "$PROJECT_ROOT")"
+if [ -n "${SAFE_FLOCK_LOG_DIR:-}" ]; then
+  LOG_DIR="$SAFE_FLOCK_LOG_DIR"
+else
+  # The release's logs/ is itself a symlink to persistent-state/logs; resolve the default physically.
+  LOG_DIR="$PROJECT_ROOT/logs"
+  [ -d "$LOG_DIR" ] && LOG_DIR="$(cd "$LOG_DIR" && pwd -P)"
+fi
 PIDFILE="${LOCKFILE}.pid"
 META="${LOCKFILE}.meta"
 EVENT_LOG="$LOG_DIR/safe_flock_events.jsonl"
@@ -34,6 +46,19 @@ EVENT_LOG="$LOG_DIR/safe_flock_events.jsonl"
 # component could redirect directory creation outside the intended location.
 if ! python3 - "$LOG_DIR" <<'PY'
 import os, stat, sys
+import grp
+
+def _unsafe_mode(st):
+    # World-writable is unsafe. Group-writable is safe only for the caller's own private group
+    # (same gid, no other members), the default umask-002 layout of the release/state tree.
+    if st.st_mode & 0o002:
+        return True
+    if st.st_mode & 0o020:
+        try:
+            return not (st.st_gid == os.getegid() and not grp.getgrgid(st.st_gid).gr_mem)
+        except KeyError:
+            return True
+    return False
 
 path = os.path.abspath(sys.argv[1])
 cur = os.path.sep
@@ -50,7 +75,7 @@ for part in path.split(os.path.sep):
     if not stat.S_ISDIR(st.st_mode):
         print(f"safe_flock: log path component is not a real directory: {cur}", file=sys.stderr)
         raise SystemExit(1)
-    if st.st_mode & 0o022 and not (st.st_mode & stat.S_ISVTX):
+    if _unsafe_mode(st) and not (st.st_mode & stat.S_ISVTX):
         print(f"safe_flock: unsafe log parent directory permissions: {cur}", file=sys.stderr)
         raise SystemExit(1)
 PY
@@ -73,6 +98,19 @@ mkdir -p "$LOG_DIR" 2>/dev/null || {
 # paths silently would otherwise change which lock is being acquired.
 if ! python3 - "$LOCKFILE" "$PIDFILE" "$META" "$LOG_DIR/safe_flock_events.jsonl" <<'PY'
 import os, stat, sys
+import grp
+
+def _unsafe_mode(st):
+    # World-writable is unsafe. Group-writable is safe only for the caller's own private group
+    # (same gid, no other members), the default umask-002 layout of the release/state tree.
+    if st.st_mode & 0o002:
+        return True
+    if st.st_mode & 0o020:
+        try:
+            return not (st.st_gid == os.getegid() and not grp.getgrgid(st.st_gid).gr_mem)
+        except KeyError:
+            return True
+    return False
 
 uid = os.geteuid()
 paths = [os.path.abspath(p) for p in sys.argv[1:]]
@@ -96,7 +134,7 @@ for parent in parents:
         # Read-only ancestors may be owned by a system account (container
         # images commonly map root to nobody). Writable ancestors are safe
         # only with the sticky-bit unlink/rename restriction, as on /tmp.
-        if st.st_mode & 0o022 and not (st.st_mode & stat.S_ISVTX):
+        if _unsafe_mode(st) and not (st.st_mode & stat.S_ISVTX):
             print(f"safe_flock: unsafe parent directory permissions: {cur}", file=sys.stderr)
             raise SystemExit(1)
 

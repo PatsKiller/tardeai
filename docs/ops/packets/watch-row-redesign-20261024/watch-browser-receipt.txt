@@ -1,0 +1,75 @@
+
+Running 47 tests using 6 workers
+
+
+(node:2083654) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+(node:2083667) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[1/47] [chromium] › e2e/watch-pages.spec.ts:49:5 › Watch at 1440px › My Watchlist: add box on top, stars, remove, empty hint, filters, detail
+
+(node:2083653) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+
+(node:2083655) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[2/47] [chromium] › e2e/watch-market-facts.spec.ts:68:46 › 1440px market facts › current price keeps compact context and accessible original source/asof and closed-session level date
+
+(node:2083673) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[3/47] [chromium] › e2e/watch-prospects.spec.ts:20:1 › Prospects (now the third Watch tab): interim label, chips, five lanes, one row per prospect
+[4/47] [chromium] › e2e/watch-account-names-visible.spec.ts:67:5 › 1440px Watch account names › the current Watch view has a visible semantic page heading
+
+(node:2083661) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+[5/47] [chromium] › e2e/watch-lists.spec.ts:21:1 › My Watchlist is the default: every operator name, starred first, never capped
+[6/47] [chromium] › e2e/watch-company-facts.spec.ts:52:5 › my-watchlist CIO company facts at 1440
+[7/47] [chromium] › e2e/watch-account-names-visible.spec.ts:76:5 › 1440px Watch account names › both account names are readable without hover and selection preserves action targets
+[8/47] [chromium] › e2e/watch-lists.spec.ts:34:1 › System Suggests: top of the Full universe ranking; Add (mine command) and Dismiss are the only writes
+[9/47] [chromium] › e2e/watch-company-facts.spec.ts:52:5 › prospects CIO company facts at 1440
+[10/47] [chromium] › e2e/watch-market-facts.spec.ts:68:46 › 1440px market facts › stale price keeps compact context and accessible original source/asof and closed-session level date
+[11/47] [chromium] › e2e/watch-prospects.spec.ts:77:1 › Propose opens the existing propose form; Set alert opens the existing alert form
+[12/47] [chromium] › e2e/watch-account-names-visible.spec.ts:104:5 › 1440px Watch account names › digit-bearing supplied account labels fall back to the known names
+[13/47] [chromium] › e2e/watch-company-facts.spec.ts:52:5 › my-watchlist CIO company facts at 412
+[14/47] [chromium] › e2e/watch-lists.spec.ts:49:1 › Full universe: NAVN is Re-entry / formerly held with its last trade; filters go to the server via the URL
+[15/47] [chromium] › e2e/watch-market-facts.spec.ts:96:5 › 1440px market facts › price absence retains known levels and explicitly unknown nearest relation
+[16/47] [chromium] › e2e/watch-prospects.spec.ts:95:1 › Classic view keeps the old Intelligence page for one release
+[17/47] [chromium] › e2e/watch-pages.spec.ts:106:5 › Watch at 1440px › System Suggests: rows, star, add, dismiss
+[18/47] [chromium] › e2e/watch-account-names-visible.spec.ts:112:5 › 1440px Watch account names › numeric account identifiers use supplied human names without exposing identifiers
+[19/47] [chromium] › e2e/watch-lists.spec.ts:66:1 › mobile cards keep account names and last-trade truth without displaying account numbers
+[20/47] [chromium] › e2e/watch-company-facts.spec.ts:52:5 › prospects CIO company facts at 412
+[21/47] [chromium] › e2e/watch-market-facts.spec.ts:104:5 › 1440px market facts › future time and a missing level expose specific reasons
+[22/47] [chromium] › e2e/watch-account-names-visible.spec.ts:120:5 › 1440px Watch account names › unknown keys with missing labels remain explicitly unlabelled rather than invented names
+[23/47] [chromium] › e2e/watch-market-facts.spec.ts:109:5 › 1440px market facts › missing support is a dash with source-read reason and never a zero
+[24/47] [chromium] › e2e/watch-pages.spec.ts:125:5 › Watch at 1440px › Prospects: lanes, stars, position filters, detail
+[25/47] [chromium] › e2e/watch-account-names-visible.spec.ts:67:5 › 412px Watch account names › the current Watch view has a visible semantic page heading
+[26/47] [chromium] › e2e/watch-market-facts.spec.ts:115:5 › 1440px market facts › sub-cent values retain distinct nonzero prices and levels
+[27/47] [chromium] › e2e/watch-account-names-visible.spec.ts:76:5 › 412px Watch account names › both account names are readable without hover and selection preserves action targets
+[28/47] [chromium] › e2e/watch-pages.spec.ts:148:5 › Watch at 1440px › Full universe: stars, NAVN formerly held, row detail, filters, Re-entry preset
+[29/47] [chromium] › e2e/watch-market-facts.spec.ts:121:5 › 1440px market facts › market facts are opt-in to MyList and do not alter the Prospects grid
+[30/47] [chromium] › e2e/watch-account-names-visible.spec.ts:104:5 › 412px Watch account names › digit-bearing supplied account labels fall back to the known names
+[31/47] [chromium] › e2e/watch-market-facts.spec.ts:126:38 › 1440px market facts › failed 503 poll retains evidence but withdraws Current
+[32/47] [chromium] › e2e/watch-pages.spec.ts:49:5 › Watch at 412px › My Watchlist: add box on top, stars, remove, empty hint, filters, detail
+[33/47] [chromium] › e2e/watch-account-names-visible.spec.ts:112:5 › 412px Watch account names › numeric account identifiers use supplied human names without exposing identifiers
+[34/47] [chromium] › e2e/watch-market-facts.spec.ts:126:38 › 1440px market facts › failed 403 poll retains evidence but withdraws Current
+[35/47] [chromium] › e2e/watch-account-names-visible.spec.ts:120:5 › 412px Watch account names › unknown keys with missing labels remain explicitly unlabelled rather than invented names
+[36/47] [chromium] › e2e/watch-market-facts.spec.ts:68:46 › 412px market facts › current price keeps compact context and accessible original source/asof and closed-session level date
+[37/47] [chromium] › e2e/watch-pages.spec.ts:106:5 › Watch at 412px › System Suggests: rows, star, add, dismiss
+[38/47] [chromium] › e2e/watch-market-facts.spec.ts:68:46 › 412px market facts › stale price keeps compact context and accessible original source/asof and closed-session level date
+[39/47] [chromium] › e2e/watch-pages.spec.ts:125:5 › Watch at 412px › Prospects: lanes, stars, position filters, detail
+[40/47] [chromium] › e2e/watch-market-facts.spec.ts:96:5 › 412px market facts › price absence retains known levels and explicitly unknown nearest relation
+[41/47] [chromium] › e2e/watch-market-facts.spec.ts:104:5 › 412px market facts › future time and a missing level expose specific reasons
+[42/47] [chromium] › e2e/watch-pages.spec.ts:148:5 › Watch at 412px › Full universe: stars, NAVN formerly held, row detail, filters, Re-entry preset
+[43/47] [chromium] › e2e/watch-market-facts.spec.ts:109:5 › 412px market facts › missing support is a dash with source-read reason and never a zero
+[44/47] [chromium] › e2e/watch-market-facts.spec.ts:115:5 › 412px market facts › sub-cent values retain distinct nonzero prices and levels
+[45/47] [chromium] › e2e/watch-market-facts.spec.ts:121:5 › 412px market facts › market facts are opt-in to MyList and do not alter the Prospects grid
+[46/47] [chromium] › e2e/watch-market-facts.spec.ts:126:38 › 412px market facts › failed 503 poll retains evidence but withdraws Current
+[47/47] [chromium] › e2e/watch-market-facts.spec.ts:126:38 › 412px market facts › failed 403 poll retains evidence but withdraws Current
+  47 passed (11.3s)

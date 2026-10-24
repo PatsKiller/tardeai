@@ -24,6 +24,7 @@ Where each fact comes from — no new silo:
 from __future__ import annotations
 
 import time
+import math
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
@@ -49,6 +50,12 @@ READINESS = {"READY TO REVIEW": "ready", "NEAR ENTRY": "near"}
 # Filter / sort vocabulary — shared by watch-universe, watch-curation and watch-prospects. ``server`` is the exact
 # server-side rule (the page shows it as the tooltip).
 FILTERS: dict[str, dict[str, Any]] = {
+    "conv": {"label": "Conviction", "kind": "single", "options": ["any", "80", "70", "60", "lt60", "none"],
+             "server": "stored conviction: Any, at least 80/70/60, below 60, or no finite score; no score is never zero"},
+    "stance": {"label": "Stance", "kind": "multi", "options": ["ADD", "RE-ENTER", "WATCH", "HOLD", "TRIM", "EXIT", "none"],
+               "server": "keeps any selected stored stance (RE-ENTER includes RE_ENTER); none means no stance; combines AND with other filters"},
+    "stage": {"label": "Setup", "kind": "multi", "options": ["actionable", "reentry", "forming", "manage", "expired", "blocked", "has_catalyst", "no_catalyst"],
+              "server": "setup selections match stored lane/stage; Blocked uses existing conflicts/Trade-AI blocks; catalyst uses CURRENT CIO company-facts evidence; setup, block and catalyst groups combine AND"},
     "position": {
         "label": "Position status",
         "kind": "multi",
@@ -131,6 +138,9 @@ FILTERS: dict[str, dict[str, Any]] = {
 }
 FILTER_KEYS = tuple(FILTERS)
 SORTS: dict[str, str] = {
+    "conviction_desc": "finite conviction high to low; no score last; starred first within scored rows; ties stance severity then symbol",
+    "conviction_asc": "finite conviction low to high; no score last; starred first within scored rows; ties stance severity then symbol",
+    "setup": "stored setup: actionable, re-entry near, forming, held, expired, missing; starred first; ties conviction high to low then symbol",
     "exit_date": "most recent sell first (rows without a sell last)",
     "pnl_pct": "last round trip P/L % high → low",
     "pnl_usd": "last round trip P/L $ high → low",
@@ -295,11 +305,68 @@ def _multi(q: dict[str, Any], key: str) -> set[str]:
 
 
 def active_filters(q: dict[str, Any]) -> dict[str, Any]:
-    return {k: q[k] for k in FILTER_KEYS if str(q.get(k) or "").strip()}
+    return {k: q[k] for k in FILTER_KEYS if str(q.get(k) or "").strip() and not (k == "conv" and q[k] == "any")}
+
+
+def conviction_value(row: dict[str, Any]) -> Optional[float]:
+    value = row.get("conviction")
+    if isinstance(value, bool):
+        return None
+    score = _f(value)
+    return score if score is not None and math.isfinite(score) else None
+
+
+def stance_value(row: dict[str, Any]) -> str:
+    return str(row.get("stance") or "none").strip().upper().replace("_", "-") or "NONE"
+
+
+def setup_value(row: dict[str, Any]) -> str:
+    """Presentation categories over saved judgments; never changes the saved stage or readiness."""
+    lane = str(row.get("lane") or "").lower()
+    if lane in {"actionable", "reentry", "forming", "manage", "expired"}:
+        return lane
+    stage = str(row.get("stage") or "").lower()
+    return {"actionable": "actionable", "re_entry": "reentry", "reentry": "reentry", "forming": "forming",
+            "watch": "forming", "held": "manage", "held_review": "manage", "invalidated": "expired", "expired": "expired"}.get(stage, "none")
+
+
+def blocked(row: dict[str, Any]) -> bool:
+    return bool(row.get("conflicts") or (row.get("next_action") or {}).get("kind") == "resolve_conflict"
+                or str(row.get("trade_ai_state") or "").upper() in {"DETERMINISTIC_FAIL", "BLOCK", "BLOCKED", "NOGO", "NO_GO", "AVOID"})
+
+
+def has_catalyst(row: dict[str, Any]) -> bool:
+    cat = ((row.get("company_facts") or {}).get("catalyst") or {})
+    return cat.get("status") == "CURRENT" and bool(str(cat.get("headline") or "").strip())
 
 
 def passes(pf: dict[str, Any], q: dict[str, Any], *, now: datetime) -> bool:
     """True when the position facts ``pf`` (facts_for output) pass every position filter in ``q`` (see FILTERS)."""
+    conv = str(q.get("conv") or "").strip()
+    score = conviction_value(pf)
+    if conv and conv != "any":
+        if conv == "none":
+            if score is not None: return False
+        elif conv == "lt60":
+            if score is None or score >= 60: return False
+        elif conv in {"80", "70", "60"}:
+            if score is None or score < int(conv): return False
+        else:
+            return False
+    stance = {v.replace("_", "-") for v in _multi(q, "stance")}
+    if stance and stance_value(pf).lower() not in stance:
+        return False
+    stages = _multi(q, "stage")
+    setups = stages & {"actionable", "reentry", "forming", "manage", "expired"}
+    if setups and setup_value(pf) not in setups:
+        return False
+    if "blocked" in stages and not blocked(pf):
+        return False
+    catalysts = stages & {"has_catalyst", "no_catalyst"}
+    if len(catalysts) == 1 and has_catalyst(pf) != ("has_catalyst" in catalysts):
+        return False
+    if stages - {"actionable", "reentry", "forming", "manage", "expired", "blocked", "has_catalyst", "no_catalyst"}:
+        return False
     pos = _multi(q, "position")
     if pos and pf.get("position_state") not in pos:
         return False
@@ -344,40 +411,44 @@ def passes(pf: dict[str, Any], q: dict[str, Any], *, now: datetime) -> bool:
     return True
 
 
-def facet_counts(facts: list[dict[str, Any]], *, now: datetime) -> dict[str, dict[str, int]]:
+def facet_counts(facts: list[dict[str, Any]], *, now: datetime, filters: Optional[dict[str, Any]] = None) -> dict[str, dict[str, int]]:
     """Count chips: how many rows carry each option (over the rows the other filters left)."""
     out: dict[str, dict[str, int]] = {
+        "conv": {}, "stance": {}, "stage": {},
         "position": {},
         "result": {},
         "exit_cause": {},
         "exited_within": {},
         "reentry": {},
     }
-    for pf in facts:
-
-        def inc(k: str, v: Any) -> None:
-            if v:
-                out[k][v] = out[k].get(v, 0) + 1
-
-        inc("position", pf.get("position_state"))
-        rt = pf.get("last_round_trip") or {}
-        inc("result", rt.get("result"))
-        inc("exit_cause", rt.get("exit_cause"))
-        inc("reentry", (pf.get("reentry") or {}).get("readiness"))
-        sold = _ts(pf.get("last_sell_at"))
-        if sold:
-            age = now - sold
-            for k, d in (("1d", 1), ("1w", 7), ("1m", 30)):
-                if age <= timedelta(days=d):
-                    inc("exited_within", k)
-            if age > timedelta(days=30):
-                inc("exited_within", "older")
+    active = active_filters(filters or {})
+    # Disjunctive facets: each chip counts rows passing the other filter groups.
+    # A setup chip keeps the selected blocked/catalyst constraints, and conversely.
+    for key in out:
+        other = {k: v for k, v in active.items() if k != key}
+        for option in FILTERS[key]["options"]:
+            query = {**other, key: option}
+            if key == "stage":
+                selected = _multi(active, key)
+                groups = [{"actionable", "reentry", "forming", "manage", "expired"}, {"blocked"}, {"has_catalyst", "no_catalyst"}]
+                own = next(group for group in groups if option in group)
+                query[key] = ",".join(sorted((selected - own) | {option}))
+            count = sum(passes(row, query, now=now) for row in facts)
+            if count or key in {"conv", "stance", "stage"}:
+                out[key][option] = count  # Preserve the established sparse legacy-facet shape.
     return out
 
 
 def sort_key(sort: str, pf: dict[str, Any], conviction: Optional[float]) -> tuple:
     rt = pf.get("last_round_trip") or {}
     adv = pf.get("reentry") or {}
+    score = conviction_value(pf)
+    if sort in {"conviction_desc", "conviction_asc"}:
+        severity = {"EXIT": 0, "TRIM": 1, "HOLD": 2, "WATCH": 3, "RE-ENTER": 4, "ADD": 5}.get(stance_value(pf), 6)
+        return (score is None, not pf.get("starred"), (score or 0) * (-1 if sort == "conviction_desc" else 1), severity)
+    if sort == "setup":
+        stage = setup_value(pf)
+        return (stage == "none", not pf.get("starred"), {"actionable": 0, "reentry": 1, "forming": 2, "manage": 3, "expired": 4}.get(stage, 5), score is None, -(score or 0))
     conv = -(conviction or 0.0)
     if sort == "exit_date":
         t = _ts(pf.get("last_sell_at"))
