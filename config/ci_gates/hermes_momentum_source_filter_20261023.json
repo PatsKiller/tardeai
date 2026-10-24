@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "hermes_momentum_source_filter_20261023",
+  "files": [
+    "tests/test_hermes_momentum_source_filter_20261023.py"
+  ],
+  "comment": [
+    "WP-28 item2: generic-page filtering before cap/headline with unchanged search routes and downstream identity gate."
+  ]
+}
