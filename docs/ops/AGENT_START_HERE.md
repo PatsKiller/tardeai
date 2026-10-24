@@ -58,7 +58,15 @@ Steps:
 5. **Finish.** `task done <task-id>` checks the acceptance boxes. Then run
    `release <claim_id> --summary "<one line>"`. If you cannot finish, run
    `task release <task-id> --handoff "<exact next step>"`. The task goes back on the board with its history, and
-   the next picker's worklog continues yours.
+   the next picker's worklog continues yours. If a **free** task's work already shipped (its PR merged, its batch released), close it
+   without taking it: `task done <task-id> --evidence-only --summary "<what shipped>" --evidence <PR or receipt link>`.
+
+**Shared files never block you.** `docs/INDEX.md`, `docs/DOCUMENTATION_INDEX.md`,
+`apps/command-center-v3/package.json` and the docs/AGENTS update backlog are *shared-additive*
+(`config/agent_claim_shared_paths.json`). Any number of sessions may claim them, and a commit that stages them only
+needs you to hold some claim. Add your row or entry, rebase, then apply the merge strategy: for INDEX.md run
+`python3 scripts/report_docs_inventory.py --write-index`; for the others keep both sides' rows or entries. Do not wait
+for another agent's INDEX.md claim. Details: `docs/ops/AGENT_CLAIM_BOARD.md` §15.
 
 Bypass a blocked commit only with `TRADEAI_CLAIM_OVERRIDE=<reason>`. Every use is logged.
 

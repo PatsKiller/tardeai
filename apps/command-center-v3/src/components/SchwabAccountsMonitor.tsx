@@ -1,3 +1,4 @@
+import { accountName } from '../lib/accountLabels'
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
 
@@ -36,7 +37,8 @@ export default function SchwabAccountsMonitor({ onEditDraft }: { onEditDraft: (i
   const d = (data as any)?.data ?? data
   const accounts: any[] = d?.accounts ?? []
   const shown = accounts.filter((a: any) => acct === 'all' || a.account_key === acct)
-  const nice = (k: string) => k.replace('schwab_', '').replace(/_/g, ' ').toUpperCase()
+  // Account NAME (operator 2026-10-23: "just a name, not the account numbers"); display only.
+  const nice = (k: string) => accountName(k)
 
   const allOrders = shown.flatMap((a: any) => (a.orders ?? []).map((o: any) => ({ ...o, account_key: a.account_key })))
   const working = allOrders.filter((o: any) => WORKING_STATUSES.includes(o.status))

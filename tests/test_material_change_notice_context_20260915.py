@@ -97,7 +97,7 @@ def test_rich_page_carries_the_catalyst_without_advice_words(mod):
     info = dict(INFO, **FRESH, holding={"shares": 50.0, "accounts": ["Taxable"]},
                 headline="Linkage Global announces $5M registered direct offering", headline_kind="catalyst")
     text = mod.render_rich([_row()], {"g-1": info})["text"]
-    for phrase in ("BIG MOVE — UZX (held, 50 sh)", "-20.6%", "catalyst: Linkage Global announces"):
+    for phrase in ("BIG MOVE — UZX (held · Taxable 50 sh)", "-20.6%", "catalyst: Linkage Global announces"):
         assert phrase in text
     for banned in ("buy", "sell", "trim", "add to"):
         assert banned not in text.lower()

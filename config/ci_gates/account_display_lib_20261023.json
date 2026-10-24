@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "account_display_lib_20261023",
+  "files": [
+    "tests/test_account_display_lib_20261023.py"
+  ],
+  "anchor": "ACCOUNT_DISPLAY_LIB_20261023",
+  "comment": [
+    "ANCHOR: ACCOUNT_DISPLAY_LIB_20261023 — one short account NAME per account key (operator 2026-10-23: \"just a name, not",
+    "the account numbers\"): config/account_display_names.json names are digit-free and unique; scripts/lib/account_display",
+    "never echoes an account number or masked digits; label_rows copies, never mutates. Shared by CC rows and Telegram notices."
+  ]
+}

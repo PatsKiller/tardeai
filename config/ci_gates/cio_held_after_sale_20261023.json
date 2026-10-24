@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_held_after_sale_20261023",
+  "files": [
+    "tests/test_cio_held_after_sale_20261023.py"
+  ],
+  "anchor": "CIO_HELD_AFTER_SALE_20261023",
+  "comment": [
+    "ANCHOR: CIO_HELD_AFTER_SALE_20261023 — silo audit 2026-10-23 P1 (NAVN): positions_context marks a holding whose broker",
+    "sell fill is newer than the holdings snapshot (never changes owned, AGENTS.md §26.5); the opportunity assessment carries",
+    "the held conflict and says so; suppressing ADD/HOLD on it is behind position_conflict.suppress_add_hold (default false, §17)."
+  ]
+}

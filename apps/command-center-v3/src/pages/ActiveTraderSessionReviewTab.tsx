@@ -6,12 +6,12 @@ import './activeTrader.css';
 // your fills, and the automated mode run as a SIMULATION (no order path exists). Read-only:
 // GET /api/v3/active-trader/session-review?day=YYYY-MM-DD. Method: docs/active_trader/ACTIVE_TRADER_SOUL.md.
 
-type Row = { ts: number; time: string; price: number | null; engine: string; should: string; source: string };
+type Row = { ts: number; time: string; price: number | null; engine: string; should: string; source: string; account_label?: string | null };
 type Ideal = { kind: string; ts: number; price: number; stop: number; exit_ts: number; exit_price: number; exit_reason: string; pnl_pct: number; why: string };
 type SymReview = {
   symbol: string; bars: number; table: Row[]; ideal_trades: Ideal[];
   metrics: { latency_s: number[]; latency_max_s: number | null; missed: { reasons: string[] }[]; chases: unknown[];
-             correct_heads_up: number; ideal_pnl_pct: number; ideal_pnl_per_share: number; your_pnl: number | null };
+             correct_heads_up: number; ideal_pnl_pct: number; ideal_pnl_per_share: number; your_pnl: number | null; your_accounts?: string[] };
 };
 type SimTrade = { status: string; kind: string; entry_ts: number; fill?: number; exit_price?: number; exit_reason?: string; pnl?: number; reason?: string; symbol: string };
 type SimSource = { metrics: { attempted: number; filled: number; fill_feasibility: number | null; win_rate: number | null; net_pnl: number; avg_r: number | null; max_drawdown: number };
@@ -79,7 +79,7 @@ function SymbolReview({ s, sim }: { s: SymReview; sim?: Record<string, SimSource
   return (
     <section className="at-panel at-review__sym" data-testid="at-review-symbol">
       <header className="at-panel__header">
-        <h2>{s.symbol} <small>ideal {m.ideal_pnl_pct >= 0 ? '+' : ''}{m.ideal_pnl_pct.toFixed(1)}% · {s.ideal_trades.length} entries{m.your_pnl != null ? ` · you ${money(m.your_pnl)}` : ''}</small></h2>
+        <h2>{s.symbol} <small>ideal {m.ideal_pnl_pct >= 0 ? '+' : ''}{m.ideal_pnl_pct.toFixed(1)}% · {s.ideal_trades.length} entries{m.your_pnl != null ? ` · you ${money(m.your_pnl)}${m.your_accounts?.length ? ` (${m.your_accounts.join(', ')})` : ''}` : ''}</small></h2>
         <div className="at-inline at-wrap">
           {m.latency_max_s != null && <span className="at-chip at-chip--warning">buy alert late {Math.round(m.latency_max_s / 60)}m{m.latency_max_s % 60}s</span>}
           {m.missed.length > 0 && <span className="at-chip at-chip--fail">{m.missed.length} entry missed ({Array.from(new Set(m.missed.flatMap(x => x.reasons))).join(', ')})</span>}
@@ -93,7 +93,7 @@ function SymbolReview({ s, sim }: { s: SymReview; sim?: Record<string, SimSource
           <tbody>
             {s.table.map((r, i) => (
               <tr key={`${r.ts}-${i}`} className={`is-${r.source}`}>
-                <td className="mono">{r.time}</td><td className="mono">{px(r.price)}</td><td>{r.engine}</td><td>{r.should}</td>
+                <td className="mono">{r.time}</td><td className="mono">{px(r.price)}</td><td>{r.engine}{r.account_label ? <span className="at-source" data-testid="at-review-account"> · {r.account_label}</span> : null}</td><td>{r.should}</td>
               </tr>
             ))}
           </tbody>

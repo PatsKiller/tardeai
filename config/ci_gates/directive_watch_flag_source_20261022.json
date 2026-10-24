@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "directive_watch_flag_source_20261022",
+  "files": [
+    "tests/test_directive_watch_flag_source_20261022.py"
+  ],
+  "anchor": "DIRECTIVE_WATCH_FLAG_SOURCE_20261022",
+  "comment": [
+    "ANCHOR: DIRECTIVE_WATCH_FLAG_SOURCE_20261022 — operator-approved 2026-10-22 (\"Yes, I agree with your recommendations.\"):",
+    "in_directive_watch is set only by ACTIVE operator-created directives; directive_promotion's reconciler clears it",
+    "(backup first, never a delete, write-time re-check); servicer keeps it reconciled after the operator's apply.",
+    "Behaviour proven on a disposable Postgres (tests/support/isolated_pg.py); consumers read the flag."
+  ]
+}

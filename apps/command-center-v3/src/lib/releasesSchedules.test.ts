@@ -3,7 +3,7 @@ const assert = {
   ok(value: unknown, message = 'expected truthy value') { if (!value) throw new Error(message) },
   match(value: string, pattern: RegExp) { if (!pattern.test(value)) throw new Error(`expected ${value} to match ${pattern}`) },
 }
-import { ageText, ciLabel, ciTone, queueStoreText, kpiDisplay, lastRunText, prList, sectionView, verifyLabel, windowTone, type Kpi, type ReleasesSchedulesWire, type TimelineRow } from './releasesSchedules.ts'
+import { ageText, ciLabel, ciTone, queueStoreText, kpiDisplay, lastRunText, prList, sectionView, shadowLine, verifyLabel, windowTone, type Kpi, type ReleasesSchedulesWire, type TimelineRow } from './releasesSchedules.ts'
 
 const NOW = Date.parse('2026-10-22T19:00:00Z')
 const wire: ReleasesSchedulesWire = {
@@ -63,3 +63,10 @@ assert.equal(ciTone('SUCCESS'), 'success')
 const qMissing = { store: { freshness: 'OK', total: 0 }, census: { freshness: 'UNAVAILABLE', reason: 'no_receipt', alert: 'PR census MISSING' }, open_prs: [] }
 assert.match(queueStoreText(qMissing), /0 queued \(explicit train queue only\) · open PRs UNKNOWN/)
 assert.equal(queueStoreText({ ...qMissing, census: { freshness: 'OK' } }), 'queue store 0 queued')
+// Shadow tick line (Phase 5): outcome, reason, queue seen, riding, candidate; unknown counts are "?" never 0.
+const shadowFull = { request_id: 'rtw-20261023-1800-f2fb974', outcome: 'NO_OP', reason: 'DRY_RUN_COMPLETE', queue_open: 49, queue_complete: true,
+  riding: 3, candidate_sha: 'abcdef1234567890', train_id: 'rt-20261023-1800-316c4b', has_report: true }
+assert.equal(shadowLine(shadowFull), 'shadow: NO_OP · DRY_RUN_COMPLETE · queue 49 open · 3 riding · candidate abcdef123')
+assert.equal(shadowLine({ ...shadowFull, queue_open: null, riding: null, queue_complete: false, candidate_sha: null }),
+  'shadow: NO_OP · DRY_RUN_COMPLETE · queue ? open (INCOMPLETE) · ? riding')
+assert.equal(shadowLine({ ...shadowFull, has_report: false, reason: null, outcome: null, candidate_sha: null }), 'shadow: no receipt')

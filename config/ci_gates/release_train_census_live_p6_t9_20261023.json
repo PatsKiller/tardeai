@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_census_live_p6_t9_20261023",
+  "files": [
+    "tests/test_release_train_census_live_p6_t9_20261023.py"
+  ],
+  "anchor": "RELEASE_TRAIN_CENSUS_LIVE_P6_T9_20261023",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_CENSUS_LIVE_P6_T9_20261023 — D7: live selection is census-first (ShadowQueueSource for live,",
+    "shadow and dry runs; no store-first fallback; the release_queue store is metadata and the event log). The Work",
+    "pipeline batch queue (tasks/batch_queue.json, BatchQueue@v1) shapes it: held PRs never ride, next-batch PRs go first",
+    "in list order, then oldest first; every rider is green on its exact head; an absent file is census-only and an",
+    "unreadable one fails closed. Red checks, conflicts, drafts, hygiene holds and the classifier still exclude.",
+    "Hermetic: temp git repos, fake GitHub/host."
+  ]
+}

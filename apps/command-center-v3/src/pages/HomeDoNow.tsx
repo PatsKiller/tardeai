@@ -24,6 +24,8 @@ import { tradeAiSurfaceFreshness } from '../lib/surfaceFreshness'
 import { runLabel } from '../lib/homeLabels'
 import { RELEASE_TRAIN_PATHS, freshness, summaryFrom, type ReleaseTrainSummaryWire } from '../lib/releaseTrain'
 import DoNowQueue from '../components/home/DoNowQueue'
+import { AccountChip, AccountsBadge } from '../components/AccountChip'
+import { accountsBadge } from '../lib/accountLabels'
 import ReleaseTrainCard from '../components/home/ReleaseTrainCard'
 import MarketMoversBoard from '../components/home/MarketMoversBoard'
 import MajorNewsGrid from '../components/home/MajorNewsGrid'
@@ -137,6 +139,7 @@ export default function HomeDoNow() {
   const lagging = postureRows.filter((r: any) => r.state === 'LAGGING')
   const leading = postureRows.filter((r: any) => r.state === 'LEADING')
   const movers = moversBars(overview)
+  const [openMovers, setOpenMovers] = useState<Record<string, boolean>>({})
   const accounts = accountRows(perf, overview)
   const cash = cashPct(overview)
   const n = dn.numbers
@@ -234,17 +237,41 @@ export default function HomeDoNow() {
           <section style={card} data-testid="home-movers" aria-label="What moved your book today">
             <CardHead title="What moved your book today" to="/portfolio" linkText="Portfolio" />
             {movers.bars.length === 0 && <div style={{ fontSize: TYPE.base, color: TOKENS.text[3] }}>{overview ? 'No position moved today.' : 'Loading…'}</div>}
-            {movers.bars.map(b => (
-              <button key={b.sym} type="button" onClick={() => openSymbol(b.sym)} data-testid="mover-row"
-                title={`${b.sym}: ${money(b.amount, true)} today${b.dayPct != null ? ` (${pct(b.dayPct)})` : ''} · dollar day change of the holding (/api/v2/overview top_movers). Bar length is relative to the largest move shown.`}
-                style={{ display: 'grid', gridTemplateColumns: '56px minmax(0, 1fr) 84px', gap: 10, alignItems: 'center', fontSize: TYPE.base, background: 'none', border: 'none', padding: 0, color: TOKENS.text[0], cursor: 'pointer', fontFamily: 'inherit', textAlign: 'left' }}>
-                <span style={{ ...numStyle, fontWeight: 600 }}>{b.sym}</span>
-                <span style={{ height: 8, background: TOKENS.bg[3], borderRadius: RADIUS.sm, overflow: 'hidden', display: 'flex', justifyContent: b.negative ? 'flex-end' : 'flex-start' }}>
-                  <span style={{ display: 'block', height: 8, width: `${b.widthPct}%`, background: b.negative ? TOKENS.danger : TOKENS.success }} />
+            {movers.bars.map(b => {
+              const open = !!openMovers[b.sym]
+              const tip = `${b.sym}${b.multi ? ` · ${accountsBadge(b.accounts.length)}: ${b.accounts.map(a => `${a.label} ${money(a.amount, true)}`).join(', ')}` : b.accountLabel ? ` · ${b.accountLabel}` : ''}: ${money(b.amount, true)} today${b.dayPct != null ? ` (${pct(b.dayPct)})` : ''} · dollar day change of the holding (/api/v2/overview top_movers). Bar length is relative to the largest move shown.`
+              const bar = (amount: number, widthPct: number) => (
+                <span style={{ height: 8, background: TOKENS.bg[3], borderRadius: RADIUS.sm, overflow: 'hidden', display: 'flex', justifyContent: amount < 0 ? 'flex-end' : 'flex-start' }}>
+                  <span style={{ display: 'block', height: 8, width: `${widthPct}%`, background: amount < 0 ? TOKENS.danger : TOKENS.success }} />
                 </span>
-                <span style={{ ...numStyle, textAlign: 'right', color: b.negative ? TOKENS.danger : TOKENS.success }}>{money(b.amount, true)}</span>
-              </button>
-            ))}
+              )
+              return (
+                <div key={b.sym} data-testid="mover-group" data-symbol={b.sym} data-multi={b.multi ? 'true' : 'false'} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(56px, auto) minmax(0, 1fr) 84px', gap: 10, alignItems: 'center', fontSize: TYPE.base }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, flexWrap: 'wrap' }}>
+                      <button type="button" onClick={() => openSymbol(b.sym)} data-testid="mover-row" title={tip}
+                        style={{ ...numStyle, fontWeight: 600, background: 'none', border: 'none', padding: 0, color: TOKENS.text[0], cursor: 'pointer', fontFamily: 'inherit', fontSize: TYPE.base }}>{b.sym}</button>
+                      {b.multi
+                        ? <button type="button" data-testid="mover-expand" aria-expanded={open} onClick={() => setOpenMovers(o => ({ ...o, [b.sym]: !o[b.sym] }))}
+                            title={open ? 'Hide the per-account rows' : 'Show each account'} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 3, color: TOKENS.text[2] }}>
+                            <AccountsBadge n={b.accounts.length} /><span aria-hidden>{open ? '▾' : '▸'}</span>
+                          </button>
+                        : b.accountLabel ? <AccountChip account={b.accounts[0]?.account} label={b.accountLabel} compact /> : null}
+                    </span>
+                    {bar(b.amount, b.widthPct)}
+                    <span style={{ ...numStyle, textAlign: 'right', color: b.negative ? TOKENS.danger : TOKENS.success }}>{money(b.amount, true)}</span>
+                  </div>
+                  {b.multi && open && b.accounts.map(a => (
+                    <div key={a.account || a.label} data-testid="mover-account-row" data-account={a.account}
+                      style={{ display: 'grid', gridTemplateColumns: 'minmax(56px, auto) minmax(0, 1fr) 84px', gap: 10, alignItems: 'center', fontSize: TYPE.sm, paddingLeft: 14 }}>
+                      <span style={{ justifySelf: 'start', minWidth: 0, maxWidth: '100%' }}><AccountChip account={a.account} label={a.label} compact /></span>
+                      {bar(a.amount, b.amount !== 0 ? Math.max(4, Math.round(Math.abs(a.amount) / Math.abs(b.amount) * b.widthPct)) : 0)}
+                      <span style={{ ...numStyle, textAlign: 'right', color: a.amount < 0 ? TOKENS.danger : TOKENS.success }}>{money(a.amount, true)}</span>
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
             {movers.total != null && movers.bars.length > 0 && (
               <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}
                 title="The rows shown are the largest movers; 'rest of the book' is every other holding, so the two always sum to today's change in the header.">

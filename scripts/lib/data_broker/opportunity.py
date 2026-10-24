@@ -362,9 +362,35 @@ def classify(ctx: dict[str, Any], conv: Optional[float], rr: dict[str, Any], cov
     why = STANCE_WHY[stance].format(conv=f"{conv:.0f}" if conv is not None else "n/a",
                                     rr=f"{rr['rr']:.1f}" if rr.get("rr") is not None else "n/a",
                                     w=f"{c['weight_pct']:.1f}" if c["weight_pct"] is not None else "n/a")
-    return {"type": typ, "stance": stance, "stance_rationale": why, "position_status": status,
-            "technical_condition": technical_condition(ctx),
-            "cap_band": cap_band(_f((ctx.get("profile") or {}).get("market_cap_usd")))}
+    out = {"type": typ, "stance": stance, "stance_rationale": why, "position_status": status,
+           "technical_condition": technical_condition(ctx),
+           "cap_band": cap_band(_f((ctx.get("profile") or {}).get("market_cap_usd")))}
+    conflict = position_conflict(pc)
+    if conflict:
+        # Shown, never silently resolved (AGENTS.md §26.5): position_status stays what the holdings store says; the
+        # conflict and both facts ride on the assessment. Suppressing ADD/HOLD advice on it changes what Home ranks
+        # (§17), so it waits for the operator's switch (position_conflict.suppress_add_hold, default false).
+        out["position_conflict"] = conflict
+        out["stance_rationale"] = f"Position unconfirmed — {conflict['note']}. " + why
+        if held and stance in ("ADD", "HOLD") and bool((cfg.get("position_conflict") or {}).get("suppress_add_hold")):
+            out["stance"] = "WATCH"
+            out["stance_suppressed"] = {"from": stance, "reason": "position_conflict.suppress_add_hold"}
+    return out
+
+
+def position_conflict(pc: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """The held conflict (NAVN, silo audit 2026-10-23): the holdings store says owned, the broker ledger shows a sale
+    after that store's snapshot (positions_context ``sold_after_snapshot``). Both facts, both sources, both times."""
+    sas = pc.get("sold_after_snapshot") if pc.get("owned") else None
+    if not sas:
+        return None
+    note = (f"a sale of {sas.get('sell_quantity'):g} sh at {sas.get('last_sell_at')} (trade_transactions) is newer than "
+            f"the holdings snapshot ({sas.get('snapshot_as_of')}) that still lists {pc.get('shares'):g} sh")
+    return {"field": "held", "resolved": False, "covers_position": bool(sas.get("covers_position")), "note": note,
+            "values": [{"value": f"owned {pc.get('shares'):g} sh", "source": "holdings_accounts",
+                        "at": sas.get("snapshot_as_of")},
+                       {"value": f"sold {sas.get('sell_quantity'):g} sh", "source": sas.get("sell_source"),
+                        "at": sas.get("last_sell_at")}]}
 
 
 def assess(symbol: str, ctx: dict[str, Any], *, now: Optional[datetime] = None) -> dict[str, Any]:

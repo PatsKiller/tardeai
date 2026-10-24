@@ -53,6 +53,20 @@ CASH_POSTURE_LABELS: dict[str, str] = {
 }
 
 
+
+try:  # account NAMES, never account numbers (operator 2026-10-23)
+    from lib.account_display import account_label as _acct_name
+except ImportError:  # pragma: no cover - imported as scripts.lib.*
+    from scripts.lib.account_display import account_label as _acct_name
+
+
+def _card_accounts(d: dict) -> list:
+    accts = d.get("accounts") if isinstance(d.get("accounts"), list) else []
+    out = [str(a) for a in accts if a]
+    if not out and d.get("account"):
+        out = [str(d.get("account"))]
+    return list(dict.fromkeys(out))
+
 def _now_iso(now: Optional[datetime] = None) -> str:
     return (now or datetime.now(timezone.utc)).isoformat()
 
@@ -308,6 +322,10 @@ def build_cio_now(
                 "decision_id": d.get("decision_id"),
                 "symbol": d.get("symbol"),
                 "account": (d.get("accounts") or [None])[0] if d.get("accounts") else d.get("account"),
+                # Every account the decision spans, by NAME (operator 2026-10-23): a symbol in two accounts
+                # is never shown as only the first one.
+                "accounts": _card_accounts(d),
+                "account_labels": [_acct_name(a) for a in _card_accounts(d)],
                 "action": d.get("action") or d.get("stance"),
                 "stance": d.get("stance"),
                 "stance_code": d.get("stance_code"),
@@ -364,6 +382,8 @@ def build_cio_now(
                 "decision_id": d.get("decision_id") or f"dec_fallback_{d.get('symbol')}",
                 "symbol": d.get("symbol"),
                 "account": d.get("account"),
+                "accounts": _card_accounts(d),
+                "account_labels": [_acct_name(a) for a in _card_accounts(d)],
                 "action": stance,
                 "stance": stance,
                 "stance_code": d.get("stance_code") or d.get("cio_stance"),

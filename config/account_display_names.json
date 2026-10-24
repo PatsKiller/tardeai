@@ -1,0 +1,19 @@
+{
+  "_comment": "One short human name per account, shown beside every position, fill, stop, P/L and trade row in Command Center v3. NAMES ONLY: never an account number and never masked digits (operator 2026-10-23: \"just a name, not the account numbers\"). Two accounts never share a name; when they would, disambiguate by account type or broker, never by digits. Reader: scripts/lib/account_display.py. Test: tests/test_account_display_labels_20261023.py.",
+  "_source": "holdings.json config.accounts[*].display_name and account_summaries[*].display_name (2026-10-23), shortened; entries marked proposed await operator confirmation.",
+  "aliases": {
+    "schwab_roth": "schwab_roth_ira",
+    "schwab_individual": "schwab_taxable",
+    "alpaca_paper": "tradeai_automated"
+  },
+  "names": {
+    "schwab_rollover_ira": {"name": "Schwab Rollover IRA", "broker": "schwab", "type": "rollover_ira", "status": "registry"},
+    "schwab_roth_ira": {"name": "Schwab Roth IRA", "broker": "schwab", "type": "roth_ira", "status": "registry"},
+    "schwab_taxable": {"name": "Schwab Individual", "broker": "schwab", "type": "taxable", "status": "registry_shortened", "registry_name": "Schwab Individual (Taxable)"},
+    "fidelity_rollover_ira": {"name": "Fidelity Rollover IRA", "broker": "fidelity", "type": "rollover_ira", "status": "registry"},
+    "alpaca_taxable_live": {"name": "Alpaca Individual", "broker": "alpaca", "type": "taxable", "status": "proposed", "registry_name": "Alpaca Taxable (Live · read-only data)"},
+    "alpaca_ira_live": {"name": "Alpaca IRA", "broker": "alpaca", "type": "ira", "status": "proposed"},
+    "moomoo_taxable_live": {"name": "moomoo Taxable", "broker": "moomoo", "type": "taxable", "status": "operator_confirmed", "registry_name": "Moomoo Taxable (Live · read-only data)"},
+    "tradeai_automated": {"name": "Alpaca Paper", "broker": "alpaca", "type": "paper", "status": "proposed", "registry_name": "Alpaca Paper (TradeAI Automated)"}
+  }
+}

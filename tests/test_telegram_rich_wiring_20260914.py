@@ -270,7 +270,7 @@ def test_material_change_rich_says_the_same_things_with_links(rich):
     plain = mc.render([ROW], ctx)
     rich = mc.render_rich([ROW], ctx)
     text = rich["text"]
-    for phrase in ("BIG MOVE — AOUT (held, 100 sh)", "15.0× its normal daily move", "Action: review the position"):
+    for phrase in ("BIG MOVE — AOUT (held · Taxable 100 sh)", "15.0× its normal daily move", "Action: review the position"):
         assert phrase in plain and phrase in text
     assert "&lt;estimates&gt; &amp; guidance" in text
     assert '<a href="' in text and "/v3/watch/intelligence/AOUT" in text

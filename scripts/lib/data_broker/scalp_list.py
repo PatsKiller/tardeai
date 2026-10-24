@@ -339,13 +339,39 @@ CATALYST_RESEARCH_REL = Path("data") / "hermes" / "momentum_catalysts"
 NO_CLEAR_CATALYST = "no_clear_catalyst"
 
 
+_SEC_NAMES: dict[str, Any] = {}
+
+
+def _company_names(symbol: str, state_root: Path) -> list[str]:
+    """Company names for ``symbol`` from ``<state_root>/data/runtime/sec_company_tickers.json`` (read-only, parsed
+    once per (path, mtime, size)); [] when the file or the symbol is missing."""
+    from lib.hermes_scalp_catalyst_record import SEC_TICKERS_REL, sec_name_index
+
+    path = Path(state_root) / SEC_TICKERS_REL
+    try:
+        st = path.stat()
+    except OSError:
+        return []
+    key = (str(path), st.st_mtime_ns, st.st_size)
+    if _SEC_NAMES.get("key") != key:
+        try:
+            index = sec_name_index(json.loads(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            index = {}
+        _SEC_NAMES.clear()
+        _SEC_NAMES.update(key=key, index=index)
+    return list(_SEC_NAMES["index"].get(str(symbol or "").upper(), []))
+
+
 def get_scalp_catalyst(symbol: str, day: str, root: Path | str | None = None) -> dict[str, Any]:
     """Today's Hermes scalp-catalyst research record for one symbol (zero provider calls, never writes).
 
     Reads the single writer's store ``data/hermes/momentum_catalysts/<day>_catalysts.jsonl``
     (``hermes_momentum_catalyst_researcher.py --source scalp``; the same file :func:`freshness_report` reads).
-    status: FOUND (a catalyst), NONE_FOUND (researched, no clear catalyst), NOT_RESEARCHED (symbol absent
-    from today's research), STORE_MISSING (no research file today). Never raises."""
+    status: FOUND (a catalyst whose headline or source names the company), UNVERIFIED_IDENTITY (a catalyst that
+    does not, or came from a generic index page — lib/hermes_catalyst_identity), NONE_FOUND (researched, no clear
+    catalyst), NOT_RESEARCHED (symbol absent from today's research), STORE_MISSING (no research file today).
+    Never raises."""
     sym = str(symbol or "").strip().upper()
     path = Path(root or PROJECT_ROOT) / CATALYST_RESEARCH_REL / f"{day}_catalysts.jsonl"
     out: dict[str, Any] = {"symbol": sym, "day": day, "status": "STORE_MISSING", "provider_calls": 0,
@@ -358,7 +384,12 @@ def get_scalp_catalyst(symbol: str, day: str, root: Path | str | None = None) ->
     # 2026-10-22 (Gate 1): record selection is shared with the Shared Momentum projection.
     from lib.hermes_scalp_catalyst_record import select_scalp_catalyst
 
-    found = select_scalp_catalyst(sym, lines)
+    # 2026-10-23: FOUND only when the headline or its source names the company (UNVERIFIED_IDENTITY otherwise).
+    try:
+        names = _company_names(sym, Path(root) if root else _root(None))
+    except Exception:  # noqa: BLE001 — no names: the ticker alone must match
+        names = []
+    found = select_scalp_catalyst(sym, lines, names)
     if found is not None:
         out.update(found)
     return out

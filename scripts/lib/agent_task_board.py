@@ -299,7 +299,10 @@ class TaskBoard:
             cands = [
                 t
                 for t in tasks
-                if t.get("status") == "free" and (not kind or t.get("kind") == kind) and not self.blocked_by(t, done)
+                if t.get("status") == "free"
+                and not t.get("held")
+                and (not kind or t.get("kind") == kind)
+                and not self.blocked_by(t, done)
             ]
             cands.sort(key=lambda t: (t.get("priority", DEFAULT_PRIORITY), t.get("created_at") or "", t["task_id"]))
             if task_id is not None:
@@ -311,6 +314,11 @@ class TaskBoard:
                     raise TaskError(
                         f"task {task_id} is {want.get('status')}"
                         + (f" (held by {who.get('vendor')}/{who.get('session')})" if who else "")
+                    )
+                if want.get("held"):
+                    h = want["held"]
+                    raise TaskError(
+                        f"task {task_id} is on hold by {h.get('by')} since {h.get('at')}: {h.get('reason') or ''}"
                     )
                 blocked = self.blocked_by(want, done)
                 if blocked:
@@ -448,6 +456,71 @@ class TaskBoard:
             self._write(t)
         return t
 
+    # -- operator edits (Work pipeline commands, 2026-10-23) ------------------------------------------
+
+    def set_priority(self, task_id: str, priority: int, *, by: str) -> dict[str, Any]:
+        """Priority 1 (highest) .. 4. Any status; the history keeps the old value."""
+        try:
+            prio = int(priority)
+        except (TypeError, ValueError):
+            raise TaskError("priority must be an integer 1-4") from None
+        if prio < 1 or prio > 4:
+            raise TaskError("priority must be 1-4")
+        with self.locked():
+            t = self.get(task_id)
+            old = t.get("priority")
+            t["priority"] = prio
+            self._event(t, "priority", by=by, old=old, new=prio)
+            self._write(t)
+        return t
+
+    def set_hold(self, task_id: str, held: bool, *, by: str, reason: str | None = None) -> dict[str, Any]:
+        """Hold: ``next`` and ``take`` skip the task until it is unheld. A taken task keeps its claim."""
+        with self.locked():
+            t = self.get(task_id)
+            if held:
+                t["held"] = {"by": B.clip(by, 120), "at": self.now_iso(), "reason": B.clip(reason, 300)}
+                self._event(t, "held", by=by, reason=B.clip(reason, 300))
+            else:
+                if not t.get("held"):
+                    return t
+                t["held"] = None
+                self._event(t, "unheld", by=by)
+            self._write(t)
+        return t
+
+    def note(self, task_id: str, text: str, *, by: str) -> dict[str, Any]:
+        """An operator note on the task's history (agents read it with ``task show``)."""
+        line = B.clip(text, 1000)
+        if not line:
+            raise TaskError("note text is required")
+        with self.locked():
+            t = self.get(task_id)
+            self._event(t, "note", by=by, text=line)
+            self._write(t)
+        return t
+
+    def operator_done(self, task_id: str, *, by: str, summary: str | None = None) -> dict[str, Any]:
+        """The operator marks one of their own to-dos (title ``OPERATOR: …``) done from the Work pipeline. Agent
+        tasks finish through ``done`` by their owning session, never here."""
+        with self.locked():
+            t = self.get(task_id)
+            if not re.match(r"^\s*OPERATOR\s*:", str(t.get("title") or ""), re.I):
+                raise TaskError(f"task {task_id} is not an OPERATOR: to-do; its agent finishes it with task done")
+            if t.get("status") in ("done", "split"):
+                raise TaskError(f"task {task_id} is already {t.get('status')}")
+            cid = t.get("claim_id") if t.get("status") == "taken" else None
+            if cid:
+                wl = self.claims.worklog(cid)
+                if wl.exists():
+                    wl.status(f"task {task_id} done by the operator" + (f": {summary}" if summary else ""))
+            now = self.claims.now()
+            t["status"] = "done"
+            t["done_at"] = B.iso(now)
+            self._event(t, "done", by=by, summary=B.clip(summary, 500))
+            self._write(t)
+        return t
+
     # -- read model -----------------------------------------------------------------------------------
 
     def board(self) -> dict[str, Any]:
@@ -484,6 +557,7 @@ class TaskBoard:
                             "taken_at",
                             "done_at",
                             "handoff",
+                            "held",
                         )
                     },
                     "column": self.column(t, views, done),

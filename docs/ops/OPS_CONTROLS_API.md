@@ -48,7 +48,9 @@ All under `/api/v2/ops/controls`.
 | GET | `/requests/{id}` | One request (section 4); the page polls it after approval until a terminal status. |
 | POST | `/requests/{id}/approve` | Safe kind: body `{}`. Risky kind: body `{step_up_token}`. Marks the request `APPROVED` (HMAC-signed); the host applier applies it within 120 s. |
 | POST | `/requests/{id}/step-up/options` | WebAuthn `PublicKeyCredentialRequestOptions` (JSON, base64url) with a single-use challenge bound to this request, `userVerification: "required"`, every active passkey allowed. |
-| POST | `/requests/{id}/step-up/verify` | Body `{credential, phrase}`. `credential` is the `PublicKeyCredential` JSON (base64url fields). Verifies the typed phrase and the assertion; returns `{step_up_token, expires_at}` (2 minutes, single use, this request only). |
+| POST | `/requests/{id}/step-up/verify` | Body `{credential, phrase, open_window?}`. `credential` is the `PublicKeyCredential` JSON (base64url fields). Verifies the typed phrase and the assertion; returns `{step_up_token, expires_at}` (2 minutes, single use, this request only). With `open_window: true` the same assertion also opens a sudo window when the window is ACTIVE: the response adds `sudo_window: {opened: true, sudo_token, window}` (the token is shown once; the server keeps its SHA-256) or `{opened: false, reason}`. |
+| POST | `/requests/{id}/step-up/window` | Sudo window (inert until AGENTS.md >= 20.0.0 is ACTIVE and `ops_controls.sudo_window_enabled` is true). Body `{sudo_token, phrase}`. Steps a risky request up inside the open window with the typed phrase only; returns `{step_up_token, expires_at, sudo_window}`. Refused: `FRESH_PASSKEY_REQUIRED` (always-fresh kind), `SUDO_WINDOW_INERT`, `SUDO_WINDOW_TOKEN_MISSING`, `SUDO_WINDOW_NOT_OPEN` (expired, idle, ended, revoked passkey, restart, other identity), `PHRASE_MISMATCH`. |
+| POST | `/sudo/end` | "End window now": ends every window of this operator; returns `{ended}`. Audited `sudo.ended`. |
 | POST | `/requests/{id}/step-up/totp` | Body `{code, phrase}`. Recovery only: accepted only for `passkey.register` when **no** active passkey exists. Returns `{step_up_token, expires_at}`. |
 | POST | `/requests/{id}/cancel` | Cancel a request that is not yet applying. |
 | POST | `/requests/{id}/undo` | Body `{idempotency_key}`. Creates the inverse request (its own direction and factors) from the applied request's backup; returns it like `POST /requests`. |
@@ -64,6 +66,11 @@ Passkey revocation is the change kind `passkey.revoke` (risky).
 - **Risky (three steps):** (1) `POST /requests` → show `preview` and `phrase`; (2) `POST .../step-up/options` →
   `navigator.credentials.get({publicKey})` → `POST .../step-up/verify {credential, phrase}` → `step_up_token`;
   (3) `POST .../approve {step_up_token}` → poll until terminal.
+- **Sudo window (inert until AGENTS.md >= 20.0.0):** a risky step-up with `open_window: true` opens it; later risky requests go
+  `POST /requests` → `POST .../step-up/window {sudo_token, phrase}` → `POST .../approve {step_up_token}`. The page keeps
+  `sudo_token` in `sessionStorage` only. Always-fresh kinds (`grant.issue`, `kill_switch.clear`, `passkey.register`,
+  `passkey.revoke`, every `release_train.*` operator kind, and `setting.set`/`.unset` of
+  `ops_controls.sudo_window_enabled` / `ops_controls.sudo_window_minutes`) are refused there and take the passkey path.
 - **Add a passkey:** `POST /requests {kind: "passkey.register", params: {name}}` → step-up with an existing passkey
   (or TOTP when none remains) → `POST .../approve {step_up_token}` → `POST /passkeys/register/options {request_id}` →
   `navigator.credentials.create({publicKey})` → `POST /passkeys/register/verify {request_id, credential}`.
@@ -82,7 +89,8 @@ Passkey revocation is the change kind `passkey.revoke` (risky).
   "factors":  {"webauthn_library": "available" | "missing", "hmac_key": "present" | "missing",
                "totp": "enrolled" | "not_enrolled", "passkeys_active": 2},
   "kinds": [{"kind": "crontab.pause", "label": "Pause a cron line", "direction": "safe" | "risky",
-             "supported": true, "reason": null, "executor": "applier" | "cc", "tab": "jobs"}],
+             "supported": true, "reason": null, "executor": "applier" | "cc", "tab": "jobs",
+             "fresh_passkey": false}],   // true: a fresh passkey even inside a sudo window
   "jobs": {"state": "OK" | "UNAVAILABLE", "reason": null, "as_of": "…",
            "rows": [{"lane_id": "…", "registry_state": "ACTIVE", "scheduler_kind": "cron",
                      "cron_state": "ACTIVE" | "PAUSED" | "ABSENT" | "AMBIGUOUS",
@@ -94,7 +102,29 @@ Passkey revocation is the change kind `passkey.revoke` (risky).
            "unmatched_active_lines": 3},
   "n8n": {"state": "OK" | "UNAVAILABLE", "reason": null, "live_list_path": "~/.config/tradeai/n8n-live-lanes.env",
           "live_lanes": ["…"],
-          "rows": [{"lane_id": "…", "stage": "shadow", "mode": "dry_run", "on_live_list": false, "workflow": "…"}]},
+          "rows": [{"lane_id": "…", "stage": "shadow", "mode": "dry_run", "on_live_list": false, "workflow": "…",
+                    "registry_state": "ACTIVE", "scheduler_kind": "cron" | "n8n", "dispatch_class": "report",
+                    // additive 2026-10-22 (n8n outcomes; scripts/lib/ops_controls_n8n_outcomes.py), cached 60 s:
+                    "outcome": {"effective_mode": "off" | "dry_run" | "live" | "unknown",
+                                "health": "OK" | "FAILING" | "STALE" | "NEVER_RAN" | "OFF" | "UNKNOWN",
+                                "health_reason": "…" | null,
+                                "last_run": {"run_id": "…", "mode": "live", "outcome": "SUCCESS" | "FAILED" | "TIMEOUT" | "SKIPPED" | "REFUSED",
+                                             "exit_code": 0, "reason": "…" | null, "at": "…"} | null,
+                                "last_run_at": "…", "last_outcome": "SUCCESS", "last_success_at": "…",
+                                "last_live_success_at": "…", "failures_24h": 0, "failures_7d": 1,
+                                "runs_7d": {"dry_run": 0, "live": 5}, "outcomes_7d": {"SUCCESS": 5},
+                                "dead_letters_open": 0, "breaker_open": false,
+                                "next_run_at": "2026-10-23T14:00:00Z" | null, "schedule": ["0 10 * * 1-5"],
+                                "tz": "America/New_York"},
+                    "readiness": {"verdict": "READY_FOR_CANARY" | "READY_FOR_CUTOVER" | "NOT_READY" | "BLOCKED" | "CUT_OVER" | "N_A",
+                                  "target": "canary" | "cutover" | null, "missing": ["…"], "blocked_by": ["…"],
+                                  "evidence": ["…"], "owed": ["…"], "p1_last": false,
+                                  "risk_tier": 1, "risk_tier_name": "read/overwrite", "sender": false}}],
+          // additive 2026-10-22:
+          "outcomes_state": "OK" | "UNAVAILABLE", "outcomes_reason": null, "outcomes_as_of": "…",
+          "ledger_path": "…/n8n_coordination_ledger.sqlite", "crontab_read": true, "cache_ttl_s": 60,
+          "summary": {"live_healthy": 62, "live_failing": 1, "rehearsing": 47, "ready_to_promote": 32,
+                      "never_ran": 4, "off": 8, "cut_over": 13}},
   "settings": {"state": "OK" | "NOT_MIGRATED" | "UNAVAILABLE", "reason": null,
                "rows": [{"key": "…", "label": "…", "type": "bool" | "int" | "float" | "string" | "enum",
                          "default": 0.4, "current": 0.43 | null, "overridden": true, "min": 0, "max": 1,
@@ -124,15 +154,31 @@ Passkey revocation is the change kind `passkey.revoke` (risky).
                                         "findings": [{"check": "NON_AUTHORITATIVE_READ", "copy": "…", "ceiling": 0, "now": 1}],
                                         "warn_count": 1} | null}],
                      "note": "Read-only. A grant is the operator's decision (AGENTS.md §17, §26.6) …"},
-  "release_train": {"state": "OK" | "UNAVAILABLE", "mode": "UNARMED", "epoch": 3, "latch": "ABSENT"},
+  "release_train": {"state": "OK" | "UNAVAILABLE", "reason": null, "mode": "UNARMED", "epoch": 3, "latch": "ABSENT",
+                    "stop_phase": "stopped" | null, "stop_reason": "…" | null, "error": null},
   "passkeys": [{"credential_id8": "a1b2c3d4", "name": "Pixel 11", "created_at": "…", "last_used_at": "…",
                 "revoked_at": null}],
-  "audit": {"state": "OK" | "NOT_MIGRATED" | "UNAVAILABLE",
+  "audit": {"state": "OK" | "NOT_MIGRATED" | "UNAVAILABLE", "reason": null | "missing … : the operator applies …",
             "rows": [{"seq": 41, "at": "…", "actor": "…", "action": "request.applied", "kind": "crontab.pause",
-                      "request_id": "…", "outcome": "ok", "detail": {}, "undo_available": true}]},
-  "requests": [/* the 20 most recent request objects (section 4) */]
+                      "request_id": "…", "outcome": "ok", "detail": {}, "undo_available": true,
+                      "reason": "one line, never empty (the row's code/detail first, else the action's meaning)"}]},
+  "requests": [/* the 20 most recent request objects (section 4) */],
+  "sudo_window": {"state": "ACTIVE" | "INERT" | "UNAVAILABLE", "reason": null | "AGENTS.md 20.0.0 or later is not ACTIVE …",
+                  "enabled": false, "minutes": 60, "max_minutes": 120, "idle_minutes": 15,
+                  "fresh_kinds": ["grant.issue", "…"], "fresh_settings": ["ops_controls.sudo_window_enabled", "…"],
+                  "window": null | {"window_id8": "sudo_…", "opened_at": "…", "expires_at": "…",
+                                    "idle_expires_at": "…", "remaining_s": 900, "minutes": 60,
+                                    "credential_id8": "a1b2c3d4", "credential_name": "Pixel 11",
+                                    "opening_assertion_id": "asrt_…", "opening_request_id": "opsreq_…", "uses": 2}}
 }
 ```
+
+Every section whose `state` is not `OK` carries a non-empty `reason` (2026-10-22; a store that is not migrated names the
+missing tables and the migration to apply). `store.reason` is that sentence too.
+
+The kill-switch state is NOT in `GET /state`: the page reads the existing read-only route
+`GET /api/v2/execution/kill-switches` (the one the Execution panel already reads) and shows the global switch ENGAGED /
+CLEAR / UNAVAILABLE (fail closed). Nothing on this surface writes it except `kill_switch.engage` through the existing CLI.
 
 ## 4. Request object
 
@@ -163,7 +209,8 @@ Passkey revocation is the change kind `passkey.revoke` (risky).
 |---|---|---|---|---|
 | `release_train.stop` | jobs | safe | cc | yes — `release_train_stop.request_stop` (the writer the existing STOP button uses) |
 | `release_train.pause` | jobs | safe | cc | yes — `ReleaseControl.request_pause` (refused while the train is UNARMED) |
-| `release_train.resume` / `.arm` / `.change_scope` / `.revoke` | jobs | risky | cc | **NOT_SUPPORTED**: `release_control.OPERATOR_KINDS` is pinned to `{host_cli, telegram}` by the 17.0.0 policy test (D3); a passkey proof kind is its own PR after 19.0.0 is ACTIVE. Host CLI: `scripts/release_control_cli.py`. |
+| `release_train.resume` / `.arm` | jobs | risky | applier | yes (2026-10-22, AGENTS.md 19.0.0 §25.4) — params `{reason}`; phrase `RESUME EPOCH <n>` / `ARM EPOCH <n>` (names the next epoch). Always a fresh passkey (never a sudo window). The applier calls `ReleaseControl.resume` / `.arm` with `Actor("passkey", <operator>)` and a `PasskeyProof`; its hook accepts only the one HMAC-signed approval being applied, factor `passkey`, same credential, phrase equal to the library's expected phrase. Arm reads the host delegation (`release_delegation.load`). Undo: none (STOP / pause is the way back). |
+| `release_train.change_scope` / `.revoke` | jobs | risky | cc | **NOT_SUPPORTED** yet: each is its own reviewed PR. Host CLI: `scripts/release_control_cli.py`. |
 | `kill_switch.engage` | jobs | safe | applier | yes — the existing operator CLI `scripts/brokers/kill_switches.py --enable global --reason …` (called, never modified) |
 | `kill_switch.clear` | jobs | risky | applier | **NOT_SUPPORTED**: the clear path is broker-execution code; calling or testing it needs an `execution-engineering` grant (§0 rule 2, §27.4). Host terminal. |
 | `crontab.pause` / `crontab.resume` | jobs | risky | applier | yes — exact-text line match by sha256; `# PAUSED <date> ops-controls:<request> <line>` |
@@ -175,5 +222,11 @@ Passkey revocation is the change kind `passkey.revoke` (risky).
 Parameter notes (aligned with the page): `kill_switch.engage` takes `{reason?}` (other keys ignored; level is
 `config/ops_controls.json` `kill_switch.level`); `grant.issue` takes `{tier, for: "30m"|"2h"|"7200s", uses: 1..50,
 reason}` (unlimited uses stay host-terminal only); `grant.revoke` takes `{tier, grant_id}` or `{tier, grant_id8}`;
-`passkey.revoke` takes `{credential_id}` or an unambiguous `{credential_id8}`. The kill-switch state is not part of
-`GET /state` (its read model belongs to broker-execution code); the page says so.
+`passkey.revoke` takes `{credential_id}` or an unambiguous `{credential_id8}`; `release_train.resume` / `.arm` take
+`{reason}` (4-400 characters). The kill-switch state is read by the page from `GET /api/v2/execution/kill-switches`
+(section 3), not from `GET /state`.
+
+A request stepped up inside a sudo window has `stepup_factor: "sudo_window"` and keeps the window linkage in
+`result.sudo_window` (`window_id`, `opening_assertion_id`, `opening_credential_id8`, `opened_at`, `opening_request_id`,
+`use`) from step-up to its final result; the `step_up.verified`, `request.approved` and `request.applied` audit rows
+carry the same object.

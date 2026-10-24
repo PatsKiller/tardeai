@@ -186,7 +186,7 @@ def test_the_first_line_says_held_or_not_and_what_happened(mod):
     """2026-09-24 review: the phone preview showed 'ROL · Strategy: dividend growth…'.
     The first line now carries the state, the name, and whether you own it."""
     held = mod.render([_row()], {"g-1": HELD}).splitlines()[0]
-    assert held == "⚡ BIG MOVE — AOUT (held, 100 sh)", held
+    assert held == "⚡ BIG MOVE — AOUT (held · Taxable 100 sh)", held
     ready = {"price": 12.4, "quote_age_h": 0.1, "entry_state": {"state": "BUY_READY", "entry_low": 12.0,
                                                                 "entry_high": 12.6}}
     watch = mod.render([_row()], {"g-1": ready}).splitlines()[0]
@@ -304,7 +304,7 @@ def test_the_alarm_reaches_the_transport(mod, monkeypatch):
            "2026-09-04 00:00:00", "held", None, None, 80, None)
     sent, updates = _drive(mod, monkeypatch, rows=[row])
     assert len(sent) == 1, "the alarm did not reach send_telegram"
-    assert "BIG MOVE — AOUT (held, 100 sh)" in sent[0] and "14.9× its normal daily move" in sent[0]
+    assert "BIG MOVE — AOUT (held · Taxable 100 sh)" in sent[0] and "14.9× its normal daily move" in sent[0]
     assert updates, "a sent alarm must mark the change notified"
 
 

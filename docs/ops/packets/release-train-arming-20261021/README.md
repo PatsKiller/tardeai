@@ -389,7 +389,45 @@ still the operator's ruling.
 Without a PR-hygiene receipt, every train stops at select with `NO_OP (QUEUE_INCOMPLETE: no_receipt)`, and shadow
 then proves only the tick path. `--shadow-only` makes a request lane write `shadow: true` whatever the delegation says.
 
-**H.1 Force one shadow tick per window.** Run the four windows in the order 18:00, 00:00, 06:00, 08:00.
+**Status (2026-10-23, DSN-20261021-release-train-P5-T1).** Measured on the host before the Phase 5 shadow PR:
+
+- No shadow tick had ever run. The claimer timer fired every minute and answered `requests: []`, because nothing
+  wrote a request: F is still refused, and nobody had run H.1(b).
+- The census was missing. The 06:30 ET `pr-hygiene-audit` live run exited 2 (`no GitHub slug`) on code `f7c1e96`,
+  which predates the canonical-clone fallback. CURRENT `80e93c99f` has the fix, and one manual run at 14:19 ET wrote
+  the receipt: census COMPLETE, 49 open PRs.
+- Every shadow train then selected nothing. The queue store (A) is migrated and readable but empty, because nothing
+  submits to it, and a readable empty store never fell back to the census. The four ticks of 2026-10-23 on CURRENT
+  were all `COMPLETED / simulate / NO_OP`:
+  - 18:00 and 00:00: `NOTHING_ELIGIBLE: 0 open PRs`;
+  - 06:00: `WINDOW_SKIPPED_NO_DRAIN` (measured promote/verify/rollback samples 1/3, 0/3, 0/3);
+  - 08:00: `WINDOW_SKIPPED_MACRO_UNAVAILABLE` (no `macro_calendar.json`).
+
+The Phase 5 PR changes shadow only. The live controller still refuses everything (BUILD_ONLY):
+
+- A shadow train reads the open-PR census (`ShadowQueueSource`).
+- With the policy's `shadow` block on, it merges the frozen members in a per-slot scratch worktree
+  (`~/.cache/rtc/shadow-<slot>/wt`) and regenerates once, so the report names a real candidate SHA.
+- It rehearses past a 06:00 / 08:00 rule a live train would skip, recording that rule as `LIVE_WOULD_REFUSE`.
+- It writes `train_requests/reports/<request_id>.json` (ShadowTrainReport@v1), which the receipt's `evidence_refs`
+  names and the Releases page reads.
+
+**H.1 Force one shadow tick per window (one command, from that release on).** The command runs the request lane's own
+code for each window, in order. With `--apply`, it waits for the installed claimer's receipt before the next window.
+It never claims, never runs a train itself, and never requests a live train:
+
+```bash
+cd $CUR && $PY scripts/release_window.py train-shadow-tick                 # dry run: builds + validates 4 requests, writes nothing
+cd $CUR && $PY scripts/release_window.py train-shadow-tick --apply         # 18:00, 00:00, 06:00, 08:00; one line per window
+cd $CUR && $PY scripts/release_window.py train-shadow-tick --window 1800 --apply --inject stop-midrun   # one H.2 drill
+```
+
+Each line reads `<slot> <request_id> <state>/<mode> <outcome> reason=… open=<census PRs> riding=<n>
+candidate=<sha>`, followed by the report path. Exit 1 means a window has no terminal receipt within `--wait-s`
+(default 900): check `systemctl --user list-timers | grep release-train`.
+
+**H.1 (before that release) Force one shadow tick per window.** Run the four windows in the order 18:00, 00:00, 06:00,
+08:00.
 
 - **(a) Through n8n (preferred, once F is live).** Four runs of the manual trigger:
   `docker exec -e N8N_RUNNERS_BROKER_PORT=5690 m8m-n8n n8n execute --id=tradeai-fabric-release-train`, four times,
