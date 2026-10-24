@@ -467,6 +467,14 @@ def main():
     pause_cold_trends(c, cur, dry, report)
     if not dry:
         c.commit()
+    # in_directive_watch kept reconciled (operator-approved 2026-10-22): clears the flag where no ACTIVE
+    # operator-created directive matches any more — only after the operator's one-time apply wrote its marker.
+    try:
+        from reconcile_directive_watch_flag import incremental_reconcile
+        report["directive_flag_reconcile"] = incremental_reconcile(c, dry=dry)
+    except Exception as e:  # bookkeeping never fails the servicer
+        c.rollback()
+        report["directive_flag_reconcile"] = {"error": str(e)[:200]}
     c.close()
     print(json.dumps(report, indent=2))
 

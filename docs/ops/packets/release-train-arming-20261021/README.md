@@ -157,6 +157,16 @@ This installs the reviewed `docs/ops/packets/release-train-20261021/tradeai-rele
 byte for byte into `~/.config/systemd/user/`.
 
 - The service is a oneshot: `CURRENT/.venv/bin/python scripts/release_window.py train-claim --apply`.
+- The service sets `Environment=TRADEAI_RELEASE_CHECKOUT=%h/trade-ai-releases/train-checkout` (2026-10-22). That is
+  the release checkout the train fetches into, integrates from and prepares in. When it is absent the controller
+  creates it: a locked linked worktree of the canonical repo, detached at origin/main. When it is present the
+  controller fetches origin main into it. If that fails, selection halts `MAIN_UNREADABLE` with a reason that names
+  the path. The old default `~/tradeai-exact-main-20260827` no longer existed, so every selection read
+  `MAIN_UNREADABLE`.
+- **Already installed before 2026-10-22?** The installed `.service` then differs from the reviewed file, and step D
+  refuses (`DIFFERS:tradeai-release-train-claim.service`). After the release that carries the change, run Rollback D
+  (archive the three units, never delete them), then `TRADEAI_RELEASE_TRAIN_ARM_ACK=D $ARM D --apply`. That
+  re-installs them, runs `daemon-reload` and re-enables them. Check with `$ARM D --verify`.
 - The path unit watches `…/release_window/train_requests/pending`.
 - The timer is the 1-minute fallback.
 - While `TRAIN_CONTROLLER_STATUS` is `BUILD_ONLY`, a live request is refused `CONTROLLER_BUILD_ONLY`, and a shadow
@@ -215,7 +225,10 @@ in `~/.config/tradeai/n8n-live-lanes.env`. The relay and the gateway both read t
 - It then runs `scripts/check_n8n_relay_contract.py --ids tradeai-fabric-release-train` with the scratch relay probe.
   The probe starts its own relay and never touches the live one.
 - It is idempotent:
-  - all five lanes listed, and both services started after the last edit: `NOOP`;
+  - all five lanes listed, and both services started after the last edit: `NOOP`. Since 2026-10-22 a NOOP still runs
+    the relay contract check and writes its result into the receipt (`NOOP … relay contract PASS (probe)`, or
+    `FAILED … relay contract check FAILED`, exit 1). So a re-arm after a FAILED receipt leaves a durable PASS
+    receipt without editing the list or restarting anything;
   - lanes listed but a service started before the edit: it only restarts.
 
 **Do E after H.0 is released.** Until then each lane has `live_arg: null` and stage `shadow`. The executor's stage
@@ -376,7 +389,45 @@ still the operator's ruling.
 Without a PR-hygiene receipt, every train stops at select with `NO_OP (QUEUE_INCOMPLETE: no_receipt)`, and shadow
 then proves only the tick path. `--shadow-only` makes a request lane write `shadow: true` whatever the delegation says.
 
-**H.1 Force one shadow tick per window.** Run the four windows in the order 18:00, 00:00, 06:00, 08:00.
+**Status (2026-10-23, DSN-20261021-release-train-P5-T1).** Measured on the host before the Phase 5 shadow PR:
+
+- No shadow tick had ever run. The claimer timer fired every minute and answered `requests: []`, because nothing
+  wrote a request: F is still refused, and nobody had run H.1(b).
+- The census was missing. The 06:30 ET `pr-hygiene-audit` live run exited 2 (`no GitHub slug`) on code `f7c1e96`,
+  which predates the canonical-clone fallback. CURRENT `80e93c99f` has the fix, and one manual run at 14:19 ET wrote
+  the receipt: census COMPLETE, 49 open PRs.
+- Every shadow train then selected nothing. The queue store (A) is migrated and readable but empty, because nothing
+  submits to it, and a readable empty store never fell back to the census. The four ticks of 2026-10-23 on CURRENT
+  were all `COMPLETED / simulate / NO_OP`:
+  - 18:00 and 00:00: `NOTHING_ELIGIBLE: 0 open PRs`;
+  - 06:00: `WINDOW_SKIPPED_NO_DRAIN` (measured promote/verify/rollback samples 1/3, 0/3, 0/3);
+  - 08:00: `WINDOW_SKIPPED_MACRO_UNAVAILABLE` (no `macro_calendar.json`).
+
+The Phase 5 PR changes shadow only. The live controller still refuses everything (BUILD_ONLY):
+
+- A shadow train reads the open-PR census (`ShadowQueueSource`).
+- With the policy's `shadow` block on, it merges the frozen members in a per-slot scratch worktree
+  (`~/.cache/rtc/shadow-<slot>/wt`) and regenerates once, so the report names a real candidate SHA.
+- It rehearses past a 06:00 / 08:00 rule a live train would skip, recording that rule as `LIVE_WOULD_REFUSE`.
+- It writes `train_requests/reports/<request_id>.json` (ShadowTrainReport@v1), which the receipt's `evidence_refs`
+  names and the Releases page reads.
+
+**H.1 Force one shadow tick per window (one command, from that release on).** The command runs the request lane's own
+code for each window, in order. With `--apply`, it waits for the installed claimer's receipt before the next window.
+It never claims, never runs a train itself, and never requests a live train:
+
+```bash
+cd $CUR && $PY scripts/release_window.py train-shadow-tick                 # dry run: builds + validates 4 requests, writes nothing
+cd $CUR && $PY scripts/release_window.py train-shadow-tick --apply         # 18:00, 00:00, 06:00, 08:00; one line per window
+cd $CUR && $PY scripts/release_window.py train-shadow-tick --window 1800 --apply --inject stop-midrun   # one H.2 drill
+```
+
+Each line reads `<slot> <request_id> <state>/<mode> <outcome> reason=… open=<census PRs> riding=<n>
+candidate=<sha>`, followed by the report path. Exit 1 means a window has no terminal receipt within `--wait-s`
+(default 900): check `systemctl --user list-timers | grep release-train`.
+
+**H.1 (before that release) Force one shadow tick per window.** Run the four windows in the order 18:00, 00:00, 06:00,
+08:00.
 
 - **(a) Through n8n (preferred, once F is live).** Four runs of the manual trigger:
   `docker exec -e N8N_RUNNERS_BROKER_PORT=5690 m8m-n8n n8n execute --id=tradeai-fabric-release-train`, four times,
@@ -578,11 +629,40 @@ Each window goes live once its own proof passes. Windows can go live in consecut
    - Allowlist `release-train-request-0000` `live_arg` becomes `["--append"]` (reviewed PR).
    - Proof: one 00:00 train reaches `RELEASED_VERIFIED`. A `NO_OP` with nothing eligible proves only the tick path.
 2. **06:00, with its drain proof.**
-   - The controller hardcodes `UnprovenDrain`, so 06:00 is always `WINDOW_SKIPPED_NO_DRAIN`.
-   - Needed: a reviewed PR that replaces it with a real `DrainProbe`. The controller is a protected surface, so it ships
-     by L.1.
-   - The probe must show that no lane is running or due inside the promote span. The evidence is the 05:30–07:00
-     schedule (crontab, n8n `/due`, user timers), and that every lock the five named services hold is free.
+   - Built (2026-10-22, `feat/train-phase7-prereqs-20261022`): `build_controller` wires
+     `scripts/lib/release_train_drain.py` `ReadOnlyDrainProbe` in place of the hardcoded `UnprovenDrain`. A controller
+     built without a probe (tests, library callers) keeps `UnprovenDrain`, so 06:00 is still skipped there.
+   - The probe is read-only and fails closed: any signal it cannot read is `WINDOW_SKIPPED_NO_DRAIN`. The span is
+     `[start - 5 min, window end + measured restart impact + 10 min]`, and it checks, in order:
+     1. **policy** — `config/release_train_drain_policy.json` loads and names slot 0600;
+     2. **impact** — promote, verify and rollback each have 3 measured samples (see 3. below) and their worst sum is
+        at most `max_restart_impact_s` (1200 s);
+     3. **market** — on a NYSE trading day the span ends at least 60 min before the regular open
+        (`cio_market_session`: holidays, early closes, DST);
+     4. **schedule** — no critical lane is due inside the span. Critical = ACTIVE `config/lane_registry.json` rows
+        whose `value_class` is `Business Critical`, plus `critical_lanes_extra`. Fires come from
+        `cron_schedule.fires_between` (DST-safe). A daemon (`*.service`) has no schedule. An unreadable schedule refuses;
+     5. **running** — no `pipeline_runs` row for a critical lane in `running` / `started` / `in_progress` within 6 h
+        (READ ONLY transaction; DB unreadable refuses);
+     6. **locks** — no `flock` path named by a critical lane's crontab line is held, read from `/proc/locks` by inode.
+        No lock is ever taken.
+   - The probe runs again immediately before activation. If it fails there, the train ends `MERGED_NOT_LIVE` /
+     `DRAIN_LOST_AT_ACTIVATION`, like the latest-start recheck.
+   - The run record carries `drain.ok`, `drain.detail` and `drain.report` (ReleaseTrainDrain@v1: every check, the
+     span, the critical lanes, the duration summary).
+   - **Today the drain is not proven (read-only dry run, 2026-10-22 ~22:05 ET, quoted):**
+     `(False, 'impact: unmeasured: promote_s 0/3, verify_s 0/3, rollback_s 0/3 (needs 3 measured promote, verify and
+     rollback durations)')`. With durations assumed for diagnosis only, the schedule check refuses on 12 Business
+     Critical lanes due in the span: `cio-wake-dispatch@06:00, rotation-autopilot@06:00,
+     alpaca-stop-manager-oco-repair@06:00, finviz-momentum-scalp-early-lane@06:00, scalp-hot-list@06:00,
+     active-trader-premarket-watch@06:00, active-trader-micro-recorder-premarket@06:00, options-tick@06:07,
+     hermes-watchlist-scorer@06:00, atm-auto-approver@06:00, paper-trade-advisory@06:15,
+     run-scalp-shadow-logger@06:00`. `news_ingestion` also had `running` rows (started 22:00 ET). 12 critical lock
+     paths, none held.
+   - **Operator decision needed before 06:00 can pass (§17 scope change, by reviewed PR to the policy):** for each lane
+     above, either move its schedule out of 05:55–07:15, or add it to `restart_tolerant` with a reason (it tolerates a
+     portfolio-server restart and re-fires). `restart_tolerant` exempts a lane from the due check only; its running
+     rows and locks still block.
    - Then enable the slot, and change `live_arg` as for 00:00.
    - Proof: a 06:00 train whose receipt records `drain.ok true` and `RELEASED_VERIFIED`.
 3. **08:00, with the macro calendar.**
@@ -591,12 +671,25 @@ Each window goes live once its own proof passes. Windows can go live in consecut
      `config/macro_calendar_overrides.json`; `docs/ops/MACRO_CALENDAR.md`), and stale after 72 h. While the file is
      absent, 08:00 is always `WINDOW_SKIPPED_MACRO_UNAVAILABLE`, so the lane must run live first. Its needs-action row
      is P3 until 08:00 is enabled and the train is armed, and P2 after that.
-   - The latest start is 09:00 minus the worst measured promote, verify and rollback time minus 10 minutes. It needs
-     measured rows in `train_measurements.jsonl`, and rollback is measured only by I.5(3). The delegation's
-     `latest_start_et` (example `08:10`) caps it.
-   - Until three durations are measured, 08:00 is `WINDOW_SKIPPED_UNMEASURED` even with a calendar.
+   - The latest start is 09:00 (that day's local 09:00, DST-safe) minus the worst measured promote, verify and
+     rollback time minus 10 minutes. The delegation's `latest_start_et` (example `08:10`) caps it.
+   - **Measured durations (2026-10-22):** `scripts/lib/release_train_timing.py` `DurationHistory` merges two sources:
+     - the train's own rows, `train_measurements.jsonl` (promote, verify; rollback only after a failed verification);
+     - the deploy receipt history, `~/.local/state/cio-phase2-exact-main/deploy_receipt_history.jsonl`. Every
+       `cio_phase2_exact_main_deploy.sh` receipt now appends one row with the action's `duration_s` (the script
+       passes `--started-at`). A successful `promote` row is a promote sample, and a successful `rollback` row is a
+       rollback sample, so manual releases and rollback drills count. The receipt file keeps its exact v2 fields.
+     A promote seen by both sources (same SHA) is counted once. Samples must be positive and at most 3600 s. The worst
+     of the last 10 is used.
+   - Until each of promote, verify and rollback has **3** samples, 08:00 is `WINDOW_SKIPPED_UNMEASURED` even with a
+     calendar. Verify is measured only by trains, and rollback mostly by I.5(3) drills, so plan at least three of each
+     before enabling 08:00.
    - Proof: a non-macro day releases with `latest_start` recorded, and a macro day records
      `WINDOW_SKIPPED_MACRO_MACRO_DAY`. A stale calendar records `WINDOW_SKIPPED_MACRO_STALE`.
+4. **Both stay inert.** Every slot ships disabled (`DEFAULT_SLOTS` and the example delegation). A live train refuses a
+   disabled slot (`REFUSED_WINDOW_DISABLED`) before any window rule runs, so neither the drain probe nor the
+   duration rule can start a release on its own. Tests: `tests/test_release_train_phase7_prereqs_20261022.py` (CI gate
+   `release_train_phase7_prereqs_20261022`).
 
 ## K. The standing-release blocker
 

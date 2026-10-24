@@ -10,6 +10,9 @@ After=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+# The release checkout, explicit (2026-10-22): a dedicated detached worktree the controller creates when absent
+# and fetches each run. Never a dated dev path (the old default ~/tradeai-exact-main-20260827 no longer exists).
+Environment=TRADEAI_RELEASE_CHECKOUT=%h/trade-ai-releases/train-checkout
 ExecStart=%h/trade-ai-releases/portfolio-server/CURRENT/.venv/bin/python scripts/release_window.py train-claim --apply
 TimeoutStartSec=3h
 Nice=10

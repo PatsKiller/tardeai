@@ -1,0 +1,36 @@
+{
+ "lane_id": "main-ci-watch",
+ "owner": "platform",
+ "scheduler": {
+  "kind": "n8n",
+  "expression": "dispatcher",
+  "match": "scripts/main_ci_watch.py",
+  "cadence": "*/10 * * * *",
+  "stage": "shadow",
+  "wave": "W4",
+  "timezone": "America/New_York"
+ },
+ "expected_cadence_hours": 0.17,
+ "state": "ACTIVE",
+ "state_since": "<merge date>",
+ "state_reason": "Operator 2026-10-22 on System -> Releases & schedules: 'Releasing next <sha> · main CI UNAVAILABLE'. Caches exact-SHA push/main CI of main HEAD (scripts/main_ci_watch.py) for GET /api/v2/ops/releases-schedules. n8n-native dispatcher lane, every 10 min; no cron line (cron freeze).",
+ "output_signal": {
+  "kind": "json_key",
+  "path": "data/runtime/main-ci-watch_last.json",
+  "key": "ok_at",
+  "evidence": "SOURCE_ONLY",
+  "evidence_ref": "tests/test_releases_page_queue_ci_20261022.py (real run writes the receipt; dry run writes nothing)"
+ },
+ "severity": "Low",
+ "dispatch": {
+  "mode": "dry_run",
+  "cron": [
+   "*/10 * * * *"
+  ],
+  "tz": "America/New_York",
+  "wave": "W4",
+  "class": "monitor",
+  "priority": 7,
+  "retry_policy": "transient-2"
+ }
+}

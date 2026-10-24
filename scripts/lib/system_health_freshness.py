@@ -102,8 +102,20 @@ def lane_receipt_freshness(
     max_age_min: float,
     prev_fire: datetime | None = None,
     grace_min: float = 15,
+    failure_debounce_min: float | None = None,
+    failure_alert_consecutive: int | None = None,
 ) -> dict[str, Any]:
-    """A failed attempt's carried ok_at is history, never proof of current success."""
+    """A failed attempt's carried ok_at is history, never proof of current success.
+
+    Debounce (2026-10-23, Finviz Screener false page): a lane written by several callers (cron plus the
+    hot-list and early-lane wrappers, ~120 attempts/hour) can record one killed attempt between successes.
+    With ``failure_debounce_min`` set, a failed latest attempt whose carried ``ok_at`` is no older than that
+    window -- and whose ``consecutive_failures`` (when the writer records it) is below
+    ``failure_alert_consecutive`` -- reports ``status: OK`` with ``reason: latest_receipt_failed_debounced``
+    and ``debounced: True``. The failure stays visible (``latest_attempt_status: failed``); it is just not a
+    page. No success inside the window, or N consecutive failures, is ``FAILED`` exactly as before. Both
+    knobs default off, so every caller that does not pass them keeps the strict behaviour.
+    """
     base = {
         "signal_kind": "LaneRunReceipt@v1",
         "business_output_acceptance": "NOT_MEASURED",
@@ -134,13 +146,54 @@ def lane_receipt_freshness(
     base.update(latest_attempt_at=finished.isoformat(), latest_attempt_status=doc["status"])
     history = freshness_at(success, now=now, max_age_min=max_age_min, prev_fire=prev_fire, grace_min=grace_min)
     if doc["status"] == "failed":
+        consecutive = doc.get("consecutive_failures")
+        consecutive = consecutive if type(consecutive) is int and consecutive >= 0 else None
+        verdict = debounce_failure(
+            history,
+            consecutive=consecutive,
+            failure_debounce_min=failure_debounce_min,
+            failure_alert_consecutive=failure_alert_consecutive,
+        )
+        if verdict["debounced"]:
+            return {
+                **base,
+                **history,
+                **verdict,
+                "consecutive_failures": consecutive,
+                "reason": "latest_receipt_failed_debounced",
+            }
         return dict(
             base,
             status="FAILED",
             age_min=history.get("age_min"),
             success_at=history.get("success_at"),
+            consecutive_failures=consecutive,
             reason="latest_receipt_failed",
+            **verdict,
         )
     if doc["exit"] != 0 or success is None or success != finished:
         return dict(base, status="ERROR", reason="receipt_success_outcome_inconsistent")
     return dict(base, **history)
+
+
+def debounce_failure(
+    history: Mapping[str, Any],
+    *,
+    consecutive: int | None,
+    failure_debounce_min: float | None,
+    failure_alert_consecutive: int | None,
+) -> dict[str, Any]:
+    """Whether one failed attempt is absorbed by a recent success (see :func:`lane_receipt_freshness`)."""
+    if failure_debounce_min is None or failure_debounce_min <= 0:
+        return {"debounced": False}
+    out: dict[str, Any] = {"debounced": False, "failure_debounce_min": failure_debounce_min}
+    if failure_alert_consecutive is not None:
+        out["failure_alert_consecutive"] = failure_alert_consecutive
+    age = history.get("age_min")
+    if history.get("status") != "OK" or age is None:
+        return dict(out, debounce_verdict="no_current_success")
+    if age > failure_debounce_min:
+        return dict(out, debounce_verdict="no_success_within_window")
+    if failure_alert_consecutive is not None and consecutive is not None and consecutive >= failure_alert_consecutive:
+        return dict(out, debounce_verdict="consecutive_failures_reached")
+    return dict(out, debounced=True, debounce_verdict="success_within_window")

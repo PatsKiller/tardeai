@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "positions_reader_batch3_home_20261022",
+  "files": [
+    "tests/test_positions_reader_batch3_home_20261022.py"
+  ],
+  "anchor": "POSITIONS_READER_BATCH3_HOME_20261022",
+  "comment": [
+    "ANCHOR: POSITIONS_READER_BATCH3_HOME_20261022 — positions_store reader batch #3 (operator 2026-10-22, \"approve all\" G):",
+    "Home do-now drops risk-snapshot positions the broker no longer holds when watch_domains.held_positions(surface='home')",
+    "answers fresh from positions_current; stale/empty/unreadable falls back to holdings.json with an explicit reason."
+  ]
+}

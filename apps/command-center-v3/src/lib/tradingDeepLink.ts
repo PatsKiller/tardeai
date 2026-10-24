@@ -209,6 +209,34 @@ export function legacyTradingRedirect(
   return legacy.path
 }
 
+/**
+ * Canonical query string for a retired or aliased IN-HUB tab, or null when the URL is already canonical
+ * (P3 site validation 2026-10-23, operator-approved). `?tab=Entry Desk`, `Manual ToS`, `Broker Recon`,
+ * `Schwab Accounts`, `Broker Proposals` and case/`+` variants opened the right desk but kept the retired
+ * name in the address bar, so a copied link carried it forward. The hub rewrites them in place with a
+ * history REPLACE (no new entry, Back still leaves the page) — as `?tab=Scalp` already does for tabs
+ * that left the hub. Every other key (symbol, proposal, pq_*) is kept; the retired tab's implied
+ * section/drawer is written only when the URL does not already name one. Unknown tab values are left
+ * alone (they render Trade AI), and tabs that left the hub are `legacyTradingRedirect`'s job.
+ */
+export function canonicalTradingSearch(params: URLSearchParams): URLSearchParams | null {
+  const raw = params.get('tab')
+  if (!raw) return null
+  const name = canonicalTabName(raw)
+  if (!name) return null
+  const legacy = LEGACY_TAB_TARGETS[name]
+  if (legacy && 'path' in legacy) return null
+  const next = new URLSearchParams(params)
+  if (legacy && 'tab' in legacy) {
+    next.set('tab', legacy.tab)
+    if (legacy.section && !params.get('section')) next.set('section', legacy.section)
+    if (legacy.drawer && !params.get('drawer')) next.set('drawer', legacy.drawer)
+  } else {
+    next.set('tab', name)
+  }
+  return next.toString() === params.toString() ? null : next
+}
+
 export function parseTradingDeepLink(
   params: URLSearchParams | { get: (k: string) => string | null },
 ): TradingDeepLink {

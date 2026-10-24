@@ -27,7 +27,7 @@ MODE="${1:---dry-run}"
 UNIT_DIR="${HOME}/.config/systemd/user"
 NAME="tradeai-release-window"
 CANONICAL="${CANONICAL_SOURCE:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}"
-CHECKOUT="${TRADEAI_RELEASE_CHECKOUT:-${HOME}/tradeai-exact-main-20260827}"
+CHECKOUT="${TRADEAI_RELEASE_CHECKOUT:-${HOME}/trade-ai-releases/train-checkout}"
 PY="${CANONICAL}/.venv/bin/python"
 RUNNER="${CHECKOUT}/scripts/release_window.py"
 

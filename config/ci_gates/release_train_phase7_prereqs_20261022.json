@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_phase7_prereqs_20261022",
+  "files": [
+    "tests/test_release_train_phase7_prereqs_20261022.py"
+  ],
+  "anchor": "RELEASE_TRAIN_PHASE7_PREREQS_20261022",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_PHASE7_PREREQS_20261022 — release train Phase 7 prerequisites (AGENTS.md §25.3/§25.7,",
+    "arming packet §J.2-J.3). 06:00: ReadOnlyDrainProbe (scripts/lib/release_train_drain.py) replaces UnprovenDrain on",
+    "the production path; measured restart impact, market hours, critical-lane schedule (DST-safe), running",
+    "pipeline_runs and held flock locks, all read-only, any unreadable signal refuses; re-checked at activation.",
+    "08:00: latest start = 09:00 - worst measured promote+verify+rollback - buffer from train rows + the deploy",
+    "receipt history (exact_release_receipt.py), refused below 3 samples each; macro day / stale calendar skip.",
+    "Both inert: every slot ships disabled and a disabled live slot is refused before any window rule runs."
+  ]
+}

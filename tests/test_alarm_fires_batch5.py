@@ -25,8 +25,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 COVERS = [
-    "scripts/system_health_agent.py:794"
-]  # line moved 2026-10-12 (freshness identity / formatter); 2026-10-07: _resolve_log() added above _send_alert
+    "scripts/system_health_agent.py:807"
+]  # line moved 2026-10-23 (receipt debounce / recovered note); 2026-10-12 (freshness identity / formatter); 2026-10-07: _resolve_log() added above _send_alert
 
 # The exact body shapes the nine sites emit.
 BODIES = {

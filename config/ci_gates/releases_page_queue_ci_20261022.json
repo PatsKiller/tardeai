@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "releases_page_queue_ci_20261022",
+  "files": [
+    "tests/test_releases_page_queue_ci_20261022.py"
+  ],
+  "anchor": "RELEASES_PAGE_QUEUE_CI_20261022",
+  "comment": [
+    "ANCHOR: RELEASES_PAGE_QUEUE_CI_20261022 — operator 2026-10-22 on System -> Releases & schedules: 'I don't see",
+    "anything queued up' (census no_receipt with 30 open PRs; main CI UNAVAILABLE). scripts/main_ci_watch.py caches",
+    "exact-SHA push/main CI of main HEAD (GET-only gh; SUCCESS/FAILURE/PENDING); the view reads it with its age and",
+    "lists FAILURE workflows as release errors; a missing census is a loud alert with the lane's last ledger attempt",
+    "and next fire; pr_hygiene_audit falls back to the canonical clone (CURRENT is not a clone) and writes a failed",
+    "receipt when no slug resolves. Hermetic: fake gh, tmp state root, tmp ledger/registry, tmp git repos."
+  ]
+}

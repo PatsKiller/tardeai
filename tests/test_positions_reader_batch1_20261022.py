@@ -61,7 +61,10 @@ def _store(finished_at=None, *, rows=True, boom=False):
 def test_config_turns_the_reader_on_for_watch_only():
     held = wd.load_config()["held"]
     assert held["positions_store_reader"] is True
-    assert held["positions_store_reader_surfaces"] == ["watch"]
+    # "watch" stays first; later batches add only their own named surface (batch #3 "home" on PR #1978, batch #4
+    # "opportunity", operator 2026-10-23 "Yes, I approve"). Nothing else is admitted.
+    surfaces = held["positions_store_reader_surfaces"]
+    assert surfaces[0] == "watch" and set(surfaces) <= {"watch", "home", "opportunity"}
     assert wdom.WATCH_SURFACE == "watch"
 
 

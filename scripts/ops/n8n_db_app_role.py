@@ -76,8 +76,23 @@ def default_runner(argv: list[str], *, input_text: Optional[str] = None, timeout
 
 def psql_argv(*, read_only: bool, container: str = DB_CONTAINER) -> list[str]:
     env = ["-e", "PGOPTIONS=-c default_transaction_read_only=on"] if read_only else []
-    return ["docker", "exec", "-i", *env, container, "psql", "-X", "-q", "-v", "ON_ERROR_STOP=1",
-            "-U", ADMIN, "-d", DB, "-tA"]
+    return [
+        "docker",
+        "exec",
+        "-i",
+        *env,
+        container,
+        "psql",
+        "-X",
+        "-q",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-U",
+        ADMIN,
+        "-d",
+        DB,
+        "-tA",
+    ]
 
 
 # ── SCRAM-SHA-256 verifier (RFC 5802 / 7677, the format Postgres stores in pg_authid.rolpassword) ─────────────────
@@ -102,6 +117,9 @@ INVENTORY_SQL = """select json_build_object(
  'role', (select json_build_object('rolsuper', rolsuper, 'rolcreaterole', rolcreaterole, 'rolcreatedb', rolcreatedb,
           'rolreplication', rolreplication, 'rolbypassrls', rolbypassrls, 'rolcanlogin', rolcanlogin,
           'rolconnlimit', rolconnlimit) from pg_roles where rolname = '{role}'),
+ 'role_memberships', (select coalesce(json_agg(parent.rolname order by parent.rolname), '[]'::json)
+                      from pg_auth_members m join pg_roles parent on parent.oid = m.roleid
+                      join pg_roles member on member.oid = m.member where member.rolname = '{role}'),
  'admin_rolsuper', (select rolsuper from pg_roles where rolname = '{admin}'),
  'owners', (select coalesce(json_object_agg(k, n), '{{}}'::json) from (
      select pg_get_userbyid(c.relowner) || ':' || c.relkind::text as k, count(*) as n from pg_class c
@@ -234,8 +252,13 @@ def password_file_report(path: Path) -> dict:
         st = path.stat()
     except FileNotFoundError:
         return {"path": str(path), "exists": False}
-    return {"path": str(path), "exists": True, "mode": oct(stat.S_IMODE(st.st_mode)), "owner_uid": st.st_uid,
-            "length": st.st_size}  # never the content
+    return {
+        "path": str(path),
+        "exists": True,
+        "mode": oct(stat.S_IMODE(st.st_mode)),
+        "owner_uid": st.st_uid,
+        "length": st.st_size,
+    }  # never the content
 
 
 # ── actions ─────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -253,8 +276,13 @@ def read_inventory(run: Runner, container: str = DB_CONTAINER) -> dict:
 
 def n8n_connects_as(run: Runner, container: str = N8N_CONTAINER) -> Optional[str]:
     rc, out, _ = run(
-        ["docker", "inspect", container, "--format",
-         '{{range .Config.Env}}{{if eq (index (split . "=") 0) "DB_POSTGRESDB_USER"}}{{println .}}{{end}}{{end}}']
+        [
+            "docker",
+            "inspect",
+            container,
+            "--format",
+            '{{range .Config.Env}}{{if eq (index (split . "=") 0) "DB_POSTGRESDB_USER"}}{{println .}}{{end}}{{end}}',
+        ]
     )
     if rc != 0:
         return None
@@ -274,6 +302,9 @@ def verify(inv: dict, *, connects_as: Optional[str]) -> list[str]:
             problems.append(f"{ROLE}.{k} = t")
     if not role.get("rolcanlogin"):
         problems.append(f"{ROLE} cannot log in")
+    memberships = inv.get("role_memberships") or []
+    if memberships:
+        problems.append(f"{ROLE} is a member of elevated or inherited role(s): {', '.join(sorted(memberships))}")
     if inv.get("not_owned_by_role"):
         problems.append(f"{inv['not_owned_by_role']} public relation(s) not owned by {ROLE}")
     if inv.get("functions_not_owned_by_role"):
@@ -313,20 +344,37 @@ def main(argv: Optional[list[str]] = None, *, run: Runner = default_runner) -> i
     if a.verify:
         connects = n8n_connects_as(run, a.n8n_container)
         problems = verify(inv, connects_as=connects)
-        out = {"verify": "PASS" if not problems else "FAIL", "problems": problems, "role": inv.get("role"),
-               "n8n_connects_as": connects, "password_file": password_file_report(pw_path)}
-        print(json.dumps(out, indent=1) if a.json else
-              f"verify {out['verify']}: {ROLE} "
-              + (f"rolsuper={'t' if (inv.get('role') or {}).get('rolsuper') else 'f'}; " if inv.get("role_exists") else "absent; ")
-              + 
-              f"n8n connects as {connects}; " + ("; ".join(problems) or "all checks pass"))
+        out = {
+            "verify": "PASS" if not problems else "FAIL",
+            "problems": problems,
+            "role": inv.get("role"),
+            "n8n_connects_as": connects,
+            "password_file": password_file_report(pw_path),
+        }
+        print(
+            json.dumps(out, indent=1)
+            if a.json
+            else f"verify {out['verify']}: {ROLE} "
+            + (
+                f"rolsuper={'t' if (inv.get('role') or {}).get('rolsuper') else 'f'}; "
+                if inv.get("role_exists")
+                else "absent; "
+            )
+            + f"n8n connects as {connects}; "
+            + ("; ".join(problems) or "all checks pass")
+        )
         return 0 if not problems else 1
 
     if a.rollback:
-        print(("ROLLBACK APPLY" if a.apply else "ROLLBACK PLAN (nothing executed)") + f" — role {ROLE} exists: {inv.get('role_exists')}")
+        print(
+            ("ROLLBACK APPLY" if a.apply else "ROLLBACK PLAN (nothing executed)")
+            + f" — role {ROLE} exists: {inv.get('role_exists')}"
+        )
         print(ROLLBACK_SQL)
-        print("Then restore the archived compose file and recreate n8n (packet README FW-P2 rollback). "
-              f"{ROLE} is never dropped (§0 rule 6); the password file is archived by rename, not deleted.")
+        print(
+            "Then restore the archived compose file and recreate n8n (packet README FW-P2 rollback). "
+            f"{ROLE} is never dropped (§0 rule 6); the password file is archived by rename, not deleted."
+        )
         if not a.apply:
             return 0
         if not inv.get("role_exists"):
@@ -388,8 +436,11 @@ def main(argv: Optional[list[str]] = None, *, run: Runner = default_runner) -> i
         if made:
             archived = pw_path.with_name(pw_path.name + ".unused-" + secrets.token_hex(3))
             pw_path.rename(archived)
-            print(f"apply FAILED (rolled back by Postgres): exit {rc}: {err.strip()[:200]}; "
-                  f"unused password file archived to {archived}", file=sys.stderr)
+            print(
+                f"apply FAILED (rolled back by Postgres): exit {rc}: {err.strip()[:200]}; "
+                f"unused password file archived to {archived}",
+                file=sys.stderr,
+            )
         else:
             print(f"apply FAILED (rolled back by Postgres): exit {rc}: {err.strip()[:200]}", file=sys.stderr)
         return 2

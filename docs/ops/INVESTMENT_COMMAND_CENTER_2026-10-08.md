@@ -203,3 +203,25 @@ rank #2 with "No CIO thesis on file".
   real news in 60 days; all of it was quote pages.
 
 **Gate:** `opportunity_actions_20261009`.
+
+## Held after the sale — the position conflict (2026-10-23, silo audit P1)
+
+Measured `[VERIFIED]` 2026-10-23: NAVN sold 500 @ 26.02 on 2026-10-22 15:59 ET (`trade_transactions`); the
+`schwab_rollover_ira` sync no-opped ("no Schwab login token") until 09:07 ET the next day, so `holdings.json` kept NAVN and
+the curator kept advising **ADD / owned** — nothing cross-checked the broker ledger. Audit:
+`docs/ops/CIO_MEMORY_SILO_AUDIT_2026-10-23.md` (PR #1995).
+
+- `positions_context` now **marks** an owned symbol whose broker SELL fill is newer than the holdings snapshot of the
+  accounts holding it (`sold_after_snapshot`: snapshot time and resolution, sell quantity, last sell time, whether it
+  covers the listed shares, whether it was bought back). `owned` is unchanged — the conflict is shown, never resolved
+  (AGENTS.md §26.5, §0 rule 5). Snapshot = `account_summaries[acct].state_as_of`; most accounts stamp a date, so a
+  date-only snapshot marks a sale on a later day, or a same-day sale on an account not synced since that covers a
+  position opened inside the 7-day lookback with no buy-back (the NAVN shape). Blind spot, stated: an older position
+  topped up and then cut by exactly the top-up inside the window reads as covered.
+- The opportunity assessment carries `position_conflict` (field `held`, both values, both sources, both times) and its
+  rationale starts "Position unconfirmed — …".
+- `config/opportunity_conviction.yaml` `position_conflict.suppress_add_hold` (**false**): when the operator turns it on,
+  an ADD/HOLD on a conflicted position becomes WATCH (`stance_suppressed` names the original). It changes what Home's
+  ADD list ranks, so it is the operator's switch (§17).
+- Live read-only check 2026-10-23 ~10:05 ET: 23 owned symbols, 0 marked (no false positive on today's book).
+- Not fixed here (broker sync code, §0 rule 2): a sync that no-ops for an account should mark that account stale.

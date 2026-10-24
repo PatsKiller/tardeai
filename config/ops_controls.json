@@ -29,6 +29,9 @@
     "file": "~/.config/tradeai/n8n-live-lanes.env",
     "restart_units": ["tradeai-n8n-run-relay.service", "tradeai-n8n-coordination-gateway.service"]
   },
+  "n8n_ledger": {
+    "file": "~/trade-ai-releases/persistent-state/data/governance/n8n_coordination_ledger.sqlite"
+  },
   "guard": {
     "bin": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/bin/guard",
     "max_for_s": 21600,
@@ -36,6 +39,15 @@
   },
   "release_train": {
     "state_dir": "~/trade-ai-releases/persistent-state/data/runtime/release_window"
+  },
+  "work_pipeline": {
+    "_comment": "Work pipeline Tier 2 (operator 2026-10-23, 'both'; scripts/lib/work_pipeline_tier2.py). Each kind is a passkey + typed phrase act through the host applier. merge_pr, release_now and approve_item stay false until an AGENTS.md clause ratifies them (docs/ops/WORK_PIPELINE_TIER2_2026-10-23.md). Changed only by reviewed PR.",
+    "approve_design_enabled": true,
+    "contract_reviewed_enabled": true,
+    "approve_item_enabled": false,
+    "merge_pr_enabled": false,
+    "release_now_enabled": false,
+    "claims_dir": null
   },
   "kill_switch": {
     "cli": "scripts/brokers/kill_switches.py",
@@ -69,6 +81,26 @@
       "default_source": "scripts/active_trader/momentum_alerts.py dataclass default (a config file may override it)",
       "consumer": "scripts/active_trader/momentum_alerts.py",
       "wired": false
+    },
+    {
+      "key": "ops_controls.sudo_window_enabled",
+      "label": "Ops Controls: sudo window (one passkey opens a short window; risky acts then need only the phrase)",
+      "type": "bool",
+      "default": false,
+      "default_source": "scripts/lib/ops_controls_sudo.py (off unless set here); inert until AGENTS.md >= 20.0.0 is ACTIVE",
+      "consumer": "scripts/lib/ops_controls_sudo.py",
+      "wired": true
+    },
+    {
+      "key": "ops_controls.sudo_window_minutes",
+      "label": "Ops Controls: sudo window length (minutes; it also ends after 15 idle minutes)",
+      "type": "int",
+      "min": 5,
+      "max": 120,
+      "default": 60,
+      "default_source": "scripts/lib/ops_controls_sudo.py DEFAULT_MINUTES (hard ceiling HARD_MAX_MINUTES = 120)",
+      "consumer": "scripts/lib/ops_controls_sudo.py",
+      "wired": true
     }
   ]
 }

@@ -46,7 +46,6 @@ scripts/archive/session_validate_20260927/session35_validate.py
 scripts/archive/session_validate_20260927/session36_validate.py
 scripts/asset_intelligence_pipeline.py
 scripts/audit_config_files.py
-scripts/audit_enrichment_coverage.py
 scripts/audit_position_basis.py
 scripts/autonomous_rebalance_planner.py
 scripts/backup_verify.py

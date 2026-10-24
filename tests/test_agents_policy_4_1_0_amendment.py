@@ -39,6 +39,12 @@ from scripts.lib import n8n_coordination_gateway as G  # noqa: E402
 from scripts.pipelines import pipeline_manifest as PM  # noqa: E402
 
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+# AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+# checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+# the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+from tests.test_agents_policy_20_0_0_agent_operations import pre_20_0_0  # noqa: E402
+
+AGENTS = pre_20_0_0(AGENTS)
 ALLOW = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text(encoding="utf-8"))
 ALLOW_LANES = {e["lane_id"]: e for e in ALLOW["lanes"]}
 REGISTRY = {

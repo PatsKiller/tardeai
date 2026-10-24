@@ -54,10 +54,30 @@ class AskEventStore:
 
     def __init__(self, path: Optional[Path] = None):
         self.path = Path(path) if path else default_path()
+        self._default_store = path is None
+
+    def write_authorized(self) -> bool:
+        """An injected fixture store is explicit; the host store needs its granted domain.
+
+        proposed_domains is deliberately excluded by the common authority reader.
+        This checks authority, never grants it or consults an environment bypass.
+        """
+        if not self._default_store:
+            return True
+        try:
+            from scripts.lib.data_source_authority import domain
+
+            row = domain("cio_asks")
+            approval = row.get("approval") or {}
+            return isinstance(approval, dict) and bool(approval.get("approved_by") and approval.get("reference"))
+        except (KeyError, OSError, ValueError, TypeError):
+            return False
 
     # ── write ──────────────────────────────────────────────────────────────────────────────────────────────────────
     def append(self, kind: str, payload: dict[str, Any], *, event_id: str) -> tuple[dict[str, Any], bool]:
         """Append one event. Returns (event, created). An existing event_id is returned unchanged (idempotent)."""
+        if not self.write_authorized():
+            raise PermissionError("CIO_ASK_STORE_NOT_APPROVED: cio_asks remains proposed")
         if kind not in EVENT_KINDS:
             raise ValueError(f"unknown ask event kind {kind!r}")
         self.path.parent.mkdir(parents=True, exist_ok=True)

@@ -21,9 +21,11 @@ Freshness is per source: ``sources[name] = {status, as_of, as_of_basis, age_s, s
 raises, times out or answers malformed becomes one P2 "fix" item and ``all_sources_answered`` is false — the page
 never shows an all-clear it did not measure (the needs-action invariant, tests/test_cc_needs_action_20261021.py).
 
-Positions come from the risk snapshot, which reads holdings.json (the current Home source). positions_current is
-not read: no approved reader batch covers Home (config/data_source_authority.json positions_store.approved_readers;
-batch #1 is the Watch held flag). Every number names that basis.
+Positions come from the risk snapshot (the holdings file: values, stops, heat), filtered by the positions_store reader
+batch #3 (operator 2026-10-22, "approve all" item G; config/data_source_authority.json positions_store
+approved_readers batch 3): when watch_domains.held_positions(surface=HOME_SURFACE) answers fresh from
+positions_current, a symbol the broker no longer holds is not a Home item. A stale, empty or unreadable store falls
+back to the holdings file with an explicit fallback_reason. Every number names that basis.
 
 AUTHORITY: READ_ONLY_ADVISORY. MBI_BEHAVIOR = 0: nothing here sizes, orders, stops, weights, sends, writes or calls a
 broker. The risk snapshot is read without the /api/v2/risk broker-stop overlay on purpose — working-stop truth comes
@@ -36,6 +38,15 @@ import concurrent.futures as cf
 import time
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
+
+try:  # account NAMES on every item (operator 2026-10-23), never an account number
+    from lib.account_display import account_label as _acct_name
+except ImportError:  # pragma: no cover - imported as scripts.lib.*
+    from scripts.lib.account_display import account_label as _acct_name
+
+
+def _acct_names(accounts: Any) -> list[str]:
+    return [_acct_name(a) for a in (accounts or []) if a]
 
 SCHEMA = "HomeDoNow@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -59,6 +70,7 @@ STALE_AFTER_S = {
     "desk_truth": int(COVERAGE_STALE_H * 3600),
     "proposals": 300,
     "deploy": 3600,
+    "held": 259200,  # positions_store reader batch #3: the held reader carries its own stale verdict (used below)
 }
 
 # Inbox SQL row limits (api_v2._inbox): a count equal to its limit is a floor, never a total.
@@ -206,12 +218,34 @@ def coverage_from_receipts(receipts: Any, now: datetime) -> dict[str, Any]:
             "reason": reason, "held": summary.get("held"), "covered": summary.get("covered")}
 
 
-def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime) -> tuple[list[dict], dict]:
-    """Protect items from the risk snapshot (+ working-stop coverage when measured). Returns (items, numbers)."""
+def held_filter(held: Any) -> tuple[Optional[set[str]], str, Optional[str]]:
+    """(held symbols or None, positions_source label, fallback_reason) from the positions_store reader batch #3.
+
+    Operator 2026-10-22, verbatim: "yes i approve 'approve all' (A–L)" (item G: Home reads positions through the
+    broker-synced store, reader batch #3; config/data_source_authority.json positions_store approved_readers batch 3).
+    Only a fresh positions_current answer filters the risk snapshot (a symbol the broker no longer holds — e.g. a
+    stop that filled after the holdings file was written — is not a Home item). A stale, empty or unreadable store
+    falls back to the holdings file with the reader's explicit fallback_reason, never silently."""
+    if not isinstance(held, dict):
+        return None, "the holdings file via data_broker.risk_snapshot (held reader not answered)", "held_reader_unavailable"
+    src = held.get("source")
+    if src == "positions_store.positions_current" and not held.get("stale"):
+        syms = {str(x).upper() for x in (held.get("symbols") or ())}
+        return syms, f"positions_store.positions_current (reader batch #3, as of {held.get('as_of')}) filtering the risk snapshot", None
+    reason = held.get("fallback_reason") or ("holdings_stale" if held.get("stale") else "positions_store_reader_off")
+    return None, f"the holdings file via data_broker.risk_snapshot (fallback: {reason})", reason
+
+
+def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime, held: Any = None) -> tuple[list[dict], dict]:
+    """Protect items from the risk snapshot (+ working-stop coverage when measured). Returns (items, numbers).
+    ``held`` is the positions_store reader batch #3 answer (watch_domains.held_positions(surface=HOME_SURFACE))."""
     if not isinstance(snapshot, dict) or not isinstance(snapshot.get("positions"), list):
         raise SourceUnavailable("risk snapshot has no positions list")
     as_of = snapshot.get("computed_at")
     cov = coverage or {"measured": False, "uncovered": {}, "reason": "desk truth not read"}
+    held_syms, positions_source, held_fallback = held_filter(held) if held is not None else (
+        None, "the holdings file via data_broker.risk_snapshot (held reader not wired)", "held_reader_not_wired")
+    not_held: list[str] = []
     by_sym: dict[str, dict[str, Any]] = {}
     for p in snapshot["positions"]:
         if not isinstance(p, dict) or p.get("risk_excluded"):
@@ -219,14 +253,23 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime) -> tuple[l
         sym = str(p.get("symbol") or "").upper()
         if not sym:
             continue
-        row = by_sym.setdefault(sym, {"value": 0.0, "accounts": [], "stop": False, "triggered": False,
-                                      "near": None, "max_loss": 0.0, "day_pct": None})
-        row["value"] += _num(p.get("market_value")) or 0.0
+        if held_syms is not None and sym not in held_syms:
+            if sym not in not_held:
+                not_held.append(sym)
+            continue
+        row = by_sym.setdefault(sym, {"value": 0.0, "accounts": [], "stop": True, "triggered": False,
+                                      "near": None, "max_loss": 0.0, "day_pct": None, "by_account": {}})
+        mv = _num(p.get("market_value")) or 0.0
+        row["value"] += mv
         acct = str(p.get("account") or "")
         if acct and acct not in row["accounts"]:
             row["accounts"].append(acct)
-        if p.get("stop_price") is not None:
-            row["stop"] = True
+        # Per account (2026-10-23): one account's stop never hides the other account's unprotected shares.
+        pa = row["by_account"].setdefault(acct, {"value": 0.0, "stop": True})
+        pa["value"] += mv
+        if p.get("stop_price") is None:
+            pa["stop"] = False
+            row["stop"] = False
         if p.get("triggered"):
             row["triggered"] = True
         dist = _num(p.get("distance_to_stop_pct"))
@@ -238,30 +281,48 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime) -> tuple[l
 
     out: list[dict] = []
     for sym, r in by_sym.items():
-        accts = ", ".join(r["accounts"]) or "account unknown"
+        accts = ", ".join(_acct_names(r["accounts"])) or "account unknown"
         if r["triggered"]:
             out.append(item(f"stop:{sym}", "protect", "P0", f"{sym} is below its stop",
                             f"Price is through the stop on record ({accts}). Verify the broker executed it.",
                             f"Review {sym}", f"{R_RISK}?symbol={sym}", "risk", money=r["value"],
                             money_basis="market value of the position", since=as_of,
-                            evidence={"symbol": sym, "accounts": r["accounts"]}))
+                            evidence={"symbol": sym, "accounts": r["accounts"],
+                                      "account_labels": _acct_names(r["accounts"])}))
         elif r["near"] is not None:
             out.append(item(f"stop:{sym}", "protect", "P2", f"{sym} stop {r['near']:.1f}% away",
                             f"Stop on record is within {NEAR_STOP_PCT:g}% of price ({accts}).", f"Open {sym}",
                             f"{R_RISK}?symbol={sym}", "risk", money=r["max_loss"] or None,
                             money_basis="loss if the stop fills (max_loss_dollar)", since=as_of,
-                            evidence={"symbol": sym, "distance_pct": r["near"]}))
+                            evidence={"symbol": sym, "distance_pct": r["near"], "accounts": r["accounts"],
+                                      "account_labels": _acct_names(r["accounts"])}))
 
     # No-stop items. When working-stop coverage is measured, it is the truth (§26: one fact, one source): only
     # its UNCOVERED symbols are items. Otherwise fall back to "no stop on record" from the snapshot, labelled.
     total_value = sum(r["value"] for r in by_sym.values()) or None
     if cov.get("measured"):
-        no_stop = {s: by_sym.get(s, {"value": 0.0, "accounts": a, "day_pct": None}) for s, a in cov["uncovered"].items()}
+        no_stop = {}
+        for s_, a in cov["uncovered"].items():
+            r = by_sym.get(s_, {"value": 0.0, "accounts": a, "day_pct": None, "by_account": {}})
+            unc = [x for x in (a or []) if x] if isinstance(a, list) else []
+            per = r.get("by_account") or {}
+            if unc and any(x in per for x in unc):  # value of the UNCOVERED accounts only
+                no_stop[s_] = {**r, "accounts": unc, "value": sum((per.get(x) or {}).get("value", 0.0) for x in unc)}
+            else:
+                no_stop[s_] = r
         basis = "no WORKING stop at the broker (held-exit-coverage monitor"
         basis += f", as of {cov.get('as_of')})" if cov.get("as_of") else ")"
         src = "desk_truth"
     else:
-        no_stop = {s: r for s, r in by_sym.items() if not r["stop"]}
+        no_stop = {}
+        for s_, r in by_sym.items():
+            if r["stop"]:
+                continue
+            bare = [a for a, pa in (r.get("by_account") or {}).items() if not pa["stop"]]
+            if bare and len(bare) < len(r.get("by_account") or {}):  # only the accounts without a stop
+                r = {**r, "accounts": [a for a in bare if a],
+                     "value": sum(r["by_account"][a]["value"] for a in bare)}
+            no_stop[s_] = r
         basis = "no stop on record (risk snapshot); working-stop coverage not measured"
         basis += f" — {cov.get('reason')}" if cov.get("reason") else ""
         src = "risk"
@@ -273,12 +334,13 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime) -> tuple[l
         share = f", {v / total_value * 100:.1f}% of invested value" if total_value else ""
         day = r.get("day_pct")
         day_txt = f" · {day:+.2f}% today" if day is not None else ""
-        accts = ", ".join(r.get("accounts") or []) or "account unknown"
+        accts = ", ".join(_acct_names(r.get("accounts"))) or "account unknown"
         out.append(item(f"stop:{sym}", "protect", "P1", f"{sym} {_usd(v)} has no stop",
                         f"{accts}{share}{day_txt}. Basis: {basis}.", f"Review {sym}",
                         f"{R_RISK}?symbol={sym}", src, money=v, money_basis="market value with no stop",
                         since=cov.get("as_of") if src == "desk_truth" else as_of,
-                        evidence={"symbol": sym, "accounts": r.get("accounts")}))
+                        evidence={"symbol": sym, "accounts": r.get("accounts"),
+                                  "account_labels": _acct_names(r.get("accounts"))}))
     if no_stop:
         unprot_value = sum(r.get("value") or 0.0 for r in no_stop.values())
         syms = [s for s, _ in ranked]
@@ -300,7 +362,9 @@ def rule_risk(snapshot: Any, coverage: Optional[dict], now: datetime) -> tuple[l
         "heat_limit_pct": HEAT_LIMIT_PCT,
         "heat_basis": "risk_management.json portfolio_heat_pct via the risk snapshot: summed loss-to-stop as % of book",
         "as_of": as_of,
-        "positions_source": "the holdings file (holdings.json) via data_broker.risk_snapshot (positions_current is not approved for Home)",
+        "positions_source": positions_source,
+        "positions_store_fallback_reason": held_fallback,
+        "not_held_per_store": sorted(not_held),
     }
     return out, numbers
 
@@ -500,6 +564,8 @@ def source_meta(name: str, payload: Any, now: datetime, read_at: datetime) -> di
         as_of, basis = p.get("as_of"), "payload.as_of"
     elif name == "risk" and isinstance(p, dict):
         as_of, basis = p.get("computed_at"), "risk_snapshot.computed_at"
+    elif name == "held" and isinstance(p, dict):
+        as_of, basis = p.get("as_of"), f"held.{p.get('source') or 'unavailable'}"
     elif name == "desk_truth" and isinstance(p, dict):
         r = p.get(COVERAGE_LANE) or {}
         if isinstance(r, dict) and r.get("status") != "NO_RECEIPT":
@@ -516,6 +582,9 @@ def source_meta(name: str, payload: Any, now: datetime, read_at: datetime) -> di
         meta["status"] = "PARTIAL"
         meta["unavailable"] = sorted(k for k, v in (p.get("sources") or {}).items()
                                      if isinstance(v, dict) and v.get("status") != "OK")
+    if name == "held" and isinstance(p, dict):
+        meta["stale"] = bool(p.get("stale"))  # the reader's own freshness contract (positions_sync / holdings age)
+        meta["fallback_reason"] = p.get("fallback_reason")
     if name == "desk_truth" and basis == "no receipt":
         meta["status"] = "NO_RECEIPT"
     return meta
@@ -583,7 +652,7 @@ def build(
     if "risk" in payloads:
         def _risk() -> list[dict]:
             nonlocal numbers
-            got, numbers = rule_risk(payloads["risk"], coverage, now)
+            got, numbers = rule_risk(payloads["risk"], coverage, now, held=payloads["held"] if "held" in payloads else ("unavailable" if "held" in sources else None))
             numbers = {**numbers, "status": "OK", "stale": sources["risk"].get("stale", False)}
             return got
         run("risk", _risk)

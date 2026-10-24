@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "strategy_leaderboard_r_sign_20261023",
+  "files": [
+    "tests/test_strategy_leaderboard_r_sign_20261023.py"
+  ],
+  "comment": [
+    "2026-10-23 site validation: /api/v2/strategy-leaderboard counts closed trades whose stored",
+    "r_multiple disagrees in sign with pnl and marks live.avg_r_suspect. _db_query is stubbed; hermetic."
+  ]
+}

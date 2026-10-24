@@ -2,7 +2,8 @@
   "schema": "CiGate@v1",
   "name": "pipeline_zombie_runs_20261021",
   "files": [
-    "tests/test_pipeline_zombie_runs_20261021.py"
+    "tests/test_pipeline_zombie_runs_20261021.py",
+    "tests/test_process_reaper_orchestrator_runtime.py"
   ],
   "anchor": "PIPELINE_ZOMBIE_RUNS_20261021",
   "comment": [
@@ -12,6 +13,7 @@
     "children, process_reaper SIGTERM of orchestrator dups, momentum-scalp lane SIGKILL of",
     "finviz_screener_runner calls) before PipelineRun.__exit__ ran. PipelineRun / finviz runner",
     "now close a SIGTERM'd run as \"terminated by SIGTERM\"; the lane runner SIGTERMs before SIGKILL",
-    "and does not spawn a call the deadline already exhausted. Hermetic: stubbed writers, no DB."
+    "and does not spawn a call the deadline already exhausted. The orchestrator reaper cap is",
+    "tested above measured runtime (20→30m) with duplicate cap retained. Hermetic: stubbed writers, no DB."
   ]
 }

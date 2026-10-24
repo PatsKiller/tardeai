@@ -1,11 +1,11 @@
 # Ask the CIO: open questions with persistent CIO memory (Phases 8–11)
 
 ```
-Status:      DRAFT (branch feat/ask-cio-phase8-11-20261023; shipped with the research cap PROPOSED, so deep answers
-             and re-answers are inert, and the re-answer lane is not scheduled)
-as_of:       2026-10-23T14:30:00-04:00
+Status:      DRAFT source candidate; WP-23 integrates the existing #2011 implementation with current main.
+             Host writes stay disabled until cio_asks is granted; deep research cap is PROPOSED, re-answer is shadow.
+as_of:       2026-10-24T02:44:00Z
 Measured at: not measured live. Hermetic tests only (tests/test_cio_ask_20261023.py, tests/test_cio_ask_contract_20261023.py,
-             apps/command-center-v3/src/lib/askCioModel.test.ts, apps/command-center-v3/e2e/ask-cio.spec.ts). Base: origin/main 53aa1b619
+             apps/command-center-v3/src/lib/askCioModel.test.ts, apps/command-center-v3/e2e/ask-cio.spec.ts). Base: origin/main fe826d2ec
 Owner:       cio
 Authority:   READ_ONLY_ADVISORY · MBI_BEHAVIOR = 0 · operator-only API
 Contract:    scripts/lib/cio_ask_contract.py (AskRequest@v1, AskAnswer@v1, AskProspectus@v1, AskSizingContext@v1,
@@ -74,6 +74,12 @@ sizes."
 - A pre-IPO company becomes a `private_entity` with an `entity_guid` (`ent_…`, a uuid5 of the name).
 - It is **never given a ticker**: no watchlist row, and a trend directive on its name.
 - Its memory is the ask ledger, keyed by `entity_guid`. The spine requires a listed security.
+
+## Contract provenance
+
+`StreetTarget.mean` carries the published analyst mean. The historical `median` field remains readable for older
+payloads, and is never populated from a mean. Each `Scenario.citation` preserves the original fact anchor, including
+its observation time and citation; an unsourced horizon keeps null price/citation rather than invented evidence.
 
 ## 2. MBI_BEHAVIOR = 0: sizes
 
@@ -144,7 +150,9 @@ CC  POST /api/v2/cio/ask ─┐                                  ┌─ Telegram
   - "My questions" reads its thread projection (`AskEventStore.threads()`).
   - It is a **projection, not a silo**: every security-level event also lands in CIO memory.
   - Data-dictionary row `cio_asks` is **PROPOSED** (`config/data_source_authority.json` `proposed_domains`) and awaits
-    the operator's grant (§7A, §26.6).
+    the operator's grant (§7A, §26.6). The default host store refuses all appends before that granted-domain
+    record exists; default dependencies disable the ask path rather than beginning tracking or memory effects.
+    Tests inject explicit scratch stores.
   - Postgres-portable shape for the move (§24.9):
     `cio_ask_events(event_id text primary key, kind text, thread_id text, ask_id text, at timestamptz, payload jsonb)`.
 - **CIO memory.** `data/cio/security_research_spine.jsonl`, through `upsert_research_memory`.

@@ -1,0 +1,36 @@
+{
+  "schema": "AgentClaimSharedPaths@v1",
+  "description": "Shared-additive paths for the agent claim board (scripts/lib/agent_claim_board.py). Almost every PR adds one row or one entry to these files and the merge is mechanical, so a claim on one of them never conflicts with another session's claim, never blocks a claim/take/next, and never blocks a commit. Each entry must be an exact path (no globs). Remove an entry to make the path exclusive again; a missing or unreadable file means no shared paths (the safer, exclusive default). Doc: docs/ops/AGENT_CLAIM_BOARD.md (Shared-additive paths).",
+  "paths": [
+    {
+      "path": "docs/INDEX.md",
+      "merge": "regenerate",
+      "how": "python3 scripts/report_docs_inventory.py --write-index (CI runs --check-index)",
+      "reason": "Generated index; every PR that adds a doc adds one row. Held exclusively it blocked agents for hours on 2026-10-23 (p3ui 16:32-18:32Z, then nvda-alert, with cio-quality, n8n-cutover and the backfill waiting)."
+    },
+    {
+      "path": "docs/DOCUMENTATION_INDEX.md",
+      "merge": "append rows",
+      "how": "add your row to the relevant section; on a rebase conflict keep both sides' rows",
+      "reason": "Hand-maintained documentation index; PRs append one row each."
+    },
+    {
+      "path": "apps/command-center-v3/package.json",
+      "merge": "union_build",
+      "how": "the release batch builder unions the \"build\" line entries (union_build); on a rebase conflict keep both sides' entries",
+      "reason": "Almost every UI PR adds one check/guard to the \"build\" script line."
+    },
+    {
+      "path": "DOCS_AND_AGENTS_UPDATE_BACKLOG.md",
+      "merge": "append rows",
+      "how": "append one backlog row; never rewrite another agent's row",
+      "reason": "~/n8n-maturity-verification/DOCS_AND_AGENTS_UPDATE_BACKLOG.md (outside the repo; claims name it by its bare file name). Agents append one row each; nvda-alert's claim on it blocked others on 2026-10-23."
+    },
+    {
+      "path": "~/n8n-maturity-verification/DOCS_AND_AGENTS_UPDATE_BACKLOG.md",
+      "merge": "append rows",
+      "how": "append one backlog row; never rewrite another agent's row",
+      "reason": "Same file as above, spelled with its home-relative path."
+    }
+  ]
+}

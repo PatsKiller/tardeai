@@ -66,6 +66,9 @@ _STOP = frozenset({
     # Decision-card chrome (2026-10-08, scripts/lib/telegram_cards.py): headers and block labels are words, not tickers.
     "HIGH", "CONVICTION", "APPROACHING", "BLOCKED", "STATUS", "ACTION", "REQUIRED", "COMPANY", "VERDICT",
     "CRITICAL", "WARNING", "ISSUE", "TTL", "REVIEW", "CHECK", "URGENT",  # not OPEN: Opendoor is a ticker
+    # Material-change page chrome (P1 2026-10-23): "🚨 STOP HIT — NVDA" footer read "HIT:5bac68b6 NVDA:…",
+    # binding Health In Tech (HIT) to an NVDA alert. "TARGET HIT" is the same header.
+    "HIT",
 })
 
 #: Holdings rows that are not instruments.

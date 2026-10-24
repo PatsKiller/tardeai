@@ -10,6 +10,7 @@
  *  per-order 2FA flow is rendered unchanged. "Snooze 1 week" calls the same advisory stop-alert snooze
  *  route the card's "Ignore 1 week" uses; it never touches the broker stop.
  */
+import { accountName } from '../lib/accountLabels'
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
@@ -367,7 +368,7 @@ export default function OpenTradesDesk({ onDrill, focusSymbol, initialDrawer }: 
             summary={`stale trade rows ${summary.excluded_stale_trade_rows ?? 0} · zero-share ${summary.excluded_zero_share_rows ?? 0} · non-ticker ${summary.excluded_non_ticker_rows ?? 0}`}>
             <div style={{ maxHeight: 220, overflow: 'auto' }}>
               {(data?.excluded_items ?? []).slice(0, 60).map((e: any, i: number) => (
-                <div key={i} style={{ fontSize: TYPE.sm }}><span style={{ color: TOKENS.text[2] }}>{e.account ?? '—'}</span> · <b>{e.symbol ?? '—'}</b> · {e.reason}<span style={{ color: TOKENS.text[2] }}> · {e.source}</span></div>
+                <div key={i} style={{ fontSize: TYPE.sm }}><span style={{ color: TOKENS.text[2] }}>{e.account ? accountName(e.account, e.account_label) : '—'}</span> · <b>{e.symbol ?? '—'}</b> · {e.reason}<span style={{ color: TOKENS.text[2] }}> · {e.source}</span></div>
               ))}
             </div>
           </Drawer>

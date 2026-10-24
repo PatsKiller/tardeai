@@ -344,7 +344,7 @@ def surfaces_for(*, card: Optional[dict[str, Any]], opp: Optional[dict[str, Any]
 
 
 def whats_missing(*, card: Optional[dict[str, Any]], opp: Optional[dict[str, Any]], conv: dict[str, Any],
-                  lv: dict[str, Optional[float]], lane: str, identity: dict[str, Any]) -> list[str]:
+                  lv: dict[str, Optional[float]], lane: str, identity: dict[str, Any], mine: bool = False) -> list[str]:
     out: list[str] = []
     dec = (card or {}).get("decision") or {}
     if conv["conviction"] is None:
@@ -353,7 +353,9 @@ def whats_missing(*, card: Optional[dict[str, Any]], opp: Optional[dict[str, Any
         out.append(f"Conviction older than {int(CONVICTION_STALE_HOURS)} h")
     for k in conv["missing_components"]:
         out.append(f"{str(k).replace('_', ' ').capitalize()} factor not scored")
-    if card is None:
+    if card is None and mine:
+        out.append("No Watch card yet — quote, plan and Trade AI state not loaded for this name")
+    elif card is None:
         out.append("Not on the Watch universe — seen only by the re-entry desk")
     elif dec.get("status") == "needs_data":
         out.append("No fresh entry plan, synthesis or review")
@@ -369,11 +371,18 @@ def whats_missing(*, card: Optional[dict[str, Any]], opp: Optional[dict[str, Any
 
 def build_row(symbol: str, *, card: Optional[dict[str, Any]], opp: Optional[dict[str, Any]], held: bool,
               held_source: str, reentry: Optional[dict[str, Any]], identity: Optional[dict[str, Any]],
-              now: datetime, interim: bool = True) -> dict[str, Any]:
+              now: datetime, interim: bool = True, mine: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """One prospect row. ``mine`` is the operator membership (watch_domains.membership_operator()["names"][SYM]) when
+    the name is the operator's own: such a row is never put in Expired — expiry only suggests a review (operator
+    2026-10-23: "My Watchlist ... never auto-dropped by caps or expiry")."""
     sym = symbol.upper()
     identity = identity or {"security_guid": None, "issuer_guid": None, "status": None, "confirmed": False}
     dec = (card or {}).get("decision") or {}
     lane, why = lane_for(card=card, held=held, reentry=reentry, now=now)
+    expiry_suggestion = None
+    if mine and lane == "expired":
+        expiry_suggestion = {"reason": why, "suggest": "review: keep watching, or remove it from your list"}
+        lane, why = "forming", f"{why} — yours, so it stays; review or remove"
     conv = conviction_block(opp, now=now)
     stance = _up((opp or {}).get("stance")) or None
     conflicts = conflicts_for(symbol=sym, card=card, opp=opp, held=held, held_source=held_source, reentry=reentry)
@@ -418,7 +427,8 @@ def build_row(symbol: str, *, card: Optional[dict[str, Any]], opp: Optional[dict
         "conviction_stale": conv["stale"],
         "stance": stance,
         "stance_family": family(stance),
-        "whats_missing": whats_missing(card=card, opp=opp, conv=conv, lv=lv, lane=lane, identity=identity),
+        "whats_missing": whats_missing(card=card, opp=opp, conv=conv, lv=lv, lane=lane, identity=identity,
+                                       mine=bool(mine)),
         "conflicts": conflicts,
         "next_trigger": trig,
         "next_action": step,
@@ -436,7 +446,17 @@ def build_row(symbol: str, *, card: Optional[dict[str, Any]], opp: Optional[dict
         "evidence_at": _iso(max(evidence)) if evidence else None,
         "expires_at": _iso(exp),
         "stale": bool(exp and exp < now),
+        **membership_fields(mine, expiry_suggestion),
     }
+
+
+def membership_fields(mine: Optional[dict[str, Any]], expiry_suggestion: Optional[dict[str, Any]] = None
+                      ) -> dict[str, Any]:
+    """The operator-membership block every row carries (one shape for Prospects, My Watchlist and Suggests)."""
+    return {"mine": bool(mine), "starred": bool((mine or {}).get("starred")),
+            "starred_at": (mine or {}).get("starred_at"),
+            "membership": list((mine or {}).get("reasons") or []),
+            "expiry_suggestion": expiry_suggestion}
 
 
 # ── curation ─────────────────────────────────────────────────────────────────
@@ -462,8 +482,19 @@ def curate(rows: Iterable[dict[str, Any]], caps: Optional[dict[str, int]] = None
     for lane in LANES:
         items = sorted(by_lane[lane["id"]], key=_sort_key)
         cap = int(caps.get(lane["id"], len(items)))
-        out[lane["id"]] = {**lane, "count": len(items), "cap": cap, "items": items[:cap],
-                           "overflow": [r["symbol"] for r in items[cap:]]}
+        # The cap bounds the system's names only: the operator's own names are always listed (operator 2026-10-23,
+        # "never auto-dropped by caps"), in conviction order with the rest.
+        shown, overflow, n_sys = [], [], 0
+        for r in items:
+            if r.get("mine"):
+                shown.append(r)
+            elif n_sys < cap:
+                shown.append(r)
+                n_sys += 1
+            else:
+                overflow.append(r["symbol"])
+        out[lane["id"]] = {**lane, "count": len(items), "cap": cap, "items": shown, "overflow": overflow,
+                           "mine": sum(1 for r in items if r.get("mine"))}
     return out
 
 
@@ -474,10 +505,13 @@ def build_watch_prospects(*, cards: list[dict[str, Any]], opportunities: dict[st
                           reentry: dict[str, dict[str, Any]], held: set[str], held_source: str,
                           identities: Optional[dict[str, dict[str, Any]]] = None,
                           held_detail: Optional[dict[str, Any]] = None, opp_as_of: Any = None,
-                          now: Optional[datetime] = None, caps: Optional[dict[str, int]] = None) -> dict[str, Any]:
-    """Pure: today's sources → the WatchProspects@v1 payload (interim adapter)."""
+                          now: Optional[datetime] = None, caps: Optional[dict[str, int]] = None,
+                          operator: Optional[dict[str, dict[str, Any]]] = None) -> dict[str, Any]:
+    """Pure: today's sources → the WatchProspects@v1 payload (interim adapter). ``operator`` is
+    watch_domains.membership_operator()["names"]: every operator name gets a row, uncapped, never Expired."""
     now = now or datetime.now(timezone.utc)
     identities = identities or {}
+    operator = operator or {}
     by_sym: dict[str, dict[str, Any]] = {}
     for c in cards:
         sym = _up(c.get("symbol"))
@@ -490,8 +524,15 @@ def build_watch_prospects(*, cards: list[dict[str, Any]], opportunities: dict[st
         if sym not in by_sym and not r.get("held") and sym not in held and \
                 _up(r.get("state")) in REENTRY_READY | REENTRY_NEAR:
             symbols.append(sym)
+    # Every operator name belongs on the page, card or not (operator 2026-10-23).
+    listed = set(symbols)
+    for sym in sorted(operator):
+        if sym not in listed:
+            symbols.append(sym)
+            listed.add(sym)
     rows = [build_row(s, card=by_sym.get(s), opp=opportunities.get(s), held=s in held, held_source=held_source,
-                      reentry=reentry.get(s), identity=identities.get(s), now=now, interim=True)
+                      reentry=reentry.get(s), identity=identities.get(s), now=now, interim=True,
+                      mine=operator.get(s))
             for s in symbols]
     lanes = curate(rows, caps)
     n_conf = sum(len(r["conflicts"]) for r in rows if r["lane"] != "expired")
@@ -512,11 +553,13 @@ def build_watch_prospects(*, cards: list[dict[str, Any]], opportunities: dict[st
             "reentry": {"projection": "reentry_decision_desk", "rows": len(reentry)},
         },
         "curation": {"one_membership": True, "caps": dict(caps or LANE_CAPS),
+                     "caps_apply_to": "system names only; your own names are always listed",
                      "sort_order": "lane, then conviction (high first), then decision priority",
                      "expiry": "a non-held name whose decision expired or was invalidated is Expired; held names "
-                               "stay in Manage"},
+                               "stay in Manage; your own names never expire here (expiry only suggests a review)"},
         "lanes": [lanes[k] for k in LANE_IDS],
-        "counts": {k: lanes[k]["count"] for k in LANE_IDS} | {"conflicts": n_conf, "total": len(rows)},
+        "counts": {k: lanes[k]["count"] for k in LANE_IDS} | {"conflicts": n_conf, "total": len(rows),
+                                                               "mine": sum(1 for r in rows if r.get("mine"))},
         "authority": "READ_ONLY_ADVISORY",
         "mbi_behavior": 0,
         "provider_calls": 0,
@@ -573,10 +616,13 @@ def _trigger_from_record(nt: dict[str, Any]) -> tuple[dict[str, Any], dict[str, 
 
 
 def from_cio_prospect(records: list[dict[str, Any]], *, now: Optional[datetime] = None,
-                      caps: Optional[dict[str, int]] = None) -> dict[str, Any]:
+                      caps: Optional[dict[str, int]] = None,
+                      operator: Optional[dict[str, dict[str, Any]]] = None) -> dict[str, Any]:
     """Map cio_prospect records (DATA_DICTIONARY.md "CIOProspect") to lanes. No judgment is added here: the lane
-    comes from the record's stage (expired by its expires_at), the step from the same next_step() rules."""
+    comes from the record's stage (expired by its expires_at), the step from the same next_step() rules. An operator
+    name with no record still gets a row that says so (operator 2026-10-23)."""
     now = now or datetime.now(timezone.utc)
+    operator = operator or {}
     rows = []
     for rec in records:
         sym = _up(rec.get("symbol"))
@@ -585,8 +631,13 @@ def from_cio_prospect(records: list[dict[str, Any]], *, now: Optional[datetime] 
         stage = str(rec.get("stage") or "watching")
         exp = _ts(rec.get("expires_at"))
         lane = _STAGE_TO_LANE.get(stage, "forming")
+        mine = operator.get(sym)
+        expiry_suggestion = None
         if lane != "manage" and exp and exp < now:
             lane = "expired"
+            if mine:
+                lane, expiry_suggestion = "forming", {"reason": "Record expired",
+                                                      "suggest": "review: keep watching, or remove it from your list"}
         comps = rec.get("conviction_components") or {}
         comp_rows = []
         for k, v in (comps.items() if isinstance(comps, dict) else []):
@@ -619,7 +670,11 @@ def from_cio_prospect(records: list[dict[str, Any]], *, now: Optional[datetime] 
             "surfaces": [{"surface": s, "value": "same record", "source": "cio_prospect", "joined": True}
                          for s in SURFACES],
             "evidence_at": rec.get("evidence_at"), "expires_at": rec.get("expires_at"), "stale": bool(exp and exp < now),
+            **membership_fields(mine, expiry_suggestion),
         })
+    have = {r["symbol"] for r in rows}
+    for sym in sorted(set(operator) - have):
+        rows.append(no_record_row(sym, mine=operator[sym]))
     lanes = curate(rows, caps)
     return {
         "ok": True, "schema": SCHEMA, "generated_at": now.isoformat(), "source": "cio_prospect", "interim": False,
@@ -630,6 +685,26 @@ def from_cio_prospect(records: list[dict[str, Any]], *, now: Optional[datetime] 
         "counts": {k: lanes[k]["count"] for k in LANE_IDS} | {
             "conflicts": sum(len(r["conflicts"]) for r in rows if r["lane"] != "expired"), "total": len(rows)},
         "authority": "READ_ONLY_ADVISORY", "mbi_behavior": 0, "provider_calls": 0,
+    }
+
+
+def no_record_row(symbol: str, *, mine: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """A row for a name the CIO prospect store has no record for (said, never guessed)."""
+    sym = symbol.upper()
+    return {
+        "schema": ROW_SCHEMA, "symbol": sym, "security_guid": None, "issuer_guid": None, "identity_status": None,
+        "company": None, "lane": "forming", "stage": "watching", "why": "No CIO prospect record yet",
+        "summary": "No CIO prospect record yet.", "conviction": None, "conviction_rank": None,
+        "conviction_coverage": None, "conviction_components": [], "conviction_missing": [],
+        "conviction_source": "cio_prospect", "conviction_as_of": None, "conviction_stale": False, "stance": None,
+        "stance_family": None, "whats_missing": ["No CIO prospect record for this name yet"], "conflicts": [],
+        "next_trigger": {"label": "—", "level_ref": None, "inside": False, "distance_pct": None, "observed_by": None},
+        "next_action": {"kind": "none", "label": "—", "reason": "Nothing to act on until the CIO records it.",
+                        "href": None},
+        "levels_ref": {}, "price": None, "price_as_of": None, "rsi": None, "held": False, "trade_ai_state": None,
+        "decision": None, "reentry_state": None,
+        "surfaces": [{"surface": s, "value": "no record", "source": "cio_prospect", "joined": True} for s in SURFACES],
+        "evidence_at": None, "expires_at": None, "stale": False, **membership_fields(mine),
     }
 
 
@@ -691,37 +766,148 @@ def _identities(symbols: list[str]) -> dict[str, dict[str, Any]]:
     return out
 
 
-def list_watch_prospects(query: Optional[dict[str, Any]] = None) -> dict[str, Any]:
-    """GET /api/v3/data-broker/watch-prospects — the record the Watch page reads (cached 60 s)."""
+def _operator_membership() -> dict[str, Any]:
+    try:
+        from lib.data_broker.watch_domains import membership_operator
+
+        return membership_operator()
+    except Exception as e:  # noqa: BLE001 — said, never a silent empty list
+        return {"names": {}, "sources": {"all": {"status": "error", "error": type(e).__name__, "count": 0}}}
+
+
+def _curator_projection() -> dict[str, Any]:
+    try:
+        try:
+            from scripts.lib.cio_opportunity_store import CIOOpportunityStore
+        except ImportError:  # pragma: no cover
+            from lib.cio_opportunity_store import CIOOpportunityStore  # type: ignore
+        return CIOOpportunityStore().read_projection() or {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def gather(query: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """The ONE composition behind every Watch list (cached 60 s): Prospects lanes, My Watchlist and System Suggests
+    read the same rows, so a symbol shows the same conviction, stance and stage on all three (operator 2026-10-23,
+    "they don't even align"). Returns {payload (WatchProspects@v1), rows {SYM: row}, row_for(sym), opps, proj_meta,
+    held, held_source, held_detail, operator, cp_status}."""
     now_m = time.monotonic()
     fresh = str((query or {}).get("fresh") or "") in ("1", "true")
     if not fresh and _CACHE["val"] is not None and now_m - _CACHE["at"] < CACHE_S:
         return _CACHE["val"]
+    now = datetime.now(timezone.utc)
     recs, cp_status = _cio_prospect_records()
+    opmem = _operator_membership()
+    operator = opmem.get("names") or {}
+    proj = _curator_projection()
+    opps = {_up(k): v for k, v in (proj.get("items") or {}).items() if isinstance(v, dict)}
+    proj_meta = {"as_of": proj.get("as_of"), "run_id": proj.get("run_id"), "count": len(opps),
+                 "store": "data/cio/cio_opportunity_projection.json", "domain": "opportunity_assessment"}
     if recs:
-        out = from_cio_prospect(recs)
+        out = from_cio_prospect(recs, now=now, operator=operator)
+        from lib.data_broker.watch_domains import WATCH_SURFACE, held_positions, held_detail_public
+
+        hd = held_detail_public(held_positions(surface=WATCH_SURFACE))
+        held = {r["symbol"] for lane in out["lanes"] for r in lane["items"] if r.get("held")}
+        held_source = str(hd.get("source") or "unavailable")
+        cards: dict[str, dict[str, Any]] = {}
+        desk: dict[str, dict[str, Any]] = {}
+
+        def _row_for(sym: str) -> dict[str, Any]:
+            return no_record_row(sym, mine=operator.get(sym))
     else:
         from lib.data_broker import watch_decision as wd
         from lib.data_broker.watch_intelligence import compose_universe
 
         composed = compose_universe(view="all", page_size=100)
-        cards = [i.get("card") or {} for i in composed["items"]]
-        try:
-            try:
-                from scripts.lib.cio_opportunity_store import CIOOpportunityStore
-            except ImportError:  # pragma: no cover
-                from lib.cio_opportunity_store import CIOOpportunityStore  # type: ignore
-            proj = CIOOpportunityStore().read_projection() or {}
-        except Exception:  # noqa: BLE001
-            proj = {}
-        opps = {_up(k): v for k, v in (proj.get("items") or {}).items() if isinstance(v, dict)}
+        card_list = [i.get("card") or {} for i in composed["items"]]
+        cards = {}
+        for c in card_list:
+            if _up(c.get("symbol")) and _up(c.get("symbol")) not in cards:
+                cards[_up(c.get("symbol"))] = c
         desk = wd.reentry_rows()
-        syms = [_up(c.get("symbol")) for c in cards] + list(desk)
-        out = build_watch_prospects(cards=cards, opportunities=opps, reentry=desk, held=set(composed["held"]),
-                                    held_source=composed["held_source"], held_detail=composed["held_detail"],
-                                    identities=_identities(syms), opp_as_of=proj.get("as_of"))
+        held, held_source, hd = set(composed["held"]), composed["held_source"], composed["held_detail"]
+        syms = list(cards) + list(desk) + list(operator)
+        idents = _identities(syms)
+        out = build_watch_prospects(cards=card_list, opportunities=opps, reentry=desk, held=held,
+                                    held_source=held_source, held_detail=hd, identities=idents,
+                                    opp_as_of=proj.get("as_of"), now=now, operator=operator)
+
+        def _row_for(sym: str) -> dict[str, Any]:
+            s = _up(sym)
+            ids = idents if s in idents else _identities([s])
+            return build_row(s, card=cards.get(s), opp=opps.get(s), held=s in held, held_source=held_source,
+                             reentry=desk.get(s), identity=ids.get(s), now=now, interim=True, mine=operator.get(s))
     out["cio_prospect_status"] = cp_status
+    out["operator_sources"] = opmem.get("sources") or {}
     out["data_broker"] = {"package": "scripts/lib/data_broker", "projection": "watch_prospects",
                           "catalog": "/api/v3/data-broker", "read_only": True, "provider_calls": 0}
-    _CACHE.update(at=now_m, val=out)
+    rows = {r["symbol"]: r for lane in out["lanes"] for r in lane["items"]}
+    # Position facts on every row: held / formerly held / never held, the last round trip, the re-entry advice
+    # (lib/data_broker/watch_position_facts.py; operator 2026-10-23 "it should be tracked that formerly held").
+    try:
+        from lib.data_broker import watch_position_facts as wpf
+
+        pmeta = wpf.load(held=set(held), opps=opps,
+                         rsi={s: r.get("rsi") for s, r in rows.items() if r.get("rsi") is not None})
+        facts_for = pmeta["facts_for"]
+        out["position_facts"] = wpf.public(pmeta)
+    except Exception as e:  # noqa: BLE001 — said on the payload, never a silent gap
+        facts_for = None
+        out["position_facts"] = {"status": f"error:{type(e).__name__}"}
+
+    def _attach(r: dict[str, Any]) -> dict[str, Any]:
+        if facts_for is not None and "position_state" not in r:
+            r.update({k: v for k, v in facts_for(r["symbol"]).items()})
+        return r
+
+    for r in rows.values():
+        _attach(r)
+    built: dict[str, dict[str, Any]] = {}
+
+    def row_for(sym: str) -> dict[str, Any]:
+        s = _up(sym)
+        if s in rows:
+            return rows[s]
+        if s not in built:
+            built[s] = _attach(_row_for(s))
+        return built[s]
+
+    val = {"payload": out, "rows": rows, "row_for": row_for, "opps": opps, "proj_meta": proj_meta, "held": held,
+           "held_source": held_source, "held_detail": hd, "operator": operator, "cp_status": cp_status,
+           "now": now}
+    _CACHE.update(at=now_m, val=val)
+    return val
+
+
+def list_watch_prospects(query: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """GET /api/v3/data-broker/watch-prospects — the record the Watch page reads (cached 60 s, shared with
+    /api/v3/data-broker/watch-curation through gather())."""
+    q = query or {}
+    payload = gather(q)["payload"]
+    return filter_payload(payload, q)
+
+
+def filter_payload(payload: dict[str, Any], q: dict[str, Any]) -> dict[str, Any]:
+    """Apply the position filters (watch_position_facts.FILTERS, query parameters) to the lanes. Counts are
+    recomputed over the kept rows; ``filters`` says what was applied and ``position_facets`` are the count chips."""
+    from lib.data_broker import watch_position_facts as wpf
+
+    now = datetime.now(timezone.utc)
+    active = wpf.active_filters(q)
+    all_rows = [r for lane in payload.get("lanes") or [] for r in lane.get("items") or []]
+    out = dict(payload)
+    out["position_facets"] = wpf.facet_counts(all_rows, now=now)
+    out["position_filters"] = wpf.FILTERS
+    out["filters"] = active
+    if not active:
+        return out
+    lanes = []
+    for lane in payload.get("lanes") or []:
+        keep = [r for r in lane.get("items") or [] if wpf.passes(r, active, now=now)]
+        lanes.append({**lane, "items": keep, "count": len(keep), "overflow": [],
+                      "unfiltered_count": lane.get("count")})
+    out["lanes"] = lanes
+    out["counts"] = {**(payload.get("counts") or {}), **{lane["id"]: lane["count"] for lane in lanes},
+                     "total": sum(lane["count"] for lane in lanes), "filtered": True}
     return out

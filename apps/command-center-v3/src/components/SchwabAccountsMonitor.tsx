@@ -1,5 +1,10 @@
+import { accountName } from '../lib/accountLabels'
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
+
+// A missing number renders '—', never "$NaN" (site validation 2026-10-23: every row showed "$NaN" avg price —
+// /api/v2/schwab/accounts-live sends avg_price; this read avg_entry_price).
+const fin = (v: unknown): boolean => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v))
 import SnapTradeCredsModal from './SnapTradeCredsModal'
 
 // Stage 2a Part C2 — ALL-Schwab-accounts monitor, thinkorswim-desktop styling. READ-ONLY data
@@ -32,7 +37,8 @@ export default function SchwabAccountsMonitor({ onEditDraft }: { onEditDraft: (i
   const d = (data as any)?.data ?? data
   const accounts: any[] = d?.accounts ?? []
   const shown = accounts.filter((a: any) => acct === 'all' || a.account_key === acct)
-  const nice = (k: string) => k.replace('schwab_', '').replace(/_/g, ' ').toUpperCase()
+  // Account NAME (operator 2026-10-23: "just a name, not the account numbers"); display only.
+  const nice = (k: string) => accountName(k)
 
   const allOrders = shown.flatMap((a: any) => (a.orders ?? []).map((o: any) => ({ ...o, account_key: a.account_key })))
   const working = allOrders.filter((o: any) => WORKING_STATUSES.includes(o.status))
@@ -164,10 +170,10 @@ export default function SchwabAccountsMonitor({ onEditDraft }: { onEditDraft: (i
                       <tr key={i} style={{ borderBottom: '1px solid #1d1d1d' }}>
                         <td style={{ ...tos.cell, fontWeight: 700 }}>{p.symbol}</td>
                         <td style={tos.cell}>{p.qty}</td>
-                        <td style={tos.cell}>${Number(p.avg_entry_price).toFixed(2)}</td>
-                        <td style={tos.cell}>${Number(p.market_value).toLocaleString()}</td>
-                        <td style={{ ...tos.cell, color: Number(p.unrealized_pl) >= 0 ? '#66bb6a' : '#ef5350' }}>
-                          {Number(p.unrealized_pl) >= 0 ? '+' : ''}{Number(p.unrealized_pl).toFixed(2)}</td>
+                        <td style={tos.cell} title={fin(p.avg_price ?? p.avg_entry_price) ? undefined : 'no average price from the broker read (cost basis unknown)'}>{fin(p.avg_price ?? p.avg_entry_price) ? `$${Number(p.avg_price ?? p.avg_entry_price).toFixed(2)}` : '—'}</td>
+                        <td style={tos.cell}>{fin(p.market_value) ? `$${Number(p.market_value).toLocaleString()}` : '—'}</td>
+                        <td style={{ ...tos.cell, color: !fin(p.unrealized_pl) ? 'var(--text3)' : Number(p.unrealized_pl) >= 0 ? '#66bb6a' : '#ef5350' }}>
+                          {fin(p.unrealized_pl) ? `${Number(p.unrealized_pl) >= 0 ? '+' : ''}${Number(p.unrealized_pl).toFixed(2)}` : '—'}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -1,10 +1,10 @@
 # n8n platform hardening packet — FW-P1..P6 for the §23.24 import gate (operator-applied)
 
 ```
-Status:      DRAFT, operator runbook. Every apply step is an operator act (AGENTS §17 / §0 rule 9); the agent ran
-             only the read-only dry runs quoted below, and a FW-P2 rehearsal on throwaway containers.
-as_of:       2026-10-22T13:50:00Z
-Measured at: origin/main df3ebab50 (branch feat/n8n-platform-hardening-20261022); host ms01-openclaw;
+Status:      DRAFT, operator runbook. Every apply step is an operator act (AGENTS §17 / §0 rule 9). The measured
+             sample below is historical (13:48Z) and predates current integration `88fbafcc`; no new host probe was run here.
+as_of:       2026-10-22T20:08:00Z (documentation review; host facts not refreshed)
+Measured at: historical origin/main df3ebab50 (branch feat/n8n-platform-hardening-20261022); host ms01-openclaw;
              live n8n m8m-n8n running n8nio/n8n:2.43.0 = sha256:c6a3a0461d1d…873c; compose
              /home/johnclaw/m8m-bakeoff-lab/docker-compose.n8n.yml sha256 5d6210de…a54c (mtime 2026-10-09 21:57 EDT)
 Authority:   MBI_BEHAVIOR = 0. No broker, order or credential path. No secret value was read or printed: the probe
@@ -28,26 +28,35 @@ Now:
 - **The checker lets an element PASS only from a fresh host probe** (≤ 24 h). A cited or stale file caps every
   element at PARTIAL ("PASS withheld"), so an edited JSON file can no longer clear the gate.
 - **`check_n8n_import_ready.py --probe-host`** runs the probe in-process and prints each element with its status,
-  evidence and source; `--platform-facts F` (or `$N8N_PLATFORM_FACTS`) reads a probe file. With neither, it reads
-  the committed 2026-10-15 measurement, so nothing that runs today changes.
+  evidence and source. Only this in-process probe can authorize PASS. `--platform-facts F` (or
+  `$N8N_PLATFORM_FACTS`) reads cited, untrusted JSON and caps every element at PARTIAL even if the file claims a
+  fresh `source_kind: host_probe`; file-supplied provenance is not authenticated. With neither, it reads the
+  committed 2026-10-15 measurement, which is also cited evidence.
+
+Current candidate qualification boundary (20:08Z): integrated implementation SHA `88fbafcc27b58b4ea1c78f5e78fcfa9059a5d170` contains the FW-P5 correction from `11f6744df6e457651560ac10d7f6491e964197a9`. It reads the configured container image and immutable `.Image` ID, then queries `docker image inspect <image-id>` for `.RepoDigests`. Targeted n8n hardening tests pass within the 80-test focused regression suite; this exact integrated candidate has no full-profile result. The sample below is historical and not evidence of current host state.
+
+The proposed systemd services load only `%h/.config/tradeai/n8n/host-alert.env`, not the rebuild's full
+`.env`. Before installation, provision that file as the service account with mode 0600 and only
+`TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID`; the surrounding `.config/tradeai/n8n` directory must be mode 0700.
+Do not copy unrelated broker, database, or provider credentials into this file.
 
 | Element | What the probe reads | PASS needs |
 |---|---|---|
 | FW-P1 | n8n container env (allowlisted keys only) | `EXECUTIONS_DATA_SAVE_ON_SUCCESS=all`, `EXECUTIONS_DATA_PRUNE=true`, `EXECUTIONS_DATA_MAX_AGE>0` |
 | FW-P2 | `pg_roles` row of `DB_POSTGRESDB_USER` (one SELECT, read-only transaction) | `rolsuper=f` and none of createrole/createdb/replication/bypassrls |
 | FW-P3 | `systemctl --user` state of `tradeai-n8n-drift-watch.timer`; `N8nDriftWatch@v1` + `N8nWorkflowDriftReceipt@v1` | timer enabled+active; live receipts ≤ 45 min old; verdict CLEAN or DRIFT; host P1 path |
-| FW-P4 | `ss -ltn`; `docker network inspect m8m-n8n_lab`; an operator ufw capture (root-only) ≤ 7 days old | relay bound to the lab gateway only; ufw active, default deny; ALLOW lab subnet on lab bridge **before** a DENY to the relay port; no other allow in front |
-| FW-P5 | `.Config.Image` and `.Image` of `m8m-n8n`; env | image ref carries `@sha256:` equal to the running image; env access blocked; community packages off |
+| FW-P4 | `ss -ltn`; `docker network inspect m8m-n8n_lab`; direct read-only UFW queries via exact sudoers commands | relay bound to the lab gateway only; ufw active, default deny; ALLOW lab subnet on lab bridge **before** a DENY to the relay port; no other allow in front |
+| FW-P5 | Container `.Config.Image` and `.Image` ID, then ImageInspect `.RepoDigests`; allowlisted env flags | configured `@sha256:` manifest digest appears in actual image RepoDigests; env access blocked; community packages off |
 | FW-P6 | `systemctl --user` state of `tradeai-n8n-host-deadman.timer`; `N8nHostDeadman@v1` | timer enabled+active; live receipt ≤ 15 min old; `runs_inside_n8n: false`; host alert path |
 
-Measured on this host, 2026-10-22T13:48:59Z (`python3 scripts/probe_n8n_platform_facts.py`, dry run):
+**Historical baseline only — 2026-10-22T13:48:59Z** (`python3 scripts/probe_n8n_platform_facts.py`, dry run), from the pre-correction probe behavior. It is not a measurement of the current 15:45 probe or current host state:
 
 ```
 FW-P1 FAIL    container env EXECUTIONS_DATA_SAVE_ON_SUCCESS=none EXECUTIONS_DATA_PRUNE=true EXECUTIONS_DATA_MAX_AGE=168h EXECUTIONS_DATA_PRUNE_MAX_COUNT=<unset> EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=false
 FW-P2 FAIL    pg_roles n8n (DB_POSTGRESDB_USER): rolsuper=t; also rolcreaterole,rolcreatedb,rolreplication,rolbypassrls
 FW-P3 FAIL    tradeai-n8n-drift-watch.timer not-found/inactive; data/runtime/n8n_drift_watch_last.json absent age None min; data/runtime/n8n_workflow_drift_last.json absent age None min — timer not enabled+active; no watch receipt; drift receipt absent or stale
-FW-P4 FAIL    relay binds ['172.19.0.1:18092']; lab br-fdc1921eeccb 172.19.0.0/16; ufw capture ufw_status_n8n_relay.txt — no ufw capture at /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/ufw_status_n8n_relay.txt (root-only: operator runs '{ sudo ufw status verbose; sudo ufw status numbered; } > /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/ufw_status_n8n_relay.txt')
-FW-P5 PARTIAL container .Config.Image=n8nio/n8n:2.43.0 running=sha256:c6a3a0461d1d3ffc16d849adf57606c2b028667ade70cce2faa2ff094734873c; N8N_BLOCK_ENV_ACCESS_IN_NODE=true; N8N_COMMUNITY_PACKAGES_ENABLED=false — tag pin, not a digest
+FW-P4 FAIL    relay binds ['172.19.0.1:18092']; lab br-fdc1921eeccb 172.19.0.0/16; historical probe depended on ufw_status_n8n_relay.txt capture — superseded by candidate live read-only sudo UFW queries; no current FW-P4 result is established by this historical line
+FW-P5 PARTIAL container .Config.Image=n8nio/n8n:2.43.0 running=sha256:c6a3a0461d1d3ffc16d849adf57606c2b028667ade70cce2faa2ff094734873c; N8N_BLOCK_ENV_ACCESS_IN_NODE=true; N8N_COMMUNITY_PACKAGES_ENABLED=false — historical `.Image` config-image ID, not a RepoDigest; tag pin, not a verified manifest digest
 FW-P6 FAIL    tradeai-n8n-host-deadman.timer not-found/inactive; data/runtime/n8n_host_deadman_last.json absent age None min — timer not enabled+active; no dead-man receipt
 (dry run, nothing written)
 ```
@@ -81,7 +90,7 @@ deny, both inserted at the top so no existing broader allow can shadow them:
 - `allow in on br-fdc1921eeccb from 172.19.0.0/16 to 172.19.0.1 port 18092 proto tcp`
 - `deny in to 172.19.0.1 port 18092 proto tcp`
 
-Measured read-only (no sudo): `ufw status` → `ERROR: You need to be root to run this script`; `/etc/ufw/ufw.conf`
+Historical baseline (13:48Z, before the live-query correction): unprivileged `ufw status` → `ERROR: You need to be root to run this script`; current candidate uses exact read-only `sudo -n /usr/sbin/ufw status verbose` and `sudo -n /usr/sbin/ufw status numbered` commands (no firewall mutation). `/etc/ufw/ufw.conf`
 `ENABLED=yes`; `/etc/ufw/user.rules` is root-only (mode 640, mtime 2026-10-15 06:21). The current rule set could not
 be read, so this step inserts at position 1 instead of assuming an order. `ss -ltn`: the relay binds only
 `172.19.0.1:18092` (pid of a host python process), not `0.0.0.0`.
@@ -105,13 +114,15 @@ sudo sh -c 'ufw insert 1 deny in to 172.19.0.1 port 18092 proto tcp comment "FW-
 **Verify** (capture for the probe; the probe parses it and checks the bridge name against the live network):
 
 ```
-{ sudo ufw status verbose; sudo ufw status numbered; } > ~/trade-ai-releases/persistent-state/data/runtime/ufw_status_n8n_relay.txt && cd ~/trade-ai-releases/portfolio-server/CURRENT && ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/probe_n8n_platform_facts.py | grep FW-P4
+cd ~/trade-ai-releases/portfolio-server/CURRENT && ~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/probe_n8n_platform_facts.py | grep FW-P4
 ```
 
-Expected: `FW-P4 PASS    relay binds ['172.19.0.1:18092']; lab br-fdc1921eeccb 172.19.0.0/16; ufw capture …`. In the
-numbered list the ALLOW rule must be `[ 1]` and the DENY `[ 2]`. Functional check: n8n still reaches the relay — the
-next dispatcher tick writes a fresh `data/runtime/heartbeat-watch_last.json` (`ok_at` within 5 min). Repeat the
-capture after any ufw change; the probe refuses a capture older than 7 days.
+Before running the probe as the service account, install and validate only the proposed exact read-only commands in
+`sudoers/tradeai-n8n-ufw-status.proposed` (`visudo -cf`); do not add a wildcard. The probe obtains live verbose and
+numbered output via `sudo -n`. A saved file under persistent state is mutable and can never authorize PASS. Expected:
+`FW-P4 PASS` only when the live probe sees the ALLOW before the DENY and no earlier covering ALLOW. Functional check:
+n8n still reaches the relay — the next dispatcher tick writes a fresh `data/runtime/heartbeat-watch_last.json`
+(`ok_at` within 5 min).
 
 **Rollback** (one line; deletes the two rules by their exact text — removing a firewall rule is the inverse of adding
 it, not a data deletion):

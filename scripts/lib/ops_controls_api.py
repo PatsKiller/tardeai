@@ -9,6 +9,11 @@ Order of refusals on every POST: POLICY_NOT_ACTIVE (19.0.0 not ACTIVE, read at r
 (anything but a tailnet operator identity on the serve_proxy listener; the service token is refused) -> CSRF_REFUSED
 (handler-side same-origin check, enforced whatever report_only says) -> STORE_NOT_MIGRATED -> the route's own checks.
 GET routes skip only the policy check. AUTHORITY: OPERATOR_ONLY. MBI_BEHAVIOR = 0.
+
+Sudo window (scripts/lib/ops_controls_sudo.py; operator decision 2026-10-22; INERT until AGENTS.md >= 20.0.0 is ACTIVE and
+the operator sets ops_controls.sudo_window_enabled): a passkey step-up may open a window (``open_window: true``); inside
+it ``POST /requests/{id}/step-up/window {sudo_token, phrase}`` steps up a risky request with the phrase only, except
+for the always-fresh kinds; ``POST /sudo/end`` ends it. Every act in a window is audited with the opening assertion.
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ if _ROOT not in _sys.path:  # one module identity (scripts.lib.*) whether served
 from scripts.lib import ops_controls_auth as A  # noqa: E402
 from scripts.lib import ops_controls_core as C  # noqa: E402
 from scripts.lib import ops_controls_store as S  # noqa: E402
+from scripts.lib import ops_controls_sudo as SW  # noqa: E402
 
 PREFIX = "/api/v2/ops/controls"
 SCHEMA_STATE = "OpsControlsState@v1"
@@ -58,6 +64,7 @@ class Ctx:
     agents_path: Optional[Path] = None
     clock: Callable[[], datetime] = C.utc_now
     notify: Callable[[str, str, Optional[str]], dict] = field(default=lambda s, b, r: {"queued": False})
+    windows: Any = field(default_factory=SW.SudoWindows)   # in memory, per process: a restart ends every window
 
 
 def _default_ctx() -> Ctx:
@@ -241,6 +248,8 @@ def _post(ctx: Ctx, base: str, sub: str, body: dict):
         return passkey_register_options(ctx, op, body)
     if sub == "/passkeys/register/verify":
         return passkey_register_verify(ctx, op, body)
+    if sub == "/sudo/end":
+        return sudo_end(ctx, op)
     mm = ROUTE_RE.match(sub)
     if not mm:
         return _err(404, "NOT_FOUND")
@@ -256,6 +265,8 @@ def _post(ctx: Ctx, base: str, sub: str, body: dict):
         return step_up_verify(ctx, op, req, body)
     if action == "/step-up/totp":
         return step_up_totp(ctx, op, req, body)
+    if action == "/step-up/window":
+        return step_up_window(ctx, op, req, body)
     if action == "/cancel":
         r = ctx.store.transition(rid, ("PREVIEWED", "AWAITING_STEP_UP", "STEP_UP_VERIFIED", "APPROVED"), "CANCELLED")
         if not r:
@@ -288,7 +299,8 @@ def create_request(ctx: Ctx, op: str, body: dict, *, undo_of: Optional[str] = No
         raise
     today = ctx.clock().astimezone(timezone.utc).strftime("%Y-%m-%d")
     row = {"request_id": rid, "idempotency_key": idem, "kind": spec.kind, "direction": spec.direction,
-           "executor": spec.executor, "params": plan.params, "phrase": C.phrase_for(spec.kind, plan.params, today),
+           "executor": spec.executor, "params": plan.params,
+           "phrase": plan.phrase or C.phrase_for(spec.kind, plan.params, today),
            "preview": plan.public(), "expected_state_digest": plan.digest, "actor": op,
            "status": "PREVIEWED" if spec.direction == C.SAFE else "AWAITING_STEP_UP", "created_at": ctx.clock(),
            "status_at": ctx.clock(), "undo_of": undo_of}
@@ -344,11 +356,19 @@ def approve(ctx: Ctx, op: str, req: dict, body: dict):
             ctx.store.transition(rid, ("STEP_UP_VERIFIED",), "EXPIRED")
             _audit(ctx, "refused.step_up_expired", "refused", kind=req["kind"], request_id=rid)
             return _err(403, "STEP_UP_EXPIRED", "the step-up expired (2 minutes); start again")
+        fresh = SW.needs_fresh_passkey(req["kind"], req.get("params"))
+        if fresh and req.get("stepup_factor") not in ("passkey", "totp"):
+            _audit(ctx, "refused.fresh_passkey_required", "refused", kind=req["kind"], request_id=rid,
+                   detail={"factor": req.get("stepup_factor"), "why": fresh})
+            return _err(403, "FRESH_PASSKEY_REQUIRED", fresh)
         r = _sign_and_approve(ctx, req, "STEP_UP_VERIFIED", stepup_used_at=ctx.clock())
         if not r:
             return _err(403, "STEP_UP_REPLAYED", "the step-up token was already used")
-    _audit(ctx, "request.approved", "ok", kind=r["kind"], request_id=rid,
-           detail={"factor": r.get("stepup_factor") or "one_click", "executor": r["executor"]})
+    detail = {"factor": r.get("stepup_factor") or "one_click", "executor": r["executor"]}
+    link = _window_link(r)
+    if link:
+        detail["sudo_window"] = link
+    _audit(ctx, "request.approved", "ok", kind=r["kind"], request_id=rid, detail=detail)
     if r["executor"] == C.EXEC_CC and r["kind"] in ("release_train.stop", "release_train.pause", "passkey.revoke"):
         r = execute_cc(ctx, op, r)
     elif r["executor"] == C.EXEC_APPLIER:
@@ -378,9 +398,19 @@ def execute_cc(ctx: Ctx, op: str, r: dict) -> dict:
     return finish(ctx, r, result, actor=op)
 
 
+def _window_link(r: Optional[dict]) -> Optional[dict]:
+    """The sudo-window linkage recorded on a request at step-up (opening assertion id, credential, time), or None."""
+    res = (r or {}).get("result")
+    link = res.get("sudo_window") if isinstance(res, dict) else None
+    return link if isinstance(link, dict) else None
+
+
 def finish(ctx: Ctx, r: dict, result: dict, *, actor: str) -> dict:
     status = result.get("outcome") if result.get("outcome") in ("APPLIED", "FAILED", "REFUSED") else "FAILED"
     rid = r["request_id"]
+    link = _window_link(r)
+    if link and "sudo_window" not in result:
+        result = dict(result, sudo_window=link)   # the act keeps its window linkage in its final result and audit
     done = ctx.store.transition(rid, ("APPLYING",), status, result=result,
                                 applied_at=ctx.clock() if status == "APPLIED" else None) or r
     if status == "APPLIED" and r.get("undo_of"):
@@ -390,7 +420,8 @@ def finish(ctx: Ctx, r: dict, result: dict, *, actor: str) -> dict:
     ctx.store.append_audit(actor=actor, action=f"request.{status.lower()}", kind=r["kind"], request_id=rid,
                            outcome="ok" if status == "APPLIED" else status.lower(),
                            detail={"result": {k: result.get(k) for k in ("outcome", "code", "detail", "backup_ref",
-                                                                          "verify")}, "notify": note})
+                                                                          "verify")}, "notify": note,
+                                   **({"sudo_window": link} if link else {})})
     return done
 
 
@@ -427,17 +458,21 @@ def step_up_options(ctx: Ctx, op: str, req: dict):
     return 200, {"ok": True, "options": opts, "expires_at": C.iso(ctx.clock() + timedelta(seconds=ttl))}
 
 
-def _issue_token(ctx: Ctx, req: dict, *, factor: str, credential_id: Optional[str]):
+def _issue_token(ctx: Ctx, req: dict, *, factor: str, credential_id: Optional[str],
+                 window: Optional[dict] = None):
     token = A.new_step_up_token()
     ttl = int(ctx.cfg["step_up"].get("ttl_s", 120))
     exp = ctx.clock() + timedelta(seconds=ttl)
+    extra = {"result": {"sudo_window": window}} if window else {}
     r = ctx.store.transition(req["request_id"], ("AWAITING_STEP_UP",), "STEP_UP_VERIFIED",
                              stepup_token_hash=A.token_hash(token), stepup_expires_at=exp, stepup_factor=factor,
-                             stepup_credential_id=credential_id)
+                             stepup_credential_id=credential_id, **extra)
     if not r:
         return _err(409, "STATE_CONFLICT", "request is no longer awaiting a step-up")
-    _audit(ctx, "step_up.verified", "ok", kind=req["kind"], request_id=req["request_id"],
-           detail={"factor": factor, "credential_id8": (credential_id or "")[:8] or None})
+    detail: dict = {"factor": factor, "credential_id8": (credential_id or "")[:8] or None}
+    if window:
+        detail["sudo_window"] = window
+    _audit(ctx, "step_up.verified", "ok", kind=req["kind"], request_id=req["request_id"], detail=detail)
     return 200, {"ok": True, "step_up_token": token, "expires_at": C.iso(exp), "request": public_request(r)}
 
 
@@ -467,7 +502,96 @@ def step_up_verify(ctx: Ctx, op: str, req: dict, body: dict):
     if not C.phrase_matches(body.get("phrase"), req.get("phrase")):
         _audit(ctx, "refused.phrase", "refused", kind=req["kind"], request_id=rid)
         return _err(403, "PHRASE_MISMATCH", "type the phrase exactly as shown; authenticate again")
-    return _issue_token(ctx, req, factor="passkey", credential_id=cid)
+    st, out = _issue_token(ctx, req, factor="passkey", credential_id=cid)
+    if st == 200 and body.get("open_window") is True:
+        out["sudo_window"] = _open_window(ctx, op, req, cred, cid, ch["challenge"])
+    return st, out
+
+
+# ── sudo window ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+
+def _sudo_sweep(ctx: Ctx) -> dict:
+    """Gate the sudo window and end every window that has run out; each ending is audited. Returns the gate."""
+    g = SW.gate(ctx.store, ctx.agents_path)
+    try:
+        creds = {c["credential_id"] for c in _active_credentials(ctx)}
+    except Exception:  # noqa: BLE001 — unreadable credentials end every window (fail closed)
+        creds = set()
+    for w in ctx.windows.sweep(ctx.clock(), gate_state=g["state"], gate_minutes=g["minutes"],
+                               active_credentials=creds):
+        _audit(ctx, "sudo.ended", "ok", detail={"reason": w.end_reason, "uses": w.uses, "acts": w.acts[-20:],
+                                                 "sudo_window": w.linkage()}, actor=w.operator)
+    return g
+
+
+def _open_window(ctx: Ctx, op: str, req: dict, cred: dict, cid: str, challenge: str) -> dict:
+    """Open a window on the assertion that just stepped ``req`` up. Inert gate: nothing opens, and the page says why."""
+    g = _sudo_sweep(ctx)
+    if g["state"] != "ACTIVE":
+        _audit(ctx, "refused.sudo_window_inert", "refused", kind=req["kind"], request_id=req["request_id"],
+               detail={"why": g["reason"]})
+        return {"opened": False, "reason": g["reason"]}
+    w, token, replaced = ctx.windows.open(operator=op, credential_id=cid, credential_name=cred.get("name"),
+                                          assertion=SW.assertion_id(cid, challenge),
+                                          opening_request_id=req["request_id"], now=ctx.clock(), minutes=g["minutes"])
+    for old in replaced:
+        _audit(ctx, "sudo.ended", "ok", detail={"reason": old.end_reason, "uses": old.uses,
+                                                 "sudo_window": old.linkage()})
+    _audit(ctx, "sudo.opened", "ok", kind=req["kind"], request_id=req["request_id"],
+           detail={"minutes": w.minutes, "idle_minutes": SW.IDLE_S // 60, "sudo_window": w.linkage()})
+    return {"opened": True, "sudo_token": token, "window": w.view(ctx.clock())}
+
+
+def step_up_window(ctx: Ctx, op: str, req: dict, body: dict):
+    """Step a risky request up inside an open sudo window: the window token from this browser session + the phrase."""
+    rid = req["request_id"]
+    if req["direction"] != C.RISKY or req["status"] != "AWAITING_STEP_UP":
+        return _err(409, "STATE_CONFLICT", f"request is {req['direction']} / {req['status']}")
+    if req["actor"] != op:
+        return _err(403, "ACTOR_MISMATCH", "step up for your own request")
+    fresh = SW.needs_fresh_passkey(req["kind"], req.get("params"))
+    if fresh:
+        _audit(ctx, "refused.fresh_passkey_required", "refused", kind=req["kind"], request_id=rid,
+               detail={"why": fresh})
+        return _err(403, "FRESH_PASSKEY_REQUIRED", fresh)
+    g = _sudo_sweep(ctx)
+    if g["state"] != "ACTIVE":
+        _audit(ctx, "refused.sudo_window_inert", "refused", kind=req["kind"], request_id=rid,
+               detail={"why": g["reason"]})
+        return _err(403, "SUDO_WINDOW_INERT", g["reason"] or "")
+    if not C.phrase_matches(body.get("phrase"), req.get("phrase")):
+        _audit(ctx, "refused.phrase", "refused", kind=req["kind"], request_id=rid, detail={"factor": SW.FACTOR})
+        return _err(403, "PHRASE_MISMATCH", "type the phrase exactly as shown")
+    try:
+        w = ctx.windows.use(operator=op, token=body.get("sudo_token"), now=ctx.clock(), request_id=rid)
+    except SW.SudoRefused as exc:
+        _audit(ctx, "refused.sudo_window", "refused", kind=req["kind"], request_id=rid,
+               detail={"code": exc.code, "detail": exc.detail})
+        return _err(403, exc.code, exc.detail)
+    link = dict(w.linkage(), use=w.uses)
+    st, out = _issue_token(ctx, req, factor=SW.FACTOR, credential_id=w.credential_id, window=link)
+    if st == 200:
+        out["sudo_window"] = {"opened": True, "window": w.view(ctx.clock())}
+    return st, out
+
+
+def sudo_end(ctx: Ctx, op: str):
+    """End now: every window of this operator ends (the page also forgets its token). Always allowed."""
+    ended = ctx.windows.end(op, "ended by the operator", ctx.clock())
+    for w in ended:
+        _audit(ctx, "sudo.ended", "ok", detail={"reason": w.end_reason, "uses": w.uses, "acts": w.acts[-20:],
+                                                 "sudo_window": w.linkage()})
+    return 200, {"ok": True, "ended": len(ended)}
+
+
+def sudo_view(ctx: Ctx, op: str) -> dict:
+    g = _sudo_sweep(ctx)
+    w = ctx.windows.active_for(op)
+    return {"state": g["state"], "reason": g["reason"], "policy": g["policy"], "enabled": g["enabled"],
+            "minutes": g["minutes"], "max_minutes": g["max_minutes"], "idle_minutes": g["idle_minutes"],
+            "fresh_kinds": sorted(SW.ALWAYS_FRESH_KINDS), "fresh_settings": sorted(SW.SUDO_SETTING_KEYS),
+            "window": w.view(ctx.clock()) if w else None}
 
 
 def step_up_totp(ctx: Ctx, op: str, req: dict, body: dict):
@@ -613,14 +737,103 @@ def n8n_view(ctx: Ctx) -> dict:
     except OSError as exc:
         live, live_state, reason = [], "UNAVAILABLE", f"{path}: {type(exc).__name__}"
     rows = []
+    reg_rows: dict[str, dict] = {}
     for r in ctx.hosts.lane_registry().get("lanes") or []:
         s, d = r.get("scheduler") or {}, r.get("dispatch") or {}
         if not d and s.get("kind") != "n8n":
             continue
+        reg_rows[str(r.get("lane_id"))] = r
         rows.append({"lane_id": r.get("lane_id"), "stage": s.get("stage"), "mode": d.get("mode"),
                      "on_live_list": r.get("lane_id") in live if live_state == "OK" else None,
-                     "workflow": s.get("workflow_id") or s.get("expression"), "registry_state": r.get("state")})
-    return {"state": live_state, "reason": reason, "live_list_path": str(path), "live_lanes": live, "rows": rows}
+                     "workflow": s.get("workflow_id") or s.get("expression"), "registry_state": r.get("state"),
+                     # Additive (n8n outcomes, 2026-10-22): display only.
+                     "scheduler_kind": s.get("kind"), "dispatch_class": d.get("class")})
+    out = {"state": live_state, "reason": reason, "live_list_path": str(path), "live_lanes": live, "rows": rows}
+    # Additive (n8n outcomes dashboard, 2026-10-22): last run / health / next run / promotion readiness per lane, read
+    # from the coordination ledger (sqlite mode=ro, bounded per-lane indexed queries) and cached 60 s. Read-only.
+    from scripts.lib import ops_controls_n8n_outcomes as NO
+
+    ledger = ctx.hosts.n8n_ledger_path
+    key = ("n8n_outcomes", str(ledger), str(ctx.hosts.code_root), tuple(live), live_state)
+
+    def compute() -> dict:
+        rs = [dict(r) for r in rows]
+        extra = NO.enrich(rs, reg_rows, code_root=ctx.hosts.code_root, ledger_path=ledger,
+                          crontab=ctx.hosts.crontab_read, now=ctx.clock())
+        return {"rows": rs, **extra}
+
+    out.update(NO.cached(key, compute))
+    return out
+
+
+def store_reason(store: dict) -> Optional[str]:
+    """A sentence for a store that is not OK: what is missing and what the operator does about it. Never empty."""
+    st = store.get("state")
+    if st == "OK":
+        return None
+    if st == "NOT_MIGRATED":
+        missing = ", ".join(store.get("missing_tables") or []) or "unknown tables"
+        return (f"{store.get('reason') or 'migration not applied'}: missing {missing}. The operator applies "
+                f"migrations/2026_10_22_ops_controls.sql (docs/ops/OPS_CONTROLS.md §6 step 4); until then nothing "
+                f"is stored or audited here")
+    return (f"the Ops Controls tables could not be read ({store.get('reason') or 'no error class reported'}); "
+            f"treated as unavailable, never as empty")
+
+
+#: Plain reasons for audit actions whose row carries no code or detail of its own (2026-10-22: the Audit tab never
+#: shows an empty reason).
+AUDIT_REASONS = {
+    "refused.caller": "caller is not the operator's tailnet identity on the serve_proxy listener; agents, n8n and the "
+                      "service token are refused (§27.2)",
+    "refused.csrf": "cross-site request refused (origin check)",
+    "refused.kind_not_supported": "this change kind is not built on this page; host terminal only",
+    "refused.preview": "the dry run refused the change",
+    "refused.step_up_required": "a risky change needs a passkey assertion and the typed phrase",
+    "refused.step_up_replayed": "that step-up was already used",
+    "refused.step_up_invalid": "the step-up token is not bound to this request",
+    "refused.step_up_expired": "the step-up expired (2 minutes)",
+    "refused.passkey_unknown": "the passkey is not enrolled or was revoked",
+    "refused.assertion": "the passkey assertion failed verification",
+    "refused.phrase": "the typed phrase did not match",
+    "refused.totp_not_allowed": "TOTP is recovery only: it may only register the first passkey",
+    "refused.totp": "wrong, expired or reused TOTP code",
+    "refused.fresh_passkey_required": "this kind needs a fresh passkey assertion, even inside a sudo window",
+    "refused.sudo_window": "the sudo window could not be used",
+    "refused.sudo_window_inert": "the sudo window is inert (AGENTS.md >= 20.0.0 not ACTIVE or the setting is off)",
+    "request.created": "previewed (dry run); nothing changed yet",
+    "request.approved": "approved",
+    "request.cancelled": "cancelled by the operator before it was applied",
+    "request.expired": "the approval was older than the applier's limit, so nothing was applied",
+    "step_up.verified": "second factor verified",
+    "sudo.opened": "sudo window opened by a passkey assertion",
+    "sudo.ended": "sudo window ended",
+    "totp.enrolled": "TOTP recovery enrolled at the host terminal",
+}
+
+
+def audit_reason(action: Optional[str], outcome: Optional[str], detail: Any) -> str:
+    """Why this audit row exists, in one line. Built from the row's own detail first; never empty."""
+    d = detail if isinstance(detail, dict) else {}
+    res = d.get("result") if isinstance(d.get("result"), dict) else {}
+    parts = []
+    for src in (d, res):
+        code, more = src.get("code"), src.get("detail") or src.get("why") or src.get("reason")
+        if code or more:
+            parts.append(": ".join(str(x) for x in (code, more) if x))
+            break
+    if not parts and d.get("summary"):
+        parts.append(str(d["summary"]))
+    base = AUDIT_REASONS.get(str(action or ""))
+    if not parts and not base and res.get("outcome"):
+        base = f"outcome {res.get('outcome')}"
+    text = " — ".join([x for x in (base, *parts) if x])
+    if d.get("factor"):
+        text += f" (factor {d['factor']})"
+    if isinstance(d.get("sudo_window"), dict):
+        sw = d["sudo_window"]
+        text += (f" [sudo window {str(sw.get('window_id', ''))[:12]}, opened {sw.get('opened_at')} by assertion "
+                 f"{sw.get('opening_assertion_id')} with passkey {sw.get('opening_credential_id8')}]")
+    return text[:400] or f"{action or 'unknown action'} recorded with outcome {outcome or 'unknown'} and no detail"
 
 
 def settings_view(ctx: Ctx, store_ok: bool) -> dict:
@@ -636,7 +849,9 @@ def settings_view(ctx: Ctx, store_ok: bool) -> dict:
                      "updated_at": _ts(c.get("updated_at")), "updated_by": c.get("updated_by")})
     hist = [{k: _ts(h.get(k)) for k in ("key", "op", "old_value", "new_value", "actor", "at", "request_id")}
             for h in (ctx.store.settings_history(50) if store_ok else [])]
-    return {"state": "OK" if store_ok else "NOT_MIGRATED", "reason": None if store_ok else "migration not applied",
+    return {"state": "OK" if store_ok else "NOT_MIGRATED",
+            "reason": None if store_ok else "operator_settings is not readable until the store is migrated; the "
+                                            "repository defaults apply",
             "rows": rows, "history": hist}
 
 
@@ -671,7 +886,9 @@ def release_view(ctx: Ctx) -> dict:
     from scripts.lib import release_control as RC
 
     v = RC.ReleaseControl(ctx.hosts.release_dir).view()
-    return {"state": "OK", "mode": v.mode, "epoch": v.epoch, "latch": v.latch_state}
+    stop_reason = v.stop.get("reason") if isinstance(v.stop, dict) else None
+    return {"state": "OK", "reason": None, "mode": v.mode, "epoch": v.epoch, "latch": v.latch_state,
+            "stop_phase": v.stop_phase, "stop_reason": stop_reason, "error": v.error}
 
 
 def applier_view(ctx: Ctx) -> dict:
@@ -710,16 +927,23 @@ def build_state(ctx: Ctx, op: str) -> dict:
             audit_rows.append({"seq": a["seq"], "at": _ts(a["at"]), "actor": a["actor"], "action": a["action"],
                                "kind": a.get("kind"), "request_id": a.get("request_id"), "outcome": a["outcome"],
                                "detail": a.get("detail") or {},
+                               "reason": audit_reason(a.get("action"), a.get("outcome"), a.get("detail")),
                                "undo_available": bool(pr and (pr.get("undo") or {}).get("available"))})
         requests = [public_request(r) for r in list(reqs.values())[:20]]
-    return {
+    sreason = store_reason(store)
+    if sreason:
+        store = dict(store, reason=sreason)
+    kinds = C.kinds_view()
+    for k in kinds:
+        k["fresh_passkey"] = SW.needs_fresh_passkey(k["kind"]) is not None
+    out = {
         "ok": True, "schema": SCHEMA_STATE, "as_of": C.iso(ctx.clock()), "operator": op,
         "policy": C.policy_state(ctx.agents_path), "store": store, "applier": _section(lambda: applier_view(ctx)),
         "factors": {"webauthn_library": "available" if A.webauthn_available() else "missing",
                     "hmac_key": "present" if ctx.hmac_key() else "missing",
                     "totp": "enrolled" if totp_row and ctx.totp_secret() else "not_enrolled",
                     "passkeys_active": len(creds)},
-        "kinds": C.kinds_view(),
+        "kinds": kinds,
         "jobs": _section(lambda: jobs_view(ctx)),
         "n8n": _section(lambda: n8n_view(ctx)),
         "settings": _section(lambda: settings_view(ctx, store_ok)),
@@ -730,6 +954,15 @@ def build_state(ctx: Ctx, op: str) -> dict:
                       "name": c["name"], "created_at": _ts(c.get("created_at")),
                       "last_used_at": _ts(c.get("last_used_at")), "revoked_at": _ts(c.get("revoked_at"))}
                      for c in all_creds],
-        "audit": {"state": store.get("state"), "rows": audit_rows},
+        "audit": {"state": store.get("state"), "reason": sreason, "rows": audit_rows},
         "requests": requests,
+        "sudo_window": _section(lambda: sudo_view(ctx, op)) if store_ok else {
+            "state": "INERT", "reason": f"store {store.get('state')}: {sreason}", "window": None},
     }
+    for name in ("jobs", "n8n", "settings", "grants", "data_approvals", "release_train", "applier", "audit"):
+        sec = out.get(name)
+        if isinstance(sec, dict) and sec.get("state") not in ("OK", None) and not sec.get("reason"):
+            # 2026-10-22: no section reaches the page as "<STATE> — no reason given".
+            sec["reason"] = (sreason if sec.get("state") == "NOT_MIGRATED" else
+                             f"the {name} reader reported {sec.get('state')} without a reason")
+    return out

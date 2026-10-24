@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agents_policy_20_0_0_agent_operations",
+  "files": [
+    "tests/test_agents_policy_20_0_0_agent_operations.py"
+  ],
+  "anchor": "AGENTS_POLICY_20_0_0_AGENT_OPERATIONS",
+  "comment": [
+    "ANCHOR: AGENTS_POLICY_20_0_0_AGENT_OPERATIONS — operator-applied and operator-ratified package (PR #2013):",
+    "§28 agent operations (claim lifecycle, worklogs, rule 11 claim/log/hand off, §28.3a picking up work,",
+    "§28.3b designs/phases/ids), host /tmp hygiene lanes, sudo window, Schwab read-only baseline."
+  ]
+}

@@ -19,7 +19,7 @@ HOLDINGS = {"holdings": [
 
 def test_position_pl_is_value_minus_cost_not_the_stale_gain_field():
     h = n.holding_for("WMT", HOLDINGS)
-    assert h["shares"] == 100.0 and h["accounts"] == ["Rollover IRA"]
+    assert h["shares"] == 100.0 and h["accounts"] == ["Schwab Rollover IRA"]
     assert round(h["pl_usd"]) == 228 and round(h["pl_pct"], 1) == 2.2
     assert n.holding_for("AAPL", HOLDINGS) is None
 
@@ -46,7 +46,7 @@ def _wmt_info(**over):
 def test_the_wmt_page_says_you_own_it_and_your_pl():
     text = n.render([WMT_ROW], {"g-1": _wmt_info()})
     first = text.splitlines()[0]
-    assert first == "⚡ BIG MOVE — WMT (held, 100 sh)", first
+    assert first == "⚡ BIG MOVE — WMT (held · Schwab Rollover IRA 100 sh)", first
     assert "position +$228 (+2.2%)" in text and "quote 6m" in text
 
 

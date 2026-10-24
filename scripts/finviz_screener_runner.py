@@ -480,6 +480,20 @@ def lane_output(result: dict) -> dict:
             "empty_reason": None}
 
 
+#: The scheduled lane (`0 10 * * 1-5 ... --run`, registry lane ``finviz-screener-runner``) owns this receipt.
+LANE_ID = "finviz-screener-runner"
+#: 2026-10-23: a ``--screener <id>`` call is a caller's partial refresh (scalp-hot-list */2 and the momentum-scalp
+#: early lane */5 run one call per scalp screener, ~120 attempts/hour 06:00-09:30 ET). Those wrote LANE_ID's receipt,
+#: so the scheduled lane's health read whichever caller attempt finished last -- one caller-timeout kill paged the
+#: operator as "Finviz Screener OUTPUT_INVALID" while the next attempts succeeded. They now write their own receipt.
+SUBSET_LANE_ID = "finviz-screener-runner-subset"
+
+
+def receipt_lane_id(screener_id) -> str:
+    """The receipt key for this invocation: the scheduled lane for a full run, the subset key for ``--screener``."""
+    return SUBSET_LANE_ID if screener_id else LANE_ID
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("--dry-run", action="store_true")
@@ -520,7 +534,7 @@ def main(argv=None) -> int:
                 run_terminated(_run_id, getattr(_term, "signum", 15))
             except Exception:
                 pass
-            write_lane_receipt("finviz-screener-runner", ok=False, exit_code=int(_term.code or 143),
+            write_lane_receipt(receipt_lane_id(args.screener), ok=False, exit_code=int(_term.code or 143),
                                started_at=started, script="finviz_screener_runner.py",
                                error="terminated",
                                output={"produced_count": 0, "attempted_count": 0,
@@ -558,14 +572,14 @@ def _run_tracked(args, started, _run_id) -> int:
         except Exception:
             pass
         complete = not (result.get("membership_failures") or result.get("db_write_failures"))
-        write_lane_receipt("finviz-screener-runner", ok=complete, exit_code=0,
+        write_lane_receipt(receipt_lane_id(args.screener), ok=complete, exit_code=0,
                            started_at=started, script="finviz_screener_runner.py",
                            summary={key: result.get(key) for key in
                                     ("screeners_run", "total_new_tickers", "membership_failures", "db_write_failures")},
                            output=lane_output(result))
         return 0
     except Exception as _e:
-        write_lane_receipt("finviz-screener-runner", ok=False, exit_code=1,
+        write_lane_receipt(receipt_lane_id(args.screener), ok=False, exit_code=1,
                            started_at=started, script="finviz_screener_runner.py",
                            error=type(_e).__name__,
                            output={"produced_count": 0, "attempted_count": 0, "skipped_reasons": {"dependency_unavailable": 1}})

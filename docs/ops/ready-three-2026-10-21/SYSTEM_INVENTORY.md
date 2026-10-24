@@ -1,5 +1,9 @@
 # System inventory snapshot — 2026-10-21
 
+## Current candidate and production release boundary — 2026-10-22 07:37 UTC
+
+Read-only production build metadata reports SHA `4104effb99f3` on `main`; health at 07:33:53Z is 78/degraded/unhealthy with 6 criticals, 24 warnings, and 30 actionable findings. `bin/guard show` reports no active grants. Candidate code SHA `1cba3e8db005a3ad6cd3085e93189f53c4742473` passed the local full profile (exit 0, 2,628s; candidate manifest hash `3bb9acba…`), but has no PR or hosted Actions run and is not deployed. This does not refresh host service, container, process, listener, firewall, or integration inventory below; those remain as-of their explicit historical timestamps. See [current status](CURRENT_STATUS.md), [live validation](LIVE_VALIDATION.md), and [test results](TEST_RESULTS.md).
+
 **Status:** Base service inventory below remains the 03:42:26 UTC snapshot. Direct build metadata and health GETs at 04:33 UTC confirm #1888/ef085ce remains active and degraded. Current PR heads, CI, and explicit inventory limits are in [CURRENT_STATUS.md](CURRENT_STATUS.md). Service states, process paths, listeners, and full counters were not refreshed after 03:42.
 **Updated:** 2026-10-21 04:35 UTC
 

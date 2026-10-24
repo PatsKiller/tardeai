@@ -29,7 +29,9 @@ Who may call what (``Actor.kind``):
   request_stop, request_pause          cc, host_cli, telegram, controller
   acknowledge / settle (controller)    controller
   arm (also re-arms after revoke),     host_cli (a ``HostCliProof``) or telegram (a ``TelegramConfirmation``
-  resume, change_scope, revoke         verified by the hook; the shipped hook is a stub that always refuses)
+  resume, change_scope, revoke         verified by the hook; the shipped hook is a stub that always refuses) or
+                                       passkey (a ``PasskeyProof`` vouched for by a ``PasskeyApprovalHook``; the
+                                       shipped hook is a stub that always refuses; AGENTS.md 19.0.0 §25.4, §27.3)
 
 Pre-build check (AGENTS §13.5): searched scripts/ and config/ for revocation_epoch, ReleaseControl, release
 capability, STOP latch writers; found only release_window.py's STOP.json latch (reused here, not cloned) and
@@ -75,9 +77,14 @@ STOP_PHASE = {STOP_REQUESTED: "requested", STOP_ACKNOWLEDGED: "acknowledged", SE
 
 LATCH_ABSENT, LATCH_SET, LATCH_UNREADABLE = "ABSENT", "SET", "UNREADABLE"
 
-ACTOR_KINDS = frozenset({"cc", "host_cli", "telegram", "controller"})
+ACTOR_KINDS = frozenset({"cc", "host_cli", "telegram", "controller", "passkey"})
 REQUEST_KINDS = frozenset({"cc", "host_cli", "telegram", "controller"})   # STOP / pause: the safe direction
-OPERATOR_KINDS = frozenset({"host_cli", "telegram"})                    # D3
+#: D3 (host CLI, Telegram) plus the Ops -> Controls passkey proof that AGENTS.md 19.0.0 §25.4 / §27.3 name for
+#: resume, arm, re-arm, scope changes and revoke ("a WebAuthn passkey and a typed confirmation phrase"). A
+#: ``passkey`` actor is accepted only when its ``PasskeyApprovalHook`` vouches for the proof; the shipped hook is a
+#: stub that always refuses, so only the governed host applier (which passes a hook bound to one HMAC-signed,
+#: passkey-stepped-up approval) can use it.
+OPERATOR_KINDS = frozenset({"host_cli", "telegram", "passkey"})
 
 
 class ControlRefused(Exception):
@@ -244,6 +251,31 @@ class TelegramConfirmationHook(Protocol):
     def verify(self, confirmation: TelegramConfirmation, *, expected_phrase: str) -> bool: ...
 
 
+@dataclass(frozen=True)
+class PasskeyProof:
+    """An Ops -> Controls approval made with a WebAuthn passkey assertion (user verification) and the typed phrase.
+
+    It is evidence only when a ``PasskeyApprovalHook`` vouches for it: the hook checks the approval it is bound to
+    (request id, kind, passkey factor, credential, HMAC approval signature) and that ``confirmation`` is the phrase
+    this library expects now (which names the next epoch)."""
+
+    request_id: str
+    credential_id: str
+    approved_at: str
+    confirmation: str
+
+
+class PasskeyApprovalHook(Protocol):
+    def verify(self, proof: PasskeyProof, *, command: str, expected_phrase: str) -> bool: ...
+
+
+class PasskeyApprovalStub:
+    """Default: refuses. A passkey proof is accepted only through a hook bound to one signed approval."""
+
+    def verify(self, proof: PasskeyProof, *, command: str, expected_phrase: str) -> bool:  # noqa: ARG002
+        return False
+
+
 class TelegramConfirmationStub:
     """D3 hook stub. Not implemented: always refuses, so the Telegram path stays closed until a real hook (the
     host communications gateway's button callback, matched to a pending request id) is built and reviewed."""
@@ -302,6 +334,7 @@ class ControlView:
 class ReleaseControl:
     def __init__(self, state_dir: Path, *, clock: Callable[[], float] = time.time,
                  telegram_hook: Optional[TelegramConfirmationHook] = None,
+                 passkey_hook: Optional[PasskeyApprovalHook] = None,
                  lock_timeout_s: float = 5.0) -> None:
         self.root = Path(state_dir)
         self.latch_path = self.root / LATCH_NAME
@@ -309,6 +342,7 @@ class ReleaseControl:
         self.journal_path = self.root / JOURNAL_NAME
         self.clock = clock
         self.telegram_hook: TelegramConfirmationHook = telegram_hook or TelegramConfirmationStub()
+        self.passkey_hook: PasskeyApprovalHook = passkey_hook or PasskeyApprovalStub()
         self.lock_timeout_s = lock_timeout_s
 
     # -- reading ---------------------------------------------------------------------------------------
@@ -581,10 +615,16 @@ class ReleaseControl:
                 ok = bool(self.telegram_hook.verify(proof, expected_phrase=expected))
             except Exception:  # noqa: BLE001 - a hook failure is a refusal
                 ok = False
+        elif actor.kind == "passkey" and isinstance(proof, PasskeyProof):
+            try:
+                ok = proof.confirmation == expected and bool(
+                    self.passkey_hook.verify(proof, command=command, expected_phrase=expected))
+            except Exception:  # noqa: BLE001 - a hook failure is a refusal
+                ok = False
         if not ok:
             self._journal(command, actor, {"outcome": "REFUSED", "code": "OPERATOR_PROOF_REFUSED"})
-            raise ControlRefused("OPERATOR_PROOF_REFUSED", f"{command} needs a host CLI or Telegram confirmation "
-                                                           f"of {expected!r}")
+            raise ControlRefused("OPERATOR_PROOF_REFUSED", f"{command} needs a host CLI, Telegram or passkey "
+                                                           f"confirmation of {expected!r}")
 
     def _writable_view(self, command: str, actor: Actor) -> ControlView:
         v = self.view()

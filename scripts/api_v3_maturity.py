@@ -39,6 +39,131 @@ def _q(query: dict | None, key: str, default: str = "") -> str:
     return str(v) if v is not None else default
 
 
+# 2026-10-23: GET /api/v3/maturity/memory read the whole never-rotated retrievals log
+# (574 MB) per call through tail_jsonl and returned all ~3,100 records (7.2 MB) to a panel
+# that shows 40: +1.19 GB peak RSS per request against a 1.5 GB MemoryHigh. tail_jsonl is
+# now a bounded backwards read; records are newest-first and capped by ?limit= (default
+# 200, max 1000); one composition is shared for _MEMORY_VIEW_TTL_S, single-flight, and is
+# rebuilt as soon as the memory store file changes (operator dispute/retract/expire).
+_MEMORY_VIEW_TTL_S = float(os.environ.get("TRADEAI_MATURITY_MEMORY_TTL_S") or 30)
+_MEMORY_VIEW_DEFAULT_LIMIT = 200
+_MEMORY_VIEW_MAX_LIMIT = 1000
+_MEMORY_VIEW_LOCK = __import__("threading").Lock()
+_MEMORY_VIEW_CACHE: dict[str, Any] = {}
+
+
+def _memory_limit(query: dict | None) -> int:
+    try:
+        n = int(_q(query, "limit", str(_MEMORY_VIEW_DEFAULT_LIMIT)))
+    except ValueError:
+        n = _MEMORY_VIEW_DEFAULT_LIMIT
+    return max(1, min(n, _MEMORY_VIEW_MAX_LIMIT))
+
+
+def _store_signature(path: Any) -> tuple:
+    try:
+        st = os.stat(path)
+        return (str(path), st.st_size, st.st_mtime_ns)
+    except OSError:
+        return (str(path), None, None)
+
+
+def _durable_memory():
+    from scripts.lib import agent_durable_memory as adm
+
+    return adm
+
+
+def _memory_view(query: dict | None) -> tuple[int, dict[str, Any]]:
+    import copy as _copy
+    import time as _time
+
+    limit = _memory_limit(query)
+    key = (_store_signature(_durable_memory().default_store_path()), limit)
+    with _MEMORY_VIEW_LOCK:  # single-flight: concurrent polls share one composition
+        hit = _MEMORY_VIEW_CACHE.get("entry")
+        if hit and hit[0] == key and _time.monotonic() - hit[1] < _MEMORY_VIEW_TTL_S:
+            return 200, _copy.deepcopy(hit[2])
+        payload = _build_memory_view(limit)
+        _MEMORY_VIEW_CACHE["entry"] = (key, _time.monotonic(), payload)
+        return 200, _copy.deepcopy(payload)
+
+
+def _build_memory_view(limit: int) -> dict[str, Any]:
+    from scripts.lib.agent_memory_shadow import shadow_metrics
+    from scripts.lib.jsonl_bounded import tail_jsonl_lines
+    from scripts.lib.maturity_control.redaction import redact
+    import json as _json
+    from pathlib import Path as _Path
+
+    adm = _durable_memory()
+    display_status = adm.display_status
+    prov = adm.get_durable_provider()
+    recs = []
+    contradictions = []
+    for r in prov._store.values():
+        item = {
+            "memory_id": r.get("memory_id"),
+            "status": display_status(r.get("status")),
+            "raw_status": r.get("status"),
+            "authority_class": r.get("authority_class"),
+            "subject": r.get("subject"),
+            "content": r.get("content"),
+            "memory_type": r.get("memory_type"),
+            "symbols": r.get("symbols"),
+            "confidence": r.get("confidence"),
+            "created_at": r.get("created_at"),
+            "as_of": r.get("as_of") or r.get("valid_from") or r.get("created_at"),
+            "expires_at": r.get("expires_at"),
+            "source_refs": r.get("source_refs") or r.get("source_event_ids"),
+            "provenance": r.get("source_kind"),
+            "content_hash": r.get("content_hash") or r.get("content_digest"),
+            "contradicts": r.get("contradicts"),
+            "supersedes": r.get("supersedes"),
+            "superseded_by": r.get("superseded_by"),
+            "admission_reason": r.get("admission_reason"),
+        }
+        recs.append(item)
+        if r.get("contradicts") or r.get("status") == "DISPUTED":
+            contradictions.append({
+                "memory_id": r.get("memory_id"),
+                "status": display_status(r.get("status")),
+                "contradicts": r.get("contradicts"),
+                "dispute_reason": r.get("dispute_reason"),
+            })
+    # Newest first, so the bounded page is the records an operator acts on.
+    recs.sort(key=lambda x: str(x.get("created_at") or x.get("as_of") or ""), reverse=True)
+    records_total = len(recs)
+    contradictions_total = len(contradictions)
+    shadow_runs = []
+    shadow_path = _Path(prov.path).with_name("memory_shadow_runs.jsonl")
+    for line in tail_jsonl_lines(shadow_path, 20):
+        try:
+            shadow_runs.append(_json.loads(line))
+        except _json.JSONDecodeError:
+            continue
+    health = prov.health()
+    return redact({
+        "ok": True, **AUTHORITY,
+        "backend": health,
+        "influence_mode": os.environ.get("GOVERNED_MEMORY_ADVISORY_INFLUENCE", "OFF"),
+        "memory_behavior_influence": os.environ.get("MEMORY_BEHAVIOR_INFLUENCE", "0"),
+        "counts": prov.counts(),
+        "records": recs[:limit],
+        "records_total": records_total,
+        "records_limit": limit,
+        "records_truncated": records_total > limit,
+        "contradictions": contradictions[:limit],
+        "contradictions_total": contradictions_total,
+        "admission_receipts": prov.tail_jsonl(prov.receipts_path, 20),
+        "retrieval_receipts": prov.tail_jsonl(prov.retrievals_path, 20),
+        "shadow": shadow_metrics(shadow_runs),
+        "shadow_runs": shadow_runs[-10:],
+        "operator_actions": ["dispute", "retract", "expire"],
+        "control_path": "/api/v3/maturity-control/memory/{dispute|retract|expire}",
+    })
+
+
 def handle_get(path: str, query: dict | None = None) -> tuple[int, dict[str, Any]]:
     p = path.strip("/")
     if p in ("", "authority"):
@@ -103,70 +228,7 @@ def handle_get(path: str, query: dict | None = None) -> tuple[int, dict[str, Any
         from scripts.lib.autonomy_watchdog.heartbeat import load_history
         return 200, {"ok": True, **AUTHORITY, "history": load_history(limit_days=30)}
     if p == "memory":
-        from scripts.lib.agent_durable_memory import get_durable_provider, display_status
-        from scripts.lib.agent_memory_shadow import shadow_metrics
-        from scripts.lib.maturity_control.redaction import redact
-        import json as _json
-        from pathlib import Path as _Path
-        prov = get_durable_provider()
-        recs = []
-        contradictions = []
-        for r in prov._store.values():
-            item = {
-                "memory_id": r.get("memory_id"),
-                "status": display_status(r.get("status")),
-                "raw_status": r.get("status"),
-                "authority_class": r.get("authority_class"),
-                "subject": r.get("subject"),
-                "content": r.get("content"),
-                "memory_type": r.get("memory_type"),
-                "symbols": r.get("symbols"),
-                "confidence": r.get("confidence"),
-                "created_at": r.get("created_at"),
-                "as_of": r.get("as_of") or r.get("valid_from") or r.get("created_at"),
-                "expires_at": r.get("expires_at"),
-                "source_refs": r.get("source_refs") or r.get("source_event_ids"),
-                "provenance": r.get("source_kind"),
-                "content_hash": r.get("content_hash") or r.get("content_digest"),
-                "contradicts": r.get("contradicts"),
-                "supersedes": r.get("supersedes"),
-                "superseded_by": r.get("superseded_by"),
-                "admission_reason": r.get("admission_reason"),
-            }
-            recs.append(item)
-            if r.get("contradicts") or r.get("status") == "DISPUTED":
-                contradictions.append({
-                    "memory_id": r.get("memory_id"),
-                    "status": display_status(r.get("status")),
-                    "contradicts": r.get("contradicts"),
-                    "dispute_reason": r.get("dispute_reason"),
-                })
-        shadow_runs = []
-        shadow_path = _Path(prov.path).with_name("memory_shadow_runs.jsonl")
-        if shadow_path.is_file():
-            for line in shadow_path.read_text(encoding="utf-8", errors="replace").splitlines()[-20:]:
-                if not line.strip():
-                    continue
-                try:
-                    shadow_runs.append(_json.loads(line))
-                except _json.JSONDecodeError:
-                    continue
-        health = prov.health()
-        return 200, redact({
-            "ok": True, **AUTHORITY,
-            "backend": health,
-            "influence_mode": os.environ.get("GOVERNED_MEMORY_ADVISORY_INFLUENCE", "OFF"),
-            "memory_behavior_influence": os.environ.get("MEMORY_BEHAVIOR_INFLUENCE", "0"),
-            "counts": prov.counts(),
-            "records": recs,
-            "contradictions": contradictions,
-            "admission_receipts": prov.tail_jsonl(prov.receipts_path, 20),
-            "retrieval_receipts": prov.tail_jsonl(prov.retrievals_path, 20),
-            "shadow": shadow_metrics(shadow_runs),
-            "shadow_runs": shadow_runs[-10:],
-            "operator_actions": ["dispute", "retract", "expire"],
-            "control_path": "/api/v3/maturity-control/memory/{dispute|retract|expire}",
-        })
+        return _memory_view(query)
     if p == "scorecard":
         from scripts.lib.maturity_scorecard import compute_scorecard
         return 200, compute_scorecard()

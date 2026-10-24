@@ -127,6 +127,7 @@ def env(tmp_path):
     cfg["applier"].update(backup_dir=str(tmp_path / "backups"), heartbeat_file=str(tmp_path / "hb.json"),
                           lock_file=str(tmp_path / "applier.lock"))
     cfg["release_train"]["state_dir"] = str(tmp_path / "release_window")
+    cfg["n8n_ledger"] = {"file": str(tmp_path / "no-ledger.sqlite")}  # hermetic: never the host ledger
     agents = tmp_path / "AGENTS.md"
     agents.write_text(ACTIVE_AGENTS)
     host = FakeHost(guard)
@@ -354,11 +355,12 @@ def test_one_click_is_ignored_for_a_risky_kind(env):
     assert body["request"]["status"] == "AWAITING_STEP_UP" and "one_click ignored" in body["note"]
 
 
-@pytest.mark.parametrize("kind", ["kill_switch.clear", "release_train.resume", "release_train.arm",
-                                  "release_train.change_scope", "release_train.revoke"])
+# release_train.resume / .arm are supported since 2026-10-22 (passkey proof, tests/test_ops_controls_sudo_window_20261022.py).
+@pytest.mark.parametrize("kind", ["kill_switch.clear", "release_train.change_scope", "release_train.revoke"])
 def test_unsupported_kinds_say_why(env, kind):
     st, body = post(env, "/requests", {"kind": kind, "params": {}, "idempotency_key": idem()})
-    assert (st, body["error"]) == (409, "KIND_NOT_SUPPORTED") and "grant" in body["detail"] or "D3" in body["detail"]
+    assert (st, body["error"]) == (409, "KIND_NOT_SUPPORTED")
+    assert "grant" in body["detail"] or "release_control_cli" in body["detail"]
 
 
 def test_kill_switch_clear_reason_names_the_execution_engineering_grant():
@@ -730,6 +732,10 @@ def test_state_read_model_sections(env):
     assert all(k in rows["alpha"] for k in ("dispatch_mode", "registry_since", "registry_reason"))
     assert s["n8n"]["live_lanes"] == ["lane-a", "lane-b"]
     assert {r["lane_id"]: r["on_live_list"] for r in s["n8n"]["rows"]} == {"lane-a": True, "lane-c": False}
+    # additive n8n outcomes (2026-10-22): no ledger here -> UNAVAILABLE, never "never ran"; config rows still render
+    assert s["n8n"]["outcomes_state"] == "UNAVAILABLE"
+    assert all(r["outcome"]["health"] == "UNKNOWN" for r in s["n8n"]["rows"])
+    assert {r["lane_id"]: r["readiness"]["verdict"] for r in s["n8n"]["rows"]} == {"lane-a": "BLOCKED", "lane-c": "BLOCKED"}
     assert s["data_approvals"]["rows"][0]["domain"] == "operator_settings"
     assert s["applier"]["state"] == "ABSENT" and s["factors"]["hmac_key"] == "present"
     kinds = {k["kind"]: k for k in s["kinds"]}
@@ -770,3 +776,26 @@ def test_migration_is_additive_and_least_privilege():
     assert not re.search(r"\bDELETE\b(?!\s+(ON|OR))", code.replace("BEFORE DELETE", "").replace("UPDATE OR DELETE", ""))
     down = MP._code((ROOT / "migrations" / "2026_10_22_ops_controls.down.sql").read_text())
     assert "DROP" not in down.upper() and down.count("RENAME TO") == 7
+
+
+# ── 2026-10-22: multi-word pause notes (operator "approve all": fix the Resume parse) ──────────────────────────────
+
+@pytest.mark.parametrize("line,note,cron", [
+    ("# PAUSED 2026-10-14 schwab-app-deactivated (incident SPCX) 31 9 * * 1-5 cd $PROJ && run",
+     "schwab-app-deactivated (incident SPCX)", "31 9 * * 1-5 cd $PROJ && run"),
+    ("# PAUSED 2026-10-15 schwab-app-deactivated (incident SPCX, grant 0f9de907) 7,22,37,52 9-16 * * 1-5 run",
+     "schwab-app-deactivated (incident SPCX, grant 0f9de907)", "7,22,37,52 9-16 * * 1-5 run"),
+    ("# PAUSED 2026-10-14 WS7-02 coder-agent autolaunch (grant a67b8f21) 0 9-18/3 * * 1-5 run",
+     "WS7-02 coder-agent autolaunch (grant a67b8f21)", "0 9-18/3 * * 1-5 run"),
+    ("# PAUSED 2026-10-22 ops-controls:opsreq_abc */5 * * * * cmd  a", "ops-controls:opsreq_abc", "*/5 * * * * cmd  a"),
+    ("# PAUSED 2026-10-14 note @reboot sleep 60", "note", "@reboot sleep 60"),
+])
+def test_paused_parse_keeps_multi_word_notes_out_of_the_cron_line(line, note, cron):
+    m = C.PAUSED_RE.match(line)
+    assert m is not None and m.group(1)[:4] == "2026" and m.group(2) == note and m.group(3) == cron
+    assert C.CRON_LINE_RE.match(m.group(3))
+
+
+def test_paused_parse_refuses_a_note_with_no_cron_line():
+    assert C.PAUSED_RE.match("# PAUSED 2026-10-14 just a note") is None
+    assert C.PAUSED_RE.match("# PAUSED 2026-10-14 31 9 * * 1-5 run") is None  # a note is required

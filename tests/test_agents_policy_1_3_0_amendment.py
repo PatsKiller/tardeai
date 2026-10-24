@@ -13,6 +13,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+# AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+# checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+# the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+from tests.test_agents_policy_20_0_0_agent_operations import pre_20_0_0  # noqa: E402
+
+AGENTS = pre_20_0_0(AGENTS)
 AMEND = (ROOT / "docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md").read_text(encoding="utf-8")
 GRANT_DOC = (ROOT / "docs/governance/agent-standards/TRADING_SESSION_GRANT_CONTRACT.md").read_text(encoding="utf-8")
 PROMPTS = ROOT / "docs/prompts"

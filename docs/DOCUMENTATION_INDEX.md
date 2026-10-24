@@ -35,15 +35,18 @@ ACTIVE; 11.0.0 (§23.24) is PROPOSED.
 
 | Document | Purpose | Status |
 |----------|---------|--------|
-| `docs/ops/OPS_CONTROLS.md` | The operator Controls surface and its one governed host applier: components, threat model, change kinds (and the NOT_SUPPORTED ones with reasons), data-dictionary coordination with the 19.0.0 package, the operator activation steps (migration, approval key, applier unit, TOTP recovery, passkey enrollment) and rollback; §8 how to read the Jobs & schedules tab (plain status, crontab-vs-registry mismatches, filters, cron in words) | Draft (branch feat/ops-controls-20261022) |
+| `docs/ops/OPS_CONTROLS.md` | The operator Controls surface and its one governed host applier: components, threat model, change kinds (and the NOT_SUPPORTED ones with reasons), data-dictionary coordination with the 19.0.0 package, the operator activation steps (migration, approval key, applier unit, TOTP recovery, passkey enrollment) and rollback; §8 how to read the Jobs & schedules tab (plain status, crontab-vs-registry mismatches, filters, cron in words); §9 how to read the Data approvals tab; §10 how to read the n8n lanes dashboard (last run, health, next run, promotion readiness against the documented ladder) | Draft (branch feat/ops-controls-20261022) |
 | `docs/ops/OPS_CONTROLS_API.md` | Response contract for `/api/v2/ops/controls/*` (state read model, request lifecycle, WebAuthn step-up, undo) | Draft |
 | `docs/ops/ASK_THE_CIO.md` | Ask the CIO (Phases 8–11): ask bar + My questions, one brain with the CIO Telegram bot, persistent CIO memory keyed by security_guid, auto-tracking, re-answer on material change, caps and approvals | Draft |
+| `docs/ops/N8N_PROMOTION_READINESS_2026-10-22.md` | One-time read-only report: every shadow/canary n8n lane with ledger evidence and its promotion verdict (§23.21 / onboarding standard), and a proposed 2026-10-23 promotion batch as an operator approval list (A–F). Not applied | Proposal |
 
 ## Agent claim board (2026-10-22) — advisory until AGENTS.md 19.1.0
 
 | Document | Purpose | Status |
 |----------|---------|--------|
-| `docs/ops/AGENT_CLAIM_BOARD.md` | Multi-vendor claim board (Claude, Codex, Cursor as equal peers): one JSON per claim, overlap/glob rules, 2 h stale takeover, compaction to `claims_history.jsonl`, draft-PR fallback for cloud agents, `GET /api/v2/coordination/claims`, Coordination → Who's working, operator install (timer + warn-only pre-commit line) | Active (branch feat/agent-claim-board-20261022) |
+| `docs/ops/AGENT_CLAIM_BOARD.md` | Multi-vendor claim board (Claude, Codex, Cursor as equal peers): one JSON per claim, overlap/glob rules, 2 h stale takeover, compaction to `claims_history.jsonl`, draft-PR fallback for cloud agents, `GET /api/v2/coordination/claims`, Coordination → Who's working, operator install (timer + pre-commit line); 2026-10-23: lifecycle stages claimed→building→pr_open→ci_green→merged→released with times (GitHub GET + release receipts), files freed at merge, kanban board, policy-gated pre-commit (warn below AGENTS.md 20.0.0 ACTIVE, block from it, logged override) | Active (lifecycle: branch feat/claim-board-lifecycle-20261023) |
+| `docs/ops/AGENT_START_HERE.md` | Vendor-neutral start for any agent session (Claude, Codex, Cursor): the 5 commands (status, next/take, worklog, stage, task done) + Cursor/Codex adapter notes and the optional SessionStart hook | Active (branch feat/claim-board-lifecycle-20261023) |
+| `docs/designs/README.md` | Design registry: one file per design `docs/designs/DSN-<date>-<slug>.md` (YAML front matter; phases P<n>, tasks T<m>); seeded with release train, momentum Gates 1–4, Ask the CIO, CIO prospect store, data domains; read by the Work board | Active (branch feat/work-board-designs-20261023) |
 
 ## Live changes (2026-10-20)
 

@@ -48,8 +48,9 @@ MONTH_WEEK = datetime(2026, 11, 30)  # Mon 11-30 .. Sun 12-06: contains Tue the 
 # Live crontab 2026-10-11 (sha256 7eb97ad6adef5e725c9d1847b081d5ecf5059ceb3257b444ae34736880737412), L379/L380 and
 # the 12 other retired lines, verbatim except the served root -> {R}.
 RETIRED_LINES = {
-    "L379": "*/30 4-9 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_premarket.lock $PY scripts/catalyst_momentum_engine.py --band premarket_scalp --apply --generate-proposals >> logs/catalyst_momentum_engine.log 2>&1",
-    "L380": "30 9-15 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_swing.lock $PY scripts/catalyst_momentum_engine.py --band market_swing --apply --generate-proposals >> logs/catalyst_momentum_engine.log 2>&1",
+    # 2026-10-22: L379/L380 carry `env ALPACA_MODE=paper` on the live crontab (now L381/L382); the B8 modes match it.
+    "L379": "*/30 4-9 * * 1-5 cd $PROJ && env ALPACA_MODE=paper bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_premarket.lock $PY scripts/catalyst_momentum_engine.py --band premarket_scalp --apply --generate-proposals >> logs/catalyst_momentum_engine.log 2>&1",
+    "L380": "30 9-15 * * 1-5 cd $PROJ && env ALPACA_MODE=paper bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_swing.lock $PY scripts/catalyst_momentum_engine.py --band market_swing --apply --generate-proposals >> logs/catalyst_momentum_engine.log 2>&1",
     "L381": "0 18,22 * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_overnight.lock $PY scripts/catalyst_momentum_engine.py --band overnight --apply >> logs/catalyst_momentum_engine.log 2>&1",
     "L581": "5 9 * * 1-5 cd {R} && env LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tmp/research_sched.lock env RESEARCH_SKIP_GATE=1 $PY {R}/scripts/research_scheduler.py --mode holdings --apply --budget 70 >> {R}/logs/research_scheduler.log 2>&1",
     "L582": "0 10-16 * * 1-5 cd {R} && bash {R}/scripts/llm_priority_guard.sh && env LLM_GLOBAL_DAILY_USD_CAP=2.00 flock -n /tmp/research_sched.lock env RESEARCH_SKIP_GATE=1 $PY {R}/scripts/research_scheduler.py --mode priority --apply --budget 40 >> {R}/logs/research_scheduler.log 2>&1",

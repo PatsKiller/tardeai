@@ -731,3 +731,29 @@ def test_proposed_data_dictionary_row_is_inert():
     row = next(r for r in doc["proposed_domains"] if r["domain"] == "cio_asks")
     assert row["status"] == "proposed" and row["approval"] is None
     assert not any(r.get("domain") == "cio_asks" for r in doc["domains"])
+
+
+def test_host_ask_store_refuses_proposed_domain_before_creating_any_file(tmp_path, monkeypatch):
+    import scripts.lib.cio_ask_store as stores
+    import scripts.lib.data_source_authority as authority
+
+    target = tmp_path / "host" / "cio_ask_events.jsonl"
+    monkeypatch.setattr(stores, "default_path", lambda: target)
+    monkeypatch.setattr(authority, "registry", lambda: {"domains": [], "proposed_domains": [{"domain": "cio_asks"}]})
+    host = stores.AskEventStore()
+    assert host.write_authorized() is False
+    with pytest.raises(PermissionError, match="CIO_ASK_STORE_NOT_APPROVED"):
+        host.append("ask.asked", {"question": "fixture"}, event_id="fixture-1")
+    assert not target.parent.exists()
+    monkeypatch.setattr(
+        authority,
+        "registry",
+        lambda: {
+            "domains": [
+                {"domain": "cio_asks", "approval": {"approved_by": "fixture operator", "reference": "fixture decision"}}
+            ]
+        },
+    )
+    assert host.write_authorized() is True
+    event, created = host.append("ask.asked", {"question": "fixture"}, event_id="fixture-1")
+    assert created and event["event_id"] == "fixture-1"

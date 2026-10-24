@@ -30,6 +30,12 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 LANE_ID = "warm-caches"
+# --only trade_ai (2026-10-23, operator P1 "scalps every 5 minutes"): the continuous runner calls this right
+# after each scalp-window cycle writes trade_ai_scans, so the Trade AI page does not wait up to 8 more minutes
+# for the */8 warm. It recomputes ONLY the scanner cache and writes its own receipt (never the warm-caches
+# lane's: a one-step run must not stamp the three-step lane ok).
+REWARM_LANE_ID = "trade-ai-rewarm"
+ONLY_CHOICES = ("trade_ai",)
 
 # (step, cache written under data/runtime, what the step does)
 STEPS = (
@@ -77,11 +83,11 @@ def _peak_rss_mb() -> dict:
     }
 
 
-def _receipt(ok: bool, rc: int, started: datetime, steps: dict, failed: list) -> None:
+def _receipt(ok: bool, rc: int, started: datetime, steps: dict, failed: list, lane_id: str = LANE_ID) -> None:
     from lib.lane_last_receipt import write_lane_receipt
 
     write_lane_receipt(
-        LANE_ID,
+        lane_id,
         ok=ok,
         exit_code=rc,
         started_at=started,
@@ -92,10 +98,17 @@ def _receipt(ok: bool, rc: int, started: datetime, steps: dict, failed: list) ->
 def main(argv=None):
     ap = argparse.ArgumentParser(description="pre-warm the heavy dashboard caches")
     ap.add_argument("--dry-run", action="store_true", help="print the plan; compute/write/send nothing")
+    ap.add_argument(
+        "--only",
+        choices=ONLY_CHOICES,
+        help="recompute only this cache (trade_ai: the scanner cache) and write the trade-ai-rewarm receipt",
+    )
     args = ap.parse_args(argv)
     if args.dry_run:
         # Returns BEFORE api_v2 / rotation_autopilot are even imported (AGENTS.md §6).
         for row in plan():
+            if args.only and row["step"] != args.only:
+                continue
             print(
                 f"[warm_caches] DRY RUN: would run {row['step']} -> {row['cache']} "
                 f"(current age {row['cache_age_s']}s): {row['action']}"
@@ -107,6 +120,19 @@ def main(argv=None):
     steps: dict = {}
     failed: list = []
     import api_v2  # noqa: E402  (defines _rotation_summary; importing does not start the server)
+
+    if args.only == "trade_ai":
+        t_ta = time.time()
+        try:
+            api_v2.trade_ai(force=True)  # computes + writes data/runtime/trade_ai_cache.json
+            steps["trade_ai"] = round(time.time() - t_ta, 1)
+            print(f"[warm_caches] --only trade_ai warmed in {time.time() - t_ta:.1f}s")
+        except Exception as e:
+            failed.append("trade_ai")
+            print(f"[warm_caches] --only trade_ai FAILED: {str(e)[:200]}")
+        rc = 1 if failed else 0
+        _receipt(not failed, rc, started, steps, failed, lane_id=REWARM_LANE_ID)
+        return rc
 
     t0 = time.time()
     try:

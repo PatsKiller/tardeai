@@ -921,7 +921,7 @@
       "env_allowlist_mode": "report",
       "env_evidence": "Not inventoried per lane in dispatcher shadow wave D1b: the generic db_adapter + state-root names; report mode records on each RunReceipt the names enforce would drop.",
       "env_report_reason": "db_adapter -> lib/env_bootstrap.load_env re-reads the whole rendered env file into the child, so the import closure is not bounded by literal reads; report until that loader is bounded (same reason as job-coverage-monitor).",
-      "source": "dispatcher shadow wave D1b (n8n-maturity R3 §3 wave 5), cron:L472, refactor bucket W4. SHADOW ONLY: live_arg null (no live mode exists for this lane), registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. lock and lock_kind reused from the live cron line (L472).",
+      "source": "dispatcher shadow wave D1b (n8n-maturity R3 §3 wave 5), cron:L472, refactor bucket W4. SHADOW ONLY: live_arg null (no live mode exists for this lane), registry dispatch.mode dry_run, scheduler.stage shadow; the cron line keeps doing the real work. lock and lock_kind reused from the live cron line (L472). | 2026-10-22 rescope (operator-approved \"Yes, I agree with your recommendations.\"): curated Watch membership, P3 digest with dedupe, capped manifest; output_receipt v2 (produced_count = curated Watch members audited). Still SHADOW: live_arg null until the canary PR.",
       "command": [
         "$PY",
         "scripts/audit_enrichment_coverage.py"
@@ -934,7 +934,8 @@
       ],
       "live_arg": null,
       "market_gate": false,
-      "output_signal": "data/runtime/audit-enrichment-coverage_last.json"
+      "output_signal": "data/runtime/audit-enrichment-coverage_last.json",
+      "output_receipt": "v2"
     },
     {
       "lane_id": "hermes-governance-api",
@@ -4313,6 +4314,31 @@
       "env_report_reason": "New lane (2026-10-21): report until one dry-run RunReceipt env_allowlist block confirms that enforce would drop nothing the lane reads. Base names cover TRADEAI_STATE_ROOT, HOME (delegation file) and the run identity.",
       "env_evidence": "SOURCE_ONLY read of scripts/release_train_window_request.py and its closure: os.environ reads are TRADEAI_RELEASE_WINDOW_STATE_DIR and TRADEAI_STATE_ROOT (scripts/lib/release_train_view.resolve_state_dir), TRADEAI_PERSISTENT_STATE_ROOT only when TRADEAI_STATE_ROOT is unset (lane_last_receipt fallback) and the executor-set TRADEAI_RUN_ID/ATTEMPT/MODE and TRADEAI_CODE_SHA. No DB, broker, model, messaging or GitHub credential name; release_window.py is never imported (NO_RELEASE_WINDOW sentinel).",
       "source": "Release Train v2 Phase 4 (docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md): request lane for the 08:00 ET window. Called only by tradeai-fabric-release-train through Run Lane. SHADOW ONLY: live_arg [\"--append\", \"--shadow-only\"] since the H.0 shadow-enable PR (2026-10-22; contract §11 train-shadow step), so a live run appends only shadow: true (simulate-only) requests whatever the delegation says; --dry-run builds and validates the request and writes nothing. With --append its only effect is one O_EXCL TrainWindowRequest@v1 file (journal + pending link) and its LaneRunReceipt. Not a release-deploy lane: no merge, push, promote, rollback, capability, STOP write, credential or send (AGENTS.md §23.3/§23.14 never-list unchanged)."
+    },
+    {
+      "lane_id": "calibration-shadow-harness",
+      "command": [
+        "$PY",
+        "scripts/calibration_shadow_harness.py"
+      ],
+      "dry_run_arg": [
+        "--dry-run"
+      ],
+      "live_arg": null,
+      "lock": "/tmp/calibration_shadow_harness.lock",
+      "lock_kind": "flock",
+      "timeout_s": 300,
+      "market_gate": false,
+      "output_signal": "data/runtime/calibration-shadow-harness_last.json",
+      "output_receipt": "v2",
+      "env_names": [
+        "ACTIVE_TRADER_ALERTS_DIR",
+        "TRADEAI_PERSISTENT_STATE_ROOT"
+      ],
+      "env_allowlist_mode": "report",
+      "env_evidence": "scripts/calibration_shadow_harness.py reads no env itself; its closure resolves the state root (lib.canonical_store_registry.production_state_root: TRADEAI_STATE_ROOT (base), TRADEAI_ROOT, TRADEAI_PERSISTENT_STATE_ROOT) and the AT journal root (lib.data_broker.microstructure.store_dir: ACTIVE_TRADER_ALERTS_DIR).",
+      "env_report_reason": "report until the closure (canonical_store_registry, data_broker.microstructure, lane_last_receipt) is re-inventoried for enforce at canary.",
+      "source": "operator 2026-10-22 (Gate 4 design item 3: 'add a shadow-test harness ... Run as an n8n lane in shadow (registry row + allowlist + DRAFT contract; no broker calls)'); cron freeze 2026-10-09 in force, no crontab line. SHADOW ONLY: live_arg null, registry dispatch.mode dry_run. No cron line exists, so the lock is new (a dry run takes <lock>.dryrun). Canary live_arg (separate PR): []."
     }
   ],
   "blocked_reasons": {

@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "shared_bridge_fetch_gate_20261022",
+  "files": [
+    "tests/test_shared_bridge_fetch_gate_20261022.py"
+  ],
+  "comment": [
+    "2026-10-22 site validation: SharedIntelligenceBridge (mounted app-wide) must fetch its ui prefs",
+    "only on /watch and /journal, where it renders. Source-level test; hermetic, no DB/network/broker."
+  ]
+}

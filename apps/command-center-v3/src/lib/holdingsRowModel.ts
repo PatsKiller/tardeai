@@ -1,3 +1,4 @@
+import { accountName } from './accountLabels'
 import type { StopStatusTone } from './holdingsTerminalTokens'
 import { computeStopCoverage, type StopCoverage } from './stopCoverage'
 import { buildStopLogic, deriveStopKind, type StopLogic } from './stopManagement'
@@ -158,29 +159,10 @@ export function plMetrics(h: any): { dollars: number | null; pct: number | null 
   return { dollars, pct }
 }
 
-/** Human full account labels — never abbreviated in the holdings table. */
+/** Human account NAME — never abbreviated, never an account number (one map: lib/accountLabels.ts,
+ *  mirrors config/account_display_names.json; operator 2026-10-23 "just a name, not the account numbers"). */
 export function accountFullName(account: string): string {
-  const key = (account || 'unknown').trim().toLowerCase().replace(/\s+/g, '_')
-  const MAP: Record<string, string> = {
-    schwab_taxable: 'Schwab Taxable',
-    schwab_rollover_ira: 'Schwab Rollover IRA',
-    schwab_roth_ira: 'Schwab Roth IRA',
-    schwab_roth: 'Schwab Roth IRA',
-    fidelity_rollover_ira: 'Fidelity Rollover IRA',
-    fidelity_roth_ira: 'Fidelity Roth IRA',
-    fidelity_taxable: 'Fidelity Taxable',
-    fidelity_401k: 'Fidelity 401(k)',
-    tradeai_automated: 'Alpaca Paper (TradeAI Automated)',
-    alpaca_taxable_live: 'Alpaca Taxable (Live · read-only data)',
-    alpaca_ira_live: 'Alpaca IRA (Live · read-only data)',
-  }
-  if (MAP[key]) return MAP[key]
-  // Title-case unknown keys: schwab_foo → Schwab Foo
-  return (account || 'Unknown')
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, c => c.toUpperCase())
-    .replace(/\bIra\b/g, 'IRA')
-    .replace(/\bRoth\b/g, 'Roth')
+  return accountName(account)
 }
 
 /** Brand palette for account pills (Fidelity blue, Schwab green, Roth purple, …). */

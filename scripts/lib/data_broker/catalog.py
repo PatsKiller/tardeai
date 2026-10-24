@@ -220,6 +220,44 @@ PROJECTIONS: list[dict[str, Any]] = [
         "consumers": ["Watch (/v3/watch)"],
     },
     {
+        "id": "watch_curation",
+        "module": "lib.data_broker.watch_curation",
+        "entrypoints": ["list_watch_curation", "build_curation", "suggest", "rotate", "ownership_conflicts"],
+        "http": ["GET /api/v3/data-broker/watch-curation"],
+        "domain": "watch",
+        "description": (
+            "My Watchlist (every operator name — stars, personal watchlist, operator directives, operator adds — "
+            "starred first, never capped, expiry only suggests) and System Suggests (top N, default 20, max 30, of "
+            "the curator's Full universe ranking minus held / yours / dismissed, rotating with hysteresis and a "
+            "reason for every entry and exit). Rows come from the same watch_prospects.gather() composition as the "
+            "Prospects lanes. Ownership conflicts between the curator and the Watch held reader are listed, never "
+            "resolved."
+        ),
+        "contract_version": "WatchCuration@v1",
+        "read_only": True,
+        "provider_calls": 0,
+        "consumers": ["Watch (/v3/watch?tab=my-watchlist, ?tab=suggests, ?tab=opportunities)"],
+    },
+    {
+        "id": "watch_universe",
+        "module": "lib.data_broker.watch_universe",
+        "entrypoints": ["list_watch_universe", "build_universe", "overlay"],
+        "http": ["GET /api/v3/data-broker/watch-universe"],
+        "domain": "watch",
+        "description": (
+            "Watch › Full universe: the CIO curator's ranked list (cio_opportunity_projection.json) with position "
+            "facts per row — held / formerly held / never held from the Watch held reader, the last round trip "
+            "(entry, exit, P/L, R, exit cause) and the re-entry advice from the CIO prospect lifecycle "
+            "(watch_position_facts). A sold name the curator still treats as owned shows Type Re-entry / formerly "
+            "held with the curator's own values kept beside it. Curator filters plus position filters and sorts, "
+            "all URL parameters; count chips per option."
+        ),
+        "contract_version": "WatchUniverse@v1",
+        "read_only": True,
+        "provider_calls": 0,
+        "consumers": ["Watch (/v3/watch?tab=opportunities)"],
+    },
+    {
         "id": "watch_intelligence",
         "module": "lib.data_broker.watch_intelligence",
         "entrypoints": [
@@ -505,6 +543,26 @@ PROJECTIONS: list[dict[str, Any]] = [
         "read_only": True,
         "provider_calls": 0,
         "consumers": ["Opportunity modal portfolio context"],
+    },
+    {
+        "id": "trade_journey",
+        "module": "lib.data_broker.trade_journey",
+        "entrypoints": ["list_trade_journeys", "detail_trade_journey", "build_trade_journeys", "from_cio_prospect"],
+        "http": ["GET /api/v3/data-broker/trade-journeys", "GET /api/v3/data-broker/trade-journeys/{trade_id}"],
+        "domain": "trade_journal",
+        "description": (
+            "TradeInView per-trade journey (operator 2026-10-22): open + recently closed trades with origin (internal "
+            "surface, rank and conviction at entry, CIO entry call — or the operator's own pick), stop path, conviction/"
+            "stance changes, exit cause, post-exit review (facts first, model prose labelled advisory) and re-entry "
+            "conditions from the re-entry desk record Watch reads. Reads the cio_prospect projection when its store is "
+            "live; until then an interim adapter over schwab_round_trips, holdings_accounts, trade_transactions, "
+            "recommendation links, cio_entry_states, stop_last_known, the CIO opportunity history and ohlc_bars, "
+            "labelled interim."
+        ),
+        "contract_version": "TradeJourneys@v1",
+        "read_only": True,
+        "provider_calls": 0,
+        "consumers": ["TradeInView (/v3/journal)"],
     },
     {
         "id": "opportunity",

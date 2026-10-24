@@ -1,5 +1,5 @@
 import {
-  doNowFrom, visibleItems, routerPath, positionsFreshness, moversBars, accountRows, cashPct, inMarketHours, money, pct, ageLabel,
+  doNowFrom, visibleItems, routerPath, positionsFreshness, moversBars, accountRows, cashPct, inMarketHours, money, pct, ageLabel, briefingSummary, parseObservedTime,
 } from './homeDoNow.ts'
 declare const process: { exit(code?: number): never }
 let pass = 0, fail = 0
@@ -59,9 +59,44 @@ const perf = { current_value: 1255076, periods: { '1D': { change: -6795 }, YTD: 
   accounts: { schwab_roth: { current_value: 54013, periods: { '1D': { change: 341 }, YTD: { change: 1672 } } }, moomoo_live: { current_value: 529, periods: {} } } }
 const rows = accountRows(perf, { today_by_account: { moomoo_live: { change: -1 } } })
 check('all-accounts row prefers display_change (ex-transfers) and flags ≈', rows[0].ytd === 25097 && rows[0].ytdApprox && rows[0].d1 === -6795)
-check('account rows; 1D falls back to overview', rows[1].name === 'Schwab Roth' && rows[2].d1 === -1 && rows[2].ytd === null)
+check('account rows by NAME; 1D falls back to overview', rows[1].name === 'Schwab Roth IRA' && rows[2].d1 === -1 && rows[2].ytd === null)
 check('fallback to today_by_account when performance missing', accountRows(null, { portfolio_value: 1, today_by_account: { a_b: { value: 5, change: 1 } } })[1].name === 'A B')
 check('cash pct', Math.abs((cashPct({ total_cash: 823000, portfolio_value: 1255076 }) ?? 0) - 65.57) < 0.01 && cashPct({ portfolio_value: 0, total_cash: 1 }) === null && cashPct({}) === null)
 check('formatting', money(-6795, true) === '−$6,795' && money(25097, true) === '+$25,097' && money(null) === '—' && pct(-0.54) === '−0.54%' && ageLabel(3000) === '50 min')
+// briefingSummary — /api/v2/command serves {content, generated_at}; never "[object Object]" (site validation 2026-10-22)
+const bObj = briefingSummary({ content: 'The portfolio shows   limited exposure.', generated_at: '2026-10-22 16:20' })
+check('briefing object → its content', bObj === 'The portfolio shows limited exposure.')
+check('briefing never [object Object]', !briefingSummary({ content: 'x' }).includes('[object'))
+check('briefing plain string kept', briefingSummary('plain text') === 'plain text')
+check('briefing JSON string parsed', briefingSummary('{"content":"from json"}') === 'from json')
+check('briefing truncated with ellipsis', briefingSummary('a'.repeat(200)).length === 111 && briefingSummary('a'.repeat(200)).endsWith('…'))
+check('briefing empty/null → empty', briefingSummary(null) === '' && briefingSummary({}) === '' && briefingSummary('  ') === '')
+// "YYYY-MM-DD HH:MM:SS ET" observation stamps (server format) — Date.parse alone gives NaN (site validation 2026-10-22)
+check('ET stamp parsed (EDT)', parseObservedTime('2026-10-22 16:45:03 ET') === Date.parse('2026-10-22T20:45:03Z'))
+check('ET stamp parsed (EST)', parseObservedTime('2026-12-01 09:30 ET') === Date.parse('2026-12-01T14:30:00Z'))
+check('ISO still parsed', parseObservedTime('2026-10-22T15:10:43+00:00') === Date.parse('2026-10-22T15:10:43Z'))
+check('garbage is NaN', Number.isNaN(parseObservedTime('soon')))
+const etEnv = { observation: { envelopes: { holdings: { observed_at: '2026-10-22 16:45:03 ET', freshness: { status: 'FRESH' } } } } }
+const etF = positionsFreshness(etEnv, Date.parse('2026-10-23T02:06:33Z'))
+check('ET-stamped FRESH envelope after hours is not STALE / not age unknown', !etF.stale && !etF.label.includes('unknown'))
+const utcEnv = { observation: { envelopes: { holdings: { observed_at: 'bad', freshness: { status: 'FRESH', observed_at_utc: '2026-10-22T20:45:03+00:00' } } } } }
+check('observed_at_utc preferred', positionsFreshness(utcEnv, Date.parse('2026-10-22T21:00:00Z')).ageS === 897)
+const dup = moversBars({ today_change: -10836, top_movers: [
+  { symbol: 'SCHG', day_change: -0.21 }, { symbol: 'SPCX', day_change: -2912.2 }, { symbol: 'V', day_change: 846.27 }, { symbol: 'V', day_change: 5.16 },
+  { symbol: 'SPCX', day_change: -8736.6 }, { symbol: 'SCHG', day_change: -3686.4 }] })
+check('movers: one bar per symbol', new Set(dup.bars.map(b => b.sym)).size === dup.bars.length && dup.bars.length === 3)
+check('movers: per-symbol sum', dup.bars[0].sym === 'SPCX' && dup.bars[0].amount === -11648.8 && dup.bars[1].sym === 'SCHG' && dup.bars[1].amount === -3686.61)
+// Operator 2026-10-23 ("two SpaceX and two different accounts"): the Home card example, rows with their account
+const op = moversBars({ today_change: 37, top_movers: [
+  { symbol: 'SPCX', day_change: 1488, account: 'schwab_rollover_ira', account_label: 'Schwab Rollover IRA' },
+  { symbol: 'SCHD', day_change: -850, account: 'schwab_rollover_ira' }, { symbol: 'V', day_change: -752, account: 'schwab_roth' },
+  { symbol: 'SPCX', day_change: 507, account: 'schwab_taxable', account_label: 'Schwab Individual' },
+  { symbol: 'XLB', day_change: -141, account: 'schwab_rollover_ira' }, { symbol: 'SCHG', day_change: -98, account: 'schwab_rollover_ira' }] })
+const sp = op.bars[0]
+check('SPCX grouped: one row, 2 accounts, sum +1,995', sp.sym === 'SPCX' && sp.multi && sp.accounts.length === 2 && sp.amount === 1995)
+check('SPCX parts keep the account names and amounts', sp.accounts.map(a => `${a.label}:${a.amount}`).join('|') === 'Schwab Rollover IRA:1488|Schwab Individual:507')
+check('single-account rows carry their account name', op.bars.find(b => b.sym === 'V')!.accountLabel === 'Schwab Roth IRA' && op.bars.find(b => b.sym === 'SCHD')!.accountLabel === 'Schwab Rollover IRA')
+check('footer sums unchanged: shown = sum of groups; rest = day − shown', op.shownSum === 1995 - 850 - 752 - 141 - 98 && op.shownSum === 154 && (op.total! - op.shownSum) === -117)
+check('no account number in any label', op.bars.every(b => b.accounts.every(a => !/\d{3,}/.test(a.label))))
 console.log(`homeDoNow: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

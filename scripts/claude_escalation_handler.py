@@ -15,6 +15,7 @@ Usage:
 Hang note: without --tier1-only / --no-llm, Tier 2 (Ollama) + Tier 3a (llama.cpp 600s)
 can look stuck with little stdout — check logs/claude_escalation.log.
 """
+
 import hashlib
 import json
 import logging
@@ -27,6 +28,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+
 def _resolve_project_root() -> Path:
     """The checkout while tests run. The live release root only outside TRADE_AI_CI.
 
@@ -38,6 +40,7 @@ def _resolve_project_root() -> Path:
     if os.environ.get("TRADE_AI_CI") == "1":
         return Path(__file__).resolve().parents[1]
     from lib.live_project_root import get_live_project_root
+
     return get_live_project_root()
 
 
@@ -46,6 +49,7 @@ def _load_release_env(root: Path) -> None:
         return
     try:
         from dotenv import load_dotenv
+
         load_dotenv(root / ".env")
     except ImportError:
         pass
@@ -63,6 +67,7 @@ def _ensure_scripts_path() -> None:
     if scripts not in sys.path:
         sys.path.insert(0, scripts)
 
+
 QUEUE_FILE = PROJECT_ROOT / "logs" / "claude_escalation_queue.json"
 STALENESS_QUEUE_FILE = PROJECT_ROOT / "data" / "runtime" / "staleness_escalation_queue.json"
 RETRY_LOG = PROJECT_ROOT / "logs" / "claude_escalation_retry_cmd.jsonl"
@@ -74,6 +79,7 @@ def _safe_write_queue(path, items):
     """Write *items* to *path* using flock-guarded atomic write when available."""
     try:
         from lib.queue_file import write_items
+
         write_items(path, items)
     except Exception:
         try:
@@ -81,6 +87,7 @@ def _safe_write_queue(path, items):
             path.write_text(json.dumps(items, indent=2) if items else "[]")
         except Exception:
             pass
+
 
 def _log_handlers() -> list:
     """Stream always; file only when LOG_DIR is actually writable.
@@ -128,18 +135,24 @@ log = logging.getLogger("claude-escalation")
 
 # ── Allowlist ────────────────────────────────────────────────────────────
 
+
 def _load_allowlist():
     """Load retry command allowlist from YAML config."""
     try:
         import yaml
+
         with open(ALLOWLIST_FILE) as f:
             return yaml.safe_load(f)
     except ImportError:
         # Fallback: parse YAML manually for simple structure
         try:
             text = ALLOWLIST_FILE.read_text()
-            config = {"allowed_script_patterns": [], "blocked_patterns": [],
-                      "max_runtime_seconds": 120, "environment_guards": {}}
+            config = {
+                "allowed_script_patterns": [],
+                "blocked_patterns": [],
+                "max_runtime_seconds": 120,
+                "environment_guards": {},
+            }
             section = None
             for line in text.splitlines():
                 line = line.strip()
@@ -187,7 +200,7 @@ def _check_allowlist(cmd, allowlist):
         # or a path/flag delimiter; followed by end-of-string, whitespace, or
         # a flag delimiter.  This correctly blocks "submit_order --symbol X"
         # while allowing "--submit-validation --symbol X".
-        if re.search(rf'(?<![\w/-]){re.escape(pl)}(?![\w-])', cmd_lower):
+        if re.search(rf"(?<![\w/-]){re.escape(pl)}(?![\w-])", cmd_lower):
             return False, f"blocked_pattern: {pattern}"
 
     # Check environment guards
@@ -204,8 +217,7 @@ def _check_allowlist(cmd, allowlist):
     return False, "not_in_allowlist"
 
 
-def _log_retry(item, cmd, allowed, reason, status, exit_code=None,
-               stdout="", stderr="", duration=0, verify_exit=None):
+def _log_retry(item, cmd, allowed, reason, status, exit_code=None, stdout="", stderr="", duration=0, verify_exit=None):
     """Append retry execution log to JSONL."""
     try:
         RETRY_LOG.parent.mkdir(parents=True, exist_ok=True)
@@ -255,6 +267,7 @@ def _health_policy_file() -> Path:
         return here
     try:
         from lib.live_project_root import DEV_ROOT
+
         dev = DEV_ROOT / "config" / "health_agent_policy.json"
         if dev.is_file():
             return dev
@@ -344,7 +357,11 @@ def should_page_exhausted(item: dict) -> bool:
 
 # Must match health_agent / lib.watchlist_priority (decision-feeding SLA types).
 _TIME_SENSITIVE_REQUEST_TYPES = (
-    "proposal_review", "full_analysis", "research_gap", "event", "go_signal_review",
+    "proposal_review",
+    "full_analysis",
+    "research_gap",
+    "event",
+    "go_signal_review",
 )
 
 
@@ -399,7 +416,7 @@ def _verify_remediation(item) -> tuple[bool, str]:
     # counter climbed to 20, and it re-armed every 1800s forever.  A verify that
     # can never pass while the lane is healthy is not a verify.
     if ftype == "approved_paper_test_stuck":
-        pol = (_load_health_policy().get("proposal_pipeline") or {})
+        pol = _load_health_policy().get("proposal_pipeline") or {}
         try:
             stuck_h = int(pol.get("approved_paper_stuck_hours", 2))
         except (TypeError, ValueError):
@@ -428,6 +445,7 @@ def _verify_remediation(item) -> tuple[bool, str]:
         try:
             import glob
             import time as _t
+
             min_b = 500 * 1024 * 1024
             dumps = []
             for p in glob.glob(str(Path.home() / "db_backups" / "trade_ai_*.sql.gz")):
@@ -446,8 +464,7 @@ def _verify_remediation(item) -> tuple[bool, str]:
     # Indicators: max(computed_at) within 48h
     if ftype in ("indicator_snapshot_stale", "indicator_snapshots_stale"):
         ok, age, note = _db_verify(
-            "SELECT EXTRACT(EPOCH FROM (now() - MAX(computed_at)))/3600 "
-            "FROM indicator_signal_history"
+            "SELECT EXTRACT(EPOCH FROM (now() - MAX(computed_at)))/3600 FROM indicator_signal_history"
         )
         if not ok:
             return False, note
@@ -473,6 +490,7 @@ def _verify_remediation(item) -> tuple[bool, str]:
             return True, f"scalp_go_{n}"
         try:
             from lib import health_root_cause_memory as _rcmem
+
             mem = _rcmem.summary_for("scalp_catalyst_verification_dead")
             hold_until = mem.get("hold_until")
             rc = mem.get("last_root_cause") or ""
@@ -488,13 +506,19 @@ def _verify_remediation(item) -> tuple[bool, str]:
     if ftype in ("trade_ai_session_stale", "trade_ai_session_missing", "orchestrator_setups_stale"):
         try:
             from zoneinfo import ZoneInfo
+
             today = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
         except Exception:
             today = datetime.now().date().isoformat()
         for p in (
             PROJECT_ROOT / "data" / "runtime" / "trade_ai_cache.json",
-            Path(os.environ.get("TRADEAI_LIVE_PROJECT_ROOT") or "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT")
-            / "data" / "runtime" / "trade_ai_cache.json",
+            Path(
+                os.environ.get("TRADEAI_LIVE_PROJECT_ROOT")
+                or "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT"
+            )
+            / "data"
+            / "runtime"
+            / "trade_ai_cache.json",
         ):
             try:
                 if p.exists():
@@ -508,11 +532,14 @@ def _verify_remediation(item) -> tuple[bool, str]:
 
     # pipeline_failures: unrecovered real pipeline_runs (not just job backlog)
     if ftype == "pipeline_failures":
+        from lib.pipeline_failure_counts import SUBSTANTIVE_FAILURE_FILTER
+
         ok, n, note = _db_verify(
-            """
+            f"""
             SELECT COUNT(*) FROM pipeline_runs f
             WHERE f.status='failed'
               AND f.started_at > now() - interval '24 hours'
+              AND {SUBSTANTIVE_FAILURE_FILTER}
               AND (f.summary IS NULL OR f.summary::text NOT LIKE '%%zombie run cleared%%')
               AND NOT EXISTS (
                 SELECT 1 FROM pipeline_runs s
@@ -596,6 +623,31 @@ def resolve_relative_venv(cmd: str, dev_venv_python: str) -> str:
     return _RELATIVE_VENV_RE.sub(dev_venv_python, cmd)
 
 
+def _held_retry_outcome(output):
+    """Return the structured HELD payload emitted by an iterative remediator."""
+    text = str(output or "")
+    decoder = json.JSONDecoder()
+    for pos in range(len(text) - 1, -1, -1):
+        if text[pos] != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(text[pos:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict) and payload.get("outcome") == "HELD":
+            return payload
+    return None
+
+
+def _retry_output(stdout, stderr="", rc=None):
+    """Preserve HELD as structured metadata before applying the normal log tail cap."""
+    held = _held_retry_outcome(stdout)
+    if held:
+        return "HELD_JSON:" + json.dumps(held, separators=(",", ":"))
+    prefix = f"exit_code={rc}: " if rc is not None else ""
+    return f"{prefix}{(stdout or '')[-1500:]} {(stderr or '')[-500:]}"[-2000:]
+
+
 def _execute_retry_cmd(item, allowlist, dry_run=False):
     """Execute an allowlisted retry command with full logging.
     Returns (executed: bool, success: bool, output: str)."""
@@ -606,6 +658,7 @@ def _execute_retry_cmd(item, allowlist, dry_run=False):
     # P0 fail-closed containment (issue #283 / PR #284 Gate 4)
     try:
         from lib.agent_jobs_containment import guard_agent_jobs_execution
+
         g = guard_agent_jobs_execution(cmd, source="claude_escalation_handler")
     except Exception as _cex:
         if "process_watchlist_agent_jobs" in str(cmd).lower():
@@ -634,6 +687,7 @@ def _execute_retry_cmd(item, allowlist, dry_run=False):
 
     # Resolve .venv/bin/python to the dev venv (release dir has no .venv)
     from lib.live_project_root import DEV_VENV_PYTHON
+
     original_cmd = cmd
     cmd = resolve_relative_venv(cmd, str(DEV_VENV_PYTHON))
     if cmd != original_cmd:
@@ -651,8 +705,13 @@ def _execute_retry_cmd(item, allowlist, dry_run=False):
     proc = None
     try:
         proc = subprocess.Popen(
-            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            text=True, cwd=str(PROJECT_ROOT), start_new_session=True,
+            cmd,
+            shell=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=str(PROJECT_ROOT),
+            start_new_session=True,
         )
         try:
             stdout, stderr = proc.communicate(timeout=timeout)
@@ -675,57 +734,63 @@ def _execute_retry_cmd(item, allowlist, dry_run=False):
         rc = proc.returncode
         if rc == 0:
             log.info(f"  ✅ retry_cmd succeeded ({duration:.1f}s)")
-            _log_retry(item, cmd, True, reason, "retry_cmd_succeeded",
-                       rc, stdout, stderr, duration)
-            return True, True, (stdout or "")[-500:]
+            _log_retry(item, cmd, True, reason, "retry_cmd_succeeded", rc, stdout, stderr, duration)
+            return True, True, _retry_output(stdout)
         elif rc in (69, 99):
             # rc=69/99 = flock lock held by another process — NOT a failure, just contention
             stderr_tail = (stderr or "")[-200:]
             log.info(f"  🔒 retry_cmd skipped — lock held by another process (rc={rc}): {stderr_tail[:100]}")
-            _log_retry(item, cmd, False, reason, "flock_contention",
-                       rc, stdout, stderr, duration)
+            _log_retry(item, cmd, False, reason, "flock_contention", rc, stdout, stderr, duration)
             return False, False, f"flock_contention rc={rc}"
         else:
             log.warning(f"  ❌ retry_cmd failed (rc={rc}, {duration:.1f}s)")
-            _log_retry(item, cmd, True, reason, "retry_cmd_failed",
-                       rc, stdout, stderr, duration)
-            return True, False, f"exit_code={rc}: {(stderr or '')[-200:]}"
+            _log_retry(item, cmd, True, reason, "retry_cmd_failed", rc, stdout, stderr, duration)
+            return True, False, _retry_output(stdout, stderr, rc)
     except Exception as e:
         duration = time.time() - t0
         log.error(f"  💥 retry_cmd error: {e}")
-        _log_retry(item, cmd, True, reason, "retry_cmd_error",
-                   stderr=str(e), duration=duration)
+        _log_retry(item, cmd, True, reason, "retry_cmd_error", stderr=str(e), duration=duration)
         return True, False, str(e)
 
 
 # ── DB / Notification helpers ────────────────────────────────────────────
 
+
 def _get_conn():
     try:
         _ensure_scripts_path()
         from db_adapter import _get_conn as gc
+
         return gc()
     except Exception:
         return None
 
 
-def _log_intervention(conn, component, problem, diagnosis="", solution="",
-                      files_changed=None, status="investigating", session_log=""):
+def _log_intervention(
+    conn, component, problem, diagnosis="", solution="", files_changed=None, status="investigating", session_log=""
+):
     """Write to claude_interventions table."""
     try:
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            """
             INSERT INTO claude_interventions
                 (component, problem, diagnosis, solution, files_changed, status, session_log,
                  resolved_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
-        """, [
-            component, problem[:500], (diagnosis or "")[:2000], (solution or "")[:2000],
-            files_changed or [], status,
-            (session_log or "")[:5000],
-            datetime.now(timezone.utc) if status in ("fixed", "failed", "deferred") else None,
-        ])
+        """,
+            [
+                component,
+                problem[:500],
+                (diagnosis or "")[:2000],
+                (solution or "")[:2000],
+                files_changed or [],
+                status,
+                (session_log or "")[:5000],
+                datetime.now(timezone.utc) if status in ("fixed", "failed", "deferred") else None,
+            ],
+        )
         conn.commit()
         row = cur.fetchone()
         return row[0] if row else None
@@ -735,22 +800,46 @@ def _log_intervention(conn, component, problem, diagnosis="", solution="",
 
 
 def _notify(message):
-    """Send Telegram notification."""
+    """Send Telegram notification; persist a delivery failure without masking work."""
     try:
         _ensure_scripts_path()
         from telegram_alert import send_telegram
+
         # P3: escalation progress (investigating / complete / paused) is FYI -> digest.
-        send_telegram(message, priority="P3", producer="claude_escalation_handler")
-    except Exception:
-        pass
+        accepted = send_telegram(message, priority="P3", producer="claude_escalation_handler")
+        if not accepted:
+            raise RuntimeError("Telegram notification was not accepted")
+        return True
+    except Exception as exc:
+        _record_notification_failure(exc)
+        return False
+
+
+def _record_notification_failure(exc: Exception) -> None:
+    """Durably record Telegram delivery failures without persisting message contents."""
+    entry = {
+        "at": datetime.now(timezone.utc).isoformat(),
+        "error_type": type(exc).__name__,
+        "error": "Telegram delivery failed; exception details omitted to avoid credential leakage.",
+    }
+    path = LOG_DIR / "claude_escalation_notification_failures.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+    try:
+        os.write(fd, (json.dumps(entry, separators=(",", ":")) + "\n").encode("utf-8"))
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 # ── Main processing ─────────────────────────────────────────────────────
+
 
 def _clear_queues():
     """Write empty arrays to both escalation queue files."""
     try:
         from lib.queue_file import write_items
+
         write_items(QUEUE_FILE, [])
         write_items(STALENESS_QUEUE_FILE, [])
     except Exception:
@@ -782,6 +871,7 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
     items = []
     try:
         from lib.queue_file import read_items
+
         items.extend(read_items(QUEUE_FILE))
         items.extend(read_items(STALENESS_QUEUE_FILE))
     except Exception:
@@ -812,7 +902,24 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
             unique_items.append(item)
 
     # Filter to actionable items (skip portfolio_risk — those are informational)
-    actionable = [i for i in unique_items if i.get("component") != "portfolio_risk"]
+    preheld = [i for i in unique_items if i.get("outcome") == "HELD" or i.get("operator_action_required")]
+    held_items = list(preheld)
+    actionable = [i for i in unique_items if i.get("component") != "portfolio_risk" and i not in preheld]
+
+    for item in preheld:
+        if not item.get("_operator_review_notified") and not dry_run:
+            try:
+                item["_operator_review_notified"] = bool(
+                    _notify(
+                        f"👤 OPERATOR REVIEW REQUIRED: {item.get('component')}\n"
+                        f"{item.get('operator_review_reason') or item.get('detail', '')[:250]}\n"
+                        f"Automatic retry held until {item.get('hold_until') or 'review'}"
+                    )
+                )
+            except Exception:
+                log.exception(
+                    "operator-review notification failed for queued HELD item"
+                )  # ALARM-DELIVERY-DECLARED: held item remains in durable queue.
 
     if not actionable:
         log.info(f"Queue has {len(unique_items)} items but none are actionable (all portfolio_risk)")
@@ -831,13 +938,9 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
     # Interval between consecutive Tier 1 command executions (seconds) — prevents thundering-herd
     TIER1_INTER_CMD_DELAY_SEC = float(os.getenv("ESCALATION_TIER1_INTER_CMD_DELAY", "2.0"))
 
-    log.info(
-        f"Processing {len(actionable)} escalation(s) (tier3 cap {tier3_max}"
-        f"{', LLM SKIPPED' if skip_llm else ''})"
-    )
+    log.info(f"Processing {len(actionable)} escalation(s) (tier3 cap {tier3_max}{', LLM SKIPPED' if skip_llm else ''})")
     print(
-        f"[claude-escalation] processing {len(actionable)} actionable "
-        f"(of {len(unique_items)} unique)",
+        f"[claude-escalation] processing {len(actionable)} actionable (of {len(unique_items)} unique)",
         flush=True,
     )
     allowlist = _load_allowlist()
@@ -847,10 +950,17 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
     # Drop pure operator-only items (no retry_cmd) — they are not auto-fixable and
     # must not burn retries / pollute the autonomous queue.
     _OPERATOR_COMPONENTS = (
-        "unprotected_positions", "siem_p0p1", "schwab_token_revoked",
-        "finviz_cookie_expired", "audit_ledger", "kill_switch",
-        "release_manifest", "proposal_link_rate", "catalyst_type_quality",
-        "agent::test_", "agent_staleness",  # no retry_cmd, never auto-fixable
+        "unprotected_positions",
+        "siem_p0p1",
+        "schwab_token_revoked",
+        "finviz_cookie_expired",
+        "audit_ledger",
+        "kill_switch",
+        "release_manifest",
+        "proposal_link_rate",
+        "catalyst_type_quality",
+        "agent::test_",
+        "agent_staleness",  # no retry_cmd, never auto-fixable
     )
     remediation_types = load_remediation_types()
     cleaned = []
@@ -869,8 +979,10 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
     # Persistent-exhaust: findings that can never self-resolve (e.g. scalp GO dark in a
     # low-max-score regime).  Never re-arm; log at most once per 24h to avoid storm loops.
     PERSISTENT_EXHAUST = set(
-        (os.getenv("ESCALATION_PERSISTENT_EXHAUST_COMPONENTS", "") or
-         "health:intelligence_quality:scalp_catalyst_verification_dead").split(",")
+        (
+            os.getenv("ESCALATION_PERSISTENT_EXHAUST_COMPONENTS", "")
+            or "health:intelligence_quality:scalp_catalyst_verification_dead"
+        ).split(",")
     )
     _last_persistent_log = 0.0
     for item in actionable:
@@ -895,9 +1007,8 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
                 # Escalate throughput for job drain on re-arm
                 if "process_watchlist_agent_jobs.py" in cmd and "--limit" in cmd:
                     import re as _re
-                    item["retry_cmd"] = _re.sub(
-                        r"--limit\s+\d+", "--limit 40", cmd
-                    )
+
+                    item["retry_cmd"] = _re.sub(r"--limit\s+\d+", "--limit 40", cmd)
                     item["_strategy"] = "limit_40_rearm"
         item["_attempts"] = attempts + 1
         item["_last_attempt_ts"] = now_ts
@@ -906,15 +1017,19 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
             item["_exhausted"] = True
             if not should_page_exhausted(item):
                 continue
-            log.warning(f"{item.get('component')}: exhausted after {attempts} attempts — will re-arm in {EXHAUST_RESET_SEC:.0f}s")
+            log.warning(
+                f"{item.get('component')}: exhausted after {attempts} attempts — will re-arm in {EXHAUST_RESET_SEC:.0f}s"
+            )
             try:
                 _notify(
                     f"⚠️ AUTO-RETRY PAUSED (will re-arm): {item.get('component')}\n"
                     f"{item.get('detail', '')[:200]}\n"
-                    f"After {attempts} retries; autonomous re-arm in {int(EXHAUST_RESET_SEC/60)}m."
+                    f"After {attempts} retries; autonomous re-arm in {int(EXHAUST_RESET_SEC / 60)}m."
                 )
             except Exception:
-                pass
+                log.exception(
+                    "retry-exhausted notification failed"
+                )  # ALARM-DELIVERY-DECLARED: exhausted item and retry budget remain in durable queue state.
             continue
 
         # Apply backoff: skip if cooldown hasn't elapsed
@@ -928,6 +1043,7 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
     # ── Tier 1: Direct retry_cmd execution for fixable items ──
     fixable = [i for i in actionable if i.get("fixable") and i.get("retry_cmd")]
     resolved_by_retry = set()
+    held_for_operator = set()
 
     if fixable:
         log.info(f"Tier 1: {len(fixable)} fixable item(s) with retry_cmd")
@@ -940,8 +1056,7 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
         for item in fixable:
             cmd_hash = hashlib.sha256((item.get("retry_cmd") or "").encode()).hexdigest()[:12]
             if cmd_hash in seen_cmds:
-                log.info(f"  🔗 Merged {item.get('component')} → same retry_cmd as "
-                         f"{seen_cmds[cmd_hash]}")
+                log.info(f"  🔗 Merged {item.get('component')} → same retry_cmd as {seen_cmds[cmd_hash]}")
                 continue
             seen_cmds[cmd_hash] = item.get("component")
             deduped_fixable.append(item)
@@ -956,22 +1071,53 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
                 log.info(f"  ⏳ Skipping {item.get('component')}: cooling down ({remaining_cd:.0f}s remaining)")
                 continue
             print(
-                f"[claude-escalation]   Tier1 [{idx+1}/{len(fixable)}] "
+                f"[claude-escalation]   Tier1 [{idx + 1}/{len(fixable)}] "
                 f"{item.get('component')}: {(item.get('retry_cmd') or '')[:80]}",
                 flush=True,
             )
             executed, success, output = _execute_retry_cmd(item, allowlist, dry_run)
+            held_payload = _held_retry_outcome(output)
+            if held_payload:
+                item["outcome"] = "HELD"
+                item["operator_action_required"] = True
+                item["hold_until"] = held_payload.get("hold_until")
+                item["operator_review_reason"] = (
+                    held_payload.get("note")
+                    or held_payload.get("root_cause")
+                    or "component failures require owner review"
+                )
+                item["retry_output"] = output[-2000:]
+                held_for_operator.add(id(item))
+                held_items.append(item)
+                try:
+                    item["_operator_review_notified"] = bool(
+                        _notify(
+                            f"👤 OPERATOR REVIEW REQUIRED: {item.get('component')}\n"
+                            f"{item['operator_review_reason']}\n"
+                            f"Automatic retry held until {item.get('hold_until') or 'review'}"
+                        )
+                    )
+                except Exception:
+                    log.exception(
+                        "operator-review notification failed for held retry"
+                    )  # ALARM-DELIVERY-DECLARED: held item remains in durable queue.
+                log.warning(f"  👤 held for operator review: {item.get('component')}")
+                continue
             if success:
                 cleared, vnote = _verify_remediation(item)
                 # Durable root-cause memory: record verify result for iterative next strategy
                 try:
                     from lib import health_root_cause_memory as _rcmem
+
                     _ft = _finding_type_from_component(item.get("component", ""))
                     if _ft in ("scalp_catalyst_verification_dead", "pipeline_failures"):
                         if cleared:
                             _rcmem.record_outcome(
-                                _ft, strategy_id=item.get("_strategy") or "escalation_tier1",
-                                ok=True, note=vnote, cmd=item.get("retry_cmd"),
+                                _ft,
+                                strategy_id=item.get("_strategy") or "escalation_tier1",
+                                ok=True,
+                                note=vnote,
+                                cmd=item.get("retry_cmd"),
                             )
                         else:
                             _rcmem.record_error(
@@ -980,48 +1126,51 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
                                 how_to_fix=f"verify failed after retry: {vnote}",
                             )
                             _rcmem.record_outcome(
-                                _ft, strategy_id=item.get("_strategy") or "escalation_tier1",
-                                ok=False, note=vnote, cmd=item.get("retry_cmd"),
+                                _ft,
+                                strategy_id=item.get("_strategy") or "escalation_tier1",
+                                ok=False,
+                                note=vnote,
+                                cmd=item.get("retry_cmd"),
                             )
                             # Escalate strategy on re-arm: prefer iterative remediator if bare cmd thrashing
                             cmd = item.get("retry_cmd") or ""
                             if _ft == "scalp_catalyst_verification_dead" and "remediate_scalp_go_dark" not in cmd:
-                                item["retry_cmd"] = (
-                                    ".venv/bin/python scripts/remediate_scalp_go_dark.py"
-                                )
+                                item["retry_cmd"] = ".venv/bin/python scripts/remediate_scalp_go_dark.py"
                                 item["_strategy"] = "iterative_scalp_rc"
                             if _ft == "pipeline_failures" and "remediate_pipeline_failures" not in cmd:
-                                item["retry_cmd"] = (
-                                    ".venv/bin/python scripts/remediate_pipeline_failures.py"
-                                )
+                                item["retry_cmd"] = ".venv/bin/python scripts/remediate_pipeline_failures.py"
                                 item["_strategy"] = "iterative_pipeline_rc"
                 except Exception as _rcx:
                     log.debug(f"root-cause memory skip: {_rcx}")
                 if cleared:
                     resolved_by_retry.add(id(item))
                     if conn:
-                        _log_intervention(conn, item.get("component", "unknown"),
-                                          item.get("detail", "")[:500],
-                                          solution=f"retry_cmd succeeded+verified: {output[:160]} [{vnote}]",
-                                          status="fixed",
-                                          session_log=(
-                                              f"retry_cmd: {item.get('retry_cmd', '')}\n"
-                                              f"output: {output[:800]}\nverify: {vnote}"
-                                          ))
+                        _log_intervention(
+                            conn,
+                            item.get("component", "unknown"),
+                            item.get("detail", "")[:500],
+                            solution=f"retry_cmd succeeded+verified: {output[:160]} [{vnote}]",
+                            status="fixed",
+                            session_log=(
+                                f"retry_cmd: {item.get('retry_cmd', '')}\noutput: {output[:800]}\nverify: {vnote}"
+                            ),
+                        )
                     log.info(f"  ✅ verified clear ({vnote})")
                 else:
                     # Exit 0 but issue still present — do NOT mark fixed; keep for strategy escalate
                     item["retry_output"] = output
                     item["_ineffective_verify"] = vnote
                     if conn:
-                        _log_intervention(conn, item.get("component", "unknown"),
-                                          item.get("detail", "")[:500],
-                                          solution=f"retry exit 0 but verify failed: {vnote}",
-                                          status="failed",
-                                          session_log=(
-                                              f"retry_cmd: {item.get('retry_cmd', '')}\n"
-                                              f"output: {output[:800]}\nverify: {vnote}"
-                                          ))
+                        _log_intervention(
+                            conn,
+                            item.get("component", "unknown"),
+                            item.get("detail", "")[:500],
+                            solution=f"retry exit 0 but verify failed: {vnote}",
+                            status="failed",
+                            session_log=(
+                                f"retry_cmd: {item.get('retry_cmd', '')}\noutput: {output[:800]}\nverify: {vnote}"
+                            ),
+                        )
                     log.warning(f"  ⚠️ retry exit 0 but still active ({vnote}) — not marking fixed")
             elif executed and not success:
                 # Attach retry output to item for Claude diagnosis
@@ -1035,40 +1184,36 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
                 time.sleep(TIER1_INTER_CMD_DELAY_SEC)
 
     # Remove resolved items from actionable
-    remaining = [i for i in actionable if id(i) not in resolved_by_retry]
+    remaining = [i for i in actionable if id(i) not in resolved_by_retry and id(i) not in held_for_operator]
     if resolved_by_retry:
         log.info(f"  Tier 1 resolved {len(resolved_by_retry)}/{len(fixable)} items")
 
     if not remaining:
-        log.info("All items resolved by direct retry_cmd")
+        log.info("No items remain in automated escalation after Tier 1")
         if not dry_run:
             # Only wipe the main queue (resolved) — staleness queue is separate
-            _safe_write_queue(QUEUE_FILE, [])
+            _safe_write_queue(QUEUE_FILE, held_items)
         if resolved_by_retry and not dry_run:
             _notify(f"✅ Auto-recovery: {len(resolved_by_retry)} escalation(s) resolved by retry_cmd")
         print(
-            f"[claude-escalation] done: all resolved by Tier1 "
-            f"(resolved={len(resolved_by_retry)} dry_run={dry_run})",
+            f"[claude-escalation] done: all resolved by Tier1 (resolved={len(resolved_by_retry)} dry_run={dry_run})",
             flush=True,
         )
         return
 
     # ── Optional early exit: no LLM tiers ──
     if skip_llm:
-        log.info(
-            f"Skipping Tier 2/3 LLM ({len(remaining)} remaining) — "
-            f"{'--tier1-only' if tier1_only else '--no-llm'}"
-        )
+        log.info(f"Skipping Tier 2/3 LLM ({len(remaining)} remaining) — {'--tier1-only' if tier1_only else '--no-llm'}")
         print(
             f"[claude-escalation] SKIP Tier2/3 LLM — {len(remaining)} remaining unfixed; "
             f"Tier1 resolved={len(resolved_by_retry)} dry_run={dry_run}",
             flush=True,
         )
         # Leave queue intact when dry-run or when items remain unfixed
-        if not dry_run and resolved_by_retry:
+        if not dry_run and (resolved_by_retry or held_items):
             # Drop only resolved; rewrite queues with remaining
             try:
-                _safe_write_queue(QUEUE_FILE, remaining)
+                _safe_write_queue(QUEUE_FILE, remaining + held_items)
             except Exception:
                 pass
         print("[claude-escalation] done (tier1-only path)", flush=True)
@@ -1088,41 +1233,54 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
                 _detail = item.get("detail", "")
                 _retry_output = item.get("retry_output", "")
                 _log_content = ""
-                for _logname in ["auto_enrichment.log", "proposal_enrichment.log",
-                                 "auto_proposal.log", "screener_pm.log"]:
+                for _logname in [
+                    "auto_enrichment.log",
+                    "proposal_enrichment.log",
+                    "auto_proposal.log",
+                    "screener_pm.log",
+                ]:
                     _lp = PROJECT_ROOT / "logs" / _logname
                     if _lp.exists():
                         _log_content = _lp.read_text()[-2000:]
                         break
 
                 import requests
-                _llm_resp = requests.post("http://localhost:11434/api/generate", json={
-                    "model": os.getenv("LOCAL_LLM_MODEL", "gemma3:4b"),
-                    "prompt": (f"/no_think Diagnose this Trade AI error and suggest a fix:\n\n"
-                               f"Alert: {_detail}\n"
-                               + (f"Retry output: {_retry_output}\n" if _retry_output else "")
-                               + f"Recent log:\n{_log_content}\n\n"
-                               f"Respond with: DIAGNOSIS: (what broke) FIX: (what to do)"),
-                    "stream": False,
-                    "options": {"num_predict": 300, "temperature": 0.2},
-                }, timeout=90)
+
+                _llm_resp = requests.post(
+                    "http://localhost:11434/api/generate",
+                    json={
+                        "model": os.getenv("LOCAL_LLM_MODEL", "gemma3:4b"),
+                        "prompt": (
+                            f"/no_think Diagnose this Trade AI error and suggest a fix:\n\n"
+                            f"Alert: {_detail}\n"
+                            + (f"Retry output: {_retry_output}\n" if _retry_output else "")
+                            + f"Recent log:\n{_log_content}\n\n"
+                            f"Respond with: DIAGNOSIS: (what broke) FIX: (what to do)"
+                        ),
+                        "stream": False,
+                        "options": {"num_predict": 300, "temperature": 0.2},
+                    },
+                    timeout=90,
+                )
                 if _llm_resp.ok:
                     _diagnosis = _llm_resp.json().get("response", "")[:500]
                     log.info(f"  LLM diagnosis: {_diagnosis[:200]}")
                     item["llm_diagnosis"] = _diagnosis
                     if conn:
-                        _log_intervention(conn, item.get("component", "unknown"),
-                                          item.get("detail", "")[:500],
-                                          diagnosis=_diagnosis,
-                                          status="investigating",
-                                          session_log=f"local_llm_diagnosis: {_diagnosis}")
+                        _log_intervention(
+                            conn,
+                            item.get("component", "unknown"),
+                            item.get("detail", "")[:500],
+                            diagnosis=_diagnosis,
+                            status="investigating",
+                            session_log=f"local_llm_diagnosis: {_diagnosis}",
+                        )
             except Exception as e:
                 log.warning(f"  Local LLM diagnosis failed: {e}")
     elif remaining_fixable and dry_run:
         log.info(f"Tier 2: SKIPPED on --dry-run ({len(remaining_fixable)} would use Ollama)")
         print(
-            f"[claude-escalation] Tier 2 skipped on dry-run "
-            f"({len(remaining_fixable)} would call Ollama)",
+            f"[claude-escalation] Tier 2 skipped on dry-run ({len(remaining_fixable)} would call Ollama)",
             flush=True,
         )
 
@@ -1132,8 +1290,7 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
     exhausted_items = [i for i in remaining if i.get("_exhausted")]
     # Exhausted items: log once and remove from queue (they've been notified)
     for ex in exhausted_items:
-        log.info(f"  Removing exhausted item from queue: {ex.get('component')} "
-                 f"({ex.get('_attempts', '?')} attempts)")
+        log.info(f"  Removing exhausted item from queue: {ex.get('component')} ({ex.get('_attempts', '?')} attempts)")
     # Keep cooldown items for next run; exclude exhausted
     remaining = [i for i in remaining if not i.get("_exhausted") and not i.get("_cooling_down")]
     deferred = remaining[tier3_max:] + cooldown_items
@@ -1145,8 +1302,7 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
         if exhausted_items:
             log.info(f"  Exhausted (removing): {len(exhausted_items)} item(s) after {MAX_RETRIES} retries")
     print(
-        f"[claude-escalation] Tier 3 prep: analyze={len(remaining)} deferred={len(deferred)} "
-        f"dry_run={dry_run}",
+        f"[claude-escalation] Tier 3 prep: analyze={len(remaining)} deferred={len(deferred)} dry_run={dry_run}",
         flush=True,
     )
 
@@ -1182,8 +1338,13 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
 
     # Read relevant log tails for context
     _context_logs = ""
-    for _logname in ["auto_enrichment.log", "proposal_enrichment.log",
-                     "auto_proposal.log", "screener_pm.log", "system_health_agent.log"]:
+    for _logname in [
+        "auto_enrichment.log",
+        "proposal_enrichment.log",
+        "auto_proposal.log",
+        "screener_pm.log",
+        "system_health_agent.log",
+    ]:
         _lp = PROJECT_ROOT / "logs" / _logname
         if _lp.exists():
             _tail = _lp.read_text()[-1000:]
@@ -1195,10 +1356,13 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
         log.info(f"[DRY RUN] Tier 3: Would analyze {len(remaining)} item(s) via local LLM:\n{analysis_prompt[:500]}...")
         if conn:
             for item in remaining:
-                _log_intervention(conn, item.get("component", "unknown"),
-                                  json.dumps(item, default=str)[:500],
-                                  status="deferred",
-                                  session_log="dry_run — not invoked")
+                _log_intervention(
+                    conn,
+                    item.get("component", "unknown"),
+                    json.dumps(item, default=str)[:500],
+                    status="deferred",
+                    session_log="dry_run — not invoked",
+                )
         # Separate staleness items from main queue items for staleness queue
         stale_items = [i for i in (deferred or []) if i.get("source") == "hermes_health_inspector"]
         non_stale = [i for i in (deferred or []) if i.get("source") != "hermes_health_inspector"]
@@ -1210,15 +1374,16 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
     intervention_ids = []
     if conn:
         for item in remaining:
-            iid = _log_intervention(conn, item.get("component", "unknown"),
-                                    json.dumps(item, default=str)[:500],
-                                    status="investigating")
+            iid = _log_intervention(
+                conn, item.get("component", "unknown"), json.dumps(item, default=str)[:500], status="investigating"
+            )
             if iid:
                 intervention_ids.append(iid)
 
-    _notify(f"🔍 Investigating {len(remaining)} escalation(s) via local LLM:\n" +
-            "\n".join(f"• {i.get('component')}: {i.get('detail', i.get('status', ''))[:60]}"
-                      for i in remaining[:5]))
+    _notify(
+        f"🔍 Investigating {len(remaining)} escalation(s) via local LLM:\n"
+        + "\n".join(f"• {i.get('component')}: {i.get('detail', i.get('status', ''))[:60]}" for i in remaining[:5])
+    )
 
     session_log = ""
     success = False
@@ -1241,15 +1406,18 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
         _load_cap = float(os.getenv("ESCALATION_31B_LOAD_CAP", "4.0"))
         try:
             from zoneinfo import ZoneInfo as _ZI
+
             _et = datetime.now(_ZI("America/New_York"))
         except Exception:
             _et = datetime.now()
         _in_market = _et.weekday() < 5 and 6 <= _et.hour < 12
         if os.getenv("DISABLE_GEMMA4_31B_ESCALATION") == "1" or _in_market or _load1 > _load_cap:
             _skip_31b = True
-            log.info(f"  Tier 3a SKIPPED (gemma4:31b) — priority guard: market_window={_in_market} "
-                     f"load1={_load1:.1f} cap={_load_cap} — using a lighter lane so escalation work "
-                     f"does not starve the dashboard")
+            log.info(
+                f"  Tier 3a SKIPPED (gemma4:31b) — priority guard: market_window={_in_market} "
+                f"load1={_load1:.1f} cap={_load_cap} — using a lighter lane so escalation work "
+                f"does not starve the dashboard"
+            )
     except Exception:
         pass
 
@@ -1258,6 +1426,7 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
         _llama_proc = None
         try:
             import requests as _req
+
             # Check if llama-server is already running
             try:
                 _req.get(f"{LLAMACPP_URL}/health", timeout=3)
@@ -1275,10 +1444,11 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
                         _mname = _m.get("name", "")
                         log.info(f"  Unloading Ollama model: {_mname}")
                         try:
-                            _req.post("http://localhost:11434/api/chat",
-                                      json={"model": _mname, "keep_alive": 0,
-                                            "messages": [{"role": "user", "content": ""}]},
-                                      timeout=15)
+                            _req.post(
+                                "http://localhost:11434/api/chat",
+                                json={"model": _mname, "keep_alive": 0, "messages": [{"role": "user", "content": ""}]},
+                                timeout=15,
+                            )
                         except Exception:
                             pass
                     time.sleep(5)
@@ -1297,10 +1467,23 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
                 _llama_log = PROJECT_ROOT / "logs" / "llama_server_escalation.log"
                 _llama_logf = open(_llama_log, "a")
                 _llama_proc = subprocess.Popen(
-                    [str(LLAMACPP_BIN), "--model", str(LLAMACPP_GGUF),
-                     "--port", "8081", "--host", "127.0.0.1",
-                     "--ctx-size", "2048", "--n-gpu-layers", "25", "--threads", "6"],
-                    stdout=_llama_logf, stderr=_llama_logf,
+                    [
+                        str(LLAMACPP_BIN),
+                        "--model",
+                        str(LLAMACPP_GGUF),
+                        "--port",
+                        "8081",
+                        "--host",
+                        "127.0.0.1",
+                        "--ctx-size",
+                        "2048",
+                        "--n-gpu-layers",
+                        "25",
+                        "--threads",
+                        "6",
+                    ],
+                    stdout=_llama_logf,
+                    stderr=_llama_logf,
                     env={**os.environ, "LD_LIBRARY_PATH": _lib_dir},
                 )
                 # Wait for startup — gemma4:31b takes 60-90s to load on hybrid GPU/CPU
@@ -1310,7 +1493,7 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
                     try:
                         if _req.get(f"{LLAMACPP_URL}/health", timeout=3).ok:
                             _server_ready = True
-                            log.info(f"  llama-server ready after {(_wait+1)*3}s")
+                            log.info(f"  llama-server ready after {(_wait + 1) * 3}s")
                             break
                     except Exception:
                         pass
@@ -1319,14 +1502,22 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
                     raise TimeoutError("llama-server startup timeout")
 
             # Call gemma4:31b — allow 10 min for deep analysis on hybrid CPU/GPU
-            _resp = _req.post(f"{LLAMACPP_URL}/v1/chat/completions", json={
-                "model": "gemma4-31b",
-                "messages": [
-                    {"role": "system", "content": "You are a Trade AI system health analyst. Provide detailed structured root cause analysis."},
-                    {"role": "user", "content": analysis_prompt},
-                ],
-                "temperature": 0.2, "max_tokens": 2048,
-            }, timeout=600)
+            _resp = _req.post(
+                f"{LLAMACPP_URL}/v1/chat/completions",
+                json={
+                    "model": "gemma4-31b",
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are a Trade AI system health analyst. Provide detailed structured root cause analysis.",
+                        },
+                        {"role": "user", "content": analysis_prompt},
+                    ],
+                    "temperature": 0.2,
+                    "max_tokens": 2048,
+                },
+                timeout=600,
+            )
             if _resp.ok:
                 _analysis = _resp.json()["choices"][0]["message"]["content"].strip()
                 if _analysis and len(_analysis) > 100:
@@ -1362,15 +1553,22 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
             except Exception:
                 _ps_models = []
             _ctx = resident_num_ctx(model, ps_models=_ps_models) or canonical_num_ctx(model)
-            _resp = _req.post("http://localhost:11434/api/chat", json={
-                "model": model,
-                "stream": False,
-                "messages": [
-                    {"role": "system", "content": "You are a Trade AI system health analyst. Provide structured root cause analysis."},
-                    {"role": "user", "content": analysis_prompt[:12000]},
-                ],
-                "options": {"temperature": 0.2, "num_predict": num_predict, "num_ctx": _ctx},
-            }, timeout=timeout)
+            _resp = _req.post(
+                "http://localhost:11434/api/chat",
+                json={
+                    "model": model,
+                    "stream": False,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": "You are a Trade AI system health analyst. Provide structured root cause analysis.",
+                        },
+                        {"role": "user", "content": analysis_prompt[:12000]},
+                    ],
+                    "options": {"temperature": 0.2, "num_predict": num_predict, "num_ctx": _ctx},
+                },
+                timeout=timeout,
+            )
             if not _resp.ok:
                 return "", f"HTTP {_resp.status_code}"
             _analysis = _resp.json().get("message", {}).get("content", "").strip()
@@ -1383,6 +1581,7 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
             _default = os.getenv("ESCALATION_LLM_MODEL", "gemma3:12b")
             try:
                 from zoneinfo import ZoneInfo as _ZI
+
                 _et = datetime.now(_ZI("America/New_York"))
             except Exception:
                 _et = datetime.now()
@@ -1398,8 +1597,10 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
                 _model = _loaded[0] if _loaded else _default
             _timeout = min(300, max(180, 90 + 25 * len(remaining)))
             _predict = 512 if len(remaining) >= 2 else 1024
-            log.info(f"  Tier 3b: {_model} via Ollama · batch {len(remaining)} · timeout {_timeout}s "
-                     f"(market={_in_market} load={_load1:.1f})")
+            log.info(
+                f"  Tier 3b: {_model} via Ollama · batch {len(remaining)} · timeout {_timeout}s "
+                f"(market={_in_market} load={_load1:.1f})"
+            )
             _analysis, _err = _ollama_analyze(_model, timeout=_timeout, num_predict=_predict)
             if _analysis:
                 session_log = f"{_model} (Ollama):\n{_analysis}"
@@ -1428,7 +1629,9 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
         try:
             result = subprocess.run(
                 ["claude", "-p", "\n".join(problems), "--output-format", "text"],
-                capture_output=True, text=True, timeout=300,
+                capture_output=True,
+                text=True,
+                timeout=300,
                 cwd=str(PROJECT_ROOT),
                 env={**os.environ, "CLAUDE_NO_INTERACTIVE": "1"},
             )
@@ -1449,30 +1652,32 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
         cur = conn.cursor()
         for iid in intervention_ids:
             try:
-                cur.execute("""UPDATE claude_interventions
+                cur.execute(
+                    """UPDATE claude_interventions
                     SET status=%s, session_log=%s, resolved_at=NOW()
                     WHERE id=%s""",
-                    [final_status, session_log[:5000], iid])
+                    [final_status, session_log[:5000], iid],
+                )
             except Exception:
                 pass
         conn.commit()
 
     resolved_count = len(resolved_by_retry)
     defer_note = f"\nDeferred: {len(deferred)} queued for next run" if deferred else ""
-    _notify(f"{'✅' if success else '❌'} Escalation analysis {'complete' if success else 'failed'}\n"
-            f"Tier 1 (retry_cmd): {resolved_count} resolved\n"
-            f"Tier 3 (local LLM): {len(remaining)} analyzed → {final_status}{defer_note}\n"
-            f"Analysis: {session_log[:200]}")
-
-    _safe_write_queue(QUEUE_FILE, deferred)
-    log.info(
-        f"Queue: {resolved_count} retried, {len(remaining)} tier3 → {final_status}, "
-        f"{len(deferred)} deferred"
+    _notify(
+        f"{'✅' if success else '❌'} Escalation analysis {'complete' if success else 'failed'}\n"
+        f"Tier 1 (retry_cmd): {resolved_count} resolved\n"
+        f"Tier 3 (local LLM): {len(remaining)} analyzed → {final_status}{defer_note}\n"
+        f"Analysis: {session_log[:200]}"
     )
+
+    _safe_write_queue(QUEUE_FILE, deferred + held_items)
+    log.info(f"Queue: {resolved_count} retried, {len(remaining)} tier3 → {final_status}, {len(deferred)} deferred")
 
 
 if __name__ == "__main__":
     import argparse
+
     ap = argparse.ArgumentParser(
         description="Process health escalations: Tier1 retry_cmd → Tier2 Ollama → Tier3 deep LLM"
     )

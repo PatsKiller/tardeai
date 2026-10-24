@@ -92,6 +92,9 @@ def material_changes(prev: Optional[dict[str, Any]], new: dict[str, Any], cfg: d
     return out
 
 
+RANK_HISTORY_KEEP = 8   # ~4 market hours at the */30 curator cadence
+
+
 class CIOOpportunityStore:
     def __init__(self, event_path: Path | None = None, projection_path: Path | None = None):
         self.event_path = Path(event_path or EVENT_PATH)
@@ -139,10 +142,20 @@ class CIOOpportunityStore:
         return len(lines)
 
     def write_projection(self, assessments: list[dict[str, Any]], meta: dict[str, Any]) -> None:
+        """Rewrite the projection. Each item carries ``rank_history`` — the last RANK_HISTORY_KEEP runs as
+        ``[as_of, rank, conviction]`` (oldest first; the last entry is this run), carried over from the projection it
+        replaces. Watch › System Suggests reads it to say which names entered or left its top N and why (operator
+        2026-10-23) without a second store. The assessments themselves (and the version log) are not changed."""
         from lib.data_broker.atomic_json import atomic_write_json
 
-        body = {"schema": "OpportunityProjection@v1", **meta, "count": len(assessments),
-                "items": {a["symbol"]: a for a in assessments}}
+        prev_items = (self.read_projection().get("items") or {}) if self.projection_path.exists() else {}
+        items = {}
+        for a in assessments:
+            prev = prev_items.get(a["symbol"]) if isinstance(prev_items, dict) else None
+            hist = [h for h in ((prev or {}).get("rank_history") or []) if isinstance(h, list) and len(h) == 3]
+            hist.append([meta.get("as_of"), a.get("rank"), a.get("conviction")])
+            items[a["symbol"]] = {**a, "rank_history": hist[-RANK_HISTORY_KEEP:]}
+        body = {"schema": "OpportunityProjection@v1", **meta, "count": len(assessments), "items": items}
         assert_no_behavior(body)
         self.projection_path.parent.mkdir(parents=True, exist_ok=True)
         atomic_write_json(self.projection_path, body)

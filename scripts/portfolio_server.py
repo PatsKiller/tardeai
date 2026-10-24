@@ -1598,6 +1598,28 @@ def _note_route(method: str, raw_path: str) -> None:
         return
 
 
+def _coalesce_get(path, query, fn):
+    """Single-flight identical heavy GETs (scripts/lib/request_coalesce.py); never blocks a
+    route that is not on its allowlist, and falls back to a direct call if the helper fails
+    to import."""
+    try:
+        try:
+            from lib.request_coalesce import coalesce_get
+        except ImportError:
+            from scripts.lib.request_coalesce import coalesce_get
+    except Exception:
+        return fn()
+    try:
+        try:
+            from lib.cc_auth import current_principal
+        except ImportError:
+            from scripts.lib.cc_auth import current_principal
+        principal = current_principal()
+    except Exception:
+        return fn()  # identity unknown: never share a body
+    return coalesce_get(path, query, fn, principal=principal)
+
+
 def _peer_closed(conn) -> bool:
     """True when the client has closed its end (socket EOF ⇒ our side is CLOSE-WAIT).
     Zero-timeout select first: recv on a timeout-mode socket would block in select
@@ -1860,7 +1882,12 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
                 _v2_handle = _api_v2_mod.handle
                 _v2_query = dict(parse_qs(parsed.query)) if parsed.query else {}
                 _v2_query = {k: v[0] if isinstance(v, list) and len(v) == 1 else v for k, v in _v2_query.items()}
-                _v2_result = _v2_handle(path, method="GET", query=_v2_query)
+                # Identical concurrent heavy GETs share one computation (2026-10-23: seven
+                # concurrent /api/v2/watchlist/items at ~200 MB each crossed MemoryHigh).
+                # Allowlisted read routes only; see scripts/lib/request_coalesce.py.
+                _v2_result = _coalesce_get(
+                    path, _v2_query, lambda: _v2_handle(path, method="GET", query=_v2_query)
+                )
                 if _v2_result is not None:
                     _v2_status, _v2_body = _v2_result
                     if path.startswith("/api/v2/hermes"):

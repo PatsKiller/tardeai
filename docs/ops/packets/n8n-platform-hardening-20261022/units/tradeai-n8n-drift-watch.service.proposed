@@ -12,7 +12,7 @@ After=network-online.target docker.service
 Type=oneshot
 WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
 # The ops bot name/chat for send_system (SYSTEM ops family): the same source the autonomy watchdog drop-in uses.
-EnvironmentFile=-%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env
+EnvironmentFile=-%h/.config/tradeai/n8n/host-alert.env
 Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
 Environment=SYSTEM_TELEGRAM_ENABLED=1
 Environment=CIO_TELEGRAM_INTERDICT=1

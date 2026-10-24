@@ -19,6 +19,12 @@ sys.path.insert(0, str(ROOT))
 from scripts import check_agents_policy_state as C  # noqa: E402
 
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+# AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+# checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+# the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+from tests.test_agents_policy_20_0_0_agent_operations import pre_20_0_0  # noqa: E402
+
+AGENTS = pre_20_0_0(AGENTS)
 ALLOW = json.loads((ROOT / "config" / "n8n_run_allowlist.json").read_text(encoding="utf-8"))
 REG = {r["lane_id"]: r for r in json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))["lanes"]}
 ADR = (ROOT / "docs/architecture/n8n/ADR_COORDINATION_SECRETS.md").read_text(encoding="utf-8")

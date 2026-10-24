@@ -6,6 +6,8 @@
 // Positions come from holdings.json via /api/v2/overview and the risk snapshot: no approved positions_current reader
 // batch covers Home yet (batch #1 is the Watch held flag), so every number says so.
 
+import { accountName as accountLabelName, rowAccountKey } from './accountLabels.ts'
+
 export type Severity = 'P0' | 'P1' | 'P2' | 'P3'
 export type Category = 'protect' | 'decide' | 'fix'
 export type Tab = 'all' | Category
@@ -184,6 +186,24 @@ export function inMarketHours(nowMs: number): boolean {
   return mins >= 570 && mins < 960
 }
 
+/** Parse an observation time. The server stamps holdings as "2026-10-22 16:45:03 ET", which Date.parse
+ *  rejects (NaN in Chromium) — Home showed "Positions age unknown old · STALE" beside a FRESH envelope
+ *  (site validation 2026-10-22). A trailing " ET"/"EDT"/"EST" is read as America/New_York wall time. */
+export function parseObservedTime(raw: string): number {
+  const direct = Date.parse(raw)
+  if (Number.isFinite(direct)) return direct
+  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)\s*(ET|EDT|EST)$/i.exec(raw.trim())
+  if (!m) return NaN
+  for (const off of ['-04:00', '-05:00']) {
+    const t = Date.parse(`${m[1]}T${m[2]}${off}`)
+    if (!Number.isFinite(t)) continue
+    const wall = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .format(new Date(t)).replace(',', '')
+    if (wall === `${m[1]} ${m[2].slice(0, 5)}`) return t
+  }
+  return NaN
+}
+
 export interface PositionsFreshness { stale: boolean; ageS: number | null; label: string; tip: string }
 
 /** The header badge. Source: /api/v2/overview observation.envelopes.holdings (holdings.json). STALE when the server
@@ -191,8 +211,8 @@ export interface PositionsFreshness { stale: boolean; ageS: number | null; label
  *  positions_store freshness SLA in docs/architecture/DATA_DICTIONARY.md). */
 export function positionsFreshness(overview: any, nowMs: number): PositionsFreshness {
   const env = overview?.observation?.envelopes?.holdings
-  const observed = str(env?.observed_at) ?? str(overview?.last_repriced)
-  const t = observed ? Date.parse(observed) : NaN
+  const observed = str(env?.freshness?.observed_at_utc) ?? str(env?.observed_at) ?? str(overview?.last_repriced)
+  const t = observed ? parseObservedTime(observed) : NaN
   const ageS = Number.isFinite(t) ? Math.max(0, (nowMs - t) / 1000) : null
   const server = str(env?.freshness?.status)
   const market = inMarketHours(nowMs)
@@ -208,26 +228,61 @@ export function positionsFreshness(overview: any, nowMs: number): PositionsFresh
   }
 }
 
-export interface MoverBar { sym: string; amount: number; widthPct: number; negative: boolean; dayPct: number | null }
+export interface MoverPart { account: string; label: string; amount: number; dayPct: number | null }
+export interface MoverBar {
+  sym: string; amount: number; widthPct: number; negative: boolean; dayPct: number | null
+  /** One part per account holding the symbol, each with the account NAME (never a number). */
+  accounts: MoverPart[]
+  /** Held in 2+ accounts: the row is a group ("SPCX · 2 accounts") that expands to the per-account rows. */
+  multi: boolean
+  /** The single account's name (one-account rows), else '' — the UI shows the badge instead. */
+  accountLabel: string
+}
 
-/** "What moved your book today": overview.top_movers (dollar day change per holding), largest absolute first.
- *  The bar width is relative to the largest absolute move shown. */
+/** "What moved your book today": overview.top_movers (dollar day change per ACCOUNT holding), largest absolute first.
+ *  A symbol held in two accounts is ONE grouped row whose amount is the sum, carrying both accounts by name, so the
+ *  operator sees "SPCX · 2 accounts +$1,995" and can expand it to "Schwab Rollover IRA +$1,488 / Schwab Individual
+ *  +$507" (operator 2026-10-23: "two SpaceX and two different accounts"; PR 1975 summed them with no account).
+ *  The bar width is relative to the largest group shown; shownSum is the sum of the groups shown, so the footer
+ *  "Shown · rest of the book · day" still adds up to today's change. */
 export function moversBars(overview: any, max = 6): { bars: MoverBar[]; shownSum: number; total: number | null } {
-  const rows = (Array.isArray(overview?.top_movers) ? overview.top_movers : [])
-    .map((m: any) => ({ sym: String(m?.symbol ?? ''), amount: num(m?.day_change), dayPct: num(m?.day_change_pct) }))
-    .filter((m: any) => m.sym && m.amount != null && m.amount !== 0)
-    .sort((a: any, b: any) => Math.abs(b.amount) - Math.abs(a.amount))
+  const bySym = new Map<string, { sym: string; amount: number; dayPct: number | null; parts: Map<string, MoverPart> }>()
+  for (const m of (Array.isArray(overview?.top_movers) ? overview.top_movers : [])) {
+    const sym = String(m?.symbol ?? '').trim().toUpperCase()
+    const amount = num(m?.day_change)
+    if (!sym || amount == null) continue
+    const acct = rowAccountKey(m)
+    const label = acct || m?.account_label ? accountLabelName(acct, m?.account_label) : ''
+    const cur = bySym.get(sym) ?? { sym, amount: 0, dayPct: null, parts: new Map<string, MoverPart>() }
+    cur.amount += amount
+    if (cur.dayPct == null) cur.dayPct = num(m?.day_change_pct)
+    const pk = acct || label || `row${cur.parts.size}`
+    const part = cur.parts.get(pk)
+    if (part) part.amount = Math.round((part.amount + amount) * 100) / 100
+    else cur.parts.set(pk, { account: acct, label, amount: Math.round(amount * 100) / 100, dayPct: num(m?.day_change_pct) })
+    bySym.set(sym, cur)
+  }
+  const rows = [...bySym.values()]
+    .map(m => ({ ...m, amount: Math.round(m.amount * 100) / 100 }))
+    .filter(m => m.amount !== 0)
+    .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
     .slice(0, max)
   const top = rows.length ? Math.abs(rows[0].amount) : 0
-  const bars = rows.map((m: any) => ({ sym: m.sym, amount: m.amount, dayPct: m.dayPct, negative: m.amount < 0,
-    widthPct: top ? Math.max(4, Math.round(Math.abs(m.amount) / top * 100)) : 0 }))
-  return { bars, shownSum: bars.reduce((s: number, b: MoverBar) => s + b.amount, 0), total: num(overview?.today_change) }
+  const bars: MoverBar[] = rows.map(m => {
+    const accounts = [...m.parts.values()].sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+    const multi = accounts.length >= 2
+    return { sym: m.sym, amount: m.amount, dayPct: m.dayPct, negative: m.amount < 0,
+      widthPct: top ? Math.max(4, Math.round(Math.abs(m.amount) / top * 100)) : 0,
+      accounts, multi, accountLabel: !multi && accounts[0]?.label ? accounts[0].label : '' }
+  })
+  return { bars, shownSum: Math.round(bars.reduce((s: number, b: MoverBar) => s + b.amount, 0) * 100) / 100, total: num(overview?.today_change) }
 }
 
 export interface AccountRow { key: string; name: string; value: number | null; d1: number | null; ytd: number | null; ytdApprox: boolean; tip: string }
 
+/** Account NAME for the accounts table (one map: lib/accountLabels.ts — names only, never a number). */
 export function accountName(a: string): string {
-  return a.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+  return accountLabelName(a)
 }
 
 function periodChange(d: any): { ch: number | null; approx: boolean; note: string | null } {
@@ -271,4 +326,29 @@ export function cashPct(overview: any): number | null {
   const pv = num(overview?.portfolio_value)
   if (cash == null || pv == null || pv <= 0) return null
   return (cash / pv) * 100
+}
+
+/** One-line summary of an LLM briefing section for the collapsed "AI briefing" drawer.
+ *  /api/v2/command serves each section as `{content, generated_at}`; String() of that object
+ *  rendered "[object Object]" on Home (site validation 2026-10-22). Accepts a plain string,
+ *  a `{content|summary|text}` object, or a JSON string of one. Empty → ''. */
+export function briefingSummary(raw: unknown, max = 110): string {
+  let s = ''
+  if (raw == null) return ''
+  if (typeof raw === 'object') {
+    const o = raw as Record<string, unknown>
+    s = String(o.content ?? o.summary ?? o.text ?? '')
+  } else {
+    s = String(raw)
+    const t = s.trim()
+    if (t.startsWith('{')) {
+      try {
+        const o = JSON.parse(t)
+        s = String(o?.content ?? o?.summary ?? o?.text ?? t)
+      } catch { /* keep the raw string */ }
+    }
+  }
+  s = s.replace(/\s+/g, ' ').trim()
+  if (!s) return ''
+  return s.length > max ? s.slice(0, max) + '…' : s
 }

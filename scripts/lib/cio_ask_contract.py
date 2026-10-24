@@ -226,6 +226,7 @@ class Scenario:
     narrative: str
     price: Optional[float] = None
     return_pct: Optional[float] = None
+    citation: Optional[dict[str, Any]] = None  # original source anchor; missing remains unknown
 
 
 @dataclass
@@ -241,11 +242,12 @@ class Catalyst:
 @dataclass
 class StreetTarget:
     low: Optional[float] = None
-    median: Optional[float] = None
+    median: Optional[float] = None  # historical payload compatibility; never substitute a mean
     high: Optional[float] = None
     n_analysts: Optional[int] = None
     as_of: Optional[str] = None
     source: Optional[str] = None
+    mean: Optional[float] = None
 
 
 @dataclass

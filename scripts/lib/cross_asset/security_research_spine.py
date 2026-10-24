@@ -269,14 +269,120 @@ def append_spine(obj: dict[str, Any], *, path: Path | None = None, root: Path | 
         return {"ok": False, "error": f"{type(exc).__name__}:{exc}"[:160]}
 
 
+# 2026-10-23: load_latest() streamed and json-parsed the WHOLE spine file (26.5 MB, 1,627
+# lines on 2026-10-23) on every call. GET /api/v3/advisory calls it once per row (146x), so one
+# desk load parsed ~3.9 GB of JSON: 26 s of a 45 s request (docs/ops/SERVER_MEMORY_SPIKES_2026-10-23.md).
+# The reader now keeps a per-file offset index {SYMBOL: (offset, length)} of the latest
+# parseable line per symbol, extended incrementally over appended bytes and rebuilt when the
+# file shrinks or is replaced; a lookup reads and parses one line. Memory is one small tuple
+# per symbol, never the rows. Result equals the full scan (tests/test_server_memory_spikes_20261023.py).
+import os as _os
+import threading as _threading
+
+_INDEX_LOCK = _threading.Lock()
+# str(path) -> {"dev", "ino", "indexed": bytes of complete lines indexed, "rows": {SYM: (off, len)}}
+_SPINE_INDEX: dict[str, dict[str, Any]] = {}
+_INDEX_CHUNK = 4 * 1024 * 1024
+_HEAD_BYTES = 4096
+
+
+def _parse_spine_line(raw: bytes) -> dict[str, Any] | None:
+    line = raw.decode("utf-8", errors="ignore").strip()
+    if not line:
+        return None
+    try:
+        row = json.loads(line)
+    except json.JSONDecodeError:
+        return None
+    return row if isinstance(row, dict) else None
+
+
+def _refresh_index(dest: Path) -> tuple[dict[str, Any], int]:
+    """Return (index entry, file size). Caller holds _INDEX_LOCK."""
+    st = dest.stat()
+    key = str(dest)
+    ent = _SPINE_INDEX.get(key)
+    with dest.open("rb") as fh:
+        head = fh.read(_HEAD_BYTES)
+        stale = (
+            not ent
+            or ent["dev"] != st.st_dev
+            or ent["ino"] != st.st_ino
+            or ent["indexed"] > st.st_size
+            or not head.startswith(ent["head"])
+        )
+        if not stale and ent["indexed"] > 0:
+            # An in-place rewrite that grew past the old size keeps the inode; the byte before
+            # the indexed boundary must still end a line, and the head must be unchanged.
+            fh.seek(ent["indexed"] - 1)
+            stale = fh.read(1) != b"\n"
+        if stale:
+            ent = {"dev": st.st_dev, "ino": st.st_ino, "indexed": 0, "rows": {}, "head": head}
+            _SPINE_INDEX[key] = ent
+        elif len(ent["head"]) < _HEAD_BYTES:
+            ent["head"] = head
+    if ent["indexed"] < st.st_size:
+        with dest.open("rb") as fh:
+            fh.seek(ent["indexed"])
+            pos = ent["indexed"]
+            carry = b""
+            while pos + len(carry) < st.st_size:
+                chunk = fh.read(min(_INDEX_CHUNK, st.st_size - pos - len(carry)))
+                if not chunk:
+                    break
+                data = carry + chunk
+                start = 0
+                while True:
+                    nl = data.find(b"\n", start)
+                    if nl < 0:
+                        break
+                    row = _parse_spine_line(data[start:nl])
+                    if row is not None:
+                        sym = str(row.get("symbol") or "").upper()
+                        ent["rows"][sym] = (pos + start, nl - start)
+                    start = nl + 1
+                pos += start
+                carry = data[start:]
+            ent["indexed"] = pos  # only newline-terminated lines are indexed
+    return ent, st.st_size
+
+
 def load_latest(
     symbol: str,
     *,
     path: Path | None = None,
     root: Path | None = None,
 ) -> dict[str, Any] | None:
+    """Latest parseable spine row for ``symbol`` (the last matching line in file order)."""
     sym = str(symbol or "").upper().strip()
     dest = path or default_path(root)
+    if not dest.exists():
+        return None
+    try:
+        with _INDEX_LOCK:
+            ent, size = _refresh_index(dest)
+            loc = ent["rows"].get(sym)
+            indexed = ent["indexed"]
+        with dest.open("rb") as fh:
+            if indexed < size:
+                # An unterminated final line is not indexed; the full scan read it, so do we.
+                fh.seek(indexed)
+                tail = _parse_spine_line(fh.read(size - indexed))
+                if tail is not None and str(tail.get("symbol") or "").upper() == sym:
+                    return tail
+            if loc is None:
+                return None
+            fh.seek(loc[0])
+            row = _parse_spine_line(fh.read(loc[1]))
+        if row is not None and str(row.get("symbol") or "").upper() == sym:
+            return row
+    except OSError:
+        pass
+    return _load_latest_scan(sym, dest)
+
+
+def _load_latest_scan(sym: str, dest: Path) -> dict[str, Any] | None:
+    """Full-scan reference reader (fallback when the index read disagrees)."""
     if not dest.exists():
         return None
     latest = None

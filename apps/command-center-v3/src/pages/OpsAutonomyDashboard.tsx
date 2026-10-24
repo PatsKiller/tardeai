@@ -405,7 +405,10 @@ export default function OpsAutonomyDashboard() {
           {chip('Health', score != null ? `${score}${ov.healthy_pct != null ? '%' : '/100'}` : '—', scoreColor, statusLabel)}
           {chip('Critical', crit, crit > 0 ? 'var(--red)' : 'var(--text0)')}
           {chip('Warnings', warn, warn > 0 ? 'var(--amber)' : 'var(--text0)')}
-          {chip('Auto fixed', ov.auto_fixed_today ?? health?.remediated ?? '—', 'var(--green)', 'today / last cycle')}
+          {/* health.remediated is an ARRAY of run records ({at, type, cmd, exit_code, …}); rendering it as a
+              child crashed the board with React #31 whenever ops-autonomy lacked auto_fixed_today
+              (e.g. unavailable) — site validation 2026-10-23. Show the count. */}
+          {chip('Auto fixed', ov.auto_fixed_today ?? (Array.isArray(health?.remediated) ? health.remediated.length : (typeof health?.remediated === 'number' ? health.remediated : null)) ?? '—', 'var(--green)', 'today / last cycle')}
           {chip('Learning', ov.learning_candidates ?? learning.candidates ?? 0, 'var(--amber)', 'ladder candidates')}
           {chip('Approved', learning.approved ?? 0, 'var(--green)', 'auto patterns')}
           {chip(

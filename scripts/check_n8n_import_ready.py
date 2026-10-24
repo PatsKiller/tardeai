@@ -25,11 +25,13 @@ activation-eligible (``framework_gate``): any element FAIL, PARTIAL on a critica
 PASS, or a runtime obligation without evidence (``--runtime-evidence``), unless an operator exception names it
 (``--exceptions``). Existing ``--framework-gate activation`` callers remain compatible; omitting it never skips the gate.
 
-Platform elements FW-P1..P6 (n8n platform hardening packet 2026-10-22): the gate reads them from ``--platform-facts``
-(default ``$N8N_PLATFORM_FACTS``, else the committed 2026-10-15 measurement), or with ``--probe-host`` measures them
-now from this host (``scripts/probe_n8n_platform_facts.py``, read-only). An element PASSes only from a fresh host
-probe; a cited file caps at PARTIAL. Every run prints each element, its status, its evidence and where the facts
-came from (``platform`` / ``platform_source`` in ``--json``).
+Platform elements FW-P1..P6 (n8n platform hardening packet 2026-10-22): the gate may read cited facts from
+``--platform-facts`` (default ``$N8N_PLATFORM_FACTS``, else the committed 2026-10-15 measurement), or with
+``--probe-host`` measures them now from this host (``scripts/probe_n8n_platform_facts.py``, read-only). Only the
+in-process ``--probe-host`` invocation can authorize PASS. A JSON file is untrusted evidence even if it claims
+``source_kind: host_probe`` and has a fresh timestamp; file-supplied provenance is overwritten and every element
+is capped at PARTIAL. Every run prints each element, its status, its evidence and where the facts came from
+(``platform`` / ``platform_source`` in ``--json``).
 
     python3 scripts/check_n8n_import_ready.py "$STAGE" --relay-url http://172.19.0.1:18092
     python3 scripts/check_n8n_import_ready.py "$STAGE" --relay-url http://172.19.0.1:18092 --json
@@ -174,8 +176,11 @@ def load_platform_facts(
         raise CannotRun(f"platform facts unreadable: {p}: {exc}") from exc
     if facts.get("schema") != F.PLATFORM_FACTS_SCHEMA:
         raise CannotRun(f"platform facts {p}: not {F.PLATFORM_FACTS_SCHEMA}")
+    # JSON provenance fields are claims controlled by the file author. A fresh timestamp and a forged
+    # ``source_kind: host_probe`` must never authorize platform PASS; only the direct read-only probe above does.
+    facts = {**facts, "source_kind": "cited_file"}
     return facts, {
-        "kind": facts.get("source_kind") or "cited",
+        "kind": "cited_file",
         "path": str(p),
         "probed_at": facts.get("probed_at") or facts.get("as_of"),
     }

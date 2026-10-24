@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 RULES_PATH = Path(__file__).resolve().parents[2] / "config" / "cio_prospect_watchlist_rules.json"
-PROTECTED_ORDER = ("operator_star", "operator_add", "held_position")
+PROTECTED_ORDER = ("operator_star", "operator_add", "operator_directive", "held_position")
 ORIGIN_ORDER = PROTECTED_ORDER + ("cio_curator", "cio_thesis", "reentry_desk", "scanner_verdict", "hermes",
                                   "existing_member")
 

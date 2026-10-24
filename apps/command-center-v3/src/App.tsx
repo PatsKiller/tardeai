@@ -2,6 +2,7 @@ import { OpportunityModalProvider } from './components/opportunity/OpportunityCo
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { useConnectionHealth, signalApiRecover, retryApiConnection } from './hooks/useApi'
+import { initialProbeState, onProbeResult } from './lib/reconnectProbe'
 import MetricStrip from './components/MetricStrip'
 import NavRail from './components/NavRail'
 import DetailDrawer, { type DrillContext } from './components/DetailDrawer'
@@ -17,7 +18,7 @@ import AgentRuntimeHub from './pages/AgentRuntimeHub'
 import IntelligenceHub from './pages/IntelligenceHub'
 import HermesHub from './pages/HermesHub'
 import RetirementHub from './pages/RetirementHub'
-import JournalHub from './pages/JournalHub'
+import TradeInViewPage from './pages/TradeInViewPage'
 import WatchHub from './pages/WatchHub'
 import SymbolIntelligencePage from './pages/SymbolIntelligencePage'
 import WatchDiscovery from './pages/WatchDiscovery'
@@ -111,28 +112,32 @@ function ReconnectingBar() {
   useEffect(() => {
     if (!degraded) return
     let cancelled = false
-    let okStreak = 0
+    let state = initialProbeState()
+    let id = 0
+    const step = (ok: boolean) => {
+      const r = onProbeResult(state, ok)
+      state = r.state
+      // Global refetch only after a real outage (health itself failed this episode). When health is
+      // fine, the failure is endpoint-specific: stop probing and leave it to that hook's backoff —
+      // broadcasting a refetch every ~6 s re-fetched the whole page (lib/reconnectProbe.ts).
+      if (r.action === 'recover') signalApiRecover()
+      if (r.action !== 'continue') { window.clearInterval(id); id = 0 }
+    }
     const probe = async () => {
       const controller = new AbortController()
       const timer = setTimeout(() => controller.abort(), 5000)
       try {
         const r = await fetch('/api/health', { cache: 'no-store', signal: controller.signal })
         clearTimeout(timer)
-        if (cancelled) return
-        if (r.ok) {
-          okStreak += 1
-          if (okStreak >= 2) signalApiRecover()
-        } else {
-          okStreak = 0
-        }
+        if (!cancelled) step(r.ok)
       } catch {
         clearTimeout(timer)
-        if (!cancelled) okStreak = 0
+        if (!cancelled) step(false)
       }
     }
     probe()
-    const id = window.setInterval(probe, 3000)
-    return () => { cancelled = true; window.clearInterval(id) }
+    id = window.setInterval(probe, 3000)
+    return () => { cancelled = true; if (id) window.clearInterval(id) }
   }, [degraded])
 
   if (!degraded) return null
@@ -237,7 +242,7 @@ function Shell() {
             <Route path="research" element={<RouteErrorBoundary route="/v3/research"><Navigate to="/research-intelligence" replace /></RouteErrorBoundary>} />
             <Route path="hermes" element={<RouteErrorBoundary route="/v3/hermes"><HermesHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="retirement" element={<RouteErrorBoundary route="/v3/retirement"><RetirementHub onDrill={setDrill} /></RouteErrorBoundary>} />
-            <Route path="journal" element={<RouteErrorBoundary route="/v3/journal"><JournalHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="journal" element={<RouteErrorBoundary route="/v3/journal"><TradeInViewPage onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="trade-in-view" element={<RouteErrorBoundary route="/v3/trade-in-view"><Navigate to="/journal" replace /></RouteErrorBoundary>} />
             <Route path="watch" element={<RouteErrorBoundary route="/v3/watch"><WatchHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="watch/intelligence/:symbol" element={<RouteErrorBoundary route="/v3/watch/intelligence/:symbol"><SymbolIntelligencePage /></RouteErrorBoundary>} />

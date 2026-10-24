@@ -266,6 +266,8 @@ def default_deps() -> AskDeps:
 
     cfg = load_config()
     store = AskEventStore()
+    if not store.write_authorized():
+        cfg = {**cfg, "enabled": False, "_error": "CIO_ASK_STORE_NOT_APPROVED"}
     at = cfg.get("auto_track") or {}
     return AskDeps(
         store=store,

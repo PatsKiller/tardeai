@@ -112,6 +112,8 @@ out of scope without an `execution-ops` grant).
 | `sync-memory-to-drive` | external script; the archive mtime is not proof of upload — receipt with upload result |
 | `hermes-top20-external-intel` | stdout-only report; receipt with items curated |
 | `hermes-usefulness-backfill` | writes a score without a timestamp column; receipt with rows scored (or add `scored_at`) |
+| `release-train-claim` | claimer timer (2026-10-22): a pass with nothing pending writes nothing; receipts only on a claimed TrainWindowRequest — receipt per pass |
+| `ops-controls-applier` | long-running Ops Controls applier (2026-10-22): heartbeat is read by GET /api/v2/ops/controls/state — write the heartbeat as a file signal |
 
 ## Not done here, on purpose
 

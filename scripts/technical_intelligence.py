@@ -83,12 +83,27 @@ def technical_freshness_state(symbol: str, conn=None, timeframes=("daily", "week
     """
     conn = conn or _conn()
     states: list[str] = []
+    native_states: dict[str, str] = {}
     for tf in timeframes:
+        # 2026-10-23: this used load_bars() — the full bar history, twice for daily (weekly is
+        # a resample of daily), through `upper(symbol)=%s`, which cannot use the
+        # (symbol, timeframe, bar_time) index: a 1.67M-row seq scan (~0.1 s) x3 per symbol, and
+        # ~700 bar dicts each. GET /api/v2/watchlist/items runs it for every row: 36 s and
+        # ~200 MB of a 41-49 s request. Freshness needs only the last closed bar, so read that
+        # one row by index. A resampled timeframe inherits its base's freshness (as load_bars
+        # does). No row by exact symbol -> the original load_bars path decides.
+        spec = TF_FETCH.get(tf) or {}
+        base_tf = spec.get("resample_of") or tf
         try:
-            meta = load_bars(symbol, tf, conn, allow_fetch=False).get("meta") or {}
+            if base_tf not in native_states:
+                native_states[base_tf] = _last_closed_bar_state(symbol, base_tf, conn)
+            state = native_states[base_tf]
+            if state is None:
+                meta = load_bars(symbol, tf, conn, allow_fetch=False).get("meta") or {}
+                state = meta.get("freshness_state")
         except Exception:
-            meta = {}
-        states.append(str(meta.get("freshness_state") or "UNAVAILABLE"))
+            state = None
+        states.append(str(state or "UNAVAILABLE"))
     if all(s == "UNAVAILABLE" for s in states):
         return "UNAVAILABLE"
     if "STALE" in states:
@@ -96,6 +111,38 @@ def technical_freshness_state(symbol: str, conn=None, timeframes=("daily", "week
     if "UNAVAILABLE" in states:
         return "PARTIAL"
     return "CURRENT"
+
+
+def _last_closed_bar_state(symbol: str, tf: str, conn) -> str | None:
+    """freshness_state of load_bars(symbol, tf, allow_fetch=False)['meta'] for a NATIVE timeframe,
+    from the last closed bar only (one indexed row). None when no row matches the exact
+    (upper-case) symbol, so the caller can fall back to the full path."""
+    now = _now()
+    cutoff = now - timedelta(seconds=TF_SECONDS.get(tf, 86400))
+    cur = conn.cursor()
+    try:
+        cur.execute("""SELECT bar_time FROM market_ohlcv_bars
+                       WHERE symbol = %s AND timeframe = %s AND bar_time <= %s
+                       ORDER BY bar_time DESC LIMIT 1""", (symbol.upper(), tf, cutoff))
+        row = cur.fetchone()
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
+    if not row:
+        return None
+    last = row[0] if not isinstance(row, dict) else row.get("bar_time")
+    fresh_limit_min = float(_freshness_cfg().get(tf, DEFAULT_FRESHNESS_MIN.get(tf, 1440)))
+    try:
+        import packet_invalidation as pi
+        if not pi.is_us_cash_rth():
+            fresh_limit_min *= 6
+    except Exception:
+        pass
+    age_s = (now - last).total_seconds()
+    return "STALE" if age_s > fresh_limit_min * 60 else "CURRENT"
 
 
 # ── bars: DB cache + governed fetch + resample; CLOSED bars only ─────────────

@@ -16,8 +16,8 @@ A local checkpoint is `git commit`, not `git push`.
 
 ## The ten rules, verbatim from `AGENTS.md` §0
 
-These ten prevent irreversible harm. They are repeated verbatim in every tool adapter, because an
-agent that reads fifteen lines and stops must still know them.
+These ten prevent irreversible harm, and rule 11 keeps work recoverable. They are repeated verbatim
+in every tool adapter, because an agent that reads fifteen lines and stops must still know them.
 
 1. **`MBI_BEHAVIOR = 0`.** The agent never sizes, orders, stops, weights, or writes to a broker.
    Ever, for any reason, under any framing. (`MBI_BEHAVIOR` is the shorthand, not a variable —
@@ -47,6 +47,9 @@ agent that reads fifteen lines and stops must still know them.
    One exception, binding only once AGENTS.md 15.0.0 is ACTIVE: the n8n lane `disk-hygiene` may
    remove the reclaimable items its reviewed rules select (scripts/disk_hygiene.py,
    config/disk_hygiene_rules.json), and nothing else (AGENTS.md §24.12).
+   A second exception, binding only once AGENTS.md 20.0.0 is ACTIVE: the host /tmp hygiene lanes
+   may remove the /tmp items their reviewed tmp.* rules select (scripts/tmp_hygiene_auto.py),
+   and nothing else (AGENTS.md §24.12).
 7. **Dry-run before any live run** that writes durable state, sends to an operator surface, spends
    money, or touches a scheduled job. Quote the dry run's output.
 8. **Exit code 0 is not evidence of work.** Prove by a durable artifact that would not exist if the
@@ -54,3 +57,10 @@ agent that reads fifteen lines and stops must still know them.
 9. **Operator-only decisions: propose and stop.** The list is §17.
 10. **When a finding contradicts this file, the finding wins.** Report it once, continue, and open
     an amendment PR (§20).
+11. **Claim, log, hand off.** Before editing, read the claim board and the active worklogs
+    (`scripts/agent_claim.py status`); claim your files; keep your worklog current (plan, changes,
+    decisions, blockers, handoff); when you stop for any reason, leave the exact next step. Work in
+    progress must be recoverable by any agent of any vendor: commit locally at least every hour,
+    record branch, worktree path and head SHA in the worklog, and push a draft PR, within the push
+    budget, for anything a cloud agent may need. Taking over a stale or abandoned claim is done with
+    `agent_claim.py takeover`, never by starting over. How to pick up work: AGENTS.md §28.3a.

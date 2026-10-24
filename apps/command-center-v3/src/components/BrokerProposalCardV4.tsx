@@ -1,3 +1,4 @@
+import { accountName } from '../lib/accountLabels'
 import { useRef, useState, type CSSProperties, type ComponentProps } from 'react'
 import type BrokerProposalCard from './BrokerProposalCard'
 import { AgeChip, LadderLine, TrustLine } from './primitives/cardPrimitives'
@@ -339,7 +340,8 @@ export default function BrokerProposalCardV4({
   const capEcon = oversized && capShares > 0 && capShares !== savedShares
     ? tradeEconomics(capShares, Number(p.proposed_entry), Number(p.proposed_stop), Number(p.proposed_target1))
     : null
-  const accountLabel = dest || p.account || 'account'
+  // Account NAME only (operator 2026-10-23), never an account number.
+  const accountLabel = accountName(dest || p.account, p.account_label)
   const intel = p.intel?.ok
     ? {
         ...p.intel,
@@ -1298,7 +1300,7 @@ export default function BrokerProposalCardV4({
               : (_selAcct || String(p.account || '').trim())
             const journalLabel = !journalAcct ? '—'
               : /alpaca/i.test(journalAcct) ? 'Simulation'
-              : journalAcct.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+              : accountName(journalAcct)
             const chip = (label: string, value: any, accent?: string) => (
               <span style={{
                 display: 'inline-flex', gap: 6, alignItems: 'baseline', padding: '4px 10px', borderRadius: desk.radius,

@@ -1,5 +1,9 @@
 import { useState } from 'react'
 import { useApi } from '../hooks/useApi'
+
+// Loading / missing → '—', never the string "undefined" (site validation 2026-10-22: System → Hermes printed
+// "dev profile exists: undefined" ×4 while /api/v2/hermes/codex-dev-status was still loading).
+const yn = (v: unknown): string => (v === true ? 'yes' : v === false ? 'no' : '—')
 import SoulEditor from './HermesSoulEditor'
 
 // Hermes global-profile management panel (Command Center → System → Hermes).
@@ -278,7 +282,7 @@ export default function HermesPanel() {
               {(wd.health.notes || []).length > 0 && <span style={{ color: '#f59e0b' }}> · {wd.health.notes.join('; ')}</span>}
             </div>
           )}
-          {wd.directive_count === 0 ? (
+          {!(Array.isArray(wd.directives) && wd.directives.length > 0) ? (
             <div style={{ fontSize: 10, color: 'var(--text3)' }}>No directives yet. Operator adds ticker/sector/trend directives → Trade AI + Hermes honor them (Hermes proposes via staging only).</div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
@@ -489,25 +493,25 @@ export default function HermesPanel() {
         {(tc?.diagnostics || []).map((c: string) => (
           <div key={c} style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--text3)', marginBottom: 2 }}>{c}<Copy text={c} /></div>
         ))}
-        <div style={{ fontSize: 10, color: '#ef4444', marginTop: 8 }}>⚠ {tc?.warning}</div>
+        {tc?.warning ? <div style={{ fontSize: 10, color: '#ef4444', marginTop: 8 }}>⚠ {tc.warning}</div> : null}
       </div>
 
       {/* Codex dev */}
       <div style={card}>
         <div style={{ fontWeight: 700, marginBottom: 8 }}>ChatGPT / Codex Dev Profile</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 6, marginBottom: 8 }}>
-          <div style={kv}>dev profile exists: <b>{String(codex?.dev_profile_exists)}</b></div>
-          <div style={kv}>dev SOUL exists: <b>{String(codex?.dev_soul_exists)}</b></div>
-          <div style={kv}>dev model configured: <b>{String(codex?.dev_model_configured)}</b></div>
-          <div style={kv}>Codex auth: <b>{codex?.codex_auth_configured}</b></div>
-          <div style={kv}>Codex runtime enabled: <b style={{ color: '#22c55e' }}>{String(codex?.codex_runtime_enabled)}</b></div>
+          <div style={kv}>dev profile exists: <b>{yn(codex?.dev_profile_exists)}</b></div>
+          <div style={kv}>dev SOUL exists: <b>{yn(codex?.dev_soul_exists)}</b></div>
+          <div style={kv}>dev model configured: <b>{yn(codex?.dev_model_configured)}</b></div>
+          <div style={kv}>Codex auth: <b>{codex?.codex_auth_configured ?? '—'}</b></div>
+          <div style={kv}>Codex runtime enabled: <b style={{ color: codex?.codex_runtime_enabled === true ? '#22c55e' : 'var(--text2)' }}>{yn(codex?.codex_runtime_enabled)}</b></div>
         </div>
         <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 6, padding: 10 }}>
           {(codex?.terminal_instructions || []).map((l: string, i: number) => (
             <div key={i} style={{ fontFamily: 'monospace', fontSize: 11, color: l.startsWith('#') ? 'var(--text3)' : 'var(--text1)' }}>{l}</div>
           ))}
         </div>
-        <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 8 }}>ℹ {codex?.note}</div>
+        {codex?.note ? <div style={{ fontSize: 10, color: '#f59e0b', marginTop: 8 }}>ℹ {codex.note}</div> : null}
       </div>
     </div>
   )

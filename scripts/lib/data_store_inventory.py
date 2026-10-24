@@ -18,7 +18,12 @@ def _row_count(path: Path, fmt: str) -> int | None:
         return None
     try:
         if fmt == "jsonl":
-            return sum(1 for line in path.read_text(encoding="utf-8", errors="replace").splitlines() if line.strip())
+            # Streamed, incrementally cached count (2026-10-23): read_text().splitlines() held a
+            # whole store in memory -- cio_workflow_lineage.jsonl alone is 157 MB -- once per CIO
+            # brain build (docs/ops/SERVER_MEMORY_SPIKES_2026-10-23.md).
+            from scripts.lib.jsonl_bounded import count_jsonl_lines
+
+            return count_jsonl_lines(path)
         if fmt == "json":
             return 1
     except OSError:

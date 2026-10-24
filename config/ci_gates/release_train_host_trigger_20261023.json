@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "release_train_host_trigger_20261023",
+  "files": [
+    "tests/test_release_train_host_trigger_20261023.py"
+  ],
+  "anchor": "RELEASE_TRAIN_HOST_TRIGGER_20261023",
+  "comment": [
+    "ANCHOR: RELEASE_TRAIN_HOST_TRIGGER_20261023 — release-train host trigger packet",
+    "(docs/ops/packets/release-train-host-trigger-20261023/). Pins the request units to the writer's CLI",
+    "(--window <slot> --append --shadow-only, CURRENT, claimer state dir, TRADEAI_RUN_ID) and the slot times, the",
+    "census units to the pr-hygiene-audit allowlist argv and flock at W-20, install.sh (preview writes nothing; typed",
+    "ACK; CURRENT preflight; archive never delete) and rollback.sh, and the 8 lane registry rows at stage shadow.",
+    "Hermetic: HOME in tmp_path, stub systemctl."
+  ]
+}

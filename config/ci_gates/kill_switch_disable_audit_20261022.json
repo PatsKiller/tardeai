@@ -1,0 +1,15 @@
+{
+  "schema": "CiGate@v1",
+  "name": "kill_switch_disable_audit_20261022",
+  "files": [
+    "tests/test_kill_switch_disable_audit_20261022.py"
+  ],
+  "anchor": "KILL_SWITCH_DISABLE_AUDIT_20261022",
+  "comment": [
+    "ANCHOR: KILL_SWITCH_DISABLE_AUDIT_20261022 — kill_switches.disable() passed confirm_phrase= to _audit() whose",
+    "parameter was confirm=, so every correctly-confirmed disable raised TypeError (operator hit it 2026-10-22 21:53 ET).",
+    "Covers disable success+audit row, wrong/date-bound phrase refusal, enable unchanged, rollback on any write failure",
+    "(state + audit commit together or not at all), CLI rc 1 on refusal/failure. Hermetic: fake conn/cursor, fake db_adapter",
+    "and audit_ledger; no DB, no broker."
+  ]
+}

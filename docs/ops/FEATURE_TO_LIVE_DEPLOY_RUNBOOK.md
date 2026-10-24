@@ -1,7 +1,7 @@
-# Feature-to-live deploy runbook (single-approval)
+# Feature-to-live deploy runbook (operator-approved, exact-SHA)
 
-Status:      ACTIVE
-as_of:       2026-10-10T22:55:00Z (n8n bound-unit drop-ins, grant binding, post-promote n8n steps); 2026-10-09T21:00:00Z otherwise
+Status:      ACTIVE — reconciled to current release workflow 2026-10-22
+as_of:       2026-10-22T03:44:00Z
 Measured at: 9853e6b47f13b744287c588cc0dcb5bd8bfe0bf7 (steps 0–6, Fib chart declutter — PR #947 + #949); a8a62217e (step 7, PRs #998–#1001)
 Verified:    exact-SHA gate at 8da0bd92b19519f4815c2b20ced2f1dfbd1eae96 (PRs #1442, #1443)
 Authority:   AGENTS.md §Local gates / docs/GIT_HYGIENE.md / RELEASE_COORDINATOR boundary
@@ -9,44 +9,53 @@ See also:    scripts/cio_phase2_exact_main_deploy.sh, scripts/new-worktree.sh, b
 
 ## Purpose
 
-Take a finished feature branch all the way to LIVE with **one operator approval**, instead of
-stopping to re-grant `git-push` / `release-write` at each boundary. The operator approves the
-whole scope set once; the agent drives push → PR → merge (exact green SHA) → prepare → promote →
-identity verification, with automatic rollback on a failed promote. Completed successful
-**push-to-main CI on the exact deployment SHA** is a separate activation gate after PR CI.
-`AI_WORK_POLICY.md` still governs push budgets; a broad grant does not authorize unlimited
-synchronization. Never infer a grant or enter the operator confirmation yourself.
+This procedure describes the guarded path from a finished feature to a verified live release.
+It does not bundle push and deployment authority into one broad or long-lived grant. `git-push`
+and `release-write` are separate scopes, and each is requested only when its exact action is
+ready. `AI_WORK_POLICY.md` still governs push budgets; never infer or extend a grant.
 
-## The one approval
+## Current operator approval and grant rules
+
+Before any guarded remote or release action, present the guard's native interactive approval
+request to the operator. The operator must type **`APPROVE`** at that prompt. The agent must never
+type, pipe, simulate, automate, or infer that word. A plan is a proposal only until this interactive
+approval occurs; elapsed time and an earlier grant are not approval.
+
+Use the shortest practical lifetime and fewest practical uses. Current standard examples are
+**30 minutes and no more than 3 uses**. Request scopes separately, bound to the precise work:
 
 ```bash
 GUARD=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/bin/guard
-"$GUARD" plan docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md \
-  --scopes "git-push release-write" \
-  --for 12h --uses 25
+"$GUARD" grant git-push --for 30m --uses 3 --reason "<branch/PR and exact push or merge purpose>"
+"$GUARD" grant release-write --for 30m --uses 3 --reason "<PR #NNN or exact SHA; prepare, promote, rollback for this release>"
 ```
 
-or, equivalently, the two explicit grants the plan expands to:
+These are syntax examples, not standing authorization. Reduce uses when fewer suffice. The
+`release-write` reason must bind to the exact PR number and/or target SHA and identify the allowed
+actions; the `git-push` reason must bind to the exact branch/PR and push/merge purpose. Each grant is
+for one release. A generic campaign grant does not qualify. Keep
+`TRADEAI_RELEASE_GRANT_BINDING=enforce` and set `TRADEAI_RELEASE_PR` for prepare/promote when a PR
+binding is used. Immediately after operator approval, inspect `guard show` and verify every scope,
+reason, SHA/PR binding, use count, and expiry before proceeding.
 
-```bash
-"$GUARD" grant git-push     --for 12h --uses 25 --reason "feature-to-live: push + merge exact green PR heads"
-"$GUARD" grant release-write --for 12h --uses 25 --reason "prepare and promote #PR SHA. No broker writes."
-```
+`git-push` authority does not imply `release-write`, and `release-write` does not imply push or PR
+authority. `maintree` is not required by this deployment path. Do not combine scopes merely for
+convenience.
 
-The release-write reason has to name this release and the actions. `prepare` and `promote` must
-both appear: a reason that only says "promote" refuses the prepare step. The reason must also
-contain `#<PR number>` or the merge SHA (at least 9 hex characters). Set `TRADEAI_RELEASE_PR` to
-that PR number on the prepare and promote commands. `TRADEAI_RELEASE_GRANT_BINDING` stays `enforce`.
-**Measured 2026-10-10 ~17:07 ET:** a generic 6 h release grant (7792ff3948d8d2d9) was refused by
-`scripts/lib/release_grant_binding.py` (`ReleaseGrantBinding@v1`: "no SHA named"); the re-requested grant named
-`e8a4a6815524…` and #1665 and matched (`matched_by: sha:…`, `status-20261010/release-e8a4a6815-promote.log`). Ask for
-the grant with the exact merged SHA and the PR numbers in the reason the first time; a campaign grant never stands in
-for a specific release.
+## Current exact-SHA CI requirements
 
-`git-push` covers push + PR open + merge. `release-write` covers the immutable release write +
-systemd promote. `maintree` is **not** required — the primary tree fast-forwards with a plain
-`git merge --ff-only origin/main`, which is outside the maintree guard, and `checkout main` is an
-allowed protected-branch operation.
+Before merge, require successful `agent-governance`, `cio-hardening`, and `release-readiness`
+checks on the exact PR head SHA, plus the applicable recorded review. After merge, require fresh,
+completed, successful main/push checks on the exact merged SHA for
+`.github/workflows/cio-production-hardening-ci.yml`, `.github/workflows/agent-governance.yml`, and
+`.github/workflows/release-readiness.yml`. Missing, pending, failed, cancelled, wrong-SHA, stale, or
+unavailable evidence blocks promotion. A previous green SHA does not qualify a later merge.
+
+**Implementation parity gap:** `scripts/release_grant_preflight.py` currently declares only the
+first two push workflows in `REQUIRED_PUSH_WORKFLOWS`; it does not itself enforce
+`release-readiness.yml` in that set. Until that checker is reconciled, explicitly verify the
+third workflow on the exact merged SHA as a separate release gate and record its run/attempt ID,
+conclusion, and checked SHA. Do not interpret the helper's exit 0 as proof of the third workflow.
 
 ## The procedure (what the agent runs after approval)
 
@@ -81,6 +90,9 @@ rm -f node_modules
 
 ### 2. Push + PR
 
+Proceed only under a current, operator-approved `git-push` grant bound to this branch/PR and
+the exact push/merge purpose. This grant does not authorize prepare or promote.
+
 ```bash
 cd /home/johnclaw/tradeai-wt-<name>
 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/bin/agent-push -u origin wt/<name>
@@ -88,6 +100,9 @@ gh pr create --base main --head wt/<name> --title "..." --body "..."
 ```
 
 ### 3. Wait for green, merge exact SHA
+
+Confirm `agent-governance`, `cio-hardening`, and `release-readiness` are successful on the exact
+PR head SHA and record the applicable review before merge.
 
 The base-branch policy blocks merge until required CI passes. Poll until all green, then merge
 and record the exact merge SHA (never trust a merge that returns nothing):
@@ -135,6 +150,10 @@ repeat the read without weakening the gate. See the
 
 ### 5. prepare then promote (never promote alone)
 
+This phase requires a separate, current operator-approved `release-write` grant bound to the exact
+merged SHA/PR and intended release actions. Verify guard scope and reason before calling prepare;
+do not reuse the push grant as deployment authority.
+
 ```bash
 cd /home/johnclaw/tradeai-wt-<deployment-name>
 TRADEAI_RELEASE_PR=<n> bash scripts/cio_phase2_exact_main_deploy.sh prepare
@@ -164,7 +183,7 @@ readlink -f ~/trade-ai-releases/portfolio-server/CURRENT   # → <sha>-main-exac
 cat "$R/SOURCE_COMMIT"; cat "$R/BUILD_SHA"
 git -C /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild rev-parse origin/main
 systemctl --user show portfolio-server.service -p WorkingDirectory --value
-curl -fsS --max-time 5 http://localhost:7777/api/v2/health | python3 -c 'import sys,json; print(json.load(sys.stdin).get("ok"))'
+scripts/cc_curl.sh -fsS --max-time 5 http://127.0.0.1:7777/api/v2/health | python3 -c 'import sys,json; print(json.load(sys.stdin).get("ok"))'
 ```
 
 CURRENT, SOURCE_COMMIT, BUILD_SHA and each CURRENT-bound process directory must identify the
@@ -182,14 +201,6 @@ files the new commit stops tracking that sit behind the `data/runtime` / `data/a
 persistent state (live copies hashed, paths removed from the index only, re-hashed). Anything else exits
 non-zero *after* `PROMOTE OK` and names the blocking paths. The release is live either way; a non-zero
 exit means the dev tree still needs attention. `CIO_DEPLOY_FF_DEV_TREE=0` skips the step.
-
-**Since 2026-10-21 `prepare` and `promote` refuse unless the dev tree's HEAD is the SHA being released**
-(`require_canonical_source_at`). The release grant preflight, the conformance gate and the CI re-query run from
-`CANONICAL_SOURCE`; release 1's first promote failed because the dev tree was on an older main whose preflight did
-not know `--no-consume`. The check runs before any release grant use and before `prepare` builds anything, and the
-message names the fix: `git -C $CANONICAL_SOURCE fetch origin main && git -C $CANONICAL_SOURCE merge --ff-only <sha>`
-before `prepare`. The release train controller makes the same check (`CANONICAL_SOURCE_HEAD_MISMATCH`, before it
-issues a prepare capability). Who runs the verifier is unchanged.
 
 `promote` restarts `portfolio-server` and the units in `TRADEAI_CURRENT_BOUND_UNITS` (default, from
 `restart_root_frozen_units` in `scripts/cio_phase2_exact_main_deploy.sh`:
@@ -399,7 +410,7 @@ git checkout --detach <SHA>
 .venv/bin/python scripts/ci_outage_emergency_release.py evidence --sha <SHA>
 # 3. Ask for authority (Telegram): release-emergency naming SHA + incident id; plus the usual
 .venv/bin/python scripts/ci_outage_emergency_release.py request-grant --sha <SHA>
-.venv/bin/python scripts/guard_request_approval.py release-write --for 2h --uses 4 --reason "Deploy <SHA> (emergency, GitHub incident <id>)"
+.venv/bin/python scripts/guard_request_approval.py release-write --for 30m --uses 3 --reason "Deploy <SHA> PR #<n> (emergency, GitHub incident <id>; prepare promote rollback)"
 # 4. Dry check: every condition, as JSON; exit 0 only when all hold
 .venv/bin/python scripts/ci_outage_emergency_release.py check --sha <SHA>
 # 5. Prepare + promote with the emergency SHA named

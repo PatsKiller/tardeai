@@ -6,6 +6,9 @@ as_of:       2026-10-22T16:30:00-04:00
 Measured at: origin/main b9804fa57 / not measured live (built and tested against the captured 2026-10-22 ~11:30 ET payloads)
 ```
 
+> **2026-10-23:** Watch now opens on **My Watchlist**; Prospects is the third tab, lists every operator name (caps and
+> Expired apply to system names only) and takes the position filters. See `docs/ops/WATCH_LISTS_PAGE_2026-10-23.md`.
+
 Operator directive 2026-10-22: build the Gate 3 Watch mockup (`Watch.dc.html`, "Watch — one CIO prospect record";
 no changes requested). `/v3/watch` now opens on **Prospects**: your prospects in the order you should look at them,
 one row per security, one next step each. The previous Intelligence view stays one release as **Classic view**

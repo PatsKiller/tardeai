@@ -11,7 +11,7 @@ After=network-online.target docker.service
 [Service]
 Type=oneshot
 WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
-EnvironmentFile=-%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.env
+EnvironmentFile=-%h/.config/tradeai/n8n/host-alert.env
 Environment=TRADEAI_STATE_ROOT=%h/trade-ai-releases/persistent-state
 Environment=SYSTEM_TELEGRAM_ENABLED=1
 Environment=CIO_TELEGRAM_INTERDICT=1

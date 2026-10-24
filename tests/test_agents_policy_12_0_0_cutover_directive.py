@@ -16,6 +16,12 @@ sys.path.insert(0, str(ROOT))
 from scripts import check_agents_policy_state as STATE  # noqa: E402
 
 AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+# AGENTS.md 20.0.0 (§28.7): once 20.0.0 is ACTIVE its eight clause edits are undone before the pins below are
+# checked (and before any 19.0.0 undo); tests/test_agents_policy_20_0_0_agent_operations.py pins those edits and
+# the post-ratification digests. While 20.0.0 is PROPOSED the text is unchanged.
+from tests.test_agents_policy_20_0_0_agent_operations import pre_20_0_0  # noqa: E402
+
+AGENTS = pre_20_0_0(AGENTS)
 TOKEN = "APPROVE_AGENTS_POLICY_12_0_0"
 
 

@@ -52,6 +52,10 @@ try:  # YouTube cookie jar lives outside the release dir (lib/youtube_cookie_pat
     from lib import youtube_cookie_path as _yt_cookie_path  # noqa: E402
 except ImportError:  # pragma: no cover - imported as scripts.<module>
     from scripts.lib import youtube_cookie_path as _yt_cookie_path  # noqa: E402
+try:  # one short human name per account, never an account number (operator 2026-10-23)
+    from lib import account_display as _acct_disp  # noqa: E402
+except ImportError:  # pragma: no cover - imported as scripts.<module>
+    from scripts.lib import account_display as _acct_disp  # noqa: E402
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 # Dev tree often owns the venv while portfolio-server runs from a release stamp
 # that has scripts/ but no .venv (Fix-now Errno 2 on live/.venv/bin/python).
@@ -3896,9 +3900,16 @@ def overview():
                 "name": (m.get("name") or "")[:30],
                 "day_change": m.get("day_change", 0),
                 "day_change_pct": m.get("day_change_pct", 0),
+                # Which account (operator 2026-10-23: "two SpaceX and two different accounts").
+                # One row per account holding; the label is a name only, never an account number.
+                "account_id": _acct_disp.canonical_key(m.get("account") or m.get("account_id")),
+                "account_label": _acct_disp.account_label(m.get("account") or m.get("account_id")),
             }
             for m in movers
         ],
+        "account_labels": _acct_disp.labels_map(
+            sorted({str(p.get("account") or "") for p in holdings if p.get("account")})
+        ),
         "trade_ai": {
             "vix": tai.get("vix"),
             "vix_source": tai.get("vix_source"),
@@ -8115,6 +8126,7 @@ def journal():
             {
                 "trade_key": f"{t.get('symbol', '')}:{t.get('account', '')}:{t.get('close_date', '')}",
                 **t,
+                "account_label": _acct_disp.account_label(t.get("account")),
             }
             for t in trades[:500]
         ],
@@ -8170,7 +8182,7 @@ def risk():
                 "total_unprotected_mv": snap.get("portfolio", {}).get("total_unprotected_mv", 0),
                 "position_count": snap.get("portfolio", {}).get("position_count_real", 0),
                 "paper_position_count": snap.get("portfolio", {}).get("position_count_paper", 0),
-                "positions": snap.get("positions", []),
+                "positions": _acct_disp.label_rows(snap.get("positions", [])),
                 "stops": snap.get("stops_map", {}),
                 "escalation": snap.get("escalation", {}),
                 "correlation": snap.get("correlation", []),
@@ -8303,6 +8315,8 @@ def risk():
                     "symbol": p.get("symbol", ""),
                     "market_value": p.get("market_value", 0),
                     "account": p.get("account", ""),
+                    "account_id": _acct_disp.canonical_key(p.get("account", "")),
+                    "account_label": _acct_disp.account_label(p.get("account", "")),
                     "environment": p.get("environment", "real"),
                     "risk_excluded": bool(p.get("risk_excluded")),
                     # CANONICAL protection hierarchy: (1) live broker stop order [API accounts], (2) operator-confirmed
@@ -16042,6 +16056,9 @@ def _compute_trade_ai():
         "avoid_count": current_run_nogo,
         "ticker_count": current_run_total or latest.get("ticker_count", 0),
         "universe_count": len(tickers),
+        # Newest trade_ai_scans.scanned_at among the served rows (LIVE cycles refresh rows between the FULL runs
+        # that write run_summary.json). scan_freshness is derived from it on every serve. Operator 2026-10-23.
+        "latest_scan_at": _scan_latest_at(tickers),
         "universe_go": go_count,
         "universe_wait": wait_count,
         "universe_nogo": avoid_count,
@@ -18232,6 +18249,9 @@ def trade_ai_summary():
         "cache_age_sec",
         "cached_at",
         "cache_missing",
+        # Header run-age chip (operator 2026-10-23): newest scan + its freshness verdict.
+        "latest_scan_at",
+        "scan_freshness",
     )
     return {k: d.get(k) for k in keys}
 
@@ -18255,7 +18275,24 @@ def _refresh_trade_ai_cache_age(data: dict, now: float) -> dict:
     data["cached_at"] = data.get("_cached_at") or data.get("cached_at")
     data["cache_age_sec"] = round(age)
     data["stale"] = bool(data.get("cache_missing")) or age > 600
+    # Age of the newest scan (not of the cache file): FRESH / STALE (>10 min in the 06:00-12:00 ET scalp
+    # window) / OFF_WINDOW / UNKNOWN. Recomputed per serve so it moves between warms.
+    try:
+        from lib.scan_freshness import scan_freshness
+
+        data["scan_freshness"] = scan_freshness(data.get("latest_scan_at"))
+    except Exception:
+        data["scan_freshness"] = {"contract": "ScanFreshness@v1", "status": "UNKNOWN", "error": "compute_failed"}
     return data
+
+
+def _scan_latest_at(tickers):
+    try:
+        from lib.scan_freshness import latest_scan_at
+
+        return latest_scan_at(tickers)
+    except Exception:
+        return None
 
 
 def _trade_ai_with_etag(data, disk=None):
@@ -18445,6 +18482,44 @@ _TRADE_AI_FLAG_KEYS = (
 )
 
 
+def _scanner_readiness_builder(payload):
+    """Row -> row + ``setup_readiness`` (SetupReadiness@v1, lib.momentum_setup_evidence.setup_readiness).
+
+    Operator 2026-10-23 (SAIQ): the Opportunities table printed a Yahoo headline the scan itself had marked
+    unverified (catalyst_verified=false, confidence 0.0) as THE catalyst, while the Active Trader alert, reading
+    the same row, said "Verified catalyst: FAILED". Each actionable row now carries the same "driven by / ready /
+    missing" object the alerts print -- built from the row's own MomentumSetupEvidence@v1 block plus today's
+    Hermes scalp research -- so the page renders the shared verdict instead of re-deriving one. Never raises:
+    a row whose evidence cannot be built is returned unchanged (the page then shows "—")."""
+    try:
+        from lib.momentum_setup_evidence import build_setup_evidence, setup_readiness
+        from lib.scanner_candidate_projection import _hermes_catalyst_lookup
+    except Exception:  # noqa: BLE001
+        return lambda row: row
+    now = datetime.now(timezone.utc)
+    stale = bool(payload.get("stale") or payload.get("cache_error"))
+    state = Path.home() / "trade-ai-releases" / "persistent-state"
+    lookup = _hermes_catalyst_lookup(state) if (state / "PERSISTENT_STATE_ROOT.json").is_file() else None
+
+    def build(row):
+        try:
+            day = str(row.get("scan_run_date") or row.get("run_date") or "")[:10] or None
+            observed = row.get("observed_at") or row.get("persisted_at")
+            evidence = build_setup_evidence(
+                row,
+                now=now,
+                observed_at=observed if isinstance(observed, str) else None,
+                source_name="TRADE_AI",
+                source_stale=stale,
+            )
+            hermes = lookup(str(row.get("symbol") or "").upper(), day) if lookup and day else None
+            return {**row, "setup_readiness": setup_readiness(evidence, hermes=hermes)}
+        except Exception:  # noqa: BLE001 - annotation only
+            return row
+
+    return build
+
+
 def trade_ai_scanner():
     """GET /api/v2/trade-ai/scanner — scanner-grade slim projection of /trade-ai.
 
@@ -18466,12 +18541,13 @@ def trade_ai_scanner():
         return dict(cached["data"])
     out = {k: v for k, v in d.items() if k not in ("tickers", "__etag__")}
     slim = []
+    readiness_for = _scanner_readiness_builder(d)
     for row in d.get("tickers") or []:
         if not isinstance(row, dict):
             continue
         dec = str(row.get("decision") or "").upper()
         if dec in ("GO", "WAIT", "MANUAL_REVIEW") or any(row.get(k) for k in _TRADE_AI_FLAG_KEYS):
-            slim.append(row)
+            slim.append(readiness_for(row))
         else:
             slim.append({k: row[k] for k in _TRADE_AI_TRIM_KEYS if k in row})
     out["tickers"] = slim
@@ -25142,7 +25218,11 @@ def _strategy_leaderboard():
                    count(*) AS n, count(*) FILTER (WHERE pnl>0) AS wins,
                    round(100.0*count(*) FILTER (WHERE pnl>0)/NULLIF(count(*),0),1) AS win_rate,
                    round(avg(pnl)::numeric,2) AS avg_pnl, round(sum(pnl)::numeric,2) AS total_pnl,
-                   round(avg(pnl_pct)::numeric,2) AS avg_pct, round(avg(r_multiple)::numeric,2) AS avg_r
+                   round(avg(pnl_pct)::numeric,2) AS avg_pct, round(avg(r_multiple)::numeric,2) AS avg_r,
+                   -- site validation 2026-10-22: a closed trade's stored r_multiple can disagree in sign with
+                   -- its pnl (reit_income: 1 trade, +$298.86, avg_r -1.93), so Live R is flagged, not trusted.
+                   count(*) FILTER (WHERE r_multiple IS NOT NULL AND pnl <> 0
+                                      AND sign(r_multiple) <> sign(pnl)) AS r_sign_conflicts
               FROM paper_trades
              WHERE status='closed' AND pnl IS NOT NULL
              GROUP BY strategy_id""")
@@ -25201,9 +25281,19 @@ def _strategy_leaderboard():
                 {
                     "strategy_id": sid,
                     "live": {
-                        k: _json_clean(lv[k])
-                        for k in ("n", "wins", "win_rate", "avg_pnl", "total_pnl", "avg_pct", "avg_r")
-                    },
+                        k: _json_clean(lv.get(k))
+                        for k in (
+                            "n",
+                            "wins",
+                            "win_rate",
+                            "avg_pnl",
+                            "total_pnl",
+                            "avg_pct",
+                            "avg_r",
+                            "r_sign_conflicts",
+                        )
+                    }
+                    | {"avg_r_suspect": bool(lv.get("r_sign_conflicts"))},
                     "backtest": (
                         {k: _json_clean(b.get(k)) for k in ("sample", "win_rate", "expectancy_r", "profit_factor")}
                         | {"data_suspect": bt_suspect}
@@ -29575,8 +29665,12 @@ def _morning_command():
                 "day_change": 0.0,
                 "market_value": 0.0,
                 "price": pos.get("price", 0),
+                "by_account": {},
             },
         )
+        # keep each account's part: a symbol in two accounts is named per account, never merged silently
+        _ak = _acct_disp.canonical_key(pos.get("account"))
+        a["by_account"][_ak] = round(a["by_account"].get(_ak, 0.0) + dc, 2)
         a["day_change"] += dc
         a["market_value"] += mv
         if pos.get("price"):
@@ -29597,6 +29691,12 @@ def _morning_command():
                 "change_pct": pct,  # UI convenience alias
                 "price": a.get("price") or 0,
                 "market_value": round(mv, 2),
+                "accounts": list(a["by_account"].keys()),
+                "account_labels": [_acct_disp.account_label(k) for k in a["by_account"]],
+                "by_account": [
+                    {"account_id": k, "account_label": _acct_disp.account_label(k), "day_change": v}
+                    for k, v in a["by_account"].items()
+                ],
             }
         )
     top_day_gainers = sorted(
@@ -30636,6 +30736,11 @@ def _home_do_now(query=None):
     from lib import needs_action as _na
     from lib.data_broker import home_do_now as _hdn
 
+    def _home_held():
+        from lib.data_broker import watch_domains as _wdom
+
+        return _wdom.held_positions(surface=_wdom.HOME_SURFACE)
+
     def _risk():
         from lib.data_broker.risk_snapshot import get_risk_snapshot as _grs
 
@@ -30648,6 +30753,8 @@ def _home_do_now(query=None):
         "desk_truth": _na.probe_desk_truth,
         "proposals": lambda: _hdn.probe_pending_proposals(_db_query),
         "deploy": lambda: _deploy_events({"status": "open", "days": "14"}),
+        # positions_store reader batch #3 (operator 2026-10-22, "approve all" item G): the one held reader.
+        "held": _home_held,
     }
     out = _hdn.build(probes)
     _HOME_DO_NOW_CACHE["v"] = (_t.monotonic(), out)
@@ -54795,6 +54902,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
+    # TradeInView trade journeys (read-only projection, lib/data_broker/trade_journey.py; operator 2026-10-22):
+    # GET /api/v3/data-broker/trade-journeys[?days=&symbol=]  ·  GET /api/v3/data-broker/trade-journeys/{trade_id}
+    if method == "GET" and base_path.startswith("/api/v3/data-broker/trade-journeys"):
+        try:
+            import api_v3_trade_journey as _tj
+
+            rest = base_path[len("/api/v3/data-broker/trade-journeys") :].strip("/")
+            return 200, (_tj.get_detail(rest, query or {}) if rest else _tj.get_list(query or {}))
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     # Canonical Data Broker — catalog + Watch Intelligence (read-only)
     # Catalog: GET /api/v3/data-broker  and  GET /api/v3/data-broker/catalog
     if method == "GET" and (base_path == "/api/v3/data-broker" or base_path.startswith("/api/v3/data-broker/")):
@@ -54810,6 +54928,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, _dbw.get_list(query or {})
             if p == "watch-prospects":
                 return 200, _dbw.get_prospects(query or {})
+            if p == "watch-curation":
+                return 200, _dbw.get_curation(query or {})
+            if p == "watch-symbol-search":
+                return 200, _dbw.get_symbol_search(query or {})
+            if p == "watch-universe":
+                return 200, _dbw.get_universe(query or {})
             if p == "watch-filters":
                 return 200, _dbw.get_filters()
             if p == "watch-lists":
@@ -54844,6 +54968,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 return 200, _wcmd.post_alert(body or {})
             if cmd in ("refresh-data", "refresh_data"):
                 return 200, _wcmd.post_refresh_data(body or {})
+            if cmd == "mine":
+                _out = _wcmd.post_mine_decision(body or {})
+                return (200 if _out.get("ok") else 400), _out
+            if cmd in ("suggest-dismiss", "suggest-restore"):
+                _out = _wcmd.post_suggest_decision(cmd.split("-", 1)[1], body or {})
+                return (200 if _out.get("ok") else 400), _out
             return 404, {"ok": False, "error": "unknown_command"}
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
@@ -55400,7 +55530,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
     # Agent claim board (operator-approved 2026-10-22): which agent session (Claude, Codex, Cursor -- equal
     # peers) holds which files, on which branch/PR, since when, last heartbeat. One JSON per claim under
     # persistent-state data/coordination/claims (scripts/lib/agent_claim_board.py). Read-only: never creates
-    # the directory, never claims, releases or compacts. ?active=1 hides done/abandoned.
+    # the directory, never claims, releases or compacts. ?active=1 hides done/abandoned; ?worklog=<claim_id>
+    # returns one claim's worklog. Lifecycle stages + task board are additive fields (2026-10-23).
     if base_path == "/api/v2/coordination/claims":
         if method != "GET":
             return 405, {"ok": False, "error": "read_only"}
@@ -55410,7 +55541,53 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             _act = (query or {}).get("active")
             _act = (_act or [None])[0] if isinstance(_act, list) else _act
             finished = str(_act or "") not in ("1", "true")
+            # ?worklog=<claim_id> (2026-10-23): that claim's worklog text (live file, else its archive)
+            _wl = (query or {}).get("worklog")
+            _wl = (_wl or [None])[0] if isinstance(_wl, list) else _wl
+            if _wl:
+                return 200, {"ok": True, "data": _claims_board(worklog=str(_wl)[:64])}
             return 200, {"ok": True, "data": _claims_board(include_finished=finished)}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
+    # Work board (operator 2026-10-23): ALL queued work broken into tasks, and designs awaiting approval.
+    # scripts/lib/design_registry.py. GET only; single-flight in-process cache, rebuilt at most once per 30 s;
+    # design files re-parsed only when they change; open PRs read by a background thread (gh api GET).
+    # Writes go only through scripts/agent_claim.py (CLI).
+    if base_path in ("/api/v2/coordination/tasks", "/api/v2/coordination/designs"):
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from lib.design_registry import work_board as _work_board
+
+            _wb = _work_board()
+            return 200, {"ok": True, "data": _wb.tasks() if base_path.endswith("/tasks") else _wb.designs()}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
+    # Work pipeline (operator 2026-10-23 13:15 ET): one row per work item (task, PR, design phase) staged
+    # proposed -> ... -> verified live with RAG, who/what/when/where/how, blocker and next step + owner.
+    # scripts/lib/work_pipeline.py: single-flight 30 s cache; the GitHub census runs only in a background thread,
+    # at most once per 60 s; a request never waits on GitHub. GET only.
+    if base_path == "/api/v2/coordination/pipeline":
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from lib.work_pipeline import work_pipeline as _work_pipeline
+
+            return 200, {"ok": True, "data": _work_pipeline().view()}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__}
+
+    # Work pipeline commands, Tier 1 (operator 2026-10-23: "both"): note, priority, hold/unhold, next-batch queue,
+    # new/split task, release a red-stale claim. Operator tailnet identity only (agents/service token refused), CSRF
+    # enforced here (cc_auth.command_csrf_check), idempotency key, append-only audit in the claims dir.
+    # scripts/lib/work_pipeline_commands.py. Never broker orders, stops, kill-switch clearing or grants.
+    if base_path == "/api/v2/coordination/commands":
+        try:
+            from lib import work_pipeline_commands as _wpc
+
+            return _wpc.handle(method, body)
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__}
 

@@ -154,3 +154,20 @@ def test_parse_named_quantities():
 def test_egress_drops_position_dollars():
     out = C.research_context_for_model({"q": "x", "sizing_context": [1], "facts": {"market_value": 9, "pe": 30}})
     assert out == {"q": "x", "facts": {"pe": 30}}
+
+
+def test_scenario_citation_and_published_mean_roundtrip_without_relabeling_median():
+    pr = _prospectus()
+    anchor = {"value": 250.0, "as_of": "2026-10-22", "citation": {"store": "fixture", "ref": "target-1"}}
+    pr.horizons["12m"]["base"].citation = anchor
+    pr.street_target.mean = 249.0
+    back = C.SecurityProspectus.from_dict(json.loads(json.dumps(pr.to_dict())))
+    assert back.horizons["12m"]["base"].citation == anchor
+    assert back.street_target.mean == 249.0
+    assert back.street_target.median == 250.0
+    legacy = pr.to_dict()
+    legacy["street_target"].pop("mean")
+    legacy["horizons"]["12m"]["base"].pop("citation")
+    old = C.SecurityProspectus.from_dict(legacy)
+    assert old.street_target.mean is None and old.street_target.median == 250.0
+    assert old.horizons["12m"]["base"].citation is None
