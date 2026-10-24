@@ -1,0 +1,249 @@
+{
+  "fixture": true,
+  "cases": [
+    {
+      "name": "impl-c2-retention-1440-200",
+      "fixture": true,
+      "clock": "2026-10-24T14:00:00Z",
+      "width": 1440,
+      "status": 200,
+      "geometry": {
+        "document": 1440,
+        "scroll": 1440,
+        "panels": [
+          {
+            "client": 380,
+            "scroll": 380
+          },
+          {
+            "client": 380,
+            "scroll": 380
+          },
+          {
+            "client": 380,
+            "scroll": 380
+          }
+        ]
+      },
+      "curation": 1,
+      "source": "Stored quote · schwab · data_broker.latest_quote:schwab · As of Oct 23, 2026, 03:45:00 PM EDT · Price observation is stale.",
+      "observed": "2026-10-23T19:45:00Z",
+      "displayed": "★\nAAA\nCompany name unavailable\n\nNo company description on file\n\nSector unavailable\nIndustry unavailable\nCIO record · company facts not on CIO record\nForming · Stored evidence only\nCATALYST\nNone on file\n$10.00\nClosed session · 2026-10-23 · intraday 15:45 ET\nSupport\n$9.00\n−10.0%\nZone\n—\nResistance\n—\n$8.00 broken — nearest valid level: $11.00\n—\nlevels: Master / Closed session ·\ntime unknown\nSource details\n50 / 100\nWATCH\nObserve\nSet alert · Remove",
+      "traffic": {
+        "reads": [
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list"
+        ],
+        "unexpected": [],
+        "mutations": [],
+        "external": [],
+        "errors": []
+      }
+    },
+    {
+      "name": "impl-c2-retention-1440-503",
+      "fixture": true,
+      "clock": "2026-10-24T14:00:00Z",
+      "width": 1440,
+      "status": 503,
+      "geometry": {
+        "document": 1440,
+        "scroll": 1440,
+        "panels": [
+          {
+            "client": 380,
+            "scroll": 380
+          },
+          {
+            "client": 380,
+            "scroll": 380
+          },
+          {
+            "client": 380,
+            "scroll": 380
+          }
+        ]
+      },
+      "curation": 2,
+      "source": "Stored quote · schwab · data_broker.latest_quote:schwab · As of Oct 23, 2026, 03:45:00 PM EDT · Price observation is stale.",
+      "observed": "2026-10-23T19:45:00Z",
+      "displayed": "★\nAAA\nCompany name unavailable\n\nNo company description on file\n\nSector unavailable\nIndustry unavailable\nCIO record · company facts not on CIO record\nForming · Stored evidence only\nCATALYST\nNone on file\n$10.00\nLast snapshot · 15:45 ET\nSupport\n$9.00\n−10.0%\nZone\n—\nResistance\n—\n$8.00 broken — nearest valid level: $11.00\n—\nlevels: Master / Closed session ·\ntime unknown\nLast snapshot\nSource details\n50 / 100\nWATCH\nObserve\nSet alert · Remove",
+      "traffic": {
+        "reads": [
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list",
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list"
+        ],
+        "unexpected": [],
+        "mutations": [],
+        "external": [],
+        "errors": []
+      }
+    },
+    {
+      "name": "impl-c2-retention-1440-403",
+      "fixture": true,
+      "clock": "2026-10-24T14:00:00Z",
+      "width": 1440,
+      "status": 403,
+      "geometry": {
+        "document": 1440,
+        "scroll": 1440,
+        "panels": [
+          {
+            "client": 380,
+            "scroll": 380
+          },
+          {
+            "client": 380,
+            "scroll": 380
+          },
+          {
+            "client": 380,
+            "scroll": 380
+          }
+        ]
+      },
+      "curation": 2,
+      "source": "Stored quote · schwab · data_broker.latest_quote:schwab · As of Oct 23, 2026, 03:45:00 PM EDT · Price observation is stale.",
+      "observed": "2026-10-23T19:45:00Z",
+      "displayed": "★\nAAA\nCompany name unavailable\n\nNo company description on file\n\nSector unavailable\nIndustry unavailable\nCIO record · company facts not on CIO record\nForming · Stored evidence only\nCATALYST\nNone on file\n$10.00\nLast snapshot · 15:45 ET\nSupport\n$9.00\n−10.0%\nZone\n—\nResistance\n—\n$8.00 broken — nearest valid level: $11.00\n—\nlevels: Master / Closed session ·\ntime unknown\nLast snapshot\nSource details\n50 / 100\nWATCH\nObserve\nSet alert · Remove",
+      "traffic": {
+        "reads": [
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list",
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list",
+          "/api/v2/watch/alerts/list"
+        ],
+        "unexpected": [],
+        "mutations": [],
+        "external": [],
+        "errors": []
+      }
+    },
+    {
+      "name": "impl-c2-retention-412-200",
+      "fixture": true,
+      "clock": "2026-10-24T14:00:00Z",
+      "width": 412,
+      "status": 200,
+      "geometry": {
+        "document": 412,
+        "scroll": 412,
+        "panels": [
+          {
+            "client": 356,
+            "scroll": 356
+          },
+          {
+            "client": 356,
+            "scroll": 356
+          },
+          {
+            "client": 356,
+            "scroll": 356
+          }
+        ]
+      },
+      "curation": 1,
+      "source": "Stored quote · schwab · data_broker.latest_quote:schwab · As of Oct 23, 2026, 03:45:00 PM EDT · Price observation is stale.",
+      "observed": "2026-10-23T19:45:00Z",
+      "displayed": "★\nAAA\nCompany name unavailable\nSector unavailable\nIndustry unavailable\nCIO record · company facts not on CIO record\nForming · Stored evidence only\nCATALYSTNone on file\nClosed session · 2026-10-23 · intraday 15:45 ET\nSupport\n$9.00\nPrice\n$10.00\nResistance\n—\n$8.00 broken — nearest valid level: $11.00\nZone —\nlevels: Master / Closed session ·\ntime unknown\nSource details\n50\nWATCH\nObserve\n⋯",
+      "traffic": {
+        "reads": [
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list"
+        ],
+        "unexpected": [],
+        "mutations": [],
+        "external": [],
+        "errors": []
+      }
+    },
+    {
+      "name": "impl-c2-retention-412-503",
+      "fixture": true,
+      "clock": "2026-10-24T14:00:00Z",
+      "width": 412,
+      "status": 503,
+      "geometry": {
+        "document": 412,
+        "scroll": 412,
+        "panels": [
+          {
+            "client": 356,
+            "scroll": 356
+          },
+          {
+            "client": 356,
+            "scroll": 356
+          },
+          {
+            "client": 356,
+            "scroll": 356
+          }
+        ]
+      },
+      "curation": 2,
+      "source": "Stored quote · schwab · data_broker.latest_quote:schwab · As of Oct 23, 2026, 03:45:00 PM EDT · Price observation is stale.",
+      "observed": "2026-10-23T19:45:00Z",
+      "displayed": "★\nAAA\nCompany name unavailable\nSector unavailable\nIndustry unavailable\nCIO record · company facts not on CIO record\nForming · Stored evidence only\nCATALYSTNone on file\nLast snapshot · 15:45 ET\nSupport\n$9.00\nPrice\n$10.00\nResistance\n—\n$8.00 broken — nearest valid level: $11.00\nZone —\nlevels: Master / Closed session ·\ntime unknown\nLast snapshot\nSource details\n50\nWATCH\nObserve\n⋯",
+      "traffic": {
+        "reads": [
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list",
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list"
+        ],
+        "unexpected": [],
+        "mutations": [],
+        "external": [],
+        "errors": []
+      }
+    },
+    {
+      "name": "impl-c2-retention-412-403",
+      "fixture": true,
+      "clock": "2026-10-24T14:00:00Z",
+      "width": 412,
+      "status": 403,
+      "geometry": {
+        "document": 412,
+        "scroll": 412,
+        "panels": [
+          {
+            "client": 356,
+            "scroll": 356
+          },
+          {
+            "client": 356,
+            "scroll": 356
+          },
+          {
+            "client": 356,
+            "scroll": 356
+          }
+        ]
+      },
+      "curation": 2,
+      "source": "Stored quote · schwab · data_broker.latest_quote:schwab · As of Oct 23, 2026, 03:45:00 PM EDT · Price observation is stale.",
+      "observed": "2026-10-23T19:45:00Z",
+      "displayed": "★\nAAA\nCompany name unavailable\nSector unavailable\nIndustry unavailable\nCIO record · company facts not on CIO record\nForming · Stored evidence only\nCATALYSTNone on file\nLast snapshot · 15:45 ET\nSupport\n$9.00\nPrice\n$10.00\nResistance\n—\n$8.00 broken — nearest valid level: $11.00\nZone —\nlevels: Master / Closed session ·\ntime unknown\nLast snapshot\nSource details\n50\nWATCH\nObserve\n⋯",
+      "traffic": {
+        "reads": [
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list",
+          "/api/v3/data-broker/watch-curation",
+          "/api/v2/watch/alerts/list",
+          "/api/v2/watch/alerts/list"
+        ],
+        "unexpected": [],
+        "mutations": [],
+        "external": [],
+        "errors": []
+      }
+    }
+  ]
+}

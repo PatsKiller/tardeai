@@ -903,26 +903,35 @@ def list_watch_prospects(query: Optional[dict[str, Any]] = None) -> dict[str, An
     return filter_payload(payload, q)
 
 
-def filter_payload(payload: dict[str, Any], q: dict[str, Any]) -> dict[str, Any]:
+def filter_payload(payload: dict[str, Any], q: dict[str, Any], *, now: Optional[datetime] = None) -> dict[str, Any]:
     """Apply the position filters (watch_position_facts.FILTERS, query parameters) to the lanes. Counts are
     recomputed over the kept rows; ``filters`` says what was applied and ``position_facets`` are the count chips."""
     from lib.data_broker import watch_position_facts as wpf
 
-    now = datetime.now(timezone.utc)
+    now = now or datetime.now(timezone.utc)
     active = wpf.active_filters(q)
     all_rows = [r for lane in payload.get("lanes") or [] for r in lane.get("items") or []]
     out = dict(payload)
-    out["position_facets"] = wpf.facet_counts(all_rows, now=now)
+    out["position_facets"] = wpf.facet_counts(all_rows, now=now, filters=active)
     out["position_filters"] = wpf.FILTERS
     out["filters"] = active
-    if not active:
+    out["filter_scope"] = "shown_lane_rows"
+    out["unevaluated_overflow"] = sum(max(0, int(lane.get("count") or 0) - len(lane.get("items") or [])) for lane in payload.get("lanes") or [])
+    sort = str(q.get("sort") or "")
+    if not active and sort not in wpf.SORTS:
         return out
     lanes = []
     for lane in payload.get("lanes") or []:
         keep = [r for r in lane.get("items") or [] if wpf.passes(r, active, now=now)]
-        lanes.append({**lane, "items": keep, "count": len(keep), "overflow": [],
-                      "unfiltered_count": lane.get("count")})
+        if sort in wpf.SORTS:
+            keep.sort(key=lambda r: (*wpf.sort_key(sort, r, r.get("conviction")), r["symbol"]))
+        lanes.append({**lane, "items": keep, **({"count": len(keep),
+                      "unfiltered_count": lane.get("count")} if active else {})})
     out["lanes"] = lanes
+    out["sort"] = sort if sort in wpf.SORTS else None
+    if not active:
+        return out  # Reordering the shown window does not remove the capped population.
     out["counts"] = {**(payload.get("counts") or {}), **{lane["id"]: lane["count"] for lane in lanes},
-                     "total": sum(lane["count"] for lane in lanes), "filtered": True}
+                     "total": sum(lane["count"] for lane in lanes), "filtered": True,
+                     "unevaluated_overflow": out["unevaluated_overflow"]}
     return out

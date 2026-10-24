@@ -1,0 +1,82 @@
+name: watch-row-redesign-fixture
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/watch-row-redesign-fixture.yml'
+      - 'apps/command-center-v3/src/components/watch/**'
+      - 'apps/command-center-v3/src/lib/watch*Model*'
+      - 'apps/command-center-v3/src/lib/watchMarketFactsPresentation*'
+      - 'apps/command-center-v3/src/pages/WatchMyList.tsx'
+      - 'apps/command-center-v3/src/pages/WatchProspects.tsx'
+      - 'apps/command-center-v3/e2e/watch*'
+      - 'scripts/lib/data_broker/watch_position_facts.py'
+      - 'scripts/lib/data_broker/watch_curation.py'
+      - 'scripts/lib/data_broker/watch_prospects.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: watch-row-redesign-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  watch-row-proof:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/command-center-v3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: node --experimental-strip-types src/lib/watchRecordCardModel.test.ts
+      - run: node --experimental-strip-types src/lib/watchMarketFactsPresentation.test.ts
+      - run: npm run build
+      - name: Seven actual MyList card states, contrast and real pure-server query interactions
+        run: node e2e/watch-row-redesign.fixture.mjs "$RUNNER_TEMP/watch-row-redesign"
+      - name: Retained original evidence after503/403 without a live server
+        run: node e2e/watch-freshness-noise.fixture.mjs "$RUNNER_TEMP/watch-row-redesign"
+      - name: Existing Watch, account-name and source-evidence suites on isolated static assets
+        shell: bash
+        env:
+          WATCH_SHOTS_DIR: ${{ runner.temp }}/watch-row-redesign
+          WATCH_ACCOUNTS_SHOTS: ${{ runner.temp }}/watch-row-redesign
+          WATCH_MARKET_SHOTS: ${{ runner.temp }}/watch-row-redesign
+          COMPANY_FACTS_SHOTS_DIR: ${{ runner.temp }}/watch-row-redesign
+          WATCH_RED_ENV: ${{ runner.temp }}/watch-row-empty-env
+        run: |
+          set -euo pipefail
+          mkdir -p "$WATCH_RED_ENV"
+          node --input-type=module <<'JS'
+          import {preview} from 'vite';
+          import {spawn} from 'node:child_process';
+          const p=await preview({configFile:false,envDir:process.env.WATCH_RED_ENV,base:'/v3/',preview:{host:'127.0.0.1',port:0,strictPort:true,proxy:{}}});
+          try {
+            const code=await new Promise((resolve,reject)=>{
+              const child=spawn(process.execPath,['node_modules/@playwright/test/cli.js','test','e2e/watch-pages.spec.ts','e2e/watch-lists.spec.ts','e2e/watch-prospects.spec.ts','e2e/watch-account-names-visible.spec.ts','e2e/watch-market-facts.spec.ts','e2e/watch-company-facts.spec.ts','--project=chromium','--reporter=line'],{stdio:'inherit',env:{...process.env,PLAYWRIGHT_BASE_URL:'http://127.0.0.1:'+p.httpServer.address().port}});
+              child.on('error',reject);child.on('exit',code=>resolve(code));
+            });
+            process.exitCode=code;
+          } finally { await new Promise(resolve=>p.httpServer.close(resolve)); }
+          JS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: watch-row-redesign-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/watch-row-redesign/
+            apps/command-center-v3/test-results/
+          if-no-files-found: error

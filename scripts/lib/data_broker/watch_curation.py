@@ -466,7 +466,7 @@ def build_curation(
             "rows": mine_rows,
             "sources": (payload.get("operator_sources") or {}),
             "filters": active,
-            "position_facets": wpf.facet_counts(mine_all, now=now),
+            "position_facets": wpf.facet_counts(mine_all, now=now, filters=active),
             "position_filters": wpf.FILTERS,
             "position_sorts": wpf.SORTS,
             "never_capped": True,

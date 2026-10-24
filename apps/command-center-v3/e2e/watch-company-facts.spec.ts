@@ -54,13 +54,14 @@ for (const width of [1440, 412]) {
       const forbidden = await fixture(page)
       await page.goto(`/v3/watch?tab=${tab}&lane=forming`)
       const facts = page.getByTestId('watch-company-facts')
+      const cards = page.getByTestId('watch-row')
       await expect(facts).toHaveCount(3)
       await expect(facts.first()).toContainText('Fixture Precision Instruments Inc.')
       await expect(facts.first()).toContainText('Scientific & Technical Instruments')
-      await expect(facts.first()).toContainText('2026-10-23')
-      await expect(facts.first()).toContainText('Fixture company publication')
-      await expect(facts.first().locator('a')).toHaveAttribute('href', 'https://example.invalid/acme-product')
-      await expect(facts.nth(1)).toContainText('No catalyst on file')
+      await expect(cards.first()).toContainText('2026-10-23')
+      await expect(cards.first()).toContainText('Fixture company publication')
+      await expect(cards.first().getByTestId('watch-company-catalyst').locator('a')).toHaveAttribute('href', 'https://example.invalid/acme-product')
+      await expect(cards.nth(1).getByTestId('watch-company-catalyst')).toContainText('None on file')
       await expect(facts.nth(2)).toContainText('Company name unavailable')
       await expect(facts.nth(2)).toContainText('company facts not on cio record')
       const descriptions = await page.locator('.watch-company-description').evaluateAll(els => els.map(el => ({
@@ -72,7 +73,7 @@ for (const width of [1440, 412]) {
       expect(forbidden).toEqual([])
       if (width === 412) await facts.first().scrollIntoViewIfNeeded()
       await expect(facts.first()).toBeInViewport()
-      if (process.env.COMPANY_FACTS_SHOTS_DIR) await page.screenshot({ path: `${process.env.COMPANY_FACTS_SHOTS_DIR}/${tab}-${width}.png`, fullPage: true })
+      if (process.env.COMPANY_FACTS_SHOTS_DIR) await page.screenshot({ path: `${process.env.COMPANY_FACTS_SHOTS_DIR}/impl-company-${tab}-${width}.png`, fullPage: true })
     })
   }
 }

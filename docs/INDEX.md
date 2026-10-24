@@ -2080,6 +2080,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WATCH_LISTS_PAGE_2026-10-23.md` | Watch — My Watchlist, System Suggests, Full universe (2026-10-23) |
 | `docs/ops/WATCH_MY_LIST_MARKET_FACTS_20261024.md` | WP-29: My Watchlist stored market facts |
 | `docs/ops/WATCH_PROSPECTS_PAGE_2026-10-22.md` | Watch — prospect lanes (the Gate 3 Watch redesign, 2026-10-22) |
+| `docs/ops/WATCH_ROW_REDESIGN_20261024.md` | WP-29: Watch company, setup and price cards with server-side view controls |
 | `docs/ops/WEEKLY_OVERSIGHT_CHATGPT_OAUTH.md` | Weekly oversight — ChatGPT OAuth auto, paid manual |
 | `docs/ops/WORK_PIPELINE_2026-10-23.md` | Work pipeline: the default Coordination view, keyed by work item (2026-10-23) |
 | `docs/ops/WORK_PIPELINE_TIER2_2026-10-23.md` | Work pipeline Tier 2: passkey acts through the host applier (2026-10-23) |
