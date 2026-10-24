@@ -60,6 +60,18 @@ W7 performs no conflict classification, treats no raw disagreement array as a
 flag, and makes no automatic resolution. That UI dependency remains pending;
 missing source data and pending stop activation are still described explicitly.
 
+Addendum 2 is binding: `EXCEPTIONS_MATRIX.md` in the conflict-resolution handoff
+supersedes the original design where they differ. W10 owns tiers T0–T4, the
+final R1–R16 rules and never-auto list, the 31-flag golden replay, and the urgent
+governed-route worker prerequisite. W7's forwarding test preserves fields such
+as `tier`, `owner`, `clears_when` and `next_run`; it is not engine acceptance.
+The old 24 reference tests and 15-flag expectation are not final proof. No
+queued-job drain or live activation is part of W7.
+
+Sector display preserves W3/W1 measurement semantics: `favoured: null` is not
+published (with its gap reason); a measured empty list means none favoured.
+W7 never derives posture or favoured sectors from daily returns.
+
 Local evidence at the source checkpoint: 49 affected tests passed with
 `psycopg2` hidden; the final W7 subset has 10 passing tests. Full `npm run build`,
 the four integrity ratchets, lane registry, CIO completeness and docs-index

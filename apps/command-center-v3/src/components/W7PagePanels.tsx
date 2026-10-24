@@ -39,6 +39,7 @@ export function W7HomePanels({ data }: { data: any }) {
   const items: any[] = todo.items || []
   const nearest = stops.nearest
   const awaiting: any[] = stops.awaiting_fill || []
+  const favoured = data.sectors?.favoured
   return <div style={{ ...grid, gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,360px),1fr))' }}>
     <W7Panel title="Do now" testId="home-do-now">
       <p style={{ color: TOKENS.text[2], marginTop: 0 }}>Ranked by the CIO · up to 7</p>
@@ -66,7 +67,8 @@ export function W7HomePanels({ data }: { data: any }) {
         <p>Regime <b>{text(regime.label, 'Not classified')}</b> · VIX <b>{text(regime.vix)}</b></p>
         <p style={{ color: TOKENS.text[2] }}>{when(regime.as_of)}{regime.stale ? ' · Last published view; refresh overdue' : ''}</p>
         {regime.gap && <W7Gap>{typeof regime.gap === 'string' ? regime.gap : regime.gap.reason}</W7Gap>}
-        <p>Favoured sectors: {data.sectors?.favoured?.join(', ') || 'Not published'}</p>
+        <p>Favoured sectors: {Array.isArray(favoured) ? favoured.length ? favoured.join(', ') : 'None favoured' : 'Not published'}</p>
+        {!Array.isArray(favoured) && data.sectors?.favoured_gap && <W7Gap>{typeof data.sectors.favoured_gap === 'string' ? data.sectors.favoured_gap : data.sectors.favoured_gap.reason}</W7Gap>}
         <Link to="/watch?tab=sectors" style={linkStyle}>Sector trends and leaders →</Link>
       </W7Panel>
       <W7Panel title="Waiting on you">

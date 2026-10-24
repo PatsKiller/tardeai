@@ -98,7 +98,11 @@ def test_model_refusal_is_a_gap_not_an_advisory():
 
 def test_shared_facts_are_forwarded_unchanged_and_cio_ranking_is_preserved():
     truth, look = inputs()
-    truth["conflicts"] = {"findings": [{"kind": "AGREEMENT", "rule": "U5", "key": "fixture-finding"}], "gap": None}
+    # This tests forwarding only. W10 owns classification and the binding
+    # exceptions matrix / golden31 replay; no reference-engine outcome is tested here.
+    truth["conflicts"] = {"findings": [{"kind": "GATE", "rule": "R3", "key": "fixture-finding", "tier": "T3",
+                                      "owner": "Fixture check owner", "clears_when": "Fixture check passes",
+                                      "next_run": NOW.isoformat()}], "gap": None}
     before = deepcopy(truth)
     data = project_pages(truth, **look)
     for key in ("stops", "regime", "approvals", "capital", "cio_status"):

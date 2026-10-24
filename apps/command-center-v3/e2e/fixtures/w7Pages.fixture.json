@@ -20,38 +20,6 @@
           "as_of": "2026-10-20T20:00:00+00:00"
         }
       ],
-      "holdings": [
-        {
-          "symbol": "SYNF",
-          "account_id": "fixture_ira",
-          "market_value": 12000,
-          "is_fund": true
-        },
-        {
-          "symbol": "ALFA",
-          "account_id": "fixture_ira",
-          "market_value": 6000,
-          "asset_type": "equity"
-        },
-        {
-          "symbol": "MISS",
-          "account_id": "fixture_manual",
-          "market_value": 4000,
-          "is_fund": true
-        },
-        {
-          "symbol": "CASH",
-          "account_id": "fixture_ira",
-          "market_value": 2000,
-          "is_cash": true
-        },
-        {
-          "symbol": "CASH",
-          "account_id": "fixture_manual",
-          "market_value": 4000,
-          "is_cash": true
-        }
-      ],
       "as_of": "2026-10-24T22:00:00+00:00",
       "source": "fixture-CIO",
       "stale": false,
@@ -132,7 +100,8 @@
       "nearest": {
         "symbol": "SYNF",
         "distance_pct": 10
-      }
+      },
+      "position_count": 3
     },
     "regime": {
       "label": "Fixture regime",
@@ -195,10 +164,17 @@
       ]
     },
     "sectors": {
-      "gap": "CIO field unavailable",
-      "source": "CIO",
-      "as_of": null,
-      "stale": true
+      "favoured": null,
+      "favoured_gap": {
+        "reason": "Fixture 20/60-day measurements unavailable"
+      }
+    },
+    "conflicts": {
+      "findings": [],
+      "headline": null,
+      "gap": {
+        "reason": "Conflict engine accepted source not yet integrated"
+      }
     },
     "lookthrough": {
       "account": null,
@@ -262,7 +238,12 @@
                   "value_usd": 6000.0,
                   "source": "Direct holding"
                 }
-              ]
+              ],
+              "security_guid": "00000000-0000-4000-8000-000000000001",
+              "classification": {
+                "value": "Technology",
+                "source": "fixture-C1"
+              }
             }
           ],
           "portfolio_pct": 42.86
@@ -284,7 +265,9 @@
                   "value_usd": 3000.0,
                   "source": "Published fund holdings"
                 }
-              ]
+              ],
+              "security_guid": null,
+              "classification": null
             }
           ],
           "portfolio_pct": 10.71
@@ -298,7 +281,32 @@
           "members": [
             {
               "symbol": "ALFA",
-              "value_usd": 12000.0
+              "value_usd": 12000.0,
+              "sources": [
+                {
+                  "symbol": "SYNF",
+                  "account": "fixture_ira",
+                  "proxy": null,
+                  "account_label": "Fixture IRA",
+                  "weight": 0.5,
+                  "value_usd": 6000.0,
+                  "source": "Published fund holdings"
+                },
+                {
+                  "symbol": "ALFA",
+                  "account": "fixture_ira",
+                  "proxy": null,
+                  "weight": 1,
+                  "account_label": "Fixture IRA",
+                  "value_usd": 6000.0,
+                  "source": "Direct holding"
+                }
+              ],
+              "security_guid": "00000000-0000-4000-8000-000000000001",
+              "classification": {
+                "value": "Software",
+                "source": "fixture-C1"
+              }
             }
           ]
         },
@@ -309,7 +317,20 @@
           "members": [
             {
               "symbol": "BETA",
-              "value_usd": 3000.0
+              "value_usd": 3000.0,
+              "sources": [
+                {
+                  "symbol": "SYNF",
+                  "account": "fixture_ira",
+                  "proxy": null,
+                  "account_label": "Fixture IRA",
+                  "weight": 0.25,
+                  "value_usd": 3000.0,
+                  "source": "Published fund holdings"
+                }
+              ],
+              "security_guid": null,
+              "classification": null
             }
           ]
         }
@@ -436,7 +457,12 @@
                       "value_usd": 6000.0,
                       "source": "Direct holding"
                     }
-                  ]
+                  ],
+                  "security_guid": "00000000-0000-4000-8000-000000000001",
+                  "classification": {
+                    "value": "Technology",
+                    "source": "fixture-C1"
+                  }
                 }
               ],
               "portfolio_pct": 60.0
@@ -458,7 +484,9 @@
                       "value_usd": 3000.0,
                       "source": "Published fund holdings"
                     }
-                  ]
+                  ],
+                  "security_guid": null,
+                  "classification": null
                 }
               ],
               "portfolio_pct": 15.0
@@ -472,7 +500,32 @@
               "members": [
                 {
                   "symbol": "ALFA",
-                  "value_usd": 12000.0
+                  "value_usd": 12000.0,
+                  "sources": [
+                    {
+                      "symbol": "SYNF",
+                      "account": "fixture_ira",
+                      "proxy": null,
+                      "account_label": "Fixture IRA",
+                      "weight": 0.5,
+                      "value_usd": 6000.0,
+                      "source": "Published fund holdings"
+                    },
+                    {
+                      "symbol": "ALFA",
+                      "account": "fixture_ira",
+                      "proxy": null,
+                      "weight": 1,
+                      "account_label": "Fixture IRA",
+                      "value_usd": 6000.0,
+                      "source": "Direct holding"
+                    }
+                  ],
+                  "security_guid": "00000000-0000-4000-8000-000000000001",
+                  "classification": {
+                    "value": "Software",
+                    "source": "fixture-C1"
+                  }
                 }
               ]
             },
@@ -483,7 +536,20 @@
               "members": [
                 {
                   "symbol": "BETA",
-                  "value_usd": 3000.0
+                  "value_usd": 3000.0,
+                  "sources": [
+                    {
+                      "symbol": "SYNF",
+                      "account": "fixture_ira",
+                      "proxy": null,
+                      "account_label": "Fixture IRA",
+                      "weight": 0.25,
+                      "value_usd": 3000.0,
+                      "source": "Published fund holdings"
+                    }
+                  ],
+                  "security_guid": null,
+                  "classification": null
                 }
               ]
             }
@@ -613,7 +679,8 @@
       "gap": "Fixture CIO record unavailable",
       "source": "CIO",
       "as_of": null,
-      "stale": true
+      "stale": true,
+      "rows": []
     },
     "stops": {
       "gap": "Fixture CIO record unavailable",
@@ -658,14 +725,23 @@
       "as_of": null,
       "stale": true
     },
+    "conflicts": {
+      "findings": [],
+      "source": "conflict engine read projection",
+      "as_of": null,
+      "stale": true,
+      "gap": {
+        "reason": "Conflict engine accepted source not yet integrated"
+      }
+    },
     "lookthrough": {
       "account": null,
       "as_of": null,
       "portfolio_total_usd": null,
       "looked_through_usd": null,
       "portfolio_coverage_pct": null,
-      "fund_value_usd": 0.0,
-      "fund_covered_usd": 0.0,
+      "fund_value_usd": null,
+      "fund_covered_usd": null,
       "fund_coverage_pct": null,
       "unclassified_industry_usd": 0.0,
       "funds_without_holdings": [],
