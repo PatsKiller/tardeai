@@ -2073,6 +2073,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WORK_PIPELINE_TIER2_2026-10-23.md` | Work pipeline Tier 2: passkey acts through the host applier (2026-10-23) |
 | `docs/ops/WP03_BOARD_RECONCILIATION_20261023.md` | WP-03: board, PR and worktree reconciliation |
 | `docs/ops/WP13_CIO_HARDENING_SHARDS_20261023.md` | WP-13 parallel CIO hardening delivery |
+| `docs/ops/WP13_SHADOW_DRY_RUN_ISOLATION_20261024.md` | WP-13 shadow-wave dry-run proof isolation |
 | `docs/ops/WP14_PUSH_POLICY_V2_REBUILD_20261023.md` | WP-14 push-policy-v2 operator package rebuild |
 | `docs/ops/WP15_AGENTS_20_2_OPERATOR_PACKAGE_20261023.md` | WP-15: AGENTS 20.2.0 package delivery |
 | `docs/ops/WP16_ADVISORY_POLICY_PACKAGE_20261023.md` | WP-16 advisory-policy package delivery |
