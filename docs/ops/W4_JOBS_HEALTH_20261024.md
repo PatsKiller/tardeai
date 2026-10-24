@@ -30,6 +30,7 @@ is unknown; the watchdog's two missed opportunities are the missed-run threshold
 | Summary cards | same, `summary.*` | all projected job rows; never the current page length | read-only projection |
 | Independent monitor clock | same, `monitor.*` | `data/runtime/cron_outage_watchdog_latest.json` operational `mode`, `observed_at`, status, notification outcome | independent watchdog systemd lane from #2077 |
 | Header Alerts operations source | same, `incidents[]/incident_count` | failed/missed job rows and monitor blindness; independent of incident notifier | projection; existing independent watchdog delivers alerts |
+| System Platform job execution | `/api/v2/system/platform-health` `items[id=schedulers.job_execution].status/value/detail` | the same Jobs summary and independent monitor observation; unavailable status keeps value null | read-only `probe_job_execution` |
 | Job evidence sheet | same, `?job=lane` | identical row from the same observation | read-only projection |
 | n8n today failures | `/api/v2/coordination/n8n-today` `failures[].cause` | `data/runtime/n8n_runs/*.json` `stderr_tail/reason` | host executor |
 | Workflow-key n8n counts | same, `runs.*` | `n8n-wf-*` receipts, execution timestamp in America/New_York; semantic d/e/g/p keys retain slot-date accounting | host executor |
