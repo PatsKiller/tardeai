@@ -2091,6 +2091,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WP36_STALE_PRODUCERS_20261023.md` | WP-36 item5: stale feed and report-producer reconciliation |
 | `docs/ops/WP36_AFTER_CLOSE_CRAWLER_PREFLIGHT_20261024.md` | WP-36 after-close observer: strict packet and scoped live evidence |
 | `docs/ops/WP33_OPEN_STACK_TRIAGE_20261023.md` | WP-33 item 5: exact-head PR stack triage |
+| `docs/ops/WP29_ACCOUNT_LABEL_FIXTURES_20261023.md` | WP-29(c): account-label browser evidence |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye — first institutional-brain audit |
 | `docs/ops/agent_start/codex-note.md` | Codex note — agent claim board (operator installs) |
 | `docs/ops/agent_start/cursor-rule.md` | Cursor rules snippet — agent claim board (operator installs) |
