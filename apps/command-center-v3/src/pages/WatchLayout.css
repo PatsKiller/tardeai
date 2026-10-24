@@ -25,6 +25,19 @@
   white-space: nowrap;
 }
 .watch-row-context > span + span::before { content: ' · '; }
+.watch-row-account-names {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  min-width: 0;
+}
+.watch-row-account-names [data-testid="account-chip"] {
+  white-space: normal !important;
+  overflow: visible !important;
+  overflow-wrap: anywhere;
+}
 .watch-mobile-facts,
 .watch-universe-mobile-facts { display: none; }
 .watch-stage-grid {
@@ -63,6 +76,8 @@
   .watch-row-context { white-space: normal; overflow: visible; }
   .watch-row-context > span { display: block; }
   .watch-row-context > span + span::before { content: none; }
+  /* The phone card already prints full names in its Account fact; avoid repeating them. */
+  .watch-row-account-names { display: none; }
   .watch-mobile-facts,
   .watch-universe-mobile-facts {
     display: grid;

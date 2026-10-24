@@ -2091,6 +2091,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WP29_SPECIALIST_ACCOUNT_CONTEXT_20261023.md` | WP-29 item d: grounded account location in specialist context |
 | `docs/ops/WP29_TELEGRAM_TURN_DEDUP_20261023.md` | WP-29 item e: idempotent Telegram conversation capture |
 | `docs/ops/WP30_MOOMOO_RETIREMENT_READERS_WRITERS_20261023.md` | WP-30: moomoo retirement state readers and writers |
+| `docs/ops/WP29_WATCH_VISIBLE_ACCOUNTS_20261024.md` | WP-29c: visible Watch account names and page heading |
 | `docs/ops/WP31_WATCH_LAYOUT_20261023.md` | WP-31 Watch rows and phone cards |
 | `docs/ops/WP32_BOUNDED_HOME_AND_PREFS_20261023.md` | WP-32 bounded CIO home reads and session verification |
 | `docs/ops/WP33_ITEM2_SYNC_SOCIAL_CRON_PACKET_20261024.md` | WP-33 item2: exact residual sync-social operator packet |
