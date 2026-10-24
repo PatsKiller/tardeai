@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "advisory_schedule_truth_20261024",
+  "files": [
+    "tests/test_advisory_desk_schedule.py"
+  ],
+  "comment": [
+    "W6 board8: future fire requires loaded enabled active timer evidence; disabled/unknown is a gap."
+  ]
+}
