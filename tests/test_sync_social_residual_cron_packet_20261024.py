@@ -17,11 +17,12 @@ PACKET = ROOT / "docs/ops/packets/sync-social-residual-cron-20261024"
 spec = importlib.util.spec_from_file_location("wp33_residual_packet", PACKET / "retire_packet.py")
 mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mod)
-EXACT = (
-    "30 11,15 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && "
-    "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python "
-    "scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1"
-).encode()
+# The packet pins the exact residual line (its bytes are hash-bound in the packet); reading it
+# from there keeps this test free of live-host paths (check_test_host_paths ratchet).
+EXACT = mod.target()[0]
+assert EXACT.startswith(b"30 11,15 * * 1-5 cd ") and b"/portfolio-server/CURRENT && " in EXACT
+assert EXACT.endswith(b"scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1")
+assert b"flock" not in EXACT
 OLD_FLOCKED = (
     "30 11,15 * * 1-5 cd $PROJ && flock -n /tmp/sync_social_to_intelligence.lock "
     "$PY scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1"
