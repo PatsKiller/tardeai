@@ -1,6 +1,6 @@
 # TradeInView package C: Holding history
 
-**Status:** Local implementation checkpoint; actual initial producer COPY checked; awaiting backend A's frozen fixture variants and final proof. No PUSH_NEEDED yet.
+**Status:** Local implementation and mobile-first checkpoint; actual initial producer COPY checked; awaiting backend A's frozen fixture variants and final proof. No PUSH_NEEDED yet.
 **Owner:** codex-tradeinview-c-20261024; task DSN-20261024-tradeinview-history-P1-T1.
 **Base:** e148e2a65303d8aa6e6c9437784ae83f9e2bebe8, accepted main after #2072. No risk source is edited.
 
@@ -65,3 +65,28 @@ The source claim remains active; no PUSH_NEEDED is logged for this checkpoint.
 Evidence root: `/home/johnclaw/.cache/rtc/codex-tradeinview-c-20261024/`. The worker does not call live7777, a provider, broker,
 credential, order, stop, release or scheduler. Fidelity mapping presence is owned by backend A's current capture; the old
 mockup's missing-every-release claim is not repeated as fact.
+
+
+## Phone-first continuation (operator directive, 2026-10-24)
+
+At widths up to 820 px, selecting a symbol opens its detail in a full-screen sheet, rendered outside the long names
+list. Its fixed header has a Back button; the sheet body scrolls independently and the background is inert and
+scroll-locked. Back and browser Back restore the selected name and focus. A bookmarked `symbol` URL opens the same
+sheet; its Back action removes only the symbol, retaining sort, tab and other URL state. Focus enters the sheet,
+Tab stays inside it, Escape closes it, and closing/restoring the desktop breakpoint releases the scroll lock.
+All buttons and source disclosures have 44 px minimum phone targets. Each trip ends with a full-width Replay action.
+The list keeps server order and names, without a 280 px nested phone scroll box.
+
+The actual-component fixture now has **13 passing browser cases**: the original five source/transport boundaries,
+four touch/deep-link flows at 412×915 and 390×844, two touch flows using A's immutable initial production-COPY,
+and the existing actual-COPY render checks at 1440/412. Tests tap sort, a name, Back, provenance and Replay;
+assert full sheet viewport bounds, no horizontal overflow, focus restoration, 44 px targets, real account names
+and preservation of URL/source clocks. Replay here proves C's exact row-ID callback; shell B must separately prove
+actual History → Replay navigation. No mock shell is described as the actual Replay screen.
+
+Phone screenshots use the real viewport rather than a full-page capture of the hidden underlying names list.
+`mobile-viewport-screenshots/impl-history-actual-axti-phone-detail-{412,390}.png` shows the actual nullable AXTI
+COPY facts and source gaps; `impl-history-phone-names-{412,390}.png` shows the isolated missing-data protocol case.
+The COPY is still the same initial A prototype (86 names / 13 AXTI observed rows), not final backend/schema or
+Fidelity/basis acceptance. Final producer variants and B integration remain pending; this continuation does not
+activate a schedule, alter financial aggregation or claim served acceptance.

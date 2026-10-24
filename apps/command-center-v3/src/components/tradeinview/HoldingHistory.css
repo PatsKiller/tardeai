@@ -72,7 +72,7 @@
 }
 @media (max-width: 820px) {
   .hh-layout { grid-template-columns: minmax(0, 1fr); }
-  .hh-name-list { max-height: 280px; }
+  .hh-name-list { max-height: none; overflow-y: visible; }
   .hh-names { padding: 12px; }
   .hh-panel { padding: 14px; }
   .hh-trips { padding: 0; }
@@ -80,5 +80,12 @@
   .hh-account-timeline { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .hh-axis { font-size: var(--hh-small); }
   .hh-request-status { align-items: start; }
-  .holding-history button { min-height: 44px; }
+  .holding-history button, .holding-history summary { min-height: 44px; }
+  .holding-history summary { display: flex; align-items: center; padding: 8px 0; }
+  .holding-history .hh-replay { display: block; width: 100%; min-height: 44px; margin-top: 12px; padding: 10px 12px; text-align: center; background: var(--info-bg); border: 1px solid var(--info-border); }
+  .hh-mobile-sheet { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; background: var(--hh-inset); height: 100dvh; overflow: hidden; }
+  .hh-sheet-header { display: flex; flex: 0 0 auto; align-items: center; gap: 12px; padding: max(10px, env(safe-area-inset-top)) 12px 10px; background: var(--hh-bg); border-bottom: 1px solid var(--hh-border); }
+  .hh-sheet-header h2 { font: inherit; font-weight: 600; margin: 0; overflow-wrap: anywhere; min-width: 0; }
+  .hh-sheet-header button { flex: 0 0 auto; }
+  .hh-sheet-body { min-height: 0; flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 12px 12px max(16px, env(safe-area-inset-bottom)); }
 }

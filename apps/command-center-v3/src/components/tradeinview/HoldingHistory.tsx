@@ -1,5 +1,7 @@
 /** Holding history is a read-only view of the server's merged, provenance-bearing ledger. */
-import { useSearchParams } from 'react-router-dom'
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
 import { TOKENS, TYPE, FONT, toneVars } from '../../lib/designTokens'
 import { HISTORY_SORTS, dateText, decodeHistory, finite, gapText, historyUrl, missingReason, money, namedGaps, numberText, percent, provenanceText, reasonText, segmentGeometry, sortFrom,
@@ -7,6 +9,40 @@ import { HISTORY_SORTS, dateText, decodeHistory, finite, gapText, historyUrl, mi
 import './HoldingHistory.css'
 
 type Props = { onReplay: (tradeId: string) => void }
+const historyStyle = { '--hh-bg': TOKENS.bg[1], '--hh-inset': TOKENS.bg[0], '--hh-border': TOKENS.border, '--hh-muted': TOKENS.text[2], '--hh-text': TOKENS.text[0], '--hh-info': TOKENS.info, '--hh-focus': TOKENS.focusRing,
+  '--hh-font': FONT.sans, '--hh-mono': FONT.mono, '--hh-heading': `${TYPE.lg}px`, '--hh-type': `${TYPE.base}px`, '--hh-small': `${TYPE.sm}px` } as CSSProperties
+function usePhone() {
+  const [phone, setPhone] = useState(() => window.matchMedia('(max-width: 820px)').matches)
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 820px)')
+    const update = () => setPhone(query.matches)
+    update(); query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+  return phone
+}
+function MobileDetail({ symbol, onBack, children }: { symbol: string; onBack: () => void; children: ReactNode }) {
+  const sheet = useRef<HTMLDivElement>(null)
+  const back = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    back.current?.focus()
+    return () => { document.body.style.overflow = previous }
+  }, [])
+  return createPortal(<div ref={sheet} className="holding-history hh-mobile-sheet cc-terminal-ui" role="dialog" aria-modal="true" aria-labelledby="hh-mobile-title" data-testid="history-detail-sheet" style={historyStyle}
+    onKeyDown={event => {
+      if (event.key === 'Escape') { event.preventDefault(); onBack(); return }
+      if (event.key !== 'Tab') return
+      const controls = Array.from(sheet.current?.querySelectorAll<HTMLElement>('button:not(:disabled), summary, a[href], [tabindex="0"]') || []).filter(el => el.getClientRects().length)
+      const first = controls[0], last = controls[controls.length - 1]
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+    }}>
+    <header className="hh-sheet-header"><button ref={back} type="button" onClick={onBack} data-testid="history-back">← Back to names</button><h2 id="hh-mobile-title">{symbol} history</h2></header>
+    <div className="hh-sheet-body">{children}</div>
+  </div>, document.body)
+}
 const colorFor = (value: unknown) => finite(value) && value !== 0 ? (value > 0 ? TOKENS.success : TOKENS.danger) : TOKENS.text[0]
 function Gaps({ gaps, heading = 'Data gaps, shown not hidden' }: { gaps: Gap[]; heading?: string }) {
   if (!gaps.length) return null
@@ -15,7 +51,7 @@ function Gaps({ gaps, heading = 'Data gaps, shown not hidden' }: { gaps: Gap[]; 
   </aside>
 }
 function Name({ row, selected, onSelect }: { row: HistorySymbol; selected: boolean; onSelect: () => void }) {
-  return <button type="button" className="hh-name" data-testid="history-name" aria-pressed={selected} onClick={onSelect}>
+  return <button type="button" className="hh-name" data-testid="history-name" data-symbol={row.symbol} aria-pressed={selected} onClick={onSelect}>
     <span className="hh-name-heading"><b>{row.symbol}</b><span title={row.company_missing_reason || undefined}>{row.company_name || 'Company name unavailable'}</span></span>
     {!row.company_name && <small>{reasonText(row.company_missing_reason)}</small>}
     <span className="hh-muted">{numberText(row.round_trip_count, 0)} round trips · {numberText(row.account_count, 0)} accounts</span>
@@ -74,24 +110,24 @@ function Trip({ trip: t, onReplay, accountOptions }: { trip: HistoryTrip; onRepl
     </div>
   </div>
 }
-function Request({ path, selectedSymbol, onSelect, sort, onSort, onReplay }: Props & { path: string; selectedSymbol: string | null; onSelect: (symbol: string) => void; sort: string; onSort: (sort: string) => void }) {
+function Request({ path, selectedSymbol, onSelect, sort, onSort, onReplay, phone, onBack, returnFocusSymbol }: Props & { path: string; selectedSymbol: string | null; onSelect: (symbol: string) => void; sort: string; onSort: (sort: string) => void; phone: boolean; onBack: () => void; returnFocusSymbol: string | null }) {
   const { data: raw, loading, refreshing, error, stale, refetch } = useApi<unknown>(path)
   const data = decodeHistory(raw)
   const mismatch = data?.detail && selectedSymbol && data.detail.symbol.toUpperCase() !== selectedSymbol.toUpperCase()
   const detail = mismatch ? null : data?.detail
   const selected = data?.symbols.find(r => r.symbol === detail?.symbol)
-  return <section className="holding-history" aria-label="Holding history" style={{ '--hh-bg': TOKENS.bg[1], '--hh-inset': TOKENS.bg[0], '--hh-border': TOKENS.border, '--hh-muted': TOKENS.text[2], '--hh-text': TOKENS.text[0], '--hh-info': TOKENS.info, '--hh-focus': TOKENS.focusRing,
-    '--hh-font': FONT.sans, '--hh-mono': FONT.mono, '--hh-heading': `${TYPE.lg}px`, '--hh-type': `${TYPE.base}px`, '--hh-small': `${TYPE.sm}px` } as React.CSSProperties}>
-    <div className="hh-request-status"><span>{data ? `Collected ${dateText(data.as_of)} · ${data.range.basis || 'Range basis unavailable'}` : loading ? 'Loading holding history…' : 'Holding history unavailable'}</span>
-      <button type="button" onClick={refetch} disabled={loading || refreshing}>{refreshing ? 'Refreshing…' : 'Refresh'}</button></div>
+  const names = useRef<HTMLDivElement>(null)
+  const sheetOpen = phone && !!selectedSymbol
+  useEffect(() => {
+    if (!phone || selectedSymbol || !returnFocusSymbol || !data) return
+    const button = Array.from(names.current?.querySelectorAll<HTMLButtonElement>('[data-symbol]') || []).find(el => el.dataset.symbol === returnFocusSymbol)
+    button?.focus({ preventScroll: true }); button?.scrollIntoView({ block: 'nearest' })
+  }, [phone, selectedSymbol, returnFocusSymbol, data])
+  const status = <><div className="hh-request-status"><span>{data ? `Collected ${dateText(data.as_of)} · ${data.range.basis || 'Range basis unavailable'}` : loading ? 'Loading holding history…' : 'Holding history unavailable'}</span>
+    <button type="button" onClick={refetch} disabled={loading || refreshing}>{refreshing ? 'Refreshing…' : 'Refresh'}</button></div>
     {stale && <p role="status" className="hh-transport-warning">Showing the previously collected history; refresh did not succeed. {error || 'Server unavailable'} · original collection time retained.</p>}
-    {!data && !loading && <p role="alert">{error || 'Holding history response is missing or does not match the read-only schema.'}</p>}
-    {data && <div className="hh-layout"><aside className="hh-names" aria-label="Names with repeat or multiple-account holdings">
-      <p className="hh-muted">Names you held more than once, or in more than one account</p>
-      <div className="hh-sorts" role="group" aria-label="History sort">{HISTORY_SORTS.map(s => <button key={s.id} type="button" aria-pressed={s.id === sort} onClick={() => onSort(s.id)}>{s.label}</button>)}</div>
-      {!data.symbols.length && <p>No names returned by holding history. {missingReason(data.range.coverage)}</p>}
-      <div className="hh-name-list">{data.symbols.map(row => <Name key={row.symbol} row={row} selected={row.symbol === (selectedSymbol || detail?.symbol)} onSelect={() => onSelect(row.symbol)} />)}</div>
-    </aside><div className="hh-main">
+    {!data && !loading && <p role="alert">{error || 'Holding history response is missing or does not match the read-only schema.'}</p>}</>
+  const content = data && <>
       <Gaps gaps={namedGaps(data.gaps, data.account_options)} />
       {!data.ok && <p role="status" className="hh-transport-warning">Stored history coverage is incomplete. See the source gaps below.</p>}
       {mismatch && <p role="alert">Selected history unavailable: the server detail does not match {selectedSymbol}.</p>}
@@ -106,14 +142,38 @@ function Request({ path, selectedSymbol, onSelect, sort, onSort, onReplay }: Pro
           <div role="table" aria-label="Holding history trips"><div className="hh-trip-head" role="row">{['Account', 'Bought', 'Sold', 'Shares', 'Days', 'Result', 'Source'].map(label => <span key={label} role="columnheader">{label}</span>)}</div>
           {detail.trips.map((t, i) => <Trip key={t.trade_id || i} trip={t} onReplay={onReplay} accountOptions={data.account_options} />)}</div>
         </section></>}
-    </div></div>}
-  </section>
+    </>
+  return <>
+    <section className="holding-history" aria-label="Holding history" style={historyStyle} aria-hidden={sheetOpen || undefined} ref={el => { if (el) el.inert = sheetOpen }}>
+      {status}
+      {data && <div className="hh-layout"><aside className="hh-names" aria-label="Names with repeat or multiple-account holdings">
+        <p className="hh-muted">Names you held more than once, or in more than one account</p>
+        <div className="hh-sorts" role="group" aria-label="History sort">{HISTORY_SORTS.map(s => <button key={s.id} type="button" aria-pressed={s.id === sort} onClick={() => onSort(s.id)}>{s.label}</button>)}</div>
+        {!data.symbols.length && <p>No names returned by holding history. {missingReason(data.range.coverage)}</p>}
+        <div ref={names} className="hh-name-list">{data.symbols.map(row => <Name key={row.symbol} row={row} selected={row.symbol === (selectedSymbol || (!phone && detail?.symbol))} onSelect={() => onSelect(row.symbol)} />)}</div>
+      </aside>{phone ? !sheetOpen && <div className="hh-main"><Gaps gaps={namedGaps(data.gaps, data.account_options)} />{!data.ok && <p className="hh-transport-warning">Stored history coverage is incomplete. See the source gaps.</p>}</div> : <div className="hh-main">{content}</div>}</div>}
+    </section>
+    {sheetOpen && <MobileDetail symbol={selectedSymbol!} onBack={onBack}>{status}<div className="hh-main">{content}</div></MobileDetail>}
+  </>
 }
 export default function HoldingHistory({ onReplay }: Props) {
   const [params, setParams] = useSearchParams()
+  const location = useLocation(), navigate = useNavigate()
+  const phone = usePhone()
+  const returnFocusSymbol = useRef<string | null>(null)
   const symbol = params.get('symbol')?.trim().toUpperCase() || null
   const sort = sortFrom(params.get('history_sort'))
   const path = historyUrl(symbol, sort)
   const update = (key: string, value: string) => { const next = new URLSearchParams(params); next.set(key, value); setParams(next) }
-  return <Request key={path} path={path} selectedSymbol={symbol} sort={sort} onSelect={s => update('symbol', s)} onSort={s => update('history_sort', s)} onReplay={onReplay} />
+  const select = (value: string) => {
+    returnFocusSymbol.current = value
+    const next = new URLSearchParams(params); next.set('symbol', value)
+    setParams(next, { state: { ...location.state, historyNamesEntry: !symbol } })
+  }
+  const back = () => {
+    returnFocusSymbol.current = symbol
+    if (location.state?.historyNamesEntry) navigate(-1)
+    else { const next = new URLSearchParams(params); next.delete('symbol'); setParams(next, { replace: true }) }
+  }
+  return <Request key={path} path={path} selectedSymbol={symbol} phone={phone} onBack={back} returnFocusSymbol={returnFocusSymbol.current} sort={sort} onSelect={select} onSort={s => { returnFocusSymbol.current = null; update('history_sort', s) }} onReplay={onReplay} />
 }

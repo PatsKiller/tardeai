@@ -11,6 +11,7 @@ phases:
     goal: Render the approved Holding history layout using only server financial truth.
     entry_criteria: Own frontend task/claim; API_CONTRACT_V1 agreed with backend A and shell B.
     acceptance:
+      - Phone412/390 actual taps open fullscreen detail, Back/browserBack/URL and focus restore;44px targets, no horizontal overflow.
       - Server ordering/statistics, URL symbol/sort, named accounts and source clocks retained.
       - Six statistics, account timelines, all trip rows, provenance and actual gap reasons.
       - Pinned actual producer COPY AXTI plus basis/Fidelity fixture states1440/412.
