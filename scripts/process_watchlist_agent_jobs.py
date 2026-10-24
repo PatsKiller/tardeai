@@ -2902,11 +2902,9 @@ CRITICAL INSTRUCTIONS:
             if parsed["confidence"] < 0.3 or len(conflicts) >= 3:
                 try:
                     from telegram_alert import send_telegram
+                    from lib.watchlist_escalation_message import build_escalation_message
                     send_telegram(
-                        f"\U0001F6A8 *Escalation: {symbol}*\n"
-                        f"Synthesis: {parsed['recommendation']} ({parsed['confidence']:.0%} confidence)\n"
-                        f"Reasons: {', '.join(escalation_reasons)}\n"
-                        f"Review at: /v2/watchlist?symbol={symbol}",
+                        build_escalation_message(symbol, parsed["recommendation"], parsed["confidence"], escalation_reasons),
                         priority="P2", producer="process_watchlist_agent_jobs",
                     )
                 except Exception:
