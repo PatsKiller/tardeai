@@ -156,20 +156,26 @@ def test_aggregate_needs_every_part_and_verifies_the_manifests():
     assert not any("--profile pr" in r or "--profile fast" in r for r in all_runs)
 
 
-def test_raw_attempt_artifacts_cannot_include_aggregate_copies_or_overwrite_each_other():
-    dl = next(s for s in AGG["steps"] if s.get("uses", "").startswith("actions/download-artifact"))
+@pytest.mark.parametrize(
+    "workflow,aggregate,parts",
+    [(HARD, "cio-hardening", ("cio-shard", "cio-serial", "cio-pg")), (SHARD, "ci-gate", ("shard", "serial", "pg"))],
+)
+def test_raw_attempt_artifacts_cannot_include_aggregate_copies_or_overwrite_each_other(workflow, aggregate, parts):
+    jobs = workflow["jobs"]
+    aggregate_steps = jobs[aggregate]["steps"]
+    dl = next(s for s in aggregate_steps if s.get("uses", "").startswith("actions/download-artifact"))
     assert dl["with"]["merge-multiple"] is False
-    for job in ("cio-shard", "cio-serial", "cio-pg"):
-        upload = next(s for s in JOBS[job]["steps"] if s.get("uses", "").startswith("actions/upload-artifact"))
+    for job in parts:
+        upload = next(s for s in jobs[job]["steps"] if s.get("uses", "").startswith("actions/upload-artifact"))
         name = upload["with"]["name"]
         assert "${{ github.run_attempt }}" in name
         assert fnmatch.fnmatchcase(name, dl["with"]["pattern"])
-    timings = next(s for s in AGG["steps"] if s.get("uses", "").startswith("actions/upload-artifact"))
+    timings = next(s for s in aggregate_steps if s.get("uses", "").startswith("actions/upload-artifact"))
     assert "${{ github.run_attempt }}" in timings["with"]["name"]
     assert not fnmatch.fnmatchcase(timings["with"]["name"], dl["with"]["pattern"])
     # An integrity-job rerun also uploads evidence after failure; a static v4 name
     # conflicts with its immutable first-attempt artifact and fails the job again.
-    for job in JOBS.values():
+    for job in jobs.values():
         for step in job["steps"]:
             if step.get("uses", "").startswith("actions/upload-artifact"):
                 assert "${{ github.run_attempt }}" in step["with"]["name"]

@@ -90,7 +90,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cio-shard-${{ matrix.shard }}
+          name: cio-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/shard/
           if-no-files-found: ignore
 
@@ -126,7 +126,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cio-shard-serial
+          name: cio-shard-serial-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/shard/
           if-no-files-found: ignore
 
@@ -187,7 +187,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cio-shard-pg
+          name: cio-shard-pg-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/shard/
           if-no-files-found: ignore
 
@@ -285,9 +285,9 @@ jobs:
       - name: Download shard manifests
         uses: actions/download-artifact@v4
         with:
-          pattern: cio-shard-*
+          pattern: cio-shard-*-attempt-*
           path: ${{ runner.temp }}/manifests
-          merge-multiple: true
+          merge-multiple: false
       - name: Verify every job passed and the shards ran exactly the registered files
         env:
           CI_GATE_NEEDS: ${{ toJSON(needs) }}
@@ -300,7 +300,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cio-shard-timings
+          name: cio-timings-attempt-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/timings/
             ${{ runner.temp }}/manifests/
@@ -309,7 +309,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-gate-attestation
+          name: ci-gate-attestation-attempt-${{ github.run_attempt }}
           path: ${{ runner.temp }}/attestation/
           if-no-files-found: ignore
 

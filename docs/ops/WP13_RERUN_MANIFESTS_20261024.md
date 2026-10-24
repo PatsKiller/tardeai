@@ -43,11 +43,21 @@ attempt 2) also reproduced the failure. An aggregate-only rerun already passed.
 - Non-GitHub/local aggregation keeps the existing strict duplicate behavior.
   The GitHub aggregate reports selected attempt numbers in its JSON evidence.
 
+Independent review found the same raw/timing collision in the required
+`cio-full-suite-sharded.yml` aggregate, so its raw/timing uploads and downloads
+use the same attempt isolation. Its attestation upload is attempt-qualified too.
+The tree-attested evidence reader requests that exact workflow attempt and checks
+the payload's run ID and attempt as well as its existing head/tree/check/run
+requirements. It never falls back to a static older attestation. An older run
+without the new artifact is unavailable for tree-attested reuse; the existing
+exact-main evidence path remains its fallback. No release flag or authority is
+changed.
+
 ## Verification
 
-The focused workflow/shard suites passed **101 tests**, including two
-additional malformed-schema cases. The combined CI-tooling and registry
-regression passed **286 tests**; the command below plus
+The focused workflow/shard suites passed **109 tests**, including malformed
+schema and exact-attempt attestation cases. The final combined CI-tooling and
+registry regression passed **294 tests** in58.59 seconds; the command below plus
 `tests/test_ci_gates_registry_20261021.py` exercises that complete selection:
 
 ```bash
@@ -69,7 +79,7 @@ under `$HOME/.cache/rtc`; no live application, database, model or broker is call
 The existing CI gate already registers the expanded test file.
 
 Local evidence:
-`/home/johnclaw/.cache/rtc/codex-wp13-rerun-20261024/regression.log` and
+`/home/johnclaw/.cache/rtc/codex-wp13-rerun-20261024/final-combined.log` and
 `/home/johnclaw/.cache/rtc/codex-wp13-rerun-20261024/reported-run-artifacts.json`.
 
 ## Coordinator follow-through

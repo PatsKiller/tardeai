@@ -76,7 +76,7 @@ class AttestIO(Protocol):
 
     def git(self, *args: str) -> str: ...
 
-    def download_attestation(self, repo: str, run_id: int) -> dict | None: ...
+    def download_attestation(self, repo: str, run_id: int, *, run_attempt: int) -> dict | None: ...
 
 
 def flag_enabled(env: dict | None = None) -> bool:
@@ -221,11 +221,15 @@ def attest(merge_sha: str, *, repo: str, io: AttestIO) -> dict:
                     reasons.append("aggregate_run_not_successful")
                 if max(sharded, key=_run_order) is not run:
                     reasons.append("aggregate_run_superseded")
-                att = io.download_attestation(repo, int(run["id"]))
+                att = io.download_attestation(repo, int(run["id"]), run_attempt=ev["workflow_run_attempt"])
                 ev["attestation"] = att
                 if not isinstance(att, dict) or att.get("schema") != ATTESTATION_SCHEMA:
                     reasons.append("attestation_missing")
                 else:
+                    if str(att.get("run_id")) != str(run["id"]):
+                        reasons.append("attestation_run_mismatch")
+                    if str(att.get("run_attempt")) != str(ev["workflow_run_attempt"]):
+                        reasons.append("attestation_attempt_mismatch")
                     if att.get("head_sha") != head:
                         reasons.append("attestation_head_mismatch")
                     if att.get("tested_tree") != merge_tree:
@@ -243,7 +247,7 @@ def attest(merge_sha: str, *, repo: str, io: AttestIO) -> dict:
 
 
 def build_attestation(git, *, ok: bool, run_id: str | None, run_attempt: str | None, summary: dict) -> dict:
-    """Written by the ``ci-gate`` job (artifact ``ci-gate-attestation``) on the tested checkout."""
+    """Written by ``ci-gate`` in an attempt-qualified attestation artifact on the tested checkout."""
     return {
         "schema": ATTESTATION_SCHEMA,
         "head_sha": git("rev-parse", "HEAD"),
@@ -299,11 +303,14 @@ class SubprocessIO:
             raise Unavailable("git_failed")
         return out
 
-    def download_attestation(self, repo: str, run_id: int) -> dict | None:
+    def download_attestation(self, repo: str, run_id: int, *, run_attempt: int) -> dict | None:
+        if type(run_attempt) is not int or run_attempt < 1:
+            return None
+        artifact = f"{ATTESTATION_ARTIFACT}-attempt-{run_attempt}"
         with tempfile.TemporaryDirectory(prefix="ci-gate-attest-") as tmp:
             try:
                 proc = self.run(
-                    ["gh", "run", "download", str(int(run_id)), "-R", repo, "-n", ATTESTATION_ARTIFACT, "-D", tmp],
+                    ["gh", "run", "download", str(int(run_id)), "-R", repo, "-n", artifact, "-D", tmp],
                     capture_output=True,
                     text=True,
                     timeout=120,
