@@ -70,8 +70,17 @@ def _s288(text: str = AGENTS) -> str:
     return m.group(0)
 
 
+def pre_20_2_0(text: str) -> str:
+    """Later amendments taken out first: 20.2.0 adds only §28.9 and its row (PROPOSED: no header or banner change)."""
+    if "\n## 28.9 " in text:
+        s = text.index("\n## 28.9 ")
+        text = text[:s] + text[text.index("\n---\n\n# Version history", s):]
+    return re.sub(r"^\| 20\.2\.0 \|.*\n", "", text, count=1, flags=re.M)
+
+
 def pre_20_1_0(text: str) -> str:
     """AGENTS.md with the 20.1.0 header values, banner, §28.8 and row taken out: the 20.0.0-ACTIVE text."""
+    text = pre_20_2_0(text)
     if not re.search(r"^\| 20\.1\.0 \|", text, re.M):
         return text
     b = text.index("**20.1.0 is ")

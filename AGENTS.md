@@ -7085,12 +7085,51 @@ the restriction below and removes none. Test: `tests/test_agents_policy_20_1_0_l
   service, timer, port or server setting. *Cause (§20): §0 rule 9 — the operator's own use is the operator's; the
   incident was agent traffic.*
 
+
+## 28.9 Lessons of 2026-10-23/24: change control, shared infrastructure, one source, real health (20.2.0, PROPOSED)
+
+**Status: PROPOSED (MINOR).** Drafted 2026-10-24 at the operator's request ("does the agent.md file need to be updated
+… so any agents coming behind don't overwrite a change … methodology?"). It adds the restrictions below and removes
+none; it does not touch §0, §2, §17 or role authority. Binding once the operator ratifies (§20 token).
+
+- **No silent removal from an operator surface.** No PR removes or hides a page, nav entry, route, tab, panel or
+  widget of the Command Center unless its description links an operator-approved mockup that shows the removal. A
+  side effect of an approved feature is not approved (TradeInView hid Calendar P/L and Replay). The coordinator
+  holds such a PR out of every batch. *Cause (§20): 20853e201 (2026-10-22), 8c14784ae (2026-09-15) and fdb99d7a8
+  (2026-09-29) removed operator surfaces without approval; operator 2026-10-24, "changed without any change control".*
+- **Shared infrastructure ships alone, proven on the real layout.** A change to `scripts/safe_flock.sh`, any cron or
+  n8n run wrapper, the n8n run executor, deploy/release scripts or crontab templates goes in its own PR titled
+  `[shared-infra]`, never inside a feature or takeover PR and never in a mixed batch, with a test that runs it through
+  the real release layout (`portfolio-server/CURRENT` symlink, `CURRENT/logs` symlink to a 775 private-group
+  directory). After each release the wrapper is run once under the live `CURRENT` in no-op mode. *Cause (§20):
+  d5f51dbef rode in PR #1979 / batch 8 and stopped ~30 cron jobs (stop supervisor, incident notifier, repricer, market
+  data …) for ~2 days, 2026-10-23 12:06 ET → batch 21.*
+- **One source per fact, owned by the CIO record.** Stance and conviction, portfolio total, cash and day P/L, position
+  counts, stops (broker resting before planned), regime and VIX, sector posture, pending-approval counts and account
+  ids are read through their one canonical resolver; no page or endpoint recomputes its own version. A lower-level
+  signal that disagrees is shown as a conflict under the CIO value, never as a competing value. *Cause (§20): site
+  audit 2026-10-24 (`handoffs/site-audit-20261024/FINDINGS.md`): SPCX ADD on Watch vs TRIM on CIO Desk; three
+  portfolio totals; position counts 32/12/25/9/14/20; operator, "coming from the CIO … it should be the same".*
+- **Health means the job ran.** Job health is the last successful run (exit code plus its receipt or output), never a
+  log file's mtime or the existence of a crontab line; a failure shows its real cause (stderr tail), not `exit_1`. A
+  monitor never depends on the thing it monitors (the alert path is independent of `incident_notifier`).
+  *Cause (§20): no surface showed the 2026-10-23 outage; the error line itself kept every log "fresh".*
+- **A read never acts.** A GET never triggers a broker read, a job, a recalibration or a write; pages poll only the
+  data they show; one poll stays under 500 KB. Agent probes of the live server outside the §28.8 window go one request
+  at a time with a memory check first (stop above 1.3 GB). *Cause (§20): 2026-10-24 — an inventory burst OOM-killed
+  the server at 15:50; GET `/holdings/live-stops` refreshed a live Schwab stop read; Active Trader polls 6 MB every 30 s.*
+- **Every writer is a monitored n8n lane.** A writer of a store an operator surface reads runs as an n8n lane in the
+  missed-run watchdog (operator directive 2026-10-15, reconfirmed 2026-10-24); a page whose writer is paused or
+  retired says so in its source clock. *Cause (§20): risk_management.json written once a day while the Risk page
+  presented it as live; retired writers behind blank panels (advisory opinions, regime, dividends, attribution).*
+
 ---
 
 # Version history
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 20.2.0 | 2026-10-24 | PROPOSED | MINOR | §28.9 added: no silent removal from operator surfaces (approved mockup required); `[shared-infra]` PRs alone with real-layout proof; one source per fact owned by the CIO record; health = the job ran (exit code + output, real cause shown, independent alert path); a read never acts (no broker read/job from GET, 500 KB poll budget, one-at-a-time probes); every writer a monitored n8n lane. Adds restrictions only; does not touch §0, §2, §17 or role authority. | **Operator-requested** 2026-10-24; awaiting ratification (`APPROVE_AGENTS_POLICY_20_2_0 <PR> <sha>`). |
 | 20.1.0 | 2026-10-23 | ACTIVE | MINOR | §28.8 "No agent UI or validation traffic to the live server during market hours" added. Operator decision 2026-10-23 ~11:05 ET, "approved", after five portfolio-server SIGKILLs (09:14–10:24 ET) driven by agent crawls and previews (PR #2012): from 04:00 to 16:15 ET on a market day no agent sends Playwright, crawler, `vite preview` or dev-proxy traffic to the served `/api` on `127.0.0.1:7777`; fixtures or a mock or replay backend instead; live smoke after the close at ≤1 req/s, GET only. MINOR: one added restriction, none removed. Every other section is byte-identical to 20.0.0 before and after ratification. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_1_0 2019 d24a29054865a9bc09d3c50bb33dfe9c4be728af` (operator, PR #2019 comment by PatsKiller 2026-10-23T16:53:47Z, https://github.com/PatsKiller/tardeai/pull/2019#issuecomment-6370144385, verbatim: "APPROVE_AGENTS_POLICY_20_1_0 2019 d24a29054865a9bc09d3c50bb33dfe9c4be728af"); ratified by this edit on #2019's branch, which set the header block and §28.8 to 20.1.0 ACTIVE and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_1_0 <pr_number> <head_sha>`. Effective 2026-10-23. |
 | 20.0.0 | 2026-10-22 | ACTIVE | MAJOR | §28 "Agent operations and the read-only broker baseline" added. Operator decisions 2026-10-22 (verbatim in the banner; approved as "19.1.0", numbered 20.0.0 by the version policy): measured caps and receipts for the four automations that end or rewrite a run (§28.1, absorbing the withdrawn 18.1.0), agent temp discipline (§28.2), multi-vendor coordination and the claim board `scripts/agent_claim.py` (§28.3), approval provenance (§28.4), the Ops → Controls sudo window (§28.5), the read-only Schwab baseline with the `live_submit` kill switch as an extra barrier (§28.6). While PROPOSED §0, §2, §7, §13, §17, §24, §25, §27 and the four adapters are byte-identical; the ratifying edit makes exactly the nine clause edits quoted in §28.7: §0 rule 11 "Claim, log, hand off" (and the four adapters), a second §0 rule 6 exception and the host `/tmp` hygiene lanes in §24.12, the claimer in §25.8, the §7 time-cap trap, the behaviour rail cited by symbol, the sudo window in §27.3, the corrected §27.4 and the read-only baseline in §17. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_0_0 2013 c766b497d5d63a49f08aad247f194f884a8030b1` (operator, PR #2013 comment by PatsKiller 2026-10-23T14:42:00Z, https://github.com/PatsKiller/tardeai/pull/2013#issuecomment-6367515961, verbatim: "APPROVE_AGENTS_POLICY_20_0_0 2013 c766b497d5d63a49f08aad247f194f884a8030b1"); ratified by this edit on #2013's branch, which set the header block to 20.0.0 ACTIVE and made the nine clause edits quoted in §28.7; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_0_0 <pr_number> <head_sha>`; per-PR word, because it is MAJOR. Effective 2026-10-23. |
 | 19.0.0 | 2026-10-22 | ACTIVE | MAJOR | §27 "n8n broker reads and the operator controls surface" added. Operator decisions 2026-10-22 (verbatim in the banner): n8n may read the broker because only reading is done (§27.1: a closed set of audited read lanes, host execution, every trading lock LOCKED, Schwab `read_only`, no credential in n8n; the never-list unchanged); Ops → Controls (§27.2–§27.3: settings in a Postgres `operator_settings` table with history, one governed host applier, safe direction one click, risky direction a WebAuthn passkey plus a typed phrase, TOTP recovery only, Telegram notification only), superseding decision D3 and the kill switch's terminal-only clear. Code: `scripts/lib/n8n_broker_read_carveout.py` (`CARVEOUT_STATUS` PROPOSED), consulted by `pipeline_manifest.forbidden_command_tokens()`; registry row `operator_settings` proposed. While PROPOSED §17, §23.14 and §25 are byte-identical; the ratifying edit inserts one §23.14 bullet, replaces the §25.4 "Who may do what." bullet and one §17 sentence, appends one §17 paragraph (§27.5) and sets `CARVEOUT_STATUS` ACTIVE. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_19_0_0 1962 bb54a14a89347a1c17dd0d326b0720c882bbd61f` (operator, PR #1962 comment by PatsKiller 2026-10-22T22:10:31Z, https://github.com/PatsKiller/tardeai/pull/1962#issuecomment-6352416425, verbatim: "APPROVE_AGENTS_POLICY_19_0_0 1962 bb54a14a89347a1c17dd0d326b0720c882bbd61f"); ratified by this edit on #1962's branch, which set the header block to 19.0.0 ACTIVE, made the four clause edits quoted in §27.5 and set `CARVEOUT_STATUS` to `ACTIVE`; approval phrase as proposed `APPROVE_AGENTS_POLICY_19_0_0 <pr_number> <head_sha>`; per-PR word, because it is MAJOR. Effective 2026-10-22. |
