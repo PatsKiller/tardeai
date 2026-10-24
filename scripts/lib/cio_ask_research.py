@@ -2071,19 +2071,29 @@ def _contract_prospectus(p: Mapping[str, Any], ent: Entity, facts: Sequence[Mapp
                 lead = "No sourced number for this horizon (gap; none invented)."
             narrative = (lead + (" Assumption: " + assumptions if assumptions else "")).strip()
             ret = round((price / ref - 1.0) * 100.0, 2) if price is not None and ref else None
-            horizons[h][case] = C.Scenario(narrative=narrative, price=price, return_pct=ret)
+            horizons[h][case] = C.Scenario(
+                narrative=narrative,
+                price=price,
+                return_pct=ret,
+                citation=dict(anchor) if anchor else None,
+            )
     st = p.get("street") or {}
     street = None
-    if st.get("range") or st.get("analyst_count"):
-        as_ofs = [v.get("as_of") for v in (st.get(k) for k in ("target_low", "target_high", "analyst_count")) if v]
+    if st.get("range") or st.get("target_mean") or st.get("analyst_count"):
+        as_ofs = [
+            v.get("as_of")
+            for v in (st.get(k) for k in ("target_low", "target_mean", "target_high", "analyst_count"))
+            if v
+        ]
         cnt = (st.get("analyst_count") or {}).get("value")
         street = C.StreetTarget(
             low=(st.get("target_low") or {}).get("value"),
-            median=None,  # sources publish a mean, not a median: the mean is in provenance.street_mean
+            mean=(st.get("target_mean") or {}).get("value"),
+            median=None,  # a published mean is never a median
             high=(st.get("target_high") or {}).get("value"),
             n_analysts=int(cnt) if cnt is not None else None,
             as_of=max(as_ofs) if as_ofs else None,
-            source=(st.get("target_low") or st.get("target_high") or {}).get("source"),
+            source=(st.get("target_mean") or st.get("target_low") or st.get("target_high") or {}).get("source"),
         )
     catalysts = []
     for c in p.get("catalysts") or []:

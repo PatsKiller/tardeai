@@ -1771,6 +1771,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/AGENTS_GUARD_HOOK.md` | AGENTS.md guard hook for Claude Code (PreToolUse) |
 | `docs/ops/AGENT_CLAIM_BOARD.md` | Agent claim board — who is working on which files |
 | `docs/ops/AGENT_START_HERE.md` | Agent start here — any vendor (Claude, Codex, Cursor) |
+| `docs/ops/ASK_THE_CIO.md` | Ask the CIO: open questions with persistent CIO memory (Phases 8–11) |
 | `docs/ops/ASK_THE_CIO_RESEARCH.md` | Ask the CIO — Phase 9: the research pipeline |
 | `docs/ops/AT_TRADEAI_ALIGNMENT_2026-10-23.md` | Active Trader ↔ Trade AI alignment — 2026-10-23 |
 | `docs/ops/AUTONOMOUS_ADVISORY_LOOP_CLOSURE_RESULT_2026-08-23.md` | Trade AI Autonomous Advisory Loop Closure Result |
@@ -2088,6 +2089,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WP14_PUSH_POLICY_V2_REBUILD_20261023.md` | WP-14 push-policy-v2 operator package rebuild |
 | `docs/ops/WP15_AGENTS_20_2_OPERATOR_PACKAGE_20261023.md` | WP-15: AGENTS 20.2.0 package delivery |
 | `docs/ops/WP16_ADVISORY_POLICY_PACKAGE_20261023.md` | WP-16 advisory-policy package delivery |
+| `docs/ops/WP23_ASK_CIO_RECONCILIATION_20261023.md` | WP-23: reconcile Ask-CIO implementation and preserve source provenance |
 | `docs/ops/WP27_CONTINUOUS_FROM_CURRENT_20261023.md` | WP-27: continuous scanner root reconciliation |
 | `docs/ops/WP28_HERMES_RESEARCH_SOURCE_FILTER_20261023.md` | WP-28 item 2: Hermes research article selection |
 | `docs/ops/WP29_ACCOUNT_LABEL_FIXTURES_20261023.md` | WP-29(c): account-label browser evidence |

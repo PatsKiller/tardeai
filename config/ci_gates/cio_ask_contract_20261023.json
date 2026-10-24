@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_ask_contract_20261023",
+  "files": [
+    "tests/test_cio_ask_contract_20261023.py"
+  ],
+  "anchor": "CIO_ASK_CONTRACT_20261023",
+  "comment": [
+    "ANCHOR: CIO_ASK_CONTRACT_20261023 — Ask the CIO shared contract (AskRequest@v1/AskAnswer@v1): prospectus shape, operator-named sizing context only, size_suggestion gated to AGENTS >= 21.0.0, MBI guard strips model sizing/orders."
+  ]
+}
