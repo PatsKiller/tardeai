@@ -16,6 +16,7 @@ import TradingHub from './pages/TradingHub'
 import ActiveTraderHub from './pages/ActiveTraderHub'
 import AgentRuntimeHub from './pages/AgentRuntimeHub'
 import IntelligenceHub from './pages/IntelligenceHub'
+import ClosedLoopPanel from './pages/ClosedLoopPanel'
 import HermesHub from './pages/HermesHub'
 import RetirementHub from './pages/RetirementHub'
 import TradeInViewPage from './pages/TradeInViewPage'
@@ -237,7 +238,7 @@ function Shell() {
             <Route path="strategy" element={<RouteErrorBoundary route="/v3/strategy"><StrategyHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="agents" element={<RouteErrorBoundary route="/v3/agents"><AgentRuntimeHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="intelligence" element={<RouteErrorBoundary route="/v3/intelligence"><IntelligenceHub onDrill={setDrill} /></RouteErrorBoundary>} />
-            <Route path="closed-loop" element={<RouteErrorBoundary route="/v3/closed-loop"><Navigate to="/intelligence?tab=closed-loop" replace /></RouteErrorBoundary>} />
+            <Route path="closed-loop" element={<RouteErrorBoundary route="/v3/closed-loop"><ClosedLoopPanel /></RouteErrorBoundary>} />
             <Route path="research-intelligence" element={<RouteErrorBoundary route="/v3/research-intelligence"><ResearchIntelligenceHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="research" element={<RouteErrorBoundary route="/v3/research"><Navigate to="/research-intelligence" replace /></RouteErrorBoundary>} />
             <Route path="hermes" element={<RouteErrorBoundary route="/v3/hermes"><HermesHub onDrill={setDrill} /></RouteErrorBoundary>} />
