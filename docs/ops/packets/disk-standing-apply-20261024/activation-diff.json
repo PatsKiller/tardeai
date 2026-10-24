@@ -1,0 +1,15 @@
+{
+  "status": "INERT_OPERATOR_ONLY",
+  "change": {
+    "path": "/standing_apply/enabled",
+    "from": false,
+    "to": true
+  },
+  "requires": [
+    "direct-session approval provenance",
+    "A config handoff/rebase",
+    "reviewed contract/allowlist/routes",
+    "operator review of first quoted dry run",
+    "native schedule parity with no legacy duplicate"
+  ]
+}
