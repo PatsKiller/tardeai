@@ -1250,6 +1250,27 @@
       "classification": "NOT_OPERATOR_RELEVANT",
       "reason": "One append-only row of the asks ledger data/cio/cio_ask_events.jsonl (asked, entity resolved, answer version, tracking change, channel link, cost); My questions reads the thread projection folded from it. Census gap, not a relevance judgment: the Ask the CIO API is a module delegated from api_v2.handle (scripts/lib/cio_ask_api.py), which scripts/cio_api_contract_census.py does not trace (Ops Controls has the same gap), so no record_edge can verify. Operator visibility is proven by tests/test_cio_ask_20261023.py and apps/command-center-v3/e2e/ask-cio.spec.ts. Reclassify SURFACE with a record_edge when the census traces delegated modules.",
       "owner_hint": "scripts/lib/cio_ask_store.py"
+    },
+    {
+      "name": "schema:CIOCompanyFacts@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Confirmed-GUID company facts are stored in InstrumentRecord.research.company_facts by the existing validated prospect batch facade. Watch My Watchlist and Prospects render company, description, sector, industry and dated catalyst/source from the same stored record; shared CIO cognition and Ask research read the same facts. This is source visibility proof, not runtime provider or deployment acceptance.",
+      "owner_hint": "scripts/lib/cio_company_facts.py::persist_company_facts",
+      "record_edge": {
+        "route": "/api/v3/data-broker/watch-curation",
+        "path": [
+          "my_watchlist",
+          "rows",
+          "company_facts"
+        ],
+        "reader": "lib/data_broker/watch_curation.py::my_rows",
+        "writer": "lib/cio_company_facts.py::persist_company_facts",
+        "store": "cio_instrument_records.jsonl",
+        "surfaces": {
+          "Watch My Watchlist": "pages/WatchMyList.tsx"
+        }
+      }
     }
   ]
 }

@@ -35,5 +35,15 @@
     "additional_suite": "tests/test_hermes_momentum_source_filter_20261023.py",
     "cases": "Unrelated company, company-name match, generic index page, missing company name, raw source evidence preserved",
     "frontend": "No UI change; prior npm build and 4 actual page fixture proofs retained"
+  },
+  "completeness_followup": {
+    "previous_head": "66b4cc15f48ef02c7f68a94d030586caacc53749",
+    "root_cause": "Watch entry/query-wrapper/compound-prefix and imported canonical store were absent from completeness discovery",
+    "classification": "SURFACE; actual route/path/reader/writer/store edge, no exemption",
+    "result": "108 passed, 2 existing PG-only skips",
+    "driver": "effective psycopg2 import refusal verified",
+    "gates": "native affected suite, registry, host-path/coverage fail-on-new, docs index, diff check",
+    "log": "/home/johnclaw/.cache/rtc/codex-c1-company-facts-20261024/completeness-after.log",
+    "runtime_operations": 0
   }
 }

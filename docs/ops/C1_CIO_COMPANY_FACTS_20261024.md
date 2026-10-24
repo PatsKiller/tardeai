@@ -112,3 +112,21 @@ No live data, provider, database, server, scheduler, grant, credential, broker, 
 Source validation does not establish runtime company coverage: records absent/legacy/ambiguous or lacking inputs will
 say so until the existing CIO owner resolves them and runs an authorized batch. Publication, authorized application,
 PG synchronization and natural consumer observations belong to the coordinator/operator follow-up.
+
+## Batch 20 completeness follow-up
+
+The two strict real-tree completeness tests initially failed because the source census did not discover Watch's
+`useApi(withQuery(...))` call or its compound Data Broker prefix guard, and the original five-page scope excluded
+My Watchlist. `CIOCompanyFacts@v1` now has a **SURFACE** record edge: consumed Watch-curation route →
+`my_watchlist.rows.company_facts` → actual row component, with the batch fact writer and shared
+`cio_instrument_records.jsonl` store. There is no relevance exemption or generic “internal” classification.
+
+Completeness alone opts into declared supplemental surfaces. Handler matching, reader payload placement,
+derived row-to-JSX consumption, schema writer and actual transitive/used store references must all verify.
+The default census retains its original entry pages; unused imports, standalone query builders and wrong store
+names do not establish visibility. This remains source visibility, never runtime freshness/application proof.
+
+The reproduced two failures now pass inside 108 affected native tests (2 existing PG-only skips), with effective
+`psycopg2` refusal. Negative source-flow fixtures, CI registry integrity, host-path/coverage ratchets and docs-index
+checks pass. No frontend or runtime behavior changed in this follow-up; the earlier four UI captures/build remain
+historical evidence for the same frontend source.
