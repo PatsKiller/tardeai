@@ -1029,6 +1029,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261024-ops-config-modals.md` | DSN-20261024-ops-config-modals.md |
 | `docs/designs/DSN-20261024-site-system-tabs.md` | System tab request admission |
 | `docs/designs/DSN-20261024-w1-cio-truth.md` | DSN-20261024-w1-cio-truth.md |
+| `docs/designs/DSN-20261024-w1-r13-policy.md` | DSN-20261024-w1-r13-policy.md |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
 | `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence |
@@ -1939,6 +1940,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/COMMAND_CENTER_MATURITY_TRUTH.md` | Command Center maturity truth (live runtime) |
 | `docs/ops/COMMS_GATEWAY_GO_LIVE_RUNBOOK.md` | Communications Gateway — Go-Live Runbook (single consolidated operator prompt) |
 | `docs/ops/COMMS_HUB_2026-10-07.md` | Communications hub — decision support, re-entry focus, enforced TTL (2026-10-07) |
+| `docs/ops/CONCENTRATION_POLICY_R13_20261024.md` | R13 concentration policy and source readers |
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 |
 | `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` | CURRENT cutover — execute after 2026-08-27 close |
 | `docs/ops/DATA_DOMAIN_APPROVAL_READINESS_2026-10-22.md` | Data-domain approval readiness — 2026-10-22 |

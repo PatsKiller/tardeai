@@ -79,10 +79,19 @@ def build_portfolio_facts(symbol: str, *, paths: Optional[dict[str, Path]] = Non
         unknowns.append("holdings unavailable")
 
     ips = (_load(p["ips"]) or {}).get("constraints") or {}
-    max_single = _f(ips.get("max_single_position_pct"))
-    max_sector = _f(ips.get("max_sector_concentration_pct"))
+    from scripts.lib.ips_policy import ips_max_position_pct, concentration_policy, concentration_for_position
+    policy = concentration_policy(Path(p["ips"]).parent)
+    instrument = dict(mine[0]) if mine else {}
+    if len({(r.get("asset_type"), r.get("is_fund")) for r in mine}) > 1:
+        instrument = {}
+    if any(r.get("fund_holdings_evidence") != instrument.get("fund_holdings_evidence") for r in mine):
+        instrument.pop("fund_holdings_evidence", None)
+    position_policy = concentration_for_position(instrument,
+        weight_pct=100.0 * name_mv / total_mv if total_mv > 0 else None, config_dir=Path(p["ips"]).parent)
+    max_single = position_policy["limit_pct"] if not policy["gap"] else ips_max_position_pct(Path(p["ips"]).parent)
+    max_sector = policy["lookthrough_sector_limit_pct"] if not policy["gap"] else _f(ips.get("max_sector_concentration_pct"))
     if max_single is None:
-        unknowns.append("IPS max_single_position_pct unavailable")
+        unknowns.append("IPS instrument-class concentration limit unavailable")
 
     pct_total = round(100.0 * name_mv / total_mv, 2) if total_mv > 0 else None
     pct_invested = round(100.0 * name_mv / invested_mv, 2) if invested_mv > 0 else None
@@ -142,6 +151,7 @@ def build_portfolio_facts(symbol: str, *, paths: Optional[dict[str, Path]] = Non
         "cash_state": "UNVERIFIED (holdings snapshot; not a broker-confirmed buying-power figure)",
         "ips_limits": {"max_single_position_pct": max_single, "max_sector_concentration_pct": max_sector,
                        "source": "config/investment_policy_statement.json constraints"},
+        "concentration_policy": position_policy,
         "sector_exposure_whole_book": "UNAVAILABLE (holdings rows carry no sector)",
         "correlations": correlations,
         "options_book": options_book,

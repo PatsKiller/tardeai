@@ -444,6 +444,7 @@ def _domain_investment_policy() -> dict[str, Any]:
         return {"state": "DATA_UNAVAILABLE", "reason": "IPS config not found"}
     try:
         ips = json.loads(ips_path.read_text(encoding="utf-8"))
+        from ..ips_policy import ips_max_position_pct, concentration_policy
         meta = ips.get("_meta", {})
         return {
             "state": "AVAILABLE",
@@ -454,7 +455,8 @@ def _domain_investment_policy() -> dict[str, Any]:
             "max_drawdown_pct": ips.get("risk_tolerance", {}).get("max_drawdown_pct"),
             "primary_objective": ips.get("objectives", {}).get("primary", "")[:120],
             "target_return_pct": ips.get("objectives", {}).get("target_return_annual_pct"),
-            "max_single_position_pct": ips.get("constraints", {}).get("max_single_position_pct"),
+            "max_single_position_pct": ips_max_position_pct(ips_path.parent),
+            "concentration_policy": concentration_policy(ips_path.parent),
             "active_trading_account": ips.get("accounts", {}).get("active_trading_account"),
         }
     except Exception as e:

@@ -42,20 +42,20 @@ class TestSharedHelper(unittest.TestCase):
             self.assertEqual(ips_policy.ips_max_position_pct(d), 12.0)
             self.assertEqual(ips_policy.ips_critical_position_pct(d), 15.0)
 
-    def test_missing_config_falls_back_strict_with_warning(self) -> None:
+    def test_missing_config_has_no_invented_limit(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             d = _cfg(tmp, None)
             with self.assertLogs(ips_policy.log, level=logging.WARNING) as cm:
-                self.assertEqual(ips_policy.ips_max_position_pct(d), 8.0)
-                self.assertEqual(ips_policy.ips_critical_position_pct(d), 15.0)
-            self.assertTrue(any("stricter fallback" in m for m in cm.output))
+                self.assertIsNone(ips_policy.ips_max_position_pct(d))
+                self.assertIsNone(ips_policy.ips_critical_position_pct(d))
+            self.assertTrue(any("unknown" in m for m in cm.output))
 
     def test_invalid_values_fall_back(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             d = _cfg(tmp, {"max_single_position_pct": "x", "critical_single_position_pct": 0})
             with self.assertLogs(ips_policy.log, level=logging.WARNING):
-                self.assertEqual(ips_policy.ips_max_position_pct(d), 8.0)
-                self.assertEqual(ips_policy.ips_critical_position_pct(d), 15.0)
+                self.assertIsNone(ips_policy.ips_max_position_pct(d))
+                self.assertIsNone(ips_policy.ips_critical_position_pct(d))
 
     def test_critical_never_below_max(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -64,7 +64,7 @@ class TestSharedHelper(unittest.TestCase):
 
     def test_repo_config_values(self) -> None:
         self.assertEqual(ips_policy.ips_max_position_pct(), 12.0)
-        self.assertEqual(ips_policy.ips_critical_position_pct(), 15.0)
+        self.assertEqual(ips_policy.ips_critical_position_pct(), 12.0)
 
     def test_advisory_desk_wrapper_delegates(self) -> None:
         from lib.data_broker import advisory_desk as ad
