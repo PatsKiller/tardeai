@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "tradeinview_projections_20261024",
+  "files": [
+    "tests/test_tradeinview_projections_20261024.py"
+  ],
+  "comment": [
+    "Stored-only TradeInView: exact SRT-derived-copy accounting, ET month boundaries, unknown basis/null totals, account aliases and event-date provenance. No provider calls or live writes."
+  ]
+}
