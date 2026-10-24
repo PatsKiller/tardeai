@@ -1,0 +1,159 @@
+{
+  "captured_at": "2026-10-24T20:09:55.841899+00:00",
+  "authorization": "Parent bounded named-log read instruction; no unit, crontab, broker or provider calls.",
+  "crontab_capture_sha256": "b2097df25a62e6824b6e7046d55a3f279b9b058e76b1bcd09c2da89b5a748626",
+  "sources": [
+    {
+      "source": "unified_stop_supervisor.log",
+      "status": "CAPTURED",
+      "size": 5134736,
+      "window_bytes": 4194304,
+      "source_stable": true,
+      "matched_records": 97,
+      "explicit_zone_records": 0,
+      "reasons": {
+        "log_component_not_real": 97
+      }
+    },
+    {
+      "source": "incident_notifier.log",
+      "status": "CAPTURED",
+      "size": 1593464,
+      "window_bytes": 1593464,
+      "source_stable": true,
+      "matched_records": 336,
+      "explicit_zone_records": 0,
+      "reasons": {
+        "log_component_not_real": 336
+      }
+    },
+    {
+      "source": "hermes_coordinator.log",
+      "status": "CAPTURED",
+      "size": 4012433,
+      "window_bytes": 4012433,
+      "source_stable": true,
+      "matched_records": 112,
+      "explicit_zone_records": 0,
+      "reasons": {
+        "log_component_not_real": 112
+      }
+    },
+    {
+      "source": "hermes_event_feeder.log",
+      "status": "CAPTURED",
+      "size": 2703878,
+      "window_bytes": 2703878,
+      "source_stable": true,
+      "matched_records": 336,
+      "explicit_zone_records": 0,
+      "reasons": {
+        "log_component_not_real": 336
+      }
+    },
+    {
+      "source": "hermes_scope_governor.log",
+      "status": "CAPTURED",
+      "size": 9117196,
+      "window_bytes": 4194304,
+      "source_stable": true,
+      "matched_records": 63,
+      "explicit_zone_records": 0,
+      "reasons": {
+        "log_component_not_real": 63
+      }
+    },
+    {
+      "source": "portfolio_repricer_intraday.log",
+      "status": "CAPTURED",
+      "size": 771202,
+      "window_bytes": 771202,
+      "source_stable": true,
+      "matched_records": 19,
+      "explicit_zone_records": 0,
+      "reasons": {
+        "log_component_not_real": 19
+      }
+    },
+    {
+      "source": "portfolio_repricer_postclose.log",
+      "status": "CAPTURED",
+      "size": 15863,
+      "window_bytes": 15863,
+      "source_stable": true,
+      "matched_records": 0,
+      "explicit_zone_records": 0,
+      "reasons": {}
+    },
+    {
+      "source": "market_data.log",
+      "status": "CAPTURED",
+      "size": 5169119,
+      "window_bytes": 4194304,
+      "source_stable": true,
+      "matched_records": 19,
+      "explicit_zone_records": 0,
+      "reasons": {
+        "log_component_not_real": 19
+      }
+    },
+    {
+      "source": "alpaca_live_read_sync.log",
+      "status": "CAPTURED",
+      "size": 728013,
+      "window_bytes": 728013,
+      "source_stable": true,
+      "matched_records": 19,
+      "explicit_zone_records": 0,
+      "reasons": {
+        "log_component_not_real": 19
+      }
+    },
+    {
+      "source": "trade_integrity_audit.log",
+      "status": "CAPTURED",
+      "size": 13791033,
+      "window_bytes": 4194304,
+      "source_stable": true,
+      "matched_records": 19,
+      "explicit_zone_records": 0,
+      "reasons": {
+        "log_component_not_real": 19
+      }
+    },
+    {
+      "source": "paper_execution.log",
+      "status": "CAPTURED",
+      "size": 320689,
+      "window_bytes": 320689,
+      "source_stable": true,
+      "matched_records": 58,
+      "explicit_zone_records": 0,
+      "reasons": {
+        "log_component_not_real": 58
+      }
+    },
+    {
+      "source": "n8n_siem_bridge.log",
+      "status": "CAPTURED",
+      "size": 2313700,
+      "window_bytes": 2313700,
+      "source_stable": true,
+      "matched_records": 336,
+      "explicit_zone_records": 0,
+      "reasons": {
+        "log_component_not_real": 336
+      }
+    },
+    {
+      "source": "safe_flock_events.jsonl",
+      "status": "CAPTURED",
+      "size": 49554786,
+      "window_bytes": 4194304,
+      "source_stable": true,
+      "matched_records": 9877,
+      "explicit_zone_records": 9877,
+      "reasons": {}
+    }
+  ]
+}

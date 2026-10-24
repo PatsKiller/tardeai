@@ -12,7 +12,8 @@
 # stamp    — (re)stamp provenance artifacts for a release dir: SOURCE_COMMIT, BUILD_SHA,
 #            GIT_SHA, BUILD_STAMP.json, and build-meta.json (no npm/network/systemd)
 #
-# Authority: READ_ONLY_ADVISORY. No broker. Telegram remains interdicted.
+# No broker. New wrapper-failure P1 uses the host Telegram chokepoint only;
+# it is dormant until the operator admits config/release_wrapper_preflight.json.
 #
 set -euo pipefail
 CC_CURL="${CC_CURL:-$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/cc_curl.sh}"  # cc_auth 2026-10-14: loopback CC calls carry the service token
@@ -767,6 +768,32 @@ conformance_gate() {
   fi
 }
 
+wrapper_preflight_after_promote() {
+  local current="${RELEASES_BASE}/CURRENT" config="${RELEASES_BASE}/CURRENT/config/release_wrapper_preflight.json"
+  local enabled
+  [[ -f "$config" ]] || { log "wrapper preflight: pre-feature release, not enforced"; return 0; }
+  enabled="$("$VENV_PYTHON" - "$config" <<'PYWRAPPER'
+import json,sys
+cfg=json.load(open(sys.argv[1]))
+print('enabled' if cfg.get('enabled') is True else 'pending')
+PYWRAPPER
+)" || {
+    "$VENV_PYTHON" "${ROOT}/scripts/release_wrapper_preflight.py" --current "$current" \
+      --notify-failure wrapper_preflight_failed || log "wrapper failure Telegram delivery NOT_PROVEN"
+    return 1
+  }
+  if [[ "$enabled" != "enabled" ]]; then
+    log "wrapper preflight PENDING_OPERATOR_ADMISSION (source hook inactive; coverage is not proven)"
+    return 0
+  fi
+  if ! "$VENV_PYTHON" "$current/scripts/release_wrapper_preflight.py" --current "$current" --config "$config" \
+      --enforce --output "${STATE_DIR}/wrapper_preflight.json"; then
+    "$VENV_PYTHON" "$current/scripts/release_wrapper_preflight.py" --current "$current" \
+      --notify-failure wrapper_preflight_failed || log "wrapper failure Telegram delivery NOT_PROVEN"
+    return 1
+  fi
+}
+
 cmd_promote() {
   load_state
   local dir="${1:-${NEW_RELEASE:-}}"
@@ -799,8 +826,8 @@ cmd_promote() {
   release_pin_step plan "$dir"
   write_state
   activate_release "$dir" "$sha"
-  if ! health_check "promote"; then
-    log "promote health failed — rolling back to $PREV_RELEASE (do not claim PROMOTE OK)"
+  if ! health_check "promote" || ! wrapper_preflight_after_promote; then
+    log "promote health/wrapper gate failed — rolling back to $PREV_RELEASE (do not claim PROMOTE OK)"
     local rb_sha="unknown"
     if [[ -n "$PREV_RELEASE" && -d "$PREV_RELEASE" ]]; then
       [[ -f "${PREV_RELEASE}/BUILD_SHA" ]] && rb_sha="$(tr -d '[:space:]' <"${PREV_RELEASE}/BUILD_SHA")"
@@ -810,7 +837,7 @@ cmd_promote() {
     else
       write_deploy_receipt false promote timeout false "prev_missing"
     fi
-    die "promote health failed — not claiming promote OK"
+    die "promote health/wrapper gate failed — not claiming promote OK"
   fi
   release_pin_step apply "$dir"
   restart_root_frozen_units "$dir"

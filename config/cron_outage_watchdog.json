@@ -1,0 +1,150 @@
+{
+  "schema": "CronOutageWatchdogConfig@v1",
+  "installation_status": "PENDING_OPERATOR_REVIEW",
+  "enabled": false,
+  "review_status": "PENDING_OPERATOR_REVIEW",
+  "approved_by": null,
+  "grace_seconds": 120,
+  "reminder_seconds": 1800,
+  "cadence": "independent systemd once per minute",
+  "success_contract": "explicit ok_at/last_success_at or RUN_DONE+exit0 or completed wrapper exit0; mtime never success; business output acceptance separate",
+  "limitations": "unsupported timers and signal-free/event lanes stay visible NOT_MEASURED; no broker execution code or provider reads",
+  "wrapper_binding_capture_sha256": "b2097df25a62e6824b6e7046d55a3f279b9b058e76b1bcd09c2da89b5a748626",
+  "wrapper_bindings": {
+    "portfolio-repricer": {
+      "scheduler_match": "portfolio_repricer.py",
+      "expression": "*/15 9-16 * * 1-5 + 10 16 * * 1-5",
+      "component": "portfolio_repricer"
+    },
+    "portfolio-ai-analyst": {
+      "scheduler_match": "portfolio_orchestrator.py",
+      "expression": "15 7 * * 1-5",
+      "component": "portfolio_orch"
+    },
+    "incident-notifier": {
+      "scheduler_match": "scripts/incident_notifier.py --live",
+      "expression": "*/5 * * * *",
+      "component": "tradeai_incident_notifier"
+    },
+    "n8n-siem-bridge": {
+      "scheduler_match": "scripts/n8n_siem_bridge.py --apply",
+      "expression": "1-59/5 * * * *",
+      "component": "tradeai_n8n_siem_bridge"
+    },
+    "n8n-failure-diagnosis": {
+      "scheduler_match": "scripts/n8n_failure_diagnosis.py --apply",
+      "expression": "3-59/15 * * * *",
+      "component": "tradeai_n8n_failure_diagnosis"
+    },
+    "enterprise-backtester": {
+      "scheduler_match": "scripts/enterprise_backtester.py",
+      "expression": "0 22 * * 0",
+      "component": "enterprise_backtester"
+    },
+    "setup-quality-prior": {
+      "scheduler_match": "scripts/setup_quality_prior.py",
+      "expression": "0 22 * * *",
+      "component": "setup_quality_prior"
+    },
+    "catalyst-momentum-engine-overnight": {
+      "scheduler_match": "scripts/catalyst_momentum_engine.py --band overnight",
+      "expression": "0 18,22 * * *",
+      "component": "catalyst_overnight"
+    },
+    "trade-backtest-engine": {
+      "scheduler_match": "scripts/trade_backtest_engine.py",
+      "expression": "30 18 * * 1-5",
+      "component": "trade_backtest_engine"
+    },
+    "hermes-scope-governor": {
+      "scheduler_match": "scripts/hermes_scope_governor.py",
+      "expression": "7,37 * * * *",
+      "component": "hermes_scope_governor"
+    },
+    "hermes-score-event-feeder": {
+      "scheduler_match": "scripts/hermes_score_event_feeder.py",
+      "expression": "*/5 * * * *",
+      "component": "hermes_event_feeder"
+    },
+    "paper-execution-sweep": {
+      "scheduler_match": "scripts/paper_execution_sweep.py",
+      "expression": "*/5 9-16 * * 1-5",
+      "component": "paper_sweep"
+    },
+    "alpaca-paper-adapter": {
+      "scheduler_match": "scripts/alpaca_paper_adapter.py",
+      "expression": "0 10-16 * * 1-5",
+      "component": "alpaca_recon"
+    },
+    "incubator-proposal-promoter": {
+      "scheduler_match": "scripts/incubator_proposal_promoter.py",
+      "expression": "0 7,8,9,10,11,12,13,14,15,16,17 * * 1-5",
+      "component": "incubator_promoter"
+    },
+    "external-market-data-ingest": {
+      "scheduler_match": "scripts/external_market_data_ingest.py --quotes",
+      "expression": "15 7 * * 1-5 + */15 9-16 * * 1-5",
+      "component": "mkt_quotes_intraday"
+    },
+    "atm-auto-approver": {
+      "scheduler_match": "scripts/atm_auto_approver.py",
+      "expression": "*/15 4-19 * * 1-5",
+      "component": "tradeai_atm"
+    },
+    "unified-stop-supervisor": {
+      "scheduler_match": "scripts/unified_stop_supervisor.py",
+      "expression": "*/3 9-16 * * 1-5",
+      "component": "unified_stop_supervisor"
+    },
+    "trade-close-llm-analyzer-source": {
+      "scheduler_match": "scripts/trade_close_llm_analyzer.py --source",
+      "expression": "0 23 * * 0",
+      "component": "llm_backtest_review"
+    },
+    "trade-close-llm-analyzer-structured": {
+      "scheduler_match": "scripts/trade_close_llm_analyzer.py --structured",
+      "expression": "0 20 * * 1-5",
+      "component": "structured_eval"
+    },
+    "hermes-coordinator": {
+      "scheduler_match": "scripts/hermes_coordinator.py",
+      "expression": "*/15 * * * *",
+      "component": "hermes_coordinator"
+    },
+    "holdings-llm-refresh": {
+      "scheduler_match": "scripts/holdings_llm_refresh.py",
+      "expression": "15 7 * * 1-5",
+      "component": "holdings_llm_refresh"
+    },
+    "hermes-youtube-discovery": {
+      "scheduler_match": "scripts/hermes_youtube_discovery.py",
+      "expression": "0 14 * * 1-5",
+      "component": "hermes_yt_discovery"
+    },
+    "trade-integrity-audit": {
+      "scheduler_match": "scripts/trade_integrity_audit.py",
+      "expression": "*/15 9-16 * * 1-5",
+      "component": "trade_integrity_audit"
+    },
+    "run-profit-capture-refresh": {
+      "scheduler_match": "scripts/run_profit_capture_refresh.sh",
+      "expression": "30 3 * * 0",
+      "component": "tradeai_profit_capture_refresh"
+    },
+    "watchlist-proposal-bridge": {
+      "scheduler_match": "scripts/watchlist_proposal_bridge.py",
+      "expression": "*/30 10-15 * * 1-5",
+      "component": "tradeai_wl_bridge"
+    },
+    "hermes-analyst-coverage": {
+      "scheduler_match": "scripts/hermes_analyst_coverage.py",
+      "expression": "40 13 * * 1-5",
+      "component": "hermes_analyst_cov"
+    },
+    "alpaca-live-read-sync": {
+      "scheduler_match": "scripts/alpaca_live_read_sync.py",
+      "expression": "*/15 9-16 * * 1-5",
+      "component": "alpaca_live_read_sync"
+    }
+  }
+}
