@@ -5113,13 +5113,14 @@
       },
       "writer": "scripts/lib/operator_approvals.py",
       "writer_status": "single",
-      "cadence": "event-driven authenticated operator review",
+      "cadence": "event-driven authenticated operator review and separately governed audit proposals",
       "stale_after_hours": 720,
       "freshness_sla": "Read the current exact source document before every ledger append; text or commit drift invalidates the review.",
       "refresh_lane": {
         "runner": "host",
         "lane": "operator document review",
-        "never_list": true
+        "never_list": true,
+        "note": "Authenticated operator review is a manual host request, not a scheduled lane. A separately admitted host enforcement audit may append proposal events only; it never makes a decision. This proposal admits or schedules nothing."
       },
       "projection": "scripts/lib/operator_approvals_api.py::queue_summary",
       "readers": [
