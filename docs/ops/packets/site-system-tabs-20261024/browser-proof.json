@@ -1,0 +1,570 @@
+{
+  "fixture": true,
+  "clock": "2032-04-12T14:31:00Z",
+  "tested_source": {
+    "head": "e148e2a65303d8aa6e6c9437784ae83f9e2bebe8",
+    "working_patch_sha256": "c50d25e4c966554a9aa425f70507ecdebdb1fa367efdd7f2d159c0f86e833507",
+    "file_sha256": {
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/lib/httpOutcome.ts": "08e2eccff818cfbfd31d2cc33e907df430f80fbd41979f5b6a3cfa8d85aabb85",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/hooks/useApi.ts": "56c09da5ec4d3bc41db7d13c0b1ab02c6f0caabb7d54eb1917ce06ef4e2d4e27",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/components/SecretsManager.tsx": "d92680811a06b1df5e9d2a33c3fda50f50244042c895676383ef206d45b6f25c",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/lib/watchlistCardTokens.ts": "053574352a3255f5a6a9608b9449bbf63c142eb2ce6f3875f8d275f41df31443",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/lib/watchlistTerminalTokens.ts": "829a21f72cd09e967a7b6e979988bc78e0f41ead194c8fc8ae4f5294380f197b",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/lib/designTokens.ts": "3f18f482e0a832b39a52d3154363f3776b8dd396f494fed961ebcbcb986fe1a1",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/lib/terminalHubChrome.ts": "ebafc7f9951ab63aff217b2034962a9b406c6c9421d22ecc6b12b2c7ab1d21f2",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/lib/watchTokens.ts": "2e7205d768136f0fed83d6d4444b897ab98eed4b8c07ab80234d3ce0a0247f15",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/components/AlpacaLiveReadPanel.tsx": "d4a464b5bea6161b3a1700ab39784097a7be110c2cab4707848b64e2983de9c2",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/components/SchwabMonitor.tsx": "a21cad24f946f537c0772410e792e2e903dd9811340460f2eab503f454a2ddf5",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/components/CsvUpload.tsx": "6ebaef5ad711e36743245f282dcd8c00ebacf66f45b7881b6605f966a45d896d",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/lib/adminWrite.ts": "c3c47efb90073bf70238dc633c023a603ebcb05befcd09c41d1cfdade1e75f6d",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/components/AdminConfirmModal.tsx": "6f35a15e67bf53482e1e3f43d8c9b231af0577e986a920fe7a627af7816f2abb",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/components/PipelineControlTower.tsx": "5d02f8f8ff9dacbc7efd72792d7b4db27040adf73d59f99d62a0c56fb29d88e3",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/components/HermesSoulEditor.tsx": "ca65d353ce231d88db1ab712f0915dc9a231bef9ea96e3ab7362f96f5fcf7283",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/components/HermesPanel.tsx": "0be8be1427733826064cf6d2df819c0e3077d06667b447dbaf030a896cd0bd2f",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/components/AgentSoulEditor.tsx": "fad1d567f199c4019e96e342112cecb80defe366b46ac6157657a381cbfeff1e",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/components/OpenClawPanel.tsx": "3de2a28d1b964884ff1dfd16e3a8426a13a2fe94d9e3d4a0b74aa088d25ce157",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/components/TradeAIPanel.tsx": "d7c2ea5b6e544666bd00c7772cb7b225cd10872dafe071c973329bfdee8618ac",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/components/DataSourceHealth.tsx": "4bc69e87999f4c6e018bf923dd38223d0c15cfb91bd647dc3d14a4abee7ada84",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/components/ExecutionStatePanel.tsx": "d80d495ef653edce0a72e1684f0847ad94bfe1da66bd193993a63c60b97561cd",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/lib/metricGuideEnvelope.ts": "c3b8ba7bd5c1b9f83a37716739f8a9a8622ec44bf5e13b0d80a04dd838bbbbb8",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/lib/metricGuide.ts": "32607e4a978cf1b65fb82918183138d722b1cac397b394160449ad2122e486d2",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/components/primitives/Tooltip.tsx": "c0cbb49ca36172cf2e18ae89513c71675dd001f1bc37de47487c2125ca9f84d4",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/components/primitives/Chip.tsx": "b791055b14fd4f0e9eb4cd63a3b39fb3b88da99cbcd2513d5700681be1d557cf",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/lib/platformHealth.ts": "243374f8c6ac1f4a4bdd578f89b8d09e0880567fc5bd8d2308c483f1671295c8",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/components/PlatformHealthPanel.tsx": "2365b256f381434f0bb60c3c46c2b45cb226104477b018f3ac2857d04c20e759",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/lib/terminalUi.ts": "47e83e01a24a0110f46c697f6778f4bf713e1954c64c07f848ad814736322106",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/lib/overnightQueueHealth.ts": "486182ed1e27a705e48e4698a95c7d84dc7705b9e7631931baf554ce1d89c0fe",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/lib/dataPlausibility.ts": "5bb5f869116f0de03c2079e83a070c7e0161c2bf537a27ef7268108352ed92d4",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/lib/pipelineFailures.ts": "cf1c6883d8362d91b947fff24792b338e938ba7f44ff5c6202f39836435b4744",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/components/system/HiddenFailurePanels.tsx": "85c9fadabdceb53b6541cf42939e9f21cfcdb7ead3a6a0a507987a80d98623de",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/lib/systemTabModel.ts": "880a1b3949125eee1efa7b493a59e99ad40f0360288494d3935705c8aa673d23",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/pages/SystemHub.tsx": "2e248ba7becab1bc96f0b9436e016fda7c3a306d45f277eaf39eadd496d81db3",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/styles/tokens.css": "90286378bab81e0e1b7a79cdbbfd2e7ccc8a62772c3e89ffe9e43690bb3ec25e",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/src/index.css": "66b67e709cf771c243104d6bbd79bf15dcfa3c9174d59203235e4c833d2134ed",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/e2e/fixtures/systemTabRequests.fixture.json": "5a4e2105c3cc2b699f34e90e38946e97b241ad0d54161324de2fc64e96dd517d",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/e2e/system-tab-requests.fixture.mjs": "09b7e62409be3c5540b959f6113fa10344fdc23271a5cdba9303a1a74feafb1f",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/package.json": "1b533eb4af10044134d8f0fa72f14424fbd3b3377a86b691b3609b2ad7098790",
+      "/home/johnclaw/wt-codex-site-system-tabs-20261024/apps/command-center-v3/package-lock.json": "044d61c448bae21d84b9f6d7f890b0fd2bbfaea4c6315a4ffaceb4a80905e7f6"
+    }
+  },
+  "input_sha256": "5a4e2105c3cc2b699f34e90e38946e97b241ad0d54161324de2fc64e96dd517d",
+  "status": "SOURCE_FIXTURE_PROOF_NOT_LIVE_ACCEPTANCE",
+  "cases": [
+    {
+      "width": 1440,
+      "phases": [
+        {
+          "tab": "Pipeline",
+          "started": [
+            "/api/v2/system/pipeline-failures",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/pipeline-health"
+          ],
+          "polled": [
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/pipeline-failures",
+            "/api/v2/system/pipeline-health",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/pipeline-failures",
+            "/api/v2/system/pipeline-failures",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/pipeline-health",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/pipeline-failures",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/pipeline-health"
+          ]
+        },
+        {
+          "tab": "LLM",
+          "started": [
+            "/api/v2/local-llm-status",
+            "/api/v2/llm-health"
+          ],
+          "polled": [
+            "/api/v2/local-llm-status",
+            "/api/v2/llm-health",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/local-llm-status",
+            "/api/v2/llm-health",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/llm-health",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/local-llm-status",
+            "/api/v2/llm-health"
+          ]
+        },
+        {
+          "tab": "Apps",
+          "started": [
+            "/api/v2/system/applications"
+          ],
+          "polled": [
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower"
+          ]
+        },
+        {
+          "tab": "Crons",
+          "started": [
+            "/api/v2/system/cron-compression"
+          ],
+          "polled": [
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/cron-compression",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/cron-compression",
+            "/api/v2/system/queue-control-tower"
+          ]
+        },
+        {
+          "tab": "SIEM",
+          "started": [
+            "/api/v2/system/siem"
+          ],
+          "polled": [
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/siem",
+            "/api/v2/system/queue-control-tower"
+          ]
+        },
+        {
+          "tab": "Access",
+          "started": [
+            "/api/v2/system/access-links"
+          ],
+          "polled": [
+            "/api/v2/system/queue-control-tower"
+          ]
+        },
+        {
+          "tab": "Queue",
+          "started": [],
+          "polled": [
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower"
+          ]
+        },
+        {
+          "tab": "Jobs",
+          "started": [
+            "/api/v2/queue/summary",
+            "/api/v2/system/scheduled-jobs"
+          ],
+          "polled": [
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/queue/summary",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/queue/summary",
+            "/api/v2/system/scheduled-jobs",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/queue/summary"
+          ]
+        },
+        {
+          "tab": "Admin",
+          "started": [
+            "/api/v2/admin/secrets",
+            "/api/v2/broker-accounts",
+            "/api/v2/atm/config",
+            "/api/v2/admin/accounts",
+            "/api/v2/admin/audit-log",
+            "/api/v2/admin/strategy-enablement",
+            "/api/v2/admin/cron-retryable",
+            "/api/v2/live-trading-gate",
+            "/api/v2/risk"
+          ],
+          "polled": [
+            "/api/v2/admin/audit-log",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/broker-accounts",
+            "/api/v2/admin/strategy-enablement",
+            "/api/v2/admin/audit-log",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/admin/secrets",
+            "/api/v2/broker-accounts",
+            "/api/v2/admin/audit-log",
+            "/api/v2/admin/strategy-enablement",
+            "/api/v2/risk",
+            "/api/v2/admin/audit-log",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/broker-accounts",
+            "/api/v2/admin/audit-log",
+            "/api/v2/admin/strategy-enablement",
+            "/api/v2/admin/audit-log",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/admin/secrets",
+            "/api/v2/broker-accounts",
+            "/api/v2/atm/config",
+            "/api/v2/admin/accounts",
+            "/api/v2/admin/audit-log",
+            "/api/v2/admin/strategy-enablement",
+            "/api/v2/live-trading-gate",
+            "/api/v2/risk",
+            "/api/v2/admin/audit-log",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/broker-accounts",
+            "/api/v2/admin/audit-log",
+            "/api/v2/admin/strategy-enablement",
+            "/api/v2/admin/audit-log",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/admin/secrets",
+            "/api/v2/broker-accounts",
+            "/api/v2/admin/audit-log",
+            "/api/v2/admin/strategy-enablement",
+            "/api/v2/risk"
+          ]
+        },
+        {
+          "tab": "Brokers",
+          "started": [
+            "/api/v2/system/schwab-status",
+            "/api/v2/system/broker-connectors",
+            "/api/v2/trade-integrity-audit"
+          ],
+          "polled": [
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/schwab-status",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/broker-connectors",
+            "/api/v2/trade-integrity-audit",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/schwab-status",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/schwab-status",
+            "/api/v2/system/broker-connectors",
+            "/api/v2/trade-integrity-audit",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/schwab-status",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/schwab-status",
+            "/api/v2/system/broker-connectors",
+            "/api/v2/trade-integrity-audit"
+          ]
+        }
+      ],
+      "url_state": {
+        "back_forward": true,
+        "live_query": true,
+        "cookie_focus": true,
+        "preserved_context": true
+      },
+      "traffic_counts": {
+        "reads": 138,
+        "mutations": 0,
+        "external": 0,
+        "unexpected": 0,
+        "errors": 0
+      }
+    },
+    {
+      "width": 412,
+      "phases": [
+        {
+          "tab": "Pipeline",
+          "started": [
+            "/api/v2/system/pipeline-failures",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/pipeline-health"
+          ],
+          "polled": [
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/pipeline-failures",
+            "/api/v2/system/pipeline-health",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/pipeline-failures",
+            "/api/v2/system/pipeline-failures",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/pipeline-health",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/pipeline-failures",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/pipeline-health"
+          ]
+        },
+        {
+          "tab": "LLM",
+          "started": [
+            "/api/v2/local-llm-status",
+            "/api/v2/llm-health"
+          ],
+          "polled": [
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/local-llm-status",
+            "/api/v2/llm-health",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/local-llm-status",
+            "/api/v2/llm-health",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/local-llm-status",
+            "/api/v2/llm-health"
+          ]
+        },
+        {
+          "tab": "Apps",
+          "started": [
+            "/api/v2/system/applications"
+          ],
+          "polled": [
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower"
+          ]
+        },
+        {
+          "tab": "Crons",
+          "started": [
+            "/api/v2/system/cron-compression"
+          ],
+          "polled": [
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/cron-compression",
+            "/api/v2/system/queue-control-tower"
+          ]
+        },
+        {
+          "tab": "SIEM",
+          "started": [
+            "/api/v2/system/siem"
+          ],
+          "polled": [
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/siem",
+            "/api/v2/system/queue-control-tower"
+          ]
+        },
+        {
+          "tab": "Access",
+          "started": [
+            "/api/v2/system/access-links"
+          ],
+          "polled": [
+            "/api/v2/system/queue-control-tower"
+          ]
+        },
+        {
+          "tab": "Queue",
+          "started": [],
+          "polled": [
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower"
+          ]
+        },
+        {
+          "tab": "Jobs",
+          "started": [
+            "/api/v2/queue/summary",
+            "/api/v2/system/scheduled-jobs"
+          ],
+          "polled": [
+            "/api/v2/queue/summary",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/queue/summary",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/queue/summary",
+            "/api/v2/system/scheduled-jobs",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/queue/summary"
+          ]
+        },
+        {
+          "tab": "Admin",
+          "started": [
+            "/api/v2/admin/secrets",
+            "/api/v2/broker-accounts",
+            "/api/v2/atm/config",
+            "/api/v2/admin/accounts",
+            "/api/v2/admin/audit-log",
+            "/api/v2/admin/strategy-enablement",
+            "/api/v2/admin/cron-retryable",
+            "/api/v2/live-trading-gate",
+            "/api/v2/risk"
+          ],
+          "polled": [
+            "/api/v2/admin/audit-log",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/broker-accounts",
+            "/api/v2/admin/strategy-enablement",
+            "/api/v2/admin/audit-log",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/admin/secrets",
+            "/api/v2/broker-accounts",
+            "/api/v2/admin/audit-log",
+            "/api/v2/admin/strategy-enablement",
+            "/api/v2/risk",
+            "/api/v2/admin/audit-log",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/broker-accounts",
+            "/api/v2/admin/audit-log",
+            "/api/v2/admin/strategy-enablement",
+            "/api/v2/admin/audit-log",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/admin/secrets",
+            "/api/v2/broker-accounts",
+            "/api/v2/atm/config",
+            "/api/v2/admin/accounts",
+            "/api/v2/admin/audit-log",
+            "/api/v2/admin/strategy-enablement",
+            "/api/v2/live-trading-gate",
+            "/api/v2/risk",
+            "/api/v2/admin/audit-log",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/broker-accounts",
+            "/api/v2/admin/audit-log",
+            "/api/v2/admin/strategy-enablement",
+            "/api/v2/admin/audit-log",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/admin/secrets",
+            "/api/v2/broker-accounts",
+            "/api/v2/admin/audit-log",
+            "/api/v2/admin/strategy-enablement",
+            "/api/v2/risk"
+          ]
+        },
+        {
+          "tab": "Brokers",
+          "started": [
+            "/api/v2/system/schwab-status",
+            "/api/v2/system/broker-connectors",
+            "/api/v2/trade-integrity-audit"
+          ],
+          "polled": [
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/schwab-status",
+            "/api/v2/system/broker-connectors",
+            "/api/v2/trade-integrity-audit",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/schwab-status",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/schwab-status",
+            "/api/v2/system/broker-connectors",
+            "/api/v2/trade-integrity-audit",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/schwab-status",
+            "/api/v2/system/queue-control-tower",
+            "/api/v2/system/schwab-status",
+            "/api/v2/system/broker-connectors",
+            "/api/v2/trade-integrity-audit"
+          ]
+        }
+      ],
+      "url_state": {
+        "back_forward": true,
+        "live_query": true,
+        "cookie_focus": true,
+        "preserved_context": true
+      },
+      "traffic_counts": {
+        "reads": 138,
+        "mutations": 0,
+        "external": 0,
+        "unexpected": 0,
+        "errors": 0
+      }
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-access-1440.png",
+      "sha256": "f3d0fa26e7ee3165a8b63c86da3fb13749d95418a5a62d8faf3fc5b50f8aef4a"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-access-412.png",
+      "sha256": "e082b04f232c390f83cb513326c8d1ca0b272fdb23341c442488d2b15bb52778"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-admin-1440.png",
+      "sha256": "d241fb3e4eee210923e099ca5443069f00e4d10f42bedda70878b437bc8481be"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-admin-412.png",
+      "sha256": "708a6c219e8747db79df87001d6e66793e6839b3e710dc3673156eb4502becd4"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-apps-1440.png",
+      "sha256": "24eb9c5996c831642b6e655f0bbe7c8c1557311760f7d4a0990c3c8b432b6456"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-apps-412.png",
+      "sha256": "1ed6d525f9a46dc0d8cf77472cd2b25abec7c2461df4e958ed21fbaffb1b6309"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-brokers-1440.png",
+      "sha256": "5d3795e55199e8a8af9c0a90056cc53296cb9704658d8eb497a222be3c7775a0"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-brokers-412.png",
+      "sha256": "040e6d57659ad2b18aff0f211f146f53c453b0021c0815c826da67a47752e6bb"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-crons-1440.png",
+      "sha256": "8a6b0db3f67e62e53220c95fe2cfe9b371f7489bdb0b2356ef69b31b42c06e35"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-crons-412.png",
+      "sha256": "41702a1b9296579e2cc036e8ce65af6584aff50862d2704df32da96077820587"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-jobs-1440.png",
+      "sha256": "36bed783c4a361c95c7355ac0fbb48616e9e8fdec2738382284d7898f8de19d1"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-jobs-412.png",
+      "sha256": "dbb330a8a3e1927dba7d698592f4ab2e4a0535ec859eb908a30498f1691ca7ea"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-llm-1440.png",
+      "sha256": "d8947e28d4a358f3238cac91071e34fdcea94b0df58e5ba79533f2dcb16fb974"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-llm-412.png",
+      "sha256": "1e29c37854e2b211f5c79c848b055bd07e691eb3d0491d46155b488ff959b182"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-pipeline-1440.png",
+      "sha256": "c9489b11bb405207a5028dfef2a7083ef0bbaecfb5ffc9988aafc4910ce3f72b"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-pipeline-412.png",
+      "sha256": "e3397dd37c74122e6ba4f9ab32604cc384f1493a599e5c56438a5e81def0fd3f"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-queue-1440.png",
+      "sha256": "bb30636956d328393aec90d1c5ec05dc70f7a7bdfd4461f2427d8c572ea2c058"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-queue-412.png",
+      "sha256": "f401fdd741cbd68d2da64eaad574b427b72df01634d1939241bca43a8e902642"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-siem-1440.png",
+      "sha256": "1f6a2067a7fb7ff02574518235cf2b9c5f6696f5f6f231f78d4280b80674e89f"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof/impl-system-tabs-siem-412.png",
+      "sha256": "8b2738b5aab97004e1800bdf1f3def40d371ebc5e0e9f618aff0a6eb87d3393a"
+    }
+  ]
+}

@@ -1,16 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import SecretsManager from '../components/SecretsManager'
 import AlpacaLiveReadPanel from '../components/AlpacaLiveReadPanel'
 
-// Deep-link: /v3/system?tab=Crons|LLM|SIEM|Brokers&query=<id> selects that tab (from a Reports action).
-// focus=youtube-cookies opens the cookie paste/upload panel on Pipeline.
-function _dlTab<T extends readonly string[]>(tabs: T, fallback: T[number]): T[number] {
-  try { const t = new URLSearchParams(window.location.search).get('tab'); return (t && (tabs as readonly string[]).includes(t)) ? t as T[number] : fallback } catch { return fallback }
-}
-function _dlQuery(): string { try { return new URLSearchParams(window.location.search).get('query') || '' } catch { return '' } }
-function _dlFocus(): string { try { return new URLSearchParams(window.location.search).get('focus') || '' } catch { return '' } }
 import SchwabMonitor from '../components/SchwabMonitor'
 import CsvUpload from '../components/CsvUpload'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -26,9 +19,9 @@ import PlatformHealthPanel from '../components/PlatformHealthPanel'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 import { OvernightQueuePanel, DataPlausibilityPanel, PipelineFailuresPanel } from '../components/system/HiddenFailurePanels'
+import { SYSTEM_TABS as TABS, systemTab, systemTabParams, type SystemTab } from '../lib/systemTabModel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
-const TABS = ['Platform', 'Pipeline', 'Control Plane', 'Data Sources', 'Queue', 'SIEM', 'Jobs', 'Apps', 'Access', 'Admin', 'Brokers', 'Crons', 'LLM', 'Hermes', 'OpenClaw', 'TradeAI'] as const
 
 // Freshness color for an ISO timestamp vs a max-age (hours)
 function ageColor(iso: string | null | undefined, maxH: number): string {
@@ -46,35 +39,37 @@ function fmtAge(iso: string | null | undefined): string {
 
 export default function SystemHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
-  const [tab, setTab] = useState<typeof TABS[number]>(() => _dlTab(TABS, 'Pipeline'))
-  const [dlQuery] = useState(_dlQuery)
-  const [dlFocus] = useState(_dlFocus)
+  const [params, setParams] = useSearchParams()
+  const tab = systemTab(params)
+  const setTab = (next: SystemTab) => setParams(current => systemTabParams(current, next))
+  const dlQuery = params.get('query') || ''
+  const dlFocus = params.get('focus') || ''
   const [ytText, setYtText] = useState('')
   const [ytBusy, setYtBusy] = useState(false)
   const [ytMsg, setYtMsg] = useState<{ ok: boolean; text: string } | null>(null)
-  const [ytOpen, setYtOpen] = useState(() => _dlFocus() === 'youtube-cookies')
-  const ytAutoOpened = useRef(_dlFocus() === 'youtube-cookies')
+  const [ytOpen, setYtOpen] = useState(() => dlFocus === 'youtube-cookies')
+  const ytAutoOpened = useRef(dlFocus === 'youtube-cookies')
   const ytPanelRef = useRef<HTMLDivElement | null>(null)
   const { data: qct } = useApi<any>('/api/v2/system/queue-control-tower', 30_000)
-  const { data: siem } = useApi<any>('/api/v2/system/siem', 120_000)
-  const { data: crons } = useApi<any>('/api/v2/system/cron-compression', 120_000)
-  const { data: llm } = useApi<any>('/api/v2/local-llm-status', 60_000)
-  const { data: llmHealth } = useApi<any>('/api/v2/llm-health', 60_000)
-  const { data: pipe } = useApi<any>('/api/v2/system/pipeline-health', 60_000)
-  const { data: apps } = useApi<any>('/api/v2/system/applications', 300_000)
-  const { data: jobs } = useApi<any>('/api/v2/system/scheduled-jobs', 120_000)
-  const { data: access } = useApi<any>('/api/v2/system/access-links', 300_000)
-  const { data: atmCfg } = useApi<any>('/api/v2/atm/config', 120_000)
-  const { data: acctCfg } = useApi<any>('/api/v2/admin/accounts', 120_000)
-  const { data: auditLog } = useApi<any>('/api/v2/admin/audit-log', 15_000)
-  const { data: stratEnable } = useApi<any>('/api/v2/admin/strategy-enablement', 30_000)
-  const { data: cronRetryable } = useApi<any>('/api/v2/admin/cron-retryable', 300_000)
+  const { data: siem } = useApi<any>('/api/v2/system/siem', 120_000, { enabled: tab === 'SIEM' })
+  const { data: crons } = useApi<any>('/api/v2/system/cron-compression', 120_000, { enabled: tab === 'Crons' })
+  const { data: llm } = useApi<any>('/api/v2/local-llm-status', 60_000, { enabled: tab === 'LLM' })
+  const { data: llmHealth } = useApi<any>('/api/v2/llm-health', 60_000, { enabled: tab === 'LLM' })
+  const { data: pipe } = useApi<any>('/api/v2/system/pipeline-health', 60_000, { enabled: tab === 'Pipeline' })
+  const { data: apps } = useApi<any>('/api/v2/system/applications', 300_000, { enabled: tab === 'Apps' })
+  const { data: jobs } = useApi<any>('/api/v2/system/scheduled-jobs', 120_000, { enabled: tab === 'Jobs' })
+  const { data: access } = useApi<any>('/api/v2/system/access-links', 300_000, { enabled: tab === 'Access' })
+  const { data: atmCfg } = useApi<any>('/api/v2/atm/config', 120_000, { enabled: tab === 'Admin' })
+  const { data: acctCfg } = useApi<any>('/api/v2/admin/accounts', 120_000, { enabled: tab === 'Admin' })
+  const { data: auditLog } = useApi<any>('/api/v2/admin/audit-log', 15_000, { enabled: tab === 'Admin' })
+  const { data: stratEnable } = useApi<any>('/api/v2/admin/strategy-enablement', 30_000, { enabled: tab === 'Admin' })
+  const { data: cronRetryable } = useApi<any>('/api/v2/admin/cron-retryable', 300_000, { enabled: tab === 'Admin' })
   const [pending, setPending] = useState<PendingAction | null>(null)
   const [opTick, setOpTick] = useState(0)   // re-render after operator/token edits
-  const { data: gate } = useApi<any>('/api/v2/live-trading-gate', 120_000)
-  const { data: riskCfg } = useApi<any>('/api/v2/risk', 60_000)
-  const { data: brokers } = useApi<any>('/api/v2/system/broker-connectors', 60_000)
-  const { data: tia } = useApi<any>('/api/v2/trade-integrity-audit', 60_000)
+  const { data: gate } = useApi<any>('/api/v2/live-trading-gate', 120_000, { enabled: tab === 'Admin' })
+  const { data: riskCfg } = useApi<any>('/api/v2/risk', 60_000, { enabled: tab === 'Admin' })
+  const { data: brokers } = useApi<any>('/api/v2/system/broker-connectors', 60_000, { enabled: tab === 'Brokers' })
+  const { data: tia } = useApi<any>('/api/v2/trade-integrity-audit', 60_000, { enabled: tab === 'Brokers' })
 
   const timers = qct?.timers_total ?? 0
   const cronCount = qct?.cron_count ?? 0
@@ -92,9 +87,10 @@ export default function SystemHub({ onDrill }: Props) {
 
   useEffect(() => {
     if (dlFocus === 'youtube-cookies') {
-      setTab('Pipeline')
+      setParams(current => systemTabParams(current, 'Pipeline'), { replace: true })
       setYtOpen(true)
-      window.setTimeout(() => ytPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80)
+      const timer = window.setTimeout(() => ytPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80)
+      return () => window.clearTimeout(timer)
     }
   }, [dlFocus])
 
@@ -131,16 +127,16 @@ export default function SystemHub({ onDrill }: Props) {
   }
 
   return (
-    <div>
+    <div data-testid="system-hub" data-active-tab={tab}>
       <AdminConfirmModal action={pending} onClose={() => setPending(null)} onDone={() => setOpTick(t => t + 1)} />
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={hubTitle()}>System</div>
           <div style={hubSubtitle(terminalUi)}>{timers} timers · {cronCount} crons · {services} services · {llmJobs} LLM jobs</div>
         </div>
-        <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
+        <div className="hub-tabs" data-testid="system-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
           {TABS.map(t => (
-            <button key={t} onClick={() => setTab(t)} style={hubTab(tab === t, terminalUi)}>{t}</button>
+            <button key={t} type="button" aria-pressed={tab === t} onClick={() => setTab(t)} style={hubTab(tab === t, terminalUi)}>{t}</button>
           ))}
         </div>
       </div>
