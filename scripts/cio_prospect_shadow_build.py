@@ -15,7 +15,10 @@ n8n lane ``cio-prospect-shadow`` (stage shadow: the dispatcher runs ``--dry-run`
 writes the shadow artifact the ``cio_prospect`` projection serves while the store is not live
 (data/cio/cio_prospect_shadow.json), the comparison (data/cio/cio_prospect_shadow_compare.json) and the lane
 receipt (data/runtime/cio-prospect-shadow_last.json); it never writes ``cio_prospect`` and never calls
-InstrumentRecordStore — the shadow is not the store.
+InstrumentRecordStore — the shadow is not the store. Separately, the explicit
+``--write-company-facts`` opt-in merges ONLY research.company_facts into existing
+GUID-matching InstrumentRecords through their existing apply_prospect/upsert_prospect facade (including its gated PG dual-write). It never creates
+records, changes judgments or advances the prospect store. Default/dry-run writes none.
 
 Never: a broker call, a positions_current read (the held set comes from the positions_context projection),
 a model call, a send, a write to any input store. MBI_BEHAVIOR = 0.
@@ -228,6 +231,7 @@ def main(argv: list[str] | None = None) -> int:
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="default: build and print; write nothing")
     mode.add_argument("--write-shadow", action="store_true", help="write the shadow artifact + receipt (canary+)")
+    ap.add_argument("--write-company-facts", action="store_true", help="explicit fact-only CIO InstrumentRecord extension write; never promotes shadow judgments")
     ap.add_argument("--state-root", help="persistent state root (default: production_state_root())")
     ap.add_argument("--with-db", action="store_true", help="also read DB inputs through a READ ONLY session")
     ap.add_argument("--compare", action="store_true", help="add the comparison vs Home / Watch / Telegram")
@@ -238,6 +242,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", help="write the full build JSON to this path (a report, not a store)")
     ap.add_argument("--report-md", help="write the comparison as Markdown to this path")
     args = ap.parse_args(argv)
+    if args.dry_run and args.write_company_facts:
+        ap.error("--dry-run cannot write company facts")
     write_shadow = bool(args.write_shadow)
     now = datetime.now(timezone.utc)
     try:
@@ -280,6 +286,21 @@ def main(argv: list[str] | None = None) -> int:
     else:
         out["wrote"] = [p for p in (args.out, args.report_md) if p]
         out["would_write"] = [SHADOW_REL, COMPARE_REL, RECEIPT_REL]
+    from scripts.lib.cio_company_facts import persist_company_facts
+    backend = None
+    if args.write_company_facts:
+        from scripts.lib.cio_instrument_record import ProspectPgBackend
+
+        def connect_company_facts():
+            # Only upsert_prospect's existing registry+operator flag+table gates
+            # may reach this connection. --with-db remains READ ONLY, separately.
+            from scripts.session13_db import get_conn
+            return get_conn()
+        backend = ProspectPgBackend(connect_company_facts)
+    out["company_facts"] = persist_company_facts(state_root, doc["prospects"], write=args.write_company_facts,
+                                                backend=backend)
+    if args.write_company_facts and not out["company_facts"]["ok"]:
+        out["ok"] = False
     print(json.dumps(out, indent=2, default=str))
     return 0 if out["ok"] else 1
 
