@@ -1,0 +1,163 @@
+{
+  "schema": "WP14PackageVerification@v1",
+  "as_of": "2026-10-24T02:36:54+00:00",
+  "base_sha": "4acb33ada3eed278c5f7652fcdcd6cbda15e68e5",
+  "delivery_kind": "PROPOSED operator package; not applied to canonical or worker protected sources",
+  "stages": {
+    "none": {
+      "tests_passed": 255,
+      "unauthorized_hook_rc": 1
+    },
+    "proposed": {
+      "tests_passed": 323,
+      "unauthorized_hook_rc": 1,
+      "full_apply_exit": 0
+    },
+    "ratified_fixture_only": {
+      "tests_passed": 323,
+      "unauthorized_hook_rc": 1,
+      "simulated_approval_only": true
+    }
+  },
+  "focused_policy_tests_passed": 68,
+  "concurrency_proof": {
+    "parallel_hook_processes": 5,
+    "remaining_repository_slots": 1,
+    "accepted_reservations": 1,
+    "budget_refusals": 4,
+    "refused_ledger_budget_spent": 0
+  },
+  "integrity_proof": {
+    "schema": "WP14IntegrityProof@v1",
+    "base": "4acb33ada3eed278c5f7652fcdcd6cbda15e68e5",
+    "proposed_fixture_commit": "37e12bfa106c2d306fbd0e28b6299335565b2d1d",
+    "normalized_patch_sources_byte_identical": true,
+    "source_sha256": {
+      "AI_WORK_POLICY.md": "b8a4b230c90dce6a3948cf09866528273b532ff2ec2f93205a191e2aaa2d8d24",
+      ".githooks/pre-push": "5f54eedd738a770bac4add1fd379ce9a8a5fc9f0a01fb5592814527705219830",
+      "scripts/lib/tradeai_push_budget.py": "ddb34a5f8388e91e0c865ccd699a6764267a1a24ed701b1f9de31287aba8be19",
+      "tests/test_push_policy_v2_20261023.py": "f88966ad5f6aead0b7937a60fdd437b71dc2b98ec21f8b4400076d842b937a82",
+      "tests/test_guard_push_auth.py": "cc9159815b346014f16f5f998507179c18bc3dd56f0256282e384ee4ea2981cb",
+      "config/ci_gates/push_policy_v2_20261023.json": "5866032db2787ae954130320784058edcd47c4145a438edfb14d7462f630f16b"
+    },
+    "protected_checkout_sha256_unchanged": {
+      "/home/johnclaw/wt-codex-wp14-20261023": {
+        "AI_WORK_POLICY.md": "eaead9a6f5db24c5959b70c7342b1b8245d827803e125378ecee83781bbd1cf9",
+        ".githooks/pre-push": "4883de5f8859374056f464fb7fea005f1fbc86cabb83f36f488cb7a3513c6086",
+        "scripts/lib/tradeai_push_budget.py": "18e0ea24e31c461b3fe70e07ae6dc57d62da94dbea1cd39705801568b0937de3"
+      },
+      "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild": {
+        "AI_WORK_POLICY.md": "eaead9a6f5db24c5959b70c7342b1b8245d827803e125378ecee83781bbd1cf9",
+        ".githooks/pre-push": "4883de5f8859374056f464fb7fea005f1fbc86cabb83f36f488cb7a3513c6086",
+        "scripts/lib/tradeai_push_budget.py": "18e0ea24e31c461b3fe70e07ae6dc57d62da94dbea1cd39705801568b0937de3"
+      }
+    },
+    "final_preview_exit": 0,
+    "tampered_package_exit": 2,
+    "real_remote_pushes": 0
+  },
+  "ratification_proof": {
+    "schema": "WP14RatificationFixtureProof@v1",
+    "simulated_approval_only": true,
+    "real_GitHub_requests": 0,
+    "proposal_commit": "37e12bfa106c2d306fbd0e28b6299335565b2d1d",
+    "ratified_fixture_commit": "dd1c81ae2f8d71a4aeaf4fde9671856a229a8a2e",
+    "changed_policy_lines": 3,
+    "pre_section_29_sha256": "37a6c3c4eb7586dc0dcb11c8b65ee7ebf07d2b49442a52af575fc0b574098d2f",
+    "cases": [
+      {
+        "case": "ratify-short-sha",
+        "returncode": 2,
+        "expected": 2
+      },
+      {
+        "case": "ratify-wrong-owner",
+        "returncode": 3,
+        "expected": 3
+      },
+      {
+        "case": "ratify-substring",
+        "returncode": 3,
+        "expected": 3
+      },
+      {
+        "case": "ratify-preview",
+        "returncode": 0,
+        "expected": 0
+      },
+      {
+        "case": "ratify-apply",
+        "returncode": 0,
+        "expected": 0
+      },
+      {
+        "case": "ratify-old-head",
+        "returncode": 2,
+        "expected": 2
+      }
+    ]
+  },
+  "patch_encoding_proof": {
+    "schema": "WP14PatchEncoding@v1",
+    "original_patch_sha256": "e6ff31765d6aab87e6569dadb32b1fe0be638ba280ce7d540e90458d42e091a1",
+    "normalized_patch_sha256": "cc56c0389c3e1b6e03da80a32cb70dbbf2242fecc3f72552919fc8593d5aa2c2",
+    "normalization": "Only exact blank context line prefix removed; resulting sources verified byte-identical in apply proof",
+    "expected_source_sha256": {
+      "AI_WORK_POLICY.md": "b8a4b230c90dce6a3948cf09866528273b532ff2ec2f93205a191e2aaa2d8d24",
+      ".githooks/pre-push": "5f54eedd738a770bac4add1fd379ce9a8a5fc9f0a01fb5592814527705219830",
+      "scripts/lib/tradeai_push_budget.py": "ddb34a5f8388e91e0c865ccd699a6764267a1a24ed701b1f9de31287aba8be19",
+      "tests/test_push_policy_v2_20261023.py": "f88966ad5f6aead0b7937a60fdd437b71dc2b98ec21f8b4400076d842b937a82",
+      "tests/test_guard_push_auth.py": "cc9159815b346014f16f5f998507179c18bc3dd56f0256282e384ee4ea2981cb",
+      "config/ci_gates/push_policy_v2_20261023.json": "5866032db2787ae954130320784058edcd47c4145a438edfb14d7462f630f16b"
+    }
+  },
+  "train_status": "TRAIN_AUTHORITY_UNPROVEN; env IDs/reasons identify only; host-service verified reservation bridge requires separate review",
+  "required_remote_checks": "NOT_RUN; operator publication pending",
+  "real_remote_pushes": 0,
+  "real_approvals": 0,
+  "merges": 0,
+  "releases": 0,
+  "live_server_requests": 0,
+  "evidence": {
+    "none.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp14-20261023/none.log",
+      "sha256": "cd272f6539ea28237f2048d3684fe028c32e5a9e38ecde4f16f0e9ab39825430"
+    },
+    "atomic-final.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp14-20261023/atomic-final.log",
+      "sha256": "d9a643f0bdb58eab62efd15ed22dc4676dfda48ee59a430f3f8d3c68223c7144"
+    },
+    "apply-atomic-final.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp14-20261023/apply-atomic-final.log",
+      "sha256": "ebb34c04234596b8f5fa28a3caa87215407b7b87b8fe1b060e3c119f19d8c9f9"
+    },
+    "atomic-final-ratify-apply.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp14-20261023/atomic-final-ratify-apply.log",
+      "sha256": "bf8651966bc986fa70920763dec26df1447735d1aa09ccf36d4ef80ff46a3406"
+    },
+    "apply-preview-atomic-final.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp14-20261023/apply-preview-atomic-final.log",
+      "sha256": "daf64fdc55a7c7920cd675a19f25028f7b7b41024a7134aaf1e4e70dbd594d1f"
+    },
+    "tamper-atomic-final.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp14-20261023/tamper-atomic-final.log",
+      "sha256": "6673f3b47d4d2445a724bf6c08202e6fe686e6da81e88fee0d5f6f8a5da4e8d7"
+    },
+    "integrity-atomic-final.json": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp14-20261023/integrity-atomic-final.json",
+      "sha256": "6f17098ac114a1428550ed578b6d334c1bf09b14b55141109230f334266bda1f"
+    },
+    "ratification-proof-atomic-final.json": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp14-20261023/ratification-proof-atomic-final.json",
+      "sha256": "c4addb52e34def6100b994598181e5ad512b2b5ef797c480153a6605fa88518c"
+    },
+    "patch-encoding-proof.json": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp14-20261023/patch-encoding-proof.json",
+      "sha256": "c08c22025497acc37c2038aa1240470c865d21a020dea88037cc3317b90370d3"
+    },
+    "secrets-scan.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp14-20261023/secrets-scan.log",
+      "sha256": "54ecba239b167360c1bf196b3f64cf18f4f3f0dae0b4112e2b5b5f8d008b3fde"
+    }
+  }
+}
