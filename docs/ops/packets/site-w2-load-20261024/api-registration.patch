@@ -1,0 +1,33 @@
+--- a/scripts/api_v2.py
++++ b/scripts/api_v2.py
+@@ -49144,6 +49144,20 @@
+ }
+ 
+ 
++# W2 bounded stored-list reads. Handlers stay in their owned module.
++from lib.site_payload_reads import bounded_routes as _site_bounded_routes
++
++
++def _site_payload_state_root():
++    from lib.lane_registry import state_root
++    return state_root()
++
++
++ROUTES.update(_site_bounded_routes(
++    root=_site_payload_state_root, db_query=_db_query, clean=_json_clean,
++    scanner=trade_ai_scanner, evidence_packet=_evidence_packet,
++))
++
+ _current_query = {}  # Thread-local would be better; single-threaded server is fine
+ 
+ 
+@@ -55480,7 +55494,8 @@
+                     return None
+                 return [tuple(r.values()) if isinstance(r, dict) else tuple(r) for r in rows]
+ 
+-            return 200, {"ok": True, "data": _scheduler_projection(db_query=_signal_query)}
++            from lib.site_payload_reads import scheduler_page
++            return 200, {"ok": True, "data": scheduler_page(_scheduler_projection(db_query=_signal_query), query)}
+         except Exception as e:
+             return 503, {"ok": False, "error": type(e).__name__}
+ 
