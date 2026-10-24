@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_ask_process_registration_20261024",
+  "files": [
+    "tests/test_cio_ask_process_registration_20261024.py"
+  ],
+  "comment": [
+    "WP-23 Ask-CIO source registration: real route/cap logic with injected transports and ledger; no live calls or cap-sync writes."
+  ]
+}

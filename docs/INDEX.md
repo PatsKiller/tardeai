@@ -1790,6 +1790,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CC_P3_COSMETICS_2026-10-23.md` | Command Center v3 — P3 cosmetic fixes from the site validation (2026-10-23) |
 | `docs/ops/CIO_ADVISORY_TRUTH_HARDENING_CLOSEOUT_2026-08-20.md` | CIO/Advisory truth + presentation hardening — closeout 2026-08-20 |
 | `docs/ops/CIO_AFTERNOON_FIVE_2026-09-01.md` | Afternoon five — closeout |
+| `docs/ops/CIO_ASK_PROCESS_REGISTRATION_20261024.md` | WP-23: governed Ask-CIO process registration |
 | `docs/ops/CIO_BANNER_DATA_ASOF_2026-09-01.md` | PORTFOLIO chip — freshness is `data_as_of`, not the loader run |
 | `docs/ops/CIO_BANNER_WAKE_CLOSEOUT_2026-09-01.md` | Banner + wake — closeout |
 | `docs/ops/CIO_CASH_LETTER_ROWS_2026-09-01.md` | Cash letter publishes row-sum cash, not the CASH_SLEEVE fossil |
@@ -2172,6 +2173,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/archive-offbox-20261021/README.md` | Archive off-box sync to Google Drive — install packet (2026-10-21) |
 | `docs/ops/packets/c1-company-population-20261024/RUNBOOK.md` | C1 company-facts population operator packet |
 | `docs/ops/packets/catalyst-consolidation-20261022/README.md` | Catalyst momentum engine — cron side of the B8 consolidation (2026-10-22) |
+| `docs/ops/packets/cio-ask-process-20261024/README.md` | Ask-CIO process: source and operator handoff |
 | `docs/ops/packets/comms-intent-consumer-live-20261017/README.md` | comms-intent consumer LIVE on the n8n fabric (2026-10-17) |
 | `docs/ops/packets/consolidation-health-audit-c3-20261015/README.md` | consolidation-health-audit-c3-20261015: CONSOLIDATE wave C3, operator packet |
 | `docs/ops/packets/continuous-from-current-20261023/README.md` | WP-27: continuous scanner from CURRENT operator packet |

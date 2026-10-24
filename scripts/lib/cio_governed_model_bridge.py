@@ -144,8 +144,25 @@ CALLER_TASK_PROCESS_MAP: dict[str, dict[str, str]] = {
         # 2026-10-22: the options-desk CIO thesis review on its own process (was Steph's via cio_synthesis,
         # refused POLICY_NOT_ALLOWED on FAST_THINK); used only when TRADEAI_LLM_VIA_BRIDGE routes it here.
         "options_thesis_cio_review": "options_thesis_cio_review",
+        # Ask-CIO operator research uses its own approved process/caps.
+        "cio_ask_deep_research": "cio_ask_deep_research",
+        "cio_ask_deep_research_depth": "cio_ask_deep_research",
     },
 }
+
+# Server-owned task depth; never read a provider/model/tier from the request body.
+CALLER_TASK_REASONING_TIER_MAP: dict[str, dict[str, str]] = {
+    "advisory_desk": {"cio_ask_deep_research_depth": "high"},
+}
+
+
+def caller_reasoning_options(caller: str, task_type: str) -> dict[str, str]:
+    """Only a server-mapped task can select the registered reasoning lane."""
+    tier = CALLER_TASK_REASONING_TIER_MAP.get(str(caller).strip().lower(), {}).get(
+        str(task_type).strip().lower()
+    )
+    return {"reasoning_tier": tier} if tier else {}
+
 
 # ── Reservation failure codes → HTTP status ────────────────────────────
 # reserve_projected_cost() raises RuntimeError("<MACHINE_CODE>: detail") for
@@ -3272,6 +3289,7 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
                 max_tokens=max_tokens,
                 request_id=request_id,
                 routing_policy=routing_policy_name,
+                **caller_reasoning_options(caller, task_type),
             )
         finally:
             with _INFLIGHT_LOCK:

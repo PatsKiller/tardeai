@@ -1,0 +1,163 @@
+{
+  "schema": "CioAskProcessSourceVerification@v1",
+  "observed_at": "2026-10-24T22:38:52.456596+00:00",
+  "base_sha": "9228634873392073f5849aaa77ec9b9121eb6094",
+  "task": "DSN-20261024-cio-ask-process-P1-T1",
+  "claim": "20261024T221725Z-codex-f455bd69",
+  "status": "SOURCE_READY_WITH_UNCHANGED_BASELINE_FINDING_NOT_LIVE",
+  "production_scope": [
+    "config/llm_process_registry.json",
+    "config/llm_routing_policy.json",
+    "scripts/lib/cio_governed_model_bridge.py",
+    "scripts/lib/governed_process_routes.py",
+    "scripts/sync_cio_process_caps.py"
+  ],
+  "preserved": {
+    "existing_process_rows": true,
+    "existing_routing_rows": true,
+    "existing_cap_tuples": true,
+    "existing_conflict_modes": true,
+    "global_budget_configuration": true,
+    "reanswer_shadow_configuration": true,
+    "inherited_CRLF_styles": true
+  },
+  "tests": [
+    {
+      "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/final-new-tests.xml",
+      "sha256": "ff4f65b8ae79ee0f567c89dc25cf290052a6cf7ebc097fc76942ccc182702f26",
+      "tests": "21",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "3.369"
+    },
+    {
+      "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/test_n8n_oauth_first_routing_20261015.xml",
+      "sha256": "6eaa4e345c8ec203b3ceffc7d3591ccc35f71927b2e6ed791f6edf8853670a1c",
+      "tests": "27",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "1.333"
+    },
+    {
+      "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/test_bridge_oauth_llm_step_20261014.xml",
+      "sha256": "cf785b6238dc12c8277e4db6b228cf55f55e92173428f65d6c5978e17e1e8a77",
+      "tests": "40",
+      "failures": "1",
+      "errors": "0",
+      "skipped": "0",
+      "time": "1.800"
+    },
+    {
+      "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/step-http-reviewed.xml",
+      "sha256": "5ba50d56a8ad87ea069b706fff9da83605d88457d3385e3434cf81070085412f",
+      "tests": "1",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.976"
+    },
+    {
+      "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/test_cio_governed_model_bridge.xml",
+      "sha256": "16a1e3d78e90128c9b1013fae76ea1bb38a1cf120fefe9357a02a4effb03d262",
+      "tests": "25",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.746"
+    },
+    {
+      "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/test_llm_process_seed_sync_20261010.xml",
+      "sha256": "158d67f320d6ce20e0f370a75fe1b5aac44c8d5c94c39ae0229e90dc87ed63d2",
+      "tests": "11",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.553"
+    },
+    {
+      "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/test_llm_label_split_20260914.xml",
+      "sha256": "547c19cd92ccd962dde7a6ca4ef7bb58474c46d066eb0a93731d7e3ed3165f70",
+      "tests": "24",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.691"
+    },
+    {
+      "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/test_llm_consumption.xml",
+      "sha256": "9f12e4d64c1058f864881db3a9ef04025776daa298ce25a13cc875c333219529",
+      "tests": "5",
+      "failures": "1",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.501"
+    },
+    {
+      "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/remaining-tests.xml",
+      "sha256": "b9995571428ce8b6ed13aad2b1154c1da38bfac66fe422cd66c96100851edd19",
+      "tests": "26",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "1.464"
+    },
+    {
+      "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/routing-whole.xml",
+      "sha256": "13557c9a9d79a1d9a3965d0564a053420550031eb3efb528616f5e2782e4bc58",
+      "tests": "15",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "1.597"
+    }
+  ],
+  "qualifications": [
+    "New21 source tests passed on final selected-sync implementation; initial16/18 passes overlap and are not added.",
+    "Existing bridge-step file initially39pass/1failed at sandbox socket construction. Inspected exact mock127.0.0.1:0 fixture passed after formal review; no auto-review rejection or live call. Initial receipt retained; never presented as a single40-green run.",
+    "Whole old llm_consumption file4pass/1failed deterministic stale expectation; accepted922 mode and test are unchanged. No unrelated process/mode/assertion changed. See baseline-stale-mode-test.json.",
+    "No complete-project profile executed for this scoped task; no CI or live acceptance claimed.",
+    "Per-call0.50 is separate from cumulative per-question0.50; latter and actual settled-cost booking belong to separate Ask core quality fix.",
+    "Client helper lacks context-header/budget forwarding; Ring2 and caller cumulative-budget rails remain applicable. No governance bypass added."
+  ],
+  "dry_run": {
+    "actual_source_cli": "scripts/sync_cio_process_caps.py --dry-run --process-id cio_ask_deep_research",
+    "stdout": "  [dry-run] would upsert cio_ask_deep_research: cost=5.0 soft=30\n  [dry-run] Ask-CIO new-row mode=manual; existing-row mode unchanged\n",
+    "database_import_or_write": false
+  },
+  "checks": {
+    "read_only_source_guards": 10,
+    "all_exit_zero": true,
+    "compile_passed": [
+      "scripts/lib/cio_governed_model_bridge.py",
+      "scripts/lib/governed_process_routes.py",
+      "scripts/sync_cio_process_caps.py",
+      "tests/test_cio_ask_process_registration_20261024.py"
+    ],
+    "config_writes": [],
+    "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-final-no-write.json",
+    "CRLF": "inherited style preserved; native cr-at-eol whitespace and line-ending-churn checks passed; default check CRLF-only receipt retained"
+  },
+  "runtime": {
+    "model_calls": false,
+    "database_sync_writes": false,
+    "service_restart_or_flag": false,
+    "scheduler_or_broker_actions": false,
+    "push_merge_release": false
+  },
+  "source_sha256": {
+    "config/llm_process_registry.json": "6ead3e263b15e3dc986481614696f6357deaacfe177f7e42041000d612bcfb83",
+    "config/llm_routing_policy.json": "084f98acb1b8016f8406d28cb5088a14dd88923952af0a9d2f32d599f430822d",
+    "scripts/lib/cio_governed_model_bridge.py": "85b1a811f44fdaf52b1fd35bbffce2ed38ff50760ef09e9b6a45f249abe11111",
+    "scripts/lib/governed_process_routes.py": "eb43a9c00cfa6452e43890ac8c8db0f90067512b9f74ac04d98d03a6ab24b68f",
+    "scripts/sync_cio_process_caps.py": "b25223a3fd236ed8e9f242cffe6c7827149a55f17c78aa9575980ef1ab76a3df",
+    "tests/test_cio_ask_process_registration_20261024.py": "2a9d11ba1a0da6f1daab97a8d56de4206cb6724a02501fafd7e74cb4bcddc623",
+    "config/ci_gates/cio_ask_process_registration_20261024.json": "b18e3d74c88d07671bc529c163081cce970bd9fe716ebfc56a01b6a65207c1c2"
+  },
+  "receipt_sha256": {
+    "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-final-no-write.json": "d1d5ab0aac6ed0702dd9ec14a67e3171e4eb7dd2c406d4d42c4402a075a2b042",
+    "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/baseline-stale-mode-test.json": "d1b97b990d8e62f1772d4700c48e0f132f55f85852783f8f3aaba786cf3f9272",
+    "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/cap-sync-selected-dry-run.log": "7a512c0849d380b81d936942b606c91f43e256e3c5238916cc81598650a3de6b"
+  }
+}
