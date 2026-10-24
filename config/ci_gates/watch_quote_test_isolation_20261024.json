@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_quote_test_isolation_20261024",
+  "files": [
+    "tests/test_watch_canonical_quote.py"
+  ],
+  "anchor": "WATCH_QUOTE_TEST_ISOLATION_20261024",
+  "comment": [
+    "ANCHOR: WATCH_QUOTE_TEST_ISOLATION_20261024 — actual batch quote reader uses pinned injected DB fixtures; actual gated card renderer preserves provenance"
+  ]
+}
