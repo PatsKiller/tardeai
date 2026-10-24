@@ -17,7 +17,7 @@ def _at(value):
 
 def material_at(item):
     """Explicit material watermark dominates run time; never stamp a poll clock."""
-    return _at(item.inputs_as_of) if item.inputs_as_of is not None else _at(item.as_of)
+    return _at(item.inputs_as_of) if item.inputs_as_of is not None or item.metadata.get("material_time_required") else _at(item.as_of)
 
 
 def trading_age(at, now):
