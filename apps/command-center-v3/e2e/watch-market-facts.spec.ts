@@ -75,7 +75,8 @@ for (const width of [1440, 412]) {
       await expect(price).not.toContainText('Oct 24')
       await expect(price.locator('[data-state]')).toHaveText(mode === 'stale' ? 'Stale' : 'Current')
       await expect(panel.getByTestId('watch-market-support')).toContainText('$9.00')
-      await expect(panel.getByTestId('watch-market-resistance')).toContainText('2026-10-22 · closed session')
+      await expect(panel.getByTestId('watch-market-resistance')).toContainText('Closed session')
+      await expect(panel.getByTestId('watch-market-resistance').locator('[title]')).toHaveAttribute('title', /2026-10-22 · closed session/)
       await expect(page.getByRole('heading', { level: 1, name: /Watch.*My Watchlist/ })).toBeVisible()
       await expect(page.getByTestId('mine-row')).toContainText('Schwab Rollover IRA')
       await expect(page.getByTestId('mine-row')).toContainText('Schwab Individual')
@@ -93,7 +94,7 @@ for (const width of [1440, 412]) {
       await expect(page.getByTestId('watch-market-price')).toContainText('Stored quote read unavailable.')
       await expect(page.getByTestId('watch-market-support')).toContainText('$9.00')
       await expect(page.getByTestId('watch-market-resistance')).toContainText('$11.00')
-      await expect(page.getByTestId('watch-market-support')).toContainText('Nearest relation unknown'); clean(traffic)
+      await expect(page.getByTestId('watch-market-facts')).toContainText('Price unavailable; nearest relation unknown'); clean(traffic)
     })
     test('future time and a missing level expose specific reasons', async ({ page, baseURL }) => {
       const { traffic } = await mock(page, baseURL!, 'future'); await page.goto('/v3/watch?tab=my-watchlist')
@@ -103,7 +104,7 @@ for (const width of [1440, 412]) {
     test('missing support is a dash with source-read reason and never a zero', async ({ page, baseURL }) => {
       const { traffic } = await mock(page, baseURL!, 'missing-support'); await page.goto('/v3/watch?tab=my-watchlist')
       await expect(page.getByTestId('watch-market-support')).toContainText('—')
-      await expect(page.getByTestId('watch-market-support')).toContainText('read unavailable')
+      await expect(page.getByTestId('watch-market-support').locator('[title]')).toHaveAttribute('title', /read unavailable/)
       await expect(page.getByTestId('watch-market-support')).not.toContainText('$0.00'); clean(traffic)
     })
     test('sub-cent values retain distinct nonzero prices and levels', async ({ page, baseURL }) => {
