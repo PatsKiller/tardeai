@@ -316,5 +316,287 @@ def decide_from_disk(act: ReleaseAction, *, grants_path: Path = GRANTS_PATH,
     return decide(act, grants=load_grants(grants_path), requests=load_requests(requests_path))
 
 
+# ── the standing-release binding: the host capability ledger (arming packet §K) ───────────────────────────
+#
+# PROPOSED, inert. While ``CAPABILITY_BINDING_STATUS`` is not "ACTIVE", ``release_grant_preflight.py`` never calls
+# ``decide_capability`` and its output is byte-identical to the grant-only behaviour above. The flag is a code
+# constant in this protected surface (release_train_controller.PROTECTED_SURFACES): it moves only by a reviewed PR
+# released by the manual path (packet L.1), after the operator says so. No environment variable, argument or file
+# turns it on.
+#
+# When ACTIVE, a train's ``prepare`` / ``promote`` with no binding grant is accepted only when ALL of these hold
+# (packet §K; AGENTS §25.2 "checks first, then one reservation, then the effect"):
+#   * the action runs under campaign ``release-train-<train_id>`` (the campaign IDENTIFIES the train; it grants
+#     nothing);
+#   * ``<state_dir>/trains/<train_id>/capability/<action>_release.rcap`` holds a ReleaseCapability@v1 token whose
+#     HMAC verifies with the host key and whose sha256 equals the ledger's issued record (a forged, edited or
+#     substituted token is refused);
+#   * the capability is a ``promote``-phase capability for THIS train, permits ``prepare_release`` /
+#     ``promote_release``, binds exactly ``--sha`` as its candidate, is inside its validity window, and names a
+#     non-empty service set inside the delegation's ``limits.named_services``;
+#   * the capability ledger ``<state_dir>/capabilities.json`` holds exactly one RESERVED intent for that capability,
+#     train and action, observed at reservation with the same candidate SHA and the capability's artifact digest
+#     (and ``--artifact-digest``, when the caller passes it); no intent under that capability and action is already
+#     applied (replay) and no intent anywhere is UNCERTAIN (reconcile first);
+#   * the reservation's holder is alive: the global release ``.lock`` is held (a RESERVED intent whose holder died
+#     is an UNCERTAIN effect, never an authority);
+#   * the control state: latch ABSENT, no mutation refusal for this train (RUNNING; PAUSE_REQUESTED lets the
+#     current train finish, as the capability issuer allows), current train == this train, control epoch == the
+#     capability's and the intent's, accepted policy digest == the capability's;
+#   * the delegation on the host loads authorized, and its digest, id and revocation epoch equal the capability's.
+# The guard ledger is not consumed (the capability's attempt budget is the accounting). A per-PR grant keeps
+# working unchanged and is tried first. The state dir is the default one; an environment override that resolves to
+# a different directory is refused (a planted state dir must not stand in for the real control and ledger).
+
+CAPABILITY_BINDING_STATUS = "PROPOSED"
+CAPABILITY_BINDING_SCHEMA = "ReleaseCapabilityBinding@v1"
+CAPABILITY_ACTIONS = {"prepare": "prepare_release", "promote": "promote_release"}
+TRAIN_CAMPAIGN_PREFIX = "release-train-"
+_FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+
+def default_release_state_dir() -> Path:
+    """The release-window state dir as ``release_window.py`` resolves it with no override."""
+    root = Path(os.environ.get("TRADEAI_STATE_ROOT", str(Path.home() / "trade-ai-releases" / "persistent-state")))
+    return root / "data" / "runtime" / "release_window"
+
+
+def capability_binding_active(status: Optional[str] = None) -> bool:
+    return (status if status is not None else CAPABILITY_BINDING_STATUS) == "ACTIVE"
+
+
+def train_id_from_campaign(campaign: Optional[str]) -> Optional[str]:
+    """``release-train-<train id>`` -> the train id (a valid ReleaseCapability train id), else None."""
+    from scripts.lib import release_capability as CAP  # noqa: PLC0415 - lazy: inert unless the binding is ACTIVE
+
+    c = str(campaign or "")
+    if not c.startswith(TRAIN_CAMPAIGN_PREFIX):
+        return None
+    tid = c[len(TRAIN_CAMPAIGN_PREFIX):]
+    return tid if CAP.TRAIN_RE.match(tid) else None
+
+
+def reservation_token_path(state_dir: Path, train_id: str, cap_action: str) -> Path:
+    return Path(state_dir) / "trains" / train_id / "capability" / f"{cap_action}.rcap"
+
+
+def write_reservation_token(state_dir: Path, train_id: str, cap_action: str, token: str) -> Path:
+    """For the controller, while it holds the reservation: put the signed token where the preflight looks
+    (mode 600, atomic). The token alone grants nothing: the preflight also needs the RESERVED intent, a live lock
+    holder and the current control and delegation."""
+    p = reservation_token_path(state_dir, train_id, cap_action)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_name(p.name + f".{os.getpid()}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="ascii") as fh:
+        fh.write(token)
+    os.replace(tmp, p)
+    return p
+
+
+@dataclass
+class CapabilityVerdict:
+    allowed: bool
+    code: str
+    reason: str
+    train_id: Optional[str] = None
+    capability_id: Optional[str] = None
+    intent_id: Optional[str] = None
+    matched_by: list[str] = field(default_factory=list)
+    schema: str = CAPABILITY_BINDING_SCHEMA
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"schema": self.schema, "allowed": self.allowed, "code": self.code, "reason": self.reason,
+                "train_id": self.train_id, "capability_id": self.capability_id, "intent_id": self.intent_id,
+                "matched_by": list(self.matched_by)}
+
+
+class _Refuse(Exception):
+    def __init__(self, code: str, reason: str) -> None:
+        super().__init__(code)
+        self.code, self.reason = code, reason
+
+
+def _read_token(path: Path) -> str:
+    import stat as _stat  # noqa: PLC0415
+
+    try:
+        st = os.lstat(path)
+    except OSError:
+        raise _Refuse("TOKEN_MISSING", f"no reservation token at {path}") from None
+    if not _stat.S_ISREG(st.st_mode):
+        raise _Refuse("TOKEN_UNSAFE", f"{path} is not a regular file")
+    if st.st_uid != os.getuid() or st.st_mode & 0o077:
+        raise _Refuse("TOKEN_UNSAFE", f"{path} must be owned by this user, mode 600")
+    try:
+        return path.read_text(encoding="ascii").strip()
+    except (OSError, UnicodeDecodeError):
+        raise _Refuse("TOKEN_UNREADABLE", str(path)) from None
+
+
+def _lock_holder_alive(state_dir: Path, lock_name: str) -> bool:
+    """True when another open file description holds the global release lock. Read-only: never creates it."""
+    import fcntl  # noqa: PLC0415
+
+    try:
+        fd = os.open(Path(state_dir) / lock_name, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        return True                        # busy: the reservation's holder still has it
+    else:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    finally:
+        os.close(fd)
+
+
+def decide_capability(action: str, sha: str, campaign: Optional[str], *, state_dir: Optional[Path] = None,
+                      key_path: Optional[Path] = None, delegation_path: Optional[Path] = None,
+                      artifact_digest: Optional[str] = None, now: Optional[float] = None,
+                      status: Optional[str] = None, env: Optional[Mapping[str, str]] = None) -> CapabilityVerdict:
+    """The packet-§K verdict for one train ``prepare``/``promote``. Read-only and fail closed: every unmet
+    condition is a refusal with a stable ``code``; nothing is written, consumed or created."""
+    try:
+        return _decide_capability(action, sha, campaign, state_dir=state_dir, key_path=key_path,
+                                  delegation_path=delegation_path, artifact_digest=artifact_digest, now=now,
+                                  status=status, env=env)
+    except _Refuse as r:
+        return CapabilityVerdict(False, r.code, r.reason)
+
+
+def _decide_capability(action: str, sha: str, campaign: Optional[str], *, state_dir: Optional[Path],
+                       key_path: Optional[Path], delegation_path: Optional[Path], artifact_digest: Optional[str],
+                       now: Optional[float], status: Optional[str],
+                       env: Optional[Mapping[str, str]]) -> CapabilityVerdict:
+    if not capability_binding_active(status):
+        raise _Refuse("BINDING_NOT_ACTIVE", f"CAPABILITY_BINDING_STATUS={status or CAPABILITY_BINDING_STATUS}")
+    from scripts.lib import release_capability as CAP  # noqa: PLC0415
+    from scripts.lib import release_control as RC  # noqa: PLC0415
+    from scripts.lib import release_delegation as RD  # noqa: PLC0415
+
+    cap_action = CAPABILITY_ACTIONS.get(action)
+    if cap_action is None:
+        raise _Refuse("ACTION_NOT_BOUND", f"{action!r}: only prepare and promote bind to a capability")
+    train_id = train_id_from_campaign(campaign)
+    if train_id is None:
+        raise _Refuse("CAMPAIGN_NOT_TRAIN", f"campaign {campaign!r} is not release-train-<train id>")
+    sha = str(sha or "").lower()
+    if not _FULL_SHA_RE.match(sha):
+        raise _Refuse("SHA_INVALID", "a capability binds a full 40-hex SHA")
+    if artifact_digest is not None and not _DIGEST_RE.match(str(artifact_digest)):
+        raise _Refuse("ARTIFACT_DIGEST_INVALID", "sha256:<64 hex>")
+    default_sd = default_release_state_dir()
+    if state_dir is None:
+        e = os.environ if env is None else env
+        override = e.get("TRADEAI_RELEASE_WINDOW_STATE_DIR")
+        if override and os.path.realpath(override) != os.path.realpath(default_sd):
+            raise _Refuse("STATE_DIR_OVERRIDDEN", "TRADEAI_RELEASE_WINDOW_STATE_DIR names another directory; the "
+                          "binding reads only the default release state dir")
+        state_dir = default_sd
+    state_dir = Path(state_dir)
+    now = time.time() if now is None else float(now)
+
+    # 1. the token: signed by the host key, equal to the issued record
+    token = _read_token(reservation_token_path(state_dir, train_id, cap_action))
+    try:
+        key = CAP.load_key(Path(key_path) if key_path is not None else CAP.DEFAULT_KEY_PATH)
+        cap = CAP.decode(token, key)
+    except RC.ControlRefused as exc:
+        raise _Refuse(exc.code, str(exc.detail)[:200]) from None
+    cid = str(cap.get("capability_id") or "")
+    if cap.get("train_id") != train_id:
+        raise _Refuse("WRONG_TRAIN", f"capability is for {cap.get('train_id')!r}, campaign names {train_id!r}")
+    if cap.get("phase") != CAP.PHASE_PROMOTE:
+        raise _Refuse("WRONG_PHASE", f"{cap.get('phase')!r} capability cannot {cap_action}")
+    if cap_action not in (cap.get("permitted_actions") or []):
+        raise _Refuse("ACTION_NOT_PERMITTED", f"{cap_action} not in {cap.get('permitted_actions')}")
+    if cap.get("candidate_sha") != sha:
+        raise _Refuse("WRONG_SHA", f"capability binds {str(cap.get('candidate_sha'))[:12]}, not {sha[:12]}")
+    try:
+        if not float(cap["not_before"]) <= now < float(cap["expires_at"]):
+            raise _Refuse("CAPABILITY_EXPIRED", "outside its validity window")
+    except (KeyError, TypeError, ValueError):
+        raise _Refuse("TOKEN_MALFORMED", "validity window") from None
+    services = cap.get("services")
+    if not isinstance(services, list) or not services:
+        raise _Refuse("SERVICES_REQUIRED", "a promote capability names its services")
+    if artifact_digest is not None and cap.get("artifact_digest") != artifact_digest:
+        raise _Refuse("WRONG_ARTIFACT", "artifact digest differs from the capability's")
+
+    # 2. the ledger: issued record, one live RESERVED intent, no replay, nothing uncertain
+    import hashlib  # noqa: PLC0415
+
+    ledger_path = state_dir / CAP.LEDGER_NAME
+    try:
+        ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
+        caps, intents = ledger["caps"], ledger["intents"]
+        if ledger.get("schema") != CAP.LEDGER_SCHEMA or not isinstance(caps, dict) or not isinstance(intents, dict):
+            raise ValueError("schema")
+    except (OSError, ValueError, KeyError, TypeError):
+        raise _Refuse("LEDGER_UNREADABLE", f"{ledger_path}") from None
+    entry = caps.get(cid)
+    if not isinstance(entry, dict) or entry.get("token_sha256") != hashlib.sha256(token.encode()).hexdigest():
+        raise _Refuse("CAPABILITY_UNKNOWN", "token is not the issued record")
+    if entry.get("status") != "ISSUED" or entry.get("train_id") != train_id:
+        raise _Refuse("CAPABILITY_NOT_ISSUED", str(entry.get("status")))
+    rows = [i for i in intents.values() if isinstance(i, dict)]
+    if any(i.get("status") == CAP.UNCERTAIN for i in rows):
+        raise _Refuse("RECONCILIATION_REQUIRED", "an UNCERTAIN intent blocks every release mutation")
+    mine = [i for i in rows if i.get("capability_id") == cid and i.get("action") == cap_action]
+    if any(i.get("status") in CAP.APPLIED_STATES for i in mine):
+        raise _Refuse("REPLAY", f"{cap_action} already applied under this capability")
+    reserved = [i for i in mine if i.get("status") == CAP.RESERVED and i.get("train_id") == train_id]
+    if len(reserved) != 1:
+        raise _Refuse("RESERVATION_MISSING", f"{len(reserved)} RESERVED intents for {cap_action} (exactly 1 needed)")
+    intent = reserved[0]
+    obs = intent.get("observed") if isinstance(intent.get("observed"), dict) else {}
+    if obs.get("candidate_sha") != sha or obs.get("artifact_digest") != cap.get("artifact_digest"):
+        raise _Refuse("RESERVATION_MISMATCH", "the reservation observed another candidate or artifact")
+    if not _lock_holder_alive(state_dir, RC.GLOBAL_LOCK_NAME):
+        raise _Refuse("RESERVATION_HOLDER_GONE", "the global release lock is free: no live holder of this reservation")
+
+    # 3. control: STOP latch, mode, train, epoch, accepted digest
+    view = RC.ReleaseControl(state_dir).view()
+    if view.latch_state != RC.LATCH_ABSENT:
+        raise _Refuse("STOP_LATCHED" if view.latch_state == RC.LATCH_SET else "STOP_LATCH_UNREADABLE",
+                      f"latch {view.latch_state}")
+    refusal = view.mutation_refusal(train_id)
+    if refusal:
+        raise _Refuse(refusal, f"control mode {view.mode}")
+    if view.current_train_id != train_id:
+        raise _Refuse("TRAIN_NOT_CLAIMED", f"current train is {view.current_train_id!r}")
+    if view.epoch != cap.get("control_epoch") or intent.get("control_epoch") != view.epoch:
+        raise _Refuse("EPOCH_STALE", f"control epoch {view.epoch} != capability {cap.get('control_epoch')}")
+    if view.accepted_policy_digest != cap.get("policy_digest"):
+        raise _Refuse("POLICY_DIGEST_CHANGED", "accepted digest differs from the capability's")
+
+    # 4. delegation on the host
+    dv = RD.load(delegation_path)
+    if not dv.authorized:
+        raise _Refuse(f"DELEGATION_{dv.code}", str(dv.detail)[:200])
+    d = dv.delegation or {}
+    if dv.digest != cap.get("policy_digest"):
+        raise _Refuse("POLICY_DIGEST_CHANGED", "delegation changed since issuance")
+    if d.get("delegation_id") != cap.get("delegation_id"):
+        raise _Refuse("DELEGATION_MISMATCH", "different delegation")
+    if d.get("revocation_epoch") != cap.get("delegation_epoch"):
+        raise _Refuse("DELEGATION_EPOCH_STALE", f"{cap.get('delegation_epoch')} != {d.get('revocation_epoch')}")
+    named = set((d.get("limits") or {}).get("named_services") or [])
+    if not set(services) <= named:
+        raise _Refuse("SERVICE_NOT_NAMED", f"{sorted(set(services) - named)}")
+
+    return CapabilityVerdict(True, "CAPABILITY_RESERVED", f"RESERVED {cap_action} capability for train {train_id}",
+                             train_id=train_id, capability_id=cid, intent_id=str(intent.get("intent_id") or ""),
+                             matched_by=[f"campaign:{campaign}", f"capability:{cid}",
+                                         f"intent:{intent.get('intent_id')}", f"sha:{sha[:12]}"])
+
+
 __all__ = ["SCHEMA", "TIER", "ACTIONS", "ReleaseAction", "Verdict", "decide", "decide_from_disk",
-           "load_grants", "load_requests", "named_shas", "pending_requests_for", "window_campaigns"]
+           "load_grants", "load_requests", "named_shas", "pending_requests_for", "window_campaigns",
+           "CAPABILITY_BINDING_STATUS", "CapabilityVerdict", "capability_binding_active", "decide_capability",
+           "default_release_state_dir", "reservation_token_path", "train_id_from_campaign",
+           "write_reservation_token"]
