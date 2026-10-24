@@ -8,6 +8,7 @@
  *  you size it, it goes to Proposals for approval); Set alert → ReEntryAlertArmModal (POST /api/v2/watch/alerts,
  *  advisory notifications); Protect first → Open Trades; Ask the CIO → POST /api/v3/opportunities/:sym/review-request.
  *  Nothing here sizes, orders or stops on its own. */
+import './WatchLayout.css'
 import { AccountChip } from '../components/AccountChip'
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
@@ -23,7 +24,7 @@ import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
 import PositionFilterBar from '../components/watch/PositionFilterBar'
 import { StarToggle } from '../components/watch/MineControls'
 import {
-  alertLevelsLabel, money, positionChip, soldByName, positionQuery, readinessTone, reentryLabel, resultTone, roundTripLabel,
+  alertLevelsLabel, heldAccountNames, money, positionChip, soldByName, positionQuery, readinessTone, reentryLabel, resultTone, roundTripLabel,
   roundTripPath, withQuery, type ListRow,
 } from '../lib/watchListsModel'
 
@@ -33,7 +34,6 @@ const panel: CSSProperties = {
 const label: CSSProperties = {
   fontSize: TYPE.xs, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: TOKENS.text[2],
 }
-export const GRID = '96px 104px 84px minmax(180px, 1fr) 160px 130px'
 
 function Bar({ value, tone, height = 4 }: { value: number | null; tone: Tone; height?: number }) {
   const w = value == null ? 0 : Math.max(0, Math.min(100, value))
@@ -81,15 +81,14 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
   const pchip = positionChip(lr)
   return (
     <div
-      data-testid="watch-row" data-symbol={r.symbol} data-lane={r.lane}
+      className="watch-record-row" data-testid="watch-row" data-symbol={r.symbol} data-lane={r.lane}
       style={{
-        display: 'grid', gridTemplateColumns: GRID, gap: 8, padding: '3px 12px', alignItems: 'center',
         borderBottom: `1px solid ${TOKENS.borderSubtle}`,
         background: selected ? TOKENS.bg[2] : undefined,
         borderLeft: `3px solid ${selected ? TOKENS.info : 'transparent'}`,
       }}
     >
-      <span style={{ display: 'flex', gap: 4, alignItems: 'flex-start', minWidth: 0 }}>
+      <span className="watch-row-symbol" style={{ display: 'flex', gap: 4, alignItems: 'flex-start', minWidth: 0 }}>
       <StarToggle symbol={r.symbol} on={!!lr.mine} onChanged={onMineChanged} surface="watch.row" size="sm" />
       <button
         type="button" onClick={onSelect} aria-pressed={selected} title={`Open the ${r.symbol} record`}
@@ -101,26 +100,37 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
         {pchip && <span title={pchip.tip} data-testid="watch-position-chip" style={{ display: 'block', fontFamily: FONT.sans, fontWeight: 600, fontSize: TYPE.xs, color: toneVars(pchip.tone).color }}>{pchip.label}</span>}
       </button>
       </span>
-      <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }} title={TOOLTIPS.conviction}>
+      <span className="watch-row-conviction" data-label="Conviction" style={{ display: 'flex', flexDirection: 'column', gap: 3 }} title={TOOLTIPS.conviction}>
         <span style={{ ...numStyle, fontWeight: 700, color: r.conviction == null ? TOKENS.text[3] : TOKENS.text[0] }}>
           {r.conviction == null ? 'n/a' : r.conviction.toFixed(0)}
           {r.conviction_stale && <span style={{ color: TOKENS.warning, fontSize: TYPE.xs }}> stale</span>}
         </span>
         <Bar value={r.conviction} tone={ct} />
       </span>
-      <span title={TOOLTIPS.stance} style={{ fontSize: TYPE.base, fontWeight: 700, color: toneVars(stanceTone(r.stance)).color }}>{stanceLabel(r.stance)}</span>
-      <span style={{ fontSize: TYPE.base, lineHeight: 1.35, color: TOKENS.text[1] }}>
-        {r.why}
-        {lr.expiry_suggestion && <span style={{ display: 'block', color: TOKENS.warning }} title="Your names never expire off the page; an expired signal only suggests a review.">Review suggested: {lr.expiry_suggestion.suggest}</span>}
-        {lr.last_round_trip && <span data-testid="watch-last-trade" style={{ display: 'block', color: toneVars(resultTone(lr.last_round_trip)).color }} title={`Last round trip ${roundTripPath(lr.last_round_trip)}. ${lr.last_round_trip.exit_cause_evidence || ''}`}>Last trade {roundTripLabel(lr.last_round_trip)}</span>}
-        {lr.reentry && <span style={{ display: 'block', color: toneVars(readinessTone(lr.reentry)).color }} title={`Re-Entry Desk classifier: ${lr.reentry.state}. Alert levels ${alertLevelsLabel(lr.reentry)}.`}>Re-entry {reentryLabel(lr.reentry)}</span>}
-        {r.whats_missing[0] && <span style={{ display: 'block', color: TOKENS.text[3] }}>Missing: {r.whats_missing[0]}</span>}
+      <span className="watch-row-stance" title={TOOLTIPS.stance} style={{ fontSize: TYPE.base, fontWeight: 700, color: toneVars(stanceTone(r.stance)).color }}>{stanceLabel(r.stance)}</span>
+      <span className="watch-row-explanation" style={{ fontSize: TYPE.base, lineHeight: 1.35, color: TOKENS.text[1] }}>
+        <span className="watch-row-why" title={r.why}>{r.why}</span>
+        <span className="watch-row-context" title={[
+          ...r.conflicts.map(c => `Conflict: ${c.summary}`), lr.expiry_suggestion?.suggest,
+          lr.last_round_trip ? `Last trade ${roundTripLabel(lr.last_round_trip)}` : '',
+          lr.reentry ? `Re-entry ${reentryLabel(lr.reentry)}` : '', ...r.whats_missing,
+        ].filter(Boolean).join(' · ')}>
         {r.conflicts.map((c, i) => (
-          <span key={i} data-testid="watch-conflict" style={{ display: 'block', color: TOKENS.warning }}>⚠ {c.summary}</span>
+          <span key={i} data-testid="watch-conflict" style={{ color: TOKENS.warning }}>⚠ {c.summary}</span>
         ))}
+        {lr.expiry_suggestion && <span style={{ color: TOKENS.warning }} title="Your names never expire off the page; an expired signal only suggests a review.">Review suggested: {lr.expiry_suggestion.suggest}</span>}
+        {lr.last_round_trip && <span data-testid="watch-last-trade" style={{ color: toneVars(resultTone(lr.last_round_trip)).color }} title={`Last round trip ${roundTripPath(lr.last_round_trip)}. ${lr.last_round_trip.exit_cause_evidence || ''}`}>Last trade {roundTripLabel(lr.last_round_trip)}</span>}
+        {lr.reentry && <span style={{ color: toneVars(readinessTone(lr.reentry)).color }} title={`Re-Entry Desk classifier: ${lr.reentry.state}. Alert levels ${alertLevelsLabel(lr.reentry)}.`}>Re-entry {reentryLabel(lr.reentry)}</span>}
+        {r.whats_missing[0] && <span style={{ color: TOKENS.text[3] }}>Missing: {r.whats_missing[0]}</span>}
+        </span>
+        <span className="watch-mobile-facts">
+          <span><b>Stage</b> {r.stage?.replace(/_/g, ' ') || r.lane}</span>
+          <span><b>Account</b> {heldAccountNames(lr).join(', ') || soldByName(lr) || 'Unknown'}</span>
+          <span><b>Last P/L</b> {lr.last_round_trip ? roundTripLabel(lr.last_round_trip) : 'Not available'}</span>
+        </span>
       </span>
-      <span title={TOOLTIPS.trigger} style={{ fontFamily: FONT.mono, fontSize: TYPE.base, color: TOKENS.text[1] }}>{r.next_trigger.label}</span>
-      <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}><StepButton row={r} onStep={onStep} />{extra}</span>
+      <span className="watch-row-trigger" data-label="Next trigger" title={`${TOOLTIPS.trigger}: ${r.next_trigger.label}`} style={{ fontFamily: FONT.mono, fontSize: TYPE.base, color: TOKENS.text[1] }}>{r.next_trigger.label}</span>
+      <span className="watch-row-actions" style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}><StepButton row={r} onStep={onStep} />{extra}</span>
     </div>
   )
 }
@@ -134,6 +144,8 @@ export function Detail({ r, onAskCio, cioMsg }: { r: ProspectRow | null; onAskCi
         <span style={{ fontSize: TYPE.base, color: TOKENS.text[2], textAlign: 'right' }}>{r.company || ''}</span>
       </div>
       <div style={{ fontSize: TYPE.base + 1, lineHeight: 1.5 }}>{r.summary}</div>
+      <div data-testid="watch-detail-why" style={{ fontSize: TYPE.base, lineHeight: 1.5 }}><b>Why here:</b> {r.why}</div>
+      {(r as ListRow).expiry_suggestion && <div style={{ color: TOKENS.warning, fontSize: TYPE.base }}>Review suggested: {(r as ListRow).expiry_suggestion?.suggest}</div>}
       <PositionDetail r={r as ListRow} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="watch-components">
         <span style={label} title={TOOLTIPS.conviction}>
@@ -336,7 +348,7 @@ export default function WatchProspects() {
         ))}
       </div>
 
-      <div role="group" aria-label="Stages" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
+      <div className="watch-stage-grid" role="group" aria-label="Stages">
         {p.lanes.map(l => {
           const on = l.id === lane
           const tone = toneVars(LANE_TONE[l.id])
@@ -361,15 +373,15 @@ export default function WatchProspects() {
       {toast && <div role="status" style={{ ...chipStyle('success', 'soft', 'md'), alignSelf: 'flex-start' }}>{toast}</div>}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'flex-start' }}>
-        <section aria-label="Prospects" style={{ ...panel, flex: '999 1 700px', overflowX: 'auto' }}>
-          <div style={{ minWidth: 800 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 16px', borderBottom: `1px solid ${TOKENS.border}` }}>
+        <section className="watch-record-panel" aria-label="Prospects" style={{ ...panel, flex: '999 1 700px' }}>
+          <div className="watch-record-table">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '12px 16px', flexWrap: 'wrap', gap: 6, borderBottom: `1px solid ${TOKENS.border}` }}>
               <h2 style={{ margin: 0, fontSize: TYPE.md + 2 }} data-testid="watch-list-title">
                 {current?.label} · {current?.count ?? 0}{current && current.items.length < current.count ? ` (top ${current.items.length} shown)` : ''}
               </h2>
               <span style={{ fontSize: TYPE.base, color: TOKENS.text[2] }} title={p.curation?.sort_order}>sorted by conviction, then priority</span>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: GRID, gap: 10, padding: '8px 16px', borderBottom: `1px solid ${TOKENS.borderSubtle}`, ...label }}>
+            <div className="watch-table-head" style={{ gap: 8, padding: '6px 12px', borderBottom: `1px solid ${TOKENS.borderSubtle}`, ...label }}>
               <span>Symbol</span>
               <span title={TOOLTIPS.conviction}>Conviction</span>
               <span title={TOOLTIPS.stance}>Stance</span>

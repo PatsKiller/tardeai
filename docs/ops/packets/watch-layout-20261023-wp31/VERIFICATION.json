@@ -1,0 +1,82 @@
+{
+  "schema": "WP31WatchLayoutVerification@v1",
+  "as_of": "2026-10-24T02:48:52+00:00",
+  "base_sha": "fe826d2ecdb59a19bd7c510c8923c7b743f06eee",
+  "session": "codex-wp31-20261023",
+  "claim": "20261024T023806Z-codex-ae875ef8",
+  "fixture_source": "existing captured Watch lists and prospects fixtures (2026-10-23), synthetic account-label regression only",
+  "server_origin": "http://127.0.0.1:4491",
+  "live_proxy_removed": true,
+  "live_server_requests": 0,
+  "real_writes": 0,
+  "browser_widths": [
+    1440,
+    412
+  ],
+  "before_tests_passed": 8,
+  "after_regression_tests_passed": 14,
+  "additional_account_truth_test_passed": 1,
+  "production_build": "PASS; Vite large-chunk advisory retained",
+  "typecheck": "PASS",
+  "ui_standards": "PASS",
+  "design_token_guard": "PASS",
+  "new_test_files": 0,
+  "source_sha256": {
+    "apps/command-center-v3/src/pages/WatchMyList.tsx": "08a9b2cd562053edaab93dc0e50d5f05c3db4e08ad6526b3e62ebdcca9b749c1",
+    "apps/command-center-v3/src/pages/WatchSuggests.tsx": "1b701c141d9102764117a06773fbf231275a809b40bc21a6389d0a25cf9f28fd",
+    "apps/command-center-v3/src/pages/WatchProspects.tsx": "3aa491372c0b2a0737c268231bab7ab7af1b49aec08cd123ead2a70cf9b6d2bc",
+    "apps/command-center-v3/src/pages/OpportunitiesHub.tsx": "46c69543fa53c28023191965f4725c2a63db6252e8e6c6511f91bd432be4829f",
+    "apps/command-center-v3/src/pages/WatchLayout.css": "461b759c37fc13ee8e126688c6f8ce3c7509ac101123c10f45db75c8148644fc",
+    "apps/command-center-v3/e2e/watch-pages.spec.ts": "c466eb11bc0299bf5b494fe2ebee9ab92b49c34db58df7cd3c18070494a5428d",
+    "apps/command-center-v3/e2e/watch-lists.spec.ts": "5e79ba09329e5fde341895dc8e13252a2f273f40b4d2e194d72dea92a25cd160"
+  },
+  "screenshots_sha256": {
+    "after-full-universe_412.png": "3c7a565257f55b983b112a11e359d90a777e31c1143fe7c645b4bcf5a7ffdad4",
+    "after-my-watchlist_1440.png": "004ea2293bf6caca86f5450fd8ba777fe13678a57619b163ccd16ee439c933e7",
+    "after-my-watchlist_412.png": "433dc74f57e7f5c27e7f7b1772e01f5f443ff03d1d422a5b2acc6267efb4f121",
+    "after-prospects_412.png": "4e3fbda3d223376a9d65f0fe4742e0041bac911583ad4c157b1e53ecbad798d5",
+    "before-full-universe_412.png": "c65e0eba4da6fa691f1130471bd36230380f00a7a9af584677a6f395570c2a55",
+    "before-my-watchlist_1440.png": "d1e68a6699f6b91cadc45e2f4b47661360afb7b872b765437881a36d181617fe",
+    "before-my-watchlist_412.png": "f8a5c5c7bb39d4cd90017856a39cfcc0ceec3f57c5ee1329cb731ba5605aad65",
+    "before-prospects_412.png": "31a623675ec1ca12c8e6aedda3c719531fa96b8e270d552fad207259e9796b1e"
+  },
+  "logs": {
+    "before-playwright.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp31-20261023/before-playwright.log",
+      "sha256": "a805a8f636e4558315d805df79a918c9ace12d9d916d077cd062a28db198762c"
+    },
+    "after-playwright.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp31-20261023/after-playwright.log",
+      "sha256": "7447f1198fdecc1d444e777818ca6edcf66594801cb4d089819ccae8df46b8b0"
+    },
+    "account-cards-playwright.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp31-20261023/account-cards-playwright.log",
+      "sha256": "5441dab2c93ec3c86b831ba3ca6dbd06dd791ac38fcecad0c35acf1156268982"
+    },
+    "npm-build.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp31-20261023/npm-build.log",
+      "sha256": "1e62f1cabfd7f1fb8cf9c4af56fb43c6cd83b1f503c194dd00a835da90222c64"
+    },
+    "types-second.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp31-20261023/types-second.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "ui-standards-final.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp31-20261023/ui-standards-final.log",
+      "sha256": "4f37936478cc662f47050b5d5f3c0ef63caf0b25daa7d005c9a2978b5454063f"
+    },
+    "design-tokens-first.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-wp31-20261023/design-tokens-first.log",
+      "sha256": "44399bc7bf45eaf5468f01428fa050101c403d29793403046add810bee475cde"
+    }
+  },
+  "acceptance": {
+    "desktop_why_single_line_full_title_retained": true,
+    "phone_key_panels_no_horizontal_scroll": true,
+    "phone_stage_buttons_two_columns": true,
+    "phone_headers_hidden_and_cards_visible": true,
+    "account_names_only_and_last_trade_pnl_unchanged": true,
+    "existing_action_routes_and_filters_covered_by_fixture_tests": true
+  },
+  "release_status": "NOT_PUSHED; coordinator/operator publication pending"
+}
