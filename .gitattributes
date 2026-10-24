@@ -1,25 +1,26 @@
-# Generated artifacts: recompute on merge, never line-merge.
+# Generated artifacts: local merge helpers; validate/recompute over the integrated tree.
 #
 # 6 of 6 consecutive merges on 2026-09-06 conflicted on exactly these files, and
 # none of those conflicts was a disagreement about code. A hand-merged digest is
-# a hash that matches nothing; a line-merged index describes neither tree.
+# a hash that matches nothing; an index needs independent path/title coverage validation.
 #
 # Enable once per clone:   bash scripts/setup_merge_drivers.sh
 #
 # docs/INDEX.md moved to merge=union on 2026-10-21 (operator-approved process plan). Its rows
 # are now `path | title` only, and `report_docs_inventory.py --check-index` checks presence and
-# title per doc, not row order or content hashes. So two PRs that add docs in the same place
-# union-merge to both rows (git built-in, no per-clone config), and the check still fails on a
-# missing, stale, duplicated or mistitled row. merge=regenerate needed a local driver that
-# GitHub's server-side merge never runs.
+# title per doc, not row order or content hashes. Local Git can union-merge adjacent additions
+# (built-in, no per-clone config); the check rejects missing, stale, duplicated or mistitled rows.
+# GitHub server-side mergeability does not honor these merge drivers, including union.
+# Sibling PRs can therefore still conflict. Regenerate over the integrated tree; see the
+# PROPOSED docs/designs/DSN-20261024-doc-index-pr-flow.md for an artifact/batch alternative.
 docs/INDEX.md                                                        merge=union
 
 # Append-only wave log: union-merge so concurrent sessions appending at the same
 # time do not conflict. 5 of 12 commits in two hours touched the ledger on
 # 2026-09-20 and three upstream commits exist only to clear its conflict markers.
 #
-# merge=union is a git BUILT-IN: no `git config`, so it works in a fresh clone and
-# in GitHub's own server-side merge, unlike merge=regenerate above.
+# merge=union is a local Git built-in: no per-clone driver config is needed.
+# GitHub server-side mergeability can still conflict; this is not a GitHub conflict guarantee.
 #
 # Deliberately scoped to the _LOG file only. The status table in the main ledger is
 # edited in place and is shrink-only; union there would duplicate rows and emit two
