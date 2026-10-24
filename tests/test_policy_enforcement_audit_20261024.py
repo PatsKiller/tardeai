@@ -1,6 +1,7 @@
 """Audit has no decision/apply path; all test state is isolated and clocks pinned."""
 import fcntl
 import json
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -102,6 +103,12 @@ def test_real_apply_only_creates_proposals_and_standard_attempt_receipt(isolated
     receipt = json.loads((state / "data/runtime/lane_attempts/policy-enforcement-audit/fixture-audit-1.json").read_text())
     assert receipt["run_id"] == "fixture-audit-1" and receipt["code_sha"] == SHA and receipt["produced_count"] == 1
     assert not any(r.get("decision") for r in rows)
+    from scripts.lib.n8n_output_verdict import evaluate, validate_expected_output
+    contract = json.loads((Path(__file__).resolve().parents[1] / "config/proposals/operator_approvals/audit_lane.json").read_text())["expected_output"]
+    assert validate_expected_output(contract) == []
+    verdict = evaluate(contract, receipt, run_id="fixture-audit-1", lane_id=a.LANE, mode="live", attempt=1,
+                       code_sha=SHA, started_at=NOW.isoformat(), finished_at=NOW.isoformat())
+    assert verdict["verdict"] == "produced"
 
 
 def test_duplicate_retry_has_new_attempt_receipt_and_no_second_event(isolated, monkeypatch):
@@ -112,6 +119,10 @@ def test_duplicate_retry_has_new_attempt_receipt_and_no_second_event(isolated, m
     assert retry["duplicate"] is True and retry["reviewer_called"] is False
     receipt = json.loads((state / "data/runtime/lane_attempts/policy-enforcement-audit/fixture-audit-2.json").read_text())
     assert receipt["produced_count"] == 0 and receipt["empty_reason"] == "duplicate_audit"
+    from scripts.lib.n8n_output_verdict import evaluate
+    contract = json.loads((Path(__file__).resolve().parents[1] / "config/proposals/operator_approvals/audit_lane.json").read_text())["expected_output"]
+    assert evaluate(contract, receipt, run_id="fixture-audit-2", lane_id=a.LANE, mode="live", attempt=1,
+                    code_sha=SHA, started_at=NOW.isoformat(), finished_at=NOW.isoformat())["verdict"] == "empty_allowed"
     assert len(c.DecisionLedger(state / c.DECISION_REL, approved=lambda: False).rows()) == 1
 
 

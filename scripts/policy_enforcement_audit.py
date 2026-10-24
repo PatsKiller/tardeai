@@ -222,7 +222,7 @@ def run(*, root: Path, state_root: Path, trigger: str, now: datetime, apply: boo
         atomic_write_json(report_path, report, indent=2)
         receipt = write_lane_receipt(LANE, ok=True, exit_code=0, started_at=now, script="scripts/policy_enforcement_audit.py",
                                      path=runtime / f"{LANE}_last.json", summary={"audit_key": key, "reviewer_called": llm_review},
-                                     produced_count=0 if existing else len(findings), attempted_count=1,
+                                     produced_count=0 if existing else len(findings), attempted_count=max(1, len(findings)),
                                      skipped_reasons={"duplicate_audit": 1} if existing else {},
                                      output_evidence=[{"kind": "file_artifact", "ref": "data/runtime/policy_enforcement_audit_last_report.json",
                                                        "sha256": hashlib.sha256(report_path.read_bytes()).hexdigest()}],
