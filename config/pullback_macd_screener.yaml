@@ -39,14 +39,14 @@ pullback_macd_screener:
   stop_atr_mult: 1.5            # fallback stop only when price sits on a fresh low
   proposal_notional_usd: 5000   # advisory size; operator re-sizes at approval
 
-  # --- outputs (approved: all three; proposals for trigger + watch) ---
+  # --- outputs (approved 2026-10-24: proposals for confirmed triggers only) ---
   emit_proposals: true
   # Hard cap on proposals created per scan — each PENDING proposal triggers per-proposal local+cloud
   # LLM oversight, so a market-wide selloff producing many triggers at once could overload the box.
   # Highest-score candidates win the slots; the rest still appear on the tab + feed the pipeline.
   max_proposals_per_scan: 5
-  # Trigger + watch both feed paper_trade_proposals and ATM (same queue as Broker Proposals).
-  proposal_tiers: [trigger, watch]
+  # WATCH stays in the research pipeline; only confirmed triggers enter the advisory queue.
+  proposal_tiers: [trigger]
   proposal_expiry_hours: 48
   default_strategy_id: pullback_macd_reversal
   telegram_alerts: true

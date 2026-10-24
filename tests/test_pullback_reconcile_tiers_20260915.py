@@ -1,7 +1,6 @@
-"""2026-09-15: pullback reconcile keeps every proposal tier the screener emits.
+"""2026-10-24 supersedes the Sept tier rule: WATCH is research-only.
 
-Checking only `trigger` while `proposal_tiers: [trigger, watch]` expired each watch-tier
-proposal in the same pass that created it (1,075 of 1,156 auto proposals in 30 days).
+The advisory queue keeps confirmed triggers and records withdrawal reasons.
 """
 from __future__ import annotations
 
@@ -40,7 +39,7 @@ class FakeDb:
         if sql.lstrip().upper().startswith("SELECT"):
             return self.rows
         self.updates.append(params)
-        return None
+        return {"id": params[-1]}
 
 
 def _cand(sym, tier, price=10.0):
@@ -51,13 +50,15 @@ def _rows(*syms):
     return [{"id": i + 1, "symbol": s, "proposed_stop": 8.0, "proposed_target1": 14.0} for i, s in enumerate(syms)]
 
 
-def test_watch_tier_proposal_survives_when_watch_is_a_proposal_tier(monkeypatch):
+def test_watch_tier_is_withdrawn_even_when_old_config_allows_watch(monkeypatch, capsys):
     mod = _load()
     db = FakeDb(_rows("AES", "RTX"))
     monkeypatch.setattr(mod, "_db", db)
     retired = mod._reconcile_proposals([_cand("AES", "watch"), _cand("RTX", "trigger")], ["trigger", "watch"])
-    assert retired == 0
-    assert db.updates == []
+    assert retired == 1
+    assert db.updates[0][1] == 1
+    assert "WATCH tier withdrawn" in db.updates[0][0]
+    assert "symbol=AES" in capsys.readouterr().out
 
 
 def test_symbol_that_left_every_proposal_tier_is_expired(monkeypatch):
@@ -67,7 +68,7 @@ def test_symbol_that_left_every_proposal_tier_is_expired(monkeypatch):
     retired = mod._reconcile_proposals([_cand("RTX", "trigger")], ["trigger", "watch"])
     assert retired == 1
     reason, pid = db.updates[0]
-    assert pid == 1 and "no longer a confirmed trigger or watch setup" in reason
+    assert pid == 1 and "no longer a confirmed trigger" in reason
 
 
 def test_default_tiers_stay_trigger_only(monkeypatch):
@@ -77,14 +78,54 @@ def test_default_tiers_stay_trigger_only(monkeypatch):
     assert mod._reconcile_proposals([_cand("AES", "watch")]) == 1
 
 
-def test_stop_break_still_expires_a_watch_proposal(monkeypatch):
+def test_stop_break_still_expires_a_trigger_proposal(monkeypatch):
     mod = _load()
     db = FakeDb(_rows("AES"))
     monkeypatch.setattr(mod, "_db", db)
-    assert mod._reconcile_proposals([_cand("AES", "watch", price=7.5)], ["trigger", "watch"]) == 1
+    assert mod._reconcile_proposals([_cand("AES", "trigger", price=7.5)], ["trigger", "watch"]) == 1
     assert "plan broken" in db.updates[0][0]
 
 
-def test_monitor_pass_passes_configured_tiers():
+def test_monitor_pass_uses_trigger_only_reconciliation():
     src = (ROOT / "scripts" / "pullback_macd_screener.py").read_text(encoding="utf-8")
-    assert '_reconcile_proposals(cands, cfg.get("proposal_tiers") or ["trigger"])' in src
+    assert '_reconcile_proposals(cands, watch_only=not cfg.get("reconcile_proposals", True))' in src
+
+
+def test_watch_only_scan_returns_before_routing_or_sizing(monkeypatch):
+    mod = _load()
+    monkeypatch.setitem(sys.modules, "proposal_routing_lanes", None)
+    monkeypatch.setattr(mod, "_db", lambda *a, **kw: (_ for _ in ()).throw(AssertionError("no queue reads")))
+    assert mod._emit_proposals([_cand("AES", "watch")], {"proposal_tiers": ["trigger", "watch"]}) == 0
+
+
+def test_trigger_only_config_cannot_be_widened_by_db_settings(monkeypatch):
+    import types
+    mod = _load()
+    fake = types.ModuleType("proposal_routing_lanes")
+    fake.entry_routing_lanes = lambda: []
+    fake.risk_gate_for_lane = lambda *a: None
+    monkeypatch.setitem(sys.modules, "proposal_routing_lanes", fake)
+    plans = []
+    monkeypatch.setattr(mod, "_write_trade_plan", lambda c, *a: plans.append(c["sym"]))
+    monkeypatch.setattr(mod, "_db", lambda *a, **kw: [])
+    trigger = {**_cand("RTX", "trigger"), "entry": 10, "stop": 9, "score": 90}
+    watch = {**_cand("AES", "watch"), "entry": 10, "stop": 9, "score": 99}
+    assert mod._emit_proposals([watch, trigger], {"proposal_tiers": ["watch", "trigger"]}) == 0
+    assert plans == ["RTX"]
+
+
+def test_watch_withdrawal_still_runs_with_ordinary_plan_reconciliation_disabled(monkeypatch):
+    mod = _load()
+    db = FakeDb(_rows("AES", "RTX"))
+    monkeypatch.setattr(mod, "_db", db)
+    assert mod._reconcile_proposals([_cand("AES", "watch"), _cand("RTX", "trigger", 7)], watch_only=True) == 1
+    assert db.updates[0][1] == 1
+
+
+def test_row_that_filled_after_selection_is_not_counted_or_logged_as_withdrawn(monkeypatch, capsys):
+    mod = _load()
+    def racing_db(sql, params=None, fetch=None):
+        return _rows("AES") if sql.lstrip().startswith("SELECT") else None
+    monkeypatch.setattr(mod, "_db", racing_db)
+    assert mod._reconcile_proposals([_cand("AES", "watch")]) == 0
+    assert "proposal withdrawal" not in capsys.readouterr().out
