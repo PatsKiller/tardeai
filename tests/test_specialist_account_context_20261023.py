@@ -3,12 +3,34 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
 
-from scripts import process_watchlist_agent_jobs as jobs
-from lib import account_display as accounts
+# Required CI has no psycopg2 (these tests use fake connections only). Install a minimal stand-in ONLY when the real
+# driver is absent, so the context tests still run in CI instead of failing at import.
+try:  # pragma: no cover - depends on the environment
+    import psycopg2  # noqa: F401
+except ModuleNotFoundError:  # pragma: no cover
+    import types as _types
+
+    _pg = _types.ModuleType("psycopg2")
+    _pg_extras = _types.ModuleType("psycopg2.extras")
+    _pg_extras.RealDictCursor = object
+    _pg.extras = _pg_extras
+
+    def _no_connect(*_a, **_k):
+        raise RuntimeError("psycopg2 stub: tests must use fake connections")
+
+    _pg.connect = _no_connect
+    _pg.Error = Exception
+    _pg.OperationalError = Exception
+    sys.modules.setdefault("psycopg2", _pg)
+    sys.modules.setdefault("psycopg2.extras", _pg_extras)
+
+from scripts import process_watchlist_agent_jobs as jobs  # noqa: E402
+from lib import account_display as accounts  # noqa: E402
 
 
 class Cursor:
