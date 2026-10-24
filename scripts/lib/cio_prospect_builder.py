@@ -551,7 +551,11 @@ def catalyst_facts(sym: str, inputs: dict[str, dict[str, Any]], identity: dict[s
                       else hc.get("catalyst_summary"), "catalyst_type": hc.get("catalyst_type"), "verified": False,
                       "verification_basis": "HERMES_SEARCH_" + ("NONE_FOUND" if none_found else "FOUND"),
                       "strength": hc.get("catalyst_strength"), "confidence": hc.get("confidence"),
-                      "observed_at": ts or None, "source_count": hc.get("source_count")})
+                      "observed_at": ts or None, "source_count": hc.get("source_count"),
+                      # Preserve the producer evidence needed by read-side identity
+                      # verification; a selected search headline alone is insufficient.
+                      "identity_record": {"catalyst_summary": hc.get("catalyst_summary"),
+                                          "sources": hc.get("sources") or []}})
     re_cat = ((g("reentry") or {}).get("catalyst") or {}) if not store_read else {}
     if re_cat.get("headline"):
         facts.append({"source": "reentry_decision_desk (derived: catalyst_record)", "headline": re_cat.get("headline"),

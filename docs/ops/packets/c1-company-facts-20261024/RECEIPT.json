@@ -13,13 +13,27 @@
   "browser": {
     "test": "e2e/watch-company-facts.spec.ts",
     "result": "4 passed",
-    "screens": ["my-watchlist-1440", "my-watchlist-412", "prospects-1440", "prospects-412"],
+    "screens": [
+      "my-watchlist-1440",
+      "my-watchlist-412",
+      "prospects-1440",
+      "prospects-412"
+    ],
     "directory": "/home/johnclaw/.cache/rtc/codex-c1-company-facts-20261024/screenshots",
     "protocol": "Actual built SPA; static no-proxy fixture server; APIs fulfilled; external/mutation/WS rejected"
   },
-  "ratchets": ["test_host_paths --fail-on-new PASS", "test_coverage --fail-on-new PASS"],
+  "ratchets": [
+    "test_host_paths --fail-on-new PASS",
+    "test_coverage --fail-on-new PASS"
+  ],
   "publication": "PENDING_OPERATOR_PUSH",
   "judgments_promoted": false,
   "new_store": false,
-  "live_writes": 0
+  "live_writes": 0,
+  "hermes_identity_follow_up": {
+    "result": "208 passed; 2 existing PostgreSQL-only skips",
+    "additional_suite": "tests/test_hermes_momentum_source_filter_20261023.py",
+    "cases": "Unrelated company, company-name match, generic index page, missing company name, raw source evidence preserved",
+    "frontend": "No UI change; prior npm build and 4 actual page fixture proofs retained"
+  }
 }

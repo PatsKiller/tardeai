@@ -141,6 +141,20 @@ def assemble(symbol: str, identity: dict, inputs: dict, *, catalyst: dict | None
         headline = str(f.get("headline") or "").strip()
         if not headline or str(f.get("catalyst_type") or "").lower() in ("none", "no_clear_catalyst"):
             continue
+        if f.get("source") == "hermes_momentum_catalysts":
+            from scripts.lib.hermes_scalp_catalyst_record import verify_identity, VERIFIED
+            name = (out.get("company") or {}).get("value")
+            raw = f.get("identity_record") or {"catalyst_summary": headline, "sources": []}
+            proof = verify_identity(symbol, raw, [name] if name else [])
+            # A missing/conflicting company name is a collection gap, never
+            # permission to bind arbitrary search evidence by ticker alone.
+            if not name or any(c.get("field") == "company" for c in conflicts):
+                proof = {**proof, "status": "UNVERIFIED_IDENTITY", "reason": "company_name_missing_or_conflicting"}
+            if proof.get("status") != VERIFIED:
+                conflicts.append({"field": "catalyst", "source": f.get("source"),
+                                   "reason": "hermes_company_identity_unverified", "identity_verification": proof})
+                continue
+            f = {**f, "identity_verification": proof, "identity_record": raw}
         at = timestamp(f.get("published_at")) or timestamp(f.get("observed_at"))
         if at and cutoff <= at <= now:
             eligible.append(f)
@@ -149,7 +163,7 @@ def assemble(symbol: str, identity: dict, inputs: dict, *, catalyst: dict | None
         f = eligible[0]
         out["catalyst"] = {k: f.get(k) for k in ("headline", "source", "feed", "published_at", "observed_at",
                                                      "url", "catalyst_type", "verification_basis",
-                                                     "factual_verification_status")}
+                                                     "factual_verification_status", "identity_verification", "identity_record")}
         out["catalyst"].update(status="CURRENT", missing_reason=None, source_verified_claim=bool(
             f.get("source_verified_claim", f.get("verified"))), independent_verification="NOT_MEASURED")
     else:

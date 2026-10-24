@@ -382,3 +382,39 @@ def test_write_shadow_only_never_writes_the_cio_record(tmp_path, monkeypatch, ca
     assert (tmp_path / ir.DEFAULT_PATH).read_bytes() == before
     assert json.loads(capsys.readouterr().out)["company_facts"]["written"] == 0
     assert (tmp_path / cli.SHADOW_REL).is_file()
+
+
+@pytest.mark.parametrize("headline,sources,name,accepted", [
+    ("Archrock announces unrelated contract", [{"title": "Archrock announces contract", "url": "https://example.invalid/archrock-contract"}], "Acme Instruments Inc.", False),
+    ("Acme Instruments launches precision analyzer", [{"title": "Acme Instruments launches precision analyzer", "url": "https://example.invalid/acme-analyzer"}], "Acme Instruments Inc.", True),
+    ("ACME", [{"title": "ALL NEWS", "url": "https://example.invalid/news"}], "Acme Instruments Inc.", False),
+    ("ACME announces new product", [], None, False),
+])
+def test_hermes_company_selection_reuses_identity_validator(headline, sources, name, accepted):
+    data = inputs()
+    data["finviz"]["ACME"]["record"]["company"] = name
+    raw = {"catalyst_summary": headline, "sources": sources}
+    result = cf.assemble("ACME", IDENT, data, now=NOW, catalyst={"facts": [{
+        "headline": headline, "source": "hermes_momentum_catalysts", "observed_at": AT,
+        "identity_record": raw}]})
+    c = result["catalyst"]
+    assert (c.get("status") == "CURRENT") is accepted
+    if accepted:
+        assert c["identity_verification"]["status"] == "VERIFIED"
+        assert c["identity_record"] == raw and c["observed_at"] == AT
+        assert c["independent_verification"] == "NOT_MEASURED"
+    else:
+        assert c["headline"] is None
+        assert any(x["reason"] == "hermes_company_identity_unverified" for x in result["conflicts"])
+
+
+def test_builder_carries_raw_hermes_identity_evidence_without_rewriting_history():
+    from scripts.lib import cio_prospect_builder as b
+    raw = {"catalyst_type": "product", "catalyst_summary": "An unrelated company announces a product", "research_timestamp": AT,
+           "sources": [{"title": "ALL NEWS", "url": "https://example.invalid/news"}]}
+    block, _, _ = b.catalyst_facts("ACME", {"hermes_catalysts": {"rows": {"ACME": raw}}}, IDENT, now=NOW)
+    f = block["facts"][0]
+    assert f["headline"] == raw["catalyst_summary"], "historical research remains intact"
+    assert f["identity_record"]["sources"] == raw["sources"]
+    selected = facts(catalyst=block)
+    assert selected["catalyst"]["headline"] is None

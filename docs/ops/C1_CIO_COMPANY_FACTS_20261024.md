@@ -50,6 +50,10 @@ identity profiles are file snapshots. No provider is called when either screen, 
 Symbol-keyed metadata is labelled `confirmed_registry_symbol_at_batch` / `symbol_keyed`, not misrepresented as an
 upstream GUID assertion. Explicit mismatched source GUIDs are refused and recorded as conflicts. Dated retained
 values outrank undated new values; original clocks are preserved. Divergent source values remain on the facts block.
+Hermes search results additionally pass the existing `hermes_scalp_catalyst_record.verify_identity`:
+the original headline/first-source evidence must name the whole-word ticker or stored company name;
+generic index pages, unrelated headlines and missing/conflicting company names cannot become the current
+company catalyst. Raw research remains on the historical catalyst block with its source evidence.
 Unknown source timestamps remain unknown. A new assembly/cache time never substitutes for a publication time.
 
 Catalyst relevance and arbitrary source confidence (including values above 1) are not probabilities. The selected
