@@ -155,9 +155,13 @@ def build_portfolio_snapshot() -> dict[str, Any]:
     risk = _load_json(STATE_DIR / "risk_management.json")
     finviz_cache = _load_json(STATE_DIR / "finviz_quote_cache.json")
 
-    holdings = h.get("holdings", [])
+    from ..cio_truth import portfolio_for
+    truth = portfolio_for(h)
+    holdings = truth["holdings"]
     totals = h.get("portfolio_totals", {})
-    active_positions = [p for p in holdings if not p.get("is_cash") and (p.get("market_value") or 0) > 100]
+    active_positions = [p for p in holdings if not p.get("is_cash") and not p.get("is_loan")
+                        and (p.get("shares") or p.get("quantity") or 0) > 0
+                        and (p.get("market_value") or 0) >= 100]
 
     try:
         sector_list = _sector_allocation(h, active_positions)
@@ -171,25 +175,15 @@ def build_portfolio_snapshot() -> dict[str, Any]:
         errors.append(f"movers: {e}")
         movers = []
 
-    today_change = _day_change(holdings, finviz_cache)
-    if today_change is None or today_change == 0:
-        today_change = totals.get("day_change")
-        if today_change is None:
-            today_change = sum(p.get("day_change") or 0 for p in holdings)
-    total_val = totals.get("total_value", 0) or 0
-    today_pct = (today_change / (total_val - today_change) * 100) if total_val > abs(today_change or 0) else 0
-
-    today_by_account: dict[str, dict[str, Any]] = {}
-    for p in holdings:
-        a = p.get("account") or "unknown"
-        d = today_by_account.setdefault(a, {"change": 0.0, "value": 0.0})
-        d["change"] += p.get("day_change") or 0
-        d["value"] += p.get("market_value") or 0
-    for a, d in today_by_account.items():
-        base = d["value"] - d["change"]
-        d["change"] = round(d["change"], 2)
-        d["pct"] = round(d["change"] / base * 100, 2) if base > 0 else None
-        d["value"] = round(d["value"], 2)
+    today_change, total_val, today_pct = truth["day_pl_usd"], truth["total_usd"], truth["day_pl_pct"]
+    today_by_account = {}
+    for account in truth["accounts"]:
+        value, change = account["total_usd"], account["day_pl_usd"]
+        base = value - change if value is not None and change is not None else None
+        today_by_account[account["account_id"]] = {
+            "value": value, "change": change, "account_label": account["account_label"],
+            "pct": round(change / base * 100, 2) if base is not None and base > 0 else None,
+        }
 
     # ── SoT Phase 6: per-account state, read from what the producer wrote ─────
     # A non-LIVE account renders its last known value with its date and a state
@@ -223,12 +217,13 @@ def build_portfolio_snapshot() -> dict[str, Any]:
         "source": {
             "holdings_json_mtime": holdings_mtime,
             "holdings_count": len(holdings),
-            "active_position_count": len(active_positions),
+            "active_position_count": truth["position_count"],
         },
         "totals": {
             "total_value": total_val,
+            "total_cash": truth["cash_usd"],
             "day_change": round(today_change, 2) if today_change is not None else None,
-            "day_change_pct": round(today_pct, 3) if today_pct else 0,
+            "day_change_pct": today_pct,
             "portfolio_totals_raw": totals,
         },
         "sector_allocation": [{"sector": s, "value": v} for s, v in sector_list],
@@ -242,6 +237,8 @@ def build_portfolio_snapshot() -> dict[str, Any]:
             for p in movers
         ],
         "by_account": today_by_account,
+        "position_counts": truth["position_counts"],
+        "truth": {k: truth[k] for k in ("source", "as_of", "stale", "gap")},
         "account_states": account_states,
         "risk": {
             "portfolio_heat_pct": risk.get("portfolio_heat_pct", 0),

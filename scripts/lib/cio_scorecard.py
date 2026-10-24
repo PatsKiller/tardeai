@@ -498,7 +498,8 @@ def _light_serving(root: Path) -> dict[str, Any]:
     current_link = Path.home() / "trade-ai-releases" / "portfolio-server" / "CURRENT"
     current_sha = None
     try:
-        resolved = current_link.resolve()
+        # A named state COPY/fixture cannot reach the host's served release.
+        resolved = current_link.resolve() if root.resolve() == Path(__file__).resolve().parents[2] else root
         name = resolved.name
         current_sha = name.split("-")[0] if name else None
         sc = resolved / "SOURCE_COMMIT"
@@ -653,7 +654,6 @@ def _light_health(root: Path) -> dict[str, Any] | None:
         root / "data" / "portfolios" / "state" / "health_agent_status.json",
         root / "data" / "runtime" / "health_agent_latest.json",
         root / "data" / "runtime" / "health_agent_status.json",
-        Path.home() / "trade-ai-releases" / "persistent-state" / "data" / "portfolios" / "state" / "health_agent_status.json",
     ):
         snap = _read_json(path)
         if isinstance(snap, dict) and (snap.get("overall_score") is not None or snap.get("status")):

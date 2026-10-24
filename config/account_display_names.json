@@ -3,6 +3,7 @@
   "_source": "holdings.json config.accounts[*].display_name and account_summaries[*].display_name (2026-10-23), shortened; entries marked proposed await operator confirmation.",
   "aliases": {
     "schwab_roth": "schwab_roth_ira",
+    "schwab_rollover": "schwab_rollover_ira",
     "schwab_individual": "schwab_taxable",
     "alpaca_paper": "tradeai_automated"
   },
