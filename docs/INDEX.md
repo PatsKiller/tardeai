@@ -1866,6 +1866,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_PIPELINE_STEP2A_CASE_SUMMARY_2026-08-28.md` | CIO Pipeline Step 2A — CASE_SUMMARY from attached VALID research |
 | `docs/ops/CIO_PIPELINE_STEP2B_2C_SURFACES_2026-08-28.md` | CIO Pipeline Step 2B+2C — surfaces + CASE_SUMMARY as labeled A-context |
 | `docs/ops/CIO_PROSE_PROHIBITION_GATE_2026-08-29.md` | Prose prohibitions are instructions — closing the "do not add" misses |
+| `docs/ops/CIO_PROSPECT_SHADOW_READONLY_20261023.md` | WP-21: restore the CIO prospect shadow lane without broker reach |
 | `docs/ops/CIO_QUESTION_ID_CONTRACT_2026-08-29.md` | Question id contract — semantic, not positional (2026-08-29) |
 | `docs/ops/CIO_R2_NO_PRODUCER_2026-08-30.md` | The two NO_PRODUCER rows — P4's evidence and the scoreboard pin |
 | `docs/ops/CIO_REENTRY_S3_WIRE_2026-08-20.md` | CIO Reentry → S3 wire (Fix #1) — 2026-08-20 |
