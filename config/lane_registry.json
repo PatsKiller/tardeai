@@ -5794,7 +5794,7 @@
         "match": "scripts/run_finviz_momentum_scalp_scan.py --hot-list-only",
         "stage": "shadow",
         "wave": "W5",
-        "command_text": "cd $PROJ && SCALP_HOT_TIER=1 MOMENTUM_SCALP_OUTER_DEADLINE_S=100 flock -n /tmp/tradeai_scalp_hot_list.lock timeout 110 bash scripts/market_day_gate.sh $PY scripts/run_finviz_momentum_scalp_scan.py --hot-list-only --apply >> logs/scalp_hot_list.log 2>&1  # TRADEAI_LANE scalp-hot-list"
+        "command_text": "cd $PROJ && SCALP_HOT_TIER=1 MOMENTUM_SCALP_OUTER_DEADLINE_S=170 flock -n /tmp/tradeai_scalp_hot_list.lock timeout 180 bash scripts/market_day_gate.sh $PY scripts/run_finviz_momentum_scalp_scan.py --hot-list-only --apply >> logs/scalp_hot_list.log 2>&1  # TRADEAI_LANE scalp-hot-list  (budget 170s, operator 2026-10-23)"
       },
       "expected_cadence_hours": 0.034,
       "active_days": [

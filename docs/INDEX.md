@@ -2101,6 +2101,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WP36_AFTER_CLOSE_CRAWLER_PREFLIGHT_20261024.md` | WP-36 after-close observer: strict packet and scoped live evidence |
 | `docs/ops/WP36_ITEM6_RESEARCH_VERSION_LABELS_20261023.md` | WP-36 item 6: truthful research thesis-version labels |
 | `docs/ops/WP36_STALE_PRODUCERS_20261023.md` | WP-36 item5: stale feed and report-producer reconciliation |
+| `docs/ops/WP37_HOT_LIST_CAPTURE_RECONCILIATION_20261024.md` | WP-37: hot-list registry matches the operator-captured command |
 | `docs/ops/WP39_RETENTION_RULINGS_AUDIT_20261023.md` | WP-39: retention rulings source and runtime evidence |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye — first institutional-brain audit |
 | `docs/ops/agent_start/codex-note.md` | Codex note — agent claim board (operator installs) |
