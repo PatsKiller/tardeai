@@ -19,7 +19,7 @@ export const ALERT_CHROME_SYMBOLS = new Set([
   'BUY', 'SELL', 'HOLD', 'GO', 'WAIT', 'NOGO', 'CIO', 'ADVISORY',
 ])
 
-export type AlertKind = 'entry' | 'telegram' | 'setups'
+export type AlertKind = 'entry' | 'telegram' | 'setups' | 'ops'
 
 export type AlertRow = {
   id: string
@@ -217,12 +217,24 @@ export function fanInAlerts(input: {
   packets?: any
   events?: any
   tradeAiSummary?: any
+  ops?: any
 }): AlertRow[] {
   return [
+    ...rowsFromOpsIncidents(input.ops),
     ...rowsFromBuyReadyPackets(input.packets),
     ...rowsFromCommunicationsEvents(input.events),
     ...rowsFromTradeAiSummary(input.tradeAiSummary),
   ]
+}
+
+/** The independent job-execution source works even when the incident notifier failed. */
+export function rowsFromOpsIncidents(payload: any): AlertRow[] {
+  const data = payload?.data ?? payload
+  const rows = Array.isArray(data?.incidents) ? data.incidents : []
+  return rows.map((r: any) => ({ id: `ops:${String(r.id)}`, kind: 'ops' as const,
+    title: String(r.title || 'Operations incident'), subtitle: String(r.message || 'Execution evidence needs attention'),
+    when: data.as_of || null, symbols: [], href: '/v3/ops/jobs', dossierHref: null,
+    state: r.severity || 'warning', raw: r }))
 }
 
 export type KindFilter = 'all' | AlertKind

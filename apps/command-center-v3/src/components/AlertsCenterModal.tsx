@@ -19,6 +19,7 @@ const FILTERS: Array<{ id: KindFilter; label: string }> = [
   { id: 'all', label: 'All' },
   { id: 'entry', label: 'Entry' },
   { id: 'telegram', label: 'Telegram' },
+  { id: 'ops', label: 'Operations' },
   { id: 'setups', label: 'Setups' },
 ]
 
@@ -37,6 +38,7 @@ export default function AlertsCenterModal({ open, onClose }: { open: boolean; on
   const packets = useApi<any>('/api/v2/buy-ready/packets', 60_000, { enabled: open })
   const events = useApi<any>('/api/v2/communications/events?limit=250', 60_000, { enabled: open })
   const tradeAi = useApi<any>('/api/v2/trade-ai/summary', 120_000, { enabled: open })
+  const ops = useApi<any>('/api/v2/jobs-health?filter=attention&limit=1', 60_000, { enabled: open })
 
   useEffect(() => {
     if (!open) return
@@ -52,8 +54,8 @@ export default function AlertsCenterModal({ open, onClose }: { open: boolean; on
     return () => { window.clearTimeout(t); window.removeEventListener('keydown', onKey) }
   }, [open, onClose])
 
-  const loading = open && (packets.loading || events.loading || tradeAi.loading)
-  const err = [packets.error, events.error, tradeAi.error].filter(Boolean).map(String)
+  const loading = open && (packets.loading || events.loading || tradeAi.loading || ops.loading)
+  const err = [packets.error, events.error, tradeAi.error, ops.error].filter(Boolean).map(String)
 
   const rows = useMemo(() => {
     if (!open) return [] as AlertRow[]
@@ -61,8 +63,9 @@ export default function AlertsCenterModal({ open, onClose }: { open: boolean; on
       packets: packets.data,
       events: events.data,
       tradeAiSummary: tradeAi.data,
+      ops: ops.data,
     })
-  }, [open, packets.data, events.data, tradeAi.data])
+  }, [open, packets.data, events.data, tradeAi.data, ops.data])
 
   const visible = useMemo(() => filterAlerts(rows, { query, kind }), [rows, query, kind])
   const selected = visible.find(r => r.id === selectedId) || visible[0] || null

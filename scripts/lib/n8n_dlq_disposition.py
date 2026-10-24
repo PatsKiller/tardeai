@@ -6,6 +6,7 @@ ledger migration. The dispatcher continues to see the original terminal slot.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -91,12 +92,12 @@ def successful_runs(path: Path, *, now: datetime) -> dict[tuple[str, str], dict]
 def cause(receipt: dict | None, fallback: str | None = None) -> str:
     """The bounded stderr cause, then an explicit missing-diagnostic gap."""
     receipt = receipt or {}
+    from scripts.lib.scheduler_operations import redact_command
     stderr = receipt.get("stderr_tail")
     if isinstance(stderr, str) and stderr.strip():
         # Use the existing command redactor before projecting logs to operator UI.
-        from scripts.lib.scheduler_operations import redact_command
         return redact_command(stderr.strip())[-600:]
     reason = str(receipt.get("reason") or fallback or "").strip()
-    if reason and not __import__("re").fullmatch(r"exit[_ :\-]?\d+", reason, flags=__import__("re").I):
-        return reason[:600]
+    if reason and not re.fullmatch(r"exit[_ :\-]?\d+", reason, flags=re.I):
+        return redact_command(reason)[:600]
     return "Failure recorded; stderr diagnostic was not retained"
