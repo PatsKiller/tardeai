@@ -149,6 +149,10 @@ def evaluate_inputs(bundle: EvaluationInputs, *, now: datetime, history=()):
     valid = []
     canonical = bundle.canonical
     for n, item in enumerate(([canonical] if canonical else []) + list(bundle.inputs)):
+        if item is not canonical and item.role in {"claim", "judgment"} and (
+                item.metadata.get("paper") or item.metadata.get("intra_synthesis") or
+                item.metadata.get("quality", "complete") != "complete"):
+            continue
         reason = None
         if item.subject_id and item.subject_id != bundle.subject.id:
             reason = "different subject ID"
@@ -156,7 +160,7 @@ def evaluate_inputs(bundle: EvaluationInputs, *, now: datetime, history=()):
             reason = "naive, unreadable or future evidence time"
         elif item.role not in RULEBOOK["universal"]["roles"]:
             reason = "unknown input role"
-        elif item.role == "claim" and item.metadata.get("quality", "complete") == "complete" and bundle.profile.compare(item.value, item.value, bundle.subject) == UNKNOWN:
+        elif item.role == "claim" and item.metadata.get("instrument", "equity") == "equity" and bundle.profile.compare(item.value, item.value, bundle.subject) == UNKNOWN:
             reason = "unknown claim vocabulary or unit"
         elif isinstance(bundle.profile, NumericFactProfile):
             try:

@@ -99,3 +99,14 @@ def test_schedule_adapter_preserves_registry_and_observation():
 def test_rulebook_does_not_assert_operator_ratification_or_live_authority():
     doc = load_rulebook()
     assert doc["status"] == "PROPOSED" and doc["approval"] is None and not doc["live_enabled"]
+
+
+def test_failed_paper_and_intra_synthesis_inputs_do_not_become_data_error_sides():
+    for metadata in [{"paper": True}, {"quality": "failed"}, {"intra_synthesis": True}]:
+        assert evaluate_inputs(sec(extras=[Input("ignored", "UNMAPPED", None, metadata=metadata)]), now=NOW) == []
+
+
+def test_option_contradiction_reaches_scope_rule_without_equity_vocabulary_error():
+    fs = evaluate_inputs(sec(canonical={"stance": "EXIT", "as_of": AT},
+        extras=[Input("options", "LONG_CALL", NOW, metadata={"instrument": "option"})]), now=NOW)
+    assert [(f.kind, f.rule) for f in fs] == [("NEEDS_OPERATOR", "R10")]
