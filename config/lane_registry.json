@@ -25596,7 +25596,7 @@
         "minimum_gap_hours": 24,
         "nominal_max_gap_local_hours": 48,
         "maximum_elapsed_gap_hours": 49,
-        "dst_note": "ET cron retains04:00 local: fall-back gap49 elapsed hours, spring-forward47; Sunday→Monday24 nominal hours."
+        "dst_note": "ET cron retains04:00 local: fall-back gap49 elapsed hours, spring-forward47; Sunday\u2192Monday24 nominal hours."
       },
       "requires": "Atomic contract/admission/enable review; current operative schedule remains plan-only"
     }
