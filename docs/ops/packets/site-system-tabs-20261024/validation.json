@@ -1,0 +1,92 @@
+{
+  "status": "LOCAL_SOURCE_READY_NOT_PUBLISHED_OR_RUNTIME_ACCEPTED",
+  "task": "DSN-20261024-site-system-tabs-P1-T1",
+  "base": "e148e2a65303d8aa6e6c9437784ae83f9e2bebe8",
+  "scope": "Partial SITE P1#12 System request admission + related System URL state; no overall RSS/endpoint budget acceptance",
+  "checks": [
+    {
+      "command": "npm run build",
+      "exit_code": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/native-build.log",
+      "sha256": "6b04cab85e704242f3bf882eb78494fc9f3621ef7d6b39a268bc05f969b795b1",
+      "tail": [
+        "- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks",
+        "- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.",
+        "\u2713 built in 8.23s"
+      ]
+    },
+    {
+      "command": "node e2e/system-tab-requests.fixture.mjs <isolated evidence directory>",
+      "exit_code": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/browser-proof.log",
+      "sha256": "e4061373c092c346de1eaa939db0044b16d1ba3c0d68e2adaa5f3d24d2660a2e",
+      "tail": [
+        "System actual-component request proof:2 viewports \u00d710 tab phases passed; no unexpected/external/mutating traffic"
+      ]
+    },
+    {
+      "command": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg python -m pytest -q tests/test_ci_draft_pr_skip_20261023.py tests/test_data_source_authority_20260913.py tests/test_lane_registry.py",
+      "exit_code": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/nopg-source-profile.log",
+      "sha256": "f2e079277ca6140ce176aac44ff218b39647feedbf0c7f5063369d717f588383",
+      "tail": [
+        "........................................................................ [ 77%]",
+        "...........................................                              [100%]",
+        "187 passed in 99.14s (0:01:39)"
+      ]
+    },
+    {
+      "command": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg python -m pytest -q tests/test_cio_payload_flow_20261002.py::test_real_tree_every_non_surfaced_item_is_classified_and_none_is_stale tests/test_cio_operator_artifacts_20261003.py::test_completeness_leaves_no_operator_relevant_output_unsurfaced",
+      "exit_code": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/record-edge.log",
+      "sha256": "c1cda3b812705c8181fea06e17dea5c5c21968008e478142651e15449af04053",
+      "tail": [
+        "..                                                                       [100%]",
+        "2 passed in 67.81s (0:01:07)"
+      ]
+    },
+    {
+      "command": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg python scripts/check_dark_contracts.py --fail-on-new",
+      "exit_code": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/dark_contracts.log",
+      "sha256": "fe08dbba3a71427b05f34f4063bfcd623fba77843ac9c65493ed90ab69465b8a",
+      "tail": [
+        "    \u2713 scripts/lib/symbol_thesis_event_wake.py",
+        "    \u2713 scripts/lib/tradeai_record_envelope.py",
+        "    \u2713 scripts/repair_health_threshold_tuning_noise.py"
+      ]
+    },
+    {
+      "command": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg python scripts/check_retention_policy.py --fail-on-new",
+      "exit_code": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/retention_policy.log",
+      "sha256": "5b31f2bd08e8cc90ab8f333a541d4285ae255c4b7686672588c139677769a0a4",
+      "tail": [
+        "retention registry: 140 rows (11 KEEP_FOREVER, 29 ARCHIVE_THEN_DELETE, 97 DELETE); errors 0"
+      ]
+    },
+    {
+      "command": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg python scripts/check_test_coverage.py --fail-on-new",
+      "exit_code": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/test_coverage.log",
+      "sha256": "50803647da8b8a2924f7174ab1b82be5b444322b1de6e54ec3cf78f99be79f53",
+      "tail": [
+        "    \u2713 tests/test_alarm_fires_stop_path.py",
+        "    \u2713 tests/test_alarm_imports_resolve.py",
+        "    \u2713 tests/test_backup_enforcer.py"
+      ]
+    },
+    {
+      "command": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg python scripts/check_test_host_paths.py --fail-on-new",
+      "exit_code": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-site-system-tabs-20261024/test_host_paths.log",
+      "sha256": "35e284022d0751bcc0bb4fa920ab50a99bcbb8957f454ef45a19300aa540bca6",
+      "tail": [
+        "test host paths: 18 files (baseline 24), new violations: 0"
+      ]
+    }
+  ],
+  "workflow_context": "No runner context at job level; runner.temp occurs only in upload step",
+  "registry": "unchanged, literal UTF-8; fixture discovery only",
+  "native_advisory": "Existing Vite bundle-size advisory only"
+}
