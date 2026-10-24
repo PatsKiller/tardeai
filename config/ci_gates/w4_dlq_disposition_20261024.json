@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "w4_dlq_disposition_20261024",
+  "files": [
+    "tests/test_w4_dlq_disposition_20261024.py"
+  ],
+  "comment": [
+    "W4 fixture-only execution truth and incident disposition regressions."
+  ]
+}
