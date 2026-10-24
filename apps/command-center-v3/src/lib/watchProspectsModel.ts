@@ -4,6 +4,14 @@
  *  judgment: lane, conviction, stance, conflicts, next trigger, next step. This file only shapes it for display,
  *  ties armed alerts to prospects (orphans listed), and holds the tooltip text. No colour literals (design tokens). */
 
+export type CompanyFact = { value: string | null; source?: string | null; observed_at?: string | null; clock_kind?: string; missing_reason?: string | null }
+export type CompanyFacts = {
+  schema: 'CIOCompanyFacts@v1'; security_guid?: string | null; status?: string; missing_reason?: string | null
+  company: CompanyFact; description: CompanyFact; sector: CompanyFact; industry: CompanyFact
+  catalyst: { headline?: string | null; status?: string; published_at?: string | null; observed_at?: string | null; source?: string | null; feed?: string | null; url?: string | null; missing_reason?: string | null; factual_verification_status?: string | null }
+  conflicts?: unknown[]
+}
+
 export type LaneId = 'actionable' | 'forming' | 'reentry' | 'manage' | 'expired'
 
 export type Side = { value: unknown; source: string | null; at: string | null }
@@ -20,6 +28,7 @@ export type SurfaceRow = { surface: string; value: string; source: string | null
 export type ProspectRow = {
   symbol: string
   company?: string | null
+  company_facts?: CompanyFacts | null
   security_guid?: string | null
   identity_status?: string | null
   lane: LaneId

@@ -1,0 +1,39 @@
+{
+  "schema": "C1CompanyFactsLocalReceipt@v1",
+  "task": "DSN-20261024-watch-company-facts-P1-T1",
+  "base": "ca39056af0b67491310a7267d75e2a0c882bc7d0",
+  "acceptance": "SOURCE_AND_FIXTURES_ONLY",
+  "runtime_application": "NOT_PERFORMED",
+  "native_python": {
+    "driver_hidden": "ModuleNotFoundError(name=psycopg2) verified",
+    "command": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg PYTHONDONTWRITEBYTECODE=1 TRADE_AI_CI=1 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m pytest -q tests/test_cio_company_facts_20261024.py tests/test_cio_prospect_foundation_20261022.py tests/test_cio_prospect_catalyst_facts_20261023.py tests/test_cio_prospect_directives_proposals_20261023.py tests/test_cio_prospect_shadow_readonly_20261023.py tests/test_cio_persistent_cognition.py tests/test_cio_ask_research.py tests/test_watch_market_facts_20261024.py tests/test_watch_prospects_20261022.py",
+    "result": "185 passed; 2 existing PostgreSQL-only skips"
+  },
+  "frontend_build": "npm run build PASS (existing bundle-size/classic-script warnings)",
+  "browser": {
+    "test": "e2e/watch-company-facts.spec.ts",
+    "result": "4 passed",
+    "screens": [
+      "my-watchlist-1440",
+      "my-watchlist-412",
+      "prospects-1440",
+      "prospects-412"
+    ],
+    "directory": "/home/johnclaw/.cache/rtc/codex-c1-company-facts-20261024/screenshots",
+    "protocol": "Actual built SPA; static no-proxy fixture server; APIs fulfilled; external/mutation/WS rejected"
+  },
+  "ratchets": [
+    "test_host_paths --fail-on-new PASS",
+    "test_coverage --fail-on-new PASS"
+  ],
+  "publication": "PENDING_OPERATOR_PUSH",
+  "judgments_promoted": false,
+  "new_store": false,
+  "live_writes": 0,
+  "hermes_identity_follow_up": {
+    "result": "208 passed; 2 existing PostgreSQL-only skips",
+    "additional_suite": "tests/test_hermes_momentum_source_filter_20261023.py",
+    "cases": "Unrelated company, company-name match, generic index page, missing company name, raw source evidence preserved",
+    "frontend": "No UI change; prior npm build and 4 actual page fixture proofs retained"
+  }
+}
