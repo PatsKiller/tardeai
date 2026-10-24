@@ -47,6 +47,8 @@ jobs:
       - run: npm run build
       - name: Actual components on pinned backend-builder outputs, all requests intercepted
         run: node e2e/tradeinview-redesign.fixture.mjs e2e/fixtures/tradeinviewRedesign.fixture.json "$RUNNER_TEMP/tradeinview-proof"
+      - name: Journey phone tap, focused sheet and browser history proof
+        run: node --experimental-strip-types e2e/trade-journey-mobile.fixture.mjs "$RUNNER_TEMP/tradeinview-proof/journey-mobile"
       - name: Existing actual-App Journey and legacy navigation regression on static assets
         env:
           TIV_FIXTURE_ENV: ${{ runner.temp }}/tradeinview-empty-env

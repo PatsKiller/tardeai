@@ -4,6 +4,7 @@ Design-Task: DSN-20261024-tradeinview-tabs-replay-P1-T1
 
 Worker: `codex-tradeinview-b-20261024`; claim `20261024T201519Z-codex-5aaefe7f`.
 Accepted base: `8b6cd3be6d9776d3051ea24fbbcfc65248431c45` (batch 21, PR #2071).
+The phone continuation locally merges accepted `d635873e1063efb8a9ff8e8ce542654ed2ef7654`, preserving the exact union of accepted and B native-build checks.
 
 ## Checkpoint status
 
@@ -29,11 +30,21 @@ The staged checkpoint also passes the dark-contract, retention, test-coverage an
 
 Query-scoped bodies remount when month/account/names or trade/interval identity changes. Display guards also reject responses for another identity, including a nested trip that disagrees with the Replay envelope. The delayed Calendar fixture proves the old total disappears during navigation and cannot reappear when the previous month's valid body is deliberately returned for the new query. Same-query retained data can still show its original source clock; no shared API-hook behavior was changed.
 
+## Phone Journey continuation
+
+The operator's mobile-first directive requires immediate detail after tapping a Journey. At ≤820px, selection now opens a focused full-screen sheet with Back navigation, contained scrolling and 44px targets. The selected trade comes from the URL; a phone list does not silently select its first trade. A tap pushes `?trade=…` while retaining unrelated query parameters, and Back/Forward closes/reopens the sheet. Direct links without in-app history clear only their trade/symbol selection on Back. Filters remain URL-backed. The row's primary Journey action is full-width, and detail facts use two phone columns. Original financial/source facts and the existing advisory alert flow remain unchanged.
+
+Nine actual-component navigation, direct-link and wrong-detail cases pass at 1440×1100, 412×915 and 390×844. Phone cases actually tap Journey, Back, a filter and a filtered Journey, assert full-viewport focused sheets and ≥44px visible controls, and exercise browser Back/Forward. A deliberately mismatched detail response cannot contribute another trade's chart; the recorded list facts remain with an explicit gap. Screenshots are true phone-viewport captures beside the approved mockups. The [phone proof](packets/tradeinview-frontend-20261024/journey-mobile-proof.json) binds all source/input hashes and records zero mutating, unexpected, provider or live-server traffic.
+
+This independent proof uses the existing generated NAVN broker-projection fixture's **three actual fixture rows**, not an invented 57-row financial population. It does not replace the final frozen A/C source, endpoint-copy receipts, all-screen states or integrated acceptance. The 390 detail and 412 filtered-list screenshots were inspected.
+
+The phone checkpoint's native frontend build, existing actual-App Journey/Classic/advisory-form regression (3 tests), hidden-driver registry/workflow profile (163 tests), both strict real-tree CIO checks and all four no-new ratchets pass. Commands and immutable log hashes are in the [phone validation receipt](packets/tradeinview-frontend-20261024/journey-mobile-validation.json). The existing Vite bundle-size advisory remains. No full B `PUSH_NEEDED` is issued while its A/C integration gates remain open.
+
 Before final `PUSH_NEEDED`:
 
 - Integrate package A's actual generated fixtures and exact source head, preserving valid source identity and null/coverage semantics.
 - Integrate the real package C HoldingHistory component and replace the temporary dependency slot.
 - Verify store-projected stop-step timing without collapsing multiple real observations silently.
-- Produce all Journeys, Calendar and Replay states at 1440 and 412 beside the operator mockups as `impl-*.png`, using isolated static fixtures with no live server, provider or database traffic.
+- Produce all Journeys, Calendar and Replay states at 1440×1100, 412×915 and 390×844 beside the operator mockups as `impl-*.png`, using isolated static fixtures with no live server, provider or database traffic and real phone taps.
 - Run the native frontend profile, hidden-driver Python/strict record-edge checks and the required dark-contract, retention, coverage, host-path, registry and documentation gates.
 - Commit the final verified source, append exactly one `PUSH_NEEDED` with the real publication command, retain the claim and leave final publication/release to the coordinator/operator.

@@ -8,8 +8,8 @@
  *
  *  The one action reuses an existing operator flow: Set alert → ReEntryAlertArmModal (POST /api/v2/watch/alerts,
  *  advisory notification). Nothing here sizes, places, moves or cancels an order. */
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle, numStyle, toneVars, type Tone } from '../lib/designTokens'
 import {
@@ -38,13 +38,14 @@ function Row({ j, selected, onSelect }: { j: Journey; selected: boolean; onSelec
   const exitTone = EXIT_TONE[j.exit_cause.kind]
   const end = j.status === 'closed' ? j.exit : j.mark
   return (
-    <div className="tradeinview-journey-row" data-testid="tj-row" data-symbol={j.symbol} data-status={j.status} data-origin={j.origin.kind}
+    <div className="tradeinview-journey-row" data-testid="tj-row" data-trade-id={j.trade_id} data-symbol={j.symbol} data-status={j.status} data-origin={j.origin.kind}
       style={{ display: 'grid', gridTemplateColumns: GRID, gap: 12, padding: '12px 16px', alignItems: 'start',
         borderBottom: `1px solid ${TOKENS.borderSubtle}`, background: selected ? TOKENS.bg[2] : undefined,
         borderLeft: `3px solid ${selected ? TOKENS.info : 'transparent'}` }}>
-      <button type="button" onClick={onSelect} aria-pressed={selected} title={`Open the ${j.symbol} journey`}
+      <span className="tradeinview-mobile-symbol" style={{ fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.md }}>{j.symbol}</span>
+      <button className="tradeinview-open-journey" data-testid="tj-open-journey" type="button" onClick={onSelect} aria-pressed={selected} title={`Open the ${j.symbol} journey`}
         style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', cursor: 'pointer', color: TOKENS.text[0], fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.md, minHeight: 36 }}>
-        {j.symbol}
+        <span className="tradeinview-desktop-symbol">{j.symbol}</span><span className="tradeinview-mobile-action">Journey →</span>
       </button>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
         <span title={`${j.origin.label}\n\n${TOOLTIPS.origin}`} data-testid="tj-origin" style={{ ...chipStyle(ob.tone, 'soft', 'sm'), alignSelf: 'flex-start', cursor: 'help', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ob.text}</span>
@@ -124,7 +125,7 @@ function Detail({ j: initial, onAlert }: { j: Journey; onAlert: (j: Journey) => 
   const detail = useApi<any>(apiDetail(initial.trade_id))
   const full = unwrapDetail(detail.data)
   const j = full?.trade_id === initial.trade_id ? full : initial
-  const chart = full?.chart ?? j.chart ?? null
+  const chart = j.chart ?? null
   const ob = originBadge(j.origin)
   const re = j.re_entry
   const tiles: [string, string, string][] = [
@@ -137,6 +138,7 @@ function Detail({ j: initial, onAlert }: { j: Journey; onAlert: (j: Journey) => 
   ]
   return (
     <div data-testid="tj-detail" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {full && full.trade_id !== initial.trade_id && <div role="status" className="tradeinview-gap">Detail update could not be matched to this trade — showing its recorded list facts.</div>}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
         <span style={{ fontFamily: FONT.mono, fontWeight: 700, fontSize: TYPE.lg + 2 }}>{j.symbol} · {j.account_label || 'Unlabelled account'}</span>
         <span style={{ fontSize: TYPE.base, color: TOKENS.text[2] }}>{j.company ?? ''}</span>
@@ -174,7 +176,7 @@ function Detail({ j: initial, onAlert }: { j: Journey; onAlert: (j: Journey) => 
         {j.origin.surface_href && <Link to={j.origin.surface_href.replace(/^\/v3/, '')} style={{ fontSize: TYPE.sm, color: TOKENS.info }}>Open {j.origin.surface}</Link>}
       </section>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+      <div className="tradeinview-detail-tiles" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
         {tiles.map(([k, v, tip]) => (
           <div key={k} title={tip} style={{ background: TOKENS.bg[2], borderRadius: RADIUS.md, padding: 8, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <span style={{ ...label, fontSize: TYPE.xs }}>{k}</span>
@@ -268,24 +270,59 @@ function Detail({ j: initial, onAlert }: { j: Journey; onAlert: (j: Journey) => 
 
 export default function TradeJourney({ payload, loading, error, embedded = false }: { payload?: JourneysPayload | null; loading?: boolean; error?: string | null; embedded?: boolean } = {}) {
   const [params, setParams] = useSearchParams()
+  const location = useLocation(), navigate = useNavigate()
+  const [phone, setPhone] = useState(() => window.matchMedia('(max-width: 820px)').matches)
+  const detailSheet = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 820px)')
+    const update = () => setPhone(media.matches)
+    media.addEventListener('change', update)
+    return () => media.removeEventListener('change', update)
+  }, [])
   const api = useApi<any>(API_LIST, 60_000, { enabled: payload === undefined })
   const p: JourneysPayload | null = useMemo(() => payload === undefined ? unwrap(api.data) : payload, [api.data, payload])
   const filter = (FILTERS.find(f => f.id === params.get('filter'))?.id ?? 'all') as FilterId
-  const [selId, setSelId] = useState<string | null>(params.get('trade'))
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [alertFor, setAlertFor] = useState<Journey | null>(null)
   const [alertMsg, setAlertMsg] = useState('')
   const rows = useMemo(() => (p ? filterJourneys(p.journeys, filter) : []), [p, filter])
   const counts: Record<string, number | undefined> | null = p ? { ...p.counts, attention: p.counts.awaiting_fill, mine: p.counts.operator } : null
 
-  // ?symbol=NAVN (Open Trades / Watch deep links) selects that symbol's most recent journey.
+  // URL identity also closes the phone sheet on browser Back; no hidden local selection can reopen it.
   const deepSym = (params.get('symbol') || '').trim().toUpperCase()
+  const requestedTrade = params.get('trade')
+  const detailRequested = Boolean(requestedTrade || deepSym)
+  const sel = (requestedTrade ? p?.journeys.find(j => j.trade_id === requestedTrade)
+    : deepSym ? p?.journeys.find(j => j.symbol === deepSym) : phone ? null : p?.journeys[0]) ?? null
+  const closeDetail = () => {
+    if (location.state?.tradeJourneyReturn) { navigate(-1); return }
+    const next = new URLSearchParams(params)
+    next.delete('trade'); next.delete('symbol')
+    setParams(next, { replace: true })
+  }
+  const closeRef = useRef(closeDetail)
+  closeRef.current = closeDetail
+  const hasPayload = Boolean(p), hasAlert = Boolean(alertFor)
   useEffect(() => {
-    if (!p || selId) return
-    const hit = deepSym ? p.journeys.find(j => j.symbol === deepSym) : p.journeys[0]
-    if (hit) setSelId(hit.trade_id)
-  }, [p, deepSym, selId])
-  const sel = p?.journeys.find(j => j.trade_id === selId) ?? null
+    if (!phone || !detailRequested || !hasPayload || hasAlert || !detailSheet.current) return
+    const sheet = detailSheet.current, before = document.activeElement as HTMLElement | null
+    const overflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'; sheet.focus()
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeRef.current(); return }
+      if (event.key !== 'Tab') return
+      const controls = [...sheet.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),summary,[tabindex="0"]')].filter(node => node.getClientRects().length)
+      const first = controls[0], last = controls[controls.length - 1]
+      if (!first) { event.preventDefault(); sheet.focus() }
+      else if (event.shiftKey && (document.activeElement === sheet || document.activeElement === first)) { event.preventDefault(); last.focus() }
+      else if (!event.shiftKey && (document.activeElement === sheet || document.activeElement === last)) { event.preventDefault(); first.focus() }
+    }
+    window.addEventListener('keydown', key, true)
+    return () => {
+      window.removeEventListener('keydown', key, true); document.body.style.overflow = overflow
+      if (before?.isConnected && (sheet.contains(document.activeElement) || document.activeElement === document.body)) before.focus()
+    }
+  }, [phone, detailRequested, requestedTrade, deepSym, hasPayload, hasAlert])
 
   const setFilter = (id: FilterId) => {
     const next = new URLSearchParams(params)
@@ -293,10 +330,9 @@ export default function TradeJourney({ payload, loading, error, embedded = false
     setParams(next, { replace: true })
   }
   const select = (j: Journey) => {
-    setSelId(j.trade_id)
     const next = new URLSearchParams(params)
     next.set('trade', j.trade_id); next.delete('symbol')
-    setParams(next, { replace: true })
+    setParams(next, { replace: !phone, state: phone ? { ...location.state, tradeJourneyReturn: true } : location.state })
   }
 
   if (!p) {
@@ -372,10 +408,13 @@ export default function TradeJourney({ payload, loading, error, embedded = false
             ))}
           </div>
         </div>
-        <aside aria-label="Trade journey" style={{ ...panel, padding: 16 }}>
+        <aside ref={detailSheet} tabIndex={-1} className={`tradeinview-journey-detail${detailRequested ? ' is-open' : ''}`} data-testid="tj-detail-sheet" role={phone && detailRequested ? 'dialog' : undefined} aria-modal={phone && detailRequested || undefined} aria-label="Trade journey" style={{ ...panel, borderRadius: phone ? 0 : RADIUS.lg, padding: 16 }}>
+          <div className="tradeinview-journey-back"><button type="button" data-testid="tj-detail-back" onClick={closeDetail} style={{ border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[2], color: TOKENS.text[0], borderRadius: RADIUS.md, padding: '8px 12px', fontSize: TYPE.base }}>Back</button><strong>Trade journey</strong></div>
+          <div className="tradeinview-journey-detail-scroll">
           {sel ? <Detail key={sel.trade_id} j={sel} onAlert={setAlertFor} />
-            : <div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>Click a trade to see where it came from, what happened, why it ended and when to get back in.</div>}
+            : <div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>{detailRequested ? 'Selected trade unavailable in this recorded journey window.' : 'Click a trade to see where it came from, what happened, why it ended and when to get back in.'}</div>}
           {alertMsg && <div data-testid="tj-alert-armed" style={{ color: TOKENS.success, fontSize: TYPE.base, marginTop: 8 }}>{alertMsg}</div>}
+          </div>
         </aside>
       </div>
 
