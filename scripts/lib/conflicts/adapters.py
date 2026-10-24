@@ -136,7 +136,7 @@ def schedule_inputs(lane_id, registry, observations):
 
 def _data_error(bundle, source, reason, index):
     return Finding("DATA_ERROR", "U1", f"{source}: {reason}", "the producer supplies confirmed identity, vocabulary and time",
-                   "notify_operator", "warn", [], f"{bundle.subject.kind}:{bundle.subject.id}:U1adapter:{source}:{index}")
+                   "notify_operator", "warn", [], f"{bundle.subject.kind}:{bundle.subject.id}:U1adapter:{source}:{index}", tier=1)
 
 
 def evaluate_inputs(bundle: EvaluationInputs, *, now: datetime, history=()):
