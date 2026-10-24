@@ -1,6 +1,6 @@
 """Pinned, provider-free W7 projection and ownership regressions."""
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
 
@@ -26,6 +26,8 @@ def inputs():
                "sector": {"value": "Technology", "source": "fixture-C1"},
                "industry": {"value": "Software", "source": "fixture-C1"}}}
     truth = {"portfolio": {"total_usd": 28000, "cash_usd": 6000, "accounts": accounts, "holdings": holdings,
+                            "positions_as_of": (NOW - timedelta(hours=2)).isoformat(),
+                            "valuation_as_of": NOW.isoformat(), "quote_as_of": NOW.isoformat(),
                             "as_of": NOW.isoformat(), "source": "fixture-CIO", "stale": False, "gap": None},
              "positions": {"rows": [], "source": "fixture-CIO", "as_of": NOW.isoformat()},
              "stops": {"active_count": 1, "pending_count": 1, "filled_count": 0, "unprotected_count": 2},
@@ -69,6 +71,38 @@ def test_account_filters_have_their_own_denominator_and_no_global_fallback():
     assert manual["account_gaps"][0]["value_usd"] == 8000
     assert manual["account_gaps"][0]["label"] == "Fixture manual account"
     assert "unknown" not in data["by_account"]
+
+
+def test_position_clock_is_separate_from_valuation_and_quote_clocks():
+    truth, look = inputs()
+    result = project_pages(truth, **look)["lookthrough"]
+    assert result["as_of"] == truth["portfolio"]["positions_as_of"]
+    assert result["as_of"] != result["quote_as_of"]
+    assert result["quote_as_of"] == truth["portfolio"]["quote_as_of"]
+    assert result["valuation_as_of"] == truth["portfolio"]["valuation_as_of"]
+    assert result["by_account"]["fixture_manual"]["as_of"] == "2026-10-20T20:00:00+00:00"
+    truth["portfolio"]["positions_as_of"] = None
+    assert project_pages(truth, **look)["lookthrough"]["as_of"] is None
+
+
+def test_class_limits_are_canonical_metadata_and_missing_classification_is_not_relaxed():
+    truth, look = inputs()
+    policy = {"classes": [{"id": "fixture_broad", "label": "Fixture broad fund", "limit_pct": 27, "near_limit_pct": 23.76}],
+              "lookthrough_company_limit_pct": 11, "lookthrough_sector_limit_pct": 23,
+              "near_limit_fraction": 0.88, "near_limit_pct": None, "source": "fixture single IPS projection", "gap": None}
+    truth["concentration_policy"] = policy
+    truth["positions"]["concentration"] = [{"symbol": "SYNF", "value_usd": 12000, "pct": 42.86,
+                                            "classification_label": None, "limit_pct": None,
+                                            "gap": {"reason": "Complete fund holdings not published"}}]
+    data = project_pages(truth, **look)
+    assert data["concentration_policy"] == policy
+    assert data["positions"]["concentration"] == truth["positions"]["concentration"]
+    assert data["positions"]["concentration"][0]["limit_pct"] is None
+    assert validate_payload(data) is data
+    del truth["concentration_policy"]
+    missing = project_pages(truth, **look)["concentration_policy"]
+    assert missing["gap"] and missing["classes"] == []
+    assert missing.get("lookthrough_company_limit_pct") is None
 
 
 def test_company_classification_requires_bound_guid_and_source():

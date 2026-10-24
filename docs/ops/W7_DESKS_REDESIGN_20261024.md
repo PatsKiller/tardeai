@@ -25,8 +25,10 @@ broker caller, writer, schedule or order behavior.
 | CIO status and measurement time | `cio_status.evaluations[]` | One shared evaluation model | W1 resolver |
 | Cash waterfall | `capital.{cash_usd,reserved_usd,earmarked_usd,investable_usd}` | Canonical holdings cash + published capital plan | W1; cash and earmarks counted once |
 | Potential raise | `capital.prospective_raise_usd` | Future trims in published plan, separate from current cash | W1 |
-| Policy max, alert level and cash range | `capital.{policy_max_pct,alert_level_pct,cash_band,current_cash_pct,post_plan_cash_pct}` | Confirmed investment policy and plan metadata | Operator policy, W1 |
+| Class-specific concentration policy and near-limit warnings | `concentration_policy.{classes,lookthrough_company_limit_pct,lookthrough_sector_limit_pct,near_limit_fraction}`; each class `limit_pct,near_limit_pct` | One IPS concentration key, class evidence and operator approval | W1 owns classifications/limits; W10 owns R13 evaluation; W7 formats source values only |
+| Cash range, current and post-plan share | `capital.{cash_band,current_cash_pct,post_plan_cash_pct}` | Confirmed investment policy and published plan | Operator policy, W1 |
 | Portfolio/account look-through denominator | `lookthrough.portfolio_total_usd`, `by_account[].portfolio_total_usd` | W1 `portfolio.total_usd`, `accounts[].total_usd` | Canonical holdings aggregate, W1 |
+| Position, valuation and quote clocks | `lookthrough.{as_of,valuation_as_of,quote_as_of}` | W1 `portfolio.{positions_as_of,valuation_as_of,quote_as_of}`; selected account's `accounts[].as_of` | Canonical holdings reader, W1; unknown position time stays unknown |
 | Fund weights and source contributions | `lookthrough.top_underlying[].sources[]` | `fund_holdings_cache.json[fund][stock]`; W1 current holding market value | `portfolio_lookthrough_themes` writer; W7 read-only projection |
 | Sectors and industries | `lookthrough.{sectors,industries}[]` | C1 `company_facts.{sector,industry}.{value,source}` bound to the same confirmed GUID | CIO company-facts writer; W7 grouping |
 | Funds without data and partial fund tails | `lookthrough.{funds_without_holdings,gaps}[]` | Current fund holding value × unpublished weight fraction | W7 derived from same holdings/cache; no provider calls |
@@ -72,11 +74,21 @@ Sector display preserves W3/W1 measurement semantics: `favoured: null` is not
 published (with its gap reason); a measured empty list means none favoured.
 W7 never derives posture or favoured sectors from daily returns.
 
-Local evidence at the source checkpoint: 49 affected tests passed with
-`psycopg2` hidden; the final W7 subset has 10 passing tests. Full `npm run build`,
+Addendum 3 replaces the universal concentration-cap display with W1's
+class-specific policy section. Risk's largest-position card uses that
+position's published classification and limit. Missing classifications have no
+assigned cap and show their gap. The old operational alert threshold is not
+displayed as current authority. Each class's near-limit threshold comes from
+W1; the global warning fraction is formatted as a percentage. W7 does not
+classify funds, compare exposures to thresholds, generate R13 findings or
+rebalance anything. Account-filtered allocation percentages use that account's
+basis; policy limits apply to the whole portfolio, as the UI states.
+
+Local evidence at the source checkpoint: 51 affected tests passed with
+`psycopg2` hidden; the final W7 subset has 12 passing tests. Full `npm run build`,
 the four integrity ratchets, lane registry, CIO completeness and docs-index
-checks passed. A copied-tree check with W1 source `8a81111c4` returned 27
-positions, 14 industry groups and a 224,724-byte response. It made no DB or
+checks passed. A copied-tree check with W1 core source `c6e3a24c3` returned 27
+positions, 14 industry groups and a 225,774-byte response. It made no DB or
 provider calls and verified all copied/source hashes unchanged. Live status
 and broker observations were explicitly unavailable in that check.
 
@@ -87,3 +99,5 @@ The fixture preparation also stopped at `spawnSync git EPERM` before launching
 a browser. Neither event is a passing UI result. W5 frame adoption, W2 route
 registration, W1's final dependency and the shared conflict components must be
 integrated and verified before this branch can request publication.
+
+W1 core `c6e3a24c3` now supplies separate position, valuation and quote clocks. The copied-tree receipt asserts that position time is the recorded position-build/data time and never substitutes the quote clock. The R13 policy follow-up remains a separate accepted-source dependency; this core-only receipt explicitly carries the missing class-policy gap.

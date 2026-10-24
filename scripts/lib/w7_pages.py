@@ -20,7 +20,7 @@ def validate_payload(payload: dict) -> dict:
     This deliberately accepts unavailable sections with a gap, rather than
     demanding invented numbers to satisfy a success-only schema.
     """
-    sections = ("portfolio", "positions", "stops", "regime", "approvals", "cio_status", "capital", "do_now", "lookthrough", "conflicts")
+    sections = ("portfolio", "positions", "stops", "regime", "approvals", "cio_status", "capital", "do_now", "lookthrough", "conflicts", "concentration_policy")
     if not isinstance(payload, dict) or any(not isinstance(payload.get(k), dict) for k in sections):
         raise ValueError("W7 page sections must be objects")
     def nullable_number(value):
@@ -48,6 +48,16 @@ def validate_payload(payload: dict) -> dict:
             nullable_number(row.get("value_usd"))
     if not isinstance(payload["conflicts"].get("findings"), list):
         raise ValueError("W7 conflict findings must be an engine list")
+    policy = payload["concentration_policy"]
+    if not isinstance(policy.get("classes"), list):
+        raise ValueError("W7 concentration classes must be a canonical list")
+    for row in policy["classes"]:
+        if not isinstance(row, dict):
+            raise ValueError("W7 concentration class must be an object")
+        nullable_number(row.get("limit_pct"))
+        nullable_number(row.get("near_limit_pct"))
+    for key in ("lookthrough_company_limit_pct", "lookthrough_sector_limit_pct", "near_limit_fraction"):
+        nullable_number(policy.get(key))
     return payload
 
 
@@ -130,6 +140,11 @@ def project_pages(truth: dict, **lookthrough_inputs) -> dict:
     result["conflicts"] = truth.get("conflicts") or {
         "findings": [], "source": "conflict engine read projection", "as_of": None, "stale": True,
         "gap": {"reason": "Conflict engine accepted source not yet integrated"}}
+    # W1 owns class detection and the one IPS rulebook. This display section
+    # intentionally supplies no numeric defaults while its source is pending.
+    result["concentration_policy"] = truth.get("concentration_policy") or {
+        "classes": [], "source": "CIO concentration policy", "as_of": None,
+        "gap": {"reason": "Class-specific concentration policy has not been published"}}
     portfolio = result["portfolio"]
     companies = [{"security_guid": guid, **c} for guid, c in ((truth.get("companies") or {}).get("by_guid") or {}).items()]
     # Account IDs and labels are W1's normalized aliases; only the derived view uses a local alias key.

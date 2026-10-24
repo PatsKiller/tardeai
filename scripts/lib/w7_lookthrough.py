@@ -141,7 +141,10 @@ def project(*, portfolio: dict, holdings: list[dict], companies: list[dict],
         narrative["reason"] = "The model declined to provide a narrative"
     if total is None:
         gaps.append({"label": "Portfolio basis", "value_usd": None, "reason": "Canonical portfolio total unavailable"})
-    return {"account": account, "as_of": portfolio.get("as_of"), "portfolio_total_usd": total,
+    position_time = (selected or {}).get("as_of") if account else portfolio.get("positions_as_of")
+    return {"account": account, "as_of": position_time,
+            "valuation_as_of": portfolio.get("valuation_as_of"), "quote_as_of": portfolio.get("quote_as_of"),
+            "portfolio_total_usd": total,
             "looked_through_usd": round(covered, 2) if total is not None else None, "portfolio_coverage_pct": pct(covered),
             "fund_value_usd": round(fund_value, 2) if total is not None else None,
             "fund_covered_usd": round(covered_fund, 2) if total is not None else None,

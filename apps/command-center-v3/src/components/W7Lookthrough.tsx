@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useW7Pages, W7Gap, W7Load, W7Panel, grid, line, linkStyle, mono, pct, usd, when } from './W7PagePanels'
+import { useW7Pages, W7Gap, W7Load, W7Panel, W7PolicyLimits, grid, line, linkStyle, mono, pct, usd, when } from './W7PagePanels'
 import { TOKENS } from '../lib/designTokens'
 import W7DetailSheet, { useW7Detail } from './W7DetailSheet'
 
@@ -20,8 +20,12 @@ export function W7LookthroughView({ data, account, selectAccount }: { data: any,
       <label>Account <select aria-label="Look-through account" value={account || ''} onChange={e => selectAccount(e.target.value || null)} style={{ background: TOKENS.bg[1], color: TOKENS.text[0], border: `1px solid ${TOKENS.border}`, padding: 8, minHeight: 44, maxWidth: '100%' }}>
         <option value="">All accounts</option>{(model.accounts || []).map((a: any) => <option key={a.id} value={a.id}>{a.label}</option>)}
       </select></label><span style={{ color: TOKENS.text[2] }}>Positions · {when(v.as_of)}</span>
+      <span style={{ color: TOKENS.text[2] }}>Quotes · {when(v.quote_as_of)}</span>
       <span>Looked through {usd(v.looked_through_usd)} of {usd(v.portfolio_total_usd)}</span>
     </div>
+    <W7Panel title="Portfolio concentration policy"><W7PolicyLimits policy={data.concentration_policy} />
+      {account && <p style={{ color: TOKENS.text[2] }}>The allocation below uses the selected account. Policy limits apply across all accounts.</p>}
+    </W7Panel>
     <div style={grid}>
       <W7Panel title="Sectors">{v.sectors?.length ? v.sectors.map(contributors) : <W7Gap>No underlying sector classifications are available.</W7Gap>}</W7Panel>
       <W7Panel title="Industries" testId="lookthrough-industries">
@@ -39,7 +43,7 @@ export function W7LookthroughView({ data, account, selectAccount }: { data: any,
     </div>
     <div style={grid}>
       <W7Panel title="Top underlying stocks">
-        <p style={{ color: TOKENS.text[2] }}>Direct + through funds · share of the whole portfolio</p>
+        <p style={{ color: TOKENS.text[2] }}>{account ? 'Direct + through funds · share of the selected account' : 'Direct + through funds · share of the whole portfolio'}</p>
         {(v.top_underlying || []).map((s: any) => <button key={s.symbol} onClick={() => detail.open(`stock:${s.symbol}`)} style={{ padding: '10px 0', minHeight: 44, width: '100%', background: 'transparent', border: 0, color: TOKENS.text[0], borderTop: `1px solid ${TOKENS.borderSubtle}`, display: 'flex', justifyContent: 'space-between', gap: 10, cursor: 'pointer' }}><b style={mono}>{s.symbol}</b><span style={mono}>{usd(s.value_usd)} · {pct(s.portfolio_pct)} →</span></button>)}
         {!v.top_underlying?.length && <W7Gap>No underlying holdings have been resolved.</W7Gap>}
       </W7Panel>

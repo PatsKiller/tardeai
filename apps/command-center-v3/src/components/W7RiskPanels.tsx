@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { DrillContext } from './DetailDrawer'
-import { W7Gap, W7Metric, W7Panel, grid, line, linkStyle, mono, pct, text, usd, when } from './W7PagePanels'
+import { W7Gap, W7Metric, W7Panel, W7PolicyLimits, grid, line, linkStyle, mono, pct, text, usd, when } from './W7PagePanels'
 import { RADIUS, TOKENS } from '../lib/designTokens'
 import W7DetailSheet, { useW7Detail } from './W7DetailSheet'
 
@@ -9,7 +9,7 @@ const sourceLabel: Record<string, string> = { broker: 'Broker resting', broker_r
 const stopSource = (p: any) => (p.stop_source === 'broker' || p.stop_source === 'broker_resting') && p.stop_state !== 'active' ? 'Broker order' : sourceLabel[p.stop_source] || 'Source unavailable'
 
 export function W7RiskExposure({ data, onDrill }: { data: any, onDrill: (ctx: DrillContext) => void }) {
-  const positions = data.positions || {}, stops = data.stops || {}, summary = positions, capital = data.capital || {}
+  const positions = data.positions || {}, stops = data.stops || {}, summary = positions
   const rows: any[] = positions.rows || []
   const detail = useW7Detail()
   const key = (p: any) => `position:${p.account_id || p.account}:${p.symbol}`
@@ -18,7 +18,7 @@ export function W7RiskExposure({ data, onDrill }: { data: any, onDrill: (ctx: Dr
     <div style={grid}>
       <W7Metric label="Loss if every active stop fills" value={usd(summary.loss_at_stop_usd)} detail={`${pct(summary.portfolio_heat_pct)} of portfolio · price gaps can increase losses`} />
       <W7Metric label="Value without active protection" value={usd(summary.unprotected_value_usd)} detail={stops.unprotected_count == null ? 'Position count unavailable' : `${stops.unprotected_count} positions`} />
-      <W7Metric label="Largest single name" value={summary.largest_name ? `${summary.largest_name.symbol} ${pct(summary.largest_name.pct)}` : 'Not available'} detail={`Policy max ${pct(capital.policy_max_pct)}`} />
+      <W7Metric label="Largest position" value={summary.largest_name ? `${summary.largest_name.symbol} ${pct(summary.largest_name.pct)}` : 'Not available'} detail={summary.largest_name?.classification_label && summary.largest_name?.limit_pct != null ? `${summary.largest_name.classification_label} · limit ${pct(summary.largest_name.limit_pct)}` : 'Classification and limit not published'} />
       <W7Metric label="Awaiting fill" value={text(stops.awaiting_fill_count)} detail="Pending activation is shown separately on each position." />
     </div>
     <W7Panel title="Positions and stops" testId="risk-positions">
@@ -54,8 +54,10 @@ export function W7RiskExposure({ data, onDrill }: { data: any, onDrill: (ctx: Dr
 export function W7RiskConcentration({ data }: { data: any }) {
   const model = data.positions || {}, rows: any[] = model.concentration || []
   return <W7Panel title="Concentration">
-    <p>Max single name {pct(data.capital?.policy_max_pct)} · alert level {pct(data.capital?.alert_level_pct)}</p>
-    {rows.map((p, i) => <div key={p.symbol || i} style={line}><b style={mono}>{p.symbol}</b><span style={mono}>{usd(p.value_usd)} · {pct(p.pct)}</span></div>)}
+    <W7PolicyLimits policy={data.concentration_policy} />
+    {rows.map((p, i) => <div key={p.symbol || i} style={line}><b style={mono}>{p.symbol}</b><span style={mono}>{usd(p.value_usd)} · {pct(p.pct)}</span>
+      {p.classification_label && p.limit_pct != null ? <span style={{ flexBasis: '100%' }}>{p.classification_label} · limit {pct(p.limit_pct)} · warning at {pct(p.near_limit_pct)}{p.status_label ? ` · ${p.status_label}` : ''}</span> : <W7Gap>{(typeof p.gap === 'string' ? p.gap : p.gap?.reason) || 'Classification and limit have not been published for this position.'}</W7Gap>}
+    </div>)}
     {!rows.length && <W7Gap>Concentration has not been published on the current portfolio basis.</W7Gap>}
     <Link to="/portfolio?tab=Look-through" style={linkStyle}>Underlying stocks, sectors and industries →</Link>
   </W7Panel>

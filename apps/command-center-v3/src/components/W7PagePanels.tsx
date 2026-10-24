@@ -5,6 +5,7 @@ import { FONT, RADIUS, TOKENS, TYPE, toneVars } from '../lib/designTokens'
 
 export const usd = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }) : 'Not available'
 export const pct = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? `${v.toLocaleString('en-US', { maximumFractionDigits: 2 })}%` : 'Not measured'
+const fractionPct = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? v.toLocaleString('en-US', { style: 'percent', maximumFractionDigits: 2 }) : 'Not measured'
 export const text = (v: unknown, gap = 'Not available') => v == null ? gap : String(v)
 const localHref = (v: unknown) => typeof v === 'string' ? v.replace(/^\/v3(?=\/|$)/, '') || '/' : null
 export const when = (v: unknown) => {
@@ -92,6 +93,21 @@ export function W7CioStatus({ data }: { data: any }) {
     <Link style={linkStyle} to="/cio?tab=evidence-comms">Review evidence →</Link>
   </W7Panel>
 }
+/** Pure display: W1 supplies every classification/limit; W10 owns R13 findings. */
+export function W7PolicyLimits({ policy }: { policy: any }) {
+  const rows: any[] = Array.isArray(policy?.classes) ? policy.classes : []
+  return <section data-testid="concentration-policy" style={{ marginBottom: 12 }}>
+    <h3 style={{ fontSize: TYPE.md, margin: '0 0 8px' }}>Concentration limits</h3>
+    <p style={{ color: TOKENS.text[2] }}>Limits apply to the whole portfolio.</p>
+    {rows.map((row, i) => <div key={row.id || i} style={line}><span>{row.label || 'Classification not published'}</span><span style={mono}>{pct(row.limit_pct)} · warning at {pct(row.near_limit_pct)}</span></div>)}
+    <div style={line}><span>Look-through · each company</span><span style={mono}>{pct(policy?.lookthrough_company_limit_pct)}</span></div>
+    <div style={line}><span>Look-through · each sector</span><span style={mono}>{pct(policy?.lookthrough_sector_limit_pct)}</span></div>
+    <div style={line}><span>Near-limit warning</span><span style={mono}>{fractionPct(policy?.near_limit_fraction)} of the applicable limit</span></div>
+    {policy?.gap && <W7Gap>{typeof policy.gap === 'string' ? policy.gap : policy.gap.reason}</W7Gap>}
+    {!rows.length && !policy?.gap && <W7Gap>Classifications and limits have not been published.</W7Gap>}
+    <p style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>{policy?.source_label || 'CIO investment policy'} · {when(policy?.as_of)}</p>
+  </section>
+}
 export function W7Capital({ data }: { data: any }) {
   const c = data.capital || {}
   const rows: [string, unknown][] = [['Cash on hand', c.cash_usd], ['Reserved', c.reserved_usd], ['Earmarked for redeployment', c.earmarked_usd], ['Investable today', c.investable_usd]]
@@ -99,9 +115,7 @@ export function W7Capital({ data }: { data: any }) {
     {rows.map(([label, value]) => <div key={label} style={{ ...line, fontWeight: label === 'Investable today' ? 700 : undefined }}><span>{label}</span><span style={mono}>{usd(value)}</span></div>)}
     <div style={{ ...line, marginTop: 16 }}><span>Potential raise from future trims</span><span style={mono}>{usd(c.prospective_raise_usd)}</span></div>
     <p style={{ color: TOKENS.text[2] }}>Potential proceeds are shown separately from cash on hand.</p>
-    <h3 style={{ fontSize: TYPE.md }}>Policy limits</h3>
-    <div style={line}><span>Max single name</span><span style={mono}>{pct(c.policy_max_pct)}</span></div>
-    <div style={line}><span>Concentration alert level</span><span style={mono}>{pct(c.alert_level_pct)}</span></div>
+    <W7PolicyLimits policy={data.concentration_policy} />
     <div style={line}><span>Cash band</span><span style={mono}>{pct(c.cash_band?.min)} – {pct(c.cash_band?.max)}</span></div>
     <div style={line}><span>Current cash</span><span style={mono}>{pct(c.current_cash_pct)}</span></div>
     <div style={line}><span>After plan</span><span style={mono}>{pct(c.post_plan_cash_pct)}</span></div>
