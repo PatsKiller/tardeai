@@ -1,0 +1,245 @@
+[
+  {
+    "pr": 1804,
+    "original_commit": "a8517f3d7f2786c407ab1746ddd80820aa5c26ea",
+    "integration_commit": "ab741b0de95675b0c70da1dace6b883ee667ee80",
+    "paths": [
+      {
+        "path": "config/llm_process_registry.json",
+        "old_delta_id": "c0dff2d84047c602623b99a0f5e2af367648d8d8",
+        "integration_delta_id": "c0dff2d84047c602623b99a0f5e2af367648d8d8",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "config/llm_routing_policy.json",
+        "old_delta_id": "7ba77471df72b1ee60a393afb70bc79ccfb511ca",
+        "integration_delta_id": "7ba77471df72b1ee60a393afb70bc79ccfb511ca",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "config/n8n_run_allowlist.json",
+        "old_delta_id": "e32e6f35ef4669a93d1e66981eefe8947aad9386",
+        "integration_delta_id": "c4381207dab150b869c725efe69b3a26904f0f88",
+        "same_zero_context_delta": false
+      },
+      {
+        "path": "scripts/directive_keyword_enhancer.py",
+        "old_delta_id": "94fbdebe812b1a273d9eb43d4e9453fa9c77368d",
+        "integration_delta_id": "94fbdebe812b1a273d9eb43d4e9453fa9c77368d",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/hermes_cross_source_synthesizer.py",
+        "old_delta_id": "cf98dfbc15223f7e251ac1f5525829df9e830ae3",
+        "integration_delta_id": "cf98dfbc15223f7e251ac1f5525829df9e830ae3",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/holdings_llm_refresh.py",
+        "old_delta_id": "25161f0d4e53f6a9767ec8f34eb286f7de4941da",
+        "integration_delta_id": "25161f0d4e53f6a9767ec8f34eb286f7de4941da",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/incubator_llm_screener.py",
+        "old_delta_id": "25fea6d3747f97f229ba69b3f6ad71fbd8923d1b",
+        "integration_delta_id": "25fea6d3747f97f229ba69b3f6ad71fbd8923d1b",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/journal_review_builder.py",
+        "old_delta_id": "f571be1d1320f9b5ffa32b5253f3ed74a4142959",
+        "integration_delta_id": "f571be1d1320f9b5ffa32b5253f3ed74a4142959",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/lib/cio_governed_model_bridge.py",
+        "old_delta_id": "d93ab1d106e4837bd5aba63ffd3f655486d009b3",
+        "integration_delta_id": "d93ab1d106e4837bd5aba63ffd3f655486d009b3",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/lib/governed_cloud_generation.py",
+        "old_delta_id": "2561b116b6f4e3494346ffd34ec727e6d33e2eed",
+        "integration_delta_id": "2561b116b6f4e3494346ffd34ec727e6d33e2eed",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/lib/governed_process_routes.py",
+        "old_delta_id": "88e41fb2b926d4b28666df2d9a5bfe0fc008451f",
+        "integration_delta_id": "88e41fb2b926d4b28666df2d9a5bfe0fc008451f",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/lib/lane_dispatch.py",
+        "old_delta_id": "611f2b4df3c5229ca75fdf489f35f092c6579bb9",
+        "integration_delta_id": "611f2b4df3c5229ca75fdf489f35f092c6579bb9",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/lib/llm_bridge_route.py",
+        "old_delta_id": "4fe09ce9fd7d36230d64d0ba9e82b30fbf209947",
+        "integration_delta_id": "4fe09ce9fd7d36230d64d0ba9e82b30fbf209947",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/n8n_run_executor.py",
+        "old_delta_id": "feb2a091492599935028bd93ca925fbd3082647b",
+        "integration_delta_id": "feb2a091492599935028bd93ca925fbd3082647b",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/research_intelligence_narrative_enrich.py",
+        "old_delta_id": "a14904b6a83dd035130f00eef315aaaa7460926e",
+        "integration_delta_id": "a14904b6a83dd035130f00eef315aaaa7460926e",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/run_cio_hardening_ci.py",
+        "old_delta_id": "754b13ea88dbdc8e9e56c3c6074367d06a6599db",
+        "integration_delta_id": "754b13ea88dbdc8e9e56c3c6074367d06a6599db",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/topic_research_synthesizer.py",
+        "old_delta_id": "0403cabee164f07ba20bbdfd3951e17c4a49926d",
+        "integration_delta_id": "0403cabee164f07ba20bbdfd3951e17c4a49926d",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/watchlist_entry_planner.py",
+        "old_delta_id": "3382e5e1b48fd55086b4d1945be86f8b530ef2ff",
+        "integration_delta_id": "3382e5e1b48fd55086b4d1945be86f8b530ef2ff",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "tests/test_bridge_agent_preconditions_20261009.py",
+        "old_delta_id": "b3d9f1251cb75a72ad95d01f4af0245b925fc1d2",
+        "integration_delta_id": "b3d9f1251cb75a72ad95d01f4af0245b925fc1d2",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "tests/test_dispatch_shadow_wave3_r1_20261010.py",
+        "old_delta_id": "9aa2a73d6c15e47e2f07bf47c90fc580d774a5d7",
+        "integration_delta_id": "9aa2a73d6c15e47e2f07bf47c90fc580d774a5d7",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "tests/test_lane_repair_20261015.py",
+        "old_delta_id": "7082a518d403ae2b7e97de42a3a71546676ef4e5",
+        "integration_delta_id": "7082a518d403ae2b7e97de42a3a71546676ef4e5",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "tests/test_lane_repair_ri_hermes_litmus_20261015.py",
+        "old_delta_id": "6e3a8a3c518e2d81baea4679a0542f91bcc82ce1",
+        "integration_delta_id": "6e3a8a3c518e2d81baea4679a0542f91bcc82ce1",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "tests/test_n8n_llm_bridge_routes_b1_20261015.py",
+        "old_delta_id": "245f887b97f8c787343ab169f9e579e86a0caae3",
+        "integration_delta_id": "245f887b97f8c787343ab169f9e579e86a0caae3",
+        "same_zero_context_delta": true
+      }
+    ]
+  },
+  {
+    "pr": 1599,
+    "original_commit": "57803b2ff0e3e9446a025fdc69860f02e840f466",
+    "integration_commit": "9bb8c147d65ec8b4785c5f4638c017fa8a8f3487",
+    "paths": [
+      {
+        "path": "config/ci_shard_duration_hints.json",
+        "old_delta_id": "7734b8cf7640ca9cf4c47249e26175c610f6bc17",
+        "integration_delta_id": "7734b8cf7640ca9cf4c47249e26175c610f6bc17",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "config/systemd/user/tradeai-n8n-run-relay.service",
+        "old_delta_id": "a9b3aa9e9713193564b8fd11f72c0b115ab05e71",
+        "integration_delta_id": "EMPTY",
+        "same_zero_context_delta": false
+      },
+      {
+        "path": "docs/INDEX.md",
+        "old_delta_id": "4ede543787c4ad95350ac30825b4734a9985ea14",
+        "integration_delta_id": "EMPTY",
+        "same_zero_context_delta": false
+      },
+      {
+        "path": "docs/architecture/n8n/ADR_COORDINATION_SECRETS.md",
+        "old_delta_id": "11ac40abf654937801462adf7989ea3f83cb302b",
+        "integration_delta_id": "f46f60d1e41e993b74ccf79cc1e007e68c4fbab2",
+        "same_zero_context_delta": false
+      },
+      {
+        "path": "scripts/lib/n8n_relay_env.py",
+        "old_delta_id": "633fe959f5cba86dceecb43b4d6f0835be58defc",
+        "integration_delta_id": "bf0adc424e996598eb14ce9edd74b38e19539657",
+        "same_zero_context_delta": false
+      },
+      {
+        "path": "scripts/lib/secret_name_classes.py",
+        "old_delta_id": "9616fb2eb5dea9cccc19ee407f16922c9d8e18b1",
+        "integration_delta_id": "9616fb2eb5dea9cccc19ee407f16922c9d8e18b1",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/n8n_run_relay.py",
+        "old_delta_id": "e9dc31f91d89c850c2b68d8f1606c561f2d33a55",
+        "integration_delta_id": "de7ce8960dcb368fc5c89c0ee7a28bcc40ea82a4",
+        "same_zero_context_delta": false
+      },
+      {
+        "path": "scripts/render_n8n_relay_env.py",
+        "old_delta_id": "33c034e4de03ca937c40de3df45a500917b5594f",
+        "integration_delta_id": "33c034e4de03ca937c40de3df45a500917b5594f",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/run_cio_hardening_ci.py",
+        "old_delta_id": "6384d87117cb98197f4d48faaab9adb806df1d79",
+        "integration_delta_id": "6384d87117cb98197f4d48faaab9adb806df1d79",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "tests/test_n8n_relay_env_allowlist_20261009.py",
+        "old_delta_id": "c5bdc2c0f9e0526a2888e6b23d2926b2cd95646e",
+        "integration_delta_id": "558732424188b0568fa07cc4e4277b014293e0a2",
+        "same_zero_context_delta": false
+      }
+    ]
+  },
+  {
+    "pr": 1628,
+    "original_commit": "8e505c97292c50d7758f296ba1787bfe6950bee3",
+    "integration_commit": "aa0b9b8d912bbc3fb0d440f1bcc5d3a6ee25b9f3",
+    "paths": [
+      {
+        "path": "scripts/cio_phase2_exact_main_deploy.sh",
+        "old_delta_id": "9f75741c87f196c862a6d9d7033d6f4892b5d63b",
+        "integration_delta_id": "9f75741c87f196c862a6d9d7033d6f4892b5d63b",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/lib/release_grant_binding.py",
+        "old_delta_id": "d62a92409862bbd5dc49580a714be19f67cfca0a",
+        "integration_delta_id": "d62a92409862bbd5dc49580a714be19f67cfca0a",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "scripts/release_grant_preflight.py",
+        "old_delta_id": "1878750313ffb8471feacdcc9712eda813c590dd",
+        "integration_delta_id": "1878750313ffb8471feacdcc9712eda813c590dd",
+        "same_zero_context_delta": true
+      },
+      {
+        "path": "tests/test_release_grant_binding_20260925.py",
+        "old_delta_id": "733c75eaaec20619d235c71a77843923445779dd",
+        "integration_delta_id": "5f7e3003cc723d4cdd6a21feac853300d58d4b46",
+        "same_zero_context_delta": false
+      }
+    ]
+  }
+]

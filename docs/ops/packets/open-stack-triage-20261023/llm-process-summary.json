@@ -1,0 +1,172 @@
+[
+  {
+    "pr": 1804,
+    "processes": [
+      {
+        "id": "directive_keyword_enhancer",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "hermes_cross_source_synthesizer",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "holdings_llm_refresh",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "topic_ingestion",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "ri_narrative_enrich",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "topic_research_synthesizer",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "watchlist_entry_planner",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "incubator_llm_screener",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "journal_review_builder",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      }
+    ]
+  },
+  {
+    "pr": 1805,
+    "processes": [
+      {
+        "id": "hermes_analyst_coverage",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "portfolio_lookthrough_themes",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "hermes_usefulness_score_n8n",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "proposal_llm_review",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "defense_weekly_oversight",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "analyst_report_editorial",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "analyst_report_critique",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      }
+    ]
+  },
+  {
+    "pr": 1806,
+    "processes": [
+      {
+        "id": "hermes_external_research",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "due_diligence_questions",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "blind_review_runner",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      }
+    ]
+  },
+  {
+    "pr": 1807,
+    "processes": [
+      {
+        "id": "watchlist_agent_debate_flash",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "watchlist_agent_flash_extract",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "watchlist_cio_synthesis_cron",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "watchlist_maria_flash_narrative",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "watchlist_risk_flash_narrative",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      },
+      {
+        "id": "watchlist_steph_flash_narrative",
+        "main_present": true,
+        "main_equal": true,
+        "different_keys_main": []
+      }
+    ]
+  }
+]
