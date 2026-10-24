@@ -188,7 +188,8 @@ def test_completeness_leaves_no_operator_relevant_output_unsurfaced():
     verified = {e["name"] for e in data["record_edges"] if e["verified"]}
     for name in ("CIOAdvisoryMessage@v1", "CIOAdvisorySynthesis@v1", "CIOAgentBrief@v1", "CIOAttentionAnswer@v1",
                  "CIOWhatChanged@v1", "CioComposedNarrative@v1", "CioModelNarration@v1", "CioWakeComposition@v1",
-                 "GrokCritique@v1", "InvestmentDecision@v1", "InvestmentIntelligenceCard@v1", "AlertQuality@v1", "CIOCompanyFacts@v1"):
+                 "GrokCritique@v1", "InvestmentDecision@v1", "InvestmentIntelligenceCard@v1", "AlertQuality@v1", "CIOCompanyFacts@v1",
+                 "CIOReviewLifecycle@v1"):
         assert f"schema:{name}" in verified
     # BuyReady packets are visible through the payload flow itself (served from their own store).
     visible = data.get("visibility_evidence") or {}

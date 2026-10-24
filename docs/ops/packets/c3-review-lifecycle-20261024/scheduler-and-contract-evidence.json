@@ -1,0 +1,129 @@
+{
+  "observed_at": "2026-10-24T15:04:13.561758+00:00",
+  "source_main": "e5fa288ecc6971d1a55a79f7e3ba5bbbb46c5dd0",
+  "registry_intent": [
+    {
+      "lane_id": "cio-stance-classification-drain",
+      "state": "ACTIVE",
+      "state_reason": "Installed 2026-09-24 at the M5 tranche-2 deploy (operator: 'do the post-merge steps'): weekday cron 07:20 and 19:20 from the dev tree, flock /tmp/cio_stance_classify.lock, logs/cio_stance_classification_drain.log. Deterministic Phase-1 classification only; no LLM.",
+      "kind": "cron",
+      "expression": "20 7,19 * * 1-5",
+      "cadence": null,
+      "stage": null,
+      "dispatch_mode": null,
+      "dispatch_cron": null,
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/cio_stance_classification_drain.log"
+      }
+    },
+    {
+      "lane_id": "symbol-news-curation-monitor",
+      "state": "RETIRED",
+      "state_reason": "Superseded by lane health-tick on 2026-10-07: its crontab line was deleted at 19:56Z (backup ~/.local/state/tradeai/backups/crontab-20261007T195625Z-pre-ranks34.txt) and the same script now runs as a step inside health-tick with its original lock, argv and log (cron consolidation ranks 3-4, PRs #1486/#1487). Nothing stopped; the owner of the schedule moved.",
+      "kind": "cron",
+      "expression": "27 * * * * symbol_news_curation_monitor.py --apply",
+      "cadence": null,
+      "stage": null,
+      "dispatch_mode": null,
+      "dispatch_cron": null,
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/symbol_news_curation_sla.json"
+      }
+    },
+    {
+      "lane_id": "run-governed-symbol-thesis-acquisition",
+      "state": "ACTIVE",
+      "state_reason": null,
+      "kind": "cron",
+      "expression": "17 17 * * 1-5",
+      "cadence": null,
+      "stage": null,
+      "dispatch_mode": null,
+      "dispatch_cron": null,
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/symbol_thesis_acquisition.log",
+        "evidence": "SCRIPT_RECEIPT",
+        "evidence_ref": "2026-10-09 registry-ops-crons (breach triage SIGNAL_WRONG): the wrapper sets PROJ to the dev tree and logs there (host mtime 2026-10-09 17:18:48, exit=0); the CURRENT redirect log is 0 bytes since 08-28."
+      }
+    },
+    {
+      "lane_id": "tradeai-hermes-cio-worker",
+      "state": "ACTIVE",
+      "state_reason": null,
+      "kind": "systemd",
+      "expression": "tradeai-hermes-cio-worker.timer",
+      "cadence": null,
+      "stage": null,
+      "dispatch_mode": null,
+      "dispatch_cron": null,
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/hermes_cio_worker.log",
+        "evidence": "SYSTEMD_STDOUT_APPEND"
+      }
+    }
+  ],
+  "operative_contracts": [],
+  "captured_cron": [
+    {
+      "line": 880,
+      "active_at_capture": true,
+      "schedule": [
+        "17",
+        "17",
+        "*",
+        "*",
+        "1-5"
+      ],
+      "matched_identifiers": [
+        "run_governed_symbol_thesis_acquisition"
+      ]
+    },
+    {
+      "line": 998,
+      "active_at_capture": true,
+      "schedule": [
+        "20",
+        "7,19",
+        "*",
+        "*",
+        "1-5"
+      ],
+      "matched_identifiers": [
+        "drain_cio_stance_classification"
+      ]
+    }
+  ],
+  "captured_cron_sha256": "b2097df25a62e6824b6e7046d55a3f279b9b058e76b1bcd09c2da89b5a748626",
+  "captured_cron_age_note": "Coordinator read-only capture2026-10-24 approximately04:35Z; historical at audit; no fresh crontab called.",
+  "runtime_receipts": {
+    "cio-stance-classification-drain": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/cio-stance-classification-drain_last.json",
+      "mtime": "2026-10-23T23:20:02.892973+00:00",
+      "fields": [
+        "consecutive_failures",
+        "exit",
+        "finished_at",
+        "lane_id",
+        "mode",
+        "ok_at",
+        "pid",
+        "schema",
+        "script",
+        "started_at",
+        "status",
+        "summary"
+      ],
+      "selected": {
+        "status": "ok",
+        "mode": "live",
+        "started_at": "2026-10-23T23:20:01.692687+00:00",
+        "finished_at": "2026-10-23T23:20:02.892670+00:00",
+        "script": "drain_cio_stance_classification.py"
+      }
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "observed_at": "2026-10-24T15:00:00.992620+00:00",
+  "path": "/home/johnclaw/.local/state/tradeai/cio_stance_review_requests.jsonl",
+  "sha256": "b759be71c60417e8f5cd615500ccbe0008288a94c62047c2907813cd290f3c29",
+  "bytes": 89307,
+  "rows": 187,
+  "invalid": 0,
+  "statuses": {
+    "created": 187
+  },
+  "sources": {
+    "screener_go_alerts": 23,
+    "send_telegram_proposal_alert": 158,
+    "social_scalp_scanner": 6
+  },
+  "earliest": "2026-09-24T13:30:02Z",
+  "latest": "2026-10-23T20:42:59Z",
+  "unique_research_ids": 187,
+  "with_security_guid": 0,
+  "mtime": "2026-10-23T20:43:21.355628+00:00"
+}

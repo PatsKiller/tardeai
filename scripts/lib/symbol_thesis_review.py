@@ -327,6 +327,8 @@ def reconcile_symbol_thesis(
                 "writer": evidence.get("writer") or actor_id,
                 "writer_version": evidence.get("writer_version") or SCHEMA,
                 "source_research_ids": list(evidence.get("source_research_ids") or []),
+                "review_request_ids": list(evidence.get("review_request_ids") or []),
+                "security_guid": evidence.get("security_guid"),
                 "delta_id": evidence.get("delta_id"),
                 "trigger": trigger,
                 "run_id": evidence.get("run_id"),

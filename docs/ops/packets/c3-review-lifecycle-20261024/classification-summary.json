@@ -1,0 +1,10 @@
+{
+  "observed_at": "2026-10-24T15:16:32.881324+00:00",
+  "rows": 187,
+  "sha256": "6f97b02179a84e07f25d1bbf2f5c1ff5d87711c99b51b55094b9852c073fec0b",
+  "statuses": {
+    "no_deterministic_match": 49,
+    "applied": 55,
+    "already_classified": 83
+  }
+}

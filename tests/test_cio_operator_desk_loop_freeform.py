@@ -49,16 +49,25 @@ def test_freeform_jepi_ask_answers(monkeypatch):
     assert out.get("reply_source") in ("freeform_failsoft", "freeform_flash")
 
 
-def test_reentry_still_desk_path(monkeypatch):
+def test_reentry_still_desk_path(monkeypatch, tmp_path):
+    import scripts.lib.cio_operator_desk_loop as desk
+    import scripts.lib.cio_telegram_converse as tg
+    # A resolvable named subject and an explicitly empty fixture desk exercise
+    # the real missing-data/deferred guard without depending on the host book.
+    monkeypatch.setattr(desk, "_known_symbols", lambda: frozenset({"TSLA"}))
+    monkeypatch.setattr(desk, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(desk, "_attach_subject_dossier", lambda *a: None)
+    monkeypatch.setattr(tg, "load_reentry_desk_rows", lambda: ([], "2026-10-24T16:00:00+00:00", "fixture reentry"))
     monkeypatch.setenv("CIO_OPERATOR_INTENT_FLASH", "0")
     monkeypatch.setenv("CIO_REENTRY_FLASH", "0")
     intent = analyze_operator_intent(
-        "what can i reenter now support resistance 50day"
+        "what can i reenter TSLA now support resistance 50day"
     )
     assert intent.get("intent") == "reentry"
     assert "reentry_ready" in (intent.get("needs") or [])
     out = handle_operator_desk_question(
-        "what can i reenter now support resistance 50day",
+        "what can i reenter TSLA now support resistance 50day",
+        dry_run=True,
         chat_id="1",
         message_id="m3",
     )

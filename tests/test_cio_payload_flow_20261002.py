@@ -205,6 +205,13 @@ def test_real_tree_every_non_surfaced_item_is_classified_and_none_is_stale():
     assert company["store"] == "cio_instrument_records.jsonl"
     assert all(company["checks"].values()), company
     assert report["visibility_evidence"]["schema:CIOCompanyFacts@v1"]["method"] == "RECORD_EDGE_VERIFIED"
+    review = next(e for e in report["record_edges"] if e["name"] == "schema:CIOReviewLifecycle@v1")
+    assert review["route"] == "/api/v3/opportunities/{param}"
+    assert review["path"] == ["cio_review", "lifecycle"]
+    assert review["store"] == "cio_instrument_records.jsonl" and all(review["checks"].values())
+    assert report["visibility_evidence"]["schema:CIOReviewLifecycle@v1"]["method"] == "RECORD_EDGE_VERIFIED"
+    assert "schema:CIOReviewAging@v1" not in report["cio_capabilities_operator_visible"]
+    assert any(r["name"] == "schema:CIOReviewAging@v1" and "DRAFT source-side diagnostic" in r["reason"] for r in report["not_operator_relevant"])
     # every remaining operator-relevant gap is an explicit, reasoned SURFACE entry
     entries = {e["name"]: e for e in json.loads(Path("config/cio_surface_classification.json").read_text())["entries"]}
     for name in report["produced_not_surfaced_operator_relevant"]:

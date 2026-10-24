@@ -652,6 +652,9 @@ def enqueue_research_request(
             },
             "provenance": {"operator_forced": bool(operator_forced), "actor_id": actor_id},
         }
+        if plan.get("review_request_id"):
+            request["review_request_id"] = plan["review_request_id"]
+            request["review_requests"] = list(plan.get("review_requests") or [])
         try:
             from scripts.lib.event_lineage import lineage_fields  # noqa: PLC0415
 
@@ -721,6 +724,12 @@ def enqueue_research_request(
                 "symbol": symbol,
                 "authority": AUTHORITY,
             })
+        if plan.get("review_requests") and result.existing is not None and result.research_id and result.reason != "reused_fresh_result":
+            meta = ((_load_projection().get("by_research_id") or {}).get(result.research_id) or {})
+            body = dict(meta.get("request") or {})
+            by_id = {r.get("review_request_id"): r for r in [*(body.get("review_requests") or []), *plan["review_requests"]]}
+            body["review_requests"] = list(by_id.values())
+            _patch_request(result.research_id, {"request": body})
         _log_enqueue(result, pid, pri)
         if (linked and result.existing is not None and result.research_id
                 and result.reason != "reused_fresh_result"):
@@ -967,6 +976,8 @@ def mark_running(research_id: str, *, worker_id: str) -> None:
         rec["request"]["status"] = "running"
         proj["by_research_id"][research_id] = rec
         _save_projection(proj)
+        from scripts.lib.cio_review_lifecycle import safe_observe
+        safe_observe(rec.get("request") or rec, "RESEARCHING", at=rec.get("locked_ts") or _now(), reason="Hermes worker started")
 
 
 @_in_projection_transaction
@@ -976,6 +987,9 @@ def mark_failed(research_id: str, error: str) -> None:
     rec = (proj.get("by_research_id") or {}).get(research_id)
     if not rec:
         return
+    from scripts.lib.cio_review_lifecycle import safe_observe
+    lifecycle = safe_observe(rec.get("request") or rec, "FAILED", at=now, reason="Hermes research failed")
+    rec["review_lifecycle_persist"] = lifecycle
     rec["status"] = "failed"
     rec["error"] = (error or "")[:500]
     rec["updated_ts"] = now
