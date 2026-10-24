@@ -1,0 +1,11 @@
+{
+  "mode": "CHECK_ONLY",
+  "host_discovery": false,
+  "snapshot": "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json",
+  "snapshot_age": "historical, not current host acceptance",
+  "returncode": 0,
+  "canonical_serialization": true,
+  "registry_sha256_before": "3d6d7e34d4b809d0d5d68912237ef6e82b8a7381776c500245da241ae53aa4ce",
+  "registry_sha256_after": "3d6d7e34d4b809d0d5d68912237ef6e82b8a7381776c500245da241ae53aa4ce",
+  "registry_unchanged": true
+}

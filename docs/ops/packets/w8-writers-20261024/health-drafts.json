@@ -1,0 +1,1624 @@
+{
+  "scope": "W8",
+  "operative": false,
+  "activation_allowed": false,
+  "destination_after_normal_claim_handoff": "config/n8n_health_contracts.json pending_changes only",
+  "contracts": [
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "risk-management-refresh",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Risk management snapshot writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/portfolio_orchestrator.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/portfolio_orchestrator.py",
+          "direction": "calls"
+        },
+        {
+          "name": "data/portfolios/state/risk_management.json",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": null,
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "standalone_cached_input_writer_required",
+          "risk_writer_owner_handoff_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "market-regime-classifier",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Market regime writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/market_regime_classifier.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/market_regime_classifier.py",
+          "direction": "calls"
+        },
+        {
+          "name": "market_regime_snapshots",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": "data/runtime/market-regime-classifier_last.json",
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "bounded_env_audit_required",
+          "health_owner_review_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "sync-dividend-data",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Dividends writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/sync_dividend_data.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/sync_dividend_data.py",
+          "direction": "calls"
+        },
+        {
+          "name": "ticker_dividend_data",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": "data/runtime/sync-dividend-data_last.json",
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "bounded_env_and_provider_owner_audit_required",
+          "health_owner_review_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "refresh-symbol-cards",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Symbol cards writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/refresh_symbol_cards.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/refresh_symbol_cards.py",
+          "direction": "calls"
+        },
+        {
+          "name": "data/runtime/symbol_cards_latest.json",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": "data/runtime/refresh_symbol_cards_last.json",
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "live_server_materialization_dependency",
+          "honest_profiles_subprocess_exit_required",
+          "bounded_env_audit_required",
+          "health_owner_review_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "recommendation-intelligence-engine",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Recommendation attribution writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/recommendation_intelligence_engine.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/recommendation_intelligence_engine.py",
+          "direction": "calls"
+        },
+        {
+          "name": "data/runtime/rec_source_quality_latest.json",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": null,
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "write_free_dry_run_and_success_receipt_required",
+          "bounded_env_audit_required",
+          "health_owner_review_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "generate-dual-opinion-advisory",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Dual opinion writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/generate_dual_opinion_advisory.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/generate_dual_opinion_advisory.py",
+          "direction": "calls"
+        },
+        {
+          "name": "CLI --json-out (no registered durable destination)",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": null,
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "standalone_lane_contract_required",
+          "bounded_env_audit_required",
+          "schedule_owner_decision_required",
+          "health_owner_review_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "advisory-opinion-session",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Advisory opinion session writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/lib/advisory/advisory_opinion_engine.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/lib/advisory/advisory_opinion_engine.py",
+          "direction": "calls"
+        },
+        {
+          "name": "data/runtime/advisory_opinion_cache.json",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": null,
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "standalone_lane_contract_required",
+          "governed_model_and_memory_owner_handoff_required",
+          "schedule_owner_decision_required",
+          "health_owner_review_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "portfolio-correlation",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Portfolio correlation writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/portfolio_correlation.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/portfolio_correlation.py",
+          "direction": "calls"
+        },
+        {
+          "name": "data/portfolios/state/correlation.json",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": null,
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "standalone_cached_input_writer_required",
+          "provider_owner_routing_required",
+          "schedule_owner_decision_required",
+          "health_owner_review_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "defense-cash-alternatives",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Cash alternatives writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/defense_cash_alternatives.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/defense_cash_alternatives.py",
+          "direction": "calls"
+        },
+        {
+          "name": "data/runtime/defense_cash_alternatives_latest.json",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": null,
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "write_free_dry_run_and_success_receipt_required",
+          "provider_owner_routing_required",
+          "schedule_owner_decision_required",
+          "health_owner_review_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "morning-brief-0730",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Morning brief writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/send_morning_brief.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/send_morning_brief.py",
+          "direction": "calls"
+        },
+        {
+          "name": "logs/morning_brief.log",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": null,
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "notification_intent_handoff_required",
+          "offline_dry_run_and_success_receipt_required",
+          "health_owner_review_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "portfolio-ai-analyst",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Portfolio briefs writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/portfolio_orchestrator.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/portfolio_orchestrator.py",
+          "direction": "calls"
+        },
+        {
+          "name": "reports/portfolio_brief_*.docx",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": null,
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "standalone_report_writer_required",
+          "execution_and_sender_closure_excluded",
+          "health_owner_review_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "eod-open-trade-alert",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the End of day trades writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/eod_open_trade_alert.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/eod_open_trade_alert.py",
+          "direction": "calls"
+        },
+        {
+          "name": "logs/eod_alert.log",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": null,
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "notification_intent_handoff_required",
+          "success_receipt_required",
+          "health_owner_review_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "hermes-score-alerts",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Hermes alerts writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/hermes_score_alerts.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/hermes_score_alerts.py",
+          "direction": "calls"
+        },
+        {
+          "name": "alert_events",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": null,
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "notification_intent_handoff_required",
+          "success_receipt_required",
+          "health_owner_review_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "cio-decision-engine",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the CIO decisions writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/cio_decision_engine.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/cio_decision_engine.py",
+          "direction": "calls"
+        },
+        {
+          "name": "logs/cio_decision_engine.log",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": null,
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "cio_truth_owner_handoff_required",
+          "pause_requires_operator_activation",
+          "health_owner_review_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "options-lifecycle-run",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Options lifecycle writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/options_lifecycle_run.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/options_lifecycle_run.py",
+          "direction": "calls"
+        },
+        {
+          "name": "data/runtime/options_lifecycle_latest.json",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": null,
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "execution_engineering_and_operator_resume_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "options-lifecycle-digest",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Options lifecycle digest writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/options_lifecycle_digest.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/options_lifecycle_digest.py",
+          "direction": "calls"
+        },
+        {
+          "name": "logs/options_lifecycle.log",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": null,
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "execution_engineering_and_operator_resume_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "defense-execution",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Defense execution writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/defense_execution.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/defense_execution.py",
+          "direction": "calls"
+        },
+        {
+          "name": "logs/defense_fills.log",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": null,
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "execution_engineering_and_operator_resume_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "sector-momentum-engine",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Sector momentum writer and its actual schedule owner; source restoration only.",
+        "source": "scripts/sector_momentum_engine.py"
+      },
+      "connects_to": [
+        {
+          "name": "scripts/sector_momentum_engine.py",
+          "direction": "calls"
+        },
+        {
+          "name": "data/runtime/sector_momentum_latest.json",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": null,
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "success_receipt_required",
+          "health_owner_review_required",
+          "bounded_dependency_audit_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "run-pullback-macd-screener",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Pullback and MACD scan writer and its actual schedule owner; source restoration only.",
+        "source": "linux_launchers/run_pullback_macd_screener.sh"
+      },
+      "connects_to": [
+        {
+          "name": "linux_launchers/run_pullback_macd_screener.sh",
+          "direction": "calls"
+        },
+        {
+          "name": "logs/pullback_macd_screener.log",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": null,
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "success_receipt_required",
+          "health_owner_review_required",
+          "bounded_dependency_audit_required"
+        ]
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "kind": "lane",
+      "id": "run-pullback-macd-monitor",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "DRAFT",
+      "operative": false,
+      "owner": "PENDING_OWNER_REVIEW",
+      "reviewer": null,
+      "reviewed_at": null,
+      "purpose": {
+        "text": "Monitor the Pullback and MACD monitor writer and its actual schedule owner; source restoration only.",
+        "source": "linux_launchers/run_pullback_macd_monitor.sh"
+      },
+      "connects_to": [
+        {
+          "name": "linux_launchers/run_pullback_macd_monitor.sh",
+          "direction": "calls"
+        },
+        {
+          "name": "logs/pullback_macd_monitor.log",
+          "direction": "write"
+        },
+        {
+          "name": "missed-run watchdog (W4 integration pending)",
+          "direction": "read"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "receipt_identity_and_output",
+          "text": "Exact writer identity, real execution, successful exit, bound timestamp, expected business output and consumer readback. Parent success alone is insufficient."
+        }
+      ],
+      "degraded": [
+        {
+          "check": "coverage_or_late",
+          "text": "Missing success/output evidence is NOT_MEASURED; one elapsed scheduled opportunity without success is visible."
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_or_output_failed",
+          "text": "Run refusal, failure, missing expected output, or two elapsed opportunities without successful-run evidence. Never use log mtime as success."
+        }
+      ],
+      "baseline": {
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "timeout_s": "NOT_MEASURED",
+        "freshness_degraded_after_h": "NOT_MEASURED",
+        "freshness_failed_after_h": "NOT_MEASURED",
+        "source": "Pending actual writer measurements and owner SLO review; no numerical runtime limits proposed."
+      },
+      "review_by": "2026-11-24",
+      "alerting": {
+        "degraded": {
+          "notifier_priority": "P3"
+        },
+        "failed": {
+          "notifier_priority": "P2"
+        },
+        "enforced": false,
+        "routing": "Pending W4 monitor and independent delivery proof; this draft sends nothing."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": true,
+        "note": "No retries or execution until actual closure, health, allowlist and authority reviews complete."
+      },
+      "evidence": {
+        "receipt": null,
+        "verify": [
+          "Use a captured exact-run receipt and same-attempt output/consumer evidence; skipped/dry/future receipts never prove success."
+        ],
+        "blockers": [
+          "success_receipt_required",
+          "health_owner_review_required",
+          "bounded_dependency_audit_required"
+        ]
+      }
+    }
+  ]
+}

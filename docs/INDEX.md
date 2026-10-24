@@ -1028,6 +1028,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261024-doc-index-pr-flow.md` | DSN-20261024-doc-index-pr-flow.md |
 | `docs/designs/DSN-20261024-ops-config-modals.md` | DSN-20261024-ops-config-modals.md |
 | `docs/designs/DSN-20261024-site-system-tabs.md` | System tab request admission |
+| `docs/designs/DSN-20261024-w8-writers.md` | W8 monitored writer restoration |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
 | `docs/diligence/current/BROKER_WRITE_GUARD_EVIDENCE.md` | Broker Write Guard Evidence |
@@ -2082,6 +2083,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/TRANSFERSON_UNIVERSE_CANONICAL_CLOSEOUT_2026-08-25.md` | Transferson canonical universe — local closeout |
 | `docs/ops/TRANSFERSON_UNIVERSE_LIVE_ACCEPTANCE_GATE_2026-08-25.md` | Transferson canonical universe — live CURRENT/DB acceptance gate |
 | `docs/ops/VALIDATED_LEARNING_REMEDIATION.md` | Validated learning remediation: release and operations |
+| `docs/ops/W8_WRITERS_20261024.md` | W8 writer restoration: source bindings and pending admission |
 | `docs/ops/WATCH_DECISION_STANDARDS_2026-10-08.md` | Watch decision standards — the Communications standards on the Watchlist (2026-10-08) |
 | `docs/ops/WATCH_FRESHNESS_NOISE_20261024.md` | WP-29: Watch closed-session prices and compact level evidence |
 | `docs/ops/WATCH_LISTS_PAGE_2026-10-23.md` | Watch — My Watchlist, System Suggests, Full universe (2026-10-23) |
@@ -2231,6 +2233,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/swing-alert-single-sender-20261019/README.md` | Swing entry alerts: one sender (2026-10-19) |
 | `docs/ops/packets/sync-social-residual-cron-20261024/README.md` | WP-33 item2: residual sync-social cron retirement packet |
 | `docs/ops/packets/tmp-hygiene-auto-apply-20261022/README.md` | /tmp hygiene that deletes — auto-apply on host timers (2026-10-22) |
+| `docs/ops/packets/w8-writers-20261024/README.md` | W8 source packet |
 | `docs/ops/proposals/main-ci-watch-lane-20261022/README.md` | Proposed n8n lane `main-ci-watch` — main-HEAD exact-SHA CI for the Releases page |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution |
 | `docs/ops/ready-three-2026-10-21/AGENT_HANDOFF.md` | Agent handoff — 2026-10-21 |
