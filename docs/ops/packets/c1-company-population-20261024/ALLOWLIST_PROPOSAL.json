@@ -1,0 +1,34 @@
+{
+  "lane_id": "cio-company-facts-populate",
+  "command": [
+    "$PY",
+    "scripts/cio_company_facts_populate.py",
+    "--with-db",
+    "--state-root",
+    "$STATE_ROOT"
+  ],
+  "dry_run_arg": [
+    "--dry-run"
+  ],
+  "live_arg": [
+    "--apply"
+  ],
+  "lock": "/tmp/tradeai_cio_company_facts_populate.lock",
+  "lock_kind": "flock",
+  "timeout_s": 600,
+  "market_gate": false,
+  "output_signal": "data/runtime/cio-company-facts-populate_last.json",
+  "output_receipt": "v2",
+  "env_names": [
+    "DB_HOST",
+    "DB_NAME",
+    "DB_PASSWORD",
+    "DB_PORT",
+    "DB_USER",
+    "TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE",
+    "TRADEAI_PERSISTENT_STATE_ROOT"
+  ],
+  "env_allowlist_mode": "enforce",
+  "env_evidence": "session13_db narrow DB_* bootstrap; gated PG dual-write flag; canonical state root. No model/provider/broker credential.",
+  "source": "NEW native apply-only source proposal. Never cron/systemd. One attempt; canonical history retained; actual contract admission required."
+}

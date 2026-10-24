@@ -1,0 +1,537 @@
+{
+  "schema": "C1PopulationCiFollowup@v1",
+  "pr": 2074,
+  "branch": "work/DSN-20261024-c1-company-populate-P1-T1",
+  "snapshot_parent_sha": "b81ac630d96064624007dffd68184cf1a5039a34",
+  "full_snapshot": "b81 plus the working-tree accessor/confidence fixes BEFORE the row-order fix; source held unchanged throughout full run, seven hashes verified at completion",
+  "full_run": {
+    "exit": 1,
+    "wall_s": 2117,
+    "registered_gates": 675,
+    "file_references": 1438,
+    "unique_registered_files": 1403,
+    "duplicate_file_references": 35,
+    "missing_files": [],
+    "execution_units": 712,
+    "passed_units": 686,
+    "failed_units": 26,
+    "unique_failed_gates": 25,
+    "case_execution_summaries": {
+      "passed": 25420,
+      "failed": 167,
+      "errors": 57,
+      "skipped": 287,
+      "xfailed": 2
+    },
+    "case_counts_note": "Execution counts include duplicate file refs. Not unique tests. Native output may truncate6000chars per failed unit; complete unique failure-nodeid population NOT_MEASURED.",
+    "failed_unit_reports": [
+      {
+        "status": "FAIL",
+        "gate": "agent_governance_sop",
+        "file_count": 25,
+        "seconds": 72.9,
+        "reported_summary": "10 failed, 630 passed, 3 skipped, 16 errors in 53.22s",
+        "case_counts": {
+          "failed": 10,
+          "passed": 630,
+          "skipped": 3,
+          "errors": 16
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "n8n_parallel_20261007",
+        "file_count": 25,
+        "seconds": 30.2,
+        "reported_summary": "1 failed, 258 passed in 29.73s",
+        "case_counts": {
+          "failed": 1,
+          "passed": 258
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "maturity_overnight_20260912",
+        "file_count": 19,
+        "seconds": 9.0,
+        "reported_summary": "222 passed, 2 errors in 8.62s",
+        "case_counts": {
+          "passed": 222,
+          "errors": 2
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "n8n_maturity_registry_dispatch_20261009",
+        "file_count": 13,
+        "seconds": 85.0,
+        "reported_summary": "897 passed, 2 skipped, 2 errors in 66.33s (0:01:06)",
+        "case_counts": {
+          "passed": 897,
+          "skipped": 2,
+          "errors": 2
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "n8n_parallel_20261007",
+        "file_count": 10,
+        "seconds": 5.7,
+        "reported_summary": "3 failed, 64 passed in 5.15s",
+        "case_counts": {
+          "failed": 3,
+          "passed": 64
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "N8N_MATURITY_REGISTRY_RECONCILE",
+        "file_count": 5,
+        "seconds": 13.7,
+        "reported_summary": "2 failed, 89 passed in 13.35s",
+        "case_counts": {
+          "failed": 2,
+          "passed": 89
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "N8N_RUN_ROUTE",
+        "file_count": 5,
+        "seconds": 11.6,
+        "reported_summary": "1 failed, 49 passed, 8 errors in 11.05s",
+        "case_counts": {
+          "failed": 1,
+          "passed": 49,
+          "errors": 8
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "dd_audit_dr_and_lane_capabilities_20261015",
+        "file_count": 4,
+        "seconds": 30.4,
+        "reported_summary": "6 failed, 54 passed in 29.93s",
+        "case_counts": {
+          "failed": 6,
+          "passed": 54
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "scheduler_operations",
+        "file_count": 3,
+        "seconds": 2.0,
+        "reported_summary": "3 failed, 40 passed in 1.56s",
+        "case_counts": {
+          "failed": 3,
+          "passed": 40
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "N8N_RUN_RELAY",
+        "file_count": 2,
+        "seconds": 2.6,
+        "reported_summary": "2 failed, 62 passed in 2.20s",
+        "case_counts": {
+          "failed": 2,
+          "passed": 62
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "cc_runtime_harness",
+        "file_count": 2,
+        "seconds": 1.6,
+        "reported_summary": "1 failed, 11 passed in 1.21s",
+        "case_counts": {
+          "failed": 1,
+          "passed": 11
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "incident_spcx_resume_20261022",
+        "file_count": 2,
+        "seconds": 1.0,
+        "reported_summary": "3 failed, 24 passed in 0.76s",
+        "case_counts": {
+          "failed": 3,
+          "passed": 24
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "n8n_maturity_due_20261009",
+        "file_count": 2,
+        "seconds": 2.3,
+        "reported_summary": "1 failed, 105 passed in 1.95s",
+        "case_counts": {
+          "failed": 1,
+          "passed": 105
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "n8n_w0_relay_fix_20261010",
+        "file_count": 2,
+        "seconds": 3.2,
+        "reported_summary": "7 failed, 40 passed in 2.81s",
+        "case_counts": {
+          "failed": 7,
+          "passed": 40
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "PHONE_STATUS",
+        "file_count": 1,
+        "seconds": 1.1,
+        "reported_summary": "1 failed, 60 passed in 0.77s",
+        "case_counts": {
+          "failed": 1,
+          "passed": 60
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "bridge_executor_hardening_20261009",
+        "file_count": 1,
+        "seconds": 1.6,
+        "reported_summary": "14 failed, 10 passed in 1.27s",
+        "case_counts": {
+          "failed": 14,
+          "passed": 10
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "bridge_oauth_llm_step_20261014",
+        "file_count": 1,
+        "seconds": 1.5,
+        "reported_summary": "1 failed, 39 passed in 1.13s",
+        "case_counts": {
+          "failed": 1,
+          "passed": 39
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "canary_effect_keys_20261015",
+        "file_count": 1,
+        "seconds": 5.8,
+        "reported_summary": "87 passed, 6 errors in 5.41s",
+        "case_counts": {
+          "passed": 87,
+          "errors": 6
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "cc_tailscale_identity_auth_20261014",
+        "file_count": 1,
+        "seconds": 5.0,
+        "reported_summary": "98 failed, 32 passed in 4.44s",
+        "case_counts": {
+          "failed": 98,
+          "passed": 32
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "n8n_w4_routing_20261008",
+        "file_count": 1,
+        "seconds": 1.1,
+        "reported_summary": "2 failed, 13 passed in 0.73s",
+        "case_counts": {
+          "failed": 2,
+          "passed": 13
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "operator_control_isolated_db",
+        "file_count": 1,
+        "seconds": 0.9,
+        "reported_summary": "1 failed, 13 passed, 21 errors in 0.53s",
+        "case_counts": {
+          "failed": 1,
+          "passed": 13,
+          "errors": 21
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "release_queue_migration_grants_20261021",
+        "file_count": 1,
+        "seconds": 1.2,
+        "reported_summary": "4 passed, 2 errors in 0.88s",
+        "case_counts": {
+          "passed": 4,
+          "errors": 2
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "release_train_cc_stop_20261021",
+        "file_count": 1,
+        "seconds": 1.5,
+        "reported_summary": "5 failed, 49 passed in 1.17s",
+        "case_counts": {
+          "failed": 5,
+          "passed": 49
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "self_heal_fixer_hardening_20261016",
+        "file_count": 1,
+        "seconds": 8.8,
+        "reported_summary": "2 failed, 40 passed, 2 skipped in 8.38s",
+        "case_counts": {
+          "failed": 2,
+          "passed": 40,
+          "skipped": 2
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "telegram_turn_idempotency_20261023",
+        "file_count": 1,
+        "seconds": 0.7,
+        "reported_summary": "8 skipped in 0.30s [no test ran: every test skipped or none collected]",
+        "case_counts": {
+          "skipped": 8
+        }
+      },
+      {
+        "status": "FAIL",
+        "gate": "ci_fixture_immutability",
+        "file_count": 1,
+        "seconds": 1.2,
+        "reported_summary": "3 failed, 4 passed in 0.85s",
+        "case_counts": {
+          "failed": 3,
+          "passed": 4
+        }
+      }
+    ],
+    "green": false
+  },
+  "confirmed_c1_fixes": [
+    {
+      "problem": "new caller repeated canonical position-store path",
+      "fix": "portfolio_positions.store_path(explicit_root) owns canonical path; caller uses load_store(store_path(root)); default resolver unchanged; no reader exemption"
+    },
+    {
+      "problem": "unproven ESTABLISHED confidence without evidence",
+      "fix": "CORRELATED with explicit admission/runtime not proven; no invented evidence/review"
+    },
+    {
+      "problem": "new handwritten C1 row appended after generated suffix",
+      "fix": "only own row moved677to482 before generated suffix; all keyed row objects/unrelated order/top-level metadata identical; smoke regression added"
+    }
+  ],
+  "targeted_results": {
+    "entire_initial_three_files": "90 passed",
+    "cio_consumers_copy_race_under_barrier": "202 passed,2 existing PG skips before ordering-only fix",
+    "entire_requested_four_files_final": "124 passed",
+    "entire_affected_gate_union_final": "234 passed across14files",
+    "toolchain_classifier_two_entire_files": "67 passed after canonical Ruff PATH and exact hash-pinned pure classifier allowance in local barrier only",
+    "formal_reviewed_ephemeral_forkserver_nodes": "5 passed3.13s, performed by root under standard tool review; original failures retained"
+  },
+  "remaining_full_boundaries": {
+    "ordering": "Initial full failure real C1 regression; now fixed and affected entire gates pass. Full profile not rerun after ordering fix; never claim final head full-green.",
+    "socket_forkserver": "Inspected ephemeral fixture failures Operation not permitted;5 separately reviewed nodes pass. Other failed socket fixtures remain reported/unrechecked.",
+    "isolated_pg": "Private-PG fixtures cannot execute with psycopg2 deliberately hidden. Telegram-turn eight tests all skipped and native gate correctly refuses all-skipped; no tolerance changed. Other PG setup errors remain reported.",
+    "genuine_state_attempts": "Seven Hermes receipt temp writes and139canonical dev runtime/CIO mkdir attempts refused before mutation; separate from initial write canary; baseline fixture isolation findings remain held. No permission added.",
+    "classifier": "Known eight pure classifier cases cleared. Other host-category refusals remain untriaged; actual host commands still forbidden.",
+    "synthetic_token_guard": "Two refused /tmp pytest cc_service_token reads were synthetic fixtures, not real credentials; original overbroad suffix barrier receipt retained.",
+    "late_fixture_immutability": "Three cases failed socket construction before tracked-fixture checks; tracked fixtures clean and only expected owned source paths changed."
+  },
+  "final_order_receipt": {
+    "before_sha256": "d4f799b13fdee1ad6dc90be3edfc38500e0c7aecf278fc832d93f79c8de64954",
+    "after_sha256": "fab09ac523c360462500f78d13545061b864b4fe9954aa7d18bd5d72bebe41fc",
+    "own_lane_index_before": 677,
+    "own_lane_index_after": 482,
+    "only_change": "own lane row ordering; every row object/unrelated order/top-level metadata preserved",
+    "no_runtime_change": true
+  },
+  "final_pure_reconcile": {
+    "basis": "historical committed2026-10-09 snapshot, no host collection",
+    "registry_sha256": "fab09ac523c360462500f78d13545061b864b4fe9954aa7d18bd5d72bebe41fc",
+    "added_lane_ids": [],
+    "removed_lane_ids": [],
+    "field_changes": {},
+    "row_order_fixed_point": true,
+    "regenerated_suffix_events": 195,
+    "interpretation": "Generator rebuilds its existing suffix; generated add events are not newly admitted lane IDs."
+  },
+  "final_source_hashes": {
+    "scripts/lib/portfolio_positions.py": "44d5e326e2db8c3bc4fb9da90819250d1375620c45b3009dc260296a0fd56159",
+    "scripts/lib/cio_company_population.py": "ff2b95e559ae74d9313d921f5a4f803b744d4e076c24ce221a835261fd0cb374",
+    "scripts/lib/cio_instrument_record.py": "425459209f19f331a9711669948575c85b116cb8d13339b69307103ff1d71a61",
+    "scripts/cio_company_facts_populate.py": "7c41dd8a59fdbc6286961ac992425a4d1c2e9b98980c0c56feab971708d427d5",
+    "tests/test_cio_company_population_20261024.py": "54ae8d525782fd5053bfd22e236bd59c6d857731f9be59bc874ea126c6a7ed5a",
+    "config/lane_registry.json": "fab09ac523c360462500f78d13545061b864b4fe9954aa7d18bd5d72bebe41fc"
+  },
+  "evidence": {
+    "full-hidden-hardening.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/full-hidden-hardening.log",
+      "sha256": "9c3bddad07a455c8d9881cce5430f112937261601a53db68860d7566e1938527"
+    },
+    "full-hidden-scope.json": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/full-hidden-scope.json",
+      "sha256": "c2ffdcbf3d83504230a9fac37e78d1ccb8086fe25dccf9dcf2b1802a71bbdafa"
+    },
+    "full-hidden-result.json": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/full-hidden-result.json",
+      "sha256": "12bc9ee372d241515b73dc92d89028c1c474d69cac847edf56d82fafc6369318"
+    },
+    "ci-followup-exact-files.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/ci-followup-exact-files.log",
+      "sha256": "3ec94ab8dc94b40c48ee37544a4503f40f96880aaf3cb28ad7e7a7a02488ec16"
+    },
+    "ci-followup-cio-core.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/ci-followup-cio-core.log",
+      "sha256": "e9fd4bd2803569fcc841bd426cd56202ccbcc7c7f85acc85896c747881c7643d"
+    },
+    "toolchain-classifier-recheck.xml": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/toolchain-classifier-recheck.xml",
+      "sha256": "b296ee0ba2700ae36aa0ce46b11cb969f2ca0dfd0f0de8472420f28d35b714f5"
+    },
+    "root-fixture-recheck.xml": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/root-fixture-recheck.xml",
+      "sha256": "753b144967a13697141729bbc5893273b2ca1c1bb5ec0ce4324a6ffb1dbcfb39"
+    },
+    "tracked-source-audit-after-full.json": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/tracked-source-audit-after-full.json",
+      "sha256": "cd1dfb901e500f3f693b253b9b1fa029e76d7a55825e2a7cb03155a7c1c8283d"
+    },
+    "order-fix-receipt.json": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/order-fix-receipt.json",
+      "sha256": "e0b114cf190f8a86da0bca7a9e92b2952a9139f02328197fe1a4d2e61ce419eb"
+    },
+    "final-pure-reconcile.json": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/final-pure-reconcile.json",
+      "sha256": "2f1bb53cf364c384c53d9134d483baeb1eb3cf824a00d2c5f171bdf03157dac1"
+    },
+    "final-ci-fixes.xml": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/final-ci-fixes.xml",
+      "sha256": "8b9f8df57fbe8cc1a372c51be1ceb88346c7be51e88fda5e740d942697869282"
+    },
+    "final-affected-gates.xml": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/final-affected-gates.xml",
+      "sha256": "d6853695390757a064a2f2098ba8ee1d70398b695df78bc57b2190a9f29f76ad"
+    },
+    "ci-followup-copy-readback.json": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/ci-followup-copy-readback.json",
+      "sha256": "2d1b01e4ad3a01ad5a66885f2a25791a16f3e4aad6254876f96317e419b60e79"
+    }
+  },
+  "runtime": {
+    "n8n_admission": "NOT_ADMITTED",
+    "workflow": "INACTIVE_SOURCE_PROPOSAL",
+    "contract": "DRAFT; actual owner review required",
+    "migration_backfill": "NOT_PERFORMED",
+    "production_readiness": "NOT_MEASURED"
+  },
+  "final_checks": {
+    "ratchets": [
+      {
+        "command": [
+          "scripts/check_dark_contracts.py",
+          "--fail-on-new"
+        ],
+        "exit": 0,
+        "log": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/followup-check_dark_contracts.log"
+      },
+      {
+        "command": [
+          "scripts/check_retention_policy.py",
+          "--fail-on-new"
+        ],
+        "exit": 0,
+        "log": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/followup-check_retention_policy.log"
+      },
+      {
+        "command": [
+          "scripts/check_test_host_paths.py",
+          "--fail-on-new"
+        ],
+        "exit": 0,
+        "log": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/followup-check_test_host_paths.log"
+      },
+      {
+        "command": [
+          "scripts/check_test_coverage.py",
+          "--fail-on-new"
+        ],
+        "exit": 0,
+        "log": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/followup-check_test_coverage.log"
+      },
+      {
+        "command": [
+          "scripts/report_docs_inventory.py",
+          "--check-index"
+        ],
+        "exit": 0,
+        "log": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/followup-report_docs_inventory.log"
+      }
+    ],
+    "registry_checks": {
+      "before": {
+        "config/lane_registry.json": "fab09ac523c360462500f78d13545061b864b4fe9954aa7d18bd5d72bebe41fc",
+        "config/n8n_health_contracts.json": "05d269794609b11f1b9f4f974bcd1f187260c1714e3fb4097b953d29052adfb2",
+        "config/n8n_run_allowlist.json": "7479ee4fea4020a275f4f735f813a360cb2e7aa655aba51689e8644d4a99b536",
+        "config/data_retention_policy.json": "f788ff6faa71cc0b5aa98d151721f10fae9b63f1d5b249d99dc5a1abb91d5a59",
+        "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json": "add3f84f6608297092d20b7857ed1773bf274a5d0ea10dbcb35d29d14c88612f",
+        "/home/johnclaw/.cache/rtc/codex-wp24-port-20261024/captured-discovery.json": "a8ea73c9d5261fd2fbe844ed2a9aefc936265f8044b8dcc3c9da6c6c335cf7ca"
+      },
+      "after": {
+        "config/lane_registry.json": "fab09ac523c360462500f78d13545061b864b4fe9954aa7d18bd5d72bebe41fc",
+        "config/n8n_health_contracts.json": "05d269794609b11f1b9f4f974bcd1f187260c1714e3fb4097b953d29052adfb2",
+        "config/n8n_run_allowlist.json": "7479ee4fea4020a275f4f735f813a360cb2e7aa655aba51689e8644d4a99b536",
+        "config/data_retention_policy.json": "f788ff6faa71cc0b5aa98d151721f10fae9b63f1d5b249d99dc5a1abb91d5a59",
+        "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json": "add3f84f6608297092d20b7857ed1773bf274a5d0ea10dbcb35d29d14c88612f",
+        "/home/johnclaw/.cache/rtc/codex-wp24-port-20261024/captured-discovery.json": "a8ea73c9d5261fd2fbe844ed2a9aefc936265f8044b8dcc3c9da6c6c335cf7ca"
+      },
+      "scheduler_basis": "pinned coordinator discovery + historical Oct09 snapshot; no new host census",
+      "results": [
+        {
+          "command": [
+            "scripts/check_lane_registry.py",
+            "--discovery-json",
+            "/home/johnclaw/.cache/rtc/codex-wp24-port-20261024/captured-discovery.json",
+            "--fail-on-new",
+            "--json"
+          ],
+          "exit": 0,
+          "log": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/followup-check_lane_registry.log"
+        },
+        {
+          "command": [
+            "scripts/reconcile_lane_registry.py",
+            "--snapshot-in",
+            "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json",
+            "--dry-run",
+            "--json"
+          ],
+          "exit": 0,
+          "log": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/followup-reconcile_lane_registry.log"
+        },
+        {
+          "command": [
+            "scripts/check_n8n_health_contracts.py",
+            "--json"
+          ],
+          "exit": 0,
+          "log": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/followup-check_n8n_health_contracts.log"
+        }
+      ]
+    },
+    "ruff": "All checks passed, canonical0.16.2; changed Python files only",
+    "package_pins": "Recomputed after final source/order/proposal changes; historical b81 receipt archived byte-for-byte"
+  }
+}

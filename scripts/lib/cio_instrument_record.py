@@ -237,6 +237,10 @@ def cc_narrative(
     return out
 
 
+class StaleInstrumentRecordWrite(ValueError):
+    """The canonical tip changed after this writer read it; re-read before retry."""
+
+
 class InstrumentRecordStore:
     """Append-only JSONL; the projection is the last row per subject_key.
 
@@ -248,6 +252,9 @@ class InstrumentRecordStore:
     def __init__(self, path: Path | str = DEFAULT_PATH) -> None:
         self.path = Path(path)
         self._cache: Optional[dict[str, dict[str, Any]]] = None
+        # Hash the observed version separately: legacy callers can mutate the
+        # returned dict in-place before upsert. That is not a newer read.
+        self._observed_hashes: dict[str, str] = {}
 
     # ---------------------------------------------------------------- read
     def _load(self) -> dict[str, dict[str, Any]]:
@@ -271,6 +278,7 @@ class InstrumentRecordStore:
         except OSError:
             pass
         self._cache = proj
+        self._observed_hashes = {k: content_hash(r) for k, r in proj.items()}
         return proj
 
     def load(self, key: str) -> Optional[dict[str, Any]]:
@@ -340,19 +348,38 @@ class InstrumentRecordStore:
         row["schema"] = SCHEMA
         row["authority"] = AUTHORITY
         row["memory_behavior_influence"] = MBI_BEHAVIOR
-        row["updated_ts"] = _now()
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self.path, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
         proj = self._load()
+        observed = self._observed_hashes.get(key)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        import fcntl
+        with open(self.path, "a+", encoding="utf-8") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            fh.seek(0)
+            current = None
+            for line in fh:
+                try:
+                    candidate = json.loads(line)
+                except ValueError:
+                    continue  # legacy read semantics; never repair a line
+                if isinstance(candidate, dict) and candidate.get("subject_key") == key:
+                    current = candidate
+            if (content_hash(current) if current else None) != observed:
+                raise StaleInstrumentRecordWrite("canonical tip changed after read; re-read and reapply the owned patch")
+            row["updated_ts"] = _now()
+            fh.seek(0, 2)
+            fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+            fh.flush()
+            fcntl.flock(fh, fcntl.LOCK_UN)
         proj[key] = row
+        self._observed_hashes[key] = content_hash(row)
         return row
 
     def upsert_prospect(self, record: dict[str, Any], *,
                         backend: Optional["ProspectPgBackend"] = None,
                         registry: Optional[dict[str, Any]] = None,
                         env: Optional[dict[str, str]] = None,
-                        lifecycle_events: Iterable[dict[str, Any]] = ()) -> dict[str, Any]:
+                        lifecycle_events: Iterable[dict[str, Any]] = (),
+                        fact_only: bool = False) -> dict[str, Any]:
         """The single write path for a CIO prospect (AGENTS.md §26.1).
 
         ``lifecycle_events`` (``cio_prospect_lifecycle.lifecycle_events``) are appended to ``cio_prospect_events`` in
@@ -364,6 +391,79 @@ class InstrumentRecordStore:
         its reasons until the operator's grants land. A Postgres failure never loses the jsonl
         write and is reported, never swallowed.
         """
+        if fact_only:
+            if is_prospect_record(record):
+                _validate_prospect(record)
+            else:
+                _validate_fact_only(record)
+            status = prospect_store_status(registry=registry, env=env,
+                                           table_probe=backend.table_present if backend else None)
+            flag_requested = str((os.environ if env is None else env).get(PROSPECT_DUAL_WRITE_ENV) or "").strip() == "1"
+            # Requested PG writes must be possible BEFORE the canonical append.
+            # No fake WATCH/zero-Conviction row, silent PG omission or store promotion.
+            if flag_requested:
+                if not status["live"] or backend is None:
+                    return {"row": None, "pg": {**status, "ok": False, "reason": "fact_only_pg_preflight_failed"}}
+                try:
+                    ready = backend.fact_only_ready()
+                except Exception as exc:
+                    return {"row": None, "pg": {**status, "ok": False, "reason": "fact_only_schema_probe_failed", "error": type(exc).__name__}}
+                if not ready:
+                    return {"row": None, "pg": {**status, "ok": False, "reason": "fact_only_migration_required",
+                        "action": "operator applies migrations/2026_10_24_cio_company_facts_only.sql before retry"}}
+            # Re-read and merge under the same append lock ordinary facade
+            # writers use. A CIO judgment published after the batch preview is
+            # preserved rather than overwritten by the preview's old record.
+            import fcntl
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.open("a+", encoding="utf-8") as fh:
+                fcntl.flock(fh, fcntl.LOCK_EX)
+                fh.seek(0)
+                tips = {}
+                for line in fh:
+                    if line.strip():
+                        try:
+                            prior_row = json.loads(line)
+                        except ValueError as exc:
+                            raise ProspectInvalid("canonical record file is malformed; owner repair required") from exc
+                        if not isinstance(prior_row, dict) or not prior_row.get("subject_key"):
+                            raise ProspectInvalid("canonical record lacks a subject key; owner repair required")
+                        tips[prior_row.get("subject_key")] = prior_row
+                prior = tips.get(record["subject_key"])
+                same_guid = [r for r in tips.values() if r.get("security_guid") == record["security_guid"]]
+                if len(same_guid) > 1 or (same_guid and same_guid[0].get("subject_key") != record["subject_key"]):
+                    raise ProspectInvalid("canonical GUID has another subject; owner reconciliation required")
+                if prior and prior.get("security_guid") not in (None, record["security_guid"]):
+                    raise ProspectInvalid("canonical subject key carries a different security GUID")
+                if prior:
+                    merged = dict(prior)
+                    for key in ("security_guid", "issuer_guid", "identity_status"):
+                        if record.get(key) is not None and merged.get(key) not in (None, record.get(key)):
+                            raise ProspectInvalid("canonical identity changed after preview")
+                        if record.get(key) is not None:
+                            merged[key] = record[key]
+                    stored, _ = apply_prospect(merged, prospect={"research": {
+                        "company_facts": record["research"]["company_facts"]}}, fact_only=True)
+                else:
+                    stored = dict(record)
+                stored.update(schema=SCHEMA, authority=AUTHORITY, memory_behavior_influence=MBI_BEHAVIOR, updated_ts=_now())
+                fh.seek(0, 2)
+                fh.write(json.dumps(stored, sort_keys=True, default=str) + "\n")
+                fh.flush()
+                self._cache = {**tips, stored["subject_key"]: stored}
+                self._observed_hashes = {k: content_hash(r) for k, r in self._cache.items()}
+                fcntl.flock(fh, fcntl.LOCK_UN)
+            pg = {**status, "requested": flag_requested}
+            if flag_requested:
+                try:
+                    if is_prospect_record(stored):
+                        row = prospect_row(stored)
+                        pg.update(backend.write(row, prospect_event(prospect_row(prior), row)))
+                    else:
+                        pg.update(backend.write_fact_only(stored))
+                except Exception as exc:
+                    pg.update(ok=False, reason="fact_only_pg_write_failed_after_canonical_append", error=type(exc).__name__)
+            return {"row": stored, "pg": pg}
         if not is_prospect_record(record):
             raise ProspectInvalid("upsert_prospect takes a record that passed apply_prospect")
         table_row = prospect_row(record)                  # validate before any write
@@ -712,7 +812,7 @@ def subject_key_for_symbol(symbol: Any, *, store: InstrumentRecordStore | None =
                            root: Path | str | None = None) -> Optional[str]:
     """The subject_key an existing record holds for a bare symbol, or None.
 
-    Probes HELD, then EXIT, then WATCH, then SECTOR — the same order the wake
+    Probes HELD, then EXIT, WATCH, SECTOR, SECURITY — the same order the wake
     loader uses — and returns the first key with a record. Lookup only: a
     symbol with no record yields None; nothing is minted here.
     """
@@ -734,7 +834,7 @@ def _candidate_keys(subject: Any) -> list[str]:
         kind, _, name = raw.partition(":")
         return [subject_key(kind, name)]
     sym = raw.upper()
-    return [subject_key(k, sym) for k in ("HELD", "EXIT", "WATCH", "SECTOR")]
+    return [subject_key(k, sym) for k in ("HELD", "EXIT", "WATCH", "SECTOR", "SECURITY")]
 
 
 def load_instrument_record_for_wake(
@@ -748,7 +848,7 @@ def load_instrument_record_for_wake(
 
     Prefers ``subject_key_hint``, then a registry ``subject_guid`` match on
     stored records, then ``subject_guid`` if it is already a ``KIND:NAME`` key,
-    then symbol probes ``HELD|EXIT|WATCH|SECTOR:SYM``.
+    then symbol probes ``HELD|EXIT|WATCH|SECTOR|SECURITY:SYM``.
     """
     base: dict[str, Any] = {
         "ok": False,
@@ -767,7 +867,7 @@ def load_instrument_record_for_wake(
             for rec in store.all():
                 if not isinstance(rec, dict):
                     continue
-                if str(rec.get("subject_guid") or "") == guid_probe:
+                if guid_probe in {str(rec.get("subject_guid") or ""), str(rec.get("security_guid") or "")}:
                     return {
                         **base,
                         "ok": True,
@@ -1029,6 +1129,7 @@ def apply_prospect(
     *,
     prospect: dict[str, Any],
     strict: bool = True,
+    fact_only: bool = False,
 ) -> tuple[dict[str, Any], list[str]]:
     """Return (updated_record, changed_prospect_fields) or raise.
 
@@ -1045,6 +1146,36 @@ def apply_prospect(
     bad = sorted(k for k in _walk_keys(prospect) if k in BEHAVIOR_FIELDS)
     if bad:
         raise BehaviorWriteRefused(f"MBI_BEHAVIOR=0: a prospect may not carry {bad}")
+    if fact_only:
+        # A facts pass cannot set, clear or manufacture any CIO judgment. The
+        # default prospect branch below retains its original required fields.
+        allowed = {"security_guid", "issuer_guid", "aliases", "research"}
+        if set(prospect) - allowed:
+            raise ProspectInvalid("fact-only apply accepts identity and company research only")
+        rec = dict(record)
+        for key in ("security_guid", "issuer_guid"):
+            if key in prospect:
+                if rec.get(key) not in (None, prospect[key]):
+                    raise ProspectInvalid("fact-only apply cannot change identity")
+                rec[key] = prospect[key]
+        incoming = prospect.get("research") or {}
+        if not isinstance(incoming, dict) or set(incoming) != {"company_facts"}:
+            raise ProspectInvalid("fact-only apply changes only research.company_facts")
+        research = dict(rec.get("research") or {})
+        changed = research.get("company_facts") != incoming["company_facts"]
+        research["company_facts"] = incoming["company_facts"]
+        rec["research"] = research
+        if not is_prospect_record(rec):
+            rec["record_kind"] = "FACTS_ONLY"
+            _validate_fact_only(rec)
+        else:
+            _validate_prospect(rec)
+        if strict and not changed:
+            raise CognitionNoOp("company facts unchanged")
+        rec["prospect_revision"] = int(record.get("prospect_revision") or 0) + (1 if changed else 0)
+        rec["memory_behavior_influence"] = MBI_BEHAVIOR
+        rec["updated_ts"] = _now()
+        return rec, ["research"] if changed else []
     extra = sorted(k for k in prospect if k not in PROSPECT_FIELDS)
     if extra:
         raise ProspectInvalid(f"not prospect fields: {extra}")
@@ -1084,6 +1215,9 @@ def apply_prospect(
     if strict and not changed:
         raise CognitionNoOp(f"{rec.get('subject_key')}: prospect unchanged — not persisted")
     rec["prospect_schema"] = PROSPECT_SCHEMA
+    if rec.get("record_kind") == "FACTS_ONLY":
+        # Only the existing fully validated CIO judgment path can promote it.
+        rec["record_kind"] = "PROSPECT"
     rec["prospect_revision"] = int(record.get("prospect_revision") or 0) + (1 if changed else 0)
     rec["memory_behavior_influence"] = MBI_BEHAVIOR
     rec["updated_ts"] = _now()
@@ -1092,6 +1226,30 @@ def apply_prospect(
 
 def is_prospect_record(record: Optional[dict[str, Any]]) -> bool:
     return bool(record) and record.get("prospect_schema") == PROSPECT_SCHEMA
+
+
+def is_fact_only_record(record: Optional[dict[str, Any]]) -> bool:
+    return bool(record) and record.get("record_kind") == "FACTS_ONLY" and not is_prospect_record(record)
+
+
+def _validate_fact_only(rec: dict[str, Any]) -> None:
+    if not is_fact_only_record(rec) or rec.get("schema") != SCHEMA:
+        raise ProspectInvalid("expected a fact-only InstrumentRecord, never a prospect")
+    if rec.get("identity_status") != "CONFIRMED" or not _is_uuid(rec.get("security_guid")):
+        raise ProspectInvalid("fact-only record requires confirmed security GUID")
+    if rec.get("issuer_guid") is not None and not _is_uuid(rec.get("issuer_guid")):
+        raise ProspectInvalid("fact-only issuer is a registry GUID or an explicit missing identity gap")
+    judgments = ("stage", "stance", "conviction", "conviction_components", "catalyst_grade", "next_trigger",
+                 "next_action", "stage_evidence", "stage_changed_at", "evidence_at", "expires_at")
+    if any(rec.get(k) is not None for k in judgments):
+        raise ProspectInvalid("fact-only record may not carry prospect judgments")
+    facts = (rec.get("research") or {}).get("company_facts") or {}
+    if facts.get("schema") != "CIOCompanyFacts@v1" or facts.get("security_guid") != rec["security_guid"]:
+        raise ProspectInvalid("company facts must bind to the same confirmed GUID")
+    if not rec.get("subject_key") or not rec.get("symbols"):
+        raise ProspectInvalid("fact-only record requires a canonical subject and symbol")
+    if any(k in BEHAVIOR_FIELDS for k in _walk_keys(rec.get("research") or {})):
+        raise BehaviorWriteRefused("MBI_BEHAVIOR=0: company research contains a behavior field")
 
 
 def prospect_row(record: dict[str, Any]) -> dict[str, Any]:
@@ -1126,7 +1284,7 @@ def prospect_row(record: dict[str, Any]) -> dict[str, Any]:
         "reentry_advice": record.get("reentry_advice"),
         "conflicts": record.get("conflicts") or [],
         "cognition": cognition,
-        "provenance": record.get("provenance") or {},
+        "provenance": {**(record.get("provenance") or {}), "record_kind": "PROSPECT"},
         "evidence_at": record["evidence_at"],
         "expires_at": record["expires_at"],
         "as_of": record.get("updated_ts") or _now(),
@@ -1289,6 +1447,72 @@ class ProspectPgBackend:
                 cur.execute("SELECT to_regclass('public.cio_prospect') IS NOT NULL "
                             "AND to_regclass('public.cio_prospect_events') IS NOT NULL")
                 return bool(cur.fetchone()[0])
+        finally:
+            conn.close()
+
+    def fact_only_ready(self) -> bool:
+        """Read-only capability probe; never applies the required migration."""
+        conn = self._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT (SELECT count(*) = 6 FROM information_schema.columns "
+                            "WHERE table_schema='public' AND table_name='cio_prospect' "
+                            "AND column_name IN ('issuer_guid','stage','stance','conviction','evidence_at','expires_at') "
+                            "AND is_nullable='YES') AND EXISTS (SELECT 1 FROM pg_constraint "
+                            "WHERE conrelid='public.cio_prospect'::regclass AND conname='cio_prospect_record_kind_ck')")
+                return bool(cur.fetchone()[0])
+        finally:
+            conn.close()
+
+    def write_fact_only(self, record: dict[str, Any]) -> dict[str, Any]:
+        """Same canonical table/events, no judgments and no overwriting a PG prospect.
+
+        The facade checks flag/registry/schema first. A PG prospect absent from
+        canonical JSONL is a divergence, not permission to replace its research.
+        """
+        _validate_fact_only(record)
+        row = {"security_guid": record["security_guid"], "issuer_guid": record.get("issuer_guid"),
+               "symbol": record["symbols"][0], "subject_key": record["subject_key"],
+               "aliases": record.get("aliases") or {}, "research": record["research"],
+               "provenance": {"record_kind": "FACTS_ONLY"}, "as_of": record["updated_ts"],
+               "writer": PROSPECT_WRITER, "revision": max(1, int(record.get("prospect_revision") or 1))}
+        event = {"security_guid": row["security_guid"], "at": row["as_of"], "writer": PROSPECT_WRITER,
+                 "event_type": "update", "event_key": f"facts:{row['revision']}", "revision": row["revision"],
+                 "change": {"record_kind": "FACTS_ONLY", "company_facts": record["research"]["company_facts"]},
+                 "evidence": {"subject_key": row["subject_key"]}}
+        sql = ("INSERT INTO cio_prospect (security_guid, issuer_guid, symbol, subject_key, aliases, research, "
+               "provenance, as_of, writer, revision) VALUES (%(security_guid)s,%(issuer_guid)s,%(symbol)s,"
+               "%(subject_key)s,%(aliases)s,%(research)s,%(provenance)s,%(as_of)s,%(writer)s,%(revision)s) "
+               "ON CONFLICT (security_guid) DO UPDATE SET research=jsonb_set(coalesce(cio_prospect.research,'{}'::jsonb),"
+               "'{company_facts}',EXCLUDED.research->'company_facts'), as_of=EXCLUDED.as_of, revision=EXCLUDED.revision "
+               "WHERE cio_prospect.provenance->>'record_kind'='FACTS_ONLY' AND cio_prospect.revision < EXCLUDED.revision")
+        conn = self._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(sql, _jsonify(row))
+                if cur.rowcount != 1:
+                    raise ProspectInvalid("fact-only PG revision or record kind diverges; owner reconciliation required")
+                cur.execute(INSERT_PROSPECT_EVENT_SQL, _jsonify(event))
+                events = cur.rowcount
+            conn.commit()
+            return {"ok": True, "upserted": 1, "event_appended": events, "record_kind": "FACTS_ONLY"}
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def company_facts_equal(self, guid: str, expected: dict[str, Any]) -> bool:
+        """Exact same-GUID readback, without repair or a fallback to another store."""
+        conn = self._connect()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT research->'company_facts' FROM cio_prospect WHERE security_guid=%s", (guid,))
+                row = cur.fetchone()
+                actual = row[0] if row else None
+                if isinstance(actual, str):
+                    actual = json.loads(actual)
+                return actual == expected
         finally:
             conn.close()
 
