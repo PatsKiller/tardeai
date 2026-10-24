@@ -37,7 +37,7 @@ def _iso(at):
 
 
 def lineage(key):
-    return re.sub(r":U\d+[a-z]*:", ":source:", key)
+    return re.sub(r":[UR]\d+[a-z]*:", ":source:", key)
 
 
 class ConflictLedger:
@@ -81,7 +81,7 @@ class ConflictLedger:
             prior = records.get(key, {})
             finding = event.get("finding") or prior.get("finding") or {}
             state = EVENT_STATES[event["event"]] or prior.get("state", "OPEN")
-            records[key] = {"schema": RECORD_SCHEMA, **deepcopy(finding), "key": key,
+            records[key] = {**deepcopy(finding), "schema": RECORD_SCHEMA, "key": key,
                             "subject": event.get("subject") or prior["subject"], "state": state,
                             "finding": deepcopy(finding), "opened_at": prior.get("opened_at", event["at"]),
                             "updated_at": event["at"], "revision": event["sequence"],
@@ -153,15 +153,18 @@ class ConflictLedger:
             for old in records.values():
                 if old["subject"]["kind"] != subject["kind"] or old["subject"]["id"] != subject["id"]:
                     continue
-                if old["state"] not in ACTIVE or old.get("rule") == "U0":
+                if old["state"] not in ACTIVE or old.get("rule") in {"U0", "T0", "T1", "R12", "R16"} or old.get("never_auto"):
                     continue
                 new = current_lineages.get(lineage(old["key"]))
                 # U1 does not mean a disagreement has been resolved.
-                clear = new and new["kind"] in {"AGREEMENT", "SUPERSEDED"}
-                gate_passed = old.get("rule") == "U6" and not new and not any(
+                clear = new and new["kind"] in {"AGREEMENT", "SUPERSEDED"} and new.get("rule") != "R15"
+                gate_passed = old.get("rule") in {"U6", "R3"} and not new and not any(
                     f["kind"] == "DATA_ERROR" for f in findings) and any(
                     side["source"] in observed_sources for side in old.get("sides", [])[:1])
-                if clear or gate_passed:
+                nway_agreed = old.get("rule") == "R11" and not any(f["kind"] in KINDS for f in findings) and any(
+                    f["kind"] == "AGREEMENT" and f["rule"] != "R15" for f in findings) and all(
+                    side["source"] in observed_sources for side in old.get("sides", []))
+                if clear or gate_passed or nway_agreed:
                     pending.append({"event": "superseded" if new and new["kind"] == "SUPERSEDED" else "cleared",
                                     "key": old["key"], "subject": subject, "at": at,
                                     "evidence": deepcopy(new) if new else {"gate_observed": list(observed_sources)}})
@@ -175,7 +178,7 @@ class ConflictLedger:
             self.drain()
             return result
 
-    def transition(self, key, event, *, at, expected_revision=None, decision=None, apply=False):
+    def transition(self, key, event, *, at, expected_revision=None, decision=None, review_request_id=None, apply=False):
         if event not in {"review_queued", "decided", "review_completed"}:
             raise ValueError("transition not admitted")
         def plan():
@@ -186,20 +189,32 @@ class ConflictLedger:
                 raise ValueError("terminal conflict requires re-evaluation before transition")
             if expected_revision is not None and expected_revision != record["revision"]:
                 raise ValueError("stale conflict revision")
+            if event == "review_queued" and not review_request_id:
+                raise ValueError("actual review request receipt required before queued")
             if event in {"decided", "review_completed"}:
                 if not decision or decision.get("schema") != DECISION_SCHEMA:
                     raise ValueError("durable typed decision required")
                 if not decision.get("reason") or not decision.get("evidence_refs"):
                     raise ValueError("decision reason and evidence required")
+                try:
+                    expires = datetime.fromisoformat(str(decision["expires_at"]).replace("Z", "+00:00"))
+                    if not expires.tzinfo or expires <= at:
+                        raise ValueError("expired or naive decision")
+                except (ValueError, KeyError, TypeError) as exc:
+                    raise ValueError("future timezone-aware decision expiry required") from exc
+                if record.get("tier", 4) <= 1:
+                    raise ValueError("hard safety and facts require source repair, never a chosen side")
                 if decision.get("actor_kind") == "cio" and (record["subject"]["kind"] != "security" or
-                        record.get("kind") != "CONFLICT" or record.get("rule") not in {"U2", "U3", "U7"}):
+                        record.get("kind") != "CONFLICT" or record.get("rule") not in {"U2", "U3", "U7", "R11"}):
                     raise ValueError("CIO may decide only stance owner reviews")
                 if decision.get("actor_kind") not in {"cio", "operator"}:
                     raise ValueError("unknown decision actor")
                 if record["subject"]["kind"] in {"metric", "job"}:
                     raise ValueError("numeric/schedule defects require source repair, never a chosen number")
             return {"event": event, "key": key, "subject": record["subject"], "at": _iso(at),
-                    **({"decision": deepcopy(decision)} if decision else {})}
+                    "finding": record["finding"],
+                    **({"decision": deepcopy(decision)} if decision else {}),
+                    **({"request_id": review_request_id} if review_request_id else {})}
         if not apply:
             return plan()
         with self.locked():
@@ -208,11 +223,56 @@ class ConflictLedger:
             return result
 
 
-def list_records(root, *, subject_kind=None, subject_id=None, state=None, kind=None, limit=100, offset=0):
+def list_records(root, *, subject_kind=None, subject_id=None, state=None, kind=None, limit=100, offset=0,
+                 include_history=False):
     rows = list(ConflictLedger(root).records().values())
     rows = [r for r in rows if (not subject_kind or r["subject"]["kind"] == subject_kind)
             and (not subject_id or r["subject"]["id"] == subject_id)
             and (not state or r["state"] == state) and (not kind or r.get("kind") == kind)]
     rows.sort(key=lambda r: (r["updated_at"], r["key"]), reverse=True)
-    return {"schema": "ConflictCollection@v1", "records": rows[offset:offset + min(max(limit, 1), 200)],
+    selected = rows[offset:offset + min(max(limit, 1), 200)]
+    if not include_history:
+        selected = [{k: v for k, v in row.items() if k not in {"history", "finding"}} for row in selected]
+    return {"schema": "ConflictCollection@v1", "records": selected,
             "total": len(rows), "offset": offset}
+
+
+def postgres_sink(connection_factory):
+    """Explicit dependency only; caller must opt in with pg_enabled after migration."""
+    def write(event):
+        connection = connection_factory()
+        try:
+            cursor = connection.cursor()
+            cursor.execute("""INSERT INTO conflict_events
+                (event_id,sequence,conflict_key,subject_kind,subject_id,event_kind,at,payload)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb) ON CONFLICT(event_id) DO NOTHING""",
+                (event["event_id"], event["sequence"], event["key"], event["subject"]["kind"], event["subject"]["id"],
+                 event["event"], event["at"], _json(event)))
+            connection.commit()
+            return True
+        except Exception:
+            connection.rollback()
+            return False
+        finally:
+            connection.close()
+    return write
+
+
+def decision_inputs(root, subject, *, now):
+    """Only durable, unexpired owner decisions become T4 inputs; never T0/T1."""
+    from .adapters import timestamp
+    from .engine import Input
+    output = []
+    for record in ConflictLedger(root).records().values():
+        if record["subject"]["kind"] != subject.kind or record["subject"]["id"] != subject.id:
+            continue
+        decision = record.get("decision") or {}
+        expires = timestamp(decision.get("expires_at"))
+        at = timestamp(decision.get("at"))
+        if record.get("tier", 4) <= 1 or not expires or expires <= now or not at or at > now:
+            continue
+        output.append(Input("operator decision" if decision["actor_kind"] == "operator" else "CIO decision",
+            decision["chosen_side"], at, role="judgment", subject_id=subject.id,
+            metadata={"recorded_by": decision["actor_kind"], "reason": decision["reason"], "expires_at": expires,
+                      "evidence_refs": decision["evidence_refs"], "conflict_key": record["key"]}))
+    return output

@@ -1,6 +1,9 @@
 """CIO conflict memory and shared prompt/brief/Ask/conviction inputs."""
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from .adapters import timestamp
 from .ledger import ACTIVE, list_records
 
 
@@ -26,18 +29,34 @@ def memory_writer(root):
     return write
 
 
-def context_for(root, security_guid):
-    records = list_records(root, subject_kind="security", subject_id=security_guid, limit=200)["records"]
+def context_for(root, security_guid, *, now=None):
+    now = now or datetime.now(timezone.utc)
+    if not (Path(root) / "data/conflicts/conflict_events.jsonl").exists():
+        return {"open_conflicts": [], "blocks_promotion": True,
+                "gap": {"reason": "conflict evaluation not yet produced"}, "owner": "the CIO"}
+    try:
+        records = list_records(root, subject_kind="security", subject_id=security_guid, limit=200)["records"]
+    except (OSError, ValueError):
+        return {"open_conflicts": [], "blocks_promotion": True,
+                "gap": {"reason": "conflict evaluation unavailable or invalid"}, "owner": "the CIO"}
     opened = [r for r in records if r["state"] in ACTIVE]
+    def decided(record):
+        decision = record.get("decision") or {}
+        expiry = timestamp(decision.get("expires_at"))
+        return bool(expiry and expiry > now)
     return {"open_conflicts": opened,
-            "blocks_promotion": any(r.get("rule") == "U7" and not r.get("decision") for r in opened),
+            "blocks_promotion": any(r.get("kind") in {"GATE", "NEEDS_OPERATOR", "DATA_ERROR"} or
+                                    r.get("rule") in {"U7", "R11"} and not decided(r) for r in opened),
+            "gap": None,
             "owner": "the CIO", "instruction": "Cite both sources, explain the CIO position and what clears each conflict."}
 
 
-def digest(root):
+def digest(root, *, now=None):
+    now = now or datetime.now(timezone.utc)
     records = list_records(root, limit=200)["records"]
     return {"waiting_on_operator": [r for r in records if r.get("kind") == "NEEDS_OPERATOR" and r["state"] in ACTIVE],
-            "decided": [r for r in records if r.get("decision")],
+            "decided": [r for r in records if r.get("decision") and timestamp(r["decision"].get("at")) and
+                        timedelta(0) <= now - timestamp(r["decision"]["at"]) <= timedelta(days=1)],
             "groups": _groups([r for r in records if r["state"] in ACTIVE])}
 
 

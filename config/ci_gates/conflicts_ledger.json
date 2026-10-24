@@ -1,0 +1,14 @@
+{
+  "schema": "CiGate@v1",
+  "name": "conflicts_ledger",
+  "files": [
+    "tests/test_conflict_ledger.py",
+    "tests/test_conflict_api.py",
+    "tests/test_conflict_review.py",
+    "tests/test_conflict_runner.py"
+  ],
+  "anchor": "CONFLICTS_LEDGER_20261024",
+  "comment": [
+    "ANCHOR: CONFLICTS_LEDGER_20261024 — lifecycle identity/expiry/readback plus write-free dry-run and real shadow reports."
+  ]
+}

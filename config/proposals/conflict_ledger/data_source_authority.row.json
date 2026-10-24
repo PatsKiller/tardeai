@@ -1,0 +1,57 @@
+{
+  "domain": "conflict_ledger",
+  "status": "proposed",
+  "approval": null,
+  "entity": "Site-wide conflict lifecycle",
+  "title": "Conflict ledger and decisions",
+  "class": "derived",
+  "store": {
+    "file": "data/conflicts/conflict_events.jsonl"
+  },
+  "writer": "scripts/lib/conflicts/ledger.py",
+  "facts": [
+    "finding",
+    "lifecycle",
+    "owner decision",
+    "source supersession"
+  ],
+  "cadence": "event changes; conflict-resolver shadow cadence separately owned by W8",
+  "stale_after_hours": 0.5,
+  "freshness_sla": "30 min while scheduled; no produced evidence means a gap",
+  "refresh_lane": {
+    "runner": "n8n_shadow_then_live",
+    "lane": "conflict-resolver",
+    "note": "W8 owns inactive declaration/admission; no live flip by W10"
+  },
+  "projection": "scripts.lib.conflicts.api.records_section",
+  "readers": [
+    "Watch",
+    "Home",
+    "CIO",
+    "Risk",
+    "Advisory",
+    "Ops Jobs and health",
+    "Approvals",
+    "CIO brief",
+    "Ask the CIO",
+    "Telegram digest"
+  ],
+  "derived_copies": [
+    {
+      "store": {
+        "table": "conflict_events"
+      },
+      "role": "derived",
+      "how": "gated PG dual write only after operator migration; immutable event_id idempotency"
+    }
+  ],
+  "no_coverage": "say_so",
+  "proposal": {
+    "proposed_by": "W10",
+    "proposed_on": "2026-10-24",
+    "reference": "conflict-engine-build.md; DESIGN sections7/12; EXCEPTIONS_MATRIX R4",
+    "decision": "Operator-approved build direction; row promotion and runtime writer activation remain explicit owner/operator acts."
+  },
+  "retention_days": 400,
+  "retention_mode": "archive_then_tripwire; no deletion by this module"
+}

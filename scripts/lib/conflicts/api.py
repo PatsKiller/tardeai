@@ -58,7 +58,7 @@ def handle(path, method, body=None, query=None, *, ctx=None, root=None, ledger=N
     tail = base[len(PREFIX) + 1:]
     deciding = tail.endswith("/decision")
     key = unquote(tail[:-9] if deciding else tail)
-    if not key or len(key) > 600 or "/" in key:
+    if not key or len(key) > 600 or any(ord(char) < 32 for char in key):
         return 400, {"error": "INVALID_KEY"}
     record = ledger.records().get(key)
     if not record:
@@ -68,7 +68,7 @@ def handle(path, method, body=None, query=None, *, ctx=None, root=None, ledger=N
     if method != "POST" or not deciding:
         return 405, {"error": "METHOD_NOT_ALLOWED"}
     body = body if isinstance(body, dict) else {}
-    if set(body) - {"expected_revision", "chosen_side", "reason", "evidence_refs"}:
+    if set(body) - {"expected_revision", "chosen_side", "reason", "evidence_refs", "expires_at"}:
         return 400, {"error": "UNKNOWN_OR_ACTOR_FIELD"}
     if type(body.get("expected_revision")) is not int:
         return 400, {"error": "EXPECTED_REVISION_REQUIRED"}
@@ -84,7 +84,9 @@ def handle(path, method, body=None, query=None, *, ctx=None, root=None, ledger=N
     at = now or datetime.now(timezone.utc)
     decision = {"schema": DECISION_SCHEMA, "actor_kind": "operator", "actor": actor,
                 "chosen_side": body["chosen_side"], "reason": body["reason"].strip(),
-                "evidence_refs": refs, "at": at.isoformat(), "expected_revision": record["revision"]}
+                "evidence_refs": refs, "at": at.isoformat(), "expected_revision": record["revision"],
+                "expires_at": body.get("expires_at"), "clears_when": record.get("clears_when"),
+                "key": key, "subject": record["subject"]}
     try:
         event = ledger.transition(key, "decided", at=at, expected_revision=record["revision"], decision=decision, apply=True)
     except ValueError as exc:
@@ -97,7 +99,10 @@ def handle(path, method, body=None, query=None, *, ctx=None, root=None, ledger=N
 def approval_rows(root=None, *, limit=100):
     """W11 bounded read model. Dispositions never resolve or apply a conflict."""
     try:
-        collection = list_records(root or _root(), kind="NEEDS_OPERATOR", limit=min(max(limit, 1), 200))
+        root = root or _root()
+        if not (Path(root) / "data/conflicts/conflict_events.jsonl").exists():
+            return {"rows": [], "total": None, "gap": {"reason": "conflict ledger not yet produced"}}
+        collection = list_records(root, kind="NEEDS_OPERATOR", limit=min(max(limit, 1), 200))
         rows = []
         for record in collection["records"]:
             if record["state"] not in ACTIVE:
@@ -111,3 +116,49 @@ def approval_rows(root=None, *, limit=100):
         return {"rows": rows, "total": collection["total"], "gap": None}
     except (OSError, ValueError):
         return {"rows": [], "total": None, "gap": {"reason": "conflict ledger unavailable or invalid"}}
+
+
+def records_section(root=None, *, subject_kind=None, subject_id=None, kind=None):
+    """Canonical section for Watch/Home/Ops; includes authoritative lifecycle detail."""
+    from .adapters import findings_section
+    root = root or _root()
+    if not (Path(root) / "data/conflicts/conflict_events.jsonl").exists():
+        return findings_section([], gap={"reason": "conflict ledger not yet produced"})
+    try:
+        collection = list_records(root, subject_kind=subject_kind, subject_id=subject_id, kind=kind, limit=200)
+        records = [r for r in collection["records"] if r["state"] in ACTIVE]
+        findings = [{**r, "schema": "ConflictFinding@v1", "history": r.get("history"),
+                     "history_gap": "fetch conflict detail for lifecycle history"} for r in records]
+        section = findings_section(findings, gap={"reason": "more conflict records available", "total": collection["total"]}
+                                   if collection["total"] > 200 else None)
+        return {**section, "source": "conflict_events.jsonl", "as_of": max((r["updated_at"] for r in records), default=None),
+                "stale": None}
+    except (OSError, ValueError, KeyError):
+        return findings_section([], gap={"reason": "conflict ledger unavailable or invalid"})
+
+
+def data_error_section(root=None):
+    return records_section(root, kind="DATA_ERROR")
+
+
+def sections_for_guids(root, security_guids):
+    """One ledger read for Watch rows. No per-row HTTP, source reads or classifier."""
+    from .adapters import findings_section
+    guids = list(dict.fromkeys(str(g) for g in security_guids if g))
+    if len(guids) > 500:
+        raise ValueError("conflict GUID batch exceeds 500")
+    root = root or _root()
+    if not (Path(root) / "data/conflicts/conflict_events.jsonl").exists():
+        return {g: findings_section([], gap={"reason": "conflict ledger not yet produced"}) for g in guids}
+    try:
+        records = ConflictLedger(root).records().values()
+        grouped = {g: [] for g in guids}
+        for record in records:
+            subject = record["subject"]
+            if subject["kind"] == "security" and subject["id"] in grouped and record["state"] in ACTIVE:
+                grouped[subject["id"]].append({**record["finding"], "state": record["state"],
+                    "decision": record["decision"], "revision": record["revision"], "updated_at": record["updated_at"]})
+        return {g: {**findings_section(rows), "source": "conflict_events.jsonl",
+                    "as_of": max((r["updated_at"] for r in rows), default=None), "stale": None} for g, rows in grouped.items()}
+    except (OSError, ValueError, KeyError):
+        return {g: findings_section([], gap={"reason": "conflict ledger unavailable or invalid"}) for g in guids}
