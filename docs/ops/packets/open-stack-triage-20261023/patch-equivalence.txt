@@ -1,0 +1,5 @@
++ a8517f3d7f2786c407ab1746ddd80820aa5c26ea n8n LLM lanes on the governed bridge, batch 1: routes + process sets (7 lanes)
+- dde77d2b2c00ffce2f3a7c8f93cee5054b339b06 bridge client: pass the caller's max_tokens through text_via_bridge (cross-source keeps its 3000)
+- eb64c276b89d6be9c426f4a7e59eb389f0805378 n8n LLM lanes on the governed bridge, batch 2 (6 lanes, 7 processes)
+- 836e356cfe944a755d3490fdd6c165746b81645c n8n LLM lanes on the governed bridge, batch 3 (4 lanes)
+- cb6dd1064e78ba5e755b50356635aba5a15a8ea1 n8n LLM lanes on the governed bridge, batch 4 (3 dispatcher lanes)
