@@ -8,7 +8,7 @@ AGENTS = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
 def _section() -> str:
     s = AGENTS.index("\n## 28.9 ")
-    return AGENTS[s:AGENTS.index("\n---\n\n# Version history", s)]
+    return AGENTS[s:AGENTS.index("\n## 28.10 ", s)]
 
 
 def test_one_row_proposed_or_ratified_with_token():
@@ -34,3 +34,13 @@ def test_rules_present():
 
 def test_does_not_touch_operator_gated_sections():
     assert "§0, §2, §17 or role authority" in _section()
+
+
+def test_section_28_10_conflict_engine_rules_cite_causes():
+    s = AGENTS.index("\n## 28.10 ")
+    sec = AGENTS[s:AGENTS.index("\n---\n\n# Version history", s)]
+    bullets = re.split(r"\n- ", sec)[1:]
+    assert len(bullets) == 6 and all("*Cause (§20):" in b for b in bullets)
+    for needle in ("scripts/lib/conflicts", "config/conflict_rulebook.json", "never flag", "Gates are not conflicts",
+                   "CIO is always informed", "never resolved automatically"):
+        assert needle in sec, needle
