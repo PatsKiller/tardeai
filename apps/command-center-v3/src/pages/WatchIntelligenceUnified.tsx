@@ -358,19 +358,19 @@ export default function WatchIntelligenceUnified() {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
         <div>
           <div style={{ fontSize: TYPE.xs, fontWeight: 900, color: BB.text2, letterSpacing: 1.1, textTransform: 'uppercase' }}>
-            Data Broker · watch_intelligence · primary Watch workspace
+            Stored research · Classic Watch workspace
           </div>
           <div style={{ fontSize: TYPE.lg, fontWeight: 900, color: BB.text0, marginTop: 4 }}>WATCH INTELLIGENCE</div>
           <div style={{ fontSize: TYPE.base, color: BB.text3, marginTop: 4 }}>
-            Street rating primary · Trade AI independent · composed from Data Broker domains · page load = 0 provider calls
+            Analyst ratings and Trade AI signals from recorded research
           </div>
           <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 4 }} data-broker-composes>
-            Composes: {(brokerMeta.composes || body?.data_broker?.composes || []).slice(0, 6).join(' · ') || 'quotes · profiles · street · decisions · reviews · membership'}
+            Sources: quotes, company profiles, analyst ratings, decisions, reviews, and watchlist membership
           </div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           <Chip good>Data Broker</Chip>
-          <Chip good>{body?.data_contract_version || body?.contract_version || 'watch_intelligence.broker.v1'}</Chip>
+          <Chip good>Stored research view</Chip>
           <Chip good>Provider calls {body?.provider_calls ?? 0}</Chip>
           <Chip good={quality?.status === 'COMPLETE'}>{`Quality ${quality?.status || body?.data_quality_status || '—'}`}</Chip>
           <Chip>Paid OFF</Chip>
@@ -824,7 +824,7 @@ export default function WatchIntelligenceUnified() {
           <div style={{ marginTop: 8 }}>
             <Link to="/watch/discovery" style={{ color: BB.amber, fontWeight: 800 }}>Open Discovery workspace →</Link>
             {' · '}
-            <Link to="/watch-legacy" style={{ color: BB.text3 }}>Legacy rollback route (no nav)</Link>
+            <Link to="/watch-legacy?legacy=1" style={{ color: BB.text3 }}>Previous Watch layout</Link>
           </div>
         </div>
       </details>

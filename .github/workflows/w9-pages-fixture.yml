@@ -1,0 +1,48 @@
+name: w9-pages-fixture
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/w9-pages-fixture.yml'
+      - 'apps/command-center-v3/e2e/w9-pages.fixture.mjs'
+      - 'apps/command-center-v3/src/pages/TradingHub.tsx'
+      - 'apps/command-center-v3/src/pages/ResearchIntelligenceHub.tsx'
+      - 'apps/command-center-v3/src/pages/WatchHub.tsx'
+      - 'apps/command-center-v3/src/pages/WatchIntelligenceUnified.tsx'
+      - 'apps/command-center-v3/src/pages/OpportunitiesHub.tsx'
+      - 'apps/command-center-v3/src/hooks/useApi.ts'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: w9-pages-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  page-fixtures:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/command-center-v3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - name: Recorded research filters, Classic links and Trading labels
+        run: node e2e/w9-pages.fixture.mjs "$RUNNER_TEMP/w9-pages"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: w9-pages-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/w9-pages/
+          if-no-files-found: error

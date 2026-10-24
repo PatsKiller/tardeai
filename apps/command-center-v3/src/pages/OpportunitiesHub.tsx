@@ -31,10 +31,10 @@ const BORDER = 'var(--border)'
 
 const PRESETS: [string, string, string][] = [
   ['reentry', 'Re-entry', 'Formerly held names first (most recent sell first), then everything the curator types re-entry.'],
-  ['top5', 'Top 5 high-conviction', 'The curator preset top5.'],
-  ['new', 'New positions', 'The curator preset new.'],
-  ['add_on', 'Add-on', 'The curator preset add_on (held names only on Watch).'],
-  ['exit', 'Exit candidates', 'The curator preset exit.'],
+  ['top5', 'Top 5 high-conviction', 'The five names with the highest curator conviction.'],
+  ['new', 'New positions', 'New position ideas from the curator.'],
+  ['add_on', 'Add-on', 'Ideas to add to a currently held name.'],
+  ['exit', 'Exit candidates', 'Names the curator marked for exit review.'],
 ]
 const FILTERS: { key: string; label: string; opts: [string, string][] }[] = [
   { key: 'type', label: 'Type', opts: [['', 'Any'], ['new_position', 'New Position'], ['existing', 'Existing Position'], ['re_entry', 'Re-Entry'], ['add_on', 'Add-On'], ['exit_candidate', 'Exit Candidate'], ['watchlist', 'Watchlist']] },
@@ -84,7 +84,7 @@ export default function OpportunitiesHub() {
   return (
     <div data-opportunities-hub>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', margin: '4px 0' }}>
-        <div style={{ fontSize: TYPE.base, color: TEXT2 }} title="Research list: everything the CIO curator scored. System Suggests is the top of this same ranking minus held, yours and dismissed.">
+        <div style={{ fontSize: TYPE.base, color: TEXT2 }} title="Research names scored by the CIO curator. Filters apply to this ranking.">
           <b style={{ color: TEXT }}>{body?.total ?? '—'}</b> of {body?.universe ?? '—'} · Full universe (research)
           {body?.as_of ? <span style={{ color: MUTED }}> · curated by the CIO {new Date(body.as_of).toLocaleString()}</span> : null}
           {body?.held?.source ? <span style={{ color: MUTED }} title="Held / formerly held come from the broker-synced Watch held reader."> · held: {String(body.held.source).split('.')[0]}{body.held.stale ? ' (stale)' : ''}</span> : null}
@@ -185,7 +185,7 @@ export default function OpportunitiesHub() {
                             <span>Technical <b style={{ color: TEXT }}>{condLabel((a as any).technical_condition)}</b></span>
                             <span>Sector <b style={{ color: TEXT }}>{(a as any).sector || '—'}</b></span>
                             <span>Coverage <b style={{ color: TEXT }}>{Math.round(((a as any).coverage || 0) * 100)}%</b></span>
-                            <span title="The curator's own values (it reads the holdings file until positions reader batch #4 is approved).">Curator: {typeLabel((a as any).curator_type)} · {String((a as any).curator_stance || '—')} · {String((a as any).curator_position_status || '—')}</span>
+                            <span title="The curator's recorded classification; differences from held-position evidence appear below.">Curator: {typeLabel((a as any).curator_type)} · {String((a as any).curator_stance || '—')} · {String((a as any).curator_position_status || '—')}</span>
                             <button type="button" onClick={e => { e.stopPropagation(); open(a.symbol) }} style={{ ...sel, cursor: 'pointer' }}>Open full record</button>
                           </div>
                           {(a as any).ownership_note && <div style={{ color: TOKENS.warning, marginTop: 3 }}>⚠ {(a as any).ownership_note}</div>}
