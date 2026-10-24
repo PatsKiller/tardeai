@@ -1024,6 +1024,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261023-push-policy-v2.md` | DSN-20261023-push-policy-v2.md |
 | `docs/designs/DSN-20261023-server-memory.md` | DSN-20261023-server-memory.md |
 | `docs/designs/DSN-20261023-work-pipeline.md` | DSN-20261023-work-pipeline.md |
+| `docs/designs/DSN-20261024-c1-company-populate.md` | Shared CIO company facts population |
 | `docs/designs/DSN-20261024-doc-index-pr-flow.md` | DSN-20261024-doc-index-pr-flow.md |
 | `docs/designs/DSN-20261024-ops-config-modals.md` | DSN-20261024-ops-config-modals.md |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
@@ -1782,6 +1783,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/BITEMPORAL_PACKAGING_AUTO_HEAL_2026-09-20.md` | Bitemporal v2 packaging auto-heal |
 | `docs/ops/BRIDGE_PIN_ALIGNMENT.md` | Governed bridge pin alignment |
 | `docs/ops/C1_CIO_COMPANY_FACTS_20261024.md` | C1: shared CIO company facts on My Watchlist and Prospects |
+| `docs/ops/C1_COMPANY_FACTS_POPULATION_20261024.md` | C1 company-facts population: source delivery and production-copy proof |
 | `docs/ops/CANONICAL_OBSERVATION_CONTRACT.md` | Canonical observation contract |
 | `docs/ops/CANON_SOURCE_ACQUISITION_QUEUE_2026-08-23.md` | Canon Source Acquisition Queue - 2026-08-23 |
 | `docs/ops/CC_NEEDS_ACTION_2026-10-21.md` | Command Center — the "Needs action" inbox and the failures that had no page (2026-10-21) |
@@ -2168,6 +2170,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/agents-21-20261023-wp16/README.md` | WP-16: proposed AGENTS 21.0.0 operator package |
 | `docs/ops/packets/agents-21-20261023-wp16/operator-pr-body.md` | WP-16 operator policy proposal |
 | `docs/ops/packets/archive-offbox-20261021/README.md` | Archive off-box sync to Google Drive — install packet (2026-10-21) |
+| `docs/ops/packets/c1-company-population-20261024/RUNBOOK.md` | C1 company-facts population operator packet |
 | `docs/ops/packets/catalyst-consolidation-20261022/README.md` | Catalyst momentum engine — cron side of the B8 consolidation (2026-10-22) |
 | `docs/ops/packets/comms-intent-consumer-live-20261017/README.md` | comms-intent consumer LIVE on the n8n fabric (2026-10-17) |
 | `docs/ops/packets/consolidation-health-audit-c3-20261015/README.md` | consolidation-health-audit-c3-20261015: CONSOLIDATE wave C3, operator packet |

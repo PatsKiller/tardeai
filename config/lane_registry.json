@@ -25132,6 +25132,39 @@
       "flags": [
         "UNVERIFIED_OUTPUT"
       ]
+    },
+    {
+      "lane_id": "cio-company-facts-populate",
+      "owner": "cio",
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-24",
+      "reason_confidence": "ESTABLISHED",
+      "state_reason": "New native apply source prepared; owner DRAFT contract review, fact-only PG schema capability and exact workflow admission/activation still pending. No legacy trigger exists.",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24,
+      "severity": "Medium",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/cio-company-facts-populate_last.json"
+      },
+      "native_apply_proposal": {
+        "workflow_id": "tradeai-cio-company-facts-populate-native",
+        "active": false,
+        "mode": "live",
+        "schedules": [
+          "0 35 6 * * 1-5",
+          "0 35 15 * * 1-5"
+        ],
+        "timezone": "America/New_York",
+        "packet": "docs/ops/packets/c1-company-population-20261024",
+        "class": "learn",
+        "retry_policy": "none",
+        "contract_status": "DRAFT",
+        "reviewed_by": null
+      },
+      "note": "Source apply mode, never shadow. Do not mark ACTIVE/native until accepted contract and policy/allowlist admission; no scheduler mutation performed."
     }
   ],
   "freshness_contracts": [

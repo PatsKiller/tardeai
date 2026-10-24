@@ -1,0 +1,16 @@
+{
+  "schema": "C1PopulationPackageHashes@v1",
+  "authority": "PROPOSED_SOURCE_ONLY",
+  "files": {
+    "migrations/2026_10_24_cio_company_facts_only.sql": "36036cf671611a0786e05cae4956d4558111393af139982a152f14f8e26c4054",
+    "scripts/lib/cio_instrument_record.py": "425459209f19f331a9711669948575c85b116cb8d13339b69307103ff1d71a61",
+    "scripts/lib/cio_company_population.py": "c5c343d72ff0e5261b2ab26c56dd40a9d657964e114a15fdb7db89530fc11f67",
+    "scripts/cio_company_facts_populate.py": "7c41dd8a59fdbc6286961ac992425a4d1c2e9b98980c0c56feab971708d427d5",
+    "scripts/build_cio_company_facts_workflow.py": "cb4a993f38a386baebb8b01ece13fa568325cc51d27fcc5b7c97a6ee0b3dc2c9",
+    "docs/ops/packets/c1-company-population-20261024/ALLOWLIST_PROPOSAL.json": "c89b27ad28b69db1f924a7f44b0226daf585cb779a5deb864bc7ac871c519274",
+    "docs/ops/packets/c1-company-population-20261024/COPY_PROOF.json": "c40fa7a49fd5e0223e52c21320fb9425cec7585b4bc249723bfca9650e2ee1c8",
+    "docs/ops/packets/c1-company-population-20261024/HEALTH_CONTRACT_DRAFT.json": "f7be85cb3f1c8b02c3a284980ae5e7c8a80f20af497e79d7366386a9261b4be2",
+    "docs/ops/packets/c1-company-population-20261024/REGISTRY_ACTIVATION_PROPOSAL.json": "3a6746e6386591670fe9b959ce6aeeebde73c4cd50a738451f320a6fbc8263ac",
+    "docs/ops/packets/c1-company-population-20261024/workflow.json": "26976632806d389ed9b1a85851c7cb0c875f5e4a967074a1ecb293e5956d2eea"
+  }
+}
