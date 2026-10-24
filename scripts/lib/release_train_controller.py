@@ -2829,11 +2829,75 @@ class TrainController:
         grant use is consumed unless its HEAD is ``sha``. The verifier stays the deploy script's (unchanged); the
         deploy script makes the same check itself (require_canonical_source_at)."""
         reader = getattr(self.host, "canonical_head", None)
-        head = reader() if callable(reader) else ""
+        try:
+            head = reader() if callable(reader) else ""
+        except Exception:  # an unreadable verifier fails closed; never persist raw Git/credential errors
+            head = ""
+        head = head if isinstance(head, str) and SHA_RE.fullmatch(head) else ""
         if head != sha:
             raise Halt(MERGED_NOT_LIVE, "CANONICAL_SOURCE_HEAD_MISMATCH",
                        f"CANONICAL_SOURCE HEAD {head[:12] or 'unreadable'} != {sha[:12]}: fast-forward the dev tree "
                        "to the merge commit, then reconcile")
+
+    def _align_canonical_at(self, sha: str) -> None:
+        """Align the clean verifier tree after exact-main CI, before issuing a prepare capability.
+
+        No force, reset, clean, fetch or branch update. Git output can contain credentials or local file names,
+        so refusals/events retain only a bounded action/reason and validated commit identities.
+        """
+        canonical = getattr(self.host, "canonical", None)
+        run = getattr(self.host, "_run", None)
+        head_before: Optional[str] = None
+
+        def record(action: str, reason: Optional[str] = None, head_after: Optional[str] = None) -> None:
+            payload = {"step": "canonical_source_alignment", "action": action, "target_sha": sha,
+                       "head_before": head_before, "head_after": head_after, "reason": reason}
+            self._save_state(canonical_source_alignment=payload)
+            self._event("promoting", "promoting", payload)
+
+        def refuse(reason: str) -> None:
+            record("REFUSED", reason)
+            raise Halt(MERGED_NOT_LIVE, reason, "canonical verifier alignment refused; no prepare capability issued")
+
+        def git(*args: str) -> tuple[int, str]:
+            if canonical is None or not callable(run):
+                refuse("CANONICAL_SOURCE_UNAVAILABLE")
+            try:
+                return run(["git", "-C", str(canonical), *args])
+            except Exception:
+                refuse("CANONICAL_SOURCE_GIT_FAILED")
+
+        def clean() -> None:
+            rc, out = git("status", "--porcelain", "--untracked-files=all")
+            if rc != 0:
+                refuse("CANONICAL_SOURCE_STATUS_FAILED")
+            if out.strip():
+                refuse("CANONICAL_SOURCE_DIRTY")
+
+        clean()
+        reader = getattr(self.host, "canonical_head", None)
+        try:
+            head = reader() if callable(reader) else ""
+        except Exception:
+            head = ""
+        if not isinstance(head, str) or not SHA_RE.fullmatch(head):
+            refuse("CANONICAL_SOURCE_HEAD_MISMATCH")
+        head_before = head
+        if head == sha:
+            record("NO_OP", head_after=head)
+            return
+        self._boundary("canonical_source_alignment")
+        clean()
+        record("CHECKOUT_STARTED")
+        rc, _ = git("checkout", "--detach", sha)
+        if rc != 0:
+            refuse("CANONICAL_SOURCE_CHECKOUT_FAILED")
+        clean()
+        try:
+            self._require_canonical_at(sha)
+        except Halt:
+            refuse("CANONICAL_SOURCE_HEAD_MISMATCH")
+        record("ALIGNED", head_after=sha)
 
     # -- promote ---------------------------------------------------------------------------------------
     def _promote(self, manifest: dict, cand: dict, batch: dict, merged: str, rec: dict) -> None:
@@ -2844,8 +2908,8 @@ class TrainController:
             self.say(f"WOULD wait <= {self.cfg.main_ci_timeout_s:.0f}s for exact-SHA push/main checks "
                      f"{[c for c in REQUIRED_CHECKS if c != BATCH_QUALIFIER]} on the merge commit")
             self.say("WOULD refuse if the merge commit or its prepared artifact is quarantined, or CURRENT moved")
-            self.say("WOULD refuse unless CANONICAL_SOURCE HEAD (the dev tree the deploy runs its release verifier "
-                     "from) is the merge commit, before any capability is issued")
+            self.say("WOULD require a clean CANONICAL_SOURCE, then checkout --detach the exact merge SHA only "
+                     "when CANONICAL_SOURCE HEAD differs; recheck clean/exact HEAD before issuing any prepare capability")
             self.say(f"WOULD git -C {self.host.checkout} fetch + checkout --detach <merge commit>; then "
                      f"bash {self.host.deploy} prepare (TRADEAI_RELEASE_CAMPAIGN=release-train-{self.train_id}, "
                      "TRADEAI_RELEASE_PR=<batch PR>) under a prepare capability")
@@ -2876,7 +2940,6 @@ class TrainController:
         env = RW.deploy_env(self.env, _CampaignWindow(f"release-train-{self.train_id}"), int(batch["pr"]), train_sha)
         if not self.host.checkout_clean():
             raise Halt(MERGED_NOT_LIVE, "CHECKOUT_DIRTY", str(self.host.checkout))
-        self._require_canonical_at(merged)
 
         def obs_main() -> dict:
             return self._observed(main_sha=self.github.main_head(), candidate_sha=merged)
@@ -2884,6 +2947,10 @@ class TrainController:
         def current_unchanged() -> None:
             if self.host.current_release() != prev:
                 raise Halt(MERGED_NOT_LIVE, "CURRENT_MOVED", f"{prev} -> {self.host.current_release()}")
+
+        current_unchanged()
+        self._align_canonical_at(merged)
+        self._require_canonical_at(merged)
 
         # prepare (builds the artifact; CURRENT untouched)
         t0 = self._ts()

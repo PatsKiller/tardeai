@@ -227,7 +227,18 @@ class FakeHost:
         # CANONICAL_SOURCE (the dev tree the deploy runs its verifier from). None = fast-forwarded to the train's
         # merge commit (World wires main_ref to the fake writer's merge); a test pins a stale HEAD by setting a SHA.
         self.canonical_sha: str | None = None
+        self.canonical = tmp / "canonical-fixture"
+        self.canonical_dirty = False
         self.main_ref = lambda: ""
+
+    def _run(self, args):
+        assert args[:3] == ["git", "-C", str(self.canonical)]
+        self.calls.append(("canonical_git", *args[3:]))
+        if args[3:] == ["status", "--porcelain", "--untracked-files=all"]:
+            return 0, " M fixture.txt" if self.canonical_dirty else ""
+        assert args[3:5] == ["checkout", "--detach"]
+        self.canonical_sha = args[5]
+        return 0, ""
 
     def canonical_head(self):
         self.calls.append(("canonical_head",))
@@ -1776,15 +1787,27 @@ def test_failed_window_alert_reaches_the_transport(tmp_path, monkeypatch):
 # ── CANONICAL_SOURCE HEAD (2026-10-21, release-1 promote failure) ─────────────────────────────────
 
 
-def test_stale_canonical_source_halts_before_any_prepare_or_capability(tmp_path):
+def test_clean_stale_canonical_source_aligns_and_preserves_full_train_verification(tmp_path):
+    w = World(tmp_path)
+    w.host.canonical_sha = w.repo.base
+    code, rec, _ = w.run()
+    assert code == T.EXIT_OK and rec["outcome"] == T.RELEASED_VERIFIED
+    assert ("canonical_git", "checkout", "--detach", w.writer.merged) in w.host.calls
+    assert w.host.canonical_head() == w.writer.merged
+    assert [d[1] for d in w.deploys()] == ["prepare", "promote"]
+    assert all(v["ok"] for v in rec["verification"].values())
+
+
+def test_dirty_stale_canonical_source_halts_before_any_prepare_or_capability(tmp_path):
     """The deploy script runs its release verifier from CANONICAL_SOURCE; a dev tree not at the merge commit is an
-    older verifier. The controller refuses before issuing a prepare capability or calling the deploy script."""
+    older verifier. A dirty tree refuses before issuing a prepare capability or calling the deploy script."""
     w = World(tmp_path)
     w.host.canonical_sha = "5" * 40  # dev tree left on an older main
+    w.host.canonical_dirty = True
     code, rec, _ = w.run()
-    assert rec["outcome"] == "MERGED_NOT_LIVE" and rec["reason"] == "CANONICAL_SOURCE_HEAD_MISMATCH", rec["reason"]
+    assert rec["outcome"] == "MERGED_NOT_LIVE" and rec["reason"] == "CANONICAL_SOURCE_DIRTY", rec["reason"]
     assert w.deploys() == []  # no prepare, no promote
-    assert ("canonical_head",) in w.host.calls
+    assert not any(c[0] == "canonical_git" and c[1] == "checkout" for c in w.host.calls)
     actions = {i["action"] for i in w.ledger()["intents"].values()}
     assert "prepare_release" not in actions and "promote_release" not in actions
 

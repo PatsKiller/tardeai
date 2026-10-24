@@ -1,0 +1,71 @@
+{
+  "schema": "TrainCanonicalHeadLocalProof@v1",
+  "status": "LOCAL_SOURCE_AND_FIXTURES_ONLY",
+  "base_sha": "e5fa288ecc6971d1a55a79f7e3ba5bbbb46c5dd0",
+  "as_of": "2026-10-24T15:16:16.596632+00:00",
+  "source_sha256": {
+    "scripts/lib/release_train_controller.py": "da3906b47d937f2c2f8711f208ad23532b863ad2188770eafc6a43f2354616df",
+    "tests/test_release_train_controller_20261021.py": "2190399c5b92353c8d971d914b6b62912c3fedaa29bf898a499659b39b1c14a1",
+    "tests/test_release_train_canonical_head_20261024.py": "64ef832bff10627052959d75c8a6bf232b642490e5b2a52d25dc9fbe0ebe622a",
+    "config/ci_gates/release_train_canonical_head_20261024.json": "05aa185d1b0b8b715811b93da33f8fc129b6c22fbab3132fcb1cd78a7e7f0547"
+  },
+  "native_profile": {
+    "status": "NON_GREEN",
+    "total": 389,
+    "passed": 382,
+    "failed": 7,
+    "source_xml_sha256": "cbd1355531a8fc85bdff0b77892859cfe5e50d0ef659f8ad2743122b3fabf62a",
+    "source_xml_uncompressed_bytes": 69539,
+    "receipt": "native-NON_GREEN.xml.gz",
+    "core_complete_modules": [
+      "tests.test_release_train_authority_20261021",
+      "tests.test_release_train_canonical_head_20261024",
+      "tests.test_release_train_controller_20261021",
+      "tests.test_release_train_forced_canary_20261021",
+      "tests.test_release_train_injected_failures_20261021",
+      "tests.test_release_train_phase7_prereqs_20261022"
+    ],
+    "core_passed": 320,
+    "new_cases": 16,
+    "native_controller_cases": 122,
+    "notes": [
+      "Initial native run is retained unchanged as NON_GREEN382/7.",
+      "Two sandbox-arm cases passed after setting runner TMPDIR to the owned parent containing basetemp; guard unchanged.",
+      "Five unchanged STOP HTTP cases passed after source inspection and accepted formal review of the exact ephemeral-loopback fixture command; no live requests."
+    ]
+  },
+  "psycopg2_hidden": true,
+  "live_canonical_operations": 0,
+  "live_train_operations": 0,
+  "real_capabilities_issued": 0,
+  "new_test_issuer": "fake boundary raises before any capability or deploy effect",
+  "native_fixture_authority": "existing tests use only owned temporary keys/state",
+  "host_path_new_violations": 0,
+  "coverage_new_unlisted": 0,
+  "artifacts": {
+    "native-NON_GREEN.xml.gz": "a7c76879e19c332e9ef059c0120b5ab41369810e414a86eaa47a5c551231c926",
+    "controller-core-green.xml": "5f1de104e337830b66bc56a2c2953e330388dcd0ea379cea06c773a77f92d75d",
+    "arm-corrected-2.xml": "bd42e7948bc77d554405bc2003ebae8654e4eeb7d54275211b44a6e1f7400f68",
+    "stop-reviewed-5.xml": "cd5bf7d518468c60d23008226a2dbc05e8c8a027c0605a754751ae363a144ade"
+  },
+  "latest_case_coverage": {
+    "passed": 389,
+    "failed_remaining": 0,
+    "single_green_native_run": false,
+    "method": "382 passed in original native run plus targeted reruns of exactly its two arm and five socket failures; source unchanged",
+    "arm_corrected_cases": 2,
+    "stop_reviewed_cases": 5,
+    "fixture_review": "exact require_escalated command accepted; no automatic approval rejection; fixture sockets only"
+  },
+  "mandatory_checks": {
+    "ruff": "PASS",
+    "docs_index": "PASS",
+    "claim": "PASS",
+    "secrets": "PASS",
+    "whitespace": "PASS",
+    "host_path_new_violations": 0,
+    "coverage_new_unlisted": 0,
+    "host_path_log_sha256": "35e284022d0751bcc0bb4fa920ab50a99bcbb8957f454ef45a19300aa540bca6",
+    "coverage_log_sha256": "b468a51ba55a562897c92cc888545479b61256a8c59d11e0a8b1939c67bd6dd0"
+  }
+}
