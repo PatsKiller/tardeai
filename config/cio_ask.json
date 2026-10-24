@@ -27,13 +27,13 @@
     "projected_usd_deep": 0.25,
     "projected_usd_reanswer": 0.05,
     "approval": {
-      "status": "PROPOSED",
+      "status": "APPROVED",
       "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
       "proposed_on": "2026-10-23",
       "decision": "Grant a $5.00/day Ask-the-CIO research cap (deep answers and re-answers), $0.50 per question, inside LLM_GLOBAL_DAILY_USD_CAP. Until status is APPROVED the deep path and re-answers spend nothing (inert above cap = inert at $0).",
-      "approved_by": null,
-      "approved_on": null,
-      "reference": null
+      "approved_by": "operator (John)",
+      "approved_on": "2026-10-24",
+      "reference": "Operator 2026-10-24 (session https://claude.ai/code/session_011AjwtDUpVLNhtFGHgNKrHU): \"push it live now ... We already have an LLM cap, and it should be using the LLM cap. And if we need to raise the LLM cap, it will ask.\""
     }
   },
   "reanswer": {
@@ -42,6 +42,9 @@
     "min_hours_between_per_thread": 6,
     "max_per_day": 10,
     "lookback_hours": 48,
-    "sources": ["sec_filing_events", "material_changes"]
+    "sources": [
+      "sec_filing_events",
+      "material_changes"
+    ]
   }
 }

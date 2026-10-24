@@ -19,6 +19,10 @@ export default function AskCioBar() {
   const [err, setErr] = useState<string | null>(null)
   const [res, setRes] = useState<AskResult | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const [listening, setListening] = useState(false)
+  const recRef = useRef<any>(null)
+  // Voice-to-text: the browser's own speech recognition (Chrome, Edge, Android, iOS Safari). Hidden where unsupported.
+  const SpeechRec = typeof window !== 'undefined' ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) : null
   const nav = useNavigate()
   const trackedRes = useApi<unknown>(ASK_PATHS.tracked, 60_000)
   const chips = trackedChips(unwrap<{ tracked: TrackedRow[] }>(trackedRes.data)?.tracked)
@@ -37,6 +41,27 @@ export default function AskCioBar() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [res, err])
+
+  function toggleMic() {
+    if (listening) { recRef.current?.stop(); return }
+    if (!SpeechRec) return
+    const rec = new SpeechRec()
+    rec.lang = navigator.language || 'en-US'
+    rec.interimResults = true
+    rec.continuous = false
+    const base = q ? q.trimEnd() + ' ' : ''
+    rec.onresult = (ev: any) => {
+      let text = ''
+      for (let i = 0; i < ev.results.length; i++) text += ev.results[i][0].transcript
+      setQ(base + text)
+    }
+    rec.onerror = (ev: any) => { setErr(ev.error === 'not-allowed' ? 'Microphone blocked — allow it for this site in the browser settings.' : `Voice input: ${ev.error}`) }
+    rec.onend = () => { setListening(false); inputRef.current?.focus() }
+    recRef.current = rec
+    setErr(null)
+    setListening(true)
+    rec.start()
+  }
 
   async function submit(e?: React.FormEvent) {
     e?.preventDefault()
@@ -69,11 +94,22 @@ export default function AskCioBar() {
           disabled={busy}
           style={{ flex: 1, minWidth: 0, fontSize: TYPE.base, padding: '6px 10px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[0], color: TOKENS.text[0], fontFamily: FONT.sans }}
         />
+        {SpeechRec && (
+          <button type="button" data-testid="ask-cio-mic" onClick={toggleMic} disabled={busy}
+            aria-label={listening ? 'Stop dictation' : 'Dictate your question'} aria-pressed={listening} title={TOOLTIPS.mic}
+            style={{ flex: '0 0 auto', minWidth: 34, minHeight: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: RADIUS.md,
+              border: `1px solid ${listening ? TOKENS.danger : TOKENS.border}`, background: listening ? TOKENS.bg[2] : 'transparent',
+              color: listening ? TOKENS.danger : TOKENS.text[2], cursor: 'pointer' }}>
+            <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0" /><path d="M12 18v3" />
+            </svg>
+          </button>
+        )}
         <label title={TOOLTIPS.deep} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: TYPE.sm, color: TOKENS.text[2], whiteSpace: 'nowrap' }}>
           <input type="checkbox" data-testid="ask-cio-deep" checked={deep} onChange={e => setDeep(e.target.checked)} disabled={busy} />
           Deep
         </label>
-        <button type="submit" data-testid="ask-cio-submit" disabled={busy || !q.trim()}
+        <button type="submit" title={TOOLTIPS.ask} data-testid="ask-cio-submit" disabled={busy || !q.trim()}
           style={{ fontSize: TYPE.sm, fontWeight: 700, padding: '6px 12px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, background: TOKENS.primary, color: TOKENS.bg[0], cursor: busy ? 'wait' : 'pointer' }}>
           {busy ? 'Asking…' : 'Ask'}
         </button>
@@ -85,7 +121,7 @@ export default function AskCioBar() {
             ))}
           </span>
         )}
-        <Link to="/cio/questions" data-testid="ask-cio-my-questions" style={{ fontSize: TYPE.sm, color: TOKENS.info, whiteSpace: 'nowrap' }}>My questions</Link>
+        <Link to="/cio/questions" title={TOOLTIPS.myQuestions} data-testid="ask-cio-my-questions" style={{ fontSize: TYPE.sm, color: TOKENS.info, whiteSpace: 'nowrap' }}>My questions</Link>
       </form>
       {(res || err) && (
         <div data-testid="ask-cio-answer" role="dialog" aria-label="CIO answer"
