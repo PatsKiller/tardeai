@@ -204,7 +204,8 @@ def _default_sources(root: Path) -> dict:
             out.append(core.item(ident=ident, kind="FINANCIAL", title=row.get("title") or "Trade review",
                                  proposed_by=None, created_at=row.get("created_at"), source=row["source"],
                                  doc=core.document(json.dumps(public, indent=2, ensure_ascii=False), source_sha=code_sha),
-                                 governed_href="/proposals", source_refs=refs + [row["canonical_entity_id"]]))
+                                 governed_href="/trading?tab=Proposals" if row["kind"] in ("paper", "broker", "unclassified_proposals") else "/cio",
+                                 source_refs=refs + [row["canonical_entity_id"]]))
             out[-1]["financial_kind"] = row["kind"]
         return {"rows": out, "gap": None if result.get("complete") else "Financial queues incomplete"}
 
