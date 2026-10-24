@@ -6,7 +6,7 @@
  * tracking. Follow up here or reply in Telegram: same thread. READ_ONLY_ADVISORY.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { FONT, RADIUS, TOKENS, TYPE, chipStyle } from '../lib/designTokens'
 import {
@@ -17,12 +17,16 @@ import {
 import { askCio, askErrorText, requestDeep, untrackEntity } from '../lib/askCioApi'
 import AskCioAnswer from '../components/AskCioAnswer'
 import { ASK_UPDATED_EVENT, answerPresentation, askUpdate, keepNewestThread, matchingThread, publishAskUpdate, readableVersion, threadVersionKey } from '../lib/askCioPresentation'
+import { useAskPhoneSheet } from '../hooks/useAskPhoneSheet'
+import '../components/AskCio.css'
 
 const card = { border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.lg, background: TOKENS.bg[1], padding: 12 } as const
 const btn = { fontSize: TYPE.sm, padding: '4px 10px', borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[2], color: TOKENS.text[0], cursor: 'pointer' } as const
 
 export default function MyQuestions() {
   const { threadId } = useParams()
+  const location = useLocation()
+  const [search, setSearch] = useSearchParams()
   const [pending, setPending] = useState(false)
   const list = useApi<unknown>(ASK_PATHS.list, pending ? 5_000 : 30_000)
   const rows = useMemo(() => sortSummaries(unwrap<{ threads: ThreadSummary[] }>(list.data)?.threads ?? []), [list.data])
@@ -32,10 +36,11 @@ export default function MyQuestions() {
     window.addEventListener(ASK_UPDATED_EVENT, refresh)
     return () => window.removeEventListener(ASK_UPDATED_EVENT, refresh)
   }, [list.refetch])
-  const [filter, setFilter] = useState('')
+  const filter = search.get('q') ?? ''
+  const setFilter = (value: string) => { const next = new URLSearchParams(search); if (value) next.set('q', value); else next.delete('q'); setSearch(next, { replace: true }) }
   const shown = filterSummaries(rows, filter)
   return (
-    <div data-testid="my-questions" style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+    <div className="ask-questions" data-testid="my-questions" style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
       <section style={{ ...card, flex: '1 1 300px', maxWidth: 420 }}>
         <h2 style={{ margin: '0 0 8px', fontSize: TYPE.md }}>My questions</h2>
         <input aria-label="Filter questions" placeholder="Filter by ticker or words" value={filter} onChange={e => setFilter(e.target.value)}
@@ -49,7 +54,7 @@ export default function MyQuestions() {
         <ul data-testid="my-questions-list" style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 6 }}>
           {shown.map(r => (
             <li key={r.thread_id}>
-              <Link to={`/cio/questions/${r.thread_id}`} data-testid={`q-${r.thread_id}`}
+              <Link to={{ pathname: `/cio/questions/${r.thread_id}`, search: location.search }} state={{ askReturn: true }} data-testid={`q-${r.thread_id}`}
                 style={{ display: 'block', padding: 8, borderRadius: RADIUS.md, textDecoration: 'none', color: TOKENS.text[0],
                   border: `1px solid ${r.thread_id === threadId ? TOKENS.primary : TOKENS.border}`, background: TOKENS.bg[0] }}>
                 <div style={{ fontSize: TYPE.base, fontWeight: 600 }}>{r.title ?? '(untitled)'}</div>
@@ -75,6 +80,10 @@ export default function MyQuestions() {
 }
 
 function ThreadView({ threadId, onChanged }: { threadId: string; onChanged: () => void }) {
+  const nav = useNavigate(), location = useLocation()
+  const sheet = useRef<HTMLDivElement>(null)
+  const back = () => { if (location.state?.askReturn) nav(-1); else nav({ pathname: '/cio/questions', search: location.search }, { replace: true }) }
+  const phone = useAskPhoneSheet(true, sheet, back)
   const [pending, setPending] = useState(false)
   const res = useApi<unknown>(ASK_PATHS.thread(threadId), pending ? 5_000 : 15_000)
   const candidate = matchingThread(res.data, threadId)
@@ -96,10 +105,11 @@ function ThreadView({ threadId, onChanged }: { threadId: string; onChanged: () =
     return () => window.removeEventListener(ASK_UPDATED_EVENT, refresh)
   }, [threadId, res.refetch])
   const refresh = () => { res.refetch(); onChanged() }
-  if (res.loading && !t) return <div style={card}>Loading thread…</div>
-  if (!t) return <div style={{ ...card, color: TOKENS.danger }}>Thread unavailable{res.error ? `: ${res.error}` : res.data ? ' — the response could not be matched to this question' : ''}.</div>
   return (
-    <div data-testid="ask-thread" style={{ display: 'grid', gap: 12 }}>
+    <div className="ask-thread-sheet" data-testid="ask-thread-sheet" ref={sheet} tabIndex={-1} data-phone-sheet={phone} role={phone ? 'dialog' : undefined} aria-modal={phone || undefined} aria-label="Question thread">
+      <div className="ask-thread-toolbar"><button data-testid="ask-thread-back" type="button" style={btn} onClick={back}>Back</button><strong style={{ fontSize: TYPE.md }}>Your question</strong></div>
+      <div className="ask-thread-content">
+      {res.loading && !t ? <div style={card}>Loading thread…</div> : !t ? <div style={{ ...card, color: TOKENS.danger }}>Thread unavailable{res.error ? `: ${res.error}` : res.data ? ' — the response could not be matched to this question' : ''}.</div> : <div data-testid="ask-thread" className="ask-thread-content">
       {Boolean(res.data) && t !== candidate && <div role="status" style={{ ...card, color: TOKENS.warning }}>The update could not advance this thread — showing its newer saved version.</div>}
       {res.stale && <div role="status" style={{ ...card, color: TOKENS.warning }}>Thread refresh unavailable — showing the saved thread from {t.updated_at}.</div>}
       <div style={card}>
@@ -130,6 +140,8 @@ function ThreadView({ threadId, onChanged }: { threadId: string; onChanged: () =
       </div>
       {t.turns.map(turn => <TurnCard key={turn.ask_id} turn={turn} />)}
       <FollowUp thread={t} onDone={refresh} />
+      </div>}
+      </div>
     </div>
   )
 }
@@ -199,12 +211,12 @@ function FollowUp({ thread, onDone }: { thread: Thread; onDone: () => void }) {
     } catch (ex) { setErr(askErrorText(ex)) } finally { setBusy(false) }
   }
   return (
-    <form onSubmit={send} style={{ ...card, display: 'grid', gap: 8 }}>
+    <form className="ask-follow-up" onSubmit={send} style={{ ...card, display: 'grid', gap: 8 }}>
       <label style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }} htmlFor="ask-follow-up">Follow up in this thread</label>
       <textarea id="ask-follow-up" data-testid="ask-follow-up" value={q} onChange={e => setQ(e.target.value)} rows={2} disabled={busy}
         placeholder="e.g. what would change your view? (you can also reply in Telegram)"
         style={{ fontSize: TYPE.base, padding: 8, borderRadius: RADIUS.md, border: `1px solid ${TOKENS.border}`, background: TOKENS.bg[0], color: TOKENS.text[0], fontFamily: FONT.sans, resize: 'vertical' }} />
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div className="ask-follow-up-actions" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <label title={TOOLTIPS.deep} style={{ fontSize: TYPE.sm, display: 'flex', gap: 4, alignItems: 'center' }}>
           <input type="checkbox" checked={deep} onChange={e => setDeep(e.target.checked)} disabled={busy} /> Deep
         </label>

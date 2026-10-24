@@ -6,6 +6,7 @@ on:
       - '.github/workflows/ask-cio-readable-fixture.yml'
       - 'apps/command-center-v3/src/components/AskCio*'
       - 'apps/command-center-v3/src/pages/MyQuestions.tsx'
+      - 'apps/command-center-v3/src/hooks/useAskPhoneSheet.ts'
       - 'apps/command-center-v3/src/lib/askCio*'
       - 'apps/command-center-v3/e2e/ask-cio-readable.fixture.mjs'
       - 'apps/command-center-v3/e2e/fixtures/askCioReadable.fixture.json'

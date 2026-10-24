@@ -1,0 +1,65 @@
+{
+  "task": "DSN-20261024-ask-cio-readable-P1-T1",
+  "boundary": "SOURCE_FIXTURE_ONLY; no publication, deployment, live provider or send proof",
+  "checks": [
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/native-mobile.log",
+      "sha256": "d47261657fb68a53317fcbe2053e77c65f88f026fc2568056a243f8c27644be6",
+      "command": "npm run build",
+      "result": "PASS"
+    },
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/browser-mobile.log",
+      "sha256": "2df589f60830c6d06130f84b5822c67cd20869720d3400718544bb52652fd92f",
+      "command": "node e2e/ask-cio-readable.fixture.mjs e2e/fixtures/askCioReadable.fixture.json CACHE/browser-mobile",
+      "result": "PASS 9 cases; 1440x1100,412x915,390x844"
+    },
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/nopg-source-final.log",
+      "sha256": "636a04420eb8a1650e7d5d5466352fde7c619c34fe325904589a2346b2bcef23",
+      "command": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg canonical-python -m pytest -q tests/test_ci_draft_pr_skip_20261023.py tests/test_data_source_authority_20260913.py tests/test_lane_registry.py",
+      "result": "PASS 195"
+    },
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/record-edge-mobile.log",
+      "sha256": "a5485a7888ee17b7d1d97d9cd34f26a23ba9e80c59c3a088fc7fe595a4d2d67a",
+      "command": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg canonical-python -m pytest -q strict real-tree CIO source/consumer checks",
+      "result": "PASS 2 strict real-tree CIO tests"
+    },
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/docs-index-mobile.log",
+      "sha256": "42949714bf81a1b8a1f30ddf95f7cbadc32e22a4217f624a334d7ae212c4d26e",
+      "command": "python3 scripts/report_docs_inventory.py --write-index && --check-index",
+      "result": "PASS"
+    },
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/dark_contracts-mobile.log",
+      "sha256": "a5ab00a60880452b4cf96c2303924c46a8c3c03d8629426aa2efe3481063ecf3",
+      "command": "python3 scripts/check_dark_contracts.py --fail-on-new",
+      "result": "PASS zero new"
+    },
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/retention_policy-mobile.log",
+      "sha256": "c3663855d1750404e2f1a90498561d1e4e3d80897e5db32d02351bc1932c88f5",
+      "command": "python3 scripts/check_retention_policy.py --fail-on-new",
+      "result": "PASS zero new"
+    },
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/test_coverage-mobile.log",
+      "sha256": "0f9cff0b53f44fd8c33194b1badb595244221866149fd5f877a6ee3d815be5e5",
+      "command": "python3 scripts/check_test_coverage.py --fail-on-new",
+      "result": "PASS zero new"
+    },
+    {
+      "log": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/test_host_paths-mobile.log",
+      "sha256": "35e284022d0751bcc0bb4fa920ab50a99bcbb8957f454ef45a19300aa540bca6",
+      "command": "python3 scripts/check_test_host_paths.py --fail-on-new",
+      "result": "PASS zero new"
+    }
+  ],
+  "browser_fixture_sha256": "79ded987953caf0dfed186c858c81e3a157cb41e654bd95b51ba28bf06edf29a",
+  "advisories": [
+    "Existing Vite bundle-size advisory only"
+  ],
+  "canonical_backend_dependency": "New body normalization, quote identity, actual settled cost, memory and tracking are in the separate backend package."
+}

@@ -1,0 +1,1316 @@
+{
+  "boundary": "SOURCE_FIXTURE_ONLY; synthetic intercepted transport, zero live server/provider/send",
+  "receipt_path": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/browser-mobile/ask-readable-receipts.json",
+  "receipt_sha256": "51f9e1bf395acb0fd6502eda2113e1a285fdd9c5505164283bf8c373de449886",
+  "input_sha256": "79ded987953caf0dfed186c858c81e3a157cb41e654bd95b51ba28bf06edf29a",
+  "source": {
+    "head": "8c3f714432d43f2fa270dff8386bc8258ddfed0b",
+    "working_patch_sha256": "0c1c9ee2bb6758b42b3990ee704fc14d0f14dd3fbabe57edae01ca864e266a1e",
+    "file_sha256": {
+      "/home/johnclaw/wt-codex-ask-cio-readable-20261024/apps/command-center-v3/src/lib/designTokens.ts": "3f18f482e0a832b39a52d3154363f3776b8dd396f494fed961ebcbcb986fe1a1",
+      "/home/johnclaw/wt-codex-ask-cio-readable-20261024/apps/command-center-v3/src/lib/askCioModel.ts": "bd5e650b499c91c4111a18a59715562399909702670c776e71d7ee84919f027e",
+      "/home/johnclaw/wt-codex-ask-cio-readable-20261024/apps/command-center-v3/src/lib/httpOutcome.ts": "08e2eccff818cfbfd31d2cc33e907df430f80fbd41979f5b6a3cfa8d85aabb85",
+      "/home/johnclaw/wt-codex-ask-cio-readable-20261024/apps/command-center-v3/src/hooks/useApi.ts": "56c09da5ec4d3bc41db7d13c0b1ab02c6f0caabb7d54eb1917ce06ef4e2d4e27",
+      "/home/johnclaw/wt-codex-ask-cio-readable-20261024/apps/command-center-v3/src/lib/askCioPresentation.ts": "95c087d102e1b8a8c60d9e7fccb56e1f3a7de6ce35e3503803e828bac19eec46",
+      "/home/johnclaw/wt-codex-ask-cio-readable-20261024/apps/command-center-v3/src/lib/askCioApi.ts": "edd4cf5e99415485ed1f85c21f4c0c6964c581bf382e55d7e2e3ba4456cb3cff",
+      "/home/johnclaw/wt-codex-ask-cio-readable-20261024/apps/command-center-v3/src/components/AskCioAnswer.tsx": "b5352013f45da4ed41ad76d0143bc792921472295dafd7006c8b8454469d2a84",
+      "/home/johnclaw/wt-codex-ask-cio-readable-20261024/apps/command-center-v3/src/hooks/useAskPhoneSheet.ts": "1d492e2c6d15412f6d8010891661109e0ad6ded39b5a5d5183115fa90d789e96",
+      "/home/johnclaw/wt-codex-ask-cio-readable-20261024/apps/command-center-v3/src/components/AskCio.css": "380661db67f6ceaec4c2b954fc37cb68b626fbe0a31fcef0045520ed644f5c99",
+      "/home/johnclaw/wt-codex-ask-cio-readable-20261024/apps/command-center-v3/src/components/AskCioBar.tsx": "1e56856b9801ffc9382ff3638a359ca7c291626535ca4306793d86f6cff51b76",
+      "/home/johnclaw/wt-codex-ask-cio-readable-20261024/apps/command-center-v3/src/pages/MyQuestions.tsx": "181d6ae12ff69b4b7091e165ea8379d3b39725cdf6270e28b742f1dc3b6efb13",
+      "/home/johnclaw/wt-codex-ask-cio-readable-20261024/apps/command-center-v3/src/styles/tokens.css": "90286378bab81e0e1b7a79cdbbfd2e7ccc8a62772c3e89ffe9e43690bb3ec25e",
+      "/home/johnclaw/wt-codex-ask-cio-readable-20261024/apps/command-center-v3/src/index.css": "66b67e709cf771c243104d6bbd79bf15dcfa3c9174d59203235e4c833d2134ed",
+      "/home/johnclaw/wt-codex-ask-cio-readable-20261024/apps/command-center-v3/e2e/fixtures/askCioReadable.fixture.json": "79ded987953caf0dfed186c858c81e3a157cb41e654bd95b51ba28bf06edf29a",
+      "/home/johnclaw/wt-codex-ask-cio-readable-20261024/apps/command-center-v3/e2e/ask-cio-readable.fixture.mjs": "b5c8b337031a83aeca302c68aa8f5bad5363e984c70b9dca22f85420201b228b",
+      "/home/johnclaw/wt-codex-ask-cio-readable-20261024/apps/command-center-v3/package.json": "6318adc97f32265de1f963ab808895d177c547055a7d2b77b4ecb82f392fdfd9",
+      "/home/johnclaw/wt-codex-ask-cio-readable-20261024/apps/command-center-v3/package-lock.json": "044d61c448bae21d84b9f6d7f890b0fd2bbfaea4c6315a4ffaceb4a80905e7f6"
+    }
+  },
+  "source_evidence": {
+    "ledger_sha256": "6c2e360e491227b7a8413f9fbf80395fad59f6a49f8edf7b4114255b93787b53",
+    "provider_calls": 0,
+    "live_sends": 0,
+    "production_writes": 0,
+    "scope": "Actual copied question/entities/facts/refusals; current CIO view unavailable in copied ledger, never invented; no new model opinion.",
+    "new_ask_costs": [
+      0
+    ],
+    "memory_contributions": 4
+  },
+  "clock": "2026-10-24T22:21:06.873218Z",
+  "cases": [
+    {
+      "width": 1440,
+      "height": 1100,
+      "mode": "combined",
+      "geometry": {
+        "viewport": 1440,
+        "document": 1440
+      },
+      "geometries": [
+        {
+          "state": "questions-quick",
+          "viewport": 1440,
+          "document": 1440
+        },
+        {
+          "state": "ask-quick",
+          "viewport": 1440,
+          "document": 1440
+        },
+        {
+          "state": "ask-deep",
+          "viewport": 1440,
+          "document": 1440
+        },
+        {
+          "state": "questions-deep",
+          "viewport": 1440,
+          "document": 1440
+        }
+      ],
+      "taps": [],
+      "targets": [],
+      "canonical_text_equal": true,
+      "traffic": {
+        "reads": [
+          "/api/v2/cio/asks/tracked",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/tracked",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/tracked"
+        ],
+        "posts": [
+          {
+            "path": "/api/v2/cio/ask",
+            "body": {
+              "question": "I need to research if I should do a hedge of 100 shares of Tesla what is the perspective for the next year and what is the likelihood of the merging with SpaceX and that is a hedge on a SpaceX play",
+              "depth": "deep",
+              "client_request_id": "1a17000de0df67d581c"
+            }
+          }
+        ],
+        "unexpected": [],
+        "external": [],
+        "errors": [],
+        "navigations": [
+          "/v3/cio/questions/thr_1dbec4e8faa5bcb9"
+        ]
+      }
+    },
+    {
+      "width": 1440,
+      "height": 1100,
+      "mode": "header-only",
+      "geometry": {
+        "viewport": 1440,
+        "document": 1440
+      },
+      "geometries": [
+        {
+          "state": "ask-quick",
+          "viewport": 1440,
+          "document": 1440
+        }
+      ],
+      "taps": [],
+      "targets": [],
+      "canonical_text_equal": true,
+      "traffic": {
+        "reads": [
+          "/api/v2/cio/asks/tracked",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/tracked"
+        ],
+        "posts": [
+          {
+            "path": "/api/v2/cio/ask",
+            "body": {
+              "question": "I need to research if I should do a hedge of 100 shares of Tesla what is the perspective for the next year and what is the likelihood of the merging with SpaceX and that is a hedge on a SpaceX play",
+              "depth": "deep",
+              "client_request_id": "1a17000dd929d10d29d"
+            }
+          }
+        ],
+        "unexpected": [],
+        "external": [],
+        "errors": [],
+        "navigations": [
+          "/v3/fixture-empty"
+        ]
+      }
+    },
+    {
+      "width": 1440,
+      "height": 1100,
+      "mode": "wrong-identity",
+      "geometry": {
+        "viewport": 1440,
+        "document": 1440
+      },
+      "geometries": [
+        {
+          "state": "questions-quick",
+          "viewport": 1440,
+          "document": 1440
+        },
+        {
+          "state": "ask-quick",
+          "viewport": 1440,
+          "document": 1440
+        }
+      ],
+      "taps": [],
+      "targets": [],
+      "canonical_text_equal": true,
+      "traffic": {
+        "reads": [
+          "/api/v2/cio/asks/tracked",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/fixture-unavailable-thread"
+        ],
+        "posts": [
+          {
+            "path": "/api/v2/cio/ask",
+            "body": {
+              "question": "I need to research if I should do a hedge of 100 shares of Tesla what is the perspective for the next year and what is the likelihood of the merging with SpaceX and that is a hedge on a SpaceX play",
+              "depth": "deep",
+              "client_request_id": "1a17000debc8a5744e2"
+            }
+          }
+        ],
+        "unexpected": [],
+        "external": [],
+        "errors": [],
+        "navigations": [
+          "/v3/cio/questions/thr_1dbec4e8faa5bcb9"
+        ]
+      }
+    },
+    {
+      "width": 412,
+      "height": 915,
+      "mode": "combined",
+      "geometry": {
+        "viewport": 412,
+        "document": 412
+      },
+      "geometries": [
+        {
+          "state": "questions-quick",
+          "viewport": 412,
+          "document": 412
+        },
+        {
+          "state": "ask-quick",
+          "viewport": 412,
+          "document": 412
+        },
+        {
+          "state": "ask-deep",
+          "viewport": 412,
+          "document": 412
+        },
+        {
+          "state": "questions-deep",
+          "viewport": 412,
+          "document": 412
+        },
+        {
+          "state": "questions-back-filter",
+          "viewport": 412,
+          "document": 412
+        }
+      ],
+      "taps": [
+        {
+          "name": "question input",
+          "x": 16,
+          "y": 32,
+          "width": 380,
+          "height": 44
+        },
+        {
+          "name": "deep option",
+          "x": 68,
+          "y": 84,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "name": "Ask primary action",
+          "x": 16,
+          "y": 136,
+          "width": 380,
+          "height": 44
+        },
+        {
+          "name": "How I know this disclosure",
+          "x": 12,
+          "y": 766.75,
+          "width": 388,
+          "height": 44
+        },
+        {
+          "name": "Collapse sources",
+          "x": 12,
+          "y": 766.75,
+          "width": 388,
+          "height": 44
+        },
+        {
+          "name": "Open thread primary action",
+          "x": 12,
+          "y": 859,
+          "width": 388,
+          "height": 44
+        },
+        {
+          "name": "thread Back",
+          "x": 12,
+          "y": 12,
+          "width": 46.46875,
+          "height": 44
+        },
+        {
+          "name": "Filter questions",
+          "x": 33,
+          "y": 244,
+          "width": 346,
+          "height": 44
+        },
+        {
+          "name": "Open filtered question",
+          "x": 33,
+          "y": 296,
+          "width": 346,
+          "height": 113
+        }
+      ],
+      "targets": [
+        {
+          "state": "questions-quick",
+          "areas": [
+            {
+              "name": "Ask the CIO",
+              "width": 380,
+              "height": 44
+            },
+            {
+              "name": "Dictate your question",
+              "width": 44,
+              "height": 44
+            },
+            {
+              "name": "Deep",
+              "width": 44,
+              "height": 44
+            },
+            {
+              "name": "My questions",
+              "width": 64.8125,
+              "height": 44
+            },
+            {
+              "name": "Filter questions",
+              "width": 346,
+              "height": 44
+            },
+            {
+              "name": "I need to research if I should do a hedge of 100 shares of Tesla what ",
+              "width": 346,
+              "height": 113
+            },
+            {
+              "name": "I need to research if I should do a hedge of 100 shares of Tesla what ",
+              "width": 346,
+              "height": 96
+            }
+          ]
+        },
+        {
+          "sheet": "ask-cio-answer",
+          "x": 0,
+          "y": 0,
+          "width": 412,
+          "height": 915
+        },
+        {
+          "state": "ask-quick",
+          "areas": [
+            {
+              "name": "Close",
+              "width": 55.640625,
+              "height": 44
+            },
+            {
+              "name": "How I know this (20)",
+              "width": 388,
+              "height": 44
+            },
+            {
+              "name": "Open thread \u2192",
+              "width": 388,
+              "height": 44
+            }
+          ]
+        },
+        {
+          "state": "ask-deep",
+          "areas": [
+            {
+              "name": "Close",
+              "width": 55.640625,
+              "height": 44
+            },
+            {
+              "name": "How I know this (56)",
+              "width": 388,
+              "height": 44
+            },
+            {
+              "name": "Open thread \u2192",
+              "width": 388,
+              "height": 44
+            }
+          ]
+        },
+        {
+          "sheet": "ask-thread-sheet",
+          "x": 0,
+          "y": 0,
+          "width": 412,
+          "height": 915
+        },
+        {
+          "state": "questions-deep",
+          "areas": [
+            {
+              "name": "Back",
+              "width": 46.46875,
+              "height": 44
+            },
+            {
+              "name": "Untrack",
+              "width": 59.90625,
+              "height": 44
+            },
+            {
+              "name": "Untrack",
+              "width": 59.90625,
+              "height": 44
+            }
+          ]
+        },
+        {
+          "sheet": "ask-thread-sheet",
+          "x": 0,
+          "y": 0,
+          "width": 412,
+          "height": 915
+        },
+        {
+          "state": "questions-back-filter",
+          "areas": [
+            {
+              "name": "Ask the CIO",
+              "width": 380,
+              "height": 44
+            },
+            {
+              "name": "Dictate your question",
+              "width": 44,
+              "height": 44
+            },
+            {
+              "name": "Deep",
+              "width": 44,
+              "height": 44
+            },
+            {
+              "name": "My questions",
+              "width": 64.8125,
+              "height": 44
+            },
+            {
+              "name": "Filter questions",
+              "width": 346,
+              "height": 44
+            },
+            {
+              "name": "I need to research if I should do a hedge of 100 shares of Tesla what ",
+              "width": 346,
+              "height": 113
+            },
+            {
+              "name": "I need to research if I should do a hedge of 100 shares of Tesla what ",
+              "width": 346,
+              "height": 96
+            }
+          ]
+        },
+        {
+          "sheet": "ask-thread-sheet",
+          "x": 0,
+          "y": 0,
+          "width": 412,
+          "height": 915
+        }
+      ],
+      "canonical_text_equal": true,
+      "traffic": {
+        "reads": [
+          "/api/v2/cio/asks/tracked",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/tracked",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/tracked"
+        ],
+        "posts": [
+          {
+            "path": "/api/v2/cio/ask",
+            "body": {
+              "question": "I need to research if I should do a hedge of 100 shares of Tesla what is the perspective for the next year and what is the likelihood of the merging with SpaceX and that is a hedge on a SpaceX play",
+              "depth": "deep",
+              "client_request_id": "1a17000ddde3d57d431"
+            }
+          }
+        ],
+        "unexpected": [],
+        "external": [],
+        "errors": [],
+        "navigations": [
+          "/v3/cio/questions"
+        ]
+      }
+    },
+    {
+      "width": 412,
+      "height": 915,
+      "mode": "header-only",
+      "geometry": {
+        "viewport": 412,
+        "document": 412
+      },
+      "geometries": [
+        {
+          "state": "ask-quick",
+          "viewport": 412,
+          "document": 412
+        }
+      ],
+      "taps": [
+        {
+          "name": "question input",
+          "x": 16,
+          "y": 32,
+          "width": 380,
+          "height": 44
+        },
+        {
+          "name": "deep option",
+          "x": 68,
+          "y": 84,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "name": "Ask primary action",
+          "x": 16,
+          "y": 136,
+          "width": 380,
+          "height": 44
+        },
+        {
+          "name": "answer Back",
+          "x": 344.359375,
+          "y": 12,
+          "width": 55.640625,
+          "height": 44
+        }
+      ],
+      "targets": [
+        {
+          "sheet": "ask-cio-answer",
+          "x": 0,
+          "y": 0,
+          "width": 412,
+          "height": 915
+        },
+        {
+          "state": "ask-quick",
+          "areas": [
+            {
+              "name": "Close",
+              "width": 55.640625,
+              "height": 44
+            },
+            {
+              "name": "How I know this (20)",
+              "width": 388,
+              "height": 44
+            },
+            {
+              "name": "Open thread \u2192",
+              "width": 388,
+              "height": 44
+            }
+          ]
+        }
+      ],
+      "canonical_text_equal": true,
+      "traffic": {
+        "reads": [
+          "/api/v2/cio/asks/tracked",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/tracked"
+        ],
+        "posts": [
+          {
+            "path": "/api/v2/cio/ask",
+            "body": {
+              "question": "I need to research if I should do a hedge of 100 shares of Tesla what is the perspective for the next year and what is the likelihood of the merging with SpaceX and that is a hedge on a SpaceX play",
+              "depth": "deep",
+              "client_request_id": "1a17000dd5e49bfdfc2"
+            }
+          }
+        ],
+        "unexpected": [],
+        "external": [],
+        "errors": [],
+        "navigations": [
+          "/v3/fixture-empty"
+        ]
+      }
+    },
+    {
+      "width": 412,
+      "height": 915,
+      "mode": "wrong-identity",
+      "geometry": {
+        "viewport": 412,
+        "document": 412
+      },
+      "geometries": [
+        {
+          "state": "ask-quick",
+          "viewport": 412,
+          "document": 412
+        }
+      ],
+      "taps": [
+        {
+          "name": "question input",
+          "x": 16,
+          "y": 32,
+          "width": 380,
+          "height": 44
+        },
+        {
+          "name": "deep option",
+          "x": 68,
+          "y": 84,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "name": "Ask primary action",
+          "x": 16,
+          "y": 136,
+          "width": 380,
+          "height": 44
+        },
+        {
+          "name": "answer Back",
+          "x": 344.359375,
+          "y": 12,
+          "width": 55.640625,
+          "height": 44
+        }
+      ],
+      "targets": [
+        {
+          "sheet": "ask-cio-answer",
+          "x": 0,
+          "y": 0,
+          "width": 412,
+          "height": 915
+        },
+        {
+          "state": "ask-quick",
+          "areas": [
+            {
+              "name": "Close",
+              "width": 55.640625,
+              "height": 44
+            },
+            {
+              "name": "How I know this (20)",
+              "width": 388,
+              "height": 44
+            },
+            {
+              "name": "Open thread \u2192",
+              "width": 388,
+              "height": 44
+            }
+          ]
+        }
+      ],
+      "canonical_text_equal": true,
+      "traffic": {
+        "reads": [
+          "/api/v2/cio/asks/tracked",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/fixture-unavailable-thread"
+        ],
+        "posts": [
+          {
+            "path": "/api/v2/cio/ask",
+            "body": {
+              "question": "I need to research if I should do a hedge of 100 shares of Tesla what is the perspective for the next year and what is the likelihood of the merging with SpaceX and that is a hedge on a SpaceX play",
+              "depth": "deep",
+              "client_request_id": "1a17000dd72783eaedc"
+            }
+          }
+        ],
+        "unexpected": [],
+        "external": [],
+        "errors": [],
+        "navigations": [
+          "/v3/cio/questions"
+        ]
+      }
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "mode": "combined",
+      "geometry": {
+        "viewport": 390,
+        "document": 390
+      },
+      "geometries": [
+        {
+          "state": "questions-quick",
+          "viewport": 390,
+          "document": 390
+        },
+        {
+          "state": "ask-quick",
+          "viewport": 390,
+          "document": 390
+        },
+        {
+          "state": "ask-deep",
+          "viewport": 390,
+          "document": 390
+        },
+        {
+          "state": "questions-deep",
+          "viewport": 390,
+          "document": 390
+        },
+        {
+          "state": "questions-back-filter",
+          "viewport": 390,
+          "document": 390
+        }
+      ],
+      "taps": [
+        {
+          "name": "question input",
+          "x": 16,
+          "y": 32,
+          "width": 358,
+          "height": 44
+        },
+        {
+          "name": "deep option",
+          "x": 68,
+          "y": 84,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "name": "Ask primary action",
+          "x": 16,
+          "y": 136,
+          "width": 358,
+          "height": 44
+        },
+        {
+          "name": "How I know this disclosure",
+          "x": 12,
+          "y": 731.75,
+          "width": 366,
+          "height": 44
+        },
+        {
+          "name": "Collapse sources",
+          "x": 12,
+          "y": 731.75,
+          "width": 366,
+          "height": 44
+        },
+        {
+          "name": "Open thread primary action",
+          "x": 12,
+          "y": 788,
+          "width": 366,
+          "height": 44
+        },
+        {
+          "name": "thread Back",
+          "x": 12,
+          "y": 12,
+          "width": 46.46875,
+          "height": 44
+        },
+        {
+          "name": "Filter questions",
+          "x": 33,
+          "y": 244,
+          "width": 324,
+          "height": 44
+        },
+        {
+          "name": "Open filtered question",
+          "x": 33,
+          "y": 296,
+          "width": 324,
+          "height": 113
+        }
+      ],
+      "targets": [
+        {
+          "state": "questions-quick",
+          "areas": [
+            {
+              "name": "Ask the CIO",
+              "width": 358,
+              "height": 44
+            },
+            {
+              "name": "Dictate your question",
+              "width": 44,
+              "height": 44
+            },
+            {
+              "name": "Deep",
+              "width": 44,
+              "height": 44
+            },
+            {
+              "name": "My questions",
+              "width": 64.8125,
+              "height": 44
+            },
+            {
+              "name": "Filter questions",
+              "width": 324,
+              "height": 44
+            },
+            {
+              "name": "I need to research if I should do a hedge of 100 shares of Tesla what ",
+              "width": 324,
+              "height": 113
+            },
+            {
+              "name": "I need to research if I should do a hedge of 100 shares of Tesla what ",
+              "width": 324,
+              "height": 113
+            }
+          ]
+        },
+        {
+          "sheet": "ask-cio-answer",
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 844
+        },
+        {
+          "state": "ask-quick",
+          "areas": [
+            {
+              "name": "Close",
+              "width": 55.640625,
+              "height": 44
+            },
+            {
+              "name": "How I know this (20)",
+              "width": 366,
+              "height": 44
+            },
+            {
+              "name": "Open thread \u2192",
+              "width": 366,
+              "height": 44
+            }
+          ]
+        },
+        {
+          "state": "ask-deep",
+          "areas": [
+            {
+              "name": "Close",
+              "width": 55.640625,
+              "height": 44
+            },
+            {
+              "name": "How I know this (56)",
+              "width": 366,
+              "height": 44
+            },
+            {
+              "name": "Open thread \u2192",
+              "width": 366,
+              "height": 44
+            }
+          ]
+        },
+        {
+          "sheet": "ask-thread-sheet",
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 844
+        },
+        {
+          "state": "questions-deep",
+          "areas": [
+            {
+              "name": "Back",
+              "width": 46.46875,
+              "height": 44
+            },
+            {
+              "name": "Untrack",
+              "width": 59.90625,
+              "height": 44
+            },
+            {
+              "name": "Untrack",
+              "width": 59.90625,
+              "height": 44
+            }
+          ]
+        },
+        {
+          "sheet": "ask-thread-sheet",
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 844
+        },
+        {
+          "state": "questions-back-filter",
+          "areas": [
+            {
+              "name": "Ask the CIO",
+              "width": 358,
+              "height": 44
+            },
+            {
+              "name": "Dictate your question",
+              "width": 44,
+              "height": 44
+            },
+            {
+              "name": "Deep",
+              "width": 44,
+              "height": 44
+            },
+            {
+              "name": "My questions",
+              "width": 64.8125,
+              "height": 44
+            },
+            {
+              "name": "Filter questions",
+              "width": 324,
+              "height": 44
+            },
+            {
+              "name": "I need to research if I should do a hedge of 100 shares of Tesla what ",
+              "width": 324,
+              "height": 113
+            },
+            {
+              "name": "I need to research if I should do a hedge of 100 shares of Tesla what ",
+              "width": 324,
+              "height": 113
+            }
+          ]
+        },
+        {
+          "sheet": "ask-thread-sheet",
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 844
+        }
+      ],
+      "canonical_text_equal": true,
+      "traffic": {
+        "reads": [
+          "/api/v2/cio/asks/tracked",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/tracked",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/tracked"
+        ],
+        "posts": [
+          {
+            "path": "/api/v2/cio/ask",
+            "body": {
+              "question": "I need to research if I should do a hedge of 100 shares of Tesla what is the perspective for the next year and what is the likelihood of the merging with SpaceX and that is a hedge on a SpaceX play",
+              "depth": "deep",
+              "client_request_id": "1a17000de0780ef2bfe"
+            }
+          }
+        ],
+        "unexpected": [],
+        "external": [],
+        "errors": [],
+        "navigations": [
+          "/v3/cio/questions"
+        ]
+      }
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "mode": "header-only",
+      "geometry": {
+        "viewport": 390,
+        "document": 390
+      },
+      "geometries": [
+        {
+          "state": "ask-quick",
+          "viewport": 390,
+          "document": 390
+        }
+      ],
+      "taps": [
+        {
+          "name": "question input",
+          "x": 16,
+          "y": 32,
+          "width": 358,
+          "height": 44
+        },
+        {
+          "name": "deep option",
+          "x": 68,
+          "y": 84,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "name": "Ask primary action",
+          "x": 16,
+          "y": 136,
+          "width": 358,
+          "height": 44
+        },
+        {
+          "name": "answer Back",
+          "x": 322.359375,
+          "y": 12,
+          "width": 55.640625,
+          "height": 44
+        }
+      ],
+      "targets": [
+        {
+          "sheet": "ask-cio-answer",
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 844
+        },
+        {
+          "state": "ask-quick",
+          "areas": [
+            {
+              "name": "Close",
+              "width": 55.640625,
+              "height": 44
+            },
+            {
+              "name": "How I know this (20)",
+              "width": 366,
+              "height": 44
+            },
+            {
+              "name": "Open thread \u2192",
+              "width": 366,
+              "height": 44
+            }
+          ]
+        }
+      ],
+      "canonical_text_equal": true,
+      "traffic": {
+        "reads": [
+          "/api/v2/cio/asks/tracked",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks/tracked"
+        ],
+        "posts": [
+          {
+            "path": "/api/v2/cio/ask",
+            "body": {
+              "question": "I need to research if I should do a hedge of 100 shares of Tesla what is the perspective for the next year and what is the likelihood of the merging with SpaceX and that is a hedge on a SpaceX play",
+              "depth": "deep",
+              "client_request_id": "1a17000dd68109d1532"
+            }
+          }
+        ],
+        "unexpected": [],
+        "external": [],
+        "errors": [],
+        "navigations": [
+          "/v3/fixture-empty"
+        ]
+      }
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "mode": "wrong-identity",
+      "geometry": {
+        "viewport": 390,
+        "document": 390
+      },
+      "geometries": [
+        {
+          "state": "ask-quick",
+          "viewport": 390,
+          "document": 390
+        }
+      ],
+      "taps": [
+        {
+          "name": "question input",
+          "x": 16,
+          "y": 32,
+          "width": 358,
+          "height": 44
+        },
+        {
+          "name": "deep option",
+          "x": 68,
+          "y": 84,
+          "width": 44,
+          "height": 44
+        },
+        {
+          "name": "Ask primary action",
+          "x": 16,
+          "y": 136,
+          "width": 358,
+          "height": 44
+        },
+        {
+          "name": "answer Back",
+          "x": 322.359375,
+          "y": 12,
+          "width": 55.640625,
+          "height": 44
+        }
+      ],
+      "targets": [
+        {
+          "sheet": "ask-cio-answer",
+          "x": 0,
+          "y": 0,
+          "width": 390,
+          "height": 844
+        },
+        {
+          "state": "ask-quick",
+          "areas": [
+            {
+              "name": "Close",
+              "width": 55.640625,
+              "height": 44
+            },
+            {
+              "name": "How I know this (20)",
+              "width": 366,
+              "height": 44
+            },
+            {
+              "name": "Open thread \u2192",
+              "width": 366,
+              "height": 44
+            }
+          ]
+        }
+      ],
+      "canonical_text_equal": true,
+      "traffic": {
+        "reads": [
+          "/api/v2/cio/asks/tracked",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/thr_1dbec4e8faa5bcb9",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks",
+          "/api/v2/cio/asks/fixture-unavailable-thread"
+        ],
+        "posts": [
+          {
+            "path": "/api/v2/cio/ask",
+            "body": {
+              "question": "I need to research if I should do a hedge of 100 shares of Tesla what is the perspective for the next year and what is the likelihood of the merging with SpaceX and that is a hedge on a SpaceX play",
+              "depth": "deep",
+              "client_request_id": "1a17000dd718be6371d"
+            }
+          }
+        ],
+        "unexpected": [],
+        "external": [],
+        "errors": [],
+        "navigations": [
+          "/v3/cio/questions"
+        ]
+      }
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/browser-mobile/impl-ask-deep-1440.png",
+      "sha256": "c97a507524496d18a291f3e8bb5db7e2588b04346e62fc7b6f881c7a58112be4"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/browser-mobile/impl-ask-deep-390.png",
+      "sha256": "31e68c887987aebb88bbb3cbda2f56ecf3b87d1e81b775b70c890d38a2cd6c98"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/browser-mobile/impl-ask-deep-412.png",
+      "sha256": "cf8365ef5af2c7b21c228bad2f95dc796fda845d343898b19786e6331be798ca"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/browser-mobile/impl-ask-quick-1440.png",
+      "sha256": "df1a7a8000908251237d62923e230e118870c0e858a24fdd10b955d807c25a2f"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/browser-mobile/impl-ask-quick-390.png",
+      "sha256": "c143106fe2779319f43612102673ca47aaf5f7b251006c96c97219fee48fac71"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/browser-mobile/impl-ask-quick-412.png",
+      "sha256": "3cb01940d42d4486f70175f2b2960d3a5035cd0f655b12a27d191e04dfd1e1b2"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/browser-mobile/impl-questions-back-filter-390.png",
+      "sha256": "f8e66db512a625ee789eec645b4790dacdd5c74de3f14ff9e492d1a9f8d0f6b0"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/browser-mobile/impl-questions-back-filter-412.png",
+      "sha256": "fb2637d2e74d5541f1402aafb05da4f50086663c5b119efad6fe417e2dff84ce"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/browser-mobile/impl-questions-deep-1440.png",
+      "sha256": "df67037329dc64abc267e28dd88a9ba8e27601cad28b16db4c53949320aa1734"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/browser-mobile/impl-questions-deep-390.png",
+      "sha256": "ef56d165f5e1cdf89410905ebb1084bce290d852259cef49bcfc1d02301bfdb7"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/browser-mobile/impl-questions-deep-412.png",
+      "sha256": "b33b36186ab72887dbc8d2f7175ec7191cde4119b7dd7bfe84484d1080d78cc0"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/browser-mobile/impl-questions-quick-1440.png",
+      "sha256": "6a69c6f879fd2ef129664f696230bbaf0260dec7f47d770a9c8557b6e9b76c0c"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/browser-mobile/impl-questions-quick-390.png",
+      "sha256": "2c2af0f4b344289b41b134372d6c3eb21903f15474145a8ad25572dcfdd70296"
+    },
+    {
+      "path": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/browser-mobile/impl-questions-quick-412.png",
+      "sha256": "6f729d0c78e02ee9a9288bdf58faa4f89c157f7c6f9ea5998840dc653eb74572"
+    }
+  ]
+}
