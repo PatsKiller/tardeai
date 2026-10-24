@@ -1,0 +1,169 @@
+"""The CIO's ADVISORY size suggestion (AGENTS.md 21.0.0 §29). Pure, deterministic, never actionable.
+
+`advisory_size_suggestion()` is the only thing that may fill an "Ask the CIO" answer's `size_suggestion`, and only
+`scripts/lib/cio_ask_contract.py` may import this module (§29.3). It returns None until AGENTS.md 21.0.0 is ACTIVE,
+read at call time with no flag or environment override (§29.4), and None for any missing or invalid input.
+
+    shares = floor(min(V*r / (E - S), (V*p - P) / E, (V*s - X) / E)), never below zero          (§29.2)
+
+V portfolio value, r the operator's risk budget per idea (default 1%, at most 5%), E reference price, S stop reference
+(long only, S < E), p / s the operator's position / sector limits, P / X the current position / sector exposure.
+
+No key of the result is a `BEHAVIOR_FIELDS` key, and this module imports nothing but the standard library: no broker,
+order, stop or proposal code, so nothing here can place, stage or arm anything. The behaviour rail
+(`BehaviorWriteRefused` in `cio_instrument_record.apply_cognition()`) is untouched.
+"""
+
+from __future__ import annotations
+
+import re
+from decimal import ROUND_FLOOR, Decimal, InvalidOperation
+from pathlib import Path
+from typing import Any, Mapping, Optional
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+REQUIRED_POLICY = "21.0.0"
+POLICY_ANCHOR = "# 29 · Advisory size suggestions"
+LABEL = "ADVISORY"
+DEFAULT_RISK_BUDGET_PCT = Decimal("0.01")
+MAX_RISK_BUDGET_PCT = Decimal("0.05")
+ALLOWED_IMPORTERS = ("scripts/lib/cio_ask_contract.py",)
+FORMULA = "shares = floor(min(V*r / (E - S), (V*p - P) / E, (V*s - X) / E)), never below zero"
+# The keys a model's answer may never carry (cio_instrument_record.BEHAVIOR_FIELDS, copied so this module imports
+# nothing; the 21.0.0 policy test asserts the two are equal), plus the field the deterministic suggestion owns.
+BEHAVIOR_FIELDS = (
+    "recommended_delta_usd",
+    "size_usd",
+    "shares",
+    "qty",
+    "order",
+    "stop",
+    "limit",
+    "target_weight_pct",
+    "trade",
+    "execution",
+)
+MODEL_STRIPPED_KEYS = BEHAVIOR_FIELDS + ("size_suggestion",)
+
+_ROW = re.compile(r"^\|\s*" + re.escape(REQUIRED_POLICY) + r"\s*\|[^|]*\|\s*([^|]*)\|", re.M)
+
+
+def policy_active(policy_root: Optional[Path] = None) -> bool:
+    """True only when AGENTS.md's 21.0.0 row begins with ACTIVE and §29's heading is present. Fails closed."""
+    try:
+        text = (Path(policy_root) if policy_root else REPO_ROOT).joinpath("AGENTS.md").read_text(encoding="utf-8")
+    except OSError:
+        return False
+    m = _ROW.search(text)
+    return bool(m and m.group(1).strip().upper().startswith("ACTIVE") and POLICY_ANCHOR in text)
+
+
+def _dec(value: Any) -> Optional[Decimal]:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        d = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+    return d if d.is_finite() else None
+
+
+def _floor(d: Decimal) -> int:
+    return max(0, int(d.to_integral_value(rounding=ROUND_FLOOR)))
+
+
+def advisory_size_suggestion(
+    *,
+    symbol: str,
+    portfolio_value: Any,
+    reference_price: Any,
+    stop_reference_price: Any,
+    max_position_pct: Any,
+    max_sector_pct: Any,
+    sector_exposure_usd: Any,
+    as_of: str,
+    risk_budget_pct: Any = DEFAULT_RISK_BUDGET_PCT,
+    existing_position_usd: Any = None,
+    policy_root: Optional[Path] = None,
+) -> Optional[dict[str, Any]]:
+    """The §29 suggestion as a dict, or None (policy below 21.0.0 ACTIVE, or any input missing or invalid)."""
+    if not policy_active(policy_root):
+        return None
+    if not symbol or not as_of:
+        return None
+    v, e, s = _dec(portfolio_value), _dec(reference_price), _dec(stop_reference_price)
+    r, p, sx = _dec(risk_budget_pct), _dec(max_position_pct), _dec(max_sector_pct)
+    x, pos = _dec(sector_exposure_usd), _dec(existing_position_usd)
+    if any(d is None for d in (v, e, s, r, p, sx, x, pos)):
+        return None
+    if v <= 0 or e <= 0 or s <= 0 or s >= e or x < 0 or pos < 0:
+        return None
+    if not (0 < r <= MAX_RISK_BUDGET_PCT) or not (0 < p <= 1) or not (0 < sx <= 1):
+        return None
+
+    caps = {
+        "by_risk_budget": _floor(v * r / (e - s)),
+        "by_position_limit": _floor((v * p - pos) / e),
+        "by_sector_limit": _floor((v * sx - x) / e),
+    }
+    binding = min(caps, key=lambda k: (caps[k], tuple(caps).index(k)))
+    n = caps[binding]
+    names = {"by_risk_budget": "risk_budget", "by_position_limit": "position_limit", "by_sector_limit": "sector_limit"}
+    notional = (e * n).quantize(Decimal("0.01"))
+    at_risk = ((e - s) * n).quantize(Decimal("0.01"))
+    return {
+        "label": LABEL,
+        "not_actionable": True,
+        "policy": "AGENTS.md 21.0.0 §29",
+        "source": "deterministic",
+        "symbol": symbol,
+        "as_of": as_of,
+        "suggested_share_count": n,
+        "suggested_notional_usd": str(notional),
+        "risk_at_stop_reference_usd": str(at_risk),
+        "binding_constraint": names[binding],
+        "formula": FORMULA,
+        "caps": caps,
+        "inputs": {
+            "portfolio_value_usd": str(v),
+            "risk_budget_pct": str(r),
+            "reference_price": str(e),
+            "stop_reference_price": str(s),
+            "max_position_pct": str(p),
+            "max_sector_pct": str(sx),
+            "existing_position_usd": str(pos),
+            "sector_exposure_usd": str(x),
+        },
+        "reasoning": (
+            f"{LABEL}, not an order. Risk budget {r} of {v} over {e - s} per share at risk caps at "
+            f"{caps['by_risk_budget']}; position limit {p} caps at {caps['by_position_limit']}; sector limit {sx} "
+            f"caps at {caps['by_sector_limit']}. The {names[binding].replace('_', ' ')} binds: {n} shares, "
+            f"{notional} notional, {at_risk} at risk to the stop reference, as of {as_of}."
+        ),
+    }
+
+
+def _strip(node: Any, path: str, stripped: list[str]) -> Any:
+    if isinstance(node, Mapping):
+        out = {}
+        for k, val in node.items():
+            here = f"{path}.{k}" if path else str(k)
+            if k in MODEL_STRIPPED_KEYS:
+                stripped.append(here)
+                continue
+            out[k] = _strip(val, here, stripped)
+        return out
+    if isinstance(node, list):
+        return [_strip(val, f"{path}[{i}]", stripped) for i, val in enumerate(node)]
+    return node
+
+
+def attach_size_suggestion(model_answer: Mapping[str, Any], suggestion: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """A copy of a model's answer with every model-originated quantity stripped (any `size_suggestion` and any
+    `BEHAVIOR_FIELDS` key, at any depth; each stripped path recorded in `stripped_model_quantities`), then the
+    deterministic `size_suggestion` attached (None when there is none). §29.2."""
+    stripped: list[str] = []
+    out = _strip(dict(model_answer), "", stripped)
+    out["stripped_model_quantities"] = stripped
+    out["size_suggestion"] = suggestion
+    return out
