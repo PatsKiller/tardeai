@@ -11,6 +11,7 @@ on:
   push:
     branches: ["main"]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     # `cio-hardening` is a required status check on main. A path filter here
     # would let unrelated PRs skip the job and leave the check "Pending",
     # blocking merge. Run on every PR so the required check is always reported.
@@ -45,7 +46,7 @@ jobs:
     # On push/dispatch it runs the FAST profile: every registered gate, in a worker
     # pool. Measured before 2026-09-25: 1,077-1,127 s per job, 610-1,090 s in the
     # serial gates step.
-    if: github.event_name != 'schedule'
+    if: (github.event_name != 'schedule') && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     # 2026-10-11: push-to-main FAST profile exceeded 20 min after the 10-10/10-11 test growth (run 38151425912 cancelled twice at 20m on 9f602186a); PR profile unchanged
     # 2026-10-22: push-to-main runs measured 26-38 min today and run 39817528884 (3b1da355b) was cancelled at 35 min on

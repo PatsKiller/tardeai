@@ -21,6 +21,7 @@ name: cio-full-suite-sharded
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
   # 2026-10-21 (alignment audit H1): the NIGHTLY full-suite run of main. Replaces the serial
   # `cio-hardening-full` nightly in cio-production-hardening-ci.yml, which hit its 40-minute
@@ -50,6 +51,7 @@ env:
 
 jobs:
   shard:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -93,6 +95,7 @@ jobs:
           if-no-files-found: ignore
 
   serial:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: shard serial
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -128,6 +131,7 @@ jobs:
           if-no-files-found: ignore
 
   pg:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: shard pg
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -190,6 +194,7 @@ jobs:
   # The rails `cio-hardening` runs after its gates, so `ci-gate` can replace it without
   # dropping one (audit table "Where each moved or removed check keeps its guarantee").
   integrity:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     name: integrity rails
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -264,7 +269,7 @@ jobs:
     # unless every dependency succeeded AND the shard manifests prove completeness.
     name: ci-gate
     needs: [shard, serial, pg, integrity]
-    if: always()
+    if: (always()) && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
