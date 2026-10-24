@@ -864,7 +864,14 @@ def gather(query: Optional[dict[str, Any]] = None, *, db_query=None, now: Option
         facts_for = None
         out["position_facts"] = {"status": f"error:{type(e).__name__}"}
 
+    from lib.data_broker.cio_company_facts import load_snapshot as company_snapshot, for_security
+    saved_company_facts = company_snapshot()
+    out["company_facts_source"] = "CIO InstrumentRecord.research.company_facts"
+
     def _attach(r: dict[str, Any]) -> dict[str, Any]:
+        saved = for_security(saved_company_facts, r["symbol"], r.get("security_guid"), now=now)
+        r["company_facts"] = saved["company_facts"]
+        r["company"] = (saved["company_facts"].get("company") or {}).get("value")
         if facts_for is not None and "position_state" not in r:
             r.update({k: v for k, v in facts_for(r["symbol"]).items()})
         return r

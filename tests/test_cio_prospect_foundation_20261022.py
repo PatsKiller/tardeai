@@ -16,6 +16,7 @@ operator grants the cio_prospect registry row and the P1 migration (§17):
 """
 from __future__ import annotations
 
+import ast
 import json
 import os
 import shutil
@@ -451,7 +452,19 @@ def test_builder_never_reads_positions_current_or_reaches_a_sender():
         for bad in ("FROM positions_current", "JOIN positions_current", "place_order", "telegram_alert",
                     "send_telegram", "incident_notifier", "broker_access"):
             assert bad not in src, (path, bad)
-        assert "InstrumentRecordStore(" not in src and "upsert_prospect" not in src, path   # the shadow is not the store
+        if path != "scripts/cio_prospect_shadow_build.py":
+            assert "InstrumentRecordStore(" not in src and "upsert_prospect" not in src, path
+        else:
+            # The existing batch CLI has a separate explicit FACT-ONLY opt-in;
+            # default, --dry-run and --write-shadow remain unable to write CIO
+            # records (the companion fixture also checks their store bytes).
+            calls = [n for n in ast.walk(ast.parse(src)) if isinstance(n, ast.Call)
+                     and isinstance(n.func, ast.Name) and n.func.id == "persist_company_facts"]
+            assert len(calls) == 1
+            write_arg = next(k.value for k in calls[0].keywords if k.arg == "write")
+            assert ast.unparse(write_arg) == "args.write_company_facts"
+            assert not any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                           and n.func.attr in ("upsert", "upsert_prospect") for n in ast.walk(ast.parse(src)))
 
 
 # ── 5. the projection ───────────────────────────────────────────────────────
