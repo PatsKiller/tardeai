@@ -1,5 +1,8 @@
 # Content ownership
 
+**Status:** REVIEW CANDIDATE · fixture verification, not release evidence
+**Updated:** 2026-10-24
+
 Approved board 13, desks redesign of 2026-10-24. Each subject has one full
 view. Other pages show a short summary and a link to that view.
 

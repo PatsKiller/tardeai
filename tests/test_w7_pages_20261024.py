@@ -99,8 +99,10 @@ def test_shared_facts_are_forwarded_unchanged_and_cio_ranking_is_preserved():
     truth, look = inputs()
     before = deepcopy(truth)
     data = project_pages(truth, **look)
-    for key in ("portfolio", "positions", "stops", "regime", "approvals", "capital", "cio_status"):
+    for key in ("stops", "regime", "approvals", "capital", "cio_status"):
         assert data[key] == truth[key]
+    assert data["portfolio"] == {k: v for k, v in truth["portfolio"].items() if k not in ("holdings", "stored_totals")}
+    assert data["positions"] == truth["positions"]
     assert [a["id"] for a in data["do_now"]["items"]] == [str(i) for i in range(7)]
     assert truth == before
 

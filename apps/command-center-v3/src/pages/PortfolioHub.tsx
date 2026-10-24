@@ -1,3 +1,4 @@
+import W7Lookthrough, { W7Allocation } from '../components/W7Lookthrough'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
@@ -468,8 +469,8 @@ export default function PortfolioHub({ onDrill }: Props) {
         <div>
           <div style={hubTitle()}>Portfolio</div>
           <div style={hubSubtitle(terminalUi)}>
-            {holdingsPending ? 'Loading holdings…' : holdingsUnavailable ? 'Holdings temporarily unavailable' : `${holdingsList.length} holdings · ${fmt$(viewTotal, 0)}`}
-            {!holdingsPending && !holdingsUnavailable && <>
+            {(needLookthrough || needAllocation) ? 'Current holdings opened into their underlying exposures' : holdingsPending ? 'Loading holdings…' : holdingsUnavailable ? 'Holdings temporarily unavailable' : `${holdingsList.length} holdings · ${fmt$(viewTotal, 0)}`}
+            {!needLookthrough && !needAllocation && !holdingsPending && !holdingsUnavailable && <>
               {' · '}<span style={{ color: viewDay >= 0 ? '#22c55e' : '#ef4444' }}>today {viewDay >= 0 ? '+' : ''}{fmt$(viewDay, 0)} ({viewDay >= 0 ? '+' : ''}{viewDayPct.toFixed(2)}%)</span>
               {acctFilter && <span style={{ color: 'var(--text4)' }}> · {acctFilter.replace(/_/g, ' ')}</span>}
               {holdingsStale && <span style={{ color: '#f59e0b' }}> · refreshing</span>}
@@ -484,7 +485,7 @@ export default function PortfolioHub({ onDrill }: Props) {
             >{priceStamp}</div>
           )}
           {/* Manual broker sync buttons — read-only holdings/position pull (no trading) */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+          {needHoldingsDesk && <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
             <button onClick={() => runSync('snaptrade')} disabled={!!syncState.busy} style={syncBtn(syncState.busy === 'snaptrade')}
               title="Full Fidelity refresh: holdings + trade ledger + journal round-trips (read-only; no trading). Note: Fidelity posts trades overnight, so intraday fills appear next morning. Stops not pulled.">
               {syncState.busy === 'snaptrade' ? '⟳ Syncing SnapTrade…' : '⟳ Sync SnapTrade'}
@@ -504,16 +505,16 @@ export default function PortfolioHub({ onDrill }: Props) {
             {syncState.msg && (
               <span style={{ fontSize: 10, color: /error|failed/.test(syncState.msg) ? '#ef4444' : '#22c55e' }}>{syncState.msg}</span>
             )}
-          </div>
+          </div>}
         </div>
         <div className="hub-tabs" style={{ display: 'flex', gap: terminalUi ? 4 : 6, flexWrap: 'wrap' }}>
           {TABS.map(t => (
-            <button key={t} onClick={() => selectTab(t)} style={hubTab(tab === t, terminalUi)}>{t}</button>
+            <button key={t} onClick={() => selectTab(t)} style={{ ...hubTab(tab === t, terminalUi), minHeight: 44 }}>{t}</button>
           ))}
         </div>
       </div>
 
-      <PortfolioDeskHealth
+      {needHoldingsDesk && <PortfolioDeskHealth
         holdingsCount={holdingsList.length}
         viewTotalLabel={fmt$(viewTotal, 0)}
         brokerStopReadOk={brokerStopReadOk}
@@ -525,7 +526,7 @@ export default function PortfolioHub({ onDrill }: Props) {
         priceStamp={priceStamp}
         onExportCsv={() => downloadHoldingsCsv(holdingsList)}
         onOpenStopAudit={() => selectTab('Stop Management')}
-      />
+      />}
 
       {tab === 'Redeploy' && <RedeployPanel />}
 
@@ -599,29 +600,7 @@ export default function PortfolioHub({ onDrill }: Props) {
         </div>
       )}
 
-      {tab === 'Allocation' && (
-        <AllocationPanel
-          sectors={overview?.sectors ?? sectors}
-          sectorsByAccount={sectorsByAccount}
-          sectorContributors={(overview as any)?.sector_contributors ?? {}}
-          sectorUnderlyings={(overview as any)?.sector_underlyings ?? {}}
-          lookthroughAsOf={(overview as any)?.lookthrough_as_of ?? null}
-          holdings={allHoldings}
-          acctColor={acctColor}
-          onGoHoldings={() => selectTab('Holdings')}
-          onOpenHolding={(symbol, account) => {
-            selectTab('Holdings')
-            selectAcct(account)
-            selectSig('All')
-            const key = `${symbol}-${account}`
-            setFocusKey(key)
-            setTimeout(() => {
-              document.getElementById(`hold-${symbol}-${account}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-            }, 120)
-            setTimeout(() => setFocusKey(null), 4000)
-          }}
-        />
-      )}
+      {tab === 'Allocation' && <W7Allocation account={acctFilter} selectAccount={selectAcct} />}
 
       {tab === 'Holdings' && (
         <div data-testid="holdings-panel">
@@ -765,181 +744,7 @@ export default function PortfolioHub({ onDrill }: Props) {
         }}
       />
 
-      {tab === 'Look-through' && (() => {
-        const lt = (lookthrough as any)?.data ?? lookthrough ?? {}
-        const acctDetail = lt.accounts_detail ?? {}
-        // account filter: per-account look-through when selected, else portfolio-wide
-        const view = (acctFilter && acctDetail[acctFilter]) ? acctDetail[acctFilter] : lt
-        const themes = Object.entries(view.themes ?? {}).map(([name, t]: any) => ({ name, ...t })).sort((a: any, b: any) => b.pct - a.pct)
-        const top = view.top_underlying ?? []
-        const advs = view.advisories ?? []
-        const maxThemePct = Math.max(1, ...themes.map((t: any) => t.pct))
-        const maxStockPct = Math.max(1, ...top.map((s: any) => s.pct))
-        const sevColor = (s: string) => s === 'high' ? '#ef4444' : s === 'medium' ? '#f59e0b' : '#22c55e'
-        if (lookthroughLoading && !lookthrough) {
-          return <div data-testid="lookthrough-panel" style={{ color: 'var(--text3)', fontSize: 12, padding: 20 }}>Loading look-through…</div>
-        }
-        if (!themes.length) {
-          return (
-            <div data-testid="lookthrough-panel" style={{ color: 'var(--text3)', fontSize: 12, padding: 20, border: '1px solid var(--border)', borderRadius: 8, lineHeight: 1.55 }}>
-              <div style={{ fontWeight: 800, color: 'var(--text1)', marginBottom: 6 }}>No look-through snapshot yet</div>
-              <div>Fund→underlying resolution has not been published to <code>/api/v2/portfolio/lookthrough</code>.</div>
-              <div style={{ marginTop: 8 }}>
-                Ops: schedule or run the look-through job (historically <code>scripts/portfolio_lookthrough_themes.py</code>), then refresh this tab.
-                Pipeline status: <Link to="/system?tab=pipeline" style={{ color: 'var(--text1)', fontWeight: 700 }}>System → Pipeline</Link>.
-              </div>
-            </div>
-          )
-        }
-        const ltAccts = Object.keys(acctDetail)
-        return (
-          <div>
-            <AskAgents />
-            {ltAccts.length > 1 && (
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 9 }}>
-                <button onClick={() => selectAcct(null)} style={{ fontSize: 10, padding: '3px 11px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${acctFilter === null ? '#60a5fa' : 'var(--border)'}`, background: acctFilter === null ? 'rgba(96,165,250,.15)' : 'var(--bg2)', color: acctFilter === null ? '#60a5fa' : 'var(--text3)', fontWeight: acctFilter === null ? 700 : 400 }}>All accounts</button>
-                {ltAccts.map(a => (
-                  <button key={a} onClick={() => selectAcct(a === acctFilter ? null : a)} style={{ fontSize: 10, padding: '3px 11px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${acctFilter === a ? acctColor(a) : 'var(--border)'}`, background: acctFilter === a ? `${acctColor(a)}22` : 'var(--bg2)', color: acctFilter === a ? acctColor(a) : 'var(--text3)', fontWeight: acctFilter === a ? 700 : 400 }}>{a.replace(/_/g, ' ')}</button>
-                ))}
-              </div>
-            )}
-            <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10 }}>
-              True stock-level look-through{acctFilter ? <b style={{ color: 'var(--text1)' }}> · {acctFilter.replace(/_/g, ' ')} (${Math.round(view.portfolio_total ?? 0).toLocaleString()})</b> : ' — funds resolved to their underlying holdings'}. Coverage <b style={{ color: 'var(--text1)' }}>{view.coverage_pct}%</b> (top-10 fund holdings; theme %s are lower bounds). Hover a stock to see which funds hold it.
-            </div>
-            {lt.grok_narrative && (
-              <div style={{ background: 'rgba(168,85,247,.08)', border: '1px solid rgba(168,85,247,.3)', borderRadius: 10, padding: '10px 13px', marginBottom: 10 }}>
-                <div style={{ fontSize: 10, fontWeight: 800, color: '#c084fc', marginBottom: 4 }}>🧠 AI ADVISORY (Grok)</div>
-                <div style={{ fontSize: 11.5, color: 'var(--text1)', lineHeight: 1.55 }}>{lt.grok_narrative}</div>
-              </div>
-            )}
-            {(view.theme_gaps ?? lt.theme_gaps ?? []).length > 0 && (() => {
-              const gaps = view.theme_gaps ?? lt.theme_gaps ?? []
-              const ds = gapDesign?.design
-              return (
-                <div style={{ background: 'rgba(34,197,94,.06)', border: '1px solid rgba(34,197,94,.3)', borderRadius: 10, padding: '11px 13px', marginBottom: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: '#34d399' }}>🎯 Diversification gaps — fill suggestions</div>
-                    <span style={{ fontSize: 9.5, color: 'var(--text3)' }}>{gaps.length} underweight/0% sleeve{gaps.length === 1 ? '' : 's'} with a long-ETF candidate · advisory only</span>
-                    <span style={{ flex: 1 }} />
-                    <button disabled={gapBusy} onClick={designFill} style={{ fontSize: 10.5, fontWeight: 700, padding: '5px 12px', borderRadius: 7, border: '1px solid #a855f7', background: gapBusy ? 'var(--bg2)' : 'rgba(168,85,247,.18)', color: '#c084fc', cursor: gapBusy ? 'wait' : 'pointer' }}>{gapBusy ? 'designing…' : '🤖 Design fill plan (AI)'}</button>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 8 }}>
-                    {gaps.map((g: any, i: number) => (
-                      <div key={i} style={{ background: 'var(--bg2)', border: `1px solid ${g.severity === 'high' ? '#ef4444' : '#f59e0b'}44`, borderRadius: 8, padding: '8px 10px' }}>
-                        <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text0)' }}>{g.theme} <span style={{ color: g.severity === 'high' ? '#ef4444' : '#f59e0b' }}>{g.current_pct}%</span> <span style={{ color: 'var(--text3)' }}>→ {g.target_pct}%</span></div>
-                        <div style={{ fontSize: 9.5, color: 'var(--text3)', marginBottom: 6 }}>gap ≈ ${Math.round(g.gap_dollars).toLocaleString()}</div>
-                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                          {(g.suggested_etfs ?? []).map((e: any) => (
-                            <button key={e.symbol} onClick={() => proposeGapEtf(e.symbol, g.theme, `Fill ${g.theme} gap (${g.current_pct}%→${g.target_pct}%) — advisory ETF candidate`)} title={`${e.name} — propose a PENDING review (no execution)`} style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, border: '1px solid #22c55e66', background: 'rgba(34,197,94,.12)', color: '#86efac', cursor: 'pointer' }}>{e.symbol}{gapPropose[e.symbol] ? ` · ${gapPropose[e.symbol]}` : ' + propose'}</button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {gapDesign && (
-                    <div style={{ marginTop: 10, borderTop: '1px solid rgba(148,163,184,.18)', paddingTop: 8 }}>
-                      {ds?.summary && <div style={{ fontSize: 11, color: 'var(--text1)', lineHeight: 1.5, marginBottom: 6 }}><b style={{ color: '#c084fc' }}>AI design ({gapDesign.lane}):</b> {ds.summary}</div>}
-                      {(ds?.steps ?? []).map((s: any, i: number) => (
-                        <div key={i} style={{ fontSize: 10.5, color: 'var(--text2)', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 3 }}>
-                          <span style={{ fontFamily: 'monospace', fontWeight: 700, color: '#34d399' }}>{s.action} {s.symbol}</span>
-                          <span>${Number(s.dollars || 0).toLocaleString()}</span>
-                          <span style={{ color: 'var(--text3)' }}>· {s.funded_by}</span>
-                          <span style={{ color: 'var(--text3)' }}>— {s.rationale}</span>
-                          {s.symbol && <button onClick={() => proposeGapEtf(s.symbol, s.theme || '', s.rationale || 'AI fill design')} style={{ fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 5, border: '1px solid #22c55e66', background: 'rgba(34,197,94,.12)', color: '#86efac', cursor: 'pointer' }}>{gapPropose[s.symbol] || '+ propose'}</button>}
-                        </div>
-                      ))}
-                      {ds?.parse_error && <div style={{ fontSize: 10, color: '#f59e0b' }}>AI returned unstructured text: {ds.raw}</div>}
-                      {gapDesign.ok === false && <div style={{ fontSize: 10, color: '#ef4444' }}>{gapDesign.error}</div>}
-                      <div style={{ fontSize: 9, color: 'var(--text3)', marginTop: 5 }}>Proposing creates a PENDING review item — manual approval + all gates still required. Nothing is executed.</div>
-                    </div>
-                  )}
-                </div>
-              )
-            })()}
-            {(lt.agent_advisories ?? []).length > 0 && (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 8, marginBottom: 12 }}>
-                {lt.agent_advisories.map((a: any, i: number) => {
-                  const c = a.agent.startsWith('CIO') ? '#60a5fa' : a.agent.startsWith('Risk') ? '#ef4444' : '#22c55e'
-                  return (
-                    <div key={i} style={{ background: 'var(--bg2)', border: `1px solid ${c}44`, borderTop: `2px solid ${c}`, borderRadius: 8, padding: '9px 11px' }}>
-                      <div style={{ fontSize: 10, fontWeight: 800, color: c, marginBottom: 4 }}>{a.agent} <span style={{ color: 'var(--text4)', fontWeight: 500 }}>· {a.model}</span></div>
-                      <div style={{ fontSize: 11, color: 'var(--text1)', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{a.text}</div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-            {advs.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
-                {advs.map((a: any, i: number) => (
-                  <div key={i} style={{ display: 'flex', gap: 9, alignItems: 'baseline', padding: '7px 11px', borderRadius: 8, background: 'var(--bg2)', borderLeft: `3px solid ${sevColor(a.severity)}` }}>
-                    <span style={{ fontSize: 8.5, fontWeight: 900, color: sevColor(a.severity), textTransform: 'uppercase' }}>{a.severity}</span>
-                    <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text0)' }}>{a.title}</span>
-                    <span style={{ fontSize: 10.5, color: 'var(--text2)' }}>{a.detail}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {top.length > 0 && (() => {
-              const donut = top.slice(0, 10).map((s: any) => ({ name: s.symbol, value: s.value }))
-              return (
-                <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 14, background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
-                  <div style={{ width: 190, height: 170, flexShrink: 0 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={donut} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={42} outerRadius={78} stroke="var(--bg0)" strokeWidth={2}>
-                          {donut.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                        </Pie>
-                        <Tooltip formatter={(v: any) => `$${Math.round(v).toLocaleString()}`} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text0)', marginBottom: 6 }}>Top-10 underlying concentration (look-through)</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
-                      {donut.map((d: any, i: number) => (
-                        <span key={d.name} style={{ fontSize: 10.5, color: 'var(--text2)' }}>
-                          <span style={{ color: COLORS[i % COLORS.length] }}>●</span> <b style={{ color: 'var(--text1)' }}>{d.name}</b> ${(d.value / 1000).toFixed(0)}k
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )
-            })()}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Theme exposure</div>
-                {themes.map((t: any) => (
-                  <div key={t.name} title={(t.by_stock ?? []).map((s: any) => `${s.symbol} $${Math.round(s.value).toLocaleString()}`).join(' · ')} style={{ marginBottom: 7, cursor: 'help' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-                      <span style={{ color: 'var(--text1)' }}>{t.name}</span>
-                      <span style={{ color: 'var(--text2)' }}>${Math.round(t.value).toLocaleString()} · <b style={{ color: '#60a5fa' }}>{t.pct}%</b></span>
-                    </div>
-                    <div style={{ height: 6, background: 'var(--bg2)', borderRadius: 3, marginTop: 2 }}>
-                      <div style={{ height: '100%', width: `${t.pct / maxThemePct * 100}%`, background: '#60a5fa', borderRadius: 3 }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Top underlying stocks (look-through)</div>
-                {top.slice(0, 15).map((s: any) => (
-                  <div key={s.symbol} title={'Held via:\n' + (s.in ?? []).map((x: any) => `  ${x.src} — $${Math.round(x.value).toLocaleString()}`).join('\n')} style={{ marginBottom: 6, cursor: 'help' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-                      <span style={{ fontFamily: 'monospace', color: 'var(--text1)' }}>{s.symbol} <span style={{ fontSize: 8.5, color: 'var(--text4)' }}>ⓘ</span></span>
-                      <span style={{ color: 'var(--text2)' }}>${Math.round(s.value).toLocaleString()} · <b style={{ color: s.pct >= 8 ? '#ef4444' : s.pct >= 5 ? '#f59e0b' : '#22c55e' }}>{s.pct}%</b></span>
-                    </div>
-                    <div style={{ height: 6, background: 'var(--bg2)', borderRadius: 3, marginTop: 2 }}>
-                      <div style={{ height: '100%', width: `${s.pct / maxStockPct * 100}%`, background: s.pct >= 8 ? '#ef4444' : s.pct >= 5 ? '#f59e0b' : '#22c55e', borderRadius: 3 }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )
-      })()}
+      {tab === 'Look-through' && <W7Lookthrough account={acctFilter} selectAccount={selectAcct} />}
 
       {tab === 'Dividends' && (
         <DividendsPanel

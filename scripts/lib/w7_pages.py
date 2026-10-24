@@ -98,9 +98,22 @@ def project_pages(truth: dict, **lookthrough_inputs) -> dict:
                 "theme_targets": {}, "snapshot": {}}
     defaults.update(lookthrough_inputs)
     holdings = [{**h, "account": h.get("account_id", h.get("account"))} for h in portfolio.get("holdings") or []]
+    # Reuse the existing instrument-family classification, including mutual funds
+    # and collective fund codes; never call the fund-weights provider from a GET.
+    from scripts.holding_family import is_unstoppable_fund
+    defaults["fund_symbols"] = set(defaults["fund_symbols"]) | {
+        h.get("symbol") for h in holdings if is_unstoppable_fund(h.get("symbol"))}
     result["lookthrough"] = project(portfolio=basis, holdings=holdings, companies=companies, **defaults)
     result["lookthrough"]["accounts"] = [{"id": a["account"], "label": a["label"]} for a in accounts]
     result["lookthrough"]["by_account"] = {
         a["account"]: project(portfolio=basis, holdings=holdings, companies=companies, account=a["account"], **defaults)
         for a in accounts if a.get("account")}
+    # The browser needs scalar facts and display rows, not duplicate full broker
+    # observations, transfer histories, or the holdings export used above.
+    result["portfolio"] = {k: v for k, v in result["portfolio"].items() if k not in ("holdings", "stored_totals")}
+    display_keys = {"symbol", "account_id", "account_label", "shares", "quantity", "price", "current_price", "market_value",
+                    "stop_price", "stop_source", "stop_state", "stop_captured_at", "stop_evidence", "broker_protected",
+                    "distance_to_stop_pct", "loss_at_stop_usd", "risk_usd"}
+    result["positions"] = {**result["positions"], "rows": [
+        {k: v for k, v in row.items() if k in display_keys} for row in result["positions"].get("rows") or []]}
     return result

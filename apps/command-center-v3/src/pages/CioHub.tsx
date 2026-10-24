@@ -1,3 +1,4 @@
+import { W7CioStatus, W7Capital, W7Load, useW7Pages } from '../components/W7PagePanels'
 import { useEffect, useRef, useState, useCallback, type CSSProperties, type ReactNode } from 'react'
 import { AccountChip, AccountsBadge } from '../components/AccountChip'
 import { accountName } from '../lib/accountLabels'
@@ -2040,8 +2041,8 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
   const [dispositions, setDispositions] = useState<DispositionMap>({})
   const [legacyUnversioned, setLegacyUnversioned] = useState<DispositionMap>({})
   const [evidenceTile, setEvidenceTile] = useState<ScorecardTile | null>(null)
-  const { data, loading, error } = useApi<Home>('/api/v3/cio/home')
-  const { data: scorecard, loading: scorecardLoading, error: scorecardError } = useApi<ScorecardPayload>('/api/v3/cio/scorecard')
+  const { data, loading, error } = useApi<Home>('/api/v3/cio/home', 60_000, { enabled: tab !== 'overview' && tab !== 'capital-policy' })
+  const { data: pageTruth, loading: pageTruthLoading, error: pageTruthError } = useW7Pages(tab === 'overview' || tab === 'capital-policy')
 
   useEffect(() => {
     const resolved = resolveCioHubTab(tabRaw)
@@ -2138,13 +2139,13 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
 
   return (
     <div className="cio-hub" style={{ padding: '16px 24px', maxWidth: 1240 }} data-testid="cio-hub">
+      <style>{`.cio-hub button,.cio-hub select,.cio-hub input{min-height:44px}.cio-hub{overflow-wrap:anywhere}`}</style>
       <div style={hubTitle()}>CIO — Private Investment Office</div>
       <div style={hubSubtitle()}>
-        Alex · Chief Investment Officer · READ_ONLY_ADVISORY
+        Alex · Chief Investment Officer · Advice for your review
         {home?.as_of && <span style={{ color: 'var(--text3)', marginLeft: 12 }}>As of {formatAsOfET(home.as_of)}</span>}
       </div>
 
-      <CioObservabilityPanel />
 
       <nav className="cio-hub__tabs" style={{ display: 'flex', gap: 6, margin: '14px 0 20px', flexWrap: 'wrap' }} aria-label="Office sections" role="tablist">
         {TABS.map(t => (
@@ -2168,19 +2169,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
 
       {tab === 'overview' && (
         <div role="tabpanel" aria-label={TAB_LABEL.overview} data-testid="cio-overview">
-          <CioScorecardStrip
-            data={scorecard}
-            loading={scorecardLoading}
-            error={scorecardError ? String(scorecardError) : null}
-            onTileClick={(tile) => setEvidenceTile(tile)}
-          />
-          <CioJudgmentBand
-            blockersTop={scorecard?.blockers_top}
-            scorecardNote={scorecard?.note}
-            healthSummary={scorecard?.health_summary}
-            pin={scorecard?.pin}
-            onPolicyClick={() => selectTab('capital-policy')}
-          />
+          {pageTruth ? <W7CioStatus data={pageTruth} /> : <W7Load loading={pageTruthLoading} error={pageTruthError} />}
         </div>
       )}
 
@@ -2245,20 +2234,8 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
 
       {tab === 'capital-policy' && (
         <div role="tabpanel" aria-label={TAB_LABEL['capital-policy']}>
-          <OperatorPolicyPanel />
-          {homeOk && (
-            <>
-              <div style={{ marginTop: 28 }}>
-                <CapitalPlanSection cp={home.capital_plan} />
-              </div>
-              <div style={{ marginTop: 28 }}>
-                <PostureSection posture={home.posture} />
-              </div>
-            </>
-          )}
-          {!homeOk && loading && (
-            <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }}>Loading capital plan…</div>
-          )}
+          {pageTruth ? <W7Capital data={pageTruth} /> : <W7Load loading={pageTruthLoading} error={pageTruthError} />}
+          <div style={{ marginTop: 28 }}><OperatorPolicyPanel /></div>
         </div>
       )}
 

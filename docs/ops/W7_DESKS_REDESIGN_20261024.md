@@ -1,5 +1,8 @@
 # W7 page redesign field trace
 
+**Status:** REVIEW CANDIDATE · fixture verification, not release evidence
+**Updated:** 2026-10-24
+
 Task `DSN-20261024-w7-pages-P1-T1`; approved boards 12–15 and 17. This is the
 W7 companion to the desks redesign field trace. Shared financial and CIO facts
 are read through `scripts.lib.cio_truth.resolve`; W7 has no fallback aggregate,

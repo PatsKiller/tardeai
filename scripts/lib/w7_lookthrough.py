@@ -93,16 +93,21 @@ def project(*, portfolio: dict, holdings: list[dict], companies: list[dict],
     classified = 0.0
     for symbol, value in amounts.items():
         company = facts.get(symbol, {})
+        evidence = company.get("company_facts") or (company.get("research") or {}).get("company_facts") or {}
         sector = _fact(company, "sector") or "Unclassified"
         industry = _fact(company, "industry") or "Unclassified"
         if industry != "Unclassified":
             classified += value
         sector_row = sectors.setdefault(sector, {"name": sector, "value_usd": 0, "members": []})
         sector_row["value_usd"] += value
-        sector_row["members"].append({"symbol": symbol, "value_usd": value, "sources": sources[symbol]})
+        sector_row["members"].append({"symbol": symbol, "value_usd": value, "sources": sources[symbol],
+                                      "security_guid": company.get("security_guid"),
+                                      "classification": evidence.get("sector") if sector != "Unclassified" else None})
         industry_row = industries.setdefault((sector, industry), {"sector": sector, "name": industry, "value_usd": 0, "members": []})
         industry_row["value_usd"] += value
-        industry_row["members"].append({"symbol": symbol, "value_usd": value})
+        industry_row["members"].append({"symbol": symbol, "value_usd": value, "sources": sources[symbol],
+                                        "security_guid": company.get("security_guid"),
+                                        "classification": evidence.get("industry") if industry != "Unclassified" else None})
     pct = lambda value: round(value / total * 100, 2) if total and total > 0 else None
     for row in sectors.values():
         row["portfolio_pct"] = pct(row["value_usd"])

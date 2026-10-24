@@ -1,0 +1,733 @@
+{
+  "clock": "2026-10-24T22:00:00+00:00",
+  "payload": {
+    "portfolio": {
+      "total_usd": 28000,
+      "cash_usd": 6000,
+      "accounts": [
+        {
+          "account_id": "fixture_ira",
+          "account_label": "Fixture IRA",
+          "total_usd": 20000,
+          "status": "LIVE",
+          "as_of": "2026-10-24T22:00:00+00:00"
+        },
+        {
+          "account_id": "fixture_manual",
+          "account_label": "Fixture manual account",
+          "total_usd": 8000,
+          "status": "STALE",
+          "as_of": "2026-10-20T20:00:00+00:00"
+        }
+      ],
+      "holdings": [
+        {
+          "symbol": "SYNF",
+          "account_id": "fixture_ira",
+          "market_value": 12000,
+          "is_fund": true
+        },
+        {
+          "symbol": "ALFA",
+          "account_id": "fixture_ira",
+          "market_value": 6000,
+          "asset_type": "equity"
+        },
+        {
+          "symbol": "MISS",
+          "account_id": "fixture_manual",
+          "market_value": 4000,
+          "is_fund": true
+        },
+        {
+          "symbol": "CASH",
+          "account_id": "fixture_ira",
+          "market_value": 2000,
+          "is_cash": true
+        },
+        {
+          "symbol": "CASH",
+          "account_id": "fixture_manual",
+          "market_value": 4000,
+          "is_cash": true
+        }
+      ],
+      "as_of": "2026-10-24T22:00:00+00:00",
+      "source": "fixture-CIO",
+      "stale": false,
+      "gap": null
+    },
+    "positions": {
+      "rows": [
+        {
+          "symbol": "SYNF",
+          "account_id": "fixture_ira",
+          "account_label": "Fixture IRA",
+          "shares": 120,
+          "price": 100,
+          "market_value": 12000,
+          "stop_price": 90,
+          "stop_source": "broker",
+          "stop_state": "active",
+          "distance_to_stop_pct": 10,
+          "loss_at_stop_usd": 1200,
+          "stop_captured_at": "2026-10-24T22:00:00+00:00"
+        },
+        {
+          "symbol": "ALFA",
+          "account_id": "fixture_ira",
+          "account_label": "Fixture IRA",
+          "shares": 60,
+          "price": 100,
+          "market_value": 6000,
+          "stop_price": 89,
+          "stop_source": "broker",
+          "stop_state": "pending_activation",
+          "distance_to_stop_pct": 11,
+          "loss_at_stop_usd": null,
+          "stop_captured_at": "2026-10-24T22:00:00+00:00"
+        },
+        {
+          "symbol": "MISS",
+          "account_id": "fixture_manual",
+          "account_label": "Fixture manual account",
+          "shares": 40,
+          "price": 100,
+          "market_value": 4000,
+          "stop_price": null,
+          "stop_source": "none",
+          "stop_state": "none",
+          "loss_at_stop_usd": null
+        }
+      ],
+      "source": "fixture-CIO",
+      "as_of": "2026-10-24T22:00:00+00:00",
+      "loss_at_stop_usd": 1200,
+      "portfolio_heat_pct": 4.29,
+      "unprotected_value_usd": 10000,
+      "largest_name": {
+        "symbol": "SYNF",
+        "pct": 42.86
+      },
+      "concentration": [
+        {
+          "symbol": "SYNF",
+          "value_usd": 12000,
+          "pct": 42.86
+        },
+        {
+          "symbol": "ALFA",
+          "value_usd": 6000,
+          "pct": 21.43
+        }
+      ]
+    },
+    "stops": {
+      "active_count": 1,
+      "pending_count": 1,
+      "filled_count": 0,
+      "unprotected_count": 2,
+      "as_of": "2026-10-24T22:00:00+00:00",
+      "awaiting_fill_count": 0,
+      "nearest": {
+        "symbol": "SYNF",
+        "distance_pct": 10
+      }
+    },
+    "regime": {
+      "label": "Fixture regime",
+      "vix": 23.4,
+      "as_of": "2026-10-24T22:00:00+00:00"
+    },
+    "approvals": {
+      "total": 4
+    },
+    "cio_status": {
+      "evaluations": [
+        {
+          "label": "CIO research",
+          "status": "Working",
+          "reason": "7 settled fixture completions",
+          "as_of": "2026-10-24T22:00:00+00:00"
+        },
+        {
+          "label": "Decisions",
+          "status": "Blocked",
+          "reason": "Fixture lane is paused",
+          "as_of": "2026-10-24T22:00:00+00:00"
+        }
+      ]
+    },
+    "capital": {
+      "cash_usd": 6000,
+      "reserved_usd": 1000,
+      "earmarked_usd": 2000,
+      "investable_usd": 3000,
+      "policy_max_pct": 9,
+      "alert_level_pct": 14,
+      "prospective_raise_usd": 4000,
+      "cash_band": {
+        "min": 10,
+        "max": 30
+      },
+      "current_cash_pct": 21.43,
+      "post_plan_cash_pct": null,
+      "as_of": "2026-10-24T22:00:00+00:00"
+    },
+    "do_now": {
+      "items": [
+        {
+          "id": "review-alfa",
+          "symbol": "ALFA",
+          "title": "Review pending stop activation",
+          "reason": "Broker observation says pending activation",
+          "account_label": "Fixture IRA",
+          "href": "/risk?tab=exposure&symbol=ALFA",
+          "cta": "Review stop"
+        },
+        {
+          "id": "review-input",
+          "title": "Review a CIO evidence gap",
+          "reason": "Fixture company classification is missing",
+          "href": "/portfolio?tab=Look-through",
+          "cta": "Review coverage"
+        }
+      ]
+    },
+    "sectors": {
+      "gap": "CIO field unavailable",
+      "source": "CIO",
+      "as_of": null,
+      "stale": true
+    },
+    "lookthrough": {
+      "account": null,
+      "as_of": "2026-10-24T22:00:00+00:00",
+      "portfolio_total_usd": 28000.0,
+      "looked_through_usd": 15000.0,
+      "portfolio_coverage_pct": 53.57,
+      "fund_value_usd": 16000.0,
+      "fund_covered_usd": 9000.0,
+      "fund_coverage_pct": 56.25,
+      "unclassified_industry_usd": 3000.0,
+      "funds_without_holdings": [
+        {
+          "symbol": "MISS",
+          "account": "fixture_manual",
+          "value_usd": 4000.0,
+          "reason": "Fund holdings unavailable"
+        }
+      ],
+      "account_gaps": [
+        {
+          "account": "fixture_manual",
+          "label": "Fixture manual account",
+          "value_usd": 8000.0,
+          "as_of": "2026-10-20T20:00:00+00:00",
+          "reason": "Account sync is not current"
+        }
+      ],
+      "gaps": [
+        {
+          "label": "SYNF holdings not published",
+          "value_usd": 3000.0,
+          "account": "fixture_ira",
+          "reason": "Published top holdings cover part of this fund"
+        }
+      ],
+      "sectors": [
+        {
+          "name": "Technology",
+          "value_usd": 12000.0,
+          "members": [
+            {
+              "symbol": "ALFA",
+              "value_usd": 12000.0,
+              "sources": [
+                {
+                  "symbol": "SYNF",
+                  "account": "fixture_ira",
+                  "proxy": null,
+                  "account_label": "Fixture IRA",
+                  "weight": 0.5,
+                  "value_usd": 6000.0,
+                  "source": "Published fund holdings"
+                },
+                {
+                  "symbol": "ALFA",
+                  "account": "fixture_ira",
+                  "proxy": null,
+                  "weight": 1,
+                  "account_label": "Fixture IRA",
+                  "value_usd": 6000.0,
+                  "source": "Direct holding"
+                }
+              ]
+            }
+          ],
+          "portfolio_pct": 42.86
+        },
+        {
+          "name": "Unclassified",
+          "value_usd": 3000.0,
+          "members": [
+            {
+              "symbol": "BETA",
+              "value_usd": 3000.0,
+              "sources": [
+                {
+                  "symbol": "SYNF",
+                  "account": "fixture_ira",
+                  "proxy": null,
+                  "account_label": "Fixture IRA",
+                  "weight": 0.25,
+                  "value_usd": 3000.0,
+                  "source": "Published fund holdings"
+                }
+              ]
+            }
+          ],
+          "portfolio_pct": 10.71
+        }
+      ],
+      "industries": [
+        {
+          "sector": "Technology",
+          "name": "Software",
+          "value_usd": 12000.0,
+          "members": [
+            {
+              "symbol": "ALFA",
+              "value_usd": 12000.0
+            }
+          ]
+        },
+        {
+          "sector": "Unclassified",
+          "name": "Unclassified",
+          "value_usd": 3000.0,
+          "members": [
+            {
+              "symbol": "BETA",
+              "value_usd": 3000.0
+            }
+          ]
+        }
+      ],
+      "top_underlying": [
+        {
+          "symbol": "ALFA",
+          "value_usd": 12000.0,
+          "portfolio_pct": 42.86,
+          "sources": [
+            {
+              "symbol": "SYNF",
+              "account": "fixture_ira",
+              "proxy": null,
+              "account_label": "Fixture IRA",
+              "weight": 0.5,
+              "value_usd": 6000.0,
+              "source": "Published fund holdings"
+            },
+            {
+              "symbol": "ALFA",
+              "account": "fixture_ira",
+              "proxy": null,
+              "weight": 1,
+              "account_label": "Fixture IRA",
+              "value_usd": 6000.0,
+              "source": "Direct holding"
+            }
+          ]
+        },
+        {
+          "symbol": "BETA",
+          "value_usd": 3000.0,
+          "portfolio_pct": 10.71,
+          "sources": [
+            {
+              "symbol": "SYNF",
+              "account": "fixture_ira",
+              "proxy": null,
+              "account_label": "Fixture IRA",
+              "weight": 0.25,
+              "value_usd": 3000.0,
+              "source": "Published fund holdings"
+            }
+          ]
+        }
+      ],
+      "themes": [
+        {
+          "name": "Fixture theme",
+          "value_usd": 12000.0,
+          "looked_through_pct": 80.0,
+          "portfolio_pct": 42.86
+        }
+      ],
+      "theme_gaps": [
+        {
+          "name": "Fixture theme",
+          "current_pct": 42.86,
+          "target_pct": 50.0,
+          "gap_usd": 2000.0
+        }
+      ],
+      "narrative": {
+        "text": null,
+        "as_of": null,
+        "reason": "The model declined to provide a narrative"
+      },
+      "accounts": [
+        {
+          "id": "fixture_ira",
+          "label": "Fixture IRA"
+        },
+        {
+          "id": "fixture_manual",
+          "label": "Fixture manual account"
+        }
+      ],
+      "by_account": {
+        "fixture_ira": {
+          "account": "fixture_ira",
+          "as_of": "2026-10-24T22:00:00+00:00",
+          "portfolio_total_usd": 20000.0,
+          "looked_through_usd": 15000.0,
+          "portfolio_coverage_pct": 75.0,
+          "fund_value_usd": 12000.0,
+          "fund_covered_usd": 9000.0,
+          "fund_coverage_pct": 75.0,
+          "unclassified_industry_usd": 3000.0,
+          "funds_without_holdings": [],
+          "account_gaps": [],
+          "gaps": [
+            {
+              "label": "SYNF holdings not published",
+              "value_usd": 3000.0,
+              "account": "fixture_ira",
+              "reason": "Published top holdings cover part of this fund"
+            }
+          ],
+          "sectors": [
+            {
+              "name": "Technology",
+              "value_usd": 12000.0,
+              "members": [
+                {
+                  "symbol": "ALFA",
+                  "value_usd": 12000.0,
+                  "sources": [
+                    {
+                      "symbol": "SYNF",
+                      "account": "fixture_ira",
+                      "proxy": null,
+                      "account_label": "Fixture IRA",
+                      "weight": 0.5,
+                      "value_usd": 6000.0,
+                      "source": "Published fund holdings"
+                    },
+                    {
+                      "symbol": "ALFA",
+                      "account": "fixture_ira",
+                      "proxy": null,
+                      "weight": 1,
+                      "account_label": "Fixture IRA",
+                      "value_usd": 6000.0,
+                      "source": "Direct holding"
+                    }
+                  ]
+                }
+              ],
+              "portfolio_pct": 60.0
+            },
+            {
+              "name": "Unclassified",
+              "value_usd": 3000.0,
+              "members": [
+                {
+                  "symbol": "BETA",
+                  "value_usd": 3000.0,
+                  "sources": [
+                    {
+                      "symbol": "SYNF",
+                      "account": "fixture_ira",
+                      "proxy": null,
+                      "account_label": "Fixture IRA",
+                      "weight": 0.25,
+                      "value_usd": 3000.0,
+                      "source": "Published fund holdings"
+                    }
+                  ]
+                }
+              ],
+              "portfolio_pct": 15.0
+            }
+          ],
+          "industries": [
+            {
+              "sector": "Technology",
+              "name": "Software",
+              "value_usd": 12000.0,
+              "members": [
+                {
+                  "symbol": "ALFA",
+                  "value_usd": 12000.0
+                }
+              ]
+            },
+            {
+              "sector": "Unclassified",
+              "name": "Unclassified",
+              "value_usd": 3000.0,
+              "members": [
+                {
+                  "symbol": "BETA",
+                  "value_usd": 3000.0
+                }
+              ]
+            }
+          ],
+          "top_underlying": [
+            {
+              "symbol": "ALFA",
+              "value_usd": 12000.0,
+              "portfolio_pct": 60.0,
+              "sources": [
+                {
+                  "symbol": "SYNF",
+                  "account": "fixture_ira",
+                  "proxy": null,
+                  "account_label": "Fixture IRA",
+                  "weight": 0.5,
+                  "value_usd": 6000.0,
+                  "source": "Published fund holdings"
+                },
+                {
+                  "symbol": "ALFA",
+                  "account": "fixture_ira",
+                  "proxy": null,
+                  "weight": 1,
+                  "account_label": "Fixture IRA",
+                  "value_usd": 6000.0,
+                  "source": "Direct holding"
+                }
+              ]
+            },
+            {
+              "symbol": "BETA",
+              "value_usd": 3000.0,
+              "portfolio_pct": 15.0,
+              "sources": [
+                {
+                  "symbol": "SYNF",
+                  "account": "fixture_ira",
+                  "proxy": null,
+                  "account_label": "Fixture IRA",
+                  "weight": 0.25,
+                  "value_usd": 3000.0,
+                  "source": "Published fund holdings"
+                }
+              ]
+            }
+          ],
+          "themes": [
+            {
+              "name": "Fixture theme",
+              "value_usd": 12000.0,
+              "looked_through_pct": 80.0,
+              "portfolio_pct": 60.0
+            }
+          ],
+          "theme_gaps": [],
+          "narrative": {
+            "text": null,
+            "as_of": null,
+            "reason": "The model declined to provide a narrative"
+          }
+        },
+        "fixture_manual": {
+          "account": "fixture_manual",
+          "as_of": "2026-10-24T22:00:00+00:00",
+          "portfolio_total_usd": 8000.0,
+          "looked_through_usd": 0.0,
+          "portfolio_coverage_pct": 0.0,
+          "fund_value_usd": 4000.0,
+          "fund_covered_usd": 0.0,
+          "fund_coverage_pct": 0.0,
+          "unclassified_industry_usd": 0.0,
+          "funds_without_holdings": [
+            {
+              "symbol": "MISS",
+              "account": "fixture_manual",
+              "value_usd": 4000.0,
+              "reason": "Fund holdings unavailable"
+            }
+          ],
+          "account_gaps": [
+            {
+              "account": "fixture_manual",
+              "label": "Fixture manual account",
+              "value_usd": 8000.0,
+              "as_of": "2026-10-20T20:00:00+00:00",
+              "reason": "Account sync is not current"
+            }
+          ],
+          "gaps": [],
+          "sectors": [],
+          "industries": [],
+          "top_underlying": [],
+          "themes": [
+            {
+              "name": "Fixture theme",
+              "value_usd": 0,
+              "looked_through_pct": null,
+              "portfolio_pct": 0.0
+            }
+          ],
+          "theme_gaps": [
+            {
+              "name": "Fixture theme",
+              "current_pct": 0.0,
+              "target_pct": 50.0,
+              "gap_usd": 4000.0
+            }
+          ],
+          "narrative": {
+            "text": null,
+            "as_of": null,
+            "reason": "The model declined to provide a narrative"
+          }
+        }
+      }
+    }
+  },
+  "gap": {
+    "portfolio": {
+      "gap": "Fixture CIO record unavailable",
+      "source": "CIO",
+      "as_of": null,
+      "stale": true
+    },
+    "positions": {
+      "gap": "Fixture CIO record unavailable",
+      "source": "CIO",
+      "as_of": null,
+      "stale": true
+    },
+    "stops": {
+      "gap": "Fixture CIO record unavailable",
+      "source": "CIO",
+      "as_of": null,
+      "stale": true
+    },
+    "regime": {
+      "gap": "Fixture CIO record unavailable",
+      "source": "CIO",
+      "as_of": null,
+      "stale": true
+    },
+    "approvals": {
+      "gap": "Fixture CIO record unavailable",
+      "source": "CIO",
+      "as_of": null,
+      "stale": true
+    },
+    "cio_status": {
+      "gap": "Fixture CIO record unavailable",
+      "source": "CIO",
+      "as_of": null,
+      "stale": true
+    },
+    "capital": {
+      "gap": "Fixture CIO record unavailable",
+      "source": "CIO",
+      "as_of": null,
+      "stale": true
+    },
+    "do_now": {
+      "gap": "Fixture CIO record unavailable",
+      "source": "CIO",
+      "as_of": null,
+      "stale": true,
+      "items": []
+    },
+    "sectors": {
+      "gap": "Fixture CIO record unavailable",
+      "source": "CIO",
+      "as_of": null,
+      "stale": true
+    },
+    "lookthrough": {
+      "account": null,
+      "as_of": null,
+      "portfolio_total_usd": null,
+      "looked_through_usd": null,
+      "portfolio_coverage_pct": null,
+      "fund_value_usd": 0.0,
+      "fund_covered_usd": 0.0,
+      "fund_coverage_pct": null,
+      "unclassified_industry_usd": 0.0,
+      "funds_without_holdings": [],
+      "account_gaps": [],
+      "gaps": [
+        {
+          "label": "Portfolio basis",
+          "value_usd": null,
+          "reason": "Canonical portfolio total unavailable"
+        }
+      ],
+      "sectors": [],
+      "industries": [],
+      "top_underlying": [],
+      "themes": [],
+      "theme_gaps": [],
+      "narrative": {
+        "text": null,
+        "as_of": null,
+        "reason": "CIO narrative unavailable"
+      },
+      "accounts": [],
+      "by_account": {}
+    }
+  },
+  "responses": {
+    "/api/v2/correlation": {
+      "as_of": "2026-10-24T22:00:00+00:00",
+      "correlation_matrix": {
+        "SYNF": {
+          "ALFA": 0.43
+        },
+        "ALFA": {
+          "SYNF": 0.43
+        }
+      }
+    },
+    "/api/v2/recovery": {
+      "items": [
+        {
+          "symbol": "ALFA",
+          "account_label": "Fixture IRA",
+          "reason": "Published recovery evidence for review"
+        }
+      ]
+    },
+    "/api/v2/portfolio/holdings": {
+      "holdings": []
+    },
+    "/api/v2/holdings/live-stops": {
+      "by_symbol": {},
+      "stops": []
+    },
+    "/api/v2/pro-analyst/pills": {
+      "pills": {}
+    },
+    "/api/v2/analyst-reports/map": {},
+    "/api/v3/cio/operator-policy": {
+      "fields": {},
+      "missing": [
+        "Fixture policy editor not loaded"
+      ]
+    }
+  }
+}

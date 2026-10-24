@@ -1938,6 +1938,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/COMMAND_CENTER_MATURITY_TRUTH.md` | Command Center maturity truth (live runtime) |
 | `docs/ops/COMMS_GATEWAY_GO_LIVE_RUNBOOK.md` | Communications Gateway — Go-Live Runbook (single consolidated operator prompt) |
 | `docs/ops/COMMS_HUB_2026-10-07.md` | Communications hub — decision support, re-entry focus, enforced TTL (2026-10-07) |
+| `docs/ops/CONTENT_OWNERSHIP.md` | Content ownership |
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 |
 | `docs/ops/CURRENT_CUTOVER_AFTER_2026-08-27.md` | CURRENT cutover — execute after 2026-08-27 close |
 | `docs/ops/DATA_DOMAIN_APPROVAL_READINESS_2026-10-22.md` | Data-domain approval readiness — 2026-10-22 |
@@ -2082,6 +2083,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/TRANSFERSON_UNIVERSE_CANONICAL_CLOSEOUT_2026-08-25.md` | Transferson canonical universe — local closeout |
 | `docs/ops/TRANSFERSON_UNIVERSE_LIVE_ACCEPTANCE_GATE_2026-08-25.md` | Transferson canonical universe — live CURRENT/DB acceptance gate |
 | `docs/ops/VALIDATED_LEARNING_REMEDIATION.md` | Validated learning remediation: release and operations |
+| `docs/ops/W7_DESKS_REDESIGN_20261024.md` | W7 page redesign field trace |
 | `docs/ops/WATCH_DECISION_STANDARDS_2026-10-08.md` | Watch decision standards — the Communications standards on the Watchlist (2026-10-08) |
 | `docs/ops/WATCH_FRESHNESS_NOISE_20261024.md` | WP-29: Watch closed-session prices and compact level evidence |
 | `docs/ops/WATCH_LISTS_PAGE_2026-10-23.md` | Watch — My Watchlist, System Suggests, Full universe (2026-10-23) |
