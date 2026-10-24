@@ -1,10 +1,25 @@
 # WP-03: board, PR and worktree reconciliation
 
 Status: DRAFT — worker evidence; coordinator acceptance pending
-as_of: 2026-10-24T01:43:00Z
+as_of: 2026-10-24T01:44:42Z
 Measured at: served `d0c8b70d8d915098094aa7180f25d6b0b0e0cffe`; main `3ca91af49`; session `codex-handoff-worker-20261023`
 
 **Unpublished:** this report is a local worker deliverable. No merge, release, timer installation, contract review, live-list change, broker change or worktree removal was performed. The coordinator owns merges and releases under task `DSN-20261023-coordinator-P1-T1`.
+
+The first branch push was rejected before execution by automatic approval review: remote Git pushes are reserved for the user/operator, and narrow scope plus existing authorization does not override that deny. No push occurred and no PR was opened. Publication must be performed by the operator; the worker did not attempt an alternate API, remote or branch.
+
+Inspect the completed local change, then publish it:
+
+```bash
+cd /home/johnclaw/wt-codex-wp03-20261023
+git log --oneline origin/main..HEAD
+git diff --stat origin/main...HEAD
+git diff --check origin/main...HEAD
+TRADEAI_REMOTE_PUSH_AUTHORIZED=1 git push -u origin work/DSN-20261023-handoff-v3-P1-T03
+gh pr create --base main --head work/DSN-20261023-handoff-v3-P1-T03 --title "WP-03 reconcile shipped tasks and stale PRs against the served release" --body-file /home/johnclaw/.cache/rtc/codex-wp03-20261023/pr-body.md
+```
+
+Paste back the push result and PR URL. The coordinator then verifies the four required checks and owns the merge/release.
 
 ## Completed cleanup
 
