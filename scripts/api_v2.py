@@ -48072,6 +48072,12 @@ def _hermes_discovery_gaps(query=None):
     }
 
 
+def _cio_truth_readers():
+    """W1 read adapters; dependency 8a81111c49a23ec002810fdeed2853f9e8071337."""
+    from lib import cio_truth
+    return cio_truth
+
+
 ROUTES = {
     "/api/v2/hermes/discovery-inbox": lambda q=None: _hermes_discovery_inbox_list(q),
     "/api/v2/hermes/discovery-gaps": lambda q=None: _hermes_discovery_gaps(q),
@@ -48119,8 +48125,8 @@ ROUTES = {
     "/api/v2/atm/protection-advisory-outcomes": lambda: _atm_advisory_outcomes(),
     "/api/v2/atm/profit-capture": lambda: _atm_profit_capture(),
     "/api/v2/atm/advisory-threshold-tuning": lambda: _atm_advisory_threshold_tuning(),
-    "/api/v2/overview": overview,
-    "/api/v2/portfolio/holdings": portfolio_holdings,
+    "/api/v2/overview": lambda: _cio_truth_readers().overview_payload(overview(), db_query=_db_query),
+    "/api/v2/portfolio/holdings": lambda: _cio_truth_readers().holdings_payload(portfolio_holdings(), db_query=_db_query),
     "/api/v2/holdings/share-drift": lambda q=None: _share_drift_list(q),
     "/api/v2/holdings/share-drift/impact": lambda q=None: _share_drift_impact(q),
     "/api/v2/holdings/share-reconciliation/history": lambda q=None: _share_drift_history(q),
@@ -48601,7 +48607,7 @@ ROUTES = {
     "/api/v2/journal/closed-trades/action-dashboard": _journal_closed_action_dashboard,
     "/api/v2/journal/closed-trades/action-items": _journal_closed_action_items,
     "/api/v2/journal/closed-trades/lessons": _journal_closed_lessons,
-    "/api/v2/risk": risk,
+    "/api/v2/risk": lambda: _cio_truth_readers().risk_payload(db_query=_db_query),
     "/api/v2/tax-lots": tax_lots,
     "/api/v2/correlation": correlation,
     "/api/v2/rebalance": rebalance,
