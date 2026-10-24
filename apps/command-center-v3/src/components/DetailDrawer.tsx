@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { MobileDetailSheet, useMobilePageDetail } from './MobileDetailSheet'
 import FibChartsInline from './FibChartsInline'
 import AnalystReviews, { useAnalystMap } from './AnalystReviews'
 import InsiderActivity from './InsiderActivity'
@@ -104,6 +105,17 @@ function Field({ k, v }: { k: string; v: any }) { const sec = k.match(SECTION_RE
 
 export default function DetailDrawer({ ctx, onClose }: Props) {
   const [terminalUi] = useTerminalUi()
+  const phone = useMobilePageDetail('detail-drawer')
+  const phoneOpened = useRef(false)
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+  useEffect(() => {
+    if (!ctx) { phoneOpened.current = false; return }
+    if (!phone.mobile) return
+    if (!phoneOpened.current) { phoneOpened.current = true; phone.open('record') }
+    else if (!phone.id) { phoneOpened.current = false; closeRef.current() }
+  }, [Boolean(ctx), phone.mobile, phone.id]) // URL entry is created once per visible drawer.
+  const close = () => { if (phoneOpened.current && phone.id) phone.close(); else onClose() }
   const [intel, setIntel] = useState<any>(null)
   useEffect(() => {
     setIntel(null)
@@ -153,7 +165,7 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
   const showStockIntel = !chainMode && !journeyMode && !!drawerSymbol
 
   if (!ctx) return null
-  return <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', justifyContent: 'flex-end', background: 'rgba(2,6,23,.22)' }} onClick={onClose}>
+  const content = <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', justifyContent: 'flex-end', background: 'rgba(2,6,23,.22)' }} onClick={close}>
     <div className={terminalUi ? 'cc-drawer' : undefined} onClick={e => e.stopPropagation()} style={{ width: 'min(1320px, 96vw)', height: '100vh', background: terminalUi ? '#0a0e1a' : 'linear-gradient(180deg, #111827, #0f172a)', borderLeft: `1px solid ${terminalUi ? '#1e293b' : 'rgba(148,163,184,.22)'}`, display: 'flex', flexDirection: 'column', boxShadow: '-10px 0 40px rgba(0,0,0,.55)' }}>
       <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(148,163,184,.18)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexShrink: 0 }}>
         <div><div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}><div style={{ fontSize: 20, fontWeight: 950, color: TEXT0 }}>{ctx.title}</div>
@@ -166,7 +178,7 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
             />
           )}
           {drawerSymbol && !primary.is_cash && !/^[A-Z]{4,5}X$/.test(drawerSymbol) && <a href={`/v3/rotation?question=${encodeURIComponent(`Review whether ${drawerSymbol} exposure should be reduced`)}`} title="Review this exposure in the Rotation Advisor (advisory · no broker action)" style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 6, textDecoration: 'none', background: 'rgba(96,165,250,.13)', color: '#60a5fa', border: '1px solid rgba(96,165,250,.32)' }}>⤢ Rotation review →</a>}</div>{ctx.subtitle && <div style={{ fontSize: 12, color: MUTED, marginTop: 3 }}>{ctx.subtitle}</div>}<div style={{ fontSize: 10, color: DIM, fontFamily: 'monospace', marginTop: 8 }}>Source: {ctx.endpoint}</div></div>
-        <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 22, padding: '0 4px' }}>×</button>
+        <button aria-label="Close record" data-drawer-close onClick={close} style={{ background: 'transparent', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 22, padding: '0 4px' }}>×</button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
         {ctx.links && ctx.links.length > 0 && <Section title="Where to act" accent={BLUE}><div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{ctx.links.map((l, i) => <a key={i} href={l.href} title={l.note} style={{ fontSize: 12, fontWeight: 850, color: '#bfdbfe', textDecoration: 'none', padding: '6px 12px', borderRadius: 7, background: 'rgba(96,165,250,.13)', border: '1px solid rgba(96,165,250,.32)' }}>{l.label} →</a>)}</div></Section>}
@@ -337,6 +349,7 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
       <div style={{ padding: '10px 16px', borderTop: '1px solid rgba(148,163,184,.18)', fontSize: 9, color: MUTED, textAlign: 'center' }}>Read-only intelligence drawer. No order controls, no broker writes, advisory review only.</div>
     </div>
   </div>
+  return phone.mobile ? <MobileDetailSheet title={ctx.title} onBack={close}><div className="mobile-detail-evidence">{content}</div></MobileDetailSheet> : content
 }
 
 export function DrawerStat({ label, value, color }: { label: string; value: string; color?: string }) { return <div style={{ padding: '8px 0', borderBottom: '1px solid rgba(148,163,184,.12)' }}><div style={{ fontSize: 9, color: MUTED, textTransform: 'uppercase' }}>{label}</div><div style={{ fontSize: 13, fontWeight: 850, color: color || TEXT0 }}>{value}</div></div> }
