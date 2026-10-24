@@ -46,26 +46,34 @@ def stored_catalysts(root: Path) -> dict:
     return out
 
 
-def _coverage(records: list[dict], groups: dict, identities: dict) -> dict:
-    from scripts.lib.data_broker.cio_company_facts import load_snapshot
+def _coverage(records: list[dict], groups: dict, identities: dict, *, now: datetime) -> dict:
+    from scripts.lib.data_broker.cio_company_facts import load_snapshot, for_security
     snapshot = load_snapshot(records=records)
     out = {}
     for name, syms in groups.items():
         fields = {k: 0 for k in facts.FIELDS}
         complete, gaps = 0, []
+        catalysts = {'current': 0, 'missing': 0, 'gaps': []}
         for sym in syms:
             guid = (identities.get(sym) or {}).get('security_guid')
-            public = snapshot.get(str(guid)) if guid else None
+            public = for_security(snapshot, sym, guid, now=now)
             f = (public or {}).get('company_facts') or {}
+            cat = f.get('catalyst') or {}
+            if cat.get('status') == 'CURRENT' and cat.get('headline'):
+                catalysts['current'] += 1
+            else:
+                catalysts['missing'] += 1
+                catalysts['gaps'].append({'symbol': sym, 'reason': cat.get('missing_reason') or 'catalyst_not_on_cio_record'})
             missing = []
             for key in fields:
                 if (f.get(key) or {}).get('value'): fields[key] += 1
                 else: missing.append(key)
             if not missing: complete += 1
             else: gaps.append({'symbol': sym, 'missing_fields': missing,
-                               'reason': f.get('missing_reason') or 'company_fields_not_on_cio_record'})
+                               'reason': f.get('missing_reason') or 'company_fields_not_on_cio_record',
+                               'missing_reasons': {key: (f.get(key) or {}).get('missing_reason') for key in missing}})
         out[name] = {'total': len(syms), 'complete': complete, 'fields': fields, 'gaps': gaps,
-                     'complete_pct': round(100*complete/len(syms), 2) if syms else None}
+                     'complete_pct': round(100*complete/len(syms), 2) if syms else None, 'catalysts': catalysts}
     return out
 
 
@@ -88,12 +96,23 @@ def populate(root: Path, capture: dict, *, apply=False, now=None, backend=None, 
     result = {'lane_id': LANE_ID, 'mode': 'apply' if apply else 'dry_run', 'captured_at': capture.get('captured_at'),
               'evaluated_at': now.isoformat(), 'target_count': len(symbols), 'created': 0, 'updated': 0,
               'would_create': 0, 'would_update': 0, 'unchanged': 0, 'gaps': [], 'identity_gaps': [], 'pg': [], 'writes': 0,
-              'before': _coverage(records, groups, identities), 'source_gaps': deepcopy(capture.get('gaps') or []),
+              'before': _coverage(records, groups, identities, now=now), 'source_gaps': deepcopy(capture.get('gaps') or []),
               'record_kind': 'FACTS_ONLY; judged records preserved', 'judgment_writes': 0, 'prospect_promotions': 0}
     inputs = facts.collect_inputs(root, symbols, now=now)
     inputs['profiles'] = capture.get('profiles') or {}
     inputs['errors'] = [e for e in inputs['errors'] if e != 'symbol_profiles:not_read_no_db']
     catalysts = stored_catalysts(root)
+    captured_events = capture.get('catalyst_events')
+    if isinstance(captured_events, dict) and isinstance(captured_events.get('rows'), dict):
+        catalysts['catalyst_events'] = deepcopy(captured_events)
+    else:
+        catalysts['catalyst_events'] = {'status': 'not_captured', 'rows': {}}
+    result['catalyst_sources'] = {k: {x: v.get(x) for x in ('status', 'as_of', 'path', 'count')}
+                                  for k, v in catalysts.items() if isinstance(v, dict)}
+    if catalysts['catalyst_events'].get('status') != 'ok':
+        reason = catalysts['catalyst_events'].get('status') or 'source_status_missing'
+        result['source_gaps'].append({'scope': 'catalyst_events', 'reason': reason})
+        inputs.setdefault('errors', []).append('catalyst_events:' + str(reason))
     from scripts.lib.cio_prospect_builder import catalyst_facts
     projected = list(records)
     pg_requested = str((os.environ if env is None else env).get(ir.PROSPECT_DUAL_WRITE_ENV) or '').strip() == '1'
@@ -181,9 +200,9 @@ def populate(root: Path, capture: dict, *, apply=False, now=None, backend=None, 
             projected = [r for r in projected if r.get('subject_key') != updated['subject_key']] + [updated]
         except (ir.ProspectInvalid, ir.BehaviorWriteRefused, ir.CognitionNoOp) as exc:
             result['gaps'].append({'symbol': sym, 'reason': type(exc).__name__, 'detail': str(exc)[:200]})
-    result['after'] = _coverage(projected, groups, identities)
+    result['after'] = _coverage(projected, groups, identities, now=now)
     result['ok'] = not [g for g in result['gaps'] if g.get('reason') != 'identity_not_confirmed'] and not [
-        g for g in result['source_gaps'] if g.get('scope') == 'held' or str(g.get('scope') or '').startswith('membership:')]
+        g for g in result['source_gaps'] if g.get('scope') in ('held', 'catalyst_events') or str(g.get('scope') or '').startswith('membership:')]
     result['quality_status'] = 'PARTIAL' if result['gaps'] or result['identity_gaps'] or any(
         g['complete'] < g['total'] for g in result['after'].values()) else 'COMPLETE'
     result['canonical_persisted'] = bool(apply and result['writes'])
@@ -216,7 +235,9 @@ def capture_readonly_inputs(root: Path, query, *, now=None) -> dict:
     formerly = sorted({str(r['symbol']) for r in former if r.get('symbol')} - set(held))
     bounds = query('SELECT min(trade_date) AS first_trade_date, max(trade_date) AS last_trade_date, count(*) AS ledger_rows FROM trade_transactions')
     syms = sorted(set(membership['names']) | set(held) | set(formerly))
-    return {'captured_at': now.isoformat(), 'database_read_only': True,
+    from scripts.lib.cio_prospect_builder import load_catalyst_inputs
+    catalyst_events = load_catalyst_inputs(query)['catalyst_events']
+    return {'catalyst_events': catalyst_events, 'captured_at': now.isoformat(), 'database_read_only': True,
             'snapshot_coherence': 'PER_QUERY_TRANSACTIONS; original observation clocks retained',
             'my_watchlist': sorted(membership['names']), 'held': held, 'formerly_held': formerly,
             'profiles': get_symbol_profiles(query, syms), 'ledger_coverage': bounds,

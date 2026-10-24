@@ -50,7 +50,9 @@ def normalize_catalyst_row(row: dict[str, Any] | None) -> dict[str, Any] | None:
         "relevance": row.get("relevance"),
         "model_confidence": conf,
         "published_at": row.get("published_at"),
-        "observed_at": row.get("observed_at"),
+        "created_at": row.get("created_at"),
+        "observed_at": row.get("observed_at") or row.get("created_at"),
+        "clock_kind": "publication" if row.get("published_at") else "row_created" if row.get("created_at") else "legacy_unspecified_at",
         "source_ref": row.get("source_ref"),
         "severity": row.get("severity"),
         "impact_score": row.get("impact_score"),
@@ -110,10 +112,10 @@ def get_catalyst_records_bulk(db_query, *, days: int = 30, per_symbol: int = 3) 
         db_query(
             f"""
         SELECT id, symbol, subject_guid, catalyst_type, headline, severity, impact_score, confidence, source,
-               source_url, at
+               source_url, published_at, created_at, at
         FROM (
             SELECT id, upper(symbol) AS symbol, subject_guid::text AS subject_guid, catalyst_type, headline, severity,
-                   impact_score, confidence, source, source_url, COALESCE(published_at, created_at) AS at,
+                   impact_score, confidence, source, source_url, published_at, created_at, COALESCE(published_at, created_at) AS at,
                    row_number() OVER (PARTITION BY upper(symbol)
                                       ORDER BY COALESCE(published_at, created_at) DESC, id DESC) AS rn
             FROM catalyst_events
@@ -139,6 +141,7 @@ def get_catalyst_records_bulk(db_query, *, days: int = 30, per_symbol: int = 3) 
         n = normalize_catalyst_row(r) or {}
         at = r.get("at") or n.get("at")
         n["at"] = at.isoformat() if hasattr(at, "isoformat") else at
-        n.update({"id": r.get("id"), "subject_guid": r.get("subject_guid"), "source": r.get("source")})
+        n.update({"id": r.get("id"), "subject_guid": r.get("subject_guid"), "source": r.get("source"),
+                  "source_ref": r.get("source_ref") or (f"catalyst_events#{r['id']}" if r.get("id") is not None else None)})
         out.setdefault(sym, []).append(_jsonable(n))
     return out

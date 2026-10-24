@@ -1,0 +1,115 @@
+{
+  "schema": "C1CatalystValidation@v1",
+  "task": "DSN-20261024-c1-catalyst-P1-T1",
+  "base": "9228634873392073f5849aaa77ec9b9121eb6094",
+  "native": {
+    "affected_whole_files": 10,
+    "passed": 220,
+    "skipped": 0,
+    "completeness_exact_cases": 2,
+    "completeness_passed": 2,
+    "effective_psycopg2_hidden": true,
+    "production_access_barriers": true,
+    "production_barrier_refusals": 0,
+    "full_project_profile": "NOT_RUN; known actual protected-state fixture attempts remain held, no retry/exemption"
+  },
+  "build": "npm run build PASS; existing classic-script/large-chunk warnings only",
+  "ruff": "All changed/new Python files PASS, canonical0.16.2",
+  "ratchets": [
+    {
+      "command": [
+        "scripts/check_test_host_paths.py",
+        "--fail-on-new"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-c1-catalyst-20261024/check_test_host_paths.log"
+    },
+    {
+      "command": [
+        "scripts/check_test_coverage.py",
+        "--fail-on-new"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-c1-catalyst-20261024/check_test_coverage.log"
+    },
+    {
+      "command": [
+        "scripts/check_dark_contracts.py",
+        "--fail-on-new"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-c1-catalyst-20261024/check_dark_contracts.log"
+    },
+    {
+      "command": [
+        "scripts/check_retention_policy.py",
+        "--fail-on-new"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-c1-catalyst-20261024/check_retention_policy.log"
+    },
+    {
+      "command": [
+        "scripts/report_docs_inventory.py",
+        "--check-index"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-c1-catalyst-20261024/report_docs_inventory.log"
+    }
+  ],
+  "copy": {
+    "raw_capture": "/home/johnclaw/.cache/rtc/codex-c1-catalyst-20261024/capture-20261024.json",
+    "raw_sha256": "2c74849bbc5082e773092c1ea903e575055d7aa0a80365d5345cf841cb287b95",
+    "source_copy_unchanged": true,
+    "dry_run_unchanged": true,
+    "private_copy_updates": 198,
+    "creates": 0,
+    "replay_writes": 0,
+    "replay_unchanged": 203,
+    "record_count_preserved": 256,
+    "all_nonresearch_nonrevision_nontimestamp_fields_preserved": true,
+    "sibling_research_preserved": true,
+    "production_writes": 0,
+    "provider_calls": 0
+  },
+  "historical_local_failures": {
+    "initial_proof": "Harness compared facade prospect_revision as if judgment; only research/revision/update clock differed. Failed log retained; final strict every-other-field comparison passed.",
+    "gate_json": "New gate had inline list formatting; canonical serialization fixed, entire32case integration/registry suite rerun passed."
+  },
+  "scope": {
+    "scheduler_contract_policy_broker_changes": 0,
+    "new_authority": false,
+    "same_existing_lane_entrypoint": true,
+    "runtime_acceptance": "NOT_MEASURED; coordinator release and operator apply pending"
+  },
+  "evidence": {
+    "capture-20261024.json": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-catalyst-20261024/capture-20261024.json",
+      "sha256": "2c74849bbc5082e773092c1ea903e575055d7aa0a80365d5345cf841cb287b95"
+    },
+    "copy-proof-release.json": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-catalyst-20261024/copy-proof-release.json",
+      "sha256": "7a1d37140d9898f2e87dacecdacfab754526f20b7f095dbf593b7ee325057db8"
+    },
+    "final-affected.xml": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-catalyst-20261024/final-affected.xml",
+      "sha256": "40be21991fd7651080c14844ed3b15688346cd4258c3797c7607ca0afdfd2685"
+    },
+    "extra-integrations-registry-final.xml": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-catalyst-20261024/extra-integrations-registry-final.xml",
+      "sha256": "346200d0cf4262d68427498696f6b2dd9101efeadee1dd6231afff0099afbbe1"
+    },
+    "completeness.xml": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-catalyst-20261024/completeness.xml",
+      "sha256": "899f9c6b64ff23b40244579dbfa1fd499149d5dc4bad459394248ed5a7cd4d51"
+    },
+    "npm-build.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-catalyst-20261024/npm-build.log",
+      "sha256": "7da07f5f4f3ef37373a659629a8f3b263b385d727736f7d0a94304920a8cb99a"
+    },
+    "ratchets.json": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-catalyst-20261024/ratchets.json",
+      "sha256": "fca112d6706cc9375c5808c0de47552de83a8f561e34804202047a501d332378"
+    }
+  }
+}

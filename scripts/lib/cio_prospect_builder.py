@@ -532,7 +532,10 @@ def catalyst_facts(sym: str, inputs: dict[str, dict[str, Any]], identity: dict[s
                       "headline": r.get("headline"), "catalyst_type": r.get("catalyst_type"),
                       "verified": bool(r.get("verified")), "verification_basis": r.get("verification_basis"),
                       "factual_verification_status": r.get("factual_verification_status"),
-                      "confidence": r.get("confidence"), "published_at": r.get("at"), "url": r.get("source_url"),
+                      "confidence": r.get("confidence"), "published_at": r.get("published_at"),
+                      "observed_at": r.get("observed_at") or r.get("created_at") or r.get("at"),
+                      "created_at": r.get("created_at"), "clock_kind": r.get("clock_kind") or "legacy_unspecified_at",
+                      "url": r.get("source_url"), "source_ref": r.get("source_ref"),
                       "subject_guid": r.get("subject_guid")})
     scan = g("scanner")
     if scan and scan.get("catalyst"):
