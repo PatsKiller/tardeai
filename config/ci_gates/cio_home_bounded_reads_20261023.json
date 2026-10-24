@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_home_bounded_reads_20261023",
+  "files": [
+    "tests/test_cio_home_bounded_reads_20261023.py"
+  ],
+  "comment": [
+    "WP-32 bounded read-only CIO home plan projection: stream records, preserve current public/coverage ordering and event catch-up semantics, expose unavailable/limited sources without writer fallback; isolated forked large-fixture memory proof, no live server, DB, provider or credential access."
+  ]
+}

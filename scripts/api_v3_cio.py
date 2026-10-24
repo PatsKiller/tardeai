@@ -544,6 +544,12 @@ def _plan_store():
         return CIOPlanStore()
 
 
+def _home_plan_store():
+    """Read-only bounded inputs; the full store remains for detail and writers."""
+    from scripts.lib.cio_home_plan_view import HomePlanView
+    return HomePlanView(PROJECT_ROOT)
+
+
 def _public_plan(plan: dict[str, Any]) -> dict[str, Any]:
     """Operator-facing plan projection (no internal event noise)."""
     keys = (
@@ -1455,18 +1461,20 @@ def get_cio_home() -> dict[str, Any]:
 
     thesis = (get_cio_thesis() or {}).get("thesis") or None
     actions = _cio_actions_data(20)
-    # One plan-store load serves both reads below (each load parses the ~40 MB
-    # projection); a store that fails to open falls back to the old behaviour.
+    # Stream the projection into the 12-plan public window and minimal coverage
+    # index. Never instantiate/rebuild the full writable store on a home GET.
     try:
-        plan_store = _plan_store()
-    except Exception:
+        plan_store = _home_plan_store()
+        plan_read = plan_store.read_state
+    except Exception as exc:
         plan_store = None
-    plans = (get_cio_plans(limit=12, store=plan_store) or {}).get("plans") or []
+        plan_read = {"ok": False, "error": type(exc).__name__, "authority": "READ_ONLY_ADVISORY"}
+    plans = ((get_cio_plans(limit=12, store=plan_store) or {}).get("plans") or []) if plan_store is not None else []
     # Wave 2 slice 12b: `plans` above is the 12-row CIO NOW window and must stay
     # that size. Coverage counts open plans against the whole store, through a
     # minimal read-only projection (_public_plan drops hermes_result_id, which
     # coverage.with_research needs). Nothing is minted, nothing is written.
-    coverage_plans = _coverage_plan_index(store=plan_store)
+    coverage_plans = _coverage_plan_index(store=plan_store) if plan_store is not None else []
     # Wave 2 slice 16: same-sector context for S6 names only. Fail-soft — a
     # sector-map problem must not blank /v3/cio/home.
     try:
@@ -1541,6 +1549,7 @@ def get_cio_home() -> dict[str, Any]:
         operator_product=operator_product,
     )
     home["ok"] = True
+    home["plan_read"] = plan_read
     stamp_decision_identity(home, capital_plan)
     # Thin attention stamp for GET /cio/scorecard (disk-only; never nests home).
     try:

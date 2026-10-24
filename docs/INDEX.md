@@ -2082,6 +2082,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WP36_ITEM6_RESEARCH_VERSION_LABELS_20261023.md` | WP-36 item 6: truthful research thesis-version labels |
 | `docs/ops/WP29_HOME_ACCOUNT_CHIPS_20261023.md` | WP-29 item b: account-name chips in the Home do-now queue |
 | `docs/ops/WP29_SPECIALIST_ACCOUNT_CONTEXT_20261023.md` | WP-29 item d: grounded account location in specialist context |
+| `docs/ops/WP32_BOUNDED_HOME_AND_PREFS_20261023.md` | WP-32 bounded CIO home reads and session verification |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye — first institutional-brain audit |
 | `docs/ops/agent_start/codex-note.md` | Codex note — agent claim board (operator installs) |
 | `docs/ops/agent_start/cursor-rule.md` | Cursor rules snippet — agent claim board (operator installs) |
