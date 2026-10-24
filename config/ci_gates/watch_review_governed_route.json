@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_review_governed_route",
+  "files": [
+    "tests/test_watch_review_governed_route.py",
+    "tests/test_watch_review_automation.py"
+  ],
+  "anchor": "WATCH_REVIEW_GOVERNED_ROUTE_20261024",
+  "comment": [
+    "ANCHOR: WATCH_REVIEW_GOVERNED_ROUTE_20261024 — actual scheduled Watch review route, fake transport admission and fail-closed authorization."
+  ]
+}
