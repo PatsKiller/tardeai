@@ -475,9 +475,9 @@ def _name_used(text: str, name: str, *, decl_pos: int, _depth: int = 0) -> bool:
     return False
 
 
-def scan_frontend(root: Path) -> tuple[list[Fetch], list[dict[str, Any]], dict[Path, set[str]]]:
+def scan_frontend(root: Path, *, surfaces: Optional[dict[str, str]] = None) -> tuple[list[Fetch], list[dict[str, Any]], dict[Path, set[str]]]:
     src = root / SRC
-    entries = [(surface, src / rel) for surface, rel in SURFACES.items()]
+    entries = [(surface, src / rel) for surface, rel in (surfaces if surfaces is not None else SURFACES).items()]
     owners = import_closure(entries)
     fetches: list[Fetch] = []
     constants: list[dict[str, Any]] = []
@@ -497,6 +497,15 @@ def scan_frontend(root: Path) -> tuple[list[Fetch], list[dict[str, Any]], dict[P
                 continue
             callee, open_paren = _enclosing_callee(text, start)
             via = None
+            if callee == "withQuery":
+                # A query builder is not a fetch by itself. Only count it when it
+                # is the first argument of a recognized enclosing fetch/hook.
+                wrapper_start = text.rfind("withQuery", max(0, open_paren - 80), open_paren)
+                outer, outer_paren = _enclosing_callee(text, wrapper_start)
+                if outer not in FETCH_CALLEES:
+                    continue
+                callee, open_paren = outer, outer_paren
+                via = "withQuery"
             if callee and callee not in FETCH_CALLEES:
                 continue  # argument of a non-fetch call (startsWith, includes, onDrill, ...)
             if not callee:
@@ -647,7 +656,7 @@ def scan_api_v2(root: Path) -> list[Route]:
             for r in _string_list(m.group(1)):
                 if r.startswith("/api/v"):
                     routes.append(Route(r.rstrip("/"), "EXACT", rel, i + 1, _producer_after(lines, i, {}) or f"api_v2.py::handle[inline:{i + 1}]", method))
-        sm = re.match(r"^(\s*)if\s+(?:method\s*==\s*\"\w+\"\s+and\s+)?\(?base_path\.startswith\(\"(/api/v[23]/[^\"]*)\"\)", line)
+        sm = re.match(r"^(\s*)if\b.*?\bbase_path\.startswith\(\"(/api/v[23]/[^\"]*)\"\)", line)
         if sm:
             indent = len(sm.group(1))
             prefix = sm.group(2)
@@ -916,9 +925,9 @@ def _endpoint_row(f: "Fetch", handler: Optional[Route], how: str, desc: dict[str
 
 
 # ── census ────────────────────────────────────────────────────────────────────
-def build_census(root: Path | str | None = None) -> dict[str, Any]:
+def build_census(root: Path | str | None = None, *, surfaces: Optional[dict[str, str]] = None) -> dict[str, Any]:
     root = Path(root) if root else ROOT
-    fetches, constants, owners = scan_frontend(root)
+    fetches, constants, owners = scan_frontend(root, surfaces=surfaces)
     backend = scan_api_v2(root) + scan_agent_runtime(root)
     handlers = HandlerIndex(root)
 
@@ -1023,7 +1032,7 @@ def build_census(root: Path | str | None = None) -> dict[str, Any]:
     return {
         "schema": SCHEMA,
         "authority": "READ_ONLY_ADVISORY",
-        "scope": list(SURFACES),
+        "scope": list(surfaces if surfaces is not None else SURFACES),
         "families": {k: list(v) for k, v in FAMILIES.items()},
         "serving_sha": _serving_sha(root),
         "method": "static source parse: TS import closure from routed pages + api_v2 dispatch/ROUTES + agent-runtime READ_ROUTES; handler bodies via ast",
