@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "risk_live_positions_20261024",
+  "files": [
+    "tests/test_risk_snapshot_live_positions_20261024.py"
+  ],
+  "anchor": "RISK_LIVE_POSITIONS_20261024",
+  "comment": [
+    "ANCHOR: RISK_LIVE_POSITIONS_20261024 — the Risk snapshot follows live holdings.json (15-min sync) instead of the",
+    "pre-market risk_management.json, and resting broker stops (stop_last_known) win over planned stops (operator",
+    "2026-10-24: Risk showed sold NAVN, SPCX 600 vs 700, SKYD missing). Hermetic: no DB, no server."
+  ]
+}
