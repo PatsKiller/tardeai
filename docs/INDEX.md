@@ -2089,6 +2089,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WP14_PUSH_POLICY_V2_REBUILD_20261023.md` | WP-14 push-policy-v2 operator package rebuild |
 | `docs/ops/WP15_AGENTS_20_2_OPERATOR_PACKAGE_20261023.md` | WP-15: AGENTS 20.2.0 package delivery |
 | `docs/ops/WP16_ADVISORY_POLICY_PACKAGE_20261023.md` | WP-16 advisory-policy package delivery |
+| `docs/ops/WP23_ASK_CIO_RECONCILIATION_20261023.md` | WP-23: reconcile Ask-CIO implementation and preserve source provenance |
 | `docs/ops/WP27_CONTINUOUS_FROM_CURRENT_20261023.md` | WP-27: continuous scanner root reconciliation |
 | `docs/ops/WP28_HERMES_RESEARCH_SOURCE_FILTER_20261023.md` | WP-28 item 2: Hermes research article selection |
 | `docs/ops/WP29_ACCOUNT_LABEL_FIXTURES_20261023.md` | WP-29(c): account-label browser evidence |
@@ -2108,7 +2109,6 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WP36_STALE_PRODUCERS_20261023.md` | WP-36 item5: stale feed and report-producer reconciliation |
 | `docs/ops/WP37_HOT_LIST_CAPTURE_RECONCILIATION_20261024.md` | WP-37: hot-list registry matches the operator-captured command |
 | `docs/ops/WP39_RETENTION_RULINGS_AUDIT_20261023.md` | WP-39: retention rulings source and runtime evidence |
-| `docs/ops/WP23_ASK_CIO_RECONCILIATION_20261023.md` | WP-23: reconcile Ask-CIO implementation and preserve source provenance |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye — first institutional-brain audit |
 | `docs/ops/agent_start/codex-note.md` | Codex note — agent claim board (operator installs) |
 | `docs/ops/agent_start/cursor-rule.md` | Cursor rules snippet — agent claim board (operator installs) |
