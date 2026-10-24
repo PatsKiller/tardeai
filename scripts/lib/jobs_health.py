@@ -88,8 +88,10 @@ def _schedule(lane, now, trading_day):
     gated = lane.get("respect_calendar") is True or "market_day_gate.sh" in str(scheduler.get("command_text") or scheduler.get("expression") or "")
     def allowed(fire):
         return not gated or trading_day(fire.at.astimezone(zone))
-    due = sorted({f.at.astimezone(timezone.utc) for ex in expressions
-                  for f in fires_between(ex, today - timedelta(microseconds=1), now, tz) if allowed(f)})
+    day_end = today + timedelta(days=1) - timedelta(microseconds=1)
+    today_fires = sorted({f.at.astimezone(timezone.utc) for ex in expressions
+                         for f in fires_between(ex, today - timedelta(microseconds=1), day_end, tz) if allowed(f)})
+    due = [at for at in today_fires if at <= now]
     next_due = None
     for days in (1, 8, 32, 400):
         upcoming = [f.at.astimezone(timezone.utc) for ex in expressions
@@ -99,7 +101,7 @@ def _schedule(lane, now, trading_day):
             break
         if not expressions:
             break
-    return due, next_due, issue, gated
+    return due, next_due, issue, gated, bool(today_fires)
 
 
 def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, now: datetime, trading_day) -> dict:
@@ -108,7 +110,8 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
     by_lane = {}
     for run in runs:
         at = instant(run.get("finished_at") or run.get("started_at") or run.get("requested_at"))
-        if at and at <= now and RV.effective_mode(run) == "live":
+        pending_live = run.get("mode") == "live" and run.get("state") in {"REQUESTED", "RUNNING"}
+        if at and at <= now and (RV.effective_mode(run) == "live" or pending_live):
             by_lane.setdefault(run.get("lane_id"), []).append(run)
     for values in by_lane.values():
         values.sort(key=lambda r: instant(r.get("finished_at") or r.get("started_at") or r.get("requested_at")))
@@ -129,7 +132,7 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
         last = values[-1] if values else {}
         successful = [r for r in values if successful_execution(r, now)]
         success = instant(check.get("last_success_at"))
-        last_at = instant(last.get("finished_at") or last.get("started_at") or last.get("requested_at"))
+        last_at = instant(last.get("finished_at") or last.get("started_at"))
         diagnostic = None
         failure_at = None
         component = W.component(lane)
@@ -146,9 +149,9 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
             if failure_at is None or last_at and last_at >= failure_at:
                 failure_at, diagnostic = instant(last.get("finished_at")), cause(RV.receipt_of(last), last.get("reason"))
         try:
-            due, upcoming, issue, gated = _schedule(lane, now, trading_day)
+            due, upcoming, issue, gated, due_today = _schedule(lane, now, trading_day)
         except (ValueError, TypeError, KeyError):
-            due, upcoming, issue, gated = [], None, "schedule could not be measured", False
+            due, upcoming, issue, gated, due_today = [], None, "schedule could not be measured", False, False
         outcome, reason = "unknown", "Successful execution is not yet measured"
         if state in {"PAUSED", "RETIRED", "DISABLED"}:
             outcome, reason = ("retired" if state == "RETIRED" else "paused"), lane.get("state_reason") or f"Job is {state.lower()}"
@@ -171,7 +174,7 @@ def build(registry: dict, snapshot: dict, runs: list[dict], watchdog: dict, *, n
             "scheduler": scheduler.get("kind") or "unknown", "state": state, "result": outcome,
             "last_run_at": W.iso(last_at) if last_at else None, "last_success_at": W.iso(success) if success else None,
             "successful_run_id": successful[-1].get("run_id") if successful else None,
-            "next_due_at": W.iso(upcoming) if upcoming else None, "due_today": bool(due),
+            "next_due_at": W.iso(upcoming) if upcoming else None, "due_today": due_today,
             "missed_fires": check.get("missed_fires"), "market_hours_only": gated,
             "cause": reason, "evidence": last.get("run_id") or ("wrapper event" if events else None)})
     counts = Counter(row["result"] for row in rows)
