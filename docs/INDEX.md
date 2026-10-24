@@ -2029,6 +2029,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/R23_ADMIN_OBSERVABILITY_CLOSEOUT.md` | R23 Research, Data, Identity, and Notification Observability |
 | `docs/ops/R24_LEARNING_MATURITY_AUDIT_CLOSEOUT.md` | R24 Learning, Maturity, and Audit Closeout |
 | `docs/ops/R9_2_PORTFOLIO_BRAIN_LIVE_CLOSEOUT_2026-08-23.md` | Trade AI v12 R9.2 - Portfolio Brain Live Closeout |
+| `docs/ops/REGISTRY_CAPTURE_REVIEW_20261024.md` | Registry reconciliation: actual-capture review proposals |
 | `docs/ops/REGISTRY_RECONCILE_SEMANTIC_AUDIT_20261024.md` | Registry reconciliation: frozen-input audit and unresolved live-input diff |
 | `docs/ops/RELEASES_SCHEDULES_PAGE.md` | Releases & schedules — Command Center page and read model |
 | `docs/ops/RELEASE_TRAIN_API.md` | Release train: read-only Command Center API (Phase 1) |
@@ -2194,6 +2195,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/open-stack-triage-20261023/README.md` | WP-33 item 5: open stack triage evidence |
 | `docs/ops/packets/push-policy-v2-20261023-wp14/DESIGN.md` | WP-14: rebuilt push-policy-v2 operator package |
 | `docs/ops/packets/push-policy-v2-20261023-wp14/PR_BODY.md` | WP-14 operator-only push-policy proposal |
+| `docs/ops/packets/registry-capture-review-20261024/README.md` | Actual-capture registry review packet |
 | `docs/ops/packets/registry-reconcile-audit-20261024/OPERATOR_CAPTURE.md` | Operator-only capture of the missing reconciliation inputs |
 | `docs/ops/packets/registry-reconcile-audit-20261024/README.md` | Registry reconciliation evidence packet |
 | `docs/ops/packets/registry-runtime-truth-20261018/README.md` | Registry / runtime truth — packet (review 2026-10-18, built 2026-10-19) |

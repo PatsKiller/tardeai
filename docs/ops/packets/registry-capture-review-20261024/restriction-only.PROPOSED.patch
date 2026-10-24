@@ -1,0 +1,48 @@
+--- a/config/lane_registry.json
++++ b/config/lane_registry.json
+@@ -13223,7 +13223,7 @@
+         "evidence_ref": "scripts/catalyst_momentum_engine.py:65,183 _write_last_run() atomically writes served-state-root data/cio/catalyst_momentum_last_run.json every run (payload has 'band' + generated_at; shared by all 3 bands); host mtime 2026-10-09T15:30:06"
+       },
+       "value_class": "Operationally Important",
+-      "recommendation": "PIPELINE:P07",
++      "recommendation": "KEEP_ON_CRON",
+       "rationalization": {
+         "source": "F_rationalization.json",
+         "f_id": "L379",
+@@ -13242,7 +13242,12 @@
+       "state_reason": "Superseded by lane catalyst-momentum-engine (B8, b-families-top5 2026-10-11): this crontab line becomes mode of scripts/run_family_slot.py --family catalyst-momentum-engine with the same command, lock and log; the line is commented '# RETIRED <date> b-family B8/catalyst-momentum-engine <line>' by packet ~/n8n-maturity-verification/packets/b-families-top5/catalyst-momentum-engine under an operator cron grant. Until that install the line is still live (declared RETIRED ahead of the host by one install; RETIRED+present is not a state-drift conflict code).",
+       "reason_confidence": "ESTABLISHED",
+       "reason_evidence": "tests/test_family_slot_jobs_20261011.py: the mode's rendered command equals this line's verbatim command (live crontab 2026-10-11 sha 7eb97ad6); minute-by-minute EDT+EST week simulation: every effective run of this line is a run of the mode (deltas in docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md).",
+-      "retire_batch": "b-families-top5"
++      "retire_batch": "b-families-top5",
++      "stay_on_cron": {
++        "class": "broker_order",
++        "token": "alpaca",
++        "source": "config/lane_stay_on_cron_tokens.json"
++      }
+     },
+     {
+       "lane_id": "catalyst-momentum-engine",
+@@ -13351,7 +13356,7 @@
+         "evidence_ref": "scripts/catalyst_momentum_engine.py:65,183 _write_last_run() atomically writes served-state-root data/cio/catalyst_momentum_last_run.json every run (payload has 'band' + generated_at; shared by all 3 bands); host mtime 2026-10-09T15:30:06"
+       },
+       "value_class": "Operationally Important",
+-      "recommendation": "PIPELINE:P07",
++      "recommendation": "KEEP_ON_CRON",
+       "rationalization": {
+         "source": "F_rationalization.json",
+         "f_id": "L380",
+@@ -13370,7 +13375,12 @@
+       "state_reason": "Superseded by lane catalyst-momentum-engine (B8, b-families-top5 2026-10-11): this crontab line becomes mode of scripts/run_family_slot.py --family catalyst-momentum-engine with the same command, lock and log; the line is commented '# RETIRED <date> b-family B8/catalyst-momentum-engine <line>' by packet ~/n8n-maturity-verification/packets/b-families-top5/catalyst-momentum-engine under an operator cron grant. Until that install the line is still live (declared RETIRED ahead of the host by one install; RETIRED+present is not a state-drift conflict code).",
+       "reason_confidence": "ESTABLISHED",
+       "reason_evidence": "tests/test_family_slot_jobs_20261011.py: the mode's rendered command equals this line's verbatim command (live crontab 2026-10-11 sha 7eb97ad6); minute-by-minute EDT+EST week simulation: every effective run of this line is a run of the mode (deltas in docs/implementation/n8n-maturity/B_FAMILIES_TOP5.md).",
+-      "retire_batch": "b-families-top5"
++      "retire_batch": "b-families-top5",
++      "stay_on_cron": {
++        "class": "broker_order",
++        "token": "alpaca",
++        "source": "config/lane_stay_on_cron_tokens.json"
++      }
+     },
+     {
+       "lane_id": "topic-research-synthesizer-at-20-x",
