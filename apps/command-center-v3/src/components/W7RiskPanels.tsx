@@ -6,6 +6,7 @@ import W7DetailSheet, { useW7Detail } from './W7DetailSheet'
 
 const stateLabel: Record<string, string> = { active: 'Active', pending_activation: 'Pending activation', pending: 'Pending activation', filled: 'Filled', none: 'None' }
 const sourceLabel: Record<string, string> = { broker: 'Broker resting', broker_resting: 'Broker resting', planned: 'Planned', none: 'None', confirmed: 'Operator confirmed' }
+const stopSource = (p: any) => (p.stop_source === 'broker' || p.stop_source === 'broker_resting') && p.stop_state !== 'active' ? 'Broker order' : sourceLabel[p.stop_source] || 'Source unavailable'
 
 export function W7RiskExposure({ data, onDrill }: { data: any, onDrill: (ctx: DrillContext) => void }) {
   const positions = data.positions || {}, stops = data.stops || {}, summary = positions, capital = data.capital || {}
@@ -29,11 +30,11 @@ export function W7RiskExposure({ data, onDrill }: { data: any, onDrill: (ctx: Dr
         <b style={mono}>{p.symbol}</b>
         <span>{p.account_label || 'Account name unavailable'}</span>
         <span style={mono}><small className="w7-field-label">Shares </small>{text(p.shares ?? p.quantity)}</span>
-        <span style={mono}><small className="w7-field-label">Price </small>{(p.current_price ?? p.price) == null ? 'Not available' : `$${(p.current_price ?? p.price).toLocaleString('en-US', { maximumFractionDigits: 4 })}`}</span>
+        <span style={mono}><small className="w7-field-label">Price </small>{p.price == null ? 'Not available' : `$${p.price.toLocaleString('en-US', { maximumFractionDigits: 4 })}`}</span>
         <span style={mono}><small className="w7-field-label">Stop </small>{p.stop_price == null ? 'None published' : `$${p.stop_price.toLocaleString('en-US', { maximumFractionDigits: 4 })}`}</span>
         <span style={mono}><small className="w7-field-label">To stop </small>{pct(p.distance_to_stop_pct)}</span>
-        <span style={mono}><small className="w7-field-label">Loss at stop </small>{usd(p.loss_at_stop_usd ?? p.risk_usd)}</span>
-        <span style={{ color: p.stop_state === 'active' ? TOKENS.success : TOKENS.warning }}><span>{sourceLabel[p.stop_source] || 'Source unavailable'}</span><small style={{ display: 'block' }}>{stateLabel[p.stop_state] || 'State unavailable'}</small></span>
+        <span style={mono}><small className="w7-field-label">Loss at stop </small>{usd(p.loss_at_stop_usd)}</span>
+        <span style={{ color: p.stop_state === 'active' ? TOKENS.success : TOKENS.warning }}><span>{stopSource(p)}</span><small style={{ display: 'block' }}>{stateLabel[p.stop_state] || 'State unavailable'}</small></span>
         <button className="w7-position-action" onClick={() => detail.open(key(p))} style={{ minHeight: 44, color: TOKENS.info, background: TOKENS.bg[2], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.sm, cursor: 'pointer' }}>Review {p.symbol} →</button>
       </article>)}
       {!rows.length && !positions.gap && <W7Gap>No positions have been published.</W7Gap>}
@@ -41,7 +42,7 @@ export function W7RiskExposure({ data, onDrill }: { data: any, onDrill: (ctx: Dr
     {selected && <W7DetailSheet title={`${selected.symbol} · stop details`} onClose={detail.close}>
       <p>{selected.account_label || 'Account name unavailable'}</p>
       <div style={line}><span>Stop price</span><b>{usd(selected.stop_price)}</b></div>
-      <div style={line}><span>Source</span><b>{sourceLabel[selected.stop_source] || 'Source unavailable'}</b></div>
+      <div style={line}><span>Source</span><b>{stopSource(selected)}</b></div>
       <div style={line}><span>State</span><b>{stateLabel[selected.stop_state] || 'State unavailable'}</b></div>
       <p>Observed {when(selected.stop_captured_at || selected.stop_evidence?.as_of)}</p>
       {selected.stop_state === 'pending_activation' && <W7Gap>This stop is awaiting activation. It does not provide active protection yet.</W7Gap>}

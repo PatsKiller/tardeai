@@ -11,7 +11,44 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
-from scripts.lib.w7_lookthrough import project
+from scripts.lib.w7_lookthrough import number, project
+
+
+def validate_payload(payload: dict) -> dict:
+    """Validate the read projection's display contract, including nullable facts.
+
+    This deliberately accepts unavailable sections with a gap, rather than
+    demanding invented numbers to satisfy a success-only schema.
+    """
+    sections = ("portfolio", "positions", "stops", "regime", "approvals", "cio_status", "capital", "do_now", "lookthrough", "conflicts")
+    if not isinstance(payload, dict) or any(not isinstance(payload.get(k), dict) for k in sections):
+        raise ValueError("W7 page sections must be objects")
+    def nullable_number(value):
+        if value is not None and (isinstance(value, str) or number(value) is None):
+            raise ValueError("W7 measurements must be finite numbers or null")
+    for key in ("total_usd", "cash_usd", "day_pl_usd", "position_count"):
+        nullable_number(payload["portfolio"].get(key))
+    for row in payload["positions"].get("rows") or []:
+        if not isinstance(row, dict) or not row.get("symbol") or not row.get("account_label"):
+            raise ValueError("W7 positions require symbol and account display name")
+        if row.get("stop_state") not in (None, "active", "pending_activation", "filled", "none", "unknown"):
+            raise ValueError("W7 stop state is not recognized")
+        for key in ("price", "shares", "stop_price", "distance_to_stop_pct", "loss_at_stop_usd"):
+            nullable_number(row.get(key))
+    views = [payload["lookthrough"], *(payload["lookthrough"].get("by_account") or {}).values()]
+    for view in views:
+        for key in ("portfolio_total_usd", "looked_through_usd", "fund_covered_usd", "fund_value_usd", "fund_coverage_pct"):
+            nullable_number(view.get(key))
+        for key in ("industries", "sectors", "top_underlying", "gaps", "funds_without_holdings"):
+            if not isinstance(view.get(key), list):
+                raise ValueError("W7 look-through collections must be lists")
+        for row in view["top_underlying"]:
+            if not row.get("symbol") or not isinstance(row.get("sources"), list):
+                raise ValueError("W7 underlyings require symbol and source contributions")
+            nullable_number(row.get("value_usd"))
+    if not isinstance(payload["conflicts"].get("findings"), list):
+        raise ValueError("W7 conflict findings must be an engine list")
+    return payload
 
 
 def _json(path: Path, *, max_bytes: int = 1_000_000) -> dict:
@@ -53,7 +90,7 @@ def page_payload(root: Path | str, *, now: datetime | None = None,
             truth = resolver(root=root, now=now, inputs=inputs, db_query=db_query)
         except Exception as exc:
             truth = unavailable("The CIO shared record could not be read (" + type(exc).__name__ + ")")
-    return project_pages(truth, **(lookthrough_inputs if lookthrough_inputs is not None else load_lookthrough_inputs(root)))
+    return validate_payload(project_pages(truth, **(lookthrough_inputs if lookthrough_inputs is not None else load_lookthrough_inputs(root))))
 
 
 def load_lookthrough_inputs(root: Path) -> dict:
@@ -88,6 +125,11 @@ def project_pages(truth: dict, **lookthrough_inputs) -> dict:
     result = {name: truth.get(name) or unavailable("CIO field unavailable")[name]
               for name in ("portfolio", "positions", "stops", "regime", "approvals", "cio_status", "capital", "do_now", "sectors")}
     result["do_now"] = {**result["do_now"], "items": (result["do_now"].get("items") or [])[:7]}
+    # Engine findings are a registered read projection. Legacy record diagnostics
+    # are never reclassified into a page warning here.
+    result["conflicts"] = truth.get("conflicts") or {
+        "findings": [], "source": "conflict engine read projection", "as_of": None, "stale": True,
+        "gap": {"reason": "Conflict engine accepted source not yet integrated"}}
     portfolio = result["portfolio"]
     companies = [{"security_guid": guid, **c} for guid, c in ((truth.get("companies") or {}).get("by_guid") or {}).items()]
     # Account IDs and labels are W1's normalized aliases; only the derived view uses a local alias key.

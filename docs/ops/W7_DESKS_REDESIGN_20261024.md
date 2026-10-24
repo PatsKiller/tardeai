@@ -11,7 +11,7 @@ broker caller, writer, schedule or order behavior.
 | UI element | API field under `/api/v2/cio/pages` | Store / column or key | Writer / owner |
 |---|---|---|---|
 | Home Do now | `do_now.items`, original order, first seven | CIO ranked projection passed to `cio_truth` | CIO projection, W1 |
-| Action title, reason, account, stance, conviction, conflicts | `do_now.items[].{title,reason,account_label,stance,conviction,conflicts}` | Original CIO record/projection evidence | CIO InstrumentRecord writer, W1 |
+| Action title, reason, destination and account | `do_now.items[].{title,why,action.where,action.label,account_label}` | Original CIO record/projection evidence, order preserved | CIO InstrumentRecord writer, W1 |
 | Active, pending and unprotected stops | `stops.{active_count,pending_count,unprotected_count}` | `stop_last_known` per account+symbol; planned `stops.json` is distinct | Broker-read sync / stop observations, W1 |
 | Awaiting fill, nearest active stop | `stops.{awaiting_fill,awaiting_fill_count,nearest}` | Same resolved stop state; a crossed price is never a confirmed fill | W1 resolver |
 | Regime, VIX, source time | `regime.{label,vix,as_of,stale,gap}` | Classifier output / registered regime projection | Regime classifier, W1; lane restoration W8 |
@@ -53,3 +53,25 @@ Validation receipts and fixture screenshots are recorded in the persistent W7
 worklog and alongside the approved mockups; fixture values are synthetic and
 are not included as product defaults. Release and merge remain the coordinator's
 and operator's work.
+
+The later conflict-engine direction also binds this work: W1 supplies canonical
+engine findings and W9 owns the reusable `ConflictLine` / `ConflictSheet`.
+W7 performs no conflict classification, treats no raw disagreement array as a
+flag, and makes no automatic resolution. That UI dependency remains pending;
+missing source data and pending stop activation are still described explicitly.
+
+Local evidence at the source checkpoint: 49 affected tests passed with
+`psycopg2` hidden; the final W7 subset has 10 passing tests. Full `npm run build`,
+the four integrity ratchets, lane registry, CIO completeness and docs-index
+checks passed. A copied-tree check with W1 source `01dac4e21` returned 27
+positions, 14 industry groups and a 221,856-byte response. It made no DB or
+provider calls and verified all copied/source hashes unchanged. Live status
+and broker observations were explicitly unavailable in that check.
+
+Mobile tap checks and screenshots are **unexecuted**. Chromium escalation for
+the shared frame was rejected for expanding access beyond the configured
+sandbox; the coordinator instructed W7 not to retry or use indirect execution.
+The fixture preparation also stopped at `spawnSync git EPERM` before launching
+a browser. Neither event is a passing UI result. W5 frame adoption, W2 route
+registration, W1's final dependency and the shared conflict components must be
+integrated and verified before this branch can request publication.

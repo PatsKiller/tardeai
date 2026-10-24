@@ -4,7 +4,8 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 
-from scripts.lib.w7_pages import page_payload, project_pages
+from scripts.lib.w7_pages import page_payload, project_pages, validate_payload
+import pytest
 
 NOW = datetime(2026, 10, 24, 22, 0, tzinfo=timezone.utc)
 ROOT = Path(__file__).resolve().parents[1]
@@ -97,12 +98,14 @@ def test_model_refusal_is_a_gap_not_an_advisory():
 
 def test_shared_facts_are_forwarded_unchanged_and_cio_ranking_is_preserved():
     truth, look = inputs()
+    truth["conflicts"] = {"findings": [{"kind": "AGREEMENT", "rule": "U5", "key": "fixture-finding"}], "gap": None}
     before = deepcopy(truth)
     data = project_pages(truth, **look)
     for key in ("stops", "regime", "approvals", "capital", "cio_status"):
         assert data[key] == truth[key]
     assert data["portfolio"] == {k: v for k, v in truth["portfolio"].items() if k not in ("holdings", "stored_totals")}
     assert data["positions"] == truth["positions"]
+    assert data["conflicts"] == truth["conflicts"]
     assert [a["id"] for a in data["do_now"]["items"]] == [str(i) for i in range(7)]
     assert truth == before
 
@@ -132,6 +135,19 @@ def test_unavailable_canonical_basis_is_never_rendered_as_a_zero(tmp_path):
     assert result["portfolio"]["gap"]
     assert result["lookthrough"]["portfolio_total_usd"] is None
     assert result["lookthrough"]["looked_through_usd"] is None
+
+
+def test_display_contract_refuses_invalid_measurements_and_requires_account_names():
+    truth, look = inputs()
+    data = project_pages(truth, **look)
+    assert validate_payload(data) is data
+    data["portfolio"]["total_usd"] = float("nan")
+    with pytest.raises(ValueError, match="finite"):
+        validate_payload(data)
+    data["portfolio"]["total_usd"] = 28000
+    data["positions"]["rows"] = [{"symbol": "ALFA", "account_id": "fixture_ira"}]
+    with pytest.raises(ValueError, match="account display name"):
+        validate_payload(data)
 
 
 def test_ownership_removes_w7_duplicate_panels_and_links_to_the_single_home():

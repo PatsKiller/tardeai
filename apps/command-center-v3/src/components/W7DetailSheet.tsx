@@ -27,7 +27,7 @@ export default function W7DetailSheet({ title, children, onClose }: { title: str
       const nodes = ref.current?.querySelectorAll<HTMLElement>('button,a[href],select,[tabindex="0"]')
       if (!nodes?.length) return
       const first = nodes[0], last = nodes[nodes.length - 1]
-      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === ref.current)) { e.preventDefault(); last.focus() }
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
     }
   }}>

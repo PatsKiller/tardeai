@@ -49,14 +49,13 @@ export function W7HomePanels({ data }: { data: any }) {
           {item.account_label && <div style={{ color: TOKENS.text[2], fontSize: TYPE.base }}>{item.account_label}</div>}
           <div style={{ color: TOKENS.text[2], marginTop: 4 }}>{item.reason || item.why || item.detail}</div>
           {item.stance && <span>CIO {item.stance} · conviction {text(item.conviction)}</span>}
-          {item.conflicts?.length > 0 && <W7Gap>{item.conflicts.map((c: any) => c.reason || c.note || c.field).join(' · ')}</W7Gap>}
         </div>{localHref(item.href || item.action?.where) && <Link style={{ ...linkStyle, width: '100%', justifyContent: 'center', background: TOKENS.bg[2] }} to={localHref(item.href || item.action?.where)!}>{item.cta || item.action?.label || 'Review'} →</Link>}
       </div>)}
     </W7Panel>
     <div style={{ display: 'grid', gap: 12 }}>
       <W7Panel title="Protection">
         <div style={grid}>
-          <W7Metric label="With an active broker stop" value={text(stops.active_count)} detail={stops.pending_count == null ? undefined : `${stops.pending_count} pending activation`} />
+          <W7Metric label="With an active broker stop" value={stops.active_count != null && stops.position_count != null ? `${stops.active_count} of ${stops.position_count}` : text(stops.active_count)} detail={stops.pending_count == null ? undefined : `${stops.pending_count} pending activation`} />
           <W7Metric label="Awaiting fill" value={awaiting.length ? awaiting.map(p => p.symbol).join(', ') : text(stops.awaiting_fill_count)} />
           <W7Metric label="Nearest active stop" value={nearest ? `${nearest.symbol} ${pct(nearest.distance_pct)}` : 'Not available'} />
         </div>
