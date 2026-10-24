@@ -84,10 +84,11 @@ const coverage = (v: unknown) => object(v) && typeof v.status === 'string'
   && (v.reasons === undefined || Array.isArray(v.reasons) && v.reasons.every((x: unknown) => typeof x === 'string'))
   && (v.missing_sources === undefined || Array.isArray(v.missing_sources) && v.missing_sources.every((x: unknown) => typeof x === 'string'))
 const gapList = (v: unknown) => objects(v) && v.every(g => typeof g.source === 'string' && typeof g.reason === 'string')
-export function calendarPayload(raw: any): TradeCalendarPayload | null {
+export function calendarPayload(raw: any, expected?: { month: string; account: string; names: string }): TradeCalendarPayload | null {
   const d = raw?.data ?? raw
   if (!object(d) || d.schema !== 'TradeCalendar@v1' || !object(d.summary) || !coverage(d.summary.coverage)
       || !objects(d.days) || !objects(d.weeks) || !objects(d.events) || !objects(d.account_options) || !gapList(d.gaps)) return null
+  if (expected && (d.month !== expected.month || (d.account ?? '') !== expected.account || d.names !== expected.names)) return null
   if (!['realized_pl','trade_count','green_days'].every(k => numeric(d.summary[k]))) return null
   if (!d.days.every(day => typeof day.date === 'string' && numeric(day.realized_pl) && numeric(day.trade_count)
       && objects(day.symbols) && objects(day.trades) && objects(day.events) && coverage(day.coverage))) return null
@@ -97,12 +98,14 @@ export function calendarPayload(raw: any): TradeCalendarPayload | null {
       || !d.account_options.every(a => typeof a.id === 'string' && typeof a.label === 'string')) return null
   return d as TradeCalendarPayload
 }
-export function replayPayload(raw: any): TradeReplayPayload | null {
+export function replayPayload(raw: any, expected?: { trade_id: string; interval: string }): TradeReplayPayload | null {
   const d = raw?.data ?? raw
   if (!object(d) || d.schema !== 'TradeReplay@v1' || !objects(d.bars) || !objects(d.markers)
       || !Array.isArray(d.available_intervals) || !d.available_intervals.every((x: unknown) => typeof x === 'string')
       || !object(d.stats) || !object(d.source) || d.source.stored_only !== true || !gapList(d.gaps)
       || !['candles','closes','none'].includes(d.kind)) return null
+  if (expected && (d.trade_id !== expected.trade_id || d.interval !== expected.interval)) return null
+  if (d.trade != null && (!object(d.trade) || d.trade.trade_id !== d.trade_id)) return null
   if (!['max_gain_pct','max_drawdown_pct'].every(k => numeric(d.stats[k])) || typeof d.stats.metrics_basis !== 'string'
       || typeof d.stats.exit_label !== 'string' || typeof d.stats.exit_basis !== 'string'
       || !['stop','target','manual','unknown'].includes(d.stats.exit_kind)

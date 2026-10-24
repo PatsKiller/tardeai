@@ -35,14 +35,14 @@ export default function TradeCompareReplay({ trades, onClose, storedOnly = false
         <label style={{ fontSize: TYPE.base }}>{label}<select aria-label={label} value={t ? identity(t, trades.indexOf(t)) : ''} onChange={e => { const chosen = trades.find((x, i) => identity(x, i) === e.target.value); if (side === 'a') setA(chosen); else setB(chosen) }} style={{ width: '100%', margin: '8px 0', background: TOKENS.bg[2], color: TOKENS.text[0], border: `1px solid ${TOKENS.border}`, padding: 8, fontSize: TYPE.base }}>
           {!t && <option value="">Recorded comparison trade unavailable</option>}{trades.filter(x => !storedOnly || side !== 'b' || x.pnl > 0 && x.trade_id !== a?.trade_id).map((x) => <option key={identity(x, trades.indexOf(x))} value={identity(x, trades.indexOf(x))}>{x.symbol} · {x.account_label || 'Unlabelled account'} · {x.entry_date || 'entry date unavailable'} → {x.exit_date || 'open'} · {serverMoney(x.pnl)}</option>)}
         </select></label>
-        {t ? <><div style={{ fontFamily: FONT.mono, fontSize: TYPE.base }}>{t.symbol} · {serverMoney(t.pnl)}</div>{storedOnly ? <StoredChart trade={t} /> : <><button type="button" style={{ ...chipStyle('info', 'soft', 'md'), marginTop: 8 }} onClick={() => side === 'a' ? setShowA(true) : setShowB(true)}>Replay</button>{show && <TradeReplayChart trade={buildReplayTrade(t)} onClose={() => side === 'a' ? setShowA(false) : setShowB(false)} />}</>}</> : <p className="tradeinview-gap">No stored trade satisfies this comparison.</p>}
+        {t ? <><div style={{ fontFamily: FONT.mono, fontSize: TYPE.base }}>{t.symbol} · {serverMoney(t.pnl)}</div>{storedOnly ? <StoredChart key={t.trade_id} trade={t} /> : <><button type="button" style={{ ...chipStyle('info', 'soft', 'md'), marginTop: 8 }} onClick={() => side === 'a' ? setShowA(true) : setShowB(true)}>Replay</button>{show && <TradeReplayChart trade={buildReplayTrade(t)} onClose={() => side === 'a' ? setShowA(false) : setShowB(false)} />}</>}</> : <p className="tradeinview-gap">No stored trade satisfies this comparison.</p>}
       </section>)}
     </div>
   </div>
 }
 function StoredChart({ trade }: { trade: any }) {
   const api = useApi<any>(storedReplayPath(trade.trade_id || '', '1D'), undefined, { enabled: !!trade.trade_id })
-  const data = replayPayload(api.data)
+  const data = replayPayload(api.data, { trade_id: trade.trade_id || '', interval: '1D' })
   if (!trade.trade_id) return <p className="tradeinview-gap">Recorded trade identity unavailable; no chart request made.</p>
   if (!data) return <p className="tradeinview-gap">{api.loading ? 'Loading stored comparison…' : `Stored comparison unavailable — ${api.error || responseReason(api.data) || 'response schema unavailable'}`}</p>
   return <><TradeReplayChart key={trade.trade_id} trade={buildReplayTrade(trade)} embedded providedData={data} onClose={() => {}} /><p className="tradeinview-gap" style={{ fontSize: TYPE.sm }}>{data.source.table || 'Source unavailable'} · {data.source.bar_basis} · {data.stats.metrics_missing_reason || data.stats.metrics_basis}</p>{data.gaps.map((g, i) => <div key={i} className="tradeinview-gap" style={{ fontSize: TYPE.sm }}>{g.source}: {g.reason}</div>)}</>

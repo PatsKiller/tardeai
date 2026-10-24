@@ -48,3 +48,15 @@ assert.equal(replayPriceFormat([150.125]).precision, 3)
 assert.equal(replayPriceFormat([null,undefined,Number.NaN]).precision, 2)
 
 assert.equal(replayPayload({...emptyReplay,stats:{...emptyReplay.stats,coach_note:{text:'unsupported object'}}}), null)
+
+// Last-good transport state may survive a path change; its facts must not cross query identities.
+const scopedReplay = {...emptyReplay,trade_id:'fixture-trip-a',interval:'1D',trade:{trade_id:'fixture-trip-a'}}
+assert.equal(replayPayload(scopedReplay,{trade_id:'fixture-trip-a',interval:'1D'}), scopedReplay)
+assert.equal(replayPayload(scopedReplay,{trade_id:'fixture-trip-b',interval:'1D'}), null)
+assert.equal(replayPayload(scopedReplay,{trade_id:'fixture-trip-a',interval:'5m'}), null)
+assert.equal(replayPayload({...scopedReplay,trade:{trade_id:'fixture-trip-b'}},{trade_id:'fixture-trip-a',interval:'1D'}), null)
+const scopedCalendar = {schema:'TradeCalendar@v1',month:'2032-04',account:null,names:'held_watch',summary:{realized_pl:null,trade_count:null,green_days:null,coverage:{status:'PARTIAL'}},days:[],weeks:[],events:[],account_options:[],gaps:[]}
+assert.equal(calendarPayload(scopedCalendar,{month:'2032-04',account:'',names:'held_watch'}),scopedCalendar)
+assert.equal(calendarPayload(scopedCalendar,{month:'2032-05',account:'',names:'held_watch'}),null)
+assert.equal(calendarPayload(scopedCalendar,{month:'2032-04',account:'fixture-account',names:'held_watch'}),null)
+assert.equal(calendarPayload(scopedCalendar,{month:'2032-04',account:'',names:'held'}),null)

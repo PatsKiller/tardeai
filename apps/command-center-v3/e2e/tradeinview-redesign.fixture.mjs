@@ -32,9 +32,9 @@ if (scopes.includes('journeys')) for (const [state, test] of [['awaiting-fill', 
   cases.push({ screen: 'journeys', state, response: fresh, url: `tab=journeys&trade=${encodeURIComponent(row.trade_id)}` })
 }
 if (scopes.includes('journeys')) cases.push({ screen: 'journeys', state: 'chips-fresh', response: fresh, url: 'tab=journeys' }, { screen: 'journeys', state: 'chips-stale', response: stale, url: 'tab=journeys' })
-if (scopes.includes('calendar')) cases.push({ screen: 'calendar', state: 'month-data', response: populated, url: `tab=calendar&month=${populated.month}` }, { screen: 'calendar', state: 'empty-month', response: empty, url: `tab=calendar&month=${empty.month}` }, { screen: 'calendar', state: 'day-drawer', response: populated, url: `tab=calendar&month=${populated.month}` })
+if (scopes.includes('calendar')) cases.push({ screen: 'calendar', state: 'month-data', response: populated, url: `tab=calendar&month=${populated.month}` }, { screen: 'calendar', state: 'empty-month', response: empty, url: `tab=calendar&month=${empty.month}` }, { screen: 'calendar', state: 'day-drawer', response: populated, url: `tab=calendar&month=${populated.month}` }, { screen: 'calendar', state: 'query-identity', response: populated, url: `tab=calendar&month=${populated.month}` })
 if (scopes.includes('calendar') && f.calendar.missing) cases.push({ screen: 'calendar', state: 'missing-source', response: f.calendar.missing, url: `tab=calendar&month=${f.calendar.missing.month}` })
-if (scopes.includes('replay')) for (const [state, response] of [['with-bars', bars], ['closes-only', closes], ['missing-bars', missing], ['compare', bars]]) cases.push({ screen: 'replay', state, response, url: `tab=replay&trade=${encodeURIComponent(response.trade_id)}` })
+if (scopes.includes('replay')) for (const [state, response] of [['with-bars', bars], ['closes-only', closes], ['missing-bars', missing], ['compare', bars], ['query-identity', bars]]) cases.push({ screen: 'replay', state, response, url: `tab=replay&trade=${encodeURIComponent(response.trade_id)}` })
 const bundle = await build({ metafile: true, stdin: { contents: `import React from 'react';import {createRoot} from 'react-dom/client';import {BrowserRouter} from 'react-router-dom';import TradeInViewPage from './src/pages/TradeInViewPage';import './src/styles/tokens.css';import './src/index.css';createRoot(document.getElementById('root')).render(<BrowserRouter basename="/v3"><TradeInViewPage onDrill={()=>{}} /></BrowserRouter>);`, loader: 'tsx', sourcefile: 'tradeinview-fixture.tsx', resolveDir: app }, bundle: true, write: false, outfile: 'fixture.js', define: { 'process.env.NODE_ENV': '"production"', 'import.meta.env.DEV': 'false' }, logLevel: 'silent' })
 const sha = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
 const sourceFiles = [...Object.keys(bundle.metafile.inputs).map(name => path.resolve(app,name)).filter(file => file.startsWith(path.join(app,'src') + path.sep) && fs.existsSync(file)), path.join(app,'package.json'),path.join(app,'package-lock.json'),fileURLToPath(import.meta.url)]
@@ -51,6 +51,8 @@ try {
   for (const width of [1440, 412]) for (const c of cases) {
     const context = await browser.newContext({ viewport: { width, height: 1100 } })
     const page = await context.newPage(), traffic = { reads: [], mutations: [], unexpected: [], external: [], errors: [] }
+    let releaseIdentity, identityRequested = false
+    const identityReply = new Promise(resolve => { releaseIdentity = resolve })
     await page.clock.setFixedTime(new Date(f.clock))
     page.on('pageerror', e => traffic.errors.push(String(e)))
     await page.routeWebSocket('**/*', ws => { traffic.external.push(ws.url()); ws.close() })
@@ -67,10 +69,19 @@ try {
         const id = decodeURIComponent(u.pathname.slice('/api/v3/data-broker/trade-journeys/'.length)), journey = journeys.journeys.find(j => j.trade_id === id)
         if (journey) payload = { ...journeys, journeys: undefined, journey }
       } else if (u.pathname === '/api/v3/data-broker/trade-calendar') {
+        if (c.state === 'query-identity' && c.screen === 'calendar' && u.searchParams.get('month') !== c.response.month) {
+          identityRequested = true; await identityReply
+          // Deliberately replay the previous valid body under the new query. The UI must refuse it.
+          return route.fulfill({ contentType:'application/json', body:JSON.stringify(c.response) })
+        }
         payload = c.screen === 'calendar' && c.response.month === u.searchParams.get('month') ? c.response : Object.values(f.calendar).find(x => x.month === u.searchParams.get('month'))
       } else if (u.pathname === '/api/v2/trade-chart') {
         assert.equal(u.searchParams.get('stored_only'), '1', 'new Replay must never fall through to providers')
         const id = u.searchParams.get('trade_id')
+        if (c.state === 'query-identity' && c.screen === 'replay' && id !== c.response.trade_id) {
+          identityRequested = true; await identityReply
+          return route.fulfill({ contentType:'application/json', body:JSON.stringify(c.response) })
+        }
         payload = c.screen === 'replay' && id === c.response.trade_id ? c.response : Object.values(f.replay).find(x => x.trade_id === id)
       }
       if (!payload) { traffic.unexpected.push(u.pathname + u.search); return route.abort() }
@@ -100,6 +111,15 @@ try {
         for (const trade of day.trades) await expect(drawer.locator(`a[href*="${encodeURIComponent(trade.trade_id)}"]`)).toHaveAttribute('href', replayHref(trade.trade_id))
       }
       if (c.state === 'missing-source') { await expect(page.getByTestId('calendar-month-total')).toHaveText('—'); await expect(page.getByTestId('calendar-empty')).toHaveCount(0) }
+      if (c.state === 'query-identity') {
+        await page.getByRole('button',{name:'Next month',exact:true}).click()
+        await expect.poll(() => identityRequested).toBe(true)
+        await expect(page.getByText('Loading calendar…',{exact:true})).toBeVisible()
+        await expect(page.getByTestId('calendar-month-total')).toHaveCount(0)
+        releaseIdentity()
+        await expect(page.getByText(/^Calendar unavailable —/)).toBeVisible()
+        await expect(page.getByTestId('calendar-month-total')).toHaveCount(0)
+      }
     } else {
       await expect(page.getByTestId('trade-replay-page')).toBeVisible()
       if (c.response.bars.length) await expect(page.getByTestId('trade-replay-chart').locator('canvas').first()).toBeVisible()
@@ -119,6 +139,16 @@ try {
         await chart.getByRole('button', { name: 'Play', exact: true }).click()
         await expect(chart.getByRole('button', { name: 'Pause', exact: true })).toBeVisible()
         await chart.getByRole('button', { name: 'Pause', exact: true }).click()
+      }
+      if (c.state === 'query-identity') {
+        const next = fresh.journeys.find(j => j.trade_id !== c.response.trade_id); assert(next,'Second actual trade required for identity boundary')
+        await page.getByTestId('trade-replay-page').locator(`button[data-trade-id=${JSON.stringify(next.trade_id)}]`).click()
+        await expect.poll(() => identityRequested).toBe(true)
+        await expect(page.getByText('Loading stored bars…',{exact:true})).toBeVisible()
+        await expect(page.getByTestId('trade-replay-chart')).toHaveCount(0)
+        releaseIdentity()
+        await expect(page.getByText(/^Stored replay unavailable —/)).toBeVisible()
+        await expect(page.getByTestId('trade-replay-chart')).toHaveCount(0)
       }
     }
     if (width === 412) {

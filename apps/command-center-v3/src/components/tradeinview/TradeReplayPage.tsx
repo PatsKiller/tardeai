@@ -17,7 +17,7 @@ export default function TradeReplayPage({ payload, loading, error }: { payload: 
   const id = params.get('trade') || journeys[0]?.trade_id || ''
   const interval = params.get('interval') || '1D'
   const api = useApi<any>(storedReplayPath(id, interval), undefined, { enabled: !!id })
-  const data = replayPayload(api.data), journey = journeys.find(j => j.trade_id === id)
+  const data = replayPayload(api.data, { trade_id: id, interval }), journey = journeys.find(j => j.trade_id === id)
   const trip = data?.trade
   const found = journeys.filter(j => `${j.symbol} ${j.account_label || ''}`.toLowerCase().includes(search.toLowerCase()))
   const pick = (tradeId: string) => { const n = new URLSearchParams(params); n.set('trade', tradeId); n.delete('interval'); setParams(n, { replace: true }) }

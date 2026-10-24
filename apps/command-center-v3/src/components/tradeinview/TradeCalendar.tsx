@@ -8,11 +8,17 @@ import './TradeInViewLayout.css'
 
 const modes = [['realized', 'Realized P/L'], ['earnings', 'Earnings'], ['catalyst', 'Catalysts'], ['ex_dividend', 'Ex-dividend']] as const
 export default function TradeCalendar({ embedded = false }: { embedded?: boolean }) {
+  const [params] = useSearchParams()
+  const identity = new URLSearchParams({ month: params.get('month') || etMonth(new Date()), account: params.get('account') || '', names: params.get('names') === 'held' ? 'held' : 'held_watch' }).toString()
+  // A last-good body belongs to this query only, including terminal/error state in useApi.
+  return <CalendarView key={identity} embedded={embedded} />
+}
+function CalendarView({ embedded }: { embedded: boolean }) {
   const [params, setParams] = useSearchParams()
   const month = params.get('month') || etMonth(new Date())
   const query = new URLSearchParams({ month, account: params.get('account') || '', names: params.get('names') === 'held' ? 'held' : 'held_watch' })
   const api = useApi<any>(`/api/v3/data-broker/trade-calendar?${query}`, 60_000)
-  const data = calendarPayload(api.data)
+  const data = calendarPayload(api.data, { month, account: query.get('account')!, names: query.get('names')! })
   const [shown, setShown] = useState<string[]>(['realized', 'earnings', 'catalyst'])
   const [day, setDay] = useState<string | null>(params.get('day'))
   const update = (key: string, value: string) => { const next = new URLSearchParams(params); if (value) next.set(key, value); else next.delete(key); next.delete('day'); setDay(null); setParams(next, { replace: true }) }

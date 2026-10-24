@@ -35,7 +35,7 @@ export default function TradeInViewPage({ onDrill, historyView }: { onDrill: (ct
       {tab === panel && <>
       {tab === 'journeys' && <TradeJourney payload={payload} loading={api.loading} error={api.error} embedded />}
       {tab === 'calendar' && <TradeCalendar />}
-      {tab === 'replay' && <TradeReplayPage payload={payload} loading={api.loading} error={api.error} />}
+      {tab === 'replay' && <TradeReplayPage key={`${params.get('trade') || payload?.journeys[0]?.trade_id || ''}:${params.get('interval') || '1D'}`} payload={payload} loading={api.loading} error={api.error} />}
       {/* Package C supplies the real source component before this package's final integrated proof/publication. */}
       {tab === 'history' && historyView}
       {tab === 'classic' && <><Link to="/journal?tab=journeys" data-testid="tj-back" onClick={() => setHandoff(false)} style={{ color: TOKENS.info, display: 'inline-block', marginBottom: 10 }}>← Trade journeys</Link><JournalHub onDrill={onDrill} /></>}
