@@ -1,0 +1,53 @@
+name: header-right-edge-fixture
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - '.github/workflows/header-right-edge-fixture.yml'
+      - 'apps/command-center-v3/src/components/MetricStrip.tsx'
+      - 'apps/command-center-v3/src/index.css'
+      - 'apps/command-center-v3/src/styles/tokens.css'
+      - 'apps/command-center-v3/e2e/header-right-edge.fixture.mjs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: header-right-edge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  header-geometry:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/command-center-v3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/command-center-v3/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Label and UI contracts
+        run: |
+          node ../../scripts/test_metric_strip_labels.mjs
+          node ../../scripts/check_ui_standards.mjs
+      - name: Actual component geometry with fixture APIs and no server
+        run: node e2e/header-right-edge.fixture.mjs "$RUNNER_TEMP/header-right-edge"
+      - name: Upload screenshots and exact geometry
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: header-right-edge-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/header-right-edge/
+          if-no-files-found: error
