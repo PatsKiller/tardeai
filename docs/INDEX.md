@@ -2029,6 +2029,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/R23_ADMIN_OBSERVABILITY_CLOSEOUT.md` | R23 Research, Data, Identity, and Notification Observability |
 | `docs/ops/R24_LEARNING_MATURITY_AUDIT_CLOSEOUT.md` | R24 Learning, Maturity, and Audit Closeout |
 | `docs/ops/R9_2_PORTFOLIO_BRAIN_LIVE_CLOSEOUT_2026-08-23.md` | Trade AI v12 R9.2 - Portfolio Brain Live Closeout |
+| `docs/ops/REGISTRY_CAPTURE_REVIEW_20261024.md` | Registry reconciliation: actual-capture review proposals |
 | `docs/ops/REGISTRY_RECONCILE_SEMANTIC_AUDIT_20261024.md` | Registry reconciliation: frozen-input audit and unresolved live-input diff |
 | `docs/ops/RELEASES_SCHEDULES_PAGE.md` | Releases & schedules — Command Center page and read model |
 | `docs/ops/RELEASE_TRAIN_API.md` | Release train: read-only Command Center API (Phase 1) |
@@ -2090,6 +2091,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WP29_HOME_ACCOUNT_CHIPS_20261023.md` | WP-29 item b: account-name chips in the Home do-now queue |
 | `docs/ops/WP29_SPECIALIST_ACCOUNT_CONTEXT_20261023.md` | WP-29 item d: grounded account location in specialist context |
 | `docs/ops/WP29_TELEGRAM_TURN_DEDUP_20261023.md` | WP-29 item e: idempotent Telegram conversation capture |
+| `docs/ops/WP29_WATCH_VISIBLE_ACCOUNTS_20261024.md` | WP-29c: visible Watch account names and page heading |
 | `docs/ops/WP30_MOOMOO_RETIREMENT_READERS_WRITERS_20261023.md` | WP-30: moomoo retirement state readers and writers |
 | `docs/ops/WP31_WATCH_LAYOUT_20261023.md` | WP-31 Watch rows and phone cards |
 | `docs/ops/WP32_BOUNDED_HOME_AND_PREFS_20261023.md` | WP-32 bounded CIO home reads and session verification |
@@ -2100,6 +2102,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WP36_AFTER_CLOSE_CRAWLER_PREFLIGHT_20261024.md` | WP-36 after-close observer: strict packet and scoped live evidence |
 | `docs/ops/WP36_ITEM6_RESEARCH_VERSION_LABELS_20261023.md` | WP-36 item 6: truthful research thesis-version labels |
 | `docs/ops/WP36_STALE_PRODUCERS_20261023.md` | WP-36 item5: stale feed and report-producer reconciliation |
+| `docs/ops/WP37_HOT_LIST_CAPTURE_RECONCILIATION_20261024.md` | WP-37: hot-list registry matches the operator-captured command |
 | `docs/ops/WP39_RETENTION_RULINGS_AUDIT_20261023.md` | WP-39: retention rulings source and runtime evidence |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye — first institutional-brain audit |
 | `docs/ops/agent_start/codex-note.md` | Codex note — agent claim board (operator installs) |
@@ -2192,6 +2195,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/open-stack-triage-20261023/README.md` | WP-33 item 5: open stack triage evidence |
 | `docs/ops/packets/push-policy-v2-20261023-wp14/DESIGN.md` | WP-14: rebuilt push-policy-v2 operator package |
 | `docs/ops/packets/push-policy-v2-20261023-wp14/PR_BODY.md` | WP-14 operator-only push-policy proposal |
+| `docs/ops/packets/registry-capture-review-20261024/README.md` | Actual-capture registry review packet |
 | `docs/ops/packets/registry-reconcile-audit-20261024/OPERATOR_CAPTURE.md` | Operator-only capture of the missing reconciliation inputs |
 | `docs/ops/packets/registry-reconcile-audit-20261024/README.md` | Registry reconciliation evidence packet |
 | `docs/ops/packets/registry-runtime-truth-20261018/README.md` | Registry / runtime truth — packet (review 2026-10-18, built 2026-10-19) |

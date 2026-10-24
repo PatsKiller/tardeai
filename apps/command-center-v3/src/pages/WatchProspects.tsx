@@ -10,6 +10,7 @@
  *  Nothing here sizes, orders or stops on its own. */
 import './WatchLayout.css'
 import { AccountChip } from '../components/AccountChip'
+import { ACCOUNT_NAMES, accountName, canonicalAccountKey } from '../lib/accountLabels'
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
@@ -24,7 +25,7 @@ import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
 import PositionFilterBar from '../components/watch/PositionFilterBar'
 import { StarToggle } from '../components/watch/MineControls'
 import {
-  alertLevelsLabel, heldAccountNames, money, positionChip, soldByName, positionQuery, readinessTone, reentryLabel, resultTone, roundTripLabel,
+  alertLevelsLabel, money, positionChip, positionQuery, readinessTone, reentryLabel, resultTone, roundTripLabel,
   roundTripPath, withQuery, type ListRow,
 } from '../lib/watchListsModel'
 
@@ -33,6 +34,20 @@ const panel: CSSProperties = {
 }
 const label: CSSProperties = {
   fontSize: TYPE.xs, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: TOKENS.text[2],
+}
+
+// Storage keys are not display names. Keep the shared alias/digit checks, but never humanize an unknown key.
+function displayAccountName(key: unknown, supplied?: unknown): string {
+  const known = canonicalAccountKey(key)
+  return accountName(Object.prototype.hasOwnProperty.call(ACCOUNT_NAMES, known) ? known : '', supplied)
+}
+function heldDisplayNames(r: ListRow): string[] {
+  return (r.held_accounts || []).map((key, i) => displayAccountName(key, r.held_account_labels?.[i]))
+}
+function soldDisplayName(r: ListRow): string {
+  const key = r.last_sell_account || r.last_round_trip?.account || ''
+  const supplied = r.last_sell_account_label || r.last_round_trip?.account_label || ''
+  return key || supplied ? displayAccountName(key, supplied) : ''
 }
 
 function Bar({ value, tone, height = 4 }: { value: number | null; tone: Tone; height?: number }) {
@@ -78,7 +93,13 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
 }) {
   const ct = convictionTone(r.conviction)
   const lr = r as ListRow
-  const pchip = positionChip(lr)
+  const heldNames = heldDisplayNames(lr)
+  const soldName = soldDisplayName(lr)
+  const pchip = positionChip({ ...lr, held_account_labels: heldNames, last_sell_account_label: soldName })
+  const accountNames = lr.position_state === 'held' ? heldNames
+    : lr.position_state === 'formerly_held' && soldName ? [soldName] : []
+  const accountKeys = lr.position_state === 'held' ? lr.held_accounts || []
+    : [lr.last_sell_account || lr.last_round_trip?.account || '']
   return (
     <div
       className="watch-record-row" data-testid="watch-row" data-symbol={r.symbol} data-lane={r.lane}
@@ -110,6 +131,11 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
       <span className="watch-row-stance" title={TOOLTIPS.stance} style={{ fontSize: TYPE.base, fontWeight: 700, color: toneVars(stanceTone(r.stance)).color }}>{stanceLabel(r.stance)}</span>
       <span className="watch-row-explanation" style={{ fontSize: TYPE.base, lineHeight: 1.35, color: TOKENS.text[1] }}>
         <span className="watch-row-why" title={r.why}>{r.why}</span>
+        {accountNames.length > 0 && <span className="watch-row-account-names" data-testid="watch-row-account-names"
+          role="group" aria-label={lr.position_state === 'held' ? 'Held accounts' : 'Last sell account'}>
+          <span style={{ color: TOKENS.text[3] }}>{lr.position_state === 'held' ? 'Held in' : 'Sold in'}</span>
+          {accountNames.map((name, i) => <AccountChip key={`${accountKeys[i]}-${i}`} account={accountKeys[i]} label={name} compact />)}
+        </span>}
         <span className="watch-row-context" title={[
           ...r.conflicts.map(c => `Conflict: ${c.summary}`), lr.expiry_suggestion?.suggest,
           lr.last_round_trip ? `Last trade ${roundTripLabel(lr.last_round_trip)}` : '',
@@ -125,7 +151,7 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
         </span>
         <span className="watch-mobile-facts">
           <span><b>Stage</b> {r.stage?.replace(/_/g, ' ') || r.lane}</span>
-          <span><b>Account</b> {heldAccountNames(lr).join(', ') || soldByName(lr) || 'Unknown'}</span>
+          <span><b>Account</b> {heldNames.join(', ') || soldName || 'Unknown'}</span>
           <span><b>Last P/L</b> {lr.last_round_trip ? roundTripLabel(lr.last_round_trip) : 'Not available'}</span>
         </span>
       </span>
@@ -223,7 +249,7 @@ export function PositionDetail({ r }: { r: ListRow }) {
         <div data-testid="watch-round-trip">
           <span style={label} title="The last closed round trip, from the CIO prospect lifecycle (fills, observed stop path, exit cause).">Last trade · {r.position_label}</span>
           <div style={{ fontFamily: FONT.mono }}>{roundTripPath(rt)}</div>
-          {soldByName(r) && <div data-testid="watch-sold-account" style={{ color: TOKENS.text[2] }}>Sold in <AccountChip account={r.last_sell_account || rt.account} label={soldByName(r)} compact /></div>}
+          {soldDisplayName(r) && <div data-testid="watch-sold-account" style={{ color: TOKENS.text[2] }}>Sold in <AccountChip account={r.last_sell_account || rt.account} label={soldDisplayName(r)} compact /></div>}
           <div style={{ color: toneVars(resultTone(rt)).color, fontWeight: 700 }}>{roundTripLabel(rt)}</div>
           <div style={{ color: TOKENS.text[2] }} title={rt.r_basis ? `R measured against the ${rt.r_basis}` : undefined}>
             {rt.stop_raised != null ? `Stop raised ${rt.stop_raised}× (${money(rt.stop_initial)} → ${money(rt.stop_last)})` : 'No stop history'}
