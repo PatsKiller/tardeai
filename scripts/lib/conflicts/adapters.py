@@ -5,11 +5,11 @@ timestamps are retained; the poll clock never becomes evidence time.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from datetime import datetime
 import math
 
-from .engine import Finding, Input, Subject, UNKNOWN, evaluate, headline
+from .engine import Finding, Input, Subject, UNKNOWN, evaluate, headline, finding_sort_key
 from .profiles import NumericFactProfile, ScheduleStateProfile, SecurityStanceProfile, _n
 from .profiles.rulebook import RULEBOOK
 
@@ -178,10 +178,11 @@ def evaluate_inputs(bundle: EvaluationInputs, *, now: datetime, history=()):
 
 def findings_section(findings, *, gap=None):
     """One read-only section for W1/W7/W9/W4; pages do not classify values."""
-    findings = list(findings)
-    return {"findings": [f.as_dict() if isinstance(f, Finding) else f for f in findings],
-            "headline": headline([f if isinstance(f, Finding) else Finding(**{k: v for k, v in f.items()
-                         if k not in {"schema", "engine"}}) for f in findings]), "gap": gap}
+    allowed = {f.name for f in fields(Finding)}
+    pairs = [(f, f.as_dict()) if isinstance(f, Finding) else
+             (Finding(**{k: v for k, v in f.items() if k in allowed}), dict(f)) for f in findings]
+    pairs.sort(key=lambda pair: finding_sort_key(pair[0]))
+    return {"findings": [pair[1] for pair in pairs], "headline": headline(pair[0] for pair in pairs), "gap": gap}
 
 
 def concentration_inputs(rows):

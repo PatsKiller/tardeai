@@ -181,10 +181,14 @@ def evaluate(subject: Subject, canonical: Optional[Input], inputs: Iterable[Inpu
     return out
 
 
+def finding_sort_key(finding: Finding):
+    return (finding.tier, SEVERITY_ORDER[finding.kind], finding.key)
+
+
 def headline(findings: Iterable[Finding]) -> Optional[str]:
     """U9: the one line any card shows — most severe first; AGREEMENT and SUPERSEDED never flag."""
     flagged = sorted((f for f in findings if f.kind in ("NEEDS_OPERATOR", "GATE", "CONFLICT", "DATA_ERROR")),
-                     key=lambda f: SEVERITY_ORDER[f.kind])
+                     key=finding_sort_key)
     if not flagged:
         return None
     more = f" · +{len(flagged) - 1} more" if len(flagged) > 1 else ""
