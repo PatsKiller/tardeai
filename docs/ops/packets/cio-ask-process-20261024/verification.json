@@ -1,6 +1,6 @@
 {
   "schema": "CioAskProcessSourceVerification@v1",
-  "observed_at": "2026-10-24T22:38:52.456596+00:00",
+  "observed_at": "2026-10-24T22:47:31.996064+00:00",
   "base_sha": "9228634873392073f5849aaa77ec9b9121eb6094",
   "task": "DSN-20261024-cio-ask-process-P1-T1",
   "claim": "20261024T221725Z-codex-f455bd69",
@@ -10,7 +10,8 @@
     "config/llm_routing_policy.json",
     "scripts/lib/cio_governed_model_bridge.py",
     "scripts/lib/governed_process_routes.py",
-    "scripts/sync_cio_process_caps.py"
+    "scripts/sync_cio_process_caps.py",
+    "scripts/lib/n8n_model_job.py"
   ],
   "preserved": {
     "existing_process_rows": true,
@@ -111,15 +112,35 @@
       "errors": "0",
       "skipped": "0",
       "time": "1.597"
+    },
+    {
+      "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/context-final-tests.xml",
+      "sha256": "cdbc5e10439253c43ebc60f00c0854b11889e8f9a51520e72dbc40c96c5aee00",
+      "tests": "72",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "1.723",
+      "scope": "28 new registration/context cases plus whole existing model-job/model-job-operation/label files; overlaps earlier receipts"
+    },
+    {
+      "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/context-env-tests.xml",
+      "sha256": "b1786dbb49d94c512edccfb7a351d65b19b5e33aa6a1480056ec63a4c307099e",
+      "tests": "214",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "20.654",
+      "scope": "whole env-readiness and recursive executor allowlist fixtures after context-helper import extension"
     }
   ],
   "qualifications": [
-    "New21 source tests passed on final selected-sync implementation; initial16/18 passes overlap and are not added.",
+    "Initial21 source tests passed on selected-sync checkpoint. Context extension has28 new cases, all passing within the later72-case context/model-job/label run; initial16/18/21 receipts overlap and are not added.",
     "Existing bridge-step file initially39pass/1failed at sandbox socket construction. Inspected exact mock127.0.0.1:0 fixture passed after formal review; no auto-review rejection or live call. Initial receipt retained; never presented as a single40-green run.",
     "Whole old llm_consumption file4pass/1failed deterministic stale expectation; accepted922 mode and test are unchanged. No unrelated process/mode/assertion changed. See baseline-stale-mode-test.json.",
     "No complete-project profile executed for this scoped task; no CI or live acceptance claimed.",
     "Per-call0.50 is separate from cumulative per-question0.50; latter and actual settled-cost booking belong to separate Ask core quality fix.",
-    "Client helper lacks context-header/budget forwarding; Ring2 and caller cumulative-budget rails remain applicable. No governance bypass added."
+    "Client helper forwards explicit/current retrieved context safely; missing context remains Ring2-governed and no ID is created. Budget forwarding is unchanged; the separate Ask caller now uses one governed call, with cumulative-question controls remaining its responsibility."
   ],
   "dry_run": {
     "actual_source_cli": "scripts/sync_cio_process_caps.py --dry-run --process-id cio_ask_deep_research",
@@ -132,12 +153,13 @@
     "compile_passed": [
       "scripts/lib/cio_governed_model_bridge.py",
       "scripts/lib/governed_process_routes.py",
+      "scripts/lib/n8n_model_job.py",
       "scripts/sync_cio_process_caps.py",
       "tests/test_cio_ask_process_registration_20261024.py"
     ],
     "config_writes": [],
-    "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-final-no-write.json",
-    "CRLF": "inherited style preserved; native cr-at-eol whitespace and line-ending-churn checks passed; default check CRLF-only receipt retained"
+    "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-context-final-no-write.json",
+    "CRLF": "inherited style preserved; native cr-at-eol whitespace over full staged accepted-base diff and line-ending-churn checks passed"
   },
   "runtime": {
     "model_calls": false,
@@ -152,12 +174,14 @@
     "scripts/lib/cio_governed_model_bridge.py": "85b1a811f44fdaf52b1fd35bbffce2ed38ff50760ef09e9b6a45f249abe11111",
     "scripts/lib/governed_process_routes.py": "eb43a9c00cfa6452e43890ac8c8db0f90067512b9f74ac04d98d03a6ab24b68f",
     "scripts/sync_cio_process_caps.py": "b25223a3fd236ed8e9f242cffe6c7827149a55f17c78aa9575980ef1ab76a3df",
-    "tests/test_cio_ask_process_registration_20261024.py": "2a9d11ba1a0da6f1daab97a8d56de4206cb6724a02501fafd7e74cb4bcddc623",
+    "scripts/lib/n8n_model_job.py": "96ef5700c97c62428239eb4044ad0070f21c5374ab456a59d7c49cc9ec4660a4",
+    "tests/test_cio_ask_process_registration_20261024.py": "b591863c99c3abb4d5e571384136475710c7523b069baec8d9d88b6eaf0305d3",
     "config/ci_gates/cio_ask_process_registration_20261024.json": "b18e3d74c88d07671bc529c163081cce970bd9fe716ebfc56a01b6a65207c1c2"
   },
   "receipt_sha256": {
     "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-final-no-write.json": "d1d5ab0aac6ed0702dd9ec14a67e3171e4eb7dd2c406d4d42c4402a075a2b042",
     "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/baseline-stale-mode-test.json": "d1b97b990d8e62f1772d4700c48e0f132f55f85852783f8f3aaba786cf3f9272",
-    "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/cap-sync-selected-dry-run.log": "7a512c0849d380b81d936942b606c91f43e256e3c5238916cc81598650a3de6b"
+    "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/cap-sync-selected-dry-run.log": "7a512c0849d380b81d936942b606c91f43e256e3c5238916cc81598650a3de6b",
+    "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-context-final-no-write.json": "fb24b52ee4066d0cd1b54028357f790573aebf055d16cf8a0499b98a377792e6"
   }
 }

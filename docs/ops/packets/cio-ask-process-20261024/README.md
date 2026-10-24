@@ -11,11 +11,12 @@ one process ID, `cio_ask_deep_research`. No second cap bucket is created.
 
 | Existing client API | Value / interpretation |
 | --- | --- |
-| Function | `lib.n8n_model_job.bridge_governed_call(messages, *, process_id, response_format=None, request_id=None, timeout_s=60.0, task_type="model_job", routing_policy=None, caller="n8n_model_job", max_tokens=2048)` |
+| Function | `lib.n8n_model_job.bridge_governed_call(messages, *, process_id, response_format=None, request_id=None, timeout_s=60.0, task_type="model_job", routing_policy=None, caller="n8n_model_job", max_tokens=2048, context_id=None)` |
 | Caller/process | `caller="advisory_desk"`, `process_id="cio_ask_deep_research"` |
 | Standard task | `task_type="cio_ask_deep_research"` |
 | Depth task | `task_type="cio_ask_deep_research_depth"` |
 | Request identity | Stable bounded question/answer-version identifier, retained in `request_id`; actual provider journal replay protection remains intact. |
+| Research context | Explicit `context_id` becomes `X-TradeAI-Context-Id`; omitted uses only the existing current context. No ID is generated. Missing context is omitted so Ring2 still decides; unsafe IDs/current-reader failure refuse before transport. |
 | Policy | Omit `routing_policy` for the registered default. No arbitrary provider/model/tier parameter is added. |
 | Success | Require `_tradeai.governance_pass is True`, matching `_tradeai.process_id`, valid reservation/provenance, and a non-mock result before claiming a real run. Content is `choices[0].message.content`. |
 | Provenance | `_tradeai.provider`, `model_id`, `requested_policy`, `request_id`, `reservation_id`, `route_receipts`, `reasoning_tier`, `cost_estimate`, `cost_basis`; top-level `model` mirrors the served model. Preserve actual serving identity. |

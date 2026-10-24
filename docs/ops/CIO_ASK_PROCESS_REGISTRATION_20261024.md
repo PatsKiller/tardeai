@@ -36,7 +36,12 @@ Validation is source/fixture only. New tests exercise the actual bridge route
 and actual process/global cap checker with injected transports, pricing and
 ledger persistence. They also drive the real HTTP handler using in-memory
 streams, proving that body overrides cannot select depth. The exact client
-helper is verified with a fake `urlopen`, never a live bridge call. Monotonic
+helper is verified with a fake `urlopen`, never a live bridge call. Optional
+`context_id` forwards a real retrieved context header, or inherits the existing
+current context; it never manufactures an ID. The async caller must open/inherit
+a genuine context, preferably passing its ID explicitly across that boundary.
+Missing context remains subject to Ring2, and unsafe/unavailable context fails
+before transport. Monotonic
 route clocks are pinned by the existing hermetic fixture; cap totals and
 request counts are explicit fixture inputs.
 
@@ -46,7 +51,7 @@ reviewed fixture proof, and any unrelated baseline failures are retained in
 is called whole-project CI. Merge, source cap synchronization, bridge restart,
 deployment and operator re-ask belong to the coordinator/operator.
 
-Local validation: **21 new source tests pass**, including selected sync,
+Initial source-checkpoint validation: **21 new source tests pass**, including selected sync,
 server depth and real process/global cap refusals. Ten source guards pass;
 configuration hashes are unchanged during CHECK. Supplemental receipts retain
 the older bridge fixture's initial socket failure and separately reviewed pass,
@@ -54,3 +59,10 @@ and the unrelated unchanged registry-mode assertion failure (4 passes/1 failure
 in its whole file). No assertion or unrelated process was altered. This is
 source readiness with an explicit baseline finding, not whole-project or live
 acceptance.
+
+The context follow-up passes **72 tests**, containing all **28 new registration/
+context cases** plus the complete existing model-job/model-job-operation/label
+files. The two complete environment/executor files pass **214 tests** after the
+new context-reader import. These runs overlap earlier receipts and are not
+added into a misleading total. All ten source guards pass again, compilation
+passes, and CHECK changes no configuration bytes. No live admission is claimed.

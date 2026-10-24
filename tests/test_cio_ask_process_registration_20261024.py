@@ -2,7 +2,7 @@
 
 COVERS = ["config/llm_process_registry.json", "config/llm_routing_policy.json",
           "scripts/lib/cio_governed_model_bridge.py", "scripts/lib/governed_process_routes.py",
-          "scripts/sync_cio_process_caps.py"]
+          "scripts/sync_cio_process_caps.py", "scripts/lib/n8n_model_job.py"]
 """
 from __future__ import annotations
 
@@ -297,11 +297,68 @@ def test_existing_client_helper_emits_only_server_task_and_stable_identity(monke
     out = bridge_governed_call(
         [{"role": "user", "content": "Public fact"}], process_id=PID, caller="advisory_desk",
         task_type=DEPTH, request_id="ask-answer-fixture", max_tokens=1500, timeout_s=1,
+        context_id="ctx_0123456789abcdef",
     )
     assert out == payload
     req = captured[0]
     headers = {k.lower(): v for k, v in req.header_items()}
     assert headers["x-tradeai-task-type"] == DEPTH and headers["x-tradeai-agent"] == "advisory_desk"
+    assert headers["x-tradeai-context-id"] == "ctx_0123456789abcdef"
     body = json.loads(req.data)
     assert body["request_id"] == "ask-answer-fixture" and body["model"] == "tradeai_governed"
-    assert "process_id" not in body and "reasoning_tier" not in body and "provider" not in body
+    assert not {"process_id", "reasoning_tier", "provider", "context_id"} & body.keys()
+
+
+@pytest.mark.parametrize("context", [None, {"context_id": "ctx_fedcba9876543210"}])
+def test_helper_inherits_existing_context_or_keeps_it_missing(monkeypatch, context):
+    from lib import intelligence_client as ic
+    from lib.n8n_model_job import bridge_governed_call
+
+    captured = []
+
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+    def fake_open(req, **kw):
+        captured.append(req)
+        return Response(b'{}')
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_open)
+    token = ic._CURRENT_CTX.set(context)
+    try:
+        bridge_governed_call([], process_id=PID, caller="advisory_desk", task_type=PID)
+    finally:
+        ic._CURRENT_CTX.reset(token)
+    headers = {k.lower(): v for k, v in captured[0].header_items()}
+    if context is None:
+        assert "x-tradeai-context-id" not in headers
+    else:
+        assert headers["x-tradeai-context-id"] == context["context_id"]
+
+
+@pytest.mark.parametrize("context", ["", "ctx_safe\r\nX-Forged: yes", "x" * 257, {"context_id": "bad"}])
+def test_unsafe_context_never_reaches_transport(monkeypatch, context):
+    from lib.n8n_model_job import bridge_governed_call
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: pytest.fail("unsafe context reached transport"))
+    out = bridge_governed_call([], process_id=PID, caller="advisory_desk", task_type=PID, context_id=context)
+    assert out["error"]["code"] == "MEMORY_CONTEXT_INVALID"
+    assert out["governance_pass"] is False
+
+
+def test_failed_context_reader_does_not_forge_id_or_hide_refusal(monkeypatch):
+    from lib import intelligence_client as ic
+    from lib.n8n_model_job import bridge_governed_call
+
+    def failed():
+        raise RuntimeError("sensitive internal detail")
+
+    monkeypatch.setattr(ic, "current_context_id", failed)
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: pytest.fail("unavailable context reached transport"))
+    out = bridge_governed_call([], process_id=PID, caller="advisory_desk", task_type=PID)
+    assert out["error"]["code"] == "MEMORY_CONTEXT_UNAVAILABLE"
+    assert out["governance_pass"] is False and "sensitive" not in json.dumps(out)
