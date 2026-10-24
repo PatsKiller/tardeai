@@ -2075,6 +2075,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/VALIDATED_LEARNING_REMEDIATION.md` | Validated learning remediation: release and operations |
 | `docs/ops/WATCH_DECISION_STANDARDS_2026-10-08.md` | Watch decision standards — the Communications standards on the Watchlist (2026-10-08) |
 | `docs/ops/WATCH_LISTS_PAGE_2026-10-23.md` | Watch — My Watchlist, System Suggests, Full universe (2026-10-23) |
+| `docs/ops/WATCH_MY_LIST_MARKET_FACTS_20261024.md` | WP-29: My Watchlist stored market facts |
 | `docs/ops/WATCH_PROSPECTS_PAGE_2026-10-22.md` | Watch — prospect lanes (the Gate 3 Watch redesign, 2026-10-22) |
 | `docs/ops/WEEKLY_OVERSIGHT_CHATGPT_OAUTH.md` | Weekly oversight — ChatGPT OAuth auto, paid manual |
 | `docs/ops/WORK_PIPELINE_2026-10-23.md` | Work pipeline: the default Coordination view, keyed by work item (2026-10-23) |
@@ -2083,6 +2084,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WP13_CIO_HARDENING_SHARDS_20261023.md` | WP-13 parallel CIO hardening delivery |
 | `docs/ops/WP13_RERUN_MANIFESTS_20261024.md` | WP-13 follow-up: aggregate manifests across rerun attempts |
 | `docs/ops/WP13_SHADOW_DRY_RUN_ISOLATION_20261024.md` | WP-13 shadow-wave dry-run proof isolation |
+| `docs/ops/WP13_WATCH_QUOTE_TEST_ISOLATION_20261024.md` | WP-13: isolate canonical Watch quote tests |
 | `docs/ops/WP14_PUSH_POLICY_V2_REBUILD_20261023.md` | WP-14 push-policy-v2 operator package rebuild |
 | `docs/ops/WP15_AGENTS_20_2_OPERATOR_PACKAGE_20261023.md` | WP-15: AGENTS 20.2.0 package delivery |
 | `docs/ops/WP16_ADVISORY_POLICY_PACKAGE_20261023.md` | WP-16 advisory-policy package delivery |

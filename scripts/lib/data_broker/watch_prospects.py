@@ -786,7 +786,7 @@ def _curator_projection() -> dict[str, Any]:
         return {}
 
 
-def gather(query: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def gather(query: Optional[dict[str, Any]] = None, *, db_query=None, now: Optional[datetime] = None) -> dict[str, Any]:
     """The ONE composition behind every Watch list (cached 60 s): Prospects lanes, My Watchlist and System Suggests
     read the same rows, so a symbol shows the same conviction, stance and stage on all three (operator 2026-10-23,
     "they don't even align"). Returns {payload (WatchProspects@v1), rows {SYM: row}, row_for(sym), opps, proj_meta,
@@ -795,7 +795,7 @@ def gather(query: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     fresh = str((query or {}).get("fresh") or "") in ("1", "true")
     if not fresh and _CACHE["val"] is not None and now_m - _CACHE["at"] < CACHE_S:
         return _CACHE["val"]
-    now = datetime.now(timezone.utc)
+    now = now or datetime.now(timezone.utc)
     recs, cp_status = _cio_prospect_records()
     opmem = _operator_membership()
     operator = opmem.get("names") or {}
@@ -843,6 +843,14 @@ def gather(query: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     out["data_broker"] = {"package": "scripts/lib/data_broker", "projection": "watch_prospects",
                           "catalog": "/api/v3/data-broker", "read_only": True, "provider_calls": 0}
     rows = {r["symbol"]: r for lane in out["lanes"] for r in lane["items"]}
+    # Stored evidence is fetched once for this shared cache. Request-time views
+    # recompute freshness separately, without mutating cached decisions or quotes.
+    from lib.data_broker.watch_market_facts import load_snapshot
+
+    market_reader = db_query
+    if market_reader is None and operator:
+        market_reader = _db_query()
+    market_snapshot = load_snapshot(market_reader, operator, now=now, cards=cards)
     # Position facts on every row: held / formerly held / never held, the last round trip, the re-entry advice
     # (lib/data_broker/watch_position_facts.py; operator 2026-10-23 "it should be tracked that formerly held").
     try:
@@ -875,7 +883,7 @@ def gather(query: Optional[dict[str, Any]] = None) -> dict[str, Any]:
 
     val = {"payload": out, "rows": rows, "row_for": row_for, "opps": opps, "proj_meta": proj_meta, "held": held,
            "held_source": held_source, "held_detail": hd, "operator": operator, "cp_status": cp_status,
-           "now": now}
+           "now": now, "market_snapshot": market_snapshot}
     _CACHE.update(at=now_m, val=val)
     return val
 

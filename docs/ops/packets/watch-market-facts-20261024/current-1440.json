@@ -1,0 +1,52 @@
+{
+  "fixture": true,
+  "clock": "2026-10-23T14:00:00Z",
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "input": {
+    "schema": "WatchMarketFacts@v1",
+    "evaluated_at": "2026-10-24T14:00:00Z",
+    "price": {
+      "stale": false,
+      "freshness": "CURRENT",
+      "compatibility": "BELOW_OR_AT_PRICE",
+      "reason": null,
+      "value": 10,
+      "as_of": "2026-10-23T13:59:00Z",
+      "source": "data_broker.latest_quote:schwab",
+      "source_label": "Stored quote · schwab"
+    },
+    "support": {
+      "stale": null,
+      "freshness": "UNKNOWN",
+      "compatibility": "BELOW_OR_AT_PRICE",
+      "reason": "Level observation time unavailable.",
+      "value": 9,
+      "as_of": null,
+      "source": "watchlist_symbol_master",
+      "source_label": "Watch symbol master"
+    },
+    "resistance": {
+      "stale": null,
+      "freshness": "UNKNOWN",
+      "compatibility": "BELOW_OR_AT_PRICE",
+      "reason": "Closed-session date; level freshness is not assessed.",
+      "value": 11,
+      "as_of": "2026-10-22",
+      "source": "ui_prefs:portfolio.reentry.resistance.v1",
+      "source_label": "Closed-session resistance cache"
+    }
+  },
+  "displayed": "Price\n$10.00\nCurrent\nStored quote · schwab · data_broker.latest_quote:schwab\nAs of Oct 23, 2026, 09:59:00 AM EDT\nSupport\n$9.00\nTime / freshness unknown\nWatch symbol master · watchlist_symbol_master\nAs of —\nLevel observation time unavailable.\nResistance\n$11.00\nTime / freshness unknown\nClosed-session resistance cache · ui_prefs:portfolio.reentry.resistance.v1\nAs of 2026-10-22 · closed session\nClosed-session date; level freshness is not assessed.",
+  "geometry": {
+    "client": 958,
+    "scroll": 958
+  },
+  "traffic": {
+    "writes": [],
+    "external": [],
+    "errors": []
+  }
+}

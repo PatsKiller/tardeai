@@ -7,6 +7,8 @@ import sys
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
+from types import ModuleType, SimpleNamespace
+from unittest.mock import Mock, patch
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -231,7 +233,78 @@ class TestFreshnessDerived(unittest.TestCase):
 
 class TestLiveCoherenceIdentity(unittest.TestCase):
     def test_live_symbols_have_coherent_identity(self):
-        arts = batch_canonical_quotes(["FTH", "NUAI", "AXTI", "SWBI", "CECO", "PFLT"])
+        """Historical live proof, now six pinned rows through the real batch reader."""
+        now = datetime(2026, 8, 4, 17, 0, tzinfo=ET)
+        symbols = ["FTH", "NUAI", "AXTI", "SWBI", "CECO", "PFLT"]
+        observed = now - timedelta(minutes=15)
+        enriched = now - timedelta(minutes=5)
+        fallback_at = now - timedelta(minutes=1)
+        # Dict and tuple result shapes exercise both actual database-row adapters.
+        watch_rows = [
+            {"symbol": "FTH", "wi_id": 99, "wi_price": 24.7,
+             "wi_last_enriched_at": now - timedelta(hours=5), "wi_change_pct": -9.9854,
+             "mq_id": 4386078, "mq_price": 25.35, "mq_fetched_at": observed,
+             "mq_source": "alpaca", "mq_day_change_pct": -7.6},
+            ("NUAI", 55, 7.5, enriched, 2.5, 111, 99.0,
+             now - timedelta(minutes=30), "alpaca", 1.0),
+            {"symbol": "AXTI", "mq_id": None, "mq_price": 10.0,
+             "mq_fetched_at": observed, "mq_source": "alpaca", "mq_day_change_pct": 1.0},
+            {"symbol": "SWBI", "wi_id": 23, "wi_price": 11.0,
+             "wi_last_enriched_at": None, "wi_change_pct": 0.5},
+            ("PFLT", 8, 51.0, observed, 2.0, 7, 50.0, observed, "alpaca", 1.0),
+        ]
+        owner = self
+
+        class FixtureCursor:
+            def __init__(self):
+                self.calls = []
+
+            def execute(self, sql, params):
+                owner.assertTrue(sql.lstrip().startswith("SELECT"), "fixture allows reads only")
+                self.calls.append((sql, params))
+                if len(self.calls) == 1:
+                    owner.assertIn("FROM watchlist_items w", sql)
+                    owner.assertEqual(params, (symbols,))
+                else:
+                    owner.assertEqual(len(self.calls), 2, "no extra database reads")
+                    owner.assertIn("FROM market_quotes", sql)
+                    owner.assertNotIn("FROM watchlist_items", sql)
+                    owner.assertEqual(params, (["AXTI", "SWBI", "CECO"],))
+
+            def fetchall(self):
+                return watch_rows if len(self.calls) == 1 else [
+                    ("CECO", 501, "finviz", 5.5, 0.7, fallback_at)
+                ]
+
+        cursor = FixtureCursor()
+        connection = SimpleNamespace(cursor=Mock(return_value=cursor))
+        adapter = ModuleType("db_adapter")
+        adapter._get_conn = Mock(return_value=connection)
+        # Replace the entire import before the reader can load the real adapter.
+        with patch.dict(sys.modules, {"db_adapter": adapter}):
+            arts = batch_canonical_quotes(symbols, now=now)
+        adapter._get_conn.assert_called_once_with()
+        connection.cursor.assert_called_once_with()
+        self.assertEqual(len(cursor.calls), 2)
+        self.assertEqual(set(arts), set(symbols))
+        expected = {
+            "FTH": (25.35, -7.6, "market_quotes", 4386078, "market_quotes:4386078", observed),
+            "NUAI": (7.5, 2.5, "enrichment", "enrichment:55", "watchlist_items:55", enriched),
+            "CECO": (5.5, 0.7, "market_quotes", 501, "market_quotes:501", fallback_at),
+            "PFLT": (51.0, 2.0, "enrichment", "enrichment:8", "watchlist_items:8", observed),
+        }
+        for sym, (price, change, source, quote_id, record_id, at) in expected.items():
+            art = arts[sym]
+            self.assertEqual(art["last"], price, sym)
+            self.assertEqual(art["day_change_pct"], change, sym)
+            self.assertEqual(art["price_source"], source, sym)
+            self.assertEqual(art["quote_id"], quote_id, sym)
+            self.assertEqual(art["source_record_id"], record_id, sym)
+            self.assertEqual(art["price_as_of"], at.isoformat(), sym)
+            self.assertEqual(art["freshness_state"], "AFTER_HOURS_CURRENT", sym)
+            self.assertEqual(art["market_session"], "afterhours", sym)
+        self.assertIn("canonical_quote_identity", arts["AXTI"]["missing"])
+        self.assertIn("canonical_market_quote", arts["SWBI"]["missing"])
         for sym, art in arts.items():
             if art.get("last") is None:
                 self.assertEqual(art.get("freshness_state"), "DATA_UNAVAILABLE")
@@ -272,10 +345,23 @@ class TestUiProvenanceContract(unittest.TestCase):
             "marketState",
         ):
             self.assertIn(attr, src, msg=attr)
-        hub = (ROOT / "apps/command-center-v3/src/pages/WatchHub.tsx").read_text()
-        self.assertIn("quoteId={c.quote_id}", hub)
-        self.assertIn("sourceRecordId={c.source_record_id}", hub)
-        self.assertIn("freshnessState={c.freshness_state}", hub)
+        legacy = (ROOT / "apps/command-center-v3/src/pages/WatchLegacy.tsx").read_text()
+        self.assertIn("import WatchCardV2 from '../components/rockville/WatchCardV2'", legacy)
+        renderer = legacy.split("<WatchCardV2", 1)[1].split("/>", 1)[0]
+        self.assertIn("quoteId={c.quote_id}", renderer)
+        self.assertIn("sourceRecordId={c.source_record_id}", renderer)
+        self.assertIn("freshnessState={c.freshness_state}", renderer)
+        self.assertIn("marketSession={c.market_session}", renderer)
+        self.assertIn("marketState={c.market_state}", renderer)
+        self.assertIn("priceSource={c.price_source}", renderer)
+        app = (ROOT / "apps/command-center-v3/src/App.tsx").read_text()
+        self.assertIn("import WatchLegacy from './pages/WatchLegacy'", app)
+        self.assertRegex(app, r'path="watch-legacy"[^\n]*<WatchLegacyGate\b')
+        gate = app.split("function WatchLegacyGate(", 1)[1].split("\nfunction ", 1)[0]
+        self.assertIn("get('legacy') === '1'", gate)
+        self.assertIn("localStorage.getItem('CC_WATCH_LEGACY') === '1'", gate)
+        self.assertIn('if (!allowed) return <Navigate to="/watch" replace />', gate)
+        self.assertIn("return <WatchLegacy onDrill={onDrill} />", gate)
 
 
 class TestOverlayFailClosed(unittest.TestCase):

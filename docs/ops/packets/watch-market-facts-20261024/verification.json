@@ -1,0 +1,141 @@
+{
+  "schema": "WatchMarketFactsLocalVerification@v1",
+  "status": "LOCAL_SOURCE_AND_FIXTURES_ONLY",
+  "base_sha": "058976798e8883777244820e43fa192e2dd676c3",
+  "as_of": "2026-10-24T05:46:42.721042Z",
+  "source_sha256": {
+    "scripts/lib/data_broker/watch_market_facts.py": "dbdf1a1276cc6c492a13d42098e97eacb71e6763037ba157d1f1966725d8db65",
+    "scripts/lib/data_broker/watch_curation.py": "6a7468741a610c4e6309a6c67a817796e0a3566595378a054fdda3f6aff1068f",
+    "scripts/lib/data_broker/watch_prospects.py": "6b6768bfaad163f93338d633d559ee93837a9b76cd8702daaaf3a0849d72ee29",
+    "apps/command-center-v3/src/lib/watchListsModel.ts": "9e8dd566f8f223445e02cc9350b1bf7ae3065a3c8a3705486073cf77b5a28a65",
+    "apps/command-center-v3/src/pages/WatchMyList.tsx": "6548034c67de114d99e3f274761730822f4588d7e7664f2276748027590815f9",
+    "apps/command-center-v3/src/components/watch/WatchMarketFacts.tsx": "2d91815346655acd9f262ca8da168d3bb024135d310b58daee5ade8b0dfcac7c",
+    "apps/command-center-v3/src/pages/WatchLayout.css": "2829526e6d97b30f5749b0d0e6c6466ddf8cff6c03be466178c73e6510e7737a",
+    "apps/command-center-v3/e2e/watch-market-facts.spec.ts": "72321afa08fa1781ebec74e4fab7d320bf27bd4f03b550541b13bbb8e1ae7550",
+    "tests/test_watch_market_facts_20261024.py": "a8d990cc5e3d728583661c46051691adb5ff433a76ea3779384f747fb0a0e2fd",
+    "config/ci_gates/watch_market_facts_20261024.json": "a6baffe69cdca88fdd25c94dd970b3f4650e25491ea44f288cbf12cf93ad74d5",
+    ".github/workflows/watch-market-facts-ui-validation.yml": "91510fd1e6116ccc0d962dcf92a2fd977f7a72b6cb1dc31773c3dfd93fb8c4a6"
+  },
+  "backend_watch_tests": {
+    "tests": 88,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "browser_final": {
+    "startTime": "2026-10-24T05:43:58.574Z",
+    "duration": 10150.026,
+    "expected": 40,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "new_browser_cases": 18,
+  "existing_browser_regressions": 22,
+  "supplementary_profile": {
+    "status": "NON_GREEN",
+    "tests": 146,
+    "passed": 144,
+    "failed": 2,
+    "modules": {
+      "test_data_source_authority_20260913": {
+        "tests": 32,
+        "failures": 0,
+        "skipped": 0
+      },
+      "test_watch_canonical_quote": {
+        "tests": 19,
+        "failures": 2,
+        "skipped": 0
+      },
+      "test_ci_draft_pr_skip_20261023": {
+        "tests": 95,
+        "failures": 0,
+        "skipped": 0
+      }
+    },
+    "failures": [
+      "tests.test_watch_canonical_quote.TestLiveCoherenceIdentity::test_live_symbols_have_coherent_identity",
+      "tests.test_watch_canonical_quote.TestUiProvenanceContract::test_watchcard_exposes_provenance_attrs"
+    ],
+    "receipt": "supplementary-guards-NON_GREEN.xml.gz"
+  },
+  "authority_findings": 0,
+  "psycopg2_hidden": true,
+  "provider_calls_in_new_code": 0,
+  "build_log_sha256": "f53242ca6f9393329d2b8ed8cc9d11ea6ca986abd8d259dada1cb0b320f72b7c",
+  "artifacts": {
+    "backend-watch-green.xml": {
+      "sha256": "9138986dd6154877884608b4a83081135632933701d7a75284e485baf4f88756",
+      "bytes": 12740
+    },
+    "current-1440.json": {
+      "sha256": "166e7b956e09d8ff2944c5130fb8e305dab29b96df9df10c1db7cdd5a5d581f1",
+      "bytes": 1791
+    },
+    "current-1440.png": {
+      "sha256": "4a66e1f8d7512653b38cd4c82a30896b1b144143f111245e116f02db0246abf4",
+      "bytes": 153909,
+      "pixels": [
+        1440,
+        1000
+      ]
+    },
+    "current-412.json": {
+      "sha256": "930e7f08e8d89fc01af58b543576c83016fda08fbfb8cef0e29f27377246fa48",
+      "bytes": 1790
+    },
+    "current-412.png": {
+      "sha256": "f9a2b1ff671f46f4d2ba27ef22ed4b7e2cfb25fb7c73881a31d8706e902a25bc",
+      "bytes": 115053,
+      "pixels": [
+        412,
+        1300
+      ]
+    },
+    "stale-1440.json": {
+      "sha256": "f6bd17f31221b61b2cef70a192a4b28924e0d87ac96b9e3475f907b98d436039",
+      "bytes": 1840
+    },
+    "stale-1440.png": {
+      "sha256": "5bf4f8d1978a3d27144fada30fb166b875d44c56a830e7016a92f4ff912ac6da",
+      "bytes": 154622,
+      "pixels": [
+        1440,
+        1000
+      ]
+    },
+    "stale-412.json": {
+      "sha256": "23a91bdba3d490dcfc13b195765e7b5a0e53bd055389df18e9c956d650750faa",
+      "bytes": 1839
+    },
+    "stale-412.png": {
+      "sha256": "241e9515024193848be3ca61209b3cbf5321a35f2fc117645ef60c740a8a8e56",
+      "bytes": 116018,
+      "pixels": [
+        412,
+        1300
+      ]
+    },
+    "supplementary-guards-NON_GREEN.xml.gz": {
+      "sha256": "367de214338961a04eb5c3ae6db9f80b57c4fe4826f899634230d55f8a019d05",
+      "bytes": 6364,
+      "uncompressed_sha256": "6e6c9de0c56e0e6865e8c9a2c85cd4fd83384d91defdd473828a4d13ea2f4917",
+      "uncompressed_bytes": 43495
+    }
+  },
+  "final_draft_checks": {
+    "tests": 95,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "host_path_ratchet": {
+    "new_violations": 0,
+    "log_sha256": "35e284022d0751bcc0bb4fa920ab50a99bcbb8957f454ef45a19300aa540bca6"
+  },
+  "coverage_ratchet": {
+    "new_unlisted": 0,
+    "log_sha256": "71f817da7008d4ede0c3f9192d12ca7e81272c842959999daafcac2471e85a28"
+  }
+}
