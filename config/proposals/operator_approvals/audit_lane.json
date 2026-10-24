@@ -1,0 +1,90 @@
+{
+  "lane_id": "policy-enforcement-audit",
+  "status": "HELD — inactive source proposal, not runnable admission",
+  "weekly": {
+    "expression": "0 20 * * 0",
+    "timezone": "America/New_York",
+    "market_day_gate": false
+  },
+  "argv": [
+    "python3",
+    "scripts/policy_enforcement_audit.py",
+    "--apply",
+    "--llm-review",
+    "--trigger",
+    "weekly"
+  ],
+  "dry_run_arg": "--dry-run",
+  "dry_run_argv": [
+    "python3",
+    "scripts/policy_enforcement_audit.py",
+    "--dry-run",
+    "--llm-review",
+    "--trigger",
+    "weekly"
+  ],
+  "amendment_event": {
+    "source": "existing governed amendment completion path (integration pending)",
+    "required_fields": [
+      "exact committed policy SHA",
+      "policy version"
+    ],
+    "argv_suffix": [
+      "--trigger",
+      "amendment",
+      "--amendment-sha",
+      "<event SHA>",
+      "--amendment-version",
+      "<event version>"
+    ],
+    "polling_is_event_proof": false
+  },
+  "inner_business_lock": "<persistent-state>/data/runtime/policy_enforcement_audit.lock",
+  "outer_dispatch_lock": "<persistent-state>/data/runtime/policy_enforcement_audit.dispatch.lock",
+  "lock_kind": "flock",
+  "lock_conflict_exit": 75,
+  "dry_run_takes_business_lock": false,
+  "output_signal": {
+    "path": "data/runtime/policy-enforcement-audit_last.json",
+    "json_key": "ok_at"
+  },
+  "output_evidence": "data/runtime/policy_enforcement_audit_last_report.json (derived export); operator_decisions.jsonl AUDIT_FINDINGS is canonical",
+  "attempt_receipt": "data/runtime/lane_attempts/policy-enforcement-audit/<TRADEAI_RUN_ID>.json",
+  "env_names": [
+    "TRADEAI_STATE_ROOT",
+    "TRADEAI_RUN_ID",
+    "TRADEAI_RUN_ATTEMPT",
+    "TRADEAI_RUN_MODE",
+    "TRADEAI_CODE_SHA"
+  ],
+  "llm_route": {
+    "via": "cio-governed-bridge",
+    "process_id": "policy_enforcement_audit"
+  },
+  "timeout_s": null,
+  "timeout_reason": "Full governed reviewer runtime not measured; never guess a cap. W8 holds runnable admission until measured proof.",
+  "operator_decisions": false,
+  "auto_apply": false,
+  "approval": null,
+  "expected_output": {
+    "schema": "N8nExpectedOutput@v1",
+    "unit": "supported policy findings",
+    "rule": "empty_allowed",
+    "produced_field": "produced_count",
+    "fatal_skip_reasons": [
+      "no_runner",
+      "skipped_lock"
+    ],
+    "empty_allowed_reasons": [
+      "no_supported_findings",
+      "duplicate_audit"
+    ],
+    "evidence": [
+      {
+        "kind": "file_artifact",
+        "ref": "data/runtime/policy_enforcement_audit_last_report.json"
+      }
+    ],
+    "receipt": "data/runtime/policy-enforcement-audit_last.json"
+  }
+}
