@@ -51,21 +51,18 @@ for (const width of [1440, 412]) {
   test.describe(`${width}px account scope`, () => {
     test.use({ viewport: { width, height: 1000 } })
 
-    test('Watch keeps the two-account count and exact account-name tooltip', async ({ page, baseURL }) => {
+    test('Watch card names both held accounts on the row (approved redesign)', async ({ page, baseURL }) => {
       const traffic = await fixtures(page, baseURL!)
       await page.goto('/v3/watch?tab=my-watchlist')
       const row = page.locator('[data-testid="mine-row"][data-symbol="SPCX"]')
       await expect(row).toBeVisible()
-      const chip = row.getByTestId('watch-position-chip')
-      await expect(chip).toHaveText('held · 2 accounts')
-      for (const account of FX.accounts) await expect(chip).toHaveAttribute('title', new RegExp(account.label))
+      // desktop: Company column ownership line; phone: the "Zone … · <accounts>" line
+      const ownership = row.locator('[data-testid="watch-card-ownership"], .watch-card-phone-zone').locator('visible=true').first()
+      await expect(ownership).toBeVisible()
+      for (const account of FX.accounts) await expect(ownership).toContainText(account.label)
       await row.scrollIntoViewIfNeeded()
-      const title = await chip.getAttribute('title')
       const layout = await row.evaluate(el => ({ clientWidth: el.clientWidth, scrollWidth: el.scrollWidth }))
-      const visibleNames = await row.getByTestId('account-chip').count()
-      await evidence(page, `watch-${width}`, traffic, { account_names_in_tooltip: title,
-        visible_account_names: visibleNames, layout,
-        gap: visibleNames ? null : 'Current held row names both accounts only in its title tooltip; screenshot shows count.' })
+      await evidence(page, `watch-${width}`, traffic, { visible_account_names: await ownership.innerText(), layout, gap: null })
     })
 
     test('CIO Desk renders both account names on the shared position decision', async ({ page, baseURL }) => {
