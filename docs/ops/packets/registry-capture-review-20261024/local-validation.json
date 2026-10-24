@@ -1,0 +1,33 @@
+{
+  "provenance_only": {
+    "structural_errors": [],
+    "canonical_snapshot_fixed_point": false,
+    "canonical_replay_changed_lanes": [
+      {
+        "lane_id": "market-regime-collector",
+        "fields": [
+          "rationalization"
+        ]
+      }
+    ]
+  },
+  "authority_restrictions": {
+    "structural_errors": [],
+    "canonical_snapshot_fixed_point": true,
+    "canonical_replay_changed_lanes": []
+  },
+  "full_replay_common_id_relative_order_unchanged": true,
+  "complete_semantic_explanations": {
+    "lane_ids": 13,
+    "logical_existing_changed": 9,
+    "ids_added": 2,
+    "ids_removed": 2,
+    "unique_leaf_changes": 177,
+    "each_has_reason_and_disposition": true
+  },
+  "frozen_base_registry_sha256": "f5af4203e3329053194a6113117d2992c31be0ded9c86963e8d1238e5d8db6e1",
+  "operative_registry_observed_sha256": "af07aa36963900b6c0b701d7f3342d19a6fa8acb7c533b37dc634104e1c263ff",
+  "operative_registry_mutations_by_this_analysis": 0,
+  "concurrent_owner_registry_change_observed": true,
+  "all_network_census_subprocess_calls_blocked": true
+}
