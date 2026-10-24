@@ -3589,6 +3589,73 @@
         "reference": "Operator direction 2026-10-22 (verbatim): \"The CIO agent is supposed to tie all of this together, and it should all be in persistent memory. One data store with everything; use the CIO agent and n8n to accomplish this.\" and \"... we should also have a data dictionary that shows one source of data.\" Read-only inventory 2026-10-22 ~11:35 ET (16 entities, 131 stores). PR docs/data-foundation-cio-prospect-20261022; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md",
         "decision": "Grant cio_prospect as the single per-security store: a Postgres table keyed by security_guid, written only by InstrumentRecordStore (scripts/lib/cio_instrument_record.py); opportunity_assessment becomes its export (superseded, not removed)."
       }
+    },
+    {
+      "domain": "cio_asks",
+      "entity": "Operator questions to the CIO (Ask the CIO)",
+      "title": "Ask the CIO — questions, answer versions, tracking (ledger + thread projection)",
+      "class": "native",
+      "supersedes": [],
+      "facts": [
+        "operator question",
+        "answer version",
+        "ask thread",
+        "ask tracking change",
+        "ask channel link",
+        "ask research cost"
+      ],
+      "store": {
+        "file": "data/cio/cio_ask_events.jsonl",
+        "table_target": "cio_ask_events"
+      },
+      "writer": "scripts/lib/cio_ask_store.py",
+      "writer_status": "CONSOLIDATED",
+      "writer_target": "scripts/lib/cio_ask_store.py",
+      "writer_target_status": "live",
+      "_writer_note": "Append-only, idempotent (deterministic event_id). A projection, not a silo: every event about a security is also appended to CIO memory (SecurityResearchSpine, silo=cio, keyed by security_guid) by scripts/lib/cio_ask_memory.py; per-security judgment stays on the CIO prospect record. Private entities (no listed security) are keyed by entity_guid here and never get a ticker. Postgres-portable shape (table cio_ask_events) in docs/ops/ASK_THE_CIO.md.",
+      "cadence": "event-driven (operator ask on CC or Telegram; material-change re-answer)",
+      "stale_after_hours": 168,
+      "freshness_sla": "appended in the request that answers the question; re-answers within one re-answer lane run of the triggering event",
+      "refresh_lane": {
+        "runner": "host",
+        "lane": "cio-ask-reanswer (proposed, shadow)",
+        "never_list": false,
+        "note": "the ask itself is operator-initiated; only re-answers are scheduled (n8n lane proposed at shadow)"
+      },
+      "projection_status": "to_build",
+      "readers": [
+        "CIO Desk",
+        "My questions",
+        "Telegram (CIO bot)",
+        "Watch",
+        "Home"
+      ],
+      "derived_copies": [],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-24",
+        "reference": "Operator 2026-10-24 (session https://claude.ai/code/session_011AjwtDUpVLNhtFGHgNKrHU): \"push it live now ... I want everything live\" (Ask the CIO); store found still proposed when the operator's Ask returned 'turned off'",
+        "scope": "authoritative ledger for Ask the CIO questions, answer versions, tracking and ask cost: store data/cio/cio_ask_events.jsonl written only by scripts/lib/cio_ask_store.py; per-security facts also appended to CIO memory (SecurityResearchSpine)"
+      },
+      "proposal": {
+        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
+        "proposed_on": "2026-10-23",
+        "reference": "Operator 2026-10-23: build Ask the CIO as Phases 8-11; 'the key is the persistent memory. Across the CIO system.'; NO SILOS. AGENTS.md §26.2, §7A.",
+        "decision": "Grant cio_asks as the one store of operator questions to the CIO and their answer versions, written only by scripts/lib/cio_ask_store.py, read through the cio_ask_threads projection; every security-level event is also appended to CIO memory keyed by security_guid."
+      },
+      "_projection_note": "Threads (My questions) are folded from this ledger by scripts/lib/cio_ask_store.py inside the Ask API (scripts/lib/cio_ask_api.py); not a data-broker catalog projection."
     }
   ],
   "proposed_domains": [
@@ -5026,69 +5093,6 @@
         "proposed_on": "2026-10-22",
         "reference": "Operator decisions 2026-10-22 (Ops → Controls): settings live in a Postgres operator-settings table with history that overrides repository defaults, registered in the data dictionary; one governed host applier (backup, audit, undo) for crontab, n8n live list, settings and grants; agents never call these endpoints. AGENTS.md 19.0.0 §27.2 (PROPOSED).",
         "decision": "Grant operator_settings as the one store of operator settings with history (a row overrides the repository default), written only by the governed host applier."
-      }
-    },
-    {
-      "domain": "cio_asks",
-      "status": "proposed",
-      "entity": "Operator questions to the CIO (Ask the CIO)",
-      "title": "Ask the CIO — questions, answer versions, tracking (ledger + thread projection)",
-      "class": "native",
-      "supersedes": [],
-      "facts": [
-        "operator question",
-        "answer version",
-        "ask thread",
-        "ask tracking change",
-        "ask channel link",
-        "ask research cost"
-      ],
-      "store": {
-        "file": "data/cio/cio_ask_events.jsonl",
-        "table_target": "cio_ask_events"
-      },
-      "writer": null,
-      "writer_status": "UNCONSOLIDATED",
-      "writer_target": "scripts/lib/cio_ask_store.py",
-      "writer_target_status": "built_inert_until_grant",
-      "_writer_note": "Append-only, idempotent (deterministic event_id). A projection, not a silo: every event about a security is also appended to CIO memory (SecurityResearchSpine, silo=cio, keyed by security_guid) by scripts/lib/cio_ask_memory.py; per-security judgment stays on the CIO prospect record. Private entities (no listed security) are keyed by entity_guid here and never get a ticker. Postgres-portable shape (table cio_ask_events) in docs/ops/ASK_THE_CIO.md.",
-      "cadence": "event-driven (operator ask on CC or Telegram; material-change re-answer)",
-      "stale_after_hours": 168,
-      "freshness_sla": "appended in the request that answers the question; re-answers within one re-answer lane run of the triggering event",
-      "refresh_lane": {
-        "runner": "host",
-        "lane": "cio-ask-reanswer (proposed, shadow)",
-        "never_list": false,
-        "note": "the ask itself is operator-initiated; only re-answers are scheduled (n8n lane proposed at shadow)"
-      },
-      "projection": "cio_ask_threads",
-      "projection_status": "to_build",
-      "readers": [
-        "CIO Desk",
-        "My questions",
-        "Telegram (CIO bot)",
-        "Watch",
-        "Home"
-      ],
-      "derived_copies": [],
-      "primary_provider": "internal",
-      "backup": [],
-      "retired": [],
-      "no_coverage": "say_so",
-      "on_gap": [
-        {
-          "vector": "operator_ask",
-          "cost_class": "free",
-          "max_per_day": 1,
-          "expected_seconds": 7200
-        }
-      ],
-      "approval": null,
-      "proposal": {
-        "proposed_by": "agent (Claude, session https://claude.ai/code/session_01Quavc3L85SbNgwyYov2gko)",
-        "proposed_on": "2026-10-23",
-        "reference": "Operator 2026-10-23: build Ask the CIO as Phases 8-11; 'the key is the persistent memory. Across the CIO system.'; NO SILOS. AGENTS.md §26.2, §7A.",
-        "decision": "Grant cio_asks as the one store of operator questions to the CIO and their answer versions, written only by scripts/lib/cio_ask_store.py, read through the cio_ask_threads projection; every security-level event is also appended to CIO memory keyed by security_guid."
       }
     }
   ],
