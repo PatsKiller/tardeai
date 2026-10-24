@@ -17,6 +17,7 @@ import PositionFilterBar from '../components/watch/PositionFilterBar'
 import { AddSymbolBox, MINE_TIPS, RemoveButton } from '../components/watch/MineControls'
 import WatchlistProposeModal, { type WatchlistProposeSeed } from '../components/WatchlistProposeModal'
 import ReEntryAlertArmModal from '../components/reentry/ReEntryAlertArmModal'
+import WatchMarketFacts from '../components/watch/WatchMarketFacts'
 
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.lg, minWidth: 0 }
 const head: CSSProperties = { fontSize: TYPE.xs, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: TOKENS.text[2] }
@@ -31,7 +32,7 @@ const KINDS: [string, string, string][] = [
 export default function WatchMyList() {
   const [sp, setSp] = useSearchParams()
   const pq = positionQuery(sp)
-  const { data: raw, loading, error, refetch } = useApi<any>(withQuery('/api/v3/data-broker/watch-curation', pq), 120_000)
+  const { data: raw, loading, error, stale: snapshotStale, refetch } = useApi<any>(withQuery('/api/v3/data-broker/watch-curation', pq), 120_000)
   const { data: alertsRaw } = useApi<any>('/api/v2/watch/alerts/list', 120_000)
   const c = useMemo(() => unwrapAny<any>(raw), [raw])
   const armed = useMemo(() => armedBySymbol(alertsRaw), [alertsRaw])
@@ -42,6 +43,7 @@ export default function WatchMyList() {
   const [cioMsg, setCioMsg] = useState('')
   const kind = sp.get('mine') || ''
   const mw = c?.my_watchlist
+  const refreshUnavailable = snapshotStale || Boolean(error)
   const rows: ListRow[] = (mw?.rows || []).filter((r: ListRow) => !kind || (kind === 'starred' ? r.starred : (r.membership || []).some(m => m.kind === kind)))
   const selected = rows.find(r => r.symbol === sel) || null
   const onStep = (r: ProspectRow) => {
@@ -84,6 +86,9 @@ export default function WatchMyList() {
       {failed.length > 0 && <div style={{ color: TOKENS.warning, fontSize: TYPE.base }}>Could not read: {failed.map(([k, v]: any) => `${k} (${v.error || v.status})`).join(', ')} — names from that source are missing, not removed.</div>}
       <PositionFilterBar specs={mw?.position_filters} facets={mw?.position_facets} testId="mine-position-filters" />
       {toast && <div role="status" style={{ ...chipStyle('success', 'soft', 'md'), alignSelf: 'flex-start' }}>{toast}</div>}
+      {refreshUnavailable && <div role="status" data-testid="watch-market-refresh-warning" style={{ color: TOKENS.warning, fontSize: TYPE.base }}>
+        Refresh unavailable — showing the last successful snapshot. Values and observation times have not been refreshed.
+      </div>}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
         <section className="watch-record-panel" aria-label="My Watchlist" style={{ ...panel, flex: '999 1 700px' }}>
           <div className="watch-record-table">
@@ -94,9 +99,10 @@ export default function WatchMyList() {
             </div>
             {rows.length === 0 && <div data-testid="mine-empty" style={{ padding: 12, color: TOKENS.text[2] }}>{(mw?.filters && Object.keys(mw.filters).length) || kind ? `None of your names match these filters. ${MINE_TIPS.empty}` : MINE_TIPS.empty}</div>}
             {rows.map(r => (
-              <div key={r.symbol} data-testid="mine-row" data-symbol={r.symbol}>
+              <div key={r.symbol} className="watch-my-list-market-record" data-testid="mine-row" data-symbol={r.symbol}>
                 <Row r={{ ...r, why: `${laneWord(r.lane)} · ${r.why}` }} selected={sel === r.symbol} onSelect={() => setSel(r.symbol)} onStep={onStep} alerts={armed[r.symbol] || 0}
                   onMineChanged={changed} extra={<RemoveButton symbol={r.symbol} onChanged={changed} />} />
+                <WatchMarketFacts facts={r.market_facts} retained={refreshUnavailable} />
               </div>
             ))}
           </div>
