@@ -141,7 +141,10 @@ class SecurityStanceProfile:
                 if item.metadata.get("reason") and _at(expires) and expires > now:
                     decisions.append(item)
         if decisions:
+            original = canonical
             canonical = min(decisions, key=lambda i: 0 if i.metadata["recorded_by"] == "operator" else 1)
+            if original:
+                inputs = [*inputs, original]
         if canonical is None or canonical.value is None:
             finding("GATE", "R7", "No CIO stance — " + ("HOLD" if held else "WATCH") + " by default",
                     "a working CIO producer records a stance from current evidence", action="queue_review")
