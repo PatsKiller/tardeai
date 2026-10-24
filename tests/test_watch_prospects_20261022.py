@@ -308,6 +308,13 @@ def test_a_shadow_build_is_not_read_as_the_record(monkeypatch):
 
 
 def test_list_falls_back_to_the_labelled_interim_adapter(monkeypatch):
+    # Pin the module clock: list_watch_prospects reads datetime.now(), and the card's
+    # expires_at is NOW+40h, so on the real clock this went 'expired' at 2026-10-24 07:30Z.
+    class _PinnedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return NOW if tz is None else NOW.astimezone(tz)
+    monkeypatch.setattr(wp, "datetime", _PinnedDatetime)
     monkeypatch.setattr(wp, "_cio_prospect_records", lambda: (None, "absent"))
     from lib.data_broker import watch_intelligence as wi
 
