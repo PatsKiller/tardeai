@@ -28,7 +28,7 @@
     },
     {
       "log": "/home/johnclaw/.cache/rtc/codex-ask-cio-readable-20261024/docs-index-mobile.log",
-      "sha256": "42949714bf81a1b8a1f30ddf95f7cbadc32e22a4217f624a334d7ae212c4d26e",
+      "sha256": "ffe5b8ac72323bba8038812e875761e677eb3c587365f7d6354064aafd48ebd3",
       "command": "python3 scripts/report_docs_inventory.py --write-index && --check-index",
       "result": "PASS"
     },
