@@ -13,7 +13,8 @@ rest of the read path it's replacing, (b) can be computed and unit-tested withou
 Postgres connection, and (c) matches the existing `data/runtime/*_latest.json` cron-materialization
 pattern (warm_caches.py) already used by trade-ai/rotation/defense/symbol-cards.
 
-Status: ADDITIVE. This module does not yet replace any existing endpoint's live code path —
+W1: financial totals/counts delegate to cio_truth.portfolio_for over one holdings valuation clock.
+Status: existing consumers retain their envelope and cache semantics —
 see the migration note at the bottom of this docstring and config/data_registry.yaml. It is
 served read-only via GET /api/v2/data/portfolio-snapshot for inspection/testing today; wiring
 /overview, /portfolio/holdings, /risk, /portfolio/book-map to READ this instead of
@@ -95,39 +96,6 @@ def _load_json(path: Path) -> dict[str, Any]:
         return {}
 
 
-def _day_change(holdings: list[dict], finviz_cache: dict[str, Any]) -> float | None:
-    """Mirrors api_v2._live_portfolio_day_change: recompute per-holding day $ from the fresh
-    Finviz day % so a repricer-written $0 (prev_price == new_price at write time) doesn't
-    silently under-count the header total. Same shared helper as /overview and
-    /portfolio/performance so all three surfaces agree once this snapshot is adopted."""
-    try:
-        lib_dir = str(PROJECT_ROOT / "scripts" / "lib")
-        if lib_dir not in sys.path:
-            sys.path.insert(0, lib_dir)
-        from holding_day_change import resolve_holding_day_change
-
-        from data_broker.quote_batch import quote_cache_day_maps
-
-        day_pct, px = quote_cache_day_maps(finviz_cache)
-
-        total = 0.0
-        for p in holdings or []:
-            if p.get("is_cash") or p.get("is_loan"):
-                continue
-            u = str(p.get("symbol") or "").upper()
-            fv_px = px.get(u)
-            shares = float(p.get("shares") or 0)
-            mv = (shares * fv_px) if (fv_px and shares) else float(p.get("market_value") or 0)
-            price = fv_px or float(p.get("price") or 0)
-            dc, _ = resolve_holding_day_change(
-                p, market_value=mv, price=price, stale_price=price, finviz_day_pct=day_pct.get(u)
-            )
-            total += dc or 0
-        return round(total, 2)
-    except Exception:
-        return None
-
-
 def _sector_allocation(h: dict, active_positions: list[dict]) -> list[tuple[str, float]]:
     """Prefer the pipeline's look-through breakdown (funds decomposed into underlying
     sectors); holding rows carry no sector field, so per-row aggregation alone collapses
@@ -153,7 +121,6 @@ def build_portfolio_snapshot() -> dict[str, Any]:
     h = _load_json(STATE_DIR / "holdings.json")
     perf = _load_json(STATE_DIR / "performance_history.json")
     risk = _load_json(STATE_DIR / "risk_management.json")
-    finviz_cache = _load_json(STATE_DIR / "finviz_quote_cache.json")
 
     from ..cio_truth import portfolio_for
     truth = portfolio_for(h)

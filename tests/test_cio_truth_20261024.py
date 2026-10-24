@@ -150,3 +150,126 @@ def test_portfolio_broker_uses_same_aggregate_instead_of_repricing(tmp_path, hol
     assert result["totals"]["day_change"] == shared["day_pl_usd"]
     assert result["totals"]["total_cash"] == shared["cash_usd"]
     assert result["source"]["active_position_count"] == shared["position_count"]
+
+
+def test_conflict_severity_and_review_completion_require_causal_readback():
+    row = {"security_guid": "g", "stance": "HOLD", "conviction": 60, "as_of": NOW.isoformat(),
+           "conflicts": [
+               {"field": "stance", "severity": "P2", "resolved": False, "values": [{"source": "cio_decisions", "value": "HOLD", "at": "2026-10-24"},
+                 {"source": "watch_review", "value": "ADD", "at": "2026-10-23"}]},
+               {"field": "held", "severity": "P1", "resolved": False, "values": [{"source": "holdings", "value": True, "at": "2026-10-24"},
+                 {"source": "watch_review", "value": False, "at": "2026-10-23"}]}],
+           "research": {"review_lifecycle": {"status": "ANSWERED_PENDING_CIO", "request_id": "r", "research_id": "research-1"}}}
+    doc = {"prospects": [row]}
+    result = truth.conflicts_for("g", projection=doc, now=NOW)
+    assert [r["severity"] for r in result["conflicts"]] == ["P1", "P2"]
+    assert result["review"]["state"] == "awaiting_decision"
+    assert all(c["blocks_action"] for c in result["conflicts"])
+    review = row["research"]["review_lifecycle"]
+    review.update(status="CONFLICT_RESOLVED", new_stance="HOLD", conflict_resolved_at=NOW.isoformat(), evidence_refs=["thesis-1", "v2"])
+    for c in row["conflicts"]:
+        c["resolved"] = True
+    assert truth.conflicts_for("g", projection=doc)["review"]["resolution_proven"] is False
+    review["readback_verification"] = "CIO-owned linked publication and canonical record agree"
+    result = truth.conflicts_for("g", projection=doc)
+    assert result["review"]["state"] == "decided" and all(c["resolved"] for c in result["conflicts"])
+
+
+def test_guid_batch_never_uses_a_ticker_match_as_identity():
+    doc = {"prospects": [{"security_guid": "known", "symbol": "A", "stance": "HOLD", "conviction": 70}]}
+    def identity(symbol, **kw):
+        return {"security_guid": "known", "identity_status": "CONFIRMED" if symbol == "A" else "UNRESOLVED"}
+    result = truth.stances_for_symbols(["A", "B"], projection=doc, identity_resolver=identity, now=NOW)
+    assert result["A"]["stance"] == "HOLD"
+    assert result["B"]["stance"] is None and result["B"]["gap"]
+
+
+def test_status_scorecard_and_observability_share_evaluations(tmp_path):
+    status = {"as_of": NOW.isoformat(), "evaluations": [
+        {"id": "hermes_research", "title": "Hermes", "status": "working", "verdict": "36 completions",
+         "metrics": [{"label": "DeepSeek ok 24h", "value": 36}]}],
+        "summary": {"working": 1, "degraded": 0, "blocked": 0, "dark": 0}}
+    sc = truth.scorecard_payload(canonical_status=status, root=tmp_path, now=NOW)
+    ob = truth.observability_payload(canonical_status=status, root=tmp_path, now=NOW)
+    row = next(r for r in ob["scorecards"] if r["name"] == "Hermes / Research")
+    assert row["status"] == sc["tiles"][0]["status"].upper() == "WORKING"
+    assert row["metrics"] == sc["tiles"][0]["metrics"]
+
+
+def test_header_holdings_risk_have_identical_totals_count_quote_and_stop_state(tmp_path, holdings):
+    doc = truth.resolve(tmp_path, NOW, inputs={"holdings": holdings, "companies": {}, "policy": {}, "cio_status": {},
+            "broker_stops": [{"account": "schwab_roth", "symbol": "SPCX", "status": "pending_activation", "stop_price": 90}],
+            "approvals": [{"kind": "paper", "count": 3}], "paper_stats": {"closed": 10, "wins": 5}})
+    header = truth.overview_payload({"periods": {"1D": {"change": 123}}}, document=doc)
+    book = truth.holdings_payload({"holdings": [{"symbol": "SPCX", "account": "schwab_roth", "price": 777}]}, document=doc)
+    risk = truth.risk_payload(document=doc)
+    assert header["position_count"] == book["position_count"] == risk["position_count"] == 3
+    assert header["portfolio_value"] == book["total_value"] == 3699
+    assert header["today_change"] == header["periods"]["1D"]["change"] == book["today_change"] == -57
+    a = next(r for r in book["holdings"] if r["symbol"] == "SPCX" and r["account_id"] == "schwab_roth_ira")
+    b = next(r for r in risk["positions"] if r["symbol"] == "SPCX" and r["account_id"] == "schwab_roth_ira")
+    assert a["price"] == b["price"] == 100
+    assert a["stop_state"] == b["stop_state"] == "pending_activation"
+
+
+def test_basis_does_not_present_partial_lots_as_complete_profit():
+    p = {"symbol": "AMANX", "shares": 100, "price": 50.72, "market_value": 5072,
+         "cost_basis": 1229.8, "basis_partial": True}
+    assert truth.basis_for(p)["unrealized_pl_pct"] is None
+    p["cost_basis_broker"] = 5072
+    result = truth.basis_for(p)
+    assert result["cost_basis_usd"] == 5072 and result["unrealized_pl_usd"] == 0
+    assert result["conflicts"]
+
+
+def test_sale_proceeds_are_never_realized_profit_without_full_fifo_basis():
+    event = {"symbol": "NAVN", "account": "schwab_rollover", "shares_sold": 100,
+             "sold_at": "2026-10-23T15:00:00-04:00", "proceeds_usd": 13009.73, "realized_pnl": 13009.73}
+    assert truth.realized_for_sale(event, round_trips=[])["realized_pnl"] is None
+    rows = [{"symbol": "NAVN", "account": "schwab_rollover_ira", "qty": 100, "entry_price": 100,
+             "net_pnl": 3009.73, "exit_time": event["sold_at"]}]
+    result = truth.realized_for_sale(event, round_trips=rows)
+    assert result["realized_pnl"] == 3009.73 and result["cost_basis_usd"] == 10000
+    rows[0]["qty"] = 50
+    assert truth.realized_for_sale(event, round_trips=rows)["realized_pnl"] is None
+
+
+def test_execution_display_uses_flags_without_changing_authority():
+    payload = {"live_unlocked": False, "armed_for_execution": True, "execution_model": "ENABLED"}
+    result = truth.execution_status(payload)
+    assert result["execution_display_status"] == "locked" and result["armed_for_execution"] is False
+    assert "ENABLED" not in result["execution_model"]
+    assert payload["armed_for_execution"] is True
+
+
+def test_empty_named_tree_never_creates_store_directories(tmp_path):
+    before = list(tmp_path.rglob("*"))
+    doc = truth.resolve(tmp_path, NOW)
+    assert doc["positions"]["loss_at_stop_usd"] is None
+    assert doc["stops"]["active_count"] is None
+    assert list(tmp_path.rglob("*")) == before
+
+
+def test_engine_inputs_use_oldest_material_time_and_reject_naive_time(holdings, tmp_path):
+    row = {"security_guid": "g", "symbol": "SPCX", "stance": "ADD", "conviction": 70,
+           "as_of": NOW.isoformat(), "evidence_at": NOW.isoformat(), "conviction_components": {
+               "thesis": {"value": 70, "weight": 0.5, "source": "thesis", "evidence_at": "2026-09-01T12:00:00Z"},
+               "quote": {"value": 80, "weight": 0.5, "source": "quote", "evidence_at": NOW.isoformat()}}}
+    for p in holdings["holdings"]:
+        if p["symbol"] == "SPCX":
+            p["security_guid"] = "g"
+    doc = truth.resolve(tmp_path, NOW, inputs={"holdings": holdings, "companies": {}, "cio_status": {}, "policy": {}, "broker_stops": []})
+    result = truth.security_inputs_for("g", document=doc, projection={"prospects": [row]}, now=NOW)
+    assert result["canonical"]["as_of"] == "2026-09-01T12:00:00+00:00"
+    assert result["context"]["held"] is True
+    row["conviction_components"]["thesis"]["evidence_at"] = "2026-09-01T12:00:00"
+    result = truth.security_inputs_for("g", document=doc, projection={"prospects": [row]}, now=NOW)
+    assert result["canonical"]["as_of"] is None and result["gap"]
+
+
+def test_unified_approval_projection_is_never_added_to_legacy_counts():
+    unified = {"total": 7, "by_type": {"grant": 3, "trade": 4}, "source": "operator queue",
+               "as_of": NOW.isoformat(), "stale": False, "gap": None}
+    result = truth.approvals_for(projection=unified, rows=[{"kind": "paper", "count": 38}], now=NOW)
+    assert result == unified
+    assert result is not unified

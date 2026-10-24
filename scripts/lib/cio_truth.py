@@ -179,7 +179,7 @@ def _conflict_view(guid, row, raw, review) -> dict:
     resolved = bool(raw.get("resolved") and review.get("resolution_proven") and review.get("conflict_id") in (None, cid))
     severity = raw.get("severity")
     if severity not in ("P0", "P1", "P2", "P3"):
-        severity = "P1" if field in ("held", "identity", "catalyst_identity", "stop", "basis", "decision", "entry_state") else "P2"
+        severity = None  # Classification belongs exclusively to the conflict engine.
     summary = " · ".join(f"{s['source_label']}: {s['value'] if s['value'] is not None else 'not recorded'}" for s in sides)
     return {"id": cid, "security_guid": guid, "field": field, "label": field.replace("_", " ").capitalize(),
             "severity": severity, "summary": summary, "sides": sides,
@@ -211,6 +211,25 @@ def _review_view(row) -> dict:
     return out
 
 
+def _material_clock(row) -> tuple[str | None, list[dict], str | None]:
+    """Oldest material evidence clock, never the projection's assembly time.
+
+    W10 owns freshness thresholds. Naive/unreadable input times remain missing
+    so its T1/R1 adapter can emit DATA_ERROR rather than invent a UTC offset.
+    """
+    from .cio_company_facts import timestamp
+    explicit = row.get("inputs_as_of")
+    components = [{"source": c.get("source"), "value": c.get("value"),
+                   "as_of": c.get("evidence_at"), "weight": c.get("weight")}
+                  for c in (row.get("conviction_components") or {}).values()
+                  if isinstance(c, dict) and c.get("value") is not None and (_number(c.get("weight")) or 0) > 0]
+    raw = [explicit] if explicit is not None else [c["as_of"] for c in components] if components else [row.get("evidence_at")]
+    dates = [timestamp(value) for value in raw]
+    if not dates or any(value is None for value in dates):
+        return None, components, "oldest material input time unavailable or lacks timezone"
+    return min(dates).isoformat(), components, None
+
+
 def stance_for(security_guid: str, *, db_query=None, now: datetime | None = None,
                projection: dict[str, Any] | None = None, **projection_kwargs) -> dict[str, Any]:
     """One GUID's CIO stance/conviction, conflicts and provenance.
@@ -226,20 +245,25 @@ def stance_for(security_guid: str, *, db_query=None, now: datetime | None = None
         projection = get_prospects(db_query=db_query, symbols=[guid], now=now, **projection_kwargs)
     doc = projection or {}
     rows = [r for r in doc.get("prospects", []) if str(r.get("security_guid") or "") == guid and guid]
-    row = max(rows, key=lambda r: (str(r.get("as_of") or ""), int(r.get("revision") or 0)), default={})
+    row = max(rows, key=lambda r: (int(r.get("revision") or 0), str(r.get("as_of") or "")), default={})
     missing = not row or row.get("stance") is None or row.get("conviction") is None
+    material_at, material_inputs, material_gap = _material_clock(row)
     review = _review_view(row)
     conflicts = [_conflict_view(guid, row, c, review) for c in row.get("conflicts") or [] if isinstance(c, dict)]
-    conflicts = sorted({c["id"]: c for c in conflicts}.values(), key=lambda c: (c["resolved"], c["severity"], c["id"]))
+    conflicts = sorted({c["id"]: c for c in conflicts}.values(), key=lambda c: (c["resolved"], c["severity"] or "Z", c["id"]))
     return {
         "security_guid": guid or None,
         "symbol": row.get("symbol"),
         "stance": row.get("stance"),
         "conviction": row.get("conviction"),
         "conflicts": conflicts,
+        "conflict_source": "saved CIO record diagnostics; engine findings classify flags",
         "review": review,
         "revision": row.get("revision"),
         "as_of": row.get("as_of") or doc.get("as_of"),
+        "inputs_as_of": material_at,
+        "material_inputs": material_inputs,
+        "input_time_gap": {"reason": material_gap} if material_gap else None,
         "age_hours": row.get("age_hours", doc.get("age_hours")),
         "stale": bool(row.get("stale", doc.get("stale", True))),
         "source": deepcopy(doc.get("source") or {}),
@@ -252,6 +276,70 @@ def conflicts_for(security_guid: str, **kwargs) -> dict:
     stance = stance_for(security_guid, **kwargs)
     return {k: stance[k] for k in ("security_guid", "symbol", "stance", "conviction", "conflicts", "review",
                                    "source", "as_of", "stale", "gap")}
+
+
+def stances_for_symbols(symbols, *, root=None, db_query=None, projection=None, now=None,
+                        identity_resolver=None, **projection_kwargs) -> dict:
+    """One batch projection and confirmed registry lookups; no ticker/GUID guess."""
+    from .identity_carriage import resolve_security_identity
+    from .data_broker.cio_prospect import get_prospects
+    resolve_identity = identity_resolver or resolve_security_identity
+    names = list(dict.fromkeys(str(s).upper() for s in symbols if str(s).strip()))
+    if projection is None:
+        if root is not None:
+            projection_kwargs.setdefault("shadow_base", Path(root) / "data/cio/cio_prospect_shadow.json")
+        projection = get_prospects(db_query=db_query, now=now, **projection_kwargs)
+    result = {}
+    for symbol in names:
+        identity = resolve_identity(symbol, root=root)
+        guid = identity.get("security_guid") if identity.get("identity_status") == "CONFIRMED" else None
+        result[symbol] = {**stance_for(guid, projection=projection, now=now),
+                          "identity_status": identity.get("identity_status", "UNRESOLVED")}
+    return result
+
+
+def conflict_inputs_payload(query=None, *, db_query=None, now=None, projection=None) -> dict:
+    q = query or {}
+    guid = q.get("security_guid")
+    guid = guid[0] if isinstance(guid, list) and guid else guid
+    result = conflicts_for(guid, db_query=db_query, now=now, projection=projection)
+    return {"ok": not bool(result["gap"]), "read_only": True, **result}
+
+
+def conflict_payload(query=None, *, root=None, db_query=None, now=None, projection=None, engine_reader=None) -> dict:
+    """Pass the engine read projection unchanged; never reinterpret old flags.
+
+    W10 owns the registered reader and query filtering. It may be injected after
+    that source is accepted. Until then absence is an explicit service gap.
+    """
+    now = now or datetime.now(timezone.utc)
+    if projection is None and engine_reader is not None:
+        projection = engine_reader(root=root, query=query or {}, now=now)
+    if isinstance(projection, dict):
+        return deepcopy(projection)
+    return {"ok": False, "read_only": True, "findings": [],
+            **_evidence("conflict engine read projection", None, now,
+                        reason="conflict engine accepted source not yet integrated")}
+
+
+def security_inputs_for(security_guid, *, document, projection=None, db_query=None, now=None) -> dict:
+    """Canonical facts for W10's Input/Subject adapters; no comparison rules."""
+    stance = stance_for(security_guid, projection=projection, db_query=db_query, now=now)
+    positions = [r for r in document["positions"]["rows"] if (_number(r.get("market_value")) or 0) >= 100]
+    held_rows = [r for r in positions if r.get("security_guid") == security_guid]
+    complete = bool(document["portfolio"]["holdings"]) and all(r.get("security_guid") for r in positions)
+    held = True if held_rows else False if complete else None
+    return {"security_guid": security_guid, "symbol": stance["symbol"],
+            "canonical": {"source": "CIO record", "value": stance["stance"], "as_of": stance["inputs_as_of"],
+                          "subject_id": security_guid, "role": "claim"},
+            "record_as_of": stance["as_of"], "material_inputs": stance["material_inputs"],
+            "conviction": stance["conviction"], "context": {"held": held,
+                "accounts": [r["account_id"] for r in held_rows]},
+            "protection_inputs": [{"source": "stop_last_known", "value": r["stop_state"],
+                                   "as_of": r.get("stop_captured_at"), "account": r["account_id"],
+                                   "subject_id": security_guid, "role": "protection"} for r in held_rows],
+            "saved_diagnostics": stance["conflicts"], "review": stance["review"],
+            "gap": stance["gap"] or stance["input_time_gap"] or ({"reason": "held identity coverage incomplete"} if held is None else None)}
 
 
 def _read_json(path: Path) -> dict:
@@ -275,13 +363,17 @@ def _query_rows(db_query, sql, params=None) -> list[dict] | None:
         return None
 
 
-def approvals_for(*, db_query=None, rows=None, now=None) -> dict:
+def approvals_for(*, db_query=None, rows=None, projection=None, now=None) -> dict:
     """Typed queue counts; paper/broker proposals are disjoint account groups.
 
     All counts use complete COUNT queries, never page lengths. A missing queue
     makes the combined total unknown while preserving other measured counts.
     """
     now = now or datetime.now(timezone.utc)
+    if projection is not None:
+        # W11's unified operator queue owns de-duplication and typed counts.
+        # Never add its total to legacy queue counts at the display layer.
+        return deepcopy(projection)
     if rows is None:
         rows = _query_rows(db_query, """
             SELECT 'actions' AS kind, COUNT(*) AS count, NULL::text AS account FROM action_queue WHERE status='pending'
@@ -395,6 +487,7 @@ def capital_for(portfolio: dict, *, plan=None, policy=None, now=None) -> dict:
             "current_cash_pct": round(100 * cash / portfolio["total_usd"], 2)
             if cash is not None and portfolio.get("total_usd") else None,
             "post_plan_cash_usd": _number(plan.get("post_plan_cash_usd")),
+            "post_plan_cash_pct": _number(plan.get("post_plan_cash_pct")),
             **_evidence("canonical holdings + CIO capital plan + operator investment policy",
                         plan.get("as_of") or portfolio.get("as_of"), now, reason="; ".join(gaps) or None)}
 
@@ -409,7 +502,7 @@ def status_for(root, *, now=None, db_query=None, scorecard=None) -> dict:
     now = now or datetime.now(timezone.utc)
     if scorecard is None:
         from .cio_scorecard import get_cio_scorecard
-        scorecard = get_cio_scorecard(root=Path(root))
+        scorecard = get_cio_scorecard(root=Path(root), materialized_only=True)
     evaluations = deepcopy(scorecard.get("tiles") or [])
     rows = _query_rows(db_query, "SELECT recommendation,status,created_at FROM hermes_external_research "
                        "WHERE lane='deepseek' AND created_at >= %s", (now - timedelta(hours=24),))
@@ -478,7 +571,7 @@ def observability_payload(*, root=None, now=None, db_query=None, canonical_statu
         root = production_state_root()
     root = Path(root)
     status = canonical_status or status_for(root, now=now, db_query=db_query)
-    out = build_observability(home=_light_home(root), brain=_light_brain(root), research_ops={},
+    out = build_observability(home=_light_home(root), brain=_light_brain(root, materialized_only=True), research_ops={},
                               data_health=_light_health(root), now=status.get("as_of"), canonical_status=status)
     out["truth"] = status
     return out
@@ -535,6 +628,158 @@ def overview_payload(payload, *, root=None, now=None, db_query=None, inputs=None
                              for r in p["accounts"]]
     out.setdefault("trade_ai", {}).update(market_regime=doc["regime"]["label"], vix=doc["regime"]["vix"],
                                            vix_observation_time=doc["regime"]["vix_as_of"], regime_truth=doc["regime"])
+    return out
+
+
+def basis_for(position: dict, *, mark=None) -> dict:
+    """Read the declared broker basis; partial/pre-window basis stays unknown."""
+    broker = _number(position.get("cost_basis_broker"))
+    stored = _number(position.get("cost_basis"))
+    source = position.get("cost_basis_source")
+    if broker is None and source == "broker_api":
+        broker = stored
+    basis = broker if broker is not None else stored
+    reason = None
+    if ((position.get("basis_partial") or position.get("basis_unknown")) and broker is None) or (basis is not None and basis <= 0):
+        basis, reason = None, "basis unknown — incomplete or pre-window lot history"
+    elif basis is None:
+        reason = "basis unknown — no recorded acquisition cost"
+    value = _number(position.get("market_value"))
+    if mark is not None:
+        shares = _number(position.get("shares"))
+        value = round(mark * shares, 2) if shares is not None else None
+    pnl = round(value-basis, 2) if value is not None and basis is not None else None
+    conflicts = []
+    if broker is not None and stored is not None and abs(broker-stored) > 1:
+        conflicts.append({"field": "cost_basis", "broker": broker, "stored": stored,
+                          "reason": "declared broker basis differs from the stored alternative"})
+    return {"cost_basis_usd": basis, "unrealized_pl_usd": pnl,
+            "unrealized_pl_pct": round(100*pnl/basis, 2) if pnl is not None and basis else None,
+            "source": "broker_api" if broker is not None else source,
+            "status": "unknown" if reason else "recorded", "gap": {"reason": reason} if reason else None,
+            "conflicts": conflicts}
+
+
+def holdings_payload(payload, *, root=None, now=None, db_query=None, inputs=None, document=None) -> dict:
+    """Keep enrichment fields; quote, valuation, basis and stops share CIO truth."""
+    doc = document or resolve(root, now, db_query=db_query, inputs=inputs)
+    out = deepcopy(payload)
+    previous = {(canonical_key(r.get("account") or r.get("account_id")), str(r.get("symbol") or "").upper()): r
+                for r in out.get("holdings") or []}
+    stop_by_key = {(r["account_id"], r["symbol"]): r for r in doc["stops"]["rows"]}
+    rows = []
+    for fact in doc["portfolio"]["holdings"]:
+        key = fact["account_id"], str(fact.get("symbol") or "").upper()
+        row = {**previous.get(key, {}), **deepcopy(fact)}
+        # current_price is a legacy display alias, never a second quote read.
+        row["current_price"] = row.get("price")
+        basis = basis_for(row, mark=_number(row.get("price")))
+        if not row.get("is_cash"):
+            row.update(cost_basis=basis["cost_basis_usd"], gain_loss=basis["unrealized_pl_usd"],
+                       gain_loss_pct=basis["unrealized_pl_pct"], basis_truth=basis)
+        row.update(stop_by_key.get(key) or {})
+        rows.append(row)
+    p = doc["portfolio"]
+    out.update(holdings=rows, count=len(rows), position_count=p["position_count"], total_value=p["total_usd"],
+               total_cash=p["cash_usd"], today_change=p["day_pl_usd"], position_counts=p["position_counts"],
+               truth={k: p[k] for k in ("source", "as_of", "stale", "gap")})
+    return out
+
+
+def realized_for_sale(event: dict, *, round_trips=None, db_query=None) -> dict:
+    """FIFO journal P&L for this exact sale's account/date/quantity.
+
+    The journal writer already performs FIFO matching. A partial window or
+    unmatched sale is unknown; proceeds are never a realized profit fallback.
+    """
+    from zoneinfo import ZoneInfo
+    sold_at = _timestamp(event.get("sold_at"))
+    if len(str(event.get("sold_at") or "")) == 10 and sold_at is not None:
+        # deploy_events carries an ET business DATE, not UTC midnight.
+        sold_at = sold_at.replace(tzinfo=ZoneInfo("America/New_York"))
+    account = canonical_key(event.get("account"))
+    symbol = str(event.get("symbol") or "").upper()
+    qty = _number(event.get("shares_sold"))
+    if round_trips is None and sold_at is not None:
+        start = sold_at.astimezone(ZoneInfo("America/New_York")).replace(hour=0, minute=0, second=0, microsecond=0)
+        round_trips = _query_rows(db_query, "SELECT account,symbol,qty,entry_price,exit_price,exit_time,net_pnl,basis_status "
+                                 "FROM schwab_round_trips WHERE upper(symbol)=%s AND exit_time >= %s "
+                                 "AND exit_time < %s AND canary IS NOT TRUE",
+                                 (symbol, start, start+timedelta(days=1)))
+    rows = []
+    if sold_at and qty is not None:
+        date = sold_at.astimezone(ZoneInfo("America/New_York")).date()
+        rows = [r for r in round_trips or [] if canonical_key(r.get("account")) == account
+                and str(r.get("symbol") or "").upper() == symbol and _timestamp(r.get("exit_time"))
+                and _timestamp(r["exit_time"]).astimezone(ZoneInfo("America/New_York")).date() == date]
+    matched = _sum_known(rows, "qty") if rows else None
+    known = bool(rows and matched is not None and qty is not None and abs(matched-qty) < 0.000001
+                 and all(_number(r.get("entry_price")) is not None and _number(r.get("entry_price")) > 0
+                         and _number(r.get("net_pnl")) is not None for r in rows))
+    return {"realized_pnl": _sum_known(rows, "net_pnl") if known else None,
+            "cost_basis_usd": round(sum(float(r["qty"])*float(r["entry_price"]) for r in rows), 2) if known else None,
+            "basis_status": "known_fifo" if known else "unknown", "source": "schwab_round_trips FIFO journal",
+            "gap": None if known else {"reason": "basis unknown — exact sale not fully matched in FIFO ledger"}}
+
+
+def redeploy_payload(payload, *, db_query=None, round_trips=None) -> dict:
+    """Correct the event's displayed realized P&L without rewriting its store."""
+    out = deepcopy(payload)
+    events = out.get("events") or []
+    if round_trips is None and events:
+        symbols = sorted({str(e.get("symbol") or "").upper() for e in events})
+        dates = [_timestamp(e.get("sold_at")) for e in events]
+        dates = [d for d in dates if d]
+        round_trips = _query_rows(db_query, "SELECT account,symbol,qty,entry_price,exit_price,exit_time,net_pnl,basis_status "
+                                  "FROM schwab_round_trips WHERE upper(symbol)=ANY(%s) AND exit_time >= %s "
+                                  "AND exit_time < %s AND canary IS NOT TRUE",
+                                  (symbols, min(dates)-timedelta(days=1), max(dates)+timedelta(days=2))) if dates else []
+    for event in events:
+        basis = realized_for_sale(event, round_trips=round_trips or [])
+        event.update(realized_pnl=basis["realized_pnl"], basis_truth=basis,
+                     account_id=canonical_key(event.get("account")), account_label=account_label(event.get("account")))
+    return out
+
+
+def positions_payload(payload, *, root=None, now=None, db_query=None, inputs=None, document=None) -> dict:
+    """Shared current position facts for Open Trades/stop display readers.
+
+    Other intelligence fields and historical rows retain their existing scope.
+    No execution module is imported or called by this adapter.
+    """
+    doc = document or resolve(root, now, db_query=db_query, inputs=inputs)
+    out = deepcopy(payload)
+    facts = {(r["account_id"], str(r.get("symbol") or "").upper()): r for r in doc["positions"]["rows"]}
+    for key in ("trades", "positions", "rows"):
+        for row in out.get(key) or []:
+            account = canonical_key(row.get("account") or row.get("account_id"))
+            fact = facts.get((account, str(row.get("symbol") or "").upper()))
+            row.update(account_id=account, account_label=account_label(account))
+            if fact:
+                for field in ("price", "shares", "market_value", "stop_price", "stop_source", "stop_state",
+                              "stop_captured_at", "broker_protected", "basis_truth", "distance_to_stop_pct", "loss_at_stop_usd"):
+                    row[field] = deepcopy(fact.get(field))
+                row["current_price"] = row["price"]
+                row["cost_basis"] = fact["basis_truth"]["cost_basis_usd"]
+                row["gain_loss"] = fact["basis_truth"]["unrealized_pl_usd"]
+                row["gain_loss_pct"] = fact["basis_truth"]["unrealized_pl_pct"]
+    out.update(position_count=doc["portfolio"]["position_count"], position_counts=doc["portfolio"]["position_counts"])
+    return out
+
+
+def execution_status(payload: dict) -> dict:
+    """Display text from supplied gate flags. Never imports or changes a gate."""
+    out = deepcopy(payload)
+    live = out.get("live_unlock") or {}
+    unlocked = live.get("live_unlocked", out.get("live_unlocked"))
+    blockers = out.get("current_blockers") or out.get("blockers") or []
+    allowed = unlocked is True and not blockers and out.get("operator_approved_live_submit_possible") is True
+    out["execution_model"] = ("Operator approval and per-order confirmation required; live execution gates currently allow this path."
+                              if allowed else "Live execution is locked or blocked by the current execution gates."
+                              if unlocked is False or blockers else "Live execution status is not fully measured.")
+    out["execution_display_status"] = "eligible_for_operator_confirmation" if allowed else "locked" if unlocked is False or blockers else "unknown"
+    if "armed_for_execution" in out:
+        out["armed_for_execution"] = bool(out["armed_for_execution"] and allowed)
     return out
 
 
@@ -640,6 +885,7 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
         if r["is_cash"] or r.get("is_loan") or (_number(r.get("shares", r.get("quantity"))) or 0) <= 0:
             continue
         p = deepcopy(r)
+        p["basis_truth"] = basis_for(p, mark=_number(p.get("price")))
         stop = stop_for(r["account_id"], r.get("symbol"), broker_rows=broker, planned=planned, now=now)
         p.update({k: v for k, v in stop.items() if k not in ("source", "as_of", "age_hours", "stale", "gap")})
         p["stop_evidence"] = {k: stop[k] for k in ("source", "as_of", "age_hours", "stale", "gap")}
@@ -655,14 +901,24 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
              "nearest": None, "awaiting_fill": [],
              **_evidence("stop_last_known > stops.json, per account+symbol", min(stop_times) if stop_times else None,
                          now, reason="persisted broker stop observations unavailable" if broker is None else None)}
+    if broker is None:
+        for key in ("active_count", "pending_count", "filled_count", "unprotected_count"):
+            stops[key] = None
     # Current holdings and the same stop states supply the display risk summary;
     # stale pre-market risk rows never substitute for the current position set.
-    protected_loss = sum(max(0, (_number(p.get("price")) or 0) - p["stop_price"])
-                         * (_number(p.get("shares")) or 0) for p in positions if p["broker_protected"])
-    unprotected_mv = _sum_known([p for p in positions if not p["broker_protected"]], "market_value")
-    position_section = {"rows": positions, "loss_at_stop_usd": round(protected_loss, 2),
+    losses = []
+    for p in positions:
+        price, shares, sp = _number(p.get("price")), _number(p.get("shares")), p.get("stop_price")
+        p["distance_to_stop_pct"] = round(100 * (price-sp) / price, 2) if p["broker_protected"] and price and sp else None
+        p["loss_at_stop_usd"] = round(max(0, price-sp) * shares, 2) if (
+            p["broker_protected"] and price is not None and sp is not None and shares is not None) else None
+        if p["broker_protected"]:
+            losses.append(p["loss_at_stop_usd"])
+    protected_loss = round(sum(losses), 2) if portfolio["holdings"] and broker is not None and all(v is not None for v in losses) else None
+    unprotected_mv = _sum_known([p for p in positions if not p["broker_protected"]], "market_value") if portfolio["holdings"] and broker is not None else None
+    position_section = {"rows": positions, "loss_at_stop_usd": protected_loss,
                         "portfolio_heat_pct": round(protected_loss / portfolio["total_usd"] * 100, 3)
-                        if portfolio.get("total_usd") else None,
+                        if portfolio.get("total_usd") and protected_loss is not None else None,
                         "unprotected_value_usd": unprotected_mv, "largest_name": None,
                         "loss_basis": "loss to observed active stops; unprotected downside is not bounded",
                         **{k: portfolio[k] for k in ("source", "as_of", "stale", "gap")}}
@@ -672,6 +928,10 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
     if by_symbol and portfolio.get("total_usd"):
         symbol = max(by_symbol, key=by_symbol.get)
         position_section["largest_name"] = {"symbol": symbol, "pct": round(100 * by_symbol[symbol] / portfolio["total_usd"], 3)}
+    position_section["concentration"] = [{"symbol": symbol, "value_usd": value,
+                                           "pct": round(100 * value / portfolio["total_usd"], 3)
+                                           if portfolio.get("total_usd") else None}
+                                          for symbol, value in sorted(by_symbol.items(), key=lambda r: -r[1])]
     # No protection inference from a crossed mark: fills remain a separate sync.
     distances = []
     for p in positions:
@@ -683,6 +943,7 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
                 stops["awaiting_fill"].append({"symbol": p["symbol"], "account_id": p["account_id"], "stop_price": sp,
                                                "reason": "mark at or below observed stop; fill not yet confirmed"})
     stops["nearest"] = min(distances, key=lambda r: abs(r["distance_pct"]), default=None)
+    stops["awaiting_fill_count"] = len(stops["awaiting_fill"])
     companies = inputs.get("companies")
     if companies is None:
         try:
@@ -712,7 +973,9 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
             sectors = get_sector_signals(db_query)
         except Exception:
             sectors = None
-    approvals = approvals_for(db_query=db_query, rows=inputs.get("approvals"), now=now)
+    approval_input = inputs.get("approvals")
+    approvals = approvals_for(db_query=db_query, rows=approval_input if isinstance(approval_input, list) else None,
+                              projection=approval_input if isinstance(approval_input, dict) else None, now=now)
     status = inputs.get("cio_status") if "cio_status" in inputs else status_for(root, now=now, db_query=db_query)
     do_now = inputs.get("do_now") if "do_now" in inputs else do_now_for(positions, approvals, now=now)
     return {"read_only": True, "financial_action": False, "as_of": now.isoformat(),
@@ -725,5 +988,8 @@ def resolve(root=None, now=None, *, db_query=None, inputs=None) -> dict:
             "do_now": do_now,
             "companies": {"by_guid": companies, **_evidence("CIO InstrumentRecord research.company_facts", None, now,
                           reason="CIO company facts unavailable" if not companies else None)},
+            "conflicts": deepcopy(inputs["conflicts"]) if "conflicts" in inputs else {
+                "findings": [], **_evidence("conflict engine read projection", None, now,
+                                            reason="conflict engine accepted source not yet integrated")},
             "sectors": sectors or {"sectors": {}, **_evidence("sector_momentum.get_sector_signals", None, now,
                           reason="multi-horizon sector projection unavailable")}}

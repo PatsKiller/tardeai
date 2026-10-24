@@ -12,10 +12,10 @@ Data sources:
   - mark_quotes DB        (beta, delta approximations from daily returns)
   - stop_confirmations DB (operator-confirmed stop levels)
 
-Status: ADDITIVE. Does not replace the broker-protective-stop overlay (that still
-requires the live open_trades_intelligence import in the endpoint handler). Covers
-the JSON-file aggregation (risk heat, position risk, stop health, correlation)
-which is ~70% of the endpoint's work.
+W1: stop state/source are projected read-only through cio_truth from persisted
+observations. Pending/planned/filled levels are not active protection. A reader
+must not overwrite this source with another live-stop lookup. The endpoint
+adapter exposes positions_basis and positions_as_of with the same snapshot.
 """
 from __future__ import annotations
 
@@ -182,6 +182,8 @@ def build_risk_snapshot(db_query=None) -> dict[str, Any]:
     holdings = _load_json(STATE_DIR / "holdings.json") or {}
     rm, positions_basis, positions_at = _live_risk_basis(rm, holdings, errors)
 
+    from ..cio_truth import portfolio_for
+    portfolio_truth = portfolio_for(holdings)
     positions = rm.get("positions", [])
     _overlay_broker_stops(positions, errors, db_query=db_query)
 
@@ -332,7 +334,8 @@ def build_risk_snapshot(db_query=None) -> dict[str, Any]:
             "total_unprotected_mv": unprotected_mv,
             "total_value": total_value or rm.get("portfolio_total_value", 0),
             "total_at_risk": total_at_risk,
-            "position_count_real": len([p for p in position_risk if not p.get("risk_excluded")]),
+            "position_count_real": portfolio_truth["position_count"],
+            "position_counts": {**portfolio_truth["position_counts"], "risk_rows": len(real_positions)},
             "position_count_paper": len([p for p in position_risk if p.get("risk_excluded")]),
         },
         "positions": position_risk,

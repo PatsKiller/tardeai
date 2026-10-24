@@ -67,7 +67,8 @@ def _tail_jsonl(path: Path, *, limit: int = 200, since_hours: float | None = Non
     if since_hours is not None:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=since_hours)
     try:
-        lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        from .jsonl_bounded import tail_jsonl_lines
+        lines = tail_jsonl_lines(path, max(limit * 4, 800), max_bytes=2 * 1024 * 1024)
     except OSError:
         return rows
     for line in reversed(lines[-max(limit * 4, 800):]):
@@ -227,9 +228,9 @@ def _hermes_tile(root: Path) -> dict[str, Any]:
     )
 
 
-def _spine_tile(root: Path) -> dict[str, Any]:
+def _spine_tile(root: Path, *, materialized_only: bool = False) -> dict[str, Any]:
     organic = _read_json(root / "data" / "runtime" / "spine_llm_organic.json")
-    if not isinstance(organic, dict):
+    if not isinstance(organic, dict) and not materialized_only:
         try:
             from scripts.ops.spine_llm_organic_metric import measure
             organic = measure(root)
@@ -367,7 +368,7 @@ def _outcomes_tile(brain: dict[str, Any] | None) -> dict[str, Any]:
         {"label": "Not price-resolvable", "value": not_resolvable},
         {"label": "MBI", "value": influence},
     ]
-    if not brain or (not learning and not cockpit and "_serving" not in brain and "learning" not in brain):
+    if not learning and not cockpit:
         # Light path often only has _serving — outcomes stay dark honestly.
         if not learning and not cockpit:
             return _tile(
@@ -624,7 +625,7 @@ def _live_learning_cockpit(root: Path) -> dict[str, Any] | None:
         return None
 
 
-def _light_brain(root: Path) -> dict[str, Any]:
+def _light_brain(root: Path, *, materialized_only: bool = False) -> dict[str, Any]:
     """Learning/outcomes slice from disk + serving pin — never rebuilds brain."""
     brain: dict[str, Any] = {"_serving": _light_serving(root)}
     for rel in (
@@ -639,7 +640,7 @@ def _light_brain(root: Path) -> dict[str, Any]:
             else:
                 brain["learning_cockpit"] = doc
             break
-    live = _live_learning_cockpit(root)
+    live = None if materialized_only else _live_learning_cockpit(root)
     if live:
         brain["learning_cockpit"] = {**(brain.get("learning_cockpit") or {}), **live}
         if isinstance(brain.get("learning"), dict):
@@ -667,13 +668,14 @@ def build_scorecard(
     home: dict[str, Any] | None = None,
     brain: dict[str, Any] | None = None,
     health: dict[str, Any] | None = None,
+    materialized_only: bool = False,
 ) -> dict[str, Any]:
     """Pure-ish builder. Callers may inject home/brain/health for hermetic tests."""
     root = Path(root) if root else Path(__file__).resolve().parents[2]
     tiles = [
         _desk_telegram_tile(root),
         _hermes_tile(root),
-        _spine_tile(root),
+        _spine_tile(root, materialized_only=materialized_only),
         _decisions_tile(home),
         _outcomes_tile(brain),
         _platform_tile(brain, health),
@@ -707,16 +709,16 @@ def build_scorecard(
     }
 
 
-def get_cio_scorecard(*, root: Path | None = None) -> dict[str, Any]:
+def get_cio_scorecard(*, root: Path | None = None, materialized_only: bool = False) -> dict[str, Any]:
     """Live aggregation for GET /api/v3/cio/scorecard.
 
     Disk/runtime collectors only. Never nests get_cio_home / get_cio_brain_v1.
     """
     root = Path(root) if root else Path(__file__).resolve().parents[2]
     home = _light_home(root)
-    brain = _light_brain(root)
+    brain = _light_brain(root, materialized_only=materialized_only)
     health = _light_health(root)
-    return build_scorecard(root=root, home=home, brain=brain, health=health)
+    return build_scorecard(root=root, home=home, brain=brain, health=health, materialized_only=materialized_only)
 
 
 __all__ = [

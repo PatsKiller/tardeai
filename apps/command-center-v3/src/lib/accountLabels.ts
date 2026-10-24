@@ -11,6 +11,7 @@ export const UNLABELLED = 'Unlabelled account'
 
 export const ACCOUNT_ALIASES: Record<string, string> = {
   schwab_roth: 'schwab_roth_ira',
+  schwab_rollover: 'schwab_rollover_ira',
   schwab_individual: 'schwab_taxable',
   alpaca_paper: 'tradeai_automated',
 }
