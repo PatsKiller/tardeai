@@ -195,7 +195,7 @@
   },
   "apply": {
     "_why": "--apply needs a manifest written within `manifest_max_age_hours`, a non-empty TRADEAI_DISK_HYGIENE_GRANT (the env name is fixed in code so the n8n env allowlist can be checked statically), and re-validates every item; it stops at the caps. Never runs under the n8n executor (TRADEAI_RUN_ID set): AGENTS.md §23.14 keeps destructive retention off n8n.",
-    "manifest_max_age_hours": 24,
+    "manifest_max_age_hours": 2,
     "max_items_per_run": 150,
     "max_bytes_per_run": 107374182400,
     "kinds_enabled": [
@@ -346,7 +346,7 @@
     "manifest_latest_name": "tmp_hygiene_manifest_latest.json",
     "untouched_list_max": 200,
     "apply": {
-      "manifest_max_age_hours": 24,
+      "manifest_max_age_hours": 2,
       "max_items_per_run": 5000,
       "max_bytes_per_run": 21474836480,
       "max_files_per_run": 2000000
@@ -437,5 +437,54 @@
         "top_n": 3
       }
     }
+  },
+  "standing_apply": {
+    "enabled": false,
+    "rules": [
+      "A",
+      "S",
+      "W"
+    ],
+    "manifest_max_age_hours": 2,
+    "max_bytes_per_run": 42949672960,
+    "max_items_per_run": 150,
+    "approval": {
+      "status": "PENDING_OPERATOR_REVIEW",
+      "approved_by": null,
+      "approved_at": null,
+      "source": "Direct-session operator metadata must be recorded by root after legitimate config handoff; peer relay is not ratification."
+    },
+    "archive": {
+      "path": "~/db_backups/archive",
+      "keep_daily": 7,
+      "keep_weekly_sunday": 4,
+      "date_basis": "original_file_mtime_America/New_York",
+      "never": "live dump, hold directory, partial/young dump, symlink, hardlinked file"
+    },
+    "rtc": {
+      "path": "~/.cache/rtc",
+      "idle_days": 7,
+      "coordination_references": "all retained history and live records; unavailable evidence holds"
+    },
+    "worktree": {
+      "untouched_hours": 48,
+      "require_clean": true,
+      "preserve_named_branch": true,
+      "detached_requires_ancestor": "origin/main",
+      "open_pr_and_live_claim_worklog": "must be proven absent",
+      "never": "standalone clone, branch/ref or commit deletion; force removal"
+    },
+    "coordination_root": "~/trade-ai-releases/persistent-state/data/coordination",
+    "github_repo": "PatsKiller/tardeai",
+    "monitor": {
+      "digest_kind": "disk_hygiene_digest",
+      "alert_kind": "disk_hygiene_alert",
+      "disk_used_pct_gt": 85,
+      "planned_unapplied_bytes_gt": 10737418240,
+      "consecutive_distinct_runs": 2
+    },
+    "approved_by": null,
+    "max_gb_per_run": 40,
+    "byte_unit": "GiB"
   }
 }

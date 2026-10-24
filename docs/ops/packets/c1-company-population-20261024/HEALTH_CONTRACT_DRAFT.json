@@ -1,0 +1,116 @@
+{
+  "schema": "N8nHealthContract@v1",
+  "id": "cio-company-facts-populate",
+  "kind": "lane",
+  "workflow_id": "tradeai-cio-company-facts-populate-native",
+  "status": "DRAFT",
+  "target_reason": "proposed native apply; NOT_ADMITTED",
+  "stage": "canary",
+  "purpose": {
+    "text": "Populate confirmed-security company evidence in existing CIO InstrumentRecord memory without inventing judgments; explicit apply, native schedules pending owner admission."
+  },
+  "owner": "cio",
+  "connects_to": [
+    {
+      "name": "stored membership/profiles + holdings_accounts + identity registry",
+      "direction": "read"
+    },
+    {
+      "name": "existing InstrumentRecord facade/JSONL and gated same-table PG fact mode",
+      "direction": "write"
+    },
+    {
+      "name": "same-record company-facts projection (coverage readback); Watch/CIO/Ask also read this shared record",
+      "direction": "read"
+    }
+  ],
+  "healthy": [
+    {
+      "check": "durable_receipt",
+      "text": "Exact run receipt and bounded latest report acknowledge evaluated confirmed GUID facts; unchanged facts are an idempotent completed pass."
+    },
+    {
+      "check": "no_judgments",
+      "text": "judgment_writes and prospect_promotions are zero; PG requested writes/readbacks acknowledged or the run fails."
+    }
+  ],
+  "degraded": [
+    {
+      "check": "company_coverage",
+      "text": "Quality PARTIAL exposes every missing company field/security/issuer identity without minting or guessing; compare exact Watch denominator to captured baseline."
+    }
+  ],
+  "failed": [
+    {
+      "check": "persistence",
+      "text": "Any canonical validation, source acquisition, requested PG schema/ack, malformed input or missing durable receipt is a failure; do not claim stored/healthy."
+    }
+  ],
+  "baseline": {
+    "basis": "CLASS_DEFAULT_PROVISIONAL",
+    "class": "learn",
+    "timeout_s": 600,
+    "duration_degraded_above_s": 480,
+    "freshness_degraded_after_h": 72,
+    "freshness_failed_after_h": 96,
+    "source": "PROPOSED conservative bound over maximum Friday15:35-to-Monday06:35 scheduled gap63h; weekday missed-fire detection requires reviewed per-slot/calendar monitor. Zero observed runs.",
+    "runs_considered": 0
+  },
+  "alerting": {
+    "failed": {
+      "notifier_priority": "P2",
+      "siem_severity": "WARN"
+    },
+    "degraded": {
+      "notifier_priority": "P3",
+      "siem_severity": "INFO"
+    },
+    "routing": "existing n8n fabric error -> host intent/incident router; source only, delivery NOT_MEASURED"
+  },
+  "remediation": {
+    "catalogue_entry": false,
+    "automatic_retry": false,
+    "reason": "No repair/mint of identity, no divergent-store auto reconciliation; owner resolves source or schema gaps. One attempt per natural slot."
+  },
+  "evidence": {
+    "receipt": "data/runtime/cio-company-facts-populate_last.json",
+    "report": "data/runtime/cio_company_facts_populate_report_latest.json",
+    "verify": [
+      "python scripts/cio_company_facts_populate.py --dry-run --with-db --state-root /home/johnclaw/trade-ai-releases/persistent-state",
+      "Compare exact run_id, host receipt, canonical GUID company facts and Watch consumer readback; no live proof claimed by source."
+    ]
+  },
+  "review_by": "2026-10-31",
+  "review": {
+    "status": "DRAFT",
+    "prepared_by": "codex-c1-populate-20261024",
+    "reviewed_by": null,
+    "reviewed_on": null,
+    "reference": "Owner review/admission required; no inherited approval."
+  },
+  "state_note": "PROPOSED NOT OPERATIVE. No new contract is grandfathered. New DRAFT contracts cannot enter the operative catalogue before actual owner review.",
+  "expected_output": {
+    "schema": "N8nExpectedOutput@v1",
+    "unit": "confirmed-security fact records evaluated",
+    "rule": "min_produced",
+    "min_produced": 1,
+    "window_h": null,
+    "produced_field": "produced_count",
+    "fatal_skip_reasons": [
+      "dependency_unavailable",
+      "fact_only_migration_required"
+    ],
+    "empty_allowed_reasons": [],
+    "evidence": [
+      {
+        "kind": "receipt_field",
+        "ref": "produced_count"
+      }
+    ],
+    "on_violation": {
+      "run_state": "RUN_FAILED",
+      "reason": "empty_output",
+      "notifier_priority": "P2"
+    }
+  }
+}

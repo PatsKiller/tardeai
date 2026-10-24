@@ -1,7 +1,7 @@
 # Source of Truth — one declaration per domain
 
 **Rendered from `config/data_source_authority.json` by `scripts/render_source_of_truth.py`. Do not edit by hand.**
-Registry as of 2026-10-06T11:00:00-04:00 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 59 domains · 22 providers.
+Registry as of 2026-10-06T11:00:00-04:00 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 60 domains · 22 providers.
 
 One source of truth per domain. For five months Performance (10 Years) was stored as a 1-5 analyst rating because two files mapped Finviz columns by position and nothing declared which store was the analyst source. For eighteen days the site served one copy of the state tree while the producers wrote another, because nothing declared where each store is served from. This file is that declaration. The data broker reads it; scripts/check_data_source_authority.py enforces it; docs/SOURCE_OF_TRUTH.md is rendered from it.
 
@@ -109,6 +109,7 @@ Both the release (CURRENT) and the dev tree the 344 cron producers run from must
 | **earnings_calendar** | ingested | `runtime/alpha_vantage/earnings_calendar_latest.json` | `scripts/alpha_vantage_owner.py` | 06:05 ET daily (1 EARNINGS_CALENDAR call) — once a cron/n8n grant schedules it | 26h | `earnings_calendar` | alpha_vantage | — | fmp | `say_so` | operator 2026-10-10 |
 | **news_sentiment** | ingested | `runtime/alpha_vantage/news_sentiment_latest.json` | `scripts/alpha_vantage_owner.py` | 14 windowed NEWS_SENTIMENT pulls 06:00-20:00 ET — once a cron/n8n grant schedules them | 3h | `news_sentiment` | alpha_vantage | — | newsapi, finnhub, polygon, fmp | `say_so` | operator 2026-10-10 |
 | **cio_prospect** | derived | `cio_prospect` | `scripts/lib/cio_instrument_record.py` | */30 09:00-16:00 Mon-Fri curator pass + */10 entry-state pass + event-driven wake writes | 0.5h | `cio_prospect` | derived | — | — | `say_so` | operator 2026-10-22 |
+| **cio_asks** | native | `data/cio/cio_ask_events.jsonl` | `scripts/lib/cio_ask_store.py` | event-driven (operator ask on CC or Telegram; material-change re-answer) | 168h | — | internal | — | — | `say_so` | operator 2026-10-24 |
 
 ## Writer ceilings — stores not yet consolidated to one writer
 
@@ -183,6 +184,7 @@ Every provider and domain row carries `approval`. The distinct references, and t
 - **CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (5) register social_posts** — 1 rows: domain `social_posts`
 - **CONSOLIDATION_PLAN.md §D decisions (2),(3),(5),(6),(7),(13),(14) — operator approval 2026-10-10 ~17:45 ET (session https://claude.ai/code/session_018QBWwttnCspwJYNhNdqd14; evidence API_OVERLAP_CONSOLIDATION.md); PR #1678 (branch n8nmat/broker-domains-q1) — decision (13) create store yfinance_info_snapshot** — 1 rows: domain `yfinance_info_snapshot`
 - **Operator reply 2026-10-22 ~22:30 ET (verbatim): "yes i approve 'approve all' (A–L)" — item E, as presented: "Approve the `cio_prospect` registry row, the migration (sha `6bac8924…`), and the read-only reader batch for its shadow lane. I apply the migration in a release after a dry run." Migration up file migrations/2026_10_22_cio_prospect.sql sha256=6bac89245fd6b990dc8a59c8fa6aeb85f34e6a97a5dd61e2fd3fa9b6e861f2be. Migration and InstrumentRecordStore backend built inert in PR #1944; shadow lane PR #1953. Recorded by task T-20261023-9c7a5c.** — 1 rows: domain `cio_prospect`
+- **PR #2075 — operator 2026-10-24: "push it live now ... I want everything live" (Ask the CIO); store found still proposed when the operator's Ask returned 'turned off'** — 1 rows: domain `cio_asks`
 
 ## Monitors
 

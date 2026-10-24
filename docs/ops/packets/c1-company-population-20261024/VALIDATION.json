@@ -1,0 +1,48 @@
+{
+  "schema": "C1PopulationValidationIndex@v1",
+  "updated_at": "2026-10-24T21:40:43.372066+00:00",
+  "status": "C1_AFFECTED_GATES_PASS_FULL_REGISTERED_RUN_NON_GREEN",
+  "historical_initial_receipt": {
+    "file": "docs/ops/packets/c1-company-population-20261024/VALIDATION_B81_INITIAL.json",
+    "sha256": "ade1d63b71a51030bf0e95f2df927c6b139f2e4338ee5cf6304b50322b4431de",
+    "source_parent": "b81ac630d96064624007dffd68184cf1a5039a34",
+    "note": "Original source receipt preserved byte-for-byte; its203-test result was not a full registered suite."
+  },
+  "current_followup": "docs/ops/packets/c1-company-population-20261024/CI_FOLLOWUP_VALIDATION.json",
+  "final_affected_gates": {
+    "passed": 234,
+    "files": 14,
+    "junit": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/final-affected-gates.xml"
+  },
+  "full_registered_profile": {
+    "exit": 1,
+    "wall_s": 2117,
+    "registered_gates": 675,
+    "file_references": 1438,
+    "unique_registered_files": 1403,
+    "duplicate_file_references": 35,
+    "missing_files": [],
+    "execution_units": 712,
+    "passed_units": 686,
+    "failed_units": 26,
+    "unique_failed_gates": 25,
+    "case_execution_summaries": {
+      "passed": 25420,
+      "failed": 167,
+      "errors": 57,
+      "skipped": 287,
+      "xfailed": 2
+    },
+    "case_counts_note": "Execution counts include duplicate file refs. Not unique tests. Native output may truncate6000chars per failed unit; complete unique failure-nodeid population NOT_MEASURED.",
+    "green": false,
+    "failed_units_detail_ref": "docs/ops/packets/c1-company-population-20261024/CI_FOLLOWUP_VALIDATION.json"
+  },
+  "runtime": {
+    "n8n_admission": "NOT_ADMITTED",
+    "workflow": "INACTIVE_SOURCE_PROPOSAL",
+    "contract": "DRAFT; actual owner review required",
+    "migration_backfill": "NOT_PERFORMED",
+    "production_readiness": "NOT_MEASURED"
+  },
+  "committed_head_receipt": "Saved outside commit after final local commit; not a claim of final-head full-green."
+}

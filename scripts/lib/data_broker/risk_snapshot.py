@@ -109,6 +109,66 @@ def _fetch_returns(db_query, symbols: list[str], days: int = 21) -> dict[str, li
         return {}
 
 
+def _mtime(path: Path) -> float | None:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return None
+
+
+# holdings.json and the broker stop store name two Schwab accounts differently; one key for the join.
+_ACCOUNT_ALIAS = {"schwab_roth": "schwab_roth_ira", "schwab_rollover": "schwab_rollover_ira"}
+
+
+def _overlay_broker_stops(positions: list[dict], errors: list[str]) -> None:
+    """Resting broker stops (stop_last_known, the source Open Trades reads) win over the planned stops in
+    stops.json for the same account + symbol; each position says which one it carries."""
+    for p in positions:
+        if p.get("stop_price"):
+            p.setdefault("stop_source", "stops_json")
+    try:
+        from lib.last_known_stops import load_last_known  # noqa: PLC0415
+        broker = {(_ACCOUNT_ALIAS.get(r["account"], r["account"]), r["symbol"]): r
+                  for r in load_last_known() if r.get("stop_price")}
+    except Exception as exc:  # noqa: BLE001 — planned stops still shown, visibly
+        errors.append(f"broker_stops:{type(exc).__name__}")
+        return
+    for p in positions:
+        acct = str(p.get("account") or "")
+        r = broker.get((_ACCOUNT_ALIAS.get(acct, acct), str(p.get("symbol") or "").upper()))
+        if not r:
+            continue
+        px = float(p.get("price") or 0)
+        sp = float(r["stop_price"])
+        p["stop_price"] = sp
+        p["stop_source"] = "broker_resting"
+        p["stop_captured_at"] = str(r.get("captured_at") or "")
+        if px > 0:
+            p["dist_pct"] = round((px - sp) / px * 100, 2)
+            p["protected"] = True
+
+def _live_risk_basis(rm: dict[str, Any], holdings: dict[str, Any], errors: list[str]) -> tuple[dict[str, Any], str, float | None]:
+    """risk_management.json is written once a weekday before the open (portfolio_orchestrator 07:15), so a buy or
+    sell during the session never reaches it; holdings.json is re-synced every 15 minutes. When holdings are newer,
+    recompute the position set from them with the same compute_risk_metrics() the orchestrator uses (read-only:
+    it reads stops.json and the enrichment cache). Otherwise keep the stored file."""
+    rm_at = _mtime(STATE_DIR / "risk_management.json")
+    h_at = _mtime(STATE_DIR / "holdings.json")
+    if holdings.get("holdings") and h_at and (rm_at is None or h_at > rm_at):
+        try:
+            import sys
+            scripts_dir = str(PROJECT_ROOT / "scripts")
+            if scripts_dir not in sys.path:
+                sys.path.insert(0, scripts_dir)
+            from portfolio_stops import compute_risk_metrics  # noqa: PLC0415
+            fresh = compute_risk_metrics(holdings, STATE_DIR)
+            _overlay_broker_stops(fresh.get("positions") or [], errors)
+            return fresh, "holdings_live", h_at
+        except Exception as exc:  # noqa: BLE001 — fall back to the stored file, visibly
+            errors.append(f"live_risk_basis:{type(exc).__name__}")
+    return rm, "risk_management_file", rm_at
+
+
 def build_risk_snapshot(db_query=None) -> dict[str, Any]:
     """Compute a fresh risk snapshot from current JSON state + DB.
 
@@ -119,6 +179,7 @@ def build_risk_snapshot(db_query=None) -> dict[str, Any]:
     rm = _load_json(STATE_DIR / "risk_management.json") or {}
     stops = _load_json(STATE_DIR / "stops.json") or {}
     holdings = _load_json(STATE_DIR / "holdings.json") or {}
+    rm, positions_basis, positions_at = _live_risk_basis(rm, holdings, errors)
 
     positions = rm.get("positions", [])
 
@@ -158,6 +219,7 @@ def build_risk_snapshot(db_query=None) -> dict[str, Any]:
             "current_price": round(px, 2) if px else None,
             "shares": round(shares, 4) if shares else None,
             "stop_price": stop_px,
+            "stop_source": p.get("stop_source"),
             "distance_to_stop_pct": distance_pct,
             "max_loss_dollar": max_loss,
             "status": p.get("status", ""),
@@ -255,6 +317,8 @@ def build_risk_snapshot(db_query=None) -> dict[str, Any]:
     return {
         "version": "risk-snapshot-v1",
         "computed_at": now.isoformat(),
+        "positions_basis": positions_basis,
+        "positions_as_of": datetime.fromtimestamp(positions_at, timezone.utc).isoformat() if positions_at else None,
         "portfolio": {
             "heat_pct": rm.get("portfolio_heat_pct", 0),
             "total_risk_dollars": rm.get("total_risk_dollars", 0),

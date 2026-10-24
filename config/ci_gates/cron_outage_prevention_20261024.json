@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cron_outage_prevention_20261024",
+  "files": [
+    "tests/test_cron_outage_prevention_20261024.py"
+  ],
+  "anchor": "CRON_OUTAGE_PREVENTION_20261024",
+  "comment": [
+    "ANCHOR: CRON_OUTAGE_PREVENTION_20261024 — real release-layout probes, refusal journal and independent scheduled-success watchdog. No host operations."
+  ]
+}

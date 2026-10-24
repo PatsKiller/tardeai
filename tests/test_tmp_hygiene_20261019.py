@@ -633,7 +633,10 @@ def test_allowlist_entry_is_plan_only_and_enforced():
     assert e["env_allowlist_mode"] == "enforce" and e["market_gate"] is False
     assert TH.main(["--apply", "--dry-run"]) == 2 and TH.main(["--plan", "--apply"]) == 2
     assert (TH.GRANT_ENV, TH.RUN_ID_ENV) == (DH.GRANT_ENV, DH.RUN_ID_ENV)
-    assert set(e["env_names"]) == {"TRADEAI_DISK_HYGIENE_GRANT", "TRADEAI_PERSISTENT_STATE_ROOT"}
+    assert set(e["env_names"]) == {
+        "CANONICAL_SOURCE", "TRADEAI_AGENT_CLAIMS_REPO", "TRADEAI_DISK_HYGIENE_GRANT",
+        "TRADEAI_PERSISTENT_STATE_ROOT", "TRADEAI_RELEASES_BASE",
+    }
 
 
 def test_health_contract_is_reviewed_with_an_output_rule_matching_the_code():

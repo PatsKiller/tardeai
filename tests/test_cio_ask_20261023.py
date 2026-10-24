@@ -726,11 +726,13 @@ def test_api_v2_dispatches_ask_routes_and_csrf_hard_route():
     assert cc_auth.csrf_class(cfg, "POST", "/api/v2/cio/asks/thr_0123456789abcdef/untrack") == "hard"
 
 
-def test_proposed_data_dictionary_row_is_inert():
+def test_data_dictionary_row_is_operator_approved():
+    # Operator 2026-10-24 ("push it live now"): cio_asks moved from proposed_domains to domains with an approval record.
     doc = json.loads((ROOT / "config" / "data_source_authority.json").read_text())
-    row = next(r for r in doc["proposed_domains"] if r["domain"] == "cio_asks")
-    assert row["status"] == "proposed" and row["approval"] is None
-    assert not any(r.get("domain") == "cio_asks" for r in doc["domains"])
+    row = next(r for r in doc["domains"] if r["domain"] == "cio_asks")
+    assert row["approval"]["approved_by"] == "operator" and row["approval"]["reference"]
+    assert row["writer"] == "scripts/lib/cio_ask_store.py"
+    assert not any(r.get("domain") == "cio_asks" for r in doc["proposed_domains"])
 
 
 def test_host_ask_store_refuses_proposed_domain_before_creating_any_file(tmp_path, monkeypatch):
