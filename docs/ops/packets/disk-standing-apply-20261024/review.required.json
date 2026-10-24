@@ -1,8 +1,0 @@
-{
-  "decision": "PENDING_OPERATOR_REVIEW",
-  "approved_by": null,
-  "approved_at": null,
-  "draft_contract_sha256": "e6a4070e38c64268509de4bb1a525ffa07d9557f94b5d7b74efdd0e20f8da9d3",
-  "source_config_pins_sha256": "1e0a7ec40fdb9f607df0fe3b2eeb3cf9918af131fd89aadbbce198aa25b1666e",
-  "rules_sha256": "aa6d1a2d6afe84c924b930d2174542678b284601002b71b6ce9000aa695d504f"
-}

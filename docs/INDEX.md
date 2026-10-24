@@ -1946,7 +1946,6 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DESK_TRUTH_MONITORS.md` | Desk truth monitors and the options quote refresh — n8n first |
 | `docs/ops/DIRECTIVE_WATCH_FLAG_2026-10-22.md` | `in_directive_watch` fixed at the source (2026-10-22) |
 | `docs/ops/DISK_HYGIENE_ENFORCER_2026-09-10.md` | Disk hygiene enforcer (2026-09-10) |
-| `docs/ops/DISK_STANDING_APPLY_20261024.md` | WP-33: standing disk-hygiene source preparation |
 | `docs/ops/DOC_INDEX_PR_FLOW_20261024.md` | WP-02 documentation-index conflict correction and proposed PR flow |
 | `docs/ops/DRIVE_ARCHIVE_2026-09-01.md` | Drive archive — 2026-09-01 |
 | `docs/ops/DRIVE_MUTATION_SAFETY.md` | Drive mutation safety (gog v0.12.x) |
@@ -2177,7 +2176,6 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/cron-effect-claim-wrap-20261016/README.md` | Cron effect-claim wrap 2026-10-16: the cron copy refuses itself when n8n owns the lane |
 | `docs/ops/packets/cutover-fail-closed-txn-20261016/README.md` | Cutover fail-closed + controller transactions (2026-10-16) |
 | `docs/ops/packets/disk-hygiene-n8n-20261018/README.md` | Disk hygiene + disk-usage monitor on n8n (PR #1863) |
-| `docs/ops/packets/disk-standing-apply-20261024/README.md` | Disabled source package and operator review packet |
 | `docs/ops/packets/doc-index-pr-flow-20261024/REVIEW.md` | Proposed documentation-index PR flow |
 | `docs/ops/packets/header-right-edge-20261024/README.md` | Header right-edge fixture evidence |
 | `docs/ops/packets/hermes-learning-cutover-20261015/README.md` | hermes-learning on the n8n fabric: cutover packet (learn stage) |

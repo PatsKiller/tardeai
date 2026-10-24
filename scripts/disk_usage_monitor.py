@@ -412,43 +412,6 @@ def queue_host_intent(
         ledger.close()
 
 
-def standing_hygiene_status(rules: Mapping, state_root: Optional[Path], previous: Mapping, now: datetime,
-                            used_pct: Optional[float]) -> dict:
-    """Read the optional hygiene receipt; never run cleanup or send directly.
-
-    Only distinct manifest runs advance the held-byte streak. Missing/future or
-    malformed receipts are not proof of a successful hygiene run.
-    """
-    if not isinstance(rules.get("standing_apply"), dict):
-        return {"status": "not_configured"}
-    reports = []
-    directory = DH.manifest_dir(rules, state_root)
-    for path in sorted(directory.glob("disk_hygiene_standing_apply_*.json")):
-        try:
-            report = json.loads(path.read_text())
-        except (OSError, ValueError):
-            return {"status": "invalid_receipt"}
-        if not isinstance(report, dict) or not report.get("run_id"):
-            return {"status": "invalid_receipt"}
-        finished = DH.SR.aware(report.get("finished_at"))
-        if finished is None or finished > now:
-            return {"status": "invalid_receipt"}
-        if report["run_id"] not in previous.get("seen_run_ids", []) and report["run_id"] != previous.get("run_id"):
-            reports.append(report)
-    if not reports:
-        return {"status": "already_observed" if previous.get("run_id") else "not_measured", "state": dict(previous)}
-    report = min(reports, key=lambda r: r["finished_at"])
-    result = DH.SR.monitor_decision(report, previous, used_pct)
-    after = (report.get("post_apply_usage") or {}).get("used_pct")
-    if isinstance(after, (int, float)) and after > 85:
-        result["alert"] = "post_apply_disk_above_85"
-    result.update(status="new_run", digest=report.get("operator_digest") or "Disk hygiene result unavailable",
-                  refused=report.get("refused"), finished_at=report.get("finished_at"))
-    if report.get("refused"):
-        result["alert"] = "hygiene_refused"
-    return result
-
-
 def run(
     *,
     rules: Mapping[str, Any],
@@ -559,54 +522,7 @@ def run(
                 entry["alerted_band"] = cur
             mounts_state[mount] = entry
         results.append(row)
-    standing_previous = dict(state.get("standing_hygiene") or {})
-    measured_pct = [r["used_pct"] for r in results if isinstance(r.get("used_pct"), (int, float))]
-    standing = standing_hygiene_status(rules, state_root, standing_previous, now, max(measured_pct) if measured_pct else None)
-    if standing["status"] == "new_run" and apply:
-        # New routes remain an operator proposal until the reviewed config is installed.
-        cfg = (rules.get("standing_apply") or {}).get("monitor") or {}
-        kind = cfg.get("alert_kind") if standing.get("alert") else cfg.get("digest_kind")
-        try:
-            if not kind:
-                raise HostIntentError("standing_monitor_unconfigured")
-            rec = queue_host_intent(producer=mon["producer"], domain=mon["intent_domain"], kind=kind,
-                                    subject=("Disk hygiene alert " if standing.get("alert") else "Disk hygiene run digest ") + str(standing["run_id"]),
-                                    summary=standing["digest"] + ("; " + standing["alert"] if standing.get("alert") else ""),
-                                    execution_id=_execution_id(now), node="disk_usage_monitor.standing_hygiene",
-                                    ledger_path=ledger, now=now.timestamp())
-            standing["intent"] = {"intent_id": rec.get("intent_id"), "duplicate": rec.get("duplicate")}
-            standing_previous = {"manifest_sha256": standing["manifest_sha256"], "run_id": standing["run_id"],
-                                 "held_bytes": standing.get("held_bytes"), "observed_at": now.isoformat(),
-                                 "seen_run_ids": list(dict.fromkeys([*standing_previous.get("seen_run_ids", []), standing["run_id"]]))}
-        except HostIntentError as exc:
-            standing["intent_error"] = exc.reason
-            failures += 1  # Do not consume the run; next monitor attempt retries.
-    pressure_active = bool(state.get("standing_pressure_active"))
-    pressure_epoch = int(state.get("standing_pressure_epoch") or 0)
-    current_pressure = bool(measured_pct and max(measured_pct) > 85)
-    pressure = {"above_85": current_pressure, "observation_basis": "current_monitor_poll"}
-    if isinstance(rules.get("standing_apply"), dict) and current_pressure and not pressure_active:
-        if standing.get("intent") and standing.get("alert"):
-            pressure_active = True
-            pressure_epoch += 1
-        elif apply:
-            cfg = rules["standing_apply"].get("monitor") or {}
-            try:
-                if not cfg.get("alert_kind"):
-                    raise HostIntentError("standing_monitor_unconfigured")
-                rec = queue_host_intent(producer=mon["producer"], domain=mon["intent_domain"], kind=cfg["alert_kind"],
-                                        subject=f"Disk hygiene pressure boundary {pressure_epoch + 1}",
-                                        summary=f"Disk above 85% at {now.isoformat()} ({max(measured_pct):.2f}%, current monitor poll)",
-                                        execution_id=_execution_id(now), node="disk_usage_monitor.standing_pressure", ledger_path=ledger, now=now.timestamp())
-                pressure["intent"] = {"intent_id": rec.get("intent_id"), "duplicate": rec.get("duplicate")}
-                pressure_active = True
-                pressure_epoch += 1
-            except HostIntentError as exc:
-                pressure["intent_error"] = exc.reason
-                failures += 1
-    if measured_pct and not current_pressure:
-        pressure_active = False
-    summary = {"mounts": results, "inodes": inode_results, "manifest": manifest, "standing_hygiene": standing, "standing_pressure": pressure, "failures": failures}
+    summary = {"mounts": results, "inodes": inode_results, "manifest": manifest, "failures": failures}
     if not apply:
         R.dry_run_report(LANE_ID, summary, would_write=[str(state_path)], receipt=R.receipt_path(LANE_ID, state_root))
         return 0 if not failures else 1
@@ -617,7 +533,7 @@ def run(
 
         atomic_write_json(
             state_path,
-            {"schema": STATE_SCHEMA, "updated_at": now.isoformat(), "mounts": mounts_state, "inodes": inodes_state, "standing_hygiene": standing_previous, "standing_pressure_active": pressure_active, "standing_pressure_epoch": pressure_epoch},
+            {"schema": STATE_SCHEMA, "updated_at": now.isoformat(), "mounts": mounts_state, "inodes": inodes_state},
             indent=1,
         )
     except OSError as exc:

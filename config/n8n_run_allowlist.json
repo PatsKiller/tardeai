@@ -4100,14 +4100,11 @@
     {
       "lane_id": "disk-hygiene",
       "env_names": [
-        "CANONICAL_SOURCE",
-        "TRADEAI_AGENT_CLAIMS_REPO",
         "TRADEAI_DISK_HYGIENE_GRANT",
-        "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_RELEASES_BASE"
+        "TRADEAI_PERSISTENT_STATE_ROOT"
       ],
       "env_allowlist_mode": "enforce",
-      "env_evidence": "scripts/disk_hygiene.py reads TRADEAI_RUN_ID (base) and TRADEAI_DISK_HYGIENE_GRANT, the latter ONLY on the --apply path, which refuses before reading it whenever TRADEAI_RUN_ID is set (every executor child): it is listed so the enforce inventory covers the literal read, not because n8n may apply (live_arg --plan; the executor's own env carries no such grant). Closure lib/lane_last_receipt.py -> persistent_state_root (TRADEAI_PERSISTENT_STATE_ROOT, a path), atomic_json_store; no credential. Subprocesses: git (read-only, GIT_OPTIONAL_LOCKS=0), du, crontab -l. No DB, no network, no send. Standing disk-hygiene source adds the sanctioned agent_claim_lifecycle.GitHubReader GET module to the static closure (tmp-hygiene imports disk_hygiene): its sibling source/release readers declare CANONICAL_SOURCE, TRADEAI_AGENT_CLAIMS_REPO and TRADEAI_RELEASES_BASE, all root-path settings, not credentials. These exact literal reads are inventoried even though the standing caller supplies an explicit repository and does not invoke the sibling readers; no values are created or secret variables added.",
+      "env_evidence": "scripts/disk_hygiene.py reads TRADEAI_RUN_ID (base) and TRADEAI_DISK_HYGIENE_GRANT, the latter ONLY on the --apply path, which refuses before reading it whenever TRADEAI_RUN_ID is set (every executor child): it is listed so the enforce inventory covers the literal read, not because n8n may apply (live_arg --plan; the executor's own env carries no such grant). Closure lib/lane_last_receipt.py -> persistent_state_root (TRADEAI_PERSISTENT_STATE_ROOT, a path), atomic_json_store; no credential. Subprocesses: git (read-only, GIT_OPTIONAL_LOCKS=0), du, crontab -l. No DB, no network, no send.",
       "source": "n8n-native host lane (operator 2026-10-18; packet docs/ops/packets/disk-hygiene-n8n-20261018): fired by tradeai-dispatcher at 0 4 * * 0; no cron line, no unit, so the lock is the lane's own. CANARY: live_arg [\"--plan\"]; dry_run_arg --dry-run (prints only, writes nothing) kept for clamp/rollback. --apply (deletion) is never an argv here: AGENTS.md §23.14.",
       "command": [
         "$PY",
@@ -4129,14 +4126,11 @@
     {
       "lane_id": "tmp-hygiene",
       "env_names": [
-        "CANONICAL_SOURCE",
-        "TRADEAI_AGENT_CLAIMS_REPO",
         "TRADEAI_DISK_HYGIENE_GRANT",
-        "TRADEAI_PERSISTENT_STATE_ROOT",
-        "TRADEAI_RELEASES_BASE"
+        "TRADEAI_PERSISTENT_STATE_ROOT"
       ],
       "env_allowlist_mode": "enforce",
-      "env_evidence": "scripts/tmp_hygiene.py reads TRADEAI_RUN_ID (base) and TRADEAI_DISK_HYGIENE_GRANT, the latter ONLY on the --apply path, which refuses before reading it whenever TRADEAI_RUN_ID is set (every executor child): it is listed so the enforce inventory covers the literal read, not because n8n may apply (live_arg --plan; the executor's own env carries no such grant). Closure: scripts/disk_hygiene.py (same reads), lib/lane_last_receipt.py -> persistent_state_root (TRADEAI_PERSISTENT_STATE_ROOT, a path), atomic_json_store; no credential. Subprocesses: git (read-only, GIT_OPTIONAL_LOCKS=0) on git trees inside a scratch dir. Reads /proc/*/cwd and /proc/*/fd link targets (never file contents). No DB, no network, no send. Standing disk-hygiene source adds the sanctioned agent_claim_lifecycle.GitHubReader GET module to the static closure (tmp-hygiene imports disk_hygiene): its sibling source/release readers declare CANONICAL_SOURCE, TRADEAI_AGENT_CLAIMS_REPO and TRADEAI_RELEASES_BASE, all root-path settings, not credentials. These exact literal reads are inventoried even though the standing caller supplies an explicit repository and does not invoke the sibling readers; no values are created or secret variables added.",
+      "env_evidence": "scripts/tmp_hygiene.py reads TRADEAI_RUN_ID (base) and TRADEAI_DISK_HYGIENE_GRANT, the latter ONLY on the --apply path, which refuses before reading it whenever TRADEAI_RUN_ID is set (every executor child): it is listed so the enforce inventory covers the literal read, not because n8n may apply (live_arg --plan; the executor's own env carries no such grant). Closure: scripts/disk_hygiene.py (same reads), lib/lane_last_receipt.py -> persistent_state_root (TRADEAI_PERSISTENT_STATE_ROOT, a path), atomic_json_store; no credential. Subprocesses: git (read-only, GIT_OPTIONAL_LOCKS=0) on git trees inside a scratch dir. Reads /proc/*/cwd and /proc/*/fd link targets (never file contents). No DB, no network, no send.",
       "source": "n8n-native host lane (operator 2026-10-19 after the /tmp inode incident; packet docs/ops/packets/disk-hygiene-n8n-20261018): fired by tradeai-dispatcher at 0 5 * * *; no cron line, no unit, so the lock is the lane's own. CANARY: live_arg [\"--plan\"]; dry_run_arg --dry-run (prints only, writes nothing) kept for clamp/rollback. --apply (deletion) is never an argv here: AGENTS.md §23.14.",
       "command": [
         "$PY",
@@ -4506,25 +4500,5 @@
       "openclaw-reminder-sentinelone-earnings"
     ]
   },
-  "never": "broker/positions/stops/orders/paper lanes, every sender, sm-render, guard, release deploy, destructive retention stages, CIO/persona/OpenClaw agent loops (rails §0 and §17): never, under any class, by any amendment inside a program window (AGENTS.md §23.14). Memory/learning writers, price and research ingest writers and LLM jobs: never, EXCEPT as the AGENTS.md 4.3.0 §23.18 (R1) dispatch classes `learn`, `ingest` and `llm`, and only once 4.3.0 is ACTIVE (scripts/lib/lane_dispatch.py R1_STATUS; PROPOSED until APPROVE_AGENTS_POLICY_4_3_0), only for a dispatcher row at stage shadow/canary/cutover (or, once AGENTS.md 4.4.0 is ACTIVE, the §23.11 cron row at stage shadow with dispatch.mode dry_run and a null live_arg, or at stage canary with dispatch.mode live, a set live_arg and a flock lock equal to the cron line's lock; lane_dispatch.R1_SHADOW_SHAPE_STATUS) with a dry_run_arg and a LaneRunReceipt@v1 output_signal, with no broker credential in env_names, and an `llm` job only through llm_route via cio-governed-bridge with a registered process_id (lane_dispatch.r1_class_admission). An alert_events row is not a send and backtest fields on paper_trade_proposals are not paper execution (R1 ruling 4, operator 2026-10-10 ~00:20 ET); neither admits a sender or a paper-execution lane. Sole exception: trade-ai-scalp-live (AGENTS.md 4.0.0 §23.3, APPROVE_AGENTS_POLICY_4_0_0, operator 2026-10-09) Second exception class (AGENTS.md 7.0.0 §23.20, ACTIVE: APPROVE_AGENTS_POLICY_7_0_0 1725 73eebc5c1): advisory market-data lanes in lane_dispatch.ADVISORY_MARKET_DATA_LANES that pass advisory_md_admission and advisory_md_static_errors (market data only, advisory writes only, sends through the host chokepoint, no secret through n8n); no other sender and no order, stop, position, account, paper-execution, secret or daemon lane.",
-  "pending_changes": {
-    "disk-hygiene-standing-apply-20261024": {
-      "status": "PENDING_OPERATOR_REVIEW_DISABLED",
-      "lane_id": "disk-hygiene",
-      "command": [
-        "$PY",
-        "scripts/disk_hygiene.py"
-      ],
-      "live_arg": [
-        "--standing",
-        "--apply"
-      ],
-      "dry_run_arg": [
-        "--standing",
-        "--dry-run"
-      ],
-      "dependency_closure": "Read-only gh api GET through existing sanctioned GitHubReader; configured gh identity/availability required. No new credential values/env requested. Other reads: cron, unit files, proc cwd/fds, pointer files, coordination documents; writes: bound manifests/reports, non-force worktree remove/prune or exact approved archive/RTC item removal. No direct sender/provider/model/broker.",
-      "requires": "Review new closure/env/rules; current operative --plan remains accepted"
-    }
-  }
+  "never": "broker/positions/stops/orders/paper lanes, every sender, sm-render, guard, release deploy, destructive retention stages, CIO/persona/OpenClaw agent loops (rails §0 and §17): never, under any class, by any amendment inside a program window (AGENTS.md §23.14). Memory/learning writers, price and research ingest writers and LLM jobs: never, EXCEPT as the AGENTS.md 4.3.0 §23.18 (R1) dispatch classes `learn`, `ingest` and `llm`, and only once 4.3.0 is ACTIVE (scripts/lib/lane_dispatch.py R1_STATUS; PROPOSED until APPROVE_AGENTS_POLICY_4_3_0), only for a dispatcher row at stage shadow/canary/cutover (or, once AGENTS.md 4.4.0 is ACTIVE, the §23.11 cron row at stage shadow with dispatch.mode dry_run and a null live_arg, or at stage canary with dispatch.mode live, a set live_arg and a flock lock equal to the cron line's lock; lane_dispatch.R1_SHADOW_SHAPE_STATUS) with a dry_run_arg and a LaneRunReceipt@v1 output_signal, with no broker credential in env_names, and an `llm` job only through llm_route via cio-governed-bridge with a registered process_id (lane_dispatch.r1_class_admission). An alert_events row is not a send and backtest fields on paper_trade_proposals are not paper execution (R1 ruling 4, operator 2026-10-10 ~00:20 ET); neither admits a sender or a paper-execution lane. Sole exception: trade-ai-scalp-live (AGENTS.md 4.0.0 §23.3, APPROVE_AGENTS_POLICY_4_0_0, operator 2026-10-09) Second exception class (AGENTS.md 7.0.0 §23.20, ACTIVE: APPROVE_AGENTS_POLICY_7_0_0 1725 73eebc5c1): advisory market-data lanes in lane_dispatch.ADVISORY_MARKET_DATA_LANES that pass advisory_md_admission and advisory_md_static_errors (market data only, advisory writes only, sends through the host chokepoint, no secret through n8n); no other sender and no order, stop, position, account, paper-execution, secret or daemon lane."
 }

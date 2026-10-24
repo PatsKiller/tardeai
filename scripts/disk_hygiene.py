@@ -38,11 +38,8 @@ MODES
 
 ``--apply`` requires a manifest written within apply.manifest_max_age_hours, a non-empty TRADEAI_DISK_HYGIENE_GRANT,
 re-validates every item at apply time (skips it if ANYTHING changed: HEAD, activity mtime, a rule outcome), and
-stops at apply.max_items_per_run / apply.max_bytes_per_run. The default path refuses the n8n executor.
-The optional --standing path requires separately reviewed, enabled A/S/W rules, complete fresh evidence,
-a <=2h manifest bound to exact rules/file SHA, and a hard 40GiB ceiling. Its config/admission remains an
-operator-applied proposal; --standing --dry-run with offline evidence never collects live facts or deletes.
-Manual --apply still requires its per-run grant. No configuration is enabled by this source change.
+stops at apply.max_items_per_run / apply.max_bytes_per_run. It REFUSES to run under the n8n executor
+(TRADEAI_RUN_ID set): AGENTS.md §23.14 keeps destructive retention off n8n, so the weekly n8n lane is plan-only.
 
 Exit: 0 = plan written (or dry run printed, or apply finished within caps); 1 = rules / home unreadable, a write
 failed, or an apply refusal; 2 = usage.
@@ -63,7 +60,6 @@ import shutil
 import socket
 import subprocess
 import sys
-import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -74,7 +70,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.lib import lane_last_receipt as R  # noqa: E402
-from scripts.lib import disk_hygiene_retention as SR  # noqa: E402
 
 LANE_ID = "disk-hygiene"
 APPLY_LANE_ID = "disk-hygiene-apply"
@@ -85,7 +80,7 @@ MANIFEST_SCHEMA = "DiskHygieneManifest@v1"
 APPLY_SCHEMA = "DiskHygieneApplyReport@v1"
 #: Fixed in code (not config) so the n8n env allowlist inventory stays a literal, statically checked read.
 GRANT_ENV = "TRADEAI_DISK_HYGIENE_GRANT"
-#: Executor request identity; default --apply refuses it, separately reviewed --standing may admit it.
+#: Set by scripts/n8n_run_executor.py on every child it spawns: --apply refuses under it.
 RUN_ID_ENV = "TRADEAI_RUN_ID"
 SKIP_DEPENDENCY = "dependency_unavailable"
 DOT_GIT = ".git"
@@ -145,20 +140,6 @@ def load_rules(path: Optional[Path] = None, *, home: Optional[Path] = None) -> d
     for key in ("manifest_max_age_hours", "max_items_per_run", "max_bytes_per_run", "kinds_enabled"):
         if key not in doc["apply"]:
             raise RulesError(f"rules_missing:apply.{key}")
-    standing = doc.get("standing_apply")
-    if standing is not None:
-        if not isinstance(standing, dict) or not isinstance(standing.get("enabled"), bool) or not isinstance(standing.get("rules"), list) or any(not isinstance(r, str) or r not in SR.RULE_KINDS for r in standing["rules"]) or len(set(standing["rules"])) != len(standing["rules"]):
-            raise RulesError("standing_rules_shape")
-        gb = standing.get("max_gb_per_run")
-        if type(gb) not in (int, float) or not 0 < gb <= 40 or standing.get("byte_unit") != "GiB":
-            raise RulesError("standing_cap_units")
-        byte_cap = standing.get("max_bytes_per_run")
-        if type(byte_cap) is not int or not 0 < byte_cap <= int(gb * 1024**3):
-            raise RulesError("standing_byte_cap")
-        if not isinstance(standing.get("approval"), dict) or not isinstance(standing.get("archive"), dict):
-            raise RulesError("standing_rules_shape")
-        if standing["approval"].get("status") == "APPROVED" and SR.aware(standing["approval"].get("approved_at")) is None:
-            raise RulesError("standing_approval_timestamp")
     return doc
 
 
@@ -719,286 +700,6 @@ def build_context(rules: Mapping[str, Any], now: datetime) -> dict[str, Any]:
     return {"now": now, "cwds": process_cwds(rules["_proc_root"]), "refs": reference_texts(rules)}
 
 
-def collect_standing_evidence(rules: Mapping[str, Any], now: datetime, *, github=None, runner=None) -> dict:
-    """Fresh per-run READ-ONLY collection; unavailable evidence never becomes absence.
-
-    Native runs use the sanctioned GitHub GET reader and local coordination files.
-    Tests inject runner/reader and fixture proc/unit/coord roots. No grant, secret,
-    schedule write, model or sender is involved. A refusal is not retried here.
-    """
-    runner = runner or subprocess.run
-    doc = {"schema": SR.SCHEMA, "offline": False, "sources": {}}
-    cfg = rules.get("standing_apply") or {}
-
-    def capture(key, fn):
-        try:
-            data = fn()
-            entry = {"complete": True, "captured_at": now.isoformat(), "data": data, "sha256": SR.digest(data)}
-        except (OSError, ValueError, subprocess.SubprocessError):
-            entry = {"complete": False, "captured_at": now.isoformat(), "reason": key + "_unavailable"}
-        doc["sources"][key] = entry
-
-    def cron():
-        command = rules["references"].get("crontab_cmd")
-        if command != ["crontab", "-l"]:
-            raise ValueError("read_only_cron_command_required")
-        proc = runner(command, capture_output=True, text=True, timeout=30)
-        # crontab exit1 is ambiguous (no crontab vs refused access); never infer empty.
-        if proc.returncode != 0:
-            raise ValueError("cron_read_unavailable")
-        return proc.stdout
-
-    def units():
-        out = []
-        for root in rules["_unit_dirs"]:
-            if not root.exists():
-                continue
-            for parent, _, names in os.walk(root, onerror=lambda exc: (_ for _ in ()).throw(exc)):
-                for name in names:
-                    path = Path(parent) / name
-                    if path.suffix in (".service", ".timer", ".conf", ".path", ".socket", ".target"):
-                        out.append({"path": str(path), "text": path.read_text()})
-        return out
-
-    def processes():
-        out = []
-        for process in rules["_proc_root"].iterdir():
-            if not process.name.isdigit():
-                continue
-            try:
-                cwd = os.readlink(process / "cwd")
-                fds = []
-                for fd in (process / "fd").iterdir():
-                    try:
-                        target = os.readlink(fd)
-                        if target.startswith("/"):
-                            fds.append(target)
-                    except FileNotFoundError:
-                        pass  # a closed fd is no longer a live reference
-                out.append({"pid": process.name, "cwd": cwd, "fds": fds})
-            except FileNotFoundError:
-                # Only disappearance of the PROCESS itself proves it exited.
-                if process.exists():
-                    raise ValueError("process_reference_unknown")
-        return out
-
-    def coordination():
-        base = _expand(str(cfg.get("coordination_root") or "~/trade-ai-releases/persistent-state/data/coordination"), rules["_home"])
-        claims_dir, worklogs = base / "claims", base / "worklogs"
-        if not claims_dir.is_dir() or not worklogs.is_dir() or not (base / "handoffs" / "PROGRESS_LOG.md").is_file():
-            raise ValueError("coordination_incomplete")
-        live, active_ids, refs, live_logs = [], set(), [], []
-        files = list(base.rglob("*.json")) + list(base.rglob("*.jsonl")) + list(base.rglob("*.md"))
-        total = 0
-        for path in files:
-            if path.is_symlink():
-                raise ValueError("coordination_symlink")
-            size = path.stat().st_size
-            total += size
-            if size > 32 * 1024**2 or total > 128 * 1024**2:
-                raise ValueError("coordination_scan_limit")
-            text = path.read_text()
-            refs += re.findall(r"/[^\s\"'`<>|=,;)\]}]+", text)
-            if path.parent == claims_dir and path.suffix == ".json":
-                claim = json.loads(text)
-                if not isinstance(claim, dict) or claim.get("schema") != "AgentClaim@v1":
-                    raise ValueError("claim_unreadable")
-                if claim.get("status") == "active":
-                    live.append(claim)
-                    active_ids.add(claim.get("claim_id"))
-        for path in worklogs.rglob("*.md"):
-            if any(str(cid) in path.name for cid in active_ids) or now.timestamp() - path.stat().st_mtime <= 48 * 3600:
-                live_logs += re.findall(r"/[^\s\"'`<>|=,;)\]}]+", path.read_text())
-        return {"references": sorted(set(refs)), "live_claims": live, "live_worklogs": live_logs}
-
-    def prs():
-        reader = github
-        if reader is None:
-            from scripts.lib.agent_claim_lifecycle import GitHubReader
-            reader = GitHubReader(repo=str(cfg.get("github_repo") or "PatsKiller/tardeai"), timeout_s=30)
-        out = []
-        for page in range(1, 21):
-            rows, warning = reader.get(f"repos/{reader.repo}/pulls?state=open&per_page=100&page={page}")
-            if warning or not isinstance(rows, list):
-                raise ValueError("github_pr_state_unavailable")
-            for row in rows:
-                if not isinstance(row, dict) or row.get("state") != "open" or not isinstance(row.get("head"), dict) or not row["head"].get("ref"):
-                    raise ValueError("github_pr_state_invalid")
-                out.append({"number": row.get("number"), "branch": row["head"]["ref"], "state": "open"})
-            if len(rows) < 100:
-                return out
-        raise ValueError("github_pr_page_limit")
-
-    def pointers():
-        base = rules.get("_pointer_dir")
-        if base is None or not base.is_dir():
-            raise ValueError("pointer_root_unavailable")
-        out = []
-        for name in rules["releases"].get("pointer_files", []) + rules["releases"].get("pointer_symlinks", []):
-            path = base / name
-            if path.is_symlink():
-                out.append({"path": str(path), "target": os.path.realpath(path)})
-            elif path.exists():
-                out.append({"path": str(path), "text": path.read_text()})
-        if not out:
-            raise ValueError("release_pointers_unknown")
-        return out
-
-    for key, fn in (("cron", cron), ("units", units), ("processes", processes), ("coordination", coordination), ("prs", prs), ("pointers", pointers)):
-        capture(key, fn)
-    return doc
-
-
-def standing_hard_reason(path: Path, kind: str, rules: Mapping[str, Any]) -> Optional[str]:
-    """The only backup exception: a direct archived dump, never a directory/live dump.
-
-    Keep all other secret/state/model protections. The reviewed configuration must
-    name exactly this archive root; no configurable arbitrary never-touch bypass.
-    """
-    archive = rules["_home"] / "db_backups" / "archive"
-    if kind != "archived_dump":
-        return never_touch_reason(path, rules)
-    configured = _expand(str((rules.get("standing_apply") or {}).get("archive", {}).get("path", "")), rules["_home"])
-    if configured != archive or path.parent != archive or not path.is_file() or path.is_symlink():
-        return "archive_exception_scope"
-    if any(p.is_symlink() for p in (archive, archive.parent)) or path.resolve().parent != archive:
-        return "archive_exception_symlink"
-    narrowed = dict(rules)
-    narrowed["_never_paths"] = [p for p in rules["_never_paths"] if p != archive.parent]
-    narrowed["_never_names"] = set(rules["_never_names"]) - {"db_backups"}
-    return never_touch_reason(path, narrowed)
-
-
-def standing_results(rules: Mapping[str, Any], ctx: Mapping[str, Any]) -> list[dict]:
-    """Only A/S/W, with fresh complete coordination/process/PR references."""
-    cfg = rules.get("standing_apply")
-    if not isinstance(cfg, dict) or not isinstance(cfg.get("rules"), list) or any(not isinstance(r, str) or r not in SR.RULE_KINDS for r in cfg["rules"]) or len(set(cfg["rules"])) != len(cfg["rules"]):
-        raise RulesError("standing_rules_unconfigured")
-    results = []
-
-    def row(path: Path, rule: str, kind: str) -> dict:
-        reasons = []
-        if rule not in cfg["rules"]:
-            reasons.append("rule_plan_only_not_authorized:" + rule)
-        hard = standing_hard_reason(path, kind, rules) or protected_reason(path, rules, own_work_tree=kind == "git_worktree")
-        if hard:
-            reasons.append(hard)
-        if path.is_symlink():
-            reasons.append("symlink")
-        reference = referenced_by(path, SR.record_refs(ctx, kind))
-        if reference:
-            reasons.append("referenced:" + reference)
-        return {"path": str(path), "rule": rule, "kind": kind, "category": "standing", "reasons": reasons, "evidence": {}}
-
-    archive = rules["_home"] / "db_backups" / "archive"
-    files = []
-    if archive.exists():
-        if archive.is_symlink() or archive.parent.is_symlink():
-            raise RulesError("archive_root_symlink")
-        try:
-            paths = sorted(archive.iterdir())
-        except OSError as exc:
-            raise RulesError("archive_unreadable") from exc
-        for path in paths:
-            item = row(path, "A", "archived_dump")
-            if not fnmatch.fnmatch(path.name, "trade_ai_*.sql.gz") or not path.is_file() or re.search(r"(^|[._-])(part|partial|incomplete|hold)([._-]|$)", path.name, re.I):
-                item["reasons"].append("not_completed_dump")
-            try:
-                st = path.lstat()
-                item["fingerprint"] = {"mtime_ns": st.st_mtime_ns, "size": st.st_size, "inode": st.st_ino}
-                item["evidence"] = {"mtime": st.st_mtime, "date_basis": "original_file_mtime_ET"}
-                age = ctx["now"].timestamp() - st.st_mtime
-                if age < 7200 or st.st_size <= 0:
-                    item["reasons"].append("young_or_incomplete_dump")
-                if st.st_nlink != 1:
-                    item["reasons"].append("multiple_hardlinks")
-            except OSError:
-                item["reasons"].append("stat_unreadable")
-            if not item["reasons"]:
-                files.append({"path": str(path), "mtime": item["evidence"]["mtime"]})
-            results.append(item)
-        keep = SR.retention_days(files)
-        for item in results:
-            if item["path"] in keep:
-                item["reasons"].append("daily_or_sunday_recovery_point")
-
-    scratch = rules["_home"] / ".cache" / "rtc"
-    if scratch.exists():
-        if scratch.is_symlink():
-            raise RulesError("rtc_root_symlink")
-        try:
-            paths = sorted(scratch.iterdir())
-        except OSError as exc:
-            raise RulesError("rtc_unreadable") from exc
-        for path in paths:
-            item = row(path, "S", "rtc_scratch")
-            if not path.is_dir() or path.is_symlink():
-                item["reasons"].append("not_scratch_directory")
-            activity, why = SR.activity(path, protected=lambda p: p.name == DOT_GIT or p.is_symlink() or bool(never_touch_reason(p, rules)))
-            if why:
-                item["reasons"].append(why)
-            if activity is None or ctx["now"].timestamp() - activity <= 7 * 86400:
-                item["reasons"].append("scratch_not_older_than_7_days")
-            item["fingerprint"] = {"activity": activity, "kind": "rtc_scratch"}
-            results.append(item)
-
-    for path in discover_git_dirs(rules):
-        lay = git_layout(path)
-        if not lay or lay["kind"] != "git_worktree":
-            continue  # standing approval never removes standalone clones or their refs
-        original = evaluate_git(path, rules, ctx)
-        item = row(path, "W", "git_worktree")
-        item["main_repo"] = original.get("main_repo")
-        item["evidence"].update(original.get("evidence") or {})
-        item["reasons"] += [r for r in original["reasons"] if r not in ("unpushed_commits", "not_merged", "recent_activity")]
-        rc, branch = _git(path, "symbolic-ref", "-q", "HEAD")
-        branch = branch.strip() if rc == 0 else None
-        head = (original.get("fingerprint") or {}).get("head")
-        if branch:
-            brc, branch_head = _git(Path(lay["main_repo"]), "rev-parse", "--verify", branch)
-            if not branch.startswith("refs/heads/") or brc != 0 or branch_head.strip() != head:
-                item["reasons"].append("named_branch_not_preserved")
-            if branch in json.dumps(ctx["snapshot"]["prs"]) or branch.removeprefix("refs/heads/") in json.dumps(ctx["snapshot"]["prs"]):
-                item["reasons"].append("open_pr_branch")
-        elif item["evidence"].get("merged") != "ancestor":
-            item["reasons"].append("detached_not_ancestor")
-        activity, why = SR.activity(path)
-        git_activity, git_why = SR.activity(Path(lay["gitdir"]))
-        activity = max(activity or 0, git_activity or 0)
-        if git_why:
-            item["reasons"].append(git_why)
-        if why:
-            item["reasons"].append(why)
-        if not activity or ctx["now"].timestamp() - activity <= 48 * 3600:
-            item["reasons"].append("worktree_not_untouched_48h")
-        item["evidence"].update(branch=branch, branch_preserved=bool(branch), detached_ancestor=not branch and item["evidence"].get("merged") == "ancestor")
-        item["fingerprint"] = {"head": head, "branch": branch, "activity": activity, "kind": "git_worktree"}
-        results.append(item)
-    for item in results:
-        item["candidate"] = not item["reasons"]
-        item["id"] = _item_id(item["path"])
-    return results
-
-
-def standing_plan(rules: Mapping[str, Any], now: datetime, evidence: Mapping, *, measure: bool = True) -> dict:
-    try:
-        ctx = SR.evidence_context(evidence, now)
-    except ValueError as exc:
-        raise RulesError(str(exc)) from exc
-    rows = standing_results(rules, ctx)
-    if measure:
-        for item in rows:
-            item["size_bytes"] = du_bytes(Path(item["path"]), 60)
-    items, excluded = [r for r in rows if r["candidate"]], [r for r in rows if not r["candidate"]]
-    return {"schema": MANIFEST_SCHEMA, "generated_at": now.isoformat(), "host": socket.gethostname(),
-            "home": str(rules["_home"]), "rules_path": rules["_path"], "rules_sha256": rules["_sha256"],
-            "mode": "plan", "scope": "standing", "offline": ctx["offline"], "evidence_sha256": ctx["evidence_sha256"],
-            "reference_sources": list(SR.SOURCES), "process_cwds": len(ctx["cwds"]), "items": items,
-            "excluded": excluded, "report_only": [], "totals": totals(items, excluded, []),
-            "per_rule": SR.per_rule(items), "protected_excluded_bytes": sum(r.get("size_bytes") or 0 for r in excluded),
-            "protected_excluded_unmeasured": sum(r.get("size_bytes") is None for r in excluded)}
-
-
 def _item_id(path: str) -> str:
     return "dh-" + hashlib.sha256(path.encode("utf-8")).hexdigest()[:16]
 
@@ -1206,14 +907,13 @@ def remove_item(item: Mapping[str, Any]) -> tuple[bool, str]:
         rc, _ = _git(Path(item["main_repo"]), "worktree", "remove", str(p), timeout=600)
         if rc != 0 or os.path.lexists(p):
             return False, f"git_worktree_remove_rc:{rc}"
-        prune_rc, _ = _git(Path(item["main_repo"]), "worktree", "prune", timeout=60)
-        return True, "git worktree remove" + ("; prune_failed" if prune_rc else "; prune")
-    if kind in ("git_clone", "release_dir", "cache_entry", "rtc_scratch"):
+        return True, "git worktree remove"
+    if kind in ("git_clone", "release_dir", "cache_entry"):
         if p.is_symlink() or not p.is_dir():
             return False, "not_a_dir"
         shutil.rmtree(p)
         return True, "rmtree"
-    if kind in ("release_file", "archived_dump"):
+    if kind == "release_file":
         if p.is_symlink() or not p.is_file():
             return False, "not_a_file"
         p.unlink()
@@ -1221,242 +921,74 @@ def remove_item(item: Mapping[str, Any]) -> tuple[bool, str]:
     return False, f"unknown_kind:{kind}"
 
 
-def disk_usage_sample(home: Path) -> dict:
-    """After-attempt filesystem usage, separate from the later monitor poll."""
-    ts = datetime.now(timezone.utc).isoformat()
-    try:
-        stat = os.statvfs(home)
-        used = (stat.f_blocks - stat.f_bfree) * stat.f_frsize
-        available = stat.f_bavail * stat.f_frsize
-        pct = 100 * used / (used + available) if used + available else None
-        return {"used_pct": pct, "measured_at": ts, "filesystem_path": str(home)}
-    except OSError:
-        return {"used_pct": None, "measured_at": ts, "reason": "statvfs_unavailable"}
-
-
 def apply(
-    manifest_path: Path, rules: Mapping[str, Any], now: datetime, *, grant: Optional[str], run_id: Optional[str],
-    standing: bool = False, evidence: Optional[Mapping] = None, manifest_sha256: Optional[str] = None,
-    progress_sink=None
+    manifest_path: Path, rules: Mapping[str, Any], now: datetime, *, grant: Optional[str], run_id: Optional[str]
 ) -> dict[str, Any]:
     rep: dict[str, Any] = {
         "schema": APPLY_SCHEMA,
         "started_at": now.isoformat(),
         "manifest": str(manifest_path),
-        "run_id": run_id,
         "removed": [],
         "skipped": [],
         "refused": None,
     }
-    def finish():
-        if standing:
-            rep.setdefault("per_rule", None)
-            rep.setdefault("held_bytes", None)
-            rep.setdefault("planned_bytes", None)
-            rep.setdefault("unmeasured_planned_items", None)
-            rep["operator_digest"] = SR.operator_digest(rep)
-            rep["finished_at"] = datetime.now(timezone.utc).isoformat()
-        return rep
-
-    cfg = rules.get("standing_apply") or {}
-    if run_id and not standing:
+    if run_id:
         rep["refused"] = "n8n_executor_never_applies"
-        return finish()
-    approval = cfg.get("approval") or {}
-    if standing and (approval.get("status") != "APPROVED" or not cfg.get("approved_by") or cfg.get("approved_by") != approval.get("approved_by") or not approval.get("approved_at")):
-        rep["refused"] = "standing_approval_pending"
-        return finish()
-    if standing and run_id and cfg.get("enabled") is not True:
-        rep["refused"] = "standing_apply_disabled"
-        return finish()
-    if not grant and not (standing and run_id):
+        return rep
+    if not grant:
         rep["refused"] = f"{GRANT_ENV}_missing"
-        return finish()
-    rep["grant"] = grant[:120] if grant else None
-    rep["authorization"] = "reviewed_standing" if standing and run_id else "manual_per_run"
+        return rep
+    rep["grant"] = grant[:120]
     try:
-        raw_manifest = Path(manifest_path).read_bytes()
-        m = json.loads(raw_manifest)
+        m = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         rep["refused"] = "manifest_unreadable"
-        return finish()
-    if not isinstance(m, dict) or m.get("schema") != MANIFEST_SCHEMA:
+        return rep
+    if m.get("schema") != MANIFEST_SCHEMA:
         rep["refused"] = "manifest_schema"
-        return finish()
+        return rep
     try:
         gen = datetime.fromisoformat(m["generated_at"])
-        if not gen.tzinfo:
-            raise ValueError("naive")
-    except (KeyError, ValueError, TypeError):
+    except (KeyError, ValueError):
         rep["refused"] = "manifest_generated_at"
-        return finish()
+        return rep
     age_h = (now - gen).total_seconds() / 3600.0
     rep["manifest_age_h"] = round(age_h, 2)
-    age_limit = min(2.0, float(rules["apply"]["manifest_max_age_hours"]), float(cfg.get("manifest_max_age_hours", 2)) if standing else 2.0)
-    if age_h < 0 or age_h > age_limit:
+    if age_h < 0 or age_h > float(rules["apply"]["manifest_max_age_hours"]):
         rep["refused"] = "manifest_stale"
-        return finish()
+        return rep
     if m.get("home") != str(rules["_home"]):
         rep["refused"] = "manifest_home_mismatch"
-        return finish()
-    if m.get("rules_sha256") != rules["_sha256"]:
-        rep["refused"] = "manifest_rules_sha_mismatch"
-        return finish()
-    if standing:
-        try:
-            actual_rules = load_rules(Path(rules["_path"]), home=rules["_home"])
-        except RulesError:
-            rep["refused"] = "rules_recheck_unreadable"
-            return finish()
-        if actual_rules["_sha256"] != rules["_sha256"]:
-            rep["refused"] = "rules_changed_before_apply"
-            return finish()
-    rep["manifest_sha256"] = hashlib.sha256(raw_manifest).hexdigest()
-    if standing:
-        if manifest_sha256 != rep["manifest_sha256"]:
-            rep["refused"] = "manifest_sha_mismatch"
-            return finish()
-        if m.get("scope") != "standing":
-            rep["refused"] = "manifest_scope"
-            return finish()
-        try:
-            ctx = SR.evidence_context(evidence, now, applying=True)
-            if m.get("offline") is not False or m.get("evidence_sha256") != ctx["evidence_sha256"]:
-                raise ValueError("manifest_evidence_mismatch")
-        except (ValueError, TypeError) as exc:
-            rep["refused"] = str(exc) if isinstance(exc, ValueError) else "evidence_missing"
-            return finish()
-        max_items = min(int(rules["apply"]["max_items_per_run"]), int(cfg.get("max_items_per_run", 150)))
-        max_bytes = min(SR.MAX_BYTES, int(float(cfg["max_gb_per_run"]) * 1024**3), int(cfg["max_bytes_per_run"]))
-        rep["per_rule"] = SR.per_rule(m.get("items") or [])
-        rep["protected_excluded_bytes"] = m.get("protected_excluded_bytes")
-        rep["protected_excluded_unmeasured"] = m.get("protected_excluded_unmeasured")
-        rep["run_id"] = run_id or "manual:" + rep["manifest_sha256"]
-    else:
-        ctx = build_context(rules, now)
-        max_items = int(rules["apply"]["max_items_per_run"])
-        max_bytes = int(rules["apply"]["max_bytes_per_run"])
+        return rep
+    ctx = build_context(rules, now)
+    max_items = int(rules["apply"]["max_items_per_run"])
+    max_bytes = int(rules["apply"]["max_bytes_per_run"])
     done_bytes = 0
-    attempt_clock = time.monotonic()
     for item in m.get("items") or []:
-        effective_now = now + timedelta(seconds=time.monotonic() - attempt_clock)
-        if (effective_now - gen).total_seconds() > age_limit * 3600:
-            rep["refused"] = "manifest_stale_during_apply"
-            break
-        try:
-            live_rules = load_rules(Path(rules["_path"]), home=rules["_home"])
-        except RulesError:
-            rep["refused"] = "rules_recheck_unreadable"
-            break
-        if live_rules["_sha256"] != rules["_sha256"]:
-            rep["refused"] = "rules_changed_during_apply"
-            break
-        size = item.get("size_bytes")
-        if not isinstance(size, int) or isinstance(size, bool) or size < 0:
-            rep["skipped"].append({"path": item.get("path"), "why": "size_unknown"})
-            continue
-        if standing and (item.get("rule") not in cfg["rules"] or SR.RULE_KINDS.get(item.get("rule")) != item.get("kind")):
-            rep["skipped"].append({"path": item.get("path"), "why": "standing_rule_not_listed"})
-            continue
+        size = int(item.get("size_bytes") or 0)
         if len(rep["removed"]) >= max_items:
             rep["skipped"].append({"path": item["path"], "why": "item_cap"})
             continue
         if done_bytes + size > max_bytes:
             rep["skipped"].append({"path": item["path"], "why": "byte_cap"})
             continue
-        if standing:
-            validation_now = now + timedelta(seconds=time.monotonic() - attempt_clock)
-            if (validation_now - gen).total_seconds() > age_limit * 3600:
-                rep["refused"] = "manifest_stale_during_apply"
-                break
-            try:
-                refreshed = collect_standing_evidence(rules, validation_now)
-                ctx = SR.evidence_context(refreshed, validation_now, applying=True)
-            except (RulesError, ValueError):
-                rep["refused"] = "evidence_recheck_unavailable"
-                break
-            try:
-                current_rules = load_rules(Path(rules["_path"]), home=rules["_home"])
-            except RulesError:
-                rep["refused"] = "rules_recheck_unreadable"
-                break
-            if current_rules["_sha256"] != rules["_sha256"]:
-                rep["refused"] = "rules_changed_during_apply"
-                break
-            if run_id and (current_rules.get("standing_apply") or {}).get("enabled") is not True:
-                rep["refused"] = "standing_apply_disabled"
-                break
-            try:
-                current_manifest_sha = hashlib.sha256(Path(manifest_path).read_bytes()).hexdigest()
-            except OSError:
-                current_manifest_sha = None
-            if current_manifest_sha != rep["manifest_sha256"]:
-                rep["refused"] = "manifest_changed_during_apply"
-                break
-            try:
-                fresh = next((r for r in standing_results(rules, ctx) if r["path"] == item["path"] and r["kind"] == item["kind"]), None)
-            except (RulesError, OSError):
-                rep["refused"] = "standing_revalidation_unavailable"
-                break
-            ok = bool(fresh and fresh["candidate"] and fresh.get("fingerprint") == item.get("fingerprint"))
-            why = "standing_revalidation_failed"
-            if ok:
-                size = du_bytes(Path(item["path"]), 60)
-                if size is None or size < 0:
-                    ok, why = False, "size_unknown"
-                elif done_bytes + size > max_bytes:
-                    ok, why = False, "byte_cap_remeasured"
-        else:
-            ok, why = revalidate(item, rules, ctx)
+        ok, why = revalidate(item, rules, ctx)
         if not ok:
             rep["skipped"].append({"path": item["path"], "why": why})
             continue
-        if standing:
-            if progress_sink is None:
-                rep["refused"] = "durable_progress_writer_missing"
-                break
-            rep["pending_removal"] = {"path": item["path"], "rule": item["rule"], "bytes": size,
-                                      "fingerprint": item.get("fingerprint"), "status": "PENDING_NOT_PROVEN_REMOVED"}
-            try:
-                progress_sink(rep)
-            except OSError:
-                rep["refused"] = "progress_write_failed_before_removal"
-                break
         try:
             ok, how = remove_item(item)
         except OSError as exc:
             ok, how = False, f"error:{type(exc).__name__}"
         if ok:
             done_bytes += size
-            rep["removed"].append({"path": item["path"], "kind": item["kind"], "rule": item.get("rule"), "bytes": size, "how": how,
-                                   "revalidation_evidence_sha256": ctx.get("evidence_sha256")})
-            if standing:
-                rep["pending_removal"] = None
-                try:
-                    progress_sink(rep)
-                except OSError:
-                    rep["refused"] = "progress_write_failed_after_removal"
-                    break
-                if "prune_failed" in how:
-                    rep["refused"] = "worktree_prune_failed"
-                    break
+            rep["removed"].append({"path": item["path"], "kind": item["kind"], "bytes": size, "how": how})
         else:
             rep["skipped"].append({"path": item["path"], "why": how})
-            if standing:
-                rep["refused"] = "removal_failed"
-                break
-    if standing:
-        rep["per_rule"] = SR.per_rule(m.get("items") or [], rep["removed"])
-        rep["planned_bytes"] = sum(r["planned_bytes"] for r in rep["per_rule"].values())
-        rep["unmeasured_planned_items"] = sum(r["unmeasured_planned_items"] for r in rep["per_rule"].values())
-        rep["held_bytes"] = max(0, rep["planned_bytes"] - done_bytes)
-        rep["held_gb"] = rep["held_bytes"] / 1024**3
-        rep["post_apply_usage"] = disk_usage_sample(rules["_home"])
-        rep["operator_digest"] = SR.operator_digest(rep)
     rep["reclaimed_bytes"] = done_bytes
     rep["reclaimed_gb"] = _gb(done_bytes)
     rep["finished_at"] = datetime.now(timezone.utc).isoformat()
-    return finish()
+    return rep
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -1477,10 +1009,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     g = ap.add_mutually_exclusive_group()
     g.add_argument("--plan", action="store_true", help="the default: write the manifest + receipt, delete nothing")
     g.add_argument("--dry-run", action="store_true", help="print the plan only; writes nothing at all")
-    g.add_argument("--apply", action="store_true", help=f"delete manifest items (manual path needs {GRANT_ENV}; --standing is separately reviewed)")
-    ap.add_argument("--standing", action="store_true", help="optional reviewed A/S/W rules only (disabled until operator review)")
-    ap.add_argument("--evidence-snapshot", help="hashed authorized source capture; offline snapshots support previews only")
-    ap.add_argument("--manifest-sha256", help="--standing --apply: exact manifest file SHA256")
+    g.add_argument("--apply", action="store_true", help=f"delete manifest items (needs {GRANT_ENV}; never on n8n)")
     ap.add_argument("--report", action="store_true", help="also print the human summary")
     ap.add_argument("--manifest", help="--apply: manifest path (default: the latest)")
     ap.add_argument("--rules", help="rules file (default config/disk_hygiene_rules.json)")
@@ -1515,62 +1044,16 @@ def main(argv: Optional[list[str]] = None) -> int:
             )
         return 1
 
-    evidence = None
-    rep = None
-    evidence_error = None
-    if a.standing:
-        cfg = rules.get("standing_apply") or {}
-        approval = cfg.get("approval") or {}
-        if a.apply and (approval.get("status") != "APPROVED" or not cfg.get("approved_by") or cfg.get("approved_by") != approval.get("approved_by") or not approval.get("approved_at")):
-            evidence_error = "standing_approval_pending"
-        elif a.apply and os.environ.get(RUN_ID_ENV) and cfg.get("enabled") is not True:
-            evidence_error = "standing_apply_disabled"
-        elif a.evidence_snapshot:
-            try:
-                evidence = json.loads(_expand(str(a.evidence_snapshot), rules["_home"]).read_text())
-            except (OSError, ValueError, TypeError):
-                evidence_error = "evidence_snapshot_unreadable"
-        else:
-            evidence = collect_standing_evidence(rules, now)
-        if evidence_error and not a.apply:
-            print(json.dumps({"ok": False, "error": evidence_error}))
-            return 1
-
     if a.apply:
         mpath = Path(a.manifest) if a.manifest else manifest_dir(rules, state_root) / rules["manifest"]["latest_name"]
-        if a.standing and not a.manifest and evidence_error is None:
-            # A fresh native run plans first; it still applies an exact digest-bound manifest.
-            try:
-                fresh = standing_plan(rules, now, evidence)
-                mpath = write_manifest(fresh, rules, state_root)
-                a.manifest_sha256 = hashlib.sha256(mpath.read_bytes()).hexdigest()
-            except (RulesError, OSError) as exc:
-                evidence_error = str(exc) if isinstance(exc, RulesError) else "manifest_write_failed"
-        if evidence_error:
-            rep = {"schema": APPLY_SCHEMA, "run_id": os.environ.get(RUN_ID_ENV), "started_at": wall_start.isoformat(),
-                   "finished_at": datetime.now(timezone.utc).isoformat(), "refused": evidence_error,
-                   "removed": [], "skipped": [], "per_rule": None, "held_bytes": None, "planned_bytes": None,
-                   "unmeasured_planned_items": None}
-            rep["operator_digest"] = SR.operator_digest(rep)
-        else:
-            from scripts.lib.atomic_json_store import atomic_write_json
-            progress_id = re.sub(r"[^A-Za-z0-9_.-]", "_", str(os.environ.get(RUN_ID_ENV) or now.strftime("%Y%m%dT%H%M%SZ")))[:120]
-            progress_path = manifest_dir(rules, state_root) / f"disk_hygiene_standing_progress_{progress_id}.json"
-            rep = apply(mpath, rules, now, grant=os.environ.get(GRANT_ENV), run_id=os.environ.get(RUN_ID_ENV),
-                        standing=a.standing, evidence=evidence, manifest_sha256=a.manifest_sha256,
-                        progress_sink=(lambda current: atomic_write_json(progress_path, current, indent=1)) if a.standing else None)
+        rep = apply(mpath, rules, now, grant=os.environ.get(GRANT_ENV), run_id=os.environ.get(RUN_ID_ENV))
         from scripts.lib.atomic_json_store import atomic_write_json
 
         if rep.get("refused") != "n8n_executor_never_applies":
             stamp = now.strftime("%Y%m%dT%H%M%SZ")
             atomic_write_json(manifest_dir(rules, state_root) / f"disk_hygiene_apply_{stamp}.json", rep, indent=1)
-            if a.standing:
-                report_id = re.sub(r"[^A-Za-z0-9_.-]", "_", str(rep.get("run_id") or stamp))[:120]
-                atomic_write_json(manifest_dir(rules, state_root) / f"disk_hygiene_standing_apply_{stamp}_{report_id}.json", rep, indent=1)
-                atomic_write_json(manifest_dir(rules, state_root) / "disk_hygiene_standing_apply_latest.json", rep, indent=1)
-            receipt_lane = LANE_ID if a.standing and os.environ.get(RUN_ID_ENV) else APPLY_LANE_ID
             R.write_lane_receipt(
-                receipt_lane,
+                APPLY_LANE_ID,
                 ok=not rep.get("refused"),
                 exit_code=0 if not rep.get("refused") else 1,
                 started_at=wall_start,
@@ -1580,12 +1063,8 @@ def main(argv: Optional[list[str]] = None) -> int:
                     "removed": len(rep["removed"]),
                     "skipped": len(rep["skipped"]),
                     "reclaimed_bytes": rep.get("reclaimed_bytes"),
-                    "per_rule": rep.get("per_rule"), "operator_digest": rep.get("operator_digest"),
                 },
-                path=R.receipt_path(receipt_lane, state_root),
-                output={"produced_count": 1 if not rep.get("refused") else 0, "attempted_count": 1,
-                        "skipped_reasons": {SKIP_DEPENDENCY: 1} if rep.get("refused") else {},
-                        "empty_reason": None, "output_evidence": [{"kind": "file", "ref": str(manifest_dir(rules, state_root) / "disk_hygiene_standing_apply_latest.json")}]} if a.standing else None,
+                path=R.receipt_path(APPLY_LANE_ID, state_root),
             )
         print(
             json.dumps(
@@ -1596,7 +1075,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 1 if rep.get("refused") else 0
 
     try:
-        m = standing_plan(rules, now, evidence, measure=not a.no_measure) if a.standing else plan(rules, now, measure=not a.no_measure)
+        m = plan(rules, now, measure=not a.no_measure)
     except RulesError as exc:
         m, err = None, str(exc)
     else:
@@ -1628,7 +1107,6 @@ def main(argv: Optional[list[str]] = None) -> int:
                 "candidates": m["totals"]["candidates"],
                 "reclaimable_bytes": m["totals"]["reclaimable_bytes"],
                 "excluded": m["totals"]["excluded"],
-                "per_rule": m.get("per_rule"), "scope": m.get("scope"),
             }
         )
     written = R.write_lane_receipt(

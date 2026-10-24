@@ -491,7 +491,7 @@ def test_apply_removes_worktrees_with_git_worktree_remove_and_clones_and_release
     assert _apply(world, **{DH.GRANT_ENV: "g1"}) == 0
     rep = _last_apply(world)
     assert {r["path"] for r in rep["removed"]} == {str(wt), str(clone), str(rel[0]), str(rel[1])}
-    assert {r["how"] for r in rep["removed"] if r["kind"] == "git_worktree"} == {"git worktree remove; prune"}
+    assert {r["how"] for r in rep["removed"] if r["kind"] == "git_worktree"} == {"git worktree remove"}
     assert not wt.exists() and not clone.exists() and not rel[0].exists() and rel[2].exists() and rel[3].exists()
     assert str(wt) not in sh("git", "worktree", "list", "--porcelain", cwd=world.dev)  # no stale registration
     assert rep["reclaimed_bytes"] == sum(r["bytes"] for r in rep["removed"]) and rep["grant"] == "g1"
@@ -527,16 +527,16 @@ def test_apply_skips_items_whose_fingerprint_moved(world):
 def test_apply_stops_at_the_item_and_byte_caps(world):
     for n in ("wt-1", "wt-2", "wt-3"):
         world.worktree(n)
+    world.plan()
     world.rules["apply"]["max_items_per_run"] = 1
     world.write_rules()
-    world.plan()
     assert _apply(world, **{DH.GRANT_ENV: "g1"}) == 0
     rep = _last_apply(world)
     assert len(rep["removed"]) == 1 and [s["why"] for s in rep["skipped"]] == ["item_cap", "item_cap"]
+    world.plan()
     world.rules["apply"]["max_items_per_run"] = 10
     world.rules["apply"]["max_bytes_per_run"] = 1
     world.write_rules()
-    world.plan()
     assert _apply(world, **{DH.GRANT_ENV: "g1"}) == 0
     rep = _last_apply(world)
     assert rep["removed"] == [] and {s["why"] for s in rep["skipped"]} == {"byte_cap"}
@@ -608,13 +608,12 @@ def test_band_thresholds_and_transitions():
 def test_monitor_alerts_once_per_band_change_never_per_percent(mon):
     assert mon.run(50.0) == 0 and mon.intents() == []  # first run at ok: nothing to say
     assert mon.run(85.0) == 0
-    assert mon.run(87.5) == 0  # same80/90 band; the separate >85 boundary queues one hygiene alert
+    assert mon.run(87.5) == 0  # same band, higher percent: no new intent
     assert mon.run(92.0) == 0
     assert mon.run(91.0) == 0
     assert mon.run(70.0) == 0
     kinds = [(d, k) for d, k, *_ in mon.intents()]
-    assert kinds == [("host", "disk_usage_warn"), ("host", "disk_hygiene_alert"),
-                     ("host", "disk_usage_critical"), ("host", "disk_usage_recovered")]
+    assert kinds == [("host", "disk_usage_warn"), ("host", "disk_usage_critical"), ("host", "disk_usage_recovered")]
     subjects = [s for _, _, s, _, _ in mon.intents()]
     assert subjects[0] == "Disk / WARN: at or above 80% used" and "%" not in subjects[0].split("80")[0]
     assert all(w == "host.disk_usage_monitor" for *_, w in mon.intents())
