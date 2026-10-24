@@ -1,114 +1,186 @@
 {
-  "schema": "DiskStandingApplySourceVerification@v1",
-  "observed_at": "2026-10-24T16:40:22.950306+00:00",
-  "base_sha": "e5fa288ecc6971d1a55a79f7e3ba5bbbb46c5dd0",
-  "task": "DSN-20261024-disk-standing-apply-P1-T1",
-  "claim": "20261024T155517Z-codex-127ab9c6",
+  "schema": "DiskStandingApplySourceVerification@v2",
+  "observed_at": "2026-10-24T22:03:42.355476+00:00",
+  "base_sha": "e148e2a65303d8aa6e6c9437784ae83f9e2bebe8",
+  "task": "DSN-20261024-disk-standing-ci-fix-P1-T1",
+  "claim": "20261024T212136Z-codex-36b3d3c4",
+  "status": "AFFECTED_SOURCE_TESTS_GREEN_FULL_PROJECT_BLOCKED_ACTIVATION_PENDING",
   "scope": "source and contained fixtures only; NOT runtime acceptance",
-  "status": "LOCAL_SOURCE_GREEN_ACTIVATION_PENDING",
+  "source_integration": {
+    "method": "content port; no stale feature merge/rebase",
+    "original_source": "01a3563915dbb15eee0536140e0350279b1092f6",
+    "original_source_not_main": true,
+    "frozen_C1_metadata_source": "d543707ce1cf382dc85e4ddbf0bfc3b94ff93a05",
+    "C1_row_state": "NEVER_SCHEDULED/kind none; no activation or review fabricated",
+    "canonical_registry_reader": "accepts literal UTF8; unchanged W1 assertion",
+    "source_config_pins": "regenerated after exact accepted-base/C1 proposal union; approval remains pending"
+  },
   "tests": {
-    "environment": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg",
-    "final": "420 passed in92.53s",
-    "real_tree_completeness": "both requested cases passed; no speculative classification edit",
-    "initial_hygiene_expanded": "194 passed/1 failed old monitor expectation of3intents; strict expectation updated for requested distinct85%boundary",
-    "intermediate_full": "195passed",
-    "initial_env_expanded": "416passed/2failed exact three path-env inventory reads on disk-hygiene and tmp-hygiene",
-    "exact_env_rerun": "2passed after exact inventories/evidence; no assertion weakening",
-    "new_standing_cases": "business clocks pinned; synthetic reviewers only; fake collector/removal or owned temporary source config fixtures",
-    "existing_apply_relay_cases": "complete inspected hermetic fixture suite run; real owned temporary git/file cleanup and fake service/proc/grant surfaces only",
-    "post_review_staged": "63passed in54.95s:61standing/packet cases+both real-tree completeness checks after git staging; separate overlapping run, not483 distinct tests"
+    "environment": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg; TRADE_AI_CI=1; M2_SKIP_DOCKER=1; owned fixture TMPDIR",
+    "affected_native": {
+      "passed": 578,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 142.322,
+      "whole_files": 11,
+      "additional_real_tree_nodes": 2,
+      "receipt": "/home/johnclaw/.cache/rtc/codex-disk-standing-ci-fix-20261024/affected-native.xml"
+    },
+    "initial_complete_tmp_file": "29 passed; overlapping with affected_native, not added",
+    "full_project": {
+      "executed_on_this_head": false,
+      "status": "BLOCKED",
+      "reason": "Earlier completed C1 full profile records genuine Hermes and canonical runtime mkdir refusals in legacy fixtures. Do not repeat refused production-state attempts; require legitimate fixture isolation. Private PG fixtures cannot run with driver deliberately hidden; no all-skipped tolerance or barrier is weakened.",
+      "boundary_receipt": "/home/johnclaw/.cache/rtc/codex-disk-standing-ci-fix-20261024/full-profile-boundary.json"
+    }
   },
   "checks": {
-    "contracts": "0errors; existing158contracts/134targets unchanged",
-    "registry": "0errors/undeclared against explicit historical captured discovery",
-    "reconcile": "CHECK dry-run, historical20261009SchedulerSnapshot;0problems; not a fresh host census",
-    "test_host_paths": "0new",
-    "test_coverage": "0new unlisted",
-    "ruff": "pass",
-    "docs_index": "pass",
-    "config_writes_during_CHECK": false
+    "read_only_validators": 12,
+    "all_exit_zero": true,
+    "config_writes": [],
+    "receipt": "/home/johnclaw/.cache/rtc/codex-disk-standing-ci-fix-20261024/checks-current-no-write.json",
+    "docs_index": "PASS: all tracked docs listed; no baseline or header warning suppression"
   },
-  "preservation": {
-    "operative_registry_rows_unchanged": true,
-    "operative_contract_rows_unchanged": true,
-    "allowlist_changed_rows": [
-      {
-        "lane_id": "disk-hygiene",
-        "fields": [
-          "env_evidence",
-          "env_names"
-        ]
-      },
-      {
-        "lane_id": "tmp-hygiene",
-        "fields": [
-          "env_evidence",
-          "env_names"
-        ]
-      }
-    ],
-    "all_other_allowlist_rows_unchanged": true,
-    "standing_enabled": false,
-    "cadence_argv_contract_promotion": "PENDING_OPERATOR_REVIEW"
-  },
-  "live_state": {
-    "cleanup": false,
-    "workflow_import_activation": false,
-    "host_schedule_calls": false,
-    "remote_push_merge_release": false,
+  "runtime": {
     "standing_enabled": false,
     "operator_review": "PENDING",
-    "staged_cadence": "0 4 * * 1,3,5,0 America/New_York; nominal48localh, fall-back49elapsedh"
+    "workflow_import_activation": false,
+    "cleanup": false,
+    "host_schedule_calls": false,
+    "remote_push_merge_release": false
   },
   "remaining": [
-    "coordinator must preserve A frozen additions during union integration",
-    "regenerate activation input pins on accepted union before exact review",
-    "operator reviews quoted first real dry run and actual draft/source plan",
-    "operator/coordinator owns promotion/publication and native/runtime/notification-delivery proof"
+    "legitimate isolation/owner disposition for full-project fixture refusals, then fresh full hidden-driver/native validation",
+    "coordinator exact-source review and integration preserving all proposals; regenerate pins if union bytes change",
+    "operator review of first quoted actual dry run before activation or cleanup",
+    "actual native run and operator-notification delivery proof"
   ],
+  "historical_original_verification": {
+    "schema": "DiskStandingApplySourceVerification@v1",
+    "observed_at": "2026-10-24T16:40:22.950306+00:00",
+    "base_sha": "e5fa288ecc6971d1a55a79f7e3ba5bbbb46c5dd0",
+    "task": "DSN-20261024-disk-standing-apply-P1-T1",
+    "claim": "20261024T155517Z-codex-127ab9c6",
+    "scope": "source and contained fixtures only; NOT runtime acceptance",
+    "status": "LOCAL_SOURCE_GREEN_ACTIVATION_PENDING",
+    "tests": {
+      "environment": "PYTHONPATH=/home/johnclaw/.cache/rtc/nopg",
+      "final": "420 passed in92.53s",
+      "real_tree_completeness": "both requested cases passed; no speculative classification edit",
+      "initial_hygiene_expanded": "194 passed/1 failed old monitor expectation of3intents; strict expectation updated for requested distinct85%boundary",
+      "intermediate_full": "195passed",
+      "initial_env_expanded": "416passed/2failed exact three path-env inventory reads on disk-hygiene and tmp-hygiene",
+      "exact_env_rerun": "2passed after exact inventories/evidence; no assertion weakening",
+      "new_standing_cases": "business clocks pinned; synthetic reviewers only; fake collector/removal or owned temporary source config fixtures",
+      "existing_apply_relay_cases": "complete inspected hermetic fixture suite run; real owned temporary git/file cleanup and fake service/proc/grant surfaces only",
+      "post_review_staged": "63passed in54.95s:61standing/packet cases+both real-tree completeness checks after git staging; separate overlapping run, not483 distinct tests"
+    },
+    "checks": {
+      "contracts": "0errors; existing158contracts/134targets unchanged",
+      "registry": "0errors/undeclared against explicit historical captured discovery",
+      "reconcile": "CHECK dry-run, historical20261009SchedulerSnapshot;0problems; not a fresh host census",
+      "test_host_paths": "0new",
+      "test_coverage": "0new unlisted",
+      "ruff": "pass",
+      "docs_index": "pass",
+      "config_writes_during_CHECK": false
+    },
+    "preservation": {
+      "operative_registry_rows_unchanged": true,
+      "operative_contract_rows_unchanged": true,
+      "allowlist_changed_rows": [
+        {
+          "lane_id": "disk-hygiene",
+          "fields": [
+            "env_evidence",
+            "env_names"
+          ]
+        },
+        {
+          "lane_id": "tmp-hygiene",
+          "fields": [
+            "env_evidence",
+            "env_names"
+          ]
+        }
+      ],
+      "all_other_allowlist_rows_unchanged": true,
+      "standing_enabled": false,
+      "cadence_argv_contract_promotion": "PENDING_OPERATOR_REVIEW"
+    },
+    "live_state": {
+      "cleanup": false,
+      "workflow_import_activation": false,
+      "host_schedule_calls": false,
+      "remote_push_merge_release": false,
+      "standing_enabled": false,
+      "operator_review": "PENDING",
+      "staged_cadence": "0 4 * * 1,3,5,0 America/New_York; nominal48localh, fall-back49elapsedh"
+    },
+    "remaining": [
+      "coordinator must preserve A frozen additions during union integration",
+      "regenerate activation input pins on accepted union before exact review",
+      "operator reviews quoted first real dry run and actual draft/source plan",
+      "operator/coordinator owns promotion/publication and native/runtime/notification-delivery proof"
+    ],
+    "source_sha256": {
+      "config/ci_gates/disk_standing_apply_20261024.json": "bfb5b21864e3707422e373bf68511160bea334e8a8943389d9a934810e49b813",
+      "config/disk_hygiene_rules.json": "aa6d1a2d6afe84c924b930d2174542678b284601002b71b6ce9000aa695d504f",
+      "config/host_comms_intent_routes.json": "49c7262403435dd7b8696b1bde7733c0d99d21788165209dceb71fd9544c0838",
+      "config/lane_registry.json": "a8c7ec5ff25a8730d1f6ee0ea0a50b1f0bd7a27ac432a8412228f9e12d2b8d4e",
+      "config/n8n_health_contracts.json": "1a6bbe53b795090df3eef60298ab29a21fc3f3977e673a96fdd287437f3d917d",
+      "config/n8n_run_allowlist.json": "65ad007975e0a0ef25e0b604120b4d367a69b282c6abd417e360ff694c7f8912",
+      "docs/ops/packets/disk-standing-apply-20261024/activate_reviewed.py": "d4ea93ba93b960e2c663fd26f653e56579446a855614136c3aa48f8cbd896ed8",
+      "docs/ops/packets/disk-standing-apply-20261024/activation-diff.json": "bbd37505eb897fbf3b7861000a9f9f43bfae62c034612edbe1af8b29b6686645",
+      "docs/ops/packets/disk-standing-apply-20261024/activation-input-sha256.json": "1e0a7ec40fdb9f607df0fe3b2eeb3cf9918af131fd89aadbbce198aa25b1666e",
+      "docs/ops/packets/disk-standing-apply-20261024/admission.proposed.json": "136460db567900d12646a9391482e471abc1f0c2cd810b6027b5d10cf2f66d8c",
+      "docs/ops/packets/disk-standing-apply-20261024/review.required.json": "27fbcbd99a546ab7308cfc0541518389a4da92d378fa46d56ce333feb2dae941",
+      "docs/ops/packets/disk-standing-apply-20261024/rules.preview.json": "0b1d754f141b9432d7d654e7f068fdf12f785bc3dcd87e2fc3689d677eff6a86",
+      "docs/ops/packets/disk-standing-apply-20261024/standing-apply.proposed.json": "166ca5e7ea7f01e7fa3295c7e2e89db1f8d242c5c13aaca366532358335a479f",
+      "docs/ops/packets/disk-standing-apply-20261024/standing-contract.draft.json": "e6a4070e38c64268509de4bb1a525ffa07d9557f94b5d7b74efdd0e20f8da9d3",
+      "scripts/disk_hygiene.py": "79a1a1c3000cdde01ab918775b3bb01d7a2e2ad62bd661a77c88277482503ba9",
+      "scripts/disk_usage_monitor.py": "568a1a44a381596958e4dd739f29bad6bed43a4b4c308c31a3f2ac1585395358",
+      "scripts/lib/disk_hygiene_retention.py": "d3b30293fcd1c6c2c5c57b56a0df78a669d569d8654c8f0bb837499b281e0347",
+      "tests/test_disk_hygiene_20261018.py": "7ef89bd5d95aa0d5a0f85b7eef07ce1a7f1fb0ab557bba3702208d0727035b93",
+      "tests/test_disk_standing_apply_20261024.py": "0510fa702bc82b3fc90aaea3bc504a65ae67ecef4252b72d218a9ceb850e8971",
+      "docs/INDEX.md": "cc2c903692b6f696107b5dabba62f448d490b2d2ad47ce348402ccb81aa7254b",
+      "docs/ops/DISK_STANDING_APPLY_20261024.md": "9b00e134eee08a7c8f5f6e3c8a8c7b87dbdbe6e7c5d79797bc1435ebe76311e4",
+      "docs/ops/packets/disk-standing-apply-20261024/README.md": "3a455b8410a239b9e0a16e1bbe53794635fdf2a78bb3f23dfd7f9ec0fc1e2957"
+    },
+    "receipt_sha256": {
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/native-tests.log": "89932cce1b51364d7382f78884b9198da1a5376778971c43d637af38bc7d11ed",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/native-tests-final.log": "4ab34da08f7b6095d0d183b3878a171b9bafb0f3773c6e00ad42680eddd5e07c",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/final-expanded-tests.log": "4799f58fcbbb86aee7ac77b5f7344bbd41f81b33786ff894b757f410c203f0a8",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/final-expanded-green-tests.log": "38a546f80f7ff0617df51bc870ab5e5418bb89b02f747acfe8c2d7fb40e50f76",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/final-checks-no-write.json": "fce0688fbc0d38c8694c9d96ffabd9060aa2a69496f724b6f71364b0d7164ee4",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/registry-final.json": "5e68c6b69b6a338db009056df85071953707426f1bdff4d9618b1943cf897c4f",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/contracts-final.json": "db1ee17a587682db7056c3ac28d0d3716982187a3db352fa7f041ab1f95cc0bf",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/reconcile-final.json": "1d8ea1606c402bd0c17f291175743d84f8460e2cb86c6daf755b26252bb7c261",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/host-paths-final.log": "35e284022d0751bcc0bb4fa920ab50a99bcbb8957f454ef45a19300aa540bca6",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/coverage-final.log": "b468a51ba55a562897c92cc888545479b61256a8c59d11e0a8b1939c67bd6dd0",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/docs-index-final.log": "d80cd4d4de8274909c237260dafdc6118cdb284a129b0d705a615229c2b2a567",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/ruff-final.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/preservation.json": "1745d368e261b1b0621ee0bee3eb3001424da15d7a6e50e18ac99fa6de3da4ba",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/staged-final-tests.log": "0cbf7e74e6c926b1f0ca39bb4464fc30817f6c1900da2d9bd11135f3ab166204",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/docs-index-staged.log": "12caa549d59996bbd75a0f91862b4bdd7f4b2ea944a3b853cc79a2fa5feb3514",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/docs-index-postreview.log": "d801793281562a88840eaae3521f56ce33ab5d5f617a0637f6f7783ee1dd7f5e",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/host-paths-postreview.log": "35e284022d0751bcc0bb4fa920ab50a99bcbb8957f454ef45a19300aa540bca6",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/coverage-postreview.log": "b468a51ba55a562897c92cc888545479b61256a8c59d11e0a8b1939c67bd6dd0",
+      "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/ruff-postreview.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    }
+  },
   "source_sha256": {
-    "config/ci_gates/disk_standing_apply_20261024.json": "bfb5b21864e3707422e373bf68511160bea334e8a8943389d9a934810e49b813",
     "config/disk_hygiene_rules.json": "aa6d1a2d6afe84c924b930d2174542678b284601002b71b6ce9000aa695d504f",
     "config/host_comms_intent_routes.json": "49c7262403435dd7b8696b1bde7733c0d99d21788165209dceb71fd9544c0838",
-    "config/lane_registry.json": "a8c7ec5ff25a8730d1f6ee0ea0a50b1f0bd7a27ac432a8412228f9e12d2b8d4e",
+    "config/lane_registry.json": "50401e0b25a49f8a2bb502448a6c2a66398a0cb93ab94564870e9fa650b0a8f6",
     "config/n8n_health_contracts.json": "1a6bbe53b795090df3eef60298ab29a21fc3f3977e673a96fdd287437f3d917d",
     "config/n8n_run_allowlist.json": "65ad007975e0a0ef25e0b604120b4d367a69b282c6abd417e360ff694c7f8912",
-    "docs/ops/packets/disk-standing-apply-20261024/activate_reviewed.py": "d4ea93ba93b960e2c663fd26f653e56579446a855614136c3aa48f8cbd896ed8",
-    "docs/ops/packets/disk-standing-apply-20261024/activation-diff.json": "bbd37505eb897fbf3b7861000a9f9f43bfae62c034612edbe1af8b29b6686645",
-    "docs/ops/packets/disk-standing-apply-20261024/activation-input-sha256.json": "1e0a7ec40fdb9f607df0fe3b2eeb3cf9918af131fd89aadbbce198aa25b1666e",
-    "docs/ops/packets/disk-standing-apply-20261024/admission.proposed.json": "136460db567900d12646a9391482e471abc1f0c2cd810b6027b5d10cf2f66d8c",
-    "docs/ops/packets/disk-standing-apply-20261024/review.required.json": "27fbcbd99a546ab7308cfc0541518389a4da92d378fa46d56ce333feb2dae941",
-    "docs/ops/packets/disk-standing-apply-20261024/rules.preview.json": "0b1d754f141b9432d7d654e7f068fdf12f785bc3dcd87e2fc3689d677eff6a86",
-    "docs/ops/packets/disk-standing-apply-20261024/standing-apply.proposed.json": "166ca5e7ea7f01e7fa3295c7e2e89db1f8d242c5c13aaca366532358335a479f",
-    "docs/ops/packets/disk-standing-apply-20261024/standing-contract.draft.json": "e6a4070e38c64268509de4bb1a525ffa07d9557f94b5d7b74efdd0e20f8da9d3",
     "scripts/disk_hygiene.py": "79a1a1c3000cdde01ab918775b3bb01d7a2e2ad62bd661a77c88277482503ba9",
     "scripts/disk_usage_monitor.py": "568a1a44a381596958e4dd739f29bad6bed43a4b4c308c31a3f2ac1585395358",
     "scripts/lib/disk_hygiene_retention.py": "d3b30293fcd1c6c2c5c57b56a0df78a669d569d8654c8f0bb837499b281e0347",
     "tests/test_disk_hygiene_20261018.py": "7ef89bd5d95aa0d5a0f85b7eef07ce1a7f1fb0ab557bba3702208d0727035b93",
     "tests/test_disk_standing_apply_20261024.py": "0510fa702bc82b3fc90aaea3bc504a65ae67ecef4252b72d218a9ceb850e8971",
-    "docs/INDEX.md": "cc2c903692b6f696107b5dabba62f448d490b2d2ad47ce348402ccb81aa7254b",
-    "docs/ops/DISK_STANDING_APPLY_20261024.md": "9b00e134eee08a7c8f5f6e3c8a8c7b87dbdbe6e7c5d79797bc1435ebe76311e4",
-    "docs/ops/packets/disk-standing-apply-20261024/README.md": "3a455b8410a239b9e0a16e1bbe53794635fdf2a78bb3f23dfd7f9ec0fc1e2957"
-  },
-  "receipt_sha256": {
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/native-tests.log": "89932cce1b51364d7382f78884b9198da1a5376778971c43d637af38bc7d11ed",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/native-tests-final.log": "4ab34da08f7b6095d0d183b3878a171b9bafb0f3773c6e00ad42680eddd5e07c",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/final-expanded-tests.log": "4799f58fcbbb86aee7ac77b5f7344bbd41f81b33786ff894b757f410c203f0a8",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/final-expanded-green-tests.log": "38a546f80f7ff0617df51bc870ab5e5418bb89b02f747acfe8c2d7fb40e50f76",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/final-checks-no-write.json": "fce0688fbc0d38c8694c9d96ffabd9060aa2a69496f724b6f71364b0d7164ee4",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/registry-final.json": "5e68c6b69b6a338db009056df85071953707426f1bdff4d9618b1943cf897c4f",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/contracts-final.json": "db1ee17a587682db7056c3ac28d0d3716982187a3db352fa7f041ab1f95cc0bf",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/reconcile-final.json": "1d8ea1606c402bd0c17f291175743d84f8460e2cb86c6daf755b26252bb7c261",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/host-paths-final.log": "35e284022d0751bcc0bb4fa920ab50a99bcbb8957f454ef45a19300aa540bca6",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/coverage-final.log": "b468a51ba55a562897c92cc888545479b61256a8c59d11e0a8b1939c67bd6dd0",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/docs-index-final.log": "d80cd4d4de8274909c237260dafdc6118cdb284a129b0d705a615229c2b2a567",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/ruff-final.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/preservation.json": "1745d368e261b1b0621ee0bee3eb3001424da15d7a6e50e18ac99fa6de3da4ba",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/staged-final-tests.log": "0cbf7e74e6c926b1f0ca39bb4464fc30817f6c1900da2d9bd11135f3ab166204",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/docs-index-staged.log": "12caa549d59996bbd75a0f91862b4bdd7f4b2ea944a3b853cc79a2fa5feb3514",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/docs-index-postreview.log": "d801793281562a88840eaae3521f56ce33ab5d5f617a0637f6f7783ee1dd7f5e",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/host-paths-postreview.log": "35e284022d0751bcc0bb4fa920ab50a99bcbb8957f454ef45a19300aa540bca6",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/coverage-postreview.log": "b468a51ba55a562897c92cc888545479b61256a8c59d11e0a8b1939c67bd6dd0",
-    "/home/johnclaw/.cache/rtc/codex-disk-standing-apply-20261024/ruff-postreview.log": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    "tests/test_tmp_hygiene_20261019.py": "9e5eeabab335efe6e7020612c32f8cf7988c9d6f978f453a7571d1a6c90ee7c4"
   }
 }

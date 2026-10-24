@@ -2,12 +2,12 @@
 
 Design-Task: DSN-20261024-disk-standing-apply-P1-T1
 
-No script here performs host cleanup, imports or activates live n8n workflows, or changes host schedules. The operator-only promotion helper can change source configuration in an isolated review worktree after exact approval/digest. `rules.preview.json` is a copy of base rules with **disabled, pending-approval** standing metadata. `standing-apply.proposed.json` is the additive section; `admission.proposed.json` records the native schedule, new command/closure, draft contract, routes and acceptance changes; `activation-diff.json` is an inert operator-only change description. The four configuration scopes were legitimately handed off and source staging is integrated. Coordinator union with A's frozen additions must regenerate the activation pins before review. Never treat the old plan-only reviewed contract as approval of deletion.
+No script here performs host cleanup, imports or activates live n8n workflows, or changes host schedules. The operator-only promotion helper can change source configuration in an isolated review worktree after exact approval/digest. `rules.preview.json` is a copy of base rules with **disabled, pending-approval** standing metadata. `standing-apply.proposed.json` is the additive section; `admission.proposed.json` records the native schedule, new command/closure, draft contract, routes and acceptance changes; `activation-diff.json` is an inert operator-only change description. The four configuration scopes were legitimately handed off and source staging is integrated. The fresh accepted-main source union retains frozen C1 unscheduled proposal metadata. Current exact pins must be regenerated if any later integration changes configuration bytes. Never treat the old plan-only reviewed contract as approval of deletion.
 
-After the root's legitimate scope handoff and approval review, the operator's first real preview (not executed by this worker) is:
+After legitimate scope handoff and operator approval review, the operator's first real preview (not executed by this worker) is:
 
 ```bash
-cd /home/johnclaw/wt-codex-disk-standing-apply-20261024
+cd /home/johnclaw/wt-codex-disk-standing-ci-fix-20261024
 python3 scripts/disk_hygiene.py --standing --dry-run --report --rules docs/ops/packets/disk-standing-apply-20261024/rules.preview.json
 ```
 

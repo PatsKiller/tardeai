@@ -1,7 +1,7 @@
 {
   "status": "PROPOSED_NOT_OPERATIVE",
-  "requires": "A-held config release plus root direct-session review; operator reviews quoted dry run before enabling/importing",
-  "base_sha": "e5fa288ecc6971d1a55a79f7e3ba5bbbb46c5dd0",
+  "requires": "Pending exact-source operator review and quoted first real dry run before enabling/importing; accepted-main and frozen C1 metadata union is source-only",
+  "base_sha": "e148e2a65303d8aa6e6c9437784ae83f9e2bebe8",
   "base_rules_sha256": "30f7f704af814bcbfc6598e8c3fa2b1178b9d1a91f11032e27273706339e5086",
   "lane_id": "disk-hygiene",
   "scheduler": {
@@ -13,7 +13,7 @@
     "minimum_gap_hours": 24,
     "nominal_max_gap_local_hours": 48,
     "maximum_elapsed_gap_hours": 49,
-    "dst_note": "ET cron retains04:00 local: fall-back gap49 elapsed hours, spring-forward47; Sunday\u2192Monday24 nominal hours."
+    "dst_note": "ET cron retains04:00 local: fall-back gap49 elapsed hours, spring-forward47; Sunday→Monday24 nominal hours."
   },
   "allowlist": {
     "command": [
@@ -75,5 +75,6 @@
       "producer": "disk_usage_monitor"
     }
   ],
-  "activation_diff": "standing_apply.enabled false->true ONLY after reviewed operative contract/admission/routes, config SHA rebase, quoted live dry-run approval and first monitored native proof; no activation performed by this packet"
+  "activation_diff": "standing_apply.enabled false->true ONLY after reviewed operative contract/admission/routes, exact source-config SHA review, quoted live dry-run approval and first monitored native proof; no activation performed by this packet",
+  "historical_original_base_sha": "e5fa288ecc6971d1a55a79f7e3ba5bbbb46c5dd0"
 }
