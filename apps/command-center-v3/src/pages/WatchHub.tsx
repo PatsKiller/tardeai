@@ -74,9 +74,9 @@ export default function WatchHub({ onDrill }: Props) {
     <div data-watch-hub-primary>
       <div className="hub-title-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
-          <div style={hubTitle()}>
+          <h1 style={{ ...hubTitle(), margin: 0 }}>
             Watch <span style={{ color: BB.text3 }}>›</span> {TAB_LABEL[tab]}
-          </div>
+          </h1>
           <div style={hubSubtitle(terminalUi)}>
             {tab === 'MyWatchlist'
               ? 'Your names — starred first · never dropped by caps or expiry · last trade and re-entry for names you sold'

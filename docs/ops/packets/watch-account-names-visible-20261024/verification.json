@@ -1,0 +1,74 @@
+{
+  "schema": "WatchVisibleAccountsFixtureProof@v1",
+  "status": "LOCAL_FIXTURES_ONLY_NOT_DEPLOYED",
+  "as_of": "2026-10-24T04:28:58.576590Z",
+  "source_base": "8b24e113740cda70c25e4823c16c46ea3b63cf7f",
+  "fixture_clock": "2026-10-23T20:30:00Z",
+  "before_browser_stats": {
+    "startTime": "2026-10-24T04:15:09.965Z",
+    "duration": 9434.297999999999,
+    "expected": 1,
+    "skipped": 0,
+    "unexpected": 3,
+    "flaky": 0
+  },
+  "after_browser_stats": {
+    "startTime": "2026-10-24T04:27:16.060Z",
+    "duration": 9117.146999999999,
+    "expected": 22,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "new_browser_cases": 10,
+  "existing_watch_regressions": 12,
+  "source_sha256": {
+    "apps/command-center-v3/src/pages/WatchHub.tsx": "140c6eefdeeb0065f8786a22ea56395a60900b2caca2899d4f65c373d90f982d",
+    "apps/command-center-v3/src/pages/WatchProspects.tsx": "c972237ecf0dccabf09bb49c4bc9e4d257845fb9457a78cb646d59fe2633a7e4",
+    "apps/command-center-v3/src/pages/WatchLayout.css": "3c46cf4efa92853de1b7a192064cd6de94937b3509953d7b6846b88249e2161e",
+    "apps/command-center-v3/e2e/watch-account-names-visible.spec.ts": "26eaf13703f844718d6c61a3a794752ebba288784629352e0832121e93b50ff5",
+    ".github/workflows/watch-account-names-visible-ui-validation.yml": "24ca312efbaf4386504d8d2cc39182c100b553409fed983c8c7b8a52ba3437d8"
+  },
+  "artifacts": {
+    "watch-accounts-1440.json": {
+      "sha256": "13d033dab945cee2e1d55e486f9c3a64a901cc0d7c9dc6a9170cff971101b681",
+      "bytes": 1252
+    },
+    "watch-accounts-1440.png": {
+      "sha256": "56e081398bede37b7d7260d86a2ea8217807f1b6d1e63e16f25b73e883791d95",
+      "bytes": 131708,
+      "pixels": [
+        1440,
+        1000
+      ]
+    },
+    "watch-accounts-412.json": {
+      "sha256": "a446272e5599a2d57378f2b2265241ed5e6dcbf099c52c2d35cbbb62315160d1",
+      "bytes": 1250
+    },
+    "watch-accounts-412.png": {
+      "sha256": "93577fe45efb3620156b5846ebc0fb7727404aebce1e8f09014e883bc8e224d8",
+      "bytes": 89857,
+      "pixels": [
+        412,
+        1000
+      ]
+    }
+  },
+  "draft_workflow_checks": {
+    "tests": 87,
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0
+  },
+  "python_validation_environment": "PYTHONPATH points to coordinator nopg shim; no Python tests added or changed in this UI delivery",
+  "build_log_sha256": "fdb8fd60f0461329bdb2de7b7bc34eaf84b62ba048c7d9f586868b0cc02205f2",
+  "host_path_ratchet": {
+    "new_violations": 0,
+    "log_sha256": "35e284022d0751bcc0bb4fa920ab50a99bcbb8957f454ef45a19300aa540bca6"
+  },
+  "coverage_ratchet": {
+    "new_unlisted": 0,
+    "log_sha256": "ad51d06dbadca6d490aa1aaea1703a80648107c02ddfc58d9a81d8b71bef49c8"
+  }
+}
