@@ -171,7 +171,7 @@ def evaluate_inputs(bundle: EvaluationInputs, *, now: datetime, history=()):
     if bundle.canonical and canonical is None and not isinstance(bundle.profile, SecurityStanceProfile):
         return errors
     history = [{**h, "opened_at": timestamp(h.get("opened_at"))} for h in history]
-    history = [h for h in history if h.get("signature") or h["opened_at"] and h["opened_at"] <= now]
+    history = [h for h in history if "signature" in h or h["opened_at"] and h["opened_at"] <= now]
     return errors + evaluate(bundle.subject, canonical, [i for i in valid if i is not canonical], bundle.profile,
                              now=now, history=history)
 
