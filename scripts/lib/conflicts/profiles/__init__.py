@@ -1,4 +1,4 @@
-"""Domain profiles for the conflict engine (REFERENCE). Each is ~40 lines; a new domain = a new profile + tests."""
+"""Conflict domain profiles; security rules follow the binding exceptions matrix."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -32,63 +32,6 @@ def stance_action(v: Any, held: bool) -> Optional[str]:
     if held and f == ASIDE:
         return HOLD if _n(v) in _SEC["held_keep"] else REDUCE
     return f
-
-
-@dataclass
-class SecurityStanceProfile:
-    name: str = "security_stance"
-    canonical_source: str = "the CIO"
-    canonical_max_age: timedelta = timedelta(hours=_SEC["canonical_max_age_hours"])
-    flap_limit: int = _UNI["flap_limit"]
-    flap_window: timedelta = timedelta(days=_UNI["flap_window_days"])
-    supersede_days: dict = field(default_factory=lambda: dict(_SEC["supersede_days"]))
-    taxable_accounts: frozenset = frozenset(_SEC["taxable_accounts"])
-
-    def compare(self, a: Any, b: Any, s: Subject) -> str:
-        held = bool(s.context.get("held"))
-        x, y = stance_action(a, held), stance_action(b, held)
-        if x is None or y is None:
-            return UNKNOWN
-        if x == y:
-            return SAME if _n(a) == _n(b) else COMPATIBLE
-        if held and {x, y} == {BUY, HOLD}:
-            return COMPATIBLE           # add vs keep: same direction, different size
-        return OPPOSITE
-
-    def supersede_after(self, source: str) -> timedelta:
-        return timedelta(days=self.supersede_days.get(source, _SEC["default_supersede_days"]))
-
-    def gate_blocks(self, g: Input, canonical: Input, s: Subject) -> bool:
-        if _n(g.value) in _SEC["gate_clear"]:
-            return False
-        if g.source.startswith("wash_sale") and g.account and g.account not in self.taxable_accounts:
-            return False                # wash-sale only matters in taxable accounts
-        return stance_action(canonical.value, bool(s.context.get("held"))) == BUY
-
-    def protection_finding(self, i: Input, s: Subject, canonical: Optional[Input]) -> Optional[Finding]:
-        v = _n(i.value)
-        if i.role == "protection" and s.context.get("held") and v in _SEC["protection_operator"]:
-            text = {"AWAITING_FILL": "Stop likely filled — broker fill not confirmed",
-                    "PENDING_ACTIVATION": "Stop order pending activation — not protecting yet",
-                    "NONE": "Held with no broker stop"}[v]
-            return Finding("NEEDS_OPERATOR", "U0", text, "the broker shows the fill or an active stop, or you record "
-                           "'no stop by plan'", "notify_operator", "operator", [side(i, self)])
-        if i.role == "policy" and v == "BREACH":
-            adding = canonical is not None and stance_action(canonical.value, bool(s.context.get("held"))) == BUY
-            return Finding("NEEDS_OPERATOR" if adding else "GATE", "U0",
-                           f"Policy limit: {i.detail or 'breached'}" + (" — and the CIO says add" if adding else ""),
-                           "weight back under the limit, or you record an exception",
-                           "notify_operator" if adding else "none", "operator" if adding else "block", [side(i, self)])
-        if i.role == "safety" and v in ("ENGAGED", "BLOCKED", "LOCKED"):
-            return Finding("GATE", "U0", f"{i.source} is {v.lower()} — nothing is actionable",
-                           "the operator clears it on the host; never automatic", "none", "block", [side(i, self)])
-        return None
-
-    def describe(self, v: Any) -> str:
-        return _n(v).replace("_", " ") or "—"
-
-    def owner_review_action(self) -> str:
-        return "queue_review"
 
 
 # ── 2. numeric fact that several pages compute (portfolio total, day P&L, cash, position count) ──────────────────
