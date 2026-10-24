@@ -1,0 +1,25 @@
+{
+  "observed_at": "2026-10-24T15:02:53.185818+00:00",
+  "stance_requests": 187,
+  "with_subject_guid": 182,
+  "identity_statuses": {
+    "CONFIRMED": 178,
+    "UNRESOLVED_WITH_REASON": 4,
+    "None": 5
+  },
+  "research_projection_matched": 187,
+  "projection_statuses": {
+    "completed": 179,
+    "failed": 8
+  },
+  "research_results_matched": 179,
+  "results_with_thesis_stance": 179,
+  "results_with_decision_ids": 0,
+  "stance_classification_receipt_rows": 187,
+  "stance_classification_matched_terminal": 187,
+  "priority_queue_rows": 153,
+  "priority_rows_with_subsequent_publication_by_symbol_time": 94,
+  "operator_opportunity_requests": 1,
+  "operator_rows_with_subsequent_publication_by_symbol_time": 0,
+  "attribution_limit": "Priority requests have no stable request id; symbol+time matching indicates subsequent publication, not exact request causation or proven stance change."
+}

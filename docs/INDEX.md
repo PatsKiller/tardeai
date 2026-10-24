@@ -1874,6 +1874,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_R2_NO_PRODUCER_2026-08-30.md` | The two NO_PRODUCER rows — P4's evidence and the scoreboard pin |
 | `docs/ops/CIO_REENTRY_S3_WIRE_2026-08-20.md` | CIO Reentry → S3 wire (Fix #1) — 2026-08-20 |
 | `docs/ops/CIO_RESIDUAL_WEB_LIVE_2026-08-30.md` | CIO Residual Web Lane — live hop runbook |
+| `docs/ops/CIO_REVIEW_LIFECYCLE_AUDIT_20261024.md` | C3: CIO review-request lineage and lifecycle audit |
 | `docs/ops/CIO_S0_OPERATOR_LOOP_2026-08-29.md` | S0 operator loop — mint, attach, turn_id, rehydrate (2026-08-29) |
 | `docs/ops/CIO_S6_DUST_RULE_2026-08-29.md` | CIO — teach the S6 detector the dust rule |
 | `docs/ops/CIO_SEASONALITY_FRENCH_SURFACE_2026-08-29.md` | Seasonality surface moved to Ken French (2026-08-29) |
