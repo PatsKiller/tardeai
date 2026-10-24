@@ -3,10 +3,11 @@
   "name": "conflicts_engine",
   "files": [
     "tests/test_conflict_engine_reference.py",
-    "tests/test_conflict_adapters.py"
+    "tests/test_conflict_adapters.py",
+    "tests/test_conflict_rulebook.py"
   ],
   "anchor": "CONFLICTS_ENGINE_20261024",
   "comment": [
-    "ANCHOR: CONFLICTS_ENGINE_20261024 — exact coordinator reference and producer-boundary adapters; no live authority."
+    "ANCHOR: CONFLICTS_ENGINE_20261024 — binding matrix E1-E22 and boundary tests; original24 reference explicitly historical; no live authority."
   ]
 }

@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Iterable, Optional, Protocol
 
-ENGINE_VERSION = "ConflictEngine@v1-draft"
+ENGINE_VERSION = "ConflictEngine@v1-matrix-draft"
 
 SAME, COMPATIBLE, OPPOSITE, UNKNOWN = "same", "compatible", "opposite", "unknown"
 SEVERITY_ORDER = {"NEEDS_OPERATOR": 0, "GATE": 1, "CONFLICT": 2, "DATA_ERROR": 3, "SUPERSEDED": 4, "AGREEMENT": 5}
@@ -53,6 +53,8 @@ class Input:
     subject_id: Optional[str] = None
     account: Optional[str] = None
     detail: Optional[str] = None
+    inputs_as_of: Optional[datetime] = None
+    metadata: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -65,6 +67,10 @@ class Finding:
     severity: str = "info"         # info | warn | block | operator
     sides: list = field(default_factory=list)
     key: str = ""
+    owner: str = "source owner"
+    next_run: str = "next registered producer run"
+    never_auto: bool = False
+    tier: int = 4
 
     def as_dict(self) -> dict:
         return {"schema": "ConflictFinding@v1", "engine": ENGINE_VERSION, **self.__dict__}
@@ -86,12 +92,17 @@ class Profile(Protocol):
 
 
 def side(i: Input, profile: Profile) -> dict:
-    return {"source": i.source, "value": profile.describe(i.value), "as_of": i.as_of.isoformat() if i.as_of else None,
+    at = i.inputs_as_of if i.inputs_as_of is not None else i.as_of
+    return {"source": i.source, "value": profile.describe(i.value),
+            "as_of": at.isoformat() if isinstance(at, datetime) and at.tzinfo else None,
             "account": i.account}
 
 
 def evaluate(subject: Subject, canonical: Optional[Input], inputs: Iterable[Input], profile: Profile, *, now: datetime,
              history: Iterable[dict] = ()) -> list[Finding]:
+    domain = getattr(profile, "evaluate_domain", None)
+    if domain:
+        return domain(subject, canonical, list(inputs), now=now, history=list(history))
     out: list[Finding] = []
     pre = f"{subject.kind}:{subject.id}"
     history = list(history)
