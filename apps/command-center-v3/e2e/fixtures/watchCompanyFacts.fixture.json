@@ -1,0 +1,69 @@
+{
+  "fixture_only": true,
+  "notice": "Synthetic company facts over copied Watch page layout fixtures; no live data or acceptance proof.",
+  "facts": {
+    "schema": "CIOCompanyFacts@v1",
+    "symbol": "ACME",
+    "security_guid": "5f0c6a3e-2222-5222-8222-000000000001",
+    "status": "AVAILABLE",
+    "missing_reason": null,
+    "company": {
+      "value": "Fixture Precision Instruments Inc.",
+      "source": "finviz_enrichment",
+      "observed_at": "2026-10-23T13:00:00+00:00",
+      "clock_kind": "cached_at",
+      "missing_reason": null,
+      "identity_binding": "confirmed_registry_symbol_at_batch",
+      "source_identity": "symbol_keyed",
+      "producer_source": null
+    },
+    "description": {
+      "value": "Fixture Precision Instruments designs and manufactures analytical systems used by laboratories and industrial customers. Its products measure material composition, process performance and environmental conditions across regulated markets.",
+      "source": "symbol_profiles",
+      "observed_at": "2026-10-23T13:00:00+00:00",
+      "clock_kind": "row_updated_at",
+      "missing_reason": null,
+      "identity_binding": "confirmed_registry_symbol_at_batch",
+      "source_identity": "symbol_keyed",
+      "producer_source": null
+    },
+    "sector": {
+      "value": "Industrials",
+      "source": "symbol_profiles",
+      "observed_at": "2026-10-23T13:00:00+00:00",
+      "clock_kind": "row_updated_at",
+      "missing_reason": null,
+      "identity_binding": "confirmed_registry_symbol_at_batch",
+      "source_identity": "symbol_keyed",
+      "producer_source": null
+    },
+    "industry": {
+      "value": "Scientific & Technical Instruments",
+      "source": "symbol_profiles",
+      "observed_at": "2026-10-23T13:00:00+00:00",
+      "clock_kind": "row_updated_at",
+      "missing_reason": null,
+      "identity_binding": "confirmed_registry_symbol_at_batch",
+      "source_identity": "symbol_keyed",
+      "producer_source": null
+    },
+    "catalyst": {
+      "headline": "Fixture Precision Instruments announces a new laboratory product line",
+      "source": "catalyst_events",
+      "feed": "Fixture company publication",
+      "published_at": "2026-10-23T11:30:00+00:00",
+      "observed_at": null,
+      "url": "https://example.invalid/acme-product",
+      "catalyst_type": null,
+      "verification_basis": null,
+      "factual_verification_status": "UNKNOWN",
+      "status": "CURRENT",
+      "missing_reason": null,
+      "source_verified_claim": false,
+      "independent_verification": "NOT_MEASURED"
+    },
+    "conflicts": [],
+    "assembled_at": "2026-10-24T14:00:00+00:00",
+    "source_errors": []
+  }
+}

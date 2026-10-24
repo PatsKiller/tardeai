@@ -1,0 +1,12 @@
+{
+  "schema": "CiGate@v1",
+  "name": "watch_freshness_noise_20261024",
+  "files": [
+    "tests/test_watch_freshness_noise_20261024.py"
+  ],
+  "anchor": "WATCH_FRESHNESS_NOISE_20261024",
+  "comment": [
+    "ANCHOR: WATCH_FRESHNESS_NOISE_20261024 — C2 existing stored-reference metadata, no provider/DB or writer effects.",
+    "Broken primary selects nearest existing compatible fallback; valid-primary precedence and original price source/time/freshness preserved."
+  ]
+}

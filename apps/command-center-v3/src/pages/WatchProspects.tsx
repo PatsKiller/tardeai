@@ -9,6 +9,7 @@
  *  advisory notifications); Protect first → Open Trades; Ask the CIO → POST /api/v3/opportunities/:sym/review-request.
  *  Nothing here sizes, orders or stops on its own. */
 import './WatchLayout.css'
+import { WatchCompanyFacts } from '../components/watch/WatchCompanyFacts'
 import { AccountChip } from '../components/AccountChip'
 import { ACCOUNT_NAMES, accountName, canonicalAccountKey } from '../lib/accountLabels'
 import { useMemo, useState, type CSSProperties, type ReactNode } from 'react'
@@ -157,6 +158,7 @@ export function Row({ r, selected, onSelect, onStep, alerts, onMineChanged, extr
       </span>
       <span className="watch-row-trigger" data-label="Next trigger" title={`${TOOLTIPS.trigger}: ${r.next_trigger.label}`} style={{ fontFamily: FONT.mono, fontSize: TYPE.base, color: TOKENS.text[1] }}>{r.next_trigger.label}</span>
       <span className="watch-row-actions" style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}><StepButton row={r} onStep={onStep} />{extra}</span>
+      <WatchCompanyFacts facts={r.company_facts} symbol={r.symbol} />
     </div>
   )
 }
