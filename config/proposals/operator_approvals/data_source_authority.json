@@ -4,22 +4,46 @@
   "entity": "Operator document reviews, decisions and rule feedback",
   "title": "Approvals Center operator decision ledger",
   "class": "native",
-  "facts": ["exact document reviewed", "operator decision", "per-change read marker", "rule feedback"],
-  "store": {"file": "governance/operator_decisions.jsonl"},
+  "facts": [
+    "exact document reviewed",
+    "operator decision",
+    "per-change read marker",
+    "rule feedback",
+    "evidence-backed enforcement audit proposals (no decisions)"
+  ],
+  "store": {
+    "file": "governance/operator_decisions.jsonl"
+  },
   "writer": "scripts/lib/operator_approvals.py",
   "writer_status": "single",
   "cadence": "event-driven authenticated operator review",
   "stale_after_hours": 720,
   "freshness_sla": "Read the current exact source document before every ledger append; text or commit drift invalidates the review.",
-  "refresh_lane": {"runner": "host", "lane": "operator document review", "never_list": true},
+  "refresh_lane": {
+    "runner": "host",
+    "lane": "operator document review",
+    "never_list": true
+  },
   "projection": "scripts/lib/operator_approvals_api.py::queue_summary",
-  "readers": ["Approvals Center", "Rulebook", "CIO approval truth projection", "agents (read only)"],
+  "readers": [
+    "Approvals Center",
+    "Rulebook",
+    "CIO approval truth projection",
+    "agents (read only)"
+  ],
   "derived_copies": [],
   "primary_provider": "native",
   "backup": [],
   "retired": [],
   "no_coverage": "say_so",
-  "on_gap": [{"vector": "operator_ask", "cost_class": "free", "max_per_day": 1, "expected_seconds": 0}],
+  "on_gap": [
+    {
+      "vector": "operator_ask",
+      "cost_class": "free",
+      "max_per_day": 1,
+      "expected_seconds": 0
+    }
+  ],
   "approval": null,
   "proposal": {
     "proposed_by": "codex-w11-approvals-20261024",

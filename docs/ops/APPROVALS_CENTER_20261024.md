@@ -29,11 +29,9 @@ The prefix is `/api/v2/governance` in every route above. Queue responses omit
 document bodies and page 50 cards. Reader responses contain one bounded document;
 Rulebook responses page 40 blocks by section.
 
-`queue_summary` reports `scope=operator_governance`, typed known administrative
+`queue_summary` reports `scope=all_operator_approvals`, typed known administrative and financial
 counts, `pending_count`, `known_pending_count`, `complete`, `gaps`, `as_of`.
-It must not replace the financial approval count. The W1 financial queues adapter
-and canonical IDs for overlap removal remain required; until then the all-queue
-total is null with a financial-source gap. The queue does not silently add counts
+It must not replace the financial approval count. The W1 `financial_queue_items` adapter supplies bounded rows and explicit causal references. Missing W1 or W10 integration keeps the all-queue total null with a named source gap. Only explicit authoritative references remove overlap; titles, symbols and account labels never do. The queue does not silently add counts
 from different projections. Old decisions remove only the matching item ID AND
 document hash, so amended text reappears.
 

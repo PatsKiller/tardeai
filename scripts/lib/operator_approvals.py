@@ -48,7 +48,7 @@ def digest(value) -> str:
 
 def _paragraphs(text: str) -> list[dict]:
     """Small blocks can be completely visible even on a 390px phone."""
-    out, section = [], "Document"
+    out, section, cursor = [], "Document", 0
     for paragraph in re.split(r"\n\s*\n", text):
         if not paragraph.strip():
             continue
@@ -57,9 +57,13 @@ def _paragraphs(text: str) -> list[dict]:
             section = heading[1].strip()
         # Bound by characters AND lines, so a change cannot be taller than a viewport.
         for line in paragraph.splitlines():
+            offset = text.find(line, cursor)
+            if offset < 0:
+                raise Refused("DOCUMENT_PARSE_FAILED", 503)
             for start in range(0, max(len(line), 1), 240):
                 chunk = line[start:start + 240]
-                out.append({"section": section, "text": chunk})
+                out.append({"section": section, "text": chunk, "offset": offset + start})
+            cursor = offset + len(line)
     return out
 
 
@@ -81,9 +85,11 @@ def document(text: str, *, source_sha: str, version: str = "", base_text: str = 
             note = (annotations or {}).get(ident) or {}
             changes.append({"id": ident, "section": block["section"], "before": before["text"] if before else "",
                             "after": after["text"] if after else "", "kind": "added" if after else "removed",
-                            "plain": note.get("plain"), "reason": note.get("reason")})
+                            "plain": note.get("plain"), "reason": note.get("reason"),
+                            "before_offset": before["offset"] if before else None,
+                            "after_offset": after["offset"] if after else None})
     # Every decision binds the base, text, commit, and explanatory metadata shown to the reader.
-    doc_sha = digest({"text": text, "base_text": base_text, "source_sha": source_sha,
+    doc_sha = digest({"reader_format": 1, "text": text, "base_text": base_text, "source_sha": source_sha,
                       "version": version, "annotations": annotations or {}})
     sections = list(dict.fromkeys(b["section"] for b in new + old))
     sensitive = sorted({m.group(1) for change in changes
@@ -323,6 +329,13 @@ class DecisionLedger:
     def proposal_rows(self) -> list[dict]:
         out = []
         for row in self.rows():
+            if row.get("event") == "AUDIT_FINDINGS":
+                for index, finding in enumerate(row["findings"]):
+                    doc = document(json.dumps(finding, ensure_ascii=False, indent=2), source_sha=row["source_sha"],
+                                   version=row["document_sha"])
+                    out.append(item(ident=f"audit:{row['audit_key']}:{index}", kind="FINDING", title=finding["title"],
+                                    proposed_by=row["actor"], created_at=row["at"], source="policy_enforcement_audit", doc=doc))
+                continue
             if row.get("event") != "RULE_FEEDBACK" or row.get("position") != "DISAGREE":
                 continue
             doc = document(f"{row['section']}\n\n{row['rule_text']}\n\nRequested change:\n{row['comment']}",
@@ -330,6 +343,29 @@ class DecisionLedger:
             out.append(item(ident=row["proposal_id"], kind="DESIGN", title="Proposed rule change: " + row["section"],
                             proposed_by=row["actor"], created_at=row["at"], source="operator_decisions", doc=doc))
         return out
+
+    def audit_findings(self, *, policy: dict, audit_key: str, findings: list[dict], evidence_refs: set[str]) -> dict:
+        """Host audit proposes evidence-backed findings; it cannot write a decision event."""
+        if not re.fullmatch(r"[0-9a-f]{40}", audit_key) or not 0 <= len(findings) <= 50:
+            raise Refused("INVALID_AUDIT_PROPOSAL", 400)
+        normalized = []
+        for finding in findings:
+            refs = finding.get("evidence_refs")
+            if (not isinstance(refs, list) or not refs or any(not isinstance(r, str) or r not in evidence_refs for r in refs)
+                    or not isinstance(finding.get("title"), str) or not isinstance(finding.get("detail"), str)):
+                raise Refused("UNSUPPORTED_AUDIT_FINDING", 400)
+            normalized.append({"title": finding["title"][:300], "detail": finding["detail"][:3000],
+                               "rule_id": str(finding.get("rule_id") or "")[:100], "evidence_refs": refs,
+                               "status": "PROPOSED", "auto_apply": False})
+        with self._transaction() as (rows, append):
+            existing = next((r for r in rows if r.get("event") == "AUDIT_FINDINGS" and r.get("audit_key") == audit_key), None)
+            if existing:
+                if existing["document_sha"] != policy["document_sha"]:
+                    raise Refused("AUDIT_IDENTITY_CONFLICT")
+                return existing
+            return append({"event": "AUDIT_FINDINGS", "actor": "audit:policy-enforcement-audit", "audit_key": audit_key,
+                           "document_sha": policy["document_sha"], "source_sha": policy["source_sha"],
+                           "findings": normalized, "effect": "PROPOSAL_ONLY"})
 
 
 def policy_projection(text: str, *, source_sha: str, enforcement: dict | None = None) -> dict:

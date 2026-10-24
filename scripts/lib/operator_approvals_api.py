@@ -186,6 +186,7 @@ def _default_sources(root: Path) -> dict:
                                  proposed_by=None, created_at=row.get("created_at"), source=row["source"],
                                  doc=core.document(json.dumps(public, indent=2, ensure_ascii=False), source_sha=code_sha),
                                  governed_href="/proposals", source_refs=refs + [row["canonical_entity_id"]]))
+            out[-1]["financial_kind"] = row["kind"]
         return {"rows": out, "gap": None if result.get("complete") else "Financial queues incomplete"}
 
     # These missing adapters are explicit. Neither empty queues nor a complete global count are invented.
@@ -238,8 +239,12 @@ def queue_summary(*, root: Path = ROOT, state_root: Path | None = None, now: dat
     ledger = core.DecisionLedger((state_root / "data/governance" if state_root else governance_dir()) / "operator_decisions.jsonl",
                                  approved=lambda: False)
     data = core.queue_projection(_default_sources(root), decisions=ledger.rows(), now=now or core.utc_now())
+    by_type = {}
+    for row in data["items"]:
+        kind = row.get("financial_kind") if row["kind"] == "FINANCIAL" else row["kind"].lower()
+        by_type[kind] = by_type.get(kind, 0) + 1
     return {key: data[key] for key in ("pending_count", "known_pending_count", "complete", "gaps", "as_of")} | {
-        "scope": "operator_governance", "by_type": {kind: sum(r["kind"] == kind for r in data["items"]) for kind in core.KINDS}}
+        "scope": "all_operator_approvals", "by_type": by_type}
 
 
 def handle(path: str, method: str, body=None, query=None, *, ctx: Ctx | None = None):
