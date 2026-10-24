@@ -28,6 +28,14 @@ def _metadata(raw, metadata=None):
     return {**(metadata or {}), **({"time_error": True} if raw is not None and raw != "" and timestamp(raw) is None else {})}
 
 
+def _row_time_metadata(row, clock_key, extra=None):
+    value = _metadata(row.get(clock_key), extra)
+    if "inputs_as_of" in row:
+        value = _metadata(row.get("inputs_as_of"), value)
+        value["material_time_required"] = True
+    return value
+
+
 @dataclass
 class EvaluationInputs:
     subject: Subject
@@ -58,21 +66,21 @@ def security_inputs(*, security_guid, symbol, canonical, held, card=None, reentr
                                  timestamp(canonical.get("as_of")),
                                  subject_id=canonical.get("security_guid") or canonical.get("subject_id"),
                                  inputs_as_of=timestamp(canonical.get("inputs_as_of")),
-                                 metadata=_metadata(canonical.get("as_of"), canonical.get("metadata")))
+                                 metadata=_row_time_metadata(canonical, "as_of", canonical.get("metadata")))
     card = card or {}
     review = card.get("cio_review") or {}
     if review.get("verdict"):
         result.inputs.append(Input("watchlist CIO review", review["verdict"], timestamp(review.get("completed_at")),
                                    subject_id=review.get("security_guid") or card.get("security_guid"),
                                    inputs_as_of=timestamp(review.get("inputs_as_of")),
-                                   metadata=_metadata(review.get("completed_at"), {"quality": "complete" if review.get("status", "COMPLETE") == "COMPLETE" else "failed"})))
+                                   metadata=_row_time_metadata(review, "completed_at", {"quality": "complete" if review.get("status", "COMPLETE") == "COMPLETE" else "failed"})))
     decision = card.get("decision") or {}
     synthesis = decision.get("inputs") or {}
     if synthesis.get("synthesis"):
         result.inputs.append(Input("watchlist_final_synthesis", synthesis["synthesis"],
                                    timestamp(synthesis.get("synthesis_at")), subject_id=card.get("security_guid"),
                                    inputs_as_of=timestamp(synthesis.get("inputs_as_of")),
-                                   metadata=_metadata(synthesis.get("synthesis_at"))))
+                                   metadata=_row_time_metadata(synthesis, "synthesis_at")))
     if card.get("trade_ai_state"):
         result.inputs.append(Input("trade_ai", card["trade_ai_state"], timestamp(card.get("trade_ai_as_of")),
                                    role="claim" if _n(card["trade_ai_state"]) == "AVOID" else "gate",

@@ -92,7 +92,7 @@ class Profile(Protocol):
 
 
 def side(i: Input, profile: Profile) -> dict:
-    at = i.inputs_as_of if i.inputs_as_of is not None else i.as_of
+    at = i.inputs_as_of if i.inputs_as_of is not None or i.metadata.get("material_time_required") else i.as_of
     return {"source": i.source, "value": profile.describe(i.value),
             "as_of": at.isoformat() if isinstance(at, datetime) and at.tzinfo else None,
             "account": i.account}
