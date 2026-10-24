@@ -137,7 +137,10 @@ def get_prospects(*, db_query: Optional[Callable[..., Any]] = None, shadow_base:
     if status.get("live") and db_query is not None:
         kind = "store"
         try:
-            raw = db_query(f"SELECT {STORE_COLUMNS} FROM cio_prospect ORDER BY conviction DESC, symbol") or []
+            # Fact-only identity/research records share CIO memory, but are not
+            # judged prospects. This guard also works before the nullable migration.
+            raw = db_query(f"SELECT {STORE_COLUMNS} FROM cio_prospect WHERE stage IS NOT NULL "
+                           "AND stance IS NOT NULL AND conviction IS NOT NULL ORDER BY conviction DESC, symbol") or []
             rows = [dict(r) for r in raw]
             as_of = max((r.get("as_of") for r in rows if r.get("as_of") is not None), default=None)
         except Exception as exc:  # noqa: BLE001

@@ -1,0 +1,41 @@
+name: shared-infra-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'push' && format('-{0}', github.sha) || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  shared-infra-review:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    env:
+      TRADE_AI_CI: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Require shared-infra title and actual real-layout proof reference
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 scripts/check_shared_infra_pr.py --base "$BASE_SHA" --head "$HEAD_SHA" --event-file "$GITHUB_EVENT_PATH"
+      - name: Install fixture test dependency
+        run: python3 -m pip install pytest
+      - name: Exercise isolated wrapper layout and outage controls
+        run: python3 -m pytest -q tests/test_safe_flock_os_lock.py tests/test_cron_outage_prevention_20261024.py

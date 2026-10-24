@@ -1,0 +1,173 @@
+{
+  "schema": "C1PopulationSourceValidation@v1",
+  "observed_at": "2026-10-24T20:36:41.299902+00:00",
+  "base_sha": "8b6cd3be6d9776d3051ea24fbbcfc65248431c45",
+  "source_only": true,
+  "native_tests": {
+    "passed": 203,
+    "skipped": 2,
+    "skip_reason": "existing PG-only tests; effective psycopg2 import refused"
+  },
+  "browser": {
+    "passed": 2,
+    "component": "actual accepted WatchCompanyFacts",
+    "widths": [
+      1440,
+      412
+    ],
+    "facts": "actual immutable production-copy GUID projection",
+    "traffic": "fulfilled synthetic .invalid origin; no live server or mutation",
+    "default_sandbox_launch": "Operation not permitted; isolated exact fixture passed sanctioned escalation review"
+  },
+  "build": "npm run build PASS",
+  "captured_gates": {
+    "before": {
+      "config/lane_registry.json": "6dde5697c3feec745c29b0dd2b6313406fe40efab9c28b66510adb3c835b186c",
+      "config/n8n_run_allowlist.json": "7479ee4fea4020a275f4f735f813a360cb2e7aa655aba51689e8644d4a99b536",
+      "config/n8n_health_contracts.json": "05d269794609b11f1b9f4f974bcd1f187260c1714e3fb4097b953d29052adfb2",
+      "config/data_retention_policy.json": "f788ff6faa71cc0b5aa98d151721f10fae9b63f1d5b249d99dc5a1abb91d5a59",
+      "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json": "add3f84f6608297092d20b7857ed1773bf274a5d0ea10dbcb35d29d14c88612f",
+      "/home/johnclaw/.cache/rtc/codex-wp24-port-20261024/captured-discovery.json": "a8ea73c9d5261fd2fbe844ed2a9aefc936265f8044b8dcc3c9da6c6c335cf7ca"
+    },
+    "after": {
+      "config/lane_registry.json": "6dde5697c3feec745c29b0dd2b6313406fe40efab9c28b66510adb3c835b186c",
+      "config/n8n_run_allowlist.json": "7479ee4fea4020a275f4f735f813a360cb2e7aa655aba51689e8644d4a99b536",
+      "config/n8n_health_contracts.json": "05d269794609b11f1b9f4f974bcd1f187260c1714e3fb4097b953d29052adfb2",
+      "config/data_retention_policy.json": "f788ff6faa71cc0b5aa98d151721f10fae9b63f1d5b249d99dc5a1abb91d5a59",
+      "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json": "add3f84f6608297092d20b7857ed1773bf274a5d0ea10dbcb35d29d14c88612f",
+      "/home/johnclaw/.cache/rtc/codex-wp24-port-20261024/captured-discovery.json": "a8ea73c9d5261fd2fbe844ed2a9aefc936265f8044b8dcc3c9da6c6c335cf7ca"
+    },
+    "historical_scheduler_basis": "2026-10-09 snapshot; pinned coordinator discovery, not live census",
+    "results": [
+      {
+        "command": [
+          "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+          "scripts/check_lane_registry.py",
+          "--discovery-json",
+          "/home/johnclaw/.cache/rtc/codex-wp24-port-20261024/captured-discovery.json",
+          "--fail-on-new",
+          "--json"
+        ],
+        "exit": 0,
+        "log": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/gate-0.log"
+      },
+      {
+        "command": [
+          "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+          "scripts/reconcile_lane_registry.py",
+          "--snapshot-in",
+          "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json",
+          "--dry-run",
+          "--json"
+        ],
+        "exit": 0,
+        "log": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/gate-1.log"
+      },
+      {
+        "command": [
+          "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+          "scripts/check_n8n_health_contracts.py",
+          "--json"
+        ],
+        "exit": 0,
+        "log": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/gate-2.log"
+      },
+      {
+        "command": [
+          "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+          "scripts/check_retention_policy.py"
+        ],
+        "exit": 0,
+        "log": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/gate-3.log"
+      },
+      {
+        "command": [
+          "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+          "scripts/check_test_host_paths.py",
+          "--fail-on-new"
+        ],
+        "exit": 0,
+        "log": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/gate-4.log"
+      },
+      {
+        "command": [
+          "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python",
+          "scripts/check_test_coverage.py",
+          "--fail-on-new"
+        ],
+        "exit": 0,
+        "log": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/gate-5.log"
+      }
+    ]
+  },
+  "final_fast_gates": [
+    {
+      "name": "effective_psycopg2_import_refused",
+      "status": "PASS",
+      "exception": "ModuleNotFoundError"
+    },
+    {
+      "command": [
+        "scripts/check_test_host_paths.py",
+        "--fail-on-new"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/final-check_test_host_paths.log"
+    },
+    {
+      "command": [
+        "scripts/check_test_coverage.py",
+        "--fail-on-new"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/final-check_test_coverage.log"
+    },
+    {
+      "command": [
+        "scripts/report_docs_inventory.py",
+        "--check-index"
+      ],
+      "exit": 0,
+      "log": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/final-report_docs_inventory.log"
+    }
+  ],
+  "historical_reconcile": {
+    "snapshot": "2026-10-09",
+    "would_add": 195,
+    "interpretation": "Historical planning output, not fresh host census or live drift acceptance. No --write executed; all bracketed hashes unchanged."
+  },
+  "logs": {
+    "final-native.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/final-native.log",
+      "sha256": "666c73b8a60ad0824dd7d212cbb614d4b8ba3dd35680c535e205ac8270980af9"
+    },
+    "browser-reviewed.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/browser-reviewed.log",
+      "sha256": "ae7d685de2f81bb68e03975063dd758bd43846a65fd66c9754bd96ef828b8b32"
+    },
+    "build.log": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/build.log",
+      "sha256": "aaef89870190ef7fd419c773e88dad371e0259bbd4e6adccc44d9ffe1f9177fa"
+    },
+    "gate-results.json": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/gate-results.json",
+      "sha256": "2c9a530ffc057d8fcc407c57aee83b243b61056505f01c2a8ec65899001cd82d"
+    },
+    "final-fast-gates.json": {
+      "path": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/final-fast-gates.json",
+      "sha256": "6d99e8512e96bfb12e4ee4b179268b00745c3c0455577aa231777c7cd340328b"
+    }
+  },
+  "screenshots": {
+    "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/screenshots/c1-production-copy-412.png": "22713eb38f797b73be7f740c5b36b7d4f04f0360c70f64f811e337d97875997a",
+    "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/screenshots/c1-production-copy-1440.png": "a1d2b9755c170fae6e50c0f0896daef0549b56e7878a7718a02b9e6d29696128"
+  },
+  "runtime": {
+    "backfill": "NOT_PERFORMED",
+    "migration": "NOT_PERFORMED",
+    "n8n": "INACTIVE_PROPOSAL_NOT_ADMITTED",
+    "contract_review": "DRAFT_OWNER_REVIEW_PENDING",
+    "alert_delivery": "NOT_MEASURED",
+    "consumer_live_acceptance": "NOT_MEASURED"
+  }
+}

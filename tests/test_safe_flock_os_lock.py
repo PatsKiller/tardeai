@@ -6,6 +6,8 @@ import sys
 import time
 from pathlib import Path
 
+from tests.support.real_release_layout import real_release_layout
+
 ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = ROOT / "scripts" / "safe_flock.sh"
 
@@ -184,11 +186,8 @@ def test_symlinked_log_directory_is_rejected_before_creating_target_path(tmp_pat
 
 def test_project_root_reached_through_release_symlink_runs(tmp_path):
     """Cron runs from portfolio-server/CURRENT (a symlink to the release dir); the default log dir must work."""
-    release = tmp_path / "release-abc"
-    (release / "scripts").mkdir(parents=True)
-    shutil.copy(WRAPPER, release / "scripts" / "safe_flock.sh")
-    current = tmp_path / "CURRENT"
-    current.symlink_to(release)
+    layout = real_release_layout(tmp_path, ROOT)
+    release, current = layout.release, layout.current
     ran = tmp_path / "ran"
     env = {k: v for k, v in os.environ.items() if k not in ("SAFE_FLOCK_LOG_DIR", "PROJECT_ROOT")}
     env["PROJECT_ROOT"] = str(current)

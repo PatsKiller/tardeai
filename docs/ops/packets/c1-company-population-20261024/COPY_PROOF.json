@@ -1,0 +1,970 @@
+{
+  "target_count": 212,
+  "after": {
+    "my_watchlist": {
+      "total": 104,
+      "complete": 99,
+      "fields": {
+        "company": 101,
+        "description": 101,
+        "sector": 103,
+        "industry": 103
+      },
+      "gaps": [
+        {
+          "symbol": "CXMT",
+          "missing_fields": [
+            "company",
+            "description",
+            "sector",
+            "industry"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "HOOD",
+          "missing_fields": [
+            "company"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "HTGC",
+          "missing_fields": [
+            "description"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "INTC",
+          "missing_fields": [
+            "company"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "PPC",
+          "missing_fields": [
+            "description"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        }
+      ],
+      "complete_pct": 95.19
+    },
+    "held": {
+      "total": 24,
+      "complete": 20,
+      "fields": {
+        "company": 20,
+        "description": 20,
+        "sector": 20,
+        "industry": 20
+      },
+      "gaps": [
+        {
+          "symbol": "12507E201",
+          "missing_fields": [
+            "company",
+            "description",
+            "sector",
+            "industry"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "543354104",
+          "missing_fields": [
+            "company",
+            "description",
+            "sector",
+            "industry"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "628518102",
+          "missing_fields": [
+            "company",
+            "description",
+            "sector",
+            "industry"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "CASH",
+          "missing_fields": [
+            "company",
+            "description",
+            "sector",
+            "industry"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        }
+      ],
+      "complete_pct": 83.33
+    },
+    "formerly_held": {
+      "total": 118,
+      "complete": 104,
+      "fields": {
+        "company": 106,
+        "description": 110,
+        "sector": 106,
+        "industry": 106
+      },
+      "gaps": [
+        {
+          "symbol": "44984F807",
+          "missing_fields": [
+            "company",
+            "description",
+            "sector",
+            "industry"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "73017P409",
+          "missing_fields": [
+            "company",
+            "description",
+            "sector",
+            "industry"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "824430300",
+          "missing_fields": [
+            "company",
+            "description",
+            "sector",
+            "industry"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "AMAGX",
+          "missing_fields": [
+            "company",
+            "sector",
+            "industry"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "EKSO",
+          "missing_fields": [
+            "company",
+            "description",
+            "sector",
+            "industry"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "FJSCX",
+          "missing_fields": [
+            "company",
+            "sector",
+            "industry"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "FSELX",
+          "missing_fields": [
+            "company",
+            "sector",
+            "industry"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "FSPTX",
+          "missing_fields": [
+            "sector",
+            "industry"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "GOVX",
+          "missing_fields": [
+            "company",
+            "description",
+            "sector",
+            "industry"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "GWHT",
+          "missing_fields": [
+            "company"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "PRSO",
+          "missing_fields": [
+            "description"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "SOPAQ",
+          "missing_fields": [
+            "company",
+            "description",
+            "sector",
+            "industry"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "SPAXX",
+          "missing_fields": [
+            "company",
+            "description",
+            "sector",
+            "industry"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        },
+        {
+          "symbol": "UNWPX",
+          "missing_fields": [
+            "company",
+            "sector",
+            "industry"
+          ],
+          "reason": "company_fields_not_on_cio_record"
+        }
+      ],
+      "complete_pct": 88.14
+    }
+  },
+  "gaps": [
+    {
+      "symbol": "12507E201",
+      "reason": "identity_not_confirmed",
+      "identity_lookup": "RESOLVED"
+    },
+    {
+      "symbol": "44984F807",
+      "reason": "identity_not_confirmed",
+      "identity_lookup": "RESOLVED"
+    },
+    {
+      "symbol": "543354104",
+      "reason": "identity_not_confirmed",
+      "identity_lookup": "RESOLVED"
+    },
+    {
+      "symbol": "628518102",
+      "reason": "identity_not_confirmed",
+      "identity_lookup": "RESOLVED"
+    },
+    {
+      "symbol": "73017P409",
+      "reason": "identity_not_confirmed",
+      "identity_lookup": "RESOLVED"
+    },
+    {
+      "symbol": "824430300",
+      "reason": "identity_not_confirmed",
+      "identity_lookup": "RESOLVED"
+    },
+    {
+      "symbol": "CASH",
+      "reason": "identity_not_confirmed",
+      "identity_lookup": "UNRESOLVED"
+    },
+    {
+      "symbol": "CXMT",
+      "reason": "identity_not_confirmed",
+      "identity_lookup": "RESOLVED"
+    },
+    {
+      "symbol": "EKSO",
+      "reason": "identity_not_confirmed",
+      "identity_lookup": "RESOLVED"
+    }
+  ],
+  "identity_gaps": [
+    {
+      "symbol": "ARKG",
+      "security_guid": "c19cb6d6-2042-5108-8866-a4407a9f4cca",
+      "reason": "issuer_guid_missing; confirmed security facts permitted"
+    },
+    {
+      "symbol": "ARKQ",
+      "security_guid": "36fbcac2-6425-5883-a3aa-f4e39080ad59",
+      "reason": "issuer_guid_missing; confirmed security facts permitted"
+    },
+    {
+      "symbol": "ATAI",
+      "security_guid": "9fe386c6-ddd0-581f-a61b-a122439ae120",
+      "reason": "issuer_guid_missing; confirmed security facts permitted"
+    },
+    {
+      "symbol": "BJDX",
+      "security_guid": "12aae624-9901-5ac9-afbe-1450c8f34dfc",
+      "reason": "issuer_guid_missing; confirmed security facts permitted"
+    },
+    {
+      "symbol": "CACI",
+      "security_guid": "5287c1ed-239b-592f-bfbc-2ec5c21c8f63",
+      "reason": "issuer_guid_missing; confirmed security facts permitted"
+    },
+    {
+      "symbol": "ELAB",
+      "security_guid": "47573713-30a3-5702-94b0-e66d923bb21b",
+      "reason": "issuer_guid_missing; confirmed security facts permitted"
+    },
+    {
+      "symbol": "FCNTX",
+      "security_guid": "9e6740a3-7505-5837-bb61-4cd99ffeb407",
+      "reason": "issuer_guid_missing; confirmed security facts permitted"
+    },
+    {
+      "symbol": "JEPQ",
+      "security_guid": "ed218892-47be-557c-9539-046e2091fc20",
+      "reason": "issuer_guid_missing; confirmed security facts permitted"
+    },
+    {
+      "symbol": "JTAI",
+      "security_guid": "c56ed453-2a5b-5e30-b7e2-921a68871f81",
+      "reason": "issuer_guid_missing; confirmed security facts permitted"
+    },
+    {
+      "symbol": "LGPS",
+      "security_guid": "3c426693-1a03-5261-a5b4-8eb715a85c05",
+      "reason": "issuer_guid_missing; confirmed security facts permitted"
+    },
+    {
+      "symbol": "NEE",
+      "security_guid": "ce253ef7-d16e-539b-b6b3-66d70802daaf",
+      "reason": "issuer_guid_missing; confirmed security facts permitted"
+    },
+    {
+      "symbol": "PEW",
+      "security_guid": "0840758c-f87a-5821-ae58-d843b5c4e214",
+      "reason": "issuer_guid_missing; confirmed security facts permitted"
+    },
+    {
+      "symbol": "XCUR",
+      "security_guid": "140370b3-73ea-5920-9d8c-e6da4063d383",
+      "reason": "issuer_guid_missing; confirmed security facts permitted"
+    }
+  ],
+  "source_gaps": [
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "12507E201"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "44984F807"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "543354104"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "628518102"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "73017P409"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "824430300"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "ARKG"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "ARKQ"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "ATAI"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "BJDX"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "CACI"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "CASH"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "CXMT"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "EKSO"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "ELAB"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "FCNTX"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "JEPQ"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "JTAI"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "LGPS"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "NEE"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "PEW"
+    },
+    {
+      "reason": "identity_not_confirmed",
+      "scope": "identity",
+      "symbol": "XCUR"
+    }
+  ],
+  "unchanged": 203,
+  "would_update": 0,
+  "would_create": 0,
+  "judgment_writes": 0,
+  "prospect_promotions": 0,
+  "quality_status": "PARTIAL",
+  "copy_apply_counts": {
+    "created": 203,
+    "updated": 0,
+    "writes": 203,
+    "before": {
+      "my_watchlist": {
+        "total": 104,
+        "complete": 0,
+        "fields": {
+          "company": 0,
+          "description": 0,
+          "sector": 0,
+          "industry": 0
+        },
+        "complete_pct": 0.0
+      },
+      "held": {
+        "total": 24,
+        "complete": 0,
+        "fields": {
+          "company": 0,
+          "description": 0,
+          "sector": 0,
+          "industry": 0
+        },
+        "complete_pct": 0.0
+      },
+      "formerly_held": {
+        "total": 118,
+        "complete": 0,
+        "fields": {
+          "company": 0,
+          "description": 0,
+          "sector": 0,
+          "industry": 0
+        },
+        "complete_pct": 0.0
+      }
+    },
+    "after": {
+      "my_watchlist": {
+        "total": 104,
+        "complete": 99,
+        "fields": {
+          "company": 101,
+          "description": 101,
+          "sector": 103,
+          "industry": 103
+        },
+        "gaps": [
+          {
+            "symbol": "CXMT",
+            "missing_fields": [
+              "company",
+              "description",
+              "sector",
+              "industry"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "HOOD",
+            "missing_fields": [
+              "company"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "HTGC",
+            "missing_fields": [
+              "description"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "INTC",
+            "missing_fields": [
+              "company"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "PPC",
+            "missing_fields": [
+              "description"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          }
+        ],
+        "complete_pct": 95.19
+      },
+      "held": {
+        "total": 24,
+        "complete": 20,
+        "fields": {
+          "company": 20,
+          "description": 20,
+          "sector": 20,
+          "industry": 20
+        },
+        "gaps": [
+          {
+            "symbol": "12507E201",
+            "missing_fields": [
+              "company",
+              "description",
+              "sector",
+              "industry"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "543354104",
+            "missing_fields": [
+              "company",
+              "description",
+              "sector",
+              "industry"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "628518102",
+            "missing_fields": [
+              "company",
+              "description",
+              "sector",
+              "industry"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "CASH",
+            "missing_fields": [
+              "company",
+              "description",
+              "sector",
+              "industry"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          }
+        ],
+        "complete_pct": 83.33
+      },
+      "formerly_held": {
+        "total": 118,
+        "complete": 104,
+        "fields": {
+          "company": 106,
+          "description": 110,
+          "sector": 106,
+          "industry": 106
+        },
+        "gaps": [
+          {
+            "symbol": "44984F807",
+            "missing_fields": [
+              "company",
+              "description",
+              "sector",
+              "industry"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "73017P409",
+            "missing_fields": [
+              "company",
+              "description",
+              "sector",
+              "industry"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "824430300",
+            "missing_fields": [
+              "company",
+              "description",
+              "sector",
+              "industry"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "AMAGX",
+            "missing_fields": [
+              "company",
+              "sector",
+              "industry"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "EKSO",
+            "missing_fields": [
+              "company",
+              "description",
+              "sector",
+              "industry"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "FJSCX",
+            "missing_fields": [
+              "company",
+              "sector",
+              "industry"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "FSELX",
+            "missing_fields": [
+              "company",
+              "sector",
+              "industry"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "FSPTX",
+            "missing_fields": [
+              "sector",
+              "industry"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "GOVX",
+            "missing_fields": [
+              "company",
+              "description",
+              "sector",
+              "industry"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "GWHT",
+            "missing_fields": [
+              "company"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "PRSO",
+            "missing_fields": [
+              "description"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "SOPAQ",
+            "missing_fields": [
+              "company",
+              "description",
+              "sector",
+              "industry"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "SPAXX",
+            "missing_fields": [
+              "company",
+              "description",
+              "sector",
+              "industry"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          },
+          {
+            "symbol": "UNWPX",
+            "missing_fields": [
+              "company",
+              "sector",
+              "industry"
+            ],
+            "reason": "company_fields_not_on_cio_record"
+          }
+        ],
+        "complete_pct": 88.14
+      }
+    },
+    "pg_sync": null
+  },
+  "capture": {
+    "capture_sha256": "492e92efe00a6395041b80070f5747f7a9e926a15dd1b82cc62f2f22f8a15d1a",
+    "captured_at": "2026-10-24T20:00:49.398467+00:00",
+    "source": "PRIVATE_PRODUCTION_COPY, no live mutation"
+  },
+  "source_file_manifest": {
+    "captured_at": "2026-10-24T19:58:58.415960+00:00",
+    "source_only": true,
+    "files": [
+      {
+        "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_instrument_records.jsonl",
+        "copy": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/state-copy/data/cio/cio_instrument_records.jsonl",
+        "sha256": "0e3e39e4cb4400fb680c796cc6c913a9726884cf3d49fde7ce43ef5fe301bdcb",
+        "bytes": 4171012,
+        "source_stable_after_copy": true
+      },
+      {
+        "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/ticker_research_graph.jsonl",
+        "copy": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/state-copy/data/cio/ticker_research_graph.jsonl",
+        "sha256": "b2dcd158c1f4175e729f1702694c9ae0b2425f00a13df6c80b661b611c23dab3",
+        "bytes": 45134050,
+        "source_stable_after_copy": true
+      },
+      {
+        "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/state/ticker_enrichment_cache.json",
+        "copy": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/state-copy/data/state/ticker_enrichment_cache.json",
+        "sha256": "d818c525114f9e0afe5e206dfc5753c4d5bdbb8aaf8730b10187442f87be9f7e",
+        "bytes": 10445419,
+        "source_stable_after_copy": true
+      },
+      {
+        "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/identity_registry.json",
+        "copy": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/state-copy/data/runtime/identity_registry.json",
+        "sha256": "69c8f21bf7a0b60bda0cfe76c87ce054a389d58029677df1a6d3f92403ccde59",
+        "bytes": 10135827,
+        "source_stable_after_copy": true
+      },
+      {
+        "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_opportunity_projection.json",
+        "copy": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/state-copy/data/cio/cio_opportunity_projection.json",
+        "sha256": "a24f3a7804b952a5200bcb95bae651372cdd1ca8261b011500a631215ab9d3d7",
+        "bytes": 6095628,
+        "source_stable_after_copy": true
+      },
+      {
+        "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/trade_ai_cache.json",
+        "copy": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/state-copy/data/runtime/trade_ai_cache.json",
+        "sha256": "043cbfd4720c044706d3fa3d219ded0e3ebcab2962eeb0a2c3b3705156fa0e11",
+        "bytes": 2059698,
+        "source_stable_after_copy": true
+      },
+      {
+        "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/hermes/momentum_catalysts/2026-10-22_catalysts.jsonl",
+        "copy": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/state-copy/data/hermes/momentum_catalysts/2026-10-22_catalysts.jsonl",
+        "sha256": "7189e5e2cb8cb13913412b5de6b1bd3aecc2c47348dc9f8e142d2ee321205209",
+        "bytes": 18141,
+        "source_stable_after_copy": true
+      },
+      {
+        "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/hermes/momentum_catalysts/2026-10-23_catalysts.jsonl",
+        "copy": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/state-copy/data/hermes/momentum_catalysts/2026-10-23_catalysts.jsonl",
+        "sha256": "6fc0fc549ae48722f57b3f48fa91351d8919cbb8e6a0e240fef2476f5df180ee",
+        "bytes": 14445,
+        "source_stable_after_copy": true
+      }
+    ]
+  },
+  "independent_source_drift": [
+    {
+      "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_instrument_records.jsonl",
+      "captured_sha256": "0e3e39e4cb4400fb680c796cc6c913a9726884cf3d49fde7ce43ef5fe301bdcb",
+      "current_sha256": "7137716b09884d42760189c1d48cef4ae54b7676f499451002d558dda6466f22",
+      "changed_since_capture": true
+    },
+    {
+      "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/ticker_research_graph.jsonl",
+      "captured_sha256": "b2dcd158c1f4175e729f1702694c9ae0b2425f00a13df6c80b661b611c23dab3",
+      "current_sha256": "b2dcd158c1f4175e729f1702694c9ae0b2425f00a13df6c80b661b611c23dab3",
+      "changed_since_capture": false
+    },
+    {
+      "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/state/ticker_enrichment_cache.json",
+      "captured_sha256": "d818c525114f9e0afe5e206dfc5753c4d5bdbb8aaf8730b10187442f87be9f7e",
+      "current_sha256": "d818c525114f9e0afe5e206dfc5753c4d5bdbb8aaf8730b10187442f87be9f7e",
+      "changed_since_capture": false
+    },
+    {
+      "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/identity_registry.json",
+      "captured_sha256": "69c8f21bf7a0b60bda0cfe76c87ce054a389d58029677df1a6d3f92403ccde59",
+      "current_sha256": "69c8f21bf7a0b60bda0cfe76c87ce054a389d58029677df1a6d3f92403ccde59",
+      "changed_since_capture": false
+    },
+    {
+      "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_opportunity_projection.json",
+      "captured_sha256": "a24f3a7804b952a5200bcb95bae651372cdd1ca8261b011500a631215ab9d3d7",
+      "current_sha256": "a24f3a7804b952a5200bcb95bae651372cdd1ca8261b011500a631215ab9d3d7",
+      "changed_since_capture": false
+    },
+    {
+      "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/trade_ai_cache.json",
+      "captured_sha256": "043cbfd4720c044706d3fa3d219ded0e3ebcab2962eeb0a2c3b3705156fa0e11",
+      "current_sha256": "77948a29e9ca13c7bab04b94b687c363112ef50b10763573e64651ed38e0db28",
+      "changed_since_capture": true
+    },
+    {
+      "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/hermes/momentum_catalysts/2026-10-22_catalysts.jsonl",
+      "captured_sha256": "7189e5e2cb8cb13913412b5de6b1bd3aecc2c47348dc9f8e142d2ee321205209",
+      "current_sha256": "7189e5e2cb8cb13913412b5de6b1bd3aecc2c47348dc9f8e142d2ee321205209",
+      "changed_since_capture": false
+    },
+    {
+      "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/hermes/momentum_catalysts/2026-10-23_catalysts.jsonl",
+      "captured_sha256": "6fc0fc549ae48722f57b3f48fa91351d8919cbb8e6a0e240fef2476f5df180ee",
+      "current_sha256": "6fc0fc549ae48722f57b3f48fa91351d8919cbb8e6a0e240fef2476f5df180ee",
+      "changed_since_capture": false
+    }
+  ],
+  "final_source_bracket": [
+    {
+      "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_instrument_records.jsonl",
+      "initial_copy_as_of": "2026-10-24T19:58:58.415960+00:00",
+      "initial_sha256": "0e3e39e4cb4400fb680c796cc6c913a9726884cf3d49fde7ce43ef5fe301bdcb",
+      "observation_started_at": "2026-10-24T20:34:02.730952+00:00",
+      "observation_finished_at": "2026-10-24T20:34:02.736459+00:00",
+      "observed_sha256": "7137716b09884d42760189c1d48cef4ae54b7676f499451002d558dda6466f22",
+      "drift": true,
+      "action": "NONE; observation only"
+    },
+    {
+      "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/ticker_research_graph.jsonl",
+      "initial_copy_as_of": "2026-10-24T19:58:58.415960+00:00",
+      "initial_sha256": "b2dcd158c1f4175e729f1702694c9ae0b2425f00a13df6c80b661b611c23dab3",
+      "observation_started_at": "2026-10-24T20:34:02.736476+00:00",
+      "observation_finished_at": "2026-10-24T20:34:02.795442+00:00",
+      "observed_sha256": "e255af67904cd4125cf71c3f7b165fa36dbef2108365ed821e190fda3999bb86",
+      "drift": true,
+      "action": "NONE; observation only"
+    },
+    {
+      "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/state/ticker_enrichment_cache.json",
+      "initial_copy_as_of": "2026-10-24T19:58:58.415960+00:00",
+      "initial_sha256": "d818c525114f9e0afe5e206dfc5753c4d5bdbb8aaf8730b10187442f87be9f7e",
+      "observation_started_at": "2026-10-24T20:34:02.795458+00:00",
+      "observation_finished_at": "2026-10-24T20:34:02.808326+00:00",
+      "observed_sha256": "49eac5d2b5c371356ce838e7d27057843ed1fdb34718cf4e16b5b8b4bcc33c46",
+      "drift": true,
+      "action": "NONE; observation only"
+    },
+    {
+      "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/identity_registry.json",
+      "initial_copy_as_of": "2026-10-24T19:58:58.415960+00:00",
+      "initial_sha256": "69c8f21bf7a0b60bda0cfe76c87ce054a389d58029677df1a6d3f92403ccde59",
+      "observation_started_at": "2026-10-24T20:34:02.808340+00:00",
+      "observation_finished_at": "2026-10-24T20:34:02.819901+00:00",
+      "observed_sha256": "69c8f21bf7a0b60bda0cfe76c87ce054a389d58029677df1a6d3f92403ccde59",
+      "drift": false,
+      "action": "NONE; observation only"
+    },
+    {
+      "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/cio/cio_opportunity_projection.json",
+      "initial_copy_as_of": "2026-10-24T19:58:58.415960+00:00",
+      "initial_sha256": "a24f3a7804b952a5200bcb95bae651372cdd1ca8261b011500a631215ab9d3d7",
+      "observation_started_at": "2026-10-24T20:34:02.819915+00:00",
+      "observation_finished_at": "2026-10-24T20:34:02.825077+00:00",
+      "observed_sha256": "a24f3a7804b952a5200bcb95bae651372cdd1ca8261b011500a631215ab9d3d7",
+      "drift": false,
+      "action": "NONE; observation only"
+    },
+    {
+      "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/trade_ai_cache.json",
+      "initial_copy_as_of": "2026-10-24T19:58:58.415960+00:00",
+      "initial_sha256": "043cbfd4720c044706d3fa3d219ded0e3ebcab2962eeb0a2c3b3705156fa0e11",
+      "observation_started_at": "2026-10-24T20:34:02.825094+00:00",
+      "observation_finished_at": "2026-10-24T20:34:02.826742+00:00",
+      "observed_sha256": "1707d6db72508a38d69a02a7bad7ec1bcf543d0c059e0953881aa953700b969e",
+      "drift": true,
+      "action": "NONE; observation only"
+    },
+    {
+      "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/hermes/momentum_catalysts/2026-10-22_catalysts.jsonl",
+      "initial_copy_as_of": "2026-10-24T19:58:58.415960+00:00",
+      "initial_sha256": "7189e5e2cb8cb13913412b5de6b1bd3aecc2c47348dc9f8e142d2ee321205209",
+      "observation_started_at": "2026-10-24T20:34:02.826753+00:00",
+      "observation_finished_at": "2026-10-24T20:34:02.826830+00:00",
+      "observed_sha256": "7189e5e2cb8cb13913412b5de6b1bd3aecc2c47348dc9f8e142d2ee321205209",
+      "drift": false,
+      "action": "NONE; observation only"
+    },
+    {
+      "source": "/home/johnclaw/trade-ai-releases/persistent-state/data/hermes/momentum_catalysts/2026-10-23_catalysts.jsonl",
+      "initial_copy_as_of": "2026-10-24T19:58:58.415960+00:00",
+      "initial_sha256": "6fc0fc549ae48722f57b3f48fa91351d8919cbb8e6a0e240fef2476f5df180ee",
+      "observation_started_at": "2026-10-24T20:34:02.826836+00:00",
+      "observation_finished_at": "2026-10-24T20:34:02.826889+00:00",
+      "observed_sha256": "6fc0fc549ae48722f57b3f48fa91351d8919cbb8e6a0e240fef2476f5df180ee",
+      "drift": false,
+      "action": "NONE; observation only"
+    }
+  ],
+  "initial_per_row_gaps_receipt": "/home/johnclaw/.cache/rtc/codex-c1-populate-20261024/copy-plan-before.json"
+}
