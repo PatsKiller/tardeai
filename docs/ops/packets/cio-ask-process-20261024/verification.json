@@ -1,17 +1,19 @@
 {
   "schema": "CioAskProcessSourceVerification@v1",
-  "observed_at": "2026-10-24T22:47:31.996064+00:00",
+  "observed_at": "2026-10-24T23:13:36.173943+00:00",
   "base_sha": "9228634873392073f5849aaa77ec9b9121eb6094",
   "task": "DSN-20261024-cio-ask-process-P1-T1",
   "claim": "20261024T221725Z-codex-f455bd69",
-  "status": "SOURCE_READY_WITH_UNCHANGED_BASELINE_FINDING_NOT_LIVE",
+  "status": "MANUAL_INTENT_SOURCE_READY_WITH_UNCHANGED_BASELINE_FINDING_NOT_LIVE",
   "production_scope": [
     "config/llm_process_registry.json",
     "config/llm_routing_policy.json",
     "scripts/lib/cio_governed_model_bridge.py",
     "scripts/lib/governed_process_routes.py",
     "scripts/sync_cio_process_caps.py",
-    "scripts/lib/n8n_model_job.py"
+    "scripts/lib/n8n_model_job.py",
+    "scripts/lib/governed_cloud_generation.py",
+    "scripts/lib/llm_bridge_route.py"
   ],
   "preserved": {
     "existing_process_rows": true,
@@ -132,6 +134,26 @@
       "skipped": "0",
       "time": "20.654",
       "scope": "whole env-readiness and recursive executor allowlist fixtures after context-helper import extension"
+    },
+    {
+      "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/manual-new-tests.xml",
+      "sha256": "8448a8a1079e8c071f3ae7be82ad0f96273f04d8a8cc8614be1ee8bbd3761399",
+      "tests": "39",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "0.757",
+      "scope": "39 focused registration/context/manual-intent cases; overlaps earlier21/28 cases"
+    },
+    {
+      "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/manual-final-focused.xml",
+      "sha256": "bdd7b510f9ca2cd10e17df0eda05c8b83a6a77caa7df22999e6def7c983a20b4",
+      "tests": "47",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "1.639",
+      "scope": "final47 =39 registration/context/manual cases plus two complete cloud/bridge helper files; overlaps compatibility receipts"
     }
   ],
   "qualifications": [
@@ -154,12 +176,15 @@
       "scripts/lib/cio_governed_model_bridge.py",
       "scripts/lib/governed_process_routes.py",
       "scripts/lib/n8n_model_job.py",
+      "scripts/lib/governed_cloud_generation.py",
+      "scripts/lib/llm_bridge_route.py",
       "scripts/sync_cio_process_caps.py",
       "tests/test_cio_ask_process_registration_20261024.py"
     ],
     "config_writes": [],
-    "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-context-final-no-write.json",
-    "CRLF": "inherited style preserved; native cr-at-eol whitespace over full staged accepted-base diff and line-ending-churn checks passed"
+    "code_frozen": true,
+    "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-manual-frozen-no-write.json",
+    "CRLF": "inherited style preserved; native cr-at-eol whitespace and line-ending-churn checks pass"
   },
   "runtime": {
     "model_calls": false,
@@ -169,19 +194,42 @@
     "push_merge_release": false
   },
   "source_sha256": {
-    "config/llm_process_registry.json": "6ead3e263b15e3dc986481614696f6357deaacfe177f7e42041000d612bcfb83",
+    "config/llm_process_registry.json": "f72d4e8caeb57e81621b193b5be52b65f9080b3d22ea34697daa10c4568077d7",
     "config/llm_routing_policy.json": "084f98acb1b8016f8406d28cb5088a14dd88923952af0a9d2f32d599f430822d",
-    "scripts/lib/cio_governed_model_bridge.py": "85b1a811f44fdaf52b1fd35bbffce2ed38ff50760ef09e9b6a45f249abe11111",
-    "scripts/lib/governed_process_routes.py": "eb43a9c00cfa6452e43890ac8c8db0f90067512b9f74ac04d98d03a6ab24b68f",
+    "scripts/lib/cio_governed_model_bridge.py": "de013cf56376a9b0b3d26a049fc14389bab636f08edd9745610a8f04a482386d",
+    "scripts/lib/governed_process_routes.py": "503b218ff17b850303833953c61e69a8fff985ff5019adfdb513ea4e3419be25",
     "scripts/sync_cio_process_caps.py": "b25223a3fd236ed8e9f242cffe6c7827149a55f17c78aa9575980ef1ab76a3df",
-    "scripts/lib/n8n_model_job.py": "96ef5700c97c62428239eb4044ad0070f21c5374ab456a59d7c49cc9ec4660a4",
-    "tests/test_cio_ask_process_registration_20261024.py": "b591863c99c3abb4d5e571384136475710c7523b069baec8d9d88b6eaf0305d3",
+    "scripts/lib/n8n_model_job.py": "0b807f7b906b6f09a6c908e9a11230e159ea5aa371b42eebcb6397b76f75aa91",
+    "scripts/lib/governed_cloud_generation.py": "bb42dd3e822f06f08bcb930c2dd0beb7f3d5595aa8bdf4956b455d029872e18d",
+    "scripts/lib/llm_bridge_route.py": "f87c25da0e8e0041b8383489c591dd6de248d3c605883fa41236765bdd5a6769",
+    "tests/test_cio_ask_process_registration_20261024.py": "fa5e9d6cec22b76ab145a43938c54dac74427212f690de7aef6ad43a9e4e1f08",
     "config/ci_gates/cio_ask_process_registration_20261024.json": "b18e3d74c88d07671bc529c163081cce970bd9fe716ebfc56a01b6a65207c1c2"
   },
   "receipt_sha256": {
     "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-final-no-write.json": "d1d5ab0aac6ed0702dd9ec14a67e3171e4eb7dd2c406d4d42c4402a075a2b042",
     "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/baseline-stale-mode-test.json": "d1b97b990d8e62f1772d4700c48e0f132f55f85852783f8f3aaba786cf3f9272",
     "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/cap-sync-selected-dry-run.log": "7a512c0849d380b81d936942b606c91f43e256e3c5238916cc81598650a3de6b",
-    "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-context-final-no-write.json": "fb24b52ee4066d0cd1b54028357f790573aebf055d16cf8a0499b98a377792e6"
+    "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-context-final-no-write.json": "fb24b52ee4066d0cd1b54028357f790573aebf055d16cf8a0499b98a377792e6",
+    "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/checks-manual-frozen-no-write.json": "4d1eabff956d9cb800b946c0ba4ba8e7b96ac22079d22baf4f6a9aa39e762ea9"
+  },
+  "manual_intent_followup": {
+    "request": "/home/johnclaw/.cache/rtc/coordinator-batch21-20261024/ask-process-manual-intent.md",
+    "previous_delivery_head": "ab14846b8762f5a6af6b7a8b687a977623fc3dfa",
+    "genuine_operator_authority": "authenticated root-owned entry path supplies operator_initiated; never inferred from origin/depth/process/body",
+    "default": "manual_trigger=False; Ask helper requires bool True; server requires exact X-TradeAI-Manual-Trigger:1 after existing caller auth",
+    "legacy_path_proof": "actual generate_cloud -> llm_lane.generate -> gate_and_generate -> unchanged should_call; pricing/ledger/memory policy/HTTP boundaries injected. No bridge env. Operator True allowed; defaultFalse manual_mode before provider/log/spend.",
+    "production_path": "root companion replaces old3member path with one explicit governed HTTP call and forwards genuine operator intent; that caller source is not edited here",
+    "legacy_limit": "Direct in-process OAuth does not add bridge request-slot/per-call-ceiling parity. Actual production Ask uses declared bridge; no llm_lane/consumption change performed.",
+    "runtime_acceptance": false,
+    "early_readiness_guard": "Ask defaultFalse refuses before importing/probing llm_lane or bridge transport, independently of mutable process mode. Real should_callFalse separately remains manual_mode; operatorTrue traverses all real admission functions.",
+    "mobile": "Backend-only: no pages changed. Actual412/390 tap proof is owned by Ask UI companion; never substituted with process-code screenshots."
+  },
+  "manual_compatibility": {
+    "receipt": "/home/johnclaw/.cache/rtc/codex-cio-ask-process-20261024/manual-compatibility.json",
+    "files": 8,
+    "passed": 199,
+    "failed": 0,
+    "errors": 0,
+    "full_project_ci": false
   }
 }

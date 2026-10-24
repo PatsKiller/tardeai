@@ -47,6 +47,7 @@ from lib import cio_egress_sanitiser as egress_sanitiser  # noqa: E402
 
 # 2026-10-14: Grok / ChatGPT OAuth transports, per-provider breaker and Retry-After (off unless enabled by env).
 from lib import bridge_oauth_transport as oauth_transport  # noqa: E402
+from lib.governed_process_routes import MANUAL_TRIGGER_HEADER, OPERATOR_INTENT_PROCESS_IDS  # noqa: E402
 
 # ── Bind / port config ─────────────────────────────────────────────────
 BIND_HOST = os.environ.get("CIO_BRIDGE_HOST", "127.0.0.1")
@@ -3178,6 +3179,10 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
             self._send_error(401, "UNAUTHORIZED", f"Unknown caller '{caller}' — not in server-side mapping")
             return
         if not self._caller_auth_admits(caller, process_id):
+            return
+        if process_id in OPERATOR_INTENT_PROCESS_IDS and self.headers.get(MANUAL_TRIGGER_HEADER) != "1":
+            self._send_error(403, "MANUAL_TRIGGER_REQUIRED",
+                             "Explicit operator-origin intent is required for Ask research")
             return
 
         routing_policy_name = normalize_routing_policy_header(self.headers.get(ROUTING_POLICY_HEADER))

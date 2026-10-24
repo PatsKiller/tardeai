@@ -2,7 +2,8 @@
 
 COVERS = ["config/llm_process_registry.json", "config/llm_routing_policy.json",
           "scripts/lib/cio_governed_model_bridge.py", "scripts/lib/governed_process_routes.py",
-          "scripts/sync_cio_process_caps.py", "scripts/lib/n8n_model_job.py"]
+          "scripts/sync_cio_process_caps.py", "scripts/lib/n8n_model_job.py",
+          "scripts/lib/governed_cloud_generation.py", "scripts/lib/llm_bridge_route.py"]
 """
 from __future__ import annotations
 
@@ -234,7 +235,7 @@ def test_unknown_selected_process_refuses_before_db(monkeypatch):
     assert err.value.code == 2
 
 
-def handler_request(monkeypatch, task, body):
+def handler_request(monkeypatch, task, body, *, manual_header="1"):
     """Real HTTP handler parsing with in-memory streams, no socket/auth/DB/store."""
     ring = types.ModuleType("memory_ring2")
     ring.check = lambda *a, **kw: None
@@ -247,6 +248,8 @@ def handler_request(monkeypatch, task, body):
     raw = json.dumps(body).encode()
     handler.path = "/v1/chat/completions"
     handler.headers = {bridge.AUTH_HEADER: "advisory_desk", "X-TradeAI-Task-Type": task, "Content-Length": str(len(raw))}
+    if manual_header is not None:
+        handler.headers[bridge.MANUAL_TRIGGER_HEADER] = manual_header
     handler.rfile = io.BytesIO(raw)
     handler._caller_auth_admits = lambda *a: True
     responses = []
@@ -297,13 +300,14 @@ def test_existing_client_helper_emits_only_server_task_and_stable_identity(monke
     out = bridge_governed_call(
         [{"role": "user", "content": "Public fact"}], process_id=PID, caller="advisory_desk",
         task_type=DEPTH, request_id="ask-answer-fixture", max_tokens=1500, timeout_s=1,
-        context_id="ctx_0123456789abcdef",
+        context_id="ctx_0123456789abcdef", manual_trigger=True,
     )
     assert out == payload
     req = captured[0]
     headers = {k.lower(): v for k, v in req.header_items()}
     assert headers["x-tradeai-task-type"] == DEPTH and headers["x-tradeai-agent"] == "advisory_desk"
     assert headers["x-tradeai-context-id"] == "ctx_0123456789abcdef"
+    assert headers["x-tradeai-manual-trigger"] == "1"
     body = json.loads(req.data)
     assert body["request_id"] == "ask-answer-fixture" and body["model"] == "tradeai_governed"
     assert not {"process_id", "reasoning_tier", "provider", "context_id"} & body.keys()
@@ -330,7 +334,7 @@ def test_helper_inherits_existing_context_or_keeps_it_missing(monkeypatch, conte
     monkeypatch.setattr(urllib.request, "urlopen", fake_open)
     token = ic._CURRENT_CTX.set(context)
     try:
-        bridge_governed_call([], process_id=PID, caller="advisory_desk", task_type=PID)
+        bridge_governed_call([], process_id=PID, caller="advisory_desk", task_type=PID, manual_trigger=True)
     finally:
         ic._CURRENT_CTX.reset(token)
     headers = {k.lower(): v for k, v in captured[0].header_items()}
@@ -345,7 +349,8 @@ def test_unsafe_context_never_reaches_transport(monkeypatch, context):
     from lib.n8n_model_job import bridge_governed_call
 
     monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: pytest.fail("unsafe context reached transport"))
-    out = bridge_governed_call([], process_id=PID, caller="advisory_desk", task_type=PID, context_id=context)
+    out = bridge_governed_call([], process_id=PID, caller="advisory_desk", task_type=PID,
+                               context_id=context, manual_trigger=True)
     assert out["error"]["code"] == "MEMORY_CONTEXT_INVALID"
     assert out["governance_pass"] is False
 
@@ -359,6 +364,120 @@ def test_failed_context_reader_does_not_forge_id_or_hide_refusal(monkeypatch):
 
     monkeypatch.setattr(ic, "current_context_id", failed)
     monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: pytest.fail("unavailable context reached transport"))
-    out = bridge_governed_call([], process_id=PID, caller="advisory_desk", task_type=PID)
+    out = bridge_governed_call([], process_id=PID, caller="advisory_desk", task_type=PID, manual_trigger=True)
     assert out["error"]["code"] == "MEMORY_CONTEXT_UNAVAILABLE"
     assert out["governance_pass"] is False and "sensitive" not in json.dumps(out)
+
+
+@pytest.mark.parametrize("manual", [False, None, "true", 1])
+def test_ask_helper_defaults_and_non_boolean_intent_spend_and_send_nothing(monkeypatch, manual):
+    from lib.n8n_model_job import bridge_governed_call
+    from lib import intelligence_client as ic
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: pytest.fail("automatic Ask reached transport"))
+    monkeypatch.setattr(ic, "current_context_id", lambda: pytest.fail("refused Ask read context"))
+    out = bridge_governed_call([], process_id=PID, caller="advisory_desk", task_type=DEPTH,
+                               manual_trigger=manual)
+    assert out["error"]["code"] == "MANUAL_TRIGGER_REQUIRED"
+    assert out["cost_estimate"] == 0.0 and out["governance_pass"] is False
+
+
+@pytest.mark.parametrize("marker", [None, "true", "0"])
+def test_server_does_not_infer_operator_intent_from_body_or_task(monkeypatch, marker):
+    seen, responses = handler_request(monkeypatch, DEPTH, {
+        "messages": [{"role": "user", "content": "Public fact"}],
+        "manual_trigger": True, "origin": "cc_ask", "operator_initiated": True,
+    }, manual_header=marker)
+    assert responses == [(403, {"error": "MANUAL_TRIGGER_REQUIRED"})] and seen == []
+
+
+@pytest.mark.parametrize("manual", [False, True])
+def test_no_bridge_env_production_generation_reaches_real_should_call(monkeypatch, manual):
+    """Real helper→llm_lane→gate_and_generate→should_call; only other rails/I/O injected."""
+    import llm_lane
+    import requests
+    from lib import oauth_lane_status
+    from scripts.lib.governed_cloud_generation import generate_cloud
+
+    monkeypatch.delenv("TRADEAI_LLM_VIA_BRIDGE", raising=False)
+    def available(lane):
+        assert manual, "automatic Ask must stop before readiness probes"
+        return True
+
+    monkeypatch.setattr(llm_lane, "available", available)
+    monkeypatch.setattr(oauth_lane_status, "lane_available", lambda lane: True)
+    ring = types.ModuleType("memory_ring2")
+    ring.check = lambda *a, **kw: {"decision": "ALLOW"}
+    ring.research_class = lambda *a: True
+    monkeypatch.setitem(sys.modules, "memory_ring2", ring)
+    posts = []
+
+    class Response:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"choices": [{"message": {"content": ANSWER}}]}
+
+    monkeypatch.setattr(requests, "post", lambda *a, **kw: posts.append((a, kw)) or Response())
+    observed = []
+    original = lc.should_call
+
+    def real_decision(process, lane, **kw):
+        result = original(process, lane, **kw)
+        observed.append((process, kw.get("manual_trigger"), result))
+        return result
+
+    monkeypatch.setattr(lc, "should_call", real_decision)
+    with ledger(monkeypatch) as seen:
+        args = dict(process_id=PID, task_summary="operator Ask fixture", lanes=("grok",))
+        if manual:
+            assert generate_cloud("Public fact", manual_trigger=True, **args) == (ANSWER, "grok")
+        else:
+            assert original(PID, "grok", manual_trigger=False)["reason"] == "manual_mode"
+            with pytest.raises(RuntimeError, match="MANUAL_TRIGGER_REQUIRED"):
+                generate_cloud("Public fact", **args)
+        assert seen["reserve"].call_count == 0  # Legacy OAuth path is free; bridge counters are separately proven.
+        assert seen["log"].call_count == int(manual)
+    assert len(posts) == int(manual)
+    if manual:
+        assert observed[0][:2] == (PID, True) and observed[0][2]["allow"] is True
+    else:
+        assert observed == []  # The stronger host intent gate precedes even should_call/readiness.
+
+
+@pytest.mark.parametrize("manual", [False, True])
+def test_cloud_helper_bridge_path_preserves_explicit_intent_without_fallback(monkeypatch, manual):
+    from scripts.lib.governed_cloud_generation import generate_cloud
+    from lib import intelligence_client as ic
+
+    monkeypatch.setenv("TRADEAI_LLM_VIA_BRIDGE", "1")
+    monkeypatch.delenv("TRADEAI_LLM_PROCESS_ID", raising=False)
+    monkeypatch.delenv("TRADEAI_LLM_PROCESS_IDS", raising=False)
+    monkeypatch.setattr(ic, "current_context_id", lambda: "ctx_0123456789abcdef")
+    seen = []
+
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+    def fake_open(req, **kw):
+        seen.append(req)
+        return Response(json.dumps({"choices": [{"message": {"content": ANSWER}}],
+                                    "_tradeai": {"process_id": PID, "governance_pass": True,
+                                                 "reservation_id": 4242}}).encode())
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_open)
+    if manual:
+        assert generate_cloud("Public fact", process_id=PID, task_summary="Ask fixture",
+                              manual_trigger=True) == (ANSWER, "bridge")
+        assert {k.lower(): v for k, v in seen[0].header_items()}["x-tradeai-manual-trigger"] == "1"
+    else:
+        with pytest.raises(RuntimeError, match="MANUAL_TRIGGER_REQUIRED"):
+            generate_cloud("Public fact", process_id=PID, task_summary="automatic fixture")
+        assert seen == []
