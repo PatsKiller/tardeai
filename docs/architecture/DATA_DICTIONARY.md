@@ -45,7 +45,6 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | Alerts | **alert_events** | PROPOSED | `alert_events` (table) | UNCONSOLIDATED → `scripts/alert_event_writer.py` (exists (wire it; AGENTS.md §13.5 — do not build a second)) | event: the producing lanes | event-driven | Home, Watch, Open Trades, Telegram |
 | Operator messages | **comms_intents** | PROPOSED | `communication_events` (table) | UNCONSOLIDATED → `scripts/lib/comms/client.py` (exists) | host: n8n-comms-intent-consumer (canary) orchestrates; the gateway sends · n8n never-list → host | P1 immediate; P2 held 22:00-07:00 ET to the digest | Telegram, Home |
 | Operator settings and controls | **operator_settings** | PROPOSED | `operator_settings` (table) | UNCONSOLIDATED → `scripts/ops/operator_controls_applier.py` (to_build) | host: operator-controls-applier (to build) · n8n never-list → host | applied in the applier run that follows the operator's confirmed action; history append-only (one row per change: who, when, factor, old and new value) | Ops, Home |
-| Operator questions to the CIO (Ask the CIO) | **cio_asks** | PROPOSED | `data/cio/cio_ask_events.jsonl` (file) | UNCONSOLIDATED → `scripts/lib/cio_ask_store.py` (built_inert_until_grant) | host: cio-ask-reanswer (proposed, shadow) | appended in the request that answers the question; re-answers within one re-answer lane run of the triggering event | CIO Desk, My questions, Telegram (CIO bot), Watch, Home |
 
 ## Entity by entity
 
@@ -378,19 +377,6 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 - **Read path (projection):** `operator_settings` — to_build
 - **Readers:** Ops, Home
 
-### Ask the CIO — questions, answer versions, tracking (ledger + thread projection) — `cio_asks` (PROPOSED)
-
-**Operator decision (§17):** Grant cio_asks as the one store of operator questions to the CIO and their answer versions, written only by scripts/lib/cio_ask_store.py, read through the cio_ask_threads projection; every security-level event is also appended to CIO memory keyed by security_guid.
-
-- **Facts:** operator question, answer version, ask thread, ask tracking change, ask channel link, ask research cost
-- **Store of record:** `data/cio/cio_ask_events.jsonl` (file)
-- **Single writer:** UNCONSOLIDATED → `scripts/lib/cio_ask_store.py` (built_inert_until_grant) — Append-only, idempotent (deterministic event_id). A projection, not a silo: every event about a security is also appended to CIO memory (SecurityResearchSpine, silo=cio, keyed by security_guid) by scripts/lib/cio_ask_memory.py; per-security judgment stays on the CIO prospect record. Private entities (no listed security) are keyed by entity_guid here and never get a ticker. Postgres-portable shape (table cio_ask_events) in docs/ops/ASK_THE_CIO.md.
-- **Cadence:** event-driven (operator ask on CC or Telegram; material-change re-answer) · stale after 168 h
-- **Freshness SLA:** appended in the request that answers the question; re-answers within one re-answer lane run of the triggering event
-- **Refresh lane:** host: cio-ask-reanswer (proposed, shadow) — the ask itself is operator-initiated; only re-answers are scheduled (n8n lane proposed at shadow)
-- **Read path (projection):** `cio_ask_threads` — to_build
-- **Readers:** CIO Desk, My questions, Telegram (CIO bot), Watch, Home
-
 ## Field level
 
 ### `CIOProspect` — domain `cio_prospect`; InstrumentRecord@v1 (AGENTS.md §13.4; extended, not cloned, per §13.5)
@@ -457,7 +443,7 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 
 These carry no dictionary block yet; their store, writer and read path are in [`docs/SOURCE_OF_TRUTH.md`](../SOURCE_OF_TRUTH.md). A domain marked superseded becomes a derived copy when the superseding row is granted.
 
-`quote_price`, `symbol_identity`, `analyst_opinion`, `catalyst_news`, `technicals`, `sector_momentum`, `industry_momentum`, `market_regime`, `earnings_date`, `holdings_accounts` (superseded by `positions_store` on grant), `options_iv`, `research_thesis`, `watch_directives`, `watch_discovery` (superseded by `watchlist_membership` on grant), `web_search`, `private_company`, `dividends`, `macro`, `fundamentals`, `agent_opinion`, `agent_debate`, `ai_reports`, `redeploy_analytics`, `inverse_stoplights`, `data_gaps`, `operator_conversation`, `intelligence_memory_contexts`, `intelligence_retrieval_receipts`, `supervisor_heartbeats`, `approval_packages`, `platform_conformance`, `intelligence_gir_projection`, `supervisor_breaches`, `research_write_path_receipts`, `edge_fanout_work_items`, `intelligence_research_index`, `sec_filing_events`, `agent_checkpoints`, `lesson_promotions`, `contradiction_verdicts`, `agent_registry`, `model_chooser_receipts`, `supervisor_ladder_receipts`, `maturity_scores`, `conformance_gate_receipts`, `supervisor_recoveries`, `capital_plan_decisions`, `cio_operator_artifacts`, `counterfactual_ledger`, `active_trader_microstructure`, `opportunity_assessment` (superseded by `cio_prospect` on grant), `finviz_enrichment`, `scalp_list`, `social_posts`, `yfinance_info_snapshot`, `earnings_calendar`, `news_sentiment`
+`quote_price`, `symbol_identity`, `analyst_opinion`, `catalyst_news`, `technicals`, `sector_momentum`, `industry_momentum`, `market_regime`, `earnings_date`, `holdings_accounts` (superseded by `positions_store` on grant), `options_iv`, `research_thesis`, `watch_directives`, `watch_discovery` (superseded by `watchlist_membership` on grant), `web_search`, `private_company`, `dividends`, `macro`, `fundamentals`, `agent_opinion`, `agent_debate`, `ai_reports`, `redeploy_analytics`, `inverse_stoplights`, `data_gaps`, `operator_conversation`, `intelligence_memory_contexts`, `intelligence_retrieval_receipts`, `supervisor_heartbeats`, `approval_packages`, `platform_conformance`, `intelligence_gir_projection`, `supervisor_breaches`, `research_write_path_receipts`, `edge_fanout_work_items`, `intelligence_research_index`, `sec_filing_events`, `agent_checkpoints`, `lesson_promotions`, `contradiction_verdicts`, `agent_registry`, `model_chooser_receipts`, `supervisor_ladder_receipts`, `maturity_scores`, `conformance_gate_receipts`, `supervisor_recoveries`, `capital_plan_decisions`, `cio_operator_artifacts`, `counterfactual_ledger`, `active_trader_microstructure`, `opportunity_assessment` (superseded by `cio_prospect` on grant), `finviz_enrichment`, `scalp_list`, `social_posts`, `yfinance_info_snapshot`, `earnings_calendar`, `news_sentiment`, `cio_asks`
 
 ## Surfaces scanned for copy reads
 
