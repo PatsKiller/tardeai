@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "continuous_current_packet_20261023",
+  "files": [
+    "tests/test_continuous_current_packet_20261023.py"
+  ],
+  "comment": [
+    "WP-27: fixture-only CURRENT-root operator packet, market guard, exact singleton preservation and rollback proof."
+  ]
+}
