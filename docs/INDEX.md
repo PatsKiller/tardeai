@@ -2072,6 +2072,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WORK_PIPELINE_2026-10-23.md` | Work pipeline: the default Coordination view, keyed by work item (2026-10-23) |
 | `docs/ops/WORK_PIPELINE_TIER2_2026-10-23.md` | Work pipeline Tier 2: passkey acts through the host applier (2026-10-23) |
 | `docs/ops/WP03_BOARD_RECONCILIATION_20261023.md` | WP-03: board, PR and worktree reconciliation |
+| `docs/ops/WP31_WATCH_LAYOUT_20261023.md` | WP-31 Watch rows and phone cards |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye — first institutional-brain audit |
 | `docs/ops/agent_start/codex-note.md` | Codex note — agent claim board (operator installs) |
 | `docs/ops/agent_start/cursor-rule.md` | Cursor rules snippet — agent claim board (operator installs) |
