@@ -155,17 +155,17 @@
     "Existing weekday calendar retains holiday/early-close limitation"
   ],
   "packet_file_sha256": {
-    "backend-integration.log": "5b86399f261822a942b782fe48d335c50e28294e0d8956af2fc43d5529803e5d",
-    "build.log": "1592dd5693656982783346389cb6c20fc135bea7b138ada1d7ada832477a2330",
-    "freshness-model.log": "e83f970861010ec6a0bcd85c93cca120c4621a55bb6ce047a4b625c56b7b232f",
-    "lists-model.log": "9eac9529bea80679da1aacc69b2e045b3fcd38aa692f0316c6af3c4a5b6d288c",
-    "watch-browser.log": "739b76e910ae83bc2349dbb2e8a4b12b61051e35542c400ae1260213fe6846e4",
+    "watch-browser-receipt.txt": "739b76e910ae83bc2349dbb2e8a4b12b61051e35542c400ae1260213fe6846e4",
+    "prospects-model-receipt.txt": "cce1f97d57e5afb68f4be7b088cdeafc42708f18b5d1f5cd712294f4b125e28a",
+    "host-paths-receipt.txt": "35e284022d0751bcc0bb4fa920ab50a99bcbb8957f454ef45a19300aa540bca6",
+    "freshness-model-receipt.txt": "e83f970861010ec6a0bcd85c93cca120c4621a55bb6ce047a4b625c56b7b232f",
     "coverage.json": "a29fbd0ca7483a6190ba21923fe9c0fd14a696e13ccae7997c85b5b9576f7510",
     "impl-receipts.json": "4a4efd825ff355b1765b75ba4e20f7fef28b71a2e5e4b5197b1aa83add0fe9ec",
-    "host-paths.log": "35e284022d0751bcc0bb4fa920ab50a99bcbb8957f454ef45a19300aa540bca6",
     "impl-c2-retention-results.json": "350677ef6c38a0f2c841e5bcee732c746e24e03fc1ae72faad1c5b456cca3664",
-    "prospects-model.log": "cce1f97d57e5afb68f4be7b088cdeafc42708f18b5d1f5cd712294f4b125e28a",
+    "backend-integration-receipt.txt": "5b86399f261822a942b782fe48d335c50e28294e0d8956af2fc43d5529803e5d",
     "preview-isolation.json": "e3b25818393b8b367e4fa4ed3357e28b046e5d4fc4daab7ba93e4e1e71a38e62",
-    "card-model.log": "033ff17cab4693a9d02915a17f949700a74cc52999365de6a67451e6db36f3e1"
+    "build-receipt.txt": "1592dd5693656982783346389cb6c20fc135bea7b138ada1d7ada832477a2330",
+    "lists-model-receipt.txt": "9eac9529bea80679da1aacc69b2e045b3fcd38aa692f0316c6af3c4a5b6d288c",
+    "card-model-receipt.txt": "033ff17cab4693a9d02915a17f949700a74cc52999365de6a67451e6db36f3e1"
   }
 }
