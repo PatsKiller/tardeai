@@ -98,5 +98,17 @@ check('SPCX parts keep the account names and amounts', sp.accounts.map(a => `${a
 check('single-account rows carry their account name', op.bars.find(b => b.sym === 'V')!.accountLabel === 'Schwab Roth IRA' && op.bars.find(b => b.sym === 'SCHD')!.accountLabel === 'Schwab Rollover IRA')
 check('footer sums unchanged: shown = sum of groups; rest = day − shown', op.shownSum === 1995 - 850 - 752 - 141 - 98 && op.shownSum === 154 && (op.total! - op.shownSum) === -117)
 check('no account number in any label', op.bars.every(b => b.accounts.every(a => !/\d{3,}/.test(a.label))))
+const accountEvidence = doNowFrom({ ...ok, items: [{ ...ok.items[0], evidence: {
+  accounts: ['schwab_roth', 'moomoo_live', 'schwab_roth', '12345678'],
+  account_labels: ['Schwab Roth IRA', 'moomoo Taxable', 'Schwab Roth IRA', '...678'],
+} }] }, { nowMs: now }).items[0]
+check('do-now carries only evidenced account names, deduped and number-safe',
+  accountEvidence.accounts.map(a => a.label).join('|') === 'Schwab Roth IRA|moomoo Taxable|Unlabelled account'
+  && !JSON.stringify(accountEvidence.accounts).includes('12345678'))
+check('account evidence preserves action, risk and queue order', accountEvidence.money === m.items[0].money && accountEvidence.where === m.items[0].where)
+check('no evidence never infers an account from symbol', m.items[0].accounts.length === 0)
+const labelsOnly = doNowFrom({ ...ok, items: [{ ...ok.items[0], evidence: { account_labels: ['Schwab Individual'] } }] }, { nowMs: now }).items[0]
+check('safe server label remains available without a key', labelsOnly.accounts[0].label === 'Schwab Individual')
+
 console.log(`homeDoNow: ${pass} passed, ${fail} failed`)
 if (fail > 0) process.exit(1)

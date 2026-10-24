@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+import { AccountChip } from '../AccountChip'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars } from '../../lib/designTokens'
 import { TABS, TOP_N, ageLabel, money, severityTone, visibleItems, type DoNowItem, type DoNowModel, type Tab } from '../../lib/homeDoNow'
 
@@ -11,6 +12,7 @@ import { TABS, TOP_N, ageLabel, money, severityTone, visibleItems, type DoNowIte
 function itemTip(it: DoNowItem): string {
   return [
     it.why,
+    it.accounts.length ? `Accounts: ${it.accounts.map(a => a.label).join(", ")}` : null,
     it.money != null ? `Money at risk: ${money(it.money)} (${it.moneyBasis ?? 'basis not stated'})` : 'No money at risk on this item',
     `Sources: ${it.sources.join(', ') || 'unknown'}`,
     it.since ? `Since ${it.since}` : null,
@@ -86,6 +88,9 @@ export default function DoNowQueue({ model }: { model: DoNowModel }) {
                   {it.title}
                   {it.money != null && <span style={{ ...numStyle, fontSize: TYPE.sm, color: TOKENS.text[2], fontWeight: 500 }}> · {money(it.money)} at risk</span>}
                 </span>
+                {it.accounts.length > 0 && <span data-testid="do-now-accounts" style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {it.accounts.map(a => <AccountChip key={a.account || a.label} account={a.account} label={a.label} compact />)}
+                </span>}
                 <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2], lineHeight: 1.4, overflowWrap: 'anywhere' }}>{it.why}</span>
               </div>
               <Link to={it.where} data-testid="do-now-action"
