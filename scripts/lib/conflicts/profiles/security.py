@@ -50,6 +50,9 @@ class SecurityStanceProfile:
             return f"{value.get('exposure_pct', 'unknown')}% exposure; {value.get('limit_pct', 'unknown')}% IPS limit"
         return normalize(value).replace("_", " ") or "—"
 
+    def source_label(self, source):
+        return RULEBOOK.get("source_labels", {}).get(source, str(source).replace("_", " "))
+
     def compare(self, a, b, subject):
         x, y = ordinal(a, subject.context.get("held")), ordinal(b, subject.context.get("held"))
         if x is None or y is None:
@@ -197,8 +200,8 @@ class SecurityStanceProfile:
                 allowed = value in (SEC["trade_go_clear"] if is_trade else SEC["gate_clear"])
                 if not allowed or material_at(item) is None:
                     unknown = material_at(item) is None or value in {"STALE", "DATA_UNAVAILABLE", "UNKNOWN", ""}
-                    finding("GATE", "R3", ("Unknown: " if unknown else "Blocked: ") + (item.detail or item.source),
-                            f"{item.source} passes with current data", [item, canonical], suffix=f"{item.source}:{item.account or 'all'}")
+                    finding("GATE", "R3", ("Unknown: " if unknown else "Blocked: ") + (item.detail or self.source_label(item.source)),
+                            f"{self.source_label(item.source)} passes with current data", [item, canonical], suffix=f"{item.source}:{item.account or 'all'}")
         if positive and held and not any(f.rule == "R13" for f in output):
             policy = ctx.get("concentration_policy") or {}
             weight, limit = policy.get("weight_pct"), policy.get("limit_pct")
@@ -240,7 +243,7 @@ class SecurityStanceProfile:
                         "—", [canonical, item], suffix=item.source)
                 continue
             if not item_at or (now - item_at) > timedelta(days=limit):
-                finding("SUPERSEDED", "R1", f"{item.source} material evidence is stale", f"{item.source} rewrites the compared input",
+                finding("SUPERSEDED", "R1", f"{self.source_label(item.source)} material evidence is stale", f"{self.source_label(item.source)} rewrites the compared input",
                         [item, canonical], action="queue_refresh" if item.metadata.get("writes_compared_input", False) else "none", suffix=item.source)
                 continue
             candidates.append(item)
@@ -268,7 +271,7 @@ class SecurityStanceProfile:
                 observation.key = key
                 return output
             verdict = finding("NEEDS_OPERATOR" if protected else "CONFLICT", "R11" if len(sides) >= 3 else "U7",
-                              "; ".join(f"{i.source}: {self.describe(i.value)}" for i in sides),
+                              "; ".join(f"{self.source_label(i.source)}: {self.describe(i.value)}" for i in sides),
                               "the owner records a decision, reason and expiry against every side", sides,
                               action="notify_operator" if protected else "queue_review", owner="operator" if protected else "the CIO", never=protected)
             verdict.key = key

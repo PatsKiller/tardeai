@@ -201,5 +201,18 @@
     "conviction_delta": 5
   },
   "concentration_source": "W1 canonical IPS policy input; no threshold copies",
-  "concentration_approval_ref": "conflict-engine-build.md ADDENDUM3; EXCEPTIONS_MATRIX R13 operator decision 2026-10-24"
+  "concentration_approval_ref": "conflict-engine-build.md ADDENDUM3; EXCEPTIONS_MATRIX R13 operator decision 2026-10-24",
+  "source_labels": {
+    "cio_opportunity_projection": "CIO curator",
+    "CIO record": "CIO canonical record",
+    "watchlist CIO review": "CIO watch review",
+    "watchlist_final_synthesis": "Watch desk synthesis",
+    "reentry_decision_desk": "Re-entry desk",
+    "agent_escalation": "Agent escalation",
+    "advisory_desk": "Advisory desk",
+    "analyst_consensus": "Analyst consensus",
+    "trade_ai": "Trade AI checks",
+    "stop_last_known": "Broker protection snapshot",
+    "wash_sale": "Canonical wash window"
+  }
 }

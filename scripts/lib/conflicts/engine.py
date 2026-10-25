@@ -95,7 +95,7 @@ def side(i: Input, profile: Profile) -> dict:
     at = i.inputs_as_of if i.inputs_as_of is not None or i.metadata.get("material_time_required") else i.as_of
     return {"source": i.source, "value": profile.describe(i.value),
             "as_of": at.isoformat() if isinstance(at, datetime) and at.tzinfo else None,
-            "account": i.account}
+            "account": i.account, "source_label": profile.source_label(i.source) if hasattr(profile, "source_label") else i.source}
 
 
 def evaluate(subject: Subject, canonical: Optional[Input], inputs: Iterable[Input], profile: Profile, *, now: datetime,
