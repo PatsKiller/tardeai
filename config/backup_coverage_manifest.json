@@ -837,7 +837,7 @@
     "data_offsite"
    ],
    "coverage": "FULL",
-   "restore": "decrypt data_backup_<stamp>.tar.gz.gpg, untar, copy persistent-state/data/conflicts/{conflict_events,conflict_delivery_receipts,conflict_observations}.jsonl and persistent-state/data/governance/operator_decisions.jsonl back under the persistent-state root (restore conflict_events and conflict_delivery_receipts together; records rebuild from events). data/conflicts/reports (derived comparison reports) is not copied.",
+   "restore": "decrypt data_backup_<stamp>.tar.gz.gpg, untar, copy persistent-state/data/conflicts/{conflict_events,conflict_delivery_receipts,conflict_observations,rule_proposals}.jsonl and persistent-state/data/governance/operator_decisions.jsonl back under the persistent-state root (restore conflict_events and conflict_delivery_receipts together; records rebuild from events). data/conflicts/reports (derived comparison reports) is not copied.",
    "gap": "weekly cadence (data_offsite, KEEP=1): up to 7 days of ledger events can be lost on disk loss; restore never drilled",
    "covers": [
     "ps:data/conflicts",

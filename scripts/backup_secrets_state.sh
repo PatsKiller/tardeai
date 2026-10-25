@@ -150,7 +150,8 @@ else
     PS_PARENT="$(dirname "$PS_ROOT")"; PS_NAME="$(basename "$PS_ROOT")"
     PS_LIST=()
     for s in data/conflicts/conflict_events.jsonl data/conflicts/conflict_delivery_receipts.jsonl \
-             data/conflicts/conflict_observations.jsonl data/governance/operator_decisions.jsonl; do
+             data/conflicts/conflict_observations.jsonl data/conflicts/rule_proposals.jsonl \
+             data/governance/operator_decisions.jsonl; do
       [ -f "$PS_ROOT/$s" ] && PS_LIST+=("$PS_NAME/$s")
     done
     if [ ${#PS_LIST[@]} -gt 0 ]; then
