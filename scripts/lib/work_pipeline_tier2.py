@@ -346,17 +346,23 @@ def merge_preconditions(hosts: Any, repo: str, pr: int, sha: str) -> dict[str, A
 
 def merge_freeze_check(hosts: Any, pr_doc: Mapping[str, Any]) -> dict[str, Any]:
     """Refuse ``MERGE_FREEZE`` while the Release Train merge freeze is active (AGENTS.md §25.3), unless the PR is
-    exempt (the train's batch PR, the operator label ``freeze-exempt``, a base other than main). The host verdict
-    reads the train's receipts (scripts/lib/release_train_freeze.py). ``hosts.merge_freeze`` (a callable returning
-    the verdict) replaces the file read in tests. A verdict that cannot be computed refuses (fail closed)."""
+    exempt: the train's batch PR (the App's bot, a live train), a base other than main, or the label
+    ``freeze-exempt`` applied by a login in ``operator_logins`` (read from the PR's labeled events). The host
+    verdict reads the train's receipts (scripts/lib/release_train_freeze.py); a stale train raises its P1 here.
+    ``hosts.merge_freeze`` (a callable returning the verdict) replaces the file read in tests; ``hosts.alert_send``
+    replaces the alert sender. A verdict that cannot be computed refuses (fail closed)."""
     try:
         from scripts.lib import release_train_freeze as RTF
     except ImportError:  # pragma: no cover
         from lib import release_train_freeze as RTF  # type: ignore[no-redef]
     head, base = pr_doc.get("head") or {}, pr_doc.get("base") or {}
     hrepo, brepo = (head.get("repo") or {}).get("full_name"), (base.get("repo") or {}).get("full_name")
+    user = pr_doc.get("user") or {}
+    login = user.get("login")
+    if isinstance(login, str) and user.get("type") == "Bot" and not login.endswith("[bot]"):
+        login += "[bot]"
     pr = {"number": pr_doc.get("number"), "base": base.get("ref"), "head": head.get("ref"),
-          "cross_repo": not (hrepo and hrepo == brepo), "author": (pr_doc.get("user") or {}).get("login"),
+          "cross_repo": not (hrepo and hrepo == brepo), "author": login,
           "labels": [x.get("name") for x in pr_doc.get("labels") or [] if isinstance(x, dict)]}
     try:
         verdict_fn = getattr(hosts, "merge_freeze", None)
@@ -370,13 +376,28 @@ def merge_freeze_check(hosts: Any, pr_doc: Mapping[str, Any]) -> dict[str, Any]:
                 sdir = RTW.resolve_state_dir()
             verdict = RTF.host_verdict(hosts.clock(), state_dir=Path(sdir))
         cfg = RTF.load_config()
+        if cfg["exempt_label"] in pr["labels"] and pr["number"] is not None:
+            pr["label_actor"] = _label_actor(hosts, pr_doc, int(pr["number"]), cfg["exempt_label"])
     except Exception as exc:  # noqa: BLE001 - unknown freeze state: refuse the merge, say why
         raise _err("MERGE_FREEZE_UNKNOWN", f"merge freeze state unavailable ({type(exc).__name__}); retry, or "
                    "merge at GitHub (the train-merge-freeze check still applies)") from None
+    RTF.alert_stale(verdict, send=getattr(hosts, "alert_send", None))
     d = RTF.pr_decision(verdict, pr, cfg)
     if not d["allowed"]:
         raise _err("MERGE_FREEZE", d["message"][:300])
     return {"frozen": bool(verdict.get("frozen")), "exempt": d["exempt"], "summary": verdict.get("summary")}
+
+
+def _label_actor(hosts: Any, pr_doc: Mapping[str, Any], pr: int, label: str) -> Optional[str]:
+    """The login that most recently applied ``label`` (the PR's ``labeled`` issue events), or None."""
+    repo = ((pr_doc.get("base") or {}).get("repo") or {}).get("full_name")
+    if not repo:
+        return None
+    q = f'.[] | select(.event == "labeled" and .label.name == "{label}") | .actor.login'
+    rc, out, _err = hosts.runner(["gh", "api", "--method", "GET", "--paginate", f"repos/{repo}/issues/{pr}/events",
+                                  "--jq", q], None)
+    lines = [x.strip() for x in (out or "").splitlines() if x.strip()] if rc == 0 else []
+    return lines[-1] if lines else None
 
 
 def apply(kind: str, plan_: Any, hosts: Any, store: Any, *, request_id: str, actor: str) -> dict[str, Any]:

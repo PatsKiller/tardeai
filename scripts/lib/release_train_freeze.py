@@ -29,14 +29,22 @@ Unreadable receipts (decision, see the doc §4): the 30-minute pre-window freeze
 clock and the policy. After the window opens, an unknown train state does NOT freeze (a visible warning instead):
 a merge that lands under a running train is caught by the train itself (``MAIN_MOVED_AT_FREEZE`` is a quiet NO_OP,
 ``MAIN_MOVED_AT_MERGE`` is MERGED_NOT_LIVE + P1), which costs one window, whereas an open-ended freeze on an
-unreadable file blocks every merge with no end and no owner. A policy that cannot be read is the exception: no layer
-can then say "not frozen", so it reads as frozen (POLICY_UNREADABLE) and only the operator's label passes.
+unreadable file blocks every merge with no end and no owner. The same holds for the train's own records: an
+unreadable ``trains/<id>/state.json`` is a warning, not a freeze. A policy that cannot be read is the exception: no
+layer can then say "not frozen", so it reads as frozen (POLICY_UNREADABLE).
+
+Stale trains (review F5, 2026-10-25): a train still ACKNOWLEDGED ``stale_after_min`` (240) after its window, or a live
+train whose state has not moved for that long, no longer freezes. It is listed in ``stale`` and raises a P1 through
+the existing operator alert path (``alert_stale``: ``telegram_alert.send_telegram``, deduped) when a merge helper
+evaluates the freeze. A wedged or orphaned train must be reconciled, but it must not hold every merge forever.
 
 STOP: a SET latch means the operator stopped the train (§25.3: "unless the operator first stops the train"), so the
-pre-window and awaiting-train freezes lift; a train already running (settling) still freezes until it is terminal.
+pre-window and awaiting-train freezes lift, and so do stale trains; a train that is still moving (settling) freezes
+until it is terminal.
 
-Pure apart from the file reads in ``host_inputs`` / ``read_*``. Stdlib only, no environment read, no network,
-nothing written. AUTHORITY: READ_ONLY_ADVISORY. MBI_BEHAVIOR = 0.
+Pure apart from the file reads (``window_train_state``, ``in_flight_trains``, ``host_verdict``) and ``alert_stale``,
+which a caller invokes explicitly. Stdlib only, no environment read, no network. AUTHORITY: READ_ONLY_ADVISORY.
+MBI_BEHAVIOR = 0.
 """
 
 from __future__ import annotations
@@ -88,6 +96,7 @@ DEFAULTS: dict[str, Any] = {
     "stale_after_min": 240,
     "lookback_h": 24,
     "train_pr_authors": [],
+    "operator_logins": [],
 }
 _INT_BOUNDS = {"starts_min_before_window": (0, 120), "request_grace_min": (1, 60), "ci_lead_min": (0, 60),
                "stale_after_min": (30, 1440), "lookback_h": (6, 72)}
@@ -120,6 +129,9 @@ def validate_config(cfg: Any) -> list[str]:
     authors = cfg.get("train_pr_authors")
     if not isinstance(authors, list) or not all(isinstance(a, str) and a for a in authors):
         errs.append("train_pr_authors must be a list of logins")
+    ops = cfg.get("operator_logins")
+    if not isinstance(ops, list) or not all(isinstance(a, str) and a for a in ops):
+        errs.append("operator_logins must be a list of logins")
     return errs
 
 
@@ -236,7 +248,7 @@ def window_train_state(state_dir: Path, occ: Mapping[str, Any], now: datetime) -
 
 def in_flight_trains(state_dir: Path) -> tuple[list[dict], Optional[str]]:
     """Live trains with no outcome yet (``<state>/trains/<id>/state.json``; only a live controller writes one). An
-    unreadable state file is in flight (the controller's own ``pending_trains`` reads it the same way)."""
+    unreadable state file is reported with phase ``UNREADABLE``; the verdict warns on it and does not freeze."""
     tdir = Path(state_dir) / "trains"
     try:
         names = sorted(os.listdir(tdir))
@@ -303,6 +315,8 @@ def evaluate(
     reasons: list[dict[str, Any]] = []
     warnings: list[str] = []
     stop_set = stop_state == "SET"
+    stale_items: list[dict[str, Any]] = []
+    in_flight_ids: list[str] = []
 
     receipts = "NOT_READ"
     if mode == "host":
@@ -338,11 +352,13 @@ def evaluate(
             r = {"code": WINDOW_TRAIN_RUNNING, **base, "request_id": ws["request_id"], "train_id": ws.get("train_id"),
                  "detail": f"the {et_text(start)} train is running (receipt ACKNOWLEDGED)"}
             if n - start >= stale:
-                r["stale"] = True
                 late = int((n - start).total_seconds() // 60)
-                warnings.append(f"the {et_text(start)} train is still ACKNOWLEDGED {late} min after its window: "
-                                "resolve it (train-orphan-resolve / reconcile) or STOP")
-            reasons.append(r)
+                stale_items.append({"kind": "receipt", "id": ws["request_id"], "train_id": ws.get("train_id"),
+                                    "since": _iso(start), "minutes": late})
+                warnings.append(f"the {et_text(start)} train is still ACKNOWLEDGED {late} min after its window: not "
+                                "freezing any more; resolve it (train-orphan-resolve / reconcile)")
+            else:
+                reasons.append(r)
         elif st == "PENDING" and not stop_set:
             reasons.append({"code": WINDOW_TRAIN_PENDING, **base, "request_id": ws["request_id"],
                             "expires_at": ws.get("expires_at"),
@@ -362,13 +378,21 @@ def evaluate(
         if terr:
             warnings.append(f"train states unreadable ({terr})")
         for t in trains:
-            r = {"code": TRAIN_IN_FLIGHT, "train_id": t["train_id"], "phase": t["phase"], "window_id": t["window_id"],
-                 "detail": f"live train {t['train_id']} in phase {t['phase']} has no outcome yet"}
+            if t["phase"] == "UNREADABLE":
+                warnings.append(f"train {t['train_id']} state unreadable: not freezing on it; reconcile it")
+                continue
+            in_flight_ids.append(str(t["train_id"]))
             upd = _parse(t.get("updated_at"))
-            if upd is not None and n - upd >= stale:
-                r["stale"] = True
-                warnings.append(f"train {t['train_id']} has not moved since {et_text(upd)}: reconcile it or STOP")
-            reasons.append(r)
+            if upd is None or n - upd >= stale:
+                mins = int((n - upd).total_seconds() // 60) if upd is not None else None
+                stale_items.append({"kind": "train_state", "id": t["train_id"], "train_id": t["train_id"],
+                                    "since": _iso(upd), "minutes": mins, "phase": t["phase"]})
+                warnings.append(f"train {t['train_id']} has not moved since {et_text(upd)}: not freezing any more; "
+                                "reconcile it")
+                continue
+            reasons.append({"code": TRAIN_IN_FLIGHT, "train_id": t["train_id"], "phase": t["phase"],
+                            "window_id": t["window_id"],
+                            "detail": f"live train {t['train_id']} in phase {t['phase']} has no outcome yet"})
 
     for pr in batch_prs or ():
         reasons.append({"code": BATCH_PR_OPEN, "pr": pr.get("number"), "head": pr.get("head"),
@@ -393,6 +417,8 @@ def evaluate(
         "starts_min_before_window": minutes,
         "receipts": receipts,
         "stop": stop_state,
+        "stale": stale_items,
+        "in_flight_train_ids": in_flight_ids,
         "next_freeze": next_freeze,
         "imminent": imminent,
         "warnings": warnings,
@@ -433,9 +459,16 @@ def summary(v: Mapping[str, Any]) -> str:
 # ── a PR against the verdict ──────────────────────────────────────────────────────────────────────────────────
 
 
+def train_id_of(pr: Mapping[str, Any]) -> Optional[str]:
+    head = str(pr.get("head") or "")
+    tid = head[len(TRAIN_HEAD_PREFIX):] if head.startswith(TRAIN_HEAD_PREFIX) else ""
+    return tid if TRAIN_ID_RE.match(tid) else None
+
+
 def is_train_batch_pr(pr: Mapping[str, Any], cfg: Mapping[str, Any]) -> bool:
-    """The train's own batch PR: head ``train/<train id>`` in this repository (never a fork), base main, and — when
-    ``train_pr_authors`` is configured — opened by one of those logins (the App's bot)."""
+    """The train's own batch PR: head ``train/<train id>`` in this repository (never a fork), base main, AND opened
+    by a login in ``train_pr_authors`` (the GitHub App's bot, ``tradeai-release-train[bot]``). An empty list
+    exempts nothing: a branch name alone is spoofable (review F1)."""
     head = str(pr.get("head") or "")
     if not head.startswith(TRAIN_HEAD_PREFIX) or not TRAIN_ID_RE.match(head[len(TRAIN_HEAD_PREFIX):]):
         return False
@@ -444,18 +477,26 @@ def is_train_batch_pr(pr: Mapping[str, Any], cfg: Mapping[str, Any]) -> bool:
     if pr.get("base") != cfg["base_branch"]:
         return False
     authors = list(cfg.get("train_pr_authors") or [])
-    return not authors or pr.get("author") in authors
+    return bool(authors) and pr.get("author") in authors
 
 
-def exemption(pr: Optional[Mapping[str, Any]], cfg: Mapping[str, Any]) -> Optional[str]:
-    """Why ``pr`` may merge during a freeze, or None. ``not_main``: the freeze is about merges to main."""
+def exemption(pr: Optional[Mapping[str, Any]], cfg: Mapping[str, Any], *, allow_label: bool = True,
+              in_flight_ids: Optional[Iterable[str]] = None) -> Optional[str]:
+    """Why ``pr`` may merge during a freeze, or None. ``not_main``: the freeze is about merges to main.
+
+    * the train batch PR (``is_train_batch_pr``); with ``in_flight_ids`` (host mode) its train id must also be a
+      live train in ``<state>/trains`` that has no outcome yet;
+    * the label ``freeze-exempt``, only when ``allow_label`` and the login that applied it (``label_actor``, from the
+      PR's labeled events) is in ``operator_logins``. The agent merge helper passes ``allow_label=False``."""
     if not pr:
         return None
     if pr.get("base") and pr.get("base") != cfg["base_branch"]:
         return "not_main"
-    if is_train_batch_pr(pr, cfg):
+    if is_train_batch_pr(pr, cfg) and (in_flight_ids is None or train_id_of(pr) in set(in_flight_ids)):
         return "train_batch_pr"
-    if cfg["exempt_label"] in (pr.get("labels") or []):
+    ops = list(cfg.get("operator_logins") or [])
+    if (allow_label and cfg["exempt_label"] in (pr.get("labels") or []) and ops
+            and pr.get("label_actor") in ops):
         return "freeze_exempt_label"
     return None
 
@@ -465,10 +506,11 @@ _EXEMPT_TEXT = {"not_main": "base is not main", "train_batch_pr": "the release t
 
 
 def pr_decision(verdict: Mapping[str, Any], pr: Optional[Mapping[str, Any]], cfg: Mapping[str, Any], *,
-                lead_pending: bool = False) -> dict[str, Any]:
+                lead_pending: bool = False, allow_label: bool = True) -> dict[str, Any]:
     """{allowed, exempt, state (success|pending), description, message}. ``lead_pending`` (CI only): pending when a
     freeze starts within ``ci_lead_min`` (GitHub's schedule cannot be relied on to flip the status on time)."""
-    ex = exemption(pr, cfg)
+    ids = verdict.get("in_flight_train_ids") if verdict.get("mode") == "host" else None
+    ex = exemption(pr, cfg, allow_label=allow_label, in_flight_ids=ids)
     frozen = bool(verdict.get("frozen"))
     if ex:
         desc = f"Exempt ({_EXEMPT_TEXT[ex]})" + ("; freeze active" if frozen else "")
@@ -476,8 +518,10 @@ def pr_decision(verdict: Mapping[str, Any], pr: Optional[Mapping[str, Any]], cfg
                 "message": desc}
     if frozen:
         s = str(verdict.get("summary") or "Merge freeze active")
+        way_out = (f"the operator labels the PR '{cfg['exempt_label']}' or stops the train (STOP)" if allow_label
+                   else "the operator stops the train (STOP); agent merges ignore the exempt label")
         msg = (f"REFUSED: {s}. Only the release train merges to main during a freeze (AGENTS.md §25.3). Wait for the "
-               f"train to finish, or the operator labels the PR '{cfg['exempt_label']}' or stops the train.")
+               f"train to finish, or {way_out}.")
         return {"allowed": False, "exempt": None, "state": "pending", "description": s[:DESCRIPTION_MAX],
                 "message": msg}
     if lead_pending and verdict.get("imminent"):
@@ -513,3 +557,36 @@ def host_verdict(now: datetime, *, state_dir: Optional[Path], policy_path: Optio
                  delegation_min=delegation_freeze_min(delegation_path))
     v["warnings"] = warn + v["warnings"]
     return v
+
+
+STALE_ALERT_DEDUPE_MIN = 360
+
+
+def alert_stale(verdict: Mapping[str, Any], send: Optional[Any] = None) -> list[dict[str, Any]]:
+    """One P1 per stale train through the existing operator alert path (``telegram_alert.send_telegram``, deduped
+    for ``STALE_ALERT_DEDUPE_MIN``: the text names only the train, so repeats collapse). A stale train no longer
+    freezes merges (review F5); the alert is how the operator learns it needs reconciling. ``send`` replaces the
+    sender in tests. Never raises; returns one result per stale item."""
+    out = []
+    items = list(verdict.get("stale") or [])
+    if not items:
+        return out
+    if send is None:
+        try:
+            try:
+                from telegram_alert import send_telegram as send  # type: ignore[no-redef]
+            except ImportError:
+                from scripts.telegram_alert import send_telegram as send  # type: ignore[no-redef]
+        except Exception as exc:  # noqa: BLE001 - no alert path: say so in the result
+            return [{"id": i.get("id"), "accepted": False, "error": type(exc).__name__} for i in items]
+    for i in items:
+        what = "receipt still ACKNOWLEDGED" if i.get("kind") == "receipt" else f"state not moving ({i.get('phase')})"
+        msg = (f"Release train {i.get('train_id') or i.get('id')}: {what} since {et_text(_parse(i.get('since')))}. "
+               "The merge freeze no longer holds for it; reconcile it "
+               "(release_train_controller train-orphan-resolve / reconcile).")
+        try:
+            ok = send(msg, priority="P1", dedupe_minutes=STALE_ALERT_DEDUPE_MIN, producer="release_train_freeze")
+            out.append({"id": i.get("id"), "accepted": bool(ok)})
+        except Exception as exc:  # noqa: BLE001
+            out.append({"id": i.get("id"), "accepted": False, "error": type(exc).__name__})
+    return out

@@ -8,13 +8,16 @@
 ``status``    the host verdict: schedule (config/release_train_policy.json) + the train's receipts and states in the
               release-window state dir. Writes nothing.
 ``check-pr``  what ``scripts/agent_merge_pr.sh`` (and any merge wrapper) runs before merging: the host verdict plus
-              the PR's exemptions (the train's own ``train/<id>`` batch PR; the operator label ``freeze-exempt``;
-              a base other than main). Exit 0 = may merge, 3 = refused (the message names the freeze and when it
-              ends), 2 = usage. A PR it cannot read is judged without exemptions.
+              the PR's exemptions (the train's own ``train/<id>`` batch PR, opened by the App's bot for a live
+              train; a base other than main). The ``freeze-exempt`` label is NOT honoured here: agents use the
+              operator's gh identity, so who applied it cannot be told apart. A stale train raises its P1 here.
+              Exit 0 = may merge, 3 = refused (the message names the freeze and when it ends), 2 = usage. A PR
+              it cannot read is judged without exemptions.
 ``ci``        the GitHub Actions half (``.github/workflows/train-merge-freeze.yml``): computes the CI verdict (the
               pre-window freeze + an open ``train/<id>`` batch PR; a runner cannot read host receipts) and sets the
               ``train-merge-freeze`` commit status on every open non-draft PR into main whose status differs, and
-              always on the event's PR. Without ``--apply`` it prints what it would post and posts nothing.
+              always on the event's PR. The label counts only when its labeled-event actor is in
+              operator_logins. Without ``--apply`` it prints what it would post and posts nothing.
 
 Paths: ``--state-dir`` overrides the release-window state dir (default: resolved exactly as release_window.py does);
 ``--policy`` / ``--config`` override the repo files (tests and the real-layout proof use a temp root).
@@ -45,7 +48,8 @@ Runner = Callable[[list[str]], tuple[int, str, str]]
 
 _GQL = """query($owner:String!,$name:String!,$base:String!,$after:String){repository(owner:$owner,name:$name){
 pullRequests(states:OPEN,first:100,after:$after,baseRefName:$base){pageInfo{hasNextPage endCursor}
-nodes{number isDraft headRefName headRefOid baseRefName isCrossRepository author{login} labels(first:50){nodes{name}}
+nodes{number isDraft headRefName headRefOid baseRefName isCrossRepository author{login __typename}
+labels(first:50){nodes{name}}
 commits(last:1){nodes{commit{status{context(name:"%s"){state description}}}}}}}}}""" % F.FREEZE_CONTEXT
 
 
@@ -81,12 +85,25 @@ def host_verdict(args: argparse.Namespace) -> dict:
                           delegation_path=Path(args.delegation) if args.delegation else None)
 
 
+def bot_login(login: Any, is_bot: bool = False) -> Optional[str]:
+    """One login form for a GitHub App: REST says ``slug[bot]``, GraphQL says ``slug`` (typename Bot) and
+    ``gh pr view`` says ``app/slug``. All become ``slug[bot]``."""
+    if not isinstance(login, str) or not login:
+        return None
+    if login.startswith("app/"):
+        return login[4:] + "[bot]"
+    if is_bot and not login.endswith("[bot]"):
+        return login + "[bot]"
+    return login
+
+
 # ── PR records ────────────────────────────────────────────────────────────────────────────────────────────────
 
 
 def pr_from_gh_view(doc: dict) -> dict:
     return {"number": doc.get("number"), "base": doc.get("baseRefName"), "head": doc.get("headRefName"),
-            "cross_repo": bool(doc.get("isCrossRepository")), "author": (doc.get("author") or {}).get("login"),
+            "cross_repo": bool(doc.get("isCrossRepository")),
+            "author": bot_login((doc.get("author") or {}).get("login"), bool((doc.get("author") or {}).get("is_bot"))),
             "labels": [x.get("name") for x in doc.get("labels") or [] if isinstance(x, dict)],
             "state": doc.get("state")}
 
@@ -98,7 +115,8 @@ def pr_from_event(event: dict) -> Optional[dict]:
     head, base = pr.get("head") or {}, pr.get("base") or {}
     hrepo, brepo = (head.get("repo") or {}).get("full_name"), (base.get("repo") or {}).get("full_name")
     return {"number": pr.get("number"), "base": base.get("ref"), "head": head.get("ref"), "sha": head.get("sha"),
-            "cross_repo": not (hrepo and hrepo == brepo), "author": (pr.get("user") or {}).get("login"),
+            "cross_repo": not (hrepo and hrepo == brepo),
+            "author": bot_login((pr.get("user") or {}).get("login"), (pr.get("user") or {}).get("type") == "Bot"),
             "labels": [x.get("name") for x in pr.get("labels") or [] if isinstance(x, dict)],
             "draft": bool(pr.get("draft")), "status": None}
 
@@ -108,7 +126,8 @@ def pr_from_graphql(node: dict) -> dict:
     ctx = ((((commits[-1] or {}).get("commit") or {}).get("status") or {}).get("context")) if commits else None
     return {"number": node.get("number"), "base": node.get("baseRefName"), "head": node.get("headRefName"),
             "sha": node.get("headRefOid"), "cross_repo": bool(node.get("isCrossRepository")),
-            "author": (node.get("author") or {}).get("login"),
+            "author": bot_login((node.get("author") or {}).get("login"),
+                                (node.get("author") or {}).get("__typename") == "Bot"),
             "labels": [x.get("name") for x in (node.get("labels") or {}).get("nodes") or [] if isinstance(x, dict)],
             "draft": bool(node.get("isDraft")),
             "status": {"state": str(ctx.get("state") or "").lower(), "description": ctx.get("description")}
@@ -135,6 +154,22 @@ def list_open_prs(repo: str, base: str, runner: Runner) -> list[dict]:
     return out
 
 
+def label_actor(repo: str, number: int, label: str, runner: Runner) -> Optional[str]:
+    """The login that most recently applied ``label`` to the PR (its ``labeled`` issue events), or None."""
+    q = f'.[] | select(.event == "labeled" and .label.name == "{label}") | .actor.login'
+    rc, so, _se = runner(["gh", "api", "--paginate", f"repos/{repo}/issues/{int(number)}/events", "--jq", q])
+    if rc != 0:
+        return None
+    lines = [x.strip() for x in so.splitlines() if x.strip()]
+    return lines[-1] if lines else None
+
+
+def attach_label_actors(repo: str, prs: list[dict], label: str, runner: Runner) -> None:
+    for p in prs:
+        if p and label in (p.get("labels") or []) and p.get("number") is not None:
+            p["label_actor"] = label_actor(repo, int(p["number"]), label, runner)
+
+
 # ── commands ──────────────────────────────────────────────────────────────────────────────────────────────────
 
 
@@ -151,11 +186,11 @@ def cmd_status(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
-def cmd_check_pr(args: argparse.Namespace, runner: Runner = _run) -> int:
+def cmd_check_pr(args: argparse.Namespace, runner: Runner = _run, alert_send: Any = None) -> int:
     v = host_verdict(args)
     pr = None
     argv = ["gh", "pr", "view", str(args.pr), "--json",
-            "number,baseRefName,headRefName,isCrossRepository,labels,author,state"]
+            "number,baseRefName,headRefName,isCrossRepository,labels,author,state"]  # author.is_bot included
     if args.repo:
         argv += ["--repo", args.repo]
     rc, so, se = runner(argv)
@@ -165,7 +200,10 @@ def cmd_check_pr(args: argparse.Namespace, runner: Runner = _run) -> int:
         except ValueError:
             pr = None
     cfg = F.load_config(Path(args.config) if args.config else None)
-    d = F.pr_decision(v, pr, cfg)
+    # Agents share the operator's gh identity, so the label cannot be attributed: the agent helper ignores it.
+    d = F.pr_decision(v, pr, cfg, allow_label=False)
+    for a in F.alert_stale(v, send=alert_send):
+        print(f"merge-freeze: P1 for stale train {a.get('id')}: accepted={a.get('accepted')}", file=sys.stderr)
     for w in v["warnings"]:
         print(f"merge-freeze warning: {w}", file=sys.stderr)
     if pr is None and v["frozen"]:
@@ -215,6 +253,7 @@ def cmd_ci(args: argparse.Namespace, runner: Runner = _run) -> int:
         if event_pr and event_pr.get("base") != cfg["base_branch"]:
             event_pr = None                     # a stacked PR: the freeze is about merges to main
     prs = list_open_prs(args.repo, cfg["base_branch"], runner)
+    attach_label_actors(args.repo, prs + ([event_pr] if event_pr else []), cfg["exempt_label"], runner)
     plan = ci_plan(now, prs, event_pr, policy=policy, cfg=cfg)
     v = plan["verdict"]
     print(("FROZEN  " if v["frozen"] else ("IMMINENT" if v["imminent"] else "OPEN    ")) + "  " + v["summary"])
@@ -267,12 +306,12 @@ def _parser() -> argparse.ArgumentParser:
     return ap
 
 
-def main(argv: Optional[list[str]] = None, runner: Runner = _run) -> int:
+def main(argv: Optional[list[str]] = None, runner: Runner = _run, alert_send: Any = None) -> int:
     args = _parser().parse_args(argv)
     if args.cmd == "status":
         return cmd_status(args)
     if args.cmd == "check-pr":
-        return cmd_check_pr(args, runner)
+        return cmd_check_pr(args, runner, alert_send)
     return cmd_ci(args, runner)
 
 

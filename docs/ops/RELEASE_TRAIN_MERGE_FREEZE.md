@@ -34,25 +34,43 @@ state dir:
 | `PRE_WINDOW` | the clock is in `[start − 30 min, start)` |
 | `AWAITING_REQUEST` | the window is open, no request `rtw-<date>-<HHMM>-win` exists yet, and the time is still within `request_grace_min` (15, the n8n `grace_min`). After that the window was skipped (no catch-up), so the freeze ends. |
 | `WINDOW_TRAIN_PENDING` | the request is in the spool, unclaimed and not expired. An expired request with no receipt ends the freeze and raises a warning. |
-| `WINDOW_TRAIN_RUNNING` | the receipt is `ACKNOWLEDGED`. After `stale_after_min` (240) it is flagged stale but stays frozen: resolve it with `train-orphan-resolve` / reconcile, or STOP |
-| `TRAIN_IN_FLIGHT` | any live `trains/<id>/state.json` has no `outcome`, at any time. This covers operator-forced canary runs and the phases after the receipt. An unreadable state file counts as in flight, as the controller's own `pending_trains` reads it. |
+| `WINDOW_TRAIN_RUNNING` | the receipt is `ACKNOWLEDGED`, for up to `stale_after_min` (240) after the window opened. |
+| `TRAIN_IN_FLIGHT` | any live `trains/<id>/state.json` has no `outcome` and its `updated_at` is under `stale_after_min` old, at any time. This covers operator-forced canary runs and the phases after the receipt. |
 | `BATCH_PR_OPEN` | (CI) an open `train/<id>` PR into main exists |
 | `POLICY_UNREADABLE` | the schedule cannot be read, so no layer can rule a freeze out |
 
 Terminal means a receipt in `COMPLETED` (any outcome, `NO_OP` included), `REFUSED`, `EXPIRED` or `FAILED`.
 
+**Nothing freezes indefinitely.**
+* An unreadable train state file is a warning, not a freeze.
+* A train that is still `ACKNOWLEDGED` 240 min after its window, or a live train whose state has not moved for
+  240 min (or that has no `updated_at`), is **stale**. It stops freezing and is listed in the verdict's `stale`.
+* Each stale train raises a P1 through the existing operator alert path (`telegram_alert.send_telegram`,
+  `priority="P1"`, deduped for 6 h; `release_train_freeze.alert_stale`). The alert fires when `check-pr` or the
+  Tier 2 merge evaluates the freeze, so the operator hears about it at the moment it stops holding a merge.
+* Reconcile a stale train with `release_train_controller` `train-orphan-resolve` / reconcile.
+
 A SET STOP latch means the operator stopped the train (§25.3: "unless the operator first stops the train"). It lifts
-`PRE_WINDOW`, `AWAITING_REQUEST` and `WINDOW_TRAIN_PENDING`. A train that is already running is settling, and it
-still freezes until it is terminal. An UNREADABLE latch lifts nothing.
+`PRE_WINDOW`, `AWAITING_REQUEST` and `WINDOW_TRAIN_PENDING`; stale trains are lifted with or without STOP. A
+train that is still moving is settling, and it freezes until it is terminal. An UNREADABLE latch lifts nothing.
 
 ## 3. Exemptions
 
 * **The train's own batch PR.** This is how the train is recognised. `GhCliWriter` and `GitHubAppWriter` open it with
-  head `train/<train_id>` (`release_capability.TRAIN_RE`) from this repository, base `main`. Exempt only when all
-  three hold, and, if `train_pr_authors` is set, only when the author is listed (the App's bot login). The
-  `release-train-refs` ruleset (RELEASE_TRAIN_GITHUB_APP.md §4.1) is what stops anyone else from pushing a
-  `train/*` branch.
-* **The label `freeze-exempt`.** Only the operator applies it. Create the label once:
+  head `train/<train_id>` (`release_capability.TRAIN_RE`) from this repository, base `main`. All of these must hold:
+  * the head, the repository and the base match;
+  * the author is in `train_pr_authors`. It is set to `tradeai-release-train[bot]`, the public author of the App's
+    batch PR #2069; no host config file was read. GraphQL reports the login as `tradeai-release-train` (a Bot) and
+    `gh pr view` as `app/tradeai-release-train`; both are normalised. **An empty list exempts nothing**: a branch
+    name alone can be spoofed;
+  * on the host (`check-pr`, Tier 2), the PR's train id is also a live train in `<state>/trains` with no outcome yet.
+* **The label `freeze-exempt`.** It counts only when the login that applied it (the newest matching `labeled` event in
+  `issues/<n>/events`) is in `operator_logins` (`PatsKiller`). An empty list means the label counts for nothing.
+  * The CI status and the Tier 2 merge (a passkey-authenticated operator act) honour it.
+  * The agent merge helper **never** does: agents use the operator's gh identity, so who applied a label cannot be
+    told apart.
+
+  Create the label once:
   `gh label create freeze-exempt --repo PatsKiller/tardeai --color B60205 --description "Operator: merge during a release-train freeze"`.
 * **A base other than `main`.** Stacked PRs are not merges to main.
 
@@ -91,7 +109,13 @@ warning says so.**
    means refused, and the message names the window and says that the freeze ends when its train is terminal. If the
    check itself fails, the helper also refuses: an agent merge is never urgent.
 3. **The Tier 2 merge.** `work_pipeline_tier2.merge_preconditions` refuses `MERGE_FREEZE`, or `MERGE_FREEZE_UNKNOWN`
-   when the verdict cannot be computed. It uses the host verdict, which reads the receipts, and the same exemptions.
+   when the verdict cannot be computed. It uses the host verdict, which reads the receipts, and the same exemptions,
+   with the label only when an operator login applied it.
+3a. **The train itself.** Before the merge capability is issued, the controller waits up to 300 s, never past the
+   window, for `train-merge-freeze` to read `success` on the batch head (`GhCliReader.commit_status`, a GET;
+   `TrainController._wait_freeze_status`). The batch PR is exempt, so the wait only absorbs Actions latency. If the
+   status is still not success after the wait, the merge proceeds: GitHub accepts it when the context is not
+   required and refuses it when it is, and the existing pre-merge failure path then applies.
 4. **Raw `gh pr merge`.** Once the status is a required check (§6), GitHub refuses the merge for every actor.
    The guard hook's existing `remote.pr_merge` detector (`scripts/hooks/agents_guard_pretooluse.py`) is the place to
    add an agent-side refusal. That is an operator-applied guard patch, so it is not made here.
@@ -118,20 +142,65 @@ python3 scripts/release_train_freeze.py check-pr 2101          # exit 0 may merg
 gh workflow run train-merge-freeze.yml --repo PatsKiller/tardeai   # refresh every PR's status now
 ```
 
-## 6. The GitHub settings step (operator, §17)
+## 6. What the status is worth, and the GitHub settings step (operator, §17)
 
-**Not done by this PR.** Add `train-merge-freeze` to main's required status checks:
+**Against agents, the commit status is advisory. The host `check-pr` is the real gate.**
+* Any token with `repo` scope can post a commit status with any context. That includes the operator's gh token,
+  which agents also use. Without an integration pin, an agent could post `train-merge-freeze: success` itself.
+* The `freeze-exempt` label has the same weakness: an agent can add it as `PatsKiller`.
+* The status therefore stops a merge only when the required check is **pinned to the GitHub Actions integration**
+  (`integration_id` / `app_id` **15368**, the `github-actions` app). With that pin, only a status the workflow posted
+  with its `GITHUB_TOKEN` can satisfy it.
+* Even pinned, it is coarser than the host: after a window opens it sees only the batch PR, never the receipts.
+* `scripts/agent_merge_pr.sh` → `check-pr` reads the receipts and ignores the label. Agents must merge through it;
+  the guard hook's `remote.pr_merge` detector is the place to make that mandatory (an operator-applied guard patch).
+
+**Not done by this PR.** Do it after this PR is on `main`, after the label exists (§3), and after one scheduled sweep
+has posted a status to every open PR.
+
+**Preferred: a ruleset** pinned to the Actions integration:
 
 ```
-gh api -X POST repos/PatsKiller/tardeai/branches/main/protection/required_status_checks/contexts -f 'contexts[]=train-merge-freeze'
+cat > ~/train-merge-freeze-ruleset.json <<'JSON'
+{
+  "name": "main-train-merge-freeze",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
+  "bypass_actors": [],
+  "rules": [{
+    "type": "required_status_checks",
+    "parameters": {
+      "strict_required_status_checks_policy": false,
+      "required_status_checks": [{"context": "train-merge-freeze", "integration_id": 15368}]
+    }
+  }]
+}
+JSON
+gh api -X POST repos/PatsKiller/tardeai/rulesets --input ~/train-merge-freeze-ruleset.json
 ```
 
-Do it after this PR is on `main`, after the label exists (§3), and after one scheduled sweep has posted a status to
-every open PR. Check with `gh api repos/PatsKiller/tardeai/branches/main/protection/required_status_checks`. To undo:
-`gh api -X DELETE …/required_status_checks/contexts -f 'contexts[]=train-merge-freeze'`.
+**Alternative: classic protection**, keeping the existing contexts and pinning only the new one:
+
+```
+gh api repos/PatsKiller/tardeai/branches/main/protection/required_status_checks \
+  | jq '{strict: .strict, checks: ([.checks[] | {context, app_id}] + [{"context": "train-merge-freeze", "app_id": 15368}])}' \
+  | gh api -X PATCH repos/PatsKiller/tardeai/branches/main/protection/required_status_checks --input -
+```
+
+Verify the pin on the first frozen PR:
+* `gh api repos/PatsKiller/tardeai/commits/<head sha>/statuses --jq '[.[] | select(.context=="train-merge-freeze")][0].creator.login'`
+  must print `github-actions[bot]`.
+* A status posted with a personal token must leave the PR blocked.
+
+To undo: delete the ruleset (`gh api -X DELETE repos/PatsKiller/tardeai/rulesets/<id>`), or PATCH the checks list
+without the entry.
+
+Do not put the release-train App on the ruleset's bypass list. Its batch PR is exempt by the workflow, and the
+controller waits for that success (§5, 3a).
 
 On GitHub, a PR that has no status yet waits for "Expected". The first sweep fills in every open PR within about
-10 minutes. Before the operator sets `train_pr_authors`, confirm the App's bot login from the first batch PR's author.
+10 minutes.
 
 ## 7. Tests
 
@@ -141,7 +210,10 @@ On GitHub, a PR that has no status yet waits for "Expected". The first sweep fil
 * the weekend slots;
 * terminal detection;
 * unreadable inputs and STOP;
-* exemptions;
+* exemptions: the App-author pin, the live-train match on the host, an empty list exempting nothing, the label
+  counted only from an operator login and never by `check-pr`;
+* stale and unreadable train state, and the P1;
+* the controller's bounded wait for the status before the merge capability;
 * the CI plan (posting only changes, skipping drafts, forcing the event PR, the lead window);
 * each enforcement point;
 * the readers that drop the context;

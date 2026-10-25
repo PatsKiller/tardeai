@@ -589,7 +589,7 @@ def read_windows(now: datetime, *, rw_state_dir: Path, summary: Optional[Mapping
     return field(value, rd.get("as_of") or _iso(now), "OK", src, None, now=now)
 
 
-MERGE_FREEZE_KEYS = ("frozen", "summary", "reasons", "next_freeze", "warnings", "receipts", "stop",
+MERGE_FREEZE_KEYS = ("frozen", "summary", "reasons", "next_freeze", "warnings", "stale", "receipts", "stop",
                      "starts_min_before_window", "exempt_label", "status_context", "as_of")
 
 

@@ -122,6 +122,12 @@ RESERVATION_TOKEN_ACTIONS = frozenset(RGB.CAPABILITY_ACTIONS.values())   # prepa
 TZ = RW.TZ
 REQUIRED_CHECKS = ("cio-hardening", "agent-governance", "release-readiness", "ci-gate")
 BATCH_QUALIFIER = "ci-gate"
+#: The merge-freeze commit status (scripts/lib/merge_freeze_context.FREEZE_CONTEXT; pinned equal by
+#: tests/test_release_train_merge_freeze_20261025.py). Not a CI result and not in REQUIRED_CHECKS: once the operator
+#: makes it required on main, the batch PR (exempt) must read success before GitHub accepts the merge, so the
+#: controller waits for it (review F4) instead of failing the window on a status the sweep has not posted yet.
+FREEZE_STATUS_CONTEXT = "train-merge-freeze"
+FREEZE_STATUS_WAIT_S = 300.0
 TRUSTED_CHECK_APPS = frozenset({"github-actions"})
 ACTOR = RC.Actor("controller", "release_window.train")
 
@@ -1107,6 +1113,18 @@ class GhCliReader:
             return self._get(f"repos/{self.repository}/git/ref/{ref}", ".object.sha | tojson")
         except (RuntimeError, ValueError):
             return None
+
+    def commit_status(self, sha: str, context: str) -> Optional[str]:
+        """The latest state of one commit-status context on ``sha`` (success / pending / failure / error), or None
+        when it is absent or unreadable. GET only (the combined status keeps the newest per context)."""
+        if not SHA_RE.match(sha or "") or not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", context or ""):
+            return None
+        try:
+            got = self._get(f"repos/{self.repository}/commits/{sha}/status?per_page=100",
+                            f'[.statuses[] | select(.context == "{context}") | .state][0] | tojson')
+        except (RuntimeError, ValueError):
+            return None
+        return got if isinstance(got, str) else None
 
 
 class GitHubWriter(Protocol):
@@ -2912,6 +2930,8 @@ class TrainController:
             self.say("WOULD re-check STOP / control epoch / delegation epoch+digest / main == base / PR heads "
                      "immediately before the merge")
             self._check_latest_preview()
+            self.say(f"WOULD wait <= {FREEZE_STATUS_WAIT_S:.0f}s for {FREEZE_STATUS_CONTEXT} == success on the batch "
+                     "head (the batch PR is exempt from the merge freeze)")
             self.writer.merge_batch_pr(int(batch.get("pr") or 0), sha or "<candidate>",
                                        f"Release train {self.train_id}")
             self.say("WOULD record the resulting main SHA and require parents == [base, candidate]")
@@ -2919,6 +2939,7 @@ class TrainController:
         self._boundary("merge")
         self._check_latest("merge")
         ev = self._wait_checks(sha, REQUIRED_CHECKS, 0.0, FAILED_PRE_MERGE, "batch_recheck")
+        self._save_state(freeze_status=self._wait_freeze_status(sha))
         self._phase("merging", {"candidate": sha})
 
         def observed() -> dict:
@@ -2948,6 +2969,32 @@ class TrainController:
         self._members_event("merged", [h["pr"] for h in heads], {"main_sha": merged})
         self.say(f"merged: main is {merged[:12]} (parents base {base[:12]} + candidate {sha[:12]})")
         return merged
+
+    def _wait_freeze_status(self, sha: str) -> str:
+        """Review F4: before the merge capability is issued, wait (at most FREEZE_STATUS_WAIT_S, never past the
+        window) for the ``train-merge-freeze`` status on the batch head to read ``success``. The batch PR is exempt,
+        so success is what the workflow posts; the wait only absorbs GitHub Actions latency. Anything else after the
+        wait is recorded and the merge proceeds: if the context is not required GitHub merges; if it is, GitHub
+        refuses and the existing pre-merge failure path applies. A reader without ``commit_status`` (test fakes)
+        skips the wait. Read-only."""
+        reader = getattr(self.github, "commit_status", None)
+        if not callable(reader):
+            return "UNSUPPORTED"
+        deadline = self._ts() + FREEZE_STATUS_WAIT_S
+        window_end = self.window.end.timestamp() if self.window else deadline
+        state = None
+        while True:
+            self._boundary("wait_freeze_status")
+            state = reader(sha, FREEZE_STATUS_CONTEXT)
+            if state == "success":
+                self.say(f"{FREEZE_STATUS_CONTEXT} success on {sha[:12]}")
+                return "success"
+            if self._ts() >= min(deadline, window_end):
+                break
+            self.host.sleep(self.cfg.poll_s)
+        self.say(f"{FREEZE_STATUS_CONTEXT} is {state or 'absent'} on {sha[:12]} after the wait; merging anyway "
+                 "(GitHub refuses the merge only if the context is required)")
+        return str(state or "ABSENT")
 
     def _check_latest_preview(self) -> None:
         latest = self.tstate.get("latest_activation_start")

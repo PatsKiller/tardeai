@@ -217,14 +217,15 @@ def test_pending_request_holds_until_it_expires(tmp_path):
     assert not v["frozen"] and any("expired unclaimed" in w for w in v["warnings"])
 
 
-def test_acknowledged_receipt_holds_and_flags_stale(tmp_path):
+def test_acknowledged_receipt_holds_until_stale_then_unfreezes(tmp_path):
     s = spool(tmp_path)
     put_request(s, START + timedelta(minutes=15))
     put_receipt(s, "ACKNOWLEDGED")
     v = host(START + timedelta(minutes=50), s)
-    assert codes(v) == [F.WINDOW_TRAIN_RUNNING] and "stale" not in v["reasons"][0]
+    assert codes(v) == [F.WINDOW_TRAIN_RUNNING] and v["stale"] == []
+    # F5: 4 h after its window a still-ACKNOWLEDGED train no longer holds every merge
     v = host(START + timedelta(hours=5), s)
-    assert codes(v) == [F.WINDOW_TRAIN_RUNNING] and v["reasons"][0]["stale"] is True
+    assert not v["frozen"] and [x["id"] for x in v["stale"]] == [RID] and v["stale"][0]["kind"] == "receipt"
     assert any("train-orphan-resolve" in w for w in v["warnings"])
 
 
@@ -244,15 +245,43 @@ def test_terminal_receipt_ends_the_freeze(tmp_path, state, outcome, refusal):
     assert not v["frozen"], (state, v["reasons"])
 
 
-def test_live_train_without_outcome_holds_any_time(tmp_path):
+def test_live_train_without_outcome_holds_while_it_moves(tmp_path):
     s = spool(tmp_path)
-    put_train(s, "rt-20261026-1200-ab12")                   # e.g. a forced canary or the train after its receipt
+    now = START + timedelta(hours=2)
+    put_train(s, "rt-20261026-1200-ab12", updated=now - timedelta(minutes=3))   # e.g. a forced canary
     put_train(s, "rt-20261025-1800-cd34", outcome="RELEASED_VERIFIED")
-    v = host(START + timedelta(hours=2), s)
+    v = host(now, s)
     assert codes(v) == [F.TRAIN_IN_FLIGHT] and v["reasons"][0]["train_id"] == "rt-20261026-1200-ab12"
-    (s / "trains" / "rt-x").mkdir()
+    assert v["in_flight_train_ids"] == ["rt-20261026-1200-ab12"]
+
+
+def test_unreadable_train_state_warns_and_does_not_freeze(tmp_path):
+    s = spool(tmp_path)
+    (s / "trains" / "rt-x").mkdir(parents=True)
     (s / "trains" / "rt-x" / "state.json").write_text("{not json")
-    assert codes(host(START + timedelta(hours=2), s)).count(F.TRAIN_IN_FLIGHT) == 2   # unreadable = in flight
+    v = host(START + timedelta(hours=2), s)
+    assert not v["frozen"] and any("rt-x state unreadable" in w for w in v["warnings"])
+    assert v["in_flight_train_ids"] == []
+
+
+def test_stale_train_state_unfreezes_and_raises_one_p1(tmp_path):
+    s = spool(tmp_path)
+    now = START + timedelta(hours=4)                       # Mon 16:00: between windows
+    put_train(s, "rt-20261026-1200-ab12", updated=now - timedelta(minutes=241))
+    v = host(now, s)
+    assert not v["frozen"] and v["stale"][0]["kind"] == "train_state" and v["stale"][0]["minutes"] == 241
+    sent = []
+    res = F.alert_stale(v, send=lambda msg, **kw: sent.append((msg, kw)) or True)
+    assert res == [{"id": "rt-20261026-1200-ab12", "accepted": True}]
+    msg, kw = sent[0]
+    assert kw == {"priority": "P1", "dedupe_minutes": F.STALE_ALERT_DEDUPE_MIN, "producer": "release_train_freeze"}
+    assert "rt-20261026-1200-ab12" in msg and "reconcile" in msg
+    assert F.alert_stale(host(START + timedelta(hours=1), s), send=lambda *a, **k: 1 / 0) == []   # nothing stale
+    boom = F.alert_stale(v, send=lambda *a, **k: 1 / 0)
+    assert boom[0]["accepted"] is False and boom[0]["error"] == "ZeroDivisionError"           # never raises
+    put_train(s, "rt-no-time")
+    (s / "trains" / "rt-no-time" / "state.json").write_text(json.dumps({"train_id": "rt-no-time", "phase": "x"}))
+    assert any(x["id"] == "rt-no-time" for x in host(now, s)["stale"])          # no updated_at: stale, not frozen
 
 
 def test_unreadable_receipts_freeze_pre_window_only(tmp_path):
@@ -275,6 +304,10 @@ def test_stop_lifts_scheduled_freeze_but_not_a_running_train(tmp_path):
     put_request(s, START + timedelta(minutes=15))
     put_receipt(s, "ACKNOWLEDGED")
     assert codes(host(START + timedelta(minutes=5), s, stop_state="SET")) == [F.WINDOW_TRAIN_RUNNING]
+    # a stale train is lifted, STOP or not
+    put_train(s, "rt-20261026-1200-ab12", updated=START - timedelta(hours=5))
+    v = host(START + timedelta(hours=5), s, stop_state="SET")
+    assert not v["frozen"] and len(v["stale"]) == 2
 
 
 def test_host_verdict_reads_files_and_never_raises(tmp_path):
@@ -296,17 +329,49 @@ AGENT_PR = {"number": 2101, "base": "main", "head": "feat/x", "cross_repo": Fals
             "labels": []}
 
 
-def test_exemptions():
+def test_config_pins_the_app_bot_and_the_operator():
+    assert CFG["train_pr_authors"] == ["tradeai-release-train[bot]"]
+    assert CFG["operator_logins"] == ["PatsKiller"]
+
+
+def test_train_exemption_needs_the_app_author_and_not_just_the_branch_name():
     assert F.exemption(TRAIN_PR, CFG) == "train_batch_pr"
+    spoof = dict(TRAIN_PR, author="PatsKiller")                       # an agent pushing train/<valid id>
+    assert F.exemption(spoof, CFG) is None
     assert F.exemption(dict(TRAIN_PR, cross_repo=True), CFG) is None
     assert F.exemption(dict(TRAIN_PR, head="train/whatever"), CFG) is None
+    assert F.exemption(TRAIN_PR, dict(CFG, train_pr_authors=[])) is None   # empty list = no exemption
+    # host mode: the train id must also be a live train
+    assert F.exemption(TRAIN_PR, CFG, in_flight_ids=["rt-20261026-1200-ab12"]) == "train_batch_pr"
+    assert F.exemption(TRAIN_PR, CFG, in_flight_ids=["rt-20261025-1800-cd34"]) is None
+    assert F.exemption(TRAIN_PR, CFG, in_flight_ids=[]) is None
+
+
+def test_host_decision_requires_a_live_train_for_the_batch_pr(tmp_path):
+    s = spool(tmp_path)
+    t = START - timedelta(minutes=5)
+    assert not F.pr_decision(host(t, s), TRAIN_PR, CFG)["allowed"]           # no such train on the host
+    put_train(s, "rt-20261026-1200-ab12", updated=t - timedelta(minutes=1))
+    assert F.pr_decision(host(t, s), TRAIN_PR, CFG)["exempt"] == "train_batch_pr"
+    assert F.pr_decision(ci(t), TRAIN_PR, CFG)["exempt"] == "train_batch_pr"  # CI: author pin only
+
+
+def test_label_counts_only_from_an_operator_login_and_never_for_agents():
+    labelled = dict(AGENT_PR, labels=["freeze-exempt"])
+    assert F.exemption(labelled, CFG) is None                                   # who applied it is unknown
+    assert F.exemption(dict(labelled, label_actor="someone-else"), CFG) is None
+    assert F.exemption(dict(labelled, label_actor="PatsKiller"), CFG) == "freeze_exempt_label"
+    assert F.exemption(dict(labelled, label_actor="PatsKiller"), CFG, allow_label=False) is None
+    assert F.exemption(dict(labelled, label_actor="PatsKiller"), dict(CFG, operator_logins=[])) is None
+    frozen = ci(et(2026, 10, 26, 11, 45))
+    d = F.pr_decision(frozen, dict(labelled, label_actor="PatsKiller"), CFG, allow_label=False)
+    assert not d["allowed"] and "ignore the exempt label" in d["message"]
+
+
+def test_other_exemptions():
     assert F.exemption(dict(TRAIN_PR, base="develop"), CFG) == "not_main"
     assert F.exemption(AGENT_PR, CFG) is None
-    assert F.exemption(dict(AGENT_PR, labels=["freeze-exempt"]), CFG) == "freeze_exempt_label"
     assert F.exemption(dict(AGENT_PR, base="feat/release-train-arm-20261025"), CFG) == "not_main"
-    pinned = dict(CFG, train_pr_authors=["tradeai-release-train[bot]"])
-    assert F.exemption(TRAIN_PR, pinned) == "train_batch_pr"
-    assert F.exemption(dict(TRAIN_PR, author="PatsKiller"), pinned) is None
 
 
 def test_pr_decision_states():
@@ -329,7 +394,9 @@ def test_pr_decision_states():
 
 def gql_node(pr, sha, status=None, draft=False):
     return {"number": pr["number"], "isDraft": draft, "headRefName": pr["head"], "headRefOid": sha,
-            "baseRefName": pr["base"], "isCrossRepository": pr["cross_repo"], "author": {"login": pr["author"]},
+            "baseRefName": pr["base"], "isCrossRepository": pr["cross_repo"],
+            "author": ({"login": pr["author"][:-5], "__typename": "Bot"} if pr["author"].endswith("[bot]")
+                       else {"login": pr["author"], "__typename": "User"}),
             "labels": {"nodes": [{"name": x} for x in pr["labels"]]},
             "commits": {"nodes": [{"commit": {"status": {"context": status} if status else None}}]}}
 
@@ -361,8 +428,40 @@ def test_ci_posts_only_changes_skips_drafts_forces_event_pr():
         "base": {"ref": "main", "repo": {"full_name": "o/r"}}}})
     plan = CLI.ci_plan(t, [same, draft, stale], event, policy=POLICY, cfg=CFG)
     posts = {p["pr"]: p for p in plan["posts"]}
-    assert posts[2101]["sha"] == "e" * 40 and posts[2101]["state"] == "success"   # labelled: exempt, forced post
+    assert posts[2101]["sha"] == "e" * 40 and posts[2101]["state"] == "pending"   # forced; label actor unknown
     assert 2102 not in posts
+    event["label_actor"] = "PatsKiller"                                        # applied by the operator login
+    posts = {p["pr"]: p for p in CLI.ci_plan(t, [same, draft, stale], event, policy=POLICY, cfg=CFG)["posts"]}
+    assert posts[2101]["state"] == "success"
+
+
+def test_bot_login_forms_are_normalized():
+    assert CLI.bot_login("app/tradeai-release-train") == "tradeai-release-train[bot]"          # gh pr view
+    assert CLI.bot_login("tradeai-release-train", is_bot=True) == "tradeai-release-train[bot]"  # GraphQL Bot
+    assert CLI.bot_login("tradeai-release-train[bot]", is_bot=True) == "tradeai-release-train[bot]"  # REST
+    assert CLI.bot_login("PatsKiller") == "PatsKiller"
+    node = CLI.pr_from_graphql(gql_node(TRAIN_PR, "t" * 40))
+    assert node["author"] == "tradeai-release-train[bot]" and F.is_train_batch_pr(node, CFG)
+    ev = CLI.pr_from_event({"pull_request": {"number": 1, "user": {"login": "tradeai-release-train[bot]",
+                                                                    "type": "Bot"},
+                                             "head": {"ref": "train/rt-20261026-1200-ab12", "sha": "t" * 40,
+                                                      "repo": {"full_name": "o/r"}},
+                                             "base": {"ref": "main", "repo": {"full_name": "o/r"}}}})
+    assert F.is_train_batch_pr(ev, CFG)
+
+
+def test_ci_reads_the_label_actor_from_the_labeled_events():
+    node = gql_node(dict(AGENT_PR, labels=["freeze-exempt"]), "a" * 40)
+    events = "PatsKiller\nsomeone-else\n"                                    # newest last: someone-else applied it
+    r = FakeRunner([(["gh", "api", "graphql"], _gql_page([node])),
+                    (["gh", "api", "--paginate", "repos/o/r/issues/2101/events"], (0, events, ""))])
+    assert CLI.main(["ci", "--repo", "o/r", "--now", "2026-10-26T11:45:00-04:00"], runner=r) == 0
+    ev_call = next(c for c in r.calls if "--paginate" in c)
+    assert 'select(.event == "labeled" and .label.name == "freeze-exempt")' in ev_call[-1]
+    prs = CLI.list_open_prs("o/r", "main", r)
+    CLI.attach_label_actors("o/r", prs, "freeze-exempt", r)
+    assert prs[0]["label_actor"] == "someone-else"
+    assert CLI.ci_plan(et(2026, 10, 26, 11, 45), prs, None, policy=POLICY, cfg=CFG)["posts"][0]["state"] == "pending"
 
 
 class FakeRunner:
@@ -397,7 +496,7 @@ def test_cli_ci_dry_run_posts_nothing_and_apply_posts_the_context(capsys):
     assert "context=train-merge-freeze" in post and "state=pending" in post and "target_url=https://x/run/1" in post
 
 
-def test_cli_check_pr_refuses_with_exit_3_and_honours_the_label(tmp_path, capsys):
+def test_cli_check_pr_refuses_with_exit_3_and_ignores_the_label(tmp_path, capsys):
     s = spool(tmp_path)
     view = {"number": 2101, "baseRefName": "main", "headRefName": "feat/x", "isCrossRepository": False,
             "labels": [], "author": {"login": "PatsKiller"}, "state": "OPEN"}
@@ -409,9 +508,29 @@ def test_cli_check_pr_refuses_with_exit_3_and_honours_the_label(tmp_path, capsys
     assert "REFUSED" in err and "Mon 12:00 ET" in err
     assert CLI.main(base + ["2026-10-26T10:00:00-04:00"], runner=r) == 0
     r = FakeRunner([(["gh", "pr", "view"], (0, json.dumps(dict(view, labels=[{"name": "freeze-exempt"}])), ""))])
-    assert CLI.main(base + ["2026-10-26T11:45:00-04:00"], runner=r) == 0
+    assert CLI.main(base + ["2026-10-26T11:45:00-04:00"], runner=r) == CLI.EXIT_REFUSED   # agents: label ignored
     r = FakeRunner([(["gh", "pr", "view"], (1, "", "HTTP 502"))])            # unreadable PR: no exemption
     assert CLI.main(base + ["2026-10-26T11:45:00-04:00"], runner=r) == CLI.EXIT_REFUSED
+    # the train's own batch PR (gh says app/<slug>) passes only while its train is live on the host
+    bview = dict(view, number=2200, headRefName="train/rt-20261026-1200-ab12",
+                 author={"login": "app/tradeai-release-train", "is_bot": True})
+    r = FakeRunner([(["gh", "pr", "view"], (0, json.dumps(bview), ""))])
+    assert CLI.main(base + ["2026-10-26T11:45:00-04:00"], runner=r) == CLI.EXIT_REFUSED
+    put_train(s, "rt-20261026-1200-ab12", updated=et(2026, 10, 26, 11, 44))
+    assert CLI.main(base + ["2026-10-26T11:45:00-04:00"], runner=r) == 0
+
+
+def test_cli_check_pr_raises_the_stale_p1(tmp_path, capsys):
+    s = spool(tmp_path)
+    put_train(s, "rt-20261026-1200-ab12", updated=et(2026, 10, 26, 6, 0))
+    view = {"number": 2101, "baseRefName": "main", "headRefName": "feat/x", "isCrossRepository": False,
+            "labels": [], "author": {"login": "PatsKiller"}, "state": "OPEN"}
+    sent = []
+    r = FakeRunner([(["gh", "pr", "view"], (0, json.dumps(view), ""))])
+    rc = CLI.main(["check-pr", "2101", "--repo", "o/r", "--state-dir", str(s), "--delegation", str(tmp_path / "n"),
+                   "--now", "2026-10-26T13:00:00-04:00"], runner=r,
+                  alert_send=lambda msg, **kw: sent.append(kw["priority"]) or True)
+    assert rc == 0 and sent == ["P1"] and "P1 for stale train rt-20261026-1200-ab12" in capsys.readouterr().err
 
 
 def test_cli_status_prints_reasons(tmp_path, capsys):
@@ -439,7 +558,11 @@ def test_tier2_merge_refuses_during_freeze_and_lets_exempt_through(tmp_path):
            "head": {"sha": "a" * 40, "ref": "feat/x", "repo": {"full_name": "o/r"}},
            "base": {"ref": "main", "repo": {"full_name": "o/r"}}}
 
+    actors = {"out": ""}
+
     def runner(argv, stdin=None):
+        if "--paginate" in argv:
+            return 0, actors["out"], ""
         path = argv[4]
         if path.endswith("/protection/required_status_checks"):
             return 0, json.dumps({"contexts": ["ci-gate", "train-merge-freeze"]}), ""
@@ -456,6 +579,10 @@ def test_tier2_merge_refuses_during_freeze_and_lets_exempt_through(tmp_path):
         T2.merge_preconditions(hosts, "o/r", 2101, "a" * 40)
     assert ei.value.code == "MERGE_FREEZE"
     doc["labels"] = [{"name": "freeze-exempt"}]
+    with pytest.raises(OCC.OpsError) as ei:                                   # label with no operator labeled event
+        T2.merge_preconditions(hosts, "o/r", 2101, "a" * 40)
+    assert ei.value.code == "MERGE_FREEZE"
+    actors["out"] = "PatsKiller\n"
     pre = T2.merge_preconditions(hosts, "o/r", 2101, "a" * 40)
     assert pre["required"] == ["ci-gate"] and pre["merge_freeze"]["exempt"] == "freeze_exempt_label"
     doc["labels"] = []
@@ -469,6 +596,88 @@ def test_tier2_merge_refuses_during_freeze_and_lets_exempt_through(tmp_path):
     with pytest.raises(OCC.OpsError) as ei:
         T2.merge_preconditions(hosts, "o/r", 2101, "a" * 40)
     assert ei.value.code == "MERGE_FREEZE_UNKNOWN"
+    sent = []
+    hosts.merge_freeze = lambda: dict(ci(et(2026, 10, 26, 10, 0)), stale=[{"kind": "train_state", "id": "rt-1",
+                                                                           "train_id": "rt-1", "since": None}])
+    hosts.alert_send = lambda msg, **kw: sent.append(kw["priority"]) or True
+    T2.merge_preconditions(hosts, "o/r", 2101, "a" * 40)
+    assert sent == ["P1"]
+
+
+# ── F4: the controller waits for the freeze status on the batch head ──────────────────────────────────────────
+
+
+class _Ctl:
+    """Just enough of TrainController for _wait_freeze_status."""
+
+    def __init__(self, states, *, window_end=None):
+        from scripts.lib import release_train_controller as RTC
+
+        self.RTC = RTC
+        self.t = 1000.0
+        self.states = list(states)
+        self.calls = 0
+        self.said = []
+        self.window = SimpleNamespace(end=datetime.fromtimestamp(window_end, tz=UTC)) if window_end else None
+        self.cfg = SimpleNamespace(poll_s=30.0)
+        self.host = SimpleNamespace(sleep=self._sleep)
+        self.github = SimpleNamespace(commit_status=self._status)
+
+    def _sleep(self, s):
+        self.t += s
+
+    def _status(self, sha, ctx):
+        assert ctx == "train-merge-freeze"
+        self.calls += 1
+        return self.states.pop(0) if self.states else self.last
+
+    def _ts(self):
+        return self.t
+
+    def _boundary(self, name):
+        pass
+
+    def say(self, m):
+        self.said.append(m)
+
+    def run(self, sha="f" * 40):
+        return self.RTC.TrainController._wait_freeze_status(self, sha)
+
+
+def test_controller_waits_for_the_freeze_status_then_merges():
+    from scripts.lib import release_train_controller as RTC
+
+    assert RTC.FREEZE_STATUS_CONTEXT == MFC.FREEZE_CONTEXT
+    assert "train-merge-freeze" not in RTC.REQUIRED_CHECKS            # never a member-selection check
+    c = _Ctl([None, None, "pending", "success"])
+    assert c.run() == "success" and c.calls == 4
+    c = _Ctl([])
+    c.last = None
+    assert c.run() == "ABSENT" and c.t - 1000.0 >= RTC.FREEZE_STATUS_WAIT_S   # bounded wait, then merge proceeds
+    c = _Ctl([], window_end=1000.0 + 60)
+    c.last = "pending"
+    assert c.run() == "pending" and c.t <= 1000.0 + 60 + 30                   # never waits past the window
+    no_reader = SimpleNamespace(github=SimpleNamespace())
+    assert RTC.TrainController._wait_freeze_status(no_reader, "f" * 40) == "UNSUPPORTED"
+
+
+def test_controller_merge_calls_the_wait_before_the_capability():
+    src = (ROOT / "scripts" / "lib" / "release_train_controller.py").read_text()
+    body = src[src.index("    def _merge(self"):src.index("    def _wait_freeze_status(")]
+    assert body.index("self._wait_freeze_status(sha)") < body.index("def issue()")
+
+
+def test_gh_reader_commit_status_is_a_get_with_a_safe_context():
+    from scripts.lib import release_train_controller as RTC
+
+    calls = []
+    host = SimpleNamespace(_run=lambda argv, timeout=60: calls.append(argv) or (0, '"success"'),
+                           _repository=lambda: "o/r")
+    r = RTC.GhCliReader(host)
+    assert r.commit_status("a" * 40, "train-merge-freeze") == "success"
+    assert calls[0][:3] == ["gh", "api", "repos/o/r/commits/" + "a" * 40 + "/status?per_page=100"]
+    assert "-X" not in calls[0]
+    assert r.commit_status("a" * 40, 'x"; evil') is None and r.commit_status("nope", "train-merge-freeze") is None
 
 
 def test_required_check_readers_drop_the_freeze_context():
