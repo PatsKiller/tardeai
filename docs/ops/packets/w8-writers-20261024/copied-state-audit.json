@@ -1,0 +1,1226 @@
+{
+  "schema": "N8nWriterRestorationReport@v1",
+  "observed_at": "2026-10-24T22:59:45.251281Z",
+  "rows": [
+    {
+      "key": "risk-management-refresh",
+      "lane_id": "risk-management-refresh",
+      "label": "Risk management snapshot",
+      "source": "scripts/portfolio_orchestrator.py",
+      "artifact": "data/portfolios/state/risk_management.json",
+      "registry_state": "NONE",
+      "effective_writer_state": "NONE",
+      "schedule_owner": null,
+      "registry_writer_binding_status": "NOT_APPLICABLE",
+      "retired_schedule_with_continuing_writer": false,
+      "current_cron": [],
+      "timezone": "America/New_York",
+      "requested_cron": [
+        "30,45 9 * * 1-5",
+        "*/15 10-15 * * 1-5",
+        "0,10 16 * * 1-5"
+      ],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "receipt_unavailable"
+      },
+      "pipeline_execution": null,
+      "last_success_at": null,
+      "admission_blockers": [
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "no_scheduler_lane",
+        "operator_activation_required",
+        "risk_writer_owner_handoff_required",
+        "standalone_cached_input_writer_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "NOT_MEASURED"
+    },
+    {
+      "key": "market-regime-classifier",
+      "lane_id": "market-regime-classifier",
+      "label": "Market regime",
+      "source": "scripts/market_regime_classifier.py",
+      "artifact": "market_regime_snapshots",
+      "registry_state": "RETIRED",
+      "effective_writer_state": "ACTIVE",
+      "schedule_owner": "premarket-data-pipeline",
+      "registry_writer_binding_status": "DECLARED",
+      "retired_schedule_with_continuing_writer": true,
+      "current_cron": [
+        "45 5 * * 1,2,3,4,5"
+      ],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": "2026-10-23T20:05:02.732756Z",
+        "attempt_status": "SUCCEEDED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": null
+      },
+      "pipeline_execution": {
+        "last_success_at": null,
+        "attempt_status": "SKIPPED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "pipeline_step_did_not_succeed"
+      },
+      "last_success_at": "2026-10-23T20:05:02.732756Z",
+      "admission_blockers": [
+        "bounded_env_audit_required",
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "health_owner_review_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "OBSERVATION_INPUT_READY"
+    },
+    {
+      "key": "sync-dividend-data",
+      "lane_id": "sync-dividend-data",
+      "label": "Dividends",
+      "source": "scripts/sync_dividend_data.py",
+      "artifact": "ticker_dividend_data",
+      "registry_state": "RETIRED",
+      "effective_writer_state": "ACTIVE",
+      "schedule_owner": "premarket-data-pipeline",
+      "registry_writer_binding_status": "DECLARED",
+      "retired_schedule_with_continuing_writer": true,
+      "current_cron": [
+        "45 5 * * 1,2,3,4,5"
+      ],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": "2026-10-23T10:20:50.507631Z",
+        "attempt_status": "SUCCEEDED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": null
+      },
+      "pipeline_execution": {
+        "last_success_at": null,
+        "attempt_status": "SKIPPED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "pipeline_step_did_not_succeed"
+      },
+      "last_success_at": "2026-10-23T10:20:50.507631Z",
+      "admission_blockers": [
+        "bounded_env_and_provider_owner_audit_required",
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "health_owner_review_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "OBSERVATION_INPUT_READY"
+    },
+    {
+      "key": "refresh-symbol-cards",
+      "lane_id": "refresh-symbol-cards",
+      "label": "Symbol cards",
+      "source": "scripts/refresh_symbol_cards.py",
+      "artifact": "data/runtime/symbol_cards_latest.json",
+      "registry_state": "RETIRED",
+      "effective_writer_state": "ACTIVE",
+      "schedule_owner": "premarket-data-pipeline",
+      "registry_writer_binding_status": "DECLARED",
+      "retired_schedule_with_continuing_writer": true,
+      "current_cron": [
+        "45 5 * * 1,2,3,4,5"
+      ],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "exit_code_not_measured"
+      },
+      "pipeline_execution": {
+        "last_success_at": null,
+        "attempt_status": "SKIPPED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "pipeline_step_did_not_succeed"
+      },
+      "last_success_at": null,
+      "admission_blockers": [
+        "bounded_env_audit_required",
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "health_owner_review_required",
+        "honest_profiles_subprocess_exit_required",
+        "live_server_materialization_dependency"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "OBSERVATION_INPUT_READY"
+    },
+    {
+      "key": "recommendation-intelligence-engine",
+      "lane_id": "recommendation-intelligence-engine",
+      "label": "Recommendation attribution",
+      "source": "scripts/recommendation_intelligence_engine.py",
+      "artifact": "data/runtime/rec_source_quality_latest.json",
+      "registry_state": "RETIRED",
+      "effective_writer_state": "ACTIVE",
+      "schedule_owner": "premarket-data-pipeline",
+      "registry_writer_binding_status": "DECLARED",
+      "retired_schedule_with_continuing_writer": true,
+      "current_cron": [
+        "45 5 * * *"
+      ],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "receipt_unavailable"
+      },
+      "pipeline_execution": {
+        "last_success_at": "2026-10-24T09:53:15Z",
+        "attempt_status": "SUCCEEDED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": null
+      },
+      "last_success_at": "2026-10-24T09:53:15Z",
+      "admission_blockers": [
+        "bounded_env_audit_required",
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "health_owner_review_required",
+        "write_free_dry_run_and_success_receipt_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "OBSERVATION_INPUT_READY"
+    },
+    {
+      "key": "generate-dual-opinion-advisory",
+      "lane_id": "generate-dual-opinion-advisory",
+      "label": "Dual opinion",
+      "source": "scripts/generate_dual_opinion_advisory.py",
+      "artifact": "CLI --json-out (no registered durable destination)",
+      "registry_state": "NONE",
+      "effective_writer_state": "NONE",
+      "schedule_owner": null,
+      "registry_writer_binding_status": "NOT_APPLICABLE",
+      "retired_schedule_with_continuing_writer": false,
+      "current_cron": [],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "receipt_unavailable"
+      },
+      "pipeline_execution": null,
+      "last_success_at": null,
+      "admission_blockers": [
+        "bounded_env_audit_required",
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "health_owner_review_required",
+        "no_scheduler_lane",
+        "operator_activation_required",
+        "schedule_owner_decision_required",
+        "standalone_lane_contract_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "NOT_MEASURED"
+    },
+    {
+      "key": "advisory-opinion-session",
+      "lane_id": "advisory-opinion-session",
+      "label": "Advisory opinion session",
+      "source": "scripts/lib/advisory/advisory_opinion_engine.py",
+      "artifact": "data/runtime/advisory_opinion_cache.json",
+      "registry_state": "NONE",
+      "effective_writer_state": "NONE",
+      "schedule_owner": null,
+      "registry_writer_binding_status": "NOT_APPLICABLE",
+      "retired_schedule_with_continuing_writer": false,
+      "current_cron": [],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "receipt_unavailable"
+      },
+      "pipeline_execution": null,
+      "last_success_at": null,
+      "admission_blockers": [
+        "executor_not_admitted",
+        "governed_model_and_memory_owner_handoff_required",
+        "health_contract_not_reviewed",
+        "health_owner_review_required",
+        "no_scheduler_lane",
+        "operator_activation_required",
+        "schedule_owner_decision_required",
+        "standalone_lane_contract_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "NOT_MEASURED"
+    },
+    {
+      "key": "portfolio-correlation",
+      "lane_id": "portfolio-correlation",
+      "label": "Portfolio correlation",
+      "source": "scripts/portfolio_correlation.py",
+      "artifact": "data/portfolios/state/correlation.json",
+      "registry_state": "NONE",
+      "effective_writer_state": "NONE",
+      "schedule_owner": null,
+      "registry_writer_binding_status": "NOT_APPLICABLE",
+      "retired_schedule_with_continuing_writer": false,
+      "current_cron": [],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "receipt_unavailable"
+      },
+      "pipeline_execution": null,
+      "last_success_at": null,
+      "admission_blockers": [
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "health_owner_review_required",
+        "no_scheduler_lane",
+        "operator_activation_required",
+        "provider_owner_routing_required",
+        "schedule_owner_decision_required",
+        "standalone_cached_input_writer_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "NOT_MEASURED"
+    },
+    {
+      "key": "defense-cash-alternatives",
+      "lane_id": "defense-cash-alternatives",
+      "label": "Cash alternatives",
+      "source": "scripts/defense_cash_alternatives.py",
+      "artifact": "data/runtime/defense_cash_alternatives_latest.json",
+      "registry_state": "NONE",
+      "effective_writer_state": "NONE",
+      "schedule_owner": null,
+      "registry_writer_binding_status": "NOT_APPLICABLE",
+      "retired_schedule_with_continuing_writer": false,
+      "current_cron": [],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "receipt_unavailable"
+      },
+      "pipeline_execution": null,
+      "last_success_at": null,
+      "admission_blockers": [
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "health_owner_review_required",
+        "no_scheduler_lane",
+        "operator_activation_required",
+        "provider_owner_routing_required",
+        "schedule_owner_decision_required",
+        "write_free_dry_run_and_success_receipt_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "NOT_MEASURED"
+    },
+    {
+      "key": "morning-brief-0730",
+      "lane_id": "morning-brief-0730",
+      "label": "Morning brief",
+      "source": "scripts/send_morning_brief.py",
+      "artifact": "logs/morning_brief.log",
+      "registry_state": "ACTIVE",
+      "effective_writer_state": "ACTIVE",
+      "schedule_owner": "morning-brief-0730",
+      "registry_writer_binding_status": "NOT_APPLICABLE",
+      "retired_schedule_with_continuing_writer": false,
+      "current_cron": [
+        "30 7 * * 1-5"
+      ],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "receipt_unavailable"
+      },
+      "pipeline_execution": null,
+      "last_success_at": null,
+      "admission_blockers": [
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "health_owner_review_required",
+        "notification_intent_handoff_required",
+        "offline_dry_run_and_success_receipt_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "OBSERVATION_INPUT_READY"
+    },
+    {
+      "key": "portfolio-ai-analyst",
+      "lane_id": "portfolio-ai-analyst",
+      "label": "Portfolio briefs",
+      "source": "scripts/portfolio_orchestrator.py",
+      "artifact": "reports/portfolio_brief_*.docx",
+      "registry_state": "ACTIVE",
+      "effective_writer_state": "ACTIVE",
+      "schedule_owner": "portfolio-ai-analyst",
+      "registry_writer_binding_status": "NOT_APPLICABLE",
+      "retired_schedule_with_continuing_writer": false,
+      "current_cron": [
+        "15 7 * * 1-5"
+      ],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "receipt_unavailable"
+      },
+      "pipeline_execution": null,
+      "last_success_at": null,
+      "admission_blockers": [
+        "execution_and_sender_closure_excluded",
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "health_owner_review_required",
+        "standalone_report_writer_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "OBSERVATION_INPUT_READY"
+    },
+    {
+      "key": "eod-open-trade-alert",
+      "lane_id": "eod-open-trade-alert",
+      "label": "End of day trades",
+      "source": "scripts/eod_open_trade_alert.py",
+      "artifact": "logs/eod_alert.log",
+      "registry_state": "ACTIVE",
+      "effective_writer_state": "ACTIVE",
+      "schedule_owner": "eod-open-trade-alert",
+      "registry_writer_binding_status": "NOT_APPLICABLE",
+      "retired_schedule_with_continuing_writer": false,
+      "current_cron": [
+        "5 16 * * 1-5"
+      ],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "receipt_unavailable"
+      },
+      "pipeline_execution": null,
+      "last_success_at": null,
+      "admission_blockers": [
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "health_owner_review_required",
+        "notification_intent_handoff_required",
+        "success_receipt_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "OBSERVATION_INPUT_READY"
+    },
+    {
+      "key": "hermes-score-alerts",
+      "lane_id": "hermes-score-alerts",
+      "label": "Hermes alerts",
+      "source": "scripts/hermes_score_alerts.py",
+      "artifact": "alert_events",
+      "registry_state": "ACTIVE",
+      "effective_writer_state": "ACTIVE",
+      "schedule_owner": "hermes-score-alerts",
+      "registry_writer_binding_status": "NOT_APPLICABLE",
+      "retired_schedule_with_continuing_writer": false,
+      "current_cron": [
+        "15,45 * * * *"
+      ],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "receipt_unavailable"
+      },
+      "pipeline_execution": null,
+      "last_success_at": null,
+      "admission_blockers": [
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "health_owner_review_required",
+        "notification_intent_handoff_required",
+        "success_receipt_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "OBSERVATION_INPUT_READY"
+    },
+    {
+      "key": "cio-decision-engine",
+      "lane_id": "cio-decision-engine",
+      "label": "CIO decisions",
+      "source": "scripts/cio_decision_engine.py",
+      "artifact": "logs/cio_decision_engine.log",
+      "registry_state": "PAUSED",
+      "effective_writer_state": "PAUSED",
+      "schedule_owner": "cio-decision-engine",
+      "registry_writer_binding_status": "NOT_APPLICABLE",
+      "retired_schedule_with_continuing_writer": false,
+      "current_cron": [],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "receipt_unavailable"
+      },
+      "pipeline_execution": null,
+      "last_success_at": null,
+      "admission_blockers": [
+        "cio_truth_owner_handoff_required",
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "health_owner_review_required",
+        "operator_activation_required",
+        "pause_requires_operator_activation",
+        "recurring_schedule_not_measured"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "INACTIVE"
+    },
+    {
+      "key": "options-lifecycle-run",
+      "lane_id": "options-lifecycle-run",
+      "label": "Options lifecycle",
+      "source": "scripts/options_lifecycle_run.py",
+      "artifact": "data/runtime/options_lifecycle_latest.json",
+      "registry_state": "PAUSED",
+      "effective_writer_state": "PAUSED",
+      "schedule_owner": "options-lifecycle-run",
+      "registry_writer_binding_status": "NOT_APPLICABLE",
+      "retired_schedule_with_continuing_writer": false,
+      "current_cron": [
+        "*/20 9-16 * * 1-5"
+      ],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "receipt_unavailable"
+      },
+      "pipeline_execution": null,
+      "last_success_at": null,
+      "admission_blockers": [
+        "execution_engineering_and_operator_resume_required",
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "operator_activation_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "INACTIVE"
+    },
+    {
+      "key": "options-lifecycle-digest",
+      "lane_id": "options-lifecycle-digest",
+      "label": "Options lifecycle digest",
+      "source": "scripts/options_lifecycle_digest.py",
+      "artifact": "logs/options_lifecycle.log",
+      "registry_state": "PAUSED",
+      "effective_writer_state": "PAUSED",
+      "schedule_owner": "options-lifecycle-digest",
+      "registry_writer_binding_status": "NOT_APPLICABLE",
+      "retired_schedule_with_continuing_writer": false,
+      "current_cron": [
+        "5 8 * * 1-5"
+      ],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "receipt_unavailable"
+      },
+      "pipeline_execution": null,
+      "last_success_at": null,
+      "admission_blockers": [
+        "execution_engineering_and_operator_resume_required",
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "operator_activation_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "INACTIVE"
+    },
+    {
+      "key": "defense-execution",
+      "lane_id": "defense-execution",
+      "label": "Defense execution",
+      "source": "scripts/defense_execution.py",
+      "artifact": "logs/defense_fills.log",
+      "registry_state": "PAUSED",
+      "effective_writer_state": "PAUSED",
+      "schedule_owner": "defense-execution",
+      "registry_writer_binding_status": "NOT_APPLICABLE",
+      "retired_schedule_with_continuing_writer": false,
+      "current_cron": [
+        "*/10 9-16 * * 1-5"
+      ],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "receipt_unavailable"
+      },
+      "pipeline_execution": null,
+      "last_success_at": null,
+      "admission_blockers": [
+        "execution_engineering_and_operator_resume_required",
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "operator_activation_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "INACTIVE"
+    },
+    {
+      "key": "sector-momentum-engine",
+      "lane_id": "sector-momentum-engine",
+      "label": "Sector momentum",
+      "source": "scripts/sector_momentum_engine.py",
+      "artifact": "data/runtime/sector_momentum_latest.json",
+      "registry_state": "ACTIVE",
+      "effective_writer_state": "ACTIVE",
+      "schedule_owner": "sector-momentum-engine",
+      "registry_writer_binding_status": "NOT_APPLICABLE",
+      "retired_schedule_with_continuing_writer": false,
+      "current_cron": [
+        "25 17 * * 1-5"
+      ],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "receipt_unavailable"
+      },
+      "pipeline_execution": null,
+      "last_success_at": null,
+      "admission_blockers": [
+        "bounded_dependency_audit_required",
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "health_owner_review_required",
+        "success_receipt_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "OBSERVATION_INPUT_READY"
+    },
+    {
+      "key": "run-pullback-macd-screener",
+      "lane_id": "run-pullback-macd-screener",
+      "label": "Pullback and MACD scan",
+      "source": "linux_launchers/run_pullback_macd_screener.sh",
+      "artifact": "logs/pullback_macd_screener.log",
+      "registry_state": "ACTIVE",
+      "effective_writer_state": "ACTIVE",
+      "schedule_owner": "run-pullback-macd-screener",
+      "registry_writer_binding_status": "NOT_APPLICABLE",
+      "retired_schedule_with_continuing_writer": false,
+      "current_cron": [
+        "40 16 * * 1-5"
+      ],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "receipt_unavailable"
+      },
+      "pipeline_execution": null,
+      "last_success_at": null,
+      "admission_blockers": [
+        "bounded_dependency_audit_required",
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "health_owner_review_required",
+        "success_receipt_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "OBSERVATION_INPUT_READY"
+    },
+    {
+      "key": "run-pullback-macd-monitor",
+      "lane_id": "run-pullback-macd-monitor",
+      "label": "Pullback and MACD monitor",
+      "source": "linux_launchers/run_pullback_macd_monitor.sh",
+      "artifact": "logs/pullback_macd_monitor.log",
+      "registry_state": "ACTIVE",
+      "effective_writer_state": "ACTIVE",
+      "schedule_owner": "run-pullback-macd-monitor",
+      "registry_writer_binding_status": "NOT_APPLICABLE",
+      "retired_schedule_with_continuing_writer": false,
+      "current_cron": [
+        "35 9-15 * * 1-5"
+      ],
+      "timezone": "America/New_York",
+      "requested_cron": [],
+      "execution": {
+        "last_success_at": null,
+        "attempt_status": "NOT_MEASURED",
+        "output_acceptance": "NOT_MEASURED",
+        "reason": "receipt_unavailable"
+      },
+      "pipeline_execution": null,
+      "last_success_at": null,
+      "admission_blockers": [
+        "bounded_dependency_audit_required",
+        "executor_not_admitted",
+        "health_contract_not_reviewed",
+        "health_owner_review_required",
+        "success_receipt_required"
+      ],
+      "activation_allowed": false,
+      "watchdog_status": "OBSERVATION_INPUT_READY"
+    }
+  ],
+  "source_drift_lane_ids": [
+    "market-regime-classifier",
+    "sync-dividend-data",
+    "refresh-symbol-cards",
+    "recommendation-intelligence-engine"
+  ],
+  "watchdog_registry": {
+    "lanes": [
+      {
+        "lane_id": "market-regime-classifier",
+        "owner": "portfolio",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "45 5 * * 1,2,3,4,5",
+          "timezone": "America/New_York"
+        },
+        "expected_cadence_hours": 24.0,
+        "state": "ACTIVE",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "logs/regime_classifier.log",
+          "evidence": "CRON_LOG_REDIRECT"
+        },
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P01",
+        "rationalization": {
+          "source": "F_rationalization.json",
+          "f_id": "L205",
+          "pipeline": "P01",
+          "value_class": "Duplicated",
+          "recommendation": "MERGE_INTO:P01",
+          "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
+          "event_driven_candidate": false,
+          "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+        },
+        "reconciled_on": "2026-10-09",
+        "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+        "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+        "state_since": "2026-10-11",
+        "superseded_by": "premarket-data-pipeline",
+        "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L205 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step market_regime_classifier with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+        "reason_confidence": "CORRELATED",
+        "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step market_regime_classifier of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step market_regime_classifier rc=0 (CORRELATED until then; ESTABLISHED after).",
+        "inventory_id": "cron:L205",
+        "c1_flip": {
+          "manifest": "premarket",
+          "stage": "premarket",
+          "step_id": "market_regime_classifier",
+          "on": "2026-10-11"
+        },
+        "writer_binding": {
+          "manifest": "config/pipelines/premarket.json",
+          "stage": "premarket",
+          "step_id": "market_regime_classifier",
+          "lane_id": "premarket-data-pipeline",
+          "scope": "retired_standalone_schedule_continuing_parent_writer",
+          "source": "config/n8n_writer_restoration.json",
+          "evidence": "docs/ops/packets/w8-writers-20261024/copied-state-audit.json"
+        },
+        "writer_observation_only": true
+      },
+      {
+        "lane_id": "sync-dividend-data",
+        "owner": "portfolio",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "45 5 * * 1,2,3,4,5",
+          "timezone": "America/New_York"
+        },
+        "expected_cadence_hours": 24.0,
+        "state": "ACTIVE",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "logs/dividend_sync.log",
+          "evidence": "CRON_LOG_REDIRECT"
+        },
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P01",
+        "rationalization": {
+          "source": "F_rationalization.json",
+          "f_id": "L216",
+          "pipeline": "P01",
+          "value_class": "Duplicated",
+          "recommendation": "MERGE_INTO:P01",
+          "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
+          "event_driven_candidate": false,
+          "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+        },
+        "reconciled_on": "2026-10-09",
+        "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+        "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+        "state_since": "2026-10-11",
+        "superseded_by": "premarket-data-pipeline",
+        "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L216 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step sync_dividend_data with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+        "reason_confidence": "CORRELATED",
+        "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step sync_dividend_data of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step sync_dividend_data rc=0 (CORRELATED until then; ESTABLISHED after).",
+        "inventory_id": "cron:L216",
+        "c1_flip": {
+          "manifest": "premarket",
+          "stage": "premarket",
+          "step_id": "sync_dividend_data",
+          "on": "2026-10-11"
+        },
+        "writer_binding": {
+          "manifest": "config/pipelines/premarket.json",
+          "stage": "premarket",
+          "step_id": "sync_dividend_data",
+          "lane_id": "premarket-data-pipeline",
+          "scope": "retired_standalone_schedule_continuing_parent_writer",
+          "source": "config/n8n_writer_restoration.json",
+          "evidence": "docs/ops/packets/w8-writers-20261024/copied-state-audit.json"
+        },
+        "writer_observation_only": true
+      },
+      {
+        "lane_id": "refresh-symbol-cards",
+        "owner": "portfolio",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "45 5 * * 1,2,3,4,5",
+          "timezone": "America/New_York"
+        },
+        "expected_cadence_hours": 24.0,
+        "state": "ACTIVE",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "data/runtime/symbol_cards_latest.json",
+          "evidence": "SCRIPT_RECEIPT",
+          "evidence_ref": "scripts/refresh_symbol_cards.py:20 CARDS_FILE atomic os.replace on SUCCESS only (refuses <30 cards / timeout); host mtime 2026-10-07T06:41:30 (10-08,10-09 runs logged 'materialize failed: timed out' -> signal correctly stale)"
+        },
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P01",
+        "rationalization": {
+          "source": "F_rationalization.json",
+          "f_id": "L502",
+          "pipeline": "P01",
+          "value_class": "Duplicated",
+          "recommendation": "MERGE_INTO:P01",
+          "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
+          "event_driven_candidate": false,
+          "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+        },
+        "adopted_on": "2026-10-10",
+        "adopted_reason": "dispatcher shadow wave D1b: a row carrying a reviewed dispatch block is hand-maintained (AGENTS §23.11 registry-row PR); reconcile_lane_registry.py re-derives generated rows and would drop the block.",
+        "reconciled_on": "2026-10-09",
+        "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+        "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+        "state_since": "2026-10-11",
+        "superseded_by": "premarket-data-pipeline",
+        "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L502 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step refresh_symbol_cards with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+        "reason_confidence": "CORRELATED",
+        "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step refresh_symbol_cards of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step refresh_symbol_cards rc=0 (CORRELATED until then; ESTABLISHED after).",
+        "inventory_id": "cron:L502",
+        "c1_flip": {
+          "manifest": "premarket",
+          "stage": "premarket",
+          "step_id": "refresh_symbol_cards",
+          "on": "2026-10-11"
+        },
+        "dispatch_retired": {
+          "on": "2026-10-11",
+          "reason": "absorbed by C1 stage premarket-data-pipeline; a pipeline stage step cannot also be a dispatcher row (its cron line is commented)",
+          "stage": "shadow",
+          "wave": "D1b",
+          "dispatch": {
+            "mode": "dry_run",
+            "cron": [
+              "40 6 * * 1-5"
+            ],
+            "tz": "America/New_York",
+            "wave": "W3",
+            "class": "pipeline",
+            "priority": 5,
+            "retry_policy": "transient-2"
+          },
+          "adopted_from_generator": "reconcile_lane_registry@v1"
+        },
+        "writer_binding": {
+          "manifest": "config/pipelines/premarket.json",
+          "stage": "premarket",
+          "step_id": "refresh_symbol_cards",
+          "lane_id": "premarket-data-pipeline",
+          "scope": "retired_standalone_schedule_continuing_parent_writer",
+          "source": "config/n8n_writer_restoration.json",
+          "evidence": "docs/ops/packets/w8-writers-20261024/copied-state-audit.json"
+        },
+        "writer_observation_only": true
+      },
+      {
+        "lane_id": "recommendation-intelligence-engine",
+        "owner": "learning",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "45 5 * * *",
+          "timezone": "America/New_York"
+        },
+        "expected_cadence_hours": 24.0,
+        "state": "ACTIVE",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "data/runtime/rec_source_quality_latest.json",
+          "evidence": "SCRIPT_RECEIPT",
+          "evidence_ref": "scripts/recommendation_intelligence_engine.py:527 compute_source_quality() writes latest multipliers every run (called :831); host mtime 2026-10-09T07:10:07"
+        },
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P13",
+        "rationalization": {
+          "source": "F_rationalization.json",
+          "f_id": "L503",
+          "pipeline": "P13",
+          "value_class": "Duplicated",
+          "recommendation": "MERGE_INTO:P13",
+          "f_recommendation": "CONSOLIDATE into P13 (already a pipeline step or quiet prewarm)",
+          "event_driven_candidate": false,
+          "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+        },
+        "reconciled_on": "2026-10-09",
+        "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+        "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+        "state_since": "2026-10-11",
+        "superseded_by": "premarket-data-pipeline",
+        "state_reason": "Superseded by premarket-data-pipeline on 2026-10-11 (C1 manifest flip, operator approval 2026-10-10 ~18:28 ET): cron line cron:L503 commented (`# RETIRED 2026-10-11 c1-manifest premarket `), the command runs verbatim as step recommendation_intelligence_engine with its own lock, timeout and log. Nothing stopped; the owner of the schedule moved.",
+        "reason_confidence": "CORRELATED",
+        "reason_evidence": "packets/c1-manifest-flips/premarket/EQUIVALENCE.txt: the live line's command, log, cd root and day-of-week equal step recommendation_intelligence_engine of config/pipelines/premarket.json, and the real runner's --dry-run planned exactly that command. Output equivalence not verified until the stage's first natural --apply summary shows step recommendation_intelligence_engine rc=0 (CORRELATED until then; ESTABLISHED after).",
+        "inventory_id": "cron:L503",
+        "c1_flip": {
+          "manifest": "premarket",
+          "stage": "premarket",
+          "step_id": "recommendation_intelligence_engine",
+          "on": "2026-10-11"
+        },
+        "writer_binding": {
+          "manifest": "config/pipelines/premarket.json",
+          "stage": "premarket",
+          "step_id": "recommendation_intelligence_engine",
+          "lane_id": "premarket-data-pipeline",
+          "scope": "retired_standalone_schedule_continuing_parent_writer",
+          "source": "config/n8n_writer_restoration.json",
+          "evidence": "docs/ops/packets/w8-writers-20261024/copied-state-audit.json"
+        },
+        "writer_observation_only": true
+      },
+      {
+        "lane_id": "morning-brief-0730",
+        "owner": "comms",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "30 7 * * 1-5",
+          "timezone": "America/New_York"
+        },
+        "expected_cadence_hours": 24.0,
+        "state": "ACTIVE",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "logs/morning_brief.log"
+        },
+        "note": "The one morning brief: 07:30 ET weekdays. Operator decision 2026-09-14 after the Telegram export showed 50 identical briefs in 16 days, sent at ~20:00 ET by aegis_overnight plus 2-4 repeats (08:00 send_morning_brief, 08:05 aegis_morning_brief_delivery).",
+        "active_days": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "value_class": "Business Critical",
+        "recommendation": "KEEP_ON_CRON",
+        "rationalization": {
+          "source": "F_rationalization.json",
+          "f_id": "L167",
+          "pipeline": "P11",
+          "value_class": "Business Critical",
+          "recommendation": "KEEP_ON_CRON",
+          "f_recommendation": "KEEP (inside its pipeline)",
+          "event_driven_candidate": false,
+          "f_evidence": "core advisory/protection/data path; healthy logs today"
+        },
+        "stay_on_cron": {
+          "class": "pipeline_excluded_gate",
+          "token": "market_day_gate.sh",
+          "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+        },
+        "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+        "writer_observation_only": true
+      },
+      {
+        "lane_id": "portfolio-ai-analyst",
+        "owner": "portfolio",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "15 7 * * 1-5",
+          "timezone": "America/New_York"
+        },
+        "expected_cadence_hours": 72.0,
+        "active_days": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "state": "ACTIVE",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "data/portfolios/state/ai_analysis_cache.json"
+        },
+        "note": "AI Analyst sections via portfolio_orchestrator Mon-Fri 07:15. Cadence 72h covers Fri→Mon weekend gap (48h false-WARNed Sundays).",
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P14",
+        "rationalization": {
+          "source": "F_rationalization.json",
+          "f_id": "L180",
+          "pipeline": "P14",
+          "value_class": "Operationally Important",
+          "recommendation": "PIPELINE:P14",
+          "f_recommendation": "CONSOLIDATE-into P14",
+          "event_driven_candidate": false,
+          "f_evidence": "Unverified use: no consumer check run for this line"
+        },
+        "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+        "writer_observation_only": true
+      },
+      {
+        "lane_id": "eod-open-trade-alert",
+        "owner": "execution",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "5 16 * * 1-5",
+          "timezone": "America/New_York"
+        },
+        "expected_cadence_hours": 72.0,
+        "state": "ACTIVE",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "logs/eod_alert.log",
+          "evidence": "CRON_LOG_REDIRECT"
+        },
+        "value_class": "Obsolete",
+        "recommendation": "KEEP_ON_CRON",
+        "rationalization": {
+          "source": "F_rationalization.json",
+          "f_id": "L232",
+          "pipeline": "P09",
+          "value_class": "Obsolete",
+          "recommendation": "R0_ELIMINATE",
+          "f_recommendation": "ELIMINATE (or fold into P11 close digest)",
+          "event_driven_candidate": false,
+          "f_evidence": "logs/eod_alert.log: 14/14 runs \"CURRENT/.venv/bin/python: No such file\" — has never produced an alert in the retained log"
+        },
+        "generated_by": "reconcile_lane_registry@v1",
+        "reconciled_on": "2026-10-09",
+        "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+        "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+        "stay_on_cron": {
+          "class": "pipeline_excluded_gate",
+          "token": "market_day_gate.sh",
+          "source": "pipeline_manifest.FORBIDDEN_COMMAND_TOKENS"
+        },
+        "writer_observation_only": true
+      },
+      {
+        "lane_id": "hermes-score-alerts",
+        "owner": "comms",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "15,45 * * * *",
+          "timezone": "America/New_York"
+        },
+        "expected_cadence_hours": 0.5,
+        "state": "ACTIVE",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "logs/hermes_alerts.log",
+          "evidence": "CRON_LOG_REDIRECT"
+        },
+        "value_class": "Unused",
+        "recommendation": "EVENT_DRIVEN_CANDIDATE",
+        "rationalization": {
+          "source": "F_rationalization.json",
+          "f_id": "L450",
+          "pipeline": "P11",
+          "value_class": "Unused",
+          "recommendation": "EVENT_DRIVEN_CANDIDATE",
+          "f_recommendation": "REDESIGN → feed digest only",
+          "event_driven_candidate": true,
+          "f_evidence": "alert_events: 1,076 rows in 7 d, 0 sent, 0 acked"
+        },
+        "generated_by": "reconcile_lane_registry@v1",
+        "reconciled_on": "2026-10-09",
+        "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+        "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+        "writer_observation_only": true
+      },
+      {
+        "lane_id": "sector-momentum-engine",
+        "owner": "defense",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "25 17 * * 1-5",
+          "timezone": "America/New_York"
+        },
+        "expected_cadence_hours": 24,
+        "state": "ACTIVE",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "data/runtime/sector_momentum_latest.json"
+        },
+        "note": "Sector/style RS20 + breadth oscillator (Oscillator Affiliations). Was scheduled-but-undeclared; declared so its freshness is monitored, not inferred.",
+        "value_class": "Duplicated",
+        "recommendation": "MERGE_INTO:P01",
+        "rationalization": {
+          "source": "F_rationalization.json",
+          "f_id": "L756",
+          "pipeline": "P01",
+          "value_class": "Duplicated",
+          "recommendation": "MERGE_INTO:P01",
+          "f_recommendation": "CONSOLIDATE into P01 (already a pipeline step or quiet prewarm)",
+          "event_driven_candidate": false,
+          "f_evidence": "E-plan bucket D: matched as a member step of config/pipelines/*.json"
+        },
+        "scheduler_note": "2026-10-09 registry-ops-crons (breach triage): expression stripped to the cron fields of the live line(s); it carried command text, which cron_schedule/cron_last_fire cannot parse, so the breach detector fell back to the market-hours-blind 3x-cadence rule. scheduler.match keeps the line identity; the stripped text stays in scheduler.command_text so the dispatch forbidden-token rule (lane_dispatch._command_fields scans every scheduler string) still sees it (e.g. --send keeps the llm-spend-report and screener-go-alerts lanes ineligible).",
+        "writer_observation_only": true
+      },
+      {
+        "lane_id": "run-pullback-macd-screener",
+        "owner": "scalp",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "40 16 * * 1-5",
+          "timezone": "America/New_York"
+        },
+        "expected_cadence_hours": 72.0,
+        "state": "ACTIVE",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "~/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/pullback_macd_screener.log",
+          "evidence": "SCRIPT_RECEIPT",
+          "evidence_ref": "linux_launchers/run_pullback_macd_screener.sh:7 launcher appends screener output (runs in dev tree); host mtime 2026-10-08T16:40:22"
+        },
+        "value_class": "Operationally Important",
+        "recommendation": "PIPELINE:P02",
+        "rationalization": {
+          "source": "F_rationalization.json",
+          "f_id": "L613",
+          "pipeline": "P02",
+          "value_class": "Operationally Important",
+          "recommendation": "PIPELINE:P02",
+          "f_recommendation": "CONSOLIDATE-into P02",
+          "event_driven_candidate": false,
+          "f_evidence": "Unverified use: no consumer check run for this line"
+        },
+        "generated_by": "reconcile_lane_registry@v1",
+        "reconciled_on": "2026-10-09",
+        "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+        "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+        "writer_observation_only": true
+      },
+      {
+        "lane_id": "run-pullback-macd-monitor",
+        "owner": "platform",
+        "scheduler": {
+          "kind": "cron",
+          "expression": "35 9-15 * * 1-5",
+          "timezone": "America/New_York"
+        },
+        "expected_cadence_hours": 66.0,
+        "state": "ACTIVE",
+        "output_signal": {
+          "kind": "file_mtime",
+          "path": "logs/pullback_macd_monitor.log",
+          "evidence": "CRON_LOG_REDIRECT"
+        },
+        "value_class": "Nice to Have",
+        "recommendation": "PIPELINE:P12",
+        "rationalization": {
+          "source": "F_rationalization.json",
+          "f_id": "L617",
+          "pipeline": "P12",
+          "value_class": "Nice to Have",
+          "recommendation": "PIPELINE:P12",
+          "f_recommendation": "CONSOLIDATE-into P12",
+          "event_driven_candidate": false,
+          "f_evidence": "Unverified use: no consumer check run for this line"
+        },
+        "generated_by": "reconcile_lane_registry@v1",
+        "reconciled_on": "2026-10-09",
+        "note": "B1 reconciliation: row generated from the live crontab line; owner is the domain of its rationalization pipeline unless lane_output_evidence.json names one.",
+        "cadence_basis": "max gap between consecutive fires (fixed Monday base)",
+        "writer_observation_only": true
+      }
+    ],
+    "observation_only": true
+  },
+  "watchdog_successes": {
+    "market-regime-classifier": [
+      {
+        "at": "2026-10-23T20:05:02.732756Z",
+        "validated_success": true,
+        "source": "validated_writer_or_bound_pipeline_step_receipt"
+      }
+    ],
+    "sync-dividend-data": [
+      {
+        "at": "2026-10-23T10:20:50.507631Z",
+        "validated_success": true,
+        "source": "validated_writer_or_bound_pipeline_step_receipt"
+      }
+    ],
+    "recommendation-intelligence-engine": [
+      {
+        "at": "2026-10-24T09:53:15Z",
+        "validated_success": true,
+        "source": "validated_writer_or_bound_pipeline_step_receipt"
+      }
+    ]
+  },
+  "activation_allowed": false,
+  "status": "SOURCE_ONLY_PENDING_HANDOFF_AND_REVIEW"
+}

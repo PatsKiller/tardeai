@@ -1,0 +1,20 @@
+{
+  "lane_registry.json": {
+    "operative_sections_unchanged_except_four_writer_bindings": true,
+    "existing_pending_changes_preserved": true,
+    "old_raw_sha256": "995c46b9a7df401b8b85db80bd322a0dbd5fc666ec75a3b72b1679e49c21515d",
+    "new_raw_sha256": "18ecbc84d8a84fdae6c358c6bcccf295408642a6e542956610c52e263df273a5"
+  },
+  "n8n_run_allowlist.json": {
+    "operative_sections_unchanged_except_four_writer_bindings": true,
+    "existing_pending_changes_preserved": true,
+    "old_raw_sha256": "010c50bc51db370d79f59a545a582c8a73e3db543c82c4ba3aefa835b30dd414",
+    "new_raw_sha256": "037801a3e28c361cd09e5452c0626c5ff23f96cc03bae62b9340d2071df2f868"
+  },
+  "n8n_health_contracts.json": {
+    "operative_sections_unchanged_except_four_writer_bindings": true,
+    "existing_pending_changes_preserved": true,
+    "old_raw_sha256": "5c03f7d475bbd3896785118c5f9d2a7859a39a087fc36e2b71924ae16d5f0b47",
+    "new_raw_sha256": "8545c46f4764e7849b416bd4e4dfa585a3a90d1289c9aa660ba531c7871e19a2"
+  }
+}

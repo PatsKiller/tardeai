@@ -1,0 +1,128 @@
+{
+  "status": "INITIAL_SOURCE_PR_READY_PENDING_OPERATOR_BASE_CHECK_AND_PUBLICATION",
+  "source_commit": "d4c4706647105d7270ceace0f370e05449a909de",
+  "cached_base": "d635873e1063efb8a9ff8e8ce542654ed2ef7654",
+  "remote_freshness": "NOT_VERIFIED_AUTO_REVIEW_NETWORK_REJECTION",
+  "task": "DSN-20261024-w8-writers-P1-T1",
+  "claim": "20261024T225208Z-codex-73e39f48",
+  "source_sha256": {
+    "config/n8n_writer_restoration.json": "7730df679e48d4989576e5f3d5790bb02aba348047c334b06f2b7cec0082c2ef",
+    "config/lane_registry.json": "3d6d7e34d4b809d0d5d68912237ef6e82b8a7381776c500245da241ae53aa4ce",
+    "config/n8n_run_allowlist.json": "1e047e57fe4cd258d116a44c7089a24af2ba2cd5c089b90165e8ac3ccfeb9b31",
+    "config/n8n_health_contracts.json": "bf57c82af9b5c2472b15efdfe0c3852288f4f53bbf6af2484484a13d0ec0f55e",
+    "scripts/lib/n8n_writer_restoration.py": "6f0135e0ccb98eb216bda92f09465f6c1e4705c5691831f5b919dea0a67f2ecc",
+    "scripts/n8n_writer_restoration.py": "4ae0391a963e749be3320ee0ba4df1a4b51f17116d82d5bc45079a087b9c60e6",
+    "tests/test_n8n_writer_restoration_20261024.py": "ab89175635f22ea5df73b0db9f10085c58da1986ebfb660194d9abe412fd4554",
+    "config/ci_gates/n8n_writer_restoration_20261024.json": "ecbd20ed5aaf6df23aaa300816319c44e09b59cec98e4a6a2d012ef4bb8ee13d"
+  },
+  "tests": {
+    "hidden_psycopg2_affected_and_completeness": {
+      "passed": 114,
+      "junit": "affected.xml",
+      "note": "Includes original 32 writer cases plus watchdog, CI-gate registry and both CIO completeness files."
+    },
+    "hidden_psycopg2_final_writer": {
+      "passed": 33,
+      "junit": "final-drafts.xml",
+      "note": "Final source includes the DRAFT health-proposal check; counts overlap the affected run."
+    },
+    "hidden_psycopg2_final_source_and_config": {
+      "tests": 157,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "junit": "config-integration.xml"
+    },
+    "hidden_psycopg2_final_completeness": {
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "junit": "final-completeness.xml"
+    }
+  },
+  "checks": {
+    "frontend_build": "PASS; existing bundle-size warning; no UI changes",
+    "ruff": "PASS",
+    "lane_registry": "PASS 678 lanes / zero structural errors / no new dispatcher finding; source snapshot only",
+    "reconciliation": {
+      "mode": "CHECK_ONLY",
+      "host_discovery": false,
+      "snapshot": "docs/implementation/n8n-maturity/data/scheduler_snapshot_20261009.json",
+      "snapshot_age": "historical, not current host acceptance",
+      "returncode": 0,
+      "canonical_serialization": true,
+      "registry_sha256_before": "3d6d7e34d4b809d0d5d68912237ef6e82b8a7381776c500245da241ae53aa4ce",
+      "registry_sha256_after": "3d6d7e34d4b809d0d5d68912237ef6e82b8a7381776c500245da241ae53aa4ce",
+      "registry_unchanged": true
+    },
+    "host_path_ratchet": "PASS zero new",
+    "coverage_ratchet": "PASS zero new",
+    "env_flags_ratchet": "PASS zero new",
+    "dark_contract_ratchet": "PASS zero new",
+    "contract_manifest": "PASS 6 standard contracts",
+    "native_final_check_returncodes": {
+      "host_paths": {
+        "returncode": 0,
+        "log": "final-host_paths.log"
+      },
+      "coverage": {
+        "returncode": 0,
+        "log": "final-coverage.log"
+      },
+      "environment": {
+        "returncode": 0,
+        "log": "final-environment.log"
+      },
+      "dark_contracts": {
+        "returncode": 0,
+        "log": "final-dark_contracts.log"
+      },
+      "registry": {
+        "returncode": 0,
+        "log": "final-registry.log"
+      },
+      "health": {
+        "returncode": 0,
+        "log": "final-health.log"
+      },
+      "contract_manifest": {
+        "returncode": 0,
+        "log": "final-contract_manifest.log"
+      },
+      "ruff": {
+        "returncode": 0,
+        "log": "final-ruff.log"
+      }
+    }
+  },
+  "runtime": {
+    "restored_writers": false,
+    "n8n_admission": "NOT_DONE",
+    "watchdog_integration": "PENDING_W4_REVIEW_AND_COMPLETION_DEADLINE_MEASUREMENTS",
+    "consumer_readback": "NOT_MEASURED",
+    "independent_alert_delivery": "NOT_MEASURED",
+    "native_workflows_generated": 0,
+    "workflow_activation": false,
+    "broker_order_stop_changes": false,
+    "host_scheduler_changes": false,
+    "remote_pushes": 0,
+    "github_ci_cycles": 0,
+    "registry_writer_bindings": 4,
+    "source_review_requirements": 20
+  },
+  "blockers": [
+    "Actual producer remediation/admission and W4 measured completion deadlines, output/consumer/alert-delivery proof remain pending per lane; no runtime restoration claimed.",
+    "Automatic review rejected unsandboxed origin fetch/GitHub metadata lookup. Operator publication command fetches and pins the base before push; no worker retry or alternate transport.",
+    "Separate conflict-resolver lane PR awaits W10 frozen exact runner/argv/lock/env/receipt/output/timeout contract; required two trading-day shadow remains operator controlled."
+  ],
+  "normal_scope_handoff": {
+    "completed": true,
+    "ordinary_claim_extension_at": "2026-10-24T23:10:33Z",
+    "previous_claim": "20261024T212136Z-codex-36b3d3c4",
+    "continuation": "e0e36ea8",
+    "override": false,
+    "takeover": false,
+    "foreign_claims_modified": false
+  }
+}

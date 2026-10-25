@@ -34561,6 +34561,40 @@
         "cadence": "Max48h across ET/DST schedule; use applicable 48/96/144h baseline proposal, never retained weekly168/336/504h literals; empirical acceptance remains NOT_MEASURED"
       },
       "requires": "New apply-scope review; existing operative REVIEWED plan contract is preserved byte-for-byte as an object"
+    },
+    "w8-writer-restoration-20261024": {
+      "status": "DRAFT",
+      "operative": false,
+      "activation_allowed": false,
+      "catalog": "config/n8n_writer_restoration.json",
+      "health_drafts": "docs/ops/packets/w8-writers-20261024/health-drafts.json",
+      "lane_ids": [
+        "risk-management-refresh",
+        "market-regime-classifier",
+        "sync-dividend-data",
+        "refresh-symbol-cards",
+        "recommendation-intelligence-engine",
+        "generate-dual-opinion-advisory",
+        "advisory-opinion-session",
+        "portfolio-correlation",
+        "defense-cash-alternatives",
+        "morning-brief-0730",
+        "portfolio-ai-analyst",
+        "eod-open-trade-alert",
+        "hermes-score-alerts",
+        "cio-decision-engine",
+        "options-lifecycle-run",
+        "options-lifecycle-digest",
+        "defense-execution",
+        "sector-momentum-engine",
+        "run-pullback-macd-screener",
+        "run-pullback-macd-monitor"
+      ],
+      "authority": "Source preparation only; operator/coordinator reviews and activates. Existing operative schedules, allowlist entries, contracts and reviewer provenance are unchanged.",
+      "watchdog": "W4 integration and measured pipeline completion deadlines pending; mtime is never success.",
+      "reviewer": null,
+      "reviewed_at": null,
+      "baseline_measurements": "NOT_MEASURED"
     }
   }
 }
