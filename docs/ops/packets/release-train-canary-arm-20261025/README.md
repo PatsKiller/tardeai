@@ -1,45 +1,68 @@
-# Release train: arm the 18:00 canary with no per-release grant (2026-10-25)
+# Release train: arm the schedule with no per-release grant (2026-10-25)
 
 ```
-Status:    PR (shared-infra). Protected surfaces: ships by the manual release path (arming packet L.1), never by a train.
-Operator:  "It needs to work without grant. It's a perpetual grant." (2026-10-25)
-Packet:    docs/ops/packets/release-train-arming-20261021/README.md I.3 step 3, I.4 PR 3, §K
+Status:    PR #2099 (shared-infra). Protected surfaces: ships by the manual release path (arming packet L.1), never by a train.
+Operator:  "It needs to work without grant. It's a perpetual grant."
+           "I need it to run at around 12:00 p.m. and the schedule on the weekend should be different. It should run if
+            there's something in the queue every three hours because the weekend will be the heaviest development."
+           "On the weekends, on Saturdays and Sundays, starting at 6:00 a.m., releases should be every three hours. If
+            there's nothing there, then nothing gets released."
+           "Yes, it can run overnight until 3:00 a.m. Sunday morning. The market does not open until 6:00 a.m. in the US."
+Packet:    docs/ops/packets/release-train-arming-20261021/README.md I.3, I.4 PR 3, §K, J
 Authority: MBI_BEHAVIOR = 0. No broker, order or credential path. Broker / Active Trader code stays held.
 ```
+
+## Schedule (America/New_York)
+
+| Day | Windows |
+|---|---|
+| Mon–Fri | 12:00, 18:00 |
+| Saturday | 06:00, 09:00, 12:00, 15:00, 18:00, 21:00 |
+| Sunday | 00:00, 03:00 (the Saturday-night overnight), 06:00, 09:00, 12:00, 15:00, 18:00, 21:00 |
+
+Not scheduled: Saturday 00:00/03:00 (Friday night), Monday 00:00/03:00, any 08:00, weekday 00:00/03:00/06:00/09:00/
+15:00/21:00. A window releases only when something is `eligible`; an empty selection is a quiet `NO_OP` (no alert, no
+message: `ALERT_PRIORITY` has no NO_OP entry, and the host timers do not notify).
+
+**Who owns what.** The repo policy (`config/release_train_policy.json` `windows[].days`) is the schedule. The host
+delegation authorizes the slot ids (all nine, every day). A live train needs both, plus `armed: true`, the accepted
+delegation digest, an ACTIVE delegation and no STOP. Later schedule changes inside the nine slots are a reviewed policy
+PR only; no delegation change.
 
 ## What the PR changes
 
 | Gate | Before | After |
 |---|---|---|
-| `release_grant_binding.CAPABILITY_BINDING_STATUS` (§K) | `PROPOSED`: the deploy's `release_grant_preflight` accepts a train `prepare`/`promote` only with a guard `release-write` grant naming the batch PR | `ACTIVE`: with no binding grant, a `release-train-<id>` campaign is accepted on the signed, RESERVED host capability (the guard ledger is not consumed) |
-| Controller `_cap_effect` | never wrote the reservation token, so even an ACTIVE binding refused `TOKEN_MISSING` | writes `<state>/trains/<id>/capability/{prepare,promote}_release.rcap` (mode 600) right after `reserve()`, live runs only; a write failure refunds the reservation before the effect |
-| `config/release_train_policy.json` | `PROPOSED`, `armed: false`, every window disabled | `ACTIVE`, `armed: true`, 18:00 enabled; 00:00 / 06:00 / 08:00 disabled |
-| `release_train_classify.validate_policy` | refused `armed: true` or any enabled window (the classifier would then hold every PR) | accepts armed + ACTIVE with windows enabled strictly in `enable_order` (18:00 first) |
-| Allowlist `release-train-request-1800` `live_arg` | `["--append", "--shadow-only"]` | `["--append"]` (the other three slots unchanged) |
+| `CAPABILITY_BINDING_STATUS` (§K) | `PROPOSED`: train `prepare`/`promote` need a guard `release-write` grant | `ACTIVE`: a `release-train-<id>` campaign is accepted on the signed RESERVED capability; guard ledger not consumed |
+| Controller `_cap_effect` | never wrote the reservation token | writes `trains/<id>/capability/{prepare,promote}_release.rcap` (mode 600, live only); removed when the train ends |
+| Promote artifact binding (F4) | none | the deploy passes `--release-dir`; the preflight computes the artifact digest; the capability path refuses a promote without it |
+| Unreleased commits on main (F2) | not checked | a live train NO_OPs (`BASE_HAS_UNRELEASED_<class>` / `BASE_UNRELEASED_UNKNOWN`) unless CURRENT…main is all `eligible` |
+| Policy | `PROPOSED`, unarmed, 4 windows disabled | `ACTIVE`, armed, the schedule above (9 windows with `days`) |
+| Controller + claimer (F5) | delegation only | a live train / live request also needs the policy armed and the slot scheduled that day |
+| 06:00 drain rule | every 06:00 | weekday 06:00 only (market days) |
+| Slot vocabulary | 0000 0600 0800 1800 | + 0300 0900 1200 1500 2100 (delegation, request/receipt/candidate/outcome schemas, relay, CLI) |
 
-## The host step this PR cannot take (operator or the delegated release agent)
+The n8n allowlist, lane registry and workflow are unchanged (the workflow is not imported; new n8n lanes need REVIEWED
+health contracts, and the disk-standing packet pins those files). The host timers below are what go live.
 
-The request that actually fires today is the host timer `tradeai-release-train-request@1800.timer`. Its template
-service hard-codes `--shadow-only`, so after the PR is released the 18:00 request is still shadow until this drop-in
-is installed for the **1800 instance only**:
+## Host steps (after the PR is released; in this order)
 
-```bash
-CUR=~/trade-ai-releases/portfolio-server/CURRENT
-D=~/.config/systemd/user/tradeai-release-train-request@1800.service.d
-mkdir -p "$D"
-install -m 644 "$CUR/docs/ops/packets/release-train-canary-arm-20261025/tradeai-release-train-request@1800.service.d--canary-live.conf.proposed" \
-  "$D/canary-live.conf"
-systemctl --user daemon-reload
-systemctl --user cat tradeai-release-train-request@1800.service | grep ExecStart   # last ExecStart has no --shadow-only
-```
+1. **Delegation (operator, once):** `bash update-delegation-windows.sh` (preview: diff of the windows section only),
+   then `--apply` (type `ACK-TRAIN-WINDOWS`; archives the old record; then `release_control_cli.py change-scope`, type
+   its phrase). Until this runs, only 18:00 can go live (the controller refuses other slots `REFUSED_OFF_WINDOW`).
+2. **Timers and drop-ins:** `bash install.sh` (preview), then `--apply` (type `ACK-TRAIN-SCHEDULE`). It installs:
+   - drop-ins removing `--shadow-only` for request@ 1800, 1200, 0000, 0300, 0600, 0900, 1500, 2100 (0800 keeps it);
+   - timers request@1200 (daily), request@0300 (Sun), request@0900/1500/2100 (Sat,Sun) and census timers 20 min before.
+   The existing daily 0000/0600 timers keep firing; on unscheduled days the request stays shadow.
+   Rollback: `bash install.sh --rollback`.
+3. Verify at the next window: `release_train_window_request.py --window <slot> --dry-run` at the window time shows
+   `shadow: false`, and the receipt in `train_requests/receipts/rtw-<date>-<slot>-win.json` is `mode: live`.
 
-- Dry run first: `cd $CUR && .venv/bin/python scripts/release_train_window_request.py --window 1800 --dry-run`
-  (off-window it reports `shadow_reason: off_window`; at 18:00 it reports `shadow: false` when every gate is green).
-- Rollback: `mv "$D/canary-live.conf" "$D/canary-live.conf.archived-$(date -u +%Y%m%dT%H%M%SZ)"` and
-  `systemctl --user daemon-reload`. STOP (`release_control_cli.py stop`) and `revoke` keep working at any time.
+STOP (`release_control_cli.py stop`) and `revoke` keep working at any time.
 
-## What still needs the operator
+## Notes
 
-- Changes classified `needs_operator`, `held` or `blocked` never ride (policy, AGENTS, guard/CI, scheduler, migrations,
-  auth, broker / Active Trader, the train's own files, deletions, oversized changes). They release by the manual path.
-- The other windows (packet J), each by its own reviewed PR and host `change-scope`.
+- TTL (review F8): `capability_ttl_s` (delegation, 900 s in the example) must cover the deploy's `prepare` (a full
+  build). If prepares run longer than the TTL, raise it in the delegation (max 3600) with the same `change-scope`.
+- What still needs the operator: `needs_operator` / `held` / `blocked` changes never ride and must be released by the
+  manual path first; while one is merged but unreleased, every train window is a quiet NO_OP (F2).

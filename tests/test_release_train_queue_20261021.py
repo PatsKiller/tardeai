@@ -42,6 +42,7 @@ from lib import release_train_classify as CLS  # noqa: E402
 from lib import release_train_contracts as C  # noqa: E402
 from lib import release_train_queue as Q  # noqa: E402
 from lib import release_train_view as V  # noqa: E402
+from lib import release_train_window_view as W  # noqa: E402
 from lib import test_impact as TI  # noqa: E402
 
 NOW = datetime(2026, 10, 21, 21, 30, tzinfo=timezone.utc)
@@ -506,20 +507,34 @@ def rules(res):
     return {r["rule"] for r in res["reasons"]}
 
 
-def test_real_policy_is_valid_and_armed_for_the_1800_canary_only():
-    # 2026-10-25 (arming packet I.3/I.4; operator: "It needs to work without grant. It's a perpetual grant."):
-    # armed, ACTIVE, 18:00 canary enabled; 00:00 / 06:00 / 08:00 stay disabled until their own proofs (packet J).
+def test_real_policy_is_valid_armed_and_carries_the_operator_schedule():
+    # 2026-10-25 (arming packet I.3/I.4; operator: "It needs to work without grant. It's a perpetual grant."; the
+    # schedule: weekdays 12:00 + 18:00 ET, every three hours Saturday 06:00 through Sunday 21:00).
     assert CLS.validate_policy(POLICY) == []
     assert POLICY["armed"] is True and POLICY["status"] == "ACTIVE"
-    assert {w["local_time"]: w["enabled"] for w in POLICY["windows"]} == {
-        "18:00": True, "00:00": False, "06:00": False, "08:00": False}
+    days = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+    def runs(slot, day):
+        return W.policy_window(POLICY, slot, day)["enabled"]
+
+    weekday = {d: sorted(s for s in W.SLOTS if runs(s, d)) for d in days[:5]}
+    assert all(v == ["1200", "1800"] for v in weekday.values()), weekday
+    assert sorted(s for s in W.SLOTS if runs(s, "sat")) == ["0600", "0900", "1200", "1500", "1800", "2100"]
+    assert sorted(s for s in W.SLOTS if runs(s, "sun")) == ["0000", "0300", "0600", "0900", "1200", "1500",
+                                                             "1800", "2100"]
+    assert not any(runs("0800", d) for d in days)
     # the classes are unchanged by arming: broker / Active Trader stays held, the train itself blocked
     by_id = {r["id"]: r["class"] for r in POLICY["rules"]}
     assert by_id["broker_active_trader"] == "held" and by_id["train_self"] == "blocked"
     assert POLICY["seed"]["high_category_class"]["broker_and_execution"] == "held"
+    # review F3: the deploy's verifiers are the train's own surface
+    globs = next(r["globs"] for r in POLICY["rules"] if r["id"] == "train_self")
+    for f in ("scripts/conformance_gate.py", "scripts/check_worker_pins.py", "scripts/current_pin_integrity.py",
+              "scripts/generate_integrity_manifest.py", "scripts/cio_phase2_exact_main_deploy.sh"):
+        assert f in globs
 
 
-def test_policy_validation_pins_the_arming_order():
+def test_policy_validation_pins_the_arming_rules():
     def mutate(**over):
         d = json.loads(json.dumps(POLICY))
         windows = over.pop("windows", None)
@@ -535,9 +550,17 @@ def test_policy_validation_pins_the_arming_order():
     assert any("status must be" in e for e in mutate(status="ARMED"))
     assert any("armed must be a boolean" in e for e in mutate(armed="true"))
     assert any("not armed" in e for e in mutate(armed=False))                 # a window enabled while unarmed
-    assert mutate(windows=("18:00", "00:00")) == []                           # packet J step 1
-    assert any("enable_order" in e for e in mutate(windows=("18:00", "06:00")))   # skips 00:00
-    assert any("enable_order" in e for e in mutate(windows=("00:00",)))           # canary not first
+    assert mutate(windows=("18:00",)) == []
+    assert any("18:00 canary" in e for e in mutate(windows=("12:00",)))       # nothing live without the canary
+    d = json.loads(json.dumps(POLICY))
+    d["windows"][1]["enable_order"] = d["windows"][0]["enable_order"]
+    assert any("enable_order must be unique" in e for e in CLS.validate_policy(d))   # review F10
+    d = json.loads(json.dumps(POLICY))
+    d["windows"][0]["days"] = ["someday"]
+    assert any("days must be" in e for e in CLS.validate_policy(d))
+    d = json.loads(json.dumps(POLICY))
+    d["windows"] = d["windows"][1:]
+    assert any("windows must be exactly" in e for e in CLS.validate_policy(d))
 
 
 def test_every_ci_risk_tier_category_is_mapped_by_the_train_policy():
@@ -759,11 +782,17 @@ def test_census_reads_the_pr_hygiene_receipt_shape():
 
 
 def test_windows_are_new_york_wall_clock_and_dst_safe():
-    w = V.upcoming_windows(POLICY, NOW)  # 17:30 EDT
-    assert [x["local_time"] for x in w] == ["18:00", "00:00", "06:00", "08:00"]
+    every_day = json.loads(json.dumps(POLICY))
+    for x in every_day["windows"]:
+        x.pop("days", None)
+    w = V.upcoming_windows(every_day, NOW)  # Wednesday 17:30 EDT
+    assert [x["local_time"] for x in w] == ["18:00", "21:00", "00:00", "03:00", "06:00", "08:00", "09:00", "12:00",
+                                            "15:00"]
     assert w[0]["window_id"] == "2026-10-21T18:00-04:00" and w[0]["starts_in_seconds"] == 1800
-    assert {x["local_time"]: x["enabled"] for x in w} == {"18:00": True, "00:00": False, "06:00": False,
-                                                          "08:00": False}
+    # day-of-week aware (2026-10-25 schedule): from Wednesday the next weekend-only 06:00 is Saturday's
+    real = {x["local_time"]: x for x in V.upcoming_windows(POLICY, NOW)}
+    assert real["06:00"]["window_id"] == "2026-10-24T06:00-04:00" and real["00:00"]["window_id"].startswith("2026-10-25")
+    assert real["18:00"]["enabled"] is True and real["08:00"]["enabled"] is False
     # 2026-11-01: EDT -> EST at 02:00. From 23:00 EDT on Oct 31 the next 00:00 is EDT, the next 06:00 is EST.
     w2 = {x["local_time"]: x for x in V.upcoming_windows(POLICY, datetime(2026, 11, 1, 3, 0, tzinfo=timezone.utc))}
     assert w2["00:00"]["window_id"] == "2026-11-01T00:00-04:00"

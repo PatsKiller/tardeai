@@ -414,7 +414,7 @@ def test_readiness_view_fails_closed_and_never_turns_missing_into_zero(tmp_path,
     assert r["queue_counts"] is None and r["queue_freshness"] == "UNAVAILABLE"
     # the repo policy is armed (18:00 canary, 2026-10-25); a PAUSED delegation still keeps every request shadow
     assert r["delegation"]["state"] == "PAUSED" and r["armed"] is True
-    assert [w["slot"] for w in r["windows"]] == ["1800", "0000", "0600", "0800"]
+    assert [w["slot"] for w in r["windows"]] == list(W.SLOTS)
     assert [c["slot"] for c in r["shadow_coverage"]] == list(W.SLOTS)
     (tmp_path / "rw/STOP.json").write_text("{")
     r = _readiness(tmp_path, cfg)
@@ -454,7 +454,7 @@ def test_window_view_by_run_id_and_slot_and_receipt_validation(tmp_path, monkeyp
     cov = {c["slot"]: c for c in W.shadow_coverage(tmp_path / "rw")}
     assert cov["1800"]["request_id"] == "rtw-20261021-1800-win" and cov["0600"]["last_requested_at"] is None
     assert W.window_view(run_id="bad id", now=now, state_dir=tmp_path / "rw")["state"] == "REFUSED"
-    assert W.window_view(slot="1200", now=now, state_dir=tmp_path / "rw")["state"] == "REFUSED"
+    assert W.window_view(slot="1300", now=now, state_dir=tmp_path / "rw")["state"] == "REFUSED"
 
 
 # ── relay route + gateway operation ─────────────────────────────────────────────────────────────────────────
@@ -502,7 +502,7 @@ def test_relay_route_is_served_and_read_only(tmp_path, cfg):
         ledger.close()
 
 
-@pytest.mark.parametrize("query", ["", "view=queue", "slot=1200", "slot=1800&view=readiness", "lane=x",
+@pytest.mark.parametrize("query", ["", "view=queue", "slot=1300", "slot=1800&view=readiness", "lane=x",
                                    "run_id=bad%20id", "view=readiness&view=readiness"])
 def test_relay_refuses_bad_queries_before_the_gateway(tmp_path, cfg, query):
     relay, seen, ledger = _relay(tmp_path, cfg)
@@ -668,10 +668,10 @@ def test_allowlist_entries_are_shadow_only_with_minimal_env():
     for slot, lane in zip(("1800", "0000", "0600", "0800"), LANES):
         e = entries[lane]
         assert e["command"] == ["$PY", "scripts/release_train_window_request.py", "--window", slot]
-        # H.0: a live run appends only shadow requests (--shadow-only); live --append alone is the canary step (I.3),
-        # taken 2026-10-25 for the 18:00 canary slot ONLY. 00:00 / 06:00 / 08:00 stay shadow-only until packet J.
-        live = ["--append"] if slot == "1800" else ["--append", "--shadow-only"]
-        assert e["dry_run_arg"] == ["--dry-run"] and e["live_arg"] == live, (slot, e["live_arg"])
+        # H.0: a live run appends only shadow requests (--shadow-only); live --append alone is the canary step (I).
+        # 2026-10-25: the n8n workflow is not imported; the live schedule runs through the host timer drop-ins
+        # (docs/ops/packets/release-train-canary-arm-20261025), so the n8n allowlist stays shadow-only.
+        assert e["dry_run_arg"] == ["--dry-run"] and e["live_arg"] == ["--append", "--shadow-only"]
         assert e["env_allowlist_mode"] == "report" and e["env_names"] == ["TRADEAI_RELEASE_WINDOW_STATE_DIR"]
         assert e["output_signal"] == f"data/runtime/{lane}_last.json" and e["market_gate"] is False
         argv = " ".join(e["command"] + e["dry_run_arg"] + e["live_arg"])
@@ -733,7 +733,7 @@ def test_now_is_not_used_implicitly_by_the_pure_helpers(cfg):
     with pytest.raises(W.ContractError):
         W.window_start("1800", datetime(2026, 10, 21, 16, 30), cfg)  # naive time refused
     with pytest.raises(W.ContractError):
-        W.window_start("1200", REQUEST_TICK, cfg)
+        W.window_start("1300", REQUEST_TICK, cfg)
     assert W.window_start("1800", REQUEST_TICK + timedelta(minutes=10), cfg).tzinfo is not None
 
 
@@ -777,3 +777,30 @@ def test_canary_drop_in_removes_shadow_only_for_the_1800_instance_only():
     assert "%i" not in execs[0]
     tmpl = (ROOT / "docs/ops/packets/release-train-host-trigger-20261023/tradeai-release-train-request@.service.proposed")
     assert "--window %i --append --shadow-only" in tmpl.read_text(encoding="utf-8")
+
+
+def test_schedule_packet_matches_the_repo_policy():
+    """2026-10-25 schedule: every slot the repo policy enables on some day has a host-timer drop-in that drops
+    --shadow-only for that instance only; new slots have timers firing on exactly the policy's days."""
+    from scripts.lib import release_train_window_view as V
+
+    pkt = ROOT / "docs/ops/packets/release-train-canary-arm-20261025"
+    pol = json.loads((ROOT / "config/release_train_policy.json").read_text(encoding="utf-8"))
+    enabled = {w["local_time"].replace(":", ""): w for w in pol["windows"] if w["enabled"]}
+    assert set(enabled) == {"1800", "1200", "0000", "0300", "0600", "0900", "1500", "2100"}
+    for slot in enabled:
+        names = list(pkt.glob(f"tradeai-release-train-request@{slot}.service.d--*.conf.proposed"))
+        assert len(names) == 1, slot
+        execs = [ln for ln in names[0].read_text(encoding="utf-8").splitlines() if ln.startswith("ExecStart=")]
+        assert execs[0] == "ExecStart=" and execs[1].endswith(f"--window {slot} --append"), (slot, execs)
+    assert not list(pkt.glob("tradeai-release-train-request@0800.service.d--*"))
+    cal = {"sat,sun": "Sat,Sun ", "sun": "Sun ", None: "*-*-* "}
+    for slot in ("1200", "0300", "0900", "1500", "2100"):
+        days = enabled[slot].get("days")
+        key = ",".join(days) if days else None
+        t = (pkt / f"tradeai-release-train-request@{slot}.timer.proposed").read_text(encoding="utf-8")
+        on = next(ln.split("=", 1)[1] for ln in t.splitlines() if ln.startswith("OnCalendar="))
+        assert on.startswith(cal[key]) and f"{slot[:2]}:{slot[2:]}:00 America/New_York" in on, (slot, on)
+        assert (pkt / f"tradeai-pr-census@{slot}.timer.proposed").exists()
+        assert slot in V.SLOTS
+    assert (pkt / "install.sh").exists() and (pkt / "update-delegation-windows.sh").exists()

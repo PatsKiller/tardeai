@@ -216,7 +216,8 @@ class FakeHost:
         self.releases = tmp / "releases"
         self.prev = self.releases / "prev"
         self.prev.mkdir(parents=True)
-        (self.prev / "BUILD_SHA").write_text("f" * 40 + "\n")
+        # CURRENT serves main's base commit (review finding F2: the train refuses unless CURRENT...main is eligible).
+        (self.prev / "BUILD_SHA").write_text(repo.base + "\n")
         self.cur = Path(os.path.realpath(self.prev))
         self.calls: list[tuple] = []
         self.health_when_new = 200
@@ -333,6 +334,16 @@ def delegation_body(slot="1800"):
     d["status"] = "ACTIVE"
     d["delegation_id"] = "rtd-test-0001"
     d["operator"]["approved_at"] = "2026-10-21T17:00:00-04:00"
+    if slot in RD.WINDOW_IDS and slot not in {s["window_id"] for s in d["windows"]["slots"]}:  # 2026-10-25 slot
+        d["windows"]["slots"].append(
+            {
+                "window_id": slot,
+                "start_et": f"{slot[:2]}:{slot[2:]}",
+                "duration_min": 90,
+                "enabled": True,
+                "role": "weekend",
+            }
+        )
     for s in d["windows"]["slots"]:
         s["enabled"] = s["window_id"] == slot
     d["limits"]["max_attempts_per_capability"] = 2
@@ -371,6 +382,11 @@ class World:
         self.events_path = self.state_dir / "train_events.jsonl"
         self.attempts = attempts
         self.calendar = MC.ReleaseTrainCalendar(tmp / "hostcfg" / "macro_calendar.json")
+        self.policy = {
+            "schema": "ReleaseTrainPolicy@v1",
+            "armed": True,
+            "windows": [{"local_time": f"{s[:2]}:{s[2:]}", "enabled": True} for s in T.WV.SLOTS],
+        }
 
     def entries(self, numbers=None):
         return [
@@ -390,7 +406,7 @@ class World:
             **cfg,
         )
         tester = T.LocalTester(command=FAIL_CMD, base_env={"PATH": os.environ["PATH"]})
-        return T.TrainController(
+        ctl = T.TrainController(
             host=self.host,
             state=self.state,
             github=self.gh,
@@ -406,6 +422,10 @@ class World:
             env=env if env is not None else {"PATH": os.environ["PATH"]},
             calendar=self.calendar,
         )
+        # These tests exercise the delegation's slots; the repo policy's day-of-week schedule has its own tests
+        # (test_live_window_needs_the_repo_policy_schedule). Default here: armed, every slot every day.
+        ctl.policy = self.policy
+        return ctl
 
     def run(self, **kw):
         c = self.controller(**kw)
@@ -496,6 +516,8 @@ def test_live_prepare_and_promote_are_authorized_by_the_reserved_capability_with
                 key_path=w.key,
                 delegation_path=w.deleg,
                 now=w.clock.t,
+                # review F4: the deploy's promote passes --release-dir; the digest must equal the capability's
+                artifact_digest=B.release_artifact_digest(Path(args[1]), w.host.sha) if args[0] == "promote" else None,
             )
             verdicts.append((args[0], v))
             tid = campaign[len("release-train-") :]
@@ -523,8 +545,134 @@ def test_live_prepare_and_promote_are_authorized_by_the_reserved_capability_with
         key_path=w.key,
         delegation_path=w.deleg,
         now=w.clock.t,
+        artifact_digest="sha256:" + "0" * 64,
     )
-    assert after.allowed is False and after.code in ("REPLAY", "RESERVATION_MISSING", "RESERVATION_HOLDER_GONE")
+    # review F6: the terminal train removed its reservation tokens; nothing is left to replay
+    assert not list((w.state_dir / "trains" / rec["train_id"] / "capability").glob("*.rcap"))
+    assert after.allowed is False and after.code in (
+        "TOKEN_MISSING",
+        "REPLAY",
+        "RESERVATION_MISSING",
+        "RESERVATION_HOLDER_GONE",
+    )
+
+
+def test_artifact_digest_of_the_deploy_equals_the_controllers(tmp_path):
+    """Review F4: the deploy's preflight computes --artifact-digest from --release-dir with the binding module's
+    function; it must be the controller's artifact_digest byte for byte."""
+    from scripts.lib import release_grant_binding as B
+
+    d = tmp_path / "rel"
+    d.mkdir()
+    (d / "BUILD_SHA").write_text("c" * 40 + "\n")
+    (d / "BUILD_META.json").write_text("{}")
+    assert B.release_artifact_digest(d, "c" * 40) == T.artifact_digest(d, "c" * 40)
+
+
+def test_reservation_token_write_failure_refunds_and_never_deploys(tmp_path, monkeypatch):
+    """Review F7: RESERVATION_TOKEN_UNWRITABLE ends the reservation ABORTED_NO_EFFECT with a refund, and the
+    deploy's prepare never runs."""
+    from scripts.lib import release_grant_binding as B
+
+    def boom(*_a, **_k):
+        raise PermissionError("read-only state dir")
+
+    monkeypatch.setattr(B, "write_reservation_token", boom)
+    w = World(tmp_path)
+    code, rec, _c = w.run()
+    assert rec["outcome"] == T.MERGED_NOT_LIVE, rec["steps"]
+    assert [d for d in w.deploys() if d[1] == "prepare"] == []
+    ledger = w.ledger()
+    prep = [i for i in ledger["intents"].values() if i["action"] == "prepare_release"]
+    assert prep and {i["status"] for i in prep} == {"ABORTED_NO_EFFECT"}
+    cap = ledger["caps"][prep[0]["capability_id"]]
+    assert int(cap.get("attempts_used", 0)) == 0, cap  # refunded
+    st = json.loads((w.state_dir / "trains" / rec["train_id"] / "state.json").read_text())
+    mine = [i for i in st["intents"] if i["action"] == "prepare_release"]
+    assert mine and mine[-1]["status"] == "ABORTED_NO_EFFECT"
+
+
+def _commit_on_main(w, files):
+    """Merge a commit straight onto origin main (as a manual merge would), after CURRENT was built."""
+    seed = w.repo.seed
+    git(seed, "checkout", "-q", "--detach", w.repo.base)
+    for rel, text in files.items():
+        p = seed / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text)
+    git(seed, "add", "-A")
+    git(seed, "commit", "-q", "-m", "manual merge")
+    sha = git(seed, "rev-parse", "HEAD")
+    git(seed, "push", "-q", "-f", "origin", f"{sha}:refs/heads/main")
+    git(w.repo.checkout, "fetch", "-q", "origin")
+    w.gh.main = sha
+    return sha
+
+
+@pytest.mark.parametrize(
+    "files, reason",
+    [
+        ({"scripts/brokers/order_path.py": "x = 1\n"}, "BASE_HAS_UNRELEASED_HELD"),
+        ({"scripts/lib/release_capability.py": "# x\n"}, "BASE_HAS_UNRELEASED_BLOCKED"),
+    ],
+)
+def test_live_train_refuses_when_main_carries_unreleased_protected_changes(tmp_path, files, reason):
+    """Review F2: everything merged since CURRENT's BUILD_SHA ships with the train, so a held / blocked file merged
+    by another path makes the live train a quiet NO_OP (nothing pushed, merged or deployed)."""
+    from scripts.lib import release_train_controller as RTC
+
+    w = World(tmp_path)
+    _commit_on_main(w, files)
+    c = w.controller(classifier=RTC.load_classifier(closure=False))
+    code, rec = c.run()
+    assert rec["outcome"] == T.NO_OP and rec["reason"] == reason, (rec.get("reason"), rec["steps"])
+    assert w.writer.calls == [] and w.deploys() == []
+    assert rec["base_unreleased"]["from"] == w.repo.base
+
+
+def test_live_train_refuses_when_current_is_not_an_ancestor_of_main(tmp_path):
+    w = World(tmp_path)
+    (w.host.prev / "BUILD_SHA").write_text("e" * 40 + "\n")
+    code, rec, _c = w.run()
+    assert rec["outcome"] == T.NO_OP and rec["reason"] == "BASE_UNRELEASED_UNKNOWN", rec["steps"]
+    assert w.writer.calls == [] and w.deploys() == []
+
+
+def test_live_window_needs_the_repo_policy_schedule_and_arming(tmp_path):
+    """2026-10-25 / review F5: the delegation authorizes the slot; the repo policy must also be armed and schedule it
+    on that day. Wednesday 18:05 with 18:00 unscheduled -> REFUSED_WINDOW_DISABLED; unarmed -> REFUSED_POLICY_NOT_ARMED;
+    the real repo policy schedules 18:00 every day."""
+    w = World(tmp_path)
+    w.policy = {
+        "schema": "ReleaseTrainPolicy@v1",
+        "armed": True,
+        "windows": [{"local_time": "18:00", "enabled": True, "days": ["sat", "sun"]}],
+    }
+    code, rec, _c = w.run()
+    assert rec["reason"] == "REFUSED_WINDOW_DISABLED" and code == T.EXIT_REFUSED, rec["steps"]
+    (tmp_path / "b").mkdir()
+    w2 = World(tmp_path / "b")
+    w2.policy = {
+        "schema": "ReleaseTrainPolicy@v1",
+        "armed": False,
+        "windows": [{"local_time": "18:00", "enabled": True}],
+    }
+    code, rec, _c = w2.run()
+    assert rec["reason"] == "REFUSED_POLICY_NOT_ARMED" and code == T.EXIT_REFUSED, rec["steps"]
+    (tmp_path / "c").mkdir()
+    w3 = World(tmp_path / "c")
+    w3.policy = T.WV.read_policy()
+    code, rec, _c = w3.run()
+    assert rec["outcome"] == T.RELEASED_VERIFIED, rec["steps"]
+
+
+def test_drain_rule_is_a_weekday_rule():
+    sat = T.TrainWindow("0600", "weekend", datetime(2026, 10, 24, 6, 0, tzinfo=ET), 60, True)
+    mon = T.TrainWindow("0600", "x", datetime(2026, 10, 26, 6, 0, tzinfo=ET), 60, True)
+    assert T._drain_applies(sat) is False and T._drain_applies(mon) is True
+    assert (
+        T._drain_applies(T.TrainWindow("0900", "weekend", datetime(2026, 10, 24, 9, 0, tzinfo=ET), 60, True)) is False
+    )
 
 
 def test_dry_run_writes_nothing_and_prints_every_step(tmp_path):
@@ -1894,3 +2042,62 @@ def test_release_window_host_reads_canonical_head_from_git(tmp_path):
     head = subprocess.run(["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
     assert RW.Host(checkout=tmp_path, releases=tmp_path, canonical=repo).canonical_head() == head
     assert RW.Host(checkout=tmp_path, releases=tmp_path, canonical=tmp_path / "absent").canonical_head() == ""
+
+
+@pytest.mark.parametrize(
+    "slot, when",
+    [
+        ("1200", datetime(2026, 10, 26, 12, 5, tzinfo=ET)),  # Monday noon
+        ("0300", datetime(2026, 10, 25, 3, 5, tzinfo=ET)),  # Sunday 03:00 (the Saturday-night overnight)
+        ("0600", datetime(2026, 10, 24, 6, 5, tzinfo=ET)),  # Saturday 06:00: no weekday drain rule
+        ("2100", datetime(2026, 10, 24, 21, 5, tzinfo=ET)),  # Saturday 21:00
+    ],
+)
+def test_schedule_slots_release_live_end_to_end_under_the_real_policy(tmp_path, slot, when):
+    """2026-10-25 schedule: every contract (TrainCandidate, TrainEvent, TrainOutcome window ids) accepts the new
+    slots, and the real repo policy schedules them on these days."""
+    w = World(tmp_path, slot=slot, now=when)
+    w.policy = T.WV.read_policy()
+    code, rec, _c = w.run()
+    assert code == T.EXIT_OK and rec["outcome"] == T.RELEASED_VERIFIED, (rec.get("reason"), rec["steps"])
+    assert rec["window"]["slot"] == slot and rec["window"]["policy_enabled"] is True
+
+
+@pytest.mark.parametrize(
+    "slot, when",
+    [
+        ("0300", datetime(2026, 10, 24, 3, 5, tzinfo=ET)),  # Saturday 03:00 (Friday night): not scheduled
+        ("0300", datetime(2026, 10, 26, 3, 5, tzinfo=ET)),  # Monday 03:00: not scheduled
+        ("0900", datetime(2026, 10, 27, 9, 5, tzinfo=ET)),  # Tuesday 09:00: weekend only
+    ],
+)
+def test_unscheduled_days_refuse_live_even_with_the_delegation_slot(tmp_path, slot, when):
+    w = World(tmp_path, slot=slot, now=when)
+    w.policy = T.WV.read_policy()
+    code, rec, _c = w.run()
+    assert code == T.EXIT_REFUSED and rec["reason"] == "REFUSED_WINDOW_DISABLED", rec["steps"]
+    assert w.writer.calls == [] and w.deploys() == []
+
+
+def test_a_delegation_slot_can_narrow_its_days(tmp_path):
+    slots = [{"window_id": "1200", "start_et": "12:00", "duration_min": 90, "enabled": True, "days": ["sat"]}]
+    mon = datetime(2026, 10, 26, 12, 5, tzinfo=ET)
+    sat = datetime(2026, 10, 24, 12, 5, tzinfo=ET)
+    assert T.window_at(mon, slots, lead_min=90, grace_min=15)[0] is None
+    assert T.window_at(sat, slots, lead_min=90, grace_min=15)[0].slot == "1200"
+
+
+def test_claimer_refuses_a_live_request_the_repo_policy_does_not_schedule():
+    """Review F5: train-claim refuses a live request before building a controller when the repo policy is not armed
+    or does not schedule that slot on that day (C9 codes NOT_ARMED / WINDOW_NOT_ENABLED)."""
+    pol = T.WV.read_policy()
+    sun03 = {"window_slot": "0300", "window_start": "2026-10-25T03:00:00-04:00"}
+    sat03 = {"window_slot": "0300", "window_start": "2026-10-24T03:00:00-04:00"}
+    mon12 = {"window_slot": "1200", "window_start": "2026-10-26T12:00:00-04:00"}
+    mon09 = {"window_slot": "0900", "window_start": "2026-10-26T09:00:00-04:00"}
+    assert T.live_policy_refusal(sun03, pol) is None and T.live_policy_refusal(mon12, pol) is None
+    assert T.live_policy_refusal(sat03, pol)[0] == "WINDOW_NOT_ENABLED"
+    assert T.live_policy_refusal(mon09, pol)[0] == "WINDOW_NOT_ENABLED"
+    assert T.live_policy_refusal(mon12, {**pol, "armed": False})[0] == "NOT_ARMED"
+    assert T.live_policy_refusal({**mon12, "window_start": "garbage"}, pol)[0] == "WINDOW_NOT_ENABLED"
+    assert {"NOT_ARMED", "WINDOW_NOT_ENABLED"} <= T.REFUSAL_CODES

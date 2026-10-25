@@ -1,10 +1,10 @@
 {
   "schema": "ReleaseTrainPolicy@v1",
-  "policy_version": "2026-10-25.1",
+  "policy_version": "2026-10-25.2",
   "as_of": "2026-10-25",
   "status": "ACTIVE",
   "armed": true,
-  "_note": "Release Train v2 Phase 1 (plan joyful-skipping-wilkes; enhanced design sections 4, 6, 7). Read by scripts/lib/release_train_classify.py and scripts/lib/release_train_view.py. Armed 2026-10-25 for the 18:00 canary only (operator directive: \"It needs to work without grant. It's a perpetual grant.\"; arming packet I.3/I.4): armed=true, status ACTIVE, 18:00 enabled; 00:00/06:00/08:00 stay disabled until their own proofs (packet J). Windows enable strictly in enable_order (validate_policy). Classes from least to most restrictive: eligible < needs_operator < held < blocked; when rules disagree the more restrictive wins. Unknown risk is held. Broker / Active Trader is always at least held. Seeded from config/ci_risk_tiers.json (high categories map through seed.high_category_class; an unmapped new category is held).",
+  "_note": "Release Train v2 Phase 1 (plan joyful-skipping-wilkes; enhanced design sections 4, 6, 7). Read by scripts/lib/release_train_classify.py and scripts/lib/release_train_view.py. Armed 2026-10-25 (operator directive: \"It needs to work without grant. It's a perpetual grant.\"; arming packet I.3/I.4): armed=true, status ACTIVE, the weekday 12:00 + 18:00 and weekend every-three-hours (Saturday 06:00 through Sunday 21:00) schedule in windows[] (see schedule_note); 08:00 stays disabled. validate_policy requires the 18:00 canary enabled whenever any window is. Classes from least to most restrictive: eligible < needs_operator < held < blocked; when rules disagree the more restrictive wins. Unknown risk is held. Broker / Active Trader is always at least held. Seeded from config/ci_risk_tiers.json (high categories map through seed.high_category_class; an unmapped new category is held).",
   "timezone": "America/New_York",
   "canary": {
     "operator_forced_off_window": true,
@@ -12,11 +12,17 @@
     "_note": "Arming finding 8. When true, AND the host delegation carries \"phase\": \"canary\", an operator at the host TTY may run release_window.py train-run --live --force-window 1800 --operator-forced --operator-ref <ref> --forced-n <n> outside the 18:00 window. It overrides ONLY the window timing; every other gate applies. Shipped false; flipped true by the reviewed arming packet I.4 PR 3 (merged only after Phase 5 shadow passed and the operator said so)."
   },
   "windows": [
-    {"local_time": "18:00", "role": "canary", "enable_order": 1, "enabled": true, "note": "First live canary window. Enabled 2026-10-25 (arming packet I.3); the host delegation slot 1800 must also be enabled."},
-    {"local_time": "00:00", "role": "general", "enable_order": 2, "enabled": false, "note": "General eligible changes."},
-    {"local_time": "06:00", "role": "premarket_drain", "enable_order": 3, "enabled": false, "note": "Needs a proven drain or a non-disruptive release path first."},
-    {"local_time": "08:00", "role": "premarket_last", "enable_order": 4, "enabled": false, "note": "Enabled last. Skipped on 08:30 macro days or when calendar data is stale."}
+    {"local_time": "18:00", "role": "canary", "enable_order": 1, "enabled": true, "note": "First live canary window. Enabled 2026-10-25 (arming packet I.3); every day (weekdays + weekends). The host delegation slot 1800 must also be enabled."},
+    {"local_time": "12:00", "role": "midday", "enable_order": 2, "enabled": true, "note": "2026-10-25 operator schedule: weekdays 12:00 ET (the operator-approved 12:00 release window, cutover directive 2026-10-16) and part of the weekend's every-three-hours cadence. Needs host delegation slot 1200."},
+    {"local_time": "06:00", "role": "weekend", "enable_order": 3, "enabled": true, "days": ["sat", "sun"], "note": "Weekend only (Saturday 06:00 opens the weekend cadence; operator 2026-10-25). The weekday 06:00 premarket drain window stays disabled; the drain rule is a weekday rule."},
+    {"local_time": "09:00", "role": "weekend", "enable_order": 4, "enabled": true, "days": ["sat", "sun"], "note": "Weekend every-three-hours cadence (2026-10-25). Not the 08:00 macro/latest-start window."},
+    {"local_time": "15:00", "role": "weekend", "enable_order": 5, "enabled": true, "days": ["sat", "sun"], "note": "Weekend every-three-hours cadence (2026-10-25)."},
+    {"local_time": "21:00", "role": "weekend", "enable_order": 6, "enabled": true, "days": ["sat", "sun"], "note": "Weekend every-three-hours cadence (2026-10-25); the last weekend window of the day."},
+    {"local_time": "00:00", "role": "weekend_overnight", "enable_order": 7, "enabled": true, "days": ["sun"], "note": "Sunday 00:00 only: the Saturday-night overnight (operator 2026-10-25: \"it can run overnight until 3:00 a.m. Sunday morning\"). Not Saturday 00:00 (Friday night), not Monday 00:00."},
+    {"local_time": "03:00", "role": "weekend_overnight", "enable_order": 8, "enabled": true, "days": ["sun"], "note": "Sunday 03:00 only: the last overnight window (operator 2026-10-25). Not Saturday or Monday 03:00."},
+    {"local_time": "08:00", "role": "premarket_last", "enable_order": 9, "enabled": false, "days": ["mon", "tue", "wed", "thu", "fri"], "note": "Disabled. Skipped on 08:30 macro days or when calendar data is stale."}
   ],
+  "schedule_note": "2026-10-25 operator: \"I need it to run at around 12:00 p.m. and the schedule on the weekend should be different. It should run if there's something in the queue every three hours because the weekend will be the heaviest development.\" and \"On the weekends, on Saturdays and Sundays, starting at 6:00 a.m., releases should be every three hours. If there's nothing there, then nothing gets released.\" and \"Yes, it can run overnight until 3:00 a.m. Sunday morning. The market does not open until 6:00 a.m. in the US.\" Weekdays (mon-fri): 12:00 and 18:00 ET. Weekend: every three hours from Saturday 06:00 through Sunday 21:00 (sat 06, 09, 12, 15, 18, 21; sun 00, 03, 06, 09, 12, 15, 18, 21 ET). No Saturday 00/03 (Friday night), no Monday 00/03. A window runs only when something is eligible (an empty selection is a quiet NO_OP: no alert, no message). days absent = every day. The policy schedules; the host delegation authorizes the slot ids (a live train needs both).",
   "shadow": {
     "integrate": true,
     "local_test": false,
@@ -61,6 +67,12 @@
         "scripts/release_grant_preflight.py",
         "scripts/lib/release_grant_binding.py",
         "scripts/cio_phase2_exact_main_deploy.sh",
+        "scripts/conformance_gate.py",
+        "scripts/check_worker_pins.py",
+        "scripts/current_pin_integrity.py",
+        "scripts/generate_integrity_manifest.py",
+        "scripts/release_venv.sh",
+        "scripts/ff_dev_tree.sh",
         "migrations/*release_queue*"
       ]
     },

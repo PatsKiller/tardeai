@@ -283,7 +283,14 @@ def main() -> int:
     ap.add_argument("--artifact-digest", default=None,
                     help="capability binding only (packet §K; consulted only while CAPABILITY_BINDING_STATUS is ACTIVE): "
                          "the prepared artifact digest; it can only narrow, never grant")
+    ap.add_argument("--release-dir", type=Path, default=None,
+                    help="capability binding only (review F4): the prepared release dir; its artifact digest is "
+                         "computed here and must equal the promote capability's")
     args = ap.parse_args()
+    if args.release_dir is not None and args.artifact_digest is None:
+        from scripts.lib.release_grant_binding import release_artifact_digest  # noqa: PLC0415
+
+        args.artifact_digest = release_artifact_digest(args.release_dir, args.sha)
     if args.backstop_check:
         return backstop_check(args.sha, args.backstop_receipt)
     if args.ci_only:

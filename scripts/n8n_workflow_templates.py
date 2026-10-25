@@ -3286,13 +3286,23 @@ def _slot_minute(slot: str) -> int:
 
 
 def release_train_crons(cfg: dict, phase: str) -> list[str]:
-    """The four cron expressions (America/New_York via settings.timezone) for the request or report tick."""
+    """One cron expression per slot (America/New_York via settings.timezone) for the request or report tick. A slot
+    with ``days`` fires on those days only (cron day-of-week, shifted when the tick crosses midnight)."""
     offset = -int(cfg["request_lead_min"]) if phase == "request" else int(cfg["report_after_min"])
     out = []
     for s in cfg["slots"]:
-        m = (_slot_minute(s["slot"]) + offset) % 1440
-        out.append(f"{m % 60} {m // 60} * * *")
+        raw = _slot_minute(s["slot"]) + offset
+        m = raw % 1440
+        dow = "*"
+        if s.get("days"):
+            shift = raw // 1440                      # -1 when the tick is the previous day, +1 the next
+            dow = ",".join(str(x) for x in sorted({(_CRON_DOW[d] + shift) % 7 for d in s["days"]}))
+        out.append(f"{m % 60} {m // 60} * * {dow}")
     return out
+
+
+#: cron day-of-week numbers (0 = Sunday).
+_CRON_DOW = {"sun": 0, "mon": 1, "tue": 2, "wed": 3, "thu": 4, "fri": 5, "sat": 6}
 
 
 def _rt_slots_js(cfg: dict) -> str:
@@ -3740,12 +3750,20 @@ def release_train_problems(wf: dict) -> list[str]:
         if tok in text:
             problems.append(f"release_train_forbidden_text:{tok}")
     lanes = set(re.findall(r"release-train-request-[0-9]{4}", text))
-    if not lanes or not lanes <= {f"release-train-request-{s}" for s in ("0000", "0600", "0800", "1800")}:
+    if not lanes or not lanes <= {f"release-train-request-{s}" for s in _release_train_slots()}:
         problems.append(f"release_train_lanes:{sorted(lanes)}")
     kinds = set(re.findall(r"kind: '([a-z_]+)'", text))
     if kinds != set(RELEASE_TRAIN_INTENT_KINDS):
         problems.append(f"release_train_intent_kinds:{sorted(kinds)}")
     return problems
+
+
+def _release_train_slots() -> tuple[str, ...]:
+    try:
+        from scripts.lib.release_train_window_view import SLOTS
+    except ImportError:  # pragma: no cover - scripts/ on sys.path
+        from lib.release_train_window_view import SLOTS  # type: ignore[no-redef]
+    return tuple(SLOTS)
 
 
 FABRIC_BUILDERS = {
