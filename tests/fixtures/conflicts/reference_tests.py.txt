@@ -1,0 +1,135 @@
+"""Reference tests. The security cases are the 15 live My Watchlist flags of 2026-10-24 (values/ages measured from
+/api/v3/data-broker/watch-curation); numeric and schedule cases are live mismatches from the site audit."""
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from conflict_engine import Input, Subject, evaluate, headline
+from profiles import NumericFactProfile, ScheduleStateProfile, SecurityStanceProfile, stance_action, BUY, HOLD, REDUCE, ASIDE
+
+NOW = datetime(2026, 10, 24, 23, 0, tzinfo=timezone.utc)
+CIO_AT = datetime(2026, 10, 23, 20, 30, tzinfo=timezone.utc)
+SEC = SecurityStanceProfile()
+
+
+def ago(d):
+    return NOW - timedelta(days=d)
+
+
+def sec(cio, *inputs, held=False, cio_at=CIO_AT, history=()):
+    s = Subject("security", "guid-1", "SYM", {"held": held})
+    c = None if cio is None else Input("cio_opportunity_projection", cio, cio_at)
+    return evaluate(s, c, inputs, SEC, now=NOW, history=history)
+
+
+def k(fs):
+    return sorted((f.kind, f.rule) for f in fs)
+
+
+# ── security stance: vocabulary ──────────────────────────────────────────────────────────────────────────────────
+def test_action_depends_on_holding():
+    assert stance_action("SELL", False) == ASIDE and stance_action("SELL", True) == REDUCE
+    assert stance_action("WATCH", True) == HOLD and stance_action("AVOID", True) == REDUCE
+    assert stance_action("HOLD", False) == ASIDE and stance_action("RE_ENTER", False) == BUY
+
+
+# ── the 15 live flags → what the engine says ──────────────────────────────────────────────────────────────────────
+@pytest.mark.parametrize("sym", ["FATN", "ANET", "SMCI"])
+def test_live_trade_ai_fail_is_a_gate_not_a_conflict(sym):
+    fs = sec("RE_ENTER", Input("trade_ai", "DETERMINISTIC_FAIL", ago(0), role="gate", detail="Trade AI checks"))
+    assert k(fs) == [("GATE", "U6")] and "passes on its next run" in fs[0].clears_when
+
+
+def test_live_dxcm_desk_near_entry_vs_cio_watch_is_a_real_conflict_gate_irrelevant():
+    fs = sec("WATCH", Input("reentry_decision_desk", "NEAR_ENTRY", ago(0)),
+             Input("trade_ai", "DETERMINISTIC_FAIL", ago(1), role="gate"))
+    assert k(fs) == [("CONFLICT", "U7")]
+
+
+@pytest.mark.parametrize("cio,age", [("RE_ENTER", 79), ("ADD", 52)])
+def test_live_old_hold_reviews_on_unheld_names_are_superseded(cio, age):     # QCOM 79d, BAH/LDOS 52d
+    fs = sec(cio, Input("watchlist CIO review", "HOLD", ago(age)))
+    assert k(fs) == [("SUPERSEDED", "U4")] and fs[0].action == "queue_refresh" and headline(fs) is None
+
+
+def test_live_spcx_held_add_vs_old_hold_agrees_and_the_stop_goes_to_operator():
+    fs = sec("ADD", Input("watchlist CIO review", "HOLD", ago(52)),
+             Input("broker_stop", "AWAITING_FILL", ago(1), role="protection", account="schwab_rollover_ira"), held=True)
+    assert k(fs) == [("AGREEMENT", "U5"), ("NEEDS_OPERATOR", "U0")]
+    assert headline(fs).startswith("Stop likely filled")
+
+
+@pytest.mark.parametrize("syn,age", [("AVOID", 4), ("AVOID", 10), ("AVOID", 12), ("SELL", 12)])
+def test_live_watch_vs_avoid_or_sell_on_unheld_names_agree(syn, age):        # AXTI AXON PSQ GEV MDLN ISRG
+    fs = sec("WATCH", Input("watchlist_final_synthesis", syn, ago(age)))
+    assert k(fs) == [("AGREEMENT", "U5")] and headline(fs) is None
+
+
+def test_live_dt_8_day_old_daily_synthesis_is_superseded_but_a_fresh_one_is_a_conflict():
+    assert k(sec("RE_ENTER", Input("watchlist_final_synthesis", "AVOID", ago(8)))) == [("SUPERSEDED", "U4")]
+    fresh = sec("RE_ENTER", Input("watchlist_final_synthesis", "AVOID", ago(1)))
+    assert k(fresh) == [("CONFLICT", "U7")] and fresh[0].action == "queue_review"
+
+
+def test_live_schd_held_trim_vs_hold_is_a_real_conflict():
+    assert k(sec("TRIM", Input("watchlist_final_synthesis", "HOLD", ago(2)), held=True)) == [("CONFLICT", "U7")]
+
+
+# ── universal rules ──────────────────────────────────────────────────────────────────────────────────────────────
+def test_u2_missing_canonical_forces_review():
+    assert k(sec(None, Input("watchlist_final_synthesis", "AVOID", ago(0)))) == [("CONFLICT", "U2")]
+
+
+def test_u3_stale_canonical_loses_to_newer_input():
+    assert k(sec("ADD", Input("agent_escalation", "AVOID", ago(0)), cio_at=ago(6))) == [("CONFLICT", "U3")]
+
+
+def test_u0_policy_breach_with_add_needs_operator_without_add_is_a_gate():
+    p = Input("policy", "BREACH", ago(0), role="policy", detail="SPCX 22.6% > 12% max")
+    assert k(sec("ADD", p, held=True)) == [("NEEDS_OPERATOR", "U0")]
+    assert k(sec("HOLD", p, held=True)) == [("GATE", "U0")]
+
+
+def test_u0_kill_switch_never_automatic():
+    fs = sec("ADD", Input("global_kill_switch", "ENGAGED", ago(10), role="safety"))
+    assert k(fs) == [("GATE", "U0")] and "never automatic" in fs[0].clears_when
+
+
+def test_wash_sale_counts_only_in_taxable():
+    ira = Input("wash_sale", "BLOCKED", ago(0), role="gate", account="schwab_rollover_ira")
+    tax = Input("wash_sale", "BLOCKED", ago(0), role="gate", account="schwab_taxable")
+    assert sec("RE_ENTER", ira) == [] and k(sec("RE_ENTER", tax)) == [("GATE", "U6")]
+
+
+def test_u1_identity_time_vocabulary_errors():
+    assert k(sec("ADD", Input("x", "SELL", ago(0), subject_id="other"))) == [("DATA_ERROR", "U1")]
+    assert k(sec("ADD", Input("x", "SELL", None))) == [("DATA_ERROR", "U1")]
+    assert k(sec("ADD", Input("x", "MAYBE", ago(0)))) == [("DATA_ERROR", "U1")]
+
+
+def test_u8_flapping_goes_to_operator():
+    hist = [{"key": "security:guid-1:U7:advisory_desk", "opened_at": NOW - timedelta(days=d)} for d in (1, 2, 3)]
+    assert k(sec("TRIM", Input("advisory_desk", "ADD", ago(0)), held=True, history=hist)) == [("NEEDS_OPERATOR", "U8")]
+
+
+def test_u9_every_flag_says_what_clears_it():
+    fs = sec("ADD", Input("advisory_desk", "SELL", ago(0)), Input("trade_ai", "BLOCKED", ago(0), role="gate"), held=True)
+    assert all(f.clears_when and f.clears_when != "—" for f in fs if f.kind != "AGREEMENT")
+
+
+# ── numeric facts (site audit: header vs Portfolio totals) ───────────────────────────────────────────────────────
+def test_portfolio_total_mismatch_is_a_data_conflict_for_the_operator():
+    s = Subject("metric", "portfolio_total", "Portfolio total", {})
+    can = Input("holdings canonical aggregate", 1258199.22, ago(1))
+    fs = evaluate(s, can, [Input("header /overview", 1258967.22, ago(1)),
+                           Input("rounding copy", 1258199.90, ago(1))], NumericFactProfile(), now=NOW)
+    assert k(fs) == [("AGREEMENT", "U5"), ("CONFLICT", "U7")]
+    assert [f for f in fs if f.kind == "CONFLICT"][0].action == "notify_operator"
+
+
+# ── schedule state (Ops Controls: crontab vs registry) ───────────────────────────────────────────────────────────
+def test_schedule_retired_in_registry_but_cron_runs_is_a_conflict():
+    s = Subject("job", "catalyst-momentum-engine-premarket", "catalyst-momentum-engine-premarket", {})
+    fs = evaluate(s, Input("lane_registry", "RETIRED", ago(30)), [Input("crontab", "ACTIVE", ago(0))],
+                  ScheduleStateProfile(), now=NOW)
+    assert k(fs) == [("CONFLICT", "U7")] and "lane registry" in fs[0].summary
