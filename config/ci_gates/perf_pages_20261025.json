@@ -1,0 +1,11 @@
+{
+  "schema": "CiGate@v1",
+  "name": "perf_pages_20261025",
+  "files": [
+    "tests/test_perf_pages_20261025.py"
+  ],
+  "anchor": "PERF_PAGES_20261025",
+  "comment": [
+    "ANCHOR: PERF_PAGES_20261025 — batch 34: Watch decisions/reviews/bars batched per page, consumption-link positives cached (bounded), gather() single-flight; Agents desk journal listing + tail caches (bounded); api_v2 sys.path no longer grows per DB query; two-way curation per-request memo; batched screener-pin sync; filtered symbol-cards ETag; ?symbols= on finviz strip and ui prefs."
+  ]
+}
