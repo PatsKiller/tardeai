@@ -1,7 +1,9 @@
 /** Inline prospectus report icon-links for portfolio holding + watchlist cards and drawer.
  *  Icon links (PDF / Word / open / regenerate) with a rich hover tooltip showing date created etc. */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { requestAnalystReportMapRefetch, type AnalystReportEntry } from '../hooks/useAnalystReportMap'
+import './HoldingReportLinks.css'
 
 type Props = {
   symbol: string
@@ -61,8 +63,17 @@ export default function HoldingReportLinks({ symbol, entry, compact, reportType 
   const [genBusy, setGenBusy] = useState(false)
   const [genErr, setGenErr] = useState('')
 
-  const runInlineGenerate = async (ev: React.MouseEvent) => {
+  const [confirming, setConfirming] = useState(false)
+
+  // Generating starts a model run, so a tap only opens the confirm sheet; nothing is sent until
+  // "Generate report" is pressed (site sweep 2026-10-25: the bare 📄 fired the POST on first tap).
+  const askToGenerate = (ev: React.MouseEvent) => {
     stop(ev)
+    if (!genBusy) setConfirming(true)
+  }
+
+  const runInlineGenerate = async () => {
+    setConfirming(false)
     if (genBusy) return
     setGenBusy(true)
     setGenErr('')
@@ -93,14 +104,18 @@ export default function HoldingReportLinks({ symbol, entry, compact, reportType 
       <span onClick={stop} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
         <button
           type="button"
-          onClick={runInlineGenerate}
+          onClick={askToGenerate}
           disabled={genBusy}
           title={genErr ? `${tip}\n${genErr}` : tip}
-          aria-label={`Generate analyst prospectus for ${sym}`}
+          aria-label={genBusy ? `Generating analyst report for ${sym}` : `Analyst report for ${sym} — asks before generating`}
+          aria-haspopup="dialog"
+          data-testid="report-generate"
+          className={compact ? 'hrl-generate hrl-generate--compact' : 'hrl-generate'}
           style={{ ...iconBtn, padding: '0 10px', color: '#94a3b8', background: 'rgba(148,163,184,.1)', border: '1px solid rgba(148,163,184,.25)', fontWeight: 700, fontSize: 12, opacity: genBusy ? 0.6 : 1 }}
         >
-          📄{compact ? '' : <span style={{ fontSize: 11 }}>&nbsp;{genBusy ? 'Generating…' : 'Generate'}</span>}
+          <span aria-hidden="true">📄</span><span className="hrl-generate-label" style={{ fontSize: 11 }}>{genBusy ? 'Generating…' : 'Analyst report'}</span>
         </button>
+        {confirming && <GenerateConfirmSheet symbol={sym} onCancel={() => setConfirming(false)} onConfirm={runInlineGenerate} />}
       </span>
     )
   }
@@ -123,6 +138,7 @@ export default function HoldingReportLinks({ symbol, entry, compact, reportType 
           target="_blank"
           rel="noreferrer"
           onClick={stop}
+          className="hrl-icon"
           aria-label={`Open ${sym} prospectus PDF`}
           title={tip}
           style={{ ...iconBtn, color: '#f59e0b', background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.35)' }}
@@ -136,6 +152,7 @@ export default function HoldingReportLinks({ symbol, entry, compact, reportType 
           target="_blank"
           rel="noreferrer"
           onClick={stop}
+          className="hrl-icon"
           aria-label={`Open ${sym} prospectus Word`}
           title={tip}
           style={{ ...iconBtn, color: '#60a5fa', background: 'rgba(96,165,250,.12)', border: '1px solid rgba(96,165,250,.35)' }}
@@ -146,6 +163,7 @@ export default function HoldingReportLinks({ symbol, entry, compact, reportType 
       <a
         href={`/v3/reports?mode=analyst&generate=1&symbol=${encodeURIComponent(sym)}&type=${rtype}`}
         onClick={stop}
+        className="hrl-icon"
         aria-label={`Regenerate ${sym} prospectus`}
         title={`Regenerate / preview ${sym} in Reports`}
         style={{ ...iconBtn, color: '#94a3b8', background: 'transparent', border: '1px solid var(--border)' }}
@@ -156,5 +174,38 @@ export default function HoldingReportLinks({ symbol, entry, compact, reportType 
         <span style={{ fontSize: 9.5, color: '#64748b', whiteSpace: 'nowrap' }}>{relTime(entry.generated_at)}</span>
       )}
     </span>
+  )
+}
+
+/** In-page confirm step before a paid/queued report run (never window.confirm). Bottom sheet on a phone. */
+function GenerateConfirmSheet({ symbol, onCancel, onConfirm }: { symbol: string; onCancel: () => void; onConfirm: () => void }) {
+  const cancelRef = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    const previous = document.activeElement
+    cancelRef.current?.focus()
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel() }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      if (previous instanceof HTMLElement && previous.isConnected) previous.focus()
+    }
+  }, [onCancel])
+  return createPortal(
+    <div className="hrl-confirm-backdrop" data-testid="report-generate-confirm-backdrop"
+      onClick={e => { e.stopPropagation(); if (e.target === e.currentTarget) onCancel() }}>
+      <section role="alertdialog" aria-modal="true" aria-labelledby="hrl-confirm-title" aria-describedby="hrl-confirm-body"
+        className="hrl-confirm" data-testid="report-generate-confirm">
+        <h2 id="hrl-confirm-title" className="hrl-confirm-title">Generate analyst report for {symbol}?</h2>
+        <p id="hrl-confirm-body" className="hrl-confirm-body">
+          This starts a new analyst report run (model work with cloud oversight). It can take a few minutes.
+          When it finishes the report opens; nothing is sent until you choose Generate report.
+        </p>
+        <div className="hrl-confirm-actions">
+          <button ref={cancelRef} type="button" data-testid="report-generate-cancel" onClick={onCancel}>Cancel</button>
+          <button type="button" data-testid="report-generate-confirm-go" className="hrl-confirm-primary" onClick={onConfirm}>Generate report</button>
+        </div>
+      </section>
+    </div>,
+    document.body,
   )
 }
