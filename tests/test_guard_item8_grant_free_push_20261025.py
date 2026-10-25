@@ -256,7 +256,7 @@ def test_fast_forward_second_push_and_worklog_plan(E):
 
 
 def test_unresolvable_note_falls_back_to_resolvable_plan_line(E):
-    E.claim(note="Operator-approval: prose only", worklog=f"## Plan\n\n- [ ] Operator-approval: {OK_COMMENT}\n")
+    E.claim(note="Operator-approval: prose only", worklog=f"## Plan\n\n- [ ] Operator-approval: {OK_COMMENT}  _(added 2026-10-25T21:36:18Z)_\n")
     assert E.checker()["allow"]
 
 

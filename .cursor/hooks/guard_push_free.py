@@ -391,6 +391,8 @@ def resolve_approval(ref: Optional[str], cfg: dict[str, Any]) -> dict[str, str]:
     """``ref`` must name an operator-authored record; anything else (``yes``, prose, a relay) is refused."""
     if not ref:
         raise Refused("no Operator-approval line")
+    # The record is the first token; agent_claim.py appends "  _(added <ts>)_" to worklog plan steps.
+    ref = ref.split()[0].strip("`<>()[]")
     m = COMMENT_URL_RE.match(ref)
     if m:
         canon = re.match(r"^https://github\.com/([^/]+)/([^/.]+)", str(cfg["canonical_url"]))
