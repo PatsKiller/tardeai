@@ -1,0 +1,13 @@
+{
+  "schema": "CiGate@v1",
+  "name": "agents_policy_20_2_0_lessons_20261024",
+  "files": [
+    "tests/test_agents_policy_20_2_0_lessons_20261024.py"
+  ],
+  "anchor": "AGENTS_POLICY_20_2_0_LESSONS_20261024",
+  "comment": [
+    "ANCHOR: AGENTS_POLICY_20_2_0_LESSONS_20261024 — AGENTS.md 20.2.0 §28.9 (change control on operator surfaces,",
+    "[shared-infra] PRs with real-layout proof, one source owned by the CIO record, health = the job ran, a read never",
+    "acts, every writer a monitored n8n lane). Hermetic text checks."
+  ]
+}
