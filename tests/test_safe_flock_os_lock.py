@@ -8,8 +8,34 @@ from pathlib import Path
 
 from tests.support.real_release_layout import real_release_layout
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 WRAPPER = ROOT / "scripts" / "safe_flock.sh"
+CHECKOUT_JOURNAL = ROOT / "logs" / "safe_flock_events.jsonl"
+
+
+def _journal_size(path):
+    try:
+        return path.stat().st_size
+    except FileNotFoundError:
+        return None
+
+
+@pytest.fixture(autouse=True)
+def _temp_refusal_journal(tmp_path, monkeypatch):
+    """A refused wrapper journals to $PROJECT_ROOT/logs (never to the refused caller path).
+
+    Without this, every refusal test appended to the checkout's logs/ journal, and run
+    from a release (CURRENT/logs -> persistent-state/logs) to the PRODUCTION journal the
+    cron-outage watchdog reads (2026-10-24: job "rl3", log_path_preflight_refused).
+    """
+    project = tmp_path / "project-root"
+    (project / "logs").mkdir(parents=True)
+    monkeypatch.setenv("PROJECT_ROOT", str(project))
+    before = _journal_size(CHECKOUT_JOURNAL)
+    yield project / "logs" / "safe_flock_events.jsonl"
+    assert _journal_size(CHECKOUT_JOURNAL) == before, "a test wrote the checkout/production safe_flock journal"
 
 
 def _wait(path, proc):
@@ -213,3 +239,26 @@ def test_symlinked_explicit_log_dir_is_still_rejected(tmp_path):
     assert result.returncode != 0
     assert "not a real directory" in result.stderr
     assert not ran.exists()
+
+
+def test_real_layout_refusal_proof_journals_only_to_the_temp_state(tmp_path, _temp_refusal_journal):
+    """The 2026-10-24 "rl3" proof shape, on the release layout, with a temp journal.
+
+    A symlinked SAFE_FLOCK_LOG_DIR is refused; the refusal is recorded in the layout's
+    own persistent-state/logs (temp), never in the checkout or production journal.
+    """
+    layout = real_release_layout(tmp_path, ROOT)
+    real = tmp_path / "badlink" / "real"
+    real.mkdir(parents=True)
+    (tmp_path / "badlink" / "logs").symlink_to(real, target_is_directory=True)
+    env = {k: v for k, v in os.environ.items() if k not in ("SAFE_FLOCK_LOG_DIR", "PROJECT_ROOT")}
+    env.update(PROJECT_ROOT=str(layout.current), SAFE_FLOCK_LOG_DIR=str(tmp_path / "badlink" / "logs"))
+    result = subprocess.run(
+        ["bash", str(layout.current / "scripts" / "safe_flock.sh"), str(layout.locks / "rl3.lock"), "echo", "job-ran"],
+        env=env, text=True, capture_output=True, timeout=10,
+    )
+    assert result.returncode == 1 and "job-ran" not in result.stdout
+    events = [json.loads(line) for line in (layout.state / "logs" / "safe_flock_events.jsonl").read_text().splitlines()]
+    assert [(e["job_id"], e["event_type"], e["reason"]) for e in events] == [("rl3", "refused", "log_path_preflight_refused")]
+    assert not any(real.iterdir())
+    assert not _temp_refusal_journal.exists()

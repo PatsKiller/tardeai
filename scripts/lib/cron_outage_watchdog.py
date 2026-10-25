@@ -61,6 +61,27 @@ def component(row: dict) -> str | None:
     return Path(match.group(1).strip("\"'")).name.removesuffix(".lock")
 
 
+def job_key(value: object) -> str:
+    """One spelling for a wrapper job id: lock basename without `.lock`/`.lock.dryrun`."""
+    text = str(value or "").strip().strip("\"'").rsplit("/", 1)[-1]
+    return text.removesuffix(".dryrun").removesuffix(".lock")
+
+
+def recurring_jobs(events: list[dict], *, now: datetime) -> set[str]:
+    """Job ids proven scheduled by history: business completions in >=2 distinct hours.
+
+    A one-off probe or proof (2026-10-24 "rl1/rl2/rl3": one run each, from an agent
+    scratch lock) never qualifies; a real hourly/daily/weekly job does within the window.
+    """
+    hours: dict[str, set[str]] = {}
+    for event in events:
+        when = instant(event.get("ts"))
+        if when is None or when > now or not business_success(event):
+            continue
+        hours.setdefault(job_key(event.get("job_id") or event.get("component")), set()).add(when.strftime("%Y%m%d%H"))
+    return {job for job, seen in hours.items() if len(seen) >= 2}
+
+
 def business_success(event: dict) -> bool:
     """New events declare mode; legacy commands can prove an explicit dry run only.
 
@@ -83,6 +104,7 @@ def evaluate(
     registry: dict, events: list[dict], successes: dict[str, list[dict]], *,
     now: datetime, grace_seconds: int = 120, lookback_days: int = 400,
     previous_refusal_keys: set[str] | None = None, trading_day=None,
+    registered_jobs: set[str] | None = None, acknowledged: dict[str, dict] | None = None,
 ) -> dict:
     """One point-in-time result. Future observations are ignored, never backdated.
 
@@ -121,6 +143,27 @@ def evaluate(
     for refusal in refusals:
         after = completed.get(str(refusal["component"]), [])
         refusal["active"] = not any(at > instant(refusal["at"]) for at in after)
+    # Attribution: only a refusal of a registered lane/crontab job (or one with a recurring
+    # business history) is an outage finding. registered_jobs=None means the registration
+    # census was unavailable: then every refusal stays attributed (fail toward alerting).
+    known = None if registered_jobs is None else {job_key(j) for j in registered_jobs} | recurring_jobs(events, now=now)
+    acknowledged = acknowledged or {}
+    attributed, unattributed, acked = [], [], []
+    for refusal in refusals:
+        job = job_key(refusal["job_id"])
+        refusal["attribution"] = ("registration_census_unavailable" if known is None
+                                  else "registered" if job in known else "unattributed")
+        ack = acknowledged.get(refusal["key"]) if refusal["key"] else None
+        if ack is not None:
+            refusal.update(acknowledged=True, acknowledged_by=ack.get("acknowledged_by"),
+                           acknowledged_at=ack.get("acknowledged_at"), ack_reason=ack.get("reason"),
+                           still_active_unrecovered=refusal["active"], active=False, new=False)
+            acked.append(refusal)
+        elif refusal["attribution"] == "unattributed":
+            unattributed.append(refusal)
+        else:
+            attributed.append(refusal)
+    refusals = attributed
     rows = []
     for lane in registry.get("lanes", []):
         if lane.get("state") != "ACTIVE" or not lane.get("expected_cadence_hours"):
@@ -131,6 +174,14 @@ def evaluate(
                   "reason": issue, "missed_fires": None, "last_success_at": None,
                   "missed_fire_count_scope": "last_two_elapsed_opportunities; at_least_threshold_not_total_history",
                   "success_scope": "wrapper_or_receipt_execution; business output is separate"}
+        kind = (lane.get("scheduler") or {}).get("kind")
+        if issue == "reboot_has_no_recurring_wall_schedule" or (
+                issue == "recurring_schedule_not_measured" and kind in {"none", "event"}):
+            # On-demand, event-emitted, one-shot (`at ...`) and @reboot lanes have no wall-clock fire
+            # that can be missed: not blindness, so not a coverage gap (still listed, never hidden).
+            result.update(status="NOT_APPLICABLE", reason=f"no_recurring_wall_schedule:{kind}:{issue}")
+            rows.append(result)
+            continue
         if issue:
             rows.append(result)
             continue
@@ -192,9 +243,11 @@ def evaluate(
                           reason="two_or_more_scheduled_successes_missing" if missed >= 2 else None)
         rows.append(result)
     gaps = [row["lane_id"] for row in rows if row["status"] == "NOT_MEASURED"]
+    not_applicable = [row["lane_id"] for row in rows if row["status"] == "NOT_APPLICABLE"]
     missed = [row["lane_id"] for row in rows if row["status"] == "MISSED_RUNS"]
     return {"schema": SCHEMA, "observed_at": iso(now), "rows": rows,
-            "missed_lane_ids": missed, "coverage_gap_lane_ids": gaps,
-            "refusals": refusals, "alert_required": bool(missed or any(x["new"] for x in refusals)),
+            "missed_lane_ids": missed, "coverage_gap_lane_ids": gaps, "not_applicable_lane_ids": not_applicable,
+            "refusals": refusals, "unattributed_refusals": unattributed, "acknowledged_refusals": acked,
+            "alert_required": bool(missed or any(x["new"] for x in refusals)),
             "status": "CRIT" if missed or any(x["active"] for x in refusals) else ("UNKNOWN" if gaps else "OK"),
             "note": "Execution success is distinct from output, consumer and alert-delivery acceptance."}
