@@ -466,10 +466,6 @@
       "method": "GET"
     },
     {
-      "path": "/api/v2/system/metrics-history",
-      "method": "GET"
-    },
-    {
       "path": "/api/health",
       "method": "GET"
     },
@@ -495,7 +491,6 @@
     "/api/v2/hermes/health",
     "/api/v2/market-movers",
     "/api/v2/paper-trade-readiness",
-    "/api/v2/system/metrics-history",
     "/api/health",
     "/v3/build-meta.json"
   ],
