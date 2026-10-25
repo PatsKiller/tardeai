@@ -26,6 +26,9 @@ for p in (ROOT, ROOT / "scripts"):
 import self_heal_train_monitor as M  # noqa: E402
 from lib import self_heal_train_intake as TI  # noqa: E402
 
+#: alarm firing coverage (tests/test_alarm_coverage.py): the escalation send is observed reaching the transport
+COVERS = ["scripts/self_heal_train_monitor.py"]
+
 CFG = TI.load_config(ROOT / "config" / "self_heal_train_monitor.json")
 NOW = datetime(2026, 10, 25, 20, 0, tzinfo=timezone.utc)
 
@@ -622,3 +625,20 @@ def test_fix_log_projection_latest_row_per_fix():
         {"fix_id": "b", "at": "3", "outcome": "fix-PR-open"},
     ]
     assert [(r["fix_id"], r["outcome"]) for r in TI.project(rows)] == [("b", "fix-PR-open"), ("a", "gave-up")]
+
+
+def test_escalation_reaches_the_telegram_chokepoint_as_p1(tmp_path, monkeypatch):
+    """Firing test: a refused-scope escalation goes through telegram_alert.send_telegram with priority P1."""
+    import types
+
+    seen = []
+    fake = types.ModuleType("telegram_alert")
+    fake.send_telegram = lambda text, **kw: seen.append((text, kw)) or True
+    monkeypatch.setitem(sys.modules, "telegram_alert", fake)
+    log = "scripts/alpaca_paper_adapter.py:9 boom\n"
+    world = FakeWorld([("cio-production-hardening-ci", "failure", "completed", ["hardening shard 1"], log, 1)])
+    do_tick(tmp_path, world, agents_text=LIVE_AGENTS, sender=M.default_sender)
+    assert len(seen) == 1
+    text, kw = seen[0]
+    assert kw["priority"] == "P1" and kw["producer"] == "self_heal_train_monitor" and kw["dedupe_minutes"] == 0
+    assert "refused scope" in text and "/v3/system/releases?tab=fixes" in text
