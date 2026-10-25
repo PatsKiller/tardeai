@@ -87,6 +87,7 @@ try:
     from scripts.lib import macro_calendar as MC
     from scripts.lib import release_train_drain as DR
     from scripts.lib import release_train_timing as TM
+    from scripts.lib import release_grant_binding as RGB
 except ImportError:  # pragma: no cover - scripts/ on sys.path
     import release_window as RW  # type: ignore[no-redef]
     from lib import release_capability as CAP  # type: ignore[no-redef]
@@ -98,6 +99,7 @@ except ImportError:  # pragma: no cover - scripts/ on sys.path
     from lib import macro_calendar as MC  # type: ignore[no-redef]
     from lib import release_train_drain as DR  # type: ignore[no-redef]
     from lib import release_train_timing as TM  # type: ignore[no-redef]
+    from lib import release_grant_binding as RGB  # type: ignore[no-redef]
 
 CONTROLLER_VERSION = "release_train_controller/1"
 SCHEMA_MANIFEST = "TrainCandidate@v1"
@@ -110,6 +112,12 @@ SCHEMA_STATE = "ReleaseTrainState@v1"
 TRAIN_CONTROLLER_STATUS = "ACTIVE"
 #: The real GitHub writer refuses until D2 (GitHub App) and the AGENTS 17.0.0 amendment are ACTIVE.
 GITHUB_WRITES_STATUS = "ACTIVE"
+#: Arming packet §K (2026-10-25, operator: "It needs to work without grant. It's a perpetual grant."): the deploy
+#: script's release_grant_preflight accepts a train's prepare/promote on the RESERVED host capability instead of a
+#: guard release-write grant. The controller hands it the signed token for exactly these two actions, while it holds
+#: the reservation (release_grant_binding.write_reservation_token). The token alone grants nothing: the preflight
+#: also requires the RESERVED intent, the live global-lock holder, the control state and the host delegation.
+RESERVATION_TOKEN_ACTIONS = frozenset(RGB.CAPABILITY_ACTIONS.values())   # prepare_release, promote_release
 
 TZ = RW.TZ
 REQUIRED_CHECKS = ("cio-hardening", "agent-governance", "release-readiness", "ci-gate")
@@ -130,6 +138,14 @@ PROTECTED_SURFACES = (
     "scripts/release_grant_preflight.py",
     "scripts/lib/release_grant_binding.py",
     "scripts/lib/release_train_classify.py",
+    # Review finding F3 (2026-10-25): the deploy's own verifiers and release helpers.
+    "scripts/conformance_gate.py",
+    "scripts/check_worker_pins.py",
+    "scripts/current_pin_integrity.py",
+    "scripts/generate_integrity_manifest.py",
+    "scripts/lib/release_venv.sh",
+    "scripts/lib/ff_dev_tree.sh",
+
     "config/release_train_policy.json",
     # Phase 7 window gates (2026-10-22): the 06:00 drain probe, its policy, and the measured-duration history.
     "scripts/lib/release_train_drain.py",
@@ -154,6 +170,12 @@ DEFAULT_SLOTS = (
      "role": "requires_drain_or_non_disruptive_path"},
     {"window_id": "0800", "start_et": "08:00", "duration_min": 30, "enabled": False, "role": "last_enabled",
      "latest_start_et": "08:10", "skip_on_macro_days": True},
+    # 2026-10-25 schedule slots (weekdays 12:00; weekends every three hours), all disabled here.
+    {"window_id": "1200", "start_et": "12:00", "duration_min": 90, "enabled": False, "role": "midday"},
+    {"window_id": "0300", "start_et": "03:00", "duration_min": 90, "enabled": False, "role": "weekend"},
+    {"window_id": "0900", "start_et": "09:00", "duration_min": 90, "enabled": False, "role": "weekend"},
+    {"window_id": "1500", "start_et": "15:00", "duration_min": 90, "enabled": False, "role": "weekend"},
+    {"window_id": "2100", "start_et": "21:00", "duration_min": 90, "enabled": False, "role": "weekend"},
 )
 
 STATE_ROOT = RW.STATE_ROOT
@@ -256,6 +278,12 @@ def local_start(day: date, hhmm: str) -> Optional[datetime]:
     return dt
 
 
+def _drain_applies(w: TrainWindow) -> bool:
+    """The 06:00 premarket drain gate is a market-day rule: weekday 06:00 only. A weekend 06:00 (markets closed; the
+    2026-10-25 every-three-hours weekend schedule) is not gated by it."""
+    return w.slot == "0600" and (w.nominal_start or w.start).astimezone(TZ).weekday() < 5
+
+
 def slots_from(delegation: Optional[dict]) -> list[dict]:
     if isinstance(delegation, dict):
         slots = ((delegation.get("windows") or {}).get("slots"))
@@ -271,10 +299,13 @@ def window_at(now: datetime, slots: list[dict], *, lead_min: int, grace_min: int
     best: Optional[tuple[TrainWindow, str]] = None
     for s in slots:
         hhmm = str(s.get("window_id") or str(s.get("start_et", "")).replace(":", ""))
+        days = s.get("days")
         for day in (local.date() - timedelta(days=1), local.date(), local.date() + timedelta(days=1)):
             start = local_start(day, hhmm)
             if start is None:
                 continue
+            if days is not None and WV.DAYS[day.weekday()] not in (days if isinstance(days, list) else ()):
+                continue        # the delegation slot names its days and this is not one (fail closed if malformed)
             if start - timedelta(minutes=lead_min) <= now < start + timedelta(minutes=grace_min):
                 w = TrainWindow(hhmm, str(s.get("role") or ""), start, int(s.get("duration_min") or 60),
                                 bool(s.get("enabled")), s.get("latest_start_et"), bool(s.get("skip_on_macro_days")))
@@ -735,6 +766,15 @@ def change_from_files(entry: QueueEntry) -> Optional[dict]:
         return None
     return {"paths": [{"path": f, "status": "M"} for f in entry.files], "head_sha": entry.head_sha,
             "approximate": True}
+
+
+def _base_changeset(repo: Path, frm: str, to: str) -> Optional[dict]:
+    """Read-only: the change set ``frm...to`` in the release checkout (review finding F2)."""
+    try:
+        from scripts.lib import release_train_classify as M
+        return M.changeset_from_git(frm, to, root=repo)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def change_from_git(repo: Path, base: str, entry: QueueEntry) -> Optional[dict]:
@@ -1625,7 +1665,7 @@ class TrainConfig:
 # ── operator-forced off-window canary runs (arming finding 8) ──────────────────────────────────────────────────
 #: The forced-run key: the rtw: namespace with a distinct marker. Host-only: the gateway's RUN_KEY_RE
 #: (rtw:<slot>:<date>:(shadow|live)) never matches it, so n8n cannot name a forced run.
-FORCED_KEY_RE = re.compile(r"^rtw:(0000|0600|0800|1800):([0-9]{8}):live:forced:([1-9][0-9]{0,2})$")
+FORCED_KEY_RE = re.compile(rf"^rtw:({'|'.join(sorted(WV.SLOTS))}):([0-9]{{8}}):live:forced:([1-9][0-9]{{0,2}})$")
 
 
 def forced_key(slot: str, day: date, n: int) -> str:
@@ -1642,7 +1682,7 @@ def forced_canary_policy(path: Optional[Path] = None) -> dict:
         c = None
     if not isinstance(c, dict):
         return {"operator_forced_off_window": False, "slots": []}
-    slots = [str(s) for s in c.get("slots") or [] if str(s) in ("0000", "0600", "0800", "1800")]
+    slots = [str(s) for s in c.get("slots") or [] if str(s) in WV.SLOTS]
     return {"operator_forced_off_window": c.get("operator_forced_off_window") is True, "slots": slots}
 
 
@@ -1695,6 +1735,10 @@ class TrainController:
         self.changeset: Callable[[QueueEntry, str], Optional[dict]] = (
             lambda e, base: change_from_git(host.checkout, base, e) if (live or self.cfg.dry_run_integrate)
             else change_from_files(e))
+        #: Review finding F2 (2026-10-25): the change set CURRENT's BUILD_SHA...main (what a promote of main would also
+        #: ship). Default: git in the release checkout. Tests substitute one.
+        self.base_changeset: Callable[[str, str], Optional[dict]] = (
+            lambda frm, to: _base_changeset(host.checkout, frm, to))
         self.delegation_path = delegation_path
         self.key_path = key_path
         self.allow_repo_delegation = allow_repo_delegation
@@ -1718,11 +1762,17 @@ class TrainController:
         self.event_errors: list[str] = []
         self.would_halt: Optional[dict] = None
         self.forced: Optional[dict] = None             # an operator-forced canary run's record (finding 8)
+        #: The repo policy the live window gate reads (config/release_train_policy.json; tests may substitute one).
+        self.policy: Optional[dict] = None
         self.inject: Optional[str] = None
         self._inject_fired: Optional[str] = None      # the phase where the injection was exercised
         self._inject_detail: dict = {}
         if self.cfg.inject:
             self.set_injection(self.cfg.inject)
+
+    def policy_doc(self) -> Optional[dict]:
+        """The repo policy for the day-of-week schedule; None (fail closed: no window enabled) when unreadable."""
+        return self.policy if self.policy is not None else WV.read_policy()
 
     def set_injection(self, name: Optional[str]) -> None:
         """Arm one simulated failure for this (shadow / dry) run. Refused for a live controller (finding 5)."""
@@ -2086,6 +2136,21 @@ class TrainController:
             if self.live:
                 raise Halt("REFUSED", "REFUSED_WINDOW_DISABLED", w.slot, refusal=True)
             self._would(f"window {w.slot} is disabled in the delegation")
+        # 2026-10-25: the repo policy owns the day-of-week schedule; the delegation authorizes the slot. A live train
+        # needs BOTH (the policy can only narrow). An operator-forced canary run keeps its own rules (policy canary).
+        pol = self.policy_doc()
+        if self.live and (not isinstance(pol, dict) or pol.get("armed") is not True):
+            raise Halt("REFUSED", "REFUSED_POLICY_NOT_ARMED", "config/release_train_policy.json armed is not true",
+                       refusal=True)
+        if phase != "forced":
+            pday = WV.DAYS[(w.nominal_start or w.start).astimezone(TZ).weekday()]
+            pw = WV.policy_window(pol, w.slot, pday)
+            rec["window"]["policy_enabled"] = pw["enabled"]
+            if not pw["enabled"]:
+                if self.live:
+                    raise Halt("REFUSED", "REFUSED_WINDOW_DISABLED", f"{w.slot} on {pday}: not in the policy schedule",
+                               refusal=True)
+                self._would(f"window {w.slot} on {pday} is not in the policy schedule")
         return w, phase
 
     def _forced_window(self, now: datetime, dv: RD.DelegationVerdict, slots: list[dict], rec: dict) -> TrainWindow:
@@ -2149,7 +2214,7 @@ class TrainController:
         self.say("window rules: pass")
 
     def _rule_drain(self, w: TrainWindow, now: datetime, rec: dict) -> None:  # noqa: ARG002
-        if w.slot == "0600":
+        if _drain_applies(w):
             ok, why = self.drain.check(w)
             rec["drain"] = {"ok": ok, "detail": why}
             report = getattr(self.drain, "last_report", None)
@@ -2184,7 +2249,7 @@ class TrainController:
     def _check_drain(self, label: str) -> None:
         """06:00: the drain is re-proven immediately before activation (a lane that overran, a lock now held)."""
         w = self.window
-        if w is None or w.slot != "0600":
+        if w is None or not _drain_applies(w):
             return
         ok, why = self.drain.check(w)
         if not ok:
@@ -2265,6 +2330,8 @@ class TrainController:
         except (RuntimeError, ValueError) as exc:
             raise Halt(NO_OP, "MAIN_UNREADABLE", str(exc)[:160]) from exc
         self.tstate["select_base"] = base
+        if self.live:
+            self._unreleased_on_main_gate(base, classifier, rec)
         eligible, excluded = [], {}
         for e in sorted(snap.entries, key=pipeline_rank):
             why = self._pre_exclusion(e)
@@ -2309,6 +2376,45 @@ class TrainController:
         if not ordered:
             raise Halt(NO_OP, "NOTHING_ELIGIBLE", f"{len(excluded)} open PRs, none eligible")
         return ordered, excluded
+
+    def _unreleased_on_main_gate(self, base: str, classifier: Any, rec: dict) -> None:
+        """Review finding F2: the train promotes main at ``base``, so everything merged since CURRENT's BUILD_SHA goes
+        live with it. A live train runs only when that whole range is ``eligible``: a held, needs_operator or blocked
+        file merged by another path stays for the manual release; an unreadable CURRENT, a CURRENT that is not an
+        ancestor of main, or an unreadable diff is a quiet NO_OP (fail closed, never a release)."""
+        cur = self.host.current_release()
+        bsha = self.host.build_sha(cur) if cur else ""
+        if not SHA_RE.match(bsha or ""):
+            raise Halt(NO_OP, "BASE_UNRELEASED_UNKNOWN", f"CURRENT BUILD_SHA unreadable ({cur})")
+        # Re-review B2: the promote re-checks CURRENT against this exact from-SHA (a rollback during the CI wait
+        # would otherwise widen the shipped range past what was classified here).
+        self._save_state(base_unreleased_from=bsha)
+        if bsha == base:
+            rec["base_unreleased"] = {"from": bsha, "to": base, "paths": 0, "class": "eligible"}
+            return
+        try:
+            ch = self.base_changeset(bsha, base)
+        except Exception:  # noqa: BLE001 - unreadable is never a release
+            ch = None
+        if not ch or ch.get("merge_base") != bsha or ch.get("head_sha") != base:
+            raise Halt(NO_OP, "BASE_UNRELEASED_UNKNOWN",
+                       f"CURRENT {bsha[:12]} is not an ancestor of main {base[:12]}, or the range is unreadable")
+        paths = [str(p.get("path")) for p in ch.get("paths") or []]
+        if not paths:
+            rec["base_unreleased"] = {"from": bsha, "to": base, "paths": 0, "class": "eligible"}
+            return
+        prot = [x for x in paths if is_protected(x)]
+        if prot:
+            risk, reasons = "blocked", [f"protected:{x}" for x in prot[:6]]
+        else:
+            risk, reasons = classifier.classify(QueueEntry(pr=0, head_sha=base), ch)
+        rec["base_unreleased"] = {"from": bsha, "to": base, "paths": len(paths), "class": risk,
+                                  "reasons": list(reasons)[:6]}
+        if risk != "eligible":
+            raise Halt(NO_OP, f"BASE_HAS_UNRELEASED_{str(risk).upper()}",
+                       f"main has unreleased {risk} changes since CURRENT {bsha[:12]}: {'; '.join(reasons)[:240]}; "
+                       "release them by the manual path first")
+        self.say(f"select: {len(paths)} unreleased paths on main since CURRENT {bsha[:12]} are eligible")
 
     def _pre_exclusion(self, e: QueueEntry) -> Optional[str]:
         if e.head_ref.startswith("train/"):
@@ -2652,6 +2758,8 @@ class TrainController:
             raise self._refusal(exc, "CAPABILITY", label) from exc
         self._update_intent(key, capability_intent=res.intent_id)
         try:
+            if getattr(self, "live", False) and action in RESERVATION_TOKEN_ACTIONS:
+                self._write_reservation_token(key, action, token)
             if recheck_hook:
                 recheck_hook()
             res.recheck(observed())
@@ -2685,6 +2793,29 @@ class TrainController:
         res.succeeded({"result": _clip(out)})
         self._effect(key, "SUCCEEDED", {"result": _clip(out)})
         return out
+
+    def _write_reservation_token(self, key: str, action: str, token: str) -> None:
+        """Packet §K: put the signed token where the deploy's release_grant_preflight reads it
+        (``<state>/trains/<id>/capability/<action>.rcap``, mode 600). A write failure is a refusal before the effect:
+        the reservation is refunded and nothing ran."""
+        try:
+            path = RGB.write_reservation_token(Path(self.state.root), str(self.train_id), action, token)
+        except OSError as exc:
+            raise RC.ControlRefused("RESERVATION_TOKEN_UNWRITABLE", f"{type(exc).__name__}: {str(exc)[:160]}") from exc
+        self._update_intent(key, reservation_token=str(path))
+
+    def _drop_reservation_tokens(self) -> None:
+        """Review F6: a terminal train leaves no signed reservation token behind (the ledger keeps the record)."""
+        d = self._train_dir() / "capability"
+        try:
+            names = list(d.glob("*.rcap"))
+        except OSError:
+            names = []
+        for f in names:
+            try:
+                f.unlink()
+            except OSError:
+                pass
 
     def _update_intent(self, key: str, **kw: Any) -> None:
         intents = list(self.tstate.get("intents") or [])
@@ -2931,6 +3062,11 @@ class TrainController:
             raise Halt(MERGED_NOT_LIVE, "QUARANTINED_ARTIFACT", merged[:12])
         prev = self.host.current_release()
         prev_sha = self.host.build_sha(prev)
+        gated = self.tstate.get("base_unreleased_from")
+        if not gated or prev_sha != gated:
+            # Re-review B2: CURRENT moved since _select classified CURRENT...main; the range is no longer the gated one.
+            raise Halt(MERGED_NOT_LIVE, "CURRENT_MOVED_SINCE_SELECT",
+                       f"CURRENT BUILD_SHA {str(prev_sha)[:12]} != gated {str(gated)[:12]}; release main by the manual path")
         self._save_state(rollback_target={"release": str(prev), "sha": prev_sha})
         if not SHA_RE.match(prev_sha or ""):
             raise Halt(MERGED_NOT_LIVE, "ROLLBACK_TARGET_UNKNOWN", str(prev))
@@ -3126,6 +3262,7 @@ class TrainController:
                              f"window gate overridden] {body.get('notes') or ''}")[:2000]
         self._save_state(phase="terminal", outcome=body)
         RC._atomic_write_json(self._train_dir() / "outcome.json", body)
+        self._drop_reservation_tokens()
         self._event("outcome", self._OUTCOME_STATE.get(outcome), body)
         try:
             self.control.train_terminal(ACTOR, str(self.train_id), outcome)
@@ -3491,7 +3628,8 @@ REFUSAL_MAP = {
     "REFUSED_BYPASS_ENV": "NOT_ARMED",
     "REFUSED_CONTROL_CORRUPT": "CONTROLLER_ERROR", "REFUSED_CONTROL_MODE_UNKNOWN": "CONTROLLER_ERROR",
     "REFUSED_MAIN_UNREADABLE": "CONTROLLER_ERROR",
-    "REFUSED_WINDOW_DISABLED": "WINDOW_NOT_ENABLED", "REFUSED_OFF_WINDOW": "OUTSIDE_WINDOW",
+    "REFUSED_WINDOW_DISABLED": "WINDOW_NOT_ENABLED", "REFUSED_POLICY_NOT_ARMED": "NOT_ARMED",
+    "REFUSED_OFF_WINDOW": "OUTSIDE_WINDOW",
     "REFUSED_WINDOW_ALREADY_CLAIMED": "DUPLICATE_WINDOW", "REFUSED_TRAIN_BUSY": "LOCK_HELD",
     "REFUSED_TRAIN_ALREADY_CLAIMED": "LOCK_HELD",
     "REFUSED_RECONCILE_FIRST": "RECONCILE_REQUIRED", "REFUSED_QUARANTINED_LINEAGE": "QUARANTINED_LINEAGE",
@@ -3718,6 +3856,10 @@ def _receipt(req: dict, *, state: str, mode: str, now: float, acknowledged_at: O
     if isinstance(wh, dict):
         needs.append({"code": "WOULD_HALT", "pr": None,
                       "text": f"{wh.get('reason')} at {wh.get('at')}: {wh.get('detail') or ''}"[:160]})
+    if str(rec.get("reason") or "").startswith(("BASE_HAS_UNRELEASED_", "BASE_UNRELEASED_UNKNOWN")):
+        # Re-review B2: a train stalled by unreleased non-eligible commits on main is visible (readiness view).
+        needs.append({"code": "TRAIN_STALLED", "pr": None,
+                      "text": f"{rec.get('reason')}: {rec.get('detail') or ''}"[:160]})
     needs += [{"code": "LIVE_WOULD_REFUSE", "pr": None, "text": str(x)[:160]}
               for x in (rec.get("would_refuse") or [])[:8]]
     needs += [{"code": "NOT_RIDING", "pr": int(k), "text": str(v)[:160]} for k, v in
@@ -3993,6 +4135,22 @@ def _with_report(spool: RequestSpool, req: dict, rec: dict, receipt: dict, start
     return dict(receipt, evidence_refs=list(receipt.get("evidence_refs") or []) + [ref])
 
 
+def live_policy_refusal(req: dict, policy: Optional[dict] = None) -> Optional[tuple[str, str]]:
+    """(code, detail) when the repo policy does not admit this live request: not armed, or its slot is not
+    scheduled on the window's local day. None when it does. Fail closed: an unreadable policy is not armed."""
+    pol = policy if policy is not None else WV.read_policy()
+    if not isinstance(pol, dict) or pol.get("armed") is not True:
+        return "NOT_ARMED", "config/release_train_policy.json is not armed"
+    ts = _parse_ts(req.get("window_start"))
+    if ts is None:
+        return "WINDOW_NOT_ENABLED", "window_start unreadable"
+    day = WV.day_name(ts)
+    slot = str(req.get("window_slot") or "")
+    if not WV.policy_window(pol, slot, day)["enabled"]:
+        return "WINDOW_NOT_ENABLED", f"policy does not schedule slot {slot} on {day}"
+    return None
+
+
 def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], TrainController], *, apply: bool,
             clock: Callable[[], float], status_: str, shadow_pol: Optional[dict] = None) -> dict:
     name = p.name
@@ -4046,6 +4204,15 @@ def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], T
                      refusal=_refusal("CONTROLLER_BUILD_ONLY", f"TRAIN_CONTROLLER_STATUS={status_}")))
         item["result"] = "REFUSED CONTROLLER_BUILD_ONLY"
         return item
+    if not shadow:
+        # Review finding F5 (2026-10-25): the repo policy is the schedule owner. A live request for a day/slot the
+        # policy does not schedule, or while it is not armed, is refused before any controller is built.
+        why = live_policy_refusal(req)
+        if why:
+            put(_receipt(req, state="REFUSED", mode="live", now=clock(), acknowledged_at=ack,
+                         refusal=_refusal(why[0], why[1])))
+            item["result"] = f"REFUSED {why[0]}"
+            return item
     ctl = None
     try:
         ctl = factory(not shadow)
@@ -4100,7 +4267,7 @@ def _answer(spool: RequestSpool, p: Path, body: Any, factory: Callable[[bool], T
 
 # ── forced shadow tick (Phase 5; arming packet H.1(b) as one command) ──────────────────────────────────────────
 
-SHADOW_TICK_ORDER = ("1800", "0000", "0600", "0800")
+SHADOW_TICK_ORDER = tuple(WV.SLOTS)
 
 
 def _request_writer(argv: list[str], environ: Optional[dict] = None) -> tuple[int, Optional[dict]]:

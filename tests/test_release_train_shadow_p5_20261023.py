@@ -151,7 +151,8 @@ def test_a_head_the_census_saw_fail_never_rides(tmp_path):
 def test_policy_shadow_block_is_on_in_the_repo_and_fails_closed():
     assert T.shadow_policy() == SHADOW_ON
     pol = json.loads((ROOT / "config/release_train_policy.json").read_text())
-    assert pol["armed"] is False and all(x["enabled"] is False for x in pol["windows"])
+    # 2026-10-25: armed with the operator schedule; the shadow block still governs every shadow request.
+    assert pol["armed"] is True and "18:00" in [x["local_time"] for x in pol["windows"] if x["enabled"]]
 
 
 @pytest.mark.parametrize(
@@ -491,7 +492,7 @@ def test_shadow_tick_dry_run_writes_nothing(tmp_path):
     state = RW.State(tmp_path / "rw")
     code, out = T.shadow_tick(list(T.SHADOW_TICK_ORDER), apply=False, inject=None, wait_s=0, state=state)
     assert code == T.EXIT_OK, out
-    assert [r["slot"] for r in out["windows"]] == ["1800", "0000", "0600", "0800"]
+    assert [r["slot"] for r in out["windows"]] == list(T.SHADOW_TICK_ORDER) == list(T.WV.SLOTS)
     assert all(r["result"].startswith("WOULD_REQUEST") for r in out["windows"])
     assert not (tmp_path / "rw" / "train_requests").exists()
 

@@ -49,11 +49,21 @@ SCHEMA_FILES = {
     TRAIN_WINDOW_RECEIPT: "train_window_receipt.v1.schema.json",
 }
 AUTHORITY = "READ_ONLY_ADVISORY"
-SLOTS = ("1800", "0000", "0600", "0800")
+#: The original four operator windows (2026-10-21), then the 2026-10-25 schedule slots (operator: weekdays 12:00 and
+#: 18:00 ET; weekends every three hours from Saturday 06:00 through Sunday 21:00). Which slot runs on which day is the repo policy's ``windows[].days``
+#: (config/release_train_policy.json); the host delegation authorizes the slot ids.
+SLOTS = ("1800", "0000", "0600", "0800", "1200", "0300", "0900", "1500", "2100")
+#: The slots with an n8n request lane (config/release_train_n8n.json, allowlist, registry, REVIEWED health contract).
+#: The 2026-10-25 slots are fired by host timers (docs/ops/packets/release-train-canary-arm-20261025) until their n8n
+#: lanes get REVIEWED health contracts (AGENTS §23.19: a new lane needs a REVIEWED contract before its registry PR).
+N8N_SLOTS = ("1800", "0000", "0600", "0800")
+_SLOT_ALT = "|".join(sorted(SLOTS))
+#: Day-of-week vocabulary for policy / delegation / coordination ``days`` lists (Monday first, Python weekday order).
+DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 LANE_PREFIX = "release-train-request-"
 LATCH_STATES = ("ABSENT", "SET", "UNREADABLE")
-REQUEST_ID_RE = re.compile(r"^rtw-([0-9]{8})-(0000|0600|0800|1800)-(win|f[0-9a-f]{6})$")
-SLOT_RE = re.compile(r"^(0000|0600|0800|1800)$")
+REQUEST_ID_RE = re.compile(rf"^rtw-([0-9]{{8}})-({_SLOT_ALT})-(win|f[0-9a-f]{{6}})$")
+SLOT_RE = re.compile(rf"^({_SLOT_ALT})$")
 #: The executor's run id alphabet (scripts/lib/n8n_coordination_gateway.py RUN_ID_RE is the authority at the relay).
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,160}$")
 SPOOL_DIR = "train_requests"
@@ -77,6 +87,16 @@ class ContractError(ValueError):
 # ── config ────────────────────────────────────────────────────────────────────────────────────────────────────
 
 
+def _valid_days(days: Any) -> bool:
+    return (isinstance(days, list) and bool(days) and all(isinstance(d, str) and d in DAYS for d in days)
+            and len(set(days)) == len(days))
+
+
+def day_name(dt: datetime) -> str:
+    """The local (America/New_York) day of ``dt`` in the DAYS vocabulary."""
+    return DAYS[dt.astimezone(ZoneInfo("America/New_York")).weekday()]
+
+
 def validate_config(cfg: Any) -> list[str]:
     """Defects in a ReleaseTrainN8nCoordination@v1 document; [] when valid. Pure."""
     if not isinstance(cfg, Mapping):
@@ -95,20 +115,22 @@ def validate_config(cfg: Any) -> list[str]:
     if not isinstance(shadow, Mapping) or not isinstance(shadow.get("enabled"), bool):
         errs.append("shadow.enabled must be a boolean")
     slots = cfg.get("slots")
-    if not isinstance(slots, list) or [s.get("slot") for s in slots if isinstance(s, Mapping)] != list(SLOTS):
-        errs.append(f"slots must be exactly {list(SLOTS)} in that order")
+    if not isinstance(slots, list) or [s.get("slot") for s in slots if isinstance(s, Mapping)] != list(N8N_SLOTS):
+        errs.append(f"slots must be exactly {list(N8N_SLOTS)} in that order")
     else:
         for s in slots:
             if s.get("lane_id") != LANE_PREFIX + s["slot"]:
                 errs.append(f"slot {s['slot']}: lane_id must be {LANE_PREFIX + s['slot']}")
             if s.get("local_time") != f"{s['slot'][:2]}:{s['slot'][2:]}":
                 errs.append(f"slot {s['slot']}: local_time mismatch")
+            if "days" in s and not _valid_days(s.get("days")):
+                errs.append(f"slot {s['slot']}: days must be a non-empty list of distinct {list(DAYS)}")
     waits = cfg.get("receipt_wait_s")
     if not isinstance(waits, Mapping) or set(waits) != {"request", "report", "forced"} or not all(
         isinstance(v, int) and not isinstance(v, bool) and 30 <= v <= 1200 for v in waits.values()
     ):
         errs.append("receipt_wait_s must be {request, report, forced} ints in [30, 1200]")
-    if cfg.get("reminder_slot") not in SLOTS:
+    if cfg.get("reminder_slot") not in N8N_SLOTS:
         errs.append("reminder_slot must be one of the slots")
     if cfg.get("workflow_id") != "tradeai-fabric-release-train":
         errs.append("workflow_id must be tradeai-fabric-release-train")
@@ -186,7 +208,7 @@ def request_id_for(slot: str, start: datetime, tick: str, run_id: str) -> str:
 #: Host-validated LIVE run-key namespace for the four request lanes (operator 2026-10-21 "rtw yes"; contract O3):
 #: ``rtw:<slot>:<window date YYYYMMDD>:<shadow|live>``. Exact lower-case form only.
 RUN_KEY_PREFIX = "rtw:"
-RUN_KEY_RE = re.compile(r"^rtw:(0000|0600|0800|1800):([0-9]{8}):(shadow|live)$")
+RUN_KEY_RE = re.compile(rf"^rtw:({_SLOT_ALT}):([0-9]{{8}}):(shadow|live)$")
 
 
 def window_run_key(slot: str, now: datetime, cfg: Mapping[str, Any], kind: str) -> str:
@@ -254,12 +276,18 @@ def read_policy(path: Optional[Path] = None) -> Optional[dict]:
     return doc if isinstance(doc, dict) and doc.get("schema") == "ReleaseTrainPolicy@v1" else None
 
 
-def policy_window(policy: Optional[Mapping[str, Any]], slot: str) -> dict[str, Any]:
+def policy_window(policy: Optional[Mapping[str, Any]], slot: str, day: Optional[str] = None) -> dict[str, Any]:
+    """The policy's window for ``slot``. ``enabled`` is true only when the window is enabled AND (when ``day`` is
+    given) ``day`` is in its ``days`` list; a window without ``days`` runs every day. Fail closed: a malformed
+    ``days`` is never enabled."""
     hhmm = f"{slot[:2]}:{slot[2:]}"
     for w in (policy or {}).get("windows") or ():
         if isinstance(w, Mapping) and w.get("local_time") == hhmm:
-            return {"enabled": w.get("enabled") is True, "role": w.get("role")}
-    return {"enabled": False, "role": None}
+            days = w.get("days", list(DAYS))
+            ok_days = _valid_days(days)
+            on = w.get("enabled") is True and ok_days and (day is None or day in days)
+            return {"enabled": on, "role": w.get("role"), "days": list(days) if ok_days else None}
+    return {"enabled": False, "role": None, "days": None}
 
 
 def declared_delegation_state(path: Optional[Path] = None) -> str:
@@ -511,7 +539,7 @@ def readiness_from_files(
     windows = []
     for slot in SLOTS:
         start = window_start(slot, now, cfg)
-        pw = policy_window(pol, slot)
+        pw = policy_window(pol, slot, day_name(start))
         windows.append({"slot": slot, "window_id": window_id(start), "starts_at": start.isoformat(),
                         "enabled": pw["enabled"], "role": pw["role"]})
     return {
@@ -532,7 +560,31 @@ def readiness_from_files(
         "current_train": None,
         "last_outcome": None,
         "shadow_coverage": shadow_coverage(state_dir),
+        "stalled": stalled_trains(state_dir),
     }
+
+
+def stalled_trains(state_dir: Path, limit: int = 4) -> list[dict[str, Any]]:
+    """Re-review B2: the newest receipts whose train stalled on unreleased non-eligible commits on main (needs_action
+    code TRAIN_STALLED), so a train that keeps NO_OP-ing for that reason is visible. Read-only; unreadable = []."""
+    d = Path(state_dir) / SPOOL_DIR / RECEIPTS
+    try:
+        names = sorted((n for n in os.listdir(d) if n.endswith(".json") and REQUEST_ID_RE.fullmatch(n[:-5])),
+                       reverse=True)[:MAX_SCAN]
+    except OSError:
+        return []
+    out: list[dict[str, Any]] = []
+    for n in names:
+        rec = _read_json(d / n)
+        if not isinstance(rec, dict):
+            continue
+        hit = [x for x in rec.get("needs_action") or [] if isinstance(x, dict) and x.get("code") == "TRAIN_STALLED"]
+        if hit:
+            out.append({"request_id": rec.get("request_id"), "window_slot": rec.get("window_slot"),
+                        "mode": rec.get("mode"), "text": str(hit[0].get("text") or "")[:160]})
+            if len(out) >= limit:
+                break
+    return out
 
 
 def window_view(
