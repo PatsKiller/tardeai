@@ -101,8 +101,9 @@ def load_config(path: Optional[Path] = None) -> dict:
 
 
 def default_root() -> Path:
-    from .api import _root
-    return _root()
+    """Same durable root as conflicts.api._root, without importing the API (keeps the lane's import closure small)."""
+    from scripts.lib.persistent_state_root import resolve_durable_dir
+    return Path(resolve_durable_dir("data/conflicts")).parent.parent
 
 
 # ── 1. Unmatched detection (pure) ────────────────────────────────────────────────────────────────────────────────
