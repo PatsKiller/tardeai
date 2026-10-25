@@ -100,7 +100,7 @@ def monitor(db_query, state_dir, *, sector_map=None, query=None, now=None):
         )
         # Reconcile each per-sector momentum candidate against the CIO verdict + analyst coverage so a
         # score-ranked "setup" the CIO says AVOID (or with thin coverage) is flagged, not surfaced as a buy.
-        cands = (
+        candidate_rows = (
             _db_query(
                 """SELECT DISTINCT wi.symbol, wi.rsi, wi.trend, wi.score, wi.origin_system,
                                 wi.setup_advisory, wi.watch_score_kind,
@@ -113,8 +113,9 @@ def monitor(db_query, state_dir, *, sector_map=None, query=None, now=None):
                              ORDER BY wi.score DESC NULLS LAST LIMIT 12""",
                 (sec,),
             )
-            or []
         )
+        cands = candidate_rows or []
+        candidate_gap = "Screened names unavailable" if candidate_rows is None else None
         for _c in cands:
             _c["cio_view"] = None
             _c["cio_avoid"] = False
@@ -132,8 +133,9 @@ def monitor(db_query, state_dir, *, sector_map=None, query=None, now=None):
                 "spy_change_pct": spy_chg,
                 "rel_strength": rel,
                 "momentum": _rsb.get("momentum", "missing"),
-                "constituent_count": cons.get("n", 0),
-                "setup_count": len(cands),
+                "constituent_count": cons.get("n"),
+                "setup_count": None if candidate_gap else len(cands),
+                "candidate_gap": candidate_gap,
                 "candidates": [{k: _json_clean(v) for k, v in c.items()} for c in cands],
                 "is_watched": sec.strip().lower().rstrip("s") in watched,
                 "directive": watched.get(sec.strip().lower().rstrip("s")),
@@ -163,7 +165,7 @@ def monitor(db_query, state_dir, *, sector_map=None, query=None, now=None):
             candidate["cio_gap"] = stance.get("gap") or (None if stance.get("stance") else {"reason": "CIO view unavailable"})
             candidate["cio_avoid"] = str(stance.get("stance") or "").upper() in ("AVOID", "IGNORE", "REBALANCE_TRIM")
         row["candidates"] = [c for c in row["candidates"] if not c["cio_avoid"]]
-        row["setup_count"] = len(row["candidates"])
+        row["setup_count"] = None if row["candidate_gap"] else len(row["candidates"])
 
     # Leaders are explicitly limited to this sector's screened names, ranked by
     # the same exact 20-session return difference. No analyst score becomes a
@@ -176,7 +178,7 @@ def monitor(db_query, state_dir, *, sector_map=None, query=None, now=None):
         measured = {r["symbol"]: r for r in measured if r["rs20"] is not None}
         row["leaders"] = sorted(measured.values(), key=lambda r: (-r["rs20"], r["symbol"]))[:3]
         row["leaders_basis"] = "screened names · 20 sessions vs SPY"
-        row["leaders_gap"] = None if row["leaders"] else "Screened leaders not measured — price history unavailable"
+        row["leaders_gap"] = None if row["leaders"] else row["candidate_gap"] or ("Screened leaders not measured — price history unavailable" if row["candidates"] else "No screened names with measured leaders")
 
     out.sort(key=lambda s: (not s["is_watched"], {"leading": 0, "neutral": 1, "lagging": 2}.get(s["momentum"], 3)))
     # Stale quarantine + field truth ledger. Additive: every pre-existing key is left

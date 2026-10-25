@@ -182,3 +182,17 @@ def test_favoured_names_format_canonical_posture_without_another_rule():
     missing = projection.get_sector_signals(database([]))
     assert missing["favoured"] is None
     assert missing["favoured_gap"]
+
+
+def test_unavailable_counts_do_not_render_as_zero(tmp_path, monkeypatch):
+    from lib.sectors_monitor import monitor
+    from lib.data_broker import market_quote
+    base = database()
+    def unavailable(sql, params=None, fetch=None):
+        if "watchlist_items wi" in sql or "count(DISTINCT symbol)" in sql:
+            return None
+        return base(sql, params, fetch)
+    monkeypatch.setattr(market_quote, "get_price_batch", lambda *a, **kw: {})
+    row = monitor(unavailable, tmp_path, sector_map={"Technology": "XLK"}, now=NOW)["sectors"][0]
+    assert row["setup_count"] is None and row["constituent_count"] is None
+    assert row["candidate_gap"] == "Screened names unavailable"

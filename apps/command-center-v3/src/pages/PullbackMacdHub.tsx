@@ -51,22 +51,12 @@ function PullbackBanner({ c }: { c: any }) {
   )
 }
 
-// v4 (F2): deterministic score breakdown from the screener's own formula constants —
-// render-only; the composite itself is untouched.
+// Format the server's score and formula; no client-side score recomputation.
 function scoreBreakdown(c: any, f: any): string {
-  if (!f) return 'composite screener score'
-  const prox = Number(c.macd_prox_pct ?? 0)
-  const pull = Number(c.pullback_pct ?? 0)
-  const trend = Number(c.trend_pct ?? 0)
-  const macdPen = (prox / Math.max(f.macd_proximity_pct, 0.01)) * f.macd_weight
-  const pullPen = Math.abs(pull - f.pullback_target_pct) * f.pullback_weight
   return [
-    `score = ${f.formula}`,
-    `base 100`,
-    `− MACD distance ${macdPen.toFixed(1)} (prox ${prox}% of ${f.macd_proximity_pct}% × ${f.macd_weight})`,
-    `− pullback offset ${pullPen.toFixed(1)} (|${pull}−${f.pullback_target_pct}| × ${f.pullback_weight})`,
-    `+ trend ${trend.toFixed(1)} (50/200 SMA spread %)`,
-    `= ${(100 - macdPen - pullPen + trend).toFixed(1)}`,
+    `Screen score: ${fmt(c.score, 0)}`,
+    f?.formula ? `Screen formula: ${f.formula}` : 'Formula explanation unavailable',
+    'CIO conviction is supplied separately.',
   ].join('\n')
 }
 
@@ -97,7 +87,7 @@ function CandidateCard({ c, onDrill, onDismiss, riskOff, scoreFormula }: { c: an
       {trigger && riskOff && (
         <div style={{ margin: '0 0 8px', padding: '4px 10px', borderRadius: 2, fontSize: TYPE.xs, fontWeight: 700,
           borderLeft: `3px solid ${RAIL.attention}`, background: BB.amberDim, color: BB.amber }}>
-          regime risk-off — historically weaker entries; sizing discretion advised
+          Regime risk-off · review the trigger evidence and plan
         </div>
       )}
       {c.held_conflict && (
@@ -109,14 +99,14 @@ function CandidateCard({ c, onDrill, onDismiss, riskOff, scoreFormula }: { c: an
       {c.held && <HeldEvidence held={c.held} />}
       <PullbackBanner c={c} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, fontSize: TYPE.sm }}>
-        <Metric label="Entry" value={fmt(c.entry)} />
-        <Metric label="Plan stop" value={fmt(c.stop)} />
-        <Metric label="Target1" value={fmt(c.target1)} />
-        <Metric label="R:R" value={fmt(c.rr, 1)} />
-        <Metric label="Trend (50/200)" value={`+${fmt(c.trend_pct, 1)}%`} />
-        <Metric label="MACD prox" value={`${fmt(c.macd_prox_pct, 3)}%`} tip="|MACD − signal| as % of price — imminence to the cross (lower = closer)" />
-        <Metric label="vs VWAP" value={c.vwap_dist_pct == null ? '—' : `${c.vwap_dist_pct > 0 ? '+' : ''}${fmt(c.vwap_dist_pct, 2)}%`} tip="Last price vs intraday session VWAP — entry-timing confirmation" />
-        <Metric label="ATR" value={fmt(c.atr)} />
+        <Metric tip="Advisory entry from the latest screen. Review the setup before acting." label="Entry" value={fmt(c.entry)} />
+        <Metric tip="Advisory technical invalidation level. Observed protection is shown separately." label="Plan stop" value={fmt(c.stop)} />
+        <Metric tip="First recovery target supplied by the screen." label="Target1" value={fmt(c.target1)} />
+        <Metric tip="Potential gain to the first target per unit of planned risk; a screening estimate." label="R:R" value={fmt(c.rr, 1)} />
+        <Metric tip="Moving-average spread used by the uptrend screen." label="Trend (50/200)" value={`+${fmt(c.trend_pct, 1)}%`} />
+        <Metric tip="|MACD − signal| as % of price — imminence to the cross (lower = closer)" label="MACD prox" value={`${fmt(c.macd_prox_pct, 3)}%`} />
+        <Metric tip="Last price vs intraday session VWAP — entry-timing confirmation" label="vs VWAP" value={c.vwap_dist_pct == null ? '—' : `${c.vwap_dist_pct > 0 ? '+' : ''}${fmt(c.vwap_dist_pct, 2)}%`} />
+        <Metric tip="Typical daily range used by the technical plan." label="ATR" value={fmt(c.atr)} />
       </div>
       <div style={{ marginTop: 6 }}><TickerLinks symbol={c.symbol} /></div>
       <div className="w3-pullback-actions" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
@@ -138,10 +128,13 @@ function CandidateCard({ c, onDrill, onDismiss, riskOff, scoreFormula }: { c: an
 }
 
 const Metric = ({ label, value, tip }: any) => (
-  <div title={tip} style={{ cursor: tip ? 'help' : 'inherit' }}>
-    <div style={{ fontSize: TYPE.xs, color: BB.text3 }}>{label}</div>
-    <div style={{ ...numStyle, fontWeight: 700, color: BB.text1 }}>{value}</div>
-  </div>
+  <details style={{ minWidth: 0 }}>
+    <summary title={tip} style={{ cursor: 'pointer', minHeight: 44, listStyle: 'none', padding: '4px 0' }}>
+      <div style={{ fontSize: TYPE.xs, color: BB.text3 }}>{label} ⓘ</div>
+      <div style={{ ...numStyle, fontWeight: 700, color: BB.text1 }}>{value}</div>
+    </summary>
+    <div style={{ color: BB.text3, fontSize: TYPE.xs, overflowWrap: 'anywhere' }}>{tip || 'Explanation unavailable'}</div>
+  </details>
 )
 
 export default function PullbackMacdHub({ onDrill, embedded }: Props) {
@@ -225,13 +218,13 @@ export default function PullbackMacdHub({ onDrill, embedded }: Props) {
       </label>
       {filter !== 'watch' && <section>
         <div style={{ fontSize: TYPE.base, fontWeight: 800, marginBottom: 8, color: BB.text0 }}>
-          🎯 Triggers <span style={{ color: BB.text3, fontWeight: 400 }}>({data?.trigger_count ?? '—'}) — MACD turning up + above VWAP (earliest confirmed recovery){riskOff ? ' · regime risk-off: historically weaker entries (disclosure only, nothing suppressed)' : ''}</span>
+          🎯 Triggers <span style={{ color: BB.text3, fontWeight: 400 }}>({data?.trigger_count ?? '—'}) — MACD turning up + above VWAP (earliest confirmed recovery){riskOff ? ' · regime risk-off' : ''}</span>
         </div>
         {triggers.length
           ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 320px), 1fr))', gap: 12 }}>
               {triggers.map(c => <CandidateCard key={c.symbol} c={c} onDrill={openSetup} onDismiss={dismiss} riskOff={riskOff} scoreFormula={data?.score_formula} />)}
             </div>
-          : <div style={{ ...card, color: BB.text3, fontSize: TYPE.base }}>No triggers today — a deep pullback in a standing uptrend with the cross about to fire is rare (expected on most days).</div>}
+          : <div style={{ ...card, color: BB.text3, fontSize: TYPE.base }}>No confirmed triggers in the latest screen.</div>}
       </section>}
 
       {filter !== 'trigger' && <section>
@@ -249,9 +242,9 @@ export default function PullbackMacdHub({ onDrill, embedded }: Props) {
         {selected.held && <HeldEvidence held={selected.held} />}
         <PullbackBanner c={selected} />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 12 }}>
-          <Metric label="Entry" value={fmt(selected.entry)} /><Metric label="Plan stop" value={fmt(selected.stop)} />
-          <Metric label="Target" value={fmt(selected.target1)} /><Metric label="R:R" value={fmt(selected.rr, 1)} />
-          <Metric label="VWAP" value={fmt(selected.vwap)} /><Metric label="Score" value={fmt(selected.score, 0)} />
+          <Metric tip="Advisory entry from the latest screen. Review the setup before acting." label="Entry" value={fmt(selected.entry)} /><Metric tip="Advisory technical invalidation level. Observed protection is shown separately." label="Plan stop" value={fmt(selected.stop)} />
+          <Metric tip="First recovery target supplied by the screen." label="Target" value={fmt(selected.target1)} /><Metric tip="Potential gain to the first target per unit of planned risk; a screening estimate." label="R:R" value={fmt(selected.rr, 1)} />
+          <Metric tip="Volume-weighted average price used for trigger confirmation." label="VWAP" value={fmt(selected.vwap)} /><Metric tip="Composite screen score. CIO conviction is supplied separately." label="Score" value={fmt(selected.score, 0)} />
         </div>
         <p style={{ color: BB.text2 }}>{selected.tier === 'trigger' && selected.proposal_live === true ? 'Advisory proposal in approval queue' : selected.tier === 'watch' ? 'Watching · trigger confirmation required' : 'No active proposal'}</p>
         <div style={{ color: BB.text3, fontSize: TYPE.sm }}>{scoreBreakdown(selected, data?.score_formula)}</div>

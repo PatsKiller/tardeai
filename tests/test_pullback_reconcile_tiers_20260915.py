@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,7 +40,7 @@ class FakeDb:
         if sql.lstrip().upper().startswith("SELECT"):
             return self.rows
         self.updates.append(params)
-        return {"id": params[-1]}
+        return [{"id": params[-1]}]
 
 
 def _cand(sym, tier, price=10.0):
@@ -125,7 +126,16 @@ def test_watch_withdrawal_still_runs_with_ordinary_plan_reconciliation_disabled(
 def test_row_that_filled_after_selection_is_not_counted_or_logged_as_withdrawn(monkeypatch, capsys):
     mod = _load()
     def racing_db(sql, params=None, fetch=None):
-        return _rows("AES") if sql.lstrip().startswith("SELECT") else None
+        return _rows("AES") if sql.lstrip().startswith("SELECT") else []
     monkeypatch.setattr(mod, "_db", racing_db)
     assert mod._reconcile_proposals([_cand("AES", "watch")]) == 0
     assert "proposal withdrawal" not in capsys.readouterr().out
+
+
+def test_failed_withdrawal_is_a_failed_lane_not_a_successful_noop(monkeypatch):
+    mod = _load()
+    def failed_write(sql, params=None, fetch=None):
+        return _rows("AES") if sql.lstrip().startswith("SELECT") else None
+    monkeypatch.setattr(mod, "_db", failed_write)
+    with pytest.raises(RuntimeError, match="withdrawal write failed"):
+        mod._reconcile_proposals([_cand("AES", "watch")])

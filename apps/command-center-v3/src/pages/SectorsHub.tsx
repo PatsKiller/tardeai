@@ -250,8 +250,9 @@ export default function SectorsHub({ onDrill, embedded }: Props) {
                   )}
                 </div>
                 <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ ...numStyle, fontSize: TYPE.lg, fontWeight: 700, color: s.setup_count > 0 ? T.link : BB.text3 }}>{s.setup_count}</div>
-                  <div title="screen matches = enriched watch-universe names satisfying broad strategy filters; this is not an expected-return, conviction or recommendation score" style={{ fontSize: TYPE.xs, color: BB.text3 }}>screen matches / {s.constituent_count} tracked</div>
+                  <div style={{ ...numStyle, fontSize: TYPE.lg, fontWeight: 700, color: s.setup_count > 0 ? T.link : BB.text3 }}>{s.setup_count ?? '—'}</div>
+                  {s.candidate_gap && <div style={{ fontSize: TYPE.xs, color: BB.amber }}>{s.candidate_gap}</div>}
+                  <div title="screen matches = enriched watch-universe names satisfying broad strategy filters; this is not an expected-return, conviction or recommendation score" style={{ fontSize: TYPE.xs, color: BB.text3 }}>screen matches / {s.constituent_count ?? '—'} tracked</div>
                 </div>
               </div>
 

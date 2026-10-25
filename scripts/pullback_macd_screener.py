@@ -533,7 +533,9 @@ def _reconcile_proposals(cands: list[dict], proposal_tiers=None, *, watch_only: 
                      AND status IN ('PENDING','APPROVED_FOR_PAPER_TEST')
                      AND NOT EXISTS (SELECT 1 FROM paper_trades t WHERE t.proposal_id=p.id)
                    RETURNING id""",
-                (f"pullback monitor: {reason}", r["id"]), fetch="one")
+                (f"pullback monitor: {reason}", r["id"]), fetch="all")
+            if withdrawn is None:
+                raise RuntimeError("pullback proposal withdrawal write failed")
             if withdrawn:
                 print(f"  [proposal withdrawal] id={r['id']} symbol={sym}: {reason}")
                 retired += 1
