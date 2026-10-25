@@ -131,13 +131,16 @@ def item(*, ident: str, kind: str, title: str, proposed_by: str | None, created_
 
 
 def queue_projection(sources: dict[str, Callable[[], list[dict]]], *, decisions: list[dict], now: datetime) -> dict:
-    rows, gaps = [], []
+    rows, gaps, resolved = [], [], []
     for name, load in sources.items():
         try:
             batch = load()
             if isinstance(batch, dict):
                 if batch.get("gap"):
                     gaps.append({"source": name, "reason": str(batch["gap"])[:160]})
+                # Items a source reconciled as already applied/superseded: never pending, never dropped.
+                if isinstance(batch.get("resolved"), list) and len(batch["resolved"]) <= 500:
+                    resolved.extend(batch["resolved"])
                 batch = batch.get("rows")
             if not isinstance(batch, list) or len(batch) > 500:
                 raise Refused("SOURCE_BUDGET_EXCEEDED", 503)
@@ -174,7 +177,8 @@ def queue_projection(sources: dict[str, Callable[[], list[dict]]], *, decisions:
     pending = [r for r in rows if r["requires_governed_action"] or (r["id"], r["document"]["document_sha"]) not in terminal]
     pending.sort(key=lambda r: (r.get("created_at") or "9999", r["id"]))
     return {"items": pending, "known_pending_count": len(pending), "pending_count": len(pending) if not gaps else None,
-            "complete": not gaps, "gaps": gaps, "as_of": iso(now), "recent": recent[-30:][::-1]}
+            "complete": not gaps, "gaps": gaps, "as_of": iso(now), "recent": recent[-30:][::-1],
+            "resolved": sorted(resolved, key=lambda r: (r.get("created_at") or "9999", r["id"]))}
 
 
 def writes_approved(registry: dict) -> bool:

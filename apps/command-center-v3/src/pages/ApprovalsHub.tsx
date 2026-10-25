@@ -4,6 +4,7 @@ import DeskPage, { DeskGap, useDeskTab } from '../components/DeskPage'
 import AmendmentReader from '../components/AmendmentReader'
 import { GOVERNANCE, KIND_LABEL, useGovernance, waitingSince, type ApprovalItem, type ApprovalQueue } from '../lib/operatorApprovals'
 import '../styles/operatorApprovals.css'
+import ResolvedActivations, { type QueueWithResolved } from '../components/approvals/ResolvedActivations'
 
 const tabs = [{ id: 'waiting', label: 'Waiting on you' }, { id: 'POLICY', label: 'Policy' }, { id: 'RELEASE', label: 'Releases' },
   { id: 'SPEND', label: 'Spending caps' }, { id: 'ACTIVATE', label: 'Activations' }, { id: 'DESIGN', label: 'Designs' },
@@ -51,6 +52,7 @@ function Queue() {
             {!data.items.some(item => active === 'waiting' || item.kind === active) && <p>No items in this view. {data.complete ? '' : 'Some sources are still unavailable.'}</p>}
             <div className="toolbar"><button disabled={!offset} onClick={() => setOffset(Math.max(0, offset - 50))}>Previous</button>
               <button disabled={offset + 50 >= data.filtered_count} onClick={() => setOffset(offset + 50)}>Next</button></div>
+            {(active === 'ACTIVATE' || active === 'waiting') && <ResolvedActivations items={(data as QueueWithResolved).resolved} />}
           </section>
           <aside className="stack"><section className="panel"><h2>How a decision is recorded</h2><p>Your authenticated tailnet identity, the exact version you read, and the time are recorded together. Agents can propose and read; they cannot decide.</p></section>
             <section className="panel"><h2>Decided recently</h2>{data.recent.slice(0, 5).map((record, i) => <p key={i}>{record.decision.replace(/_/g, ' ')} · {new Date(record.at).toLocaleDateString()}</p>)}
