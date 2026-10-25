@@ -527,8 +527,7 @@ N8N_NATIVE_SHADOW = frozenset(
         # 2026-10-21 operator ruling: macro calendar for the release train's 08:00 window,
         # n8n-native ingest lane, daily 05:05 dry_run (tests/test_macro_calendar_20261021.py).
         "macro-calendar-refresh",
-        # WP-21: same reviewed shadow lane, now with a clean injected-query import closure.
-        "cio-prospect-shadow",
+        # WP-21 shadow lane; promoted to canary 2026-10-25 (tests/support/cio_prospect_canary_20261025.py).
         # 2026-10-22 operator Gate 4 design: calibration shadow harness, n8n-native report lane, weekdays 12:25
         # dry_run (tests/test_calibration_shadow_harness_20261022.py).
         "calibration-shadow-harness",
@@ -547,6 +546,7 @@ N8N_NATIVE_SHADOW = frozenset(
 #: 2026-10-18 + disk-usage-monitor and disk-hygiene (operator 2026-10-18: "a script with rules that's repeatable, n8n
 #: should run this weekly; and also monitor when a threshold is over 80%"; tests/support/disk_hygiene_n8n.py LIVE).
 from tests.support import disk_hygiene_n8n as _DH  # noqa: E402
+from tests.support import cio_prospect_canary_20261025 as _CPC  # noqa: E402
 
 #: 2026-10-19 + active-trader-motion-watchdog (n8n owns motion supervision; tests/support/active_trader_motion_watchdog.py).
 N8N_NATIVE_CANARY = frozenset(
@@ -562,6 +562,8 @@ N8N_NATIVE_CANARY = frozenset(
         # 2026-10-22 release train H.0 shadow-enable PR (docs/ops/packets/release-train-arming-20261021 H.0):
         # shadow -> canary, dispatch live, live_arg [] (a real run writes the census receipt).
         "pr-hygiene-audit",
+        # 2026-10-25 operator "turn on everything": cio-prospect-shadow shadow -> canary, live_arg --write-shadow.
+        *_CPC.LIVE,
     }
 )
 #: the reviewed live_arg of each n8n-native canary row whose live run is not the script default.
@@ -575,6 +577,7 @@ N8N_NATIVE_CANARY_LIVE_ARG = {
     # 2026-10-19 operator (after /tmp hit 97% inodes): daily /tmp plan, a manifest, never a deletion.
     "tmp-hygiene": ["--plan"],
     "registry-runtime-truth": ["--apply"],
+    **_CPC.LIVE_ARG,
 }
 #: lane repair 2026-10-15: a systemd-timer lane at shadow (its timer keeps the real work; dispatch.cron mirrors the
 #: timer's OnCalendar). tests/test_lane_repair_ri_hermes_litmus_20261015.py pins the row and its allowlist entry.

@@ -119,18 +119,20 @@ def upcoming_windows(policy: Mapping[str, Any], now: datetime) -> list[dict[str,
     tz = ZoneInfo(policy.get("timezone") or "America/New_York")
     local_now = now.astimezone(tz)
     out = []
+    names = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
     for w in policy.get("windows") or ():
         hh, mm = (int(x) for x in str(w["local_time"]).split(":"))
-        for days in range(0, 3):
+        allowed = w.get("days") if isinstance(w.get("days"), list) else names   # days absent = every day
+        for days in range(0, 9):
             d = (local_now + timedelta(days=days)).date()
             cand = datetime(d.year, d.month, d.day, hh, mm, tzinfo=tz)
-            if cand.astimezone(timezone.utc) > now.astimezone(timezone.utc):
+            if cand.astimezone(timezone.utc) > now.astimezone(timezone.utc) and names[d.weekday()] in allowed:
                 break
         out.append({"window_id": window_id(cand), "local_time": w["local_time"], "timezone": str(tz.key),
                     "starts_at": cand.isoformat(),
                     "starts_in_seconds": int((cand.astimezone(timezone.utc) - now).total_seconds()),
                     "role": w.get("role"), "enable_order": w.get("enable_order"),
-                    "enabled": bool(w.get("enabled")), "note": w.get("note")})
+                    "enabled": bool(w.get("enabled")), "days": list(allowed), "note": w.get("note")})
     out.sort(key=lambda x: x["starts_in_seconds"])
     return out
 

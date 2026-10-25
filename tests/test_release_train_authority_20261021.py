@@ -1013,7 +1013,7 @@ def test_libraries_are_wired_into_nothing():
         "scripts/lib/needs_action.py",
         # Arming packet §K (feat/release-grant-capability-binding-20261022): release_grant_binding.decide_capability
         # READS the capability ledger, the control view and the delegation (lazy imports, read-only) to bind a
-        # train's prepare/promote. Inert: CAPABILITY_BINDING_STATUS = "PROPOSED", so the preflight never calls it.
+        # train's prepare/promote. ACTIVE since 2026-10-25 (canary arming); still read-only.
         "scripts/lib/release_grant_binding.py",
         # Ops -> Controls (feat/ops-controls-20261022; AGENTS.md 19.0.0 §27.3, ACTIVE): ops_controls_core calls
         # ReleaseControl.request_pause with Actor("cc", <tailnet operator>) -- a REQUEST_KINDS act -- and

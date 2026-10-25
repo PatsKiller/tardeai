@@ -40,8 +40,11 @@ STATUSES = frozenset({ACTIVE, PAUSED, REVOKED})
 PHASES = frozenset({"shadow", "canary", "expand"})
 REPOSITORY = "PatsKiller/tardeai"
 ENVIRONMENTS = frozenset({"production"})
-#: The four operator windows (2026-10-21): 00:00, 06:00, 08:00, 18:00 America/New_York.
-WINDOW_IDS = ("0000", "0600", "0800", "1800")
+#: The four operator windows (2026-10-21): 00:00, 06:00, 08:00, 18:00 America/New_York; plus the 2026-10-25 schedule
+#: slots (weekdays 12:00; weekends every three hours, Saturday 06:00 through Sunday 21:00: 03:00, 09:00, 15:00, 21:00). The delegation AUTHORIZES slot ids
+#: (optionally narrowed by ``days``); the repo policy's ``windows[].days`` schedules them and can only narrow further.
+WINDOW_IDS = ("0000", "0300", "0600", "0800", "0900", "1200", "1500", "1800", "2100")
+DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 TIMEZONE = "America/New_York"
 #: Required branch-protection contexts on main (gh api .../branches/main/protection, 2026-10-21) + the batch
 #: qualifier ci-gate (D4: required later). Each must read exactly "success" on the candidate SHA.
@@ -152,6 +155,11 @@ def _validate_windows(w: Any) -> list[str]:
             errs.append(f"{s.get('window_id')}: duration_min must be 5..240")
         if not isinstance(s.get("enabled"), bool):
             errs.append(f"{s.get('window_id')}: enabled must be a boolean")
+        if "days" in s:
+            days = s.get("days")
+            if not (isinstance(days, list) and days and all(isinstance(d, str) and d in DAYS for d in days)
+                    and len(set(days)) == len(days)):
+                errs.append(f"{s.get('window_id')}: days (optional) must be a non-empty list of distinct {list(DAYS)}")
         if s.get("window_id") == "0800":
             if not (isinstance(s.get("latest_start_et"), str) and HHMM_RE.match(s["latest_start_et"])):
                 errs.append("0800: latest_start_et (09:00 minus promote+verify+rollback minus buffer) required")

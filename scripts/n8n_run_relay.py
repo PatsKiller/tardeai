@@ -163,7 +163,7 @@ RELAY_DERIVED_PREFIX = "n8n-wf-"
 #: GET /release-train-window (2026-10-21, Release Train v2 Phase 4): the only query keys (exactly one per request),
 #: the slot alphabet and the read-only schemas the gateway answers with (scripts/lib/release_train_window.py).
 RELEASE_TRAIN_WINDOW_KEYS = ("view", "run_id", "slot")
-_RELEASE_TRAIN_SLOT_RE = re.compile(r"^(0000|0600|0800|1800)$")
+_RELEASE_TRAIN_SLOT_RE = re.compile(r"^(0000|0300|0600|0800|0900|1200|1500|1800|2100)$")  # == release_train_window_view.SLOTS
 RELEASE_TRAIN_WINDOW_SCHEMAS = frozenset({"ReleaseTrainReadiness@v1", "ReleaseTrainWindowView@v1"})
 ROUTES_SCHEMA = "N8nRunRelayRoutes@v1"
 #: POST /event (design 02 §8): the only lane, the exact body keys, and the bounds.
@@ -923,7 +923,7 @@ class Relay:
     def release_train_window(self, authorization: str | None, query: str = "") -> tuple[int, dict[str, Any]]:
         """GET /release-train-window (Release Train v2 Phase 4; docs/ops/RELEASE_TRAIN_N8N_CONTRACT.md §4, §8): one
         read-scope ``release_train_window`` claim to the gateway. Exactly one query key: ``view=readiness``,
-        ``run_id=<run id>`` or ``slot=<0000|0600|0800|1800>``. Read-only: nothing is run, written, merged, promoted or
+        ``run_id=<run id>`` or ``slot=<HHMM in release_train_window_view.SLOTS>``. Read-only: nothing is run, written, merged, promoted or
         sent, and no caller value reaches a path or a command (the gateway re-validates every key)."""
         if not self._auth(authorization):
             self.counts["auth_failures"] += 1

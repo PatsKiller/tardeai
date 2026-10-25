@@ -4356,7 +4356,9 @@
       "dry_run_arg": [
         "--dry-run"
       ],
-      "live_arg": null,
+      "live_arg": [
+        "--write-shadow"
+      ],
       "lock": "/tmp/tradeai_cio_prospect_shadow.lock",
       "lock_kind": "flock",
       "timeout_s": 600,
@@ -4374,7 +4376,7 @@
       "env_allowlist_mode": "report",
       "env_evidence": "scripts/session13_db.get_conn reads DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD through env_bootstrap.load_env(names=DB_*) and the session is set READ ONLY (lane_last_receipt.enforce_readonly); canonical_store_registry.production_state_root reads TRADEAI_PERSISTENT_STATE_ROOT / TRADEAI_STATE_ROOT (executor base name). No model, provider or broker credential.",
       "env_report_reason": "report until the import closure is re-inventoried for enforce: the builder reads through the CIO, identity and data-broker libraries (positions_context projection for the held set); the only credential names read are DB_* on a READ ONLY session. No model, provider or broker name.",
-      "source": "Operator directive 2026-10-22 ('start executing immediately ... everything that's not built and not live'; the CIO prospect foundation, AGENTS.md §26). n8n-native lane: no cron line, no systemd unit; the lock is new (a dry run takes <lock>.dryrun). SHADOW ONLY: live_arg null, registry dispatch mode dry_run; dry_run_arg --dry-run prints only. Canary live_arg (separate PR): [\"--write-shadow\"]."
+      "source": "Operator directive 2026-10-25 (verbatim, relayed by the coordinator): \"You should turn on everything. It shouldn't need me to turn on anything. Get it working.\" CANARY (2026-10-25): live_arg [\"--write-shadow\"] writes only data/cio/cio_prospect_shadow.json, data/cio/cio_prospect_shadow_compare.json and the receipt data/runtime/cio-prospect-shadow_last.json (atomic replace). Never --write-company-facts. n8n-native lane: no cron line, no systemd unit; the lock is the lane's own (a dry run takes <lock>.dryrun). Registered at SHADOW 2026-10-22 (#1953)."
     },
     {
       "lane_id": "holdings-drift-monitor",

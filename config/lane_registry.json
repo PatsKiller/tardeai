@@ -18354,7 +18354,7 @@
         "match": "scripts/cio_prospect_shadow_build.py",
         "cadence": "*/30 9-16 * * 1-5",
         "timezone": "America/New_York",
-        "stage": "shadow",
+        "stage": "canary",
         "wave": "W5"
       },
       "expected_cadence_hours": 0.5,
@@ -18366,23 +18366,23 @@
         4
       ],
       "state": "ACTIVE",
-      "state_since": "2026-10-22",
-      "state_reason": "Operator directive 2026-10-22 (CIO prospect data foundation is the baseline of the site; AGENTS.md §26 18.0.0 ACTIVE; docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md §7 P1 Shadow). n8n-native dispatcher lane at stage SHADOW: every 30 min in market hours the stage clamp runs --dry-run (assembles one prospect per security_guid from the existing CIO stores, prints the summary, writes nothing). No cron line exists or is added (cron freeze 2026-10-09). Canary (--write-shadow: the shadow artifact the cio_prospect projection serves) is a later registry PR after the owner marks the health contract REVIEWED. Historical contract review is retained unchanged; any canary still needs its separate approved registry PR.",
+      "state_since": "2026-10-25",
+      "state_reason": "Operator directive 2026-10-25 (verbatim, relayed by the coordinator): \"You should turn on everything. It shouldn't need me to turn on anything. Get it working.\" Promoted shadow -> canary, dispatch live: every 30 min in market hours the dispatcher runs --write-shadow, which writes ONLY data/cio/cio_prospect_shadow.json (the artifact the cio_prospect projection and lib/cio_truth.stance_for serve while the store is not live), data/cio/cio_prospect_shadow_compare.json and the receipt data/runtime/cio-prospect-shadow_last.json. It never writes cio_prospect, never calls InstrumentRecordStore, never sends, never calls a broker (--write-company-facts is NOT in the argv). Live from n8n only once the lane is in TRADEAI_N8N_RELAY_LIVE_LANES (host step). No cron line exists or is added (cron freeze 2026-10-09). Prior history: shadow since 2026-10-22 (operator item F on #1953, contract REVIEWED).",
       "reason_confidence": "ESTABLISHED",
-      "reason_evidence": "tests/test_cio_prospect_shadow_readonly_20261023.py (static transitive closure has no forbidden broker/order/sender capability; injected-query core parity); tests/test_cio_prospect_foundation_20261022.py (write-free dry run, MBI, conflicts and identity). Historical operative contract review retained from operator item F on #1953; no canary/live authority added.",
+      "reason_evidence": "tests/test_cio_prospect_shadow_readonly_20261023.py (static transitive closure has no forbidden broker/order/sender capability; canary pins: live_arg exactly [\"--write-shadow\"], writes only the three named paths); tests/test_cio_prospect_foundation_20261022.py (write-free dry run, MBI, conflicts and identity). Real-layout proof on a temp state root in the promotion PR body.",
       "review_by": "2026-11-05",
       "output_signal": {
         "kind": "json_key",
         "path": "data/runtime/cio-prospect-shadow_last.json",
         "key": "ok_at",
         "evidence": "SOURCE_ONLY",
-        "evidence_ref": "scripts/cio_prospect_shadow_build.py --write-shadow writes the receipt (ok_at, produced_count); at shadow no real run happens, so runtime is NOT_MEASURED"
+        "evidence_ref": "scripts/cio_prospect_shadow_build.py --write-shadow writes the receipt (ok_at, produced_count) on every live run; NOT_MEASURED until the first live n8n fire after relay arming"
       },
       "value_class": "Operationally Important",
       "severity": "Medium",
       "note": "Read-only shadow builder (scripts/lib/cio_prospect_builder.py): CIO files, the held set through the positions_context projection (holdings via lib.portfolio_positions; never positions_current) and, with --with-db, bulk SELECTs on a READ ONLY session. No broker call, no model, no send, no store write; never calls InstrumentRecordStore. Exit 0 = built; 1 = no prospect assembled (empty output is a failure); 2 = could not run.",
       "dispatch": {
-        "mode": "dry_run",
+        "mode": "live",
         "cron": [
           "*/30 9-16 * * 1-5"
         ],
@@ -18391,6 +18391,11 @@
         "class": "report",
         "priority": 5,
         "retry_policy": "transient-2"
+      },
+      "canary": {
+        "since": "2026-10-25",
+        "evidence": "real-layout proof on a temp PROJECT_ROOT/state root (promotion PR body): the allowlist argv + live_arg wrote the shadow, compare and receipt files only; dry-run against production state read-only assembled the prospects with 0 errors",
+        "rollback": "revert this registry/allowlist/contract commit: stage shadow, dispatch.mode dry_run, allowlist live_arg null; or drop the lane from TRADEAI_N8N_RELAY_LIVE_LANES (kill switch, the lane then runs dry)"
       }
     },
     {
