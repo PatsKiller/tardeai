@@ -48100,13 +48100,17 @@ ROUTES = {
     "/api/v2/hermes/discovery-inbox": lambda q=None: _hermes_discovery_inbox_list(q),
     "/api/v2/hermes/discovery-gaps": lambda q=None: _hermes_discovery_gaps(q),
     "/api/v2/hermes/discovery-scorecard": lambda: _hermes_discovery_scorecard_api(),
-    "/api/v2/health": lambda: _health_agent_dashboard(),
+    "/api/v2/health": lambda: __import__("scripts.lib.health_surface", fromlist=["get_health"]).get_health(
+        reader=_health_agent_dashboard
+    ),
     "/api/v2/health/history": lambda: _health_agent_history(),
     "/api/v2/health/coders": lambda: _health_coder_status(),
     "/api/v2/health/dispatches": lambda: _health_dispatches(),
     "/api/v2/health/activity": lambda: _health_activity(),
     "/api/v2/health/proposals": lambda: _health_proposals(),
-    "/api/v2/health/remediation": lambda: _health_remediation(),
+    "/api/v2/health/remediation": lambda: __import__("scripts.lib.health_surface", fromlist=["get_remediation"]).get_remediation(
+        paths=_health_remediation_paths()
+    ),
     "/api/v2/health/ops-autonomy": lambda: _health_ops_autonomy(),
     "/api/v2/proposals/execution-readiness": lambda: _proposals_execution_readiness(),
     "/api/v2/snaptrade/status": _snaptrade_status,
@@ -55352,6 +55356,50 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 200, {"ok": True, "data": _desk_sources(query)}
         except ValueError as e:
             return 400, {"ok": False, "error": str(e)}
+        except Exception as e:
+            return 503, {"ok": False, "error": type(e).__name__}
+
+    # Jobs & health (board 16, W4): one read-only job-execution view for /ops/jobs and every embedded Jobs tab.
+    # Success = matching run receipt (exit code + output), never a log mtime or a crontab line (AGENTS.md 28.9).
+    if base_path == "/api/v2/jobs-health":
+        if method != "GET":
+            return 405, {"ok": False, "error": "read_only"}
+        try:
+            from scripts.lib.jobs_health import get_jobs_health as _jobs_health
+
+            return 200, {"ok": True, "data": _jobs_health(query)}
+        except ValueError as e:
+            return 400, {"ok": False, "error": str(e)}
+        except Exception as e:
+            return 503, {"ok": False, "error": type(e).__name__}
+
+    # Conflict engine ledger (AGENTS.md 28.10, W10; docs/ops/CONFLICT_LEDGER.md). GET list/detail are read-only;
+    # POST .../decision is operator-identity + CSRF only and stays refused (CONFLICT_WRITER_NOT_ACTIVATED) until the
+    # operator activates the writer. Agents never decide a conflict.
+    if base_path.rstrip("/") == "/api/v3/conflicts" or base_path.startswith("/api/v3/conflicts/"):
+        try:
+            from scripts.lib.conflicts import api as _conflicts_api
+
+            _conflicts_out = _conflicts_api.handle(base_path, method, body, query, write_enabled=False)
+            if _conflicts_out is not None:
+                status, payload = _conflicts_out
+                if status == 200 and not (isinstance(payload, dict) and "ok" in payload):
+                    payload = {"ok": True, "data": payload}
+                elif status != 200 and isinstance(payload, dict) and "ok" not in payload:
+                    payload = {"ok": False, **payload}
+                return status, payload
+        except Exception as e:
+            return 503, {"ok": False, "error": type(e).__name__}
+
+    # Approvals Center, amendment reader and Rulebook (boards 19-21, W11; docs/ops/APPROVALS_CENTER_20261024.md).
+    # Reads for the authenticated reader; decisions only from the operator tailnet identity with same-origin CSRF.
+    if base_path.rstrip("/") == "/api/v2/governance" or base_path.startswith("/api/v2/governance/"):
+        try:
+            from scripts.lib import operator_approvals_api as _oaa
+
+            _oaa_out = _oaa.handle(base_path, method, body, query)
+            if _oaa_out is not None:
+                return _oaa_out
         except Exception as e:
             return 503, {"ok": False, "error": type(e).__name__}
 

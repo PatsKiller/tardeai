@@ -45,6 +45,8 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 | Alerts | **alert_events** | PROPOSED | `alert_events` (table) | UNCONSOLIDATED → `scripts/alert_event_writer.py` (exists (wire it; AGENTS.md §13.5 — do not build a second)) | event: the producing lanes | event-driven | Home, Watch, Open Trades, Telegram |
 | Operator messages | **comms_intents** | PROPOSED | `communication_events` (table) | UNCONSOLIDATED → `scripts/lib/comms/client.py` (exists) | host: n8n-comms-intent-consumer (canary) orchestrates; the gateway sends · n8n never-list → host | P1 immediate; P2 held 22:00-07:00 ET to the digest | Telegram, Home |
 | Operator settings and controls | **operator_settings** | PROPOSED | `operator_settings` (table) | UNCONSOLIDATED → `scripts/ops/operator_controls_applier.py` (to_build) | host: operator-controls-applier (to build) · n8n never-list → host | applied in the applier run that follows the operator's confirmed action; history append-only (one row per change: who, when, factor, old and new value) | Ops, Home |
+| Operator document reviews, decisions and rule feedback | **operator_decisions** | PROPOSED | `governance/operator_decisions.jsonl` (file) | `scripts/lib/operator_approvals.py` | host: operator document review · n8n never-list → host | Read the current exact source document before every ledger append; text or commit drift invalidates the review. | Approvals Center, Rulebook, CIO approval truth projection, agents (read only) |
+| Site-wide conflict lifecycle | **conflict_ledger** | PROPOSED | `data/conflicts/conflict_events.jsonl` (file) | `scripts/lib/conflicts/ledger.py` | n8n_shadow_then_live: conflict-resolver | 30 min while scheduled; no produced evidence means a gap | Watch, Home, CIO, Risk, Advisory, Ops Jobs and health, Approvals, CIO brief, Ask the CIO, Telegram digest |
 
 ## Entity by entity
 
@@ -379,6 +381,36 @@ One source of data (operator 2026-10-22). Every fact names one domain; every dom
 - **Refresh lane:** host: operator-controls-applier (to build) · n8n never-list → host — operator acts only (AGENTS.md §17, §27.2): never an n8n lane, never an agent
 - **Read path (projection):** `operator_settings` — to_build
 - **Readers:** Ops, Home
+
+### Approvals Center operator decision ledger — `operator_decisions` (PROPOSED)
+
+**Operator decision (§17):** Review and grant this store separately. Build approval grants no pending policy, grant, activation, backup or source decision. Production ledger writes remain refused until this exact store/writer row has operator approval.
+
+- **Facts:** exact document reviewed, operator decision, per-change read marker, rule feedback, evidence-backed enforcement audit proposals (no decisions)
+- **Store of record:** `governance/operator_decisions.jsonl` (file)
+- **Single writer:** `scripts/lib/operator_approvals.py`
+- **Cadence:** event-driven authenticated operator review and separately governed audit proposals · stale after 720 h
+- **Freshness SLA:** Read the current exact source document before every ledger append; text or commit drift invalidates the review.
+- **Refresh lane:** host: operator document review · n8n never-list → host — Authenticated operator review is a manual host request, not a scheduled lane. A separately admitted host enforcement audit may append proposal events only; it never makes a decision. This proposal admits or schedules nothing.
+- **Read path (projection):** `scripts/lib/operator_approvals_api.py::queue_summary`
+- **Readers:** Approvals Center, Rulebook, CIO approval truth projection, agents (read only)
+
+### Conflict ledger and decisions — `conflict_ledger` (PROPOSED)
+
+**Operator decision (§17):** Operator-approved build direction; row promotion and runtime writer activation remain explicit owner/operator acts.
+
+- **Facts:** finding, lifecycle, owner decision, source supersession
+- **Store of record:** `data/conflicts/conflict_events.jsonl` (file)
+- **Single writer:** `scripts/lib/conflicts/ledger.py`
+- **Cadence:** event changes; conflict-resolver shadow cadence separately owned by W8 · stale after 0.5 h
+- **Freshness SLA:** 30 min while scheduled; no produced evidence means a gap
+- **Refresh lane:** n8n_shadow_then_live: conflict-resolver — W8 owns inactive declaration/admission; no live flip by W10
+- **Read path (projection):** `scripts.lib.conflicts.api.records_section`
+- **Readers:** Watch, Home, CIO, Risk, Advisory, Ops Jobs and health, Approvals, CIO brief, Ask the CIO, Telegram digest
+
+| Copy | Role | How | Page/API files reading it (measured) |
+|---|---|---|---|
+| `conflict_events` (table) | derived | gated PG dual write only after operator migration; immutable event_id idempotency | — |
 
 ## Field level
 
