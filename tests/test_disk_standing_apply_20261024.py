@@ -759,3 +759,133 @@ def test_old_review_cannot_authorize_changed_source_with_regenerated_pins(tmp_pa
     reviewed_new_pins=dict(review,source_config_pins_sha256=hashlib.sha256(pins_path.read_bytes()).hexdigest())
     with pytest.raises(ValueError,match='review_rules_sha_mismatch'):
         mod.promotion(config,owned_packet,reviewed_new_pins)
+
+
+# ── 2026-10-25 activation blockers: real-host evidence shapes (fixtures only) ─────────────────────────────────────
+
+
+def _show(stdout, rc=0):
+    return type("Result", (), {"returncode": rc, "stdout": stdout})()
+
+
+def _sealed_fixture(world, monkeypatch):
+    rules = collector_fixture(world)
+    sealed = rules["_unit_dirs"][0] / "fixture.service.d"
+    sealed.mkdir()
+    real_walk = os.walk
+
+    def walk(top, onerror=None, **kw):
+        # A 0700 root-owned drop-in directory, as /etc/systemd/system/tradeai-continuous.service.d on the host.
+        for parent, dirs, names in real_walk(top, onerror=onerror, **kw):
+            if Path(parent) == sealed:
+                onerror(PermissionError(13, "Permission denied", str(sealed)))
+                continue
+            yield parent, dirs, names
+    monkeypatch.setattr(DH.os, "walk", walk)
+    return rules, sealed
+
+
+def _runner_for(show):
+    calls = []
+    def runner(cmd, **kwargs):
+        calls.append(cmd)
+        if cmd == ["crontab", "-l"]:
+            return _show("# fixture cron")
+        return show
+    return runner, calls
+
+
+def test_sealed_dropin_directory_is_known_from_the_loaded_unit_not_assumed_empty(world, monkeypatch):
+    rules, sealed = _sealed_fixture(world, monkeypatch)
+    loaded = f"LoadState=loaded\nNeedDaemonReload=no\nDropInPaths={sealed}/singleton.conf\nExecStart={{ path=/usr/bin/flock ; argv[]=/usr/bin/flock {world[0]}/held-tree ; }}\n"
+    runner, calls = _runner_for(_show(loaded))
+    snap = COLLECT(rules, NOW, runner=runner, github=FixtureGithub())
+    units = snap["sources"]["units"]
+    assert units["complete"], units
+    entry = next(u for u in units["data"] if u["path"] == str(sealed))
+    assert entry["source"] == "systemctl_show_loaded_unit" and str(world[0] / "held-tree") in entry["text"]
+    assert ["systemctl", "--user", "show", "--no-pager", "fixture.service"] in calls  # read-only query, fixed argv
+
+
+@pytest.mark.parametrize("show", [
+    _show("", rc=1),
+    _show("LoadState=loaded\nNeedDaemonReload=yes\nDropInPaths=/x/fixture.service.d/a.conf\n"),
+    _show("LoadState=not-found\nNeedDaemonReload=no\n"),
+    _show("LoadState=loaded\nNeedDaemonReload=no\nDropInPaths=\n"),
+])
+def test_sealed_dropin_without_proof_of_what_is_loaded_still_refuses(world, monkeypatch, show):
+    rules, sealed = _sealed_fixture(world, monkeypatch)
+    if "/x/" in show.stdout:
+        show.stdout = show.stdout.replace("/x/fixture.service.d", str(sealed))
+    snap = COLLECT(rules, NOW, runner=_runner_for(show)[0], github=FixtureGithub())
+    assert not snap["sources"]["units"]["complete"]
+    assert "sealed_dropin" in snap["sources"]["units"]["detail"]
+    with pytest.raises(ValueError, match="evidence_incomplete:units"):
+        SR.evidence_context(snap, NOW)
+
+
+def test_unreadable_unit_directory_that_is_not_a_dropin_still_refuses(world, monkeypatch):
+    rules = collector_fixture(world)
+    other = rules["_unit_dirs"][0] / "multi-user.target.wants"
+    other.mkdir()
+    real_walk = os.walk
+    def walk(top, onerror=None, **kw):
+        for parent, dirs, names in real_walk(top, onerror=onerror, **kw):
+            if Path(parent) == other:
+                onerror(PermissionError(13, "Permission denied", str(other)))
+                continue
+            yield parent, dirs, names
+    monkeypatch.setattr(DH.os, "walk", walk)
+    runner, calls = _runner_for(_show("LoadState=loaded\nNeedDaemonReload=no\n"))
+    snap = COLLECT(rules, NOW, runner=runner, github=FixtureGithub())
+    assert not snap["sources"]["units"]["complete"] and "PermissionError" in snap["sources"]["units"]["detail"]
+    assert not any(c[0] == "systemctl" for c in calls)
+
+
+def _proc_with(world, monkeypatch, *, opaque_uid=0, zombie=True):
+    rules = collector_fixture(world)
+    proc = rules["_proc_root"]
+    (proc / "124").mkdir()
+    (proc / "124" / "status").write_text(f"Name:\tsystemd\nState:\tS (sleeping)\nUid:\t{opaque_uid}\t{opaque_uid}\t{opaque_uid}\t{opaque_uid}\n")
+    if zombie:
+        (proc / "125").mkdir()
+        (proc / "125" / "status").write_text("Name:\tcodex\nState:\tZ (zombie)\nUid:\t1000\t1000\t1000\t1000\n")
+    real = os.readlink
+    def readlink(path, *a, **kw):
+        if f"{os.sep}124{os.sep}" in str(path):
+            raise PermissionError(13, "Permission denied", str(path))
+        return real(path, *a, **kw)
+    monkeypatch.setattr(DH.os, "readlink", readlink)
+    return rules
+
+
+def test_zombie_has_no_references_and_other_users_processes_are_opaque_not_absent(world, monkeypatch):
+    rules = _proc_with(world, monkeypatch)
+    runner, _ = _runner_for(_show(""))
+    snap = COLLECT(rules, NOW, runner=runner, github=FixtureGithub())
+    procs = snap["sources"]["processes"]
+    assert procs["complete"], procs
+    assert [p["pid"] for p in procs["data"] if p.get("opaque")] == ["124"]
+    assert "125" not in [p["pid"] for p in procs["data"]]
+    ctx = SR.evidence_context(snap, NOW)  # preview: allowed, and the opaque set is carried
+    assert [p["uid"] for p in ctx["opaque_processes"]] == [0]
+    with pytest.raises(ValueError, match="evidence_opaque_processes"):
+        SR.evidence_context(snap, NOW, applying=True)  # removal: never on unproven absence
+
+
+def test_preview_report_names_opaque_processes_and_is_not_apply_admissible(world, monkeypatch):
+    rules = _proc_with(world, monkeypatch, zombie=False)
+    snap = COLLECT(rules, NOW, runner=_runner_for(_show(""))[0], github=FixtureGithub())
+    manifest = DH.standing_plan(rules, NOW, snap, measure=False)
+    assert manifest["apply_admissible"] is False
+    assert manifest["opaque_processes"]["count"] == 1 and manifest["opaque_processes"]["by_uid"] == {"0": 1}
+    assert "OPAQUE PROCESSES 1" in DH.human_summary(manifest, 5)
+
+
+def test_plan_bound_opaque_evidence_refuses_apply_before_remover(world, monkeypatch):
+    path, _, doc, calls = planned(world, monkeypatch)
+    doc["sources"]["processes"]["data"] = [{"pid": "1", "opaque": True, "uid": 0, "own_uid": False, "comm": "systemd"}]
+    doc["sources"]["processes"]["sha256"] = SR.digest(doc["sources"]["processes"]["data"])
+    report = DH.apply(path, world[1], NOW, grant=None, run_id="fixture", standing=True, evidence=doc,
+                      manifest_sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+    assert report["refused"] == "evidence_opaque_processes" and not calls

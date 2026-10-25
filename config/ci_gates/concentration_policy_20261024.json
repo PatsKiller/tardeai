@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "concentration_policy_20261024",
+  "files": [
+    "tests/test_concentration_policy_20261024.py"
+  ],
+  "comment": [
+    "Operator2026-10-24 Addendum3/R13 class limits and source-only readers; no broker/provider actions."
+  ]
+}

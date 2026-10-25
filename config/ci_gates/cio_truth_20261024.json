@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_truth_20261024",
+  "files": [
+    "tests/test_cio_truth_20261024.py"
+  ],
+  "comment": [
+    "W1 read-only canonical CIO display truth and cross-surface consistency."
+  ]
+}

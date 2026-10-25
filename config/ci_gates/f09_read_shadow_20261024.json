@@ -1,6 +1,10 @@
 {
   "schema": "CiGate@v1",
   "name": "f09_read_shadow_20261024",
-  "files": ["tests/test_f09_read_shadow_20261024.py"],
-  "comment": ["AGENTS §27.1/27.4 exact read argv; SHADOW offline wrapper, reused F09 no-broker harness, no B1 guard."]
+  "files": [
+    "tests/test_f09_read_shadow_20261024.py"
+  ],
+  "comment": [
+    "AGENTS §27.1/27.4 exact read argv; SHADOW offline wrapper, reused F09 no-broker harness, no B1 guard."
+  ]
 }

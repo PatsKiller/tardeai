@@ -1,3 +1,4 @@
+import ListPager, { useListOffset } from '../components/ListPager'
 /** Watch › System Suggests — what the system proposes for your list (operator 2026-10-23: "where is the automated
  *  watch list, the stuff that the system is proposing for me?").
  *
@@ -35,11 +36,13 @@ export default function WatchSuggests() {
   const [sp, setSp] = useSearchParams()
   const n = Math.max(1, Math.min(30, Number(sp.get('n') || 20) || 20))
   const [bump, setBump] = useState(0)
-  const { data: raw, loading, error, refetch } = useApi<any>(`/api/v3/data-broker/watch-curation?n=${n}${bump ? `&fresh=1&_=${bump}` : ''}`, 120_000)
+  const paging = useListOffset(String(n))
+  const { data: raw, loading, error, refetch } = useApi<any>(`/api/v3/data-broker/watch-curation?view=suggests&n=${n}&offset=${paging.offset}&limit=10${bump ? `&fresh=1&_=${bump}` : ''}`, 120_000)
   const { data: alertsRaw } = useApi<any>('/api/v2/watch/alerts/list', 120_000)
   const c = useMemo(() => unwrapAny<any>(raw), [raw])
   const armed = useMemo(() => armedBySymbol(alertsRaw), [alertsRaw])
-  const [sel, setSel] = useState<string | null>(null)
+  const sel = sp.get('symbol')
+  const setSel = (symbol: string | null) => setSp(p => { if (symbol) p.set('symbol', symbol); else p.delete('symbol'); return p })
   const [msg, setMsg] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState('')
   const [proposeFor, setProposeFor] = useState<WatchlistProposeSeed | null>(null)
@@ -96,7 +99,7 @@ export default function WatchSuggests() {
         </span>
         <label style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }} title="How many suggestions to keep (default 20, max 30). Kept in the URL.">
           Show{' '}
-          <select value={n} onChange={e => { const x = new URLSearchParams(sp); x.set('n', e.target.value); setSp(x, { replace: true }) }}
+          <select value={n} onChange={e => { const x = new URLSearchParams(sp); x.set('n', e.target.value); paging.reset(); setSp(x, { replace: true }) }}
             style={{ fontSize: TYPE.sm, background: TOKENS.bg[2], color: TOKENS.text[0], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.sm }}>
             {[10, 20, 30].map(v => <option key={v} value={v}>{v}</option>)}
           </select>
@@ -109,6 +112,8 @@ export default function WatchSuggests() {
           {rot.available ? `rotation vs the curator run of ${String(rot.previous_run_at || '').slice(11, 16)} UTC` : rot.unavailable_reason}
         </span>
       </div>
+      <div>{s?.universe_note}</div>
+      <ListPager page={s?.pagination} previous={paging.previous} next={paging.next} busy={loading} gap={s?.payload_gap} />
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-start' }}>
         <section className="watch-record-panel" aria-label="System Suggests" style={{ ...panel, flex: '999 1 700px' }}>
           <div className="watch-record-table">
@@ -139,7 +144,8 @@ export default function WatchSuggests() {
             })}
           </div>
         </section>
-        <aside aria-label="Record" style={{ ...panel, flex: '1 1 300px', maxWidth: 440, padding: 12 }}>
+        <aside className="watch-card-detail" data-open={!!selected} aria-label="Record" style={{ ...panel, position: 'static', width: 'auto', flex: '1 1 300px', maxWidth: 440, padding: 12 }}>
+          {selected && <button type="button" autoFocus onClick={() => setSel(null)} style={{ ...btn('info'), minHeight: 44 }}>Back to list</button>}
           <Detail r={selected} cioMsg={cioMsg} onAskCio={async r => { setCioMsg('Queuing…'); setCioMsg(await askCioReview(r.symbol, `Watch conflict: ${r.conflicts.map(x => x.summary).join(' | ')}`)) }} />
         </aside>
       </div>

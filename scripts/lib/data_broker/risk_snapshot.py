@@ -12,10 +12,10 @@ Data sources:
   - mark_quotes DB        (beta, delta approximations from daily returns)
   - stop_confirmations DB (operator-confirmed stop levels)
 
-Status: ADDITIVE. Does not replace the broker-protective-stop overlay (that still
-requires the live open_trades_intelligence import in the endpoint handler). Covers
-the JSON-file aggregation (risk heat, position risk, stop health, correlation)
-which is ~70% of the endpoint's work.
+W1: stop state/source are projected read-only through cio_truth from persisted
+observations. Pending/planned/filled levels are not active protection. A reader
+must not overwrite this source with another live-stop lookup. The endpoint
+adapter exposes positions_basis and positions_as_of with the same snapshot.
 """
 from __future__ import annotations
 
@@ -117,35 +117,37 @@ def _mtime(path: Path) -> float | None:
 
 
 # holdings.json and the broker stop store name two Schwab accounts differently; one key for the join.
-_ACCOUNT_ALIAS = {"schwab_roth": "schwab_roth_ira", "schwab_rollover": "schwab_rollover_ira"}
-
-
-def _overlay_broker_stops(positions: list[dict], errors: list[str]) -> None:
+def _overlay_broker_stops(positions: list[dict], errors: list[str], db_query=None) -> None:
     """Resting broker stops (stop_last_known, the source Open Trades reads) win over the planned stops in
     stops.json for the same account + symbol; each position says which one it carries."""
-    for p in positions:
-        if p.get("stop_price"):
-            p.setdefault("stop_source", "stops_json")
+    from ..cio_truth import stop_for, _query_rows
     try:
-        from lib.last_known_stops import load_last_known  # noqa: PLC0415
-        broker = {(_ACCOUNT_ALIAS.get(r["account"], r["account"]), r["symbol"]): r
-                  for r in load_last_known() if r.get("stop_price")}
+        if db_query is not None:
+            broker = _query_rows(db_query, "SELECT account,symbol,order_id,stop_price,qty,status,captured_at FROM stop_last_known")
+            if broker is None:
+                raise ValueError("stop observations unavailable")
+        else:
+            # A display builder never opens an implicit database connection.
+            # The server supplies its read-only query executor; offline callers
+            # receive an explicit missing-observation error and planned levels.
+            raise ValueError("stop observation executor unavailable")
     except Exception as exc:  # noqa: BLE001 — planned stops still shown, visibly
         errors.append(f"broker_stops:{type(exc).__name__}")
-        return
+        broker = []
+    planned = _load_json(STATE_DIR / "stops.json")
     for p in positions:
-        acct = str(p.get("account") or "")
-        r = broker.get((_ACCOUNT_ALIAS.get(acct, acct), str(p.get("symbol") or "").upper()))
-        if not r:
-            continue
+        stop = stop_for(p.get("account"), p.get("symbol"), broker_rows=broker, planned=planned)
+        if stop["stop_source"] == "none" and p.get("stop_price"):
+            # A precomputed risk row may carry an older planned level. Preserve
+            # its display price without representing it as broker protection.
+            stop.update(stop_price=p["stop_price"], stop_source="planned")
+        for key in ("stop_price", "stop_source", "stop_state", "stop_captured_at", "broker_protected"):
+            p[key] = stop[key]
         px = float(p.get("price") or 0)
-        sp = float(r["stop_price"])
-        p["stop_price"] = sp
-        p["stop_source"] = "broker_resting"
-        p["stop_captured_at"] = str(r.get("captured_at") or "")
-        if px > 0:
+        sp = stop.get("stop_price")
+        if px > 0 and sp:
             p["dist_pct"] = round((px - sp) / px * 100, 2)
-            p["protected"] = True
+        p["protected"] = stop["broker_protected"]
 
 def _live_risk_basis(rm: dict[str, Any], holdings: dict[str, Any], errors: list[str]) -> tuple[dict[str, Any], str, float | None]:
     """risk_management.json is written once a weekday before the open (portfolio_orchestrator 07:15), so a buy or
@@ -162,7 +164,6 @@ def _live_risk_basis(rm: dict[str, Any], holdings: dict[str, Any], errors: list[
                 sys.path.insert(0, scripts_dir)
             from portfolio_stops import compute_risk_metrics  # noqa: PLC0415
             fresh = compute_risk_metrics(holdings, STATE_DIR)
-            _overlay_broker_stops(fresh.get("positions") or [], errors)
             return fresh, "holdings_live", h_at
         except Exception as exc:  # noqa: BLE001 — fall back to the stored file, visibly
             errors.append(f"live_risk_basis:{type(exc).__name__}")
@@ -181,7 +182,10 @@ def build_risk_snapshot(db_query=None) -> dict[str, Any]:
     holdings = _load_json(STATE_DIR / "holdings.json") or {}
     rm, positions_basis, positions_at = _live_risk_basis(rm, holdings, errors)
 
+    from ..cio_truth import portfolio_for
+    portfolio_truth = portfolio_for(holdings)
     positions = rm.get("positions", [])
+    _overlay_broker_stops(positions, errors, db_query=db_query)
 
     # ---- Price enrichment from holdings ----
     h_prices: dict[str, float] = {}
@@ -220,6 +224,9 @@ def build_risk_snapshot(db_query=None) -> dict[str, Any]:
             "shares": round(shares, 4) if shares else None,
             "stop_price": stop_px,
             "stop_source": p.get("stop_source"),
+            "stop_state": p.get("stop_state"),
+            "stop_captured_at": p.get("stop_captured_at"),
+            "broker_protected": bool(p.get("broker_protected")),
             "distance_to_stop_pct": distance_pct,
             "max_loss_dollar": max_loss,
             "status": p.get("status", ""),
@@ -238,11 +245,11 @@ def build_risk_snapshot(db_query=None) -> dict[str, Any]:
     ), 2)
     protected_mv = round(sum(
         pr["market_value"] for pr in position_risk
-        if not pr["risk_excluded"] and pr["stop_price"] is not None
+        if not pr["risk_excluded"] and pr["broker_protected"]
     ), 2)
     unprotected_mv = round(sum(
         pr["market_value"] for pr in position_risk
-        if not pr["risk_excluded"] and pr["stop_price"] is None
+        if not pr["risk_excluded"] and not pr["broker_protected"]
     ), 2)
 
     # ---- Beta and VaR approximations ----
@@ -278,11 +285,11 @@ def build_risk_snapshot(db_query=None) -> dict[str, Any]:
     triggered_count = sum(1 for pr in position_risk
                           if pr.get("triggered") and not pr.get("risk_excluded"))
     protected_count = sum(1 for pr in position_risk
-                          if pr.get("stop_price") is not None and not pr.get("risk_excluded"))
+                          if pr.get("broker_protected") and not pr.get("risk_excluded"))
     unprotected_positions = [{"symbol": pr["symbol"], "market_value": pr["market_value"],
                               "account": pr["account"]}
                              for pr in position_risk
-                             if not pr.get("risk_excluded") and pr.get("stop_price") is None][:10]
+                             if not pr.get("risk_excluded") and not pr.get("broker_protected")]
 
     # ---- Correlation data ----
     correlation_pairs = []
@@ -322,18 +329,23 @@ def build_risk_snapshot(db_query=None) -> dict[str, Any]:
         "portfolio": {
             "heat_pct": rm.get("portfolio_heat_pct", 0),
             "total_risk_dollars": rm.get("total_risk_dollars", 0),
-            "pct_protected": rm.get("pct_protected", 0),
-            "total_protected_mv": rm.get("total_protected_mv") or protected_mv,
-            "total_unprotected_mv": rm.get("total_unprotected_mv") or unprotected_mv,
+            "pct_protected": round(100 * protected_mv / total_value, 2) if total_value else None,
+            "total_protected_mv": protected_mv,
+            "total_unprotected_mv": unprotected_mv,
             "total_value": total_value or rm.get("portfolio_total_value", 0),
             "total_at_risk": total_at_risk,
-            "position_count_real": len([p for p in position_risk if not p.get("risk_excluded")]),
+            "position_count_real": portfolio_truth["position_count"],
+            "position_counts": {**portfolio_truth["position_counts"], "risk_rows": len(real_positions)},
             "position_count_paper": len([p for p in position_risk if p.get("risk_excluded")]),
         },
         "positions": position_risk,
         "stop_health": {
             "triggered_count": triggered_count,
             "protected_count": protected_count,
+            "pending_count": sum(pr.get("stop_state") == "pending_activation" for pr in position_risk
+                                 if not pr.get("risk_excluded")),
+            "filled_count": sum(pr.get("stop_state") == "filled" for pr in position_risk
+                                if not pr.get("risk_excluded")),
             "unprotected_count": len(unprotected_positions),
             "unprotected_positions": unprotected_positions,
         },

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
+import ListPager, { useListOffset } from '../components/ListPager'
 import type { DrillContext } from '../components/DetailDrawer'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubPanel, BB, T, TYPE, RAIL, numStyle, terminalButton, focusStyle } from '../lib/watchTokens'
@@ -51,15 +53,15 @@ function DirectiveDrawer({ id, onClose }: { id: number; onClose: () => void }) {
     return tl.slice(-30).map((t: any) => G[Math.min(7, Math.round((t.hits / max) * 7))]).join('')
   }
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 80, display: 'flex', justifyContent: 'flex-end' }}>
-      <div onClick={e => e.stopPropagation()} style={{ width: 480, maxWidth: '94vw', height: '100%', overflowY: 'auto', background: BB.bgPanel, borderLeft: `1px solid ${BB.border}`, padding: 14 }}>
+    <div className="w2-directive-overlay" onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 80, display: 'flex', justifyContent: 'flex-end' }}>
+      <div className="w2-directive-sheet" role="dialog" aria-modal="true" aria-label="Watch directive" onClick={e => e.stopPropagation()} style={{ boxSizing: 'border-box', width: 480, maxWidth: '94vw', height: '100%', overflowY: 'auto', background: BB.bgPanel, borderLeft: `1px solid ${BB.border}`, padding: 14 }}>
+        <button type="button" autoFocus onClick={onClose} style={terminalButton('ghost')}>Back</button>
         {!d ? <div style={{ color: BB.text3, fontSize: TYPE.sm }}>Loading…</div> : (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: TYPE.md, fontWeight: 800, color: BB.text0 }}>#{d.id} {d.label}</span>
+              <span style={{ fontSize: TYPE.md, fontWeight: 800, color: BB.text0 }}>{d.label}</span>
               <Chip kind="state" tone={d.status === 'active' ? 'green' : d.status === 'paused' || d.status === 'expired' ? 'amber' : 'slate'}>{d.status}</Chip>
               {det.expires_in_days != null && <Chip kind="state" tone={det.expires_in_days <= 7 ? 'amber' : 'slate'}>{det.expires_in_days >= 0 ? `EXPIRES ${det.expires_in_days}d` : 'PAST TTL'}</Chip>}
-              <button onClick={onClose} style={{ marginLeft: 'auto', ...terminalButton('ghost') }}>✕</button>
             </div>
             <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 4 }}>{d.kind} · by {d.created_by || 'operator'} · created {String(d.created_at || '').slice(0, 10)} · TA {d.trade_ai_enabled ? '✓' : '✗'} · Hermes {d.hermes_enabled ? '✓' : '✗'}</div>
             {d.rationale && <div style={{ fontSize: TYPE.sm, color: BB.text1, marginTop: 8, lineHeight: 1.5 }}>{d.rationale}</div>}
@@ -104,14 +106,20 @@ function DirectiveDrawer({ id, onClose }: { id: number; onClose: () => void }) {
 }
 
 export default function WatchpoolHub({ onDrill, embedded }: Props) {
+  const [params, setParams] = useSearchParams()
   const [terminalUi] = useTerminalUi()
   const card = hubPanel(terminalUi)
-  const { data: wd, refetch: refetchWd } = useApi<any>('/api/v2/watch-directives', 60_000)
+  const [fStatus, setFStatus] = useState('all')
+  const poolPaging = useListOffset(fStatus)
+  const directivePaging = useListOffset()
+  const { data: wd, error: wdError, loading: wdLoading, refetch: refetchWd } = useApi<any>(`/api/v2/watch-directives?offset=${directivePaging.offset}&limit=50`, 60_000)
   const { data: tw, refetch: refetchTw } = useApi<any>('/api/v2/watch/two-way-curation', 60_000)
-  const { data: wp, refetch: refetchWp } = useApi<any>('/api/v2/watchpool', 60_000)
+  const { data: wp, error: wpError, loading: wpLoading, refetch: refetchWp } = useApi<any>(`/api/v2/watchpool?status=${encodeURIComponent(fStatus)}&offset=${poolPaging.offset}&limit=50`, 60_000)
   const { data: mergePlan, refetch: refetchPlan } = useApi<any>('/api/v2/watch/directives/merge-plan', 0)
   const { data: finds } = useApi<any>('/api/v2/screener-finds/candidates', 300_000)
-  const [drawerId, setDrawerId] = useState<number | null>(null)
+  const directiveId = params.get('directive')
+  const drawerId = directiveId && /^\d+$/.test(directiveId) ? Number(directiveId) : null
+  const setDrawerId = (id: number | null) => setParams(p => { if (id != null) p.set('directive', String(id)); else p.delete('directive'); return p })
   const [kind, setKind] = useState<'ticker' | 'sector' | 'trend'>('ticker')
   const [label, setLabel] = useState('')
   const [field1, setField1] = useState('')
@@ -120,10 +128,6 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [deskFilter, setDeskFilter] = useState<'all' | 'cio' | 'advisory' | 'defense'>('all')
-  const [fStatus, setFStatus] = useState('all')   // watchpool status filter (clickable top row)
-  const [page, setPage] = useState(0)
-  const PER_PAGE = 50
-  useEffect(() => setPage(0), [fStatus])   // reset to page 1 when the status filter changes
 
   const createDirective = async () => {
     setBusy(true); setMsg(null)
@@ -183,10 +187,8 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
   const twForward = tw?.forward || tw?.data?.forward
   const twReverse = tw?.reverse || tw?.data?.reverse
   const allRows = wp?.rows ?? []
-  const pool = fStatus === 'all' ? allRows : allRows.filter((r: any) => String(r.current_status).toUpperCase() === fStatus.toUpperCase())
-  const pageCount = Math.max(1, Math.ceil(pool.length / PER_PAGE))
-  const curPage = Math.min(page, pageCount - 1)
-  const pagePool = pool.slice(curPage * PER_PAGE, (curPage + 1) * PER_PAGE)
+  const pool = allRows
+  const pagePool = allRows
 
   // A5: j/k row focus + Enter drill on the pool list (list-dense tab)
   const [focusIdx, setFocusIdx] = useState<number>(-1)
@@ -207,20 +209,16 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [pagePool, focusIdx, onDrill])
 
-  const pager = pageCount > 1 ? (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-      <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={curPage === 0} style={{ ...terminalButton('secondary'), opacity: curPage === 0 ? 0.4 : 1 }}>‹ Prev</button>
-      <span style={{ ...numStyle, fontSize: TYPE.xs, color: BB.text2, fontWeight: 700, minWidth: 92, textAlign: 'center' }}>Page {curPage + 1} / {pageCount} · {curPage * PER_PAGE + 1}-{Math.min((curPage + 1) * PER_PAGE, pool.length)}</span>
-      <button onClick={() => setPage(p => Math.min(pageCount - 1, p + 1))} disabled={curPage >= pageCount - 1} style={{ ...terminalButton('secondary'), opacity: curPage >= pageCount - 1 ? 0.4 : 1 }}>Next ›</button>
-    </div>
-  ) : null
+  const pager = <ListPager busy={wpLoading} page={wp?.pagination} previous={poolPaging.previous} next={poolPaging.next} gap={wp?.payload_gap} />
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div className="w2-watchpool" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <style>{`@media(max-width:820px){.w2-watchpool button,.w2-watchpool input,.w2-watchpool select{min-height:44px;min-width:44px}.w2-watchpool [data-directive-row]{min-height:44px}.w2-watchpool [data-pool-row]{display:grid!important;grid-template-columns:minmax(0,1fr) auto;gap:8px;min-height:44px;overflow-wrap:anywhere}.w2-watchpool [data-pool-header]{display:none!important}.w2-directive-sheet{width:100%!important;max-width:none!important}.w2-directive-overlay{z-index:1200!important}}`}</style>
+      {(wdError || wpError) && <div role="status" style={{ color: BB.amber, fontSize: TYPE.sm }}>Latest list read failed. Any displayed rows and counts are retained from the last successful response.</div>}
       {!embedded && (
         <div>
           <div style={{ fontSize: TYPE.lg, fontWeight: 800, color: BB.text0 }}>Watchpool &amp; Directives</div>
-          <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>{wd?.directive_count ?? 0} directives · {wp?.count ?? 0} watchpool entries · advisory · Hermes-firewall preserved (Hermes proposes via staging only)</div>
+          <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>{wd?.directive_count ?? '—'} directives · {wp?.count ?? '—'} watchpool entries · advisory · Hermes-firewall preserved (Hermes proposes via staging only)</div>
         </div>
       )}
 
@@ -365,14 +363,15 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
               </Chip>
             ) : null
           })()}
-          <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>click a row for the full drawer</span>
+          <span style={{ fontSize: TYPE.xs, color: BB.text3 }}>click a row for the full drawer · {wd?.recent_hits_count ?? '—'} hits in the retained ledger · {wd?.desk_suggestions_count ?? '—'} staged by desks</span>
         </div>
-        {directives.length === 0 ? <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>No directives yet — add one above.</div> :
+        <ListPager busy={wdLoading} page={wd?.pagination} previous={directivePaging.previous} next={directivePaging.next} gap={wd?.payload_gap} />
+        {directives.length === 0 ? <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>{wdLoading ? 'Loading directives…' : wdError || wd?.directive_count == null ? 'Directives unavailable.' : 'No directives yet — add one above.'}</div> :
           directives.map((d: any) => {
             const dhits = hits.filter((h: any) => h.directive_id === d.id)
             const rail = d.status === 'paused' ? RAIL.attention : d.status === 'active' ? RAIL.favorable : RAIL.neutral
             return (
-              <div key={d.id} onClick={() => setDrawerId(d.id)}
+              <div data-directive-row role="button" tabIndex={0} key={d.id} onClick={() => setDrawerId(d.id)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDrawerId(d.id) } }}
                    style={{ padding: '8px 6px', borderBottom: `1px solid ${BB.border}`, borderLeft: `3px solid ${rail}`, cursor: 'pointer' }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <Chip kind="metric">{d.kind}</Chip>
@@ -412,7 +411,7 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
           <span style={{ fontSize: TYPE.base, fontWeight: 800, color: BB.text0 }}>Watchpool</span>
           {/* clickable status row — each chip filters the pool; 'all' resets */}
-          {([['all', allRows.length]] as any[]).concat(Object.entries(wp?.by_status ?? {})).map(([k, v]: any) => {
+          {([['all', wp?.count ?? '—']] as any[]).concat(Object.entries(wp?.by_status ?? {})).map(([k, v]: any) => {
             const active = fStatus.toUpperCase() === String(k).toUpperCase()
             return (
               <button key={k} onClick={() => setFStatus(k)} title={`show ${String(k).toLowerCase()}`}
@@ -426,13 +425,13 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
           <span style={{ flex: 1 }} />
           {pager}
         </div>
-        {pool.length === 0 ? <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>Watchpool empty.</div> : (<>
-          <div style={{ display: 'flex', fontSize: TYPE.xs, color: BB.text3, padding: '0 6px 4px', textTransform: 'uppercase', letterSpacing: 0.3 }}>
+        {pool.length === 0 ? <div style={{ fontSize: TYPE.sm, color: BB.text3 }}>{wpLoading ? 'Loading watchpool…' : wpError || wp?.count == null ? 'Watchpool unavailable.' : 'Watchpool empty.'}</div> : (<>
+          <div data-pool-header style={{ display: 'flex', fontSize: TYPE.xs, color: BB.text3, padding: '0 6px 4px', textTransform: 'uppercase', letterSpacing: 0.3 }}>
             <span style={{ flex: '0 0 64px' }}>Symbol</span><span style={{ flex: '0 0 160px' }}>Strategy</span><span style={{ flex: '0 0 96px' }}>Bucket</span><span style={{ flex: '0 0 110px' }}>Status</span><span style={{ flex: '1 1 auto' }}>Origin</span>
           </div>
           <div ref={listRef}>
           {pagePool.map((r: any, ri: number) => (
-            <div key={r.id} onClick={() => onDrill({ title: `${r.symbol} — provenance`, subtitle: `${r.strategy_id} · ${r.bucket}`, endpoint: `/api/v2/watch/provenance/${r.symbol}`, rows: [r] })}
+            <div data-pool-row key={r.id} onClick={() => onDrill({ title: `${r.symbol} — provenance`, subtitle: `${r.strategy_id} · ${r.bucket}`, endpoint: `/api/v2/watch/provenance/${r.symbol}`, rows: [r] })}
               style={{ display: 'flex', alignItems: 'center', padding: '4px 6px', borderBottom: `1px solid ${BB.borderHair}`,
                        borderLeft: `3px solid ${poolRail(r.current_status)}`, cursor: 'pointer', fontSize: TYPE.sm,
                        ...(ri === focusIdx ? { background: BB.bgShift } : {}), ...focusStyle(ri === focusIdx) }}>
@@ -447,7 +446,7 @@ export default function WatchpoolHub({ onDrill, embedded }: Props) {
             </div>
           ))}
           </div>
-          {pageCount > 1 && <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>{pager}</div>}
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>{pager}</div>
         </>)}
         <div style={{ fontSize: TYPE.xs, color: BB.text3, marginTop: 8 }}>Click a row for full provenance (origin · tier · Street consensus · divergence). Keys: j/k move · Enter opens. Advisory — promotion is gated; no execution.</div>
       </div>

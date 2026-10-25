@@ -79,7 +79,7 @@ cap_bands: {mega: 200000000000, large: 10000000000, mid: 2000000000, small: 0}
 # Stance (cio_decision_semantics vocabulary). Wording is descriptive and conditional only — never an instruction.
 stance:
   exit_if: {held: true, max_conviction: 35, min_coverage: 0.8}   # never on thin evidence (e.g. an income ETF)
-  trim_if: {held: true, min_weight_pct: 12}
+  trim_if: {held: true, above_concentration_limit: true} # IPS constraints.concentration_policy, class-aware
   add_if:  {held: true, min_conviction: 70, min_rr: 2.0}   # same bar as the add_on type
   re_enter_if: {held: false, reentry_or_recently_sold: true, min_conviction: 70}
 

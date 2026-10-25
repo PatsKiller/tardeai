@@ -1,3 +1,4 @@
+import './W9Mobile.css'
 /**
  * Research Intelligence v2.7 — stage trades, cross-theme, concentration banner.
  */
@@ -215,37 +216,37 @@ type Item = {
 
 /* Institutional desk palette — muted steel/ink, no Christmas-tree neons */
 const C = {
-  ink: '#e6eaf0',
-  muted: '#9aa3b2',
-  soft: '#6b7385',
-  dim: '#4e5668',
-  card: 'rgba(16, 20, 30, 0.96)',
-  cardHover: 'rgba(22, 27, 40, 0.98)',
-  line: 'rgba(148, 163, 184, 0.12)',
-  lineStrong: 'rgba(148, 163, 184, 0.20)',
-  accent: '#8ba3c7',
+  ink: 'var(--text-0)',
+  muted: 'var(--text-2)',
+  soft: 'var(--text-3)',
+  dim: 'var(--text-3)',
+  card: 'var(--bg-1)',
+  cardHover: 'var(--bg-2)',
+  line: 'var(--border-subtle)',
+  lineStrong: 'var(--border-color)',
+  accent: 'var(--info-color)',
   accentSoft: 'rgba(139, 163, 199, 0.10)',
   // Category accents: desaturated, same family
-  retire: '#a8a3c4',
+  retire: 'var(--ai-color)',
   retireSoft: 'rgba(168, 163, 196, 0.10)',
-  income: '#8fad9a',
+  income: 'var(--success-color)',
   incomeSoft: 'rgba(143, 173, 154, 0.10)',
-  macro: '#b0a890',
+  macro: 'var(--warning-color)',
   macroSoft: 'rgba(176, 168, 144, 0.10)',
   // Status — readable, not neon
-  live: '#8fad9a',
-  fresh: '#8ba3c7',
-  aging: '#b0a890',
-  stale: '#b89191',
-  archive: '#7a8294',
-  bull: '#8fad9a',
-  bear: '#b89191',
-  star: '#c4b896',
-  cta: '#a8b8cc',
+  live: 'var(--success-color)',
+  fresh: 'var(--info-color)',
+  aging: 'var(--warning-color)',
+  stale: 'var(--danger-color)',
+  archive: 'var(--text-3)',
+  bull: 'var(--success-color)',
+  bear: 'var(--danger-color)',
+  star: 'var(--warning-color)',
+  cta: 'var(--info-color)',
   ctaBg: 'rgba(139, 163, 199, 0.08)',
-  positive: '#8fad9a',
-  negative: '#b89191',
-  caution: '#b0a890',
+  positive: 'var(--success-color)',
+  negative: 'var(--danger-color)',
+  caution: 'var(--warning-color)',
 }
 
 const TIER: Record<string, { color: string; label: string }> = {
@@ -294,8 +295,8 @@ function SoftChip({ label, color, active, onClick }: {
       style={{
         fontSize: 11, fontWeight: 650, letterSpacing: '0.01em',
         padding: '6px 12px', borderRadius: 999, cursor: onClick ? 'pointer' : 'default',
-        border: `1px solid ${active ? `${c}66` : C.line}`,
-        background: active ? `${c}18` : 'rgba(255,255,255,0.02)',
+        border: `1px solid ${active ? `color-mix(in srgb, ${c} 40%, transparent)` : C.line}`,
+        background: active ? `color-mix(in srgb, ${c} 9%, transparent)` : 'rgba(255,255,255,0.02)',
         color: active ? c : C.muted,
         transition: 'background .15s, border-color .15s, color .15s',
       }}
@@ -310,7 +311,7 @@ function Tag({ children, color }: { children: ReactNode; color?: string }) {
   return (
     <span style={{
       fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
-      color: c, background: `${c}14`, border: `1px solid ${c}33`,
+      color: c, background: `color-mix(in srgb, ${c} 8%, transparent)`, border: `1px solid color-mix(in srgb, ${c} 20%, transparent)`,
       borderRadius: 6, padding: '3px 8px',
     }}>
       {children}
@@ -340,10 +341,10 @@ function SourceLinks({ sources }: { sources?: { title?: string; url?: string; so
   const domain = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, '') } catch { return u.slice(0, 30) } }
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'baseline' }} onClick={e => e.stopPropagation()}>
-      <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase', color: C.soft }}>Sources</span>
+      <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase', color: C.soft }}>Sources</span>
       {withUrl.slice(0, 4).map((s, i) => (
         <a key={i} href={s.url} target="_blank" rel="noopener noreferrer" title={s.title || s.url}
-          style={{ fontSize: 10.5, color: C.accent, textDecoration: 'none', borderBottom: `1px dotted ${C.accent}66` }}>
+          style={{ fontSize: 10.5, color: C.accent, textDecoration: 'none', borderBottom: `1px dotted color-mix(in srgb, ${C.accent} 40%, transparent)` }}>
           {domain(s.url!)}↗
         </a>
       ))}
@@ -480,7 +481,7 @@ function ActionStrip({
           Operator next step
         </div>
         {hasAdvisory && (
-          <div style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.muted }}>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.muted }}>
             Portfolio-aware
           </div>
         )}
@@ -513,7 +514,7 @@ function ActionStrip({
               }}
               style={{
                 fontSize: 11, fontWeight: 700, padding: '7px 11px', borderRadius: 8, cursor: 'pointer',
-                border: '1px solid #f59e0b55', background: 'rgba(245,158,11,0.08)', color: '#f59e0b',
+                border: '1px solid color-mix(in srgb, var(--warning-color) 33%, transparent)', background: 'rgba(245,158,11,0.08)', color: 'var(--warning-color)',
               }}
             >
               {dirState === 'done' ? '✓ Directive created' : dirState === 'busy' ? 'Creating…'
@@ -626,7 +627,7 @@ function ActionStrip({
                         {t.hermes && (
                           <span title="Hermes composite score · rank · scope tier (read-only join)" style={{
                             fontFamily: 'var(--mono)', fontSize: 10.5, fontWeight: 800, color: C.accent,
-                            border: `1px solid ${C.accent}44`, borderRadius: 6, padding: '1px 6px',
+                            border: `1px solid color-mix(in srgb, ${C.accent} 27%, transparent)`, borderRadius: 6, padding: '1px 6px',
                           }}>
                             ★{t.hermes.rank != null ? `#${t.hermes.rank}` : ''} · {t.hermes.composite}
                             {t.hermes.scope_tier ? ` · ${String(t.hermes.scope_tier).toUpperCase()}` : ''}
@@ -635,15 +636,15 @@ function ActionStrip({
                         {t.score_divergence && (
                           <span title="RI conviction and Hermes composite disagree — both shown, neither blended" style={{
                             fontSize: 10, fontWeight: 800, color: C.stale,
-                            border: `1px solid ${C.stale}55`, borderRadius: 6, padding: '1px 6px',
+                            border: `1px solid color-mix(in srgb, ${C.stale} 33%, transparent)`, borderRadius: 6, padding: '1px 6px',
                           }}>
                             ⚠ divergence: RI {t.score_divergence.ri_tier} / Hermes {t.score_divergence.hermes_composite}
                           </span>
                         )}
                         {t.watch_directive && (
                           <span title="Active watch directive on this symbol" style={{
-                            fontSize: 10, fontWeight: 800, color: '#f59e0b',
-                            border: '1px solid #f59e0b55', borderRadius: 6, padding: '1px 6px',
+                            fontSize: 10, fontWeight: 800, color: 'var(--warning-color)',
+                            border: '1px solid color-mix(in srgb, var(--warning-color) 33%, transparent)', borderRadius: 6, padding: '1px 6px',
                           }}>
                             Directive
                           </span>
@@ -688,7 +689,7 @@ function ActionStrip({
                     marginTop: 10, paddingTop: 9, borderTop: `1px solid ${C.line}`,
                     fontSize: 11.5, color: C.muted, lineHeight: 1.5,
                   }}>
-                    <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.soft, marginBottom: 3 }}>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.soft, marginBottom: 3 }}>
                       Analyst reviews
                     </div>
                     {consensus && (
@@ -715,7 +716,7 @@ function ActionStrip({
                     fontSize: 11.5, lineHeight: 1.45,
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
-                      <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.soft }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.soft }}>
                         Latest news
                       </div>
                       {newsSent && (
@@ -796,7 +797,7 @@ function ActionStrip({
           fontSize: 11.5, lineHeight: 1.45, padding: '8px 10px', borderRadius: 8,
           background: 'rgba(0,0,0,.16)', border: `1px solid ${C.line}`,
         }}>
-          <div style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.soft, marginBottom: 4 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: C.soft, marginBottom: 4 }}>
             Related themes
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: related?.impact_note ? 4 : 0 }}>
@@ -996,7 +997,7 @@ function ArticleCard({
           <button type="button" onClick={toggleStar} style={iconBtn(item.starred ? C.star : C.soft)} title="Star">
             {item.starred ? '★' : '☆'}
           </button>
-          {savedAgo && <span style={{ fontSize: 9.5, color: C.star }}>{savedAgo}</span>}
+          {savedAgo && <span style={{ fontSize: 10.5, color: C.star }}>{savedAgo}</span>}
           <button type="button" onClick={hideCard} className="ri-hide-btn"
             title="Hide from desk — operator curation only; the research row is untouched"
             style={{ ...iconBtn(C.soft), fontSize: 11, opacity: 0.35 }}>
@@ -1041,7 +1042,7 @@ function ArticleCard({
           ))}
           {item.watch_directive && (
             <span title={`Active watch directive: ${item.watch_directive.label || item.symbol}`}>
-              <Tag color="#f59e0b">Directive</Tag>
+              <Tag color="var(--warning-color)">Directive</Tag>
             </span>
           )}
           {(item.ticker_recommendations?.filter(t => t.scope !== 'book').length ?? 0) > 0 && (
@@ -1056,11 +1057,11 @@ function ArticleCard({
           {/* v3.1 (WS-D): QA flags demote and DISCLOSE — honest gray chips, never hidden */}
           {(item.quality_flags || []).map((f, i) => (
             <span key={`qf-${i}`} title="Deterministic QA lint flag — this brief is capped below Tier A">
-              <Tag color="#6b7280">{f.startsWith('duplicate_of:') ? 'duplicate' : f.replace(/_/g, ' ')}</Tag>
+              <Tag color="var(--text-3)">{f.startsWith('duplicate_of:') ? 'duplicate' : f.replace(/_/g, ' ')}</Tag>
             </span>
           ))}
           {(item.quality_flags || []).includes('no_counter_view') && (
-            <Tag color="#9ca3af">single-view — treat as unconfirmed</Tag>
+            <Tag color="var(--text-2)">single-view — treat as unconfirmed</Tag>
           )}
           {item.is_archived && <Tag color={C.archive}>Archived</Tag>}
           {item.needs_refresh && <Tag color={C.stale}>Due refresh</Tag>}
@@ -1174,7 +1175,7 @@ function ArticleCard({
             }
             return (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
-                <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase', color: C.soft }}>
+                <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '0.07em', textTransform: 'uppercase', color: C.soft }}>
                   This brief
                 </span>
                 {briefTicks.slice(0, 4).map((t, i) => {
@@ -1182,7 +1183,7 @@ function ArticleCard({
                   return (
                     <span key={`${t.symbol}-${i}`} style={{
                       fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 800,
-                      color: C.accent, background: `${rc}14`, border: `1px solid ${rc}44`,
+                      color: C.accent, background: `color-mix(in srgb, ${rc} 8%, transparent)`, border: `1px solid color-mix(in srgb, ${rc} 27%, transparent)`,
                       borderRadius: 6, padding: '3px 8px',
                     }}>
                       {t.symbol}
@@ -1223,13 +1224,13 @@ function ArticleCard({
       {(featured || view === 'list') && (item.bull_case || item.bear_case) && (
         <div style={{ display: 'grid', gridTemplateColumns: item.bull_case && item.bear_case ? '1fr 1fr' : '1fr', gap: 8 }}>
           {item.bull_case && (
-            <div style={{ padding: '10px 12px', borderRadius: 10, background: C.incomeSoft, border: `1px solid ${C.income}33` }}>
+            <div style={{ padding: '10px 12px', borderRadius: 10, background: C.incomeSoft, border: `1px solid color-mix(in srgb, ${C.income} 20%, transparent)` }}>
               <div style={{ fontSize: 10, fontWeight: 800, color: C.income, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>Bull case</div>
               <div style={{ fontSize: 12, lineHeight: 1.45, color: C.ink }}>{item.bull_case}</div>
             </div>
           )}
           {item.bear_case && (
-            <div style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(249,168,212,0.08)', border: `1px solid ${C.bear}33` }}>
+            <div style={{ padding: '10px 12px', borderRadius: 10, background: 'rgba(249,168,212,0.08)', border: `1px solid color-mix(in srgb, ${C.bear} 20%, transparent)` }}>
               <div style={{ fontSize: 10, fontWeight: 800, color: C.bear, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>Bear case</div>
               <div style={{ fontSize: 12, lineHeight: 1.45, color: C.ink }}>{item.bear_case}</div>
             </div>
@@ -1282,7 +1283,7 @@ function voteBtn(active: boolean, color: string): CSSProperties {
   return {
     fontSize: 11, fontWeight: 800, padding: '3px 7px', borderRadius: 6, cursor: 'pointer',
     border: `1px solid ${active ? color : C.line}`,
-    background: active ? `${color}22` : 'transparent',
+    background: active ? `color-mix(in srgb, ${color} 13%, transparent)` : 'transparent',
     color: active ? color : C.soft,
   }
 }
@@ -1320,12 +1321,12 @@ export function fmtET(iso: string | null | undefined, withDate = true): string {
 }
 
 const STAGED_STATUS_META: Record<string, { label: string; color: string }> = {
-  staged: { label: 'Staged', color: '#34d399' },
-  watchlisted: { label: 'Watchlisted', color: '#60a5fa' },
-  directive_created: { label: 'Directive', color: '#f59e0b' },
-  proposed_paper: { label: 'Paper proposal', color: '#a78bfa' },
-  expired: { label: 'Expired', color: '#64748b' },
-  dismissed: { label: 'Dismissed', color: '#64748b' },
+  staged: { label: 'Staged', color: 'var(--success-color)' },
+  watchlisted: { label: 'Watchlisted', color: 'var(--info-color)' },
+  directive_created: { label: 'Directive', color: 'var(--warning-color)' },
+  proposed_paper: { label: 'Paper proposal', color: 'var(--ai-color)' },
+  expired: { label: 'Expired', color: 'var(--text-3)' },
+  dismissed: { label: 'Dismissed', color: 'var(--text-3)' },
 }
 
 const THEME_TO_CATEGORY: Record<string, string> = {
@@ -1341,8 +1342,10 @@ const THEME_TO_CATEGORY: Record<string, string> = {
 
 export default function ResearchIntelligenceHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const queryParam = searchParams.get('symbol') || searchParams.get('q') || ''
   const [q, setQ] = useState(() => searchParams.get('symbol') || searchParams.get('q') || '')
+  useEffect(() => { setQ(queryParam) }, [queryParam])
   const [category, setCategory] = useState<string | null>(null)
   const [priority, setPriority] = useState<string | null>(null)
   const [holdingsOnly, setHoldingsOnly] = useState(false)
@@ -1572,23 +1575,13 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
     setFreshness(null)
     setSentiment(null)
     setLane('all')
-  }, [])
+    const next = new URLSearchParams(searchParams)
+    next.delete('symbol')
+    next.delete('q')
+    setSearchParams(next)
+  }, [searchParams, setSearchParams])
 
-  // Auto-clear only truly empty filters (0 matches) when the desk has a full universe —
-  // e.g. stuck on Compounding primary=0. Do NOT clear intentional narrow filters (1–N stories).
-  const didAutoClear = useRef(false)
-  useEffect(() => {
-    if (didAutoClear.current || loading || !data?.stats) return
-    const matched = Number(data.stats.matched ?? 0)
-    const universe = Number(data.stats.universe ?? 0)
-    const deskBig = universe >= 20 || (data.stats.by_category
-      && Object.values(data.stats.by_category as Record<string, number>).reduce((a, b) => a + (Number(b) || 0), 0) >= 20)
-    if (hasActiveFilters && matched === 0 && deskBig) {
-      didAutoClear.current = true
-      clearFilters()
-    }
-  }, [data?.stats, loading, hasActiveFilters, clearFilters])
-
+  // Empty searches are meaningful. Only Clear filters may broaden the requested scope.
   const displayItems: Item[] = useMemo(() => {
     // Lane + category are applied server-side (lane= param); items ARE the lane
     // view. Locally-hidden cards (B2) drop out immediately.
@@ -1652,7 +1645,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
 
   return (
     // v3.1 (E3): tabular numerals desk-wide — numbers align in columns
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 1280, fontVariantNumeric: 'tabular-nums' }}>
+    <div className="w9-page" style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 1280, fontVariantNumeric: 'tabular-nums' }}>
       {/* Masthead */}
       <header style={{
         borderRadius: 12,
@@ -1768,7 +1761,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
         <div style={{
           position: 'fixed', bottom: 24, right: 24, zIndex: 80,
           padding: '12px 16px', borderRadius: 12, maxWidth: 360,
-          background: 'rgba(16,24,40,.96)', border: `1px solid ${C.income}66`,
+          background: 'rgba(16,24,40,.96)', border: `1px solid color-mix(in srgb, ${C.income} 40%, transparent)`,
           color: C.ink, fontSize: 13, fontWeight: 650, boxShadow: '0 12px 40px rgba(0,0,0,.4)',
         }}>
           {toast}
@@ -1804,7 +1797,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
       {/* Staged ideas panel */}
       {showStaged && (
         <div style={{
-          background: C.card, border: `1px solid ${C.income}44`, borderRadius: 14, padding: 14,
+          background: C.card, border: `1px solid color-mix(in srgb, ${C.income} 27%, transparent)`, borderRadius: 14, padding: 14,
         }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <div style={{ fontSize: 13, fontWeight: 850, color: C.income }}>Staged Ideas · RI desk</div>
@@ -1828,11 +1821,11 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                       <span>{(idea.side || 'buy').toUpperCase()} · {idea.suggested_weight_pct || 'size TBD'}
                         {idea.conviction_tier ? ` · Conv ${idea.conviction_tier}` : ''}</span>
                       <span style={{
-                        fontSize: 9.5, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase',
-                        color: sm.color, border: `1px solid ${sm.color}55`, borderRadius: 999, padding: '1px 8px',
+                        fontSize: 10.5, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase',
+                        color: sm.color, border: `1px solid color-mix(in srgb, ${sm.color} 33%, transparent)`, borderRadius: 999, padding: '1px 8px',
                       }}>{sm.label}</span>
                       {idea.staged_at && (
-                        <span style={{ fontSize: 9.5, color: C.soft }} title={String(idea.staged_at)}>
+                        <span style={{ fontSize: 10.5, color: C.soft }} title={String(idea.staged_at)}>
                           created {fmtET(idea.staged_at)} ET
                         </span>
                       )}
@@ -1841,9 +1834,9 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                         const amber = Number.isFinite(daysLeft) && daysLeft <= 3
                         return (
                           <span style={{
-                            fontSize: 9.5, fontWeight: amber ? 800 : 500,
-                            color: amber ? '#f59e0b' : C.soft,
-                            border: amber ? '1px solid #f59e0b55' : 'none',
+                            fontSize: 10.5, fontWeight: amber ? 800 : 500,
+                            color: amber ? 'var(--warning-color)' : C.soft,
+                            border: amber ? '1px solid color-mix(in srgb, var(--warning-color) 33%, transparent)' : 'none',
                             borderRadius: 999, padding: amber ? '0 6px' : 0,
                           }}>
                             expires in {daysLeft}d
@@ -1864,15 +1857,15 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                       {promotable && idea.id && (
                         <>
                           <button type="button" onClick={() => handlePromoteStaged(idea.id!, 'watchlist')}
-                            style={{ fontSize: 10, fontWeight: 750, color: '#60a5fa', border: '1px solid #60a5fa44', background: 'transparent', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>
+                            style={{ fontSize: 10, fontWeight: 750, color: 'var(--info-color)', border: '1px solid color-mix(in srgb, var(--info-color) 27%, transparent)', background: 'transparent', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>
                             → Watchlist
                           </button>
                           <button type="button" onClick={() => handlePromoteStaged(idea.id!, 'directive')}
-                            style={{ fontSize: 10, fontWeight: 750, color: '#f59e0b', border: '1px solid #f59e0b44', background: 'transparent', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>
+                            style={{ fontSize: 10, fontWeight: 750, color: 'var(--warning-color)', border: '1px solid color-mix(in srgb, var(--warning-color) 27%, transparent)', background: 'transparent', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>
                             → Watch Directive
                           </button>
                           <button type="button" onClick={() => handlePromoteStaged(idea.id!, 'paper_proposal')}
-                            style={{ fontSize: 10, fontWeight: 750, color: '#a78bfa', border: '1px solid #a78bfa44', background: 'transparent', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>
+                            style={{ fontSize: 10, fontWeight: 750, color: 'var(--ai-color)', border: '1px solid color-mix(in srgb, var(--ai-color) 27%, transparent)', background: 'transparent', borderRadius: 6, padding: '3px 8px', cursor: 'pointer' }}>
                             → Paper proposal
                           </button>
                         </>
@@ -1976,7 +1969,14 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           <input
             value={q}
-            onChange={e => setQ(e.target.value)}
+            onChange={e => {
+              setQ(e.target.value)
+              const next = new URLSearchParams(searchParams)
+              next.delete('symbol')
+              if (e.target.value) next.set('q', e.target.value)
+              else next.delete('q')
+              setSearchParams(next, { replace: true })
+            }}
             placeholder="Search briefs — Roth, IRMAA, SCHD, Fed, thesis…"
             style={{
               flex: '1 1 260px', minWidth: 200, fontSize: 13.5, padding: '11px 14px', borderRadius: 12,
@@ -2028,7 +2028,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
         <div style={{
           padding: '10px 14px', borderRadius: 12, display: 'flex', flexWrap: 'wrap', gap: 10,
           alignItems: 'center', justifyContent: 'space-between',
-          border: `1px solid ${C.accent}44`, background: C.accentSoft, fontSize: 12.5, color: C.ink,
+          border: `1px solid color-mix(in srgb, ${C.accent} 27%, transparent)`, background: C.accentSoft, fontSize: 12.5, color: C.ink,
         }}>
           <span>
             Showing <b>{stats.matched ?? displayItems.length}</b>
@@ -2038,7 +2038,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
           </span>
           <button type="button" onClick={clearFilters} style={{
             fontSize: 12, fontWeight: 750, padding: '6px 12px', borderRadius: 8, cursor: 'pointer',
-            border: `1px solid ${C.accent}66`, background: 'rgba(0,0,0,.2)', color: C.accent,
+            border: `1px solid color-mix(in srgb, ${C.accent} 40%, transparent)`, background: 'rgba(0,0,0,.2)', color: C.accent,
           }}>
             Show all stories
           </button>
@@ -2049,7 +2049,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
       {(staleTopics.length > 0 || (retStats && retStats.needs_refresh > 10)) && (
         <div style={{
           padding: '12px 16px', borderRadius: 12,
-          border: `1px solid ${C.retire}44`, background: C.retireSoft,
+          border: `1px solid color-mix(in srgb, ${C.retire} 27%, transparent)`, background: C.retireSoft,
           fontSize: 12.5, color: C.ink, lineHeight: 1.45,
         }}>
           <strong style={{ color: C.retire }}>Desk status · </strong>
@@ -2068,7 +2068,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                   title={`age ${t.age_hours ?? '—'}h · max ${t.max_age_hours}h — queue for the after-close research drain`}
                   style={{
                     fontSize: 10.5, fontWeight: 700, padding: '4px 9px', borderRadius: 999, cursor: 'pointer',
-                    border: `1px solid ${C.retire}55`, color: queuedTopics[t.topic_id] ? C.soft : C.retire,
+                    border: `1px solid color-mix(in srgb, ${C.retire} 33%, transparent)`, color: queuedTopics[t.topic_id] ? C.soft : C.retire,
                     background: 'transparent',
                   }}>
                   {queuedTopics[t.topic_id] ? `✓ ${t.topic_id} queued` : `↻ Queue ${t.topic_id}`}
@@ -2086,14 +2086,12 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
       )}
 
       {/* Main layout: feed + rail */}
-      <div style={{
+      <div className="ri-desk-grid w9-research-grid" style={{
         display: 'grid',
         gridTemplateColumns: 'minmax(0, 1fr) 280px',
         gap: 18,
         alignItems: 'start',
-      }}
-        className="ri-desk-grid"
-      >
+      }}>
         <main style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
           {loading && !data ? (
             <div style={{ padding: 56, textAlign: 'center', color: C.soft, fontSize: 13 }}>
@@ -2128,7 +2126,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
               )}
               <button type="button" onClick={clearFilters} style={{
                 marginTop: 8, fontSize: 12, fontWeight: 750, padding: '8px 16px', borderRadius: 10,
-                cursor: 'pointer', border: `1px solid ${C.accent}55`, background: C.accentSoft, color: C.accent,
+                cursor: 'pointer', border: `1px solid color-mix(in srgb, ${C.accent} 33%, transparent)`, background: C.accentSoft, color: C.accent,
               }}>
                 Clear all filters → show full desk
               </button>
@@ -2273,7 +2271,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                               onClick={() => queueResearch({ topic_id: topicId })}
                               style={{
                                 fontSize: 10.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999,
-                                cursor: 'pointer', border: `1px solid ${C.accent}55`,
+                                cursor: 'pointer', border: `1px solid color-mix(in srgb, ${C.accent} 33%, transparent)`,
                                 color: queuedTopics[topicId] ? C.soft : C.accent, background: 'transparent',
                               }}>
                               {queuedTopics[topicId] ? '✓ Queued for after close' : '▸ Run research'}
@@ -2305,7 +2303,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                           setToast('Unhidden — back on the desk after refresh')
                           refetch()
                         }}
-                        style={{ fontSize: 10, fontWeight: 700, color: C.accent, border: `1px solid ${C.accent}44`, background: 'transparent', borderRadius: 6, padding: '2px 8px', cursor: 'pointer' }}>
+                        style={{ fontSize: 10, fontWeight: 700, color: C.accent, border: `1px solid color-mix(in srgb, ${C.accent} 27%, transparent)`, background: 'transparent', borderRadius: 6, padding: '2px 8px', cursor: 'pointer' }}>
                         Unhide
                       </button>
                     </div>
@@ -2359,7 +2357,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                     onClick={() => queueResearch({ category: g.category })}
                     style={{
                       fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 999,
-                      cursor: 'pointer', border: `1px solid ${C.stale}55`,
+                      cursor: 'pointer', border: `1px solid color-mix(in srgb, ${C.stale} 33%, transparent)`,
                       color: queuedTopics[g.category] ? C.soft : C.stale, background: 'transparent',
                     }}>
                     {queuedTopics[g.category] ? '✓ Queued' : 'Queue'}
@@ -2384,7 +2382,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                   )}
                   <div style={{ display: 'flex', gap: 6, marginTop: 5 }}>
                     <button type="button" onClick={() => decideProposedTopic(cand.id, 'approve-research-topic')}
-                      style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 999, cursor: 'pointer', border: `1px solid ${C.income}55`, color: C.income, background: 'transparent' }}>
+                      style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 999, cursor: 'pointer', border: `1px solid color-mix(in srgb, ${C.income} 33%, transparent)`, color: C.income, background: 'transparent' }}>
                       Approve → topic
                     </button>
                     <button type="button" onClick={() => decideProposedTopic(cand.id, 'reject')}
@@ -2419,7 +2417,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
                     <span style={{ color: lc, fontWeight: 700 }}>
                       {t.weight_pct}%
                       {lvl !== 'normal' ? (
-                        <span style={{ fontSize: 9, marginLeft: 5, opacity: 0.9, textTransform: 'uppercase' }}>{lvl}</span>
+                        <span style={{ fontSize: 10, marginLeft: 5, opacity: 0.9, textTransform: 'uppercase' }}>{lvl}</span>
                       ) : null}
                     </span>
                   </div>
@@ -2550,7 +2548,7 @@ function RailCard({ title, accent, children }: { title: string; accent: string; 
   return (
     <div style={{
       background: C.card, border: `1px solid ${C.line}`, borderRadius: 14, padding: 14,
-      borderTop: `2px solid ${accent}66`,
+      borderTop: `2px solid color-mix(in srgb, ${accent} 40%, transparent)`,
     }}>
       <div style={{
         fontSize: 10, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase',
@@ -2578,5 +2576,5 @@ const navLink = (c: string): CSSProperties => ({
 
 const refreshBtn: CSSProperties = {
   fontSize: 12, fontWeight: 750, padding: '7px 12px', borderRadius: 10, cursor: 'pointer',
-  border: `1px solid ${C.accent}55`, background: C.accentSoft, color: C.accent,
+  border: `1px solid color-mix(in srgb, ${C.accent} 33%, transparent)`, background: C.accentSoft, color: C.accent,
 }

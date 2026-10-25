@@ -74,14 +74,21 @@ def get_prospects(query: dict | None = None) -> dict[str, Any]:
     """GET /api/v3/data-broker/watch-prospects — the Watch page's prospect lanes (interim adapter until the
     cio_prospect projection is live; lib/data_broker/watch_prospects.py)."""
     from lib.data_broker.watch_prospects import list_watch_prospects
-    return list_watch_prospects(query or {})
+    from lib.site_payload_reads import prospects_page
+    out = prospects_page(list_watch_prospects(query or {}), query or {})
+    if out.get("status") == "unavailable" and out.get("payload_gap"):
+        raise ValueError("Prospect payload unavailable: " + out["payload_gap"]["reason"])
+    return out
 
 
 def get_curation(query: dict | None = None) -> dict[str, Any]:
     """GET /api/v3/data-broker/watch-curation — My Watchlist (every operator name, starred first, never capped) and
     System Suggests (top N of the Full universe ranking, rotating with reasons); lib/data_broker/watch_curation.py."""
-    from lib.data_broker.watch_curation import list_watch_curation
-    return list_watch_curation(query or {})
+    from lib.site_payload_reads import read_curation
+    out = read_curation(query or {})
+    if out.get("status") == "unavailable" and out.get("payload_gap"):
+        raise ValueError("Curation payload unavailable: " + out["payload_gap"]["reason"])
+    return out
 
 
 def get_symbol_search(query: dict | None = None) -> dict[str, Any]:

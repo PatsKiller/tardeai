@@ -1,0 +1,104 @@
+{
+  "scope": "Synthetic engine-generated final binding-matrix UI fixture only; not current SCHD judgment, 31-flag golden replay, live review queue or runtime acceptance.",
+  "fixture_sha256": "0237941ec48f98643605c8b9a968f4d19c86e62e50b023fcbfba80ae18ee9398",
+  "safety_fixture_sha256": "1f719f5e66e5a14f1b8a73423ef190716410f5bd13d4adcf0c22f923bd5a652e",
+  "source_sha256": {
+    "src/lib/designTokens.ts": "3f18f482e0a832b39a52d3154363f3776b8dd396f494fed961ebcbcb986fe1a1",
+    "src/lib/watchConflictPresentation.ts": "cfb5244b0ff2f3585dfb2f86c1c3dab9f860d046f3e14d3334e51af50d48a8ec",
+    "src/components/conflicts/ConflictLine.tsx": "66bd42df50f61678ada888f8881f97d2bd5305f8ff0ce052c6e7a905300ceb4f",
+    "src/components/MobileDetailSheet.css": "b387f323194bab6f921567bfaf0f90b7fe0890a95e5d408762bc9914c4ba5e8d",
+    "src/components/MobileDetailSheet.tsx": "9e3da819a4f569020c3294153a08382faad9fb9dc65dd87bf7c7631ad2bed008",
+    "src/lib/accountLabels.ts": "97cec698fc1896a62cfb25897745da93d41f76bed40b555e5342bcb6063ae4fd",
+    "src/lib/httpOutcome.ts": "08e2eccff818cfbfd31d2cc33e907df430f80fbd41979f5b6a3cfa8d85aabb85",
+    "src/hooks/useApi.ts": "56c09da5ec4d3bc41db7d13c0b1ab02c6f0caabb7d54eb1917ce06ef4e2d4e27",
+    "src/components/conflicts/ConflictSheet.tsx": "61d7443a98ea62c86dbf938b7eebdd1d462b3b3b4b1c343df88770e059780ee6",
+    "src/styles/tokens.css": "90286378bab81e0e1b7a79cdbbfd2e7ccc8a62772c3e89ffe9e43690bb3ec25e",
+    "src/index.css": "66b67e709cf771c243104d6bbd79bf15dcfa3c9174d59203235e4c833d2134ed"
+  },
+  "cases": [
+    {
+      "width": 1440,
+      "height": 1000,
+      "tap": true,
+      "url_key": true,
+      "focus": true,
+      "back": true,
+      "primary_evidence_route": true,
+      "gap_not_zero": true,
+      "ledger_state_history_decision": true,
+      "safety_source_order_selection": true,
+      "selected_gets": [
+        "security:fixture-guid-schd:R11",
+        "security:fixture-guid-schd:R11",
+        "security:fixture-guid-schd:R11",
+        "security:fixture-guid-schd:R11",
+        "security:fixture-guid-schd:R11",
+        "security:fixture-guid:T0:hard safety",
+        "security:fixture-guid:T1",
+        "security:fixture-guid:T0:hard safety"
+      ],
+      "traffic": {
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    },
+    {
+      "width": 412,
+      "height": 915,
+      "tap": true,
+      "url_key": true,
+      "focus": true,
+      "back": true,
+      "primary_evidence_route": true,
+      "gap_not_zero": true,
+      "ledger_state_history_decision": true,
+      "safety_source_order_selection": true,
+      "selected_gets": [
+        "security:fixture-guid-schd:R11",
+        "security:fixture-guid-schd:R11",
+        "security:fixture-guid-schd:R11",
+        "security:fixture-guid-schd:R11",
+        "security:fixture-guid-schd:R11",
+        "security:fixture-guid:T0:hard safety",
+        "security:fixture-guid:T1",
+        "security:fixture-guid:T0:hard safety"
+      ],
+      "traffic": {
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "tap": true,
+      "url_key": true,
+      "focus": true,
+      "back": true,
+      "primary_evidence_route": true,
+      "gap_not_zero": true,
+      "ledger_state_history_decision": true,
+      "safety_source_order_selection": true,
+      "selected_gets": [
+        "security:fixture-guid-schd:R11",
+        "security:fixture-guid-schd:R11",
+        "security:fixture-guid-schd:R11",
+        "security:fixture-guid-schd:R11",
+        "security:fixture-guid-schd:R11",
+        "security:fixture-guid:T0:hard safety",
+        "security:fixture-guid:T1",
+        "security:fixture-guid:T0:hard safety"
+      ],
+      "traffic": {
+        "external": [],
+        "mutations": [],
+        "unexpected": [],
+        "errors": []
+      }
+    }
+  ]
+}

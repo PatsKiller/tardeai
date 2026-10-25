@@ -7,7 +7,8 @@
   "grace_seconds": 120,
   "reminder_seconds": 1800,
   "cadence": "independent systemd once per minute",
-  "success_contract": "explicit ok_at/last_success_at or RUN_DONE+exit0 or completed wrapper exit0; mtime never success; business output acceptance separate",
+  "success_contract": "explicit ok_at/last_success_at or RUN_DONE+exit0 or completed wrapper exit0, or a JSON receipt with boolean ok:true beside its ended_at/completed_at/as_of; mtime never success; business output acceptance separate",
+  "refusal_attribution": "a wrapper refusal alerts only when its job id is registered (active crontab snapshot data/runtime/crontab_snapshot.txt, n8n_run_allowlist, lane_registry, config/pipelines, scripts/*.sh lock names) or has recurring business history (>=2 distinct hours); others are listed as unattributed_refusals; no readable crontab snapshot = every refusal alerts. Operator acks: --ack-refusal KEY --ack-by --ack-reason [--apply-ack] appends data/runtime/cron_outage_watchdog_refusal_acks.jsonl; the journal is never edited.",
   "limitations": "unsupported timers and signal-free/event lanes stay visible NOT_MEASURED; no broker execution code or provider reads",
   "wrapper_binding_capture_sha256": "b2097df25a62e6824b6e7046d55a3f279b9b058e76b1bcd09c2da89b5a748626",
   "wrapper_bindings": {

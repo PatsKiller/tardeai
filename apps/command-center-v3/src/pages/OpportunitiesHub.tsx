@@ -1,3 +1,4 @@
+import './W9Mobile.css'
 /** Watch › Full universe — the CIO curator's ranked list (operator 2026-10-08: "filter 500+ opportunities down to
  *  the top 5 highest-conviction decisions in under 30 seconds"), research, not a to-do list. System Suggests is the top
  *  of this same list.
@@ -11,7 +12,8 @@
  *  server. Dense rows: Risk / Reward / R:R share one cell; technical, sector and coverage live in the row detail. */
 import './WatchLayout.css'
 import { Fragment, useMemo, useState, type CSSProperties } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
+import {MobileDetailSheet, useMobilePageDetail} from '../components/MobileDetailSheet'
 import { useApi } from '../hooks/useApi'
 import { RADIUS, TOKENS, TYPE, numStyle, toneVars } from '../lib/designTokens'
 import { tint } from '../components/comms/CommsHubParts'
@@ -31,10 +33,10 @@ const BORDER = 'var(--border)'
 
 const PRESETS: [string, string, string][] = [
   ['reentry', 'Re-entry', 'Formerly held names first (most recent sell first), then everything the curator types re-entry.'],
-  ['top5', 'Top 5 high-conviction', 'The curator preset top5.'],
-  ['new', 'New positions', 'The curator preset new.'],
-  ['add_on', 'Add-on', 'The curator preset add_on (held names only on Watch).'],
-  ['exit', 'Exit candidates', 'The curator preset exit.'],
+  ['top5', 'Top 5 high-conviction', 'The five names with the highest curator conviction.'],
+  ['new', 'New positions', 'New position ideas from the curator.'],
+  ['add_on', 'Add-on', 'Ideas to add to a currently held name.'],
+  ['exit', 'Exit candidates', 'Names the curator marked for exit review.'],
 ]
 const FILTERS: { key: string; label: string; opts: [string, string][] }[] = [
   { key: 'type', label: 'Type', opts: [['', 'Any'], ['new_position', 'New Position'], ['existing', 'Existing Position'], ['re_entry', 'Re-Entry'], ['add_on', 'Add-On'], ['exit_candidate', 'Exit Candidate'], ['watchlist', 'Watchlist']] },
@@ -61,7 +63,10 @@ const HEAD: [string, string][] = [
 export default function OpportunitiesHub() {
   const [sp, setSp] = useSearchParams()
   const open = useOpenSymbol()
-  const [expanded, setExpanded] = useState<string | null>(null)
+  const phone = useMobilePageDetail()
+  const [desktopExpanded, setDesktopExpanded] = useState<string | null>(null)
+  const expanded = phone.mobile ? phone.id : desktopExpanded
+  const setExpanded = (symbol: string | null) => { if (phone.mobile) { if (symbol) phone.open(symbol); else phone.close() } else setDesktopExpanded(symbol) }
   const [note, setNote] = useState('')
   const q = useMemo(() => {
     const base = Object.fromEntries(KEYS.map(k => [k, sp.get(k) || '']).filter(([, v]) => v)) as Record<string, string>
@@ -81,10 +86,34 @@ export default function OpportunitiesHub() {
   const page = Number(body?.page || 1)
   const pages = body ? Math.max(1, Math.ceil((body.total || 0) / (body.page_size || 100))) : 1
 
+  const recordDetails = (a: ListRow) => <div>                          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                            <span>Technical <b style={{ color: TEXT }}>{condLabel((a as any).technical_condition)}</b></span>
+                            <span>Sector <b style={{ color: TEXT }}>{(a as any).sector || '—'}</b></span>
+                            <span>Coverage <b style={{ color: TEXT }}>{Math.round(((a as any).coverage || 0) * 100)}%</b></span>
+                            <span title="The curator's recorded classification; differences from held-position evidence appear below.">Curator: {typeLabel((a as any).curator_type)} · {String((a as any).curator_stance || '—')} · {String((a as any).curator_position_status || '—')}</span>
+                            {phone.mobile ? <Link className="mobile-detail-primary" onClick={() => window.scrollTo(0, 0)} to={`/watch/intelligence/${encodeURIComponent(a.symbol)}`}>Open full record →</Link> : <button type="button" onClick={e => { e.stopPropagation(); open(a.symbol) }} style={{ ...sel, cursor: 'pointer' }}>Open full record</button>}
+                          </div>
+                          {(a as any).ownership_note && <div style={{ color: TOKENS.warning, marginTop: 3 }}>⚠ {(a as any).ownership_note}</div>}
+                          {(a as any).stance_rationale && <div style={{ marginTop: 3 }}>{(a as any).stance_rationale}</div>}
+                          {a.last_round_trip && (
+                            <div style={{ marginTop: 3 }} data-round-trip>
+                              Last trade {roundTripPath(a.last_round_trip)} · <b style={{ color: toneVars(resultTone(a.last_round_trip)).color }}>{roundTripLabel(a.last_round_trip)}</b>
+                              {a.last_round_trip.stop_raised != null ? ` · stop raised ${a.last_round_trip.stop_raised}× (${money(a.last_round_trip.stop_initial)} → ${money(a.last_round_trip.stop_last)})` : ''}
+                              {a.last_round_trip.noise_vs_trend ? ` · exit reads as ${a.last_round_trip.noise_vs_trend.replace('_', ' ')}` : ''}
+                              {a.last_round_trip.r_basis ? <span style={{ color: MUTED }}> (R vs the {a.last_round_trip.r_basis})</span> : null}
+                            </div>
+                          )}
+                          {a.reentry && (
+                            <div style={{ marginTop: 3 }} data-reentry-advice>
+                              Re-entry {a.reentry.state}: {reentryLabel(a.reentry)} · alert levels {alertLevelsLabel(a.reentry)}
+                              <div style={{ color: MUTED }}>{a.reentry.conditions.map(c => `${c.met === true ? '✓' : c.met === false ? '✗' : '?'} ${c.text}`).join(' · ')}</div>
+                            </div>
+                          )}
+  </div>
   return (
-    <div data-opportunities-hub>
+    <div data-opportunities-hub className="w9-page">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', margin: '4px 0' }}>
-        <div style={{ fontSize: TYPE.base, color: TEXT2 }} title="Research list: everything the CIO curator scored. System Suggests is the top of this same ranking minus held, yours and dismissed.">
+        <div style={{ fontSize: TYPE.base, color: TEXT2 }} title="Research names scored by the CIO curator. Filters apply to this ranking.">
           <b style={{ color: TEXT }}>{body?.total ?? '—'}</b> of {body?.universe ?? '—'} · Full universe (research)
           {body?.as_of ? <span style={{ color: MUTED }}> · curated by the CIO {new Date(body.as_of).toLocaleString()}</span> : null}
           {body?.held?.source ? <span style={{ color: MUTED }} title="Held / formerly held come from the broker-synced Watch held reader."> · held: {String(body.held.source).split('.')[0]}{body.held.stale ? ' (stale)' : ''}</span> : null}
@@ -178,32 +207,10 @@ export default function OpportunitiesHub() {
                       <td data-label="Re-entry · next trigger" style={{ ...td, color: toneVars(readinessTone(a.reentry)).color, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }} title={a.reentry ? `${a.reentry.state} — ${a.reentry.reason || ''}` : ''}>{a.reentry ? reentryLabel(a.reentry) : '—'}</td>
                       <td data-label="Price" style={{ ...td, ...numStyle }}>{money(rr.current_price)}</td>
                     </tr>
-                    {isOpen && (
+                    {isOpen && !phone.mobile && (
                       <tr className="watch-universe-detail" data-opportunity-detail={a.symbol}>
                         <td colSpan={HEAD.length} style={{ padding: '4px 10px 8px', background: 'var(--bg2)', fontSize: TYPE.base, color: TEXT2, whiteSpace: 'normal' }}>
-                          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                            <span>Technical <b style={{ color: TEXT }}>{condLabel((a as any).technical_condition)}</b></span>
-                            <span>Sector <b style={{ color: TEXT }}>{(a as any).sector || '—'}</b></span>
-                            <span>Coverage <b style={{ color: TEXT }}>{Math.round(((a as any).coverage || 0) * 100)}%</b></span>
-                            <span title="The curator's own values (it reads the holdings file until positions reader batch #4 is approved).">Curator: {typeLabel((a as any).curator_type)} · {String((a as any).curator_stance || '—')} · {String((a as any).curator_position_status || '—')}</span>
-                            <button type="button" onClick={e => { e.stopPropagation(); open(a.symbol) }} style={{ ...sel, cursor: 'pointer' }}>Open full record</button>
-                          </div>
-                          {(a as any).ownership_note && <div style={{ color: TOKENS.warning, marginTop: 3 }}>⚠ {(a as any).ownership_note}</div>}
-                          {(a as any).stance_rationale && <div style={{ marginTop: 3 }}>{(a as any).stance_rationale}</div>}
-                          {a.last_round_trip && (
-                            <div style={{ marginTop: 3 }} data-round-trip>
-                              Last trade {roundTripPath(a.last_round_trip)} · <b style={{ color: toneVars(resultTone(a.last_round_trip)).color }}>{roundTripLabel(a.last_round_trip)}</b>
-                              {a.last_round_trip.stop_raised != null ? ` · stop raised ${a.last_round_trip.stop_raised}× (${money(a.last_round_trip.stop_initial)} → ${money(a.last_round_trip.stop_last)})` : ''}
-                              {a.last_round_trip.noise_vs_trend ? ` · exit reads as ${a.last_round_trip.noise_vs_trend.replace('_', ' ')}` : ''}
-                              {a.last_round_trip.r_basis ? <span style={{ color: MUTED }}> (R vs the {a.last_round_trip.r_basis})</span> : null}
-                            </div>
-                          )}
-                          {a.reentry && (
-                            <div style={{ marginTop: 3 }} data-reentry-advice>
-                              Re-entry {a.reentry.state}: {reentryLabel(a.reentry)} · alert levels {alertLevelsLabel(a.reentry)}
-                              <div style={{ color: MUTED }}>{a.reentry.conditions.map(c => `${c.met === true ? '✓' : c.met === false ? '✗' : '?'} ${c.text}`).join(' · ')}</div>
-                            </div>
-                          )}
+                          {recordDetails(a)}
                         </td>
                       </tr>
                     )}
@@ -221,6 +228,14 @@ export default function OpportunitiesHub() {
           )}
         </div>
       )}
+      {phone.mobile && expanded && <MobileDetailSheet title={`${expanded} record`} onBack={phone.close}>
+        {items.find(a => a.symbol === expanded) ? (() => { const row = items.find(a => a.symbol === expanded)!; return <>
+          <h2 tabIndex={-1} data-detail-focus>{row.symbol}</h2>
+          <p>{heldAccountNames(row).join(', ') || soldByName(row) || 'Account not supplied'}</p>
+          {/* Same record-detail contract as the desktop expanded row. */}
+          <div data-opportunity-detail={row.symbol}>{recordDetails(row)}</div>
+        </> })() : <p>This record is not in the current page of results.</p>}
+      </MobileDetailSheet>}
     </div>
   )
 }

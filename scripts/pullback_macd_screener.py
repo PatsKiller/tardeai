@@ -9,7 +9,7 @@ Outputs (all advisory; nothing auto-executes):
   1. pullback_macd_candidates table + /api/v2/pullback-macd/candidates + Command Center screen
   2. Telegram alert on NEW triggers
   3. candidate/incubator pipeline feed (ticker_strategy_classifications + watchlist_items)
-  4. advisory proposals into paper_trade_proposals (operator approval queue) for configured tiers
+  4. advisory proposals into paper_trade_proposals (operator approval queue) for confirmed triggers only
 
 Usage:
   python3 scripts/pullback_macd_screener.py [--dry-run] [--limit N] [--json]
@@ -313,15 +313,18 @@ def _write_trade_plan(c: dict, strat: str, shares: int, dollar_size: float, doll
 
 
 def _emit_proposals(cands: list[dict], cfg: dict) -> int:
+    # Operator-approved 2026-10-24: configuration may disable triggers, never
+    # widen eligibility to WATCH. Return before any routing for WATCH-only scans.
+    tiers = {"trigger"} & set(cfg.get("proposal_tiers") or ["trigger"])
+    if not any(c.get("tier") in tiers for c in cands):
+        return 0
     from proposal_routing_lanes import entry_routing_lanes, risk_gate_for_lane
-
-    tiers = set(cfg.get("proposal_tiers") or ["trigger"])
     notional = float(cfg.get("proposal_notional_usd", 5000))
     strat = cfg.get("default_strategy_id", "pullback_macd_reversal")
     exp_h = int(cfg.get("proposal_expiry_hours", 48))
     cap = int(cfg.get("max_proposals_per_scan", 5))
     lanes = entry_routing_lanes()
-    # Tier-eligible: trigger tier wins slots over watch at equal-ish score (cap is per-scan).
+    # Only confirmed triggers compete for the per-scan advisory queue cap.
     tier_rank = {"trigger": 0, "watch": 1}
     eligible = sorted(
         [c for c in cands if c["tier"] in tiers],
@@ -491,30 +494,32 @@ def _expire_duplicate_lane_proposals() -> int:
     return retired
 
 
-def _reconcile_proposals(cands: list[dict], proposal_tiers=None) -> int:
-    """Retire PENDING pullback proposals that no longer FIT THE PLAN — run each intraday monitor pass.
-    A proposal is expired when the name is no longer in a tier that may carry a proposal (MACD/VWAP/
-    pullback no longer line up) or live price broke the thesis (<= stop or >= target). Still-fitting
-    ones are refreshed by _emit_proposals; this just prunes the ones that fell out.
+def _reconcile_proposals(cands: list[dict], proposal_tiers=None, *, watch_only: bool = False) -> int:
+    """Withdraw queued advisory rows that are not currently TRIGGERED.
 
-    2026-09-15: the tiers that keep a proposal alive are the SAME tiers _emit_proposals creates from
-    (config `proposal_tiers`). Checking only `trigger` while emitting `trigger` + `watch` expired every
-    watch-tier proposal in the same pass that created it (1,075 of 1,156 auto proposals in 30 days,
-    AES re-proposed 152 times), so no pullback setup ever stayed in front of the operator."""
-    tiers = set(proposal_tiers or ["trigger"])
+    WATCH never keeps a proposal alive, including under older DB/YAML config.
+    Persist the reason on the existing proposal row and emit a lane-log receipt.
+    Rows already attached to a paper trade are outside this queue-only cleanup.
+    """
+    tiers = {"trigger"}
     by_sym = {c["sym"]: c for c in cands}
     trig = {c["sym"] for c in cands if c["tier"] in tiers}
-    rows = _db("""SELECT id, symbol, proposed_stop, proposed_target1 FROM paper_trade_proposals
-                  WHERE status='PENDING' AND COALESCE(discovery_source,'')='pullback_macd'""",
+    rows = _db("""SELECT id, symbol, proposed_stop, proposed_target1 FROM paper_trade_proposals p
+                  WHERE status IN ('PENDING','APPROVED_FOR_PAPER_TEST')
+                    AND COALESCE(discovery_source,'')='pullback_macd'
+                    AND NOT EXISTS (SELECT 1 FROM paper_trades t WHERE t.proposal_id=p.id)""",
                fetch="all") or []
     retired = 0
     for r in rows:
         sym = r["symbol"]
         c = by_sym.get(sym)
+        if watch_only and (not c or c.get("tier") != "watch"):
+            continue
         reason = None
         if sym not in trig:
-            reason = ("no longer a confirmed trigger or watch setup "
-                      "(MACD inflection / VWAP / pullback no longer fit)")
+            reason = ("WATCH tier withdrawn: trigger confirmation required"
+                      if c and c.get("tier") == "watch" else
+                      "no longer a confirmed trigger (MACD / VWAP / pullback no longer fit)")
         elif c:
             px = _f(c.get("price"))
             stop, tgt = _f(r.get("proposed_stop")), _f(r.get("proposed_target1"))
@@ -523,10 +528,17 @@ def _reconcile_proposals(cands: list[dict], proposal_tiers=None) -> int:
             elif px and tgt and px >= tgt:
                 reason = f"plan complete: price {px} at/above target {tgt}"
         if reason:
-            _db("""UPDATE paper_trade_proposals SET status='EXPIRED', rejected_at=NOW(),
-                   rejection_reason=%s, updated_at=NOW() WHERE id=%s""",
-                (f"pullback monitor: {reason}", r["id"]))
-            retired += 1
+            withdrawn = _db("""UPDATE paper_trade_proposals p SET status='EXPIRED', rejected_at=NOW(),
+                   rejection_reason=%s, updated_at=NOW() WHERE id=%s
+                     AND status IN ('PENDING','APPROVED_FOR_PAPER_TEST')
+                     AND NOT EXISTS (SELECT 1 FROM paper_trades t WHERE t.proposal_id=p.id)
+                   RETURNING id""",
+                (f"pullback monitor: {reason}", r["id"]), fetch="all")
+            if withdrawn is None:
+                raise RuntimeError("pullback proposal withdrawal write failed")
+            if withdrawn:
+                print(f"  [proposal withdrawal] id={r['id']} symbol={sym}: {reason}")
+                retired += 1
     return retired
 
 
@@ -693,8 +705,8 @@ def run(dry: bool = False, limit: int = 0, as_json: bool = False, monitor: bool 
             emitted = _emit_proposals(cands, cfg)
         # Keep standing pullback proposals in sync with the live setup: refresh those that still fit
         # (done inside _emit_proposals), expire those that no longer fit the plan.
-        if cfg.get("reconcile_proposals", True):
-            retired = _reconcile_proposals(cands, cfg.get("proposal_tiers") or ["trigger"])
+        # WATCH withdrawal is required even if ordinary plan reconciliation is disabled.
+        retired = _reconcile_proposals(cands, watch_only=not cfg.get("reconcile_proposals", True))
         dup_retired = _expire_duplicate_lane_proposals()
         if dup_retired:
             print(f"  [proposals] expired {dup_retired} duplicate lane row(s)")

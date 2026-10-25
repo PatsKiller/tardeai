@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "site_payload_reads_20261024",
+  "files": [
+    "tests/test_site_payload_reads_20261024.py"
+  ],
+  "comment": [
+    "W2 read-only payload budgets, truthful counts and paging boundaries."
+  ]
+}

@@ -5,8 +5,9 @@ Nightly over the 11 sector ETFs vs SPY (ticker_prices, 5y depth — no warm-up):
   RS(w)   = sector w-day return − SPY w-day return   (w = 5/20/60)
   slope   = RS20 today − RS20 slope_lookback_days ago
   breadth = % of sector screener-membership names above their own 20DMA (fail-soft)
-  state   = LEADING (RS20>0, slope>=0) · WEAKENING (RS20>0, slope<0)
-          · LAGGING (RS20<0, slope<0) · IMPROVING (RS20<0, slope>=0)
+  state   = LEADING (RS20>=0, RS60>=0) · WEAKENING (RS20<0, RS60>=0)
+          · LAGGING (RS20<0, RS60<0) · IMPROVING (RS20>=0, RS60<0)
+  slope remains context; posture never uses a one-day move or a shortened horizon.
   + Hermes sector pulse (mean composite + 5d delta) and news pressure (guarded negative
     catalysts, 5d) — intelligence CONFIRMS and colors; price/RS alone triggers.
 
@@ -74,7 +75,7 @@ def compute_states(cur, as_of_idx_offset=0):
     px = _closes(cur, syms, days=max(CFG["rs_windows"].values()) + CFG["slope_lookback_days"] + 30)
     spy_raw = px.get(CFG["benchmark"], [])
     spy_by_date = dict(spy_raw)
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    from lib.sector_signals import relative_strength
     rows = []
     for etf, name in CFG["sectors"].items():
         s_raw = px.get(etf, [])
@@ -85,26 +86,17 @@ def compute_states(cur, as_of_idx_offset=0):
             seen[d] = p
         s = sorted(seen.items())
         spy = [(d, spy_by_date[d]) for d, _ in s]
-        need = CFG["rs_windows"]["long"] + CFG["slope_lookback_days"] + 1
-        if len(s) < need:
-            rows.append({"etf": etf, "sector": name, "state": None,
-                         "note": f"warming up — {len(s)}/{need} aligned closes"})
-            continue
+        signal = relative_strength(s_raw, spy_raw, offset=as_of_idx_offset)
         i = len(s) - 1 - as_of_idx_offset
         j = len(spy) - 1 - as_of_idx_offset
-        rs = {}
-        for k, w in CFG["rs_windows"].items():
-            a, b = _ret(s, i, w), _ret(spy, j, w)
-            rs[k] = round(a - b, 2) if a is not None and b is not None else None
+        rs = {"short": signal["rs5"], "mid": signal["rs20"], "long": signal["rs60"]}
         lb = CFG["slope_lookback_days"]
         rs20_then = None
         a, b = _ret(s, i - lb, CFG["rs_windows"]["mid"]), _ret(spy, j - lb, CFG["rs_windows"]["mid"])
         if a is not None and b is not None:
             rs20_then = a - b
         slope = round(rs["mid"] - rs20_then, 2) if rs["mid"] is not None and rs20_then is not None else None
-        rows.append({"etf": etf, "sector": name, "as_of": max(str(s[i][0]), today_str),
-                     "rs5": rs["short"], "rs20": rs["mid"], "rs60": rs["long"],
-                     "slope": slope, "state": classify(rs["mid"], slope)})
+        rows.append({"etf": etf, "sector": name, **signal, "slope": slope})
     return rows
 
 

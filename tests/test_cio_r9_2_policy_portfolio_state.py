@@ -43,7 +43,8 @@ def test_policy_fails_closed_and_inventories_legacy_conflicts(tmp_path: Path):
     )
     assert policy["status"] == "POLICY_REQUIRED"
     assert policy["confirmed_field_count"] == 0
-    assert set(policy["missing_fields"]) == {n for n, s in FIELD_SPECS.items() if s["required"]}
+    assert set(policy["missing_fields"]) == {n for n, s in FIELD_SPECS.items() if s["required"] and n != "concentration_hierarchy"}
+    assert policy["fields"]["concentration_hierarchy"]["status"] == "SUPERSEDED_BY_IPS"
     conflicts = {row["field"]: row for row in policy["legacy_conflicts"]}
     assert "cash_target_range_pct" in conflicts
     # Operator 2026-10-03 chose 12%; every legacy source now agrees, so no conflict remains.

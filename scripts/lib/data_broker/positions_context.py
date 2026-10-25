@@ -52,7 +52,15 @@ def get_positions_context(db_query, symbols: list[str], *, today: date | None = 
         vp = pp.value_and_pl(r, mark)
         o = out.setdefault(s, {"shares": 0.0, "market_value": 0.0, "cost_basis": 0.0, "cost_known": True,
                                "accounts": [], "as_of": as_of, "mark": mark,
+                               "asset_type": r.get("asset_type"), "is_fund": r.get("is_fund"),
+                               "fund_holdings_evidence": r.get("fund_holdings_evidence"),
                                "source": "lib.portfolio_positions (holdings_accounts store)"})
+        if o.get("asset_type") != r.get("asset_type"):
+            o["asset_type"] = None
+        if o.get("is_fund") != r.get("is_fund"):
+            o["is_fund"] = None
+        if o.get("fund_holdings_evidence") != r.get("fund_holdings_evidence"):
+            o["fund_holdings_evidence"] = None
         o["shares"] += qty
         o["market_value"] += vp.get("market_value") or 0.0
         cb = vp.get("cost_basis")

@@ -2,7 +2,9 @@
 
 The projection reuses the hash-chained OperatorProfile store. Legacy configuration
 is evidence of conflicting historical claims, not permission to select a mandate.
-Only operator-confirmed fields can make the policy complete.
+Only operator-confirmed fields can make the policy complete. Operator Addendum3
+2026-10-24 delegates concentration to the approved IPS key; its old profile row
+is read-only historical evidence, never a second mandate or confirmation write.
 """
 from __future__ import annotations
 
@@ -189,10 +191,24 @@ def build_operator_investment_policy(
 ) -> dict[str, Any]:
     root = repo_root or Path(__file__).resolve().parents[2]
     store = OperatorProfile(store_path)
+    from scripts.lib.ips_policy import concentration_policy
+    concentration = concentration_policy(root / "config")
     fields: dict[str, Any] = {}
     missing: list[str] = []
     for name, spec in FIELD_SPECS.items():
         current = store.get_field(spec["domain"], name)
+        if name == "concentration_hierarchy":
+            available = concentration["gap"] is None
+            fields[name] = {"value": None, "source": concentration["source"],
+                "confirmed_at": None, "operator_confirmed": False,
+                "version": current.get("version", 0) if current else 0,
+                "status": "SUPERSEDED_BY_IPS" if available else "POLICY_REQUIRED",
+                "kind": spec["kind"], "required": not available, "read_only": True,
+                "managed_by": concentration["source"], "approval_ref": concentration["approval_ref"],
+                "gap": concentration["gap"], "historical_profile_value": current.get("value") if current else None}
+            if not available:
+                missing.append(name)
+            continue
         if current and current.get("status") == "OPERATOR_CONFIRMED":
             fields[name] = {
                 "value": current.get("value"),
@@ -226,6 +242,8 @@ def build_operator_investment_policy(
     for field, values in sorted(by_field.items()):
         resolution_field = CONFLICT_RESOLUTION_FIELD.get(field, field)
         resolved = bool(fields.get(resolution_field, {}).get("operator_confirmed"))
+        if resolution_field == "concentration_hierarchy" and concentration["gap"] is None:
+            resolved = True
         if len(values) > 1 and not resolved:
             conflicts.append({
                 "field": field,
@@ -233,15 +251,16 @@ def build_operator_investment_policy(
                 "status": "POLICY_REQUIRED",
                 "claims": [c for c in legacy_claims if c["field"] == field],
             })
-    required_names = [n for n, spec in FIELD_SPECS.items() if spec["required"]]
+    required_names = [n for n, field in fields.items() if field["required"]]
     confirmed = sum(1 for n in required_names if fields[n]["operator_confirmed"])
-    optional_names = [n for n, spec in FIELD_SPECS.items() if not spec["required"]]
+    optional_names = [n for n, field in fields.items() if not field["required"] and not field.get("managed_by")]
     payload = {
         "schema": SCHEMA,
         "authority": AUTHORITY,
         "version": max((int(f.get("version") or 0) for f in fields.values()), default=0),
         "status": "CONFIRMED" if not missing and not conflicts else "POLICY_REQUIRED",
         "fields": fields,
+        "concentration_policy": concentration,
         "confirmed_field_count": confirmed,
         "required_field_count": len(required_names),
         "missing_fields": missing,
@@ -254,7 +273,7 @@ def build_operator_investment_policy(
         "generated_at": _now(),
     }
     payload["content_hash"] = hashlib.sha256(
-        json.dumps({k: payload[k] for k in ("fields", "missing_fields", "legacy_conflicts")}, sort_keys=True).encode()
+        json.dumps({k: payload[k] for k in ("fields", "missing_fields", "legacy_conflicts", "concentration_policy")}, sort_keys=True).encode()
     ).hexdigest()
     return payload
 
