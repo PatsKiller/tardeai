@@ -767,38 +767,15 @@ export default function RotationIntelligence() {
         </section>
       )}
 
-      {/* C. Ask Advisor */}
-      <section style={{ ...card, marginBottom: 20 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Ask the Rotation Advisor</div>
-        <textarea
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          rows={3}
-          style={{
-            width: '100%', boxSizing: 'border-box', marginBottom: 12, padding: 10, fontSize: 12,
-            background: 'var(--bg2)', color: 'var(--text0)', border: '1px solid var(--border)', borderRadius: 8, resize: 'vertical',
-          }}
-        />
+      {/* C. Ask Advisor — retired by approved board 13 (desks redesign 2026-10-24): questions go to the one
+          Ask the CIO bar; replies land in My questions. The answer panel below still shows any earlier review. */}
+      <section data-testid="rotation-ask-moved" style={{ ...card, marginBottom: 20 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Questions about rotation</div>
+        <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 8 }}>Ask with the Ask the CIO bar at the top of every page. Replies and history are in My questions.</div>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <button disabled={!!busy} onClick={() => ask('grounded')} style={btn(!!busy)}>Ask Local</button>
-          <button disabled={!!busy} onClick={runGrokReview} style={btn(!!busy)}>Run Grok Review</button>
-          <button disabled={!!busy || !result} onClick={() => ask('local')} style={btn(!!busy || !result)} title={!result ? 'Ask Local first, then optionally validate with the local model' : ''}>Validate with local model</button>
-          <button disabled={!!busy} onClick={() => ask('dual_oauth')} style={btn(!!busy)}>Run Dual Review</button>
-          <button disabled={!!busy} onClick={loadSummary} style={btn(!!busy)}>Refresh Summary</button>
-          {busy && <span style={{ fontSize: 11, color: ACCENT }}>Running {busy}…{(busy.includes('local model') || busy === 'Run Dual Review') ? ' (local model — can take 1–3 min under GPU load)' : ''}</span>}
+          <a href="/v3/cio/questions" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, color: 'var(--info-color)' }}>My questions →</a>
+          <button disabled={!!busy} onClick={loadSummary} style={{ ...btn(!!busy), minHeight: 44 }}>Refresh Summary</button>
         </div>
-        <div style={{ fontSize: 9.5, color: 'var(--text3)', marginTop: 8 }}>
-          <b>Ask Local</b> returns the grounded review instantly. <b>Run Grok Review</b> gets a second opinion inline via the free Grok OAuth proxy. <b>Validate with local model</b> / <b>Run Dual Review</b> run the local model (1–3 min under GPU load).
-          Grok runs on a free / OAuth session — <b>no API key, no paid API</b> (manual-paste fallback if the proxy is offline). The advisor reviews holdings and offers a second opinion; it never places, buys, or sells anything.
-        </div>
-        {askError && (
-          <div style={{ marginTop: 10, fontSize: 11, color: '#ef4444' }}>
-            {askError}
-            {result?.stderr_tail && (
-              <pre style={{ marginTop: 4, fontSize: 9, color: 'var(--text3)', whiteSpace: 'pre-wrap' }}>{result.stderr_tail}</pre>
-            )}
-          </div>
-        )}
       </section>
 
       {/* C2. Independent Oversight — free/OAuth Grok + ChatGPT review the rotate-out reasoning */}

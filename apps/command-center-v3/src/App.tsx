@@ -46,6 +46,10 @@ import FinvizCookieBanner from './components/FinvizCookieBanner'
 import YoutubeCookieBanner from './components/YoutubeCookieBanner'
 import AdvisoryDeskHub from './pages/AdvisoryDeskHub'
 import CioHub from './pages/CioHub'
+import ReEntryDesk from './pages/desks/ReEntryDesk'
+import StrategyDesk from './pages/desks/StrategyDesk'
+import DefenseDesk from './pages/desks/DefenseDesk'
+import AgentsDesk from './pages/desks/AgentsDesk'
 import {
   ControlPlaneHub,
   ControlPlaneSystemPage,
@@ -227,7 +231,9 @@ function Shell() {
           <Routes>
             <Route index element={<RouteErrorBoundary route="/v3/"><HomeHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="portfolio" element={<RouteErrorBoundary route="/v3/portfolio"><PortfolioHub onDrill={setDrill} /></RouteErrorBoundary>} />
-            <Route path="portfolio/re-entry" element={<RouteErrorBoundary route="/v3/portfolio/re-entry"><ReEntryPage /></RouteErrorBoundary>} />
+            {/* Boards 1-4 (desks redesign 2026-10-24): the new desk owns the route; the classic page stays reachable until the desk is accepted. */}
+            <Route path="portfolio/re-entry" element={<RouteErrorBoundary route="/v3/portfolio/re-entry"><ReEntryDesk /></RouteErrorBoundary>} />
+            <Route path="portfolio/re-entry/classic" element={<RouteErrorBoundary route="/v3/portfolio/re-entry/classic"><ReEntryPage /></RouteErrorBoundary>} />
             <Route path="risk" element={<RouteErrorBoundary route="/v3/risk"><RiskHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="trading" element={<RouteErrorBoundary route="/v3/trading"><TradingHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="active-trader" element={<RouteErrorBoundary route="/v3/active-trader"><ActiveTraderHub onDrill={setDrill} /></RouteErrorBoundary>} />
@@ -235,8 +241,10 @@ function Shell() {
             <Route path="go/order/:intentId" element={<RouteErrorBoundary route="/v3/go/order/:intentId"><GoOrderDeepLink /></RouteErrorBoundary>} />
             <Route path="go/proposal/:proposalId" element={<RouteErrorBoundary route="/v3/go/proposal/:proposalId"><GoProposalDeepLink /></RouteErrorBoundary>} />
             <Route path="manual-execution" element={<RouteErrorBoundary route="/v3/manual-execution"><Navigate to="/trading?tab=Proposals&section=path-a" replace /></RouteErrorBoundary>} />
-            <Route path="strategy" element={<RouteErrorBoundary route="/v3/strategy"><StrategyHub onDrill={setDrill} /></RouteErrorBoundary>} />
-            <Route path="agents" element={<RouteErrorBoundary route="/v3/agents"><AgentRuntimeHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="strategy" element={<RouteErrorBoundary route="/v3/strategy"><StrategyDesk onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="strategy/classic" element={<RouteErrorBoundary route="/v3/strategy/classic"><StrategyHub onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="agents" element={<RouteErrorBoundary route="/v3/agents"><AgentsDesk onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="agents/classic" element={<RouteErrorBoundary route="/v3/agents/classic"><AgentRuntimeHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="intelligence" element={<RouteErrorBoundary route="/v3/intelligence"><IntelligenceHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="closed-loop" element={<RouteErrorBoundary route="/v3/closed-loop"><ClosedLoopPanel /></RouteErrorBoundary>} />
             <Route path="research-intelligence" element={<RouteErrorBoundary route="/v3/research-intelligence"><ResearchIntelligenceHub onDrill={setDrill} /></RouteErrorBoundary>} />
@@ -249,7 +257,8 @@ function Shell() {
             <Route path="watch/intelligence/:symbol" element={<RouteErrorBoundary route="/v3/watch/intelligence/:symbol"><SymbolIntelligencePage /></RouteErrorBoundary>} />
             <Route path="watch/discovery" element={<RouteErrorBoundary route="/v3/watch/discovery"><WatchDiscovery onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="watch-legacy" element={<RouteErrorBoundary route="/v3/watch-legacy"><WatchLegacyGate onDrill={setDrill} /></RouteErrorBoundary>} />
-            <Route path="defense" element={<RouteErrorBoundary route="/v3/defense"><DefenseHub /></RouteErrorBoundary>} />
+            <Route path="defense" element={<RouteErrorBoundary route="/v3/defense"><DefenseDesk /></RouteErrorBoundary>} />
+            <Route path="defense/classic" element={<RouteErrorBoundary route="/v3/defense/classic"><DefenseHub /></RouteErrorBoundary>} />
             {/* Legacy watchlist/screener nav → primary Intelligence (not the old card wall) */}
             <Route path="watchlist" element={<RouteErrorBoundary route="/v3/watchlist"><Navigate to="/watch?tab=intelligence&view=top_ideas" replace /></RouteErrorBoundary>} />
             <Route path="watchpool" element={<RouteErrorBoundary route="/v3/watchpool"><Navigate to="/watch?tab=watchpool" replace /></RouteErrorBoundary>} />
