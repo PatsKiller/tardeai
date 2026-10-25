@@ -1,0 +1,114 @@
+{
+  "as_of": "2026-10-25T00:01:12.319828+00:00",
+  "affected_hidden_psycopg2": {
+    "passed": 64,
+    "failed": 20,
+    "baseline_same_failed_ids": true,
+    "failed_ids": [
+      "tests/test_watch_intelligence_unification.py::TestBrokerCatalogAdvertisement::test_list_payload_advertises_data_broker",
+      "tests/test_watch_intelligence_unification.py::TestDataBrokerWatch::test_detail_and_reviews",
+      "tests/test_watch_intelligence_unification.py::TestDataBrokerWatch::test_held_view",
+      "tests/test_watch_intelligence_unification.py::TestDataBrokerWatch::test_list_envelope",
+      "tests/test_watch_intelligence_unification.py::TestDataBrokerWatch::test_review_truthfulness_on_cards",
+      "tests/test_watch_intelligence_unification.py::TestDataBrokerWatch::test_screener_origin_filter",
+      "tests/test_watch_intelligence_unification.py::TestDataBrokerWatch::test_starred_view",
+      "tests/test_watch_intelligence_unification.py::TestDataBrokerWatch::test_street_filter",
+      "tests/test_watch_intelligence_unification.py::TestFinalGateBlockers::test_dimensional_freshness_no_generic_chip",
+      "tests/test_watch_intelligence_unification.py::TestFinalGateBlockers::test_filter_options_data_derived",
+      "tests/test_watch_intelligence_unification.py::TestFinalGateBlockers::test_get_detail_zero_writes",
+      "tests/test_watch_intelligence_unification.py::TestFinalGateBlockers::test_get_list_zero_writes",
+      "tests/test_watch_intelligence_unification.py::TestFinalGateBlockers::test_list_detail_parity_reviews",
+      "tests/test_watch_intelligence_unification.py::TestFinalGateBlockers::test_paid_flags_and_read_only",
+      "tests/test_watch_intelligence_unification.py::TestFinalGateBlockers::test_quarantine_precedence_ceco_everywhere",
+      "tests/test_watch_intelligence_unification.py::TestFinalGateBlockers::test_top_ideas_excludes_fail_avoid_unavailable",
+      "tests/test_watch_intelligence_unification.py::TestProductionTruthCorrection::test_absolute_not_relative_label",
+      "tests/test_watch_intelligence_unification.py::TestProductionTruthCorrection::test_ceco_not_complete_after_quarantine",
+      "tests/test_watch_intelligence_unification.py::TestProductionTruthCorrection::test_quality_not_hardcoded_ok",
+      "tests/test_watch_intelligence_unification.py::TestProductionTruthCorrection::test_top_ideas_not_default_priority_only"
+    ],
+    "cause": "Unchanged watch_canonical_quote None.cursor() with hidden psycopg2"
+  },
+  "cio_completeness": {
+    "passed": 23
+  },
+  "ratchets": {
+    "dark_contracts_new": 0,
+    "retention_errors": 0,
+    "test_coverage": "PASS",
+    "host_paths": "PASS",
+    "lane_registry": "clean"
+  },
+  "native_build": {
+    "shared_f40_source_plus_ordinary_working": "PASS",
+    "watch_combined_a201_dependency": "FAIL: retained W2 ListPager/CSS token violations; model test type error; W2 notified"
+  },
+  "scope": "Fixture/source only, no runtime acceptance, no provider/broker calls or publication",
+  "frontend_source_head": "4be918add4613da684c2f7016bcc16a5749f5131",
+  "browser_cases": {
+    "ordinary": 3,
+    "shared_conflict": 3,
+    "watch_pages": 6,
+    "viewports": [
+      "1440x1000",
+      "412x915",
+      "390x844"
+    ],
+    "screenshots": 42,
+    "external_requests": 0,
+    "unexpected_requests": 0,
+    "unapproved_mutations": 0,
+    "scope": "Synthetic fixtures only; final matrix engine specimens from accepted W10 source, not31/live/runtime acceptance"
+  },
+  "dependencies": {
+    "W2_pages": "Normal two-file release a20167e5, retained paging preserved",
+    "W2_retained": "Corrected frozen ListPager/model/CSS package pending; no W9 retained-path edits",
+    "W10": "Runtime accepted engine+ledger/API required",
+    "C3_root": "Actual persisted queue readback/receipt \u2192 ledger review_queued hook pending"
+  },
+  "logs": {
+    "affected-nopg.log": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/w9-pages-20261024/source-4be918add/affected-nopg.log",
+      "sha256": "62351b8eb8d37b9502e5740aedd2e5fe572b715cff1d16af1ac2952d799920e6"
+    },
+    "baseline-nopg.log": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/w9-pages-20261024/source-4be918add/baseline-nopg.log",
+      "sha256": "bc4f0d28e0b0b70abb6c8b6d52d7f005fea6ad43b00a9a128ec3efaa2096e551"
+    },
+    "completeness.log": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/w9-pages-20261024/source-4be918add/completeness.log",
+      "sha256": "ffa9ebf4d8bfbdb647d060b73b26837046ecdb488f137794cbe44d5c8e4f45fc"
+    },
+    "dark-contracts.log": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/w9-pages-20261024/source-4be918add/dark-contracts.log",
+      "sha256": "a5ab00a60880452b4cf96c2303924c46a8c3c03d8629426aa2efe3481063ecf3"
+    },
+    "retention.log": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/w9-pages-20261024/source-4be918add/retention.log",
+      "sha256": "c3663855d1750404e2f1a90498561d1e4e3d80897e5db32d02351bc1932c88f5"
+    },
+    "test-coverage-final.log": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/w9-pages-20261024/source-4be918add/test-coverage-final.log",
+      "sha256": "0f9cff0b53f44fd8c33194b1badb595244221866149fd5f877a6ee3d815be5e5"
+    },
+    "host-paths-final.log": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/w9-pages-20261024/source-4be918add/host-paths-final.log",
+      "sha256": "35e284022d0751bcc0bb4fa920ab50a99bcbb8957f454ef45a19300aa540bca6"
+    },
+    "lane-registry.log": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/w9-pages-20261024/source-4be918add/lane-registry.log",
+      "sha256": "bb8db536526efba7f9d87ee5d57346cdcfbd65a3eb1cf27b7506d9f84a07686d"
+    },
+    "conflict-reader-build.log": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/w9-pages-20261024/source-4be918add/conflict-reader-build.log",
+      "sha256": "460e1562f930d67e87ee8793be03bc39be6155470b9cc9864f14eed85fe7bd5c"
+    },
+    "watch-combined-build.log": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/w9-pages-20261024/source-4be918add/watch-combined-build.log",
+      "sha256": "cc4bc834f37f42f0946c72280d4cfb4066a889fef88d89aa1aa3aa7a4af8002b"
+    },
+    "watch-combined-tsc.log": {
+      "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/w9-pages-20261024/source-4be918add/watch-combined-tsc.log",
+      "sha256": "93e163bad439a04c659ed866426ebae44cbf156bfb4eeb0f6177c260295b4742"
+    }
+  }
+}

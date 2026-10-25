@@ -1,0 +1,174 @@
+{
+  "directory": "/home/johnclaw/trade-ai-releases/persistent-state/data/coordination/handoffs/desks-redesign-20261024/mockups",
+  "scope": "Fixture-only implementation screenshots; real taps/viewport assertions are in separate receipts",
+  "images": [
+    {
+      "name": "impl-w9-research-same-page-link-412.png",
+      "sha256": "6a950b4b76573f47ade8ef5d4312fac86dbb970035baa0e016f6b47409a26d5f"
+    },
+    {
+      "name": "impl-w9-watch-classic-detail-412.png",
+      "sha256": "a17bca3a1a740b77f090efa0d65b03a01ddc0d0bce05c42b506f0e5dcdeaf3ad"
+    },
+    {
+      "name": "impl-w9-watch-classic-1440.png",
+      "sha256": "9a4623c247e43999ce00de5a6b8fdcb3c6ad485d5603694c6bbad71f165eeaf9"
+    },
+    {
+      "name": "impl-w9-watch-classic-412.png",
+      "sha256": "3d61795ae6f51cf1d2080e2445194ddbc06b33342fca2e3850f538cfbf2d5c30"
+    },
+    {
+      "name": "impl-w9-watch-classic-390.png",
+      "sha256": "8c3e4d070f7dd68e40c77c75d00a8c2ffca48caafed582f3cd5967fdd474eadb"
+    },
+    {
+      "name": "impl-w9-research-empty-filter-390.png",
+      "sha256": "b8b3bb28e9b0bbb4575c840334afd827a40d31053bb6b5c8d3385439c3e1f114"
+    },
+    {
+      "name": "impl-w9-watch-full-universe-412.png",
+      "sha256": "d1780863150d83216c43874c4316d5d75197d58cd6795dfd7fcdf3a16c8cd074"
+    },
+    {
+      "name": "impl-w9-trading-manual-entry-412.png",
+      "sha256": "daa352fae853d580541e5d48367ded1dc564a6efa9fa494e2ec5b0f3682ffc95"
+    },
+    {
+      "name": "impl-w9-watch-classic-detail-390.png",
+      "sha256": "fcdeb05fb93488f462b7baf4584c908235f7e7a29f3493b29796c2f76aea6c13"
+    },
+    {
+      "name": "impl-w9-research-empty-filter-412.png",
+      "sha256": "72ccfc8b774ecf14acd5b5b903309b8a0490d29dc12e515f5c9556c23c716487"
+    },
+    {
+      "name": "impl-w9-research-detail-412.png",
+      "sha256": "703de3d46c59d209f59bff7f5ce89ed3cd94c1e8511620be8d7adaa49593006a"
+    },
+    {
+      "name": "impl-w9-trading-proposals-1440.png",
+      "sha256": "ef29b407044fd43b03f11169985d9cd2d2dbbb59759171389fed96bff7e00777"
+    },
+    {
+      "name": "impl-w9-trading-manual-entry-1440.png",
+      "sha256": "49dfdddd31bed854fc6503e58dba541af8f64119e06f97597b52755068c15412"
+    },
+    {
+      "name": "impl-w9-research-same-page-link-1440.png",
+      "sha256": "0f11980c771bbec91e94cb631f1c8979cff4dabbe9360540a2524826147352c0"
+    },
+    {
+      "name": "impl-w9-watch-full-universe-detail-412.png",
+      "sha256": "b47ed4c112432dfba1230d6127c0c86eb3ea6660298f3fc9ee7c6a1a927a4432"
+    },
+    {
+      "name": "impl-w9-trading-proposals-412.png",
+      "sha256": "254d2689caf2fdad3ed249be01ee0cd60184ffa394d355e76d9a828a7bf1fb3d"
+    },
+    {
+      "name": "impl-w9-research-empty-filter-1440.png",
+      "sha256": "4974dad21c16227677935efbd8d472841c42efd8f6128cb0e9fd84f66e6fad15"
+    },
+    {
+      "name": "impl-w9-watch-full-universe-390.png",
+      "sha256": "1daabbbb469f45b0e079f4c4b9d7565fc0f95c6f2f8483566c684bcf9438766b"
+    },
+    {
+      "name": "impl-w9-watch-full-universe-1440.png",
+      "sha256": "791b3f6d15a89d3b0459775393f6fc49adb530ebe3fdf0014ce8d94e75c94e67"
+    },
+    {
+      "name": "impl-w9-watch-full-universe-detail-390.png",
+      "sha256": "0d97aa350baa2fa37254f74ad20c3fb0ab042fc111ae4960dde0a24ae0168cf1"
+    },
+    {
+      "name": "impl-w9-trading-manual-entry-390.png",
+      "sha256": "525c4bb383f184825615943bb65a1c8930eee1d898855e29300f50a4715d56f4"
+    },
+    {
+      "name": "impl-w9-trading-proposals-390.png",
+      "sha256": "4514c01bcca7abb72a5f0a54f4e2c23e1c5860e97e3ddfaf460d38ba6149d411"
+    },
+    {
+      "name": "impl-w9-research-same-page-link-390.png",
+      "sha256": "b41188dcbad3b1f087b2c2e2007dbf8d56ddd5a6578101cb4404ba20b54aa05b"
+    },
+    {
+      "name": "impl-w9-research-detail-390.png",
+      "sha256": "7bbb4105c275a691a185d3e02cf6cb642ecdb7bb9bf2fe7b45527ee12f25172b"
+    },
+    {
+      "name": "impl-conflict-shared-open-412.png",
+      "sha256": "bab26b8dde9f02b52ad61a1cd1709f5887b70187cef1a1c9a5be8b07effef8a1"
+    },
+    {
+      "name": "impl-conflict-shared-gap-390.png",
+      "sha256": "a95c1be207adc6a362b765982f35302d8367677c448ec84155e78b52d79f559e"
+    },
+    {
+      "name": "impl-conflict-shared-open-1440.png",
+      "sha256": "192ef68224514b3301e28b0f274b6853f84ad8a3273ee15a033a58d0a0e04299"
+    },
+    {
+      "name": "impl-conflict-shared-gap-1440.png",
+      "sha256": "af7157aa1d8229cf33021bcd6f2ddfb17b12452c4495b186b7fd45c5e760b946"
+    },
+    {
+      "name": "impl-conflict-shared-open-390.png",
+      "sha256": "bda2dcf3057395a839faff18b01a0d7e94cd7a3ee71bdbd4cb3f02fe04c90bfc"
+    },
+    {
+      "name": "impl-conflict-shared-gap-412.png",
+      "sha256": "55991fa965bdd909151271ca3243e1fb519a24a4443c975be287aa1d9b6d5f8a"
+    },
+    {
+      "name": "impl-watch-prospects-conflict-open-1440.png",
+      "sha256": "f369275115fef4c9df14f530544506a63195363844e556864e1229375028ca6e"
+    },
+    {
+      "name": "impl-watch-prospects-conflict-open-412.png",
+      "sha256": "e625908bcf01f4962e2e97465beaf75b73e8b790dcc2cb39640d6af756c448e8"
+    },
+    {
+      "name": "impl-watch-mine-conflict-open-390.png",
+      "sha256": "d6d8cc22e4f559b0b4905cb2483daa3602d895e7b8072a0408e7c488d64d456d"
+    },
+    {
+      "name": "impl-watch-mine-review-queued-390.png",
+      "sha256": "04ab9dad92f3b9eac4771ac02d85ce94dc4ceaa1e1974d230022e0bbc7c85e3f"
+    },
+    {
+      "name": "impl-watch-mine-review-queued-1440.png",
+      "sha256": "6c92added71606077a033c101a2610e16be3601eb51f77aab5a20303f8f0790a"
+    },
+    {
+      "name": "impl-watch-mine-conflict-open-412.png",
+      "sha256": "e625908bcf01f4962e2e97465beaf75b73e8b790dcc2cb39640d6af756c448e8"
+    },
+    {
+      "name": "impl-watch-mine-conflict-open-1440.png",
+      "sha256": "1356ee17ceec61408a2f6d5184203e143e6b87d014e186ad0f410cb74e9480ef"
+    },
+    {
+      "name": "impl-watch-prospects-conflict-open-390.png",
+      "sha256": "2142d0587c0015a56d7515b967f17e334b4824d2fa971d5c39795d530a43f854"
+    },
+    {
+      "name": "impl-watch-prospects-review-queued-1440.png",
+      "sha256": "daa620db86759386eda39a81085bc7653a36ac7830a6026f41f83699bb78753c"
+    },
+    {
+      "name": "impl-watch-prospects-review-queued-390.png",
+      "sha256": "6db17ce5d615d1aee324db8d57dee327a1a8b3907ca17759b8d78f17eea701da"
+    },
+    {
+      "name": "impl-watch-mine-review-queued-412.png",
+      "sha256": "749fd3fa47f56bebbb2bfc19163f3746fee36fb678017a9077b70ff7cd9b7933"
+    },
+    {
+      "name": "impl-watch-prospects-review-queued-412.png",
+      "sha256": "8e3b8608617f9f12fd84ed5cd51caf971e9ce761aea1b19377ac871fca122cb5"
+    }
+  ]
+}
