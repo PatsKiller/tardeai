@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { locateIn } from '../lib/navLocate'
+import { RADIUS } from '../lib/designTokens'
 
-type Hub = { to: string; label: string; exact?: boolean; hardNav?: boolean }
+type Hub = { to: string; label: string; exact?: boolean; hardNav?: boolean; restored?: boolean }
 
-/** Lean operator spine — secondary hubs stay routed in App.tsx, just off the rail. */
+/** Board 0 restores all eleven desks without dropping the existing navigation. */
+// Fixed restoration date: the badge expires after fourteen days, never on each visit.
+const RESTORED_AT = Date.parse('2026-10-24T22:51:33Z')
+const RESTORED_UNTIL = RESTORED_AT + 14 * 24 * 60 * 60 * 1000
 const SECTIONS: { label: string; hubs: Hub[] }[] = [
   {
     label: 'Trade',
@@ -13,24 +17,35 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
       { to: '/portfolio', label: 'Portfolio', exact: true },
       { to: '/trading', label: 'Trading' },
       { to: '/watch', label: 'Watch' },
+      { to: '/portfolio/re-entry', label: 'Re-Entry', restored: true },
       { to: '/risk', label: 'Risk' },
+      { to: '/defense', label: 'Defense', restored: true },
+      { to: '/rotation', label: 'Rotation', restored: true },
       { to: '/active-trader', label: 'Active Trader' },
       { to: '/journal', label: 'TradeInView' },
+      { to: '/strategy', label: 'Strategy', restored: true },
     ],
   },
   {
     label: 'Intel',
     hubs: [
       { to: '/cio', label: 'CIO Desk', exact: true },
+      { to: '/advisory', label: 'Advisory Desk', restored: true },
       { to: '/cio/questions', label: 'My questions' },
-      { to: '/communications', label: 'Communications' },
       { to: '/research-intelligence', label: 'Research Intel' },
+      { to: '/intelligence', label: 'Intelligence', restored: true },
+      { to: '/closed-loop', label: 'Research lineage', restored: true },
+      { to: '/hermes', label: 'Hermes', restored: true },
+      { to: '/rec-intel', label: 'Rec Intelligence', restored: true },
+      { to: '/reports', label: 'Reports', restored: true },
+      { to: '/communications', label: 'Communications' },
     ],
   },
   {
     label: 'Ops',
     hubs: [
       { to: '/health', label: 'Health' },
+      { to: '/agents', label: 'Agents', restored: true },
       // The /consumption route existed since v3 but was never on the rail, so the only
       // way to reach LLM spend and its off-peak routing control was to know the URL.
       { to: '/consumption', label: 'LLM Spend' },
@@ -139,10 +154,13 @@ export default function NavRail() {
               <NavLink
                 key={h.to}
                 to={h.to}
+                aria-label={h.label}
                 end={h.exact}
                 className={({ isActive }) => 'nav-item' + (isActive ? ' is-active' : '')}
+                style={{ display: 'flex', alignItems: 'center', gap: 6 }}
               >
                 {h.label}
+                {h.restored && Date.now() >= RESTORED_AT && Date.now() < RESTORED_UNTIL && <span aria-hidden="true" style={{ marginLeft: 'auto', fontSize: 10, padding: '1px 6px', borderRadius: RADIUS.md, background: 'var(--info-bg)', color: 'var(--info-color)' }}>back</span>}
               </NavLink>
             ),
           )}
@@ -153,6 +171,7 @@ export default function NavRail() {
 
   return (
     <>
+      <style>{`@media (min-width: 821px) { .nav-rail { width: 230px; } }`}</style>
       {/* Mobile command bar — replaces the rail below 820px. States where you are in
           the app's own taxonomy rather than showing a bare hamburger. */}
       <div className="nav-bar">
