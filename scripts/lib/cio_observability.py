@@ -89,7 +89,8 @@ def build_observability(*, home: dict[str, Any] | None,
                         brain: dict[str, Any] | None,
                         research_ops: dict[str, Any] | None,
                         data_health: dict[str, Any] | None,
-                        now: str | None = None) -> dict[str, Any]:
+                        now: str | None = None,
+                        canonical_status: dict[str, Any] | None = None) -> dict[str, Any]:
     """Build the CIO-only executive operations payload from existing projections."""
     home = home if isinstance(home, dict) else {}
     brain = brain if isinstance(brain, dict) else {}
@@ -301,6 +302,16 @@ def build_observability(*, home: dict[str, Any] | None,
         {"id": "matured", "label": "Outcomes Matured", "count": matured},
         {"id": "influence", "label": "Memory Influence", "count": brain.get("memory_behavior_influence", 0)},
     ]
+    if canonical_status is not None:
+        from .cio_truth import apply_status_evaluations
+        scorecards = apply_status_evaluations(scorecards, canonical_status)
+        by_domain = {r["name"]: r["status"] for r in scorecards}
+        mapping = {"communications": "Desk / Telegram", "research": "Hermes / Research",
+                   "data": "Shared Spine", "spine": "Shared Spine", "decisions": "Decisions",
+                   "outcomes": "Outcomes / Learning", "memory": "Outcomes / Learning"}
+        for node in workflows:
+            if mapping.get(node.get("id")) in by_domain:
+                node["status"] = by_domain[mapping[node["id"]]]
     blocked = sum(1 for row in scorecards if row["status"] == "BLOCKED")
     degraded = sum(1 for row in scorecards if row["status"] == "DEGRADED")
     overall = "BLOCKED" if blocked else ("DEGRADED" if degraded else "WORKING")

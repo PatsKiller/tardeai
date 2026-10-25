@@ -47,6 +47,17 @@ def _safe_float(val, default=0.0) -> float:
     except (TypeError, ValueError):
         return default
 
+def concentration_default_fraction(kind: str = 'single_stock') -> float | None:
+    """Source-default lookup approved operator2026-10-24 Addendum3.
+
+    Existing explicit environment/account controls keep their semantics. The
+    default comes from IPS; source absence cannot produce a guessed threshold.
+    """
+    from lib.ips_policy import ips_max_position_pct, concentration_policy
+    value = ips_max_position_pct() if kind == 'single_stock' else concentration_policy().get('lookthrough_sector_limit_pct')
+    return value / 100.0 if value is not None else None
+
+
 log = logging.getLogger(__name__)
 
 FAIL_CLOSED_CONTEXTS = {'paper_trade', 'live_trade', 'approval_ready', 'broker_submit', 'telegram_actionable'}
@@ -305,7 +316,10 @@ class RiskGate:
             #     (operator 2026-06-19): conc_limit = max(env default, policy max_position_allocation_pct)
             #     so this gate cannot reject a position the sizing engine intentionally allowed.
             if os.getenv('RISK_GATE_H2_ENABLED', 'true').lower() == 'true':
-                conc_limit = _safe_float(os.getenv('POSITION_CONCENTRATION_PCT', '0.08'))
+                raw_override = os.getenv('POSITION_CONCENTRATION_PCT')
+                conc_limit = _safe_float(raw_override) if raw_override is not None else concentration_default_fraction()
+                if conc_limit is None:
+                    raise ValueError('CONCENTRATION_POLICY_UNAVAILABLE')
                 if _pos_pct:
                     conc_limit = max(conc_limit, _pos_pct / 100.0)
                 pos_size = _safe_float(plan.get('dollar_size', 0))
@@ -313,10 +327,14 @@ class RiskGate:
                 if pos_pct > conc_limit:
                     reasons.append(f'CONCENTRATION_CAP_{pos_pct:.1%}_vs_{conc_limit:.0%}')
 
-            # H3. Sector concentration (25% default)
+            # H3. Sector concentration (same canonical IPS default)
             if self.conn and sector and os.getenv('RISK_GATE_H3_ENABLED', 'true').lower() == 'true':
                 try:
-                    sector_limit = _safe_float(os.getenv('SECTOR_CONCENTRATION_PCT', '0.25'))
+                    raw_sector_override = os.getenv('SECTOR_CONCENTRATION_PCT')
+                    sector_limit = _safe_float(raw_sector_override) if raw_sector_override is not None else concentration_default_fraction('lookthrough_sector')
+                    if sector_limit is None:
+                        reasons.append('SECTOR_POLICY_UNAVAILABLE')
+                        raise ValueError('SECTOR_POLICY_UNAVAILABLE')
                     cur = self.conn.cursor()
                     cur.execute("""
                         SELECT COALESCE(SUM(pt.dollar_size), 0)

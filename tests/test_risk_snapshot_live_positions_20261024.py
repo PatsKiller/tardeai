@@ -31,18 +31,20 @@ def state(tmp_path, monkeypatch):
 
 
 def test_positions_follow_live_holdings_and_broker_stops(state, monkeypatch):
-    import scripts.lib.last_known_stops as lks
-    monkeypatch.setattr(lks, "load_last_known", lambda **_: [
-        {"account": "schwab_rollover_ira", "symbol": "SKYD", "stop_price": 7.07, "captured_at": "2026-10-23T20:55Z"},
-        {"account": "schwab_roth_ira", "symbol": "V", "stop_price": 399.82, "captured_at": "2026-10-23T20:55Z"}])
-    monkeypatch.setitem(__import__("sys").modules, "lib.last_known_stops", lks)
-    snap = rs.build_risk_snapshot()
+    broker = [
+        {"account": "schwab_rollover_ira", "symbol": "SKYD", "stop_price": 7.07, "captured_at": "2026-10-23T20:55Z", "status": "pending_activation"},
+        {"account": "schwab_roth_ira", "symbol": "V", "stop_price": 399.82, "captured_at": "2026-10-23T20:55Z", "status": "WORKING"}]
+    def query(sql, params=None, **kw):
+        return broker if "FROM stop_last_known" in sql else []
+    snap = rs.build_risk_snapshot(db_query=query)
     assert snap["positions_basis"] == "holdings_live" and snap["errors"] == []
     pos = {(p["symbol"], p["account"]): p for p in snap["positions"]}
     assert ("NAVN", "schwab_rollover_ira") not in pos            # sold: gone with live holdings
     assert pos[("SPCX", "schwab_rollover_ira")]["shares"] == 700  # live quantity, not 600
     assert pos[("SKYD", "schwab_rollover_ira")]["stop_price"] == 7.07
     assert pos[("SKYD", "schwab_rollover_ira")]["stop_source"] == "broker_resting"
+    assert pos[("SKYD", "schwab_rollover_ira")]["stop_state"] == "pending_activation"
+    assert pos[("SKYD", "schwab_rollover_ira")]["broker_protected"] is False
     assert pos[("V", "schwab_roth")]["stop_price"] == 399.82       # roth alias joins the broker store
     assert pos[("SPCX", "schwab_rollover_ira")]["stop_price"] is None
 
