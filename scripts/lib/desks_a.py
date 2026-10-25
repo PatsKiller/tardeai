@@ -19,6 +19,7 @@ import math
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
+from zoneinfo import ZoneInfo
 
 READ_LIMIT = 4 * 1024 * 1024
 MAX_ROWS = 12
@@ -27,6 +28,23 @@ GAP_NOT_ON_FILE = "not on file"
 GAP_NOT_MEASURED = "not measured"
 
 DbQuery = Callable[..., Any]
+_ET = ZoneInfo("America/New_York")
+
+
+# Board 3 / board 15 stop vocabulary (display only; categories come from cio_truth.resolve "stop_category").
+BOOK_STOP_TEXT = {"active": "stop active", "pending_activation": "stop pending activation",
+                  "filled": "stop filled · awaiting holdings sync", "unknown": "stop state not recorded",
+                  "planned": "planned level only · no resting order", "none": "no stop"}
+
+
+def _stop_category(p: dict) -> str:
+    cat = p.get("stop_category")
+    if cat in BOOK_STOP_TEXT:
+        return cat
+    state = p.get("stop_state")
+    if state in ("active", "pending_activation", "filled", "unknown"):
+        return state
+    return "planned" if p.get("stop_source") == "planned" and p.get("stop_price") is not None else "none"
 
 
 # ── primitives ────────────────────────────────────────────────────────────────
@@ -104,9 +122,10 @@ def _count(value: Any) -> str:
 
 
 def _date(raw: Any) -> str:
+    """Readable Eastern time ("Fri Oct 23 17:55 ET"); a stamp without a zone shows its date only."""
     at = _time(raw)
     if at:
-        return at.strftime("%Y-%m-%d %H:%M UTC")
+        return at.astimezone(_ET).strftime("%a %b %d %H:%M ET").replace(" 0", " ")
     return str(raw)[:10] if raw else GAP_NOT_ON_FILE
 
 
@@ -598,23 +617,52 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
     portfolio = truth.get("portfolio") or {}
     stops = truth.get("stops") or {}
     book = []
-    for p in sorted(positions, key=lambda p: -(_num(p.get("market_value")) or 0))[:MAX_ROWS]:
+    # Board 3 "Your book": the counted positions (same set as Home/Risk counts) by stop category from cio_truth.
+    has_counted = any(isinstance(p.get("counted"), bool) for p in positions)
+    shown = [p for p in positions if p.get("counted")] if has_counted else positions
+    for p in sorted(shown, key=lambda p: -(_num(p.get("market_value")) or 0))[:MAX_ROWS]:
         sym = str(p.get("symbol") or "?")
-        state = str(p.get("stop_state") or "none").replace("_", " ")
+        cat = _stop_category(p)
+        state = BOOK_STOP_TEXT[cat]
+        dist = next((p.get(k) for k in ("distance_to_stop_pct", "resting_stop_distance_pct", "planned_stop_distance_pct")
+                     if _num(p.get(k)) is not None), None)
         book.append(_row(f"bk-{sym}-{p.get('account_id')}", f"{sym} · {p.get('account_label') or p.get('account_id')}",
-                         f"{_money(p.get('market_value'))} · stop {state}",
+                         f"{_money(p.get('market_value'))} · {state}",
                          "good" if p.get("broker_protected") else "warn",
                          detail=_detail(f"{sym} · {p.get('account_label') or ''}", [
-                             ("Market value", _money(p.get("market_value"))), ("Stop state", state),
+                             ("Market value", _money(p.get("market_value"))), ("Stop", state),
                              ("Stop source", str(p.get("stop_source") or "none").replace("_", " ")),
-                             ("Stop price", p.get("stop_price")), ("Distance to stop", _pct(p.get("distance_to_stop_pct"), 2)),
+                             ("Stop price", p.get("stop_price")), ("Distance to stop", _pct(dist, 2)),
                              ("Defensive score", GAP_NOT_MEASURED), ("Beta", GAP_NOT_MEASURED)],
                              "cio_truth.resolve positions + stops (stop_last_known before stops.json)",
-                             href="/risk?tab=exposure", href_label="Stop review on Risk →")))
-    book_rows = [
-        _row("bk-unprot", "Positions without an active broker stop", _count(stops.get("unprotected_count"))
-             if stops.get("unprotected_count") is not None else GAP_NOT_ON_FILE, "warn" if stops.get("unprotected_count") else None),
-        _row("bk-heat", "Unprotected value", _money((truth.get("positions") or {}).get("unprotected_value_usd"))),
+                             href=f"/risk?tab=exposure&detail=position:{p.get('account_id')}:{sym}",
+                             href_label="Stop review on Risk →")))
+    breakdown = (truth.get("positions") or {}).get("stop_breakdown")
+    if isinstance(breakdown, dict):
+        def _n(cat):
+            return int((breakdown.get(cat) or {}).get("count") or 0)
+
+        def _syms(cat):
+            names = [str(s.get("symbol")) for s in (breakdown.get(cat) or {}).get("symbols") or [] if isinstance(s, dict)]
+            return ", ".join(f"{n} ×{names.count(n)}" if names.count(n) > 1 else n for n in dict.fromkeys(names))
+
+        values = [(breakdown.get(c) or {}).get("value_usd") for c in ("none", "planned")]
+        no_stop = _n("none") + _n("planned")
+        book_rows = [
+            _row("bk-unprot", "Positions with no broker stop", f"{no_stop:,}" + (f" ({_n('planned')} planned level only)" if _n("planned") else ""),
+                 "warn" if no_stop else None, href="/risk?tab=exposure"),
+            _row("bk-heat", "Value with no broker stop", _money(sum(values)) if all(_num(v) is not None for v in values) else GAP_NOT_ON_FILE),
+            _row("bk-pending", "Stops resting · pending activation", f"{_n('pending_activation'):,}", "warn" if _n("pending_activation") else None),
+            _row("bk-filled", "Stops filled · awaiting holdings sync",
+                 f"{_n('filled'):,}" + (f" · {_syms('filled')}" if _n("filled") else ""), "warn" if _n("filled") else None),
+        ] + ([_row("bk-unknown", "Broker stop, state not recorded", f"{_n('unknown'):,} · {_syms('unknown')}", "warn")] if _n("unknown") else [])
+    else:
+        book_rows = [
+            _row("bk-unprot", "Positions without an active broker stop", _count(stops.get("unprotected_count"))
+                 if stops.get("unprotected_count") is not None else GAP_NOT_ON_FILE, "warn" if stops.get("unprotected_count") else None),
+            _row("bk-heat", "Unprotected value", _money((truth.get("positions") or {}).get("unprotected_value_usd"))),
+        ]
+    book_rows += [
         _row("bk-hedged", "Hedged share of book", GAP_NOT_MEASURED),
         _row("bk-exposed", "Most exposed (beta)", GAP_NOT_MEASURED),
     ] + book
@@ -658,7 +706,7 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
 
     review_rows = [
         _row("rv-locked", "Criteria locked", "yes" if review.get("criteria_locked") else "no" if review else GAP_NOT_ON_FILE),
-        _row("rv-lock", "Last lock", str(review.get("locked_at") or GAP_NOT_ON_FILE), "warn"),
+        _row("rv-lock", "Last lock", _date(review.get("locked_at")), "warn"),
         _row("rv-amend", "Amendments", _count(len(review.get("amendments") or [])) if review else GAP_NOT_ON_FILE),
         _row("rv-dec", "Decisions recorded", _count(len(review.get("decisions") or [])) if review else GAP_NOT_ON_FILE),
         _row("rv-open", "Review console (rate, lock, decide)", "Classic view →", "info", href="/defense/classic"),
@@ -674,14 +722,14 @@ def defense_payload(*, root: Path, db_query: DbQuery | None = None, now: datetim
         _source("options", "Options lifecycle", options.get("generated_at"), DEFENSE_LANES["options"], gap=o_gap),
         _source("cash", "Cash alternatives", cash.get("generated_at"), DEFENSE_LANES["cash"], gap=c_gap),
         _source("review", "Review console", None, DEFENSE_LANES["review"],
-                gap=v_gap or (f"Last lock {review.get('locked_at')} (recorded without a time zone)." if review.get("locked_at") else "No lock on file.")),
+                gap=v_gap or (f"Last lock {_date(review.get('locked_at'))} (recorded without a time zone, so only the date is shown)." if review.get("locked_at") else "No lock on file.")),
     ]
     decisions = _writer_decisions(sources, states, {
         "options": "The options lifecycle panel shows the last output of a paused writer.",
         "cash": "Cash alternatives yields are frozen at their last manual run.",
     })
     if review.get("locked_at"):
-        decisions.append({"id": "review-console", "title": f"Review console last locked {review.get('locked_at')}",
+        decisions.append({"id": "review-console", "title": f"Review console last locked {_date(review.get('locked_at'))}",
                           "detail": "Keep it as a log or retire it (board 3)."})
     tabs = {
         "where-to-act": {"panels": [
