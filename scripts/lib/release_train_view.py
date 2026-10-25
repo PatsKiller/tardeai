@@ -45,6 +45,27 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 STOP_NOTE = "Release STOP only. The trading kill switch is separate."
 LATCH_STATES = ("ABSENT", "SET", "UNREADABLE")
 
+# Incubator chambers (Coordination → Release train). Counts come from ``by_state``; FE never invents them.
+LIFECYCLE_CHAMBERS: dict[str, tuple[str, ...]] = {
+    "intake": ("submitted", "classified"),
+    "gated": ("ready", "held", "needs_operator", "blocked"),
+    "train": Q.IN_TRAIN_STATES,
+    "release": ("released", "observing"),
+    "closed": ("rolled_back", "rollback_failed", "superseded", "quarantined", "cancelled"),
+}
+
+
+def lifecycle_from_by_state(by_state: Optional[Mapping[str, int]]) -> dict[str, Any]:
+    """Chamber counts from ``read_counts.by_state``. Missing store → chambers None (UNAVAILABLE), never 0 green."""
+    if by_state is None:
+        return {"chambers": None, "by_state": None, "total": None}
+    by = {str(k): int(v) for k, v in by_state.items()}
+    chambers = {
+        name: {"count": sum(by.get(s, 0) for s in states), "states": {s: by.get(s, 0) for s in states}}
+        for name, states in LIFECYCLE_CHAMBERS.items()
+    }
+    return {"chambers": chambers, "by_state": by, "total": sum(by.values())}
+
 _EXECUTOR: Optional[cf.ThreadPoolExecutor] = None
 _EXECUTOR_LOCK = threading.Lock()
 _CACHE: dict[tuple, tuple[float, tuple[int, dict]]] = {}
@@ -290,6 +311,11 @@ def build_summary(db_query, *, now: Optional[datetime] = None, census_path: Opti
         store_f = field({"state": p["state"], "tables": p["tables"]}, p["as_of"], "OK", "postgres:to_regclass",
                         p.get("reason"))
         counts_f = _store_field({"status": "OK", "value": sv["counts"]}, "counts", now_iso, "postgres:release_queue")
+        by_state = (sv["counts"] or {}).get("by_state") if isinstance(sv.get("counts"), dict) else None
+        life_payload = lifecycle_from_by_state(by_state if isinstance(by_state, dict) else None)
+        lifecycle_f = field(life_payload, now_iso, "OK" if life_payload["chambers"] is not None else "UNAVAILABLE",
+                            "postgres:release_queue",
+                            None if life_payload["chambers"] is not None else "by_state_missing")
         last = sv["last"]
         last_f = _store_field({"status": "OK", "value": last}, "outcome", now_iso, "postgres:release_queue_events")
         current_f = _store_field({"status": "OK", "value": sv["current"]}, "train", now_iso,
@@ -300,6 +326,7 @@ def build_summary(db_query, *, now: Optional[datetime] = None, census_path: Opti
     else:
         store_f = field(None, None, "UNAVAILABLE", "postgres:to_regclass", store["error"])
         counts_f = field(None, None, "UNAVAILABLE", "postgres:release_queue", store["error"])
+        lifecycle_f = field(None, None, "UNAVAILABLE", "postgres:release_queue", store["error"])
         last_f = field(None, None, "UNAVAILABLE", "postgres:release_queue_events", store["error"])
         current_f = field(None, None, "UNAVAILABLE", "postgres:release_queue_events", store["error"])
         verified_f = field(None, None, "UNAVAILABLE", "postgres:release_queue_events", store["error"])
@@ -330,11 +357,23 @@ def build_summary(db_query, *, now: Optional[datetime] = None, census_path: Opti
     standing = field({"state": "NOT_CONFIGURED",
                       "detail": "No standing delegation record exists (Phase 2, operator-applied)."},
                      now_iso, "OK", "config/release_train_delegation.json")
+    try:
+        from scripts.lib.release_train_controller import TRAIN_CONTROLLER_STATUS as _CTRL_STATUS
+    except Exception:  # pragma: no cover
+        try:
+            from lib.release_train_controller import TRAIN_CONTROLLER_STATUS as _CTRL_STATUS  # type: ignore
+        except Exception:  # noqa: BLE001
+            _CTRL_STATUS = "UNAVAILABLE"
+    controller_f = field({"status": _CTRL_STATUS}, now_iso,
+                         "OK" if _CTRL_STATUS != "UNAVAILABLE" else "UNAVAILABLE",
+                         "code:release_train_controller",
+                         None if _CTRL_STATUS != "UNAVAILABLE" else "import_failed")
     data = {
         "schema": "ReleaseTrainSummary@v1", "authority": AUTHORITY, "generated_at": now_iso,
         "timeout_s": timeout_s,
         "armed": armed_f, "standing_policy": standing, "next_window": next_f, "windows": windows_f,
-        "queue_counts": counts_f, "current_train": current_f, "last_verified": verified_f,
+        "queue_counts": counts_f, "lifecycle": lifecycle_f, "controller": controller_f,
+        "current_train": current_f, "last_verified": verified_f,
         "last_outcome": last_f, "stop": stop_f, "state_dir": state_dir_f, "census": census_f, "store": store_f,
         "policy": _policy_field(policy, perr, now_iso),
         "sources": {k: {"status": v["status"], "ms": v["ms"]} for k, v in res.items()},

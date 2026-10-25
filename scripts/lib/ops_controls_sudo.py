@@ -52,7 +52,8 @@ FACTOR = "sudo_window"
 #: whose release-train proof hook accepts only factor ``passkey``).
 ALWAYS_FRESH_KINDS = frozenset({
     "grant.issue", "kill_switch.clear", "passkey.register", "passkey.revoke",
-    "release_train.resume", "release_train.arm", "release_train.change_scope", "release_train.revoke",
+    "release_train.resume", "release_train.arm", "release_train.run_now",
+    "release_train.change_scope", "release_train.revoke",
 })
 
 

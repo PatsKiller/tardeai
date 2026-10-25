@@ -111,6 +111,15 @@ asks the operator to decide needs `dedupe_minutes=0`; #1685 sets it only for `ap
 operator classifies it before #1685 merges. **Numbering:** follows 5.0.0 (ACTIVE, PR #1686, merged `0ec320486`);
 `Supersedes` is 5.0.0. Operator approval phrase (§20): `APPROVE_AGENTS_POLICY_5_1_0 <pr_number> <head_sha>`.
 
+**22.0.0 is PROPOSED (MAJOR) — Ops → Controls may force a live canary Run now (`release_train.run_now`, §25.3).**
+Awaiting the operator's `APPROVE_AGENTS_POLICY_22_0_0 <pr_number> <head_sha>` (§20). Until it is ratified and the
+header is set ACTIVE, the 20.3.0 text governs and the host CLI remains the only live force path. Once ACTIVE: Ops →
+Controls kind `release_train.run_now` (passkey + typed phrase `RUN NOW EPOCH n WINDOW HHMM`, always-fresh) may force
+one live canary train outside a window under every other §25.3 gate; agents still never force; the host CLI remains
+the fallback. Numbered 22.0.0 because open PR #2128 claims 21.0.0; settled at ratification (§20). **Why MAJOR:** it
+narrows §25.3's "never accepted from … the Command Center" for one operator surface (version policy: classify by the
+weakest guarantee). §0, §2, §2A, §7A and role authority are unchanged.
+
 **20.3.0 is ACTIVE (MINOR) — §28.12 delivery lifecycle, claim to verified release.**
 Ratified by the operator 2026-10-25 (`APPROVE_AGENTS_POLICY_20_3_0 2107 72bd48f46d3557501b3575002e741577ffff90f0`, §20; PR #2107 comment by PatsKiller 2026-10-25T17:17:38Z, https://github.com/PatsKiller/tardeai/pull/2107#issuecomment-6400701124).
 One ordered path for every agent: claim, design, build, test, PR, CI green, queue, release; plus two obligations —
@@ -4091,6 +4100,10 @@ broker read lane into one that writes, or widening any read lane's reach (§27.1
 operator on Ops → Controls with a passkey and a typed phrase, or at the host terminal; no agent ever calls a
 Controls endpoint or the host applier.
 
+**Release train Run now (22.0.0, §25.3):** forcing a live canary train from Ops → Controls
+(`release_train.run_now`). Binding only once AGENTS.md 22.0.0 is ACTIVE; until then the host CLI is the only live
+force path. Agents never force one.
+
 **Schwab stays read-only (20.0.0, §28.6):** changing the Schwab access mode away from `read_only` · unlocking a
 broker trading lock · clearing a `live_submit` or `broker` kill switch. Each is the operator's alone, made with a
 passkey on Ops → Controls or at the host terminal; never by an agent, a release, the release train or n8n.
@@ -6334,6 +6347,14 @@ arms the delegation at the host (§25.2) and enables a window (§25.3), each a �
   receipt records it as operator-forced, and it counts toward the canary proofs §25.7 lists. Outside the canary phase an off-window request stays shadow (n8n's forced tick) and an
   off-window live release stays the manual path (§25.1, §24.8). *Cause (§20): operator approval 2026-10-21 —
   operator-forced off-window canary runs, TTY plus phrase, canary phase only, every other gate still enforced.*
+- **Ops → Controls Run now (22.0.0, `release_train.run_now`) — binding only once AGENTS.md 22.0.0 is ACTIVE.**
+  Once ACTIVE, the operator may force the same live canary path from Ops → Controls kind `release_train.run_now`
+  with a WebAuthn passkey (always fresh) and the typed phrase `RUN NOW EPOCH n WINDOW HHMM` (epoch and window from
+  the control view). The applier sets `forced_confirmed=True` after that proof and runs the controller; every other
+  §25.3 gate stays (canary phase, capability, lock, STOP, merge freeze, CI on the candidate SHA, not 09:30–16:00 ET,
+  `OPERATOR_FORCED_LIVE` receipt). Agents still never force one. Until 22.0.0 is ACTIVE the kind refuses with
+  `POLICY_NOT_ACTIVE` and the host CLI remains the only live force path. *Cause (§20): operator plan 2026-10-25 —
+  Run now on Command Center via MAJOR amendment; keep the CLI as fallback.*
 
 ## 25.4 STOP, pause, resume and revoke
 
@@ -7255,6 +7276,7 @@ verification and failure paging). It removes nothing and does not touch §0, §2
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 22.0.0 | 2026-10-25 | PROPOSED | MAJOR | §25.3 Ops → Controls Run now (`release_train.run_now`): once ACTIVE, the operator may force a live canary train from Ops → Controls with a passkey and typed phrase `RUN NOW EPOCH n WINDOW HHMM`; every other §25.3 gate stays; agents never force; host CLI remains the fallback. Until ACTIVE the kind refuses `POLICY_NOT_ACTIVE`. Numbered 22.0.0 because open PR #2128 claims 21.0.0 (settled at ratification). Header stays 20.3.0 ACTIVE while PROPOSED. | **PENDING** operator ratification `APPROVE_AGENTS_POLICY_22_0_0 <pr_number> <head_sha>` (§20). |
 | 20.3.0 | 2026-10-25 | ACTIVE | MINOR | §28.12 "Delivery lifecycle — claim to verified release" added: one ordered path (claim, design, build, test, PR, CI green, queue, release) pointing at the rules that already bind, plus two obligations: post-release verification after every release (`scripts/post_release_tester.py`: API checks at once, light 412/390 sweep outside the §28.8 window under the memory gate, nightly full sweep) and immediate P1 failure paging by Telegram, email and SMS (`scripts/delivery_failure_alerts.py`). Adds obligations only; does not touch §0, §2, §17 or role authority. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_3_0 2107 72bd48f46d3557501b3575002e741577ffff90f0` (operator, PR #2107 comment by PatsKiller 2026-10-25T17:17:38Z, https://github.com/PatsKiller/tardeai/pull/2107#issuecomment-6400701124, verbatim: "APPROVE_AGENTS_POLICY_20_3_0 2107 72bd48f46d3557501b3575002e741577ffff90f0"); ratified by this edit on #2107's branch, which set the header block, banner, row and §28.12 to 20.3.0 ACTIVE and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_3_0 <pr_number> <head_sha>`. Effective 2026-10-25. |
 | 20.2.0 | 2026-10-24 | ACTIVE | MINOR | §28.9 + §28.10 + §28.11 (transition for work in action) added: conflicts resolved only by the conflict engine under the operator-approved rulebook (agreement/superseded never flag, gates not conflicts, owner decides with a reason, CIO always informed, safety never automatic); no silent removal from operator surfaces (approved mockup required); `[shared-infra]` PRs alone with real-layout proof; one source per fact owned by the CIO record; health = the job ran (exit code + output, real cause shown, independent alert path); a read never acts (no broker read/job from GET, 500 KB poll budget, one-at-a-time probes); every writer a monitored n8n lane. Adds restrictions only; does not touch §0, §2, §17 or role authority. | **RATIFIED** by the operator 2026-10-24 (`APPROVE_AGENTS_POLICY_20_2_0 2073 c17951846b3bd688a6ef1c082d208ae4970445fc`). |
 | 20.1.0 | 2026-10-23 | ACTIVE | MINOR | §28.8 "No agent UI or validation traffic to the live server during market hours" added. Operator decision 2026-10-23 ~11:05 ET, "approved", after five portfolio-server SIGKILLs (09:14–10:24 ET) driven by agent crawls and previews (PR #2012): from 04:00 to 16:15 ET on a market day no agent sends Playwright, crawler, `vite preview` or dev-proxy traffic to the served `/api` on `127.0.0.1:7777`; fixtures or a mock or replay backend instead; live smoke after the close at ≤1 req/s, GET only. MINOR: one added restriction, none removed. Every other section is byte-identical to 20.0.0 before and after ratification. | **ACTIVE** — ratified `APPROVE_AGENTS_POLICY_20_1_0 2019 d24a29054865a9bc09d3c50bb33dfe9c4be728af` (operator, PR #2019 comment by PatsKiller 2026-10-23T16:53:47Z, https://github.com/PatsKiller/tardeai/pull/2019#issuecomment-6370144385, verbatim: "APPROVE_AGENTS_POLICY_20_1_0 2019 d24a29054865a9bc09d3c50bb33dfe9c4be728af"); ratified by this edit on #2019's branch, which set the header block and §28.8 to 20.1.0 ACTIVE and changed nothing else; approval phrase as proposed `APPROVE_AGENTS_POLICY_20_1_0 <pr_number> <head_sha>`. Effective 2026-10-23. |
