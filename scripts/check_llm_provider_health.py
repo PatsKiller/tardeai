@@ -232,7 +232,7 @@ def _record_delivery_failure(heartbeat: dict, reason: str, undelivered: list[str
     print(f"[provider-health] ALERT UNDELIVERED ({reason}) — recorded to {HEARTBEAT_PATH.name}", file=sys.stderr)
 
 
-def _deliver(message: str, priority: str, heartbeat: dict, labels: list[str]) -> bool:
+def _deliver(message: str, priority: str, heartbeat: dict, labels: list[str], *, dedupe_minutes: int | None = None) -> bool:
     """The one transport call. True when accepted; a failure is recorded on the heartbeat, never only logged."""
     try:
         from telegram_alert import send_telegram
@@ -243,6 +243,7 @@ def _deliver(message: str, priority: str, heartbeat: dict, labels: list[str]) ->
             message,
             priority=priority if priority in ("P1", "P2", "P3") else "P2",
             producer="check_llm_provider_health",
+            **({"dedupe_minutes": dedupe_minutes} if dedupe_minutes is not None else {}),
         )
     except Exception as e:
         _record_delivery_failure(heartbeat, f"{type(e).__name__}: {e}", labels)
@@ -387,7 +388,8 @@ def main() -> int:
             _note_key = "anthropic:" + _anthropic_policy["promotion_id"] + ":" + _note["key"]
             if _notes_state.get(_note_key) and (_note["priority"] != "P1" or time.time() - float(_notes_state[_note_key]) < DEDUPE_SECONDS):
                 continue
-            if _deliver(_note["message"], _note["priority"], heartbeat, [_note_key]):
+            if _deliver(_note["message"], _note["priority"], heartbeat, [_note_key],
+                        dedupe_minutes=int(_anthropic_policy["milestone_dedupe_minutes"]) if _note["priority"] == "P2" else None):
                 _notes_state[_note_key] = time.time()
                 _save_state(_notes_state)
     if live and not args.dry_run:

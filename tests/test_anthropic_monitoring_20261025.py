@@ -85,3 +85,14 @@ def test_disabled_provider_does_not_page_as_configured_first_failure(tmp_path):
     p['provider_enabled']=False
     status=snapshot(tmp_path,policy=p,now=NOW,configured=True)
     assert not status['p1_continuous_failure']
+
+
+def test_milestone_messages_are_stable_for_notification_intent_dedupe(tmp_path):
+    p=load_policy();p['daily_cap_usd']='190';p['per_call_caps_usd']['bulk']='190'
+    book=CreditBook(tmp_path,p)
+    book.reserve('a','fixture',Decimal(110),tier='bulk',now=NOW);book.settle('a',Decimal(110),now=NOW)
+    first=due_notes(snapshot(tmp_path,policy=p,now=NOW,configured=True),p)
+    book.reserve('b','fixture',Decimal(1),tier='bulk',now=NOW);book.settle('b',Decimal(1),now=NOW)
+    later=due_notes(snapshot(tmp_path,policy=p,now=NOW+timedelta(minutes=5),configured=True),p)
+    assert first==later
+    assert p['milestone_dedupe_minutes']>22*24*60

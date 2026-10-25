@@ -94,5 +94,6 @@
     80
   ],
   "expiry_notice_days": 3,
-  "external_credit_note": "Remaining credit is a ledger estimate; bypassing callers and console/SDK usage may exhaust the organization sooner."
+  "external_credit_note": "Remaining credit is a ledger estimate; bypassing callers and console/SDK usage may exhaust the organization sooner.",
+  "milestone_dedupe_minutes": 43200
 }

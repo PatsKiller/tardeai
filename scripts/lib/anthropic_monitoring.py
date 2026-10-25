@@ -110,15 +110,16 @@ def snapshot(root: Path, *, policy=None, now=None, configured=None) -> dict:
 def due_notes(status: dict, policy: dict) -> list[dict]:
     credit=status['credit']
     result=[]
+    identity=policy['promotion_id']
     if credit.get('credit_used_usd') is not None:
         percentage=amount(credit['credit_used_usd']) / amount(policy['credit_usd']) * 100
         for threshold in policy['threshold_notes']:
             if percentage >= threshold:
-                result.append({'key':f'credit-{threshold}','priority':'P2','message':f'Anthropic promotional credit: {threshold}% used. '+status['digest_line']})
+                result.append({'key':f'credit-{threshold}','priority':'P2','message':f'Anthropic promotion {identity}: {threshold}% of the granted credit used. Review LLM Spend for current usage, remaining estimate and pacing.'})
     if credit['status']=='EXHAUSTED':
-        result.append({'key':'exhausted','priority':'P2','message':status['digest_line']})
+        result.append({'key':'exhausted','priority':'P2','message':f'Anthropic promotion {identity}: credit exhausted. Governed routing falls through to OAuth then the admitted paid fallback. Review LLM Spend.'})
     if 0 < credit.get('days_to_expiry',1000) <= policy['expiry_notice_days']:
-        result.append({'key':'expiry-3-days','priority':'P2','message':status['digest_line']})
+        result.append({'key':'expiry-3-days','priority':'P2','message':f'Anthropic promotion {identity} expires {policy["expires_at"]}; three-day renewal window. Review LLM Spend.'})
     if status['p1_continuous_failure']:
         result.append({'key':'continuous-auth-billing','priority':'P1','message':'Anthropic first choice continuously failing auth/billing. '+status['digest_line']})
     return result
