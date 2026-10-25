@@ -382,19 +382,148 @@ class DecisionLedger:
                            "findings": normalized, "effect": "PROPOSAL_ONLY"})
 
 
+_LIST_ITEM = re.compile(r"^(?P<indent> {0,3})(?P<marker>[-*+]|\d{1,3}[.)])\s+(?P<body>\S.*)$")
+_SECTION_NUMBER = re.compile(r"^(?:§\s*)?\d+[A-Z]?\s*(?:·|\.|\s)")
+_HISTORY_SECTION = re.compile(r"\b(?:version history|changelog|change log)\b", re.I)
+AUDIT_NOT_RUN = "The enforcement audit has not run against this policy version, so no rule has measured evidence yet."
+
+
+def _rule_items(text: str) -> list[dict]:
+    """Real rule items: top-level numbered or bulleted list items under a section.
+
+    Skipped: the document title and its preamble (header fence, version banners, intro), headings,
+    code fences, tables, block quotes, HTML comments, horizontal rules and version-history sections.
+    A list item keeps its continuation lines and nested sub-items as part of its text. A section
+    written only as prose (no list at all, e.g. §17) contributes its paragraphs instead, except
+    bare labels such as "**At session start:**".
+    """
+    items: list[dict] = []
+    prose: list[dict] = []
+    section, subsection = None, None
+    first_heading = True
+    skip_section = True  # until the first real section heading
+    in_fence = in_comment = False
+    current: dict | None = None
+    paragraph: dict | None = None
+    blank_run = 0
+
+    seq = 0
+
+    def joined(lines: list[str]) -> str:
+        # Source line wraps become spaces; a blank line or a nested item starts a new line.
+        out = ""
+        for line in lines:
+            if not out:
+                out = line.lstrip("\n")
+            elif line.startswith("\n"):
+                out += "\n" + line.lstrip("\n")
+            elif line.startswith("- "):
+                out += "\n" + line
+            else:
+                out += " " + line
+        return out.strip()
+
+    def close_item():
+        nonlocal current, seq
+        if current is not None:
+            body = joined(current.pop("lines"))
+            if body:
+                seq += 1
+                items.append({**current, "text": body, "_seq": seq})
+        current = None
+
+    def close_paragraph():
+        nonlocal paragraph, seq
+        if paragraph is not None:
+            body = joined(paragraph.pop("lines"))
+            label = re.fullmatch(r"\*\*[^*]+\*\*:?|[^\s].{0,80}:", body)
+            if body and not label:
+                seq += 1
+                prose.append({**paragraph, "text": body, "_seq": seq})
+        paragraph = None
+
+    def close():
+        close_item()
+        close_paragraph()
+
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if in_comment:
+            if "-->" in stripped:
+                in_comment = False
+            continue
+        if stripped.startswith(("```", "~~~")):
+            in_fence = not in_fence
+            close()
+            continue
+        if in_fence:
+            continue
+        if stripped.startswith("<!--"):
+            close()
+            in_comment = "-->" not in stripped
+            continue
+        heading = re.match(r"^(#{1,6})\s+(.+?)\s*#*\s*$", raw)
+        if heading:
+            close()
+            level, title = len(heading[1]), heading[2].strip()
+            if level == 1:
+                # The first H1 is the document title unless it is itself a numbered section.
+                is_title = first_heading and not _SECTION_NUMBER.match(title)
+                section, subsection = title, None
+                skip_section = is_title or bool(_HISTORY_SECTION.search(title))
+            else:
+                if section is None:
+                    section, skip_section = title, bool(_HISTORY_SECTION.search(title))
+                subsection = title
+            first_heading = False
+            continue
+        if skip_section or section is None:
+            continue
+        if not stripped:
+            close_paragraph()
+            blank_run += 1
+            continue
+        if stripped.startswith(("|", ">")) or re.fullmatch(r"[-*_]{3,}", stripped):
+            close()
+            blank_run = 0
+            continue
+        match = _LIST_ITEM.match(raw)
+        if match and not match["indent"]:
+            close()
+            marker = match["marker"]
+            current = {"section": section, "subsection": subsection,
+                       "number": marker.rstrip(".)") if marker[0].isdigit() else None, "lines": [match["body"]]}
+            blank_run = 0
+            continue
+        if current is not None and (raw.startswith((" ", "\t")) or not blank_run):
+            nested = _LIST_ITEM.match(raw.strip())
+            line = "- " + nested["body"] if nested and not nested["marker"][0].isdigit() else raw.strip()
+            current["lines"].append(("\n" if blank_run else "") + line)
+            blank_run = 0
+            continue
+        close_item()
+        blank_run = 0
+        if paragraph is None:
+            paragraph = {"section": section, "subsection": subsection, "number": None, "lines": []}
+        paragraph["lines"].append(stripped)
+    close()
+    listed = {item["section"] for item in items}
+    extra = [p for p in prose if p["section"] not in listed]
+    # Document order.
+    return [{k: v for k, v in r.items() if k != "_seq"} for r in sorted([*items, *extra], key=lambda r: r["_seq"])]
+
+
 def policy_projection(text: str, *, source_sha: str, enforcement: dict | None = None) -> dict:
     doc = document(text, source_sha=source_sha)
     rules = []
-    # Paragraphs preserve full rule wording; the amendment reader separately chunks changes for viewport proof.
-    blocks, section = [], "Document"
-    for paragraph in re.split(r"\n\s*\n", text):
-        if not paragraph.strip():
-            continue
-        if heading := re.match(r"^#{1,6}\s+(.+)", paragraph):
-            section = heading[1].strip()
-        blocks.append({"section": section, "text": paragraph})
-    for i, block in enumerate(blocks):
-        key = "rule_" + digest([i, block])[:20]
+    # ``enforcement`` is None when no audit result applies to this document; then the measured
+    # tiles are a gap ("Audit not run"), never 0.
+    measured = enforcement is not None
+    per_section: dict[str, int] = {}
+    for block in _rule_items(text):
+        ordinal = per_section.get(block["section"], 0)
+        per_section[block["section"]] = ordinal + 1
+        key = "rule_" + digest([block["section"], ordinal, block["text"]])[:20]
         proof = (enforcement or {}).get(key) or {}
         # An existence map is not runtime proof. Evidence must bind the exact policy document.
         same = proof.get("document_sha") == doc["document_sha"]
@@ -405,7 +534,27 @@ def policy_projection(text: str, *, source_sha: str, enforcement: dict | None = 
             status = "ENFORCED" if proof.get("runtime_passed") and proof.get("runtime_receipt") else "TESTED"
         plain = next((meaning for anchor, meaning in PLAIN_RULES.items() if anchor in block["text"]), None)
         rules.append({"id": key, **block, "plain": proof.get("plain") if same and proof.get("plain") else plain, "status": status,
-                      "evidence": proof if same else {}, "reason": None if same else "No evidence for this document version"})
-    counts = {s: sum(r["status"] == s for r in rules) for s in ("ENFORCED", "TESTED", "WRITTEN-only", "VIOLATED")}
-    return {"document_sha": doc["document_sha"], "source_sha": source_sha, "sections": doc["sections"],
-            "rules": rules, "counts": counts, "audit": {"state": "NOT_MEASURED", "last_audit": None}}
+                      "evidence": proof if same else {},
+                      "reason": None if same else ("No evidence for this document version" if measured else "Audit not run")})
+    counts = {"RULES": len(rules)}
+    for name in ("ENFORCED", "TESTED", "WRITTEN-only", "VIOLATED"):
+        counts[name] = sum(r["status"] == name for r in rules) if measured or name == "WRITTEN-only" else None
+    sections = list(per_section)
+    section_status = {}
+    rank = {"VIOLATED": 0, "WRITTEN-only": 1, "TESTED": 2, "ENFORCED": 3}
+    for rule in rules:
+        prior = section_status.get(rule["section"])
+        if prior is None or rank[rule["status"]] < rank[prior]:
+            section_status[rule["section"]] = rule["status"]
+    return {"document_sha": doc["document_sha"], "source_sha": source_sha, "sections": sections,
+            "section_counts": per_section, "section_status": section_status if measured else {},
+            "rules": rules, "counts": counts, "counts_measured": measured,
+            "audit": {"state": "NOT_MEASURED", "last_audit": None, "last_run": None, "reason": AUDIT_NOT_RUN}}
+
+
+def unverified_audit(report: dict) -> dict:
+    """An audit report exists but does not bind this exact policy version: name its run time, measure nothing."""
+    when = report.get("as_of") if isinstance(report, dict) and isinstance(report.get("as_of"), str) else None
+    reason = ("The last enforcement audit run does not match the served policy version, so its results are not shown."
+              if when else AUDIT_NOT_RUN)
+    return {"state": "NOT_MEASURED", "last_audit": None, "last_run": when, "reason": reason}

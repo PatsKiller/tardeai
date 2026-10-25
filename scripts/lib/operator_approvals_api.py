@@ -127,6 +127,7 @@ def git_policy(root: Path = ROOT) -> dict:
     if not report_path.is_file() or report_path.stat().st_size > 4_000_000:
         return policy
     report = json.loads(report_path.read_text())
+    policy["audit"] = core.unverified_audit(report)  # replaced below only when the report binds this exact version
     ledger = core.DecisionLedger(governance_dir() / "operator_decisions.jsonl", approved=lambda: False)
     # A report is a derived view. Bind it back to an actual canonical proposal event.
     verified = any(row.get("event") == "AUDIT_FINDINGS" and row.get("hash_self") == report.get("event_hash")
