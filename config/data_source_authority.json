@@ -5105,7 +5105,15 @@
         "Ops",
         "Home"
       ],
-      "derived_copies": [],
+      "derived_copies": [
+        {
+          "store": {
+            "file": "data/ops/operator_settings_env.json"
+          },
+          "role": "derived",
+          "how": "Ops -> Controls toggles (2026-10-25): env projection of the active settings whose catalog entry names an env_key (ENABLE_SMS, OPERATOR_SMS_EMAIL, COMMS_GATEWAY_MODE), rewritten atomically by the host applier after every applied setting change (scripts/lib/ops_controls_core.write_settings_projection); read at call time by scripts/lib/ops_env_overlay.py (comms gateway mode, the sms adapter). Non-secret; absent = consumers use their environment as before."
+        }
+      ],
       "primary_provider": "internal",
       "backup": [],
       "retired": [],

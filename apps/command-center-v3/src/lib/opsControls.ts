@@ -36,6 +36,17 @@ export type SettingRow = {
   key: string; label?: string; type: SettingType; default?: SettingValue | null; current?: SettingValue | null
   overridden?: boolean; min?: number | null; max?: number | null; choices?: string[] | null; wired?: boolean
   consumer?: string | null; updated_at?: string | null; updated_by?: string | null
+  // Toggles tab (2026-10-25): env-backed rows only; absent on an older server.
+  env_key?: string; group?: string | null; validator?: string | null; allowed_domains?: string[] | null
+  masked?: boolean; warning?: string | null
+  effective?: { value: SettingValue | null; source: 'operator_setting' | 'environment' | 'default' } | null
+}
+export type SettingsProjection = { state: 'OK' | 'ABSENT' | 'INVALID' | 'UNAVAILABLE'; path?: string; generated_at?: string | null; drift?: string[]; reason?: string | null }
+export type TestSendResult = { channel: string; test_id: string; at: string; delivered: boolean; gateway_mode?: string | null; event_id?: string | null; error?: string | null }
+export type TogglesState = Section & {
+  channels?: Record<string, boolean>; cooldown_s?: number; last_test?: Record<string, TestSendResult>
+  notifier?: { state: 'OK' | 'UNAVAILABLE'; path?: string; as_of?: string | null; run_mode?: string | null; reason?: string | null
+    email_mirror?: { config?: string; sent?: number; failed?: number; would?: number } | null; gateway_modes_seen?: string[] }
 }
 export type SettingHistory = { key: string; old_value: unknown; new_value: unknown; actor?: string; at?: string; request_id?: string }
 export type ActiveGrant = { tier: string; uses?: string | number | null; minutes_left?: number | null; grant_id8?: string; grant_id?: string; reason?: string | null }
@@ -82,7 +93,8 @@ export type OpsControlsState = {
     crontab_read?: boolean; cache_ttl_s?: number
     summary?: { live_healthy: number; live_failing: number; rehearsing: number; ready_to_promote: number; never_ran: number; off?: number; cut_over?: number }
   }
-  settings: Section & { rows?: SettingRow[]; history?: SettingHistory[] }
+  settings: Section & { rows?: SettingRow[]; history?: SettingHistory[]; projection?: SettingsProjection }
+  toggles?: TogglesState
   grants: Section & { tiers?: string[]; active?: ActiveGrant[] }
   // per-domain readiness (scripts/lib/data_domain_readiness.py); older servers send rows with domain/title/status only
   data_approvals: Section & Omit<DataApprovals, 'state' | 'reason'>
@@ -278,6 +290,9 @@ export const opsApi = {
     call<{ step_up_token: string; expires_at?: string }>('POST', `/requests/${encodeURIComponent(id)}/step-up/totp`, { code, phrase }),
   registerOptions: (requestId: string) => call<JsonObj>('POST', '/passkeys/register/options', { request_id: requestId }),
   registerVerify: (requestId: string, credential: JsonObj) => call<JsonObj>('POST', '/passkeys/register/verify', { request_id: requestId, credential }),
+  /** One operator test message through the comms gateway; the page asks for confirmation first. */
+  testSend: async (channel: 'sms' | 'email') =>
+    (await call<{ result: TestSendResult; replayed?: boolean }>('POST', '/test-send', { channel, confirm: true, idempotency_key: newIdempotencyKey() })).result,
 }
 
 /** Passkey step-up for one request: options → navigator.credentials.get → verify {credential, phrase}.

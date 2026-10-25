@@ -65,6 +65,10 @@ class Ctx:
     clock: Callable[[], datetime] = C.utc_now
     notify: Callable[[str, str, Optional[str]], dict] = field(default=lambda s, b, r: {"queued": False})
     windows: Any = field(default_factory=SW.SudoWindows)   # in memory, per process: a restart ends every window
+    # Toggles tab (2026-10-25): the test-send transport (tests inject a fake; production is the comms gateway) and the
+    # in-memory per-channel cooldown record.
+    test_sender: Callable[[str, str, str, str], dict] = field(default=lambda c, s, b, r: gateway_test_send(c, s, b, r))
+    test_sends: dict = field(default_factory=dict)
 
 
 def _default_ctx() -> Ctx:
@@ -95,6 +99,24 @@ def _default_ctx() -> Ctx:
                allowed_logins=auth_cfg.allowed_logins,
                hmac_key=lambda: A.load_hmac_key(C.expand(cfg["secrets"]["hmac_key_file"])),
                totp_secret=totp_secret, notify=lambda s, b, r: notify_host(cfg, s, b, r))
+
+
+def gateway_test_send(channel: str, subject: str, body: str, request_id: str) -> dict:
+    """One operator test message through the communications gateway (never a direct provider call). The gateway's own
+    gates apply: mode OFF/SHADOW records the event and does not deliver, which is reported, not hidden."""
+    from scripts.lib.comms import channel_adapters as CA
+
+    if channel not in CA.SUPPORTED_CHANNELS:
+        return {"ok": False, "delivered": False, "gateway_mode": None, "event_id": None,
+                "error": "CHANNEL_NOT_DEPLOYED: this release's gateway has no '" + channel + "' channel (SMS ships "
+                         "with PR #2105)"}
+    gw = CA.send_via_gateway(channel, body=body, subject=subject, producer="ops_controls",
+                             subject_key=f"ops_controls_test:{request_id}", event_type="ops_controls_test_send",
+                             message_class="ops", retention_class="operational_30d", deliver=True, severity="info")
+    errs = gw.get("errors") or []
+    return {"ok": bool(gw.get("delivered")), "delivered": bool(gw.get("delivered")),
+            "gateway_mode": gw.get("gateway_mode"), "event_id": gw.get("event_id"),
+            "error": gw.get("error") or (str(errs[0]) if errs else None)}
 
 
 def notify_host(cfg: dict, subject: str, summary: str, request_id: Optional[str]) -> dict:
@@ -250,6 +272,8 @@ def _post(ctx: Ctx, base: str, sub: str, body: dict):
         return passkey_register_verify(ctx, op, body)
     if sub == "/sudo/end":
         return sudo_end(ctx, op)
+    if sub == "/test-send":
+        return test_send(ctx, op, body)
     mm = ROUTE_RE.match(sub)
     if not mm:
         return _err(404, "NOT_FOUND")
@@ -433,6 +457,50 @@ def undo(ctx: Ctx, op: str, req: dict, body: dict):
     undo_spec = (req.get("result") or {}).get("undo") or {}
     return create_request(ctx, op, {"kind": undo_spec.get("kind"), "params": undo_spec.get("params") or {},
                                     "idempotency_key": body.get("idempotency_key")}, undo_of=req["request_id"])
+
+
+# ── test send (Toggles tab, 2026-10-25) ───────────────────────────────────────────────────────────────────────────
+
+TEST_CHANNELS = ("sms", "email")
+
+
+def test_send(ctx: Ctx, op: str, body: dict):
+    """One test text or email to the operator through the gateway. Operator-only (the _post gates ran), an explicit
+    ``confirm: true`` (the page's confirm sheet), an idempotency key, and one per channel per cooldown. Audited.
+    Not a Controls change: it writes no setting and no host state."""
+    channel = str(body.get("channel") or "")
+    if channel not in TEST_CHANNELS:
+        return _err(400, "CHANNEL_INVALID", "channel must be one of " + ", ".join(TEST_CHANNELS))
+    if body.get("confirm") is not True:
+        return _err(400, "CONFIRM_REQUIRED", "a test send needs confirm: true (the page asks first)")
+    idem = body.get("idempotency_key")
+    if not isinstance(idem, str) or not IDEM_RE.fullmatch(idem):
+        return _err(400, "IDEMPOTENCY_KEY_REQUIRED", "idempotency_key: 8-100 of [A-Za-z0-9_.:-]")
+    last = ctx.test_sends.get(channel)
+    if last and last.get("idempotency_key") == idem:
+        return 200, {"ok": True, "replayed": True, "result": last["result"]}
+    cool = int(((ctx.cfg.get("toggles") or {}).get("test_send_cooldown_s")) or 60)
+    now = ctx.clock()
+    if last and (now - last["at"]).total_seconds() < cool:
+        wait = cool - int((now - last["at"]).total_seconds())
+        _audit(ctx, "refused.test_send_cooldown", "refused", kind=f"test_send.{channel}", detail={"wait_s": wait})
+        return _err(429, "TEST_SEND_COOLDOWN", f"one {channel} test per {cool} s; try again in {wait} s")
+    rid = "opstest_" + secrets.token_hex(8)
+    stamp = now.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    subject = "Trade AI test message"
+    text = f"Trade AI test {channel} from Ops Controls ({stamp}). If you got this, failure alerts can reach you."
+    try:
+        res = ctx.test_sender(channel, subject, text, rid)
+    except Exception as exc:  # noqa: BLE001 — reported, never raised into the page
+        res = {"ok": False, "delivered": False, "error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+    result = {"channel": channel, "test_id": rid, "at": C.iso(now), "delivered": bool(res.get("delivered")),
+              "gateway_mode": res.get("gateway_mode"), "event_id": res.get("event_id"), "error": res.get("error")}
+    ctx.test_sends[channel] = {"at": now, "idempotency_key": idem, "result": result}
+    _audit(ctx, "test_send." + ("sent" if result["delivered"] else "not_sent"),
+           "ok" if result["delivered"] else "failed", kind=f"test_send.{channel}", request_id=None,
+           detail={"summary": f"test {channel} by {op}", **{k: result[k] for k in ("test_id", "gateway_mode",
+                                                                                     "event_id", "error")}})
+    return 200, {"ok": True, "result": result}
 
 
 # ── step-up ─────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -808,6 +876,9 @@ AUDIT_REASONS = {
     "sudo.opened": "sudo window opened by a passkey assertion",
     "sudo.ended": "sudo window ended",
     "totp.enrolled": "TOTP recovery enrolled at the host terminal",
+    "test_send.sent": "operator test message delivered through the communications gateway",
+    "test_send.not_sent": "operator test message not delivered (the gateway's reason is recorded)",
+    "refused.test_send_cooldown": "one test message per channel per cooldown",
 }
 
 
@@ -836,23 +907,95 @@ def audit_reason(action: Optional[str], outcome: Optional[str], detail: Any) -> 
     return text[:400] or f"{action or 'unknown action'} recorded with outcome {outcome or 'unknown'} and no detail"
 
 
+def _effective(e: dict, active: bool, value: Any) -> dict:
+    """Where an env-backed setting's value comes from right now, as this server sees it (display; masked)."""
+    from scripts.lib import ops_env_overlay as OV
+
+    if active:
+        return {"value": C.mask_value(e, value), "source": "operator_setting"}
+    base = OV.baseline(str(e.get("env_key")))
+    if base not in (None, ""):
+        shown = "set (hidden)" if OV.is_secret_name(str(e.get("env_key"))) else C.mask_value(e, base)
+        return {"value": shown, "source": "environment"}
+    return {"value": e.get("default"), "source": "default"}
+
+
+def projection_view(ctx: Ctx, cur: dict, store_ok: bool) -> dict:
+    from scripts.lib import ops_env_overlay as OV
+
+    path = ctx.hosts.settings_projection_path
+    got = OV.read_projection(path)
+    doc = got.get("doc") or {}
+    drift: list[str] = []
+    if store_ok:
+        want = OV.render(cur, ctx.cfg.get("settings_catalog") or [])["values"]
+        drift = sorted(k for k in set(want) | set(got["values"]) if want.get(k) != got["values"].get(k))
+    return {"state": got["state"], "path": str(path), "generated_at": doc.get("generated_at"), "drift": drift,
+            "reason": None if not drift else "the projection differs from operator_settings for "
+            + ", ".join(drift) + "; the next applied setting change rewrites it"}
+
+
 def settings_view(ctx: Ctx, store_ok: bool) -> dict:
     cur = ctx.store.settings_all() if store_ok else {}
     rows = []
+    by_key = {}
     for e in ctx.cfg.get("settings_catalog") or []:
         c = cur.get(e["key"]) or {}
         active = bool(c.get("active"))
-        rows.append({"key": e["key"], "label": e.get("label"), "type": e.get("type"), "default": e.get("default"),
-                     "default_source": e.get("default_source"), "current": c.get("value") if active else None,
-                     "overridden": active, "min": e.get("min"), "max": e.get("max"), "choices": e.get("choices"),
-                     "wired": bool(e.get("wired")), "consumer": e.get("consumer"),
-                     "updated_at": _ts(c.get("updated_at")), "updated_by": c.get("updated_by")})
-    hist = [{k: _ts(h.get(k)) for k in ("key", "op", "old_value", "new_value", "actor", "at", "request_id")}
-            for h in (ctx.store.settings_history(50) if store_ok else [])]
-    return {"state": "OK" if store_ok else "NOT_MIGRATED",
-            "reason": None if store_ok else "operator_settings is not readable until the store is migrated; the "
-                                            "repository defaults apply",
-            "rows": rows, "history": hist}
+        by_key[e["key"]] = e
+        row = {"key": e["key"], "label": e.get("label"), "type": e.get("type"), "default": e.get("default"),
+               "default_source": e.get("default_source"),
+               "current": C.mask_value(e, c.get("value")) if active else None,
+               "overridden": active, "min": e.get("min"), "max": e.get("max"), "choices": e.get("choices"),
+               "wired": bool(e.get("wired")), "consumer": e.get("consumer"),
+               "updated_at": _ts(c.get("updated_at")), "updated_by": c.get("updated_by")}
+        if e.get("env_key"):   # Toggles tab (2026-10-25): additive fields; older pages ignore them
+            row.update({"env_key": e["env_key"], "group": e.get("group"), "validator": e.get("validator"),
+                        "allowed_domains": e.get("allowed_domains"), "masked": e.get("mask") is not None,
+                        "warning": e.get("warning"), "effective": _effective(e, active, c.get("value"))})
+        rows.append(row)
+    hist = []
+    for h in (ctx.store.settings_history(50) if store_ok else []):
+        e = by_key.get(h.get("key")) or {}
+        hist.append({k: (C.mask_value(e, h.get(k)) if k in ("old_value", "new_value") else _ts(h.get(k)))
+                     for k in ("key", "op", "old_value", "new_value", "actor", "at", "request_id")})
+    out = {"state": "OK" if store_ok else "NOT_MIGRATED",
+           "reason": None if store_ok else "operator_settings is not readable until the store is migrated; the "
+                                           "repository defaults apply",
+           "rows": rows, "history": hist}
+    try:
+        out["projection"] = projection_view(ctx, cur, store_ok)
+    except Exception as exc:  # noqa: BLE001 — additive; never hides the settings
+        out["projection"] = {"state": "UNAVAILABLE", "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
+    return out
+
+
+def notifier_evidence(ctx: Ctx) -> dict:
+    """What the incident notifier (the email mirror's real consumer) last recorded: read-only receipt evidence."""
+    p = C.expand((ctx.cfg.get("toggles") or {}).get(
+        "notifier_receipt", "~/trade-ai-releases/persistent-state/data/runtime/incident_notifier_last.json"))
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {"state": "UNAVAILABLE", "path": str(p), "reason": f"{type(exc).__name__}"}
+    modes = sorted({str(m["email_mirror"]["gateway_mode"]) for m in doc.get("messages") or []
+                    if isinstance(m, dict) and isinstance(m.get("email_mirror"), dict)
+                    and m["email_mirror"].get("gateway_mode")})
+    return {"state": "OK", "path": str(p), "as_of": doc.get("as_of"), "run_mode": doc.get("mode"),
+            "email_mirror": doc.get("email_mirror"), "gateway_modes_seen": modes}
+
+
+def toggles_view(ctx: Ctx) -> dict:
+    try:
+        from scripts.lib.comms import channel_adapters as CA
+
+        channels = {c: c in CA.SUPPORTED_CHANNELS for c in TEST_CHANNELS}
+    except Exception:  # noqa: BLE001
+        channels = {c: False for c in TEST_CHANNELS}
+    return {"state": "OK", "reason": None, "channels": channels,
+            "cooldown_s": int(((ctx.cfg.get("toggles") or {}).get("test_send_cooldown_s")) or 60),
+            "last_test": {c: v["result"] for c, v in ctx.test_sends.items()},
+            "notifier": notifier_evidence(ctx)}
 
 
 def grants_view(ctx: Ctx) -> dict:
@@ -947,6 +1090,7 @@ def build_state(ctx: Ctx, op: str) -> dict:
         "jobs": _section(lambda: jobs_view(ctx)),
         "n8n": _section(lambda: n8n_view(ctx)),
         "settings": _section(lambda: settings_view(ctx, store_ok)),
+        "toggles": _section(lambda: toggles_view(ctx)),
         "grants": _section(lambda: grants_view(ctx)),
         "data_approvals": _section(lambda: data_approvals_view(ctx)),
         "release_train": _section(lambda: release_view(ctx)),

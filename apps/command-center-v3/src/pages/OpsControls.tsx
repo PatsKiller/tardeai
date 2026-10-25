@@ -29,6 +29,11 @@ import {
   readinessView, runsText, sortRows as sortN8nRows, stageView, summaryOf, type N8nFilter, type N8nRowX,
 } from '../lib/opsControlsN8n'
 import OpsDeskFrame from '../components/OpsDeskFrame'
+import {
+  changedText, effectiveOf, GATEWAY_MODE_KEY, isOn, laneToggles, maskPhone, settingRow, SMS_EMAIL_KEY, SMS_ENABLED_KEY,
+  smsReadiness, SOURCE_TEXT, testSendText, validateSmsEmail,
+} from '../lib/opsToggles'
+import type { TestSendResult } from '../lib/opsControls'
 
 // ── styles ──────────────────────────────────────────────────────────────────────────────────────────
 const panel: CSSProperties = { background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.md, padding: 14, minWidth: 0 }
@@ -223,10 +228,10 @@ function FlowModal({ flow, state, onClose }: { flow: FlowStart; state: OpsContro
   const phraseOk = phraseMatches(typed, req?.phrase)
   const canCancel = !!req && !isTerminal(req.status) && req.status !== 'APPLYING' && req.status !== 'APPROVED'
 
-  return <div role="dialog" aria-modal="true" aria-label={flow.title} data-testid="ops-controls-modal"
+  return <div role="dialog" aria-modal="true" aria-label={flow.title} data-testid="ops-controls-modal" className="ops-sheet"
     onMouseDown={e => { if (e.target === e.currentTarget && !busy) onClose() }}
     style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(2,6,23,.72)', display: 'grid', placeItems: 'center', padding: 16 }}>
-    <div style={{ ...panel, background: TOKENS.bg[1], width: 'min(680px, 100%)', maxHeight: '90vh', overflowY: 'auto', boxShadow: SHADOW[3], display: 'grid', gap: 10 }}>
+    <div className="ops-sheet-panel" style={{ ...panel, background: TOKENS.bg[1], width: 'min(680px, 100%)', maxHeight: '90vh', overflowY: 'auto', boxShadow: SHADOW[3], display: 'grid', gap: 10, alignContent: 'start' }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'baseline', justifyContent: 'space-between' }}>
         <h2 style={{ ...h2, fontSize: TYPE.md, margin: 0 }}>{flow.title}</h2>
         <ChipRow>
@@ -256,7 +261,7 @@ function FlowModal({ flow, state, onClose }: { flow: FlowStart; state: OpsContro
         <p style={muted}>Type this phrase exactly:</p>
         <pre style={{ ...pre, fontSize: TYPE.base }} data-testid="ops-controls-phrase">{s(req.phrase)}</pre>
         <label style={label}>Confirmation phrase
-          <input value={typed} onChange={e => setTyped(e.target.value)} autoComplete="off" spellCheck={false} aria-invalid={!!typed && !phraseOk} style={input} />
+          <input value={typed} onChange={e => setTyped(e.target.value)} autoComplete="off" autoCapitalize="characters" spellCheck={false} aria-invalid={!!typed && !phraseOk} data-testid="ops-controls-phrase-input" style={input} />
         </label>
         {typed && !phraseOk ? <span style={{ fontSize: TYPE.sm, color: TOKENS.warning }}>Does not match yet.</span> : null}
         {useTotp ? <>
@@ -282,7 +287,7 @@ function FlowModal({ flow, state, onClose }: { flow: FlowStart; state: OpsContro
         {timedOut ? <p style={{ ...muted, color: TOKENS.warning }}>Still not terminal after 3 minutes. Check the applier banner and the Audit & undo tab; nothing is assumed applied.</p> : null}
       </div> : null}
 
-      {stage === 'done' && req ? <div style={{ display: 'grid', gap: 6 }}>
+      {stage === 'done' && req ? <div style={{ display: 'grid', gap: 6 }} data-testid="ops-controls-result">
         <Banner tone={STATUS_TONE[req.status] || 'neutral'} title={req.status === 'APPLIED' ? 'Applied' : req.status}>
           {req.result ? <>{s(req.result.outcome)}{req.result.detail ? ` — ${req.result.detail}` : ''}{req.result.backup_ref ? <> · backup <span style={mono}>{req.result.backup_ref}</span></> : null}</> : 'No result recorded.'}
         </Banner>
@@ -309,7 +314,7 @@ function FlowModal({ flow, state, onClose }: { flow: FlowStart; state: OpsContro
 }
 
 // ── tabs ─────────────────────────────────────────────────────────────────────────────────────────────
-type TabKey = 'jobs' | 'n8n' | 'flags' | 'data' | 'grants' | 'audit'
+type TabKey = 'toggles' | 'jobs' | 'n8n' | 'flags' | 'data' | 'grants' | 'audit'
 const count = (sec: { state?: string } | undefined, n: number | undefined) => (sec?.state === 'OK' ? String(n ?? 0) : '—')
 
 function JobsTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
@@ -926,13 +931,196 @@ function PasskeysPanel({ d, run }: { d: OpsControlsState | null; run: Run }) {
   </Panel>
 }
 
+
+// ── Toggles (2026-10-25) ─────────────────────────────────────────────────────────────────────────────
+// Operator 2026-10-25 (verbatim): "this should have just been a toggle to turn on/off on the control ops."
+// Switches for configuration that used to be hand edits of the server .env or host files. Each tap opens the same
+// governed flow as every other change here (preview → passkey + typed phrase → the host applier), on a phone a
+// full-screen sheet. The value shown is what consumers read now and where it comes from; never a secret.
+function Switch({ on, label: aria, disabled, title, onToggle, testId }: {
+  on: boolean | null; label: string; disabled?: boolean; title?: string; onToggle: () => void; testId: string
+}) {
+  const tone = toneVars(on ? 'success' : 'neutral')
+  return <button type="button" role="switch" aria-checked={on === true} aria-label={aria} disabled={disabled} title={title}
+    data-testid={testId} onClick={onToggle}
+    style={{ display: 'inline-flex', alignItems: 'center', gap: 10, minHeight: 44, minWidth: 96, padding: '6px 10px', borderRadius: RADIUS.md,
+      border: `1px solid ${tone.border}`, background: tone.bg, color: tone.color, fontSize: TYPE.base, fontWeight: 700,
+      cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.55 : 1 }}>
+    <span aria-hidden="true" style={{ position: 'relative', width: 44, height: 26, borderRadius: 999, flex: '0 0 auto',
+      background: on ? TOKENS.success : TOKENS.bg[3], border: `1px solid ${TOKENS.border}` }}>
+      <span style={{ position: 'absolute', top: 2, left: on ? 20 : 2, width: 20, height: 20, borderRadius: 999, background: TOKENS.text[0] }} />
+    </span>
+    {on === null ? 'Unknown' : on ? 'On' : 'Off'}
+  </button>
+}
+
+function ToggleCard({ title, children, testId }: { title: string; children: ReactNode; testId: string }) {
+  return <div style={{ ...panel, display: 'grid', gap: 10 }} data-testid={testId}>
+    <h2 style={{ ...h2, margin: 0 }}>{title}</h2>
+    {children}
+  </div>
+}
+
+function ValueLine({ k, v, source, changed }: { k: string; v: ReactNode; source?: string; changed?: string }) {
+  return <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+    <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{k}</span>
+    <ChipRow><span style={{ ...mono, fontSize: TYPE.base }}>{v}</span>{source ? <Chip tone={source === SOURCE_TEXT.operator_setting ? 'info' : 'neutral'}>{source}</Chip> : null}</ChipRow>
+    {changed ? <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>Last changed: {changed}</span> : null}
+  </div>
+}
+
+/** Confirm-then-send sheet for a test text or email. Nothing is sent until "Send" in the sheet. */
+function TestSendSheet({ channel, target, onClose }: { channel: 'sms' | 'email'; target: string; onClose: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [res, setRes] = useState<TestSendResult | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const what = channel === 'sms' ? 'text message' : 'email'
+  const send = async () => {
+    setBusy(true); setErr(null)
+    try { setRes(await opsApi.testSend(channel)) } catch (e) { setErr(errText(e)) } finally { setBusy(false) }
+  }
+  return <div role="dialog" aria-modal="true" aria-label={`Send a test ${what}`} data-testid="ops-test-send-sheet" className="ops-sheet"
+    onMouseDown={e => { if (e.target === e.currentTarget && !busy) onClose() }}
+    style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(2,6,23,.72)', display: 'grid', placeItems: 'center', padding: 16 }}>
+    <div className="ops-sheet-panel" style={{ ...panel, width: 'min(520px, 100%)', boxShadow: SHADOW[3], display: 'grid', gap: 10, alignContent: 'start' }}>
+      <h2 style={{ ...h2, fontSize: TYPE.md, margin: 0 }}>Send one test {what}?</h2>
+      <p style={muted}>One {what} goes to <span style={mono}>{target}</span> through the communications gateway, exactly the way a failure alert would. The gateway’s own rules apply: in mode OFF it is recorded, not sent, and the result says so. At most one test per channel per minute. It is audited.</p>
+      {res ? <Banner tone={res.delivered ? 'success' : 'warning'} title={res.delivered ? 'Sent' : 'Not sent'}><span data-testid="ops-test-send-result">{testSendText(res)}</span></Banner> : null}
+      {err ? <Banner tone="danger" title="Test send refused"><span data-testid="ops-test-send-result">{err}</span></Banner> : null}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' }}>
+        <button type="button" disabled={busy} onClick={onClose} style={btnStyle('plain', busy)}>{res || err ? 'Close' : 'Cancel'}</button>
+        {!res ? <button type="button" disabled={busy} onClick={send} data-testid="ops-test-send-confirm" style={btnStyle('danger', busy)}>{busy ? 'Sending…' : `Send test ${what}`}</button> : null}
+      </div>
+    </div>
+  </div>
+}
+
+function TogglesTab({ d, run }: { d: OpsControlsState | null; run: Run }) {
+  const st = d?.settings
+  const [editAddr, setEditAddr] = useState(false)
+  const [addr, setAddr] = useState('')
+  const [laneQ, setLaneQ] = useState('')
+  const [sheet, setSheet] = useState<null | 'sms' | 'email'>(null)
+  const smsRow = settingRow(d, SMS_ENABLED_KEY)
+  const addrRow = settingRow(d, SMS_EMAIL_KEY)
+  const modeRow = settingRow(d, GATEWAY_MODE_KEY)
+  const setBlock = actBlockReason(d, 'setting.set')
+  const smsEff = effectiveOf(smsRow), addrEff = effectiveOf(addrRow), modeEff = effectiveOf(modeRow)
+  const smsOn = isOn(smsEff.value)
+  const mode = String(modeEff.value ?? '')
+  const ready = smsReadiness(d)
+  const addrCheck = validateSmsEmail(addr, addrRow?.allowed_domains)
+  const channels = d?.toggles?.channels || {}
+  const notifier = d?.toggles?.notifier
+  const lanes = laneToggles(d, laneQ)
+  const liveBlock = actBlockReason(d, 'n8n_live_list.add')
+  const proj = st?.projection
+  const unsetBtn = (row: typeof smsRow, what: string) => row?.overridden
+    ? <ActionButton state={d} kind="setting.unset" text="Use the .env value" params={{ key: row.key }} title={`Stop overriding ${what}; use the server .env value`} run={run} /> : null
+
+  return <div style={{ display: 'grid', gap: 12, minWidth: 0 }} data-testid="ops-toggles">
+    <p style={muted}>Switches for settings that used to need a file edit on the server. A tap shows a dry-run preview, then asks for your passkey and the phrase; the host applier makes the change, keeps a record (who, when, old → new) and offers an undo. Nothing here shows a password or key.</p>
+    <SectionGate sec={st}>
+      {proj && proj.state !== 'OK' && proj.state !== 'ABSENT' ? <Banner tone="warning" title={`Settings projection ${proj.state}`}>{s(proj.reason)}</Banner> : null}
+      {proj?.drift?.length ? <Banner tone="warning" title="Projection out of date">{s(proj.reason)}</Banner> : null}
+      {!smsRow || !modeRow ? <Banner tone="warning" title="UNAVAILABLE — this server build has no toggle settings">The settings catalog has no env-backed rows yet; deploy the release that carries them.</Banner> : null}
+
+      {smsRow ? <ToggleCard title="Text-message failure alerts" testId="toggle-card-sms">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
+          <ValueLine k="Text alerts (ENABLE_SMS)" v={smsOn === null ? '—' : smsOn ? 'On' : 'Off'} source={SOURCE_TEXT[smsEff.source]} changed={changedText(smsRow, et)} />
+          <Switch on={smsOn} label="Text-message alerts" testId="toggle-sms" disabled={!!setBlock} title={setBlock || undefined}
+            onToggle={() => run('setting.set', { key: SMS_ENABLED_KEY, value: !(smsOn === true) }, smsOn ? 'Turn text alerts off' : 'Turn text alerts on')} />
+        </div>
+        {unsetBtn(smsRow, 'text alerts')}
+        {addrRow ? <div style={{ display: 'grid', gap: 8 }}>
+          <ValueLine k="Text address (OPERATOR_SMS_EMAIL)" v={addrEff.value ? maskPhone(String(addrEff.value)) : 'not set'} source={SOURCE_TEXT[addrEff.source]} changed={changedText(addrRow, et)} />
+          {!editAddr ? <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <button type="button" disabled={!!setBlock} title={setBlock || undefined} onClick={() => { setAddr(''); setEditAddr(true) }} data-testid="toggle-sms-address-edit" style={btnStyle('plain', !!setBlock)}>Change address</button>
+            {unsetBtn(addrRow, 'the text address')}
+          </div> : <div style={{ display: 'grid', gap: 6 }}>
+            <label style={label}>Phone number @ carrier text gateway
+              <input value={addr} onChange={e => setAddr(e.target.value)} inputMode="email" autoComplete="off" autoCapitalize="none" spellCheck={false}
+                placeholder="5551234567@msg.fi.google.com" data-testid="toggle-sms-address-input" aria-invalid={!!addr && !addrCheck.ok} style={input} />
+            </label>
+            {addr && !addrCheck.ok ? <span style={{ fontSize: TYPE.sm, color: TOKENS.warning }}>{addrCheck.error}</span> : null}
+            <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>Google Fi msg.fi.google.com · Verizon vtext.com · T-Mobile tmomail.net · AT&amp;T txt.att.net</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <button type="button" disabled={!addrCheck.ok || !!setBlock} data-testid="toggle-sms-address-save"
+                onClick={() => { if (addrCheck.ok) { run('setting.set', { key: SMS_EMAIL_KEY, value: addrCheck.value }, 'Change the text address'); setEditAddr(false) } }}
+                style={btnStyle('danger', !addrCheck.ok || !!setBlock)}>Preview change</button>
+              <button type="button" onClick={() => setEditAddr(false)} style={btnStyle('plain')}>Cancel</button>
+            </div>
+          </div>}
+        </div> : null}
+        <div data-testid="toggle-sms-readiness">
+          {ready.ready ? <Chip tone="success">A failure alert would be texted now</Chip>
+            : <><Chip tone="warning">Texts would not go out yet</Chip><ul style={{ margin: '6px 0 0', paddingLeft: 18, color: TOKENS.text[1], fontSize: TYPE.sm }}>{ready.reasons.map(r => <li key={r}>{r}</li>)}</ul></>}
+        </div>
+        <div>
+          <button type="button" data-testid="toggle-sms-test" disabled={channels.sms === false || !d || d.policy?.state !== 'ACTIVE'}
+            title={channels.sms === false ? 'This release has no SMS channel yet (PR 2105)' : undefined}
+            onClick={() => setSheet('sms')} style={btnStyle('plain', channels.sms === false)}>Send test text…</button>
+        </div>
+      </ToggleCard> : null}
+
+      {modeRow ? <ToggleCard title="Email and text delivery (communications gateway)" testId="toggle-card-gateway">
+        <ValueLine k="Gateway mode (COMMS_GATEWAY_MODE)" v={mode || '—'} source={SOURCE_TEXT[modeEff.source]} changed={changedText(modeRow, et)} />
+        <div role="radiogroup" aria-label="Gateway delivery mode" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {(modeRow.choices || []).map(c => {
+            const sel = c === mode
+            return <button key={c} type="button" role="radio" aria-checked={sel} data-testid={`toggle-gateway-${c}`} disabled={!!setBlock || sel}
+              title={setBlock || (sel ? 'current mode' : undefined)}
+              onClick={() => run('setting.set', { key: GATEWAY_MODE_KEY, value: c }, `Gateway mode → ${c}`)}
+              style={{ ...btnStyle(sel ? 'info' : 'plain', !!setBlock && !sel), minWidth: 88 }}>{c}</button>
+          })}
+        </div>
+        <p style={muted}><b>OFF</b> records messages and sends no email or text. <b>CANARY</b> and <b>ACTIVE</b> let the gateway send email and text copies (incident notifier emails have been held since 09-26 because no mode was set). Telegram keeps its own class lists.</p>
+        {modeRow.warning ? <p style={{ ...muted, color: TOKENS.warning }}>{modeRow.warning}</p> : null}
+        {unsetBtn(modeRow, 'the gateway mode')}
+        <div style={{ fontSize: TYPE.sm, color: TOKENS.text[1] }} data-testid="toggle-gateway-evidence">
+          {notifier?.state === 'OK'
+            ? <>Incident notifier, last run {et(notifier.as_of)}: email copies sent {s(notifier.email_mirror?.sent)}, failed {s(notifier.email_mirror?.failed)}{notifier.gateway_modes_seen?.length ? `; mode it saw: ${notifier.gateway_modes_seen.join(', ')}` : ''}.</>
+            : <>Incident notifier receipt UNAVAILABLE{notifier?.reason ? ` (${notifier.reason})` : ''}.</>}
+        </div>
+        <div>
+          <button type="button" data-testid="toggle-email-test" disabled={channels.email === false || !d || d.policy?.state !== 'ACTIVE'}
+            onClick={() => setSheet('email')} style={btnStyle('plain', channels.email === false)}>Send test email…</button>
+        </div>
+      </ToggleCard> : null}
+    </SectionGate>
+
+    <ToggleCard title="n8n lanes: live or dry run" testId="toggle-card-lanes">
+      <p style={muted}>On = the lane is on the relay live list and its n8n runs do real work; Off = dry run. A change restarts the n8n relay (the host applier runs <span style={mono}>systemctl --user restart tradeai-n8n-run-relay.service</span>) and keeps a backup of the list.</p>
+      <SectionGate sec={d?.n8n}>
+        <label style={label}>Find a lane
+          <input value={laneQ} onChange={e => setLaneQ(e.target.value)} placeholder="e.g. cio-prospect" autoCapitalize="none" spellCheck={false} data-testid="toggle-lane-search" style={input} />
+        </label>
+        <div style={{ display: 'grid', gap: 0 }}>
+          {lanes.map(l => <div key={l.lane_id} data-testid="toggle-lane-row" data-lane={l.lane_id}
+            style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderTop: `1px solid ${TOKENS.borderSubtle}` }}>
+            <span style={{ display: 'grid', gap: 2, minWidth: 0, flex: '1 1 180px' }}>
+              <span style={{ ...mono, fontSize: TYPE.base, overflowWrap: 'anywhere' }}>{l.lane_id}</span>
+              <span style={{ fontSize: TYPE.sm, color: TOKENS.text[2] }}>{l.live === null ? 'live list unreadable' : l.live ? 'Live' : 'Dry run'}{l.stage ? ` · stage ${l.stage}` : ''}{l.last ? ` · changed ${et(l.last.at)} by ${l.last.by}` : ''}</span>
+            </span>
+            <Switch on={l.live} label={`${l.lane_id} live`} testId={`toggle-lane-${l.lane_id}`} disabled={l.live === null || !!liveBlock} title={liveBlock || undefined}
+              onToggle={() => run(l.live ? 'n8n_live_list.remove' : 'n8n_live_list.add', { lane_id: l.lane_id }, l.live ? `Make ${l.lane_id} a dry run` : `Make ${l.lane_id} live`)} />
+          </div>)}
+          {!lanes.length ? <p style={muted}>No lane matches.</p> : null}
+        </div>
+      </SectionGate>
+    </ToggleCard>
+
+    {sheet ? <TestSendSheet channel={sheet} target={sheet === 'sms' ? (addrEff.value ? maskPhone(String(addrEff.value)) : 'the configured text address') : 'the operator email address'} onClose={() => setSheet(null)} /> : null}
+  </div>
+}
+
 // ── page ─────────────────────────────────────────────────────────────────────────────────────────────
 export default function OpsControlsPage() {
   const api = useApi<OpsControlsState>(opsApi.statePath, 15_000)
   const d = api.data
   const [params, setParams] = useSearchParams()
   const rawTab = params.get('tab')
-  const tab: TabKey = ['jobs', 'n8n', 'flags', 'data', 'grants', 'audit'].includes(rawTab || '') ? rawTab as TabKey : 'jobs'
+  const tab: TabKey = ['toggles', 'jobs', 'n8n', 'flags', 'data', 'grants', 'audit'].includes(rawTab || '') ? rawTab as TabKey : 'jobs'
   const setTab = (nextTab: TabKey) => {
     const next = new URLSearchParams(params)
     next.set('tab', nextTab)
@@ -950,6 +1138,7 @@ export default function OpsControlsPage() {
 
   const inert = !!d && d.policy?.state !== 'ACTIVE'
   const TABS: Array<[TabKey, string, string]> = [
+    ['toggles', 'Toggles', count(d?.settings, (d?.settings?.rows || []).filter(r => r.env_key).length + (d?.n8n?.rows?.length ?? 0))],
     ['jobs', 'Jobs', count(d?.jobs, d?.jobs?.rows?.length)],
     ['n8n', 'n8n lanes', count(d?.n8n, d?.n8n?.rows?.length)],
     ['flags', 'Flags & thresholds', count(d?.settings, d?.settings?.rows?.length)],
@@ -1000,6 +1189,7 @@ export default function OpsControlsPage() {
       })}
     </div>
 
+    {tab === 'toggles' ? <TogglesTab d={d} run={run} /> : null}
     {tab === 'jobs' ? <JobsTab d={d} run={run} /> : null}
     {tab === 'n8n' ? <N8nTab d={d} run={run} /> : null}
     {tab === 'flags' ? <FlagsTab d={d} run={run} /> : null}

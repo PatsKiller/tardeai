@@ -11,3 +11,9 @@
   .ops-evidence-page .ops-evidence-table td[data-empty] { display: block; }
   .ops-evidence-page .ops-evidence-table td > * { min-width: 0; max-width: 100%; }
 }
+/* Ops Controls confirm sheets (2026-10-25, mobile first): full-screen on a phone, centred card on a wide screen. */
+@media (max-width: 600px) {
+  /* specificity beats index.css's generic div[style*="position: fixed"] overlay rules (98vw card, 1vh/1vw padding) */
+  .ops-evidence-page div.ops-sheet[role="dialog"] { padding: 0 !important; place-items: stretch !important; }
+  .ops-evidence-page div.ops-sheet[role="dialog"] > div.ops-sheet-panel { width: 100% !important; padding: 14px 14px 0 !important; max-width: 100% !important; height: 100dvh; max-height: 100dvh !important; border-radius: var(--radius-none, 0) !important; overflow-y: auto; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+}

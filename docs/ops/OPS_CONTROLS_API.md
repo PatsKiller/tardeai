@@ -56,6 +56,7 @@ All under `/api/v2/ops/controls`.
 | POST | `/requests/{id}/undo` | Body `{idempotency_key}`. Creates the inverse request (its own direction and factors) from the applied request's backup; returns it like `POST /requests`. |
 | POST | `/passkeys/register/options` | Body `{request_id}`; the `passkey.register` request must be `APPROVED`. Returns `PublicKeyCredentialCreationOptions` JSON (`residentKey: preferred`, `userVerification: required`, existing passkeys excluded). |
 | POST | `/passkeys/register/verify` | Body `{request_id, credential}`. Stores the passkey under the request's `name`; the request becomes `APPLIED`. |
+| POST | `/test-send` | Toggles tab (2026-10-25). Body `{channel: "sms"\|"email", confirm: true, idempotency_key}`. One operator test message through the communications gateway (`send_via_gateway`, `deliver=True`; the gateway's mode gate applies, so in mode OFF it is recorded and not sent). Same gates as every POST (policy, operator identity, CSRF, store). Refused: `CHANNEL_INVALID`, `CONFIRM_REQUIRED`, `IDEMPOTENCY_KEY_REQUIRED`, `TEST_SEND_COOLDOWN` (429; one per channel per `toggles.test_send_cooldown_s`). Returns `{result: {channel, test_id, at, delivered, gateway_mode, event_id, error}}`; a repeated idempotency key returns the same result with `replayed: true`. Audited `test_send.sent` / `test_send.not_sent`. Not a Controls change: it writes no setting and no host state. |
 
 Passkey revocation is the change kind `passkey.revoke` (risky).
 
@@ -230,3 +231,17 @@ A request stepped up inside a sudo window has `stepup_factor: "sudo_window"` and
 `result.sudo_window` (`window_id`, `opening_assertion_id`, `opening_credential_id8`, `opened_at`, `opening_request_id`,
 `use`) from step-up to its final result; the `step_up.verified`, `request.approved` and `request.applied` audit rows
 carry the same object.
+
+## 7. Toggles (env-backed settings, 2026-10-25)
+
+Catalog entries with an `env_key` (`comms.sms.enabled` → `ENABLE_SMS`, `comms.sms.operator_email` →
+`OPERATOR_SMS_EMAIL`, `comms.gateway_mode` → `COMMS_GATEWAY_MODE`) are ordinary `setting.set` / `setting.unset`
+requests. After applying one, the host applier rewrites the env projection (`settings_projection.file`) and reports
+`result.verify.projection = {ok, path, values (masked), error}`; a projection that could not be written makes the
+request `FAILED` (the setting row stands; the detail says consumers still read the old value). Additive `GET /state`
+fields: on those `settings.rows[]` — `env_key`, `group`, `validator`, `allowed_domains`, `masked`, `warning`,
+`effective: {value, source: operator_setting|environment|default}` (masked; `environment` is this server process's
+own environment); `settings.projection: {state OK|ABSENT|INVALID, path, generated_at, drift[], reason}`; and a new
+section `toggles: {channels: {sms, email}, cooldown_s, last_test, notifier: {state, as_of, run_mode, email_mirror,
+gateway_modes_seen}}` (the incident notifier receipt, read-only). `OPERATOR_SMS_EMAIL` values are masked (last four
+digits) in previews, state, history and notifications.
