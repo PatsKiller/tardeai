@@ -1,4 +1,5 @@
 import { W7CioStatus, W7Capital, W7Load, useW7Pages } from '../components/W7PagePanels'
+import W7DetailSheet, { useW7Detail } from '../components/W7DetailSheet'
 import { useEffect, useRef, useState, useCallback, type CSSProperties, type ReactNode } from 'react'
 import { AccountChip, AccountsBadge } from '../components/AccountChip'
 import { accountName } from '../lib/accountLabels'
@@ -1770,6 +1771,8 @@ type PolicyField = {
   kind: 'range_pct' | 'money' | 'text' | 'list' | 'object'
   operator_confirmed: boolean
   version: number
+  read_only?: boolean
+  managed_by?: string
 }
 
 type OperatorPolicyPayload = {
@@ -1817,6 +1820,12 @@ function policyLabel(value: string): string {
   return value.replace(/_pct$/, ' (%)').replace(/_usd$/, ' ($)').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
+const editableMandateFields = (policy: OperatorPolicyPayload) => Object.keys(policy.fields).filter(name => name !== 'concentration_hierarchy' && !policy.fields[name].read_only)
+function initialMandateField(policy: OperatorPolicyPayload, preferred?: string) {
+  const names = editableMandateFields(policy)
+  return preferred && names.includes(preferred) ? preferred : policy.missing_fields.find(name => names.includes(name)) || names[0] || ''
+}
+
 function OperatorPolicyPanel() {
   const [policy, setPolicy] = useState<OperatorPolicyPayload | null>(null)
   const [fieldName, setFieldName] = useState('')
@@ -1827,7 +1836,10 @@ function OperatorPolicyPanel() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [pending, setPending] = useState<{ fieldName: string; value: unknown } | null>(null)
-  const [manageField, setManageField] = useState<string | null>(null)
+  const detail = useW7Detail()
+  const requestedField = detail.selected?.startsWith('mandate:') ? detail.selected.slice('mandate:'.length) : null
+  const manageField = requestedField && policy && editableMandateFields(policy).includes(requestedField) ? requestedField : null
+  const setManageField = (name: string | null) => name ? detail.open(`mandate:${name}`) : detail.close()
   const [llmBusy, setLlmBusy] = useState(false)
   const [llmSuggestion, setLlmSuggestion] = useState<string | null>(null)
 
@@ -1837,13 +1849,14 @@ function OperatorPolicyPanel() {
       .then(j => {
         if (j?.ok && j.policy) {
           setPolicy(j.policy)
-          setFieldName((current) => current || j.policy.missing_fields?.[0] || Object.keys(j.policy.fields || {})[0] || '')
-        }
+          setFieldName((current) => initialMandateField(j.policy, current))
+        } else setMessage('Policy state unavailable')
       })
       .catch(() => setMessage('Policy state unavailable'))
   }, [])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { if (manageField) setFieldName(manageField) }, [manageField])
 
   const selected = fieldName ? policy?.fields?.[fieldName] : undefined
   const submit = async () => {
@@ -1854,7 +1867,7 @@ function OperatorPolicyPanel() {
       if (selected.kind === 'money') value = Number(textValue)
       if (selected.kind === 'list') value = textValue.split(',').map(v => v.trim()).filter(Boolean)
       if (selected.kind === 'object') value = JSON.parse(textValue)
-      setPending({ fieldName, value })
+      setPending({ fieldName, value }); detail.open(`mandate-confirm:${fieldName}`)
     } catch (error: any) {
       setMessage(String(error?.message || error))
     }
@@ -1888,7 +1901,7 @@ function OperatorPolicyPanel() {
 
   const renderManagedInput = () => {
     if (!meta) return null
-    if (meta.input === 'range') return <div style={{ display: 'grid', gridTemplateColumns: rangeHasTarget(manageField) ? '1fr 1fr 1fr' : '1fr 1fr', gap: 8 }}>
+    if (meta.input === 'range') return <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,160px),1fr))', gap: 8 }}>
       <label style={muted}>Minimum<input autoFocus type="number" min="0" max="100" value={rangeMin} onChange={e => setRangeMin(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
       {rangeHasTarget(manageField) && <label style={muted}>Target<input type="number" min="0" max="100" value={rangeTarget} onChange={e => setRangeTarget(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>}
       <label style={muted}>Maximum<input type="number" min="0" max="100" value={rangeMax} onChange={e => setRangeMax(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
@@ -1905,7 +1918,7 @@ function OperatorPolicyPanel() {
       if (meta?.input === 'money') value = Number(textValue)
       if (meta?.input === 'list') value = textValue.split(',').map(v => v.trim()).filter(Boolean)
       if (meta?.input === 'object') value = JSON.parse(textValue)
-      setPending({ fieldName: manageField, value }); setManageField(null)
+      setPending({ fieldName: manageField, value }); detail.open(`mandate-confirm:${manageField}`)
     } catch (error: any) { setMessage(String(error?.message || error)) }
   }
 
@@ -1921,9 +1934,10 @@ function OperatorPolicyPanel() {
       const result = await response.json()
       if (!response.ok || !result?.ok) throw new Error(result?.detail || result?.error || `HTTP ${response.status}`)
       setPolicy(result.policy)
-      setFieldName(result.policy.missing_fields?.[0] || pending.fieldName)
+      setFieldName(initialMandateField(result.policy, pending.fieldName))
       setTextValue(''); setRangeMin(''); setRangeTarget(''); setRangeMax('')
       setPending(null)
+      detail.close()
       setMessage(`${policyLabel(pending.fieldName)} confirmed`)
     } catch (error: any) {
       setMessage(String(error?.message || error))
@@ -1932,50 +1946,34 @@ function OperatorPolicyPanel() {
     }
   }
 
-  if (!policy) return <div style={{ ...card, color: 'var(--text2)' }}>Loading operator policy…</div>
-  const confirmed = policy.confirmed_field_count || 0
-  const required = policy.required_field_count || 0
+  if (!policy) return <div role="status" style={{ ...card, color: 'var(--text2)' }}>{message || 'Loading operator policy…'}</div>
+  const confirmed = policy.confirmed_field_count ?? 'Not measured'
+  const required = policy.required_field_count ?? 'Not measured'
 
   return (
     <div data-testid="cio-operator-policy">
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 10, marginBottom: 16 }}>
         <div style={card}>
-          <div style={{ ...muted, textTransform: 'uppercase' }}>Policy state</div>
+          <div style={{ ...muted, textTransform: 'uppercase' }}>Mandate profile</div>
           <div style={{ fontSize: 18, fontWeight: 750, color: policy.status === 'CONFIRMED' ? 'var(--green)' : 'var(--amber)', marginTop: 4 }}>{policy.status}</div>
         </div>
         <div style={card}>
           <div style={{ ...muted, textTransform: 'uppercase' }}>Confirmed</div>
           <div style={{ fontSize: 18, fontWeight: 750, color: 'var(--text0)', marginTop: 4 }}>{confirmed} / {required}</div>
         </div>
-        <div style={card}>
-          <div style={{ ...muted, textTransform: 'uppercase' }}>Legacy conflicts</div>
-          <div style={{ fontSize: 18, fontWeight: 750, color: policy.legacy_conflicts.length ? 'var(--amber)' : 'var(--green)', marginTop: 4 }}>{policy.legacy_conflicts.length}</div>
-        </div>
       </div>
 
-      {policy.legacy_conflicts.length > 0 && (
-        <section style={{ marginBottom: 18 }}>
-          <SectionTitle>Policy conflicts</SectionTitle>
-          {policy.legacy_conflicts.map(conflict => (
-            <div key={conflict.field} style={{ borderBottom: '1px solid var(--border)', padding: '9px 0', fontSize: 12 }}>
-              <strong style={{ color: 'var(--text0)' }}>{policyLabel(conflict.field)}</strong>
-              <span style={{ color: 'var(--text2)', marginLeft: 10 }}>{conflict.claims.map(c => JSON.stringify(c.value)).join(' · ')}</span>
-            </div>
-          ))}
-        </section>
-      )}
-
       <section style={{ marginBottom: 18 }}>
-        <SectionTitle>Ratification</SectionTitle>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) minmax(260px, 2fr) auto', gap: 8, alignItems: 'end' }}>
+        <SectionTitle>Update a mandate preference</SectionTitle>
+        <div className="cio-mandate-form" style={{ display: 'grid', gap: 8, alignItems: 'end' }}>
           <label style={{ ...muted }}>
             Policy field
             <select value={fieldName} onChange={e => { setFieldName(e.target.value); setTextValue(''); setRangeMin(''); setRangeMax('') }} style={{ display: 'block', width: '100%', marginTop: 5, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 6, background: 'var(--bg1)', color: 'var(--text0)' }}>
-              {Object.keys(policy.fields).map(name => <option key={name} value={name}>{policyLabel(name)}</option>)}
+              {editableMandateFields(policy).map(name => <option key={name} value={name}>{policyLabel(name)}</option>)}
             </select>
           </label>
           {selected?.kind === 'range_pct' ? (
-              <div style={{ display: 'grid', gridTemplateColumns: rangeHasTarget(fieldName) ? '1fr 1fr 1fr' : '1fr 1fr', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,160px),1fr))', gap: 8 }}>
                 <label style={muted}>Minimum<input type="number" min="0" max="100" value={rangeMin} onChange={e => setRangeMin(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
                 {rangeHasTarget(fieldName) && <label style={muted}>Target<input type="number" min="0" max="100" value={rangeTarget} onChange={e => setRangeTarget(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>}
                 <label style={muted}>Maximum<input type="number" min="0" max="100" value={rangeMax} onChange={e => setRangeMax(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
@@ -1992,36 +1990,38 @@ function OperatorPolicyPanel() {
 
       <section>
         <SectionTitle>Mandate</SectionTitle>
-        {Object.entries(policy.fields).map(([name, field]) => (
-          <div key={name} style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) 2fr auto', gap: 10, borderBottom: '1px solid var(--border)', padding: '8px 0', fontSize: 12 }}>
+        {Object.entries(policy.fields).map(([name, field]) => name === 'concentration_hierarchy' ? <div key={name} style={{ borderBottom: '1px solid var(--border)', padding: '12px 0', fontSize: 12 }}>Concentration limits come from the IPS policy section above. This historical profile field is read-only.</div> : (
+          <div key={name} className="cio-mandate-row" style={{ display: 'grid', gap: 10, borderBottom: '1px solid var(--border)', padding: '8px 0', fontSize: 12 }}>
             <span style={{ color: 'var(--text1)' }}>{policyLabel(name)}</span>
             <span style={{ color: field.operator_confirmed ? 'var(--text0)' : 'var(--text3)' }}>{field.value == null ? 'POLICY REQUIRED' : typeof field.value === 'string' ? field.value : JSON.stringify(field.value)}</span>
-            <span style={{ color: field.operator_confirmed ? 'var(--green)' : 'var(--amber)', display: 'flex', alignItems: 'center', gap: 8 }}>{field.status}<button type="button" onClick={() => openFieldManager(name)} style={{ padding: '4px 8px', border: '1px solid var(--border)', background: 'var(--bg0)', color: 'var(--accent)', cursor: 'pointer' }}>Manage</button></span>
+            <span style={{ color: field.operator_confirmed ? 'var(--green)' : 'var(--amber)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>{field.status}{!field.read_only && <button type="button" aria-label={`Manage ${policyLabel(name)}`} onClick={() => openFieldManager(name)} style={{ padding: '4px 8px', border: '1px solid var(--border)', background: 'var(--bg0)', color: 'var(--accent)', cursor: 'pointer' }}>Manage</button>}</span>
           </div>
         ))}
       </section>
-      {manageField && meta && <div role="dialog" aria-modal="true" data-testid="cio-policy-field-manager" style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,.68)', display: 'grid', placeItems: 'center', padding: 20 }}>
-        <div style={{ width: 'min(620px, 100%)', maxHeight: '90vh', overflowY: 'auto', background: 'var(--bg1)', border: '1px solid var(--border)', padding: 20, boxShadow: SHADOW[2] }}>
-          <div style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 800 }}>CUSTOM POLICY MANAGER</div>
-          <h2 style={{ margin: '6px 0 8px', color: 'var(--text0)', fontSize: 18 }}>{meta.purpose}</h2>
+      {manageField && meta && <W7DetailSheet title={meta.purpose} onClose={() => setManageField(null)}>
+        <div data-testid="cio-policy-field-manager">
+          <div style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 800 }}>MANDATE PREFERENCE</div>
           <div style={{ color: 'var(--text2)', fontSize: 12, lineHeight: 1.5 }} title="This explains what the field controls and what the operator should consider.">{meta.guidance} <span aria-label="Field guidance tooltip" title={meta.guidance} style={{ color: 'var(--accent)', cursor: 'help' }}>ⓘ</span></div>
           {meta.suggestions?.length ? <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--border)', background: 'var(--bg0)', color: 'var(--text2)', fontSize: 11 }}><strong title="Deterministic starting points only; nothing is applied automatically.">Suggested starting points ⓘ</strong><ul style={{ margin: '6px 0 0 18px', padding: 0 }}>{meta.suggestions.map(s => <li key={s} title="Advisory suggestion only — review against your actual circumstances.">{s}</li>)}</ul></div> : null}
           <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><button type="button" onClick={() => void askDeepSeek()} disabled={llmBusy} title="Ask DeepSeek for advisory criteria and questions. It cannot ratify or save this policy." style={{ padding: '6px 10px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: llmBusy ? 'wait' : 'pointer' }}>{llmBusy ? 'Asking DeepSeek…' : 'Ask DeepSeek for help'}</button><span style={{ color: 'var(--text3)', fontSize: 11 }}>Advisory only · operator confirms the final value</span></div>
           {llmSuggestion && <div role="status" style={{ marginTop: 10, padding: 10, borderLeft: '3px solid var(--accent)', background: 'var(--accent-dim)', color: 'var(--text1)', fontSize: 11, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}><strong>DeepSeek suggestion</strong><div style={{ marginTop: 5 }}>{llmSuggestion}</div></div>}
           {selected?.value != null && <div style={{ marginTop: 10, padding: 10, background: 'var(--bg0)', color: 'var(--text2)', fontSize: 11 }}>Current recorded value: <code>{JSON.stringify(selected.value)}</code></div>}
-          {observedClaims.length > 0 && <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--amber)', color: 'var(--text2)', fontSize: 11 }}>Existing conflicting evidence (draft only): {observedClaims.map(c => `${c.source}${c.field && c.field !== manageField ? ` (${c.field})` : ''}: ${JSON.stringify(c.value)}`).join(' · ')}. The operator must choose the final value.</div>}
+          {observedClaims.length > 0 && <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--border)', color: 'var(--text2)', fontSize: 11 }}>Earlier recorded values: {observedClaims.map(c => `${c.source}${c.field && c.field !== manageField ? ` (${c.field})` : ''}: ${JSON.stringify(c.value)}`).join(' · ')}. The operator must choose the final value.</div>}
           <div style={{ marginTop: 14 }}>{renderManagedInput()}</div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}><button type="button" onClick={() => setManageField(null)} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg0)', color: 'var(--text1)', cursor: 'pointer' }}>Cancel</button><button type="button" onClick={reviewManagedValue} disabled={busy} style={{ padding: '8px 12px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer' }}>Review and continue</button></div>
+          {message && <p role="status" style={muted}>{message}</p>}
+          <div className="cio-mandate-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}><button type="button" onClick={() => setManageField(null)} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg0)', color: 'var(--text1)', cursor: 'pointer' }}>Cancel</button><button type="button" onClick={reviewManagedValue} disabled={busy} style={{ padding: '8px 12px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer' }}>Review and continue</button></div>
         </div>
-      </div>}
-      {pending && <div role="dialog" aria-modal="true" data-testid="cio-policy-confirmation-modal" style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,.62)', display: 'grid', placeItems: 'center', padding: 20 }}>
-        <div style={{ width: 'min(520px, 100%)', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: RADIUS.md, padding: 20, boxShadow: SHADOW[2] }}>
-          <div style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 800 }}>OPERATOR RATIFICATION</div><h2 style={{ margin: '6px 0 12px', color: 'var(--text0)', fontSize: 18 }}>Confirm {policyLabel(pending.fieldName)}</h2>
+      </W7DetailSheet>}
+      {pending && detail.selected === `mandate-confirm:${pending.fieldName}` && <W7DetailSheet title={`Confirm ${policyLabel(pending.fieldName)}`} onClose={detail.close}>
+        <div data-testid="cio-policy-confirmation-modal">
+          <div style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 800 }}>OPERATOR RATIFICATION</div>
           <div style={{ color: 'var(--text1)', fontSize: 12, lineHeight: 1.5 }}>This app will append an operator-confirmed policy receipt. The agent cannot infer, approve, or undo this value.</div>
           <pre style={{ whiteSpace: 'pre-wrap', padding: 10, margin: '12px 0', background: 'var(--bg0)', borderRadius: RADIUS.sm, color: 'var(--text0)', fontSize: 12 }}>{JSON.stringify(pending.value, null, 2)}</pre>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button type="button" onClick={() => setPending(null)} disabled={busy} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg0)', color: 'var(--text1)', cursor: 'pointer' }}>Cancel</button><button type="button" onClick={confirm} disabled={busy} style={{ padding: '8px 12px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>{busy ? 'Saving…' : 'Confirm and record'}</button></div>
+          {message && <p role="status" style={muted}>{message}</p>}
+          <div className="cio-mandate-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button type="button" onClick={() => { setPending(null); detail.close() }} disabled={busy} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg0)', color: 'var(--text1)', cursor: 'pointer' }}>Cancel</button><button type="button" onClick={confirm} disabled={busy} style={{ padding: '8px 12px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>{busy ? 'Saving…' : 'Confirm and record'}</button></div>
         </div>
-      </div>}
+      </W7DetailSheet>}
+      {!pending && detail.selected?.startsWith('mandate-confirm:') && <W7DetailSheet title="Mandate change unavailable" onClose={detail.close}><p>This unsaved change is no longer available. Go back and enter the value again.</p></W7DetailSheet>}
     </div>
   )
 }
@@ -2037,6 +2037,8 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
   const decisionFocusRef = useRef<HTMLDivElement | null>(null)
   const initialTab = resolveCioHubTab(tabRaw)
   const [tab, setTab] = useState<Tab>(initialTab)
+  const [showMandateSettings, setShowMandateSettings] = useState(false)
+  const mandateDetail = sp.get('detail')?.startsWith('mandate') ?? false
   const [evidenceSub, setEvidenceSub] = useState<string>(subRaw || resolveEvidenceSubtab(tabRaw) || 'report')
   const [dispositions, setDispositions] = useState<DispositionMap>({})
   const [legacyUnversioned, setLegacyUnversioned] = useState<DispositionMap>({})
@@ -2139,7 +2141,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
 
   return (
     <div className="cio-hub" style={{ padding: '16px 24px', maxWidth: 1240 }} data-testid="cio-hub">
-      <style>{`.cio-hub button,.cio-hub select,.cio-hub input{min-height:44px}.cio-hub{overflow-wrap:anywhere}`}</style>
+      <style>{`.cio-hub button,.cio-hub select,.cio-hub input{min-height:44px}.cio-hub{overflow-wrap:anywhere}.cio-mandate-form{grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto}.cio-mandate-row{grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto}@media(max-width:820px){.cio-mandate-form,.cio-mandate-row{grid-template-columns:minmax(0,1fr)}.cio-mandate-form>*{min-width:0}}`}</style>
       <div style={hubTitle()}>CIO — Private Investment Office</div>
       <div style={hubSubtitle()}>
         Alex · Chief Investment Officer · Advice for your review
@@ -2235,7 +2237,10 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
       {tab === 'capital-policy' && (
         <div role="tabpanel" aria-label={TAB_LABEL['capital-policy']}>
           {pageTruth ? <W7Capital data={pageTruth} /> : <W7Load loading={pageTruthLoading} error={pageTruthError} />}
-          <div style={{ marginTop: 28 }}><OperatorPolicyPanel /></div>
+          <details open={showMandateSettings || mandateDetail} onToggle={e => setShowMandateSettings(e.currentTarget.open)} style={{ marginTop: 28 }}>
+            <summary style={{ minHeight: 44, cursor: 'pointer', padding: '12px 0' }}>Other mandate settings</summary>
+            {(showMandateSettings || mandateDetail) && <OperatorPolicyPanel />}
+          </details>
         </div>
       )}
 

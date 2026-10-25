@@ -51,10 +51,10 @@ Dependency handoffs: W1 owns `cio_truth` and current risk inputs, W5 owns
 `root` containing `data/`, accepts a DB query function for persisted observations,
 and invokes `resolve` exactly once. It performs no network requests or writes.
 
-Validation receipts and fixture screenshots are recorded in the persistent W7
-worklog and alongside the approved mockups; fixture values are synthetic and
-are not included as product defaults. Release and merge remain the coordinator's
-and operator's work.
+Validation receipts are recorded in the persistent W7 worklog. The pending
+browser harness targets screenshots alongside the approved mockups; none have
+been produced. Fixture values are synthetic and are not product defaults.
+Release and merge remain the coordinator's and operator's work.
 
 The later conflict-engine direction also binds this work: W1 supplies canonical
 engine findings and W9 owns the reusable `ConflictLine` / `ConflictSheet`.
@@ -114,3 +114,18 @@ evidence has no accepted production projection yet: all 23 assessed names in
 the copy check remain unclassified, with null caps and explicit gaps. The policy
 table displays approved values; this is not live classification or R13 gate
 acceptance. W7 does not treat a top-holdings sample as complete statistics.
+
+W1's later profile projection source `d40c07ce5` retires the historical
+`concentration_hierarchy` field in `/api/v3/cio/brain/policy`. Its pure IPS
+helper/config blobs match the frozen policy source used above. W7 excludes
+that field from editable preferences and shows the IPS section as the source
+for concentration limits. The old profile conflict count is removed; conflict
+findings belong to the accepted engine envelope and shared W9 components.
+
+Other mandate settings load only when expanded. Their manager and draft
+confirmation use URL-backed portal sheets, phone-sized controls, focus
+containment and visible Back. Reloading an unsaved confirmation reports that
+the draft is unavailable. Existing advise/ratify request handlers and request
+bodies are preserved and were not called during verification. The unexecuted
+fixture now supplies the actual policy GET shape and covers preference detail,
+draft review, browser Back and a reloaded manager deep link without submitting.

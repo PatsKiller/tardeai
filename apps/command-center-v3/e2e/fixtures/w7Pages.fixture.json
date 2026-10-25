@@ -879,11 +879,41 @@
       "pills": {}
     },
     "/api/v2/analyst-reports/map": {},
-    "/api/v3/cio/operator-policy": {
-      "fields": {},
-      "missing": [
-        "Fixture policy editor not loaded"
-      ]
+    "/api/v3/cio/brain/policy": {
+      "ok": true,
+      "policy": {
+        "status": "CONFIRMED",
+        "confirmed_field_count": 1,
+        "required_field_count": 1,
+        "missing_fields": [],
+        "legacy_conflicts": [],
+        "fields": {
+          "cash_target_range_pct": {
+            "kind": "range_pct",
+            "value": {
+              "min": 10,
+              "target": 20,
+              "max": 30
+            },
+            "operator_confirmed": true,
+            "status": "OPERATOR_CONFIRMED",
+            "required": true,
+            "version": 1
+          },
+          "concentration_hierarchy": {
+            "kind": "object",
+            "value": null,
+            "historical_profile_value": {
+              "retired_limit_pct": 99
+            },
+            "operator_confirmed": false,
+            "status": "SUPERSEDED_BY_IPS",
+            "read_only": true,
+            "managed_by": "IPS concentration policy",
+            "required": false
+          }
+        }
+      }
     }
   },
   "synthetic_limit_values": true
