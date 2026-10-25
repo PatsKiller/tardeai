@@ -422,7 +422,7 @@ def approvals_for(*, db_query=None, rows=None, projection=None, now=None) -> dic
         rows = _query_rows(db_query, """
             SELECT 'actions' AS kind, COUNT(*) AS count, NULL::text AS account FROM action_queue WHERE status='pending'
             UNION ALL SELECT 'decisions', COUNT(*), NULL::text FROM john_decision_queue WHERE status='pending_john'
-            UNION ALL SELECT 'proposals', COUNT(*), COALESCE(target_account,account)
+            UNION ALL SELECT 'proposals', COUNT(*), COALESCE(target_account,final_account,proposed_account)
                       FROM paper_trade_proposals WHERE status='PENDING' GROUP BY 3
             UNION ALL SELECT 'options', COUNT(*), NULL::text FROM options_approval_queue WHERE status='pending'
         """)
@@ -457,7 +457,8 @@ def financial_queue_items(*, db_query=None, now=None, limit=200) -> dict:
                          "FROM action_queue WHERE status='pending' ORDER BY id LIMIT %s"),
         "john_decision_queue": ("decisions", "SELECT id,category,title,status,created_at,provenance "
                                 "FROM john_decision_queue WHERE status='pending_john' ORDER BY id LIMIT %s"),
-        "paper_trade_proposals": ("proposals", "SELECT id,symbol,account,target_account,status,created_at "
+        "paper_trade_proposals": ("proposals", "SELECT id,symbol,COALESCE(target_account,final_account,proposed_account) AS account,"
+                                  "target_account,status,created_at "
                                   "FROM paper_trade_proposals WHERE status='PENDING' ORDER BY id LIMIT %s"),
         "options_approval_queue": ("options", "SELECT id,proposal_id,symbol,status,created_at "
                                   "FROM options_approval_queue WHERE status='pending' ORDER BY id LIMIT %s"),
