@@ -33284,6 +33284,1247 @@
           "notifier_priority": "P2"
         }
       }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "jsonl-archive-rotate",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Weekdays at 16:45 ET (after the close), rotate the oversized append-only JSONL stores named in config/disk_hygiene_rules.json jsonl_retention.stores: the closed history before each store's hot tail moves byte-exact to <state>/<file-prune archive root>/<store>/<store>.<UTC>.jsonl.gz (sha256 + line-count manifest, RetentionArchiveTripwire@v1), the hot tail stays in place. Writer-safe: rename aside, quiesce, renameat2 install, late-byte sweep. At SHADOW it prints the plan only. It archives; it deletes no archive segment.",
+        "business_function": "platform-ops",
+        "source": "scripts/ops/jsonl_archive_rotate.py; operator 2026-10-23 ~11:05 ET \"approved\" (rotate, archive, never delete the oversized append-only JSONL stores) and ~11:10 ET, verbatim: \"You have my authority to delete them. And the N8N agent needs to delete these on a regular. We cannot have this junk piling up on the\""
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/ops/jsonl_archive_rotate.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_jsonl_archive_rotate.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "config/n8n_run_allowlist.json lock (flock)"
+        },
+        {
+          "name": "config/disk_hygiene_rules.json jsonl_retention",
+          "kind": "store",
+          "direction": "read",
+          "source": "load_config"
+        },
+        {
+          "name": "the rotate=true stores under data/cio and data/runtime",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "rename aside + tail re-install on live runs only"
+        },
+        {
+          "name": "<state>/<file-prune archive root>/<store>/ (archive, manifest, TRIPWIRE.jsonl)",
+          "kind": "store",
+          "direction": "write",
+          "source": "lib/retention_archive.write_manifest; read nightly by lib/retention_tripwire.py"
+        },
+        {
+          "name": "data/runtime/jsonl-archive-rotate_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no archive, no receipt"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt ok_at advances on each successful live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at within 144 h (2x expected_cadence_hours 72, weekend included)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 1440 s (80% of timeout_s 1800)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = stores rotated; 0 is allowed with empty_reason nothing_due (every store within its hot tail)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 144 h but younger than 216 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 1440 s"
+        },
+        {
+          "check": "store_refused",
+          "text": "a store was refused (long_lived_fd_holder, source_not_quiescent): the store is left as it was"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no receipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 216 h"
+        },
+        {
+          "check": "verify_failed",
+          "text": "archive_verify_failed / tail_verify_failed / line_accounting_mismatch: the source is merged back, nothing lost, exit 1"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run with produced_count 0 and no empty_reason -> RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 144.0,
+        "freshness_failed_after_h": 216.0,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 3x",
+        "timeout_s": 1800,
+        "class": "hygiene",
+        "computed_on": "2026-10-23",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs yet (shadow); the read-only dry run over the real stores took 25 s on 2026-10-23",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 1440.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "lane_registry.json row severity (a missed rotation only lets a store grow; readers are unaffected)",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py. The lane itself sends nothing. Never PAGE.",
+        "enforced": "NOT_MEASURED (shadow)"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json. A crashed rotation is recovered with jsonl_archive_rotate.py --recover --confirm APPLY (operator)."
+      },
+      "evidence": {
+        "receipt": "data/runtime/jsonl-archive-rotate_last.json",
+        "verify": [
+          "python3 scripts/ops/jsonl_archive_rotate.py --dry-run   # the plan; writes nothing",
+          "python3 scripts/ops/jsonl_archive_rotate.py --retention-preview   # archive segments the rules would select; removes nothing",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='jsonl-archive-rotate' ORDER BY requested_at DESC LIMIT 10\""
+        ],
+        "never": "an n8n execution status; prove work with the ledger, the receipt and the archive manifests",
+        "expected_output_basis": "a live run reports rotated stores; a run where every store is within its hot tail rotates nothing and is still healthy"
+      },
+      "review": {
+        "prepared_by": "agent draft (ops/jsonl-retention-20261023)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator 2026-10-24; explicit archive contract review in legacy-pr-carryforward.md",
+        "reviewed_on": "2026-10-24",
+        "approval_source": "coordinator-batch21-20261024/legacy-pr-carryforward.md item1",
+        "activation": "Separate operator step; source SHADOW only, no archive removal activation."
+      },
+      "review_by": "2026-10-30",
+      "state_note": "DRAFT, agent-written 2026-10-23; awaiting the platform owner's REVIEWED (AGENTS.md §23.19). Promotion to live is the operator's word.",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "stores rotated",
+        "rule": "empty_allowed",
+        "min_produced": null,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "unconfigured"
+        ],
+        "empty_allowed_reasons": [
+          "nothing_due"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/jsonl-archive-rotate_last.json produced_count (LaneRunReceipt@v2; the executor reads the immutable attempt copy data/runtime/lane_attempts/jsonl-archive-rotate/<run_id>.json)"
+          },
+          {
+            "kind": "file_artifact",
+            "ref": "<state>/<file-prune archive root>/<store>/<store>.<UTC>.jsonl.gz.manifest.json (RetentionArchiveManifest@v1)"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "holdings-drift-monitor",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Read-only desk truth check 'holdings-drift' (15,45 9-16 * * 1-5 ET, weekdays): holdings.json (lib.portfolio_positions.load_store) vs positions_current (read-only SELECT): per compared account a symbol missing on either side, share counts off by more than qty_tolerance, account cash off by more than cash_tolerance_usd; holdings freshness (newest broker_position_as_of_at, else positions_built_at) and positions_current freshness against their in-session bounds. A live run writes the receipt GET /api/v2/needs-action reads and queues one DIGEST host intent only when the finding set gained a finding. It never repairs, sends, or calls a broker.",
+        "business_function": "portfolio-truth",
+        "source": "scripts/desk_truth_monitor.py --check holdings-drift; operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\")"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/desk_truth_monitor.py --check holdings-drift",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_desk_truth_holdings_drift.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock (flock)"
+        },
+        {
+          "name": "holdings.json via lib.portfolio_positions.load_store (persistent-state)",
+          "kind": "store",
+          "direction": "read",
+          "source": "docs/ops/DESK_TRUTH_MONITORS.md"
+        },
+        {
+          "name": "Postgres positions_current (read-only session; no data-broker projection exists)",
+          "kind": "store",
+          "direction": "read",
+          "source": "docs/ops/DESK_TRUTH_MONITORS.md"
+        },
+        {
+          "name": "config/host_comms_intent_routes.json positions/holdings_drift_finding -> scripts/n8n_comms_intent_consumer.py -> scripts/incident_notifier.py",
+          "kind": "consumer",
+          "direction": "write",
+          "source": "docs/ops/DESK_TRUTH_MONITORS.md"
+        },
+        {
+          "name": "data/runtime/holdings_drift_monitor_alert_state.json",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "docs/ops/DESK_TRUTH_MONITORS.md"
+        },
+        {
+          "name": "GET /api/v2/needs-action (scripts/lib/needs_action.py source desk_truth)",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "docs/ops/DESK_TRUTH_MONITORS.md"
+        },
+        {
+          "name": "data/runtime/holdings-drift-monitor_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no receipt, no alert state, no intent"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/holdings-drift-monitor_last.json ok_at advances on each successful live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at within 133.5 h (2x expected_cadence_hours 66.75, weekday-only lane)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 240 s (80% of timeout_s 300)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count >= 1 (one completed check)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 133.5 h but younger than 200.25 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 240 s"
+        },
+        {
+          "check": "partial",
+          "text": "skipped_reasons names an intent refusal (intent_*): the finding was not queued; the next run retries it"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 200.25 h (3x cadence)"
+        },
+        {
+          "check": "source_unreadable",
+          "text": "a required source unreadable -> exit 1, receipt ok false (dependency_unavailable), ok_at carried forward"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule -> RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 133.5,
+        "freshness_failed_after_h": 200.25,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 3x",
+        "timeout_s": 300,
+        "class": "monitor",
+        "computed_on": "2026-10-22",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs yet (shadow); class defaults; host dry runs 2026-10-22 took < 2 s",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 240.0
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "lane_registry.json row severity",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "findings reach the operator as host comms intents (DIGEST -> P2) through the comms-intent consumer and scripts/incident_notifier.py, and on Home through GET /api/v2/needs-action. Never PAGE.",
+        "enforced": "partial: the alert-on-gain intent is queued by the script (tested); SIEM/notifier coverage of this lane is NOT_MEASURED"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json (lane_not_in_catalogue). Findings are remedied by the store's owner or the operator; the lane never acts. Runbook: docs/ops/DESK_TRUTH_MONITORS.md (runbook_id desk-truth-monitors)."
+      },
+      "evidence": {
+        "receipt": "data/runtime/holdings-drift-monitor_last.json",
+        "verify": [
+          "python3 scripts/desk_truth_monitor.py --check holdings-drift   # read-only dry run",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='holdings-drift-monitor' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.summary.by_code, .produced_count' data/runtime/holdings-drift-monitor_last.json",
+          "curl -s :7777/api/v2/needs-action | jq '.sources.desk_truth'"
+        ],
+        "never": "an n8n execution status; prove work with the ledger and the receipt",
+        "expected_output_basis": "expected_output 2026-10-22 from the script's main(): produced = one completed check (produced_count 1)"
+      },
+      "review_by": "2026-10-29",
+      "review": {
+        "prepared_by": "agent draft (desk truth 2026-10-22)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator 2026-10-24 ('go', via coordinator)",
+        "reviewed_on": "2026-10-24"
+      },
+      "state_note": "Agent-written 2026-10-22; DRAFT until its owner REVIEWs it (check_n8n_health_contracts fails a DRAFT that is not grandfathered: this PR's contract gate stays red until then, by design).",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "one completed check (produced_count 1)",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/holdings-drift-monitor_last.json produced_count"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "options-desk-staleness-monitor",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Read-only desk truth check 'options-desk-staleness' (5,20,35,50 9-15 * * 1-5 ET, weekdays): options_proposals.json freshness = the newer of generated_at (full build) and quote_refresh.at (scripts/options_desk_quote_refresh.py) against max_age_min during NYSE regular hours. A live run writes the receipt GET /api/v2/needs-action reads and queues one DIGEST host intent only when the finding set gained a finding. It never repairs, sends, or calls a broker.",
+        "business_function": "portfolio-truth",
+        "source": "scripts/desk_truth_monitor.py --check options-desk-staleness; operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\")"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/desk_truth_monitor.py --check options-desk-staleness",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_desk_truth_options_desk_staleness.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock (flock)"
+        },
+        {
+          "name": "data/portfolios/state/options_proposals.json (desk snapshot)",
+          "kind": "store",
+          "direction": "read",
+          "source": "docs/ops/DESK_TRUTH_MONITORS.md"
+        },
+        {
+          "name": "config/host_comms_intent_routes.json data/options_desk_stale -> scripts/n8n_comms_intent_consumer.py -> scripts/incident_notifier.py",
+          "kind": "consumer",
+          "direction": "write",
+          "source": "docs/ops/DESK_TRUTH_MONITORS.md"
+        },
+        {
+          "name": "data/runtime/options_desk_staleness_monitor_alert_state.json",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "docs/ops/DESK_TRUTH_MONITORS.md"
+        },
+        {
+          "name": "GET /api/v2/needs-action (scripts/lib/needs_action.py source desk_truth)",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "docs/ops/DESK_TRUTH_MONITORS.md"
+        },
+        {
+          "name": "data/runtime/options-desk-staleness-monitor_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no receipt, no alert state, no intent"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/options-desk-staleness-monitor_last.json ok_at advances on each successful live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at within 131.5 h (2x expected_cadence_hours 65.75, weekday-only lane)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 240 s (80% of timeout_s 300)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count >= 1 (one completed check)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 131.5 h but younger than 197.25 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 240 s"
+        },
+        {
+          "check": "partial",
+          "text": "skipped_reasons names an intent refusal (intent_*): the finding was not queued; the next run retries it"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 197.25 h (3x cadence)"
+        },
+        {
+          "check": "source_unreadable",
+          "text": "a required source unreadable -> exit 1, receipt ok false (dependency_unavailable), ok_at carried forward"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule -> RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 131.5,
+        "freshness_failed_after_h": 197.25,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 3x",
+        "timeout_s": 300,
+        "class": "monitor",
+        "computed_on": "2026-10-22",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs yet (shadow); class defaults; host dry runs 2026-10-22 took < 2 s",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 240.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "lane_registry.json row severity",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "findings reach the operator as host comms intents (DIGEST -> P2) through the comms-intent consumer and scripts/incident_notifier.py, and on Home through GET /api/v2/needs-action. Never PAGE.",
+        "enforced": "partial: the alert-on-gain intent is queued by the script (tested); SIEM/notifier coverage of this lane is NOT_MEASURED"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json (lane_not_in_catalogue). Findings are remedied by the store's owner or the operator; the lane never acts. Runbook: docs/ops/DESK_TRUTH_MONITORS.md (runbook_id desk-truth-monitors)."
+      },
+      "evidence": {
+        "receipt": "data/runtime/options-desk-staleness-monitor_last.json",
+        "verify": [
+          "python3 scripts/desk_truth_monitor.py --check options-desk-staleness   # read-only dry run",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='options-desk-staleness-monitor' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.summary.by_code, .produced_count' data/runtime/options-desk-staleness-monitor_last.json",
+          "curl -s :7777/api/v2/needs-action | jq '.sources.desk_truth'"
+        ],
+        "never": "an n8n execution status; prove work with the ledger and the receipt",
+        "expected_output_basis": "expected_output 2026-10-22 from the script's main(): produced = one completed check (produced_count 1)"
+      },
+      "review_by": "2026-10-29",
+      "review": {
+        "prepared_by": "agent draft (desk truth 2026-10-22)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator 2026-10-24 ('go', via coordinator)",
+        "reviewed_on": "2026-10-24"
+      },
+      "state_note": "Agent-written 2026-10-22; DRAFT until its owner REVIEWs it (check_n8n_health_contracts fails a DRAFT that is not grandfathered: this PR's contract gate stays red until then, by design).",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "one completed check (produced_count 1)",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/options-desk-staleness-monitor_last.json produced_count"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "held-exit-coverage-monitor",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "stage:shadow",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Read-only desk truth check 'held-exit-coverage' (10,40 9-15 * * 1-5 ET, weekdays): every live held position in positions_current (non-cash, qty > 0, value >= min_position_value_usd) needs a stop_lifecycle snapshot row for the same account and symbol in a WORKING lifecycle; paper stop rows are counted and tagged PAPER; a stale snapshot makes the verdict NOT_MEASURED. Reads the snapshot scripts/stop_lifecycle_monitor.py writes; writes no stop, calls no broker. A live run writes the receipt GET /api/v2/needs-action reads and queues one DIGEST host intent only when the finding set gained a finding. It never repairs, sends, or calls a broker.",
+        "business_function": "portfolio-truth",
+        "source": "scripts/desk_truth_monitor.py --check held-exit-coverage; operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\")"
+      },
+      "owner": "platform",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/desk_truth_monitor.py --check held-exit-coverage",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_desk_truth_held_exit_coverage.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock (flock)"
+        },
+        {
+          "name": "Postgres positions_current (read-only session)",
+          "kind": "store",
+          "direction": "read",
+          "source": "docs/ops/DESK_TRUTH_MONITORS.md"
+        },
+        {
+          "name": "Postgres stop_lifecycle snapshot (stop_lifecycle_monitor.py writer; read-only session)",
+          "kind": "store",
+          "direction": "read",
+          "source": "docs/ops/DESK_TRUTH_MONITORS.md"
+        },
+        {
+          "name": "config/host_comms_intent_routes.json stops/held_exit_coverage_gap -> scripts/n8n_comms_intent_consumer.py -> scripts/incident_notifier.py",
+          "kind": "consumer",
+          "direction": "write",
+          "source": "docs/ops/DESK_TRUTH_MONITORS.md"
+        },
+        {
+          "name": "data/runtime/held_exit_coverage_monitor_alert_state.json",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "docs/ops/DESK_TRUTH_MONITORS.md"
+        },
+        {
+          "name": "GET /api/v2/needs-action (scripts/lib/needs_action.py source desk_truth)",
+          "kind": "consumer",
+          "direction": "read",
+          "source": "docs/ops/DESK_TRUTH_MONITORS.md"
+        },
+        {
+          "name": "data/runtime/held-exit-coverage-monitor_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no receipt, no alert state, no intent"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/held-exit-coverage-monitor_last.json ok_at advances on each successful live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at within 133.0 h (2x expected_cadence_hours 66.5, weekday-only lane)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 240 s (80% of timeout_s 300)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count >= 1 (one completed check)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 133.0 h but younger than 199.5 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 240 s"
+        },
+        {
+          "check": "partial",
+          "text": "skipped_reasons names an intent refusal (intent_*): the finding was not queued; the next run retries it"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 199.5 h (3x cadence)"
+        },
+        {
+          "check": "source_unreadable",
+          "text": "a required source unreadable -> exit 1, receipt ok false (dependency_unavailable), ok_at carried forward"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule -> RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 133.0,
+        "freshness_failed_after_h": 199.5,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 3x",
+        "timeout_s": 300,
+        "class": "monitor",
+        "computed_on": "2026-10-22",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs yet (shadow); class defaults; host dry runs 2026-10-22 took < 2 s",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 240.0
+      },
+      "alerting": {
+        "lane_severity": "Medium",
+        "severity_basis": "lane_registry.json row severity",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "findings reach the operator as host comms intents (DIGEST -> P2) through the comms-intent consumer and scripts/incident_notifier.py, and on Home through GET /api/v2/needs-action. Never PAGE.",
+        "enforced": "partial: the alert-on-gain intent is queued by the script (tested); SIEM/notifier coverage of this lane is NOT_MEASURED"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json (lane_not_in_catalogue). Findings are remedied by the store's owner or the operator; the lane never acts. Runbook: docs/ops/DESK_TRUTH_MONITORS.md (runbook_id desk-truth-monitors)."
+      },
+      "evidence": {
+        "receipt": "data/runtime/held-exit-coverage-monitor_last.json",
+        "verify": [
+          "python3 scripts/desk_truth_monitor.py --check held-exit-coverage   # read-only dry run",
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s FROM runs WHERE lane_id='held-exit-coverage-monitor' ORDER BY requested_at DESC LIMIT 10\"",
+          "jq '.summary.by_code, .produced_count' data/runtime/held-exit-coverage-monitor_last.json",
+          "curl -s :7777/api/v2/needs-action | jq '.sources.desk_truth'"
+        ],
+        "never": "an n8n execution status; prove work with the ledger and the receipt",
+        "expected_output_basis": "expected_output 2026-10-22 from the script's main(): produced = one completed check (produced_count 1)"
+      },
+      "review_by": "2026-10-29",
+      "review": {
+        "prepared_by": "agent draft (desk truth 2026-10-22)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator 2026-10-24 ('go', via coordinator)",
+        "reviewed_on": "2026-10-24"
+      },
+      "state_note": "Agent-written 2026-10-22; DRAFT until its owner REVIEWs it (check_n8n_health_contracts fails a DRAFT that is not grandfathered: this PR's contract gate stays red until then, by design).",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "one completed check (produced_count 1)",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/held-exit-coverage-monitor_last.json produced_count"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "options-desk-quote-refresh",
+      "kind": "lane",
+      "workflow_id": "dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "staged:f09 (not yet a registry target; written ahead of the activation PR)",
+      "stage": null,
+      "purpose": {
+        "text": "Quote-only refresh of the options desk 09:35-11:50 ET (cadence 5,20,35,50 9-11 weekdays; the 09:05 / 09:20 fires read nothing): one read-only expiration-pinned Schwab option-chain read per (symbol, expiration) of the cards already on the desk (cap 25/run, measured 4), live_quote per card and a quote_refresh session stamp; card economics and generated_at untouched; no LLM, no ensemble queue, no GPU (the reason the full build runs from 12:00). Runs only in schwab_access_mode read_only. STAGED INERT: gated on AGENTS.md 19.0.0 ACTIVE (broker READ-ONLY lanes on n8n).",
+        "business_function": "portfolio-truth",
+        "source": "scripts/options_desk_quote_refresh.py; operator 2026-10-22 (verbatim: \"fix all of these n8n first for scheduling and monitoring\")"
+      },
+      "owner": "options",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/options_desk_quote_refresh.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/tradeai_options_desk_quote_refresh.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock (flock)"
+        },
+        {
+          "name": "data/portfolios/state/options_proposals.json (read + atomic write of live_quote/quote_refresh only)",
+          "kind": "store",
+          "direction": "read_write",
+          "source": "docs/ops/DESK_TRUTH_MONITORS.md"
+        },
+        {
+          "name": "Schwab market data: schwab_transport.get_option_chain (GET; host token; read_only mode only)",
+          "kind": "external_api",
+          "direction": "read",
+          "source": "docs/ops/DESK_TRUTH_MONITORS.md"
+        },
+        {
+          "name": "data/runtime/options-desk-quote-refresh_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt / allowlist output_signal"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "at shadow every dispatcher fire runs --dry-run: RUN_DONE mode dry_run, no receipt, no alert state, no intent"
+        },
+        {
+          "check": "last_live_run_done",
+          "text": "after promotion: every dispatcher fire ends RUN_DONE in mode live (coordination ledger runs)"
+        },
+        {
+          "check": "output_advanced",
+          "text": "LaneRunReceipt data/runtime/options-desk-quote-refresh_last.json ok_at advances on each successful live run"
+        },
+        {
+          "check": "fresh",
+          "text": "receipt ok_at within 140.5 h (2x expected_cadence_hours 70.25, weekday-only lane)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 192 s (80% of timeout_s 240)"
+        },
+        {
+          "check": "output_produced",
+          "text": "a live run reports produced_count = cards re-quoted; zero only with an allowed empty_reason ['no_new_input', 'market_closed']"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 140.5 h but younger than 210.75 h"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 192 s"
+        },
+        {
+          "check": "partial",
+          "text": "skipped_reasons names an intent refusal (intent_*): the finding was not queued; the next run retries it"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished live run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 210.75 h (3x cadence)"
+        },
+        {
+          "check": "source_unreadable",
+          "text": "a required source unreadable -> exit 1, receipt ok false (dependency_unavailable), ok_at carried forward"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced nothing outside the expected_output rule -> RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 140.5,
+        "freshness_failed_after_h": 210.75,
+        "freshness_rule": "degraded beyond 2x cadence, failed beyond 3x",
+        "timeout_s": 240,
+        "class": "pipeline",
+        "computed_on": "2026-10-22",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "no live runs yet (shadow); class defaults; host dry runs 2026-10-22 took < 2 s",
+        "runs_considered": 0,
+        "duration_degraded_above_s": 192.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "lane_registry.json row severity",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "a failed or stale run is seen by options-desk-staleness-monitor (DESK_STALE, DIGEST -> P2) and the SIEM row n8n:<lane>; the lane itself queues nothing",
+        "enforced": "partial: the alert-on-gain intent is queued by the script (tested); SIEM/notifier coverage of this lane is NOT_MEASURED"
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json (lane_not_in_catalogue). Findings are remedied by the store's owner or the operator; the lane never acts. Runbook: docs/ops/DESK_TRUTH_MONITORS.md (runbook_id desk-truth-monitors)."
+      },
+      "evidence": {
+        "receipt": "data/runtime/options-desk-quote-refresh_last.json",
+        "verify": [
+          "python3 scripts/options_desk_quote_refresh.py   # offline dry run: plan + request count, no broker call",
+          "jq '.quote_refresh' data/portfolios/state/options_proposals.json",
+          "jq '.produced_count, .skipped_reasons' data/runtime/options-desk-quote-refresh_last.json"
+        ],
+        "never": "an n8n execution status; prove work with the ledger and the receipt",
+        "expected_output_basis": "expected_output 2026-10-22 from the script's main(): produced = cards re-quoted"
+      },
+      "review_by": "2026-10-29",
+      "review": {
+        "prepared_by": "agent draft (desk truth 2026-10-22)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator 2026-10-24 ('go', via coordinator)",
+        "reviewed_on": "2026-10-24"
+      },
+      "state_note": "Agent-written 2026-10-22; DRAFT until its owner REVIEWs it (check_n8n_health_contracts fails a DRAFT that is not grandfathered: this PR's contract gate stays red until then, by design).",
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "cards re-quoted",
+        "rule": "empty_allowed",
+        "min_produced": null,
+        "window_h": null,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "dependency_unavailable",
+          "disabled"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input",
+          "market_closed"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/options-desk-quote-refresh_last.json produced_count"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
+    },
+    {
+      "schema": "N8nHealthContract@v1",
+      "id": "cio-ask-research",
+      "kind": "lane",
+      "workflow_id": "tradeai-dispatcher",
+      "status": "REVIEWED",
+      "target_reason": "operator_approved_shadow_20261023",
+      "stage": "shadow",
+      "purpose": {
+        "text": "Research each pending Ask the CIO question (AskRequest@v1) into one sourced AskAnswer@v1 prospectus per security: parallel gather of internal, web, SEC, news and street facts (each with as_of + citation), an LLM panel with dissent kept, numbers only from facts, MBI guard, and every fact + answer appended to CIO memory keyed by security_guid. At shadow a fire only plans (dry run).",
+        "business_function": "research",
+        "source": "scripts/lib/cio_ask_research.py and scripts/cio_ask_research.py module docstrings; operator approval 2026-10-23 (Ask the CIO Phase 9)"
+      },
+      "owner": "cio",
+      "connects_to": [
+        {
+          "name": "n8n -> relay 172.19.0.1:18092 -> gateway coordination/run -> tradeai-n8n-run-executor",
+          "kind": "service",
+          "direction": "calls",
+          "source": "AGENTS.md §23.3"
+        },
+        {
+          "name": "$PY scripts/cio_ask_research.py",
+          "kind": "runner",
+          "direction": "calls",
+          "source": "config/n8n_run_allowlist.json command"
+        },
+        {
+          "name": "/tmp/cio_ask_research.lock",
+          "kind": "lock",
+          "direction": "read_write",
+          "source": "allowlist lock (no cron line exists; a dry_run fire takes /tmp/cio_ask_research.lock.dryrun)"
+        },
+        {
+          "name": "data/runtime/cio-ask-research_last.json",
+          "kind": "receipt",
+          "direction": "write",
+          "source": "LaneRunReceipt@v2 / allowlist output_signal (live run only)"
+        },
+        {
+          "name": "CIO_ASK_REQUESTS_DIR (pending AskRequest@v1 JSON; Phase 8 store, pending §26)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/cio_ask_research.py _pending()"
+        },
+        {
+          "name": "data/runtime/identity_registry.json (cio_subject_guid.lookup_identity_envelope)",
+          "kind": "store",
+          "direction": "read",
+          "source": "entity resolution, also in a dry run"
+        },
+        {
+          "name": "Postgres read-only: catalyst_events, news_articles, yahoo_analyst_targets_history, market_quotes, sec_filing_documents, sec_xbrl, hermes_research_intelligence, alert_events, trade_transactions (live run only)",
+          "kind": "store",
+          "direction": "read",
+          "source": "scripts/lib/cio_ask_research.py default_sources()"
+        },
+        {
+          "name": "search_router (caller web_research, class operator; Brave budget + cache) (live run only)",
+          "kind": "service",
+          "direction": "calls",
+          "source": "_src_web"
+        },
+        {
+          "name": "governed LLM generation as process cio_ask_deep_research (refused until registered with an approved cap) (live run only)",
+          "kind": "service",
+          "direction": "calls",
+          "source": "default_panel(); CostGovernor"
+        },
+        {
+          "name": "CIO memory via CIOEnvelopeIntegrator (dry run unless --apply-memory) (live run only)",
+          "kind": "store",
+          "direction": "write",
+          "source": "MemoryAppender"
+        },
+        {
+          "name": "CIO_ASK_ANSWERS_DIR/<request_id>.json (live run only)",
+          "kind": "store",
+          "direction": "write",
+          "source": "scripts/cio_ask_research.py"
+        }
+      ],
+      "healthy": [
+        {
+          "check": "shadow_dry_run_done",
+          "text": "every dispatcher fire of this lane ends RUN_DONE in mode dry_run (coordination ledger runs; the stage clamp turns any live request into dry_run)"
+        },
+        {
+          "check": "dry_run_writes_nothing",
+          "text": "the dry_run RunReceipt shows output_signal_mtime_after == output_signal_mtime_before for data/runtime/cio-ask-research_last.json (a dry run writes nothing, AGENTS.md §6)"
+        },
+        {
+          "check": "duration_within_baseline",
+          "text": "duration <= 480.0 s (80% of timeout_s 600)"
+        },
+        {
+          "check": "inputs_read",
+          "text": "the DRY-RUN summary carries pending >= 0 and, for each pending request, resolved entities and a panel plan (no error key)"
+        },
+        {
+          "check": "output_produced",
+          "text": "once live: every pending request gets one AskAnswer file (produced_count = answers written)"
+        }
+      ],
+      "degraded": [
+        {
+          "check": "late",
+          "text": "output_signal older than 2 h (2x cadence) inside 07:20-21:20 ET once live"
+        },
+        {
+          "check": "slow",
+          "text": "duration above 480.0 s"
+        },
+        {
+          "check": "retried",
+          "text": "a run needed attempt > 1 (retry_policy transient-2) or ended RUN_SKIPPED_LOCK in two consecutive slots"
+        },
+        {
+          "check": "partial_answers",
+          "text": "once live: answers marked partial because the panel was refused (cost cap / process not registered) or a source timed out (not machine-checked yet)"
+        }
+      ],
+      "failed": [
+        {
+          "check": "run_failed",
+          "text": "a run ends RUN_FAILED, RUN_TIMEOUT or RUN_REFUSED (coordination ledger)"
+        },
+        {
+          "check": "no_receipt",
+          "text": "a finished run left no RunReceipt (exit 0 is not evidence)"
+        },
+        {
+          "check": "stale",
+          "text": "output_signal older than 12 h once the lane runs live (overnight gap 21:20-07:20 ET is expected)"
+        },
+        {
+          "check": "breaker_or_dlq",
+          "text": "a dead letter was written or the lane's breaker opened (3 failures)"
+        },
+        {
+          "check": "dry_run_wrote",
+          "text": "a dry_run changed its output_signal or any durable state"
+        },
+        {
+          "check": "output_unverifiable",
+          "text": "an exit-0 live run left no LaneRunReceipt@v2 attempt receipt bound to its run_id with an integer produced_count -> RUN_FAILED output_unverifiable"
+        },
+        {
+          "check": "empty_output",
+          "text": "an exit-0 live run produced 0 answers for a reason other than no_new_input (no pending request), or skipped for a fatal reason ['no_runner', 'disabled', 'dependency_unavailable'] -> RUN_FAILED empty_output"
+        }
+      ],
+      "baseline": {
+        "freshness_degraded_after_h": 2.0,
+        "freshness_failed_after_h": 12.0,
+        "freshness_rule": "degraded beyond 2x cadence inside the window; failed beyond the overnight gap (10 h) plus margin",
+        "timeout_s": 600,
+        "class": "report",
+        "computed_on": "2026-10-23",
+        "basis": "CLASS_DEFAULT_PROVISIONAL",
+        "source": "NOT_MEASURED: the lane has never been scheduled (no cron line, no timer, no prior dispatcher run); source class defaults only.",
+        "runs_considered": null,
+        "duration_degraded_above_s": 480.0
+      },
+      "alerting": {
+        "lane_severity": "Low",
+        "severity_basis": "registry value_class Operationally Important; advisory research answers for the operator, nothing applied by code",
+        "failed": {
+          "siem_severity": "WARN",
+          "notifier_priority": "P2"
+        },
+        "degraded": {
+          "siem_severity": "INFO",
+          "notifier_priority": "P3"
+        },
+        "routing": "SIEM row n8n:<lane> by scripts/n8n_siem_bridge.py; Telegram only through scripts/incident_notifier.py (P1 at once, uncapped; P2 batched, held 22:00-07:00 ET, 24/day cap; P3 never sends)",
+        "enforced": "not read at runtime yet: scripts/lib/n8n_siem_bridge.py severity_for() uses the registry row `severity`, else the fan-in priority (RUN_* = P2 -> WARN)."
+      },
+      "remediation": {
+        "catalogue_entry": false,
+        "diagnosis_excluded": false,
+        "note": "not in config/n8n_remediation_catalogue.json: the diagnoser skips it (lane_not_in_catalogue); regenerate with scripts/build_remediation_catalogue.py --write after its allowlist PR"
+      },
+      "evidence": {
+        "receipt": "data/runtime/cio-ask-research_last.json",
+        "verify": [
+          "sqlite3 'file:$STATE_ROOT/data/governance/n8n_coordination_ledger.sqlite?mode=ro' \"SELECT state, mode, started_at, duration_s, verdict FROM runs WHERE lane_id='cio-ask-research' ORDER BY requested_at DESC LIMIT 5\"",
+          "psql read-only: SELECT severity, event_type, lifecycle_state, created_at FROM system_health_events WHERE component = 'n8n:cio-ask-research' ORDER BY created_at DESC LIMIT 10",
+          "stat / jq the receipt: data/runtime/cio-ask-research_last.json; jq '{partial, refusals, gaps: (.gaps|length)}' $CIO_ASK_ANSWERS_DIR/<request_id>.json"
+        ],
+        "never": "an n8n execution status: successful executions are soft-deleted (EXECUTIONS_DATA_SAVE_ON_SUCCESS=none) and keep status 'running'; filter deletedAt IS NULL and prove work with the ledger",
+        "evidence_class": "SOURCE_ONLY",
+        "expected_output_basis": "expected_output derived 2026-10-23 from scripts/cio_ask_research.py main(): produced_count = answers written (one per pending request); 0 with empty_reason no_new_input when no request is pending."
+      },
+      "review_by": "2026-11-06",
+      "review": {
+        "prepared_by": "agent draft (Ask the CIO Phase 9, 2026-10-23)",
+        "status": "REVIEWED",
+        "reviewed_by": "operator 2026-10-24 ('go', via coordinator)",
+        "reviewed_on": "2026-10-24"
+      },
+      "expected_output": {
+        "schema": "N8nExpectedOutput@v1",
+        "unit": "AskAnswer prospectuses written",
+        "rule": "min_produced",
+        "min_produced": 1,
+        "produced_field": "produced_count",
+        "fatal_skip_reasons": [
+          "no_runner",
+          "disabled",
+          "dependency_unavailable"
+        ],
+        "empty_allowed_reasons": [
+          "no_new_input"
+        ],
+        "evidence": [
+          {
+            "kind": "receipt_field",
+            "ref": "data/runtime/cio-ask-research_last.json produced_count (LaneRunReceipt@v2; the executor reads the immutable attempt copy data/runtime/lane_attempts/cio-ask-research/<run_id>.json)"
+          },
+          {
+            "kind": "file_artifact",
+            "ref": "$CIO_ASK_ANSWERS_DIR/<request_id>.json (atomic replace in main())"
+          }
+        ],
+        "on_violation": {
+          "run_state": "RUN_FAILED",
+          "reason": "empty_output",
+          "notifier_priority": "P2"
+        }
+      }
     }
   ],
   "pending_changes": {

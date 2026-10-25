@@ -203,7 +203,7 @@ def test_configured_window_starts_at_6am_and_hands_off_at_0930():
     from zoneinfo import ZoneInfo
     raw = yaml.safe_load((ROOT / "config" / "scalp_signal_engine.yaml").read_text(encoding="utf-8"))
     cfg = pw.PremarketConfig.from_mapping(raw["active_trader_premarket"])
-    assert cfg.window_start == "06:00" and cfg.window_end == "09:29" and cfg.mode == "send"
+    assert cfg.window_start == "06:00" and cfg.window_end == "09:29" and cfg.mode == "shadow"
     et = ZoneInfo("America/New_York")
     at = lambda hm: datetime(2026, 10, 6, int(hm[:2]), int(hm[3:]), tzinfo=et)  # noqa: E731
     assert pw.in_window(at("06:00"), cfg) and pw.in_window(at("09:29"), cfg)

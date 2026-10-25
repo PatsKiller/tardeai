@@ -346,4 +346,20 @@ def alerts_snapshot(*, limit: int = 100, session_date: Optional[str] = None,
         "exit_watch": extra["exit_watch"],
         "learning": extra["learning"],
         "decisions": compact[:max(1, int(limit))],
+        "focus_list": _focus_view(day, now),
     }
+
+
+def _focus_view(day: str, now: float) -> dict:
+    """The scalp FOCUS list (lib/scalp_focus, written each minute by premarket_watch): members with rank and the
+    reason they entered, plus today's recent in/out events. The same store the Trade AI page reads. Never raises."""
+    try:
+        try:
+            from lib import scalp_focus as sf  # type: ignore
+        except ModuleNotFoundError:  # pragma: no cover
+            from scripts.lib import scalp_focus as sf  # type: ignore
+        view = sf.read_focus(now=now)
+        view["events"] = sf.recent_events(day=day, limit=40)
+        return view
+    except Exception as e:  # noqa: BLE001
+        return {"status": "error", "error": type(e).__name__, "symbols": [], "members": []}

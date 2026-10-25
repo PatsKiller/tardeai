@@ -1029,8 +1029,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/designs/DSN-20261024-c1-catalyst.md` | C1 catalyst and company-label correction |
 | `docs/designs/DSN-20261024-c1-company-populate.md` | Shared CIO company facts population |
 | `docs/designs/DSN-20261024-doc-index-pr-flow.md` | DSN-20261024-doc-index-pr-flow.md |
+| `docs/designs/DSN-20261024-kept-pr2034-refresh.md` | Existing PR2034 refresh |
 | `docs/designs/DSN-20261024-ops-config-modals.md` | DSN-20261024-ops-config-modals.md |
 | `docs/designs/DSN-20261024-site-system-tabs.md` | System tab request admission |
+| `docs/designs/DSN-20261024-w8-legacy-carryforward.md` | Worker A six-lane carry-forward |
 | `docs/designs/DSN-20261024-watch-escalation-link.md` | Escalation My Watchlist link |
 | `docs/designs/README.md` | Design registry — `docs/designs/<DSN id>.md` |
 | `docs/diligence/current/AUDIT_LEDGER_STATUS.md` | Audit Ledger Status |
@@ -1466,6 +1468,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/ACTIVE_TRADER_VENUE_ELIGIBILITY_v1.md` | Active Trader — Venue Eligibility & Schwab Compliance-Block Prompt (Stage 1a) |
 | `docs/implementation/CADI_OFFLINE_HISTORICAL_REPLAY_ARCHIVE_CONTRACT.md` | Offline CADI historical replay archive contract |
 | `docs/implementation/CALIBRATION_SHADOW_HARNESS.md` | Calibration shadow harness |
+| `docs/implementation/PREMARKET_1MIN_THREADED.md` | Premarket 1-minute cadence, threaded lifecycle and the scalp focus list |
 | `docs/implementation/UNIFIED_MOMENTUM_ALERT_GATE4.md` | Unified momentum alert (Gate 4) and Level 2 book signals |
 | `docs/implementation/backup/restore-drill-proposal-20261009.md` | Backup and recovery coverage: inventory, gate, and monthly restore drill proposal |
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_00_PREFLIGHT.md` | Stage 0 · Pre-flight |
@@ -1983,6 +1986,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/HOME_DO_NOW_2026-10-22.md` | Command Center Home — the "Do now" layout (2026-10-22) |
 | `docs/ops/INSTRUMENT_RECORD_V1.md` | InstrumentRecord@v1 |
 | `docs/ops/INVESTMENT_COMMAND_CENTER_2026-10-08.md` | Investment Command Center — PR-A: engine, CIO memory, ranking, filters, modal, Telegram line (2026-10-08) |
+| `docs/ops/JSONL_ARCHIVE_ROTATION.md` | JSONL archive rotation — the oversized append-only stores |
+| `docs/ops/KEPT_PR2034_REFRESH_20261024.md` | Kept PR2034: isolated refresh and compatibility evidence |
 | `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Lane Quality Bake-Off — 2026-08-21 |
 | `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` | Blind ranking sheet — Lane bake-off 2026-08-21 |
 | `docs/ops/LANE_REGISTRY_AND_RETIREMENT_CONVENTION.md` | Lane registry and the retirement convention |
@@ -2070,6 +2075,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/SIEM_HEALTH_REPAIR_2026-10-06.md` | SIEM incident visibility and recovery |
 | `docs/ops/SITE_SYSTEM_TAB_REQUESTS_20261024.md` | SITE: System tab requests and URL state |
 | `docs/ops/SITE_VALIDATION_2026-10-23_53aa1b619.md` | Command Center v3 site validation: 2026-10-22/23 (f7c1e96cb → 0f5bf2453 → 53aa1b619) |
+| `docs/ops/STALE_N8N_SET_REBUILD_20261024.md` | Worker A non-config carryforward |
 | `docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md` | Stance organic park — CLOSED by OBSERVED_LIVE |
 | `docs/ops/SYMBOL_THESIS_ACQUISITION_PIPELINE_LIVE_2026-08-20.md` | Symbol-thesis acquisition pipeline — live (autonomous, debt-sensitive) — 2026-08-20 |
 | `docs/ops/SYMBOL_THESIS_CANARY_DRY_RUN_2026-08-20.md` | Bounded canary dry-run — SCHG / CSCO / ANET |
@@ -2092,6 +2098,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/TRANSFERSON_UNIVERSE_CANONICAL_CLOSEOUT_2026-08-25.md` | Transferson canonical universe — local closeout |
 | `docs/ops/TRANSFERSON_UNIVERSE_LIVE_ACCEPTANCE_GATE_2026-08-25.md` | Transferson canonical universe — live CURRENT/DB acceptance gate |
 | `docs/ops/VALIDATED_LEARNING_REMEDIATION.md` | Validated learning remediation: release and operations |
+| `docs/ops/W8_LEGACY_CARRYFORWARD_20261024.md` | Worker A carry-forward: six shadow lanes |
 | `docs/ops/WATCH_DECISION_STANDARDS_2026-10-08.md` | Watch decision standards — the Communications standards on the Watchlist (2026-10-08) |
 | `docs/ops/WATCH_ESCALATION_LINK_20261024.md` | ASK item 9: correct the escalation My Watchlist link |
 | `docs/ops/WATCH_FRESHNESS_NOISE_20261024.md` | WP-29: Watch closed-session prices and compact level evidence |
@@ -2112,6 +2119,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/WP15_AGENTS_20_2_OPERATOR_PACKAGE_20261023.md` | WP-15: AGENTS 20.2.0 package delivery |
 | `docs/ops/WP16_ADVISORY_POLICY_PACKAGE_20261023.md` | WP-16 advisory-policy package delivery |
 | `docs/ops/WP23_ASK_CIO_RECONCILIATION_20261023.md` | WP-23: reconcile Ask-CIO implementation and preserve source provenance |
+| `docs/ops/WP24_PREMARKET_STALE_MERGE_20261024.md` | WP-24: current-main successor of the verified content port |
 | `docs/ops/WP27_CONTINUOUS_FROM_CURRENT_20261023.md` | WP-27: continuous scanner root reconciliation |
 | `docs/ops/WP28_HERMES_RESEARCH_SOURCE_FILTER_20261023.md` | WP-28 item 2: Hermes research article selection |
 | `docs/ops/WP29_ACCOUNT_LABEL_FIXTURES_20261023.md` | WP-29(c): account-label browser evidence |
@@ -2210,6 +2218,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/04_rollback.md` | Roll back the RI overnight crontab changes (operator) |
 | `docs/ops/packets/lane-repair-run-research-intelligence-overnight-20261015/README.md` | Lane repair 2026-10-15: RI overnight, hermes-coordinator, source litmus |
 | `docs/ops/packets/lane-retire-wave1-20261015/README.md` | lane-retire-wave1-20261015: RETIRE wave 1, operator packet |
+| `docs/ops/packets/legacy-worker-a-carryforward-20261024/HANDOFF.md` | Worker A source handoff to W8 |
+| `docs/ops/packets/legacy-worker-a-carryforward-20261024/historical-8ba-handoff.md` | WP-33 registry/n8n stale-set rebuild |
 | `docs/ops/packets/maturity-remeasure-relay-live-removal-20261015/README.md` | Packet: take maturity-remeasure off the relay live list (config-write, NOT APPLIED) |
 | `docs/ops/packets/moomoo-retirement-reconcile-20261023/README.md` | WP-30: moomoo retirement decision packet |
 | `docs/ops/packets/n8n-comms-intent-consumer-20261015/03_apply.md` | Apply once (operator) |
@@ -2227,6 +2237,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/packets/n8n-shadow-wave-ld-w1-20261015/README.md` | n8n shadow wave LD-W1 (2026-10-15): operator packet |
 | `docs/ops/packets/nightly-cutover-controller-20261016/README.md` | Nightly cutover controller 2026-10-16: an enforced state machine for the approved n8n cutover |
 | `docs/ops/packets/open-stack-triage-20261023/README.md` | WP-33 item 5: open stack triage evidence |
+| `docs/ops/packets/premarket-1min-20261023/README.md` | Premarket 1-minute cadence — operator crontab packet (2026-10-23) |
 | `docs/ops/packets/push-policy-v2-20261023-wp14/DESIGN.md` | WP-14: rebuilt push-policy-v2 operator package |
 | `docs/ops/packets/push-policy-v2-20261023-wp14/PR_BODY.md` | WP-14 operator-only push-policy proposal |
 | `docs/ops/packets/registry-capture-review-20261024/README.md` | Actual-capture registry review packet |

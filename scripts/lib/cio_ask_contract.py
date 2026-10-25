@@ -8,8 +8,9 @@ memory. Across the CIO system." This module is the one contract between
 * Phase 9 (``scripts/lib/cio_ask_research.py`` on ``feat/ask-cio-phase9-research-20261023`` — Brave / SEC / news /
   street targets / LLM panel, the prospectus).
 
-It holds data shapes, validation, the MBI guard and the Phase 9 hand-off protocol. It performs no I/O, calls no model
-and writes no store. Everything here is JSON-serialisable through ``to_dict``.
+It holds data shapes, validation, the MBI guard and the Phase 9 hand-off protocol. It calls no model and writes no
+store; the advisory policy gate reads its policy document at call time. Data shapes are JSON-serialisable through
+``to_dict``.
 
 Authority rails (AGENTS.md §0 rule 1, §2, §26.1):
 
@@ -520,16 +521,12 @@ def _version_tuple(v: str) -> Optional[tuple[int, int, int]]:
 
 
 def _policy_state_or_later(agents_path: Optional[Path], required: str, anchor: str) -> dict[str, Any]:
-    """Use ops_controls_core.policy_state(or_later=True) when present; otherwise the same semantics, fail closed."""
-    try:
-        from scripts.lib.ops_controls_core import policy_state  # noqa: PLC0415
+    """Read the same version/anchor gate without importing operational services.
 
-        try:
-            return policy_state(agents_path, required=required, anchor=anchor, or_later=True)
-        except TypeError:
-            pass  # policy_state predates or_later (PR #1970) — fall through to the equivalent check
-    except Exception:  # noqa: BLE001
-        pass
+    This existing fail-closed reader matches policy_state(or_later=True). The
+    shared research contract must not import the Ops Controls release/sender
+    graph merely to inspect a policy document.
+    """
     p = Path(agents_path) if agents_path else Path(__file__).resolve().parents[2] / "AGENTS.md"
     try:
         text = p.read_text(encoding="utf-8")

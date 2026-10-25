@@ -1,0 +1,17 @@
+{
+  "schema": "CiGate@v1",
+  "name": "premarket_1min_threaded_20261023",
+  "files": [
+    "tests/test_premarket_1min_threaded_20261023.py"
+  ],
+  "anchor": "PREMARKET_1MIN_THREADED_20261023",
+  "comment": [
+    "ANCHOR: PREMARKET_1MIN_THREADED_20261023 — operator 2026-10-23 (\"I agree for every minute ... I do a 1",
+    "minute candle check\"; \"critiqued at least the top 20\"): premarket_watch evaluates every closed 1-min candle",
+    "(--loop, settle after the boundary, never overlapping), threads lifecycle state changes through the unified",
+    "ledger (same state never re-sent, hourly cap, live replies to the root, legacy fallback), every message carries",
+    "the shared Driven by / Ready / Missing block, cadence_mode legacy|shadow|live (shadow = legacy still the only",
+    "sender), the scalp focus list (top N <= 30, hysteresis, no eviction while ARMED/TRIGGERED, reasons) gates Hermes",
+    "critique, the comparison report, and the crontab packet (exact text, backup, captured-file verify). Hermetic."
+  ]
+}

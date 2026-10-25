@@ -678,4 +678,7 @@ def test_lane_mode_counts_match_the_pr():
     # 2026-10-21 (feat/macro-calendar-20261021, tests/test_macro_calendar_20261021.py): + macro-calendar-refresh,
     # enforced from its first entry (no env-file loader, no DB; 5-module closure, literal reads declared). 17 + 1 = 18.
     assert LANES["macro-calendar-refresh"]["env_allowlist_mode"] == "enforce"
-    assert modes.count("enforce") == 18 and modes.count("report") == len(LANES) - 18
+    # 2026-10-23 (ops/jsonl-retention-20261023, tests/test_jsonl_archive_rotate_20261023.py): + jsonl-archive-rotate,
+    # enforced from its first entry (no env-file loader, no DB; literal reads declared). 18 + 1 = 19.
+    assert LANES["jsonl-archive-rotate"]["env_allowlist_mode"] == "enforce"
+    assert modes.count("enforce") == 19 and modes.count("report") == len(LANES) - 19

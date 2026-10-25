@@ -1,0 +1,16 @@
+{
+  "schema": "CiGate@v1",
+  "name": "cio_prospect_writer_20261023",
+  "files": [
+    "tests/test_cio_prospect_writer_20261023.py"
+  ],
+  "anchor": "CIO_PROSPECT_WRITER_20261023",
+  "comment": [
+    "ANCHOR: CIO_PROSPECT_WRITER_20261023 — AGENTS.md §26; CIO_PROSPECT_DATA_FOUNDATION.md §11 backlog item 2 (task",
+    "T-20261023-e95684): the curator and the entry-state runner call scripts/lib/cio_prospect_writer.py, which builds",
+    "with cio_prospect_builder and calls InstrumentRecordStore.upsert_prospect only when",
+    "TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE=1 (OFF: shadow artifact + receipt only). Idempotent, conflicts recorded never",
+    "resolved, fail-soft on any DB error, MBI_BEHAVIOR = 0 (behavior keys refuse the row). Postgres proof on a",
+    "throwaway initdb cluster (unix socket only, never production; skipped without server binaries or psycopg2)."
+  ]
+}

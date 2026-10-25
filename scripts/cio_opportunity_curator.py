@@ -105,6 +105,22 @@ def register_recommendations(store, assessments: list, lines: list) -> dict:
         return {"status": "error", "error": f"{type(e).__name__}: {str(e)[:200]}"}
 
 
+def write_cio_prospects(apply: bool) -> dict:
+    """CIO prospect P1 writer (docs/architecture/CIO_PROSPECT_DATA_FOUNDATION.md §11 item 2): after the projection is
+    rewritten, build one prospect per security_guid and write it — the shadow artifact always (full universe);
+    InstrumentRecordStore.upsert_prospect (jsonl + the Postgres dual-write) only with
+    TRADEAI_CIO_PROSPECT_PG_DUAL_WRITE=1. Fail-soft: never raises into the curation pass; errors are counted in
+    data/runtime/cio_prospect_writer_cio-opportunity-curator_last.json. MBI_BEHAVIOR = 0."""
+    try:
+        from scripts.lib import cio_prospect_writer as pw
+        from scripts.lib.canonical_store_registry import production_state_root
+
+        return pw.summary(pw.write_prospects(production_state_root(), caller="cio-opportunity-curator",
+                                             apply=apply, scope="full", with_db=True))
+    except Exception as e:  # noqa: BLE001 — the prospect writer never blocks curation
+        return {"ok": False, "error": f"{type(e).__name__}: {str(e)[:200]}"}
+
+
 def run(apply: bool, limit_print: int = 10) -> dict:
     from lib.data_broker import opportunity as op
     from scripts.lib.cio_opportunity_store import CIOOpportunityStore
@@ -149,6 +165,7 @@ def run(apply: bool, limit_print: int = 10) -> dict:
         report["appended"] = store.append(lines, provenance)
         store.write_projection(assessments, {"as_of": report["at"], "run_id": run_id, "provenance": provenance})
         report["rec_registry"] = register_recommendations(store, assessments, lines)
+        report["cio_prospect_writer"] = write_cio_prospects(apply=True)
         RECEIPT.parent.mkdir(parents=True, exist_ok=True)
         RECEIPT.write_text(json.dumps(report, indent=1, default=str), encoding="utf-8")
     return report

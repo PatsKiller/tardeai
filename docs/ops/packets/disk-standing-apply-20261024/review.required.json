@@ -3,6 +3,6 @@
   "approved_by": null,
   "approved_at": null,
   "draft_contract_sha256": "e6a4070e38c64268509de4bb1a525ffa07d9557f94b5d7b74efdd0e20f8da9d3",
-  "source_config_pins_sha256": "dadd80b311b0c283930d6e344a1b1ec7e96d3c20796eee401cb10c7bb8f9c5ac",
-  "rules_sha256": "aa6d1a2d6afe84c924b930d2174542678b284601002b71b6ce9000aa695d504f"
+  "source_config_pins_sha256": "954f01026e1f604eb6bd4f2df202b59cf70486649837c33494a70a5ebacdc946",
+  "rules_sha256": "dda63362a19281e5878c25f060370be09f8f074db98e04bf5e7afa27391faa1b"
 }

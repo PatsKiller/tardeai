@@ -514,6 +514,9 @@ def test_registry_dispatch_errors_hook():
 #: 2026-10-22 - pr-hygiene-audit: promoted to N8N_NATIVE_CANARY by the release train H.0 shadow-enable PR.
 N8N_NATIVE_SHADOW = frozenset(
     {
+        # 2026-10-23 operator-approved Ask the CIO Phase 9: research lane, n8n-native report, hourly dry_run
+        # (tests/test_cio_ask_research_lane_20261023.py).
+        "cio-ask-research",
         "momentum-lifecycle-monitor",
         "momentum-cache-reconcile",
         "hermes-discovery-yield-on-learning",
@@ -529,6 +532,14 @@ N8N_NATIVE_SHADOW = frozenset(
         # 2026-10-22 operator Gate 4 design: calibration shadow harness, n8n-native report lane, weekdays 12:25
         # dry_run (tests/test_calibration_shadow_harness_20261022.py).
         "calibration-shadow-harness",
+        # 2026-10-22 operator "fix all of these n8n first for scheduling and monitoring": three read-only desk truth
+        # monitors, n8n-native shadow rows (tests/test_n8n_desk_truth_lanes_20261022.py).
+        "holdings-drift-monitor",
+        "options-desk-staleness-monitor",
+        "held-exit-coverage-monitor",
+        # 2026-10-23 operator "approved": JSONL archive rotation, n8n-native hygiene lane,
+        # weekdays 16:45 ET dry_run (tests/test_jsonl_archive_rotate_20261023.py).
+        "jsonl-archive-rotate",
     }
 )
 #: 2026-10-17 + n8n-comms-intent-consumer (operator D2 "Queue reader first"; tests/support/comms_intent_consumer_live.py).

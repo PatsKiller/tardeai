@@ -1,0 +1,10 @@
+{
+  "schema": "CiGate@v1",
+  "name": "stale_n8n_set_rebuild_20261024",
+  "files": [
+    "tests/test_stale_n8n_set_rebuild_20261024.py"
+  ],
+  "comment": [
+    "Exact current-main/incoming source preservation, shadow clamping and inert broker/spend/archive authority negatives."
+  ]
+}
