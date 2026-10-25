@@ -1,0 +1,23 @@
+{
+  "task": "DSN-20261024-kept-pr2034-refresh-P1-T1",
+  "fresh_worktree": "/home/johnclaw/wt-codex-kept-pr2034-20261024",
+  "branch": "work/DSN-20261024-kept-pr2034-refresh-P1-T1",
+  "remote_pr2034_head": "a47bb5a17e87401573d24229c4eef17d407aa401",
+  "accepted_main": "d635873e1063efb8a9ff8e8ce542654ed2ef7654",
+  "old_tree_inventory": {
+    "path": "/home/johnclaw/.cache/rtc/codex-kept-pr-refresh-20261024/UNPUSHED_COMMITS.md",
+    "sha256": "8349ca0701bda21adfe09f6c29d86563b8913ab2c595a71ea0a97774a064fbaf",
+    "beyond_remote": 26,
+    "already_on_main": 25,
+    "local_only_merge": "99f3dccae46358c3f92a74a3a9103bc78d6512a2",
+    "mutation": "NONE"
+  },
+  "request": {
+    "path": "/home/johnclaw/.cache/rtc/coordinator-batch21-20261024/kept-pr-refresh.md",
+    "sha256": "61b31b8970d6b91d812d7f41e52faa29c9f6eb15602175b3aad4a6b703fa3142"
+  },
+  "held_classification_claim": "20261024T234040Z-codex-3dc46c4e",
+  "runtime_proof": "NOT_OBSERVED",
+  "dual_write_flag_change": "NONE",
+  "merge_and_tests": "PENDING_NORMAL_HANDOFF"
+}
