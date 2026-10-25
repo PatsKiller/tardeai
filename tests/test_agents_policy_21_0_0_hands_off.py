@@ -135,8 +135,21 @@ def test_ai_work_policy_matches():
     assert "AGENTS.md 21.0.0 §28.15 item 1" in f and "the per-branch budget is 5 authorized pushes" in f
     assert "only the coordinator session" in f and "Operator-approval: <quote or reference>" in f
     assert "the hook allows pushes 1 through 5 on every branch" in f
-    assert "AGENTS.md 21.0.0 (§28.15 items 2, 3 and 7)" in f and "veto window of at least 3 h" in f
+    assert "§28.15 items 2, 3 and 7" in f and "veto window of at least 3 h" in f
     assert "Agents still never merge" in f
+    if _row()[0] == "ACTIVE":
+        assert "binding (21.0.0 ACTIVE)" in f and "PROPOSED, binding only" not in f
     assert "needs no guard `git-push` grant" in f and "AGENTS.md §28.15 item 8" in f
     assert "maximum pushes without explicit operator approval: 2" in POLICY
     assert "20.4.0" not in POLICY
+
+
+def test_ratified_state_is_consistent():
+    if _row()[0] == "ACTIVE":
+        assert re.search(r"^Policy-Version:\s+21\.0\.0$", AGENTS, re.M)
+        assert re.search(r"^Status:\s+ACTIVE$", AGENTS, re.M)
+        assert re.search(r"^Supersedes:\s+20\.3\.0$", AGENTS, re.M)
+        assert re.search(r"^Effective-Date:\s+2026-10-25$", AGENTS, re.M)
+        assert "**21.0.0 is ACTIVE (MAJOR)" in AGENTS
+        for sec in (_design(), _selfheal(), _handsoff()):
+            assert "(21.0.0, ACTIVE)" in sec and re.search(r"APPROVE_AGENTS_POLICY_21_0_0 2128 [0-9a-f]{40}", sec)
