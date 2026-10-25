@@ -71,8 +71,8 @@
         "scripts/check_worker_pins.py",
         "scripts/current_pin_integrity.py",
         "scripts/generate_integrity_manifest.py",
-        "scripts/release_venv.sh",
-        "scripts/ff_dev_tree.sh",
+        "scripts/lib/release_venv.sh",
+        "scripts/lib/ff_dev_tree.sh",
         "migrations/*release_queue*"
       ]
     },

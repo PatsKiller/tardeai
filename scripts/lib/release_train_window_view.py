@@ -560,7 +560,31 @@ def readiness_from_files(
         "current_train": None,
         "last_outcome": None,
         "shadow_coverage": shadow_coverage(state_dir),
+        "stalled": stalled_trains(state_dir),
     }
+
+
+def stalled_trains(state_dir: Path, limit: int = 4) -> list[dict[str, Any]]:
+    """Re-review B2: the newest receipts whose train stalled on unreleased non-eligible commits on main (needs_action
+    code TRAIN_STALLED), so a train that keeps NO_OP-ing for that reason is visible. Read-only; unreadable = []."""
+    d = Path(state_dir) / SPOOL_DIR / RECEIPTS
+    try:
+        names = sorted((n for n in os.listdir(d) if n.endswith(".json") and REQUEST_ID_RE.fullmatch(n[:-5])),
+                       reverse=True)[:MAX_SCAN]
+    except OSError:
+        return []
+    out: list[dict[str, Any]] = []
+    for n in names:
+        rec = _read_json(d / n)
+        if not isinstance(rec, dict):
+            continue
+        hit = [x for x in rec.get("needs_action") or [] if isinstance(x, dict) and x.get("code") == "TRAIN_STALLED"]
+        if hit:
+            out.append({"request_id": rec.get("request_id"), "window_slot": rec.get("window_slot"),
+                        "mode": rec.get("mode"), "text": str(hit[0].get("text") or "")[:160]})
+            if len(out) >= limit:
+                break
+    return out
 
 
 def window_view(

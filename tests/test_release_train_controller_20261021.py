@@ -2101,3 +2101,57 @@ def test_claimer_refuses_a_live_request_the_repo_policy_does_not_schedule():
     assert T.live_policy_refusal(mon12, {**pol, "armed": False})[0] == "NOT_ARMED"
     assert T.live_policy_refusal({**mon12, "window_start": "garbage"}, pol)[0] == "WINDOW_NOT_ENABLED"
     assert {"NOT_ARMED", "WINDOW_NOT_ENABLED"} <= T.REFUSAL_CODES
+
+
+def test_claimer_answer_refuses_a_hand_written_live_request_on_an_unscheduled_slot(tmp_path):
+    """Re-review N3: a hand-written shadow:false request for a slot the repo policy does not schedule that day
+    (Tuesday 09:00, weekend-only) is refused by the claimer itself, before any controller or write."""
+    w = World(tmp_path, slot="0900", now=datetime(2026, 10, 27, 9, 2, tzinfo=ET))
+    req = request(slot="0900", day="20261027", shadow=False, shadow_reason=None)
+    put(w, req)
+    claim(w)
+    r = receipt(w, req["request_id"])
+    assert r["state"] == "REFUSED" and r["mode"] == "live" and r["refusal"]["code"] == "WINDOW_NOT_ENABLED", r
+    assert w.writer.calls == [] and w.host.calls == []
+    assert not (w.state_dir / "capabilities.json").exists()
+
+
+def test_promote_halts_when_current_moved_since_the_unreleased_gate(tmp_path):
+    """Re-review B2: _select gated CURRENT...main from CURRENT's BUILD_SHA; if CURRENT moves (a manual rollback
+    during the CI wait) the promote refuses CURRENT_MOVED_SINCE_SELECT instead of shipping an unclassified range."""
+    w = World(tmp_path)
+    real_merge = w.writer.merge_batch_pr
+
+    def merge_then_rollback(*a, **k):
+        out = real_merge(*a, **k)
+        other = w.host.releases / "older"
+        other.mkdir()
+        (other / "BUILD_SHA").write_text("d" * 40 + "\n")
+        w.host.cur = Path(os.path.realpath(other))
+        return out
+
+    w.writer.merge_batch_pr = merge_then_rollback
+    code, rec, _c = w.run()
+    assert rec["outcome"] == T.MERGED_NOT_LIVE and rec["reason"] == "CURRENT_MOVED_SINCE_SELECT", rec["steps"]
+    assert [d for d in w.deploys() if d[1] in ("prepare", "promote")] == []
+
+
+def test_a_stalled_train_is_visible_on_the_readiness_view(tmp_path):
+    """Re-review B2: a NO_OP on unreleased non-eligible commits writes a TRAIN_STALLED needs_action row, and the
+    readiness view lists it."""
+    from scripts.lib import release_train_controller as RTC
+
+    w = World(tmp_path, now=datetime(2026, 10, 21, 18, 2, tzinfo=ET))
+    _commit_on_main(w, {"scripts/brokers/order_path.py": "x = 1\n"})
+    req = request(shadow=False, shadow_reason=None)
+    put(w, req)
+
+    def factory(live):
+        return w.controller(live=live, classifier=RTC.load_classifier(closure=False))
+
+    T.process_requests(w.state, factory, apply=True, now=lambda: w.clock.t)
+    r = receipt(w, req["request_id"])
+    assert r["outcome"] == "NO_OP" and r["needs_action"][0]["code"] == "TRAIN_STALLED", r
+    assert "BASE_HAS_UNRELEASED_HELD" in r["needs_action"][0]["text"]
+    stalled = T.WV.stalled_trains(w.state_dir)
+    assert stalled and stalled[0]["request_id"] == req["request_id"]

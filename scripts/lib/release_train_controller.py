@@ -143,8 +143,8 @@ PROTECTED_SURFACES = (
     "scripts/check_worker_pins.py",
     "scripts/current_pin_integrity.py",
     "scripts/generate_integrity_manifest.py",
-    "scripts/release_venv.sh",
-    "scripts/ff_dev_tree.sh",
+    "scripts/lib/release_venv.sh",
+    "scripts/lib/ff_dev_tree.sh",
 
     "config/release_train_policy.json",
     # Phase 7 window gates (2026-10-22): the 06:00 drain probe, its policy, and the measured-duration history.
@@ -2386,6 +2386,9 @@ class TrainController:
         bsha = self.host.build_sha(cur) if cur else ""
         if not SHA_RE.match(bsha or ""):
             raise Halt(NO_OP, "BASE_UNRELEASED_UNKNOWN", f"CURRENT BUILD_SHA unreadable ({cur})")
+        # Re-review B2: the promote re-checks CURRENT against this exact from-SHA (a rollback during the CI wait
+        # would otherwise widen the shipped range past what was classified here).
+        self._save_state(base_unreleased_from=bsha)
         if bsha == base:
             rec["base_unreleased"] = {"from": bsha, "to": base, "paths": 0, "class": "eligible"}
             return
@@ -3059,6 +3062,11 @@ class TrainController:
             raise Halt(MERGED_NOT_LIVE, "QUARANTINED_ARTIFACT", merged[:12])
         prev = self.host.current_release()
         prev_sha = self.host.build_sha(prev)
+        gated = self.tstate.get("base_unreleased_from")
+        if not gated or prev_sha != gated:
+            # Re-review B2: CURRENT moved since _select classified CURRENT...main; the range is no longer the gated one.
+            raise Halt(MERGED_NOT_LIVE, "CURRENT_MOVED_SINCE_SELECT",
+                       f"CURRENT BUILD_SHA {str(prev_sha)[:12]} != gated {str(gated)[:12]}; release main by the manual path")
         self._save_state(rollback_target={"release": str(prev), "sha": prev_sha})
         if not SHA_RE.match(prev_sha or ""):
             raise Halt(MERGED_NOT_LIVE, "ROLLBACK_TARGET_UNKNOWN", str(prev))
@@ -3848,6 +3856,10 @@ def _receipt(req: dict, *, state: str, mode: str, now: float, acknowledged_at: O
     if isinstance(wh, dict):
         needs.append({"code": "WOULD_HALT", "pr": None,
                       "text": f"{wh.get('reason')} at {wh.get('at')}: {wh.get('detail') or ''}"[:160]})
+    if str(rec.get("reason") or "").startswith(("BASE_HAS_UNRELEASED_", "BASE_UNRELEASED_UNKNOWN")):
+        # Re-review B2: a train stalled by unreleased non-eligible commits on main is visible (readiness view).
+        needs.append({"code": "TRAIN_STALLED", "pr": None,
+                      "text": f"{rec.get('reason')}: {rec.get('detail') or ''}"[:160]})
     needs += [{"code": "LIVE_WOULD_REFUSE", "pr": None, "text": str(x)[:160]}
               for x in (rec.get("would_refuse") or [])[:8]]
     needs += [{"code": "NOT_RIDING", "pr": int(k), "text": str(v)[:160]} for k, v in
