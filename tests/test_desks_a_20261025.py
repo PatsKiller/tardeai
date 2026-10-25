@@ -274,6 +274,96 @@ def test_agents_run_timeline_reads_producer_journals_by_record_time(tmp_path):
     assert all(s.startswith("SELECT") for s in db.seen)
 
 
+def test_gate_b_placeholder_is_pinned_to_the_producer_text():
+    """desks_a mirrors the sentinel text instead of importing the producer; this pin makes drift fail CI."""
+    import ast
+
+    src = ROOT / "scripts/agent_runtime_live_providers.py"
+    fn = next(n for n in ast.walk(ast.parse(src.read_text(encoding="utf-8")))
+              if isinstance(n, ast.FunctionDef) and n.name == "_build_governed_gateway_provider")
+    errors = [v for d in ast.walk(fn) if isinstance(d, ast.Dict)
+              for k, v in zip(d.keys, d.values) if isinstance(k, ast.Constant) and k.value == "error"]
+    assert len(errors) == 1 and isinstance(errors[0], ast.Constant), "Gate-B sentinel no longer returns one literal error"
+    assert errors[0].value == desk.GATE_B_PLACEHOLDER
+    assert desk.run_model_state({"model_error": desk.GATE_B_PLACEHOLDER}) == "gate_b"
+    assert desk.run_model_state({"model_error": desk.GATE_B_PLACEHOLDER[:-1]}) == "error"
+    assert desk.run_model_state({"model_error": "PROVIDER_BLOCKED: fixture"}) == "error"
+    assert desk.run_model_state({"model_error": None}) == desk.run_model_state({}) == "none"
+
+
+def gate_b_journals(tmp_path, *, shadow_runs=3):
+    """alex/morgan carry the Gate-B placeholder (retrieval_count 0); steph records a real model error."""
+    journals = tmp_path / "data/runtime/agent_runtime_journals"
+    for agent in ("alex", "morgan"):
+        for i in range(shadow_runs):
+            write(journals / f"{agent}/{agent}-g{i}.jsonl", json.dumps({
+                "run_id": f"{agent}-g{i}", "agent_id": agent, "job_type": "wake_event_bus", "environment": "shadow",
+                "retrieval_count": 0, "model_error": desk.GATE_B_PLACEHOLDER, "authority": "READ_ONLY_ADVISORY",
+                "ts": (NOW - timedelta(minutes=15 * (i + 1))).strftime("%Y-%m-%dT%H:%M:%SZ")}) + "\n")
+    write(journals / "alex/alex-old.jsonl", json.dumps({"run_id": "alex-old", "agent_id": "alex", "job_type": "wake_event_bus",
+                                                        "retrieval_count": 0, "model_error": desk.GATE_B_PLACEHOLDER,
+                                                        "ts": (NOW - timedelta(hours=30)).strftime("%Y-%m-%dT%H:%M:%SZ")}) + "\n")
+    write(journals / "steph/steph-err.jsonl", json.dumps({"run_id": "steph-err", "agent_id": "steph", "job_type": "review",
+                                                          "retrieval_count": 4, "model_error": "TimeoutError: provider fixture",
+                                                          "ts": (NOW - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ")}) + "\n")
+    return journals
+
+
+def test_agents_gate_b_runs_are_neutral_and_real_errors_stay_red(tmp_path):
+    gate_b_journals(tmp_path)
+    out = desk.agents_payload(root=tmp_path, db_query=None, now=NOW, states=REG)
+    tl = panel(out, "runtime", "timeline")
+    # 8 newest: 1 real error + 7 Gate-B; the 30 h-old alex run is in the timeline but outside the 24 h window.
+    assert row(tl, "run-total")["value"] == "8"
+    gate = row(tl, "run-gate-b")
+    assert gate["label"] == "No model by design" and gate["tone"] == "info"
+    assert gate["value"] == "7 of 8 newest runs"
+    assert gate["detail"]["title"] == desk.GATE_B_STATE
+    fields = {f["label"]: f["value"] for f in gate["detail"]["fields"]}
+    assert fields["Provider contacted"] == "no" and fields["Recorded text"] == desk.GATE_B_PLACEHOLDER
+    assert fields["alex · last 24 h"] == "3 runs · 3 no model · 3 with retrieval_count 0"
+    assert fields["morgan · last 24 h"] == "3 runs · 3 no model · 3 with retrieval_count 0"
+    assert "steph · last 24 h" not in fields
+    # Only the real error is red and counted as a model error.
+    assert row(tl, "run-steph-err")["tone"] == "bad"
+    assert {row(tl, f"run-{a}-g0")["tone"] for a in ("alex", "morgan")} == {"info"}
+    assert tl["gap"] == "1 of the 8 newest runs recorded a model error."
+    shadow = {f["label"]: f["value"] for f in row(tl, "run-morgan-g0")["detail"]["fields"]}
+    assert shadow["Model"] == desk.GATE_B_STATE and "Model error" not in shadow
+    real = {f["label"]: f["value"] for f in row(tl, "run-steph-err")["detail"]["fields"]}
+    assert real["Model error"] == "TimeoutError: provider fixture"
+    decisions = {d["id"]: d for d in out["decisions"]}
+    assert decisions["runs-model-error"]["title"] == "1 recent agent run recorded a model error"
+    gd = decisions["runs-gate-b-shadow"]
+    assert gd["title"] == "tradeai-agent-runtime@{alex,morgan} timers: 6 runs in the last 24 h, no model by design"
+    assert "6 of these runs carry the Gate-B placeholder" in gd["detail"] and "6 recorded retrieval_count 0" in gd["detail"]
+    assert "pause or slow these timers, or to wire these agents to the CIO governed bridge" in gd["detail"]
+    assert gd["href"] == "/agents?tab=runtime&detail=timeline:run-gate-b"
+    for word in ("recommend", "should", "suggest"):
+        assert word not in gd["detail"].lower()
+
+
+def test_agents_all_gate_b_is_not_a_model_error(tmp_path):
+    journals = gate_b_journals(tmp_path)
+    (journals / "steph/steph-err.jsonl").unlink()
+    out = desk.agents_payload(root=tmp_path, db_query=None, now=NOW, states=REG)
+    tl = panel(out, "runtime", "timeline")
+    assert tl["gap"] is None
+    assert "runs-model-error" not in {d["id"] for d in out["decisions"]}
+    assert not [r for r in tl["rows"] if r["tone"] == "bad"]
+    assert "model error" not in json.dumps(out["decisions"]).lower()
+
+
+def test_desks_a_fixture_agents_projection_shows_neutral_and_red_runs():
+    fixture = json.loads((ROOT / "apps/command-center-v3/e2e/fixtures/desksA.fixture.json").read_text(encoding="utf-8"))
+    agents = fixture["projections"]["agents"]
+    tl = panel(agents, "runtime", "timeline")
+    assert row(tl, "run-gate-b")["tone"] == "info"
+    assert any(r["tone"] == "bad" for r in tl["rows"]) and any(r["tone"] == "info" and r["id"] != "run-gate-b" for r in tl["rows"])
+    assert {"runs-model-error", "runs-gate-b-shadow"} <= {d["id"] for d in agents["decisions"]}
+    assert desk.GATE_B_PLACEHOLDER in json.dumps(agents)
+
+
 def test_agents_missing_stores_are_gaps(tmp_path):
     out = desk.agents_payload(root=tmp_path, db_query=None, now=NOW, states=None)
     assert panel(out, "runtime", "timeline")["gap"] == "The agent run journals are not on file."

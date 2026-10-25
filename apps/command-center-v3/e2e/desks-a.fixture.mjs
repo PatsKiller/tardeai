@@ -166,9 +166,29 @@ try {
     await expect(sheet).toContainText('PROVIDER_BLOCKED: fixture')
     await shot('4', 'run-detail')
     await back(sheet)
+    // Gate-B placeholder runs are "no model by design" (neutral); a real model error stays red.
+    const GATE_B = 'No model by design (Gate-B: reasoning goes through the CIO governed bridge)'
+    const valueColor = async name => timeline.getByRole('button', { name }).locator('span').last().evaluate(el => getComputedStyle(el).color)
+    const red = await page.getByTestId('desk-panel-runtime').getByText('Failed (24 h)').locator('xpath=..').locator('span').last().evaluate(el => getComputedStyle(el).color)
+    assert.equal(await valueColor(/steph · review/), red, 'A real model error must render red')
+    for (const name of [/alex · wake event bus/, /morgan · wake event bus/, /No model by design/]) assert.notEqual(await valueColor(name), red, `Gate-B run must not render red: ${name}`)
+    await expect(timeline.getByRole('note')).toHaveText('1 of the 3 newest runs recorded a model error.')
+    sheet = await openSheet(timeline.getByRole('button', { name: /alex · wake event bus/ }), 'alex run alex-aaa')
+    await expect(sheet).toContainText(GATE_B)
+    await expect(sheet).not.toContainText('Model error')
+    await back(sheet)
+    const decisionsBox = page.getByRole('region', { name: 'Decisions for you' })
+    await expect(decisionsBox).toContainText('1 recent agent run recorded a model error')
+    await expect(decisionsBox).toContainText('The choice is to pause or slow these timers, or to wire these agents to the CIO governed bridge.')
+    sheet = await openSheet(decisionsBox.getByRole('link', { name: 'tradeai-agent-runtime@{alex,morgan} timers: 2 runs in the last 24 h, no model by design' }), GATE_B)
+    assert.equal(new URL(page.url()).searchParams.get('detail'), 'timeline:run-gate-b')
+    await expect(sheet).toContainText('Provider contacted')
+    await expect(sheet).toContainText('alex · last 24 h')
+    await shot('4', 'gate-b-detail')
+    await back(sheet)
     await page.goto(`${ORIGIN}/v3/agents?tab=evidence`)
     await expect(page.getByRole('navigation', { name: 'Agents views' }).getByRole('button', { name: 'Learning', exact: true })).toHaveAttribute('aria-pressed', 'true')
-    flows.push('agents: workflow alias, runtime run detail + Back, evidence merged into learning')
+    flows.push('agents: workflow alias, runtime run detail + Back, Gate-B runs neutral vs real error red, Gate-B decision link → sheet + Back, evidence merged into learning')
 
     state = 'unavailable'
     for (const [board, url, title] of [['1', '/v3/portfolio/re-entry', 'Re-Entry'], ['2', '/v3/strategy', 'Strategy'], ['3', '/v3/defense', 'Defense'], ['4', '/v3/agents', 'Agents']]) {

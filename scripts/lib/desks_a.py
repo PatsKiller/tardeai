@@ -720,6 +720,26 @@ AGENTS_LANES = {
 TAIL_BYTES = 2 * 1024 * 1024
 JOURNAL_SCAN_LIMIT = 250_000
 MEMORY_READ_LIMIT = 32 * 1024 * 1024
+# Day-volume window over the run journals: file mtime picks candidates (with slack), the record ``ts`` decides.
+RUN_WINDOW_HOURS = 24
+RUN_WINDOW_OPEN_LIMIT = 10_000
+
+# Gate-B sentinel. Mirrors the "error" text returned by ``_build_governed_gateway_provider`` in
+# scripts/agent_runtime_live_providers.py (not imported: this module stays side-effect free).
+# tests/test_desks_a_20261025.py pins the two texts together, so a drift fails CI.
+# A run carrying exactly this text never contacted a provider: it is "no model by design", not a model error.
+GATE_B_PLACEHOLDER = ("PROVIDER_BLOCKED: Financial agent must route through governed gateway. "
+                      "Direct provider calls removed in Gate-B.")
+GATE_B_STATE = "No model by design (Gate-B: reasoning goes through the CIO governed bridge)"
+RUN_TIMER_UNIT = "tradeai-agent-runtime@"
+
+
+def run_model_state(run: dict) -> str:
+    """``none`` (no model error), ``gate_b`` (the Gate-B placeholder, exact text) or ``error`` (a real model error)."""
+    err = run.get("model_error")
+    if not err:
+        return "none"
+    return "gate_b" if str(err).strip() == GATE_B_PLACEHOLDER else "error"
 
 
 def _tail_records(path: Path, limit: int = TAIL_BYTES) -> tuple[list[dict], str | None]:
@@ -748,7 +768,7 @@ def _tail_records(path: Path, limit: int = TAIL_BYTES) -> tuple[list[dict], str 
     return out, None
 
 
-def run_timeline(journal_root: Path, *, limit: int = MAX_ROWS) -> dict:
+def run_timeline(journal_root: Path, *, limit: int = MAX_ROWS, now: datetime | None = None) -> dict:
     """Run timeline from the producers' own journals.
 
     Board 4 fix: live runtime producers write one JSONL per run under
@@ -759,7 +779,7 @@ def run_timeline(journal_root: Path, *, limit: int = MAX_ROWS) -> dict:
     """
     root = Path(journal_root)
     if not root.is_dir():
-        return {"runs": [], "count": None, "by_agent": {}, "newest": None,
+        return {"runs": [], "count": None, "by_agent": {}, "newest": None, "window": None,
                 "gap": "The agent run journals are not on file."}
     entries, by_agent, scanned = [], {}, 0
     try:
@@ -779,7 +799,7 @@ def run_timeline(journal_root: Path, *, limit: int = MAX_ROWS) -> dict:
                         continue
             by_agent[agent_dir.name] = n
     except OSError as exc:
-        return {"runs": [], "count": None, "by_agent": {}, "newest": None,
+        return {"runs": [], "count": None, "by_agent": {}, "newest": None, "window": None,
                 "gap": f"The agent run journals could not be listed ({type(exc).__name__})."}
     entries.sort(key=lambda e: e[0], reverse=True)
     runs = []
@@ -790,8 +810,37 @@ def run_timeline(journal_root: Path, *, limit: int = MAX_ROWS) -> dict:
             runs.append(row)
     runs.sort(key=lambda r: _time(r.get("ts")), reverse=True)
     return {"runs": runs[:limit], "count": sum(by_agent.values()), "by_agent": by_agent,
-            "newest": runs[0].get("ts") if runs else None,
+            "newest": runs[0].get("ts") if runs else None, "window": _run_window(entries, now),
             "gap": "Journal scan stopped at the listing limit; counts are partial." if scanned > JOURNAL_SCAN_LIMIT else None}
+
+
+def _run_window(entries: list[tuple[float, Path]], now: datetime | None) -> dict:
+    """Per-agent run volume over the last RUN_WINDOW_HOURS by record ``ts``.
+
+    File mtime only picks candidates (with 2 h slack); each candidate's own ``ts`` decides membership.
+    Counts per agent: runs, Gate-B placeholder runs, real model errors, and runs with retrieval_count 0.
+    """
+    now = now or datetime.now(timezone.utc)
+    start = now - timedelta(hours=RUN_WINDOW_HOURS)
+    cutoff = (start - timedelta(hours=2)).timestamp()
+    candidates = [f for mtime, f in entries if mtime >= cutoff]
+    agents: dict[str, dict[str, int]] = {}
+    for f in candidates[:RUN_WINDOW_OPEN_LIMIT]:
+        rows, _gap = _tail_records(f, 64 * 1024)
+        for r in rows:
+            at = _time(r.get("ts"))
+            if not at or not (start < at <= now):
+                continue
+            a = agents.setdefault(str(r.get("agent_id") or f.parent.name),
+                                  {"runs": 0, "gate_b": 0, "error": 0, "no_retrieval": 0})
+            a["runs"] += 1
+            state = run_model_state(r)
+            if state != "none":
+                a[state] += 1
+            if _num(r.get("retrieval_count")) == 0:
+                a["no_retrieval"] += 1
+    return {"hours": RUN_WINDOW_HOURS, "agents": dict(sorted(agents.items())),
+            "partial": len(candidates) > RUN_WINDOW_OPEN_LIMIT}
 
 
 def _memory_summary(path: Path, admissions: Path, now: datetime) -> dict:
@@ -825,6 +874,55 @@ def _memory_summary(path: Path, admissions: Path, now: datetime) -> dict:
             "admitted_today_partial": bool(adm) and not adm_gap}
 
 
+RUN_SOURCE = "data/runtime/agent_runtime_journals/<agent>/<run_id>.jsonl (agent_runtime_live_providers)"
+GATE_B_SOURCE = ("scripts/agent_runtime_live_providers.py _build_governed_gateway_provider (Gate-B placeholder); "
+                 "counts from data/runtime/agent_runtime_journals record ts, model_error, retrieval_count")
+
+
+def _run_row(r: dict) -> dict:
+    state = run_model_state(r)
+    model = ([("Model", GATE_B_STATE), ("Recorded placeholder", r.get("model_error"))] if state == "gate_b"
+             else [("Model error", r.get("model_error") or "none recorded")])
+    return _row(f"run-{r.get('run_id')}", f"{r.get('agent_id')} · {str(r.get('job_type') or '').replace('_', ' ')}",
+                _date(r.get("ts")), {"error": "bad", "gate_b": "info"}.get(state),
+                detail=_detail(f"{r.get('agent_id')} run {r.get('run_id')}", [
+                    ("Agent", r.get("agent_id")), ("Job", r.get("job_type")), ("Objective", r.get("objective")),
+                    ("Environment", r.get("environment")), ("Retrievals", r.get("retrieval_count")),
+                    *model, ("Run time", _date(r.get("ts"))), ("Authority", r.get("authority"))], RUN_SOURCE))
+
+
+def _gate_b_units(agents: dict) -> str:
+    names = sorted(agents)
+    return f"{RUN_TIMER_UNIT}{names[0]}" if len(names) == 1 else f"{RUN_TIMER_UNIT}{{{','.join(names)}}}"
+
+
+def _gate_b_row(n: int, of: int, agents: dict, window: dict) -> dict:
+    hours = window.get("hours") or RUN_WINDOW_HOURS
+    fields = [("State", GATE_B_STATE), ("Recorded text", GATE_B_PLACEHOLDER), ("Provider contacted", "no"),
+              ("Newest runs with this state", f"{n} of {of}")]
+    for a, c in agents.items():
+        fields.append((f"{a} · last {hours} h", f"{_plural(c['runs'], 'run')} · {c['gate_b']:,} no model · "
+                                                f"{c['no_retrieval']:,} with retrieval_count 0"))
+    if window.get("partial"):
+        fields.append(("Coverage", f"partial: the window opened the newest {RUN_WINDOW_OPEN_LIMIT:,} journal files"))
+    return _row("run-gate-b", "No model by design", f"{n} of {of} newest runs", "info",
+                detail=_detail(GATE_B_STATE, fields, GATE_B_SOURCE))
+
+
+def _gate_b_decision(agents: dict, window: dict) -> dict:
+    hours = window.get("hours") or RUN_WINDOW_HOURS
+    runs = sum(c["runs"] for c in agents.values())
+    gate_b = sum(c["gate_b"] for c in agents.values())
+    empty = sum(c["no_retrieval"] for c in agents.values())
+    partial = " Counts are partial (journal open limit reached)." if window.get("partial") else ""
+    return {"id": "runs-gate-b-shadow",
+            "title": f"{_gate_b_units(agents)} timers: {_plural(runs, 'run')} in the last {hours} h, no model by design",
+            "detail": (f"{gate_b:,} of these runs carry the Gate-B placeholder: no provider is contacted and no AI finding is "
+                       f"produced; {empty:,} recorded retrieval_count 0. The choice is to pause or slow these timers, or to "
+                       f"wire these agents to the CIO governed bridge.{partial}"),
+            "href": "/agents?tab=runtime&detail=timeline:run-gate-b"}
+
+
 def agents_payload(*, root: Path, db_query: DbQuery | None = None, now: datetime | None = None,
                    states: dict | None = None, data_root: Path | None = None) -> dict:
     """Board 4. ``data_root`` is the tree holding data/ (defaults to ``root``)."""
@@ -842,24 +940,22 @@ def agents_payload(*, root: Path, db_query: DbQuery | None = None, now: datetime
     j = (jobs or [{}])[0]
     runtime_registered = [l for l in (states or {}) if l.startswith("tradeai-agent-runtime-")]
     runtime_active = [l for l in runtime_registered if (states or {}).get(l) == "ACTIVE"]
-    timeline = run_timeline(data / "runtime" / "agent_runtime_journals")
+    timeline = run_timeline(data / "runtime" / "agent_runtime_journals", now=now)
     runtime_rows = [
         _row("rt-done", "Jobs completed (24 h)", _count(j.get("completed")) if jobs else GAP_NOT_ON_FILE),
         _row("rt-failed", "Failed (24 h)", _count(j.get("failed")) if jobs else GAP_NOT_ON_FILE, "bad" if (_num(j.get("failed")) or 0) > 0 else None),
         _row("rt-queued", "Queued (24 h)", _count(j.get("queued")) if jobs else GAP_NOT_ON_FILE),
         _row("rt-catalog", "Agent runtime lanes", f"{len(runtime_registered)} registered · {len(runtime_active)} active" if states else GAP_NOT_ON_FILE),
     ]
-    run_rows = [_row(f"run-{r.get('run_id')}", f"{r.get('agent_id')} · {str(r.get('job_type') or '').replace('_', ' ')}",
-                     _date(r.get("ts")), "bad" if r.get("model_error") else None,
-                     detail=_detail(f"{r.get('agent_id')} run {r.get('run_id')}", [
-                         ("Agent", r.get("agent_id")), ("Job", r.get("job_type")), ("Objective", r.get("objective")),
-                         ("Environment", r.get("environment")), ("Retrievals", r.get("retrieval_count")),
-                         ("Model error", r.get("model_error") or "none recorded"), ("Run time", _date(r.get("ts"))),
-                         ("Authority", r.get("authority"))],
-                         "data/runtime/agent_runtime_journals/<agent>/<run_id>.jsonl (agent_runtime_live_providers)"))
-                for r in timeline["runs"]]
+    run_rows = [_run_row(r) for r in timeline["runs"]]
     run_rows.insert(0, _row("run-total", "Runs on file", _count(timeline["count"]) if timeline["count"] is not None else GAP_NOT_ON_FILE))
-    blocked = sum(1 for r in timeline["runs"] if r.get("model_error"))
+    states_newest = [run_model_state(r) for r in timeline["runs"]]
+    blocked = states_newest.count("error")
+    gate_b = states_newest.count("gate_b")
+    window = timeline.get("window") or {}
+    gate_b_agents = {a: c for a, c in (window.get("agents") or {}).items() if c["gate_b"]}
+    if gate_b:
+        run_rows.insert(1, _gate_b_row(gate_b, len(timeline["runs"]), gate_b_agents, window))
     timeline_gap = timeline["gap"] or (f"{blocked} of the {len(timeline['runs'])} newest runs recorded a model error." if blocked else None)
 
     cal = _select(db_query, """SELECT DISTINCT ON (agent_name) agent_name, brier_score, accuracy, resolved, low_sample_size, created_at
@@ -943,6 +1039,8 @@ def agents_payload(*, root: Path, db_query: DbQuery | None = None, now: datetime
     if blocked:
         decisions.append({"id": "runs-model-error", "title": f"{_plural(blocked, 'recent agent run')} recorded a model error",
                           "detail": "Open a run in the Run timeline for the recorded error."})
+    if gate_b_agents:
+        decisions.append(_gate_b_decision(gate_b_agents, window))
     tabs = {
         "runtime": {"panels": [
             _panel("runtime", "Runtime", runtime_rows, sub="pipeline, last 24 h", span=2, gap=None if jobs else "Agent jobs could not be read."),
