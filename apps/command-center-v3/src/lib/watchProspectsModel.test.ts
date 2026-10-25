@@ -95,8 +95,9 @@ ok('step tooltip: you size it', /you size it/.test(TOOLTIPS.step))
 const paged = { ...P, lane_membership: Object.fromEntries(P.lanes.flatMap(l => [...l.items.map(r => [r.symbol, l.id]), ...l.overflow.map(sym => [sym, l.id])])),
   conflict_count: conflictCount(P), lanes: P.lanes.map(l => ({ ...l, items: [], overflow: [] })) }
 const pagedTies = tieAlerts(paged, FIX.alerts)
-eq('paging does not manufacture orphaned alerts', pagedTies.orphans.map(a => a.symbol), T.orphans.map(a => a.symbol))
+eq('paging does not manufacture orphaned alerts', pagedTies.orphans.map(a => a.alert.symbol), T.orphans.map(a => a.alert.symbol))
 eq('paging retains full curated conflict count', conflictCount(paged), conflictCount(P))
+eq('missing canonical conflict check stays unknown', headerChips({ ...paged, conflict_count: null }).find(c => c.key === 'conflicts')?.value, 'check unavailable')
 
 if (failed) { console.error(`watchProspectsModel: ${failed} failure(s)`); process.exit(1) }
 console.log('watchProspectsModel: all checks passed')

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { TOKENS } from '../lib/designTokens'
+import { RADIUS, TOKENS } from '../lib/designTokens'
 
 export type ListPage = { offset: number; returned: number; total: number; next_offset: number | null; has_more: boolean }
 
@@ -16,7 +16,7 @@ export default function ListPager({ page, previous, next, busy, gap }: {
   page?: ListPage; previous: () => void; next: (offset: number) => void; busy?: boolean; gap?: { reason: string }
 }) {
   if (!page) return null
-  const style = { color: TOKENS.text[1], background: TOKENS.bg[2], border: `1px solid ${TOKENS.border}`, borderRadius: 4, minHeight: 44, minWidth: 44, padding: '4px 10px', cursor: 'pointer' }
+  const style = { color: TOKENS.text[1], background: TOKENS.bg[2], border: `1px solid ${TOKENS.border}`, borderRadius: RADIUS.sm, minHeight: 44, minWidth: 44, padding: '4px 10px', cursor: 'pointer' }
   return <div aria-label="List pages" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', padding: '8px 0', fontSize: 11 }}>
     <button type="button" style={style} disabled={busy || page.offset === 0} onClick={previous}>Previous</button>
     <span>{page.returned ? `${page.offset + 1}–${page.offset + page.returned}` : 'No rows'} of {page.total}</span>

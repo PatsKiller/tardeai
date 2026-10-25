@@ -71,7 +71,8 @@ export type ProspectsPayload = {
   lanes: Lane[]
   counts: Record<string, number>
   lane_membership?: Record<string, LaneId>
-  conflict_count?: number
+  conflict_count?: number | null
+  conflict_count_scope?: string
 }
 export type WatchAlert = {
   id: number
@@ -244,7 +245,7 @@ export type Chip = { key: string; label: string; value: string; tone: 'success' 
 export function headerChips(p: ProspectsPayload): Chip[] {
   const held = p.sources?.held || {}
   const conv = p.sources?.conviction || {}
-  const nConf = conflictCount(p)
+  const nConf = p.conflict_count === null ? null : conflictCount(p)
   return [
     {
       key: 'source', label: 'Source', value: p.interim ? p.source_label : 'CIO prospect record · 1 writer',
@@ -255,7 +256,7 @@ export function headerChips(p: ProspectsPayload): Chip[] {
       key: 'holdings', label: 'Holdings', value: `${held.source || 'unknown'}${held.stale ? ' · stale' : ''}`,
       tone: held.stale ? 'danger' : 'success', tip: TOOLTIPS.holdings,
     },
-    { key: 'conflicts', label: 'Conflicts', value: p.conflict_count != null ? `${nConf} across curated prospects` : `${nConf} shown, not hidden`, tone: nConf ? 'warning' : 'neutral', tip: TOOLTIPS.conflicts },
+    { key: 'conflicts', label: 'Conflicts', value: nConf == null ? 'check unavailable' : p.conflict_count_scope === 'flagged_names_on_page' ? `${nConf} flagged names on this page` : p.conflict_count != null ? `${nConf} across curated prospects` : `${nConf} shown, not hidden`, tone: nConf == null || nConf ? 'warning' : 'neutral', tip: TOOLTIPS.conflicts },
   ]
 }
 

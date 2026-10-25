@@ -318,3 +318,35 @@ def test_broker_summary_is_stored_and_malformed_cache_is_explicit(tmp_path):
     path.write_text('["not a cache mapping"]')
     assert reads.read_broker_summary(tmp_path, now=NOW)["total"] is None
     assert reads.read_broker_list(tmp_path, now=NOW)["cache_status"] == "unavailable"
+
+
+def test_conflict_sections_one_batch_confirmed_guids_only_and_unchanged(tmp_path):
+    section = {"findings": [{"key": "engine-key", "sides": [{"source": "owner", "value": 0}]}],
+               "headline": "Engine supplied headline", "gap": None}
+    calls = []
+    def reader(root, guids):
+        calls.append((root, guids))
+        return {"guid-a": section}
+    rows = [{"symbol": "A", "security_guid": "guid-a", "identity_status": "CONFIRMED"},
+            {"symbol": "B", "security_guid": "guid-a", "identity_status": "CONFIRMED"},
+            {"symbol": "C", "security_guid": "guess", "identity_status": "UNRESOLVED_WITH_REASON"}]
+    out = reads.attach_conflict_sections(rows, reader=reader, root=tmp_path)
+    assert calls == [(tmp_path, ["guid-a"])]
+    assert out[0]["conflict_section"] is section and out[1]["conflict_section"] is section
+    assert "conflict_section" not in rows[0]
+    assert out[2]["conflict_section_gap"]["reason"]
+    assert reads._flagged_name_count(out[:2]) == 1
+    assert reads._flagged_name_count(out) is None
+
+
+def test_prospect_conflict_batch_only_fetches_requested_window(tmp_path):
+    rows = [{"symbol": f"T{i}", "security_guid": f"guid-{i}", "identity_status": "CONFIRMED", "lane": "forming"} for i in range(300)]
+    calls = []
+    def reader(root, guids):
+        calls.append(guids)
+        return {g: {"headline": None, "gap": None, "findings": []} for g in guids}
+    page = reads.prospects_page({"lanes": [{"id": "forming", "count": 300, "items": rows}]},
+        {"lane": "forming", "offset": 50, "limit": 25}, section_reader=reader, section_root=tmp_path)
+    assert len(calls) == 1 and set(calls[0]) == {f"guid-{i}" for i in range(50, 75)}
+    assert page["conflict_count"] == 0 and page["conflict_count_scope"] == "flagged_names_on_page"
+    assert page["pagination"]["total"] == 300

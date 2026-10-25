@@ -228,7 +228,47 @@ def canonical_rows(rows, *, resolver=None, projection=None):
     return out
 
 
-def prospects_page(payload, query=None, *, stance_resolver=None, stance_projection=None):
+def attach_conflict_sections(rows, *, reader=None, root=None):
+    """One accepted W10 batch read; sections are forwarded byte-for-byte in shape.
+
+    This consumer never classifies a value, chooses a headline, changes a finding
+    or makes per-row HTTP requests. An unavailable dependency is not "no flags".
+    """
+    guids = sorted({str(r["security_guid"]) for r in rows if r.get("security_guid")
+                    and r.get("identity_status") == "CONFIRMED"})
+    sections, gap = {}, None
+    if guids:
+        try:
+            if reader is None:
+                from .conflicts.api import sections_for_guids
+                reader = sections_for_guids
+            if root is None:
+                from .lane_registry import state_root
+                root = state_root()
+            sections = reader(root, guids)
+        except (ImportError, OSError, ValueError):
+            gap = "Conflict batch reader unavailable"
+    out = []
+    for row in rows:
+        r = dict(row)
+        guid = str(row.get("security_guid") or "")
+        if guid in sections and row.get("identity_status") == "CONFIRMED":
+            r["conflict_section"] = sections[guid]
+            r.pop("conflict_section_gap", None)
+        else:
+            r["conflict_section_gap"] = {"reason": gap or "Confirmed conflict section unavailable for this security"}
+        out.append(r)
+    return out
+
+
+def _flagged_name_count(rows):
+    if any(r.get("conflict_section_gap") or not isinstance(r.get("conflict_section"), dict)
+           or r["conflict_section"].get("gap") for r in rows):
+        return None
+    return len({r["security_guid"] for r in rows if r["conflict_section"].get("headline")})
+
+
+def prospects_page(payload, query=None, *, stance_resolver=None, stance_projection=None, section_reader=None, section_root=None):
     lane = str(value(query, "lane", "actionable"))
     lanes = payload.get("lanes") or []
     if lane not in {r.get("id") for r in lanes}:
@@ -237,8 +277,7 @@ def prospects_page(payload, query=None, *, stance_resolver=None, stance_projecti
     canonical = canonical_rows(records, resolver=stance_resolver, projection=stance_projection)
     resolved = iter(canonical)
     membership = {}
-    out = {**payload, "lanes": [], "conflict_count": sum(len(r.get("conflicts") or []) for r in canonical if r.get("lane") != "expired"),
-           "conflict_count_scope": "curated_window_all_pages"}
+    out = {**payload, "lanes": [], "conflict_count": None, "conflict_count_scope": "flagged_names_on_page"}
     selected = []
     for item in lanes:
         item = {**item, "items": [next(resolved) for _ in item.get("items") or []]}
@@ -249,10 +288,14 @@ def prospects_page(payload, query=None, *, stance_resolver=None, stance_projecti
             selected = item["items"]
         out["lanes"].append({**item, "items": []})
     out["lane_membership"] = membership
-    paged = page_rows({**out, "_items": selected}, "_items", query, budget=POLL_BUDGET - 1_000)
+    offset, limit = window(query)
+    attached = attach_conflict_sections(selected[offset:offset + limit], reader=section_reader, root=section_root)
+    paged = page_rows({**out, "_items": attached}, "_items", query, budget=POLL_BUDGET - 1_000,
+                      total=len(selected), source_offset=offset)
     if "lanes" not in paged:
         return {"ok": False, "status": "unavailable", "payload_gap": paged.get("payload_gap")}
     rows = paged.pop("_items")
+    paged["conflict_count"] = None if paged.get("payload_gap") else _flagged_name_count(rows)
     for item in paged["lanes"]:
         if item.get("id") == lane:
             item["items"] = rows
@@ -261,7 +304,7 @@ def prospects_page(payload, query=None, *, stance_resolver=None, stance_projecti
     return paged
 
 
-def read_curation(query=None, *, stance_resolver=None, stance_projection=None):
+def read_curation(query=None, *, stance_resolver=None, stance_projection=None, section_reader=None, section_root=None):
     """Validate stages BEFORE ranking so expired names never consume suggestion slots."""
     from .data_broker.watch_prospects import gather
     from .data_broker.watch_curation import build_curation, read_dismissed
@@ -312,6 +355,19 @@ def read_curation(query=None, *, stance_resolver=None, stance_projection=None):
             out[section]["rows"] = []
         else:
             out[section] = page_rows(data, "rows", query, budget=210_000)
+    emitted = out["my_watchlist"]["rows"] + out["suggests"]["rows"]
+    attached = attach_conflict_sections(emitted, reader=section_reader, root=section_root)
+    n_mine = len(out["my_watchlist"]["rows"])
+    for section, rows in (("my_watchlist", attached[:n_mine]), ("suggests", attached[n_mine:])):
+        data = out[section]
+        if "pagination" not in data:
+            continue
+        meta = data["pagination"]
+        data = page_rows({**data, "rows": rows}, "rows", query, budget=210_000,
+                         total=meta["total"], source_offset=meta["offset"])
+        data["conflict_count"] = None if data.get("payload_gap") else _flagged_name_count(data["rows"])
+        data["conflict_count_scope"] = "flagged_names_on_page"
+        out[section] = data
     if encoded_size(out) > POLL_BUDGET:
         return {"schema": out.get("schema"), "ok": False, "status": "unavailable",
                 "payload_gap": {"reason": "metadata_exceeds_payload_budget"}}

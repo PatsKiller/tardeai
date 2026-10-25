@@ -37,7 +37,7 @@
   .watch-record-card, .watch-card-header { min-width: 1120px; }
 }
 @media (max-width: 820px) {
-  .watch-card-detail { position: fixed !important; inset: 0 !important; width: 100% !important; max-width: none !important; border-radius: 0 !important; z-index: 1200; padding: 16px; overscroll-behavior: contain; }
+  .watch-card-detail { position: fixed !important; inset: 0 !important; width: 100% !important; max-width: none !important; border-radius: var(--radius-sm) !important; z-index: 1200; padding: 16px; overscroll-behavior: contain; }
   .watch-card-detail[data-open="false"] { display: none; }
   [data-testid="watch-my-list"] button, [data-testid="watch-prospects"] button,
   [data-testid="watch-suggests"] button, [data-testid="watch-my-list"] select,
