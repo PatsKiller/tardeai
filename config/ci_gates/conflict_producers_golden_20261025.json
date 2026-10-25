@@ -6,7 +6,8 @@
     "tests/test_conflict_producer_registry_20261025.py",
     "tests/test_conflict_watch_source_20261025.py",
     "tests/test_conflict_golden_replay_20261025.py",
-    "tests/test_conflict_entry_plan_time_20261025.py"
+    "tests/test_conflict_entry_plan_time_20261025.py",
+    "tests/test_fixture_privacy_guard_20261025.py"
   ],
   "anchor": "CONFLICT_PRODUCERS_GOLDEN_20261025",
   "comment": [

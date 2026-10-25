@@ -13,7 +13,9 @@ from a day's real state instead. Inputs are files the operator (or an agent) cap
   --state-root DIR         identity registry reads only (scripts/lib/identity_carriage.resolve_security_identity)
 
 Every subject keeps the producer rows the resolver's adapters read (truth, card fields, re-entry row), so the replay
-runs adapters + producer registry + engine exactly as scripts/conflict_resolver.py does. Nothing here calls a broker,
+runs adapters + producer registry + engine exactly as scripts/conflict_resolver.py does. The output holds portfolio
+facts (held symbols, accounts, weights): it is written outside the repository only (persistent-state/data/conflicts/
+golden/, chmod 600) and the public fixture is its scripts/conflict_golden_anonymize.py twin. Nothing here calls a broker,
 a model or a sender; nothing writes except --out. Never point --state-root at a .env or credential file.
 """
 from __future__ import annotations
@@ -30,7 +32,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 SCHEMA = "ConflictGoldenFixture@v1"
-NO_CONSUMER_REASON = "operator/agent capture CLI; its output is read by tests/test_conflict_golden_replay_20261025.py"
+NO_CONSUMER_REASON = "operator/agent capture CLI; its private output feeds scripts/conflict_golden_anonymize.py"
 CARD_FIELDS = ("symbol", "security_guid", "trade_ai_state", "trade_ai_as_of")
 TRUTH_FIELDS = ("security_guid", "symbol", "canonical", "conviction", "context", "protection_inputs", "gap")
 
@@ -120,13 +122,17 @@ def main(argv=None):
     parser.add_argument("--captured-at", required=True)
     parser.add_argument("--out", required=True)
     args = parser.parse_args(argv)
-    out = Path(args.out)
+    out = Path(args.out).resolve()
+    if out.is_relative_to(ROOT):
+        raise SystemExit("the real capture holds portfolio facts: write it under persistent-state/data/conflicts/golden/, "
+                         "then commit only scripts/conflict_golden_anonymize.py output")
     if out.exists():
         raise SystemExit(f"refusing to overwrite {out}")
     doc = build(watch_pages=args.watch, holdings=args.holdings, risk=args.risk, cio_shadow=args.cio_shadow,
                 reentry_snapshot=args.reentry_snapshot, state_root=args.state_root, captured_at=args.captured_at)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(doc, indent=1, sort_keys=True, ensure_ascii=False, default=str) + "\n", encoding="utf-8")
+    out.chmod(0o600)
     print(json.dumps({"ok": True, "out": str(out), **doc["counts"]}))
     return 0
 

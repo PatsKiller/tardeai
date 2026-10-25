@@ -25,77 +25,73 @@ Binding rules: `EXCEPTIONS_MATRIX.md` (handoff `conflict-resolution-20261024`, s
 "Session time": a closed market does not age a quote taken at or after the last official close, so a Sunday
 replay does not supersede Friday's closing quotes.
 
-## (f) The capture
+## (f) The capture (real, private) and the fixture (synthetic, public)
 
-The 2026-10-24 capture of the 31 live flags was never saved (not in the repo, the fixtures or the handoff folder).
-The fixture is today's real state instead, captured read-only at **2026-10-25T18:22:17Z** (Sunday):
+The 2026-10-24 capture of the 31 live flags was never saved. The golden replay is built from 2026-10-25 real state,
+captured read-only at 18:22Z (Sunday) by `scripts/conflict_golden_capture.py` from: the served Watch read model (live
+and expired cards), CIO-truth holdings and risk, the cio-prospect-shadow build (the real-data proof run of #2102,
+since production's shadow lane first runs Monday), the stored re-entry desk snapshot and the identity registry. No
+database session was opened and no `.env`, cookie or credential file was read. 323 subjects.
 
-| Input | How it was read | Notes |
-|---|---|---|
-| Watch cards (266 symbols) | `GET /api/v3/data-broker/watch-intelligence?view=all` and `view=expired`, pages of 100 | the served read model the resolver's `compose_universe` builds (165 live + 103 expired rows) |
-| Holdings + positions (27 rows) | `GET /api/v2/portfolio/holdings`, `GET /api/v2/risk` | CIO truth `portfolio.holdings`, `positions.rows` (GUIDs, stop states) |
-| CIO stances | `cio_prospect_shadow.json` written 13:53Z today by the real-data proof run of #2102 (merged 17:30Z) | production `data/cio/` has no shadow yet: the canary lane first runs Monday 09:00 ET. Without it 316 of 320 subjects are R7 "No CIO stance" (#2111). |
-| Re-entry desk (92 rows) | stored snapshot `data/runtime/reentry_decision_desk_latest.json` (13:58Z) | never rebuilt |
-| Identity | `resolve_security_identity` over a copy of `data/runtime/identity_registry.json` | |
+**The repository is public, so the real capture never enters it.** It holds portfolio facts (which names are held,
+per-account membership, weights, protection states, convictions) and lives only at
+`persistent-state/data/conflicts/golden/` (chmod 600; the capture CLI refuses any path inside the repo).
+`tests/fixtures/conflicts/golden_20261025/REAL_CAPTURE.json` pins its sha256, and
+`test_host_only_real_capture_replay` replays it on the host (skips in CI).
 
-No database session was opened by the capture (the read models above are what the pages serve). No `.env`, cookie
-or credential file was read; the fixture is scanned for secret markers by the test. 323 subjects.
-
-Rebuild (writes only `--out`; never overwrites):
-
-```
-C=<capture dir>; curl -s "http://127.0.0.1:7777/api/v3/data-broker/watch-intelligence?view=all&page_size=100&page=1" -o $C/wi_all_1.json  # … pages and view=expired
-python3 scripts/conflict_golden_capture.py --watch $C/wi_all_*.json $C/wi_expired_*.json --holdings $C/holdings.json \
-  --risk $C/risk.json --cio-shadow $C/cio_prospect_shadow.json --reentry-snapshot $C/desk.json --state-root $C/root \
-  --captured-at <UTC> --out $C/golden.json
-```
+The committed `inputs.json` is its synthetic twin from `scripts/conflict_golden_anonymize.py`: symbols become
+`SYM001…` in a privately salted order, GUIDs are re-derived (joins kept), account ids become `taxable_a` / `ira_a` /
+`roth_a`, weights are bucketed without changing their relation to the limits, convictions are rounded to 5, times
+move back exactly 52 weeks (weekdays and ages kept) and source hashes are dropped. The anonymizer refuses output that
+still contains a real symbol, GUID or account id. Every subject's engine outcome is identical (as a multiset) to the
+real capture's. `tests/test_fixture_privacy_guard_20261025.py` fails if any new fixture carries an account-id pattern
+(CI) or a live held symbol or account id (host, computed at test time).
 
 ## Expected table (reviewed)
 
 Two resolver runs (R15: a new flag needs two consecutive runs). Findings, run 2:
 
-| Finding | Count | Subjects | Examples | Review |
-|---|---|---|---|---|
-| AGREEMENT R6 | 60 | 55 | AXTI, DT, DXCM, AXON, BND | not-held WATCH ≡ AVOID ≡ SELL; held adjacent steps — never flag |
-| SUPERSEDED R1 | 23 | 23 | QCOM, LDOS (reviews frozen 09-02); ADBE, ALXO, ANET, HPE, TSLA (desk plan without time) | see deviation 3 |
-| GATE R3 Trade AI | 12 | 12 | QCOM, HPE, KBR, LMT (STALE); FATN, ANET (DETERMINISTIC_FAIL); SMCI (BLOCKED) | matches the matrix's newly visible gates and DESIGN §5 |
-| GATE R7b stale stance | 35 | 35 | AAPL, ABNB, FTH | CIO material evidence > 2 trading days on a positive stance, or > 10 |
-| GATE R7 no stance | 14 | 14 | ARKG, CACI, NEE | "No CIO stance — WATCH/HOLD by default" |
-| GATE R16 identity | 9 | 9 | ABLV, MPWR, SGMT | unresolved GUID gates every action |
-| GATE R13 IPS headroom | 2 | 2 | BAH, NOC | positive held stance without a canonical weight |
-| NEEDS_OPERATOR R12 | 9 | 9 | SCHD, SCHG, V, XLB | held, broker protection NONE / PENDING ACTIVATION / UNKNOWN — never automatic |
-| DATA_ERROR R12 | 3 | 2 | SPCX, V | stop FILLED / awaiting fill — evaluation frozen |
-| DATA_ERROR U1 | 39 | 36 | KBR, LMT, SPCX | 28 desk states and 2 review verdicts outside the shared vocabulary (`CURRENTLY HELD` 13, `OVERBOUGHT WAIT` 5, `MISSING PLAN` 4, `MISSING MARKET` 4, `READY TO REVIEW`, `OVERSOLD REVIEW`, `MANAGING`, `HOLD / MONITOR`); 9 subjects with no confirmed GUID |
-| CONFLICT U7 | 1 | 1 | SCHG | held: CIO WATCH vs desk synthesis SELL (fresh, 2026-10-22) |
+| Finding | Count | Shape of the cases | Review |
+|---|---|---|---|
+| AGREEMENT R6 | 60 | not-held WATCH vs AVOID/SELL; held adjacent steps | same action — never flags |
+| SUPERSEDED R1 | 23 | 3 CIO watch reviews frozen since early September; 20 re-entry desk sides whose plan carries no time | see deviation 3 |
+| GATE R3 Trade AI | 12 | positive stances with Trade AI STALE, DETERMINISTIC_FAIL or BLOCKED | the matrix's newly visible Trade AI gates |
+| GATE R7b stale stance | 35 | CIO material evidence older than 2 trading days on a positive stance, or older than 10 | |
+| GATE R7 no stance | 14 | no CIO stance — WATCH/HOLD by default | |
+| GATE R16 identity | 9 | unresolved GUID | gates every action |
+| GATE R13 IPS headroom | 2 | positive held stance without a canonical weight | |
+| NEEDS_OPERATOR R12 | 9 | held, broker protection NONE / PENDING ACTIVATION / UNKNOWN | never automatic |
+| DATA_ERROR R12 | 3 | stop filled / awaiting fill — evaluation frozen | never automatic |
+| DATA_ERROR U1 | 39 | 28 desk states and 2 review verdicts outside the shared vocabulary (`CURRENTLY HELD`, `OVERBOUGHT WAIT`, `MISSING PLAN`, `MISSING MARKET`, `READY TO REVIEW`, `OVERSOLD REVIEW`, `MANAGING`, `HOLD / MONITOR`); 9 subjects without a confirmed GUID | producers fix vocabulary / identity |
+| CONFLICT U7 | 1 | held WATCH vs a fresh desk-synthesis SELL | the one real stance conflict |
 
-89 of 323 subjects flag; 234 do not (179 have no finding at all). Run 1 differs only in SCHG
-(AGREEMENT R15 "Disagreement observed — confirmation due next run").
+89 of 323 subjects flag; 234 do not (179 have no finding at all). Run 1 differs only in the conflict subject
+(AGREEMENT R15, "Disagreement observed — confirmation due next run").
 
 ## Deviations from the matrix estimate (≈17 agreements · 5 superseded · 4 gates · 3 real over 31 flags)
 
-1. **Population.** The estimate classified the 31 flags of 2026-10-24 (281 rows). This replay is the whole Watch
-   universe of 2026-10-25 (323 subjects), so absolute numbers are larger; the matrix's "newly visible gaps" (Trade AI
-   STALE gates, stance-less rows, unmapped labels, identity) are counted here as R3, R7/R7b, U1 and R16.
-2. **Real conflicts 3 → 1.** DT: today's CIO stance is WATCH (not RE_ENTER), so CIO WATCH vs desk AVOID is the same
-   action (R6). SCHD: the operator's R13 decision (broad fund, 25 % limit) means its 16.8 % weight raises no policy
-   flag; SCHD now shows the never-automatic R12 protection item instead. SCHG: the three-way split is two-way today
-   (review NOT_RUN; the desk's `CURRENTLY HELD` is unmapped vocabulary, U1), so it is one U7 conflict.
-3. **Superseded 5 → 23.** 3 are CIO watch reviews frozen since 2026-09-02 (older than 7 d). 20 are re-entry desk sides
-   whose plan has no time: every stored desk row has `plan_as_of: null` because `data_broker/entry_plan.get_entry_plans`
-   never selected `created_at` (the desk reads `plan.get("created_at")`). R1 says missing time = stale, so the side
-   cannot vote. This PR fixes the reader; once deployed the desk carries plan time and these 20 are compared again.
-   Without the R1 registry the same capture gives 21 U7 conflicts (20 of them these desk sides) and 3 superseded.
-4. **Gates 4 → 72.** R7b (35) and R7 (14) did not exist in the old classifier; they are the matrix's "24 stance-less
-   My Watchlist rows" and staleness rules applied to the whole universe.
+1. **Population.** The estimate classified the 31 flags of 2026-10-24 (281 rows); this replay is the whole Watch
+   universe of 2026-10-25 (323 subjects). The matrix's "newly visible gaps" are counted here as R3, R7/R7b, U1, R16.
+2. **Real conflicts 3 → 1.** Of the three the matrix named: one CIO stance moved to WATCH, so it now matches a
+   not-held AVOID (R6); one held fund is under the operator's R13 fund limit, so no policy flag (it shows the
+   never-automatic R12 protection item instead); the three-way split is two-way today (the review did not run and
+   the desk's label is unmapped, U1), so it is one U7 conflict.
+3. **Superseded 5 → 23.** 3 are CIO watch reviews older than 7 d. 20 are re-entry desk sides whose plan has no time:
+   every stored desk row has `plan_as_of: null` because `data_broker/entry_plan.get_entry_plans` never selected
+   `created_at`. R1 says missing time = stale, so the side cannot vote. This PR fixes the reader; once deployed the
+   desk carries plan time and these sides are compared again. Without the R1 registry the same capture gives 21 U7
+   conflicts (20 of them these desk sides) and 3 superseded.
+4. **Gates 4 → 72.** R7b (35) and R7 (14) did not exist in the old classifier.
 5. **Desk synthesis is not superseded in this capture.** The served Watch card omits a synthesis older than
    `watch_decision`'s freshness window, so R1 never sees it. `watch_source` (gap g) passes the raw row with its time.
-6. **Trade AI time.** The served card has no `trade_ai_as_of`, so a positive stance reads "Unknown: Trade AI checks".
+6. **Trade AI time.** The served card has no `trade_ai_as_of`, so positives read "Unknown: Trade AI checks";
    `watch_source` supplies the packet's `generated_at`.
-7. **Not in this capture:** T0 global halt and `next_run` labels (#2111's runner), R9 wash windows, R10 options and
-   R12 pending fills (the conflict-producers-a PR).
+7. **Not in this capture:** T0 global halt and `next_run` labels (#2111's runner), R9, R10 and R12 pending fills
+   (the conflict-producers-a PR).
 
-Residual findings for owners: LDOS is not held in CIO truth while the desk says `CURRENTLY HELD` and Trade AI says
-MANAGING (an ownership mismatch, R12 producer); 30 producer labels outside the shared vocabulary (R8).
+Residual findings for owners (named in the private capture, not here): one name is not held in CIO truth while the
+desk and Trade AI treat it as held (ownership mismatch, R12 producer); 30 producer labels outside the shared
+vocabulary (R8).
 
 ## (g) Read-only Watch source and the exception rows
 
